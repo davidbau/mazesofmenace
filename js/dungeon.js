@@ -10,7 +10,8 @@ import {
     BLCORNER, BRCORNER, CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL,
     DOOR, CORR, ROOM, STAIRS, FOUNTAIN, ALTAR, GRAVE, SINK,
     SDOOR, SCORR,
-    POOL, TREE, IRONBARS, LAVAPOOL, ICE,
+    POOL, TREE, IRONBARS, LAVAPOOL, ICE, WATER, MOAT, LAVAWALL,
+    AIR, CLOUD, THRONE, MAX_TYPE,
     D_NODOOR, D_CLOSED, D_ISOPEN, D_LOCKED, D_TRAPPED,
     DIR_N, DIR_S, DIR_E, DIR_W, DIR_180,
     xdir, ydir, N_DIRS,
@@ -431,6 +432,311 @@ function sort_rooms(map) {
     }
 }
 
+// ========================================================================
+// des.map() themeroom support
+// C ref: themerms.lua — shaped room definitions (L, T, S, Z, Cross, etc.)
+// ========================================================================
+
+// Character-to-typ mapping for des.map() strings.
+// C ref: nhlua.c splev_chr2typ()
+const CHAR_TO_TYP = {
+    ' ': STONE, '#': CORR, '.': ROOM, '-': HWALL, '|': VWALL,
+    '+': DOOR, 'S': SDOOR, 'H': SCORR, '{': FOUNTAIN, '\\': THRONE,
+    'K': SINK, '}': MOAT, 'P': POOL, 'L': LAVAPOOL, 'Z': LAVAWALL,
+    'I': ICE, 'W': WATER, 'T': TREE, 'F': IRONBARS, 'A': AIR,
+    'C': CLOUD, 'B': CROSSWALL, 'x': MAX_TYPE,
+};
+
+// Map data for des.map() themeroms (JS picks 11-29).
+// Each entry: { map: string, filler: [x, y] } or { map: string, special: true }
+// 'x' = transparent (existing terrain preserved).
+// C ref: themerms.lua themerooms[12..30] (Lua 1-based)
+const THEMEROOM_MAPS = [
+    // [0] = pick 11: L-shaped
+    { map: '-----xxx\n|...|xxx\n|...|xxx\n|...----\n|......|\n|......|\n|......|\n--------', filler: [1, 1] },
+    // [1] = pick 12: L-shaped, rot 1
+    { map: 'xxx-----\nxxx|...|\nxxx|...|\n----...|\n|......|\n|......|\n|......|\n--------', filler: [5, 1] },
+    // [2] = pick 13: L-shaped, rot 2
+    { map: '--------\n|......|\n|......|\n|......|\n----...|\nxxx|...|\nxxx|...|\nxxx-----', filler: [1, 1] },
+    // [3] = pick 14: L-shaped, rot 3
+    { map: '--------\n|......|\n|......|\n|......|\n|...----\n|...|xxx\n|...|xxx\n-----xxx', filler: [1, 1] },
+    // [4] = pick 15: Blocked center
+    { map: '-----------\n|.........|\n|.........|\n|.........|\n|...LLL...|\n|...LLL...|\n|...LLL...|\n|.........|\n|.........|\n|.........|\n-----------', filler: [1, 1], blockedCenter: true },
+    // [5] = pick 16: Circular, small
+    { map: 'xx---xx\nx--.--x\n--...--\n|.....|\n--...--\nx--.--x\nxx---xx', filler: [3, 3] },
+    // [6] = pick 17: Circular, medium
+    { map: 'xx-----xx\nx--...--x\n--.....--\n|.......|\n|.......|\n|.......|\n--.....--\nx--...--x\nxx-----xx', filler: [4, 4] },
+    // [7] = pick 18: Circular, big
+    { map: 'xxx-----xxx\nx---...---x\nx-.......-x\n--.......--\n|.........|\n|.........|\n|.........|\n--.......--\nx-.......-x\nx---...---x\nxxx-----xxx', filler: [5, 5] },
+    // [8] = pick 19: T-shaped
+    { map: 'xxx-----xxx\nxxx|...|xxx\nxxx|...|xxx\n----...----\n|.........|\n|.........|\n|.........|\n-----------', filler: [5, 5] },
+    // [9] = pick 20: T-shaped, rot 1
+    { map: '-----xxx\n|...|xxx\n|...|xxx\n|...----\n|......|\n|......|\n|......|\n|...----\n|...|xxx\n|...|xxx\n-----xxx', filler: [2, 2] },
+    // [10] = pick 21: T-shaped, rot 2
+    { map: '-----------\n|.........|\n|.........|\n|.........|\n----...----\nxxx|...|xxx\nxxx|...|xxx\nxxx-----xxx', filler: [2, 2] },
+    // [11] = pick 22: T-shaped, rot 3
+    { map: 'xxx-----\nxxx|...|\nxxx|...|\n----...|\n|......|\n|......|\n|......|\n----...|\nxxx|...|\nxxx|...|\nxxx-----', filler: [5, 5] },
+    // [12] = pick 23: S-shaped
+    { map: '-----xxx\n|...|xxx\n|...|xxx\n|...----\n|......|\n|......|\n|......|\n----...|\nxxx|...|\nxxx|...|\nxxx-----', filler: [2, 2] },
+    // [13] = pick 24: S-shaped, rot 1
+    { map: 'xxx--------\nxxx|......|\nxxx|......|\n----......|\n|......----\n|......|xxx\n|......|xxx\n--------xxx', filler: [5, 5] },
+    // [14] = pick 25: Z-shaped
+    { map: 'xxx-----\nxxx|...|\nxxx|...|\n----...|\n|......|\n|......|\n|......|\n|...----\n|...|xxx\n|...|xxx\n-----xxx', filler: [5, 5] },
+    // [15] = pick 26: Z-shaped, rot 1
+    { map: '--------xxx\n|......|xxx\n|......|xxx\n|......----\n----......|\nxxx|......|\nxxx|......|\nxxx--------', filler: [2, 2] },
+    // [16] = pick 27: Cross
+    { map: 'xxx-----xxx\nxxx|...|xxx\nxxx|...|xxx\n----...----\n|.........|\n|.........|\n|.........|\n----...----\nxxx|...|xxx\nxxx|...|xxx\nxxx-----xxx', filler: [6, 6] },
+    // [17] = pick 28: Four-leaf clover
+    { map: '-----x-----\n|...|x|...|\n|...---...|\n|.........|\n---.....---\nxx|.....|xx\n---.....---\n|.........|\n|...---...|\n|...|x|...|\n-----x-----', filler: [6, 6] },
+    // [18] = pick 29: Water-surrounded vault
+    { map: '}}}}}}\n}----}\n}|...|}\n}|...|}\n}----}\n}}}}}}', special: 'water_vault' },
+];
+
+// Place a des.map() themeroom on the level grid.
+// Returns true if placed, false if failed after 100 attempts.
+// C ref: sp_lev.c lspo_map() with in_mk_themerooms=TRUE
+function placeMapThemeroom(map, mapIdx, depth) {
+    const tmData = THEMEROOM_MAPS[mapIdx - 11]; // picks 11-29 → array 0-18
+    const lines = tmData.map.split('\n');
+    const mfHei = lines.length;
+    const mfWid = Math.max(...lines.map(l => l.length));
+
+    let xstart, ystart;
+    for (let tryct = 0; tryct < 100; tryct++) {
+        // C ref: sp_lev.c:6201-6204 — random position for themeroom map
+        xstart = 1 + rn2(COLNO - 1 - mfWid);
+        ystart = rn2(ROWNO - mfHei);
+
+        // C ref: sp_lev.c:6217 — bounds check
+        if (ystart < 0 || ystart + mfHei > ROWNO) continue;
+        if (xstart < 1 || xstart + mfWid >= COLNO) continue;
+
+        // C ref: sp_lev.c:6236-6264 — overlap check (border + interior)
+        let ok = true;
+        for (let y = ystart - 1; y < ystart + mfHei + 1 && ok; y++) {
+            for (let x = xstart - 1; x < xstart + mfWid + 1 && ok; x++) {
+                if (!isok(x, y)) { ok = false; break; }
+                const loc = map.at(x, y);
+                if (y < ystart || y >= ystart + mfHei
+                    || x < xstart || x >= xstart + mfWid) {
+                    // Border cell: must be STONE with no room
+                    if (loc.typ !== STONE || loc.roomno !== 0) ok = false;
+                } else {
+                    // Interior cell
+                    const ch = (lines[y - ystart] || '')[x - xstart] || ' ';
+                    const mptyp = CHAR_TO_TYP[ch];
+                    if (mptyp === undefined || mptyp >= MAX_TYPE) continue;
+                    if ((loc.typ !== STONE || loc.roomno !== 0)
+                        && loc.typ !== mptyp) {
+                        ok = false;
+                    }
+                }
+            }
+        }
+        if (!ok) continue;
+
+        // Success — write map characters to the grid
+        // C ref: sp_lev.c:6267-6288
+        for (let y = ystart; y < ystart + mfHei; y++) {
+            for (let x = xstart; x < xstart + mfWid; x++) {
+                const ch = (lines[y - ystart] || '')[x - xstart] || ' ';
+                const mptyp = CHAR_TO_TYP[ch];
+                if (mptyp === undefined || mptyp >= MAX_TYPE) continue;
+                const loc = map.at(x, y);
+                loc.flags = 0;
+                loc.horizontal = (mptyp === HWALL || mptyp === IRONBARS);
+                loc.roomno = 0;
+                loc.edge = false;
+                loc.typ = mptyp;
+                if (mptyp === SDOOR) loc.flags = D_CLOSED;
+            }
+        }
+
+        // Execute contents callback
+        if (tmData.blockedCenter) {
+            // C ref: themerms.lua Blocked center — percent(30) + maybe replace L
+            desMapBlockedCenter(map, xstart, ystart, mfWid, mfHei);
+        }
+
+        if (tmData.special === 'water_vault') {
+            // Water vault uses des.region instead of filler_region
+            desMapWaterVault(map, xstart, ystart, depth);
+        } else {
+            // Standard filler_region
+            const fx = xstart + tmData.filler[0];
+            const fy = ystart + tmData.filler[1];
+            fillerRegion(map, fx, fy, depth);
+        }
+
+        // Split BSP rects around the placed map area
+        // C ref: sp_lev.c doesn't directly do this, but mklev.c needs it for
+        // subsequent room placement to avoid overlap
+        const mapRect = {
+            lx: xstart - 1, ly: ystart - 1,
+            hx: xstart + mfWid, hy: ystart + mfHei
+        };
+        const parentRect = get_rect(mapRect);
+        if (parentRect) split_rects(parentRect, mapRect);
+
+        return true;
+    }
+
+    // All 100 attempts failed
+    return false;
+}
+
+// C ref: themerms.lua Blocked center contents — before filler_region
+function desMapBlockedCenter(map, xstart, ystart, wid, hei) {
+    if (rn2(100) < 30) { // percent(30)
+        // shuffle({"-","P"}) = rn2(2) for 2-element shuffle
+        rn2(2);
+        // des.replace_terrain: rn2(100) per cell matching 'L' (9 cells)
+        // C ref: sp_lev.c lspo_replace_terrain — each cell: rn2(100) < chance
+        for (let i = 0; i < 9; i++) rn2(100);
+    }
+}
+
+// C ref: themerms.lua Water-surrounded vault contents
+function desMapWaterVault(map, xstart, ystart, depth) {
+    // des.region({irregular=true}) → litstate_rnd + flood_fill
+    const rndVal = rnd(1 + Math.abs(depth));
+    let lit = false;
+    if (rndVal < 11) {
+        lit = rn2(77) !== 0;
+    }
+    // flood_fill_rm + add_room (register the room)
+    floodFillAndRegister(map, xstart + 2, ystart + 2, THEMEROOM, lit);
+
+    // shuffle(chest_spots) — 4-element: rn2(4), rn2(3), rn2(2)
+    rn2(4); rn2(3); rn2(2);
+    // math.random(#escape_items) — rn2(4)
+    rn2(4);
+    // obj.new(escape_item) — creates object, RNG varies
+    // des.object({id="chest",...}) × up to 4 — complex RNG
+    // shuffle(nasty_undead) — 3-element: rn2(3), rn2(2)
+    rn2(3); rn2(2);
+    // des.monster — complex RNG
+    // We can't faithfully simulate all the object/monster RNG here,
+    // so PRNG will diverge from this point for water vault rooms.
+    // Mark room as needjoining=false
+    if (map.nroom > 0) {
+        map.rooms[map.nroom - 1].needjoining = false;
+    }
+}
+
+// C ref: themerms.lua filler_region(x, y)
+// Flood fills from (absX, absY) to register an irregular room, then maybe
+// applies themeroom_fill.
+function fillerRegion(map, absX, absY, depth) {
+    // percent(30) → rn2(100)
+    const isThemed = rn2(100) < 30;
+
+    // litstate_rnd(-1): rnd(1+depth), maybe rn2(77)
+    // C ref: mkmap.c litstate_rnd
+    const rndVal = rnd(1 + Math.abs(depth));
+    let lit = false;
+    if (rndVal < 11) {
+        lit = rn2(77) !== 0;
+    }
+
+    // flood_fill_rm from (absX, absY) + add_room
+    const rtype = isThemed ? THEMEROOM : OROOM;
+    floodFillAndRegister(map, absX, absY, rtype, lit);
+
+    // If themed, run themeroom_fill reservoir sampling + contents
+    if (isThemed && map.nroom > 0) {
+        const room = map.rooms[map.nroom - 1];
+        simulateThemeroomFill(map, room, depth);
+    }
+}
+
+// Flood fill from (sx, sy) through connected cells of the same typ,
+// assign roomno, compute bounding box, and register as a room.
+// C ref: sp_lev.c flood_fill_rm() + add_room()
+function floodFillAndRegister(map, sx, sy, rtype, lit) {
+    const startTyp = map.at(sx, sy).typ;
+    const rno = map.nroom + ROOMOFFSET;
+
+    // BFS flood fill
+    let minX = sx, maxX = sx, minY = sy, maxY = sy;
+    const visited = new Set();
+    const queue = [[sx, sy]];
+    const key = (x, y) => y * COLNO + x;
+    visited.add(key(sx, sy));
+
+    while (queue.length > 0) {
+        const [cx, cy] = queue.shift();
+        const loc = map.at(cx, cy);
+        loc.roomno = rno;
+        loc.lit = lit;
+
+        if (cx < minX) minX = cx;
+        if (cx > maxX) maxX = cx;
+        if (cy < minY) minY = cy;
+        if (cy > maxY) maxY = cy;
+
+        // Check 4 neighbors
+        for (const [dx, dy] of [[0,-1],[0,1],[-1,0],[1,0]]) {
+            const nx = cx + dx, ny = cy + dy;
+            if (!isok(nx, ny)) continue;
+            const k = key(nx, ny);
+            if (visited.has(k)) continue;
+            const nloc = map.at(nx, ny);
+            if (nloc.typ === startTyp && nloc.roomno === 0) {
+                visited.add(k);
+                queue.push([nx, ny]);
+            }
+        }
+    }
+
+    // Mark surrounding walls as edge
+    // C ref: sp_lev.c flood_fill_rm anyroom case
+    for (const k of visited) {
+        const cy = Math.floor(k / COLNO);
+        const cx = k % COLNO;
+        for (const [dx, dy] of [[0,-1],[0,1],[-1,0],[1,0]]) {
+            const nx = cx + dx, ny = cy + dy;
+            if (!isok(nx, ny)) continue;
+            const nloc = map.at(nx, ny);
+            if (IS_WALL(nloc.typ) || nloc.typ === SDOOR) {
+                nloc.edge = true;
+            }
+        }
+    }
+
+    // Register the room
+    const croom = makeRoom();
+    map.rooms.push(croom);
+    map.nroom = map.rooms.length;
+
+    const roomno = map.rooms.indexOf(croom);
+    croom.roomnoidx = roomno;
+    croom.lx = minX;
+    croom.hx = maxX;
+    croom.ly = minY;
+    croom.hy = maxY;
+    croom.rtype = rtype;
+    croom.rlit = lit;
+    croom.doorct = 0;
+    croom.fdoor = map.doorindex;
+    croom.irregular = true;
+    croom.needjoining = true;
+
+    // Set lit on wall/edge cells within bounding box
+    if (lit) {
+        for (let x = minX - 1; x <= maxX + 1; x++) {
+            for (let y = minY - 1; y <= maxY + 1; y++) {
+                if (isok(x, y)) {
+                    const loc = map.at(x, y);
+                    if (loc.edge || loc.roomno === rno) {
+                        loc.lit = true;
+                    }
+                }
+            }
+        }
+    }
+}
+
 // Fixed Lua themerooms rn2 argument pattern (30 calls per room iteration).
 // C ref: themerooms.lua — themerooms_generate calls rn2 with these args.
 // Each cumulative frequency corresponds to a themeroom entry:
@@ -546,27 +852,41 @@ function makerooms(map, depth) {
             // C ref: mklev.c:402-407 — themerooms_generate Lua reservoir
             // sampling (30 calls). Track which room was picked.
             const themeroomPick = themeroomsGenerate();
-            // C ref: sp_lev.c:2803 build_room chance check
-            rn2(100);
 
-            if (!create_room(map, -1, -1, -1, -1, -1, -1, OROOM, -1, depth)) {
-                // C ref: mklev.c:408-411 — themeroom_failed retry logic
-                if (++themeroom_tries > 10
-                    || map.nroom >= Math.floor(MAXNROFROOMS / 6))
-                    break;
-                // else continue trying
-            } else {
-                // C ref: non-default themerooms get rtype=THEMEROOM
-                if (themeroomPick !== 0) {
-                    map.rooms[map.nroom - 1].rtype = THEMEROOM;
+            if (themeroomPick >= 11 && themeroomPick <= 29) {
+                // des.map() themeroom — NO rn2(100) build_room check.
+                // C ref: themerms.lua — these call des.map() not des.room()
+                if (!placeMapThemeroom(map, themeroomPick, depth)) {
+                    // themeroom_failed
+                    if (++themeroom_tries > 10
+                        || map.nroom >= Math.floor(MAXNROFROOMS / 6))
+                        break;
+                } else {
+                    themeroom_tries = 0;
                 }
-                if (themeroomPick >= 5 && themeroomPick <= 7) {
-                    // Room created successfully and a themed fill room was picked.
-                    // Simulate themeroom_fill RNG consumption.
-                    // C ref: themerms.lua — indices 5,6,7 all call themeroom_fill()
-                    const room = map.rooms[map.nroom - 1];
-                    const forceLit = (themeroomPick === 6) ? false : undefined;
-                    simulateThemeroomFill(map, room, depth, forceLit);
+            } else {
+                // des.room() themeroom (picks 0-10) — has rn2(100) build_room
+                // C ref: sp_lev.c:2803 build_room chance check
+                rn2(100);
+
+                if (!create_room(map, -1, -1, -1, -1, -1, -1, OROOM, -1, depth)) {
+                    // C ref: mklev.c:408-411 — themeroom_failed retry logic
+                    if (++themeroom_tries > 10
+                        || map.nroom >= Math.floor(MAXNROFROOMS / 6))
+                        break;
+                } else {
+                    // C ref: non-default themerooms get rtype=THEMEROOM
+                    if (themeroomPick !== 0) {
+                        map.rooms[map.nroom - 1].rtype = THEMEROOM;
+                    }
+                    if (themeroomPick >= 5 && themeroomPick <= 7) {
+                        // Simulate themeroom_fill RNG consumption.
+                        // C ref: themerms.lua — indices 5,6,7 all call themeroom_fill()
+                        const room = map.rooms[map.nroom - 1];
+                        const forceLit = (themeroomPick === 6) ? false : undefined;
+                        simulateThemeroomFill(map, room, depth, forceLit);
+                    }
+                    themeroom_tries = 0;
                 }
             }
         }
