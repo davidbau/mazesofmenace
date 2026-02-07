@@ -1,0 +1,267 @@
+diff --git a/include/extern.h b/include/extern.h
+index 899f72b4a..02b6ae642 100644
+--- a/include/extern.h
++++ b/include/extern.h
+@@ -2729,6 +2729,9 @@ extern int rnz(int);
+ extern void init_random(int(*fn)(int));
+ extern void reseed_random(int(*fn)(int));
+ extern void shuffle_int_array(int *, int) NONNULLARG1;
++/* PRNG call logging (003-prng-logging patch) */
++extern void rng_log_init(void);
++extern void rng_log_set_caller(const char *, int);
+ 
+ /* ### role.c ### */
+ 
+diff --git a/include/hack.h b/include/hack.h
+index a52258a4e..81338af76 100644
+--- a/include/hack.h
++++ b/include/hack.h
+@@ -1571,6 +1571,31 @@ typedef uint32_t mmflags_nht;     /* makemon MM_ flags */
+ #include "savefile.h"
+ #include "decl.h"
+ 
++/*
++ * PRNG call logging macros (003-prng-logging patch).
++ *
++ * These use a C preprocessor trick: function-like macros only match
++ * when followed by '('.  So `init_random(rn2)` passes the bare function
++ * pointer (no parens) and the macro doesn't fire.  But `rn2(42)` does
++ * match, setting the caller's __FILE__:__LINE__ before calling the
++ * real rn2 function.
++ *
++ * The self-reference in the expansion (e.g. rn2 calling rn2) is safe:
++ * C99 6.10.3.4 says a macro name found during its own expansion is
++ * not replaced again, so it resolves to the real function.
++ *
++ * Suppressed inside rnd.c itself (RNGLOG_IN_RND_C) to avoid double-
++ * logging from internal calls (rnl->rn2, rnz->rn2, etc).
++ */
++#ifndef RNGLOG_IN_RND_C
++#define rn2(x) (rng_log_set_caller(__FILE__, __LINE__), rn2(x))
++#define rnd(x) (rng_log_set_caller(__FILE__, __LINE__), rnd(x))
++#define rnl(x) (rng_log_set_caller(__FILE__, __LINE__), rnl(x))
++#define d(n,x) (rng_log_set_caller(__FILE__, __LINE__), d((n),(x)))
++#define rne(x) (rng_log_set_caller(__FILE__, __LINE__), rne(x))
++#define rnz(x) (rng_log_set_caller(__FILE__, __LINE__), rnz(x))
++#endif /* RNGLOG_IN_RND_C */
++
+ #endif  /* RECOVER_C */
+ 
+ #endif /* HACK_H */
+diff --git a/src/rnd.c b/src/rnd.c
+index beb4992ed..4c30ed24e 100644
+--- a/src/rnd.c
++++ b/src/rnd.c
+@@ -2,8 +2,60 @@
+ /*      Copyright (c) 2004 by Robert Patrick Rankin               */
+ /* NetHack may be freely redistributed.  See license for details. */
+ 
++/* Suppress rng logging macros inside this file -- we define the real
++   functions here, and add logging directly in each function body. */
++#define RNGLOG_IN_RND_C
+ #include "hack.h"
+ 
++/*
++ * PRNG call logging infrastructure.
++ * When NETHACK_RNGLOG is set, every rn2/rnd/rnl/d/rne/rnz call is logged
++ * with: call#, function(args) = result @ file:line
++ *
++ * The file:line comes from rng_log_set_caller(), invoked by the macros
++ * in hack.h before calling the real function.  If no caller is set
++ * (e.g. internal calls within rnd.c), file:line is omitted.
++ */
++static FILE *rng_logfile = NULL;
++static int rng_call_count = 0;
++static const char *rng_caller_file = NULL;
++static int rng_caller_line = 0;
++
++void
++rng_log_init(void)
++{
++    const char *logpath = getenv("NETHACK_RNGLOG");
++    if (logpath && *logpath) {
++        rng_logfile = fopen(logpath, "w");
++        if (rng_logfile)
++            setvbuf(rng_logfile, NULL, _IOLBF, 0); /* line-buffered */
++    }
++}
++
++void
++rng_log_set_caller(const char *file, int line)
++{
++    rng_caller_file = file;
++    rng_caller_line = line;
++}
++
++static void
++rng_log_write(const char *func, const char *args, int result)
++{
++    if (!rng_logfile)
++        return;
++    rng_call_count++;
++    if (rng_caller_file) {
++        fprintf(rng_logfile, "%d %s(%s) = %d @ %s:%d\n",
++                rng_call_count, func, args, result,
++                rng_caller_file, rng_caller_line);
++        rng_caller_file = NULL;
++    } else {
++        fprintf(rng_logfile, "%d %s(%s) = %d\n",
++                rng_call_count, func, args, result);
++    }
++}
++
+ #ifdef USE_ISAAC64
+ #include "isaac64.h"
+ 
+@@ -94,16 +146,20 @@ rn2_on_display_rng(int x)
+ int
+ rn2(int x)
+ {
++    int result;
+ #if (NH_DEVEL_STATUS != NH_STATUS_RELEASED)
+     if (x <= 0) {
+         impossible("rn2(%d) attempted", x);
+         return 0;
+     }
+-    x = RND(x);
+-    return x;
+-#else
+-    return RND(x);
+ #endif
++    result = RND(x);
++    if (rng_logfile) {
++        char buf[32];
++        snprintf(buf, sizeof buf, "%d", x);
++        rng_log_write("rn2", buf, result);
++    }
++    return result;
+ }
+ 
+ /* 0 <= rnl(x) < x; sometimes subtracting Luck;
+@@ -112,6 +168,11 @@ int
+ rnl(int x)
+ {
+     int i, adjustment;
++    /* save and clear caller context so the internal rn2 call
++       in this function doesn't consume it */
++    const char *saved_file = rng_caller_file;
++    int saved_line = rng_caller_line;
++    rng_caller_file = NULL;
+ 
+ #if (NH_DEVEL_STATUS != NH_STATUS_RELEASED)
+     if (x <= 0) {
+@@ -147,6 +208,13 @@ rnl(int x)
+         else if (i >= x)
+             i = x - 1;
+     }
++    if (rng_logfile) {
++        char buf[32];
++        rng_caller_file = saved_file;
++        rng_caller_line = saved_line;
++        snprintf(buf, sizeof buf, "%d", x);
++        rng_log_write("rnl", buf, i);
++    }
+     return i;
+ }
+ 
+@@ -154,14 +222,20 @@ rnl(int x)
+ int
+ rnd(int x)
+ {
++    int result;
+ #if (NH_DEVEL_STATUS != NH_STATUS_RELEASED)
+     if (x <= 0) {
+         impossible("rnd(%d) attempted", x);
+         return 1;
+     }
+ #endif
+-    x = RND(x) + 1;
+-    return x;
++    result = RND(x) + 1;
++    if (rng_logfile) {
++        char buf[32];
++        snprintf(buf, sizeof buf, "%d", x);
++        rng_log_write("rnd", buf, result);
++    }
++    return result;
+ }
+ 
+ int
+@@ -175,6 +249,7 @@ int
+ d(int n, int x)
+ {
+     int tmp = n;
++    int orig_n = n;
+ 
+ #if (NH_DEVEL_STATUS != NH_STATUS_RELEASED)
+     if (x < 0 || n < 0 || (x == 0 && n != 0)) {
+@@ -184,6 +259,11 @@ d(int n, int x)
+ #endif
+     while (n--)
+         tmp += RND(x);
++    if (rng_logfile) {
++        char buf[64];
++        snprintf(buf, sizeof buf, "%d,%d", orig_n, x);
++        rng_log_write("d", buf, tmp);
++    }
+     return tmp; /* Alea iacta est. -- J.C. */
+ }
+ 
+@@ -192,11 +272,21 @@ int
+ rne(int x)
+ {
+     int tmp, utmp;
++    const char *saved_file = rng_caller_file;
++    int saved_line = rng_caller_line;
++    rng_caller_file = NULL;
+ 
+     utmp = (u.ulevel < 15) ? 5 : u.ulevel / 3;
+     tmp = 1;
+     while (tmp < utmp && !rn2(x))
+         tmp++;
++    if (rng_logfile) {
++        char buf[32];
++        rng_caller_file = saved_file;
++        rng_caller_line = saved_line;
++        snprintf(buf, sizeof buf, "%d", x);
++        rng_log_write("rne", buf, tmp);
++    }
+     return tmp;
+ 
+     /* was:
+@@ -215,6 +305,9 @@ rnz(int i)
+ {
+     long x = (long) i;
+     long tmp = 1000L;
++    const char *saved_file = rng_caller_file;
++    int saved_line = rng_caller_line;
++    rng_caller_file = NULL;
+ 
+     tmp += rn2(1000);
+     tmp *= rne(4);
+@@ -225,6 +318,13 @@ rnz(int i)
+         x *= 1000;
+         x /= tmp;
+     }
++    if (rng_logfile) {
++        char buf[32];
++        rng_caller_file = saved_file;
++        rng_caller_line = saved_line;
++        snprintf(buf, sizeof buf, "%d", i);
++        rng_log_write("rnz", buf, (int) x);
++    }
+     return (int) x;
+ }
+ 
+diff --git a/sys/unix/unixmain.c b/sys/unix/unixmain.c
+index 881c1666e..46ff058d2 100644
+--- a/sys/unix/unixmain.c
++++ b/sys/unix/unixmain.c
+@@ -63,6 +63,7 @@ main(int argc, char *argv[])
+     boolean plsel_once = FALSE;
+ 
+     early_init(argc, argv);
++    rng_log_init();  /* 003-prng-logging: open log if NETHACK_RNGLOG is set */
+ 
+ #if defined(__APPLE__)
+     {

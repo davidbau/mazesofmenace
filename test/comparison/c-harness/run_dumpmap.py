@@ -93,10 +93,13 @@ def main():
 
     try:
         # Build the shell command with all env vars
+        rnglog = os.environ.get('NETHACK_RNGLOG', '')
+        rnglog_env = f'NETHACK_RNGLOG={rnglog} ' if rnglog else ''
         cmd = (
             f'NETHACKDIR={INSTALL_DIR} '
             f'NETHACK_SEED={seed} '
             f'NETHACK_DUMPMAP={output_file} '
+            f'{rnglog_env}'
             f'HOME={RESULTS_DIR} '
             f'TERM=xterm-256color '
             f'{NETHACK_BINARY} -u Wizard -D; '

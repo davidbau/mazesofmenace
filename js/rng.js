@@ -7,6 +7,32 @@ import { isaac64_init, isaac64_next_uint64 } from './isaac64.js';
 
 let ctx = null; // ISAAC64 context
 
+// --- PRNG call logging ---
+// When enabled, every rn2/rnd/rnl/d call is logged in the same format
+// as the C PRNG logger (003-prng-logging patch).  Enable with enableRngLog(),
+// retrieve with getRngLog(), disable with disableRngLog().
+let rngLog = null;       // null = disabled, Array = enabled
+let rngCallCount = 0;
+
+export function enableRngLog() {
+    rngLog = [];
+    rngCallCount = 0;
+}
+
+export function getRngLog() {
+    return rngLog;
+}
+
+export function disableRngLog() {
+    rngLog = null;
+}
+
+function logRng(func, args, result) {
+    if (!rngLog) return;
+    rngCallCount++;
+    rngLog.push(`${rngCallCount} ${func}(${args}) = ${result}`);
+}
+
 // Initialize the PRNG with a seed (unsigned long, up to 64 bits)
 // C ref: rnd.c init_isaac64() -- converts seed to little-endian bytes
 export function initRng(seed) {
@@ -19,6 +45,11 @@ export function initRng(seed) {
         s >>= 8n;
     }
     ctx = isaac64_init(bytes);
+    // Reset log counter on re-init (like C's init_random)
+    if (rngLog) {
+        rngLog.length = 0;
+        rngCallCount = 0;
+    }
 }
 
 // Raw 64-bit value, modulo x -- matches C's RND(x) macro
@@ -32,18 +63,22 @@ function RND(x) {
 // C ref: rnd.c:93-107
 export function rn2(x) {
     if (x <= 0) return 0;
-    return RND(x);
+    const result = RND(x);
+    logRng('rn2', x, result);
+    return result;
 }
 
 // 1 <= rnd(x) <= x
 // C ref: rnd.c:153-165
 export function rnd(x) {
     if (x <= 0) return 1;
-    return RND(x) + 1;
+    const result = RND(x) + 1;
+    logRng('rnd', x, result);
+    return result;
 }
 
 // rn1(x, y) = rn2(x) + y -- random in [y, y+x-1]
-// C ref: hack.h macro
+// C ref: hack.h macro -- NOT logged separately (rn2 inside is logged)
 export function rn1(x, y) {
     return rn2(x) + y;
 }
@@ -62,6 +97,7 @@ export function rnl(x, luck = 0) {
         if (i < 0) i = 0;
         else if (i >= x) i = x - 1;
     }
+    logRng('rnl', x, i);
     return i;
 }
 
@@ -73,7 +109,17 @@ export function d(n, x) {
     for (let i = 0; i < n; i++) {
         tmp += RND(x);
     }
+    logRng('d', `${n},${x}`, tmp);
     return tmp;
+}
+
+// Advance the PRNG by n steps without logging.
+// Used to skip past C startup calls (o_init, u_init, etc.) that JS
+// doesn't implement yet, aligning the PRNG state for level generation.
+export function skipRng(n) {
+    for (let i = 0; i < n; i++) {
+        isaac64_next_uint64(ctx);
+    }
 }
 
 // Return the raw ISAAC64 context (for save/restore)
