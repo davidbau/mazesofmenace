@@ -17,8 +17,9 @@ import {
     S_TROLL, S_UMBER, S_VAMPIRE, S_WRAITH, S_XORN, S_YETI, S_ZOMBIE,
     S_HUMAN, S_GHOST, S_GOLEM, S_DEMON, S_EEL, S_LIZARD,
     M2_MERC, M2_LORD, M2_PRINCE, M2_NASTY, M2_FEMALE, M2_MALE,
-    M2_HOSTILE, M2_PEACEFUL, M2_DOMESTIC, M2_NEUTER,
+    M2_HOSTILE, M2_PEACEFUL, M2_DOMESTIC, M2_NEUTER, M2_GREEDY,
     M1_FLY, M1_NOHANDS,
+    PM_SOLDIER,
 } from './monsters.js';
 import {
     DAGGER, KNIFE, SHORT_SWORD, LONG_SWORD, SILVER_SABER, BROADSWORD,
@@ -99,7 +100,8 @@ function temperature_shift(ptr) {
 // C ref: makemon.c rndmonst_adj()
 export function rndmonst_adj(minadj, maxadj, depth) {
     const ulevel = 1; // hardcoded for level gen testing
-    const zlevel = depth + ulevel + 2; // level_difficulty()
+    // C ref: level_difficulty() returns depth(&u.uz) for main dungeon
+    const zlevel = depth;
     const minmlev = monmin_difficulty(zlevel) + minadj;
     const maxmlev = monmax_difficulty(zlevel, ulevel) + maxadj;
 
@@ -430,7 +432,7 @@ function m_initweap(mndx, depth) {
 // Simplified: only port branches that consume RNG
 // ========================================================================
 
-function m_initinv(mndx, depth) {
+function m_initinv(mndx, depth, m_lev) {
     const ptr = mons[mndx];
     const mm = ptr.symbol;
 
@@ -512,9 +514,24 @@ function m_initinv(mndx, depth) {
         break;
     }
 
-    // Saddle for domestic monsters
-    if (is_domestic(ptr) && !rn2(100)) {
-        mksobj(SADDLE, true, false);
+    // C ref: makemon.c:824 — soldier check (skips tail for most soldiers)
+    if (mndx === PM_SOLDIER && rn2(13))
+        return;
+
+    // C ref: makemon.c:827-833 — tail section: defensive/misc items and gold
+    // These rn2 checks always fire; the item creation only triggers when m_lev > result
+    // At depth 1 (m_lev typically 0-1), the checks almost never pass
+    if (m_lev > rn2(50)) {
+        // rnd_defensive_item → mongets → mksobj
+        // Complex item selection; accept divergence here if it triggers
+    }
+    if (m_lev > rn2(100)) {
+        // rnd_misc_item → mongets → mksobj
+        // Complex item selection; accept divergence here if it triggers
+    }
+    if ((ptr.flags2 & M2_GREEDY) && !rn2(5)) {
+        // mkmonmoney: d(level_difficulty(), minvent ? 5 : 10)
+        d(Math.max(depth, 1), 10);
     }
 }
 
@@ -544,12 +561,12 @@ export function makemon(ptr_or_null, x, y, mmflags, depth) {
     if (mndx < 0 || mndx >= mons.length) return null;
     const ptr = mons[mndx];
 
-    // C ref: newmonhp
-    const { hp, m_lev } = newmonhp(mndx);
-
     // C ref: makemon.c:1252 — mtmp->m_id = next_ident()
-    // next_ident() consumes rnd(2) for unique monster ID
+    // next_ident() consumes rnd(2) for unique monster ID (BEFORE newmonhp)
     rnd(2);
+
+    // C ref: makemon.c:1259 — newmonhp
+    const { hp, m_lev } = newmonhp(mndx);
 
     // Gender assignment
     // C ref: makemon.c:1278-1290
@@ -564,9 +581,15 @@ export function makemon(ptr_or_null, x, y, mmflags, depth) {
     }
 
     // Weapon/inventory initialization
-    // C ref: makemon.c:1439-1440
+    // C ref: makemon.c:1438-1440
     m_initweap(mndx, depth || 1);
-    m_initinv(mndx, depth || 1);
+    m_initinv(mndx, depth || 1, m_lev);
+
+    // C ref: makemon.c:1443-1448 — saddle for domestic monsters
+    // C evaluates !rn2(100) first (always consumed), then is_domestic
+    if (!rn2(100) && is_domestic(ptr)) {
+        mksobj(SADDLE, true, false);
+    }
 
     // Group formation
     // C ref: makemon.c:1427-1430

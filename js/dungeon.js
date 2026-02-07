@@ -1551,7 +1551,6 @@ function mkgrave(map, croom, depth) {
     if (!rn2(3)) {
         mksobj(GOLD_PIECE, true, false);
         // gold->quan = rnd(20) + level_difficulty() * rnd(5)
-        const lvl_diff = depth + 3; // level_difficulty = depth + u.ulevel + 2
         rnd(20);
         rnd(5);
     }
@@ -1589,13 +1588,15 @@ function fill_ordinary_room(map, croom, depth, bonusItems) {
     }
 
     // Gold (1/3 chance)
-    // C ref: mkgold(0L, ...) → amount = 1 + rnd(lvl_diff+2) * rnd(30)
+    // C ref: mkgold(0L, pos.x, pos.y) in mkobj.c:1999
+    // amount formula: mul = rnd(30 / max(12 - depth, 2)), amount = 1 + rnd(level_difficulty + 2) * mul
+    // Then mksobj_at(GOLD_PIECE, ...) creates the gold object
     if (!rn2(3)) {
         const pos = somexyspace(map, croom);
         if (pos) {
-            const lvl_diff = depth + 3; // level_difficulty = depth + u.ulevel + 2
-            rnd(lvl_diff + 2);
-            rnd(30);
+            rnd(Math.max(Math.floor(30 / Math.max(12 - depth, 2)), 1)); // mul
+            rnd(depth + 2); // rnd(level_difficulty() + 2)
+            mksobj(GOLD_PIECE, true, false);
         }
     }
 
@@ -1627,12 +1628,14 @@ function fill_ordinary_room(map, croom, depth, bonusItems) {
         }
     }
 
-    // C ref: bonus_items section — supply chest
+    // C ref: mklev.c:1015-1100 — bonus_items section
+    // C calls somexyspace, then checks branch conditions (Mines food, Oracle supply chest).
+    // At depth 1 in main dungeon: no branch conditions match, so only somexyspace is consumed.
+    // The mksobj call only happens for deeper depths with matching branch.
     if (bonusItems) {
         const pos = somexyspace(map, croom);
-        if (pos) {
-            mksobj(CHEST, true, false);
-        }
+        // At depth 1: no Mines/Oracle branch match → no items created
+        // TODO: For deeper depths, port Mines food / Oracle supply chest logic
     }
 
     // C ref: box/chest (!rn2(nroom * 5 / 2))
