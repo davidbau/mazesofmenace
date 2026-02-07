@@ -9,7 +9,7 @@ import { initInput, nhgetch } from './input.js';
 import { FOV } from './fov.js';
 import { Player, roles } from './player.js';
 import { GameMap } from './map.js';
-import { generateLevel, wallification } from './dungeon.js';
+import { initLevelGeneration, generateLevel, wallification } from './dungeon.js';
 import { populateLevel } from './makemon.js';
 import { populateObjects } from './mkobj.js';
 import { processCommand } from './commands.js';
@@ -65,6 +65,10 @@ class NetHackGame {
         const wizStr = this.wizard ? ' [WIZARD MODE]' : '';
         const seedStr = urlOpts.seed !== null ? ` (seed:${seed})` : '';
         this.display.putstr_message(`NetHack JS -- Welcome to the Mazes of Menace!${wizStr}${seedStr}`);
+
+        // One-time level generation init (init_objects + dungeon structure)
+        // C ref: early_init() — happens once before any level generation
+        initLevelGeneration();
 
         // Player selection
         await this.playerSelection();

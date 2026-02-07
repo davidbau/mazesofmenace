@@ -15,7 +15,7 @@ import {
     D_ISOPEN, D_CLOSED, D_LOCKED
 } from '../../js/config.js';
 import { initRng } from '../../js/rng.js';
-import { generateLevel, wallification } from '../../js/dungeon.js';
+import { initLevelGeneration, generateLevel, wallification } from '../../js/dungeon.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -103,6 +103,7 @@ export function renderMap(map) {
 // Generate a map for (seed, depth) and return rendered text
 export function generateMapText(seed, depth) {
     initRng(seed);
+    initLevelGeneration();
     const map = generateLevel(depth);
     wallification(map);
     return renderMap(map);

@@ -13,7 +13,7 @@
 //   diff <(sed 's/ @ .*//' c_rnglog.txt) js_rnglog.txt
 
 import { initRng, enableRngLog, getRngLog } from '../../js/rng.js';
-import { generateLevel } from '../../js/dungeon.js';
+import { initLevelGeneration, generateLevel } from '../../js/dungeon.js';
 import { writeFileSync } from 'node:fs';
 
 const seed = parseInt(process.argv[2] || '42', 10);
@@ -22,6 +22,7 @@ const outFile = process.argv[3] || null;
 // Enable logging, then initialize and generate
 enableRngLog();
 initRng(seed);
+initLevelGeneration();
 generateLevel(1);
 
 const log = getRngLog();

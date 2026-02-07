@@ -2,7 +2,10 @@
 """Run the C NetHack binary in tmux, execute #dumpmap, and quit.
 
 Usage:
-    python3 run_dumpmap.py <seed> <output_file>
+    python3 run_dumpmap.py <seed> <output_file> [depth]
+
+depth defaults to 1. When depth > 1, wizard mode Ctrl+V level teleport
+is used to jump to the target level before dumping the map.
 
 Everything is derived from the script's location in the project tree.
 The C binary must have been built and installed via setup.sh first.
@@ -11,9 +14,10 @@ This script:
 1. Sets up a temporary HOME with .nethackrc for deterministic character selection
 2. Starts a tmux session running nethack with NETHACK_SEED and NETHACK_DUMPMAP set
 3. Sends keystrokes to get through character selection
-4. Executes #dumpmap to write the terrain grid
-5. Quits the game
-6. Verifies the dump file was created
+4. If depth > 1, uses Ctrl+V wizard teleport to reach the target level
+5. Executes #dumpmap to write the terrain grid
+6. Quits the game
+7. Verifies the dump file was created
 """
 
 import sys
@@ -69,13 +73,182 @@ def setup_home():
         for f in glob.glob(os.path.join(save_dir, '*')):
             os.unlink(f)
 
+def wait_for_game_ready(session, verbose):
+    """Wait for the game to finish character selection and show the dungeon."""
+    for attempt in range(40):
+        try:
+            content = tmux_capture(session)
+        except subprocess.CalledProcessError:
+            if verbose: print(f'[{attempt}] tmux session died')
+            break
+
+        first_line = content.split('\n')[0][:80] if content else ''
+        if verbose: print(f'[{attempt}] {repr(first_line)}')
+
+        if '--More--' in content:
+            tmux_send_special(session, 'Space', 0.3)
+            continue
+
+        if 'keep the save file' in content or 'keep save' in content.lower():
+            tmux_send(session, 'n', 0.5)
+            continue
+
+        if 'Shall I pick' in content:
+            tmux_send(session, 'y', 0.5)
+            continue
+
+        if 'Is this ok?' in content:
+            tmux_send(session, 'y', 0.5)
+            continue
+
+        if 'tutorial' in content.lower():
+            tmux_send(session, 'n', 0.5)
+            continue
+
+        if 'pick a role' in content or 'Pick a role' in content:
+            tmux_send(session, 'v', 0.3)
+            continue
+
+        if 'pick a race' in content or 'Pick a race' in content:
+            tmux_send(session, 'h', 0.3)
+            continue
+
+        if 'pick a gender' in content or 'Pick a gender' in content:
+            tmux_send(session, 'f', 0.3)
+            continue
+
+        if 'pick an alignment' in content or 'Pick an alignment' in content:
+            tmux_send(session, 'n', 0.3)
+            continue
+
+        # Detect game is running: look for typical dungeon characters or status line
+        # The status line contains "St:" or "Dlvl:" or player stats
+        if 'Dlvl:' in content or 'St:' in content or 'HP:' in content:
+            break
+
+        # Also detect common map characters (walls rendered in the game)
+        lines = content.strip().split('\n')
+        if len(lines) > 5 and any('|' in line and '-' in line for line in lines[1:22]):
+            break
+
+        # If none of the above matched, try pressing Space to advance
+        # through any prompts or intro text we don't recognize
+        if attempt > 2:
+            tmux_send_special(session, 'Space', 0.3)
+        else:
+            time.sleep(0.3)
+
+def wizard_level_teleport(session, target_depth, verbose):
+    """Use wizard mode Ctrl+V to teleport to a specific dungeon level.
+
+    In C NetHack wizard mode, Ctrl+V triggers level teleport which prompts
+    'To what level do you want to teleport?'. We type the depth and Enter.
+    """
+    if verbose: print(f'[teleport] Sending Ctrl+V for level teleport to depth {target_depth}')
+
+    # Send Ctrl+V (wizard level teleport)
+    tmux_send_special(session, 'C-v', 0.5)
+
+    # Wait for the "To what level" prompt
+    for attempt in range(20):
+        try:
+            content = tmux_capture(session)
+        except subprocess.CalledProcessError:
+            break
+
+        if verbose: print(f'[teleport-{attempt}] checking for prompt...')
+
+        if '--More--' in content:
+            tmux_send_special(session, 'Space', 0.3)
+            continue
+
+        if 'To what level' in content or 'what level' in content.lower():
+            if verbose: print(f'[teleport] Got level prompt, sending {target_depth}')
+            tmux_send(session, str(target_depth), 0.3)
+            tmux_send_special(session, 'Enter', 1.0)
+            break
+
+        time.sleep(0.3)
+
+    # Wait for the level change to complete — look for Dlvl:N in status
+    target_str = f'Dlvl:{target_depth}'
+    for attempt in range(30):
+        try:
+            content = tmux_capture(session)
+        except subprocess.CalledProcessError:
+            break
+
+        if verbose: print(f'[teleport-wait-{attempt}] looking for {target_str}')
+
+        if '--More--' in content:
+            tmux_send_special(session, 'Space', 0.3)
+            continue
+
+        if target_str in content:
+            if verbose: print(f'[teleport] Arrived at {target_str}')
+            break
+
+        time.sleep(0.3)
+
+    time.sleep(0.5)
+
+def execute_dumpmap(session):
+    """Send #dumpmap extended command and handle any --More-- prompts."""
+    # Send # to start extended command
+    tmux_send(session, '#', 0.3)
+    time.sleep(0.5)
+
+    # Type the command name and press Enter
+    tmux_send(session, 'dumpmap', 0.3)
+    tmux_send_special(session, 'Enter', 1.0)
+
+    # Handle any --More-- after the dumpmap message
+    for _ in range(5):
+        try:
+            content = tmux_capture(session)
+        except subprocess.CalledProcessError:
+            break
+        if '--More--' in content:
+            tmux_send_special(session, 'Space', 0.3)
+        else:
+            break
+        time.sleep(0.3)
+
+    time.sleep(0.5)
+
+def quit_game(session):
+    """Send #quit and handle confirmation prompts."""
+    tmux_send(session, '#', 0.3)
+    time.sleep(0.3)
+    tmux_send(session, 'quit', 0.3)
+    tmux_send_special(session, 'Enter', 0.5)
+
+    # Handle quit confirmation prompts
+    for _ in range(15):
+        try:
+            content = tmux_capture(session)
+        except subprocess.CalledProcessError:
+            break
+        if 'Really quit' in content or 'really quit' in content:
+            tmux_send(session, 'y', 0.3)
+        elif 'do you want your possessions' in content.lower():
+            tmux_send(session, 'n', 0.3)
+        elif '--More--' in content:
+            tmux_send_special(session, 'Space', 0.2)
+        elif 'PROCESS_DONE' in content or 'sleep 999' in content:
+            break
+        time.sleep(0.3)
+
+    time.sleep(0.5)
+
 def main():
     if len(sys.argv) < 3:
-        print(f"Usage: {sys.argv[0]} <seed> <output_file>")
+        print(f"Usage: {sys.argv[0]} <seed> <output_file> [depth]")
         sys.exit(1)
 
     seed = sys.argv[1]
     output_file = os.path.abspath(sys.argv[2])
+    depth = int(sys.argv[3]) if len(sys.argv) >= 4 else 1
 
     if not os.path.isfile(NETHACK_BINARY):
         print(f"Error: nethack binary not found at {NETHACK_BINARY}")
@@ -89,7 +262,7 @@ def main():
     setup_home()
 
     verbose = os.environ.get('WEBHACK_DEBUG', '')
-    session = f'webhack-dumpmap-{seed}-{os.getpid()}'
+    session = f'webhack-dumpmap-{seed}-d{depth}-{os.getpid()}'
 
     try:
         # Build the shell command with all env vars
@@ -114,117 +287,18 @@ def main():
         time.sleep(2.0)
 
         # Handle character selection and startup prompts
-        for attempt in range(40):
-            try:
-                content = tmux_capture(session)
-            except subprocess.CalledProcessError:
-                if verbose: print(f'[{attempt}] tmux session died')
-                break
-
-            first_line = content.split('\n')[0][:80] if content else ''
-            if verbose: print(f'[{attempt}] {repr(first_line)}')
-
-            if '--More--' in content:
-                tmux_send_special(session, 'Space', 0.3)
-                continue
-
-            if 'keep the save file' in content or 'keep save' in content.lower():
-                tmux_send(session, 'n', 0.5)
-                continue
-
-            if 'Shall I pick' in content:
-                tmux_send(session, 'y', 0.5)
-                continue
-
-            if 'Is this ok?' in content:
-                tmux_send(session, 'y', 0.5)
-                continue
-
-            if 'tutorial' in content.lower():
-                tmux_send(session, 'n', 0.5)
-                continue
-
-            if 'pick a role' in content or 'Pick a role' in content:
-                tmux_send(session, 'v', 0.3)
-                continue
-
-            if 'pick a race' in content or 'Pick a race' in content:
-                tmux_send(session, 'h', 0.3)
-                continue
-
-            if 'pick a gender' in content or 'Pick a gender' in content:
-                tmux_send(session, 'f', 0.3)
-                continue
-
-            if 'pick an alignment' in content or 'Pick an alignment' in content:
-                tmux_send(session, 'n', 0.3)
-                continue
-
-            # Detect game is running: look for typical dungeon characters or status line
-            # The status line contains "St:" or "Dlvl:" or player stats
-            if 'Dlvl:' in content or 'St:' in content or 'HP:' in content:
-                break
-
-            # Also detect common map characters (walls rendered in the game)
-            lines = content.strip().split('\n')
-            if len(lines) > 5 and any('|' in line and '-' in line for line in lines[1:22]):
-                break
-
-            # If none of the above matched, try pressing Space to advance
-            # through any prompts or intro text we don't recognize
-            if attempt > 2:
-                tmux_send_special(session, 'Space', 0.3)
-            else:
-                time.sleep(0.3)
-
-        # Game should be running now. Execute #dumpmap.
+        wait_for_game_ready(session, verbose)
         time.sleep(0.5)
 
-        # Send # to start extended command
-        tmux_send(session, '#', 0.3)
-        time.sleep(0.5)
+        # If targeting a deeper level, use wizard level teleport
+        if depth > 1:
+            wizard_level_teleport(session, depth, verbose)
 
-        # Type the command name and press Enter
-        tmux_send(session, 'dumpmap', 0.3)
-        tmux_send_special(session, 'Enter', 1.0)
-
-        # Handle any --More-- after the dumpmap message
-        for _ in range(5):
-            try:
-                content = tmux_capture(session)
-            except subprocess.CalledProcessError:
-                break
-            if '--More--' in content:
-                tmux_send_special(session, 'Space', 0.3)
-            else:
-                break
-            time.sleep(0.3)
-
-        time.sleep(0.5)
+        # Execute #dumpmap
+        execute_dumpmap(session)
 
         # Quit the game
-        tmux_send(session, '#', 0.3)
-        time.sleep(0.3)
-        tmux_send(session, 'quit', 0.3)
-        tmux_send_special(session, 'Enter', 0.5)
-
-        # Handle quit confirmation prompts
-        for _ in range(15):
-            try:
-                content = tmux_capture(session)
-            except subprocess.CalledProcessError:
-                break
-            if 'Really quit' in content or 'really quit' in content:
-                tmux_send(session, 'y', 0.3)
-            elif 'do you want your possessions' in content.lower():
-                tmux_send(session, 'n', 0.3)
-            elif '--More--' in content:
-                tmux_send_special(session, 'Space', 0.2)
-            elif 'PROCESS_DONE' in content or 'sleep 999' in content:
-                break
-            time.sleep(0.3)
-
-        time.sleep(0.5)
+        quit_game(session)
 
     finally:
         # Always kill the tmux session

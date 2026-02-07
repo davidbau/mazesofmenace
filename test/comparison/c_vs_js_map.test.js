@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
 
 import { COLNO, ROWNO } from '../../js/config.js';
-import { generateTypGrid, CONFIGS } from './gen_typ_grid.js';
+import { generateTypGrid, generateTypGridSequential, CONFIGS } from './gen_typ_grid.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -49,7 +49,7 @@ function parseTypGrid(text) {
     return lines.map(line => line.trim().split(/\s+/).map(Number));
 }
 
-// Generate a C dumpmap for a given seed using the tmux-based Python script.
+// Generate a C dumpmap for a given seed and depth using the tmux-based Python script.
 // Returns the path to the dump file, or null if it failed.
 function generateCDumpmap(seed, depth) {
     const dumpFile = join(RESULTS_DIR, `c_typ_seed${seed}_depth${depth}.txt`);
@@ -57,13 +57,10 @@ function generateCDumpmap(seed, depth) {
     // Clean up any previous dump
     if (existsSync(dumpFile)) unlinkSync(dumpFile);
 
-    // For depth 1: the initial level is what we compare.
-    // For deeper levels, we'd need to descend stairs -- Phase 2 work.
-    if (depth !== 1) return null;
-
     try {
-        execSync(`python3 ${DUMPMAP_SCRIPT} ${seed} ${dumpFile}`, {
-            timeout: 30000,
+        const timeout = depth > 1 ? 45000 : 30000;
+        execSync(`python3 ${DUMPMAP_SCRIPT} ${seed} ${dumpFile} ${depth}`, {
+            timeout,
             stdio: 'pipe',
         });
 
@@ -195,6 +192,87 @@ describe('C vs JS map comparison', { skip: !hasCBinary() || !hasTmux() }, () => 
                 t.diagnostic(report);
             } else {
                 t.diagnostic(`PERFECT MATCH for ${label}`);
+            }
+        });
+    }
+});
+
+// ---------------------------------------------------------------------------
+// Phase 2: Sequential multi-level C vs JS comparison (requires C binary + tmux)
+// ---------------------------------------------------------------------------
+
+// Compare C and JS grids, returning array of diffs
+function compareGrids(cGrid, jsGrid) {
+    const diffs = [];
+    for (let y = 0; y < ROWNO; y++) {
+        for (let x = 0; x < COLNO; x++) {
+            if (cGrid[y][x] !== jsGrid[y][x]) {
+                diffs.push({
+                    x, y,
+                    c: cGrid[y][x],
+                    js: jsGrid[y][x],
+                    cName: typName(cGrid[y][x]),
+                    jsName: typName(jsGrid[y][x]),
+                });
+            }
+        }
+    }
+    return diffs;
+}
+
+// Phase 2 sequential configs: generate levels 1→2 in sequence
+const SEQUENTIAL_CONFIGS = [
+    { seed: 42,  maxDepth: 2 },
+    { seed: 100, maxDepth: 2 },
+    { seed: 999, maxDepth: 2 },
+];
+
+describe('C vs JS sequential multi-level comparison', { skip: !hasCBinary() || !hasTmux() }, () => {
+    before(() => {
+        mkdirSync(RESULTS_DIR, { recursive: true });
+    });
+
+    for (const { seed, maxDepth } of SEQUENTIAL_CONFIGS) {
+        const label = `seed=${seed} levels 1→${maxDepth}`;
+
+        it(`C and JS produce same terrain grids for ${label}`, { timeout: 60000 }, (t) => {
+            // Generate JS grids sequentially (one continuous RNG stream)
+            const jsGrids = generateTypGridSequential(seed, maxDepth);
+
+            // Generate C grids for each depth via wizard level teleport
+            for (let depth = 1; depth <= maxDepth; depth++) {
+                const depthLabel = `seed=${seed} depth=${depth}`;
+                const cDumpFile = generateCDumpmap(seed, depth);
+                if (!cDumpFile) {
+                    t.diagnostic(`SKIP: C generation failed for ${depthLabel}`);
+                    continue;
+                }
+
+                const cText = readFileSync(cDumpFile, 'utf-8');
+                const cGrid = parseTypGrid(cText);
+                const jsGrid = parseTypGrid(jsGrids[depth].join('\n'));
+
+                assert.equal(cGrid.length, ROWNO,
+                    `C grid has ${cGrid.length} rows for ${depthLabel}`);
+                assert.equal(jsGrid.length, ROWNO,
+                    `JS grid has ${jsGrid.length} rows for ${depthLabel}`);
+
+                const diffs = compareGrids(cGrid, jsGrid);
+
+                if (diffs.length > 0) {
+                    const maxShow = 20;
+                    const shown = diffs.slice(0, maxShow);
+                    let report = `${diffs.length} cells differ for ${depthLabel}:`;
+                    for (const d of shown) {
+                        report += `\n  (${d.x},${d.y}): C=${d.cName}(${d.c}) JS=${d.jsName}(${d.js})`;
+                    }
+                    if (diffs.length > maxShow) {
+                        report += `\n  ... and ${diffs.length - maxShow} more`;
+                    }
+                    t.diagnostic(report);
+                } else {
+                    t.diagnostic(`PERFECT MATCH for ${depthLabel}`);
+                }
             }
         });
     }

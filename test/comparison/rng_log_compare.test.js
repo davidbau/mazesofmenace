@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
 
 import { initRng, enableRngLog, getRngLog, disableRngLog, skipRng } from '../../js/rng.js';
-import { generateLevel } from '../../js/dungeon.js';
+import { initLevelGeneration, generateLevel } from '../../js/dungeon.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -85,13 +85,12 @@ function generateCRngLog(seed) {
 }
 
 // Generate JS RNG log
-// generateLevel() now handles its own PRNG alignment internally:
-//   init_objects() consumes 198 rn2 calls (logged)
-//   skipRng(59) consumes 59 ISAAC64 calls (NOT logged)
-// So the JS log starts with 198 init_objects calls, then level gen.
+// initLevelGeneration() runs init_objects() (198 rn2 calls) + simulateDungeonInit()
+// (variable rn2 calls), then generateLevel() runs the per-level bones rn2(3) + makelevel.
 function generateJSRngLog(seed) {
     enableRngLog();
     initRng(seed);
+    initLevelGeneration();
     generateLevel(1);
     const log = getRngLog();
     disableRngLog();

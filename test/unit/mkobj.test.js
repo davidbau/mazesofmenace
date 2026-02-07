@@ -7,7 +7,7 @@ import { initRng } from '../../js/rng.js';
 import { COLNO, ROWNO, ACCESSIBLE } from '../../js/config.js';
 import { createObject, populateObjects, objectTypes,
          WEAPON_CLASS, ARMOR_CLASS, FOOD_CLASS, COIN_CLASS } from '../../js/mkobj.js';
-import { generateLevel, wallification } from '../../js/dungeon.js';
+import { initLevelGeneration, generateLevel, wallification } from '../../js/dungeon.js';
 
 describe('Object creation', () => {
     it('createObject creates object with type properties', () => {
@@ -69,6 +69,7 @@ describe('Object creation', () => {
 describe('Level object population', () => {
     it('populateObjects places objects on the map', () => {
         initRng(42);
+        initLevelGeneration();
         const map = generateLevel(1);
         wallification(map);
         populateObjects(map, 1);
@@ -78,6 +79,7 @@ describe('Level object population', () => {
 
     it('objects are placed on accessible terrain', () => {
         initRng(42);
+        initLevelGeneration();
         const map = generateLevel(1);
         wallification(map);
         populateObjects(map, 1);
@@ -91,6 +93,7 @@ describe('Level object population', () => {
 
     it('gold pieces have quantity > 1', () => {
         initRng(42);
+        initLevelGeneration();
         const map = generateLevel(1);
         wallification(map);
         // Try several times to get gold

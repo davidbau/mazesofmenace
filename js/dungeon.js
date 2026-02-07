@@ -2713,9 +2713,6 @@ function simulateDungeonInit() {
 
     // 5. nhlua pre_themerooms shuffle (loaded when themerms.lua is first used)
     rn2(3); rn2(2);
-
-    // 6. bones.c: rn2(3) for bones check
-    rn2(3);
 }
 
 // Simulate C's place_level() recursive backtracking for one dungeon.
@@ -2795,17 +2792,23 @@ function placeLevelSim(rawLevels, numLevels) {
 // Main entry point
 // ========================================================================
 
+// Called once at game start to consume the one-time RNG calls that happen
+// before any level generation in C: init_objects() + dungeon structure +
+// castle tune + u_init + themerooms shuffle.
+// C ref: early_init() → o_init.c init_objects(), dungeon.c init_dungeons(),
+//        u_init.c u_init(), nhlua pre_themerooms
+export function initLevelGeneration() {
+    init_objects();
+    simulateDungeonInit();
+}
+
 // C ref: mklev.c makelevel()
 export function generateLevel(depth) {
     setLevelDepth(depth);
 
-    // C ref: o_init.c init_objects() — shuffle descriptions, 198 rn2 calls
-    init_objects();
-
-    // Simulate pre-makelevel RNG calls that happen between init_objects
-    // and makelevel. These are: nhlib.lua shuffle(align)(2) + dungeon.c
-    // init (variable) + u_init(1) + nhlua pre_themerooms(2) + bones(1).
-    simulateDungeonInit();
+    // C ref: bones.c getbones() — in wizard mode, always consumes rn2(3)
+    // then returns 0 (no bones file). This happens per-level.
+    rn2(3);
 
     const map = new GameMap();
     map.clear();

@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 
 import { COLNO, ROWNO } from '../../js/config.js';
 import { initRng } from '../../js/rng.js';
-import { generateLevel, wallification } from '../../js/dungeon.js';
+import { initLevelGeneration, generateLevel, wallification } from '../../js/dungeon.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -21,6 +21,7 @@ const GOLDEN_DIR = join(__dirname, 'golden');
 // each containing 80 space-separated integers.
 export function generateTypGrid(seed, depth) {
     initRng(seed);
+    initLevelGeneration();
     const map = generateLevel(depth);
     wallification(map);
 
@@ -34,6 +35,30 @@ export function generateTypGrid(seed, depth) {
         rows.push(vals.join(' '));
     }
     return rows;
+}
+
+// Generate typ grids for multiple depths sequentially (one continuous RNG stream).
+// Used for Phase 2+ multi-level C-vs-JS comparison where the C side generates
+// levels 1→2→...→N in sequence via wizard mode level teleport.
+export function generateTypGridSequential(seed, maxDepth) {
+    initRng(seed);
+    initLevelGeneration();
+    const grids = {};
+    for (let depth = 1; depth <= maxDepth; depth++) {
+        const map = generateLevel(depth);
+        wallification(map);
+        const rows = [];
+        for (let y = 0; y < ROWNO; y++) {
+            const vals = [];
+            for (let x = 0; x < COLNO; x++) {
+                const loc = map.at(x, y);
+                vals.push(loc ? loc.typ : 0);
+            }
+            rows.push(vals.join(' '));
+        }
+        grids[depth] = rows;
+    }
+    return grids;
 }
 
 // Test configurations (same as gen_golden.js)

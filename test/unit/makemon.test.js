@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { initRng } from '../../js/rng.js';
 import { COLNO, ROWNO, ACCESSIBLE } from '../../js/config.js';
 import { createMonster, populateLevel, monsterTypes } from '../../js/makemon.js';
-import { generateLevel, wallification } from '../../js/dungeon.js';
+import { initLevelGeneration, generateLevel, wallification } from '../../js/dungeon.js';
 import { GameMap } from '../../js/map.js';
 
 describe('Monster creation', () => {
@@ -32,6 +32,7 @@ describe('Monster creation', () => {
 
     it('each monster type creates valid instances', () => {
         initRng(42);
+        initLevelGeneration();
         const map = generateLevel(1);
         wallification(map);
         // Place monsters in center of first room
@@ -52,6 +53,7 @@ describe('Monster creation', () => {
 describe('Level monster population', () => {
     it('populateLevel places monsters on the map', () => {
         initRng(42);
+        initLevelGeneration();
         const map = generateLevel(1);
         wallification(map);
         populateLevel(map, 1);
@@ -61,6 +63,7 @@ describe('Level monster population', () => {
 
     it('monsters are placed on accessible terrain', () => {
         initRng(42);
+        initLevelGeneration();
         const map = generateLevel(1);
         wallification(map);
         populateLevel(map, 1);
@@ -74,6 +77,7 @@ describe('Level monster population', () => {
 
     it('no two monsters share the same tile', () => {
         initRng(42);
+        initLevelGeneration();
         const map = generateLevel(1);
         wallification(map);
         populateLevel(map, 1);
@@ -89,11 +93,13 @@ describe('Level monster population', () => {
 
     it('deeper levels have more/tougher monsters', () => {
         initRng(42);
+        initLevelGeneration();
         const map1 = generateLevel(1);
         wallification(map1);
         populateLevel(map1, 1);
 
         initRng(42);
+        initLevelGeneration();
         const map5 = generateLevel(5);
         wallification(map5);
         populateLevel(map5, 5);

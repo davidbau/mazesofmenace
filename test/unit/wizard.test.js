@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { COLNO, ROWNO, ROOM, STONE, ACCESSIBLE } from '../../js/config.js';
 import { initRng, rn2 } from '../../js/rng.js';
 import { GameMap } from '../../js/map.js';
-import { generateLevel, wallification } from '../../js/dungeon.js';
+import { initLevelGeneration, generateLevel, wallification } from '../../js/dungeon.js';
 import { populateLevel } from '../../js/makemon.js';
 import { processCommand } from '../../js/commands.js';
 import { FOV } from '../../js/fov.js';
@@ -28,6 +28,7 @@ function mockDisplay() {
 // Build a mock game object with a real generated map
 function mockGame(opts = {}) {
     initRng(42);
+    initLevelGeneration();
     const map = generateLevel(1);
     wallification(map);
     populateLevel(map, 1);
@@ -58,6 +59,7 @@ function mockGame(opts = {}) {
         changeLevel(depth) {
             if (!this.levels[depth]) {
                 initRng(42 + depth);
+                initLevelGeneration();
                 const newMap = generateLevel(depth);
                 wallification(newMap);
                 populateLevel(newMap, depth);
