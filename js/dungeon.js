@@ -19,7 +19,7 @@ import {
     IS_POOL, ACCESSIBLE, isok
 } from './config.js';
 import { GameMap, makeRoom } from './map.js';
-import { rn2, rnd, rn1, d } from './rng.js';
+import { rn2, rnd, rn1, d, skipRng } from './rng.js';
 
 // ========================================================================
 // rect.c -- Rectangle pool for BSP room placement
@@ -261,12 +261,20 @@ function create_room(map, x, y, w, h, xal, yal, rtype, rlit, depth) {
             return false;
         }
 
+        // C ref: sp_lev.c:1652-1659 — vaults don't add a room or
+        // increment nroom; they just save the position for later.
+        if (vault) {
+            map.vault_x = xabs;
+            map.vault_y = yabs;
+            return true;
+        }
+
         // Actually create the room
         add_room_to_map(map, xabs, yabs, xabs + wtmp - 1, yabs + htmp - 1,
                         lit, rtype, false);
         return true;
 
-    } while (++trycnt <= 500);
+    } while (++trycnt <= 100); // C ref: sp_lev.c trycnt limit is 100
 
     return false;
 }
@@ -402,9 +410,106 @@ function sort_rooms(map) {
     }
 }
 
+// Fixed Lua themerooms rn2 argument pattern (30 calls per room iteration).
+// C ref: themerooms.lua — themerooms_generate calls rn2 with these args.
+// Each cumulative frequency corresponds to a themeroom entry:
+//   [0]=default(1000), [1]=FakeDelphi(+1), [2]=RoomInRoom(+1),
+//   [3]=NestingRooms(+1), [4]=Pillars(+1), [5]=ThemedFill(+6),
+//   [6]=UnlitThemedFill(+2), [7]=NormalAndThemedFill(+2), [8..29]=various(+1 each)
+const THEMEROOM_ARGS = [
+    1000, 1001, 1002, 1003, 1004, 1010, 1012, 1014,
+    1015, 1016, 1017, 1018, 1019, 1020, 1021, 1022,
+    1023, 1024, 1025, 1026, 1027, 1028, 1029, 1030,
+    1031, 1032, 1033, 1034, 1035, 1036
+];
+
+// Themeroom fill types in order from themerms.lua themeroom_fills array.
+// All have frequency=1. Eligibility depends on depth and room lit state.
+// C ref: themerms.lua themeroom_fills[]
+const FILL_TYPES = [
+    { name: 'ice' },
+    { name: 'cloud' },
+    { name: 'boulder', mindiff: 4 },
+    { name: 'spider' },
+    { name: 'trap' },
+    { name: 'garden', needsLit: true },
+    { name: 'buried_treasure' },
+    { name: 'buried_zombies' },
+    { name: 'massacre' },
+    { name: 'statuary' },
+    { name: 'light_source', needsUnlit: true },
+    { name: 'temple' },
+    { name: 'ghost' },
+    { name: 'storeroom' },
+    { name: 'teleport' },
+];
+
+// Simulate C's themeroom_fill() Lua function.
+// Does reservoir sampling to pick a fill, then simulates the fill's RNG.
+// C ref: themerms.lua themeroom_fill()
+function simulateThemeroomFill(map, room, depth, forceLit) {
+    const lit = (forceLit !== undefined) ? forceLit : room.rlit;
+    const levelDiff = Math.max(0, depth - 1);
+
+    // Reservoir sampling over eligible fills (all freq=1)
+    let pickName = null;
+    let totalFreq = 0;
+    for (const fill of FILL_TYPES) {
+        if (fill.mindiff && levelDiff < fill.mindiff) continue;
+        if (fill.needsLit && !lit) continue;
+        if (fill.needsUnlit && lit) continue;
+        totalFreq++;
+        if (rn2(totalFreq) === 0) {
+            pickName = fill.name;
+        }
+    }
+
+    // Simulate fill contents RNG consumption.
+    // Each fill's contents function in themerms.lua calls des.altar/des.object/
+    // des.monster/des.trap which consume RNG. We simulate the simple ones here.
+    const w = room.hx - room.lx + 1;
+    const h = room.hy - room.ly + 1;
+    switch (pickName) {
+        case 'temple':
+            // Temple of the gods: 3 altars × (somex + somey)
+            // C ref: themerms.lua Temple of the gods, mkroom.c somex/somey
+            for (let i = 0; i < 3; i++) {
+                const ax = rn2(w) + room.lx; // somex: rn1(hx-lx+1, lx)
+                const ay = rn2(h) + room.ly; // somey: rn1(hy-ly+1, ly)
+                const loc = map.at(ax, ay);
+                if (loc) loc.typ = ALTAR;
+            }
+            break;
+        // TODO: simulate other fill types (ice, cloud, spider, trap, etc.)
+        // These involve des.object/des.monster/des.trap creation which requires
+        // porting mkobj.c/makemon.c/mktrap.c RNG consumption patterns.
+    }
+}
+
+// Perform themerooms reservoir sampling and return the picked themeroom index.
+// C ref: themerms.lua themerooms_generate()
+function themeroomsGenerate() {
+    let pick = 0; // default room (index 0)
+    let prevFreq = 0;
+    for (let i = 0; i < THEMEROOM_ARGS.length; i++) {
+        const cumFreq = THEMEROOM_ARGS[i];
+        const thisFreq = cumFreq - prevFreq;
+        const val = rn2(cumFreq);
+        if (thisFreq > 0 && val < thisFreq) {
+            pick = i;
+        }
+        prevFreq = cumFreq;
+    }
+    return pick;
+}
+
 // C ref: mklev.c makerooms()
 function makerooms(map, depth) {
     let tried_vault = false;
+    let themeroom_tries = 0;
+
+    // C ref: mklev.c:386-388 — pre_themerooms_generate Lua calls
+    rn2(3); rn2(2);
 
     // Make rooms until satisfied (no more rects available)
     // C ref: mklev.c:393-417
@@ -412,16 +517,31 @@ function makerooms(map, depth) {
         if (map.nroom >= Math.floor(MAXNROFROOMS / 6) && rn2(2)
             && !tried_vault) {
             tried_vault = true;
-            // Vault creation: create_room(-1, -1, 2, 2, -1, -1, VAULT, TRUE)
-            // Create the vault, then mark it as not needing corridors.
-            // In C, the vault is a disconnected room accessed via teleportation.
-            if (create_room(map, -1, -1, 2, 2, -1, -1, VAULT, true, depth)) {
-                const vaultRoom = map.rooms[map.nroom - 1];
-                vaultRoom.needjoining = false;
-            }
+            // C ref: mklev.c:396-399 — create_vault() saves position but
+            // does NOT add a room or increment nroom. The vault is properly
+            // created later in the post-corridor section of makelevel.
+            create_room(map, -1, -1, 2, 2, -1, -1, VAULT, true, depth);
         } else {
-            if (!create_room(map, -1, -1, -1, -1, -1, -1, OROOM, -1, depth))
-                break;
+            // C ref: mklev.c:402-407 — themerooms_generate Lua reservoir
+            // sampling (30 calls). Track which room was picked.
+            const themeroomPick = themeroomsGenerate();
+            // C ref: sp_lev.c:2803 build_room chance check
+            rn2(100);
+
+            if (!create_room(map, -1, -1, -1, -1, -1, -1, OROOM, -1, depth)) {
+                // C ref: mklev.c:408-411 — themeroom_failed retry logic
+                if (++themeroom_tries > 10
+                    || map.nroom >= Math.floor(MAXNROFROOMS / 6))
+                    break;
+                // else continue trying
+            } else if (themeroomPick >= 5 && themeroomPick <= 7) {
+                // Room created successfully and a themed fill room was picked.
+                // Simulate themeroom_fill RNG consumption.
+                // C ref: themerms.lua — indices 5,6,7 all call themeroom_fill()
+                const room = map.rooms[map.nroom - 1];
+                const forceLit = (themeroomPick === 6) ? false : undefined;
+                simulateThemeroomFill(map, room, depth, forceLit);
+            }
         }
     }
 }
@@ -1163,11 +1283,18 @@ function setWallType(map, x, y) {
 
 // C ref: mklev.c makelevel()
 export function generateLevel(depth) {
+    // Simulate C pre-makelevel startup RNG consumption:
+    // o_init(198) + dungeon.c(53) + nhlua(4) + u_init(1) + bones(1) = 257
+    skipRng(257);
+
     const map = new GameMap();
     map.clear();
 
     // Initialize rectangle pool for BSP room placement
     init_rect();
+
+    // C ref: mklev.c:1276 — maze level check (consumed but not acted on)
+    rn2(5);
 
     // Make rooms using rect BSP algorithm
     // C ref: mklev.c:1287 makerooms()
