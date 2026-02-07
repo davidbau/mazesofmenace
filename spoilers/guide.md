@@ -1196,65 +1196,491 @@ classes denoted by letters. Lowercase letters are generally smaller
 or less dangerous; uppercase letters are larger or more threatening.
 Color further distinguishes individual species within a class.
 
-Here is a quick field guide to what each letter means, roughly ordered
-by how early you might encounter them:
+What follows is a class-by-class bestiary. For each monster class
+we list the symbol, the members you're likely to care about, and
+what you need to know to not die. Stats follow this format:
 
-#### Common Early Encounters
+> **Lev** = hit dice (roughly: hit points and experience).
+> **Spd** = speed (you move at 12; anything faster outruns you).
+> **AC** = armor class (lower = harder to hit).
+> **MR** = magic resistance % (chance to shrug off spells).
 
-| Symbol | Class     | Notes                                                                                   |
-| ------ | --------- | --------------------------------------------------------------------------------------- |
-| `a`    | Ants      | Come in groups. Soldier ants are fast and hit hard.                                     |
-| `b`    | Blobs     | Acidic or gelatinous. Don't hit acid blobs in melee.                                    |
-| `d`    | Dogs      | Often your starting pet. Tame dogs are loyal. Wild ones are manageable.                 |
-| `e`    | Eyes      | **Floating eyes paralyze on melee hit.** Never hit an `e` in melee. Use ranged attacks. |
-| `f`    | Cats      | Like dogs, often starting pets. Felines can be tamed with tripe.                        |
-| `g`    | Gnomes    | Common in the Mines. Usually peaceful if you're a gnome.                                |
-| `h`    | Humanoids | Dwarves, bugbears, mind flayers. Wide range of difficulty.                              |
-| `i`    | Imps      | Minor pests. Can steal and teleport.                                                    |
-| `j`    | Jellies   | Spotted and ochre jellies. Passive acid damage on melee.                                |
-| `k`    | Kobolds   | Weak individually but sometimes carry poisoned weapons.                                 |
-| `r`    | Rodents   | Rats and rock moles. Rock moles eat metal items, so protect your gear.                  |
-| `s`    | Spiders   | Cave spiders are weak. Giant spiders poison.                                            |
-| `:`    | Lizards   | Important! Lizard corpses cure petrification. Always carry one.                         |
+#### Lowercase Monsters (a-z)
 
-#### Mid-Dungeon Threats
+**`a` -- Ants and Bees.** They come in groups, they're fast (Spd 18),
+and soldier ants will ruin your morning. Killer bees are worse:
+AC -1, Spd 18, and they arrive in swarms of up to eleven. Queen bees
+(Lev 9, AC -4) are thankfully rare. Fire ants breathe fire, which is
+rude. All ants are genocidable if you're fed up.
 
-| Symbol | Class             | Notes                                                                                                |
-| ------ | ----------------- | ---------------------------------------------------------------------------------------------------- |
-| `A`    | Angels            | Powerful, usually aligned. Don't fight your own.                                                     |
-| `C`    | Centaurs          | Fast, good archers. Mountain centaurs hit hard.                                                      |
-| `E`    | Elementals        | Hard to kill. Air elementals engulf; earth elementals phase through walls.                           |
-| `F`    | Fungi             | Yellow mold, green mold, shriekers. Shriekers summon other monsters.                                 |
-| `G`    | Gnome lords/kings | Tougher gnomes. Still fairly manageable.                                                             |
-| `H`    | Giants            | Strong melee, throw boulders. Giants carry gems.                                                     |
-| `L`    | Liches            | Spellcasters. Arch-liches are among the most dangerous monsters in the game.                         |
-| `M`    | Mummies           | Drain experience on hit. Mummy wrappings are useless but the corpses give cold resistance sometimes. |
-| `N`    | Nymphs            | Steal items from your inventory, then teleport away. Fight from range.                               |
-| `O`    | Ogres             | Strong melee fighters. Ogre lords and kings are tougher.                                             |
-| `P`    | Puddings          | Black puddings split when hit with iron weapons. Don't use iron.                                     |
-| `S`    | Snakes            | Cobras and pit vipers poison. Water moccasins come from fountains.                                   |
-| `T`    | Trolls            | Regenerate. They come back from the dead unless you eat or tin the corpse.                           |
-| `U`    | Umber hulk        | Confuses on sight. Avoid looking at them directly.                                                   |
-| `W`    | Wraiths           | Drain levels on hit. But their corpses grant a level, so eat them fresh.                             |
-| `Y`    | Yetis             | Tough melee combatants. Corpses may grant cold resistance.                                           |
-| `Z`    | Zombies           | Slow, numerous, come in many varieties. Zombie corpses are old and will rot.                         |
+| Monster     | Lev | Spd | AC  | MR  |
+| ----------- | --- | --- | --- | --- |
+| Giant ant   | 2   | 18  | 3   | 0   |
+| Killer bee  | 1   | 18  | -1  | 0   |
+| Soldier ant | 3   | 18  | 3   | 0   |
+| Fire ant    | 3   | 18  | 3   | 10  |
+| Queen bee   | 9   | 24  | -4  | 0   |
 
-#### Things You Don't Want to Meet
+**`b` -- Blobs and Cubes.** Slow, blobby, and deceptively dangerous
+if you melee them without thinking. Acid blobs have a passive acid
+attack that damages you and your weapon when you hit them. Their
+corpses convey acid resistance and (unlike most corpses) never rot,
+making them a useful snack. Gelatinous cubes engulf you, which is
+as unpleasant as it sounds. Quivering blobs can hold you in place.
 
-| Symbol | Class            | Notes                                                                                                    |
-| ------ | ---------------- | -------------------------------------------------------------------------------------------------------- |
-| `c`    | Cockatrices      | **Touch = instant petrification.** Never hit one barehanded. Wield their corpse with gloves as a weapon. |
-| `D`    | Dragons          | Each color has a different breath weapon and resistance. Gray dragons are prized for scale mail.         |
-| `h`    | Mind flayers     | Drain intelligence on hit. **If Int reaches 0, you die.** Keep distance or kill fast.                    |
-| `V`    | Vampires         | Drain levels. Vampire lords fly and are fast.                                                            |
-| `;`    | Sea monsters     | Drowning is an instadeath. Don't fight in water without a plan.                                          |
-| `&`    | Demons           | Major demons (Orcus, Demogorgon, Asmodeus) are boss-level threats.                                       |
-| `@`    | Humans (hostile) | Includes the Wizard of Yendor, who is the most persistent nuisance in the game.                          |
+| Monster         | Lev | Spd | AC  | MR  | Watch out for       |
+| --------------- | --- | --- | --- | --- | ------------------- |
+| Acid blob       | 1   | 3   | 8   | 0   | Passive acid damage |
+| Quivering blob  | 5   | 1   | 8   | 0   | Holds you           |
+| Gelatinous cube | 6   | 6   | 8   | 0   | Engulfs, paralyzes  |
 
-We'll cover specific monsters in much more detail in the individual
-sections. For now, remember the essentials: **never melee a floating
-eye, always carry a lizard corpse, and respect anything with `D` or
-`&` on your screen.**
+**`c` -- Cockatrices.** The single most important monster class to
+understand. **Touching a cockatrice or its corpse without gloves turns
+you to stone.** This includes melee attacks, being hit by one, and
+picking up the corpse barehanded. However, wielding a cockatrice corpse
+*with gloves* gives you one of the most devastating weapons in the
+game -- anything you hit that lacks stoning resistance becomes a
+statue. The chickatrice is the baby version (equally petrifying).
+The pyrolisk is the odd one out: it uses a fire gaze instead.
+
+| Monster     | Lev | Spd | AC  | MR  |
+| ----------- | --- | --- | --- | --- |
+| Chickatrice | 4   | 4   | 8   | 30  |
+| Cockatrice  | 5   | 6   | 6   | 30  |
+| Pyrolisk    | 6   | 6   | 6   | 30  |
+
+**`d` -- Dogs and Canines.** Your starting pet is probably here (little
+dog) or in `f` (kitten). Dogs level up into large dogs, which are
+solid combat companions. The wild side of the family includes jackals,
+wolves, and winter wolves (cold breath, Spd 12). Hell hounds breathe
+fire and show up in Gehennom. Werecanines revert to human form on
+death. Winter wolf corpses can grant cold resistance.
+
+**`e` -- Eyes and Spheres.** **The floating eye is the most important
+low-level monster in the game.** If you hit one in melee, you are
+paralyzed, helpless, and every nearby monster gets free attacks on
+your frozen body. This is responsible for more early deaths than
+probably anything else. Use ranged attacks, or just walk around
+them -- they have Spd 1 and will not chase you. On the bright side,
+eating a floating eye corpse grants telepathy, one of the best
+intrinsics in the game. The spheres (freezing, flaming, shocking)
+explode when killed, dealing elemental damage in a radius.
+
+| Monster         | Lev | Spd | AC  | MR  | Notes                    |
+| --------------- | --- | --- | --- | --- | ------------------------ |
+| Gas spore       | 1   | 3   | 10  | 0   | Looks like eye, explodes |
+| Floating eye    | 2   | 1   | 9   | 10  | Paralyzes on melee!      |
+| Freezing sphere | 6   | 13  | 4   | 0   | Cold explosion on death  |
+| Flaming sphere  | 6   | 13  | 4   | 0   | Fire explosion on death  |
+| Shocking sphere | 6   | 13  | 4   | 0   | Shock explosion on death |
+
+**`f` -- Felines.** The other common starting pet. Kittens grow into
+housecats and eventually large cats, which are respectable fighters.
+Wild cats (jaguars, lynxes, panthers, tigers) show up occasionally.
+None of them are particularly threatening. Feed your pet tripe rations
+to keep it loyal.
+
+**`g` -- Gremlins and Gargoyles.** Not gnomes (those are `G`).
+Gremlins steal intrinsics at night and in the dark, which is deeply
+annoying. Stay lit. Gargoyles (AC -4) and winged gargoyles (AC -2,
+flies) are tough early encounters but have no special tricks beyond
+being hard to hit.
+
+**`h` -- Humanoids.** A grab-bag class that includes hobbits, dwarves,
+and -- buried at the bottom of the list like a nasty surprise --
+**mind flayers**. Dwarves are common in the Mines and usually
+peaceful to lawful characters. Mind flayers (Lev 9, MR 90) drain
+your intelligence with each tentacle hit. **If your intelligence
+reaches zero, you die.** Master mind flayers (Lev 13, MR 90) are
+even worse. Genocide mind flayers if you can; if you can't, kill
+them at range. They also have a psychic blast attack that hits
+everything nearby.
+
+| Monster            | Lev | Spd | AC  | MR  | Danger                |
+| ------------------ | --- | --- | --- | --- | --------------------- |
+| Dwarf              | 2   | 6   | 10  | 10  | Usually peaceful      |
+| Dwarf king         | 6   | 6   | 10  | 20  | Carries gems          |
+| Mind flayer        | 9   | 12  | 5   | 90  | **Int drain = death** |
+| Master mind flayer | 13  | 12  | 0   | 90  | Even more tentacles   |
+
+**`i` -- Imps and Minor Demons.** Pests. Imps teleport and steal,
+quasits are fast and annoying, and tengu (Lev 6) teleport constantly.
+The homunculus can put you to sleep on hit, which is especially
+dangerous early. Manes and lemures are slow and harmless.
+
+**`j` -- Jellies.** Stationary (Spd 0) acid monsters. Blue jellies
+have a passive cold attack. Spotted and ochre jellies have passive
+acid attacks. Don't hit them with bare hands or weapons you like.
+Ranged attacks work fine. Ochre jellies are the most dangerous
+(Lev 6, engulf attack).
+
+**`k` -- Kobolds.** The first monster class most characters face.
+Individually pathetic, but kobold shamans cast spells and some carry
+poisoned weapons. Ignore them once you've outgrown level 3.
+
+**`l` -- Leprechauns.** Fast (Spd 15), steal your gold on hit, and
+teleport away. Annoying but not dangerous. If you catch one, it
+might drop gold. The real problem is when you're counting on that
+gold for a shop purchase.
+
+**`m` -- Mimics.** Disguise themselves as objects (small mimics look
+like items, giant mimics look like doors or stairs). They hold you
+when you walk into them. The annoyance is mostly that you waste
+turns trying to unstick yourself while other monsters attack you.
+
+**`n` -- Nymphs.** They steal a random item from your inventory and
+teleport away. This can include your armor, your weapon, your amulet
+of life saving -- anything. Fight them from range. If one does steal
+something critical, chase it down immediately. All three types
+(wood, water, mountain) are identical statistically.
+
+**`o` -- Orcs.** Common in the upper dungeon and especially in the
+Mines. Goblins, hobgoblins, hill orcs, Uruk-hai -- they come in
+groups and carry weapons. Orc-captains (Lev 5) are the toughest
+regular variety. Orc shamans cast spells. Usually hostile unless
+you're an orc. Not dangerous individually, but a swarm in a corridor
+can wear you down.
+
+**`p` -- Piercers.** They cling to ceilings and drop on you. Rock,
+iron, and glass varieties exist, each tougher than the last. Glass
+piercers (Lev 7, AC 0) hit hard on the drop but are helpless
+afterward. More startling than threatening.
+
+**`q` -- Quadrupeds.** A motley collection of large animals. Rothes
+are early dungeon livestock. The leocrotta (Spd 18, imitates voices)
+is unsettling but manageable. Late-game, you might meet a mastodon
+(Lev 20, Spd 12) -- a lot of hit points on four legs. The mumak
+(Lev 5, AC 0) is a war elephant that shows up earlier than you'd
+expect.
+
+**`r` -- Rodents.** Rats and moles. Sewer rats come in packs, and
+a rabid rat can give you a disease. Rock moles (AC 0) eat metallic
+items off the floor, which means they can eat *your* items if you
+drop them. Wererats revert to human on death and can infect you
+with lycanthropy.
+
+**`s` -- Spiders and Scorpions.** Cave spiders are weak. Giant
+spiders (Lev 5, Spd 15) are fast and poison. Scorpions also poison
+and hit harder than you'd expect. All are genocidable.
+
+**`t` -- Trappers and Lurkers.** The lurker above (Lev 10) and
+trapper (Lev 12) both disguise themselves as dungeon features and
+engulf you when you walk over them. They're slow (Spd 3) and mainly
+a nuisance -- the real danger is being engulfed while other monsters
+are nearby.
+
+**`u` -- Unicorns and Horses.** All three unicorn colors (white,
+gray, black) have the same stats: Lev 4, Spd 24, AC 2, MR 70.
+The one matching your alignment is peaceful. Throwing gems at a
+co-aligned unicorn improves your luck (see [Luck and Fortune](#luck-and-fortune)).
+Horses (pony, horse, warhorse) are the Knight's best friend. A
+well-fed warhorse (Lev 7, Spd 24) is a formidable combat partner.
+
+**`v` -- Vortices.** Fast (Spd 20-22) swirling clouds of various
+elements. Energy vortices are the dangerous one: they drain your
+magic power and can strip your enchantment. Fire vortices are just
+hot. All vortices leave no corpse.
+
+**`w` -- Worms.** Long worms occupy multiple tiles and can grab you
+from a distance. Purple worms (Lev 15, Spd 9) swallow you whole,
+which is an engulfing attack that digests you over time. If you die
+inside one, your possessions are gone too. Kill them from range or
+be prepared to cut your way out.
+
+**`x` -- Grid Bugs and Xans.** Grid bugs (Lev 0) are trivial -- they
+can only move in four cardinal directions. Xans (Lev 7, AC -4) prick
+your legs, reducing your movement speed. Annoying but rarely fatal.
+
+**`y` -- Lights.** Yellow lights blind you on explosion. Black lights
+blind you and also hallucinate. Neither has a corpse. They're fast
+(Spd 15) and exist mainly to ruin your situational awareness at
+inconvenient moments.
+
+**`z` -- Zruty.** A single species, Lev 9, Spd 8, AC 3. Nothing
+special about it. The zruty exists mostly so that `z` has something
+in it.
+
+#### Uppercase Monsters (A-Z)
+
+**`A` -- Angels and Celestials.** Powerful aligned beings. An angel
+matching your alignment is peaceful; attacking it is a terrible idea
+(alignment penalty, and they hit back hard). Archons (Lev 19, Spd 16,
+AC -6, MR 80) are among the toughest non-unique monsters. Ki-rin
+(Lev 16, MR 90) are similarly nasty. You'll mostly encounter these
+on the Astral Plane.
+
+| Monster | Lev | Spd | AC  | MR  |
+| ------- | --- | --- | --- | --- |
+| Angel   | 14  | 10  | -4  | 55  |
+| Ki-rin  | 16  | 18  | -5  | 90  |
+| Archon  | 19  | 16  | -6  | 80  |
+
+**`B` -- Bats.** Fast (Spd 22) but weak. They move erratically, which
+makes them annoying to fight in corridors. Vampire bats drain levels
+and are the only ones to take seriously. Giant bats are just big bats.
+
+**`C` -- Centaurs.** Plains, forest, and mountain varieties, each
+faster and tougher than the last. Mountain centaurs (Lev 6, Spd 20)
+are good archers and carry bows. They hit reasonably hard in melee
+too. Not a major threat by mid-game, but they can soften you up at
+range before you close the distance.
+
+**`D` -- Dragons.** Every color has a different breath weapon and
+a corresponding resistance. Dragon scale mail is the best body armor
+in the game. Gray dragons (magic resistance) and silver dragons
+(reflection) are the most sought-after. Baby dragons are still
+tough (Lev 12, AC 2). Adults are serious opponents (Lev 15, AC -1,
+MR 20). Eating a dragon corpse grants its color's resistance.
+See [The Armory](#the-armory) for the full dragon scale mail table.
+
+| Dragon Color | Breath     | Resistance     | DSM Cost |
+| ------------ | ---------- | -------------- | -------- |
+| Gray         | Magic      | Magic          | 1200     |
+| Silver       | Cold       | Reflection     | 1200     |
+| Red          | Fire       | Fire           | 900      |
+| White        | Cold       | Cold           | 900      |
+| Orange       | Sleep      | Sleep          | 900      |
+| Black        | Disintegr. | Disintegration | 1200     |
+| Blue         | Electric   | Shock          | 900      |
+| Green        | Poison     | Poison         | 900      |
+| Yellow       | Acid       | Acid           | 900      |
+| Gold         | (light)    | (none)         | 900      |
+
+**`E` -- Elementals.** Four classical types plus the stalker (invisible,
+nasty). Air elementals (Spd 36!) engulf you; earth elementals phase
+through walls; fire and water elementals are straightforward melee
+bruisers. They leave no corpse. You'll encounter them mostly on the
+Elemental Planes, where they come in overwhelming numbers.
+
+**`F` -- Fungi and Molds.** Mostly stationary. Brown, yellow, green,
+and red molds all have passive attacks when you hit them in melee
+(cold, poison, acid, fire respectively). **Shriekers** don't attack
+at all -- they just scream and summon every monster in the vicinity,
+which is often worse. Violet fungi stick to you. Lichens are safe to
+eat (they're vegan!) and never rot.
+
+**`G` -- Gnomes.** Common in the Gnomish Mines. Gnomes, gnome lords,
+gnomish wizards, gnome kings -- a hierarchy of small bearded people.
+Usually peaceful if you're a gnome. Gnomish wizards (Lev 3, MR 10)
+cast spells and can be annoying. Gnome kings carry wands sometimes.
+
+**`H` -- Giants and Huge Humanoids.** Giants throw boulders, hit hard
+in melee, and carry gems. Each type is aligned with an element: stone
+giants, hill giants, fire giants (fire resistance from corpse), frost
+giants (cold resistance from corpse), and storm giants (shock
+resistance from corpse). The titan (Lev 16, Spd 18, AC -3, MR 70) is
+the king of this class. Ettins have two heads and two attacks per
+round. Minotaurs show up in mazes and always know where they're going.
+
+| Monster     | Lev | Spd | AC  | MR  | Corpse grants |
+| ----------- | --- | --- | --- | --- | ------------- |
+| Hill giant  | 8   | 10  | 6   | 0   | (strength)    |
+| Fire giant  | 9   | 12  | 4   | 5   | Fire res.     |
+| Frost giant | 10  | 12  | 3   | 10  | Cold res.     |
+| Storm giant | 16  | 12  | 3   | 10  | Shock res.    |
+| Titan       | 16  | 18  | -3  | 70  | (strength)    |
+| Minotaur    | 15  | 15  | 6   | 0   | ------------- |
+
+**`I` -- Invisible Stalkers.** (Actually filed under `E` in the
+code, but you'll see `I` on screen when the game hints at invisible
+monsters.) This letter also covers other invisible creatures. If
+you see a blank space attacking you, use telepathy or see invisible
+to fight back.
+
+**`J` -- Jabberwock.** A single species (Lev 15, Spd 12, AC -2,
+MR 50). Big, mean, and hits multiple times per round. Nothing special
+beyond being a solid mid-game challenge. It exists because Lewis
+Carroll exists.
+
+**`K` -- Keystone Kops.** They show up if you rob a shop and flee.
+Individually weak but they come in groups with the shopkeeper, who is
+much more dangerous. Don't rob shops unless you can handle the
+consequences.
+
+**`L` -- Liches.** Spellcasters that get worse at every tier. Regular
+liches (Lev 11) are manageable. Demiliches (Lev 14) are a step up.
+Master liches (Lev 17, MR 90) cast dangerous spells including
+summon nasties. **Arch-liches (Lev 25, AC -6, MR 90)** are among the
+most dangerous monsters in the game -- they cast from a devastating
+spell list, teleport, and regenerate. Genocide them if you can spare
+the scroll.
+
+| Monster     | Lev | Spd | AC  | MR  |
+| ----------- | --- | --- | --- | --- |
+| Lich        | 11  | 6   | 0   | 30  |
+| Demilich    | 14  | 9   | -2  | 60  |
+| Master lich | 17  | 9   | -4  | 90  |
+| Arch-lich   | 25  | 9   | -6  | 90  |
+
+**`M` -- Mummies.** Undead with a grab attack. Each race has a mummy
+variant (kobold mummy through giant mummy). They're slow and their
+main threat is experience drain on hit. Their wrappings are not useful
+armor. Mummy corpses are ancient and will give you food poisoning if
+you eat them.
+
+**`N` -- Nagas.** Serpentine creatures in four flavors. Red nagas spit
+fire. Black nagas spit acid and their corpse grants poison resistance.
+Golden nagas (Lev 10, MR 70) are spell-resistant. Guardian nagas
+(Lev 12, Spd 16) spit poison and are genuinely tough. Not to be
+confused with nymphs (`n`), despite the capital letter.
+
+| Monster       | Lev | Spd | AC  | MR  | Breath/Spit |
+| ------------- | --- | --- | --- | --- | ----------- |
+| Red naga      | 6   | 12  | 4   | 0   | Fire        |
+| Black naga    | 8   | 14  | 2   | 10  | Acid        |
+| Golden naga   | 10  | 14  | 2   | 70  | Poison      |
+| Guardian naga | 12  | 16  | 0   | 50  | Poison      |
+
+**`O` -- Ogres.** Strong, dumb, and numerous. Ogres (Lev 5), ogre
+lords (Lev 7), and ogre kings (Lev 9) form a simple hierarchy. They
+hit hard in melee and carry gold. Not interesting, just strong. They
+show up frequently in the mid-dungeon.
+
+**`P` -- Puddings and Oozes.** Gray ooze rusts metal. Brown puddings
+corrode metal. **Black puddings (Lev 10)** split in two when hit
+with iron weapons, potentially multiplying until the room is full
+of them. Use non-metallic weapons (whip, mattock) or ranged attacks.
+**Green slime** is the really dangerous one: its attack starts turning
+you into slime. Burn or prayer cures it, but you have very few turns.
+
+**`Q` -- Quantum Mechanics.** Yes, really. A single species (Lev 7,
+Spd 12). They speed you up or slow you down on hit, and they
+sometimes teleport you. Appropriately unpredictable.
+
+**`R` -- Rust Monsters and Disenchanters.** Rust monsters (Lev 5)
+corrode your iron equipment on contact. Disenchanters (Lev 12)
+remove enchantment from your gear. Both are non-threatening in combat
+but can wreck your equipment in seconds. Fight them with non-metallic
+weapons or at range. Elven gear is immune to rust.
+
+**`S` -- Snakes.** Garter snakes are harmless. Everything else
+poisons: cobras, pit vipers, asps. **Water moccasins** come from
+dipping things in fountains and from Medusa's level. Python (Lev 6)
+constricts. Nothing here is a serious late-game threat but early
+poison can be lethal without resistance.
+
+**`T` -- Trolls.** They regenerate, and they come back from the dead.
+Kill a troll and its corpse will reanimate a few turns later unless
+you eat it, tin it, or carry it away. This is more annoying than
+dangerous once you know about it. The olog-hai (Lev 13, AC -4) is the
+toughest variety. Ice trolls are cold-resistant. Water trolls show up
+swimming.
+
+| Monster     | Lev | Spd | AC  | MR  |
+| ----------- | --- | --- | --- | --- |
+| Troll       | 7   | 12  | 4   | 0   |
+| Ice troll   | 9   | 10  | 2   | 20  |
+| Rock troll  | 9   | 12  | 0   | 0   |
+| Water troll | 11  | 14  | 4   | 40  |
+| Olog-hai    | 13  | 12  | -4  | 0   |
+
+**`U` -- Umber Hulk.** A single species (Lev 9, Spd 6, AC 2).
+**Confuses you on sight**, which is its main danger. If confused, you
+move randomly and might walk into lava or attack your pet. Use a
+blindfold to fight it safely, or just kill it fast from a corridor.
+
+**`V` -- Vampires.** Level-draining undead. Vampire lords (Lev 12,
+Spd 14) fly and are fast. Vlad the Impaler (Lev 14, Spd 18, AC -3,
+MR 80) guards his tower and the Candelabrum of Invocation. Vampires
+shapeshift into bats and fog clouds, which makes them hard to pin
+down. Undead turning works. Corpses are not useful (and may not
+appear).
+
+**`W` -- Wraiths and Wights.** Wraiths drain your experience level
+on hit -- but eating a wraith corpse *grants* a level, making them
+one of the few monsters you actually want to find. Eat the corpse
+immediately (they rot fast). Barrow wights are early undead pests.
+Nazgul (Lev 13, MR 25) are dangerous late-game encounters that
+drain levels and cast spells.
+
+**`X` -- Xorn.** A single species (Lev 8, Spd 9, AC -2, MR 20).
+Xorns phase through walls and eat metal items off the ground (and
+sometimes from your inventory). They're tough for when you first
+encounter them but not a major threat.
+
+**`Y` -- Apelike Creatures.** Yetis, carnivorous apes, sasquatch.
+Yetis (Lev 5) have cold resistance and their corpses can grant it.
+The sasquatch (Lev 7) is strong but uncommon. Nothing here is
+particularly scary.
+
+**`Z` -- Zombies and Skeletons.** Slow, numerous, and undead. Every
+race has a zombie variant. Their corpses are always old (they were
+dead already) and will poison you if eaten. Skeletons are tougher
+than zombies of the same race. Giant zombies and skeleton warriors
+can be a nuisance in numbers. Undead turning clears them out.
+
+#### Special Symbol Monsters
+
+**`@` -- Humans and Player-Types.** This class includes shopkeepers,
+guards, aligned priests, the Oracle, Medusa, Croesus, and the
+Wizard of Yendor. Shopkeepers (Lev 12, Spd 18, MR 50) are fast and
+hit hard -- never anger one unless you can take the heat. The
+**Wizard of Yendor** (Lev 30, Spd 12, AC -8, MR 100) is the game's
+signature nemesis: he harasses you repeatedly after you steal the
+Amulet, summoning nasties and stealing the Amulet back if he can.
+
+| Monster          | Lev | Spd | AC  | MR  |
+| ---------------- | --- | --- | --- | --- |
+| Shopkeeper       | 12  | 18  | 0   | 50  |
+| Aligned priest   | 12  | 12  | 10  | 50  |
+| Medusa           | 20  | 12  | 2   | 50  |
+| Wizard of Yendor | 30  | 12  | -8  | 100 |
+| Croesus          | 20  | 15  | 0   | 40  |
+
+**`&` -- Demons.** The heavyweights. Minor demons (water demons,
+succubi, incubi) are manageable. Major demons are boss-tier. Orcus
+carries a wand of death. Demogorgon (Lev 106!) is the single
+toughest monster in the game -- disease attacks, spellcasting,
+and more hit points than you can easily comprehend. The three Riders
+(Death, Pestilence, Famine) guard the Astral Plane and cannot be
+permanently killed.
+
+| Monster    | Lev | Spd | AC  | MR  | Notable trait                |
+| ---------- | --- | --- | --- | --- | ---------------------------- |
+| Succubus   | 6   | 12  | 0   | 70  | Removes armor, seduces       |
+| Incubus    | 6   | 12  | 0   | 70  | Same as succubus             |
+| Orcus      | 66  | 9   | -6  | 85  | Wand of death!               |
+| Asmodeus   | 76  | 12  | -7  | 90  | Cold attack, spells          |
+| Demogorgon | 106 | 15  | -8  | 95  | **Hardest monster in game**  |
+| Death      | 30  | 12  | -5  | 100 | Touch of death, unkillable   |
+| Pestilence | 30  | 12  | -5  | 100 | Disease attack, unkillable   |
+| Famine     | 30  | 12  | -5  | 100 | Drains nutrition, unkillable |
+
+**`;` -- Sea Monsters.** Eels, krakens, sharks, and piranhas.
+**Drowning is an instadeath** -- giant eels and krakens can grab you
+and pull you under if you're too encumbered to escape. Stay unburdened
+near water. An amulet of magical breathing or levitation prevents
+drowning. Electric eels shock you. The kraken (Lev 20) is the
+king of the deep.
+
+**`:` -- Reptiles and Lizards.** Newts are the first monster most
+characters ever see. Lizards (Lev 5) are strategically critical:
+**lizard corpses cure petrification in progress and never rot.**
+Always carry one. Always. Chameleons (Lev 6) polymorph into random
+monsters, which can be nasty or trivial depending on luck.
+Crocodiles (Lev 6, Spd 9) and salamanders (Lev 8, AC -1) are the
+combat threats.
+
+**`'` -- Golems.** Constructed creatures in various materials. They
+range from straw golems (Lev 3, pathetic) to iron golems (Lev 18,
+MR 60, scary). Each drops its material when destroyed: paper golems
+drop scrolls, clay golems drop rocks, iron golems drop iron chains.
+Flesh golems (Lev 9, MR 30) have a useful property: their corpse
+grants shock and fire resistance.
+
+| Golem | Lev | AC  | MR  | Drops on death |
+| ----- | --- | --- | --- | -------------- |
+| Straw | 3   | 10  | 0   | Nothing useful |
+| Paper | 3   | 10  | 0   | Random scrolls |
+| Flesh | 9   | 9   | 30  | Shock/fire res |
+| Clay  | 11  | 7   | 40  | Rocks          |
+| Stone | 14  | 5   | 50  | Rocks, flint   |
+| Glass | 16  | 1   | 50  | Random gems    |
+| Iron  | 18  | 3   | 60  | Iron chains    |
+
+The three rules that will save your life more than anything in this
+bestiary: **never melee a floating eye, always carry a lizard corpse,
+and respect anything with `D` or `&` on your screen.**
 
 ---
 
