@@ -6,3 +6,5 @@ nethack-c/
 *.pyc
 test/comparison/c-harness/results/
 test/comparison/isaac64_reference
+notes/
+spoilers.db
