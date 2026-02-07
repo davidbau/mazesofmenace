@@ -11,7 +11,12 @@ import {
     WATER, LAVAPOOL, LAVAWALL, ICE, IRONBARS, TREE,
     DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, AIR, CLOUD, SDOOR, SCORR,
     D_NODOOR, D_CLOSED, D_ISOPEN, D_LOCKED,
-    IS_WALL, IS_DOOR, IS_ROOM
+    IS_WALL, IS_DOOR, IS_ROOM,
+    ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD, BEAR_TRAP,
+    LANDMINE, ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP,
+    FIRE_TRAP, PIT, SPIKED_PIT, HOLE, TRAPDOOR, TELEP_TRAP,
+    LEVEL_TELEP, MAGIC_PORTAL, WEB, STATUE_TRAP, MAGIC_TRAP,
+    ANTI_MAGIC, POLY_TRAP, VIBRATING_SQUARE
 } from './config.js';
 
 import { def_monsyms, def_oc_syms } from './symbols.js';
@@ -49,7 +54,7 @@ const COLOR_CSS = [
     '#00d',    // CLR_BLUE
     '#a0a',    // CLR_MAGENTA
     '#0aa',    // CLR_CYAN
-    '#aaa',    // CLR_GRAY
+    '#ccc',    // CLR_GRAY
     '#f80',    // CLR_ORANGE / NO_COLOR
     '#0f0',    // CLR_BRIGHT_GREEN
     '#ff0',    // CLR_YELLOW
@@ -143,7 +148,7 @@ export class Display {
             font-size: 16px;
             line-height: 1.2;
             background: #000;
-            color: #aaa;
+            color: #ccc;
             padding: 8px;
             margin: 0;
             display: inline-block;
@@ -272,7 +277,8 @@ export class Display {
                 if (mon) {
                     this.setCell(col, row, mon.displayChar, mon.displayColor);
                     const classInfo = this._monsterClassDesc(mon.displayChar);
-                    this.cellInfo[row][col] = { name: mon.name, desc: classInfo, color: mon.displayColor };
+                    const stats = `Level ${mon.mlevel}, AC ${mon.mac}, Speed ${mon.speed}`;
+                    this.cellInfo[row][col] = { name: mon.name, desc: classInfo, stats: stats, color: mon.displayColor };
                     continue;
                 }
 
@@ -283,7 +289,8 @@ export class Display {
                     this.setCell(col, row, topObj.displayChar, topObj.displayColor);
                     const classInfo = this._objectClassDesc(topObj.oc_class);
                     const extra = objs.length > 1 ? ` (+${objs.length - 1} more)` : '';
-                    this.cellInfo[row][col] = { name: topObj.name + extra, desc: classInfo, color: topObj.displayColor };
+                    const stats = this._objectStats(topObj);
+                    this.cellInfo[row][col] = { name: topObj.name + extra, desc: classInfo, stats: stats, color: topObj.displayColor };
                     continue;
                 }
 
@@ -291,7 +298,8 @@ export class Display {
                 const trap = gameMap.trapAt(x, y);
                 if (trap && trap.tseen) {
                     this.setCell(col, row, '^', CLR_MAGENTA);
-                    this.cellInfo[row][col] = { name: 'trap', desc: 'a trap', color: CLR_MAGENTA };
+                    const trapName = this._trapName(trap.ttyp);
+                    this.cellInfo[row][col] = { name: trapName, desc: 'trap', color: CLR_MAGENTA };
                     continue;
                 }
 
@@ -526,6 +534,36 @@ export class Display {
         return 'object';
     }
 
+    // Get stats string for an object based on its class
+    _objectStats(obj) {
+        const parts = [];
+        if (obj.damage) parts.push(`Dmg: ${obj.damage[0]}d${obj.damage[1]}`);
+        if (obj.ac) parts.push(`AC ${obj.ac}`);
+        if (obj.nutrition) parts.push(`Nutr: ${obj.nutrition}`);
+        if (obj.charges) parts.push(`Charges: ${obj.charges}`);
+        if (obj.weight) parts.push(`Wt: ${obj.weight}`);
+        return parts.join(', ');
+    }
+
+    // Get trap name from trap type
+    _trapName(ttyp) {
+        const names = {
+            [ARROW_TRAP]: 'arrow trap', [DART_TRAP]: 'dart trap',
+            [ROCKTRAP]: 'falling rock trap', [SQKY_BOARD]: 'squeaky board',
+            [BEAR_TRAP]: 'bear trap', [LANDMINE]: 'land mine',
+            [ROLLING_BOULDER_TRAP]: 'rolling boulder trap',
+            [SLP_GAS_TRAP]: 'sleeping gas trap', [RUST_TRAP]: 'rust trap',
+            [FIRE_TRAP]: 'fire trap', [PIT]: 'pit', [SPIKED_PIT]: 'spiked pit',
+            [HOLE]: 'hole', [TRAPDOOR]: 'trap door',
+            [TELEP_TRAP]: 'teleportation trap', [LEVEL_TELEP]: 'level teleporter',
+            [MAGIC_PORTAL]: 'magic portal', [WEB]: 'web',
+            [STATUE_TRAP]: 'statue trap', [MAGIC_TRAP]: 'magic trap',
+            [ANTI_MAGIC]: 'anti-magic field', [POLY_TRAP]: 'polymorph trap',
+            [VIBRATING_SQUARE]: 'vibrating square',
+        };
+        return names[ttyp] || 'trap';
+    }
+
     // Set up mouseover handling for the hover info panel
     _setupHover(pre) {
         const display = this;
@@ -534,6 +572,7 @@ export class Display {
 
         const nameEl = document.getElementById('hover-name');
         const descEl = document.getElementById('hover-desc');
+        const statsEl = document.getElementById('hover-stats');
         const symbolEl = document.getElementById('hover-symbol');
 
         pre.addEventListener('mouseover', function(e) {
@@ -551,6 +590,7 @@ export class Display {
                 }
                 if (nameEl) nameEl.textContent = info.name;
                 if (descEl) descEl.textContent = info.desc;
+                if (statsEl) statsEl.textContent = info.stats || '';
                 panel.style.visibility = 'visible';
             } else {
                 panel.style.visibility = 'hidden';
