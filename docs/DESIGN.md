@@ -212,3 +212,49 @@ Each location has:
 
 We mirror this exactly in JS with a 2D array of location objects.
 Map dimensions: COLNO=80, ROWNO=21 (matching the C constants).
+
+### Special Level Strategy
+
+> *You read a scroll labeled "des.room()". It's a special level definition!*
+
+NetHack 3.7 defines special levels (Oracle, Castle, Medusa, Sokoban, etc.) via
+141 Lua scripts in `dat/`.  WebHack ports these directly to JavaScript rather
+than embedding a Lua interpreter.  See Decision 11 in DECISIONS.md for the full
+analysis.
+
+The porting requires three foundation pieces:
+
+1. **`des.*` API** -- JS implementations of the 35+ level-builder functions that
+   C exposes to Lua via `sp_lev.c`.  These are the verbs of level definition:
+   `des.room()`, `des.monster()`, `des.terrain()`, `des.map()`, etc.
+
+2. **Selection API** -- Geometric operations on map coordinates used by complex
+   levels and theme rooms: set union/intersection, flood fill, grow, random
+   coordinate selection.
+
+3. **`nhlib` helpers** -- Utility functions shared across level files: `percent()`,
+   `shuffle()`, dice rolling (already in `rng.js`).
+
+### PRNG Comparison Architecture
+
+> *You sense the presence of determinism.*
+
+The C and JS versions share an identical PRNG (ISAAC64, BigInt-based).  To verify
+that level generation matches, we compare PRNG call sequences:
+
+```
+C binary (with 003-prng-logging.patch):
+  NETHACK_RNGLOG=/tmp/c.log ./nethack ...
+  → 258 rn2(5) = 2 @ mklev.c:1276
+
+JS (with enableRngLog()):
+  enableRngLog(); initRng(42); skipRng(257); generateLevel(1);
+  → 1 rn2(6) = 0    ← different! (algorithms diverge)
+```
+
+The C consumes 257 PRNG values before level generation (object shuffling,
+dungeon init, etc.).  `skipRng(257)` fast-forwards the JS PRNG past these,
+aligning the state.  Even so, the algorithms currently diverge at call #1
+because the room placement algorithms differ.  As we port C's `rect.c` and
+`mklev.c` more faithfully, the divergence point moves later, and the diff
+count drops.  The goal: zero divergence.

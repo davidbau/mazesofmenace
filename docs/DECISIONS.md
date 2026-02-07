@@ -233,3 +233,150 @@ deterministic, reproducible test scenarios.
 **Testing:** Wizard commands that don't require user input (e.g., magic mapping)
 are tested via unit tests with mock game objects. Input-requiring commands
 (level change, teleport, genesis) are tested via E2E browser tests.
+
+---
+
+## Decision 11: Lua Level Definitions -- Direct Port to JS (No Interpreter)
+
+> *You feel the mass of scripted levels pressing on your mind.*
+
+**Context:** NetHack 3.7 introduced Lua scripting for special level definitions.
+There are 141 `.lua` files totaling ~17,000 lines in `dat/`. The C code embeds
+a full Lua 5.4 interpreter and exposes a `des.*` API (35+ functions from
+`sp_lev.c`) plus a `selection` API for geometric map operations.  The question:
+how does WebHack handle these?
+
+**Options considered:**
+
+1. **Embed a Lua interpreter in JS** (~1,500 lines for a minimal subset)
+2. **Transpile Lua→JS** via an existing parser (e.g., `luaparse`) + code emitter
+3. **Port the Lua scripts directly to JavaScript** (mechanical syntax conversion)
+
+**Choice:** Option 3 -- Direct port to JavaScript.
+
+**Rationale:**
+
+The Lua scripts aren't really "programs" -- they're a DSL for dungeon layout.
+Reading them reveals three complexity tiers:
+
+| Tier | Files | Lines | What they do |
+|------|-------|-------|-------------|
+| Declarative | ~130 | ~3,000 | `des.room({...})`, `des.monster()`, `des.object()` in sequence. No logic. |
+| Procedural | ~5 | ~500 | `if percent(60) then ... end`, `for i=1,n do`, shuffled tables |
+| Complex | ~3 | ~4,600 | Closures, selection set operations (`\|`, `&`), stored callbacks |
+
+90% of the code is declarative -- nested tables and function calls. The syntax
+conversion is mechanical:
+
+```
+-- Lua                              // JavaScript
+des.room({ type = "ordinary",       des.room({ type: "ordinary",
+  x = 3, y = 3,                       x: 3, y: 3,
+  contents = function()                contents: () => {
+    des.monster()                        des.monster();
+  end                                  }
+})                                   });
+```
+
+An interpreter would be ~1,500 lines of code that exists purely to run scripts
+that are themselves being ported.  That's building a bridge when you could just
+walk across the river.  Direct porting:
+
+- **Eliminates the middleman.**  No interpreter means no interpreter bugs, no
+  impedance mismatch between Lua and JS semantics, no double debugging.
+- **Enables exact RNG control.**  Every `math.random()` and `nh.rn2()` call
+  becomes a direct JS `rn2()`, making PRNG sequence comparison trivial.
+- **Keeps the codebase in one language.**  Debugging a Lua interpreter running
+  inside a JS port of a C game is the kind of thing that would make the DevTeam
+  weep with a mixture of admiration and pity.
+- **The "complex" tier is exactly 3 files.**  `themerms.lua` (theme rooms,
+  1,097 lines) is the hardest.  `quest.lua` (3,087 lines) is 95% text data.
+  `hellfill.lua` (441 lines) uses selection operations.
+
+**What IS needed:**
+
+Even without a Lua interpreter, we need the APIs that Lua scripts call.  These
+become JS modules:
+
+1. **`des.*` API** (35+ functions from `sp_lev.c`):  `des.room()`, `des.monster()`,
+   `des.object()`, `des.terrain()`, `des.map()`, `des.stair()`, `des.trap()`,
+   `des.door()`, `des.level_flags()`, `des.level_init()`, `des.region()`,
+   `des.altar()`, `des.fountain()`, `des.random_corridors()`, etc.
+
+2. **Selection API** (geometric operations on map coordinates): `selection.new()`,
+   `set()`, `rndcoord()`, `percentage()`, `grow()`, `negate()`, `match()`,
+   `floodfill()`, `iterate()`, `filter_mapchar()`.  Supports union, intersection,
+   complement via operator overloading or method chaining.
+
+3. **`nhlib` helpers**: `percent()`, `shuffle()`, `montype_from_name()`, and
+   a handful of utility functions (~242 lines, trivially ported).
+
+**Lua features NOT used** (confirming an interpreter isn't needed):
+
+- No metatables or metamethods
+- No coroutines
+- No module/require system (C loads files directly)
+- No file I/O (except 1 function in `nhcore.lua`, easily special-cased)
+- No debug library
+- No `load()` or `dofile()` (no runtime code generation)
+
+**Porting order** (tracked in beads):
+
+```
+Phase 1 (foundation):
+  ├── des.* API implementation (JS equivalent of sp_lev.c)
+  └── Selection API (geometric operations)
+
+Phase 2 (level files):
+  ├── nhlib helpers
+  ├── dungeon.lua (dungeon tree structure, pure data)
+  ├── ~130 simple declarative levels (oracle, mines, sokoban, etc.)
+  └── ~5 procedural levels (castle, medusa, astral)
+
+Phase 3 (complex):
+  ├── themerms.lua (theme rooms with closures + selection ops)
+  └── quest.lua (quest text data + callbacks)
+```
+
+**Tradeoff:**  If NetHack's Lua usage expands significantly in future versions
+(e.g., user-scriptable levels, Lua-based game logic), we'd need to revisit this
+decision.  For 3.7's usage -- which is firmly "configuration DSL with occasional
+procedural glue" -- direct porting is the pragmatic choice.
+
+> *"You hear the strident call of a scripting language. It seems far away."*
+
+---
+
+## Decision 12: Pre-Makelevel PRNG Alignment via skipRng()
+
+> *You sense the presence of 257 consumed random values.*
+
+**Context:** The C game consumes 257 ISAAC64 values between `init_random()` and
+the start of `makelevel()`.  These come from:
+
+| Source | Calls | Purpose |
+|--------|-------|---------|
+| `o_init.c` | 198 | Object class shuffling (randomize potion/scroll/wand appearances) |
+| `dungeon.c` | 53 | Dungeon structure initialization |
+| `nhlua.c` | 4 | Lua startup |
+| `u_init.c` | 1 | Character creation |
+| `bones.c` | 1 | Bones file check |
+
+JS doesn't implement these subsystems yet.  If we just call `initRng(seed)` and
+then `generateLevel()`, the PRNG state is 257 values behind the C version.
+
+**Choice:** `skipRng(n)` -- consume n raw ISAAC64 values without logging, to
+fast-forward past C startup calls that JS doesn't need yet.
+
+**Rationale:** This is the pragmatic approach that the user specifically
+suggested.  Instead of porting `o_init()` (which shuffles object appearances
+-- a system we'll need eventually but not for basic level generation fidelity),
+we advance the PRNG by the exact number of consumed values.
+
+The skip count (257 for seed=42) was determined empirically using the C PRNG
+logger (`003-prng-logging.patch`), which logs every RNG call with file:line
+information.
+
+**Future:** When we port `o_init()`, `dungeon.c` init, etc., the skip count
+drops accordingly.  When all startup systems are ported, `skipRng()` is no
+longer needed.  The PRNG log comparison tests track progress toward this goal.
