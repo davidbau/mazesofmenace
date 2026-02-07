@@ -896,7 +896,7 @@ const cssColorMap = [
     /* CLR_BLUE           4 */ "#00a",
     /* CLR_MAGENTA        5 */ "#a0a",
     /* CLR_CYAN           6 */ "#0aa",
-    /* CLR_GRAY           7 */ "#aaa",
+    /* CLR_GRAY           7 */ "#ccc",
     /* NO_COLOR           8 */ "#f80",   // bright orange (NO_COLOR / CLR_ORANGE alias)
     /* CLR_ORANGE         9 */ "#f80",
     /* CLR_BRIGHT_GREEN  10 */ "#0f0",
