@@ -9173,4 +9173,58 @@ export const objectData = [
 ];
 
 // Total objects: 478
+const MAXOCLASSES_OBJ = 17; // 0..16 inclusive (local to avoid import issues)
+
+// Computed at init: first object index for each class, probability totals
+export const bases = new Array(MAXOCLASSES_OBJ + 2).fill(0);
+export const oclass_prob_totals = new Array(MAXOCLASSES_OBJ).fill(0);
+
+// C ref: o_init.c init_objects() — compute bases[] and oclass_prob_totals[]
+export function initObjectData() {
+    // C ref: skip generic objects (indices 0..MAXOCLASSES), scan from MAXOCLASSES+1
+    for (let i = 0; i <= MAXOCLASSES_OBJ + 1; i++) bases[i] = 0;
+    let first = MAXOCLASSES_OBJ + 1; // skip all generic objects (indices 0..17)
+    let prevOclass = -1;
+    while (first < objectData.length) {
+        const oclass = objectData[first].oc_class;
+        let last = first + 1;
+        while (last < objectData.length && objectData[last].oc_class === oclass)
+            last++;
+        // C only sets bases on ascending class transitions
+        if (oclass > prevOclass) {
+            bases[oclass] = first;
+            prevOclass = oclass;
+        }
+        first = last;
+    }
+    bases[MAXOCLASSES_OBJ] = objectData.length;
+    bases[MAXOCLASSES_OBJ + 1] = objectData.length;
+    // Fill gaps: if a class has no objects, point to next class
+    for (let i = MAXOCLASSES_OBJ - 1; i >= 0; i--) {
+        if (!bases[i]) bases[i] = bases[i + 1];
+    }
+    // Compute probability totals per class
+    for (let oc = 0; oc < MAXOCLASSES_OBJ; oc++) {
+        let sum = 0;
+        for (let i = bases[oc]; i < bases[oc + 1]; i++) {
+            sum += objectData[i].prob || 0;
+        }
+        oclass_prob_totals[oc] = sum;
+    }
+}
+
+// Class random selection probabilities (C ref: mkobj.c mkobjprobs)
+export const mkobjprobs = [
+    { iprob: 10, iclass: WEAPON_CLASS },
+    { iprob: 10, iclass: ARMOR_CLASS },
+    { iprob: 20, iclass: FOOD_CLASS },
+    { iprob: 8, iclass: TOOL_CLASS },
+    { iprob: 8, iclass: GEM_CLASS },
+    { iprob: 16, iclass: POTION_CLASS },
+    { iprob: 16, iclass: SCROLL_CLASS },
+    { iprob: 4, iclass: SPBOOK_CLASS },
+    { iprob: 4, iclass: WAND_CLASS },
+    { iprob: 3, iclass: RING_CLASS },
+    { iprob: 1, iclass: AMULET_CLASS },
+];
 

@@ -13,13 +13,28 @@ import {
     POOL, TREE, IRONBARS, LAVAPOOL, ICE,
     D_NODOOR, D_CLOSED, D_ISOPEN, D_LOCKED, D_TRAPPED,
     DIR_N, DIR_S, DIR_E, DIR_W, DIR_180,
-    xdir, ydir,
+    xdir, ydir, N_DIRS,
     OROOM, VAULT, MAXNROFROOMS, ROOMOFFSET,
     IS_WALL, IS_DOOR, IS_ROCK, IS_ROOM, IS_OBSTRUCTED, IS_FURNITURE,
-    IS_POOL, ACCESSIBLE, isok
+    IS_POOL, IS_LAVA, ACCESSIBLE, isok,
+    NO_TRAP, ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD, BEAR_TRAP,
+    LANDMINE, ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP,
+    PIT, SPIKED_PIT, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP,
+    MAGIC_PORTAL, WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, POLY_TRAP,
+    VIBRATING_SQUARE, TRAPPED_DOOR, TRAPPED_CHEST, TRAPNUM,
+    is_pit, is_hole,
+    MKTRAP_NOFLAGS, MKTRAP_MAZEFLAG, MKTRAP_NOSPIDERONWEB, MKTRAP_NOVICTIM
 } from './config.js';
 import { GameMap, makeRoom } from './map.js';
 import { rn2, rnd, rn1, d, skipRng } from './rng.js';
+import { mkobj, mksobj } from './mkobj_new.js';
+import { makemon, NO_MM_FLAGS } from './makemon_new.js';
+import {
+    initObjectData,
+    ARROW, DART, ROCK, LARGE_BOX, CHEST, GOLD_PIECE, CORPSE,
+    STATUE, TALLOW_CANDLE, WAX_CANDLE, BELL,
+    WEAPON_CLASS, TOOL_CLASS, FOOD_CLASS, GEM_CLASS,
+} from './objects.js';
 
 // ========================================================================
 // rect.c -- Rectangle pool for BSP room placement
@@ -1135,6 +1150,344 @@ function make_niches(map, depth) {
     }
 }
 
+// ========================================================================
+// Trap creation -- mktrap, maketrap, traptype_rnd
+// C ref: mklev.c, trap.c
+// ========================================================================
+
+// C ref: mklev.c:1795 occupied() -- check if position has trap/furniture/pool
+function occupied(map, x, y) {
+    if (map.trapAt(x, y)) return true;
+    const loc = map.at(x, y);
+    if (!loc) return true;
+    if (IS_FURNITURE(loc.typ)) return true;
+    if (IS_LAVA(loc.typ) || IS_POOL(loc.typ)) return true;
+    return false;
+}
+
+// C ref: trap.c:3009 choose_trapnote() -- pick unused squeaky board note
+function choose_trapnote(map) {
+    const tavail = new Array(12).fill(0);
+    for (const t of map.traps) {
+        if (t.ttyp === SQKY_BOARD) tavail[t.tnote] = 1;
+    }
+    const tpick = [];
+    for (let k = 0; k < 12; k++) {
+        if (tavail[k] === 0) tpick.push(k);
+    }
+    return tpick.length > 0 ? tpick[rn2(tpick.length)] : rn2(12);
+}
+
+// C ref: trap.c:3601 isclearpath() -- check if path is clear for boulder
+function isclearpath(map, startx, starty, distance, dx, dy) {
+    let x = startx, y = starty;
+    while (distance-- > 0) {
+        x += dx;
+        y += dy;
+        if (!isok(x, y)) return null;
+        const loc = map.at(x, y);
+        if (!loc) return null;
+        const typ = loc.typ;
+        // ZAP_POS: typ >= POOL (everything from POOL onwards is passable to zaps)
+        if (typ < POOL) return null;
+        // closed_door check
+        if (typ === DOOR && (loc.flags === D_CLOSED || loc.flags === D_LOCKED))
+            return null;
+        // check for pit/hole/teleport traps blocking path
+        const t = map.trapAt(x, y);
+        if (t && (is_pit(t.ttyp) || is_hole(t.ttyp) ||
+                  (t.ttyp >= TELEP_TRAP && t.ttyp <= MAGIC_PORTAL)))
+            return null;
+    }
+    return { x, y };
+}
+
+// C ref: trap.c:3506 find_random_launch_coord() -- find boulder launch point
+function find_random_launch_coord(map, trap) {
+    let success = false;
+    let cc = null;
+    const mindist = (trap.ttyp === ROLLING_BOULDER_TRAP) ? 2 : 4;
+    let trycount = 0;
+    let distance = rn1(5, 4); // 4..8 away
+    let tmp = rn2(N_DIRS);    // random starting direction
+
+    while (distance >= mindist) {
+        const dx = xdir[tmp];
+        const dy = ydir[tmp];
+        // Check forward path
+        const fwd = isclearpath(map, trap.tx, trap.ty, distance, dx, dy);
+        if (fwd) {
+            if (trap.ttyp === ROLLING_BOULDER_TRAP) {
+                // Also check reverse path
+                const rev = isclearpath(map, trap.tx, trap.ty, distance, -dx, -dy);
+                if (rev) {
+                    cc = fwd;
+                    success = true;
+                }
+            } else {
+                cc = fwd;
+                success = true;
+            }
+        }
+        if (success) break;
+        tmp = (tmp + 1) % N_DIRS;
+        trycount++;
+        if ((trycount % 8) === 0) distance--;
+    }
+    return success ? cc : null;
+}
+
+// C ref: trap.c:455 maketrap() -- create a trap at (x,y)
+function maketrap(map, x, y, typ) {
+    if (typ === TRAPPED_DOOR || typ === TRAPPED_CHEST) return null;
+
+    // Check if trap already exists at this position
+    const existing = map.trapAt(x, y);
+    if (existing) return null; // simplified: don't overwrite
+
+    const loc = map.at(x, y);
+    if (!loc) return null;
+    // CAN_OVERWRITE_TERRAIN: reject stairs/ladders
+    if (loc.typ === STAIRS || loc.typ === 27/*LADDER*/) return null;
+    if (IS_POOL(loc.typ) || IS_LAVA(loc.typ)) return null;
+    if (IS_FURNITURE(loc.typ) && typ !== PIT && typ !== HOLE) return null;
+
+    const trap = {
+        ttyp: typ,
+        tx: x, ty: y,
+        tseen: (typ === HOLE), // unhideable_trap
+        launch: { x: -1, y: -1 },
+        launch2: { x: -1, y: -1 },
+        dst: { dnum: -1, dlevel: -1 },
+        tnote: 0,
+        once: 0,
+        madeby_u: 0,
+        conjoined: 0,
+    };
+
+    switch (typ) {
+    case SQKY_BOARD:
+        trap.tnote = choose_trapnote(map);
+        break;
+    case STATUE_TRAP:
+        // C ref: mk_trap_statue — needs makemon, skip for now
+        // RNG: rndmonnum_adj (complex) + makemon (complex)
+        // At shallow levels this trap can't generate (needs lvl>=8)
+        break;
+    case ROLLING_BOULDER_TRAP: {
+        // C ref: mkroll_launch
+        const launchCoord = find_random_launch_coord(map, trap);
+        if (launchCoord) {
+            // Place boulder at launch coord (object creation skipped for now)
+            trap.launch = { x: launchCoord.x, y: launchCoord.y };
+            trap.launch2 = {
+                x: x - (launchCoord.x - x),
+                y: y - (launchCoord.y - y),
+            };
+        } else {
+            trap.launch = { x, y };
+            trap.launch2 = { x, y };
+        }
+        break;
+    }
+    case PIT:
+    case SPIKED_PIT:
+        trap.conjoined = 0;
+        // fall through
+    case HOLE:
+    case TRAPDOOR:
+        if (is_hole(typ)) {
+            // C ref: hole_destination — determine fall depth
+            // Simulate RNG: while (dlevel < bottom) { dlevel++; if (rn2(4)) break; }
+            hole_destination_rng(map);
+        }
+        // For pits/holes in rooms, terrain stays ROOM (IS_ROOM check in C)
+        break;
+    }
+
+    map.traps.push(trap);
+    return trap;
+}
+
+// C ref: trap.c:441 hole_destination() — consume RNG for fall depth
+function hole_destination_rng(map) {
+    // At depth 1 in main dungeon, bottom is ~29, dlevel starts at 1
+    // Loop runs until rn2(4) returns nonzero
+    let dlevel = 1;
+    const bottom = 29; // approximate dungeon depth
+    while (dlevel < bottom) {
+        dlevel++;
+        if (rn2(4)) break;
+    }
+}
+
+// C ref: mklev.c:1926 traptype_rnd() — pick random trap type
+function traptype_rnd(depth) {
+    const lvl = depth; // level_difficulty() = depth for normal dungeon
+    const kind = rnd(TRAPNUM - 1); // rnd(25) → 1..25
+
+    switch (kind) {
+    case TRAPPED_DOOR:
+    case TRAPPED_CHEST:
+        return NO_TRAP;
+    case MAGIC_PORTAL:
+    case VIBRATING_SQUARE:
+        return NO_TRAP;
+    case ROLLING_BOULDER_TRAP:
+    case SLP_GAS_TRAP:
+        if (lvl < 2) return NO_TRAP;
+        break;
+    case LEVEL_TELEP:
+        if (lvl < 5) return NO_TRAP;
+        break;
+    case SPIKED_PIT:
+        if (lvl < 5) return NO_TRAP;
+        break;
+    case LANDMINE:
+        if (lvl < 6) return NO_TRAP;
+        break;
+    case WEB:
+        if (lvl < 7) return NO_TRAP;
+        break;
+    case STATUE_TRAP:
+    case POLY_TRAP:
+        if (lvl < 8) return NO_TRAP;
+        break;
+    case FIRE_TRAP:
+        // Only in Gehennom (Inhell) — never on normal levels
+        return NO_TRAP;
+    case TELEP_TRAP:
+        // noteleport check — simplified: allow on normal levels
+        break;
+    case HOLE:
+        // Make holes much less frequent
+        if (rn2(7)) return NO_TRAP;
+        break;
+    }
+    return kind;
+}
+
+// C ref: mklev.c:2021 mktrap() — select trap type, find location, create trap
+function mktrap(map, num, mktrapflags, croom, tm, depth) {
+    if (!tm && !croom && !(mktrapflags & MKTRAP_MAZEFLAG)) return;
+
+    let kind;
+    const lvl = depth;
+
+    if (num > NO_TRAP && num < TRAPNUM) {
+        kind = num;
+    } else {
+        // Normal level: loop until we get a valid trap type
+        do {
+            kind = traptype_rnd(depth);
+        } while (kind === NO_TRAP);
+    }
+
+    // Convert hole/trapdoor to rocktrap if can't fall through
+    // At depth 1 in main dungeon, can fall through — keep as-is
+    // At bottom level, would convert. Simplified: depth >= 29 converts.
+    if (is_hole(kind) && depth >= 29) kind = ROCKTRAP;
+
+    let mx, my;
+    if (tm) {
+        mx = tm.x;
+        my = tm.y;
+    } else {
+        let tryct = 0;
+        const avoid_boulder = (is_pit(kind) || is_hole(kind));
+        do {
+            if (++tryct > 200) return;
+            if (croom) {
+                const pos = somexyspace(map, croom);
+                if (!pos) return;
+                mx = pos.x;
+                my = pos.y;
+            } else {
+                return; // maze mode not implemented
+            }
+        } while (occupied(map, mx, my));
+    }
+
+    const t = maketrap(map, mx, my, kind);
+    if (!t) return;
+    kind = t.ttyp;
+
+    // WEB: create giant spider (needs makemon — skip for now)
+    // At depth < 7, WEB can't generate anyway
+
+    // mktrap_victim: at depth 1, lvl <= rnd(4) is always true
+    // Called for ARROW_TRAP, DART_TRAP, ROCKTRAP, BEAR_TRAP, MAGIC_TRAP
+    // Needs mksobj/mkobj — skip for now (will implement with mkobj task)
+    if (!(mktrapflags & MKTRAP_NOVICTIM) && lvl <= rnd(4)
+        && kind !== SQKY_BOARD && kind !== RUST_TRAP
+        && !is_pit(kind) && (kind < HOLE || kind === MAGIC_TRAP)) {
+        // LANDMINE: convert to PIT (exploded)
+        if (kind === LANDMINE) {
+            t.ttyp = PIT;
+            t.tseen = true;
+        }
+        mktrap_victim(map, t, depth);
+    }
+}
+
+// C ref: mklev.c:1804 mktrap_victim() — stub until mkobj is ported
+// C ref: mklev.c mktrap_victim() — creates corpse + items on trap
+function mktrap_victim(map, trap, depth) {
+    // Trap-specific item
+    // C ref: mklev.c:1818-1833
+    switch (trap.ttyp) {
+    case ARROW_TRAP:
+        mksobj(ARROW, true, false);
+        break;
+    case DART_TRAP:
+        mksobj(DART, true, false);
+        break;
+    case ROCKTRAP:
+        mksobj(ROCK, true, false);
+        break;
+    default:
+        break;
+    }
+
+    // Random possession loop
+    // C ref: mklev.c:1843-1877
+    const classMap = [WEAPON_CLASS, TOOL_CLASS, FOOD_CLASS, GEM_CLASS];
+    do {
+        const poss_class = classMap[rn2(4)];
+        mkobj(poss_class, false);
+    } while (!rn2(5));
+
+    // Corpse race selection
+    // C ref: mklev.c:1880-1915
+    let victim_mnum;
+    const race = rn2(15);
+    if (race === 0) {
+        victim_mnum = 0; // PM_ELF placeholder
+        if (trap.ttyp === SLP_GAS_TRAP && !(depth <= 2 && rn2(2))) {
+            victim_mnum = 1; // PM_HUMAN placeholder
+        }
+    } else if (race >= 6 && race <= 9) {
+        victim_mnum = 2; // PM_GNOME placeholder
+        if (!rn2(10)) {
+            mksobj(rn2(4) ? TALLOW_CANDLE : WAX_CANDLE, true, false);
+        }
+    } else if (race >= 10) {
+        victim_mnum = 1; // PM_HUMAN placeholder
+    } else {
+        victim_mnum = 3; // PM_DWARF/ORC placeholder
+    }
+
+    // Human → adventurer conversion
+    // C ref: mklev.c:1919-1920
+    if (victim_mnum === 1 && rn2(25)) {
+        rn1(12, 0); // random role: PM_WIZARD - PM_ARCHEOLOGIST = 12
+    }
+
+    // mkcorpstat(CORPSE, ...) — calls mksobj(CORPSE, TRUE, FALSE) internally
+    // C ref: mklev.c:1921
+    mksobj(CORPSE, true, false);
+}
+
 // C ref: mkroom.c find_okay_roompos() -- find non-occupied, non-bydoor pos
 function find_okay_roompos(map, croom) {
     let tryct = 0;
@@ -1194,20 +1547,20 @@ function mkgrave(map, croom, depth) {
     loc.typ = GRAVE;
     // C ref: possibly fill with gold
     if (!rn2(3)) {
-        // mksobj(GOLD_PIECE, TRUE, FALSE) — internal RNG for gold object
+        mksobj(GOLD_PIECE, true, false);
         // gold->quan = rnd(20) + level_difficulty() * rnd(5)
+        const lvl_diff = depth + 3; // level_difficulty = depth + u.ulevel + 2
         rnd(20);
         rnd(5);
     }
     // C ref: bury random objects
     let tryct = rn2(5);
     while (tryct--) {
-        // mkobj(RANDOM_CLASS, TRUE) — complex internal RNG, can't simulate
-        // Just consume the rn2(5) loop counter
+        mkobj(0, true); // RANDOM_CLASS = 0
     }
     // C ref: leave a bell if dobell
     if (dobell) {
-        // mksobj_at(BELL, ...) — internal RNG we can't simulate
+        mksobj(BELL, true, false);
     }
 }
 
@@ -1219,7 +1572,9 @@ function fill_ordinary_room(map, croom, depth, bonusItems) {
     // C ref: (u.uhave.amulet || !rn2(3)) && somexyspace(...)
     if (!rn2(3)) {
         const pos = somexyspace(map, croom);
-        // Would call makemon() -- skip for now
+        if (pos) {
+            makemon(null, pos.x, pos.y, NO_MM_FLAGS, depth);
+        }
     }
 
     // Traps
@@ -1228,13 +1583,18 @@ function fill_ordinary_room(map, croom, depth, bonusItems) {
     const trapChance = Math.max(x, 2);
     let trycnt = 0;
     while (!rn2(trapChance) && (++trycnt < 1000)) {
-        // Would call mktrap() -- skip for now
+        mktrap(map, 0, MKTRAP_NOFLAGS, croom, null, depth);
     }
 
     // Gold (1/3 chance)
+    // C ref: mkgold(0L, ...) → amount = 1 + rnd(lvl_diff+2) * rnd(30)
     if (!rn2(3)) {
         const pos = somexyspace(map, croom);
-        // Would call mkgold() -- skip
+        if (pos) {
+            const lvl_diff = depth + 3; // level_difficulty = depth + u.ulevel + 2
+            rnd(lvl_diff + 2);
+            rnd(30);
+        }
     }
 
     // Fountain (1/10 chance)
@@ -1257,21 +1617,28 @@ function fill_ordinary_room(map, croom, depth, bonusItems) {
         mkgrave(map, croom, depth);
 
     // Statue (1/20 chance)
+    // C ref: mkcorpstat(STATUE, ...) → mksobj(STATUE, TRUE, FALSE) internally
     if (!rn2(20)) {
         const pos = somexyspace(map, croom);
-        // Would call mkcorpstat(STATUE, ...) -- skip
+        if (pos) {
+            mksobj(STATUE, true, false);
+        }
     }
 
-    // C ref: bonus_items section — complex supply chest logic
+    // C ref: bonus_items section — supply chest
     if (bonusItems) {
         const pos = somexyspace(map, croom);
-        // Supply chest internals consume many RNG calls we can't simulate
+        if (pos) {
+            mksobj(CHEST, true, false);
+        }
     }
 
     // C ref: box/chest (!rn2(nroom * 5 / 2))
     if (!rn2(Math.max(Math.floor(map.nroom * 5 / 2), 1))) {
         const pos = somexyspace(map, croom);
-        // Would call mksobj_at(rn2(3) ? LARGE_BOX : CHEST, ...) -- skip
+        if (pos) {
+            mksobj(rn2(3) ? LARGE_BOX : CHEST, true, false);
+        }
     }
 
     // C ref: graffiti (!rn2(27 + 3 * abs(depth)))
@@ -1283,12 +1650,12 @@ function fill_ordinary_room(map, croom, depth, bonusItems) {
     // C ref: random objects (!rn2(3))
     if (!rn2(3)) {
         const pos = somexyspace(map, croom);
-        // Would call mkobj_at() -- skip
+        if (pos) mkobj(0, true); // RANDOM_CLASS = 0
         trycnt = 0;
         while (!rn2(5)) {
             if (++trycnt > 100) break;
             const pos2 = somexyspace(map, croom);
-            // Would call mkobj_at() -- skip
+            if (pos2) mkobj(0, true);
         }
     }
 }
@@ -1410,6 +1777,9 @@ function do_fill_vault(map, vaultCheck, depth) {
 
 // C ref: mklev.c makelevel()
 export function generateLevel(depth) {
+    // Initialize object data tables (bases[], prob totals) on first call
+    initObjectData();
+
     // Simulate C pre-makelevel startup RNG consumption:
     // o_init(198) + dungeon.c(53) + nhlua(4) + u_init(1) + bones(1) = 257
     skipRng(257);

@@ -113,6 +113,16 @@ export function d(n, x) {
     return tmp;
 }
 
+// C ref: rnd.c rne() -- 1 <= rne(x) <= max(u.ulevel/3, 5)
+// During mklev at level 1, u.ulevel = 1, so utmp = 5
+export function rne(x) {
+    const utmp = 5; // u.ulevel < 15 → utmp = 5
+    let tmp = 1;
+    while (tmp < utmp && !rn2(x))
+        tmp++;
+    return tmp;
+}
+
 // Advance the PRNG by n steps without logging.
 // Used to skip past C startup calls (o_init, u_init, etc.) that JS
 // doesn't implement yet, aligning the PRNG state for level generation.

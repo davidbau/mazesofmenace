@@ -204,3 +204,43 @@ export function IS_LAVA(typ) {
 export function IS_OBSTRUCTED(typ) {
     return IS_STWALL(typ) || typ === TREE || typ === IRONBARS;
 }
+
+// Trap types (trap.h)
+export const NO_TRAP = 0;
+export const ARROW_TRAP = 1;
+export const DART_TRAP = 2;
+export const ROCKTRAP = 3;
+export const SQKY_BOARD = 4;
+export const BEAR_TRAP = 5;
+export const LANDMINE = 6;
+export const ROLLING_BOULDER_TRAP = 7;
+export const SLP_GAS_TRAP = 8;
+export const RUST_TRAP = 9;
+export const FIRE_TRAP = 10;
+export const PIT = 11;
+export const SPIKED_PIT = 12;
+export const HOLE = 13;
+export const TRAPDOOR = 14;
+export const TELEP_TRAP = 15;
+export const LEVEL_TELEP = 16;
+export const MAGIC_PORTAL = 17;
+export const WEB = 18;
+export const STATUE_TRAP = 19;
+export const MAGIC_TRAP = 20;
+export const ANTI_MAGIC = 21;
+export const POLY_TRAP = 22;
+export const VIBRATING_SQUARE = 23;
+export const TRAPPED_DOOR = 24;
+export const TRAPPED_CHEST = 25;
+export const TRAPNUM = 26;
+
+// Trap helpers (trap.h)
+export function is_pit(ttyp) { return ttyp === PIT || ttyp === SPIKED_PIT; }
+export function is_hole(ttyp) { return ttyp === HOLE || ttyp === TRAPDOOR; }
+
+// Trap flags for mktrap
+export const MKTRAP_NOFLAGS = 0;
+export const MKTRAP_SEEN = 0x01;
+export const MKTRAP_MAZEFLAG = 0x02;
+export const MKTRAP_NOSPIDERONWEB = 0x04;
+export const MKTRAP_NOVICTIM = 0x08;
