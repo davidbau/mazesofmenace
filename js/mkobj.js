@@ -239,22 +239,6 @@ function mkobj_erosions(obj) {
 // rndmonnum imported from makemon.js (circular but safe — called at runtime only)
 
 // C ref: mon.c undead_to_corpse() — map undead monsters to their living form
-function undead_to_corpse(mndx) {
-    const ptr = objectData.length > 0 ? mons[mndx] : null;
-    if (!ptr) return mndx;
-    const name = ptr.name;
-    // Zombie → living
-    if (name === 'kobold zombie' || name === 'kobold mummy') return mons.findIndex(m => m.name === 'kobold');
-    if (name === 'dwarf zombie' || name === 'dwarf mummy') return mons.findIndex(m => m.name === 'dwarf');
-    if (name === 'gnome zombie' || name === 'gnome mummy') return mons.findIndex(m => m.name === 'gnome');
-    if (name === 'orc zombie' || name === 'orc mummy') return mons.findIndex(m => m.name === 'orc');
-    if (name === 'elf zombie' || name === 'elf mummy') return mons.findIndex(m => m.name === 'elf');
-    if (name === 'human zombie' || name === 'human mummy'
-        || name === 'vampire' || name === 'vampire lord') return mons.findIndex(m => m.name === 'human');
-    if (name === 'giant zombie' || name === 'giant mummy') return mons.findIndex(m => m.name === 'giant');
-    if (name === 'ettin zombie' || name === 'ettin mummy') return mons.findIndex(m => m.name === 'ettin');
-    return mndx;
-}
 // Cache the lookups (lazy init on first call)
 let _undead_cache = null;
 function undead_to_corpse_fast(mndx) {
