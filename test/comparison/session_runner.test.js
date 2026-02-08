@@ -18,8 +18,8 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
-    generateMapsSequential, generateMapsWithRng, extractTypGrid,
-    compareGrids, formatDiffs, compareRng,
+    generateMapsSequential, generateMapsWithRng, generateStartupWithRng,
+    extractTypGrid, compareGrids, formatDiffs, compareRng,
     checkWallCompleteness, checkConnectivity, checkStairs,
     checkDimensions, checkValidTypValues,
 } from './session_helpers.js';
@@ -154,46 +154,57 @@ function runMapSession(file, session) {
 // ---------------------------------------------------------------------------
 
 function runGameplaySession(file, session) {
-    // Gameplay sessions verify startup typGrid and rngCalls.
-    // Step-by-step replay requires game engine support — for now we verify
-    // only the fields that the current JS engine can produce.
+    // Gameplay sessions verify startup typGrid, rngCalls, and RNG traces.
+    // Full step-by-step replay is verified separately when the game engine
+    // supports it; for now we verify the complete startup sequence.
 
+    let startup;
     if (session.startup) {
-        if (session.startup.typGrid) {
-            it('startup typGrid matches', (t) => {
-                const { grids } = generateMapsSequential(session.seed, 1);
-                const jsGrid = grids[1];
-                const diffs = compareGrids(jsGrid, session.startup.typGrid);
-                if (diffs.length > 0) {
-                    t.diagnostic(`Startup typGrid: ${formatDiffs(diffs)}`);
-                }
-                // Gameplay sessions may have been captured from C; JS may not
-                // match yet. Report diffs as diagnostics until full parity.
-                // TODO: convert to assert.equal once JS matches C for this seed
-            });
-        }
+        it('startup generates successfully', () => {
+            startup = generateStartupWithRng(session.seed, session);
+        });
 
         if (session.startup.typGrid) {
+            it('startup typGrid matches', () => {
+                assert.ok(startup, 'Startup generation failed');
+                const diffs = compareGrids(startup.grid, session.startup.typGrid);
+                assert.equal(diffs.length, 0,
+                    `Startup typGrid: ${formatDiffs(diffs)}`);
+            });
+
             it('startup typGrid dimensions', () => {
-                const { grids } = generateMapsSequential(session.seed, 1);
-                const errors = checkDimensions(grids[1]);
+                assert.ok(startup, 'Startup generation failed');
+                const errors = checkDimensions(startup.grid);
                 assert.equal(errors.length, 0, errors.join('; '));
             });
 
             it('startup structural validation', () => {
-                const { maps } = generateMapsSequential(session.seed, 1);
-                const connErrors = checkConnectivity(maps[1]);
+                assert.ok(startup, 'Startup generation failed');
+                const connErrors = checkConnectivity(startup.map);
                 assert.equal(connErrors.length, 0, connErrors.join('; '));
-                const stairErrors = checkStairs(maps[1], 1);
+                const stairErrors = checkStairs(startup.map, 1);
                 assert.equal(stairErrors.length, 0, stairErrors.join('; '));
             });
         }
-    }
 
-    // Note: step-level typGrids in gameplay sessions cannot be verified by
-    // generateMapsSequential() because the RNG stream includes gameplay actions
-    // between levels. Full step-by-step verification requires a game replay engine.
-    // For now, gameplay step typGrids are stored for reference but not auto-tested.
+        if (session.startup.rngCalls !== undefined) {
+            it('startup rngCalls matches', () => {
+                assert.ok(startup, 'Startup generation failed');
+                assert.equal(startup.rngCalls, session.startup.rngCalls,
+                    `seed=${session.seed}: JS=${startup.rngCalls} session=${session.startup.rngCalls}`);
+            });
+        }
+
+        if (session.startup.rng) {
+            it('startup RNG trace matches', () => {
+                assert.ok(startup, 'Startup generation failed');
+                const divergence = compareRng(startup.rng, session.startup.rng);
+                assert.equal(divergence.index, -1,
+                    `seed=${session.seed}: RNG diverges at call ${divergence.index}: ` +
+                    `JS="${divergence.js}" session="${divergence.session}"`);
+            });
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

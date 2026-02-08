@@ -2668,6 +2668,94 @@ function placeLevelSim(rawLevels, numLevels) {
 }
 
 // ========================================================================
+// get_level_extends() + bound_digging() — Mark boundary stone as non-diggable
+// C ref: mkmaze.c:1353-1455
+// ========================================================================
+
+function get_level_extends(map) {
+    // C ref: mkmaze.c:1353-1427
+    // Scan from each edge to find the first column/row with non-STONE content.
+    // The is_maze_lev flag affects the boundary offset; normal levels use -2/+2.
+    const is_maze_lev = false; // normal dungeon levels are not maze levels
+
+    let xmin, xmax, ymin, ymax;
+    let found, nonwall;
+
+    // Scan columns left to right for xmin
+    found = false; nonwall = false;
+    for (xmin = 0; !found && xmin <= COLNO; xmin++) {
+        for (let y = 0; y <= ROWNO - 1; y++) {
+            const typ = map.at(xmin, y)?.typ ?? STONE;
+            if (typ !== STONE) {
+                found = true;
+                if (!IS_WALL(typ)) nonwall = true;
+            }
+        }
+    }
+    xmin -= (nonwall || !is_maze_lev) ? 2 : 1;
+    if (xmin < 0) xmin = 0;
+
+    // Scan columns right to left for xmax
+    found = false; nonwall = false;
+    for (xmax = COLNO - 1; !found && xmax >= 0; xmax--) {
+        for (let y = 0; y <= ROWNO - 1; y++) {
+            const typ = map.at(xmax, y)?.typ ?? STONE;
+            if (typ !== STONE) {
+                found = true;
+                if (!IS_WALL(typ)) nonwall = true;
+            }
+        }
+    }
+    xmax += (nonwall || !is_maze_lev) ? 2 : 1;
+    if (xmax >= COLNO) xmax = COLNO - 1;
+
+    // Scan rows top to bottom for ymin (within xmin..xmax)
+    found = false; nonwall = false;
+    for (ymin = 0; !found && ymin <= ROWNO; ymin++) {
+        for (let x = xmin; x <= xmax; x++) {
+            const typ = map.at(x, ymin)?.typ ?? STONE;
+            if (typ !== STONE) {
+                found = true;
+                if (!IS_WALL(typ)) nonwall = true;
+            }
+        }
+    }
+    ymin -= (nonwall || !is_maze_lev) ? 2 : 1;
+
+    // Scan rows bottom to top for ymax (within xmin..xmax)
+    found = false; nonwall = false;
+    for (ymax = ROWNO - 1; !found && ymax >= 0; ymax--) {
+        for (let x = xmin; x <= xmax; x++) {
+            const typ = map.at(x, ymax)?.typ ?? STONE;
+            if (typ !== STONE) {
+                found = true;
+                if (!IS_WALL(typ)) nonwall = true;
+            }
+        }
+    }
+    ymax += (nonwall || !is_maze_lev) ? 2 : 1;
+    if (ymax >= ROWNO) ymax = ROWNO - 1;
+
+    return { xmin, xmax, ymin, ymax };
+}
+
+function bound_digging(map) {
+    // C ref: mkmaze.c:1439-1455
+    // Mark boundary stone/wall cells as non-diggable so mineralize skips them.
+    const { xmin, xmax, ymin, ymax } = get_level_extends(map);
+
+    for (let x = 0; x < COLNO; x++) {
+        for (let y = 0; y < ROWNO; y++) {
+            const loc = map.at(x, y);
+            if (loc && IS_STWALL(loc.typ)
+                && (y <= ymin || y >= ymax || x <= xmin || x >= xmax)) {
+                loc.nondiggable = true;
+            }
+        }
+    }
+}
+
+// ========================================================================
 // mineralize() — Deposit gold and gems in stone walls
 // C ref: mklev.c:1437-1530
 // ========================================================================
@@ -2692,17 +2780,15 @@ function mineralize(map, depth) {
                 y += 1;
                 continue;
             }
-            // Check all 8 neighbors are stone (skip W_NONDIGGABLE — not used on normal levels)
-            const ym1 = map.at(x, y - 1);
-            const xp1y = map.at(x + 1, y);
-            const xm1y = map.at(x - 1, y);
-            const xp1ym1 = map.at(x + 1, y - 1);
-            const xm1ym1 = map.at(x - 1, y - 1);
-            const xp1yp1 = map.at(x + 1, y + 1);
-            const xm1yp1 = map.at(x - 1, y + 1);
-            if (ym1?.typ !== STONE || xp1ym1?.typ !== STONE || xm1ym1?.typ !== STONE
-                || xp1y?.typ !== STONE || xm1y?.typ !== STONE
-                || xp1yp1?.typ !== STONE || xm1yp1?.typ !== STONE) {
+            // C ref: mklev.c:1496-1503 — check W_NONDIGGABLE and all 8 neighbors
+            if (loc.nondiggable) continue;
+            if (map.at(x, y - 1)?.typ !== STONE
+                || map.at(x + 1, y - 1)?.typ !== STONE
+                || map.at(x - 1, y - 1)?.typ !== STONE
+                || map.at(x + 1, y)?.typ !== STONE
+                || map.at(x - 1, y)?.typ !== STONE
+                || map.at(x + 1, y + 1)?.typ !== STONE
+                || map.at(x - 1, y + 1)?.typ !== STONE) {
                 continue;
             }
 
@@ -2907,7 +2993,9 @@ export function makelevel(depth) {
         }
     }
 
-    // C ref: mklev.c:1538-1539 — level_finalize_topology() → mineralize()
+    // C ref: mklev.c:1533-1539 — level_finalize_topology()
+    // bound_digging marks boundary stone as non-diggable before mineralize
+    bound_digging(map);
     mineralize(map, depth);
 
     return map;

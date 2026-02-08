@@ -10,6 +10,8 @@ import {
 } from '../../js/config.js';
 import { initRng, enableRngLog, getRngLog, disableRngLog } from '../../js/rng.js';
 import { initLevelGeneration, makelevel, wallification } from '../../js/dungeon.js';
+import { simulatePostLevelInit } from '../../js/u_init.js';
+import { Player } from '../../js/player.js';
 
 // Terrain type names for readable diffs (matches C's levltyp[] in cmd.c)
 export const TYP_NAMES = [
@@ -176,6 +178,48 @@ export function generateMapsWithRng(seed, maxDepth) {
     }
     disableRngLog();
     return { grids, maps, rngLogs };
+}
+
+// Generate full startup (map gen + post-level init) with RNG trace capture.
+// Matches the C startup sequence: o_init → dungeon_init → makelevel → wallification
+// → player placement → simulatePostLevelInit (pet, inventory, attributes, welcome).
+// Returns { grid, map, rngCalls, rng }.
+export function generateStartupWithRng(seed, session) {
+    enableRngLog();
+    initRng(seed);
+    initLevelGeneration();
+
+    const map = makelevel(1);
+    wallification(map);
+    const grid = extractTypGrid(map);
+
+    // Set up player matching the session's character configuration
+    const player = new Player();
+    const charOpts = session.character || {};
+    // Wizard mode: auto-select Valkyrie (index 11) — no RNG consumed
+    player.initRole(11); // PM_VALKYRIE
+    player.name = charOpts.name || 'Wizard';
+    player.gender = charOpts.gender === 'female' ? 1 : 0;
+
+    // Place player at upstair (matching C's u_on_upstairs)
+    if (map.upstair) {
+        player.x = map.upstair.x;
+        player.y = map.upstair.y;
+    }
+
+    // Post-level init: pet creation, inventory, attributes, welcome
+    simulatePostLevelInit(player, map, 1);
+
+    const fullLog = getRngLog();
+    disableRngLog();
+
+    return {
+        grid,
+        map,
+        player,
+        rngCalls: fullLog.length,
+        rng: fullLog.map(toCompactRng),
+    };
 }
 
 // ---------------------------------------------------------------------------

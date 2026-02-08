@@ -28,6 +28,7 @@ export function makeLocation() {
         mem_trap: 0,       // remembered trap
         mem_obj: 0,        // remembered object
         mem_invis: false,  // remembered invisible monster
+        nondiggable: false, // W_NONDIGGABLE flag (set by bound_digging)
     };
 }
 
