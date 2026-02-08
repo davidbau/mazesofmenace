@@ -8,31 +8,31 @@ import { A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA, NUM_ATTRS,
 // C ref: src/role.c roles[] array
 export const roles = [
     { name: 'Archeologist', abbr: 'Arc', str: 7, int: 10, wis: 10, dex: 7, con: 7, cha: 7,
-      startingHP: 11, startingPW: 1, align: A_NEUTRAL, petType: 'cat' },
+      startingHP: 11, startingPW: 1, enadv: 0, align: A_NEUTRAL, petType: null },  // NON_PM
     { name: 'Barbarian', abbr: 'Bar', str: 16, int: 7, wis: 7, dex: 15, con: 16, cha: 6,
-      startingHP: 14, startingPW: 1, align: A_NEUTRAL, petType: 'dog' },
-    { name: 'Caveman', abbr: 'Cav', str: 10, int: 7, wis: 9, dex: 8, con: 10, cha: 6,
-      startingHP: 14, startingPW: 1, align: A_NEUTRAL, petType: 'dog' },
+      startingHP: 14, startingPW: 1, enadv: 0, align: A_NEUTRAL, petType: null },  // NON_PM
+    { name: 'Caveman', abbr: 'Cav', str: 10, int: 7, wis: 7, dex: 7, con: 8, cha: 6,
+      startingHP: 14, startingPW: 1, enadv: 0, align: A_NEUTRAL, petType: 'dog' },
     { name: 'Healer', abbr: 'Hea', str: 7, int: 7, wis: 13, dex: 7, con: 11, cha: 16,
-      startingHP: 11, startingPW: 1, align: A_NEUTRAL, petType: 'cat' },
+      startingHP: 11, startingPW: 1, enadv: 4, align: A_NEUTRAL, petType: null },  // NON_PM
     { name: 'Knight', abbr: 'Kni', str: 13, int: 7, wis: 14, dex: 8, con: 10, cha: 17,
-      startingHP: 14, startingPW: 1, align: 1, petType: 'dog' },
+      startingHP: 14, startingPW: 1, enadv: 4, align: 1, petType: 'pony' },
     { name: 'Monk', abbr: 'Mon', str: 10, int: 7, wis: 8, dex: 8, con: 7, cha: 7,
-      startingHP: 12, startingPW: 2, align: A_NEUTRAL, petType: 'cat' },
+      startingHP: 12, startingPW: 2, enadv: 2, align: A_NEUTRAL, petType: null },  // NON_PM
     { name: 'Priest', abbr: 'Pri', str: 7, int: 7, wis: 10, dex: 7, con: 7, cha: 7,
-      startingHP: 12, startingPW: 4, align: A_NEUTRAL, petType: 'cat' },
+      startingHP: 12, startingPW: 4, enadv: 3, align: A_NEUTRAL, petType: null },  // NON_PM
     { name: 'Ranger', abbr: 'Ran', str: 13, int: 13, wis: 13, dex: 9, con: 13, cha: 7,
-      startingHP: 13, startingPW: 1, align: A_NEUTRAL, petType: 'dog' },
+      startingHP: 13, startingPW: 1, enadv: 0, align: A_NEUTRAL, petType: 'dog' },
     { name: 'Rogue', abbr: 'Rog', str: 7, int: 7, wis: 7, dex: 10, con: 7, cha: 6,
-      startingHP: 10, startingPW: 1, align: -1, petType: 'cat' },
+      startingHP: 10, startingPW: 1, enadv: 0, align: -1, petType: null },  // NON_PM
     { name: 'Samurai', abbr: 'Sam', str: 10, int: 8, wis: 7, dex: 10, con: 17, cha: 6,
-      startingHP: 13, startingPW: 1, align: 1, petType: 'dog' },
+      startingHP: 13, startingPW: 1, enadv: 0, align: 1, petType: 'dog' },
     { name: 'Tourist', abbr: 'Tou', str: 7, int: 10, wis: 6, dex: 7, con: 7, cha: 10,
-      startingHP: 8, startingPW: 1, align: A_NEUTRAL, petType: 'cat' },
+      startingHP: 8, startingPW: 1, enadv: 0, align: A_NEUTRAL, petType: null },  // NON_PM
     { name: 'Valkyrie', abbr: 'Val', str: 10, int: 7, wis: 7, dex: 7, con: 10, cha: 7,
-      startingHP: 14, startingPW: 1, align: A_NEUTRAL, petType: 'cat' },
+      startingHP: 14, startingPW: 1, enadv: 0, align: A_NEUTRAL, petType: null },  // NON_PM
     { name: 'Wizard', abbr: 'Wiz', str: 7, int: 10, wis: 7, dex: 7, con: 7, cha: 7,
-      startingHP: 10, startingPW: 4, align: A_NEUTRAL, petType: 'cat' },
+      startingHP: 10, startingPW: 4, enadv: 3, align: A_NEUTRAL, petType: 'cat' },
 ];
 
 export class Player {

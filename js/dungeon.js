@@ -31,6 +31,7 @@ import { rn2, rnd, rn1, d } from './rng.js';
 import { mkobj, mksobj, weight, setLevelDepth } from './mkobj.js';
 import { makemon, NO_MM_FLAGS, MM_NOGRP } from './makemon.js';
 import { init_objects } from './o_init.js';
+import { roles } from './player.js';
 import {
     ARROW, DART, ROCK, BOULDER, LARGE_BOX, CHEST, GOLD_PIECE, CORPSE,
     STATUE, TALLOW_CANDLE, WAX_CANDLE, BELL,
@@ -2467,7 +2468,7 @@ function do_fill_vault(map, vaultCheck, depth) {
 //   4. u_init.c: rn2(10)
 //   5. nhlua pre_themerooms shuffle: rn2(3), rn2(2)
 //   6. bones.c: rn2(3)
-function simulateDungeonInit() {
+function simulateDungeonInit(roleIndex) {
     // 1. nhlib.lua: shuffle(align) — 3-element Fisher-Yates
     rn2(3); rn2(2);
 
@@ -2587,7 +2588,12 @@ function simulateDungeonInit() {
     // 3. init_castle_tune: 5 × rn2(7)
     for (let i = 0; i < 5; i++) rn2(7);
 
-    // 4. u_init.c: rn2(10) for role selection
+    // 4. u_init.c u_init() → newpw() + u_init_misc()
+    // C ref: exper.c newpw() — rnd(enadv) if role has non-zero energy advance
+    const role = roleIndex !== undefined ? roles[roleIndex] : null;
+    const enadv = role ? (role.enadv || 0) : 0;
+    if (enadv > 0) rnd(enadv);
+    // C ref: u_init.c u_init_misc() — rn2(10)
     rn2(10);
 
     // 5. nhlua pre_themerooms shuffle (loaded when themerms.lua is first used)
@@ -2840,9 +2846,9 @@ function mineralize(map, depth) {
 // castle tune + u_init + themerooms shuffle.
 // C ref: early_init() → o_init.c init_objects(), dungeon.c init_dungeons(),
 //        u_init.c u_init(), nhlua pre_themerooms
-export function initLevelGeneration() {
+export function initLevelGeneration(roleIndex) {
     init_objects();
-    simulateDungeonInit();
+    simulateDungeonInit(roleIndex);
 }
 
 // C ref: mklev.c makelevel()

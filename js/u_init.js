@@ -15,13 +15,15 @@
 
 import { rn2, rnd, d } from './rng.js';
 import { mksobj } from './mkobj.js';
-import { isok, NUM_ATTRS, PM_VALKYRIE, ACCESSIBLE, COLNO, ROWNO } from './config.js';
+import { isok, NUM_ATTRS, PM_KNIGHT, PM_VALKYRIE, ACCESSIBLE, COLNO, ROWNO } from './config.js';
 import {
-    SPEAR, DAGGER, SMALL_SHIELD, FOOD_RATION, OIL_LAMP,
+    LONG_SWORD, LANCE, SPEAR, DAGGER, RING_MAIL, HELMET,
+    SMALL_SHIELD, LEATHER_GLOVES, APPLE, CARROT, SADDLE,
+    FOOD_RATION, OIL_LAMP,
     WEAPON_CLASS, ARMOR_CLASS, FOOD_CLASS, TOOL_CLASS,
 } from './objects.js';
 import { roles } from './player.js';
-import { mons, PM_LITTLE_DOG, PM_KITTEN } from './monsters.js';
+import { mons, PM_LITTLE_DOG, PM_KITTEN, PM_PONY } from './monsters.js';
 
 // ========================================================================
 // Pet Creation
@@ -88,28 +90,36 @@ function adj_lev(mlevel, levelDifficulty, ulevel) {
 const MONSYM_CHARS = {
     4: 'd',   // S_DOG
     6: 'f',   // S_FELINE
+    21: 'u',  // S_UNICORN (includes ponies/horses)
 };
+
+// C ref: dog.c:90-101 pet_type() — determine starting pet monster index
+function pet_type(roleIndex) {
+    const role = roles[roleIndex];
+    if (role.petType === 'pony') return PM_PONY;
+    if (role.petType === 'cat') return PM_KITTEN;
+    if (role.petType === 'dog') return PM_LITTLE_DOG;
+    // null / NON_PM → random: rn2(2) ? PM_KITTEN : PM_LITTLE_DOG
+    return rn2(2) ? PM_KITTEN : PM_LITTLE_DOG;
+}
 
 // C ref: dog.c makedog() → makemon.c makemon()
 // Creates the starting pet and places it on the map.
 // Returns the pet monster object. RNG consumption matches C exactly.
-function makedog(map, playerX, playerY, depth) {
-    // C ref: dog.c:100 pet_type() — Valkyrie has petnum=NON_PM
-    // rn2(2): 0 = PM_LITTLE_DOG, 1 = PM_KITTEN
-    const petTypeIdx = rn2(2);
-    const pmIdx = petTypeIdx === 0 ? PM_LITTLE_DOG : PM_KITTEN;
+function makedog(map, player, depth) {
+    const pmIdx = pet_type(player.roleIndex);
     const petData = mons[pmIdx];
 
     // C ref: makemon.c:1180-1186 — enexto_core for byyou placement
     // NEW_ENEXTO calls collect_coords(candy, ux, uy, 3, CC_NO_FLAGS, NULL)
-    const positions = collectCoordsShuffle(playerX, playerY, 3);
+    const positions = collectCoordsShuffle(player.x, player.y, 3);
 
     // Find first valid position (accessible terrain, no existing monster)
-    let petX = playerX + 1, petY = playerY; // fallback
+    let petX = player.x + 1, petY = player.y; // fallback
     for (const pos of positions) {
         const loc = map.at(pos.x, pos.y);
         if (loc && ACCESSIBLE(loc.typ) && !map.monsterAt(pos.x, pos.y)
-            && !(pos.x === playerX && pos.y === playerY)) {
+            && !(pos.x === player.x && pos.y === player.y)) {
             petX = pos.x;
             petY = pos.y;
             break;
@@ -132,10 +142,24 @@ function makedog(map, playerX, playerY, depth) {
     rn2(2);
 
     // C ref: makemon.c:1295 — peace_minded(ptr)
-    // Neutral align dog: rn2(16 + record) && rn2(2 + abs(mal))
-    const peacefulFirst = rn2(16);
-    if (peacefulFirst) {
-        rn2(2);
+    // peace_minded() consumes RNG when it reaches the alignment check.
+    // For neutral-aligned players, it calls rn2(16+record) && rn2(2+abs(mal)).
+    // For lawful/chaotic players, it returns early (race_peaceful) with no RNG.
+    // Knight/pony is a special case: also no peace_minded (pony handling).
+    const playerAlign = roles[player.roleIndex]?.align || 0;
+    if (pmIdx !== PM_PONY && playerAlign === 0) {
+        // Neutral align: rn2(16 + record) && rn2(2 + abs(dominated_alignment))
+        const peacefulFirst = rn2(16);
+        if (peacefulFirst) {
+            rn2(2);
+        }
+    }
+
+    // C ref: dog.c:264-267 — put_saddle_on_mon(NULL, mtmp) for pony
+    // Creates a saddle and adds to pony's minvent
+    let saddleObj = null;
+    if (pmIdx === PM_PONY) {
+        saddleObj = mksobj(SADDLE, true, false);
     }
 
     // Create the pet monster object (matches makemon structure)
@@ -164,6 +188,7 @@ function makedog(map, playerX, playerY, depth) {
         passive: false,
         mtrack: [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }],
         mnum: pmIdx,     // C ref: monst.h — index into mons[]
+        minvent: saddleObj ? [saddleObj] : [],
         // C ref: mextra.h struct edog — pet-specific data
         // C ref: dog.c initedog(mtmp, TRUE) — full initialization
         edog: {
@@ -191,6 +216,19 @@ function makedog(map, playerX, playerY, depth) {
 
 // C ref: u_init.c struct trobj constants
 const UNDEF_BLESS = -1;
+
+// Knight starting inventory
+// C ref: u_init.c:90-100
+const Knight_inv = [
+    { otyp: LONG_SWORD,      spe: 1, oclass: WEAPON_CLASS, qmin: 1,  qmax: 1,  bless: UNDEF_BLESS },
+    { otyp: LANCE,            spe: 1, oclass: WEAPON_CLASS, qmin: 1,  qmax: 1,  bless: UNDEF_BLESS },
+    { otyp: RING_MAIL,        spe: 1, oclass: ARMOR_CLASS,  qmin: 1,  qmax: 1,  bless: UNDEF_BLESS },
+    { otyp: HELMET,           spe: 0, oclass: ARMOR_CLASS,  qmin: 1,  qmax: 1,  bless: UNDEF_BLESS },
+    { otyp: SMALL_SHIELD,     spe: 0, oclass: ARMOR_CLASS,  qmin: 1,  qmax: 1,  bless: UNDEF_BLESS },
+    { otyp: LEATHER_GLOVES,   spe: 0, oclass: ARMOR_CLASS,  qmin: 1,  qmax: 1,  bless: UNDEF_BLESS },
+    { otyp: APPLE,            spe: 0, oclass: FOOD_CLASS,   qmin: 10, qmax: 10, bless: 0 },
+    { otyp: CARROT,           spe: 0, oclass: FOOD_CLASS,   qmin: 10, qmax: 10, bless: 0 },
+];
 
 // Valkyrie starting inventory
 // C ref: u_init.c:160-166
@@ -252,13 +290,21 @@ function trquan(trop) {
     return trop.qmin + rn2(trop.qmax - trop.qmin + 1);
 }
 
-// Simulate u_init_role() for Valkyrie
-// C ref: u_init.c:758-770
-function simulateUInitRole(player) {
-    iniInv(player, Valkyrie_inv);
-    // C ref: u_init.c:767 — if (!rn2(6)) ini_inv(Lamp)
-    if (!rn2(6)) {
-        iniInv(player, Lamp_inv);
+// C ref: u_init.c u_init_role() — role-specific starting inventory
+function u_init_role(player) {
+    switch (player.roleIndex) {
+        case PM_KNIGHT:
+            iniInv(player, Knight_inv);
+            break;
+        case PM_VALKYRIE:
+            iniInv(player, Valkyrie_inv);
+            if (!rn2(6)) iniInv(player, Lamp_inv);
+            break;
+        default:
+            // Other roles not yet implemented — fall through to Valkyrie
+            iniInv(player, Valkyrie_inv);
+            if (!rn2(6)) iniInv(player, Lamp_inv);
+            break;
     }
 }
 
@@ -269,14 +315,14 @@ function simulateUInitRole(player) {
 // Attribute distribution weights per role index
 // C ref: role.c urole.attrdist[]
 const ROLE_ATTRDIST = {
-    0:  [10, 10, 10, 20, 20, 10], // Archeologist (conservative guess)
+    0:  [20, 20, 20, 10, 20, 10], // Archeologist
     1:  [30, 6, 7, 20, 30, 7],    // Barbarian
     2:  [30, 6, 7, 20, 30, 7],    // Caveman
     3:  [15, 20, 20, 15, 25, 5],   // Healer
-    4:  [20, 15, 15, 20, 20, 10],  // Knight
+    4:  [30, 15, 15, 10, 20, 10],  // Knight
     5:  [25, 10, 20, 20, 15, 10],  // Monk
     6:  [15, 10, 30, 15, 20, 10],  // Priest
-    7:  [20, 20, 10, 20, 20, 10],  // Ranger
+    7:  [30, 10, 10, 20, 20, 10],  // Ranger
     8:  [20, 10, 10, 30, 20, 10],  // Rogue
     9:  [30, 10, 8, 30, 14, 8],    // Samurai
     10: [15, 10, 10, 15, 30, 20],  // Tourist
@@ -366,7 +412,7 @@ export function simulatePostLevelInit(player, map, depth) {
     const role = roles[player.roleIndex];
 
     // 1. makedog() — pet creation (actually places pet on map)
-    const pet = makedog(map, player.x, player.y, depth || 1);
+    const pet = makedog(map, player, depth || 1);
 
     // C ref: dog.c initedog() — apport = ACURR(A_CHA)
     // Called inside makedog() BEFORE init_attr(), and u.acurr is still zeroed.
@@ -376,8 +422,8 @@ export function simulatePostLevelInit(player, map, depth) {
     }
 
     // 2. u_init_inventory_attrs()
-    //    a. u_init_role() → ini_inv(Valkyrie) + rn2(6) lamp check
-    simulateUInitRole(player);
+    //    a. u_init_role() → role-specific inventory
+    u_init_role(player);
     //    b. u_init_race() → Human: nothing (no RNG)
     //    c+d. init_attr(75) + vary_init_attr()
     initAttributes(player);

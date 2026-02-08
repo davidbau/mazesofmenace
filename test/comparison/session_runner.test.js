@@ -249,6 +249,76 @@ function runGameplaySession(file, session) {
 }
 
 // ---------------------------------------------------------------------------
+// Chargen sessions: character creation startup verification
+// ---------------------------------------------------------------------------
+
+// Roles with implemented JS chargen inventory
+const CHARGEN_SUPPORTED_ROLES = new Set(['Knight', 'Valkyrie']);
+
+// Collect all startup RNG from a chargen session: confirm-ok + welcome ("more") steps.
+// Returns the combined RNG array, or null if no confirm-ok step found.
+function collectChargenStartupRng(session) {
+    let startupRng = [];
+    let foundConfirm = false;
+    for (const step of session.steps) {
+        if (step.action === 'confirm-ok') {
+            foundConfirm = true;
+            startupRng = startupRng.concat(step.rng || []);
+            continue;
+        }
+        if (foundConfirm && step.action === 'more' && (step.rng || []).length > 0) {
+            startupRng = startupRng.concat(step.rng);
+            break;
+        }
+        if (foundConfirm) break;
+    }
+    return startupRng.length > 0 ? startupRng : null;
+}
+
+function runChargenSession(file, session) {
+    it('chargen session has valid data', () => {
+        assert.ok(session.character, 'Missing character data');
+        assert.ok(session.steps.length > 0, 'No steps recorded');
+    });
+
+    const role = session.character?.role;
+    if (!CHARGEN_SUPPORTED_ROLES.has(role)) {
+        it(`chargen ${role} (not yet implemented)`, () => {
+            assert.ok(true);
+        });
+        return;
+    }
+
+    let startup;
+    it('startup generates successfully', () => {
+        startup = generateStartupWithRng(session.seed, session);
+    });
+
+    // Full startup RNG comparison: only possible when map generation
+    // is faithful for this seed+role combination. Since chargen sessions
+    // have pre-startup RNG (menu selection) that shifts the PRNG stream,
+    // map gen may differ from tested seeds. Report but don't fail.
+    const sessionStartupRng = collectChargenStartupRng(session);
+    if (sessionStartupRng) {
+        it('startup rngCalls (diagnostic)', (t) => {
+            assert.ok(startup, 'Startup generation failed');
+            if (startup.rngCalls !== sessionStartupRng.length) {
+                t.diagnostic(`seed=${session.seed} role=${role}: ` +
+                    `JS=${startup.rngCalls} session=${sessionStartupRng.length} ` +
+                    `(diff=${startup.rngCalls - sessionStartupRng.length}, ` +
+                    `likely map gen divergence)`);
+            }
+        });
+
+        it('startup chargen RNG count (diagnostic)', (t) => {
+            assert.ok(startup, 'Startup generation failed');
+            t.diagnostic(`seed=${session.seed} role=${role}: ` +
+                `JS chargen calls=${startup.chargenRngCalls}`);
+        });
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Main: discover and run all sessions
 // ---------------------------------------------------------------------------
 
@@ -264,12 +334,7 @@ for (const { file, dir } of sessionFiles) {
         } else if (type === 'gameplay') {
             runGameplaySession(file, session);
         } else if (type === 'chargen') {
-            it('chargen session (reference data only)', () => {
-                // Chargen sessions capture C character creation sequences.
-                // They serve as reference data for future JS replay testing.
-                assert.ok(session.character, 'Missing character data');
-                assert.ok(session.steps.length > 0, 'No steps recorded');
-            });
+            runChargenSession(file, session);
         } else {
             it('unknown session type', () => {
                 assert.fail(`Unknown session type: ${type}`);

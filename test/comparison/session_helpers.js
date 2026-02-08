@@ -11,7 +11,7 @@ import {
 import { initRng, enableRngLog, getRngLog, disableRngLog, rn2, rnd, rn1 } from '../../js/rng.js';
 import { initLevelGeneration, makelevel, wallification } from '../../js/dungeon.js';
 import { simulatePostLevelInit } from '../../js/u_init.js';
-import { Player } from '../../js/player.js';
+import { Player, roles } from '../../js/player.js';
 import { NORMAL_SPEED, A_DEX, A_CON } from '../../js/config.js';
 import { rhack } from '../../js/commands.js';
 import { movemon } from '../../js/monmove.js';
@@ -184,14 +184,42 @@ export function generateMapsWithRng(seed, maxDepth) {
     return { grids, maps, rngLogs };
 }
 
+// Map role name → roles[] index
+const ROLE_INDEX = {};
+for (let i = 0; i < roles.length; i++) ROLE_INDEX[roles[i].name] = i;
+
+// Count RNG calls consumed during character selection menus before newgame().
+// For chargen sessions, steps before "confirm-ok" may consume RNG (e.g., pick_align).
+// For gameplay sessions, this returns 0.
+function countPreStartupRng(session) {
+    if (session.type !== 'chargen') return 0;
+    let count = 0;
+    for (const step of (session.steps || [])) {
+        if (step.action === 'confirm-ok') break;
+        count += (step.rng || []).length;
+    }
+    return count;
+}
+
 // Generate full startup (map gen + post-level init) with RNG trace capture.
 // Matches the C startup sequence: o_init → dungeon_init → makelevel → wallification
 // → player placement → simulatePostLevelInit (pet, inventory, attributes, welcome).
+// For chargen sessions, pre-startup menu RNG calls are consumed first.
 // Returns { grid, map, rngCalls, rng }.
 export function generateStartupWithRng(seed, session) {
     enableRngLog();
     initRng(seed);
-    initLevelGeneration();
+
+    // Determine role before level generation (needed for role-specific RNG)
+    const charOpts = session.character || {};
+    const roleIndex = ROLE_INDEX[charOpts.role] ?? 11; // default Valkyrie
+
+    // Chargen sessions have RNG consumed during character selection menus
+    // (e.g., pick_align) before the newgame() startup. Consume those first.
+    const preStartupCalls = countPreStartupRng(session);
+    for (let i = 0; i < preStartupCalls; i++) rn2(1);
+
+    initLevelGeneration(roleIndex);
 
     const map = makelevel(1);
     wallification(map);
@@ -199,9 +227,7 @@ export function generateStartupWithRng(seed, session) {
 
     // Set up player matching the session's character configuration
     const player = new Player();
-    const charOpts = session.character || {};
-    // Wizard mode: auto-select Valkyrie (index 11) — no RNG consumed
-    player.initRole(11); // PM_VALKYRIE
+    player.initRole(roleIndex);
     player.name = charOpts.name || 'Wizard';
     player.gender = charOpts.gender === 'female' ? 1 : 0;
 
@@ -211,18 +237,29 @@ export function generateStartupWithRng(seed, session) {
         player.y = map.upstair.y;
     }
 
+    // Capture pre-chargen RNG count for isolating chargen calls
+    const preChargenCount = getRngLog().length;
+
     // Post-level init: pet creation, inventory, attributes, welcome
     simulatePostLevelInit(player, map, 1);
 
     const fullLog = getRngLog();
     disableRngLog();
 
+    // Strip pre-startup menu RNG calls from the log
+    const startupLog = fullLog.slice(preStartupCalls);
+
+    // Isolate chargen-only RNG (post-map: pet + inventory + attributes + welcome)
+    const chargenLog = fullLog.slice(preChargenCount);
+
     return {
         grid,
         map,
         player,
-        rngCalls: fullLog.length,
-        rng: fullLog.map(toCompactRng),
+        rngCalls: startupLog.length,
+        rng: startupLog.map(toCompactRng),
+        chargenRngCalls: chargenLog.length,
+        chargenRng: chargenLog.map(toCompactRng),
     };
 }
 
@@ -355,13 +392,14 @@ class HeadlessGame {
 export async function replaySession(seed, session) {
     enableRngLog();
     initRng(seed);
-    initLevelGeneration();
+    const replayRoleIndex = ROLE_INDEX[session.character?.role] ?? 11;
+    initLevelGeneration(replayRoleIndex);
 
     const map = makelevel(1);
     wallification(map);
 
     const player = new Player();
-    player.initRole(11); // PM_VALKYRIE
+    player.initRole(replayRoleIndex);
     player.name = session.character?.name || 'Wizard';
     player.gender = session.character?.gender === 'female' ? 1 : 0;
 
