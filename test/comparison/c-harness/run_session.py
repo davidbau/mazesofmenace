@@ -83,6 +83,12 @@ def setup_home():
         import glob
         for f in glob.glob(os.path.join(save_dir, '*')):
             os.unlink(f)
+    # Also clean stale save/lock files in the install dir itself
+    import glob as glob_mod
+    for f in glob_mod.glob(os.path.join(INSTALL_DIR, '*wizard*')):
+        os.unlink(f)
+    for f in glob_mod.glob(os.path.join(INSTALL_DIR, '*Wizard*')):
+        os.unlink(f)
 
 
 def read_rng_log(rng_log_file):
@@ -173,6 +179,10 @@ def clear_more_prompts(session, max_iterations=10):
             break
         if '--More--' in content:
             tmux_send_special(session, 'Space', 0.2)
+        elif 'Die?' in content:
+            # Wizard mode death: answer 'n' to resurrect
+            tmux_send(session, 'n', 0.3)
+            print('  [WIZARD] Died and resurrected')
         else:
             break
     return content
@@ -196,6 +206,10 @@ def wait_for_game_ready(session, rng_log_file):
 
         if 'keep the save file' in content or 'keep save' in content.lower():
             tmux_send(session, 'n', 0.5)
+            continue
+
+        if 'Destroy old game?' in content or 'destroy old game' in content.lower():
+            tmux_send(session, 'y', 0.5)
             continue
 
         if 'Shall I pick' in content:

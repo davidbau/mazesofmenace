@@ -334,10 +334,124 @@ node test/comparison/gen_session.js
 Converts the scattered trace files in `traces/seed42_reference/` into
 `sessions/seed42.session.json`.
 
-### From the C binary (future)
+### From the C binary (two-step workflow)
 
-The `run_trace.py` harness can be extended to output session JSON directly,
-enabling easy capture of new seeds and longer play sequences.
+Generating a session requires two tools:
+
+1. **`plan_session.py`** — Adaptively discovers the move sequence
+2. **`run_session.py`** — Captures the full session with per-step data
+
+#### Step 1: Discover the move sequence
+
+```bash
+python3 test/comparison/c-harness/plan_session.py <seed>
+```
+
+This script discovers the key sequence to navigate from the upstairs to
+the downstairs on Dlvl:1. It works **adaptively**:
+
+1. Launches the C binary and captures the terrain grid via `#dumpmap`
+2. Finds the player (`@` on screen) and the downstairs (typ=26 in the grid)
+3. Runs BFS to plan a cardinal-only shortest path
+4. Sends one move at a time, re-planning after each step
+5. Handles obstacles automatically:
+   - **Monster encounters**: detects when the player is stuck (didn't move),
+     keeps sending the same directional key to attack until the monster dies
+   - **Locked doors**: detects stuck state, re-reads the terrain grid after
+     the door opens, and continues pathfinding
+   - **Wizard mode death**: answers `Die? [yn]` with 'n' to resurrect
+
+The output is the complete key sequence plus a ready-to-run `run_session.py`
+command:
+
+```
+Reached downstairs at (51,12) after 65 moves!
+Descended to Dlvl:2
+
+============================================================
+Move sequence (66 keys):
+  hhhhhhhhhhhhhhjhhkkhhhhjjhhhhhhhhhhhjjjhhjhhhjhhjhhjjllllllllllll>
+
+To capture this session:
+  python3 test/comparison/c-harness/run_session.py 1 \
+      test/comparison/sessions/seed1.session.json \
+      'hhhhhhhhhhhhhhjhhkkhhhhjjhhhhhhhhhhhjjjhhjhhhjhhjhhjjllllllllllll>'
+```
+
+#### Step 2: Capture the session
+
+```bash
+python3 test/comparison/c-harness/run_session.py <seed> <output_json> '<move_sequence>'
+```
+
+This script replays the discovered sequence and captures full ground-truth
+data at each step:
+
+1. Launches the C binary in a tmux session with `NETHACK_SEED=<seed>`
+2. Navigates startup prompts (character selection, tutorial, --More--)
+3. Captures the startup state (screen + typGrid via `#dumpmap`)
+4. Sends each move key one at a time, capturing after each:
+   - Screen state (24 lines via `tmux capture-pane`)
+   - RNG delta (from the `NETHACK_RNGLOG` file)
+   - Terrain grid (via `#dumpmap`; included only if changed)
+5. Handles `--More--` prompts and wizard-mode `Die?` prompts automatically
+6. Quits the game and writes the session JSON
+
+**Prerequisites:** The C binary must be built first (`bash test/comparison/c-harness/setup.sh`).
+Requires `tmux` and `python3`.
+
+**Move encoding:**
+- `h/j/k/l` — cardinal movement (west/south/north/east)
+- `y/u/b/n` — diagonal movement (NW/NE/SW/SE)
+- `.` — wait, `s` — search, `,` — pickup, `i` — inventory
+- `:` — look (no turn consumed), `@` — toggle autopickup
+- `>` — descend stairs, `<` — ascend stairs
+- `F<dir>` — fight in direction (e.g., `Fh` = fight west)
+
+**Timing:** Each step takes ~2-3 seconds (dominated by `#dumpmap`). A 67-step
+session takes about 3-4 minutes to capture.
+
+### Why the two-step workflow?
+
+Pre-planning a move sequence by hand is error-prone because obstacles like
+monster encounters and locked doors consume move keys without advancing the
+player. A 56-step BFS path might need 67 actual keys due to:
+
+- **Monster encounters**: Moving into a monster attacks instead of moving.
+  Multiple attacks may be needed to kill it. With seed 1, a fox encounter
+  takes 6 combat rounds (4 misses, death/resurrection, kill) plus 1 step
+  to the corpse = 7 extra keys.
+
+- **Locked doors**: "The door resists!" consumes a turn without moving.
+  Seed 1's door at grid (55,4) takes 3 kicks (2 resists + 1 opens) plus
+  1 move to step through = 3 extra keys.
+
+- **Wizard mode death**: `Die? [yn]` prompts are handled by both tools.
+  `plan_session.py` injects 'n' between moves. `run_session.py` injects
+  'n' during its `--More--` clearing loop.
+
+The adaptive planner discovers these obstacles by checking the player's
+screen position after each key, making the process reliable regardless of
+what monsters or locked doors a given seed produces.
+
+### Path planning details
+
+**Cardinal-only movement.** The planner uses only `h/j/k/l` (no diagonals)
+because diagonal moves in NetHack are blocked when both orthogonal adjacent
+tiles are walls. Cardinal paths are always reliable.
+
+**Screen-to-grid coordinate mapping.** The tmux capture has a 1-column
+offset from the game's internal grid:
+- `grid_col = screen_col + 1`
+- `grid_row = screen_row - 1` (screen row 0 is the message line)
+
+**Terrain walkability.** BFS considers these typ codes walkable:
+DOOR (23), CORR (24), ROOM (25), STAIRS (26), LADDER (27), FOUNTAIN (28).
+
+**Stuck detection.** If the player's screen position doesn't change after
+a move, the planner increments a stuck counter. After 2 stuck moves, it
+re-reads the terrain grid (a kicked door changes DOOR flags). After 10
+stuck moves, it aborts.
 
 ## Using Session Files in Tests
 
