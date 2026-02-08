@@ -29,8 +29,8 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, '..', '..', '..'))
 RESULTS_DIR = os.path.join(SCRIPT_DIR, 'results')
 
-# The installed nethack lives here (set by setup.sh via linux-minimal hints)
-INSTALL_DIR = os.path.join(os.path.expanduser('~'), 'nethack-minimal', 'games', 'lib', 'nethackdir')
+# The installed nethack lives here (set by setup.sh, project-local)
+INSTALL_DIR = os.path.join(PROJECT_ROOT, 'nethack-c', 'install', 'games', 'lib', 'nethackdir')
 NETHACK_BINARY = os.path.join(INSTALL_DIR, 'nethack')
 
 

@@ -4,7 +4,7 @@
 #-PRE
 # This hints file provides the base for a minimal tty build for macOS
 
-PREFIX=$(wildcard ~)/nethack-minimal
+PREFIX=__NETHACK_PREFIX__
 HACKDIR=$(PREFIX)/games/lib/$(GAME)dir
 SHELLDIR=$(PREFIX)/games
 INSTDIR=$(HACKDIR)

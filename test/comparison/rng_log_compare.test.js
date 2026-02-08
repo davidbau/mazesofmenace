@@ -20,7 +20,7 @@ import { initLevelGeneration, makelevel } from '../../js/dungeon.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const INSTALL_DIR = join(process.env.HOME || '', 'nethack-minimal/games/lib/nethackdir');
+const INSTALL_DIR = join(__dirname, '..', '..', 'nethack-c', 'install', 'games', 'lib', 'nethackdir');
 const C_BINARY = join(INSTALL_DIR, 'nethack');
 const RESULTS_DIR = join(__dirname, 'c-harness/results');
 const DUMPMAP_SCRIPT = join(__dirname, 'c-harness/run_dumpmap.py');

@@ -33,8 +33,9 @@ import subprocess
 import shutil
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.normpath(os.path.join(SCRIPT_DIR, '..', '..', '..'))
 RESULTS_DIR = os.path.join(SCRIPT_DIR, 'results')
-INSTALL_DIR = os.path.join(os.path.expanduser('~'), 'nethack-minimal', 'games', 'lib', 'nethackdir')
+INSTALL_DIR = os.path.join(PROJECT_ROOT, 'nethack-c', 'install', 'games', 'lib', 'nethackdir')
 NETHACK_BINARY = os.path.join(INSTALL_DIR, 'nethack')
 
 

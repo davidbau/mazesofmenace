@@ -118,7 +118,7 @@ node --test test/comparison/*.test.js
 
 The setup script handles everything: cloning the C source at pinned commit
 `79c688cc6`, applying patches, fetching Lua (a NetHack 3.7 dependency),
-building, and installing to `~/nethack-minimal/`. It also configures the
+building, and installing to `nethack-c/install/` within the project directory. It also configures the
 `sysconf` file to allow wizard mode for all users.
 
 The C-vs-JS comparison uses **tmux** to automate the C binary: it starts

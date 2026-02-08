@@ -91,9 +91,16 @@ echo ""
 
 # --- Step 3: Configure build system ---
 cd "$NETHACK_DIR"
+INSTALL_PREFIX="$PROJECT_ROOT/nethack-c/install"
 # On macOS, install our minimal hints file (no macosx-minimal in upstream)
 if [ "$OS" = "Darwin" ]; then
     cp "$SCRIPT_DIR/macosx-minimal" sys/unix/hints/macosx-minimal
+    # Replace PREFIX placeholder with actual project-local path
+    sed_inplace "s|__NETHACK_PREFIX__|$INSTALL_PREFIX|g" sys/unix/hints/macosx-minimal
+fi
+# For Linux, patch the upstream linux-minimal hints PREFIX
+if [ "$OS" = "Linux" ]; then
+    sed_inplace "s|^\(PREFIX=\).*|\1$INSTALL_PREFIX|" sys/unix/hints/linux-minimal
 fi
 echo "[...] Running sys/unix/setup.sh with hints: $HINTS_FILE"
 bash sys/unix/setup.sh "$HINTS_FILE"
@@ -127,7 +134,7 @@ if [ -x "$BINARY" ]; then
     echo "[OK] Binary built successfully: $BINARY"
     echo "[...] Installing (copying data files)..."
     make install 2>&1 | tail -5
-    INSTALL_DIR="$(cd ~ && pwd)/nethack-minimal/games/lib/nethackdir"
+    INSTALL_DIR="$INSTALL_PREFIX/games/lib/nethackdir"
     if [ -d "$INSTALL_DIR" ]; then
         # Ensure sysconf exists (make install doesn't always copy it)
         if [ ! -f "$INSTALL_DIR/sysconf" ]; then
@@ -154,8 +161,20 @@ fi
 # --- Step 7: Verify ---
 echo "=== Setup complete ==="
 echo ""
+echo "Installed to: $INSTALL_DIR"
+echo ""
 echo "To test deterministic map generation:"
 echo "  export NETHACK_SEED=42"
 echo "  export NETHACK_DUMPMAP=/tmp/map42.txt"
 echo "  cd $NETHACK_DIR && src/nethack -u Wizard -D"
 echo "  (in game: #dumpmap to write map to file)"
+
+# Check for old global installation
+OLD_INSTALL="$HOME/nethack-minimal"
+if [ -d "$OLD_INSTALL" ]; then
+    echo ""
+    echo "NOTE: Old global installation found at $OLD_INSTALL"
+    echo "      The C binary now installs to $INSTALL_PREFIX (project-local)."
+    echo "      You can safely remove the old installation:"
+    echo "        rm -rf $OLD_INSTALL"
+fi
