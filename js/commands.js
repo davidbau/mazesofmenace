@@ -249,7 +249,11 @@ function handleMovement(dir, player, map, display) {
     const mon = map.monsterAt(nx, ny);
     if (mon) {
         // Attack the monster
-        // C ref: hack.c domove() -> attack()
+        // C ref: hack.c domove() -> do_attack() -> attack() -> hitum()
+        // C ref: hack.c:3036 overexertion() unconditionally calls gethungry() -> rn2(20)
+        rn2(20); // overexertion/gethungry before attack
+        // C ref: uhitm.c:550 exercise(A_STR, TRUE) before hitum()
+        rn2(19); // exercise(A_STR)
         const killed = playerAttackMonster(player, mon, display);
         if (killed) {
             map.removeMonster(mon);

@@ -191,31 +191,47 @@ function dochug(mon, map, player, display, fov) {
     // C ref: monmove.c:538 — bravegremlin = (rn2(5) == 0)
     rn2(5);
 
-    // Phase 3: Movement dispatch
-    if (mon.tame) {
-        dog_move(mon, map, player, display, fov);
-    } else {
-        // Hostile/peaceful monsters
-        // C ref: dochug Phase 3 — check nearby, then m_move
-        const d2 = dist2(mon.mx, mon.my, player.x, player.y);
+    // Phase 3: Evaluate condition block for ALL monsters (including tame)
+    // C ref: monmove.c:882-887 — short-circuit OR evaluation
+    // This determines whether monster wanders/moves (condition TRUE)
+    // or falls through to Phase 4 attack (condition FALSE)
+    const nearby = (Math.abs(mon.mx - player.x) <= 1
+                    && Math.abs(mon.my - player.y) <= 1);
+    const M2_WANDER = 0x800000;
+    const isWanderer = !!(mon.type && mon.type.flags2 & M2_WANDER);
 
-        if (Math.abs(mon.mx - player.x) <= 1
-            && Math.abs(mon.my - player.y) <= 1) {
-            // Adjacent: attack
-            if (!mon.peaceful) {
-                monsterAttackPlayer(mon, player, display);
-            }
+    // Short-circuit OR matching C's evaluation order
+    // Each rn2() is only consumed if earlier conditions didn't short-circuit
+    let phase3Cond = !nearby;
+    if (!phase3Cond) phase3Cond = !!(mon.flee);
+    if (!phase3Cond) phase3Cond = false; // scared (simplified: no Elbereth)
+    if (!phase3Cond) phase3Cond = !!(mon.confused);
+    if (!phase3Cond) phase3Cond = !!(mon.stunned);
+    if (!phase3Cond && mon.minvis) phase3Cond = !rn2(3);
+    // skip leprechaun check (not relevant for early levels)
+    if (!phase3Cond && isWanderer) phase3Cond = !rn2(4);
+    // skip Conflict check
+    if (!phase3Cond && mon.mcansee === false) phase3Cond = !rn2(4);
+    if (!phase3Cond) phase3Cond = !!(mon.peaceful);
+
+    if (phase3Cond) {
+        // Inside condition block: m_move (routes to dog_move for tame)
+        // C ref: monmove.c:911 — m_move() for all monsters in this path
+        if (mon.tame) {
+            dog_move(mon, map, player, display, fov);
         } else {
-            // Not adjacent: try to move
-            if (!mon.peaceful) {
-                m_move(mon, map, player);
-            }
+            m_move(mon, map, player);
+        }
+        // distfleeck recalc after m_move
+        // C ref: monmove.c:915
+        rn2(5);
+    } else {
+        // Phase 4: Standard Attacks
+        // C ref: monmove.c:966-977 — mattacku for hostile monsters
+        if (!mon.peaceful) {
+            monsterAttackPlayer(mon, player, display);
         }
     }
-
-    // Post-movement distfleeck: always rn2(5) for every non-sleeping monster
-    // C ref: monmove.c:915 — (void) distfleeck(mtmp, inrange, nearby)
-    rn2(5);
 }
 
 // ========================================================================

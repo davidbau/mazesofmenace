@@ -16,6 +16,8 @@ export function playerAttackMonster(player, monster, display) {
         // Miss
         // C ref: uhitm.c -- "You miss the <monster>"
         display.putstr_message(`You miss the ${monster.name}.`);
+        // C ref: uhitm.c:5997 passive() — rn2(3) when monster alive after attack
+        rn2(3);
         return false;
     }
 
@@ -56,6 +58,7 @@ export function playerAttackMonster(player, monster, display) {
         // Check for level-up
         checkLevelUp(player, display);
 
+        // C ref: uhitm.c:5997 passive() — SKIPPED when monster is killed
         return true; // monster is dead
     } else {
         // C ref: uhitm.c -- various hit messages
@@ -64,6 +67,8 @@ export function playerAttackMonster(player, monster, display) {
         } else {
             display.putstr_message(`You hit the ${monster.name}.`);
         }
+        // C ref: uhitm.c:5997 passive() — rn2(3) when monster alive after hit
+        rn2(3);
         return false;
     }
 }
@@ -74,22 +79,28 @@ export function monsterAttackPlayer(monster, player, display) {
     if (!monster.attacks || monster.attacks.length === 0) return;
     if (monster.passive) return; // passive monsters don't initiate attacks
 
-    for (const attack of monster.attacks) {
+    for (let i = 0; i < monster.attacks.length; i++) {
+        const attack = monster.attacks[i];
         // To-hit calculation for monster
-        // C ref: mhitu.c mattacku() -- tmp includes monster level + player AC
-        // Lower player AC = better defense (same convention as hero attacking)
-        const dieRoll = rnd(20);
-        const toHit = 1 + monster.mlevel + player.effectiveAC;
+        // C ref: mhitu.c:707-708 — tmp = AC_VALUE(u.uac) + 10 + mtmp->m_lev
+        // C ref: mhitu.c:804 — rnd(20+i) where i is attack index
+        const dieRoll = rnd(20 + i);
+        // AC_VALUE(ac) = ac when ac >= 0 (randomized when negative)
+        const acValue = player.effectiveAC >= 0 ? player.effectiveAC : 0;
+        const toHit = acValue + 10 + monster.mlevel;
 
-        if (toHit <= dieRoll || dieRoll === 20) {
-            // Miss
+        if (toHit <= dieRoll) {
+            // Miss — C ref: mhitu.c:811 missmu()
             display.putstr_message(`The ${monster.name} misses!`);
             continue;
         }
 
         // Calculate damage
+        // C ref: mhitu.c:1182 — d(dice, sides) for attack damage
         let damage = 0;
-        if (attack.dmg) {
+        if (attack.dice && attack.sides) {
+            damage = d(attack.dice, attack.sides);
+        } else if (attack.dmg) {
             damage = d(attack.dmg[0], attack.dmg[1]);
         }
 
@@ -107,6 +118,11 @@ export function monsterAttackPlayer(monster, player, display) {
             } else {
                 display.putstr_message(`The ${monster.name} hits! [${damage} pts]`);
             }
+
+            // C ref: uhitm.c:5236-5247 knockback after monster hits hero
+            // rn2(3) distance + rn2(6) chance, for physical attacks
+            rn2(3);
+            rn2(6);
 
             if (died) {
                 display.putstr_message(`You die...`);
