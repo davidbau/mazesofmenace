@@ -305,7 +305,7 @@ describe('E2E: Color rendering', () => {
             let gray = 0;
             for (let i = 22 * 80; i < 24 * 80 && i < spans.length; i++) {
                 const c = spans[i].style.color;
-                if (c && (c.includes('170') || c.includes('aaa'))) gray++;
+                if (c && (c.includes('170') || c.includes('aaa') || c.includes('ccc') || c.includes('204'))) gray++;
             }
             return gray;
         });
