@@ -11,14 +11,24 @@ let ctx = null; // ISAAC64 context
 // When enabled, every rn2/rnd/rnl/d call is logged in the same format
 // as the C PRNG logger (003-prng-logging patch).  Enable with enableRngLog(),
 // retrieve with getRngLog(), disable with disableRngLog().
+//
+// Caller context propagation (withTags=true):
+// Like C's improved 003 patch, wrapper functions (rnz, rne, rnl, rn1)
+// capture the caller's identity once on entry. Internal rn2/rnd calls
+// inherit that context rather than showing "rnz" or "rne" as the caller.
+// Context is cleared when the outermost RNG function returns.
 let rngLog = null;       // null = disabled, Array = enabled
 let rngCallCount = 0;
 let rngLogWithTags = false;  // when true, log includes caller info
+let rngCallerTag = null;     // current caller annotation (propagated through wrappers)
+let rngDepth = 0;            // nesting depth for context propagation
 
 export function enableRngLog(withTags = false) {
     rngLog = [];
     rngCallCount = 0;
     rngLogWithTags = withTags;
+    rngCallerTag = null;
+    rngDepth = 0;
 }
 
 export function getRngLog() {
@@ -27,21 +37,44 @@ export function getRngLog() {
 
 export function disableRngLog() {
     rngLog = null;
+    rngCallerTag = null;
+    rngDepth = 0;
+}
+
+// Capture caller context on first entry into an RNG function.
+// Wrapper functions (rnz, rne, rnl, rn1) and primitives (rn2, rnd)
+// all call this. Only the outermost call (depth 0→1) captures the
+// stack trace; inner calls inherit the existing tag.
+function enterRng() {
+    rngDepth++;
+    if (rngDepth === 1 && rngLogWithTags) {
+        const stack = new Error().stack;
+        const lines = stack.split('\n');
+        // [0]=Error, [1]=enterRng, [2]=rn2/rnz/etc, [3]=caller
+        const callerLine = lines[3] || '';
+        // ESM stack frames:
+        //   "    at funcName (file:///path/to/file.js:line:col)"
+        //   "    at file:///path/to/file.js:line:col"
+        const m = callerLine.match(/at (?:(\S+) \()?.*?([^/\s]+\.js):(\d+)/);
+        if (m) {
+            rngCallerTag = m[1] ? `${m[1]}(${m[2]}:${m[3]})` : `${m[2]}:${m[3]}`;
+        } else {
+            rngCallerTag = null;
+        }
+    }
+}
+
+// Clear caller context when the outermost RNG function returns.
+function exitRng() {
+    if (--rngDepth === 0) {
+        rngCallerTag = null;
+    }
 }
 
 function logRng(func, args, result) {
     if (!rngLog) return;
     rngCallCount++;
-    let tag = '';
-    if (rngLogWithTags) {
-        // Extract caller from stack trace (skip logRng → rn2/rnd → caller)
-        const stack = new Error().stack;
-        const lines = stack.split('\n');
-        // lines[0]="Error", [1]=logRng, [2]=rn2/rnd, [3]=caller
-        const callerLine = lines[3] || '';
-        const m = callerLine.match(/at (\S+).*?([^/]+\.js:\d+)/);
-        tag = m ? ` @ ${m[1]}(${m[2]})` : '';
-    }
+    const tag = rngCallerTag ? ` @ ${rngCallerTag}` : '';
     rngLog.push(`${rngCallCount} ${func}(${args}) = ${result}${tag}`);
 }
 
@@ -74,31 +107,39 @@ function RND(x) {
 // 0 <= rn2(x) < x
 // C ref: rnd.c:93-107
 export function rn2(x) {
-    if (x <= 0) return 0;
+    enterRng();
+    if (x <= 0) { exitRng(); return 0; }
     const result = RND(x);
     logRng('rn2', x, result);
+    exitRng();
     return result;
 }
 
 // 1 <= rnd(x) <= x
 // C ref: rnd.c:153-165
 export function rnd(x) {
-    if (x <= 0) return 1;
+    enterRng();
+    if (x <= 0) { exitRng(); return 1; }
     const result = RND(x) + 1;
     logRng('rnd', x, result);
+    exitRng();
     return result;
 }
 
 // rn1(x, y) = rn2(x) + y -- random in [y, y+x-1]
 // C ref: hack.h macro -- NOT logged separately (rn2 inside is logged)
 export function rn1(x, y) {
-    return rn2(x) + y;
+    enterRng();
+    const result = rn2(x) + y;
+    exitRng();
+    return result;
 }
 
 // rnl(x) - luck-adjusted random, good luck approaches 0
 // C ref: rnd.c:109-151
 export function rnl(x, luck = 0) {
-    if (x <= 0) return 0;
+    enterRng();
+    if (x <= 0) { exitRng(); return 0; }
     let adjustment = luck;
     if (x <= 15) {
         adjustment = Math.floor((Math.abs(adjustment) + 1) / 3) * Math.sign(adjustment);
@@ -110,23 +151,27 @@ export function rnl(x, luck = 0) {
         else if (i >= x) i = x - 1;
     }
     logRng('rnl', x, i);
+    exitRng();
     return i;
 }
 
 // d(n, x) = NdX dice roll = n + sum of n RND(x) calls
 // C ref: rnd.c:173-188
 export function d(n, x) {
+    enterRng();
     // C: tmp = n; while(n--) tmp += RND(x); return tmp;
     let tmp = n;
     for (let i = 0; i < n; i++) {
         tmp += RND(x);
     }
     logRng('d', `${n},${x}`, tmp);
+    exitRng();
     return tmp;
 }
 
 // C ref: rnd.c rnz() -- randomized scaling
 export function rnz(i) {
+    enterRng();
     let x = i;
     let tmp = 1000;
     tmp += rn2(1000);
@@ -136,16 +181,19 @@ export function rnz(i) {
     } else {
         x = Math.floor(x * 1000 / tmp);
     }
+    exitRng();
     return x;
 }
 
 // C ref: rnd.c rne() -- 1 <= rne(x) <= max(u.ulevel/3, 5)
 // During mklev at level 1, u.ulevel = 1, so utmp = 5
 export function rne(x) {
+    enterRng();
     const utmp = 5; // u.ulevel < 15 → utmp = 5
     let tmp = 1;
     while (tmp < utmp && !rn2(x))
         tmp++;
+    exitRng();
     return tmp;
 }
 
