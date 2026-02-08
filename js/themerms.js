@@ -13,7 +13,11 @@ import {
     isok,
 } from './config.js';
 import { FILL_NORMAL } from './map.js';
-import { rn2, rnd } from './rng.js';
+import { rn2, rnd, rn1, rnz } from './rng.js';
+import { mksobj } from './mkobj.js';
+import { mkclass, def_char_to_monclass, makemon, NO_MM_FLAGS } from './makemon.js';
+import { CORPSE } from './objects.js';
+import { mons, G_NOGEN, G_IGNORE, MAXMCLASSES } from './monsters.js';
 import {
     create_room, create_subroom, sp_create_door, floodFillAndRegister,
 } from './dungeon.js';
@@ -271,6 +275,60 @@ function fillerRegion(map, absX, absY, depth) {
 }
 
 // ========================================================================
+// des.object / des.monster helpers for themeroom contents
+// These simulate the RNG consumption of C's sp_lev.c create_object()
+// and create_monster() without actually placing the objects/monsters.
+// ========================================================================
+
+// C ref: sp_lev.c create_object() for CORPSE with specific montype name.
+// Simulates: get_location + mksobj(CORPSE) + set_corpsenm override.
+// The mksobj creates a "wasted" random corpse (rndmonnum + rnz) that gets
+// overridden by set_corpsenm (another rnz). Both consume RNG.
+function des_object_corpse_named(map, room, montype, buried) {
+    // get_location_coord with RANDOM coords: somexy → 2 rn1 calls
+    rn1(room.hx - room.lx + 1, room.lx); // somex
+    rn1(room.hy - room.ly + 1, room.ly); // somey
+    // mksobj(CORPSE, TRUE, TRUE) — creates random corpse then overrides
+    const obj = mksobj(CORPSE, true, true);
+    // create_object overrides corpsenm: second set_corpsenm → rnz(25)
+    rnz(25);
+}
+
+// C ref: sp_lev.c create_object() for CORPSE with montype class char.
+// Similar to named but uses mkclass to select the monster type first.
+function des_object_corpse_class(map, room, classChar) {
+    // lspo_object: mkclass(def_char_to_monclass(classChar), G_NOGEN|G_IGNORE)
+    const monclass = def_char_to_monclass(classChar);
+    mkclass(monclass, G_NOGEN | G_IGNORE);
+    // get_location_coord with fixed coords (0,0) → no RNG
+    // mksobj(CORPSE, TRUE, TRUE)
+    const obj = mksobj(CORPSE, true, true);
+    // create_object overrides corpsenm: second set_corpsenm → rnz(25)
+    rnz(25);
+}
+
+// C ref: sp_lev.c create_monster() for monster with class char.
+// Used by Mausoleum: des.monster({ class=X, x=0, y=0, waiting=1 })
+function des_monster_class(map, room, classChar, depth) {
+    // C ref: sp_lev.c:1943 sp_amask_to_amask(AM_SPLEV_RANDOM)
+    //   → induced_align(80) in dungeon.c:1993
+    //   For regular DoD levels: no special level align, no dungeon align
+    //   → falls through to rn2(3) at dungeon.c:2006
+    rn2(3); // induced_align — random alignment (unused but consumes RNG)
+    // lspo_monster: mkclass(def_char_to_monclass(classChar), G_NOGEN)
+    const monclass = def_char_to_monclass(classChar);
+    const mndx = mkclass(monclass, G_NOGEN, depth);
+    // get_location_coord with fixed coords (0,0) → no RNG
+    // Place at room's (lx, ly)
+    const x = room.lx;
+    const y = room.ly;
+    // makemon(pm, x, y, NO_MM_FLAGS) — full monster creation
+    if (mndx >= 0) {
+        makemon(mndx, x, y, NO_MM_FLAGS, depth, map);
+    }
+}
+
+// ========================================================================
 // Themeroom fill types (picks 5-7 and des.map filler_region)
 // C ref: themerms.lua themeroom_fills[] and themeroom_fill()
 // ========================================================================
@@ -356,9 +414,27 @@ function simulateThemeroomFill(map, room, depth, forceLit) {
                 if (loc) loc.typ = ALTAR;
             }
             break;
+        case 'buried_zombies': {
+            // C ref: themerms.lua "Buried zombies"
+            const diff = depth; // level_difficulty() = depth for main dungeon
+            const zombifiable = ['kobold', 'gnome', 'orc', 'dwarf'];
+            if (diff > 3) {
+                zombifiable.push('elf', 'human');
+                if (diff > 6) {
+                    zombifiable.push('ettin', 'giant');
+                }
+            }
+            const count = Math.floor((w * h) / 2);
+            for (let i = 0; i < count; i++) {
+                shuffleArray(zombifiable); // (len-1) rn2 calls
+                des_object_corpse_named(map, room, zombifiable[0], true);
+                // o:stop_timer("rot-corpse") — no RNG
+                // o:start_timer("zombify-mon", math.random(990, 1010))
+                rn2(21); // math.random(990, 1010)
+            }
+            break;
+        }
         // TODO: simulate other fill types (cloud, spider, trap, etc.)
-        // These involve des.object/des.monster/des.trap creation which requires
-        // porting mkobj.c/makemon.c/mktrap.c RNG consumption patterns.
     }
 }
 
@@ -510,11 +586,12 @@ function themeroom_pick9_mausoleum(map, depth) {
     if (inner) {
         inner.needjoining = false;
         if (rn2(100) < 50) { // percent(50) — monster
-            const mons = [0, 1, 2, 3]; // M, V, L, Z classes
-            shuffleArray(mons); // 3 rn2 calls
-            // TODO: des.monster — makemon RNG (complex, deferred)
+            const monClasses = ['M', 'V', 'L', 'Z']; // mummy, vampire, lich, zombie
+            shuffleArray(monClasses); // 3 rn2 calls
+            des_monster_class(map, inner, monClasses[0], depth);
         } else {
-            // TODO: des.object — corpse creation RNG (complex, deferred)
+            // des.object({ id="corpse", montype="@", coord={0,0} })
+            des_object_corpse_class(map, inner, '@');
         }
         if (rn2(100) < 20) { // percent(20) — secret door
             des_door_secret(map, inner);

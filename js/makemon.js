@@ -7,8 +7,9 @@ import { mksobj } from './mkobj.js';
 import { ROCK } from './objects.js';
 import { def_monsyms } from './symbols.js';
 import {
-    mons, LOW_PM, SPECIAL_PM,
+    mons, LOW_PM, SPECIAL_PM, MAXMCLASSES,
     G_FREQ, G_NOGEN, G_UNIQ, G_HELL, G_NOHELL, G_SGROUP, G_LGROUP,
+    G_NOCORPSE, G_IGNORE,
     S_ANT, S_BLOB, S_COCKATRICE, S_DOG, S_EYE, S_FELINE, S_GREMLIN,
     S_HUMANOID, S_IMP, S_JELLY, S_KOBOLD, S_LEPRECHAUN, S_MIMIC,
     S_NYMPH, S_ORC, S_PIERCER, S_QUADRUPED, S_RODENT, S_SPIDER,
@@ -21,6 +22,7 @@ import {
     M2_MERC, M2_LORD, M2_PRINCE, M2_NASTY, M2_FEMALE, M2_MALE,
     M2_HOSTILE, M2_PEACEFUL, M2_DOMESTIC, M2_NEUTER, M2_GREEDY,
     M1_FLY, M1_NOHANDS,
+    PM_ORC, PM_GIANT, PM_ELF, PM_HUMAN,
     PM_SOLDIER, AT_WEAP,
     PM_GOBLIN, PM_ORC_CAPTAIN, PM_MORDOR_ORC, PM_URUK_HAI, PM_ORC_SHAMAN,
     PM_OGRE_LEADER, PM_OGRE_TYRANT,
@@ -148,14 +150,153 @@ export function rndmonnum(depth) {
 }
 
 // ========================================================================
+// mkclass -- Pick a random monster of a given class
+// C ref: makemon.c:1750-1967
+// ========================================================================
+
+const A_NONE = 0;
+const G_GENO = 0x0020;
+const G_GONE = 0x03; // G_GENOD | G_EXTINCT (mvflags)
+
+// C ref: mondata.h is_placeholder()
+function is_placeholder(mndx) {
+    return mndx === PM_ORC || mndx === PM_GIANT
+        || mndx === PM_ELF || mndx === PM_HUMAN;
+}
+
+// C ref: makemon.c mk_gen_ok()
+function mk_gen_ok(mndx, mvflagsmask, genomask) {
+    const ptr = mons[mndx];
+    // mvitals not tracked yet — skip mvflagsmask check
+    if (ptr.geno & genomask) return false;
+    if (is_placeholder(mndx)) return false;
+    return true;
+}
+
+// C ref: makemon.c:1750-1823 mongen_order initialization
+let mongen_order = null;
+let mclass_maxf = null;
+
+function init_mongen_order() {
+    if (mongen_order) return;
+    mongen_order = [];
+    mclass_maxf = new Array(MAXMCLASSES).fill(0);
+    for (let i = LOW_PM; i < SPECIAL_PM; i++) {
+        mongen_order.push(i);
+        const mlet = mons[i].symbol;
+        const freq = mons[i].geno & G_FREQ;
+        if (freq > mclass_maxf[mlet])
+            mclass_maxf[mlet] = freq;
+    }
+    // C ref: qsort by (mlet << 8) | difficulty, ascending
+    mongen_order.sort((a, b) => {
+        const ka = (mons[a].symbol << 8) | mons[a].difficulty;
+        const kb = (mons[b].symbol << 8) | mons[b].difficulty;
+        return ka - kb;
+    });
+}
+
+// C ref: makemon.c:2007-2039 adj_lev()
+function adj_lev(ptr, depth = 1) {
+    const ulevel = 1; // during level gen
+    let tmp = ptr.level;
+    if (tmp > 49) return 50;
+    let tmp2 = depth - tmp;
+    if (tmp2 < 0) tmp--;
+    else tmp += Math.floor(tmp2 / 5);
+    tmp2 = ulevel - ptr.level;
+    if (tmp2 > 0) tmp += Math.floor(tmp2 / 4);
+    tmp2 = Math.floor(3 * ptr.level / 2);
+    if (tmp2 > 49) tmp2 = 49;
+    return tmp > tmp2 ? tmp2 : (tmp > 0 ? tmp : 0);
+}
+
+// C ref: monst.h montoostrong(monindx, lev)
+function montoostrong(mndx, lev) {
+    return mons[mndx].difficulty > lev;
+}
+
+// C ref: makemon.c:1866-1967 mkclass() / mkclass_aligned()
+// Returns monster index (mndx) or -1 (NON_PM)
+export function mkclass(monclass, spc, depth = 1, atyp = A_NONE) {
+    const ulevel = 1;
+    const maxmlev = depth >> 1; // level_difficulty() >> 1
+    const gehennom = 0; // not in hell during level gen
+
+    init_mongen_order();
+    const zero_freq_for_entire_class = (mclass_maxf[monclass] === 0);
+
+    // Find first monster of this class in sorted order
+    let first;
+    for (first = 0; first < SPECIAL_PM; first++) {
+        if (mons[mongen_order[first]].symbol === monclass) break;
+    }
+    if (first === SPECIAL_PM) return -1;
+
+    let mv_mask = G_GONE;
+    if (spc & G_IGNORE) {
+        mv_mask = 0;
+        spc &= ~G_IGNORE;
+    }
+
+    let num = 0;
+    const nums = new Array(SPECIAL_PM + 1).fill(0);
+    let last;
+
+    for (last = first; last < SPECIAL_PM && mons[mongen_order[last]].symbol === monclass; last++) {
+        const mndx = mongen_order[last];
+
+        // Alignment filter (for mkclass_aligned)
+        if (atyp !== A_NONE && Math.sign(mons[mndx].align) !== Math.sign(atyp))
+            continue;
+
+        // C ref: hell/nohell gating — rn2(9) per candidate
+        let gn_mask = G_NOGEN | G_UNIQ;
+        if (rn2(9) || monclass === S_LICH)
+            gn_mask |= (gehennom ? G_NOHELL : G_HELL);
+        gn_mask &= ~spc;
+
+        if (mk_gen_ok(mndx, mv_mask, gn_mask)) {
+            // C ref: montoostrong early exit — conditional rn2(2)
+            if (num && montoostrong(mndx, maxmlev)
+                && mons[mndx].difficulty > mons[mongen_order[last - 1]].difficulty
+                && rn2(2))
+                break;
+            let k = mons[mndx].geno & G_FREQ;
+            if (k === 0 && zero_freq_for_entire_class) k = 1;
+            if (k > 0) {
+                // Skew toward lower monsters at lower levels
+                nums[mndx] = k + 1 - (adj_lev(mons[mndx], depth) > (ulevel * 2) ? 1 : 0);
+                num += nums[mndx];
+            }
+        }
+    }
+
+    if (!num) return -1;
+
+    // C ref: final selection — rnd(num)
+    let roll = rnd(num);
+    for (let i = first; i < last; i++) {
+        const mndx = mongen_order[i];
+        roll -= nums[mndx];
+        if (roll <= 0)
+            return nums[mndx] ? mndx : -1;
+    }
+    return -1;
+}
+
+// C ref: drawing.c def_char_to_monclass()
+export function def_char_to_monclass(ch) {
+    for (let i = 1; i < MAXMCLASSES; i++) {
+        if (ch === def_monsyms[i].sym) return i;
+    }
+    return MAXMCLASSES;
+}
+
+// ========================================================================
 // newmonhp -- HP calculation (exact C port)
 // C ref: makemon.c:1013-1055
 // ========================================================================
-
-function adj_lev(ptr) {
-    // C ref: simplified — at depth 1, adj_lev just returns ptr.level
-    return ptr.level;
-}
 
 export function newmonhp(mndx) {
     const ptr = mons[mndx];
