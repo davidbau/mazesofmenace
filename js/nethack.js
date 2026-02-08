@@ -6,7 +6,7 @@ import { COLNO, ROWNO, ROOM, STAIRS, NORMAL_SPEED, ACCESSIBLE, isok, A_DEX } fro
 import { initRng, rn2, rnd, rn1 } from './rng.js';
 import { Display } from './display.js';
 import { initInput, nhgetch } from './input.js';
-import { FOV } from './fov.js';
+import { FOV } from './vision.js';
 import { Player, roles } from './player.js';
 import { GameMap } from './map.js';
 import { initLevelGeneration, generateLevel, wallification } from './dungeon.js';

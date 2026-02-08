@@ -13,7 +13,7 @@ import { initLevelGeneration, generateLevel, wallification } from '../../js/dung
 import { Player, roles } from '../../js/player.js';
 import { simulatePostLevelInit } from '../../js/u_init.js';
 import { moveMonsters } from '../../js/monmove.js';
-import { FOV } from '../../js/fov.js';
+import { FOV } from '../../js/vision.js';
 import { NORMAL_SPEED, A_DEX, A_CON } from '../../js/config.js';
 import { searchAround } from '../../js/commands.js';
 

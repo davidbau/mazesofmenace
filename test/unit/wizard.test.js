@@ -9,7 +9,7 @@ import { GameMap } from '../../js/map.js';
 import { initLevelGeneration, generateLevel, wallification } from '../../js/dungeon.js';
 import { populateLevel } from '../../js/makemon.js';
 import { processCommand } from '../../js/commands.js';
-import { FOV } from '../../js/fov.js';
+import { FOV } from '../../js/vision.js';
 import { pushInput } from '../../js/input.js';
 
 // Mock display that captures messages

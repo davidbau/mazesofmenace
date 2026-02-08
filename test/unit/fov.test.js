@@ -5,7 +5,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { COLNO, ROWNO, ROOM, CORR, STONE, HWALL, VWALL } from '../../js/config.js';
 import { GameMap } from '../../js/map.js';
-import { FOV } from '../../js/fov.js';
+import { FOV } from '../../js/vision.js';
 
 // Create a simple map with one lit room
 function makeRoomMap() {

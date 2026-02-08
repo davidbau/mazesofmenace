@@ -9,7 +9,7 @@ import { initLevelGeneration, generateLevel, wallification } from '../../js/dung
 import { Player } from '../../js/player.js';
 import { simulatePostLevelInit } from '../../js/u_init.js';
 import { moveMonsters } from '../../js/monmove.js';
-import { FOV } from '../../js/fov.js';
+import { FOV } from '../../js/vision.js';
 import { searchAround } from '../../js/commands.js';
 import {
     COLNO, ROWNO, NORMAL_SPEED, A_DEX, A_CON,
@@ -99,7 +99,13 @@ function renderMapRow(map, player, fov, y) {
         if (!fov || !fov.canSee(x, y)) {
             const loc = map.at(x, y);
             if (loc && loc.seenv) {
-                row += terrainChar(loc);
+                // C remembers last glyph: show objects that were seen before
+                const rObjs = map.objectsAt(x, y);
+                if (rObjs.length > 0 && loc._lastObjChar) {
+                    row += loc._lastObjChar;
+                } else {
+                    row += terrainChar(loc);
+                }
             } else {
                 row += ' ';
             }
@@ -130,6 +136,7 @@ function renderMapRow(map, player, fov, y) {
         if (objs.length > 0) {
             const topObj = objs[objs.length - 1];
             row += topObj.displayChar;
+            loc._lastObjChar = topObj.displayChar;  // remember for out-of-sight display
             continue;
         }
 
