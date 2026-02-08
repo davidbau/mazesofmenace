@@ -35,12 +35,17 @@ test/
     │   ├── seed42_depth1.txt       # Rendered map (ASCII art)
     │   ├── typ_seed42_depth1.txt   # Raw terrain type grid
     │   └── isaac64_seed42.txt      # PRNG reference values
+    ├── sessions/            # Session JSON files (see docs/SESSION_FORMAT.md)
+    │   └── seed42.session.json     # Seed 42 reference session
+    ├── traces/              # Raw C trace data (legacy, being replaced by sessions/)
     ├── gen_golden.js        # Generate rendered map golden files
     ├── gen_typ_grid.js      # Generate raw typ grid golden files
+    ├── gen_session.js       # Convert raw traces to session JSON
     ├── map_compare.test.js  # JS golden reference tests
     ├── c_vs_js_map.test.js  # C-vs-JS comparison tests
     └── c-harness/           # C build infrastructure
         ├── setup.sh         # Clone, patch, build C binary
+        ├── run_session.py   # Capture C sessions as JSON
         ├── patches/
         │   ├── 001-deterministic-seed.patch
         │   └── 002-map-dumper.patch
