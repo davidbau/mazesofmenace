@@ -3,12 +3,14 @@
 
 Usage:
     python3 run_session.py <seed> <output_json> [move_sequence]
+    python3 run_session.py --from-config
 
-Plays through the C NetHack game with a fixed seed, sending a sequence
-of keystrokes and capturing screen state + RNG log + terrain grids
-into a single JSON session file.
+Single-seed mode: plays through the C NetHack game with a fixed seed,
+sending a sequence of keystrokes and capturing screen state + RNG log +
+terrain grids into a single JSON session file.
 
-See docs/SESSION_FORMAT.md for the format specification.
+Config mode (--from-config): reads test/comparison/seeds.json and
+regenerates all sessions listed in session_seeds.sessions.
 
 The move_sequence is a string of move characters. Special encodings:
     h/j/k/l/y/u/b/n   -- vi movement keys
@@ -352,15 +354,40 @@ def compact_session_json(session_data):
     return '\n'.join(result) + '\n'
 
 
+def load_seeds_config():
+    """Load test/comparison/seeds.json configuration."""
+    config_path = os.path.join(PROJECT_ROOT, 'test', 'comparison', 'seeds.json')
+    with open(config_path) as f:
+        return json.load(f)
+
+
 def main():
+    if '--from-config' in sys.argv:
+        config = load_seeds_config()
+        sessions_dir = os.path.join(PROJECT_ROOT, 'test', 'comparison', 'sessions')
+        for entry in config['session_seeds']['sessions']:
+            seed = entry['seed']
+            moves = entry['moves']
+            output = os.path.join(sessions_dir, f'seed{seed}.session.json')
+            print(f'\n=== Regenerating session seed={seed} ===')
+            sys.argv = [sys.argv[0], str(seed), output, moves]
+            run_session(seed, output, moves)
+        return
+
     if len(sys.argv) < 3:
         print(f"Usage: {sys.argv[0]} <seed> <output_json> [move_sequence]")
+        print(f"       {sys.argv[0]} --from-config")
         print(f"Example: {sys.argv[0]} 42 sessions/seed42.session.json ':hhlhhhh.hhs'")
         sys.exit(1)
 
     seed = int(sys.argv[1])
     output_json = os.path.abspath(sys.argv[2])
     move_str = sys.argv[3] if len(sys.argv) >= 4 else '...........'
+    run_session(seed, output_json, move_str)
+
+
+def run_session(seed, output_json, move_str):
+    output_json = os.path.abspath(output_json)
 
     if not os.path.isfile(NETHACK_BINARY):
         print(f"Error: nethack binary not found at {NETHACK_BINARY}")

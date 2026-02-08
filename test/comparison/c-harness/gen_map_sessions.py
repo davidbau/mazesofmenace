@@ -3,10 +3,14 @@
 
 Usage:
     python3 gen_map_sessions.py <seed> [max_depth] [--with-rng]
+    python3 gen_map_sessions.py --from-config
 
-Generates levels 1→max_depth sequentially (via wizard mode level teleport)
-and captures typGrid at each depth using #dumpmap. When --with-rng is given,
-also captures per-level RNG traces from the C PRNG logger.
+Single-seed mode: generates levels 1→max_depth sequentially (via wizard
+mode level teleport) and captures typGrid at each depth using #dumpmap.
+When --with-rng is given, also captures per-level RNG traces.
+
+Config mode (--from-config): reads test/comparison/seeds.json and
+generates C map sessions for all seeds listed in map_seeds.with_rng.c.
 
 Output: test/comparison/maps/seed<N>_maps_c.session.json
 
@@ -90,17 +94,8 @@ def parse_dumpmap(dumpmap_file):
     return grid
 
 
-def main():
-    args = sys.argv[1:]
-    with_rng = '--with-rng' in args
-    args = [a for a in args if not a.startswith('--')]
-
-    if len(args) < 1:
-        print(f"Usage: {sys.argv[0]} <seed> [max_depth] [--with-rng]")
-        sys.exit(1)
-
-    seed = args[0]
-    max_depth = int(args[1]) if len(args) >= 2 else 5
+def generate_one(seed, max_depth, with_rng):
+    """Generate a single C map session for the given seed."""
 
     if not os.path.isfile(NETHACK_BINARY):
         print(f"Error: nethack binary not found at {NETHACK_BINARY}")
@@ -243,6 +238,37 @@ def main():
         f.write('\n'.join(result) + '\n')
 
     print(f"Wrote {filepath} ({len(levels)} levels)")
+
+
+def load_seeds_config():
+    """Load test/comparison/seeds.json configuration."""
+    config_path = os.path.join(PROJECT_ROOT, 'test', 'comparison', 'seeds.json')
+    with open(config_path) as f:
+        return json.load(f)
+
+
+def main():
+    args = sys.argv[1:]
+
+    if '--from-config' in args:
+        config = load_seeds_config()
+        c_rng_seeds = config['map_seeds']['with_rng']['c']
+        print(f"Generating C map sessions with RNG for seeds: {c_rng_seeds}")
+        for seed in c_rng_seeds:
+            generate_one(str(seed), max_depth=5, with_rng=True)
+        return
+
+    with_rng = '--with-rng' in args
+    args = [a for a in args if not a.startswith('--')]
+
+    if len(args) < 1:
+        print(f"Usage: {sys.argv[0]} <seed> [max_depth] [--with-rng]")
+        print(f"       {sys.argv[0]} --from-config")
+        sys.exit(1)
+
+    seed = args[0]
+    max_depth = int(args[1]) if len(args) >= 2 else 5
+    generate_one(seed, max_depth, with_rng)
 
 
 if __name__ == '__main__':

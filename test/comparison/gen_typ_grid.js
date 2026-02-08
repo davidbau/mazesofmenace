@@ -5,7 +5,7 @@
 // Output format: 21 rows, each containing 80 space-separated integers.
 // This matches the C dumpmap patch output exactly.
 
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -118,14 +118,25 @@ function toCompactRng(entry) {
     return entry.replace(/^\d+\s+/, '').replace(' = ', '=');
 }
 
+// Load seeds.json config to determine which seeds get RNG traces.
+function loadSeedsConfig() {
+    const configPath = join(__dirname, 'seeds.json');
+    return JSON.parse(readFileSync(configPath, 'utf-8'));
+}
+
 // Generate v2 map-only session JSON files using sequential generation.
 // Each session covers depths 1→maxDepth for one seed.
-// When withRng is true, full RNG traces are included per level.
-function generateSessions(maxDepth = 5, withRng = false) {
+// Seeds listed in seeds.json map_seeds.with_rng.js get full RNG traces;
+// when globalWithRng is true, all seeds get RNG traces.
+function generateSessions(maxDepth = 5, globalWithRng = false) {
     const sessionsDir = join(__dirname, 'maps');
     mkdirSync(sessionsDir, { recursive: true });
 
+    const config = loadSeedsConfig();
+    const jsRngSeeds = new Set(config.map_seeds.with_rng.js);
+
     for (const seed of uniqueSeeds()) {
+        const withRng = globalWithRng || jsRngSeeds.has(seed);
         enableRngLog();
         initRng(seed);
         initLevelGeneration();

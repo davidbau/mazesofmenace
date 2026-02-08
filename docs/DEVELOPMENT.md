@@ -55,13 +55,14 @@ js/                    26 ES6 modules — the game engine
 test/
 ├── unit/              18 unit test files (150 tests, ~0.3s)
 ├── e2e/               2 Puppeteer browser tests
-└── comparison/        Session-based comparison testing
-    ├── sessions/      Gameplay session JSON files (ground truth)
-    ├── maps/          Map-only session JSON files (typGrid comparison)
+└── comparison/        C-vs-JS comparison testing
+    ├── seeds.json     Central config: which seeds to test, with RNG traces
+    ├── sessions/      Full gameplay session JSON files (C-captured)
+    ├── maps/          C map sessions with RNG traces (for divergence debugging)
     ├── golden/        ISAAC64 reference values
-    ├── session_runner.test.js   Unified test runner (635 tests)
+    ├── session_runner.test.js   Unified test runner
     ├── session_helpers.js       Grid compare, RNG compare, structural tests
-    ├── gen_typ_grid.js          Generate/regenerate map session files
+    ├── gen_typ_grid.js          JS map generation (for comparison)
     └── c-harness/               C build + capture infrastructure
 
 docs/                  You are here
@@ -92,20 +93,19 @@ npm test && node --test test/comparison/session_runner.test.js
 
 The session runner auto-discovers all `*.session.json` files in
 `test/comparison/sessions/` and `test/comparison/maps/` and verifies
-whatever data is present:
+JS output against C-captured reference data:
 
 | Session Type | What It Tests | Example |
 |---|---|---|
-| `"map"` | typGrid match + structural validation + RNG counts | `seed42_maps.session.json` |
-| `"gameplay"` | Startup typGrid + RNG traces + screen rendering | `seed42.session.json` |
+| `"map"` (source: c) | typGrid match + RNG traces + structural validation | `seed16_maps_c.session.json` |
+| `"gameplay"` | Startup typGrid + per-step RNG traces + screen rendering | `seed42.session.json` |
 
 Map sessions generate levels 1→5 sequentially on one RNG stream (matching
 C's behavior). Each level is checked for:
-- Cell-by-cell typGrid match
-- RNG call count (when `rngCalls` present)
-- RNG trace match (when `rng` present)
+- Cell-by-cell typGrid match against C
+- RNG call count match (when `rngCalls` present)
+- Per-call RNG trace match (when `rng` present)
 - Wall completeness, corridor connectivity, stairs placement
-- Determinism (generate twice, compare)
 
 ### C Comparison (optional, slower)
 
@@ -113,14 +113,14 @@ C's behavior). Each level is checked for:
 # One-time setup: clone, patch, and build the C binary
 bash test/comparison/c-harness/setup.sh
 
-# Capture a C map session for seed 42, depths 1-5
-python3 test/comparison/c-harness/gen_map_sessions.py 42 5
+# Regenerate all C sessions and maps from seeds.json config
+python3 test/comparison/c-harness/run_session.py --from-config
+python3 test/comparison/c-harness/gen_map_sessions.py --from-config
 
-# Capture with full RNG traces (for debugging divergence)
+# Or capture a single seed manually
 python3 test/comparison/c-harness/gen_map_sessions.py 42 5 --with-rng
 
-# The captured session lands in maps/seed42_maps_c.session.json
-# Session runner will auto-discover and test it
+# Session runner auto-discovers all C-captured files
 node --test test/comparison/session_runner.test.js
 ```
 
@@ -131,36 +131,42 @@ node --test test/comparison/session_runner.test.js
 1. Make your changes in `js/dungeon.js` (or related modules)
 2. Run `node --test test/comparison/session_runner.test.js` — failures
    show exactly which cells changed and at which seed/depth
-3. If the change is intentional, regenerate sessions:
+3. If the change is intentional and matches C, the C reference data
+   doesn't change. If the C binary also changed, regenerate:
    ```bash
-   node test/comparison/gen_typ_grid.js --sessions 5
+   python3 test/comparison/c-harness/run_session.py --from-config
+   python3 test/comparison/c-harness/gen_map_sessions.py --from-config
    ```
-4. Run tests again to confirm they pass
 
 ### Debugging C-vs-JS divergence
 
 > *"You are hit by a divergent RNG stream! You feel disoriented."*
 
-When a map doesn't match C, use RNG traces to find the exact divergence:
-
-```bash
-# Generate JS session with full RNG traces
-node test/comparison/gen_typ_grid.js --sessions 5 --with-rng
-
-# Generate C session with full RNG traces
-python3 test/comparison/c-harness/gen_map_sessions.py 42 5 --with-rng
-
-# The session runner will compare per-call and report the first mismatch:
-#   RNG diverges at call 1449: JS="rn2(100)=37" session="rn2(1000)=377"
-node --test test/comparison/session_runner.test.js
+C map sessions with RNG traces are pre-generated for difficult seeds
+(configured in `test/comparison/seeds.json`). The traces include caller
+function names for readability:
+```
+rn2(2)=0 @ randomize_gem_colors(o_init.c:88)
+rn2(11)=9 @ shuffle(o_init.c:128)
 ```
 
-Then strip the `--with-rng` sessions and regenerate normal ones after fixing.
+When a map doesn't match C:
+
+```bash
+# The session runner compares per-call and reports the first mismatch:
+#   RNG diverges at call 1449: JS="rn2(100)=37" session="rn2(1000)=377"
+node --test test/comparison/session_runner.test.js
+
+# To regenerate C traces after a patch change:
+python3 test/comparison/c-harness/gen_map_sessions.py --from-config
+```
 
 ### Adding a new test seed
 
-1. Add to `CONFIGS` in `test/comparison/gen_typ_grid.js`
-2. Run `node test/comparison/gen_typ_grid.js --sessions 5`
+1. Add the seed to `test/comparison/seeds.json`:
+   - `map_seeds.with_rng.c` for C map sessions with RNG traces
+   - `session_seeds.sessions` for full gameplay sessions
+2. Regenerate: `python3 test/comparison/c-harness/gen_map_sessions.py --from-config`
 3. The session runner auto-discovers the new file
 
 ### Regenerating monster/object data
@@ -197,7 +203,8 @@ instead of `/dev/urandom`. Crucially, does NOT set `has_strong_rngseed`, so
 `levl[x][y].typ` as 21 rows of 80 space-separated integers to `NETHACK_DUMPMAP`.
 
 **`003-prng-logging.patch`** — When `NETHACK_RNGLOG` is set, logs every
-`rn2()`/`rnd()`/`d()` call with args, result, and source location.
+`rn2()`/`rnd()`/`d()` call with args, result, and caller context
+(`__func__`, `__FILE__`, `__LINE__`). Format: `rn2(12)=2 @ shuffle(o_init.c:128)`.
 
 ### Why raw terrain grids instead of terminal output?
 
@@ -233,10 +240,9 @@ that might need input must be `async`.
 **Display**: `<pre>` element with per-cell `<span>` tags. DEC graphics
 symbols mapped to Unicode box-drawing characters. No canvas, no WebGL.
 
-**Testing philosophy**: Three layers of truth —
+**Testing philosophy**: Two layers of truth —
 1. ISAAC64 produces identical sequences (golden reference files)
-2. JS map generation is deterministic (session regression tests)
-3. JS matches C cell-for-cell (C-captured sessions)
+2. JS matches C cell-for-cell (C-captured sessions with RNG traces)
 
 ## Code Conventions
 

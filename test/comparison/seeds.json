@@ -1,0 +1,21 @@
+{
+  "_comment": "Seed configurations for C-vs-JS comparison test infrastructure.",
+
+  "map_seeds": {
+    "_comment": "Seeds for map-only sessions (JS gen_typ_grid.js --sessions, C gen_map_sessions.py). Each seed generates levels 1-5 by default.",
+    "all": [1, 7, 16, 42, 72, 100, 112, 119, 163, 200, 212, 306, 314, 555, 999, 2468, 31337],
+    "with_rng": {
+      "_comment": "Seeds that include per-level RNG traces for debugging. These are themeroom seeds and other cases that have been difficult to align between C and JS.",
+      "js": [16, 72, 119, 163, 306],
+      "c": [16, 72, 119, 163, 306]
+    }
+  },
+
+  "session_seeds": {
+    "_comment": "Seeds for full gameplay sessions (C run_session.py). Each entry has a move sequence.",
+    "sessions": [
+      {"seed": 42, "moves": ":hhlhhhh.hhs"},
+      {"seed": 1,  "moves": ":hhhhhhhhhhhhhhjhhkkhhhhjjhhhhhhhhhhhjjjhhjhhhjhhjhhjjllllllllllll>"}
+    ]
+  }
+}
