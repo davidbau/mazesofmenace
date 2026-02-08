@@ -13,10 +13,10 @@ index 899f72b4a..02b6ae642 100644
  /* ### role.c ### */
  
 diff --git a/include/hack.h b/include/hack.h
-index a52258a4e..81338af76 100644
+index a52258a4e..d147e6fad 100644
 --- a/include/hack.h
 +++ b/include/hack.h
-@@ -1571,6 +1571,31 @@ typedef uint32_t mmflags_nht;     /* makemon MM_ flags */
+@@ -1571,6 +1571,32 @@ typedef uint32_t mmflags_nht;     /* makemon MM_ flags */
  #include "savefile.h"
  #include "decl.h"
  
@@ -33,8 +33,9 @@ index a52258a4e..81338af76 100644
 + * C99 6.10.3.4 says a macro name found during its own expansion is
 + * not replaced again, so it resolves to the real function.
 + *
-+ * Suppressed inside rnd.c itself (RNGLOG_IN_RND_C) to avoid double-
-+ * logging from internal calls (rnl->rn2, rnz->rn2, etc).
++ * Suppressed inside rnd.c itself (RNGLOG_IN_RND_C) so that internal
++ * calls (rnz->rn2, rne->rn2, etc) inherit the outer caller's context
++ * rather than setting their own.
 + */
 +#ifndef RNGLOG_IN_RND_C
 +#define rn2(x) (rng_log_set_caller(__FILE__, __LINE__), rn2(x))
@@ -49,15 +50,17 @@ index a52258a4e..81338af76 100644
  
  #endif /* HACK_H */
 diff --git a/src/rnd.c b/src/rnd.c
-index beb4992ed..4c30ed24e 100644
+index beb4992ed..498999111 100644
 --- a/src/rnd.c
 +++ b/src/rnd.c
-@@ -2,8 +2,60 @@
+@@ -2,8 +2,72 @@
  /*      Copyright (c) 2004 by Robert Patrick Rankin               */
  /* NetHack may be freely redistributed.  See license for details. */
  
 +/* Suppress rng logging macros inside this file -- we define the real
-+   functions here, and add logging directly in each function body. */
++   functions here, and add logging directly in each function body.
++   Internal calls (e.g. rnz calling rn2) inherit the outer caller's
++   context because the macros don't fire inside rnd.c. */
 +#define RNGLOG_IN_RND_C
  #include "hack.h"
  
@@ -67,8 +70,17 @@ index beb4992ed..4c30ed24e 100644
 + * with: call#, function(args) = result @ file:line
 + *
 + * The file:line comes from rng_log_set_caller(), invoked by the macros
-+ * in hack.h before calling the real function.  If no caller is set
-+ * (e.g. internal calls within rnd.c), file:line is omitted.
++ * in hack.h before calling the real function.
++ *
++ * Caller context propagation: the context is NOT cleared after logging.
++ * This means internal rn2 calls from wrapper functions (rnz, rne, rnl)
++ * inherit the ORIGINAL caller's file:line annotation.  For example,
++ * if start_corpse_timeout at mkobj.c:1409 calls rnz(25), the internal
++ * rn2(1000), rn2(4), rn2(2) calls all log with "@ mkobj.c:1409".
++ * The wrapper result (rnz, rne, rnl) also logs with the same annotation.
++ *
++ * Context is overwritten by the next macro expansion (each external call
++ * sets fresh context), so there is no stale-context problem.
 + */
 +static FILE *rng_logfile = NULL;
 +static int rng_call_count = 0;
@@ -103,7 +115,8 @@ index beb4992ed..4c30ed24e 100644
 +        fprintf(rng_logfile, "%d %s(%s) = %d @ %s:%d\n",
 +                rng_call_count, func, args, result,
 +                rng_caller_file, rng_caller_line);
-+        rng_caller_file = NULL;
++        /* Do NOT clear rng_caller_file here -- let internal calls from
++           wrapper functions (rnz, rne, rnl) inherit the same context. */
 +    } else {
 +        fprintf(rng_logfile, "%d %s(%s) = %d\n",
 +                rng_call_count, func, args, result);
@@ -113,7 +126,7 @@ index beb4992ed..4c30ed24e 100644
  #ifdef USE_ISAAC64
  #include "isaac64.h"
  
-@@ -94,16 +146,20 @@ rn2_on_display_rng(int x)
+@@ -94,16 +158,20 @@ rn2_on_display_rng(int x)
  int
  rn2(int x)
  {
@@ -138,33 +151,28 @@ index beb4992ed..4c30ed24e 100644
  }
  
  /* 0 <= rnl(x) < x; sometimes subtracting Luck;
-@@ -112,6 +168,11 @@ int
+@@ -112,6 +180,8 @@ int
  rnl(int x)
  {
      int i, adjustment;
-+    /* save and clear caller context so the internal rn2 call
-+       in this function doesn't consume it */
-+    const char *saved_file = rng_caller_file;
-+    int saved_line = rng_caller_line;
-+    rng_caller_file = NULL;
++    /* Internal rn2 call inherits caller context from the rnl macro --
++       no save/clear needed. */
  
  #if (NH_DEVEL_STATUS != NH_STATUS_RELEASED)
      if (x <= 0) {
-@@ -147,6 +208,13 @@ rnl(int x)
+@@ -147,6 +217,11 @@ rnl(int x)
          else if (i >= x)
              i = x - 1;
      }
 +    if (rng_logfile) {
 +        char buf[32];
-+        rng_caller_file = saved_file;
-+        rng_caller_line = saved_line;
 +        snprintf(buf, sizeof buf, "%d", x);
 +        rng_log_write("rnl", buf, i);
 +    }
      return i;
  }
  
-@@ -154,14 +222,20 @@ rnl(int x)
+@@ -154,14 +229,20 @@ rnl(int x)
  int
  rnd(int x)
  {
@@ -187,7 +195,7 @@ index beb4992ed..4c30ed24e 100644
  }
  
  int
-@@ -175,6 +249,7 @@ int
+@@ -175,6 +256,7 @@ int
  d(int n, int x)
  {
      int tmp = n;
@@ -195,7 +203,7 @@ index beb4992ed..4c30ed24e 100644
  
  #if (NH_DEVEL_STATUS != NH_STATUS_RELEASED)
      if (x < 0 || n < 0 || (x == 0 && n != 0)) {
-@@ -184,6 +259,11 @@ d(int n, int x)
+@@ -184,6 +266,11 @@ d(int n, int x)
  #endif
      while (n--)
          tmp += RND(x);
@@ -207,13 +215,12 @@ index beb4992ed..4c30ed24e 100644
      return tmp; /* Alea iacta est. -- J.C. */
  }
  
-@@ -192,11 +272,21 @@ int
+@@ -192,11 +279,18 @@ int
  rne(int x)
  {
      int tmp, utmp;
-+    const char *saved_file = rng_caller_file;
-+    int saved_line = rng_caller_line;
-+    rng_caller_file = NULL;
++    /* Internal rn2 calls inherit caller context from the rne macro --
++       no save/clear needed. */
  
      utmp = (u.ulevel < 15) ? 5 : u.ulevel / 3;
      tmp = 1;
@@ -221,32 +228,27 @@ index beb4992ed..4c30ed24e 100644
          tmp++;
 +    if (rng_logfile) {
 +        char buf[32];
-+        rng_caller_file = saved_file;
-+        rng_caller_line = saved_line;
 +        snprintf(buf, sizeof buf, "%d", x);
 +        rng_log_write("rne", buf, tmp);
 +    }
      return tmp;
  
      /* was:
-@@ -215,6 +305,9 @@ rnz(int i)
+@@ -215,6 +309,8 @@ rnz(int i)
  {
      long x = (long) i;
      long tmp = 1000L;
-+    const char *saved_file = rng_caller_file;
-+    int saved_line = rng_caller_line;
-+    rng_caller_file = NULL;
++    /* Internal rn2/rne calls inherit caller context from the rnz macro --
++       no save/clear needed. */
  
      tmp += rn2(1000);
      tmp *= rne(4);
-@@ -225,6 +318,13 @@ rnz(int i)
+@@ -225,6 +321,11 @@ rnz(int i)
          x *= 1000;
          x /= tmp;
      }
 +    if (rng_logfile) {
 +        char buf[32];
-+        rng_caller_file = saved_file;
-+        rng_caller_line = saved_line;
 +        snprintf(buf, sizeof buf, "%d", i);
 +        rng_log_write("rnz", buf, (int) x);
 +    }

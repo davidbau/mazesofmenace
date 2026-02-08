@@ -292,6 +292,12 @@ function des_object_corpse_named(map, room, montype, buried) {
     const obj = mksobj(CORPSE, true, true);
     // create_object overrides corpsenm: second set_corpsenm → rnz(25)
     rnz(25);
+    // C ref: dig.c bury_an_obj() → zap.c obj_resists(otmp, 0, 0)
+    // When buried, create_object calls bury_an_obj which gates on obj_resists.
+    // obj_resists always consumes rn2(100) for non-special objects.
+    if (buried) {
+        rn2(100);
+    }
 }
 
 // C ref: sp_lev.c create_object() for CORPSE with montype class char.

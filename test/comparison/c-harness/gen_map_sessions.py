@@ -55,7 +55,12 @@ def read_rng_log(rng_log_file):
 
 
 def parse_rng_lines(lines):
-    """Convert raw RNG log lines to compact format: 'fn(arg)=result @ source:line'"""
+    """Convert raw RNG log lines to compact format: 'fn(arg)=result @ source:line'
+
+    Filters out wrapper function entries (rne, rnz, d) that the C PRNG logger
+    records separately from their internal rn2/rnd/rn1 calls. Only primitive
+    RNG functions are kept, matching the JS logging convention.
+    """
     entries = []
     for line in lines:
         line = line.strip()
@@ -65,6 +70,10 @@ def parse_rng_lines(lines):
         if len(parts) < 2:
             continue
         rest = parts[1]
+        # Skip wrapper function entries — only keep primitives (rn2, rnd, rn1)
+        fn = rest.split('(', 1)[0]
+        if fn not in ('rn2', 'rnd', 'rn1'):
+            continue
         rest = rest.replace(' = ', '=')
         entries.append(rest)
     return entries
