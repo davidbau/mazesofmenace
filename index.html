@@ -183,22 +183,23 @@
             margin-top: 2em;
         }
 
-        /* Panel toggle links (flanking the game) */
-        #panel-toggles {
-            display: flex;
-            justify-content: space-between;
-            flex-basis: 100%;
-            font-size: 11px;
-            padding: 0.3em 0;
-        }
-
+        /* Panel toggle links (in navbar) */
         .nav-toggle {
             cursor: pointer;
-            color: #666;
+            color: #555;
+            text-decoration: none;
         }
 
         .nav-toggle:hover {
-            color: #aaa;
+            color: #888;
+        }
+
+        #nav-controls {
+            margin-right: auto;
+        }
+
+        #nav-explore {
+            margin-left: auto;
         }
 
         /* Responsive: stack vertically on narrow screens */
@@ -244,16 +245,14 @@
 <body>
     <div id="page">
         <nav id="nav">
+            <span id="nav-controls" class="nav-toggle" style="visibility:hidden" title="Show keyboard controls">Controls</span>
             <a href="https://en.wikipedia.org/wiki/NetHack" target="_blank">About NetHack</a>
             <a href="https://nethackwiki.com/wiki/Guidebook" target="_blank">How to Play</a>
             <a href="https://github.com/davidbau/webhack" target="_blank">About This Project</a>
-            <a href="spoilers/" target="_blank">Spoilers Guide</a>
+            <a href="spoilers/" target="_blank">A Traveler's Guide</a>
+            <span id="nav-explore" class="nav-toggle" style="visibility:hidden" title="Show explore panel">Explore</span>
         </nav>
         <div id="main">
-            <div id="panel-toggles">
-                <span id="nav-controls" class="nav-toggle" style="display:none" title="Show keyboard controls">Controls</span>
-                <span id="nav-explore" class="nav-toggle" style="display:none" title="Show explore panel">Explore</span>
-            </div>
             <!-- Left: keyboard controls -->
             <div id="keyref" class="side-panel">
                 <div class="side-panel-header">
@@ -324,13 +323,13 @@
 
             function hide() {
                 panel.style.display = 'none';
-                show.style.display = '';
+                show.style.visibility = 'visible';
                 try { localStorage.setItem(storageKey, '1'); } catch(e) {}
             }
 
             function reveal() {
                 panel.style.display = '';
-                show.style.display = 'none';
+                show.style.visibility = 'hidden';
                 try { localStorage.removeItem(storageKey); } catch(e) {}
             }
 
