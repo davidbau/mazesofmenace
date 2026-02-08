@@ -4,6 +4,7 @@
 Usage:
     python3 gen_map_sessions.py <seed> [max_depth] [--with-rng]
     python3 gen_map_sessions.py --from-config
+    python3 gen_map_sessions.py --c-golden
 
 Single-seed mode: generates levels 1→max_depth sequentially (via wizard
 mode level teleport) and captures typGrid at each depth using #dumpmap.
@@ -11,6 +12,11 @@ When --with-rng is given, also captures per-level RNG traces.
 
 Config mode (--from-config): reads test/comparison/seeds.json and
 generates C map sessions for all seeds listed in map_seeds.with_rng.c.
+
+C golden mode (--c-golden): reads test/comparison/seeds.json c_golden
+config and generates grid-only (no RNG traces) C map sessions for all
+seeds at depths 1→max_depth. Faster than --from-config since no RNG
+log is written. Output: test/comparison/maps/seed<N>_maps_c_golden.session.json
 
 Output: test/comparison/maps/seed<N>_maps_c.session.json
 
@@ -101,7 +107,7 @@ def parse_dumpmap(dumpmap_file):
     return grid
 
 
-def generate_one(seed, max_depth, with_rng):
+def generate_one(seed, max_depth, with_rng, output_filename=None):
     """Generate a single C map session for the given seed."""
 
     if not os.path.isfile(NETHACK_BINARY):
@@ -241,7 +247,7 @@ def generate_one(seed, max_depth, with_rng):
         result.append(line)
         i += 1
 
-    filename = f'seed{seed}_maps_c.session.json'
+    filename = output_filename or f'seed{seed}_maps_c.session.json'
     filepath = os.path.join(SESSIONS_DIR, filename)
     with open(filepath, 'w') as f:
         f.write('\n'.join(result) + '\n')
@@ -267,12 +273,28 @@ def main():
             generate_one(str(seed), max_depth=5, with_rng=True)
         return
 
+    if '--c-golden' in args or '--c-golden-depth1' in args:
+        depth1_only = '--c-golden-depth1' in args
+        config = load_seeds_config()
+        c_golden = config['map_seeds']['c_golden']
+        seeds = c_golden['seeds']
+        max_depth = 1 if depth1_only else c_golden['max_depth']
+        print(f"Generating C golden map sessions (grid-only, no RNG) for {len(seeds)} seeds, depths 1-{max_depth}")
+        for i, seed in enumerate(seeds):
+            print(f"[{i+1}/{len(seeds)}] seed={seed}")
+            filename = f'seed{seed}_maps_c_golden.session.json'
+            generate_one(str(seed), max_depth=max_depth, with_rng=False,
+                         output_filename=filename)
+        print(f"Done: {len(seeds)} seeds × {max_depth} depths")
+        return
+
     with_rng = '--with-rng' in args
     args = [a for a in args if not a.startswith('--')]
 
     if len(args) < 1:
         print(f"Usage: {sys.argv[0]} <seed> [max_depth] [--with-rng]")
         print(f"       {sys.argv[0]} --from-config")
+        print(f"       {sys.argv[0]} --c-golden")
         sys.exit(1)
 
     seed = args[0]
