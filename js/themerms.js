@@ -17,7 +17,7 @@ import { rn2, rnd, rn1, rnz } from './rng.js';
 import { mksobj } from './mkobj.js';
 import { mkclass, def_char_to_monclass, makemon, NO_MM_FLAGS } from './makemon.js';
 import { CORPSE } from './objects.js';
-import { mons, G_NOGEN, G_IGNORE, MAXMCLASSES } from './monsters.js';
+import { mons, G_NOGEN, G_IGNORE, MAXMCLASSES, PM_LIZARD, PM_LICHEN } from './monsters.js';
 import {
     create_room, create_subroom, sp_create_door, floodFillAndRegister,
 } from './dungeon.js';
@@ -285,13 +285,22 @@ function fillerRegion(map, absX, absY, depth) {
 // The mksobj creates a "wasted" random corpse (rndmonnum + rnz) that gets
 // overridden by set_corpsenm (another rnz). Both consume RNG.
 function des_object_corpse_named(map, room, montype, buried) {
-    // get_location_coord with RANDOM coords: somexy → 2 rn1 calls
-    rn1(room.hx - room.lx + 1, room.lx); // somex
-    rn1(room.hy - room.ly + 1, room.ly); // somey
+    // C ref: sp_lev.c get_location → somexy for irregular rooms.
+    // somexy retries when the random position is not in the room (e.g., wall
+    // in a non-rectangular des.map room). Each retry calls somex+somey.
+    for (let tries = 0; tries < 100; tries++) {
+        const x = rn1(room.hx - room.lx + 1, room.lx); // somex
+        const y = rn1(room.hy - room.ly + 1, room.ly); // somey
+        const loc = map.at(x, y);
+        if (loc && loc.typ > DOOR) break; // SPACE_POS: valid position
+    }
     // mksobj(CORPSE, TRUE, TRUE) — creates random corpse then overrides
     const obj = mksobj(CORPSE, true, true);
     // create_object overrides corpsenm: second set_corpsenm → rnz(25)
-    rnz(25);
+    // C ref: mkobj.c:1399-1400 — lizard/lichen corpses skip start_corpse_timeout
+    if (montype !== PM_LIZARD && montype !== PM_LICHEN) {
+        rnz(25);
+    }
     // C ref: dig.c bury_an_obj() → zap.c obj_resists(otmp, 0, 0)
     // When buried, create_object calls bury_an_obj which gates on obj_resists.
     // obj_resists always consumes rn2(100) for non-special objects.
