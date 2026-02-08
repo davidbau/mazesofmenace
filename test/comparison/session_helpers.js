@@ -288,6 +288,19 @@ class HeadlessGame {
         rn2(20);   // gethungry
         this.player.hunger--;
 
+        // C ref: attrib.c exerchk() → exerper()
+        // exerper fires hunger checks every 10 moves, status checks every 5 moves
+        // exercise(attr, TRUE) consumes rn2(19), exercise(attr, FALSE) consumes rn2(2)
+        // C ref: attrib.c exerchk() → exerper()
+        // C's svm.moves starts at 1 and increments before exerchk
+        // JS turnCount starts at 0, so use turnCount + 1 to match
+        const moves = this.turnCount + 1;
+        if (moves % 10 === 0) {
+            // Hunger check: NOT_HUNGRY → exercise(A_CON, TRUE) → rn2(19)
+            rn2(19); // exercise(A_CON, TRUE)
+        }
+        // Status checks every 5 moves: none apply in early game (no intrinsics/conditions)
+
         const dex = this.player.attributes ? this.player.attributes[A_DEX] : 14;
         rn2(40 + dex * 3); // engrave wipe
 
