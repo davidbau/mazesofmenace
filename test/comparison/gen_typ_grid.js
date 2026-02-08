@@ -93,6 +93,14 @@ const CONFIGS = [
     { seed: 31337, depth: 1 },
     { seed: 31337, depth: 3 },
     { seed: 31337, depth: 5 },
+    // Seeds that exercise des.room() themeroom picks 1-4, 8-10
+    { seed: 119, depth: 1 },  // pick 1: Fake Delphi
+    { seed: 72,  depth: 1 },  // pick 2: Room in a room
+    { seed: 306, depth: 1 },  // pick 3: Huge room
+    { seed: 212, depth: 1 },  // pick 4: Nesting rooms
+    { seed: 112, depth: 1 },  // pick 8: Pillars
+    { seed: 163, depth: 1 },  // pick 9: Mausoleum
+    { seed: 16,  depth: 1 },  // pick 10: Random feature
 ];
 
 export { CONFIGS };

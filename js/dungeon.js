@@ -12,7 +12,7 @@ import {
     SDOOR, SCORR,
     POOL, TREE, IRONBARS, LAVAPOOL, ICE, WATER, MOAT, LAVAWALL,
     AIR, CLOUD, THRONE, MAX_TYPE,
-    D_NODOOR, D_CLOSED, D_ISOPEN, D_LOCKED, D_TRAPPED,
+    D_NODOOR, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_TRAPPED, D_SECRET,
     DIR_N, DIR_S, DIR_E, DIR_W, DIR_180,
     xdir, ydir, N_DIRS,
     OROOM, THEMEROOM, VAULT, MAXNROFROOMS, ROOMOFFSET,
@@ -222,6 +222,18 @@ function litstate_rnd(litstate, depth) {
     return !!litstate;
 }
 
+// C ref: nhlib.lua shuffle() — Fisher-Yates from back
+// rn2(n), rn2(n-1), ..., rn2(2) = (n-1) calls
+function shuffleArray(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = rn2(i + 1);
+        const tmp = arr[i];
+        arr[i] = arr[j];
+        arr[j] = tmp;
+    }
+    return arr;
+}
+
 // C ref: sp_lev.c create_room() -- create a random room using rect BSP
 // Returns true if room was created, false if failed.
 function create_room(map, x, y, w, h, xal, yal, rtype, rlit, depth, inThemerooms) {
@@ -296,8 +308,63 @@ function create_room(map, x, y, w, h, xal, yal, rtype, rlit, depth, inThemerooms
             // Split the rect pool around this room
             split_rects(r1, r2);
         } else {
-            // Partially specified room (not needed for basic level gen)
-            return false;
+            // C ref: sp_lev.c:1580-1644 — partially specified room
+            let rndpos = 0;
+            let xaltmp = xal;
+            let yaltmp = yal;
+
+            if (xtmp < 0 && ytmp < 0) {
+                xtmp = rnd(5);
+                ytmp = rnd(5);
+                rndpos = 1;
+            }
+            if (wtmp < 0 || htmp < 0) {
+                wtmp = rn1(15, 3);
+                htmp = rn1(8, 2);
+            }
+            if (xaltmp === -1) xaltmp = rnd(3);
+            if (yaltmp === -1) yaltmp = rnd(3);
+
+            // Convert grid position to absolute coordinates
+            // C uses integer division: ((xtmp-1)*COLNO)/5
+            xabs = Math.trunc(((xtmp - 1) * COLNO) / 5) + 1;
+            yabs = Math.trunc(((ytmp - 1) * ROWNO) / 5) + 1;
+
+            // Alignment adjustments
+            // SPLEV_LEFT=1, SPLEV_CENTER=3, SPLEV_RIGHT=5, TOP=1, BOTTOM=5
+            switch (xaltmp) {
+            case 1: break;
+            case 5: xabs += Math.trunc(COLNO / 5) - wtmp; break;
+            case 3: xabs += Math.trunc((Math.trunc(COLNO / 5) - wtmp) / 2); break;
+            }
+            switch (yaltmp) {
+            case 1: break;
+            case 5: yabs += Math.trunc(ROWNO / 5) - htmp; break;
+            case 3: yabs += Math.trunc((Math.trunc(ROWNO / 5) - htmp) / 2); break;
+            }
+
+            // Bounds clamping
+            if (xabs + wtmp - 1 > COLNO - 2) xabs = COLNO - wtmp - 3;
+            if (xabs < 2) xabs = 2;
+            if (yabs + htmp - 1 > ROWNO - 2) yabs = ROWNO - htmp - 3;
+            if (yabs < 2) yabs = 2;
+
+            // Find a containing rect
+            const r2 = {
+                lx: xabs - 1,
+                ly: yabs - 1,
+                hx: xabs + wtmp + rndpos,
+                hy: yabs + htmp + rndpos
+            };
+            r1 = get_rect(r2);
+
+            if (r1) {
+                const result = check_room(map, xabs, wtmp, yabs, htmp, vault, inThemerooms);
+                if (!result) r1 = null;
+            }
+
+            if (!r1) continue;
+            split_rects(r1, r2);
         }
 
         // C ref: sp_lev.c:1652-1659 — vaults don't add a room or
@@ -323,8 +390,9 @@ function create_room(map, x, y, w, h, xal, yal, rtype, rlit, depth, inThemerooms
 // ========================================================================
 
 // C ref: mklev.c do_room_or_subroom()
+// roomIdx: optional override for roomno computation (used for subrooms)
 function do_room_or_subroom(map, croom, lowx, lowy, hix, hiy,
-                            lit, rtype, special, is_room) {
+                            lit, rtype, special, is_room, roomIdx) {
     // Clamp coordinates
     if (!lowx) lowx++;
     if (!lowy) lowy++;
@@ -343,7 +411,7 @@ function do_room_or_subroom(map, croom, lowx, lowy, hix, hiy,
         croom.rlit = false;
     }
 
-    const roomno = (map.rooms.indexOf(croom));
+    const roomno = (roomIdx !== undefined) ? roomIdx : map.rooms.indexOf(croom);
     croom.roomnoidx = roomno;
     croom.lx = lowx;
     croom.hx = hix;
@@ -417,6 +485,135 @@ function add_room_to_map(map, lowx, lowy, hix, hiy, lit, rtype, special) {
     map.nroom = map.rooms.length;
     do_room_or_subroom(map, croom, lowx, lowy, hix, hiy, lit, rtype,
                        special, true);
+}
+
+// C ref: mklev.c add_subroom()
+function add_subroom_to_map(map, proom, lowx, lowy, hix, hiy, lit, rtype, special) {
+    const croom = makeRoom();
+    croom.needjoining = false;
+    // Subrooms use a pseudo room index beyond nroom (matches C pointer arithmetic)
+    const nsubroom = map.nsubroom || 0;
+    const roomIdx = map.nroom + nsubroom;
+    map.nsubroom = nsubroom + 1;
+    do_room_or_subroom(map, croom, lowx, lowy, hix, hiy, lit, rtype,
+                       special, false, roomIdx);
+    proom.nsubrooms++;
+    return croom;
+}
+
+// C ref: sp_lev.c create_subroom()
+// x, y are relative to parent room. w, h are sub-room dimensions.
+// Returns the created subroom, or null if parent too small.
+function create_subroom(map, proom, x, y, w, h, rtype, rlit, depth) {
+    const width = proom.hx - proom.lx + 1;
+    const height = proom.hy - proom.ly + 1;
+
+    if (width < 4 || height < 4) return null;
+
+    if (w === -1) w = rnd(width - 3);
+    if (h === -1) h = rnd(height - 3);
+    if (x === -1) x = rnd(width - w);
+    if (y === -1) y = rnd(height - h);
+    if (x === 1) x = 0;
+    if (y === 1) y = 0;
+    if ((x + w + 1) === width) x++;
+    if ((y + h + 1) === height) y++;
+    if (rtype === -1) rtype = OROOM;
+    const lit = litstate_rnd(rlit, depth);
+
+    return add_subroom_to_map(map, proom,
+        proom.lx + x, proom.ly + y,
+        proom.lx + x + w - 1, proom.ly + y + h - 1,
+        lit, rtype, false);
+}
+
+// C ref: sp_lev.c rnddoor() — random door state via ROLL_FROM
+function rnddoor() {
+    const states = [D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED];
+    return states[rn2(5)];
+}
+
+// Wall direction constants for sp_create_door (sp_lev.h)
+const W_NORTH = 1, W_SOUTH = 2, W_EAST = 4, W_WEST = 8;
+const W_ANY = W_NORTH | W_SOUTH | W_EAST | W_WEST;
+
+// C ref: sp_lev.c create_door() — place a door on a room wall
+// dd = { secret, mask, pos, wall }
+function sp_create_door(map, dd, broom) {
+    let x = 0, y = 0;
+
+    if (dd.secret === -1) dd.secret = rn2(2);
+    if (dd.wall === -1) dd.wall = W_ANY; // W_RANDOM → W_ANY
+
+    if (dd.mask === -1) {
+        if (!dd.secret) {
+            if (!rn2(3)) {
+                if (!rn2(5)) dd.mask = D_ISOPEN;
+                else if (!rn2(6)) dd.mask = D_LOCKED;
+                else dd.mask = D_CLOSED;
+                if (dd.mask !== D_ISOPEN && !rn2(25))
+                    dd.mask |= D_TRAPPED;
+            } else {
+                dd.mask = D_NODOOR;
+            }
+        } else {
+            if (!rn2(5)) dd.mask = D_LOCKED;
+            else dd.mask = D_CLOSED;
+            if (!rn2(20)) dd.mask |= D_TRAPPED;
+        }
+    }
+
+    let trycnt;
+    for (trycnt = 0; trycnt < 100; trycnt++) {
+        const dwall = dd.wall;
+
+        switch (rn2(4)) {
+        case 0:
+            if (!(dwall & W_NORTH)) continue;
+            y = broom.ly - 1;
+            x = broom.lx + ((dd.pos === -1) ? rn2(1 + broom.hx - broom.lx) : dd.pos);
+            if (!isok(x, y - 1) || IS_OBSTRUCTED(map.at(x, y - 1).typ)) continue;
+            break;
+        case 1:
+            if (!(dwall & W_SOUTH)) continue;
+            y = broom.hy + 1;
+            x = broom.lx + ((dd.pos === -1) ? rn2(1 + broom.hx - broom.lx) : dd.pos);
+            if (!isok(x, y + 1) || IS_OBSTRUCTED(map.at(x, y + 1).typ)) continue;
+            break;
+        case 2:
+            if (!(dwall & W_WEST)) continue;
+            x = broom.lx - 1;
+            y = broom.ly + ((dd.pos === -1) ? rn2(1 + broom.hy - broom.ly) : dd.pos);
+            if (!isok(x - 1, y) || IS_OBSTRUCTED(map.at(x - 1, y).typ)) continue;
+            break;
+        case 3:
+            if (!(dwall & W_EAST)) continue;
+            x = broom.hx + 1;
+            y = broom.ly + ((dd.pos === -1) ? rn2(1 + broom.hy - broom.ly) : dd.pos);
+            if (!isok(x + 1, y) || IS_OBSTRUCTED(map.at(x + 1, y).typ)) continue;
+            break;
+        }
+
+        if (okdoor(map, x, y)) break;
+    }
+
+    if (trycnt >= 100) return;
+
+    const loc = map.at(x, y);
+    loc.typ = dd.secret ? SDOOR : DOOR;
+    loc.flags = dd.mask;
+    add_door(map, x, y, broom);
+}
+
+// C ref: themerms.lua des.door("random") — rnddoor + create_door with random mask
+function des_door_random(map, room) {
+    rnddoor(); // rn2(5) always consumed even though result is unused
+    sp_create_door(map, { secret: 0, mask: -1, pos: -1, wall: -1 }, room);
+}
+
+// C ref: themerms.lua des.door("secret") — secret door, no rnddoor
+function des_door_secret(map, room) {
+    sp_create_door(map, { secret: 1, mask: D_SECRET, pos: -1, wall: -1 }, room);
 }
 
 // C ref: mklev.c mkroom_cmp() — sort rooms by lx only
@@ -920,10 +1117,216 @@ function simulateThemeroomFill(map, room, depth, forceLit) {
     }
 }
 
-// Perform themerooms reservoir sampling and return the picked themeroom index.
+// ========================================================================
+// Themeroom pick handlers for des.room() themerooms (picks 0-10)
+// Each handler returns true if room was created, false if creation failed.
+// rn2(100) is consumed at the position matching C's build_room call.
+// Pre-room RNG (for picks 3, 4, 9, 10) comes before rn2(100).
+// C ref: themerms.lua themerooms array entries
+// ========================================================================
+
+function themeroom_pick1_fakeDelphi(map, depth) {
+    // C ref: themerms.lua "Fake Delphi" (Lua index 2)
+    // Outer 11×9 room with inner 3×3 sub-room at (4,3) + random door
+    rn2(100); // build_room chance check (outer)
+    if (!create_room(map, -1, -1, 11, 9, -1, -1, OROOM, -1, depth, true))
+        return false;
+    const outer = map.rooms[map.nroom - 1];
+    outer.needfill = FILL_NORMAL;
+    rn2(100); // build_room chance check (inner des.room)
+    const inner = create_subroom(map, outer, 4, 3, 3, 3, OROOM, -1, depth);
+    if (inner) {
+        inner.needfill = FILL_NORMAL;
+        des_door_random(map, inner);
+    }
+    return true;
+}
+
+function themeroom_pick2_roomInRoom(map, depth) {
+    // C ref: themerms.lua "Room in a room" (Lua index 3)
+    // Random outer room with random inner sub-room + random door
+    rn2(100); // build_room chance check (outer)
+    if (!create_room(map, -1, -1, -1, -1, -1, -1, OROOM, -1, depth, true))
+        return false;
+    const outer = map.rooms[map.nroom - 1];
+    outer.needfill = FILL_NORMAL;
+    rn2(100); // build_room chance check (inner des.room)
+    const inner = create_subroom(map, outer, -1, -1, -1, -1, OROOM, -1, depth);
+    if (inner) {
+        // No filled=1 on inner room in Lua → FILL_NONE (default)
+        des_door_random(map, inner);
+    }
+    return true;
+}
+
+function themeroom_pick3_hugeRoom(map, depth) {
+    // C ref: themerms.lua "Huge room" (Lua index 4)
+    // Pre-room RNG: nh.rn2(10), nh.rn2(5) for dimensions
+    const wid = rn2(10);
+    const hei = rn2(5);
+    rn2(100);
+    if (!create_room(map, -1, -1, 11 + wid, 8 + hei, -1, -1, OROOM, -1, depth, true))
+        return false;
+    const outer = map.rooms[map.nroom - 1];
+    outer.needfill = FILL_NORMAL;
+    if (rn2(100) < 90) { // percent(90)
+        rn2(100); // build_room chance check (inner des.room)
+        const inner = create_subroom(map, outer, -1, -1, -1, -1, OROOM, -1, depth);
+        if (inner) {
+            inner.needfill = FILL_NORMAL;
+            des_door_random(map, inner);
+            if (rn2(100) < 50) { // percent(50)
+                des_door_random(map, inner);
+            }
+        }
+    }
+    return true;
+}
+
+function themeroom_pick4_nestingRooms(map, depth) {
+    // C ref: themerms.lua "Nesting rooms" (Lua index 5)
+    // Pre-room RNG: nh.rn2(4) × 2 for outer dimensions
+    const outerW = rn2(4);
+    const outerH = rn2(4);
+    rn2(100);
+    if (!create_room(map, -1, -1, 9 + outerW, 9 + outerH, -1, -1, OROOM, -1, depth, true))
+        return false;
+    const outer = map.rooms[map.nroom - 1];
+    outer.needfill = FILL_NORMAL;
+    // Middle room: math.random(floor(W/2), W-2) = floor(W/2) + rn2(W-2 - floor(W/2) + 1)
+    const oW = outer.hx - outer.lx + 1;
+    const oH = outer.hy - outer.ly + 1;
+    const midW = Math.floor(oW / 2) + rn2(oW - 2 - Math.floor(oW / 2) + 1);
+    const midH = Math.floor(oH / 2) + rn2(oH - 2 - Math.floor(oH / 2) + 1);
+    rn2(100); // build_room chance check (middle des.room)
+    const middle = create_subroom(map, outer, -1, -1, midW, midH, OROOM, -1, depth);
+    if (middle) {
+        middle.needfill = FILL_NORMAL;
+        // In Lua: innermost room created first, then middle's doors
+        if (rn2(100) < 90) { // percent(90)
+            rn2(100); // build_room chance check (innermost des.room)
+            const innermost = create_subroom(map, middle, -1, -1, -1, -1, OROOM, -1, depth);
+            if (innermost) {
+                innermost.needfill = FILL_NORMAL;
+                des_door_random(map, innermost);
+                if (rn2(100) < 15) des_door_random(map, innermost); // percent(15)
+            }
+        }
+        des_door_random(map, middle);
+        if (rn2(100) < 15) des_door_random(map, middle); // percent(15)
+    }
+    return true;
+}
+
+function themeroom_pick8_pillars(map, depth) {
+    // C ref: themerms.lua "Pillars" (Lua index 9)
+    // 10×10 room with 4 2×2 terrain pillars from shuffled array
+    rn2(100);
+    if (!create_room(map, -1, -1, 10, 10, -1, -1, THEMEROOM, -1, depth, true))
+        return false;
+    const room = map.rooms[map.nroom - 1];
+    // Lua: { "-", "-", "-", "-", "L", "P", "T" }
+    // → [HWALL, HWALL, HWALL, HWALL, LAVAPOOL, POOL, TREE]
+    const terrains = [HWALL, HWALL, HWALL, HWALL, LAVAPOOL, POOL, TREE];
+    shuffleArray(terrains); // 6 rn2 calls
+    const pillarTyp = terrains[0];
+    // Place 2×2 pillar blocks at grid positions
+    for (let px = 0; px <= 1; px++) {
+        for (let py = 0; py <= 1; py++) {
+            const bx = room.lx + px * 4 + 2;
+            const by = room.ly + py * 4 + 2;
+            for (let dx = 0; dx <= 1; dx++) {
+                for (let dy = 0; dy <= 1; dy++) {
+                    const loc = map.at(bx + dx, by + dy);
+                    if (loc) loc.typ = pillarTyp;
+                }
+            }
+        }
+    }
+    return true;
+}
+
+function themeroom_pick9_mausoleum(map, depth) {
+    // C ref: themerms.lua "Mausoleum" (Lua index 10)
+    // Pre-room RNG: nh.rn2(3) × 2 for dimensions
+    const w = rn2(3);
+    const h = rn2(3);
+    rn2(100);
+    if (!create_room(map, -1, -1, 5 + w * 2, 5 + h * 2, -1, -1, THEMEROOM, -1, depth, true))
+        return false;
+    const outer = map.rooms[map.nroom - 1];
+    // Inner 1×1 sub-room at center
+    const oW = outer.hx - outer.lx + 1;
+    const oH = outer.hy - outer.ly + 1;
+    const cx = Math.floor((oW - 1) / 2);
+    const cy = Math.floor((oH - 1) / 2);
+    rn2(100); // build_room chance check (inner des.room)
+    const inner = create_subroom(map, outer, cx, cy, 1, 1, THEMEROOM, -1, depth);
+    if (inner) {
+        inner.needjoining = false;
+        if (rn2(100) < 50) { // percent(50) — monster
+            const mons = [0, 1, 2, 3]; // M, V, L, Z classes
+            shuffleArray(mons); // 3 rn2 calls
+            // TODO: des.monster — makemon RNG (complex, deferred)
+        } else {
+            // TODO: des.object — corpse creation RNG (complex, deferred)
+        }
+        if (rn2(100) < 20) { // percent(20) — secret door
+            des_door_secret(map, inner);
+        }
+    }
+    return true;
+}
+
+function themeroom_pick10_randomFeature(map, depth) {
+    // C ref: themerms.lua "Random dungeon feature" (Lua index 11)
+    // Pre-room RNG: nh.rn2(3) × 2 for dimensions (always odd)
+    const wid = 3 + rn2(3) * 2;
+    const hei = 3 + rn2(3) * 2;
+    rn2(100);
+    if (!create_room(map, -1, -1, wid, hei, -1, -1, OROOM, -1, depth, true))
+        return false;
+    const room = map.rooms[map.nroom - 1];
+    room.needfill = FILL_NORMAL;
+    // Lua: { "C", "L", "I", "P", "T" } → [CLOUD, LAVAPOOL, ICE, POOL, TREE]
+    const features = [CLOUD, LAVAPOOL, ICE, POOL, TREE];
+    shuffleArray(features); // 4 rn2 calls
+    // Place single terrain tile at room center
+    const cx = room.lx + Math.floor((room.hx - room.lx) / 2);
+    const cy = room.ly + Math.floor((room.hy - room.ly) / 2);
+    const loc = map.at(cx, cy);
+    if (loc) loc.typ = features[0];
+    return true;
+}
+
+// C ref: themerms.lua "default" — des.room({ type="ordinary", filled=1 })
+function themeroom_default(map, depth) {
+    rn2(100);
+    if (!create_room(map, -1, -1, -1, -1, -1, -1, OROOM, -1, depth, true))
+        return false;
+    map.rooms[map.nroom - 1].needfill = FILL_NORMAL;
+    return true;
+}
+
+// C ref: themerms.lua picks 5-7 — des.room({ type="themed", filled=1 })
+// with themeroom_fill callback. Pick 6 is dark (lit=0).
+function themeroom_desroom_fill(map, pick, depth) {
+    rn2(100);
+    if (!create_room(map, -1, -1, -1, -1, -1, -1, OROOM, -1, depth, true))
+        return false;
+    const room = map.rooms[map.nroom - 1];
+    room.needfill = FILL_NORMAL;
+    room.rtype = THEMEROOM;
+    const forceLit = (pick === 6) ? false : undefined;
+    simulateThemeroomFill(map, room, depth, forceLit);
+    return true;
+}
+
 // C ref: themerms.lua themerooms_generate()
-function themeroomsGenerate() {
-    let pick = 0; // default room (index 0)
+// Reservoir sampling + dispatch to picked themeroom's contents callback.
+function themerooms_generate(map, depth) {
+    // Reservoir sampling
+    let pick = 0;
     let prevFreq = 0;
     for (let i = 0; i < THEMEROOM_ARGS.length; i++) {
         const cumFreq = THEMEROOM_ARGS[i];
@@ -934,7 +1337,22 @@ function themeroomsGenerate() {
         }
         prevFreq = cumFreq;
     }
-    return pick;
+
+    // C ref: themerooms[pick].contents()
+    switch (pick) {
+        case 0:  return themeroom_default(map, depth);
+        case 1:  return themeroom_pick1_fakeDelphi(map, depth);
+        case 2:  return themeroom_pick2_roomInRoom(map, depth);
+        case 3:  return themeroom_pick3_hugeRoom(map, depth);
+        case 4:  return themeroom_pick4_nestingRooms(map, depth);
+        case 5: case 6: case 7:
+            return themeroom_desroom_fill(map, pick, depth);
+        case 8:  return themeroom_pick8_pillars(map, depth);
+        case 9:  return themeroom_pick9_mausoleum(map, depth);
+        case 10: return themeroom_pick10_randomFeature(map, depth);
+        default: // picks 11-29: des.map() themerooms
+            return placeMapThemeroom(map, pick, depth);
+    }
 }
 
 // C ref: mklev.c makerooms()
@@ -951,57 +1369,17 @@ function makerooms(map, depth) {
         if (map.nroom >= Math.floor(MAXNROFROOMS / 6) && rn2(2)
             && !tried_vault) {
             tried_vault = true;
-            // C ref: mklev.c:396-399 — create_vault() saves position but
-            // does NOT add a room or increment nroom. The vault is properly
-            // created later in the post-corridor section of makelevel.
+            // C ref: mklev.c:396-399 — create_vault()
             create_room(map, -1, -1, 2, 2, -1, -1, VAULT, true, depth, true);
         } else {
-            // C ref: mklev.c:402-407 — themerooms_generate Lua reservoir
-            // sampling (30 calls). Track which room was picked.
-            const themeroomPick = themeroomsGenerate();
-
-            if (themeroomPick >= 11 && themeroomPick <= 29) {
-                // des.map() themeroom — NO rn2(100) build_room check.
-                // C ref: themerms.lua — these call des.map() not des.room()
-                if (!placeMapThemeroom(map, themeroomPick, depth)) {
-                    // themeroom_failed
-                    if (++themeroom_tries > 10
-                        || map.nroom >= Math.floor(MAXNROFROOMS / 6))
-                        break;
-                } else {
-                    themeroom_tries = 0;
-                }
+            // C ref: mklev.c:402-407
+            if (!themerooms_generate(map, depth)) {
+                // themeroom_failed
+                if (++themeroom_tries > 10
+                    || map.nroom >= Math.floor(MAXNROFROOMS / 6))
+                    break;
             } else {
-                // des.room() themeroom (picks 0-10) — has rn2(100) build_room
-                // C ref: sp_lev.c:2803 build_room chance check
-                rn2(100);
-
-                if (!create_room(map, -1, -1, -1, -1, -1, -1, OROOM, -1, depth, true)) {
-                    // C ref: mklev.c:408-411 — themeroom_failed retry logic
-                    if (++themeroom_tries > 10
-                        || map.nroom >= Math.floor(MAXNROFROOMS / 6))
-                        break;
-                } else {
-                    // C ref: themerms.lua — set needfill based on whether the
-                    // Lua themeroom passes filled=1 to des.room().
-                    // Picks with filled=1: 0,1,2,3,4,7,10. Others: no filled → 0.
-                    const filledPicks = [0, 1, 2, 3, 4, 7, 10];
-                    if (filledPicks.includes(themeroomPick)) {
-                        map.rooms[map.nroom - 1].needfill = FILL_NORMAL;
-                    }
-                    // C ref: non-default themerooms get rtype=THEMEROOM
-                    if (themeroomPick !== 0) {
-                        map.rooms[map.nroom - 1].rtype = THEMEROOM;
-                    }
-                    if (themeroomPick >= 5 && themeroomPick <= 7) {
-                        // Simulate themeroom_fill RNG consumption.
-                        // C ref: themerms.lua — indices 5,6,7 all call themeroom_fill()
-                        const room = map.rooms[map.nroom - 1];
-                        const forceLit = (themeroomPick === 6) ? false : undefined;
-                        simulateThemeroomFill(map, room, depth, forceLit);
-                    }
-                    themeroom_tries = 0;
-                }
+                themeroom_tries = 0;
             }
         }
     }
