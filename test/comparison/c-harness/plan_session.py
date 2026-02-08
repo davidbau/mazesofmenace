@@ -79,17 +79,20 @@ def setup():
         f.write('OPTIONS=!autopickup\n')
         f.write('OPTIONS=suppress_alert:3.4.3\n')
         f.write('OPTIONS=symset:DECgraphics\n')
-    # Clean save files and lock files
+    # Clean up stale game state to avoid prompts from previous crashed runs.
+    # Remove: save files, level/lock files (e.g. 501wizard.0), and bones files.
+    import glob
     save_dir = os.path.join(INSTALL_DIR, 'save')
     if os.path.isdir(save_dir):
-        import glob
         for fn in glob.glob(os.path.join(save_dir, '*')):
             os.unlink(fn)
-    # Also clean stale save files in the install dir itself
-    import glob
     for fn in glob.glob(os.path.join(INSTALL_DIR, '*wizard*')):
-        os.unlink(fn)
+        if not fn.endswith('.lua'):
+            os.unlink(fn)
     for fn in glob.glob(os.path.join(INSTALL_DIR, '*Wizard*')):
+        if not fn.endswith('.lua'):
+            os.unlink(fn)
+    for fn in glob.glob(os.path.join(INSTALL_DIR, 'bon*')):
         os.unlink(fn)
 
 

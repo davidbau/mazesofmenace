@@ -79,16 +79,20 @@ def setup_home():
         f.write('OPTIONS=suppress_alert:3.4.3\n')
         f.write('OPTIONS=symset:DECgraphics\n')
 
+    # Clean up stale game state to avoid prompts from previous crashed runs.
+    # Remove: save files, level/lock files (e.g. 501wizard.0), and bones files.
+    import glob
     save_dir = os.path.join(INSTALL_DIR, 'save')
     if os.path.isdir(save_dir):
-        import glob
         for f in glob.glob(os.path.join(save_dir, '*')):
             os.unlink(f)
-    # Also clean stale save/lock files in the install dir itself
-    import glob as glob_mod
-    for f in glob_mod.glob(os.path.join(INSTALL_DIR, '*wizard*')):
-        os.unlink(f)
-    for f in glob_mod.glob(os.path.join(INSTALL_DIR, '*Wizard*')):
+    for f in glob.glob(os.path.join(INSTALL_DIR, '*wizard*')):
+        if not f.endswith('.lua'):
+            os.unlink(f)
+    for f in glob.glob(os.path.join(INSTALL_DIR, '*Wizard*')):
+        if not f.endswith('.lua'):
+            os.unlink(f)
+    for f in glob.glob(os.path.join(INSTALL_DIR, 'bon*')):
         os.unlink(f)
 
 

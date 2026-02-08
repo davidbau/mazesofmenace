@@ -67,11 +67,21 @@ def setup_home():
         f.write('OPTIONS=suppress_alert:3.4.3\n')
         f.write('OPTIONS=symset:DECgraphics\n')
 
+    # Clean up stale game state to avoid prompts from previous crashed runs.
+    # Remove: save files, level/lock files (e.g. 501wizard.0), and bones files.
+    import glob
     save_dir = os.path.join(INSTALL_DIR, 'save')
     if os.path.isdir(save_dir):
-        import glob
         for f in glob.glob(os.path.join(save_dir, '*')):
             os.unlink(f)
+    for f in glob.glob(os.path.join(INSTALL_DIR, '*wizard*')):
+        if not f.endswith('.lua'):
+            os.unlink(f)
+    for f in glob.glob(os.path.join(INSTALL_DIR, '*Wizard*')):
+        if not f.endswith('.lua'):
+            os.unlink(f)
+    for f in glob.glob(os.path.join(INSTALL_DIR, 'bon*')):
+        os.unlink(f)
 
 
 def read_rng_log_lines(rng_log_file):
@@ -125,6 +135,11 @@ def wait_for_game_ready(session, output_dir, rng_log_file):
         if 'keep the save file' in content or 'keep save' in content.lower():
             save_startup_screen(content, 'press n (keep save)', rng_count)
             tmux_send(session, 'n', 0.5)
+            continue
+
+        if 'Destroy old game' in content:
+            save_startup_screen(content, 'press y (destroy old game)', rng_count)
+            tmux_send(session, 'y', 0.5)
             continue
 
         if 'Shall I pick' in content:
