@@ -273,6 +273,13 @@ export function generateStartupWithRng(seed, session) {
 
     const map = makelevel(1);
     wallification(map);
+
+    // Wizard mode: reveal all traps (matching C's `-D` flag behavior)
+    // C harness runs with `nethack -u Wizard -D` which enables omniscience
+    for (const trap of map.traps) {
+        trap.tseen = true;
+    }
+
     const grid = extractTypGrid(map);
 
     // Set up player matching the session's character configuration
@@ -478,6 +485,12 @@ export async function replaySession(seed, session) {
 
     const map = makelevel(1);
     wallification(map);
+
+    // Wizard mode: reveal all traps (matching C's `-D` flag behavior)
+    // C harness runs with `nethack -u Wizard -D` which enables omniscience
+    for (const trap of map.traps) {
+        trap.tseen = true;
+    }
 
     const player = new Player();
     player.initRole(replayRoleIndex);
