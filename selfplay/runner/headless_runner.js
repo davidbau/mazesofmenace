@@ -364,6 +364,10 @@ class HeadlessAdapter {
 
     async sendKey(key) {
         if (!this._running) return;
+        // Execute the command directly and wait for it to complete.
+        // For commands that prompt (like inventory), they will block
+        // waiting for nhgetch(). The key is that we need to ensure
+        // subsequent sendKey calls provide the expected input.
         await this.game.executeCommand(key);
     }
 

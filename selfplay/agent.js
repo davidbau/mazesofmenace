@@ -727,6 +727,17 @@ export class Agent {
      * This is expensive (requires extra key press + screen read), so call sparingly.
      */
     async _refreshInventory() {
+        // In headless mode, skip inventory screen scraping.
+        // The inventory command ('i') blocks waiting for dismissal,
+        // causing the agent to hang. Instead, track inventory through
+        // game state or message parsing in headless mode.
+        // TODO: Implement proper inventory tracking for headless mode
+        if (!this.adapter.isTmux) {
+            // Headless JS mode - skip for now
+            this.inventory.lastUpdate = this.turnNumber;
+            return false;
+        }
+
         // Send 'i' to view inventory
         await this.adapter.sendKey('i');
 
