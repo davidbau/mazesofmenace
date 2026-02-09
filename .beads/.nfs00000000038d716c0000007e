@@ -2105,3 +2105,9 @@ time=2026-02-09T17:34:35.791-05:00 level=INFO msg="Skipping: in backoff period" 
 time=2026-02-09T17:34:39.650-05:00 level=INFO msg="Git ref change detected" path=/share/u/davidbau/git/mazesofmenace/.git/refs/heads/main.lock
 time=2026-02-09T17:34:40.651-05:00 level=INFO msg="Import triggered by file change"
 time=2026-02-09T17:34:40.655-05:00 level=INFO msg="Skipping: in backoff period" mode=auto-import
+time=2026-02-09T17:35:00.606-05:00 level=INFO msg="Git ref change detected" path=/share/u/davidbau/git/mazesofmenace/.git/refs/heads/main.lock
+time=2026-02-09T17:35:01.607-05:00 level=INFO msg="Import triggered by file change"
+time=2026-02-09T17:35:01.611-05:00 level=INFO msg="Skipping: in backoff period" mode=auto-import
+time=2026-02-09T17:37:54.962-05:00 level=INFO msg="JSONL file created" path=/share/u/davidbau/git/mazesofmenace/.beads/issues.jsonl
+time=2026-02-09T17:37:55.964-05:00 level=INFO msg="Import triggered by file change"
+time=2026-02-09T17:37:55.970-05:00 level=INFO msg="Skipping: in backoff period" mode=auto-import
