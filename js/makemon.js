@@ -3,8 +3,14 @@
 // C ref: makemon.c — monster creation, selection, weapon/inventory assignment
 
 import { rn2, rnd, rn1, d } from './rng.js';
-import { mksobj, mkobj } from './mkobj.js';
+import { mksobj, mkobj, next_ident } from './mkobj.js';
 import { def_monsyms } from './symbols.js';
+import { SHOPBASE, ROOMOFFSET } from './config.js';
+
+// Registration for get_shop_item to avoid circular dependency with shknam.js.
+// shknam.js calls registerGetShopItem() during initialization.
+let _getShopItem = null;
+export function registerGetShopItem(fn) { _getShopItem = fn; }
 import {
     mons, LOW_PM, SPECIAL_PM, MAXMCLASSES,
     G_FREQ, G_NOGEN, G_UNIQ, G_HELL, G_NOHELL, G_SGROUP, G_LGROUP,
@@ -22,7 +28,7 @@ import {
     M2_HOSTILE, M2_PEACEFUL, M2_DOMESTIC, M2_NEUTER, M2_GREEDY,
     M1_FLY, M1_NOHANDS,
     PM_ORC, PM_GIANT, PM_ELF, PM_HUMAN,
-    PM_SOLDIER, AT_WEAP,
+    PM_SOLDIER, PM_SHOPKEEPER, AT_WEAP,
     PM_GOBLIN, PM_ORC_CAPTAIN, PM_MORDOR_ORC, PM_URUK_HAI, PM_ORC_SHAMAN,
     PM_OGRE_LEADER, PM_OGRE_TYRANT, PM_GHOST,
 } from './monsters.js';
@@ -54,6 +60,9 @@ import {
     MIRROR, POT_OBJECT_DETECTION, POT_HEALING, POT_EXTRA_HEALING,
     POT_SPEED, CRYSTAL_BALL, BRASS_LANTERN, SKELETON_KEY,
     WAN_STRIKING, FOOD_RATION, TIN_OPENER,
+    WAN_MAGIC_MISSILE, WAN_DEATH, WAN_SLEEP, WAN_FIRE, WAN_COLD, WAN_LIGHTNING,
+    POT_ACID, POT_CONFUSION, POT_BLINDNESS, POT_SLEEPING, POT_PARALYSIS,
+    SCR_EARTH,
     RIN_INVISIBILITY,
     CORPSE,
 } from './objects.js';
@@ -578,8 +587,33 @@ function m_initweap(mndx, depth) {
     // C ref: makemon.c:571 — offensive item check, OUTSIDE the switch,
     // always called for ALL monsters. rn2(75) is always consumed.
     if (ptr.level > rn2(75)) {
-        // rnd_offensive_item → mongets → mksobj
-        // TODO: implement actual offensive item creation
+        // C ref: muse.c rnd_offensive_item()
+        // Skip for animals, exploders, mindless, ghosts, kops
+        const difficulty = ptr.difficulty || ptr.level;
+        let otyp = 0;
+        if (ptr.symbol !== S_GHOST && ptr.symbol !== S_KOP) {
+            if (difficulty > 7 && !rn2(35)) {
+                otyp = WAN_DEATH;
+            } else {
+                const range = 9 - (difficulty < 4 ? 1 : 0) + 4 * (difficulty > 6 ? 1 : 0);
+                const pick = rn2(range);
+                switch (pick) {
+                case 0: otyp = SCR_EARTH; break; // may fall through to case 1 in C, but RNG same
+                case 1: otyp = WAN_STRIKING; break;
+                case 2: otyp = POT_ACID; break;
+                case 3: otyp = POT_CONFUSION; break;
+                case 4: otyp = POT_BLINDNESS; break;
+                case 5: otyp = POT_SLEEPING; break;
+                case 6: otyp = POT_PARALYSIS; break;
+                case 7: case 8: otyp = WAN_MAGIC_MISSILE; break;
+                case 9: otyp = WAN_SLEEP; break;
+                case 10: otyp = WAN_FIRE; break;
+                case 11: otyp = WAN_COLD; break;
+                case 12: otyp = WAN_LIGHTNING; break;
+                }
+            }
+        }
+        if (otyp) mksobj(otyp, true, false);
     }
 }
 
@@ -626,6 +660,15 @@ function m_initinv(mndx, depth, m_lev) {
             if (!rn2(7)) mksobj(ROBE, true, false);
             if (!rn2(3)) mksobj(rn2(2) ? ELVEN_CLOAK : DWARVISH_CLOAK, true, false);
             rn1(10, 20); // gold amount
+        } else if (mndx === PM_SHOPKEEPER) {
+            // C ref: makemon.c:703-721 — SKELETON_KEY + fall-through switch
+            mksobj(SKELETON_KEY, true, false);
+            const w = rn2(4);
+            // MAJOR fall through: case 0 gets all items, case 3 only WAN_STRIKING
+            if (w <= 0) mksobj(WAN_MAGIC_MISSILE, true, false);
+            if (w <= 1) mksobj(POT_EXTRA_HEALING, true, false);
+            if (w <= 2) mksobj(POT_HEALING, true, false);
+            mksobj(WAN_STRIKING, true, false); // case 3 always executes
         }
         break;
 
@@ -719,35 +762,72 @@ const mimic_syms = [
     S_MIMIC_DEF,  S_MIMIC_DEF,
 ];
 
-function set_mimic_sym(mndx, x, y, map) {
-    // During level generation in ordinary rooms, we always reach the default
-    // "else" branch since: not OBJ_AT (no objects at mimic position typically
-    // during sp_lev placement), not IS_DOOR/IS_WALL (mimics placed in ROOM),
-    // not maze level, roomno >= 0 but rt == OROOM (themeroom is OROOM).
-    // So: s_sym = ROLL_FROM(syms) = syms[rn2(17)]
-    const s_sym = mimic_syms[rn2(17)];
+function set_mimic_sym(mndx, x, y, map, depth) {
+    // C ref: makemon.c:2386-2540 — determine mimic appearance
+    // Look up room type at (x, y) from map
+    let rt = 0;
+    if (map && map.at) {
+        const loc = map.at(x, y);
+        if (loc && loc.roomno >= ROOMOFFSET) {
+            const roomIdx = loc.roomno - ROOMOFFSET;
+            if (roomIdx >= 0 && roomIdx < map.rooms.length) {
+                rt = map.rooms[roomIdx].rtype;
+            }
+        }
+    }
 
+    // Determine s_sym and possibly set appear directly
+    let s_sym;
     let appear;
-    if (s_sym === MAXOCLASSES) {
-        // Furniture appearance: rn2(8) from furnsyms
-        rn2(8);
-        // No further RNG — furniture doesn't trigger corpsenm fixup
-        return;
-    } else if (s_sym === S_MIMIC_DEF) {
-        appear = STRANGE_OBJECT;
-    } else if (s_sym === COIN_CLASS) {
-        appear = GOLD_PIECE;
+
+    if (rt >= SHOPBASE) {
+        // C ref: makemon.c:2460-2479 — shop mimic appearance
+        if (rn2(10) >= (depth || 1)) {
+            s_sym = S_MIMIC_DEF;
+            // fall through to assign_sym below
+        } else {
+            s_sym = _getShopItem(rt - SHOPBASE);
+            if (s_sym < 0) {
+                // Specific item type: appear = -s_sym (no goto assign_sym)
+                appear = -s_sym;
+            } else if (rt === SHOPBASE + 10 && s_sym > MAXOCLASSES) {
+                // FODDERSHOP: health food store with VEGETARIAN_CLASS
+                rn2(2); // C: rn2(2) ? LUMP_OF_ROYAL_JELLY : SLIME_MOLD
+                return; // no post-fixup RNG for these items
+            } else {
+                if (s_sym === 0 || s_sym >= MAXOCLASSES) // RANDOM_CLASS or VEGETARIAN
+                    s_sym = mimic_syms[rn2(15) + 2]; // syms[rn2(SIZE(syms)-2)+2]
+                // fall through to assign_sym below
+            }
+        }
     } else {
-        // mkobj(s_sym, FALSE) — create a temp object to get its otyp
-        // This consumes RNG for object selection + mksobj init.
-        // C then calls obfree() to discard it.
-        const obj = mkobj(s_sym, false);
-        appear = obj ? obj.otyp : STRANGE_OBJECT;
+        // Default: ROLL_FROM(syms) = syms[rn2(17)]
+        s_sym = mimic_syms[rn2(17)];
+    }
+
+    // assign_sym logic (only if appear not already set)
+    if (appear === undefined) {
+        if (s_sym === MAXOCLASSES) {
+            // Furniture appearance: rn2(8) from furnsyms
+            rn2(8);
+            // No further RNG — furniture doesn't trigger corpsenm fixup
+            return;
+        } else if (s_sym === S_MIMIC_DEF) {
+            appear = STRANGE_OBJECT;
+        } else if (s_sym === COIN_CLASS) {
+            appear = GOLD_PIECE;
+        } else {
+            // mkobj(s_sym, FALSE) — create a temp object to get its otyp
+            // This consumes RNG for object selection + mksobj init.
+            // C then calls obfree() to discard it.
+            const obj = mkobj(s_sym, false);
+            appear = obj ? obj.otyp : STRANGE_OBJECT;
+        }
     }
 
     // Post-fixup: if appearance is STATUE/FIGURINE/CORPSE/EGG/TIN,
     // pick a monster type for corpsenm
-    // C ref: makemon.c:2458-2475
+    // C ref: makemon.c:2508-2518
     if (appear === STATUE || appear === FIGURINE
         || appear === CORPSE || appear === EGG || appear === TIN) {
         const rndmndx = rndmonnum();
@@ -758,10 +838,6 @@ function set_mimic_sym(mndx, x, y, map) {
         }
         // For EGG with non-hatchable or TIN with nocorpse: mndx = NON_PM (no extra RNG)
     }
-
-    // Altar appearance fixup: if S_altar, rn2(3) for alignment
-    // This can't happen from the default branch (S_altar comes from furnsyms
-    // which already returned above), so no RNG here.
 }
 
 // makemon -- main monster creation
@@ -839,8 +915,8 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
     }
 
     // C ref: makemon.c:1252 — mtmp->m_id = next_ident()
-    // next_ident() consumes rnd(2) for unique monster ID (BEFORE newmonhp)
-    rnd(2);
+    // next_ident() returns counter value and consumes rnd(2)
+    const m_id = next_ident();
 
     // C ref: makemon.c:1259 — newmonhp
     const { hp, m_lev } = newmonhp(mndx);
@@ -853,7 +929,7 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
 
     // C ref: makemon.c:1299-1310 — post-placement switch on mlet
     if (ptr.symbol === S_MIMIC) {
-        set_mimic_sym(mndx, x, y, map);
+        set_mimic_sym(mndx, x, y, map, depth);
     } else if ((ptr.symbol === S_SPIDER || ptr.symbol === S_SNAKE) && map) {
         // C ref: in_mklev && x && y → mkobj_at(RANDOM_CLASS, x, y, TRUE)
         // mkobj_at creates a random object (consumes RNG), then hideunder (no RNG)
@@ -924,6 +1000,7 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
     const symEntry = def_monsyms[ptr.symbol];
     const mon = {
         mndx,
+        m_id,
         type: ptr,
         name: ptr.name,
         displayChar: symEntry ? symEntry.sym : '?',

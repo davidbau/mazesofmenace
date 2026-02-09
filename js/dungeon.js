@@ -14,7 +14,7 @@ import {
     D_NODOOR, D_CLOSED, D_ISOPEN, D_LOCKED, D_TRAPPED,
     DIR_N, DIR_S, DIR_E, DIR_W, DIR_180,
     xdir, ydir, N_DIRS,
-    OROOM, THEMEROOM, VAULT, MAXNROFROOMS, ROOMOFFSET,
+    OROOM, THEMEROOM, VAULT, SHOPBASE, MAXNROFROOMS, ROOMOFFSET,
     DBWALL,
     IS_WALL, IS_STWALL, IS_DOOR, IS_ROOM, IS_OBSTRUCTED, IS_FURNITURE,
     IS_POOL, IS_LAVA, isok,
@@ -38,7 +38,7 @@ import { roles } from './player.js';
 import {
     ARROW, DART, ROCK, BOULDER, LARGE_BOX, CHEST, GOLD_PIECE, CORPSE,
     STATUE, TALLOW_CANDLE, WAX_CANDLE, BELL,
-    WEAPON_CLASS, TOOL_CLASS, FOOD_CLASS, GEM_CLASS,
+    WEAPON_CLASS, TOOL_CLASS, FOOD_CLASS, GEM_CLASS, WAND_CLASS,
     ARMOR_CLASS, SCROLL_CLASS, POTION_CLASS, RING_CLASS, SPBOOK_CLASS,
     POT_HEALING, POT_EXTRA_HEALING, POT_SPEED, POT_GAIN_ENERGY,
     SCR_ENCHANT_WEAPON, SCR_ENCHANT_ARMOR, SCR_CONFUSE_MONSTER, SCR_SCARE_MONSTER,
@@ -51,6 +51,11 @@ import { themerooms_generate } from './themerms.js';
 import { parseEncryptedDataFile, parseRumorsFile } from './hacklib.js';
 import { EPITAPH_FILE_TEXT } from './epitaph_data.js';
 import { ENGRAVE_FILE_TEXT } from './engrave_data.js';
+import { shtypes, stock_room } from './shknam.js';
+
+// Module-level game seed for nameshk() — set by setGameSeed() before level gen
+let _gameSeed = 0;
+export function setGameSeed(seed) { _gameSeed = seed; }
 
 // ========================================================================
 // rect.c -- Rectangle pool for BSP room placement
@@ -2953,6 +2958,95 @@ function mineralize(map, depth) {
 }
 
 // ========================================================================
+// mkshop() — pick a room to be a shop and set its type
+// C ref: mkroom.c:94-216
+// ========================================================================
+
+// C ref: mkroom.c:41-48
+function isbig(sroom) {
+    return (sroom.hx - sroom.lx + 1) * (sroom.hy - sroom.ly + 1) > 20;
+}
+
+// C ref: mkroom.c:640-663
+function has_dnstairs_room(croom, map) {
+    return map.dnstair.x >= croom.lx && map.dnstair.x <= croom.hx
+        && map.dnstair.y >= croom.ly && map.dnstair.y <= croom.hy;
+}
+function has_upstairs_room(croom, map) {
+    return map.upstair.x >= croom.lx && map.upstair.x <= croom.hx
+        && map.upstair.y >= croom.ly && map.upstair.y <= croom.hy;
+}
+
+// C ref: mkroom.c:1049-1096 — check if room shape traps shopkeeper
+function invalid_shop_shape(sroom, map) {
+    const doorx = map.doors[sroom.fdoor].x;
+    const doory = map.doors[sroom.fdoor].y;
+    let insidex = 0, insidey = 0, insidect = 0;
+
+    // Find ROOM squares inside room and adjacent to door
+    for (let x = Math.max(doorx - 1, sroom.lx); x <= Math.min(doorx + 1, sroom.hx); x++) {
+        for (let y = Math.max(doory - 1, sroom.ly); y <= Math.min(doory + 1, sroom.hy); y++) {
+            const loc = map.at(x, y);
+            if (loc && loc.typ === ROOM) {
+                insidex = x;
+                insidey = y;
+                insidect++;
+            }
+        }
+    }
+    if (insidect < 1) return true;
+    if (insidect === 1) {
+        // Only 1 square next to door — check if shopkeeper can move elsewhere
+        insidect = 0;
+        for (let x = Math.max(insidex - 1, sroom.lx); x <= Math.min(insidex + 1, sroom.hx); x++) {
+            for (let y = Math.max(insidey - 1, sroom.ly); y <= Math.min(insidey + 1, sroom.hy); y++) {
+                if (x === insidex && y === insidey) continue;
+                const loc = map.at(x, y);
+                if (loc && loc.typ === ROOM) insidect++;
+            }
+        }
+        if (insidect === 1) return true; // shopkeeper trapped
+    }
+    return false;
+}
+
+function mkshop(map) {
+    // C ref: mkroom.c:158-179 — find eligible room
+    for (const sroom of map.rooms) {
+        if (sroom.hx < 0) return;
+        if (sroom.rtype !== OROOM) continue;
+        if (has_dnstairs_room(sroom, map) || has_upstairs_room(sroom, map)) continue;
+        if (sroom.doorct !== 1) continue;
+        if (invalid_shop_shape(sroom, map)) continue;
+
+        // Found eligible room — light it
+        // C ref: mkroom.c:180-187
+        if (!sroom.rlit) {
+            for (let x = sroom.lx - 1; x <= sroom.hx + 1; x++) {
+                for (let y = sroom.ly - 1; y <= sroom.hy + 1; y++) {
+                    const loc = map.at(x, y);
+                    if (loc) loc.lit = true;
+                }
+            }
+            sroom.rlit = true;
+        }
+
+        // C ref: mkroom.c:189-201 — pick shop type by probability
+        let j = rnd(100);
+        let i = 0;
+        while ((j -= shtypes[i].prob) > 0) i++;
+
+        // Big rooms can't be wand or book shops → general store
+        if (isbig(sroom) && (shtypes[i].symb === WAND_CLASS || shtypes[i].symb === SPBOOK_CLASS))
+            i = 0;
+
+        sroom.rtype = SHOPBASE + i;
+        sroom.needfill = FILL_NORMAL;
+        return;
+    }
+}
+
+// ========================================================================
 // Main entry point
 // ========================================================================
 
@@ -3042,7 +3136,7 @@ export function makelevel(depth) {
         const room_threshold = 3; // simplified: no branch check
         // C ref: each check consumes one rn2() if it reaches that point
         if (depth > 1 && map.nroom >= room_threshold && rn2(depth) < 3) {
-            // do_mkroom(SHOPBASE) — skip actual shop creation
+            mkshop(map);
         } else if (depth > 4 && !rn2(6)) {
             // do_mkroom(COURT)
         } else if (depth > 5 && !rn2(8)) {
@@ -3102,6 +3196,12 @@ export function makelevel(depth) {
 
     // C ref: mklev.c:1405-1407 — second fill_special_room pass for all rooms.
     // This runs AFTER fill_ordinary_room and BEFORE mineralize.
+    // Shop stocking comes first, then vault gold.
+    for (const croom of map.rooms) {
+        if (croom.rtype >= SHOPBASE && croom.needfill === FILL_NORMAL) {
+            stock_room(croom.rtype - SHOPBASE, croom, map, depth, _gameSeed);
+        }
+    }
     // For VAULT rooms, gold was already placed during vault creation (first fill),
     // so mkgold just adds to existing gold: only rn2 for amount, no rnd(2) since
     // g_at(x,y) finds the existing gold object and skips mksobj_at/newobj.
