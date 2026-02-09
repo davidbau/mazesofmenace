@@ -972,14 +972,22 @@ describe('listSavedData / clearAllData (reset feature)', () => {
         assert.equal(items[0].label, 'Options/flags');
     });
 
+    it('listSavedData finds high scores', () => {
+        store.set('webhack-topten', '[]');
+        const items = listSavedData();
+        assert.equal(items.length, 1);
+        assert.equal(items[0].label, 'High scores');
+    });
+
     it('listSavedData finds all types together', () => {
         store.set('webhack-save', '{}');
         store.set('webhack-bones-2', '{}');
         store.set('webhack-bones-5', '{}');
         store.set('webhack-options', '{}');
+        store.set('webhack-topten', '[]');
         store.set('unrelated-key', 'should be ignored');
         const items = listSavedData();
-        assert.equal(items.length, 4);
+        assert.equal(items.length, 5);
     });
 
     it('listSavedData ignores non-webhack keys', () => {
@@ -994,12 +1002,14 @@ describe('listSavedData / clearAllData (reset feature)', () => {
         store.set('webhack-bones-2', '{}');
         store.set('webhack-bones-5', '{}');
         store.set('webhack-options', '{}');
+        store.set('webhack-topten', '[]');
         store.set('unrelated-key', 'should survive');
         clearAllData();
         assert.equal(store.has('webhack-save'), false);
         assert.equal(store.has('webhack-bones-2'), false);
         assert.equal(store.has('webhack-bones-5'), false);
         assert.equal(store.has('webhack-options'), false);
+        assert.equal(store.has('webhack-topten'), false);
         assert.equal(store.get('unrelated-key'), 'should survive');
     });
 
@@ -1012,8 +1022,9 @@ describe('listSavedData / clearAllData (reset feature)', () => {
         store.set('webhack-save', '{}');
         store.set('webhack-bones-4', '{}');
         store.set('webhack-options', '{}');
+        store.set('webhack-topten', '[]');
         const before = listSavedData();
-        assert.equal(before.length, 3);
+        assert.equal(before.length, 4);
         clearAllData();
         const after = listSavedData();
         assert.equal(after.length, 0);

@@ -687,4 +687,67 @@ export class Display {
             }
         });
     }
+
+    // Render the C NetHack tombstone ASCII art on a cleared screen.
+    // C ref: rip.c genl_outrip()
+    // name: player name, gold: gold amount, deathLines: array of pre-wrapped lines,
+    // year: 4-digit year string
+    renderTombstone(name, gold, deathLines, year) {
+        this.clearScreen();
+
+        // C ref: rip.c rip[] — the tombstone art template
+        const rip = [
+            '                       ----------',
+            '                      /          \\',
+            '                     /    REST    \\',
+            '                    /      IN      \\',
+            '                   /     PEACE      \\',
+            '                  /                  \\',
+        ];
+
+        // Centered text lines on the tombstone face
+        // The stone face is 18 chars wide (between | markers), center col ~28
+        const CENTER = 28;
+        const FACE_WIDTH = 16;
+
+        function centerOnStone(text) {
+            if (text.length > FACE_WIDTH) text = text.substring(0, FACE_WIDTH);
+            const pad = Math.floor((FACE_WIDTH - text.length) / 2);
+            const inner = ' '.repeat(pad) + text + ' '.repeat(FACE_WIDTH - pad - text.length);
+            return '                  |' + ' ' + inner + ' ' + '|';
+        }
+
+        // Name line
+        rip.push(centerOnStone(name));
+        // Gold line
+        rip.push(centerOnStone(`${gold} Au`));
+        // Death description lines (up to 4)
+        for (let i = 0; i < 4; i++) {
+            rip.push(centerOnStone(deathLines[i] || ''));
+        }
+        // Empty line
+        rip.push(centerOnStone(''));
+        // Year line
+        rip.push(centerOnStone(year));
+
+        // Bottom of tombstone
+        rip.push('                 *|     *  *  *      | *');
+        rip.push('        _________)/\\\\__//(\\\\/(/\\\\)/\\\\//\\\\/|_)_______');
+
+        // Render each line
+        for (let i = 0; i < rip.length && i < this.rows; i++) {
+            this.putstr(0, i, rip[i], CLR_WHITE);
+        }
+    }
+
+    // Render the topten list on screen.
+    // lines: array of {text, highlight} objects.
+    // startRow: row to start rendering at.
+    renderTopTen(lines, startRow) {
+        for (let i = 0; i < lines.length && startRow + i < this.rows; i++) {
+            const line = lines[i];
+            this.putstr(0, startRow + i, line.text.substring(0, this.cols),
+                line.highlight ? CLR_YELLOW : CLR_GRAY);
+        }
+    }
 }

@@ -198,6 +198,7 @@ export async function rhack(ch, game) {
         if (String.fromCharCode(ans) === 'y') {
             game.gameOver = true;
             game.gameOverReason = 'quit';
+            player.deathCause = 'quit';
             display.putstr_message('Goodbye...');
         }
         return { moved: false, tookTime: false };
@@ -481,6 +482,7 @@ async function handleUpstairs(player, map, display, game) {
         if (String.fromCharCode(ans) === 'y') {
             game.gameOver = true;
             game.gameOverReason = 'escaped';
+            player.deathCause = 'escaped';
             display.putstr_message('You escape the dungeon...');
         }
         return { moved: false, tookTime: false };
@@ -1347,6 +1349,7 @@ async function handleExtendedCommand(game) {
             if (String.fromCharCode(ans) === 'y') {
                 game.gameOver = true;
                 game.gameOverReason = 'quit';
+                player.deathCause = 'quit';
                 display.putstr_message('Goodbye...');
             }
             return { moved: false, tookTime: false };

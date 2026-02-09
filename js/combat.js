@@ -183,6 +183,7 @@ export function monsterAttackPlayer(monster, player, display) {
             rn2(6);
 
             if (died) {
+                player.deathCause = `killed by a ${monster.name}`;
                 display.putstr_message(`You die...`);
             }
         }

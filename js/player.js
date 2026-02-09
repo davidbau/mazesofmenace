@@ -438,6 +438,9 @@ export class Player {
         // Turns
         this.turns = 0;
 
+        // Death cause -- C ref: killer.name from end.c
+        this.deathCause = '';
+
         // Display options
         this.showExp = true;
     }

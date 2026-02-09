@@ -23,6 +23,7 @@ import { loadSave, deleteSave, hasSave, saveGame,
          restGameState, restLev,
          listSavedData, clearAllData } from './storage.js';
 import { savebones } from './bones.js';
+import { buildEntry, saveScore, loadScores, formatTopTenEntry, formatTopTenHeader } from './topten.js';
 
 // Parse URL parameters for game options
 // Supports: ?wizard=1, ?seed=N, ?role=X
@@ -1100,6 +1101,9 @@ class NetHackGame {
 
                 // Check for death
                 if (this.player.isDead) {
+                    if (!this.player.deathCause) {
+                        this.player.deathCause = 'died';
+                    }
                     this.gameOver = true;
                     this.gameOverReason = 'killed';
                     savebones(this);
@@ -1178,6 +1182,9 @@ class NetHackGame {
             this.display.putstr_message('You faint from lack of food.');
             this.player.hunger = 1;
             this.player.hp -= rnd(3);
+            if (this.player.hp <= 0) {
+                this.player.deathCause = 'starvation';
+            }
         }
         if (this.player.hunger === 150) {
             this.display.putstr_message('You are beginning to feel weak.');
@@ -1223,32 +1230,116 @@ class NetHackGame {
     }
 
     // Display game over screen
-    // C ref: end.c done()
+    // C ref: end.c done() -> topten() -> outrip()
     async showGameOver() {
-        let msg;
-        switch (this.gameOverReason) {
-            case 'killed':
-                msg = `You died on dungeon level ${this.player.dungeonLevel}. Score: ${this.player.score}. Press any key.`;
-                break;
-            case 'quit':
-                msg = `You quit on dungeon level ${this.player.dungeonLevel}. Score: ${this.player.score}. Press any key.`;
-                break;
-            case 'escaped':
-                msg = `You escaped the dungeon! Score: ${this.player.score}. Press any key.`;
-                break;
-            default:
-                msg = `Game over. Score: ${this.player.score}. Press any key.`;
-        }
-        this.display.putstr_message(msg);
-        await nhgetch();
+        // Delete save file — game is over
+        deleteSave();
 
-        // Offer to restart
-        this.display.putstr_message('Play again? [yn] ');
+        const p = this.player;
+        const deathCause = p.deathCause || this.gameOverReason || 'died';
+
+        // Calculate final score (simplified C formula from end.c)
+        // C ref: end.c done_in_by(), calc_score()
+        // Base score is accumulated from exp + kills during play
+        // Add gold
+        p.score += p.gold;
+        // Add 50 per dungeon level below 1
+        if (p.dungeonLevel > 1) {
+            p.score += (p.dungeonLevel - 1) * 50;
+        }
+        // Depth bonus for deep levels
+        if (p.maxDungeonLevel > 20) {
+            p.score += (p.maxDungeonLevel - 20) * 1000;
+        }
+        // Escaped bonus
+        if (this.gameOverReason === 'escaped') {
+            p.score += p.gold; // double gold for escaping
+        }
+
+        // Word-wrap death description for tombstone (max ~16 chars per line)
+        const deathLines = this.wrapDeathText(deathCause, 16);
+
+        // Show tombstone if flags.tombstone is enabled
+        if (this.flags && this.flags.tombstone) {
+            const year = String(new Date().getFullYear());
+            this.display.renderTombstone(p.name, p.gold, deathLines, year);
+            // Press any key prompt below tombstone
+            this.display.putstr(0, 20, '(Press any key)', 7);
+            await nhgetch();
+        }
+
+        // Build and save topten entry
+        const entry = buildEntry(p, this.gameOverReason, roles, races);
+        const rank = saveScore(entry);
+
+        // Display topten list
+        const scores = loadScores();
+        this.display.clearScreen();
+
+        const header = formatTopTenHeader();
+        let row = 0;
+        this.display.putstr(0, row++, header, 14); // CLR_WHITE
+
+        // Show entries around the player's rank
+        // Find the player's entry index in scores (0-based)
+        const playerIdx = rank > 0 ? rank - 1 : 0;
+        const showStart = Math.max(0, playerIdx - 5);
+        const showEnd = Math.min(scores.length, playerIdx + 6);
+
+        if (showStart > 0) {
+            this.display.putstr(0, row++, '  ...', 7);
+        }
+
+        for (let i = showStart; i < showEnd; i++) {
+            const lines = formatTopTenEntry(scores[i], i + 1);
+            const isPlayer = (i === playerIdx);
+            const color = isPlayer ? 10 : 7; // CLR_YELLOW : CLR_GRAY
+            for (const line of lines) {
+                if (row < this.display.rows - 2) {
+                    this.display.putstr(0, row++, line.substring(0, this.display.cols), color);
+                }
+            }
+        }
+
+        if (showEnd < scores.length) {
+            this.display.putstr(0, row++, '  ...', 7);
+        }
+
+        // Farewell message
+        row = Math.min(row + 1, this.display.rows - 3);
+        const female = p.gender === FEMALE;
+        const roleName = roleNameForGender(p.roleIndex, female);
+        const farewell = `Goodbye ${p.name} the ${roleName}...`;
+        this.display.putstr(0, row++, farewell, 14);
+
+        // Play again prompt
+        row = Math.min(row + 1, this.display.rows - 1);
+        this.display.putstr(0, row, 'Play again? [yn] ', 14);
         const ch = await nhgetch();
         if (String.fromCharCode(ch) === 'y') {
-            // Reload page to restart
             window.location.reload();
         }
+    }
+
+    // Word-wrap a death description to fit within maxWidth chars per line.
+    // Returns array of up to 4 lines.
+    wrapDeathText(text, maxWidth) {
+        const words = text.split(' ');
+        const lines = [];
+        let current = '';
+        for (const word of words) {
+            if (current.length === 0) {
+                current = word;
+            } else if (current.length + 1 + word.length <= maxWidth) {
+                current += ' ' + word;
+            } else {
+                lines.push(current);
+                current = word;
+            }
+        }
+        if (current) lines.push(current);
+        // Limit to 4 lines
+        return lines.slice(0, 4);
     }
 }
 

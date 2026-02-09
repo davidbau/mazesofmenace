@@ -27,6 +27,7 @@ import { GameMap, makeRoom } from './map.js';
 const SAVE_KEY = 'webhack-save';
 const BONES_KEY_PREFIX = 'webhack-bones-';
 const OPTIONS_KEY = 'webhack-options';
+const TOPTEN_KEY = 'webhack-topten';
 const SAVE_VERSION = 2;
 
 // Safe localStorage access -- returns null when unavailable (e.g. Node.js tests)
@@ -444,6 +445,8 @@ export function listSavedData() {
                 items.push({ key, label: `Bones file (depth ${depth})` });
             } else if (key === OPTIONS_KEY) {
                 items.push({ key, label: 'Options/flags' });
+            } else if (key === TOPTEN_KEY) {
+                items.push({ key, label: 'High scores' });
             }
         }
     } catch (e) { /* ignore */ }
@@ -458,7 +461,7 @@ export function clearAllData() {
     try {
         for (let i = 0; i < s.length; i++) {
             const key = s.key(i);
-            if (key === SAVE_KEY || key.startsWith(BONES_KEY_PREFIX) || key === OPTIONS_KEY) {
+            if (key === SAVE_KEY || key.startsWith(BONES_KEY_PREFIX) || key === OPTIONS_KEY || key === TOPTEN_KEY) {
                 toRemove.push(key);
             }
         }
