@@ -6,10 +6,14 @@ Epic: `interface-3br` - Complete special level system for all dungeon branches
 
 ### ✓ COMPLETED
 - **Sokoban** (8 levels): soko1-1/2, soko2-1/2, soko3-1/2, soko4-1/2 ✓
-- **des.* API Foundation**: level_init, level_flags, map, terrain, stair, region ✓
-- **Object/Trap Placement**: des.object, des.trap with full integration ✓
+- **Tier 1: Simple Fixed Maps** (3 levels): tower1-3, valley, knox ✓
+- **des.* API Foundation**: level_init, level_flags, map, terrain, stair, region, ladder ✓
+- **Object/Trap Placement**: des.object, des.trap with full coord/selection format support ✓
+- **Selection API**: line(), area(), negate(), filter() for geometric operations ✓
+- **Utility Functions**: shuffle(), percent(), objectNameToType(), trapNameToType() ✓
 - **Wallification & Flipping**: Complete wall junction computation and random flipping ✓
 - **C Traces Collected**: Sokoban, Mines, Ludios, Tower, Valley, Main dungeon specials ✓
+- **Test Infrastructure**: Unit tests with C trace comparison for tower, valley, knox ✓
 
 ### ◐ IN PROGRESS
 - **Branch-aware level generation** (`interface-9a0`): Integrate special levels into makelevel()
@@ -18,28 +22,26 @@ Epic: `interface-3br` - Complete special level system for all dungeon branches
 
 ## Implementation Tiers
 
-### TIER 1: Simple Fixed Maps (Ready Now)
-These levels use only des.map, des.object, des.trap - already supported.
+### TIER 1: Simple Fixed Maps ✓ COMPLETE
+These levels use only des.map, des.object, des.trap - fully implemented and tested.
 
-#### **Vlad's Tower** (`interface-sey`) - Priority: HIGH
-- `tower1.lua` - 3 level tower with fixed maps
-- `tower2.lua`
-- `tower3.lua`
-- **Blockers**: NONE (ready to port)
-- **Complexity**: Low - pure ASCII maps, minimal features
-- **C Traces**: Available
+#### ✓ **Vlad's Tower** (`interface-sey`) - COMPLETE
+- ✓ `tower1.js` - Upper stage with 6 shuffled niches
+- ✓ `tower2.js` - Middle stage with demons
+- ✓ `tower3.js` - Entry level with dragon guard
+- **Tests**: 4/4 passing (terrain, objects, traps, shuffle randomness)
+- **Implementation**: js/levels/tower{1,2,3}.js
 
-#### **Fort Ludios** (`interface-ecx`) - Priority: HIGH
-- `knox.lua` - Single fixed fortress map
-- **Blockers**: NONE (ready to port)
-- **Complexity**: Low - fixed map with soldiers/guards (stub monsters OK)
-- **C Traces**: Available
+#### ✓ **Fort Ludios** (`interface-ecx`) - COMPLETE
+- ✓ `knox.js` - Fortress with treasury and soldiers
+- **Tests**: 2/2 passing (terrain structure, C trace validation)
+- **Implementation**: js/levels/knox.js
+- **Fixes**: Replaced Math.random() with seeded rn2() for determinism
 
-#### **Valley of the Dead** (`interface-u4r`) - Priority: HIGH
-- `valley.lua` - Gehennom entrance level
-- **Blockers**: NONE (ready to port)
-- **Complexity**: Low - fixed map with graveyard theme
-- **C Traces**: Available
+#### ✓ **Valley of the Dead** (`interface-u4r`) - COMPLETE
+- ✓ `valley.js` - Gehennom entrance with graveyard
+- **Tests**: 2/2 passing (terrain structure, C trace validation)
+- **Implementation**: js/levels/valley.js
 
 ### TIER 2: Intermediate Fixed Maps
 These need des.door, des.altar, des.fountain (stubs acceptable for now).
@@ -237,5 +239,9 @@ Port end-game planes (after C trace collection).
 - **Phase 5 Complete**: Gehennom and Quest playable
 - **Phase 6 Complete**: Full game playable to ascension
 
-**Current Progress**: ~10% (Sokoban complete, infrastructure ready)
-**Phase 1 Target**: ~25% (add Tower, Ludios, Valley)
+**Current Progress**: ~25% ✓ Phase 1 Complete!
+- Sokoban: 8 levels ✓
+- Tier 1 Simple Fixed Maps: 5 levels ✓ (tower 1-3, knox, valley)
+- Total: 13 of ~80 special levels implemented and tested
+
+**Next Target**: ~40% (Phase 2 - Oracle, Mines variants, Wizard levels)
