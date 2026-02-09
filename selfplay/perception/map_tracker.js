@@ -231,8 +231,8 @@ export class LevelMap {
                 const cell = this.cells[y][x];
                 if (!cell.explored || !cell.walkable) continue;
                 // Check for adjacent walls that might hide secret passages
-                // Search up to 15 times per location (1/7 chance each = ~90% after 15 tries)
-                if (this._hasAdjacentWall(x, y) && cell.searched < 15) {
+                // Search up to 20 times per location (1/7 chance each = ~95% after 20 tries)
+                if (this._hasAdjacentWall(x, y) && cell.searched < 20) {
                     candidates.push({ x, y, searched: cell.searched });
                 }
             }

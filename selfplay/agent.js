@@ -611,7 +611,8 @@ export class Agent {
                 }
 
                 // Search very aggressively for secret doors (might be hiding stairs)
-                if (this.searchesAtPosition < 10) {
+                // Search up to 20 times for ~95% success rate (1/7 probability)
+                if (this.searchesAtPosition < 20) {
                     this.searchesAtPosition++;
                     if (currentCell) currentCell.searched++;
                     return { type: 'search', key: 's', reason: `aggressive search for hidden stairs (stuck ${this.levelStuckCounter})` };
@@ -638,15 +639,14 @@ export class Agent {
         // 6.5. Systematic wall searching when no stairs found
         // If we've explored available areas but haven't found stairs, systematically
         // search walls to reveal secret doors/corridors
-        // Search probability is 1/7, so search each location up to 15 times for ~90% success rate
+        // Search probability is 1/7, so search each location up to 20 times for ~95% success rate
         const frontierSmall = level.getExplorationFrontier().length < 30;
         const shouldSearch = level.stairsDown.length === 0 && this.turnNumber > 60 &&
             (this.levelStuckCounter > 15 || (frontierSmall && this.turnNumber > 100));
         if (shouldSearch) {
             const searchCandidates = level.getSearchCandidates();
             // Filter to candidates that haven't been heavily searched yet
-            const unsearchedCandidates = searchCandidates.filter(c => c.searched < 15);
-
+            const unsearchedCandidates = searchCandidates.filter(c => c.searched < 20);
 
             if (unsearchedCandidates.length > 0) {
                 // Try to path to the nearest unsearched candidate
@@ -663,6 +663,13 @@ export class Agent {
                         return this._followPath(path, 'navigate', `heading to search candidate (${candidate.x},${candidate.y})`);
                     }
                 }
+            }
+
+            // If no reachable search candidates, or all are heavily searched,
+            // just search from current position (might help in edge cases)
+            if (this.levelStuckCounter > 40 && currentCell && currentCell.searched < 20) {
+                currentCell.searched++;
+                return { type: 'search', key: 's', reason: `exhaustive search from current position (stuck ${this.levelStuckCounter})` };
             }
         }
 
