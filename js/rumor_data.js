@@ -1,834 +1,777 @@
-// rumor_data.js -- Decrypted rumor texts and line byte data from NetHack dat/rumors
-// Generated from compiled NetHack data files for RNG simulation.
+// rumor_data.js -- Raw encrypted rumors file content from NetHack dat/rumors
+// Compiled makedefs output stored as JS constant. Decrypted at load time by hacklib.js.
 
-export const RUMOR_TRUE_TEXTS = [
-    'A blindfold can be very useful if you\'re telepathic.',
-    'A candelabrum affixed with seven candles shows the way with a magical light.',
-    'A cream pie has two uses: food... and entertainment.',
-    'A crystal plate mail will not rust.',
-    'A katana might slice a worm in two.',
-    'A magic vomit pump could be useful for gourmands.',
-    'A nymph knows how to unlock chains.',
-    'A potion of blindness lets you see invisible things.',
-    'A priest can get the gods to listen easily.',
-    'A priestess and a virgin you might be, but that unicorn won\'t care.',
-    'A ring of conflict is a bad thing if there is a nurse in the room.',
-    'A short sword is not as good as a long sword.',
-    'A succubus will go farther than a nymph.',
-    'A wand can exorcize a past explorer\'s ghost.',
-    'Acid blobs should be attacked bare-handed.',
-    'Affairs with nymphs are often very expensive.',
-    'Afraid of nymphs?  Wear a ring of adornment.',
-    'Afraid of your valuables being stolen?  Carry more junk!',
-    'Always be aware of the phase of the moon!',
-    'Always sweep the floor before engraving important messages.',
-    'Amulets of Yendor are hard to make.  Even for a wand of wishing.',
-    'An elven cloak is useful against magic.',
-    'An umber hulk can be a confusing sight.',
-    'As Crom is my witness, I\'ll never go hungry again!',
-    'Asking about monsters may be very useful.',
-    'Attack long worms from the rear -- that is so much safer!',
-    'Attacking an eel where there is none is usually a fatal mistake!',
-    'Bandaging wounds helps keep up appearances.',
-    'Bashing monsters with a bow is not such a good idea.',
-    'Be careful!  The Wizard may plan an ambush!',
-    'Be nice to a nurse:  Put away your weapon and take off your clothes.',
-    'Being digested is a painfully slow process.',
-    'Blank scrolls make more interesting reading.',
-    'Blind?  Catch a floating eye!',
-    'Booksellers never read scrolls; they might get carried away.',
-    'Chemistry 101: Never pour water into acid.',
-    'Concise conquest:  Control, confuse, conjure, condemn.',
-    'Conserve energy, turn off the lights.',
-    'Digging up a grave could be a bad idea...',
-    'Dilithium crystals are rare indeed.',
-    'Dogs are attracted by the smell of tripe.',
-    'Dogs are superstitious; they never step on cursed items.',
-    'Dogs of ghosts aren\'t angry, just hungry.',
-    'Don\'t forget!  Large dogs are MUCH harder to kill than little dogs.',
-    'Don\'t lash out at people while blinded.',
-    'Don\'t mess with shopkeepers, or you\'ll get the Guild after you.',
-    'Dragons never whip their children; they wouldn\'t feel it!',
-    'Eat your carrots.  They\'re good for your eyes.',
-    'Eating a freezing sphere is like eating a yeti.',
-    'Eating a killer bee is like eating a scorpion.',
-    'Eating a tengu is like eating a nymph.',
-    'Eating a wraith is a rewarding experience!',
-    'Eating unpaid leprechauns may be advantageous.',
-    'Elbereth has quite a reputation around these parts.',
-    'Elf corpses are incompatible with the sandman, and at times the gods as well.',
-    'Elven cloaks cannot rust.',
-    'Elves can help you feel less tired.',
-    'Even evil players have a guardian angel.',
-    'Ever fought with an enchanted tooth?',
-    'Ever tried reading while confused?',
-    'Ever tried to put a troll into a large box?',
-    'Ever wondered why one would want to dip something in a potion?',
-    'Expensive cameras have penetrating flash lights.',
-    'Extra staircases lead to extra levels.',
-    'Fiery letters might deter monsters.',
-    'For a good time engrave `Elbereth\'.',
-    'Gems are too precious to be thrown away carelessly.',
-    'Getting hungry?  Stop wearing rings!',
-    'Getting too warm?  Take off that Amulet of Yendor and stay away from the exit!',
-    'Gods expect the best from their priesthood.',
-    'Gods look down their noses at demigods.',
-    'Gods love cats and dogs.',
-    'Got a question?  Try rec.games.roguelike.nethack.',
-    'Grave robbers sometimes get rich.',
-    'Guy Montag keeps his scrolls in a bag.',
-    'Handle your flasks carefully -- there might be a ghost inside!',
-    'Holy water has many uses.',
-    'Horses trust their riders, even when not so deserved.',
-    'Hunger is a confusing experience for a dog!',
-    'I once knew a hacker who ate too fast and choked to death.',
-    'I smell a maze of twisty little passages.',
-    'I wish I never wished a wand of wishing.  (Wishful thinking.)',
-    'I wouldn\'t advise playing catch with a giant.',
-    'I\'m watching you.  -- The Wizard of Yendor',
-    'Ice boxes keep your food fresh.',
-    'If you are being punished, it\'s done with a deadly weapon.',
-    'If you kill the Wizard, you get promoted to demi-god.',
-    'If you need a wand of digging, kindly ask the minotaur.',
-    'If you want to hit, use a dagger.',
-    'If you want to rob a shop, train your dog.',
-    'If you\'re lost, try buying a map next time you\'re in a shop.',
-    'If your hands are greasy, why not wash them?',
-    'Inside a shop you better take a look at the price tags before buying anything.',
-    'It is bad manners to use a wand in a shop.',
-    'It is dangerous to visit a graveyard at midnight.',
-    'It is not always a good idea to whistle for your dog.',
-    'It is rumored that the Wizard has hired some help.',
-    'It is the letter \'c\' and not \'e\' that changes status to statue.',
-    'It might be a good idea to offer the unicorn a ruby.',
-    'It would be peculiarly sad were your dog turned to stone.',
-    'It\'s a `d\' eats `d\' world.',
-    'Just because it says READ ME doesn\'t mean you should.',
-    'Keep your armors away from rust.',
-    'Keep your weaponry away from acids.',
-    'Kill a unicorn of your color and you kill your luck.',
-    'Leather is waterproof.  Ever see a cow with an umbrella?',
-    'Leprechauns are the most skilled cutpurses in this dungeon.',
-    'Lizard corpses protect against cockatrices.',
-    'Money lost, little lost; honor lost, much lost; pluck lost, all lost.',
-    'Most monsters can\'t swim.',
-    'Music hath charms to affect the stubborn drawbridge.',
-    'Music hath charms to soothe the savage beast.',
-    'Never attack a guard.',
-    'Never ride a long worm.',
-    'Never use your best weapon to engrave a curse.',
-    'No easy fighting with a heavy load!',
-    'Not all boots were made for walking.',
-    'Nurses are trained to touch naked persons:  they don\'t harm them.',
-    'Nymphs can unlink more than your chain mail.',
-    'Once your little dog will be a big dog, and you will be proud of it.',
-    'Only female monsters can lay eggs.',
-    'Opening a tin is difficult, especially when you attempt it bare handed!',
-    'Orcs and killer bees share their lifestyle.',
-    'Orcs do not procreate in dark rooms.',
-    'Plain nymphs are harmless.',
-    'Playing AD&D may be helpful.',
-    'Playing Gauntlet might be enlightening in some situations.',
-    'Playing billiards pays when you are in a shop.',
-    'Polymorphing a shopkeeper might make you safer.',
-    'Polymorphing your dog probably makes you safer.',
-    'Potions don\'t usually mix, but sometimes...',
-    'Psst!  It\'s done with mirrors!',
-    'Put on a ring of teleportation:  it will take you away from onslaught.',
-    'Rays aren\'t boomerangs, of course, but still...',
-    'Read the manual before entering the cave -- you might get killed otherwise.',
-    'Reading Herbert might be enlightening in one case.',
-    'Reading Tolkien might help you.',
-    'Reading scrolls after drinking booze can give confusing results.',
-    'Riding a dragon can be an uplifting experience.',
-    'Rust monsters love water.  There are potions they hate, however.',
-    'Sacks protect contents from temperatures up to 452 degrees fahrenheit.',
-    'Scrolls fading?  It\'s not the heat, it\'s the humidity.',
-    'Shopkeepers accept credit cards, as long as you pay cash.',
-    'Shopkeepers can spot a tourist a mile away with those Hawaiian shirts.',
-    'Shopkeepers can\'t tell identical twins apart.',
-    'Shopkeepers don\'t read, so what use is engraving in a shop?',
-    'Shopkeepers have incredible patience.',
-    'Shopkeepers might raise their prices for tourists.',
-    'Shopkeepers value money more than revenge.',
-    'Some monsters can be tamed.  I once saw a hacker with a tame dragon!',
-    'Some remain flexible, while others can\'t seem to change their tune.',
-    'Someone once said that what goes up < might come down >.',
-    'Someone\'s been spiking the pits!',
-    'Sometimes monsters are more likely to fight each other than attack you.',
-    'Spinach, carrot, and jelly -- a meal fit for a nurse!',
-    'Surviving the full extent of the mines could mean that your luck is changing.',
-    'Tainted meat is even more sickening than poison!',
-    'Telepathy is just a trick:  once you know how to do it, it\'s easy.',
-    'The Leprechaun Gold Tru$t is no division of the Magic Memory Vault.',
-    'The Wizard finds death to be quite an experience.',
-    'The best equipment for your work is, of course, the most expensive.',
-    'The gods don\'t appreciate pesky priesthood.',
-    'The gods will get angry if you kill your dog.',
-    'The magic marker is mightier than the sword.',
-    'The moon is not the only heavenly body to influence this game.',
-    'The orc swings his orcish broadsword named Elfrist at you.  You die...',
-    'The secret of wands of Nothing Happens:  try again!',
-    'There has always been something mystical about mirrors.',
-    'There is a Mastermind deep in the dungeon.',
-    'There is a big treasure hidden in the zoo!',
-    'There is more magic in this cave than meets the eye.',
-    'There is no harm in praising a large dog.',
-    'There is nothing like eating a mimic.',
-    'There once was a Knight named Lancelot who liked to ride with his lance a lot.',
-    'They say a gelatinous cube can paralyze you...',
-    'They say that Juiblex is afraid of a wand of digging.',
-    'They say that Medusa would like to put you on a pedestal.',
-    'They say that Vlad lives!!! ... in the mazes.',
-    'They say that `Elbereth\' is often written about.',
-    'They say that a bag of holding can\'t hold everything.',
-    'They say that a blessed tin of quasit meat is a quick meal.',
-    'They say that a cat avoids traps.',
-    'They say that a cave spider will occasionally eat cave spider eggs.',
-    'They say that a clever wizard can have stats:  18/** 24 18 24 24 24.',
-    'They say that a clove of garlic makes a good talisman if handled right.',
-    'They say that a cursed scroll of teleportation could land you in trouble.',
-    'They say that a diamond is another kind of luck stone.',
-    'They say that a dog can be trained to fetch objects.',
-    'They say that a gelatinous cube makes a healthy breakfast.',
-    'They say that a giant gets strong by eating right, try it!',
-    'They say that a grid bug won\'t hit you when you cross it.',
-    'They say that a lembas wafer is a very light snack.',
-    'They say that a loadstone has a strange attraction and is not bad luck.',
-    'They say that a lock pick by any other name is still a lock pick.',
-    'They say that a lucky amulet will block poisoned arrows.',
-    'They say that a mirror will freeze a floating eye but you can still see it.',
-    'They say that a neutral character might get Giantslayer.',
-    'They say that a polymorph trap is magic and magic protection prevents it.',
-    'They say that a potion of healing can cancel a potion of sickness.',
-    'They say that a potion of monster detection sometimes works both ways.',
-    'They say that a sink looks different from high above the floor.',
-    'They say that a summoned demon could improve your game.',
-    'They say that a tin of wraith meat is a rare dining experience.',
-    'They say that a unicorn might bring you luck.',
-    'They say that a wand of cancellation is like a wand of polymorph.',
-    'They say that a wand of locking can close more than just doors.',
-    'They say that a wand of polymorph can change your game.',
-    'They say that a wizard is even more powerful the second time around.',
-    'They say that a xorn knows of no obstacles when pursuing you.',
-    'They say that abusing a credit card could shock you sooner or later.',
-    'They say that amulets, like most things, can be deadly or life saving.',
-    'They say that an altar can identify blessings.',
-    'They say that an ooze will bite your boots and a rock mole might eat them.',
-    'They say that an unlucky hacker was once killed by an exploding tin.',
-    'They say that antique dealers are always interested in precious stones.',
-    'They say that bandaging one\'s wounds helps to keep up one\'s appearance.',
-    'They say that booze can be diluted but not cancelled.',
-    'They say that by listening carefully, you can hear a secret door!',
-    'They say that calculating your donations lets you choose your blessings.',
-    'They say that carrots and carrot juice may improve your vision.',
-    'They say that cave spiders are not considered expensive health food.',
-    'They say that demigods must leave behind their prized earthly possessions.',
-    'They say that disturbing a djinni can be a costly mistake.',
-    'They say that dragon scales can be quite enchanting.',
-    'They say that dropping coins into a fountain will not grant you a wish.',
-    'They say that dwarves lawfully mind their own business.',
-    'They say that eating a bat corpse will make you batty, for a while.',
-    'They say that eating a cram ration is a smart move.',
-    'They say that eating blue jelly is cool if you don\'t fight the feeling.',
-    'They say that escaping a dungeon is only the beginning of the end.',
-    'They say that feeling an unexpected draft of air is sort of a breakthrough.',
-    'They say that finding a cursed gray stone is always bad luck.',
-    'They say that gaining a level is an experience that can raise your sights.',
-    'They say that garter snake meat rarely tastes good but it\'s still healthy.',
-    'They say that gauntlets of dexterity have a hidden enchanted touch.',
-    'They say that going to heaven is just another way of escaping the dungeon.',
-    'They say that golden nagas are law-abiding denizens as long as you are too.',
-    'They say that gremlins can make you feel cooler than you are now.',
-    'They say that grid bugs only exist in a strictly Cartesian sense.',
-    'They say that hackers often feel jumpy about eating nymphs.',
-    'They say that having polymorph control won\'t shock you.',
-    'They say that if it\'s hard getting your food down another bite could kill.',
-    'They say that if you don\'t wear glasses why bother with carrots?',
-    'They say that if you notice a loose board beneath you, don\'t step on it.',
-    'They say that if you start at the bottom the only place to go is up.',
-    'They say that if you teleport to heaven you\'re presumed to be dead already.',
-    'They say that in a shop you can be charged for old charges.',
-    'They say that in lighter moments you could think of ways to pass a stone.',
-    'They say that in the dungeon breaking a mirror can be seven years bad luck.',
-    'They say that in the dungeon you don\'t usually have any luck at all.',
-    'They say that in time a blessed luckstone can make your god happy.',
-    'They say that it is easier to kill the Wizard than to make him stand still.',
-    'They say that it only takes 1 zorkmid to meet the Kops.',
-    'They say that it\'s a blast when you mix the right potions together.',
-    'They say that it\'s not blind luck if you catch a glimpse of Medusa.',
-    'They say that killing a shopkeeper brings bad luck.',
-    'They say that monsters never step on a scare monster scroll.',
-    'They say that most monsters find flute recitals extremely boring.',
-    'They say that mummy corpses are not well preserved.',
-    'They say that naturally a wand of wishing would be heavily guarded.',
-    'They say that no one notices the junk underneath a boulder.',
-    'They say that nobody expects a unicorn horn to rust.',
-    'They say that nobody knows if an explorer can live forever.  Do you?',
-    'They say that nothing can change the fact that some potions contain a djinni.',
-    'They say that nothing can change the fact that some potions contain a ghost.',
-    'They say that nymphs always fall for rock\'n\'roll, try it!',
-    'They say that once an Olog-Hai is canned it never shows its face again.',
-    'They say that once upon a time xans would never scratch your boots.',
-    'They say that only an experienced wizard can do the tengu shuffle.',
-    'They say that only chaotics can kill shopkeepers and get away with it.',
-    'They say that only female monsters can lay eggs.',
-    'They say that playing a horn really bad is really good.',
-    'They say that prayer at an altar can sometimes make the water there holy.',
-    'They say that rubbing a glowing potion does not make it a magic lamp.',
-    'They say that scalpels become dull because they\'re not athames.',
-    'They say that shopkeepers don\'t like pick-axes.',
-    'They say that shopkeepers don\'t mind you bringing your pets in the shop.',
-    'They say that shopkeepers don\'t usually mind if you sneak into a shop.',
-    'They say that shopkeepers often have a large amount of money in their purses.',
-    'They say that shopkeepers often remember things that you might forget.',
-    'They say that sinks and armor don\'t mix, take your cloak off now!',
-    'They say that sinks run hot and cold and many flavors in between.',
-    'They say that snake charmers aren\'t charismatic, just musical.',
-    'They say that soldiers are always prepared and usually protected.',
-    'They say that some eggs could hatch in your pack, lucky or not.',
-    'They say that some fire ants will make you a hot meal.',
-    'They say that some horns play hot music and others are too cool for words.',
-    'They say that some humanoids are nonetheless quite human.',
-    'They say that some shopkeepers consider gems to be family heirlooms.',
-    'They say that some shopkeepers recognize gems but they won\'t tell you.',
-    'They say that some stones are much much heavier than others.',
-    'They say that some yetis are full of hot air.',
-    'They say that something very special would be in a well-protected place.',
-    'They say that speed boots aren\'t fast enough to let you walk on water.',
-    'They say that teleport traps are the devil\'s work.',
-    'They say that tengu don\'t wear rings, why should you?',
-    'They say that tengu never steal gold although they would be good at it.',
-    'They say that that which was stolen once can be stolen again, ask any nymph.',
-    'They say that the Delphic Oracle knows that lizard corpses aren\'t confusing.',
-    'They say that the Hand of Elbereth can hold up your prayers.',
-    'They say that the Leprechaun King is rich as Croesus.',
-    'They say that the Wizard of Yendor is schizophrenic and suicidal.',
-    'They say that the experienced character knows how to convert an altar.',
-    'They say that the gods are happy when they drop objects at your feet.',
-    'They say that the idea of invisible Nazgul has a certain ring to it.',
-    'They say that the lady of the lake now lives in a fountain somewhere.',
-    'They say that the local shopkeeper frowns upon the rude tourist.',
-    'They say that the only door to the vampire\'s tower is on its lowest level.',
-    'They say that the only good djinni is a grateful djinni.',
-    'They say that the thing about genocide is that it works both ways.',
-    'They say that the unicorn horn rule is if it ain\'t broke then don\'t fix it.',
-    'They say that the view from a fog cloud is really very moving.',
-    'They say that the walls in shops are made of extra hard material.',
-    'They say that there are at least 15 ways to lose a pair of levitation boots.',
-    'They say that throwing glass gems is the same as throwing rocks.',
-    'They say that trespassing a boulder is probably beneath you.',
-    'They say that true power comes from within...except when it doesn\'t.',
-    'They say that unicorns are fond of precious gems.',
-    'They say that what goes down the drain might come back up.',
-    'They say that wielded, a long sword named Fire Brand makes you feel cooler.',
-    'They say that wielded, a long sword named Frost Brand makes you hot stuff.',
-    'They say that wiping its face is impossible for a floating eye.',
-    'They say that with a floating eye you could see in the dark.',
-    'They say that you are lucky if you can get a unicorn to catch a ruby.',
-    'They say that you are what you eat.',
-    'They say that you can find named weapons at an altar if you\'re lucky.',
-    'They say that you can safely touch cockatrice eggs but why bother?',
-    'They say that you can\'t break an amulet of reflection.',
-    'They say that you don\'t always get what you wish for.',
-    'They say that you should always be prepared for a final challenge.',
-    'They say that you should ask a dwarf to let you into a locked shop.',
-    'They say that you should pray for divine inspiration.',
-    'They say that you should religiously give your gold away.',
-    'They say that you will never get healthy by eating geckos.',
-    'They say that zapping yourself with a wand of undead turning is stupid.',
-    'They say the Furies are more furious if you\'ve been sinning.',
-    'They say the Wizard\'s castle is booby-trapped!',
-    'They say the gods get angry if you kill your dog.',
-    'They say the gods get angry if you pray too much.',
-    'They say there is a powerful magic item hidden in a castle deep down!',
-    'Those who wield a cockatrice corpse have a rocky road ahead of them.',
-    'Throwing food at a wild dog might tame him.',
-    'To a full belly all food is bad.',
-    'Trolls are described as rubbery:  they keep bouncing back.',
-    'Try the fall-back end-run play against ghosts.',
-    'Try using your magic marker on wet scrolls.',
-    'Two wrongs don\'t make a right, but three lefts do.',
-    'Unicorn horns can cleanse things other than yourself.',
-    'Valkyries come from the north, and have commensurate abilities.',
-    'Vampires hate garlic.',
-    'Vault guards never disturb their Lords.',
-    'Vegetarians enjoy lichen and seaweed.',
-    'Visitors are requested not to apply genocide to shopkeepers.',
-    'Watch out, the Wizard might come back.',
-    'Water traps have no effect on dragons.',
-    'What is a cockatrice going to eat when it gets hungry?',
-    'Who needs an apron if they\'re made of glass?',
-    'Why do you suppose they call them MAGIC markers?',
-    'Why do you think they call them mercenaries?',
-    'Why would anybody in his sane mind engrave "Elbereth"?',
-    'Wishing too much may bring you too little.',
-    'You can\'t bribe soldier ants.',
-    'You can\'t leave a shop through the back door:  there isn\'t one!',
-    'You may discover a fine spirit inside a potion bottle.',
-    'You may want to dip into a potion of bottled blessings.',
-    'You might be able to bribe a demon lord.',
-    'You might trick a shopkeeper if you\'re invisible.',
-    'You should certainly learn about quantum mechanics.',
-    'You won\'t always get a second chance, even with life saving.',
-    'You\'re going into the morgue at midnight???',
-    'Your dog knows what to eat; maybe you should take lessons.',
-    'Your game may go down the drain if you have extra potions or rings.',
-    'Zap yourself and see what happens...',
-    'Zapping a wand of undead turning might bring your dog back to life.'
-];
-
-export const RUMOR_FALSE_TEXTS = [
-    '"So when I die, the first thing I will see in heaven is a score list?"',
-    '1st Law of Hacking:  leaving is much more difficult than entering.',
-    '2nd Law of Hacking:  first in, first out.',
-    '3rd Law of Hacking:  the last blow counts most.',
-    '4th Law of Hacking:  you will find the exit at the entrance.',
-    'A chameleon imitating a mail daemon often delivers scrolls of fire.',
-    'A cockatrice corpse is guaranteed to be untainted!',
-    'A dead cockatrice is just a dead lizard.',
-    'A dragon is just a snake that ate a scroll of fire.',
-    'A fading corridor enlightens your insight.',
-    'A glowing potion is too hot to drink.',
-    'A good amulet may protect you against guards.',
-    'A lizard corpse is a good thing to turn undead.',
-    'A long worm can be defined recursively.  So how should you attack it?',
-    'A monstrous mind is a toy forever.',
-    'A nymph will be very pleased if you call her by her real name:  Lorelei.',
-    'A ring of dungeon master control is a great find.',
-    'A ring of extra ring finger is useless if not enchanted.',
-    'A rope may form a trail in a maze.',
-    'A staff may recharge if you drop it for awhile.',
-    'A visit to the Zoo is very educational; you meet interesting animals.',
-    'A wand of deaf is a more dangerous weapon than a wand of sheep.',
-    'A wand of vibration might bring the whole cave crashing about your ears.',
-    'A winner never quits.  A quitter never wins.',
-    '[cookie] A wish?  Okay, make me a fortune cookie!',
-    'Afraid of mimics?  Try to wear a ring of true seeing.',
-    'All monsters are created evil, but some are more evil than others.',
-    'Always attack a floating eye from behind!',
-    'An elven cloak is always the height of fashion.',
-    'Any small object that is accidentally dropped will hide under a larger object.',
-    'Archeologists are very squishy, often found under boulders.',
-    'Archeologists find more bones piles.',
-    'Austin Powers says: My Mojo is back!  Yeah, baby!',
-    'Balrogs do not appear above level 20.',
-    'Banana peels work especially well against Keystone Kops.',
-    'Be careful when eating bananas.  Monsters might slip on the peels.',
-    'Better leave the dungeon; otherwise you might get hurt badly.',
-    'Beware of the potion of nitroglycerin -- it\'s not for the weak of heart.',
-    'Beware:  there\'s always a chance that your wand explodes as you try to zap it!',
-    'Beyond the 23rd level lies a happy retirement in a room of your own.',
-    'Changing your suit without dropping your sword?  You must be kidding!',
-    'Close the door!  You\'re letting the heat out!',
-    'Cockatrices might turn themselves to stone faced with a mirror.',
-    'Consumption of home-made food is strictly forbidden in this dungeon.',
-    'Dark room?  Your chance to develop your photographs!',
-    'Dark rooms are not *completely* dark:  just wait and let your eyes adjust...',
-    'David London sez, "Hey guys, *WIELD* a lizard corpse against a cockatrice!"',
-    'Death is just life\'s way of telling you you\'ve been fired.',
-    'Demi-gods don\'t need any help from the gods.',
-    'Demons *HATE* Priests and Priestesses.',
-    'Didn\'t you forget to pay?',
-    'Didn\'t your mother tell you not to eat food off the floor?',
-    'Direct a direct hit on your direct opponent, directing in the right direction.',
-    'Do you want to make more money?  Sure, we all do!  Join the Fort Ludios guard!',
-    'Does your boss know what you\'re doing right now?',
-    'Don\'t bother wishing for things.  You\'ll probably find one on the next level.',
-    'Don\'t eat too much:  you might start hiccoughing!',
-    'Don\'t play NetHack at your work; your boss might hit you!',
-    'Don\'t tell a soul you found a secret door, otherwise it isn\'t a secret anymore.',
-    'Drinking potions of booze may land you in jail if you are under 21.',
-    'Drop your vanity and get rid of your jewels!  Pickpockets about!',
-    'Eat 10 cloves of garlic and keep all humans at a two-square distance.',
-    'Eels hide under mud.  Use a unicorn to clear the water and make them visible.',
-    'Eels will help you tie your shoes.',
-    'Elf has extra speed.',
-    'Engrave your wishes with a wand of wishing.',
-    'Eventually you will come to admire the swift elegance of a retreating nymph.',
-    'Ever heard hissing outside?  I *knew* you hadn\'t!',
-    'Ever lifted a dragon corpse?',
-    'Ever seen a leocrotta dancing the tengu?',
-    'Ever seen your weapon glow plaid?',
-    'Ever tamed a shopkeeper?',
-    'Ever tried digging through a Vault Guard?',
-    'Ever tried enchanting a rope?',
-    'Floating eyes can\'t stand Hawaiian shirts.',
-    'For any remedy there is a misery.',
-    'Giant bats turn into giant vampires.',
-    'Good day for overcoming obstacles.  Try a steeplechase.',
-    'Half Moon tonight.  (At least it\'s better than no Moon at all.)',
-    '[cookie] Help!  I\'m being held prisoner in a fortune cookie factory!',
-    'Housecats have nine lives, kittens only one.',
-    'How long can you tread water?',
-    'Hungry?  There is an abundance of food on the next level.',
-    'I guess you\'ve never hit a mail daemon with the Amulet of Yendor...',
-    'If there\'s a spot of blood on your hands, why not wash them?',
-    'If you are the shopkeeper, you can take things for free.',
-    'If you ask really nicely, the Wizard will give you the Amulet.',
-    'If you can\'t learn to do it well, learn to enjoy doing it badly.',
-    'If you thought the Wizard was bad, just wait till you meet the Warlord!',
-    'If you turn blind, don\'t expect your dog to be turned into a seeing-eye dog.',
-    'If you want to feel great, you must eat something real big.',
-    'If you want to float, you\'d better eat a floating eye.',
-    'If your ghost kills a player, it increases your score.',
-    'Increase mindpower:  Tame your own ghost!',
-    'It furthers one to see the great man.',
-    'It\'s easy to overlook a monster in a wood.',
-    'Just below any trap door there may be another one.  Just keep falling!',
-    'Katanas are very sharp; watch you don\'t cut yourself.',
-    'Keep a clear mind:  quaff clear potions.',
-    'Kicking the terminal doesn\'t hurt the monsters.',
-    'Killer bees keep appearing till you kill their queen.',
-    'Killer bunnies can be tamed with carrots only.',
-    'Latest news?  Put `rec.games.roguelike.nethack\' in your .newsrc!',
-    'Learn how to spell.  Play NetHack!',
-    'Leprechauns hide their gold in a secret room.',
-    'Let your fingers do the walking on the yulkjhnb keys.',
-    'Let\'s face it:  this time you\'re not going to win.',
-    'Let\'s have a party, drink a lot of booze.',
-    'Liquor sellers do not drink; they hate to see you twice.',
-    'Lunar eclipse tonight.  May as well quit now!',
-    'Meeting your own ghost decreases your luck considerably!',
-    'Money to invest?  Take it to the local branch of the Magic Memory Vault!',
-    'Monsters come from nowhere to hit you everywhere.',
-    'Monsters sleep because you are boring, not because they ever get tired.',
-    'Most monsters prefer minced meat.  That\'s why they are hitting you!',
-    'Most of the bugs in NetHack are on the floor.',
-    'Much ado Nothing Happens.',
-    'Multi-player NetHack is a myth.',
-    'NetHack is addictive.  Too late, you\'re already hooked.',
-    'Never ask a shopkeeper for a price list.',
-    'Never burn a tree, unless you like getting whacked with a +5 shovel.',
-    'Never eat with glowing hands!',
-    'Never mind the monsters hitting you:  they just replace the charwomen.',
-    'Never play leapfrog with a unicorn.',
-    'Never step on a cursed engraving.',
-    'Never swim with a camera:  there\'s nothing to take pictures of.',
-    'Never teach your pet rust monster to fetch.',
-    'Never trust a random generator in magic fields.',
-    'Never use a wand of death.',
-    'No level contains two shops.  The maze is no level.  So...',
-    '[cookie] No part of this fortune may be reproduced, stored in a retrieval system, ...',
-    'Not all rumors are as misleading as this one.',
-    'Nymphs and nurses like beautiful rings.',
-    'Nymphs are blondes.  Are you a gentleman?',
-    'Offering a unicorn a worthless piece of glass might prove to be fatal!',
-    'Old hackers never die:  young ones do.',
-    'One has to leave shops before closing time.',
-    'One homunculus a day keeps the doctor away.',
-    'One level further down somebody is getting killed, right now.',
-    'Only a wizard can use a magic whistle.',
-    'Only adventurers of evil alignment think of killing their dog.',
-    'Only chaotic evils kill sleeping monsters.',
-    'Only real trappers escape traps.',
-    'Only real wizards can write scrolls.',
-    'Operation OVERKILL has started now.',
-    'Ouch.  I hate when that happens.',
-    'PLEASE ignore previous rumor.',
-    'Polymorph into an ettin; meet your opponents face to face to face.',
-    'Praying will frighten demons.',
-    'Row (3x) that boat gently down the stream, Charon (4x), death is but a dream.',
-    'Running is good for your legs.',
-    'Screw up your courage!  You\'ve screwed up everything else.',
-    'Seepage?  Leaky pipes?  Rising damp?  Summon the plumber!',
-    'Segmentation fault (core dumped).',
-    'Shopkeepers are insured by Croesus himself!',
-    'Shopkeepers sometimes die from old age.',
-    'Some mazes (especially small ones) have no solutions, says man 6 maze.',
-    'Some questions the Sphynx asks just *don\'t* have any answers.',
-    'Sometimes "mu" is the answer.',
-    '[cookie] Sorry, no fortune this time.  Better luck next cookie!',
-    'Spare your scrolls of make-edible until it\'s really necessary!',
-    'Sticks and stones may break your bones but manes will never hurt you.',
-    'Stormbringer doesn\'t steal souls.  People steal souls.',
-    'Suddenly, the dungeon will collapse...',
-    'Taming a mail daemon may cause a system security violation.',
-    'The crowd was so tough, the Stooges won\'t play the Dungeon anymore, nyuk nyuk.',
-    'The leprechauns hide their treasure in a small hidden room.',
-    'The longer the wand the better.',
-    'The magic word is "XYZZY".',
-    'The meek shall inherit your bones files.',
-    'The mines are dark and deep, and I have levels to go before I sleep.',
-    'The more you use the E word, the better.',
-    'The use of dynamite is dangerous.',
-    'There are no worms in the UNIX version.',
-    'There is a trap on this level!',
-    'They say that Demogorgon, Asmodeus, Orcus, Yeenoghu & Juiblex is no law firm.',
-    'They say that Geryon has an evil twin, beware!',
-    'They say that Medusa would make a terrible pet.',
-    'They say that NetHack bugs are Seldon planned.',
-    'They say that NetHack comes in 256 flavors.',
-    'They say that NetHack is just a computer game.',
-    'They say that NetHack is more than just a computer game.',
-    'They say that NetHack is never what it used to be.',
-    'They say that a baby dragon is too small to hurt or help you.',
-    'They say that a black pudding is simply a brown pudding gone bad.',
-    'They say that a black sheep has 3 bags full of wool.',
-    'They say that a blank scroll is like a blank check.',
-    'They say that a cat named Morris has nine lives.',
-    'They say that a desperate shopper might pay any price in a shop.',
-    'They say that a diamond dog is everybody\'s best friend.',
-    'They say that a dwarf lord can carry a pick-axe because his armor is light.',
-    'They say that a floating eye can defeat Medusa.',
-    '[cookie] They say that a fortune only has 1 line and you can\'t read between it.',
-    '[cookie] They say that a fortune only has 1 line, but you can read between it.',
-    'They say that a fountain looks nothing like a regularly erupting geyser.',
-    'They say that a gold doubloon is worth more than its weight in gold.',
-    'They say that a grid bug won\'t pay a shopkeeper for zapping you in a shop.',
-    '[cookie] They say that a gypsy could tell your fortune for a price.',
-    'They say that a hacker named Alice once level teleported by using a mirror.',
-    'They say that a hacker named David once slew a giant with a sling and a rock.',
-    'They say that a hacker named Dorothy once rode a fog cloud to Oz.',
-    'They say that a hacker named Mary once lost a white sheep in the mazes.',
-    'They say that a helm of brilliance is not to be taken lightly.',
-    'They say that a hot dog and a hell hound are the same thing.',
-    'They say that a lamp named Aladdin\'s Lamp contains a djinni with 3 wishes.',
-    'They say that a large dog named Lassie will lead you to the amulet.',
-    'They say that a long sword is not a light sword.',
-    'They say that a manes won\'t mince words with you.',
-    'They say that a mind is a terrible thing to waste.',
-    'They say that a plain nymph will only wear a wire ring in one ear.',
-    'They say that a plumed hat could be a previously used crested helmet.',
-    'They say that a potion of oil is difficult to grasp.',
-    'They say that a potion of yogurt is a cancelled potion of sickness.',
-    'They say that a purple worm is not a baby purple dragon.',
-    'They say that a quivering blob tastes different than a gelatinous cube.',
-    'They say that a runed broadsword named Stormbringer attracts vortices.',
-    'They say that a scroll of summoning has other names.',
-    'They say that a shaman can bestow blessings but usually doesn\'t.',
-    'They say that a shaman will bless you for an eye of newt and wing of bat.',
-    'They say that a shimmering gold shield is not a polished silver shield.',
-    'They say that a spear will hit a neo-otyugh.  (Do YOU know what that is?)',
-    'They say that a spotted dragon is the ultimate shape changer.',
-    'They say that a stethoscope is no good if you can only hear your heartbeat.',
-    'They say that a succubus named Suzy will sometimes warn you of danger.',
-    'They say that a wand of cancellation is not like a wand of polymorph.',
-    'They say that a wood golem named Pinocchio would be easy to control.',
-    'They say that after killing a dragon it\'s time for a change of scenery.',
-    'They say that an amulet of strangulation is worse than ring around the collar.',
-    'They say that an attic is the best place to hide your toys.',
-    'They say that an axe named Cleaver once belonged to a hacker named Beaver.',
-    'They say that an eye of newt and a wing of bat are double the trouble.',
-    'They say that an incubus named Izzy sometimes makes women feel sensitive.',
-    'They say that an opulent throne room is rarely a place to wish you\'d be in.',
-    'They say that an unlucky hacker once had a nose bleed at an altar and died.',
-    'They say that and they say this but they never say never, never!',
-    'They say that any quantum mechanic knows that speed kills.',
-    'They say that applying a unicorn horn means you\'ve missed the point.',
-    'They say that blue stones are radioactive, beware.',
-    'They say that building a dungeon is a team effort.',
-    'They say that chaotic characters never get a kick out of altars.',
-    'They say that collapsing a dungeon often creates a panic.',
-    'They say that counting your eggs before they hatch shows that you care.',
-    'They say that dipping a bag of tricks in a fountain won\'t make it an icebox.',
-    'They say that dipping an eel and brown mold in hot water makes bouillabaisse.',
-    'They say that donating a doubloon is extremely pious charity.',
-    'They say that dungeoneers prefer dark chocolate.',
-    'They say that eating royal jelly attracts grizzly owlbears.',
-    'They say that eggs, pancakes and juice are just a mundane breakfast.',
-    'They say that everyone knows why Medusa stands alone in the dark.',
-    'They say that everyone wanted rec.games.hack to undergo a name change.',
-    'They say that finding a winning strategy is a deliberate move on your part.',
-    'They say that finding worthless glass is worth something.',
-    '[cookie] They say that fortune cookies are food for thought.',
-    'They say that gold is only wasted on a pet dragon.',
-    'They say that good things come to those that wait.',
-    'They say that greased objects will slip out of monsters\' hands.',
-    'They say that if you can\'t spell then you\'ll wish you had a spellbook.',
-    'They say that if you live by the sword, you\'ll die by the sword.',
-    'They say that if you play like a monster you\'ll have a better game.',
-    'They say that if you sleep with a demon you might awake with a headache.',
-    'They say that if you step on a crack you could break your mother\'s back.',
-    'They say that if you\'re invisible you can still be heard!',
-    'They say that if you\'re lucky you can feel the runes on a scroll.',
-    'They say that in the big picture gold is only small change.',
-    'They say that in the dungeon it\'s not what you know that really matters.',
-    'They say that in the dungeon moon rocks are really dilithium crystals.',
-    'They say that in the dungeon the boorish customer is never right.',
-    'They say that in the dungeon you don\'t need a watch to tell time.',
-    'They say that in the dungeon you need something old, new, burrowed and blue.',
-    'They say that in the dungeon you should always count your blessings.',
-    'They say that iron golem plate mail isn\'t worth wishing for.',
-    'They say that it takes four quarterstaffs to make one staff.',
-    'They say that it\'s not over till the fat ladies sing.',
-    'They say that it\'s not over till the fat lady shouts `Off with its head\'.',
-    'They say that kicking a heavy statue is really a dumb move.',
-    'They say that kicking a valuable gem doesn\'t seem to make sense.',
-    'They say that leprechauns know Latin and you should too.',
-    'They say that minotaurs get lost outside of the mazes.',
-    'They say that most trolls are born again.',
-    'They say that naming your cat Garfield will make you more attractive.',
-    'They say that no one knows everything about everything in the dungeon.',
-    'They say that no one plays NetHack just for the fun of it.',
-    'They say that no one really subscribes to rec.games.roguelike.nethack.',
-    'They say that no one will admit to starting a rumor.',
-    'They say that nurses sometimes carry scalpels and never use them.',
-    'They say that once you\'ve met one wizard you\'ve met them all.',
-    'They say that one troll is worth 10,000 newts.',
-    'They say that only David can find the zoo!',
-    'They say that only angels play their harps for their pets.',
-    'They say that only big spenders carry gold.',
-    'They say that orc shamans are healthy, wealthy and wise.',
-    'They say that playing NetHack is like walking into a death trap.',
-    'They say that problem breathing is best treated by a proper diet.',
-    'They say that quaffing many potions of levitation can give you a headache.',
-    'They say that queen bees get that way by eating royal jelly.',
-    'They say that reading a scare monster scroll is the same as saying Elbereth.',
-    'They say that real hackers always are controlled.',
-    'They say that real hackers never sleep.',
-    'They say that shopkeepers are insured by Croesus himself!',
-    'They say that shopkeepers never carry more than 20 gold pieces, at night.',
-    'They say that shopkeepers never sell blessed potions of invisibility.',
-    'They say that soldiers wear kid gloves and silly helmets.',
-    'They say that some Kops are on the take.',
-    'They say that some guards\' palms can be greased.',
-    'They say that some monsters may kiss your boots to stop your drum playing.',
-    'They say that sometimes you can be the hit of the party when playing a horn.',
-    'They say that the NetHack gods generally welcome your sacrifices.',
-    'They say that the Three Rings are named Vilya, Nenya and Narya.',
-    'They say that the Wizard of Yendor has a death wish.',
-    'They say that the `hair of the dog\' is sometimes an effective remedy.',
-    'They say that the best time to save your game is now before it\'s too late.',
-    'They say that the biggest obstacle in NetHack is your mind.',
-    'They say that the gods are angry when they hit you with objects.',
-    'They say that the priesthood are specially favored by the gods.',
-    'They say that the way to make a unicorn happy is to give it what it wants.',
-    'They say that there are no black or white stones, only gray.',
-    'They say that there are no skeletons hence there are no skeleton keys.',
-    'They say that there is a clever rogue in every hacker just dying to escape.',
-    'They say that there is no such thing as free advice.',
-    'They say that there is only one way to win at NetHack.',
-    'They say that there once was a fearsome chaotic samurai named Luk No.',
-    'They say that there was a time when cursed holy water wasn\'t water.',
-    'They say that there\'s no point in crying over a gray ooze.',
-    'They say that there\'s only hope left after you\'ve opened Pandora\'s box.',
-    'They say that trap doors should always be marked `Caution:  Trap Door\'.',
-    'They say that using an amulet of change isn\'t a difficult operation.',
-    'They say that water walking boots are better if you are fast like Hermes.',
-    'They say that when you wear a circular amulet you might resemble a troll.',
-    'They say that when you\'re hungry you can get a pizza in 30 moves or it\'s free.',
-    'They say that when your god is angry you should try another one.',
-    'They say that wielding a unicorn horn takes strength.',
-    'They say that with speed boots you never worry about hit and run accidents.',
-    'They say that you can defeat a killer bee with a unicorn horn.',
-    'They say that you can only cross the River Styx in Charon\'s boat.',
-    'They say that you can only kill a lich once and then you\'d better be careful.',
-    'They say that you can only wish for things you\'ve already had.',
-    'They say that you can train a cat by talking gently to it.',
-    'They say that you can train a dog by talking firmly to it.',
-    'They say that you can trust your gold with the king.',
-    'They say that you can\'t wipe your greasy bare hands on a blank scroll.',
-    'They say that you cannot trust scrolls of rumor.',
-    'They say that you could fall head over heels for an energy vortex.',
-    'They say that you need a key in order to open locked doors.',
-    'They say that you need a mirror to notice a mimic in an antique shop.',
-    'They say that you really can use a pick-axe unless you really can\'t.',
-    'They say that you should always store your tools in the cellar.',
-    'They say that you should be careful while climbing the ladder to success.',
-    'They say that you should call your armor `rustproof\'.',
-    'They say that you should name your dog Spuds to have a cool pet.',
-    'They say that you should name your weapon after your first monster kill.',
-    'They say that you should never introduce a rope golem to a succubus.',
-    'They say that you should never sleep near invisible ring wraiths.',
-    'They say that you should never try to leave the dungeon with a bag of gems.',
-    'They say that you should remove your armor before sitting on a throne.',
-    '[cookie] This fortune cookie is copy protected.',
-    '[cookie] This fortune cookie is the property of Fortune Cookies, Inc.',
-    'This release contains 10% recycled material.',
-    'Time stands still as the succubus changes her calendar to January 1, 2000.',
-    'Tired?  Try a scroll of charging on yourself.',
-    'To achieve the next higher rating, you need 3 more points.',
-    'To reach heaven, escape the dungeon while wearing a ring of levitation.',
-    'Tourists wear shirts loud enough to wake the dead.',
-    'Try calling your katana Moulinette.',
-    'Ulch!  That meat was painted!',
-    'Unfortunately, this message was left intentionally blank.',
-    'Using a morning star in the evening has no effect.',
-    'Waltz, dumb nymph, for quick jigs vex.',
-    'Want a hint?  Zap a wand of make invisible on your weapon!',
-    'Want to ascend in a hurry?  Apply at Gizmonic Institute.',
-    'Wanted: shopkeepers.  Send a scroll of mail to Mage of Yendor/Level 35/Dungeon.',
-    '[cookie] Warning:  fortune reading can be hazardous to your health.',
-    'We have new ways of detecting treachery...',
-    'Wet towels make great weapons!',
-    '[cookie] What a pity, you cannot read it!',
-    'Whatever can go wrong, will go wrong.',
-    'When a piercer drops in on you, you will be tempted to hit the ceiling!',
-    'When in a maze follow the right wall and you will never get lost.',
-    'When you have a key, you don\'t have to wait for the guard.',
-    '[cookie] Why are you wasting time reading fortunes?',
-    'Wish for a master key and open the Magic Memory Vault!',
-    'Wizard expects every monster to do its duty.',
-    'Wow!  You could\'ve had a potion of fruit juice!',
-    'Yet Another Silly Message (YASM).',
-    '[cookie] You are destined to be misled by a fortune.',
-    'You can get a genuine Amulet of Yendor by doing the following:  --More--',
-    'You can make holy water by boiling the hell out of it.',
-    'You can protect yourself from black dragons by doing the following:  --More--',
-    'You can\'t get by the snake.',
-    '[cookie] You choke on the fortune cookie.  --More--',
-    'You feel like someone is pulling your leg.',
-    'You have to outwit the Sphynx or pay her.',
-    '[cookie] You hear the fortune cookie\'s hissing!',
-    'You may get rich selling letters, but beware of being blackmailed!',
-    'You offend Shai-Hulud by sheathing your crysknife without having drawn blood.',
-    '[cookie] You swallowed the fortune!',
-    'You want to regain strength?  Two levels ahead is a guesthouse!',
-    'You will encounter a tall, dark, and gruesome creature...'
-];
-
-export const RUMOR_TRUE_LINE_BYTES = [
-    60, 77, 60, 60, 60, 60, 60, 60, 60, 68, 67, 60, 60, 60, 60, 60,
-    60, 60, 60, 60, 65, 60, 60, 60, 60, 60, 65, 60, 60, 60, 69, 60,
-    60, 60, 61, 60, 60, 60, 60, 60, 60, 60, 60, 68, 60, 64, 60, 60,
-    60, 60, 60, 60, 60, 60, 78, 60, 60, 60, 60, 60, 60, 63, 60, 60,
-    60, 60, 60, 60, 79, 60, 60, 60, 60, 60, 60, 63, 60, 60, 60, 60,
-    60, 62, 60, 60, 60, 60, 60, 60, 60, 60, 61, 60, 79, 60, 60, 60,
-    60, 64, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 70, 60, 60, 60,
-    60, 60, 60, 60, 60, 66, 60, 69, 60, 72, 60, 60, 60, 60, 60, 60,
-    60, 60, 60, 60, 71, 60, 76, 60, 60, 65, 60, 65, 71, 60, 60, 71,
-    60, 60, 60, 60, 60, 69, 68, 60, 60, 72, 60, 78, 60, 67, 68, 60,
-    68, 60, 60, 60, 63, 71, 60, 60, 60, 60, 60, 60, 60, 79, 60, 60,
-    60, 60, 60, 60, 60, 60, 68, 69, 72, 74, 60, 60, 60, 60, 60, 60,
-    72, 66, 60, 76, 60, 74, 67, 71, 64, 60, 64, 60, 66, 64, 60, 69,
-    62, 69, 71, 60, 75, 69, 72, 72, 60, 66, 73, 64, 69, 75, 60, 60,
-    72, 60, 68, 60, 72, 67, 76, 62, 75, 75, 68, 75, 76, 66, 66, 60,
-    60, 75, 65, 73, 69, 76, 60, 74, 76, 69, 67, 76, 60, 68, 68, 60,
-    61, 66, 60, 68, 60, 60, 69, 78, 77, 60, 72, 68, 67, 71, 60, 60,
-    74, 70, 64, 60, 73, 71, 78, 71, 66, 66, 63, 66, 64, 60, 75, 60,
-    69, 71, 61, 60, 73, 71, 60, 60, 72, 77, 77, 61, 60, 66, 71, 70,
-    69, 70, 65, 75, 60, 67, 76, 63, 66, 77, 65, 61, 69, 60, 60, 76,
-    75, 64, 61, 70, 60, 70, 67, 60, 60, 67, 68, 60, 60, 60, 72, 61,
-    60, 60, 60, 70, 69, 60, 60, 60, 60, 60, 60, 60, 64, 60, 60, 60,
-    61, 60, 60, 60, 60, 60, 60, 60, 60, 60, 64, 60, 60, 60, 60, 60,
-    61, 60, 60, 68, 60, 68,
-];
-
-export const RUMOR_FALSE_LINE_BYTES = [
-    71, 67, 60, 60, 61, 68, 60, 60, 60, 60, 60, 60, 60, 70, 60, 73,
-    60, 60, 60, 60, 70, 64, 73, 60, 60, 60, 67, 60, 60, 79, 60, 60,
-    60, 60, 60, 67, 62, 73, 79, 69, 70, 60, 64, 69, 60, 77, 76, 60,
-    60, 60, 60, 60, 79, 79, 60, 78, 60, 60, 80, 68, 65, 70, 78, 60,
-    60, 60, 77, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 64, 69,
-    60, 60, 60, 68, 61, 60, 63, 65, 72, 77, 60, 60, 60, 60, 60, 60,
-    71, 60, 60, 60, 60, 60, 65, 60, 60, 60, 60, 60, 60, 60, 60, 73,
-    60, 72, 68, 60, 60, 60, 60, 60, 69, 60, 71, 60, 60, 64, 60, 60,
-    60, 60, 86, 60, 60, 60, 71, 60, 60, 60, 62, 60, 63, 60, 60, 60,
-    60, 60, 60, 67, 60, 78, 60, 60, 60, 60, 60, 60, 71, 62, 60, 64,
-    63, 70, 60, 60, 60, 79, 60, 60, 60, 60, 69, 60, 60, 60, 60, 78,
-    60, 60, 60, 60, 60, 60, 60, 62, 66, 60, 60, 60, 65, 60, 76, 60,
-    80, 79, 73, 69, 75, 68, 76, 78, 66, 72, 63, 61, 75, 68, 60, 60,
-    60, 67, 70, 60, 68, 60, 72, 71, 60, 65, 74, 72, 74, 62, 76, 71,
-    70, 69, 72, 79, 60, 75, 71, 74, 76, 76, 65, 60, 69, 60, 60, 65,
-    60, 72, 77, 78, 62, 60, 60, 69, 66, 71, 76, 60, 61, 60, 60, 64,
-    71, 65, 68, 73, 73, 60, 66, 60, 73, 71, 66, 66, 77, 69, 61, 61,
-    60, 74, 60, 65, 60, 60, 60, 70, 71, 60, 71, 60, 66, 62, 60, 60,
-    60, 60, 60, 65, 66, 75, 61, 77, 60, 60, 60, 74, 70, 60, 60, 60,
-    75, 77, 66, 64, 60, 70, 75, 60, 65, 64, 75, 61, 71, 76, 60, 60,
-    70, 68, 60, 72, 72, 69, 74, 74, 79, 65, 60, 76, 63, 66, 78, 63,
-    60, 60, 60, 71, 60, 67, 60, 70, 69, 64, 74, 60, 65, 73, 69, 66,
-    76, 71, 60, 70, 60, 75, 60, 60, 72, 60, 60, 60, 60, 60, 60, 60,
-    60, 80, 68, 60, 60, 60, 60, 72, 66, 60, 60, 60, 60, 60, 60, 60,
-    73, 60, 78, 60, 60, 60, 60, 60, 67, 78, 60, 64, 60,
-];
+export const RUMORS_FILE_TEXT = `#	This data file is generated by 'makedefs'.  Do not edit. 
+0374,023875,00006d;0397,025762,005db0;0,0,00c252
+@"fdyofbg|e"gi~!\`a(fdp}(ergb}|!kb(inw#zu!vaduqcp\`yb,[WO^][W
+@"gi~eghirswi(qgdmpue"sadi"wmfdl\$kqofhmc!qlggr"p\`u!ueq0vkp\`0\`"iiwhaed0mkc\`d/
+@"gzu\`o\$xyd"lic!vsg0tqa{*!dkgt/,*(qof\$m~ugv|qhlim~u,[WO^][W
+@"gzirved0qne|u!oea|!umd|!lk|0sww|>^][WO^][WO^][WO^][WO^][W
+@"oid\`le(}hel|0rnmku!c\$so\$a~!vsg>^][WO^][WO^][WO^][WO^][W
+@"iiwha\$~lkp(\`tot(snwhl0cg\$}cddqd0gmv(wnwveqofw&O^][WO^][W
+@"jq}qj\$c~nuw(xnu\$|!wjdbi\$kx\`kj{>^][WO^][WO^][WO^][WO^][W
+@"tgdhmj(g"fdyofjmcr"hmdr"}ge!qam0hlrach\`hm0ujmfwr,[WO^][W
+@"tzydqp(s\`l\$ouu"p\`u!eklc!vk(|hqpm~!ge{ym{*WO^][WO^][WO^][W
+@"tzydqpmcr"eft!c\$~ysemf0xmq(}hel|0cg((rtv\$|x\`v\$}~hakz~!ukf7u"gibd,
+@"va~f"kn0bmjn|hap(yr"e(r\`f\$|xhlc(yg"p\`usg\$ac!c\$fesqa(yo"p\`u!pkg}/
+@"w\`sv\${gnp\`(yr"jgd!cw(wnm\`(qr"e(|nlc(cvmvl>^][WO^][WO^][W
+@"w}sbwf}c!umd|!ek(v\`pp\`us"p\`qo"e(~xot\`>^][WO^][WO^][WO^][W
+@"si~e"gi~!g|gbbk~m0\`"ticu"ap\`mmvmb&q\$oxnqp&O^][WO^][WO^][W
+@aml0cnkjc!qlgemf\$ju!cp|qbial0ccvm=icjlue,[WO^][WO^][WO^][W
+@dbiysq\$yuj\$filrl{0\`pa(gvaf0wgvq0dztm~rkrm>^][WO^][WO^][W
+@dviye"kn0o{ixxr=\$(Gdcv(q!pmfw!mb(qemvf}dlp&O^][WO^][WO^][W
+@dviye"kn0xmqz0wch}qcna{0cgmfw!qpg|dl;(0Bcvzi!okzu!hqf{ ][W
+@nsiir"fm0\`uezu!mb(dig\$xx\`qa(g"p\`u!okg~ ][WO^][WO^][WO^][W
+@nsiir"wudr\$|xd"bdnp\$jugmvm0dlczqwkjo0hotgbucj|0lgw{qfgw&
+@oqduuq\$gv![aftnp\$ibd"libe"pg0lcom>!"A~uo"bgb!c\$qof\$gv!um{xhlc&
+@l\$m|wgj(smmec0hq\$}cddqd0\`eea~rv\$eqfkg&O^][WO^][WO^][WO^][W
+@l\$}}cgv(xtno(s\`l\$ju!c\$kodq{yoe\${yfjp&O^][WO^][WO^][WO^][W
+@q\$Kbno\$ac!o}(ghvjmcr.\$A7mn\$fuwgv(wn"l}~fp}(qfcmf1^][WO^][W
+@qoa~f"ejtv\$eoqpmbr"iii!\`a(fdp}(ergb}|/][WO^][WO^][WO^][W
+@vpisj"hg~f"sgblq\$nbno\$|xd"vmqs")%0uje|0hq\${!oqkx!qenus#[W
+@vpisjkjo0\`l\$mum"s\`usg\$|xdpa(yr"jg~d"m{0tqqi|m{\$i0gcpi|!om{d\`ia)
+Ccjlqfkjo0vmqftr"lm|qq\$cudr\$}\`!ctxu\`pefsdq*WO^][WO^][WO^][W
+Ccw\`yoe\$eoqpmbr"sadi"e(rnu\$ac!lk|0rwg\`0\`"cge"mlu\`,[WO^][W
+Cg\$kqsgb}| "\$\\xd"Saj\`p\`(}\`{\$x|\`l\$i~!cijerj%WO^][WO^][WO^][W
+Cg\$fybg\$|!c\$fesqa20!Rq|0\`ueq0xmqz0vgexo"eft!vecu!mbn0xmqz0bnk|xdq*
+Cgmfw!fmourval0hq\$i0qcmfvtnhq0rnk0qpkkurq*WO^][WO^][WO^][W
+Cnef{!qgzmnw(}\`ia(}npa(yovazurvmfw!paithlc&O^][WO^][WO^][W
+Cnmft>"\$Kqual(q!dhgqukjo0d{a)O^][WO^][WO^][WO^][WO^][WO^][W
+Cmkccdnhmbr"jmfdp\$zu\`f\${ssmhdc:"p\`ux"iawiv\$ouu"gibskal0\`ueq>
+Bjaeyrvvq002520Ogrmb!rk}b!ue|us"mfdn"ekye,[WO^][WO^][WO^][W
+Bmjkyrg\$kosqmcu8\$(Snlpzm.\$kodq{u-"gg~kwvm<!akftdoj&O^][W
+Bmj{usta(uogvoi-"p}bo"knv!vlm0mkc\`dr,[WO^][WO^][WO^][WO^][W
+Ekcoyoe\$}\`!c\$ob\`ta(snwhl0cg\$i0cc\`(yege&>/][WO^][WO^][WO^][W
+Ekhadikqe0bp}{d\`nw(qsg\$zqsg\$a~egal>^][WO^][WO^][WO^][WO^][W
+Emc{0\`pa(quvvisug\`(rx"p\`u!qim|m"kn0upmxu/][WO^][WO^][WO^][W
+Emc{0\`pa(ctrazcukpatq?(dig}(~dtaz0rvax0nl\$kesqal0hvaec/][W
+Emc{0nd\$oxnqp{0\`paf7u"efws{((ztqp(xtlczi/][WO^][WO^][WO^][W
+Emj/d!dkzwdv%(0Mcvou!fkoc!cvm0LWG@0icvlus"pg0jkhd0ujef0mkp||d"\`gwr,
+Emj/d!ne{x!mq|0\`v\$xunrhm0vjmdu!\`ha~eg\`&O^][WO^][WO^][WO^][W
+Emj/d!oa{c!um|x!qlg\`jgaxusq((s"}ge&nh(wdv\$|xd"C}ymf\$ivugv(inw*
+Epeooq\$fuwgv(gikt(digmz0bjmdtsgj30ujaq0vmqdto%p(vdgh(yu#[W
+Dcp(inwv(s\`pvgdr,\$(Dig}/bd"cge"bgb!{k}b!g}mc/][WO^][WO^][W
+Dcpa~f"e(vsgaryoe\${\`igvm0hq\$dyjg\$mqukjo0\`"}mdh,[WO^][WO^][W
+Dcpa~f"e({hnhmb!\`am0hq\$dyjg\$mqukjo0\`"wksrmg~/][WO^][WO^][W
+Dcpa~f"e(ddlc}0hq\$dyjg\$mqukjo0\`"jq}qj*WO^][WO^][WO^][WO^][W
+Dcpa~f"e(gscm|x!kw(q!paqsfmfw!g|xuskafsd#[WO^][WO^][WO^][W
+Dcpa~f"qf\`\`k\`(|drvmsicqfc!oeq0cg\$itwcj|qfgk}c/][WO^][WO^][W
+Dnfmbdvl(x\`q\$yehva(q!paxeucpao"eztl\`(digwm0qcv|c/][WO^][W
+Dnb(snpt{ur"ezu!kjklre|ycna(ghvl(dig\${qofii~-"eft!cp(dhoa{0uja(wnfw(qr"sm|m,
+Dnrm~!ahgqjq\$kqolk|0sww|>^][WO^][WO^][WO^][WO^][WO^][WO^][W
+Dnrmc!aef0ighx0xmq(vdgh(|dqw(dhpal>^][WO^][WO^][WO^][WO^][W
+Dtaf0dtmd0qnequsq\$\`qwg\$i0fwezthcj(qoead>^][WO^][WO^][WO^][W
+Dtaz0gmqoxu"sadi"ef0dlg\`qoval0umk|x>][WO^][WO^][WO^][WO^][W
+Dtaz0upmmt!paithlc(gikhm0bmjnerg\`7O^][WO^][WO^][WO^][WO^][W
+Dtaz0upmmt!vk(\`tv\$i0upkd|!kj|!c\$dqsea(rnz;WO^][WO^][WO^][W
+Dtaz0vmjlusg\`(gi{\$g~d"sgemf\$qov\$|!fmx0rmimdikjo0hl\$i0qmpao=
+Dztm~rkrm0bcimb\`q\$\`qwg\$xuogpzqukjo0gne{x!nmoxuq*WO^][WO^][W
+Dzpzq!qpiysae{ur"hmqe"pg0dzpzq!na~umq*WO^][WO^][WO^][WO^][W
+Gkazi!na|ddpw(}hel|0egpmb!okfcugv{>^][WO^][WO^][WO^][WO^][W
+Gmv(q!ekgt!vmeu!gjob\`ta(pDnfmbdvl/>^][WO^][WO^][WO^][WO^][W
+Fgi{0\`pa(dnm\$xbdamger"pg0cg\$|xsmsf0\`ueq0bcvm|dqwdi/][WO^][W
+Fgp|yoe\$\`eoevq/!"W|q"smqskjo0skjoc ][WO^][WO^][WO^][WO^][W
+Fgp|yoe\$|n"sibl=\$(D\`ia(gd\$|x\`v\$I}tna|0nd\$Quofkz0\`l\`(cuc}(qvc}(vsmi(dig\$mhhv%
+Fm\`{0dztmsu"p\`u!\`a{d!dvg}!vlmys"tzydqp\`nf*WO^][WO^][WO^][W
+Fm\`{0mmkc0emsf0ujaab!lk{ur"e|0egiawnfw&O^][WO^][WO^][WO^][W
+Fm\`{0mmrm0bcp{0\`l\`(tnew&O^][WO^][WO^][WO^][WO^][WO^][WO^][W
+Fmp(q!sqmcukkf/!"Pzi!pak>fcimc/pkoednmcu/la|x\`ao&O^][WO^][W
+Fpe~u!pkjrdpw(cnoa|ylgw(wdv\$zybj*WO^][WO^][WO^][WO^][WO^][W
+Fw}(]nlpiw!iam\`r"lac!qgzmnw(yo"e(r\`e*WO^][WO^][WO^][WO^][W
+Icjl|d"}ges"bdqriw(s\`panemn}(=,"p\`usg\$eyfjp(rd"e(wimw|0hlwatd#
+Imhq0vcpmb!je{0lcjq0tqa{>^][WO^][WO^][WO^][WO^][WO^][WO^][W
+Imv{ur"pzerv\$|xdkv(bhfazc-"a~uo"s\`uo"jgd!qk(tdqazfdf*WO^][W
+Iwjous"m{0\`"gg~gwwa~f"ap\`dpmm~bg\$ns"e(tne%WO^][WO^][WO^][W
+H"kfsd"ofuv"e(x\`aomb!ulg0\`va(dnm\$nqrv\$i~e"g\`jg\`(dn"\`mquj*W
+H"weumn\$i0lc~m0nd\$|ghqpq0mkp||d"ticrccmc/][WO^][WO^][WO^][W
+H"saci"M(~dtaz0vkw\`ue"e(g\`l\`(g"sacikjo>!",_yrjb}|!vla~jkjo>(
+H"sgemfj/d!c\`~yrg\$x|\`{mfw!ae|si"sadi"e(whcj|>^][WO^][WO^][W
+H%i(g\`vg\`yoe\$qt,\$(=,"P\`u!Umrqsf\$gv![aftnp[WO^][WO^][WO^][W
+Haa(rnza{0jgax0xmqz0gmkl0gpa{x/][WO^][WO^][WO^][WO^][WO^][W
+Hd\$qt"ezu!\`aa~f"t}~hqlmt-"m|7r"\`g~d"sadi"e(tdc\`di!uai\`nl*W
+Hd\$qt"oa|m"p\`u!Umrqsf((inw\$ouu"tzlmpmt!vk(tdom%wnf*WO^][W
+Hd\$qt"jmue"e(g\`l\`(g"\`awfkjo<!imftm{\$icj"p\`u!omfucqz>^][W
+Hd\$qt"si~u"pg0ikp\$0tqa(q!feowdp*WO^][WO^][WO^][WO^][WO^][W
+Hd\$qt"si~u"pg0smf(q!qlg\`-"pzqhl\$qtp\$lf,[WO^][WO^][WO^][W
+Hd\$qt%vm0mmw|<!vvq0cw}a~f"e(}\`r\$fuyv\$|ylg\$qt%vm0hl\$i0rjkx>
+Hd\$qtp\$\`qofw(qsg\$obdcwq<!ulq0omp(g\`ql(digi7O^][WO^][WO^][W
+Hlwatd"e(cimt(inw\$juuvaz0ucom0\`"hgj"e|0uja(\`skgm0ucc{0cgbgbd"f}ihlc(qo{p\`yoe*
+Hv\$ac!\`el0lcjfusq\$|!wwm0\`"si~e"mf0\`"w\`q,[WO^][WO^][WO^][W
+Hv\$ac!fefwdpk}c!vk(fhqm|0\`"czqwg}ibe"e|0lk\`fyfjp&O^][WO^][W
+Hv\$ac!lk|0\`nsiir"e(wnm\`(yege(dn"s\`yrvhm0gmv(inwv(tne*WO^][W
+Hv\$ac!pqesg\`(dicp(dig\$_y{cvl0icw(xhpal0rmim0ighx>^][WO^][W
+Hv\$ac!vlm0mgp|us"#k7!cjl0omp(7d%\$|x\`v\$kx\`lcmc!qpidtq\$|!qpidtg*
+Hv\$eyfjp(rd"e(wnm\`(yege(dn"knvdp\$|xd"qfybmvf0\`"v}rx,[WO^][W
+Hv\$tn\`(rd"tmstnmibm{\${qe"smbd"}ges"\`gw!vqz~df\$|!qpg~d,[W
+Hv#{0\`"dl7!ge|c!b\`/0vmvdt/][WO^][WO^][WO^][WO^][WO^][WO^][W
+Kww|0cggierg\$ad!qeqc!PAIT!OA(tngwf7u"imqo"}ge!qlgemf*WO^][W
+Jgax0xmqz0\`pigbr"eqx"bzl"v}cu,[WO^][WO^][WO^][WO^][WO^][W
+Jgax0xmqz0vgexop}(qvc}(vsmi(qbk\`{>^][WO^][WO^][WO^][WO^][W
+Jkhd0\`"qfybmvf0nd\$qtp\$kmmv(qof\$qt"oa|m"}ges"h}sj,[WO^][W
+Mge|xdp\$ac!ue|usrvgg,\$(Uwgv(cdg\$i0bms(ghvl(qo"qersghdq>][W
+Mgtzubje}~r"ezu!vlm0lmw|0rimd|df\$keurqzcdq\$a~!vlac!fqfwdmj&
+Mk~ibe"ggbqqa{0qpk|ubv\$iw\`kj{d!akk{\`vvasdq*WO^][WO^][WO^][W
+Lmjmi!nk{d-"haduna(|nqp30imjgb!nk{d-"i}si"hgcu9\$x|tao(|nqp\$0\`nh(|nqp&
+Lmw|0lmj{ddpw(s\`l#|0rume>^][WO^][WO^][WO^][WO^][WO^][WO^][W
+Lwwas!je|x!aliblq\$|!cbnubv\$|xd"w|ec\`kz~!fvigcpmlwd,[WO^][W
+Lwwas!je|x!aliblq\$|!qkgdig\$|xd"wif\`ea(rdcw|>^][WO^][WO^][W
+Ogrmb!cp|qbi\$i0fwezt/][WO^][WO^][WO^][WO^][WO^][WO^][WO^][W
+Ogrmb!pmlu!c\$doe\$so*WO^][WO^][WO^][WO^][WO^][WO^][WO^][W
+Ogrmb!wwm0xmqz0cgw|0vgexo"pg0dlczqwg\$i0bwv{u/][WO^][WO^][W
+Om\$mqr{\$nyfjpa~f"sadi"e(xdcrq0mmel1^][WO^][WO^][WO^][WO^][W
+Omp(qmn\$jnvw(gdpa(}\`fa(vnp\$qmimfw/][WO^][WO^][WO^][WO^][W
+Owv{ur"ezu!vviyog\`(dn"pgebj\$fqjg\`(\`dpwg~r8\$(dig}(tnl#|0icve0ujae>
+O{ixxr"gi~!wjdyoi\$esg\$|x\`l\$qtp\$kx\`kj(}\`kh&O^][WO^][WO^][W
+Nlgm0xmqz0mkp||d"\`gw!umd|!\`a(q!\`mo0emc\$0\`l\`(inw\$ymn\$ju!rvgee"kn0hv*
+Nlhq0ggii|d"ig~rvazc!aef0mc}(ufew&O^][WO^][WO^][WO^][WO^][W
+Nrafyoe\$i0ukj(yr"\`avgkg}|u.\$mcqggaqmn}(gigj(inw\$idugixd!kp(r\`pa(x\`l\`mt 
+Npg{0\`l\`({hnhmb!\`amc!qlibd"p\`uhp\$dyggw|img*WO^][WO^][WO^][W
+Npg{0em\$fu"tzbpaidd"mf0ecvc0smkec/][WO^][WO^][WO^][WO^][W
+Qnea~!l}e\`iq\$ibd"liblna{c/][WO^][WO^][WO^][WO^][WO^][WO^][W
+Qneqyoe\$IT'F\$eqx"fm0ighxvtn*WO^][WO^][WO^][WO^][WO^][WO^][W
+Qneqyoe\$Oqtlpduu"iawiv\$ju!gjdyfjpm~hlc(yo"wg}d"wadtcpaoq*W
+Qneqyoe\$jymnmibeq\$xqxq\$xdl\$qt"ezu!kj(q!qlg\`/][WO^][WO^][W
+Qmhq}npt\`yoe\$i0rjkx{dgtmb!omoxu"ii{d"}ge!qenus,[WO^][WO^][W
+Qmhq}npt\`yoe\$qtp\$lf"tzccfdi!oecur"}ge!qenus,[WO^][WO^][W
+Qmpaoq\$lo%p(erwed|x"iah-"f}d!qkeuukimc/,*WO^][WO^][WO^][W
+Qqw|1!"M|7r"\`g~d"sadi"iabsmv{1^][WO^][WO^][WO^][WO^][WO^][W
+Qwp(o"e(bhlc(g"pm|drkzd\`vmg~;"\$ad!umd|!vecu!{k}0\`ueq0gpke0nlwdqtel|>
+Sc}{0\`paf7u"fglgvi~fq((g"ggesqa\$0cwp(cukhd>/,[WO^][WO^][W
+Sgel0uja(}\`lqi|!\`ansg\$m~ugva~f"p\`u!ae~u!/)(inw\$eyfjp(wdv\$cymnal0nvlmbvkwm>
+Sgelyoe\$@us\`azd!omoxu"fm0dlhawivafyoe\$a~!mjm0bcwm>^][WO^][W
+Sgelyoe\$\\mimm~!omoxu"lm|q"}ge/][WO^][WO^][WO^][WO^][WO^][W
+Sgelyoe\${ssmhdc!cb|us"\`zyoimfw!\`kgjd"gi~!em~u!akfvtqmfw!pa{emvw&
+Sk\`a~f"e(tsccg~!aef0cg\$i~!wtdygvmfw!g|xuskafsd,[WO^][WO^][W
+Sww|0lmj{ddpw(|nta(g\`vaz>!"P\`usg\$ibd"tgdhmj{0ujaq0icpm<!jkuwgv&
+Rcgcc!rvgddap(snlpm~uq\$nbno\$|ulrazquwvmc!wt(dn"0="!faobdgw(v\`jvm~igm|>
+Ravg|mq\$nqekjo/!"M|7r"jgd!vlm0ige|<!kp/c!vlm0iwiathv}&O^][W
+Rjkx{dgtmbr"eksdrp(ssg\`ad!aeztr.\$ic!nkfw!cw(inw\$xqx"gici,[W
+Rjkx{dgtmbr"gi~!qtgd!c\$|tpm{d!c\$eymg\$ig\`{\$yuj\$|xnqa(X\`ueay\`l\${xhpp{>
+Rjkx{dgtmbr"gi~&v\$|umn\$atdlpas\`n\$|ghlw(qqcv|>^][WO^][WO^][W
+Rjkx{dgtmbr"\`g~&v\$zu\`f((cn"s\`qu"q{u!kw(uoevifhlc(yo"e(cimt7
+Rjkx{dgtmbr"lifd"mfssg\`armg\$xqukafsd,[WO^][WO^][WO^][WO^][W
+Rjkx{dgtmbr"iawiv\$zqhqa(digmz0qpmkur"bgb!vk}bhqp{>^][WO^][W
+Rjkx{dgtmbr"ri|tg\$eog}(}npa(dicj(bdtafwd,[WO^][WO^][WO^][W
+Rmim0lmj{ddpw(s\`l\$ju!veeue,\$(Y!mjku!qe0\`"lisjgv(ghvl(q!veeu!fviwnl%
+Rmim0sgiiyo"bduykfdu-"s\`ymg\$gdigv{0bcj/d!qam}!vk(sicjou!vlmys"p}~d,
+Rmimog\$g~bg\${qhf\$|x\`v\$x\`v\$odq\$}\`!>\$eyfjp(snoa(tnuj(./][W
+Rmimog#{0cgaf0rrmcyoe\$|xd"tadr#[WO^][WO^][WO^][WO^][WO^][W
+Rmimdhoa{0lmj{ddpw(qsg\$esg\$dyjghq0um\$nyfjp(u\`al(ujaz0ujef0\`vpisj"}ge/
+Rrmfqbj((s\`pvgd-"eft!had|x")%0\`"imqm"bad!dkz0\`"j}brg%WO^][W
+Rwv~ywkjo0uja(vtnh(uyvafd!mb(dig\$eyogw(snwhl0lgef0uje|0xmqz0mwgc0hq\$kx\`lca~f,
+Ucmfddf\$eu\`v\$ac!grm~!okzu!qmk{dlmfw!vli~!rkacnl%WO^][WO^][W
+Ughm\`\`vlq0hq\$berv\$i0upmk{;"\$g~bg\$qt"ofv"lgg!vk(tn"m|<!kp/c!ge{i/
+Uja(\\drvmsicqf0Fmhl0Upq,d!kw(~n"\`afhqmg~!mb(dig\$Eqfkg(]dokzi!Te}|u,
+Uja(Ghxezt!dmftr"\`mquj\$|!\`a(atkpm0\`l\$mhqgvauoaa&O^][WO^][W
+Uja(rdqp(upwmx}dlp(vnp\$qtp\$si\$ac-"kn0bmqzcd.\$|xd"igcu"ap\`dlwafd,
+Uja(wnfw(tnl#|0\`rtzubke|u!ra{{x"tzydqp\`nf*WO^][WO^][WO^][W
+Uja(wnfw(ghnh(wdv\$i~fp}(yg"}ge!imd|!{k}b!fko>^][WO^][WO^][W
+Uja(}\`emk0lcvcus"m{0lkc\`dhgv(dicj(dig\${gnp\`&O^][WO^][WO^][W
+Uja(}nmj(yr"jgd!vlm0nlhq0ige~uon}(rnf}(dn"mfvmwafsd"p\`yr"ci}d,
+Uja(sa\${ghlc{0ikw(sam{x!\`vgqeqsgbe"ji}df\$M|gpm{d!cp(inw*(0Xmq(thg*&>
+Uja(cdavmd!mb(g\`l\`{0nd\$Fujmfw!Jex\`dlw20!vvq0\`eea~ ][WO^][W
+Ujazu!je{0\`nsiir"fmuo"wg}dvla~f"iqcukgi|!cfgeu"iabsmv{>^][W
+Ujazu!kw(q!Oe{ddpia~e"\`muq"mf0uja(ttlcmo,[WO^][WO^][WO^][W
+Ujazu!kw(q!\`mo0upaictpa(xhf\`m~!kj(dig\$rn#[WO^][WO^][WO^][W
+Ujazu!kw(}npa(}\`emk0hl\$|xhq\$kqwg\$|x\`l\$eudvw(dig\$mid,[WO^][W
+Ujazu!kw(~n"libl"mf0qpeachlc(q!nezwd"\`gw/][WO^][WO^][WO^][W
+Ujazu!kw(~nvla~f"ha{d"aidhlc(q!omeyb,[WO^][WO^][WO^][WO^][W
+Ujazu!mjku!ue{0\`"Ofyfjp(~\`oal0Mcjkummp(gim\$dyjg\`(dn"vatd"sadi"lac!nefsd"e(|nv*
+Ujaq0rc}(q!eadqukjger"g}rd"gi~!rezqm{~m0xmq&>/][WO^][WO^][W
+Ujaq0rc}(dicp(Ztkfduy"m{0\`dviye"kn0\`"si~e"kn0ekcoyoe*WO^][W
+Ujaq0rc}(dicp(]dfq{q!uk}|e"ha{d"pg0qwp(inw\$g~!c\$xuegw|qm,[W
+Ujaq0rc}(dicp(Fmc\`(|hta{1 #\$&>/"mf0uja(}\`xa{>^][WO^][WO^][W
+Ujaq0rc}(dicp(pDnfmbdvl/0hq\$gvugj(gskp|uo"ejtv*WO^][WO^][W
+Ujaq0rc}(dicp(q!\`eo0nd\$\`mfmfw!aef7u"lg|e"a~us{p\`yoe*WO^][W
+Ujaq0rc}(dicp(q!\`hmcrg\`(dhl\$gv!sqichv\$eu\`v\$ac!c\$yehao(}dch&
+Ujaq0rc}(dicp(q!ae|0\`tkatr"pzqqq*WO^][WO^][WO^][WO^][WO^][W
+Ujaq0rc}(dicp(q!ae~u!qtatdp\$ymn\$gsbcwaochdi!ge|0bcrm0rrmlus"aowr,
+Ujaq0rc}(dicp(q!ahmfdp\$y{cvl0bcj(x\`ta(cucp{*!"50?+(\$:\$!3<("5"6<036*
+Ujaq0rc}(dicp(q!ahgfd"kn0fcvdyb"ii{dq\$i0fmkl0uchaclcj(yg"li~enal0skc\`d/
+Ujaq0rc}(dicp(q!aqzcdf\${ssmhd0nd\$|umgtgbucpao"ggemf\$dqof\$qt"mf0upk}rmg*
+Ujaq0rc}(dicp(q!fmi}nl\`(yr"efujaz0jkjl0nd\$debi\${dnla&O^][W
+Ujaq0rc}(dicp(q!fko0bcj(rd"pzqhlal0um\$nuual(chakdr,[WO^][W
+Ujaq0rc}(dicp(q!eadqukjger"g}rd"ii{dq\$i0igeddi{\$jbdconqrv*W
+Ujaq0rc}(dicp(q!emi~u"cmdr"w|bnlc(rx"aidhlc(bhel|<!vvq0hv%W
+Ujaq0rc}(dicp(q!evat!\`qo0vmj/d!jm|0xmq(gigj(inw\$kbnqw(yu,[W
+Ujaq0rc}(dicp(q!naer\`q\$qggv(yr"e(fdp}(|hel|0rlek{/][WO^][W
+Ujaq0rc}(dicp(q!nkitrvkfu!je{0\`"w|b\`lcm0\`vpzqbvmg~!cjl0hq\$fu"fit!nqk{/
+Ujaq0rc}(dicp(q!nkk{!rmk{!\`}(qo{\$gdigv(~\`oa(yr"w|ymn\$i0mmgc0qkgc>
+Ujaq0rc}(dicp(q!nqk{x"eeemgp(ghnh(rmmgc0qmm{og\`(qspkc/][W
+Ujaq0rc}(dicp(q!omzbnp\$ymn\$nbdg~m0\`"bd\`vmfw!g}m0cwp(inw\$kqo"w|ymn\${ud"m|>
+Ujaq0rc}(dicp(q!la}dsch(sicvisugv(}hel|0fgp(Whcj|cmc}mb/][W
+Ujaq0rc}(dicp(q!rkdilmvxx!vvi\`!kw(}\`emk0\`l\`(}\`emk0qpk|ubvmg~!rvmfdlp{0hv*
+Ujaq0rc}(dicp(q!rk|ynl\$gv!jai|hlc(s\`l\$kqoaad0\`"tgdhmj(g"wasjla{c/
+Ujaq0rc}(dicp(q!rk|ynl\$gv!okfcugv(tdvakdhmj(cnoa|ylgw(gnpo{0cmp\`0vc}{>
+Ujaq0rc}(dicp(q!qmf{!nkg{r"\`avggvm~u"bzl"lawi"ejwg\$|xd"bdnp*
+Ujaq0rc}(dicp(q!qqe}nlal0egig~!ak}|e"me\`smrm0xmqz0fcim>^][W
+Ujaq0rc}(dicp(q!vmf0nd\$b\`kp\`0lge|0hq\$i0scvm0ekja~f"ap\`dpmm~bg*
+Ujaq0rc}(dicp(q!wjasnpj(}hel|0cpmfw!{k}0mwgc>^][WO^][WO^][W
+Ujaq0rc}(dicp(q!ueft!mb(s\`lgm|mcpao"m{0mkom0\`"si~e"kn0qmhq}npt\`>
+Ujaq0rc}(dicp(q!ueft!mb(|naoa~f"gi~!ahgcd"igbd"p\`qo"n}cu"\`gsq*
+Ujaq0rc}(dicp(q!ueft!mb(\`nn}esrl(s\`l\$kx\`lcm0xmqz0fcim>^][W
+Ujaq0rc}(dicp(q!umrqsf\$ac!grm~!okzu!rkusdqd0uja(cdakft!vmeu!cvgeof*
+Ujaq0rc}(dicp(q!zkz~!ijggr"kn0om\$grrvek|dq\$xdl\$xesqqa~f"}ge/
+Ujaq0rc}(dicp(qcwwa~f"e(ssg\`ad!aezt!ak}|e"w\`bi\$qt"wgogv(s"hiddp*
+Ujaq0rc}(dicp(qlwhmdr.\$dyjg\$erv\$|xhlc{<!aef0cg\$lu\`fhq0np\$dygg\${qwkjo>
+Ujaq0rc}(dicp(qo"edd\`p\$kqo"mluovmni!\`hmcrkjoc/][WO^][WO^][W
+Ujaq0rc}(dicp(qo"kgjd"sa|m"fadd"}ges"fguq\$i~e"e(bnao(}nna(}hel|0dcp(digi&
+Ujaq0rc}(dicp(qo"qf|taoq0icgcus"sic!mjku!imd|df\$ji!cj(uyrhgthlc(dhl*
+Ujaq0rc}(dicp(qovmyed"\`mqmgv{0\`pa(qmueqc!kj|usgw|ue"mf0qpakynww(cumjmc/
+Ujaq0rc}(dicp(r\`l\`iwhlc(og#{0vmqftr"lm|qq\$|!iam\`!wt(og#{0\`rtmqscjku/
+Ujaq0rc}(dicp(rnm~m0bcj(rd"\`a|tval0cwp(~nv\$kqoaad|df*WO^][W
+Ujaq0rc}(dicp(rx"hacugja~f"gibddqd|x.\$qt"gi~!jaib!c\${ubpa|0emkz1
+Ujaq0rc}(dicp(s\`ng}|\`vmfw!{k}b!fkfqukkfc!na|c!{k}0bjkgcd"}ges"fdurqmfwr,
+Ujaq0rc}(dicp(s\`pvgdr"eft!aezbnv\$behaa(}\`{\$a}qpk~u!{k}b!tm{ynl*
+Ujaq0rc}(dicp(s\`ta(cqk\`mbr"ezu!lk|0bmj{yegvmt!g|xuoqm~u!jai|uj\$nnf*
+Ujaq0rc}(dicp(tdomoeq\$eerv\$du\`ta(rdjmft!vlmys"tzy{g\`(u\`pp\`|x"tgcrgw{ynlw&
+Ujaq0rc}(dicp(thqp}bckjo0\`"\`byolm(s\`l\$ju!c\$krvhq0lkw|qjg*W
+Ujaq0rc}(dicp(tsccg~!qgi|dq\$kqo"fm0pwm|u!gjkx\`lpa~f,[WO^][W
+Ujaq0rc}(dicp(tsmtxyoe\$khlw(yovk(q!dk}~ucmf0vkhd0omp(wscj|0xmq(q!um{x/
+Ujaq0rc}(dicp(tvcv~ur"higgwhdi!omft!vlmys"k~!\`q{yogw{>^][W
+Ujaq0rc}(dicp(u\`vmfw!c\$jqu"ggbqqa(ghnh(}\`ia(inw\$jquv}\$0gmv(q!ula|d,
+Ujaq0rc}(dicp(u\`vmfw!c\$kb\`o\$zqukkf0hq\$i0roezd!ok~u/][WO^][W
+Ujaq0rc}(dicp(u\`vmfw!\`h}u!had|x"m{0bmkd0hd\$qt"\`g~&v\$nyfjp(dig\$nudnmfw/
+Ujaq0rc}(dicp(uraexyoe\$i0ewjounl\$ac!mjdi!vlm0cgca~okjo0nd\$|xd"aft/
+Ujaq0rc}(dicp(vdgha~f"ef0tlap\`dapmt!fvivu"kn0\`kv(yr"wgbu"kn0\`"fzu\`ip\`bnwc\`>
+Ujaq0rc}(dicp(vhl\`a~f"e(stpwmt!evii!qpg~d"m{0\`nsiir"fit!nqk{/
+Ujaq0rc}(dicp(w\`kja~f"e(|dtad0hq\$i~!g|xuskafsd"p\`qu"gi~!peacd"}ges"wawivw&
+Ujaq0rc}(dicp(w\`ppmb!qji{d"imqu"vibdn}(d\`qpmc!ekgt!\`q|0hv#{0rvmd|!jai|uj}&
+Ujaq0rc}(dicp(w\`wj||dvw(g"\`mhugvadx"lifd"e(xhf\`m~!gjkx\`lpmt!vk}si,
+Ujaq0rc}(dicp(wnkjo0um\$\`u\`taf0hq\$berv\$i~nvlmb!ueq0nd\$mcbcta~f"p\`u!fqfwdmj&
+Ujaq0rc}(dicp(wnn\`m~!leoqr"ezu!ne=\`\`mlyoe\$luok~m~r"e{0mmjo0\`q\$qt"ezu!vkg>
+Ujaq0rc}(dicp(wsgidyoq\$kqo"ii{d"}ge!dam|!akg|dp\$|x\`l\$qt"ezu!lk>
+Ujaq0rc}(dicp(wsk\`(rtew(on}(uykw|0hl\$i0rvvasun}(S\`ppmchcj(cdlwm>
+Ujaq0rc}(dicp(x\`aombr"knddl\$nudn\$belr}(qcmq|0dcpa~f"jq}qjw&
+Ujaq0rc}(dicp(x\`tmfw!rkdilmvxx!akfdsmh(gnl#|0rjkk{!{k}>^][W
+Ujaq0rc}(dicp(yg"m|7r"libe"cmdukjo0xmqz0gmkl0emsf0\`lk|xdp\$jyug\$ktn\`({hnh&
+Ujaq0rc}(dicp(yg"}ge!fkf7u"smqs"cdqrqa{0vj}(rnvlmb!um|x!aezbnvw7
+Ujaq0rc}(dicp(yg"}ge!lk|ybg\$i0mmk{u!\`kibe"fm~dcp\`0xmq\$0emj/d!qpm\`!mj(yu,
+Ujaq0rc}(dicp(yg"}ge!qpibu"e|0uja(rnvpg}!vlm0nlhq0qneku!vk(wn"m{0tr*
+Ujaq0rc}(dicp(yg"}ge!vaduqmv|0um\$\`u\`taf0xmq/bd"tzurwimt!vk(rd"\`mqe"edbdc\`q>
+Ujaq0rc}(dicp(yo"e(cimt(inw\$kqo"fm0bjezwdf\$ns"kdt!alibfgw&
+Ujaq0rc}(dicp(yo"hawivaz0lmim~uq\$qt"ggemf\$|xhlo(g"siir"pg0qcw{0\`"w|og*
+Ujaq0rc}(dicp(yo"p\`u!fqfwdmj(rsgecyoe\$i0lkvzs"gi~!\`a(cdtaf0xgezc!\`el0mwgc>
+Ujaq0rc}(dicp(yo"p\`u!fqfwdmj(inw\$lo%p(erwed|x"lifd"efi!nqk{!cp(qmn*
+Ujaq0rc}(dicp(yo"pa}d"e(rmgw{ue"h}sjqpg~d"gi~!oecu!{k}b!ekl0ictxi/
+Ujaq0rc}(dicp(yu"m{0dcwaus"pg0jkhd0uja(Ghxezt!vli~!vk(}\`ia(xho\${d\`l\`(cukhd>
+Ujaq0rc}(dicp(yu"kf|x"pi{dq\$90{mvc}hf\$|!oamd!vlm0Jmt{>^][W
+Ujaq0rc}(dicp(yu%w(q!\`hicu"s\`uo"}ge!omp0uja(bhel|0qmpaoq\$|fgp\`us,
+Ujaq0rc}(dicp(yu%w(~nv\$j|hl\`(|tao(yg"}ge!ae|si"e(wmkixcd"kn0Lg\`}c\`,
+Ujaq0rc}(dicp({hnha~f"e(cimtcudraz0cpmfwr"fit!nqk{/][WO^][W
+Ujaq0rc}(dicp(}nlw|usq\$fuwgv(cugt(o"e(cbcvm0lmj{ddp\${ssmhd>
+Ujaq0rc}(dicp(}nqp(}nlw|usq\$nyof\$n|tva(bdam|qmq\$mhupaeum{\$jskjo>
+Ujaq0rc}(dicp(}toiq0bmvxcdq\$ibd"jgd!uad|!rvmcdprmt/][WO^][W
+Ujaq0rc}(dicp(~\`vqzqmn}(q!ueft!mb(ghqla~f"sgemf\$ju!jaifhn}(wtcvlue,
+Ujaq0rc}(dicp(~n"kfu!lk|ybgw(dig\$beoi\$}~egvfu\`vl(q!\`k}|egv&
+Ujaq0rc}(dicp(~n\`kli!g|xubvw(q!wjasnpj(xnpj(dn"v}cu,[WO^][W
+Ujaq0rc}(dicp(~n\`kli!ijggr"mn0\`l\$mhqnkzus"gi~!nm~u!dkzuwgv&0!Fk(inw;
+Ujaq0rc}(dicp(~nvla~f"gi~!ali~fg\$|xd"bisu"p\`qu"wg}d"tgdhmj{0bmj|qhl\$i0ehmf~h,
+Ujaq0rc}(dicp(~nvla~f"gi~!ali~fg\$|xd"bisu"p\`qu"wg}d"tgdhmj{0bmj|qhl\$i0fjk{d/
+Ujaq0rc}(dicp(~xot\`c!chqxq\$nqmn\$ns"vgsj%j/bnnh\$0up}(yu#[W
+Ujaq0rc}(dicp(oaa(qo"Kdf/Liy!kw(s\`ljmt!kp(~dtaz0rjkc!kp{0gcgm0\`eea~/
+Ujaq0rc}(dicp(oaa(eqmj(q!vmeu!zefc!uk}|e"jmfdp\${sscpkx!{k}b!\`kgdr,
+Ujaq0rc}(dicp(on}(qo"ap\`dpmm~bg\`(ghxezt!aef0em\$|xd"pm~fw\${xtdbdu/
+Ujaq0rc}(dicp(on}(sick|ybq\$kqo"oa|m"w\`qiam\`dpw(qof\$ouu"eqx"sadi"m|>
+Ujaq0rc}(dicp(on}(vdoedu!okfcugv{0bcj(|\`{\$mwfq*WO^][WO^][W
+Ujaq0rc}(dicp(\`mc}a~f"e(xnpj(bdchdi!\`el0hq\$zu\`nhq0fmkl>^][W
+Ujaq0rc}(dicp(\`sc}mb!cp(qo"edd\`p\$kqo"wg}dvmeur"ii{d"p\`u!ue|us"p\`usg\$\`m{*
+Ujaq0rc}(dicp(bt\`fa~f"e(wmmsa~f"tgdhmj(tngw(~nv\$eqjg\$ad!c\$eqfkg(|\`ot&
+Ujaq0rc}(dicp(cbchxumq\$jubmim0ewhd0cggierg\$|xd{#zu!lk|0\`vli}dq*
+Ujaq0rc}(dicp(cimtcudrazc!fkf7u"ha{d"tasj/epur,[WO^][WO^][W
+Ujaq0rc}(dicp(cimtcudrazc!fkf7u"ia~e"}ge!\`va~fkjo0xmqz0qgp{0hl\$|xd"w\`q,
+Ujaq0rc}(dicp(cimtcudrazc!fkf7u"q{e\`nhq0lkjl0hd\$qt"wfu\`i\$a~um\$i0rjkx>
+Ujaq0rc}(dicp(cimtcudrazc!mb|uo"lifd"e(|\`pcm0\`ok}~u"kn0lmjmi!kj(digmz0qwv{ur,
+Ujaq0rc}(dicp(cimtcudrazc!mb|uo"vm}dofmb!vla~fq\$|x\`v\$qt"iawiv\$nsea|>
+Ujaq0rc}(dicp(chlo{0\`l\`(qsokz0emj/d!omp<!vecu!{k}b!ahgqj"knv!lk1
+Ujaq0rc}(dicp(chlo{0swj(xnv\$i~e"gg|e"eft!oefi!dhifnpw(yo"fmdvgaf>
+Ujaq0rc}(dicp(cocom0bjez}dpw(qsgj/d!alibhqiidha((ztqp(}tqmkqm,
+Ujaq0rc}(dicp(cnn\`ausq\$ibd"edg\`{w(\`sgtibdf\$i~e"q{e\`nhq0qpk|ubval>
+Ujaq0rc}(dicp(cnoa(ufew(snwhl0icpkx!kj(inwv(\`\`ao\$0mwgci!mv(~nv*
+Ujaq0rc}(dicp(cnoa(vhpa(qovw(ghnh(}\`ia(inw\$i0imp(}dch&O^][W
+Ujaq0rc}(dicp(cnoa(xnpj{0qneq0imp(}tqmk0\`l\`(ujazc!cvm0umk(snmh(vnp\$sfw&
+Ujaq0rc}(dicp(cnoa(xtoefhfw(qsg\$fogp\`umgw{0pwm|u!jqeqo,[W
+Ujaq0rc}(dicp(cnoa(cimtcudrazc!akfchfaz0fgi{0um\$ju!deeym{\$\`uhphglq*
+Ujaq0rc}(dicp(cnoa(cimtcudrazc!pakflmru!eaec!\`q|0ujaq0vmj/d!vad|!{k}>
+Ujaq0rc}(dicp(cnoa(cumjmc!cvm0lwg\`0lwg\`0ige~ydp\$|x\`l\$gdigv{>
+Ujaq0rc}(dicp(cnoa(idvm{0\`pa(vtnh(g"lgd!cmz>^][WO^][WO^][W
+Ujaq0rc}(dicp(cnoa|xhlc(fdp}(cqggaqm"sgemf\$ju!kj(q!uad|,rvgddapmt!rhisd,
+Ujaq0rc}(dicp(cqgal0cmk|c!cvm~&v\$nqrv\$m~nwc\`0um\$duu"}ge!ued{!mj(g\`vaz>
+Ujaq0rc}(dicp(ddnaxsv\$|b\`rw(qsg\$|xd"\`mfhn#{0vmvc>^][WO^][W
+Ujaq0rc}(dicp(ddlc}0emj/d!uaib!pmfwr.\$xx"w\`tn\`(inw;WO^][W
+Ujaq0rc}(dicp(ddlc}0ogrmb!qpmqm"cg|e"eddimqox!vlmi!uk}|e"fm0fmkl0\`v\$ad/
+Ujaq0rc}(dicp(dicp(gikg\`0vcw(cumhm~!mjku!aef0cg\${dnnaf0\`eea~-"e{{!cjq0o{ixx/
+Ujaq0rc}(dicp(dig\$Lumrlas!Mvismg\$c~nuw(dicp(|hxezt!akz\`rgw(qsgj/d!akfvtqmfw/
+Ujaq0rc}(dicp(dig\$@qof\$gv!Ghjusgp\`0bcj(xnn\`(eq"}ges"tzqxgv{>
+Ujaq0rc}(dicp(dig\$Duqpakx\`wj([hlc(yr"vasi"e{0Bpkmctq*WO^][W
+Ujaq0rc}(dicp(dig\$_y{cvl0nd\$Quofkz0hq\${sik~g\`ipafyb"eft!qqashfed>
+Ujaq0rc}(dicp(dig\$mhqgvauoaal0bjezqbvaz0jlkc!jk0um\$kotazd!cj(qmvez>
+Ujaq0rc}(dicp(dig\$oeq\$ibd"li\`q{\$xdl\$|xd{\$lbnr\$grkgg|c!cp(inwv(vdgp&
+Ujaq0rc}(dicp(dig\$atdc\$gv!kj~yrkfdu!Lerwtn\$\`qr"e(sdppiyo"va~f"pg0hv*
+Ujaq0rc}(dicp(dig\$dqe{\$gv!vlm0mcom0oms(|hta{0hl\$i0gmqfd\`kj(cnoaxdpa&
+Ujaq0rc}(dicp(dig\$dbch(cimtcudraz0gpk~r"qxo"p\`u!pqlu!vk}bhqp&
+Ujaq0rc}(dicp(dig\$g~m{\$lnp\$|!vlm0wcixysg#{0umsmb!kw(o"m|c!nkurv\$duwgh&
+Ujaq0rc}(dicp(dig\$g~m{\$onf\$lzhlja0hq\$i0fpe|ugwh(tkkjfy/][W
+Ujaq0rc}(dicp(dig\$|xhlc(qcmq|0fgjgshfa(yr"p\`qu"m|0vmvcc!\`k|x!ueqc/
+Ujaq0rc}(dicp(dig\$}~hakz~!jkz~!pqdu!kw(yg"m|0\`kj/d!\`vg{d"p\`uo"\`g~&v\$nyy"m|>
+Ujaq0rc}(dicp(dig\$~ydu\$nbno\$i0gmc(smmql0hq\$zu\`nhq0wgvq0lmra~f,
+Ujaq0rc}(dicp(dig\$qmnw(yo"w\`qq\$ibd"iitd"kn0dzpzq!jezt!oe|usked>
+Ujaq0rc}(dicp(digvm0\`pa(qu"hmqrv\$9%!ueqc!vk(|nqa(q!reab!mb(|dtm|qukkf0cmk|c/
+Ujaq0rc}(dicp(dipkyoe\$o|\`qw(wdow(yr"p\`u!qeeu!cw(dipkyoe\$zbiw&
+Ujaq0rc}(dicp(dsgwxqrqmfw!c\$jtn\`mb!kw(\`smfirm{\$juoge|x!{k}>
+Ujaq0rc}(dicp(dswa(\`nuaz0bmimc!dvg}!um|xhl*&>dzgm\`u"s\`uo"m|0ema{~&v*
+Ujaq0rc}(dicp(eokggboq\$ibd"bg~e"kn0qpakynww(wdow&O^][WO^][W
+Ujaq0rc}(dicp(gicp(wngw(tnuj(dig\$lb\`kj(}hel|0bmim0ccgc0tr*W
+Ujaq0rc}(dicp(ghghlue.\$i0mmjo0rukzt!leeue"Babd"Fzqof\$eqjgw(inw\$nudn\$knnaz>
+Ujaq0rc}(dicp(ghghlue.\$i0mmjo0rukzt!leeue"Bzrv\$Jb\`l\`(}\`ia{0xmq(xnv\${dtdb&
+Ujaq0rc}(dicp(ghrmfw!kp{0gcgm0hq\$a}qmw{ycna(vnp\$i0gnkidhlc(uxg*
+Ujaq0rc}(dicp(ghvl(q!dhgqukjo0d{a(inw\$ktn\`(cdg\$a~!vlm0ecvc>
+Ujaq0rc}(dicp(inw\$ibd"h}sj{\$av!{k}0bcj(wdv\$i0tlmksl\$|!ae|si"e(bt\`}&
+Ujaq0rc}(dicp(inw\$ibd"s\`qu"}ge!ge|>^][WO^][WO^][WO^][WO^][W
+Ujaq0rc}(dicp(inw\$kqo"ba~e"ji}df\$u\`rkfc!cp(qo"edd\`p\$av!{k}7sg\$debi}&
+Ujaq0rc}(dicp(inw\$kqo"wivdn}(dnwg\`0bmgcqupmku!gcoc!\`q|0vj}(rnvlmb>
+Ujaq0rc}(dicp(inw\$kqo%p(rsgec0\`l\$i}tna|0nd\$zugnakdhmj&O^][W
+Ujaq0rc}(dicp(inw\$lo%p(qmueqc!ea|0vje|0xmq(ghql(vnp*WO^][W
+Ujaq0rc}(dicp(inw\${xnwhl0\`nsiir"fm0qpaxqsg\`(vnp\$i0gkji|!ali|mgjou/
+Ujaq0rc}(dicp(inw\${xnwhl0\`qo(q!fsibg"pg0mgp(inw\$a~um\$i0mmgcue"w\`q,
+Ujaq0rc}(dicp(inw\${xnwhl0qpeq0gmv(thtmfu!kj{\`hpe|ynl*WO^][W
+Ujaq0rc}(dicp(inw\${xnwhl0sghawhmq{|x"cafd"}ges"cg|e"eqx,[W
+Ujaq0rc}(dicp(inw\$ymn\$fuwgv(wdv\$\`u\`np\`i!\`}(u\`vmfw!eak{nq*W
+Ujaq0rc}(dicp(j\`rta~f"}gesqadv!um|x!c\$qof\$gv!wjlu\`f\$|eslmfw!kw(cuwtat/
+Ujaq0rc}(dig\$Neska{0\`pa(}npa(vtpmger"mn0xmq/fd"fmuo"wa~okjo>
+Ujaq0rc}(dig\$_y{cvl7r"gicuna(yr"fgc{)|b\`rtmt ][WO^][WO^][W
+Ujaq0rc}(dig\$oeq\$ouu"efws{\$av!{k}0jkhd0xmqz0emc&O^][WO^][W
+Ujaq0rc}(dig\$oeq\$ouu"efws{\$av!{k}0qpeq0umk(}tal&O^][WO^][W
+Ujaq0rc}(digvm0hq\$i0qmsmbgwh(}\`emk0hvae0ik\`luo"mf0\`"gicuna(tdgt(tnuj)
+Ujk{u!ulg0vkadt!c\$kbie|bhaa(snpt{u!je~u!c\$zbi}(bnc\`(qigel0nd\$|xdo*
+Ujvgghlc(vnm\`(qu"e(ghn\`(tne\$eyfjp(d\`oa(xho*WO^][WO^][WO^][W
+Um\$i0gwhd0cghdi!chd0gmkl0hq\$jqe,[WO^][WO^][WO^][WO^][WO^][W
+Upkd|r"ezu!fa{sskfmt!cw(bt\`fmbx8\$(dig}({dgt(rnwjkyoe\$jqbi*W
+Up}(dig\$nqmn)jqbi\$m~e/v}~!rhii!cciyoqp(wimw|c/][WO^][WO^][W
+Up}(erkjo0xmqz0lccas!oez{dp\$g~!ua|0ravg|mq*WO^][WO^][WO^][W
+Uuk(gsmjoc!fkf7u"ii{d"e(bhel|<!\`q|0ujvmu!nandr"\`g>^][WO^][W
+Tlmksl\$\`slw(s\`l\$k|dcj{u!vla~fq\$gdigv(dicj(inwv{umd*WO^][W
+Wchciska{0bmim0gpke0uja(~npp\`<!cjl0icrm0bmieuoqqzqug\$irhnm|ydq*
+Wcixysgw(x\`va(w\`phas/][WO^][WO^][WO^][WO^][WO^][WO^][WO^][W
+Wcqdd!eqibeq\$fuwgv(thqp}bc"p\`uhp\$Dsfw&O^][WO^][WO^][WO^][W
+Wgcmd\`pmi~r"afzn{\$dybjaf0\`l\`(cdcsmue,[WO^][WO^][WO^][WO^][W
+Wkwadnpw(qsg\$zupwa{ddf\$fu"pg0\`rtdi!eafbk\`m0um\${xnromuqgv{>
+Vcpkx!mq|<!vlm0Vk~ibe"iawiv\$klg\$jqbi*WO^][WO^][WO^][WO^][W
+Vcpmb!vvi\`r"lifd"jg0ddbmsu"kf0epeooq*WO^][WO^][WO^][WO^][W
+Vje|0hq\$i0bmgcqupmku!eka~f"pg0dcp(gigj(yu"cmdr"l}~fp}7O^][W
+Vjk(~dg\`{0\`l\$i\`smj(yg"p\`ux%vm0lc\`m0nd\$o|\`qw7O^][WO^][WO^][W
+Vj}(tn"}ge!qqx\`nqa(dig}(s\`nh(digi(]@EMK0lcvcusq;WO^][WO^][W
+Vj}(tn"}ge!vla~j"p\`ux"gi|m"p\`ul"imbbgjibhgw7O^][WO^][WO^][W
+Vj}(gnwhl0\`l}je{\$a~!jm{0rcjm0lkjl0dlczqwg\$*Um\`azuuj&7O^][W
+Vkw\`yoe\$|n"i}si"iii!\`va~f"}ge!vkg0mkp||d,[WO^][WO^][WO^][W
+Xmq(s\`l#|0cpmju!qkdthgv(qovw&O^][WO^][WO^][WO^][WO^][WO^][W
+Xmq(s\`l#|0mge~u!c\${xnr\$|xsmqox!vlm0ccgc0emkz*!"p\`usg\$aco%p(og%
+Xmq(}\`{\$lyrak~us"e(vhla(cqkvad!kj{yeg\$i0qmpao"fgduna&O^][W
+Xmq(}\`{\$qov\$|!fmx0hlpg0\`"tgdhmj(g"fgdunal0cna{chlc{>^][W
+Xmq(}hel|0cg\$irmg\$|!\`vard"e(tdokf0mmvl>^][WO^][WO^][WO^][W
+Xmq(}hel|0upmk{!c\${xnromuqgv(yg"}ge&pa(yotm{ycna&O^][WO^][W
+Xmq(cimqdt!aazd\`kjdi!naibo"ejtv\$ye\`lp}}!oakx\`lmkc/][WO^][W
+Xmq(gnl#|0\`nsiir"cmd!c\${ubmjl0bjefsd.\$mfdl\$yuj\$dygg\${qwkjo>
+Xmq/bd"cgyoe\$a~um\$|xd"igbfwa(qu"iatokc\`d>=;WO^][WO^][WO^][W
+Xmqz0emc({oms{0vje|0um\$mqu9\$eqx\`a(inw\${xnwhl0ucom0mgw{oq*W
+Xmqz0fcim0lc}(wn"\`ggo"p\`u!fviyo"mn0xmq(x\`ta(uyvvi0qmpaoq\$gb!pmfwr,
+[ct(inwv{umd\$i~e"wmu!ulid!jex\`dlw&>/][WO^][WO^][WO^][WO^][W
+[ctxyoe\$i0vcjl0nd\$}~egel0uwvfyoe\$eyfjp(rskjo0xmqz0emc(r\`ao(dn"havd,
+#Qk(gigj(Y!fmm<!vlm0gkv{d!vla~f"M(ghnh(cdg\$a~!jaifdl\$ac!c\${snpa(|hqp72
+0qp(\\\`u\$gv!Jek{hlc20!naifhlc(yr"i}si"igbd"\`avgkg}|u"p\`qo"afddpmfw/
+3l\`(\\\`u\$gv!Jek{hlc20!dmzcu"mf<!dmzcu"k}d/][WO^][WO^][WO^][W
+2p\`(\\\`u\$gv!Jek{hlc20!vlm0mcw|0cnk0bmqfdr"igcu,[WO^][WO^][W
+5vl(\\\`u\$gv!Jek{hlc20!{k}0vkhd0gkjl0uja(uykp(qu"p\`u!gj|b\`lgm>
+@"g\`qlghmo"meyucpa~f"e(}\`kh(t\`gig~!mb|uo"\`m|htazc!qgzmnw(g"babd,
+@"ggsjcpzybg\$ksrwm0hq\$oe\`pefddg\`(dn"fm0tlpiyoval1^][WO^][W
+@"\`mqe"ggsjcpzybg\$ac!hq{d!c\$lu\`f\$dy{cvl>^][WO^][WO^][WO^][W
+@"\`zqfmj(yr"n}cu"e(cocom0uje|0\`va(q!qgzmn\$gv!dmzu/][WO^][W
+@"bithlc(snpvatnp\$m~mkc\`ddlw(inwv(yoqmoxu,[WO^][WO^][WO^][W
+@"cdvkjo0qmpao"m{0umk(xnv\$|!fva~j,[WO^][WO^][WO^][WO^][W
+@"cge"eeemgp(}\`{\$xbnvakd!{k}0\`eea~rv\$oe\`p\`{>^][WO^][WO^][W
+@"haj\`p\`(snpt{u!kw(q!ekgt!vla~f"pg0uwvf0tl\`mqe,[WO^][WO^][W
+@"hg~f"sgbl"gi~!\`a(tddmfue"vmstpwafdn}&0!Qk(xnu\${xnwhl0xmq(quvek{!kp7
+@"ig~rvvger"ia~e"m{0\`"pgi!dkzuwgv&O^][WO^][WO^][WO^][WO^][W
+@"jq}qj\$ymn\$ju!tazi!rhmqrg\`(yg"}ge!aed|!jaz0c{\$\`us"vmqm"ji}d8\$(\\npaduh,
+@"va~f"kn0ewjounl\$eqrvaz0bmj|bnn\$ac!c\$obdcp(vhl\`&O^][WO^][W
+@"va~f"kn0dzpzq!pmfw!dmfwdp\$ac!wwm|dqw(yg"jgd!gjkx\`lpmt/][W
+@"vg\`d"iii!dkz}!c\$|b\`kh(yo"e(}\`xa&O^][WO^][WO^][WO^][WO^][W
+@"w|qgd\$eqx"vmsicvou!kb(inw\$lbnr\$ad!dkz0\`ula|d,[WO^][WO^][W
+@"rachv\$|!vlm0[mk(yr"rmbx"alebcpaoch30xmq(}dgp(yovazurvmfw!cja}\`nw&
+@"si~e"kn0egen0hq\$i0lmvm0ecjousmq{0vgexo"p\`qo"e(g\`l\`(g"w\`udr*
+@"si~e"kn0wkfzqukkf0lkc\`d!\`va~f"p\`u!ulg|d"gifd"gzqrjmfw!cfgeu"}ges"aibr,
+@"sa~ogv(~dtaz0pwm|c/"\$I0pwm|ddp\$fuwgv(ghlw&O^][WO^][WO^][W
+Zakg{hgY(Q!um{x>"\$G{\`{((}\`ia(}d"e(vnpp}~d"ggjka)O^][WO^][W
+@dviye"kn0lkiasr=\$(Ds{\$|!uaib!c\$zyoe\$gv!vv}u!qamyoe*WO^][W
+@nh(}nlw|usq\$ibd"gzu\`val0dtmd<!\`q|0rmim0\`pa(}npa(uwkh(dicj(ujazc/
+@nsiir"e|d\`ao(q!dhgqukjo0d{a(vsmi(rdjmft ][WO^][WO^][WO^][W
+@l\$m|wgj(smmec0hq\$i|vc}{0uja(xdkc\`d!mb(v\`qlao,[WO^][WO^][W
+@l}(clchd0n\`nmsu"p\`qu"m{0\`agatdlpi|m{\$lbnrtmt!umd|!jmlu!wjlus"e(|\`pcmb!mfbubv*
+@pg\`unnkoyrvw(qsg\$~us{\${atkw\`i-"knddl\$ntl\`(eofaz0cmqdtdpw&
+@pg\`unnkoyrvw(vhl\`(}npa(rnla{0qkhmc/][WO^][WO^][WO^][WO^][W
+@ww|yo"Tggdpw(c\`{w20L{\$Ekm\$ac!\`ek{ "\$Qu\`j((r\`\`})O^][WO^][W
+Cchzfq\$l!lk|0\`rtmqs"ejwg\$duwgh("1,[WO^][WO^][WO^][WO^][W
+Ccji~\`"tmumq\$si\$mcqggaqmn}(gdnh(qfcmfcu"Omirvkfu!Ikxc/][W
+Cg\$kqsgb}|!ulm~!ge|yoe\$jqocjic/"\$Eoqpmbr"iawiv\${|hr\$g~!vlm0qgadc/
+Cgp|us"hmqwg\$|xd"\`}~fgkf+!mp\`usum{u!{k}0lkc\`d!ea|0iwv|0cc\`di/
+Cgsibd"kn0uja(\`nvmg~!mb(~hvvgwm{gmbhl\$%=!kp/c!lk|0gmv(dig\$u\`i\$gv!jaibu,
+Cgsibd8\$(digvm7r"edg\`{w(q!ali~bg\$|x\`v\$qtp\$qof\$mhqnklur"e{0xmq(ds{\$|!xex0hv%
+Cg}g~e"p\`u!07zt!na~um"haur"e(x\`rtq0sgpabdoafd!kj(q!pkg}!mb(inwv(vl*
+Bjefwhlc(inwv(ctkp(ghvlgeu"\`zqrmfw!{k}b!qsgbe=\$(Inw\$eerv\$ju!imlthlc)
+Bnk{u!vlm0emkz1!"]ge&pa(|dvpa~f"p\`u!jaid!mq|1^][WO^][WO^][W
+Bmgcqupmkur"iawiv\$|esl\$|xdowm|wgw(dn"w|og\$nqbg\`(ghvl(q!omzbnp*
+Bmj{elrpao"kn0imim=lc\`m0gmkl0hq\${dskg||x"bgbck\`luo"mf0ujm{0ewjounl*
+Ecvc0smke/!"]ges"g\`qoaa(dn"\`mfdnkx0xmqz0qjk|fpexxr#[WO^][W
+Ecvc0smkec!cvm0omp(:bmix|dvadi+"\`ibj8\$(ztqp(g\`kp(qof\$duu"}ges"aqur"elztqp&>/
+Ecrat!Nkftnl\${u{.\$*Xd{\$oexq((:VKADT+"e(|hxezt!akz\`rg\$iw\`kj{d!c\$kbie|bhaa)2
+Ege|x!kw(ztqp(|hda/c!ueq0nd\$|umnmfw!{k}0xmq/fd"fmuo"babdf*W
+Egia=fm\`{0emj/d!lamt!cjq0ighx0gpke0uja(wnfw&O^][WO^][WO^][W
+Egig~r".@QUG.(@ska{dr"eft!Rvaurva{cdq*WO^][WO^][WO^][WO^][W
+Ek\`f7u"}ge!dkzwdv\$|!req/^][WO^][WO^][WO^][WO^][WO^][WO^][W
+Ek\`f7u"}ges"igdigv(ddnh(inw\$fu"pg0dcp(vnm\`(gd\$|xd"bdnp;W
+Ekvmsu"e(thpakd!jm|0nl\$qtp\$lysgg|0nrtg~dlp\$0ekvmsukjo0hl\$|xd"vawiv\$lysgg|ynl*
+Em\$qt"si~u"pg0lcom0lmvm0lmjmi>"\$[esg((gd"ed|!fk)0!Hka~!vlm0Gmv|0Mw\`ar"c}qsf%
+Ema{0xmqz0cmw{0jlk0vje|0xmq/bd"\`gyoe\$zyfjp(~nu;WO^][WO^][W
+Emj/d!\`k|xdp\$yrjmfw!dkz0ujmfwr,\$(Inw#d|!rvgr\`\`hq0gkjl0nla(o"p\`u!lapd!na~um,
+Emj/d!ge|0umk(}tal20!{k}0lkc\`d!qpibu"lasbmqoxhlc)O^][WO^][W
+Emj/d!rhii!La|X\`ao(qu"}ges"sgbj9\$qtp\$jrq\$eyfjp(xhv\$qt#[W
+Emj/d!vad|!c\${tn\$qt"bgeof\$i0rggzuu"\`gs.\$gdigvyrg\$ad!kwf7u"e(cdavmd!cjq}npa&
+Epmf{hlc(\`nvmg~r"kn0cmkru!oeq0mcjl0xmq(yo"niym"mn0xmq(qsg\$}~egv("0,
+Epkx0xmqz0wcjadx"eft!ea|0sk\`(g"}ges"nmgdnw)0!Rmk{qmgcuuq\$irnwp)
+Dcp(!1"gdwgw(g"cibmkg(qof\$cudr\$i|m"l}}\`lw(qu"e(dvm){atcvm0ekw|qoaa&
+Dgh{0ik\`m0tl\`mb!oql>!"Q{u!c\$}~hakz~!vk(smgez0uja(g\`vaz0\`l\`(}\`ia(digi(fhqmj|d,
+Dgh{0vkhd0ighx0xmq(dhg\$qtp\${xngw&O^][WO^][WO^][WO^][WO^][W
+Dnb(x\`q\$mhupe(cqgal>^][WO^][WO^][WO^][WO^][WO^][WO^][WO^][W
+Dlczqwg\$qtp\$yrja{0vkp\`0\`"si~e"kn0vkw\`yoe*WO^][WO^][WO^][W
+Dtafdtchdi!{k}0vkhd0bmim0um\$itlkvm0uja(cvkb|0dnaoqoaa(g"e(bdvvmqukjo0o{ixx/
+Dtaz0igezt!jm{chlc(tvwatd=\$(Y!(ofuv(\$qt"lito%p)O^][WO^][W
+Dtaz0mkb|ue"e(tsccg~!akz\`rg;WO^][WO^][WO^][WO^][WO^][WO^][W
+Dtaz0rgaf0\`"hmbpk|d\`"\`i~bkjo0uja(ddlc}/^][WO^][WO^][WO^][W
+Dtaz0rgaf0xmqz0vgexo"cdv"tdqhf;WO^][WO^][WO^][WO^][WO^][W
+Dtaz0ucimt!c\${xnromuqgv7O^][WO^][WO^][WO^][WO^][WO^][WO^][W
+Dtaz0upmmt!fmowhlc(dipk}wi"e(F\`wh|0Fwezt>][WO^][WO^][WO^][W
+Dtaz0upmmt!gjkx\`lpa~f"e(bnra7O^][WO^][WO^][WO^][WO^][WO^][W
+Gnkidhlc(uxgw(s\`l#|0rveft!Jeqhkef0rjmzdr,[WO^][WO^][WO^][W
+Gmv(qo{\$zulg\`q0ujazu!kw(q!om{us{*WO^][WO^][WO^][WO^][WO^][W
+Fkefd!\`e|c!vqz~!kj|!emi~u"ri}qkvmc/][WO^][WO^][WO^][WO^][W
+Fmkl0ec}(vnp\$gfdpgg}hlc(cqpismgw&0!Vvq0\`"w|udrhmsicwm>^][W
+Ichn0Lmkf0umjawiv*(0)Cp(|dcw|0hv#{0cgp|us"p\`qo"jg0Lmkf0\`v\$i|m,-
+Zakg{hgY(Xdnt)0!K#e0cgmfw!jadt!rvacnlaz0hl\$i0gmv|eog\$knimm0gcg|s{%
+Imq{ubcp{0icrm0okjm0mkrmc-"oadugj{0nlhq0nla&O^][WO^][WO^][W
+Ims(|nlc(s\`l\$qt"pzu\`f\$qugv7O^][WO^][WO^][WO^][WO^][WO^][W
+Iwjobx=\$(Digvm0hq\$i~!cf}~ecjku!mb(vnm\`(o"p\`u!lapd!na~um,[W
+H"c}urq\$qt%rm0ogrmb!jm|0\`"iiym"\`iulmj(ghvl(dig\$I}tna|0nd\$Quofkz>/,
+Hd\$|xdpa/c!c\${\`nv\$gv!\`hge"kf0xmqz0icjlc-"s\`i!lk|0vcw\`0ujae/
+Hd\$qt"ezu!vlm0rjkx{dgtmb-"}ge!aef0ucom0ujmfwr"bgb!dvmu/][W
+Hd\$qt"e{{!pai|m{\$fybghq<!vlm0Vk~ibe"sa|m"cafd"}ge!vlm0@oqduu,
+Hd\$qt"gi~&v\$du\`pj(dn"\`g0hv\$umn((|dcvf0um\$m~km}(tnkjo0hv\$jqen}&
+Hd\$qt"p\`tel|0uja(Ghxezt!ue{0cc\`\$0kww|0vcm|0ukhd0xmq(}dgp(dig\$_qsnkzt 
+Hd\$qt"p}bo"fdyof((tnl#|0dztmsu"}ges"\`gw!vk(rd"p}bog\`(yovk(q!qamyoe)mid"\`gw/
+Hd\$qt"si~u"pg0ggad0fpaid-"}ge!oq{d!ge|0rmimdikjo0sged0ckc&
+Hd\$qt"si~u"pg0gnkid-"}ge&f\$juuvaz0dcp(q!dhgqukjo0d{a&O^][W
+Hd\$qtp\$oxnqp({hnh{0\`"tdqxgv\$0hv\$a~bpaicdq\$qtp\${snpa&O^][W
+Hlgzu\`qa(}hl\`xvgv20!Veeu!{k}b!msf0fjk{d ][WO^][WO^][WO^][W
+Hv\$nesvlmbr"kfu!vk(cdg\$|xd"czu\`v\$eqo,[WO^][WO^][WO^][WO^][W
+Hv#{0dcwq0um\$gfdphgj"e(}nlw|us"mf0\`"sge,[WO^][WO^][WO^][W
+Kww|0cghgg!cjq0upex0emkz0ujazu!oeq0cg\$i~nvlmb!mjm>!"N}cu"omuq"bi|mkjo1
+Jcpi~\`q\$ibd"rmbx"w\`qsr?(g\`vg\`0xmq(tnl#|0bwp(inwv{umd*WO^][W
+Jgax0\`"gdu\`p\$eyof>(0pwenv!ahmqs"tgdhmj{>^][WO^][WO^][WO^][W
+Jkgcyoe\$|xd"pmblkji|!fkmco%p(xtpp(dig\$eoqpmbr,[WO^][WO^][W
+Jkhdus"fmur"omuq"ex\`dcva~f"pa|m"}ge!imd|!vlmys"u}udl*WO^][W
+Jkhdus"f}~oka{0bcj(rd"pi}df\$yuj\$kqspk|c!mjdi/][WO^][WO^][W
+Mcpmcu"jmgr=\$(@tv\$hbda*oqlgw&bneqm|hia&~dvlisj%\$a~!{k}b!,jmgrpg)
+Mgez~!jk0um\${\`dnh&0!Rhii!La|X\`ao)O^][WO^][WO^][WO^][WO^][W
+Mgtzubje}~r"latd"p\`uhp\$omf\$a~!c\${ubpa|0smke>^][WO^][WO^][W
+Mgp(inwv(vhlcmbr"\`g0uja(g\`noa~f"kf0uja(itnobxo\`\$cuxq*WO^][W
+Mgp/c!deku!kp20!vlac!vmeu!{k}7sg\$fu"cgyoe\$|!umf>^][WO^][W
+Mgp/c!je~u!c\$xqsv}\$0epmf{!c\$du"kn0cmkru/][WO^][WO^][WO^][W
+Mku}s"wm|mgv{0em\$fu"\`zyoi?(dig}(x\`va(dn"wmu!{k}0uumku/][W
+Mwjib!ggdyqqa(dnlmoxu,\$(]\`{\$ic!uad|!sqad!lk1^][WO^][WO^][W
+Lga|yoe\$qtp\$ggo"c\`rv\$lubpaicdq\$qtp\$debi\$koqmluscfdi ][W
+Lmjmi!vk(yota{d>"\$\\qjg\$ad!vk(dig\$dbch(rscjkx!mb(dig\$Eqfkg(]dokzi!Te}|u#
+Lmj{ddpw(snoa(vsmi(~nulmbd"pg0ikp(inw\$mfdp}xdpa&O^][WO^][W
+Lmj{ddpw(cmgax0cggierg\$qt"ezu!\`kzyoe((~nv\$jubcq{u!vlmi!grmb!ea|0ukvmt/
+Lmw|0lmj{ddpw(\`sgbmb!omfsdf\$eu\`v*(0Uje|7r"s\`i!vlmi!cvm0ikp|yoe\$qt#
+Lmw|0nd\$|xd"f}wr"mf0Ogp@qbi\$ibd"kf0uja(vmmkz>^][WO^][WO^][W
+Lwg\`0\`fk(^nvla~f"Li\`qgj{>^][WO^][WO^][WO^][WO^][WO^][WO^][W
+Lwh|y,rhiidp\$FuuJek{!kw(q!o}|x/][WO^][WO^][WO^][WO^][WO^][W
+Ogp@qbi\$ac!c\`lybvm~u/"\$\\n"hidd.\$qt%vm0\`nvmqe{\$\`nial>^][W
+Ogrmb!cwc0\`"w\`qiam\`dp\$ns"e(\`skgm0mkw|>^][WO^][WO^][WO^][W
+Ogrmb!\`qz~!c\$|bdg((eona{c!{k}0mkom0fgp|yoe\$x\`aomt!um|x!c\$#%!qlgfdn*
+Ogrmb!ge|0vkp\`0fnkyoe\$\`qofw)O^][WO^][WO^][WO^][WO^][WO^][W
+Ogrmb!omft!vlm0lmj{ddpw(xhvpa~f"}ge;"\$|xd{\$berv\$zuqneku!vlm0bjezgnoaf>
+Ogrmb!rhii!nai\`gpko0vkp\`0\`"qfybmvf>^][WO^][WO^][WO^][WO^][W
+Ogrmb!qpm\`!mj(q!aqzcdf\$m~fpe~yoe*WO^][WO^][WO^][WO^][WO^][W
+Ogrmb!qsa}!um|x!c\$kqlgvi*!"p\`usg#{0omp\`yoe\$|!vecu!rmkdtpa{0nd*
+Ogrmb!vaisi"}ges"tmd!pq{d!okfcugv(dn"bmdbj*WO^][WO^][WO^][W
+Ogrmb!vv}cu"e(b\`l\`g}!eafuscpgb!kj(}\`emk0gkadtr,[WO^][WO^][W
+Ogrmb!wwm0\`"si~e"kn0ege|x/][WO^][WO^][WO^][WO^][WO^][WO^][W
+Om\$duwgh(snlpiyoq\$|gn"w\`qq*(0Uja(}\`xa(yr"jg0mgrm|/"\$[/,*W
+Zakg{hgY(^n"tibu"kn0ujm{0gmv|eog\$eqx"fm0sgtzewgmt-"w|sg\`(yo"e(bdvvauwch(cxqpm}-"*&>
+Omp(qmn\$zelmv{0\`pa(qr"iacmgelyoe\$ic!vlac!mjm>^][WO^][WO^][W
+O{ixxr"eft!lqzcdq\$dyjg\$ju\`wpavtn\$zyoew&O^][WO^][WO^][WO^][W
+O{ixxr"ezu!\`hg~egw&0!Cvm0xmq(q!eafdmgii~>][WO^][WO^][WO^][W
+Ndbmbhlc(q!wjasnpj(q!ukzdina{c!rmmsd"kn0fne{c!omoxu"tzwg\$|!\`a(v\`ved1
+Nn\`(x\`aombr"jmfdp\$lyd8\$(inwjo0nla{0em*WO^][WO^][WO^][WO^][W
+Nla(x\`q\$|!naifd"w\`qq\$jugmvm0bnk{yoe\$|ylg*WO^][WO^][WO^][W
+Nla(xnoqfstnq{0\`"\`ii!iam\`r"p\`u!fkkdnp\$ig\`{*WO^][WO^][WO^][W
+Nla(|dtad0gwv|xdp\$lvl\${lgfgtx"m{0fgp|yoe\$cymnal<!pmoxu"jgg/
+Nlhq0\`"saj\`p\`(s\`l\$}cd"e(}\`emk0vjm{dmg*WO^][WO^][WO^][WO^][W
+Nlhq0\`frm~uwvmbr"kn0dtmd0\`nmo~lgj|0ujmf{!mb({hnha~f"p\`uhp\$lf,
+Nlhq0bjegdha\$mfhnw({hnh(cmgaxyoe\$eoqpmbr,[WO^][WO^][WO^][W
+Nlhq0sged0upex\`dpw(uraexu!vvi\`r,[WO^][WO^][WO^][WO^][WO^][W
+Nlhq0sged0vk~ibeq\$kqo"szyug\${ssmhdc/][WO^][WO^][WO^][WO^][W
+Nrazqukkf0NTAZ[HNH(x\`q\${d\`ppmt!lk>^][WO^][WO^][WO^][WO^][W
+Nwg\`>!"M(x\`va(gigj(dicp(x\`rtm~r,[WO^][WO^][WO^][WO^][WO^][W
+QNAICD"mo~npa(\`sgratq\$zelmv&O^][WO^][WO^][WO^][WO^][WO^][W
+Qmhq}npt\`0hlpg0\`l\$mdukj30lga|0xmqz0nrtg~dlp{0gcgm0um\$nqbg\$|!deku/
+Qpeqyoe\$ymn\$nbhel|uo"\`m}nlw&O^][WO^][WO^][WO^][WO^][WO^][W
+Sms(82z-(dicp(rncp(wdlpdi!fk~!vlm0rvvmql.\$Kx\`pkf0)6|!<!faidi"m{0cwp(q!fvmql,
+Swjfyoe\$ac!ekgt!dkz0xmqz0mgc{>^][WO^][WO^][WO^][WO^][WO^][W
+Ravmg!wt(inwv(snwviwd#\$(Inw#~u!qgzuvg\`(eq"a~us{p\`yoe\$m|rg*W
+Rgaxqfg;(0Mgeci!rmxur=\$(Bhqmfw!fee\`>"\$[elokf0uja(\`mwijus#[W
+Rgceuove|ynl\$nqtnp(8bmvm0ewixue+*WO^][WO^][WO^][WO^][WO^][W
+Rjkx{dgtmbr"ezu!kj{esg\`(rx"Gzdqq{0iki{umd%WO^][WO^][WO^][W
+Rjkx{dgtmbr"wg}dvmeur"\`au!dvg}!mhl0\`ea&O^][WO^][WO^][WO^][W
+Rmim0lc~mc!*a{\`dami|m{\${}\`nh(ogw!0icrm0om\${mwpaoq((c\`{w(}\`l\$>0lc~m>
+Rmim0pwa{dhmj{0uja(Cqj}fh!cwcc!hq{d!(\`g~&v.(x\`ta(qo{\$i~ruazc/
+Rmimdhoa{0#oq*0hq\$|xd"efcvgv&O^][WO^][WO^][WO^][WO^][WO^][W
+Zakg{hgY(Cnpvq<!lk(vnpp}~d"p\`yr"pa}d,\$(Rdvpmb!nqk{!lapd!akg{hg%
+Rrezu!{k}b!qgzmnw(g"ii{d/alycna(eovmd0hv#{0sged|x"jmsdqwibx#
+Rvmk{r"eft!qpg~dq\$eqx"fzu\`i\$qtp\$jogw(rtv\$eqogw(ghnh(~dtaz0iwv|0xmq&
+Rvkz}cpmfwdp\$ldqj/d!qpmqm"wgemq*(0Qgkx|d"w|u\`n\${tnw&O^][W
+Rw\`luon}\$0uja(ttlcmo"sa|m"gg|mct{u/,*WO^][WO^][WO^][WO^][W
+Ucia~f"e(}\`kh(t\`gig~!oeq0bcq{u!c\${irvae0rgg}bhv}(fhmhidhmj&
+Uja(ssmsl0vcw(cn"pgefj((dig\$[dnmcmc!ukf7u"tdqx"p\`u!Fqfwdmj(qo{igbd.\$fiti\$fiti*
+Uja(|drvmsicqfc!jmlu!vlmys"pzu\`qqzu!kj(q!qii|m"lategj(bnmi&
+Uja(|nlcmb!vlm0vcjl0uja(rdvpmb/][WO^][WO^][WO^][WO^][WO^][W
+Uja(}\`emk0vmvl0hq\$*HXX^Q2/][WO^][WO^][WO^][WO^][WO^][WO^][W
+Uja(}dgo(cichd0hllmbhv\$qtp\$jogw(vhna{>^][WO^][WO^][WO^][W
+Uja(}hla{0\`pa(t\`po(qof\$ludr((qof\$A0icrm0mgrm|r"pg0fm\$jugmvm0H"wdudr*
+Uja(}npa(inw\$}cd"p\`u!G\$sf((dig\$juuvaz>^][WO^][WO^][WO^][W
+Uja(erg\$gv!f}fqlkpm0hq\$lqoeaztq*WO^][WO^][WO^][WO^][WO^][W
+Ujazu!cvm0om\$sow(yo"p\`u!WJAH!tazchmj&O^][WO^][WO^][WO^][W
+Ujazu!kw(q!vvi\`!mj(dikw(|dtad1^][WO^][WO^][WO^][WO^][WO^][W
+Ujaq0rc}(dicp(Tdokosekf<!Cweegq{<!Mvker.\$Qudlkoxt""(Ztkfduy"m{0om\$dqv"babl,
+Ujaq0rc}(dicp(Wdp}g~!je{0\`l\$mfhn\$|ghl((rduezu ][WO^][WO^][W
+Ujaq0rc}(dicp(]dfq{q!uk}|e"ii{d"e(ddpvarmg\$xuu,[WO^][WO^][W
+Ujaq0rc}(dicp(^dvLisj"f}wr"ezu!Qadtnl\$x|\`ljmt/][WO^][WO^][W
+Ujaq0rc}(dicp(^dvLisj"gg}dq\$a~!01>0gne~sq*WO^][WO^][WO^][W
+Ujaq0rc}(dicp(^dvLisj"m{0kww|0\`"gg}qwpmb!eeeu/][WO^][WO^][W
+Ujaq0rc}(dicp(^dvLisj"m{0lmvm0ujef0kww|0\`"gg}qwpmb!eeeu/][W
+Ujaq0rc}(dicp(^dvLisj"m{0ogrmb!ulid!kp(erg\`(dn"fm>^][WO^][W
+Ujaq0rc}(dicp(q!\`eji!fviwnl\$ac!vkg0roed|!vk(xtpp(s"lm|q"}ge/
+Ujaq0rc}(dicp(q!\`hisj"t}tekjo0hq\${ylrhq0\`"fzvl\$xeefmfw!ekfu!\`el>
+Ujaq0rc}(dicp(q!\`hisj"w\`udr\$\`qr"7(r\`ew(vtnh(g"sgm,[WO^][W
+Ujaq0rc}(dicp(q!\`hi~j"wkbnnh(yr"ha{d"e(rmcjc0bjak{/][WO^][W
+Ujaq0rc}(dicp(q!ae|0ocimt!Okzbhq\$\`qr"ja~d"hafdq*WO^][WO^][W
+Ujaq0rc}(dicp(q!fa{\`dpe|u!qlg\`qgv(}hel|0qc}(qo{\$xbhaa(yo"e(cimt&
+Ujaq0rc}(dicp(q!fmi}nl\`(tne\$ac!grmbx\`kli&q\$jurv\$nbhgjl>^][W
+Ujaq0rc}(dicp(q!fsibg"hgbe"gi~!aezbx"e(\`hao%qyg\$jubcq{u!jm{0\`pigb!kw(|hel|>
+Ujaq0rc}(dicp(q!dhgqukjo0d{a(s\`l\$lugge|0Lg\`}c\`,[WO^][WO^][W
+Zakg{hgY(Dig}(c\`{\$|x\`v\$i0gmv|eog\$g~m{\$\`qr"5(|hla(qof\$qt"gi~&v\$zu\`f\$juuuam~!kp&
+Zakg{hgY(Dig}(c\`{\$|x\`v\$i0gmv|eog\$g~m{\$\`qr"5(|hla\$0cwp(inw\$kqo"vmqe"fmdvgaf0hv*
+Ujaq0rc}(dicp(q!dk}~ucmf0mmkcc!lk|xhlc(|hia(q!paoemcvdi!gv}\`ukjo0fg}{us,
+Ujaq0rc}(dicp(q!ekdt!fk}rmmkf0hq\$svl(}npa(dicj(yuq\$uhel|0hl\$omf*
+Ujaq0rc}(dicp(q!evat!\`qo0vmj/d!req0\`"w\`qiam\`dp\$ns"~i\`qkjo0xmq(yo"e(cimt&
+Zakg{hgY(Dig}(c\`{\$|x\`v\$i0f{t{i!ak}|e"pm|m"}ges"bgbuwjm0gmv(q!rvasd,
+Ujaq0rc}(dicp(q!jek{dp\$fqlg\`(Qmkgm0nlgm0mgrm|!vaduqmv|ue"fq0tqmfw!c\$eyspkz>
+Ujaq0rc}(dicp(q!jek{dp\$fqlg\`(T\`tml0nlgm0rna0\`"caqov\$yuj\$i0rnmfw!cjl0\`"vgsj,
+Ujaq0rc}(dicp(q!jek{dp\$fqlg\`(Tnpk|xx"kfsd"vgtd"e(vne\$k|nw\`(dn"Kr>
+Ujaq0rc}(dicp(q!jek{dp\$fqlg\`(]\`p}(oaa(|nqp(q!uladd"w\`udr\$a~!vlm0lc~mc/
+Ujaq0rc}(dicp(q!jad}!mb(rskhdy\`lgm0hq\$fu"pg0cg\$|qjgj(|hel||x,
+Ujaq0rc}(dicp(q!jk|0emc(qof\$i0ighd0imqft!cvm0uja(c\`oa(dikjo>
+Ujaq0rc}(dicp(q!nee\`!leeue"Edqefmf7r"Hi}q"gg~ucmfc!c\$lzhlja0vkp\`02"sacigw&
+Ujaq0rc}(dicp(q!nezwd"\`gw!leeue"Hicrka(ghnh(|dc\`(inw\$|!vlm0\`oqduu,
+Ujaq0rc}(dicp(q!nkfw!qsgbe"m{0omp(q!nmoxu"wsf*WO^][WO^][W
+Ujaq0rc}(dicp(q!oefur"sg~&v\$eyoaa(gnp\`{0vkp\`0xmq&O^][WO^][W
+Ujaq0rc}(dicp(q!omft!kw(q!vazbh\`hm0ujmfw!vk(g\`qpm>^][WO^][W
+Ujaq0rc}(dicp(q!rhiyo"jq}qj\$ymn\$g~m{\$u\`p\$i0vkvm0skjo0hl\$g~d"aib/
+Ujaq0rc}(dicp(q!rh}}df\$\`qu"ggemf\$ju!c\$xbdtmgern}(erg\`(ssgw|ue"lm|lgp&
+Ujaq0rc}(dicp(q!rk|ynl\$gv!mmd0hq\$lygdmkemv\$|!evicq,[WO^][W
+Ujaq0rc}(dicp(q!rk|ynl\$gv!{koesv\$ac!c\$kqoaad|df\$xukkf0nd\${ybijmcr,
+Ujaq0rc}(dicp(q!rqz\`mg\$so\$ac!lk|0\`"firx"t}bqna(tsccg~/][W
+Ujaq0rc}(dicp(q!sqafdpmfw!\`hgr!ve{ddq\$lygdazuov\$|x\`l\$i0fghidhlk}c!aqju/
+Ujaq0rc}(dicp(q!pqfue"fz\`fwsf\$fqlg\`(Cumverskjous"e|dscg|c!tkzdhaa{>
+Ujaq0rc}(dicp(q!qgzmn\$gv!qqe}nlmfw!je{0nvlmb!leeur,[WO^][W
+Ujaq0rc}(dicp(q!qli}\`l\$kqo"fmcums(rmgw{yoew(rtv\$}ctchdi!fkmco%p&
+Ujaq0rc}(dicp(q!qli}\`l\$ymn\$j|dqw(inw\$ns"ef0d{a(g"jmgu"eft!umfw!mb(r\`v*
+Ujaq0rc}(dicp(q!qla}lgva~f"cg|e"w\`ydn\`(yr"jgd!c\$xmkw\`ue"wa|wgv(cikadt/
+Ujaq0rc}(dicp(q!qtmqs"sa|m"lad!c\$fun/k|itel&0!*@g0XMQ({oms(gicp(dicp(yr=-
+Ujaq0rc}(dicp(q!qtgdug\`(tsccg~!kw(dig\$}|ukiidd"w\`qqg\$kx\`lcmb/
+Ujaq0rc}(dicp(q!qpmdimwkqg\$ac!lk(wnm\`(yg"}ge!aef0nlhq0igez0xmqz0igezdcge|>
+Ujaq0rc}(dicp(q!qqkst\`q{0ocimt!Qqri!umd|!qkeuukimc!uez~!{k}0nd\$lqoeaz>
+Ujaq0rc}(dicp(q!ueft!mb(s\`lgm|mcpao"m{0omp(|hia(q!ueft!mb(\`nn}esrl&
+Ujaq0rc}(dicp(q!ukgt!ekdul"ji}df\$Xyomgkxhm\$tn\`(rd"aicx"pg0bmj|bnn*
+Ujaq0rc}(dicp(qgvaz0jkhdyoe\$i0epeoo"m|7r"pa}d"bgb!c\$kx\`lcm0nd\${sdlazi/
+Ujaq0rc}(dicp(qo"eeemgp(g"w|b\`lc}|\`vmg~!kw(gnpwm0ujef0skjo0\`pk}~e"p\`u!akd|\`p*
+Ujaq0rc}(dicp(qo"e|dha\$ac!vlm0cgw|0qneku!vk(xhfa(inwv(dn{w&
+Ujaq0rc}(dicp(qo"epu!leeue"Gdu\`taz0nlgm0cghg~fg\`(dn"e(x\`aomb!leeue"Fmqwgv&
+Ujaq0rc}(dicp(qo"aqu!mb(~dup(qof\$i0vkjo0nd\$jqu"ezu!fk}rmg\$|xd"pzt\`hm>
+Ujaq0rc}(dicp(qo"mfst\`q{0ocimt!K~ri!qkeuukimc!oecur"sg}dl\$nudn\${uoqm|ywg*
+Ujaq0rc}(dicp(qo"kxemgj|0ujvg~d"vgl"m{0scvm|x"e(\`mcgm0um\$yrj\$qt%\`(rd"mf>
+Ujaq0rc}(dicp(qo"qf|taoq0icgcus"kfsd"lit!c\$frg\$j|dg\`(qu"ef0\`npib!cjl0ekal>
+Ujaq0rc}(dicp(qof\$|xd{\${qx"p\`yr"f}d!vlmi!la~us"wii!la~us.\$fuwgv)
+Ujaq0rc}(dicp(qo{\$ye\`lp}}!oakx\`lmk0jlkc!vlid!qtmue"oa|mq*W
+Ujaq0rc}(dicp(qqrhqyoe\$i0tlmksl\$\`sl\$eu\`lw(inw#~u!om{cdf\$|xd"tgyov*
+Ujaq0rc}(dicp(rmwa(cumjmc!cvm0sc\`a\`apafd.\$juvcvm>^][WO^][W
+Ujaq0rc}(dicp(rtkhlyoe\$i0ewjounl\$ac!c\$|u\`o\$mvgmv|>^][WO^][W
+Ujaq0rc}(dicp(sick|yb"g\`qscg|usq\$fuwgv(wdv\$i0jkgc0nwp(g"edd\`pw&
+Ujaq0rc}(dicp(snnhi\`rkjo0\`"\`}~fgkf0ndpm~!avmqugw(q!refyb,[W
+Ujaq0rc}(dicp(snwj|yoe\$qtp\$mwfq\$jugmvm0ujaq0icpkx!qlggr"p\`qu"}ge!aezu/
+Ujaq0rc}(dicp(thrta~f"e(r\`e\$gv!vvasjq\$a~!c\$ntlpiyo"sg~&v\$eqjg\$ad!cj(ybgfgh/
+Ujaq0rc}(dicp(thrta~f"ef0dgh(qof\$jbnuj(}nn\`(yo"lgd!ue|us"ii{dq\$jtkhdqccm{cd,
+Ujaq0rc}(dicp(tnle|yoe\$i0emqj|nmj(yr"apdsgim|x"tatq\$kx\`pm|i/
+Ujaq0rc}(dicp(ttlcmogazc!rvmvdp\$lqsi\$kxnakdqug*WO^][WO^][W
+Ujaq0rc}(dicp(u\`vmfw!pkqqm"nm|m{\$idupekdr"czy{xhq0nuhju\`pw&
+Ujaq0rc}(dicp(ufew\$0qcjkqjgw(qof\$behaa(qsg\$berv\$i0lwjlqog\$jbdconqrv*
+Ujaq0rc}(dicp(uwgvqog\$c~nuw(gi{\$Euewwi0rveftr"edog\$a~!vlm0ecvc>
+Ujaq0rc}(dicp(uwgvqog\$qoval0sgg&w\`oa{>icgc0um\$}~egvo!c\$fqlg\$kx\`lcm>
+Ujaq0rc}(dicp(vhl\`a~f"e(ghlja~f"w|b\`vaoi!kw(q!fadycgvidd"igfd"kf0xmqz0qcv|>
+Ujaq0rc}(dicp(vhl\`a~f"sgbujhmcr"cdqrq\$ac!ukzdi"wg}dvla~f,[W
+Zakg{hgY(Dig}(c\`{\$|x\`v\$nsvqfu!akg{hgw(qsg\$nnf\$ns"p\`tel|>
+Ujaq0rc}(dicp(wnn\`(yr"kf|x"sicug\`(o"e(\`dv\$lb\`ekf>^][WO^][W
+Ujaq0rc}(dicp(wnm\`(dikjoc!akeu!vk(dimwm0uje|0vcm|>^][WO^][W
+Ujaq0rc}(dicp(wsge{ue"kjzdap{0vkhd0rnmx0nwp(g"ig~rvazc&"li~eq*
+Ujaq0rc}(dicp(yg"}ge!aef7u"wxumn\$|xdl\$qt%hd0vkw\`0xmq(x\`f\$i0rrad|cmkc>
+Ujaq0rc}(dicp(yg"}ge!nm~u!\`}(dig\${gnp\`\$0xmq/|m"\`au!\`}(dig\${gnp\`&
+Ujaq0rc}(dicp(yg"}ge!rhii!nmcu!c\$eoqpmb!{k}7mn\$\`qwg\$i0cgp|us"ci}d,
+Ujaq0rc}(dicp(yg"}ge!qhmuq"sadi"e(tdokf0xmq(}hel|0\`uecu!um|x!c\$\`u\`fekxd,
+Ujaq0rc}(dicp(yg"}ge!qpm\`!mj(q!avisj"}ge!ak}|e"fzu\`i\$qtp\$eujaz7r"fisj,
+Ujaq0rc}(dicp(yg"}ge&pa(yotm{ycna(inw\$kqo"w|ymn\$ju!jaibe#[W
+Ujaq0rc}(dicp(yg"}ge&pa(|taoq0xmq(s\`l\$nudn\$|xd"v}~dq\$g~!c\${ssmhd>
+Ujaq0rc}(dicp(yo"p\`u!\`mo0qkg|esg\$omf\$ac!mjdi!qii|m"g\`qoea&
+Ujaq0rc}(dicp(yo"p\`u!fqfwdmj(yu%w(~nv\$x\`v\$qt"ofv"p\`qu"vmqmn}(}\`vpmbr,
+Ujaq0rc}(dicp(yo"p\`u!fqfwdmj(}nmj(bnao{0\`pa(bdchdi!fmdyujm}}!avqcuch{>
+Ujaq0rc}(dicp(yo"p\`u!fqfwdmj(dig\$jnpm{x!aq{dnoaz0hq\$fuwgv(bhel|>
+Ujaq0rc}(dicp(yo"p\`u!fqfwdmj(inw\$lo%p(~dg\`(q!ue|si"pg0ughd0ukim>
+Ujaq0rc}(dicp(yo"p\`u!fqfwdmj(inw\$fudf\${lgp\`yoe\$g|e.\$fuv.\$jespkue"eft!\`h}u/
+Ujaq0rc}(dicp(yo"p\`u!fqfwdmj(inw\${xnwhl0\`nsiir"ggeov\$qtp\$j|dqwa~fq*
+Ujaq0rc}(dicp(ysmj(wnnae0qne|u!oea|!kwf7u"sgbuj\$yrjmfw!dkz>
+Ujaq0rc}(dicp(yu"pi{dq\$ntp\$ye\`ppmbrvenvr"pg0lcom0nla(cucbn>
+Ujaq0rc}(dicp(yu%w(~nv\$gfdp\$|ymn\$|xd"bid!nelydq\${yoe*WO^][W
+Ujaq0rc}(dicp(yu%w(~nv\$gfdp\$|ymn\$|xd"bid!neli!qlgeuq\$h_gd\$yuj\$adr"lmqe%*
+Ujaq0rc}(dicp({haoa~f"e(xdcrq0rve|ed"m{0sged|x"e(ttof(}nta&
+Ujaq0rc}(dicp({haoa~f"e(f\`nqirmg\$oul"\`gurl#|0rgae0um\$eqjg\${uoqa&
+Ujaq0rc}(dicp(|drvmsicqfc!ijgg!Ne|yo"eft!{k}0rjk}|e"pg/][W
+Ujaq0rc}(dicp(}hlk|qtpw(wdv\$drv\$geuqmlu!mb(dig\$eq{gw&O^][W
+Ujaq0rc}(dicp(}nqp(dsmhdc!cvm0cmvf0\`eea~/][WO^][WO^][WO^][W
+Ujaq0rc}(dicp(~\`omfw!{k}b!ae|0Fcvnydn\`(ghnh(}\`ia(inw\$esg\$idupekdhta&
+Ujaq0rc}(dicp(~n"kfu!ijggr"a~us{p\`yoe\$irnwp(uwgvqdikjo0hl\$|xd"\`}~fgkf>
+Ujaq0rc}(dicp(~n"kfu!rhiir"JmdIcgc0kww|0gmv(dig\$neo"kn0hv*W
+Ujaq0rc}(dicp(~n"kfu!pai|m{\${ecqgzycgw(dn"vms/eeeur,vgwtgha{d,jmdicgc>
+Ujaq0rc}(dicp(~n"kfu!umd|!c\`eyu"pg0rvezdhlc(q!pqes,[WO^][W
+Ujaq0rc}(dicp(~tpwmc!qkeuukimc!aezbx"wkqmradc!cjl0ogrmb!wwm0ujae>
+Ujaq0rc}(dicp(oaa(inw#~u!oa|0nla(ghxezt!{k}7wg\$euu"p\`ul"ed|/
+Ujaq0rc}(dicp(og\$|bnnh(yr"sgbuj\$9 -2480ogs|c/][WO^][WO^][W
+Ujaq0rc}(dicp(on}(T\`tml0bcj(vhl\`(dig\$rn#[WO^][WO^][WO^][W
+Ujaq0rc}(dicp(on}(qoeadc!rhii!vlmys"libqq\$ns"p\`uhp\$xuuq*W
+Ujaq0rc}(dicp(on}(rhe\${\`dl\`mbr"gibs{\$omf*WO^][WO^][WO^][W
+Ujaq0rc}(dicp(sa\${x\`oefc!cvm0igeddi{((gdch|xx"eft!um{u/][W
+Ujaq0rc}(dicp(\`mc}a~f"JmdIcgc0hq\$dyjg\$qmimfw!kj|!c\$lu\`vl(dsct&
+Ujaq0rc}(dicp(\`smfdul"fzu\`vla~f"m{0cgw|0upaiddf\$ji!c\$xbnraz0eka|>
+Ujaq0rc}(dicp(atcbnyoe\$eqo{\$xukkfc!mb(|dtm|qukkf0bcj(whta(inw\$i0igelqbja&
+Ujaq0rc}(dicp(atgaf0cga{0fgp(dicp(g\`{\$ji!ge|yoe\$zxch(zdnhq>
+Ujaq0rc}(dicp(bdc\`a~f"e(cbcvm0lmj{ddp\${ssmhd0hq\$|xd"wi}d"e{0rc}a~f"Adrdpa|x/
+Ujaq0rc}(dicp(bdch(x\`aombr"edg\`{w(qsg\$kovvg|mg\`&O^][WO^][W
+Ujaq0rc}(dicp(bdch(x\`aombr"jmfdp\${|dgt&O^][WO^][WO^][WO^][W
+Ujaq0rc}(dicp(cimtcudrazc!cvm0hlw}bdf\$ji!Avgurww(xhowm|g#[W
+Ujaq0rc}(dicp(cimtcudrazc!la~us"gibs{\$esg\$|x\`l\$: !ekdt!rmmsdq((qu"jawiv*
+Ujaq0rc}(dicp(cimtcudrazc!la~us"wm|m"fdurqal0qmpaoq\$gv!kj~yrkfa|hv}&
+Ujaq0rc}(dicp(cnn\`ausq\$u\`p\$cye"cdwgw(qof\${ymn}(xdnimdr,[W
+Ujaq0rc}(dicp(cnoa([nrw(qsg\$g~!vlm0ucom>^][WO^][WO^][WO^][W
+Ujaq0rc}(dicp(cnoa(wtcvlc&"ti|lq\$kqo"fm0fpaicdf*WO^][WO^][W
+Ujaq0rc}(dicp(cnoa(}nlw|usq\$eqx"oacr"}ges"fguq\$|!qpg\`!{k}b!fv}}!rhiihlc&
+Ujaq0rc}(dicp(cnoa|ylgw(inw\$kqo"fm0uja(xhv\$gv!vlm0qcv|i!ulm~!rhiihlc(q!jkz~/
+Ujaq0rc}(dicp(dig\$FuuJek{!eklc!eafuschdi!uadsnoa(inwv(c\`avavhaa{>
+Ujaq0rc}(dicp(dig\$\\xsga(Bhlc{0\`pa(~\`oal0Wkhqq-"Jm~xc\$i~e"Jibxc*
+Ujaq0rc}(dicp(dig\$_y{cvl0nd\$Quofkz0icw(q!faidi"saci,[WO^][W
+Ujaq0rc}(dicp(dig\$hx\`kv(g"p\`u!fko7!kw(cnoa|ylgw(qo"anvdapafd"vm}df}&
+Ujaq0rc}(dicp(dig\$jurv\$|ylg\$|!qe~u!{k}b!eeeu!kw(~nu\$jugmvm0hv#{0umk(|\`va&
+Ujaq0rc}(dicp(dig\$jyfea{d!mf{d\`ahm0hl\$FuuJek{!kw(inwv(}hl\`&
+Ujaq0rc}(dicp(dig\$oeq\$ibd"efws{\$xdl\$|xd{\$\`yu"}ge!um|x!mfbubvw&
+Ujaq0rc}(dicp(dig\$xbhgw|xnm\`(qsg\${\`dami|m{\$nqwmvmt!\`}(dig\$oeq*
+Ujaq0rc}(dicp(dig\$qx"pg0lcom0\`"qfybmvf0ictxi!kw(dn"cafd"m|0vje|0hv\$qovw&
+Ujaq0rc}(dicp(digvm0\`pa(~n"fdqbi\$gb!uladd"w|ogw\$0nlhq0fpeq>
+Ujaq0rc}(dicp(digvm0\`pa(~n"wcumgpg~r"lm~bg\$|xdpa(qsg\$f!qom|dvkf0jg}{>
+Ujaq0rc}(dicp(digvm0hq\$i0bna~us"vgwtg\$a~!grmbx"lisjgv(ztqp(txkjo0um\$mcbctm>
+Ujaq0rc}(dicp(digvm0hq\$f!qqkx!vla~f"e{0gpam0\`frasd,[WO^][W
+Ujaq0rc}(dicp(digvm0hq\$g~m{\$g~d"sii!vk(ghl\$id!La|X\`ao&O^][W
+Ujaq0rc}(dicp(digvm0nlgm0vcw(q!daibrmim0bjegdha\${qlwviy!leeue"H}{!Lk&
+Ujaq0rc}(dicp(digvm0vcw(q!vmeu!ulm~!aqzcdf\$\`m{\$qugv(g\`qj/d!ue|us,
+Ujaq0rc}(dicp(digvm7r"jg0qmmfd!kj(ss{mfw!mrmb!c\$ob\`{\$g{g*W
+Ujaq0rc}(dicp(digvm7r"kf|x"lg\`d"hmvu"enddp\$qt%rm0nrafue"Ti~emvi7r"fgh/
+Ujaq0rc}(dicp(dsct(tnmv{0rjk}|e"edg\`{w(rd"iibjg\`(pBcq|ynl>(0Upex0Emkz7/
+Ujaq0rc}(dicp(erkjo0\`l\$i}tna|0nd\$kx\`lcm0hqj/d!c\$lygdmkemv\$g\`dpe|ynl*
+Ujaq0rc}(dicp(g\`vaz0vchcyoe\$jnvw(qsg\$juuvaz0hd\$qt"ezu!de{d!nmcu!Jaz}dq*
+Ujaq0rc}(dicp(gigj(inw\$u\`p\$i0bkvkemcv(qlwhmd!{k}0lkc\`d!pa{ul\`hm0\`"pzmn*
+Ujaq0rc}(dicp(gigj(inw#zu!jqfws{\$qt"gi~!ea|0\`"taj{c\$a~!14(}nta{0np\$ad&q\$nbdg*
+Ujaq0rc}(dicp(gigj(inwv(wnf\$ac!cjobx"}ge!qlgemf\$|bx"efujaz0nla&
+Ujaq0rc}(dicp(ghghlyoe\$i0tlmksl\$\`sl\$|qjgw(cupafwuj*WO^][W
+Ujaq0rc}(dicp(ghvl(cqgal0cmk|c!{k}0ogrmb!ukzbx"ejtv\$\`yu"eft!pqf0\`agatdlp{>
+Ujaq0rc}(dicp(inw\$kqo"\`mvdcp(q!imd|dp\$jud"sadi"e(eokggbo"lgbo,
+Ujaq0rc}(dicp(inw\$kqo"kf|x"gzrq\$|xd"Vafdp\$[dxz\$a~!Alibnl#{0cme|>
+Ujaq0rc}(dicp(inw\$kqo"kf|x"oa|m"e(|hal(oaa(qof\$|xdl\$qt%\`(rdvpmb!\`a(s\`panem,
+Ujaq0rc}(dicp(inw\$kqo"kf|x"saci"bgb!vla~fq\$qt%rm0\`nvmqe{\$\`qe,
+Ujaq0rc}(dicp(inw\$kqo"pzqhl\$i0bcp(rx"pi|jkjo0fgj||x"pg0hv*W
+Ujaq0rc}(dicp(inw\$kqo"pzqhl\$i0emc(rx"pi|jkjo0gkve|x"pg0hv*W
+Ujaq0rc}(dicp(inw\$kqo"pzerv\$qtp\$omf\$yuj\$|xd"oa~f,[WO^][W
+Ujaq0rc}(dicp(inw\$kqo%p(ghra(inwv(wsge{i!\`ezu!jeftr"kf0\`"fdqoi\${ssmhd>
+Ujaq0rc}(dicp(inw\$kqolk|0upq{d!qgzmnw(g"v}}np*WO^][WO^][W
+Ujaq0rc}(dicp(inw\$ktn\`(v\`nh(xdc\`(wgv(xdgh{0gmv(qo"afuse}(fnppmh/
+Ujaq0rc}(dicp(inw\$fudf\$i0jg}(yo"kztdp\$|!mtm~!nkk{df\$lnpw&
+Ujaq0rc}(dicp(inw\$fudf\$i0lkvzs"pg0ompasd"e(}homk0hl\$i~!cj|ypwa(cimt&
+Ujaq0rc}(dicp(inw\$zu\`nhq0bcj(erg\$i0qkgc=\`za(eona{c!{k}0sged|x"gi~&v*
+Ujaq0rc}(dicp(inw\${xnwhl0\`nsiir"w|sg\$qtp\$|nnw(yo"p\`u!aad|\`p*
+Ujaq0rc}(dicp(inw\${xnwhl0cg\$kqsgb}|!ula|d"gdyl\`mfw!vlm0mc\`lus"pg0rwgkurq*
+Ujaq0rc}(dicp(inw\${xnwhl0bchd0xmqz0\`pigb!bv}curvgg%*WO^][W
+Ujaq0rc}(dicp(inw\${xnwhl0ocim0xmqz0emc(Cqw\`{0um\$\`qwg\$i0bmkd0qgp&
+Ujaq0rc}(dicp(inw\${xnwhl0ocim0xmqz0vgexo"enddp\$qtp\$nysqp(}nlw|us"oa|m,
+Ujaq0rc}(dicp(inw\${xnwhl0ogrmb!kj|bnfqku!c\$zqg\$omgi(dn"e(ctag}rtq*
+Ujaq0rc}(dicp(inw\${xnwhl0ogrmb!qhmuq"jmqs"mffhqmj|d"va~f"szqhvl{>
+Ujaq0rc}(dicp(inw\${xnwhl0ogrmb!vvq0um\$du\`ta(dig\$leoeag~!um|x!c\$jqf"kn0fgi{>
+Ujaq0rc}(dicp(inw\${xnwhl0sgigfd"}ges"ez}np\$jugmvm0rkp|yoe\$g~!c\$|xsmjm>
+Zakg{hgY(Dikw(vnpp}~d"ggjka(yr"gg\`x"tzugg|ue,[WO^][WO^][W
+Zakg{hgY(Dikw(vnpp}~d"ggjka(yr"p\`u!rvg\`dppq0nd\$Nsvqfu!Akg{hgw\$0Hlg&
+Ujm{0sghmqrg\$kovea~r"585!pakibnal0lcpmbhch&O^][WO^][WO^][W
+Ukim0rveftr"w|ymn\$ic!vlm0rwgkecww(sicjour"lmb!aeduofez0um\$Bqowezi!3(("124&
+Ukvmt>"\$\\bx"e(cbpkd|!mb(sicvoyoe\$g~!{k}brghn>^][WO^][WO^][W
+Um\$isika~u!vlm0og||0ikc\`us"vidhlc\$0xmq(~dg\`(#!okzu!rka~uq*W
+Um\$zu\`al(xdcrm~-"a{s\`ra(dig\$leoeag~!ula|d"smqskjo0\`"va~f"kn0mgrad\`vmg~/
+Umqzyrvw(gdcv(cikv|c!nk}t!gjgefj\$|!uecu!vlm0egel>^][WO^][W
+Up}(s\`nha~f"}ges"oid\`le(]nwha~dvpm>^][WO^][WO^][WO^][WO^][W
+Tng\`1!"P\`qu"imqu"sic!rea~ug\`)O^][WO^][WO^][WO^][WO^][WO^][W
+Tlbgbuwjiddn}\$0ujm{0lgw{qfg\$qr"hmvu"mfddlpaochdi!\`hi~j,[W
+Tqmfw!c\$eslmfw!qpib!kj(dig\$mfdlmfw!je{0om\$mvggg|>^][WO^][W
+Vch|j-"\`}}c"jq}qj((vnp\$yehao(zhew(fdz*WO^][WO^][WO^][WO^][W
+Vcj|0\`"la~u=\$(J\`r\$i0vcjl0nd\$eqjg\$a~wkwarmg\$g~!{k}b!uai\`nl%W
+Vcj|0um\$icbgjl0hl\$i0iwvzi>"\$I\`qn}(qu"Cajlmjas!Kj{dhvq|u/][W
+Vcj|ue8\${xnromuqgv{>!"Wm~e"e(cbpkd|!mb(}\`kh(dn"Iiwd"kn0Xgjls-Hmfdn\$;%.Fqfwdmj&
+Zakg{hgY(G\`pja~f8\$(vnpp}~d"vmqekjo0bcj(rd"lij\`p\`ger"pg0xmqz0igeddi,
+Vg\$\`qwg\$fuv"siir"kn0egpmsukjo0upaisigvq>/,[WO^][WO^][WO^][W
+Vgp(dnuadc!oecu!evmqu"smqqmj{1^][WO^][WO^][WO^][WO^][WO^][W
+Zakg{hgY(Gicp(q!rm|i-"}ge!aef~nv\$zu\`f\$ad ][WO^][WO^][WO^][W
+Vje|uwgv(s\`l\$o!uvg~f.\$ymn\$o!uvg~f,[WO^][WO^][WO^][WO^][W
+Vjaf0\`"tausaaz0epkxc!kj(o"}ge-"}ge!umd|!\`a(ddot|ue"pg0ikp(dig\$kuhnmfw 
+Vjaf0hl\$i0lc~m0gmhdv"p\`u!pmoxu"si|m"eft!{k}0vkhd0ogrmb!ea|0mmw|>
+Vjaf0xmq(x\`ta(q!iaq<!{k}0emj/d!je~u!vk(g\`kp(vnp\$|xd"c}qsf*W
+Zakg{hgY(Gi{\$ibd"}ge!ue{dhlc(dhoa(bdc\`a~f"bgbuwjmc>][WO^][W
+Vkw\`0gmv(q!oe{ddp\$cux"eft!mtm~!vlm0Lccas!Oaes{\$^qtnp)O^][W
+Vk~ibe"ap\`dap{0dtazi!okfcugv(dn"\`g0hvw(ttv}&O^][WO^][WO^][W
+Vms)0![k}0bmqdt&ta(x\`f\$i0qmpao"kn0gpqad!hqasd#[WO^][WO^][W
+Xgp(Qomp\`us"Wa|m{\$Eurqeou!*]ICL+*WO^][WO^][WO^][WO^][WO^][W
+Zakg{hgY(Inw\$ibd"\`mcukjmt!vk(rd"iacmg\`(rx"e(vnpp}~d,[WO^][W
+Xmq(s\`l\$ouu"e(wdlqa~d"Eeemgp(g"]m~emv(rx"\`gyoe\$|xd"bg|mmsa~f8\$(=,Okzu,/
+Xmq(s\`l\$eqjg\$\`m{\$qugv(rx"fgymkjo0uja(xdnh(tv\$gv!kp&O^][W
+Xmq(s\`l\$xbnvakd!{k}brghn0gpke0cnek{!fviwnlw(rx"\`gyoe\$|xd"bg|mmsa~f8\$(=,Okzu,/
+Xmq(s\`l#|0fgp(rx"p\`u!qji{d,[WO^][WO^][WO^][WO^][WO^][WO^][W
+Zakg{hgY(Inw\$kxnia(o"p\`u!dkzdtla(snmoau/"\$%=Lmvm=,][WO^][W
+Xmq(vdgh(|hia(cnoag~d"m{0qwhdyoe\$qtp\$duf,[WO^][WO^][WO^][W
+Xmq(x\`ta(dn"k}dvkp(dig\$[\`i{jp0np\$xqx"lmb/][WO^][WO^][WO^][W
+Zakg{hgY(Inw\$\`u\`p\$|xd"bgbuwjm0bmkcyd%w(xhqwa~f#[WO^][WO^][W
+Xmq(}\`{\$ouu"vasi"wm|mkjo0mgp|usq((rtv\$juvcvm0nd\$juhlc(rmcgc}\`khmt 
+Xmq(gdaft!Qliy,Jqdee"fq0rjaidikjo0xmqz0bp}{{okbm0vkp\`tv\$\`qwkjo0epe~!\`hge,
+Zakg{hgY(Inw\${g\`nhggdf\$|xd"bgbuwjm1^][WO^][WO^][WO^][WO^][W
+Xmq(g\`lp(dn"vmw\`kj(cupafwuj;(0Uuk(|dtadc!clmqe"m{0\`"c}urvlgerg%
+Xmq(ghnh(uoak}~ugv(q!ved|-"\`ibj.\$i~e"czedqkeu!avmquwvm>/,[W
+`;

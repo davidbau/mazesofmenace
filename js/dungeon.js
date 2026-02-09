@@ -46,11 +46,11 @@ import {
     WAN_DIGGING, SPE_HEALING, SPE_BLANK_PAPER, SPE_NOVEL,
     objectData, bases,
 } from './objects.js';
-import {
-    RUMOR_TRUE_TEXTS, RUMOR_FALSE_TEXTS,
-    RUMOR_TRUE_LINE_BYTES, RUMOR_FALSE_LINE_BYTES,
-} from './rumor_data.js';
+import { RUMORS_FILE_TEXT } from './rumor_data.js';
 import { themerooms_generate } from './themerms.js';
+import { parseEncryptedDataFile, parseRumorsFile } from './hacklib.js';
+import { EPITAPH_FILE_TEXT } from './epitaph_data.js';
+import { ENGRAVE_FILE_TEXT } from './engrave_data.js';
 
 // ========================================================================
 // rect.c -- Rectangle pool for BSP room placement
@@ -1552,49 +1552,23 @@ function wipeout_text(text, cnt) {
 
 // C ref: engrave.c random_engraving() — engraving texts from ENGRAVEFILE
 // These are the decoded texts from the compiled dat/engrave file.
-const ENGRAVE_TEXTS = [
-    'No matter where you go, there you are.',
-    'Elbereth', 'Vlad was here', 'ad aerarium', 'Owlbreath', 'Galadriel',
-    'Kilroy was here', 'Frodo lives', 'A.S. ->', '<- A.S.',
-    "You won't get it up the steps",
-    "Lasciate ogni speranza o voi ch'entrate.",
-    'Well Come', 'We apologize for the inconvenience.',
-    'See you next Wednesday', 'notary sojak',
-    'For a good time call 8?7-5309',
-    "Please don't feed the animals.",
-    "Madam, in Eden, I'm Adam.",
-    'Two thumbs up!', 'Hello, World!', "You've got mail!", 'As if!',
-    'BAD WOLF', 'Arooo!  Werewolves of Yendor!', 'Dig for Victory here',
-    'Gaius Julius Primigenius was here.  Why are you late?',
-    "Don't go this way", 'Go left --->', '<--- Go right',
-    'X marks the spot', 'X <--- You are here.', 'Here be dragons',
-    'Save now, and do your homework!',
-    "There was a hole here.  It's gone now.",
-    'The Vibrating Square', 'This is a pit!',
-    'This is not the dungeon you are looking for.',
-    "Watch out, there's a gnome with a wand of death behind that door!",
-    'This square deliberately left blank.',
-    'Haermund Hardaxe carved these runes',
-    "Need a light?  Come visit the Minetown branch of Izchak's Lighting Store!",
-    'Snakes on the Astral Plane - Soon in a dungeon near you',
-    'You are the one millionth visitor to this place!  Please wait 200 turns for your wand of wishing.',
-    'Warning, Exploding runes!',
-    'If you can read these words then you are not only a nerd but probably dead.',
-    'The cake is a lie',
-];
-// Byte lengths of each data line in the compiled engrave file (including newline)
-const ENGRAVE_LINE_BYTES = [
-    60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60,
-    60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60,
-    60, 60, 60, 60, 60, 60, 66, 60, 60, 74, 60, 98, 60, 76, 60,
-];
-const ENGRAVE_FILE_CHUNKSIZE = 2894;
+// Engrave data — parsed at module load from encrypted string constant.
+const { texts: ENGRAVE_TEXTS, lineBytes: ENGRAVE_LINE_BYTES, chunksize: ENGRAVE_FILE_CHUNKSIZE } =
+    parseEncryptedDataFile(ENGRAVE_FILE_TEXT);
 
-// C ref: rumors file section sizes (from compiled dat/rumors header)
-const RUMOR_TRUE_SIZE = 23875;
-const RUMOR_FALSE_SIZE = 25762;
+// Rumor data — parsed at module load from encrypted string constant.
+// C ref: rumors file has two sections (true + false) with sizes in header.
+const { trueTexts: RUMOR_TRUE_TEXTS, trueLineBytes: RUMOR_TRUE_LINE_BYTES, trueSize: RUMOR_TRUE_SIZE,
+        falseTexts: RUMOR_FALSE_TEXTS, falseLineBytes: RUMOR_FALSE_LINE_BYTES, falseSize: RUMOR_FALSE_SIZE } =
+    parseRumorsFile(RUMORS_FILE_TEXT);
+
 // Padded line size for rumor/engrave files (MD_PAD_RUMORS)
 const RUMOR_PAD_LENGTH = 60;
+
+// Epitaph data — parsed at module load from encrypted string constant.
+// C ref: engrave.c make_grave() → get_rnd_text(EPITAPHFILE, ...)
+const { texts: epitaphTexts, lineBytes: epitaphLineBytes, chunksize: epitaphChunksize } =
+    parseEncryptedDataFile(EPITAPH_FILE_TEXT);
 
 // C ref: rumors.c get_rnd_line — simulate the random line selection from a
 // padded file section. Returns the index of the selected line.
@@ -2171,11 +2145,13 @@ function mkgrave(map, croom, depth) {
     loc.typ = GRAVE;
     // C ref: make_grave() → get_rnd_text(EPITAPHFILE, ...) when str=NULL
     // get_rnd_line calls rn2(filechunksize) to pick a random epitaph offset.
-    // filechunksize = epitaph file size minus "don't edit" comment = 24075 bytes.
     // This only happens when dobell is false (str=NULL); when dobell is true,
     // a fixed "Saved by the bell!" string is used (no RNG).
     if (!dobell) {
-        rn2(24075); // epitaph selection via get_rnd_text → get_rnd_line
+        const idx = get_rnd_line_index(
+            epitaphLineBytes, epitaphChunksize, RUMOR_PAD_LENGTH);
+        // TODO: use epitaph text for grave rendering
+        void (epitaphTexts[idx] || epitaphTexts[0]);
     }
     // C ref: possibly fill with gold
     if (!rn2(3)) {
