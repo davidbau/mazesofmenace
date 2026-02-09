@@ -59,6 +59,7 @@ export class Agent {
         this.lastAttemptedAttackPos = null; // position of last attempted attack target
         this.knownPetChars = new Set(); // monster chars confirmed as pets via displacement
         this.pendingDoorDir = null; // direction key for "In what direction?" prompt after 'o'
+        this.pendingQuaffLetter = null; // potion letter for "What do you want to quaff?" prompt
         this.committedTarget = null; // {x, y} of committed exploration target
         this.committedPath = null; // PathResult we're currently following
         this.targetStuckCount = 0; // how many turns we've been stuck on committed path
@@ -264,6 +265,16 @@ export class Agent {
         // "What do you want to eat?" -- select first item (a)
         if (lower.includes('want to eat')) return 'a';
 
+        // "What do you want to quaff?" -- use saved potion letter
+        if (lower.includes('want to quaff') || lower.includes('want to drink')) {
+            if (this.pendingQuaffLetter) {
+                const letter = this.pendingQuaffLetter;
+                this.pendingQuaffLetter = null;
+                return letter;
+            }
+            return '\x1b'; // ESC to cancel if no potion selected
+        }
+
         // "In what direction?" -- provide saved direction (from door-open, etc.)
         if (lower.includes('direction')) {
             if (this.pendingDoorDir) {
@@ -317,6 +328,23 @@ export class Agent {
         this.lastPosition = { x: px, y: py };
 
         // --- Emergency checks (highest priority) ---
+
+        // 0. If HP is very low (< 30%), use healing potion if available
+        if (this.status && this.status.hp < this.status.hpmax * 0.3) {
+            // Refresh inventory if needed
+            if (this.turnNumber - this.inventory.lastUpdate > 100 || this.inventory.lastUpdate === 0) {
+                await this._refreshInventory();
+            }
+
+            const healingPotions = this.inventory.findHealingPotions();
+            if (healingPotions.length > 0) {
+                // Quaff the first healing potion
+                const potion = healingPotions[0];
+                // Store the potion letter for the prompt handler
+                this.pendingQuaffLetter = potion.letter;
+                return { type: 'quaff', key: 'q', reason: `HP low (${this.status.hp}/${this.status.hpmax}), drinking ${potion.name}` };
+            }
+        }
 
         // 1. If HP is critical and we have no way to heal, try to flee
         if (this.status && this.status.hpCritical) {
