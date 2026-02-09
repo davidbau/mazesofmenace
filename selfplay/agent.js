@@ -737,13 +737,23 @@ export class Agent {
 
                 // After extensive searching, if still stuck, blacklist nearby targets and try elsewhere
                 if (this.levelStuckCounter > 100) {
+                    // On Dlvl 1, if very stuck (>200 turns), force aggressive random exploration
+                    // since we can't retreat upstairs
+                    if (this.dungeon.currentDepth === 1 && this.levelStuckCounter > 200) {
+                        const directions = ['h', 'j', 'k', 'l', 'y', 'u', 'b', 'n'];
+                        const randomDir = directions[Math.floor(Math.random() * directions.length)];
+                        return { type: 'random_move', key: randomDir, reason: `Dlvl 1 stuck >200 turns, random exploration` };
+                    }
+
                     // Blacklist all nearby frontier cells (they're probably unreachable)
                     const frontier = level.getExplorationFrontier();
+                    let blacklistedCount = 0;
                     for (const target of frontier) {
                         const dist = Math.max(Math.abs(target.x - px), Math.abs(target.y - py));
                         if (dist <= 5) {
                             const tKey = target.y * 80 + target.x;
                             this.failedTargets.add(tKey);
+                            blacklistedCount++;
                         }
                     }
                     // Also blacklist search candidates that we're stuck near
@@ -753,11 +763,17 @@ export class Agent {
                         if (dist <= 3) {
                             const cKey = cand.y * 80 + cand.x;
                             this.failedTargets.add(cKey);
+                            blacklistedCount++;
                         }
                     }
-                    // Reset stuck counter to try again with new targets
-                    this.stuckCounter = 0;
-                    this.levelStuckCounter = 0;
+
+                    // Only do this blacklisting once per stuck period
+                    // DON'T reset levelStuckCounter - let it keep growing to trigger other escapes
+                    if (blacklistedCount > 0) {
+                        this.stuckCounter = 0;
+                        // Reduce levelStuckCounter slightly but don't reset to 0
+                        this.levelStuckCounter = Math.max(50, this.levelStuckCounter - 30);
+                    }
                 }
             }
         }
