@@ -11,6 +11,7 @@ import { rn2 } from './rng.js';
 import { generate as generateKnox } from './levels/knox.js';
 import { generate as generateMedusa } from './levels/medusa.js';
 import { generate as generateMedusa2 } from './levels/medusa-2.js';
+import { generate as generateMedusa3 } from './levels/medusa-3.js';
 import { generate as generateSanctum } from './levels/sanctum.js';
 import { generate as generateValley } from './levels/valley.js';
 import { generate as generateTower1 } from './levels/tower1.js';
@@ -26,11 +27,25 @@ import { generate as generateBaalz } from './levels/baalz.js';
 import { generate as generateJuiblex } from './levels/juiblex.js';
 import { generate as generateOrcus } from './levels/orcus.js';
 
+// Main dungeon special levels
+import { generate as generateCastle } from './levels/castle.js';
+
 // Special room variants
 import { generate as generateBigroom } from './levels/bigroom.js';
 import { generate as generateBigroom2 } from './levels/bigroom-2.js';
 import { generate as generateBigroom3 } from './levels/bigroom-3.js';
 import { generate as generateBigroom4 } from './levels/bigroom-4.js';
+import { generate as generateBigroom5 } from './levels/bigroom-5.js';
+import { generate as generateBigroom6 } from './levels/bigroom-6.js';
+import { generate as generateBigroom7 } from './levels/bigroom-7.js';
+import { generate as generateBigroom8 } from './levels/bigroom-8.js';
+import { generate as generateBigroom9 } from './levels/bigroom-9.js';
+
+// Themed special levels
+import { generate as generateWater } from './levels/water.js';
+import { generate as generateLava } from './levels/lava.js';
+import { generate as generateGraveyard } from './levels/graveyard.js';
+import { generate as generateVault } from './levels/vault.js';
 
 // Sokoban levels
 import { generate as generateSoko1a } from './levels/soko1-1.js';
@@ -169,15 +184,26 @@ registerSpecialLevel(SOKOBAN, 2, [generateSoko2a, generateSoko2b], ['soko2-1', '
 registerSpecialLevel(SOKOBAN, 3, [generateSoko3a, generateSoko3b], ['soko3-1', 'soko3-2']);
 registerSpecialLevel(SOKOBAN, 4, [generateSoko4a, generateSoko4b], ['soko4-1', 'soko4-2']);
 
-// Register Medusa's lair and special rooms in main dungeon
+// Register special levels in main dungeon
 // In Dungeons of Doom, at depths that vary by dungeon generation
 // Using specific depths for testing (actual depths determined at runtime)
+registerSpecialLevel(DUNGEONS_OF_DOOM, 4, generateWater, 'water');
+registerSpecialLevel(DUNGEONS_OF_DOOM, 5, generateLava, 'lava');
+registerSpecialLevel(DUNGEONS_OF_DOOM, 6, generateGraveyard, 'graveyard');
+registerSpecialLevel(DUNGEONS_OF_DOOM, 7, generateVault, 'vault');
+registerSpecialLevel(DUNGEONS_OF_DOOM, 8, generateBigroom9, 'bigroom-9');
+registerSpecialLevel(DUNGEONS_OF_DOOM, 9, generateBigroom5, 'bigroom-5');
+registerSpecialLevel(DUNGEONS_OF_DOOM, 10, generateBigroom6, 'bigroom-6');
+registerSpecialLevel(DUNGEONS_OF_DOOM, 11, generateBigroom7, 'bigroom-7');
+registerSpecialLevel(DUNGEONS_OF_DOOM, 12, generateBigroom8, 'bigroom-8');
 registerSpecialLevel(DUNGEONS_OF_DOOM, 13, generateBigroom3, 'bigroom-3');
 registerSpecialLevel(DUNGEONS_OF_DOOM, 14, generateBigroom4, 'bigroom-4');
 registerSpecialLevel(DUNGEONS_OF_DOOM, 15, generateBigroom, 'bigroom');
 registerSpecialLevel(DUNGEONS_OF_DOOM, 16, generateBigroom2, 'bigroom-2');
+registerSpecialLevel(DUNGEONS_OF_DOOM, 17, generateCastle, 'castle');
 registerSpecialLevel(DUNGEONS_OF_DOOM, 20, generateMedusa, 'medusa');
 registerSpecialLevel(DUNGEONS_OF_DOOM, 21, generateMedusa2, 'medusa-2');
+registerSpecialLevel(DUNGEONS_OF_DOOM, 22, generateMedusa3, 'medusa-3');
 
 /**
  * Get list of all registered special levels
