@@ -14,7 +14,7 @@ import { simulatePostLevelInit } from '../../js/u_init.js';
 import { Player, roles } from '../../js/player.js';
 import { NORMAL_SPEED, A_DEX, A_CON } from '../../js/config.js';
 import { rhack } from '../../js/commands.js';
-import { movemon } from '../../js/monmove.js';
+import { movemon, initrack, settrack } from '../../js/monmove.js';
 import { FOV } from '../../js/vision.js';
 
 // Terrain type names for readable diffs (matches C's levltyp[] in cmd.c)
@@ -289,6 +289,7 @@ class HeadlessGame {
         this.turnCount = 0;
         this.wizard = true;
         this.seerTurn = opts.seerTurn || 0;
+        initrack(); // C ref: track.c — initialize player track buffer
     }
 
     // C ref: mon.c mcalcmove() — random rounding of monster speed
@@ -302,6 +303,8 @@ class HeadlessGame {
 
     // C ref: allmain.c moveloop_core() — per-turn effects
     simulateTurnEnd() {
+        // C ref: allmain.c:239 — settrack() called after movemon, before moves++
+        settrack(this.player);
         this.turnCount++;
         this.player.turns = this.turnCount;
 
@@ -341,8 +344,9 @@ class HeadlessGame {
         const dex = this.player.attributes ? this.player.attributes[A_DEX] : 14;
         rn2(40 + dex * 3); // engrave wipe
 
-        if (this.turnCount >= this.seerTurn) {
-            this.seerTurn = this.turnCount + rn1(31, 15);
+        // C ref: allmain.c:414 — svm.moves starts at 1, JS turnCount starts at 0
+        if (moves >= this.seerTurn) {
+            this.seerTurn = moves + rn1(31, 15);
         }
     }
 

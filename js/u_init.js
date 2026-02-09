@@ -236,7 +236,7 @@ function makedog(map, player, depth) {
             droptime: 0,
             dropdist: 10000,
             whistletime: 0,
-            ogoal: { x: -1, y: -1 },
+            ogoal: { x: 0, y: 0 },
             abuse: 0,
             revivals: 0,
             mhpmax_penalty: 0,

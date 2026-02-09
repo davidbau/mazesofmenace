@@ -3,12 +3,12 @@
 // Focus: exact RNG consumption alignment with C NetHack
 
 import { COLNO, ROWNO, STONE, IS_WALL, IS_DOOR, IS_ROOM,
-         ACCESSIBLE, CORR, DOOR, D_CLOSED, D_LOCKED,
+         ACCESSIBLE, CORR, DOOR, D_CLOSED, D_LOCKED, D_BROKEN,
          POOL, LAVAPOOL,
          NORMAL_SPEED, isok } from './config.js';
 import { rn2, rnd } from './rng.js';
 import { monsterAttackPlayer } from './combat.js';
-import { FOOD_CLASS, BOULDER } from './objects.js';
+import { FOOD_CLASS, BOULDER, ROCK_CLASS, BALL_CLASS, CHAIN_CLASS } from './objects.js';
 import { dogfood, dog_eat, can_carry, DOGFOOD, CADAVER, ACCFOOD, MANFOOD, APPORT,
          POISON, UNDEF, TABU } from './dog.js';
 import { couldsee, m_cansee } from './vision.js';
@@ -16,6 +16,45 @@ import { PM_GRID_BUG } from './monsters.js';
 
 const MTSZ = 4;           // C ref: monst.h — track history size
 const SQSRCHRADIUS = 5;   // C ref: dogmove.c — object search radius
+
+// ========================================================================
+// Player track — C ref: track.c
+// Circular buffer recording player positions for pet pathfinding.
+// ========================================================================
+const UTSZ = 100;         // C ref: track.c — track buffer size
+let _utrack = new Array(UTSZ).fill(null).map(() => ({ x: 0, y: 0 }));
+let _utcnt = 0;
+let _utpnt = 0;
+
+export function initrack() {
+    _utrack = new Array(UTSZ).fill(null).map(() => ({ x: 0, y: 0 }));
+    _utcnt = 0;
+    _utpnt = 0;
+}
+
+// C ref: track.c settrack() — record player position (called after movemon, before moves++)
+export function settrack(player) {
+    if (_utcnt < UTSZ) _utcnt++;
+    if (_utpnt === UTSZ) _utpnt = 0;
+    _utrack[_utpnt].x = player.x;
+    _utrack[_utpnt].y = player.y;
+    _utpnt++;
+}
+
+// C ref: track.c gettrack() — find most recent track entry adjacent to (x,y)
+// Returns the track entry if distmin=1 (adjacent), null if distmin=0 (same pos) or not found.
+function gettrack(x, y) {
+    let cnt = _utcnt;
+    let idx = _utpnt;
+    while (cnt-- > 0) {
+        if (idx === 0) idx = UTSZ - 1;
+        else idx--;
+        const tc = _utrack[idx];
+        const ndist = Math.max(Math.abs(x - tc.x), Math.abs(y - tc.y)); // distmin
+        if (ndist <= 1) return ndist ? tc : null;
+    }
+    return null;
+}
 
 // C direction tables (C ref: monmove.c)
 const xdir = [0, 1, 1, 1, 0, -1, -1, -1];
@@ -51,6 +90,15 @@ function mfndpos(mon, map, player) {
 
             // C ref: door checks
             if (IS_DOOR(loc.typ) && (loc.flags & (D_CLOSED | D_LOCKED))) continue;
+
+            // C ref: mon.c:2228-2238 — no diagonal moves through doorways
+            // If either current pos or target is a non-broken door, diagonal blocked
+            if (nx !== omx && ny !== omy) {
+                const monLoc = map.at(omx, omy);
+                if ((IS_DOOR(loc.typ) && (loc.flags & ~D_BROKEN))
+                    || (monLoc && IS_DOOR(monLoc.typ) && (monLoc.flags & ~D_BROKEN)))
+                    continue;
+            }
 
             // C ref: MON_AT — skip positions with other monsters
             if (map.monsterAt(nx, ny)) continue;
@@ -258,6 +306,64 @@ function dog_move(mon, map, player, display, fov) {
     // C ref: dogmove.c — whappr = (monstermoves - edog->whistletime < 5)
     const whappr = (turnCount - edog.whistletime) < 5 ? 1 : 0;
 
+    // C ref: dogmove.c:1034-1039 — dog_invent (handle eating/pickup at current position)
+    const nofetchClasses = new Set([BALL_CLASS, CHAIN_CLASS, ROCK_CLASS]);
+    if (edog && !mon.meating) {
+        // C ref: dogmove.c:413 — droppables check
+        const hasDroppables = mon.minvent && mon.minvent.length > 0;
+        if (hasDroppables) {
+            // C ref: dogmove.c:415-422 — maybe drop carried item
+            if (!rn2(udist + 1) || !rn2(edog.apport)) {
+                if (rn2(10) < edog.apport) {
+                    // Drop item (simplified: remove from inventory, place on map)
+                    const dropped = mon.minvent.shift();
+                    if (dropped) {
+                        dropped.ox = omx;
+                        dropped.oy = omy;
+                        map.objects.push(dropped);
+                        if (edog.apport > 1) edog.apport--;
+                        edog.dropdist = udist;
+                        edog.droptime = turnCount;
+                    }
+                }
+            }
+        } else {
+            // C ref: dogmove.c:423-473 — check for object at pet position
+            // Find top object at pet's position (LIFO order like C's level.objects)
+            let floorObj = null;
+            for (let oi = map.objects.length - 1; oi >= 0; oi--) {
+                const obj = map.objects[oi];
+                if (obj.ox === omx && obj.oy === omy) {
+                    floorObj = obj;
+                    break;
+                }
+            }
+            if (floorObj && !nofetchClasses.has(floorObj.oclass)) {
+                const edible = dogfood(mon, floorObj, turnCount);
+                if ((edible <= CADAVER
+                     || (edog.mhpmax_penalty && edible === ACCFOOD))
+                    && could_reach_item(map, mon, omx, omy)) {
+                    // Eat the object
+                    dog_eat(mon, floorObj, map, turnCount);
+                    return; // C ref: goto newdogpos — eating counts as move
+                }
+                const carryamt = can_carry(mon, floorObj);
+                if (carryamt > 0 && !floorObj.cursed
+                    && could_reach_item(map, mon, omx, omy)) {
+                    if (rn2(20) < edog.apport + 3) {
+                        if (rn2(udist) || !rn2(edog.apport)) {
+                            // Pick up object
+                            const idx = map.objects.indexOf(floorObj);
+                            if (idx >= 0) map.objects.splice(idx, 1);
+                            if (!mon.minvent) mon.minvent = [];
+                            mon.minvent.push(floorObj);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // dog_goal — scan nearby objects for food/items
     // C ref: dogmove.c dog_goal():500-554
     let gx = 0, gy = 0, gtyp = UNDEF;
@@ -318,7 +424,7 @@ function dog_move(mon, map, player, display, fov) {
     }
 
     // Follow player logic
-    // C ref: dogmove.c:559-594
+    // C ref: dogmove.c:567-609
     let appr = 0;
     if (gtyp === UNDEF || (gtyp !== DOGFOOD && gtyp !== APPORT
                            && turnCount < edog.hungrytime)) {
@@ -328,7 +434,7 @@ function dog_move(mon, map, player, display, fov) {
         appr = (udist >= 9) ? 1 : (mon.flee) ? -1 : 0;
 
         if (udist > 1) {
-            // C ref: dogmove.c:568-571 — approach check
+            // C ref: dogmove.c:575-578 — approach check
             const playerLoc = map.at(player.x, player.y);
             const playerInRoom = playerLoc && IS_ROOM(playerLoc.typ);
             if (!playerInRoom || !rn2(4) || whappr
@@ -337,7 +443,7 @@ function dog_move(mon, map, player, display, fov) {
             }
         }
 
-        // C ref: dogmove.c:573-592 — check stairs, food in inventory, portal
+        // C ref: dogmove.c:583-606 — check stairs, food in inventory, portal
         if (appr === 0) {
             // Check if player is on stairs
             if ((player.x === map.upstair.x && player.y === map.upstair.y)
@@ -359,8 +465,56 @@ function dog_move(mon, map, player, display, fov) {
         appr = 1;
     }
 
-    // C ref: dogmove.c — confused pets don't approach or flee
+    // C ref: dogmove.c:610-611 — confused pets don't approach or flee
     if (mon.confused) appr = 0;
+
+    // C ref: dogmove.c:614-647 — redirect goal when pet can't see player
+    // If goal is at player position but pet can't see them, use track/ogoal/door
+    const FARAWAY = COLNO + 2;
+    if (gx === player.x && gy === player.y && !inMastersSight) {
+        const cp = gettrack(omx, omy);
+        if (cp) {
+            gx = cp.x;
+            gy = cp.y;
+            if (edog) edog.ogoal = { x: 0, y: 0 };
+        } else {
+            // C ref: dogmove.c:625-629 — reuse previous goal
+            if (edog && edog.ogoal && edog.ogoal.x
+                && (edog.ogoal.x !== omx || edog.ogoal.y !== omy)) {
+                gx = edog.ogoal.x;
+                gy = edog.ogoal.y;
+                edog.ogoal = { x: 0, y: 0 };
+            } else {
+                // C ref: dogmove.c:631-643 — find nearest visible cell to player
+                // C uses do_clear_area(omx, omy, 9, wantdoor, &fardist) which calls
+                // view_from() for non-hero centers — full LOS from pet position.
+                // We approximate with clear_path LOS checks per cell.
+                let bestDist = FARAWAY * FARAWAY;
+                gx = FARAWAY; gy = FARAWAY;
+                for (let di = -9; di <= 9; di++) {
+                    for (let dj = -9; dj <= 9; dj++) {
+                        const cx = omx + di, cy = omy + dj;
+                        if (!isok(cx, cy)) continue;
+                        // C checks LOS visibility from pet, not just typ
+                        if (!m_cansee(mon, map, cx, cy)) continue;
+                        const ndist = (cx - player.x) ** 2 + (cy - player.y) ** 2;
+                        if (ndist < bestDist) {
+                            gx = cx; gy = cy;
+                            bestDist = ndist;
+                        }
+                    }
+                }
+                if (gx === FARAWAY || (gx === omx && gy === omy)) {
+                    gx = player.x;
+                    gy = player.y;
+                } else if (edog) {
+                    edog.ogoal = { x: gx, y: gy };
+                }
+            }
+        }
+    } else if (edog) {
+        edog.ogoal = { x: 0, y: 0 };
+    }
 
     // ========================================================================
     // Position evaluation loop — uses mfndpos for C-faithful position collection
