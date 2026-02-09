@@ -392,6 +392,7 @@ class HeadlessAdapter {
     constructor(game) {
         this.game = game;
         this._running = true;
+        this.stripColors = false;
     }
 
     async start() { this._running = true; }
@@ -415,7 +416,17 @@ class HeadlessAdapter {
     }
 
     async readScreen() {
-        return this.game.display.grid;
+        if (!this.stripColors) return this.game.display.grid;
+        const grid = this.game.display.grid;
+        const stripped = [];
+        for (let r = 0; r < grid.length; r++) {
+            stripped[r] = [];
+            for (let c = 0; c < grid[r].length; c++) {
+                const cell = grid[r][c];
+                stripped[r][c] = cell ? { ch: cell.ch, color: 7 } : { ch: ' ', color: 7 };
+            }
+        }
+        return stripped;
     }
 
     async isRunning() {
@@ -442,8 +453,16 @@ export async function runHeadless(options = {}) {
 
     const game = new HeadlessGame(seed, roleIndex);
     const adapter = new HeadlessAdapter(game);
+    if (options.colorless) {
+        adapter.stripColors = true;
+    }
+    const onPerceive = options.onPerceive
+        ? (info) => options.onPerceive({ ...info, game, adapter })
+        : null;
+
     const agent = new Agent(adapter, {
         maxTurns,
+        onPerceive,
         onTurn: (info) => {
             if (verbose) {
                 const act = info.action;

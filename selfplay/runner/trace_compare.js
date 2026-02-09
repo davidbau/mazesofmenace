@@ -10,7 +10,7 @@ import path from 'path';
 import { runHeadless } from './headless_runner.js';
 
 function parseArgs(argv) {
-    const opts = { trace: null, turns: null, output: null };
+    const opts = { trace: null, turns: null, output: null, dx: 0, dy: 0, ignorePosition: false };
     for (let i = 0; i < argv.length; i++) {
         const arg = argv[i];
         if (arg.startsWith('--trace=')) opts.trace = arg.split('=')[1];
@@ -19,8 +19,13 @@ function parseArgs(argv) {
         else if (arg === '--turns' && argv[i + 1]) opts.turns = parseInt(argv[++i], 10);
         else if (arg.startsWith('--output=')) opts.output = arg.split('=')[1];
         else if (arg === '--output' && argv[i + 1]) opts.output = argv[++i];
+        else if (arg.startsWith('--dx=')) opts.dx = parseInt(arg.split('=')[1], 10);
+        else if (arg === '--dx' && argv[i + 1]) opts.dx = parseInt(argv[++i], 10);
+        else if (arg.startsWith('--dy=')) opts.dy = parseInt(arg.split('=')[1], 10);
+        else if (arg === '--dy' && argv[i + 1]) opts.dy = parseInt(argv[++i], 10);
+        else if (arg === '--ignore-position') opts.ignorePosition = true;
         else if (arg === '--help' || arg === '-h') {
-            console.log('Usage: trace_compare.js --trace <file> [--turns N] [--output file]');
+            console.log('Usage: trace_compare.js --trace <file> [--turns N] [--output file] [--dx N] [--dy N] [--ignore-position]');
             process.exit(0);
         }
     }
@@ -57,7 +62,7 @@ function buildJsTrace(meta, turns) {
     return trace;
 }
 
-function compareTurns(cTurns, jsTurns) {
+function compareTurns(cTurns, jsTurns, options) {
     const cByTurn = new Map();
     for (const t of cTurns) cByTurn.set(t.turn, t);
 
@@ -69,9 +74,15 @@ function compareTurns(cTurns, jsTurns) {
             continue;
         }
 
+        const jsPos = js.position
+            ? { x: js.position.x + options.dx, y: js.position.y + options.dy }
+            : js.position;
+
         const diffs = [];
         if (c.action?.type !== js.action?.type) diffs.push('action');
-        if (c.position?.x !== js.position?.x || c.position?.y !== js.position?.y) diffs.push('position');
+        if (!options.ignorePosition) {
+            if (c.position?.x !== jsPos?.x || c.position?.y !== jsPos?.y) diffs.push('position');
+        }
         if (c.hp !== js.hp || c.hpmax !== js.hpmax) diffs.push('hp');
         if (c.dlvl !== js.dlvl) diffs.push('dlvl');
 
@@ -88,7 +99,7 @@ function compareTurns(cTurns, jsTurns) {
                 },
                 js: {
                     action: js.action?.type,
-                    position: js.position,
+                    position: jsPos,
                     hp: js.hp,
                     hpmax: js.hpmax,
                     dlvl: js.dlvl,
@@ -117,6 +128,7 @@ async function main() {
         maxTurns,
         verbose: false,
         dumpMaps: false,
+        colorless: true,
         onTurn: (info) => {
             jsTurns.push({
                 turn: info.turn,
@@ -133,7 +145,7 @@ async function main() {
         },
     });
 
-    const mismatches = compareTurns(cTrace.turns || [], jsTurns);
+    const mismatches = compareTurns(cTrace.turns || [], jsTurns, opts);
     console.log(`Compared ${jsTurns.length} JS turns to ${cTrace.turns?.length || 0} C turns`);
     console.log(`Mismatched turns: ${mismatches.length}`);
     mismatches.slice(0, 20).forEach(m => {

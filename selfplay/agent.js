@@ -30,6 +30,7 @@ export class Agent {
      * @param {number} [options.maxTurns=10000] - Maximum turns before giving up
      * @param {number} [options.moveDelay=0] - Delay between moves in ms (for demo mode)
      * @param {function} [options.onTurn] - Callback after each turn: (turnInfo) => void
+     * @param {function} [options.onPerceive] - Callback after screen parse: (info) => void
      * @param {function} [options.shouldStop] - Check if agent should stop: () => boolean
      */
     constructor(adapter, options = {}) {
@@ -37,6 +38,7 @@ export class Agent {
         this.maxTurns = options.maxTurns || 10000;
         this.moveDelay = options.moveDelay || 0;
         this.onTurn = options.onTurn || null;
+        this.onPerceive = options.onPerceive || null;
         this.shouldStop = options.shouldStop || (() => false);
 
         // Perception
@@ -98,6 +100,13 @@ export class Agent {
 
             this.screen = parseScreen(grid);
             this.status = parseStatus(this.screen.statusLine1, this.screen.statusLine2);
+            if (this.onPerceive) {
+                this.onPerceive({
+                    turn: this.turnNumber + 1,
+                    screen: this.screen,
+                    status: this.status,
+                });
+            }
 
             // Check for game over
             if (!(await this.adapter.isRunning())) {
