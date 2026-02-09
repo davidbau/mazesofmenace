@@ -191,10 +191,10 @@ _checkLastMoveFailed() {
 - 500 turns only covered ~65% of Dlvl 1 (no stairs found yet)
 - Root cause: Dlvl 1 with seed 42 may not have generated downstairs in explored area
 
-### Combat Deaths
-- JS agent dies on Dlvl 3 (HP management minimal)
-- No tactical combat (just walks into adjacent monsters)
-- No inventory management (can't use items)
+### Combat Limitations
+- Improved HP management (rests when safe, uses healing potions when critical)
+- Limited tactical combat (flee from dangerous monsters, but no kiting/ranged)
+- Basic inventory management (healing potions, food) - no scrolls/wands yet
 
 ### No Strategic Play
 - Can't identify items
@@ -217,15 +217,59 @@ Added intelligent threat evaluation system in `selfplay/brain/danger.js`:
 
 The agent now makes informed combat decisions based on spoiler knowledge rather than blindly attacking everything.
 
+### HP Management and Rest System (2026-02-09)
+
+Implemented intelligent HP recovery to prevent agent from fighting at dangerously low HP:
+
+- **Probabilistic Regen:** NetHack HP regen is (XL + CON)% chance per turn (only ~11% at level 1!)
+- **Rest Strategy:** Agent rests when HP < 50% and no monsters nearby
+- **Rest Limits:** Cap at 50 turns (moderate HP) or 100 turns (critical HP < 25%)
+- **Progress Tracking:** Reset counter when HP increases (natural regen occurred)
+- **Prevent Infinite Loop:** After max rest turns, give up and continue (HP heals while exploring)
+
+Key insight: Since HP regeneration is probabilistic, the agent can't wait indefinitely for full HP. The rest limit ensures the agent doesn't get stuck in an infinite rest loop when regeneration is slow.
+
+### Inventory Management and Item Usage (2026-02-09)
+
+Implemented inventory tracking and basic item usage for survival:
+
+- **Inventory Tracking:** Parse inventory screen ('i' command) to know what items we have
+- **Food Management:** Check inventory before eating (prevents infinite eat loop when no food)
+- **Healing Potions:** Automatically quaff healing potions when HP < 30% (critical threshold)
+- **Smart Refresh:** Update inventory every 100 turns or when items likely changed
+- **Category Detection:** Identify items by category (Weapons, Armor, Comestibles, Potions, etc.)
+
+Item usage priority:
+1. HP < 30%: Drink healing potion if available
+2. HP < 20%: Pray to god if no items and can't flee
+3. HP critical: Flee from monsters
+4. HP < 50%: Rest when safe (up to 50 turns)
+5. Hungry: Eat food if available
+
+This significantly improves survival by using available resources before relying on fleeing or natural regeneration.
+
+### Prayer System (2026-02-09)
+
+Implemented divine intervention as a last-resort survival mechanism:
+
+- **Prayer Tracker:** Monitors god timeout (300 turns minimum between prayers)
+- **Smart Prayer:** Only pray when HP < 20%, no healing items, and can't flee
+- **Priority System:** Healing potions > prayer > fleeing (use resources wisely)
+- **Timeout Management:** Prevents angering god by praying too frequently
+
+Prayer is NetHack's most powerful survival tool - the god can fully heal, cure sickness, and save from certain death. The agent now uses this strategically as a last resort when all other options are exhausted.
+
 ## Test Coverage
 
-48 passing unit tests:
+63 passing unit tests:
 - Pathfinding (10 tests): A*, BFS, exploration, diagonal restrictions
 - Screen Parser (14 tests): message parsing, cell classification, feature detection
 - Status Parser (9 tests): HP, stats, conditions
 - Map Tracker (4 tests): explored cells, level changes, features
 - Tmux capture (1 test): plain text parsing
 - Danger Assessment (10 tests): threat levels, engagement decisions, instadeath prevention
+- Inventory Tracking (6 tests): parsing, food/potion detection, item queries
+- Prayer Timing (9 tests): timeout management, decision logic, priority system
 
 ## Next Steps
 

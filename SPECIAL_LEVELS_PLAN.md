@@ -277,19 +277,62 @@ The recommended order prioritizes getting testable results quickly:
 - `des.exclusion()`: Monster generation exclusion zones
 - `des.non_passwall()`: Passwall prevention
 
-**Map flipping challenge:**
-- C NetHack randomly flips maps horizontally and/or vertically based on RNG
-- Controlled by `allow_flips` coder flag (bit 0=vertical, bit 1=horizontal)
-- seed1 soko4 has vertical flip applied (verified in C trace)
-- JS currently places maps without flipping
-- **TODO**: Implement flip logic to match C's random_dir() calls
+**Map flipping implemented:**
+- C NetHack randomly flips entire level after all maps placed
+- `flip_level_rnd()` called at end of sp_level_loader (not per-map)
+- Uses `rn2(2)` to decide each flip: vertical (bit 0), horizontal (bit 1)
+- Controlled by `allow_flips` coder flag: 3=both, 2=horiz only, 1=vert only, 0=none
+- JS implementation in `flipLevelRandom()`:
+  - Finds bounds of non-STONE terrain
+  - Applies FlipX(val) = (maxx - val) + minx for horizontal
+  - Applies FlipY(val) = (maxy - val) + miny for vertical
+  - Swaps cells in-place within flip area
+- Called via `finalize_level()` at end of level generation
+- Tested with seed1 soko4 (vertical flip case) - works correctly
 
 **Next steps identified:**
-1. Implement wall_extends() for proper junction types
-2. Implement map flipping (horizontal/vertical)
+1. ~~Implement wall_extends() for proper junction types~~ ✓ DONE
+2. ~~Implement map flipping (horizontal/vertical)~~ ✓ DONE
 3. Add object placement system
 4. Add trap placement system
 5. Port remaining 7 Sokoban levels (soko1-2, soko2-1/2, soko3-1/2, soko4-2)
+6. Integrate special level loading into makelevel() flow
+
+### Wall Junction Computation (wall_extends)
+
+**Implemented complete wallification system:**
+- `wallification(map)`: Main algorithm applying iterative wall junction computation
+- `isWall(typ)`: Checks if terrain is any wall type (VWALL through TRWALL)
+- Directional extension functions: `extendsNorth/South/East/West(typ)`
+  - Based on box-drawing character geometry
+  - ┌ (TLCORNER) extends south + east
+  - ┐ (TRCORNER) extends south + west
+  - └ (BLCORNER) extends north + east
+  - ┘ (BRCORNER) extends north + west
+  - ├ (TRWALL) extends north + south + east
+  - ┤ (TLWALL) extends north + south + west
+  - ┬ (TDWALL) extends south + east + west
+  - ┴ (TUWALL) extends north + east + west
+  - ┼ (CROSSWALL) extends all four directions
+  - │ (VWALL) extends north + south
+  - ─ (HWALL) extends east + west
+
+**Algorithm:**
+1. For each wall cell, check 4 cardinal neighbors
+2. Determine connectivity: does neighbor extend toward this cell?
+3. Assign junction type based on N/S/E/W connectivity pattern
+4. Iterate until no changes (convergence)
+5. Max 100 iterations to prevent infinite loops
+
+**Integration:**
+- Called in `finalize_level()` before flipping
+- Respects original wall placement from ASCII maps
+- Isolated walls keep their original type
+
+**Test coverage:**
+- 4 tests in wallification.test.js
+- Validates corners, T-junctions, convergence, isolated walls
+- All 15 sp_lev tests passing
 
 ---
 
