@@ -30,7 +30,8 @@ import { GameMap, makeRoom, FILL_NONE, FILL_NORMAL } from './map.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import { getbones } from './bones.js';
 import { mkobj, mksobj, weight, setLevelDepth } from './mkobj.js';
-import { makemon, NO_MM_FLAGS, MM_NOGRP } from './makemon.js';
+import { makemon, mkclass, NO_MM_FLAGS, MM_NOGRP } from './makemon.js';
+import { S_HUMAN } from './monsters.js';
 import { init_objects } from './o_init.js';
 import { roles } from './player.js';
 import {
@@ -1602,10 +1603,12 @@ function makeniche(map, depth, trap_type) {
                 if (!rn2(5) && IS_WALL(map.at(xx, yy).typ)) {
                     map.at(xx, yy).typ = IRONBARS;
                     if (rn2(3)) {
-                        // C ref: mkcorpstat(CORPSE, 0, mkclass(S_HUMAN, 0), ...)
-                        // TODO: port mkclass (consumes ~41 rn2 + rnd calls) + mksobj(CORPSE)
-                        // For now, skip — iron bars + corpse is rare (~2% of niches)
-                        mksobj(CORPSE, true, false);
+                        // C ref: mkcorpstat(CORPSE, 0, mkclass(S_HUMAN, 0), xx, yy+dy, TRUE)
+                        const mndx = mkclass(S_HUMAN, 0, depth);
+                        const corpse = mksobj(CORPSE, true, false);
+                        if (corpse && mndx >= 0) {
+                            corpse.corpsenm = mndx;
+                        }
                     }
                 }
                 // C ref: mklev.c:780-782 — scroll of teleportation in niche
@@ -2113,8 +2116,19 @@ const extra_classes = [
 // C ref: mklev.c fill_ordinary_room()
 // C ref: ROOM_IS_FILLABLE: (rtype == OROOM || rtype == THEMEROOM) && needfill == FILL_NORMAL
 function fill_ordinary_room(map, croom, depth, bonusItems) {
-    if (croom.needfill !== FILL_NORMAL) return;
     if (croom.rtype !== OROOM && croom.rtype !== THEMEROOM) return;
+
+    // C ref: mklev.c:944-952 — recursively fill subrooms first, before
+    // checking needfill. An unfilled outer room shouldn't block filling
+    // of a filled inner subroom.
+    for (let i = 0; i < croom.nsubrooms; i++) {
+        const subroom = croom.sbrooms[i];
+        if (subroom) {
+            fill_ordinary_room(map, subroom, depth, false);
+        }
+    }
+
+    if (croom.needfill !== FILL_NORMAL) return;
 
     // Put a sleeping monster inside (1/3 chance)
     // C ref: (u.uhave.amulet || !rn2(3)) && somexyspace(croom, &pos)

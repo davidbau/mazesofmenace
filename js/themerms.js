@@ -645,14 +645,18 @@ function themeroom_default(map, depth) {
     return true;
 }
 
-// C ref: themerms.lua picks 5-7 — des.room({ type="themed", filled=1 })
+// C ref: themerms.lua picks 5-7 — des.room({ type="themed", ... })
 // with themeroom_fill callback. Pick 6 is dark (lit=0).
+// Only pick 7 has filled=1; picks 5 and 6 default to filled=0 in C
+// (gi.in_mk_themerooms makes the default 0 in lspo_room).
 function themeroom_desroom_fill(map, pick, depth) {
     rn2(100);
     if (!create_room(map, -1, -1, -1, -1, -1, -1, OROOM, -1, depth, true))
         return false;
     const room = map.rooms[map.nroom - 1];
-    room.needfill = FILL_NORMAL;
+    if (pick === 7) {
+        room.needfill = FILL_NORMAL;
+    }
     room.rtype = THEMEROOM;
     const forceLit = (pick === 6) ? false : undefined;
     simulateThemeroomFill(map, room, depth, forceLit);

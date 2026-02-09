@@ -316,7 +316,7 @@ function mksobj_init(obj, artif, skipErosion) {
                     if (mndx >= 0 && mons[mndx].nutrition > 0
                         && !(mons[mndx].geno & G_NOCORPSE)) {
                         obj.corpsenm = mndx;
-                        rn2(10); // set_tin_variety RANDOM_TIN: rn2(TTSZ-1) = rn2(10)
+                        rn2(15); // set_tin_variety RANDOM_TIN: rn2(TTSZ-1) where TTSZ=16
                         break;
                     }
                 }
@@ -327,11 +327,9 @@ function mksobj_init(obj, artif, skipErosion) {
         } else if (od.name === 'candy bar') {
             rn2(15); // assign_candy_wrapper: rn2(SIZE(candy_wrappers)-1)
         }
-        // General food: possible quan=2
+        // General food: possible quan=2 (C: else branch of Is_pudding)
         if (od.name !== 'corpse' && od.name !== 'meat ring'
-            && od.name !== 'kelp frond' && od.name !== 'egg'
-            && od.name !== 'tin' && od.name !== 'candy bar') {
-            // Check if pudding (glob) -- skip pudding logic
+            && od.name !== 'kelp frond') {
             if (!rn2(6)) obj.quan = 2;
         }
         break;
