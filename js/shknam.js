@@ -18,7 +18,7 @@ import {
     SCR_FOOD_DETECTION, LUMP_OF_ROYAL_JELLY,
 } from './objects.js';
 import { MAXOCLASSES, ROOM, SHOPBASE, SDOOR, DOOR, D_NODOOR, D_ISOPEN, D_TRAPPED, D_LOCKED } from './config.js';
-import { makemon, mkclass, NO_MM_FLAGS } from './makemon.js';
+import { makemon, mkclass, NO_MM_FLAGS, registerGetShopItem } from './makemon.js';
 import { mksobj, mkobj, RANDOM_CLASS } from './mkobj.js';
 import { PM_SHOPKEEPER, S_MIMIC } from './monsters.js';
 
@@ -284,7 +284,7 @@ export const shtypes = [
 // get_shop_item(type) — C ref: shknam.c:829-839
 // ========================================================================
 
-function get_shop_item(type) {
+export function get_shop_item(type) {
     const shp = shtypes[type];
     let j = rnd(100);
     for (let i = 0; i < shp.iprobs.length; i++) {
@@ -292,6 +292,9 @@ function get_shop_item(type) {
     }
     return RANDOM_CLASS;
 }
+
+// Register get_shop_item with makemon.js (avoids circular dependency)
+registerGetShopItem(get_shop_item);
 
 // ========================================================================
 // veggy_item / shkveg / mkveggy_at — C ref: shknam.c:379-450

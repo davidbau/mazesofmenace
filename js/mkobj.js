@@ -487,7 +487,7 @@ function mksobj_init(obj, artif, skipErosion) {
             // Short-circuit: skip rn2 if monster is very small
             if (obj.corpsenm >= 0 && obj.corpsenm < mons.length
                 && mons[obj.corpsenm].size >= MZ_SMALL
-                && rn2(Math.floor(1 / 2 + 10)) > 10) {
+                && rn2(Math.floor(_levelDepth / 2 + 10)) > 10) {
                 // would add spellbook to container -- skip
             }
         }
