@@ -433,6 +433,8 @@ export async function runHeadless(options = {}) {
     const maxTurns = options.maxTurns || 1000;
     const verbose = options.verbose || false;
     const roleIndex = options.roleIndex || 11; // Valkyrie
+    const userOnTurn = options.onTurn || null;
+    const dumpMaps = options.dumpMaps !== false;
 
     if (verbose) {
         console.log(`Starting headless game: seed=${seed}, maxTurns=${maxTurns}, role=${roles[roleIndex].name}`);
@@ -442,20 +444,25 @@ export async function runHeadless(options = {}) {
     const adapter = new HeadlessAdapter(game);
     const agent = new Agent(adapter, {
         maxTurns,
-        onTurn: verbose ? (info) => {
-            const act = info.action;
-            const actionStr = act ? `${act.type}(${act.key}): ${act.reason}` : '?';
-            if (info.turn <= 50 || info.turn % 50 === 0 || info.turn % 100 === 0) {
-                console.log(`  Turn ${info.turn}: HP=${info.hp}/${info.hpmax} Dlvl=${info.dlvl} pos=(${info.position?.x},${info.position?.y}) ${actionStr}`);
+        onTurn: (info) => {
+            if (verbose) {
+                const act = info.action;
+                const actionStr = act ? `${act.type}(${act.key}): ${act.reason}` : '?';
+                if (info.turn <= 50 || info.turn % 50 === 0 || info.turn % 100 === 0) {
+                    console.log(`  Turn ${info.turn}: HP=${info.hp}/${info.hpmax} Dlvl=${info.dlvl} pos=(${info.position?.x},${info.position?.y}) ${actionStr}`);
+                }
             }
-        } : null,
+            if (userOnTurn) {
+                userOnTurn(info);
+            }
+        },
     });
 
     // Dump the agent's known map at specific turns for debugging
     const origOnTurn = agent.onTurn;
     agent.onTurn = (info) => {
         if (origOnTurn) origOnTurn(info);
-        if (info.turn === 50 || info.turn === 200) {
+        if (dumpMaps && (info.turn === 50 || info.turn === 200)) {
             dumpAgentMap(agent, info.turn);
         }
     };
