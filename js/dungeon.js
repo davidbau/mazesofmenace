@@ -24,7 +24,8 @@ import {
     MAGIC_PORTAL, WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, POLY_TRAP,
     VIBRATING_SQUARE, TRAPPED_DOOR, TRAPPED_CHEST, TRAPNUM,
     is_pit, is_hole,
-    MKTRAP_NOFLAGS, MKTRAP_MAZEFLAG, MKTRAP_NOSPIDERONWEB, MKTRAP_NOVICTIM
+    MKTRAP_NOFLAGS, MKTRAP_MAZEFLAG, MKTRAP_NOSPIDERONWEB, MKTRAP_NOVICTIM,
+    PM_ARCHEOLOGIST, PM_WIZARD
 } from './config.js';
 import { GameMap, makeRoom, FILL_NONE, FILL_NORMAL } from './map.js';
 import { rn2, rnd, rn1, d } from './rng.js';
@@ -2484,6 +2485,7 @@ function do_fill_vault(map, vaultCheck, depth) {
 // place_level() uses recursive backtracking that varies by dungeon size.
 //
 // Call sequence (wizard mode — no chance checks):
+//   0. role_init: rn2(100) for quest nemesis gender (Archeologist/Wizard only)
 //   1. nhlib.lua shuffle(align): rn2(3), rn2(2)
 //   2. For each dungeon:
 //      a. rn1(range, base) → rn2(range) if range > 0
@@ -2494,6 +2496,14 @@ function do_fill_vault(map, vaultCheck, depth) {
 //   5. nhlua pre_themerooms shuffle: rn2(3), rn2(2)
 //   6. bones.c: rn2(3)
 function simulateDungeonInit(roleIndex) {
+    // 0. role_init: quest nemesis gender — rn2(100) for roles whose
+    // nemesis lacks M2_MALE/M2_FEMALE/M2_NEUTER flags.
+    // C ref: role.c:2060 — only Archeologist (Minion of Huhetotl) and
+    // Wizard (Dark One) need this call; all other nemeses have explicit gender.
+    if (roleIndex === PM_ARCHEOLOGIST || roleIndex === PM_WIZARD) {
+        rn2(100);
+    }
+
     // 1. nhlib.lua: shuffle(align) — 3-element Fisher-Yates
     rn2(3); rn2(2);
 

@@ -1,0 +1,1013 @@
+
+================================================================================
+SCENARIO: manual_valkyrie
+================================================================================
+
+--- initial_screen ---
+   0| Shall I pick character's race, role, gender and alignment for you? [ynaq]
+   4| NetHack, Copyright 1985-2026
+   5|          By Stichting Mathematisch Centrum and M. Stephenson.
+   6|          Version 3.7.0-132 MacOS Work-in-progress, built Feb  8 2026 18:15:20.
+   7|          See license for details.
+
+
+--- after_pick_no ---
+   0|  Pick a role or profession
+   2|  <role> <race> <gender> <alignment>
+   4|  a - an Archeologist
+   5|  b - a Barbarian
+   6|  c - a Caveman/Cavewoman
+   7|  h - a Healer
+   8|  k - a Knight
+   9|  m - a Monk
+  10|  p - a Priest/Priestess
+  11|  r - a Rogue
+  12|  R - a Ranger
+  13|  s - a Samurai
+  14|  t - a Tourist
+  15|  v - a Valkyrie
+  16|  w - a Wizard
+  17|  * * Random
+  18|  / - Pick race first
+  19|  " - Pick gender first
+  20|  [ - Pick alignment first
+  21|  ~ - Set role/race/&c filtering
+  22|  q - Quit
+  23|  (end)
+
+
+--- after_role_valkyrie ---
+   0|                                          Pick a race or species
+   2|                                          Valkyrie <race> female <alignment>
+   4|                                          h - human
+   5|                                          d - dwarf
+   6|                                          * * Random
+   8|                                          ? - Pick another role first
+   9|                                              role forces female
+  10|                                          [ - Pick alignment first
+  11|                                          ~ - Set role/race/&c filtering
+  12|                                          q - Quit
+  13|                                          (end)
+
+
+--- after_race_human ---
+   0|                                          Pick an alignment or creed
+   2|                                          Valkyrie human female <alignment>
+   4|                                          l - lawful
+   5|                                          n - neutral
+   6|                                          * * Random
+   8|                                          ? - Pick another role first
+   9|                                          / - Pick another race first
+  10|                                              role forces female
+  11|                                          ~ - Set role/race/&c filtering
+  12|                                          q - Quit
+  13|                                          (end)
+
+
+--- after_align_neutral ---
+   0|                                        Is this ok? [ynq]
+   2|                                        Valk1 the neutral female human Valkyrie
+   4|                                        y * Yes; start game
+   5|                                        n - No; choose role again
+   6|                                        q - Quit
+   7|                                        (end)
+
+
+--- after_confirm_yes ---
+   0|                        It is written in the Book of Odin:
+   2|                            After the Creation, the cruel god Moloch rebelled
+   3|             ------.-       against the authority of Marduk the Creator.
+   4|             .......|       Moloch stole from Marduk the most powerful of all
+   5|             |......|       the artifacts of the gods, the Amulet of Yendor,
+   6|             |....@.|       and he hid it in the dark cavities of Gehennom, the
+   7|             |.....d|       Under World, where he now lurks, and bides his time.
+   8|             |...(..|
+   9|             ---+----   Your god Odin seeks to possess the Amulet, and with it
+  10|                        to gain deserved ascendance over the other gods.
+  12|                        You, a newly trained Stripling, have been heralded
+  13|                        from birth as the instrument of Odin.  You are destined
+  14|                        to recover the Amulet for your deity, or die in the
+  15|                        attempt.  Your hour of destiny has come.  For the sake
+  16|                        of us all:  Go bravely with Odin!
+  17|                        --More--
+  22| Valk1 the Stripling            St:16 Dx:15 Co:17 In:9 Wi:11 Ch:7 Neutral
+  23| Dlvl:1 $:0 HP:16(16) Pw:2(2) AC:0 Xp:1
+
+
+--- after_dismiss_lore ---
+   0| Velkommen Valk1, welcome to NetHack!  You are a neutral human Valkyrie.--More--
+   3|             ------.-
+   4|             .......|
+   5|             |......|
+   6|             |....@.|
+   7|             |.....d|
+   8|             |...(..|
+   9|             ---+----
+  22| Valk1 the Stripling            St:16 Dx:15 Co:17 In:9 Wi:11 Ch:7 Neutral
+  23| Dlvl:1 $:0 HP:16(16) Pw:2(2) AC:6 Xp:1
+
+
+================================================================================
+SCENARIO: manual_wizard
+================================================================================
+
+--- initial_screen ---
+   0| Shall I pick character's race, role, gender and alignment for you? [ynaq]
+   4| NetHack, Copyright 1985-2026
+   5|          By Stichting Mathematisch Centrum and M. Stephenson.
+   6|          Version 3.7.0-132 MacOS Work-in-progress, built Feb  8 2026 18:15:20.
+   7|          See license for details.
+
+
+--- after_pick_no ---
+   0|  Pick a role or profession
+   2|  <role> <race> <gender> <alignment>
+   4|  a - an Archeologist
+   5|  b - a Barbarian
+   6|  c - a Caveman/Cavewoman
+   7|  h - a Healer
+   8|  k - a Knight
+   9|  m - a Monk
+  10|  p - a Priest/Priestess
+  11|  r - a Rogue
+  12|  R - a Ranger
+  13|  s - a Samurai
+  14|  t - a Tourist
+  15|  v - a Valkyrie
+  16|  w - a Wizard
+  17|  * * Random
+  18|  / - Pick race first
+  19|  " - Pick gender first
+  20|  [ - Pick alignment first
+  21|  ~ - Set role/race/&c filtering
+  22|  q - Quit
+  23|  (end)
+
+
+--- after_role_wizard ---
+   0|                                          Pick a race or species
+   2|                                          Wizard <race> <gender> <alignment>
+   4|                                          h - human
+   5|                                          e - elf
+   6|                                          g - gnome
+   7|                                          o - orc
+   8|                                          * * Random
+  10|                                          ? - Pick another role first
+  11|                                          " - Pick gender first
+  12|                                          [ - Pick alignment first
+  13|                                          ~ - Set role/race/&c filtering
+  14|                                          q - Quit
+  15|                                          (end)
+
+
+--- after_race_human ---
+   0|                                          Pick a gender or sex
+   2|                                          Wizard human <gender> <alignment>
+   4|                                          m - male
+   5|                                          f - female
+   6|                                          * * Random
+   8|                                          ? - Pick another role first
+   9|                                          / - Pick another race first
+  10|                                          [ - Pick alignment first
+  11|                                          ~ - Set role/race/&c filtering
+  12|                                          q - Quit
+  13|                                          (end)
+
+
+--- after_gender_male ---
+   0|                                          Pick an alignment or creed
+   2|                                          Wizard human male <alignment>
+   4|                                          n - neutral
+   5|                                          c - chaotic
+   6|                                          * * Random
+   8|                                          ? - Pick another role first
+   9|                                          / - Pick another race first
+  10|                                          " - Pick another gender first
+  11|                                          ~ - Set role/race/&c filtering
+  12|                                          q - Quit
+  13|                                          (end)
+
+
+--- after_align_neutral ---
+   0|                                          Is this ok? [ynq]
+   2|                                          Wiz1 the neutral male human Wizard
+   4|                                          y * Yes; start game
+   5|                                          n - No; choose role again
+   6|                                          q - Quit
+   7|                                          (end)
+
+
+--- after_confirm_yes ---
+   0|                        It is written in the Book of Thoth:
+   2|                            After the Creation, the cruel god Moloch rebelled
+   3|                            against the authority of Marduk the Creator.
+   4|                            Moloch stole from Marduk the most powerful of all
+   5|                            the artifacts of the gods, the Amulet of Yendor,
+   6|                            and he hid it in the dark cavities of Gehennom, the
+   7|                            Under World, where he now lurks, and bides his time.
+   9|      -----             Your god Thoth seeks to possess the Amulet, and with it
+  10|      |...|             to gain deserved ascendance over the other gods.
+  11|      |..!.
+  12|      |@.%|             You, a newly trained Evoker, have been heralded
+  13|      |f..|             from birth as the instrument of Thoth.  You are destined
+  14|      |...|             to recover the Amulet for your deity, or die in the
+  15|      -----             attempt.  Your hour of destiny has come.  For the sake
+  16|                        of us all:  Go bravely with Thoth!
+  17|                        --More--
+  22| Wiz1 the Evoker                St:10 Dx:12 Co:17 In:17 Wi:9 Ch:10 Neutral
+  23| Dlvl:1 $:0 HP:12(12) Pw:6(6) AC:0 Xp:1
+
+
+--- after_dismiss_lore ---
+   0| Hello Wiz1, welcome to NetHack!  You are a neutral male human Wizard.--More--
+   9|      -----
+  10|      |...|
+  11|      |..!.
+  12|      |@.%|
+  13|      |f..|
+  14|      |...|
+  15|      -----
+  22| Wiz1 the Evoker                St:10 Dx:12 Co:17 In:17 Wi:9 Ch:10 Neutral
+  23| Dlvl:1 $:0 HP:12(12) Pw:6(6) AC:9 Xp:1
+
+
+================================================================================
+SCENARIO: manual_barbarian
+================================================================================
+
+--- initial_screen ---
+   0| Shall I pick character's race, role, gender and alignment for you? [ynaq]
+   4| NetHack, Copyright 1985-2026
+   5|          By Stichting Mathematisch Centrum and M. Stephenson.
+   6|          Version 3.7.0-132 MacOS Work-in-progress, built Feb  8 2026 18:15:20.
+   7|          See license for details.
+
+
+--- after_pick_no ---
+   0|  Pick a role or profession
+   2|  <role> <race> <gender> <alignment>
+   4|  a - an Archeologist
+   5|  b - a Barbarian
+   6|  c - a Caveman/Cavewoman
+   7|  h - a Healer
+   8|  k - a Knight
+   9|  m - a Monk
+  10|  p - a Priest/Priestess
+  11|  r - a Rogue
+  12|  R - a Ranger
+  13|  s - a Samurai
+  14|  t - a Tourist
+  15|  v - a Valkyrie
+  16|  w - a Wizard
+  17|  * * Random
+  18|  / - Pick race first
+  19|  " - Pick gender first
+  20|  [ - Pick alignment first
+  21|  ~ - Set role/race/&c filtering
+  22|  q - Quit
+  23|  (end)
+
+
+--- after_role_barb ---
+   0|                                          Pick a race or species
+   2|                                          Barbarian <race> <gender> <alignment>
+   4|                                          h - human
+   5|                                          o - orc
+   6|                                          * * Random
+   8|                                          ? - Pick another role first
+   9|                                          " - Pick gender first
+  10|                                          [ - Pick alignment first
+  11|                                          ~ - Set role/race/&c filtering
+  12|                                          q - Quit
+  13|                                          (end)
+
+
+--- after_race_human ---
+   0|                                          Pick a gender or sex
+   2|                                          Barbarian human <gender> <alignment>
+   4|                                          m - male
+   5|                                          f - female
+   6|                                          * * Random
+   8|                                          ? - Pick another role first
+   9|                                          / - Pick another race first
+  10|                                          [ - Pick alignment first
+  11|                                          ~ - Set role/race/&c filtering
+  12|                                          q - Quit
+  13|                                          (end)
+
+
+--- after_gender_male ---
+   0|                                          Pick an alignment or creed
+   2|                                          Barbarian human male <alignment>
+   4|                                          n - neutral
+   5|                                          c - chaotic
+   6|                                          * * Random
+   8|                                          ? - Pick another role first
+   9|                                          / - Pick another race first
+  10|                                          " - Pick another gender first
+  11|                                          ~ - Set role/race/&c filtering
+  12|                                          q - Quit
+  13|                                          (end)
+
+
+--- after_align_chaotic ---
+   0|                                         Is this ok? [ynq]
+   2|                                         Barb1 the chaotic male human Barbarian
+   4|                                         y * Yes; start game
+   5|                                         n - No; choose role again
+   6|                                         q - Quit
+   7|                                         (end)
+
+
+--- after_confirm_yes ---
+   0|                        It is written in the Book of Set:
+   2|                            After the Creation, the cruel god Moloch rebelled
+   3|                            against the authority of Marduk the Creator.
+   4|                            Moloch stole from Marduk the most powerful of all
+   5|                            the artifacts of the gods, the Amulet of Yendor,
+   6|                            and he hid it in the dark cavities of Gehennom, the
+   7|                            Under World, where he now lurks, and bides his time.
+   9|                        Your god Set seeks to possess the Amulet, and with it
+  10|                        to gain deserved ascendance over the other gods.
+  12|                        You, a newly trained Plunderer, have been heralded
+  13|                        from birth as the instrument of Set.  You are destined
+  14|                        to recover the Amulet for your deity, or die in the
+  15|                        attempt.  Your hour of destiny has come.  For the sake
+  16|                        of us all:  Go bravely with Set!
+  17|                        --More--
+  22| Barb1 the Plunderer            St:18/02 Dx:16 Co:16 In:7 Wi:9 Ch:7 Chaotic
+  23| Dlvl:1 $:0 HP:16(16) Pw:2(2) AC:0 Xp:1
+
+
+--- after_dismiss_lore ---
+   0| Hello Barb1, welcome to NetHack!  You are a chaotic male human Barbarian.
+   1| --More--
+  12|                                       --------- -
+  13|                                       |.........+
+  14|                                       |...@.....|
+  15|                                       |{...f....|
+  16|                                       +.........|
+  17|                                       -----------
+  22| Barb1 the Plunderer            St:18/02 Dx:16 Co:16 In:7 Wi:9 Ch:7 Chaotic
+  23| Dlvl:1 $:0 HP:16(16) Pw:2(2) AC:7 Xp:1
+
+
+================================================================================
+SCENARIO: manual_samurai
+================================================================================
+
+--- initial_screen ---
+   0| Shall I pick character's race, role, gender and alignment for you? [ynaq]
+   4| NetHack, Copyright 1985-2026
+   5|          By Stichting Mathematisch Centrum and M. Stephenson.
+   6|          Version 3.7.0-132 MacOS Work-in-progress, built Feb  8 2026 18:15:20.
+   7|          See license for details.
+
+
+--- after_pick_no ---
+   0|  Pick a role or profession
+   2|  <role> <race> <gender> <alignment>
+   4|  a - an Archeologist
+   5|  b - a Barbarian
+   6|  c - a Caveman/Cavewoman
+   7|  h - a Healer
+   8|  k - a Knight
+   9|  m - a Monk
+  10|  p - a Priest/Priestess
+  11|  r - a Rogue
+  12|  R - a Ranger
+  13|  s - a Samurai
+  14|  t - a Tourist
+  15|  v - a Valkyrie
+  16|  w - a Wizard
+  17|  * * Random
+  18|  / - Pick race first
+  19|  " - Pick gender first
+  20|  [ - Pick alignment first
+  21|  ~ - Set role/race/&c filtering
+  22|  q - Quit
+  23|  (end)
+
+
+--- after_role_samurai ---
+   0|                                          Pick a gender or sex
+   2|                                          Samurai human <gender> lawful
+   4|                                          m - male
+   5|                                          f - female
+   6|                                          * * Random
+   8|                                          ? - Pick another role first
+   9|                                              role forces human
+  10|                                              role forces lawful
+  11|                                          ~ - Set role/race/&c filtering
+  12|                                          q - Quit
+  13|                                          (end)
+
+
+--- after_gender_male ---
+   0|                                          Is this ok? [ynq]
+   2|                                          Sam1 the lawful male human Samurai
+   4|                                          y * Yes; start game
+   5|                                          n - No; choose role again
+   6|                                          q - Quit
+   7|                                          (end)
+
+
+--- after_confirm_yes ---
+   0|         It is written in the Book of Amaterasu Omikami:
+   2|             After the Creation, the cruel god Moloch rebelled
+   3|             against the authority of Marduk the Creator.
+   4|             Moloch stole from Marduk the most powerful of all
+   5|             the artifacts of the gods, the Amulet of Yendor,
+   6|             and he hid it in the dark cavities of Gehennom, the
+   7|             Under World, where he now lurks, and bides his time.
+   9|         Your goddess Amaterasu Omikami seeks to possess the Amulet, and with it
+  10|         to gain deserved ascendance over the other gods.
+  12|         You, a newly trained Hatamoto, have been heralded
+  13|         from birth as the instrument of Amaterasu Omikami.  You are destined
+  14|         to recover the Amulet for your deity, or die in the
+  15|         attempt.  Your hour of destiny has come.  For the sake
+  16|         of us all:  Go bravely with Amaterasu Omikami!
+  17|         --More--
+  22| Sam1 the Hatamoto              St:14 Dx:18 Co:18 In:10 Wi:11 Ch:6 Lawful
+  23| Dlvl:1 $:0 HP:15(15) Pw:2(2) AC:0 Xp:1
+
+
+--- after_dismiss_lore ---
+   0| Konnichi wa Sam1, welcome to NetHack!  You are a lawful male human Samurai.
+   1| --More--
+   3|             ------.-
+   4|             .......|
+   5|             |.....d|
+   6|             |....@.|
+   7|             |......|
+   8|             |...(..|
+   9|             ---+----
+  22| Sam1 the Hatamoto              St:14 Dx:18 Co:18 In:10 Wi:11 Ch:6 Lawful
+  23| Dlvl:1 $:0 HP:15(15) Pw:2(2) AC:4 Xp:1
+
+
+================================================================================
+SCENARIO: manual_knight
+================================================================================
+
+--- initial_screen ---
+   0| Shall I pick character's race, role, gender and alignment for you? [ynaq]
+   4| NetHack, Copyright 1985-2026
+   5|          By Stichting Mathematisch Centrum and M. Stephenson.
+   6|          Version 3.7.0-132 MacOS Work-in-progress, built Feb  8 2026 18:15:20.
+   7|          See license for details.
+
+
+--- after_pick_no ---
+   0|  Pick a role or profession
+   2|  <role> <race> <gender> <alignment>
+   4|  a - an Archeologist
+   5|  b - a Barbarian
+   6|  c - a Caveman/Cavewoman
+   7|  h - a Healer
+   8|  k - a Knight
+   9|  m - a Monk
+  10|  p - a Priest/Priestess
+  11|  r - a Rogue
+  12|  R - a Ranger
+  13|  s - a Samurai
+  14|  t - a Tourist
+  15|  v - a Valkyrie
+  16|  w - a Wizard
+  17|  * * Random
+  18|  / - Pick race first
+  19|  " - Pick gender first
+  20|  [ - Pick alignment first
+  21|  ~ - Set role/race/&c filtering
+  22|  q - Quit
+  23|  (end)
+
+
+--- after_role_knight ---
+   0|                                          Pick a gender or sex
+   2|                                          Knight human <gender> lawful
+   4|                                          m - male
+   5|                                          f - female
+   6|                                          * * Random
+   8|                                          ? - Pick another role first
+   9|                                              role forces human
+  10|                                              role forces lawful
+  11|                                          ~ - Set role/race/&c filtering
+  12|                                          q - Quit
+  13|                                          (end)
+
+
+--- after_gender_male ---
+   0|                                          Is this ok? [ynq]
+   2|                                          Knight1 the lawful male human Knight
+   4|                                          y * Yes; start game
+   5|                                          n - No; choose role again
+   6|                                          q - Quit
+   7|                                          (end)
+
+
+--- after_confirm_yes ---
+   0|                        It is written in the Book of Lugh:
+   2|                            After the Creation, the cruel god Moloch rebelled
+   3|                            against the authority of Marduk the Creator.
+   4|                            Moloch stole from Marduk the most powerful of all
+   5|                            the artifacts of the gods, the Amulet of Yendor,
+   6|                            and he hid it in the dark cavities of Gehennom, the
+   7|                            Under World, where he now lurks, and bides his time.
+   9|      -----             Your god Lugh seeks to possess the Amulet, and with it
+  10|      |...|             to gain deserved ascendance over the other gods.
+  11|      |..!.
+  12|      |@.%|             You, a newly trained Gallant, have been heralded
+  13|      |u..|             from birth as the instrument of Lugh.  You are destined
+  14|      |...|             to recover the Amulet for your deity, or die in the
+  15|      -----             attempt.  Your hour of destiny has come.  For the sake
+  16|                        of us all:  Go bravely with Lugh!
+  17|                        --More--
+  22| Knight1 the Gallant            St:14 Dx:9 Co:13 In:7 Wi:14 Ch:18 Lawful
+  23| Dlvl:1 $:0 HP:16(16) Pw:6(6) AC:0 Xp:1
+
+
+--- after_dismiss_lore ---
+   0| Salutations Knight1, welcome to NetHack!  You are a lawful male human Knight.
+   1| --More--
+   9|      -----
+  10|      |...|
+  11|      |..!.
+  12|      |@.%|
+  13|      |u..|
+  14|      |...|
+  15|      -----
+  22| Knight1 the Gallant            St:14 Dx:9 Co:13 In:7 Wi:14 Ch:18 Lawful
+  23| Dlvl:1 $:0 HP:16(16) Pw:6(6) AC:3 Xp:1
+
+
+================================================================================
+SCENARIO: auto_pick_confirm
+================================================================================
+
+--- initial_screen ---
+   0| Shall I pick character's race, role, gender and alignment for you? [ynaq]
+   4| NetHack, Copyright 1985-2026
+   5|          By Stichting Mathematisch Centrum and M. Stephenson.
+   6|          Version 3.7.0-132 MacOS Work-in-progress, built Feb  8 2026 18:15:20.
+   7|          See license for details.
+
+
+--- after_pick_yes ---
+   0|                                         Is this ok? [ynq]
+   2|                                         Auto1 the chaotic male human Barbarian
+   4| NetHack, Copyright 1985-2026            y * Yes; start game
+   5|          By Stichting Mathematisch Cent n - No; choose role again
+   6|          Version 3.7.0-132 MacOS Work-i q - Quit
+   7|          See license for details.       (end)
+
+
+--- after_confirm_yes ---
+   0|                        It is written in the Book of Set:
+   2|                            After the Creation, the cruel god Moloch rebelled
+   3|                            against the authority of Marduk the Creator.
+   4|                            Moloch stole from Marduk the most powerful of all
+   5|                            the artifacts of the gods, the Amulet of Yendor,
+   6|                            and he hid it in the dark cavities of Gehennom, the
+   7|                            Under World, where he now lurks, and bides his time.
+   9|                        Your god Set seeks to possess the Amulet, and with it
+  10|                        to gain deserved ascendance over the other gods.
+  12|                        You, a newly trained Plunderer, have been heralded
+  13|                        from birth as the instrument of Set.  You are destined
+  14|                        to recover the Amulet for your deity, or die in the
+  15|                        attempt.  Your hour of destiny has come.  For the sake
+  16|                        of us all:  Go bravely with Set!
+  17|                        --More--
+  22| Auto1 the Plunderer            St:18 Dx:18 Co:18 In:8 Wi:7 Ch:10 Chaotic
+  23| Dlvl:1 $:0 HP:16(16) Pw:2(2) AC:0 Xp:1
+
+
+--- after_dismiss_lore ---
+   0| Hello Auto1, welcome to NetHack!  You are a chaotic male human Barbarian.
+   1| --More--
+   4|                                                 ---------------
+   5|                                                 |.............|
+   6|                                                 +.............|
+   7|                                                 |.............|
+   8|                                                 |.........(...|
+   9|                                                 -...........d@|
+  10|                                                 -------- ------
+  22| Auto1 the Plunderer            St:18 Dx:18 Co:18 In:8 Wi:7 Ch:10 Chaotic
+  23| Dlvl:1 $:0 HP:16(16) Pw:2(2) AC:7 Xp:1
+
+
+================================================================================
+SCENARIO: auto_pick_all
+================================================================================
+
+--- initial_screen ---
+   0| Shall I pick character's race, role, gender and alignment for you? [ynaq]
+   4| NetHack, Copyright 1985-2026
+   5|          By Stichting Mathematisch Centrum and M. Stephenson.
+   6|          Version 3.7.0-132 MacOS Work-in-progress, built Feb  8 2026 18:15:20.
+   7|          See license for details.
+
+
+--- after_pick_all ---
+   0|                        It is written in the Book of Set:
+   2|                            After the Creation, the cruel god Moloch rebelled
+   3|                            against the authority of Marduk the Creator.
+   4|                            Moloch stole from Marduk the most powerful of all
+   5|                            the artifacts of the gods, the Amulet of Yendor,
+   6|                            and he hid it in the dark cavities of Gehennom, the
+   7|                            Under World, where he now lurks, and bides his time.
+   9|                        Your god Set seeks to possess the Amulet, and with it
+  10|                        to gain deserved ascendance over the other gods.
+  12|                        You, a newly trained Plunderer, have been heralded
+  13|                        from birth as the instrument of Set.  You are destined
+  14|                        to recover the Amulet for your deity, or die in the
+  15|                        attempt.  Your hour of destiny has come.  For the sake
+  16|                        of us all:  Go bravely with Set!
+  17|                        --More--
+  22| Auto2 the Plunderer            St:18 Dx:18 Co:18 In:8 Wi:7 Ch:10 Chaotic
+  23| Dlvl:1 $:0 HP:16(16) Pw:2(2) AC:0 Xp:1
+
+
+--- after_dismiss_lore ---
+   0| Hello Auto2, welcome to NetHack!  You are a chaotic male human Barbarian.
+   1| --More--
+   4|                                                 ---------------
+   5|                                                 |.............|
+   6|                                                 +.............|
+   7|                                                 |.............|
+   8|                                                 |.........(...|
+   9|                                                 -...........d@|
+  10|                                                 -------- ------
+  22| Auto2 the Plunderer            St:18 Dx:18 Co:18 In:8 Wi:7 Ch:10 Chaotic
+  23| Dlvl:1 $:0 HP:16(16) Pw:2(2) AC:7 Xp:1
+
+
+================================================================================
+SCENARIO: manual_archeologist
+================================================================================
+
+--- initial_screen ---
+   0| Shall I pick character's race, role, gender and alignment for you? [ynaq]
+   4| NetHack, Copyright 1985-2026
+   5|          By Stichting Mathematisch Centrum and M. Stephenson.
+   6|          Version 3.7.0-132 MacOS Work-in-progress, built Feb  8 2026 18:15:20.
+   7|          See license for details.
+
+
+--- after_pick_no ---
+   0|  Pick a role or profession
+   2|  <role> <race> <gender> <alignment>
+   4|  a - an Archeologist
+   5|  b - a Barbarian
+   6|  c - a Caveman/Cavewoman
+   7|  h - a Healer
+   8|  k - a Knight
+   9|  m - a Monk
+  10|  p - a Priest/Priestess
+  11|  r - a Rogue
+  12|  R - a Ranger
+  13|  s - a Samurai
+  14|  t - a Tourist
+  15|  v - a Valkyrie
+  16|  w - a Wizard
+  17|  * * Random
+  18|  / - Pick race first
+  19|  " - Pick gender first
+  20|  [ - Pick alignment first
+  21|  ~ - Set role/race/&c filtering
+  22|  q - Quit
+  23|  (end)
+
+
+--- after_role_arch ---
+   0|                                       Pick a race or species
+   2|                                       Archeologist <race> <gender> <alignment>
+   4|                                       h - human
+   5|                                       d - dwarf
+   6|                                       g - gnome
+   7|                                       * * Random
+   9|                                       ? - Pick another role first
+  10|                                       " - Pick gender first
+  11|                                       [ - Pick alignment first
+  12|                                       ~ - Set role/race/&c filtering
+  13|                                       q - Quit
+  14|                                       (end)
+
+
+--- after_race_dwarf ---
+   0|                                          Pick a gender or sex
+   2|                                          Archeologist dwarf <gender> lawful
+   4|                                          m - male
+   5|                                          f - female
+   6|                                          * * Random
+   8|                                          ? - Pick another role first
+   9|                                          / - Pick another race first
+  10|                                              race forces lawful
+  11|                                          ~ - Set role/race/&c filtering
+  12|                                          q - Quit
+  13|                                          (end)
+
+
+--- after_gender_female ---
+   0|                                   Is this ok? [ynq]
+   2|                                   Arch1 the lawful female dwarven Archeologist
+   4|                                   y * Yes; start game
+   5|                                   n - No; choose role again
+   6|                                   q - Quit
+   7|                                   (end)
+
+
+--- after_align_lawful ---
+   0|                                   Is this ok? [ynq]
+   2|                                   Arch1 the lawful female dwarven Archeologist
+   4|                                   y * Yes; start game
+   5|                                   n - No; choose role again
+   6|                                   q - Quit
+   7|                                   (end)
+
+
+--- after_confirm_yes ---
+   0|                 It is written in the Book of Quetzalcoatl:
+   2|                     After the Creation, the cruel god Moloch rebelled
+   3|             ---     against the authority of Marduk the Creator.
+   4|             ...     Moloch stole from Marduk the most powerful of all
+   5|             |..     the artifacts of the gods, the Amulet of Yendor,
+   6|             |..     and he hid it in the dark cavities of Gehennom, the
+   7|             |..     Under World, where he now lurks, and bides his time.
+   8|             |..
+   9|             --- Your god Quetzalcoatl seeks to possess the Amulet, and with it
+  10|                 to gain deserved ascendance over the other gods.
+  12|                 You, a newly trained Digger, have been heralded
+  13|                 from birth as the instrument of Quetzalcoatl.  You are destined
+  14|                 to recover the Amulet for your deity, or die in the
+  15|                 attempt.  Your hour of destiny has come.  For the sake
+  16|                 of us all:  Go bravely with Quetzalcoatl!
+  17|                 --More--
+  22| Arch1 the Digger               St:11 Dx:9 Co:16 In:15 Wi:16 Ch:8 Lawful
+  23| Dlvl:1 $:0 HP:15(15) Pw:1(1) AC:0 Xp:1
+
+
+--- after_dismiss_lore ---
+   0| Hello Arch1, welcome to NetHack!  You are a lawful female dwarven Archeologist.
+   1| --More--
+   3|             ------.-
+   4|             .......|
+   5|             |......|
+   6|             |....@.|
+   7|             |.....d|
+   8|             |...(..|
+   9|             ---+----
+  22| Arch1 the Digger               St:11 Dx:9 Co:16 In:15 Wi:16 Ch:8 Lawful
+  23| Dlvl:1 $:0 HP:15(15) Pw:1(1) AC:9 Xp:1
+
+
+================================================================================
+SCENARIO: race_first_elf
+================================================================================
+
+--- initial_screen ---
+   0| Shall I pick character's race, role, gender and alignment for you? [ynaq]
+   4| NetHack, Copyright 1985-2026
+   5|          By Stichting Mathematisch Centrum and M. Stephenson.
+   6|          Version 3.7.0-132 MacOS Work-in-progress, built Feb  8 2026 18:15:20.
+   7|          See license for details.
+
+
+--- after_pick_no ---
+   0|  Pick a role or profession
+   2|  <role> <race> <gender> <alignment>
+   4|  a - an Archeologist
+   5|  b - a Barbarian
+   6|  c - a Caveman/Cavewoman
+   7|  h - a Healer
+   8|  k - a Knight
+   9|  m - a Monk
+  10|  p - a Priest/Priestess
+  11|  r - a Rogue
+  12|  R - a Ranger
+  13|  s - a Samurai
+  14|  t - a Tourist
+  15|  v - a Valkyrie
+  16|  w - a Wizard
+  17|  * * Random
+  18|  / - Pick race first
+  19|  " - Pick gender first
+  20|  [ - Pick alignment first
+  21|  ~ - Set role/race/&c filtering
+  22|  q - Quit
+  23|  (end)
+
+
+--- after_goto_race ---
+   0|                                          Pick a race or species
+   2|                                          <role> <race> <gender> <alignment>
+   4|                                          h - human
+   5|                                          e - elf
+   6|                                          d - dwarf
+   7|                                          g - gnome
+   8|                                          o - orc
+   9|                                          * * Random
+  11|                                          ? - Pick role first
+  12|                                          " - Pick gender first
+  13|                                          [ - Pick alignment first
+  14|                                          ~ - Set role/race/&c filtering
+  15|                                          q - Quit
+  16|                                          (end)
+
+
+--- after_race_elf ---
+   0|                                          Pick a role or profession
+   2|                                          <role> elf <gender> <alignment>
+   4|                                          p - a Priest/Priestess
+   5|                                          r - a Ranger
+   6|                                          w - a Wizard
+   7|                                          * * Random
+   9|                                          / - Pick another race first
+  10|                                          " - Pick gender first
+  11|                                              race forces chaotic
+  12|                                          ~ - Set role/race/&c filtering
+  13|                                          q - Quit
+  14|                                          (end)
+
+
+--- after_role_ranger ---
+   0|                                          Pick a role or profession
+   2|                                          <role> elf <gender> <alignment>
+   4|                                          p - a Priest/Priestess
+   5|                                          r - a Ranger
+   6|                                          w - a Wizard
+   7|                                          * * Random
+   9|                                          / - Pick another race first
+  10|                                          " - Pick gender first
+  11|                                              race forces chaotic
+  12|                                          ~ - Set role/race/&c filtering
+  13|                                          q - Quit
+  14|                                          (end)
+
+
+--- after_align_chaotic ---
+   0|                                          Pick a role or profession
+   2|                                          <role> elf <gender> <alignment>
+   4|                                          p - a Priest/Priestess
+   5|                                          r - a Ranger
+   6|                                          w - a Wizard
+   7|                                          * * Random
+   9|                                          / - Pick another race first
+  10|                                          " - Pick gender first
+  11|                                              race forces chaotic
+  12|                                          ~ - Set role/race/&c filtering
+  13|                                          q - Quit
+  14|                                          (end)
+
+
+--- after_confirm_yes ---
+   0|                                          Pick a role or profession
+   2|                                          <role> elf <gender> <alignment>
+   4|                                          p - a Priest/Priestess
+   5|                                          r - a Ranger
+   6|                                          w - a Wizard
+   7|                                          * * Random
+   9|                                          / - Pick another race first
+  10|                                          " - Pick gender first
+  11|                                              race forces chaotic
+  12|                                          ~ - Set role/race/&c filtering
+  13|                                          q - Quit
+  14|                                          (end)
+
+
+--- after_dismiss_lore ---
+   0|                                          Pick a gender or sex
+   2|                                          Ranger elf <gender> chaotic
+   4|                                          m - male
+   5|                                          f - female
+   6|                                          * * Random
+   8|                                          ? - Pick another role first
+   9|                                          / - Pick another race first
+  10|                                              race forces chaotic
+  11|                                          ~ - Set role/race/&c filtering
+  12|                                          q - Quit
+  13|                                          (end)
+
+
+================================================================================
+SCENARIO: manual_priest
+================================================================================
+
+--- initial_screen ---
+   0| Shall I pick character's race, role, gender and alignment for you? [ynaq]
+   4| NetHack, Copyright 1985-2026
+   5|          By Stichting Mathematisch Centrum and M. Stephenson.
+   6|          Version 3.7.0-132 MacOS Work-in-progress, built Feb  8 2026 18:15:20.
+   7|          See license for details.
+
+
+--- after_pick_no ---
+   0|  Pick a role or profession
+   2|  <role> <race> <gender> <alignment>
+   4|  a - an Archeologist
+   5|  b - a Barbarian
+   6|  c - a Caveman/Cavewoman
+   7|  h - a Healer
+   8|  k - a Knight
+   9|  m - a Monk
+  10|  p - a Priest/Priestess
+  11|  r - a Rogue
+  12|  R - a Ranger
+  13|  s - a Samurai
+  14|  t - a Tourist
+  15|  v - a Valkyrie
+  16|  w - a Wizard
+  17|  * * Random
+  18|  / - Pick race first
+  19|  " - Pick gender first
+  20|  [ - Pick alignment first
+  21|  ~ - Set role/race/&c filtering
+  22|  q - Quit
+  23|  (end)
+
+
+--- after_role_priest ---
+   0|                                          Pick a race or species
+   2|                                          Priest <race> <gender> <alignment>
+   4|                                          h - human
+   5|                                          e - elf
+   6|                                          * * Random
+   8|                                          ? - Pick another role first
+   9|                                          " - Pick gender first
+  10|                                          [ - Pick alignment first
+  11|                                          ~ - Set role/race/&c filtering
+  12|                                          q - Quit
+  13|                                          (end)
+
+
+--- after_race_human ---
+   0|                                          Pick a gender or sex
+   2|                                          Priest human <gender> <alignment>
+   4|                                          m - male
+   5|                                          f - female
+   6|                                          * * Random
+   8|                                          ? - Pick another role first
+   9|                                          / - Pick another race first
+  10|                                          [ - Pick alignment first
+  11|                                          ~ - Set role/race/&c filtering
+  12|                                          q - Quit
+  13|                                          (end)
+
+
+--- after_gender_female ---
+   0|                                          Pick an alignment or creed
+   2|                                          Priestess human female <alignment>
+   4|                                          l - lawful
+   5|                                          n - neutral
+   6|                                          c - chaotic
+   7|                                          * * Random
+   9|                                          ? - Pick another role first
+  10|                                          / - Pick another race first
+  11|                                          " - Pick another gender first
+  12|                                          ~ - Set role/race/&c filtering
+  13|                                          q - Quit
+  14|                                          (end)
+
+
+--- after_align_neutral ---
+   0|                                     Is this ok? [ynq]
+   2|                                     Priest1 the neutral female human Priestess
+   4|                                     y * Yes; start game
+   5|                                     n - No; choose role again
+   6|                                     q - Quit
+   7|                                     (end)
+
+
+--- after_confirm_yes ---
+   0|                    It is written in the Book of Brigit:
+   2|                        After the Creation, the cruel god Moloch rebelled
+   3|                        against the authority of Marduk the Creator.
+   4|                        Moloch stole from Marduk the most powerful of all
+   5|                        the artifacts of the gods, the Amulet of Yendor,
+   6|                        and he hid it in the dark cavities of Gehennom, the
+   7|                        Under World, where he now lurks, and bides his time.
+   9|      -----         Your goddess Brigit seeks to possess the Amulet, and with it
+  10|      |...|         to gain deserved ascendance over the other gods.
+  11|      |.d!.
+  12|      |@.%|         You, a newly trained Aspirant, have been heralded
+  13|      |...|         from birth as the instrument of Brigit.  You are destined
+  14|      |...|         to recover the Amulet for your deity, or die in the
+  15|      -----         attempt.  Your hour of destiny has come.  For the sake
+  16|                    of us all:  Go bravely with Brigit!
+  17|                    --More--
+  22| Priest1 the Aspirant           St:11 Dx:12 Co:18 In:8 Wi:18 Ch:11 Neutral
+  23| Dlvl:1 $:0 HP:14(14) Pw:6(6) AC:0 Xp:1
+
+
+--- after_dismiss_lore ---
+   0| Hello Priest1, welcome to NetHack!  You are a neutral human Priestess.--More--
+   9|      -----
+  10|      |...|
+  11|      |.d!.
+  12|      |@.%|
+  13|      |...|
+  14|      |...|
+  15|      -----
+  22| Priest1 the Aspirant           St:11 Dx:12 Co:18 In:8 Wi:18 Ch:11 Neutral
+  23| Dlvl:1 $:0 HP:14(14) Pw:6(6) AC:7 Xp:1
+

@@ -206,6 +206,7 @@ function newobj(otyp) {
         tknown: false,
         known: false,
         dknown: false,
+        bknown: false,
         name: objectData[otyp].name,
     };
 }
@@ -456,10 +457,10 @@ function mksobj_init(obj, artif, skipErosion) {
                 obj.spe = rn2(4) - rn2(3);
             if (obj.spe < 0 && rn2(5))
                 curse(obj);
-        } else if (rn2(10) && (od.name === 'ring of teleportation'
-                               || od.name === 'ring of polymorph'
-                               || od.name === 'ring of aggravate monster'
-                               || od.name === 'ring of hunger'
+        } else if (rn2(10) && (od.name === 'teleportation'
+                               || od.name === 'polymorph'
+                               || od.name === 'aggravate monster'
+                               || od.name === 'hunger'
                                || !rn2(9))) {
             curse(obj);
         }
@@ -570,7 +571,7 @@ function mksobj_postinit(obj) {
     }
     // Statue/figurine: if corpsenm not set, assign one
     if ((od.name === 'statue' || od.name === 'figurine') && obj.corpsenm === -1) {
-        rndmonnum();
+        obj.corpsenm = rndmonnum();
     }
     // Gender assignment for corpse/statue/figurine
     // C ref: mkobj.c:1215-1218 — only rn2(2) if not neuter/female/male
@@ -691,4 +692,88 @@ export function mkobj(oclass, artif, skipErosion) {
 
 // RANDOM_CLASS constant (matches C's RANDOM_CLASS = 0)
 export const RANDOM_CLASS = 0;
+
+// C ref: objnam.c doname() — format an object name for display
+// Produces strings like "a blessed +1 quarterstaff (weapon in hands)"
+export function doname(obj, player) {
+    const od = objectData[obj.otyp];
+    const parts = [];
+
+    // Determine if charges will be displayed
+    const showCharges = obj.known && od.charged
+        && (obj.oclass === WAND_CLASS || obj.oclass === TOOL_CLASS);
+
+    // BUC prefix (C ref: objnam.c xname() BUC handling)
+    if (obj.bknown && obj.oclass !== COIN_CLASS) {
+        if (obj.blessed) {
+            parts.push('blessed');
+        } else if (obj.cursed) {
+            parts.push('cursed');
+        } else if (!showCharges) {
+            // Show "uncursed" for most classes, but not when charges are displayed
+            parts.push('uncursed');
+        }
+    }
+
+    // Enchantment (C ref: objnam.c xname() — spe for weapon/armor/ring)
+    if (obj.known && (obj.oclass === WEAPON_CLASS || obj.oclass === ARMOR_CLASS
+        || (obj.oclass === RING_CLASS && od.charged))) {
+        parts.push((obj.spe >= 0 ? '+' : '') + obj.spe);
+    }
+
+    // Base name (C ref: objnam.c xname() — class-specific prefixes)
+    switch (obj.oclass) {
+    case RING_CLASS:
+        parts.push('ring of ' + od.name);
+        break;
+    case AMULET_CLASS:
+        parts.push('amulet of ' + od.name);
+        break;
+    case POTION_CLASS:
+        parts.push('potion of ' + od.name);
+        break;
+    case SCROLL_CLASS:
+        parts.push('scroll of ' + od.name);
+        break;
+    case SPBOOK_CLASS:
+        parts.push('spellbook of ' + od.name);
+        break;
+    case WAND_CLASS:
+        parts.push('wand of ' + od.name);
+        break;
+    default:
+        parts.push(od.name);
+        break;
+    }
+
+    let result = parts.join(' ');
+
+    // Article (C ref: objnam.c an() / doname())
+    const firstChar = result[0];
+    if ('aeiouAEIOU'.includes(firstChar)) {
+        result = 'an ' + result;
+    } else {
+        result = 'a ' + result;
+    }
+
+    // Suffix: worn/wielded/charges
+    if (player) {
+        if (player.weapon === obj) {
+            if (od.big) {
+                result += ' (weapon in hands)';
+            } else {
+                result += ' (wielded)';
+            }
+        } else if (player.armor === obj) {
+            result += ' (being worn)';
+        }
+    }
+
+    // Charges suffix for wands and charged tools
+    if (showCharges) {
+        result += ` (0:${obj.spe})`;
+    }
+
+    return result;
+}
 

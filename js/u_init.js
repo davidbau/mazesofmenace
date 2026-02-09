@@ -542,6 +542,7 @@ function iniInv(player, table) {
         // C ref: u_init.c ini_inv_adjust_obj()
         obj.known = true;
         obj.dknown = true;
+        obj.bknown = true;
         obj.cursed = false;
         if (obj.oclass === WEAPON_CLASS || obj.oclass === TOOL_CLASS) {
             obj.quan = trquan(trop);
