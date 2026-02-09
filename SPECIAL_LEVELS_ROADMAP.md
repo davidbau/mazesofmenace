@@ -4,11 +4,13 @@ Epic: `interface-3br` - Complete special level system for all dungeon branches
 
 ## Current Status
 
-### ✓ COMPLETED (15 levels, 18.75%)
-- **Sokoban** (8 levels): soko1-1/2, soko2-1/2, soko3-1/2, soko4-1/2 ✓
+### ✓ COMPLETED (22 levels, 27.5%)
+- **Sokoban** (8 levels): soko1-1/2, soko2-1/2, soko3-1/2, soko4-1/2 ✓ (variant selection implemented)
 - **Tier 1: Simple Fixed Maps** (5 levels): tower1-3, valley, knox ✓
+- **Tier 2: Intermediate Fixed Maps** (3 levels): wizard1-3 ✓
 - **Tier 3: Complex Fixed Maps** (1 level): medusa ✓
-- **Tier 4: Demon Lairs** (1 level): sanctum ✓
+- **Tier 4: Demon Lairs** (5 levels): asmodeus, baalz, juiblex, orcus, sanctum ✓
+- **Integration** (complete): All 22 levels registered and playable via (dnum, dlevel) coordinates ✓
 - **des.* API Foundation**: level_init, level_flags, map, terrain, stair, region, ladder, feature ✓
 - **Random Placement System**: des.object(), des.monster(), des.trap() with no-argument support ✓
 - **Object/Trap Placement**: Full coord/selection/class format support with intelligent defaults ✓
@@ -16,11 +18,13 @@ Epic: `interface-3br` - Complete special level system for all dungeon branches
 - **Utility Functions**: shuffle(), percent(), objectNameToType(), trapNameToType() ✓
 - **Wallification & Flipping**: Complete wall junction computation and random flipping ✓
 - **C Traces Collected**: Sokoban, Mines, Ludios, Tower, Valley, Main dungeon specials ✓
-- **Test Infrastructure**: 12/12 tests passing across 5 level implementations ✓
+- **Test Infrastructure**: 21/21 tests passing across 12 level implementations ✓
+  - Tower (4 tests), Knox (2), Valley (2), Sanctum (2), Medusa (2)
+  - Wizard levels (4 tests), Demon lairs (5 tests)
 - **Comprehensive Documentation**: Full JSDoc for all API functions with examples ✓
 
 ### ◐ IN PROGRESS
-- **Branch-aware level generation** (`interface-9a0`): Integrate special levels into makelevel()
+- None currently
 
 ---
 
@@ -248,15 +252,17 @@ Port end-game planes (after C trace collection).
 - **Phase 5 Complete**: Gehennom and Quest playable
 - **Phase 6 Complete**: Full game playable to ascension
 
-**Current Progress**: ~19% ✓ Phase 1 Complete!
-- Sokoban: 8 levels ✓
+**Current Progress**: ~27% ✓ Phase 1 Complete + Partial Phase 2!
+- Sokoban: 8 levels ✓ (variant selection system implemented)
 - Tier 1 Simple Fixed Maps: 5 levels ✓ (tower 1-3, knox, valley)
+- Tier 2 Intermediate Fixed Maps: 3 levels ✓ (wizard 1-3)
 - Tier 3 Complex Fixed Maps: 1 level ✓ (medusa)
-- Tier 4 Demon Lairs: 1 level ✓ (sanctum)
-- Total: 15 of ~80 special levels implemented and tested
-- **All 12/12 tests passing**
+- Tier 4 Demon Lairs: 5 levels ✓ (asmodeus, baalz, juiblex, orcus, sanctum)
+- Total: 22 of ~80 special levels implemented and tested
+- **All 21/21 special level tests passing** (4 tower + 2 knox + 2 valley + 2 sanctum + 2 medusa + 4 wizard + 5 demon)
+- **Integration complete**: All levels playable via (dnum, dlevel) coordinates
 
-**Next Target**: ~30% (Phase 2)
-- Requires: des.room(), des.random_corridors(), des.mazewalk()
-- Target levels: Oracle, Mines variants, Wizard levels, Castle
-- Or: More fixed-map quest levels with simpler requirements
+**Next Target**: ~35% (Complete Phase 2)
+- Target levels: Oracle, Mines variants (minetown, mineend), Castle
+- Requires: des.altar(), des.fountain(), des.door() stubs for Oracle/Mines
+- Requires: des.room(), des.random_corridors() for Castle
