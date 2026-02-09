@@ -879,7 +879,14 @@ export function trap(type_or_opts, x, y) {
         }
     }
 
-    const ttyp = trapNameToType(trapType || '');
+    // If no trap type specified, use a random one (default to PIT for now)
+    let ttyp;
+    if (!trapType) {
+        ttyp = PIT; // TODO: Implement random trap selection
+    } else {
+        ttyp = trapNameToType(trapType);
+    }
+
     if (ttyp < 0 || trapX === undefined || trapY === undefined ||
         trapX < 0 || trapX >= 80 || trapY < 0 || trapY >= 21) {
         return;

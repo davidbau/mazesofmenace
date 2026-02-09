@@ -4,6 +4,7 @@
  */
 
 import { des, selection, percent, finalize_level } from '../sp_lev.js';
+import { rn2 } from '../rng.js';
 
 export function generate() {
     des.level_init({ style: 'solidfill', fg: ' ' });
@@ -67,9 +68,9 @@ export function generate() {
     // Note: Simplified from Lua's iterate() for now - just place some representative gold/traps
     for (let x = 21; x <= 35; x += 2) {
         for (let y = 8; y <= 11; y++) {
-            des.gold({ x, y, amount: 600 + Math.floor(Math.random() * 300) });
-            if (Math.random() < 0.33) {
-                if (Math.random() < 0.5) {
+            des.gold({ x, y, amount: 600 + rn2(300) });
+            if (rn2(100) < 33) {
+                if (rn2(2) === 0) {
                     des.trap('spiked pit', x, y);
                 } else {
                     des.trap('land mine', x, y);
