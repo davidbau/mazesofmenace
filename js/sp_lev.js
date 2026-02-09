@@ -918,6 +918,44 @@ export function exclusion(opts) {
 }
 
 /**
+ * des.monster(opts)
+ * Place a monster at a location.
+ * C ref: sp_lev.c create_monster()
+ *
+ * @param {Object} opts - Monster options (id, coord, appear_as, etc.)
+ */
+export function monster(opts) {
+    // Stub - would create and place monster
+    // For now, just ignore
+}
+
+/**
+ * des.door(state, x, y)
+ * Place a door at a location.
+ * C ref: sp_lev.c spdoor_to_tmap()
+ *
+ * @param {string} state - Door state ("open", "closed", "locked", "nodoor", "random")
+ * @param {number} x - X coordinate
+ * @param {number} y - Y coordinate
+ */
+export function door(state, x, y) {
+    // Stub - would set location to DOOR with appropriate state
+    // For now, just ignore
+}
+
+/**
+ * des.engraving(opts)
+ * Place an engraving at a location.
+ * C ref: sp_lev.c spengraving()
+ *
+ * @param {Object} opts - Engraving options (coord, type, text)
+ */
+export function engraving(opts) {
+    // Stub - would create engraving at coord
+    // For now, just ignore
+}
+
+/**
  * Finalize level generation.
  * This should be called after all des.* calls to apply flipping and other
  * post-processing.
@@ -937,6 +975,18 @@ export function finalize_level() {
 }
 
 /**
+ * percent(n)
+ * Returns true n% of the time.
+ * C ref: sp_lev.c percent() macro
+ *
+ * @param {number} n - Percentage (0-100)
+ * @returns {boolean} True if rn2(100) < n
+ */
+export function percent(n) {
+    return rn2(100) < n;
+}
+
+/**
  * Selection API - create rectangular selections
  */
 export const selection = {
@@ -946,6 +996,35 @@ export const selection = {
      */
     area: (x1, y1, x2, y2) => {
         return { x1, y1, x2, y2 };
+    },
+
+    /**
+     * selection.new()
+     * Create a new empty selection (set of coordinates).
+     */
+    new: () => {
+        const coords = [];
+        return {
+            coords,
+            set: (x, y) => {
+                coords.push({ x, y });
+            },
+        };
+    },
+
+    /**
+     * selection.rndcoord(sel)
+     * Get a random coordinate from a selection.
+     *
+     * @param {Object} sel - Selection object with coords array
+     * @returns {Object} Random coordinate {x, y} or undefined if empty
+     */
+    rndcoord: (sel) => {
+        if (!sel || !sel.coords || sel.coords.length === 0) {
+            return undefined;
+        }
+        const idx = rn2(sel.coords.length);
+        return sel.coords[idx];
     },
 };
 
@@ -963,4 +1042,7 @@ export const des = {
     non_passwall,
     levregion,
     exclusion,
+    monster,
+    door,
+    engraving,
 };
