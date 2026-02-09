@@ -6,6 +6,7 @@ import { COLNO, ROWNO, DOOR, STAIRS, FOUNTAIN, IS_DOOR, D_CLOSED, D_LOCKED,
          D_ISOPEN, D_NODOOR, ACCESSIBLE, IS_WALL, MAXLEVEL, VERSION_STRING,
          isok, A_STR, A_DEX, A_CON } from './config.js';
 import { rn2, rnd, rnl, d } from './rng.js';
+import { objectData } from './objects.js';
 import { nhgetch, ynFunction, getlin } from './input.js';
 import { playerAttackMonster } from './combat.js';
 import { makemon } from './makemon.js';
@@ -122,7 +123,7 @@ export async function rhack(ch, game) {
 
     // Eat
     if (c === 'e') {
-        return await handleEat(player, display);
+        return await handleEat(player, display, game);
     }
 
     // Quaff (drink)
@@ -707,8 +708,8 @@ async function handleDrop(player, map, display) {
 }
 
 // Handle eating
-// C ref: eat.c doeat()
-async function handleEat(player, display) {
+// C ref: eat.c doeat() → start_eating() → eatfood() occupation
+async function handleEat(player, display, game) {
     const food = player.inventory.filter(o => o.oclass === 6); // FOOD_CLASS
     if (food.length === 0) {
         display.putstr_message("You don't have anything to eat.");
@@ -721,13 +722,54 @@ async function handleEat(player, display) {
 
     const item = food.find(f => f.invlet === c);
     if (item) {
-        player.removeFromInventory(item);
-        const nutr = item.nutrition || 200;
-        player.hunger += nutr;
-        player.nutrition += nutr;
-        display.putstr_message(`This ${item.name} is delicious!`);
-        if (player.hunger > 1000) {
-            display.putstr_message("You're having a hard time getting it all down.");
+        const od = objectData[item.otyp];
+        const reqtime = (od ? od.delay : 0) + 1; // C ref: eat.c reqtime = oc_delay + 1
+        const baseNutr = od ? od.nutrition : 200;
+        // C ref: eat.c nmod calculation — nutrition distributed per bite
+        // nmod < 0 means add -nmod each turn; nmod > 0 means add 1 some turns
+        const nmod = (reqtime === 0 || baseNutr === 0) ? 0
+            : (baseNutr >= reqtime) ? -Math.floor(baseNutr / reqtime)
+            : reqtime % baseNutr;
+        let usedtime = 0;
+
+        // C ref: eat.c bite() — apply incremental nutrition
+        function doBite() {
+            if (nmod < 0) {
+                player.hunger += (-nmod);
+                player.nutrition += (-nmod);
+            } else if (nmod > 0 && (usedtime % nmod)) {
+                player.hunger += 1;
+                player.nutrition += 1;
+            }
+        }
+
+        // First bite (turn 1) — mirrors C start_eating() + bite()
+        usedtime++;
+        doBite();
+        display.putstr_message(`You begin eating the ${item.name}.`);
+
+        if (reqtime > 1) {
+            // Set occupation for remaining turns — C ref: set_occupation(eatfood, ...)
+            game.occupation = {
+                fn: () => {
+                    usedtime++;
+                    if (usedtime >= reqtime) {
+                        // Done eating — mirrors C done_eating()
+                        // Apply remaining nutrition not yet distributed
+                        player.removeFromInventory(item);
+                        display.putstr_message(`You finish eating the ${item.name}.`);
+                        return 0; // done
+                    }
+                    doBite();
+                    return 1; // continue
+                },
+                txt: `eating ${item.name}`,
+                xtime: reqtime,
+            };
+        } else {
+            // Single-turn food — eat instantly
+            player.removeFromInventory(item);
+            display.putstr_message(`This ${item.name} is delicious!`);
         }
         return { moved: false, tookTime: true };
     }

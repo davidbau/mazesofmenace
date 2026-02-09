@@ -50,6 +50,7 @@ class NetHackGame {
         this.turnCount = 0;
         this.wizard = false;  // C ref: flags.debug (wizard mode)
         this.seerTurn = 0;    // C ref: context.seer_turn — clairvoyance timer
+        this.occupation = null; // C ref: cmd.c go.occupation — multi-turn action
         this.seed = 0;        // original game seed (for save/restore)
         // RNG accessors for storage.js (avoids circular imports)
         this._rngAccessors = {
@@ -1055,6 +1056,27 @@ class NetHackGame {
     // C ref: allmain.c moveloop() -> moveloop_core()
     async gameLoop() {
         while (!this.gameOver) {
+            // C ref: allmain.c moveloop_core() — occupation check before input
+            if (this.occupation) {
+                const cont = this.occupation.fn(this);
+                if (!cont) {
+                    this.occupation = null;
+                }
+                // Occupation turn takes time: run full turn effects
+                settrack(this.player);
+                movemon(this.map, this.player, this.display, this.fov);
+                this.simulateTurnEnd();
+                if (this.player.isDead) {
+                    this.gameOver = true;
+                    this.gameOverReason = 'killed';
+                    savebones(this);
+                }
+                this.fov.compute(this.map, this.player.x, this.player.y);
+                this.display.renderMap(this.map, this.player, this.fov);
+                this.display.renderStatus(this.player);
+                continue;
+            }
+
             // Get player input
             // C ref: allmain.c moveloop_core() -- rhack(0) gets and processes command
             const ch = await nhgetch();

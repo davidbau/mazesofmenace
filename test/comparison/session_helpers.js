@@ -332,6 +332,7 @@ class HeadlessGame {
         this.turnCount = 0;
         this.wizard = true;
         this.seerTurn = opts.seerTurn || 0;
+        this.occupation = null; // C ref: cmd.c go.occupation — multi-turn action
         initrack(); // C ref: track.c — initialize player track buffer
     }
 
@@ -374,13 +375,26 @@ class HeadlessGame {
         // C ref: attrib.c exerchk() → exerper()
         // exerper fires hunger checks every 10 moves, status checks every 5 moves
         // exercise(attr, TRUE) consumes rn2(19), exercise(attr, FALSE) consumes rn2(2)
-        // C ref: attrib.c exerchk() → exerper()
         // C's svm.moves starts at 1 and increments before exerchk
         // JS turnCount starts at 0, so use turnCount + 1 to match
         const moves = this.turnCount + 1;
         if (moves % 10 === 0) {
-            // Hunger check: NOT_HUNGRY → exercise(A_CON, TRUE) → rn2(19)
-            rn2(19); // exercise(A_CON, TRUE)
+            // C ref: attrib.c exerper() hunger switch (with break per case)
+            if (this.player.hunger > 1000) {
+                // SATIATED: exercise(A_DEX, FALSE) → rn2(2)
+                rn2(2);
+            } else if (this.player.hunger > 150) {
+                // NOT_HUNGRY: exercise(A_CON, TRUE) → rn2(19)
+                rn2(19);
+            } else if (this.player.hunger > 50) {
+                // HUNGRY: no exercise call
+            } else if (this.player.hunger > 0) {
+                // WEAK: exercise(A_STR, FALSE) → rn2(2)
+                rn2(2);
+            } else {
+                // FAINTING: exercise(A_CON, FALSE) → rn2(2)
+                rn2(2);
+            }
         }
         // Status checks every 5 moves: none apply in early game (no intrinsics/conditions)
 
@@ -523,6 +537,29 @@ export async function replaySession(seed, session) {
             settrack(game.player); // C ref: allmain.c — record hero position before movemon
             movemon(game.map, game.player, game.display, game.fov);
             game.simulateTurnEnd();
+
+            // Run occupation continuation turns (multi-turn eating, etc.)
+            // C ref: allmain.c moveloop_core() — occupation runs before next input
+            while (game.occupation) {
+                const cont = game.occupation.fn(game);
+                if (!cont) {
+                    game.occupation = null;
+                }
+                settrack(game.player);
+                movemon(game.map, game.player, game.display, game.fov);
+                game.simulateTurnEnd();
+
+                // Sync HP each occupation turn (monsters may attack)
+                if (step.screen) {
+                    for (const line of step.screen) {
+                        const hpm = line.match(/HP:(\d+)\((\d+)\)/);
+                        if (hpm) {
+                            game.player.hp = parseInt(hpm[1]);
+                            game.player.hpmax = parseInt(hpm[2]);
+                        }
+                    }
+                }
+            }
         }
 
         // Sync player HP from session screen data so regen_hp fires correctly.
