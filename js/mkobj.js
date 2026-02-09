@@ -50,6 +50,7 @@ export function next_ident() {
     return res;
 }
 export function getIdentCounter() { return _identCounter; }
+export function resetIdentCounter() { _identCounter = 0; }
 
 // C ref: objnam.c rnd_class() -- pick random object in index range by probability
 function rnd_class(first, last) {

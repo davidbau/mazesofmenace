@@ -11,7 +11,7 @@
 // at one depth is a valid test, and a full session with RNG traces, screens, and
 // multi-depth grids gets comprehensive verification.
 
-import { describe, it } from 'node:test';
+import { describe, it, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -61,7 +61,7 @@ function runMapSession(file, session) {
 
     // Generate all levels sequentially (matching C's RNG stream)
     let result;
-    it('generates levels sequentially', () => {
+    before(() => {
         result = needsRng
             ? generateMapsWithRng(session.seed, maxDepth)
             : generateMapsSequential(session.seed, maxDepth);
@@ -151,7 +151,9 @@ function runMapSession(file, session) {
 
     // Determinism: generate again and verify identical
     it('is deterministic', () => {
-        const result2 = generateMapsSequential(session.seed, maxDepth);
+        const result2 = needsRng
+            ? generateMapsWithRng(session.seed, maxDepth)
+            : generateMapsSequential(session.seed, maxDepth);
         for (const level of session.levels) {
             const diffs = compareGrids(result.grids[level.depth], result2.grids[level.depth]);
             assert.equal(diffs.length, 0,

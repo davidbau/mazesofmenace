@@ -7,6 +7,7 @@
 // WAN_NOTHING direction (1 rn2 call) = 198 total.
 
 import { rn2 } from './rng.js';
+import { resetIdentCounter } from './mkobj.js';
 import {
     objectData, initObjectData, bases,
     AMULET_CLASS, POTION_CLASS, RING_CLASS, SCROLL_CLASS,
@@ -206,6 +207,9 @@ export function init_objects() {
     // Save/restore canonical descriptions so repeated calls are deterministic
     save_originals();
     restore_originals();
+
+    // Reset identity counter for deterministic monster/object IDs
+    resetIdentCounter();
 
     // Randomize some gem colors (3 rn2 calls)
     // C ref: o_init.c:193
