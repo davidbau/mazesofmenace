@@ -99,11 +99,11 @@ export function generate() {
           name: "Spider nest",
           contents: function(rm) {
              let spooders = nh.level_difficulty() > 8;
-             locs: selection.room().percentage(30);
-             func: function(x,y) {
+             const locs = selection.room().percentage(30);
+             const func = function(x,y) {
                 des.trap({ type: "web", x: x, y: y,
                            spider_on_web: spooders && percent(80) });
-             }
+             };
              locs.iterate(func);
           },
        },
