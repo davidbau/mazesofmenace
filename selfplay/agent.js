@@ -8,7 +8,7 @@ import { parseScreen, findMonsters, findStairs } from './perception/screen_parse
 import { parseStatus } from './perception/status_parser.js';
 import { DungeonTracker } from './perception/map_tracker.js';
 import { findPath, findExplorationTarget, findNearest, directionKey, directionDelta, analyzeCorridorPosition } from './brain/pathing.js';
-import { shouldEngageMonster, getMonsterName, countNearbyMonsters } from './brain/danger.js';
+import { shouldEngageMonster, getMonsterName, countNearbyMonsters, assessMonsterDanger, DangerLevel } from './brain/danger.js';
 import { InventoryTracker } from './brain/inventory.js';
 import { PrayerTracker } from './brain/prayer.js';
 import { EquipmentManager } from './brain/equipment.js';
@@ -126,7 +126,30 @@ export class Agent {
             // Check for death (HP <= 0)
             if (this.status && this.status.hp <= 0) {
                 this.stats.died = true;
-                this.stats.deathCause = 'died (HP reached 0)';
+
+                // Track what killed us for learning
+                const nearbyMonsters = findMonsters(this.screen);
+                const adjacentMonster = this._findAdjacentMonster(px, py);
+                const dungeonLevel = this.status.dungeonLevel || 1;
+
+                if (adjacentMonster) {
+                    const monsterName = getMonsterName(adjacentMonster.ch);
+                    this.stats.deathCause = `killed by ${monsterName} (${adjacentMonster.ch}) on Dlvl ${dungeonLevel}`;
+                    this.stats.killedBy = adjacentMonster.ch;
+                    this.stats.deathLevel = dungeonLevel;
+                } else if (nearbyMonsters.length > 0) {
+                    const monster = nearbyMonsters[0];
+                    const monsterName = getMonsterName(monster.ch);
+                    this.stats.deathCause = `died near ${monsterName} (${monster.ch}) on Dlvl ${dungeonLevel}`;
+                    this.stats.killedBy = monster.ch;
+                    this.stats.deathLevel = dungeonLevel;
+                } else {
+                    this.stats.deathCause = `died on Dlvl ${dungeonLevel} (HP reached 0, no visible monster)`;
+                    this.stats.deathLevel = dungeonLevel;
+                }
+
+                console.log(`[DEATH] ${this.stats.deathCause}`);
+                console.log(`[DEATH] Final stats: XL${this.status.experienceLevel}, HP 0/${this.status.hpmax}, Turn ${this.turnNumber}`);
                 break;
             }
 
@@ -510,9 +533,15 @@ export class Agent {
 
         // --- Emergency checks (highest priority) ---
 
-        // 0. If HP is very low (< 30%), use healing potion if available
+        // 0. Improved healing potion management
+        // Strategy: Use potions proactively on Dlvl 3+ where monsters hit harder
+        // - Critical (< 30%): Always use if available
+        // - Moderate (30-50%): Use if we have 2+ potions (conserve for emergencies)
+        // - Preventive (50-60%): Use if we have 3+ potions and on Dlvl 4+
         let hasHealingPotions = false;
-        if (this.status && this.status.hp < this.status.hpmax * 0.3) {
+        const dungeonLevel = this.status?.dungeonLevel || 1;
+
+        if (this.status && this.status.hp < this.status.hpmax) {
             // Refresh inventory if needed
             if (this.turnNumber - this.inventory.lastUpdate > 100 || this.inventory.lastUpdate === 0) {
                 await this._refreshInventory();
@@ -520,13 +549,34 @@ export class Agent {
 
             const healingPotions = this.inventory.findHealingPotions();
             hasHealingPotions = healingPotions.length > 0;
+            const hpPercent = this.status.hp / this.status.hpmax;
 
             if (hasHealingPotions) {
-                // Quaff the first healing potion
-                const potion = healingPotions[0];
-                // Store the potion letter for the prompt handler
-                this.pendingQuaffLetter = potion.letter;
-                return { type: 'quaff', key: 'q', reason: `HP low (${this.status.hp}/${this.status.hpmax}), drinking ${potion.name}` };
+                const potionCount = healingPotions.length;
+                let shouldDrink = false;
+                let reason = '';
+
+                // Critical: Always drink at < 30% HP
+                if (hpPercent < 0.3) {
+                    shouldDrink = true;
+                    reason = 'critical HP';
+                }
+                // Moderate: Drink at < 50% if we have 2+ potions
+                else if (hpPercent < 0.5 && potionCount >= 2) {
+                    shouldDrink = true;
+                    reason = `moderate HP (${potionCount} potions available)`;
+                }
+                // Preventive: On deep levels (Dlvl 4+), drink at < 60% if we have 3+ potions
+                else if (hpPercent < 0.6 && dungeonLevel >= 4 && potionCount >= 3) {
+                    shouldDrink = true;
+                    reason = `preventive healing on Dlvl ${dungeonLevel} (${potionCount} potions)`;
+                }
+
+                if (shouldDrink) {
+                    const potion = healingPotions[0];
+                    this.pendingQuaffLetter = potion.letter;
+                    return { type: 'quaff', key: 'q', reason: `${reason}: drinking ${potion.name} (${this.status.hp}/${this.status.hpmax})` };
+                }
             }
         }
 
@@ -546,14 +596,61 @@ export class Agent {
             }
         }
 
-        // 1. If HP is low and monsters are chasing us, try to flee to upstairs
-        // Use threshold <= 50% to ensure we escape even at exactly 50% HP
+        // 1. Danger-aware retreat: flee earlier if facing dangerous monsters
+        // Base threshold: <= 50% HP
+        // Adjust based on monster danger and dungeon level
         const hpPercent = this.status ? this.status.hp / this.status.hpmax : 1;
-        if (this.status && hpPercent <= 0.5) {
-            const nearbyMonsters = findMonsters(this.screen);
-            const adjacentMonster = this._findAdjacentMonster(px, py);
-            const hasHostileMonsters = nearbyMonsters.length > 0 || adjacentMonster !== null;
-            if (hasHostileMonsters) {
+        const nearbyMonsters = findMonsters(this.screen);
+        const adjacentMonster = this._findAdjacentMonster(px, py);
+        const hasHostileMonsters = nearbyMonsters.length > 0 || adjacentMonster !== null;
+
+        // Calculate retreat threshold based on threats
+        let retreatThreshold = 0.5; // Base: 50% HP
+        if (this.status && hasHostileMonsters) {
+            const playerLevel = this.status.experienceLevel || 1;
+            const dungeonLevel = this.status.dungeonLevel || 1;
+
+            // Check danger of nearby monsters
+            let maxDanger = DangerLevel.LOW;
+
+            // Check adjacent monster first (most immediate threat)
+            if (adjacentMonster) {
+                const danger = assessMonsterDanger(
+                    adjacentMonster.ch,
+                    this.status.hp,
+                    this.status.hpmax,
+                    playerLevel,
+                    dungeonLevel
+                );
+                maxDanger = Math.max(maxDanger, danger);
+            }
+
+            // Check nearby monsters
+            for (const monster of nearbyMonsters.slice(0, 3)) { // Check up to 3 nearby
+                const danger = assessMonsterDanger(
+                    monster.ch,
+                    this.status.hp,
+                    this.status.hpmax,
+                    playerLevel,
+                    dungeonLevel
+                );
+                maxDanger = Math.max(maxDanger, danger);
+            }
+
+            // Adjust retreat threshold based on maximum danger
+            if (maxDanger >= DangerLevel.HIGH) {
+                retreatThreshold = 0.7; // Retreat at 70% HP for HIGH danger
+            } else if (maxDanger >= DangerLevel.MEDIUM) {
+                retreatThreshold = 0.6; // Retreat at 60% HP for MEDIUM danger
+            }
+
+            // On deeper levels, be more cautious
+            if (dungeonLevel >= 4) {
+                retreatThreshold = Math.min(0.75, retreatThreshold + 0.1);
+            }
+        }
+
+        if (this.status && hpPercent <= retreatThreshold && hasHostileMonsters) {
                 // Try to flee to upstairs if available and not too far
                 if (level.stairsUp.length > 0) {
                     const stairs = level.stairsUp[0];
@@ -579,7 +676,7 @@ export class Agent {
             }
         }
 
-        // 1b. If HP is low and no monsters nearby, rest to heal
+        // 1b. Smarter rest strategy with location awareness
         // NetHack HP regen: (XL + CON)% chance per turn to heal 1 HP
         // At XL1 with CON~10, only 11% chance per turn!
         if (this.status && this.status.hp < this.status.hpmax) {
@@ -594,18 +691,38 @@ export class Agent {
             }
             this.lastHP = this.status.hp;
 
-            // Rest if HP is low and no monsters nearby (including adjacent)
-            // Critical HP <= 50%: rest for up to 100 turns (MUST be >= MEDIUM monster threshold of 40%)
-            // Moderate HP < 70%: rest for up to 50 turns
-            // (HP regen is probabilistic: (XL+CON)% chance per turn)
+            // Assess location safety for resting
+            const onStairs = level.stairsUp.some(s => s.x === px && s.y === py) ||
+                           level.stairsDown.some(s => s.x === px && s.y === py);
+            const corridorAnalysis = analyzeCorridorPosition(level, px, py);
+            const inCorridor = corridorAnalysis.inCorridor;
+
+            // Safe locations get extended rest time:
+            // - On stairs: safest (can escape quickly)
+            // - In corridor: good (monsters can't surround)
+            // - Dead-end: moderate (trapped but monsters can't surround)
+            // - Open room: risky (can be surrounded)
+            let maxRestTurns = 100;
+            let safetyBonus = '';
+            if (onStairs) {
+                maxRestTurns = 150; // Extra time on stairs
+                safetyBonus = ' (on stairs - safe)';
+            } else if (inCorridor) {
+                maxRestTurns = 120; // Good safety in corridors
+                safetyBonus = ' (in corridor)';
+            }
+
+            // Rest thresholds
+            // Critical HP <= 50%: rest for extended time
+            // Moderate HP < 70%: rest for shorter time
             // Note: These thresholds MUST be higher than combat engagement thresholds
             // to prevent flee-loops where agent can't rest but won't fight
-            if (hpPercent <= 0.5 && !monstersNearby && this.restTurns < 100) {
+            if (hpPercent <= 0.5 && !monstersNearby && this.restTurns < maxRestTurns) {
                 this.restTurns++;
-                return { type: 'rest', key: '.', reason: `HP low, resting (${this.status.hp}/${this.status.hpmax}, ${this.restTurns}/100)` };
-            } else if (hpPercent < 0.7 && !monstersNearby && this.restTurns < 50) {
+                return { type: 'rest', key: '.', reason: `HP low, resting (${this.status.hp}/${this.status.hpmax}, ${this.restTurns}/${maxRestTurns})${safetyBonus}` };
+            } else if (hpPercent < 0.7 && !monstersNearby && this.restTurns < Math.min(50, maxRestTurns)) {
                 this.restTurns++;
-                return { type: 'rest', key: '.', reason: `resting to heal (${this.status.hp}/${this.status.hpmax}, ${this.restTurns}/50)` };
+                return { type: 'rest', key: '.', reason: `resting to heal (${this.status.hp}/${this.status.hpmax}, ${this.restTurns}/50)${safetyBonus}` };
             }
 
             // If we've rested enough, give up and continue (HP will heal while exploring)
