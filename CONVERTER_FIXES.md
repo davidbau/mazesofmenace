@@ -18,7 +18,12 @@ Fixed 10 of 11 originally problematic level files, achieving 99.2% success rate 
 10. ✅ **Rog-strt** - Missing for-loop closing brace
 
 ## Still Failing
-11. ⚠️ **themerms** - Complex ES module parsing issue (works without package.json "type": "module")
+11. ⚠️ **themerms** - Node.js ES module loading issue
+   - **Status**: File passes `node --check` (syntax is valid)
+   - **Issue**: Fails when imported as ES module with "Unexpected end of input"
+   - **Workaround**: Works without package.json `"type": "module"` setting
+   - **Analysis**: Likely Node.js quirk with large generated files (1138 lines vs ~300 average)
+   - **Converter fixes applied**: 9 postprocessing fixes including bare assignment detection
 
 ## Critical Bugs Fixed
 
