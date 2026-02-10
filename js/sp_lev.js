@@ -1916,12 +1916,20 @@ export const selection = {
      */
     new: () => {
         const coords = [];
-        return {
+        const sel = {
             coords,
             set: (x, y) => {
                 coords.push({ x, y });
             },
+            // Add rndcoord as a method for Lua compatibility
+            rndcoord: (filterValue) => {
+                // filterValue parameter is for Lua compatibility, usually unused
+                if (coords.length === 0) return undefined;
+                const idx = rn2(coords.length);
+                return coords[idx];
+            },
         };
+        return sel;
     },
 
     /**
