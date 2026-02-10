@@ -889,16 +889,16 @@ export function room(opts = {}) {
     const xalign = alignMap[opts.xalign] ?? -1;
     const yalign = alignMap[opts.yalign] ?? -1;
     const type = opts.type ?? 'ordinary';
-    const rtype = roomTypeMap[type] ?? 0;
     const lit = opts.lit ?? -1;
     const filled = opts.filled ?? 1;
     const chance = opts.chance ?? 100;
     const contents = opts.contents;
 
-    // Check chance (e.g., shops may have chance < 100%)
-    if (chance < 100 && rn2(100) >= chance) {
-        return false;
-    }
+    // C ref: sp_lev.c:2803 build_room() — always calls rn2(100) and uses result
+    // to decide room type. If roll >= chance, room becomes OROOM (ordinary) instead
+    // of the requested type. Room is still created, just with different type.
+    const requestedRtype = roomTypeMap[type] ?? 0;
+    const rtype = (!chance || rn2(100) < chance) ? requestedRtype : 0; // 0 = OROOM
 
     // Validate x,y pair (both must be -1 or both must be specified)
     if ((x === -1 || y === -1) && x !== y) {
