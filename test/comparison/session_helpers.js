@@ -627,14 +627,15 @@ export async function replaySession(seed, session) {
             pushInput(32); // SPACE to dismiss modal display
         }
 
-        // C ref: allmain.c moveloop_core() — monsters move FIRST (using prev turn's movement)
-        settrack(game.player);
-        movemon(game.map, game.player, game.display, game.fov);
-
         const result = await rhack(ch, game);
 
-        // If the command took time, add movement for next turn and run turn effects
+        // If the command took time, run monster movement and turn effects
+        // C ref: allmain.c moveloop_core() — movemon only runs if command takes time
         if (result && result.tookTime) {
+            // C ref: Monsters move using movement accumulated from previous turn
+            settrack(game.player);
+            movemon(game.map, game.player, game.display, game.fov);
+
             game.simulateTurnStart(); // mcalcmove + rn2(70) AFTER player action
             game.simulateTurnEnd();
 

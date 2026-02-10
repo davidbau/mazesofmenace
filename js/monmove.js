@@ -606,7 +606,9 @@ function dog_move(mon, map, player, display, fov) {
     const cnt = positions.length;
 
     let nix = omx, niy = omy;
-    let nidist = dist2(omx, omy, gx, gy);
+    // C ref: dogmove.c — nidist initialized to large value so first position always improves (j < 0)
+    // This avoids rn2(++chcnt) call on the first position when it has same distance as initial
+    let nidist = FARAWAY * FARAWAY;
     let chcnt = 0;
     let chi = -1;
     let uncursedcnt = 0;
