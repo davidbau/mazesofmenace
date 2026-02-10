@@ -57,7 +57,7 @@ export async function rhack(ch, game) {
             game.runMode = 0; // Clear prefix
             return handleRun(DIRECTION_KEYS[c], player, map, display, fov, game);
         }
-        return handleMovement(DIRECTION_KEYS[c], player, map, display, game);
+        return await handleMovement(DIRECTION_KEYS[c], player, map, display, game);
     }
 
     // Run keys (capital letter = run in that direction)
@@ -247,7 +247,7 @@ export async function rhack(ch, game) {
             game.travelPath = path;
             game.travelStep = 0;
             display.putstr_message(`Traveling... (${path.length} steps)`);
-            return executeTravelStep(game);
+            return await executeTravelStep(game);
         } else {
             display.putstr_message('No previous travel destination.');
             return { moved: false, tookTime: false };
@@ -381,7 +381,7 @@ export async function rhack(ch, game) {
 
 // Handle directional movement
 // C ref: hack.c domove() -- the core movement function
-function handleMovement(dir, player, map, display, game) {
+async function handleMovement(dir, player, map, display, game) {
     const nx = player.x + dir[0];
     const ny = player.y + dir[1];
 
@@ -568,7 +568,7 @@ function handleMovement(dir, player, map, display, game) {
 async function handleRun(dir, player, map, display, fov, game) {
     let steps = 0;
     while (steps < 80) { // safety limit
-        const result = handleMovement(dir, player, map, display, game);
+        const result = await handleMovement(dir, player, map, display, game);
         if (!result.moved) break;
         steps++;
 
@@ -1964,7 +1964,7 @@ async function handleTravel(game) {
 
 // Execute one step of travel
 // C ref: hack.c domove() with context.travel flag
-export function executeTravelStep(game) {
+export async function executeTravelStep(game) {
     const { player, map, display } = game;
 
     if (!game.travelPath || game.travelStep >= game.travelPath.length) {
@@ -1979,7 +1979,7 @@ export function executeTravelStep(game) {
     game.travelStep++;
 
     // Execute movement
-    const result = handleMovement([dx, dy], player, map, display, game);
+    const result = await handleMovement([dx, dy], player, map, display, game);
 
     // If movement failed, stop traveling
     if (!result.moved) {
