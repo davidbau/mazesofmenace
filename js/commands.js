@@ -289,6 +289,22 @@ function handleMovement(dir, player, map, display, game) {
     // Check for monster at target position
     const mon = map.monsterAt(nx, ny);
     if (mon) {
+        // C ref: hack.c domove() — check for pet displacement
+        // Simplified: tame/peaceful monsters are displaced (swap positions)
+        if (mon.tame || mon.peaceful) {
+            // Pet displacement: swap positions
+            // C ref: hack.c:2142-2156 — remove_monster + place_monster swaps positions
+            const oldPlayerX = player.x;
+            const oldPlayerY = player.y;
+            mon.mx = oldPlayerX;
+            mon.my = oldPlayerY;
+            player.x = nx;
+            player.y = ny;
+            player.moved = true;
+            display.putstr_message(`You swap places with ${mon.name}.`);
+            return { moved: true, tookTime: true };
+        }
+
         // Attack the monster
         // C ref: hack.c domove() -> do_attack() -> attack() -> hitum()
         // C ref: hack.c:3036 overexertion() unconditionally calls gethungry() -> rn2(20)
@@ -644,6 +660,7 @@ async function handleInventory(player, display) {
 
 // Handle wielding a weapon
 // C ref: wield.c dowield()
+// C ref: wield.c dowield() — wield a weapon (instant action, no time cost)
 async function handleWield(player, display) {
     const weapons = player.inventory.filter(o => o.oclass === 1); // WEAPON_CLASS
     if (weapons.length === 0) {
@@ -658,14 +675,16 @@ async function handleWield(player, display) {
     if (c === '-') {
         player.weapon = null;
         display.putstr_message('You are now empty-handed.');
-        return { moved: false, tookTime: true };
+        // C ref: wield.c:dowield sets multi=0 (no time cost)
+        return { moved: false, tookTime: false };
     }
 
     const weapon = weapons.find(w => w.invlet === c);
     if (weapon) {
         player.weapon = weapon;
         display.putstr_message(`${weapon.invlet} - ${weapon.name} (weapon in hand).`);
-        return { moved: false, tookTime: true };
+        // C ref: wield.c:dowield sets multi=0 (no time cost)
+        return { moved: false, tookTime: false };
     }
 
     display.putstr_message("Never mind.");

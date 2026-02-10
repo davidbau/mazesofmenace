@@ -17,6 +17,7 @@ class LuaToJsConverter:
         self.imports_needed = set()
         self.in_multiline_string = False
         self.multiline_string_lines = []
+        self.indent_level = 0
 
     def convert_file(self, lua_content, filename):
         """Convert a Lua special level file to JavaScript."""
@@ -144,10 +145,12 @@ class LuaToJsConverter:
                         after = combined_text[end_idx + 2:]
                         combined_text = before + '`\n' + template_content + '\n`' + after
 
-                    # Now combine into a single line for processing
+                    # Combine into one line for conversion (preserves structure)
                     combined = ' '.join(l.strip() for l in combined_text.split('\n'))
                     converted = self.convert_line(combined)
                     if converted:
+                        # Post-process to add line breaks and fix comments
+                        converted = self.format_multiline_output(converted)
                         js_lines.append(converted)
                     i += 1
                     continue
@@ -196,6 +199,60 @@ class LuaToJsConverter:
 
         return '\n'.join(js_lines)
 
+    def format_multiline_output(self, js_code):
+        """Post-process converted JavaScript to add proper line breaks."""
+        # Simple approach: add line breaks after semicolons and around function braces
+        result = []
+        i = 0
+        in_string = False
+        string_char = None
+        in_template = False
+        depth = 0
+
+        while i < len(js_code):
+            char = js_code[i]
+
+            # Track strings and templates
+            if char == '`':
+                in_template = not in_template
+                result.append(char)
+            elif char in ['"', "'"] and (i == 0 or js_code[i-1] != '\\'):
+                if not in_string and not in_template:
+                    in_string = True
+                    string_char = char
+                elif in_string and char == string_char:
+                    in_string = False
+                result.append(char)
+            elif not in_string and not in_template:
+                if char == ';':
+                    result.append(char)
+                    # Look ahead - only add newline if next non-space char is not }
+                    j = i + 1
+                    while j < len(js_code) and js_code[j] == ' ':
+                        j += 1
+                    if j < len(js_code) and js_code[j] not in ['}', ')']:
+                        result.append('\n' + '        ')
+                        i = j - 1  # Skip the spaces
+                elif char == '{' and i > 0 and js_code[i-1] == ')':
+                    # Function body opening
+                    result.append(' {\n        ')
+                    depth += 1
+                    # Skip the space after {  if any
+                    if i + 1 < len(js_code) and js_code[i + 1] == ' ':
+                        i += 1
+                elif char == '}' and depth > 0:
+                    # Function body closing
+                    result.append('\n    }')
+                    depth -= 1
+                else:
+                    result.append(char)
+            else:
+                result.append(char)
+
+            i += 1
+
+        return ''.join(result)
+
     def convert_line(self, line):
         """Convert a single line of Lua to JavaScript."""
         stripped = line.strip()
@@ -210,11 +267,44 @@ class LuaToJsConverter:
             comment_text = stripped[2:].strip()
             return f"{indent}// {comment_text}"
 
-        # Handle inline comments
+        # Local variable declarations (check BEFORE inline comments to avoid false positives)
+        if stripped.startswith('local '):
+            var_decl = stripped[6:]  # Remove 'local '
+            # Check if it's a des.* call assignment
+            if 'des.' in var_decl and '({' in var_decl and ' = des.' in var_decl:
+                # Use convert_statement to handle the object literal conversion
+                result = self.convert_statement(var_decl)
+                return indent + result
+            return indent + 'const ' + self.convert_expression(var_decl)
+
+        # Handle inline comments (but not -- inside strings or template literals)
         if '--' in stripped and not stripped.startswith('--'):
-            code_part = stripped[:stripped.index('--')]
-            comment_part = stripped[stripped.index('--') + 2:]
-            return indent + self.convert_expression(code_part) + ' // ' + comment_part
+            # Find -- that's not inside a string or template literal
+            comment_idx = -1
+            in_string = False
+            in_template = False
+            string_char = None
+            i = 0
+            while i < len(stripped):
+                char = stripped[i]
+                if char == '`':
+                    in_template = not in_template
+                elif char in ['"', "'"] and (i == 0 or stripped[i-1] != '\\'):
+                    if not in_string:
+                        in_string = True
+                        string_char = char
+                    elif char == string_char:
+                        in_string = False
+                elif not in_string and not in_template:
+                    if i < len(stripped) - 1 and stripped[i:i+2] == '--':
+                        comment_idx = i
+                        break
+                i += 1
+
+            if comment_idx >= 0:
+                code_part = stripped[:comment_idx]
+                comment_part = stripped[comment_idx + 2:]
+                return indent + self.convert_expression(code_part) + ' // ' + comment_part
 
         # Function definitions
         if stripped.startswith('function '):
@@ -227,11 +317,6 @@ class LuaToJsConverter:
         if stripped in ['end', 'end;', 'end,']:
             suffix = stripped[3:] if len(stripped) > 3 else ''
             return indent + '}' + suffix
-
-        # Local variable declarations
-        if stripped.startswith('local '):
-            var_decl = stripped[6:]  # Remove 'local '
-            return indent + 'const ' + self.convert_expression(var_decl)
 
         # If statements
         if stripped.startswith('if ') and ' then' in stripped:
@@ -351,6 +436,9 @@ class LuaToJsConverter:
                 rhs = stmt[idx + 3:].strip()  # Skip past " = "
                 # Convert the RHS (which should start with "des.")
                 converted_rhs = self.convert_des_call_with_object(rhs)
+                # Remove 'local' from LHS if present
+                if lhs.startswith('local '):
+                    lhs = lhs[6:]
                 # Add const if needed
                 if not lhs.startswith(('const ', 'let ', 'var ')):
                     lhs = 'const ' + lhs
@@ -358,7 +446,11 @@ class LuaToJsConverter:
 
             # Direct des.* call
             if stmt.startswith('des.'):
-                return self.convert_des_call_with_object(stmt)
+                result = self.convert_des_call_with_object(stmt)
+                # Add semicolon if not already present
+                if not result.endswith(';'):
+                    result += ';'
+                return result
 
         # Otherwise convert as expression
         result = self.convert_expression(stmt)
@@ -448,10 +540,11 @@ class LuaToJsConverter:
         return '{ ' + ', '.join(result) + ' }'
 
     def split_object_fields(self, obj_inner):
-        """Split object fields by comma, respecting nested braces and functions."""
+        """Split object fields by comma, respecting nested braces, parens, and functions."""
         fields = []
         current = []
         brace_depth = 0
+        paren_depth = 0
         in_string = False
         string_char = None
 
@@ -470,7 +563,11 @@ class LuaToJsConverter:
                     brace_depth += 1
                 elif char == '}':
                     brace_depth -= 1
-                elif char == ',' and brace_depth == 0:
+                elif char == '(':
+                    paren_depth += 1
+                elif char == ')':
+                    paren_depth -= 1
+                elif char == ',' and brace_depth == 0 and paren_depth == 0:
                     fields.append(''.join(current))
                     current = []
                     i += 1
@@ -549,12 +646,13 @@ class LuaToJsConverter:
             if stmt:
                 statements.append(self.convert_statement(stmt))
 
-            converted_body = ' '.join(statements)
+            # Join statements with spaces (formatting will be added later)
+            converted_body = ' ' + ' '.join(statements) + ' ' if statements else ''
         else:
-            converted_body = self.convert_statement(body) if body else ''
+            converted_body = ' ' + (self.convert_statement(body) if body else '') + ' '
 
-        # Return as function expression
-        return f"function({params}) {{ {converted_body} }}"
+        # Return as function expression (formatting added by format_multiline_output)
+        return f"function({params}) {{{converted_body}}}"
 
     def convert_expression(self, expr):
         """Convert a Lua expression to JavaScript."""

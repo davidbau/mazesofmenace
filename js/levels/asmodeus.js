@@ -1,88 +1,27 @@
 /**
- * Asmodeus's Lair (Gehennom)
- * Ported from nethack-c/dat/asmodeus.lua
+ * asmodeus - NetHack special level
+ * Converted from: asmodeus.lua
  */
 
-import { des, selection, finalize_level } from '../sp_lev.js';
+import * as des from '../sp_lev.js';
+import { selection } from '../sp_lev.js';
 
 export function generate() {
-    des.level_init({ style: 'mazegrid', bg: '-' });
+    // NetHack gehennom asmodeus.lua	$NHDT-Date: 1652196020 2022/05/10 15:20:20 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.2 $
+    // Copyright (c) 1989 by Jean-Christophe Collet
+    // Copyright (c) 1992 by M. Stephenson and Izchak Miller
+    // NetHack may be freely redistributed.  See license for details.
+    // 
+    des.level_init({ style: "mazegrid", bg: "-" })
 
-    des.level_flags('mazelevel');
+    des.level_flags("mazelevel");
 
-    // First part (left side)
-    des.map({
-        halign: 'half-left',
-        valign: 'center',
-        map: `
----------------------
-|.............|.....|
-|.............S.....|
-|---+------------...|
-|.....|.........|-+--
-|..---|.........|....
-|..|..S.........|....
-|..|..|.........|....
-|..|..|.........|-+--
-|..|..-----------...|
-|..S..........|.....|
----------------------
-`
-    });
+    const tmpbounds = selection.match("-");
+    const bnds = tmpbounds.bounds();
+    const bounds2 = selection.fillrect(bnds.lx, bnds.ly + 1, bnds.hx - 2, bnds.hy - 1);
 
-    // Doors
-    des.door('closed', 4, 3);
-    des.door('locked', 18, 4);
-    des.door('closed', 18, 8);
+    // First part
+    asmo1 = des.map({ halign = "half-left", valign = "center", map = `  --------------------- | +  +  +  +  +  + .| +  + .| | +  +  +  +  +  + .S +  + .| |---+------------ + .| | +  + .| +  +  +  + .|-+-- | + ---| +  +  +  + .| +  + | + | + S +  +  +  + .| +  + | + | + | +  +  +  + .| +  + | + | + | +  +  +  + .|-+-- | + | + ----------- + .| | + S +  +  +  +  + | +  + .| ---------------------  `, contents = function(rm) //  Doors des.door("closed",04,03) des.door("locked",18,04) des.door("closed",18,08) -- des.stair("down", 13,07) -- Non diggable walls des.non_diggable(selection.area(00,00,20,11)) -- Entire main area des.region(selection.area(01,01,20,10),"unlit") -- The fellow in residence des.monster("Asmodeus",12,07) -- Some random weapons and armor. des.object("[") des.object("[") des.object(")") des.object(")") des.object("*") des.object("!") des.object("!") des.object("?") des.object("?") des.object("?") -- Some traps. des.trap("spiked pit", 05,02) des.trap("fire", 08,06) des.trap("sleep gas") des.trap("anti magic") des.trap("fire") des.trap("magic") des.trap("magic") -- Random monsters. des.monster("ghost",11,07) des.monster("horned devil",10,05) des.monster("L") -- Some Vampires for good measure des.monster("V") des.monster("V") des.monster("V") end });  des.levregion({ region={01,00,6,20}, region_islev=1, exclude={6,1,70,16}, exclude_islev=1, type="stair-up" });  des.levregion({ region={01,00,6,20}, region_islev=1, exclude={6,1,70,16}, exclude_islev=1, type="branch" }); des.teleport_region({ region = {01,00,6,20}, region_islev=1, exclude={6,1,70,16}, exclude_islev=1 })  -- Second part local asmo2 = des.map({ halign = "half-right", valign = "center", map = `  --------------------------------- ................................| ................................+ ................................| ---------------------------------  `, contents = function(rm) des.mazewalk(32,02,"east") -- Non diggable walls des.non_diggable(selection.area(00,00,32,04)) des.door("closed",32,02) des.monster("&") des.monster("&") des.monster("&") des.trap("anti magic") des.trap("fire") des.trap("magic") end });  local protected = bounds2:negate() | asmo1 | asmo2; hell_tweaks(protected);
 
-    des.stair('down', 13, 7);
-
-    // Non-diggable walls
-    des.non_diggable(selection.area(0, 0, 20, 11));
-
-    // Entire main area unlit
-    des.region(selection.area(1, 1, 20, 10), 'unlit');
-
-    // The fellow in residence
-    des.monster({ id: 'Asmodeus', x: 12, y: 7 });
-
-    // Some random weapons and armor
-    des.object({ class: '[' });
-    des.object({ class: '[' });
-    des.object({ class: ')' });
-    des.object({ class: ')' });
-    des.object({ class: '*' });
-    des.object({ class: '!' });
-    des.object({ class: '!' });
-    des.object({ class: '?' });
-    des.object({ class: '?' });
-    des.object({ class: '?' });
-
-    // Some traps
-    des.trap('spiked pit', 5, 2);
-    des.trap('fire', 8, 6);
-    des.trap({ type: 'sleep gas' });
-    des.trap({ type: 'anti magic' });
-    des.trap({ type: 'fire' });
-    des.trap({ type: 'magic' });
-    des.trap({ type: 'magic' });
-
-    // Random monsters
-    des.monster({ id: 'ghost', x: 11, y: 7 });
-    des.monster({ id: 'horned devil', x: 10, y: 5 });
-    des.monster({ id: 'L' }); // Lich
-    des.monster({ id: 'V' }); // Vampire
-    des.monster({ id: 'V' });
-    des.monster({ id: 'V' });
-
-    // Stair-up and branch in maze area
-    des.levregion({ type: 'stair-up', region: { x1: 1, y1: 0, x2: 6, y2: 20 }, exclude: { x1: 6, y1: 1, x2: 70, y2: 16 } });
-    des.levregion({ type: 'branch', region: { x1: 1, y1: 0, x2: 6, y2: 20 }, exclude: { x1: 6, y1: 1, x2: 70, y2: 16 } });
-    des.teleport_region({ region: { x1: 1, y1: 0, x2: 6, y2: 20 }, exclude: { x1: 6, y1: 1, x2: 70, y2: 16 } });
-
-    // Second part (right side) - simplified, just adding maze extension
-    // The C version has a second map on the right side, but for simplicity
-    // we'll let the mazegrid background serve as the maze
-
-    return finalize_level();
+    return des.finalize_level();
 }

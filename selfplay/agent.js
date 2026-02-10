@@ -4,7 +4,7 @@
 // and map tracker for perception, the strategy/tactics modules for
 // decisions, and sends commands through the platform adapter interface.
 
-import { parseScreen, parseTmuxCapture, findMonsters, findStairs } from './perception/screen_parser.js';
+import { parseScreen, findMonsters, findStairs } from './perception/screen_parser.js';
 import { parseStatus } from './perception/status_parser.js';
 import { DungeonTracker } from './perception/map_tracker.js';
 import { findPath, findExplorationTarget, findNearest, directionKey, directionDelta } from './brain/pathing.js';
@@ -30,6 +30,7 @@ export class Agent {
      * @param {number} [options.maxTurns=10000] - Maximum turns before giving up
      * @param {number} [options.moveDelay=0] - Delay between moves in ms (for demo mode)
      * @param {function} [options.onTurn] - Callback after each turn: (turnInfo) => void
+     * @param {function} [options.onPerceive] - Callback after screen parse: (info) => void
      * @param {function} [options.shouldStop] - Check if agent should stop: () => boolean
      */
     constructor(adapter, options = {}) {
@@ -37,6 +38,7 @@ export class Agent {
         this.maxTurns = options.maxTurns || 10000;
         this.moveDelay = options.moveDelay || 0;
         this.onTurn = options.onTurn || null;
+        this.onPerceive = options.onPerceive || null;
         this.shouldStop = options.shouldStop || (() => false);
 
         // Perception
@@ -98,6 +100,13 @@ export class Agent {
 
             this.screen = parseScreen(grid);
             this.status = parseStatus(this.screen.statusLine1, this.screen.statusLine2);
+            if (this.onPerceive) {
+                this.onPerceive({
+                    turn: this.turnNumber + 1,
+                    screen: this.screen,
+                    status: this.status,
+                });
+            }
 
             // Check for game over
             if (!(await this.adapter.isRunning())) {
@@ -656,29 +665,31 @@ export class Agent {
 
         // 5b. Proactive descent: if we've found stairs and explored enough, head down
         // This encourages forward progress instead of exhaustive exploration
-        // BUT: if we're stuck, skip this and let section 6 handle it with allowUnexplored
-        if (level.stairsDown.length > 0 && this.turnNumber > 30 && this.levelStuckCounter <= 15) {
+        if (level.stairsDown.length > 0 && this.turnNumber > 30) {
             const exploredPercent = level.exploredCount / (80 * 21); // rough estimate
             const frontierCells = level.getExplorationFrontier().length;
 
             // Head to stairs if:
-            // - We've explored at least 10% of the map (found main areas), AND
+            // - We've explored at least 15% of the map (found main areas), AND
             // - HP is above 50%, AND
-            // - Frontier is small (< 20 unexplored areas) OR we've been on level for 50+ turns
+            // - Either: frontier is small (< 30) OR we've been here 100+ turns OR path is cheap (< 30)
             const hpGood = this.status && (this.status.hp / this.status.hpmax) > 0.5;
-            const exploredEnough = exploredPercent > 0.10;
-            const frontierSmall = frontierCells < 20;
-            const beenHereLong = this.turnNumber > 50;
+            const exploredEnough = exploredPercent > 0.15;  // Raised from 10% to ensure basic exploration
+            const frontierSmall = frontierCells < 30;        // Raised from 20 to be less restrictive
+            const beenHereLong = this.turnNumber > 100;      // Raised from 50 to avoid premature descent
 
-            if (hpGood && exploredEnough && (frontierSmall || beenHereLong)) {
-                const stairs = level.stairsDown[0];
-                // If we're already at the downstairs, descend immediately
-                if (px === stairs.x && py === stairs.y) {
-                    console.log(`[DEBUG] At downstairs, descending`); return { type: 'descend', key: '>', reason: `descending (explored ${Math.round(exploredPercent*100)}%)` };
-                }
-                const path = findPath(level, px, py, stairs.x, stairs.y, { allowUnexplored: false });
+            // Check if path to stairs is short (if so, worth going even with more frontier)
+            const stairs = level.stairsDown[0];
+            if (px === stairs.x && py === stairs.y) {
+                console.log(`[DEBUG] At downstairs, descending`); return { type: 'descend', key: '>', reason: `descending (explored ${Math.round(exploredPercent*100)}%)` };
+            }
+
+            const path = findPath(level, px, py, stairs.x, stairs.y, { allowUnexplored: false });
+            const pathIsCheap = path.found && path.cost < 30;  // Stairs are nearby
+
+            if (hpGood && exploredEnough && (frontierSmall || beenHereLong || pathIsCheap)) {
                 if (path.found) {
-                    return this._followPath(path, 'navigate', `heading to downstairs (explored ${Math.round(exploredPercent*100)}%, frontier ${frontierCells})`);
+                    return this._followPath(path, 'navigate', `heading to downstairs (explored ${Math.round(exploredPercent*100)}%, frontier ${frontierCells}, cost ${Math.round(path.cost)})`);
                 }
             }
         }
@@ -1130,6 +1141,23 @@ export class Agent {
         if (action.type !== 'rest') {
             this.restTurns = 0;
         }
+        if (this.adapter.queueInput) {
+            if (action.type === 'wield' && this.pendingWieldLetter) {
+                const letter = this.pendingWieldLetter;
+                this.pendingWieldLetter = null;
+                this.adapter.queueInput(letter);
+            } else if (action.type === 'wear' && this.pendingWearLetter) {
+                const letter = this.pendingWearLetter;
+                this.pendingWearLetter = null;
+                this.adapter.queueInput(letter);
+            } else if (action.type === 'quaff' && this.pendingQuaffLetter) {
+                const letter = this.pendingQuaffLetter;
+                this.pendingQuaffLetter = null;
+                this.adapter.queueInput(letter);
+            } else if (action.type === 'eat') {
+                this.adapter.queueInput('a');
+            }
+        }
         await this.adapter.sendKey(action.key);
     }
 
@@ -1138,28 +1166,23 @@ export class Agent {
      * This is expensive (requires extra key press + screen read), so call sparingly.
      */
     async _refreshInventory() {
-        // In headless mode, skip inventory screen scraping.
-        // The inventory command ('i') blocks waiting for dismissal,
-        // causing the agent to hang. Instead, track inventory through
-        // game state or message parsing in headless mode.
-        // TODO: Implement proper inventory tracking for headless mode
-        if (!this.adapter.isTmux) {
-            // Headless JS mode - skip for now
-            this.inventory.lastUpdate = this.turnNumber;
-            return false;
+        // Headless adapters can provide inventory lines directly.
+        if (this.adapter.getInventoryLines) {
+            const lines = await this.adapter.getInventoryLines();
+            const success = this.inventory.parseFromLines(lines);
+            if (success) {
+                this.inventory.lastUpdate = this.turnNumber;
+            }
+            return success;
         }
 
         // Send 'i' to view inventory
         await this.adapter.sendKey('i');
 
-        // Read the inventory screen
+        // Read the inventory screen (use raw lines so row 0 is included)
         const rawScreen = await this.adapter.readScreen();
-        const invScreen = this.adapter.isTmux
-            ? parseTmuxCapture(rawScreen)
-            : parseScreen(rawScreen);
-
-        // Parse inventory
-        const success = this.inventory.parseFromScreen(invScreen);
+        const lines = rawScreen.map(row => row.map(cell => cell.ch || ' ').join(''));
+        const success = this.inventory.parseFromLines(lines);
 
         // Dismiss inventory screen (space or escape)
         await this.adapter.sendKey(' ');
