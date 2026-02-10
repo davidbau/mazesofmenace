@@ -1292,6 +1292,9 @@ export function room(opts = {}) {
     };
 
     // Mark floor tiles for the room
+    if (DEBUG || typeof process !== 'undefined' && process.env.DEBUG_ROOM_TILES === '1') {
+        console.log(`Marking room tiles: (${roomX},${roomY})-(${roomX+roomW-1},${roomY+roomH-1})`);
+    }
     for (let ry = roomY; ry < roomY + roomH; ry++) {
         for (let rx = roomX; rx < roomX + roomW; rx++) {
             if (rx >= 0 && rx < COLNO && ry >= 0 && ry < ROWNO) {
