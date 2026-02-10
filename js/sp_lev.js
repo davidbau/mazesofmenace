@@ -16,7 +16,7 @@
 import { GameMap } from './map.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { mksobj, mkobj } from './mkobj.js';
-import { create_room, makecorridors, init_rect } from './dungeon.js';
+import { create_room, makecorridors, init_rect, rnd_rect, split_rects } from './dungeon.js';
 import {
     STONE, VWALL, HWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL, ROOM, CORR,
@@ -172,6 +172,7 @@ function litstate_rnd(litstate, depth) {
  * procedural rooms use BSP rectangle selection.
  *
  * @param {number} x - X grid position (1-5) or -1 for random
+ * @param {object} map - GameMap instance for collision checking
  * @param {number} y - Y grid position (1-5) or -1 for random
  * @param {number} w - Room width or -1 for random
  * @param {number} h - Room height or -1 for random
@@ -182,7 +183,67 @@ function litstate_rnd(litstate, depth) {
  * @param {number} depth - Current dungeon depth (for litstate_rnd)
  * @returns {Object|null} Room object {lx, ly, hx, hy, rtype, rlit} or null on failure
  */
-function create_room_splev(x, y, w, h, xalign, yalign, rtype, rlit, depth) {
+
+/**
+ * Check if a room can fit at the specified location.
+ * Simplified version of dungeon.js check_room() for sp_lev.
+ * C ref: sp_lev.c:1397-1473
+ *
+ * @param {object} map - GameMap instance
+ * @param {number} lowx - Left X coordinate
+ * @param {number} ddx - Width (not including walls)
+ * @param {number} lowy - Top Y coordinate
+ * @param {number} ddy - Height (not including walls)
+ * @param {boolean} vault - Is this a vault?
+ * @returns {Object|null} {lowx, ddx, lowy, ddy} validated coordinates or null
+ */
+function checkRoomForSplev(map, lowx, ddx, lowy, ddy, vault) {
+    let hix = lowx + ddx, hiy = lowy + ddy;
+    const xlim = 1 + (vault ? 1 : 0);
+    const ylim = 1 + (vault ? 1 : 0);
+
+    if (lowx < 3) lowx = 3;
+    if (lowy < 2) lowy = 2;
+    if (hix > COLNO - 3) hix = COLNO - 3;
+    if (hiy > ROWNO - 3) hiy = ROWNO - 3;
+
+    for (;;) {
+        if (hix <= lowx || hiy <= lowy)
+            return null;
+
+        let conflict = false;
+        for (let x = lowx - xlim; x <= hix + xlim && !conflict; x++) {
+            if (x <= 0 || x >= COLNO) continue;
+            let y = lowy - ylim;
+            let ymax = hiy + ylim;
+            if (y < 0) y = 0;
+            if (ymax >= ROWNO) ymax = ROWNO - 1;
+            for (; y <= ymax; y++) {
+                const loc = map.at(x, y);
+                if (loc && loc.typ !== STONE) {
+                    // C ref: sp_lev.c:1454 — rn2(3) on conflict
+                    if (!rn2(3)) return null;
+                    // Shrink room to avoid conflict
+                    if (x < lowx)
+                        lowx = x + xlim + 1;
+                    else
+                        hix = x - xlim - 1;
+                    if (y < lowy)
+                        lowy = y + ylim + 1;
+                    else
+                        hiy = y - ylim - 1;
+                    conflict = true;
+                    break;
+                }
+            }
+        }
+        if (!conflict) break;
+    }
+
+    return { lowx, ddx: hix - lowx, lowy, ddy: hiy - lowy };
+}
+
+function create_room_splev(map, x, y, w, h, xalign, yalign, rtype, rlit, depth) {
     // C ref: sp_lev.c:1498 — -1 means OROOM (ordinary room)
     if (rtype === -1) {
         rtype = 0; // OROOM
@@ -194,32 +255,101 @@ function create_room_splev(x, y, w, h, xalign, yalign, rtype, rlit, depth) {
     // IMPORTANT: Check this BEFORE calling litstate_rnd to avoid consuming RNG on failure!
 
     const fullyRandom = (x < 0 && y < 0 && w < 0 && xalign < 0 && yalign < 0);
+    const vault = (rtype === 3); // VAULT = 3
+    const XLIM = 1;
+    const YLIM = 1;
 
-    if (fullyRandom) {
-        // C ref: sp_lev.c:1534 — totally random uses procedural rnd_rect() + BSP
-        // Use dungeon.js create_room which implements this path
-        // Note: create_room calls litstate_rnd internally, so we don't call it here
+    const DEBUG = typeof process !== 'undefined' && process.env.DEBUG_SPLEV === '1';
 
-        if (!levelState.map) {
-            return null; // No map available for BSP room placement
-        }
+    if (fullyRandom || vault) {
+        if (DEBUG) console.log(`create_room_splev: FULLY RANDOM PATH (rtype=${rtype}, vault=${vault})`);
+        // C ref: sp_lev.c:1531-1579 — totally random path with BSP rectangles
+        const xlim = XLIM + (vault ? 1 : 0);
+        const ylim = YLIM + (vault ? 1 : 0);
+        let trycnt = 0;
+        let r1 = null;
 
-        // Call dungeon.create_room with map - it modifies map directly
-        // Returns false if no space available, true on success
-        const success = create_room(levelState.map, x, y, w, h, xalign, yalign,
-                                     rtype, rlit, depth, false);
+        do {
+            r1 = rnd_rect();
+            if (DEBUG && r1) console.log(`  Got rect: (${r1.lx},${r1.ly})-(${r1.hx},${r1.hy})`);
+            if (!r1) {
+                // No more rectangles available
+                return null;
+            }
 
-        if (!success) {
-            return null;
-        }
+            const hx = r1.hx, hy = r1.hy, lx = r1.lx, ly = r1.ly;
 
-        // Extract the last room that was added to map.rooms
-        const room = levelState.map.rooms[levelState.map.rooms.length - 1];
+            // C ref: sp_lev.c:1545-1552 — calculate room size
+            let dx, dy;
+            if (vault) {
+                dx = dy = 1;
+            } else {
+                dx = 2 + rn2((hx - lx > 28) ? 12 : 8);
+                dy = 2 + rn2(4);
+                if (dx * dy > 50)
+                    dy = Math.floor(50 / dx);
+            }
 
-        // Mark this room as already added to map so caller knows to skip duplicate work
-        room._alreadyAdded = true;
+            // C ref: sp_lev.c:1553-1558 — calculate borders and check size
+            const xborder = (lx > 0 && hx < COLNO - 1) ? 2 * xlim : xlim + 1;
+            const yborder = (ly > 0 && hy < ROWNO - 1) ? 2 * ylim : ylim + 1;
+            if (hx - lx < dx + 3 + xborder || hy - ly < dy + 3 + yborder) {
+                r1 = null;
+                continue; // Retry
+            }
 
-        return room; // Return the room object for caller
+            // C ref: sp_lev.c:1559-1562 — calculate absolute position
+            let xabs = lx + (lx > 0 ? xlim : 3)
+                       + rn2(hx - (lx > 0 ? lx : 3) - dx - xborder + 1);
+            let yabs = ly + (ly > 0 ? ylim : 2)
+                       + rn2(hy - (ly > 0 ? ly : 2) - dy - yborder + 1);
+
+            // C ref: sp_lev.c:1563-1569 — special case for full-height rooms
+            if (ly === 0 && hy >= ROWNO - 1
+                && (!map.nroom || !rn2(map.nroom))
+                && (yabs + dy > Math.floor(ROWNO / 2))) {
+                yabs = rn1(3, 2);
+                if (map.nroom < 4 && dy > 1)
+                    dy--;
+            }
+
+            // C ref: sp_lev.c:1570-1573 — validate room with check_room
+            // NOTE: check_room has RNG (rn2(3) on conflict) that must be preserved
+            const result = checkRoomForSplev(map, xabs, dx, yabs, dy, vault);
+            if (!result) {
+                r1 = null;
+                continue; // Retry
+            }
+
+            // Room validated, return coordinates
+            xabs = result.lowx;
+            yabs = result.lowy;
+            const wtmp = result.ddx + 1;
+            const htmp = result.ddy + 1;
+
+            // C ref: sp_lev.c:1637-1640 — prepare r2 for split_rects
+            const r2 = {
+                lx: xabs - 1,
+                ly: yabs - 1,
+                hx: xabs + wtmp,
+                hy: yabs + htmp
+            };
+
+            return {
+                lx: xabs,
+                ly: yabs,
+                hx: xabs + wtmp - 1,
+                hy: yabs + htmp - 1,
+                rlit: rlit,
+                // Return r1 and r2 for split_rects call
+                rect_r1: r1,
+                rect_r2: r2
+            };
+
+        } while (r1 === null && trycnt++ < 100);
+
+        // Failed to place room after 100 tries
+        return null;
     }
 
     // C ref: sp_lev.c:1510 — determine lighting (ALWAYS calls litstate_rnd)
@@ -1139,6 +1269,7 @@ export function room(opts = {}) {
     // If x, y are specified, use them directly (special level fixed position)
     // If -1, would need random placement (not implemented yet)
     let roomX, roomY, roomW, roomH, rtype;
+    let splitRectsR1 = null, splitRectsR2 = null; // For BSP rect splitting
 
     if (x >= 0 && y >= 0 && w > 0 && h > 0) {
         // Fixed position special level room
@@ -1172,7 +1303,7 @@ export function room(opts = {}) {
             console.log(`des.room(): RANDOM placement x=${x}, y=${y}, w=${w}, h=${h}, xalign=${xalign}, yalign=${yalign}, rtype=${rtype}, lit=${lit}`);
         }
 
-        const roomCalc = create_room_splev(x, y, w, h, xalign, yalign,
+        const roomCalc = create_room_splev(levelState.map, x, y, w, h, xalign, yalign,
                                            rtype, lit, levelState.depth || 1);
 
         if (!roomCalc) {
@@ -1218,6 +1349,12 @@ export function room(opts = {}) {
         // Use calculated rlit from litstate_rnd (already processed)
         lit = roomCalc.rlit;
 
+        // Store split_rects parameters if this was a BSP-based room
+        if (roomCalc.rect_r1 && roomCalc.rect_r2) {
+            splitRectsR1 = roomCalc.rect_r1;
+            splitRectsR2 = roomCalc.rect_r2;
+        }
+
         if (DEBUG) {
             console.log(`des.room(): used create_room_splev, got room at (${roomX},${roomY}) size ${roomW}x${roomH}, lit=${lit}`);
         }
@@ -1250,6 +1387,14 @@ export function room(opts = {}) {
     // Add room to map's room list
     levelState.map.rooms.push(room);
     levelState.map.nroom = levelState.map.rooms.length;
+
+    // C ref: sp_lev.c:1641 — split BSP rectangles after room placement
+    if (splitRectsR1 && splitRectsR2) {
+        split_rects(splitRectsR1, splitRectsR2);
+        if (DEBUG) {
+            console.log(`des.room(): split_rects called for BSP room`);
+        }
+    }
 
     if (DEBUG) {
         console.log(`des.room(): created room at (${roomX},${roomY}) size ${roomW}x${roomH}, map.nroom=${levelState.map.nroom}`);
