@@ -62,25 +62,39 @@ This is a significant pathfinding refactor beyond quick fixes.
    - **Issue**: Seed 55555 explores east (x=44-59) while downstairs are west (x=34)
    - Reveals deeper problem: agent finds downstairs but gets stuck navigating to them
 
-## Key Discovery: Navigation Failure - SOLVED!
+## Key Discovery: Movement Execution Failure
 
-Investigation of seed 55555 revealed:
-- Agent **finds** downstairs at (34, 7) around turn 150
-- Agent tries to navigate: "heading to downstairs (level stuck 22)"
-- Agent gets **stuck at position (35, 9) trying to move to (35, 8)**
-- Screen shows '·' at (35,8), agent memory says `door_open`
-- **Message: "This door is locked."**
+Investigation revealed TWO separate issues:
 
-**ROOT CAUSE**: The agent tries to path through a **LOCKED DOOR** at (35,8).
-- Perception bug: agent doesn't distinguish locked vs unlocked doors
-- Path appears valid (door_open, walkable=true) but is actually impassable
-- Agent needs to: unlock door, kick it down, or find alternate route
-- Currently agent just keeps retrying the same blocked path
+### Issue 1: Locked Doors (PARTIALLY FIXED)
+- Seed 55555 early runs showed "This door is locked" messages
+- Implemented detection and door_locked cell type
+- Results improved from 3/8 to 4/8 seeds reaching Dlvl 2
+- Locked doors may not be primary blocker
 
-**Fix needed**:
-1. Detect locked door message and mark cell as non-walkable
-2. Implement door unlocking/kicking
-3. Find alternate paths when doors are locked
+### Issue 2: Movement Command Failure (ACTIVE BUG)
+**Root cause**: Movement commands don't execute even when path exists
+
+Seed 33333 example (Turn 250-300):
+- Agent finds downstairs at (54,8)
+- Agent at (50,8), path cost 6 (stairs 4 cells east)
+- Agent repeatedly sends 'l' (move east)
+- **Position never changes** - stuck at (50,8)
+- No locked door message, cell should be walkable
+
+Seed 55555 similar pattern:
+- Downstairs at (34,7) ARE reachable (verified via BFS, 333 cells)
+- Agent can pathfind (cost 23)
+- Agent decides to navigate correctly
+- **Movement commands fail to execute**
+
+**Hypothesis**:
+- Pet blocking path? (But no pet displacement detected)
+- Monster blocking temporarily?
+- Command timing issue in headless mode?
+- Hidden obstacle not in perception?
+
+**Fix needed**: Investigate why sendKey() commands don't result in position changes.
 
 ## Files
 - `diagnose_stuck.mjs` - Ground truth map analysis tool
