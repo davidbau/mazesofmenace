@@ -257,8 +257,9 @@ function dog_invent(mon, edog, udist, map, turnCount) {
     if (mon.meating) return 0;
     const omx = mon.mx, omy = mon.my;
 
-    // C ref: droppables(mtmp) — check if pet has non-cursed inventory
-    const hasDrop = mon.minvent && mon.minvent.some(o => !o.cursed);
+    // C ref: droppables(mtmp) — check if pet has non-cursed, non-worn inventory
+    // Worn items (owornmask != 0) are not droppable (e.g., pony's saddle)
+    const hasDrop = mon.minvent && mon.minvent.some(o => !o.cursed && !o.owornmask);
 
     if (hasDrop) {
         // C ref: dogmove.c:411-421 — drop path
@@ -389,7 +390,8 @@ function dochug(mon, map, player, display, fov) {
     if (!phase3Cond) phase3Cond = !!(mon.stunned);
     if (!phase3Cond && mon.minvis) phase3Cond = !rn2(3);
     // skip leprechaun check (not relevant for early levels)
-    if (!phase3Cond && isWanderer) phase3Cond = !rn2(4);
+    // IMPORTANT: Tame/peaceful monsters follow the player, don't wander randomly
+    if (!phase3Cond && isWanderer && !mon.tame && !mon.peaceful) phase3Cond = !rn2(4);
     // skip Conflict check
     if (!phase3Cond && mon.mcansee === false) phase3Cond = !rn2(4);
     if (!phase3Cond) phase3Cond = !!(mon.peaceful);
@@ -436,7 +438,9 @@ function dog_move(mon, map, player, display, fov) {
     const turnCount = (player.turns || 0) + 1;
 
     // C ref: dogmove.c:1024-1029 — dog_invent before dog_goal
-    if (edog) {
+    // IMPORTANT: C only calls dog_invent when udist > 1 (pet not adjacent to player)
+    // Adjacent pets skip inventory management to avoid unnecessary RNG consumption
+    if (edog && udist > 1) {
         const invResult = dog_invent(mon, edog, udist, map, turnCount);
         if (invResult === 1) return 1; // ate something — done
         if (invResult === 2) return 0; // died
@@ -457,7 +461,8 @@ function dog_move(mon, map, player, display, fov) {
     const inMastersSight = couldsee(map, player, omx, omy);
 
     // C ref: dogmove.c:498 — dog_has_minvent = (droppables(mtmp) != 0)
-    const dogHasMinvent = !!(mon.minvent && mon.minvent.length > 0);
+    // droppables() checks for non-cursed, non-worn inventory items
+    const dogHasMinvent = !!(mon.minvent && mon.minvent.some(o => !o.cursed && !o.owornmask));
 
     // C ref: dogmove.c:545 — lighting check for apport branch
     const dogLoc = map.at(omx, omy);
@@ -467,40 +472,43 @@ function dog_move(mon, map, player, display, fov) {
 
     // C ref: dog_goal iterates fobj (ALL objects on level)
     // C's fobj is LIFO (place_object prepends), so iterate in reverse to match
-    for (let oi = map.objects.length - 1; oi >= 0; oi--) {
-        const obj = map.objects[oi];
-        const ox = obj.ox, oy = obj.oy;
-        if (ox < minX || ox > maxX || oy < minY || oy > maxY) continue;
+    // Skip object scan if adjacent to player (udist <= 1) to avoid spurious RNG
+    if (udist > 1) {
+        for (let oi = map.objects.length - 1; oi >= 0; oi--) {
+            const obj = map.objects[oi];
+            const ox = obj.ox, oy = obj.oy;
+            if (ox < minX || ox > maxX || oy < minY || oy > maxY) continue;
 
-        const otyp = dogfood(mon, obj, turnCount);
+            const otyp = dogfood(mon, obj, turnCount);
 
-        // C ref: dogmove.c:526 — skip inferior goals
-        if (otyp > gtyp || otyp === UNDEF) continue;
+            // C ref: dogmove.c:526 — skip inferior goals
+            if (otyp > gtyp || otyp === UNDEF) continue;
 
-        // C ref: dogmove.c:529-531 — skip cursed POSITIONS unless starving
-        // C uses cursed_object_at(nx, ny) which checks ALL objects at position
-        if (cursed_object_at(map, ox, oy)
-            && !(edog.mhpmax_penalty && otyp < MANFOOD)) continue;
+            // C ref: dogmove.c:529-531 — skip cursed POSITIONS unless starving
+            // C uses cursed_object_at(nx, ny) which checks ALL objects at position
+            if (cursed_object_at(map, ox, oy)
+                && !(edog.mhpmax_penalty && otyp < MANFOOD)) continue;
 
-        // C ref: dogmove.c:533-535 — skip unreachable goals
-        if (!could_reach_item(map, mon, ox, oy)
-            || !can_reach_location(map, mon, omx, omy, ox, oy))
-            continue;
+            // C ref: dogmove.c:533-535 — skip unreachable goals
+            if (!could_reach_item(map, mon, ox, oy)
+                || !can_reach_location(map, mon, omx, omy, ox, oy))
+                continue;
 
-        if (otyp < MANFOOD) {
-            // Good food — direct goal
-            // C ref: dogmove.c:536-542
-            if (otyp < gtyp || dist2(ox, oy, omx, omy) < dist2(gx, gy, omx, omy)) {
-                gx = ox; gy = oy; gtyp = otyp;
+            if (otyp < MANFOOD) {
+                // Good food — direct goal
+                // C ref: dogmove.c:536-542
+                if (otyp < gtyp || dist2(ox, oy, omx, omy) < dist2(gx, gy, omx, omy)) {
+                    gx = ox; gy = oy; gtyp = otyp;
+                }
+            } else if (gtyp === UNDEF && inMastersSight
+                       && !dogHasMinvent
+                       && (!dogLit || playerLit)
+                       && (otyp === MANFOOD || m_cansee(mon, map, ox, oy))
+                       && edog.apport > rn2(8)
+                       && can_carry(mon, obj) > 0) {
+                // C ref: dogmove.c:543-552 — APPORT/MANFOOD with apport+carry check
+                gx = ox; gy = oy; gtyp = APPORT;
             }
-        } else if (gtyp === UNDEF && inMastersSight
-                   && !dogHasMinvent
-                   && (!dogLit || playerLit)
-                   && (otyp === MANFOOD || m_cansee(mon, map, ox, oy))
-                   && edog.apport > rn2(8)
-                   && can_carry(mon, obj) > 0) {
-            // C ref: dogmove.c:543-552 — APPORT/MANFOOD with apport+carry check
-            gx = ox; gy = oy; gtyp = APPORT;
         }
     }
 
@@ -514,18 +522,17 @@ function dog_move(mon, map, player, display, fov) {
 
         appr = (udist >= 9) ? 1 : (mon.flee) ? -1 : 0;
 
-        if (udist > 1) {
-            // C ref: dogmove.c:575-578 — approach check
-            const playerLoc = map.at(player.x, player.y);
-            const playerInRoom = playerLoc && IS_ROOM(playerLoc.typ);
-            if (!playerInRoom || !rn2(4) || whappr
-                || (dogHasMinvent && rn2(edog.apport))) {
-                appr = 1;
-            }
+        // C ref: dogmove.c:575-578 — approach check
+        const playerLoc = map.at(player.x, player.y);
+        const playerInRoom = playerLoc && IS_ROOM(playerLoc.typ);
+        if (!playerInRoom || !rn2(4) || whappr
+            || (dogHasMinvent && rn2(edog.apport))) {
+            appr = 1;
         }
 
         // C ref: dogmove.c:583-606 — check stairs, food in inventory, portal
-        if (appr === 0) {
+        // IMPORTANT: C only does inventory scan when udist > 1 to avoid spurious RNG
+        if (appr === 0 && udist > 1) {
             // Check if player is on stairs
             if ((player.x === map.upstair.x && player.y === map.upstair.y)
                 || (player.x === map.dnstair.x && player.y === map.dnstair.y)) {
@@ -581,6 +588,12 @@ function dog_move(mon, map, player, display, fov) {
         }
     } else if (edog) {
         edog.ogoal.x = 0;
+    }
+
+    // C ref: If appr=0 (neither approach nor flee), pet doesn't want to move
+    // Skip position evaluation entirely to avoid spurious RNG consumption
+    if (appr === 0) {
+        return 0;
     }
 
     // ========================================================================

@@ -213,9 +213,11 @@ function makedog(map, player, depth) {
 
     // C ref: dog.c:264-267 — put_saddle_on_mon(NULL, mtmp) for pony
     // Creates a saddle and adds to pony's minvent
+    // IMPORTANT: Saddle is WORN equipment, marked with owornmask so it doesn't count as droppable
     let saddleObj = null;
     if (pmIdx === PM_PONY) {
         saddleObj = mksobj(SADDLE, true, false);
+        saddleObj.owornmask = 1; // Mark as worn (prevents drop in dog_invent)
     }
 
     // Create the pet monster object (matches makemon structure)
