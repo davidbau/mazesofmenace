@@ -2520,3 +2520,10 @@ time=2026-02-09T22:18:30.562-05:00 level=INFO msg="   Consider running 'bd sync'
 time=2026-02-09T22:18:31.071-05:00 level=INFO msg="Pulled from remote"
 time=2026-02-09T22:18:31.071-05:00 level=INFO msg="🔍 Checking JSONL content hash AFTER pull (fix: auto-pull-not-pulling)"
 time=2026-02-09T22:18:31.073-05:00 level=INFO msg="Skipping: JSONL content unchanged" mode=auto-import
+time=2026-02-09T22:48:37.575-05:00 level=INFO msg="Git ref change detected" path=/share/u/davidbau/git/mazesofmenace/.git/refs/heads/main.lock
+time=2026-02-09T22:48:38.577-05:00 level=INFO msg="Import triggered by file change"
+time=2026-02-09T22:48:38.580-05:00 level=INFO msg="Starting auto-import" mode=auto-import
+time=2026-02-09T22:48:39.294-05:00 level=INFO msg="Pull failed" error="git pull failed: exit status 1\nFrom github.com:davidbau/webhack\n * branch            main       -> FETCH_HEAD\nerror: cannot lock ref 'refs/remotes/origin/main': is at b9a14a086197431904a75a4eabefc53e8da2a1e9 but expected 16f7fca1ca2ab2aa4be586856b8d89159b0daa38\n ! 16f7fca..b9a14a0  main       -> origin/main  (unable to update local ref)\n" backoff=30s
+time=2026-02-09T22:48:57.219-05:00 level=INFO msg="Git ref change detected" path=/share/u/davidbau/git/mazesofmenace/.git/refs/heads/main.lock
+time=2026-02-09T22:48:58.220-05:00 level=INFO msg="Import triggered by file change"
+time=2026-02-09T22:48:58.223-05:00 level=INFO msg="Skipping: in backoff period" mode=auto-import
