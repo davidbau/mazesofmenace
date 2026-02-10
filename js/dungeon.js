@@ -495,9 +495,6 @@ function add_subroom_to_map(map, proom, lowx, lowy, hix, hiy, lit, rtype, specia
     const nsubroom = map.nsubroom || 0;
     const roomIdx = map.nroom + nsubroom;
     map.nsubroom = nsubroom + 1;
-    // Add subroom to map.rooms array at index roomIdx (beyond main rooms)
-    // In C, subrooms occupy indices [nroom..nroom+nsubroom) in the rooms array
-    map.rooms[roomIdx] = croom;
     do_room_or_subroom(map, croom, lowx, lowy, hix, hiy, lit, rtype,
                        special, false, roomIdx);
     proom.sbrooms[proom.nsubrooms] = croom;
@@ -3215,15 +3212,12 @@ export function makelevel(depth, dnum, dlevel) {
     const isFillable = (r) => (r.rtype === OROOM || r.rtype === THEMEROOM)
                               && r.needfill === FILL_NORMAL;
     let fillableCount = 0;
-    // Only iterate over main rooms (nroom), not subrooms
-    for (let i = 0; i < map.nroom; i++) {
-        const croom = map.rooms[i];
+    for (const croom of map.rooms) {
         if (isFillable(croom)) fillableCount++;
     }
     let bonusCountdown = fillableCount > 0 ? rn2(fillableCount) : -1;
 
-    for (let i = 0; i < map.nroom; i++) {
-        const croom = map.rooms[i];
+    for (const croom of map.rooms) {
         const fillable = isFillable(croom);
         fill_ordinary_room(map, croom, depth,
                            fillable && bonusCountdown === 0);
@@ -3233,9 +3227,7 @@ export function makelevel(depth, dnum, dlevel) {
     // C ref: mklev.c:1405-1407 — second fill_special_room pass for all rooms.
     // This runs AFTER fill_ordinary_room and BEFORE mineralize.
     // Shop stocking comes first, then vault gold.
-    // Only iterate over main rooms (nroom), not subrooms
-    for (let i = 0; i < map.nroom; i++) {
-        const croom = map.rooms[i];
+    for (const croom of map.rooms) {
         if (croom.rtype >= SHOPBASE && croom.needfill === FILL_NORMAL) {
             stock_room(croom.rtype - SHOPBASE, croom, map, depth, _gameSeed);
         }
@@ -3243,8 +3235,7 @@ export function makelevel(depth, dnum, dlevel) {
     // For VAULT rooms, gold was already placed during vault creation (first fill),
     // so mkgold just adds to existing gold: only rn2 for amount, no rnd(2) since
     // g_at(x,y) finds the existing gold object and skips mksobj_at/newobj.
-    for (let i = 0; i < map.nroom; i++) {
-        const croom = map.rooms[i];
+    for (const croom of map.rooms) {
         if (croom.rtype === VAULT && croom.needfill === FILL_NORMAL) {
             for (let vx = croom.lx; vx <= croom.hx; vx++) {
                 for (let vy = croom.ly; vy <= croom.hy; vy++) {
