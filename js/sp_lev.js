@@ -1151,9 +1151,10 @@ export function room(opts = {}) {
     // If -1, would need random placement (not implemented yet)
     let roomX, roomY, roomW, roomH, rtype;
 
-    // C ref: sp_lev.c:4063 — chance defaults to 100, and rn2(100) is called for ALL rooms
-    // Exception: nested rooms (roomDepth > 0) skip the chance check in C
-    if (chance > 0 && levelState.roomDepth === 0) {
+    // C ref: sp_lev.c:2803 — build_room() calls rn2(100) for ALL rooms (no nesting check)
+    // C ref: sp_lev.c:4063 — chance defaults to 100 in Lua des.room() handler
+    // The chance check happens REGARDLESS of nesting level (n_subroom doesn't affect it)
+    if (chance > 0) {
         const roll = rn2(100);
         rtype = (roll >= chance) ? 0 : requestedRtype; // 0 = OROOM
     } else {
