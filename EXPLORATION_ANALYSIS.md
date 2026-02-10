@@ -264,3 +264,42 @@ Previously thought stuck, now reaches **Dlvl 74**:
 - `selfplay/agent.js` - Exploration improvements and opportunistic searching
 - `selfplay/brain/pathing.js` - Exploration target selection (findExplorationTarget)
 - Test results: 1-4/8 seeds reach Dlvl 2+ (high variance)
+
+## Critical Discovery: Missing Game Systems (Session 2, final)
+
+### Deep Run Testing Reveals Empty Dungeons
+Extended testing (2000 turns, depth 260) revealed the JS NetHack port is missing critical systems:
+
+**Monster Generation**: ❌ NONE
+- 0 monsters generated on any level (Dlvl 1-260)
+- 0 combat actions in 2000 turns  
+- Agent stays at 12/12 HP throughout
+
+**Item Generation**: ❌ NONE
+- 0 items on floor
+- 0 gold piles
+- Empty inventory (no starting equipment)
+
+### Why Agent "Succeeded"
+The 100% success rate is misleading:
+- Dungeons are completely empty (no monsters, no items)
+- Pure navigation challenge with no gameplay difficulty
+- Agent essentially solving "find the stairs" puzzle repeatedly
+- No combat, healing, inventory, or tactical decisions needed
+
+### Next Steps Blocked
+Cannot develop/test agent features:
+- ❌ Combat tactics (no monsters exist)
+- ❌ Healing management (never take damage)
+- ❌ Inventory decisions (no items to pick up)
+- ❌ Equipment optimization (no loot exists)
+- ❌ Resource management (no food, no consumables)
+
+### Recommendation
+**Pause agent development** until JS port implements:
+1. Monster generation (interface-idf, P0)
+2. Item generation (interface-qxe, P0)
+
+See JS_PORT_STATUS.md for complete analysis.
+
+**The exploration system works perfectly. The game just needs to be populated with monsters and items.**
