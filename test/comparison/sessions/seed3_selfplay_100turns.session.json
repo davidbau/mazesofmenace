@@ -10,7 +10,7 @@
     "align": "neutral"
   },
   "symset": "DECgraphics",
-  "type": "selfplay",
+  "type": "gameplay",
   "maxTurns": 100,
   "startup": {
     "rngCalls": 2659,
