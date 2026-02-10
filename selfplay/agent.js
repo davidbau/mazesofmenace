@@ -7,7 +7,7 @@
 import { parseScreen, findMonsters, findStairs } from './perception/screen_parser.js';
 import { parseStatus } from './perception/status_parser.js';
 import { DungeonTracker } from './perception/map_tracker.js';
-import { findPath, findExplorationTarget, findNearest, directionKey, directionDelta } from './brain/pathing.js';
+import { findPath, findExplorationTarget, findNearest, directionKey, directionDelta, analyzeCorridorPosition } from './brain/pathing.js';
 import { shouldEngageMonster, getMonsterName } from './brain/danger.js';
 import { InventoryTracker } from './brain/inventory.js';
 import { PrayerTracker } from './brain/prayer.js';
@@ -78,6 +78,11 @@ export class Agent {
         this.lastHP = null; // track HP to detect healing progress
         this.pendingLockedDoor = null; // {x, y, attempts} for locked door we're trying to kick
         this.secretDoorSearch = null; // {position: {x,y}, searchesNeeded: 20, searchesDone: 0, wallCandidates: []}
+
+        // Corridor following state
+        this.corridorFollowing = false; // true when actively following a corridor
+        this.corridorDirection = null; // direction key for corridor following
+        this.corridorStartPos = null; // {x, y} where we entered the corridor
 
         // Combat oscillation detection
         this.combatPositions = []; // last 8 positions during combat: [{x, y, turn}, ...]
@@ -189,6 +194,9 @@ export class Agent {
                     this.committedPath = null;
                     this.failedTargets.clear();
                     this.consecutiveFailedMoves = 0;
+                    this.corridorFollowing = false;
+                    this.corridorDirection = null;
+                    this.corridorStartPos = null;
                 }
             }
 
@@ -803,6 +811,40 @@ export class Agent {
         const currentCell = level.at(px, py);
         if (currentCell && currentCell.items.length > 0) {
             return { type: 'pickup', key: ',', reason: 'picking up items' };
+        }
+
+        // 4b. Corridor following - commit to following corridors to completion
+        // Corridors connect rooms and often lead to important features
+        const corridorAnalysis = analyzeCorridorPosition(level, px, py);
+
+        // If we're in a corridor and not currently following one, start following
+        if (corridorAnalysis.inCorridor && !corridorAnalysis.endReached && !this.corridorFollowing) {
+            this.corridorFollowing = true;
+            this.corridorDirection = corridorAnalysis.direction;
+            this.corridorStartPos = { x: px, y: py };
+            console.log(`[CORRIDOR] Starting to follow corridor from (${px},${py}) direction=${corridorAnalysis.direction}`);
+        }
+
+        // If we're following a corridor, continue in that direction
+        if (this.corridorFollowing) {
+            if (corridorAnalysis.endReached) {
+                // Corridor ended - reached room or dead-end
+                console.log(`[CORRIDOR] Reached end of corridor at (${px},${py})`);
+                this.corridorFollowing = false;
+                this.corridorDirection = null;
+                this.corridorStartPos = null;
+            } else if (corridorAnalysis.inCorridor && corridorAnalysis.direction) {
+                // Continue following the corridor
+                const dir = corridorAnalysis.direction;
+                console.log(`[CORRIDOR] Continuing corridor from (${px},${py}) in direction ${dir}`);
+                return { type: 'corridor', key: dir, reason: 'following corridor' };
+            } else if (!corridorAnalysis.inCorridor) {
+                // Left the corridor (reached a room)
+                console.log(`[CORRIDOR] Exited corridor at (${px},${py}) into room`);
+                this.corridorFollowing = false;
+                this.corridorDirection = null;
+                this.corridorStartPos = null;
+            }
         }
 
         // --- Strategic movement ---
