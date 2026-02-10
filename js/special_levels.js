@@ -74,6 +74,12 @@ import { generate as generateWorkshop } from './levels/workshop.js';
 import { generate as generateChasm } from './levels/chasm.js';
 import { generate as generatePillars } from './levels/pillars.js';
 import { generate as generateMenagerie } from './levels/menagerie.js';
+import { generate as generateMaze2 } from './levels/maze2.js';
+import { generate as generateOasis } from './levels/oasis.js';
+import { generate as generateGlacier } from './levels/glacier.js';
+import { generate as generateStronghold } from './levels/stronghold.js';
+import { generate as generateCrypt } from './levels/crypt.js';
+import { generate as generateAnthill } from './levels/anthill.js';
 
 // Sokoban levels
 import { generate as generateSoko1a } from './levels/soko1-1.js';
@@ -260,6 +266,12 @@ registerSpecialLevel(DUNGEONS_OF_DOOM, 47, generateWorkshop, 'workshop');
 registerSpecialLevel(DUNGEONS_OF_DOOM, 48, generateChasm, 'chasm');
 registerSpecialLevel(DUNGEONS_OF_DOOM, 49, generatePillars, 'pillars');
 registerSpecialLevel(DUNGEONS_OF_DOOM, 50, generateMenagerie, 'menagerie');
+registerSpecialLevel(DUNGEONS_OF_DOOM, 51, generateMaze2, 'maze2');
+registerSpecialLevel(DUNGEONS_OF_DOOM, 52, generateOasis, 'oasis');
+registerSpecialLevel(DUNGEONS_OF_DOOM, 53, generateGlacier, 'glacier');
+registerSpecialLevel(DUNGEONS_OF_DOOM, 54, generateStronghold, 'stronghold');
+registerSpecialLevel(DUNGEONS_OF_DOOM, 55, generateCrypt, 'crypt');
+registerSpecialLevel(DUNGEONS_OF_DOOM, 56, generateAnthill, 'anthill');
 
 /**
  * Get list of all registered special levels
