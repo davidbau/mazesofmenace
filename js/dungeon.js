@@ -108,6 +108,15 @@ export function init_rect() {
     rects[0] = { lx: 0, ly: 0, hx: COLNO - 1, hy: ROWNO - 1 };
 }
 
+// Debug exports for rectangle pool inspection
+export function get_rect_count() {
+    return rect_cnt;
+}
+
+export function get_rects() {
+    return rects.slice(0, rect_cnt);
+}
+
 // C ref: rect.c rnd_rect() - exported for sp_lev.js themed room generation
 export function rnd_rect() {
     const DEBUG = typeof process !== 'undefined' && process.env.DEBUG_THEMEROOMS === '1';
