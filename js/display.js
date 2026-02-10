@@ -177,6 +177,9 @@ export class Display {
         this.messages = [];
         this.topMessage = '';
 
+        // Game flags (updated by game, used for display options)
+        this.flags = {};
+
         this._createDOM();
     }
 
@@ -253,6 +256,23 @@ export class Display {
     // Display a message on the top line
     // C ref: winprocs.h win_putstr for NHW_MESSAGE
     putstr_message(msg) {
+        // Add to message history
+        if (msg.trim()) {
+            this.messages.push(msg);
+            // Keep last 20 messages
+            if (this.messages.length > 20) {
+                this.messages.shift();
+            }
+        }
+
+        // If msg_window is enabled, render the message window
+        // C ref: win/tty/topl.c — message window modes
+        if (this.flags.msg_window) {
+            this.renderMessageWindow();
+            return;
+        }
+
+        // Otherwise, use traditional single-line message display
         this.clearRow(MESSAGE_ROW);
 
         // If message fits on one line, display it normally
@@ -261,30 +281,43 @@ export class Display {
             this.topMessage = msg;
         } else {
             // Message is too long - wrap at word boundary
-            // Find the last space before the column limit
             let breakPoint = msg.lastIndexOf(' ', this.cols);
             if (breakPoint === -1) {
-                // No space found, just truncate
                 breakPoint = this.cols;
             }
 
-            // Display first line
             const firstLine = msg.substring(0, breakPoint);
             this.putstr(0, MESSAGE_ROW, firstLine, CLR_WHITE);
-
-            // Store full message for message history
             this.topMessage = msg;
 
-            // Display wrapped portion on second line
             const wrapped = msg.substring(breakPoint).trim();
             if (wrapped.length > 0) {
                 this.clearRow(MESSAGE_ROW + 1);
                 this.putstr(0, MESSAGE_ROW + 1, wrapped.substring(0, this.cols), CLR_WHITE);
             }
         }
+    }
 
-        if (msg.trim()) {
-            this.messages.push(msg);
+    // Render message window (last 3 messages)
+    // C ref: win/tty/topl.c prevmsg_window == 'f' (full)
+    renderMessageWindow() {
+        const MSG_WINDOW_ROWS = 3;
+        // Clear message window area
+        for (let r = 0; r < MSG_WINDOW_ROWS; r++) {
+            this.clearRow(r);
+        }
+
+        // Show last 3 messages (most recent at bottom)
+        const recentMessages = this.messages.slice(-MSG_WINDOW_ROWS);
+        for (let i = 0; i < recentMessages.length; i++) {
+            const msg = recentMessages[i];
+            const row = MSG_WINDOW_ROWS - recentMessages.length + i;
+            if (msg.length <= this.cols) {
+                this.putstr(0, row, msg.substring(0, this.cols), CLR_WHITE);
+            } else {
+                // Truncate long messages
+                this.putstr(0, row, msg.substring(0, this.cols - 3) + '...', CLR_WHITE);
+            }
         }
     }
 
@@ -302,9 +335,16 @@ export class Display {
     // Render the map from game state
     // C ref: display.c newsym() and print_glyph()
     renderMap(gameMap, player, fov, flags = {}) {
+        // Store flags for use by other methods (e.g., putstr_message, terrainSymbol)
+        this.flags = flags;
+
+        // When msg_window is enabled, map starts at row 3 (after 3-line message window)
+        // Otherwise map starts at row 1 (after single message line)
+        const mapOffset = flags.msg_window ? 3 : MAP_ROW_START;
+
         for (let y = 0; y < ROWNO; y++) {
             for (let x = 0; x < COLNO; x++) {
-                const row = y + MAP_ROW_START;
+                const row = y + mapOffset;
                 const col = x;
 
                 if (!fov || !fov.canSee(x, y)) {
@@ -312,7 +352,7 @@ export class Display {
                     const loc = gameMap.at(x, y);
                     if (loc && loc.seenv) {
                         // Show remembered (dimmed)
-                        const sym = this.terrainSymbol(loc, flags);
+                        const sym = this.terrainSymbol(loc);
                         this.setCell(col, row, sym.ch, CLR_BLACK);
                         const desc = this._terrainDesc(loc);
                         this.cellInfo[row][col] = { name: desc, desc: '(remembered)', color: CLR_BLACK };
@@ -372,7 +412,7 @@ export class Display {
                 }
 
                 // Show terrain
-                const sym = this.terrainSymbol(loc, flags);
+                const sym = this.terrainSymbol(loc);
                 this.setCell(col, row, sym.ch, sym.color);
                 const desc = this._terrainDesc(loc);
                 this.cellInfo[row][col] = { name: desc, desc: '', color: sym.color };
@@ -382,9 +422,9 @@ export class Display {
 
     // Get the display symbol for a terrain type
     // C ref: defsym.h PCHAR definitions, display.c back_to_glyph()
-    terrainSymbol(loc, flags = {}) {
+    terrainSymbol(loc) {
         const typ = loc.typ;
-        const useDEC = flags.DECgraphics || false;
+        const useDEC = this.flags.DECgraphics || false;
 
         // Choose symbol set based on DECgraphics option
         // C ref: dat/symbols — DECgraphics vs default ASCII
