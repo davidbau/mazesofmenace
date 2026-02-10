@@ -478,10 +478,11 @@ class LuaToJsConverter:
         return '{ ' + ', '.join(result) + ' }'
 
     def split_object_fields(self, obj_inner):
-        """Split object fields by comma, respecting nested braces and functions."""
+        """Split object fields by comma, respecting nested braces, parens, and functions."""
         fields = []
         current = []
         brace_depth = 0
+        paren_depth = 0
         in_string = False
         string_char = None
 
@@ -500,7 +501,11 @@ class LuaToJsConverter:
                     brace_depth += 1
                 elif char == '}':
                     brace_depth -= 1
-                elif char == ',' and brace_depth == 0:
+                elif char == '(':
+                    paren_depth += 1
+                elif char == ')':
+                    paren_depth -= 1
+                elif char == ',' and brace_depth == 0 and paren_depth == 0:
                     fields.append(''.join(current))
                     current = []
                     i += 1
