@@ -2969,6 +2969,10 @@ function mineralize(map, depth) {
     const goldprob = 20 + Math.floor(depth / 3);
     const gemprob = Math.floor(goldprob / 4);
 
+    const DEBUG = process.env.DEBUG_MINERALIZE === '1';
+    let eligible_count = 0;
+    let rng_calls = 0;
+
     // C ref: mklev.c:1490-1529 — scan for eligible stone tiles
     for (let x = 2; x < COLNO - 2; x++) {
         for (let y = 1; y < ROWNO - 1; y++) {
@@ -2997,6 +3001,8 @@ function mineralize(map, depth) {
             }
 
             // Eligible stone tile — try to place gold
+            eligible_count++;
+            rng_calls++;
             if (rn2(1000) < goldprob) {
                 const otmp = mksobj(GOLD_PIECE, false, false);
                 if (otmp) {
@@ -3012,6 +3018,7 @@ function mineralize(map, depth) {
                 }
             }
             // Try to place gems
+            rng_calls++;
             if (rn2(1000) < gemprob) {
                 const cnt = rnd(2 + Math.floor(depth / 3));
                 for (let i = 0; i < cnt; i++) {
@@ -3032,6 +3039,10 @@ function mineralize(map, depth) {
                 }
             }
         }
+    }
+
+    if (DEBUG) {
+        console.log(`mineralize: depth=${depth}, eligible=${eligible_count}, rng_calls=${rng_calls} (expected 1110 in C)`);
     }
 }
 
