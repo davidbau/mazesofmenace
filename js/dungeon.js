@@ -928,24 +928,6 @@ function makerooms(map, depth) {
     // C ref: mklev.c:393-417
     const DEBUG = typeof process !== 'undefined' && process.env.DEBUG_THEMEROOMS === '1';
     while (map.nroom < (MAXNROFROOMS - 1) && rnd_rect()) {
-        // TEMPORARILY DISABLED: MT initialization breaks map session RNG alignment
-        // TODO: Re-enable for gameplay sessions only, not map generation
-        // Simulate Lua MT19937 RNG initialization after first rnd_rect
-        // This happens when Lua math.random() is first called
-        /*
-        if (!_mtInitialized) {
-            if (DEBUG) console.log(`MT init starting, flag was: ${_mtInitialized}`);
-            _mtInitialized = true;
-            // Pattern from C trace: rn2(1000-1004), rn2(1010), rn2(1012), rn2(1014-1036)
-            for (let i = 1000; i <= 1004; i++) rn2(i);
-            rn2(1010);
-            rn2(1012);
-            for (let i = 1014; i <= 1036; i++) rn2(i);
-            if (DEBUG) console.log(`MT init complete, flag now: ${_mtInitialized}`);
-        } else {
-            if (DEBUG) console.log(`Skipping MT init, flag is: ${_mtInitialized}`);
-        }
-        */
 
         if (DEBUG) {
             console.log(`Loop iteration: nroom=${map.nroom}, tries=${themeroom_tries}`);
@@ -2383,7 +2365,7 @@ const extra_classes = [
 
 // C ref: mklev.c fill_ordinary_room()
 // C ref: ROOM_IS_FILLABLE: (rtype == OROOM || rtype == THEMEROOM) && needfill == FILL_NORMAL
-function fill_ordinary_room(map, croom, depth, bonusItems) {
+export function fill_ordinary_room(map, croom, depth, bonusItems) {
     if (croom.rtype !== OROOM && croom.rtype !== THEMEROOM) return;
 
     // C ref: mklev.c:944-952 — recursively fill subrooms first, before
@@ -3037,7 +3019,7 @@ function get_level_extends(map) {
     return { xmin, xmax, ymin, ymax };
 }
 
-function bound_digging(map) {
+export function bound_digging(map) {
     // C ref: mkmaze.c:1439-1455
     // Mark boundary stone/wall cells as non-diggable so mineralize skips them.
     const { xmin, xmax, ymin, ymax } = get_level_extends(map);
@@ -3058,7 +3040,7 @@ function bound_digging(map) {
 // C ref: mklev.c:1437-1530
 // ========================================================================
 
-function mineralize(map, depth) {
+export function mineralize(map, depth) {
     // C ref: mklev.c:1468-1472 — default probabilities
     const goldprob = 20 + Math.floor(depth / 3);
     const gemprob = Math.floor(goldprob / 4);

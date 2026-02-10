@@ -314,6 +314,9 @@ export function hasSpecialLevel(dnum, dlevel) {
 // In Dungeons of Doom, at depths that vary by dungeon generation
 // Using specific depths for testing (actual depths determined at runtime)
 
+// Oracle level (typically depth 5-7 in Dungeons of Doom)
+registerSpecialLevel(DUNGEONS_OF_DOOM, 5, generateOracle, 'oracle');
+
 // Register Gnomish Mines levels
 // Mines Town can have multiple variants (7 variants)
 // Mine End has 3 variants

@@ -722,7 +722,9 @@ describe('C trace comparison: seed 42 Wizard inventory', () => {
         player.race = RACE_ELF;
         player.gender = 0;
         player.alignment = A_CHAOTIC;
-        const map = makelevel(1);
+        // Generate Oracle level (DUNGEONS_OF_DOOM=0, dlevel=5) to match C trace
+        const { DUNGEONS_OF_DOOM } = await import('../../js/special_levels.js');
+        const map = makelevel(5, DUNGEONS_OF_DOOM, 5);
         wallification(map);
         const fullLog = getRngLog();
         disableRngLog();
@@ -832,7 +834,7 @@ describe('C trace comparison: seed 42 Wizard inventory', () => {
         // If we got here, all 300 entries match!
     });
 
-    it('RNG call count from start matches C trace', () => {
+    it('RNG call count from start matches C trace', async () => {
         // C trace has 2810 RNG calls before the first trquan (inventory start).
         // Verify our total matches.
         initRng(42);
@@ -845,7 +847,9 @@ describe('C trace comparison: seed 42 Wizard inventory', () => {
         player.race = RACE_ELF;
         player.gender = 0;
         player.alignment = A_CHAOTIC;
-        const map = makelevel(1);
+        // Generate Oracle level (DUNGEONS_OF_DOOM=0, dlevel=5) to match C trace
+        const { DUNGEONS_OF_DOOM } = await import('../../js/special_levels.js');
+        const map = makelevel(5, DUNGEONS_OF_DOOM, 5);
         wallification(map);
         const wallCount = getRngLog().length; // snapshot count
         simulatePostLevelInit(player, map, 1);
