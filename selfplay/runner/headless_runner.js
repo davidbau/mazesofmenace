@@ -310,16 +310,36 @@ class HeadlessGame {
 
     /**
      * Execute one agent action: process command + monster turn.
+     * C ref: allmain.c:196-391 — full movement/turn loop
      */
     async executeCommand(ch) {
         const code = typeof ch === 'string' ? ch.charCodeAt(0) : ch;
         const result = await rhack(code, this);
 
         if (result && result.tookTime) {
-            // C ref: allmain.c — record hero position before movemon
-            settrack(this.player);
-            movemon(this.map, this.player, this.display, this.fov);
-            this.simulateTurnEnd();
+            // C ref: allmain.c:197 — actual time passed
+            this.player.movement -= NORMAL_SPEED;
+
+            // C ref: allmain.c:199-391 — "hero can't move this turn loop"
+            // Keeps looping until player accumulates enough movement to act
+            let outerLoops = 0;
+            do {
+                outerLoops++;
+                // C ref: allmain.c:203-209 — inner monster movement loop
+                let monscanmove;
+                do {
+                    monscanmove = this._movemon_check();
+                    if (this.player.movement >= NORMAL_SPEED)
+                        break; // it's now your turn
+                } while (monscanmove);
+
+                // C ref: allmain.c:214-390 — set up for a new turn
+                // Only when both hero and monsters are out of steam
+                if (!monscanmove && this.player.movement < NORMAL_SPEED) {
+                    this.simulateTurnEnd();
+                }
+            } while (this.player.movement < NORMAL_SPEED);
+            if (process.env.DEBUG_LOOPS) console.log(`Turn ${this.turnCount}: outer loops = ${outerLoops}`);
         }
 
         // Re-render
@@ -335,6 +355,21 @@ class HeadlessGame {
         return result;
     }
 
+    // C ref: mon.c movemon() — returns TRUE if any monster can move
+    // Also calls settrack() before moving monsters
+    _movemon_check() {
+        // C ref: allmain.c:205/238-239 — settrack before movemon and before moves++
+        settrack(this.player);
+        movemon(this.map, this.player, this.display, this.fov);
+        // Check if any monster still has movement >= NORMAL_SPEED
+        for (const mon of this.map.monsters) {
+            if (!mon.dead && mon.movement >= NORMAL_SPEED) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // C ref: mon.c mcalcmove() — random rounding of monster speed
     mcalcmove(mon) {
         let mmove = mon.speed;
@@ -346,16 +381,18 @@ class HeadlessGame {
 
     // C ref: allmain.c moveloop_core() — per-turn effects after monster movement
     simulateTurnEnd() {
-        // C ref: allmain.c:239 — settrack() called after movemon, before moves++
-        settrack(this.player);
-        this.turnCount++;
-        this.player.turns = this.turnCount;
-
         // C ref: allmain.c:226-227 — reallocate movement to monsters via mcalcmove
         for (const mon of this.map.monsters) {
             if (mon.dead) continue;
             mon.movement += this.mcalcmove(mon);
         }
+
+        // C ref: allmain.c:237 — u_calc_moveamt() reallocates player movement
+        this.player.movement += NORMAL_SPEED;
+
+        // C ref: allmain.c:240 — moves++ (turn counter)
+        this.turnCount++;
+        this.player.turns = this.turnCount;
 
         // C ref: allmain.c:232-236 — occasionally spawn a new monster
         rn2(70);   // monster spawn check (rn2(25) if demigod, rn2(50) below stronghold)
