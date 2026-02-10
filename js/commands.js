@@ -644,6 +644,7 @@ async function handleInventory(player, display) {
 
 // Handle wielding a weapon
 // C ref: wield.c dowield()
+// C ref: wield.c dowield() — wield a weapon (instant action, no time cost)
 async function handleWield(player, display) {
     const weapons = player.inventory.filter(o => o.oclass === 1); // WEAPON_CLASS
     if (weapons.length === 0) {
@@ -658,14 +659,16 @@ async function handleWield(player, display) {
     if (c === '-') {
         player.weapon = null;
         display.putstr_message('You are now empty-handed.');
-        return { moved: false, tookTime: true };
+        // C ref: wield.c:dowield sets multi=0 (no time cost)
+        return { moved: false, tookTime: false };
     }
 
     const weapon = weapons.find(w => w.invlet === c);
     if (weapon) {
         player.weapon = weapon;
         display.putstr_message(`${weapon.invlet} - ${weapon.name} (weapon in hand).`);
-        return { moved: false, tookTime: true };
+        // C ref: wield.c:dowield sets multi=0 (no time cost)
+        return { moved: false, tookTime: false };
     }
 
     display.putstr_message("Never mind.");

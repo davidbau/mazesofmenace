@@ -35,7 +35,9 @@ function readCLogLines(filePath) {
     if (!fs.existsSync(filePath)) return [];
     const text = fs.readFileSync(filePath, 'utf-8').trim();
     if (!text) return [];
-    return text.split('\n');
+    // Filter to only actual RNG call lines (start with digit)
+    // Exclude debug trace markers like ">somexyspace" and "<somexyspace=1"
+    return text.split('\n').filter(line => /^\d/.test(line));
 }
 
 function filterDogLines(lines) {
