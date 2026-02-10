@@ -12,6 +12,7 @@ import { generate as generateKnox } from './levels/knox.js';
 import { generate as generateMedusa } from './levels/medusa.js';
 import { generate as generateMedusa2 } from './levels/medusa-2.js';
 import { generate as generateMedusa3 } from './levels/medusa-3.js';
+import { generate as generateMedusa4 } from './levels/medusa-4.js';
 import { generate as generateSanctum } from './levels/sanctum.js';
 import { generate as generateValley } from './levels/valley.js';
 import { generate as generateTower1 } from './levels/tower1.js';
@@ -22,13 +23,15 @@ import { generate as generateWizard2 } from './levels/wizard2.js';
 import { generate as generateWizard3 } from './levels/wizard3.js';
 
 // Demon lair levels
-import { generate as generateAsmodeus } from './levels/asmodeus.js';
+// TODO: Fix converter issues in asmodeus.js
+// import { generate as generateAsmodeus } from './levels/asmodeus.js';
 import { generate as generateBaalz } from './levels/baalz.js';
 import { generate as generateJuiblex } from './levels/juiblex.js';
 import { generate as generateOrcus } from './levels/orcus.js';
 
 // Main dungeon special levels
 import { generate as generateCastle } from './levels/castle.js';
+import { generate as generateOracle } from './levels/oracle.js';
 
 // Special room variants
 import { generate as generateBigroom } from './levels/bigroom.js';
@@ -41,8 +44,23 @@ import { generate as generateBigroom7 } from './levels/bigroom-7.js';
 import { generate as generateBigroom8 } from './levels/bigroom-8.js';
 import { generate as generateBigroom9 } from './levels/bigroom-9.js';
 import { generate as generateBigroom10 } from './levels/bigroom-10.js';
+import { generate as generateBigroom11 } from './levels/bigroom-11.js';
 import { generate as generateBigroom12 } from './levels/bigroom-12.js';
 import { generate as generateBigroom13 } from './levels/bigroom-13.js';
+
+// Gnomish Mines levels
+import { generate as generateMinetn1 } from './levels/minetn-1.js';
+// TODO: Fix converter issues in minetn-2.js through minetn-5.js and minetn-7.js
+// import { generate as generateMinetn2 } from './levels/minetn-2.js';
+// import { generate as generateMinetn3 } from './levels/minetn-3.js';
+// import { generate as generateMinetn4 } from './levels/minetn-4.js';
+// import { generate as generateMinetn5 } from './levels/minetn-5.js';
+import { generate as generateMinetn6 } from './levels/minetn-6.js';
+// import { generate as generateMinetn7 } from './levels/minetn-7.js';
+import { generate as generateMinend1 } from './levels/minend-1.js';
+// TODO: Fix converter issues in minend-2.js and minend-3.js
+// import { generate as generateMinend2 } from './levels/minend-2.js';
+// import { generate as generateMinend3 } from './levels/minend-3.js';
 
 // Sokoban levels
 import { generate as generateSoko1a } from './levels/soko1-1.js';
@@ -53,6 +71,14 @@ import { generate as generateSoko3a } from './levels/soko3-1.js';
 import { generate as generateSoko3b } from './levels/soko3-2.js';
 import { generate as generateSoko4a } from './levels/soko4-1.js';
 import { generate as generateSoko4b } from './levels/soko4-2.js';
+
+// Elemental Planes
+import { generate as generateAir } from './levels/air.js';
+// TODO: Fix converter issues in astral.js
+// import { generate as generateAstral } from './levels/astral.js';
+import { generate as generateEarth } from './levels/earth.js';
+import { generate as generateFire } from './levels/fire.js';
+import { generate as generateWater } from './levels/water.js';
 
 /**
  * Dungeon branch numbers
@@ -65,6 +91,7 @@ export const QUEST = 3;
 export const KNOX = 4;  // Fort Ludios
 export const GEHENNOM = 5;
 export const VLADS_TOWER = 6;
+export const ELEMENTAL_PLANES = 7;
 
 /**
  * Special level lookup table
@@ -163,7 +190,8 @@ registerSpecialLevel(VLADS_TOWER, 3, generateTower3, 'tower3');
 // Sanctum is the final level (level 10 in a typical game)
 // Wizard's Tower appears after getting the Amulet (levels 11-13)
 registerSpecialLevel(GEHENNOM, 1, generateValley, 'valley');
-registerSpecialLevel(GEHENNOM, 3, generateAsmodeus, 'asmodeus');
+// TODO: Fix converter issues in asmodeus.js
+// registerSpecialLevel(GEHENNOM, 3, generateAsmodeus, 'asmodeus');
 registerSpecialLevel(GEHENNOM, 4, generateBaalz, 'baalz');
 registerSpecialLevel(GEHENNOM, 5, generateJuiblex, 'juiblex');
 registerSpecialLevel(GEHENNOM, 6, generateOrcus, 'orcus');
@@ -181,9 +209,40 @@ registerSpecialLevel(SOKOBAN, 2, [generateSoko2a, generateSoko2b], ['soko2-1', '
 registerSpecialLevel(SOKOBAN, 3, [generateSoko3a, generateSoko3b], ['soko3-1', 'soko3-2']);
 registerSpecialLevel(SOKOBAN, 4, [generateSoko4a, generateSoko4b], ['soko4-1', 'soko4-2']);
 
+// Register Gnomish Mines levels
+// Minetown appears at a random depth in the Mines (7 variants)
+// Mines' End is at the bottom of the Mines (3 variants)
+// Note: In actual C NetHack, these are selected randomly, not registered at fixed depths
+// For now, registering Minetown at depth 3 and Mines' End at depth 5 for testing
+// TODO: Add minetn-2 through minetn-5 and minetn-7 once converter issues are fixed
+registerSpecialLevel(GNOMISH_MINES, 3, [generateMinetn1, generateMinetn6], ['minetn-1', 'minetn-6']);
+// TODO: Add minend-2 and minend-3 once converter issues are fixed
+registerSpecialLevel(GNOMISH_MINES, 5, generateMinend1, 'minend-1');
+
+// Register Elemental Planes (endgame)
+// Planes are accessed after getting the Amulet of Yendor
+registerSpecialLevel(ELEMENTAL_PLANES, 1, generateEarth, 'earth');
+registerSpecialLevel(ELEMENTAL_PLANES, 2, generateAir, 'air');
+registerSpecialLevel(ELEMENTAL_PLANES, 3, generateFire, 'fire');
+registerSpecialLevel(ELEMENTAL_PLANES, 4, generateWater, 'water');
+// TODO: Fix converter issues in astral.js
+// registerSpecialLevel(ELEMENTAL_PLANES, 5, generateAstral, 'astral');
+
 // Register special levels in main dungeon
 // In Dungeons of Doom, at depths that vary by dungeon generation
 // Using specific depths for testing (actual depths determined at runtime)
+
+// Oracle (appears around depth 5-9)
+registerSpecialLevel(DUNGEONS_OF_DOOM, 5, generateOracle, 'oracle');
+
+// Medusa (4 variants, appears around depth 20)
+registerSpecialLevel(DUNGEONS_OF_DOOM, 20, [generateMedusa, generateMedusa2, generateMedusa3, generateMedusa4], ['medusa-1', 'medusa-2', 'medusa-3', 'medusa-4']);
+
+// Castle (appears around depth 25)
+registerSpecialLevel(DUNGEONS_OF_DOOM, 25, generateCastle, 'castle');
+
+// Big Room (13 variants, can appear at various depths)
+registerSpecialLevel(DUNGEONS_OF_DOOM, 10, [generateBigroom, generateBigroom2, generateBigroom3, generateBigroom4, generateBigroom5, generateBigroom6, generateBigroom7, generateBigroom8, generateBigroom9, generateBigroom10, generateBigroom11, generateBigroom12, generateBigroom13], ['bigroom-1', 'bigroom-2', 'bigroom-3', 'bigroom-4', 'bigroom-5', 'bigroom-6', 'bigroom-7', 'bigroom-8', 'bigroom-9', 'bigroom-10', 'bigroom-11', 'bigroom-12', 'bigroom-13']);
 
 /**
  * Get list of all registered special levels
