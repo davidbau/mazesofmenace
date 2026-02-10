@@ -93,6 +93,48 @@ let levelState = {
 let icedpools = false;
 let Sokoban = false;
 
+// ========================================================================
+// State Management API (for dungeon.js integration)
+// These functions allow procedural generation to use des.* API
+// ========================================================================
+
+/**
+ * Set the level context for des.* functions to operate on a procedural map.
+ * Call this before invoking themed room generation from dungeon.js.
+ *
+ * @param {GameMap} map - The procedural dungeon map to operate on
+ * @param {number} depth - Current dungeon depth (for level_difficulty)
+ */
+export function setLevelContext(map, depth) {
+    levelState.map = map;
+    levelState.depth = depth || 1;
+    levelState.roomStack = [];
+    levelState.roomDepth = 0;
+    levelState.currentRoom = null;
+}
+
+/**
+ * Clear the level context after themed room generation completes.
+ * Always call this to prevent state leakage between levels.
+ */
+export function clearLevelContext() {
+    levelState.map = null;
+    levelState.depth = 1;
+    levelState.roomStack = [];
+    levelState.roomDepth = 0;
+    levelState.currentRoom = null;
+}
+
+/**
+ * Set the current room context for nested des.* calls.
+ * Used by themeroom_fill to establish room context.
+ *
+ * @param {Object} room - Room object from map.rooms[]
+ */
+export function setCurrentRoom(room) {
+    levelState.currentRoom = room;
+}
+
 /**
  * Reset level state for new level generation
  */
