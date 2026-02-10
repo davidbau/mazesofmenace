@@ -62,6 +62,12 @@ import { generate as generateCrystal } from './levels/crystal.js';
 import { generate as generateRuins } from './levels/ruins.js';
 import { generate as generateLaboratory } from './levels/laboratory.js';
 import { generate as generateHedgemaze } from './levels/hedgemaze.js';
+import { generate as generateVolcano } from './levels/volcano.js';
+import { generate as generateCavern2 } from './levels/cavern2.js';
+import { generate as generateNecropolis } from './levels/necropolis.js';
+import { generate as generateBarracks } from './levels/barracks.js';
+import { generate as generateFungus } from './levels/fungus.js';
+import { generate as generateDragonLair } from './levels/dragon_lair.js';
 
 // Sokoban levels
 import { generate as generateSoko1a } from './levels/soko1-1.js';
@@ -236,6 +242,12 @@ registerSpecialLevel(DUNGEONS_OF_DOOM, 35, generateCrystal, 'crystal');
 registerSpecialLevel(DUNGEONS_OF_DOOM, 36, generateRuins, 'ruins');
 registerSpecialLevel(DUNGEONS_OF_DOOM, 37, generateLaboratory, 'laboratory');
 registerSpecialLevel(DUNGEONS_OF_DOOM, 38, generateHedgemaze, 'hedgemaze');
+registerSpecialLevel(DUNGEONS_OF_DOOM, 39, generateVolcano, 'volcano');
+registerSpecialLevel(DUNGEONS_OF_DOOM, 40, generateCavern2, 'cavern2');
+registerSpecialLevel(DUNGEONS_OF_DOOM, 41, generateNecropolis, 'necropolis');
+registerSpecialLevel(DUNGEONS_OF_DOOM, 42, generateBarracks, 'barracks');
+registerSpecialLevel(DUNGEONS_OF_DOOM, 43, generateFungus, 'fungus');
+registerSpecialLevel(DUNGEONS_OF_DOOM, 44, generateDragonLair, 'dragon_lair');
 
 /**
  * Get list of all registered special levels
