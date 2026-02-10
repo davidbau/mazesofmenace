@@ -234,7 +234,11 @@ export class Display {
         cell.color = color;
         const span = this.spans[row][col];
         span.textContent = ch;
-        span.style.color = COLOR_CSS[color] || COLOR_CSS[CLR_GRAY];
+
+        // Apply color flag - disable colors when color=false
+        // C ref: iflags.wc_color
+        const displayColor = (this.flags.color !== false) ? color : CLR_GRAY;
+        span.style.color = COLOR_CSS[displayColor] || COLOR_CSS[CLR_GRAY];
     }
 
     // Clear a row
