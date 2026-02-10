@@ -218,17 +218,27 @@ export function update_rect_pool_for_room(room) {
     const DEBUG = typeof process !== 'undefined' && process.env.DEBUG_RECTS === '1';
     const old_cnt = rect_cnt;
 
-    // Walk through all rectangles and split those that intersect with the room
+    // C ref: sp_lev.c:1635-1638 — r2 bounds include border (x-1, y-1) to (x+w, y+h)
+    // Room object has inclusive bounds (lx, ly) to (hx, hy), but split_rects needs
+    // borders: (lx-1, ly-1) to (hx+1, hy+1)
+    const r2 = {
+        lx: room.lx - 1,
+        ly: room.ly - 1,
+        hx: room.hx + 1,
+        hy: room.hy + 1
+    };
+
+    // Walk through all rectangles and split those that intersect with r2
     // Need to walk backwards since split_rects modifies the pool
     for (let i = rect_cnt - 1; i >= 0; i--) {
-        const r = intersect(rects[i], room);
+        const r = intersect(rects[i], r2);
         if (r) {
-            split_rects(rects[i], room);
+            split_rects(rects[i], r2);
         }
     }
 
     if (DEBUG && rect_cnt !== old_cnt) {
-        console.log(`  update_rect_pool_for_room: split around (${room.lx},${room.ly})-(${room.hx},${room.hy}), pool ${old_cnt}->${rect_cnt}`);
+        console.log(`  update_rect_pool_for_room: split around (${r2.lx},${r2.ly})-(${r2.hx},${r2.hy}), pool ${old_cnt}->${rect_cnt}`);
     }
 }
 
