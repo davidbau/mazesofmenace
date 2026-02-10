@@ -303,3 +303,37 @@ Cannot develop/test agent features:
 See JS_PORT_STATUS.md for complete analysis.
 
 **The exploration system works perfectly. The game just needs to be populated with monsters and items.**
+
+## Impact of Monster Generation (Session 2, final update)
+
+### Performance Comparison
+
+**Before Monster Generation (Empty Dungeons)**:
+- 8/8 seeds (100%) reach Dlvl 2+ in 500 turns
+- Depths reached: 56-81 levels
+- Seed 22222: Dlvl 74 in 500 turns
+- Agent: 12/12 HP throughout, never damaged
+
+**After Monster Generation (Real Gameplay)**:
+- Seed 11111: Dlvl 1 in 200 turns, 45 cells explored, 12/12 HP
+- Seed 22222: Testing in progress
+- Combat actions: 2 observed in 200 turns
+- Exploration rate: 45 cells/200 turns (vs ~190 cells before)
+
+### Analysis
+
+Monster presence significantly impacts agent performance:
+1. **Slower exploration**: Monsters block paths, require combat/avoidance
+2. **Combat works**: Agent engaged in 2 combats, survived unharmed
+3. **No deaths yet**: Agent still at full HP after combat
+4. **Exploration bottleneck**: Agent explores ~4x slower with monsters
+
+### Next Development Priorities
+
+Now that monsters exist, agent needs improvements:
+1. **Combat tactics**: Currently functional but not optimized
+2. **Monster avoidance**: Path around dangerous monsters
+3. **Healing awareness**: Track when HP is low
+4. **Faster exploration**: Better target selection with obstacles
+
+The critical bug fix (needfill initialization) transforms this from a navigation puzzle into actual NetHack gameplay.
