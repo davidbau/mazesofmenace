@@ -163,6 +163,8 @@ class LuaToJsConverter:
                         before = combined_text[:start_idx]
                         template_content = combined_text[start_idx + 2:end_idx]
                         after = combined_text[end_idx + 2:]
+                        # Escape backticks in template content
+                        template_content = template_content.replace('`', '\\`')
                         combined_text = before + '`\n' + template_content + '\n`' + after
 
                     # Combine into one line but preserve newlines inside template literals
@@ -223,6 +225,8 @@ class LuaToJsConverter:
 
                 # Convert multiline string to JS template literal
                 string_content = '\n'.join(self.multiline_string_lines)
+                # Escape backticks in template content
+                string_content = string_content.replace('`', '\\`')
                 converted_line = before + '`\n' + string_content + '\n`' + after
                 js_lines.append(self.convert_line(converted_line))
                 self.in_multiline_string = False
