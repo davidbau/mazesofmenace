@@ -117,4 +117,3 @@ export function generate() {
 
     return des.finalize_level();
 }
-

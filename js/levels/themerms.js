@@ -50,8 +50,7 @@ export function generate() {
     // so remember to reset any variables.
 
     let postprocess = [ ];
-
-    themeroom_fills: [
+    let themeroom_fills = [
 
        {
           name: "Ice room",
@@ -103,7 +102,7 @@ export function generate() {
              let func = function(x,y) {
                 des.trap({ type: "web", x: x, y: y,
                            spider_on_web: spooders && percent(80) });
-             };
+             }
              locs.iterate(func);
           },
        },
@@ -118,7 +117,7 @@ export function generate() {
              let locs = selection.room().percentage(30);
              let func = function(x,y) {
                 des.trap(traps[1], x, y);
-             };
+             }
              locs.iterate(func);
           },
        },
@@ -919,8 +918,8 @@ export function generate() {
 
     // store these at global scope, they will be reinitialized in
     // pre_themerooms_generate
-    let debug_rm_idx = null;
-    let debug_fill_idx = null;
+    debug_rm_idx = null
+    debug_fill_idx = null
 
     // Given a point in a themed room, ensure that themed room is stocked with
     // regular room contents.
@@ -1120,21 +1119,20 @@ export function generate() {
     let make_a_trap = function(data) {
        if ((data.teledest == 1 && data.type == "teleport")) {
           locs = selection.negate().filter_mapchar(".");
-          repeat
-             data.teledest = locs.rndcoord(1);
-          until (data.teledest.x !== data.coord.x && data.teledest.y !== data.coord.y);
+          do {             data.teledest = locs.rndcoord(1);
+          } while (!(data.teledest.x !== data.coord.x && data.teledest.y !== data.coord.y));
        }
        des.trap(data);
     }
 
     // called once after the whole level has been generated
     let post_level_generate = function() {
-       for (const v of postprocess) {
+       for (let i = 0; i < postprocess.length; i++) {
+          let v = postprocess[i];
           v.handler(v.data);
        }
        postprocess = [ ];
-    };
+    }
 
     return des.finalize_level();
 }
-

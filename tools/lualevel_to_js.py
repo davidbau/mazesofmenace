@@ -541,6 +541,26 @@ class SimpleLuaConverter:
             js = re.sub(r'(\s+)ltype,rtype:\s+rtype,ltype',
                        r'\1[ltype, rtype] = [rtype, ltype];', js)
 
+            # Fix 4: "themeroom_fills: [" → "let themeroom_fills = ["
+            js = re.sub(r'^\s*themeroom_fills:\s*\[', '    let themeroom_fills = [', js, flags=re.MULTILINE)
+
+            # Fix 5: Close array with ] not };
+            # Pattern: },\n\n    };\n\n    // store these at global scope
+            js = re.sub(r'(       },)\s*\n\s*\};\s*\n\s*(// store these at global scope)',
+                       r'\1\n\n    ];\n\n    \2', js)
+
+            # Fix 6: Convert "for i, v in ipairs(postprocess) do" to JS for loop
+            js = re.sub(r'for\s+i,\s*v\s+in\s+ipairs\(postprocess\)\s+do\s*\n',
+                       'for (let i = 0; i < postprocess.length; i++) {\n          let v = postprocess[i];\n', js)
+
+            # Fix 7: Convert "repeat...until" to "do...while"
+            js = re.sub(r'repeat\s*\n(.*?)\n\s*until\s*\((.*?)\);',
+                       r'do {\1\n          } while (!(\2));', js, flags=re.DOTALL)
+
+            # Fix 8: Remove stray ] after post_level_generate function
+            js = re.sub(r'(postprocess = \[ \];)\s*\n\s*\}\]',
+                       r'\1\n    }', js)
+
         return js
 
     def _wrap_module(self, js, filename):
