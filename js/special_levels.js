@@ -80,6 +80,12 @@ import { generate as generateGlacier } from './levels/glacier.js';
 import { generate as generateStronghold } from './levels/stronghold.js';
 import { generate as generateCrypt } from './levels/crypt.js';
 import { generate as generateAnthill } from './levels/anthill.js';
+import { generate as generateAbyss } from './levels/abyss.js';
+import { generate as generateCoral } from './levels/coral.js';
+import { generate as generateQuarry } from './levels/quarry.js';
+import { generate as generateSpiderNest } from './levels/spider_nest.js';
+import { generate as generateBazaar } from './levels/bazaar.js';
+import { generate as generateArmory } from './levels/armory.js';
 
 // Sokoban levels
 import { generate as generateSoko1a } from './levels/soko1-1.js';
@@ -272,6 +278,12 @@ registerSpecialLevel(DUNGEONS_OF_DOOM, 53, generateGlacier, 'glacier');
 registerSpecialLevel(DUNGEONS_OF_DOOM, 54, generateStronghold, 'stronghold');
 registerSpecialLevel(DUNGEONS_OF_DOOM, 55, generateCrypt, 'crypt');
 registerSpecialLevel(DUNGEONS_OF_DOOM, 56, generateAnthill, 'anthill');
+registerSpecialLevel(DUNGEONS_OF_DOOM, 57, generateAbyss, 'abyss');
+registerSpecialLevel(DUNGEONS_OF_DOOM, 58, generateCoral, 'coral');
+registerSpecialLevel(DUNGEONS_OF_DOOM, 59, generateQuarry, 'quarry');
+registerSpecialLevel(DUNGEONS_OF_DOOM, 60, generateSpiderNest, 'spider_nest');
+registerSpecialLevel(DUNGEONS_OF_DOOM, 61, generateBazaar, 'bazaar');
+registerSpecialLevel(DUNGEONS_OF_DOOM, 62, generateArmory, 'armory');
 
 /**
  * Get list of all registered special levels
