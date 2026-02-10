@@ -945,7 +945,7 @@ export function themerooms_generate(map, depth) {
          }
       }
       themerooms[actualrm].contents();
-      return;
+      return true;
    } else if (debug_fill_idx !== null) {
       // when a fill is requested but not a room, still create the "default"
       // room half of the time, and "default with themed fill" half of the time
@@ -953,7 +953,7 @@ export function themerooms_generate(map, depth) {
       const actualrm = lookup_by_name(percent(50) ? "Default room with themed fill"
                                                   : "default", false);
       themerooms[actualrm].contents();
-      return;
+      return true;
    }
    let pick = null;
    let total_frequency = 0;
@@ -978,9 +978,10 @@ export function themerooms_generate(map, depth) {
    }
    if (pick === null) {
       nh.impossible('no eligible themed rooms?');
-      return;
+      return false;
    }
    themerooms[pick].contents();
+   return true;
 }
 
 // called before any rooms are generated

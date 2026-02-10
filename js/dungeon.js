@@ -111,6 +111,10 @@ export function init_rect() {
 // C ref: rect.c rnd_rect() - exported for sp_lev.js themed room generation
 export function rnd_rect() {
     const DEBUG = typeof process !== 'undefined' && process.env.DEBUG_THEMEROOMS === '1';
+    if (DEBUG) {
+        const stack = new Error().stack.split('\n')[2].trim(); // Get caller
+        console.log(`  rnd_rect: ENTRY rect_cnt=${rect_cnt} from ${stack}`);
+    }
     const result = rect_cnt > 0 ? rects[rn2(rect_cnt)] : null;
     if (DEBUG) {
         if (result) {
@@ -173,7 +177,7 @@ function intersect(r1, r2) {
 }
 
 // C ref: rect.c split_rects() -- split r1 around allocated r2
-function split_rects(r1, r2) {
+export function split_rects(r1, r2) {
     const DEBUG = typeof process !== 'undefined' && process.env.DEBUG_RECTS === '1';
     const old_cnt = rect_cnt;
     const old_r = { lx: r1.lx, ly: r1.ly, hx: r1.hx, hy: r1.hy };
