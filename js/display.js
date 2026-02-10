@@ -463,6 +463,12 @@ export class Display {
                 : (useDEC ? { ch: '\u2502', color: CLR_GRAY } : { ch: '|', color: CLR_GRAY });
         }
 
+        // Handle lit_corridor option
+        // C ref: flag.h flags.lit_corridor - corridors shown with bright color
+        if (typ === CORR && this.flags.lit_corridor) {
+            return { ch: '#', color: CLR_CYAN };
+        }
+
         return TERRAIN_SYMBOLS[typ] || { ch: '?', color: CLR_MAGENTA };
     }
 
