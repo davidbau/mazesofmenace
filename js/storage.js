@@ -545,6 +545,7 @@ export const DEFAULT_FLAGS = {
     rest_on_space: false,  // C: flags.rest_on_space
     number_pad: false,    // C: iflags.num_pad
     lit_corridor: false,  // C: flags.lit_corridor
+    DECgraphics: false,   // C: symset DECgraphics — use box-drawing characters for walls
 };
 
 // C ref: options.c allopt[] — metadata for each option
@@ -560,6 +561,7 @@ export const OPTION_DEFS = [
     { name: 'rest_on_space', type: 'boolean', label: 'Rest on space', menuChar: 'r' },
     { name: 'number_pad', type: 'boolean', label: 'Number pad', menuChar: 'n' },
     { name: 'lit_corridor', type: 'boolean', label: 'Lit corridors', menuChar: 'l' },
+    { name: 'DECgraphics', type: 'boolean', label: 'DECgraphics (box-drawing)', menuChar: 'd' },
 ];
 
 // Migrate old option keys to new flag keys

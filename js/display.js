@@ -67,7 +67,48 @@ const COLOR_CSS = [
 // Default symbol for each terrain type
 // C ref: defsym.h PCHAR definitions
 // Uses Unicode box-drawing characters (DECGraphics / Enhanced1 from dat/symbols)
-const TERRAIN_SYMBOLS = {
+// ASCII terrain symbols (default, DECgraphics=false)
+const TERRAIN_SYMBOLS_ASCII = {
+    [STONE]:   { ch: ' ', color: CLR_GRAY },
+    [VWALL]:   { ch: '|', color: CLR_GRAY },
+    [HWALL]:   { ch: '-', color: CLR_GRAY },
+    [TLCORNER]: { ch: '-', color: CLR_GRAY },
+    [TRCORNER]: { ch: '-', color: CLR_GRAY },
+    [BLCORNER]: { ch: '-', color: CLR_GRAY },
+    [BRCORNER]: { ch: '-', color: CLR_GRAY },
+    [CROSSWALL]: { ch: '-', color: CLR_GRAY },
+    [TUWALL]:  { ch: '-', color: CLR_GRAY },
+    [TDWALL]:  { ch: '-', color: CLR_GRAY },
+    [TLWALL]:  { ch: '|', color: CLR_GRAY },
+    [TRWALL]:  { ch: '|', color: CLR_GRAY },
+    [DOOR]:    { ch: '+', color: CLR_BROWN },
+    [CORR]:    { ch: '#', color: CLR_GRAY },
+    [ROOM]:    { ch: '.', color: CLR_GRAY },
+    [STAIRS]:  { ch: '<', color: CLR_GRAY },
+    [FOUNTAIN]: { ch: '{', color: CLR_BRIGHT_BLUE },
+    [THRONE]:  { ch: '\\', color: HI_GOLD },
+    [SINK]:    { ch: '#', color: CLR_GRAY },
+    [GRAVE]:   { ch: '|', color: CLR_WHITE },
+    [ALTAR]:   { ch: '_', color: CLR_GRAY },
+    [POOL]:    { ch: '}', color: CLR_BLUE },
+    [MOAT]:    { ch: '}', color: CLR_BLUE },
+    [WATER]:   { ch: '}', color: CLR_BRIGHT_BLUE },
+    [LAVAPOOL]: { ch: '}', color: CLR_RED },
+    [LAVAWALL]: { ch: '}', color: CLR_ORANGE },
+    [ICE]:     { ch: '.', color: CLR_CYAN },
+    [IRONBARS]: { ch: '#', color: HI_METAL },
+    [TREE]:    { ch: '#', color: CLR_GREEN },
+    [DRAWBRIDGE_UP]:   { ch: '#', color: CLR_BROWN },
+    [DRAWBRIDGE_DOWN]: { ch: '.', color: CLR_BROWN },
+    [AIR]:     { ch: ' ', color: CLR_CYAN },
+    [CLOUD]:   { ch: '#', color: CLR_GRAY },
+    [SDOOR]:   { ch: '|', color: CLR_GRAY },
+    [SCORR]:   { ch: ' ', color: CLR_GRAY },
+};
+
+// DECgraphics terrain symbols (DECgraphics=true, box-drawing characters)
+// C ref: dat/symbols DECgraphics symset
+const TERRAIN_SYMBOLS_DEC = {
     [STONE]:   { ch: ' ', color: CLR_GRAY },
     [VWALL]:   { ch: '\u2502', color: CLR_GRAY },   // BOX VERT
     [HWALL]:   { ch: '\u2500', color: CLR_GRAY },   // BOX HORIZ
@@ -75,34 +116,34 @@ const TERRAIN_SYMBOLS = {
     [TRCORNER]: { ch: '\u2510', color: CLR_GRAY },  // BOX TR
     [BLCORNER]: { ch: '\u2514', color: CLR_GRAY },  // BOX BL
     [BRCORNER]: { ch: '\u2518', color: CLR_GRAY },  // BOX BR
-    [CROSSWALL]: { ch: '\u253c', color: CLR_GRAY },  // BOX CROSS
+    [CROSSWALL]: { ch: '\u253c', color: CLR_GRAY }, // BOX CROSS
     [TUWALL]:  { ch: '\u2534', color: CLR_GRAY },   // BOX UP-T
     [TDWALL]:  { ch: '\u252c', color: CLR_GRAY },   // BOX DOWN-T
     [TLWALL]:  { ch: '\u2524', color: CLR_GRAY },   // BOX LEFT-T
     [TRWALL]:  { ch: '\u251c', color: CLR_GRAY },   // BOX RIGHT-T
-    [DOOR]:    { ch: '+', color: CLR_BROWN },        // closed door default
+    [DOOR]:    { ch: '+', color: CLR_BROWN },
     [CORR]:    { ch: '#', color: CLR_GRAY },
-    [ROOM]:    { ch: '\u00b7', color: CLR_GRAY },    // MIDDLE DOT
-    [STAIRS]:  { ch: '<', color: CLR_GRAY },         // default to up
+    [ROOM]:    { ch: '\u00b7', color: CLR_GRAY },   // MIDDLE DOT
+    [STAIRS]:  { ch: '<', color: CLR_GRAY },
     [FOUNTAIN]: { ch: '{', color: CLR_BRIGHT_BLUE },
     [THRONE]:  { ch: '\\', color: HI_GOLD },
     [SINK]:    { ch: '#', color: CLR_GRAY },
-    [GRAVE]:   { ch: '\u2020', color: CLR_WHITE },   // DAGGER
+    [GRAVE]:   { ch: '\u2020', color: CLR_WHITE },  // DAGGER
     [ALTAR]:   { ch: '_', color: CLR_GRAY },
-    [POOL]:    { ch: '\u2248', color: CLR_BLUE },    // APPROX EQUAL
-    [MOAT]:    { ch: '\u2248', color: CLR_BLUE },    // APPROX EQUAL
-    [WATER]:   { ch: '\u2248', color: CLR_BRIGHT_BLUE }, // APPROX EQUAL
-    [LAVAPOOL]: { ch: '\u2248', color: CLR_RED },    // APPROX EQUAL
-    [LAVAWALL]: { ch: '\u2248', color: CLR_ORANGE }, // APPROX EQUAL
-    [ICE]:     { ch: '\u00b7', color: CLR_CYAN },    // MIDDLE DOT
+    [POOL]:    { ch: '\u2248', color: CLR_BLUE },   // APPROX EQUAL
+    [MOAT]:    { ch: '\u2248', color: CLR_BLUE },
+    [WATER]:   { ch: '\u2248', color: CLR_BRIGHT_BLUE },
+    [LAVAPOOL]: { ch: '\u2248', color: CLR_RED },
+    [LAVAWALL]: { ch: '\u2248', color: CLR_ORANGE },
+    [ICE]:     { ch: '\u00b7', color: CLR_CYAN },   // MIDDLE DOT
     [IRONBARS]: { ch: '#', color: HI_METAL },
     [TREE]:    { ch: '#', color: CLR_GREEN },
     [DRAWBRIDGE_UP]:   { ch: '#', color: CLR_BROWN },
-    [DRAWBRIDGE_DOWN]: { ch: '\u00b7', color: CLR_BROWN }, // MIDDLE DOT
+    [DRAWBRIDGE_DOWN]: { ch: '\u00b7', color: CLR_BROWN },
     [AIR]:     { ch: ' ', color: CLR_CYAN },
     [CLOUD]:   { ch: '#', color: CLR_GRAY },
-    [SDOOR]:   { ch: '\u2502', color: CLR_GRAY },   // BOX VERT (looks like wall)
-    [SCORR]:   { ch: ' ', color: CLR_GRAY },         // looks like stone
+    [SDOOR]:   { ch: '\u2502', color: CLR_GRAY },   // BOX VERT
+    [SCORR]:   { ch: ' ', color: CLR_GRAY },
 };
 
 export class Display {
@@ -260,7 +301,7 @@ export class Display {
 
     // Render the map from game state
     // C ref: display.c newsym() and print_glyph()
-    renderMap(gameMap, player, fov) {
+    renderMap(gameMap, player, fov, flags = {}) {
         for (let y = 0; y < ROWNO; y++) {
             for (let x = 0; x < COLNO; x++) {
                 const row = y + MAP_ROW_START;
@@ -271,7 +312,7 @@ export class Display {
                     const loc = gameMap.at(x, y);
                     if (loc && loc.seenv) {
                         // Show remembered (dimmed)
-                        const sym = this.terrainSymbol(loc);
+                        const sym = this.terrainSymbol(loc, flags);
                         this.setCell(col, row, sym.ch, CLR_BLACK);
                         const desc = this._terrainDesc(loc);
                         this.cellInfo[row][col] = { name: desc, desc: '(remembered)', color: CLR_BLACK };
@@ -331,7 +372,7 @@ export class Display {
                 }
 
                 // Show terrain
-                const sym = this.terrainSymbol(loc);
+                const sym = this.terrainSymbol(loc, flags);
                 this.setCell(col, row, sym.ch, sym.color);
                 const desc = this._terrainDesc(loc);
                 this.cellInfo[row][col] = { name: desc, desc: '', color: sym.color };
@@ -341,18 +382,28 @@ export class Display {
 
     // Get the display symbol for a terrain type
     // C ref: defsym.h PCHAR definitions, display.c back_to_glyph()
-    terrainSymbol(loc) {
+    terrainSymbol(loc, flags = {}) {
         const typ = loc.typ;
+        const useDEC = flags.DECgraphics || false;
+
+        // Choose symbol set based on DECgraphics option
+        // C ref: dat/symbols — DECgraphics vs default ASCII
+        const TERRAIN_SYMBOLS = useDEC ? TERRAIN_SYMBOLS_DEC : TERRAIN_SYMBOLS_ASCII;
 
         // Handle door states
-        // C ref: dat/symbols DECgraphics -- S_ndoor=dot, S_vodoor/S_hodoor=dot
         if (typ === DOOR) {
             if (loc.flags & D_ISOPEN) {
-                return { ch: '\u00b7', color: CLR_BROWN };  // MIDDLE DOT open door
+                // Open door: MIDDLE DOT for DEC, '-' for ASCII
+                return useDEC
+                    ? { ch: '\u00b7', color: CLR_BROWN }
+                    : { ch: '-', color: CLR_BROWN };
             } else if (loc.flags & D_CLOSED || loc.flags & D_LOCKED) {
                 return { ch: '+', color: CLR_BROWN };
             } else {
-                return { ch: '\u00b7', color: CLR_GRAY };   // MIDDLE DOT doorway
+                // Doorway: MIDDLE DOT for DEC, '.' for ASCII
+                return useDEC
+                    ? { ch: '\u00b7', color: CLR_GRAY }
+                    : { ch: '.', color: CLR_GRAY };
             }
         }
 
@@ -368,8 +419,8 @@ export class Display {
         // Handle secret door/corridor (appears as wall/stone when unseen)
         if (typ === SDOOR) {
             return loc.horizontal
-                ? { ch: '\u2500', color: CLR_GRAY }   // BOX HORIZ wall
-                : { ch: '\u2502', color: CLR_GRAY };   // BOX VERT wall
+                ? (useDEC ? { ch: '\u2500', color: CLR_GRAY } : { ch: '-', color: CLR_GRAY })
+                : (useDEC ? { ch: '\u2502', color: CLR_GRAY } : { ch: '|', color: CLR_GRAY });
         }
 
         return TERRAIN_SYMBOLS[typ] || { ch: '?', color: CLR_MAGENTA };
