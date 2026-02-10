@@ -289,6 +289,22 @@ function handleMovement(dir, player, map, display, game) {
     // Check for monster at target position
     const mon = map.monsterAt(nx, ny);
     if (mon) {
+        // C ref: hack.c domove() — check for pet displacement
+        // Simplified: tame/peaceful monsters are displaced (swap positions)
+        if (mon.tame || mon.peaceful) {
+            // Pet displacement: swap positions
+            // C ref: hack.c:2142-2156 — remove_monster + place_monster swaps positions
+            const oldPlayerX = player.x;
+            const oldPlayerY = player.y;
+            mon.mx = oldPlayerX;
+            mon.my = oldPlayerY;
+            player.x = nx;
+            player.y = ny;
+            player.moved = true;
+            display.putstr_message(`You swap places with ${mon.name}.`);
+            return { moved: true, tookTime: true };
+        }
+
         // Attack the monster
         // C ref: hack.c domove() -> do_attack() -> attack() -> hitum()
         // C ref: hack.c:3036 overexertion() unconditionally calls gethungry() -> rn2(20)

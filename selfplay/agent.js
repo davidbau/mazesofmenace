@@ -660,7 +660,7 @@ export class Agent {
         const onDownstairs = (currentCell && currentCell.type === 'stairs_down') ||
             level.stairsDown.some(s => s.x === px && s.y === py);
         if (onDownstairs) {
-            return { type: 'descend', key: '>', reason: 'descending stairs' };
+            console.log(`[DEBUG] At downstairs, descending`); return { type: 'descend', key: '>', reason: 'descending stairs' };
         }
 
         // 5b. Proactive descent: if we've found stairs and explored enough, head down
@@ -683,7 +683,7 @@ export class Agent {
                 const stairs = level.stairsDown[0];
                 // If we're already at the downstairs, descend immediately
                 if (px === stairs.x && py === stairs.y) {
-                    return { type: 'descend', key: '>', reason: `descending (explored ${Math.round(exploredPercent*100)}%)` };
+                    console.log(`[DEBUG] At downstairs, descending`); return { type: 'descend', key: '>', reason: `descending (explored ${Math.round(exploredPercent*100)}%)` };
                 }
                 const path = findPath(level, px, py, stairs.x, stairs.y, { allowUnexplored: false });
                 if (path.found) {
@@ -714,7 +714,7 @@ export class Agent {
                 const stairs = level.stairsDown[0];
                 // If we're already at the downstairs, descend immediately
                 if (px === stairs.x && py === stairs.y) {
-                    return { type: 'descend', key: '>', reason: `descending (stuck ${this.levelStuckCounter})` };
+                    console.log(`[DEBUG] At downstairs, descending`); return { type: 'descend', key: '>', reason: `descending (stuck ${this.levelStuckCounter})` };
                 }
                 const path = findPath(level, px, py, stairs.x, stairs.y, { allowUnexplored: true });
                 if (path.found) {
@@ -1016,7 +1016,7 @@ export class Agent {
                     const stairs = level.stairsDown[0];
                     // If we're already at the downstairs, descend immediately
                     if (px === stairs.x && py === stairs.y) {
-                        return { type: 'descend', key: '>', reason: 'descending (stuck)' };
+                        console.log(`[DEBUG] At downstairs, descending`); return { type: 'descend', key: '>', reason: 'descending (stuck)' };
                     }
                     const path = findPath(level, px, py, stairs.x, stairs.y, { allowUnexplored: true });
                     if (path.found) {
@@ -1101,7 +1101,8 @@ export class Agent {
             const stairs = level.stairsDown[0];
             // If we're already at the downstairs, descend immediately
             if (px === stairs.x && py === stairs.y) {
-                return { type: 'descend', key: '>', reason: 'descending (exploration complete)' };
+                console.log(`[DEBUG] At downstairs (${px},${py}), attempting descent with '>'`);
+                console.log(`[DEBUG] At downstairs, descending`); return { type: 'descend', key: '>', reason: 'descending (exploration complete)' };
             }
             const path = findPath(level, px, py, stairs.x, stairs.y, { allowUnexplored: true });
             if (path.found) {
@@ -1386,6 +1387,7 @@ export class Agent {
         return null;
     }
 
+
     /**
      * Detect movement failure: if we tried to move but position didn't change,
      * the target cell is blocked. Mark it as not walkable so pathfinding avoids it.
@@ -1425,7 +1427,29 @@ export class Agent {
                 const ty = prePos.y + delta.dy;
                 const level = this.dungeon.currentLevel;
                 const cell = level.at(tx, ty);
-                if (cell && !cell.explored) {
+
+                // Check for locked door
+                const message = this.screen.message || '';
+                const isLockedDoorMessage = message.toLowerCase().includes('door is locked') ||
+                                           message.toLowerCase().includes('this door resists');
+
+                // If we failed to move through a door, it might be locked
+                const isDoorCell = cell && (cell.type === 'door_open' || cell.type === 'door_closed');
+
+                if ((isLockedDoorMessage || (isDoorCell && this.consecutiveFailedMoves >= 2)) && cell) {
+                    // Mark door as locked and non-walkable
+                    console.log(`[LOCKED DOOR] Detected at (${tx},${ty}), cellType=${cell.type}, failedMoves=${this.consecutiveFailedMoves}, msg="${message}"`);
+                    cell.type = 'door_locked';
+                    cell.walkable = false;
+                    cell.explored = true;
+                    // Clear committed target since we can't reach it
+                    if (this.committedTarget) {
+                        const tKey = this.committedTarget.y * 80 + this.committedTarget.x;
+                        this.failedTargets.add(tKey);
+                        this.committedTarget = null;
+                        this.committedPath = null;
+                    }
+                } else if (cell && !cell.explored) {
                     // Mark unexplored cell we couldn't walk into as explored wall
                     cell.explored = true;
                     cell.type = 'wall';

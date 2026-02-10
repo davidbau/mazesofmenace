@@ -31,7 +31,7 @@ import {
 } from './monsters.js';
 import {
     create_room, create_subroom, sp_create_door, floodFillAndRegister, enexto,
-    mktrap,
+    mktrap, litstate_rnd,
 } from './dungeon.js';
 
 // ========================================================================
@@ -1216,8 +1216,10 @@ function themeroom_pick9_mausoleum(map, depth) {
     const oH = outer.hy - outer.ly + 1;
     const cx = Math.floor((oW - 1) / 2);
     const cy = Math.floor((oH - 1) / 2);
-    rn2(100); // build_room chance check (inner des.room)
-    const inner = create_subroom(map, outer, cx, cy, 1, 1, THEMEROOM, -1, depth);
+    // C: des.room calls build_room which has 80% success chance
+    // Only create inner subroom if build check passes
+    const buildCheck = rn2(100);
+    const inner = (buildCheck < 80) ? create_subroom(map, outer, cx, cy, 1, 1, THEMEROOM, -1, depth) : null;
     if (inner) {
         inner.needjoining = false;
         if (rn2(100) < 50) { // percent(50) — monster
@@ -1257,8 +1259,12 @@ function themeroom_pick10_randomFeature(map, depth) {
 }
 
 // C ref: themerms.lua "default" — des.room({ type="ordinary", filled=1 })
+// C ref: sp_lev.c build_room() consumes rn2(100) but room is created regardless
 function themeroom_default(map, depth) {
+    // The rn2(100) is for build probability, but room is created anyway
+    // It may affect room properties or be used for statistics
     rn2(100);
+
     if (!create_room(map, -1, -1, -1, -1, -1, -1, OROOM, -1, depth, true))
         return false;
     map.rooms[map.nroom - 1].needfill = FILL_NORMAL;

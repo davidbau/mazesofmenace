@@ -226,7 +226,7 @@ function check_room(map, lowx, ddx, lowy, ddy, vault, inThemerooms) {
 }
 
 // C ref: mkmap.c litstate_rnd() -- determine if room is lit
-function litstate_rnd(litstate, depth) {
+export function litstate_rnd(litstate, depth) {
     if (litstate < 0)
         return (rnd(1 + Math.abs(depth)) < 11 && rn2(77)) ? true : false;
     return !!litstate;
@@ -3190,9 +3190,15 @@ export function makelevel(depth, dnum, dlevel) {
     // C ref: mklev.c:1367-1376 — place_branch()
     // At depth 1: branch exists (entry from surface), place branch stairs
     if (depth === 1) {
-        const branchRoom = generate_stairs_find_room(map);
-        if (branchRoom) {
-            const pos = somexyspace(map, branchRoom);
+        // C ref: find_branch_room → somexyspace
+        // NOTE: Despite C having rn2(5) after find_branch_room, analysis shows
+        // C actually has 5 rooms total, same as JS should have after 5 build_room successes.
+        // The rn2(5) is for the bonus item room selection, not room count.
+        // So DON'T create an extra branch room - just call somexyspace for RNG alignment.
+        const candidateRoom = generate_stairs_find_room(map);
+        if (candidateRoom) {
+            // Call somexyspace to match C's RNG consumption
+            const pos = somexyspace(map, candidateRoom);
             if (pos) {
                 const loc = map.at(pos.x, pos.y);
                 if (loc) {
