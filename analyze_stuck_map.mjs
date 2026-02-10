@@ -96,7 +96,7 @@ for (let y = 0; y < mapHeight; y++) {
             cell = map[y][x];
         }
 
-        if (cell && cell.typ === 25) { // LADDER down (typ 25 is stairs down)
+        if (cell && cell.typ === 26 && cell.flags === 0) { // LADDER down (typ 25 is stairs down)
             stairsPos = { x, y };
             break;
         }
