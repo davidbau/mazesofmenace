@@ -29,6 +29,12 @@ The diagnostic tool (diagnose_stuck.mjs) proved that stuck seeds (44444, 77777, 
    - Didn't help agents find reachable targets
    - Root issue is target selection, not blacklisting
 
+3. **Corridor-Aware Exploration** (multiple attempts):
+   - **Strong priority**: Helped seeds 33333 (2→3), 55555 (1→3), but hurt 11111 (2→1), 22222 (2→1), 44444 (3→2)
+   - **Softened priority**: Lost all improvements
+   - **Adaptive (only when stuck)**: No improvement
+   - **Conclusion**: Different maps need different strategies; no universal heuristic works
+
 ## The Real Problem
 `findExplorationTarget()` in pathing.js likely uses:
 - Euclidean distance to pick nearest frontier cell
