@@ -28,7 +28,7 @@ const nh = {
     rn2: (n) => rn2(n),
     start_timer_at: (x, y, type, time) => { /* TODO: implement timer system */ },
     impossible: (msg) => { console.warn('[themerms impossible]:', msg); },
-    debug_themerm: (fill) => { return process.env.DEBUG_THEMERM || null; }
+    debug_themerm: (fill) => { return (typeof process !== 'undefined' && process.env.DEBUG_THEMERM) || null; }
 };
 
 // Stub other globals
