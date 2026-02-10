@@ -16,7 +16,7 @@
 import { GameMap } from './map.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { mksobj, mkobj } from './mkobj.js';
-import { create_room, makecorridors, init_rect, update_rect_pool_for_room } from './dungeon.js';
+import { create_room, makecorridors, init_rect, update_rect_pool_for_room, bound_digging, mineralize } from './dungeon.js';
 import {
     STONE, VWALL, HWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL, ROOM, CORR,
@@ -2222,6 +2222,15 @@ export function finalize_level() {
 
     // Apply random flipping
     flipLevelRandom();
+
+    // C ref: mklev.c:1533-1539 — level_finalize_topology()
+    // bound_digging marks boundary stone as non-diggable before mineralize
+    if (levelState.map) {
+        bound_digging(levelState.map);
+        // Get depth from level state or default to 1
+        const depth = levelState.levelDepth || 1;
+        mineralize(levelState.map, depth);
+    }
 
     // TODO: Add other finalization steps (solidify_map, premapping, etc.)
 

@@ -3037,7 +3037,7 @@ function get_level_extends(map) {
     return { xmin, xmax, ymin, ymax };
 }
 
-function bound_digging(map) {
+export function bound_digging(map) {
     // C ref: mkmaze.c:1439-1455
     // Mark boundary stone/wall cells as non-diggable so mineralize skips them.
     const { xmin, xmax, ymin, ymax } = get_level_extends(map);
@@ -3058,7 +3058,7 @@ function bound_digging(map) {
 // C ref: mklev.c:1437-1530
 // ========================================================================
 
-function mineralize(map, depth) {
+export function mineralize(map, depth) {
     // C ref: mklev.c:1468-1472 — default probabilities
     const goldprob = 20 + Math.floor(depth / 3);
     const gemprob = Math.floor(goldprob / 4);
