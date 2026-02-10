@@ -50,13 +50,12 @@ import { generate as generateBigroom13 } from './levels/bigroom-13.js';
 
 // Gnomish Mines levels
 import { generate as generateMinetn1 } from './levels/minetn-1.js';
-// TODO: Fix converter issues in minetn-2.js through minetn-4.js and minetn-7.js
-// import { generate as generateMinetn2 } from './levels/minetn-2.js';
-// import { generate as generateMinetn3 } from './levels/minetn-3.js';
-// import { generate as generateMinetn4 } from './levels/minetn-4.js';
+import { generate as generateMinetn2 } from './levels/minetn-2.js';
+import { generate as generateMinetn3 } from './levels/minetn-3.js';
+import { generate as generateMinetn4 } from './levels/minetn-4.js';
 import { generate as generateMinetn5 } from './levels/minetn-5.js';
 import { generate as generateMinetn6 } from './levels/minetn-6.js';
-// import { generate as generateMinetn7 } from './levels/minetn-7.js';
+import { generate as generateMinetn7 } from './levels/minetn-7.js';
 import { generate as generateMinend1 } from './levels/minend-1.js';
 import { generate as generateMinend2 } from './levels/minend-2.js';
 import { generate as generateMinend3 } from './levels/minend-3.js';
@@ -213,8 +212,7 @@ registerSpecialLevel(SOKOBAN, 4, [generateSoko4a, generateSoko4b], ['soko4-1', '
 // Mines' End is at the bottom of the Mines (3 variants)
 // Note: In actual C NetHack, these are selected randomly, not registered at fixed depths
 // For now, registering Minetown at depth 3 and Mines' End at depth 5 for testing
-// TODO: Add minetn-2, minetn-3, minetn-4, and minetn-7 once converter issues are fixed
-registerSpecialLevel(GNOMISH_MINES, 3, [generateMinetn1, generateMinetn5, generateMinetn6], ['minetn-1', 'minetn-5', 'minetn-6']);
+registerSpecialLevel(GNOMISH_MINES, 3, [generateMinetn1, generateMinetn2, generateMinetn3, generateMinetn4, generateMinetn5, generateMinetn6, generateMinetn7], ['minetn-1', 'minetn-2', 'minetn-3', 'minetn-4', 'minetn-5', 'minetn-6', 'minetn-7']);
 registerSpecialLevel(GNOMISH_MINES, 5, [generateMinend1, generateMinend2, generateMinend3], ['minend-1', 'minend-2', 'minend-3']);
 
 // Register Elemental Planes (endgame)
