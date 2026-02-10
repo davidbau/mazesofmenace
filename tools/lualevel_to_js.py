@@ -561,7 +561,10 @@ class SimpleLuaConverter:
             js = re.sub(r'(postprocess = \[ \];)\s*\n\s*\}\]',
                        r'\1\n    }', js)
 
-            # Fix 9: Add 'let' to bare variable assignments in function scope
+            # Fix 9: Add missing semicolons to nh.impossible calls
+            js = re.sub(r"(nh\.impossible\([^)]+\))(?!;)", r"\1;", js)
+
+            # Fix 10: Add 'let' to bare variable assignments in function scope
             # Pattern: indented line starting with lowercase identifier followed by =
             # But NOT: object properties (has : before =), comparisons (==, !=, <=, >=),
             #          arrow functions (=>), or already declared (let/const/var)

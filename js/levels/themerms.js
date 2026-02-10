@@ -998,7 +998,7 @@ export function generate() {
        let total_frequency = 0;
        for (let i = 1; i <= themerooms.length; i++) {
           if ((type(themerooms[i]) !== "table")) {
-             nh.impossible('themed room ' + i + ' is ! a table')
+             nh.impossible('themed room ' + i + ' is ! a table');
           } else if (is_eligible(themerooms[i], null)) {
              // Reservoir sampling: select one room from the set of eligible rooms,
              // which may change on different levels because of level difficulty.
@@ -1016,7 +1016,7 @@ export function generate() {
           }
        }
        if (pick == null) {
-          nh.impossible('no eligible themed rooms?')
+          nh.impossible('no eligible themed rooms?');
           // return }
        themerooms[pick].contents();
     }
@@ -1063,7 +1063,7 @@ export function generate() {
        let total_frequency = 0;
        for (let i = 1; i <= themeroom_fills.length; i++) {
           if ((type(themeroom_fills[i]) !== "table")) {
-             nh.impossible('themeroom fill ' + i + ' must be a table')
+             nh.impossible('themeroom fill ' + i + ' must be a table');
           } else if (is_eligible(themeroom_fills[i], rm)) {
              // Reservoir sampling: select one room from the set of eligible rooms,
              // which may change on different levels because of level difficulty.
@@ -1081,7 +1081,7 @@ export function generate() {
           }
        }
        if (pick == null) {
-          nh.impossible('no eligible themed room fills?')
+          nh.impossible('no eligible themed room fills?');
           // return }
        themeroom_fills[pick].contents(rm);
     }
