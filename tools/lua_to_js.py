@@ -107,12 +107,22 @@ class LuaToJsConverter:
                 paren_count = 0
                 brace_count = 0
                 has_complete_call = False
+                in_string = False
+                string_char = None
 
-                for char in line:
-                    if char == '(': paren_count += 1
-                    elif char == ')': paren_count -= 1
-                    elif char == '{': brace_count += 1
-                    elif char == '}': brace_count -= 1
+                # Track strings to avoid counting braces/parens inside them
+                for j, char in enumerate(line):
+                    if char in ['"', "'"] and (j == 0 or line[j-1] != '\\'):
+                        if not in_string:
+                            in_string = True
+                            string_char = char
+                        elif char == string_char:
+                            in_string = False
+                    elif not in_string:
+                        if char == '(': paren_count += 1
+                        elif char == ')': paren_count -= 1
+                        elif char == '{': brace_count += 1
+                        elif char == '}': brace_count -= 1
 
                 # If braces/parens are balanced, it's a single-line call
                 if paren_count == 0 and brace_count == 0:
@@ -124,11 +134,21 @@ class LuaToJsConverter:
                     i += 1
                     while i < len(lines):
                         multiline_call.append(lines[i])
-                        for char in lines[i]:
-                            if char == '(': paren_count += 1
-                            elif char == ')': paren_count -= 1
-                            elif char == '{': brace_count += 1
-                            elif char == '}': brace_count -= 1
+                        # Reset string tracking for each line
+                        line_in_string = False
+                        line_string_char = None
+                        for j, char in enumerate(lines[i]):
+                            if char in ['"', "'"] and (j == 0 or lines[i][j-1] != '\\'):
+                                if not line_in_string:
+                                    line_in_string = True
+                                    line_string_char = char
+                                elif char == line_string_char:
+                                    line_in_string = False
+                            elif not line_in_string:
+                                if char == '(': paren_count += 1
+                                elif char == ')': paren_count -= 1
+                                elif char == '{': brace_count += 1
+                                elif char == '}': brace_count -= 1
 
                         if paren_count == 0 and brace_count == 0:
                             break
@@ -225,7 +245,22 @@ class LuaToJsConverter:
                 result.append(char)
             elif not in_string and not in_template:
                 if char == ';':
-                    result.append(char)
+                    # Check if this is a comment line (look back for //)
+                    is_comment_line = False
+                    result_str = ''.join(result)
+                    last_newline = result_str.rfind('\n')
+                    if last_newline >= 0:
+                        current_line = result_str[last_newline + 1:]
+                        if current_line.strip().startswith('//'):
+                            is_comment_line = True
+                    elif result_str.strip().startswith('//'):
+                        # First line of function body
+                        is_comment_line = True
+
+                    # Don't output semicolon for comment lines
+                    if not is_comment_line:
+                        result.append(char)
+
                     # Look ahead - only add newline if next non-space char is not }
                     j = i + 1
                     while j < len(js_code) and js_code[j] == ' ':
@@ -604,52 +639,86 @@ class LuaToJsConverter:
         if body.endswith('end'):
             body = body[:-3].strip()
 
-        # Convert the body - it may contain multiple statements separated by ;
-        # Split by ; and convert each statement
-        if ';' in body or 'des.' in body:
-            statements = []
-            # Try to split by semicolons, but respect nested structures
-            current_stmt = []
-            paren_depth = 0
-            brace_depth = 0
-            in_string = False
-            string_char = None
-
-            i = 0
-            while i < len(body):
-                char = body[i]
-
-                if char in ['"', "'"] and (i == 0 or body[i-1] != '\\'):
-                    if not in_string:
-                        in_string = True
-                        string_char = char
-                    elif char == string_char:
-                        in_string = False
-                elif not in_string:
-                    if char == '(': paren_depth += 1
-                    elif char == ')': paren_depth -= 1
-                    elif char == '{': brace_depth += 1
-                    elif char == '}': brace_depth -= 1
-                    elif char == ';' and paren_depth == 0 and brace_depth == 0:
-                        stmt = ''.join(current_stmt).strip()
-                        if stmt:
-                            statements.append(self.convert_statement(stmt))
-                        current_stmt = []
-                        i += 1
-                        continue
-
-                current_stmt.append(char)
+        # Convert Lua comments to JS comments in the body
+        # Replace all standalone -- comments (not inside strings)
+        # Simple approach: replace all -- with //
+        parts = []
+        in_string = False
+        string_char = None
+        i = 0
+        while i < len(body):
+            if body[i] in ['"', "'"] and (i == 0 or body[i-1] != '\\'):
+                if not in_string:
+                    in_string = True
+                    string_char = body[i]
+                elif body[i] == string_char:
+                    in_string = False
+                parts.append(body[i])
                 i += 1
+            elif not in_string and i < len(body) - 1 and body[i:i+2] == '--':
+                parts.append('//')
+                i += 2
+            else:
+                parts.append(body[i])
+                i += 1
+        body = ''.join(parts)
 
-            # Add the last statement
-            stmt = ''.join(current_stmt).strip()
+        # Convert the body - split before each top-level 'des.' and '//'
+        # Track depth to avoid splitting nested calls
+        statements = []
+        current = []
+        paren_depth = 0
+        brace_depth = 0
+        in_string = False
+        string_char = None
+        i = 0
+
+        while i < len(body):
+            # Track string and depth
+            if body[i] in ['"', "'"] and (i == 0 or body[i-1] != '\\'):
+                if not in_string:
+                    in_string = True
+                    string_char = body[i]
+                elif body[i] == string_char:
+                    in_string = False
+            elif not in_string:
+                if body[i] == '(': paren_depth += 1
+                elif body[i] == ')': paren_depth -= 1
+                elif body[i] == '{': brace_depth += 1
+                elif body[i] == '}': brace_depth -= 1
+
+            # Check if we're at a top-level split point (depth 0)
+            is_split_point = False
+            if paren_depth == 0 and brace_depth == 0 and not in_string:
+                if i > 0 and i + 4 <= len(body) and body[i:i+4] == 'des.' and body[i-1] in [' ', '\t']:
+                    is_split_point = True
+                elif i > 0 and i + 2 <= len(body) and body[i:i+2] == '//' and body[i-1] in [' ', '\t']:
+                    is_split_point = True
+
+            if is_split_point and current:
+                # Save the current statement
+                stmt = ''.join(current).strip()
+                if stmt:
+                    if stmt.startswith('//'):
+                        statements.append(f"{stmt};")
+                    else:
+                        statements.append(self.convert_statement(stmt))
+                current = []
+
+            current.append(body[i])
+            i += 1
+
+        # Add the last statement
+        if current:
+            stmt = ''.join(current).strip()
             if stmt:
-                statements.append(self.convert_statement(stmt))
+                if stmt.startswith('//'):
+                    statements.append(f"{stmt};")
+                else:
+                    statements.append(self.convert_statement(stmt))
 
-            # Join statements with spaces (formatting will be added later)
-            converted_body = ' ' + ' '.join(statements) + ' ' if statements else ''
-        else:
-            converted_body = ' ' + (self.convert_statement(body) if body else '') + ' '
+        # Join statements with spaces (formatting will be added later)
+        converted_body = ' ' + ' '.join(statements) + ' ' if statements else ''
 
         # Return as function expression (formatting added by format_multiline_output)
         return f"function({params}) {{{converted_body}}}"

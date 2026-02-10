@@ -22,7 +22,8 @@ import { generate as generateWizard2 } from './levels/wizard2.js';
 import { generate as generateWizard3 } from './levels/wizard3.js';
 
 // Demon lair levels
-// import { generate as generateAsmodeus } from './levels/asmodeus.js'; // TODO: Fix Lua syntax
+// TEMP: Commented out due to syntax error in asmodeus.js from Lua converter
+// import { generate as generateAsmodeus } from './levels/asmodeus.js';
 import { generate as generateBaalz } from './levels/baalz.js';
 import { generate as generateJuiblex } from './levels/juiblex.js';
 import { generate as generateOrcus } from './levels/orcus.js';
@@ -163,7 +164,8 @@ registerSpecialLevel(VLADS_TOWER, 3, generateTower3, 'tower3');
 // Sanctum is the final level (level 10 in a typical game)
 // Wizard's Tower appears after getting the Amulet (levels 11-13)
 registerSpecialLevel(GEHENNOM, 1, generateValley, 'valley');
-// registerSpecialLevel(GEHENNOM, 3, generateAsmodeus, 'asmodeus'); // TODO: Fix Lua syntax
+// TEMP: Commented out due to syntax error in asmodeus.js
+// registerSpecialLevel(GEHENNOM, 3, generateAsmodeus, 'asmodeus');
 registerSpecialLevel(GEHENNOM, 4, generateBaalz, 'baalz');
 registerSpecialLevel(GEHENNOM, 5, generateJuiblex, 'juiblex');
 registerSpecialLevel(GEHENNOM, 6, generateOrcus, 'orcus');
