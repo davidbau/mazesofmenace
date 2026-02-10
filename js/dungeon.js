@@ -928,24 +928,6 @@ function makerooms(map, depth) {
     // C ref: mklev.c:393-417
     const DEBUG = typeof process !== 'undefined' && process.env.DEBUG_THEMEROOMS === '1';
     while (map.nroom < (MAXNROFROOMS - 1) && rnd_rect()) {
-        // TEMPORARILY DISABLED: MT initialization breaks map session RNG alignment
-        // TODO: Re-enable for gameplay sessions only, not map generation
-        // Simulate Lua MT19937 RNG initialization after first rnd_rect
-        // This happens when Lua math.random() is first called
-        /*
-        if (!_mtInitialized) {
-            if (DEBUG) console.log(`MT init starting, flag was: ${_mtInitialized}`);
-            _mtInitialized = true;
-            // Pattern from C trace: rn2(1000-1004), rn2(1010), rn2(1012), rn2(1014-1036)
-            for (let i = 1000; i <= 1004; i++) rn2(i);
-            rn2(1010);
-            rn2(1012);
-            for (let i = 1014; i <= 1036; i++) rn2(i);
-            if (DEBUG) console.log(`MT init complete, flag now: ${_mtInitialized}`);
-        } else {
-            if (DEBUG) console.log(`Skipping MT init, flag is: ${_mtInitialized}`);
-        }
-        */
 
         if (DEBUG) {
             console.log(`Loop iteration: nroom=${map.nroom}, tries=${themeroom_tries}`);
