@@ -48,6 +48,7 @@ export class TmuxAdapter extends GameAdapter {
         const name = options.name || 'Agent';
         const gender = options.gender || 'female';
         const align = options.align || 'neutral';
+        const rngLogPath = options.rngLogPath || null;
 
         // Set up a temporary home directory with .nethackrc
         this._homeDir = join(PROJECT_ROOT, 'selfplay', '.nethack-home');
@@ -80,6 +81,9 @@ export class TmuxAdapter extends GameAdapter {
             NETHACKDIR: INSTALL_DIR,
             TERM: 'xterm-256color',
         };
+        if (rngLogPath) {
+            env.NETHACK_RNGLOG = rngLogPath;
+        }
 
         const envStr = Object.entries(env).map(([k, v]) => `${k}=${v}`).join(' ');
         execSync(`tmux new-session -d -s ${this.sessionName} -x ${TERMINAL_COLS} -y ${TERMINAL_ROWS} "env ${envStr} ${NETHACK_BINARY} -u ${name} -D"`);

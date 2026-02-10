@@ -13,7 +13,7 @@ import { parseScreen } from '../perception/screen_parser.js';
 import { parseStatus } from '../perception/status_parser.js';
 
 // Import game modules
-import { initRng, rn2, rnd } from '../../js/rng.js';
+import { initRng, rn2, rnd, rn1 } from '../../js/rng.js';
 import { pushInput } from '../../js/input.js';
 import { initLevelGeneration, makelevel, wallification, setGameSeed } from '../../js/dungeon.js';
 import { Player, roles } from '../../js/player.js';
@@ -369,19 +369,35 @@ class HeadlessGame {
             }
         }
 
-        // C ref: allmain.c:297 dosounds()
+        // C ref: allmain.c:351 dosounds() — ambient level sounds
         this.dosounds();
 
-        // C ref: allmain.c:303 gethungry() — simplified hunger tracking
-        rn2(20);   // gethungry RNG
+        // C ref: allmain.c:353 gethungry()
+        rn2(20);
         this.player.hunger--;
+
+        // C ref: allmain.c:359 — engrave wipe check
+        const dex = this.player.attributes ? this.player.attributes[A_DEX] : 14;
+        rn2(40 + dex * 3);
+
+        // C ref: allmain.c:408-414 — seer_turn (clairvoyance timer)
+        if (this.turnCount >= this.seerTurn) {
+            this.seerTurn = this.turnCount + rn1(31, 15);
+        }
     }
 
     // C ref: sounds.c dosounds() — ambient sounds with occasional messages
     dosounds() {
-        // C ref: sounds.c:313 — rn2(200) determines if ambient sound plays
-        const soundRoll = rn2(200);
-        // Simplified: just consume the RNG, don't generate sound messages
+        const f = this.map.flags || {};
+        if (f.nfountains && !rn2(400)) { rn2(3); }
+        if (f.nsinks && !rn2(300)) { rn2(2); }
+        if (f.has_court && !rn2(200)) { return; }
+        if (f.has_swamp && !rn2(200)) { rn2(2); return; }
+        if (f.has_vault && !rn2(200)) { rn2(2); return; }
+        if (f.has_beehive && !rn2(200)) { return; }
+        if (f.has_morgue && !rn2(200)) { rn2(5); return; }
+        if (f.has_barracks && !rn2(200)) { rn2(2); return; }
+        if (f.has_zoo && !rn2(200)) { rn2(2); return; }
     }
 }
 
