@@ -550,6 +550,7 @@ export async function runHeadless(options = {}) {
         seed,
         stats,
         game,
+        agent,  // Return agent for diagnostic access
     };
 }
 
