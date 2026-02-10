@@ -22,7 +22,7 @@ export function generate() {
     // 
 
     function hellobjects() {
-       const objclass = ["(", "/", "=", "+", ")", "[", "?", "*", "%"];
+       const objclass = { "(", "/", "=", "+", ")", "[", "?", "*", "%" };
        shuffle(objclass)
 
        des.object(objclass[1]);
@@ -178,9 +178,9 @@ export function generate() {
             des.exclusion({ type: "teleport", region: [2,2, 10,8] });
             if ((coldhell)) {
             des.replace_terrain({ region: [1,1, 11,9], fromterrain: "L", toterrain: "P" });
-            } dblocs = { { x = 1, y = 5, dir="east", state="closed" }, { x = 11, y = 5, dir="west", state="closed" }, { x = 6, y = 1, dir="south", state="closed" }, { x = 6, y = 9, dir="north", state="closed" } } shuffle(dblocs);
+            } dblocs = [{ x = 1, y = 5, dir="east", state="closed" }, { x = 11, y = 5, dir="west", state="closed" }, { x = 6, y = 1, dir="south", state="closed" }, { x = 6, y = 9, dir="north", state="closed" }] shuffle(dblocs);
             for i = 1; }, math.random(1, #dblocs) do des.drawbridge(dblocs[i]);
-            } local mons: { ["H", "T", "@"];
+            } local mons: { { "H", "T", "@" };
             shuffle(mons);
             for i: 1 }, 3 + Math.random(1, 5) do des.monster(mons[1], 6, 5);
             } } });
@@ -319,7 +319,7 @@ export function generate() {
             end, -- 2: mazes like original, with some hell_tweaks function () des.level_init({ style = "solidfill", fg = " ", lit = 0 });
             des.level_flags("mazelevel", "noflip");
             des.level_init({ style = "mazegrid", bg = "-" });
-            des.mazewalk({ coord = {1,10], dir = "east", stocked = false});
+            des.mazewalk({ coord = {1,10}, dir = "east", stocked = false});
             local tmpbounds = selection.match("-");
             local bnds = tmpbounds:bounds();
             local protected_area = selection.fillrect(bnds.lx, bnds.ly + 1, bnds.hx - 2, bnds.hy - 1);
@@ -333,7 +333,7 @@ export function generate() {
             des.level_flags("mazelevel", "noflip");
             des.level_init({ style = "maze", wallthick = 1, corrwid = cwid });
             local outside_walls = selection.match(" ");
-            local wallterrain = ["F", "L"];
+            local wallterrain = { "F", "L" };
             shuffle(wallterrain);
             des.replace_terrain({ mapfragment = "w", toterrain = wallterrain[1] });
             if ((cwid == 1)) { if ((wallterrain[1] == "F" and percent(80))) { -- replace some horizontal iron bars walls with floor des.replace_terrain({ mapfragment = ".\nF\n.", toterrain = ".", chance = 25 * math.random(4) });

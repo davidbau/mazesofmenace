@@ -50,7 +50,7 @@ export function generate() {
 
     des.region(selection.area(0,0,70,18), "lit");
 
-    // when falling down on this level, never end up in the fog maze
+    // when falling down on this level, never } up in the fog maze
     des.teleport_region({ region: [0,0,70,18], exclude: [2,3,68,15], dir: "down" });
 
     for (let i = 1; i <= 15; i++) {

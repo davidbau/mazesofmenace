@@ -47,10 +47,10 @@ export function generate() {
     // chance to alter above map and turn the wings of the bottom-center into
     // a pair of big (5x15) rooms
     for (let i = 1; i <= 2; i++) {
-       // 3.6.[01]: 75% chance that both sides opened up, 25% that neither did;
+       // 3.6.[1]: 75% chance that both sides opened up, 25% that neither did;
        // 3.6.2: 60% twice == 36% chance that both sides open up, 24% left side
        // only, 24% right side only, 16% that neither side opens up
-       let hall;
+       const hall;
        if (percent(60)) {
          if (i === 1) {
             des.terrain(selection.area(17,14, 30,18),".");

@@ -553,7 +553,7 @@ export function generate() {
 
     But why, you think, should %l be there?
 
-    Suddenly, the hairs on your neck stand on end as you detect the aura of
+    Suddenly, the hairs on your neck stand on } as you detect the aura of
     evil magic in the air.
 
     Without thought, you ready your weapon, and mutter under your breath:
@@ -1244,7 +1244,7 @@ export function generate() {
         "Now that we have been replenished we can defeat this plague.  You must
         take %o with you and replenish the worlds you have
         been called upon to travel next.  I wish you could ride Chiron to the
-        end of your journey, but I need him to help me spread the cure.  Go
+        } of your journey, but I need him to help me spread the cure.  Go
         now and continue your journey."
     `,
           },
@@ -3317,7 +3317,7 @@ export function generate() {
 
     "Since you left us to hone your skills in the world, we unexpectedly came
     under attack by the forces of %n.  As you know, we thought
-    %n had perished at the end of the last age, but, alas, this was
+    %n had perished at the } of the last age, but, alas, this was
     not the case.
 
     "%nC sent an army of abominations against us.  Among them was a
@@ -3452,7 +3452,7 @@ export function generate() {
              text = `
     %nC, whose body begins to shrivel up, croaks out:
 
-        "I shall haunt your progress until the end of time.  A thousand
+        "I shall haunt your progress until the } of time.  A thousand
         curses on you and %l."
 
     Then, the body bursts into a cloud of choking dust, and blows away.

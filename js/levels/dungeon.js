@@ -180,7 +180,7 @@ export function generate() {
           base = 8,
           range = 2,
           alignment = "lawful",
-          flags = ["mazelike" ],
+          flags = ["mazelike"],
           lvlfill = "minefill",
           levels = {
              {
@@ -227,7 +227,7 @@ export function generate() {
           name = "Sokoban",
           base = 4,
           alignment = "neutral",
-          flags = ["mazelike" ],
+          flags = ["mazelike"],
           entry = -1,
           levels = {
              {
@@ -256,7 +256,7 @@ export function generate() {
           name = "Fort Ludios",
           base = 1,
           bonetag = "K",
-          flags = ["mazelike" ],
+          flags = ["mazelike"],
           alignment = "unaligned",
           levels = {
              {
@@ -272,7 +272,7 @@ export function generate() {
           bonetag = "T",
           protofile = "tower",
           alignment = "chaotic",
-          flags = ["mazelike" ],
+          flags = ["mazelike"],
           entry = -1,
           levels = {
              {
@@ -294,7 +294,7 @@ export function generate() {
           bonetag = "E",
           base = 6,
           alignment = "unaligned",
-          flags = ["mazelike" ],
+          flags = ["mazelike"],
           entry = -2,
           levels = {
              {

@@ -29,7 +29,7 @@ export function generate() {
        // pline("callback_set(%s,%s)", cb, fn);
 
        if ((type(nh_lua_variables[cbname]) !== "table")) {
-          nh_lua_variables[cbname] = {}
+          nh_lua_variables[cbname] = []
        }
        nh_lua_variables[cbname][fn] = true
     }
@@ -40,7 +40,7 @@ export function generate() {
        // pline("callback_RM(%s,%s)", cb, fn);
 
        if ((type(nh_lua_variables[cbname]) !== "table")) {
-          nh_lua_variables[cbname] = {}
+          nh_lua_variables[cbname] = []
        }
        nh_lua_variables[cbname][fn] = null
     }
@@ -52,7 +52,7 @@ export function generate() {
        // pline("TYPE:%s", type(nh_lua_variables[cbname]));
 
        if ((type(nh_lua_variables[cbname]) !== "table")) {
-          nh_lua_variables[cbname] = {}
+          nh_lua_variables[cbname] = []
        }
        for k, v in pairs(nh_lua_variables[cbname]) {
           if ((! _G[k](table.unpack{...}))) {

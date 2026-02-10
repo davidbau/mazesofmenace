@@ -15,7 +15,7 @@ export function generate() {
     // NetHack may be freely redistributed.  See license for details.
     // compatibility shim
     math.random = function( + .)
-       const arg = { + .};
+       const arg = [+ .];
        if ((#arg === 1)) {
           return 1 + nh.rn2(arg[1]);;
        } else if ((#arg === 2)) {
@@ -152,7 +152,7 @@ export function generate() {
 
     // pline with variable number of arguments
     function pline(fmt, ...args) {
-       nh.pline(string.format(fmt, table.unpack({ + .})))
+       nh.pline(string.format(fmt, table.unpack([+ .])))
     }
 
     // wrapper to make calling from nethack core easier
