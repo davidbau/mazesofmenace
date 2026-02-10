@@ -59,7 +59,7 @@ import { themerooms_generate as themermsGenerate } from './levels/themerms.js';
  * work with procedural dungeon generation.
  */
 function themerooms_generate(map, depth) {
-    const DEBUG = process.env.DEBUG_THEMEROOMS === '1';
+    const DEBUG = typeof process !== 'undefined' && process.env.DEBUG_THEMEROOMS === '1';
 
     try {
         // Bridge: Point sp_lev's levelState.map at our procedural map
@@ -110,7 +110,7 @@ function init_rect() {
 
 // C ref: rect.c rnd_rect() - exported for sp_lev.js themed room generation
 export function rnd_rect() {
-    const DEBUG = process.env.DEBUG_THEMEROOMS === '1';
+    const DEBUG = typeof process !== 'undefined' && process.env.DEBUG_THEMEROOMS === '1';
     const result = rect_cnt > 0 ? rects[rn2(rect_cnt)] : null;
     if (DEBUG) {
         if (result) {
@@ -174,7 +174,7 @@ function intersect(r1, r2) {
 
 // C ref: rect.c split_rects() -- split r1 around allocated r2
 function split_rects(r1, r2) {
-    const DEBUG = process.env.DEBUG_RECTS === '1';
+    const DEBUG = typeof process !== 'undefined' && process.env.DEBUG_RECTS === '1';
     const old_cnt = rect_cnt;
     const old_r = { lx: r1.lx, ly: r1.ly, hx: r1.hx, hy: r1.hy };
     remove_rect(r1);
@@ -281,7 +281,7 @@ export function litstate_rnd(litstate, depth) {
 // C ref: sp_lev.c create_room() -- create a random room using rect BSP
 // Returns true if room was created, false if failed.
 export function create_room(map, x, y, w, h, xal, yal, rtype, rlit, depth, inThemerooms) {
-    const DEBUG_THEME = process.env.DEBUG_THEMEROOMS === '1';
+    const DEBUG_THEME = typeof process !== 'undefined' && process.env.DEBUG_THEMEROOMS === '1';
     const nroom_before = map.nroom;
     let xabs = 0, yabs = 0;
     let wtmp, htmp, xtmp, ytmp;
@@ -501,7 +501,7 @@ function do_room_or_subroom(map, croom, lowx, lowy, hix, hiy,
             }
         }
         // Fill interior with ROOM
-        const DEBUG = process.env.DEBUG_ROOM_FILL === '1';
+        const DEBUG = typeof process !== 'undefined' && process.env.DEBUG_ROOM_FILL === '1';
         if (DEBUG) {
             const area = (hix - lowx + 1) * (hiy - lowy + 1);
             console.log(`Filling room (${lowx},${lowy})-(${hix},${hiy}) area=${area}`);
@@ -869,7 +869,7 @@ function makerooms(map, depth) {
 
     // Make rooms until satisfied (no more rects available)
     // C ref: mklev.c:393-417
-    const DEBUG = process.env.DEBUG_THEMEROOMS === '1';
+    const DEBUG = typeof process !== 'undefined' && process.env.DEBUG_THEMEROOMS === '1';
     while (map.nroom < (MAXNROFROOMS - 1) && rnd_rect()) {
         if (DEBUG) {
             console.log(`Loop iteration: nroom=${map.nroom}, tries=${themeroom_tries}`);
@@ -1122,7 +1122,7 @@ function dig_corridor(map, org, dest, nxcor, depth) {
     const ftyp = CORR;
     const btyp = STONE;
 
-    const DEBUG = process.env.DEBUG_CORRIDORS === '1';
+    const DEBUG = typeof process !== 'undefined' && process.env.DEBUG_CORRIDORS === '1';
     if (DEBUG) {
         console.log(`dig_corridor: (${org.x},${org.y}) -> (${dest.x},${dest.y}) nxcor=${nxcor}`);
     }
@@ -2987,7 +2987,7 @@ function mineralize(map, depth) {
     const goldprob = 20 + Math.floor(depth / 3);
     const gemprob = Math.floor(goldprob / 4);
 
-    const DEBUG = process.env.DEBUG_MINERALIZE === '1';
+    const DEBUG = typeof process !== 'undefined' && process.env.DEBUG_MINERALIZE === '1';
     let eligible_count = 0;
     let rng_calls = 0;
 

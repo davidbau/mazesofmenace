@@ -1076,7 +1076,7 @@ export function room(opts = {}) {
 
     // For special levels, we create rooms differently than procedural dungeons
     // Special levels use fixed coordinates, not BSP rectangle selection
-    const DEBUG = process.env.DEBUG_ROOMS === '1';
+    const DEBUG = typeof process !== 'undefined' && process.env.DEBUG_ROOMS === '1';
 
     if (DEBUG) {
         console.log(`des.room(): x=${x}, y=${y}, w=${w}, h=${h}, xalign=${xalign}, yalign=${yalign}, rtype=${rtype}, lit=${lit}`);
