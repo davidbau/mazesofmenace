@@ -68,6 +68,7 @@ export class Agent {
         this.pendingQuaffLetter = null; // potion letter for "What do you want to quaff?" prompt
         this.pendingWieldLetter = null; // weapon letter for "Wield what?" prompt
         this.pendingWearLetter = null; // armor letter for "Wear what?" prompt
+        this.pendingEatLetter = null; // food letter for "What do you want to eat?" prompt
         this.justOpenedDoor = null; // {x, y} of door that just opened (needs manual fix after map update)
         this.committedTarget = null; // {x, y} of committed exploration target
         this.committedPath = null; // PathResult we're currently following
@@ -386,7 +387,15 @@ export class Agent {
         if (lower.includes('pick it up')) return 'y';
 
         // "What do you want to eat?" -- select first item (a)
-        if (lower.includes('want to eat')) return 'a';
+        // "What do you want to eat?" -- use saved food letter
+        if (lower.includes('want to eat')) {
+            if (this.pendingEatLetter) {
+                const letter = this.pendingEatLetter;
+                this.pendingEatLetter = null;
+                return letter;
+            }
+            return '\x1b'; // ESC to cancel if no food selected
+        }
 
         // "What do you want to quaff?" -- use saved potion letter
         if (lower.includes('want to quaff') || lower.includes('want to drink')) {
@@ -577,6 +586,28 @@ export class Agent {
                     this.pendingQuaffLetter = potion.letter;
                     return { type: 'quaff', key: 'q', reason: `${reason}: drinking ${potion.name} (${this.status.hp}/${this.status.hpmax})` };
                 }
+            }
+        }
+
+        // 0c. Food consumption: eat when hungry to avoid starvation
+        if (this.status && this.status.needsFood) {
+            // Refresh inventory if needed
+            if (this.turnNumber - this.inventory.lastUpdate > 100 || this.inventory.lastUpdate === 0) {
+                await this._refreshInventory();
+            }
+
+            const food = this.inventory.findFood();
+            if (food.length > 0) {
+                // Prioritize food rations over corpses
+                const foodRation = food.find(item => item.name.includes('food ration'));
+                const selectedFood = foodRation || food[0];
+
+                const hungerStatus = this.status.fainting ? 'fainting' :
+                                   this.status.weak ? 'weak' :
+                                   this.status.hungry ? 'hungry' : 'low nutrition';
+
+                this.pendingEatLetter = selectedFood.letter;
+                return { type: 'eat', key: 'e', reason: `eating ${selectedFood.name} (${hungerStatus})` };
             }
         }
 
@@ -1682,8 +1713,10 @@ export class Agent {
                 const letter = this.pendingQuaffLetter;
                 this.pendingQuaffLetter = null;
                 this.adapter.queueInput(letter);
-            } else if (action.type === 'eat') {
-                this.adapter.queueInput('a');
+            } else if (action.type === 'eat' && this.pendingEatLetter) {
+                const letter = this.pendingEatLetter;
+                this.pendingEatLetter = null;
+                this.adapter.queueInput(letter);
             }
         }
         await this.adapter.sendKey(action.key);
