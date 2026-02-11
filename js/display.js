@@ -493,10 +493,15 @@ export class Display {
         }
 
         // Handle secret door/corridor (appears as wall/stone when unseen)
+        // C ref: display.c - secret doors render as walls in their orientation
         if (typ === SDOOR) {
-            return loc.horizontal
-                ? (useDEC ? { ch: '\u2500', color: CLR_GRAY } : { ch: '-', color: CLR_GRAY })
-                : (useDEC ? { ch: '\u2502', color: CLR_GRAY } : { ch: '|', color: CLR_GRAY });
+            // Determine orientation from surrounding walls
+            // If walls E/W: door between them, appears as vertical wall '|'
+            // If walls N/S: door between them, appears as horizontal wall '-'
+            const isHorizontal = this._isDoorHorizontal(gameMap, x, y);
+            return isHorizontal
+                ? (useDEC ? { ch: '\u2502', color: CLR_GRAY } : { ch: '|', color: CLR_GRAY })
+                : (useDEC ? { ch: '\u2500', color: CLR_GRAY } : { ch: '-', color: CLR_GRAY });
         }
 
         // Handle lit_corridor option
