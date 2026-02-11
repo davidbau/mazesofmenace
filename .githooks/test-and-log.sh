@@ -74,12 +74,20 @@ echo "========================================="
 
 # Parse category-specific results
 # (This is a simplified version - could be enhanced to parse actual test categories)
-CATEGORY_MAP_PASS=$(grep "seed[0-9]*_map" "$TEST_OUTPUT" | grep -c "^✔" || echo 0)
-CATEGORY_MAP_FAIL=$(grep "seed[0-9]*_map" "$TEST_OUTPUT" | grep -c "^✖" || echo 0)
-CATEGORY_GAMEPLAY_PASS=$(grep "gameplay" "$TEST_OUTPUT" | grep -c "^✔" || echo 0)
-CATEGORY_GAMEPLAY_FAIL=$(grep "gameplay" "$TEST_OUTPUT" | grep -c "^✖" || echo 0)
-CATEGORY_CHARGEN_PASS=$(grep "chargen" "$TEST_OUTPUT" | grep -c "^✔" || echo 0)
-CATEGORY_CHARGEN_FAIL=$(grep "chargen" "$TEST_OUTPUT" | grep -c "^✖" || echo 0)
+CATEGORY_MAP_PASS=$(grep "seed[0-9]*_map" "$TEST_OUTPUT" 2>/dev/null | grep -c "^✔" 2>/dev/null || echo 0)
+CATEGORY_MAP_FAIL=$(grep "seed[0-9]*_map" "$TEST_OUTPUT" 2>/dev/null | grep -c "^✖" 2>/dev/null || echo 0)
+CATEGORY_GAMEPLAY_PASS=$(grep "gameplay" "$TEST_OUTPUT" 2>/dev/null | grep -c "^✔" 2>/dev/null || echo 0)
+CATEGORY_GAMEPLAY_FAIL=$(grep "gameplay" "$TEST_OUTPUT" 2>/dev/null | grep -c "^✖" 2>/dev/null || echo 0)
+CATEGORY_CHARGEN_PASS=$(grep "chargen" "$TEST_OUTPUT" 2>/dev/null | grep -c "^✔" 2>/dev/null || echo 0)
+CATEGORY_CHARGEN_FAIL=$(grep "chargen" "$TEST_OUTPUT" 2>/dev/null | grep -c "^✖" 2>/dev/null || echo 0)
+
+# Ensure all category variables are valid numbers
+CATEGORY_MAP_PASS=${CATEGORY_MAP_PASS:-0}
+CATEGORY_MAP_FAIL=${CATEGORY_MAP_FAIL:-0}
+CATEGORY_GAMEPLAY_PASS=${CATEGORY_GAMEPLAY_PASS:-0}
+CATEGORY_GAMEPLAY_FAIL=${CATEGORY_GAMEPLAY_FAIL:-0}
+CATEGORY_CHARGEN_PASS=${CATEGORY_CHARGEN_PASS:-0}
+CATEGORY_CHARGEN_FAIL=${CATEGORY_CHARGEN_FAIL:-0}
 
 # Check for regression
 REGRESSION=false
