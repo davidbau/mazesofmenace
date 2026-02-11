@@ -5,9 +5,11 @@
 import { COLNO, ROWNO, DOOR, STAIRS, FOUNTAIN, ROOM, IS_DOOR, D_CLOSED, D_LOCKED,
          D_ISOPEN, D_NODOOR, ACCESSIBLE, IS_WALL, MAXLEVEL, VERSION_STRING,
          isok, A_STR, A_DEX, A_CON } from './config.js';
-import { SQKY_BOARD } from './symbols.js';
+import { SQKY_BOARD, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
+         TOOL_CLASS, FOOD_CLASS, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS,
+         WAND_CLASS, COIN_CLASS, GEM_CLASS, ROCK_CLASS } from './symbols.js';
 import { rn2, rnd, rnl, d } from './rng.js';
-import { objectData, COIN_CLASS } from './objects.js';
+import { objectData } from './objects.js';
 import { nhgetch, ynFunction, getlin } from './input.js';
 import { playerAttackMonster } from './combat.js';
 import { makemon } from './makemon.js';
@@ -520,6 +522,35 @@ async function handleMovement(dir, player, map, display, game) {
         // TODO: implement other trap effects (fire, pit, etc.) with RNG
     }
 
+    // Helper function: Check if object class matches pickup_types string
+    // C ref: pickup.c pickup_filter() and flags.pickup_types
+    function shouldAutopickup(obj, pickupTypes) {
+        // If pickup_types is empty, pick up all non-gold items (backward compat)
+        if (!pickupTypes || pickupTypes === '') {
+            return true;
+        }
+
+        // Map object class to symbol character
+        const classToSymbol = {
+            [WEAPON_CLASS]: ')',
+            [ARMOR_CLASS]: '[',
+            [RING_CLASS]: '=',
+            [AMULET_CLASS]: '"',
+            [TOOL_CLASS]: '(',
+            [FOOD_CLASS]: '%',
+            [POTION_CLASS]: '!',
+            [SCROLL_CLASS]: '?',
+            [SPBOOK_CLASS]: '+',
+            [WAND_CLASS]: '/',
+            [COIN_CLASS]: '$',
+            [GEM_CLASS]: '*',
+            [ROCK_CLASS]: '`',
+        };
+
+        const symbol = classToSymbol[obj.oclass];
+        return symbol && pickupTypes.includes(symbol);
+    }
+
     // Autopickup — C ref: hack.c:3265 pickup(1)
     // C ref: pickup.c pickup() checks flags.pickup && !context.nopick
     const objs = map.objectsAt(nx, ny);
@@ -541,10 +572,10 @@ async function handleMovement(dir, player, map, display, game) {
     }
 
     // Then pick up other items if autopickup is enabled
+    // C ref: pickup.c pickup() filters by pickup_types
     if (game.flags?.pickup && !nopick && objs.length > 0) {
-        // TODO: implement pickup_types filtering (like C NetHack's pickup_types option)
-        // For now, pick up first non-gold item
-        const obj = objs.find(o => o.oclass !== COIN_CLASS);
+        const pickupTypes = game.flags?.pickup_types || '';
+        const obj = objs.find(o => o.oclass !== COIN_CLASS && shouldAutopickup(o, pickupTypes));
         if (obj) {
             player.addToInventory(obj);
             map.removeObject(obj);
