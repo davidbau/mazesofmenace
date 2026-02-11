@@ -914,7 +914,11 @@ let _themesLoaded = false;
 
 // Track Lua MT RNG initialization (shared with sp_lev.js via export)
 // Lazy initialization happens on first Lua RNG use (des.object/des.monster)
-export let _mtInitialized = false;
+// Use getter function to avoid stale import copies (primitives are copied, not referenced)
+let _mtInitialized = false;
+export function isMtInitialized() {
+    return _mtInitialized;
+}
 export function setMtInitialized(val) {
     _mtInitialized = val;
 }

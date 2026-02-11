@@ -14,9 +14,9 @@
  */
 
 import { GameMap, FILL_NORMAL } from './map.js';
-import { rn2, rnd, rn1 } from './rng.js';
+import { rn2, rnd, rn1, getRngCallCount } from './rng.js';
 import { mksobj, mkobj } from './mkobj.js';
-import { create_room, create_subroom, makecorridors, init_rect, rnd_rect, get_rect, check_room, add_doors_to_room, update_rect_pool_for_room, bound_digging, mineralize, fill_ordinary_room, litstate_rnd, _mtInitialized, setMtInitialized } from './dungeon.js';
+import { create_room, create_subroom, makecorridors, init_rect, rnd_rect, get_rect, check_room, add_doors_to_room, update_rect_pool_for_room, bound_digging, mineralize, fill_ordinary_room, litstate_rnd, isMtInitialized, setMtInitialized } from './dungeon.js';
 import {
     STONE, VWALL, HWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL, ROOM, CORR,
@@ -1210,7 +1210,16 @@ export function room(opts = {}) {
     // C ref: sp_lev.c:2808 build_room() — Apply chance check to determine final room type
     // If chance roll fails, room becomes OROOM instead of requested type
     // This happens BEFORE room creation, matching C's build_room() sequence
+    const DEBUG_BUILD = typeof process !== 'undefined' && process.env.DEBUG_BUILD_ROOM === '1';
+    if (DEBUG_BUILD) {
+        const before = getRngCallCount();
+        console.log(`\n=== [RNG ${before}] des.room() build_room chance check ===`);
+        console.log(`  chance=${chance}, requestedRtype=${requestedRtype}, type="${type}"`);
+    }
     let rtype = (!chance || rn2(100) < chance) ? requestedRtype : 0; // 0 = OROOM
+    if (DEBUG_BUILD) {
+        console.log(`  [RNG ${getRngCallCount()}] rn2(100) done, rtype=${rtype}`);
+    }
 
     // Calculate actual room position and size
     // If x, y are specified, use them directly (special level fixed position)
@@ -1564,7 +1573,7 @@ export function object(name_or_opts, x, y) {
 
         // Lazy MT initialization: On first Lua RNG use, initialize MT state
         // C ref: MT init happens when Lua math.random() is first called
-        if (!_mtInitialized) {
+        if (!isMtInitialized()) {
             initLuaMT();
         }
 
@@ -1840,7 +1849,7 @@ export function monster(opts_or_class, x, y) {
     if (levelState && levelState.luaRngCounter !== undefined) {
         // Lazy MT initialization: On first Lua RNG use, initialize MT state
         // C ref: MT init happens when Lua math.random() is first called
-        if (!_mtInitialized) {
+        if (!isMtInitialized()) {
             initLuaMT();
         }
 
