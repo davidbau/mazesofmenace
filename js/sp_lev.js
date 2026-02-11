@@ -824,6 +824,21 @@ export function map(data) {
     if (levelState.coder.solidify) {
         wallification(levelState.map);
     }
+
+    // Execute contents callback if provided
+    // C ref: Lua des.map() calls the contents function after placing the map
+    if (contents && typeof contents === 'function') {
+        // Create a room-like object for compatibility with room-based contents
+        const mapRegion = {
+            lx: x,
+            ly: y,
+            hx: x + width - 1,
+            hy: y + height - 1,
+            width: width,
+            height: height
+        };
+        contents(mapRegion);
+    }
 }
 
 /**
