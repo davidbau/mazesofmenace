@@ -3,8 +3,10 @@
 *Guidebook for NetHack*
 
 > Original version - Eric S. Raymond
+>
 > (Edited and expanded for NetHack 3.7.0 by Mike Stephenson and others)
-> December 11, 2025
+>
+> <span class="nobr">December 11, 2025</span>
 
 ---
 
@@ -196,6 +198,7 @@ screen replaces the "You  see  ..."  descriptions  of  text  adventure
 games.  Figure 1 is a sample of what a NetHack screen might look like.
 The way the screen looks for you depends on your platform.
 
+```
 +---------------------------------------------------------------+
 |The bat bites!                                                 |
 |                                                               |
@@ -211,12 +214,15 @@ The way the screen looks for you depends on your platform.
 |Player the Rambler   St:12 Dx:7 Co:18 In:11 Wi:9 Ch:15 Neutral |
 |Dlvl:1 $:993 HP:9(12) Pw:3(3) AC:10 Exp:1/19 T:752 Hungry Conf |
 +---------------------------Figure-1----------------------------+
+```
 
+```
 +---------------------------------------------------------------+
 |Player the Rambler   St:12 Dx:7 Co:18 In:11 Wi:9 Ch:15         |
 |Neutral $:993 HP:9(12) Pw:3(3) AC:10 Exp:1/19 Hungry           |
 |Dlvl:1 T:752                                  Conf             |
 +---------------------------Figure-2----------------------------+
+```
 
 
 ### 3.1. The status lines (bottom)
@@ -224,7 +230,7 @@ The way the screen looks for you depends on your platform.
 The bottom two (or three) lines of  the  screen  contain  several
 cryptic  pieces of information describing your current status.  Figure
 1 shows the traditional two-line status area below the map.  Figure  2
-shows just the status area, when the statuslines:3 option has been set
+shows just the status area, when the `statuslines:3` option has been set
 (not all interfaces support this option).  If any status line  becomes
 wider  than the screen, you might not see all of it due to truncation.
 When the numbers grow bigger and multiple conditions are present,  the
@@ -316,7 +322,7 @@ totals,  you  gain an experience level.  The more experienced you
 are, the better you fight and withstand magical attacks.  (By the
 time  your level reaches double digits, the usefulness of showing
 the points with it has dropped significantly.  You  can  use  the
-`O'  command  to  turn  showexp off to avoid using up the limited
+`O`  command  to  turn  showexp off to avoid using up the limited
 status line space.)
 
 Time
@@ -348,7 +354,7 @@ ing).
 Other conditions and modifiers exist, but there isn't enough room
 to display them with the other status fields.
 
-The #attributes command (default key ^X) will show all current  status
+The `#attributes` command (default key `^X`) will show all current  status
 information  in unabbreviated format.  It also shows other information
 which might be included on the status lines if those had more room.
 
@@ -374,69 +380,69 @@ You can set various graphics options to change some of the symbols the
 game  uses;  otherwise,  the game will use default symbols.  Here is a
 list of what the default symbols mean:
 
--    The horizontal or corner walls of a room, or  an  open  east/west
+`-`    The horizontal or corner walls of a room, or  an  open  east/west
 door.
 
-|    The  vertical  walls of a room, or an open north/south door, or a
+`|`    The  vertical  walls of a room, or an open north/south door, or a
 grave.
 
-.    The floor of a room, or ice, or a doorless doorway, or  the  span
+`.`    The floor of a room, or ice, or a doorless doorway, or  the  span
 of an open drawbridge.
 
-#    A  corridor,  or  iron  bars,  or  a tree, or the portcullis of a
+`#`    A  corridor,  or  iron  bars,  or  a tree, or the portcullis of a
 closed drawbridge.
 
-Note: engravings in corridors also appear as # but are shown in a
+Note: engravings in corridors also appear as `#` but are shown in a
 different color from normal corridor locations.
 
->    Stairs down: a way to the next level.
+`>`    Stairs down: a way to the next level.
 
-<    Stairs up: a way to the previous level.
+`<`    Stairs up: a way to the previous level.
 
-+    A  closed door, or a spellbook containing a spell you may be able
+`+`    A  closed door, or a spellbook containing a spell you may be able
 to learn.
 
-@    Your character or a human or an elf.
+`@`    Your character or a human or an elf.
 
-$    A pile of gold.
+`$`    A pile of gold.
 
-^    A trap (once you have detected it).
+`^`    A trap (once you have detected it).
 
-)    A weapon.
+`)`    A weapon.
 
-[    A suit or piece of armor.
+`[`    A suit or piece of armor.
 
-%    Something edible (not necessarily healthy).
+`%`    Something edible (not necessarily healthy).
 
-?    A scroll.
+`?`    A scroll.
 
-/    A wand.
+`/`    A wand.
 
-=    A ring.
+`=`    A ring.
 
-!    A potion.
+`!`    A potion.
 
-(    A useful item (pick-axe, key, lamp...).
+`(`    A useful item (pick-axe, key, lamp...).
 
-"    An amulet or a spider web.
+`"`    An amulet or a spider web.
 
-*    A gem or rock (possibly valuable, possibly worthless).
+`*`    A gem or rock (possibly valuable, possibly worthless).
 
-`    A boulder or statue or an engraving on the floor of a room.
+```    A boulder or statue or an engraving on the floor of a room.
 
 Note: statues are displayed as if they  were  the  monsters  they
 depict so won't appear as a grave accent (aka back-tick).
 
-0    An iron ball.
+`0`    An iron ball.
 
-_    An altar, or an iron chain.
+`_`    An altar, or an iron chain.
 
-{    A fountain or a sink.
+`{`    A fountain or a sink.
 
-}    A pool of water or moat or a wall of water or a pool of lava or a
+`}`    A pool of water or moat or a wall of water or a pool of lava or a
 wall of lava.
 
-\    An opulent throne.
+`\`    An opulent throne.
 
 a-z  and
 
@@ -447,9 +453,9 @@ Letters and certain other symbols represent the  various  inhabi-
 tants  of  the Mazes of Menace.  Watch out, they can be nasty and
 vicious.  Sometimes, however, they can be helpful.
 
-I    Rather than a specific type of monster, this marks the last known
+`I`    Rather than a specific type of monster, this marks the last known
 location  of an invisible or otherwise unseen monster.  Note that
-the monster could have moved.  The `s', `F', and `m' commands may
+the monster could have moved.  The `s`, `F`, and `m` commands may
 be useful here.
 
 1-5  The  digits 1 through 5 may be displayed, marking unseen monsters
@@ -457,7 +463,7 @@ sensed via the Warning attribute.  Less  dangerous  monsters  are
 indicated by lower values, more dangerous by higher values.
 
 You  need  not  memorize  all these symbols; you can ask the game
-what any symbol represents with the `/' command (see the next  section
+what any symbol represents with the `/` command (see the next  section
 for more info).
 
 
@@ -471,53 +477,53 @@ might  require  additional information, for example a direction, or an
 object to be used.  For those commands that require additional  infor-
 mation, NetHack will present you with either a menu of choices or with
 a command line prompt requesting information.  Which you are presented
-with will depend chiefly on how you have set the menustyle option.
+with will depend chiefly on how you have set the `menustyle` option.
 
 For  example, a common question, in the form "What do you want to
 use? [a-zA-Z ?*]", asks you to choose  an  object  you  are  carrying.
 Here,  "a-zA-Z"  are  the  inventory letters of your possible choices.
-Typing `?' gives you an inventory list of these items, so you can  see
-what  each  letter  refers  to.   In this example, there is also a `*'
+Typing `?` gives you an inventory list of these items, so you can  see
+what  each  letter  refers  to.   In this example, there is also a `*`
 indicating that you may choose an object  not  on  the  list,  if  you
-wanted  to  use  something unexpected.  Typing a `*' lists your entire
+wanted  to  use  something unexpected.  Typing a `*` lists your entire
 inventory, so you can see the inventory letters of every object you're
 carrying.   Finally, if you change your mind and decide you don't want
-to do this command after all, you can press the ESC key to  abort  the
+to do this command after all, you can press the `ESC` key to  abort  the
 command.
 
 You  can  put  a  number before some commands to repeat them that
 many times; for example, "10s" will search ten times.  If you have the
-number_pad  option  set,  you  must type `n' to prefix a count, so the
+`number_pad`  option  set,  you  must type `n` to prefix a count, so the
 example above would be  typed  "n10s"  instead.   Commands  for  which
 counts  make no sense ignore them.  In addition, movement commands can
 be prefixed for greater control (see below).  To cancel a count  or  a
-prefix, press the ESC key.
+prefix, press the `ESC` key.
 
 The  list  of  commands is rather long, but it can be read at any
-time during the game through the `?' command, which accesses a menu of
+time during the game through the `?` command, which accesses a menu of
 helpful texts.  Here are the default key bindings for your reference:
 
-?    Help menu:  display one of several help texts available.
+`?`    Help menu:  display one of several help texts available.
 
-/    The  "whatis" command, to tell what a symbol represents.  You may
+`/`    The  "whatis" command, to tell what a symbol represents.  You may
 choose to specify a location or type a symbol (or  even  a  whole
 word)  to  explain.   Specifying a location is done by moving the
 cursor to a particular spot on the map and then pressing  one  of
-`.', `,', `;', or `:'.  `.' will explain the symbol at the chosen
+`.`, `,`, `;`, or `:`.  `.` will explain the symbol at the chosen
 location, conditionally check for  "More  info?"  depending  upon
 whether the help option is on, and then you will be asked to pick
-another location; `,' will explain the symbol but skip any  addi-
-tional  information, then let you pick another location; `;' will
+another location; `,` will explain the symbol but skip any  addi-
+tional  information, then let you pick another location; `;` will
 skip additional info and also not bother  asking  you  to  choose
-another  location  to  examine; `:' will show additional info, if
+another  location  to  examine; `:` will show additional info, if
 any, without asking for confirmation.  When picking  a  location,
-pressing the ESC key will terminate this command, or pressing `?'
+pressing the `ESC` key will terminate this command, or pressing `?`
 will give a brief reminder about how it works.
 
 If the autodescribe option is on, a short description of what you
-see at each location is shown as you move the cursor.  Typing `#'
+see at each location is shown as you move the cursor.  Typing `#`
 while picking a location will toggle that option on or off.   The
-whatis_coord   option  controls  whether  the  short  description
+`whatis_coord`   option  controls  whether  the  short  description
 includes map coordinates.
 
 Specifying a name rather than a location always gives  any  addi-
@@ -525,133 +531,135 @@ tional information available about that name.
 
 You  may  also request a description of nearby monsters, all mon-
 sters currently displayed, nearby objects, or all  objects.   The
-whatis_coord  option  controls  which format of map coordinate is
+`whatis_coord`  option  controls  which format of map coordinate is
 included with their descriptions.
 
-&    Tell what a command does.
+`&`    Tell what a command does.
 
-<    Go up to the previous level (if you are on a  staircase  or  lad-
+`<`    Go up to the previous level (if you are on a  staircase  or  lad-
 der).
 
->    Go down to the next level (if you are on a staircase or ladder).
+`>`    Go down to the next level (if you are on a staircase or ladder).
 
-[yuhjklbn]
+`[yuhjklbn]`
 Go  one  step  in the direction indicated (see Figure 3).  If you
 sense or remember a monster there, you  will  fight  the  monster
 instead.   Only  these  one-step  movement  commands cause you to
 
 fight monsters; the others (below) are "safe."
+```
 +----------------------------------------------------------------+
 |          y  k  u                             7  8  9           |
 |           \ | /                               \ | /            |
 |          h- . -l                             4- . -6           |
 |           / | \                               / | \            |
 |          b  j  n                             1  2  3           |
-|      (number_pad off)                    (number_pad on)       |
+|      (`number_pad` off)                    (`number_pad` on)       |
 +---------------------------Figure-3-----------------------------+
+```
 
-[YUHJKLBN]
+`[YUHJKLBN]`
 Go in that direction until you hit a wall or run into something.
 
-m[yuhjklbn]
+`m[yuhjklbn]`
 Prefix:  move without picking up objects or fighting (even if you
 remember a monster there).
 
-A few non-movement commands use the `m' prefix to request operat-
-ing via menu (to temporarily override  the  menustyle:traditional
-option).   Primarily  useful  for `,' (pickup) when there is only
+A few non-movement commands use the `m` prefix to request operat-
+ing via menu (to temporarily override  the  `menustyle:traditional`
+option).   Primarily  useful  for `,` (pickup) when there is only
 one class of objects present (where  there  won't  be  any  "what
-kinds  of  objects?"   prompt, so no opportunity to answer `m' at
+kinds  of  objects?"   prompt, so no opportunity to answer `m` at
 that prompt).
 
-The prefix will make "#travel" command show a menu of interesting
-targets  in sight.  It can also be used with the `\' (known, show
-a list of all discovered objects) and the ``' (knownclass, show a
+The prefix will make "`#travel`" command show a menu of interesting
+targets  in sight.  It can also be used with the `\` (known, show
+a list of all discovered objects) and the `` ` `` (knownclass, show a
 list  of  discovered  objects  in a particular class) commands to
 offer a menu of several sorting alternatives (which  sets  a  new
-value for the sortdiscoveries option); also for "#vanquished" and
-"#genocided" commands to offer a sorting menu.
+value for the sortdiscoveries option); also for "`#vanquished`" and
+"`#genocided`" commands to offer a sorting menu.
 
 A few other commands (eat food, offer sacrifice,  apply  tinning-
-kit,  drink/quaff, dip, tip container) use the `m' prefix to skip
+kit,  drink/quaff, dip, tip container) use the `m` prefix to skip
 checking for applicable objects on the floor and go  straight  to
-checking  inventory,  or  (for  "#loot" to remove a saddle), skip
+checking  inventory,  or  (for  "`#loot`" to remove a saddle), skip
 containers and go straight to adjacent monsters.
 
-In debug mode (aka "wizard mode"), the `m'  prefix  may  also  be
-used with the "#teleport" and "#wizlevelport" commands.
+In debug mode (aka "wizard mode"), the `m`  prefix  may  also  be
+used with the "`#teleport`" and "`#wizlevelport`" commands.
 
-F[yuhjklbn]
+`F[yuhjklbn]`
 Prefix:  fight a monster (even if you only guess one is there).
 
-g[yuhjklbn]
+`g[yuhjklbn]`
 Prefix:  move until something interesting is found.
 
-G[yuhjklbn] or <Control>+[yuhjklbn]
-Prefix:   similar to `g', but forking of corridors is not consid-
+`G[yuhjklbn]` or `<Control>+[yuhjklbn]`
+Prefix:   similar to `g`, but forking of corridors is not consid-
 ered interesting.
 
-Note:  <Control>+<key> means holding the <Control> or <Ctrl>  key
-down  like <Shift> while typing and releasing <key>, then releas-
-ing <Control>. ^<key> is  used  as  shorthand  elsewhere  in  the
+Note:  `<Control>+<key>` means holding the `<Control>` or `<Ctrl>`  key
+down  like `<Shift>` while typing and releasing `<key>`, then releas-
+ing `<Control>`. `^<key>` is  used  as  shorthand  elsewhere  in  the
 
 Guidebook  to  mean the same thing.  Control characters are case-
-insensitive so ^x and ^X are the same.
+insensitive so ^x and `^X` are the same.
 
-M[yuhjklbn]
-Old versions supported `M' as a movement  prefix  which  combined
-the  effect of `m' with <Control>+<direction>.  That is no longer
+`M[yuhjklbn]`
+Old versions supported `M` as a movement  prefix  which  combined
+the  effect of `m` with `<Control>+<direction>`.  That is no longer
 supported as a prefix but similar effect can be achieved by using
-`m'  and G<direction> in combination.  m can also be used in com-
-bination    with    g<direction>,    <Control>+<direction>,    or
-<Shift>+<direction>.
+`m`  and G`<direction>` in combination.  m can also be used in com-
+bination    with    g`<direction>`,    `<Control>+<direction>`,    or
+`<Shift>+<direction>`.
 
-_    Travel to a map location via a shortest-path algorithm.
+`_`    Travel to a map location via a shortest-path algorithm.
 
 The  shortest  path is computed over map locations the hero knows
 about (e.g. seen or previously traversed).  If there is no  known
 path,  a guess is made instead.  Stops on most of the same condi-
-tions as the `G' prefix,  but  without  picking  up  objects,  so
-implicitly  forces the `m' prefix.  For ports with mouse support,
+tions as the `G` prefix,  but  without  picking  up  objects,  so
+implicitly  forces the `m` prefix.  For ports with mouse support,
 the command is also invoked when a mouse-click takes place  on  a
 location other than the current position.
 
-.    Wait or rest, do nothing for one turn.  Precede with the `m' pre-
+`.`    Wait or rest, do nothing for one turn.  Precede with the `m` pre-
 fix to wait for a  turn  even  next  to  a  hostile  monster,  if
-safe_wait is on.
+`safe_wait` is on.
 
-a    Apply (use) a tool (pick-axe, key, lamp...).
+`a`    Apply (use) a tool (pick-axe, key, lamp...).
 
 If  used on a wand, that wand will be broken, releasing its magic
 in the process.  Confirmation is required.
 
-A    Remove one or more worn items, such as armor.
+`A`    Remove one or more worn items, such as armor.
 
-Use `T' (take off) to take off only one piece  of  armor  or  `R'
+Use `T` (take off) to take off only one piece  of  armor  or  `R`
 (remove) to take off only one accessory.
 
-^A   Repeat the previous command.
+`^A`   Repeat the previous command.
 
-c    Close a door.
+`c`    Close a door.
 
-C    Call (name) a monster, an individual object, or a type of object.
+`C`    Call (name) a monster, an individual object, or a type of object.
 
-Same as extended command "#name".
+Same as extended command "`#name`".
 
-^C   Panic button.  Quit the game.
+`^C`   Panic button.  Quit the game.
 
-d    Drop something.
+`d`    Drop something.
 
 For example "d7a" means drop seven items of object a.
 
-D    Drop several things.
+`D`    Drop several things.
 
 In answer to the question
 
 "What kinds of things do you want to drop? [!%= BUCXPaium]"
 
 you  should type zero or more object symbols possibly followed by
-`a' and/or `i' and/or `u' and/or `m'.  In addition, one  or  more
+`a` and/or `i` and/or `u` and/or `m`.  In addition, one  or  more
 of the blessed/uncursed/cursed groups may be typed.
 
 DB  - drop all objects known to be blessed.
@@ -666,30 +674,30 @@ Dm  - use a menu to pick which object(s) to drop.
 D%u - drop only unpaid food.
 
 The  last example shows a combination.  There are four categories
-of object filtering: class (`!' for potions, `?' for scrolls, and
-so on), shop status (`u' for unpaid, in other words, owned by the
-shop), bless/curse state (`B', `U', `C', and `X' as shown above),
-and novelty (`P', recently picked up items; controlled by picking
+of object filtering: class (`!` for potions, `?` for scrolls, and
+so on), shop status (`u` for unpaid, in other words, owned by the
+shop), bless/curse state (`B`, `U`, `C`, and `X` as shown above),
+and novelty (`P`, recently picked up items; controlled by picking
 up or dropping things rather than by any time factor).
 
 If you specify more than one value in a category  (such  as  "!?"
 for  potions  and  scrolls  or "BU" for blessed and uncursed), an
 inventory object will meet the criteria if it matches any of  the
-specified values (so "!?" means `!' or `?').  If you specify more
+specified values (so "!?" means `!` or `?`).  If you specify more
 than one category, an inventory object must meet each of the cat-
-egory criteria (so "%u" means class `%' and unpaid `u').  Lastly,
+egory criteria (so "%u" means class `%` and unpaid `u`).  Lastly,
 you may  specify  multiple  values  within  multiple  categories:
 "!?BU"  will select all potions and scrolls which are known to be
 blessed or uncursed.  (In versions prior to 3.6, filter  combina-
 tions behaved differently.)
 
-^D   Kick something (usually a door).
+`^D`   Kick something (usually a door).
 
-e    Eat food.
+`e`    Eat food.
 
 Normally checks for edible item(s) on the floor, then if none are
 found or none are chosen, checks for edible item(s) in inventory.
-Precede  `e' with the `m' prefix to bypass attempting to eat any-
+Precede  `e` with the `m` prefix to bypass attempting to eat any-
 thing off the floor.
 
 If you attempt to eat while already satiated, you might choke  to
@@ -698,7 +706,7 @@ eating?" if you survive the first bite.  You can  set  the  para-
 noid_confirmation:eating  option  to  require  a  response of yes
 instead of just y.
 
-E    Engrave a message on the floor.
+`E`    Engrave a message on the floor.
 
 E- - write in the dust with your fingers.
 
@@ -706,9 +714,9 @@ Engraving the word "Elbereth" will cause  most  monsters  to  not
 attack you hand-to-hand (but if you attack, you will rub it out);
 this is often useful to give yourself a breather.
 
-f    Fire (shoot or throw) one of the objects placed  in  your  quiver
+`f`    Fire (shoot or throw) one of the objects placed  in  your  quiver
 (or  quiver sack, or that you have at the ready).  You may select
-ammunition with a previous `Q' command, or let the computer  pick
+ammunition with a previous `Q` command, or let the computer  pick
 something  appropriate  if  autoquiver  is true.  If your wielded
 weapon has the throw-and-return property, your quiver  is  empty,
 and  autoquiver  is  false,  you  will  throw that wielded weapon
@@ -719,13 +727,13 @@ matching  the ammo in the quiver; this might take multiple turns,
 and get interrupted by a monster.  Remember to swap back to  your
 main melee weapon afterwards.
 
-See also `t' (throw) for more general throwing and shooting.
+See also `t` (throw) for more general throwing and shooting.
 
-i    List your inventory (everything you're carrying).
+`i`    List your inventory (everything you're carrying).
 
-I    List  selected parts of your inventory, usually be specifying the
-character for a particular set of objects, like `[' for armor  or
-`!' for potions.
+`I`    List  selected parts of your inventory, usually be specifying the
+character for a particular set of objects, like `[` for armor  or
+`!` for potions.
 
 I* - list all gems in inventory;
 Iu - list all unpaid items;
@@ -737,9 +745,9 @@ IX - list all items whose bless/curse status is unknown;
 IP - list items picked up last;
 I$ - count your money.
 
-o    Open a door.
+`o`    Open a door.
 
-O    Set options.
+`O`    Set options.
 
 A  menu showing the current option values will be displayed.  You
 can change most values simply by selecting the menu entry for the
@@ -747,48 +755,48 @@ given  option  (ie,  by  typing  its  letter or clicking upon it,
 depending on your user interface).  For the non-boolean  choices,
 a  further  menu  or  prompt  will appear once you've closed this
 menu.  The available options are listed later in this  Guidebook.
-Options  are usually set before the game rather than with the `O'
-command; see the section on options below.  Precede `O' with  the
-`m' prefix to show advanced options.
+Options  are usually set before the game rather than with the `O`
+command; see the section on options below.  Precede `O` with  the
+`m` prefix to show advanced options.
 
-^O   Show overview.
+`^O`   Show overview.
 
-Shortcut  for  "#overview":  list interesting dungeon levels vis-
+Shortcut  for  "`#overview`":  list interesting dungeon levels vis-
 ited.
 
-(Prior to 3.6.0, `^O' was a debug mode command which  listed  the
-placement  of  all  special  levels.  Use "#wizwhere" to run that
+(Prior to 3.6.0, ``^O`' was a debug mode command which  listed  the
+placement  of  all  special  levels.  Use "`#wizwhere`" to run that
 command.)
 
-p    Pay your shopping bill.
+`p`    Pay your shopping bill.
 
-P    Put on an accessory (ring, amulet, or blindfold).
+`P`    Put on an accessory (ring, amulet, or blindfold).
 
 This command may also be used to  wear  armor.   The  prompt  for
 which  inventory  item  to  use  will  only list accessories, but
 choosing an unlisted item of armor will attempt to wear it.  (See
-the  `W'  command below.  It lists armor as the inventory choices
+the  `W`  command below.  It lists armor as the inventory choices
 but will accept an accessory and attempt to put that on.)
 
-^P   Repeat previous message.
+`^P`   Repeat previous message.
 
-Subsequent `^P's repeat earlier messages.  For  some  interfaces,
-the behavior can be varied via the msg_window option.
+Subsequent ``^P`'s repeat earlier messages.  For  some  interfaces,
+the behavior can be varied via the `msg_window` option.
 
-q    Quaff (drink) something (potion, water, etc).
+`q`    Quaff (drink) something (potion, water, etc).
 
 When  there  is  a  fountain  or sink present, it asks whether to
 drink from that.  If that is declined, then it offers a chance to
-choose  a potion from inventory.  Precede `q' with the `m' prefix
+choose  a potion from inventory.  Precede `q` with the `m` prefix
 to skip asking about drinking from a fountain or sink.
 
-Q    Select an object for your quiver, quiver sack, or just  generally
+`Q`    Select an object for your quiver, quiver sack, or just  generally
 at the ready (only one of these is available at a time).  You can
-then throw this (or one of these) using the `f' command.
+then throw this (or one of these) using the `f` command.
 
-r    Read a scroll or spellbook.
+`r`    Read a scroll or spellbook.
 
-R    Remove a worn accessory (ring, amulet, or blindfold).
+`R`    Remove a worn accessory (ring, amulet, or blindfold).
 
 If you're wearing more than one, you'll be prompted for which one
 to remove.  When you're only wearing one, then by default it will
@@ -797,21 +805,21 @@ tion:Remove option to require a prompt.
 
 This  command may also be used to take off armor.  The prompt for
 which inventory item to remove only lists worn  accessories,  but
-an item of worn armor can be chosen.  (See the `T' command below.
+an item of worn armor can be chosen.  (See the `T` command below.
 It lists armor as the inventory choices but will accept an acces-
 sory and attempt to remove it.)
 
-^R   Redraw the screen.
+`^R`   Redraw the screen.
 
-s    Search  for  secret doors and traps around you.  It usually takes
-several tries to find something.  Precede with the `m' prefix  to
-search for a turn even next to a hostile monster, if safe_wait is
+`s`    Search  for  secret doors and traps around you.  It usually takes
+several tries to find something.  Precede with the `m` prefix  to
+search for a turn even next to a hostile monster, if `safe_wait` is
 on.
 
 Can also be used to figure out whether there is still  a  monster
 at an adjacent "remembered, unseen monster" marker.
 
-S    Save  the  game (which suspends play and exits the program).  The
+`S`    Save  the  game (which suspends play and exits the program).  The
 saved game will be restored automatically the next time you  play
 using the same character name.
 
@@ -825,7 +833,7 @@ There  is  no "save current game state and keep playing" command,
 not even in explore mode where saved game files can be  kept  and
 re-used.
 
-t    Throw an object or shoot a projectile.
+`t`    Throw an object or shoot a projectile.
 
 There's no separate "shoot" command.  If you throw an arrow while
 wielding a bow, you are shooting that arrow and any weapon  skill
@@ -833,10 +841,10 @@ bonus  or  penalty  for bow applies.  If you throw an arrow while
 not wielding a bow, you are throwing it by hand and it will  gen-
 erally be less effective than when shot.
 
-See also `f' (fire) for throwing or shooting an item pre-selected
-via the `Q' (quiver) command, with some extra assistance.
+See also `f` (fire) for throwing or shooting an item pre-selected
+via the `Q` (quiver) command, with some extra assistance.
 
-T    Take off armor.
+`T`    Take off armor.
 
 If you're wearing more than one piece,  you'll  be  prompted  for
 which one to take off.  (Note that this treats a cloak covering a
@@ -847,47 +855,47 @@ the paranoid_confirmation:Remove option to require a prompt.
 
 This  command may also be used to remove accessories.  The prompt
 for which inventory item to take off only lists worn armor, but a
-worn  accessory  can  be chosen.  (See the `R' command above.  It
+worn  accessory  can  be chosen.  (See the `R` command above.  It
 lists accessories as the inventory choices  but  will  accept  an
 item of armor and attempt to take it off.)
 
-^T   Teleport, if you have the ability.
+`^T`   Teleport, if you have the ability.
 
-v    Display version number.
+`v`    Display version number.
 
-V    Display the game history.
+`V`    Display the game history.
 
-w    Wield weapon.
+`w`    Wield weapon.
 
 w- - wield nothing, use your bare (or gloved) hands.
 
-Some  characters  can wield two weapons at once; use the `X' com-
-mand (or the "#twoweapon" extended command) to do so.
+Some  characters  can wield two weapons at once; use the `X` com-
+mand (or the "`#twoweapon`" extended command) to do so.
 
-W    Wear armor.
+`W`    Wear armor.
 
 This command may also be used  to  put  on  an  accessory  (ring,
 amulet,  or  blindfold).   The prompt for which inventory item to
 use will only list armor, but choosing an unlisted accessory will
-attempt  to  put  it  on.   (See the `P' command above.  It lists
+attempt  to  put  it  on.   (See the `P` command above.  It lists
 accessories as the inventory choices but will accept an  item  of
 armor and attempt to wear it.)
 
-x    Exchange  your  wielded  weapon  with  the item in your alternate
+`x`    Exchange  your  wielded  weapon  with  the item in your alternate
 weapon slot.
 
 The latter is used as your secondary weapon when engaging in two-
 weapon  combat.   Note  that  if one of these slots is empty, the
 exchange still takes place.
 
-X    Toggle two-weapon combat, if your  character  can  do  it.   Also
-available via the "#twoweapon" extended command.
+`X`    Toggle two-weapon combat, if your  character  can  do  it.   Also
+available via the "`#twoweapon`" extended command.
 
 (In  versions  prior  to  3.6  this  keystroke ran the command to
 switch from normal play to "explore mode", also known as "discov-
-ery mode", which has now been moved to "#exploremode" and M-X.)
+ery mode", which has now been moved to "`#exploremode`" and M-X.)
 
-^X   Display basic information about your character.
+`^X`   Display basic information about your character.
 
 Displays  name,  role,  race, gender (unless role name makes that
 redundant, such as Caveman or Priestess),  and  alignment,  along
@@ -897,86 +905,86 @@ in  a  less terse form, including several additional things which
 don't appear in the normal status display due to space considera-
 tions.
 
-In  normal play, that's all that `^X' displays.  In explore mode,
+In  normal play, that's all that ``^X`' displays.  In explore mode,
 the role and status feedback is augmented by the information pro-
 vided by enlightenment magic.
 
-z    Zap a wand.
+`z`    Zap a wand.
 
-z. - to aim at yourself, use `.' for the direction.
+z. - to aim at yourself, use `.` for the direction.
 
-Z    Zap (cast) a spell.
+`Z`    Zap (cast) a spell.
 
-Z. - to cast at yourself, use `.' for the direction.
+Z. - to cast at yourself, use `.` for the direction.
 
-^Z   Suspend  the  game (UNIX(R) versions with job control only).  See
-"#suspend" below for more details.
+`^Z`   Suspend  the  game (UNIX(R) versions with job control only).  See
+"`#suspend`" below for more details.
 
-:    Look at what is here.
+`:`    Look at what is here.
 
-__________
+**`__________`**
 (R)UNIX is a registered trademark of The Open Group.
 
-;    Show what type of thing a visible symbol corresponds to.
+`;`    Show what type of thing a visible symbol corresponds to.
 
-,    Pick up some things from the floor beneath you.
+`,`    Pick up some things from the floor beneath you.
 
-May be preceded by `m' to force a selection menu.
+May be preceded by `m` to force a selection menu.
 
-@    Toggle the autopickup option on and off.
+`@`    Toggle the autopickup option on and off.
 
-^    Ask for the type of an adjacent trap you found earlier.
+`^`    Ask for the type of an adjacent trap you found earlier.
 
-)    Tell what weapon you are wielding.
+`)`    Tell what weapon you are wielding.
 
-[    Tell what armor you are wearing.
+`[`    Tell what armor you are wearing.
 
-=    Tell what rings you are wearing.
+`=`    Tell what rings you are wearing.
 
-"    Tell what amulet you are wearing.
+`"`    Tell what amulet you are wearing.
 
-(    Tell what tools you are using.
+`(`    Tell what tools you are using.
 
-*    Tell what equipment you are using.
+`*`    Tell what equipment you are using.
 
 Combines the preceding five type-specific commands into one.
 
-$    Report the gold you're carrying, possibly shop credit and/or debt
+`$`    Report the gold you're carrying, possibly shop credit and/or debt
 too.
 
-+    List the spells you know.
+`+`    List the spells you know.
 
 Using  this  command,  you  can also rearrange the order in which
 your spells are listed, either by sorting the entire list  or  by
 picking  one  spell  from  the  menu then picking another to swap
 places with it.  Swapping pairs of spells changes  their  casting
-letters,  so  the change lasts after the current `+' command fin-
+letters,  so  the change lasts after the current `+` command fin-
 ishes.  Sorting the whole list is temporary.  To  make  the  most
-recent  sort order persist beyond the current `+' command, choose
+recent  sort order persist beyond the current `+` command, choose
 the sort option again and then pick "reassign  casting  letters".
 (Any  spells  learned  after that will be added to the end of the
 list rather than be inserted into the sorted ordering.)
 
-\    Show what types of objects have been discovered.
+`\`    Show what types of objects have been discovered.
 
-May be preceded by `m' to select preferred display order.
+May be preceded by `m` to select preferred display order.
 
-`    Show discovered types for one class of objects.
+```    Show discovered types for one class of objects.
 
-May be preceded by `m' to select preferred display order.
+May be preceded by `m` to select preferred display order.
 
-|    If persistent inventory display is supported  and  enabled  (with
-the  perm_invent  option),  interact  with it instead of with the
+`|`    If persistent inventory display is supported  and  enabled  (with
+the  `perm_invent`  option),  interact  with it instead of with the
 map.
 
-Allows scrolling with  the  menu_first_page,  menu_previous_page,
-menu_next_page,  and  menu_last_page  keys (`^', `<', `>', `|' by
+Allows scrolling with  the  `menu_first_page`,  `menu_previous_page`,
+`menu_next_page`,  and  `menu_last_page`  keys (`^`, `<`, `>`, `|` by
 
-default).   Some  interfaces  also  support  menu_shift_left  and
-menu_shift_right  keys  (`{' and `}' by default).  Use the Return
+default).   Some  interfaces  also  support  `menu_shift_left`  and
+`menu_shift_right`  keys  (`{` and `}` by default).  Use the Return
 (aka Enter) or Escape key to resume play.
 
-!    Escape to a shell.  See "#shell" below for more details.
+`!`    Escape to a shell.  See "`#shell`" below for more details.
 
 Del  Show map without obstructions.  You can view the explored portion
 of the current level's map without monsters; without monsters and
@@ -989,9 +997,9 @@ that is not an actual control character.
 Many  terminals  have  an  option  to  swap  the   <delete>   and
 <backspace>  keys, so typing the <del> key might not execute this
 command.  If that happens,  you  can  use  the  extended  command
-"#terrain" instead.
+"`#terrain`" instead.
 
-#    Perform an extended command.
+`#`    Perform an extended command.
 
 As  you  can see, the authors of NetHack used up all the letters,
 so this is a way to introduce the less frequently used commands.  What
@@ -1008,19 +1016,19 @@ meaningful  for  you or that it will appear in a particular loca-
 tion when inventory listings are displayed.  You can  move  to  a
 currently  empty  slot,  or  if  the destination is occupied--and
 won't merge--the item there will swap slots with  the  one  being
-moved.   "#adjust"  can also be used to split a stack of objects;
+moved.   "`#adjust`"  can also be used to split a stack of objects;
 when choosing the item to adjust, enter a count prior to its let-
 ter.
 
 Adjusting  without  a count used to collect all compatible stacks
 when moving to the destination.  That behavior has been  changed;
-to  gather  compatible  stacks,  "#adjust"  a  stack into its own
+to  gather  compatible  stacks,  "`#adjust`"  a  stack into its own
 inventory slot.  If it has a name assigned, other stacks with the
 same  name  or  with  no  name will merge provided that all their
 other attributes match.  If it does not have a name,  only  other
 stacks with no name are eligible.  In either case, otherwise com-
 patible stacks with a different name will not  be  merged.   This
-contrasts with using "#adjust" to move from one slot to a differ-
+contrasts with using "`#adjust`" to move from one slot to a differ-
 ent slot.  In that situation, moving (no count given) a  compati-
 ble  stack  will  merge if either stack has a name when the other
 doesn't and give that name to the result, while splitting  (count
@@ -1031,24 +1039,24 @@ to merge with the destination stack.
 #annotate
 Allows you to specify one line of text to associate with the cur-
 rent dungeon level.  All levels with annotations are displayed by
-the "#overview" command.  Autocompletes.  Default key  is  `M-A',
-and also `^N' if number_pad is on.
+the "`#overview`" command.  Autocompletes.  Default key  is  `M-A',
+and also ``^N`' if `number_pad` is on.
 
 #apply
 Apply (use) a tool such as a pick-axe, a key, or a lamp.  Default
-key is `a'.
+key is `a`.
 
-If the tool used acts on items on the floor, using the `m' prefix
+If the tool used acts on items on the floor, using the `m` prefix
 skips those items.
 
 If  used on a wand, that wand will be broken, releasing its magic
 in the process.  Confirmation is required.
 
 #attributes
-Show your attributes.  Default key is `^X'.
+Show your attributes.  Default key is ``^X`'.
 
 #autopickup
-Toggle the autopickup option on/off.  Default key is `@'.
+Toggle the autopickup option on/off.  Default key is `@`.
 
 #bugreport
 Bring up a browser window to  submit  a  report  to  the  NetHack
@@ -1059,10 +1067,10 @@ configuration file.
 #call
 Call  (name)  a monster, or an object in inventory, on the floor,
 or in the discoveries list, or add an annotation for the  current
-level (same as "#annotate").  Default key is `C'.
+level (same as "`#annotate`").  Default key is `C`.
 
 #cast
-Cast a spell.  Default key is `Z'.
+Cast a spell.  Default key is `Z`.
 
 #chat
 Talk to someone.  Default key is `M-c'.
@@ -1071,7 +1079,7 @@ Talk to someone.  Default key is `M-c'.
 Show a list of important game events.
 
 #close
-Close a door.  Default key is `c'.
+Close a door.  Default key is `c`.
 
 #conduct
 List  voluntary  challenges  you have maintained.  Autocompletes.
@@ -1086,24 +1094,24 @@ Start the fuzz tester.  Debug mode only.
 Dip an object into something.  Autocompletes.  Default key is `M-
 d'.
 
-The  `m' prefix skips dipping into a fountain or pool if there is
+The  `m` prefix skips dipping into a fountain or pool if there is
 one at your location.
 
 #down
-Go down a staircase.  Default key is `>'.
+Go down a staircase.  Default key is `>`.
 
 #drop
-Drop an item.  Default key is `d'.
+Drop an item.  Default key is `d`.
 
 #droptype
-Drop specific item types.  Default key is `D'.
+Drop specific item types.  Default key is `D`.
 
 #eat
-Eat something.  Default key is `e'.  The `m' prefix skips  eating
+Eat something.  Default key is `e`.  The `m` prefix skips  eating
 items on the floor.
 
 #engrave
-Engrave writing on the floor.  Default key is `E'.
+Engrave writing on the floor.  Default key is `E`.
 
 #enhance
 Advance   or  check  weapon  and  spell  skills.   Autocompletes.
@@ -1120,11 +1128,11 @@ instead.
 
 #fight
 Prefix key to force fight a direction, even if you see nothing to
-fight there.  Default key is `F', or `-' with number_pad
+fight there.  Default key is `F`, or `-` with `number_pad`
 
 #fire
 Fire ammunition from quiver, possibly autowielding a launcher, or
-hit with a wielded polearm.  Default key is `f'.
+hit with a wielded polearm.  Default key is `f`.
 
 #force
 Force a lock.  Autocompletes.  Default key is `M-f'.
@@ -1134,43 +1142,43 @@ List any monster types which have  been  genocided.   In  explore
 mode  and  debug  mode  it  also  shows  types  which have become
 extinct.
 
-The display order is the same as is used by #vanquished.  The `m'
+The display order is the same as is used by `#vanquished`.  The `m`
 prefix  brings  up  a menu of available sorting orders, and doing
-that for either #genocided or #vanquished changes the  order  for
+that for either `#genocided` or `#vanquished` changes the  order  for
 both.
 
 If  the  sorting  order  is  "count high to low" or "count low to
-high" (which  are  applicable  for  #vanquished),  that  will  be
-ignored  for  #genocided  and  alphabetical will be used instead.
-The menu omits those two choices when used for #genocide.
+high" (which  are  applicable  for  `#vanquished`),  that  will  be
+ignored  for  `#genocided`  and  alphabetical will be used instead.
+The menu omits those two choices when used for `#genocide`.
 
 Autocompletes.  Default key is `M-g'.
 
 #glance
 Show what type of thing a map symbol corresponds to.  Default key
-is `;'.
+is `;`.
 
 #help
-Show  the  help  menu.   Default key is `?', and also `h' if num-
-ber_pad is on.
+Show  the  help  menu.   Default key is `?`, and also `h` if num-
+`ber_pad` is on.
 
 #herecmdmenu
 Show a menu of possible actions directed at  your  current  loca-
 tion.   The menu is limited to a subset of the likeliest actions,
 not an exhaustive set of all possibilities.  Autocompletes.
 
-If mouse support is enabled and the herecmd_menu  option  is  On,
+If mouse support is enabled and the `herecmd_menu`  option  is  On,
 clicking  on  the  hero (or steed when mounted) will execute this
 command.
 
 #history
-Show long version and game history.  Default key is `V'.
+Show long version and game history.  Default key is `V`.
 
 #inventory
-Show your inventory.  Default key is `i'.
+Show your inventory.  Default key is `i`.
 
 #inventtype
-Inventory specific item types.  Default key is `I'.
+Inventory specific item types.  Default key is `I`.
 
 #invoke
 Invoke an object's special powers.  Autocompletes.   Default  key
@@ -1178,24 +1186,24 @@ is `M-i'.
 
 #jump
 Jump  to another location.  Autocompletes.  Default key is `M-j',
-and also `j' if number_pad is on.
+and also `j` if `number_pad` is on.
 
 #kick
-Kick something.  Default key is `^D', and `k'  if  number_pad  is
+Kick something.  Default key is ``^D`', and `k`  if  `number_pad`  is
 on.
 
 #known
-Show what object types have been discovered.  Default key is `\'.
+Show what object types have been discovered.  Default key is `\`.
 
-The  `m' prefix allows assigning a new value to the sortdiscover-
+The  `m` prefix allows assigning a new value to the sortdiscover-
 ies option to control the order in which the discoveries are dis-
 played.
 
 #knownclass
 Show  discovered  types for one class of objects.  Default key is
-``'.
+`` ` ``.
 
-The `m' prefix operates the same as for "#known".
+The `m` prefix operates the same as for "`#known`".
 
 #levelchange
 Change your experience level.  Autocompletes.  Debug mode only.
@@ -1204,17 +1212,17 @@ Change your experience level.  Autocompletes.  Debug mode only.
 Show mobile light sources.  Autocompletes.  Debug mode only.
 
 #look
-Look at what is here, under you.  Default key is `:'.
+Look at what is here, under you.  Default key is `:`.
 
 #lookaround
 Describe what you can see, or remember, of your surroundings.
 
 #loot
 Loot a box or bag on the floor beneath you, or the saddle from  a
-steed standing next to you.  Autocompletes.  Precede with the `m'
+steed standing next to you.  Autocompletes.  Precede with the `m`
 prefix to skip containers at your location  and  go  directly  to
-removing  a  saddle.   Default key is `M-l', and also `l' if num-
-ber_pad is on.
+removing  a  saddle.   Default key is `M-l', and also `l` if num-
+`ber_pad` is on.
 
 #monster
 Use a monster's special ability (when  polymorphed  into  monster
@@ -1222,7 +1230,7 @@ form).  Autocompletes.  Default key is `M-m'.
 
 #name
 Name  a monster, an individual object, or a type of object.  Same
-as "#call".  Autocompletes.  Default keys are `N', `M-n', and `M-
+as "`#call`".  Autocompletes.  Default keys are `N`, `M-n', and `M-
 N'.
 
 #offer
@@ -1232,19 +1240,19 @@ Offer  a  sacrifice  to the gods.  Autocompletes.  Default key is
 You'll need to find an altar  to  have  any  chance  at  success.
 Corpses of recently killed monsters are the fodder of choice.
 
-The `m' prefix skips offering any items which are on the altar.
+The `m` prefix skips offering any items which are on the altar.
 
 #open
-Open a door.  Default key is `o'.
+Open a door.  Default key is `o`.
 
 #options
-Show  and  change  option settings.  Default key is `O'.  Precede
-with the `m' prefix to show advanced options.
+Show  and  change  option settings.  Default key is `O`.  Precede
+with the `m` prefix to show advanced options.
 
 #optionsfull
 Show advanced game option settings.   No  default  key.   Precede
-with  the  `m'  prefix  to  execute  the simpler options command.
-(Mainly useful if you use  BINDING=O:optionsfull  to  switch  `O'
+with  the  `m`  prefix  to  execute  the simpler options command.
+(Mainly useful if you use  BINDING=O:optionsfull  to  switch  `O`
 from simple options back to traditional advanced options.)
 
 #overview
@@ -1255,13 +1263,13 @@ another dungeon branch) trigger an automatic annotation.  If dun-
 geon overview is chosen during end-of-game disclosure, every vis-
 ited level will be included regardless of annotations.
 
-Precede #overview with the `m'  prefix  to  display  the  dungeon
+Precede `#overview` with the `m`  prefix  to  display  the  dungeon
 overview  as a menu where you can select any visited level to add
 or remove an annotation without needing to return to that  level.
 This  will  also  force all visited levels to be displayed rather
 than just the "interesting" subset.
 
-Autocompletes.  Default keys are `^O', and `M-O'.
+Autocompletes.  Default keys are ``^O`', and `M-O'.
 
 #panic
 Test the panic routine.  Terminates the current  game.   Autocom-
@@ -1272,18 +1280,18 @@ really panic, respond with y.  You can set the paranoid_confirma-
 tion:quit option to require a response of yes instead.
 
 #pay
-Pay your shopping bill.  Default key is `p'.
+Pay your shopping bill.  Default key is `p`.
 
 #perminv
 If  persistent  inventory  display is supported and enabled (with
-the perm_invent option), interact with it  instead  of  with  the
+the `perm_invent` option), interact with it  instead  of  with  the
 map.   You'll  be  prompted for menu scrolling keystrokes such as
-`>' and `<'.  Press Return  or  Escape  to  resume  normal  play.
-Default key is `|'.
+`>` and `<`.  Press Return  or  Escape  to  resume  normal  play.
+Default key is `|`.
 
 #pickup
-Pick up things at the current location.  Default key is `,'.  The
-`m' prefix forces use of a menu.
+Pick up things at the current location.  Default key is `,`.  The
+`m` prefix forces use of a menu.
 
 #polyself
 Polymorph self.  Autocompletes.  Debug mode only.
@@ -1298,18 +1306,18 @@ right  away.)   Since  using  this  command by accident can cause
 
 trouble, there is an option  to  make  you  confirm  your  intent
 before  praying.  It is enabled by default, and you can reset the
-paranoid_confirmation option to disable it.
+`paranoid_confirmation` option to disable it.
 
 #prevmsg
-Show previously displayed game messages.  Default key is `^P'.
+Show previously displayed game messages.  Default key is ``^P`'.
 
 #puton
-Put on an accessory (ring, amulet, etc).  Default key is `P'.
+Put on an accessory (ring, amulet, etc).  Default key is `P`.
 
 #quaff
-Quaff (drink) something.  Default key is `q'.
+Quaff (drink) something.  Default key is `q`.
 
-The `m' prefix skips drinking from a fountain or sink if there is
+The `m` prefix skips drinking from a fountain or sink if there is
 one at your location.
 
 #quit
@@ -1322,30 +1330,30 @@ respond with  y.   You  can  set  the  paranoid_confirmation:quit
 option to require a response of yes instead.
 
 #quiver
-Select ammunition for quiver.  Default key is `Q'.
+Select ammunition for quiver.  Default key is `Q`.
 
 #read
 Read  a  scroll,  a spellbook, or something else.  Default key is
-`r'.
+`r`.
 
 #redraw
-Redraw the screen.  Default key is `^R', and also  `^L'  if  num-
-ber_pad is on.
+Redraw the screen.  Default key is ``^R`', and also  ``^L`'  if  num-
+`ber_pad` is on.
 
 #remove
-Remove an accessory (ring, amulet, etc).  Default key is `R'.
+Remove an accessory (ring, amulet, etc).  Default key is `R`.
 
 #repeat
-Repeat the previous command.  Default key is `^A'.
+Repeat the previous command.  Default key is ``^A`'.
 
 #reqmenu
 Prefix  key to modify the behavior or request menu from some com-
 mands.  Prevents autopickup when  used  with  movement  commands.
-Default key is `m'.
+Default key is `m`.
 
 #retravel
 Travel  to a previously selected travel destination.  Default key
-is `C-_'.  See also #travel.
+is `C-_'.  See also `#travel`.
 
 #ride
 Ride  (or  stop  riding)  a  saddled  creature.    Autocompletes.
@@ -1355,17 +1363,17 @@ Default key is `M-R'.
 Rub a lamp or a stone.  Autocompletes.  Default key is `M-r'.
 
 #run
-Prefix  key  to run towards a direction.  Default key is `G' when
-number_pad is off, `5' when number_pad is set to 1 or  3,  other-
+Prefix  key  to run towards a direction.  Default key is `G` when
+`number_pad` is off, `5` when `number_pad` is set to 1 or  3,  other-
 wise `M-5' when it is set to 2 or 4.
 
 #rush
-Prefix key to rush towards a direction.  Default is `g' when num-
-ber_pad is off, `M-5' when number_pad is set to 1 or 3, otherwise
-`5' when it is set to 2 or 4.
+Prefix key to rush towards a direction.  Default is `g` when num-
+`ber_pad` is off, `M-5' when `number_pad` is set to 1 or 3, otherwise
+`5` when it is set to 2 or 4.
 
 #save
-Save the game and exit the program.  Default key is `S'.
+Save the game and exit the program.  Default key is `S`.
 
 #saveoptions
 Save  configuration  options to the config file.  This will over-
@@ -1374,46 +1382,46 @@ edited the config file, don't use this.
 
 #search
 Search  for  traps  and  secret doors around you.  Default key is
-`s'.
+`s`.
 
 #seeall
-Show all equipment in use.  Default key is `*'.
+Show all equipment in use.  Default key is `*`.
 
 Will display in-use items in a menu even when there is only one.
 
 #seeamulet
-Show the amulet currently worn.  Default key is `"'.
+Show the amulet currently worn.  Default key is `"`.
 
-Using the `m' prefix will force the display of a worn amulet in a
+Using the `m` prefix will force the display of a worn amulet in a
 menu rather than with just a message.
 
 #seearmor
-Show the armor currently worn.  Default key is `['.
+Show the armor currently worn.  Default key is `[`.
 
 Will  display  worn armor in a menu even when there is only thing
 worn.
 
 #seerings
-Show the ring(s) currently worn.  Default key is `='.
+Show the ring(s) currently worn.  Default key is `=`.
 
 Will display worn rings in a menu if there are two (or  there  is
 just  one and is a meat ring rather than a "real" ring).  Use the
-`m' prefix to force a menu for one ring.
+`m` prefix to force a menu for one ring.
 
 #seetools
-Show the tools currently in use.  Default key is `('.
+Show the tools currently in use.  Default key is `(`.
 
 Will display the result in a message if there is one tool in  use
 (worn blindfold or towel or lenses, lit lamp(s) and/or candle(s),
 
 leashes attached to pets).  Will display a menu if there are more
-than one or if the command is preceded by the `m' prefix.
+than one or if the command is preceded by the `m` prefix.
 
 #seeweapon
-Show the weapon currently wielded.  Default key is `)'.
+Show the weapon currently wielded.  Default key is `)`.
 
 If  dual-wielding,  a separate message about the secondary weapon
-will be given.  Using the `m' prefix will force  a  menu  and  it
+will be given.  Using the `m` prefix will force  a  menu  and  it
 will include primary weapon, alternate weapon even when not dual-
 wielding, and also whatever is currently assigned to  the  quiver
 slot.
@@ -1423,22 +1431,22 @@ Do  a  shell escape, switching from NetHack to a subprocess.  Can
 be disabled at the time the  program  is  built.   When  enabled,
 access for specific users can be controlled by the system config-
 uration file.  Use the shell command  `exit'  to  return  to  the
-game.  Default key is `!'.
+game.  Default key is `!`.
 
 #showgold
 Report  the gold in your inventory, including gold you know about
 in containers you're carrying.  If you are inside a shop,  report
-any credit or debt you have in that shop.  Default key is `$'.
+any credit or debt you have in that shop.  Default key is `$`.
 
 #showspells
-List and reorder known spells.  Default key is `+'.
+List and reorder known spells.  Default key is `+`.
 
 #showtrap
 Describe  an adjacent trap, possibly covered by objects or a mon-
 ster.  To be eligible, the trap must already be discovered.  (The
-"#terrain" command can display your map with all objects and mon-
+"`#terrain`" command can display your map with all objects and mon-
 sters temporarily removed, making it possible to see all  discov-
-ered traps.)  Default key is `^'.
+ered traps.)  Default key is `^`.
 
 #sit
 Sit down.  Autocompletes.  Default key is `M-s'.
@@ -1451,19 +1459,19 @@ Suspend  the  game, switching from NetHack to the terminal it was
 started from without performing save-and-exit.  Can  be  disabled
 at  the  time  the program is built.  When enabled, mainly useful
 for tty and curses interfaces on UNIX.   Use  the  shell  command
-`fg' to return to the game.  Default key is `^Z'.
+`fg' to return to the game.  Default key is ``^Z`'.
 
 #swap
-Swap wielded and secondary weapons.  Default key is `x'.
+Swap wielded and secondary weapons.  Default key is `x`.
 
 #takeoff
-Take off one piece of armor.  Default key is `T'.
+Take off one piece of armor.  Default key is `T`.
 
 #takeoffall
-Remove all armor.  Default key is `A'.
+Remove all armor.  Default key is `A`.
 
 #teleport
-Teleport around the level.  Default key is `^T'.
+Teleport around the level.  Default key is ``^T`'.
 
 #terrain
 Show  map  without obstructions.  In normal play you can view the
@@ -1488,7 +1496,7 @@ you.  The menu is limited to a subset of the  likeliest  actions,
 not an exhaustive set of all possibilities.  Autocompletes.
 
 #throw
-Throw something.  Default key is `t'.
+Throw something.  Default key is `t`.
 
 #timeout
 Look at the timeout queue.  Autocompletes.  Debug mode only.
@@ -1500,41 +1508,41 @@ one  of  them or "tip something being carried".  If the latter is
 chosen, there will be another prompt for which item  from  inven-
 tory to tip.
 
-The `m' prefix makes the command skip containers on the floor and
+The `m` prefix makes the command skip containers on the floor and
 pick  one  from  inventory,  except  for  the  special  case   of
-menustyle:traditional  with  two or more containers present; that
+`menustyle:traditional`  with  two or more containers present; that
 situation will start with the floor container menu.
 
 Autocompletes.  Default key is `M-T'.
 
 #travel
-Travel to a specific location on the map.  Default  key  is  `_'.
+Travel to a specific location on the map.  Default  key  is  `_`.
 Using  the "request menu" prefix shows a menu of interesting tar-
 gets in sight without asking to move the cursor.  When picking  a
 target  with  cursor  and  the autodescribe option is on, the top
 line will show "(no travel path)" if your character does not know
 
-of a path to that location.  See also #retravel.
+of a path to that location.  See also `#retravel`.
 
 #turn
 Turn undead away.  Autocompletes.  Default key is `M-t'.
 
 #twoweapon
 Toggle  two-weapon combat on or off.  Autocompletes.  Default key
-is `X', and also `M-2' if number_pad is off.
+is `X`, and also `M-2' if `number_pad` is off.
 
 Note that you must use suitable weapons for this type of  combat,
 or it will be automatically turned off.
 
 #untrap
 Untrap  something  (trap, door, or chest).  Default key is `M-u',
-and `u' if number_pad is on.
+and `u` if `number_pad` is on.
 
 In some circumstances it can also be used to rescue trapped  mon-
 sters.
 
 #up
-Go up a staircase.  Default key is `<'.
+Go up a staircase.  Default key is `<`.
 
 #vanquished
 List vanquished monsters by type and count.
@@ -1545,15 +1553,15 @@ which  got removed from the game without being killed (perhaps by
 genocide, or by a mollified shopkeeper dismissing summoned  Kops)
 or were already corpses when placed on the map.
 
-Using  the "request menu" prefix prior to #vanquished brings up a
+Using  the "request menu" prefix prior to `#vanquished` brings up a
 menu of sorting orders available (provided  that  the  vanquished
 monsters  list  contains at least two types of monsters).  Which-
 ever ordering is  picked  gets  assigned  to  the  sortvanquished
-option so is remembered for subsequent #vanquished requests.  The
-"#genocided" command shares this sorting order.
+option so is remembered for subsequent `#vanquished` requests.  The
+"`#genocided`" command shares this sorting order.
 
 During end-of-game disclosure, when asked whether  to  show  van-
-quished  monsters answering `a' will let you choose from the sort
+quished  monsters answering `a` will let you choose from the sort
 menu.
 
 Autocompletes.  Default key is `M-V'.
@@ -1571,27 +1579,27 @@ Autocompletes.  Default key is `M-v'.
 #versionshort
 Show  the  program's  version number, plus the date and time that
 the running copy  was  built  from  sources  (not  the  version's
-release date).  Default key is `v'.
+release date).  Default key is `v`.
 
 #vision
 Show vision array.  Autocompletes.  Debug mode only.
 
 #wait
-Rest  one move while doing nothing.  Default key is `.', and also
-` ' if rest_on_space is on.
+Rest  one move while doing nothing.  Default key is `.`, and also
+` ` if `rest_on_space` is on.
 
 #wear
-Wear a piece of armor.  Default key is `W'.
+Wear a piece of armor.  Default key is `W`.
 
 #whatdoes
-Tell what a key does.  Default key is `&'.
+Tell what a key does.  Default key is `&`.
 
 #whatis
 Show what type of thing a symbol corresponds to.  Default key  is
-`/'.
+`/`.
 
 #wield
-Wield a weapon.  Default key is `w'.
+Wield a weapon.  Default key is `w`.
 
 #wipe
 Wipe off your face.  Autocompletes.  Default key is `M-w'.
@@ -1610,15 +1618,15 @@ Cast any spell.  Debug mode only.
 #wizdetect
 Reveal  hidden  things (secret doors or traps or unseen monsters)
 within a modest radius.  No time elapses.  Autocompletes.   Debug
-mode only.  Default key is `^E'.
+mode only.  Default key is ``^E`'.
 
 #wizgenesis
 Create a monster.  May be prefixed by a count to create more than
-one.  Autocompletes.  Debug mode only.  Default key is `^G'.
+one.  Autocompletes.  Debug mode only.  Default key is ``^G`'.
 
 #wizidentify
 Identify all items  in  inventory.   Autocompletes.   Debug  mode
-only.  Default key is `^I'.
+only.  Default key is ``^I`'.
 
 #wizintrinsic
 Set one or more intrinsic attributes.  Autocompletes.  Debug mode
@@ -1628,16 +1636,16 @@ only.
 #wizkill
 Remove monsters from play by just pointing at them.   By  default
 the  hero  gets credit or blame for killing the targets.  Precede
-this command with the `m'  prefix  to  override  that.   Autocom-
+this command with the `m`  prefix  to  override  that.   Autocom-
 pletes.  Debug mode only.
 
 #wizlevelport
 Teleport  to  another  level.   Autocompletes.   Debug mode only.
-Default key is `^V'.
+Default key is ``^V`'.
 
 #wizmap
 Map the level.  Autocompletes.  Debug mode only.  Default key  is
-`^F'.
+``^F`'.
 
 #wizrumorcheck
 Verify  rumor boundaries by displaying first and last true rumors
@@ -1661,13 +1669,13 @@ only.
 
 #wizwish
 Wish  for  something.   Autocompletes.  Debug mode only.  Default
-key is `^W'.
+key is ``^W`'.
 
 #wmode
 Show wall modes.  Autocompletes.  Debug mode only.
 
 #zap
-Zap a wand.  Default key is `z'.
+Zap a wand.  Default key is `z`.
 
 #?
 Help menu:  get the list of available extended commands.
@@ -1682,11 +1690,11 @@ On Windows and MS-DOS, the "Alt" key can be used in this fashion.
 On other systems, if typing "Alt" plus another  key  transmits  a  two
 character  sequence consisting of an Escape followed by the other key,
 you may set the altmeta option  to  have  NetHack  combine  them  into
-meta+<key>.   (This  combining action only takes place when NetHack is
+meta+`<key>`.   (This  combining action only takes place when NetHack is
 expecting a command to execute, not when accepting input to name some-
 thing or to make a wish.)
 
-Unlike control characters, where ^x and ^X denote the same thing,
+Unlike control characters, where ^x and `^X` denote the same thing,
 meta characters are case-sensitive:  M-x and M-X  represent  different
 things.   Some  commands which can be run via a meta character require
 that the letter be capitalized because the  lower-case  equivalent  is
@@ -1695,74 +1703,74 @@ meta+Shift+<letter> is needed.
 
 M-?  #? (not supported by all platforms)
 
-M-2  #twoweapon (unless the number_pad option is enabled)
+M-2  `#twoweapon` (unless the `number_pad` option is enabled)
 
-M-a  #adjust
+M-a  `#adjust`
 
-M-A  #annotate
+M-A  `#annotate`
 
-M-c  #chat
+M-c  `#chat`
 
-M-C  #conduct
+M-C  `#conduct`
 
-M-d  #dip
+M-d  `#dip`
 
-M-e  #enhance
+M-e  `#enhance`
 
-M-f  #force
+M-f  `#force`
 
-M-g  #genocided
+M-g  `#genocided`
 
-M-i  #invoke
+M-i  `#invoke`
 
-M-j  #jump
+M-j  `#jump`
 
-M-l  #loot
+M-l  `#loot`
 
-M-m  #monster
+M-m  `#monster`
 
-M-n  #name
+M-n  `#name`
 
-M-o  #offer
+M-o  `#offer`
 
-M-O  #overview
+M-O  `#overview`
 
-M-p  #pray
+M-p  `#pray`
 
-M-r  #rub
+M-r  `#rub`
 
-M-R  #ride
+M-R  `#ride`
 
-M-s  #sit
+M-s  `#sit`
 
-M-t  #turn
+M-t  `#turn`
 
-M-T  #tip
+M-T  `#tip`
 
-M-u  #untrap
+M-u  `#untrap`
 
-M-v  #version
+M-v  `#version`
 
-M-V  #vanquished
+M-V  `#vanquished`
 
-M-w  #wipe
+M-w  `#wipe`
 
-M-X  #exploremode
+M-X  `#exploremode`
 
-If the number_pad option is on, some additional  letter  commands
+If the `number_pad` option is on, some additional  letter  commands
 are available:
 
-h    #help
+h    `#help`
 
-j    #jump
+j    `#jump`
 
-k    #kick
+k    `#kick`
 
-l    #loot
+l    `#loot`
 
-N    #name
+N    `#name`
 
-u    #untrap
+u    `#untrap`
 
 
 ## 5. Rooms and corridors
@@ -1773,7 +1781,7 @@ only  displayed if they are within one space of you.  Walls and corri-
 dors remain on the map as you explore them.
 
 Secret corridors are hidden and appear to be solid rock.  You can
-find them with the `s' (search) command when adjacent to them.  Multi-
+find them with the `s` (search) command when adjacent to them.  Multi-
 ple search attempts may be  needed.   When  searching  is  successful,
 secret  corridors  become  ordinary  open corridor locations.  Mapping
 magic reveals secret corridors, so converts them into ordinary  corri-
@@ -1784,32 +1792,32 @@ dors and shows them as such.
 
 Doorways  connect  rooms  and  corridors.   Some doorways have no
 doors; you can walk right through.  Others have doors in  them,  which
-may  be  open,  closed, or locked.  To open a closed door, use the `o'
-(open) command; to close it again, use the `c'  (close)  command.   By
+may  be  open,  closed, or locked.  To open a closed door, use the `o`
+(open) command; to close it again, use the `c`  (close)  command.   By
 default  the  autoopen option is enabled, so simply attempting to walk
 onto a closed door's location will attempt to open it without  needing
-`o'.   Opening  via  autoopen  will  not  work  if you are confused or
+`o`.   Opening  via  autoopen  will  not  work  if you are confused or
 stunned or suffer from the fumbling attribute.
 
 Open doors cannot be entered diagonally; you must  approach  them
 straight  on,  horizontally or vertically.  Doorways without doors are
 not  restricted  in  this  fashion  except  on  one  particular  level
-(described by "#overview" as "a primitive area").
+(described by "`#overview`" as "a primitive area").
 
 Unlocking  magic  exists but usually won't be available early on.
 You can get through a locked door without  magic  by  first  using  an
-unlocking  tool with the `a' (apply) command, and then opening it.  By
+unlocking  tool with the `a` (apply) command, and then opening it.  By
 default the autounlock option is also enabled, so if  you  attempt  to
-open  (via  `o' or autoopen) a locked door while carrying an unlocking
+open  (via  `o` or autoopen) a locked door while carrying an unlocking
 tool, you'll be asked whether to use it on the door's lock.   Alterna-
 tively,  you  can  break a closed door (whether locked or not) down by
-kicking it via the `^D' (kick) command.  Kicking down a door  destroys
+kicking it via the ``^D`' (kick) command.  Kicking down a door  destroys
 it and makes a lot of noise which might wake sleeping monsters.
 
 Some  closed  doors  are  booby-trapped  and  will  explode if an
 attempt is made to open (when unlocked) or  unlock  (when  locked)  or
 kick  down.   Like kicking, an explosion destroys the door and makes a
-lot of noise.  The "#untrap" command can be used to search a door  for
+lot of noise.  The "`#untrap`" command can be used to search a door  for
 traps  but  might  take  multiple  attempts  to find one.  When one is
 found, you'll be asked whether to try to disarm it.   If  you  accede,
 success  will  eliminate  the trap but failure will set off the trap's
@@ -1825,19 +1833,19 @@ And some (giants) can smash doors.
 
 Secret  doors  are  hidden  and  appear to be ordinary wall (from
 inside a room) or solid rock (from outside).  You can find  them  with
-the  `s'  (search)  command but it might take multiple tries (possibly
+the  `s`  (search)  command but it might take multiple tries (possibly
 many tries if your luck is poor).  Once found they  are  in  all  ways
 equivalent  to  normal  doors.   Mapping  magic does not reveal secret
 doors.
 
 
-### 5.2. Traps (`^')
+### 5.2. Traps (`^`)
 
 There are traps  throughout  the  dungeon  to  snare  the  unwary
 intruder.   For example, you may suddenly fall into a pit and be stuck
 for a few turns trying to climb out (see below).  A trap usually won't
 appear  on  your  map  until you trigger it by moving onto it, you see
-someone else trigger it, or you discover it with the `s' (search) com-
+someone else trigger it, or you discover it with the `s` (search) com-
 mand  (multiple  attempts are often needed; if your luck is poor, many
 attempts might be needed).  Wands of secret door detection  and  spell
 of  detect unseen also reveal traps within a modest radius but only if
@@ -1899,10 +1907,10 @@ tion  for  information  about  getting  feedback  for  your actions in
 Sokoban.
 
 
-### 5.3. Stairs and ladders (`<', `>')
+### 5.3. Stairs and ladders (`<`, `>`)
 
 In general, each level in the dungeon will have a staircase going
-up  (`<')  to  the  previous level and another going down (`>') to the
+up  (`<`)  to  the  previous level and another going down (`>`) to the
 next level.  There are some exceptions though.  For  instance,  fairly
 early  in  the dungeon you will find a level with two down staircases,
 one continuing into the dungeon and the other branching into  an  area
@@ -1938,8 +1946,8 @@ play.
 
 Occasionally you will run across a room with  a  shopkeeper  near
 the  door  and  many  items  lying on the floor.  You can buy items by
-picking them up and then using the `p' command.  You can inquire about
-the  price of an item prior to picking it up by using the "#chat" com-
+picking them up and then using the `p` command.  You can inquire about
+the  price of an item prior to picking it up by using the "`#chat`" com-
 mand while standing on it.  Using an item prior to paying for it  will
 incur  a  charge, and the shopkeeper won't allow you to leave the shop
 until you have paid any debt you owe.
@@ -1961,7 +1969,7 @@ shop where it was obtained; other shopkeepers won't honor it.  (If you
 happen to find a "credit card" in the dungeon, don't bother trying  to
 use it in shops; shopkeepers will not accept it.)
 
-The  `$' command, which reports the amount of gold you are carry-
+The  `$` command, which reports the amount of gold you are carry-
 ing, will also show current shop debt or credit,  if  any.   The  "Iu"
 command  lists  unpaid items (those which still belong to the shop) if
 you are carrying any.  The "Ix" command shows an  inventory-like  dis-
@@ -1996,7 +2004,7 @@ pile of objects, or on a trap, or attempt to move onto a spot where  a
 monster  is  located.   There are several options which can be used to
 augment the normal feedback.
 
-The pile_limit option controls how  many  objects  can  be  in  a
+The `pile_limit` option controls how  many  objects  can  be  in  a
 pile--sharing  the same map location--for the game to state "there are
 objects here" instead of listing them.  The default is 5.  Setting  it
 to  1  would  always give that message instead of listing any objects.
@@ -2007,18 +2015,18 @@ tities  of those stacks (so 7 arrows or 25 gold pieces will each count
 as 1 rather than as 7 and 25, respectively, and total to 2  when  both
 are at the same location).
 
-The  "nopickup" command prefix (default `m') can be used before a
+The  "nopickup" command prefix (default `m`) can be used before a
 movement direction to step on objects without  attempting  auto-pickup
 and without giving feedback about them.
 
-The mention_walls option controls whether you get feedback if you
+The `mention_walls` option controls whether you get feedback if you
 try to walk into a wall or solid stone or off the  edge  of  the  map.
 Normally  nothing  happens  (unless  the  hero is blind and no wall is
 shown, then the wall that is being bumped into will be  drawn  on  the
 map).   This  option also gives feedback when rushing or running stops
 for some non-obvious reason.
 
-The mention_decor option controls whether you get  feedback  when
+The `mention_decor` option controls whether you get  feedback  when
 walking  on  "furniture."  Normally stepping onto stairs or a fountain
 or an altar or various other things doesn't elicit anything unless  it
 is  covered by one or more objects so is obscured on the map.  Setting
@@ -2033,19 +2041,19 @@ ice.   Moving off of any of those back onto "normal" terrain will give
 one message too, unless there is feedback about one or  more  objects,
 in which case the back on land circumstance is implied.
 
-The  confirm  and  safe_pet options control what happens when you
+The  confirm  and  `safe_pet` options control what happens when you
 try to move onto a peaceful monster's spot or a tame one's spot.
 
-The "nopickup" command prefix (default `m')  is  also  the  move-
+The "nopickup" command prefix (default `m`)  is  also  the  move-
 without-attacking prefix and can be used to try to step onto a visible
 monster's spot without the move being considered an  attack  (see  the
 Fighting  subsection  of  Monsters below).  The "fight" command prefix
-(default `F'; also `-' if number_pad is on) can be used  to  force  an
+(default `F`; also `-` if `number_pad` is on) can be used  to  force  an
 attack,  when guessing where an unseen monster is or when deliberately
 
 attacking a peaceful or tame creature.
 
-The run_mode option controls how frequently the map gets  redrawn
+The `run_mode` option controls how frequently the map gets  redrawn
 when  moving  more than one step in a single command (so when rushing,
 running, or traveling).
 
@@ -2057,8 +2065,8 @@ dungeon) is a tribute to the ancestor game hack's inspiration rogue.
 
 It  is  usually displayed differently from other levels: possibly
 in characters instead of tiles, or  without  line-drawing  symbols  if
-already  in  characters;  also,  gold  is shown as * rather than $ and
-stairs are shown as % rather than < and >.  There are some minor  dif-
+already  in  characters;  also,  gold  is shown as `*` rather than $ and
+stairs are shown as `%` rather than < and >.  There are some minor  dif-
 ferences  in actual game play: doorways lack doors; a scroll, wand, or
 spell of light used in a room lights up the  whole  room  rather  than
 within  a  radius  around your character.  And monsters represented by
@@ -2074,14 +2082,14 @@ You  may suddenly come upon one in a dark place.  Some magic items can
 help you locate them before they locate you (which some  monsters  can
 do very well).
 
-The  commands `/' and `;' may be used to obtain information about
-those monsters who are displayed on the screen.  The  command  "#name"
-(by  default  bound to `C'), allows you to assign a name to a monster,
+The  commands `/` and `;` may be used to obtain information about
+those monsters who are displayed on the screen.  The  command  "`#name`"
+(by  default  bound to `C`), allows you to assign a name to a monster,
 which may be useful to help distinguish one from another when multiple
 monsters  are  present.   Assigning  a name which is just a space will
 remove any prior name.
 
-The extended command "#chat" can be  used  to  interact  with  an
+The extended command "`#chat`" can be  used  to  interact  with  an
 adjacent  monster.   There  is  no  actual dialog (in other words, you
 don't get to choose what you'll say), but chatting with some  monsters
 such  as  a  shopkeeper  or  the  Oracle  of Delphi can produce useful
@@ -2097,26 +2105,26 @@ Remember:  discretion is the better part of valor.
 
 In  most  circumstances, if you attempt to attack a peaceful mon-
 ster by moving into its location, you'll  be  asked  to  confirm  your
-intent.   By  default an answer of `y' acknowledges that intent, which
-can be error prone if you're using `y' to move.  You can set the para-
+intent.   By  default an answer of `y` acknowledges that intent, which
+can be error prone if you're using `y` to move.  You can set the para-
 noid_confirmation:attack   option  to  require  a  response  of  "yes"
 
 instead.
 
 If you can't see a monster (if it is invisible,  or  if  you  are
-blinded), the symbol `I' will be shown when you learn of its presence.
+blinded), the symbol `I` will be shown when you learn of its presence.
 If you attempt to walk into it, you will try to fight it just  like  a
 monster  that  you  can  see; of course, if the monster has moved, you
 will attack empty air.  If you guess that the monster  has  moved  and
-you  don't  wish to fight, you can use the `m' command to move without
+you  don't  wish to fight, you can use the `m` command to move without
 fighting; likewise, if you don't remember a monster but  want  to  try
-fighting anyway, you can use the `F' command.
+fighting anyway, you can use the `F` command.
 
 
 ### 6.2. Your pet
 
-You start the game with a little dog (`d'), kitten (`f'), or pony
-(`u'), which follows you about the dungeon and  fights  monsters  with
+You start the game with a little dog (`d`), kitten (`f`), or pony
+(`u`), which follows you about the dungeon and  fights  monsters  with
 you.  Like you, your pet needs food to survive.  Dogs and cats usually
 feed themselves on fresh carrion and other meats; horses need vegetar-
 ian food which is harder to come by.  If you're worried about your pet
@@ -2144,19 +2152,19 @@ you  have  the  right equipment and skill.  Convincing a wild beast to
 let you saddle it up is difficult to say the least.  Many a dungeoneer
 has  had  to  resort  to  magic  and  wizardry  in  order to forge the
 alliance.  Once you do have the beast under your control however,  you
-can  easily  climb  in and out of the saddle with the "#ride" command.
+can  easily  climb  in and out of the saddle with the "`#ride`" command.
 Lead the beast around the dungeon when riding, in the same  manner  as
 you  would move yourself.  It is the beast that you will see displayed
 on the map.
 
-Riding skill is managed by the "#enhance" command.  See the  sec-
+Riding skill is managed by the "`#enhance`" command.  See the  sec-
 tion on Weapon proficiency for more information about that.
 
-Use  the  `a' (apply) command and pick a saddle in your inventory
+Use  the  `a` (apply) command and pick a saddle in your inventory
 to attempt to put that saddle on an adjacent creature.  If successful,
 it will be transferred to that creature's inventory.
 
-Use  the  "#loot" command while adjacent to a saddled creature to
+Use  the  "`#loot`" command while adjacent to a saddled creature to
 try to remove the saddle from that creature.  If successful,  it  will
 be transferred to your inventory.
 
@@ -2192,9 +2200,9 @@ location ordinarily wouldn't be seen any more.
 ## 7. Objects
 
 When  you  find something in the dungeon, it is common to want to
-pick it up.  In NetHack, this is accomplished by using  the  `,'  com-
+pick it up.  In NetHack, this is accomplished by using  the  `,`  com-
 mand.   If autopickup option is on, you will automatically pick up the
-object by walking over, unless you move with the `m' prefix.
+object by walking over, unless you move with the `m` prefix.
 
 If you're carrying too many items, NetHack will tell you  so  and
 you  won't  be  able to pick up anything more.  Otherwise, it will add
@@ -2233,9 +2241,9 @@ When you use one of these objects,  if  its  effect  is  obvious,
 NetHack  will  remember  what  it  is  for  you.   If its effect isn't
 extremely obvious, you will be asked what you want to call  this  type
 of  object  so  you  will  recognize  it  later.  You can also use the
-"#name" command, for the same purpose at any time, to name all objects
+"`#name`" command, for the same purpose at any time, to name all objects
 of  a  particular  type  or  just  an individual object.  When you use
-"#name" on an object which has already been named, specifying a  space
+"`#name`" on an object which has already been named, specifying a  space
 as  the  value  will  remove the prior name instead of assigning a new
 one.
 
@@ -2274,7 +2282,7 @@ with no prefix.  An item which you know the state of will  be  distin-
 guished  in  your  inventory  by  the  presence  of  the  word cursed,
 uncursed, or blessed in the description of the item.   In  some  cases
 uncursed will be omitted as being redundant when enough other informa-
-tion is displayed.  The implicit_uncursed option can be used  to  con-
+tion is displayed.  The `implicit_uncursed` option can be used  to  con-
 trol  this; toggle it off to have uncursed be displayed even when that
 can be deduced from other attributes.
 
@@ -2284,7 +2292,7 @@ their  "BUC"  attribute,  for  Blessed,  Uncursed, or Cursed state, or
 is occasionally used as well.)
 
 
-### 7.2. Weapons (`)')
+### 7.2. Weapons (`)`)
 
 Given  a chance, most monsters in the Mazes of Menace will gratu-
 itously try to kill you.  You need weapons for  self-defense  (killing
@@ -2319,11 +2327,11 @@ weapons.
 Many weapons can be wielded in one hand; some require both hands.
 When wielding a two-handed weapon, you can not wear a shield, and vice
 versa.  When wielding a one-handed weapon, you can have another weapon
-ready to use  by  setting  things  up  with  the  `x'  command,  which
+ready to use  by  setting  things  up  with  the  `x`  command,  which
 exchanges  your primary (the one being wielded) and alternate weapons.
 And if you have proficiency in the "two weapon combat" skill, you  may
 wield  both  weapons  simultaneously as primary and secondary; use the
-`X' command to engage or disengage that.  Only some types  of  charac-
+`X` command to engage or disengage that.  Only some types  of  charac-
 
 ters  (barbarians,  for  instance) have the necessary skill available.
 Even with that skill, using two weapons at once incurs  a  penalty  in
@@ -2331,7 +2339,7 @@ the  chance  to hit your target compared to using just one weapon at a
 time.
 
 There might be times when you'd rather not wield  any  weapon  at
-all.  To accomplish that, wield `-', or else use the `A' command which
+all.  To accomplish that, wield `-`, or else use the `A` command which
 allows you to unwield the current weapon in  addition  to  taking  off
 other worn items.
 
@@ -2341,16 +2349,16 @@ sters  in  NetHack.   Some  of  the  more obscure weapons (such as the
 aklys, lucern hammer, and bec-de-corbin) are defined in an appendix to
 Unearthed Arcana, an AD&D supplement.
 
-The  commands  to  use  weapons are `w' (wield), `t' (throw), `f'
-(fire), `Q' (quiver), `x' (exchange), `X' (twoweapon), and  "#enhance"
+The  commands  to  use  weapons are `w` (wield), `t` (throw), `f`
+(fire), `Q` (quiver), `x` (exchange), `X` (twoweapon), and  "`#enhance`"
 (see below).
 
 
 #### 7.2.1. Throwing and shooting
 
-You  can  throw just about anything via the `t' command.  It will
-prompt for the item to throw; picking `?' will  list  things  in  your
-inventory  which  are  considered  likely to be thrown, or picking `*'
+You  can  throw just about anything via the `t` command.  It will
+prompt for the item to throw; picking `?` will  list  things  in  your
+inventory  which  are  considered  likely to be thrown, or picking `*`
 will list your entire inventory.  After you've chosen what  to  throw,
 you  will  be prompted for a direction rather than for a specific tar-
 get.  The distance something can be thrown depends mainly on the  type
@@ -2367,13 +2375,13 @@ and Mjollnir occasionally fail to return.   Returning  thrown  objects
 occasionally  fail  to  be caught, sometimes even hitting the thrower,
 but when caught they become re-wielded.
 
-You can simplify the throwing operation by using the `Q'  command
-to  select  your  preferred  "missile",  then using the `f' command to
+You can simplify the throwing operation by using the `Q`  command
+to  select  your  preferred  "missile",  then using the `f` command to
 throw it.  You'll be prompted for a direction as above, but you  don't
-have  to  specify which item to throw each time you use `f'.  There is
+have  to  specify which item to throw each time you use `f`.  There is
 also an option, autoquiver, which has NetHack choose another  item  to
 automatically  fill your quiver (or quiver sack, or have at the ready)
-when the inventory slot used for `Q' runs  out.   If  your  quiver  is
+when the inventory slot used for `Q` runs  out.   If  your  quiver  is
 empty,  autoquiver  is  false,  and  you  are  wielding a weapon which
 returns when thrown, you will throw that weapon instead of filling the
 quiver.   The fire command also has extra assistance, if fireassist is
@@ -2389,8 +2397,8 @@ wielding one to shoot arrows, in crossbow skill if you're wielding one
 to  shoot  bolts,  or  in  sling skill if you're wielding one to shoot
 stones).  The number of items that the character has a chance to  fire
 varies  from  turn  to  turn.   You can explicitly limit the number of
-shots by using a numeric prefix before the `t' or  `f'  command.   For
-example, "2f" (or "n2f" if using number_pad mode) would ensure that at
+shots by using a numeric prefix before the `t` or  `f`  command.   For
+example, "2f" (or "n2f" if using `number_pad` mode) would ensure that at
 most 2 arrows are shot even if you could have fired 3.  If you specify
 a  larger  number  than  would  have been shot ("4f" in this example),
 you'll just end up shooting the same number (3, here) as if  no  limit
@@ -2413,13 +2421,13 @@ role  has a limit on what level of proficiency a character can achieve
 for each group.  For instance, wizards can become  highly  skilled  in
 daggers or staves but not in swords or bows.
 
-The "#enhance" extended command is used to review current weapons
+The "`#enhance`" extended command is used to review current weapons
 proficiency (also spell proficiency) and to choose which  skill(s)  to
 improve  when you've used one or more skills enough to become eligible
 to do so.  The skill rankings are "none" (sometimes also  referred  to
 as  "restricted",  because you won't be able to advance), "unskilled",
 "basic", "skilled", and "expert".  Restricted skills simply  will  not
-appear  in  the  list shown by "#enhance".  (Divine intervention might
+appear  in  the  list shown by "`#enhance`".  (Divine intervention might
 unrestrict a  particular  skill,  in  which  case  it  will  start  at
 unskilled and be limited to basic.)  Some characters can enhance their
 barehanded combat or martial arts skill beyond expert to  "master"  or
@@ -2435,7 +2443,7 @@ the next skill level (unless you've already reached the limit for this
 skill).  Once such training reaches the threshold for that next level,
 you'll  be  told that you feel more confident in your skills.  At that
 
-point you can use "#enhance" to increase one  or  more  skills.   Such
+point you can use "`#enhance`" to increase one  or  more  skills.   Such
 skills  are  not  increased  automatically because there is a limit to
 your total overall skills, so you need to actively choose which skills
 to enhance and which to ignore.
@@ -2445,7 +2453,7 @@ to enhance and which to ignore.
 
 Some  characters  can use two weapons at once.  Setting things up
 to do so can seem cumbersome but becomes second nature with  use.   To
-wield  two  weapons,  you  need  to use the "#twoweapon" command.  But
+wield  two  weapons,  you  need  to use the "`#twoweapon`" command.  But
 first you need to have a weapon in each hand.   (Note  that  your  two
 weapons  are  not  fully equal; the one in the hand you normally wield
 with is considered primary and the other one is considered  secondary.
@@ -2455,28 +2463,28 @@ wielded  weapon  and  the  secondary is just an item in your inventory
 that's been designated as alternate weapon.)
 
 If your primary weapon is wielded but your off hand is  empty  or
-has  the  wrong  weapon,  use the sequence `x', `w', `x' to first swap
+has  the  wrong  weapon,  use the sequence `x`, `w`, `x` to first swap
 your primary into your off hand, wield whatever you want as  secondary
 weapon,  then  swap  them  both back into the intended hands.  If your
 secondary or alternate weapon is correct but your primary one is  not,
-simply  use  `w'  to wield the primary.  Lastly, if neither hand holds
-the correct weapon, use `w', `x', `w' to first wield the intended sec-
+simply  use  `w`  to wield the primary.  Lastly, if neither hand holds
+the correct weapon, use `w`, `x`, `w` to first wield the intended sec-
 ondary, swap it to off hand, and then wield the primary.
 
 The  whole  process  can  be simplified via use of the pushweapon
-option.  When it is enabled, then using `w' to wield something  causes
+option.  When it is enabled, then using `w` to wield something  causes
 the  currently wielded weapon to become your alternate weapon.  So the
-sequence `w', `w' can be used to first wield the weapon you intend  to
+sequence `w`, `w` can be used to first wield the weapon you intend  to
 be  secondary,  and  then wield the one you want as primary which will
 push the first into secondary position.
 
-When in two-weapon combat mode, using  the  `X'  command  toggles
+When in two-weapon combat mode, using  the  `X`  command  toggles
 back  to single-weapon mode.  Throwing or dropping either of the weap-
 ons or having one of them be stolen or destroyed will  also  make  you
 revert to single-weapon combat.
 
 
-### 7.3. Armor (`[')
+### 7.3. Armor (`[`)
 
 Lots  of  unfriendly things lurk about; you need armor to protect
 yourself from their blows.  Some types of armor offer  better  protec-
@@ -2527,14 +2535,14 @@ The nudist option can be set (prior to game start) to attempt  to
 play  the  entire game without wearing any armor (a self-imposed chal-
 lenge which is extremely difficult to accomplish).
 
-The commands to use armor are `W' (wear) and `T' (take off).  The
-`A' command can be used to take off armor as well as other worn items.
-Also, `P' (put on) and `R' (remove) which are normally for accessories
+The commands to use armor are `W` (wear) and `T` (take off).  The
+`A` command can be used to take off armor as well as other worn items.
+Also, `P` (put on) and `R` (remove) which are normally for accessories
 can  be  used  for armor, but pieces of armor won't be shown as likely
 candidates in a prompt for choosing what to put on or remove.
 
 
-### 7.4. Food (`%')
+### 7.4. Food (`%`)
 
 Food is necessary to survive.  If you go too long without  eating
 you  will faint, and eventually die of starvation.  Some types of food
@@ -2554,10 +2562,10 @@ players can, but with some rather unpleasant side-effects.
 You  can  name one food item after something you like to eat with
 the fruit option.
 
-The command to eat food is `e'.
+The command to eat food is `e`.
 
 
-### 7.5. Scrolls (`?')
+### 7.5. Scrolls (`?`)
 
 Scrolls are labeled  with  various  titles,  probably  chosen  by
 ancient  wizards  for their amusement value (for example "READ ME," or
@@ -2589,28 +2597,28 @@ NetHack where mail is randomly generated internal to the  game,  these
 environment variables are ignored.  You can disable the mail daemon by
 turning off the mail option.
 
-The command to read a scroll is `r'.
+The command to read a scroll is `r`.
 
 
-### 7.6. Potions (`!')
+### 7.6. Potions (`!`)
 
 Potions are distinguished by the color of the liquid  inside  the
 flask.  They disappear after you quaff them.
 
 Clear  potions are potions of water.  Sometimes these are blessed
 or cursed, resulting in holy or unholy water.  Holy water is the  bane
-of the undead, so potions of holy water are good things to throw (`t')
-at them.  It is also sometimes very useful to dip ("#dip")  an  object
+of the undead, so potions of holy water are good things to throw (`t`)
+at them.  It is also sometimes very useful to dip ("`#dip`")  an  object
 into a potion.
 
-The command to drink a potion is `q' (quaff).
+The command to drink a potion is `q` (quaff).
 
 
-### 7.7. Wands (`/')
+### 7.7. Wands (`/`)
 
 Wands usually have multiple magical charges.  Some types of wands
 require a direction in which to zap them.  You can also  zap  them  at
-yourself  (just give a `.' or `s' for the direction).  Be warned, how-
+yourself  (just give a `.` or `s` for the direction).  Be warned, how-
 ever, for this is often unwise.  Other types of wands don't require  a
 direction.  The number of charges in a wand is random and decreases by
 one whenever you use it.
@@ -2634,11 +2642,11 @@ times  it  has been recharged followed by a colon and then by its cur-
 rent number of charges.  A current charge count of  -1  is  a  special
 case indicating that the wand has been cancelled.
 
-The  command  to  use a wand is `z' (zap).  To break one, use the
-`a' (apply) command.
+The  command  to  use a wand is `z` (zap).  To break one, use the
+`a` (apply) command.
 
 
-### 7.8. Rings (`=')
+### 7.8. Rings (`=`)
 
 Rings are very useful items, since they are relatively  permanent
 magic,  unlike  the  usually fleeting effects of potions, scrolls, and
@@ -2656,13 +2664,13 @@ be removed.  When worn gloves aren't cursed, you don't have  to  manu-
 ally  take  them off before putting on or removing a ring and then re-
 wear them after.  That's done implicitly to avoid unnecessary tedium.
 
-The commands to use rings are `P'  (put  on)  and  `R'  (remove).
-`A', `W', and `T' can also be used; see Amulets.
+The commands to use rings are `P`  (put  on)  and  `R`  (remove).
+`A`, `W`, and `T` can also be used; see Amulets.
 
 
-### 7.9. Spellbooks (`+')
+### 7.9. Spellbooks (`+`)
 
-Spellbooks  are tomes of mighty magic.  When studied with the `r'
+Spellbooks  are tomes of mighty magic.  When studied with the `r`
 (read) command, they transfer to the reader the knowledge of  a  spell
 (and therefore eventually become unreadable)--unless the attempt back-
 fires.  Reading a cursed spellbook or one  with  mystic  runes  beyond
@@ -2683,7 +2691,7 @@ category of spell casting will improve.  Over time, however, your mem-
 ory of each spell will dim, and you will need to relearn it.
 
 Some spells require a direction in which to cast them, similar to
-wands.  To cast one at yourself, just give a `.' or `s' for the direc-
+wands.  To cast one at yourself, just give a `.` or `s` for the direc-
 tion.   A few spells require you to pick a target location rather than
 just specify a particular direction.  Other spells don't  require  any
 direction or target.
@@ -2691,7 +2699,7 @@ direction or target.
 Just  as weapons are divided into groups in which a character can
 become proficient (to varying degrees), spells are similarly  grouped.
 Successfully  casting  a  spell  exercises  its skill group; using the
-"#enhance" command to advance  a  sufficiently  exercised  skill  will
+"`#enhance`" command to advance  a  sufficiently  exercised  skill  will
 affect  all  spells within the group.  Advanced skill may increase the
 potency of  spells,  reduce  their  risk  of  failure  during  casting
 attempts, and improve the accuracy of the estimate for how much longer
@@ -2701,14 +2709,14 @@ weapons skills.  (See also the section on "Weapon proficiency".)
 Casting a spell also requires flexible movement, and wearing var-
 ious types of armor may interfere with that.
 
-The command to read a spellbook is the same as for  scrolls,  `r'
-(read).   The  `+'  command  lists  each spell you know along with its
+The command to read a spellbook is the same as for  scrolls,  `r`
+(read).   The  `+`  command  lists  each spell you know along with its
 level, skill category, chance of failure when casting, and an estimate
-of  how  strongly  it  is  remembered.  The `Z' (cast) command casts a
+of  how  strongly  it  is  remembered.  The `Z` (cast) command casts a
 spell.
 
 
-### 7.10. Tools (`(')
+### 7.10. Tools (`(`)
 
 Tools are miscellaneous  objects  with  various  purposes.   Some
 tools  have a limited number of uses, akin to wand charges.  For exam-
@@ -2725,24 +2733,24 @@ The  blind  option can be set (prior to game start) to attempt to
 play the entire game without being able to see (a  self-imposed  chal-
 lenge which is very difficult to accomplish).
 
-The command to use a tool is `a' (apply).
+The command to use a tool is `a` (apply).
 
 
 #### 7.10.1. Containers
 
 You  may  encounter  bags,  boxes, and chests in your travels.  A
-tool of this sort can be opened with the "#loot" extended command when
+tool of this sort can be opened with the "`#loot`" extended command when
 you  are  standing  on top of it (that is, on the same floor spot), or
-with the `a' (apply) command  when  you  are  carrying  it.   However,
+with the `a` (apply) command  when  you  are  carrying  it.   However,
 chests  are  often  locked, and are in any case unwieldy objects.  You
 must set one down before unlocking it by using a key  or  lock-picking
-tool  with  the  `a' (apply) command, by kicking it with the `^D' com-
-mand, or by using a  weapon  to  force  the  lock  with  the  "#force"
+tool  with  the  `a` (apply) command, by kicking it with the ``^D`' com-
+mand, or by using a  weapon  to  force  the  lock  with  the  "`#force`"
 extended command.
 
 Some  chests are trapped, causing nasty things to happen when you
 unlock or open them.  You can check for and try  to  deactivate  traps
-with the "#untrap" extended command.
+with the "`#untrap`" extended command.
 
 When  the  contents of a container are known, that container will
 be described as something like "a sack containing 3 items".   In  this
@@ -2760,7 +2768,7 @@ tainer.
 
 The  apply  and loot commands allow you to take out and/or put in
 an arbitrary number of items in a single operation.  If  you  want  to
-take  everything out of a container, you can use the "#tip" command to
+take  everything out of a container, you can use the "`#tip`" command to
 pour the contents onto the floor.  This may be your only  way  to  get
 things  out  if  your  hands  are stuck to a cursed two-handed weapon.
 When your hands aren't stuck, you have the potential to pour the  con-
@@ -2768,7 +2776,7 @@ tents  into  another  container.   (As of this writing, the other con-
 tainer must be carried rather than on the floor.)
 
 
-### 7.11. Amulets (`"')
+### 7.11. Amulets (`"`)
 
 Amulets are very similar to rings, and often more powerful.  Like
 rings,  amulets have various magical properties, some beneficial, some
@@ -2778,15 +2786,15 @@ Only one amulet may be worn at a time, around  your  neck.   Like
 wearing  rings, wearing an amulet affects your metabolism, causing you
 to grow hungry more rapidly.
 
-The commands to use amulets are the same as for rings,  `P'  (put
-on)  and  `R'  (remove).  `A' can be used to remove various worn items
-including amulets.  Also, `W' (wear) and `T' (take off) which are nor-
+The commands to use amulets are the same as for rings,  `P`  (put
+on)  and  `R`  (remove).  `A` can be used to remove various worn items
+including amulets.  Also, `W` (wear) and `T` (take off) which are nor-
 mally  for  armor can be used for amulets and other accessories (rings
 and eyewear), but accessories won't be shown as likely candidates in a
 prompt for choosing what to wear or take off.
 
 
-### 7.12. Gems (`*')
+### 7.12. Gems (`*`)
 
 Some  gems are valuable, and can be sold for a lot of gold.  They
 are also a far more efficient way of carrying your  riches.   Valuable
@@ -2798,7 +2806,7 @@ less valuable.  All rocks, however, can be used as projectile  weapons
 throw them by hand.
 
 
-### 7.13. Large rocks (``')
+### 7.13. Large rocks (`` ` ``)
 
 Statues and boulders are not particularly useful, and are  gener-
 ally heavy.  It is rumored that some statues are not what they seem.
@@ -2809,7 +2817,7 @@ you  can  smash it into a pile of small rocks with breaking magic or a
 pick-axe.  It is possible to move onto a boulder's location if certain
 conditions are met; ordinarily one of those conditions is that pushing
 it any further be blocked.  Using the  move-without-picking-up  prefix
-(default  key  `m') prior to the direction of movement will attempt to
+(default  key  `m`) prior to the direction of movement will attempt to
 move to a boulder's location without pushing it  in  addition  to  the
 prefix's usual action of suppressing auto-pickup at the destination.
 
@@ -2821,11 +2829,11 @@ because  they  don't  block  movement.  They can be smashed into rocks
 though.
 
 For some configurations of the program,  statues  are  no  longer
-shown  as  ``'  but by the letter representing the monster they depict
+shown  as  `` ` ``  but by the letter representing the monster they depict
 instead.
 
 
-### 7.14. Gold (`$')
+### 7.14. Gold (`$`)
 
 Gold adds to your score, and you can buy things in shops with it.
 There  are  a number of monsters in the dungeon that may be influenced
@@ -2833,7 +2841,7 @@ by the amount of gold you are carrying (shopkeepers aside).
 
 Gold pieces are the only type of object where  bless/curse  state
 does  not  apply.   They're  always  uncursed  but  never described as
-uncursed even if you turn off the implicit_uncursed option.   You  can
+uncursed even if you turn off the `implicit_uncursed` option.   You  can
 set  the  goldX option if you prefer to have gold pieces be treated as
 bless/curse state unknown rather than as known to be  uncursed.   Only
 matters  when  you're using an object selection prompt that can filter
@@ -2856,7 +2864,7 @@ there, then once you see or feel that location again you will  re-dis-
 cover the object and resume remembering it.
 
 The situation is the same for a pile of objects, except that only
-the top item of the pile is displayed.  The hilite_pile option can  be
+the top item of the pile is displayed.  The `hilite_pile` option can  be
 enabled in order to show an item differently when it is the top one of
 a pile.
 
@@ -2866,7 +2874,7 @@ a pile.
 As if winning NetHack were not difficult enough, certain  players
 seek  to challenge themselves by imposing restrictions on the way they
 play the game.  The game automatically  tracks  some  of  these  chal-
-lenges,  which can be checked at any time with the #conduct command or
+lenges,  which can be checked at any time with the `#conduct` command or
 at the end of the game.  When you perform an  action  which  breaks  a
 challenge,  it  will  no  longer  be listed.  This gives players extra
 "bragging rights" for winning the game with  these  challenges.   Note
@@ -2884,7 +2892,7 @@ either.
 
 A  strict  vegan  diet  is one which avoids any food derived from
 animals.  The primary source of nutrition is  fruits  and  vegetables.
-The  corpses  and  tins of blobs (`b'), jellies (`j'), and fungi (`F')
+The  corpses  and  tins of blobs (`b`), jellies (`j`), and fungi (`F`)
 are also considered to be vegetable matter.   Certain  human  food  is
 prepared without animal products; namely, lembas wafers, cram rations,
 food rations (gunyoki), K-rations, and C-rations.   Metal  or  another
@@ -2894,7 +2902,7 @@ eating such items still counts against foodless conduct.
 
 Vegetarians  do not eat animals; however, they are less selective
 about eating animal byproducts than vegans.  In addition to the  vegan
-items  listed above, they may eat any kind of pudding (`P') other than
+items  listed above, they may eat any kind of pudding (`P`) other than
 the black puddings, eggs and food made from eggs (fortune cookies  and
 pancakes),  food made with milk (cream pies and candy bars), and lumps
 of royal jelly.  Monks are expected to observe a vegetarian diet.
@@ -2922,7 +2930,7 @@ player-defined  "fruits",  although they could be anything from "cher-
 ries" to "pork chops", are also assumed to be vegan.
 
 An atheist is one who rejects religion.  This means that you can-
-not #pray, #offer sacrifices to any god, #turn undead, or #chat with a
+not `#pray`, `#offer` sacrifices to any god, `#turn` undead, or `#chat` with a
 priest.  Particularly selective readers may argue that playing Monk or
 Priest  characters  should violate this conduct; that is a choice left
 to the player.  Offering the Amulet of Yendor to your god is necessary
@@ -2961,7 +2969,7 @@ when in that branch of the dungeon.  Some  rules  can't  be  bypassed,
 such  as  being unable to push a boulder diagonally.  Other rules can,
 such as not smashing boulders with magic or tools, but doing so causes
 you  to receive a luck penalty.  No message about that is given at the
-time, but it is tracked as a conduct.  The #conduct command and end of
+time, but it is tracked as a conduct.  The `#conduct` command and end of
 game  disclosure  will  report  whether you have abided by the special
 rules of Sokoban, and if not, how many times you violated  them,  pro-
 viding you with a way to discover which actions incur bad luck so that
@@ -3079,7 +3087,7 @@ NetHack behaves.
 
 ### 9.1. Setting the options
 
-Options may be set in a number of ways.  Within the game, the `O'
+Options may be set in a number of ways.  Within the game, the `O`
 command  allows  you to view all options and change most of them.  You
 can also set options automatically by placing them in a  configuration
 file, or in the NETHACKOPTIONS environment variable.  Some versions of
@@ -3108,12 +3116,12 @@ file, NetHack will create one for you using the default template file.
 
 On MS-DOS, it is "defaults.nh" in the same folder as nethack.exe.
 
-Any  line  in the configuration file starting with `#' is treated
+Any  line  in the configuration file starting with `#` is treated
 as a comment and ignored.  Empty lines are ignored.
 
-Any line beginning with `[' and ending in `]' is a section marker
-(the  closing  `]' can be followed by whitespace and then an arbitrary
-comment beginning with `#').  The text between the square brackets  is
+Any line beginning with `[` and ending in `]` is a section marker
+(the  closing  `]` can be followed by whitespace and then an arbitrary
+comment beginning with `#`).  The text between the square brackets  is
 the  section  name.   Section  markers  are  only valid after a CHOOSE
 directive and their names are case-insensitive.  Lines after a section
 marker  belong  to  that  section up until another section starts or a
@@ -3128,10 +3136,10 @@ settings particular to that directive.
 
 Here is a list of allowed directives:
 
-OPTIONS
+**`OPTIONS`**
 There are two types of options, boolean and compound options.  Bool-
 ean options toggle a setting on or off, while compound options  take
-more  diverse  values.   Prefix a boolean option with "no" or `!' to
+more  diverse  values.   Prefix a boolean option with "no" or `!` to
 turn it off.  For compound options, the option name  and  value  are
 separated  by  a colon.  Some options are persistent, and apply only
 to new games.  You can specify multiple OPTIONS directives, and mul-
@@ -3140,35 +3148,35 @@ tiple  options  separated  by  commas in a single OPTIONS directive.
 
 Example:
 
-OPTIONS=dogname:Fido
-OPTIONS=!legacy,autopickup,pickup_types:$"=/!?+
+    OPTIONS=dogname:Fido
+    OPTIONS=!legacy,autopickup,pickup_types:$"=/!?+
 
-HACKDIR
+**`HACKDIR`**
 Default location of files NetHack needs. On Windows HACKDIR defaults
 to  the  location of the NetHack.exe or NetHackw.exe file so setting
 HACKDIR to override that is not usually necessary or recommended.
 
-LEVELDIR
+**`LEVELDIR`**
 The location that in-progress level files are  stored.  Defaults  to
 HACKDIR, must be writable.
 
-SAVEDIR
+**`SAVEDIR`**
 The  location  where saved games are kept. Defaults to HACKDIR, must
 be writable.
 
-BONESDIR
+**`BONESDIR`**
 The location that bones files are kept. Defaults to HACKDIR, must be
 writable.
 
-LOCKDIR
+**`LOCKDIR`**
 The location that file synchronization locks are stored. Defaults to
 HACKDIR, must be writable.
 
-TROUBLEDIR
+**`TROUBLEDIR`**
 The location that a record of game aborts  and  self-diagnosed  game
 problems is kept. Defaults to HACKDIR, must be writable.
 
-AUTOCOMPLETE
+**`AUTOCOMPLETE`**
 Enable  or  disable an extended command autocompletion.  Autocomple-
 tion has no effect for the X11 windowport.  You can specify multiple
 autocompletions.   To  enable autocompletion, list the extended com-
@@ -3179,11 +3187,11 @@ Example:
 
 AUTOCOMPLETE=zap,!annotate
 
-AUTOPICKUP_EXCEPTION
-Set  exceptions  to  the  pickup_types option.  See the "Configuring
+**`AUTOPICKUP_EXCEPTION`**
+Set  exceptions  to  the  `pickup_types` option.  See the "Configuring
 Autopickup Exceptions" section.
 
-BINDINGS
+**`BINDINGS`**
 Change the key bindings of some  special  keys,  menu  accelerators,
 extended commands, or mouse buttons.  You can specify multiple bind-
 ings.  Format is key followed by the command, separated by a  colon.
@@ -3191,47 +3199,47 @@ See the "Changing Key Bindings" section for more information.
 
 Example:
 
-BIND=^X:getpos.autodescribe
+BIND=`^X`:getpos.autodescribe
 
-CHOOSE
+**`CHOOSE`**
 Chooses at random one of the comma-separated parameters as an active
 section name.  Lines in other sections are ignored.
 
 Example:
 
-OPTIONS=color
+    OPTIONS=color
 CHOOSE=char A,char B
 [char A]
-OPTIONS=role:arc,race:dwa,align:law,gender:fem
+    OPTIONS=role:arc,race:dwa,align:law,gender:fem
 [char B]
-OPTIONS=role:wiz,race:elf,align:cha,gender:mal
-[] #end of CHOOSE
-OPTIONS=!rest_on_space
+    OPTIONS=role:wiz,race:elf,align:cha,gender:mal
+[] `#end` of CHOOSE
+    OPTIONS=!`rest_on_space`
 
 If [] is present, the preceding section is closed and no new section
 begins;  whatever follows will be common to all sections.  Otherwise
 
 the last section extends to the end of the options file.
 
-MENUCOLOR
+**`MENUCOLOR`**
 Highlight menu lines with different colors.   See  the  "Configuring
 Menu Colors" section.
 
-MSGTYPE
+**`MSGTYPE`**
 Change  the  way messages are shown in the top status line.  See the
 "Configuring Message Types" section.
 
-ROGUESYMBOLS
+**`ROGUESYMBOLS`**
 Custom symbols for the rogue level's symbol set.  See SYMBOLS below.
 
-SOUND
+**`SOUND`**
 Define a sound mapping.  See the "Configuring User Sounds" section.
 
-SOUNDDIR
+**`SOUNDDIR`**
 Define the directory that contains the sound files.  See  the  "Con-
 figuring User Sounds" section.
 
-SYMBOLS
+**`SYMBOLS`**
 Override  one or more symbols in the symbol set used for all dungeon
 levels except for the  special  rogue  level.   See  the  "Modifying
 NetHack Symbols" section.
@@ -3241,7 +3249,7 @@ Example:
 # replace small punctuation (tick marks) with digits
 SYMBOLS=S_golem:7
 
-WIZKIT
+**`WIZKIT`**
 Debug mode only:  extra items to add to initial inventory.  Value is
 the name of a text file containing a list of  item  names,  one  per
 line,  up  to a maximum of 128 lines.  Each line is processed by the
@@ -3254,21 +3262,21 @@ WIZKIT=~/wizkit.txt
 Here is an example of configuration file contents:
 
 # Set your character's role, race, gender, and alignment.
-OPTIONS=role:Valkyrie, race:Human, gender:female, align:lawful
+    OPTIONS=role:Valkyrie, race:Human, gender:female, align:lawful
 #
 # Turn on autopickup, set automatically picked up object types
-OPTIONS=autopickup,pickup_types:$"=/!?+
+    OPTIONS=autopickup,pickup_types:$"=/!?+
 #
 # Map customization
-OPTIONS=color           # Display things in color if possible
-OPTIONS=lit_corridor    # Show lit corridors differently
-OPTIONS=hilite_pet,hilite_pile
+    OPTIONS=color           # Display things in color if possible
+    OPTIONS=`lit_corridor`    # Show lit corridors differently
+    OPTIONS=`hilite_pet`,`hilite_pile`
 # Replace small punctuation (tick marks) with digits
-OPTIONS=boulder:0
+    OPTIONS=boulder:0
 SYMBOLS=S_golem:7
 #
 # No startup splash screen. Windows GUI only.
-OPTIONS=!splash_screen
+    OPTIONS=!`splash_screen`
 
 
 ### 9.3. Using the NETHACKOPTIONS environment variable
@@ -3276,7 +3284,7 @@ OPTIONS=!splash_screen
 The NETHACKOPTIONS variable is a comma-separated list of  initial
 values  for  the  various options.  Some can only be turned on or off.
 You turn one of these on by adding the name of the option to the list,
-and  turn it off by typing a `!' or "no" before the name.  Others take
+and  turn it off by typing a `!` or "no" before the name.  Others take
 a character string as a value.  You can set string options  by  typing
 the  option  name,  a  colon or equals sign, and then the value of the
 string.  The value is terminated by the  next  comma  or  the  end  of
@@ -3288,7 +3296,7 @@ fruit is set to "lime", you would enter the command
 
 % setenv NETHACKOPTIONS "color,\!leg,name:Blue Meanie,fruit:lime"
 
-in  csh  (note  the  need to escape the `!' since it's special to that
+in  csh  (note  the  need to escape the `!` since it's special to that
 shell), or the pair of commands
 
 $ NETHACKOPTIONS="color,!leg,name:Blue Meanie,fruit:lime"
@@ -3304,10 +3312,10 @@ not allowed.
 
 Instead of a comma-separated list of options, NETHACKOPTIONS  can
 be  set  to the full name of a configuration file you want to use.  If
-that full name doesn't start with a slash, precede it  with  `@'  (at-
+that full name doesn't start with a slash, precede it  with  `@`  (at-
 sign)  to  let  NetHack know that the rest is intended as a file name.
 
-If it does start with `/', the at-sign is optional.
+If it does start with `/`, the at-sign is optional.
 
 
 ### 9.4. Customization options
@@ -3336,11 +3344,11 @@ role for a description of how to use negation to exclude choices.
 
 If align is not specified, there is no default value; player will be
 prompted unless role and/or race  forces  a  choice  for  alignment.
-Cannot be set with the `O' command.  Persistent.
+Cannot be set with the `O` command.  Persistent.
 
 autodescribe
 Automatically  describe the terrain under cursor when asked to get a
-location on the map (default true).  The  whatis_coord  option  con-
+location on the map (default true).  The  `whatis_coord`  option  con-
 trols whether the description includes map coordinates.
 
 autodig
@@ -3355,21 +3363,21 @@ autopickup
 Automatically  pick  up  things  onto  which you move (default off).
 Persistent.
 
-See pickup_types and also autopickup_exception for  ways  to  refine
+See `pickup_types` and also `autopickup_exception` for  ways  to  refine
 the behavior.
 
 Note: prior to version 3.7.0, the default for autopickup was on.
 
 autoquiver
-This  option  controls  what happens when you attempt the `f' (fire)
+This  option  controls  what happens when you attempt the `f` (fire)
 
 command when nothing is quivered or readied (default  false).   When
 true,  the  computer  will  fill  your quiver or quiver sack or make
 ready some suitable weapon.  Note that it will not take into account
 the  blessed/cursed  status,  enchantment, damage, or quality of the
 weapon; you are free to manually fill your quiver or quiver sack  or
-make  ready  with the `Q' command instead.  If no weapon is found or
-the option is false, the `t' (throw) command  is  executed  instead.
+make  ready  with the `Q` command instead.  If no weapon is found or
+the option is false, the `t` (throw) command  is  executed  instead.
 Persistent.
 
 autounlock
@@ -3395,7 +3403,7 @@ None      - none  of  the  above;  can't  be combined with the other
 choices.
 
 Omitting the value is treated as if autounlock:apply-key.  Preceding
-autounlock with `!' or "no" is treated as autounlock:none.
+autounlock with `!` or "no" is treated as autounlock:none.
 
 Applying  a  key  might  set  off a trap if the door or container is
 trapped.  Successfully kicking a door will  break  it  and  wake  up
@@ -3413,12 +3421,12 @@ Allow saving and loading bones files (default true).  Persistent.
 
 boulder
 Set  the  character  used to display boulders (default is the "large
-rock" class symbol, ``').
+rock" class symbol, `` ` ``).
 
 catname
 Name your starting cat (for example  "catname:Morris").   Cannot  be
 
-set with the `O' command.
+set with the `O` command.
 
 character
 Synonym  for  "role" to pick the type of your character (for example
@@ -3436,22 +3444,22 @@ confirm
 Have user confirm attacks on pets, shopkeepers, and other  peaceable
 creatures (default on).  Persistent.
 
-dark_room
+`dark_room`
 Show out-of-sight areas of lit rooms (default on).  Persistent.
 
 deaf
 Start the character permanently deaf (default false).  Persistent.
 
-dropped_nopick
+`dropped_nopick`
 If  this  option  is on, items you dropped will not be automatically
 picked  up,  even  if  autopickup  is  also  on  and  they  are   in
-pickup_types  or match a positive autopickup exception (default on).
+`pickup_types`  or match a positive autopickup exception (default on).
 Persistent.
 
 disclose
 Controls what information the program reveals when  the  game  ends.
 Value is a space separated list of prompting/category pairs (default
-is "ni na nv ng nc no", prompt with default response of `n' for each
+is "ni na nv ng nc no", prompt with default response of `n` for each
 candidate).  Persistent.  The possibilities are:
 
 i - disclose your inventory;
@@ -3470,18 +3478,18 @@ n - prompt you and default to no on the prompt;
 - - do not disclose it and do not prompt.
 
 The listings of vanquished monsters and of genocided  types  can  be
-sorted, so there are two additional choices for `v' and `g':
+sorted, so there are two additional choices for `v` and `g`:
 
 ? - prompt you and default to ask on the prompt;
 # - disclose it without prompting, ask for sort order.
 
-Asking  refers to picking one of the orderings from a menu.  The `+'
+Asking  refers to picking one of the orderings from a menu.  The `+`
 disclose without prompting choice, or being prompted  and  answering
-`y'  rather  than `a', will default to showing monsters in the order
+`y`  rather  than `a`, will default to showing monsters in the order
 specified by the sortvanquished option.
 
-Omitted categories are implicitly added with `n' prefix.   Specified
-categories  with omitted prefix implicitly use `+' prefix.  Order of
+Omitted categories are implicitly added with `n` prefix.   Specified
+categories  with omitted prefix implicitly use `+` prefix.  Order of
 the disclosure categories does not matter, program display for  end-
 of-game disclosure follows a set sequence.
 
@@ -3498,7 +3506,7 @@ them that you hadn't discovered.
 
 dogname
 Name your starting dog (for example "dogname:Fang").  Cannot be  set
-with the `O' command.
+with the `O` command.
 
 extmenu
 Changes  the  extended commands interface to pop-up a menu of avail-
@@ -3512,11 +3520,11 @@ commands (on) or just the subset of commands which  have  tradition-
 ally been considered extended ones (off).
 
 female
-An obsolete synonym for "gender:female".  Cannot be set with the `O'
+An obsolete synonym for "gender:female".  Cannot be set with the `O`
 command.
 
 fireassist
-This option controls what happens when you attempt  the  `f'  (fire)
+This option controls what happens when you attempt  the  `f`  (fire)
 and  don't  have  an appropriate launcher, such as a bow or a sling,
 wielded.  If on, you will automatically wield the launcher.  Default
 is on.
@@ -3526,7 +3534,7 @@ An object's inventory letter sticks to it when it's dropped (default
 on).  If this is off, dropping an object shifts  all  the  remaining
 inventory letters.  Persistent.
 
-force_invmenu
+`force_invmenu`
 Commands  asking for an inventory item show a menu instead of a text
 query with possible menu letters. Default is off.
 
@@ -3547,39 +3555,39 @@ a description of how to use negation to exclude choices.
 
 If  gender  is not specified, there is no default value; player will
 be prompted unless role and/or race  forces  a  choice  for  gender.
-Cannot be set with the `O' command.  Persistent.
+Cannot be set with the `O` command.  Persistent.
 
 goldX
 When filtering objects based on bless/curse state (BUCX), whether to
 treat gold pieces as X (unknown bless/curse state, when "on")  or  U
 (known  to  be  uncursed,  when  "off", the default).  Gold is never
 blessed or cursed, but it is not described as "uncursed"  even  when
-the implicit_uncursed option is "off".
+the `implicit_uncursed` option is "off".
 
 help
 If  more  information  is available for an object looked at with the
-`/' command, ask if you want to see it (default on).   Turning  help
+`/` command, ask if you want to see it (default on).   Turning  help
 off  makes  just  looking  at things faster, since you aren't inter-
 rupted with the "More info?" prompt, but  it  also  means  that  you
 might  miss  some interesting and/or important information.  Persis-
 tent.
 
-herecmd_menu
+`herecmd_menu`
 When using a windowport that supports mouse and clicking on yourself
 or  next  to  you, show a menu of possible actions for the location.
-Same as "#herecmdmenu" and "#therecmdmenu" commands.
+Same as "`#herecmdmenu`" and "`#therecmdmenu`" commands.
 
-hilite_pet
+`hilite_pet`
 Visually distinguish pets from similar animals (default  off).   The
 behavior  of  this  option depends on the type of windowing you use.
 In text windowing, text highlighting or inverse video is often used;
 with tiles, generally displays a heart symbol near pets.
 
 With the tty or curses interface, the petattr option controls how to
-highlight pets and setting it will turn the hilite_pet option on  or
+highlight pets and setting it will turn the `hilite_pet` option on  or
 off as warranted.
 
-hilite_pile
+`hilite_pile`
 Visually  distinguish  piles  of  objects  from  individual  objects
 (default off).  The behavior of this option depends on the  type  of
 windowing  you use.  In text windowing, text highlighting or inverse
@@ -3604,19 +3612,19 @@ cal HP threshold.
 The "Qt" interface also supports hitpointbar, by drawing a solid bar
 above the name and title with a hard-coded  color  scheme.   (As  of
 this writing, having the bar enabled unintentionally inhibits resiz-
-ing the status panel.  To resize that, use the #optionsfull  command
+ing the status panel.  To resize that, use the `#optionsfull`  command
 to  toggle the hitpointbar option off, perform the resize while it's
 off, then use the same command to toggle it back on.)
 
 horsename
 Name your starting horse (for example "horsename:Trigger").   Cannot
-be set with the `O' command.
+be set with the `O` command.
 
 ignintr
 Ignore  interrupt  signals, including breaks (default off).  Persis-
 tent.
 
-implicit_uncursed
+`implicit_uncursed`
 Omit "uncursed" from object descriptions when it can be deduced from
 other aspects of the description (default on).  Persistent.
 
@@ -3626,33 +3634,33 @@ legacy
 Display an introductory message when starting the game (default on).
 Persistent.
 
-lit_corridor
+`lit_corridor`
 Show corridor squares seen by night vision or a light source held by
 your character as lit (default off).  Persistent.
 
 lootabc
-When  using  a  menu  to interact with a container, use the old `a',
-`b', and `c' keyboard shortcuts rather than the mnemonics `o',  `i',
+When  using  a  menu  to interact with a container, use the old `a`,
+`b`, and `c` keyboard shortcuts rather than the mnemonics `o`,  `i`,
 
-and `b' (default off).  Persistent.
+and `b` (default off).  Persistent.
 
 mail
 Enable mail delivery during the game (default on).  Persistent.
 
 male
-An  obsolete  synonym for "gender:male".  Cannot be set with the `O'
+An  obsolete  synonym for "gender:male".  Cannot be set with the `O`
 command.
 
-mention_decor
+`mention_decor`
 Give feedback when walking onto various  dungeon  features  such  as
 stairs,  fountains,  or  altars  which are ordinarily only described
 when covered by one or more objects (default off).   Cannot  be  set
-with the `O' command.  Persistent.
+with the `O` command.  Persistent.
 
-mention_map
+`mention_map`
 Give feedback when interesting map locations change (default off).
 
-mention_walls
+`mention_walls`
 Give  feedback  when  walking against a wall (default off).  Persis-
 tent.
 
@@ -3660,7 +3668,7 @@ menucolors
 Enable coloring menu lines (default  off).   See  "Configuring  Menu
 Colors" on how to configure the colors.
 
-menustyle
+`menustyle`
 Controls the method used when you need to choose various objects (in
 response to the Drop (aka droptype)  command,  for  instance).   The
 value  specified should be the first letter of one of the following:
@@ -3674,39 +3682,39 @@ class(es).  Combination starts with a prompt for object class(es) of
 interest,  but  then displays a menu of matching objects rather than
 prompting one-by-one.  Full displays a menu of object classes rather
 than  a  character  prompt,  and then a menu of matching objects for
-selection.  (Choosing its `A' (Autoselect-All) choice skips the sec-
+selection.  (Choosing its `A` (Autoselect-All) choice skips the sec-
 ond  menu.   To  avoid  choosing that by accident, set paranoid_con-
 firm:AutoAll to require confirmation.)   Partial  skips  the  object
 class filtering and immediately displays a menu of all objects.
 
-menu_deselect_all
-Key to deselect all items in a menu.  Default `-'.
+`menu_deselect_all`
+Key to deselect all items in a menu.  Default `-`.
 
-menu_deselect_page
-Key to deselect all items on this page of a menu.  Default `\'.
+`menu_deselect_page`
+Key to deselect all items on this page of a menu.  Default `\`.
 
-menu_first_page
-Key to jump to the first page in a menu.  Default `^'.
+`menu_first_page`
+Key to jump to the first page in a menu.  Default `^`.
 
-menu_headings
+`menu_headings`
 Controls  how  the headings in a menu are highlighted.  Takes a text
 attribute, or text color and attribute separated by ampersand.   For
 allowed  attributes  and colors, see "Configuring Menu Colors".  Not
 all ports can actually display all types.
 
-menu_invert_all
-Key to invert all items in a menu.  Default `@'.
+`menu_invert_all`
+Key to invert all items in a menu.  Default `@`.
 
-menu_invert_page
-Key to invert all items on this page of a menu.  Default `~'.
+`menu_invert_page`
+Key to invert all items on this page of a menu.  Default `~`.
 
-menu_last_page
-Key to jump to the last page in a menu.  Default `|'.
+`menu_last_page`
+Key to jump to the last page in a menu.  Default `|`.
 
-menu_next_page
-Key to go to the next menu page.  Default `>'.
+`menu_next_page`
+Key to go to the next menu page.  Default `>`.
 
-menu_objsyms
+`menu_objsyms`
 Inventory and other object menus are normally  separated  by  object
 class (weapons, armor, and so forth), with a menu header line at the
 beginning of each group.  You can have menus add the display  symbol
@@ -3731,34 +3739,34 @@ Supported  by  tty  and  curses.   When setting the value, it can be
 specified by digit or keyword.  The  default  value  is  Conditional
 (4).
 
-menu_overlay
+`menu_overlay`
 Do not clear the screen before drawing menus, and align menus to the
 right edge of the screen. Only for the tty port.  (default on)
 
-menu_previous_page
-Key to go to the previous menu page.  Default `<'.
+`menu_previous_page`
+Key to go to the previous menu page.  Default `<`.
 
-menu_search
+`menu_search`
 Key to search for some text and toggle selection state  of  matching
-menu items.  Default `:'.
+menu items.  Default `:`.
 
-menu_select_all
-Key to select all items in a menu.  Default `.'.
+`menu_select_all`
+Key to select all items in a menu.  Default `.`.
 
-menu_select_page
-Key to select all items on this page of a menu.  Default `,'.
+`menu_select_page`
+Key to select all items on this page of a menu.  Default `,`.
 
-menu_shift_left
+`menu_shift_left`
 Key to scroll a menu--one which has been scrolled right--back to the
-left.  Implemented for perm_invent only by curses and X11.   Default
-`{'.
+left.  Implemented for `perm_invent` only by curses and X11.   Default
+`{`.
 
-menu_shift_right
+`menu_shift_right`
 Key  to  scroll  a  menu which has text beyond the right edge to the
-right.  Implemented for perm_invent only by curses and X11.  Default
-`}'.
+right.  Implemented for `perm_invent` only by curses and X11.  Default
+`}`.
 
-mon_movement
+`mon_movement`
 Show  a  message  when  hero  notices a monster movement (default is
 off).
 
@@ -3770,7 +3778,7 @@ montelecontrol
 Prompt for destination whenever any monster gets teleported (default
 off).  Debug mode only.
 
-mouse_support
+`mouse_support`
 Allow use of the mouse for input and travel.  Valid settings are:
 
 0 - disabled
@@ -3782,12 +3790,12 @@ port is the same as specifying 0.
 
 msghistory
 The  number of top line messages to keep (and be able to recall with
-`^P') (default 20).  Cannot be set with the `O' command.
+``^P`') (default 20).  Cannot be set with the `O` command.
 
-msg_window
+`msg_window`
 Allows you to change the way recalled messages are displayed.   Cur-
 rently  it  is  only  supported  for  tty (all four choices) and for
-curses (`f' and `r' choices, default `r').  The possible values are:
+curses (`f` and `r` choices, default `r`).  The possible values are:
 
 s - single message (default; only choice prior to 3.4.0);
 c - combination, two messages as "single", then as "full";
@@ -3809,12 +3817,12 @@ one will be automatically chosen.
 On some systems, the default is the player's user name;  on  others,
 there is no default and the player will be prompted.  The former can
 made to behave like the latter by specifying a generic name such  as
-``player''.  Cannot be set with the `O' command.
+``player''.  Cannot be set with the `O` command.
 
 news
 Read the NetHack news file, if present (default on).  Since the news
 is shown at the beginning of the game, there's no point  in  setting
-this with the `O' command.
+this with the `O` command.
 
 nudist
 Start the character with no armor (default false).  Persistent.
@@ -3822,26 +3830,26 @@ Start the character with no armor (default false).  Persistent.
 null
 Send padding nulls to the terminal (default on).  Persistent.
 
-number_pad
+`number_pad`
 Use digit keys instead of letters to move (default 0 or off).  Valid
 settings are:
 
 0 - move by letters; "yuhjklbn"
-1 - move by numbers; digit `5' acts as `G' movement prefix
-2 - like 1 but `5' works as `g' prefix instead of as `G'
+1 - move by numbers; digit `5` acts as `G` movement prefix
+2 - like 1 but `5` works as `g` prefix instead of as `G`
 3 - by numbers using phone key layout; 123 above, 789 below
 4 - combines 3 with 2; phone layout plus MS-DOS compatibility
--1 - by letters but use `z' to go northwest, `y' to zap wands
+-1 - by letters but use `z` to go northwest, `y` to zap wands
 
 For backward compatibility, omitting a value is the same as specify-
-ing  1  and  negating number_pad is the same as specifying 0.  (Set-
+ing  1  and  negating `number_pad` is the same as specifying 0.  (Set-
 tings 2 and 4 are for compatibility with MS-DOS or old PC  Hack;  in
-addition  to the different behavior for `5', `Alt-5' acts as `G' and
-`Alt-0' acts as `I'.  Setting -1 is to accommodate some QWERTZ  key-
-boards  which  have  the  location of the `y' and `z' keys swapped.)
+addition  to the different behavior for `5`, `Alt-5' acts as `G` and
+`Alt-0' acts as `I`.  Setting -1 is to accommodate some QWERTZ  key-
+boards  which  have  the  location of the `y` and `z` keys swapped.)
 When moving by numbers, to enter a count prefix for  those  commands
 which  accept one (such as "12s" to search twelve times), precede it
-with the letter `n' ("n12s").
+with the letter `n` ("n12s").
 
 packorder
 Specify   the   order   to   list   object   types    in    (default
@@ -3849,48 +3857,48 @@ Specify   the   order   to   list   object   types    in    (default
 taining the symbols for the various object types.  Any omitted types
 are filled in at the end from the previous order.
 
-paranoid_confirmation
+`paranoid_confirmation`
 A  space  separated  list  of  specific  situations  where alternate
 
 prompting is desired.  The  default  is  "paranoid_confirmation:pray
 swim trap".
 
 Confirm     - for  any prompts which are set to require "yes" rather
-than `y', also  require  "no"  to  reject  instead  of
+than `y`, also  require  "no"  to  reject  instead  of
 accepting any non-yes response as no; changes pray and
 AutoAll to require "yes" or `no' too;
-quit        - require "yes" rather than `y' to confirm quitting  the
+quit        - require "yes" rather than `y` to confirm quitting  the
 game or switching into non-scoring explore mode;
-die         - require  "yes"  rather  than `y' to confirm dying (not
+die         - require  "yes"  rather  than `y` to confirm dying (not
 useful in normal play; applies to explore mode);
-bones       - require "yes" rather than `y' to confirm saving  bones
+bones       - require "yes" rather than `y` to confirm saving  bones
 data when dying in debug mode;
-attack      - require  "yes"  rather than `y' to confirm attacking a
+attack      - require  "yes"  rather than `y` to confirm attacking a
 peaceful monster;
-wand-break  - require "yes" rather than `y' to  confirm  breaking  a
+wand-break  - require "yes" rather than `y` to  confirm  breaking  a
 wand with the apply command;
-eating      - require  "yes"  rather  than `y' to confirm whether to
+eating      - require  "yes"  rather  than `y` to confirm whether to
 continue eating;
-Were-change - require "yes" rather than `y' to confirm changing form
+Were-change - require "yes" rather than `y` to confirm changing form
 due to lycanthropy when hero has polymorph control;
-pray        - require  `y' to confirm an attempt to pray rather than
+pray        - require  `y` to confirm an attempt to pray rather than
 immediately praying; on by default; (to require  "yes"
-rather than just `y', set Confirm too);
-trap        - require `y' to confirm an attempt to move into or onto
+rather than just `y`, set Confirm too);
+trap        - require `y` to confirm an attempt to move into or onto
 a known trap, unless doing  so  is  considered  to  be
 harmless; when enabled, this confirmation is also used
 for moving into visible gas cloud regions; (to require
-"yes"  rather than just `y', set Confirm too); confir-
-mation can be skipped by using the `m'  movement  pre-
+"yes"  rather than just `y`, set Confirm too); confir-
+mation can be skipped by using the `m`  movement  pre-
 fix;
 swim        - prevent walking into water or lava; on by default; (to
 deliberately step onto/into such terrain when this  is
-set, use the `m' movement prefix when adjacent);
-AutoAll     - require  confirmation  when  the  `A' (Autoselect-All)
+set, use the `m` movement prefix when adjacent);
+AutoAll     - require  confirmation  when  the  `A` (Autoselect-All)
 choice is selected in object class filtering menus for
 menustyle:Full;  (to  require  "yes"  rather than just
-`y', set Confirm too);
-Remove      - require selection from inventory for `R' and `T'  com-
+`y`, set Confirm too);
+Remove      - require selection from inventory for `R` and `T`  com-
 mands even when wearing just one applicable item;
 all         - turn on all of the above.
 
@@ -3904,35 +3912,35 @@ tion:+attack  Remove.   To  remove an entry that has been previously
 set without removing others, precede the first  entry  in  the  list
 with  a  minus  sign, paranoid_confirmation:-swim.  To both add some
 new entries and remove some old ones, you  can  use  multiple  para-
-noid_confirmation  option  settings, or you can use the `+' form and
+`noid_confirmation`  option  settings, or you can use the `+` form and
 list entries to be added by their name and entries to be removed  by
 
-`!' and name.  The positive (no `!') and negative (with `!') entries
+`!` and name.  The positive (no `!`) and negative (with `!`) entries
 can be intermixed.
 
 pauper
 Start the character with no possessions  (default  false).   Persis-
 tent.
 
-perm_invent
+`perm_invent`
 If  true, always display your current inventory in a window (default
 false).
 
 This only makes sense for windowing system interfaces that implement
-this  feature.   For  those  that do, the perminv_mode option can be
-used to refine what gets displayed for perm_invent.  Setting that to
-a value other than none while perm_invent is false will change it to
+this  feature.   For  those  that do, the `perminv_mode` option can be
+used to refine what gets displayed for `perm_invent`.  Setting that to
+a value other than none while `perm_invent` is false will change it to
 true.
 
-perminv_mode
-Augments the perm_invent option.  Value is one of
+`perminv_mode`
+Augments the `perm_invent` option.  Value is one of
 
-none   - behave as if perm_invent is false;
+none   - behave as if `perm_invent` is false;
 all    - show all inventory except for gold;
 full   - show full inventory including gold;
 in-use - only show items which are in use (worn, wielded, lit lamp).
 
-Default is none but if perm_invent gets set to true while it is none
+Default is none but if `perm_invent` gets set to true while it is none
 it will be changed to all.
 
 Note: if gold has been equipped in quiver/ammo-pouch then it will be
@@ -3940,7 +3948,7 @@ included for all despite that mode normally omitting gold.
 
 petattr
 Specifies one or more text highlighting attributes to use when show-
-ing pets on the map.  Effectively a superset of the hilite_pet bool-
+ing pets on the map.  Effectively a superset of the `hilite_pet` bool-
 ean option.  Curses or tty interface only; value  is  one  of  none,
 bold,  dim,  underline,  italic,  blink, and inverse.  Some of those
 choices might not work, depending upon terminal hardware or terminal
@@ -3952,26 +3960,26 @@ class that uses multiple types of pets; or choose to have no initial
 pet  at all.  Possible values are "cat", "dog", "horse", and "none".
 If the choice is not allowed for the role you are currently playing,
 it will be silently ignored.  For example, "horse" will only be hon-
-ored when playing a knight.  Cannot be set with the `O' command.
+ored when playing a knight.  Cannot be set with the `O` command.
 
-pickup_burden
+`pickup_burden`
 When you pick up an item that would exceed  this  encumbrance  level
 (Unencumbered,  Burdened,  streSsed,  straiNed,  overTaxed, or over-
-Loaded), you will be asked if you want to continue.  (Default  `S').
+Loaded), you will be asked if you want to continue.  (Default  `S`).
 Persistent.
 
-pickup_stolen
+`pickup_stolen`
 If  this  option  is  on  and  autopickup is also on, try to pick up
 things that a monster  stole  from  you,  even  if  they  aren't  in
-pickup_types or match an autopickup exception.  Default is on.  Per-
+`pickup_types` or match an autopickup exception.  Default is on.  Per-
 sistent.
 
-pickup_thrown
+`pickup_thrown`
 If this option is on and autopickup is  also  on,  try  to  pick  up
-things  that you threw, even if they aren't in pickup_types or match
+things  that you threw, even if they aren't in `pickup_types` or match
 an autopickup exception.  Default is on.  Persistent.
 
-pickup_types
+`pickup_types`
 Specify the object types to be picked  up  when  autopickup  is  on.
 Default is all types.  Persistent.
 
@@ -3979,15 +3987,15 @@ The  value  is a list of object symbols, such as pickup_types:$?! to
 pick up gold, scrolls, and potions.  You can  use  autopickup_excep-
 tion configuration file lines to further refine autopickup behavior.
 
-There  is  no  way to set pickup_types to "none".  (Setting it to an
+There  is  no  way to set `pickup_types` to "none".  (Setting it to an
 empty value reverts to "all".)  If you want to  avoid  automatically
 picking  up  any types of items but do want to have autopickup on in
-order to have autopickup_exception settings control what you do  and
-don't  pick  up,  you can set pickup_types to `.'.  That is the type
+order to have `autopickup_exception` settings control what you do  and
+don't  pick  up,  you can set `pickup_types` to `.`.  That is the type
 symbol for venom and you won't come across any venom items so  won't
 unintentionally pick such up.
 
-pile_limit
+`pile_limit`
 When  walking  across  a  pile of objects on the floor, threshold at
 which the message "there are few/several/many objects here" is given
 instead  of  showing  a  popup  list of those objects.  A value of 0
@@ -4006,15 +4014,15 @@ it when not allowed or not possible results in explore mode instead.
 Default is normal play.
 
 pushweapon
-Using the `w' (wield) command when already wielding something pushes
+Using the `w` (wield) command when already wielding something pushes
 the old item into your alternate weapon slot (default  off).   Like-
-wise  for  the  `a' (apply) command if it causes the applied item to
+wise  for  the  `a` (apply) command if it causes the applied item to
 become wielded.  Persistent.
 
-query_menu
+`query_menu`
 Use a menu when asked specific yes/no queries, instead of a prompt.
 
-quick_farsight
+`quick_farsight`
 When set, usually prevents the "you sense your surroundings" message
 where  play pauses to allow you to browse the map whenever clairvoy-
 ance randomly activates.  Some situations, such as being  underwater
@@ -4030,7 +4038,7 @@ negation to exclude choices.
 
 If race is not specified, there is no default value; player will  be
 prompted  unless  role forces a choice for race.  Cannot be set with
-the `O' command.  Persistent.
+the `O` command.  Persistent.
 
 reroll
 Allows rerolling your character's starting inventory and  attributes
@@ -4043,8 +4051,8 @@ game).  This option exists partly as an  acknowledgement  that  some
 players will insist on doing so anyway, and partly because rerolling
 may be necessary for certain types of challenge games.
 
-rest_on_space
-Make the space bar a synonym for the `.'  (#wait)  command  (default
+`rest_on_space`
+Make the space bar a synonym for the `.`  (`#wait`)  command  (default
 off).  Persistent.
 
 role
@@ -4056,17 +4064,17 @@ This  option can also be used to limit selection when role is chosen
 randomly.  Use a space-separated list of  roles  and  either  negate
 each  one  or  negate the option itself instead.  Negation is accom-
 plished in the same manner as with boolean options, by prefixing the
-option or its value(s) with `!' or "no".
+option or its value(s) with `!` or "no".
 Examples:
 
-OPTIONS=role:!arc !bar !kni
-OPTIONS=!role:arc bar kni
+    OPTIONS=role:!arc !bar !kni
+    OPTIONS=!role:arc bar kni
 
 There  can  be  multiple instances of the role option if they're all
 negations.
 
 If role is not specified, there is no default value; player will  be
-prompted.  Cannot be set with the `O' command.  Persistent.
+prompted.  Cannot be set with the `O` command.  Persistent.
 
 roguesymset
 This option may be used to select one of the named symbol sets found
@@ -4095,22 +4103,22 @@ used "teleport" only.  Whether or not the effect is noticeable  will
 depend  upon  the window port used or on the type of terminal.  Per-
 sistent.
 
-safe_pet
+`safe_pet`
 Prevent you from (knowingly) attacking your pets (default on).  Per-
 sistent.
 
-safe_wait
+`safe_wait`
 Prevents  you  from waiting or searching when next to a hostile mon-
 ster (default on). Persistent.
 
-sanity_check
+`sanity_check`
 Evaluate monsters, objects, and map  prior  to  each  turn  (default
 off).  Debug mode only.
 
 scores
 Control  what  parts of the score list you are shown at the end (for
 example "scores:5 top scores/4 around my score/own  scores").   Only
-the  first  letter of each category (`t', `a', or `o') is necessary.
+the  first  letter of each category (`t`, `a`, or `o`) is necessary.
 Persistent.
 
 showdamage
@@ -4136,7 +4144,7 @@ showvers
 Include the game's version number on the status lines (default off).
 Potentially useful if you switch between different versions or vari-
 ants,  or  you are making screenshots or streaming video.  Using the
-statuslines:3 option is recommended so that there will be more  room
+`statuslines:3` option is recommended so that there will be more  room
 available  for  status information, unless you're using NetHack's Qt
 interface or your terminal emulator window displays  fewer  than  25
 lines.  Persistent.
@@ -4145,7 +4153,7 @@ silent
 Suppress terminal beeps (default on).  Persistent.
 
 sortdiscoveries
-Controls the sorting behavior for the output of the `\' and ``' com-
+Controls the sorting behavior for the output of the `\` and `` ` `` com-
 mands.  Persistent.
 
 The possible values are:
@@ -4160,8 +4168,8 @@ fully identified types;
 c - list by class, alphabetically within each class;
 a - list alphabetically across all classes.
 
-Can  be  interactively  set via the `O' command or via using the `m'
-prefix before the `\' or ``' command.
+Can  be  interactively  set via the `O` command or via using the `m`
+prefix before the `\` or `` ` `` command.
 
 sortloot
 Controls the sorting behavior of the pickup lists for inventory  and
@@ -4171,7 +4179,7 @@ The possible values are:
 
 full - always sort the lists;
 loot - only  sort  the  lists that don't use inventory letters, like
-with the #loot and pickup commands;
+with the `#loot` and pickup commands;
 none - show lists the traditional way without sorting; default.
 
 sortpack
@@ -4179,8 +4187,8 @@ Sort the pack contents by type when  displaying  inventory  (default
 on).  Persistent.
 
 sortvanquished
-Controls the sorting behavior for the output of the #vanquished com-
-mand and also for the #genocided command.  Persistent.
+Controls the sorting behavior for the output of the `#vanquished` com-
+mand and also for the `#genocided` command.  Persistent.
 
 The possible values are:
 
@@ -4195,8 +4203,8 @@ n - order by count, high to low; ties are broken by internal monster
 index;
 z - order by count, low to high; ties broken by internal index.
 
-Can be interactively set via the `m O' command or via using the  `m'
-prefix  before either the #vanquished command or the #genocided com-
+Can be interactively set via the `m O' command or via using the  `m`
+prefix  before either the `#vanquished` command or the `#genocided` com-
 mand.
 
 sounds
@@ -4207,7 +4215,7 @@ sparkle
 Display  a sparkly effect when a monster (including yourself) is hit
 by an attack to which it is resistant (default on).  Persistent.
 
-spot_monsters
+`spot_monsters`
 Show a message when hero notices a monster (default is off).
 
 standout
@@ -4218,11 +4226,11 @@ Controls how many turns status hilite behaviors highlight the field.
 If negated or set to zero, disables status hiliting.  See "Configur-
 ing Status Hilites" for further information.
 
-status_updates
+`status_updates`
 Allow updates to the status  lines  at  the  bottom  of  the  screen
 (default true).
 
-suppress_alert
+`suppress_alert`
 This  option may be set to a NetHack version level to suppress alert
 notification messages about feature changes for that and prior  ver-
 sions (for example "suppress_alert:3.3.1").
@@ -4236,7 +4244,7 @@ time
 Show  the  elapsed  game time in turns on bottom line (default off).
 Persistent.
 
-timed_delay
+`timed_delay`
 When pausing momentarily for display effect, such as with explosions
 and moving objects, use a timer rather than sending extra characters
 to the screen.  (Applies to  "tty"  and  "curses"  interfaces  only;
@@ -4260,7 +4268,7 @@ travel
 Allow the travel command via mouse click (default on).  Turning this
 option off will prevent the game from attempting unintended moves if
 you make inadvertent mouse clicks  on  the  map  window.   Does  not
-affect traveling via the `_' ("#travel") command.  Persistent.
+affect traveling via the `_` ("`#travel`") command.  Persistent.
 
 tutorial
 Play a tutorial level at the start of the game.  Setting this option
@@ -4269,8 +4277,8 @@ on or off in the config file will skip the query.
 verbose
 Provide more commentary during the game (default on).  Persistent.
 
-whatis_coord
-When using the `/' or `;' commands to look around on  the  map  with
+`whatis_coord`
+When using the `/` or `;` commands to look around on  the  map  with
 autodescribe  on,  display  coordinates after the description.  Also
 works in other situations where you are asked to pick a location.
 
@@ -4282,11 +4290,11 @@ m - map <x,y> (map column x=0 is not used);
 s - screen [row,column] (row is offset to match tty usage);
 n - none (no coordinates shown) [default].
 
-The whatis_coord option is also used with the "/m", "/M", "/o",
-and "/O" sub-commands of `/', where the "none" setting is over-
+The `whatis_coord` option is also used with the "/m", "/M", "/o",
+and "/O" sub-commands of `/`, where the "none" setting is over-
 ridden with "map".
 
-whatis_filter
+`whatis_filter`
 When getting a location on the map, and  using  the  keys  to  cycle
 through  next  and  previous  targets, allows filtering the possible
 targets.
@@ -4302,12 +4310,12 @@ were last moving towards.
 Filtering can also be changed when getting a location with the "get-
 pos.filter" key.
 
-whatis_menu
+`whatis_menu`
 When getting a location on the map, and using a key to cycle through
 next and previous targets, use a menu  instead  to  pick  a  target.
 (default off)
 
-whatis_moveskip
+`whatis_moveskip`
 When  getting a location on the map, and using shifted movement keys
 or meta-digit keys to fast-move, instead of  moving  8  units  at  a
 time, move by skipping the same glyphs.  (default off)
@@ -4315,8 +4323,8 @@ time, move by skipping the same glyphs.  (default off)
 windowtype
 When  the  program  has  been  built to support multiple interfaces,
 select which one to use, such as "tty" or "X11" (default depends  on
-build-time  settings;  use "#version" to check).  Cannot be set with
-the `O' command.
+build-time  settings;  use "`#version`" to check).  Cannot be set with
+the `O` command.
 
 When used, it should be the first option set since its  value  might
 enable  or  disable  the availability of various other options.  For
@@ -4347,66 +4355,66 @@ will attempt to do so. If it can't it will silently  ignore  it.   You
 can find out if an option is supported by the window port that you are
 currently using by checking to see if it shows up in the Options list.
 Some options are dynamic and can be specified during the game with the
-`O' command.
+`O` command.
 
-align_message
+`align_message`
 Where to align or place the message window (top,  bottom,  left,  or
 right)
 
-align_status
+`align_status`
 Where  to  align  or  place the status window (top, bottom, left, or
 right).
 
-ascii_map
+`ascii_map`
 If NetHack can, it should display the map  using  simple  characters
 (letters  and  punctuation)  rather  than  tiles  graphics.  In some
 cases, characters can be augmented with  line-drawing  symbols;  use
 the  symset  option  to  select  a symbol set such as DECgraphics or
-IBMgraphics if your display supports  them.   Setting  ascii_map  to
-True forces tiled_map to be False.
+IBMgraphics if your display supports  them.   Setting  `ascii_map`  to
+True forces `tiled_map` to be False.
 
 color
 If NetHack can, it should display color if it can for different mon-
 sters, objects, and dungeon features (default on).
 
-eight_bit_tty
+`eight_bit_tty`
 If NetHack can, it should pass eight-bit character values (for exam-
 ple,  specified with the traps option) straight through to your ter-
 minal (default off).
 
-font_map
+`font_map`
 if NetHack can, it should use a font by the chosen name for the  map
 window.
 
-font_menu
+`font_menu`
 If  NetHack  can,  it  should use a font by the chosen name for menu
 windows.
 
-font_message
+`font_message`
 If NetHack can, it should use a font by the chosen name for the mes-
 sage window.
 
-font_status
+`font_status`
 If NetHack can, it should use a font by the chosen name for the sta-
 tus window.
 
-font_text
+`font_text`
 If NetHack can, it should use a font by the  chosen  name  for  text
 windows.
 
-font_size_map
+`font_size_map`
 If NetHack can, it should use this size font for the map window.
 
-font_size_menu
+`font_size_menu`
 If NetHack can, it should use this size font for menu windows.
 
-font_size_message
+`font_size_message`
 If NetHack can, it should use this size font for the message window.
 
-font_size_status
+`font_size_status`
 If NetHack can, it should use this size font for the status window.
 
-font_size_text
+`font_size_text`
 If NetHack can, it should use this size font for text windows.
 
 fullscreen
@@ -4418,31 +4426,31 @@ Use color text and/or highlighting attributes when  displaying  some
 non-map  data  (such  as  menu  selector letters).  Curses interface
 only; default is on.
 
-large_font
+`large_font`
 If NetHack can, it should use a large font.
 
-map_mode
+`map_mode`
 If NetHack can, it should display the map in the manner specified.
 
-player_selection
+`player_selection`
 If NetHack can, it should pop up dialog boxes, or  use  prompts  for
 character selection.
 
-popup_dialog
+`popup_dialog`
 If NetHack can, it should pop up dialog boxes for input.
 
-preload_tiles
+`preload_tiles`
 If  NetHack  can, it should preload tiles into memory.  For example,
 in the protected mode MS-DOS version, control whether tiles get pre-
 loaded into RAM at the start of the game.  Doing so enhances perfor-
 mance of the tile graphics, but  uses  more  memory.  (default  on).
-Cannot be set with the `O' command.
+Cannot be set with the `O` command.
 
-scroll_amount
+`scroll_amount`
 If NetHack can, it should scroll the display by this number of cells
-when the hero reaches the scroll_margin.
+when the hero reaches the `scroll_margin`.
 
-scroll_margin
+`scroll_margin`
 If NetHack can, it should scroll the display when the hero or cursor
 
 is this number of cells away from the edge of the window.
@@ -4456,7 +4464,7 @@ softkeyboard
 Display  an onscreen keyboard.  Handhelds are most likely to support
 this option.
 
-splash_screen
+`splash_screen`
 If NetHack can, it should display an opening splash screen  when  it
 starts up (default yes).
 
@@ -4467,9 +4475,9 @@ Acceptable values are 2 and 3 (default is 2).
 When set to 3, the tty interface moves some fields around and mainly
 shows  status  conditions  on  their own line.  A display capable of
 showing at least 25 lines is recommended.  The value can be  toggled
-back and forth during the game with the `O' command.
+back and forth during the game with the `O` command.
 
-The curses interface does likewise if the align_status option is set
+The curses interface does likewise if the `align_status` option is set
 to top or bottom but ignores statuslines when set to left or right.
 
 The Qt interface already displays more than 3 lines  for  status  so
@@ -4480,17 +4488,17 @@ moving some fields to different lines to eliminate one  whole  line,
 reducing the height needed.  (If NetHack has been built using a ver-
 sion of Qt older than qt-5.9, statuslines can only  be  set  in  the
 run-time  configuration  file or via NETHACKOPTIONS, not during play
-with the `O' command.)
+with the `O` command.)
 
-term_cols  and
+`term_cols`  and
 
-term_rows
+`term_rows`
 Curses interface only.  Number of columns and rows to  use  for  the
 display.   Curses will attempt to resize to the values specified but
 will settle for smaller sizes if they are too big.  Default  is  the
 current window size.
 
-tile_file
+`tile_file`
 Specify  the  name  of  an  alternative  tile  file  to override the
 default.
 
@@ -4498,26 +4506,26 @@ Note: the X11 interface  uses  X  resources  rather  than  NetHack's
 options  to select an alternate tile file.  See NetHack.ad, the sam-
 ple X "application defaults" file.
 
-tile_height
+`tile_height`
 Specify the preferred height of each tile in a tile capable port.
 
-tile_width
+`tile_width`
 Specify the preferred width of each tile in a tile capable port
 
-tiled_map
+`tiled_map`
 If NetHack can, it should  display  the  map  using  tiles  graphics
 rather  than  simple  characters  (letters and punctuation, possibly
-augmented by  line-drawing  symbols).   Setting  tiled_map  to  True
-forces ascii_map to be False.
+augmented by  line-drawing  symbols).   Setting  `tiled_map`  to  True
+forces `ascii_map` to be False.
 
-use_darkgray
+`use_darkgray`
 Use bold black instead of blue for black glyphs (TTY only).
 
-use_inverse
+`use_inverse`
 If  NetHack  can,  it should display inverse when the game specifies
 it.
 
-vary_msgcount
+`vary_msgcount`
 If NetHack can, it should display this number of messages at a  time
 in the message window.
 
@@ -4529,12 +4537,12 @@ Acceptable values are
 0 - off, never show borders
 1 - on, always show borders
 2 - auto, on if display is at least (24+2)x(80+2) [default]
-3 - on, except forced off for perm_invent
-4 - auto, except forced off for perm_invent
+3 - on, except forced off for `perm_invent`
+4 - auto, except forced off for `perm_invent`
 
-(The  26x82 size threshold for `2' refers to number of rows and col-
+(The  26x82 size threshold for `2` refers to number of rows and col-
 umns of the display.  A width of at least 110 columns (80+2+26+2) is
-needed to show borders if align_status is set to left or right.)
+needed to show borders if `align_status` is set to left or right.)
 
 The  persistent inventory window, when enabled, can grow until it is
 too big to fit on most displays, resulting in truncation of its con-
@@ -4553,7 +4561,7 @@ OPTION=windowcolors:style foreground/background
 
 where  style  is  one of "menu", "message", "status", or "text", and
 foreground and background are colors, either numeric (hash sign fol-
-lowed  by  three  pairs  of hexadecimal digits, #rrggbb), one of the
+lowed  by  three  pairs  of hexadecimal digits, `#rrggbb`), one of the
 named colors (black, red, green, brown, blue, magenta, cyan, orange,
 bright-green,   yellow,  bright-blue,  bright-magenta,  bright-cyan,
 white, gray, purple, silver, maroon,  fuchsia,  lime,  olive,  navy,
@@ -4573,11 +4581,11 @@ in the visible area of the window.
 Please note that NetHack does not send any information  off  your
 computer unless you manually click submit on a form.
 
-OPTION=crash_email:email_address
+OPTION=crash_email:`email_address`
 
-OPTION=crash_name:your_name
+OPTION=crash_name:`your_name`
 These  options  are  used  only  to save you some typing on the
-crash report and #bugreport forms.
+crash report and `#bugreport` forms.
 
 OPTION=crash_urlmax:bytes
 This option is used to limit the length of the  URLs  generated
@@ -4597,18 +4605,18 @@ only).  The name of the handling type is one  of  "default",  "ray",
 
 altmeta
 On  systems  where  this  option is available, it can be set to tell
-NetHack to convert a two character sequence beginning with ESC  into
+NetHack to convert a two character sequence beginning with `ESC`  into
 a meta-shifted version of the second character (default off).
 
 This  conversion  is  only  done  for  commands, not for other input
 prompts.  Note that typing one or more  digits  as  a  count  prefix
-prior  to a command--preceded by n if the number_pad option is set--
+prior  to a command--preceded by n if the `number_pad` option is set--
 is also subject to this conversion, so attempting to abort the count
-by  typing  ESC  will leave NetHack waiting for another character to
-complete the two character sequence.  Type a second  ESC  to  finish
-cancelling such a count.  At other prompts a single ESC suffices.
+by  typing  `ESC`  will leave NetHack waiting for another character to
+complete the two character sequence.  Type a second  `ESC`  to  finish
+cancelling such a count.  At other prompts a single `ESC` suffices.
 
-BIOS
+**`BIOS`**
 Use  BIOS calls to update the screen display quickly and to read the
 keyboard (allowing the use of arrow keys to move) on  machines  with
 an IBM PC compatible BIOS ROM (default off, OS/2, PC, and ST NetHack
@@ -4616,9 +4624,9 @@ only).
 
 rawio
 Force raw (non-cbreak) mode for faster output and  more  bulletproof
-input  (MS-DOS sometimes treats `^P' as a printer toggle without it)
+input  (MS-DOS sometimes treats ``^P`' as a printer toggle without it)
 (default off, OS/2, PC, and ST NetHack only).  Note:   DEC  Rainbows
-hang if this is turned on.  Cannot be set with the `O' command.
+hang if this is turned on.  Cannot be set with the `O` command.
 
 subkeyvalue
 (Win32  tty  NetHack  only).  May be used to alter the value of key-
@@ -4626,7 +4634,7 @@ strokes that the operating system returns to NetHack to help compen-
 sate  for international keyboard issues.  OPTIONS=subkeyvalue:171/92
 will return 92 to  NetHack,  if  171  was  originally  going  to  be
 returned.   You can use multiple subkeyvalue assignments in the con-
-figuration file if needed.  Cannot be set with the `O' command.
+figuration file if needed.  Cannot be set with the `O` command.
 
 video
 Set the video mode used (PC NetHack only).  Values are "autodetect",
@@ -4636,12 +4644,12 @@ ting "vga" will cause the game to display tiles, fixed at 640x480 in
 16 colors, a mode that is compatible with all  VGA  hardware.  Third
 party   tilesets  will  probably  not  work.   Setting  "autodetect"
 attempts "vesa", then "vga", and finally sets "default"  if  neither
-of those modes works.  Cannot be set with the `O' command.
+of those modes works.  Cannot be set with the `O` command.
 
-video_height
+`video_height`
 Set the VGA mode resolution height (MS-DOS only, with video:vesa)
 
-video_width
+`video_width`
 Set the VGA mode resolution width (MS-DOS only, with video:vesa)
 
 videocolors
@@ -4649,13 +4657,13 @@ Set  the  color  palette  for  PC  systems  using  NO_TERMS (default
 4-2-6-1-5-3-15-12-10-14-9-13-11, (PC NetHack only).   The  order  of
 colors  is  red,  green,  brown,  blue, magenta, cyan, bright.white,
 bright.red, bright.green, yellow, bright.blue,  bright.magenta,  and
-bright.cyan.  Cannot be set with the `O' command.
+bright.cyan.  Cannot be set with the `O` command.
 
 videoshades
 Set  the intensity level of the three gray scales available (default
 dark normal light, PC NetHack only).  If the game display is  diffi-
 cult  to  read, try adjusting these scales; if this does not correct
-the problem, try !color.  Cannot be set with the `O' command.
+the problem, try !color.  Cannot be set with the `O` command.
 
 
 ### 9.8. Regular Expressions
@@ -4673,14 +4681,14 @@ Autopickup exceptions, Message types, Menu colors, and User sounds.
 ### 9.9. Configuring Autopickup Exceptions
 
 You can further refine the  behavior  of  the  autopickup  option
-beyond what is available through the pickup_types option.
+beyond what is available through the `pickup_types` option.
 
-By placing autopickup_exception lines in your configuration file,
+By placing `autopickup_exception` lines in your configuration file,
 you can define patterns to be  checked  when  the  game  is  about  to
 autopickup something.
 
-autopickup_exception
-Sets an exception to the pickup_types option.  The autopickup_excep-
+`autopickup_exception`
+Sets an exception to the `pickup_types` option.  The autopickup_excep-
 tion option should be followed by a regular expression to be used as
 a  pattern  to match against the singular form of the description of
 an object at your location.
@@ -4691,13 +4699,13 @@ the first character in the pattern, specifically:
 < - always pickup an object that matches rest of pattern;
 > - never pickup an object that matches rest of pattern.
 
-The  autopickup_exception  rules are processed in the order in which
+The  `autopickup_exception`  rules are processed in the order in which
 they appear in your configuration file, thus allowing a  later  rule
 to override an earlier rule.
 
-Exceptions can be set with the `O' command, but because they are not
+Exceptions can be set with the `O` command, but because they are not
 included in your configuration file, they won't be in effect if  you
-save and then restore your game.  autopickup_exception rules and not
+save and then restore your game.  `autopickup_exception` rules and not
 saved with the game.
 
 Here are some examples:
@@ -4718,13 +4726,13 @@ It is possible to change the default key bindings of some special
 commands, menu accelerator keys, and extended commands, by using  BIND
 stanzas  in  the  configuration  file.  Format is key, followed by the
 command to bind to, separated by a colon.  The key  can  be  a  single
-character  ("x"),  a  control key ("^X", "C-x"), a meta key ("M-x"), a
+character  ("x"),  a  control key ("`^X`", "C-x"), a meta key ("M-x"), a
 mouse button, or a three-digit decimal ASCII code.
 
 For example:
 
-BIND=^X:getpos.autodescribe
-BIND=\:menu_first_page
+BIND=`^X`:getpos.autodescribe
+BIND=\:`menu_first_page`
 BIND=v:loot
 
 Extended command keys
@@ -4750,128 +4758,128 @@ available.  Special command can only be bound to a single key.
 
 count
 Prefix  key  to  start a count, to repeat a command this many times.
-With number_pad only.  Default is `n'.
+With `number_pad` only.  Default is `n`.
 
 getdir.help
 When asked for a direction, the key to show the  help.   Default  is
-`?'.
+`?`.
 
 getdir.mouse
 When  asked  for  a direction, the key to initiate a simulated mouse
 click.  You will be asked to pick a  location.   Use  movement  key-
 strokes  to  move  the  cursor  around  the  map, then type the get-
-pos.pick.once key (default `,') or the getpos.pick key (default `.')
+pos.pick.once key (default `,`) or the getpos.pick key (default `.`)
 to  finish as if performing a left or right click.  Only useful when
-using the #therecmdmenu command.  Default is `_'.
+using the `#therecmdmenu` command.  Default is `_`.
 
 getdir.self
 When asked for a direction, the key to target yourself.  Default  is
-`.'.
+`.`.
 
 getdir.self2
 When  asked  for  a  direction, an alternate key to target yourself.
-Default is `s'.
+Default is `s`.
 
 getpos.autodescribe
 When asked for a location, the key to toggle autodescribe.   Default
-is `#'.
+is `#`.
 
 getpos.all.next
 When asked for a location, the key to go to next closest interesting
-thing.  Default is `a'.
+thing.  Default is `a`.
 
 getpos.all.prev
 When asked for a location, the key to go to previous closest  inter-
-esting thing.  Default is `A'.
+esting thing.  Default is `A`.
 
 getpos.door.next
 When  asked  for  a  location, the key to go to next closest door or
-doorway.  Default is `d'.
+doorway.  Default is `d`.
 
 getpos.door.prev
 When asked for a location, the key to go to previous closest door or
-doorway.  Default is `D'.
+doorway.  Default is `D`.
 
 getpos.help
-When asked for a location, the key to show help.  Default is `?'.
+When asked for a location, the key to show help.  Default is `?`.
 
 getpos.mon.next
 When  asked  for  a location, the key to go to next closest monster.
-Default is `m'.
+Default is `m`.
 
 getpos.mon.prev
 When asked for a location, the key to go to  previous  closest  mon-
-ster.  Default is `M'.
+ster.  Default is `M`.
 
 getpos.obj.next
 When  asked  for  a  location, the key to go to next closest object.
-Default is `o'.
+Default is `o`.
 
 getpos.obj.prev
 When asked for a location, the key to go to previous closest object.
-Default is `O'.
+Default is `O`.
 
 getpos.menu
 When  asked  for  a  location, and using one of the next or previous
 keys to cycle  through  targets,  toggle  showing  a  menu  instead.
-Default is `!'.
+Default is `!`.
 
 getpos.moveskip
 When  asked  for  a location, and using the shifted movement keys or
 meta-digit keys to fast-move  around,  move  by  skipping  the  same
-glyphs instead of by 8 units.  Default is `*'.
+glyphs instead of by 8 units.  Default is `*`.
 
 getpos.filter
 When  asked for a location, change the filtering mode when using one
 of the next or previous keys  to  cycle  through  targets.   Toggles
 between  no  filtering,  in  view  only,  and in the same area only.
-Default is `"'.
+Default is `"`.
 
 getpos.pick
 When asked for a location, the key to choose the location, and  pos-
 sibly  ask for more info.  When simulating a mouse click after being
 
 asked for a direction (see getdir.mouse above), the key  to  use  to
-respond as right click.  Default is `.'.
+respond as right click.  Default is `.`.
 
 getpos.pick.once
 When  asked for a location, the key to choose the location, and skip
 asking for more info.  When simulating a  mouse  click  after  being
 asked for a direction, the key to respond as left click.  Default is
-`,'.
+`,`.
 
 getpos.pick.quick
 When asked for a location, the key to choose the location, skip ask-
 ing  for  more  info, and exit the location asking loop.  Default is
-`;'.
+`;`.
 
 getpos.pick.verbose
 When asked for a location, the key to choose the location, and  show
-more info without asking.  Default is `:'.
+more info without asking.  Default is `:`.
 
 getpos.self
 When  asked for a location, the key to go to your location.  Default
-is `@'.
+is `@`.
 
 getpos.unexplored.next
 When asked for a location, the key to go to next closest  unexplored
-location.  Default is `x'.
+location.  Default is `x`.
 
 getpos.unexplored.prev
 When  asked  for a location, the key to go to previous closest unex-
-plored location.  Default is `X'.
+plored location.  Default is `X`.
 
 getpos.valid
 When asked for a location, the key to go to show valid target  loca-
-tions.  Default is `$'.
+tions.  Default is `$`.
 
 getpos.valid.next
 When asked for a location, the key to go to next closest valid loca-
-tion.  Default is `z'.
+tion.  Default is `z`.
 
 getpos.valid.prev
 When asked for a location, the key to go to previous  closest  valid
-location.  Default is `Z'.
+location.  Default is `Z`.
 
 
 ### 9.11. Configuring Message Types
@@ -4954,7 +4962,7 @@ COLOR line that matches a menu line will be used for the line.
 
 Note  that if you intend to have one or more color specifications
 match   " uncursed ",   you   will   probably   want   to   turn   the
-implicit_uncursed  option  off  so that all items known to be uncursed
+`implicit_uncursed`  option  off  so that all items known to be uncursed
 are actually displayed with the "uncursed" description.
 
 
@@ -4968,10 +4976,10 @@ ports support the use of user sounds.
 The  following configuration file entries are relevant to mapping
 user sounds to messages:
 
-SOUNDDIR
+**`SOUNDDIR`**
 The directory that houses the sound files to be played.
 
-SOUND
+**`SOUND`**
 An entry that maps a sound file to a user-specified message pattern.
 Each SOUND entry is broken down into the following parts:
 
@@ -5029,8 +5037,8 @@ Allowed attributes are none, bold, dim, underline, italic, blink,
 and inverse.  "Normal" is a synonym for "none";  they  should  not  be
 used in combination with any of the other attributes.
 
-To  specify  both  a  color  and an attribute, use `&' to combine
-them.  To specify multiple attributes, use `+' to combine those.   For
+To  specify  both  a  color  and an attribute, use `&` to combine
+them.  To specify multiple attributes, use `+` to combine those.   For
 example: "magenta&inverse+dim".
 
 Note  that  the  display  may  substitute  or  ignore  particular
@@ -5088,9 +5096,9 @@ rule which matches a change in the field's value, the  "up"  or
 
 * percentage  sets  the  field  attribute  when  the  field value
 matches the percentage.  It is specified as a number between  0
-and  100, followed by `%' (percent sign).  If the percentage is
+and  100, followed by `%` (percent sign).  If the percentage is
 prefixed with `<=' or `>=', it also matches when value is below
-or  above  the percentage.  Use prefix `<' or `>' to match when
+or  above  the percentage.  Use prefix `<` or `>` to match when
 strictly  below  or  above.   (The  numeric  limit  is  relaxed
 slightly  for  those:  >-1%  and <101% are allowed.)  Only four
 fields support percentage rules.  Percentages  for  "hitpoints"
@@ -5111,9 +5119,9 @@ ence point short of the next level.
 * absolute value sets the attribute when the field value  matches
 that  number.   The  number  must  be  0  or higher, except for
 "armor-class' which allows negative values, and may  optionally
-be  preceded by `='.  If the number is preceded by `<=' or `>='
+be  preceded by `=`.  If the number is preceded by `<=' or `>='
 instead, it also matches when value is below or above.  If  the
-prefix is `<' or `>', only match when strictly above or below.
+prefix is `<` or `>`, only match when strictly above or below.
 
 * criticalhp  only  applies  to the hitpoints field and only when
 current hit points are below a threshold (which varies by maxi-
@@ -5387,7 +5395,7 @@ or individually within your nethack.rc file.
 
 The format for defining a glyph representation is:
 
-OPTIONS=glyph:glyphid/U+nnnn/R-G-B
+    OPTIONS=glyph:glyphid/U+nnnn/R-G-B
 
 The window port that is active needs to provide support for  dis-
 playing  UTF-8  character sequences and explicit red-green-blue colors
@@ -5396,7 +5404,7 @@ following  line in your configuration file will cause the glyph repre-
 sentation for glyphid G_pool to use Unicode codepoint U+224B  and  the
 color represented by R-G-B value 0-0-160:
 
-OPTIONS=glyph:G_pool/U+224B/0-0-160
+    OPTIONS=glyph:G_pool/U+224B/0-0-160
 
 The  list  of acceptable glyphid's can be produced by nethack --dumpg-
 lyphids.  Individual NetHack glyphs can be specified using the G_ pre-
@@ -5430,7 +5438,7 @@ tion of items on the screen.
 
 NetHack can also be compiled with support for  sending  the  game
 messages to an external program, such as a text-to-speech synthesizer.
-If the "#version" extended command shows "external program as  a  mes-
+If the "`#version`" extended command shows "external program as  a  mes-
 sage  handler",  your  NetHack  has been compiled with the capability.
 When compiling NetHack from source on Linux and other  POSIX  systems,
 define  MSGHANDLER to enable it.  To use the capability, set the envi-
@@ -5442,15 +5450,15 @@ The most crucial settings to make the game more accessible are:
 symset:plain
 Load a symbol set appropriate for use by blind players.
 
-menustyle:traditional
+`menustyle:traditional`
 This will assist in the interface to speech synthesizers.
 
-nomenu_overlay
+`nomenu_overlay`
 Show menus on a cleared screen and aligned to the left edge.
 
-number_pad
+`number_pad`
 A  lot  of  speech  access programs use the number-pad to review the
-screen.  If this is the case, disable the number_pad option and  use
+screen.  If this is the case, disable the `number_pad` option and  use
 the traditional Rogue-like commands.
 
 paranoid_confirmation:swim
@@ -5459,21 +5467,21 @@ Prevent walking into water or lava.
 accessiblemsg
 Adds direction or location information to messages.
 
-spot_monsters
+`spot_monsters`
 Shows  a  message when hero notices a monster; combine with accessi-
 blemsg.
 
-mon_movement
+`mon_movement`
 Shows a message when hero notices a monster movement;  combine  with
-spot_monsters and accessiblemsg.
+`spot_monsters` and accessiblemsg.
 
 autodescribe
 Automatically describe the terrain under the cursor when targeting.
 
-mention_map
+`mention_map`
 Give feedback messages when interesting map locations change.
 
-mention_walls
+`mention_walls`
 Give  feedback  messages  when walking towards a wall or when travel
 command was interrupted.
 
@@ -5485,14 +5493,14 @@ whatis_filter:area
 When  targeting with cursor, filter possible locations so only those
 in the same area (eg. same room, or same corridor) are considered.
 
-whatis_moveskip
+`whatis_moveskip`
 When targeting with cursor and using fast-move, skip the same glyphs
 instead of moving 8 units at a time.
 
-nostatus_updates
+`nostatus_updates`
 Prevent  updates to the status lines at the bottom of the screen, if
 your screen-reader reads those lines. The same  information  can  be
-seen via the "#attributes" command.
+seen via the "`#attributes`" command.
 
 showdamage
 Give a message of damage taken and how many hit points are left.
@@ -5574,7 +5582,7 @@ Not  defining  this  will  prevent dumplog from being created.  Only
 available if your game is compiled with DUMPLOG.  Allows the follow-
 ing placeholders:
 
-%% - literal `%'
+%% - literal `%`
 %v - version (eg. "3.7.0-0")
 %u - game UID
 %t - game start time, UNIX timestamp format
@@ -5600,7 +5608,7 @@ CRASHREPORTURL = If                      set                      to
 https://www.nethack.org/links/cr-37BETA.html and support is compiled
 in, brings up a browser window pre-populated  with  the  information
 needed  to  report  a  problem  if  the game panics or ends up in an
-internally inconsistent state,  or  if  the  #bugreport  command  is
+internally inconsistent state,  or  if  the  `#bugreport`  command  is
 invoked.
 
 
@@ -5638,7 +5646,7 @@ paltry cost of not getting on the high score list.
 
 There are two ways of enabling explore mode.  One is to start the
 game  with  the  -X  command-line  switch or with the playmode:explore
-option.  The other is to issue  the  "#exploremode"  extended  command
+option.  The other is to issue  the  "`#exploremode`"  extended  command
 while  already  playing the game.  Starting a new game in explore mode
 provides your character with a wand of wishing in  initial  inventory;
 switching  during  play  does not.  The other benefits of explore mode
