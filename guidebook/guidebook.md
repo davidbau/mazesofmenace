@@ -3247,7 +3247,7 @@ NetHack Symbols" section.
 Example:
 
 # replace small punctuation (tick marks) with digits
-SYMBOLS=S_golem:7
+`SYMBOLS=S_golem:7`
 
 **`WIZKIT`**
 Debug mode only:  extra items to add to initial inventory.  Value is
@@ -3273,7 +3273,7 @@ Here is an example of configuration file contents:
     OPTIONS=`hilite_pet`,`hilite_pile`
 # Replace small punctuation (tick marks) with digits
     OPTIONS=boulder:0
-SYMBOLS=S_golem:7
+`SYMBOLS=S_golem:7`
 #
 # No startup splash screen. Windows GUI only.
     OPTIONS=!`splash_screen`

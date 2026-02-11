@@ -198,12 +198,14 @@ def convert_guidebook(input_file, output_file):
 
         # Wrap inline configuration examples (e.g., AUTOCOMPLETE=..., BIND=...)
         # Match WORD= followed by content, wrap in backticks
-        line = re.sub(r'\b(AUTOCOMPLETE|BIND|MSGTYPE)=([^\s]+)', r'`\1=\2`', line)
+        line = re.sub(r'\b(AUTOCOMPLETE|BIND|MSGTYPE|SYMBOLS)=([^\s]+)', r'`\1=\2`', line)
 
-        # Wrap configuration file syntax (OPTIONS=, CHOOSE=, AUTOCOMPLETE=, BIND=, [section])
+        # Wrap configuration file syntax (OPTIONS=, CHOOSE=, AUTOCOMPLETE=, BIND=, SYMBOLS=, [section])
         # These are configuration file examples that should be in code blocks (when at line start)
+        # Also handle comment lines (# followed by space or #$ for empty comments)
         if (line.startswith('OPTIONS=') or line.startswith('CHOOSE=') or
             line.startswith('AUTOCOMPLETE=') or line.startswith('BIND=') or
+            line.startswith('SYMBOLS=') or line.startswith('# ') or line == '#' or
             re.match(r'^\[.*\]', line)):
             line = '    ' + line  # Indent with 4 spaces to make it a code block in markdown
 
