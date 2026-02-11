@@ -1968,6 +1968,24 @@ export function object(name_or_opts, x, y) {
         levelState.map = new GameMap();
     }
 
+    // Handle Lua-style coordinate arrays: des.object("chest", [3,1])
+    // In Lua, tables can be unpacked; in JS we need explicit handling
+    if (Array.isArray(x) && y === undefined) {
+        y = x[1];
+        x = x[0];
+    }
+
+    // Handle coord property in options object: des.object({ id: "chest", coord: [3,1] })
+    if (typeof name_or_opts === 'object' && name_or_opts.coord && x === undefined && y === undefined) {
+        if (Array.isArray(name_or_opts.coord)) {
+            x = name_or_opts.coord[0];
+            y = name_or_opts.coord[1];
+        } else if (typeof name_or_opts.coord === 'object') {
+            x = name_or_opts.coord.x;
+            y = name_or_opts.coord.y;
+        }
+    }
+
     // C ref: nhlua.c nhl_rn2() — Lua object generation calls rn2(1000+) for properties
     // Even though actual object placement is deferred, RNG calls happen immediately
     // C pattern is complex: first object uses 5 calls (1000-1004), second uses 3 (1010,1012,1014 with gaps),
@@ -2661,9 +2679,19 @@ function executeDeferredObjects() {
             let objId = name_or_opts.id;
             let coordX, coordY;
 
-            if (name_or_opts.coord) {
-                coordX = name_or_opts.coord.x;
-                coordY = name_or_opts.coord.y;
+            // First, try to use coordinates from the deferred object itself (already unpacked by object())
+            if (x !== undefined && y !== undefined) {
+                coordX = x;
+                coordY = y;
+            } else if (name_or_opts.coord) {
+                // Handle coord property (array or object)
+                if (Array.isArray(name_or_opts.coord)) {
+                    coordX = name_or_opts.coord[0];
+                    coordY = name_or_opts.coord[1];
+                } else {
+                    coordX = name_or_opts.coord.x;
+                    coordY = name_or_opts.coord.y;
+                }
             } else if (name_or_opts.x !== undefined && name_or_opts.y !== undefined) {
                 coordX = name_or_opts.x;
                 coordY = name_or_opts.y;
@@ -2939,7 +2967,11 @@ export function finalize_level() {
         bound_digging(levelState.map);
         // Get depth from level state or default to 1
         const depth = levelState.levelDepth || 1;
-        mineralize(levelState.map, depth);
+        // Skip mineralize for maze levels (special levels with custom maps)
+        // C ref: Special levels don't get gold/gems in walls
+        if (!levelState.flags.is_maze_lev) {
+            mineralize(levelState.map, depth);
+        }
     }
 
     // TODO: Add other finalization steps (solidify_map, premapping, etc.)
