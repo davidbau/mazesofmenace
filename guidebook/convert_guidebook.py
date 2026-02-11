@@ -209,10 +209,15 @@ def convert_guidebook(input_file, output_file):
             re.match(r'^\[.*\]', line)):
             line = '    ' + line  # Indent with 4 spaces to make it a code block in markdown
 
+        # Wrap option names (standalone lowercase words, possibly with underscores/numbers)
+        # These appear as definition terms in the options section
+        line_stripped = line.rstrip('\n')
+        if re.match(r'^([a-z][a-z0-9_]*[a-zA-Z0-9])$', line_stripped) and len(line_stripped) > 2:
+            line = '`' + line_stripped + '`\n'  # Wrap in code formatting
+
         # Wrap environment variable names (HACKDIR, LEVELDIR, etc.)
         # These are definition terms, wrap in inline code
-        line_stripped = line.rstrip('\n')
-        if re.match(r'^([A-Z_]+)$', line_stripped) and len(line_stripped) > 2:
+        elif re.match(r'^([A-Z_]+)$', line_stripped) and len(line_stripped) > 2:
             line = '**`' + line_stripped + '`**\n'  # Bold code for visibility
 
         # Wrap single symbols in common phrases

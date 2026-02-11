@@ -3328,15 +3328,15 @@ Some options are persistent, and are  saved  and  reloaded  along
 with the game.  Changing a persistent option in the configuration file
 applies only to new games.
 
-accessiblemsg
+`accessiblemsg`
 Add location or direction information to messages (default is off).
 
-acoustics
+`acoustics`
 Enable messages about what your character hears (default on).   Note
 that this has nothing to do with your computer's audio capabilities.
 Persistent.
 
-alignment
+`alignment`
 Your   starting   alignment   (align:lawful,    align:neutral,    or
 align:chaotic).   You may specify just the first letter.  Many roles
 and the non-human races restrict which alignments are allowed.   See
@@ -3346,20 +3346,20 @@ If align is not specified, there is no default value; player will be
 prompted unless role and/or race  forces  a  choice  for  alignment.
 Cannot be set with the `O` command.  Persistent.
 
-autodescribe
+`autodescribe`
 Automatically  describe the terrain under cursor when asked to get a
 location on the map (default true).  The  `whatis_coord`  option  con-
 trols whether the description includes map coordinates.
 
-autodig
+`autodig`
 Automatically dig if you are wielding a digging tool and moving into
 a place that can be dug (default false).  Persistent.
 
-autoopen
+`autoopen`
 Walking into a closed door attempts to open it (default true).  Per-
 sistent.
 
-autopickup
+`autopickup`
 Automatically  pick  up  things  onto  which you move (default off).
 Persistent.
 
@@ -3368,7 +3368,7 @@ the behavior.
 
 Note: prior to version 3.7.0, the default for autopickup was on.
 
-autoquiver
+`autoquiver`
 This  option  controls  what happens when you attempt the `f` (fire)
 
 command when nothing is quivered or readied (default  false).   When
@@ -3380,7 +3380,7 @@ make  ready  with the `Q` command instead.  If no weapon is found or
 the option is false, the `t` (throw) command  is  executed  instead.
 Persistent.
 
-autounlock
+`autounlock`
 Controls  what  action to take when attempting to walk into a locked
 door or to loot a locked container.   Takes  a  plus-sign  separated
 list of values:
@@ -3413,41 +3413,41 @@ weapon or both.
 
 The default is Apply-Key.  Persistent.
 
-blind
+`blind`
 Start the character permanently blind (default false).  Persistent.
 
-bones
+`bones`
 Allow saving and loading bones files (default true).  Persistent.
 
-boulder
+`boulder`
 Set  the  character  used to display boulders (default is the "large
 rock" class symbol, `` ` ``).
 
-catname
+`catname`
 Name your starting cat (for example  "catname:Morris").   Cannot  be
 
 set with the `O` command.
 
-character
+`character`
 Synonym  for  "role" to pick the type of your character (for example
 "character:Monk").  See role for more details.
 
-checkpoint
+`checkpoint`
 Save game state after each level change, for possible recovery after
 program crash (default on).  Persistent.
 
-cmdassist
+`cmdassist`
 Have  the  game  provide  some additional command assistance for new
 players if it detects some anticipated mistakes (default on).
 
-confirm
+`confirm`
 Have user confirm attacks on pets, shopkeepers, and other  peaceable
 creatures (default on).  Persistent.
 
 `dark_room`
 Show out-of-sight areas of lit rooms (default on).  Persistent.
 
-deaf
+`deaf`
 Start the character permanently deaf (default false).  Persistent.
 
 `dropped_nopick`
@@ -3456,7 +3456,7 @@ picked  up,  even  if  autopickup  is  also  on  and  they  are   in
 `pickup_types`  or match a positive autopickup exception (default on).
 Persistent.
 
-disclose
+`disclose`
 Controls what information the program reveals when  the  game  ends.
 Value is a space separated list of prompting/category pairs (default
 is "ni na nv ng nc no", prompt with default response of `n` for each
@@ -3504,11 +3504,11 @@ by traps and each other as well as by you.  And the dungeon overview
 shows  all  levels  you had visited but does not reveal things about
 them that you hadn't discovered.
 
-dogname
+`dogname`
 Name your starting dog (for example "dogname:Fang").  Cannot be  set
 with the `O` command.
 
-extmenu
+`extmenu`
 Changes  the  extended commands interface to pop-up a menu of avail-
 able commands.  It is  keystroke  compatible  with  the  traditional
 interface except that it does not require that you hit Enter.  It is
@@ -3519,17 +3519,17 @@ extended  command,  it controls whether the menu shows all available
 commands (on) or just the subset of commands which  have  tradition-
 ally been considered extended ones (off).
 
-female
+`female`
 An obsolete synonym for "gender:female".  Cannot be set with the `O`
 command.
 
-fireassist
+`fireassist`
 This option controls what happens when you attempt  the  `f`  (fire)
 and  don't  have  an appropriate launcher, such as a bow or a sling,
 wielded.  If on, you will automatically wield the launcher.  Default
 is on.
 
-fixinv
+`fixinv`
 An object's inventory letter sticks to it when it's dropped (default
 on).  If this is off, dropping an object shifts  all  the  remaining
 inventory letters.  Persistent.
@@ -3538,7 +3538,7 @@ inventory letters.  Persistent.
 Commands  asking for an inventory item show a menu instead of a text
 query with possible menu letters. Default is off.
 
-fruit
+`fruit`
 Name  a  fruit  after  something  you  enjoy  eating  (for   example
 "fruit:mango") (default "slime mold").  Basically a nostalgic whimsy
 that NetHack uses from time to time.  You should set this  to  some-
@@ -3546,7 +3546,7 @@ thing  you  find  more appetizing than slime mold.  Apples, oranges,
 pears, bananas, and melons already exist in NetHack,  so  don't  use
 those.
 
-gender
+`gender`
 Your  starting gender (gender:male or gender:female).  You may spec-
 ify just the first letter.  Although you can still denote your  gen-
 der  using  either of the deprecated male and female options, if the
@@ -3557,14 +3557,14 @@ If  gender  is not specified, there is no default value; player will
 be prompted unless role and/or race  forces  a  choice  for  gender.
 Cannot be set with the `O` command.  Persistent.
 
-goldX
+`goldX`
 When filtering objects based on bless/curse state (BUCX), whether to
 treat gold pieces as X (unknown bless/curse state, when "on")  or  U
 (known  to  be  uncursed,  when  "off", the default).  Gold is never
 blessed or cursed, but it is not described as "uncursed"  even  when
 the `implicit_uncursed` option is "off".
 
-help
+`help`
 If  more  information  is available for an object looked at with the
 `/` command, ask if you want to see it (default on).   Turning  help
 off  makes  just  looking  at things faster, since you aren't inter-
@@ -3594,7 +3594,7 @@ windowing  you use.  In text windowing, text highlighting or inverse
 video is often used; with tiles, generally displays  a  small  plus-
 symbol beside the object on the top of the pile.
 
-hitpointbar
+`hitpointbar`
 Show  a hit point bar graph behind your name and title in the status
 display (default off).
 
@@ -3616,11 +3616,11 @@ ing the status panel.  To resize that, use the `#optionsfull`  command
 to  toggle the hitpointbar option off, perform the resize while it's
 off, then use the same command to toggle it back on.)
 
-horsename
+`horsename`
 Name your starting horse (for example "horsename:Trigger").   Cannot
 be set with the `O` command.
 
-ignintr
+`ignintr`
 Ignore  interrupt  signals, including breaks (default off).  Persis-
 tent.
 
@@ -3630,7 +3630,7 @@ other aspects of the description (default on).  Persistent.
 
 If you use menu coloring, you may want to turn this off.
 
-legacy
+`legacy`
 Display an introductory message when starting the game (default on).
 Persistent.
 
@@ -3638,16 +3638,16 @@ Persistent.
 Show corridor squares seen by night vision or a light source held by
 your character as lit (default off).  Persistent.
 
-lootabc
+`lootabc`
 When  using  a  menu  to interact with a container, use the old `a`,
 `b`, and `c` keyboard shortcuts rather than the mnemonics `o`,  `i`,
 
 and `b` (default off).  Persistent.
 
-mail
+`mail`
 Enable mail delivery during the game (default on).  Persistent.
 
-male
+`male`
 An  obsolete  synonym for "gender:male".  Cannot be set with the `O`
 command.
 
@@ -3664,7 +3664,7 @@ Give feedback when interesting map locations change (default off).
 Give  feedback  when  walking against a wall (default off).  Persis-
 tent.
 
-menucolors
+`menucolors`
 Enable coloring menu lines (default  off).   See  "Configuring  Menu
 Colors" on how to configure the colors.
 
@@ -3770,11 +3770,11 @@ right.  Implemented for `perm_invent` only by curses and X11.  Default
 Show  a  message  when  hero  notices a monster movement (default is
 off).
 
-monpolycontrol
+`monpolycontrol`
 Prompt for new form whenever  any  monster  changes  shape  (default
 off).  Debug mode only.
 
-montelecontrol
+`montelecontrol`
 Prompt for destination whenever any monster gets teleported (default
 off).  Debug mode only.
 
@@ -3788,7 +3788,7 @@ Allow use of the mouse for input and travel.  Valid settings are:
 Omitting a value is the same as specifying 1 and negating mouse_sup-
 port is the same as specifying 0.
 
-msghistory
+`msghistory`
 The  number of top line messages to keep (and be able to recall with
 ``^P`') (default 20).  Cannot be set with the `O` command.
 
@@ -3807,7 +3807,7 @@ defaults  to  "full"), or it can be negated (which defaults to "sin-
 
 gle").
 
-name
+`name`
 Set your character's name (defaults to your  user  name).   You  can
 also  set  your character's role by appending a dash and one or more
 letters of the role (that is, by suffixing one of -A -B -C -H -K  -M
@@ -3819,15 +3819,15 @@ there is no default and the player will be prompted.  The former can
 made to behave like the latter by specifying a generic name such  as
 ``player`'.  Cannot be set with the `O` command.
 
-news
+`news`
 Read the NetHack news file, if present (default on).  Since the news
 is shown at the beginning of the game, there's no point  in  setting
 this with the `O` command.
 
-nudist
+`nudist`
 Start the character with no armor (default false).  Persistent.
 
-null
+`null`
 Send padding nulls to the terminal (default on).  Persistent.
 
 `number_pad`
@@ -3851,7 +3851,7 @@ When moving by numbers, to enter a count prefix for  those  commands
 which  accept one (such as "12s" to search twelve times), precede it
 with the letter `n` ("n12s").
 
-packorder
+`packorder`
 Specify   the   order   to   list   object   types    in    (default
 "")[%?+!=/(*`0_").  The value of this option should be a string con-
 taining the symbols for the various object types.  Any omitted types
@@ -3918,7 +3918,7 @@ list entries to be added by their name and entries to be removed  by
 `!` and name.  The positive (no `!`) and negative (with `!`) entries
 can be intermixed.
 
-pauper
+`pauper`
 Start the character with no possessions  (default  false).   Persis-
 tent.
 
@@ -3946,7 +3946,7 @@ it will be changed to all.
 Note: if gold has been equipped in quiver/ammo-pouch then it will be
 included for all despite that mode normally omitting gold.
 
-petattr
+`petattr`
 Specifies one or more text highlighting attributes to use when show-
 ing pets on the map.  Effectively a superset of the `hilite_pet` bool-
 ean option.  Curses or tty interface only; value  is  one  of  none,
@@ -3954,7 +3954,7 @@ bold,  dim,  underline,  italic,  blink, and inverse.  Some of those
 choices might not work, depending upon terminal hardware or terminal
 emulation software.
 
-pettype
+`pettype`
 Specify the type of your initial pet, if you are playing a character
 class that uses multiple types of pets; or choose to have no initial
 pet  at all.  Possible values are "cat", "dog", "horse", and "none".
@@ -4003,7 +4003,7 @@ means "no limit" (always list the objects); a value of 1 effectively
 means "never show the objects" since the pile size will always be at
 least that big; default value is 5.  Persistent.
 
-playmode
+`playmode`
 Values are "normal", "explore", or  "debug".   Allows  selection  of
 explore  mode  (also  known  as  discovery mode) or debug mode (also
 known as wizard mode) instead of normal play.  Debug mode might only
@@ -4013,7 +4013,7 @@ single-user  systems)  or it might be disabled entirely.  Requesting
 it when not allowed or not possible results in explore mode instead.
 Default is normal play.
 
-pushweapon
+`pushweapon`
 Using the `w` (wield) command when already wielding something pushes
 the old item into your alternate weapon slot (default  off).   Like-
 wise  for  the  `a` (apply) command if it causes the applied item to
@@ -4030,7 +4030,7 @@ or  engulfed,  ignore this option.  It does not affect the clairvoy-
 ance spell where pausing to examine revealed objects or monsters  is
 less intrusive.  Default is off.  Persistent.
 
-race
+`race`
 Selects  your  race  (for  example, race:human).  Choices are human,
 dwarf, elf, gnome, and orc but most roles restrict which of the non-
 human  races  are allowed.  See role for a description of how to use
@@ -4040,7 +4040,7 @@ If race is not specified, there is no default value; player will  be
 prompted  unless  role forces a choice for race.  Cannot be set with
 the `O` command.  Persistent.
 
-reroll
+`reroll`
 Allows rerolling your character's starting inventory and  attributes
 (default false).  Persistent.
 
@@ -4055,7 +4055,7 @@ may be necessary for certain types of challenge games.
 Make the space bar a synonym for the `.`  (`#wait`)  command  (default
 off).  Persistent.
 
-role
+`role`
 Pick your type of character (for example, role:Samurai); synonym for
 character.  See name for an  alternate  method  of  specifying  your
 role.
@@ -4076,17 +4076,17 @@ negations.
 If role is not specified, there is no default value; player will  be
 prompted.  Cannot be set with the `O` command.  Persistent.
 
-roguesymset
+`roguesymset`
 This option may be used to select one of the named symbol sets found
 within "symbols" to alter the symbols displayed on the screen on the
 rogue level.
 
-rlecomp
+`rlecomp`
 When  writing out a save file, perform run length compression of the
 map.  Not all ports support run length compression. It has no effect
 on reading an existing save file.
 
-runmode
+`runmode`
 Controls  the  amount  of  screen  updating  for the map window when
 engaged in multi-turn movement (running via shift+direction or  con-
 trol+direction  and  so  forth,  or  via the travel command or mouse
@@ -4115,32 +4115,32 @@ ster (default on). Persistent.
 Evaluate monsters, objects, and map  prior  to  each  turn  (default
 off).  Debug mode only.
 
-scores
+`scores`
 Control  what  parts of the score list you are shown at the end (for
 example "scores:5 top scores/4 around my score/own  scores").   Only
 the  first  letter of each category (`t`, `a`, or `o`) is necessary.
 Persistent.
 
-showdamage
+`showdamage`
 Whenever your character takes damage, show a message of  the  damage
 taken, and the amount of hit points left.
 
-showexp
+`showexp`
 Show  your  accumulated  experience  points  on bottom line (default
 off).  Persistent.
 
-showrace
+`showrace`
 Display yourself as the glyph for your race, rather than  the  glyph
 for  your  role  (default off).  Note that this setting affects only
 the appearance of the display, not the  way  the  game  treats  you.
 Persistent.
 
-showscore
+`showscore`
 Show  your  approximate  accumulated  score  on bottom line (default
 off).  By default, this feature is suppressed when building the pro-
 gram.  Persistent.
 
-showvers
+`showvers`
 Include the game's version number on the status lines (default off).
 Potentially useful if you switch between different versions or vari-
 ants,  or  you are making screenshots or streaming video.  Using the
@@ -4149,10 +4149,10 @@ available  for  status information, unless you're using NetHack's Qt
 interface or your terminal emulator window displays  fewer  than  25
 lines.  Persistent.
 
-silent
+`silent`
 Suppress terminal beeps (default on).  Persistent.
 
-sortdiscoveries
+`sortdiscoveries`
 Controls the sorting behavior for the output of the `\` and `` ` `` com-
 mands.  Persistent.
 
@@ -4171,7 +4171,7 @@ a - list alphabetically across all classes.
 Can  be  interactively  set via the `O` command or via using the `m`
 prefix before the `\` or `` ` `` command.
 
-sortloot
+`sortloot`
 Controls the sorting behavior of the pickup lists for inventory  and
 #loot commands and some others.  Persistent.
 
@@ -4182,11 +4182,11 @@ loot - only  sort  the  lists that don't use inventory letters, like
 with the `#loot` and pickup commands;
 none - show lists the traditional way without sorting; default.
 
-sortpack
+`sortpack`
 Sort the pack contents by type when  displaying  inventory  (default
 on).  Persistent.
 
-sortvanquished
+`sortvanquished`
 Controls the sorting behavior for the output of the `#vanquished` com-
 mand and also for the `#genocided` command.  Persistent.
 
@@ -4207,21 +4207,21 @@ Can be interactively set via the `m O` command or via using the  `m`
 prefix  before either the `#vanquished` command or the `#genocided` com-
 mand.
 
-sounds
+`sounds`
 Allow sounds to be emitted from an integrated sound library (default
 on).
 
-sparkle
+`sparkle`
 Display  a sparkly effect when a monster (including yourself) is hit
 by an attack to which it is resistant (default on).  Persistent.
 
 `spot_monsters`
 Show a message when hero notices a monster (default is off).
 
-standout
+`standout`
 Boldface monsters and "--More--" (default off).  Persistent.
 
-statushilites
+`statushilites`
 Controls how many turns status hilite behaviors highlight the field.
 If negated or set to zero, disables status hiliting.  See "Configur-
 ing Status Hilites" for further information.
@@ -4235,12 +4235,12 @@ This  option may be set to a NetHack version level to suppress alert
 notification messages about feature changes for that and prior  ver-
 sions (for example "suppress_alert:3.3.1").
 
-symset
+`symset`
 This option may be used to select one of the named symbol sets found
 within "symbols" to alter the symbols displayed on the screen.   Use
 "symset:default" to explicitly select the default symbols.
 
-time
+`time`
 Show  the  elapsed  game time in turns on bottom line (default off).
 Persistent.
 
@@ -4251,30 +4251,30 @@ to the screen.  (Applies to  "tty"  and  "curses"  interfaces  only;
 "X11"  interface always uses a timer-based delay.  The default is on
 if configured into the program.)  Persistent.
 
-tips
+`tips`
 Show some helpful tips during gameplay (default on).  Persistent.
 
-tombstone
+`tombstone`
 Draw a tombstone graphic upon your death (default on).  Persistent.
 
-toptenwin
+`toptenwin`
 Put the ending display in a NetHack  window  instead  of  on  stdout
 (default  off).   Setting  this  option makes the score list visible
 when a windowing version of NetHack is started without a parent win-
 dow, but it no longer leaves the score list around after game end on
 a terminal or emulating window.
 
-travel
+`travel`
 Allow the travel command via mouse click (default on).  Turning this
 option off will prevent the game from attempting unintended moves if
 you make inadvertent mouse clicks  on  the  map  window.   Does  not
 affect traveling via the `_` ("`#travel`") command.  Persistent.
 
-tutorial
+`tutorial`
 Play a tutorial level at the start of the game.  Setting this option
 on or off in the config file will skip the query.
 
-verbose
+`verbose`
 Provide more commentary during the game (default on).  Persistent.
 
 `whatis_coord`
@@ -4320,7 +4320,7 @@ When  getting a location on the map, and using shifted movement keys
 or meta-digit keys to fast-move, instead of  moving  8  units  at  a
 time, move by skipping the same glyphs.  (default off)
 
-windowtype
+`windowtype`
 When  the  program  has  been  built to support multiple interfaces,
 select which one to use, such as "tty" or "X11" (default depends  on
 build-time  settings;  use "`#version`" to check).  Cannot be set with
@@ -4333,11 +4333,11 @@ comment  line.   For  a comma-separated list in NETHACKOPTIONS or an
 OPTIONS line in a configuration file, that would  be  the  rightmost
 option in the list.
 
-wizweight
+`wizweight`
 Augment  object  descriptions  with  their  objects' weight (default
 off).  Debug mode only.
 
-zerocomp
+`zerocomp`
 When writing out a save file, perform zero-comp compression  of  the
 contents.  Not  all  ports  support zero-comp compression. It has no
 effect on reading an existing save file.
@@ -4373,7 +4373,7 @@ the  symset  option  to  select  a symbol set such as DECgraphics or
 IBMgraphics if your display supports  them.   Setting  `ascii_map`  to
 True forces `tiled_map` to be False.
 
-color
+`color`
 If NetHack can, it should display color if it can for different mon-
 sters, objects, and dungeon features (default on).
 
@@ -4417,11 +4417,11 @@ If NetHack can, it should use this size font for the status window.
 `font_size_text`
 If NetHack can, it should use this size font for text windows.
 
-fullscreen
+`fullscreen`
 If NetHack can, it should try to display on the entire screen rather
 than in a window.
 
-guicolor
+`guicolor`
 Use color text and/or highlighting attributes when  displaying  some
 non-map  data  (such  as  menu  selector letters).  Curses interface
 only; default is on.
@@ -4455,12 +4455,12 @@ If NetHack can, it should scroll the display when the hero or cursor
 
 is this number of cells away from the edge of the window.
 
-selectsaved
+`selectsaved`
 If NetHack can, it should display a menu of existing saved games for
 the player to choose from at game startup, if it can.  Not all ports
 support this option.
 
-softkeyboard
+`softkeyboard`
 Display  an onscreen keyboard.  Handhelds are most likely to support
 this option.
 
@@ -4468,7 +4468,7 @@ this option.
 If NetHack can, it should display an opening splash screen  when  it
 starts up (default yes).
 
-statuslines
+`statuslines`
 Number  of  lines  for  traditional  below-the-map  status  display.
 Acceptable values are 2 and 3 (default is 2).
 
@@ -4529,7 +4529,7 @@ it.
 If NetHack can, it should display this number of messages at a  time
 in the message window.
 
-windowborders
+`windowborders`
 Whether to draw boxes around the map, status area, message area, and
 persistent inventory window  if  enabled.   Curses  interface  only.
 Acceptable values are
@@ -4552,7 +4552,7 @@ for the map, message, and status windows but have room for two addi-
 tional lines of inventory plus widen each inventory line by two col-
 umns.
 
-windowcolors
+`windowcolors`
 If  NetHack can, it should display all windows of a particular style
 with the specified foreground and background  colors.   Windows  GUI
 and curses windowport only.  The format is
@@ -4571,7 +4571,7 @@ face,  btnshadow,  btntext,  captiontext,  graytext, greytext, high-
 light, highlighttext, inactiveborder, inactivecaption,  menu,  menu-
 text, scrollbar, window, windowframe, windowtext).
 
-wraptext
+`wraptext`
 If  NetHack can, it should wrap long lines of text if they don't fit
 in the visible area of the window.
 
@@ -4598,12 +4598,12 @@ long URLs.
 Here are explanations of options that are used by specific  plat-
 forms or ports to customize and change the port behavior.
 
-altkeyhandling
+`altkeyhandling`
 Select  an  alternate  way  to  handle keystrokes (Win32 tty NetHack
 only).  The name of the handling type is one  of  "default",  "ray",
 "340".
 
-altmeta
+`altmeta`
 On  systems  where  this  option is available, it can be set to tell
 NetHack to convert a two character sequence beginning with `ESC`  into
 a meta-shifted version of the second character (default off).
@@ -4622,13 +4622,13 @@ keyboard (allowing the use of arrow keys to move) on  machines  with
 an IBM PC compatible BIOS ROM (default off, OS/2, PC, and ST NetHack
 only).
 
-rawio
+`rawio`
 Force raw (non-cbreak) mode for faster output and  more  bulletproof
 input  (MS-DOS sometimes treats ``^P`' as a printer toggle without it)
 (default off, OS/2, PC, and ST NetHack only).  Note:   DEC  Rainbows
 hang if this is turned on.  Cannot be set with the `O` command.
 
-subkeyvalue
+`subkeyvalue`
 (Win32  tty  NetHack  only).  May be used to alter the value of key-
 strokes that the operating system returns to NetHack to help compen-
 sate  for international keyboard issues.  OPTIONS=subkeyvalue:171/92
@@ -4636,7 +4636,7 @@ will return 92 to  NetHack,  if  171  was  originally  going  to  be
 returned.   You can use multiple subkeyvalue assignments in the con-
 figuration file if needed.  Cannot be set with the `O` command.
 
-video
+`video`
 Set the video mode used (PC NetHack only).  Values are "autodetect",
 "default",  "vga", or "vesa".  Setting "vesa" will cause the game to
 display tiles, using the full capability of the VGA hardware.   Set-
@@ -4652,14 +4652,14 @@ Set the VGA mode resolution height (MS-DOS only, with video:vesa)
 `video_width`
 Set the VGA mode resolution width (MS-DOS only, with video:vesa)
 
-videocolors
+`videocolors`
 Set  the  color  palette  for  PC  systems  using  NO_TERMS (default
 4-2-6-1-5-3-15-12-10-14-9-13-11, (PC NetHack only).   The  order  of
 colors  is  red,  green,  brown,  blue, magenta, cyan, bright.white,
 bright.red, bright.green, yellow, bright.blue,  bright.magenta,  and
 bright.cyan.  Cannot be set with the `O` command.
 
-videoshades
+`videoshades`
 Set  the intensity level of the three gray scales available (default
 dark normal light, PC NetHack only).  If the game display is  diffi-
 cult  to  read, try adjusting these scales; if this does not correct
@@ -4756,7 +4756,7 @@ bound  to  same  keys with no problems, others are in the same "con-
 text", and if bound to same keys, only one of those commands will be
 available.  Special command can only be bound to a single key.
 
-count
+`count`
 Prefix  key  to  start a count, to repeat a command this many times.
 With `number_pad` only.  Default is `n`.
 
@@ -5162,10 +5162,10 @@ NetHack can load entire symbol sets from the symbol file.
 The  options that are used to select a particular symbol set from
 the symbol file are:
 
-symset
+`symset`
 Set the name of the symbol set that you want to load.
 
-roguesymset
+`roguesymset`
 Set the name of the symbol set that you want to load for display  on
 the rogue level.
 
@@ -5464,7 +5464,7 @@ the traditional Rogue-like commands.
 paranoid_confirmation:swim
 Prevent walking into water or lava.
 
-accessiblemsg
+`accessiblemsg`
 Adds direction or location information to messages.
 
 `spot_monsters`
@@ -5475,7 +5475,7 @@ blemsg.
 Shows a message when hero notices a monster movement;  combine  with
 `spot_monsters` and accessiblemsg.
 
-autodescribe
+`autodescribe`
 Automatically describe the terrain under the cursor when targeting.
 
 `mention_map`
@@ -5502,7 +5502,7 @@ Prevent  updates to the status lines at the bottom of the screen, if
 your screen-reader reads those lines. The same  information  can  be
 seen via the "`#attributes`" command.
 
-showdamage
+`showdamage`
 Give a message of damage taken and how many hit points are left.
 
 
