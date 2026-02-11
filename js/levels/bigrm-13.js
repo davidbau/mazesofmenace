@@ -1,10 +1,5 @@
-/**
- * bigrm-13 - NetHack special level
- * Converted from: bigrm-13.lua
- */
-
-import * as des from '../sp_lev.js';
 import { selection } from '../sp_lev.js';
+import { rn2 } from '../rng.js';
 
 export function generate() {
     // NetHack bigroom bigrm-13.lua	$NHDT-Date: 1652196024 2022/5/10 15:20:24 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.0 $
@@ -66,7 +61,7 @@ export function generate() {
        function(x, y) { return (Math.floor((x+1)/3) == y); },
     ];
 
-    let idx = Math.random(1, filters.length);
+    let idx = rn2(filters.length);
 
     for (let y = 0; y <= 2; y++) {
        for (let x = 0; x <= 6; x++) {
