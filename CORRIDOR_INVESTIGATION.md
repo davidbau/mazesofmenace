@@ -5,15 +5,24 @@ JS makes 121 extra RNG calls from dig_corridor() compared to C (307 vs 186)
 
 ## Investigation Summary
 
-### Fix Attempted: finddpos() Return Value
+### Fix Attempted: finddpos() Return Value ❌ REVERTED
 **Hypothesis:** JS's finddpos() was returning a coordinate object even when no valid position found, while C returns FALSE to prevent dig_corridor() calls.
 
-**Fix Applied (Commit e4d6e46):**
+**Fix Applied (Commit e4d6e46, REVERTED in 01f8c39):**
 - Changed finddpos() to return `null` instead of `{x: x1, y: y1}` when no valid position found
 - join() already checks `if (!cc || !tt) return` to skip dig_corridor() calls
 
-**Result:** No change in corridor count (still 307 vs 186)
-**Conclusion:** finddpos() rarely/never fails in practice on wizard levels
+**Result:**
+- No change in corridor count (still 307 vs 186)
+- **7-test regression** (574 → 567 passing tests)
+- Fix reverted in commit 01f8c39
+
+**Conclusion:**
+The fix was incorrect. C's finddpos() returns FALSE but STILL SETS coordinates to (x1, y1). The difference is:
+- C: When FALSE is returned, join() returns early (doesn't use coordinates)
+- JS: When null is returned, join() crashes or skips corridors that SHOULD be created
+
+The semantic difference is subtle: C's FALSE means "couldn't find ideal position, here's fallback coordinates" not "coordinates are invalid". JS needs to preserve this behavior by returning coordinates even in the failure case.
 
 ### Current Analysis
 
