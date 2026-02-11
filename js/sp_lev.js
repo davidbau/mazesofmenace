@@ -2544,10 +2544,64 @@ export const selection = {
 
     /**
      * selection.area(x1, y1, x2, y2)
-     * Create a rectangular selection.
+     * Create a rectangular selection (filled rectangle).
+     * Returns an object with both coords array and x1/y1/x2/y2 properties for compatibility.
      */
     area: (x1, y1, x2, y2) => {
-        return { x1, y1, x2, y2 };
+        const coords = [];
+        for (let y = y1; y <= y2; y++) {
+            for (let x = x1; x <= x2; x++) {
+                coords.push({ x, y });
+            }
+        }
+
+        return {
+            coords,
+            x1, y1, x2, y2, // Keep these for des.region compatibility
+            set: (x, y) => coords.push({ x, y }),
+            numpoints: () => coords.length,
+            percentage: (pct) => {
+                const newSel = selection.new();
+                for (const coord of coords) {
+                    if (rn2(100) < pct) {
+                        newSel.set(coord.x, coord.y);
+                    }
+                }
+                return newSel;
+            },
+            rndcoord: (filterValue) => {
+                if (coords.length === 0) return undefined;
+                const idx = rn2(coords.length);
+                return coords[idx];
+            },
+            iterate: (func) => {
+                for (const coord of coords) {
+                    func(coord.x, coord.y);
+                }
+            },
+            filter_mapchar: (ch) => {
+                return selection.filter_mapchar({ coords, x1, y1, x2, y2 }, ch);
+            },
+            negate: () => {
+                return selection.negate({ coords, x1, y1, x2, y2 });
+            },
+            grow: (iterations = 1) => {
+                return selection.grow({ coords, x1, y1, x2, y2 }, iterations);
+            },
+            union: (other) => {
+                const coordSet = new Set();
+                coords.forEach(c => coordSet.add(`${c.x},${c.y}`));
+                if (other && other.coords) {
+                    other.coords.forEach(c => coordSet.add(`${c.x},${c.y}`));
+                }
+                const result = selection.new();
+                coordSet.forEach(key => {
+                    const [x, y] = key.split(',').map(Number);
+                    result.set(x, y);
+                });
+                return result;
+            },
+        };
     },
 
     /**
