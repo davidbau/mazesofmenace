@@ -960,7 +960,7 @@ class NetHackGame {
         const raceName = races[raceIdx].adj;
         const genderStr = female ? 'female' : 'male';
         const alignStr = alignName(align);
-        const confirmText = `${this.player.name.toLowerCase()} the ${alignStr} ${genderStr} ${raceName} ${rName}`;
+        const confirmText = `${this.player.name} the ${alignStr} ${genderStr} ${raceName} ${rName}`;
 
         const lines = [];
         lines.push('Is this ok? [ynq]');
@@ -977,7 +977,8 @@ class NetHackGame {
         const c = String.fromCharCode(ch);
 
         if (c === 'q') { window.location.reload(); return false; }
-        return c === 'y';
+        // Both 'y' and '*' accept (as shown in menu: "y * Yes")
+        return c === 'y' || c === '*';
     }
 
     // Show lore text and welcome message
@@ -1051,7 +1052,7 @@ class NetHackGame {
             genderStr = female ? 'female ' : 'male ';
         }
 
-        const welcomeMsg = `${greeting} ${this.player.name.toLowerCase()}, welcome to NetHack!  You are a ${alignStr} ${genderStr}${raceAdj} ${rName}.`;
+        const welcomeMsg = `${greeting} ${this.player.name}, welcome to NetHack!  You are a ${alignStr} ${genderStr}${raceAdj} ${rName}.`;
         this.display.putstr_message(welcomeMsg);
 
         // Show --More-- after welcome
