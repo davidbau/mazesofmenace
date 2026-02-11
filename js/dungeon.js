@@ -965,23 +965,23 @@ function makerooms(map, depth) {
     }
     if (DEBUG) {
         console.log(`Exited loop: nroom=${map.nroom}, tries=${themeroom_tries}`);
-    }
-    // Always log room count for debugging "big mine" issue
-    console.log(`makerooms() finished: ${map.nroom} rooms created, themeroom_tries=${themeroom_tries}`);
+        console.log(`makerooms() finished: ${map.nroom} rooms created, themeroom_tries=${themeroom_tries}`);
 
-    // Log room sizes and positions
-    let totalArea = 0;
-    for (let i = 0; i < map.nroom; i++) {
-        const r = map.rooms[i];
-        const w = r.hx - r.lx + 1;
-        const h = r.hy - r.ly + 1;
-        const area = w * h;
-        totalArea += area;
-        if (i < 5) { // Log first 5 rooms
-            console.log(`  Room ${i}: (${r.lx},${r.ly})-(${r.hx},${r.hy}) size=${w}x${h} area=${area}`);
+        // Log room sizes and positions
+        let totalArea = 0;
+        for (let i = 0; i < map.nroom; i++) {
+            const r = map.rooms[i];
+            if (!r) continue; // Skip undefined rooms
+            const w = r.hx - r.lx + 1;
+            const h = r.hy - r.ly + 1;
+            const area = w * h;
+            totalArea += area;
+            if (i < 5) { // Log first 5 rooms
+                console.log(`  Room ${i}: (${r.lx},${r.ly})-(${r.hx},${r.hy}) size=${w}x${h} area=${area}`);
+            }
         }
+        console.log(`  Total room area: ${totalArea} squares (screen is ~1920 squares)`);
     }
-    console.log(`  Total room area: ${totalArea} squares (screen is ~1920 squares)`);
 }
 
 // ========================================================================
@@ -3309,10 +3309,11 @@ export function makelevel(depth, dnum, dlevel) {
     rn2(5);
 
     // Check for special level if branch coordinates provided
+    const DEBUG = typeof process !== 'undefined' && process.env.DEBUG_MAKELEVEL === '1';
     if (dnum !== undefined && dlevel !== undefined) {
         const special = getSpecialLevel(dnum, dlevel);
         if (special) {
-            console.log(`Generating special level: ${special.name} at (${dnum}, ${dlevel})`);
+            if (DEBUG) console.log(`Generating special level: ${special.name} at (${dnum}, ${dlevel})`);
 
             // C ref: mklev.c:365-380 — Lua theme shuffle when loading special level
             // In C, loading oracle.lua triggers themerms.lua load, which does rn2(3), rn2(2)
@@ -3326,7 +3327,7 @@ export function makelevel(depth, dnum, dlevel) {
                 return specialMap;
             }
             // If special level generation fails, fall through to procedural
-            console.warn(`Special level ${special.name} generation failed, using procedural`);
+            if (DEBUG) console.warn(`Special level ${special.name} generation failed, using procedural`);
         }
     }
 
@@ -3343,9 +3344,9 @@ export function makelevel(depth, dnum, dlevel) {
 
     if (map.nroom === 0) {
         // Fallback: should never happen, but safety
-        console.warn(`⚠️ makerooms() created 0 rooms! Using fallback single room. This is a bug!`);
+        if (DEBUG) console.warn(`⚠️ makerooms() created 0 rooms! Using fallback single room. This is a bug!`);
         add_room_to_map(map, 10, 5, 20, 10, true, OROOM, false);
-    } else {
+    } else if (DEBUG) {
         console.log(`✓ makerooms() created ${map.nroom} rooms`);
     }
 
@@ -3503,6 +3504,15 @@ export function makelevel(depth, dnum, dlevel) {
     // bound_digging marks boundary stone as non-diggable before mineralize
     bound_digging(map);
     mineralize(map, depth);
+
+    // C ref: mkmaze.c:644-645 — place branch stairs for branch levels
+    // Called from fixup_special() after level generation when Is_branchlev is true
+    // For depths 2-4: Gnomish Mines entrance range
+    // Parameters: all zeros = search anywhere on map, place anywhere
+    // rtype = LR_BRANCH (4) = branch staircase
+    if (depth >= 2 && depth <= 4) {
+        place_lregion(map, 0, 0, 0, 0, 0, 0, 0, 0, LR_BRANCH);
+    }
 
     return map;
 }

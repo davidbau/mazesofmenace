@@ -14,7 +14,7 @@
 
 import * as des from '../sp_lev.js';
 import { selection, percent, shuffle } from '../sp_lev.js';
-import { rn2, rnd, d } from '../rng.js';
+import { rn2, rnd, d, getRngLog } from '../rng.js';
 
 // Module-level state for postprocessing callbacks
 let postprocess = [];
@@ -42,6 +42,19 @@ const obj = {
 export function reset_state() {
     postprocess = [];
     _initialized = false;
+    themeroom_failed = false;
+}
+
+// Themeroom failure flag (set when room creation fails in themed rooms)
+// C ref: mklev.c themeroom_failed global
+let themeroom_failed = false;
+
+export function set_themeroom_failed() {
+    themeroom_failed = true;
+}
+
+export function get_themeroom_failed() {
+    return themeroom_failed;
 }
 
 // themeroom_fills: Contents that can fill any room shape
@@ -928,6 +941,9 @@ function lookup_by_name(name, checkfills) {
 export function themerooms_generate(map, depth) {
    _levelDepth = depth; // Update module-level depth for nh.level_difficulty()
 
+   // C ref: mklev.c:404 — reset failure flag before calling Lua themerooms_generate
+   themeroom_failed = false;
+
    // First-time initialization for this level: shuffle align and init Lua MT RNG
    if (!_initialized) {
       pre_themerooms_generate();
@@ -960,23 +976,15 @@ export function themerooms_generate(map, depth) {
       themerooms[actualrm].contents();
       return true;
    }
-
-   // C ref: mklev.c:402-407 — After ~6 theme rooms, start declining with increasing probability
-   // This allows the makerooms() break condition to trigger and creates space for ordinary rooms
-   if (map.nroom >= 6) {
-      // Decline with 50% probability after 6 rooms
-      // This matches C NetHack's behavior where theme room attempts start failing
-      if (rn2(2)) {
-         return false;
-      }
-   }
-
    let pick = null;
    let total_frequency = 0;
+   const themerooms_count = themerooms.length;
+   let eligible_count = 0;
    for (let i = 0; i < themerooms.length; i++) {
       if (typeof themerooms[i] !== "object") {
          nh.impossible('themed room ' + i + ' is not a table');
       } else if (is_eligible(themerooms[i], null)) {
+         eligible_count++;
          // Reservoir sampling: select one room from the set of eligible rooms,
          // which may change on different levels because of level difficulty.
          let this_frequency;
@@ -992,6 +1000,9 @@ export function themerooms_generate(map, depth) {
          }
       }
    }
+   if (themerooms_count > 100) {
+      console.log(`themerooms_generate: ${themerooms_count} total themerooms, ${eligible_count} eligible`);
+   }
    if (pick === null) {
       nh.impossible('no eligible themed rooms?');
       return false;
@@ -1000,13 +1011,31 @@ export function themerooms_generate(map, depth) {
    if (DEBUG_THEME) {
       console.log(`Selected themed room [${pick}]: "${themerooms[pick].name}"`);
    }
+   const rngBefore = getRngLog().length;
    themerooms[pick].contents();
-   return true;
+   const rngAfter = getRngLog().length;
+   if (rngAfter - rngBefore > 100) {
+      console.log(`themerooms[${pick}].contents() consumed ${rngAfter - rngBefore} RNG calls (name: ${themerooms[pick].name})`);
+   }
+
+   // C ref: mklev.c:408 — return failure if theme room creation failed
+   // The contents() function calls des.room() which sets themeroom_failed flag on failure
+   return !themeroom_failed;
 }
 
 // called before any rooms are generated
+let _mtInitCount = 0;
 export function pre_themerooms_generate() {
-   // C ref: Theme debug setup (no MT init here - that's done lazily on first Lua RNG use)
+   // Initialize Lua MT19937 RNG on first themed room use
+   // C ref: This happens when Lua math.random() is first called
+   // Pattern from C trace: rn2(1000-1004), rn2(1010), rn2(1012), rn2(1014-1036)
+   _mtInitCount++;
+   console.log(`pre_themerooms_generate called (count=${_mtInitCount})`);
+   for (let i = 1000; i <= 1004; i++) rn2(i);
+   rn2(1010);
+   rn2(1012);
+   for (let i = 1014; i <= 1036; i++) rn2(i);
+
    const debug_themerm = nh.debug_themerm(false);
    const debug_fill = nh.debug_themerm(true);
    let xtrainfo = "";
