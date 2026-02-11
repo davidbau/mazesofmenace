@@ -936,6 +936,9 @@ function lookup_by_name(name, checkfills) {
 export function themerooms_generate(map, depth) {
    _levelDepth = depth; // Update module-level depth for nh.level_difficulty()
 
+   // C ref: mklev.c:404 — reset failure flag before calling Lua themerooms_generate
+   themeroom_failed = false;
+
    // First-time initialization for this level: shuffle align and init Lua MT RNG
    if (!_initialized) {
       pre_themerooms_generate();
@@ -1005,7 +1008,10 @@ export function themerooms_generate(map, depth) {
    if (rngAfter - rngBefore > 100) {
       console.log(`themerooms[${pick}].contents() consumed ${rngAfter - rngBefore} RNG calls (name: ${themerooms[pick].name})`);
    }
-   return true;
+
+   // C ref: mklev.c:408 — return failure if theme room creation failed
+   // The contents() function calls des.room() which sets themeroom_failed flag on failure
+   return !themeroom_failed;
 }
 
 // called before any rooms are generated

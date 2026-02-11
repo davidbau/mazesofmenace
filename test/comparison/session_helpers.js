@@ -9,7 +9,7 @@ import {
     CORR, ROOM, DOOR, isok, TERMINAL_COLS, TERMINAL_ROWS
 } from '../../js/config.js';
 import { initRng, enableRngLog, getRngLog, disableRngLog, rn2, rnd, rn1 } from '../../js/rng.js';
-import { initLevelGeneration, makelevel, setGameSeed } from '../../js/dungeon.js';
+import { initLevelGeneration, makelevel, setGameSeed, wallification } from '../../js/dungeon.js';
 import { simulatePostLevelInit } from '../../js/u_init.js';
 import { Player, roles } from '../../js/player.js';
 import { NORMAL_SPEED, A_DEX, A_CON,
