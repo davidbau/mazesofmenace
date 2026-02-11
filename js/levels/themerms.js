@@ -1016,8 +1016,9 @@ export function themerooms_generate(map, depth) {
          }
          total_frequency = total_frequency + this_frequency;
          // avoid rn2(0) if a room has freq 0
-         // C ref: Lua reservoir sampling uses math.random (invisible xoshiro256** RNG)
-         // We use Math.random() to match this behavior and avoid polluting NetHack's RNG log
+         // C ref: Lua reservoir sampling uses math.random (invisible), not nhl_rn2
+         // MEMORY.md mentions reservoir sampling uses rn2(), but that's confusing - the actual
+         // Lua code uses math.random which doesn't get logged. Use Math.random() to match.
          if (this_frequency > 0 && Math.random() * total_frequency < this_frequency) {
             pick = i;
          }
