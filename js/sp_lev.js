@@ -3047,6 +3047,12 @@ export function finalize_level() {
     // Apply random flipping
     flipLevelRandom();
 
+    // Re-wallify after flipping to fix corner types
+    // C ref: sp_lev.c line 913 - fix_wall_spines() after flip_level()
+    if (levelState.map) {
+        wallification(levelState.map);
+    }
+
     // C ref: mklev.c:1533-1539 — level_finalize_topology()
     // bound_digging marks boundary stone as non-diggable before mineralize
     if (levelState.map) {
