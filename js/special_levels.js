@@ -8,25 +8,25 @@
 import { rn2 } from './rng.js';
 
 // Import special level generators
-// import { generate as generateKnox } from './levels/knox.js';
-// import { generate as generateMedusa } from './levels/medusa.js';
+import { generate as generateKnox } from './levels/knox.js';
+import { generate as generateMedusa } from './levels/medusa.js';
 import { generate as generateMedusa1 } from './levels/medusa-1.js';
 import { generate as generateMedusa2 } from './levels/medusa-2.js';
 import { generate as generateMedusa3 } from './levels/medusa-3.js';
-// import { generate as generateSanctum } from './levels/sanctum.js';
-// import { generate as generateValley } from './levels/valley.js';
-// import { generate as generateTower1 } from './levels/tower1.js';
-// import { generate as generateTower2 } from './levels/tower2.js';
-// import { generate as generateTower3 } from './levels/tower3.js';
-// import { generate as generateWizard1 } from './levels/wizard1.js';
-// import { generate as generateWizard2 } from './levels/wizard2.js';
-// import { generate as generateWizard3 } from './levels/wizard3.js';
+import { generate as generateSanctum } from './levels/sanctum.js';
+import { generate as generateValley } from './levels/valley.js';
+import { generate as generateTower1 } from './levels/tower1.js';
+import { generate as generateTower2 } from './levels/tower2.js';
+import { generate as generateTower3 } from './levels/tower3.js';
+import { generate as generateWizard1 } from './levels/wizard1.js';
+import { generate as generateWizard2 } from './levels/wizard2.js';
+import { generate as generateWizard3 } from './levels/wizard3.js';
 
 // Demon lair levels
-// import { generate as generateAsmodeus } from './levels/asmodeus.js';
-// import { generate as generateBaalz } from './levels/baalz.js';
-// import { generate as generateJuiblex } from './levels/juiblex.js';
-// import { generate as generateOrcus } from './levels/orcus.js';
+import { generate as generateAsmodeus } from './levels/asmodeus.js';
+import { generate as generateBaalz } from './levels/baalz.js';
+import { generate as generateJuiblex } from './levels/juiblex.js';
+import { generate as generateOrcus } from './levels/orcus.js';
 
 // Main dungeon special levels
 import { generate as generateCastle } from './levels/castle.js';
@@ -316,6 +316,43 @@ export function hasSpecialLevel(dnum, dlevel) {
 
 // Oracle level (typically depth 5-7 in Dungeons of Doom)
 registerSpecialLevel(DUNGEONS_OF_DOOM, 5, generateOracle, 'oracle');
+
+// Castle (Stronghold) level (typically depth 17 in Dungeons of Doom)
+registerSpecialLevel(DUNGEONS_OF_DOOM, 17, generateCastle, 'castle');
+
+// Medusa level (4 variants, typically depth 20 in Dungeons of Doom)
+registerSpecialLevel(DUNGEONS_OF_DOOM, 20, [
+    generateMedusa1,
+    generateMedusa2,
+    generateMedusa3,
+    generateMedusa4
+], ['medusa-1', 'medusa-2', 'medusa-3', 'medusa-4']);
+
+// Fort Ludios (Knox's Fort) - bonus level accessed via magic portal
+registerSpecialLevel(KNOX, 1, generateKnox, 'knox');
+
+// Register Gehennom levels
+// Valley of the Dead (first level of Gehennom)
+registerSpecialLevel(GEHENNOM, 1, generateValley, 'valley');
+
+// Demon lairs in Gehennom
+registerSpecialLevel(GEHENNOM, 3, generateAsmodeus, 'asmodeus');
+registerSpecialLevel(GEHENNOM, 4, generateBaalz, 'baalz');
+registerSpecialLevel(GEHENNOM, 5, generateJuiblex, 'juiblex');
+registerSpecialLevel(GEHENNOM, 6, generateOrcus, 'orcus');
+
+// Moloch's Sanctum (final level of Gehennom)
+registerSpecialLevel(GEHENNOM, 10, generateSanctum, 'sanctum');
+
+// Wizard's Tower levels (in Gehennom, typically depths 11-13)
+registerSpecialLevel(GEHENNOM, 11, generateWizard1, 'wizard1');
+registerSpecialLevel(GEHENNOM, 12, generateWizard2, 'wizard2');
+registerSpecialLevel(GEHENNOM, 13, generateWizard3, 'wizard3');
+
+// Vlad's Tower (vampire tower in Gehennom)
+registerSpecialLevel(VLADS_TOWER, 1, generateTower1, 'tower1');
+registerSpecialLevel(VLADS_TOWER, 2, generateTower2, 'tower2');
+registerSpecialLevel(VLADS_TOWER, 3, generateTower3, 'tower3');
 
 // Register Gnomish Mines levels
 // Mines Town can have multiple variants (7 variants)
