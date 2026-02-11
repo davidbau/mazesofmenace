@@ -132,14 +132,25 @@ function formatDiffReport(diffs, limit = 20) {
 
 /**
  * Simulate JS NetHack rendering for a given step
- * This is a placeholder - will be implemented to actually run JS NetHack
  */
 async function simulateJSStep(step, previousState) {
-  // TODO: Implement actual JS NetHack headless mode
-  // For now, return empty screen to establish test structure
+  // Import HeadlessDisplay dynamically to avoid module issues
+  const { HeadlessDisplay } = await import('./session_helpers.js');
+
+  // Create headless display
+  const display = new HeadlessDisplay();
+
+  // For now, simulate a simple screen
+  // TODO: Actually run JS NetHack game logic to produce the screen
+  // This would involve:
+  // 1. Initializing game state
+  // 2. Processing the input key from the step
+  // 3. Rendering the resulting screen
+
+  // Return the current screen state
   return {
-    screen: Array(24).fill(''.padEnd(80, ' ')),
-    attrs: Array(24).fill('0'.repeat(80)),
+    screen: display.getScreenLines(),
+    attrs: display.getAttrLines(),
     state: previousState
   };
 }
@@ -158,13 +169,53 @@ describe('Interface Tests', () => {
       assert.strictEqual(session.subtype, 'startup');
       assert(session.steps.length > 0, 'Session should have steps');
 
-      // For now, just verify the session structure
+      // Verify the session structure
       const firstStep = session.steps[0];
       assert(firstStep.screen, 'Step should have screen');
       assert(firstStep.attrs, 'Step should have attrs');
       assert.strictEqual(firstStep.screen.length, 24, 'Screen should have 24 rows');
 
       console.log(`✅ Startup session has ${session.steps.length} steps`);
+    });
+
+    it('should render role menu with inverse video header', async () => {
+      const session = loadSession('interface_startup.session.json');
+
+      if (!session || session.steps.length < 3) {
+        return;
+      }
+
+      // Find the role menu step (should be step 2: "Decline random character")
+      const roleMenuStep = session.steps.find(s => s.description.includes('Role selection'));
+
+      if (!roleMenuStep) {
+        return;
+      }
+
+      // Import HeadlessDisplay
+      const { HeadlessDisplay } = await import('./session_helpers.js');
+
+      // Create a simple role menu to test attribute rendering
+      const display = new HeadlessDisplay();
+      const menuLines = [
+        ' Pick a role or profession',
+        '',
+        ' a - archeologist',
+        ' b - barbarian'
+      ];
+
+      display.renderChargenMenu(menuLines, false);
+
+      // Get the rendered screen and attributes
+      const jsScreen = display.getScreenLines();
+      const jsAttrs = display.getAttrLines();
+
+      // Check that the header has inverse video (attr=1)
+      const headerAttrs = jsAttrs[0];
+      const hasInverse = headerAttrs.includes('1');
+
+      assert(hasInverse, 'Menu header should have inverse video attribute');
+      console.log('✅ Role menu header rendered with inverse video');
     });
 
     it('should detect inverse video in headers', async () => {

@@ -872,31 +872,38 @@ const CLR_GRAY = 7;
 
 // Headless display for testing chargen screen rendering.
 // Same grid-based rendering as Display but without any DOM dependency.
+// Now supports terminal attributes (inverse video, bold, underline).
 export class HeadlessDisplay {
     constructor() {
         this.cols = TERMINAL_COLS;
         this.rows = TERMINAL_ROWS;
         this.grid = [];
+        this.attrs = []; // Parallel grid for attributes
         for (let r = 0; r < this.rows; r++) {
             this.grid[r] = [];
+            this.attrs[r] = [];
             for (let c = 0; c < this.cols; c++) {
                 this.grid[r][c] = ' ';
+                this.attrs[r][c] = 0; // 0 = normal
             }
         }
         this.topMessage = null; // Track current message for concatenation
         this.messages = []; // Message history
         this.flags = { msg_window: false }; // Default flags
+        this.messageNeedsMore = false; // For message concatenation
     }
 
-    setCell(col, row, ch) {
+    setCell(col, row, ch, color = CLR_GRAY, attr = 0) {
         if (row >= 0 && row < this.rows && col >= 0 && col < this.cols) {
             this.grid[row][col] = ch;
+            this.attrs[row][col] = attr;
         }
     }
 
     clearRow(row) {
         for (let c = 0; c < this.cols; c++) {
             this.grid[row][c] = ' ';
+            this.attrs[row][c] = 0;
         }
     }
 
@@ -906,9 +913,9 @@ export class HeadlessDisplay {
         }
     }
 
-    putstr(col, row, str) {
+    putstr(col, row, str, color = CLR_GRAY, attr = 0) {
         for (let i = 0; i < str.length; i++) {
-            this.setCell(col + i, row, str[i]);
+            this.setCell(col + i, row, str[i], color, attr);
         }
     }
 
@@ -940,6 +947,7 @@ export class HeadlessDisplay {
     }
 
     // Matches Display.renderChargenMenu() — always clears screen, applies offset
+    // C ref: win/tty/wintty.c - menu headers use inverse video
     renderChargenMenu(lines, isFirstMenu) {
         let maxcol = 0;
         for (const line of lines) {
@@ -953,8 +961,14 @@ export class HeadlessDisplay {
 
         this.clearScreen();
 
+        // Render each line at the offset
+        // C ref: role.c - headers like " Pick a role or profession" use inverse
         for (let i = 0; i < lines.length && i < this.rows; i++) {
-            this.putstr(offx, i, lines[i]);
+            const line = lines[i];
+            // First line (menu header) gets inverse video if it starts with space and contains text
+            const isHeader = (i === 0 && line.trim().length > 0 && line.startsWith(' '));
+            const attr = isHeader ? 1 : 0;  // 1 = inverse video
+            this.putstr(offx, i, line, CLR_GRAY, attr);
         }
 
         return offx;
@@ -984,6 +998,19 @@ export class HeadlessDisplay {
             // Right-trim spaces (C session screens are right-trimmed)
             line = line.replace(/ +$/, '');
             result.push(line);
+        }
+        return result;
+    }
+
+    // Return 24-line attribute array matching session format
+    // Each line is 80 chars where each char is an attribute code:
+    // '0' = normal, '1' = inverse, '2' = bold, '4' = underline
+    getAttrLines() {
+        const result = [];
+        for (let r = 0; r < this.rows; r++) {
+            // Convert numeric attrs to string, pad to 80 chars
+            const attrLine = this.attrs[r].map(a => String(a)).join('').padEnd(80, '0');
+            result.push(attrLine);
         }
         return result;
     }
