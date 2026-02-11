@@ -3,10 +3,35 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Play NetHack in your browser - A classic roguelike dungeon crawler adventure. Explore the Mazes of Menace and retrieve the Amulet of Yendor.">
+    <meta name="theme-color" content="#f9f7f1">
     <title>NetHack JS -- Mazes of Menace</title>
     <link rel="icon" type="image/svg+xml" href="favicon.svg">
+
+    <!-- Open Graph / Social Media -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="NetHack JS -- Mazes of Menace">
+    <meta property="og:description" content="Play NetHack in your browser - A classic roguelike dungeon crawler adventure.">
+    <meta property="og:site_name" content="NetHack JS">
     <style>
         /* Elegant book-like appearance matching the guidebooks */
+        html {
+            scroll-behavior: smooth;
+        }
+
+        /* Respect user's motion preferences */
+        @media (prefers-reduced-motion: reduce) {
+            html {
+                scroll-behavior: auto;
+            }
+
+            * {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+
         body {
             background: #f9f7f1;  /* Cream parchment color like guidebooks */
             color: #333;
@@ -27,9 +52,11 @@
 
         #nav {
             display: flex;
+            flex-wrap: wrap;
             gap: 1.5em;
             padding: 0.5em 0;
             font-size: 13px;
+            justify-content: center;
         }
 
         #nav a {
@@ -42,6 +69,12 @@
             text-decoration: underline;
         }
 
+        #nav a:focus-visible {
+            outline: 2px solid #6b2c2c;
+            outline-offset: 3px;
+            border-radius: 2px;
+        }
+
         #controls {
             position: fixed;
             bottom: 20px;
@@ -49,6 +82,7 @@
             display: flex;
             gap: 0.5em;
             z-index: 10;
+            filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.15));
         }
 
         #controls button {
@@ -127,6 +161,10 @@
             border-color: #666;
         }
 
+        body.dark-mode #controls {
+            filter: drop-shadow(0 2px 12px rgba(0, 0, 0, 0.4));
+        }
+
         body.dark-mode .side-panel {
             color: #888;  /* Lighter text for dark background */
         }
@@ -164,6 +202,8 @@
             /* Terminal is 80 cols × 24 rows at 16px font, 1.2 line-height, 8px padding */
             min-width: calc(80ch + 16px);  /* 80 chars + padding */
             min-height: calc(24 * 16px * 1.2 + 16px);  /* 24 rows × line-height + padding = 477px */
+            max-width: 100%;
+            overflow: auto;
         }
 
         #terminal {
@@ -184,14 +224,20 @@
 
         /* Loading message */
         #loading {
-            color: #888;
-            font-size: 16px;
+            color: #666;
+            font-size: 15px;
             padding: 20px;
             /* Center in the pre-sized container */
             display: flex;
             align-items: center;
             justify-content: center;
             min-height: calc(24 * 16px * 1.2 + 16px - 40px);  /* Match game height minus padding */
+            font-weight: 500;
+            letter-spacing: 0.02em;
+        }
+
+        body.dark-mode #loading {
+            color: #888;
         }
 
         /* Focus indicator */
@@ -315,9 +361,39 @@
                 display: flex;
             }
 
-            /* Hide side panel controls on narrow screens */
-            #controls {
+            /* On narrow screens, hide panel toggle (panels are below anyway) */
+            #panel-toggle {
                 display: none;
+            }
+
+            /* Adjust control position for narrow screens */
+            #controls {
+                bottom: 10px;
+                right: 10px;
+                gap: 0.4em;
+            }
+
+            #controls button {
+                padding: 0.3em 0.6em;
+                font-size: 13px;
+            }
+        }
+
+        /* Very narrow screens (phones) */
+        @media (max-width: 600px) {
+            #nav {
+                font-size: 12px;
+                gap: 1em;
+                padding: 0.75em 0.5em;
+            }
+
+            #page {
+                padding: 0 0.5em;
+            }
+
+            #controls {
+                bottom: 8px;
+                right: 8px;
             }
         }
     </style>
@@ -331,10 +407,10 @@
             <a href="https://github.com/davidbau/webhack" target="_blank">About This Project</a>
         </nav>
         <div id="controls">
-            <button id="panel-toggle" title="Show/hide side panels" tabindex="-1">☰</button>
-            <button id="font-smaller" title="Decrease font size" tabindex="-1">A−</button>
-            <button id="font-larger" title="Increase font size" tabindex="-1">A+</button>
-            <button id="theme-toggle" title="Toggle dark/light mode" tabindex="-1">◐</button>
+            <button id="panel-toggle" title="Show/hide side panels" aria-label="Toggle side panels" tabindex="-1">☰</button>
+            <button id="font-smaller" title="Decrease font size" aria-label="Decrease font size" tabindex="-1">A−</button>
+            <button id="font-larger" title="Increase font size" aria-label="Increase font size" tabindex="-1">A+</button>
+            <button id="theme-toggle" title="Toggle dark/light mode" aria-label="Toggle dark/light mode" tabindex="-1">◐</button>
         </div>
         <div id="main">
             <!-- Left: keyboard controls -->
@@ -444,13 +520,19 @@
         const gameDiv = document.getElementById('game');
 
         // Load saved theme
-        const savedTheme = localStorage.getItem('nh-theme') || 'light';
+        let savedTheme = 'light';
+        try {
+            savedTheme = localStorage.getItem('nh-theme') || 'light';
+        } catch(e) {}
         if (savedTheme === 'dark') {
             document.body.classList.add('dark-mode');
         }
 
         // Load and apply saved font size
-        const savedFontSize = localStorage.getItem('nh-font-size') || '16';
+        let savedFontSize = '16';
+        try {
+            savedFontSize = localStorage.getItem('nh-font-size') || '16';
+        } catch(e) {}
 
         function applyFontSize(size) {
             // Apply to game div - will cascade to terminal when it's created
@@ -468,22 +550,34 @@
         themeToggle.addEventListener('click', function() {
             document.body.classList.toggle('dark-mode');
             const isDark = document.body.classList.contains('dark-mode');
-            localStorage.setItem('nh-theme', isDark ? 'dark' : 'light');
+            try {
+                localStorage.setItem('nh-theme', isDark ? 'dark' : 'light');
+            } catch(e) {}
         });
 
         // Font size controls
         fontSmaller.addEventListener('click', function() {
-            let size = parseInt(localStorage.getItem('nh-font-size')) || 16;
+            let size = 16;
+            try {
+                size = parseInt(localStorage.getItem('nh-font-size')) || 16;
+            } catch(e) {}
             size = Math.max(12, size - 2);
             applyFontSize(size);
-            localStorage.setItem('nh-font-size', size);
+            try {
+                localStorage.setItem('nh-font-size', size);
+            } catch(e) {}
         });
 
         fontLarger.addEventListener('click', function() {
-            let size = parseInt(localStorage.getItem('nh-font-size')) || 16;
+            let size = 16;
+            try {
+                size = parseInt(localStorage.getItem('nh-font-size')) || 16;
+            } catch(e) {}
             size = Math.min(24, size + 2);
             applyFontSize(size);
-            localStorage.setItem('nh-font-size', size);
+            try {
+                localStorage.setItem('nh-font-size', size);
+            } catch(e) {}
         });
     })();
 
@@ -516,7 +610,10 @@
     // Watch for terminal creation and apply font size
     (function() {
         const gameDiv = document.getElementById('game');
-        const savedFontSize = localStorage.getItem('nh-font-size');
+        let savedFontSize = null;
+        try {
+            savedFontSize = localStorage.getItem('nh-font-size');
+        } catch(e) {}
         if (!savedFontSize || !gameDiv) return;
 
         const observer = new MutationObserver(function(mutations) {
