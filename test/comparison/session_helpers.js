@@ -294,7 +294,7 @@ export function generateStartupWithRng(seed, session) {
     initLevelGeneration(roleIndex);
 
     const map = makelevel(1);
-    wallification(map);
+    // Note: wallification is now called inside makelevel
 
     // NOTE: Wizard mode (-D flag) enables omniscience for the PLAYER,
     // but does NOT make pets aware of trap locations (trap.tseen).
