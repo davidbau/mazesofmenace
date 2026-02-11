@@ -31,9 +31,11 @@
 
         #nav {
             display: flex;
+            flex-wrap: wrap;
             gap: 1.5em;
             padding: 0.5em 0;
             font-size: 13px;
+            justify-content: center;
         }
 
         #nav a {
@@ -44,6 +46,12 @@
         #nav a:hover {
             color: #6b2c2c;
             text-decoration: underline;
+        }
+
+        #nav a:focus-visible {
+            outline: 2px solid #6b2c2c;
+            outline-offset: 3px;
+            border-radius: 2px;
         }
 
         #controls {
@@ -173,6 +181,8 @@
             /* Terminal is 80 cols × 24 rows at 16px font, 1.2 line-height, 8px padding */
             min-width: calc(80ch + 16px);  /* 80 chars + padding */
             min-height: calc(24 * 16px * 1.2 + 16px);  /* 24 rows × line-height + padding = 477px */
+            max-width: 100%;
+            overflow: auto;
         }
 
         #terminal {
@@ -347,6 +357,24 @@
                 font-size: 13px;
             }
         }
+
+        /* Very narrow screens (phones) */
+        @media (max-width: 600px) {
+            #nav {
+                font-size: 12px;
+                gap: 1em;
+                padding: 0.75em 0.5em;
+            }
+
+            #page {
+                padding: 0 0.5em;
+            }
+
+            #controls {
+                bottom: 8px;
+                right: 8px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -358,10 +386,10 @@
             <a href="https://github.com/davidbau/webhack" target="_blank">About This Project</a>
         </nav>
         <div id="controls">
-            <button id="panel-toggle" title="Show/hide side panels" tabindex="-1">☰</button>
-            <button id="font-smaller" title="Decrease font size" tabindex="-1">A−</button>
-            <button id="font-larger" title="Increase font size" tabindex="-1">A+</button>
-            <button id="theme-toggle" title="Toggle dark/light mode" tabindex="-1">◐</button>
+            <button id="panel-toggle" title="Show/hide side panels" aria-label="Toggle side panels" tabindex="-1">☰</button>
+            <button id="font-smaller" title="Decrease font size" aria-label="Decrease font size" tabindex="-1">A−</button>
+            <button id="font-larger" title="Increase font size" aria-label="Increase font size" tabindex="-1">A+</button>
+            <button id="theme-toggle" title="Toggle dark/light mode" aria-label="Toggle dark/light mode" tabindex="-1">◐</button>
         </div>
         <div id="main">
             <!-- Left: keyboard controls -->
