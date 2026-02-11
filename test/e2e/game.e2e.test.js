@@ -79,6 +79,10 @@ async function screenContains(page, text) {
 
 // Helper: wait for the page and game to be loaded
 async function waitForGameLoad(page) {
+    // Clear localStorage and reload to prevent state leakage between tests
+    await page.evaluate(() => localStorage.clear());
+    await page.reload({ waitUntil: 'networkidle0' });
+
     await page.waitForSelector('#terminal', { timeout: 5000 });
     await page.waitForFunction(
         () => document.querySelectorAll('#terminal span').length > 100,
@@ -105,7 +109,7 @@ async function selectRoleAndStart(page) {
     await sendChar(page, 't');
     await sendKey(page, 'Enter');
     await page.evaluate(() => new Promise(r => setTimeout(r, 100)));
-    // "Shall I pick..." → 'a' (auto-pick all, skip confirmation)
+    // "Shall I pick..." → 'a' (auto-pick all, skips to lore)
     await sendChar(page, 'a');
     await page.evaluate(() => new Promise(r => setTimeout(r, 100)));
     // Dismiss lore --More--
@@ -193,9 +197,10 @@ describe('E2E: Role selection and game start', () => {
             { timeout: 5000 }
         );
         const text = await getTerminalText(page);
-        assert.ok(text.includes('\u00b7'), 'Should show floor tiles (middle dot)');
-        assert.ok(text.includes('\u2500') || text.includes('\u2502'),
-            'Should show wall tiles (box-drawing)');
+        // ASCII mode (default): floor is '.', walls are '-' and '|'
+        assert.ok(text.includes('.'), 'Should show floor tiles');
+        assert.ok(text.includes('-') && text.includes('|'),
+            'Should show wall tiles');
     });
 
     it('shows status lines at the bottom', async () => {
@@ -529,13 +534,14 @@ describe('E2E: Display integrity', () => {
         if (page) await page.close();
     });
 
-    it('map uses correct DEC graphics characters', async () => {
+    it('map uses correct graphics characters (ASCII mode by default)', async () => {
         const text = await getTerminalText(page);
-        const hasWalls = text.includes('\u2500') || text.includes('\u2502');
-        const hasFloor = text.includes('\u00b7');
+        // Default is ASCII mode (DECgraphics=false)
+        const hasWalls = text.includes('-') && text.includes('|');
+        const hasFloor = text.includes('.');
         const hasPlayer = text.includes('@');
-        assert.ok(hasWalls, 'Map should have box-drawing wall characters');
-        assert.ok(hasFloor, 'Map should have middle dot floor characters');
+        assert.ok(hasWalls, 'Map should have ASCII wall characters (- and |)');
+        assert.ok(hasFloor, 'Map should have ASCII floor character (.)');
         assert.ok(hasPlayer, 'Map should have player @');
     });
 
