@@ -2531,7 +2531,7 @@ export class Agent {
                                 // pendingLockedDoor logic will handle the kicking
                             } else {
                                 // Closed door - open it with 'o' command + direction
-                                console.log(`[DOOR-SYSTEMATIC] opening door_closed at (${door.x},${door.y}) [player at (${px},${py}), sending 'o' + direction '${dir}']`);
+                                console.log(`[DOOR-SYSTEMATIC] opening door_closed at (${door.x},${door.y})`);
                                 this.pendingDoorDir = dir;
                                 this.justOpenedDoor = { x: door.x, y: door.y }; // Mark for perception fix
                                 return { type: 'open', key: 'o', reason: `opening door at (${door.x},${door.y})` };
