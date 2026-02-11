@@ -1177,11 +1177,48 @@ export class Agent {
                 // If we have an active secret door search, continue it
                 if (this.secretDoorSearch) {
                     const search = this.secretDoorSearch;
-                    const target = search.targets[search.currentIndex];
 
-                    if (target) {
-                        // Navigate to wall if not adjacent
-                        const dist = Math.max(Math.abs(px - target.x), Math.abs(py - target.y));
+                    // Check if we found a secret door via game message OR cell type change
+                    let foundDoor = false;
+                    const message = this.screen.message.toLowerCase();
+
+                    // Check for success message
+                    if (message.includes('you find a hidden door') || message.includes('you find a hidden passage')) {
+                        console.log(`[SECRET DOOR] ✓ FOUND! "${this.screen.message}"`);
+                        foundDoor = true;
+                    }
+
+                    // Also check if any search targets became doors (cell type changed from wall to door)
+                    if (!foundDoor) {
+                        for (let i = 0; i <= search.currentIndex && i < search.targets.length; i++) {
+                            const checkTarget = search.targets[i];
+                            const checkCell = level.at(checkTarget.x, checkTarget.y);
+                            if (checkCell && (checkCell.type === 'door_closed' || checkCell.type === 'door_open')) {
+                                console.log(`[SECRET DOOR] ✓ FOUND! Wall at (${checkTarget.x},${checkTarget.y}) became ${checkCell.type}`);
+                                foundDoor = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (foundDoor) {
+                        // Cancel search session to prioritize exploration of newly accessible area
+                        this.secretDoorSearch = null;
+                        this.searchExhausted = false;
+
+                        // Reset search tracking
+                        this.searchSessionTurn = null;
+                        this.searchesThisSession = 0;
+                        this.searchesAtCurrentPosition = 0;
+                        this.lastSearchPosition = null;
+
+                        console.log(`[SECRET DOOR] Canceling remaining searches to explore new area`);
+                        // Fall through to exploration logic
+                    } else {
+                        const target = search.targets[search.currentIndex];
+                        if (target) {
+                            // Navigate to wall if not adjacent
+                            const dist = Math.max(Math.abs(px - target.x), Math.abs(py - target.y));
                         if (dist > 1) {
                             console.log(`[SECRET DOOR] Moving to search target ${search.currentIndex+1}/${search.targets.length} at (${target.x},${target.y}) [component ${target.componentId}]`);
                             const path = findPath(level, px, py, target.x, target.y, { allowUnexplored: false });
@@ -1219,9 +1256,16 @@ export class Agent {
 
                             console.log(`[SECRET DOOR] Searching target ${search.currentIndex+1}/${search.targets.length} at (${target.x},${target.y}) [${search.searchesDone}/${search.searchesNeeded}]`);
 
+                            // Check if we should move to next target (either completed searches or found door)
+                            let moveToNext = false;
+
                             if (search.searchesDone >= search.searchesNeeded) {
-                                // Done with this target - move to next
+                                // Done searching this target
+                                moveToNext = true;
                                 console.log(`[SECRET DOOR] Completed ${search.searchesNeeded} searches at (${target.x},${target.y}), moving to next`);
+                            }
+
+                            if (moveToNext) {
                                 search.currentIndex++;
                                 search.searchesDone = 0;
 
@@ -1260,11 +1304,12 @@ export class Agent {
                             } else {
                                 return {type: 'search', key: 's', reason: `occupancy-based secret door search at (${target.x},${target.y})`};
                             }
-                        }
-                    } else {
-                        // No more targets
-                        this.secretDoorSearch = null;
-                    }
+                        }  // Close if (dist <= 1)
+                        } else {
+                            // No more targets
+                            this.secretDoorSearch = null;
+                        }  // Close if/else for if (target)
+                    }  // Close else for if (foundDoor)
                 }
             }
 
