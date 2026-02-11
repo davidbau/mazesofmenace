@@ -1,0 +1,53 @@
+#!/bin/bash
+# Pre-push hook (Git Notes version): Run tests and save to git note
+# Install: git config core.hooksPath .githooks
+
+SCRIPT_DIR="$(cd "$(dirname \"${BASH_SOURCE[0]}\")\" && pwd)"
+
+# Check if setup has been run
+source "$SCRIPT_DIR/check-setup.sh"
+if ! check_setup; then
+  echo "Push blocked until setup is complete."
+  exit 1
+fi
+
+echo "========================================"
+echo "Pre-push hook: Running tests..."
+echo "========================================"
+
+# Get the commit we're about to push
+CURRENT_COMMIT=$(git rev-parse HEAD)
+
+# Check if this commit already has a test note
+if git notes --ref=test-results show "$CURRENT_COMMIT" >/dev/null 2>&1; then
+  echo "✅ Test note already exists for this commit"
+  echo ""
+  git notes --ref=test-results show "$CURRENT_COMMIT" | jq '.'
+  echo ""
+  echo "✅ Push allowed"
+  exit 0
+fi
+
+# No test note yet - run tests
+echo ""
+echo "No test note found. Running tests..."
+"$SCRIPT_DIR/test-and-log-to-note.sh"
+
+exit_code=$?
+
+if [ $exit_code -eq 0 ]; then
+  echo ""
+  echo "✅ Tests logged to git note. Push allowed."
+  echo ""
+  echo "⚠️  IMPORTANT: Don't forget to push the test notes:"
+  echo "   git push origin refs/notes/test-results"
+  echo ""
+  echo "Or configure automatic push:"
+  echo "   git config --add remote.origin.push '+refs/notes/test-results:refs/notes/test-results'"
+else
+  echo ""
+  echo "❌ Tests failed or regressed. Push rejected."
+  exit 1
+fi
+
+exit 0

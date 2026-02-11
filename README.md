@@ -134,6 +134,23 @@ node --test test/comparison/session_runner.test.js
 node --test test/comparison/c_vs_js_golden.test.js
 ```
 
+### Test Infrastructure Setup
+
+*The Oracle says: "A test not logged is a bug waiting to happen."*
+
+After cloning, run the one-time setup script to enable test automation:
+
+```bash
+./setup-testing.sh
+```
+
+This configures:
+- Git hooks for automatic test logging
+- Auto-push for git notes
+- Dashboard data synchronization
+
+See **[TESTING.md](TESTING.md)** for the complete testing guide.
+
 ## Data Generation
 
 *You read the scroll of generate data. Your objects.js glows blue!*
@@ -158,6 +175,12 @@ Project documentation is organized in `docs/`:
 - **docs/level-conversion/** - Lua-to-JS conversion reports
 - **docs/plans/** - Feature plans and workflows
 - **docs/reference/** - NetHack reference materials
+
+Testing infrastructure:
+
+- **[TESTING.md](TESTING.md)** - Complete testing guide (setup, usage, backfilling)
+- **[.githooks/QUICK_REFERENCE.md](.githooks/QUICK_REFERENCE.md)** - Command cheat sheet
+- **[teststats/](teststats/)** - Dashboard (GitHub Pages)
 
 Debug and test scripts are in `scripts/debug/`.
 

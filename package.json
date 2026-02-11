@@ -7,7 +7,8 @@
     "test": "node --test test/unit/*.test.js test/e2e/*.test.js",
     "test:unit": "node --test test/unit/*.test.js",
     "test:e2e": "node --test test/e2e/*.test.js",
-    "serve": "python3 -m http.server 8080"
+    "serve": "python3 -m http.server 8080",
+    "postinstall": "./setup-testing.sh"
   },
   "keywords": [
     "nethack",

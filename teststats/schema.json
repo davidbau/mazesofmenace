@@ -1,0 +1,80 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Test Result Log Entry",
+  "description": "One entry per commit recording test execution results",
+  "type": "object",
+  "required": ["commit", "date", "stats"],
+  "properties": {
+    "commit": {
+      "type": "string",
+      "description": "Git commit hash (short or full)"
+    },
+    "parent": {
+      "type": "string",
+      "description": "Parent commit hash"
+    },
+    "date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when tests ran"
+    },
+    "author": {
+      "type": "string",
+      "description": "Commit author name"
+    },
+    "message": {
+      "type": "string",
+      "description": "First line of commit message"
+    },
+    "stats": {
+      "type": "object",
+      "required": ["total", "pass", "fail"],
+      "properties": {
+        "total": {"type": "integer", "description": "Total tests executed"},
+        "pass": {"type": "integer", "description": "Tests that passed"},
+        "fail": {"type": "integer", "description": "Tests that failed"},
+        "skip": {"type": "integer", "description": "Tests skipped"},
+        "duration": {"type": "number", "description": "Total duration in seconds"}
+      }
+    },
+    "categories": {
+      "type": "object",
+      "description": "Test results grouped by category (map, gameplay, chargen, etc.)",
+      "patternProperties": {
+        ".*": {
+          "type": "object",
+          "properties": {
+            "total": {"type": "integer"},
+            "pass": {"type": "integer"},
+            "fail": {"type": "integer"}
+          }
+        }
+      }
+    },
+    "tests": {
+      "type": "array",
+      "description": "Individual test results (optional, for detailed tracking)",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "string", "description": "Test identifier"},
+          "status": {"type": "string", "enum": ["pass", "fail", "skip"]},
+          "duration": {"type": "number"}
+        }
+      }
+    },
+    "regression": {
+      "type": "boolean",
+      "description": "True if this commit made previously passing tests fail"
+    },
+    "newTests": {
+      "type": "integer",
+      "description": "Number of new tests added in this commit"
+    },
+    "regressionDetails": {
+      "type": "array",
+      "description": "List of tests that regressed (passed before, fail now)",
+      "items": {"type": "string"}
+    }
+  }
+}

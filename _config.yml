@@ -1,0 +1,8 @@
+# GitHub Pages Configuration
+theme: jekyll-theme-minimal
+title: Mazes of Menace
+description: JavaScript port of NetHack 3.7
+
+# Ensure teststats directory is included
+include:
+  - teststats
