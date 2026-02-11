@@ -230,7 +230,7 @@ The way the screen looks for you depends on your platform.
 The bottom two (or three) lines of  the  screen  contain  several
 cryptic  pieces of information describing your current status.  Figure
 1 shows the traditional two-line status area below the map.  Figure  2
-shows just the status area, when the statuslines:3 option has been set
+shows just the status area, when the `statuslines:3` option has been set
 (not all interfaces support this option).  If any status line  becomes
 wider  than the screen, you might not see all of it due to truncation.
 When the numbers grow bigger and multiple conditions are present,  the
@@ -477,7 +477,7 @@ might  require  additional information, for example a direction, or an
 object to be used.  For those commands that require additional  infor-
 mation, NetHack will present you with either a menu of choices or with
 a command line prompt requesting information.  Which you are presented
-with will depend chiefly on how you have set the menustyle option.
+with will depend chiefly on how you have set the `menustyle` option.
 
 For  example, a common question, in the form "What do you want to
 use? [a-zA-Z ?*]", asks you to choose  an  object  you  are  carrying.
@@ -493,7 +493,7 @@ command.
 
 You  can  put  a  number before some commands to repeat them that
 many times; for example, "10s" will search ten times.  If you have the
-number_pad  option  set,  you  must type `n` to prefix a count, so the
+`number_pad`  option  set,  you  must type `n` to prefix a count, so the
 example above would be  typed  "n10s"  instead.   Commands  for  which
 counts  make no sense ignore them.  In addition, movement commands can
 be prefixed for greater control (see below).  To cancel a count  or  a
@@ -523,7 +523,7 @@ will give a brief reminder about how it works.
 If the autodescribe option is on, a short description of what you
 see at each location is shown as you move the cursor.  Typing `#`
 while picking a location will toggle that option on or off.   The
-whatis_coord   option  controls  whether  the  short  description
+`whatis_coord`   option  controls  whether  the  short  description
 includes map coordinates.
 
 Specifying a name rather than a location always gives  any  addi-
@@ -531,7 +531,7 @@ tional information available about that name.
 
 You  may  also request a description of nearby monsters, all mon-
 sters currently displayed, nearby objects, or all  objects.   The
-whatis_coord  option  controls  which format of map coordinate is
+`whatis_coord`  option  controls  which format of map coordinate is
 included with their descriptions.
 
 `&`    Tell what a command does.
@@ -554,7 +554,7 @@ fight monsters; the others (below) are "safe."
 |          h- . -l                             4- . -6           |
 |           / | \                               / | \            |
 |          b  j  n                             1  2  3           |
-|      (number_pad off)                    (number_pad on)       |
+|      (`number_pad` off)                    (`number_pad` on)       |
 +---------------------------Figure-3-----------------------------+
 ```
 
@@ -566,7 +566,7 @@ Prefix:  move without picking up objects or fighting (even if you
 remember a monster there).
 
 A few non-movement commands use the `m` prefix to request operat-
-ing via menu (to temporarily override  the  menustyle:traditional
+ing via menu (to temporarily override  the  `menustyle:traditional`
 option).   Primarily  useful  for `,` (pickup) when there is only
 one class of objects present (where  there  won't  be  any  "what
 kinds  of  objects?"   prompt, so no opportunity to answer `m` at
@@ -626,7 +626,7 @@ location other than the current position.
 
 `.`    Wait or rest, do nothing for one turn.  Precede with the `m` pre-
 fix to wait for a  turn  even  next  to  a  hostile  monster,  if
-safe_wait is on.
+`safe_wait` is on.
 
 `a`    Apply (use) a tool (pick-axe, key, lamp...).
 
@@ -781,7 +781,7 @@ but will accept an accessory and attempt to put that on.)
 `^P`   Repeat previous message.
 
 Subsequent ``^P`'s repeat earlier messages.  For  some  interfaces,
-the behavior can be varied via the msg_window option.
+the behavior can be varied via the `msg_window` option.
 
 `q`    Quaff (drink) something (potion, water, etc).
 
@@ -813,7 +813,7 @@ sory and attempt to remove it.)
 
 `s`    Search  for  secret doors and traps around you.  It usually takes
 several tries to find something.  Precede with the `m` prefix  to
-search for a turn even next to a hostile monster, if safe_wait is
+search for a turn even next to a hostile monster, if `safe_wait` is
 on.
 
 Can also be used to figure out whether there is still  a  monster
@@ -974,14 +974,14 @@ May be preceded by `m` to select preferred display order.
 May be preceded by `m` to select preferred display order.
 
 `|`    If persistent inventory display is supported  and  enabled  (with
-the  perm_invent  option),  interact  with it instead of with the
+the  `perm_invent`  option),  interact  with it instead of with the
 map.
 
-Allows scrolling with  the  menu_first_page,  menu_previous_page,
-menu_next_page,  and  menu_last_page  keys (`^', `<', `>', `|' by
+Allows scrolling with  the  `menu_first_page`,  `menu_previous_page`,
+`menu_next_page`,  and  `menu_last_page`  keys (`^', `<', `>', `|' by
 
-default).   Some  interfaces  also  support  menu_shift_left  and
-menu_shift_right  keys  (`{' and `}' by default).  Use the Return
+default).   Some  interfaces  also  support  `menu_shift_left`  and
+`menu_shift_right`  keys  (`{' and `}' by default).  Use the Return
 (aka Enter) or Escape key to resume play.
 
 `!`    Escape to a shell.  See "`#shell`" below for more details.
@@ -1040,7 +1040,7 @@ to merge with the destination stack.
 Allows you to specify one line of text to associate with the cur-
 rent dungeon level.  All levels with annotations are displayed by
 the "`#overview`" command.  Autocompletes.  Default key  is  `M-A',
-and also ``^N`' if number_pad is on.
+and also ``^N`' if `number_pad` is on.
 
 #apply
 Apply (use) a tool such as a pick-axe, a key, or a lamp.  Default
@@ -1128,7 +1128,7 @@ instead.
 
 #fight
 Prefix key to force fight a direction, even if you see nothing to
-fight there.  Default key is `F`, or `-` with number_pad
+fight there.  Default key is `F`, or `-` with `number_pad`
 
 #fire
 Fire ammunition from quiver, possibly autowielding a launcher, or
@@ -1160,14 +1160,14 @@ is `;'.
 
 #help
 Show  the  help  menu.   Default key is `?', and also `h` if num-
-ber_pad is on.
+`ber_pad` is on.
 
 #herecmdmenu
 Show a menu of possible actions directed at  your  current  loca-
 tion.   The menu is limited to a subset of the likeliest actions,
 not an exhaustive set of all possibilities.  Autocompletes.
 
-If mouse support is enabled and the herecmd_menu  option  is  On,
+If mouse support is enabled and the `herecmd_menu`  option  is  On,
 clicking  on  the  hero (or steed when mounted) will execute this
 command.
 
@@ -1186,10 +1186,10 @@ is `M-i'.
 
 #jump
 Jump  to another location.  Autocompletes.  Default key is `M-j',
-and also `j` if number_pad is on.
+and also `j` if `number_pad` is on.
 
 #kick
-Kick something.  Default key is ``^D`', and `k`  if  number_pad  is
+Kick something.  Default key is ``^D`', and `k`  if  `number_pad`  is
 on.
 
 #known
@@ -1222,7 +1222,7 @@ Loot a box or bag on the floor beneath you, or the saddle from  a
 steed standing next to you.  Autocompletes.  Precede with the `m`
 prefix to skip containers at your location  and  go  directly  to
 removing  a  saddle.   Default key is `M-l', and also `l` if num-
-ber_pad is on.
+`ber_pad` is on.
 
 #monster
 Use a monster's special ability (when  polymorphed  into  monster
@@ -1284,7 +1284,7 @@ Pay your shopping bill.  Default key is `p`.
 
 #perminv
 If  persistent  inventory  display is supported and enabled (with
-the perm_invent option), interact with it  instead  of  with  the
+the `perm_invent` option), interact with it  instead  of  with  the
 map.   You'll  be  prompted for menu scrolling keystrokes such as
 `>' and `<'.  Press Return  or  Escape  to  resume  normal  play.
 Default key is `|'.
@@ -1306,7 +1306,7 @@ right  away.)   Since  using  this  command by accident can cause
 
 trouble, there is an option  to  make  you  confirm  your  intent
 before  praying.  It is enabled by default, and you can reset the
-paranoid_confirmation option to disable it.
+`paranoid_confirmation` option to disable it.
 
 #prevmsg
 Show previously displayed game messages.  Default key is ``^P`'.
@@ -1338,7 +1338,7 @@ Read  a  scroll,  a spellbook, or something else.  Default key is
 
 #redraw
 Redraw the screen.  Default key is ``^R`', and also  ``^L`'  if  num-
-ber_pad is on.
+`ber_pad` is on.
 
 #remove
 Remove an accessory (ring, amulet, etc).  Default key is `R`.
@@ -1364,12 +1364,12 @@ Rub a lamp or a stone.  Autocompletes.  Default key is `M-r'.
 
 #run
 Prefix  key  to run towards a direction.  Default key is `G` when
-number_pad is off, `5` when number_pad is set to 1 or  3,  other-
+`number_pad` is off, `5` when `number_pad` is set to 1 or  3,  other-
 wise `M-5' when it is set to 2 or 4.
 
 #rush
 Prefix key to rush towards a direction.  Default is `g` when num-
-ber_pad is off, `M-5' when number_pad is set to 1 or 3, otherwise
+`ber_pad` is off, `M-5' when `number_pad` is set to 1 or 3, otherwise
 `5` when it is set to 2 or 4.
 
 #save
@@ -1510,7 +1510,7 @@ tory to tip.
 
 The `m` prefix makes the command skip containers on the floor and
 pick  one  from  inventory,  except  for  the  special  case   of
-menustyle:traditional  with  two or more containers present; that
+`menustyle:traditional`  with  two or more containers present; that
 situation will start with the floor container menu.
 
 Autocompletes.  Default key is `M-T'.
@@ -1529,14 +1529,14 @@ Turn undead away.  Autocompletes.  Default key is `M-t'.
 
 #twoweapon
 Toggle  two-weapon combat on or off.  Autocompletes.  Default key
-is `X`, and also `M-2' if number_pad is off.
+is `X`, and also `M-2' if `number_pad` is off.
 
 Note that you must use suitable weapons for this type of  combat,
 or it will be automatically turned off.
 
 #untrap
 Untrap  something  (trap, door, or chest).  Default key is `M-u',
-and `u` if number_pad is on.
+and `u` if `number_pad` is on.
 
 In some circumstances it can also be used to rescue trapped  mon-
 sters.
@@ -1586,7 +1586,7 @@ Show vision array.  Autocompletes.  Debug mode only.
 
 #wait
 Rest  one move while doing nothing.  Default key is `.`, and also
-` ' if rest_on_space is on.
+` ' if `rest_on_space` is on.
 
 #wear
 Wear a piece of armor.  Default key is `W`.
@@ -1703,7 +1703,7 @@ meta+Shift+<letter> is needed.
 
 M-?  #? (not supported by all platforms)
 
-M-2  `#twoweapon` (unless the number_pad option is enabled)
+M-2  `#twoweapon` (unless the `number_pad` option is enabled)
 
 M-a  `#adjust`
 
@@ -1757,7 +1757,7 @@ M-w  `#wipe`
 
 M-X  `#exploremode`
 
-If the number_pad option is on, some additional  letter  commands
+If the `number_pad` option is on, some additional  letter  commands
 are available:
 
 h    `#help`
@@ -2004,7 +2004,7 @@ pile of objects, or on a trap, or attempt to move onto a spot where  a
 monster  is  located.   There are several options which can be used to
 augment the normal feedback.
 
-The pile_limit option controls how  many  objects  can  be  in  a
+The `pile_limit` option controls how  many  objects  can  be  in  a
 pile--sharing  the same map location--for the game to state "there are
 objects here" instead of listing them.  The default is 5.  Setting  it
 to  1  would  always give that message instead of listing any objects.
@@ -2019,14 +2019,14 @@ The  "nopickup" command prefix (default `m`) can be used before a
 movement direction to step on objects without  attempting  auto-pickup
 and without giving feedback about them.
 
-The mention_walls option controls whether you get feedback if you
+The `mention_walls` option controls whether you get feedback if you
 try to walk into a wall or solid stone or off the  edge  of  the  map.
 Normally  nothing  happens  (unless  the  hero is blind and no wall is
 shown, then the wall that is being bumped into will be  drawn  on  the
 map).   This  option also gives feedback when rushing or running stops
 for some non-obvious reason.
 
-The mention_decor option controls whether you get  feedback  when
+The `mention_decor` option controls whether you get  feedback  when
 walking  on  "furniture."  Normally stepping onto stairs or a fountain
 or an altar or various other things doesn't elicit anything unless  it
 is  covered by one or more objects so is obscured on the map.  Setting
@@ -2041,19 +2041,19 @@ ice.   Moving off of any of those back onto "normal" terrain will give
 one message too, unless there is feedback about one or  more  objects,
 in which case the back on land circumstance is implied.
 
-The  confirm  and  safe_pet options control what happens when you
+The  confirm  and  `safe_pet` options control what happens when you
 try to move onto a peaceful monster's spot or a tame one's spot.
 
 The "nopickup" command prefix (default `m`)  is  also  the  move-
 without-attacking prefix and can be used to try to step onto a visible
 monster's spot without the move being considered an  attack  (see  the
 Fighting  subsection  of  Monsters below).  The "fight" command prefix
-(default `F`; also `-` if number_pad is on) can be used  to  force  an
+(default `F`; also `-` if `number_pad` is on) can be used  to  force  an
 attack,  when guessing where an unseen monster is or when deliberately
 
 attacking a peaceful or tame creature.
 
-The run_mode option controls how frequently the map gets  redrawn
+The `run_mode` option controls how frequently the map gets  redrawn
 when  moving  more than one step in a single command (so when rushing,
 running, or traveling).
 
@@ -2282,7 +2282,7 @@ with no prefix.  An item which you know the state of will  be  distin-
 guished  in  your  inventory  by  the  presence  of  the  word cursed,
 uncursed, or blessed in the description of the item.   In  some  cases
 uncursed will be omitted as being redundant when enough other informa-
-tion is displayed.  The implicit_uncursed option can be used  to  con-
+tion is displayed.  The `implicit_uncursed` option can be used  to  con-
 trol  this; toggle it off to have uncursed be displayed even when that
 can be deduced from other attributes.
 
@@ -2398,7 +2398,7 @@ to  shoot  bolts,  or  in  sling skill if you're wielding one to shoot
 stones).  The number of items that the character has a chance to  fire
 varies  from  turn  to  turn.   You can explicitly limit the number of
 shots by using a numeric prefix before the `t` or  `f`  command.   For
-example, "2f" (or "n2f" if using number_pad mode) would ensure that at
+example, "2f" (or "n2f" if using `number_pad` mode) would ensure that at
 most 2 arrows are shot even if you could have fired 3.  If you specify
 a  larger  number  than  would  have been shot ("4f" in this example),
 you'll just end up shooting the same number (3, here) as if  no  limit
@@ -2841,7 +2841,7 @@ by the amount of gold you are carrying (shopkeepers aside).
 
 Gold pieces are the only type of object where  bless/curse  state
 does  not  apply.   They're  always  uncursed  but  never described as
-uncursed even if you turn off the implicit_uncursed option.   You  can
+uncursed even if you turn off the `implicit_uncursed` option.   You  can
 set  the  goldX option if you prefer to have gold pieces be treated as
 bless/curse state unknown rather than as known to be  uncursed.   Only
 matters  when  you're using an object selection prompt that can filter
@@ -2864,7 +2864,7 @@ there, then once you see or feel that location again you will  re-dis-
 cover the object and resume remembering it.
 
 The situation is the same for a pile of objects, except that only
-the top item of the pile is displayed.  The hilite_pile option can  be
+the top item of the pile is displayed.  The `hilite_pile` option can  be
 enabled in order to show an item differently when it is the top one of
 a pile.
 
@@ -3188,7 +3188,7 @@ Example:
 AUTOCOMPLETE=zap,!annotate
 
 AUTOPICKUP_EXCEPTION
-Set  exceptions  to  the  pickup_types option.  See the "Configuring
+Set  exceptions  to  the  `pickup_types` option.  See the "Configuring
 Autopickup Exceptions" section.
 
 BINDINGS
@@ -3214,7 +3214,7 @@ OPTIONS=role:arc,race:dwa,align:law,gender:fem
 [char B]
 OPTIONS=role:wiz,race:elf,align:cha,gender:mal
 [] `#end` of CHOOSE
-OPTIONS=!rest_on_space
+OPTIONS=!`rest_on_space`
 
 If [] is present, the preceding section is closed and no new section
 begins;  whatever follows will be common to all sections.  Otherwise
@@ -3269,14 +3269,14 @@ OPTIONS=autopickup,pickup_types:$"=/!?+
 #
 # Map customization
 OPTIONS=color           # Display things in color if possible
-OPTIONS=lit_corridor    # Show lit corridors differently
-OPTIONS=hilite_pet,hilite_pile
+OPTIONS=`lit_corridor`    # Show lit corridors differently
+OPTIONS=`hilite_pet`,`hilite_pile`
 # Replace small punctuation (tick marks) with digits
 OPTIONS=boulder:0
 SYMBOLS=S_golem:7
 #
 # No startup splash screen. Windows GUI only.
-OPTIONS=!splash_screen
+OPTIONS=!`splash_screen`
 
 
 ### 9.3. Using the NETHACKOPTIONS environment variable
@@ -3348,7 +3348,7 @@ Cannot be set with the `O` command.  Persistent.
 
 autodescribe
 Automatically  describe the terrain under cursor when asked to get a
-location on the map (default true).  The  whatis_coord  option  con-
+location on the map (default true).  The  `whatis_coord`  option  con-
 trols whether the description includes map coordinates.
 
 autodig
@@ -3363,7 +3363,7 @@ autopickup
 Automatically  pick  up  things  onto  which you move (default off).
 Persistent.
 
-See pickup_types and also autopickup_exception for  ways  to  refine
+See `pickup_types` and also `autopickup_exception` for  ways  to  refine
 the behavior.
 
 Note: prior to version 3.7.0, the default for autopickup was on.
@@ -3444,16 +3444,16 @@ confirm
 Have user confirm attacks on pets, shopkeepers, and other  peaceable
 creatures (default on).  Persistent.
 
-dark_room
+`dark_room`
 Show out-of-sight areas of lit rooms (default on).  Persistent.
 
 deaf
 Start the character permanently deaf (default false).  Persistent.
 
-dropped_nopick
+`dropped_nopick`
 If  this  option  is on, items you dropped will not be automatically
 picked  up,  even  if  autopickup  is  also  on  and  they  are   in
-pickup_types  or match a positive autopickup exception (default on).
+`pickup_types`  or match a positive autopickup exception (default on).
 Persistent.
 
 disclose
@@ -3534,7 +3534,7 @@ An object's inventory letter sticks to it when it's dropped (default
 on).  If this is off, dropping an object shifts  all  the  remaining
 inventory letters.  Persistent.
 
-force_invmenu
+`force_invmenu`
 Commands  asking for an inventory item show a menu instead of a text
 query with possible menu letters. Default is off.
 
@@ -3562,7 +3562,7 @@ When filtering objects based on bless/curse state (BUCX), whether to
 treat gold pieces as X (unknown bless/curse state, when "on")  or  U
 (known  to  be  uncursed,  when  "off", the default).  Gold is never
 blessed or cursed, but it is not described as "uncursed"  even  when
-the implicit_uncursed option is "off".
+the `implicit_uncursed` option is "off".
 
 help
 If  more  information  is available for an object looked at with the
@@ -3572,22 +3572,22 @@ rupted with the "More info?" prompt, but  it  also  means  that  you
 might  miss  some interesting and/or important information.  Persis-
 tent.
 
-herecmd_menu
+`herecmd_menu`
 When using a windowport that supports mouse and clicking on yourself
 or  next  to  you, show a menu of possible actions for the location.
 Same as "`#herecmdmenu`" and "`#therecmdmenu`" commands.
 
-hilite_pet
+`hilite_pet`
 Visually distinguish pets from similar animals (default  off).   The
 behavior  of  this  option depends on the type of windowing you use.
 In text windowing, text highlighting or inverse video is often used;
 with tiles, generally displays a heart symbol near pets.
 
 With the tty or curses interface, the petattr option controls how to
-highlight pets and setting it will turn the hilite_pet option on  or
+highlight pets and setting it will turn the `hilite_pet` option on  or
 off as warranted.
 
-hilite_pile
+`hilite_pile`
 Visually  distinguish  piles  of  objects  from  individual  objects
 (default off).  The behavior of this option depends on the  type  of
 windowing  you use.  In text windowing, text highlighting or inverse
@@ -3624,7 +3624,7 @@ ignintr
 Ignore  interrupt  signals, including breaks (default off).  Persis-
 tent.
 
-implicit_uncursed
+`implicit_uncursed`
 Omit "uncursed" from object descriptions when it can be deduced from
 other aspects of the description (default on).  Persistent.
 
@@ -3634,7 +3634,7 @@ legacy
 Display an introductory message when starting the game (default on).
 Persistent.
 
-lit_corridor
+`lit_corridor`
 Show corridor squares seen by night vision or a light source held by
 your character as lit (default off).  Persistent.
 
@@ -3651,16 +3651,16 @@ male
 An  obsolete  synonym for "gender:male".  Cannot be set with the `O`
 command.
 
-mention_decor
+`mention_decor`
 Give feedback when walking onto various  dungeon  features  such  as
 stairs,  fountains,  or  altars  which are ordinarily only described
 when covered by one or more objects (default off).   Cannot  be  set
 with the `O` command.  Persistent.
 
-mention_map
+`mention_map`
 Give feedback when interesting map locations change (default off).
 
-mention_walls
+`mention_walls`
 Give  feedback  when  walking against a wall (default off).  Persis-
 tent.
 
@@ -3668,7 +3668,7 @@ menucolors
 Enable coloring menu lines (default  off).   See  "Configuring  Menu
 Colors" on how to configure the colors.
 
-menustyle
+`menustyle`
 Controls the method used when you need to choose various objects (in
 response to the Drop (aka droptype)  command,  for  instance).   The
 value  specified should be the first letter of one of the following:
@@ -3687,34 +3687,34 @@ ond  menu.   To  avoid  choosing that by accident, set paranoid_con-
 firm:AutoAll to require confirmation.)   Partial  skips  the  object
 class filtering and immediately displays a menu of all objects.
 
-menu_deselect_all
+`menu_deselect_all`
 Key to deselect all items in a menu.  Default `-`.
 
-menu_deselect_page
+`menu_deselect_page`
 Key to deselect all items on this page of a menu.  Default `\`.
 
-menu_first_page
+`menu_first_page`
 Key to jump to the first page in a menu.  Default `^'.
 
-menu_headings
+`menu_headings`
 Controls  how  the headings in a menu are highlighted.  Takes a text
 attribute, or text color and attribute separated by ampersand.   For
 allowed  attributes  and colors, see "Configuring Menu Colors".  Not
 all ports can actually display all types.
 
-menu_invert_all
+`menu_invert_all`
 Key to invert all items in a menu.  Default `@`.
 
-menu_invert_page
+`menu_invert_page`
 Key to invert all items on this page of a menu.  Default `~'.
 
-menu_last_page
+`menu_last_page`
 Key to jump to the last page in a menu.  Default `|'.
 
-menu_next_page
+`menu_next_page`
 Key to go to the next menu page.  Default `>'.
 
-menu_objsyms
+`menu_objsyms`
 Inventory and other object menus are normally  separated  by  object
 class (weapons, armor, and so forth), with a menu header line at the
 beginning of each group.  You can have menus add the display  symbol
@@ -3739,34 +3739,34 @@ Supported  by  tty  and  curses.   When setting the value, it can be
 specified by digit or keyword.  The  default  value  is  Conditional
 (4).
 
-menu_overlay
+`menu_overlay`
 Do not clear the screen before drawing menus, and align menus to the
 right edge of the screen. Only for the tty port.  (default on)
 
-menu_previous_page
+`menu_previous_page`
 Key to go to the previous menu page.  Default `<'.
 
-menu_search
+`menu_search`
 Key to search for some text and toggle selection state  of  matching
 menu items.  Default `:'.
 
-menu_select_all
+`menu_select_all`
 Key to select all items in a menu.  Default `.`.
 
-menu_select_page
+`menu_select_page`
 Key to select all items on this page of a menu.  Default `,`.
 
-menu_shift_left
+`menu_shift_left`
 Key to scroll a menu--one which has been scrolled right--back to the
-left.  Implemented for perm_invent only by curses and X11.   Default
+left.  Implemented for `perm_invent` only by curses and X11.   Default
 `{'.
 
-menu_shift_right
+`menu_shift_right`
 Key  to  scroll  a  menu which has text beyond the right edge to the
-right.  Implemented for perm_invent only by curses and X11.  Default
+right.  Implemented for `perm_invent` only by curses and X11.  Default
 `}'.
 
-mon_movement
+`mon_movement`
 Show  a  message  when  hero  notices a monster movement (default is
 off).
 
@@ -3778,7 +3778,7 @@ montelecontrol
 Prompt for destination whenever any monster gets teleported (default
 off).  Debug mode only.
 
-mouse_support
+`mouse_support`
 Allow use of the mouse for input and travel.  Valid settings are:
 
 0 - disabled
@@ -3792,7 +3792,7 @@ msghistory
 The  number of top line messages to keep (and be able to recall with
 ``^P`') (default 20).  Cannot be set with the `O` command.
 
-msg_window
+`msg_window`
 Allows you to change the way recalled messages are displayed.   Cur-
 rently  it  is  only  supported  for  tty (all four choices) and for
 curses (`f` and `r` choices, default `r`).  The possible values are:
@@ -3830,7 +3830,7 @@ Start the character with no armor (default false).  Persistent.
 null
 Send padding nulls to the terminal (default on).  Persistent.
 
-number_pad
+`number_pad`
 Use digit keys instead of letters to move (default 0 or off).  Valid
 settings are:
 
@@ -3842,7 +3842,7 @@ settings are:
 -1 - by letters but use `z` to go northwest, `y` to zap wands
 
 For backward compatibility, omitting a value is the same as specify-
-ing  1  and  negating number_pad is the same as specifying 0.  (Set-
+ing  1  and  negating `number_pad` is the same as specifying 0.  (Set-
 tings 2 and 4 are for compatibility with MS-DOS or old PC  Hack;  in
 addition  to the different behavior for `5`, `Alt-5' acts as `G` and
 `Alt-0' acts as `I`.  Setting -1 is to accommodate some QWERTZ  key-
@@ -3857,7 +3857,7 @@ Specify   the   order   to   list   object   types    in    (default
 taining the symbols for the various object types.  Any omitted types
 are filled in at the end from the previous order.
 
-paranoid_confirmation
+`paranoid_confirmation`
 A  space  separated  list  of  specific  situations  where alternate
 
 prompting is desired.  The  default  is  "paranoid_confirmation:pray
@@ -3912,7 +3912,7 @@ tion:+attack  Remove.   To  remove an entry that has been previously
 set without removing others, precede the first  entry  in  the  list
 with  a  minus  sign, paranoid_confirmation:-swim.  To both add some
 new entries and remove some old ones, you  can  use  multiple  para-
-noid_confirmation  option  settings, or you can use the `+` form and
+`noid_confirmation`  option  settings, or you can use the `+` form and
 list entries to be added by their name and entries to be removed  by
 
 `!' and name.  The positive (no `!') and negative (with `!') entries
@@ -3922,25 +3922,25 @@ pauper
 Start the character with no possessions  (default  false).   Persis-
 tent.
 
-perm_invent
+`perm_invent`
 If  true, always display your current inventory in a window (default
 false).
 
 This only makes sense for windowing system interfaces that implement
-this  feature.   For  those  that do, the perminv_mode option can be
-used to refine what gets displayed for perm_invent.  Setting that to
-a value other than none while perm_invent is false will change it to
+this  feature.   For  those  that do, the `perminv_mode` option can be
+used to refine what gets displayed for `perm_invent`.  Setting that to
+a value other than none while `perm_invent` is false will change it to
 true.
 
-perminv_mode
-Augments the perm_invent option.  Value is one of
+`perminv_mode`
+Augments the `perm_invent` option.  Value is one of
 
-none   - behave as if perm_invent is false;
+none   - behave as if `perm_invent` is false;
 all    - show all inventory except for gold;
 full   - show full inventory including gold;
 in-use - only show items which are in use (worn, wielded, lit lamp).
 
-Default is none but if perm_invent gets set to true while it is none
+Default is none but if `perm_invent` gets set to true while it is none
 it will be changed to all.
 
 Note: if gold has been equipped in quiver/ammo-pouch then it will be
@@ -3948,7 +3948,7 @@ included for all despite that mode normally omitting gold.
 
 petattr
 Specifies one or more text highlighting attributes to use when show-
-ing pets on the map.  Effectively a superset of the hilite_pet bool-
+ing pets on the map.  Effectively a superset of the `hilite_pet` bool-
 ean option.  Curses or tty interface only; value  is  one  of  none,
 bold,  dim,  underline,  italic,  blink, and inverse.  Some of those
 choices might not work, depending upon terminal hardware or terminal
@@ -3962,24 +3962,24 @@ If the choice is not allowed for the role you are currently playing,
 it will be silently ignored.  For example, "horse" will only be hon-
 ored when playing a knight.  Cannot be set with the `O` command.
 
-pickup_burden
+`pickup_burden`
 When you pick up an item that would exceed  this  encumbrance  level
 (Unencumbered,  Burdened,  streSsed,  straiNed,  overTaxed, or over-
 Loaded), you will be asked if you want to continue.  (Default  `S`).
 Persistent.
 
-pickup_stolen
+`pickup_stolen`
 If  this  option  is  on  and  autopickup is also on, try to pick up
 things that a monster  stole  from  you,  even  if  they  aren't  in
-pickup_types or match an autopickup exception.  Default is on.  Per-
+`pickup_types` or match an autopickup exception.  Default is on.  Per-
 sistent.
 
-pickup_thrown
+`pickup_thrown`
 If this option is on and autopickup is  also  on,  try  to  pick  up
-things  that you threw, even if they aren't in pickup_types or match
+things  that you threw, even if they aren't in `pickup_types` or match
 an autopickup exception.  Default is on.  Persistent.
 
-pickup_types
+`pickup_types`
 Specify the object types to be picked  up  when  autopickup  is  on.
 Default is all types.  Persistent.
 
@@ -3987,15 +3987,15 @@ The  value  is a list of object symbols, such as pickup_types:$?! to
 pick up gold, scrolls, and potions.  You can  use  autopickup_excep-
 tion configuration file lines to further refine autopickup behavior.
 
-There  is  no  way to set pickup_types to "none".  (Setting it to an
+There  is  no  way to set `pickup_types` to "none".  (Setting it to an
 empty value reverts to "all".)  If you want to  avoid  automatically
 picking  up  any types of items but do want to have autopickup on in
-order to have autopickup_exception settings control what you do  and
-don't  pick  up,  you can set pickup_types to `.`.  That is the type
+order to have `autopickup_exception` settings control what you do  and
+don't  pick  up,  you can set `pickup_types` to `.`.  That is the type
 symbol for venom and you won't come across any venom items so  won't
 unintentionally pick such up.
 
-pile_limit
+`pile_limit`
 When  walking  across  a  pile of objects on the floor, threshold at
 which the message "there are few/several/many objects here" is given
 instead  of  showing  a  popup  list of those objects.  A value of 0
@@ -4019,10 +4019,10 @@ the old item into your alternate weapon slot (default  off).   Like-
 wise  for  the  `a` (apply) command if it causes the applied item to
 become wielded.  Persistent.
 
-query_menu
+`query_menu`
 Use a menu when asked specific yes/no queries, instead of a prompt.
 
-quick_farsight
+`quick_farsight`
 When set, usually prevents the "you sense your surroundings" message
 where  play pauses to allow you to browse the map whenever clairvoy-
 ance randomly activates.  Some situations, such as being  underwater
@@ -4051,7 +4051,7 @@ game).  This option exists partly as an  acknowledgement  that  some
 players will insist on doing so anyway, and partly because rerolling
 may be necessary for certain types of challenge games.
 
-rest_on_space
+`rest_on_space`
 Make the space bar a synonym for the `.`  (`#wait`)  command  (default
 off).  Persistent.
 
@@ -4103,15 +4103,15 @@ used "teleport" only.  Whether or not the effect is noticeable  will
 depend  upon  the window port used or on the type of terminal.  Per-
 sistent.
 
-safe_pet
+`safe_pet`
 Prevent you from (knowingly) attacking your pets (default on).  Per-
 sistent.
 
-safe_wait
+`safe_wait`
 Prevents  you  from waiting or searching when next to a hostile mon-
 ster (default on). Persistent.
 
-sanity_check
+`sanity_check`
 Evaluate monsters, objects, and map  prior  to  each  turn  (default
 off).  Debug mode only.
 
@@ -4144,7 +4144,7 @@ showvers
 Include the game's version number on the status lines (default off).
 Potentially useful if you switch between different versions or vari-
 ants,  or  you are making screenshots or streaming video.  Using the
-statuslines:3 option is recommended so that there will be more  room
+`statuslines:3` option is recommended so that there will be more  room
 available  for  status information, unless you're using NetHack's Qt
 interface or your terminal emulator window displays  fewer  than  25
 lines.  Persistent.
@@ -4215,7 +4215,7 @@ sparkle
 Display  a sparkly effect when a monster (including yourself) is hit
 by an attack to which it is resistant (default on).  Persistent.
 
-spot_monsters
+`spot_monsters`
 Show a message when hero notices a monster (default is off).
 
 standout
@@ -4226,11 +4226,11 @@ Controls how many turns status hilite behaviors highlight the field.
 If negated or set to zero, disables status hiliting.  See "Configur-
 ing Status Hilites" for further information.
 
-status_updates
+`status_updates`
 Allow updates to the status  lines  at  the  bottom  of  the  screen
 (default true).
 
-suppress_alert
+`suppress_alert`
 This  option may be set to a NetHack version level to suppress alert
 notification messages about feature changes for that and prior  ver-
 sions (for example "suppress_alert:3.3.1").
@@ -4244,7 +4244,7 @@ time
 Show  the  elapsed  game time in turns on bottom line (default off).
 Persistent.
 
-timed_delay
+`timed_delay`
 When pausing momentarily for display effect, such as with explosions
 and moving objects, use a timer rather than sending extra characters
 to the screen.  (Applies to  "tty"  and  "curses"  interfaces  only;
@@ -4277,7 +4277,7 @@ on or off in the config file will skip the query.
 verbose
 Provide more commentary during the game (default on).  Persistent.
 
-whatis_coord
+`whatis_coord`
 When using the `/' or `;' commands to look around on  the  map  with
 autodescribe  on,  display  coordinates after the description.  Also
 works in other situations where you are asked to pick a location.
@@ -4290,11 +4290,11 @@ m - map <x,y> (map column x=0 is not used);
 s - screen [row,column] (row is offset to match tty usage);
 n - none (no coordinates shown) [default].
 
-The whatis_coord option is also used with the "/m", "/M", "/o",
+The `whatis_coord` option is also used with the "/m", "/M", "/o",
 and "/O" sub-commands of `/', where the "none" setting is over-
 ridden with "map".
 
-whatis_filter
+`whatis_filter`
 When getting a location on the map, and  using  the  keys  to  cycle
 through  next  and  previous  targets, allows filtering the possible
 targets.
@@ -4310,12 +4310,12 @@ were last moving towards.
 Filtering can also be changed when getting a location with the "get-
 pos.filter" key.
 
-whatis_menu
+`whatis_menu`
 When getting a location on the map, and using a key to cycle through
 next and previous targets, use a menu  instead  to  pick  a  target.
 (default off)
 
-whatis_moveskip
+`whatis_moveskip`
 When  getting a location on the map, and using shifted movement keys
 or meta-digit keys to fast-move, instead of  moving  8  units  at  a
 time, move by skipping the same glyphs.  (default off)
@@ -4357,64 +4357,64 @@ currently using by checking to see if it shows up in the Options list.
 Some options are dynamic and can be specified during the game with the
 `O` command.
 
-align_message
+`align_message`
 Where to align or place the message window (top,  bottom,  left,  or
 right)
 
-align_status
+`align_status`
 Where  to  align  or  place the status window (top, bottom, left, or
 right).
 
-ascii_map
+`ascii_map`
 If NetHack can, it should display the map  using  simple  characters
 (letters  and  punctuation)  rather  than  tiles  graphics.  In some
 cases, characters can be augmented with  line-drawing  symbols;  use
 the  symset  option  to  select  a symbol set such as DECgraphics or
-IBMgraphics if your display supports  them.   Setting  ascii_map  to
-True forces tiled_map to be False.
+IBMgraphics if your display supports  them.   Setting  `ascii_map`  to
+True forces `tiled_map` to be False.
 
 color
 If NetHack can, it should display color if it can for different mon-
 sters, objects, and dungeon features (default on).
 
-eight_bit_tty
+`eight_bit_tty`
 If NetHack can, it should pass eight-bit character values (for exam-
 ple,  specified with the traps option) straight through to your ter-
 minal (default off).
 
-font_map
+`font_map`
 if NetHack can, it should use a font by the chosen name for the  map
 window.
 
-font_menu
+`font_menu`
 If  NetHack  can,  it  should use a font by the chosen name for menu
 windows.
 
-font_message
+`font_message`
 If NetHack can, it should use a font by the chosen name for the mes-
 sage window.
 
-font_status
+`font_status`
 If NetHack can, it should use a font by the chosen name for the sta-
 tus window.
 
-font_text
+`font_text`
 If NetHack can, it should use a font by the  chosen  name  for  text
 windows.
 
-font_size_map
+`font_size_map`
 If NetHack can, it should use this size font for the map window.
 
-font_size_menu
+`font_size_menu`
 If NetHack can, it should use this size font for menu windows.
 
-font_size_message
+`font_size_message`
 If NetHack can, it should use this size font for the message window.
 
-font_size_status
+`font_size_status`
 If NetHack can, it should use this size font for the status window.
 
-font_size_text
+`font_size_text`
 If NetHack can, it should use this size font for text windows.
 
 fullscreen
@@ -4426,31 +4426,31 @@ Use color text and/or highlighting attributes when  displaying  some
 non-map  data  (such  as  menu  selector letters).  Curses interface
 only; default is on.
 
-large_font
+`large_font`
 If NetHack can, it should use a large font.
 
-map_mode
+`map_mode`
 If NetHack can, it should display the map in the manner specified.
 
-player_selection
+`player_selection`
 If NetHack can, it should pop up dialog boxes, or  use  prompts  for
 character selection.
 
-popup_dialog
+`popup_dialog`
 If NetHack can, it should pop up dialog boxes for input.
 
-preload_tiles
+`preload_tiles`
 If  NetHack  can, it should preload tiles into memory.  For example,
 in the protected mode MS-DOS version, control whether tiles get pre-
 loaded into RAM at the start of the game.  Doing so enhances perfor-
 mance of the tile graphics, but  uses  more  memory.  (default  on).
 Cannot be set with the `O` command.
 
-scroll_amount
+`scroll_amount`
 If NetHack can, it should scroll the display by this number of cells
-when the hero reaches the scroll_margin.
+when the hero reaches the `scroll_margin`.
 
-scroll_margin
+`scroll_margin`
 If NetHack can, it should scroll the display when the hero or cursor
 
 is this number of cells away from the edge of the window.
@@ -4464,7 +4464,7 @@ softkeyboard
 Display  an onscreen keyboard.  Handhelds are most likely to support
 this option.
 
-splash_screen
+`splash_screen`
 If NetHack can, it should display an opening splash screen  when  it
 starts up (default yes).
 
@@ -4477,7 +4477,7 @@ shows  status  conditions  on  their own line.  A display capable of
 showing at least 25 lines is recommended.  The value can be  toggled
 back and forth during the game with the `O` command.
 
-The curses interface does likewise if the align_status option is set
+The curses interface does likewise if the `align_status` option is set
 to top or bottom but ignores statuslines when set to left or right.
 
 The Qt interface already displays more than 3 lines  for  status  so
@@ -4490,15 +4490,15 @@ sion of Qt older than qt-5.9, statuslines can only  be  set  in  the
 run-time  configuration  file or via NETHACKOPTIONS, not during play
 with the `O` command.)
 
-term_cols  and
+`term_cols`  and
 
-term_rows
+`term_rows`
 Curses interface only.  Number of columns and rows to  use  for  the
 display.   Curses will attempt to resize to the values specified but
 will settle for smaller sizes if they are too big.  Default  is  the
 current window size.
 
-tile_file
+`tile_file`
 Specify  the  name  of  an  alternative  tile  file  to override the
 default.
 
@@ -4506,26 +4506,26 @@ Note: the X11 interface  uses  X  resources  rather  than  NetHack's
 options  to select an alternate tile file.  See NetHack.ad, the sam-
 ple X "application defaults" file.
 
-tile_height
+`tile_height`
 Specify the preferred height of each tile in a tile capable port.
 
-tile_width
+`tile_width`
 Specify the preferred width of each tile in a tile capable port
 
-tiled_map
+`tiled_map`
 If NetHack can, it should  display  the  map  using  tiles  graphics
 rather  than  simple  characters  (letters and punctuation, possibly
-augmented by  line-drawing  symbols).   Setting  tiled_map  to  True
-forces ascii_map to be False.
+augmented by  line-drawing  symbols).   Setting  `tiled_map`  to  True
+forces `ascii_map` to be False.
 
-use_darkgray
+`use_darkgray`
 Use bold black instead of blue for black glyphs (TTY only).
 
-use_inverse
+`use_inverse`
 If  NetHack  can,  it should display inverse when the game specifies
 it.
 
-vary_msgcount
+`vary_msgcount`
 If NetHack can, it should display this number of messages at a  time
 in the message window.
 
@@ -4537,12 +4537,12 @@ Acceptable values are
 0 - off, never show borders
 1 - on, always show borders
 2 - auto, on if display is at least (24+2)x(80+2) [default]
-3 - on, except forced off for perm_invent
-4 - auto, except forced off for perm_invent
+3 - on, except forced off for `perm_invent`
+4 - auto, except forced off for `perm_invent`
 
 (The  26x82 size threshold for `2` refers to number of rows and col-
 umns of the display.  A width of at least 110 columns (80+2+26+2) is
-needed to show borders if align_status is set to left or right.)
+needed to show borders if `align_status` is set to left or right.)
 
 The  persistent inventory window, when enabled, can grow until it is
 too big to fit on most displays, resulting in truncation of its con-
@@ -4581,9 +4581,9 @@ in the visible area of the window.
 Please note that NetHack does not send any information  off  your
 computer unless you manually click submit on a form.
 
-OPTION=crash_email:email_address
+OPTION=crash_email:`email_address`
 
-OPTION=crash_name:your_name
+OPTION=crash_name:`your_name`
 These  options  are  used  only  to save you some typing on the
 crash report and `#bugreport` forms.
 
@@ -4610,7 +4610,7 @@ a meta-shifted version of the second character (default off).
 
 This  conversion  is  only  done  for  commands, not for other input
 prompts.  Note that typing one or more  digits  as  a  count  prefix
-prior  to a command--preceded by n if the number_pad option is set--
+prior  to a command--preceded by n if the `number_pad` option is set--
 is also subject to this conversion, so attempting to abort the count
 by  typing  ESC  will leave NetHack waiting for another character to
 complete the two character sequence.  Type a second  ESC  to  finish
@@ -4646,10 +4646,10 @@ party   tilesets  will  probably  not  work.   Setting  "autodetect"
 attempts "vesa", then "vga", and finally sets "default"  if  neither
 of those modes works.  Cannot be set with the `O` command.
 
-video_height
+`video_height`
 Set the VGA mode resolution height (MS-DOS only, with video:vesa)
 
-video_width
+`video_width`
 Set the VGA mode resolution width (MS-DOS only, with video:vesa)
 
 videocolors
@@ -4681,14 +4681,14 @@ Autopickup exceptions, Message types, Menu colors, and User sounds.
 ### 9.9. Configuring Autopickup Exceptions
 
 You can further refine the  behavior  of  the  autopickup  option
-beyond what is available through the pickup_types option.
+beyond what is available through the `pickup_types` option.
 
-By placing autopickup_exception lines in your configuration file,
+By placing `autopickup_exception` lines in your configuration file,
 you can define patterns to be  checked  when  the  game  is  about  to
 autopickup something.
 
-autopickup_exception
-Sets an exception to the pickup_types option.  The autopickup_excep-
+`autopickup_exception`
+Sets an exception to the `pickup_types` option.  The autopickup_excep-
 tion option should be followed by a regular expression to be used as
 a  pattern  to match against the singular form of the description of
 an object at your location.
@@ -4699,13 +4699,13 @@ the first character in the pattern, specifically:
 < - always pickup an object that matches rest of pattern;
 > - never pickup an object that matches rest of pattern.
 
-The  autopickup_exception  rules are processed in the order in which
+The  `autopickup_exception`  rules are processed in the order in which
 they appear in your configuration file, thus allowing a  later  rule
 to override an earlier rule.
 
 Exceptions can be set with the `O` command, but because they are not
 included in your configuration file, they won't be in effect if  you
-save and then restore your game.  autopickup_exception rules and not
+save and then restore your game.  `autopickup_exception` rules and not
 saved with the game.
 
 Here are some examples:
@@ -4732,7 +4732,7 @@ mouse button, or a three-digit decimal ASCII code.
 For example:
 
 BIND=`^X`:getpos.autodescribe
-BIND=\:menu_first_page
+BIND=\:`menu_first_page`
 BIND=v:loot
 
 Extended command keys
@@ -4758,7 +4758,7 @@ available.  Special command can only be bound to a single key.
 
 count
 Prefix  key  to  start a count, to repeat a command this many times.
-With number_pad only.  Default is `n`.
+With `number_pad` only.  Default is `n`.
 
 getdir.help
 When asked for a direction, the key to show the  help.   Default  is
@@ -4962,7 +4962,7 @@ COLOR line that matches a menu line will be used for the line.
 
 Note  that if you intend to have one or more color specifications
 match   " uncursed ",   you   will   probably   want   to   turn   the
-implicit_uncursed  option  off  so that all items known to be uncursed
+`implicit_uncursed`  option  off  so that all items known to be uncursed
 are actually displayed with the "uncursed" description.
 
 
@@ -5450,15 +5450,15 @@ The most crucial settings to make the game more accessible are:
 symset:plain
 Load a symbol set appropriate for use by blind players.
 
-menustyle:traditional
+`menustyle:traditional`
 This will assist in the interface to speech synthesizers.
 
-nomenu_overlay
+`nomenu_overlay`
 Show menus on a cleared screen and aligned to the left edge.
 
-number_pad
+`number_pad`
 A  lot  of  speech  access programs use the number-pad to review the
-screen.  If this is the case, disable the number_pad option and  use
+screen.  If this is the case, disable the `number_pad` option and  use
 the traditional Rogue-like commands.
 
 paranoid_confirmation:swim
@@ -5467,21 +5467,21 @@ Prevent walking into water or lava.
 accessiblemsg
 Adds direction or location information to messages.
 
-spot_monsters
+`spot_monsters`
 Shows  a  message when hero notices a monster; combine with accessi-
 blemsg.
 
-mon_movement
+`mon_movement`
 Shows a message when hero notices a monster movement;  combine  with
-spot_monsters and accessiblemsg.
+`spot_monsters` and accessiblemsg.
 
 autodescribe
 Automatically describe the terrain under the cursor when targeting.
 
-mention_map
+`mention_map`
 Give feedback messages when interesting map locations change.
 
-mention_walls
+`mention_walls`
 Give  feedback  messages  when walking towards a wall or when travel
 command was interrupted.
 
@@ -5493,11 +5493,11 @@ whatis_filter:area
 When  targeting with cursor, filter possible locations so only those
 in the same area (eg. same room, or same corridor) are considered.
 
-whatis_moveskip
+`whatis_moveskip`
 When targeting with cursor and using fast-move, skip the same glyphs
 instead of moving 8 units at a time.
 
-nostatus_updates
+`nostatus_updates`
 Prevent  updates to the status lines at the bottom of the screen, if
 your screen-reader reads those lines. The same  information  can  be
 seen via the "`#attributes`" command.
