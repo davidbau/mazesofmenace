@@ -4,9 +4,10 @@
 
 check_setup() {
   local HOOKS_PATH=$(git config core.hooksPath)
-  local AUTO_PUSH=$(git config --get-all remote.origin.push | grep -c "refs/notes/test-results" || echo 0)
+  local AUTO_PUSH
+  AUTO_PUSH=$(git config --get-all remote.origin.push 2>/dev/null | grep -c "refs/notes" || true)
 
-  if [ "$HOOKS_PATH" != ".githooks" ] || [ "$AUTO_PUSH" -eq 0 ]; then
+  if [ "$HOOKS_PATH" != ".githooks" ] || [ "${AUTO_PUSH:-0}" -eq 0 ]; then
     echo ""
     echo "=========================================="
     echo "⚠️  Testing Infrastructure Not Configured"
