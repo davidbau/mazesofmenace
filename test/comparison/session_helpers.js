@@ -1065,6 +1065,17 @@ export class HeadlessDisplay {
             return { ch: '_', color: altarColor };
         }
 
+        // Handle secret doors (appear as walls)
+        // C ref: display.c - secret doors render as walls in their orientation
+        if (typ === SDOOR) {
+            // If walls E/W: secret door appears as vertical wall '|'
+            // If walls N/S: secret door appears as horizontal wall '-'
+            const isHorizontal = this._isDoorHorizontal(gameMap, x, y);
+            return isHorizontal
+                ? (useDEC ? { ch: '\u2502', color: 7 } : { ch: '|', color: 7 })
+                : (useDEC ? { ch: '\u2500', color: 7 } : { ch: '-', color: 7 });
+        }
+
         // For other terrain types, return basic symbol
         // (Tests that need more terrain types should extend this)
         return { ch: '?', color: 7 };
