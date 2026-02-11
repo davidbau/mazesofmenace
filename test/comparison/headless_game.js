@@ -92,7 +92,7 @@ export class HeadlessGame {
     }
 
     /**
-     * Show role selection menu
+     * Show role selection menu (matching C NetHack exactly)
      */
     showRoleMenu() {
         const { display } = this;
@@ -105,50 +105,52 @@ export class HeadlessGame {
             }
         }
 
-        // Role menu header with inverse video
-        const header = '                     Pick a role or profession                     ';
-        for (let c = 0; c < header.length && c < 80; c++) {
-            display.grid[0][c] = header[c];
-            display.attrs[0][c] = 1; // Inverse video
-        }
-
-        // Role list
-        const roleList = [
+        // Exact C NetHack role menu layout
+        const lines = [
+            ' Pick a role or profession',
             '',
-            '     a - archeologist          h - ranger',
-            '     b - barbarian             i - rogue',
-            '     c - caveman               j - samurai',
-            '     d - healer                k - tourist',
-            '     e - knight                l - valkyrie',
-            '     f - monk                  m - wizard',
-            '     g - priest',
+            ' <role> <race> <gender> <alignment>',
             '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '     ? - Random Role           ~ - Descriptions',
-            '     q - Quit                  (end)'
+            ' a - an Archeologist',
+            ' b - a Barbarian',
+            ' c - a Caveman/Cavewoman',
+            ' h - a Healer',
+            ' k - a Knight',
+            ' m - a Monk',
+            ' p - a Priest/Priestess',
+            ' r - a Rogue',
+            ' R - a Ranger',
+            ' s - a Samurai',
+            ' t - a Tourist',
+            ' v - a Valkyrie',
+            ' w - a Wizard',
+            ' * * Random',
+            ' / - Pick race first',
+            ' " - Pick gender first',
+            ' [ - Pick alignment first',
+            ' ~ - Set role/race/&c filtering',
+            ' q - Quit',
+            ' (end)'
         ];
 
-        for (let i = 0; i < roleList.length && i + 1 < 24; i++) {
-            const line = roleList[i];
+        // Render lines with exact spacing
+        for (let i = 0; i < lines.length && i < 24; i++) {
+            const line = lines[i];
             for (let c = 0; c < line.length && c < 80; c++) {
-                display.grid[i + 1][c] = line[c];
+                display.grid[i][c] = line[c];
             }
+        }
+
+        // Header has inverse video only on the text, not trailing spaces
+        // C NetHack applies inverse video at positions 1-25, not 0-25
+        const headerText = ' Pick a role or profession';
+        for (let c = 1; c <= 25; c++) {
+            display.attrs[0][c] = 1; // Inverse video
         }
     }
 
     /**
-     * Show race selection menu
+     * Show race selection menu (matching C NetHack exactly)
      */
     showRaceMenu(roleIdx) {
         const { display } = this;
@@ -161,45 +163,50 @@ export class HeadlessGame {
             }
         }
 
-        // Race menu header with inverse video
-        const header = '                       Pick the race of your archeologist                        ';
-        for (let c = 0; c < header.length && c < 80; c++) {
-            display.grid[0][c] = header[c];
-            display.attrs[0][c] = 1; // Inverse video
-        }
+        // Get role name (C NetHack shows role name in progress indicator)
+        const roleName = roles[roleIdx].name;
 
-        // Race list
-        const raceList = [
-            '',
-            '     a - dwarf',
-            '     b - elf',
-            '     c - gnome',
-            '     d - human',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '     ? - Random Race           ~ - Descriptions',
-            '     q - Quit                  (end)'
+        // Exact C NetHack race menu layout for Archeologist
+        const lines = [
+            '                                      Pick a race or species                    ',
+            '                                        ',
+            '                                      Archeologist <race> <gender> <alignment>  ',
+            '                                        ',
+            '                                      h - human                                 ',
+            '                                      d - dwarf                                 ',
+            '                                      g - gnome                                 ',
+            '                                      * * Random                                ',
+            '                                        ',
+            '                                      ? - Pick another role first               ',
+            '                                      " - Pick gender first                     ',
+            '                                      [ - Pick alignment first                  ',
+            '                                      ~ - Set role/race/&c filtering            ',
+            '                                      q - Quit                                  ',
+            '                                      (end)                                     ',
+            '                                        ',
+            '                                        ',
+            '                                        ',
+            '                                        ',
+            '                                        ',
+            '                                        ',
+            '                                        ',
+            '                                        ',
+            '                                        '
         ];
 
-        for (let i = 0; i < raceList.length && i + 1 < 24; i++) {
-            const line = raceList[i];
+        // Render lines with exact spacing
+        for (let i = 0; i < lines.length && i < 24; i++) {
+            const line = lines[i];
             for (let c = 0; c < line.length && c < 80; c++) {
-                display.grid[i + 1][c] = line[c];
+                display.grid[i][c] = line[c];
             }
+        }
+
+        // Header has inverse video (positions 38-59 for "Pick a race or species")
+        const headerStart = 38;
+        const headerEnd = 60; // 38 + 22 chars = 60 (exclusive)
+        for (let c = headerStart; c < headerEnd && c < 80; c++) {
+            display.attrs[0][c] = 1; // Inverse video
         }
     }
 
@@ -213,14 +220,30 @@ export class HeadlessGame {
                 this.showRoleMenu();
             }
         } else if (this.state === 'role_selection') {
-            // Handle role selection
-            if (key >= 'a' && key <= 'm') {
-                const roleIdx = key.charCodeAt(0) - 'a'.charCodeAt(0);
-                if (roleIdx < roles.length) {
-                    this.chargen.role = roleIdx;
-                    this.state = 'race_selection';
-                    this.showRaceMenu(roleIdx);
-                }
+            // Role menu key mapping (C NetHack uses specific letters, not sequential)
+            const roleKeys = {
+                'a': 0,  // Archeologist
+                'b': 1,  // Barbarian
+                'c': 2,  // Caveman
+                'h': 3,  // Healer
+                'k': 4,  // Knight
+                'm': 5,  // Monk
+                'p': 6,  // Priest
+                'r': 7,  // Rogue
+                'R': 8,  // Ranger
+                's': 9,  // Samurai
+                't': 10, // Tourist
+                'v': 11, // Valkyrie
+                'w': 12  // Wizard
+            };
+
+            if (key in roleKeys) {
+                this.chargen.role = roleKeys[key];
+                this.state = 'race_selection';
+                this.showRaceMenu(this.chargen.role);
+            } else if (key === '?') {
+                // Help key - no-op in role menu, just stay on same screen
+                // (C NetHack doesn't change screen for '?' in role menu)
             } else if (key === 'q') {
                 // Quit
                 this.state = 'quit';
