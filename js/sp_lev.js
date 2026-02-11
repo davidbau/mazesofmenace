@@ -163,9 +163,12 @@ export function initLuaMT() {
     rn2(1012);
     for (let i = 1014; i <= 1036; i++) rn2(i);
     setMtInitialized(true);
-    // Advance luaRngCounter to account for MT init calls (1000-1036 = 37 calls)
+    // Advance luaRngCounter to account for MT init calls (30 RNG calls total)
+    // MT init pattern: 1000-1004(5), 1010(1), 1012(1), 1014-1036(23) = 30 calls
+    // BUT counter should be 37 because offsets continue: next calls use 1037+
+    // C ref: seed 4 trace shows first object after MT uses same gap pattern
     if (levelState && levelState.luaRngCounter !== undefined) {
-        levelState.luaRngCounter = 37;
+        levelState.luaRngCounter = 37;  // Offset after 1036, continuing the sequence
     }
 }
 
