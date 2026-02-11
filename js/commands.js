@@ -1861,6 +1861,8 @@ async function handleSet(game) {
     }
 
     // Restore game display after exiting menu
+    // Clear screen first to remove all menu text
+    display.clearScreen();
     display.renderMap(game.map, player, game.fov, flags);
     display.renderStatus(player);
 
