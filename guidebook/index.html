@@ -148,14 +148,14 @@
 <p>@&amp;’:; Letters and certain other symbols represent the various inhabi- tants of the Mazes of Menace. Watch out, they can be nasty and vicious. Sometimes, however, they can be helpful.</p>
 <p><code>I</code> Rather than a specific type of monster, this marks the last known location of an invisible or otherwise unseen monster. Note that the monster could have moved. The <code>s</code>, <code>F</code>, and <code>m</code> commands may be useful here.</p>
 <p>1-5 The digits 1 through 5 may be displayed, marking unseen monsters sensed via the Warning attribute. Less dangerous monsters are indicated by lower values, more dangerous by higher values.</p>
-<p>You need not memorize all these symbols; you can ask the game what any symbol represents with the `/’ command (see the next section for more info).</p>
+<p>You need not memorize all these symbols; you can ask the game what any symbol represents with the <code>/</code> command (see the next section for more info).</p>
 <h2 id="commands">4. Commands</h2>
 <p>Commands can be initiated by typing one or two characters to which the command is bound to, or typing the command name in the extended commands entry. Some commands, like “search”, do not require that any more information be collected by NetHack. Other commands might require additional information, for example a direction, or an object to be used. For those commands that require additional infor- mation, NetHack will present you with either a menu of choices or with a command line prompt requesting information. Which you are presented with will depend chiefly on how you have set the <code>menustyle</code> option.</p>
-<p>For example, a common question, in the form “What do you want to use? [a-zA-Z ?*]”, asks you to choose an object you are carrying. Here, “a-zA-Z” are the inventory letters of your possible choices. Typing <code>?' gives you an inventory list of these items, so you can  see what  each  letter  refers  to.   In this example, there is also a</code><em>’ indicating that you may choose an object not on the list, if you wanted to use something unexpected. Typing a `</em>’ lists your entire inventory, so you can see the inventory letters of every object you’re carrying. Finally, if you change your mind and decide you don’t want to do this command after all, you can press the ESC key to abort the command.</p>
+<p>For example, a common question, in the form “What do you want to use? [a-zA-Z ?*]”, asks you to choose an object you are carrying. Here, “a-zA-Z” are the inventory letters of your possible choices. Typing <code>?</code> gives you an inventory list of these items, so you can see what each letter refers to. In this example, there is also a <code>*</code> indicating that you may choose an object not on the list, if you wanted to use something unexpected. Typing a <code>*</code> lists your entire inventory, so you can see the inventory letters of every object you’re carrying. Finally, if you change your mind and decide you don’t want to do this command after all, you can press the ESC key to abort the command.</p>
 <p>You can put a number before some commands to repeat them that many times; for example, “10s” will search ten times. If you have the <code>number_pad</code> option set, you must type <code>n</code> to prefix a count, so the example above would be typed “n10s” instead. Commands for which counts make no sense ignore them. In addition, movement commands can be prefixed for greater control (see below). To cancel a count or a prefix, press the ESC key.</p>
-<p>The list of commands is rather long, but it can be read at any time during the game through the `?’ command, which accesses a menu of helpful texts. Here are the default key bindings for your reference:</p>
+<p>The list of commands is rather long, but it can be read at any time during the game through the <code>?</code> command, which accesses a menu of helpful texts. Here are the default key bindings for your reference:</p>
 <p><code>?</code> Help menu: display one of several help texts available.</p>
-<p><code>/</code> The “whatis” command, to tell what a symbol represents. You may choose to specify a location or type a symbol (or even a whole word) to explain. Specifying a location is done by moving the cursor to a particular spot on the map and then pressing one of <code>.</code>, <code>,</code>, <code>;', or</code>:‘. <code>.</code> will explain the symbol at the chosen location, conditionally check for “More info?” depending upon whether the help option is on, and then you will be asked to pick another location; <code>,</code> will explain the symbol but skip any addi- tional information, then let you pick another location; <code>;' will skip additional info and also not bother  asking  you  to  choose another  location  to  examine;</code>:’ will show additional info, if any, without asking for confirmation. When picking a location, pressing the ESC key will terminate this command, or pressing `?’ will give a brief reminder about how it works.</p>
+<p><code>/</code> The “whatis” command, to tell what a symbol represents. You may choose to specify a location or type a symbol (or even a whole word) to explain. Specifying a location is done by moving the cursor to a particular spot on the map and then pressing one of <code>.</code>, <code>,</code>, <code>;</code>, or <code>:</code>. <code>.</code> will explain the symbol at the chosen location, conditionally check for “More info?” depending upon whether the help option is on, and then you will be asked to pick another location; <code>,</code> will explain the symbol but skip any addi- tional information, then let you pick another location; <code>;</code> will skip additional info and also not bother asking you to choose another location to examine; <code>:</code> will show additional info, if any, without asking for confirmation. When picking a location, pressing the ESC key will terminate this command, or pressing <code>?</code> will give a brief reminder about how it works.</p>
 <p>If the autodescribe option is on, a short description of what you see at each location is shown as you move the cursor. Typing <code>#</code> while picking a location will toggle that option on or off. The <code>whatis_coord</code> option controls whether the short description includes map coordinates.</p>
 <p>Specifying a name rather than a location always gives any addi- tional information available about that name.</p>
 <p>You may also request a description of nearby monsters, all mon- sters currently displayed, nearby objects, or all objects. The <code>whatis_coord</code> option controls which format of map coordinate is included with their descriptions.</p>
@@ -203,8 +203,8 @@
 <p>“What kinds of things do you want to drop? [!%= BUCXPaium]”</p>
 <p>you should type zero or more object symbols possibly followed by <code>a</code> and/or <code>i</code> and/or <code>u</code> and/or <code>m</code>. In addition, one or more of the blessed/uncursed/cursed groups may be typed.</p>
 <p>DB - drop all objects known to be blessed. DU - drop all objects known to be uncursed. DC - drop all objects known to be cursed. DX - drop all objects of unknown B/U/C status. DP - drop objects picked up last. Da - drop all objects, without asking for confirmation. Di - examine your inventory before dropping anything. Du - drop only unpaid objects (when in a shop). Dm - use a menu to pick which object(s) to drop. D%u - drop only unpaid food.</p>
-<p>The last example shows a combination. There are four categories of object filtering: class (<code>!' for potions,</code>?’ for scrolls, and so on), shop status (<code>u</code> for unpaid, in other words, owned by the shop), bless/curse state (<code>B</code>, <code>U</code>, <code>C</code>, and <code>X</code> as shown above), and novelty (<code>P</code>, recently picked up items; controlled by picking up or dropping things rather than by any time factor).</p>
-<p>If you specify more than one value in a category (such as “!?” for potions and scrolls or “BU” for blessed and uncursed), an inventory object will meet the criteria if it matches any of the specified values (so “!?” means <code>!' or</code>?’). If you specify more than one category, an inventory object must meet each of the cat- egory criteria (so “%u” means class <code>%' and unpaid</code>u`). Lastly, you may specify multiple values within multiple categories: “!?BU” will select all potions and scrolls which are known to be blessed or uncursed. (In versions prior to 3.6, filter combina- tions behaved differently.)</p>
+<p>The last example shows a combination. There are four categories of object filtering: class (<code>!' for potions,</code>?<code>for scrolls, and so on), shop status (</code>u<code>for unpaid, in other words, owned by the shop), bless/curse state (</code>B<code>,</code>U<code>,</code>C<code>, and</code>X<code>as shown above), and novelty (</code>P`, recently picked up items; controlled by picking up or dropping things rather than by any time factor).</p>
+<p>If you specify more than one value in a category (such as “!?” for potions and scrolls or “BU” for blessed and uncursed), an inventory object will meet the criteria if it matches any of the specified values (so “!?” means <code>!' or</code>?<code>).  If you specify more than one category, an inventory object must meet each of the cat- egory criteria (so "%u" means class</code>%’ and unpaid <code>u</code>). Lastly, you may specify multiple values within multiple categories: “!?BU” will select all potions and scrolls which are known to be blessed or uncursed. (In versions prior to 3.6, filter combina- tions behaved differently.)</p>
 <p><code>^D</code> Kick something (usually a door).</p>
 <p><code>e</code> Eat food.</p>
 <p>Normally checks for edible item(s) on the floor, then if none are found or none are chosen, checks for edible item(s) in inventory. Precede <code>e</code> with the <code>m</code> prefix to bypass attempting to eat any- thing off the floor.</p>
@@ -338,8 +338,8 @@
 <p>The display order is the same as is used by <code>#vanquished</code>. The <code>m</code> prefix brings up a menu of available sorting orders, and doing that for either <code>#genocided</code> or <code>#vanquished</code> changes the order for both.</p>
 <p>If the sorting order is “count high to low” or “count low to high” (which are applicable for <code>#vanquished</code>), that will be ignored for <code>#genocided</code> and alphabetical will be used instead. The menu omits those two choices when used for <code>#genocide</code>.</p>
 <p>Autocompletes. Default key is `M-g’.</p>
-<p>#glance Show what type of thing a map symbol corresponds to. Default key is `;’.</p>
-<p>#help Show the help menu. Default key is <code>?', and also</code>h<code>if num-</code>ber_pad` is on.</p>
+<p>#glance Show what type of thing a map symbol corresponds to. Default key is <code>;</code>.</p>
+<p>#help Show the help menu. Default key is <code>?</code>, and also <code>h</code> if num- <code>ber_pad</code> is on.</p>
 <p>#herecmdmenu Show a menu of possible actions directed at your current loca- tion. The menu is limited to a subset of the likeliest actions, not an exhaustive set of all possibilities. Autocompletes.</p>
 <p>If mouse support is enabled and the <code>herecmd_menu</code> option is On, clicking on the hero (or steed when mounted) will execute this command.</p>
 <p>#history Show long version and game history. Default key is <code>V</code>.</p>
@@ -354,7 +354,7 @@
 <p>The <code>m</code> prefix operates the same as for “<code>#known</code>”.</p>
 <p>#levelchange Change your experience level. Autocompletes. Debug mode only.</p>
 <p>#lightsources Show mobile light sources. Autocompletes. Debug mode only.</p>
-<p>#look Look at what is here, under you. Default key is `:’.</p>
+<p>#look Look at what is here, under you. Default key is <code>:</code>.</p>
 <p>#lookaround Describe what you can see, or remember, of your surroundings.</p>
 <p>#loot Loot a box or bag on the floor beneath you, or the saddle from a steed standing next to you. Autocompletes. Precede with the <code>m</code> prefix to skip containers at your location and go directly to removing a saddle. Default key is <code>M-l', and also</code>l<code>if num-</code>ber_pad` is on.</p>
 <p>#monster Use a monster’s special ability (when polymorphed into monster form). Autocompletes. Default key is `M-m’.</p>
@@ -397,7 +397,7 @@
 <p>#save Save the game and exit the program. Default key is <code>S</code>.</p>
 <p>#saveoptions Save configuration options to the config file. This will over- write the file, removing all comments, so if you have manually edited the config file, don’t use this.</p>
 <p>#search Search for traps and secret doors around you. Default key is <code>s</code>.</p>
-<p>#seeall Show all equipment in use. Default key is `*’.</p>
+<p>#seeall Show all equipment in use. Default key is <code>*</code>.</p>
 <p>Will display in-use items in a menu even when there is only one.</p>
 <p>#seeamulet Show the amulet currently worn. Default key is `"’.</p>
 <p>Using the <code>m</code> prefix will force the display of a worn amulet in a menu rather than with just a message.</p>
@@ -452,7 +452,7 @@
 <p>#wait Rest one move while doing nothing. Default key is <code>.</code>, and also <code>' if</code>rest_on_space` is on.</p>
 <p>#wear Wear a piece of armor. Default key is <code>W</code>.</p>
 <p>#whatdoes Tell what a key does. Default key is `&amp;’.</p>
-<p>#whatis Show what type of thing a symbol corresponds to. Default key is `/’.</p>
+<p>#whatis Show what type of thing a symbol corresponds to. Default key is <code>/</code>.</p>
 <p>#wield Wield a weapon. Default key is <code>w</code>.</p>
 <p>#wipe Wipe off your face. Autocompletes. Default key is `M-w’.</p>
 <p>#wizborn Show monster birth, death, genocide, and extinct statistics. Debug mode only.</p>
@@ -569,7 +569,7 @@
 <p>The slight strangeness of this level is a feature, not a bug….</p>
 <h2 id="monsters">6. Monsters</h2>
 <p>Monsters you cannot see are not displayed on the screen. Beware! You may suddenly come upon one in a dark place. Some magic items can help you locate them before they locate you (which some monsters can do very well).</p>
-<p>The commands <code>/' and</code>;’ may be used to obtain information about those monsters who are displayed on the screen. The command “<code>#name</code>” (by default bound to <code>C</code>), allows you to assign a name to a monster, which may be useful to help distinguish one from another when multiple monsters are present. Assigning a name which is just a space will remove any prior name.</p>
+<p>The commands <code>/</code> and <code>;</code> may be used to obtain information about those monsters who are displayed on the screen. The command “<code>#name</code>” (by default bound to <code>C</code>), allows you to assign a name to a monster, which may be useful to help distinguish one from another when multiple monsters are present. Assigning a name which is just a space will remove any prior name.</p>
 <p>The extended command “<code>#chat</code>” can be used to interact with an adjacent monster. There is no actual dialog (in other words, you don’t get to choose what you’ll say), but chatting with some monsters such as a shopkeeper or the Oracle of Delphi can produce useful results.</p>
 <h3 id="fighting">6.1. Fighting</h3>
 <p>If you see a monster and you wish to fight it, just attempt to walk into it. Many monsters you find will mind their own business unless you attack them. Some of them are very dangerous when angered. Remember: discretion is the better part of valor.</p>
@@ -617,7 +617,7 @@
 <p>Those of you in the audience who are AD&amp;D players, be aware that each weapon which existed in AD&amp;D does roughly the same damage to mon- sters in NetHack. Some of the more obscure weapons (such as the aklys, lucern hammer, and bec-de-corbin) are defined in an appendix to Unearthed Arcana, an AD&amp;D supplement.</p>
 <p>The commands to use weapons are <code>w</code> (wield), <code>t</code> (throw), <code>f</code> (fire), <code>Q</code> (quiver), <code>x</code> (exchange), <code>X</code> (twoweapon), and “<code>#enhance</code>” (see below).</p>
 <h4 id="throwing-and-shooting">7.2.1. Throwing and shooting</h4>
-<p>You can throw just about anything via the <code>t</code> command. It will prompt for the item to throw; picking <code>?' will  list  things  in  your inventory  which  are  considered  likely to be thrown, or picking</code>*’ will list your entire inventory. After you’ve chosen what to throw, you will be prompted for a direction rather than for a specific tar- get. The distance something can be thrown depends mainly on the type of object and your strength. Arrows can be thrown by hand, but can be thrown much farther and will be more likely to hit when thrown while you are wielding a bow.</p>
+<p>You can throw just about anything via the <code>t</code> command. It will prompt for the item to throw; picking <code>?</code> will list things in your inventory which are considered likely to be thrown, or picking <code>*</code> will list your entire inventory. After you’ve chosen what to throw, you will be prompted for a direction rather than for a specific tar- get. The distance something can be thrown depends mainly on the type of object and your strength. Arrows can be thrown by hand, but can be thrown much farther and will be more likely to hit when thrown while you are wielding a bow.</p>
 <p>Some weapons will return when thrown. A boomerang–provided it fails to hit anything–is an obvious example. If an aklys (thonged club) is thrown while it is wielded, it will return even when it hits something. A sufficiently strong hero can throw the warhammer Mjoll- nir; when thrown by a Valkyrie it will return too. However, aklyses and Mjollnir occasionally fail to return. Returning thrown objects occasionally fail to be caught, sometimes even hitting the thrower, but when caught they become re-wielded.</p>
 <p>You can simplify the throwing operation by using the <code>Q</code> command to select your preferred “missile”, then using the <code>f</code> command to throw it. You’ll be prompted for a direction as above, but you don’t have to specify which item to throw each time you use <code>f</code>. There is also an option, autoquiver, which has NetHack choose another item to automatically fill your quiver (or quiver sack, or have at the ready) when the inventory slot used for <code>Q</code> runs out. If your quiver is empty, autoquiver is false, and you are wielding a weapon which returns when thrown, you will throw that weapon instead of filling the quiver. The fire command also has extra assistance, if fireassist is on it will try to wield a launcher matching the ammo in the quiver.</p>
 <p>Some characters have the ability to throw or shoot a volley of multiple items (from the same stack) in a single action. Knowing how to load several rounds of ammunition at once–or hold several missiles in your hand–and still hit a target is not an easy task. Rangers are among those who are adept at this task, as are those with a high level of proficiency in the relevant weapon skill (in bow skill if you’re wielding one to shoot arrows, in crossbow skill if you’re wielding one to shoot bolts, or in sling skill if you’re wielding one to shoot stones). The number of items that the character has a chance to fire varies from turn to turn. You can explicitly limit the number of shots by using a numeric prefix before the <code>t</code> or <code>f</code> command. For example, “2f” (or “n2f” if using <code>number_pad</code> mode) would ensure that at most 2 arrows are shot even if you could have fired 3. If you specify a larger number than would have been shot (“4f” in this example), you’ll just end up shooting the same number (3, here) as if no limit had been specified. Once the volley is in motion, all of the items will travel in the same direction; if the first ones kill a monster, the others can still continue beyond that spot.</p>
@@ -647,7 +647,7 @@
 <p>Some character roles and some monsters are vegetarian. Vegetar- ian monsters will typically never eat animal corpses, while vegetarian players can, but with some rather unpleasant side-effects.</p>
 <p>You can name one food item after something you like to eat with the fruit option.</p>
 <p>The command to eat food is <code>e</code>.</p>
-<h3 id="scrolls">7.5. Scrolls (`?’)</h3>
+<h3 id="scrolls">7.5. Scrolls (<code>?</code>)</h3>
 <p>Scrolls are labeled with various titles, probably chosen by ancient wizards for their amusement value (for example “READ ME,” or “THANX MAUD” backwards). Scrolls disappear after you read them (except for blank ones, without magic spells on them).</p>
 <p>One of the most useful of these is the scroll of identify, which can be used to determine what another object is, whether it is cursed or blessed, and how many uses it has left. Some objects of subtle enchantment are difficult to identify without these.</p>
 <p>A scroll whose label is known can be read even when the hero is blind. If a scroll has been discovered, it will be listed in inven- tory by type rather than by label, but the label is known in that sit- uation even though it isn’t shown.</p>
@@ -658,7 +658,7 @@
 <p>Potions are distinguished by the color of the liquid inside the flask. They disappear after you quaff them.</p>
 <p>Clear potions are potions of water. Sometimes these are blessed or cursed, resulting in holy or unholy water. Holy water is the bane of the undead, so potions of holy water are good things to throw (<code>t</code>) at them. It is also sometimes very useful to dip (“<code>#dip</code>”) an object into a potion.</p>
 <p>The command to drink a potion is <code>q</code> (quaff).</p>
-<h3 id="wands">7.7. Wands (`/’)</h3>
+<h3 id="wands">7.7. Wands (<code>/</code>)</h3>
 <p>Wands usually have multiple magical charges. Some types of wands require a direction in which to zap them. You can also zap them at yourself (just give a <code>.</code> or <code>s</code> for the direction). Be warned, how- ever, for this is often unwise. Other types of wands don’t require a direction. The number of charges in a wand is random and decreases by one whenever you use it.</p>
 <p>When the number of charges left in a wand becomes zero, attempts to use the wand will usually result in nothing happening. Occasion- ally, however, it may be possible to squeeze the last few mana points from an otherwise spent wand, destroying it in the process. A wand may be recharged by using suitable magic, but doing so runs the risk of causing it to explode. The chance for such an explosion starts out very small and increases each time the wand is recharged.</p>
 <p>In a truly desperate situation, when your back is up against the wall, you might decide to go for broke and break your wand. This is not for the faint of heart. Doing so will almost certainly cause a catastrophic release of magical energies.</p>
@@ -693,7 +693,7 @@
 <p>Amulets are very similar to rings, and often more powerful. Like rings, amulets have various magical properties, some beneficial, some harmful, which are activated by putting them on.</p>
 <p>Only one amulet may be worn at a time, around your neck. Like wearing rings, wearing an amulet affects your metabolism, causing you to grow hungry more rapidly.</p>
 <p>The commands to use amulets are the same as for rings, <code>P</code> (put on) and <code>R</code> (remove). <code>A</code> can be used to remove various worn items including amulets. Also, <code>W</code> (wear) and <code>T</code> (take off) which are nor- mally for armor can be used for amulets and other accessories (rings and eyewear), but accessories won’t be shown as likely candidates in a prompt for choosing what to wear or take off.</p>
-<h3 id="gems">7.12. Gems (`*’)</h3>
+<h3 id="gems">7.12. Gems (<code>*</code>)</h3>
 <p>Some gems are valuable, and can be sold for a lot of gold. They are also a far more efficient way of carrying your riches. Valuable gems increase your score if you bring them with you when you exit.</p>
 <p>Other small rocks are also categorized as gems, but they are much less valuable. All rocks, however, can be used as projectile weapons (if you have a sling). In the most desperate of cases, you can still throw them by hand.</p>
 <h3 id="large-rocks">7.13. Large rocks (<code>`</code>)</h3>
@@ -791,7 +791,7 @@
 <p>in sh, ksh, or bash.</p>
 <p>The NETHACKOPTIONS value is effectively the same as a single OPTIONS directive in a configuration file. The “OPTIONS=” prefix is implied and comma separated options are processed from right to left. Other types of configuration directives such as BIND or MSGTYPE are not allowed.</p>
 <p>Instead of a comma-separated list of options, NETHACKOPTIONS can be set to the full name of a configuration file you want to use. If that full name doesn’t start with a slash, precede it with <code>@</code> (at- sign) to let NetHack know that the rest is intended as a file name.</p>
-<p>If it does start with `/’, the at-sign is optional.</p>
+<p>If it does start with <code>/</code>, the at-sign is optional.</p>
 <h3 id="customization-options">9.4. Customization options</h3>
 <p>Here are explanations of what the various options do. Character strings that are too long may be truncated. Some of the options listed may be inactive in your dungeon.</p>
 <p>Some options are persistent, and are saved and reloaded along with the game. Changing a persistent option in the configuration file applies only to new games.</p>
@@ -845,7 +845,7 @@
 <p>gender Your starting gender (gender:male or gender:female). You may spec- ify just the first letter. Although you can still denote your gen- der using either of the deprecated male and female options, if the gender option is also present it will take precedence. See role for a description of how to use negation to exclude choices.</p>
 <p>If gender is not specified, there is no default value; player will be prompted unless role and/or race forces a choice for gender. Cannot be set with the <code>O</code> command. Persistent.</p>
 <p>goldX When filtering objects based on bless/curse state (BUCX), whether to treat gold pieces as X (unknown bless/curse state, when “on”) or U (known to be uncursed, when “off”, the default). Gold is never blessed or cursed, but it is not described as “uncursed” even when the <code>implicit_uncursed</code> option is “off”.</p>
-<p>help If more information is available for an object looked at with the `/’ command, ask if you want to see it (default on). Turning help off makes just looking at things faster, since you aren’t inter- rupted with the “More info?” prompt, but it also means that you might miss some interesting and/or important information. Persis- tent.</p>
+<p>help If more information is available for an object looked at with the <code>/</code> command, ask if you want to see it (default on). Turning help off makes just looking at things faster, since you aren’t inter- rupted with the “More info?” prompt, but it also means that you might miss some interesting and/or important information. Persis- tent.</p>
 <p><code>herecmd_menu</code> When using a windowport that supports mouse and clicking on yourself or next to you, show a menu of possible actions for the location. Same as “<code>#herecmdmenu</code>” and “<code>#therecmdmenu</code>” commands.</p>
 <p><code>hilite_pet</code> Visually distinguish pets from similar animals (default off). The behavior of this option depends on the type of windowing you use. In text windowing, text highlighting or inverse video is often used; with tiles, generally displays a heart symbol near pets.</p>
 <p>With the tty or curses interface, the petattr option controls how to highlight pets and setting it will turn the <code>hilite_pet</code> option on or off as warranted.</p>
@@ -882,7 +882,7 @@
 <p>Supported by tty and curses. When setting the value, it can be specified by digit or keyword. The default value is Conditional (4).</p>
 <p><code>menu_overlay</code> Do not clear the screen before drawing menus, and align menus to the right edge of the screen. Only for the tty port. (default on)</p>
 <p><code>menu_previous_page</code> Key to go to the previous menu page. Default `&lt;’.</p>
-<p><code>menu_search</code> Key to search for some text and toggle selection state of matching menu items. Default `:’.</p>
+<p><code>menu_search</code> Key to search for some text and toggle selection state of matching menu items. Default <code>:</code>.</p>
 <p><code>menu_select_all</code> Key to select all items in a menu. Default <code>.</code>.</p>
 <p><code>menu_select_page</code> Key to select all items on this page of a menu. Default <code>,</code>.</p>
 <p><code>menu_shift_left</code> Key to scroll a menu–one which has been scrolled right–back to the left. Implemented for <code>perm_invent</code> only by curses and X11. Default `{’.</p>
@@ -985,10 +985,10 @@
 <p>travel Allow the travel command via mouse click (default on). Turning this option off will prevent the game from attempting unintended moves if you make inadvertent mouse clicks on the map window. Does not affect traveling via the <code>_' ("</code>#travel`") command. Persistent.</p>
 <p>tutorial Play a tutorial level at the start of the game. Setting this option on or off in the config file will skip the query.</p>
 <p>verbose Provide more commentary during the game (default on). Persistent.</p>
-<p><code>whatis_coord</code> When using the <code>/' or</code>;’ commands to look around on the map with autodescribe on, display coordinates after the description. Also works in other situations where you are asked to pick a location.</p>
+<p><code>whatis_coord</code> When using the <code>/</code> or <code>;</code> commands to look around on the map with autodescribe on, display coordinates after the description. Also works in other situations where you are asked to pick a location.</p>
 <p>The possible settings are:</p>
 <p>c - compass (“east” or “3s” or “2n,4w”); f - full compass (“east” or “3south” or “2north,4west”); m - map &lt;x,y&gt; (map column x=0 is not used); s - screen [row,column] (row is offset to match tty usage); n - none (no coordinates shown) [default].</p>
-<p>The <code>whatis_coord</code> option is also used with the “/m”, “/M”, “/o”, and “/O” sub-commands of `/’, where the “none” setting is over- ridden with “map”.</p>
+<p>The <code>whatis_coord</code> option is also used with the “/m”, “/M”, “/o”, and “/O” sub-commands of <code>/</code>, where the “none” setting is over- ridden with “map”.</p>
 <p><code>whatis_filter</code> When getting a location on the map, and using the keys to cycle through next and previous targets, allows filtering the possible targets.</p>
 <p>n - no filtering [default] v - in view only a - in same area only</p>
 <p>The area-filter tries to be slightly predictive–if you’re standing on a doorway, it will consider the area on the side of the door you were last moving towards.</p>
@@ -1092,7 +1092,7 @@
 <p>Mouse buttons You can bind “mouse1” or “mouse2” to “nothing”, “therecmdmenu”, “clicklook”, or “mouseaction”.</p>
 <p>Special command keys Below are the special commands you can rebind. Some of them can be bound to same keys with no problems, others are in the same “con- text”, and if bound to same keys, only one of those commands will be available. Special command can only be bound to a single key.</p>
 <p>count Prefix key to start a count, to repeat a command this many times. With <code>number_pad</code> only. Default is <code>n</code>.</p>
-<p>getdir.help When asked for a direction, the key to show the help. Default is `?’.</p>
+<p>getdir.help When asked for a direction, the key to show the help. Default is <code>?</code>.</p>
 <p>getdir.mouse When asked for a direction, the key to initiate a simulated mouse click. You will be asked to pick a location. Use movement key- strokes to move the cursor around the map, then type the get- pos.pick.once key (default <code>,</code>) or the getpos.pick key (default <code>.</code>) to finish as if performing a left or right click. Only useful when using the <code>#therecmdmenu</code> command. Default is `_’.</p>
 <p>getdir.self When asked for a direction, the key to target yourself. Default is <code>.</code>.</p>
 <p>getdir.self2 When asked for a direction, an alternate key to target yourself. Default is <code>s</code>.</p>
@@ -1101,19 +1101,19 @@
 <p>getpos.all.prev When asked for a location, the key to go to previous closest inter- esting thing. Default is <code>A</code>.</p>
 <p>getpos.door.next When asked for a location, the key to go to next closest door or doorway. Default is <code>d</code>.</p>
 <p>getpos.door.prev When asked for a location, the key to go to previous closest door or doorway. Default is <code>D</code>.</p>
-<p>getpos.help When asked for a location, the key to show help. Default is `?’.</p>
+<p>getpos.help When asked for a location, the key to show help. Default is <code>?</code>.</p>
 <p>getpos.mon.next When asked for a location, the key to go to next closest monster. Default is <code>m</code>.</p>
 <p>getpos.mon.prev When asked for a location, the key to go to previous closest mon- ster. Default is <code>M</code>.</p>
 <p>getpos.obj.next When asked for a location, the key to go to next closest object. Default is <code>o</code>.</p>
 <p>getpos.obj.prev When asked for a location, the key to go to previous closest object. Default is <code>O</code>.</p>
 <p>getpos.menu When asked for a location, and using one of the next or previous keys to cycle through targets, toggle showing a menu instead. Default is `!’.</p>
-<p>getpos.moveskip When asked for a location, and using the shifted movement keys or meta-digit keys to fast-move around, move by skipping the same glyphs instead of by 8 units. Default is `*’.</p>
+<p>getpos.moveskip When asked for a location, and using the shifted movement keys or meta-digit keys to fast-move around, move by skipping the same glyphs instead of by 8 units. Default is <code>*</code>.</p>
 <p>getpos.filter When asked for a location, change the filtering mode when using one of the next or previous keys to cycle through targets. Toggles between no filtering, in view only, and in the same area only. Default is `"’.</p>
 <p>getpos.pick When asked for a location, the key to choose the location, and pos- sibly ask for more info. When simulating a mouse click after being</p>
 <p>asked for a direction (see getdir.mouse above), the key to use to respond as right click. Default is <code>.</code>.</p>
 <p>getpos.pick.once When asked for a location, the key to choose the location, and skip asking for more info. When simulating a mouse click after being asked for a direction, the key to respond as left click. Default is <code>,</code>.</p>
-<p>getpos.pick.quick When asked for a location, the key to choose the location, skip ask- ing for more info, and exit the location asking loop. Default is `;’.</p>
-<p>getpos.pick.verbose When asked for a location, the key to choose the location, and show more info without asking. Default is `:’.</p>
+<p>getpos.pick.quick When asked for a location, the key to choose the location, skip ask- ing for more info, and exit the location asking loop. Default is <code>;</code>.</p>
+<p>getpos.pick.verbose When asked for a location, the key to choose the location, and show more info without asking. Default is <code>:</code>.</p>
 <p>getpos.self When asked for a location, the key to go to your location. Default is <code>@</code>.</p>
 <p>getpos.unexplored.next When asked for a location, the key to go to next closest unexplored location. Default is <code>x</code>.</p>
 <p>getpos.unexplored.prev When asked for a location, the key to go to previous closest unex- plored location. Default is <code>X</code>.</p>

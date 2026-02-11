@@ -463,7 +463,7 @@ sensed via the Warning attribute.  Less  dangerous  monsters  are
 indicated by lower values, more dangerous by higher values.
 
 You  need  not  memorize  all these symbols; you can ask the game
-what any symbol represents with the `/' command (see the next  section
+what any symbol represents with the `/` command (see the next  section
 for more info).
 
 
@@ -482,10 +482,10 @@ with will depend chiefly on how you have set the `menustyle` option.
 For  example, a common question, in the form "What do you want to
 use? [a-zA-Z ?*]", asks you to choose  an  object  you  are  carrying.
 Here,  "a-zA-Z"  are  the  inventory letters of your possible choices.
-Typing `?' gives you an inventory list of these items, so you can  see
-what  each  letter  refers  to.   In this example, there is also a `*'
+Typing `?` gives you an inventory list of these items, so you can  see
+what  each  letter  refers  to.   In this example, there is also a `*`
 indicating that you may choose an object  not  on  the  list,  if  you
-wanted  to  use  something unexpected.  Typing a `*' lists your entire
+wanted  to  use  something unexpected.  Typing a `*` lists your entire
 inventory, so you can see the inventory letters of every object you're
 carrying.   Finally, if you change your mind and decide you don't want
 to do this command after all, you can press the ESC key to  abort  the
@@ -500,7 +500,7 @@ be prefixed for greater control (see below).  To cancel a count  or  a
 prefix, press the ESC key.
 
 The  list  of  commands is rather long, but it can be read at any
-time during the game through the `?' command, which accesses a menu of
+time during the game through the `?` command, which accesses a menu of
 helpful texts.  Here are the default key bindings for your reference:
 
 `?`    Help menu:  display one of several help texts available.
@@ -509,15 +509,15 @@ helpful texts.  Here are the default key bindings for your reference:
 choose to specify a location or type a symbol (or  even  a  whole
 word)  to  explain.   Specifying a location is done by moving the
 cursor to a particular spot on the map and then pressing  one  of
-`.`, `,`, `;', or `:'.  `.` will explain the symbol at the chosen
+`.`, `,`, `;`, or `:`.  `.` will explain the symbol at the chosen
 location, conditionally check for  "More  info?"  depending  upon
 whether the help option is on, and then you will be asked to pick
 another location; `,` will explain the symbol but skip any  addi-
-tional  information, then let you pick another location; `;' will
+tional  information, then let you pick another location; `;` will
 skip additional info and also not bother  asking  you  to  choose
-another  location  to  examine; `:' will show additional info, if
+another  location  to  examine; `:` will show additional info, if
 any, without asking for confirmation.  When picking  a  location,
-pressing the ESC key will terminate this command, or pressing `?'
+pressing the ESC key will terminate this command, or pressing `?`
 will give a brief reminder about how it works.
 
 If the autodescribe option is on, a short description of what you
@@ -674,7 +674,7 @@ Dm  - use a menu to pick which object(s) to drop.
 D%u - drop only unpaid food.
 
 The  last example shows a combination.  There are four categories
-of object filtering: class (`!' for potions, `?' for scrolls, and
+of object filtering: class (`!' for potions, `?` for scrolls, and
 so on), shop status (`u` for unpaid, in other words, owned by the
 shop), bless/curse state (`B`, `U`, `C`, and `X` as shown above),
 and novelty (`P`, recently picked up items; controlled by picking
@@ -683,7 +683,7 @@ up or dropping things rather than by any time factor).
 If you specify more than one value in a category  (such  as  "!?"
 for  potions  and  scrolls  or "BU" for blessed and uncursed), an
 inventory object will meet the criteria if it matches any of  the
-specified values (so "!?" means `!' or `?').  If you specify more
+specified values (so "!?" means `!' or `?`).  If you specify more
 than one category, an inventory object must meet each of the cat-
 egory criteria (so "%u" means class `%' and unpaid `u`).  Lastly,
 you may  specify  multiple  values  within  multiple  categories:
@@ -1156,10 +1156,10 @@ Autocompletes.  Default key is `M-g'.
 
 #glance
 Show what type of thing a map symbol corresponds to.  Default key
-is `;'.
+is `;`.
 
 #help
-Show  the  help  menu.   Default key is `?', and also `h` if num-
+Show  the  help  menu.   Default key is `?`, and also `h` if num-
 `ber_pad` is on.
 
 #herecmdmenu
@@ -1212,7 +1212,7 @@ Change your experience level.  Autocompletes.  Debug mode only.
 Show mobile light sources.  Autocompletes.  Debug mode only.
 
 #look
-Look at what is here, under you.  Default key is `:'.
+Look at what is here, under you.  Default key is `:`.
 
 #lookaround
 Describe what you can see, or remember, of your surroundings.
@@ -1385,7 +1385,7 @@ Search  for  traps  and  secret doors around you.  Default key is
 `s`.
 
 #seeall
-Show all equipment in use.  Default key is `*'.
+Show all equipment in use.  Default key is `*`.
 
 Will display in-use items in a menu even when there is only one.
 
@@ -1596,7 +1596,7 @@ Tell what a key does.  Default key is `&'.
 
 #whatis
 Show what type of thing a symbol corresponds to.  Default key  is
-`/'.
+`/`.
 
 #wield
 Wield a weapon.  Default key is `w`.
@@ -2082,7 +2082,7 @@ You  may suddenly come upon one in a dark place.  Some magic items can
 help you locate them before they locate you (which some  monsters  can
 do very well).
 
-The  commands `/' and `;' may be used to obtain information about
+The  commands `/` and `;` may be used to obtain information about
 those monsters who are displayed on the screen.  The  command  "`#name`"
 (by  default  bound to `C`), allows you to assign a name to a monster,
 which may be useful to help distinguish one from another when multiple
@@ -2357,8 +2357,8 @@ The  commands  to  use  weapons are `w` (wield), `t` (throw), `f`
 #### 7.2.1. Throwing and shooting
 
 You  can  throw just about anything via the `t` command.  It will
-prompt for the item to throw; picking `?' will  list  things  in  your
-inventory  which  are  considered  likely to be thrown, or picking `*'
+prompt for the item to throw; picking `?` will  list  things  in  your
+inventory  which  are  considered  likely to be thrown, or picking `*`
 will list your entire inventory.  After you've chosen what  to  throw,
 you  will  be prompted for a direction rather than for a specific tar-
 get.  The distance something can be thrown depends mainly on the  type
@@ -2565,7 +2565,7 @@ the fruit option.
 The command to eat food is `e`.
 
 
-### 7.5. Scrolls (`?')
+### 7.5. Scrolls (`?`)
 
 Scrolls are labeled  with  various  titles,  probably  chosen  by
 ancient  wizards  for their amusement value (for example "READ ME," or
@@ -2614,7 +2614,7 @@ into a potion.
 The command to drink a potion is `q` (quaff).
 
 
-### 7.7. Wands (`/')
+### 7.7. Wands (`/`)
 
 Wands usually have multiple magical charges.  Some types of wands
 require a direction in which to zap them.  You can also  zap  them  at
@@ -2794,7 +2794,7 @@ and eyewear), but accessories won't be shown as likely candidates in a
 prompt for choosing what to wear or take off.
 
 
-### 7.12. Gems (`*')
+### 7.12. Gems (`*`)
 
 Some  gems are valuable, and can be sold for a lot of gold.  They
 are also a far more efficient way of carrying your  riches.   Valuable
@@ -3315,7 +3315,7 @@ be  set  to the full name of a configuration file you want to use.  If
 that full name doesn't start with a slash, precede it  with  `@`  (at-
 sign)  to  let  NetHack know that the rest is intended as a file name.
 
-If it does start with `/', the at-sign is optional.
+If it does start with `/`, the at-sign is optional.
 
 
 ### 9.4. Customization options
@@ -3566,7 +3566,7 @@ the `implicit_uncursed` option is "off".
 
 help
 If  more  information  is available for an object looked at with the
-`/' command, ask if you want to see it (default on).   Turning  help
+`/` command, ask if you want to see it (default on).   Turning  help
 off  makes  just  looking  at things faster, since you aren't inter-
 rupted with the "More info?" prompt, but  it  also  means  that  you
 might  miss  some interesting and/or important information.  Persis-
@@ -3748,7 +3748,7 @@ Key to go to the previous menu page.  Default `<'.
 
 `menu_search`
 Key to search for some text and toggle selection state  of  matching
-menu items.  Default `:'.
+menu items.  Default `:`.
 
 `menu_select_all`
 Key to select all items in a menu.  Default `.`.
@@ -4278,7 +4278,7 @@ verbose
 Provide more commentary during the game (default on).  Persistent.
 
 `whatis_coord`
-When using the `/' or `;' commands to look around on  the  map  with
+When using the `/` or `;` commands to look around on  the  map  with
 autodescribe  on,  display  coordinates after the description.  Also
 works in other situations where you are asked to pick a location.
 
@@ -4291,7 +4291,7 @@ s - screen [row,column] (row is offset to match tty usage);
 n - none (no coordinates shown) [default].
 
 The `whatis_coord` option is also used with the "/m", "/M", "/o",
-and "/O" sub-commands of `/', where the "none" setting is over-
+and "/O" sub-commands of `/`, where the "none" setting is over-
 ridden with "map".
 
 `whatis_filter`
@@ -4762,7 +4762,7 @@ With `number_pad` only.  Default is `n`.
 
 getdir.help
 When asked for a direction, the key to show the  help.   Default  is
-`?'.
+`?`.
 
 getdir.mouse
 When  asked  for  a direction, the key to initiate a simulated mouse
@@ -4801,7 +4801,7 @@ When asked for a location, the key to go to previous closest door or
 doorway.  Default is `D`.
 
 getpos.help
-When asked for a location, the key to show help.  Default is `?'.
+When asked for a location, the key to show help.  Default is `?`.
 
 getpos.mon.next
 When  asked  for  a location, the key to go to next closest monster.
@@ -4827,7 +4827,7 @@ Default is `!'.
 getpos.moveskip
 When  asked  for  a location, and using the shifted movement keys or
 meta-digit keys to fast-move  around,  move  by  skipping  the  same
-glyphs instead of by 8 units.  Default is `*'.
+glyphs instead of by 8 units.  Default is `*`.
 
 getpos.filter
 When  asked for a location, change the filtering mode when using one
@@ -4851,11 +4851,11 @@ asked for a direction, the key to respond as left click.  Default is
 getpos.pick.quick
 When asked for a location, the key to choose the location, skip ask-
 ing  for  more  info, and exit the location asking loop.  Default is
-`;'.
+`;`.
 
 getpos.pick.verbose
 When asked for a location, the key to choose the location, and  show
-more info without asking.  Default is `:'.
+more info without asking.  Default is `:`.
 
 getpos.self
 When  asked for a location, the key to go to your location.  Default
