@@ -193,7 +193,7 @@ export function initLuaMT() {
  * @returns {Object|null} Room object {lx, ly, hx, hy, rtype, rlit} or null on failure
  */
 function create_room_splev(x, y, w, h, xalign, yalign, rtype, rlit, depth) {
-    const DEBUG = process.env.DEBUG_ROOMS === '1';
+    const DEBUG = typeof process !== 'undefined' && process.env.DEBUG_ROOMS === '1';
     if (DEBUG) console.log(`create_room_splev: x=${x}, y=${y}, w=${w}, h=${h}, xalign=${xalign}, yalign=${yalign}`);
 
     // C ref: sp_lev.c:1498 — -1 means OROOM (ordinary room)
@@ -2503,7 +2503,7 @@ export const nh = {
         }
 
         const varName = is_fill ? 'THEMERMFILL' : 'THEMERM';
-        const value = process.env[varName];
+        const value = typeof process !== 'undefined' ? process.env[varName] : undefined;
 
         // Return null if not set or empty (matching C behavior)
         if (!value || value === '') {
