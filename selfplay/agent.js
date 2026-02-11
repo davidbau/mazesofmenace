@@ -1623,9 +1623,12 @@ export class Agent {
         // Opportunistic wall searching: search when at positions with adjacent walls
         // BUT: Only if we've explored enough to avoid excessive searching
         // Require BOTH low frontier AND reasonable exploration to prevent premature searching
+        // CRITICAL: Secret doors only exist on Dlvl 3+ (depth > 2), so skip on Dlvl 1-2
+        const dungeonDepth = this.dungeon.currentDepth;
         const opportunisticFrontier = level.getExplorationFrontier();
         const opportunisticExploredPct = level.exploredCount / (80 * 21);
         const shouldSearchOpportunistically = (
+            dungeonDepth > 2 &&                   // Secret doors only on Dlvl 3+
             opportunisticFrontier.length < 15 &&  // Low frontier
             opportunisticExploredPct > 0.05       // Explored at least 5% of map (~84 cells)
         );
@@ -2482,16 +2485,20 @@ export class Agent {
 
         // PRIORITY: Systematic door opening when stuck with high frontier
         // If we have many unreachable frontier cells, closed doors are likely blocking access
-        if (frontier.length > 25 && this.levelStuckCounter > 20) {
+        // OR when we have good coverage but no downstairs (likely behind unexplored door)
+        const highCoverageNoDoors = exploredPercent > 0.05 && this.levelStuckCounter > 30 && level.stairsDown.length === 0;
+        if ((frontier.length > 25 && this.levelStuckCounter > 20) || highCoverageNoDoors) {
+
             // Find all closed/locked doors in explored areas
             const closedDoors = [];
             for (let y = 0; y < 21; y++) {
                 for (let x = 0; x < 80; x++) {
                     const cell = level.at(x, y);
                     if (cell && cell.explored && (cell.type === 'door_closed' || cell.type === 'door_locked')) {
-                        // Check if we've already tried this door recently
                         const doorKey = y * 80 + x;
-                        if (!this.failedTargets.has(doorKey)) {
+                        // For high-coverage case, retry ALL doors (ignore failedTargets)
+                        // For normal case, skip recently failed doors
+                        if (highCoverageNoDoors || !this.failedTargets.has(doorKey)) {
                             closedDoors.push({ x, y, type: cell.type, dist: Math.max(Math.abs(x - px), Math.abs(y - py)) });
                         }
                     }
@@ -2504,17 +2511,45 @@ export class Agent {
                 closedDoors.sort((a, b) => a.dist - b.dist);
 
                 for (const door of closedDoors) {
-                    const path = findPath(level, px, py, door.x, door.y, { allowUnexplored: false });
-                    if (path.found) {
-                        const action = door.type === 'door_locked' ? 'kicking' : 'opening';
-                        console.log(`[DOOR-SYSTEMATIC] ${action} ${door.type} door at (${door.x},${door.y}) to unlock frontier (${frontier.length} unreachable)`);
+                    // Check if we're cardinally adjacent (north/south/east/west only, not diagonal)
+                    // NetHack's 'o' (open) command doesn't work diagonally
+                    const dx = door.x - px;
+                    const dy = door.y - py;
+                    const isCardinallyAdjacent = (Math.abs(dx) === 1 && dy === 0) || (dx === 0 && Math.abs(dy) === 1);
 
-                        // Set pending locked door if it's locked (will trigger kicking logic)
-                        if (door.type === 'door_locked' && !this.pendingLockedDoor) {
-                            this.pendingLockedDoor = { x: door.x, y: door.y, attempts: 0 };
+                    if (isCardinallyAdjacent) {
+                        // We're cardinally adjacent - send 'o' (open) command for closed doors, or kick for locked doors
+                        const dir = DIR_KEYS[`${dx},${dy}`];
+
+                        if (dir) {
+                            if (door.type === 'door_locked') {
+                                // Locked door - kick it
+                                console.log(`[DOOR-SYSTEMATIC] kicking locked door at (${door.x},${door.y}) [adjacent]`);
+                                if (!this.pendingLockedDoor) {
+                                    this.pendingLockedDoor = { x: door.x, y: door.y, attempts: 0 };
+                                }
+                                // pendingLockedDoor logic will handle the kicking
+                            } else {
+                                // Closed door - open it with 'o' command + direction
+                                console.log(`[DOOR-SYSTEMATIC] opening door_closed at (${door.x},${door.y}) [player at (${px},${py}), sending 'o' + direction '${dir}']`);
+                                this.pendingDoorDir = dir;
+                                this.justOpenedDoor = { x: door.x, y: door.y }; // Mark for perception fix
+                                return { type: 'open', key: 'o', reason: `opening door at (${door.x},${door.y})` };
+                            }
                         }
+                    } else {
+                        // Not adjacent - navigate TO the door first
+                        const path = findPath(level, px, py, door.x, door.y, { allowUnexplored: false });
+                        if (path.found) {
+                            const action = door.type === 'door_locked' ? 'kicking' : 'opening';
+                            console.log(`[DOOR-SYSTEMATIC] navigating to ${door.type} door at (${door.x},${door.y}) to ${action} it (frontier=${frontier.length})`);
 
-                        return this._followPath(path, 'navigate', `${action} door at (${door.x},${door.y}) to unlock areas`);
+                            if (door.type === 'door_locked' && !this.pendingLockedDoor) {
+                                this.pendingLockedDoor = { x: door.x, y: door.y, attempts: 0 };
+                            }
+
+                            return this._followPath(path, 'navigate', `approaching door at (${door.x},${door.y})`);
+                        }
                     }
                 }
             }
