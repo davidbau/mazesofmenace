@@ -2280,35 +2280,36 @@ export class Agent {
             const tx = this.committedTarget.x;
             const ty = this.committedTarget.y;
             if (px === tx && py === ty) {
-                // Reached it! Before clearing, check if we should continue through a door
+                // Reached it! Before clearing, check if we should continue into unexplored space
                 const currentCell = level.at(px, py);
                 const atDoor = currentCell && (currentCell.type === 'door_open' || currentCell.type === 'door_closed');
+                const inCorridor = currentCell && currentCell.type === 'corridor';
 
-                // Only use door-continuation logic for actual doors, not corridors
-                // (corridor logic was causing oscillation by walking backwards)
-                if (atDoor) {
-                    // Check all cardinal directions for unexplored space
-                    const dirs = [
-                        { key: 'k', dx: 0, dy: -1, name: 'north' },
-                        { key: 'j', dx: 0, dy: 1, name: 'south' },
-                        { key: 'h', dx: -1, dy: 0, name: 'west' },
-                        { key: 'l', dx: 1, dy: 0, name: 'east' },
-                    ];
+                // Check all cardinal directions for unexplored space
+                const dirs = [
+                    { key: 'k', dx: 0, dy: -1, name: 'north' },
+                    { key: 'j', dx: 0, dy: 1, name: 'south' },
+                    { key: 'h', dx: -1, dy: 0, name: 'west' },
+                    { key: 'l', dx: 1, dy: 0, name: 'east' },
+                ];
 
+                // For doors and corridors, continue into adjacent unexplored cells
+                if (atDoor || inCorridor) {
                     for (const dir of dirs) {
                         const nx = px + dir.dx;
                         const ny = py + dir.dy;
                         const ncell = level.at(nx, ny);
 
-                        // Walk through doors into unexplored cells
+                        // Walk into unexplored cells
                         if (!ncell || !ncell.explored) {
-                            console.log(`[DOOR-EXPLORE] At door, continuing ${dir.name} into unexplored at (${nx},${ny})`);
-                            return { type: 'explore', key: dir.key, reason: `continuing ${dir.name} through door` };
+                            const cellType = atDoor ? 'door' : 'corridor';
+                            console.log(`[CONTINUE] At ${cellType}, continuing ${dir.name} into unexplored at (${nx},${ny})`);
+                            return { type: 'explore', key: dir.key, reason: `continuing ${dir.name} through ${cellType}` };
                         }
                     }
                 }
 
-                // Reached target and nothing to continue through - clear and find next
+                // Reached target and no unexplored adjacents - clear and find next
                 this.committedTarget = null;
                 this.committedPath = null;
                 this.targetStuckCount = 0;
