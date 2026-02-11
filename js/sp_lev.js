@@ -17,7 +17,6 @@ import { GameMap, FILL_NORMAL } from './map.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { mksobj, mkobj } from './mkobj.js';
 import { create_room, create_subroom, makecorridors, init_rect, rnd_rect, get_rect, check_room, update_rect_pool_for_room, bound_digging, mineralize, fill_ordinary_room, _mtInitialized, setMtInitialized } from './dungeon.js';
-import { set_themeroom_failed } from './levels/themerms.js';
 import {
     STONE, VWALL, HWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL, ROOM, CORR,
