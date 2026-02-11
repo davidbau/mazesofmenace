@@ -1467,9 +1467,41 @@ export class Agent {
                     const candKey = candidate.y * 80 + candidate.x;
                     const path = findPath(level, px, py, candidate.x, candidate.y, { allowUnexplored: false });
                     if (path.found) {
+                        // Track search candidate progress to avoid infinite loops
+                        // If we've been trying to reach this candidate for 5+ turns, blacklist it
+                        if (this.lastSearchCandidate &&
+                            this.lastSearchCandidate.x === candidate.x &&
+                            this.lastSearchCandidate.y === candidate.y) {
+                            const dist = Math.max(Math.abs(px - candidate.x), Math.abs(py - candidate.y));
+                            if (dist >= (this.lastSearchCandidateDistance || 999)) {
+                                this.searchCandidateStuckCount = (this.searchCandidateStuckCount || 0) + 1;
+                                if (this.searchCandidateStuckCount >= 5) {
+                                    console.log(`[SEARCH] Abandoning search candidate (${candidate.x},${candidate.y}) - no progress in 5 turns`);
+                                    this.failedTargets.add(candKey);
+                                    this.lastSearchCandidate = null;
+                                    this.searchCandidateStuckCount = 0;
+                                    this.lastSearchCandidateDistance = null;
+                                    continue; // Try next candidate
+                                }
+                            } else {
+                                // Making progress
+                                this.searchCandidateStuckCount = 0;
+                            }
+                            this.lastSearchCandidateDistance = dist;
+                        } else {
+                            // New search candidate
+                            this.lastSearchCandidate = { x: candidate.x, y: candidate.y };
+                            this.lastSearchCandidateDistance = Math.max(Math.abs(px - candidate.x), Math.abs(py - candidate.y));
+                            this.searchCandidateStuckCount = 0;
+                        }
+
                         // If we're at the candidate, use breadth-first searching
                         // Search ALL adjacent walls before moving to the next candidate
                         if (px === candidate.x && py === candidate.y) {
+                            // Clear tracking when we reach the candidate
+                            this.lastSearchCandidate = null;
+                            this.searchCandidateStuckCount = 0;
+                            this.lastSearchCandidateDistance = null;
                             // Check all 8 directions for unsearched walls
                             const directions = [
                                 [-1, -1], [0, -1], [1, -1],
