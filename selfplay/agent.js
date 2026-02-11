@@ -73,6 +73,7 @@ export class Agent {
         this.committedTarget = null; // {x, y} of committed exploration target
         this.committedPath = null; // PathResult we're currently following
         this.targetStuckCount = 0; // how many turns we've been stuck on committed path
+        this.lastCommittedDistance = null; // track distance for progress detection
         this.failedTargets = new Set(); // targets we've failed to reach (blacklisted)
         this.consecutiveFailedMoves = 0; // consecutive turns where movement failed
         this.restTurns = 0; // consecutive turns spent resting
@@ -1977,6 +1978,7 @@ export class Agent {
                 this.committedTarget = null;
                 this.committedPath = null;
                 this.targetStuckCount = 0;
+                this.lastCommittedDistance = null;
             }
         }
 
@@ -2009,6 +2011,7 @@ export class Agent {
                 this.committedTarget = null;
                 this.committedPath = null;
                 this.targetStuckCount = 0;
+                this.lastCommittedDistance = null;
             } else if (!stillFrontier && veryClose) {
                 console.log(`[COMMIT] Keeping target (${tx},${ty}) despite not frontier: veryClose=${veryClose}, distToTarget=${distToTarget}`);
             }
@@ -2026,6 +2029,7 @@ export class Agent {
                 this.committedTarget = null;
                 this.committedPath = null;
                 this.targetStuckCount = 0;
+                this.lastCommittedDistance = null;
                 // Fall through to find a new target below
             } else {
                 const path = findPath(level, px, py, tx, ty);
@@ -2033,13 +2037,43 @@ export class Agent {
                 if (path.found) {
                     this.committedPath = path;
                     this.consecutiveWaits = 0;
-                    return this._followPath(path, 'explore', `following path to (${tx},${ty})`);
+
+                    // Track distance progress
+                    const distToTarget = Math.max(Math.abs(px - tx), Math.abs(py - ty));
+                    if (!this.lastCommittedDistance) this.lastCommittedDistance = distToTarget;
+
+                    // Abandon if no progress in 5 turns
+                    if (distToTarget >= this.lastCommittedDistance) {
+                        this.targetStuckCount++;
+                        if (this.targetStuckCount >= 5) {
+                            console.log(`[COMMIT] Abandoning target (${tx},${ty}) - no progress in 5 turns (dist=${distToTarget})`);
+                            const tKey = ty * 80 + tx;
+                            this.failedTargets.add(tKey);
+                            this.committedTarget = null;
+                            this.committedPath = null;
+                            this.targetStuckCount = 0;
+                            this.lastCommittedDistance = null;
+                            // Fall through to find new target
+                        } else {
+                            this.lastCommittedDistance = distToTarget;
+                            return this._followPath(path, 'explore', `following path to (${tx},${ty}) [stuck=${this.targetStuckCount}]`);
+                        }
+                    } else {
+                        // Making progress - reset counter
+                        this.targetStuckCount = 0;
+                        this.lastCommittedDistance = distToTarget;
+                        return this._followPath(path, 'explore', `following path to (${tx},${ty})`);
+                    }
+                } else {
+                    // Can't reach target - blacklist immediately
+                    console.log(`[COMMIT] Abandoning target (${tx},${ty}) - path not found`);
+                    const tKey = ty * 80 + tx;
+                    this.failedTargets.add(tKey);
+                    this.committedTarget = null;
+                    this.committedPath = null;
+                    this.targetStuckCount = 0;
+                    this.lastCommittedDistance = null;
                 }
-                // Can't reach target anymore — abandon it
-                console.log(`[COMMIT] Abandoning target (${tx},${ty}) - path not found`);
-                this.committedTarget = null;
-                this.committedPath = null;
-                this.targetStuckCount = 0;
             }
         }
 
