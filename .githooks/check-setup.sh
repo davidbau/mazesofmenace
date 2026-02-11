@@ -19,6 +19,7 @@ check_setup() {
     echo ""
     echo "Or manually:"
     echo "  git config core.hooksPath .githooks"
+    echo "  git config --add remote.origin.push '+refs/heads/*:refs/heads/*'"
     echo "  git config --add remote.origin.push '+refs/notes/test-results:refs/notes/test-results'"
     echo ""
     echo "Why this matters:"

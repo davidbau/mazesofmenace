@@ -25,6 +25,7 @@ That's it! Hooks handle test tracking automatically.
 ### Setup (Once)
 ```bash
 git config core.hooksPath .githooks
+git config --add remote.origin.push '+refs/heads/*:refs/heads/*'
 git config --add remote.origin.push '+refs/notes/test-results:refs/notes/test-results'
 ```
 
@@ -88,6 +89,7 @@ chmod +x .githooks/*
 
 ### Notes not pushing
 ```bash
+git config --add remote.origin.push '+refs/heads/*:refs/heads/*'
 git config --add remote.origin.push '+refs/notes/test-results:refs/notes/test-results'
 # OR manually:
 git push origin refs/notes/test-results
