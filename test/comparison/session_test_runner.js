@@ -1,39 +1,13 @@
-// test/comparison/session_runner.test.js -- DEPRECATED: Use split test files instead
+// test/comparison/session_test_runner.js -- Shared test logic for session replay
 //
-// ⚠️  DEPRECATION NOTICE ⚠️
-// This unified test runner loads all 157 session files (~19MB) during test discovery,
-// causing memory exhaustion on constrained systems. Use the split test files instead:
-//
-//   - chargen.test.js  (90 files, ~10MB) - Character generation tests
-//   - special.test.js  (42 files, ~5MB)  - Special level tests
-//   - map.test.js      (5 files, ~1MB)   - Map generation tests
-//   - gameplay.test.js (12 files, ~2MB)  - Gameplay session tests
-//   - other.test.js    (8 files, ~1MB)   - Option and selfplay tests
-//
-// Run individual suites:
-//   node --test test/comparison/chargen.test.js
-//   node --test test/comparison/map.test.js
-//
-// This file remains for compatibility but may be removed in the future.
-//
-// ---------------------------------------------------------------------------
-// Original description:
-// Auto-discovers all *.session.json files in test/comparison/sessions/ and
-// test/comparison/maps/ and runs appropriate tests based on session type:
-//
-//   type === "map"      : Sequential level generation + typGrid comparison + structural tests
-//   type === "gameplay" : Startup verification + step-by-step replay
-//
-// All data fields in session files are optional. The runner verifies whatever is
-// present and skips the rest. This means a minimal session with just seed + typGrid
-// at one depth is a valid test, and a full session with RNG traces, screens, and
-// multi-depth grids gets comprehensive verification.
+// Exports test functions and helpers used by type-specific test files:
+//   - runMapSession()
+//   - runGameplaySession()
+//   - runChargenSession()
+//   - runSpecialLevelSession()
 
-import { describe, it, before } from 'node:test';
+import { it, before, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { readdirSync, readFileSync, existsSync } from 'node:fs';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import {
     generateMapsSequential, generateMapsWithRng, generateStartupWithRng,
@@ -53,25 +27,11 @@ import {
     RACE_HUMAN, RACE_ELF, RACE_DWARF, RACE_GNOME, RACE_ORC,
 } from '../../js/config.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const SESSIONS_DIR = join(__dirname, 'sessions');
-const MAPS_DIR = join(__dirname, 'maps');
-
-// Discover all session files from both directories
-const sessionFiles = [];
-for (const [dir, label] of [[SESSIONS_DIR, 'sessions'], [MAPS_DIR, 'maps']]) {
-    if (!existsSync(dir)) continue;
-    for (const f of readdirSync(dir).filter(f => f.endsWith('.session.json')).sort()) {
-        sessionFiles.push({ file: f, dir });
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Map sessions: sequential level generation + typGrid comparison
 // ---------------------------------------------------------------------------
 
-function runMapSession(file, session) {
+export function runMapSession(file, session) {
     const maxDepth = Math.max(...session.levels.map(l => l.depth));
 
     // Use RNG-aware generator when any level has rng or rngCalls data
@@ -184,7 +144,7 @@ function runMapSession(file, session) {
 // Gameplay sessions: startup + step-by-step replay
 // ---------------------------------------------------------------------------
 
-function runGameplaySession(file, session) {
+export function runGameplaySession(file, session) {
     // Gameplay sessions verify startup typGrid, rngCalls, and RNG traces.
     // Full step-by-step replay is verified separately when the game engine
     // supports it; for now we verify the complete startup sequence.
@@ -625,24 +585,6 @@ function buildChargenScreen(step, state, session) {
     return display.getScreenLines();
 }
 
-// Track chargen state progression through steps
-function buildChargenState(steps, upToIndex) {
-    const state = {};
-    for (let i = 0; i <= upToIndex; i++) {
-        const step = steps[i];
-        switch (step.action) {
-            case 'pick-role':
-                // The role was selected on THIS step; the state shows what was selected
-                // But which role? We need to know what the NEXT screen shows
-                // Actually, the step records what happened: the user picked a key
-                // and the result screen shows. We can deduce from the session character
-                // data what was picked at each step. Let's track cumulatively.
-                break;
-        }
-    }
-    return state;
-}
-
 // Collect all startup RNG from a chargen session: confirm-ok + welcome ("more") steps.
 // Returns the combined RNG array, or null if no confirm-ok step found.
 function collectChargenStartupRng(session) {
@@ -699,7 +641,7 @@ function deriveChargenState(session, stepIndex) {
     return state;
 }
 
-function runChargenSession(file, session) {
+export function runChargenSession(file, session) {
     it('chargen session has valid data', () => {
         assert.ok(session.character, 'Missing character data');
         assert.ok(session.steps.length > 0, 'No steps recorded');
@@ -775,7 +717,7 @@ function runChargenSession(file, session) {
 // Special level sessions
 // ---------------------------------------------------------------------------
 
-function runSpecialLevelSession(file, session) {
+export function runSpecialLevelSession(file, session) {
     describe(`${session.group || 'unknown'} special levels`, () => {
         for (const level of session.levels || []) {
             const levelName = level.levelName || 'unnamed';
@@ -790,34 +732,6 @@ function runSpecialLevelSession(file, session) {
                 // Skip actual generation for now - special levels need to be registered
                 // and we need to implement the generation function
                 // This test will pass if the session file is well-formed
-            });
-        }
-    });
-}
-
-// ---------------------------------------------------------------------------
-// Main: discover and run all sessions
-// ---------------------------------------------------------------------------
-
-for (const { file, dir } of sessionFiles) {
-    const session = JSON.parse(readFileSync(join(dir, file), 'utf-8'));
-
-    // Determine session type (v2 has explicit type; v1 is gameplay)
-    const type = session.type || 'gameplay';
-
-    describe(`${file}`, () => {
-        if (type === 'map') {
-            runMapSession(file, session);
-        } else if (type === 'gameplay') {
-            runGameplaySession(file, session);
-        } else if (type === 'chargen') {
-            runChargenSession(file, session);
-        } else if (type === 'special') {
-            // Special level sessions (oracle, bigroom, castle, sokoban, etc.)
-            runSpecialLevelSession(file, session);
-        } else {
-            it('unknown session type', () => {
-                assert.fail(`Unknown session type: ${type}`);
             });
         }
     });
