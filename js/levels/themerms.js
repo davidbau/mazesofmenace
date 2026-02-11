@@ -16,7 +16,6 @@ import * as des from '../sp_lev.js';
 import { selection, percent, shuffle, levelState, nh as nhGlobal, initLuaMT } from '../sp_lev.js';
 import { rn2, rnd, d, getRngLog, getRngCallCount } from '../rng.js';
 import { setMtInitialized } from '../dungeon.js';
-import { xoshiroRandom } from '../xoshiro256.js';
 
 // Module-level state for postprocessing callbacks
 let postprocess = [];
@@ -948,16 +947,10 @@ function lookup_by_name(name, checkfills) {
 export function themerooms_generate(map, depth) {
    _levelDepth = depth; // Update module-level depth for nh.level_difficulty()
 
-   // C ref: MT initialization happens at the START of EACH Lua execution (themerooms_generate),
-   // before any themed room logic runs. In C, entering Lua code triggers MT init on first
-   // nhl_rn2 call. We match this by calling initLuaMT() at the start of each themed room generation.
-   // The MT flag is reset between themed rooms by clearLevelContext().
-   const DEBUG_LUA = typeof process !== 'undefined' && process.env.DEBUG_LUA_RNG === '1';
-   if (DEBUG_LUA) {
-       const rngCount = getRngCallCount();
-       console.log(`\n[RNG ${rngCount}] themerooms_generate: calling initLuaMT()`);
-   }
-   initLuaMT();
+   // C ref: In Lua, the MT init pattern (rn2(1000-1004), rn2(1010), etc.) is NOT a separate
+   // initialization - it's the reservoir sampling itself! Each eligible room calls
+   // rn2(total_frequency), which naturally produces the 1000, 1001, 1002, ... sequence.
+   // NO separate initLuaMT() call needed here.
 
    // C ref: mklev.c:404 — reset failure flag before calling Lua themerooms_generate
    themeroom_failed = false;
@@ -994,9 +987,6 @@ export function themerooms_generate(map, depth) {
       themerooms[actualrm].contents();
       return true;
    }
-   // C ref: Reservoir sampling uses Lua's math.random (invisible xoshiro256** RNG),
-   // not NetHack's RNG. The frequency-based selection is not logged.
-   // MT init already happened at function start above.
 
    let pick = null;
    let total_frequency = 0;
@@ -1016,17 +1006,17 @@ export function themerooms_generate(map, depth) {
             this_frequency = 1;
          }
          total_frequency = total_frequency + this_frequency;
-         // avoid rn2(0) if a room has freq 0
-         // C ref: Lua reservoir sampling uses math.random (invisible), not nhl_rn2
-         // Use xoshiroRandom() to match Lua's math.random (xoshiro256** seeded per MT init)
+         // C ref: Lua themerms.lua:969 uses nh.rn2() for reservoir sampling (LOGGED, not invisible)
+         // Algorithm: if (rn2(total_frequency) < this_frequency) pick = i
+         // This is mathematically equivalent to: if (random() < this_frequency / total_frequency)
+         // but uses integer RNG so it appears in the RNG trace
          if (this_frequency > 0) {
-            const randValue = xoshiroRandom();
-            const threshold = this_frequency / total_frequency;
+            const randValue = rn2(total_frequency);
             const DEBUG_RESERVOIR = typeof process !== 'undefined' && process.env.DEBUG_RESERVOIR === '1';
             if (DEBUG_RESERVOIR) {
-               console.log(`  Room ${i} (${themerooms[i].name || 'unnamed'}): rand=${randValue.toFixed(6)}, thresh=${threshold.toFixed(6)}, freq=${this_frequency}, total=${total_frequency}, pick=${randValue < threshold ? 'YES' : 'no'}`);
+               console.log(`  Room ${i} (${themerooms[i].name || 'unnamed'}): rn2(${total_frequency})=${randValue}, this_freq=${this_frequency}, total=${total_frequency}, pick=${randValue < this_frequency ? 'YES' : 'no'}`);
             }
-            if (randValue < threshold) {
+            if (randValue < this_frequency) {
                pick = i;
             }
          }
