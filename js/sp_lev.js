@@ -16,7 +16,7 @@
 import { GameMap, FILL_NORMAL } from './map.js';
 import { rn2, rnd, rn1, getRngCallCount } from './rng.js';
 import { mksobj, mkobj, mkcorpstat } from './mkobj.js';
-import { create_room, create_subroom, makecorridors, init_rect, rnd_rect, get_rect, check_room, add_doors_to_room, update_rect_pool_for_room, bound_digging, mineralize, fill_ordinary_room, litstate_rnd, isMtInitialized, setMtInitialized } from './dungeon.js';
+import { create_room, create_subroom, makecorridors, init_rect, rnd_rect, get_rect, check_room, add_doors_to_room, update_rect_pool_for_room, bound_digging, mineralize, fill_ordinary_room, litstate_rnd, isMtInitialized, setMtInitialized, wallification as dungeonWallification } from './dungeon.js';
 import { seedFromMT } from './xoshiro256.js';
 import {
     STONE, VWALL, HWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
@@ -85,6 +85,7 @@ export let levelState = {
     ystart: 0,              // Map placement offset Y
     xsize: 0,               // Map fragment width
     ysize: 0,               // Map fragment height
+    splevInitPresent: false, // C ref: sp_lev.c splev_init_present
     // Map-relative coordinate system (C ref: Lua coordinates are relative to map origin)
     mapCoordMode: false,    // True after des.map() - coordinates are map-relative
     mapOriginX: 0,          // Map origin X for coordinate conversion
@@ -538,6 +539,7 @@ export function resetLevelState() {
         ystart: 0,
         xsize: 0,
         ysize: 0,
+        splevInitPresent: false,
         mapCoordMode: false,
         mapOriginX: 0,
         mapOriginY: 0,
@@ -615,6 +617,7 @@ export function level_init(opts = {}) {
     levelState.init.joined = opts.joined || false;
     levelState.init.lit = opts.lit !== undefined ? opts.lit : 0;
     levelState.init.walled = opts.walled || false;
+    levelState.splevInitPresent = true;
 
     // Apply the initialization - always create fresh map and clear entity arrays
     levelState.map = new GameMap();
@@ -898,27 +901,41 @@ export function map(data) {
     levelState.ysize = height;
 
     // Determine placement coordinates
-    if (x === undefined || y === undefined) {
-        // Use alignment
+    const explicitCoords = (x !== undefined && y !== undefined);
+    if (!explicitCoords) {
+        // C ref: sp_lev.c lspo_map() alignment math.
+        const xMazeMax = (COLNO - 1) & ~1;
+        const yMazeMax = (ROWNO - 1) & ~1;
+
         if (halign === 'left') {
-            x = 1;
-        } else if (halign === 'center') {
-            x = Math.floor((80 - width) / 2);
-        } else if (halign === 'right') {
-            x = 80 - width - 1;
+            x = levelState.splevInitPresent ? 1 : 3;
         } else if (halign === 'half-left') {
-            // C ref: sp_lev.c uses rounding that gives +1 compared to floor
-            x = Math.floor((80 - width) / 4) + 1;
+            x = 2 + Math.floor((xMazeMax - 2 - width) / 4);
+        } else if (halign === 'center') {
+            x = 2 + Math.floor((xMazeMax - 2 - width) / 2);
         } else if (halign === 'half-right') {
-            x = Math.floor(3 * (80 - width) / 4);
+            x = 2 + Math.floor(((xMazeMax - 2 - width) * 3) / 4);
+        } else if (halign === 'right') {
+            x = xMazeMax - width - 1;
         }
 
         if (valign === 'top') {
-            y = 1;
+            y = 3;
         } else if (valign === 'center') {
-            y = Math.floor((21 - height) / 2);
+            y = 2 + Math.floor((yMazeMax - 2 - height) / 2);
         } else if (valign === 'bottom') {
-            y = 21 - height - 1;
+            y = yMazeMax - height - 1;
+        }
+
+        // C ref: map starts are forced to odd coordinates in aligned mode.
+        if ((x % 2) === 0) x++;
+        if ((y % 2) === 0) y++;
+
+        // C ref: sp_lev.c vertical fallback when placement overflows.
+        if (y < 0 || y + height > ROWNO) {
+            y += (y > 0) ? -2 : 2;
+            if (height === ROWNO) y = 0;
+            if (y < 0 || y + height > ROWNO) y = 0;
         }
     }
 
@@ -1193,98 +1210,7 @@ function extendsWest(typ) {
  * @param {GameMap} map - The map to wallify
  */
 function wallification(map) {
-    const maxIterations = 100;
-    let iteration = 0;
-
-    while (iteration < maxIterations) {
-        let changed = false;
-        iteration++;
-
-        // Create a copy of terrain types to avoid modifying while iterating
-        const newTypes = [];
-        for (let x = 0; x < 80; x++) {
-            newTypes[x] = [];
-            for (let y = 0; y < 21; y++) {
-                newTypes[x][y] = map.locations[x][y].typ;
-            }
-        }
-
-        // Process each cell
-        for (let x = 0; x < 80; x++) {
-            for (let y = 0; y < 21; y++) {
-                const typ = map.locations[x][y].typ;
-                if (!isWall(typ)) {
-                    continue;
-                }
-
-                // Check four neighbors for wall connectivity
-                // North: does the cell to the north extend south?
-                const hasNorth = y > 0 && isWall(map.locations[x][y-1].typ) &&
-                                extendsSouth(map.locations[x][y-1].typ);
-
-                // South: does the cell to the south extend north?
-                const hasSouth = y < 20 && isWall(map.locations[x][y+1].typ) &&
-                                extendsNorth(map.locations[x][y+1].typ);
-
-                // East: does the cell to the east extend west?
-                const hasEast = x < 79 && isWall(map.locations[x+1][y].typ) &&
-                               extendsWest(map.locations[x+1][y].typ);
-
-                // West: does the cell to the west extend east?
-                const hasWest = x > 0 && isWall(map.locations[x-1][y].typ) &&
-                               extendsEast(map.locations[x-1][y].typ);
-
-                // Determine new type based on connectivity
-                let newType;
-                if (hasNorth && hasSouth && hasEast && hasWest) {
-                    newType = CROSSWALL;
-                } else if (hasSouth && hasEast && hasWest && !hasNorth) {
-                    newType = TDWALL;
-                } else if (hasNorth && hasEast && hasWest && !hasSouth) {
-                    newType = TUWALL;
-                } else if (hasNorth && hasSouth && hasEast && !hasWest) {
-                    newType = TRWALL;
-                } else if (hasNorth && hasSouth && hasWest && !hasEast) {
-                    newType = TLWALL;
-                } else if (hasSouth && hasEast && !hasNorth && !hasWest) {
-                    newType = TLCORNER;
-                } else if (hasSouth && hasWest && !hasNorth && !hasEast) {
-                    newType = TRCORNER;
-                } else if (hasNorth && hasEast && !hasSouth && !hasWest) {
-                    newType = BLCORNER;
-                } else if (hasNorth && hasWest && !hasSouth && !hasEast) {
-                    newType = BRCORNER;
-                } else if (hasEast && hasWest) {
-                    newType = HWALL;
-                } else if (hasNorth && hasSouth) {
-                    newType = VWALL;
-                } else {
-                    // Only one direction or none - keep original
-                    newType = typ;
-                }
-
-                newTypes[x][y] = newType;
-                if (newType !== typ) {
-                    changed = true;
-                }
-            }
-        }
-
-        // Apply the new types
-        for (let x = 0; x < 80; x++) {
-            for (let y = 0; y < 21; y++) {
-                map.locations[x][y].typ = newTypes[x][y];
-            }
-        }
-
-        if (!changed) {
-            break; // Converged
-        }
-    }
-
-    if (iteration >= maxIterations) {
-        console.warn('wallification did not converge after', maxIterations, 'iterations');
-    }
+    dungeonWallification(map);
 }
 
 /**

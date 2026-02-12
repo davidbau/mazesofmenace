@@ -34,8 +34,9 @@ describe('Wall junction computation (wallification)', () => {
         const map = state.map;
 
         // Find the box in the map
-        const offsetX = Math.floor((80 - 5) / 2);
-        const offsetY = Math.floor((21 - 4) / 2);
+        // C ref: sp_lev.c lspo_map() center alignment snaps starts to odd coords.
+        const offsetX = 37;
+        const offsetY = 9;
 
         // Check corners
         assert.equal(map.locations[offsetX][offsetY].typ, TLCORNER, 'Top-left should be TLCORNER');
@@ -71,8 +72,9 @@ describe('Wall junction computation (wallification)', () => {
         const state = getLevelState();
         const map = state.map;
 
-        const offsetX = Math.floor((80 - 7) / 2);
-        const offsetY = Math.floor((21 - 6) / 2);
+        // C ref: sp_lev.c lspo_map() center alignment snaps starts to odd coords.
+        const offsetX = 37;
+        const offsetY = 9;
 
         // The junction at (offsetX + 3, offsetY + 3) should be TUWALL (┴)
         // because it connects north, east, and west
@@ -138,8 +140,8 @@ describe('Wall junction computation (wallification)', () => {
         const state = getLevelState();
         const map = state.map;
 
-        // Isolated walls should remain as HWALL/VWALL
-        assert.equal(map.locations[40][10].typ, HWALL, 'Isolated HWALL should stay HWALL');
-        assert.equal(map.locations[42][10].typ, VWALL, 'Isolated VWALL should stay VWALL');
+        // C ref: mkmaze.c wall_cleanup() removes isolated walls back to STONE.
+        assert.equal(map.locations[40][10].typ, STONE, 'Isolated HWALL should be cleaned to STONE');
+        assert.equal(map.locations[42][10].typ, STONE, 'Isolated VWALL should be cleaned to STONE');
     });
 });

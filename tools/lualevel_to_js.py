@@ -180,12 +180,17 @@ class SimpleLuaConverter:
         # lines stay at column 0 matching C's Lua [[...]] strings)
         for i, content in enumerate(protected_strings):
             placeholder = f'__LONGSTRING_{i}__'
+            # Emit JS template literals safely: preserve literal backslashes,
+            # backticks, and `${...}` sequences from Lua long strings.
+            escaped = (content
+                       .replace('\\', '\\\\')
+                       .replace('`', '\\`')
+                       .replace('${', '\\${'))
             if content.startswith('\n'):
-                # Use line-continuation after opening backtick to avoid an
-                # extra leading newline in generated template literals.
-                rendered = f'`\\\n{content[1:]}`'
+                # Lua long strings skip the first newline after [[.
+                rendered = f'`\\\n{escaped[1:]}`'
             else:
-                rendered = f'`{content}`'
+                rendered = f'`{escaped}`'
             js = js.replace(f'`{placeholder}`', rendered)
 
         # Step 22: Postprocessing fixes for problematic files

@@ -33,7 +33,7 @@ PPPP........PPPPP.........-----------------------........PP...PPPPPPP.....PP
 PPP............PPPPP....--|.|......S..........S.|--.....PPPP.PPPPPPP.......P
 PPPP..........PPPPP.....|.S.|......-----------|S|.|......PPPPPP.PPP.......PP
 PPPPPP......PPPPPP......|.|.|......|...|......|.|.|.....PPPPPP...PP.......PP
-PPPPPPPPPPPPPPPPPPP.....+.|.|......S.\.S......|.|.+......PPPPPP.PPPP.......P
+PPPPPPPPPPPPPPPPPPP.....+.|.|......S.\\.S......|.|.+......PPPPPP.PPPP.......P
 PPP...PPPPP...PPPP......|.|.|......|...|......|.|.|.......PPPPPPPPPPP.....PP
 PP.....PPP.....PPP......|.|S|-----------......|.S.|......PPPPPPPPPPPPPPPPPPP
 PPP..PPPPP...PPPP.......--|.S..........S......|.|--.....PPPPPPPPP....PPPPPPP

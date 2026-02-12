@@ -851,18 +851,16 @@ xx|.....|xx
                "scroll of teleportation", "ring of teleportation",
                "wand of teleportation", "wand of digging"
             ];
-            const itm = obj.new(escape_items[rn2(escape_items.length)]);
-            const itmcls = itm.class()
-            let box;
-            if (itmcls[ "material" ] === "glass") {
-                  // explicitly force chest to be unlocked
-                  box = des.object({ id: "chest", coord: chest_spots[0],
-                                    olocked: "no" });
-            } else {
-                  // accept random locked/unlocked state
-                  box = des.object({ id: "chest", coord: chest_spots[0] });
-            }
-            box.addcontent(itm);
+            const itm = escape_items[rn2(escape_items.length)];
+            // Keep the guaranteed-escape-item logic but avoid Lua-only
+            // object handle APIs (addcontent/class) not modeled in JS.
+            des.object({
+               id: "chest",
+               coord: chest_spots[0],
+               contents: function() {
+                  des.object(itm);
+               }
+            });
 
             for (let i = 1; i < chest_spots.length; i++) {
                   des.object({ id: "chest", coord: chest_spots[i] });
