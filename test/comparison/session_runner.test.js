@@ -808,13 +808,19 @@ for (const { file, dir } of sessionFiles) {
     describe(`${file}`, () => {
         if (type === 'map') {
             runMapSession(file, session);
-        } else if (type === 'gameplay') {
+        } else if (type === 'gameplay' || type === 'selfplay' || type === 'option_test') {
             runGameplaySession(file, session);
         } else if (type === 'chargen') {
             runChargenSession(file, session);
         } else if (type === 'special') {
             // Special level sessions (oracle, bigroom, castle, sokoban, etc.)
             runSpecialLevelSession(file, session);
+        } else if (type === 'interface') {
+            // Interface sessions test UI rendering; skip in unified runner
+            it('interface session (tested in interface_test_runner.test.js)', () => {
+                assert.ok(session.steps && session.steps.length > 0,
+                    'Interface session should have steps');
+            });
         } else {
             it('unknown session type', () => {
                 assert.fail(`Unknown session type: ${type}`);

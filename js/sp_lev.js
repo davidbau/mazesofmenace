@@ -1466,6 +1466,64 @@ export function room(opts = {}) {
                 console.log(`  Nested room: relative (${x},${y}) -> absolute (${roomX},${roomY}) within parent`);
             }
         }
+    } else if (levelState.roomDepth > 0) {
+        // Nested room with random/partial placement - use create_subroom algorithm
+        // C ref: sp_lev.c:2805-2807 — build_room calls create_subroom when parent exists
+        // C ref: sp_lev.c:1668-1707 — create_subroom randomizes dims relative to parent
+        const parentRoom = levelState.currentRoom;
+        if (!parentRoom) {
+            if (levelState.roomFailureCallback) {
+                levelState.roomFailureCallback();
+            }
+            return false;
+        }
+
+        // C ref: build_room rn2(100) chance check (sp_lev.c:2803)
+        rtype = (!chance || rn2(100) < chance) ? requestedRtype : 0;
+
+        // C ref: create_subroom (sp_lev.c:1668-1707) — handles dimension randomization,
+        // parent size check, litstate_rnd, and add_subroom all in one call
+        const subroom = create_subroom(levelState.map, parentRoom,
+            x, y, w, h, rtype, lit, levelState.depth || 1);
+
+        if (!subroom) {
+            // Parent room too small or other failure
+            // C: create_subroom returns FALSE, themeroom_failed is set
+            if (levelState.roomFailureCallback) {
+                levelState.roomFailureCallback();
+            }
+            return false;
+        }
+
+        // Mark parent as irregular (C ref: lspo_room line 4079)
+        parentRoom.irregular = true;
+
+        // C ref: sp_lev.c:4066-4067 — needfill defaults
+        const OROOM_LOCAL = 0;
+        const THEMEROOM_LOCAL = 1;
+        if (rtype === OROOM_LOCAL || rtype === THEMEROOM_LOCAL) {
+            subroom.needfill = (filled !== undefined) ? filled : (levelState.inThemerooms ? 0 : FILL_NORMAL);
+        }
+
+        // Execute contents callback
+        if (contents && typeof contents === 'function') {
+            const prevRoom = levelState.currentRoom;
+            levelState.roomStack.push(prevRoom);
+            levelState.roomDepth++;
+            subroom.width = subroom.hx - subroom.lx + 1;
+            subroom.height = subroom.hy - subroom.ly + 1;
+            levelState.currentRoom = subroom;
+
+            try {
+                contents(subroom);
+            } finally {
+                levelState.currentRoom = levelState.roomStack.pop();
+                levelState.roomDepth--;
+            }
+        }
+
+        return true;
+
     } else {
         // Random placement - use sp_lev.c's create_room algorithm
         // C ref: sp_lev.c:1530-1649 — create_room handles dimension/position randomization
