@@ -627,6 +627,10 @@ function add_subroom_to_map(map, proom, lowx, lowy, hix, hiy, lit, rtype, specia
     map.rooms[roomIdx] = croom;
     do_room_or_subroom(map, croom, lowx, lowy, hix, hiy, lit, rtype,
                        special, false, roomIdx);
+    // Some special-level room construction paths build room-like objects
+    // without full mkroom fields. Normalize here before attaching subrooms.
+    if (!proom.sbrooms) proom.sbrooms = [];
+    if (!Number.isInteger(proom.nsubrooms)) proom.nsubrooms = 0;
     proom.sbrooms[proom.nsubrooms] = croom;
     proom.nsubrooms++;
     return croom;
@@ -2812,7 +2816,7 @@ function wallify(map, x1, y1, x2, y2) {
 // C ref: mkmaze.c wallification() -- full map wall fixup
 export function wallification(map) {
     wall_cleanup(map, 1, 0, COLNO - 1, ROWNO - 1);
-    for (let x = 1; x < COLNO - 1; x++) {
+    for (let x = 1; x <= COLNO - 1; x++) {
         for (let y = 0; y < ROWNO; y++) {
             setWallType(map, x, y);
         }
@@ -3788,7 +3792,7 @@ function bad_location(map, x, y, nlx, nly, nhx, nhy) {
     if (!loc) return true;
 
     const typ = loc.typ;
-    const isMaze = false; // TODO: check map.flags.is_maze_lev when needed
+    const isMaze = !!map.flags?.is_maze_lev;
 
     // Valid if: (CORR and maze level) OR ROOM OR AIR
     const isValid = (typ === CORR && isMaze) || typ === ROOM || typ === AIR;
@@ -3860,9 +3864,36 @@ function put_lregion_here(map, x, y, nlx, nly, nhx, nhy, rtype, oneshot) {
 export function place_lregion(map, lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype) {
     // Default to full level if lx is 0
     if (!lx) {
-        // Note: C code has special handling for LR_BRANCH with rooms,
-        // calling place_branch() instead. For minimal implementation,
-        // we just use full level bounds.
+        // C ref: mkmaze.c place_lregion() -- for branch stairs on a
+        // rooms+corridors level, defer to room-based branch placement.
+        if (rtype === LR_BRANCH) {
+            if (map.nroom) {
+                const croom = generate_stairs_find_room(map);
+                if (!croom) {
+                    console.warn(`Couldn't place lregion type ${rtype}!`);
+                    return;
+                }
+
+                let pos = somexyspace(map, croom);
+                if (!pos) {
+                    // C fallback mirrors generate_stairs() behavior.
+                    pos = { x: somex(croom), y: somey(croom) };
+                }
+
+                const loc = map.at(pos.x, pos.y);
+                if (!loc) {
+                    console.warn(`Couldn't place lregion type ${rtype}!`);
+                    return;
+                }
+                loc.typ = STAIRS;
+                loc.flags = 0;
+                map.dnstair = { x: pos.x, y: pos.y };
+                return;
+            }
+
+            // No rooms: follow generic place_lregion() loop below.
+        }
+
         lx = 1;
         hx = COLNO - 1;
         ly = 0;

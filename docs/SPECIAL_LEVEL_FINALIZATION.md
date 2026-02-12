@@ -96,3 +96,13 @@ if (rtype === OROOM || rtype === THEMEROOM) {
 - `js/sp_lev.js`: Import and call finalization functions, set room needfill
 - `js/special_levels.js`: Register Oracle at (DUNGEONS_OF_DOOM, 5)
 - `test/unit/wizard.test.js`: Call makelevel with branch coordinates
+
+## 2026-02-12 Regression Note
+
+- `storage.test` regression root cause: one `des.room()` construction path emitted room objects without `sbrooms`/`nsubrooms`.
+- Failure mode: nested room generation (`create_subroom`) crashed in `add_subroom_to_map` when attaching a subroom to that incomplete parent room.
+- Fix:
+  - Normalize parent room subroom fields in `js/dungeon.js` before attachment.
+  - Ensure manual room objects in `js/sp_lev.js` include `nsubrooms` and `sbrooms`.
+- Scope control:
+  - Ordered deferred replay metadata (`deferredActions`) is now only populated when explicit parity finalization context is active, preventing this path from affecting non-parity generation flows.
