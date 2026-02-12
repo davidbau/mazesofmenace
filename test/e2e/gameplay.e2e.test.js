@@ -68,12 +68,14 @@ async function isGameOver() {
     return msg.includes('Play again') || msg.includes('You die') || msg.includes('Goodbye');
 }
 
-async function startNewGame() {
-    await page.goto(serverInfo.url);
+async function startNewGame(opts = {}) {
+    const params = new URLSearchParams(opts).toString();
+    const url = params ? `${serverInfo.url}?${params}` : serverInfo.url;
+    await page.goto(url);
 
     // Clear localStorage and reload to prevent state leakage between tests
     await page.evaluate(() => localStorage.clear());
-    await page.reload({ waitUntil: 'networkidle0' });
+    await page.goto(url, { waitUntil: 'networkidle0' });
 
     await page.waitForSelector('#terminal', { timeout: 5000 });
     await page.waitForFunction(
@@ -149,7 +151,7 @@ describe('E2E: Extended gameplay', () => {
     });
 
     it('remembers seen terrain (memory)', async () => {
-        await startNewGame();
+        await startNewGame({ DECgraphics: 'true' });
 
         for (let i = 0; i < 3; i++) {
             if (await isGameOver()) break;
@@ -287,7 +289,7 @@ describe('E2E: Color rendering', () => {
     before(async () => {
         page = await browser.newPage();
         page.on('pageerror', err => console.error(`  [browser] ${err.message}`));
-        await startNewGame();
+        await startNewGame({ DECgraphics: 'true' });
     });
 
     after(async () => {

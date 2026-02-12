@@ -34,7 +34,24 @@ function parseUrlParams() {
         seed: params.has('seed') ? parseInt(params.get('seed'), 10) : null,
         role: params.get('role') || null,
         reset: params.get('reset') === '1' || params.get('reset') === 'true',
+        // Flag overrides from URL parameters (e.g., ?DECgraphics=true&pickup=false)
+        flagOverrides: parseFlagOverrides(params),
     };
+}
+
+// Parse URL parameters that match known flag names into overrides
+function parseFlagOverrides(params) {
+    // Import would be circular, so use inline list of boolean flag names
+    const boolFlags = ['pickup', 'showexp', 'color', 'time', 'safe_pet', 'confirm',
+        'verbose', 'tombstone', 'rest_on_space', 'number_pad', 'lit_corridor',
+        'DECgraphics', 'msg_window'];
+    const overrides = {};
+    for (const flag of boolFlags) {
+        if (params.has(flag)) {
+            overrides[flag] = params.get(flag) === '1' || params.get(flag) === 'true';
+        }
+    }
+    return overrides;
 }
 
 // --- Game State ---
@@ -95,6 +112,11 @@ class NetHackGame {
 
         // Load user flags (C ref: flags struct from flag.h)
         this.flags = loadFlags();
+
+        // Apply URL flag overrides (e.g., ?DECgraphics=true)
+        if (urlOpts.flagOverrides) {
+            Object.assign(this.flags, urlOpts.flagOverrides);
+        }
 
         // Expose flags and display globally for input handler
         // (flags for number_pad mode, display for message acknowledgement)

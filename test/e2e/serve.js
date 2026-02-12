@@ -20,7 +20,8 @@ const ROOT = path.resolve(import.meta.dirname, '..', '..');
 export function startServer(port = 0) {
     return new Promise((resolve, reject) => {
         const server = http.createServer((req, res) => {
-            let filePath = path.join(ROOT, req.url === '/' ? '/index.html' : req.url);
+            const urlPath = new URL(req.url, 'http://localhost').pathname;
+            let filePath = path.join(ROOT, urlPath === '/' ? '/index.html' : urlPath);
             filePath = path.normalize(filePath);
 
             // Security: ensure we don't serve files outside ROOT
