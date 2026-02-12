@@ -501,10 +501,6 @@ async function handleMovement(dir, player, map, display, game) {
     }
 
     // Move the player
-    // DEBUG: Log position updates for turns 20-23
-    if (player.turns >= 19 && player.turns <= 22) {
-        console.log(`[handleMovement] Turn ${player.turns+1}: updating player from (${player.x},${player.y}) to (${nx},${ny})`);
-    }
     player.x = nx;
     player.y = ny;
     player.moved = true;
@@ -566,9 +562,9 @@ async function handleMovement(dir, player, map, display, game) {
     const objs = map.objectsAt(nx, ny);
     let pickedUp = false;
 
-    // ALWAYS pick up gold first (regardless of autopickup setting)
-    // C ref: pickup.c:1054 - gold is always auto-collected
-    if (!nopick && objs.length > 0) {
+    // Pick up gold first if autopickup is enabled
+    // C ref: pickup.c pickup() — autopickup gate applies to ALL items including gold
+    if (game.flags?.pickup && !nopick && objs.length > 0) {
         const gold = objs.find(o => o.oclass === COIN_CLASS);
         if (gold) {
             player.addToInventory(gold);

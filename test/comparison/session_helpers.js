@@ -622,6 +622,10 @@ export async function replaySession(seed, session) {
     const game = new HeadlessGame(player, map, { seerTurn: initResult.seerTurn });
 
     // Replay each step
+    // C ref: allmain.c moveloop_core() step boundary analysis:
+    //   Each step captures: rhack(player action) + context.move block (movemon + turnEnd)
+    //   The context.move block runs AFTER rhack in the same moveloop_core iteration.
+    //   This matches the JS ordering: rhack → movemon → turnEnd.
     const stepResults = [];
     for (const step of (session.steps || [])) {
         const prevCount = getRngLog().length;
@@ -647,10 +651,6 @@ export async function replaySession(seed, session) {
 
         // If the command took time, run monster movement and turn effects
         if (result && result.tookTime) {
-            // DEBUG: Check player position before movemon for turn 22
-            if (game.player.turns >= 20 && game.player.turns <= 22) {
-                console.log(`[BEFORE MOVEMON] Turn ${game.player.turns+1}: player at (${game.player.x},${game.player.y}), moved=${result.moved}`);
-            }
             settrack(game.player); // C ref: allmain.c — record hero position before movemon
             movemon(game.map, game.player, game.display, game.fov);
             game.simulateTurnEnd();
