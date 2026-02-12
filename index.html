@@ -576,13 +576,7 @@
         }
 
         console.log('%cNetHack JS - Mazes of Menace', 'font-size: 18px; font-weight: bold; color: #6b2c2c;');
-        console.log('%cKeyboard Shortcuts:', 'font-weight: bold; margin-top: 10px;');
-        console.log('  Ctrl+B        Toggle side panels');
-        console.log('  Ctrl++        Increase font size');
-        console.log('  Ctrl+-        Decrease font size');
-        console.log('\n%cGame Controls:', 'font-weight: bold;');
-        console.log('  See the left panel for complete NetHack keyboard commands');
-        console.log('\n%cHave fun exploring the dungeons!', 'color: #4a2020; font-style: italic;');
+        console.log('%cHave fun exploring the dungeons!', 'color: #4a2020; font-style: italic;');
     })();
 
     /* ============================================================
@@ -842,46 +836,6 @@
         });
     })();
 
-    /* ============================================================
-       Keyboard Shortcuts
-       Global shortcuts for power users (only active outside game)
-       - Ctrl+B: Toggle side panels
-       - Ctrl+Plus: Increase font size
-       - Ctrl+Minus: Decrease font size
-       ============================================================ */
-    (function() {
-        const gameDiv = document.getElementById('game');
-        const panelToggle = document.getElementById('panel-toggle');
-        const fontSmaller = document.getElementById('font-smaller');
-        const fontLarger = document.getElementById('font-larger');
-
-        document.addEventListener('keydown', function(e) {
-            // Only handle shortcuts when game is not focused
-            if (document.activeElement &&
-                (document.activeElement === gameDiv ||
-                 gameDiv.contains(document.activeElement))) {
-                return;
-            }
-
-            // Ctrl+B: Toggle panels
-            if (e.ctrlKey && e.key === 'b') {
-                e.preventDefault();
-                if (panelToggle) panelToggle.click();
-            }
-
-            // Ctrl+Plus/Equal: Increase font
-            if (e.ctrlKey && (e.key === '+' || e.key === '=')) {
-                e.preventDefault();
-                if (fontLarger) fontLarger.click();
-            }
-
-            // Ctrl+Minus: Decrease font
-            if (e.ctrlKey && e.key === '-') {
-                e.preventDefault();
-                if (fontSmaller) fontSmaller.click();
-            }
-        });
-    })();
 
     /* ============================================================
        Game Focus Management & Load Timeout
