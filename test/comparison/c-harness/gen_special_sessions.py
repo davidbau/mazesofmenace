@@ -242,7 +242,7 @@ QUEST_ROLE_BY_PREFIX = {
 }
 
 
-def wizard_teleport_to_level(session, level_name, verbose):
+def wizard_teleport_to_level(session, level_name, verbose, branch_name=None, allow_branch_fallback=False):
     """Use Ctrl+V ? menu to teleport to a named level.
 
     Name-based teleport only works within the current branch, so this uses
@@ -279,6 +279,7 @@ def wizard_teleport_to_level(session, level_name, verbose):
 
     # Scan menu pages to find the target level
     target_key = None
+    branch_key = None
     for page in range(5):  # max 5 pages
         time.sleep(0.5)
         try:
@@ -303,6 +304,10 @@ def wizard_teleport_to_level(session, level_name, verbose):
                 if verbose:
                     print(f'  [menu] Found "{level_name}" → key "{target_key}" in: {line}')
                 break
+            if allow_branch_fallback and branch_name and branch_key is None:
+                mb = re.match(r'^([a-zA-Z])\s+-\s+.*' + re.escape(branch_name) + r':', line)
+                if mb:
+                    branch_key = mb.group(1)
             # Also match "knox: 20" without letter (Fort Ludios has no letter sometimes)
             # and branch entries like "Stair to Sokoban: 10"
 
@@ -318,6 +323,11 @@ def wizard_teleport_to_level(session, level_name, verbose):
             tmux_send_special(session, 'Space', 0.3)
         else:
             break
+
+    if not target_key and allow_branch_fallback and branch_key:
+        target_key = branch_key
+        if verbose:
+            print(f'  [menu] Falling back to branch "{branch_name}" via key "{target_key}"')
 
     if not target_key:
         if verbose:
@@ -368,6 +378,61 @@ def wizard_teleport_to_level(session, level_name, verbose):
 
     time.sleep(0.3)
     return True
+
+
+def _extract_dlvl(content):
+    m = re.search(r'\bDlvl:(\d+)\b', content or '')
+    return int(m.group(1)) if m else None
+
+
+def wizard_load_des_level(session, level_name, verbose):
+    """Load a special-level Lua file via #wizloaddes."""
+    if verbose:
+        print(f'  [wizloaddes] Loading {level_name}.lua')
+
+    tmux_send(session, '#', 0.2)
+    tmux_send(session, 'wizloaddes', 0.2)
+    tmux_send_special(session, 'Enter', 0.3)
+
+    for _ in range(30):
+        try:
+            content = tmux_capture(session)
+        except subprocess.CalledProcessError:
+            return False
+        if '--More--' in content:
+            tmux_send_special(session, 'Space', 0.2)
+            continue
+        if 'Load which des lua file?' in content:
+            tmux_send(session, level_name, 0.2)
+            tmux_send_special(session, 'Enter', 0.5)
+            break
+        time.sleep(0.1)
+    else:
+        if verbose:
+            print(f'  [wizloaddes] WARNING: no file prompt for {level_name}')
+        return False
+
+    for _ in range(60):
+        try:
+            content = tmux_capture(session)
+        except subprocess.CalledProcessError:
+            return False
+        if '--More--' in content:
+            tmux_send_special(session, 'Space', 0.2)
+            continue
+        # A settled status line with Dlvl indicates map is ready.
+        if _extract_dlvl(content) is not None:
+            return True
+        time.sleep(0.1)
+
+    if verbose:
+        print(f'  [wizloaddes] WARNING: timeout waiting for level load of {level_name}')
+    return False
+
+
+def capture_filler_level(session, level_name, verbose):
+    """Capture filler levels by loading the exact des Lua file."""
+    return wizard_load_des_level(session, level_name, verbose)
 
 
 def parse_dumpmap(dumpmap_file):
@@ -422,6 +487,7 @@ def generate_group(group_name, seeds, verbose=False):
                 f'NETHACKDIR={INSTALL_DIR} '
                 f'NETHACK_SEED={seed} '
                 f'NETHACK_DUMPMAP={dumpmap_file} '
+                f"{('NETHACK_RNGLOG=' + os.environ['NETHACK_RNGLOG'] + ' ') if os.environ.get('NETHACK_RNGLOG') else ''}"
                 f'HOME={RESULTS_DIR} '
                 f'TERM=xterm-256color '
                 f'{NETHACK_BINARY} -u Wizard -D; '
@@ -442,7 +508,19 @@ def generate_group(group_name, seeds, verbose=False):
                     print(f"  Teleporting to {level_name}...")
 
                     # Teleport to the level
-                    wizard_teleport_to_level(session_name, level_name, verbose)
+                    if group_name == 'filler':
+                        ok = capture_filler_level(session_name, level_name, verbose)
+                    else:
+                        ok = wizard_teleport_to_level(
+                            session_name,
+                            level_name,
+                            verbose,
+                            branch_name=level_def.get('branch'),
+                            allow_branch_fallback=bool(level_def.get('allowBranchFallback')),
+                        )
+                    if not ok:
+                        print(f"  WARNING: teleport failed for {level_name}, skipping capture")
+                        continue
 
                     # Clean previous dumpmap
                     if os.path.exists(dumpmap_file):
@@ -458,8 +536,11 @@ def generate_group(group_name, seeds, verbose=False):
                         continue
 
                     grid = parse_dumpmap(dumpmap_file)
-                    if len(grid) != 21:
-                        print(f"  WARNING: {level_name} has {len(grid)} rows (expected 21)")
+                    if len(grid) != 21 or any(len(row) != 80 for row in grid):
+                        rows = len(grid)
+                        cols = len(grid[0]) if rows else 0
+                        print(f"  WARNING: {level_name} has shape {rows}x{cols} (expected 21x80), skipping capture")
+                        continue
 
                     level_data = {
                         'levelName': level_name,
