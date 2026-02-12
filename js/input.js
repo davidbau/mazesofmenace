@@ -3,6 +3,7 @@
 // See DECISIONS.md #1 for the rationale.
 
 import { CLR_WHITE } from './display.js';
+import { recordKey, isReplayMode, getNextReplayKey } from './keylog.js';
 
 const inputQueue = [];
 let inputResolver = null;
@@ -127,11 +128,26 @@ export function nhgetch() {
         window.gameDisplay.messageNeedsMore = false;
     }
 
+    // Replay mode: pull from replay buffer
+    if (isReplayMode()) {
+        const key = getNextReplayKey();
+        if (key !== null) {
+            recordKey(key);
+            return Promise.resolve(key);
+        }
+        // Replay exhausted — fall through to interactive input
+    }
+
     if (inputQueue.length > 0) {
-        return Promise.resolve(inputQueue.shift());
+        const ch = inputQueue.shift();
+        recordKey(ch);
+        return Promise.resolve(ch);
     }
     return new Promise(resolve => {
-        inputResolver = resolve;
+        inputResolver = (ch) => {
+            recordKey(ch);
+            resolve(ch);
+        };
     });
 }
 

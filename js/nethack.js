@@ -24,6 +24,7 @@ import { loadSave, deleteSave, hasSave, saveGame,
          listSavedData, clearAllData } from './storage.js';
 import { savebones } from './bones.js';
 import { buildEntry, saveScore, loadScores, formatTopTenEntry, formatTopTenHeader } from './topten.js';
+import { startRecording, getKeylog, saveKeylog, startReplay } from './keylog.js';
 
 // --- Game State ---
 // C ref: decl.h -- globals are accessed via NH object (see DECISIONS.md #7)
@@ -106,6 +107,10 @@ class NetHackGame {
         this.seed = seed;
         initRng(seed);
         setGameSeed(seed);
+
+        // Start keystroke recording for reproducibility
+        startRecording(seed, this.flags);
+        window.gameInstance = this;
 
         // Show welcome message
         // C ref: allmain.c -- welcome messages
@@ -1621,6 +1626,18 @@ class NetHackGame {
 // --- Entry Point ---
 // Start the game when the page loads
 window.addEventListener('DOMContentLoaded', async () => {
+    // Register keylog console APIs
+    window.get_keylog = () => {
+        const kl = getKeylog();
+        console.log(JSON.stringify(kl, null, 2));
+        return kl;
+    };
+    window.run_keylog = async (src) => {
+        let data = typeof src === 'string' ? await (await fetch(src)).json() : src;
+        startReplay(data);
+    };
+    window.save_keylog = saveKeylog;
+
     const game = new NetHackGame();
     await game.init();
     await game.gameLoop();

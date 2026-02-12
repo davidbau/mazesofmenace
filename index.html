@@ -655,7 +655,15 @@
             updateToggleButton();
         }
 
-        panelToggle.addEventListener('click', togglePanels);
+        panelToggle.addEventListener('click', function(e) {
+            if (e.ctrlKey || e.metaKey) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (window.save_keylog) window.save_keylog();
+                return;
+            }
+            togglePanels();
+        });
 
         // Restore user preference
         if (userWantsHidden()) setPanelsVisible(false);
