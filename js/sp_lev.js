@@ -18,7 +18,7 @@ import { rn2, rnd, rn1, getRngCallCount } from './rng.js';
 import { mksobj, mkobj, mkcorpstat, set_corpsenm } from './mkobj.js';
 import { create_room, create_subroom, makecorridors, init_rect, rnd_rect, get_rect, split_rects, check_room, add_doors_to_room, update_rect_pool_for_room, bound_digging, mineralize, fill_ordinary_room, litstate_rnd, isMtInitialized, setMtInitialized, wallification as dungeonWallification, place_lregion, mktrap, enexto } from './dungeon.js';
 import { seedFromMT } from './xoshiro256.js';
-import { makemon, mkclass, def_char_to_monclass, NO_MM_FLAGS } from './makemon.js';
+import { makemon, mkclass, def_char_to_monclass, NO_MM_FLAGS, MM_NOGRP } from './makemon.js';
 import {
     STONE, VWALL, HWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL, ROOM, CORR,
@@ -41,7 +41,7 @@ import {
     GEM_CLASS, SPBOOK_CLASS, ROCK_CLASS, BALL_CLASS, CHAIN_CLASS, VENOM_CLASS,
     SCR_EARTH, objectData
 } from './objects.js';
-import { mons } from './monsters.js';
+import { mons, M2_FEMALE, M2_MALE, G_NOGEN } from './monsters.js';
 
 // Aliases for compatibility with C naming
 const STAIRS_UP = STAIRS;
@@ -111,6 +111,7 @@ export let levelState = {
 // Special level flags
 let icedpools = false;
 let Sokoban = false;
+let okLocationOverride = null;
 
 // mkmap.c dimensions
 const MKMAP_HEIGHT = ROWNO - 1;
@@ -1543,6 +1544,9 @@ function hasBoulderAt(x, y) {
 }
 
 function isOkLocation(x, y, humidity) {
+    if (okLocationOverride) {
+        return okLocationOverride(x, y);
+    }
     if ((humidity & GETLOC_ANY_LOC) !== 0) return true;
     if (x < 0 || x >= COLNO || y < 0 || y >= ROWNO) return false;
     const typ = levelState.map.locations[x][y].typ;
@@ -1556,6 +1560,10 @@ function isOkLocation(x, y, humidity) {
     if ((humidity & GETLOC_WET) !== 0 && IS_POOL(typ)) return true;
     if ((humidity & GETLOC_HOT) !== 0 && IS_LAVA(typ)) return true;
     return false;
+}
+
+function setOkLocationFunc(func) {
+    okLocationOverride = func || null;
 }
 
 function getLocation(rawX, rawY, humidity, croom, noLocWarn = false) {
@@ -2615,7 +2623,14 @@ export function stair(direction, x, y) {
     }
 
     const stairType = direction === 'up' ? STAIRS_UP : STAIRS_DOWN;
+    // C ref: sp_lev.c l_create_stairway() -> set_ok_location_func(good_stair_loc)
+    // where random stair placement accepts only ROOM/CORR/ICE.
+    setOkLocationFunc((tx, ty) => {
+        const typ = levelState.map.locations[tx][ty].typ;
+        return typ === ROOM || typ === CORR || typ === ICE;
+    });
     const pos = getLocationCoord(x, y, GETLOC_DRY, levelState.currentRoom || null);
+    setOkLocationFunc(null);
     const stairX = pos.x;
     const stairY = pos.y;
     if (stairX < 0 || stairY < 0) return;
@@ -2654,6 +2669,45 @@ function monsterNameToIndex(name) {
     // Search mons array for matching name
     const index = mons.findIndex(m => m.name && m.name.toLowerCase() === lowerName);
     return index >= 0 ? index : -1;
+}
+
+function resolveNamedMonsterLikeC(monsterId) {
+    if (!monsterId) {
+        return { mndx: -1, female: undefined };
+    }
+
+    let lookup = monsterId;
+    let namedGender;
+    if (/^female\s+/i.test(lookup)) {
+        namedGender = true;
+        lookup = lookup.replace(/^female\s+/i, '');
+    } else if (/^male\s+/i.test(lookup)) {
+        namedGender = false;
+        lookup = lookup.replace(/^male\s+/i, '');
+    }
+    // C ref: name_to_monplus() can infer gender from gendered aliases
+    // (e.g. "gnome lord"/"gnome lady"), which suppresses find_montype rn2(2).
+    if (namedGender === undefined) {
+        if (/\blord\b/i.test(lookup)) {
+            namedGender = false;
+        } else if (/\blady\b/i.test(lookup)) {
+            namedGender = true;
+        }
+    }
+
+    const mndx = monsterNameToIndex(lookup);
+    if (mndx < 0) {
+        return { mndx: -1, female: undefined };
+    }
+
+    const ptr = mons[mndx];
+    if (ptr.flags2 & M2_FEMALE) {
+        return { mndx, female: true };
+    }
+    if (ptr.flags2 & M2_MALE) {
+        return { mndx, female: false };
+    }
+    return { mndx, female: (namedGender !== undefined) ? namedGender : !!rn2(2) };
 }
 
 function objectNameToType(name) {
@@ -2755,25 +2809,29 @@ export function object(name_or_opts, x, y) {
     // This ensures RNG timing matches C: create during loop, place after corridors
 
     let obj = null;
+    // C ref: sp_lev.c create_object() -> mkobj_at/mksobj_at(..., !named)
+    // We don't currently expose custom object names (oname) here, so treat
+    // des.object placements as unnamed and allow artifact-init side-effects.
+    const artif = true;
 
     // Create the object now (triggers next_ident and other creation RNG)
     if (!name_or_opts) {
         // No arguments: create completely random object
         // C ref: sp_lev.c spo_object() with NULL name → mkobj(RANDOM_CLASS)
-        obj = mkobj(0, false);  // RANDOM_CLASS = 0
+        obj = mkobj(0, artif);  // RANDOM_CLASS = 0
     } else if (typeof name_or_opts === 'string') {
         // Single-character strings are object class codes (!, ?, +, etc.)
         // C ref: sp_lev.c spo_object() handles single chars as class selection
         if (name_or_opts.length === 1) {
             const objClass = objectClassToType(name_or_opts);
             if (objClass >= 0) {
-                obj = mkobj(objClass, false);  // Random object from class
+                obj = mkobj(objClass, artif);  // Random object from class
             }
         } else {
             // Multi-character strings are object names
             const otyp = objectNameToType(name_or_opts);
             if (otyp >= 0) {
-                obj = mksobj(otyp, true, false);
+                obj = mksobj(otyp, true, artif);
                 if (obj) {
                     obj.id = name_or_opts;  // Store original name
                 }
@@ -2788,12 +2846,12 @@ export function object(name_or_opts, x, y) {
             const lowerName = name_or_opts.id.toLowerCase();
             if (name_or_opts.montype && (lowerName === 'corpse' || lowerName === 'statue')) {
                 const mndx = monsterNameToIndex(name_or_opts.montype);
-                obj = mksobj(otyp, true, false);
+                obj = mksobj(otyp, true, artif);
                 if (mndx >= 0) {
                     set_corpsenm(obj, mndx);
                 }
             } else {
-                obj = mksobj(otyp, true, false);
+                obj = mksobj(otyp, true, artif);
             }
         }
     }
@@ -3146,16 +3204,25 @@ export function monster(opts_or_class, x, y) {
         }
     }
 
+    if (levelState.finalizeContext) {
+        // C ref: sp_lev.c lspo_monster() creates monsters immediately.
+        // Preserve that RNG order in parity mode, but still resolve coords at
+        // execution time to mirror get_location_coord() timing.
+        executeDeferredMonster({
+            opts_or_class,
+            deferCoord: true,
+            rawX: srcX,
+            rawY: srcY,
+            room: levelState.currentRoom || null
+        });
+        return;
+    }
+
+    // Default path: defer until finalize_level().
     const pos = getLocationCoord(srcX, srcY, GETLOC_DRY, levelState.currentRoom || null);
     let absX = pos.x;
     let absY = pos.y;
-
-    // DEFERRED EXECUTION: Queue monster placement for later (after corridors)
-    // Store absolute coordinates since currentRoom context will be lost
     levelState.deferredMonsters.push({ opts_or_class, x: absX, y: absY });
-    if (levelState.finalizeContext) {
-        levelState.deferredActions.push({ kind: 'monster', idx: levelState.deferredMonsters.length - 1 });
-    }
 }
 
 /**
@@ -3457,19 +3524,24 @@ function executeDeferredObjects() {
 function executeDeferredMonster(deferred) {
     const { opts_or_class, x, y } = deferred;
 
-    const createMonsterForParity = (monsterId, coordX, coordY) => {
-        if (!levelState.map) return null;
-        const depth = levelState.levelDepth || 1;
-        let mndx = -1;
-
+    const resolveMonsterIndex = (monsterId, depth) => {
         if (typeof monsterId === 'string' && monsterId.length === 1) {
             const mclass = def_char_to_monclass(monsterId);
             if (mclass > 0 && mclass < 61) {
-                mndx = mkclass(mclass, 0, depth);
+                // C ref: create_monster() uses mkclass(class, G_NOGEN)
+                return mkclass(mclass, G_NOGEN, depth);
             }
-        } else {
-            mndx = monsterNameToIndex(monsterId || '');
+            return -1;
         }
+        return monsterNameToIndex(monsterId || '');
+    };
+
+    const createMonster = (monsterId, coordX, coordY, resolvedMndx = null, resolvedFemale, mmFlags = NO_MM_FLAGS) => {
+        if (!levelState.map) return null;
+        const depth = (levelState.finalizeContext && Number.isFinite(levelState.finalizeContext.dunlev))
+            ? levelState.finalizeContext.dunlev
+            : (levelState.levelDepth || 1);
+        const mndx = (resolvedMndx !== null) ? resolvedMndx : resolveMonsterIndex(monsterId, depth);
 
         let mx = coordX;
         let my = coordY;
@@ -3481,7 +3553,11 @@ function executeDeferredMonster(deferred) {
             }
         }
 
-        return makemon(mndx >= 0 ? mndx : null, mx, my, NO_MM_FLAGS, depth, levelState.map);
+        const mtmp = makemon(mndx >= 0 ? mndx : null, mx, my, mmFlags, depth, levelState.map);
+        if (mtmp && resolvedFemale !== undefined) {
+            mtmp.female = !!resolvedFemale;
+        }
+        return mtmp;
     };
     // Execute the original monster() logic
     let monsterId, coordX, coordY, opts;
@@ -3497,7 +3573,7 @@ function executeDeferredMonster(deferred) {
             // C ref: create_monster() default AM_SPLEV_RANDOM -> induced_align()
             // consumes alignment RNG even when result is not used by JS parity path.
             rn2(3);
-            createMonsterForParity(randClass, coordX, coordY);
+            createMonster(randClass, coordX, coordY);
             return;
         }
         levelState.monsters.push({
@@ -3511,8 +3587,8 @@ function executeDeferredMonster(deferred) {
     if (typeof opts_or_class === 'string') {
         if (x === undefined) {
             monsterId = opts_or_class;
-            coordX = rn2(60) + 10;
-            coordY = rn2(15) + 3;
+            coordX = deferred.deferCoord ? undefined : (rn2(60) + 10);
+            coordY = deferred.deferCoord ? undefined : (rn2(15) + 3);
             opts = {};
         } else {
             monsterId = opts_or_class;
@@ -3546,8 +3622,12 @@ function executeDeferredMonster(deferred) {
         }
     }
 
-    if (!monsterId || coordX === undefined || coordY === undefined ||
-        coordX < 0 || coordX >= 80 || coordY < 0 || coordY >= 21) {
+    if (!monsterId) {
+        return;
+    }
+    if (!deferred.deferCoord
+        && (coordX === undefined || coordY === undefined
+            || coordX < 0 || coordX >= 80 || coordY < 0 || coordY >= 21)) {
         return;
     }
 
@@ -3556,9 +3636,41 @@ function executeDeferredMonster(deferred) {
     }
 
     if (levelState.finalizeContext) {
+        const depth = (levelState.finalizeContext && Number.isFinite(levelState.finalizeContext.dunlev))
+            ? levelState.finalizeContext.dunlev
+            : (levelState.levelDepth || 1);
+        let mndxForParity = null;
+        let femaleForParity;
+        if (typeof monsterId === 'string') {
+            if (monsterId.length > 1) {
+                const resolved = resolveNamedMonsterLikeC(monsterId);
+                mndxForParity = resolved.mndx;
+                femaleForParity = resolved.female;
+            }
+        }
         // C ref: create_monster() default AM_SPLEV_RANDOM -> induced_align().
         rn2(3);
-        const mtmp = createMonsterForParity(monsterId, coordX, coordY);
+        // C ref: create_monster() resolves class with mkclass() after induced_align()
+        // but before get_location().
+        if (mndxForParity === null && typeof monsterId === 'string' && monsterId.length === 1) {
+            mndxForParity = resolveMonsterIndex(monsterId, depth);
+        }
+
+        if (deferred.deferCoord) {
+            const pos = getLocationCoord(deferred.rawX, deferred.rawY, GETLOC_DRY, deferred.room || null);
+            coordX = pos.x;
+            coordY = pos.y;
+        }
+        if (coordX === undefined || coordY === undefined ||
+            coordX < 0 || coordX >= 80 || coordY < 0 || coordY >= 21) {
+            return;
+        }
+
+        let mmFlags = NO_MM_FLAGS;
+        if (opts && opts.group !== undefined && !opts.group) {
+            mmFlags |= MM_NOGRP;
+        }
+        const mtmp = createMonster(monsterId, coordX, coordY, mndxForParity, femaleForParity, mmFlags);
         if (mtmp && opts) {
             if (opts.peaceful !== undefined) mtmp.peaceful = !!opts.peaceful;
             if (opts.asleep !== undefined) mtmp.msleeping = !!opts.asleep;

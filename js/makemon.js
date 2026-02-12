@@ -24,7 +24,7 @@ import {
     S_NAGA, S_OGRE, S_PUDDING, S_QUANTMECH, S_RUSTMONST, S_SNAKE,
     S_TROLL, S_UMBER, S_VAMPIRE, S_WRAITH, S_XORN, S_YETI, S_ZOMBIE,
     S_HUMAN, S_GHOST, S_GOLEM, S_DEMON, S_EEL, S_LIZARD, S_MIMIC_DEF,
-    M2_MERC, M2_LORD, M2_PRINCE, M2_NASTY, M2_FEMALE, M2_MALE,
+    M2_MERC, M2_LORD, M2_PRINCE, M2_NASTY, M2_FEMALE, M2_MALE, M2_STRONG,
     M2_HOSTILE, M2_PEACEFUL, M2_DOMESTIC, M2_NEUTER, M2_GREEDY,
     M1_FLY, M1_NOHANDS,
     PM_ORC, PM_GIANT, PM_ELF, PM_HUMAN,
@@ -38,7 +38,7 @@ import {
     SCROLL_CLASS, POTION_CLASS, ARMOR_CLASS, AMULET_CLASS, TOOL_CLASS,
     ROCK_CLASS, GEM_CLASS, SPBOOK_CLASS,
     TALLOW_CANDLE, WAX_CANDLE,
-    DAGGER, KNIFE, SHORT_SWORD, LONG_SWORD, SILVER_SABER, BROADSWORD,
+    ARROW, DAGGER, KNIFE, SHORT_SWORD, LONG_SWORD, SILVER_SABER, BROADSWORD,
     SCIMITAR, SPEAR, JAVELIN, TRIDENT, AXE, BATTLE_AXE, MACE, WAR_HAMMER,
     FLAIL, HALBERD, CLUB, AKLYS, RUBBER_HOSE, BULLWHIP, QUARTERSTAFF,
     TWO_HANDED_SWORD, MORNING_STAR, STILETTO, PICK_AXE,
@@ -48,7 +48,8 @@ import {
     ELVEN_DAGGER, ELVEN_SHORT_SWORD, ELVEN_BOW, ELVEN_ARROW,
     ELVEN_LEATHER_HELM, ELVEN_MITHRIL_COAT, ELVEN_CLOAK,
     ELVEN_SHIELD, ELVEN_BOOTS,
-    DWARVISH_MATTOCK, DWARVISH_IRON_HELM, DWARVISH_MITHRIL_COAT,
+    DWARVISH_MATTOCK, DWARVISH_SHORT_SWORD, DWARVISH_SPEAR,
+    DWARVISH_IRON_HELM, DWARVISH_MITHRIL_COAT,
     DWARVISH_ROUNDSHIELD, DWARVISH_CLOAK,
     CROSSBOW, CROSSBOW_BOLT, BOW, SLING, FLINT,
     PARTISAN, BEC_DE_CORBIN,
@@ -83,6 +84,7 @@ function is_prince(ptr) { return !!(ptr.flags2 & M2_PRINCE); }
 function is_nasty(ptr) { return !!(ptr.flags2 & M2_NASTY); }
 function is_female(ptr) { return !!(ptr.flags2 & M2_FEMALE); }
 function is_male(ptr) { return !!(ptr.flags2 & M2_MALE); }
+function strongmonst(ptr) { return !!(ptr.flags2 & M2_STRONG); }
 function is_neuter(ptr) { return !!(ptr.flags2 & M2_NEUTER); }
 function is_domestic(ptr) { return !!(ptr.flags2 & M2_DOMESTIC); }
 function is_elf(ptr) { return ptr.symbol === S_HUMANOID && ptr.name && ptr.name.includes('elf'); }
@@ -486,20 +488,20 @@ function m_initweap(mndx, depth) {
             if (!rn2(10)) mksobj(ELVEN_MITHRIL_COAT, true, false);
             if (!rn2(10)) mksobj(DWARVISH_CLOAK, true, false);
         } else if (is_dwarf(ptr)) {
-            if (!rn2(7)) mksobj(DWARVISH_CLOAK, true, false);
-            if (!rn2(7)) mksobj(IRON_SHOES, true, false);
+            if (rn2(7)) mksobj(DWARVISH_CLOAK, true, false);
+            if (rn2(7)) mksobj(IRON_SHOES, true, false);
             if (!rn2(4)) {
+                mksobj(DWARVISH_SHORT_SWORD, true, false);
+                if (rn2(2)) {
+                    mksobj(DWARVISH_MATTOCK, true, false);
+                } else {
+                    mksobj(rn2(2) ? AXE : DWARVISH_SPEAR, true, false);
+                    mksobj(DWARVISH_ROUNDSHIELD, true, false);
+                }
                 mksobj(DWARVISH_IRON_HELM, true, false);
-                mksobj(DWARVISH_MITHRIL_COAT, true, false);
-            }
-            if (rn2(2)) {
-                mksobj(DWARVISH_MATTOCK, true, false);
+                if (!rn2(3)) mksobj(DWARVISH_MITHRIL_COAT, true, false);
             } else {
-                mksobj(rn2(2) ? AXE : SPEAR, true, false);
-            }
-            if (!rn2(3)) mksobj(DWARVISH_MITHRIL_COAT, true, false);
-            if (!rn2(3)) {
-                mksobj(rn2(2) ? PICK_AXE : DAGGER, true, false);
+                mksobj(!rn2(3) ? PICK_AXE : DAGGER, true, false);
             }
         }
         break;
@@ -596,24 +598,38 @@ function m_initweap(mndx, depth) {
         }
         break;
 
-    case S_GNOME:
-        // Gnomes get equipment similar to dwarves but simpler
-        if (!rn2(4)) mksobj(CROSSBOW, true, false);
-        else if (!rn2(2)) mksobj(DAGGER, true, false);
-        break;
-
     default:
         // Generic weapon assignment for armed monsters
         // C ref: makemon.c:534-571
         if (ptr.attacks && ptr.attacks.some(a => a.type === 254)) { // AT_WEAP
             const w = rnd(Math.max(1, 14 - 2 * bias));
-            let wpn;
-            if (w <= 2) wpn = LONG_SWORD;
-            else if (w <= 4) wpn = SHORT_SWORD;
-            else if (w <= 8) wpn = MACE;
-            else if (w <= 12) wpn = DAGGER;
-            else wpn = SPEAR;
-            mksobj(wpn, true, false);
+            switch (w) {
+            case 1:
+                if (strongmonst(ptr)) mksobj(BATTLE_AXE, true, false);
+                else m_initthrow(DART, 12);
+                break;
+            case 2:
+                if (strongmonst(ptr)) mksobj(TWO_HANDED_SWORD, true, false);
+                else {
+                    mksobj(CROSSBOW, true, false);
+                    m_initthrow(CROSSBOW_BOLT, 12);
+                }
+                break;
+            case 3:
+                mksobj(BOW, true, false);
+                m_initthrow(ARROW, 12);
+                break;
+            case 4:
+                if (strongmonst(ptr)) mksobj(LONG_SWORD, true, false);
+                else m_initthrow(DAGGER, 3);
+                break;
+            case 5:
+                if (strongmonst(ptr)) mksobj(LUCERN_HAMMER, true, false);
+                else mksobj(AKLYS, true, false);
+                break;
+            default:
+                break;
+            }
         }
         break;
     }
@@ -1019,6 +1035,7 @@ function makemon_rnd_goodpos(map, ptr) {
 
 export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
     let mndx;
+    let anymon = false;
 
     // DEBUG: Disabled
     const DEBUG_MAKEMON = false;
@@ -1028,6 +1045,7 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
 
     if (ptr_or_null === null || ptr_or_null === undefined) {
         // Random monster selection
+        anymon = true;
         mndx = rndmonst_adj(0, 0, depth || 1);
         if (mndx < 0) return null; // No valid monster found
     } else if (typeof ptr_or_null === 'number') {
@@ -1085,21 +1103,9 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
         }
     }
 
-    // Weapon/inventory initialization
-    // C ref: makemon.c:1438-1440
-    if (is_armed(ptr))
-        m_initweap(mndx, depth || 1);
-    m_initinv(mndx, depth || 1, m_lev);
-
-    // C ref: makemon.c:1443-1448 — saddle for domestic monsters
-    // C evaluates !rn2(100) first (always consumed), then is_domestic
-    if (!rn2(100) && is_domestic(ptr)) {
-        mksobj(SADDLE, true, false);
-    }
-
     // Group formation
-    // C ref: makemon.c:1427-1430
-    if (!(mmflags & MM_NOGRP)) {
+    // C ref: makemon.c:1427-1435 — only for anymon (random monster)
+    if (anymon && !(mmflags & MM_NOGRP)) {
         if (ptr.geno & G_SGROUP) {
             if (!rn2(2)) {
                 // m_initsgrp: rnd(3) for count, then makemon per group member
@@ -1126,6 +1132,18 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
                 }
             }
         }
+    }
+
+    // Weapon/inventory initialization
+    // C ref: makemon.c:1438-1440
+    if (is_armed(ptr))
+        m_initweap(mndx, depth || 1);
+    m_initinv(mndx, depth || 1, m_lev);
+
+    // C ref: makemon.c:1443-1448 — saddle for domestic monsters
+    // C evaluates !rn2(100) first (always consumed), then is_domestic
+    if (!rn2(100) && is_domestic(ptr)) {
+        mksobj(SADDLE, true, false);
     }
 
     // Build full monster object for gameplay
@@ -1165,4 +1183,3 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
 
     return mon;
 }
-
