@@ -70,6 +70,23 @@ export async function rhack(ch, game) {
 
     // Period = wait/search
     if (c === '.' || c === 's') {
+        // C ref: do.c cmd_safety_prevention() — prevent wait/search when hostile adjacent
+        // Gated on flags.safe_wait (default true) and !multi (always 0 for non-counted)
+        if (game && game.flags && game.flags.safe_wait && !game.menuRequested) {
+            let monNearby = false;
+            for (let dx = -1; dx <= 1 && !monNearby; dx++) {
+                for (let dy = -1; dy <= 1 && !monNearby; dy++) {
+                    if (dx === 0 && dy === 0) continue;
+                    const mon = map.monsterAt(player.x + dx, player.y + dy);
+                    if (mon && !mon.dead && !mon.tame && !mon.peaceful) {
+                        monNearby = true;
+                    }
+                }
+            }
+            if (monNearby) {
+                return { moved: false, tookTime: false };
+            }
+        }
         // C ref: cmd.c -- '.' is rest, 's' is search
         if (c === 's') {
             display.putstr_message('You search...');
@@ -906,16 +923,16 @@ async function handleWield(player, display) {
     if (c === '-') {
         player.weapon = null;
         display.putstr_message('You are now empty-handed.');
-        // C ref: wield.c:dowield sets multi=0 (no time cost)
-        return { moved: false, tookTime: false };
+        // C ref: wield.c:dowield returns ECMD_TIME (wielding takes a turn)
+        return { moved: false, tookTime: true };
     }
 
     const weapon = weapons.find(w => w.invlet === c);
     if (weapon) {
         player.weapon = weapon;
         display.putstr_message(`${weapon.invlet} - ${weapon.name} (weapon in hand).`);
-        // C ref: wield.c:dowield sets multi=0 (no time cost)
-        return { moved: false, tookTime: false };
+        // C ref: wield.c:dowield returns ECMD_TIME (wielding takes a turn)
+        return { moved: false, tookTime: true };
     }
 
     display.putstr_message("Never mind.");

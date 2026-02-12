@@ -406,9 +406,25 @@ class HeadlessGame {
         this.wizard = true;
         this.seerTurn = opts.seerTurn || 0;
         this.occupation = null; // C ref: cmd.c go.occupation — multi-turn action
-        this.flags = { pickup: false, verbose: false }; // Game flags for commands
+        this.flags = { pickup: false, verbose: false, safe_wait: true }; // Game flags for commands
         this.menuRequested = false; // 'm' prefix command state
         initrack(); // C ref: track.c — initialize player track buffer
+    }
+
+    // C ref: allmain.c interrupt_multi() — check if multi-count should be interrupted
+    // Interrupts search/wait/etc count when hostile monster appears adjacent.
+    shouldInterruptMulti() {
+        const { x, y } = this.player;
+        for (let dx = -1; dx <= 1; dx++) {
+            for (let dy = -1; dy <= 1; dy++) {
+                if (dx === 0 && dy === 0) continue;
+                const mon = this.map.monsterAt(x + dx, y + dy);
+                if (mon && !mon.dead && !mon.tame && !mon.peaceful) {
+                    return true; // Hostile monster nearby
+                }
+            }
+        }
+        return false;
     }
 
     // C ref: mon.c mcalcmove() — random rounding of monster speed
@@ -641,9 +657,30 @@ export async function replaySession(seed, session) {
     //   Each step captures: rhack(player action) + context.move block (movemon + turnEnd)
     //   The context.move block runs AFTER rhack in the same moveloop_core iteration.
     //   This matches the JS ordering: rhack → movemon → turnEnd.
+    //
+    // One turn per keystroke: The C harness sends each character as a separate
+    // tmux keystroke and captures RNG delta between keystrokes. Between captures,
+    // execute_dumpmap sends '#dumpmap' which C's parse() treats as the command for
+    // any accumulated count prefix — consuming it. So commands always execute with
+    // multi=0, and each keystroke produces at most one turn of game effects.
+    // Digit keystrokes ('0'-'9') are captured as separate steps with 0 RNG.
     const stepResults = [];
     for (const step of (session.steps || [])) {
         const prevCount = getRngLog().length;
+
+        // C ref: cmd.c:4958 — digit keys start count prefix accumulation
+        // In the session file, digits are recorded as separate steps with 0 RNG.
+        // The count prefix is consumed by execute_dumpmap between steps, so the
+        // actual command always runs with multi=0 (one turn per keystroke).
+        const ch0 = step.key.charCodeAt(0);
+        if (step.key.length === 1 && ch0 >= 48 && ch0 <= 57) { // '0'-'9'
+            // Digit steps consume no RNG — just record empty result
+            stepResults.push({
+                rngCalls: 0,
+                rng: [],
+            });
+            continue;
+        }
 
         // Feed the key to the game engine
         // For multi-char keys (e.g. "wb" = wield item b), push trailing chars
@@ -662,7 +699,22 @@ export async function replaySession(seed, session) {
             pushInput(32); // SPACE to dismiss modal display
         }
 
-        const result = await rhack(ch, game);
+        // Execute the command once (one turn per keystroke)
+        let result = await rhack(ch, game);
+
+        // C ref: cmd.c prefix commands (F=fight, G=run, g=rush) return without
+        // consuming time or reading further input. For multi-char keys like "Fh",
+        // the prefix is processed first, then we need to send the remaining char
+        // as a separate command to actually perform the action.
+        // Note: only actual prefix commands need this — other multi-char commands
+        // like "oj" (open-south) or "wb" (wield-b) consume trailing chars via
+        // nhgetch() internally.
+        const PREFIX_CMDS = new Set(['F', 'G', 'g']);
+        if (result && !result.tookTime && step.key.length > 1
+            && PREFIX_CMDS.has(String.fromCharCode(ch))) {
+            const nextCh = step.key.charCodeAt(1);
+            result = await rhack(nextCh, game);
+        }
 
         // If the command took time, run monster movement and turn effects
         if (result && result.tookTime) {
