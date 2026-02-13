@@ -3281,6 +3281,7 @@ export function region(opts_or_selection, type) {
 
     let x1, y1, x2, y2, lit, opts;
 
+    let regionIsLevelCoords = false;
     if (typeof type === 'string') {
         // Old format: des.region(selection, "lit" | "unlit")
         x1 = opts_or_selection.x1;
@@ -3314,6 +3315,18 @@ export function region(opts_or_selection, type) {
             return; // No region specified
         }
         lit = opts.lit !== undefined ? opts.lit : false;
+        regionIsLevelCoords = !!opts.region_islev;
+    }
+
+    // C ref: after des.map(), region coordinates are map-relative unless
+    // region_islev is explicitly set.
+    if (levelState.mapCoordMode && !regionIsLevelCoords) {
+        const c1 = toAbsoluteCoords(x1, y1);
+        const c2 = toAbsoluteCoords(x2, y2);
+        x1 = c1.x;
+        y1 = c1.y;
+        x2 = c2.x;
+        y2 = c2.y;
     }
 
     // Mark all cells in region as lit/unlit
@@ -3342,8 +3355,23 @@ export function non_diggable(selection) {
         return;
     }
 
-    for (let x = selection.x1; x <= selection.x2; x++) {
-        for (let y = selection.y1; y <= selection.y2; y++) {
+    let x1 = selection.x1;
+    let y1 = selection.y1;
+    let x2 = selection.x2;
+    let y2 = selection.y2;
+
+    // C ref: after des.map(), coordinates are map-relative.
+    if (levelState.mapCoordMode) {
+        const c1 = toAbsoluteCoords(x1, y1);
+        const c2 = toAbsoluteCoords(x2, y2);
+        x1 = c1.x;
+        y1 = c1.y;
+        x2 = c2.x;
+        y2 = c2.y;
+    }
+
+    for (let x = x1; x <= x2; x++) {
+        for (let y = y1; y <= y2; y++) {
             if (x >= 0 && x < 80 && y >= 0 && y < 21) {
                 levelState.map.locations[x][y].nondiggable = true;
             }
