@@ -3,7 +3,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { Player, roles } from '../../js/player.js';
+import { Player, roles, initialAlignmentRecordForRole } from '../../js/player.js';
 import { initRng } from '../../js/rng.js';
 
 describe('Player', () => {
@@ -36,6 +36,21 @@ describe('Player', () => {
         assert.ok(p.hp > 0);
         assert.ok(p.hpmax > 0);
         assert.equal(p.hp, p.hpmax);
+    });
+
+    it('initialAlignmentRecordForRole matches C role initrecord groups', () => {
+        assert.equal(initialAlignmentRecordForRole(0), 10);  // Archeologist
+        assert.equal(initialAlignmentRecordForRole(7), 10);  // Rogue
+        assert.equal(initialAlignmentRecordForRole(11), 0);  // Valkyrie
+        assert.equal(initialAlignmentRecordForRole(12), 0);  // Wizard
+    });
+
+    it('initRole applies alignment record and resets alignment abuse', () => {
+        const p = new Player();
+        p.alignmentAbuse = 99;
+        p.initRole(9); // Samurai
+        assert.equal(p.alignmentRecord, 10);
+        assert.equal(p.alignmentAbuse, 0);
     });
 
     it('each role has valid base stats', () => {
