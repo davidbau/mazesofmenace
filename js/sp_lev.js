@@ -16,7 +16,7 @@
 import { GameMap, FILL_NORMAL } from './map.js';
 import { rn2, rnd, rn1, getRngCallCount } from './rng.js';
 import { mksobj, mkobj, mkcorpstat, set_corpsenm, weight } from './mkobj.js';
-import { create_room, create_subroom, makecorridors, init_rect, rnd_rect, get_rect, split_rects, check_room, add_doors_to_room, update_rect_pool_for_room, bound_digging, mineralize, fill_ordinary_room, litstate_rnd, isMtInitialized, setMtInitialized, wallification as dungeonWallification, place_lregion, mktrap, enexto, somexy, sp_create_door } from './dungeon.js';
+import { create_room, create_subroom, makecorridors, init_rect, rnd_rect, get_rect, split_rects, check_room, add_doors_to_room, update_rect_pool_for_room, bound_digging, mineralize, fill_ordinary_room, litstate_rnd, isMtInitialized, setMtInitialized, wallification as dungeonWallification, fix_wall_spines, place_lregion, mktrap, enexto, somexy, sp_create_door } from './dungeon.js';
 import { seedFromMT } from './xoshiro256.js';
 import { makemon, mkclass, def_char_to_monclass, NO_MM_FLAGS, MM_NOGRP } from './makemon.js';
 import {
@@ -4423,10 +4423,10 @@ export function finalize_level() {
     // Apply random flipping
     const flipped = flipLevelRandom();
 
-    // Re-wallify only when flips were applied.
-    // C ref: flip_level() invokes wall spine fixup after transpose.
+    // C ref: flip_level() invokes fix_wall_spines() after transpose,
+    // not full wallification().
     if (levelState.map && flipped) {
-        wallification(levelState.map);
+        fix_wall_spines(levelState.map, 1, 0, COLNO - 1, ROWNO - 1);
     }
 
     // C ref: sp_lev.c fixup_special() (branch stair placement, etc.)

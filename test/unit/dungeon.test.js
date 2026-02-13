@@ -8,7 +8,7 @@ import { COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS, HWALL, VWALL,
          IS_WALL, IS_DOOR, ACCESSIBLE, isok } from '../../js/config.js';
 function REACHABLE(typ) { return ACCESSIBLE(typ) || typ === SDOOR || typ === SCORR; }
 import { initRng } from '../../js/rng.js';
-import { initLevelGeneration, makelevel, wallification } from '../../js/dungeon.js';
+import { initLevelGeneration, makelevel, wallification, fix_wall_spines } from '../../js/dungeon.js';
 
 describe('Dungeon generation', () => {
     it('generates a level with rooms', () => {
@@ -174,5 +174,22 @@ describe('Dungeon generation', () => {
             const map = makelevel(depth);
             assert.ok(map.rooms.length >= 1, `Level ${depth} should have rooms`);
         }
+    });
+
+    it('fix_wall_spines does not perform wall_cleanup', () => {
+        initRng(42);
+        initLevelGeneration();
+        const map = makelevel(1);
+        map.at(40, 10).typ = HWALL;
+        map.at(39, 10).typ = STONE;
+        map.at(41, 10).typ = STONE;
+        map.at(40, 9).typ = STONE;
+        map.at(40, 11).typ = STONE;
+
+        fix_wall_spines(map, 1, 0, COLNO - 1, ROWNO - 1);
+        assert.equal(map.at(40, 10).typ, HWALL, 'spine fix should keep isolated wall');
+
+        wallification(map);
+        assert.equal(map.at(40, 10).typ, STONE, 'full wallification should clean isolated wall');
     });
 });

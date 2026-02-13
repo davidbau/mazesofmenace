@@ -2880,6 +2880,16 @@ export function wallification(map) {
     }
 }
 
+// C ref: mkmaze.c fix_wall_spines() — update wall junction glyphs only.
+// Used after flip_level(), where C does not re-run wall_cleanup.
+export function fix_wall_spines(map, x1 = 1, y1 = 0, x2 = COLNO - 1, y2 = ROWNO - 1) {
+    for (let x = x1; x <= x2; x++) {
+        for (let y = y1; y <= y2; y++) {
+            setWallType(map, x, y);
+        }
+    }
+}
+
 // C ref: mkmaze.c iswall() — check if wall spine can join this location
 function iswall_check(map, x, y) {
     if (!isok(x, y)) return 0;
