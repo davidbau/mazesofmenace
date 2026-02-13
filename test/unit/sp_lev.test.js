@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import {
     des, resetLevelState, getLevelState
 } from '../../js/sp_lev.js';
+import { place_lregion } from '../../js/dungeon.js';
 import { STONE, ROOM, HWALL, VWALL, STAIRS, LAVAPOOL, PIT, MAGIC_PORTAL, CROSSWALL } from '../../js/config.js';
 import { BOULDER, DAGGER } from '../../js/objects.js';
 
@@ -201,5 +202,29 @@ describe('sp_lev.js - des.* API', () => {
             'touched CROSSWALL should no longer remain CROSSWALL');
         assert.equal(map.locations[11][10].typ, CROSSWALL,
             'untouched CROSSWALL should remain CROSSWALL');
+    });
+
+    it('place_lregion oneshot removes destroyable trap blocker', () => {
+        resetLevelState();
+        des.level_init({ style: 'solidfill', fg: '.' });
+        const map = getLevelState().map;
+        map.traps.push({ ttyp: PIT, tx: 10, ty: 10 });
+
+        place_lregion(map, 10, 10, 10, 10, 0, 0, 0, 0, 5);
+
+        assert.equal(map.trapAt(10, 10), null, 'destroyable trap should be removed in oneshot fallback');
+        assert.equal(map.at(10, 10).typ, STAIRS, 'stairs should be placed after removing trap');
+    });
+
+    it('place_lregion oneshot keeps undestroyable trap blocker', () => {
+        resetLevelState();
+        des.level_init({ style: 'solidfill', fg: '.' });
+        const map = getLevelState().map;
+        map.traps.push({ ttyp: MAGIC_PORTAL, tx: 10, ty: 10 });
+
+        place_lregion(map, 10, 10, 10, 10, 0, 0, 0, 0, 5);
+
+        assert.notEqual(map.trapAt(10, 10), null, 'undestroyable trap should remain');
+        assert.notEqual(map.at(10, 10).typ, STAIRS, 'stairs should not overwrite undestroyable trap location');
     });
 });

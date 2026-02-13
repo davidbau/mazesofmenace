@@ -3539,7 +3539,7 @@ function get_level_extends(map) {
     // C ref: mkmaze.c:1353-1427
     // Scan from each edge to find the first column/row with non-STONE content.
     // The is_maze_lev flag affects the boundary offset; normal levels use -2/+2.
-    const is_maze_lev = false; // normal dungeon levels are not maze levels
+    const is_maze_lev = !!(map && map.flags && map.flags.is_maze_lev);
 
     let xmin, xmax, ymin, ymax;
     let found, nonwall;
@@ -4160,7 +4160,9 @@ function put_lregion_here(map, x, y, nlx, nly, nhx, nhy, rtype, oneshot) {
         // C ref: mkmaze.c put_lregion_here() oneshot path:
         // if the only candidate is blocked by a trap, remove the trap and retry.
         const trap = map.trapAt(x, y);
-        if (trap) {
+        const undestroyable = (trap?.ttyp === MAGIC_PORTAL
+            || trap?.ttyp === VIBRATING_SQUARE);
+        if (trap && !undestroyable) {
             map.traps = map.traps.filter(t => t !== trap);
         }
         invalid = bad_location(map, x, y, nlx, nly, nhx, nhy)
