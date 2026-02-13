@@ -246,6 +246,8 @@ function makedog(map, player, depth) {
         attacks: petData.attacks,
         peaceful: true, // pet is peaceful
         tame: true,      // pet is tame
+        mpeaceful: true, // C-style alias used by mon_arrive logic
+        mtame: 10,       // C initedog baseline tameness for domestic pets
         flee: false,
         confused: false,
         stunned: false,
@@ -285,7 +287,8 @@ function makedog(map, player, depth) {
 export function mon_arrive(oldMap, newMap, player) {
     if (!oldMap || !newMap) return false;
     const pets = (oldMap.monsters || []).filter((m) => {
-        if (!m || m.dead || !m.tame) return false;
+        const tameLike = !!m?.tame || (m?.mtame || 0) > 0;
+        if (!m || m.dead || !tameLike) return false;
         const dx = Math.abs((m.mx ?? 0) - player.x);
         const dy = Math.abs((m.my ?? 0) - player.y);
         // C-like stair following behavior: only nearby pets can follow.
@@ -299,24 +302,26 @@ export function mon_arrive(oldMap, newMap, player) {
     // Preserve relative pet order when prepending into newMap.monsters.
     for (let i = pets.length - 1; i >= 0; i--) {
         const pet = pets[i];
-
-        // C ref: dog.c:474 — !rn2(10) chance to lose tameness in transit.
-        // C has an untaming branch here; keep RNG consumption but defer
-        // behavioral untaming until full migration state is modeled.
-        rn2(10);
-
-        const positions = collectCoordsShuffle(cx, cy, 3);
+        const mtame = pet.mtame || (pet.tame ? 10 : 0);
+        const bound = mtame > 0 ? 10 : (pet.mpeaceful ? 5 : 2);
 
         let petX = cx;
         let petY = cy;
-        for (const pos of positions) {
-            const loc = newMap.at(pos.x, pos.y);
-            if (loc && ACCESSIBLE(loc.typ)
-                && !newMap.monsterAt(pos.x, pos.y)
-                && !(pos.x === player.x && pos.y === player.y)) {
-                petX = pos.x;
-                petY = pos.y;
-                break;
+        if (!newMap.monsterAt(player.x, player.y) && !rn2(bound)) {
+            // C ref: dog.c mon_arrive(With_you): rloc_to(mtmp, u.ux, u.uy)
+            petX = player.x;
+            petY = player.y;
+        } else {
+            const positions = collectCoordsShuffle(cx, cy, 3);
+            for (const pos of positions) {
+                const loc = newMap.at(pos.x, pos.y);
+                if (loc && ACCESSIBLE(loc.typ)
+                    && !newMap.monsterAt(pos.x, pos.y)
+                    && !(pos.x === player.x && pos.y === player.y)) {
+                    petX = pos.x;
+                    petY = pos.y;
+                    break;
+                }
             }
         }
 
