@@ -5,9 +5,8 @@
  * The special-level harness expects this as a callable generator.
  */
 
-import * as des from '../sp_lev.js';
+import { generate_rogue_level } from '../dungeon.js';
 
 export function generate() {
-    des.level_init({ style: 'rogue' });
-    return des.finalize_level();
+    return generate_rogue_level(15);
 }
