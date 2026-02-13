@@ -39,6 +39,7 @@ import { roles } from './player.js';
 import {
     ARROW, DART, ROCK, BOULDER, LARGE_BOX, CHEST, GOLD_PIECE, CORPSE,
     STATUE, TALLOW_CANDLE, WAX_CANDLE, BELL, KELP_FROND,
+    MACE, TWO_HANDED_SWORD, BOW, FOOD_RATION, RING_MAIL, PLATE_MAIL, FAKE_AMULET_OF_YENDOR,
     POT_WATER, EXPENSIVE_CAMERA, EGG, CREAM_PIE, MELON, ACID_VENOM, BLINDING_VENOM,
     WEAPON_CLASS, TOOL_CLASS, FOOD_CLASS, GEM_CLASS, WAND_CLASS,
     ARMOR_CLASS, SCROLL_CLASS, POTION_CLASS, RING_CLASS, SPBOOK_CLASS,
@@ -2999,6 +3000,296 @@ function do_fill_vault(map, vaultCheck, depth) {
 
     // Re-run wallification around the vault region to fix wall types
     wallify(map, lowx - 1, lowy - 1, hix + 1, hiy + 1);
+}
+
+const XL_UP = 1;
+const XL_DOWN = 2;
+const XL_LEFT = 4;
+const XL_RIGHT = 8;
+
+function rogue_corr(map, x, y) {
+    const loc = map.at(x, y);
+    if (!loc) return;
+    loc.typ = rn2(50) ? CORR : SCORR;
+}
+
+function roguejoin(map, x1, y1, x2, y2, horiz) {
+    if (horiz) {
+        const middle = x1 + rn2(x2 - x1 + 1);
+        for (let x = Math.min(x1, middle); x <= Math.max(x1, middle); x++) {
+            rogue_corr(map, x, y1);
+        }
+        for (let y = Math.min(y1, y2); y <= Math.max(y1, y2); y++) {
+            rogue_corr(map, middle, y);
+        }
+        for (let x = Math.min(middle, x2); x <= Math.max(middle, x2); x++) {
+            rogue_corr(map, x, y2);
+        }
+    } else {
+        const middle = y1 + rn2(y2 - y1 + 1);
+        for (let y = Math.min(y1, middle); y <= Math.max(y1, middle); y++) {
+            rogue_corr(map, x1, y);
+        }
+        for (let x = Math.min(x1, x2); x <= Math.max(x1, x2); x++) {
+            rogue_corr(map, x, middle);
+        }
+        for (let y = Math.min(middle, y2); y <= Math.max(middle, y2); y++) {
+            rogue_corr(map, x2, y);
+        }
+    }
+}
+
+function roguecorr(map, rooms, x0, y0, dir, depth) {
+    let x = x0;
+    let y = y0;
+    let fromx, fromy, tox, toy;
+
+    if (dir === XL_DOWN) {
+        rooms[x][y].doortable &= ~XL_DOWN;
+        if (!rooms[x][y].real) {
+            fromx = 1 + 26 * x + rooms[x][y].rlx;
+            fromy = 7 * y + rooms[x][y].rly;
+        } else {
+            fromx = 1 + 26 * x + rooms[x][y].rlx + rn2(rooms[x][y].dx);
+            fromy = 7 * y + rooms[x][y].rly + rooms[x][y].dy;
+            dodoor(map, fromx, fromy, map.rooms[rooms[x][y].nroom], depth);
+            map.at(fromx, fromy).flags = D_NODOOR;
+            fromy++;
+        }
+
+        if (y >= 2) return;
+        y++;
+        rooms[x][y].doortable &= ~XL_UP;
+        if (!rooms[x][y].real) {
+            tox = 1 + 26 * x + rooms[x][y].rlx;
+            toy = 7 * y + rooms[x][y].rly;
+        } else {
+            tox = 1 + 26 * x + rooms[x][y].rlx + rn2(rooms[x][y].dx);
+            toy = 7 * y + rooms[x][y].rly - 1;
+            dodoor(map, tox, toy, map.rooms[rooms[x][y].nroom], depth);
+            map.at(tox, toy).flags = D_NODOOR;
+            toy--;
+        }
+        roguejoin(map, fromx, fromy, tox, toy, false);
+        return;
+    }
+
+    if (dir !== XL_RIGHT) return;
+    rooms[x][y].doortable &= ~XL_RIGHT;
+    if (!rooms[x][y].real) {
+        fromx = 1 + 26 * x + rooms[x][y].rlx;
+        fromy = 7 * y + rooms[x][y].rly;
+    } else {
+        fromx = 1 + 26 * x + rooms[x][y].rlx + rooms[x][y].dx;
+        fromy = 7 * y + rooms[x][y].rly + rn2(rooms[x][y].dy);
+        dodoor(map, fromx, fromy, map.rooms[rooms[x][y].nroom], depth);
+        map.at(fromx, fromy).flags = D_NODOOR;
+        fromx++;
+    }
+
+    if (x >= 2) return;
+    x++;
+    rooms[x][y].doortable &= ~XL_LEFT;
+    if (!rooms[x][y].real) {
+        tox = 1 + 26 * x + rooms[x][y].rlx;
+        toy = 7 * y + rooms[x][y].rly;
+    } else {
+        tox = 1 + 26 * x + rooms[x][y].rlx - 1;
+        toy = 7 * y + rooms[x][y].rly + rn2(rooms[x][y].dy);
+        dodoor(map, tox, toy, map.rooms[rooms[x][y].nroom], depth);
+        map.at(tox, toy).flags = D_NODOOR;
+        tox--;
+    }
+    roguejoin(map, fromx, fromy, tox, toy, true);
+}
+
+function miniwalk(rooms, x, y) {
+    while (true) {
+        const dirs = [];
+        const doorhere = rooms[x][y].doortable;
+        if (x > 0 && !(doorhere & XL_LEFT)
+            && (!rooms[x - 1][y].doortable || !rn2(10))) dirs.push(0);
+        if (x < 2 && !(doorhere & XL_RIGHT)
+            && (!rooms[x + 1][y].doortable || !rn2(10))) dirs.push(1);
+        if (y > 0 && !(doorhere & XL_UP)
+            && (!rooms[x][y - 1].doortable || !rn2(10))) dirs.push(2);
+        if (y < 2 && !(doorhere & XL_DOWN)
+            && (!rooms[x][y + 1].doortable || !rn2(10))) dirs.push(3);
+        if (!dirs.length) return;
+
+        const dir = dirs[rn2(dirs.length)];
+        switch (dir) {
+        case 0:
+            rooms[x][y].doortable |= XL_LEFT;
+            x--;
+            rooms[x][y].doortable |= XL_RIGHT;
+            break;
+        case 1:
+            rooms[x][y].doortable |= XL_RIGHT;
+            x++;
+            rooms[x][y].doortable |= XL_LEFT;
+            break;
+        case 2:
+            rooms[x][y].doortable |= XL_UP;
+            y--;
+            rooms[x][y].doortable |= XL_DOWN;
+            break;
+        default:
+            rooms[x][y].doortable |= XL_DOWN;
+            y++;
+            rooms[x][y].doortable |= XL_UP;
+            break;
+        }
+        miniwalk(rooms, x, y);
+    }
+}
+
+function makerogueghost(map, _depth) {
+    if (!map.nroom) return;
+
+    const croom = map.rooms[rn2(map.nroom)];
+    somex(croom);
+    somey(croom);
+
+    // C makemon(PM_GHOST, ...) RNG side effects needed before stairs:
+    // newmonhp(), ghost naming, and saddle roll.
+    rnd(2);
+    d(11, 8);
+    rn2(2);
+    if (rn2(7)) rn2(34);
+    rn2(100);
+
+    // roguename() RNG side effects
+    rn2(3);
+    rn2(2);
+
+    if (rn2(4)) {
+        const ration = mksobj(FOOD_RATION, false, false);
+        ration.quan = rnd(7);
+        ration.owt = weight(ration);
+    }
+
+    if (rn2(2)) {
+        const mace = mksobj(MACE, false, false);
+        mace.spe = rnd(3);
+        if (rn2(4)) {
+            // curse() has no RNG side effects
+        }
+    } else {
+        const sword = mksobj(TWO_HANDED_SWORD, false, false);
+        sword.spe = rnd(5) - 2;
+        if (rn2(4)) {
+            // curse() has no RNG side effects
+        }
+    }
+
+    const bow = mksobj(BOW, false, false);
+    bow.spe = 1;
+    if (rn2(4)) {
+        // curse() has no RNG side effects
+    }
+
+    const arrows = mksobj(ARROW, false, false);
+    arrows.spe = 0;
+    arrows.quan = rn1(10, 25);
+    arrows.owt = weight(arrows);
+    if (rn2(4)) {
+        // curse() has no RNG side effects
+    }
+
+    if (rn2(2)) {
+        const ringMail = mksobj(RING_MAIL, false, false);
+        ringMail.spe = rn2(3);
+        if (!rn2(3)) ringMail.oerodeproof = true;
+        if (rn2(4)) {
+            // curse() has no RNG side effects
+        }
+    } else {
+        const plateMail = mksobj(PLATE_MAIL, false, false);
+        plateMail.spe = rnd(5) - 2;
+        if (!rn2(3)) plateMail.oerodeproof = true;
+        if (rn2(4)) {
+            // curse() has no RNG side effects
+        }
+    }
+
+    if (rn2(2)) {
+        const fakeAmulet = mksobj(FAKE_AMULET_OF_YENDOR, true, false);
+        fakeAmulet.known = true;
+    }
+}
+
+export function generate_rogue_level(depth = 15) {
+    const map = new GameMap();
+    map.clear();
+
+    // C ref: mklev.c makelevel() calls getbones() before rogue generation.
+    // In no-bones cases this still consumes rn2(3).
+    rn2(3);
+    // C ref: mklev.c makelevel() consumes rn2(5) before entering
+    // makeroguerooms() on rogue levels.
+    rn2(5);
+
+    const rooms = Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => ({})));
+    let nroom = 0;
+    for (let y = 0; y < 3; y++) {
+        for (let x = 0; x < 3; x++) {
+            if (!rn2(5) && (nroom || (x < 2 && y < 2))) {
+                rooms[x][y].real = false;
+                rooms[x][y].rlx = rn1(22, 2);
+                rooms[x][y].rly = rn1((y === 2) ? 4 : 3, 2);
+            } else {
+                rooms[x][y].real = true;
+                rooms[x][y].dx = rn1(22, 2);
+                rooms[x][y].dy = rn1((y === 2) ? 4 : 3, 2);
+                rooms[x][y].rlx = rnd(23 - rooms[x][y].dx + 1);
+                rooms[x][y].rly = rnd(((y === 2) ? 5 : 4) - rooms[x][y].dy + 1);
+                nroom++;
+            }
+            rooms[x][y].doortable = 0;
+        }
+    }
+
+    // C argument evaluation order is compiler-dependent here.
+    // NetHack's build evaluates right-to-left, so preserve that order.
+    const startY = rn2(3);
+    const startX = rn2(3);
+    miniwalk(rooms, startX, startY);
+
+    for (let y = 0; y < 3; y++) {
+        for (let x = 0; x < 3; x++) {
+            if (!rooms[x][y].real) continue;
+
+            rooms[x][y].nroom = map.nroom;
+            map.smeq[map.nroom] = map.nroom;
+
+            const lowx = 1 + 26 * x + rooms[x][y].rlx;
+            const lowy = 7 * y + rooms[x][y].rly;
+            const hix = lowx + rooms[x][y].dx - 1;
+            const hiy = lowy + rooms[x][y].dy - 1;
+            add_room_to_map(map, lowx, lowy, hix, hiy, !rn2(7), OROOM, false);
+        }
+    }
+
+    for (let y = 0; y < 3; y++) {
+        for (let x = 0; x < 3; x++) {
+            if (rooms[x][y].doortable & XL_DOWN) roguecorr(map, rooms, x, y, XL_DOWN, depth);
+            if (rooms[x][y].doortable & XL_RIGHT) roguecorr(map, rooms, x, y, XL_RIGHT, depth);
+        }
+    }
+
+    makerogueghost(map, depth);
+
+    sort_rooms(map);
+    generate_stairs(map, depth);
+
+    // C ref: mklev.c skip0 block still runs fill_ordinary_room() for each room
+    // on rogue levels after stairs/branch handling.
+    for (let i = 0; i < map.nroom; i++) {
+        fill_ordinary_room(map, map.rooms[i], depth, false);
+    }
+
+    return map;
 }
 
 // ========================================================================
