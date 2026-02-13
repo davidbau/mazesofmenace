@@ -325,8 +325,10 @@ function makedog(map, player, depth) {
 // Migrate all living tame monsters from oldMap to newMap and place each near
 // the arrival position using collect_coords-style placement.
 // Returns true if at least one pet was migrated.
-export function mon_arrive(oldMap, newMap, player) {
+export function mon_arrive(oldMap, newMap, player, opts = {}) {
     if (!oldMap || !newMap) return false;
+    const heroX = Number.isInteger(opts.heroX) ? opts.heroX : player.x;
+    const heroY = Number.isInteger(opts.heroY) ? opts.heroY : player.y;
     const pets = (oldMap.monsters || []).filter((m) => {
         const tameLike = !!m?.tame || (m?.mtame || 0) > 0;
         if (!m || m.dead || !tameLike) return false;
@@ -334,7 +336,7 @@ export function mon_arrive(oldMap, newMap, player) {
         if (m.mtrapped || m.meating) return false;
         const dx = Math.abs((m.mx ?? 0) - player.x);
         const dy = Math.abs((m.my ?? 0) - player.y);
-        // C-like stair following behavior: only nearby pets can follow.
+        // C ref: keepdogs() monnear(mtmp, u.ux, u.uy) on source level.
         return dx <= 1 && dy <= 1;
     });
     if (pets.length === 0) return false;
@@ -350,20 +352,20 @@ export function mon_arrive(oldMap, newMap, player) {
         let petX = 0;
         let petY = 0;
         let foundPos = false;
-        if (!newMap.monsterAt(player.x, player.y) && !rn2(bound)) {
+        if (!newMap.monsterAt(heroX, heroY) && !rn2(bound)) {
             // C ref: dog.c mon_arrive(With_you): rloc_to(mtmp, u.ux, u.uy)
-            petX = player.x;
-            petY = player.y;
+            petX = heroX;
+            petY = heroY;
             foundPos = true;
         } else {
             // C ref: dog.c mon_arrive(With_you): mnexto(mtmp, RLOC_NOMSG)
             // In this startup path, place near hero position (not stairs fallback).
-            const positions = collectCoordsShuffle(player.x, player.y, 3);
+            const positions = collectCoordsShuffle(heroX, heroY, 3);
             for (const pos of positions) {
                 const loc = newMap.at(pos.x, pos.y);
                 if (loc && ACCESSIBLE(loc.typ)
                     && !newMap.monsterAt(pos.x, pos.y)
-                    && !(pos.x === player.x && pos.y === player.y)) {
+                    && !(pos.x === heroX && pos.y === heroY)) {
                     petX = pos.x;
                     petY = pos.y;
                     foundPos = true;

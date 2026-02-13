@@ -224,6 +224,32 @@ describe('Post-level initialization (u_init)', () => {
         assert.equal(newMap.monsters.length, newCount, 'no trapped pet should arrive on new map');
     });
 
+    it('mon_arrive uses explicit destination hero coordinates when provided', () => {
+        const { player, map: oldMap } = setupSeed42Game();
+        oldMap.monsters.push({
+            mx: player.x + 1,
+            my: player.y,
+            mhp: 5,
+            dead: false,
+            tame: true,
+            mtame: 10,
+            mpeaceful: true,
+            mtrapped: false,
+            meating: 0,
+        });
+
+        const { map: newMap } = setupSeed42Game();
+        const oldCount = oldMap.monsters.length;
+        const moved = mon_arrive(oldMap, newMap, player, { heroX: 10, heroY: 10 });
+        assert.equal(moved, true, 'pet should migrate with explicit destination hero coordinates');
+        assert.equal(oldMap.monsters.length, oldCount - 1, 'migrated pet should leave old map');
+        const arrived = newMap.monsters.find(m => m.tame && m.mhp > 0);
+        assert.ok(arrived, 'migrated pet should be on new map');
+        const dx = Math.abs(arrived.mx - 10);
+        const dy = Math.abs(arrived.my - 10);
+        assert.ok(dx <= 3 && dy <= 3, 'arrived pet should be placed near explicit destination');
+    });
+
     it('Healer gets startup money as gold inventory object', () => {
         const { player, map } = setupRoleGame(1, 'Healer');
         simulatePostLevelInit(player, map, 1);
