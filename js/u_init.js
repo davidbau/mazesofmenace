@@ -329,6 +329,9 @@ export function mon_arrive(oldMap, newMap, player, opts = {}) {
     if (!oldMap || !newMap) return false;
     const heroX = Number.isInteger(opts.heroX) ? opts.heroX : player.x;
     const heroY = Number.isInteger(opts.heroY) ? opts.heroY : player.y;
+    const failedArrivals = Array.isArray(opts.failedArrivals)
+        ? opts.failedArrivals
+        : (newMap.failedArrivals || (newMap.failedArrivals = []));
     const pets = (oldMap.monsters || []).filter((m) => {
         const tameLike = !!m?.tame || (m?.mtame || 0) > 0;
         if (!m || m.dead || !tameLike) return false;
@@ -373,7 +376,11 @@ export function mon_arrive(oldMap, newMap, player, opts = {}) {
                 }
             }
         }
-        if (!foundPos) continue;
+        if (!foundPos) {
+            // C ref: dog.c mon_arrive() relmon(..., &failed_arrivals)
+            failedArrivals.push(pet);
+            continue;
+        }
 
         oldMap.removeMonster(pet);
         pet.mx = petX;

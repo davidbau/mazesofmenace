@@ -194,10 +194,12 @@ describe('Post-level initialization (u_init)', () => {
 
         const oldCount = oldMap.monsters.length;
         const newCount = newMap.monsters.length;
-        const moved = mon_arrive(oldMap, newMap, newPlayer);
+        const failedArrivals = [];
+        const moved = mon_arrive(oldMap, newMap, newPlayer, { failedArrivals });
         assert.equal(moved, false, 'mon_arrive should fail if no valid placement exists');
         assert.equal(oldMap.monsters.length, oldCount, 'pet should remain on old map when placement fails');
         assert.equal(newMap.monsters.length, newCount, 'no pet should be force-placed on new map');
+        assert.equal(failedArrivals.length, 1, 'failed pet arrival should be tracked');
     });
 
     it('mon_arrive leaves trapped pets behind', () => {
