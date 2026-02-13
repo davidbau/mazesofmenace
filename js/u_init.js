@@ -366,6 +366,10 @@ export function mon_arrive(oldMap, newMap, player, opts = {}) {
     // Preserve relative pet order when prepending into newMap.monsters.
     for (let i = pets.length - 1; i >= 0; i--) {
         const pet = pets[i];
+        const wasOnOldMap = oldMap.monsters.includes(pet);
+        if (wasOnOldMap) {
+            oldMap.removeMonster(pet);
+        }
         const mtame = pet.mtame || (pet.tame ? 10 : 0);
         const bound = mtame > 0 ? 10 : (pet.mpeaceful ? 5 : 2);
 
@@ -399,7 +403,6 @@ export function mon_arrive(oldMap, newMap, player, opts = {}) {
             continue;
         }
 
-        oldMap.removeMonster(pet);
         pet.mx = petX;
         pet.my = petY;
         pet.sleeping = false;
