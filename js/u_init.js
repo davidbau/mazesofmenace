@@ -225,16 +225,21 @@ function makedog(map, player, depth) {
     const positions = collectCoordsShuffle(player.x, player.y, 3);
 
     // Find first valid position (accessible terrain, no existing monster)
-    let petX = player.x + 1, petY = player.y; // fallback
+    let petX = 0, petY = 0;
+    let foundPos = false;
     for (const pos of positions) {
         const loc = map.at(pos.x, pos.y);
         if (loc && ACCESSIBLE(loc.typ) && !map.monsterAt(pos.x, pos.y)
             && !(pos.x === player.x && pos.y === player.y)) {
             petX = pos.x;
             petY = pos.y;
+            foundPos = true;
             break;
         }
     }
+    // C ref: makemon.c byyou path returns NULL if enexto_core fails.
+    // No synthetic fallback placement.
+    if (!foundPos) return null;
 
     // C ref: makemon.c:1252 — mtmp->m_id = next_ident()
     rnd(2);
