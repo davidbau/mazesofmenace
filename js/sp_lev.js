@@ -50,6 +50,21 @@ const STAIRS_DOWN = STAIRS;
 const LADDER_UP = LADDER;
 const LADDER_DOWN = LADDER;
 
+function canOverwriteTerrain(oldTyp) {
+    // C ref: rm.h CAN_OVERWRITE_TERRAIN() default behavior.
+    return oldTyp !== LADDER && oldTyp !== STAIRS;
+}
+
+function setLevlTypAt(map, x, y, newTyp) {
+    if (!map || x < 0 || x >= COLNO || y < 0 || y >= ROWNO) return false;
+    if (newTyp < STONE || newTyp >= MAX_TYPE) return false;
+    const loc = map.locations[x][y];
+    if (!loc) return false;
+    if (!canOverwriteTerrain(loc.typ)) return false;
+    loc.typ = newTyp;
+    return true;
+}
+
 function getProcessEnv(name) {
     return (typeof process !== 'undefined' && process.env) ? process.env[name] : undefined;
 }
@@ -3809,8 +3824,8 @@ export function altar(opts) {
         altarAlign = rn2(3) - 1;
     }
 
+    if (!setLevlTypAt(levelState.map, pos.x, pos.y, ALTAR)) return;
     const loc = levelState.map.locations[pos.x][pos.y];
-    loc.typ = ALTAR;
     loc.altarAlign = altarAlign;
     loc.flags = altarAlign;
     markSpLevTouched(pos.x, pos.y);
@@ -3894,7 +3909,7 @@ export function feature(type, x, y) {
 
     const pos = getLocationCoord(fx, fy, GETLOC_ANY_LOC, levelState.currentRoom || null);
     if (pos.x >= 0 && pos.x < 80 && pos.y >= 0 && pos.y < 21) {
-        levelState.map.locations[pos.x][pos.y].typ = terrain;
+        if (!setLevlTypAt(levelState.map, pos.x, pos.y, terrain)) return;
         if (terrain === ALTAR) {
             levelState.map.locations[pos.x][pos.y].altarAlign = A_NEUTRAL;
         }

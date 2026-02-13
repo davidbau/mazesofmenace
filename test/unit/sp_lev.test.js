@@ -167,6 +167,16 @@ describe('sp_lev.js - des.* API', () => {
         assert.equal(map.locations[10][5].typ, ALTAR);
     });
 
+    it('des.altar does not overwrite stairs/ladder tiles', () => {
+        resetLevelState();
+        des.level_init({ style: 'solidfill', fg: '.' });
+        des.stair('up', 10, 5);
+        des.altar({ x: 10, y: 5, align: 'law' });
+
+        const map = getLevelState().map;
+        assert.equal(map.locations[10][5].typ, STAIRS_UP);
+    });
+
     it('should preserve leading and trailing blank map lines', () => {
         resetLevelState();
         des.level_init({ style: 'solidfill', fg: ' ' });
