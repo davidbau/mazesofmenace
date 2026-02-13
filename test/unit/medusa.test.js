@@ -66,6 +66,8 @@ describe('Medusa level generation', () => {
         // monster placement resolves to the nearest valid square.
         const medusa = map.monsters.find(m => m.id === 'Medusa');
         assert.ok(medusa, 'Medusa should be present');
+        // Coordinates are map-relative after des.map(); medusa.lua uses (36,10)
+        // relative to this level's map origin, which is (3,1) for seed 1.
         assert.equal(medusa.x, 39, 'Medusa X position');
         assert.equal(medusa.y, 11, 'Medusa Y position');
         assert.equal(medusa.msleeping, true, 'Medusa should be sleeping');
