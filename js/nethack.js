@@ -1104,6 +1104,8 @@ class NetHackGame {
     // Generate or retrieve a level
     // C ref: dungeon.c -- level management
     changeLevel(depth, transitionDir = null) {
+        const previousMap = this.map || this.levels[this.player.dungeonLevel] || null;
+
         // Cache current level
         if (this.map) {
             this.levels[this.player.dungeonLevel] = this.map;
@@ -1113,19 +1115,21 @@ class NetHackGame {
         if (this.levels[depth]) {
             this.map = this.levels[depth];
         } else {
-            const previousMap = this.levels[this.player.dungeonLevel];
             // Generate new level (wallification called inside makelevel)
             this.map = makelevel(depth);
             this.levels[depth] = this.map;
+        }
 
-            // C ref: dog.c:474 mon_arrive — pet arrival on level change
-            // When descending to a new level (depth > 1), pet follows player.
-            if (depth > 1) {
-                mon_arrive(previousMap, this.map, this.player, {
-                    heroX: this.map.upstair.x,
-                    heroY: this.map.upstair.y,
-                });
-            }
+        // C ref: dog.c keepdogs/losedogs/mon_arrive — pets can follow on
+        // level transitions regardless of whether destination was newly made
+        // or restored from cache.
+        if (previousMap && previousMap !== this.map
+            && (transitionDir === 'down' || transitionDir === 'up')) {
+            const arrival = getArrivalPosition(this.map, depth, transitionDir);
+            mon_arrive(previousMap, this.map, this.player, {
+                heroX: arrival.x,
+                heroY: arrival.y,
+            });
         }
 
         this.player.dungeonLevel = depth;
