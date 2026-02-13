@@ -18,7 +18,36 @@ import { mons } from './monsters.js';
 import { doname } from './mkobj.js';
 import { showPager } from './pager.js';
 import { handleZap } from './zap.js';
-import { saveGame, loadFlags, saveFlags, OPTION_DEFS } from './storage.js';
+import { saveGame, saveFlags } from './storage.js';
+import {
+    renderOptionsMenu,
+    getTotalPages,
+    normalizeOptionsPage,
+    getOptionByKey,
+    setOptionValue,
+} from './options_menu.js';
+
+const STATUS_HILITE_FIELDS = [
+    'title', 'strength', 'dexterity', 'constitution', 'intelligence', 'wisdom',
+    'charisma', 'alignment', 'carrying-capacity', 'gold', 'power', 'power-max',
+    'experience-level', 'armor-class', 'HD', 'time', 'hunger', 'hitpoints',
+    'hitpoints-max', 'dungeon-level', 'experience', 'condition', 'version'
+];
+
+const STATUS_CONDITION_FIELDS_ALPHA = [
+    'cond_barehanded', 'cond_blind', 'cond_busy', 'cond_conf', 'cond_deaf',
+    'cond_fly', 'cond_foodPois', 'cond_glowhands', 'cond_grab', 'cond_hallucinat',
+    'cond_held', 'cond_holding', 'cond_ice', 'cond_iron', 'cond_lava',
+    'cond_levitate', 'cond_paralyzed', 'cond_ride', 'cond_sleep', 'cond_slime',
+    'cond_slip', 'cond_stone', 'cond_strngl', 'cond_stun', 'cond_submerged',
+    'cond_termIll', 'cond_tethered', 'cond_trap', 'cond_unconscious', 'cond_woundedlegs'
+];
+
+const STATUS_CONDITION_DEFAULT_ON = new Set([
+    'cond_blind', 'cond_conf', 'cond_deaf', 'cond_fly', 'cond_foodPois',
+    'cond_grab', 'cond_hallucinat', 'cond_iron', 'cond_lava', 'cond_levitate',
+    'cond_ride', 'cond_slime', 'cond_stone', 'cond_strngl', 'cond_stun', 'cond_termIll'
+]);
 
 // Direction key mappings
 // C ref: cmd.c -- movement key definitions
@@ -1750,57 +1779,232 @@ async function handleSet(game) {
     const { display, player } = game;
     const flags = game.flags;
 
-    let currentPage = 0;
-    const ITEMS_PER_PAGE = 20; // Supports pagination for future expansion
+    let currentPage = 1;
+    let showHelp = false;
+
+    function applyOptionSideEffects() {
+        player.showExp = !!flags.showexp;
+        player.showTime = !!flags.time;
+        window.gameFlags = flags;
+    }
+
+    function drawOptions() {
+        const normalizedPage = normalizeOptionsPage(currentPage, showHelp);
+        currentPage = normalizedPage;
+        const { screen, attrs } = renderOptionsMenu(normalizedPage, showHelp, flags);
+
+        display.clearScreen();
+        for (let r = 0; r < display.rows; r++) {
+            const line = screen[r] || '';
+            const lineAttrs = attrs[r] || '';
+            const maxCols = Math.min(display.cols, line.length);
+            for (let c = 0; c < maxCols; c++) {
+                const attr = lineAttrs[c] === '1' ? 1 : 0;
+                display.putstr(c, r, line[c], undefined, attr);
+            }
+        }
+    }
+
+    function normalizeListFlag(flagName) {
+        if (!Array.isArray(flags[flagName])) {
+            flags[flagName] = [];
+        }
+        return flags[flagName];
+    }
+
+    function normalizeStatusConditionFlag() {
+        const raw = flags.statusconditions;
+        if (Array.isArray(raw)) {
+            flags.statusconditions = raw.filter(name => STATUS_CONDITION_FIELDS_ALPHA.includes(name));
+            return flags.statusconditions;
+        }
+        const count = (typeof raw === 'number')
+            ? Math.max(0, Math.min(STATUS_CONDITION_FIELDS_ALPHA.length, raw))
+            : STATUS_CONDITION_DEFAULT_ON.size;
+        flags.statusconditions = STATUS_CONDITION_FIELDS_ALPHA.filter((name, idx) => {
+            if (typeof raw === 'number') return idx < count;
+            return STATUS_CONDITION_DEFAULT_ON.has(name);
+        });
+        return flags.statusconditions;
+    }
+
+    function renderSimpleEditorLines(title, lines) {
+        display.clearScreen();
+        const maxRows = Math.min(display.rows, lines.length + 3);
+        const header = ` ${title} `;
+        display.putstr(0, 0, header, undefined, 1);
+        display.putstr(0, 1, '');
+        for (let i = 0; i < maxRows - 2; i++) {
+            display.putstr(0, i + 2, lines[i].substring(0, display.cols));
+        }
+    }
+
+    function renderCenteredList(lines, left = 41) {
+        display.clearScreen();
+        for (let i = 0; i < lines.length && i < display.rows; i++) {
+            display.putstr(left, i, lines[i].substring(0, Math.max(0, display.cols - left)));
+        }
+    }
+
+    async function editDoWhatCountOption(option) {
+        const list = normalizeListFlag(option.flag);
+        const addPrompt = option.flag === 'menucolors'
+            ? 'What new menucolor pattern? '
+            : 'What new autopickup exception pattern? ';
+        const addLabel = option.flag === 'menucolors'
+            ? 'a - add new menucolor'
+            : 'a - add new autopickup exception';
+
+        while (true) {
+            const lines = [
+                'Do what?',
+                '',
+                addLabel,
+                'x * exit this menu',
+                '(end)'
+            ];
+            renderCenteredList(lines);
+
+            const ch = await nhgetch();
+            const c = String.fromCharCode(ch);
+            if (ch === 27 || c === 'x') {
+                saveFlags(flags);
+                return;
+            }
+            if (c === 'a') {
+                const added = await getlin(addPrompt, display);
+                if (added !== null) {
+                    const trimmed = added.trim();
+                    if (trimmed.length > 0) list.push(trimmed);
+                }
+                continue;
+            }
+        }
+    }
+
+    async function editStatusHilitesOption() {
+        if (!flags.statushighlights || typeof flags.statushighlights !== 'object' || Array.isArray(flags.statushighlights)) {
+            flags.statushighlights = {};
+        }
+        let page = 1;
+        const pageSize = 21;
+
+        while (true) {
+            const lines = [];
+            const totalPages = Math.ceil(STATUS_HILITE_FIELDS.length / pageSize);
+            const start = (page - 1) * pageSize;
+            const visible = STATUS_HILITE_FIELDS.slice(start, start + pageSize);
+
+            if (page === 1) {
+                lines.push('Status hilites:');
+                lines.push('');
+            }
+            for (let i = 0; i < visible.length; i++) {
+                const key = String.fromCharCode('a'.charCodeAt(0) + i);
+                lines.push(`${key} - ${visible[i]}`);
+            }
+            lines.push(`(${page} of ${totalPages})`);
+            display.clearScreen();
+            for (let i = 0; i < lines.length && i < display.rows; i++) {
+                const row = (i === lines.length - 1) ? 23 : i;
+                display.putstr(0, row, lines[i].substring(0, display.cols));
+            }
+
+            const ch = await nhgetch();
+            const c = String.fromCharCode(ch);
+            if (ch === 27 || c === 'q') {
+                return;
+            }
+            if (c === '>' && page < totalPages) {
+                page += 1;
+                continue;
+            }
+            if (c === '<' && page > 1) {
+                page -= 1;
+                continue;
+            }
+            if (c >= 'a' && c <= 'z') {
+                const idx = c.charCodeAt(0) - 'a'.charCodeAt(0);
+                if (idx < 0 || idx >= visible.length) continue;
+                const field = visible[idx];
+                const label = field.toLowerCase();
+                const lines2 = [
+                    `Select ${label} field hilite behavior:`,
+                    '',
+                    `a - Always highlight ${label}`,
+                    `${field === 'hunger' ? 'c - hunger value changes' : `c - ${label} value changes`}`,
+                    `${field === 'hunger' ? 't - hunger text match' : `t - ${label} text match`}`,
+                    '(end)'
+                ];
+                renderCenteredList(lines2);
+                const ch2 = await nhgetch();
+                const c2 = String.fromCharCode(ch2);
+                if (c2 === 'a' || c2 === 'c' || c2 === 't') {
+                    flags.statushighlights[field] = c2;
+                    saveFlags(flags);
+                }
+            }
+        }
+    }
+
+    async function editStatusConditionsOption() {
+        const enabled = normalizeStatusConditionFlag();
+        let page = 1;
+        const pageSize = 19;
+
+        while (true) {
+            const totalPages = Math.ceil(STATUS_CONDITION_FIELDS_ALPHA.length / pageSize);
+            const start = (page - 1) * pageSize;
+            const visible = STATUS_CONDITION_FIELDS_ALPHA.slice(start, start + pageSize);
+            const lines = [];
+            if (page === 1) {
+                lines.push('Choose status conditions to toggle');
+                lines.push('');
+                lines.push('S - change sort order from "alphabetically" to "by ranking"');
+                lines.push('sorted alphabetically');
+            }
+            for (let i = 0; i < visible.length; i++) {
+                const key = String.fromCharCode('a'.charCodeAt(0) + i);
+                const mark = enabled.includes(visible[i]) ? '*' : '-';
+                lines.push(`${key} ${mark} ${visible[i]}`);
+            }
+            lines.push(`(${page} of ${totalPages})`);
+
+            display.clearScreen();
+            for (let i = 0; i < lines.length && i < display.rows; i++) {
+                const row = (i === lines.length - 1) ? 23 : i;
+                display.putstr(0, row, lines[i].substring(0, display.cols));
+            }
+
+            const ch = await nhgetch();
+            const c = String.fromCharCode(ch);
+            if (ch === 27) {
+                saveFlags(flags);
+                return;
+            }
+            if (c === '>' && page < totalPages) {
+                page += 1;
+                continue;
+            }
+            if (c === '<' && page > 1) {
+                page -= 1;
+                continue;
+            }
+            if (c >= 'a' && c <= 'z') {
+                const idx = c.charCodeAt(0) - 'a'.charCodeAt(0);
+                if (idx < 0 || idx >= visible.length) continue;
+                const field = visible[idx];
+                const pos = enabled.indexOf(field);
+                if (pos >= 0) enabled.splice(pos, 1);
+                else enabled.push(field);
+                saveFlags(flags);
+            }
+        }
+    }
 
     // Interactive loop - C ref: options.c doset() menu loop
     while (true) {
-        // Build options display
-        const lines = [];
-        lines.push('Current Options:');
-        lines.push('');
-
-        // C ref: C NetHack shows string options first ("Compounds"), then booleans
-        // Display string/compound options
-        const stringOpts = OPTION_DEFS.filter(d => d.type === 'string');
-        if (stringOpts.length > 0) {
-            lines.push('Compounds (selecting will prompt for new value):');
-            for (const def of stringOpts) {
-                const value = flags[def.name] || '';
-                // C ref: format is "x) label [current_value]"
-                lines.push(`  ${def.menuChar}) ${def.label} [${value}]`);
-            }
-            lines.push('');
-        }
-
-        // Display boolean options by category
-        const categories = {
-            'Gameplay': ['pickup', 'safe_pet', 'confirm'],
-            'Display': ['showexp', 'color', 'time', 'lit_corridor', 'DECgraphics'],
-            'Interface': ['verbose', 'tombstone', 'rest_on_space', 'number_pad', 'msg_window'],
-        };
-
-        for (const [category, optNames] of Object.entries(categories)) {
-            lines.push(`${category}:`);
-            for (const optName of optNames) {
-                const def = OPTION_DEFS.find(d => d.name === optName);
-                if (def && def.type === 'boolean') {
-                    const value = flags[def.name] ? 'ON' : 'OFF';
-                    lines.push(`  ${def.menuChar}) ${def.label}: ${value}`);
-                }
-            }
-            lines.push('');
-        }
-
-        lines.push('Press letter to toggle, q/ESC to exit');
-        lines.push('Navigation: > (next) < (prev) ^ (first)');
-
-        // Clear screen and display options
-        // C ref: TTY interface - full screen option display
-        display.clearScreen();
-        for (let i = 0; i < lines.length && i < display.rows; i++) {
-            display.putstr(0, i, lines[i].substring(0, display.cols));
-        }
+        drawOptions();
 
         // Get input - C ref: options.c menu input loop
         const ch = await nhgetch();
@@ -1813,66 +2017,59 @@ async function handleSet(game) {
 
         // Check for navigation - C ref: MENU_NEXT_PAGE, MENU_PREVIOUS_PAGE, MENU_FIRST_PAGE
         if (c === '>') {
-            // Next page (currently only 1 page, structured for future)
+            const maxPage = getTotalPages(showHelp);
+            if (currentPage < maxPage) currentPage += 1;
             continue;
         }
         if (c === '<') {
-            // Previous page
+            if (currentPage > 1) currentPage -= 1;
             continue;
         }
         if (c === '^') {
-            // First page
-            currentPage = 0;
+            currentPage = 1;
+            continue;
+        }
+        if (c === '?') {
+            showHelp = !showHelp;
+            currentPage = normalizeOptionsPage(currentPage, showHelp);
             continue;
         }
 
         // Check for option selection
-        const def = OPTION_DEFS.find(d => d.menuChar === c);
-        if (def) {
-            if (def.type === 'boolean') {
-                // Toggle boolean option - C ref: immediate toggle in menu
-                flags[def.name] = !flags[def.name];
-
-                // Apply side-effects for specific flags
-                if (def.name === 'showexp') {
-                    player.showExp = flags.showexp;
-                }
-                if (def.name === 'time') {
-                    player.showTime = flags.time;
-                }
-
-                // Update global flags for input handler
-                window.gameFlags = flags;
-
-                // Save immediately (persist to localStorage)
-                saveFlags(flags);
-            } else if (def.type === 'string') {
-                // Prompt for string option value
-                // C ref: options.c - "Set <option> to what?"
-                const newValue = await getlin(`Set ${def.name} to what? `, display);
-
-                // ESC cancels (getlin returns null)
-                if (newValue !== null) {
-                    // Enforce max length for name (31 chars)
-                    const MAX_NAME_LENGTH = 31;
-                    if (def.name === 'name' && newValue.length > MAX_NAME_LENGTH) {
-                        flags[def.name] = newValue.substring(0, MAX_NAME_LENGTH);
-                    } else {
-                        flags[def.name] = newValue;
-                    }
-
-                    // Update player name if changed
-                    if (def.name === 'name') {
-                        player.name = flags.name;
-                    }
-
-                    // Save immediately
-                    saveFlags(flags);
-                }
-                // After editing string option, clear and redraw menu
-                // (getlin modifies display, so we need to redraw)
+        const selected = getOptionByKey(currentPage, showHelp, c);
+        if (selected) {
+            if (selected.type === 'bool') {
+                setOptionValue(currentPage, showHelp, c, null, flags);
+                applyOptionSideEffects();
+                continue;
             }
-            // Loop continues - menu stays open
+
+            if (selected.type === 'count') {
+                if (selected.flag === 'statusconditions') {
+                    await editStatusConditionsOption();
+                    currentPage = 1;
+                    showHelp = false;
+                } else if (selected.flag === 'statushighlights') {
+                    await editStatusHilitesOption();
+                    currentPage = 1;
+                    showHelp = false;
+                } else {
+                    await editDoWhatCountOption(selected);
+                    currentPage = 1;
+                    showHelp = false;
+                }
+                continue;
+            }
+
+            const prompt = `Set ${selected.name} to what? `;
+            const newValue = await getlin(prompt, display);
+            if (newValue !== null) {
+                setOptionValue(currentPage, showHelp, c, newValue, flags);
+                if (selected.flag === 'name') {
+                    player.name = flags.name;
+                }
+                applyOptionSideEffects();
+            }
         }
         // If invalid key, just loop again (menu stays open, no error message)
     }

@@ -5,7 +5,7 @@
  * Displays current option values and allows toggling.
  */
 
-import { loadFlags, saveFlags, DEFAULT_FLAGS } from './storage.js';
+import { saveFlags, DEFAULT_FLAGS } from './storage.js';
 
 /**
  * Options menu data structure matching C NetHack
@@ -72,6 +72,68 @@ export const OPTIONS_DATA = {
     ]
 };
 
+const HELP_OPTIONS_PER_PAGE = 5;
+const HELP_TOTAL_PAGES = 5;
+
+function clampPage(page, min, max) {
+    const n = Number.isFinite(page) ? Math.trunc(page) : min;
+    if (n < min) return min;
+    if (n > max) return max;
+    return n;
+}
+
+function flattenOptions() {
+    const out = [];
+    const pages = [
+        { number: 1, categories: OPTIONS_DATA.page1 },
+        { number: 2, categories: OPTIONS_DATA.page2 }
+    ];
+    for (const page of pages) {
+        for (const category of page.categories) {
+            for (const option of category.options) {
+                out.push({ ...option, category: category.category, page: page.number });
+            }
+        }
+    }
+    return out;
+}
+
+const FLAT_OPTIONS = flattenOptions();
+
+export function getTotalPages(showHelp) {
+    if (showHelp) return HELP_TOTAL_PAGES;
+    return 2;
+}
+
+export function normalizeOptionsPage(page, showHelp) {
+    return clampPage(page, 1, getTotalPages(showHelp));
+}
+
+export function getVisibleOptions(page, showHelp) {
+    if (!showHelp) {
+        const categories = page === 2 ? OPTIONS_DATA.page2 : OPTIONS_DATA.page1;
+        const out = [];
+        for (const category of categories) {
+            for (const option of category.options) {
+                out.push({ ...option, category: category.category, page });
+            }
+        }
+        return out;
+    }
+
+    const normalizedPage = normalizeOptionsPage(page, true);
+    const start = (normalizedPage - 1) * HELP_OPTIONS_PER_PAGE;
+    const end = normalizedPage === HELP_TOTAL_PAGES
+        ? FLAT_OPTIONS.length
+        : start + HELP_OPTIONS_PER_PAGE;
+    return FLAT_OPTIONS.slice(start, end);
+}
+
+export function getOptionByKey(page, showHelp, key) {
+    const options = getVisibleOptions(page, showHelp);
+    return options.find(opt => opt.key === key) || null;
+}
+
 /**
  * Render options menu to a 24x80 grid
  * @param {number} page - Page number (1 or 2)
@@ -80,16 +142,16 @@ export const OPTIONS_DATA = {
  * @returns {object} - {screen: string[], attrs: string[]}
  */
 export function renderOptionsMenu(page, showHelp, flags) {
+    const normalizedPage = normalizeOptionsPage(page, showHelp);
+
     // C NetHack uses variable-length lines, not fixed 80-char
     const screen = Array(24).fill('');
     const attrs = Array(24).fill('');
 
     let row = 0;
-    let optionsRendered = 0;
-    const maxOptionsInHelpMode = 5; // C shows only ~5 options per screen in help mode
 
-    // Page 1 shows header and help, page 2 starts directly with categories
-    if (page === 1) {
+    // Help mode and page 1 both show header/help controls
+    if (showHelp || normalizedPage === 1) {
         // Header (exactly 20 chars with inverse video on "Options")
         screen[row] = ' Options            ';
         // Inverse video on positions 1-7 ("Options")
@@ -115,14 +177,27 @@ export function renderOptionsMenu(page, showHelp, flags) {
         row += 1;
     }
 
-    // Get page data
-    const pageData = page === 1 ? OPTIONS_DATA.page1 : OPTIONS_DATA.page2;
+    let pageData;
+    if (!showHelp) {
+        pageData = normalizedPage === 1 ? OPTIONS_DATA.page1 : OPTIONS_DATA.page2;
+    } else {
+        const visibleOptions = getVisibleOptions(normalizedPage, true);
+        pageData = [];
+        let currentCategory = null;
+        for (const opt of visibleOptions) {
+            if (!currentCategory || currentCategory.category !== opt.category) {
+                currentCategory = { category: opt.category, options: [] };
+                pageData.push(currentCategory);
+            }
+            currentCategory.options.push(opt);
+        }
+    }
 
     // Render each category
     let firstCategory = true;
     for (const category of pageData) {
-        // Blank line before category (except first on page 2)
-        if (!(page === 2 && firstCategory)) {
+        // Blank line before category (except first on page 2 compact view)
+        if (!(normalizedPage === 2 && !showHelp && firstCategory)) {
             screen[row] = ' '.repeat(20);
             attrs[row] = '0'.repeat(20);
             row += 1;
@@ -138,8 +213,6 @@ export function renderOptionsMenu(page, showHelp, flags) {
 
         // Render options
         for (const opt of category.options) {
-            // In help mode, limit to maxOptionsInHelpMode per screen
-            if (showHelp && optionsRendered >= maxOptionsInHelpMode) break;
             if (row >= 23) break; // Save room for footer
 
             // Format: " a - option_name              [value]"
@@ -169,7 +242,6 @@ export function renderOptionsMenu(page, showHelp, flags) {
             screen[row] = line;
             attrs[row] = '0'.repeat(line.length);
             row += 1;
-            optionsRendered++;
 
             // Show help text if enabled
             if (showHelp && opt.help) {
@@ -190,16 +262,15 @@ export function renderOptionsMenu(page, showHelp, flags) {
 
     // Blank line before footer (only on page 1 in non-help mode)
     // In help mode, the blank after last help text serves this purpose
-    if (page === 1 && !showHelp) {
+    if (normalizedPage === 1 && !showHelp) {
         screen[row] = ' '.repeat(20);
         attrs[row] = '0'.repeat(20);
         row += 1;
     }
 
     // Footer - page indicator on current row (exactly 20 chars)
-    // In help mode, show total help pages (C shows 5 for full options)
-    const totalPages = showHelp ? 5 : 2;
-    screen[row] = ' (' + page + ' of ' + totalPages + ')           ';
+    const totalPages = getTotalPages(showHelp);
+    screen[row] = ' (' + normalizedPage + ' of ' + totalPages + ')           ';
     attrs[row] = '0'.repeat(20);
     row += 1;
 
@@ -239,7 +310,16 @@ function getOptionValue(opt, flags) {
 
         case 'count':
             // [(N currently set)]
-            const count = opt.count !== undefined ? opt.count : (flagValue || 0);
+            let count = 0;
+            if (Array.isArray(flagValue)) {
+                count = flagValue.length;
+            } else if (typeof flagValue === 'number') {
+                count = flagValue;
+            } else if (flagValue && typeof flagValue === 'object') {
+                count = Object.keys(flagValue).length;
+            } else if (opt.count !== undefined) {
+                count = opt.count;
+            }
             return '(' + count + ' currently set)';
 
         default:
@@ -251,21 +331,39 @@ function getOptionValue(opt, flags) {
  * Toggle an option value
  */
 export function toggleOption(page, key, flags) {
-    const pageData = page === 1 ? OPTIONS_DATA.page1 : OPTIONS_DATA.page2;
+    const opt = getOptionByKey(page, false, key);
+    if (!opt || opt.type !== 'bool') return false;
 
-    // Find the option
-    for (const category of pageData) {
-        const opt = category.options.find(o => o.key === key);
-        if (opt) {
-            if (opt.type === 'bool') {
-                // Toggle boolean
-                flags[opt.flag] = !flags[opt.flag];
-                saveFlags(flags);
-                return true;
-            }
-            // For text/number types, would need input dialog (not implemented yet)
-            return false;
-        }
+    flags[opt.flag] = !flags[opt.flag];
+    saveFlags(flags);
+    return true;
+}
+
+export function setOptionValue(page, showHelp, key, rawValue, flags) {
+    const opt = getOptionByKey(page, showHelp, key);
+    if (!opt) return false;
+
+    if (opt.type === 'bool') {
+        flags[opt.flag] = !flags[opt.flag];
+        saveFlags(flags);
+        return true;
     }
+
+    if (rawValue === null || rawValue === undefined) return false;
+
+    if (opt.type === 'number' || opt.type === 'count') {
+        const parsed = parseInt(String(rawValue).trim(), 10);
+        if (Number.isNaN(parsed)) return false;
+        flags[opt.flag] = parsed;
+        saveFlags(flags);
+        return true;
+    }
+
+    if (opt.type === 'text') {
+        flags[opt.flag] = String(rawValue);
+        saveFlags(flags);
+        return true;
+    }
+
     return false;
 }

@@ -15,6 +15,12 @@ globalThis.localStorage = {
 import { test } from 'node:test';
 import assert from 'assert';
 import { loadFlags, saveFlags, DEFAULT_FLAGS, OPTION_DEFS } from '../../js/storage.js';
+import {
+    getTotalPages,
+    getOptionByKey,
+    setOptionValue,
+    renderOptionsMenu,
+} from '../../js/options_menu.js';
 
 test('options menu: flags structure matches OPTION_DEFS', () => {
     const flags = loadFlags();
@@ -288,4 +294,51 @@ test('options menu: persistence works across multiple save/reload cycles', () =>
     assert.strictEqual(flags.pickup, false, 'Final: pickup should be false');
     assert.strictEqual(flags.time, true, 'Final: time should be true');
     assert.strictEqual(flags.color, false, 'Final: color should be false');
+});
+
+test('options menu: help mode uses multiple pages', () => {
+    assert.strictEqual(getTotalPages(false), 2, 'compact options should have 2 pages');
+    assert.strictEqual(getTotalPages(true), 5, 'help options should have 5 pages');
+});
+
+test('options menu: can resolve and set visible option values', () => {
+    const flags = loadFlags();
+
+    const compactOpt = getOptionByKey(1, false, 'a');
+    assert.ok(compactOpt, 'compact page key should resolve');
+    assert.strictEqual(compactOpt.name, 'fruit', 'compact page 1 a should be fruit');
+
+    const helpOpt = getOptionByKey(5, true, 'p');
+    assert.ok(helpOpt, 'help page key should resolve');
+    assert.strictEqual(helpOpt.name, 'time', 'help page 5 should include time option');
+
+    const beforeFruit = flags.fruit;
+    const beforeStatusLines = flags.statuslines;
+    setOptionValue(1, false, 'a', 'pear', flags);
+    setOptionValue(2, false, 'o', '3', flags);
+
+    assert.strictEqual(flags.fruit, 'pear', 'text option should update');
+    assert.strictEqual(flags.statuslines, 3, 'number option should parse and update');
+
+    flags.fruit = beforeFruit;
+    flags.statuslines = beforeStatusLines;
+    saveFlags(flags);
+});
+
+test('options menu: count options support array-backed values', () => {
+    const flags = loadFlags();
+    flags.menucolors = ['warn:yellow', 'critical:red'];
+    flags.statushighlights = ['hp<30%/red'];
+    flags.autopickup_exceptions = ['"cursed item"', 'name:dagger'];
+    flags.statusconditions = ['blind', 'hallu', 'stunned'];
+
+    const { screen } = renderOptionsMenu(2, false, flags);
+    const pageText = screen.join('\n');
+
+    assert.ok(pageText.includes('menu colors') && pageText.includes('(2 currently set)'),
+        'menu colors count should reflect array length');
+    assert.ok(pageText.includes('status highlight rules') && pageText.includes('(1 currently set)'),
+        'status highlight rules count should reflect array length');
+    assert.ok(pageText.includes('status condition fields') && pageText.includes('(3 currently set)'),
+        'status condition fields count should reflect array length');
 });
