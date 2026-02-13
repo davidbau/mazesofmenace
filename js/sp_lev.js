@@ -2622,28 +2622,46 @@ export function stair(direction, x, y) {
         levelState.map = new GameMap();
     }
 
-    const stairType = direction === 'up' ? STAIRS_UP : STAIRS_DOWN;
+    let dir = direction;
+    let sx = x;
+    let sy = y;
+
+    if (typeof direction === 'object' && direction !== null) {
+        dir = direction.dir || direction.direction || 'down';
+        if (Array.isArray(direction.coord)) {
+            sx = direction.coord[0];
+            sy = direction.coord[1];
+        } else if (direction.coord && typeof direction.coord === 'object') {
+            sx = direction.coord.x;
+            sy = direction.coord.y;
+        } else {
+            sx = direction.x;
+            sy = direction.y;
+        }
+    }
+
+    const stairType = dir === 'up' ? STAIRS_UP : STAIRS_DOWN;
     // C ref: sp_lev.c l_create_stairway() -> set_ok_location_func(good_stair_loc)
     // where random stair placement accepts only ROOM/CORR/ICE.
     setOkLocationFunc((tx, ty) => {
         const typ = levelState.map.locations[tx][ty].typ;
         return typ === ROOM || typ === CORR || typ === ICE;
     });
-    const pos = getLocationCoord(x, y, GETLOC_DRY, levelState.currentRoom || null);
+    const pos = getLocationCoord(sx, sy, GETLOC_DRY, levelState.currentRoom || null);
     setOkLocationFunc(null);
     const stairX = pos.x;
     const stairY = pos.y;
     if (stairX < 0 || stairY < 0) return;
 
     if (stairX >= 0 && stairX < COLNO && stairY >= 0 && stairY < ROWNO) {
-        if (!canPlaceStair(direction)) {
+        if (!canPlaceStair(dir)) {
             return;
         }
         const loc = levelState.map.locations[stairX][stairY];
         loc.typ = stairType;
         // Keep both stair encodings in sync: level terrain metadata and
         // map up/down stair coordinates used by room-selection heuristics.
-        const up = (direction === 'up') ? 1 : 0;
+        const up = (dir === 'up') ? 1 : 0;
         loc.stairdir = up;
         loc.flags = up;
         if (up) {
@@ -3273,8 +3291,13 @@ export function door(state_or_opts, x, y) {
         // Options object style: des.door({ state: "nodoor", wall: "all" })
         state = state_or_opts.state || 'closed';
         wall = state_or_opts.wall;
-        doorX = state_or_opts.x ?? -1;
-        doorY = state_or_opts.y ?? -1;
+        if (Array.isArray(state_or_opts.coord)) {
+            doorX = state_or_opts.coord[0];
+            doorY = state_or_opts.coord[1];
+        } else {
+            doorX = state_or_opts.x ?? -1;
+            doorY = state_or_opts.y ?? -1;
+        }
 
         // If wall is specified, place doors on room walls
         if (wall && levelState.currentRoom) {
