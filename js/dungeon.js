@@ -32,7 +32,7 @@ import { GameMap, makeRoom, FILL_NONE, FILL_NORMAL } from './map.js';
 import { rn2, rnd, rn1, d, getRngCallCount } from './rng.js';
 import { getbones } from './bones.js';
 import { mkobj, mksobj, mkcorpstat, weight, setLevelDepth, TAINT_AGE } from './mkobj.js';
-import { makemon, mkclass, NO_MM_FLAGS, MM_NOGRP } from './makemon.js';
+import { makemon, mkclass, NO_MM_FLAGS, MM_NOGRP, setMakemonRoleContext } from './makemon.js';
 import { S_HUMAN, PM_ELF, PM_HUMAN, PM_GNOME, PM_DWARF, PM_ORC, PM_ARCHEOLOGIST, PM_WIZARD } from './monsters.js';
 import { init_objects } from './o_init.js';
 import { roles } from './player.js';
@@ -3864,6 +3864,7 @@ function mkshop(map) {
 //        u_init.c u_init(), nhlua pre_themerooms
 export function initLevelGeneration(roleIndex) {
     init_objects();
+    setMakemonRoleContext(roleIndex);
     simulateDungeonInit(roleIndex);
     _themesLoaded = false; // Reset Lua theme state for new game
     setMtInitialized(false); // Reset MT RNG state for new game

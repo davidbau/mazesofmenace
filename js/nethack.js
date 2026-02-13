@@ -15,6 +15,7 @@ import { Player, roles, races, validRacesForRole, validAlignsForRoleRace,
          roleNameForGender, alignName, formatLoreText } from './player.js';
 import { GameMap } from './map.js';
 import { initLevelGeneration, makelevel, setGameSeed } from './dungeon.js';
+import { setMakemonPlayerContext } from './makemon.js';
 import { rhack } from './commands.js';
 import { movemon, settrack } from './monmove.js';
 import { simulatePostLevelInit, mon_arrive } from './u_init.js';
@@ -136,6 +137,7 @@ class NetHackGame {
         // One-time level generation init (init_objects + dungeon structure)
         // Role-dependent RNG in C startup depends on selected role.
         // C ref: allmain.c startup ordering around role selection and init_dungeons.
+        setMakemonPlayerContext(this.player);
         initLevelGeneration(this.player.roleIndex);
 
         // Generate first level
@@ -189,6 +191,7 @@ class NetHackGame {
         // Restore game state: player + inventory + equip + context
         const restored = restGameState(gs);
         this.player = restored.player;
+        setMakemonPlayerContext(this.player);
         this.wizard = restored.wizard;
         this.turnCount = restored.turnCount;
         this.seerTurn = restored.seerTurn;
@@ -1104,6 +1107,7 @@ class NetHackGame {
     // Generate or retrieve a level
     // C ref: dungeon.c -- level management
     changeLevel(depth, transitionDir = null) {
+        setMakemonPlayerContext(this.player);
         const previousMap = this.map || this.levels[this.player.dungeonLevel] || null;
 
         // Cache current level

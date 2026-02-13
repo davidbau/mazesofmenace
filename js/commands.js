@@ -13,7 +13,7 @@ import { objectData, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
          WAND_CLASS, COIN_CLASS, GEM_CLASS, ROCK_CLASS } from './objects.js';
 import { nhgetch, ynFunction, getlin } from './input.js';
 import { playerAttackMonster } from './combat.js';
-import { makemon } from './makemon.js';
+import { makemon, setMakemonPlayerContext } from './makemon.js';
 import { mons } from './monsters.js';
 import { doname } from './mkobj.js';
 import { showPager } from './pager.js';
@@ -2266,6 +2266,7 @@ async function wizGenesis(game) {
             const loc = map.at(mx, my);
             if (!loc || !ACCESSIBLE(loc.typ)) continue;
             if (map.monsterAt(mx, my)) continue;
+            setMakemonPlayerContext(player);
             const mon = makemon(mndx, mx, my, 0, player.dungeonLevel, map);
             if (mon) {
                 mon.sleeping = false; // wizard-created monsters are awake

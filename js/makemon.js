@@ -26,6 +26,7 @@ import {
     S_HUMAN, S_GHOST, S_GOLEM, S_DEMON, S_EEL, S_LIZARD, S_MIMIC_DEF,
     M2_MERC, M2_LORD, M2_PRINCE, M2_NASTY, M2_FEMALE, M2_MALE, M2_STRONG,
     M2_HOSTILE, M2_PEACEFUL, M2_DOMESTIC, M2_NEUTER, M2_GREEDY,
+    M2_MINION,
     M1_FLY, M1_NOHANDS,
     PM_ORC, PM_GIANT, PM_ELF, PM_HUMAN, PM_ETTIN, PM_MINOTAUR, PM_NAZGUL,
     PM_MASTER_LICH, PM_ARCH_LICH,
@@ -33,7 +34,8 @@ import {
     PM_SOLDIER, PM_SERGEANT, PM_LIEUTENANT, PM_CAPTAIN, PM_WATCHMAN, PM_WATCH_CAPTAIN, PM_GUARD,
     PM_SHOPKEEPER, AT_WEAP, AT_EXPL, PM_PESTILENCE,
     PM_GOBLIN, PM_ORC_CAPTAIN, PM_MORDOR_ORC, PM_URUK_HAI, PM_ORC_SHAMAN,
-    PM_OGRE_LEADER, PM_OGRE_TYRANT, PM_GHOST,
+    PM_OGRE_LEADER, PM_OGRE_TYRANT, PM_GHOST, PM_ERINYS,
+    MS_LEADER, MS_NEMESIS, MS_GUARDIAN,
     PM_CROESUS,
 } from './monsters.js';
 import {
@@ -77,9 +79,10 @@ import {
     POT_ACID, POT_CONFUSION, POT_BLINDNESS, POT_SLEEPING, POT_PARALYSIS,
     SCR_EARTH, SCR_TELEPORTATION, SCR_CREATE_MONSTER,
     RIN_INVISIBILITY,
-    AMULET_OF_LIFE_SAVING,
+    AMULET_OF_LIFE_SAVING, AMULET_OF_YENDOR,
     CORPSE, LUCKSTONE, objectData,
 } from './objects.js';
+import { roles, races, initialAlignmentRecordForRole } from './player.js';
 
 // ========================================================================
 // Monster flags needed for m_initweap/m_initinv checks
@@ -105,6 +108,81 @@ function attacktype(ptr, atyp) { return ptr.attacks && ptr.attacks.some(a => a.t
 function is_animal(ptr) { return !!(ptr.flags1 & 0x00040000); } // M1_ANIMAL
 function mindless(ptr) { return !!(ptr.flags1 & 0x00010000); } // M1_MINDLESS
 function is_ndemon(ptr) { return ptr.symbol === S_DEMON; }
+function always_hostile(ptr) { return !!(ptr.flags2 & M2_HOSTILE); }
+function always_peaceful(ptr) { return !!(ptr.flags2 & M2_PEACEFUL); }
+
+function sgn(x) {
+    return x > 0 ? 1 : (x < 0 ? -1 : 0);
+}
+
+function race_peaceful(ptr, playerCtx) {
+    const flags2 = ptr.flags2 || 0;
+    const lovemask = races[playerCtx.race]?.lovemask || 0;
+    return !!(flags2 & lovemask);
+}
+
+function race_hostile(ptr, playerCtx) {
+    const flags2 = ptr.flags2 || 0;
+    const hatemask = races[playerCtx.race]?.hatemask || 0;
+    return !!(flags2 & hatemask);
+}
+
+function normalizePlayerContext(ctx = {}) {
+    const roleIndex = Number.isInteger(ctx.roleIndex) ? ctx.roleIndex : undefined;
+    const role = roleIndex !== undefined ? roles[roleIndex] : null;
+    return {
+        roleIndex,
+        alignment: Number.isInteger(ctx.alignment) ? ctx.alignment : (role?.align || 0),
+        alignmentRecord: Number.isInteger(ctx.alignmentRecord)
+            ? ctx.alignmentRecord
+            : initialAlignmentRecordForRole(roleIndex),
+        alignmentAbuse: Number.isInteger(ctx.alignmentAbuse) ? ctx.alignmentAbuse : 0,
+        race: Number.isInteger(ctx.race) ? ctx.race : 0,
+        hasAmulet: !!ctx.hasAmulet,
+    };
+}
+
+let _makemonPlayerCtx = normalizePlayerContext();
+
+export function setMakemonPlayerContext(playerLike) {
+    const inventory = Array.isArray(playerLike?.inventory) ? playerLike.inventory : [];
+    _makemonPlayerCtx = normalizePlayerContext({
+        roleIndex: playerLike?.roleIndex,
+        alignment: playerLike?.alignment,
+        alignmentRecord: playerLike?.alignmentRecord,
+        alignmentAbuse: playerLike?.alignmentAbuse,
+        race: playerLike?.race,
+        hasAmulet: inventory.some(o => o?.otyp === AMULET_OF_YENDOR),
+    });
+}
+
+export function setMakemonRoleContext(roleIndex) {
+    _makemonPlayerCtx = normalizePlayerContext({ roleIndex });
+}
+
+// C ref: makemon.c peace_minded(struct permonst *ptr)
+function peace_minded(ptr, playerCtx = _makemonPlayerCtx) {
+    const mal = ptr.align || 0;
+    const ual = playerCtx.alignment || 0;
+    const alignRecord = playerCtx.alignmentRecord;
+    const alignAbuse = playerCtx.alignmentAbuse;
+
+    if (always_peaceful(ptr)) return true;
+    if (always_hostile(ptr)) return false;
+    if (ptr.sound === MS_LEADER || ptr.sound === MS_GUARDIAN) return true;
+    if (ptr.sound === MS_NEMESIS) return false;
+    if (ptr === mons[PM_ERINYS]) return !alignAbuse;
+
+    if (race_peaceful(ptr, playerCtx)) return true;
+    if (race_hostile(ptr, playerCtx)) return false;
+
+    if (sgn(mal) !== sgn(ual)) return false;
+    if (mal < 0 && playerCtx.hasAmulet) return false;
+    if ((ptr.flags2 || 0) & M2_MINION) return alignRecord >= 0;
+
+    return !!rn2(16 + (alignRecord < -15 ? -15 : alignRecord))
+        && !!rn2(2 + Math.abs(mal));
+}
 
 // C ref: objnam.c rnd_class()
 function mkobj_rnd_class(first, last) {
@@ -1274,7 +1352,8 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
         speed: ptr.speed,
         movement: 0,  // C ref: *mtmp = cg.zeromonst (zero-init)
         attacks: ptr.attacks,
-        peaceful: false,
+        peaceful: peace_minded(ptr),
+        mpeaceful: false,
         tame: false,
         flee: false,
         confused: false,
@@ -1285,6 +1364,7 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
         passive: false,
         mtrack: [{x:0,y:0},{x:0,y:0},{x:0,y:0},{x:0,y:0}],
     };
+    mon.mpeaceful = mon.peaceful;
 
     // Add to map if provided
     if (map && x !== undefined && y !== undefined) {

@@ -5,7 +5,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { initRng } from '../../js/rng.js';
 import { ACCESSIBLE } from '../../js/config.js';
-import { makemon, rndmonnum, NO_MM_FLAGS, MM_NOGRP } from '../../js/makemon.js';
+import { makemon, rndmonnum, NO_MM_FLAGS, MM_NOGRP, setMakemonPlayerContext } from '../../js/makemon.js';
 import { mons } from '../../js/monsters.js';
 import { initLevelGeneration, makelevel, wallification } from '../../js/dungeon.js';
 
@@ -62,6 +62,29 @@ describe('Monster creation (C-faithful)', () => {
             assert.ok(mndx >= 0 && mndx < mons.length,
                 `rndmonnum should return valid index, got ${mndx}`);
         }
+    });
+
+    it('makemon peace_minded follows player alignment context', () => {
+        const gremlin = mons.findIndex(m => m.name === 'gremlin');
+        assert.ok(gremlin >= 0, 'gremlin should exist in mons[]');
+
+        // Use a simple accessible tile map so only monster-creation logic is exercised.
+        const map = { monsters: [], at: () => ({ typ: 100 }) };
+
+        initRng(1234);
+        setMakemonPlayerContext({
+            roleIndex: 1, alignment: -1, alignmentRecord: 10, race: 0, inventory: [],
+        });
+        const chaoticGremlin = makemon(gremlin, 10, 10, NO_MM_FLAGS, 1, map);
+        assert.equal(chaoticGremlin.peaceful, true);
+
+        initRng(1234);
+        map.monsters = [];
+        setMakemonPlayerContext({
+            roleIndex: 4, alignment: 1, alignmentRecord: 10, race: 0, inventory: [],
+        });
+        const lawfulGremlin = makemon(gremlin, 10, 10, NO_MM_FLAGS, 1, map);
+        assert.equal(lawfulGremlin.peaceful, false);
     });
 });
 
