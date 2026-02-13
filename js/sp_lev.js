@@ -3029,9 +3029,10 @@ export function object(name_or_opts, x, y) {
     // Object is already created (RNG consumed), we just need to place it on the map later
     if (obj) {
         levelState.deferredObjects.push({ obj, x: absX, y: absY });
-        if (levelState.finalizeContext) {
-            levelState.deferredActions.push({ kind: 'object', idx: levelState.deferredObjects.length - 1 });
-        }
+        // C ref: lspo_* handlers execute in script order. Keep deferred
+        // placements ordered by insertion so finalize_level() can replay
+        // object/monster interleaving faithfully.
+        levelState.deferredActions.push({ kind: 'object', idx: levelState.deferredObjects.length - 1 });
     }
 }
 
@@ -3159,13 +3160,9 @@ export function trap(type_or_opts, x, y) {
         }
     }
 
-    // DEFERRED EXECUTION: Queue trap placement instead of executing immediately
-    // Store absolute coordinates since currentRoom context will be lost
-    // This matches C's behavior which defers trap creation until after corridor generation
-    levelState.deferredTraps.push({ type_or_opts, x: absX, y: absY });
-    if (levelState.finalizeContext) {
-        levelState.deferredActions.push({ kind: 'trap', idx: levelState.deferredTraps.length - 1 });
-    }
+    // C ref: sp_lev.c lspo_trap()/create_trap() applies trap RNG side effects
+    // inline in script order. Execute immediately for parity.
+    executeDeferredTrap({ type_or_opts, x: absX, y: absY });
 }
 
 /**
@@ -3445,28 +3442,17 @@ export function monster(opts_or_class, x, y) {
         }
     }
 
-    const parityImmediate = !!(opts_or_class && typeof opts_or_class === 'object'
-        && opts_or_class.parityImmediate);
-    if (levelState.finalizeContext || parityImmediate) {
-        // C ref: sp_lev.c lspo_monster() creates monsters immediately.
-        // Preserve that RNG order in parity mode, but still resolve coords at
-        // execution time to mirror get_location_coord() timing.
-        executeDeferredMonster({
-            opts_or_class,
-            deferCoord: true,
-            rawX: srcX,
-            rawY: srcY,
-            room: levelState.currentRoom || null,
-            parityImmediate
-        });
-        return;
-    }
-
-    // Default path: defer until finalize_level().
-    const pos = getLocationCoord(srcX, srcY, GETLOC_DRY, levelState.currentRoom || null);
-    let absX = pos.x;
-    let absY = pos.y;
-    levelState.deferredMonsters.push({ opts_or_class, x: absX, y: absY });
+    // C ref: sp_lev.c lspo_monster() creates monsters during script execution
+    // rather than batching them by type. Resolve coordinates at execution time
+    // to keep get_location_coord() call timing aligned.
+    executeDeferredMonster({
+        opts_or_class,
+        deferCoord: true,
+        rawX: srcX,
+        rawY: srcY,
+        room: levelState.currentRoom || null,
+        parityImmediate: true
+    });
 }
 
 /**
@@ -4404,6 +4390,10 @@ export const u = {
  * Selection API - create rectangular selections
  */
 export const selection = {
+    _toAbsoluteCoord: (x, y) => {
+        const pos = getLocationCoord(x, y, GETLOC_ANY_LOC, levelState.currentRoom || null);
+        return { x: pos.x, y: pos.y };
+    },
     /**
      * selection.room()
      * Create a selection containing all cells in the current room.
@@ -4443,16 +4433,33 @@ export const selection = {
      */
     area: (x1, y1, x2, y2) => {
         const coords = [];
-        for (let y = y1; y <= y2; y++) {
-            for (let x = x1; x <= x2; x++) {
-                coords.push({ x, y });
+        const ax1 = Math.min(x1, x2);
+        const ay1 = Math.min(y1, y2);
+        const ax2 = Math.max(x1, x2);
+        const ay2 = Math.max(y1, y2);
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        const updateBounds = (abs) => {
+            if (abs.x < minX) minX = abs.x;
+            if (abs.y < minY) minY = abs.y;
+            if (abs.x > maxX) maxX = abs.x;
+            if (abs.y > maxY) maxY = abs.y;
+        };
+        for (let y = ay1; y <= ay2; y++) {
+            for (let x = ax1; x <= ax2; x++) {
+                const abs = selection._toAbsoluteCoord(x, y);
+                coords.push(abs);
+                updateBounds(abs);
             }
         }
 
         return {
             coords,
-            x1, y1, x2, y2, // Keep these for des.region compatibility
-            set: (x, y) => coords.push({ x, y }),
+            x1: minX, y1: minY, x2: maxX, y2: maxY, // Absolute bounds for region/non_diggable
+            set: (x, y) => {
+                const abs = selection._toAbsoluteCoord(x, y);
+                coords.push(abs);
+                updateBounds(abs);
+            },
             numpoints: () => coords.length,
             percentage: (pct) => {
                 const newSel = selection.new();
@@ -4466,7 +4473,16 @@ export const selection = {
             rndcoord: (filterValue) => {
                 if (coords.length === 0) return undefined;
                 const idx = rn2(coords.length);
-                return coords[idx];
+                const coord = coords[idx];
+                let rx = coord.x, ry = coord.y;
+                if (levelState.currentRoom) {
+                    rx -= levelState.currentRoom.lx;
+                    ry -= levelState.currentRoom.ly;
+                } else if (levelState.xstart !== undefined) {
+                    rx -= levelState.xstart;
+                    ry -= levelState.ystart;
+                }
+                return { x: rx, y: ry };
             },
             iterate: (func) => {
                 for (const coord of coords) {
@@ -4483,13 +4499,13 @@ export const selection = {
                 }
             },
             filter_mapchar: (ch) => {
-                return selection.filter_mapchar({ coords, x1, y1, x2, y2 }, ch);
+                return selection.filter_mapchar({ coords, x1: minX, y1: minY, x2: maxX, y2: maxY }, ch);
             },
             negate: () => {
-                return selection.negate({ coords, x1, y1, x2, y2 });
+                return selection.negate({ coords, x1: minX, y1: minY, x2: maxX, y2: maxY });
             },
             grow: (iterations = 1) => {
-                return selection.grow({ coords, x1, y1, x2, y2 }, iterations);
+                return selection.grow({ coords, x1: minX, y1: minY, x2: maxX, y2: maxY }, iterations);
             },
             union: (other) => {
                 const coordSet = new Set();

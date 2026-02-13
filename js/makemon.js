@@ -27,14 +27,16 @@ import {
     M2_MERC, M2_LORD, M2_PRINCE, M2_NASTY, M2_FEMALE, M2_MALE, M2_STRONG,
     M2_HOSTILE, M2_PEACEFUL, M2_DOMESTIC, M2_NEUTER, M2_GREEDY,
     M1_FLY, M1_NOHANDS,
-    PM_ORC, PM_GIANT, PM_ELF, PM_HUMAN,
-    PM_SOLDIER, PM_SHOPKEEPER, AT_WEAP, AT_EXPL, PM_PESTILENCE,
+    PM_ORC, PM_GIANT, PM_ELF, PM_HUMAN, PM_ETTIN, PM_MINOTAUR, PM_NAZGUL,
+    PM_WUMPUS, PM_LONG_WORM, PM_GIANT_EEL,
+    PM_SOLDIER, PM_SERGEANT, PM_LIEUTENANT, PM_CAPTAIN, PM_WATCHMAN, PM_WATCH_CAPTAIN, PM_GUARD,
+    PM_SHOPKEEPER, AT_WEAP, AT_EXPL, PM_PESTILENCE,
     PM_GOBLIN, PM_ORC_CAPTAIN, PM_MORDOR_ORC, PM_URUK_HAI, PM_ORC_SHAMAN,
     PM_OGRE_LEADER, PM_OGRE_TYRANT, PM_GHOST,
     PM_CROESUS,
 } from './monsters.js';
 import {
-    ROCK, STATUE, FIGURINE, EGG, TIN, STRANGE_OBJECT, GOLD_PIECE,
+    ROCK, STATUE, FIGURINE, EGG, TIN, STRANGE_OBJECT, GOLD_PIECE, DILITHIUM_CRYSTAL,
     RING_CLASS, WAND_CLASS, WEAPON_CLASS, FOOD_CLASS, COIN_CLASS,
     SCROLL_CLASS, POTION_CLASS, ARMOR_CLASS, AMULET_CLASS, TOOL_CLASS,
     ROCK_CLASS, GEM_CLASS, SPBOOK_CLASS,
@@ -57,6 +59,9 @@ import {
     CREAM_PIE, DART, SHURIKEN, YA, YUMI, BOULDER,
     LEATHER_ARMOR, IRON_SHOES, SMALL_SHIELD, LARGE_SHIELD,
     SHIELD_OF_REFLECTION, CHAIN_MAIL, PLATE_MAIL, BRONZE_PLATE_MAIL,
+    CRYSTAL_PLATE_MAIL, SPLINT_MAIL, BANDED_MAIL, RING_MAIL, STUDDED_LEATHER_ARMOR,
+    HELMET, DENTED_POT, LOW_BOOTS, HIGH_BOOTS, LEATHER_GLOVES, LEATHER_CLOAK,
+    CLOAK_OF_PROTECTION, CLOAK_OF_MAGIC_RESISTANCE,
     HELM_OF_BRILLIANCE, ROBE, MUMMY_WRAPPING,
     K_RATION, C_RATION, TIN_WHISTLE, BUGLE, SADDLE,
     MIRROR, POT_OBJECT_DETECTION, POT_HEALING, POT_EXTRA_HEALING,
@@ -71,7 +76,7 @@ import {
     SCR_EARTH, SCR_TELEPORTATION, SCR_CREATE_MONSTER,
     RIN_INVISIBILITY,
     AMULET_OF_LIFE_SAVING,
-    CORPSE,
+    CORPSE, LUCKSTONE, objectData,
 } from './objects.js';
 
 // ========================================================================
@@ -91,11 +96,33 @@ function is_domestic(ptr) { return !!(ptr.flags2 & M2_DOMESTIC); }
 function is_elf(ptr) { return ptr.symbol === S_HUMANOID && ptr.name && ptr.name.includes('elf'); }
 function is_dwarf(ptr) { return ptr.symbol === S_HUMANOID && ptr.name && ptr.name.includes('dwarf'); }
 function is_hobbit(ptr) { return ptr.symbol === S_HUMANOID && ptr.name && ptr.name.includes('hobbit'); }
+function is_giant_species(ptr) { return ptr.symbol === S_GIANT && ptr.name && ptr.name.includes('giant'); }
 // C ref: mondata.h:87 — #define is_armed(ptr) attacktype(ptr, AT_WEAP)
 function is_armed(ptr) { return ptr.attacks && ptr.attacks.some(a => a.type === AT_WEAP); }
 function attacktype(ptr, atyp) { return ptr.attacks && ptr.attacks.some(a => a.type === atyp); }
-function is_animal(ptr) { return !!(ptr.flags1 & 0x00000001); } // M1_ANIMAL
-function mindless(ptr) { return !!(ptr.flags1 & 0x00008000); } // M1_MINDLESS
+function is_animal(ptr) { return !!(ptr.flags1 & 0x00040000); } // M1_ANIMAL
+function mindless(ptr) { return !!(ptr.flags1 & 0x00010000); } // M1_MINDLESS
+function is_ndemon(ptr) { return ptr.symbol === S_DEMON; }
+
+// C ref: objnam.c rnd_class()
+function mkobj_rnd_class(first, last) {
+    if (first > last) {
+        const t = first;
+        first = last;
+        last = t;
+    }
+    let sum = 0;
+    for (let i = first; i <= last; i++) {
+        sum += (objectData[i]?.prob || 0);
+    }
+    if (sum <= 0) return first;
+    let x = rnd(sum);
+    for (let i = first; i <= last; i++) {
+        x -= (objectData[i]?.prob || 0);
+        if (x <= 0) return i;
+    }
+    return last;
+}
 
 // ========================================================================
 // rndmonst_adj -- weighted reservoir sampling (exact C port)
@@ -362,6 +389,8 @@ export function newmonhp(mndx) {
 
     if (m_lev === 0) {
         hp = rnd(4);
+    } else if (ptr.symbol === S_DRAGON) {
+        hp = c_d(m_lev, 4);
     } else {
         hp = c_d(m_lev, 8);
     }
@@ -397,38 +426,48 @@ function m_initweap(mndx, depth) {
 
     switch (mm) {
     case S_GIANT:
-        if (rn2(2)) mksobj(BOULDER, true, false);
-        else mksobj(CLUB, true, false);
-        if (!rn2(5)) {
-            if (rn2(2)) mksobj(rn2(2) ? AXE : BATTLE_AXE, true, false);
-            // else no extra weapon
+        // C ref: makemon.c:182-185
+        if (rn2(2)) {
+            mksobj((mndx !== PM_ETTIN) ? BOULDER : CLUB, true, false);
+        }
+        if ((mndx !== PM_ETTIN) && !rn2(5)) {
+            mksobj(rn2(2) ? TWO_HANDED_SWORD : BATTLE_AXE, true, false);
         }
         break;
 
     case S_HUMAN:
         if (is_mercenary(ptr)) {
-            // Mercenary weapon selection
-            const w = rn2(3);
-            let wpn;
-            if (w === 0) {
-                wpn = rn1(BEC_DE_CORBIN - PARTISAN + 1, PARTISAN);
-            } else if (w === 1) {
-                wpn = rn2(2) ? DAGGER : KNIFE;
-            } else {
-                const w2 = rn2(5);
-                if (w2 === 0) wpn = rn2(2) ? SPEAR : SHORT_SWORD;
-                else if (w2 === 1) wpn = rn2(2) ? FLAIL : MACE;
-                else if (w2 === 2) wpn = rn2(2) ? BROADSWORD : LONG_SWORD;
-                else if (w2 === 3) wpn = rn2(2) ? LONG_SWORD : SILVER_SABER;
-                else {
-                    if (!rn2(4)) wpn = DAGGER;
-                    else if (!rn2(7)) wpn = SPEAR;
-                    else wpn = LONG_SWORD;
+            // C ref: makemon.c:188-226
+            let w1 = 0;
+            let w2 = 0;
+            switch (mndx) {
+            case PM_WATCHMAN:
+            case PM_SOLDIER:
+                if (!rn2(3)) {
+                    w1 = rn1(BEC_DE_CORBIN - PARTISAN + 1, PARTISAN);
+                    w2 = rn2(2) ? DAGGER : KNIFE;
+                } else {
+                    w1 = rn2(2) ? SPEAR : SHORT_SWORD;
                 }
+                break;
+            case PM_SERGEANT:
+                w1 = rn2(2) ? FLAIL : MACE;
+                break;
+            case PM_LIEUTENANT:
+                w1 = rn2(2) ? BROADSWORD : LONG_SWORD;
+                break;
+            case PM_CAPTAIN:
+            case PM_WATCH_CAPTAIN:
+                w1 = rn2(2) ? LONG_SWORD : SILVER_SABER;
+                break;
+            default:
+                if (!rn2(4)) w1 = DAGGER;
+                if (!rn2(7)) w2 = SPEAR;
+                break;
             }
-            mksobj(wpn, true, false);
-            // Secondary weapon
-            if (!rn2(4)) mksobj(KNIFE, true, false);
+            if (w1) mksobj(w1, true, false);
+            if (!w2 && w1 !== DAGGER && !rn2(4)) w2 = KNIFE;
+            if (w2) mksobj(w2, true, false);
         } else if (is_elf(ptr)) {
             // Elf equipment
             if (rn2(2)) {
@@ -773,35 +812,75 @@ function m_initinv(mndx, depth, m_lev) {
     switch (mm) {
     case S_HUMAN:
         if (is_mercenary(ptr)) {
-            // Mercenary armor
-            const w = rn2(5);
-            if (w === 0) mksobj(PLATE_MAIL, true, false);
-            else if (w === 1) mksobj(BRONZE_PLATE_MAIL, true, false);
-            else if (w <= 3) mksobj(CHAIN_MAIL, true, false);
-            // else nothing
+            // C ref: makemon.c m_initinv() mercenary branch.
+            // Keep the same roll order and gating so RNG stays aligned.
+            let mac = 0;
+            if (mndx === PM_SOLDIER) mac = 3;
+            else if (mndx === PM_SERGEANT) mac = 0;
+            else if (mndx === PM_LIEUTENANT) mac = -2;
+            else if (mndx === PM_CAPTAIN) mac = -3;
+            else if (mndx === PM_WATCHMAN) mac = 3;
+            else if (mndx === PM_WATCH_CAPTAIN) mac = -2;
 
-            // Helmet
-            if (!rn2(3)) mksobj(rn2(2) ? ORCISH_HELM : DWARVISH_IRON_HELM, true, false);
-            // Shield
-            if (!rn2(3)) mksobj(SMALL_SHIELD, true, false);
-            // Boots
-            if (!rn2(3)) mksobj(IRON_SHOES, true, false);
-            // Gloves
-            if (!rn2(3)) mksobj(LEATHER_ARMOR, true, false);
-            // Cloak
-            if (!rn2(3)) mksobj(LEATHER_ARMOR, true, false);
+            const addAc = (otyp) => {
+                if (!Number.isFinite(otyp)) return;
+                const obj = mksobj(otyp, true, false);
+                const baseAc = Number(objectData[otyp]?.oc1 || 0);
+                const spe = Number(obj?.spe || 0);
+                const erosion = Math.max(Number(obj?.oeroded || 0), Number(obj?.oeroded2 || 0));
+                // C ref: ARM_BONUS(obj) = a_ac + spe - min(greatest_erosion, a_ac)
+                mac += (baseAc + spe - Math.min(erosion, baseAc));
+            };
 
-            // Watchman whistle
-            if (ptr.name && (ptr.name === 'watchman' || ptr.name === 'watch captain')) {
-                if (!rn2(3)) mksobj(TIN_WHISTLE, true, false);
+            if (mac < -1 && rn2(5)) {
+                addAc(rn2(5) ? PLATE_MAIL : CRYSTAL_PLATE_MAIL);
+            } else if (mac < 3 && rn2(5)) {
+                addAc(rn2(3) ? SPLINT_MAIL : BANDED_MAIL);
+            } else if (rn2(5)) {
+                addAc(rn2(3) ? RING_MAIL : STUDDED_LEATHER_ARMOR);
+            } else {
+                addAc(LEATHER_ARMOR);
             }
-            // Rations
-            if (!rn2(3)) mksobj(K_RATION, true, false);
-            if (!rn2(2)) mksobj(C_RATION, true, false);
-            if (!rn2(3)) mksobj(BUGLE, true, false);
+
+            if (mac < 10 && rn2(3)) {
+                addAc(HELMET);
+            } else if (mac < 10 && rn2(2)) {
+                addAc(DENTED_POT);
+            }
+
+            if (mac < 10 && rn2(3)) {
+                addAc(SMALL_SHIELD);
+            } else if (mac < 10 && rn2(2)) {
+                addAc(LARGE_SHIELD);
+            }
+
+            if (mac < 10 && rn2(3)) {
+                addAc(LOW_BOOTS);
+            } else if (mac < 10 && rn2(2)) {
+                addAc(HIGH_BOOTS);
+            }
+
+            if (mac < 10 && rn2(3)) {
+                addAc(LEATHER_GLOVES);
+            } else if (mac < 10 && rn2(2)) {
+                addAc(LEATHER_CLOAK);
+            }
+
+            if (mndx === PM_WATCH_CAPTAIN) {
+                // No extra gear in C.
+            } else if (mndx === PM_WATCHMAN) {
+                if (rn2(3)) mksobj(TIN_WHISTLE, true, false);
+            } else if (mndx === PM_GUARD) {
+                mksobj(TIN_WHISTLE, true, false);
+            } else {
+                // Soldiers and officers.
+                if (!rn2(3)) mksobj(K_RATION, true, false);
+                if (!rn2(2)) mksobj(C_RATION, true, false);
+                if (mndx !== PM_SOLDIER && !rn2(3)) mksobj(BUGLE, true, false);
+            }
         } else if (ptr.name && (ptr.name === 'priest' || ptr.name === 'priestess')) {
-            if (!rn2(7)) mksobj(ROBE, true, false);
-            if (!rn2(3)) mksobj(rn2(2) ? ELVEN_CLOAK : DWARVISH_CLOAK, true, false);
+            mksobj(rn2(7) ? ROBE : (rn2(3) ? CLOAK_OF_PROTECTION : CLOAK_OF_MAGIC_RESISTANCE), true, false);
+            mksobj(SMALL_SHIELD, true, false);
             rn1(10, 20); // gold amount
         } else if (mndx === PM_SHOPKEEPER) {
             // C ref: makemon.c:703-721 — SKELETON_KEY + fall-through switch
@@ -821,23 +900,27 @@ function m_initinv(mndx, depth, m_lev) {
         break;
 
     case S_GIANT:
-        // Minotaur wand
-        if (ptr.name && ptr.name === 'minotaur') {
-            if (!rn2(3)) mksobj(WAN_STRIKING, true, false);
-        }
-        // Giant treasure
-        if (ptr.level > 0) {
-            const cnt = rn2(Math.max(1, Math.floor(ptr.level / 2)));
+        // C ref: makemon.c:740-751
+        if (mndx === PM_MINOTAUR) {
+            if (!rn2(3)) {
+                mksobj(WAN_DIGGING, true, false);
+            }
+        } else if (is_giant_species(ptr)) {
+            const cnt = rn2(Math.floor(m_lev / 2));
             for (let i = 0; i < cnt; i++) {
-                const quan = rn1(2, 3);
-                rnd(100); // rnd_class selection
-                mksobj(BOULDER, true, false); // placeholder for actual class selection
+                const otyp = mkobj_rnd_class(DILITHIUM_CRYSTAL, LUCKSTONE - 1);
+                const otmp = mksobj(otyp, false, false);
+                otmp.quan = rn1(2, 3);
+                otmp.owt = otmp.quan * (objectData[otmp.otyp].weight || 1);
             }
         }
         break;
 
     case S_WRAITH:
-        // Nazgul: ring of invisibility (no RNG for creation)
+        if (mndx === PM_NAZGUL) {
+            const otmp = mksobj(RIN_INVISIBILITY, false, false);
+            otmp.cursed = true;
+        }
         break;
 
     case S_LICH:
@@ -872,7 +955,8 @@ function m_initinv(mndx, depth, m_lev) {
     // C ref: makemon.c:827-833 — tail section: defensive/misc items and gold
     // These rn2 checks always fire; the item creation only triggers when m_lev > result
     // At depth 1 (m_lev typically 0-1), the checks almost never pass
-    if (m_lev > rn2(50)) {
+    const rollDef = rn2(50);
+    if (m_lev > rollDef) {
         const otyp = rnd_defensive_item(mndx);
         if (otyp) mksobj(otyp, true, false);
     }
@@ -1090,10 +1174,12 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
         // hideunder() — no RNG
     }
 
-    // Sleep check for certain types during level gen
-    // C ref: makemon.c:1328, 1385
-    if (ptr.symbol === S_JABBERWOCK || ptr.symbol === S_NYMPH) {
-        rn2(5);
+    // C ref: makemon.c:1382-1386
+    // During mklev and without Amulet, selected monsters may start asleep.
+    if ((is_ndemon(ptr) || mndx === PM_WUMPUS
+        || mndx === PM_LONG_WORM || mndx === PM_GIANT_EEL)
+        && rn2(5)) {
+        // mtmp->msleeping = TRUE; RNG side effect only.
     }
 
     // C ref: makemon.c:1370-1371 — ghost naming via rndghostname()
