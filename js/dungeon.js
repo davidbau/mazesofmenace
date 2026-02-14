@@ -3675,6 +3675,20 @@ function do_fill_vault(map, vaultCheck, depth) {
 
     // Re-run wallification around the vault region to fix wall types
     wallify(map, lowx - 1, lowy - 1, hix + 1, hiy + 1);
+    // C ref: vault.c wall repair paths call xy_set_wall_state() immediately
+    // after setting repaired wall types.
+    for (let x = lowx - 1; x <= hix + 1; x++) {
+        for (let y = lowy - 1; y <= hiy + 1; y++) {
+            // Match vault.c scope: only boundary tiles around the vault.
+            if (x !== lowx - 1 && x !== hix + 1 && y !== lowy - 1 && y !== hiy + 1) continue;
+            const loc = map.at(x, y);
+            if (!loc) continue;
+            if (!(IS_WALL(loc.typ) || loc.typ === SDOOR)) continue;
+            // C sets wall_info/doormask to 0 before xy_set_wall_state().
+            loc.flags &= ~WM_MASK;
+            xy_set_wall_state(map, x, y);
+        }
+    }
 }
 
 const XL_UP = 1;
