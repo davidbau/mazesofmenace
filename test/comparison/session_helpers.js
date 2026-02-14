@@ -1515,6 +1515,14 @@ export class HeadlessDisplay {
                 if (!fov || !fov.canSee(x, y)) {
                     const loc = gameMap.at(x, y);
                     if (loc && loc.seenv) {
+                        if (loc.mem_obj) {
+                            this.setCell(col, row, loc.mem_obj, CLR_BLACK);
+                            continue;
+                        }
+                        if (loc.mem_trap) {
+                            this.setCell(col, row, loc.mem_trap, CLR_BLACK);
+                            continue;
+                        }
                         const sym = this.terrainSymbol(loc, gameMap, x, y);
                         this.setCell(col, row, sym.ch, CLR_BLACK);
                     } else {
@@ -1545,15 +1553,19 @@ export class HeadlessDisplay {
                 const objs = gameMap.objectsAt(x, y);
                 if (objs.length > 0) {
                     const topObj = objs[objs.length - 1];
+                    loc.mem_obj = topObj.displayChar || 0;
                     this.setCell(col, row, topObj.displayChar, topObj.displayColor);
                     continue;
                 }
+                loc.mem_obj = 0;
 
                 const trap = gameMap.trapAt(x, y);
                 if (trap && trap.tseen) {
+                    loc.mem_trap = '^';
                     this.setCell(col, row, '^', CLR_MAGENTA);
                     continue;
                 }
+                loc.mem_trap = 0;
 
                 const sym = this.terrainSymbol(loc, gameMap, x, y);
                 this.setCell(col, row, sym.ch, sym.color);
@@ -1676,10 +1688,10 @@ export class HeadlessDisplay {
         if (E && W && N && !S) return TUWALL;
         if (E && W && S && !N) return TDWALL;
         if (N && S && E && W) return CROSSWALL;
-        // Match C orientation semantics used by rm.horizontal:
-        // E/W neighbors render as vertical walls, N/S as horizontal walls.
-        if ((N || S) && !E && !W) return HWALL;
-        if ((E || W) && !N && !S) return VWALL;
+        // Straight wall orientation for secret-door rendering.
+        // E/W neighbors => horizontal wall, N/S => vertical wall.
+        if ((N || S) && !E && !W) return VWALL;
+        if ((E || W) && !N && !S) return HWALL;
         return VWALL;
     }
 

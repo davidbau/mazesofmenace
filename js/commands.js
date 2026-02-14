@@ -716,9 +716,10 @@ async function handleMovement(dir, player, map, display, game) {
         const pickupTypes = game.flags?.pickup_types || '';
         const obj = objs.find(o => o.oclass !== COIN_CLASS && shouldAutopickup(o, pickupTypes));
         if (obj) {
+            observeObject(obj);
             player.addToInventory(obj);
             map.removeObject(obj);
-            display.putstr_message(`${obj.invlet} - ${obj.name}.`);
+            display.putstr_message(`${obj.invlet} - ${doname(obj, player)}.`);
             pickedUp = true;
         }
     }
@@ -732,9 +733,6 @@ async function handleMovement(dir, player, map, display, game) {
                 const count = seen.quan || 1;
                 const plural = count === 1 ? '' : 's';
                 display.putstr_message(`You see here ${count} gold piece${plural}.`);
-            } else if (seen.otyp !== undefined && seen.name && /corpse$/.test(seen.name)) {
-                const article = /^[aeiou]/i.test(seen.name) ? 'an' : 'a';
-                display.putstr_message(`You see here ${article} ${seen.name}.`);
             } else {
                 observeObject(seen);
                 display.putstr_message(`You see here ${doname(seen, null)}.`);
@@ -857,7 +855,8 @@ function handlePickup(player, map, display) {
 
     player.addToInventory(obj);
     map.removeObject(obj);
-    display.putstr_message(`${obj.invlet} - ${obj.name}.`);
+    observeObject(obj);
+    display.putstr_message(`${obj.invlet} - ${doname(obj, player)}.`);
     return { moved: false, tookTime: true };
 }
 

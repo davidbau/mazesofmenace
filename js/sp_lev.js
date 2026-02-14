@@ -16,7 +16,7 @@
 import { GameMap, FILL_NORMAL } from './map.js';
 import { rn2, rnd, rn1, getRngCallCount } from './rng.js';
 import { mksobj, mkobj, mkcorpstat, set_corpsenm, weight } from './mkobj.js';
-import { create_room, create_subroom, makecorridors, init_rect, rnd_rect, get_rect, split_rects, check_room, add_doors_to_room, update_rect_pool_for_room, bound_digging, mineralize, fill_ordinary_room, litstate_rnd, isMtInitialized, setMtInitialized, wallification as dungeonWallification, fix_wall_spines, place_lregion, mktrap, enexto, somexy, sp_create_door, floodFillAndRegister, resolveBranchPlacementForLevel } from './dungeon.js';
+import { create_room, create_subroom, makecorridors, create_corridor, init_rect, rnd_rect, get_rect, split_rects, check_room, add_doors_to_room, update_rect_pool_for_room, bound_digging, mineralize as dungeonMineralize, fill_ordinary_room, litstate_rnd, isMtInitialized, setMtInitialized, wallification as dungeonWallification, wallify_region as dungeonWallifyRegion, fix_wall_spines, place_lregion, mktrap, enexto, somexy, sp_create_door, floodFillAndRegister, resolveBranchPlacementForLevel, random_epitaph_text } from './dungeon.js';
 import { seedFromMT } from './xoshiro256.js';
 import { makemon, mkclass, def_char_to_monclass, NO_MM_FLAGS, MM_NOGRP } from './makemon.js';
 import {
@@ -1064,6 +1064,16 @@ export function setSpecialLevelDepth(depth) {
     } else {
         levelState.levelDepth = undefined;
     }
+}
+
+/**
+ * des.reset_level()
+ *
+ * Test-only level reset helper mirroring C des.reset_level().
+ * C ref: sp_lev.c lspo_reset_level()
+ */
+export function reset_level() {
+    resetLevelState();
 }
 
 function canPlaceStair(direction) {
@@ -3857,6 +3867,103 @@ export function region(opts_or_selection, type) {
     add_doors_to_room(levelState.map, createdRoom);
 }
 
+function setWallPropertyInSelection(selection, propKind) {
+    if (!levelState.map) return;
+
+    const applyAt = (x, y) => {
+        if (x < 0 || x >= COLNO || y < 0 || y >= ROWNO) return;
+        const loc = levelState.map.locations[x][y];
+        if (!loc) return;
+        // C ref: sel_set_wall_property() only applies to walls, trees, and iron bars.
+        if (!(IS_WALL(loc.typ) || loc.typ === TREE || loc.typ === IRONBARS)) return;
+        if (propKind === 'nondiggable') loc.nondiggable = true;
+        else if (propKind === 'nonpasswall') loc.nonpasswall = true;
+    };
+
+    if (!selection) {
+        // C ref: set_wallprop_in_selection() with no args creates a full-map selection.
+        for (let x = 0; x < COLNO; x++) {
+            for (let y = 0; y < ROWNO; y++) {
+                applyAt(x, y);
+            }
+        }
+        return;
+    }
+
+    if (Array.isArray(selection.coords)) {
+        for (const c of selection.coords) {
+            let x = c.x;
+            let y = c.y;
+            if (levelState.mapCoordMode) {
+                const abs = toAbsoluteCoords(x, y);
+                x = abs.x;
+                y = abs.y;
+            }
+            applyAt(x, y);
+        }
+        return;
+    }
+
+    let x1 = selection.x1;
+    let y1 = selection.y1;
+    let x2 = selection.x2;
+    let y2 = selection.y2;
+    if (!Number.isFinite(x1) || !Number.isFinite(y1)
+        || !Number.isFinite(x2) || !Number.isFinite(y2)) {
+        return;
+    }
+    if (levelState.mapCoordMode) {
+        const c1 = toAbsoluteCoords(x1, y1);
+        const c2 = toAbsoluteCoords(x2, y2);
+        x1 = c1.x;
+        y1 = c1.y;
+        x2 = c2.x;
+        y2 = c2.y;
+    }
+    for (let x = Math.min(x1, x2); x <= Math.max(x1, x2); x++) {
+        for (let y = Math.min(y1, y2); y <= Math.max(y1, y2); y++) {
+            applyAt(x, y);
+        }
+    }
+}
+
+/**
+ * des.wall_property(opts)
+ *
+ * Set wall flags in a region (nondiggable/nonpasswall).
+ * C ref: sp_lev.c lspo_wall_property()
+ *
+ * @param {Object} opts - Options containing x1/y1/x2/y2 or region and property
+ */
+export function wall_property(opts) {
+    if (!levelState.map || !opts || typeof opts !== 'object') return;
+
+    const propName = (typeof opts.property === 'string') ? opts.property : 'nondiggable';
+    const propKind = (propName === 'nonpasswall') ? 'nonpasswall' : 'nondiggable';
+
+    let x1 = -1;
+    let y1 = -1;
+    let x2 = -1;
+    let y2 = -1;
+    if (Array.isArray(opts.region) && opts.region.length >= 4) {
+        [x1, y1, x2, y2] = opts.region;
+    } else {
+        if (Number.isFinite(opts.x1)) x1 = opts.x1;
+        if (Number.isFinite(opts.y1)) y1 = opts.y1;
+        if (Number.isFinite(opts.x2)) x2 = opts.x2;
+        if (Number.isFinite(opts.y2)) y2 = opts.y2;
+    }
+
+    if (x1 === -1) x1 = (Number.isFinite(levelState.xstart) ? levelState.xstart - 1 : 0);
+    if (y1 === -1) y1 = (Number.isFinite(levelState.ystart) ? levelState.ystart - 1 : 0);
+    if (x2 === -1) x2 = (Number.isFinite(levelState.xstart) && Number.isFinite(levelState.xsize))
+        ? levelState.xstart + levelState.xsize + 1 : COLNO - 1;
+    if (y2 === -1) y2 = (Number.isFinite(levelState.ystart) && Number.isFinite(levelState.ysize))
+        ? levelState.ystart + levelState.ysize + 1 : ROWNO - 1;
+
+    setWallPropertyInSelection({ x1, y1, x2, y2 }, propKind);
+}
+
 /**
  * des.non_diggable(selection)
  *
@@ -3869,66 +3976,7 @@ export function non_diggable(selection) {
     if (!levelState.map) {
         return;
     }
-    const applyWallProp = (propKind) => {
-        const applyAt = (x, y) => {
-            if (x < 0 || x >= COLNO || y < 0 || y >= ROWNO) return;
-            const loc = levelState.map.locations[x][y];
-            if (!loc) return;
-            // C ref: sel_set_wall_property() only applies to stone walls,
-            // trees, and iron bars.
-            if (!(IS_WALL(loc.typ) || loc.typ === TREE || loc.typ === IRONBARS)) return;
-            if (propKind === 'nondiggable') loc.nondiggable = true;
-            else if (propKind === 'nonpasswall') loc.nonpasswall = true;
-        };
-
-        if (!selection) {
-            // C ref: lspo_non_{diggable,passwall}() with no args creates a
-            // full-map selection and iterates it.
-            for (let x = 0; x < COLNO; x++) {
-                for (let y = 0; y < ROWNO; y++) {
-                    applyAt(x, y);
-                }
-            }
-            return;
-        }
-
-        if (Array.isArray(selection.coords)) {
-            for (const c of selection.coords) {
-                let x = c.x;
-                let y = c.y;
-                if (levelState.mapCoordMode) {
-                    const abs = toAbsoluteCoords(x, y);
-                    x = abs.x;
-                    y = abs.y;
-                }
-                applyAt(x, y);
-            }
-            return;
-        }
-
-        let x1 = selection.x1;
-        let y1 = selection.y1;
-        let x2 = selection.x2;
-        let y2 = selection.y2;
-        if (!Number.isFinite(x1) || !Number.isFinite(y1)
-            || !Number.isFinite(x2) || !Number.isFinite(y2)) {
-            return;
-        }
-        if (levelState.mapCoordMode) {
-            const c1 = toAbsoluteCoords(x1, y1);
-            const c2 = toAbsoluteCoords(x2, y2);
-            x1 = c1.x;
-            y1 = c1.y;
-            x2 = c2.x;
-            y2 = c2.y;
-        }
-        for (let x = Math.min(x1, x2); x <= Math.max(x1, x2); x++) {
-            for (let y = Math.min(y1, y2); y <= Math.max(y1, y2); y++) {
-                applyAt(x, y);
-            }
-        }
-    };
-    applyWallProp('nondiggable');
+    setWallPropertyInSelection(selection, 'nondiggable');
 }
 
 /**
@@ -3962,56 +4010,7 @@ export function non_passwall(selection) {
         return;
     }
     // C ref: lspo_non_passwall() reuses set_wallprop_in_selection().
-    const applyWallProp = (sel) => {
-        const applyXY = (x, y) => {
-            if (x < 0 || x >= COLNO || y < 0 || y >= ROWNO) return;
-            const loc = levelState.map.locations[x][y];
-            if (!loc) return;
-            if (!(IS_WALL(loc.typ) || loc.typ === TREE || loc.typ === IRONBARS)) return;
-            loc.nonpasswall = true;
-        };
-        if (!sel) {
-            for (let x = 0; x < COLNO; x++) {
-                for (let y = 0; y < ROWNO; y++) applyXY(x, y);
-            }
-            return;
-        }
-        if (Array.isArray(sel.coords)) {
-            for (const c of sel.coords) {
-                let x = c.x;
-                let y = c.y;
-                if (levelState.mapCoordMode) {
-                    const abs = toAbsoluteCoords(x, y);
-                    x = abs.x;
-                    y = abs.y;
-                }
-                applyXY(x, y);
-            }
-            return;
-        }
-        let x1 = sel.x1;
-        let y1 = sel.y1;
-        let x2 = sel.x2;
-        let y2 = sel.y2;
-        if (!Number.isFinite(x1) || !Number.isFinite(y1)
-            || !Number.isFinite(x2) || !Number.isFinite(y2)) {
-            return;
-        }
-        if (levelState.mapCoordMode) {
-            const c1 = toAbsoluteCoords(x1, y1);
-            const c2 = toAbsoluteCoords(x2, y2);
-            x1 = c1.x;
-            y1 = c1.y;
-            x2 = c2.x;
-            y2 = c2.y;
-        }
-        for (let x = Math.min(x1, x2); x <= Math.max(x1, x2); x++) {
-            for (let y = Math.min(y1, y2); y <= Math.max(y1, y2); y++) {
-                applyXY(x, y);
-            }
-        }
-    };
-    applyWallProp(selection);
+    setWallPropertyInSelection(selection, 'nonpasswall');
 }
 
 /**
@@ -4023,7 +4022,9 @@ export function non_passwall(selection) {
  * @param {Object} opts - Region options
  */
 export function levregion(opts) {
-    if (!opts || typeof opts !== 'object') return;
+    if (!opts || typeof opts !== 'object') {
+        throw new Error('wrong parameters');
+    }
 
     // C ref: sp_lev.c lspo_levregion() + levregion_add().
     const LR_TELE = 0;
@@ -4034,7 +4035,9 @@ export function levregion(opts) {
     const LR_UPSTAIR = 5;
     const LR_DOWNSTAIR = 6;
 
-    if (!Array.isArray(opts.region) || opts.region.length < 4) return;
+    if (!Array.isArray(opts.region) || opts.region.length !== 4) {
+        throw new Error('wrong parameters');
+    }
     const inIslev = !!opts.region_islev;
 
     let delArea = opts.exclude;
@@ -4046,13 +4049,19 @@ export function levregion(opts) {
     }
 
     const type = String(opts.type || 'stair-down').toLowerCase();
-    let rtype = LR_DOWNSTAIR;
-    if (type === 'stair-up' || type === 'stair_up') rtype = LR_UPSTAIR;
-    else if (type === 'portal') rtype = LR_PORTAL;
-    else if (type === 'branch') rtype = LR_BRANCH;
-    else if (type === 'teleport') rtype = LR_TELE;
-    else if (type === 'teleport-up' || type === 'teleport_up') rtype = LR_UPTELE;
-    else if (type === 'teleport-down' || type === 'teleport_down') rtype = LR_DOWNTELE;
+    const typeMap = {
+        'stair-down': LR_DOWNSTAIR,
+        'stair-up': LR_UPSTAIR,
+        'portal': LR_PORTAL,
+        'branch': LR_BRANCH,
+        'teleport': LR_TELE,
+        'teleport-up': LR_UPTELE,
+        'teleport-down': LR_DOWNTELE
+    };
+    const rtype = typeMap[type];
+    if (rtype === undefined) {
+        throw new Error('wrong parameters');
+    }
 
     const in1 = inIslev
         ? { x: opts.region[0], y: opts.region[1] }
@@ -4112,16 +4121,10 @@ export function exclusion(opts) {
     let y1;
     let x2;
     let y2;
-    if (Array.isArray(opts.region)) {
-        [x1, y1, x2, y2] = opts.region;
-    } else if (opts.region && typeof opts.region === 'object') {
-        x1 = opts.region.x1;
-        y1 = opts.region.y1;
-        x2 = opts.region.x2;
-        y2 = opts.region.y2;
-    } else {
+    if (!Array.isArray(opts.region) || opts.region.length !== 4) {
         throw new Error('wrong parameters');
     }
+    [x1, y1, x2, y2] = opts.region;
 
     const p1 = getLocationCoord(x1, y1, GETLOC_ANY_LOC, levelState.currentRoom || null);
     const p2 = getLocationCoord(x2, y2, GETLOC_ANY_LOC, levelState.currentRoom || null);
@@ -4528,6 +4531,68 @@ export function ladder(direction, x, y) {
 }
 
 /**
+ * des.grave(...)
+ * Place a grave at a location, optionally with epitaph text.
+ * C ref: sp_lev.c lspo_grave()
+ */
+export function grave(x_or_opts, y, text) {
+    if (!levelState.map) {
+        levelState.map = new GameMap();
+    }
+
+    const argc = arguments.length;
+    let gx = -1;
+    let gy = -1;
+    let gtext;
+
+    if (argc === 3) {
+        gx = x_or_opts;
+        gy = y;
+        gtext = (typeof text === 'string') ? text : String(text ?? '');
+    } else if (argc === 1 && x_or_opts && typeof x_or_opts === 'object') {
+        const opts = x_or_opts;
+        if (Array.isArray(opts.coord)) {
+            gx = opts.coord[0];
+            gy = opts.coord[1];
+        } else if (opts.coord && typeof opts.coord === 'object') {
+            gx = opts.coord.x;
+            gy = opts.coord.y;
+        } else {
+            gx = opts.x;
+            gy = opts.y;
+        }
+        if (typeof opts.text === 'string') gtext = opts.text;
+    } else if (argc === 0) {
+        gx = -1;
+        gy = -1;
+    } else {
+        return;
+    }
+
+    const pos = getLocationCoord(gx, gy, GETLOC_DRY, levelState.currentRoom || null);
+    const xabs = pos.x;
+    const yabs = pos.y;
+    if (xabs < 0 || yabs < 0 || xabs >= COLNO || yabs >= ROWNO) return;
+
+    // C ref: lspo_grave() does nothing if a trap occupies the destination.
+    if (levelState.map.trapAt(xabs, yabs)) return;
+
+    levelState.map.locations[xabs][yabs].typ = GRAVE;
+    markSpLevTouched(xabs, yabs);
+
+    if (!Array.isArray(levelState.map.engravings)) levelState.map.engravings = [];
+    const epitaph = (gtext !== undefined) ? gtext : random_epitaph_text();
+    levelState.map.engravings.push({
+        x: xabs,
+        y: yabs,
+        text: epitaph,
+        type: 'engrave',
+        guardobjects: false,
+        nowipeout: true
+    });
+}
+
+/**
  * des.altar(opts)
  * Place an altar at a location.
  * C ref: sp_lev.c spaltar()
@@ -4596,37 +4661,63 @@ export function altar(opts) {
 }
 
 /**
- * des.gold(opts)
+ * des.gold(...)
  * Place gold at a location.
- * C ref: sp_lev.c spgold()
- *
- * @param {Object} opts - Gold options (x, y, amount)
+ * C ref: sp_lev.c lspo_gold()
  */
-export function gold(opts) {
-    let gx;
-    let gy;
-    let amount = 1;
-
-    if (opts === undefined) {
-        gx = -1;
-        gy = -1;
-    } else if (Array.isArray(opts)) {
-        gx = opts[0];
-        gy = opts[1];
-    } else if (typeof opts === 'object') {
-        gx = opts.x ?? (Array.isArray(opts.coord) ? opts.coord[0] : -1);
-        gy = opts.y ?? (Array.isArray(opts.coord) ? opts.coord[1] : -1);
-        if (typeof opts.amount === 'number' && Number.isFinite(opts.amount)) {
-            amount = Math.max(1, Math.floor(opts.amount));
-        }
-    } else {
-        return;
+export function gold(amountOrOpts, x, y) {
+    if (!levelState.map) {
+        levelState.map = new GameMap();
     }
 
-    const pos = getLocationCoord(gx, gy, GETLOC_ANY_LOC, levelState.currentRoom || null);
+    const argc = arguments.length;
+    let gx = -1;
+    let gy = -1;
+    let amount = -1;
+
+    if (argc === 3) {
+        amount = Number.isFinite(amountOrOpts) ? Math.trunc(amountOrOpts) : -1;
+        gx = x;
+        gy = y;
+    } else if (argc === 2 && Number.isFinite(amountOrOpts)
+        && x && typeof x === 'object') {
+        amount = Math.trunc(amountOrOpts);
+        if (Array.isArray(x)) {
+            gx = x[0];
+            gy = x[1];
+        } else if (x.coord && Array.isArray(x.coord)) {
+            gx = x.coord[0];
+            gy = x.coord[1];
+        } else if (x.coord && typeof x.coord === 'object') {
+            gx = x.coord.x;
+            gy = x.coord.y;
+        } else {
+            gx = x.x;
+            gy = x.y;
+        }
+    } else if (argc === 0 || (argc === 1 && amountOrOpts && typeof amountOrOpts === 'object')) {
+        const opts = amountOrOpts || {};
+        if (Number.isFinite(opts.amount)) amount = Math.trunc(opts.amount);
+        if (Array.isArray(opts.coord)) {
+            gx = opts.coord[0];
+            gy = opts.coord[1];
+        } else if (opts.coord && typeof opts.coord === 'object') {
+            gx = opts.coord.x;
+            gy = opts.coord.y;
+        } else {
+            if (opts.x !== undefined) gx = opts.x;
+            if (opts.y !== undefined) gy = opts.y;
+        }
+    } else {
+        throw new Error('Wrong parameters');
+    }
+
+    const pos = getLocationCoord(gx, gy, GETLOC_DRY, levelState.currentRoom || null);
     if (pos.x < 0 || pos.x >= COLNO || pos.y < 0 || pos.y >= ROWNO) {
         return;
     }
+
+    if (amount < 0) amount = rnd(200);
 
     const gold = mksobj(GOLD_PIECE, true, false);
     if (!gold) return;
@@ -4734,50 +4825,73 @@ export function feature(type, x, y) {
             if (enabled) loc.flags |= bit;
             else loc.flags &= ~bit;
         };
+        const parseFeatureFlag = (value) => {
+            if (value === undefined) return null;
+            if (typeof value === 'string' && value.toLowerCase() === 'random') {
+                return rn2(2) !== 0;
+            }
+            return !!value;
+        };
         if (!loc.featureFlags) loc.featureFlags = {};
         if (terrain === FOUNTAIN) {
-            if (opts.looted !== undefined) {
-                const v = !!opts.looted;
+            {
+                const v = parseFeatureFlag(opts.looted);
+                if (v !== null) {
                 loc.featureFlags.looted = v;
                 setFlagBit(v, 1);
+                }
             }
-            if (opts.warned !== undefined) {
-                const v = !!opts.warned;
+            {
+                const v = parseFeatureFlag(opts.warned);
+                if (v !== null) {
                 loc.featureFlags.warned = v;
                 setFlagBit(v, 2);
+                }
             }
         } else if (terrain === SINK) {
-            if (opts.pudding !== undefined) {
-                const v = !!opts.pudding;
+            {
+                const v = parseFeatureFlag(opts.pudding);
+                if (v !== null) {
                 loc.featureFlags.pudding = v;
                 setFlagBit(v, 1);
+                }
             }
-            if (opts.dishwasher !== undefined) {
-                const v = !!opts.dishwasher;
+            {
+                const v = parseFeatureFlag(opts.dishwasher);
+                if (v !== null) {
                 loc.featureFlags.dishwasher = v;
                 setFlagBit(v, 2);
+                }
             }
-            if (opts.ring !== undefined) {
-                const v = !!opts.ring;
+            {
+                const v = parseFeatureFlag(opts.ring);
+                if (v !== null) {
                 loc.featureFlags.ring = v;
                 setFlagBit(v, 4);
+                }
             }
         } else if (terrain === THRONE) {
-            if (opts.looted !== undefined) {
-                const v = !!opts.looted;
+            {
+                const v = parseFeatureFlag(opts.looted);
+                if (v !== null) {
                 loc.featureFlags.looted = v;
                 setFlagBit(v, 1);
+                }
             }
         } else if (terrain === TREE) {
-            if (opts.looted !== undefined) {
-                const v = !!opts.looted;
+            {
+                const v = parseFeatureFlag(opts.looted);
+                if (v !== null) {
                 loc.featureFlags.looted = v;
                 setFlagBit(v, 1);
+                }
             }
-            if (opts.swarm !== undefined) {
-                const v = !!opts.swarm;
+            {
+                const v = parseFeatureFlag(opts.swarm);
+                if (v !== null) {
                 loc.featureFlags.swarm = v;
                 setFlagBit(v, 2);
+                }
             }
         }
     }
@@ -4836,22 +4950,31 @@ export function gas_cloud(opts = {}) {
             kind: 'selection',
             coords,
             damage,
-            ttl
+            ...(ttl > -2 ? { ttl } : {})
         });
         return;
     }
 
-    const pos = getLocationCoord(gx, gy, GETLOC_ANY_LOC, levelState.currentRoom || null);
-    if (pos.x < 0 || pos.x >= COLNO || pos.y < 0 || pos.y >= ROWNO) return;
+    // C ref: lspo_gas_cloud() passes x/y directly to create_gas_cloud()
+    // (no get_location_coord offsetting), with -1/-1 meaning random.
+    let px = gx;
+    let py = gy;
+    if (px === -1 && py === -1) {
+        const pos = getLocation(-1, -1, GETLOC_ANY_LOC, null);
+        px = pos.x;
+        py = pos.y;
+    }
+    if (!Number.isFinite(px) || !Number.isFinite(py)) return;
+    if (px < 0 || px >= COLNO || py < 0 || py >= ROWNO) return;
     levelState.map.gasClouds.push({
         kind: 'point',
-        x: pos.x,
-        y: pos.y,
+        x: px,
+        y: py,
         radius: 1,
         damage,
-        ttl
+        ...(ttl > -2 ? { ttl } : {})
     });
-    markSpLevTouched(pos.x, pos.y);
+    markSpLevTouched(px, py);
 }
 
 /**
@@ -4862,12 +4985,24 @@ export function gas_cloud(opts = {}) {
  * @param {Object} opts - Region options (region, dir)
  */
 export function teleport_region(opts) {
-    if (!opts || typeof opts !== 'object') return;
+    if (!opts || typeof opts !== 'object') {
+        throw new Error('wrong parameters');
+    }
+
+    if (!Array.isArray(opts.region) || opts.region.length !== 4) {
+        throw new Error('wrong parameters');
+    }
 
     const dir = String(opts.dir || 'both').toLowerCase();
-    let type = 'teleport';
-    if (dir === 'up') type = 'teleport-up';
-    else if (dir === 'down') type = 'teleport-down';
+    const dirMap = {
+        both: 'teleport',
+        down: 'teleport-down',
+        up: 'teleport-up'
+    };
+    const type = dirMap[dir];
+    if (!type) {
+        throw new Error('wrong parameters');
+    }
 
     levregion({
         region: opts.region,
@@ -4908,6 +5043,75 @@ export function random_corridors() {
     // Depth is used for trap generation - use 1 as default for special levels
     const depth = 1;
     makecorridors(levelState.map, depth);
+}
+
+/**
+ * des.corridor(opts)
+ *
+ * Create a corridor between two rooms.
+ * C ref: sp_lev.c lspo_corridor()
+ *
+ * @param {Object} opts - {srcroom, srcdoor, srcwall, destroom, destdoor, destwall}
+ */
+export function corridor(opts) {
+    if (!levelState.map || !opts || typeof opts !== 'object') return;
+
+    const wallMap = {
+        all: 15,
+        random: -1,
+        north: 1,
+        west: 8,
+        east: 4,
+        south: 2
+    };
+    const parseWall = (name, def = 'all') => {
+        const key = String(name ?? def).toLowerCase();
+        return (wallMap[key] !== undefined) ? wallMap[key] : wallMap[def];
+    };
+    const hasRequiredNumbers = Number.isFinite(opts.srcroom)
+        && Number.isFinite(opts.srcdoor)
+        && Number.isFinite(opts.destroom)
+        && Number.isFinite(opts.destdoor);
+    if (!hasRequiredNumbers) return;
+
+    const spec = {
+        src: {
+            room: Math.trunc(opts.srcroom),
+            door: Math.trunc(opts.srcdoor),
+            wall: parseWall(opts.srcwall, 'all')
+        },
+        dest: {
+            room: Math.trunc(opts.destroom),
+            door: Math.trunc(opts.destdoor),
+            wall: parseWall(opts.destwall, 'all')
+        }
+    };
+
+    const depth = levelState.levelDepth || 1;
+    create_corridor(levelState.map, spec, depth);
+}
+
+/**
+ * des.mineralize(opts)
+ *
+ * Deposit minerals in walls with optional C-style probability overrides.
+ * C ref: sp_lev.c lspo_mineralize()
+ *
+ * @param {Object} opts - Optional table: gem_prob/gold_prob/kelp_moat/kelp_pool
+ */
+export function mineralize(opts = {}) {
+    if (!levelState.map) return;
+
+    const parseOpt = (value) => (Number.isFinite(value) ? Math.trunc(value) : -1);
+    const params = {
+        gem_prob: parseOpt(opts.gem_prob),
+        gold_prob: parseOpt(opts.gold_prob),
+        kelp_moat: parseOpt(opts.kelp_moat),
+        kelp_pool: parseOpt(opts.kelp_pool),
+    };
+
+    const depth = levelState.levelDepth || 1;
+    dungeonMineralize(levelState.map, depth, params);
 }
 
 /**
@@ -5417,14 +5621,32 @@ function executeDeferredTraps() {
  * des.wallify()
  * Explicitly wallify the current map (compute wall junction types).
  * Usually called automatically by finalize_level(), but some levels call it explicitly.
- * C ref: sp_lev.c spo_wallify()
+ * C ref: sp_lev.c lspo_wallify()
  */
-export function wallify() {
+export function wallify(opts) {
     if (!levelState.map) {
         console.warn('wallify called but no map exists');
         return;
     }
-    wallification(levelState.map);
+    let x1 = -1;
+    let y1 = -1;
+    let x2 = -1;
+    let y2 = -1;
+
+    // C ref: lspo_wallify() only reads x1/y1/x2/y2 from a single table argument.
+    if (opts && typeof opts === 'object') {
+        if (Number.isFinite(opts.x1)) x1 = Math.trunc(opts.x1);
+        if (Number.isFinite(opts.y1)) y1 = Math.trunc(opts.y1);
+        if (Number.isFinite(opts.x2)) x2 = Math.trunc(opts.x2);
+        if (Number.isFinite(opts.y2)) y2 = Math.trunc(opts.y2);
+    }
+
+    if (x1 < 0) x1 = levelState.xstart - 1;
+    if (y1 < 0) y1 = levelState.ystart - 1;
+    if (x2 < 0) x2 = levelState.xstart + levelState.xsize + 1;
+    if (y2 < 0) y2 = levelState.ystart + levelState.ysize + 1;
+
+    dungeonWallifyRegion(levelState.map, x1, y1, x2, y2);
 }
 
 // C ref: sp_lev.c map_cleanup() — post-gen cleanup of liquid squares.
@@ -5580,7 +5802,7 @@ export function finalize_level() {
         // Skip mineralize for maze levels (special levels with custom maps)
         // C ref: Special levels don't get gold/gems in walls
         if (!levelState.flags.is_maze_lev) {
-            mineralize(levelState.map, depth);
+            dungeonMineralize(levelState.map, depth);
         }
     }
 
@@ -6781,17 +7003,23 @@ export function mazewalk(xOrOpts, y, direction) {
 
 // Export the des.* API
 export const des = {
+    message,
     level_init,
     level_flags,
     map,
+    replace_terrain,
+    room,
+    corridor,
     terrain,
     stair,
     ladder,
+    grave,
     altar,
     gold,
     object,
     trap,
     region,
+    wall_property,
     non_diggable,
     non_passwall,
     levregion,
@@ -6803,6 +7031,10 @@ export const des = {
     door,
     engraving,
     drawbridge,
+    mineralize,
+    random_corridors,
+    wallify,
     mazewalk,
+    reset_level,
     finalize_level,
 };

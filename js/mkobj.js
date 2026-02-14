@@ -16,7 +16,11 @@ import {
     WAN_CANCELLATION, WAN_LIGHT, WAN_LIGHTNING,
     BAG_OF_HOLDING, OILSKIN_SACK, BAG_OF_TRICKS, SACK,
     LARGE_BOX, CHEST, ICE_BOX, CORPSE, STATUE,
-    WORM_TOOTH, UNICORN_HORN,
+    GRAY_DRAGON_SCALES, YELLOW_DRAGON_SCALES, LENSES,
+    ELVEN_SHIELD, ORCISH_SHIELD, SHIELD_OF_REFLECTION,
+    WORM_TOOTH, UNICORN_HORN, POT_WATER,
+    SPE_BOOK_OF_THE_DEAD,
+    ARM_SHIELD, ARM_GLOVES, ARM_BOOTS,
     CLASS_SYMBOLS,
     initObjectData,
 } from './objects.js';
@@ -753,31 +757,54 @@ function just_an(str) {
     return 'aeiou'.includes(c) ? 'an' : 'a';
 }
 
-// C ref: objnam.c makeplural() (limited JS port for inventory naming)
+// C ref: objnam.c makeplural() + singplur_compound() (subset).
 function makeplural(word) {
-    const w = String(word || '');
-    if (!w) return w;
-    if (w.endsWith('s') || w.endsWith('x') || w.endsWith('z')
-        || w.endsWith('ch') || w.endsWith('sh')) {
-        return `${w}es`;
+    const w0 = String(word || '').trimStart();
+    if (!w0) return 's';
+    if (/^pair of /i.test(w0)) return w0;
+
+    const compounds = [
+        ' of ', ' labeled ', ' called ', ' named ', ' above', ' versus ',
+        ' from ', ' in ', ' on ', ' a la ', ' with', ' de ', " d'",
+        ' du ', ' au ', '-in-', '-at-',
+    ];
+    const lower = w0.toLowerCase();
+    let splitIdx = -1;
+    for (const c of compounds) {
+        const idx = lower.indexOf(c);
+        if (idx >= 0 && (splitIdx < 0 || idx < splitIdx)) splitIdx = idx;
     }
-    if (w.endsWith('y') && w.length > 1 && !'aeiou'.includes(w[w.length - 2].toLowerCase())) {
-        return `${w.slice(0, -1)}ies`;
+    const excess = splitIdx >= 0 ? w0.slice(splitIdx) : '';
+    let stem = splitIdx >= 0 ? w0.slice(0, splitIdx) : w0;
+    stem = stem.replace(/\s+$/, '');
+    if (!stem) return `s${excess}`;
+
+    const irregular = new Map([
+        ['corpse', 'corpses'],
+        ['knife', 'knives'],
+        ['tooth', 'teeth'],
+        ['staff', 'staves'],
+        ['man', 'men'],
+    ]);
+    const asIs = ['boots', 'shoes', 'gloves', 'lenses', 'scales', 'gauntlets', 'iron bars'];
+    const stemLower = stem.toLowerCase();
+    if (asIs.some(s => stemLower.endsWith(s))) return `${stem}${excess}`;
+
+    for (const [sing, plur] of irregular.entries()) {
+        if (stemLower.endsWith(sing)) {
+            return `${stem.slice(0, stem.length - sing.length)}${plur}${excess}`;
+        }
     }
-    return `${w}s`;
+    if (!/[A-Za-z]$/.test(stem)) return `${stem}'s${excess}`;
+    if (/(s|x|z|ch|sh)$/i.test(stem) || /ato$/i.test(stem)) return `${stem}es${excess}`;
+    if (/[^aeiou]y$/i.test(stem)) return `${stem.slice(0, -1)}ies${excess}`;
+    return `${stem}s${excess}`;
 }
 
 // C ref: objnam.c xname() pluralize path + makeplural()
 function pluralizeName(name) {
     const s = String(name || '');
     if (!s) return s;
-    if (s.startsWith('pair of ')) return `pairs of ${s.slice(8)}`;
-    const ofIdx = s.indexOf(' of ');
-    if (ofIdx > 0) {
-        const head = s.slice(0, ofIdx);
-        const tail = s.slice(ofIdx + 4);
-        return `${makeplural(head)} of ${tail}`;
-    }
     return makeplural(s);
 }
 
@@ -801,7 +828,10 @@ function xname_for_doname(obj, dknown = true, known = true, bknown = false) {
         base = !dknown ? 'potion'
             : nameKnown ? `potion of ${od.name}`
                 : `${od.desc || od.name} potion`;
-        if (dknown && nameKnown && obj.otyp && od.name === 'water'
+        if (dknown && obj.odiluted) {
+            base = `diluted ${base}`;
+        }
+        if (dknown && nameKnown && obj.otyp === POT_WATER
             && bknown && (obj.blessed || obj.cursed)) {
             base = `potion of ${obj.blessed ? 'holy' : 'unholy'} water`;
         }
@@ -809,12 +839,14 @@ function xname_for_doname(obj, dknown = true, known = true, bknown = false) {
     case SCROLL_CLASS:
         if (!dknown) base = 'scroll';
         else if (nameKnown) base = `scroll of ${od.name}`;
-        else if (od.desc) base = `scroll labeled ${od.desc}`;
-        else base = `scroll of ${od.name}`;
+        else if (od.magic) base = `scroll labeled ${od.desc || od.name}`;
+        else base = `${od.desc || od.name} scroll`;
         break;
     case SPBOOK_CLASS:
         base = !dknown ? 'spellbook'
-            : nameKnown ? `spellbook of ${od.name}`
+            : nameKnown ? (obj.otyp === SPE_BOOK_OF_THE_DEAD
+                ? od.name
+                : `spellbook of ${od.name}`)
                 : `${od.desc || od.name} spellbook`;
         break;
     case WAND_CLASS:
@@ -822,6 +854,33 @@ function xname_for_doname(obj, dknown = true, known = true, bknown = false) {
         else if (nameKnown) base = `wand of ${od.name}`;
         else if (od.desc) base = `${od.desc} wand`;
         else base = `wand of ${od.name}`;
+        break;
+    case TOOL_CLASS:
+        // C ref: objnam.c xname() — lenses get "pair of ".
+        if (obj.otyp === LENSES) {
+            base = `pair of ${dknown ? od.name : (od.desc || od.name)}`;
+        } else {
+            base = dknown ? od.name : (od.desc || od.name);
+        }
+        break;
+    case ARMOR_CLASS:
+        // C ref: objnam.c xname() armor handling.
+        if (obj.otyp >= GRAY_DRAGON_SCALES && obj.otyp <= YELLOW_DRAGON_SCALES) {
+            base = `set of ${od.name}`;
+        } else if (od.sub === ARM_BOOTS || od.sub === ARM_GLOVES) {
+            base = `pair of ${dknown ? od.name : (od.desc || od.name)}`;
+        } else if (!dknown && od.sub === ARM_SHIELD) {
+            // C ref: objnam.c xname() unknown shield special-cases.
+            if (obj.otyp >= ELVEN_SHIELD && obj.otyp <= ORCISH_SHIELD) {
+                base = 'shield';
+            } else if (obj.otyp === SHIELD_OF_REFLECTION) {
+                base = 'smooth shield';
+            } else {
+                base = od.desc || od.name;
+            }
+        } else {
+            base = dknown ? od.name : (od.desc || od.name);
+        }
         break;
     case FOOD_CLASS:
         if (obj.otyp === CORPSE) {
@@ -883,7 +942,7 @@ export function doname(obj, player) {
 
     const baseName = xname_for_doname(obj, dknown, known, bknown);
     let result = `${prefix}${baseName}`.trimStart();
-    if (quan === 1 && obj.otyp !== CORPSE && !result.startsWith('the ')) {
+    if (quan === 1 && !result.startsWith('the ')) {
         result = `${just_an(result)} ${result}`;
     }
 

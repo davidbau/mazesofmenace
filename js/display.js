@@ -406,6 +406,11 @@ export class Display {
                             this.cellInfo[row][col] = { name: 'remembered object', desc: '(remembered)', color: CLR_BLACK };
                             continue;
                         }
+                        if (loc.mem_trap) {
+                            this.setCell(col, row, loc.mem_trap, CLR_BLACK);
+                            this.cellInfo[row][col] = { name: 'remembered trap', desc: '(remembered)', color: CLR_BLACK };
+                            continue;
+                        }
                         // Show remembered (dimmed)
                         const sym = this.terrainSymbol(loc, gameMap, x, y);
                         this.setCell(col, row, sym.ch, CLR_BLACK);
@@ -462,11 +467,13 @@ export class Display {
                 // Check for traps
                 const trap = gameMap.trapAt(x, y);
                 if (trap && trap.tseen) {
+                    loc.mem_trap = '^';
                     this.setCell(col, row, '^', CLR_MAGENTA);
                     const trapName = this._trapName(trap.ttyp);
                     this.cellInfo[row][col] = { name: trapName, desc: 'trap', color: CLR_MAGENTA };
                     continue;
                 }
+                loc.mem_trap = 0;
 
                 // Show terrain
                 const sym = this.terrainSymbol(loc, gameMap, x, y);
@@ -821,12 +828,11 @@ export class Display {
         if (E && W && S && !N) return TDWALL;     // T pointing down
         if (N && S && E && W) return CROSSWALL;   // Cross
 
-        // Straight walls:
-        // C parity: wall orientation tracks rm.horizontal convention used for
-        // doors/secret doors. E/W neighbors imply a vertical glyph ('|'),
-        // N/S neighbors imply a horizontal glyph ('-').
-        if ((N || S) && !E && !W) return HWALL;
-        if ((E || W) && !N && !S) return VWALL;
+        // Straight walls.
+        // For wall glyphs, E/W adjacency is horizontal wall ('-'),
+        // N/S adjacency is vertical wall ('|').
+        if ((N || S) && !E && !W) return VWALL;
+        if ((E || W) && !N && !S) return HWALL;
 
         // Default to vertical wall if unclear
         return VWALL;

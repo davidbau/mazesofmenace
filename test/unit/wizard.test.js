@@ -12,8 +12,11 @@ import { rhack } from '../../js/commands.js';
 import { FOV } from '../../js/vision.js';
 import { pushInput, clearInputQueue } from '../../js/input.js';
 import { doname, mksobj } from '../../js/mkobj.js';
-import { WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, WAND_CLASS, TOOL_CLASS,
-    POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS,
+import { initDiscoveryState, discoverObject } from '../../js/discovery.js';
+import { WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, WAND_CLASS, TOOL_CLASS, FOOD_CLASS,
+    POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS, SCR_EARTH,
+    LEATHER_GLOVES, LOW_BOOTS, LENSES, GRAY_DRAGON_SCALES, SHIELD_OF_REFLECTION, CORPSE,
+    POT_HEALING, SCR_BLANK_PAPER,
     oclass_prob_totals, initObjectData, objectData } from '../../js/objects.js';
 import { Player } from '../../js/player.js';
 import { simulatePostLevelInit } from '../../js/u_init.js';
@@ -344,6 +347,20 @@ describe('Wizard mode', () => {
             assert.equal(result.tookTime, false);
             assert.ok(game.display.messages.some(m => m.includes('discovered')));
         });
+
+        it('shows discoveries list when items are known/encountered', async () => {
+            const game = mockGame({ wizard: false });
+            initDiscoveryState();
+            discoverObject(SCR_EARTH, true, true);
+            let menuLines = null;
+            game.display.renderChargenMenu = (lines) => { menuLines = lines; };
+            pushInput(' '.charCodeAt(0)); // dismiss discoveries screen
+            const result = await rhack('\\'.charCodeAt(0), game);
+            assert.equal(result.tookTime, false);
+            assert.ok(menuLines, 'discoveries should render a menu');
+            assert.ok(menuLines.some(l => l.includes('Scrolls')));
+            assert.ok(menuLines.some(l => l.includes('scroll of earth')));
+        });
     });
 
     describe('Wait and search commands', () => {
@@ -372,6 +389,10 @@ describe('Wizard mode', () => {
 });
 
 describe('doname', () => {
+    beforeEach(() => {
+        initDiscoveryState();
+    });
+
     it('blessed weapon with enchantment', () => {
         const obj = {
             otyp: 79, oclass: WEAPON_CLASS, name: 'quarterstaff',
@@ -476,6 +497,109 @@ describe('doname', () => {
             known: true, dknown: true, bknown: true,
         };
         assert.equal(doname(obj, null), 'a blessed +1 ring of protection');
+    });
+
+    it('armor gloves/boots use "pair of" phrasing', () => {
+        const gloves = {
+            otyp: LEATHER_GLOVES, oclass: ARMOR_CLASS,
+            spe: 0, blessed: false, cursed: false,
+            known: true, dknown: true, bknown: true,
+        };
+        const boots = {
+            otyp: LOW_BOOTS, oclass: ARMOR_CLASS,
+            spe: 0, blessed: false, cursed: false,
+            known: true, dknown: true, bknown: true,
+        };
+        assert.equal(doname(gloves, null), 'an uncursed +0 pair of leather gloves');
+        assert.equal(doname(boots, null), 'an uncursed +0 pair of low boots');
+    });
+
+    it('lenses use "pair of" phrasing', () => {
+        const obj = {
+            otyp: LENSES, oclass: TOOL_CLASS,
+            spe: 0, blessed: false, cursed: false,
+            known: true, dknown: true, bknown: true,
+        };
+        assert.equal(doname(obj, null), 'an uncursed pair of lenses');
+    });
+
+    it('dragon scales use "set of" phrasing', () => {
+        const obj = {
+            otyp: GRAY_DRAGON_SCALES, oclass: ARMOR_CLASS,
+            spe: 0, blessed: false, cursed: false,
+            known: true, dknown: true, bknown: true,
+        };
+        assert.equal(doname(obj, null), 'an uncursed +0 set of gray dragon scales');
+    });
+
+    it('unknown shield of reflection uses smooth shield wording', () => {
+        const obj = {
+            otyp: SHIELD_OF_REFLECTION, oclass: ARMOR_CLASS,
+            spe: 0, blessed: false, cursed: false,
+            known: false, dknown: false, bknown: true,
+        };
+        assert.equal(doname(obj, null), 'an uncursed smooth shield');
+    });
+
+    it('plural corpse naming handles trailing noun correctly', () => {
+        const obj = {
+            otyp: CORPSE,
+            oclass: FOOD_CLASS,
+            corpsenm: -1,
+            quan: 2,
+            known: true, dknown: true, bknown: false,
+        };
+        assert.equal(doname(obj, null), '2 corpses');
+    });
+
+    it('singular corpse gets an article', () => {
+        const obj = {
+            otyp: CORPSE,
+            oclass: FOOD_CLASS,
+            corpsenm: -1,
+            quan: 1,
+            known: true, dknown: true, bknown: false,
+        };
+        assert.equal(doname(obj, null), 'a corpse');
+    });
+
+    it('plural pair-of armor keeps "pair of" wording like C', () => {
+        const obj = {
+            otyp: LOW_BOOTS, oclass: ARMOR_CLASS,
+            spe: 0, blessed: false, cursed: false,
+            quan: 2,
+            known: true, dknown: true, bknown: true,
+        };
+        assert.equal(doname(obj, null), '2 uncursed +0 pair of low boots');
+    });
+
+    it('plural unknown scroll pluralizes head noun in labeled form', () => {
+        const obj = {
+            otyp: SCR_EARTH, oclass: SCROLL_CLASS,
+            spe: 0, blessed: false, cursed: false,
+            quan: 2,
+            known: false, dknown: true, bknown: false,
+        };
+        assert.match(doname(obj, null), /^2 scrolls labeled /);
+    });
+
+    it('non-magic unknown scroll uses "<desc> scroll" format', () => {
+        const obj = {
+            otyp: SCR_BLANK_PAPER, oclass: SCROLL_CLASS,
+            spe: 0, blessed: false, cursed: false,
+            known: false, dknown: true, bknown: false,
+        };
+        assert.equal(doname(obj, null), 'an unlabeled scroll');
+    });
+
+    it('diluted potion includes diluted prefix when appearance is known', () => {
+        const obj = {
+            otyp: POT_HEALING, oclass: POTION_CLASS,
+            spe: 0, blessed: false, cursed: false,
+            odiluted: true,
+            known: true, dknown: true, bknown: false,
+        };
+        assert.equal(doname(obj, null), 'a diluted potion of healing');
     });
 });
 

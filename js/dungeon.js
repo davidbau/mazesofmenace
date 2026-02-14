@@ -1738,6 +1738,115 @@ export function makecorridors(map, depth) {
     }
 }
 
+function wallMaskToDir(mask) {
+    switch (mask) {
+    case W_NORTH: return DIR_N;
+    case W_SOUTH: return DIR_S;
+    case W_WEST: return DIR_W;
+    case W_EAST: return DIR_E;
+    default: return -1;
+    }
+}
+
+function dirVector(dir) {
+    switch (dir) {
+    case DIR_N: return { dx: 0, dy: -1 };
+    case DIR_S: return { dx: 0, dy: 1 };
+    case DIR_W: return { dx: -1, dy: 0 };
+    case DIR_E: return { dx: 1, dy: 0 };
+    default: return { dx: 0, dy: 0 };
+    }
+}
+
+function searchDoor(room, wall, doorIndex, map) {
+    let dx;
+    let dy;
+    let xx;
+    let yy;
+
+    switch (wall) {
+    case W_SOUTH:
+        dy = 0; dx = 1;
+        xx = room.lx; yy = room.hy + 1;
+        break;
+    case W_NORTH:
+        dy = 0; dx = 1;
+        xx = room.lx; yy = room.ly - 1;
+        break;
+    case W_EAST:
+        dy = 1; dx = 0;
+        xx = room.hx + 1; yy = room.ly;
+        break;
+    case W_WEST:
+        dy = 1; dx = 0;
+        xx = room.lx - 1; yy = room.ly;
+        break;
+    default:
+        return null;
+    }
+
+    let cnt = doorIndex;
+    while (xx <= room.hx + 1 && yy <= room.hy + 1) {
+        const loc = map.at(xx, yy);
+        if (loc && (IS_DOOR(loc.typ) || loc.typ === SDOOR)) {
+            if (cnt-- <= 0) return { x: xx, y: yy };
+        }
+        xx += dx;
+        yy += dy;
+    }
+    return null;
+}
+
+// C ref: sp_lev.c create_corridor() as used by lspo_corridor().
+// src/dest room fields are 0-based room indices (svr.rooms[] indexing).
+export function create_corridor(map, spec, depth) {
+    const srcRoomN = Number.isFinite(spec?.src?.room) ? Math.trunc(spec.src.room) : -1;
+    const destRoomN = Number.isFinite(spec?.dest?.room) ? Math.trunc(spec.dest.room) : -1;
+
+    if (srcRoomN < 0 || destRoomN < 0) {
+        makecorridors(map, depth);
+        return;
+    }
+
+    const srcIdx = srcRoomN;
+    const destIdx = destRoomN;
+    if (srcIdx < 0 || srcIdx >= map.nroom) return;
+    if (destIdx < 0 || destIdx >= map.nroom) return;
+    if (srcIdx === destIdx) return;
+
+    if (!Array.isArray(map.smeq) || map.smeq.length < map.nroom) {
+        map.smeq = new Array(MAXNROFROOMS + 1);
+        for (let i = 0; i < map.nroom; i++) map.smeq[i] = i;
+    }
+
+    const srcRoom = map.rooms[srcIdx];
+    const destRoom = map.rooms[destIdx];
+    if (!srcRoom || !destRoom) return;
+
+    const srcWall = Number.isFinite(spec?.src?.wall) ? Math.trunc(spec.src.wall) : W_ANY;
+    const destWall = Number.isFinite(spec?.dest?.wall) ? Math.trunc(spec.dest.wall) : W_ANY;
+    // C ref: create_corridor() rejects random/any walls for des.corridor().
+    if (srcWall === W_ANY || srcWall === -1 || destWall === W_ANY || destWall === -1) return;
+
+    const srcDoor = Number.isFinite(spec?.src?.door) ? Math.trunc(spec.src.door) : 0;
+    const destDoor = Number.isFinite(spec?.dest?.door) ? Math.trunc(spec.dest.door) : 0;
+
+    const cc = searchDoor(srcRoom, srcWall, srcDoor, map);
+    const tt = searchDoor(destRoom, destWall, destDoor, map);
+    if (!cc || !tt) return;
+
+    const svec = dirVector(wallMaskToDir(srcWall));
+    const dvec = dirVector(wallMaskToDir(destWall));
+    const org = { x: cc.x + svec.dx, y: cc.y + svec.dy };
+    const dest = { x: tt.x - dvec.dx, y: tt.y - dvec.dy };
+
+    const result = dig_corridor(map, org, dest, false, depth);
+    if (!result.success) return;
+
+    if (map.smeq[srcIdx] < map.smeq[destIdx]) map.smeq[destIdx] = map.smeq[srcIdx];
+    else map.smeq[srcIdx] = map.smeq[destIdx];
+}
+
 // ========================================================================
 // Stairs, room filling, niches
 // ========================================================================
@@ -2065,6 +2174,11 @@ const RUMOR_PAD_LENGTH = 60;
 // C ref: engrave.c make_grave() → get_rnd_text(EPITAPHFILE, ...)
 const { texts: epitaphTexts, lineBytes: epitaphLineBytes, chunksize: epitaphChunksize } =
     parseEncryptedDataFile(EPITAPH_FILE_TEXT);
+
+export function random_epitaph_text() {
+    const idx = get_rnd_line_index(epitaphLineBytes, epitaphChunksize, RUMOR_PAD_LENGTH);
+    return epitaphTexts[idx] || epitaphTexts[0] || '';
+}
 
 // C ref: rumors.c get_rnd_line — simulate the random line selection from a
 // padded file section. Returns the index of the selected line.
@@ -2967,6 +3081,11 @@ function wallify(map, x1, y1, x2, y2) {
     }
 }
 
+// C ref: mkmaze.c wallification(map, x1, y1, x2, y2) bounded variant.
+export function wallify_region(map, x1, y1, x2, y2) {
+    wallify(map, x1, y1, x2, y2);
+}
+
 // C ref: mkmaze.c wallification() -- full map wall fixup
 export function wallification(map) {
     wall_cleanup(map, 1, 0, COLNO - 1, ROWNO - 1);
@@ -3864,13 +3983,15 @@ function water_has_kelp(map, x, y, kelp_pool, kelp_moat) {
     return false;
 }
 
-export function mineralize(map, depth) {
+export function mineralize(map, depth, opts = null) {
     // C ref: mklev.c:1438-1530 — full mineralize implementation
     // C signature: mineralize(kelp_pool, kelp_moat, goldprob, gemprob, skip_lvl_checks)
     // JS uses defaults: -1, -1, -1, -1, false (normal behavior)
 
-    const kelp_pool = 10;   // C default when kelp_pool < 0
-    const kelp_moat = 30;   // C default when kelp_moat < 0
+    const kelp_pool = (opts && Number.isFinite(opts.kelp_pool) && opts.kelp_pool >= 0)
+        ? Math.trunc(opts.kelp_pool) : 10; // C default when kelp_pool < 0
+    const kelp_moat = (opts && Number.isFinite(opts.kelp_moat) && opts.kelp_moat >= 0)
+        ? Math.trunc(opts.kelp_moat) : 30; // C default when kelp_moat < 0
 
     const DEBUG = typeof process !== 'undefined' && process.env.DEBUG_MINERALIZE === '1';
     let eligible_count = 0;
@@ -3898,8 +4019,10 @@ export function mineralize(map, depth) {
     // For now, proceed with mineralization.
 
     // C ref: mklev.c:1468-1472 — default probabilities
-    let goldprob = 20 + Math.floor(depth / 3);
-    let gemprob = Math.floor(goldprob / 4);
+    let goldprob = (opts && Number.isFinite(opts.gold_prob) && opts.gold_prob >= 0)
+        ? Math.trunc(opts.gold_prob) : (20 + Math.floor(depth / 3));
+    let gemprob = (opts && Number.isFinite(opts.gem_prob) && opts.gem_prob >= 0)
+        ? Math.trunc(opts.gem_prob) : Math.floor(goldprob / 4);
 
     // C ref: mklev.c:1475-1483 — adjust probabilities for dungeon branches
     // Mines: goldprob *= 2, gemprob *= 3

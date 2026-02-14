@@ -145,3 +145,25 @@ export function getDiscoveriesMenuLines() {
     }
     return lines;
 }
+
+// C ref: savenames/restnames persists discovery-relevant object-class state.
+export function getDiscoveryState() {
+    if (ocNameKnown.length === 0) initDiscoveryState();
+    return {
+        ocNameKnown: [...ocNameKnown],
+        ocEncountered: [...ocEncountered],
+    };
+}
+
+export function setDiscoveryState(state) {
+    initDiscoveryState();
+    if (!state || !Array.isArray(state.ocNameKnown) || !Array.isArray(state.ocEncountered)) {
+        return;
+    }
+    const n = objectData.length;
+    for (let i = 0; i < n; i++) {
+        ocNameKnown[i] = !!state.ocNameKnown[i];
+        ocEncountered[i] = !!state.ocEncountered[i];
+        if (ocNameKnown[i] || ocEncountered[i]) pushDisco(i);
+    }
+}

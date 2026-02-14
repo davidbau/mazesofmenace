@@ -9,10 +9,10 @@ import {
 } from '../../js/sp_lev.js';
 import { place_lregion } from '../../js/dungeon.js';
 import {
-    STONE, ROOM, HWALL, VWALL, STAIRS, LAVAPOOL, PIT, MAGIC_PORTAL, CROSSWALL,
+    STONE, ROOM, CORR, DOOR, HWALL, VWALL, STAIRS, LAVAPOOL, PIT, MAGIC_PORTAL, CROSSWALL, GRAVE,
     ALTAR, THRONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC,
 } from '../../js/config.js';
-import { BOULDER, DAGGER } from '../../js/objects.js';
+import { BOULDER, DAGGER, GOLD_PIECE } from '../../js/objects.js';
 
 // Alias for stairs
 const STAIRS_UP = STAIRS;
@@ -37,6 +37,18 @@ describe('sp_lev.js - des.* API', () => {
         assert.equal(map.locations[0][0].typ, STONE);
         assert.equal(map.locations[40][10].typ, STONE);
         assert.equal(map.locations[79][20].typ, STONE);
+    });
+
+    it('exposes C-registered des API surface for implemented functions', () => {
+        assert.equal(typeof des.message, 'function');
+        assert.equal(typeof des.room, 'function');
+        assert.equal(typeof des.corridor, 'function');
+        assert.equal(typeof des.replace_terrain, 'function');
+        assert.equal(typeof des.mineralize, 'function');
+        assert.equal(typeof des.grave, 'function');
+        assert.equal(typeof des.random_corridors, 'function');
+        assert.equal(typeof des.wallify, 'function');
+        assert.equal(typeof des.reset_level, 'function');
     });
 
     it('should set level flags correctly', () => {
@@ -177,6 +189,38 @@ describe('sp_lev.js - des.* API', () => {
         assert.equal(map.locations[20][8].altarAlign, A_NEUTRAL);
     });
 
+    it('des.feature supports C-style "random" boolean flags', () => {
+        resetLevelState();
+        initRng(7);
+        des.level_init({ style: 'solidfill', fg: '.' });
+        des.feature({ type: 'fountain', x: 10, y: 6, looted: 'random', warned: 'random' });
+
+        const loc = getLevelState().map.locations[10][6];
+        assert.equal(typeof loc.featureFlags.looted, 'boolean');
+        assert.equal(typeof loc.featureFlags.warned, 'boolean');
+        assert.equal((loc.flags & 1) !== 0, loc.featureFlags.looted);
+        assert.equal((loc.flags & 2) !== 0, loc.featureFlags.warned);
+    });
+
+    it('des.gas_cloud uses absolute x/y and C-style ttl override semantics', () => {
+        resetLevelState();
+        des.level_init({ style: 'solidfill', fg: ' ' });
+        des.map({ map: '..\n..', x: 10, y: 5 });
+
+        des.gas_cloud({ x: 1, y: 1, damage: 3 });
+        let clouds = getLevelState().map.gasClouds;
+        assert.equal(clouds.length, 1);
+        assert.equal(clouds[0].x, 1, 'gas_cloud x should be absolute (not map-relative)');
+        assert.equal(clouds[0].y, 1, 'gas_cloud y should be absolute (not map-relative)');
+        assert.equal(clouds[0].damage, 3);
+        assert.equal('ttl' in clouds[0], false, 'ttl should not be forced when omitted');
+
+        des.gas_cloud({ x: 2, y: 2, damage: 1, ttl: 9 });
+        clouds = getLevelState().map.gasClouds;
+        assert.equal(clouds.length, 2);
+        assert.equal(clouds[1].ttl, 9, 'explicit ttl should be preserved');
+    });
+
     it('des.map parses backslash as THRONE terrain', () => {
         resetLevelState();
         des.level_init({ style: 'solidfill', fg: ' ' });
@@ -194,6 +238,26 @@ describe('sp_lev.js - des.* API', () => {
 
         const map = getLevelState().map;
         assert.equal(map.locations[10][5].typ, STAIRS_UP);
+    });
+
+    it('des.gold supports C call forms and default random amount', () => {
+        resetLevelState();
+        initRng(123);
+        des.level_init({ style: 'solidfill', fg: '.' });
+
+        des.gold(500, 10, 5);
+        let map = getLevelState().map;
+        assert.equal(map.objects.some(o => o.otyp === GOLD_PIECE && o.ox === 10 && o.oy === 5 && o.quan === 500), true);
+
+        des.gold(250, [11, 5]);
+        map = getLevelState().map;
+        assert.equal(map.objects.some(o => o.otyp === GOLD_PIECE && o.ox === 11 && o.oy === 5 && o.quan === 250), true);
+
+        des.gold();
+        map = getLevelState().map;
+        const randomGold = map.objects.find(o => o.otyp === GOLD_PIECE && !(o.ox === 10 && o.oy === 5) && !(o.ox === 11 && o.oy === 5));
+        assert.ok(randomGold, 'gold() should place random gold');
+        assert.ok(randomGold.quan >= 1 && randomGold.quan <= 200, 'gold() amount should be rnd(200)');
     });
 
     it('should preserve leading and trailing blank map lines', () => {
@@ -261,6 +325,17 @@ describe('sp_lev.js - des.* API', () => {
         assert.equal(map.locations[11][6].lit, 1, 'lit region room should be lit');
     });
 
+    it('levregion and teleport_region enforce C-style option validation', () => {
+        resetLevelState();
+        des.level_init({ style: 'solidfill', fg: ' ' });
+
+        assert.throws(() => des.levregion({ type: 'stair-up' }));
+        assert.throws(() => des.levregion({ region: [0, 0, 1, 1], type: 'bad-type' }));
+        assert.throws(() => des.teleport_region({ region: [0, 0, 1, 1], dir: 'sideways' }));
+        assert.throws(() => des.teleport_region({ dir: 'both' }));
+        assert.throws(() => des.exclusion({ type: 'teleport', region: { x1: 0, y1: 0, x2: 1, y2: 1 } }));
+    });
+
     it('keeps ordinary rectangular des.region as light-only (no room)', () => {
         resetLevelState();
         des.level_init({ style: 'solidfill', fg: '.', lit: 0 });
@@ -282,6 +357,113 @@ describe('sp_lev.js - des.* API', () => {
         assert.equal(map.locations[10][5].nondiggable, true, 'relative non_diggable should target map origin');
         assert.equal(map.locations[10][6].nondiggable, false, 'non-wall tiles should remain diggable');
         assert.equal(map.locations[0][0].nondiggable, false, 'absolute origin should remain diggable');
+    });
+
+    it('applies des.wall_property default nondiggable to region coordinates', () => {
+        resetLevelState();
+        des.level_init({ style: 'solidfill', fg: ' ' });
+        des.map({ map: '--\n..', x: 10, y: 5 });
+
+        des.wall_property({ region: [0, 0, 0, 0] });
+        const map = getLevelState().map;
+        assert.equal(map.locations[10][5].nondiggable, true, 'relative region should target map origin');
+        assert.equal(map.locations[10][6].nondiggable, false, 'non-wall tiles should remain unchanged');
+    });
+
+    it('applies des.wall_property nonpasswall option', () => {
+        resetLevelState();
+        des.level_init({ style: 'solidfill', fg: ' ' });
+        des.map({ map: '--\n..', x: 10, y: 5 });
+
+        des.wall_property({ x1: 0, y1: 0, x2: 0, y2: 0, property: 'nonpasswall' });
+        const map = getLevelState().map;
+        assert.equal(map.locations[10][5].nonpasswall, true, 'wall should become non-passwall');
+        assert.equal(map.locations[10][6].nonpasswall, undefined, 'non-wall tiles should remain unchanged');
+    });
+
+    it('applies des.wallify bounded x1/y1/x2/y2 semantics', () => {
+        resetLevelState();
+        des.level_init({ style: 'solidfill', fg: ' ' });
+        des.terrain(10, 10, '-');
+        const map = getLevelState().map;
+        assert.equal(map.locations[10][10].typ, HWALL, 'test setup should place a wall tile');
+
+        des.wallify({ x1: 10, y1: 10, x2: 10, y2: 10 });
+        assert.equal(map.locations[10][10].typ, STONE, 'isolated wall should be cleaned to stone');
+    });
+
+    it('accepts des.mineralize option table without regressions', () => {
+        resetLevelState();
+        des.level_init({ style: 'solidfill', fg: ' ' });
+        des.mineralize({ gem_prob: 0, gold_prob: 0, kelp_pool: 0, kelp_moat: 0 });
+
+        const map = getLevelState().map;
+        assert.ok(map, 'map should remain valid after mineralize options call');
+    });
+
+    it('places grave terrain and epitaph text from table form', () => {
+        resetLevelState();
+        des.level_init({ style: 'solidfill', fg: '.' });
+
+        des.grave({ x: 12, y: 7, text: 'Here lies JS.' });
+        const map = getLevelState().map;
+        assert.equal(map.locations[12][7].typ, GRAVE);
+        assert.equal(map.engravings.some(e => e.x === 12 && e.y === 7 && e.text === 'Here lies JS.'), true);
+    });
+
+    it('does not place grave on trap-occupied square', () => {
+        resetLevelState();
+        des.level_init({ style: 'solidfill', fg: '.' });
+        des.trap('pit', 10, 5);
+
+        des.grave(10, 5, 'blocked');
+        const map = getLevelState().map;
+        assert.notEqual(map.locations[10][5].typ, GRAVE);
+        assert.equal(map.engravings.some(e => e.x === 10 && e.y === 5 && e.text === 'blocked'), false);
+    });
+
+    it('connects rooms with des.corridor table form', () => {
+        resetLevelState();
+        des.level_init({ style: 'solidfill', fg: ' ' });
+        const map = getLevelState().map;
+        map.rooms = [
+            { lx: 5, ly: 5, hx: 8, hy: 8, needjoining: true },
+            { lx: 20, ly: 5, hx: 23, hy: 8, needjoining: true }
+        ];
+        map.nroom = 2;
+        map.locations[9][5].typ = DOOR;   // east wall door for room 0
+        map.locations[19][5].typ = DOOR;  // west wall door for room 1
+
+        des.corridor({ srcroom: 0, srcdoor: 0, srcwall: 'east', destroom: 1, destdoor: 0, destwall: 'west' });
+        let corridorLike = 0;
+        for (let x = 0; x < 80; x++) {
+            for (let y = 0; y < 21; y++) {
+                if (map.locations[x][y].typ === CORR) corridorLike++;
+            }
+        }
+        assert.ok(corridorLike > 0, 'corridor call should carve at least one corridor tile');
+    });
+
+    it('ignores incomplete des.corridor table', () => {
+        resetLevelState();
+        des.level_init({ style: 'solidfill', fg: ' ' });
+        const map = getLevelState().map;
+        map.rooms = [
+            { lx: 5, ly: 5, hx: 8, hy: 8, needjoining: true },
+            { lx: 20, ly: 5, hx: 23, hy: 8, needjoining: true }
+        ];
+        map.nroom = 2;
+        map.locations[9][5].typ = DOOR;
+        map.locations[19][5].typ = DOOR;
+
+        des.corridor({ srcroom: 0, srcwall: 'east', destroom: 1, destwall: 'west' });
+        let corridorLike = 0;
+        for (let x = 0; x < 80; x++) {
+            for (let y = 0; y < 21; y++) {
+                if (map.locations[x][y].typ === CORR) corridorLike++;
+            }
+        }
+        assert.equal(corridorLike, 0, 'incomplete corridor spec should not carve');
     });
 
     it('finalize_level map cleanup removes boulders and destroyable traps on liquid', () => {
