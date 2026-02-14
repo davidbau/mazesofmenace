@@ -465,6 +465,7 @@ export class Player {
         this.turns = 0;
         this.wizard = false;
         this.displacedPetThisTurn = false;
+        this.kickedloc = null;
 
         // Death cause -- C ref: killer.name from end.c
         this.deathCause = '';

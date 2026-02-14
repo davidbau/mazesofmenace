@@ -16,13 +16,13 @@ import { dogfood, dog_eat, can_carry, DOGFOOD, CADAVER, ACCFOOD, MANFOOD, APPORT
 import { couldsee, m_cansee, do_clear_area } from './vision.js';
 import { can_teleport } from './mondata.js';
 import { PM_GRID_BUG, PM_IRON_GOLEM, PM_SHOPKEEPER, mons,
-         PM_LEPRECHAUN,
+         PM_LEPRECHAUN, PM_XAN, PM_YELLOW_LIGHT, PM_BLACK_LIGHT,
          AT_CLAW, AT_BITE, AT_KICK, AT_BUTT, AT_TUCH, AT_STNG, AT_WEAP,
          M1_FLY, M1_AMORPHOUS, M1_CLING, M1_SEE_INVIS, S_MIMIC,
          MZ_TINY, MZ_SMALL, MR_FIRE, MR_SLEEP, G_FREQ } from './monsters.js';
 import { STATUE_TRAP, MAGIC_TRAP, VIBRATING_SQUARE, RUST_TRAP, FIRE_TRAP,
          SLP_GAS_TRAP, BEAR_TRAP, PIT, SPIKED_PIT, HOLE, TRAPDOOR,
-         WEB, ANTI_MAGIC } from './symbols.js';
+         WEB, ANTI_MAGIC, MAGIC_PORTAL } from './symbols.js';
 
 const MTSZ = 4;           // C ref: monst.h — track history size
 const SQSRCHRADIUS = 5;   // C ref: dogmove.c — object search radius
@@ -89,9 +89,34 @@ function dist2(x1, y1, x2, y2) {
     return (x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2);
 }
 
+// C ref: mon.c monnear() + NODIAG()
+function monnear(mon, x, y) {
+    const distance = dist2(mon.mx, mon.my, x, y);
+    const nodiag = mon.mndx === PM_GRID_BUG
+        || mon.mndx === PM_XAN
+        || mon.mndx === PM_YELLOW_LIGHT
+        || mon.mndx === PM_BLACK_LIGHT;
+    if (distance === 2 && nodiag) return false;
+    return distance < 3;
+}
+
 function hasGold(inv) {
     return Array.isArray(inv)
         && inv.some(o => o && o.oclass === COIN_CLASS && (o.quan ?? 1) > 0);
+}
+
+function playerHasGold(player) {
+    return (player?.gold || 0) > 0 || hasGold(player?.inventory);
+}
+
+// C ref: monmove.c m_avoid_kicked_loc()
+function m_avoid_kicked_loc(mon, nx, ny, player) {
+    const kl = player?.kickedloc;
+    const monCanSee = (mon?.mcansee !== false) && !mon?.blind;
+    if (!kl || !isok(kl.x, kl.y)) return false;
+    if (!(mon?.peaceful || mon?.tame)) return false;
+    if (!monCanSee || mon?.confused || mon?.stunned) return false;
+    return nx === kl.x && ny === kl.y && dist2(nx, ny, player.x, player.y) <= 2;
 }
 
 // C ref: mon.c:3243 corpse_chance() RNG.
@@ -483,8 +508,7 @@ function dochug(mon, map, player, display, fov) {
     // C ref: monmove.c:882-887 — short-circuit OR evaluation
     // This determines whether monster wanders/moves (condition TRUE)
     // or falls through to Phase 4 attack (condition FALSE)
-    const nearby = (Math.abs(mon.mx - player.x) <= 1
-                    && Math.abs(mon.my - player.y) <= 1);
+    const nearby = monnear(mon, player.x, player.y);
     const M2_WANDER = 0x800000;
     const isWanderer = !!(mon.type && mon.type.flags2 & M2_WANDER);
     const monCanSee = (mon.mcansee !== false) && !mon.blind;
@@ -501,9 +525,9 @@ function dochug(mon, map, player, display, fov) {
     // (mdat->mlet == S_LEPRECHAUN && !findgold(player_inventory)
     //  && (findgold(mon_inventory) || rn2(2)))
     if (!phase3Cond && mon.mndx === PM_LEPRECHAUN) {
-        const playerHasGold = hasGold(player.inventory);
+        const playerHasGoldNow = playerHasGold(player);
         const monHasGold = hasGold(mon.minvent);
-        if (!playerHasGold && (monHasGold || rn2(2))) phase3Cond = true;
+        if (!playerHasGoldNow && (monHasGold || rn2(2))) phase3Cond = true;
     }
     if (!phase3Cond && isWanderer) phase3Cond = !rn2(4);
     // skip Conflict check
@@ -534,8 +558,10 @@ function dochug(mon, map, player, display, fov) {
         rn2(5);
     } else {
         // Phase 4: Standard Attacks
-        // C ref: monmove.c:966-977 — mattacku for hostile monsters
-        if (!mon.peaceful) {
+        // C ref: monmove.c:966-973 — attack only when in range and not scared.
+        // We do not model full distfleeck scared state yet, but should still
+        // avoid off-range attacks.
+        if (!mon.peaceful && nearby && !mon.flee) {
             monsterAttackPlayer(mon, player, display);
         }
     }
@@ -735,7 +761,7 @@ function pet_ranged_attk(mon, map, player, display) {
 
 // C ref: dogmove.c dog_move() — full pet movement logic
 // Returns: -2 (skip), 0 (stay), 1 (moved), 2 (moved+ate)
-function dog_move(mon, map, player, display, fov) {
+function dog_move(mon, map, player, display, fov, after = false) {
     const omx = mon.mx, omy = mon.my;
     const udist = dist2(omx, omy, player.x, player.y);
     const edog = mon.edog || { apport: 0, hungrytime: 1000, whistletime: 0 };
@@ -822,6 +848,12 @@ function dog_move(mon, map, player, display, fov) {
         // No good goal found — follow player
         gx = player.x; gy = player.y;
 
+        // C ref: dogmove.c:565-566 — if called from "after" path and already
+        // adjacent to the hero's square, skip movement this turn.
+        if (after && udist <= 4) {
+            return 0;
+        }
+
         appr = (udist >= 9) ? 1 : (mon.flee) ? -1 : 0;
 
         if (udist > 1) {
@@ -847,6 +879,18 @@ function dog_move(mon, map, player, display, fov) {
                     if (dogfood(mon, invObj, turnCount) === DOGFOOD) {
                         appr = 1;
                         break;
+                    }
+                }
+                // C ref: dogmove.c:586-595 — magic portal proximity also
+                // makes pets follow more tightly.
+                if (appr === 0) {
+                    for (const trap of map.traps || []) {
+                        if (trap && trap.ttyp === MAGIC_PORTAL) {
+                            const dx = trap.tx - player.x;
+                            const dy = trap.ty - player.y;
+                            if ((dx * dx + dy * dy) <= 2) appr = 1;
+                            break;
+                        }
                     }
                 }
             }
@@ -901,7 +945,6 @@ function dog_move(mon, map, player, display, fov) {
     // Collect valid positions (column-major order, no stay pos, boulder filter)
     const positions = mfndpos(mon, map, player);
     const cnt = positions.length;
-
     let nix = omx, niy = omy;
     let nidist = dist2(omx, omy, gx, gy);
     let chcnt = 0;
@@ -988,6 +1031,11 @@ function dog_move(mon, map, player, display, fov) {
             }
         }
 
+        // C ref: monmove.c m_avoid_kicked_loc() via dogmove.c:1177
+        if (m_avoid_kicked_loc(mon, nx, ny, player)) {
+            continue;
+        }
+
         // Trap avoidance — C ref: dogmove.c:1182-1204
         // Pets avoid harmful seen traps with 39/40 probability
         // Only check if mfndpos flagged this position as having a trap (ALLOW_TRAPS)
@@ -1055,7 +1103,6 @@ function dog_move(mon, map, player, display, fov) {
         // C ref: dogmove.c:1247-1257
         const ndist = dist2(nx, ny, gx, gy);
         const j = (ndist - nidist) * appr;
-
         if ((j === 0 && !rn2(++chcnt)) || j < 0
             || (j > 0 && !whappr
                 && ((omx === nix && omy === niy && !rn2(3)) || !rn2(12)))) {
@@ -1157,6 +1204,9 @@ function m_move(mon, map, player) {
     for (let i = 0; i < cnt; i++) {
         const nx = positions[i].x;
         const ny = positions[i].y;
+
+        // C ref: monmove.c:1953
+        if (m_avoid_kicked_loc(mon, nx, ny, player)) continue;
 
         // C ref: monmove.c undesirable_disp()/trap avoidance —
         // monsters usually avoid harmful known traps (39/40 chance).
