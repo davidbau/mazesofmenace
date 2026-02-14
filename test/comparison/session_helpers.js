@@ -998,7 +998,6 @@ export async function replaySession(seed, session, opts = {}) {
         // Sync player stats from session screen data.
         // JS doesn't fully model monster-to-player combat damage or healing,
         // so we use the authoritative screen state to keep HP/attributes in sync.
-        const stepScreen = getSessionScreenLines(step);
         if (stepScreen.length > 0) {
             for (const line of stepScreen) {
                 const hpm = line.match(/HP:(\d+)\((\d+)\)/);
