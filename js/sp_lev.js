@@ -3556,6 +3556,17 @@ export function trap(type_or_opts, x, y) {
     // des.trap({ coord: [x, y] }) / des.trap({ coord: {x, y} }) / des.trap({ x, y }).
     let srcX = x;
     let srcY = y;
+    // C ref: lspo_trap supports trap("type", {x,y}) coordinate table form.
+    if (typeof type_or_opts === 'string' && srcY === undefined
+        && srcX && typeof srcX === 'object') {
+        if (Array.isArray(srcX)) {
+            srcY = srcX[1];
+            srcX = srcX[0];
+        } else {
+            srcY = srcX.y;
+            srcX = srcX.x;
+        }
+    }
     if (type_or_opts && typeof type_or_opts === 'object' && srcX === undefined && srcY === undefined) {
         if (type_or_opts.coord) {
             if (Array.isArray(type_or_opts.coord)) {
@@ -4021,6 +4032,17 @@ export function monster(opts_or_class, x, y) {
     // des.monster({ x, y }) or des.monster({ coord: [x, y] }).
     let srcX = x;
     let srcY = y;
+    // C ref: lspo_monster supports monster("id", {x,y}) coordinate table form.
+    if (typeof opts_or_class === 'string' && srcY === undefined
+        && srcX && typeof srcX === 'object') {
+        if (Array.isArray(srcX)) {
+            srcY = srcX[1];
+            srcX = srcX[0];
+        } else {
+            srcY = srcX.y;
+            srcX = srcX.x;
+        }
+    }
     if (opts_or_class && typeof opts_or_class === 'object' && srcX === undefined && srcY === undefined) {
         if (opts_or_class.coord) {
             if (Array.isArray(opts_or_class.coord)) {
