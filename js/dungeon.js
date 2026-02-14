@@ -1069,8 +1069,9 @@ function makemaz(map, protofile) {
     // C ref: mkmaze.c:1199-1200
     // Wallification for non-corridor mazes
     if (!map.flags.corrmaze) {
-        // wallification(2, 2, x_maze_max, y_maze_max)
-        // For now, skip wallification - it's complex and optional
+        // C uses bounded wallification(2,2,x_maze_max,y_maze_max).
+        // Use full-map wallification helper here for parity over the prior stub.
+        wallification(map);
     }
 
     // C ref: mkmaze.c:1202-1208
