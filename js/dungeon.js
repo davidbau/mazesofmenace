@@ -2066,6 +2066,11 @@ const RUMOR_PAD_LENGTH = 60;
 const { texts: epitaphTexts, lineBytes: epitaphLineBytes, chunksize: epitaphChunksize } =
     parseEncryptedDataFile(EPITAPH_FILE_TEXT);
 
+export function random_epitaph_text() {
+    const idx = get_rnd_line_index(epitaphLineBytes, epitaphChunksize, RUMOR_PAD_LENGTH);
+    return epitaphTexts[idx] || epitaphTexts[0] || '';
+}
+
 // C ref: rumors.c get_rnd_line — simulate the random line selection from a
 // padded file section. Returns the index of the selected line.
 function get_rnd_line_index(lineBytes, chunksize, padlength) {

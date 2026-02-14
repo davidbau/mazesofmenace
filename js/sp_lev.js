@@ -16,7 +16,7 @@
 import { GameMap, FILL_NORMAL } from './map.js';
 import { rn2, rnd, rn1, getRngCallCount } from './rng.js';
 import { mksobj, mkobj, mkcorpstat, set_corpsenm, weight } from './mkobj.js';
-import { create_room, create_subroom, makecorridors, init_rect, rnd_rect, get_rect, split_rects, check_room, add_doors_to_room, update_rect_pool_for_room, bound_digging, mineralize as dungeonMineralize, fill_ordinary_room, litstate_rnd, isMtInitialized, setMtInitialized, wallification as dungeonWallification, wallify_region as dungeonWallifyRegion, fix_wall_spines, place_lregion, mktrap, enexto, somexy, sp_create_door, floodFillAndRegister, resolveBranchPlacementForLevel } from './dungeon.js';
+import { create_room, create_subroom, makecorridors, init_rect, rnd_rect, get_rect, split_rects, check_room, add_doors_to_room, update_rect_pool_for_room, bound_digging, mineralize as dungeonMineralize, fill_ordinary_room, litstate_rnd, isMtInitialized, setMtInitialized, wallification as dungeonWallification, wallify_region as dungeonWallifyRegion, fix_wall_spines, place_lregion, mktrap, enexto, somexy, sp_create_door, floodFillAndRegister, resolveBranchPlacementForLevel, random_epitaph_text } from './dungeon.js';
 import { seedFromMT } from './xoshiro256.js';
 import { makemon, mkclass, def_char_to_monclass, NO_MM_FLAGS, MM_NOGRP } from './makemon.js';
 import {
@@ -4517,6 +4517,68 @@ export function ladder(direction, x, y) {
 }
 
 /**
+ * des.grave(...)
+ * Place a grave at a location, optionally with epitaph text.
+ * C ref: sp_lev.c lspo_grave()
+ */
+export function grave(x_or_opts, y, text) {
+    if (!levelState.map) {
+        levelState.map = new GameMap();
+    }
+
+    const argc = arguments.length;
+    let gx = -1;
+    let gy = -1;
+    let gtext;
+
+    if (argc === 3) {
+        gx = x_or_opts;
+        gy = y;
+        gtext = (typeof text === 'string') ? text : String(text ?? '');
+    } else if (argc === 1 && x_or_opts && typeof x_or_opts === 'object') {
+        const opts = x_or_opts;
+        if (Array.isArray(opts.coord)) {
+            gx = opts.coord[0];
+            gy = opts.coord[1];
+        } else if (opts.coord && typeof opts.coord === 'object') {
+            gx = opts.coord.x;
+            gy = opts.coord.y;
+        } else {
+            gx = opts.x;
+            gy = opts.y;
+        }
+        if (typeof opts.text === 'string') gtext = opts.text;
+    } else if (argc === 0) {
+        gx = -1;
+        gy = -1;
+    } else {
+        return;
+    }
+
+    const pos = getLocationCoord(gx, gy, GETLOC_DRY, levelState.currentRoom || null);
+    const xabs = pos.x;
+    const yabs = pos.y;
+    if (xabs < 0 || yabs < 0 || xabs >= COLNO || yabs >= ROWNO) return;
+
+    // C ref: lspo_grave() does nothing if a trap occupies the destination.
+    if (levelState.map.trapAt(xabs, yabs)) return;
+
+    levelState.map.locations[xabs][yabs].typ = GRAVE;
+    markSpLevTouched(xabs, yabs);
+
+    if (!Array.isArray(levelState.map.engravings)) levelState.map.engravings = [];
+    const epitaph = (gtext !== undefined) ? gtext : random_epitaph_text();
+    levelState.map.engravings.push({
+        x: xabs,
+        y: yabs,
+        text: epitaph,
+        type: 'engrave',
+        guardobjects: false,
+        nowipeout: true
+    });
+}
+
+/**
  * des.altar(opts)
  * Place an altar at a location.
  * C ref: sp_lev.c spaltar()
@@ -6820,6 +6882,7 @@ export const des = {
     terrain,
     stair,
     ladder,
+    grave,
     altar,
     gold,
     object,
