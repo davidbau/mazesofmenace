@@ -3075,12 +3075,6 @@ export function stair(direction, x, y) {
         if (!canPlaceStair(dir)) {
             return;
         }
-        // C ref: sp_lev.c l_create_stairway() removes any trap first.
-        const trap = levelState.map.trapAt?.(stairX, stairY);
-        if (trap && Array.isArray(levelState.map.traps)) {
-            const idx = levelState.map.traps.indexOf(trap);
-            if (idx >= 0) levelState.map.traps.splice(idx, 1);
-        }
         const loc = levelState.map.locations[stairX][stairY];
         loc.typ = stairType;
         // Keep both stair encodings in sync: level terrain metadata and
