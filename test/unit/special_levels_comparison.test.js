@@ -161,8 +161,7 @@ function testLevel(seed, dnum, dlevel, levelName, cSession) {
     );
 
     if (!cLevel) {
-        console.log(`Warning: ${levelName} not found in C session`);
-        return;
+        assert.fail(`${levelName}: not found in C session`);
     }
     // Quest sessions are captured via role-specific #wizloaddes flows and
     // rngCallStart can be command-session aligned. For Arc locate/goal,
