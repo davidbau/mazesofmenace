@@ -29,6 +29,7 @@ cd "$REPO_ROOT"
 COMMIT_COUNT=10
 SAMPLE_RATE=1
 RECENT_FULL=0
+E2E_SAMPLE=0      # Run full E2E tests every N commits (0 = same as sample rate)
 CODE_ONLY=false
 DRY_RUN=false
 OUTPUT_DIR=""
@@ -41,6 +42,7 @@ while [[ $# -gt 0 ]]; do
         --commits) COMMIT_COUNT="$2"; shift 2 ;;
         --sample) SAMPLE_RATE="$2"; shift 2 ;;
         --recent) RECENT_FULL="$2"; shift 2 ;;
+        --e2e-sample) E2E_SAMPLE="$2"; shift 2 ;;
         --code-only) CODE_ONLY=true; shift ;;
         --dry-run) DRY_RUN=true; shift ;;
         --output) OUTPUT_DIR="$2"; shift 2 ;;
@@ -49,6 +51,11 @@ while [[ $# -gt 0 ]]; do
         *) echo "Unknown option: $1" >&2; exit 1 ;;
     esac
 done
+
+# If e2e-sample not set, default to same as sample-rate
+if [ "$E2E_SAMPLE" -eq 0 ]; then
+    E2E_SAMPLE=$SAMPLE_RATE
+fi
 
 # Create output dir if specified
 if [ -n "$OUTPUT_DIR" ]; then
@@ -69,6 +76,7 @@ TOTAL=${#COMMIT_ARRAY[@]}
 
 echo "Processing $TOTAL commits" >&2
 echo "  Sample rate: every $SAMPLE_RATE commits" >&2
+echo "  E2E sample rate: every $E2E_SAMPLE commits" >&2
 echo "  Recent full tests: $RECENT_FULL commits" >&2
 echo "  Code only: $CODE_ONLY" >&2
 echo "" >&2
@@ -118,13 +126,19 @@ for i in "${!COMMIT_ARRAY[@]}"; do
 
     # Determine if we should run tests for this commit
     RUN_TESTS=false
+    RUN_E2E=false
     if [ "$CODE_ONLY" = false ]; then
         # Run tests if within "recent" window
         if [ "$i" -lt "$RECENT_FULL" ]; then
             RUN_TESTS=true
+            RUN_E2E=true
         # Or if matches sample rate
         elif [ "$SAMPLE_RATE" -eq 1 ] || [ $((i % SAMPLE_RATE)) -eq 0 ]; then
             RUN_TESTS=true
+            # Only run E2E if matches e2e sample rate
+            if [ "$E2E_SAMPLE" -eq 1 ] || [ $((i % E2E_SAMPLE)) -eq 0 ]; then
+                RUN_E2E=true
+            fi
         fi
     fi
 
@@ -132,8 +146,10 @@ for i in "${!COMMIT_ARRAY[@]}"; do
     MSG=$(git log -1 --format="%s" "$COMMIT" 2>/dev/null | head -c 40)
 
     if [ "$DRY_RUN" = true ]; then
-        if [ "$RUN_TESTS" = true ]; then
-            echo "[$INDEX/$TOTAL] $SHORT - would run tests: $MSG..." >&2
+        if [ "$RUN_TESTS" = true ] && [ "$RUN_E2E" = true ]; then
+            echo "[$INDEX/$TOTAL] $SHORT - would run full tests: $MSG..." >&2
+        elif [ "$RUN_TESTS" = true ]; then
+            echo "[$INDEX/$TOTAL] $SHORT - would run unit tests only: $MSG..." >&2
         else
             echo "[$INDEX/$TOTAL] $SHORT - would collect code metrics: $MSG..." >&2
         fi
@@ -180,12 +196,18 @@ for i in "${!COMMIT_ARRAY[@]}"; do
         fi
 
         if [ "$HAS_TESTS" = true ]; then
-            [ "$VERBOSE" = true ] && echo "  Running tests..." >&2
+            if [ "$RUN_E2E" = true ]; then
+                [ "$VERBOSE" = true ] && echo "  Running full tests (with E2E)..." >&2
+                TEST_ARGS="--summary"
+            else
+                [ "$VERBOSE" = true ] && echo "  Running unit tests only..." >&2
+                TEST_ARGS="--summary --unit-only"
+            fi
             TEST_OUTPUT=$(mktemp)
             TEST_STDERR=$(mktemp)
 
             # Run from repo root
-            if REPO_ROOT="$(pwd)" node "$TEMP_SCRIPTS/collect-test-results.mjs" --summary > "$TEST_OUTPUT" 2>"$TEST_STDERR"; then
+            if REPO_ROOT="$(pwd)" node "$TEMP_SCRIPTS/collect-test-results.mjs" $TEST_ARGS > "$TEST_OUTPUT" 2>"$TEST_STDERR"; then
                 if jq -e . "$TEST_OUTPUT" > /dev/null 2>&1; then
                     STATS=$(jq -c '.stats // {}' "$TEST_OUTPUT")
                     CATEGORIES=$(jq -c '.categories // {}' "$TEST_OUTPUT")
@@ -193,7 +215,11 @@ for i in "${!COMMIT_ARRAY[@]}"; do
 
                     PASS=$(echo "$STATS" | jq -r '.pass // 0')
                     FAIL=$(echo "$STATS" | jq -r '.fail // 0')
-                    echo "  ✅ $PASS pass, $FAIL fail" >&2
+                    if [ "$RUN_E2E" = true ]; then
+                        echo "  ✅ $PASS pass, $FAIL fail (full)" >&2
+                    else
+                        echo "  ✅ $PASS pass, $FAIL fail (unit-only)" >&2
+                    fi
                     TESTS_RUN=$((TESTS_RUN + 1))
                 else
                     TEST_ERROR="invalid_json"

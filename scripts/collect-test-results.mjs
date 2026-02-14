@@ -11,7 +11,8 @@
  *
  * Usage:
  *   node scripts/collect-test-results.mjs > results.json
- *   node scripts/collect-test-results.mjs --summary  # Just stats, no test lists
+ *   node scripts/collect-test-results.mjs --summary     # Just stats, no test lists
+ *   node scripts/collect-test-results.mjs --unit-only   # Skip slow E2E tests
  */
 
 import { spawn } from 'child_process';
@@ -26,6 +27,7 @@ const __dirname = dirname(__filename);
 const REPO_ROOT = process.env.REPO_ROOT || process.cwd();
 
 const SUMMARY_ONLY = process.argv.includes('--summary');
+const UNIT_ONLY = process.argv.includes('--unit-only');
 
 // Parse test output line to extract test info
 function parseTestLine(line) {
@@ -211,12 +213,23 @@ async function analyzeSessionFiles() {
 
 // Main
 async function main() {
-    console.error('Running comparison tests...');
-    const comparisonResults = await runTests();
+    let comparisonResults = {
+        pass: [], fail: [], skip: [],
+        categories: {}, sessions: {}, duration: 0
+    };
+
+    // Run comparison tests unless --unit-only is specified
+    if (!UNIT_ONLY) {
+        console.error('Running comparison tests...');
+        comparisonResults = await runTests();
+    } else {
+        console.error('Skipping comparison tests (--unit-only mode)');
+    }
 
     console.error('Running unit tests...');
     const unitResults = await runUnitTests();
 
+    // Analyze session files (useful even in unit-only mode for metadata)
     console.error('Analyzing session files...');
     const sessionInfo = await analyzeSessionFiles();
 
@@ -259,7 +272,8 @@ async function main() {
             duration: Math.round((comparisonResults.duration + unitResults.duration) * 10) / 10
         },
         categories: comparisonResults.categories,
-        sessions: comparisonResults.sessions
+        sessions: comparisonResults.sessions,
+        unitOnly: UNIT_ONLY  // Flag to indicate partial test run
     };
 
     if (!SUMMARY_ONLY) {
