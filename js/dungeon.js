@@ -4935,6 +4935,10 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
     // C ref: mklev.c:1558 — level_finalize_topology() calls set_wall_state().
     // This computes wall_info mode bits (stored in rm.flags low bits).
     set_wall_state(map);
+    // C ref: mklev.c:1561-1562 — persist original room type snapshot.
+    for (let i = 0; i < map.rooms.length; i++) {
+        map.rooms[i].orig_rtype = map.rooms[i].rtype;
+    }
 
     // Branch stair placement must be gated by actual chosen branch depth.
     // Unconditional placement on depths 2..4 over-consumes RNG and is incorrect.
