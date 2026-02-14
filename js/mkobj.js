@@ -760,6 +760,16 @@ function just_an(str) {
 function makeplural(word) {
     const w = String(word || '');
     if (!w) return w;
+    const irregular = new Map([
+        ['corpse', 'corpses'],
+        ['knife', 'knives'],
+        ['tooth', 'teeth'],
+        ['staff', 'staves'],
+    ]);
+    if (irregular.has(w)) return irregular.get(w);
+    if (w.endsWith(' of garlic')) {
+        return `${w.slice(0, -' of garlic'.length)}s of garlic`;
+    }
     if (w.endsWith('s') || w.endsWith('x') || w.endsWith('z')
         || w.endsWith('ch') || w.endsWith('sh')) {
         return `${w}es`;
