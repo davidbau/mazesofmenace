@@ -55,15 +55,41 @@ function parseTestLine(line) {
     return null;
 }
 
+// Special level names from special_levels_comparison.test.js
+const SPECIAL_LEVEL_NAMES = [
+    'castle', 'knox', 'vlad', 'tower', 'medusa', 'valley', 'sanctum',
+    'juiblex', 'baalzebub', 'asmodeus', 'orcus', 'wizard', 'sokoban', 'soko',
+    'bigroom', 'big room', 'oracle', 'mines', 'minetown', 'minend', 'minefill',
+    'rogue', 'quest', 'strt', 'loca', 'goal', 'filler', 'tutorial', 'tut-',
+    'gehennom', 'planes', 'earth', 'air', 'fire', 'water', 'astral'
+];
+
 // Determine category from test name
 function categorize(testName) {
     const lower = testName.toLowerCase();
     if (lower.includes('chargen')) return 'chargen';
     if (lower.includes('gameplay') || lower.includes('selfplay')) return 'gameplay';
+    // Check for special level names
+    for (const levelName of SPECIAL_LEVEL_NAMES) {
+        if (lower.includes(levelName)) return 'special';
+    }
     if (lower.includes('special') || lower.includes('oracle') || lower.includes('bigroom')) return 'special';
     if (lower.includes('map') || lower.includes('depth')) return 'map';
     if (lower.includes('option')) return 'options';
     return 'unit';
+}
+
+// Extract special level session name (e.g., "Castle - seed 42" -> "special_castle_seed42")
+function extractSpecialLevelSession(testName) {
+    const lower = testName.toLowerCase();
+    // Match pattern like "Castle - seed 42" or "Vlad Tower 1 - seed 42"
+    const match = testName.match(/^([A-Za-z0-9 ]+)\s*-\s*seed\s*(\d+)/i);
+    if (match) {
+        const levelName = match[1].trim().toLowerCase().replace(/\s+/g, '_');
+        const seed = match[2];
+        return `special_${levelName}_seed${seed}`;
+    }
+    return null;
 }
 
 // Extract session name from test name
@@ -162,6 +188,8 @@ async function runUnitTests() {
             pass: [],
             fail: [],
             skip: [],
+            categories: {},
+            sessions: {},  // Track special level sessions
             duration: 0
         };
 
@@ -192,7 +220,37 @@ async function runUnitTests() {
             for (const line of lines) {
                 const parsed = parseTestLine(line);
                 if (!parsed) continue;
+
+                const category = categorize(parsed.name);
                 results[parsed.status].push('unit/' + parsed.name);
+
+                // Track by category
+                if (!results.categories[category]) {
+                    results.categories[category] = { total: 0, pass: 0, fail: 0 };
+                }
+                results.categories[category].total++;
+                results.categories[category][parsed.status === 'skip' ? 'pass' : parsed.status]++;
+
+                // Track special level sessions
+                if (category === 'special') {
+                    const sessionName = extractSpecialLevelSession(parsed.name);
+                    if (sessionName) {
+                        if (!results.sessions[sessionName]) {
+                            results.sessions[sessionName] = {
+                                status: 'pass',
+                                type: 'special',
+                                tests: []
+                            };
+                        }
+                        results.sessions[sessionName].tests.push({
+                            name: parsed.name,
+                            status: parsed.status
+                        });
+                        if (parsed.status === 'fail') {
+                            results.sessions[sessionName].status = 'fail';
+                        }
+                    }
+                }
             }
 
             resolve(results);
@@ -392,12 +450,20 @@ async function main() {
     const allFail = [...unitResults.fail, ...comparisonResults.fail];
     const allSkip = [...unitResults.skip, ...comparisonResults.skip];
 
-    // Add unit category
-    comparisonResults.categories.unit = {
-        total: unitResults.pass.length + unitResults.fail.length + unitResults.skip.length,
-        pass: unitResults.pass.length,
-        fail: unitResults.fail.length
-    };
+    // Merge unit test categories (special, unit, etc.)
+    for (const [cat, stats] of Object.entries(unitResults.categories || {})) {
+        if (!comparisonResults.categories[cat]) {
+            comparisonResults.categories[cat] = { total: 0, pass: 0, fail: 0 };
+        }
+        comparisonResults.categories[cat].total += stats.total;
+        comparisonResults.categories[cat].pass += stats.pass;
+        comparisonResults.categories[cat].fail += stats.fail;
+    }
+
+    // Merge special level sessions from unit tests
+    for (const [name, session] of Object.entries(unitResults.sessions || {})) {
+        comparisonResults.sessions[name] = session;
+    }
 
     // Calculate aggregate session stats
     let sessionsPassing = 0, sessionsTotal = 0;
