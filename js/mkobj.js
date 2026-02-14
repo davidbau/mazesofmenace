@@ -909,9 +909,17 @@ export function doname(obj, player) {
     const known = !!obj.known;
     const dknown = !!obj.dknown || known;
     const bknown = !!obj.bknown;
+    const nameKnown = isObjectNameKnown(obj.otyp) || known;
     const quan = obj.quan || 1;
     const showCharges = known && od.charged
         && (obj.oclass === WAND_CLASS || obj.oclass === TOOL_CLASS);
+    const suppressWaterBuc = (
+        obj.otyp === POT_WATER
+        && nameKnown
+        && (obj.blessed || obj.cursed)
+    );
+    const roleName = String(player?.roleName || '');
+    const roleIsCleric = roleName === 'Priest' || roleName === 'Priestess';
     let prefix = '';
 
     // C ref: objnam.c doname_base() quantity/article prefix
@@ -920,11 +928,12 @@ export function doname(obj, player) {
     }
 
     // C ref: objnam.c doname_base() BUC logic
-    if (bknown && obj.oclass !== COIN_CLASS) {
+    if (bknown && obj.oclass !== COIN_CLASS && !suppressWaterBuc) {
         if (obj.cursed) prefix += 'cursed ';
         else if (obj.blessed) prefix += 'blessed ';
         else if (!(known && od.charged && obj.oclass !== ARMOR_CLASS
-            && obj.oclass !== RING_CLASS) && !showCharges) {
+            && obj.oclass !== RING_CLASS) && !showCharges
+            && !roleIsCleric) {
             prefix += 'uncursed ';
         }
     }

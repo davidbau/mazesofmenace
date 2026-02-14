@@ -110,6 +110,26 @@ const BR_PORTAL = 3;
 // Each entry: { type, end1:{dnum,dlevel}, end2:{dnum,dlevel}, end1_up }.
 let _branchTopology = [];
 
+// C ref: dungeon.c init_dungeons() -> svd.dungeons[dnum].flags.align
+export const DUNGEON_ALIGN_BY_DNUM = {
+    [DUNGEONS_OF_DOOM]: A_NONE,
+    [GNOMISH_MINES]: A_LAWFUL,
+    [SOKOBAN]: A_NEUTRAL,
+    [QUEST]: A_NONE,
+    [KNOX]: A_NONE,
+    [GEHENNOM]: A_NONE,
+    [VLADS_TOWER]: A_CHAOTIC,
+    [TUTORIAL]: A_NONE,
+};
+
+// C ref: dungeon.c induced_align(int pct)
+// JS returns aligntyp (-1/0/1), not an AM_* bitmask.
+export function induced_align(pct, specialAlign = A_NONE, dungeonAlign = A_NONE) {
+    if (specialAlign !== A_NONE && rn2(100) < pct) return specialAlign;
+    if (dungeonAlign !== A_NONE && rn2(100) < pct) return dungeonAlign;
+    return rn2(3) - 1;
+}
+
 export function clearBranchTopology() {
     _branchTopology = [];
 }
@@ -2609,10 +2629,21 @@ export function mktrap(map, num, mktrapflags, croom, tm, depth) {
     // consumed before later trap-kind exclusions.
     if (!(mktrapflags & MKTRAP_NOVICTIM)) {
         const victimRoll = rnd(4);
-        const victimGate = (map.flags && map.flags.is_maze_lev)
-            ? (lvl <= victimRoll)
-            : (lvl < victimRoll);
-        if (!victimGate) return;
+        // Tutorial replay parity follows C's gate semantics exactly.
+        // Outside tutorial, preserve legacy behavior for existing non-tutorial
+        // replay fixtures while broader trap timing ports are in progress.
+        const useStrictTutorialGate = !!map.flags?.is_tutorial;
+        if (useStrictTutorialGate) {
+            const skipVictim = (mktrapflags & MKTRAP_MAZEFLAG)
+                ? (lvl <= victimRoll)
+                : (lvl < victimRoll);
+            if (skipVictim) return;
+        } else {
+            const legacyVictimGate = (map.flags && map.flags.is_maze_lev)
+                ? (lvl <= victimRoll)
+                : (lvl < victimRoll);
+            if (!legacyVictimGate) return;
+        }
 
         if (kind !== SQKY_BOARD && kind !== RUST_TRAP
             && !is_pit(kind) && (kind < HOLE || kind === MAGIC_TRAP)) {
@@ -4220,21 +4251,11 @@ export function initLevelGeneration(roleIndex) {
  * @returns {GameMap} The generated level
  */
 export function makelevel(depth, dnum, dlevel, opts = {}) {
-    const dungeonAlignByDnum = {
-        [DUNGEONS_OF_DOOM]: A_NONE,
-        [GNOMISH_MINES]: A_LAWFUL,
-        [SOKOBAN]: A_NEUTRAL,
-        [QUEST]: A_NONE,
-        [KNOX]: A_NONE,
-        [GEHENNOM]: A_NONE,
-        [VLADS_TOWER]: A_CHAOTIC,
-        [TUTORIAL]: A_NONE,
-    };
     const forcedAlign = Number.isInteger(opts?.dungeonAlignOverride)
         ? opts.dungeonAlignOverride
         : undefined;
     setMakemonLevelContext({
-        dungeonAlign: forcedAlign ?? (dungeonAlignByDnum[dnum] ?? A_NONE),
+        dungeonAlign: forcedAlign ?? (DUNGEON_ALIGN_BY_DNUM[dnum] ?? A_NONE),
     });
 
     setLevelDepth(depth);
@@ -4254,9 +4275,10 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
             // C ref: align_shift() uses current special-level alignment when present.
             // For currently used special levels, mirror dungeon.lua/splev alignment.
             const specialName = typeof special.name === 'string' ? special.name : '';
-            let specialAlign = forcedAlign ?? (dungeonAlignByDnum[dnum] ?? A_NONE);
+            let specialAlign = forcedAlign ?? (DUNGEON_ALIGN_BY_DNUM[dnum] ?? A_NONE);
             if (specialName.startsWith('oracle')) specialAlign = A_NEUTRAL;
             else if (specialName.startsWith('medusa')) specialAlign = A_CHAOTIC;
+            else if (specialName.startsWith('tut-')) specialAlign = A_LAWFUL;
             setMakemonLevelContext({ dungeonAlign: specialAlign });
 
             if (DEBUG) console.log(`Generating special level: ${special.name} at (${dnum}, ${dlevel})`);
@@ -4265,7 +4287,9 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
             setSpecialLevelDepth(depth);
             setFinalizeContext({
                 dnum,
-                dlevel
+                dlevel,
+                specialName,
+                isBranchLevel: resolveBranchPlacementForLevel(dnum, dlevel).placement !== 'none',
             });
 
             // C ref: mklev.c:365-380 — Lua theme shuffle when loading special level
@@ -4285,6 +4309,8 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
 
             const specialMap = special.generator();
             if (specialMap) {
+                if (!specialMap.flags) specialMap.flags = {};
+                specialMap.flags.is_tutorial = (dnum === TUTORIAL);
                 return specialMap;
             }
             // If special level generation fails, fall through to procedural

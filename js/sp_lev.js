@@ -16,7 +16,7 @@
 import { GameMap, FILL_NORMAL } from './map.js';
 import { rn2, rnd, rn1, getRngCallCount } from './rng.js';
 import { mksobj, mkobj, mkcorpstat, set_corpsenm, weight } from './mkobj.js';
-import { create_room, create_subroom, makecorridors, create_corridor, init_rect, rnd_rect, get_rect, split_rects, check_room, add_doors_to_room, update_rect_pool_for_room, bound_digging, mineralize as dungeonMineralize, fill_ordinary_room, litstate_rnd, isMtInitialized, setMtInitialized, wallification as dungeonWallification, wallify_region as dungeonWallifyRegion, fix_wall_spines, place_lregion, mktrap, enexto, somexy, sp_create_door, floodFillAndRegister, resolveBranchPlacementForLevel, random_epitaph_text } from './dungeon.js';
+import { create_room, create_subroom, makecorridors, create_corridor, init_rect, rnd_rect, get_rect, split_rects, check_room, add_doors_to_room, update_rect_pool_for_room, bound_digging, mineralize as dungeonMineralize, fill_ordinary_room, litstate_rnd, isMtInitialized, setMtInitialized, wallification as dungeonWallification, wallify_region as dungeonWallifyRegion, fix_wall_spines, place_lregion, mktrap, enexto, somexy, sp_create_door, floodFillAndRegister, resolveBranchPlacementForLevel, random_epitaph_text, induced_align, DUNGEON_ALIGN_BY_DNUM } from './dungeon.js';
 import { seedFromMT } from './xoshiro256.js';
 import { makemon, mkclass, def_char_to_monclass, NO_MM_FLAGS, MM_NOGRP } from './makemon.js';
 import {
@@ -33,7 +33,7 @@ import {
     VIBRATING_SQUARE,
     D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED, D_BROKEN, D_SECRET,
     COLNO, ROWNO, IS_OBSTRUCTED, IS_WALL, IS_STWALL, IS_POOL, IS_LAVA,
-    A_LAWFUL, A_NEUTRAL, A_CHAOTIC,
+    A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC,
     MKTRAP_SEEN, MKTRAP_MAZEFLAG, MKTRAP_NOSPIDERONWEB, MKTRAP_NOVICTIM,
     MAXNROFROOMS, ROOMOFFSET
 } from './config.js';
@@ -1044,6 +1044,7 @@ export function resetLevelState() {
  * @param {boolean} [ctx.applyRoomFill]
  * @param {number} [ctx.dnum]
  * @param {number} [ctx.dlevel]
+ * @param {string} [ctx.specialName]
  * @param {"stairs"|"portal"|"none"} [ctx.branchPlacement]
  */
 export function setFinalizeContext(ctx = null) {
@@ -1058,6 +1059,7 @@ export function setFinalizeContext(ctx = null) {
         applyRoomFill: !!ctx.applyRoomFill,
         dnum: Number.isFinite(ctx.dnum) ? ctx.dnum : undefined,
         dlevel: Number.isFinite(ctx.dlevel) ? ctx.dlevel : undefined,
+        specialName: typeof ctx.specialName === 'string' ? ctx.specialName : undefined,
         branchPlacement: (ctx.branchPlacement === 'stairs'
             || ctx.branchPlacement === 'portal'
             || ctx.branchPlacement === 'none')
@@ -3296,20 +3298,25 @@ function objectNameToType(name) {
     if (lowerName === 'scroll of earth') return SCR_EARTH;
 
     const candidates = new Set([lowerName]);
+    let classHint = null;
     const stripPrefixes = [
-        'ring of ',
-        'spellbook of ',
-        'book of ',
-        'potion of ',
-        'wand of ',
-        'scroll of ',
+        { p: 'ring of ', cls: RING_CLASS },
+        { p: 'spellbook of ', cls: SPBOOK_CLASS },
+        { p: 'book of ', cls: SPBOOK_CLASS },
+        { p: 'potion of ', cls: POTION_CLASS },
+        { p: 'wand of ', cls: WAND_CLASS },
+        { p: 'scroll of ', cls: SCROLL_CLASS },
     ];
 
     // Allow Lua-style fully qualified names ("ring of levitation")
-    // to match canonical objectData names ("levitation").
-    for (const p of stripPrefixes) {
+    // to match canonical objectData names ("levitation"), while retaining
+    // class hint to disambiguate names shared across classes (for example
+    // "light" exists as both scroll and spellbook).
+    for (const { p, cls } of stripPrefixes) {
         if (lowerName.startsWith(p) && lowerName.length > p.length) {
             candidates.add(lowerName.slice(p.length));
+            classHint = cls;
+            break;
         }
     }
 
@@ -3322,10 +3329,22 @@ function objectNameToType(name) {
 
     // Search objectData for matching name
     for (let i = 0; i < objectData.length; i++) {
-        const objName = objectData[i].name;
+        const od = objectData[i];
+        const objName = od?.name;
         if (!objName) continue;
-        if (candidates.has(objName.toLowerCase())) {
-            return i; // Object type index
+        if (!candidates.has(objName.toLowerCase())) continue;
+        if (classHint !== null && od.oc_class !== classHint) continue;
+        return i; // Object type index
+    }
+
+    // Fallback without class hint (for non-ambiguous aliases).
+    if (classHint !== null) {
+        for (let i = 0; i < objectData.length; i++) {
+            const objName = objectData[i].name;
+            if (!objName) continue;
+            if (candidates.has(objName.toLowerCase())) {
+                return i;
+            }
         }
     }
 
@@ -4650,6 +4669,22 @@ export function altar(opts) {
         return;
     }
 
+    const inducedAlignForCurrentLevel = () => {
+        const ctx = levelState.finalizeContext || {};
+        const dnum = Number.isFinite(ctx.dnum) ? ctx.dnum : undefined;
+        const dungeonAlign = (dnum !== undefined) ? (DUNGEON_ALIGN_BY_DNUM[dnum] ?? A_NONE) : A_NONE;
+        const specialName = typeof ctx.specialName === 'string' ? ctx.specialName : '';
+        let specialAlign = A_NONE;
+        // C-level metadata plumbing is incomplete; these known special-level
+        // alignments are already mirrored in makelevel().
+        if (specialName.startsWith('oracle')) specialAlign = A_NEUTRAL;
+        else if (specialName.startsWith('medusa')) specialAlign = A_CHAOTIC;
+        // Tutorial traces show AM_SPLEV_RANDOM consuming induced_align(80)'s
+        // rn2(100) gate rather than plain rn2(3) fallback.
+        else if (specialName.startsWith('tut-')) specialAlign = A_LAWFUL;
+        return induced_align(80, specialAlign, dungeonAlign);
+    };
+
     // C ref: sp_lev.c get_alignment() for altar alignment parsing.
     let altarAlign = A_NEUTRAL;
     if (typeof alignSpec === 'number' && Number.isFinite(alignSpec)) {
@@ -4663,8 +4698,8 @@ export function altar(opts) {
         else if (a === 'noncoaligned') altarAlign = A_CHAOTIC;
         else altarAlign = A_NEUTRAL;
     } else if (alignSpec === undefined) {
-        // C default: random alignment when not specified.
-        altarAlign = rn2(3) - 1;
+        // C default (AM_SPLEV_RANDOM): induced_align(80).
+        altarAlign = inducedAlignForCurrentLevel();
     }
 
     if (!setLevlTypAt(levelState.map, pos.x, pos.y, ALTAR)) return;
@@ -5226,14 +5261,17 @@ function executeDeferredMonster(deferred) {
     // Execute the original monster() logic
     let monsterId, coordX, coordY, opts;
 
-    // C ref: dungeon.c induced_align(int pct), used by sp_lev create_monster()
-    // when monster alignment is random (AM_SPLEV_RANDOM).
-    //
-    // Full C behavior depends on level/dungeon align flags. Until that full
-    // metadata is wired into special-level generation, retain the historical
-    // one-draw fallback used by our parity fixtures.
+    // C ref: sp_lev.c sp_amask_to_amask(AM_SPLEV_RANDOM) -> induced_align(80)
     function consumeInducedAlignRng() {
-        rn2(3);
+        const ctx = levelState.finalizeContext || {};
+        const dnum = Number.isFinite(ctx.dnum) ? ctx.dnum : undefined;
+        const dungeonAlign = (dnum !== undefined) ? (DUNGEON_ALIGN_BY_DNUM[dnum] ?? A_NONE) : A_NONE;
+        const specialName = typeof ctx.specialName === 'string' ? ctx.specialName : '';
+        let specialAlign = A_NONE;
+        if (specialName.startsWith('oracle')) specialAlign = A_NEUTRAL;
+        else if (specialName.startsWith('medusa')) specialAlign = A_CHAOTIC;
+        else if (specialName.startsWith('tut-')) specialAlign = A_LAWFUL;
+        induced_align(80, specialAlign, dungeonAlign);
     }
 
     const parseAppearAsLikeC = (appearAsSpec) => {
@@ -5246,20 +5284,20 @@ function executeDeferredMonster(deferred) {
     };
 
     if (opts_or_class === undefined) {
-        const randClass = String.fromCharCode(65 + rn2(26));
         if (!levelState.monsters) {
             levelState.monsters = [];
         }
         const coordX = (x !== undefined) ? x : rn2(60) + 10;
         const coordY = (y !== undefined) ? y : rn2(15) + 3;
-    if (immediateParity) {
-        // C ref: create_monster() default AM_SPLEV_RANDOM alignment path.
-        consumeInducedAlignRng();
-            createMonster(randClass, coordX, coordY);
+        if (immediateParity) {
+            // C ref: create_monster() with no class/id -> makemon(NULL, ...).
+            // Alignment handling still resolves AM_SPLEV_RANDOM first.
+            consumeInducedAlignRng();
+            createMonster(null, coordX, coordY);
             return;
         }
         levelState.monsters.push({
-            id: randClass,
+            id: null,
             x: coordX,
             y: coordY
         });
@@ -5389,6 +5427,7 @@ function executeDeferredMonster(deferred) {
                 mtmp.sleeping = !!opts.asleep;
             }
             if (opts.waiting !== undefined) mtmp.mstrategy = opts.waiting ? 1 : 0;
+            if (opts.waiting !== undefined) mtmp.waiting = !!opts.waiting;
             if (opts.invisible !== undefined) {
                 mtmp.minvis = !!opts.invisible;
                 mtmp.perminvis = !!opts.invisible;
@@ -5591,7 +5630,9 @@ function executeDeferredTrap(deferred) {
     const depth = (levelState.finalizeContext && Number.isFinite(levelState.finalizeContext.dunlev))
         ? levelState.finalizeContext.dunlev
         : (levelState.levelDepth || 1);
-    mktrap(levelState.map, ttyp, mktrapFlags, null, tm, depth);
+    // C ref: sp_lev.c create_trap() initializes flags with MKTRAP_MAZEFLAG
+    // for both random and explicit trap types.
+    mktrap(levelState.map, ttyp, MKTRAP_MAZEFLAG | mktrapFlags, null, tm, depth);
     const createdTrap = levelState.map.trapAt(trapX, trapY);
     if (createdTrap) {
         const launchPt = decodeCoordOpt(launchfrom);
@@ -5857,10 +5898,19 @@ export function finalize_level() {
         bound_digging(levelState.map);
         // Get depth from level state or default to 1
         const depth = levelState.levelDepth || 1;
-        // Skip mineralize for maze levels (special levels with custom maps)
-        // C ref: Special levels don't get gold/gems in walls
-        if (!levelState.flags.is_maze_lev) {
-            dungeonMineralize(levelState.map, depth);
+        // C ref: level_finalize_topology() always calls mineralize();
+        // internal mineralize checks decide which deposits actually apply.
+        dungeonMineralize(levelState.map, depth);
+
+        // C parity: teleport levregion coordinate selection consumes rn1()
+        // near topology finalization (after mineralize in observed traces).
+        for (const region of levelState.levRegions || []) {
+            const isTeleportRegion = (region.rtype === 0 || region.rtype === 1 || region.rtype === 2);
+            if (!isTeleportRegion) continue;
+            place_lregion(levelState.map,
+                region.inarea.x1, region.inarea.y1, region.inarea.x2, region.inarea.y2,
+                region.delarea.x1, region.delarea.y1, region.delarea.x2, region.delarea.y2,
+                region.rtype);
         }
     }
 

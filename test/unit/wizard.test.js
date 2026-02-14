@@ -16,7 +16,7 @@ import { initDiscoveryState, discoverObject } from '../../js/discovery.js';
 import { WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, WAND_CLASS, TOOL_CLASS, FOOD_CLASS,
     POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS, SCR_EARTH,
     LEATHER_GLOVES, LOW_BOOTS, LENSES, GRAY_DRAGON_SCALES, SHIELD_OF_REFLECTION, CORPSE,
-    POT_HEALING, SCR_BLANK_PAPER,
+    POT_HEALING, POT_WATER, SCR_BLANK_PAPER,
     oclass_prob_totals, initObjectData, objectData } from '../../js/objects.js';
 import { Player } from '../../js/player.js';
 import { simulatePostLevelInit } from '../../js/u_init.js';
@@ -470,6 +470,16 @@ describe('doname', () => {
         assert.equal(doname(obj, null), 'a +1 quarterstaff');
     });
 
+    it('cleric role suppresses uncursed prefix like C', () => {
+        const obj = {
+            otyp: 148, oclass: ARMOR_CLASS, name: 'cloak of magic resistance',
+            spe: 0, blessed: false, cursed: false,
+            known: true, dknown: true, bknown: true,
+        };
+        const priest = { roleName: 'Priest' };
+        assert.equal(doname(obj, priest), 'a +0 cloak of magic resistance');
+    });
+
     it('article selection: "an" for vowel start', () => {
         const obj = {
             otyp: 148, oclass: ARMOR_CLASS, name: 'cloak of magic resistance',
@@ -600,6 +610,16 @@ describe('doname', () => {
             known: true, dknown: true, bknown: false,
         };
         assert.equal(doname(obj, null), 'a diluted potion of healing');
+    });
+
+    it('holy water suppresses blessed prefix like C', () => {
+        const obj = {
+            otyp: POT_WATER, oclass: POTION_CLASS,
+            spe: 0, blessed: true, cursed: false,
+            quan: 4,
+            known: true, dknown: true, bknown: true,
+        };
+        assert.equal(doname(obj, null), '4 potions of holy water');
     });
 });
 

@@ -399,6 +399,10 @@ export function movemon(map, player, display, fov) {
 
 // C ref: monmove.c dochug() — process one monster's turn
 function dochug(mon, map, player, display, fov) {
+    // C ref: special-level "waiting" monsters are initialized to remain inert
+    // until explicitly disturbed/engaged by scripted flow.
+    if (mon.waiting && map?.flags?.is_tutorial) return;
+
     // C ref: mimic behavior — disguised mimics stay inert until disturbed.
     // Minimal parity gate: don't process roaming AI for mimic-class monsters.
     if (mon.type && mon.type.symbol === S_MIMIC) {

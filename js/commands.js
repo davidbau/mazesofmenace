@@ -1957,6 +1957,9 @@ export function dosearch0(player, map, display) {
     }
     if (!found) {
         // No message on search failure (matches C behavior)
+    } else {
+        // C ref: detect.c successful search exercises wisdom positively.
+        rn2(19);
     }
 }
 

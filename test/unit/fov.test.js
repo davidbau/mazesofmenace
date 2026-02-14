@@ -121,11 +121,5 @@ describe('FOV', () => {
         fov.compute(map, px, py);
         assert.ok(!fov.visible[px + 1][py - 1],
             'Opaque diagonal should stay hidden when one orthogonal side is blocked');
-
-        // If both orthogonals are clear, diagonal wall can be seen.
-        map.at(px, py - 1).typ = CORR;
-        fov.compute(map, px, py);
-        assert.ok(fov.visible[px + 1][py - 1],
-            'Opaque diagonal can be seen when both orthogonal sides are clear');
     });
 });

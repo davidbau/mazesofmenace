@@ -33,14 +33,24 @@ strict no-screen RNG parity for:
 - Tutorial replay state adjusted to remove carried comestibles when entering
   tutorial branch, matching observed C tutorial-state behavior in traces.
 
+## Additional Progress (later in same day)
+
+- Added C-faithful tutorial key resolution in `js/levels/tut-1.js`:
+  - fixed `tut_key()` return path and Ctrl/Alt regex handling.
+  - restored tutorial key text output (instead of `undefined`) and
+    enabled `tut_key_help()` engraving placement when Ctrl keys are used.
+- Added C-faithful command/prompt behavior in `js/commands.js`:
+  - `r` (read) blocking prompt flow.
+  - `#name` prompt flow for dungeon-level naming path.
+  - persistent drop prompt (`What do you want to drop? [*]`).
+  - Enter key handling aligned to replayed tty behavior (`j`/south movement).
+  - `dosearch0` uses `rnl(7)` and now applies successful-search exercise RNG.
+
 ## Current Frontier
 
-- First strict no-screen mismatch currently appears at:
-  - step `654` (`move-south`)
-  - C begins with `rnd(5)=5 @ maybe_smudge_engr(...)`
-  - JS begins with turn-end monster movement RNG (`rn2(12)=...`)
+- First strict no-screen mismatch now appears at:
+  - step `719` (`move-ne`)
+  - C has no RNG on this step, JS still consumes movement-turn RNG.
 
-This indicates a remaining movement/engraving alignment issue on tutorial map
-state near this point, with prompt flow and earlier command semantics now much
-closer to C behavior.
-
+This is a further improvement from the earlier step-654 frontier and points to
+remaining state divergence in later tutorial movement flow.

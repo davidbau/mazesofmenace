@@ -1317,6 +1317,14 @@ class NetHackGame {
                     await nhgetch(); // Wait for keypress
                 }
             }
+            // C behavior: if wounded legs recover during counted search/rest,
+            // occupation ends with a stop-searching message.
+            if (this.multi > 0 && this.player.justHealedLegs
+                && (this.cmdKey === '.'.charCodeAt(0) || this.cmdKey === 's'.charCodeAt(0))) {
+                this.player.justHealedLegs = false;
+                this.multi = 0;
+                this.display.putstr_message('Your leg feels better.  You stop searching.');
+            }
 
             // If time passed, process turn effects
             // C ref: allmain.c moveloop_core() -- context.move handling
@@ -1405,6 +1413,17 @@ class NetHackGame {
         this.turnCount++;
         this.player.turns = this.turnCount;
 
+        // Minimal C-faithful wounded-legs timer (set_wounded_legs): while active,
+        // DEX stays penalized; recover when timeout expires.
+        if ((this.player.woundedLegsTimeout || 0) > 0) {
+            this.player.woundedLegsTimeout--;
+            if (this.player.woundedLegsTimeout <= 0 && this.player.attributes) {
+                this.player.woundedLegsTimeout = 0;
+                this.player.attributes[A_DEX] = Math.min(25, this.player.attributes[A_DEX] + 1);
+                this.player.justHealedLegs = true;
+            }
+        }
+
         // C ref: allmain.c:221 mcalcdistress() — no RNG at startup for our subset.
         // Keep temporary flee timers in sync with C mon.c m_calcdistress().
         for (const mon of this.map.monsters) {
@@ -1426,7 +1445,7 @@ class NetHackGame {
 
         // C ref: allmain.c:232-236 — occasionally spawn a new monster.
         // New monster spawns after movement allocation and therefore loses its first turn.
-        if (!rn2(70)) {
+        if (!rn2(70) && !(this.map?.flags?.nomongen) && !(this.map?.flags?.is_tutorial)) {
             makemon(null, 0, 0, 0, this.player.dungeonLevel, this.map);
         }
 

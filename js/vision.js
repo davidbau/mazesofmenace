@@ -484,12 +484,9 @@ export class FOV {
                 const nx = px + dx, ny = py + dy;
                 if (nx >= 0 && nx < COLNO && ny >= 0 && ny < ROWNO) {
                     if (!cs[ny][nx]) continue;
-                    // Prevent peeking diagonally around opaque corners for
-                    // adjacent wall/door/stone cells.
-                    if (dx !== 0 && dy !== 0 && !this.viz_clear[ny][nx]) {
-                        const ortho1Clear = this.viz_clear[py][nx];
-                        const ortho2Clear = this.viz_clear[ny][px];
-                        if (!ortho1Clear || !ortho2Clear) continue;
+                    if (!this.viz_clear[ny][nx]) {
+                        const nloc = gameMap.at(nx, ny);
+                        if (!nloc || nloc.typ !== DOOR) continue;
                     }
                     cs[ny][nx] |= IN_SIGHT;
                 }

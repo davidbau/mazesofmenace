@@ -24,6 +24,9 @@ let rngCallerTag = null;     // current caller annotation (propagated through wr
 let rngDepth = 0;            // nesting depth for context propagation
 
 export function enableRngLog(withTags = false) {
+    if (!withTags && typeof process !== 'undefined' && process.env.RNG_LOG_TAGS === '1') {
+        withTags = true;
+    }
     rngLog = [];
     rngCallCount = 0;
     rngLogWithTags = withTags;
@@ -56,8 +59,20 @@ function enterRng() {
         //   "    at funcName (file:///path/to/file.js:line:col)"
         //   "    at file:///path/to/file.js:line:col"
         const m = callerLine.match(/at (?:(\S+) \()?.*?([^/\s]+\.js):(\d+)/);
+        const parentLine = lines[4] || '';
+        const grandLine = lines[5] || '';
+        const pm = parentLine.match(/at (?:(\S+) \()?.*?([^/\s]+\.js):(\d+)/);
+        const gm = grandLine.match(/at (?:(\S+) \()?.*?([^/\s]+\.js):(\d+)/);
         if (m) {
             rngCallerTag = m[1] ? `${m[1]}(${m[2]}:${m[3]})` : `${m[2]}:${m[3]}`;
+            if (typeof process !== 'undefined' && process.env.RNG_LOG_PARENT === '1' && pm) {
+                const parentTag = pm[1] ? `${pm[1]}(${pm[2]}:${pm[3]})` : `${pm[2]}:${pm[3]}`;
+                rngCallerTag = `${rngCallerTag} <= ${parentTag}`;
+                if (gm) {
+                    const grandTag = gm[1] ? `${gm[1]}(${gm[2]}:${gm[3]})` : `${gm[2]}:${gm[3]}`;
+                    rngCallerTag = `${rngCallerTag} <= ${grandTag}`;
+                }
+            }
         } else {
             rngCallerTag = null;
         }
