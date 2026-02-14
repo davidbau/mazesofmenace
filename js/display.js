@@ -747,14 +747,14 @@ export class Display {
         }
         const offx = Math.max(10, Math.min(41, this.cols - maxcol - 2));
 
-        // Clear only the overlay area.
-        for (let r = 0; r < this.rows; r++) {
+        // Clear only the overlay area above the status lines.
+        for (let r = 0; r < STATUS_ROW_1; r++) {
             for (let c = offx; c < this.cols; c++) {
                 this.setCell(c, r, ' ', CLR_GRAY, 0);
             }
         }
 
-        for (let i = 0; i < lines.length && i < this.rows; i++) {
+        for (let i = 0; i < lines.length && i < STATUS_ROW_1; i++) {
             this.putstr(offx, i, lines[i], CLR_WHITE, 0);
         }
         return offx;

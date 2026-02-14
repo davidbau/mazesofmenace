@@ -11,6 +11,15 @@ import { COLNO, ROWNO, ACCESSIBLE } from './config.js';
 export function getArrivalPosition(map, dungeonLevel, transitionDir = null) {
     const hasUpstair = !!(map?.upstair && map.upstair.x > 0 && map.upstair.y > 0);
     const hasDownstair = !!(map?.dnstair && map.dnstair.x > 0 && map.dnstair.y > 0);
+    const hasUpdest = !!(map?.updest && Number.isFinite(map.updest.lx) && Number.isFinite(map.updest.ly));
+    const hasDndest = !!(map?.dndest && Number.isFinite(map.dndest.lx) && Number.isFinite(map.dndest.ly));
+
+    if (transitionDir === 'down' && hasUpdest) {
+        return { x: map.updest.lx, y: map.updest.ly };
+    }
+    if (transitionDir === 'up' && hasDndest) {
+        return { x: map.dndest.lx, y: map.dndest.ly };
+    }
 
     if (transitionDir === 'down' && hasUpstair) {
         return { x: map.upstair.x, y: map.upstair.y };

@@ -13,20 +13,29 @@ export function generate() {
     let tut_alt_key = null;
 
     function tut_key(command) {
-       let s = nh.eckey(command);
-       let m = s.match("^^([A-Z])$"); // ^X is Ctrl-X
+       const keyOverrides = {
+          movewest: 'h', movesouth: 'j', movenorth: 'k', moveeast: 'l',
+          movesouthwest: 'b', movenortheast: 'u', movesoutheast: 'n', movenorthwest: 'y',
+          kick: '^D', close: 'c', glance: ':', pickup: ',', wear: 'W', wield: 'w',
+          search: 's', untrap: 'M-u', takeoff: 'T', read: 'r', drop: 'd', throw: 't',
+          fire: 'f', quiver: 'Q', run: 'G', travel: '_', loot: 'M-l', tip: 'M-t',
+          zap: 'z', wait: '.', eat: 'e', twoweapon: 'x', swap: 'X', puton: 'P',
+          remove: 'R', cast: 'Z', quaff: 'q', jump: '#jump'
+       };
+       let s = keyOverrides[command] || nh.eckey(command);
+       let m = s.match(/^\^([A-Z])$/); // ^X is Ctrl-X
        if ((m !== null)) {
-          tut_ctrl_key = m;
-          // return "Ctrl-" + m;
+          tut_ctrl_key = m[1];
+          return "Ctrl-" + m[1];
        }
 
-       m = s.match("^M%-([A-Z])$"); // M-X is Alt-X
+       m = s.match(/^M-([A-Z])$/); // M-X is Alt-X
        if ((m !== null)) {
-          tut_alt_key = m;
-          // return "Alt-" + m;
+          tut_alt_key = m[1];
+          return "Alt-" + m[1];
        }
 
-       // return s;
+       return s;
     }
 
     function tut_key_help(x, y) {

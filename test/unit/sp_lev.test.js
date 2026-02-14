@@ -10,7 +10,7 @@ import {
 import { place_lregion } from '../../js/dungeon.js';
 import {
     STONE, ROOM, CORR, DOOR, HWALL, VWALL, STAIRS, LAVAPOOL, PIT, MAGIC_PORTAL, CROSSWALL, GRAVE,
-    ALTAR, THRONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC,
+    ALTAR, THRONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC, ROOMOFFSET,
 } from '../../js/config.js';
 import { BOULDER, DAGGER, GOLD_PIECE } from '../../js/objects.js';
 
@@ -37,6 +37,26 @@ describe('sp_lev.js - des.* API', () => {
         assert.equal(map.locations[0][0].typ, STONE);
         assert.equal(map.locations[40][10].typ, STONE);
         assert.equal(map.locations[79][20].typ, STONE);
+    });
+
+    it('should honor solidfill filling override like C level_init', () => {
+        resetLevelState();
+        des.level_init({ style: 'solidfill', fg: '.', filling: ' ' });
+
+        const state = getLevelState();
+        assert.equal(state.init.fg, ROOM, 'fg should still parse independently');
+        assert.equal(state.init.filling, STONE, 'filling should parse and override solidfill terrain');
+        assert.equal(state.map.locations[40][10].typ, STONE, 'solidfill should use filling, not fg');
+    });
+
+    it('should parse maze init deadends/corrwid/wallthick like C', () => {
+        resetLevelState();
+        des.level_init({ style: 'maze', corrwid: 2, wallthick: 3, deadends: false });
+
+        const state = getLevelState();
+        assert.equal(state.init.corrwid, 2);
+        assert.equal(state.init.wallthick, 3);
+        assert.equal(state.init.rm_deadends, true, 'rm_deadends should invert deadends option');
     });
 
     it('exposes C-registered des API surface for implemented functions', () => {
@@ -258,6 +278,22 @@ describe('sp_lev.js - des.* API', () => {
         const randomGold = map.objects.find(o => o.otyp === GOLD_PIECE && !(o.ox === 10 && o.oy === 5) && !(o.ox === 11 && o.oy === 5));
         assert.ok(randomGold, 'gold() should place random gold');
         assert.ok(randomGold.quan >= 1 && randomGold.quan <= 200, 'gold() amount should be rnd(200)');
+    });
+
+    it('finalize_level applies C solidify_map to untouched stone/walls', () => {
+        resetLevelState();
+        des.level_init({ style: 'solidfill', fg: ' ' });
+        des.level_flags('solidify');
+
+        const map = getLevelState().map;
+        map.locations[10][5].typ = ROOM; // touched/open tile
+        map.locations[30][10].typ = STONE; // untouched tile
+
+        des.finalize_level();
+
+        assert.equal(map.locations[30][10].nondiggable, true, 'untouched stone should become nondiggable');
+        assert.equal(map.locations[30][10].nonpasswall, true, 'untouched stone should become nonpasswall');
+        assert.equal(map.locations[10][5].nonpasswall, undefined, 'touched tile should not be force-solidified');
     });
 
     it('should preserve leading and trailing blank map lines', () => {
@@ -482,6 +518,8 @@ describe('sp_lev.js - des.* API', () => {
         map.traps.push({ ttyp: PIT, tx: 10, ty: 10 });
         map.traps.push({ ttyp: MAGIC_PORTAL, tx: 10, ty: 10 });
         map.traps.push({ ttyp: PIT, tx: 11, ty: 10 });
+        map.engravings.push({ x: 10, y: 10, text: 'burned' });
+        map.engravings.push({ x: 11, y: 10, text: 'safe' });
 
         des.finalize_level();
 
@@ -496,6 +534,10 @@ describe('sp_lev.js - des.* API', () => {
             'undestroyable trap on liquid should remain');
         assert.equal(map.traps.some(t => t.ttyp === PIT && t.tx === 11 && t.ty === 10), true,
             'trap on non-liquid terrain should remain');
+        assert.equal(map.engravings.some(e => e.x === 10 && e.y === 10), false,
+            'engraving on liquid should be removed');
+        assert.equal(map.engravings.some(e => e.x === 11 && e.y === 10), true,
+            'engraving on non-liquid should remain');
     });
 
     it('finalize_level converts touched boundary CROSSWALL tiles to ROOM', () => {
@@ -514,6 +556,28 @@ describe('sp_lev.js - des.* API', () => {
             'touched CROSSWALL should no longer remain CROSSWALL');
         assert.equal(map.locations[11][10].typ, CROSSWALL,
             'untouched CROSSWALL should remain CROSSWALL');
+    });
+
+    it('finalize_level links doors to rooms like C link_doors_rooms', () => {
+        resetLevelState();
+        des.level_init({ style: 'solidfill', fg: ' ' });
+        const map = getLevelState().map;
+        map.rooms = [{ lx: 10, ly: 6, hx: 13, hy: 9, needjoining: true, doorct: 0, fdoor: 0, roomnoidx: 0, irregular: false, nsubrooms: 0, sbrooms: [] }];
+        map.nroom = 1;
+        const room = map.rooms[0];
+        for (let x = room.lx; x <= room.hx; x++) {
+            for (let y = room.ly; y <= room.hy; y++) {
+                map.locations[x][y].roomno = ROOMOFFSET;
+            }
+        }
+        const doorX = 14;
+        const doorY = 6;
+        map.locations[doorX][doorY].typ = DOOR;
+
+        des.finalize_level();
+
+        assert.ok(room.doorct > 0, 'finalize should attach adjacent doors to room metadata');
+        assert.equal(map.doors.some(d => d.x === doorX && d.y === doorY), true, 'door list should include linked door');
     });
 
     it('finalize_level keeps stair metadata aligned after vertical flip', () => {
