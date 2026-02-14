@@ -1103,6 +1103,44 @@ function canPlaceStair(direction) {
     return true;
 }
 
+// C ref: mkmaze.c setup_waterlevel()
+// We mirror base terrain conversion plus RNG-visible bubble seeding scaffold.
+function setup_waterlevel_parity(map, isWaterLevel) {
+    if (!map) return;
+    map.flags.hero_memory = false;
+
+    const baseTyp = isWaterLevel ? WATER : AIR;
+    for (let x = 1; x < COLNO; x++) {
+        for (let y = 0; y < ROWNO; y++) {
+            const loc = map.at(x, y);
+            if (loc && loc.typ === STONE) {
+                loc.typ = baseTyp;
+            }
+        }
+    }
+
+    // C hardcoded bounds from setup_waterlevel().
+    const xmin = 3;
+    const ymin = 1;
+    const xmax = Math.min(78, (COLNO - 1) - 1);
+    const ymax = Math.min(20, (ROWNO - 1));
+
+    const xskip = isWaterLevel ? (10 + rn2(10)) : (6 + rn2(4));
+    const yskip = isWaterLevel ? (4 + rn2(4)) : (3 + rn2(3));
+
+    // Keep seeded bubble descriptors for later movement parity work.
+    const bubbles = [];
+    for (let x = xmin; x <= xmax; x += xskip) {
+        for (let y = ymin; y <= ymax; y += yskip) {
+            const n = rn2(7); // C mk_bubble(..., rn2(7))
+            if (x < xmax && y < ymax) {
+                bubbles.push({ x, y, n });
+            }
+        }
+    }
+    map._waterLevelSetup = { xmin, ymin, xmax, ymax, xskip, yskip, bubbles, isWaterLevel };
+}
+
 function fixupSpecialLevel() {
     if (!levelState.map || levelState.branchPlaced) return;
     // C ref: mkmaze.c fixup_special()
@@ -1120,16 +1158,7 @@ function fixupSpecialLevel() {
     // Is_waterlevel/Is_airlevel forces hero_memory off and runs setup_waterlevel()
     // before processing levregions.
     if (specialName === 'water' || specialName === 'air') {
-        levelState.map.flags.hero_memory = false;
-        const baseTyp = (specialName === 'water') ? WATER : AIR;
-        for (let x = 1; x < COLNO; x++) {
-            for (let y = 0; y < ROWNO; y++) {
-                const loc = levelState.map.at(x, y);
-                if (loc && loc.typ === STONE) {
-                    loc.typ = baseTyp;
-                }
-            }
-        }
+        setup_waterlevel_parity(levelState.map, specialName === 'water');
     }
 
     let addedBranch = false;

@@ -699,4 +699,26 @@ describe('sp_lev.js - des.* API', () => {
         assert.equal(map.flags.hero_memory, false, 'air setup should force hero_memory off');
         assert.equal(map.at(40, 10).typ, AIR, 'air setup should convert default STONE to AIR');
     });
+
+    it('fixup_special water setup seeds bubble scaffold and consumes setup RNG', () => {
+        resetLevelState();
+        initRng(123);
+        des.level_init({ style: 'solidfill', fg: ' ' });
+        setFinalizeContext({ specialName: 'water' });
+        getLevelState().coder.allow_flips = 0;
+
+        const map = des.finalize_level();
+        const setup = map._waterLevelSetup;
+
+        assert.ok(setup, 'water setup should store seeded setup metadata');
+        assert.equal(setup.isWaterLevel, true, 'metadata should mark water setup');
+        assert.equal(setup.xmin, 3, 'setup bounds should follow C xmin');
+        assert.equal(setup.ymin, 1, 'setup bounds should follow C ymin');
+        assert.ok(setup.xmax >= setup.xmin, 'setup bounds should be valid');
+        assert.ok(setup.ymax >= setup.ymin, 'setup bounds should be valid');
+        assert.ok(setup.xskip >= 10 && setup.xskip <= 19, 'water xskip should match C range');
+        assert.ok(setup.yskip >= 4 && setup.yskip <= 7, 'water yskip should match C range');
+        assert.ok(Array.isArray(setup.bubbles), 'bubble scaffold should be an array');
+        assert.ok(setup.bubbles.length > 0, 'bubble scaffold should include seeded entries');
+    });
 });
