@@ -4614,6 +4614,15 @@ function executeDeferredMonster(deferred) {
         rn2(3);
     }
 
+    const parseAppearAsLikeC = (appearAsSpec) => {
+        if (appearAsSpec === undefined || appearAsSpec === null) return null;
+        const raw = String(appearAsSpec);
+        if (raw.startsWith('obj:')) return { type: 'obj', value: raw.slice(4) };
+        if (raw.startsWith('mon:')) return { type: 'mon', value: raw.slice(4) };
+        if (raw.startsWith('ter:')) return { type: 'ter', value: raw.slice(4) };
+        throw new Error('Unknown appear_as type');
+    };
+
     if (opts_or_class === undefined) {
         const randClass = String.fromCharCode(65 + rn2(26));
         if (!levelState.monsters) {
@@ -4734,6 +4743,7 @@ function executeDeferredMonster(deferred) {
         }
         const mtmp = createMonster(monsterId, coordX, coordY, mndxForParity, femaleForParity, mmFlags);
         if (mtmp && opts) {
+            const parsedAppearAs = parseAppearAsLikeC(opts.appear_as);
             if (opts.name !== undefined) mtmp.customName = String(opts.name);
             if (opts.female !== undefined) mtmp.female = !!opts.female;
             if (opts.peaceful !== undefined) {
@@ -4766,7 +4776,12 @@ function executeDeferredMonster(deferred) {
                 mtmp.mflee = true;
                 mtmp.mfleetim = Math.trunc(opts.fleeing) % 127;
             }
-            if (opts.appear_as !== undefined) mtmp.appear_as = String(opts.appear_as);
+            if (parsedAppearAs) {
+                // C ref: lspo_monster stores appear type + payload string.
+                mtmp.appear_as = `${parsedAppearAs.type}:${parsedAppearAs.value}`;
+                mtmp.appear_as_type = parsedAppearAs.type;
+                mtmp.appear_as_value = parsedAppearAs.value;
+            }
             mtmp.mm_flags_requested = requestedMmFlags;
         }
         if (traceMon) {
