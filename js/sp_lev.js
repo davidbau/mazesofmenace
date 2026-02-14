@@ -4795,50 +4795,73 @@ export function feature(type, x, y) {
             if (enabled) loc.flags |= bit;
             else loc.flags &= ~bit;
         };
+        const parseFeatureFlag = (value) => {
+            if (value === undefined) return null;
+            if (typeof value === 'string' && value.toLowerCase() === 'random') {
+                return rn2(2) !== 0;
+            }
+            return !!value;
+        };
         if (!loc.featureFlags) loc.featureFlags = {};
         if (terrain === FOUNTAIN) {
-            if (opts.looted !== undefined) {
-                const v = !!opts.looted;
+            {
+                const v = parseFeatureFlag(opts.looted);
+                if (v !== null) {
                 loc.featureFlags.looted = v;
                 setFlagBit(v, 1);
+                }
             }
-            if (opts.warned !== undefined) {
-                const v = !!opts.warned;
+            {
+                const v = parseFeatureFlag(opts.warned);
+                if (v !== null) {
                 loc.featureFlags.warned = v;
                 setFlagBit(v, 2);
+                }
             }
         } else if (terrain === SINK) {
-            if (opts.pudding !== undefined) {
-                const v = !!opts.pudding;
+            {
+                const v = parseFeatureFlag(opts.pudding);
+                if (v !== null) {
                 loc.featureFlags.pudding = v;
                 setFlagBit(v, 1);
+                }
             }
-            if (opts.dishwasher !== undefined) {
-                const v = !!opts.dishwasher;
+            {
+                const v = parseFeatureFlag(opts.dishwasher);
+                if (v !== null) {
                 loc.featureFlags.dishwasher = v;
                 setFlagBit(v, 2);
+                }
             }
-            if (opts.ring !== undefined) {
-                const v = !!opts.ring;
+            {
+                const v = parseFeatureFlag(opts.ring);
+                if (v !== null) {
                 loc.featureFlags.ring = v;
                 setFlagBit(v, 4);
+                }
             }
         } else if (terrain === THRONE) {
-            if (opts.looted !== undefined) {
-                const v = !!opts.looted;
+            {
+                const v = parseFeatureFlag(opts.looted);
+                if (v !== null) {
                 loc.featureFlags.looted = v;
                 setFlagBit(v, 1);
+                }
             }
         } else if (terrain === TREE) {
-            if (opts.looted !== undefined) {
-                const v = !!opts.looted;
+            {
+                const v = parseFeatureFlag(opts.looted);
+                if (v !== null) {
                 loc.featureFlags.looted = v;
                 setFlagBit(v, 1);
+                }
             }
-            if (opts.swarm !== undefined) {
-                const v = !!opts.swarm;
+            {
+                const v = parseFeatureFlag(opts.swarm);
+                if (v !== null) {
                 loc.featureFlags.swarm = v;
                 setFlagBit(v, 2);
+                }
             }
         }
     }

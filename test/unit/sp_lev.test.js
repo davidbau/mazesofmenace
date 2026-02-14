@@ -189,6 +189,19 @@ describe('sp_lev.js - des.* API', () => {
         assert.equal(map.locations[20][8].altarAlign, A_NEUTRAL);
     });
 
+    it('des.feature supports C-style "random" boolean flags', () => {
+        resetLevelState();
+        initRng(7);
+        des.level_init({ style: 'solidfill', fg: '.' });
+        des.feature({ type: 'fountain', x: 10, y: 6, looted: 'random', warned: 'random' });
+
+        const loc = getLevelState().map.locations[10][6];
+        assert.equal(typeof loc.featureFlags.looted, 'boolean');
+        assert.equal(typeof loc.featureFlags.warned, 'boolean');
+        assert.equal((loc.flags & 1) !== 0, loc.featureFlags.looted);
+        assert.equal((loc.flags & 2) !== 0, loc.featureFlags.warned);
+    });
+
     it('des.map parses backslash as THRONE terrain', () => {
         resetLevelState();
         des.level_init({ style: 'solidfill', fg: ' ' });
