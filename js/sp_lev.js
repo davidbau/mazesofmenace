@@ -5676,6 +5676,18 @@ function map_cleanup(map) {
             return undestroyableTrap(trap.ttyp);
         });
     }
+
+    // C ref: sp_lev.c map_cleanup() deletes engravings on liquid.
+    if (Array.isArray(map.engravings) && map.engravings.length > 0) {
+        map.engravings = map.engravings.filter((engr) => {
+            if (!engr) return false;
+            const ex = Number.isInteger(engr.x) ? engr.x : engr.ex;
+            const ey = Number.isInteger(engr.y) ? engr.y : engr.ey;
+            const loc = map.at(ex, ey);
+            if (!loc) return true;
+            return !(IS_LAVA(loc.typ) || IS_POOL(loc.typ));
+        });
+    }
 }
 
 // C ref: sp_lev.c solidify_map()

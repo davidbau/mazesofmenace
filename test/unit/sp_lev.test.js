@@ -498,6 +498,8 @@ describe('sp_lev.js - des.* API', () => {
         map.traps.push({ ttyp: PIT, tx: 10, ty: 10 });
         map.traps.push({ ttyp: MAGIC_PORTAL, tx: 10, ty: 10 });
         map.traps.push({ ttyp: PIT, tx: 11, ty: 10 });
+        map.engravings.push({ x: 10, y: 10, text: 'burned' });
+        map.engravings.push({ x: 11, y: 10, text: 'safe' });
 
         des.finalize_level();
 
@@ -512,6 +514,10 @@ describe('sp_lev.js - des.* API', () => {
             'undestroyable trap on liquid should remain');
         assert.equal(map.traps.some(t => t.ttyp === PIT && t.tx === 11 && t.ty === 10), true,
             'trap on non-liquid terrain should remain');
+        assert.equal(map.engravings.some(e => e.x === 10 && e.y === 10), false,
+            'engraving on liquid should be removed');
+        assert.equal(map.engravings.some(e => e.x === 11 && e.y === 10), true,
+            'engraving on non-liquid should remain');
     });
 
     it('finalize_level converts touched boundary CROSSWALL tiles to ROOM', () => {
