@@ -167,6 +167,7 @@ export let levelState = {
     deferredTraps: [],      // Queued trap placements
     deferredActions: [],    // Queued placements in original script order
     containerStack: [],     // Active des.object contents callback container context
+    monsterInventoryStack: [], // Active des.monster inventory callback context
     // Optional context to emulate C topology/fixup behavior.
     finalizeContext: null,
     branchPlaced: false,
@@ -1008,6 +1009,7 @@ export function resetLevelState() {
         deferredTraps: [],
         deferredActions: [],
         containerStack: [],
+        monsterInventoryStack: [],
         finalizeContext: null,
         branchPlaced: false,
         levRegions: [],
@@ -3448,6 +3450,13 @@ export function object(name_or_opts, x, y) {
             return obj;
         }
 
+        const activeMonster = levelState.monsterInventoryStack[levelState.monsterInventoryStack.length - 1];
+        if (activeMonster) {
+            if (!Array.isArray(activeMonster.minvent)) activeMonster.minvent = [];
+            activeMonster.minvent.push(obj);
+            return obj;
+        }
+
         if (absX >= 0 && absX < COLNO && absY >= 0 && absY < ROWNO) {
             markSpLevTouched(absX, absY);
         }
@@ -4557,6 +4566,9 @@ function executeDeferredMonster(deferred) {
     const MM_ADJACENTOK = 0x00000010;
     const MM_IGNOREWATER = 0x00000100;
     const MM_NOCOUNTBIRTH = 0x00000200;
+    const NO_INVENT = 0;
+    const CUSTOM_INVENT = 0x01;
+    const DEFAULT_INVENT = 0x02;
 
     const resolveMonsterIndex = (monsterId, depth) => {
         if (typeof monsterId === 'string' && monsterId.length === 1) {
@@ -4744,6 +4756,18 @@ function executeDeferredMonster(deferred) {
         const mtmp = createMonster(monsterId, coordX, coordY, mndxForParity, femaleForParity, mmFlags);
         if (mtmp && opts) {
             const parsedAppearAs = parseAppearAsLikeC(opts.appear_as);
+            const hasInventoryField = (opts.inventory !== undefined);
+            const keepDefaultSpecified = (opts.keep_default_invent !== undefined);
+            const keepDefaultInvent = keepDefaultSpecified ? !!opts.keep_default_invent : undefined;
+            let hasInvent = DEFAULT_INVENT;
+            if (hasInventoryField) {
+                hasInvent = CUSTOM_INVENT;
+                if (keepDefaultInvent === true) {
+                    hasInvent |= DEFAULT_INVENT;
+                }
+            } else if (keepDefaultInvent === false) {
+                hasInvent = NO_INVENT;
+            }
             if (opts.name !== undefined) mtmp.customName = String(opts.name);
             if (opts.female !== undefined) mtmp.female = !!opts.female;
             if (opts.peaceful !== undefined) {
@@ -4782,6 +4806,18 @@ function executeDeferredMonster(deferred) {
                 mtmp.appear_as_type = parsedAppearAs.type;
                 mtmp.appear_as_value = parsedAppearAs.value;
             }
+            if ((hasInvent & DEFAULT_INVENT) === 0) {
+                mtmp.minvent = [];
+            }
+            if ((hasInvent & CUSTOM_INVENT) && typeof opts.inventory === 'function') {
+                levelState.monsterInventoryStack.push(mtmp);
+                try {
+                    opts.inventory(mtmp);
+                } finally {
+                    levelState.monsterInventoryStack.pop();
+                }
+            }
+            mtmp.has_invent_flags = hasInvent;
             mtmp.mm_flags_requested = requestedMmFlags;
         }
         if (traceMon) {
