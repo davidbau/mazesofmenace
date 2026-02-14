@@ -785,6 +785,10 @@ export async function replaySession(seed, session, opts = {}) {
     for (let stepIndex = 0; stepIndex < maxSteps; stepIndex++) {
         const step = allSteps[stepIndex];
         const prevCount = getRngLog().length;
+        // C tty capture behavior: message row is typically clear at step start
+        // unless this step emits fresh output.
+        game.display.clearRow(0);
+        game.display.topMessage = null;
 
         // C ref: startup tutorial yes/no prompt blocks normal gameplay input.
         // Invalid keys are ignored (no RNG/time). 'y' accepts tutorial and

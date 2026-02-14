@@ -16,6 +16,7 @@ const sessionPath = join(__dirname, '../comparison/sessions/seed4_gameplay.sessi
 const session = existsSync(sessionPath)
     ? JSON.parse(readFileSync(sessionPath, 'utf-8'))
     : null;
+const pad80 = (line) => (line || '').padEnd(80);
 
 describe('C gameplay replay: seed4 valkyrie', { skip: !session }, () => {
     if (!session) return;
@@ -37,7 +38,7 @@ describe('C gameplay replay: seed4 valkyrie', { skip: !session }, () => {
     });
 
     it('step RNG matches C trace for full session', async () => {
-        const replay = await replaySession(session.seed, session);
+        const replay = await replaySession(session.seed, session, { captureScreens: true });
         for (let i = 0; i < session.steps.length; i++) {
             const jsStep = replay.steps[i];
             const cStep = session.steps[i];
@@ -45,6 +46,10 @@ describe('C gameplay replay: seed4 valkyrie', { skip: !session }, () => {
             const divergence = compareRng(jsStep.rng, cStep.rng);
             assert.equal(divergence.index, -1,
                 `step ${i} (${cStep.action}) diverges at ${divergence.index}: JS="${divergence.js}" session="${divergence.session}"`);
+            const cMsg = pad80((cStep.screen || [])[0]);
+            const jMsg = pad80((jsStep.screen || [])[0]);
+            assert.equal(jMsg, cMsg,
+                `step ${i} (${cStep.action}) message row diverges:\nC ="${cMsg}"\nJS="${jMsg}"`);
         }
     });
 });

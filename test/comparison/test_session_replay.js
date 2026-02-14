@@ -21,8 +21,10 @@ function usage() {
     console.log('Options:');
     console.log('  --verbose              Print every step result');
     console.log('  --stop-on-mismatch     Stop at first mismatch');
-    console.log('  --compare-screen       Compare rendered screen against captured screen');
-    console.log('  --strict-message-row   Include row 0 (message row) in screen comparison');
+    console.log('  --no-compare-screen    Disable screen comparison (enabled by default)');
+    console.log('  --rows-1-23            Exclude row 0 (message row) from screen comparison');
+    console.log('  --compare-screen       Explicitly enable screen comparison');
+    console.log('  --strict-message-row   Explicitly include row 0 (message row)');
     console.log('  --help                 Show this help');
 }
 
@@ -116,8 +118,10 @@ async function main() {
     const sessionPath = path.resolve(args[0]);
     const verbose = args.includes('--verbose');
     const stopOnMismatch = args.includes('--stop-on-mismatch');
-    const compareScreen = args.includes('--compare-screen');
-    const strictMessageRow = args.includes('--strict-message-row');
+    const compareScreen = args.includes('--no-compare-screen')
+        ? false
+        : true;
+    const strictMessageRow = compareScreen && !args.includes('--rows-1-23');
 
     const session = loadSession(sessionPath);
     const seed = session.seed;

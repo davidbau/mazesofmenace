@@ -6,6 +6,7 @@ import { rndmonnum } from './makemon.js';
 import {
     mons, G_FREQ, MZ_TINY, M2_NEUTER, M2_MALE, M2_FEMALE,
     MZ_LARGE,
+    AT_CLAW, AT_BITE, AT_KICK, AT_BUTT, AT_TUCH, AT_STNG, AT_WEAP,
     S_ZOMBIE, S_MUMMY, S_VAMPIRE, S_WRAITH, S_LICH, S_GHOST, S_DEMON,
 } from './monsters.js';
 import { CORPSE, FOOD_CLASS, FLESH, objectData } from './objects.js';
@@ -33,6 +34,19 @@ function weaponDamageSides(weapon, monster) {
     if (!info) return 0;
     const isLarge = (monster?.type?.size ?? MZ_TINY) >= MZ_LARGE;
     return isLarge ? (info.ldam || 0) : (info.sdam || 0);
+}
+
+function monsterHitVerb(attackType) {
+    switch (attackType) {
+        case AT_BITE: return 'bites';
+        case AT_CLAW: return 'claws';
+        case AT_KICK: return 'kicks';
+        case AT_BUTT: return 'butts';
+        case AT_STNG: return 'stings';
+        case AT_TUCH: return 'touches';
+        case AT_WEAP: return 'hits';
+        default: return 'hits';
+    }
 }
 
 // Attack a monster (hero attacking)
@@ -212,12 +226,8 @@ export function monsterAttackPlayer(monster, player, display) {
         if (damage > 0) {
             // Apply damage
             const died = player.takeDamage(damage, monster.name);
-
-            if (damage === 1) {
-                display.putstr_message(`The ${monster.name} bites!`);
-            } else {
-                display.putstr_message(`The ${monster.name} hits! [${damage} pts]`);
-            }
+            const verb = monsterHitVerb(attack.type);
+            display.putstr_message(`The ${monster.name} ${verb}!`);
 
             // C ref: uhitm.c:5236-5247 knockback after monster hits hero
             // rn2(3) distance + rn2(6) chance, for physical attacks

@@ -12,6 +12,7 @@ const sessionPath = join(__dirname, '../comparison/sessions/seed5_gnomish_mines_
 const session = existsSync(sessionPath)
     ? JSON.parse(readFileSync(sessionPath, 'utf-8'))
     : null;
+const pad80 = (line) => (line || '').padEnd(80);
 
 describe('C gameplay replay: seed5 valkyrie gnomish mines', { skip: !session }, () => {
     if (!session) return;
@@ -34,10 +35,14 @@ describe('C gameplay replay: seed5 valkyrie gnomish mines', { skip: !session }, 
     });
 
     it('replay normalization places startup RNG at step 0', async () => {
-        const replay = await replaySession(session.seed, session, { maxSteps: 1 });
+        const replay = await replaySession(session.seed, session, { maxSteps: 1, captureScreens: true });
         const divergence = compareRng(replay.steps[0].rng, session.steps[0].rng || []);
         assert.equal(divergence.index, -1,
             `step 0 normalization diverges at ${divergence.index}: JS="${divergence.js}" session="${divergence.session}"`);
+        const cMsg = pad80((session.steps[0].screen || [])[0]);
+        const jMsg = pad80((replay.steps[0].screen || [])[0]);
+        assert.equal(jMsg, cMsg,
+            `step 0 message row diverges:\nC ="${cMsg}"\nJS="${jMsg}"`);
     });
 
     it.skip('step RNG matches C trace for full session', async () => {

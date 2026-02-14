@@ -113,6 +113,8 @@ export async function rhack(ch, game) {
                 }
             }
             if (monNearby) {
+                // C ref: do.c cmd_safety_prevention() warning text for blocked wait/search.
+                display.putstr_message("Are you waiting to get hit?  Use 'm' prefix to force a no-op (to rest).");
                 return { moved: false, tookTime: false };
             }
         }
@@ -121,8 +123,6 @@ export async function rhack(ch, game) {
             display.putstr_message('You search...');
             // C ref: detect.c dosearch0() -- check adjacent squares for hidden things
             dosearch0(player, map, display);
-        } else {
-            display.putstr_message('You wait.');
         }
         return { moved: false, tookTime: true };
     }
@@ -524,12 +524,13 @@ async function handleMovement(dir, player, map, display, game) {
 
     // Check terrain
     if (IS_WALL(loc.typ)) {
-        display.putstr_message("It's a wall.");
+        // C parity: failed movement into a wall generally doesn't emit
+        // a standalone look-style terrain message.
         return { moved: false, tookTime: false };
     }
 
     if (loc.typ === 0) { // STONE
-        display.putstr_message("It's solid stone.");
+        // Keep behavior aligned with wall collision handling.
         return { moved: false, tookTime: false };
     }
 
@@ -698,7 +699,7 @@ async function handleMovement(dir, player, map, display, game) {
     // Messages will be concatenated if both fit (see display.putstr_message)
     if (game.flags.verbose && loc.typ === STAIRS) {
         if (loc.flags === 1) {
-            display.putstr_message('There is a staircase up here.');
+            display.putstr_message('There is a staircase up out of the dungeon here.');
         } else {
             display.putstr_message('There is a staircase down here.');
         }
@@ -1274,7 +1275,7 @@ function handleLook(player, map, display) {
     let msg = '';
     if (loc) {
         // Describe terrain features - C ref: cmd.c dolook() describes current location
-        if (loc.typ === STAIRS && loc.flags === 1) msg += 'There is a staircase up here. ';
+        if (loc.typ === STAIRS && loc.flags === 1) msg += 'There is a staircase up out of the dungeon here. ';
         else if (loc.typ === STAIRS && loc.flags === 0) msg += 'There is a staircase down here. ';
         else if (loc.typ === LADDER && loc.flags === 1) msg += 'There is a ladder up here. ';
         else if (loc.typ === LADDER && loc.flags === 0) msg += 'There is a ladder down here. ';

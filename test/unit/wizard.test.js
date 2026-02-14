@@ -351,7 +351,11 @@ describe('Wizard mode', () => {
             const game = mockGame({ wizard: false });
             const result = await rhack('.'.charCodeAt(0), game);
             assert.equal(result.tookTime, true);
-            assert.ok(game.display.messages.some(m => m.includes('wait')));
+            assert.ok(
+                game.display.messages.length === 0
+                || game.display.messages.some(m => m.includes('waiting to get hit')),
+                'wait should either be silent or show safe-wait warning'
+            );
         });
 
         it('search takes a turn', async () => {
