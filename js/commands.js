@@ -82,6 +82,9 @@ const RUN_KEYS = {
 export async function rhack(ch, game) {
     const { player, map, display, fov } = game;
     const c = String.fromCharCode(ch);
+    if (ch !== 4) {
+        player.kickedloc = null;
+    }
 
     // C tty/keypad behavior in recorded traces: Enter acts like south movement.
     if (ch === 10 || ch === 13) {
@@ -1517,6 +1520,7 @@ async function handleKick(player, map, display, game) {
 
     const nx = player.x + dir[0];
     const ny = player.y + dir[1];
+    player.kickedloc = { x: nx, y: ny };
     const loc = map.at(nx, ny);
 
     if (!loc) return { moved: false, tookTime: false };
