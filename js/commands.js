@@ -716,9 +716,10 @@ async function handleMovement(dir, player, map, display, game) {
         const pickupTypes = game.flags?.pickup_types || '';
         const obj = objs.find(o => o.oclass !== COIN_CLASS && shouldAutopickup(o, pickupTypes));
         if (obj) {
+            observeObject(obj);
             player.addToInventory(obj);
             map.removeObject(obj);
-            display.putstr_message(`${obj.invlet} - ${obj.name}.`);
+            display.putstr_message(`${obj.invlet} - ${doname(obj, player)}.`);
             pickedUp = true;
         }
     }
@@ -857,7 +858,8 @@ function handlePickup(player, map, display) {
 
     player.addToInventory(obj);
     map.removeObject(obj);
-    display.putstr_message(`${obj.invlet} - ${obj.name}.`);
+    observeObject(obj);
+    display.putstr_message(`${obj.invlet} - ${doname(obj, player)}.`);
     return { moved: false, tookTime: true };
 }
 

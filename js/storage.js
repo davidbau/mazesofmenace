@@ -23,6 +23,7 @@ import { CLASS_SYMBOLS } from './objects.js';
 import { COLNO, ROWNO } from './config.js';
 import { Player } from './player.js';
 import { GameMap, makeRoom } from './map.js';
+import { getDiscoveryState, setDiscoveryState } from './discovery.js';
 
 const SAVE_KEY = 'webhack-save';
 const BONES_KEY_PREFIX = 'webhack-bones-';
@@ -329,6 +330,7 @@ export function saveGameState(game) {
         you: saveYou(player),
         invent: saveObjChn(player.inventory),
         equip: saveEquip(player),
+        discovery: getDiscoveryState(),
         messages: display.messages.slice(-200),
         flags: game.flags || null,
     };
@@ -337,6 +339,7 @@ export function saveGameState(game) {
 // C ref: restgamestate() — restore game context + you + inventory + equip + flags
 // Returns { player, turnCount, wizard, seerTurn, seed, rng, rngCallCount, messages, flags }
 export function restGameState(gameState) {
+    setDiscoveryState(gameState.discovery || null);
     const player = restYou(gameState.you);
     player.inventory = restObjChn(gameState.invent);
     wireEquip(player, gameState.equip || {});

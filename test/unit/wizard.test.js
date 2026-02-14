@@ -12,8 +12,10 @@ import { rhack } from '../../js/commands.js';
 import { FOV } from '../../js/vision.js';
 import { pushInput, clearInputQueue } from '../../js/input.js';
 import { doname, mksobj } from '../../js/mkobj.js';
+import { initDiscoveryState, discoverObject } from '../../js/discovery.js';
 import { WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, WAND_CLASS, TOOL_CLASS,
-    POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS,
+    POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS, SCR_EARTH,
+    LEATHER_GLOVES, LOW_BOOTS, LENSES, GRAY_DRAGON_SCALES, SHIELD_OF_REFLECTION,
     oclass_prob_totals, initObjectData, objectData } from '../../js/objects.js';
 import { Player } from '../../js/player.js';
 import { simulatePostLevelInit } from '../../js/u_init.js';
@@ -344,6 +346,20 @@ describe('Wizard mode', () => {
             assert.equal(result.tookTime, false);
             assert.ok(game.display.messages.some(m => m.includes('discovered')));
         });
+
+        it('shows discoveries list when items are known/encountered', async () => {
+            const game = mockGame({ wizard: false });
+            initDiscoveryState();
+            discoverObject(SCR_EARTH, true, true);
+            let menuLines = null;
+            game.display.renderChargenMenu = (lines) => { menuLines = lines; };
+            pushInput(' '.charCodeAt(0)); // dismiss discoveries screen
+            const result = await rhack('\\'.charCodeAt(0), game);
+            assert.equal(result.tookTime, false);
+            assert.ok(menuLines, 'discoveries should render a menu');
+            assert.ok(menuLines.some(l => l.includes('Scrolls')));
+            assert.ok(menuLines.some(l => l.includes('scroll of earth')));
+        });
     });
 
     describe('Wait and search commands', () => {
@@ -476,6 +492,48 @@ describe('doname', () => {
             known: true, dknown: true, bknown: true,
         };
         assert.equal(doname(obj, null), 'a blessed +1 ring of protection');
+    });
+
+    it('armor gloves/boots use "pair of" phrasing', () => {
+        const gloves = {
+            otyp: LEATHER_GLOVES, oclass: ARMOR_CLASS,
+            spe: 0, blessed: false, cursed: false,
+            known: true, dknown: true, bknown: true,
+        };
+        const boots = {
+            otyp: LOW_BOOTS, oclass: ARMOR_CLASS,
+            spe: 0, blessed: false, cursed: false,
+            known: true, dknown: true, bknown: true,
+        };
+        assert.equal(doname(gloves, null), 'an uncursed +0 pair of leather gloves');
+        assert.equal(doname(boots, null), 'an uncursed +0 pair of low boots');
+    });
+
+    it('lenses use "pair of" phrasing', () => {
+        const obj = {
+            otyp: LENSES, oclass: TOOL_CLASS,
+            spe: 0, blessed: false, cursed: false,
+            known: true, dknown: true, bknown: true,
+        };
+        assert.equal(doname(obj, null), 'an uncursed pair of lenses');
+    });
+
+    it('dragon scales use "set of" phrasing', () => {
+        const obj = {
+            otyp: GRAY_DRAGON_SCALES, oclass: ARMOR_CLASS,
+            spe: 0, blessed: false, cursed: false,
+            known: true, dknown: true, bknown: true,
+        };
+        assert.equal(doname(obj, null), 'an uncursed +0 set of gray dragon scales');
+    });
+
+    it('unknown shield of reflection uses smooth shield wording', () => {
+        const obj = {
+            otyp: SHIELD_OF_REFLECTION, oclass: ARMOR_CLASS,
+            spe: 0, blessed: false, cursed: false,
+            known: false, dknown: false, bknown: true,
+        };
+        assert.equal(doname(obj, null), 'an uncursed smooth shield');
     });
 });
 

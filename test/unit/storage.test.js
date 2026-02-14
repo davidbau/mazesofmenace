@@ -8,10 +8,13 @@ import { initLevelGeneration, makelevel, wallification } from '../../js/dungeon.
 import { makemon, NO_MM_FLAGS } from '../../js/makemon.js';
 import { mksobj } from '../../js/mkobj.js';
 import { mons, PM_GHOST } from '../../js/monsters.js';
-import { objectData } from '../../js/objects.js';
+import { objectData, SCR_EARTH } from '../../js/objects.js';
 import { COLNO, ROWNO, ACCESSIBLE } from '../../js/config.js';
 import { Player, roles } from '../../js/player.js';
 import { GameMap } from '../../js/map.js';
+import {
+    initDiscoveryState, discoverObject, isObjectNameKnown, isObjectEncountered,
+} from '../../js/discovery.js';
 import {
     saveObj, restObj, saveObjChn, restObjChn,
     saveMon, restMon, saveMonChn, restMonChn,
@@ -921,6 +924,37 @@ describe('saveGameState/restGameState round-trip', () => {
         assert.deepEqual(restored.messages, ['test message']);
         // Flags round-trip
         assert.deepEqual(restored.flags, { pickup: false, showexp: true, color: true });
+    });
+
+    it('round-trips discovery state (oc_name_known + encountered)', () => {
+        initRng(42);
+        initLevelGeneration();
+        initDiscoveryState();
+
+        // Scroll of earth starts undiscovered by name; mark encountered+known.
+        discoverObject(SCR_EARTH, true, true);
+
+        const player = new Player();
+        player.initRole(11);
+        const game = {
+            player,
+            map: null,
+            display: { messages: [] },
+            levels: {},
+            seed: 42, turnCount: 0, wizard: false, seerTurn: 0,
+            flags: {},
+            _rngAccessors: { getRngState, getRngCallCount },
+        };
+
+        const gs = saveGameState(game);
+        // Reset state to verify restGameState reapplies serialized discovery.
+        initDiscoveryState();
+        assert.equal(isObjectNameKnown(SCR_EARTH), false);
+        assert.equal(isObjectEncountered(SCR_EARTH), false);
+
+        restGameState(JSON.parse(JSON.stringify(gs)));
+        assert.equal(isObjectNameKnown(SCR_EARTH), true);
+        assert.equal(isObjectEncountered(SCR_EARTH), true);
     });
 });
 

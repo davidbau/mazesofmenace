@@ -10,6 +10,7 @@ import { rn2, rnd, c_d } from './rng.js';
 import { monsterAttackPlayer } from './combat.js';
 import { FOOD_CLASS, COIN_CLASS, BOULDER, ROCK_CLASS, BALL_CLASS, CHAIN_CLASS } from './objects.js';
 import { doname } from './mkobj.js';
+import { observeObject } from './discovery.js';
 import { dogfood, dog_eat, can_carry, DOGFOOD, CADAVER, ACCFOOD, MANFOOD, APPORT,
          POISON, UNDEF, TABU } from './dog.js';
 import { couldsee, m_cansee, do_clear_area } from './vision.js';
@@ -309,6 +310,7 @@ function dog_invent(mon, edog, udist, map, turnCount, display, player) {
                         o.ox = omx; o.oy = omy;
                         map.objects.push(o);
                         if (display && player && couldsee(map, player, mon.mx, mon.my)) {
+                            observeObject(o);
                             display.putstr_message(`The ${mon.name} drops ${doname(o, null)}.`);
                         }
                     } else {
@@ -354,6 +356,7 @@ function dog_invent(mon, edog, udist, map, turnCount, display, player) {
                         mon.minvent.push(obj);
                         // C ref: dogmove.c "The <pet> picks up <obj>." when observed.
                         if (display && player && couldsee(map, player, mon.mx, mon.my)) {
+                            observeObject(obj);
                             display.putstr_message(`The ${mon.name} picks up ${doname(obj, null)}.`);
                         }
                     }
