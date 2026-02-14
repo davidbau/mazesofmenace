@@ -18,6 +18,7 @@ import { Player, roles } from '../../js/player.js';
 import { NORMAL_SPEED, A_DEX, A_CON,
          RACE_HUMAN, RACE_ELF, RACE_DWARF, RACE_GNOME, RACE_ORC } from '../../js/config.js';
 import { rhack } from '../../js/commands.js';
+import { makemon } from '../../js/makemon.js';
 import { pushInput } from '../../js/input.js';
 import { movemon, initrack, settrack } from '../../js/monmove.js';
 import { FOV } from '../../js/vision.js';
@@ -498,7 +499,12 @@ class HeadlessGame {
             mon.movement += this.mcalcmove(mon);
         }
 
-        rn2(70);   // monster spawn check
+        // C ref: allmain.c moveloop_core() — occasional random spawn.
+        if (!rn2(70)) {
+            // Spawn at random valid location; new monster misses its first turn
+            // because movement allocation already happened above.
+            makemon(null, 0, 0, 0, this.player.dungeonLevel, this.map);
+        }
 
         // C ref: allmain.c:289-295 regen_hp()
         if (this.player.hp < this.player.hpmax) {

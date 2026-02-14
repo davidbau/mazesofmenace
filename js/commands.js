@@ -450,11 +450,26 @@ async function handleMovement(dir, player, map, display, game) {
     const mon = map.monsterAt(nx, ny);
     if (mon) {
         // C ref: hack.c domove() — check for pet displacement
-        // Simplified: tame/peaceful monsters are displaced (swap positions)
-        // BUT: 'F' prefix (forceFight) forces attack even on peaceful monsters
+        // C ref: uhitm.c do_attack() is invoked first for safemon targets.
+        // Even when displacement succeeds, it consumes rn2(7) via safemon checks.
+        // 'F' prefix (forceFight) skips safemon protection and forces attack.
         const shouldDisplace = (mon.tame || mon.peaceful) && !game.forceFight;
 
         if (shouldDisplace) {
+            // C ref: uhitm.c:473 foo = Punished || !rn2(7) || ...
+            // Early-game parity: model the rn2(7) gate before displacement.
+            if (rn2(7) === 0) {
+                if (mon.tame) {
+                    // C ref: uhitm.c monflee(mtmp, rnd(6), FALSE, FALSE)
+                    mon.flee = true;
+                    mon.fleetim = rnd(6);
+                }
+                const label = mon.name ? mon.name.charAt(0).toUpperCase() + mon.name.slice(1) : 'It';
+                display.putstr_message(`You stop. ${label} is in the way!`);
+                game.forceFight = false;
+                return { moved: false, tookTime: true };
+            }
+
             // Pet displacement: swap positions
             // C ref: hack.c:2142-2156 — remove_monster + place_monster swaps positions
             const oldPlayerX = player.x;

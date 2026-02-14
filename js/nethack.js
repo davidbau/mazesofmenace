@@ -1411,9 +1411,11 @@ class NetHackGame {
             mon.movement += this.mcalcmove(mon);
         }
 
-        // C ref: allmain.c:232-236 — occasionally spawn a new monster
-        // rn2(70) on normal dungeon levels (rn2(25) if demigod, rn2(50) below stronghold)
-        rn2(70);
+        // C ref: allmain.c:232-236 — occasionally spawn a new monster.
+        // New monster spawns after movement allocation and therefore loses its first turn.
+        if (!rn2(70)) {
+            makemon(null, 0, 0, 0, this.player.dungeonLevel, this.map);
+        }
 
         // C ref: allmain.c:241 — svm.moves++ (already done via this.turnCount++)
 
