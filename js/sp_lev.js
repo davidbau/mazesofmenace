@@ -3425,6 +3425,14 @@ export function object(name_or_opts, x, y) {
         }
     }
 
+    const isBuried = !!(name_or_opts && typeof name_or_opts === 'object' && name_or_opts.buried);
+    if (obj && isBuried) {
+        // C ref: sp_lev.c lspo_object() -> create_object() -> bury_an_obj() ->
+        // obj_resists(otmp, 0, 0). For ordinary objects this consumes rn2(100).
+        // We consume it at creation-time so deferred placement keeps RNG order.
+        rn2(100);
+    }
+
     if (obj) {
         const activeContainer = levelState.containerStack[levelState.containerStack.length - 1];
 
@@ -3433,13 +3441,13 @@ export function object(name_or_opts, x, y) {
         if (activeContainer) {
             if (!activeContainer.contents) activeContainer.contents = [];
             activeContainer.contents.push(obj);
-            return;
+            return obj;
         }
 
         if (absX >= 0 && absX < COLNO && absY >= 0 && absY < ROWNO) {
             markSpLevTouched(absX, absY);
         }
-        levelState.deferredObjects.push({ obj, x: absX, y: absY });
+        levelState.deferredObjects.push({ obj, x: absX, y: absY, buried: isBuried });
         // C ref: lspo_* handlers execute in script order. Keep deferred
         // placements ordered by insertion so finalize_level() can replay
         // object/monster interleaving faithfully.
@@ -3457,6 +3465,13 @@ export function object(name_or_opts, x, y) {
             }
         }
     }
+    // C ref: lspo_object returns the object userdata to Lua.
+    // Keep timer methods available for script compatibility.
+    if (obj) {
+        obj.stop_timer = obj.stop_timer || function() {};
+        obj.start_timer = obj.start_timer || function() {};
+    }
+    return obj;
 }
 
 /**
@@ -3634,7 +3649,8 @@ export function region(opts_or_selection, type) {
         for (let x = lx1; x <= lx2; x++) {
             for (let y = ly1; y <= ly2; y++) {
                 if (x >= 0 && x < COLNO && y >= 0 && y < ROWNO) {
-                    levelState.map.locations[x][y].lit = litVal ? 1 : 0;
+                    const loc = levelState.map.locations[x][y];
+                    loc.lit = (IS_LAVA(loc.typ) || litVal) ? 1 : 0;
                 }
             }
         }
@@ -3658,21 +3674,36 @@ export function region(opts_or_selection, type) {
     const depth = levelState.depth || levelState.levelDepth || 1;
 
     if (typeof type === 'string') {
-        // C ref: selection-based region path returns after setting lighting.
-        x1 = opts_or_selection.x1;
-        y1 = opts_or_selection.y1;
-        x2 = opts_or_selection.x2;
-        y2 = opts_or_selection.y2;
-        if (levelState.mapCoordMode) {
-            const c1 = toAbsoluteCoords(x1, y1);
-            const c2 = toAbsoluteCoords(x2, y2);
-            x1 = c1.x;
-            y1 = c1.y;
-            x2 = c2.x;
-            y2 = c2.y;
+        // C ref: lspo_region(selection, "lit"/"unlit"):
+        // for lit, grow the selection by 1 in all directions, then set lit.
+        const targetLit = (type === 'lit');
+        const sourceSel = opts_or_selection;
+        if (sourceSel && Array.isArray(sourceSel.coords)) {
+            let sel = sourceSel;
+            if (targetLit) {
+                sel = selection.grow(sourceSel, 1);
+            }
+            for (const c of sel.coords) {
+                if (c.x < 0 || c.x >= COLNO || c.y < 0 || c.y >= ROWNO) continue;
+                const loc = levelState.map.locations[c.x][c.y];
+                loc.lit = (IS_LAVA(loc.typ) || targetLit) ? 1 : 0;
+            }
+        } else {
+            x1 = sourceSel.x1;
+            y1 = sourceSel.y1;
+            x2 = sourceSel.x2;
+            y2 = sourceSel.y2;
+            if (levelState.mapCoordMode) {
+                const c1 = toAbsoluteCoords(x1, y1);
+                const c2 = toAbsoluteCoords(x2, y2);
+                x1 = c1.x;
+                y1 = c1.y;
+                x2 = c2.x;
+                y2 = c2.y;
+            }
+            const norm = normalizeRegionCoords(x1, y1, x2, y2);
+            markLitRect(norm.x1, norm.y1, norm.x2, norm.y2, targetLit);
         }
-        const norm = normalizeRegionCoords(x1, y1, x2, y2);
-        markLitRect(norm.x1, norm.y1, norm.x2, norm.y2, type === 'lit');
         return;
     }
 
@@ -4456,7 +4487,7 @@ export function random_corridors() {
  * Objects are already created (RNG consumed), just need to be placed on the map
  */
 function executeDeferredObject(deferred) {
-    const { obj, x, y } = deferred;
+    const { obj, x, y, buried } = deferred;
 
     if (!obj) return;
 
@@ -4468,6 +4499,12 @@ function executeDeferredObject(deferred) {
     if (coordX >= 0 && coordX < 80 && coordY >= 0 && coordY < 21) {
         obj.ox = coordX;
         obj.oy = coordY;
+        if (buried) {
+            // C ref: bury_an_obj() removes floor placement and stores the
+            // object in buried chains. We currently only model "not on floor".
+            obj.buried = true;
+            return;
+        }
         levelState.map.objects.push(obj);
     }
 }
