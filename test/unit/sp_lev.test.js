@@ -306,6 +306,17 @@ describe('sp_lev.js - des.* API', () => {
         assert.equal(map.locations[10][6].nonpasswall, undefined, 'non-wall tiles should remain unchanged');
     });
 
+    it('applies des.wallify bounded x1/y1/x2/y2 semantics', () => {
+        resetLevelState();
+        des.level_init({ style: 'solidfill', fg: ' ' });
+        des.terrain(10, 10, '-');
+        const map = getLevelState().map;
+        assert.equal(map.locations[10][10].typ, HWALL, 'test setup should place a wall tile');
+
+        des.wallify({ x1: 10, y1: 10, x2: 10, y2: 10 });
+        assert.equal(map.locations[10][10].typ, STONE, 'isolated wall should be cleaned to stone');
+    });
+
     it('finalize_level map cleanup removes boulders and destroyable traps on liquid', () => {
         resetLevelState();
         des.level_init({ style: 'solidfill', fg: ' ' });

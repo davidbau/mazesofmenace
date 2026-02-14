@@ -16,7 +16,7 @@
 import { GameMap, FILL_NORMAL } from './map.js';
 import { rn2, rnd, rn1, getRngCallCount } from './rng.js';
 import { mksobj, mkobj, mkcorpstat, set_corpsenm, weight } from './mkobj.js';
-import { create_room, create_subroom, makecorridors, init_rect, rnd_rect, get_rect, split_rects, check_room, add_doors_to_room, update_rect_pool_for_room, bound_digging, mineralize, fill_ordinary_room, litstate_rnd, isMtInitialized, setMtInitialized, wallification as dungeonWallification, fix_wall_spines, place_lregion, mktrap, enexto, somexy, sp_create_door, floodFillAndRegister, resolveBranchPlacementForLevel } from './dungeon.js';
+import { create_room, create_subroom, makecorridors, init_rect, rnd_rect, get_rect, split_rects, check_room, add_doors_to_room, update_rect_pool_for_room, bound_digging, mineralize, fill_ordinary_room, litstate_rnd, isMtInitialized, setMtInitialized, wallification as dungeonWallification, wallify_region as dungeonWallifyRegion, fix_wall_spines, place_lregion, mktrap, enexto, somexy, sp_create_door, floodFillAndRegister, resolveBranchPlacementForLevel } from './dungeon.js';
 import { seedFromMT } from './xoshiro256.js';
 import { makemon, mkclass, def_char_to_monclass, NO_MM_FLAGS, MM_NOGRP } from './makemon.js';
 import {
@@ -5406,14 +5406,32 @@ function executeDeferredTraps() {
  * des.wallify()
  * Explicitly wallify the current map (compute wall junction types).
  * Usually called automatically by finalize_level(), but some levels call it explicitly.
- * C ref: sp_lev.c spo_wallify()
+ * C ref: sp_lev.c lspo_wallify()
  */
-export function wallify() {
+export function wallify(opts) {
     if (!levelState.map) {
         console.warn('wallify called but no map exists');
         return;
     }
-    wallification(levelState.map);
+    let x1 = -1;
+    let y1 = -1;
+    let x2 = -1;
+    let y2 = -1;
+
+    // C ref: lspo_wallify() only reads x1/y1/x2/y2 from a single table argument.
+    if (opts && typeof opts === 'object') {
+        if (Number.isFinite(opts.x1)) x1 = Math.trunc(opts.x1);
+        if (Number.isFinite(opts.y1)) y1 = Math.trunc(opts.y1);
+        if (Number.isFinite(opts.x2)) x2 = Math.trunc(opts.x2);
+        if (Number.isFinite(opts.y2)) y2 = Math.trunc(opts.y2);
+    }
+
+    if (x1 < 0) x1 = levelState.xstart - 1;
+    if (y1 < 0) y1 = levelState.ystart - 1;
+    if (x2 < 0) x2 = levelState.xstart + levelState.xsize + 1;
+    if (y2 < 0) y2 = levelState.ystart + levelState.ysize + 1;
+
+    dungeonWallifyRegion(levelState.map, x1, y1, x2, y2);
 }
 
 // C ref: sp_lev.c map_cleanup() — post-gen cleanup of liquid squares.
@@ -6793,6 +6811,7 @@ export const des = {
     door,
     engraving,
     drawbridge,
+    wallify,
     mazewalk,
     finalize_level,
 };

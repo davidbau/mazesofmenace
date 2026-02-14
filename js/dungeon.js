@@ -2967,6 +2967,11 @@ function wallify(map, x1, y1, x2, y2) {
     }
 }
 
+// C ref: mkmaze.c wallification(map, x1, y1, x2, y2) bounded variant.
+export function wallify_region(map, x1, y1, x2, y2) {
+    wallify(map, x1, y1, x2, y2);
+}
+
 // C ref: mkmaze.c wallification() -- full map wall fixup
 export function wallification(map) {
     wall_cleanup(map, 1, 0, COLNO - 1, ROWNO - 1);
