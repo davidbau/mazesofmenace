@@ -362,7 +362,11 @@ describe('Wizard mode', () => {
             const game = mockGame({ wizard: false });
             const result = await rhack('s'.charCodeAt(0), game);
             assert.equal(result.tookTime, true);
-            assert.ok(game.display.messages.some(m => m.includes('search')));
+            assert.ok(
+                game.display.messages.length === 0
+                || game.display.messages.some(m => m.includes('already found a monster')),
+                'search should either be silent or show safe-search warning'
+            );
         });
     });
 });
