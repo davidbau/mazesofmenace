@@ -483,7 +483,15 @@ export class FOV {
             for (let dx = -1; dx <= 1; dx++) {
                 const nx = px + dx, ny = py + dy;
                 if (nx >= 0 && nx < COLNO && ny >= 0 && ny < ROWNO) {
-                    if (cs[ny][nx]) cs[ny][nx] |= IN_SIGHT;
+                    if (!cs[ny][nx]) continue;
+                    // Prevent peeking diagonally around opaque corners for
+                    // adjacent wall/door/stone cells.
+                    if (dx !== 0 && dy !== 0 && !this.viz_clear[ny][nx]) {
+                        const ortho1Clear = this.viz_clear[py][nx];
+                        const ortho2Clear = this.viz_clear[ny][px];
+                        if (!ortho1Clear || !ortho2Clear) continue;
+                    }
+                    cs[ny][nx] |= IN_SIGHT;
                 }
             }
         }
