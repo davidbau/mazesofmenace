@@ -106,4 +106,26 @@ describe('FOV', () => {
         // But distant stone should not be
         assert.ok(!fov.visible[25][1], 'Stone far from corridor should not be visible');
     });
+
+    it('does not reveal opaque diagonal around blocked corner', () => {
+        const fov = new FOV();
+        const map = new GameMap();
+        const px = 10, py = 10;
+        // Keep one orthogonal side blocked by stone and make the diagonal tile opaque.
+        map.at(px + 1, py).typ = CORR;
+        map.at(px + 1, py).lit = false;
+        map.at(px, py - 1).typ = STONE;
+        map.at(px + 1, py - 1).typ = VWALL;
+        map.at(px + 1, py - 1).lit = true;
+
+        fov.compute(map, px, py);
+        assert.ok(!fov.visible[px + 1][py - 1],
+            'Opaque diagonal should stay hidden when one orthogonal side is blocked');
+
+        // If both orthogonals are clear, diagonal wall can be seen.
+        map.at(px, py - 1).typ = CORR;
+        fov.compute(map, px, py);
+        assert.ok(fov.visible[px + 1][py - 1],
+            'Opaque diagonal can be seen when both orthogonal sides are clear');
+    });
 });
