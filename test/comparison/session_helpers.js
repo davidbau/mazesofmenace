@@ -916,7 +916,8 @@ export async function replaySession(seed, session, opts = {}) {
         // as a command by tty input (no prompt, no RNG, no time).
         if (!pendingCommand && step.key === '\u0004'
             && ((step.rng && step.rng.length) || 0) === 0
-            && stepMsg === '') {
+            && stepMsg === ''
+            && ((stepScreen[0] || '').trim() === '')) {
             stepResults.push({
                 rngCalls: 0,
                 rng: [],

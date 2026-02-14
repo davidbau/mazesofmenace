@@ -4,7 +4,7 @@
 
 import { COLNO, ROWNO, DOOR, STAIRS, LADDER, FOUNTAIN, SINK, THRONE, ALTAR, GRAVE,
          POOL, LAVAPOOL, IRONBARS, TREE, ROOM, IS_DOOR, D_CLOSED, D_LOCKED,
-         D_ISOPEN, D_NODOOR, ACCESSIBLE, IS_WALL, MAXLEVEL, VERSION_STRING,
+         D_ISOPEN, D_NODOOR, D_BROKEN, ACCESSIBLE, IS_WALL, MAXLEVEL, VERSION_STRING,
          isok, A_STR, A_DEX, A_CON, A_WIS } from './config.js';
 import { SQKY_BOARD, SLP_GAS_TRAP, FIRE_TRAP, PIT, SPIKED_PIT } from './symbols.js';
 import { rn2, rnd, rnl, d, c_d } from './rng.js';
@@ -993,7 +993,7 @@ async function handleOpen(player, map, display, game) {
 
     if (loc.flags & D_LOCKED) {
         display.putstr_message("This door is locked.");
-        return { moved: false, tookTime: true };
+        return { moved: false, tookTime: false };
     }
 
     if (loc.flags & D_CLOSED) {
@@ -1496,6 +1496,8 @@ function handleLook(player, map, display) {
 async function handleKick(player, map, display, game) {
     display.putstr_message('In what direction?');
     const dirCh = await nhgetch();
+    // Prompt should not concatenate with outcome message.
+    display.topMessage = null;
     const c = String.fromCharCode(dirCh);
     const dir = DIRECTION_KEYS[c];
     if (!dir) {
@@ -1527,17 +1529,32 @@ async function handleKick(player, map, display, game) {
 
     // Kick a locked door
     if (IS_DOOR(loc.typ) && (loc.flags & D_LOCKED)) {
-        if (rn2(4)) {
-            display.putstr_message("WHAMMM!!!");
-            loc.flags = D_ISOPEN;
+        exercise(player, A_DEX, true);
+        const str = player.attributes ? player.attributes[A_STR] : 18;
+        const dex = player.attributes ? player.attributes[A_DEX] : 11;
+        const con = player.attributes ? player.attributes[A_CON] : 18;
+        const avrgAttrib = Math.floor((str + dex + con) / 3);
+        const kickedOpen = rnl(35) < avrgAttrib;
+        if (kickedOpen) {
+            if (str > 18 && rn2(5) === 0) {
+                display.putstr_message("As you kick the door, it shatters to pieces!");
+                loc.flags = D_NODOOR;
+            } else {
+                display.putstr_message("As you kick the door, it crashes open!");
+                loc.flags = D_BROKEN;
+            }
+            exercise(player, A_STR, true);
         } else {
-            display.putstr_message("WHAMMM!!! The door holds.");
+            // We do not model Deaf yet; keep C's rn2(3) branch split for RNG parity.
+            exercise(player, A_STR, true);
+            display.putstr_message(rn2(3) ? "Whammm!!" : "Thwack!!");
         }
         return { moved: false, tookTime: true };
     }
 
     // Kick a closed door
     if (IS_DOOR(loc.typ) && (loc.flags & D_CLOSED)) {
+        exercise(player, A_STR, true);
         loc.flags = D_ISOPEN;
         display.putstr_message("The door crashes open!");
         return { moved: false, tookTime: true };
