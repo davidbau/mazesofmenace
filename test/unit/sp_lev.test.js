@@ -9,7 +9,7 @@ import {
 } from '../../js/sp_lev.js';
 import { place_lregion } from '../../js/dungeon.js';
 import {
-    STONE, ROOM, HWALL, VWALL, STAIRS, LAVAPOOL, PIT, MAGIC_PORTAL, CROSSWALL,
+    STONE, ROOM, HWALL, VWALL, STAIRS, LAVAPOOL, PIT, MAGIC_PORTAL, CROSSWALL, GRAVE,
     ALTAR, THRONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC,
 } from '../../js/config.js';
 import { BOULDER, DAGGER } from '../../js/objects.js';
@@ -44,8 +44,10 @@ describe('sp_lev.js - des.* API', () => {
         assert.equal(typeof des.room, 'function');
         assert.equal(typeof des.replace_terrain, 'function');
         assert.equal(typeof des.mineralize, 'function');
+        assert.equal(typeof des.grave, 'function');
         assert.equal(typeof des.random_corridors, 'function');
         assert.equal(typeof des.wallify, 'function');
+        assert.equal(typeof des.reset_level, 'function');
     });
 
     it('should set level flags correctly', () => {
@@ -333,6 +335,27 @@ describe('sp_lev.js - des.* API', () => {
 
         const map = getLevelState().map;
         assert.ok(map, 'map should remain valid after mineralize options call');
+    });
+
+    it('places grave terrain and epitaph text from table form', () => {
+        resetLevelState();
+        des.level_init({ style: 'solidfill', fg: '.' });
+
+        des.grave({ x: 12, y: 7, text: 'Here lies JS.' });
+        const map = getLevelState().map;
+        assert.equal(map.locations[12][7].typ, GRAVE);
+        assert.equal(map.engravings.some(e => e.x === 12 && e.y === 7 && e.text === 'Here lies JS.'), true);
+    });
+
+    it('does not place grave on trap-occupied square', () => {
+        resetLevelState();
+        des.level_init({ style: 'solidfill', fg: '.' });
+        des.trap('pit', 10, 5);
+
+        des.grave(10, 5, 'blocked');
+        const map = getLevelState().map;
+        assert.notEqual(map.locations[10][5].typ, GRAVE);
+        assert.equal(map.engravings.some(e => e.x === 10 && e.y === 5 && e.text === 'blocked'), false);
     });
 
     it('finalize_level map cleanup removes boulders and destroyable traps on liquid', () => {
