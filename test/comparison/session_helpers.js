@@ -494,6 +494,18 @@ class HeadlessGame {
         this.turnCount++;
         this.player.turns = this.turnCount;
 
+        // C ref: mon.c m_calcdistress() — temporary flee timeout handling.
+        for (const mon of this.map.monsters) {
+            if (mon.dead) continue;
+            if (mon.fleetim && mon.fleetim > 0) {
+                mon.fleetim--;
+                if (mon.fleetim <= 0) {
+                    mon.fleetim = 0;
+                    mon.flee = false;
+                }
+            }
+        }
+
         for (const mon of this.map.monsters) {
             if (mon.dead) continue;
             mon.movement += this.mcalcmove(mon);
@@ -546,7 +558,9 @@ class HeadlessGame {
         // Status checks every 5 moves: none apply in early game (no intrinsics/conditions)
 
         const dex = this.player.attributes ? this.player.attributes[A_DEX] : 14;
-        rn2(40 + dex * 3); // engrave wipe
+        if (!rn2(40 + dex * 3)) {
+            rnd(3); // C ref: allmain.c u_wipe_engr(rnd(3))
+        }
 
         // C ref: allmain.c:414 seer_turn check
         // C's svm.moves is +1 ahead of turnCount (same offset as exerchk)
