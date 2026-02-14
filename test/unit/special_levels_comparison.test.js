@@ -123,11 +123,6 @@ function countTypGridMismatches(jsGrid, cGrid, stopAfter = Number.POSITIVE_INFIN
 }
 
 function resolveLevelGenerator(dnum, dlevel, levelName) {
-    const byCoord = getSpecialLevel(dnum, dlevel);
-    if (byCoord) {
-        return byCoord;
-    }
-
     const questMatch = /^([A-Za-z]{3})-(strt|loca|goal)$/i.exec(levelName);
     if (questMatch) {
         const rolePrefix = `${questMatch[1][0].toUpperCase()}${questMatch[1].slice(1).toLowerCase()}`;
@@ -140,6 +135,11 @@ function resolveLevelGenerator(dnum, dlevel, levelName) {
                 dlevel
             };
         }
+    }
+
+    const byCoord = getSpecialLevel(dnum, dlevel);
+    if (byCoord) {
+        return byCoord;
     }
 
     const byName = otherSpecialLevels[levelName.toLowerCase()];

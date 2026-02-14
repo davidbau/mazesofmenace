@@ -26,7 +26,7 @@ import {
     DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, LAVAPOOL, LAVAWALL, ICE, CLOUD, AIR,
     STAIRS, LADDER, ALTAR, GRAVE, THRONE, SINK,
     SCORR, MAX_TYPE,
-    PIT, SPIKED_PIT, HOLE, TRAPDOOR, ARROW_TRAP, DART_TRAP,
+    PIT, SPIKED_PIT, HOLE, TRAPDOOR, ARROW_TRAP, DART_TRAP, ROCKTRAP,
     SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP,
     SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, TELEP_TRAP, LEVEL_TELEP,
     MAGIC_PORTAL, WEB, ANTI_MAGIC, POLY_TRAP, STATUE_TRAP, MAGIC_TRAP,
@@ -3681,7 +3681,7 @@ function trapNameToType(name) {
     switch (lowerName) {
         case 'arrow': return ARROW_TRAP;
         case 'dart': return DART_TRAP;
-        // Note: FALLING_ROCK_TRAP (type 3) not exported from config.js
+        case 'falling rock': case 'falling_rock': case 'rock': return ROCKTRAP;
         case 'squeaky board': case 'squeaky_board': case 'board': return SQKY_BOARD;
         case 'bear': return BEAR_TRAP;
         case 'land mine': case 'landmine': return LANDMINE;
