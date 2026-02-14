@@ -4635,19 +4635,61 @@ export function feature(type, x, y) {
     }
     if (canHaveFlags && opts) {
         const loc = levelState.map.locations[pos.x][pos.y];
+        // C ref: rm.h feature flags share the location flags/looted bitfield.
+        // Values are terrain-specific:
+        // fountain: F_LOOTED=1, F_WARNED=2
+        // sink: S_LPUDDING=1, S_LDWASHER=2, S_LRING=4
+        // throne: T_LOOTED=1
+        // tree: TREE_LOOTED=1, TREE_SWARM=2
+        const setFlagBit = (enabled, bit) => {
+            if (enabled) loc.flags |= bit;
+            else loc.flags &= ~bit;
+        };
         if (!loc.featureFlags) loc.featureFlags = {};
         if (terrain === FOUNTAIN) {
-            if (opts.looted !== undefined) loc.featureFlags.looted = !!opts.looted;
-            if (opts.warned !== undefined) loc.featureFlags.warned = !!opts.warned;
+            if (opts.looted !== undefined) {
+                const v = !!opts.looted;
+                loc.featureFlags.looted = v;
+                setFlagBit(v, 1);
+            }
+            if (opts.warned !== undefined) {
+                const v = !!opts.warned;
+                loc.featureFlags.warned = v;
+                setFlagBit(v, 2);
+            }
         } else if (terrain === SINK) {
-            if (opts.pudding !== undefined) loc.featureFlags.pudding = !!opts.pudding;
-            if (opts.dishwasher !== undefined) loc.featureFlags.dishwasher = !!opts.dishwasher;
-            if (opts.ring !== undefined) loc.featureFlags.ring = !!opts.ring;
+            if (opts.pudding !== undefined) {
+                const v = !!opts.pudding;
+                loc.featureFlags.pudding = v;
+                setFlagBit(v, 1);
+            }
+            if (opts.dishwasher !== undefined) {
+                const v = !!opts.dishwasher;
+                loc.featureFlags.dishwasher = v;
+                setFlagBit(v, 2);
+            }
+            if (opts.ring !== undefined) {
+                const v = !!opts.ring;
+                loc.featureFlags.ring = v;
+                setFlagBit(v, 4);
+            }
         } else if (terrain === THRONE) {
-            if (opts.looted !== undefined) loc.featureFlags.looted = !!opts.looted;
+            if (opts.looted !== undefined) {
+                const v = !!opts.looted;
+                loc.featureFlags.looted = v;
+                setFlagBit(v, 1);
+            }
         } else if (terrain === TREE) {
-            if (opts.looted !== undefined) loc.featureFlags.looted = !!opts.looted;
-            if (opts.swarm !== undefined) loc.featureFlags.swarm = !!opts.swarm;
+            if (opts.looted !== undefined) {
+                const v = !!opts.looted;
+                loc.featureFlags.looted = v;
+                setFlagBit(v, 1);
+            }
+            if (opts.swarm !== undefined) {
+                const v = !!opts.swarm;
+                loc.featureFlags.swarm = v;
+                setFlagBit(v, 2);
+            }
         }
     }
     markSpLevTouched(pos.x, pos.y);
