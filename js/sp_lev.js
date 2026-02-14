@@ -1705,6 +1705,10 @@ function flipLevelRandom() {
             if (flipBits & 1) trap.launch2.y = flipY(trap.launch2.y);
             if (flipBits & 2) trap.launch2.x = flipX(trap.launch2.x);
         }
+        if (trap.teledest && inFlipArea(trap.teledest.x, trap.teledest.y)) {
+            if (flipBits & 1) trap.teledest.y = flipY(trap.teledest.y);
+            if (flipBits & 2) trap.teledest.x = flipX(trap.teledest.x);
+        }
     }
 
     for (const obj of map.objects || []) {
@@ -3479,6 +3483,7 @@ export function object(name_or_opts, x, y) {
  * C ref: sp_lev.c get_trap_type()
  */
 function trapNameToType(name) {
+    if (typeof name !== 'string') return null;
     const lowerName = name.toLowerCase();
 
     // Map trap names to constants
@@ -3507,7 +3512,8 @@ function trapNameToType(name) {
         case 'statue': return STATUE_TRAP;
         case 'magic': return MAGIC_TRAP;
         case 'vibrating square': case 'vibrating_square': return VIBRATING_SQUARE;
-        default: return -1;
+        case 'random': return -1;
+        default: return null;
     }
 }
 
@@ -4525,6 +4531,10 @@ function executeDeferredMonster(deferred) {
     const traceMon = (typeof process !== 'undefined' && process.env.WEBHACK_MON_TRACE === '1');
     const traceStart = traceMon ? getRngCallCount() : 0;
     const traceSeq = ++monsterExecSeq;
+    const MM_NOTAIL = 0x00004000;
+    const MM_ADJACENTOK = 0x00000010;
+    const MM_IGNOREWATER = 0x00000100;
+    const MM_NOCOUNTBIRTH = 0x00000200;
 
     const resolveMonsterIndex = (monsterId, depth) => {
         if (typeof monsterId === 'string' && monsterId.length === 1) {
@@ -4668,6 +4678,7 @@ function executeDeferredMonster(deferred) {
             }
         }
         // C ref: create_monster() default AM_SPLEV_RANDOM -> induced_align().
+        // Keep historical single-call behavior to preserve parity suites.
         consumeInducedAlignRng();
         // C ref: create_monster() resolves class with mkclass() after induced_align()
         // but before get_location().
@@ -4686,14 +4697,55 @@ function executeDeferredMonster(deferred) {
         }
 
         let mmFlags = NO_MM_FLAGS;
+        let requestedMmFlags = NO_MM_FLAGS;
+        if (opts && opts.tail !== undefined && !opts.tail) {
+            requestedMmFlags |= MM_NOTAIL;
+        }
         if (opts && opts.group !== undefined && !opts.group) {
+            requestedMmFlags |= MM_NOGRP;
             mmFlags |= MM_NOGRP;
+        }
+        if (opts && opts.adjacentok) requestedMmFlags |= MM_ADJACENTOK;
+        if (opts && opts.ignorewater) requestedMmFlags |= MM_IGNOREWATER;
+        if (opts && opts.countbirth !== undefined && !opts.countbirth) {
+            requestedMmFlags |= MM_NOCOUNTBIRTH;
         }
         const mtmp = createMonster(monsterId, coordX, coordY, mndxForParity, femaleForParity, mmFlags);
         if (mtmp && opts) {
-            if (opts.peaceful !== undefined) mtmp.peaceful = !!opts.peaceful;
-            if (opts.asleep !== undefined) mtmp.msleeping = !!opts.asleep;
+            if (opts.name !== undefined) mtmp.customName = String(opts.name);
+            if (opts.female !== undefined) mtmp.female = !!opts.female;
+            if (opts.peaceful !== undefined) {
+                mtmp.peaceful = !!opts.peaceful;
+                mtmp.mpeaceful = !!opts.peaceful;
+            }
+            if (opts.asleep !== undefined) {
+                mtmp.msleeping = !!opts.asleep;
+                mtmp.sleeping = !!opts.asleep;
+            }
             if (opts.waiting !== undefined) mtmp.mstrategy = opts.waiting ? 1 : 0;
+            if (opts.invisible !== undefined) {
+                mtmp.minvis = !!opts.invisible;
+                mtmp.perminvis = !!opts.invisible;
+            }
+            if (opts.cancelled !== undefined) mtmp.mcan = !!opts.cancelled;
+            if (opts.revived !== undefined) mtmp.mrevived = !!opts.revived;
+            if (opts.avenge !== undefined) mtmp.mavenge = !!opts.avenge;
+            if (opts.stunned !== undefined) mtmp.mstun = !!opts.stunned;
+            if (opts.confused !== undefined) mtmp.mconf = !!opts.confused;
+            if (Number.isFinite(opts.blinded) && Math.trunc(opts.blinded) > 0) {
+                mtmp.mcansee = false;
+                mtmp.mblinded = Math.trunc(opts.blinded) % 127;
+            }
+            if (Number.isFinite(opts.paralyzed) && Math.trunc(opts.paralyzed) > 0) {
+                mtmp.mcanmove = false;
+                mtmp.mfrozen = Math.trunc(opts.paralyzed) % 127;
+            }
+            if (Number.isFinite(opts.fleeing) && Math.trunc(opts.fleeing) > 0) {
+                mtmp.mflee = true;
+                mtmp.mfleetim = Math.trunc(opts.fleeing) % 127;
+            }
+            if (opts.appear_as !== undefined) mtmp.appear_as = String(opts.appear_as);
+            mtmp.mm_flags_requested = requestedMmFlags;
         }
         if (traceMon) {
             const traceEnd = getRngCallCount();
@@ -4738,6 +4790,8 @@ function executeDeferredTrap(deferred) {
     let spiderOnWeb = true;
     let seen = false;
     let victim = true;
+    let launchfrom;
+    let teledest;
 
     if (type_or_opts === undefined) {
         trapType = undefined;
@@ -4755,6 +4809,12 @@ function executeDeferredTrap(deferred) {
         }
         if (type_or_opts.victim !== undefined) {
             victim = !!type_or_opts.victim;
+        }
+        if (type_or_opts.launchfrom && typeof type_or_opts.launchfrom === 'object') {
+            launchfrom = type_or_opts.launchfrom;
+        }
+        if (type_or_opts.teledest && typeof type_or_opts.teledest === 'object') {
+            teledest = type_or_opts.teledest;
         }
         // Prefer absolute coordinates captured at enqueue time.
         if (x !== undefined && y !== undefined) {
@@ -4790,6 +4850,25 @@ function executeDeferredTrap(deferred) {
     if (seen) mktrapFlags |= MKTRAP_SEEN;
     if (!victim) mktrapFlags |= MKTRAP_NOVICTIM;
 
+    const decodeCoordOpt = (coordOpt) => {
+        if (!coordOpt) return null;
+        let cx;
+        let cy;
+        if (Array.isArray(coordOpt)) {
+            cx = coordOpt[0];
+            cy = coordOpt[1];
+        } else {
+            cx = coordOpt.x;
+            cy = coordOpt.y;
+        }
+        if (!Number.isFinite(cx) || !Number.isFinite(cy)) return null;
+        if (levelState.mapCoordMode) {
+            const abs = toAbsoluteCoords(cx, cy);
+            return { x: abs.x, y: abs.y };
+        }
+        return { x: Math.trunc(cx), y: Math.trunc(cy) };
+    };
+
     let ttyp;
     if (!trapType) {
         // C ref: create_trap() -> mktrap(NO_TRAP, MKTRAP_MAZEFLAG, tm)
@@ -4818,6 +4897,9 @@ function executeDeferredTrap(deferred) {
         ttyp = trapNameToType(trapType);
     }
 
+    if (ttyp === null) {
+        throw new Error('Unknown trap type');
+    }
     if (ttyp < 0 || trapX < 0 || trapX >= 80 || trapY < 0 || trapY >= 21) {
         return;
     }
@@ -4827,6 +4909,22 @@ function executeDeferredTrap(deferred) {
         ? levelState.finalizeContext.dunlev
         : (levelState.levelDepth || 1);
     mktrap(levelState.map, ttyp, mktrapFlags, null, tm, depth);
+    const createdTrap = levelState.map.trapAt(trapX, trapY);
+    if (createdTrap) {
+        const launchPt = decodeCoordOpt(launchfrom);
+        const telePt = decodeCoordOpt(teledest);
+        if (launchPt && createdTrap.ttyp === ROLLING_BOULDER_TRAP) {
+            createdTrap.launch = { x: launchPt.x, y: launchPt.y };
+            createdTrap.launch2 = {
+                x: trapX - (launchPt.x - trapX),
+                y: trapY - (launchPt.y - trapY)
+            };
+        }
+        if (telePt && createdTrap.ttyp === TELEP_TRAP
+            && !(telePt.x === trapX && telePt.y === trapY)) {
+            createdTrap.teledest = { x: telePt.x, y: telePt.y };
+        }
+    }
     markSpLevTouched(trapX, trapY);
 }
 
