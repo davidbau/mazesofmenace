@@ -1654,8 +1654,10 @@ export class HeadlessDisplay {
         if (E && W && N && !S) return TUWALL;
         if (E && W && S && !N) return TDWALL;
         if (N && S && E && W) return CROSSWALL;
-        if ((N || S) && !E && !W) return VWALL;
-        if ((E || W) && !N && !S) return HWALL;
+        // Match C orientation semantics used by rm.horizontal:
+        // E/W neighbors render as vertical walls, N/S as horizontal walls.
+        if ((N || S) && !E && !W) return HWALL;
+        if ((E || W) && !N && !S) return VWALL;
         return VWALL;
     }
 

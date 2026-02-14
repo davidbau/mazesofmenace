@@ -800,9 +800,12 @@ export class Display {
         if (E && W && S && !N) return TDWALL;     // T pointing down
         if (N && S && E && W) return CROSSWALL;   // Cross
 
-        // Straight walls: walls in opposite directions or one direction
-        if ((N || S) && !E && !W) return VWALL;   // Vertical wall
-        if ((E || W) && !N && !S) return HWALL;   // Horizontal wall
+        // Straight walls:
+        // C parity: wall orientation tracks rm.horizontal convention used for
+        // doors/secret doors. E/W neighbors imply a vertical glyph ('|'),
+        // N/S neighbors imply a horizontal glyph ('-').
+        if ((N || S) && !E && !W) return HWALL;
+        if ((E || W) && !N && !S) return VWALL;
 
         // Default to vertical wall if unclear
         return VWALL;
