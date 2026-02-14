@@ -5039,9 +5039,9 @@ export function random_corridors() {
         }
     }
 
-    // Call the full corridor generation algorithm
-    // Depth is used for trap generation - use 1 as default for special levels
-    const depth = 1;
+    // C ref: lspo_random_corridors() -> create_corridor() -> makecorridors(),
+    // which uses current level depth in downstream door/trap choices.
+    const depth = levelState.levelDepth || 1;
     makecorridors(levelState.map, depth);
 }
 
