@@ -17,7 +17,8 @@ import {
 import { initRng, enableRngLog, getRngLog, disableRngLog, rn2, rnd, rn1, rnl, rne, rnz, d } from '../../js/rng.js';
 import { exercise, exerchk, initExerciseState } from '../../js/attrib_exercise.js';
 import { initLevelGeneration, makelevel, setGameSeed, wallification, simulateDungeonInit } from '../../js/dungeon.js';
-import { DUNGEONS_OF_DOOM, TUTORIAL } from '../../js/special_levels.js';
+import { DUNGEONS_OF_DOOM, TUTORIAL, getGeneratorByLevelName, resetVariantCache } from '../../js/special_levels.js';
+import { resetLevelState, finalize_level, getLevelState } from '../../js/sp_lev.js';
 import { simulatePostLevelInit, mon_arrive } from '../../js/u_init.js';
 import { init_objects } from '../../js/o_init.js';
 import { Player, roles, rankOf } from '../../js/player.js';
@@ -134,6 +135,55 @@ export function parseSessionTypGrid(grid) {
     return grid;
 }
 
+// Decode RLE-encoded typGrid string from C harness
+// Format: rows separated by '|', segments are 'count:char' or just 'char'
+// Characters: 0-9 = types 0-9, a-z = types 10-35
+export function decodeTypGridRLE(rleString, rowWidth = 80, numRows = 21) {
+    if (!rleString || typeof rleString !== 'string') return null;
+
+    const charToTyp = (ch) => {
+        if (ch >= '0' && ch <= '9') return ch.charCodeAt(0) - '0'.charCodeAt(0);
+        if (ch >= 'a' && ch <= 'z') return ch.charCodeAt(0) - 'a'.charCodeAt(0) + 10;
+        return 0;
+    };
+
+    const decodeRow = (rowStr) => {
+        const row = [];
+        if (!rowStr) {
+            // Empty row = all zeros
+            for (let i = 0; i < rowWidth; i++) row.push(0);
+            return row;
+        }
+
+        const segments = rowStr.split(',');
+        for (const seg of segments) {
+            if (!seg) continue;
+            const colonIdx = seg.indexOf(':');
+            if (colonIdx > 0) {
+                // count:char format
+                const count = parseInt(seg.substring(0, colonIdx), 10);
+                const char = seg.substring(colonIdx + 1);
+                const typ = charToTyp(char);
+                for (let i = 0; i < count; i++) row.push(typ);
+            } else {
+                // Single char
+                row.push(charToTyp(seg));
+            }
+        }
+
+        // Pad with zeros to row width (trailing zeros are omitted in encoding)
+        while (row.length < rowWidth) row.push(0);
+        return row;
+    };
+
+    const rows = rleString.split('|');
+    const grid = [];
+    for (let y = 0; y < numRows; y++) {
+        grid.push(decodeRow(rows[y] || ''));
+    }
+    return grid;
+}
+
 // Compare two 21x80 grids, return array of diffs
 export function compareGrids(grid1, grid2) {
     const diffs = [];
@@ -170,21 +220,103 @@ export function formatDiffs(diffs, maxShow = 20) {
 }
 
 // ---------------------------------------------------------------------------
+// Screen comparison
+// ---------------------------------------------------------------------------
+
+/**
+ * Compare two terminal screens (24 lines x 80 columns).
+ * Returns { match, matched, total, diffs } where diffs is array of differences.
+ *
+ * Options:
+ * - skipRow0: ignore row 0 (message line, often has timing-dependent content)
+ * - maxDiffs: limit number of diffs returned (default 20)
+ */
+export function compareScreens(screen1, screen2, opts = {}) {
+    const { skipRow0 = false, maxDiffs = 20 } = opts;
+    const diffs = [];
+    const lines1 = Array.isArray(screen1) ? screen1 : [];
+    const lines2 = Array.isArray(screen2) ? screen2 : [];
+    const startRow = skipRow0 ? 1 : 0;
+
+    let matched = 0;
+    let total = 0;
+
+    for (let row = startRow; row < 24; row++) {
+        const line1 = (lines1[row] || '').padEnd(80);
+        const line2 = (lines2[row] || '').padEnd(80);
+
+        for (let col = 0; col < 80; col++) {
+            total++;
+            const c1 = line1[col] || ' ';
+            const c2 = line2[col] || ' ';
+            if (c1 === c2) {
+                matched++;
+            } else if (diffs.length < maxDiffs) {
+                diffs.push({ row, col, js: c1, session: c2 });
+            }
+        }
+    }
+
+    return {
+        match: diffs.length === 0,
+        matched,
+        total,
+        diffs
+    };
+}
+
+/**
+ * Format screen diffs for diagnostic output.
+ */
+export function formatScreenDiffs(diffs, maxShow = 10) {
+    if (diffs.length === 0) return 'PERFECT MATCH';
+    let report = `${diffs.length} cells differ:`;
+    for (const d of diffs.slice(0, maxShow)) {
+        report += `\n  (${d.row},${d.col}): JS='${d.js}' session='${d.session}'`;
+    }
+    if (diffs.length > maxShow) {
+        report += `\n  ... and ${diffs.length - maxShow} more`;
+    }
+    return report;
+}
+
+// ---------------------------------------------------------------------------
 // Sequential map generation (matching C's RNG stream)
 // ---------------------------------------------------------------------------
 
-// Extract a typ grid from a map object: 21 rows of 80 integers
-export function extractTypGrid(map) {
-    const grid = [];
-    for (let y = 0; y < ROWNO; y++) {
-        const row = [];
-        for (let x = 0; x < COLNO; x++) {
-            const loc = map.at(x, y);
-            row.push(loc ? loc.typ : 0);
-        }
-        grid.push(row);
+// Extract a typ grid from various formats:
+// - RLE string (from C harness sessions): "count:char,..." with | row separators
+// - Map object with at(x,y) method
+// - Already-decoded 2D array
+// Returns: 21 rows of 80 integers
+export function extractTypGrid(input) {
+    if (!input) return null;
+
+    // RLE string format (from C harness)
+    if (typeof input === 'string') {
+        return decodeTypGridRLE(input);
     }
-    return grid;
+
+    // Already a 2D array
+    if (Array.isArray(input)) {
+        return input;
+    }
+
+    // Map object with at(x, y) method
+    if (typeof input.at === 'function') {
+        const grid = [];
+        for (let y = 0; y < ROWNO; y++) {
+            const row = [];
+            for (let x = 0; x < COLNO; x++) {
+                const loc = input.at(x, y);
+                row.push(loc ? loc.typ : 0);
+            }
+            grid.push(row);
+        }
+        return grid;
+    }
+
+    return null;
 }
 
 // Generate levels 1→maxDepth sequentially on one continuous RNG stream.
@@ -207,6 +339,97 @@ export function generateMapsSequential(seed, maxDepth) {
         maps[depth] = map;
     }
     return { grids, maps };
+}
+
+// ---------------------------------------------------------------------------
+// Special level generation by name
+// ---------------------------------------------------------------------------
+
+/**
+ * Generate a special level by name and return the typGrid.
+ * For variant levels (bigrm, medusa, soko*, minetn, minend), this tries all
+ * variants and returns the one matching the expected grid, or the first if
+ * no expected grid is provided.
+ *
+ * @param {string} levelName - The level name (e.g., "Arc-strt", "bigrm", "soko1")
+ * @param {number} seed - The RNG seed
+ * @param {number[][]} [expectedGrid] - Optional expected typGrid for variant matching
+ * @returns {{ grid: number[][], variantUsed: string|null, error: string|null }}
+ */
+export function generateSpecialLevelByName(levelName, seed, expectedGrid = null) {
+    const genInfo = getGeneratorByLevelName(levelName);
+    if (!genInfo) {
+        return { grid: null, variantUsed: null, error: `Unknown level name: ${levelName}` };
+    }
+
+    const generators = Array.isArray(genInfo.generator) ? genInfo.generator : [genInfo.generator];
+    const variantNames = genInfo.variants || [levelName];
+
+    // For variant levels with an expected grid, try all variants and find match
+    if (generators.length > 1 && expectedGrid) {
+        for (let i = 0; i < generators.length; i++) {
+            const grid = generateSingleSpecialLevel(generators[i], seed);
+            if (grid && gridsMatch(grid, expectedGrid)) {
+                return { grid, variantUsed: variantNames[i], error: null };
+            }
+        }
+        // No variant matched - return first variant with error info
+        const grid = generateSingleSpecialLevel(generators[0], seed);
+        return {
+            grid,
+            variantUsed: variantNames[0],
+            error: `No variant matched expected grid (tried ${generators.length} variants)`
+        };
+    }
+
+    // Single generator or no expected grid - use first/only generator
+    const grid = generateSingleSpecialLevel(generators[0], seed);
+    return { grid, variantUsed: variantNames[0], error: grid ? null : 'Generation failed' };
+}
+
+/**
+ * Generate a single special level using the given generator function.
+ * Initializes RNG and level state, runs the generator, and extracts typGrid.
+ */
+function generateSingleSpecialLevel(generator, seed) {
+    try {
+        initrack();
+        initRng(seed);
+        setGameSeed(seed);
+        resetVariantCache();
+
+        // Initialize level generation state (init_objects, dungeon init)
+        initLevelGeneration(11); // Valkyrie
+
+        // Reset sp_lev state and run the generator
+        resetLevelState();
+        generator();
+
+        // Finalize and extract the grid
+        const state = getLevelState();
+        if (!state?.map) return null;
+
+        finalize_level(state.map);
+        return extractTypGrid(state.map);
+    } catch (e) {
+        console.error(`Error generating ${generator.name}:`, e);
+        return null;
+    }
+}
+
+/**
+ * Check if two grids are identical.
+ */
+function gridsMatch(grid1, grid2) {
+    if (!grid1 || !grid2) return false;
+    if (grid1.length !== grid2.length) return false;
+    for (let y = 0; y < grid1.length; y++) {
+        if (grid1[y].length !== grid2[y].length) return false;
+        for (let x = 0; x < grid1[y].length; x++) {
+            if (grid1[y][x] !== grid2[y][x]) return false;
+        }
+    }
+    return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -489,12 +712,9 @@ export function generateStartupWithRng(seed, session) {
     const preStartupEntries = getPreStartupRngEntries(session);
     consumeRngEntries(preStartupEntries);
 
-    console.log(`After preStartup: ${getRngLog().length} RNG calls`);
     initLevelGeneration(roleIndex);
-    console.log(`After initLevelGeneration: ${getRngLog().length} RNG calls`);
 
     const map = makelevel(1);
-    console.log(`After makelevel: ${getRngLog().length} RNG calls`);
     // Note: wallification is now called inside makelevel
 
     // NOTE: Wizard mode (-D flag) enables omniscience for the PLAYER,
@@ -929,6 +1149,7 @@ export async function replaySession(seed, session, opts = {}) {
         ? Math.max(0, Math.min(opts.maxSteps, allSteps.length))
         : allSteps.length;
     const stepResults = [];
+    let currentMap = map; // Track current level map for typGrid capture
     let pendingCommand = null;
     let pendingKind = null;
     let pendingCount = 0;
@@ -986,11 +1207,30 @@ export async function replaySession(seed, session, opts = {}) {
             }
         }
 
-        stepResults.push({
+        const result = {
             rngCalls: raw.length,
             rng: compact,
             screen,
-        });
+        };
+        // Capture typGrid when the session step has one (level transitions)
+        // Update currentMap to game's current state (after action processing)
+        // so descend/ascend steps capture the NEW level's grid
+        currentMap = game.map;
+        // JS map uses locations[x][y].typ, convert to 2D grid [y][x] for comparison
+        if (step.typGrid && currentMap && currentMap.locations) {
+            const width = currentMap.locations.length || 80;
+            const height = currentMap.locations[0]?.length || 21;
+            const grid = [];
+            for (let y = 0; y < height; y++) {
+                const row = [];
+                for (let x = 0; x < width; x++) {
+                    row.push(currentMap.locations[x]?.[y]?.typ ?? 0);
+                }
+                grid.push(row);
+            }
+            result.typGrid = grid;
+        }
+        stepResults.push(result);
     };
     for (let stepIndex = 0; stepIndex < maxSteps; stepIndex++) {
         const step = allSteps[stepIndex];
@@ -1000,6 +1240,19 @@ export async function replaySession(seed, session, opts = {}) {
         const stepFirstRng = ((step.rng || []).find((e) =>
             typeof e === 'string' && !e.startsWith('>') && !e.startsWith('<')
         ) || '');
+
+        // V3 format: step 0 is startup with key=null, action='startup'
+        // Skip this step - startup data is already captured in startupRng/startupLog
+        if (step.key === null && step.action === 'startup') {
+            pushStepResult(
+                [],
+                opts.captureScreens ? game.display.getScreenLines() : undefined,
+                step,
+                stepScreen,
+                stepIndex
+            );
+            continue;
+        }
 
         // Some sparse keylog captures defer a movement turn's RNG to the next
         // keypress (typically SPACE used as acknowledgement). Re-run the
@@ -1531,6 +1784,7 @@ export async function replaySession(seed, session, opts = {}) {
                 rngCalls: startupRng.length + stepResults[0].rngCalls,
                 rng: startupRng.concat(stepResults[0].rng),
                 screen: stepResults[0].screen,
+                typGrid: stepResults[0].typGrid, // Preserve typGrid capture
             };
         }
     }

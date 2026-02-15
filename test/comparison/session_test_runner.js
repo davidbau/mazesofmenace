@@ -1,744 +1,535 @@
-// test/comparison/session_test_runner.js -- Shared test logic for session replay
+// test/comparison/session_test_runner.js
+// Unified session test runner with worker pool
 //
-// Exports test functions and helpers used by type-specific test files:
-//   - runMapSession()
-//   - runGameplaySession()
-//   - runChargenSession()
-//   - runSpecialLevelSession()
+// Runs all session tests in parallel using a pool of worker threads.
+// Produces per-session results in standard format for git notes.
+// Supports --golden flag to fetch sessions from golden branch.
+//
+// Tests all sessions with consistent RNG, grid, and screen comparison.
+//
+// Usage: node test/comparison/session_test_runner.js [--verbose] [--golden]
 
-import { it, before, describe } from 'node:test';
-import assert from 'node:assert/strict';
-
+import { readdirSync, readFileSync, existsSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { execSync } from 'node:child_process';
+import { Worker } from 'node:worker_threads';
+import { cpus } from 'node:os';
 import {
-    generateMapsSequential, generateMapsWithRng, generateStartupWithRng,
-    replaySession, extractTypGrid, compareGrids, formatDiffs, compareRng,
-    checkWallCompleteness, checkConnectivity, checkStairs,
-    checkDimensions, checkValidTypValues,
-    getSessionScreenLines, getSessionStartup, getSessionCharacter, getSessionGameplaySteps,
-    HeadlessDisplay,
-} from './session_helpers.js';
+    createSessionResult,
+    recordRng,
+    recordGrids,
+    recordScreens,
+    markFailed,
+    setDuration,
+    createResultsBundle,
+    formatResult,
+    formatBundleSummary,
+} from './test_result_format.js';
 
-import {
-    roles, races, validRacesForRole, validAlignsForRoleRace,
-    needsGenderMenu, roleNameForGender, alignName,
-} from '../../js/player.js';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const VERBOSE = process.argv.includes('--verbose');
+const USE_GOLDEN = process.argv.includes('--golden');
+const GOLDEN_BRANCH = process.env.GOLDEN_BRANCH || 'golden';
 
-import {
-    A_LAWFUL, A_NEUTRAL, A_CHAOTIC, MALE, FEMALE,
-    RACE_HUMAN, RACE_ELF, RACE_DWARF, RACE_GNOME, RACE_ORC,
-} from '../../js/config.js';
+// Global error handlers to catch crashes
+process.on('uncaughtException', (err) => {
+    console.error('\n[CRASH] Uncaught exception:', err.message);
+    if (VERBOSE) console.error(err.stack);
+    process.exit(1);
+});
+process.on('unhandledRejection', (reason) => {
+    console.error('\n[CRASH] Unhandled rejection:', reason);
+    process.exit(1);
+});
 
-// ---------------------------------------------------------------------------
-// Map sessions: sequential level generation + typGrid comparison
-// ---------------------------------------------------------------------------
+// Worker pool configuration
+const NUM_WORKERS = Math.max(4, Math.min(cpus().length, 8)); // 4-8 workers
+const INTERNAL_TIMEOUT_MS = 3000;  // Worker self-terminates after 3s
+const EXTERNAL_TIMEOUT_MS = 5000;  // Main kills worker after 5s
 
-export function runMapSession(file, session) {
-    const maxDepth = Math.max(...session.levels.map(l => l.depth));
-
-    // Use RNG-aware generator when any level has rng or rngCalls data
-    const needsRng = session.levels.some(l => l.rng || l.rngCalls !== undefined);
-
-    // Generate all levels sequentially (matching C's RNG stream)
-    let result;
-    before(() => {
-        result = needsRng
-            ? generateMapsWithRng(session.seed, maxDepth)
-            : generateMapsSequential(session.seed, maxDepth);
-    });
-
-    // Compare typGrid at each stored depth
-    for (const level of session.levels) {
-        it(`typGrid matches at depth ${level.depth}`, () => {
-            assert.ok(result, 'Level generation failed');
-            const jsGrid = result.grids[level.depth];
-            assert.ok(jsGrid, `JS did not generate depth ${level.depth}`);
-
-            const diffs = compareGrids(jsGrid, level.typGrid);
-            assert.equal(diffs.length, 0,
-                `seed=${session.seed} depth=${level.depth}: ${formatDiffs(diffs)}`);
-        });
+/**
+ * Estimate test size for scheduling (larger = more work)
+ * Used to run long tests first so short tests fill in the gaps
+ */
+function estimateTestSize(session) {
+    // Gameplay tests: step count is a good proxy for runtime
+    // Weight heavily since each step requires full game engine execution
+    if (session.steps?.length) {
+        return session.steps.length * 10; // 1000 steps = 10000 weight
     }
+    // Map tests: level count (actual generation is fast, ~10ms per level)
+    if (session.levels?.length) {
+        return session.levels.length * 5;
+    }
+    // Default: small fixed size for chargen/interface
+    return 10;
+}
 
-    // RNG count and trace comparison at each stored depth
-    for (const level of session.levels) {
-        if (level.rngCalls !== undefined) {
-            it(`rngCalls matches at depth ${level.depth}`, () => {
-                assert.ok(result, 'Level generation failed');
-                assert.ok(result.rngLogs, 'RNG logs not captured');
-                assert.equal(result.rngLogs[level.depth].rngCalls, level.rngCalls,
-                    `seed=${session.seed} depth=${level.depth}: ` +
-                    `JS=${result.rngLogs[level.depth].rngCalls} session=${level.rngCalls}`);
-            });
-        }
+// Session type groups for reporting (4 categories)
+const SESSION_GROUPS = {
+    chargen: 'Chargen',     // Character generation
+    interface: 'Interface', // UI interactions and options
+    map: 'Maps',            // Dungeon map generation (sp_lev and random)
+    gameplay: 'Gameplay',   // Step-by-step gameplay replays
+};
 
-        if (level.rng) {
-            it(`RNG trace matches at depth ${level.depth}`, () => {
-                assert.ok(result, 'Level generation failed');
-                assert.ok(result.rngLogs, 'RNG logs not captured');
-                const divergence = compareRng(
-                    result.rngLogs[level.depth].rng,
-                    level.rng,
-                );
-                assert.equal(divergence.index, -1,
-                    `seed=${session.seed} depth=${level.depth}: ` +
-                    `RNG diverges at call ${divergence.index}: ` +
-                    `JS="${divergence.js}" session="${divergence.session}"`);
-            });
+// ============================================================================
+// Comparison utilities
+// ============================================================================
+
+function compareGrids(grid1, grid2) {
+    if (!grid1 || !grid2) return { match: false, matched: 0, total: 1 };
+    let diffs = 0;
+    const rows = Math.min(grid1.length, grid2.length);
+    for (let y = 0; y < rows; y++) {
+        const cols = Math.min(grid1[y]?.length || 0, grid2[y]?.length || 0);
+        for (let x = 0; x < cols; x++) {
+            if (grid1[y][x] !== grid2[y][x]) diffs++;
         }
     }
+    return { match: diffs === 0, matched: diffs === 0 ? 1 : 0, total: 1, diffs };
+}
 
-    // Structural tests on each generated level
-    for (const level of session.levels) {
-        it(`valid dimensions at depth ${level.depth}`, () => {
-            const jsGrid = result.grids[level.depth];
-            const errors = checkDimensions(jsGrid);
-            assert.equal(errors.length, 0, errors.join('; '));
+function isMidlogEntry(entry) {
+    return entry && entry.length > 0 && (entry[0] === '>' || entry[0] === '<');
+}
+
+function isCompositeEntry(entry) {
+    return entry && (entry.startsWith('rne(') || entry.startsWith('rnz(') || entry.startsWith('d('));
+}
+
+function rngCallPart(entry) {
+    if (!entry || typeof entry !== 'string') return '';
+    let s = entry.replace(/^\d+\s+/, '');
+    const atIdx = s.indexOf(' @ ');
+    return atIdx >= 0 ? s.substring(0, atIdx) : s;
+}
+
+function compareRngArrays(jsRng, cRng) {
+    if (!jsRng || !cRng) return { match: false, matched: 0, total: 0 };
+    const jsFiltered = jsRng.map(rngCallPart).filter(e => !isMidlogEntry(e) && !isCompositeEntry(e));
+    const cFiltered = cRng.map(rngCallPart).filter(e => !isMidlogEntry(e) && !isCompositeEntry(e));
+    const len = Math.min(jsFiltered.length, cFiltered.length);
+    let matched = 0;
+    let firstDivergence = null;
+    for (let i = 0; i < len; i++) {
+        if (jsFiltered[i] === cFiltered[i]) {
+            matched++;
+        } else if (!firstDivergence) {
+            firstDivergence = {
+                rngCall: i,
+                expected: cFiltered[i],
+                actual: jsFiltered[i],
+            };
+        }
+    }
+    return {
+        match: matched === len && jsFiltered.length === cFiltered.length,
+        matched,
+        total: Math.max(jsFiltered.length, cFiltered.length),
+        firstDivergence,
+    };
+}
+
+function compareScreens(screen1, screen2) {
+    if (!screen1 || !screen2) return { match: false, matched: 0, total: 1 };
+    const lines1 = Array.isArray(screen1) ? screen1 : [];
+    const lines2 = Array.isArray(screen2) ? screen2 : [];
+    const len = Math.max(lines1.length, lines2.length);
+    let matching = 0;
+    for (let i = 0; i < len; i++) {
+        const l1 = stripAnsi(lines1[i] || '');
+        const l2 = stripAnsi(lines2[i] || '');
+        if (l1 === l2) matching++;
+    }
+    return { match: matching === len, matched: matching === len ? 1 : 0, total: 1 };
+}
+
+function getSessionStartup(session) {
+    if (!session?.steps?.[0]) return null;
+    const firstStep = session.steps[0];
+    if (firstStep.key === null && firstStep.action === 'startup') {
+        return {
+            rng: firstStep.rng || [],
+            typGrid: firstStep.typGrid,
+            screen: firstStep.screen,
+        };
+    }
+    return null;
+}
+
+function getGameplaySteps(session) {
+    if (!session?.steps) return [];
+    if (session.steps[0]?.key === null) return session.steps.slice(1);
+    return session.steps;
+}
+
+function stripAnsi(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '')
+        .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '')
+        .replace(/\x1b[@-Z\\-_]/g, '')
+        .replace(/\x9b[0-?]*[ -/]*[@-~]/g, '');
+}
+
+// ============================================================================
+// Module loading
+// ============================================================================
+
+async function tryImport(path) {
+    try {
+        return await import(path);
+    } catch (e) {
+        return { _error: e.message };
+    }
+}
+
+function readGoldenFile(relativePath) {
+    try {
+        return execSync(`git show ${GOLDEN_BRANCH}:${relativePath}`, {
+            encoding: 'utf8',
+            maxBuffer: 10 * 1024 * 1024,
+            stdio: ['pipe', 'pipe', 'pipe']
         });
+    } catch {
+        return null;
+    }
+}
 
-        it(`valid typ values at depth ${level.depth}`, () => {
-            const jsGrid = result.grids[level.depth];
-            const errors = checkValidTypValues(jsGrid);
-            assert.equal(errors.length, 0, errors.join('; '));
+function listGoldenDir(relativePath) {
+    try {
+        const output = execSync(`git ls-tree --name-only ${GOLDEN_BRANCH}:${relativePath}`, {
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'pipe']
         });
+        return output.trim().split('\n').filter(f => f);
+    } catch {
+        return [];
+    }
+}
 
-        it(`wall completeness at depth ${level.depth}`, (t) => {
-            const map = result.maps[level.depth];
-            const errors = checkWallCompleteness(map);
-            if (errors.length > 0) {
-                t.diagnostic(`${errors.length} wall gaps: ${errors.slice(0, 5).join('; ')}`);
+function loadSessions(dir) {
+    const relativePath = dir.replace(process.cwd() + '/', '');
+    if (USE_GOLDEN) {
+        const files = listGoldenDir(relativePath).filter(f => f.endsWith('.session.json'));
+        return files.map(f => {
+            try {
+                const content = readGoldenFile(`${relativePath}/${f}`);
+                if (!content) return null;
+                const data = JSON.parse(content);
+                return { file: f, dir: `golden:${relativePath}`, ...data };
+            } catch {
+                return null;
             }
-            // Report but don't fail — some seeds have known wall issues
-            // TODO: convert to assert once all wall issues are fixed
-        });
-
-        it(`corridor connectivity at depth ${level.depth}`, (t) => {
-            const map = result.maps[level.depth];
-            const errors = checkConnectivity(map);
-            if (errors.length > 0) {
-                t.diagnostic(`${errors.length} connectivity issues: ${errors.join('; ')}`);
+        }).filter(Boolean);
+    }
+    if (!existsSync(dir)) return [];
+    return readdirSync(dir)
+        .filter(f => f.endsWith('.session.json'))
+        .map(f => {
+            try {
+                const data = JSON.parse(readFileSync(join(dir, f), 'utf8'));
+                return { file: f, dir, ...data };
+            } catch {
+                return null;
             }
-            // Report but don't fail — some themeroom seeds have connectivity quirks
-            // TODO: convert to assert once themeroom connectivity is fully implemented
-        });
+        })
+        .filter(Boolean);
+}
 
-        it(`stairs placement at depth ${level.depth}`, () => {
-            const map = result.maps[level.depth];
-            const errors = checkStairs(map, level.depth);
-            assert.equal(errors.length, 0, errors.join('; '));
-        });
+/**
+ * Load all sessions from both directories
+ */
+function loadAllSessions() {
+    const sessionsDir = join(__dirname, 'sessions');
+    const mapsDir = join(__dirname, 'maps');
+    return [
+        ...loadSessions(sessionsDir),
+        ...loadSessions(mapsDir),
+    ];
+}
+
+/**
+ * Infer session type from filename and structure
+ */
+function inferType(session) {
+    const f = session.file;
+    // Structure-based (most reliable)
+    if (session.levels && Array.isArray(session.levels)) {
+        // All map generation sessions (both sp_lev special levels and random maps)
+        return 'map';
+    }
+    // Filename-based for step sessions
+    if (f.includes('_chargen')) return 'chargen';
+    if (f.includes('_gameplay')) return 'gameplay';
+    // Interface tests: interface_* and option toggle tests (seed*_on/off)
+    if (f.startsWith('interface_')) return 'interface';
+    if (f.startsWith('seed') && (f.includes('_on.') || f.includes('_off.'))) return 'interface';
+    // Sessions with steps array (but not matching above patterns) are gameplay
+    if (session.steps && Array.isArray(session.steps)) return 'gameplay';
+    return 'unknown';
+}
+
+// ============================================================================
+// Worker Pool for parallel test execution
+// ============================================================================
+
+class TestWorkerPool {
+    constructor(numWorkers, workerPath) {
+        this.numWorkers = numWorkers;
+        this.workerPath = workerPath;
+        this.workers = [];
+        this.queue = [];
+        this.results = new Map(); // testIndex -> result
+        this.completedCount = 0;
+        this.totalTests = 0;
+        this.resolveAll = null;
+        this.rejectAll = null;
     }
 
-    // Determinism: generate again and verify identical
-    it('is deterministic', () => {
-        const result2 = needsRng
-            ? generateMapsWithRng(session.seed, maxDepth)
-            : generateMapsSequential(session.seed, maxDepth);
-        for (const level of session.levels) {
-            const diffs = compareGrids(result.grids[level.depth], result2.grids[level.depth]);
-            assert.equal(diffs.length, 0,
-                `Non-deterministic at depth ${level.depth}: ${formatDiffs(diffs)}`);
+    async initialize() {
+        const initPromises = [];
+        for (let i = 0; i < this.numWorkers; i++) {
+            initPromises.push(this.spawnWorker(i));
         }
-    });
-}
-
-// ---------------------------------------------------------------------------
-// Gameplay sessions: startup + step-by-step replay
-// ---------------------------------------------------------------------------
-
-export function runGameplaySession(file, session) {
-    // Gameplay sessions verify startup typGrid, rngCalls, and RNG traces.
-    // Full step-by-step replay is verified separately when the game engine
-    // supports it; for now we verify the complete startup sequence.
-
-    const sessionStartup = getSessionStartup(session);
-    let startup;
-    if (sessionStartup) {
-        it('startup generates successfully', () => {
-            startup = generateStartupWithRng(session.seed, session);
-        });
-
-        if (sessionStartup.typGrid) {
-            it('startup typGrid matches', () => {
-                assert.ok(startup, 'Startup generation failed');
-                const diffs = compareGrids(startup.grid, sessionStartup.typGrid);
-                assert.equal(diffs.length, 0,
-                    `Startup typGrid: ${formatDiffs(diffs)}`);
-            });
-
-            it('startup typGrid dimensions', () => {
-                assert.ok(startup, 'Startup generation failed');
-                const errors = checkDimensions(startup.grid);
-                assert.equal(errors.length, 0, errors.join('; '));
-            });
-
-            it('startup structural validation', () => {
-                assert.ok(startup, 'Startup generation failed');
-                const connErrors = checkConnectivity(startup.map);
-                assert.equal(connErrors.length, 0, connErrors.join('; '));
-                const stairErrors = checkStairs(startup.map, 1);
-                assert.equal(stairErrors.length, 0, stairErrors.join('; '));
-            });
-        }
-
-        if (sessionStartup.rngCalls !== undefined) {
-            it('startup rngCalls matches', () => {
-                assert.ok(startup, 'Startup generation failed');
-                assert.equal(startup.rngCalls, sessionStartup.rngCalls,
-                    `seed=${session.seed}: JS=${startup.rngCalls} session=${sessionStartup.rngCalls}`);
-            });
-        }
-
-        if (sessionStartup.rng) {
-            it('startup RNG trace matches', () => {
-                assert.ok(startup, 'Startup generation failed');
-                const divergence = compareRng(startup.rng, sessionStartup.rng);
-                assert.equal(divergence.index, -1,
-                    `seed=${session.seed}: RNG diverges at call ${divergence.index}: ` +
-                    `JS="${divergence.js}" session="${divergence.session}"`);
-            });
-        }
+        await Promise.all(initPromises);
     }
 
-    // Step-by-step replay: verify per-step RNG traces
-    const gameplaySteps = getSessionGameplaySteps(session);
-    if (gameplaySteps.length > 0 && sessionStartup?.rng) {
-        let replay;
-        it('step replay completes', async () => {
-            replay = await replaySession(session.seed, session);
-        });
+    spawnWorker(index) {
+        return new Promise((resolve, reject) => {
+            const worker = new Worker(this.workerPath);
+            const workerInfo = { worker, index, busy: false, killTimer: null };
 
-        // Verify startup still matches in replay context
-        if (sessionStartup.rngCalls !== undefined) {
-            it('replay startup rngCalls matches', () => {
-                assert.ok(replay, 'Replay failed');
-                assert.equal(replay.startup.rngCalls, sessionStartup.rngCalls,
-                    `seed=${session.seed}: replay startup JS=${replay.startup.rngCalls} ` +
-                    `session=${sessionStartup.rngCalls}`);
-            });
-        }
+            worker.on('message', (msg) => this.handleMessage(workerInfo, msg));
+            worker.on('error', (err) => this.handleError(workerInfo, err));
+            worker.on('exit', (code) => this.handleExit(workerInfo, code));
 
-        // Verify each step's RNG trace
-        for (let i = 0; i < gameplaySteps.length; i++) {
-            const step = gameplaySteps[i];
-            if (step.rng && step.rng.length > 0) {
-                it(`step ${i} RNG matches (${step.action})`, () => {
-                    assert.ok(replay, 'Replay failed');
-                    assert.ok(replay.steps[i], `Step ${i} not produced`);
-                    const divergence = compareRng(replay.steps[i].rng, step.rng);
-                    assert.equal(divergence.index, -1,
-                        `step ${i} (${step.action}): RNG diverges at call ${divergence.index}: ` +
-                        `JS="${divergence.js}" session="${divergence.session}"`);
-                });
-            } else {
-                it(`step ${i} RNG matches (${step.action})`, () => {
-                    assert.ok(replay, 'Replay failed');
-                    assert.ok(replay.steps[i], `Step ${i} not produced`);
-                    assert.equal(replay.steps[i].rngCalls, (step.rng || []).length,
-                        `step ${i} (${step.action}): rngCalls JS=${replay.steps[i].rngCalls} ` +
-                        `session=${(step.rng || []).length}`);
-                });
-            }
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Chargen sessions: character creation startup verification
-// ---------------------------------------------------------------------------
-
-// Roles with implemented JS chargen inventory
-const CHARGEN_SUPPORTED_ROLES = new Set([
-    'Archeologist', 'Barbarian', 'Caveman', 'Healer', 'Knight',
-    'Monk', 'Priest', 'Ranger', 'Rogue', 'Samurai', 'Tourist',
-    'Valkyrie', 'Wizard',
-]);
-
-// Map role name → roles[] index
-const CHARGEN_ROLE_INDEX = {};
-for (let i = 0; i < roles.length; i++) CHARGEN_ROLE_INDEX[roles[i].name] = i;
-
-// Map race name → races[] index
-const CHARGEN_RACE_INDEX = {};
-for (let i = 0; i < races.length; i++) CHARGEN_RACE_INDEX[races[i].name] = i;
-
-// Map alignment name → alignment value
-const CHARGEN_ALIGN_MAP = { lawful: A_LAWFUL, neutral: A_NEUTRAL, chaotic: A_CHAOTIC };
-
-// Build the header line for chargen menus: "<role> <race> <gender> <alignment>"
-function buildHeaderLine(roleIdx, raceIdx, gender, align) {
-    const parts = [];
-    if (roleIdx >= 0) {
-        const female = gender === FEMALE;
-        parts.push(roleNameForGender(roleIdx, female));
-    } else {
-        parts.push('<role>');
-    }
-    if (raceIdx >= 0) {
-        parts.push(races[raceIdx].name);
-    } else {
-        parts.push('<race>');
-    }
-    if (gender === FEMALE) {
-        parts.push('female');
-    } else if (gender === MALE) {
-        parts.push('male');
-    } else {
-        parts.push('<gender>');
-    }
-    if (align !== -128) {
-        parts.push(alignName(align));
-    } else {
-        parts.push('<alignment>');
-    }
-    return parts.join(' ');
-}
-
-// Build role menu lines (matching _showRoleMenu in nethack.js)
-function buildRoleMenuLines(raceIdx, gender, align) {
-    const lines = [];
-    lines.push(' Pick a role or profession');
-    lines.push('');
-    lines.push(' ' + buildHeaderLine(-1, raceIdx, gender, align));
-    lines.push('');
-
-    for (let i = 0; i < roles.length; i++) {
-        const role = roles[i];
-        if (raceIdx >= 0 && !role.validRaces.includes(raceIdx)) continue;
-        if (align !== -128 && !role.validAligns.includes(align)) continue;
-        const ch = role.menuChar;
-        const article = role.menuArticle || 'a';
-        const nameDisplay = role.namef
-            ? `${role.name}/${role.namef}`
-            : role.name;
-        lines.push(` ${ch} - ${article} ${nameDisplay}`);
-    }
-    lines.push(' * * Random');
-    lines.push(' / - Pick race first');
-    lines.push(' " - Pick gender first');
-    lines.push(' [ - Pick alignment first');
-    lines.push(' ~ - Set role/race/&c filtering');
-    lines.push(' q - Quit');
-    lines.push(' (end)');
-    return lines;
-}
-
-// Build race menu lines (matching _showRaceMenu in nethack.js)
-function buildRaceMenuLines(roleIdx, gender, align) {
-    const role = roles[roleIdx];
-    const validRaces = validRacesForRole(roleIdx);
-
-    // Check if alignment is forced across all valid races for this role
-    const allAligns = new Set();
-    for (const ri of validRaces) {
-        for (const a of validAlignsForRoleRace(roleIdx, ri)) {
-            allAligns.add(a);
-        }
-    }
-    const alignForHeader = allAligns.size === 1 ? [...allAligns][0] : align;
-
-    const lines = [];
-    lines.push('Pick a race or species');
-    lines.push('');
-    lines.push(buildHeaderLine(roleIdx, -1, gender, alignForHeader));
-    lines.push('');
-
-    for (const ri of validRaces) {
-        if (align !== -128) {
-            const vAligns = validAlignsForRoleRace(roleIdx, ri);
-            if (!vAligns.includes(align)) continue;
-        }
-        lines.push(`${races[ri].menuChar} - ${races[ri].name}`);
-    }
-    lines.push('* * Random');
-
-    // Navigation — matching C order: ?, ", constraint notes, [, ~, q, (end)
-    lines.push('');
-    lines.push('? - Pick another role first');
-
-    if (gender < 0 && needsGenderMenu(roleIdx)) {
-        lines.push('" - Pick gender first');
-    }
-
-    // Constraint notes
-    if (role.forceGender === 'female') {
-        lines.push('    role forces female');
-    }
-    if (allAligns.size === 1) {
-        lines.push('    role forces ' + alignName([...allAligns][0]));
-    }
-
-    // Alignment navigation if not forced
-    if (align === -128 && allAligns.size > 1) {
-        lines.push('[ - Pick alignment first');
-    }
-
-    lines.push('~ - Set role/race/&c filtering');
-    lines.push('q - Quit');
-    lines.push('(end)');
-    return lines;
-}
-
-// Build gender menu lines (matching _showGenderMenu in nethack.js)
-function buildGenderMenuLines(roleIdx, raceIdx, align) {
-    const role = roles[roleIdx];
-    const validAligns = validAlignsForRoleRace(roleIdx, raceIdx);
-    const lines = [];
-    lines.push('Pick a gender or sex');
-    lines.push('');
-
-    const alignDisplay = validAligns.length === 1 ? validAligns[0] : -128;
-    lines.push(buildHeaderLine(roleIdx, raceIdx, -1, alignDisplay));
-    lines.push('');
-
-    lines.push('m - male');
-    lines.push('f - female');
-    lines.push('* * Random');
-
-    lines.push('');
-    lines.push('? - Pick another role first');
-
-    const validRaces = validRacesForRole(roleIdx);
-    if (validRaces.length > 1) {
-        lines.push('/ - Pick another race first');
-    }
-
-    // Constraint notes
-    if (validRaces.length === 1) {
-        lines.push('    role forces ' + races[validRaces[0]].name);
-    }
-    if (validAligns.length === 1) {
-        const role = roles[roleIdx];
-        const forcer = role.validAligns.length === 1 ? 'role' : 'race';
-        lines.push(`    ${forcer} forces ` + alignName(validAligns[0]));
-    }
-
-    if (align === -128 && validAligns.length > 1) {
-        lines.push('[ - Pick alignment first');
-    }
-
-    lines.push('~ - Set role/race/&c filtering');
-    lines.push('q - Quit');
-    lines.push('(end)');
-    return lines;
-}
-
-// Build alignment menu lines (matching _showAlignMenu in nethack.js)
-function buildAlignMenuLines(roleIdx, raceIdx, gender) {
-    const validAligns = validAlignsForRoleRace(roleIdx, raceIdx);
-    const role = roles[roleIdx];
-    const lines = [];
-    lines.push('Pick an alignment or creed');
-    lines.push('');
-    lines.push(buildHeaderLine(roleIdx, raceIdx, gender, -128));
-    lines.push('');
-
-    const alignChars = { [A_LAWFUL]: 'l', [A_NEUTRAL]: 'n', [A_CHAOTIC]: 'c' };
-    for (const a of validAligns) {
-        lines.push(`${alignChars[a]} - ${alignName(a)}`);
-    }
-    lines.push('* * Random');
-
-    lines.push('');
-    lines.push('? - Pick another role first');
-
-    const validRacesForAlign = validRacesForRole(roleIdx);
-    if (validRacesForAlign.length > 1) {
-        lines.push('/ - Pick another race first');
-    }
-
-    // Constraint notes
-    if (validRacesForAlign.length === 1) {
-        lines.push('    role forces ' + races[validRacesForAlign[0]].name);
-    }
-    if (role.forceGender === 'female') {
-        lines.push('    role forces female');
-    }
-
-    if (needsGenderMenu(roleIdx)) {
-        lines.push('" - Pick another gender first');
-    }
-
-    lines.push('~ - Set role/race/&c filtering');
-    lines.push('q - Quit');
-    lines.push('(end)');
-    return lines;
-}
-
-// Build confirmation menu lines (matching _showConfirmation in nethack.js)
-function buildConfirmMenuLines(playerName, roleIdx, raceIdx, gender, align) {
-    const female = gender === FEMALE;
-    const rName = roleNameForGender(roleIdx, female);
-    const raceName = races[raceIdx].adj;
-    const genderStr = female ? 'female' : 'male';
-    const alignStr = alignName(align);
-    const confirmText = `${playerName.toLowerCase()} the ${alignStr} ${genderStr} ${raceName} ${rName}`;
-
-    const lines = [];
-    lines.push('Is this ok? [ynq]');
-    lines.push('');
-    lines.push(confirmText);
-    lines.push('');
-    lines.push('y * Yes; start game');
-    lines.push('n - No; choose role again');
-    lines.push('q - Quit');
-    lines.push('(end)');
-    return lines;
-}
-
-// Given role+race are determined, figure out the next menu to show.
-// Follows the same flow as _manualSelection: gender → alignment → confirmation.
-function buildNextMenu(roleIdx, raceIdx, gender, align, session) {
-    // Need gender?
-    if (gender < 0 && needsGenderMenu(roleIdx)) {
-        return buildGenderMenuLines(roleIdx, raceIdx, align);
-    }
-    // Resolve gender if forced
-    const effectiveGender = gender >= 0 ? gender
-        : (roles[roleIdx].forceGender === 'female' ? FEMALE : MALE);
-
-    // Need alignment?
-    const validAligns = validAlignsForRoleRace(roleIdx, raceIdx);
-    if (validAligns.length > 1 && align === -128) {
-        return buildAlignMenuLines(roleIdx, raceIdx, effectiveGender);
-    }
-    // Resolve alignment if forced
-    const effectiveAlign = align !== -128 ? align : validAligns[0];
-
-    // All determined → confirmation
-    const character = getSessionCharacter(session);
-    return buildConfirmMenuLines(character.name, roleIdx, raceIdx, effectiveGender, effectiveAlign);
-}
-
-// Build chargen screen for a step and render on HeadlessDisplay.
-// Returns the screen lines array, or null if not a menu step.
-function buildChargenScreen(step, state, session) {
-    const display = new HeadlessDisplay();
-    let lines = null;
-    let isFirstMenu = false;
-
-    switch (step.action) {
-        case 'decline-autopick':
-            lines = buildRoleMenuLines(-1, -1, -128);
-            isFirstMenu = true;
-            break;
-        case 'pick-role': {
-            // After selecting role, the next menu depends on what's forced
-            const roleIdx = CHARGEN_ROLE_INDEX[state.role];
-            const raceIdx = state.race !== undefined ? CHARGEN_RACE_INDEX[state.race] : -1;
-            const gender = state.gender !== undefined
-                ? (state.gender === 'female' ? FEMALE : MALE)
-                : -1;
-            const align = state.align !== undefined ? CHARGEN_ALIGN_MAP[state.align] : -128;
-
-            // Determine what menu was shown after this role pick
-            // Follow the same logic as _manualSelection: role → race → gender → alignment
-            const effectiveRace = raceIdx >= 0 ? raceIdx : -1;
-            if (effectiveRace < 0) {
-                // Need race menu
-                const validRaces = validRacesForRole(roleIdx);
-                if (validRaces.length === 1) {
-                    // Race forced — continue to gender/alignment
-                    const forcedRace = validRaces[0];
-                    lines = buildNextMenu(roleIdx, forcedRace, gender, align, session);
-                } else {
-                    lines = buildRaceMenuLines(roleIdx, gender, align);
+            // Wait for ready signal
+            const readyHandler = (msg) => {
+                if (msg.type === 'ready') {
+                    worker.off('message', readyHandler);
+                    this.workers[index] = workerInfo;
+                    resolve();
                 }
-            } else {
-                // Race already determined (forced)
-                lines = buildNextMenu(roleIdx, effectiveRace, gender, align, session);
+            };
+            worker.on('message', readyHandler);
+
+            // Send init command
+            worker.postMessage({ type: 'init' });
+        });
+    }
+
+    handleMessage(workerInfo, msg) {
+        if (msg.type === 'result') {
+            // Clear external timeout
+            if (workerInfo.killTimer) {
+                clearTimeout(workerInfo.killTimer);
+                workerInfo.killTimer = null;
             }
-            break;
-        }
-        case 'pick-race': {
-            const roleIdx = CHARGEN_ROLE_INDEX[state.role];
-            const raceIdx = CHARGEN_RACE_INDEX[state.race];
-            const gender = state.gender !== undefined
-                ? (state.gender === 'female' ? FEMALE : MALE)
-                : -1;
-            const align = state.align !== undefined ? CHARGEN_ALIGN_MAP[state.align] : -128;
-            lines = buildNextMenu(roleIdx, raceIdx, gender, align, session);
-            break;
-        }
-        case 'pick-gender': {
-            const roleIdx = CHARGEN_ROLE_INDEX[state.role];
-            const raceIdx = state.race !== undefined ? CHARGEN_RACE_INDEX[state.race] : -1;
-            const gender = state.gender === 'female' ? FEMALE : MALE;
-            const align = state.align !== undefined ? CHARGEN_ALIGN_MAP[state.align] : -128;
-            const effectiveRace = raceIdx >= 0 ? raceIdx : validRacesForRole(roleIdx)[0];
-            lines = buildNextMenu(roleIdx, effectiveRace, gender, align, session);
-            break;
-        }
-        case 'pick-align': {
-            const roleIdx = CHARGEN_ROLE_INDEX[state.role];
-            const raceIdx = state.race !== undefined ? CHARGEN_RACE_INDEX[state.race] : -1;
-            const gender = state.gender !== undefined
-                ? (state.gender === 'female' ? FEMALE : MALE)
-                : (roles[roleIdx].forceGender === 'female' ? FEMALE : MALE);
-            const align = CHARGEN_ALIGN_MAP[state.align];
-            const effectiveRace = raceIdx >= 0 ? raceIdx : validRacesForRole(roleIdx)[0];
-            const character = getSessionCharacter(session);
-            lines = buildConfirmMenuLines(character.name, roleIdx, effectiveRace, gender, align);
-            break;
-        }
-        default:
-            return null; // Not a menu step we can rebuild
-    }
 
-    if (!lines) return null;
+            // Store result
+            this.results.set(msg.testIndex, msg.result);
+            this.completedCount++;
 
-    display.renderChargenMenu(lines, isFirstMenu);
-    return display.getScreenLines();
-}
+            // Print progress
+            const status = msg.result.passed ? 'PASS' : 'FAIL';
+            const duration = msg.result.duration ? `${msg.result.duration}ms` : '';
+            console.log(`  [${this.completedCount}/${this.totalTests}] [${status}] ${msg.result.session} (${duration})`);
 
-// Collect all startup RNG from a chargen session: confirm-ok + welcome ("more") steps.
-// Returns the combined RNG array, or null if no confirm-ok step found.
-function collectChargenStartupRng(session) {
-    let startupRng = [];
-    let foundConfirm = false;
-    for (const step of session.steps) {
-        if (step.action === 'confirm-ok') {
-            foundConfirm = true;
-            startupRng = startupRng.concat(step.rng || []);
-            continue;
-        }
-        if (foundConfirm && step.action === 'more' && (step.rng || []).length > 0) {
-            startupRng = startupRng.concat(step.rng);
-            break;
-        }
-        if (foundConfirm) break;
-    }
-    return startupRng.length > 0 ? startupRng : null;
-}
+            // Mark worker as available and assign next test
+            workerInfo.busy = false;
+            this.assignNext(workerInfo);
 
-// Derive the chargen state at a given step by tracking what's been picked so far.
-// Returns { role, race, gender, align } with values set as they become known.
-function deriveChargenState(session, stepIndex) {
-    const state = {};
-    const character = getSessionCharacter(session);
-
-    // Walk through steps up to (but not including) stepIndex to build state,
-    // then the step AT stepIndex records the selection that just happened.
-    for (let i = 0; i <= stepIndex; i++) {
-        const step = session.steps[i];
-        switch (step.action) {
-            case 'pick-role':
-                state.role = character.role;
-                // If race is forced, set it
-                {
-                    const roleIdx = CHARGEN_ROLE_INDEX[character.role];
-                    const vr = validRacesForRole(roleIdx);
-                    if (vr.length === 1) state.race = races[vr[0]].name;
-                    // If gender is forced, set it
-                    if (roles[roleIdx].forceGender === 'female') state.gender = 'female';
-                }
-                break;
-            case 'pick-race':
-                state.race = character.race;
-                break;
-            case 'pick-gender':
-                state.gender = character.gender;
-                break;
-            case 'pick-align':
-                state.align = character.align;
-                break;
-        }
-    }
-    return state;
-}
-
-export function runChargenSession(file, session) {
-    const character = getSessionCharacter(session);
-
-    it('chargen session has valid data', () => {
-        assert.ok(character.role, 'Missing character data');
-        assert.ok(session.steps.length > 0, 'No steps recorded');
-    });
-
-    const role = character.role;
-    if (!CHARGEN_SUPPORTED_ROLES.has(role)) {
-        it(`chargen ${role} (not yet implemented)`, () => {
-            assert.ok(true);
-        });
-        return;
-    }
-
-    let startup;
-    it('startup generates successfully', () => {
-        startup = generateStartupWithRng(session.seed, session);
-    });
-
-    // Full startup RNG comparison: only possible when map generation
-    // is faithful for this seed+role combination. Since chargen sessions
-    // have pre-startup RNG (menu selection) that shifts the PRNG stream,
-    // map gen may differ from tested seeds. Report but don't fail.
-    const sessionStartupRng = collectChargenStartupRng(session);
-    if (sessionStartupRng) {
-        it('startup rngCalls (diagnostic)', (t) => {
-            assert.ok(startup, 'Startup generation failed');
-            if (startup.rngCalls !== sessionStartupRng.length) {
-                t.diagnostic(`seed=${session.seed} role=${role}: ` +
-                    `JS=${startup.rngCalls} session=${sessionStartupRng.length} ` +
-                    `(diff=${startup.rngCalls - sessionStartupRng.length}, ` +
-                    `likely map gen divergence)`);
+            // Check if all done
+            if (this.completedCount >= this.totalTests && this.resolveAll) {
+                this.resolveAll();
             }
-        });
-
-        it('startup chargen RNG count (diagnostic)', (t) => {
-            assert.ok(startup, 'Startup generation failed');
-            t.diagnostic(`seed=${session.seed} role=${role}: ` +
-                `JS chargen calls=${startup.chargenRngCalls}`);
-        });
+        }
     }
 
-    // Screen comparison: compare JS-rendered chargen menus against C session screens
-    const menuActions = new Set(['decline-autopick', 'pick-role', 'pick-race', 'pick-gender', 'pick-align']);
-    for (let i = 0; i < session.steps.length; i++) {
-        const step = session.steps[i];
-        const cScreen = getSessionScreenLines(step);
-        if (!menuActions.has(step.action) || cScreen.length === 0) continue;
-
-        it(`screen matches at step ${i} (${step.action})`, () => {
-            const state = deriveChargenState(session, i);
-            const jsScreen = buildChargenScreen(step, state, session);
-            assert.ok(jsScreen, `Could not build screen for step ${i} (${step.action})`);
-            // Compare only lines that the chargen menu controls (up to the content area)
-            // The C screen has 24 lines; our JS screen also has 24 lines.
-            // Right-trim both for comparison.
-            const diffs = [];
-            for (let row = 0; row < 24; row++) {
-                const jsLine = (jsScreen[row] || '').replace(/ +$/, '');
-                const cLine = (cScreen[row] || '').replace(/ +$/, '');
-                if (jsLine !== cLine) {
-                    diffs.push(`  row ${row}: JS=${JSON.stringify(jsLine)}`);
-                    diffs.push(`         C =${JSON.stringify(cLine)}`);
-                }
-            }
-            assert.equal(diffs.length, 0,
-                `Screen mismatch at step ${i} (${step.action}):\n${diffs.join('\n')}`);
-        });
+    handleError(workerInfo, err) {
+        console.error(`  [Worker ${workerInfo.index}] Error:`, err.message);
+        // Respawn the worker
+        this.respawnWorker(workerInfo.index);
     }
-}
 
-// ---------------------------------------------------------------------------
-// Special level sessions
-// ---------------------------------------------------------------------------
+    handleExit(workerInfo, code) {
+        if (code !== 0 && workerInfo.busy) {
+            // Worker died while processing - respawn
+            if (VERBOSE) console.log(`  [Worker ${workerInfo.index}] Exited with code ${code}, respawning...`);
+            this.respawnWorker(workerInfo.index);
+        }
+    }
 
-export function runSpecialLevelSession(file, session) {
-    describe(`${session.group || 'unknown'} special levels`, () => {
-        for (const level of session.levels || []) {
-            const levelName = level.levelName || 'unnamed';
+    async respawnWorker(index) {
+        const oldInfo = this.workers[index];
+        if (oldInfo?.killTimer) clearTimeout(oldInfo.killTimer);
 
-            it(`${levelName} typGrid matches`, () => {
-                // TODO: Generate the special level and compare typGrid
-                // For now, just check that we have the expected data
-                assert.ok(level.typGrid, `Missing typGrid for ${levelName}`);
-                assert.equal(level.typGrid.length, 21, `Expected 21 rows for ${levelName}`);
-                assert.equal(level.typGrid[0].length, 80, `Expected 80 columns for ${levelName}`);
+        await this.spawnWorker(index);
+        this.assignNext(this.workers[index]);
+    }
 
-                // Skip actual generation for now - special levels need to be registered
-                // and we need to implement the generation function
-                // This test will pass if the session file is well-formed
+    assignNext(workerInfo) {
+        if (workerInfo.busy || this.queue.length === 0) return;
+
+        const { session, sessionType, testIndex } = this.queue.shift();
+        workerInfo.busy = true;
+
+        // Set external kill timeout
+        workerInfo.killTimer = setTimeout(() => {
+            console.log(`  [Worker ${workerInfo.index}] External timeout, killing...`);
+            this.results.set(testIndex, {
+                session: session.file,
+                type: sessionType,
+                seed: session.seed,
+                passed: false,
+                error: `External timeout after ${EXTERNAL_TIMEOUT_MS}ms`,
             });
+            this.completedCount++;
+            console.log(`  [${this.completedCount}/${this.totalTests}] [FAIL] ${session.file} (timeout)`);
+
+            workerInfo.worker.terminate();
+            this.respawnWorker(workerInfo.index);
+
+            if (this.completedCount >= this.totalTests && this.resolveAll) {
+                this.resolveAll();
+            }
+        }, EXTERNAL_TIMEOUT_MS);
+
+        // Send test to worker
+        workerInfo.worker.postMessage({
+            type: 'test',
+            session,
+            sessionType,
+            testIndex,
+            totalTests: this.totalTests,
+        });
+    }
+
+    runAll(tests) {
+        this.totalTests = tests.length;
+        // Create queue with test indices, then sort by estimated work (largest first)
+        this.queue = tests.map((t, i) => ({ ...t, testIndex: i }));
+        this.queue.sort((a, b) => {
+            const sizeA = estimateTestSize(a.session);
+            const sizeB = estimateTestSize(b.session);
+            return sizeB - sizeA; // Largest first
+        });
+        this.completedCount = 0;
+        this.results.clear();
+
+        return new Promise((resolve, reject) => {
+            this.resolveAll = resolve;
+            this.rejectAll = reject;
+
+            // Start workers
+            for (const workerInfo of this.workers) {
+                this.assignNext(workerInfo);
+            }
+        });
+    }
+
+    getSortedResults() {
+        // Return results sorted by original test index
+        const sorted = [];
+        for (let i = 0; i < this.totalTests; i++) {
+            sorted.push(this.results.get(i));
         }
-    });
+        return sorted;
+    }
+
+    async shutdown() {
+        for (const workerInfo of this.workers) {
+            if (workerInfo?.killTimer) clearTimeout(workerInfo.killTimer);
+            workerInfo?.worker?.terminate();
+        }
+    }
 }
+
+// ============================================================================
+// Main test runner - parallel execution with worker pool
+// ============================================================================
+
+async function runBackfillTests() {
+    const counts = { chargen: 0, gameplay: 0, interface: 0, option: 0, special: 0, map: 0, unknown: 0 };
+
+    console.log('=== Unified Session Test Runner ===');
+    console.log(`Using ${NUM_WORKERS} workers (internal timeout: ${INTERNAL_TIMEOUT_MS/1000}s, external: ${EXTERNAL_TIMEOUT_MS/1000}s)`);
+    if (USE_GOLDEN) console.log(`Using golden branch: ${GOLDEN_BRANCH}`);
+    console.log('');
+
+    // Load all sessions
+    console.log('Loading sessions...');
+    const allSessions = loadAllSessions();
+    console.log(`  Total: ${allSessions.length} sessions`);
+
+    // Count by type and prepare test queue
+    const tests = [];
+    for (const session of allSessions) {
+        const type = inferType(session);
+        counts[type] = (counts[type] || 0) + 1;
+        tests.push({ session, sessionType: type });
+    }
+    console.log(`  Chargen: ${counts.chargen}, Interface: ${counts.interface}, Maps: ${counts.map}, Gameplay: ${counts.gameplay}`);
+    if (counts.unknown > 0) console.log(`  Unknown: ${counts.unknown}`);
+
+    // Initialize worker pool
+    console.log('\nInitializing worker pool...');
+    const workerPath = join(__dirname, 'test_worker.js');
+    const pool = new TestWorkerPool(NUM_WORKERS, workerPath);
+    await pool.initialize();
+    console.log(`  ${NUM_WORKERS} workers ready`);
+
+    // Run tests in parallel
+    console.log('\nRunning tests...');
+    const totalStart = Date.now();
+    await pool.runAll(tests);
+    const totalTime = ((Date.now() - totalStart) / 1000).toFixed(1);
+
+    // Get sorted results
+    const results = pool.getSortedResults();
+    await pool.shutdown();
+
+    // Group results by type
+    const groupResults = { chargen: [], interface: [], map: [], gameplay: [], unknown: [] };
+    for (const result of results) {
+        if (groupResults[result.type]) {
+            groupResults[result.type].push(result);
+        }
+    }
+
+    console.log(`\nRan ${results.length} tests in ${totalTime}s`);
+
+    // Print summary by type
+    for (const [type, label] of Object.entries(SESSION_GROUPS)) {
+        const typeResults = groupResults[type] || [];
+        if (typeResults.length > 0) {
+            const passed = typeResults.filter(r => r.passed).length;
+            console.log(`  ${label}: ${passed}/${typeResults.length}`);
+        }
+    }
+
+    // Create and output results bundle
+    const bundle = createResultsBundle(results, {
+        goldenBranch: USE_GOLDEN ? GOLDEN_BRANCH : null,
+    });
+
+    console.log('\n========================================');
+    console.log('SUMMARY');
+    console.log('========================================');
+    console.log(formatBundleSummary(bundle));
+
+    // Output JSON for parsing/git notes
+    console.log('\n__RESULTS_JSON__');
+    console.log(JSON.stringify(bundle));
+
+    process.exit(bundle.summary.failed > 0 ? 1 : 0);
+}
+
+runBackfillTests().catch(e => {
+    console.error('Fatal error:', e);
+    process.exit(1);
+});

@@ -42,9 +42,10 @@ export function setDuration(result, durationMs) {
 export function createSessionResult(session) {
     const result = {
         session: session.file,
-        type: inferSessionType(session.file),
+        type: inferSessionType(session.file, session),
         seed: session.seed,
         passed: true,
+        duration: null,
         metrics: {
             rngCalls: { matched: 0, total: 0 },
             keys: { matched: 0, total: 0 },
@@ -57,29 +58,42 @@ export function createSessionResult(session) {
     if (result.type === 'chargen') {
         const match = session.file.match(/chargen_(\w+)/);
         if (match) result.role = match[1];
-        // Check for race/alignment variants
         const variant = session.file.match(/chargen_\w+_(\w+)\./);
         if (variant) result.variant = variant[1];
+    } else if (result.type === 'map') {
+        // Add map info for map generation tests
+        if (session.group) result.group = session.group;
+        if (session.levels) result.levelCount = session.levels.length;
     }
 
     return result;
 }
 
 /**
- * Infer session type from filename
+ * Infer session type from filename and session structure
+ * Four categories: chargen, interface, map, gameplay
+ * @param {string} filename - Session filename
+ * @param {Object} session - Optional session object for structure-based inference
  */
-function inferSessionType(filename) {
-    if (filename.includes('_chargen')) return 'chargen';
-    if (filename.includes('_gameplay')) return 'gameplay';
-    if (filename.includes('interface_')) return 'interface';
-    if (filename.includes('_special_')) return 'special';
-    if (filename.startsWith('seed') && filename.includes('_')) {
-        // Option tests like seed301_verbose_on
-        const parts = filename.split('_');
-        if (parts.length >= 2 && !parts[1].includes('chargen') && !parts[1].includes('gameplay')) {
-            return 'option';
+export function inferSessionType(filename, session = null) {
+    // Structure-based inference (most reliable)
+    if (session) {
+        // Sessions with levels array are map tests (both sp_lev and random maps)
+        if (session.levels && Array.isArray(session.levels)) {
+            return 'map';
         }
     }
+
+    // Filename-based inference
+    if (filename.includes('_chargen')) return 'chargen';
+    if (filename.includes('_gameplay')) return 'gameplay';
+    if (filename.startsWith('interface_')) return 'interface';
+
+    // Option tests (merged with interface): seed*_optionname_on/off
+    if (filename.startsWith('seed') && (filename.includes('_on.') || filename.includes('_off.'))) {
+        return 'interface';
+    }
+
     return 'unknown';
 }
 
