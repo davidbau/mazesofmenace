@@ -121,13 +121,15 @@ def has_calendar_luck_warning(content):
     )
 
 
-def tmux_send(session, keys, delay=0.1):
+def tmux_send(session, keys, delay=0):
     subprocess.run(['tmux', 'send-keys', '-t', session, '-l', keys], check=True)
-    time.sleep(delay)
+    if delay > 0:
+        time.sleep(delay)
 
-def tmux_send_special(session, key, delay=0.1):
+def tmux_send_special(session, key, delay=0):
     subprocess.run(['tmux', 'send-keys', '-t', session, key], check=True)
-    time.sleep(delay)
+    if delay > 0:
+        time.sleep(delay)
 
 def tmux_capture(session):
     result = subprocess.run(
@@ -137,15 +139,16 @@ def tmux_capture(session):
     return result.stdout
 
 
-def setup_home():
+def setup_home(character=None):
+    char = character or CHARACTER
     os.makedirs(RESULTS_DIR, exist_ok=True)
     nethackrc = os.path.join(RESULTS_DIR, '.nethackrc')
     with open(nethackrc, 'w') as f:
-        f.write(f'OPTIONS=name:{CHARACTER["name"]}\n')
-        f.write(f'OPTIONS=race:{CHARACTER["race"]}\n')
-        f.write(f'OPTIONS=role:{CHARACTER["role"]}\n')
-        f.write(f'OPTIONS=gender:{CHARACTER["gender"]}\n')
-        f.write(f'OPTIONS=align:{CHARACTER["align"]}\n')
+        f.write(f'OPTIONS=name:{char["name"]}\n')
+        f.write(f'OPTIONS=race:{char["race"]}\n')
+        f.write(f'OPTIONS=role:{char["role"]}\n')
+        f.write(f'OPTIONS=gender:{char["gender"]}\n')
+        f.write(f'OPTIONS=align:{char["align"]}\n')
         f.write('OPTIONS=!autopickup\n')
         f.write('OPTIONS=suppress_alert:3.4.3\n')
         f.write('OPTIONS=symset:DECgraphics\n')
@@ -463,7 +466,7 @@ def execute_wizload(session, level_name, steps, rng_log_file, verbose=False):
         if 'Load which des lua file?' in content:
             rng_call_start = get_rng_call_count(rng_log_file)
             break
-        time.sleep(0.1)
+        time.sleep(0.02)
     else:
         if verbose:
             print(f'  [wizloaddes] WARNING: no file prompt for {level_name}')
@@ -493,7 +496,7 @@ def execute_wizload(session, level_name, steps, rng_log_file, verbose=False):
         # A settled status line with Dlvl indicates map is ready
         if 'Dlvl:' in content:
             return True, rng_call_start
-        time.sleep(0.1)
+        time.sleep(0.02)
 
     if verbose:
         print(f'  [wizloaddes] WARNING: timeout waiting for level load of {level_name}')
@@ -520,7 +523,7 @@ def execute_dumpmap(session, dumpmap_file):
         os.unlink(dumpmap_file)
 
     tmux_send(session, '#', 0.1)
-    time.sleep(0.1)
+    time.sleep(0.02)
     tmux_send(session, 'dumpmap', 0.1)
     tmux_send_special(session, 'Enter', 0.3)
 
@@ -534,21 +537,27 @@ def execute_dumpmap(session, dumpmap_file):
             tmux_send_special(session, 'Space', 0.1)
         else:
             break
-        time.sleep(0.1)
+        time.sleep(0.02)
 
-    time.sleep(0.1)
+    time.sleep(0.02)
     return read_typ_grid(dumpmap_file)
 
 
+# Counter for tracking clear_more_prompts activity
+_clear_more_stats = {'cleared': 0, 'calls': 0}
+
 def clear_more_prompts(session, max_iterations=10):
+    global _clear_more_stats
+    _clear_more_stats['calls'] += 1
     content = ''
     for _ in range(max_iterations):
-        time.sleep(0.1)
+        time.sleep(0.02)
         try:
             content = tmux_capture(session)
         except subprocess.CalledProcessError:
             break
         if '--More--' in content:
+            _clear_more_stats['cleared'] += 1
             tmux_send_special(session, 'Space', 0.1)
         elif 'Die?' in content:
             # Wizard mode death: answer 'n' to resurrect
@@ -557,6 +566,13 @@ def clear_more_prompts(session, max_iterations=10):
         else:
             break
     return content
+
+def get_clear_more_stats():
+    return _clear_more_stats.copy()
+
+def reset_clear_more_stats():
+    global _clear_more_stats
+    _clear_more_stats = {'cleared': 0, 'calls': 0}
 
 
 def wait_for_game_ready(session, rng_log_file):
@@ -629,7 +645,7 @@ def wait_for_game_ready(session, rng_log_file):
         if attempt > 2:
             tmux_send_special(session, 'Space', 0.1)
         else:
-            time.sleep(0.1)
+            time.sleep(0.02)
 
 
 def describe_key(key):
@@ -709,14 +725,26 @@ def parse_moves(move_str):
             i += 3
         elif ch in DIRECTION_COMMANDS and i + 1 < len(move_str):
             dir_ch = move_str[i+1]
-            cmd_name = DIRECTION_COMMANDS[ch]
-            moves.append((ch + dir_ch, f'{cmd_name}-{describe_key(dir_ch)}'))
-            i += 2
+            # Only treat as direction command if next char is actually a direction
+            if dir_ch in 'hjklyubn':
+                cmd_name = DIRECTION_COMMANDS[ch]
+                moves.append((ch + dir_ch, f'{cmd_name}-{describe_key(dir_ch)}'))
+                i += 2
+            else:
+                # Next char is not a direction, treat as single key
+                moves.append((ch, describe_key(ch)))
+                i += 1
         elif ch in ITEM_COMMANDS and i + 1 < len(move_str):
             item_ch = move_str[i+1]
-            cmd_name = ITEM_COMMANDS[ch]
-            moves.append((ch + item_ch, f'{cmd_name}-{item_ch}'))
-            i += 2
+            # Only treat as item command if next char looks like an item letter
+            if item_ch.isalpha() or item_ch in '$*':
+                cmd_name = ITEM_COMMANDS[ch]
+                moves.append((ch + item_ch, f'{cmd_name}-{item_ch}'))
+                i += 2
+            else:
+                # Next char is not an item, treat as single key
+                moves.append((ch, describe_key(ch)))
+                i += 1
         else:
             moves.append((move_str[i], describe_key(move_str[i])))
             i += 1
@@ -724,19 +752,27 @@ def parse_moves(move_str):
 
 
 def detect_depth(screen_lines):
-    """Parse 'Dlvl:N' from the status lines to determine current depth."""
+    """Parse level indicator from the status lines to detect level changes.
+
+    Returns a string like 'Dlvl:3', 'Mines:2', 'Quest:1', 'Sokoban:4', etc.
+    This allows detecting level changes across all dungeon branches.
+    """
+    import re
     for line in screen_lines[22:24]:
-        if 'Dlvl:' in line:
-            import re
-            m = re.search(r'Dlvl:(\d+)', line)
-            if m:
-                return int(m[1])
-    return 1
+        # Match various level indicators: Dlvl:N, Mines:N, Quest:N, etc.
+        # Also handles End Game and other special areas
+        m = re.search(r'(Dlvl|Mines|Sokoban|Quest|Astral|Fort Ludios|Vlad\'s Tower|Air|Earth|Fire|Water):\s*(\d+)', line)
+        if m:
+            return f'{m.group(1)}:{m.group(2)}'
+        # Handle End Game specially
+        if 'End Game' in line:
+            return 'End Game'
+    return 'Dlvl:1'
 
 
 def quit_game(session):
     tmux_send(session, '#', 0.1)
-    time.sleep(0.1)
+    time.sleep(0.02)
     tmux_send(session, 'quit', 0.1)
     tmux_send_special(session, 'Enter', 0.1)
     for _ in range(15):
@@ -752,8 +788,8 @@ def quit_game(session):
             tmux_send_special(session, 'Space', 0.1)
         elif 'PROCESS_DONE' in content or 'sleep 999' in content:
             break
-        time.sleep(0.1)
-    time.sleep(0.1)
+        time.sleep(0.02)
+    time.sleep(0.02)
 
 
 def compact_session_json(session_data):
@@ -838,9 +874,9 @@ def run_wizload_session(seed, output_json, level_name, verbose=False):
         print(f'=== Capturing wizload session: seed={seed}, level={level_name} ===')
         print(f'=== STARTUP ===')
         wait_for_game_ready(session_name, rng_log_file)
-        time.sleep(0.1)
+        time.sleep(0.02)
         clear_more_prompts(session_name)
-        time.sleep(0.1)
+        time.sleep(0.02)
 
         # Capture startup state
         startup_rng_count, startup_rng_lines = read_rng_log(rng_log_file)
@@ -1039,7 +1075,7 @@ def run_chargen_session(seed, output_json, selections, verbose=False):
         # Process character generation prompts
         selection_idx = 0
         for attempt in range(100):
-            time.sleep(0.2)
+            time.sleep(0.02)
             try:
                 content = tmux_capture(session_name)
             except subprocess.CalledProcessError:
@@ -1163,9 +1199,9 @@ def run_chargen_session(seed, output_json, selections, verbose=False):
                 break
 
         # Capture inventory after game start
-        time.sleep(0.1)
+        time.sleep(0.02)
         tmux_send(session_name, 'i', 0.2)
-        time.sleep(0.2)
+        time.sleep(0.02)
         screen = capture_screen_compressed(session_name)
         rng_count, rng_lines = read_rng_log(rng_log_file)
         delta_lines = rng_lines[prev_rng_count:rng_count]
@@ -1187,7 +1223,7 @@ def run_chargen_session(seed, output_json, selections, verbose=False):
                 break
             if '--More--' in content or '(end)' in content:
                 tmux_send_special(session_name, 'Space', 0.1)
-                time.sleep(0.1)
+                time.sleep(0.02)
             else:
                 break
 
@@ -1276,9 +1312,9 @@ def run_interface_session(seed, output_json, keys, verbose=False):
         print(f'=== Capturing interface session: seed={seed}, keys="{keys}" ===')
         print(f'=== STARTUP ===')
         wait_for_game_ready(session_name, rng_log_file)
-        time.sleep(0.1)
+        time.sleep(0.02)
         clear_more_prompts(session_name)
-        time.sleep(0.1)
+        time.sleep(0.02)
 
         # Capture startup state
         startup_rng_count, startup_rng_lines = read_rng_log(rng_log_file)
@@ -1345,7 +1381,7 @@ def run_interface_session(seed, output_json, keys, verbose=False):
                 tmux_send(session_name, key, 0.2)
                 action = describe_key(key) if key in 'hjklyubn.<>:@,' else f'key-{key}'
 
-            time.sleep(0.1)
+            time.sleep(0.02)
             clear_more_prompts(session_name)
 
             screen = capture_screen_compressed(session_name)
@@ -1381,27 +1417,55 @@ def run_interface_session(seed, output_json, keys, verbose=False):
         shutil.rmtree(tmpdir, ignore_errors=True)
 
 
+def run_session_entry(entry, sessions_dir):
+    """Run a single session recording (used for parallel execution)."""
+    import copy
+    seed = entry['seed']
+    moves = entry['moves']
+    label = entry.get('label', '')
+    suffix = f'_{label}_gameplay' if label else '_gameplay'
+    output = os.path.join(sessions_dir, f'seed{seed}{suffix}.session.json')
+    # Apply character preset if specified
+    char = copy.copy(CHARACTER_PRESETS.get('valkyrie', {}))
+    if 'character' in entry:
+        preset = entry['character'].lower()
+        if preset in CHARACTER_PRESETS:
+            char = copy.copy(CHARACTER_PRESETS[preset])
+    # Update global CHARACTER for this process
+    CHARACTER.clear()
+    CHARACTER.update(char)
+    print(f'\n=== Regenerating session seed={seed}{suffix} ===')
+    run_session(seed, output, moves)
+    return f'seed{seed}{suffix}'
+
+
 def main():
     if '--from-config' in sys.argv:
+        from concurrent.futures import ProcessPoolExecutor, as_completed
+        import multiprocessing
+
         config = load_seeds_config()
         sessions_dir = os.path.join(PROJECT_ROOT, 'test', 'comparison', 'sessions')
-        for entry in config['session_seeds']['sessions']:
-            seed = entry['seed']
-            moves = entry['moves']
-            label = entry.get('label', '')
-            suffix = f'_{label}_gameplay' if label else '_gameplay'
-            output = os.path.join(sessions_dir, f'seed{seed}{suffix}.session.json')
-            # Apply character preset if specified
-            CHARACTER.update(CHARACTER_PRESETS.get('valkyrie', {}))  # reset to default
-            if 'character' in entry:
-                preset = entry['character'].lower()
-                if preset in CHARACTER_PRESETS:
-                    CHARACTER.update(CHARACTER_PRESETS[preset])
-                else:
-                    print(f"Warning: unknown character preset '{preset}', using default")
-            print(f'\n=== Regenerating session seed={seed}{suffix} ===')
-            sys.argv = [sys.argv[0], str(seed), output, moves]
-            run_session(seed, output, moves)
+        entries = config['session_seeds']['sessions']
+
+        # Check for --parallel flag
+        parallel = '--parallel' in sys.argv
+        max_workers = 4 if parallel else 1
+
+        if parallel:
+            print(f'Running {len(entries)} sessions in parallel with {max_workers} workers')
+            with ProcessPoolExecutor(max_workers=max_workers) as executor:
+                futures = {executor.submit(run_session_entry, entry, sessions_dir): entry for entry in entries}
+                for future in as_completed(futures):
+                    try:
+                        result = future.result()
+                        print(f'=== Completed: {result} ===')
+                    except Exception as e:
+                        entry = futures[future]
+                        print(f'=== Failed: seed{entry["seed"]} - {e} ===')
+        else:
+            for entry in entries:
+                run_session_entry(entry, sessions_dir)
         return
 
     # Parse command-line flags
@@ -1450,12 +1514,34 @@ def main():
         interface_keys = args[idx + 1]
         args = args[:idx] + args[idx+2:]
 
+    # Parse --raw-moves flag
+    raw_moves = '--raw-moves' in args
+    if raw_moves:
+        args.remove('--raw-moves')
+
+    # Parse character override flags
+    char_override = None
+    if '--role' in args:
+        idx = args.index('--role')
+        role = args[idx + 1]
+        char_override = char_override or CHARACTER.copy()
+        char_override['role'] = role
+        args = args[:idx] + args[idx+2:]
+    if '--name' in args:
+        idx = args.index('--name')
+        name = args[idx + 1]
+        char_override = char_override or CHARACTER.copy()
+        char_override['name'] = name
+        args = args[:idx] + args[idx+2:]
+
     if len(args) < 2:
         print(f"Usage: {sys.argv[0]} <seed> <output_json> [move_sequence] [--character <preset>]")
         print(f"       {sys.argv[0]} <seed> <output_json> --wizload <level_name>")
         print(f"       {sys.argv[0]} <seed> <output_json> --chargen <selections>")
         print(f"       {sys.argv[0]} <seed> <output_json> --interface <keys>")
         print(f"       {sys.argv[0]} --from-config")
+        print(f"Options:")
+        print(f"  --raw-moves: Moves include --More-- responses (from keylog)")
         print(f"Character presets: {', '.join(CHARACTER_PRESETS.keys())} (default: valkyrie)")
         print(f"Example: {sys.argv[0]} 42 sessions/seed42.session.json ':hhlhhhh.hhs'")
         print(f"Example: {sys.argv[0]} 42 sessions/seed42_castle.session.json --wizload castle")
@@ -1474,10 +1560,22 @@ def main():
         run_interface_session(seed, output_json, interface_keys, verbose)
     else:
         move_str = args[2] if len(args) >= 3 else '...........'
-        run_session(seed, output_json, move_str)
+        run_session(seed, output_json, move_str, raw_moves=raw_moves, character=char_override)
 
 
-def run_session(seed, output_json, move_str):
+def run_session(seed, output_json, move_str, raw_moves=False, character=None):
+    """Run a session replaying the given move string.
+
+    Args:
+        seed: Game seed
+        output_json: Output file path
+        move_str: String of moves to replay
+        raw_moves: If True, moves include --More-- responses (from keylog).
+                   If False, clear_more_prompts is called after each move.
+        character: Character config dict (name, role, race, gender, align).
+                   Uses default CHARACTER if None.
+    """
+    char = character or CHARACTER
     output_json = os.path.abspath(output_json)
 
     if not os.path.isfile(NETHACK_BINARY):
@@ -1485,7 +1583,7 @@ def run_session(seed, output_json, move_str):
         print(f"Run setup.sh first: bash {os.path.join(SCRIPT_DIR, 'setup.sh')}")
         sys.exit(1)
 
-    setup_home()
+    setup_home(char)
 
     # Temp files for RNG log and dumpmap
     tmpdir = tempfile.mkdtemp(prefix='webhack-session-')
@@ -1503,7 +1601,7 @@ def run_session(seed, output_json, move_str):
             f'NETHACK_DUMPMAP={dumpmap_file} '
             f'HOME={RESULTS_DIR} '
             f'TERM=xterm-256color '
-            f'{NETHACK_BINARY} -u {CHARACTER["name"]} -D; '
+            f'{NETHACK_BINARY} -u {char["name"]} -D; '
             f'sleep 999'
         )
         subprocess.run(
@@ -1513,12 +1611,12 @@ def run_session(seed, output_json, move_str):
 
         time.sleep(1.0)
 
-        print(f'=== Capturing session: seed={seed}, moves="{move_str}" ===')
+        print(f'=== Capturing session: seed={seed}, role={char["role"]}, moves="{move_str}" ===')
         print(f'=== STARTUP ===')
         wait_for_game_ready(session_name, rng_log_file)
-        time.sleep(0.1)
+        time.sleep(0.02)
         clear_more_prompts(session_name)
-        time.sleep(0.1)
+        time.sleep(0.02)
 
         # Capture startup state
         startup_rng_count, startup_rng_lines = read_rng_log(rng_log_file)
@@ -1560,11 +1658,11 @@ def run_session(seed, output_json, move_str):
                 'moves': move_str,
             },
             'options': {
-                'name': CHARACTER['name'],
-                'role': CHARACTER['role'],
-                'race': CHARACTER['race'],
-                'gender': CHARACTER['gender'],
-                'align': CHARACTER['align'],
+                'name': char['name'],
+                'role': char['role'],
+                'race': char['race'],
+                'gender': char['gender'],
+                'align': char['align'],
                 'wizard': True,
                 'symset': 'DECgraphics',
                 'autopickup': False,
@@ -1573,29 +1671,37 @@ def run_session(seed, output_json, move_str):
             'steps': [startup_step],
         }
 
-        # Parse and execute moves
-        moves = parse_moves(move_str)
+        # Execute moves - send each character individually (no grouping)
         prev_rng_count = startup_rng_count
-        prev_depth = 1
         prev_typ_grid = startup_typ_grid
+        captured_levels = {'Dlvl:1'}  # Track levels we've captured typGrids for
 
-        print(f'\n=== MOVES ({len(moves)} steps) ===')
-        for idx, (key, description) in enumerate(moves):
-            # Send the keystroke(s)
-            if len(key) >= 2:
-                # Multi-key command: send each key separately with delay
-                for ch in key:
-                    if ord(ch) < 32:
-                        # Ctrl character: use tmux C-x syntax
-                        tmux_send_special(session_name, f'C-{chr(ord(ch) + 96)}', 0.1)
-                    else:
-                        tmux_send(session_name, ch, 0.1)
+        # Helper to send a single character with proper control char handling
+        def send_char(ch):
+            code = ord(ch)
+            if code == 10 or code == 13:
+                tmux_send_special(session_name, 'Enter')
+            elif code == 27:
+                tmux_send_special(session_name, 'Escape')
+            elif code == 127:
+                tmux_send_special(session_name, 'BSpace')
+            elif code < 32:
+                tmux_send_special(session_name, f'C-{chr(code + 96)}')
             else:
-                tmux_send(session_name, key, 0.1)
+                tmux_send(session_name, ch)
 
-            time.sleep(0.1)
-            clear_more_prompts(session_name)
-            time.sleep(0.1)
+        print(f'\n=== MOVES ({len(move_str)} steps) ===')
+        for idx, ch in enumerate(move_str):
+            key = ch
+            description = describe_key(ch)
+
+            # Send the character
+            send_char(ch)
+            time.sleep(0.003)  # 3ms delay for game to process input
+
+            # Only clear --More-- if not raw_moves (raw moves include space keys)
+            if not raw_moves:
+                clear_more_prompts(session_name)
 
             # Capture state after this step
             screen_lines = capture_screen_lines(session_name)
@@ -1604,8 +1710,9 @@ def run_session(seed, output_json, move_str):
             delta_lines = rng_lines[prev_rng_count:rng_count]
             rng_entries = parse_rng_lines(delta_lines)
 
-            # Detect depth from status line
+            # Detect current level from status line
             depth = detect_depth(screen_lines)
+            delta = rng_count - prev_rng_count
 
             step = {
                 'key': key,
@@ -1614,21 +1721,22 @@ def run_session(seed, output_json, move_str):
                 'screen': screen_compressed,
             }
 
-            # Capture typ grid only on level transitions (much faster)
-            if depth != prev_depth:
+            # Capture typGrid when we're on a level we haven't captured yet
+            # Trigger on: new depth detected OR high RNG delta (level generation)
+            level_gen_likely = delta > 1000
+            if depth not in captured_levels or (level_gen_likely and 'typGrid' not in step):
                 current_grid = execute_dumpmap(session_name, dumpmap_file)
                 clear_more_prompts(session_name)
                 if current_grid:
                     step['typGrid'] = encode_typgrid_rle(current_grid)
-                    print(f'  Level change: depth {prev_depth} -> {depth}, typGrid captured')
+                    captured_levels.add(depth)
+                    reason = f'depth={depth}' if depth not in captured_levels else f'RNG spike ({delta} calls)'
+                    print(f'  New level detected ({reason}), typGrid captured')
                     prev_typ_grid = current_grid
 
             session_data['steps'].append(step)
-            delta = rng_count - prev_rng_count
             print(f'  [{idx+1:03d}] {key!r:5s} ({description:20s}) +{delta:4d} RNG calls (total {rng_count})')
-
             prev_rng_count = rng_count
-            prev_depth = depth
 
         # Quit the game cleanly
         quit_game(session_name)
@@ -1641,9 +1749,12 @@ def run_session(seed, output_json, move_str):
         # Summary
         total_rng = prev_rng_count
         total_steps = len(session_data['steps'])
+        stats = get_clear_more_stats()
         print(f'\n=== DONE ===')
         print(f'Session: {output_json}')
         print(f'Steps: {total_steps}, Total RNG calls: {total_rng}')
+        if not raw_moves:
+            print(f'clear_more_prompts: {stats["calls"]} calls, {stats["cleared"]} --More-- cleared')
 
     finally:
         subprocess.run(['tmux', 'kill-session', '-t', session_name], capture_output=True)
