@@ -15,10 +15,13 @@
 
 import { GameMap, FILL_NORMAL } from './map.js';
 import { rn2, rnd, rn1, getRngCallCount } from './rng.js';
-import { mksobj, mkobj, mkcorpstat, set_corpsenm, weight } from './mkobj.js';
+import { mksobj, mkobj, mkcorpstat, set_corpsenm, setLevelDepth, weight } from './mkobj.js';
 import { create_room, create_subroom, makecorridors, create_corridor, init_rect, rnd_rect, get_rect, split_rects, check_room, add_doors_to_room, update_rect_pool_for_room, bound_digging, mineralize as dungeonMineralize, fill_ordinary_room, litstate_rnd, isMtInitialized, setMtInitialized, wallification as dungeonWallification, wallify_region as dungeonWallifyRegion, fix_wall_spines, set_wall_state, place_lregion, mktrap, enexto, somexy, sp_create_door, floodFillAndRegister, resolveBranchPlacementForLevel, random_epitaph_text, induced_align, DUNGEON_ALIGN_BY_DNUM } from './dungeon.js';
 import { seedFromMT } from './xoshiro256.js';
-import { makemon, mkclass, def_char_to_monclass, NO_MM_FLAGS, MM_NOGRP, rndmonnum, getMakemonRoleIndex } from './makemon.js';
+import {
+    makemon, mkclass, def_char_to_monclass, NO_MM_FLAGS,
+    MM_NOGRP, MM_ADJACENTOK, MM_IGNOREWATER, rndmonnum, getMakemonRoleIndex
+} from './makemon.js';
 import {
     STONE, VWALL, HWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL, DBWALL, ROOM, CORR,
@@ -30,7 +33,7 @@ import {
     SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP,
     SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, TELEP_TRAP, LEVEL_TELEP,
     MAGIC_PORTAL, WEB, ANTI_MAGIC, POLY_TRAP, STATUE_TRAP, MAGIC_TRAP,
-    VIBRATING_SQUARE,
+    VIBRATING_SQUARE, NO_TRAP, TRAPNUM, is_pit, is_hole,
     D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED, D_BROKEN, D_SECRET,
     COLNO, ROWNO, IS_OBSTRUCTED, IS_WALL, IS_STWALL, IS_POOL, IS_LAVA,
     A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC,
@@ -1244,8 +1247,10 @@ export function setFinalizeContext(ctx = null) {
 export function setSpecialLevelDepth(depth) {
     if (Number.isFinite(depth)) {
         levelState.levelDepth = depth;
+        setLevelDepth(depth);
     } else {
         levelState.levelDepth = undefined;
+        setLevelDepth(1);
     }
 }
 
@@ -3925,9 +3930,12 @@ export function object(name_or_opts, x, y) {
 
     let obj = null;
     // C ref: sp_lev.c create_object() -> mkobj_at/mksobj_at(..., !named)
-    // We don't currently expose custom object names (oname) here, so treat
-    // des.object placements as unnamed and allow artifact-init side-effects.
-    const artif = true;
+    // If a custom object name is provided, disable artifact-init side effects.
+    const named = !!(name_or_opts
+        && typeof name_or_opts === 'object'
+        && typeof name_or_opts.name === 'string'
+        && name_or_opts.name.length > 0);
+    const artif = !named;
 
     // Create the object now (triggers next_ident and other creation RNG)
     if (!name_or_opts) {
@@ -5705,9 +5713,7 @@ function executeDeferredMonster(deferred) {
     const traceStart = traceMon ? getRngCallCount() : 0;
     const traceSeq = ++monsterExecSeq;
     const MM_NOTAIL = 0x00004000;
-    const MM_ADJACENTOK = 0x00000010;
-    const MM_IGNOREWATER = 0x00000100;
-    const MM_NOCOUNTBIRTH = 0x00000200;
+    const MM_NOCOUNTBIRTH = 0x00000004;
     const NO_INVENT = 0;
     const CUSTOM_INVENT = 0x01;
     const DEFAULT_INVENT = 0x02;
@@ -6253,7 +6259,7 @@ function map_cleanup(map) {
 function solidify_map(map) {
     if (!map) return;
     initSpLevMap();
-    const spLevMap = levelState.spLevMap || levelState.spLevTouched;
+    const spLevMap = levelState.spLevMap;
     if (!spLevMap) return;
     for (let x = 0; x < COLNO; x++) {
         for (let y = 0; y < ROWNO; y++) {
@@ -6279,7 +6285,7 @@ function remove_boundary_syms(map) {
             }
         }
     }
-    const spLevMap = levelState.spLevMap || levelState.spLevTouched;
+    const spLevMap = levelState.spLevMap;
     if (!hasBounds || !spLevMap) return;
 
     for (let x = 0; x < levelState.mazeMaxX; x++) {
@@ -7497,6 +7503,8 @@ function fillEmptyMaze() {
     stats.boulderCount = rnd(Math.floor((12 * mapfact) / 100));
     for (let i = stats.boulderCount; i > 0; i--) {
         const pos = maze1xy(GETLOC_DRY);
+        const ttmp = levelState.map.trapAt ? levelState.map.trapAt(pos.x, pos.y) : null;
+        if (ttmp && (is_pit(ttmp.ttyp) || is_hole(ttmp.ttyp))) continue;
         placeObjectAt(mksobj(BOULDER, true, false), pos.x, pos.y);
     }
     stats.minotaurCount = rn2(2);
@@ -7521,10 +7529,58 @@ function fillEmptyMaze() {
             placeObjectAt(gold, pos.x, pos.y);
         }
     }
+    const hasBoulderAt = (xx, yy) => !!levelState.map.objects?.some(
+        obj => obj && obj.otyp === BOULDER && obj.ox === xx && obj.oy === yy
+    );
+    const canDigDownHere = () => {
+        const ctx = levelState.finalizeContext || {};
+        if (Number.isFinite(ctx.dunlev) && Number.isFinite(ctx.dunlevs)) {
+            return ctx.dunlev < ctx.dunlevs;
+        }
+        return true;
+    };
+    const inEndgame = () => {
+        const ctx = levelState.finalizeContext || {};
+        return Number.isFinite(ctx.dlevel) && ctx.dlevel < 0;
+    };
+    const rndtrapC = () => {
+        while (true) {
+            let rtrap = rnd(TRAPNUM - 1);
+            switch (rtrap) {
+            case HOLE:
+            case VIBRATING_SQUARE:
+            case MAGIC_PORTAL:
+                rtrap = NO_TRAP;
+                break;
+            case TRAPDOOR:
+                if (!canDigDownHere()) rtrap = NO_TRAP;
+                break;
+            case LEVEL_TELEP:
+            case TELEP_TRAP:
+                if (levelState.flags.noteleport) rtrap = NO_TRAP;
+                break;
+            case ROLLING_BOULDER_TRAP:
+            case ROCKTRAP:
+                if (inEndgame()) rtrap = NO_TRAP;
+                break;
+            default:
+                break;
+            }
+            if (rtrap !== NO_TRAP) return rtrap;
+        }
+    };
+
     stats.trapCount = rn2(Math.floor((15 * mapfact) / 100));
     for (let i = stats.trapCount; i > 0; i--) {
         const pos = maze1xy(GETLOC_DRY);
-        mktrap(levelState.map, 0, MKTRAP_MAZEFLAG, null, pos, depth);
+        let trytrap = rndtrapC();
+        if (hasBoulderAt(pos.x, pos.y)) {
+            while (is_pit(trytrap) || is_hole(trytrap)) {
+                trytrap = rndtrapC();
+            }
+        }
+        // C ref: fill_empty_maze() uses maketrap() directly, without victim logic.
+        mktrap(levelState.map, trytrap, MKTRAP_MAZEFLAG | MKTRAP_NOVICTIM, null, pos, depth);
     }
 
     if (typeof process !== 'undefined' && process.env.WEBHACK_MAZEWALK_TRACE === '1') {
@@ -7577,8 +7633,8 @@ export function mazewalk(xOrOpts, y, direction) {
     if (sx < 0 || sx >= COLNO || sy < 0 || sy >= ROWNO) return;
 
     const dirName = direction || 'random';
-    const mode = getProcessEnv('WEBHACK_MAZEWALK_MODE') || 'legacy';
-    const useStateBounds = (typeof process !== 'undefined' && process.env.WEBHACK_MAZEWALK_BOUNDS === 'state');
+    const mode = getProcessEnv('WEBHACK_MAZEWALK_MODE') || 'c';
+    const useStateBounds = (typeof process !== 'undefined' && process.env.WEBHACK_MAZEWALK_BOUNDS === 'legacy') ? false : true;
     const trace = (typeof process !== 'undefined' && process.env.WEBHACK_MAZEWALK_TRACE === '1');
     const traceStartRng = trace ? getRngCallCount() : 0;
     const dirs = [
@@ -7610,6 +7666,10 @@ export function mazewalk(xOrOpts, y, direction) {
         const loc = map.locations[xx][yy];
         loc.typ = typ;
         loc.flags = 0;
+    };
+    const setFloorTypOnly = (xx, yy, typ = ftyp) => {
+        if (xx < 0 || xx >= COLNO || yy < 0 || yy >= ROWNO) return;
+        map.locations[xx][yy].typ = typ;
     };
 
     setFloorIfNotDoor(sx, sy, ftyp);
@@ -7654,12 +7714,14 @@ export function mazewalk(xOrOpts, y, direction) {
             return isStone(nx, ny);
         };
         const walkfromC = (wx, wy) => {
+            let cx = wx;
+            let cy = wy;
             if (stats) stats.steps++;
-            setFloorIfNotDoor(wx, wy, ftyp);
+            setFloorIfNotDoor(cx, cy, ftyp);
             while (true) {
                 const dirsAvail = [];
                 for (let a = 0; a < 4; a++) {
-                    if (okayC(wx, wy, a)) dirsAvail.push(a);
+                    if (okayC(cx, cy, a)) dirsAvail.push(a);
                 }
                 if (stats) {
                     const q = dirsAvail.length;
@@ -7671,14 +7733,14 @@ export function mazewalk(xOrOpts, y, direction) {
                 }
                 const dirIdx = dirsAvail[rn2(dirsAvail.length)];
                 const dd = cDirs[dirIdx];
-                const midx = wx + dd.dx;
-                const midy = wy + dd.dy;
-                const nx = wx + dd.dx * 2;
-                const ny = wy + dd.dy * 2;
-                // C walkfrom() writes the intermediate step unconditionally.
-                setFloorForced(midx, midy, ftyp);
+                cx += dd.dx;
+                cy += dd.dy;
+                // C walkfrom() sets typ only here (does not clear flags).
+                setFloorTypOnly(cx, cy, ftyp);
+                cx += dd.dx;
+                cy += dd.dy;
                 if (stats) stats.carves++;
-                walkfromC(nx, ny);
+                walkfromC(cx, cy);
             }
         };
         walkfromC(sx, sy);
@@ -7721,8 +7783,7 @@ export function mazewalk(xOrOpts, y, direction) {
         console.log(`[MAZEWALK] mode=${mode} bounds=${useStateBounds ? 'state' : 'legacy'} max=(${maxX},${maxY}) start=(${sx},${sy}) dir=${dirName} steps=${stats.steps} carves=${stats.carves} dead=${stats.deadends} q=[${stats.q.join(',')}] rng=${traceStartRng + 1}-${traceEndRng} delta=${traceEndRng - traceStartRng}`);
     }
 
-    const stockedFillEnabled = (typeof process !== 'undefined' && process.env.WEBHACK_MAZEWALK_STOCKED === '1');
-    if (stocked && stockedFillEnabled) fillEmptyMaze();
+    if (stocked) fillEmptyMaze();
 }
 
 // Export the des.* API
