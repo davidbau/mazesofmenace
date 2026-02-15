@@ -343,8 +343,15 @@ function mfndpos(mon, map, player) {
             }
 
             const monAtPos = map.monsterAt(nx, ny);
-            // C ref: MON_AT — skip positions with other monsters (unless ALLOW_M)
-            if (monAtPos && !allowM) continue;
+            // C ref: MON_AT + mm_aggression/mm_displacement gating:
+            // occupied positions are only included when monster-vs-monster
+            // interaction is allowed for this pair. Minimal C-faithful subset:
+            // tame pets can target hostile (non-peaceful, non-tame) monsters.
+            let allowMAttack = false;
+            if (monAtPos && !monAtPos.dead && allowM) {
+                allowMAttack = !monAtPos.tame && !monAtPos.peaceful;
+            }
+            if (monAtPos && !allowMAttack) continue;
 
             // C ref: u_at — skip player position
             if (nx === player.x && ny === player.y) continue;
@@ -378,7 +385,7 @@ function mfndpos(mon, map, player) {
                 x: nx,
                 y: ny,
                 allowTraps,
-                allowM: !!(allowM && monAtPos),
+                allowM: !!allowMAttack,
             });
         }
     }
