@@ -1,0 +1,120 @@
+{
+  "timestamp": "2026-02-15T13:27:33.989Z",
+  "commit": "",
+  "sessions": 23,
+  "passed": 12,
+  "failed": 11,
+  "totals": {
+    "rngCalls": {
+      "matched": 79206,
+      "total": 222755
+    },
+    "keys": {
+      "matched": 2161,
+      "total": 4629
+    },
+    "grids": {
+      "matched": 11,
+      "total": 17
+    },
+    "screens": {
+      "matched": 0,
+      "total": 0
+    }
+  },
+  "failures": [
+    {
+      "session": "seed100_multidigit_gameplay.session.json",
+      "firstDivergence": {
+        "key": 4,
+        "rngCall": 6,
+        "expected": "(end)",
+        "actual": "rn2(5)=4"
+      }
+    },
+    {
+      "session": "seed203_run_prefix_gameplay.session.json",
+      "firstDivergence": {
+        "rngCall": 574,
+        "expected": "rn2(3)=0 @ finddpos(mklev.c:186)",
+        "actual": "rn2(4)=0"
+      }
+    },
+    {
+      "session": "seed204_multidigit_wait_gameplay.session.json",
+      "firstDivergence": {
+        "key": 3,
+        "rngCall": 8,
+        "expected": "(end)",
+        "actual": "rn2(5)=4"
+      }
+    },
+    {
+      "session": "seed2_wizard_fountains_gameplay.session.json",
+      "firstDivergence": {
+        "key": 2,
+        "rngCall": 0,
+        "expected": "rn2(19)=17 @ exercise(attrib.c:506)",
+        "actual": "(end)"
+      }
+    },
+    {
+      "session": "seed3_selfplay_100turns_gameplay.session.json",
+      "firstDivergence": {
+        "rngCall": 2538,
+        "expected": "rn2(10)=7 @ lspo_map(sp_lev.c:6154)",
+        "actual": "rn2(9)=8"
+      }
+    },
+    {
+      "session": "seed3_selfplay_20turns.session.json",
+      "firstDivergence": {
+        "rngCall": 2538,
+        "expected": "rn2(10)=7 @ lspo_map(sp_lev.c:6154)",
+        "actual": "rn2(9)=8"
+      }
+    },
+    {
+      "session": "seed3_selfplay_5turns.session.json",
+      "firstDivergence": {
+        "rngCall": 2538,
+        "expected": "rn2(10)=7 @ lspo_map(sp_lev.c:6154)",
+        "actual": "rn2(9)=8"
+      }
+    },
+    {
+      "session": "seed42_gameplay.session.json",
+      "firstDivergence": {
+        "rngCall": 996,
+        "expected": "rn2(7)=1 @ somex(mkroom.c:669)",
+        "actual": "rn2(6)=1"
+      }
+    },
+    {
+      "session": "seed42_items_gameplay.session.json",
+      "firstDivergence": {
+        "rngCall": 996,
+        "expected": "rn2(7)=1 @ somex(mkroom.c:669)",
+        "actual": "rn2(6)=1"
+      }
+    },
+    {
+      "session": "seed5_gnomish_mines_gameplay.session.json",
+      "firstDivergence": {
+        "key": 422,
+        "rngCall": 18,
+        "expected": "rn2(20)=2 @ dog_move(dogmove.c:1244)",
+        "actual": "rn2(16)=10"
+      }
+    },
+    {
+      "session": "seed6_tourist_gameplay.session.json",
+      "firstDivergence": {
+        "key": 78,
+        "rngCall": 0,
+        "expected": "(end)",
+        "actual": "rn2(5)=0"
+      }
+    }
+  ]
+}
