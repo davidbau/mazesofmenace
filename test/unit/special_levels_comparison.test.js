@@ -245,11 +245,37 @@ function testLevel(seed, dnum, dlevel, levelName, cSession) {
         }
     };
 
+    // Parse RNG entry from string format: "rn2(5)=3 @ source.c:123"
+    const parseRngEntry = (entry) => {
+        if (!entry || typeof entry !== 'string') return null;
+        // Skip midlog markers (>funcname, <funcname)
+        if (entry[0] === '>' || entry[0] === '<') return null;
+        // Match: fn(args)=result or fn(args)=result @ source
+        const m = entry.match(/^(\w+)\(([^)]*)\)=(-?\d+)/);
+        if (!m) return null;
+        const fn = m[1];
+        const argStr = m[2].trim();
+        const result = parseInt(m[3], 10);
+        // Handle d(n,s) with two args
+        if (fn === 'd' && argStr.includes(',')) {
+            const parts = argStr.split(',').map(s => parseInt(s.trim(), 10));
+            return { fn, args: parts, result };
+        }
+        return { fn, arg: parseInt(argStr, 10) || 0, result };
+    };
+
     const calibrateStartOffset = () => {
         if (!canUseRngStart) {
             return { start: 0, offset: 0 };
         }
-        if (!Array.isArray(cLevel.rngFingerprint) || cLevel.rngFingerprint.length === 0) {
+        const rngLog = cLevel.rng;
+        if (!Array.isArray(rngLog) || rngLog.length === 0) {
+            return { start: rngCallStart, offset: 0 };
+        }
+
+        // Parse entries (filter out midlog markers and invalid entries)
+        const parsedEntries = rngLog.map(parseRngEntry).filter(e => e !== null);
+        if (parsedEntries.length === 0) {
             return { start: rngCallStart, offset: 0 };
         }
 
@@ -268,7 +294,7 @@ function testLevel(seed, dnum, dlevel, levelName, cSession) {
                 replayPrelude();
 
                 let score = 0;
-                for (const fp of cLevel.rngFingerprint) {
+                for (const fp of parsedEntries) {
                     if (!fp || typeof fp.result !== 'number') continue;
                     let got = null;
                     if ((fp.fn === 'rn2' || fp.fn === 'rnd' || fp.fn === 'rne' || fp.fn === 'rnz')
@@ -299,10 +325,10 @@ function testLevel(seed, dnum, dlevel, levelName, cSession) {
             }
         }
 
-        // Apply offset only when fingerprint match is exact and unambiguous.
+        // Apply offset only when RNG log match is exact and unambiguous.
         // Near-matches are too weak because C logged calls can hide additional
         // underlying PRNG draws, which can produce false-positive offsets.
-        if (bestScore !== cLevel.rngFingerprint.length) {
+        if (bestScore !== parsedEntries.length) {
             return { start: rngCallStart, offset: 0 };
         }
         if (bestCount > 1 && bestOffset !== 0) {

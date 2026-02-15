@@ -2,7 +2,7 @@ diff --git a/include/extern.h b/include/extern.h
 index 959db5978..fdbd43f66 100644
 --- a/include/extern.h
 +++ b/include/extern.h
-@@ -2732,6 +2732,10 @@ extern void shuffle_int_array(int *, int) NONNULLARG1;
+@@ -2732,6 +2732,11 @@ extern void shuffle_int_array(int *, int) NONNULLARG1;
  /* PRNG call logging (003-prng-logging patch) */
  extern void rng_log_init(void);
  extern void rng_log_set_caller(const char *, int, const char *);
@@ -10,6 +10,7 @@ index 959db5978..fdbd43f66 100644
 +extern void midlog_enter(const char *, const char *, int, const char *);
 +extern void midlog_exit_int(const char *, int, const char *, int, const char *);
 +extern void midlog_exit_void(const char *, const char *, int, const char *);
++extern void midlog_exit_ptr(const char *, const void *, const char *, int, const char *);
  
  /* ### role.c ### */
  
@@ -17,7 +18,7 @@ diff --git a/include/hack.h b/include/hack.h
 index 4f6bf9353..26da07c3f 100644
 --- a/include/hack.h
 +++ b/include/hack.h
-@@ -1597,6 +1597,97 @@ typedef uint32_t mmflags_nht;     /* makemon MM_ flags */
+@@ -1597,6 +1597,139 @@ typedef uint32_t mmflags_nht;     /* makemon MM_ flags */
  #define rnz(x) (rng_log_set_caller(__FILE__, __LINE__, __func__), rnz(x))
  #endif /* RNGLOG_IN_RND_C */
  
@@ -36,6 +37,13 @@ index 4f6bf9353..26da07c3f 100644
 +midlog_wrap_int(const char *fn, int r, const char *f, int l, const char *c)
 +{
 +    midlog_exit_int(fn, r, f, l, c);
++    return r;
++}
++
++static inline void *
++midlog_wrap_ptr(const char *fn, void *r, const char *f, int l, const char *c)
++{
++    midlog_exit_ptr(fn, r, f, l, c);
 +    return r;
 +}
 +
@@ -110,6 +118,41 @@ index 4f6bf9353..26da07c3f 100644
 +    (midlog_enter("runmode_delay_output", __FILE__, __LINE__, __func__), \
 +     runmode_delay_output(), \
 +     midlog_exit_void("runmode_delay_output", __FILE__, __LINE__, __func__))
++#endif
++
++/* Pointer-returning: makemon */
++#ifndef MIDLOG_IN_MAKEMON_C
++#define makemon(a,b,c,d) \
++    ((struct monst *)midlog_wrap_ptr("makemon", \
++     (midlog_enter("makemon", __FILE__, __LINE__, __func__), makemon(a,b,c,d)), \
++     __FILE__, __LINE__, __func__))
++#endif
++
++/* Pointer-returning: mksobj; also in mkobj.c with rndmonnum */
++#ifndef MIDLOG_IN_MKOBJ_C
++#define mksobj(a,b,c) \
++    ((struct obj *)midlog_wrap_ptr("mksobj", \
++     (midlog_enter("mksobj", __FILE__, __LINE__, __func__), mksobj(a,b,c)), \
++     __FILE__, __LINE__, __func__))
++#endif
++
++/* Bool-returning: create_room; void-returning: wallify_map */
++#ifndef MIDLOG_IN_SP_LEV_C
++#define create_room(a,b,c,d,e,f,g,h) \
++    (midlog_enter("create_room", __FILE__, __LINE__, __func__), \
++     midlog_wrap_int("create_room", create_room(a,b,c,d,e,f,g,h), __FILE__, __LINE__, __func__))
++#define wallify_map(a,b,c,d) \
++    (midlog_enter("wallify_map", __FILE__, __LINE__, __func__), \
++     wallify_map(a,b,c,d), \
++     midlog_exit_void("wallify_map", __FILE__, __LINE__, __func__))
++#endif
++
++/* Void-returning: mktrap */
++#ifndef MIDLOG_IN_MKLEV_C
++#define mktrap(a,b,c,d) \
++    (midlog_enter("mktrap", __FILE__, __LINE__, __func__), \
++     mktrap(a,b,c,d), \
++     midlog_exit_void("mktrap", __FILE__, __LINE__, __func__))
 +#endif
 +
  #endif  /* RECOVER_C */
@@ -315,7 +358,7 @@ diff --git a/src/rnd.c b/src/rnd.c
 index 695c156f0..c7e6c2429 100644
 --- a/src/rnd.c
 +++ b/src/rnd.c
-@@ -76,6 +76,60 @@ rng_log_write(const char *func, const char *args, int result)
+@@ -76,6 +76,74 @@ rng_log_write(const char *func, const char *args, int result)
      }
  }
  
@@ -373,6 +416,41 @@ index 695c156f0..c7e6c2429 100644
 +            fn, entry + 1, rng_call_count, caller, file, line);
 +}
 +
++void
++midlog_exit_ptr(const char *fn, const void *result,
++                const char *file, int line, const char *caller)
++{
++    (void)result;  /* pointer value not logged - differs between C/JS */
++    if (!rng_logfile)
++        return;
++    --midlog_depth;
++    int entry = (midlog_depth >= 0 && midlog_depth < MIDLOG_STACK_SIZE)
++                    ? midlog_stack[midlog_depth] : 0;
++    fprintf(rng_logfile, "<%s #%d-%d @ %s(%s:%d)\n",
++            fn, entry + 1, rng_call_count, caller, file, line);
++}
++
  #ifdef USE_ISAAC64
  #include "isaac64.h"
  
+diff --git a/src/makemon.c b/src/makemon.c
+--- a/src/makemon.c
++++ b/src/makemon.c
+@@ -5,2 +5,3 @@
+
++#define MIDLOG_IN_MAKEMON_C
+ #include "hack.h"
+diff --git a/src/sp_lev.c b/src/sp_lev.c
+--- a/src/sp_lev.c
++++ b/src/sp_lev.c
+@@ -4,2 +4,3 @@
+
++#define MIDLOG_IN_SP_LEV_C
+ /*
+diff --git a/src/mklev.c b/src/mklev.c
+--- a/src/mklev.c
++++ b/src/mklev.c
+@@ -5,2 +5,3 @@
+
++#define MIDLOG_IN_MKLEV_C
+ #include "hack.h"

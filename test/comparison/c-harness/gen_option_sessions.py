@@ -6,21 +6,19 @@ Usage:
 
 Generates session files for testing option behaviors:
 - verbose: on/off comparison for instruction messages
-- autopickup: on/off/nopick comparison
 - DECgraphics: ASCII vs box-drawing symbols
-- msg_window: single-line vs 3-line message window
-- travel: destination selection and pathfinding
+- time: turn counter display
 
 Output: test/comparison/sessions/seed<N>_<option>_<value>.session.json
 """
 
 import os
 import sys
-import json
 import time
 import subprocess
 import tempfile
 import shutil
+import glob
 import importlib.util
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -37,8 +35,7 @@ _spec.loader.exec_module(_session)
 
 tmux_send = _session.tmux_send
 tmux_send_special = _session.tmux_send_special
-tmux_capture = _session.tmux_capture
-capture_screen_lines = _session.capture_screen_lines
+capture_screen_compressed = _session.capture_screen_compressed
 parse_rng_lines = _session.parse_rng_lines
 compact_session_json = _session.compact_session_json
 read_rng_log = _session.read_rng_log
@@ -48,16 +45,11 @@ quit_game = _session.quit_game
 fixed_datetime_env = _session.fixed_datetime_env
 
 
-def setup_option_home(option_flags):
-    """Set up HOME with .nethackrc containing specific option values.
-
-    Args:
-        option_flags: dict of option names to values (True/False/"on"/"off")
-    """
+def setup_option_home(option_lines):
+    """Set up HOME with .nethackrc containing specific option values."""
     os.makedirs(RESULTS_DIR, exist_ok=True)
 
     # Clean up stale game state
-    import glob
     save_dir = os.path.join(INSTALL_DIR, 'save')
     if os.path.isdir(save_dir):
         for f in glob.glob(os.path.join(save_dir, '*')):
@@ -71,7 +63,7 @@ def setup_option_home(option_flags):
     for f in glob.glob(os.path.join(INSTALL_DIR, 'bon*')):
         os.unlink(f)
 
-    # Write .nethackrc with specified options
+    # Write .nethackrc
     nethackrc = os.path.join(RESULTS_DIR, '.nethackrc')
     with open(nethackrc, 'w') as f:
         f.write('OPTIONS=name:Wizard\n')
@@ -80,537 +72,200 @@ def setup_option_home(option_flags):
         f.write('OPTIONS=gender:male\n')
         f.write('OPTIONS=align:chaotic\n')
         f.write('OPTIONS=suppress_alert:3.4.3\n')
+        for line in option_lines:
+            f.write(f'OPTIONS={line}\n')
 
-        # Write option flags
-        for opt, value in option_flags.items():
-            if opt == 'verbose':
-                prefix = '' if value else '!'
-                f.write(f'OPTIONS={prefix}verbose\n')
-            elif opt == 'autopickup':
-                prefix = '' if value else '!'
-                f.write(f'OPTIONS={prefix}autopickup\n')
-            elif opt == 'DECgraphics':
-                if value:
-                    f.write('OPTIONS=symset:DECgraphics\n')
-                else:
-                    f.write('OPTIONS=symset:default\n')
-            elif opt == 'msg_window':
-                # C NetHack uses 'msghistory' option
-                if value:
-                    f.write('OPTIONS=msghistory:3\n')
-                else:
-                    f.write('OPTIONS=msghistory:1\n')
+
+def generate_option_session(seed, option_name, option_value, option_lines, keys, description):
+    """Generate a single option test session.
+
+    Args:
+        seed: Random seed
+        option_name: Name of option being tested
+        option_value: Value of option being tested
+        option_lines: List of OPTIONS= lines for .nethackrc
+        keys: List of (key, action) tuples to send
+        description: Human-readable description
+    """
+    session_name = f'webhack-option-{seed}-{os.getpid()}'
+    tmpdir = tempfile.mkdtemp(prefix='webhack-option-')
+    rng_log_file = os.path.join(tmpdir, 'rnglog.txt')
+
+    try:
+        setup_option_home(option_lines)
+
+        cmd = (
+            f'{fixed_datetime_env()}'
+            f'NETHACKDIR={INSTALL_DIR} '
+            f'NETHACK_SEED={seed} '
+            f'NETHACK_RNGLOG={rng_log_file} '
+            f'HOME={RESULTS_DIR} '
+            f'TERM=xterm-256color '
+            f'{NETHACK_BINARY} -u Wizard -D; '
+            f'sleep 999'
+        )
+
+        subprocess.run(
+            ['tmux', 'new-session', '-d', '-s', session_name, '-x', '80', '-y', '24', cmd],
+            check=True
+        )
+        time.sleep(1.0)
+
+        wait_for_game_ready(session_name, rng_log_file)
+        clear_more_prompts(session_name)
+        time.sleep(0.1)
+
+        # Capture startup
+        startup_screen = capture_screen_compressed(session_name)
+        startup_rng_count, startup_rng_lines = read_rng_log(rng_log_file)
+        startup_rng_entries = parse_rng_lines(startup_rng_lines)
+        startup_actual_rng = sum(1 for e in startup_rng_entries if e[0] not in ('>', '<'))
+
+        # Execute steps
+        steps = []
+        prev_rng_count = startup_rng_count
+        for key, action in keys:
+            if key == ' ':
+                tmux_send_special(session_name, 'Space', 0.1)
+            else:
+                tmux_send(session_name, key, 0.1)
+            time.sleep(0.1)
+            clear_more_prompts(session_name)
+
+            screen = capture_screen_compressed(session_name)
+            rng_count, rng_lines = read_rng_log(rng_log_file)
+            rng_entries = parse_rng_lines(rng_lines[prev_rng_count:rng_count])
+
+            steps.append({
+                'key': key,
+                'action': action,
+                'rng': rng_entries,
+                'screen': screen,
+            })
+            prev_rng_count = rng_count
+
+        # Build startup step (first step with no key)
+        startup_step = {
+            'key': None,
+            'action': 'startup',
+            'rng': startup_rng_entries,
+            'screen': startup_screen,
+        }
+
+        # Build session data
+        value_str = 'on' if option_value else 'off'
+        session_data = {
+            'version': 3,
+            'seed': seed,
+            'source': 'c',
+            'type': 'option_test',
+            'regen': {
+                'mode': 'option_test',
+                'option': option_name,
+                'value': option_value,
+            },
+            'options': {
+                'name': 'Wizard',
+                'role': 'Wizard',
+                'race': 'elf',
+                'gender': 'male',
+                'align': 'chaotic',
+                'wizard': True,
+                'symset': 'DECgraphics' if 'symset:DECgraphics' in option_lines else 'default',
+                'autopickup': '!autopickup' not in option_lines,
+                option_name: option_value,
+                'description': description,
+            },
+            'steps': [startup_step] + steps,
+        }
+
+        quit_game(session_name)
+
+        output_path = os.path.join(SESSIONS_DIR, f'seed{seed}_{option_name}_{value_str}.session.json')
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        with open(output_path, 'w') as f:
+            f.write(compact_session_json(session_data))
+
+        print(f"Generated {output_path}")
+
+    finally:
+        subprocess.run(['tmux', 'kill-session', '-t', session_name], capture_output=True)
+        shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 def generate_verbose_sessions():
     """Generate sessions testing verbose option (on/off)."""
     print("\n=== Generating verbose option sessions ===")
 
-    # Test verbose=on: pressing 'm' should show "Next command will request menu..."
-    seed = 301
-    option_flags = {'verbose': True, 'autopickup': False, 'DECgraphics': False}
-    session_name = f'webhack-option-{seed}-{os.getpid()}'
-    tmpdir = tempfile.mkdtemp(prefix='webhack-option-')
-    rng_log_file = os.path.join(tmpdir, 'rnglog.txt')
+    # verbose=on: pressing 'm' should show "Next command will..." message
+    generate_option_session(
+        seed=301,
+        option_name='verbose',
+        option_value=True,
+        option_lines=['verbose', '!autopickup'],
+        keys=[('m', 'menu-prefix'), ('.', 'wait')],
+        description='Test verbose option - should show "Next command will..." message',
+    )
 
-    try:
-        setup_option_home(option_flags)
-
-        cmd = (
-            f'{fixed_datetime_env()}'
-            f'NETHACKDIR={INSTALL_DIR} '
-            f'NETHACK_SEED={seed} '
-            f'NETHACK_RNGLOG={rng_log_file} '
-            f'HOME={RESULTS_DIR} '
-            f'TERM=xterm-256color '
-            f'{NETHACK_BINARY} -u Wizard -D; '
-            f'sleep 999'
-        )
-
-        subprocess.run(
-            ['tmux', 'new-session', '-d', '-s', session_name, '-x', '80', '-y', '24', cmd],
-            check=True
-        )
-        time.sleep(1.0)
-
-        wait_for_game_ready(session_name, rng_log_file)
-        clear_more_prompts(session_name)
-        time.sleep(0.1)
-
-        # Capture startup
-        startup_screen = capture_screen_lines(session_name)
-        startup_rng_count, startup_rng_lines = read_rng_log(rng_log_file)
-        startup_rng_entries = parse_rng_lines(startup_rng_lines)
-
-        # Step 1: Press 'm' to trigger verbose message
-        tmux_send(session_name, 'm', 0.1)
-        time.sleep(0.1)
-        screen_after_m = capture_screen_lines(session_name)
-        rng_count_m, rng_lines_m = read_rng_log(rng_log_file)
-        rng_entries_m = parse_rng_lines(rng_lines_m[startup_rng_count:])
-
-        # Step 2: Press '.' to execute the wait command
-        tmux_send(session_name, '.', 0.1)
-        time.sleep(0.1)
-        clear_more_prompts(session_name)
-        screen_after_wait = capture_screen_lines(session_name)
-        rng_count_wait, rng_lines_wait = read_rng_log(rng_log_file)
-        rng_entries_wait = parse_rng_lines(rng_lines_wait[rng_count_m:])
-
-        session_data = {
-            'version': 1,
-            'seed': seed,
-            'type': 'option_test',
-            'option': 'verbose',
-            'option_value': True,
-            'screenMode': 'ascii',
-            'description': 'Test verbose option - should show "Next command will..." message',
-            'character': {
-                'name': 'Wizard',
-                'role': 'Wizard',
-                'race': 'elf',
-                'gender': 'male',
-                'align': 'chaotic'
-            },
-            'startup': {
-                'rngCalls': len([e for e in startup_rng_entries if e[0] not in ('>', '<')]),
-                'screen': startup_screen,
-            },
-            'steps': [
-                {
-                    'key': 'm',
-                    'action': 'menu-prefix',
-                    'expected_message': 'Next command will request menu or move without autopickup/attack.',
-                    'rng': rng_entries_m,
-                    'screen': screen_after_m,
-                },
-                {
-                    'key': '.',
-                    'action': 'wait',
-                    'rng': rng_entries_wait,
-                    'screen': screen_after_wait,
-                }
-            ]
-        }
-
-        quit_game(session_name)
-
-        output_path = os.path.join(SESSIONS_DIR, 'seed301_verbose_on.session.json')
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        with open(output_path, 'w') as f:
-            f.write(compact_session_json(session_data))
-
-        print(f"✓ Created {output_path}")
-
-    finally:
-        subprocess.run(['tmux', 'kill-session', '-t', session_name], capture_output=True)
-        shutil.rmtree(tmpdir, ignore_errors=True)
-
-    # Test verbose=off: pressing 'm' should NOT show message
-    seed = 302
-    option_flags = {'verbose': False, 'autopickup': False, 'DECgraphics': False}
-    session_name = f'webhack-option-{seed}-{os.getpid()}'
-    tmpdir = tempfile.mkdtemp(prefix='webhack-option-')
-    rng_log_file = os.path.join(tmpdir, 'rnglog.txt')
-
-    try:
-        setup_option_home(option_flags)
-
-        cmd = (
-            f'{fixed_datetime_env()}'
-            f'NETHACKDIR={INSTALL_DIR} '
-            f'NETHACK_SEED={seed} '
-            f'NETHACK_RNGLOG={rng_log_file} '
-            f'HOME={RESULTS_DIR} '
-            f'TERM=xterm-256color '
-            f'{NETHACK_BINARY} -u Wizard -D; '
-            f'sleep 999'
-        )
-
-        subprocess.run(
-            ['tmux', 'new-session', '-d', '-s', session_name, '-x', '80', '-y', '24', cmd],
-            check=True
-        )
-        time.sleep(1.0)
-
-        wait_for_game_ready(session_name, rng_log_file)
-        clear_more_prompts(session_name)
-        time.sleep(0.1)
-
-        # Capture startup
-        startup_screen = capture_screen_lines(session_name)
-        startup_rng_count, startup_rng_lines = read_rng_log(rng_log_file)
-        startup_rng_entries = parse_rng_lines(startup_rng_lines)
-
-        # Step 1: Press 'm' (should not show message)
-        tmux_send(session_name, 'm', 0.1)
-        time.sleep(0.1)
-        screen_after_m = capture_screen_lines(session_name)
-        rng_count_m, rng_lines_m = read_rng_log(rng_log_file)
-        rng_entries_m = parse_rng_lines(rng_lines_m[startup_rng_count:])
-
-        # Step 2: Press '.' to execute wait
-        tmux_send(session_name, '.', 0.1)
-        time.sleep(0.1)
-        clear_more_prompts(session_name)
-        screen_after_wait = capture_screen_lines(session_name)
-        rng_count_wait, rng_lines_wait = read_rng_log(rng_log_file)
-        rng_entries_wait = parse_rng_lines(rng_lines_wait[rng_count_m:])
-
-        session_data = {
-            'version': 1,
-            'seed': seed,
-            'type': 'option_test',
-            'option': 'verbose',
-            'option_value': False,
-            'screenMode': 'ascii',
-            'description': 'Test verbose=off - should NOT show "Next command will..." message',
-            'character': {
-                'name': 'Wizard',
-                'role': 'Wizard',
-                'race': 'elf',
-                'gender': 'male',
-                'align': 'chaotic'
-            },
-            'startup': {
-                'rngCalls': len([e for e in startup_rng_entries if e[0] not in ('>', '<')]),
-                'screen': startup_screen,
-            },
-            'steps': [
-                {
-                    'key': 'm',
-                    'action': 'menu-prefix',
-                    'expected_message': None,
-                    'rng': rng_entries_m,
-                    'screen': screen_after_m,
-                },
-                {
-                    'key': '.',
-                    'action': 'wait',
-                    'rng': rng_entries_wait,
-                    'screen': screen_after_wait,
-                }
-            ]
-        }
-
-        quit_game(session_name)
-
-        output_path = os.path.join(SESSIONS_DIR, 'seed302_verbose_off.session.json')
-        with open(output_path, 'w') as f:
-            f.write(compact_session_json(session_data))
-
-        print(f"✓ Created {output_path}")
-
-    finally:
-        subprocess.run(['tmux', 'kill-session', '-t', session_name], capture_output=True)
-        shutil.rmtree(tmpdir, ignore_errors=True)
+    # verbose=off: pressing 'm' should NOT show message
+    generate_option_session(
+        seed=302,
+        option_name='verbose',
+        option_value=False,
+        option_lines=['!verbose', '!autopickup'],
+        keys=[('m', 'menu-prefix'), ('.', 'wait')],
+        description='Test verbose=off - should NOT show "Next command will..." message',
+    )
 
 
 def generate_decgraphics_sessions():
     """Generate sessions testing DECgraphics option (ASCII vs box-drawing)."""
     print("\n=== Generating DECgraphics option sessions ===")
 
-    # Test DECgraphics=off (ASCII)
-    seed = 303
-    option_flags = {'verbose': False, 'autopickup': False, 'DECgraphics': False}
-    session_name = f'webhack-option-{seed}-{os.getpid()}'
-    tmpdir = tempfile.mkdtemp(prefix='webhack-option-')
-    rng_log_file = os.path.join(tmpdir, 'rnglog.txt')
+    # DECgraphics=off (ASCII)
+    generate_option_session(
+        seed=303,
+        option_name='DECgraphics',
+        option_value=False,
+        option_lines=['!autopickup', 'symset:default'],
+        keys=[],  # Just capture startup screen
+        description='Test DECgraphics=off - should show ASCII walls (| - )',
+    )
 
-    try:
-        setup_option_home(option_flags)
-
-        cmd = (
-            f'{fixed_datetime_env()}'
-            f'NETHACKDIR={INSTALL_DIR} '
-            f'NETHACK_SEED={seed} '
-            f'NETHACK_RNGLOG={rng_log_file} '
-            f'HOME={RESULTS_DIR} '
-            f'TERM=xterm-256color '
-            f'{NETHACK_BINARY} -u Wizard -D; '
-            f'sleep 999'
-        )
-
-        subprocess.run(
-            ['tmux', 'new-session', '-d', '-s', session_name, '-x', '80', '-y', '24', cmd],
-            check=True
-        )
-        time.sleep(1.0)
-
-        wait_for_game_ready(session_name, rng_log_file)
-        clear_more_prompts(session_name)
-        time.sleep(0.1)
-
-        # Capture startup (shows ASCII walls: | - )
-        startup_screen = capture_screen_lines(session_name)
-        startup_rng_count, startup_rng_lines = read_rng_log(rng_log_file)
-        startup_rng_entries = parse_rng_lines(startup_rng_lines)
-
-        session_data = {
-            'version': 1,
-            'seed': seed,
-            'type': 'option_test',
-            'option': 'DECgraphics',
-            'option_value': False,
-            'screenMode': 'ascii',
-            'description': 'Test DECgraphics=off - should show ASCII walls (| - )',
-            'character': {
-                'name': 'Wizard',
-                'role': 'Wizard',
-                'race': 'elf',
-                'gender': 'male',
-                'align': 'chaotic'
-            },
-            'startup': {
-                'rngCalls': len([e for e in startup_rng_entries if e[0] not in ('>', '<')]),
-                'screen': startup_screen,
-            },
-            'steps': []
-        }
-
-        quit_game(session_name)
-
-        output_path = os.path.join(SESSIONS_DIR, 'seed303_decgraphics_off.session.json')
-        with open(output_path, 'w') as f:
-            f.write(compact_session_json(session_data))
-
-        print(f"✓ Created {output_path}")
-
-    finally:
-        subprocess.run(['tmux', 'kill-session', '-t', session_name], capture_output=True)
-        shutil.rmtree(tmpdir, ignore_errors=True)
-
-    # Test DECgraphics=on (box-drawing)
-    seed = 304
-    option_flags = {'verbose': False, 'autopickup': False, 'DECgraphics': True}
-    session_name = f'webhack-option-{seed}-{os.getpid()}'
-    tmpdir = tempfile.mkdtemp(prefix='webhack-option-')
-    rng_log_file = os.path.join(tmpdir, 'rnglog.txt')
-
-    try:
-        setup_option_home(option_flags)
-
-        cmd = (
-            f'{fixed_datetime_env()}'
-            f'NETHACKDIR={INSTALL_DIR} '
-            f'NETHACK_SEED={seed} '
-            f'NETHACK_RNGLOG={rng_log_file} '
-            f'HOME={RESULTS_DIR} '
-            f'TERM=xterm-256color '
-            f'{NETHACK_BINARY} -u Wizard -D; '
-            f'sleep 999'
-        )
-
-        subprocess.run(
-            ['tmux', 'new-session', '-d', '-s', session_name, '-x', '80', '-y', '24', cmd],
-            check=True
-        )
-        time.sleep(1.0)
-
-        wait_for_game_ready(session_name, rng_log_file)
-        clear_more_prompts(session_name)
-        time.sleep(0.1)
-
-        # Capture startup (shows box-drawing: │ ─ ┌ ┐ └ ┘)
-        startup_screen = capture_screen_lines(session_name)
-        startup_rng_count, startup_rng_lines = read_rng_log(rng_log_file)
-        startup_rng_entries = parse_rng_lines(startup_rng_lines)
-
-        session_data = {
-            'version': 1,
-            'seed': seed,
-            'type': 'option_test',
-            'option': 'DECgraphics',
-            'option_value': True,
-            'screenMode': 'decgraphics',
-            'description': 'Test DECgraphics=on - should show box-drawing walls (│ ─ ┌ etc.)',
-            'character': {
-                'name': 'Wizard',
-                'role': 'Wizard',
-                'race': 'elf',
-                'gender': 'male',
-                'align': 'chaotic'
-            },
-            'startup': {
-                'rngCalls': len([e for e in startup_rng_entries if e[0] not in ('>', '<')]),
-                'screen': startup_screen,
-            },
-            'steps': []
-        }
-
-        quit_game(session_name)
-
-        output_path = os.path.join(SESSIONS_DIR, 'seed304_decgraphics_on.session.json')
-        with open(output_path, 'w') as f:
-            f.write(compact_session_json(session_data))
-
-        print(f"✓ Created {output_path}")
-
-    finally:
-        subprocess.run(['tmux', 'kill-session', '-t', session_name], capture_output=True)
-        shutil.rmtree(tmpdir, ignore_errors=True)
+    # DECgraphics=on (box-drawing)
+    generate_option_session(
+        seed=304,
+        option_name='DECgraphics',
+        option_value=True,
+        option_lines=['!autopickup', 'symset:DECgraphics'],
+        keys=[],
+        description='Test DECgraphics=on - should show box-drawing walls',
+    )
 
 
 def generate_time_sessions():
     """Generate sessions testing time option (on/off)."""
     print("\n=== Generating time option sessions ===")
 
-    # Test time=on: status line should show T:N
-    seed = 305
-    option_flags = {'verbose': False, 'autopickup': False, 'DECgraphics': False}
-    session_name = f'webhack-option-{seed}-{os.getpid()}'
-    tmpdir = tempfile.mkdtemp(prefix='webhack-option-')
-    rng_log_file = os.path.join(tmpdir, 'rnglog.txt')
+    # time=on: status line should show T:N
+    generate_option_session(
+        seed=305,
+        option_name='time',
+        option_value=True,
+        option_lines=['time', '!autopickup'],
+        keys=[],
+        description='Test time=on - should show turn counter T:N in status line',
+    )
 
-    try:
-        # For time option, we need to set it in .nethackrc
-        os.makedirs(RESULTS_DIR, exist_ok=True)
-        nethackrc = os.path.join(RESULTS_DIR, '.nethackrc')
-        with open(nethackrc, 'w') as f:
-            f.write('OPTIONS=name:Wizard\n')
-            f.write('OPTIONS=race:elf\n')
-            f.write('OPTIONS=role:Wizard\n')
-            f.write('OPTIONS=gender:male\n')
-            f.write('OPTIONS=align:chaotic\n')
-            f.write('OPTIONS=suppress_alert:3.4.3\n')
-            f.write('OPTIONS=time\n')  # Enable time option
-
-        cmd = (
-            f'{fixed_datetime_env()}'
-            f'NETHACKDIR={INSTALL_DIR} '
-            f'NETHACK_SEED={seed} '
-            f'NETHACK_RNGLOG={rng_log_file} '
-            f'HOME={RESULTS_DIR} '
-            f'TERM=xterm-256color '
-            f'{NETHACK_BINARY} -u Wizard -D; '
-            f'sleep 999'
-        )
-
-        subprocess.run(
-            ['tmux', 'new-session', '-d', '-s', session_name, '-x', '80', '-y', '24', cmd],
-            check=True
-        )
-        time.sleep(1.0)
-
-        wait_for_game_ready(session_name, rng_log_file)
-        clear_more_prompts(session_name)
-        time.sleep(0.1)
-
-        # Capture startup (should show T:N in status line)
-        startup_screen = capture_screen_lines(session_name)
-        startup_rng_count, startup_rng_lines = read_rng_log(rng_log_file)
-        startup_rng_entries = parse_rng_lines(startup_rng_lines)
-
-        session_data = {
-            'version': 1,
-            'seed': seed,
-            'type': 'option_test',
-            'option': 'time',
-            'option_value': True,
-            'screenMode': 'ascii',
-            'description': 'Test time=on - should show turn counter T:N in status line',
-            'character': {
-                'name': 'Wizard',
-                'role': 'Wizard',
-                'race': 'elf',
-                'gender': 'male',
-                'align': 'chaotic'
-            },
-            'startup': {
-                'rngCalls': len([e for e in startup_rng_entries if e[0] not in ('>', '<')]),
-                'screen': startup_screen,
-            },
-            'steps': []
-        }
-
-        quit_game(session_name)
-
-        output_path = os.path.join(SESSIONS_DIR, 'seed305_time_on.session.json')
-        with open(output_path, 'w') as f:
-            f.write(compact_session_json(session_data))
-
-        print(f"✓ Created {output_path}")
-
-    finally:
-        subprocess.run(['tmux', 'kill-session', '-t', session_name], capture_output=True)
-        shutil.rmtree(tmpdir, ignore_errors=True)
-
-    # Test time=off: status line should NOT show T:N
-    seed = 306
-    session_name = f'webhack-option-{seed}-{os.getpid()}'
-    tmpdir = tempfile.mkdtemp(prefix='webhack-option-')
-    rng_log_file = os.path.join(tmpdir, 'rnglog.txt')
-
-    try:
-        os.makedirs(RESULTS_DIR, exist_ok=True)
-        nethackrc = os.path.join(RESULTS_DIR, '.nethackrc')
-        with open(nethackrc, 'w') as f:
-            f.write('OPTIONS=name:Wizard\n')
-            f.write('OPTIONS=race:elf\n')
-            f.write('OPTIONS=role:Wizard\n')
-            f.write('OPTIONS=gender:male\n')
-            f.write('OPTIONS=align:chaotic\n')
-            f.write('OPTIONS=suppress_alert:3.4.3\n')
-            f.write('OPTIONS=!time\n')  # Disable time option
-
-        cmd = (
-            f'{fixed_datetime_env()}'
-            f'NETHACKDIR={INSTALL_DIR} '
-            f'NETHACK_SEED={seed} '
-            f'NETHACK_RNGLOG={rng_log_file} '
-            f'HOME={RESULTS_DIR} '
-            f'TERM=xterm-256color '
-            f'{NETHACK_BINARY} -u Wizard -D; '
-            f'sleep 999'
-        )
-
-        subprocess.run(
-            ['tmux', 'new-session', '-d', '-s', session_name, '-x', '80', '-y', '24', cmd],
-            check=True
-        )
-        time.sleep(1.0)
-
-        wait_for_game_ready(session_name, rng_log_file)
-        clear_more_prompts(session_name)
-        time.sleep(0.1)
-
-        startup_screen = capture_screen_lines(session_name)
-        startup_rng_count, startup_rng_lines = read_rng_log(rng_log_file)
-        startup_rng_entries = parse_rng_lines(startup_rng_lines)
-
-        session_data = {
-            'version': 1,
-            'seed': seed,
-            'type': 'option_test',
-            'option': 'time',
-            'option_value': False,
-            'screenMode': 'ascii',
-            'description': 'Test time=off - should NOT show turn counter in status line',
-            'character': {
-                'name': 'Wizard',
-                'role': 'Wizard',
-                'race': 'elf',
-                'gender': 'male',
-                'align': 'chaotic'
-            },
-            'startup': {
-                'rngCalls': len([e for e in startup_rng_entries if e[0] not in ('>', '<')]),
-                'screen': startup_screen,
-            },
-            'steps': []
-        }
-
-        quit_game(session_name)
-
-        output_path = os.path.join(SESSIONS_DIR, 'seed306_time_off.session.json')
-        with open(output_path, 'w') as f:
-            f.write(compact_session_json(session_data))
-
-        print(f"✓ Created {output_path}")
-
-    finally:
-        subprocess.run(['tmux', 'kill-session', '-t', session_name], capture_output=True)
-        shutil.rmtree(tmpdir, ignore_errors=True)
+    # time=off: status line should NOT show T:N
+    generate_option_session(
+        seed=306,
+        option_name='time',
+        option_value=False,
+        option_lines=['!time', '!autopickup'],
+        keys=[],
+        description='Test time=off - should NOT show turn counter in status line',
+    )
 
 
 def main():
@@ -623,7 +278,7 @@ def main():
         generate_verbose_sessions()
         generate_decgraphics_sessions()
         generate_time_sessions()
-        print("\n✓ All option sessions generated successfully")
+        print("\nAll option sessions generated successfully")
     elif '--option' in sys.argv:
         idx = sys.argv.index('--option')
         option = sys.argv[idx + 1] if idx + 1 < len(sys.argv) else None

@@ -70,66 +70,50 @@ export function getSessionScreenLines(screenHolder) {
 }
 
 // ---------------------------------------------------------------------------
-// Session format abstraction (v1 vs v3)
+// Session format helpers (v3 format only)
 // ---------------------------------------------------------------------------
 
-// Get startup data from a session, handling both v1 and v3 formats:
-// - v1: session.startup is a separate object with { rng, rngCalls, typGrid, screen }
-// - v3: startup is the first step with key === null and action === 'startup'
+// Get startup data from a v3 session.
+// V3 format: startup is the first step with key === null and action === 'startup'
 // Returns the startup object or null if not found.
 export function getSessionStartup(session) {
-    if (!session) return null;
+    if (!session?.steps?.length) return null;
 
-    // v1 format: explicit startup field
-    if (session.startup) {
-        return session.startup;
-    }
-
-    // v3 format: first step with key === null
-    if (session.steps && session.steps.length > 0) {
-        const firstStep = session.steps[0];
-        if (firstStep.key === null && firstStep.action === 'startup') {
-            // Map step fields to startup-like object
-            return {
-                rng: firstStep.rng || [],
-                rngCalls: (firstStep.rng || []).length,
-                typGrid: firstStep.typGrid,
-                screen: firstStep.screen,
-                screenAnsi: firstStep.screenAnsi,
-            };
-        }
+    const firstStep = session.steps[0];
+    if (firstStep.key === null && firstStep.action === 'startup') {
+        return {
+            rng: firstStep.rng || [],
+            rngCalls: (firstStep.rng || []).length,
+            typGrid: firstStep.typGrid,
+            screen: firstStep.screen,
+            screenAnsi: firstStep.screenAnsi,
+        };
     }
 
     return null;
 }
 
-// Get character config from session, handling both formats
+// Get character config from v3 session (from options field)
 export function getSessionCharacter(session) {
-    if (!session) return {};
-    // v3: options.role, options.race, etc.
-    if (session.options) {
-        return {
-            name: session.options.name,
-            role: session.options.role,
-            race: session.options.race,
-            gender: session.options.gender,
-            align: session.options.align,
-        };
-    }
-    // v1: character object
-    return session.character || {};
+    if (!session?.options) return {};
+    return {
+        name: session.options.name,
+        role: session.options.role,
+        race: session.options.race,
+        gender: session.options.gender,
+        align: session.options.align,
+    };
 }
 
 // Get gameplay steps (excluding startup step in v3 format)
 export function getSessionGameplaySteps(session) {
     if (!session?.steps) return [];
 
-    // v3: skip first step if it's startup
+    // Skip first step if it's startup (key === null)
     if (session.steps.length > 0 && session.steps[0].key === null) {
         return session.steps.slice(1);
     }
 
-    // v1: all steps are gameplay steps
     return session.steps;
 }
 
@@ -476,18 +460,8 @@ function getPreStartupRngEntries(session) {
 // In either case, replay output should be normalized for strict per-step comparison.
 export function hasStartupBurstInFirstStep(session) {
     if (!session) return false;
-
-    // v3 format: startup is the first step with key === null
-    if (session.steps?.[0]?.key === null && session.steps[0].action === 'startup') {
-        return true;
-    }
-
-    // Legacy quirk: session.startup exists but is empty, RNG in step[0]
-    const startupCalls = session.startup?.rngCalls ?? 0;
-    if (startupCalls !== 0) return false;
-    if ((session.startup?.rng?.length ?? 0) !== 0) return false;
-    const firstStepRngLen = session.steps?.[0]?.rng?.length ?? 0;
-    return firstStepRngLen > 0;
+    // V3 format: startup is the first step with key === null
+    return session.steps?.[0]?.key === null && session.steps[0].action === 'startup';
 }
 
 function isTutorialPromptScreen(screen) {
@@ -562,8 +536,8 @@ export function generateStartupWithRng(seed, session) {
     disableRngLog();
 
     // Strip pre-startup menu RNG calls from the log.
-    // For chargen-type sessions, session.startup.rng excludes chargen steps, so strip them.
-    // For gameplay sessions with chargen, session.startup.rng INCLUDES chargen RNG, so keep them.
+    // For chargen-type sessions, startup step's rng excludes chargen steps, so strip them.
+    // For gameplay sessions with chargen, startup step's rng INCLUDES chargen RNG, so keep them.
     const stripCount = session.type === 'chargen' ? preStartupEntries.length : 0;
     const startupLog = fullLog.slice(stripCount);
 

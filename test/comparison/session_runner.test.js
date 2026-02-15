@@ -808,7 +808,7 @@ function runSpecialLevelSession(file, session) {
 for (const { file, dir } of sessionFiles) {
     const session = JSON.parse(readFileSync(join(dir, file), 'utf-8'));
 
-    // Determine session type (v2 has explicit type; v1 is gameplay)
+    // Determine session type (v3 has explicit type, default gameplay)
     const type = session.type || 'gameplay';
 
     describe(`${file}`, () => {

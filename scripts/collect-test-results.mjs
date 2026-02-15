@@ -339,14 +339,14 @@ async function analyzeMapFiles() {
                 const session = JSON.parse(content);
                 const name = basename(file, '.session.json');
 
-                // Map sessions have levels array with rngFingerprint
+                // Map sessions have levels array with rng log
                 let totalRng = 0;
                 let totalLevels = 0;
                 if (session.levels) {
                     totalLevels = session.levels.length;
                     for (const level of session.levels) {
-                        if (level.rngFingerprint) {
-                            totalRng += level.rngFingerprint.length;
+                        if (level.rng) {
+                            totalRng += level.rng.length;
                         }
                     }
                 }
@@ -666,7 +666,7 @@ async function main() {
             const sessionData = JSON.parse(content);
             for (const level of sessionData.levels || []) {
                 const levelKey = `${mapSeed}_${level.levelName?.toLowerCase()}`;
-                levelRngLookup[levelKey] = level.rngFingerprint?.length || 0;
+                levelRngLookup[levelKey] = level.rng?.length || 0;
             }
         } catch (e) {
             // Skip if file can't be read
@@ -728,7 +728,7 @@ async function main() {
     let rngPassing = 0, rngTotal = 0;
 
     for (const [name, session] of Object.entries(comparisonResults.sessions)) {
-        // Special level sessions (tracked by rngFingerprint from map files)
+        // Special level sessions (tracked by rng log from map files)
         if (name.startsWith('special_') || session.type === 'special') {
             const sessionData = {
                 name,

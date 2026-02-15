@@ -1,4 +1,7 @@
-# Session Format (v2)
+# Session Format (v2) - DEPRECATED
+
+> **Note:** This document describes the v2 session format which is deprecated.
+> See [SESSION_FORMAT_V3.md](SESSION_FORMAT_V3.md) for the current format.
 
 > *"You carefully read the scroll. It describes a session format."*
 

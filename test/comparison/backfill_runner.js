@@ -98,14 +98,11 @@ function compareScreens(screen1, screen2) {
     return { match: matching === len, matchingLines: matching, totalLines: len };
 }
 
-// Get startup data from session (handles v1 and v3 formats)
+// Get startup data from v3 session (first step with key === null)
 function getSessionStartup(session) {
-    if (!session) return null;
-    // v1: explicit startup field
-    if (session.startup) return session.startup;
-    // v3: first step with key === null and action === 'startup'
-    if (session.steps?.[0]?.key === null && session.steps[0].action === 'startup') {
-        const firstStep = session.steps[0];
+    if (!session?.steps?.[0]) return null;
+    const firstStep = session.steps[0];
+    if (firstStep.key === null && firstStep.action === 'startup') {
         return {
             rng: firstStep.rng || [],
             rngCalls: (firstStep.rng || []).length,
@@ -116,10 +113,10 @@ function getSessionStartup(session) {
     return null;
 }
 
-// Get gameplay steps (excluding startup step in v3 format)
+// Get gameplay steps (excluding startup step)
 function getGameplaySteps(session) {
     if (!session?.steps) return [];
-    // v3: skip first step if it's startup
+    // Skip first step if it's startup (key === null)
     if (session.steps[0]?.key === null) return session.steps.slice(1);
     return session.steps;
 }

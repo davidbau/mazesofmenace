@@ -1,21 +1,21 @@
 {
-  "timestamp": "2026-02-15T13:27:33.989Z",
+  "timestamp": "2026-02-15T15:13:00.618Z",
   "commit": "",
-  "sessions": 23,
-  "passed": 12,
-  "failed": 11,
+  "sessions": 19,
+  "passed": 0,
+  "failed": 19,
   "totals": {
     "rngCalls": {
-      "matched": 79206,
-      "total": 222755
+      "matched": 49632,
+      "total": 60568
     },
     "keys": {
-      "matched": 2161,
-      "total": 4629
+      "matched": 0,
+      "total": 0
     },
     "grids": {
-      "matched": 11,
-      "total": 17
+      "matched": 0,
+      "total": 19
     },
     "screens": {
       "matched": 0,
@@ -24,97 +24,81 @@
   },
   "failures": [
     {
-      "session": "seed100_multidigit_gameplay.session.json",
-      "firstDivergence": {
-        "key": 4,
-        "rngCall": 6,
-        "expected": "(end)",
-        "actual": "rn2(5)=4"
-      }
+      "session": "seed100_multidigit_gameplay.session.json"
+    },
+    {
+      "session": "seed1_gameplay.session.json"
+    },
+    {
+      "session": "seed200_repeat_ctrl_a_gameplay.session.json"
+    },
+    {
+      "session": "seed201_fight_prefix_gameplay.session.json"
     },
     {
       "session": "seed203_run_prefix_gameplay.session.json",
       "firstDivergence": {
         "rngCall": 574,
-        "expected": "rn2(3)=0 @ finddpos(mklev.c:186)",
+        "expected": "rn2(3)=0 @ finddpos(mklev.c:187)",
         "actual": "rn2(4)=0"
       }
     },
     {
-      "session": "seed204_multidigit_wait_gameplay.session.json",
-      "firstDivergence": {
-        "key": 3,
-        "rngCall": 8,
-        "expected": "(end)",
-        "actual": "rn2(5)=4"
-      }
+      "session": "seed204_multidigit_wait_gameplay.session.json"
     },
     {
-      "session": "seed2_wizard_fountains_gameplay.session.json",
-      "firstDivergence": {
-        "key": 2,
-        "rngCall": 0,
-        "expected": "rn2(19)=17 @ exercise(attrib.c:506)",
-        "actual": "(end)"
-      }
+      "session": "seed2_wizard_fountains_gameplay.session.json"
+    },
+    {
+      "session": "seed3_gameplay.session.json"
     },
     {
       "session": "seed3_selfplay_100turns_gameplay.session.json",
       "firstDivergence": {
         "rngCall": 2538,
-        "expected": "rn2(10)=7 @ lspo_map(sp_lev.c:6154)",
+        "expected": "rn2(10)=7 @ lspo_map(sp_lev.c:6158)",
         "actual": "rn2(9)=8"
       }
     },
     {
-      "session": "seed3_selfplay_20turns.session.json",
+      "session": "seed3_selfplay_20turns_gameplay.session.json",
       "firstDivergence": {
         "rngCall": 2538,
-        "expected": "rn2(10)=7 @ lspo_map(sp_lev.c:6154)",
+        "expected": "rn2(10)=7 @ lspo_map(sp_lev.c:6158)",
         "actual": "rn2(9)=8"
       }
     },
     {
-      "session": "seed3_selfplay_5turns.session.json",
+      "session": "seed3_selfplay_5turns_gameplay.session.json",
       "firstDivergence": {
         "rngCall": 2538,
-        "expected": "rn2(10)=7 @ lspo_map(sp_lev.c:6154)",
+        "expected": "rn2(10)=7 @ lspo_map(sp_lev.c:6158)",
         "actual": "rn2(9)=8"
       }
     },
     {
-      "session": "seed42_gameplay.session.json",
-      "firstDivergence": {
-        "rngCall": 996,
-        "expected": "rn2(7)=1 @ somex(mkroom.c:669)",
-        "actual": "rn2(6)=1"
-      }
+      "session": "seed42_gameplay.session.json"
     },
     {
-      "session": "seed42_items_gameplay.session.json",
-      "firstDivergence": {
-        "rngCall": 996,
-        "expected": "rn2(7)=1 @ somex(mkroom.c:669)",
-        "actual": "rn2(6)=1"
-      }
+      "session": "seed42_inventory_wizard_gameplay.session.json"
     },
     {
-      "session": "seed5_gnomish_mines_gameplay.session.json",
-      "firstDivergence": {
-        "key": 422,
-        "rngCall": 18,
-        "expected": "rn2(20)=2 @ dog_move(dogmove.c:1244)",
-        "actual": "rn2(16)=10"
-      }
+      "session": "seed42_inventory_wizard_pickup_gameplay.session.json"
     },
     {
-      "session": "seed6_tourist_gameplay.session.json",
-      "firstDivergence": {
-        "key": 78,
-        "rngCall": 0,
-        "expected": "(end)",
-        "actual": "rn2(5)=0"
-      }
+      "session": "seed42_items_gameplay.session.json"
+    },
+    {
+      "session": "seed4_gameplay.session.json"
+    },
+    {
+      "session": "seed4_selfplay_150turns_gameplay.session.json"
+    },
+    {
+      "session": "seed5_gnomish_mines_gameplay.session.json"
+    },
+    {
+      "session": "seed6_tourist_gameplay.session.json"
     }
   ]
 }

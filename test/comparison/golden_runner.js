@@ -3,7 +3,7 @@
 // Minimal-dependency test runner for golden testing and backfill
 //
 // Runs session tests and outputs results in standard JSON format.
-// Designed to work with both v1 and v3 session formats.
+// Uses v3 session format exclusively.
 //
 // Usage:
 //   node test/comparison/golden_runner.js [--verbose] [--output results.json]

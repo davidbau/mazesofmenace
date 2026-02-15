@@ -70,8 +70,8 @@ describe('Option screen comparisons', () => {
             'Both sessions should have same number of steps');
 
         // Check that screens are captured
-        assert.ok(verboseOn.startup.screen.length === 24, 'Should have 24 screen lines');
-        assert.ok(verboseOff.startup.screen.length === 24, 'Should have 24 screen lines');
+        assert.ok(verboseOn.steps[0].screen.length === 24, 'Should have 24 screen lines');
+        assert.ok(verboseOff.steps[0].screen.length === 24, 'Should have 24 screen lines');
 
         console.log('  Verbose on vs off sessions validated');
     });
@@ -89,8 +89,8 @@ describe('Option screen comparisons', () => {
         const decOn = JSON.parse(fs.readFileSync(decOnPath, 'utf8'));
 
         // Check for ASCII vs box-drawing characters in screens
-        const asciiScreen = decOff.startup.screen.join('\n');
-        const decScreen = decOn.startup.screen.join('\n');
+        const asciiScreen = decOff.steps[0].screen.join('\n');
+        const decScreen = decOn.steps[0].screen.join('\n');
 
         // ASCII should have | and - for walls
         const hasAsciiWalls = asciiScreen.includes('|') || asciiScreen.includes('-');
@@ -126,8 +126,8 @@ describe('Option screen comparisons', () => {
         const timeOff = JSON.parse(fs.readFileSync(timeOffPath, 'utf8'));
 
         // Get status lines (line 23)
-        const statusOn = timeOn.startup.screen[23];
-        const statusOff = timeOff.startup.screen[23];
+        const statusOn = timeOn.steps[0].screen[23];
+        const statusOff = timeOff.steps[0].screen[23];
 
         // time=on should have "T:N" in status line
         const hasTurnCounterOn = /T:\d+/.test(statusOn);

@@ -25,7 +25,7 @@ from gen_special_sessions import (
     NETHACK_BINARY, INSTALL_DIR, SESSIONS_DIR, RESULTS_DIR,
     fixed_datetime_env,
     get_rng_call_count, get_rng_raw_draw_count,
-    extract_rng_prelude_calls, extract_post_prelude_fingerprint
+    extract_rng_prelude_calls, extract_full_rng_log
 )
 
 def wizard_wish_amulet(session, verbose=False):
@@ -335,8 +335,7 @@ def main():
                     'typGrid': grid,
                 }
 
-                # Add RNG fingerprint data if available
-                # Capture full RNG sequence (not just 20 calls) for debugging
+                # Add full RNG log for debugging
                 if rng_call_start is not None:
                     level_data['rngCallStart'] = int(rng_call_start)
                     raw_start = get_rng_raw_draw_count(rnglog_file, rng_call_start)
@@ -345,13 +344,13 @@ def main():
                     prelude_calls = extract_rng_prelude_calls(rnglog_file, rng_call_start)
                     if prelude_calls:
                         level_data['preRngCalls'] = prelude_calls
-                    # Use large limit to capture full RNG sequence for level generation
-                    fingerprint = extract_post_prelude_fingerprint(rnglog_file, rng_call_start, limit=10000)
-                    if fingerprint:
-                        level_data['rngFingerprint'] = fingerprint
+                    # Capture full RNG log with midlog markers for debugging
+                    rng_log = extract_full_rng_log(rnglog_file, rng_call_start)
+                    if rng_log:
+                        level_data['rng'] = rng_log
 
                 levels.append(level_data)
-                rng_info = f", rngFingerprint: {len(level_data.get('rngFingerprint', []))} calls" if level_data.get('rngFingerprint') else ""
+                rng_info = f", rng: {len(level_data.get('rng', []))} calls" if level_data.get('rng') else ""
                 print(f"  Captured {plane_name}: {len(grid)} rows, {len(grid[0]) if grid else 0} cols{rng_info}")
 
             # Quit the game

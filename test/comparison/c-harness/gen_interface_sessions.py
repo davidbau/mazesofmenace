@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Generate interface session traces from C NetHack for UI accuracy testing.
 
-Captures:
-1. Startup sequence (tutorial prompt, copyright screen)
-2. Options menu (dense listing with [x] marks, ? help view)
-3. Terminal attributes (inverse video, bold, etc.)
-
 Usage:
     python3 gen_interface_sessions.py --startup
     python3 gen_interface_sessions.py --options
+    python3 gen_interface_sessions.py --chargen
+    python3 gen_interface_sessions.py --all
+
+Captures UI-focused sessions with screen content and terminal attributes for
+testing menu rendering, inverse video, bold text, etc.
 
 Output: test/comparison/sessions/interface_*.session.json
 """
@@ -18,7 +18,7 @@ import os
 import json
 import time
 import subprocess
-import re
+import importlib.util
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.normpath(os.path.join(SCRIPT_DIR, '..', '..', '..'))
@@ -26,16 +26,22 @@ SESSIONS_DIR = os.path.join(PROJECT_ROOT, 'test', 'comparison', 'sessions')
 NETHACK_BINARY = os.path.join(PROJECT_ROOT, 'nethack-c', 'install', 'games', 'lib', 'nethackdir', 'nethack')
 DEFAULT_FIXED_DATETIME = '20000110090000'
 
+# Import helpers from run_session.py
+_spec = importlib.util.spec_from_file_location('run_session', os.path.join(SCRIPT_DIR, 'run_session.py'))
+_session = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_session)
 
-def fixed_datetime_env():
-    dt = os.environ.get('NETHACK_FIXED_DATETIME')
-    if dt is None:
-        dt = DEFAULT_FIXED_DATETIME
-    return f'NETHACK_FIXED_DATETIME={dt} ' if dt else ''
+compact_session_json = _session.compact_session_json
+capture_screen_compressed = _session.capture_screen_compressed
+fixed_datetime_env = _session.fixed_datetime_env
+tmux_send = _session.tmux_send
+tmux_send_special = _session.tmux_send_special
+
 
 def tmux_session_name():
     """Generate unique tmux session name."""
     return f"nethack-interface-{os.getpid()}"
+
 
 def start_tmux_session(session):
     """Start a tmux session with 80x24 dimensions."""
@@ -45,131 +51,31 @@ def start_tmux_session(session):
     ], check=True)
     time.sleep(0.1)
 
-def tmux_send(session, keys, delay=0.2):
-    """Send keys to tmux session."""
-    subprocess.run(['tmux', 'send-keys', '-t', session, keys], check=True)
-    time.sleep(delay)
-
-def capture_screen_with_attrs(session):
-    """Capture screen content AND attributes from tmux.
-
-    Returns:
-        tuple: (lines, attrs) where both are 24-element arrays
-        - lines: plain text content
-        - attrs: attribute codes (0=normal, 1=inverse, 2=bold, etc.)
-    """
-    # Capture plain text
-    result = subprocess.run(
-        ['tmux', 'capture-pane', '-t', session, '-p', '-J'],
-        capture_output=True, text=True, check=True
-    )
-    lines = result.stdout.rstrip('\n').split('\n')
-    while len(lines) < 24:
-        lines.append('')
-    lines = lines[:24]
-
-    # Capture with escape codes to parse attributes
-    result_esc = subprocess.run(
-        ['tmux', 'capture-pane', '-t', session, '-p', '-e'],
-        capture_output=True, text=True, check=True
-    )
-
-    # Parse escape codes to build attribute array
-    attrs = parse_attributes(result_esc.stdout, lines)
-
-    return lines, attrs
-
-def parse_attributes(escaped_text, plain_lines):
-    """Parse ANSI escape codes to build attribute array.
-
-    Returns array of 24 strings, each 80 chars, with attribute codes:
-    - '0' = normal
-    - '1' = inverse/reverse video
-    - '2' = bold
-    - '4' = underline
-    """
-    import re
-
-    # ANSI escape sequence pattern: \x1b[...m
-    # Common codes: 0=reset, 1=bold, 4=underline, 7=inverse, 22=bold off, 24=underline off, 27=inverse off
-    escape_pattern = re.compile(r'\x1b\[([0-9;]+)m')
-
-    attrs = []
-    for row_idx, plain_line in enumerate(plain_lines):
-        # Build attribute string for this row
-        row_attrs = ['0'] * 80
-
-        # Find corresponding line in escaped text
-        # Split escaped text by newlines and process line by line
-        escaped_lines = escaped_text.split('\n')
-        if row_idx < len(escaped_lines):
-            escaped_line = escaped_lines[row_idx]
-
-            # Track current attributes as we scan through the line
-            current_attr = 0  # Start with normal
-            char_pos = 0  # Position in the actual displayed text (not including escape codes)
-
-            i = 0
-            while i < len(escaped_line):
-                # Check for escape sequence
-                match = escape_pattern.match(escaped_line, i)
-                if match:
-                    # Parse the SGR codes
-                    codes = match.group(1).split(';')
-                    for code in codes:
-                        code_int = int(code) if code else 0
-                        if code_int == 0:
-                            current_attr = 0  # Reset
-                        elif code_int == 1:
-                            current_attr |= 2  # Bold (we use bit 1)
-                        elif code_int == 4:
-                            current_attr |= 4  # Underline (we use bit 2)
-                        elif code_int == 7:
-                            current_attr |= 1  # Inverse (we use bit 0)
-                        elif code_int == 22:
-                            current_attr &= ~2  # Bold off
-                        elif code_int == 24:
-                            current_attr &= ~4  # Underline off
-                        elif code_int == 27:
-                            current_attr &= ~1  # Inverse off
-
-                    i = match.end()
-                else:
-                    # Regular character
-                    if char_pos < 80:
-                        row_attrs[char_pos] = str(current_attr)
-                    char_pos += 1
-                    i += 1
-
-        attrs.append(''.join(row_attrs))
-
-    # Ensure we have exactly 24 rows
-    while len(attrs) < 24:
-        attrs.append('0' * 80)
-
-    return attrs[:24]
 
 def kill_tmux_session(session):
     """Kill the tmux session."""
     subprocess.run(['tmux', 'kill-session', '-t', session],
                    stderr=subprocess.DEVNULL, check=False)
 
+
+# Use capture_screen_compressed from run_session.py
+capture_screen = capture_screen_compressed
+
+
 def capture_startup_sequence():
     """Capture the full startup sequence including tutorial prompt."""
     session = tmux_session_name()
     start_tmux_session(session)
-
     steps = []
 
     try:
-        # Set up environment and run NetHack
         nethack_dir = os.path.dirname(NETHACK_BINARY)
 
-        # Clear screen first
+        # Clear screen
         subprocess.run(['tmux', 'send-keys', '-t', session, 'clear', 'Enter'], check=True)
         time.sleep(0.2)
 
-        # Start NetHack with proper environment
+        # Start NetHack
         cmd = (
             f'{fixed_datetime_env()}'
             f'NETHACKDIR={nethack_dir} '
@@ -177,83 +83,72 @@ def capture_startup_sequence():
             f'{NETHACK_BINARY}'
         )
         subprocess.run(['tmux', 'send-keys', '-t', session, cmd, 'Enter'], check=True)
-
-        # Wait for NetHack to fully initialize and display
         time.sleep(2.5)
 
-        # Capture initial screen (random character prompt + copyright)
-        lines, attrs = capture_screen_with_attrs(session)
+        # Capture initial screen (startup step with key: null)
+        screen = capture_screen(session)
         steps.append({
-            "key": "startup",
-            "description": "Initial screen on game launch",
-            "screen": lines,
-            "attrs": attrs
-        })
+            'key': None,
+            'action': 'startup',
+            'rng': [],
+            'screen': screen        })
 
-        # Press 'n' to decline random character
-        if any('pick character' in line.lower() for line in lines):
-            tmux_send(session, 'n', delay=0.5)
-            lines, attrs = capture_screen_with_attrs(session)
-            steps.append({
-                "key": "n",
-                "description": "Decline random character",
-                "screen": lines,
-                "attrs": attrs
-            })
+        # Decline random character
+        tmux_send(session, 'n', delay=0.5)
+        screen = capture_screen(session)
+        steps.append({
+            'key': 'n',
+            'action': 'decline-autopick',
+            'rng': [],
+            'screen': screen        })
 
-        # Should now be at role selection - capture it
-        if any('role' in line.lower() or 'profession' in line.lower() for line in lines):
-            steps.append({
-                "key": "role_menu",
-                "description": "Role selection menu",
-                "screen": lines,
-                "attrs": attrs
-            })
+        # Role selection - press '?' for help
+        tmux_send(session, '?', delay=0.5)
+        screen = capture_screen(session)
+        steps.append({
+            'key': '?',
+            'action': 'role-help',
+            'rng': [],
+            'screen': screen        })
 
-            # Press '?' to see help/navigation
-            tmux_send(session, '?', delay=0.5)
-            lines, attrs = capture_screen_with_attrs(session)
-            steps.append({
-                "key": "?",
-                "description": "Role menu help",
-                "screen": lines,
-                "attrs": attrs
-            })
+        # Press '?' again to return
+        tmux_send(session, '?', delay=0.5)
 
-            # Press '?' again to go back
-            tmux_send(session, '?', delay=0.5)
-            lines, attrs = capture_screen_with_attrs(session)
-
-            # Select archeologist (a)
-            tmux_send(session, 'a', delay=0.5)
-            lines, attrs = capture_screen_with_attrs(session)
-            steps.append({
-                "key": "a",
-                "description": "Select Archeologist role",
-                "screen": lines,
-                "attrs": attrs
-            })
+        # Select archeologist
+        tmux_send(session, 'a', delay=0.5)
+        screen = capture_screen(session)
+        steps.append({
+            'key': 'a',
+            'action': 'select-role',
+            'rng': [],
+            'screen': screen        })
 
     finally:
         kill_tmux_session(session)
 
     return {
-        "version": 2,
-        "type": "interface",
-        "subtype": "startup",
-        "description": "Game startup sequence including tutorial prompt",
-        "steps": steps
+        'version': 3,
+        'seed': 0,
+        'source': 'c',
+        'type': 'interface',
+        'regen': {
+            'mode': 'interface',
+            'subtype': 'startup',
+        },
+        'options': {
+            'description': 'Game startup sequence including tutorial prompt'
+        },
+        'steps': steps
     }
+
 
 def capture_options_menu():
     """Capture the options menu interface."""
     session = tmux_session_name()
     start_tmux_session(session)
-
     steps = []
 
     try:
-        # Set up environment and run NetHack
         nethack_dir = os.path.dirname(NETHACK_BINARY)
 
         # Clear screen
@@ -270,116 +165,96 @@ def capture_options_menu():
         subprocess.run(['tmux', 'send-keys', '-t', session, cmd, 'Enter'], check=True)
         time.sleep(2.5)
 
-        # Capture startup
-        lines, attrs = capture_screen_with_attrs(session)
+        # Navigate through character creation quickly
+        for key in 'nwhmcy':  # decline auto, wizard, human, male, chaotic, yes
+            subprocess.run(['tmux', 'send-keys', '-t', session, key], check=True)
+            time.sleep(0.5)
 
-        # Decline random character
-        subprocess.run(['tmux', 'send-keys', '-t', session, 'n'], check=True)
-        time.sleep(0.5)
+        # Clear any --More-- prompts
+        for _ in range(3):
+            subprocess.run(['tmux', 'send-keys', '-t', session, 'Space'], check=True)
+            time.sleep(0.3)
 
-        # Select wizard role (w)
-        subprocess.run(['tmux', 'send-keys', '-t', session, 'w'], check=True)
-        time.sleep(0.5)
+        # Capture initial game screen as startup step
+        screen = capture_screen(session)
+        steps.append({
+            'key': None,
+            'action': 'startup',
+            'rng': [],
+            'screen': screen        })
 
-        # Select human race (h) - wizard default
-        subprocess.run(['tmux', 'send-keys', '-t', session, 'h'], check=True)
-        time.sleep(0.5)
-
-        # Select male gender (m)
-        subprocess.run(['tmux', 'send-keys', '-t', session, 'm'], check=True)
-        time.sleep(0.5)
-
-        # Select chaotic alignment (c) - wizard default
-        subprocess.run(['tmux', 'send-keys', '-t', session, 'c'], check=True)
-        time.sleep(0.5)
-
-        # Confirm character (y)
-        subprocess.run(['tmux', 'send-keys', '-t', session, 'y'], check=True)
-        time.sleep(0.5)
-
-        # Press Space to get past intro story
-        subprocess.run(['tmux', 'send-keys', '-t', session, 'Space'], check=True)
-        time.sleep(0.5)
-
-        # Press Space again to clear welcome message
-        subprocess.run(['tmux', 'send-keys', '-t', session, 'Space'], check=True)
-        time.sleep(0.5)
-
-        # Open options menu with 'O'
+        # Open options menu
         subprocess.run(['tmux', 'send-keys', '-t', session, 'O'], check=True)
         time.sleep(0.5)
 
-        lines, attrs = capture_screen_with_attrs(session)
+        screen = capture_screen(session)
         steps.append({
-            "key": "O",
-            "description": "Options menu page 1",
-            "screen": lines,
-            "attrs": attrs
-        })
+            'key': 'O',
+            'action': 'options-menu',
+            'rng': [],
+            'screen': screen        })
 
-        # Press '>' for page 2
+        # Page 2
         subprocess.run(['tmux', 'send-keys', '-t', session, '>'], check=True)
         time.sleep(0.3)
-
-        lines, attrs = capture_screen_with_attrs(session)
+        screen = capture_screen(session)
         steps.append({
-            "key": ">",
-            "description": "Options menu page 2",
-            "screen": lines,
-            "attrs": attrs
-        })
+            'key': '>',
+            'action': 'options-page2',
+            'rng': [],
+            'screen': screen        })
 
-        # Press '<' to go back to page 1
+        # Back to page 1
         subprocess.run(['tmux', 'send-keys', '-t', session, '<'], check=True)
         time.sleep(0.3)
-
-        lines, attrs = capture_screen_with_attrs(session)
+        screen = capture_screen(session)
         steps.append({
-            "key": "<",
-            "description": "Back to options page 1",
-            "screen": lines,
-            "attrs": attrs
-        })
+            'key': '<',
+            'action': 'options-page1',
+            'rng': [],
+            'screen': screen        })
 
-        # Press '?' for help view
+        # Help view
         subprocess.run(['tmux', 'send-keys', '-t', session, '?'], check=True)
         time.sleep(0.3)
-
-        lines, attrs = capture_screen_with_attrs(session)
+        screen = capture_screen(session)
         steps.append({
-            "key": "?",
-            "description": "Options help view",
-            "screen": lines,
-            "attrs": attrs
-        })
+            'key': '?',
+            'action': 'options-help',
+            'rng': [],
+            'screen': screen        })
 
     finally:
         kill_tmux_session(session)
 
     return {
-        "version": 2,
-        "type": "interface",
-        "subtype": "options",
-        "description": "Options menu interface with all views",
-        "steps": steps
+        'version': 3,
+        'seed': 0,
+        'source': 'c',
+        'type': 'interface',
+        'regen': {
+            'mode': 'interface',
+            'subtype': 'options',
+        },
+        'options': {
+            'description': 'Options menu interface with all views'
+        },
+        'steps': steps
     }
+
 
 def capture_complete_chargen():
     """Capture complete character generation sequence through to game start."""
     session = tmux_session_name()
     start_tmux_session(session)
-
     steps = []
 
     try:
-        # Set up environment and run NetHack
         nethack_dir = os.path.dirname(NETHACK_BINARY)
 
-        # Clear screen first
         subprocess.run(['tmux', 'send-keys', '-t', session, 'clear', 'Enter'], check=True)
         time.sleep(0.2)
 
-        # Start NetHack with proper environment
         cmd = (
             f'{fixed_datetime_env()}'
             f'NETHACKDIR={nethack_dir} '
@@ -387,108 +262,101 @@ def capture_complete_chargen():
             f'{NETHACK_BINARY}'
         )
         subprocess.run(['tmux', 'send-keys', '-t', session, cmd, 'Enter'], check=True)
-
-        # Wait for NetHack to fully initialize
         time.sleep(2.5)
 
-        # Step 0: Initial screen (random character prompt + copyright)
-        lines, attrs = capture_screen_with_attrs(session)
+        # Initial screen (startup step with key: null)
+        screen = capture_screen(session)
         steps.append({
-            "key": "startup",
-            "description": "Initial screen on game launch",
-            "screen": lines,
-            "attrs": attrs
-        })
+            'key': None,
+            'action': 'startup',
+            'rng': [],
+            'screen': screen        })
 
-        # Step 1: Press 'n' to decline random character
+        # Decline random character
         tmux_send(session, 'n', delay=0.5)
-        lines, attrs = capture_screen_with_attrs(session)
+        screen = capture_screen(session)
         steps.append({
-            "key": "n",
-            "description": "Decline random character",
-            "screen": lines,
-            "attrs": attrs
-        })
+            'key': 'n',
+            'action': 'decline-autopick',
+            'rng': [],
+            'screen': screen        })
 
-        # Step 2: Role selection menu
-        steps.append({
-            "key": "role_menu",
-            "description": "Role selection menu",
-            "screen": lines,
-            "attrs": attrs
-        })
-
-        # Step 3: Select archeologist (a)
+        # Select archeologist
         tmux_send(session, 'a', delay=0.5)
-        lines, attrs = capture_screen_with_attrs(session)
+        screen = capture_screen(session)
         steps.append({
-            "key": "a",
-            "description": "Select Archeologist role",
-            "screen": lines,
-            "attrs": attrs
-        })
+            'key': 'a',
+            'action': 'select-role',
+            'rng': [],
+            'screen': screen        })
 
-        # Step 4: Select human race (h)
+        # Select human
         tmux_send(session, 'h', delay=0.5)
-        lines, attrs = capture_screen_with_attrs(session)
+        screen = capture_screen(session)
         steps.append({
-            "key": "h",
-            "description": "Select human race",
-            "screen": lines,
-            "attrs": attrs
-        })
+            'key': 'h',
+            'action': 'select-race',
+            'rng': [],
+            'screen': screen        })
 
-        # Step 5: Select gender (m for male)
-        # (Gender menu appears for Archeologist)
+        # Select male
         tmux_send(session, 'm', delay=0.5)
-        lines, attrs = capture_screen_with_attrs(session)
+        screen = capture_screen(session)
         steps.append({
-            "key": "m",
-            "description": "Select male gender",
-            "screen": lines,
-            "attrs": attrs
-        })
+            'key': 'm',
+            'action': 'select-gender',
+            'rng': [],
+            'screen': screen        })
 
-        # Step 6: Select alignment (n for neutral)
-        # (Archeologist can be lawful or neutral)
+        # Select neutral
         tmux_send(session, 'n', delay=0.5)
-        lines, attrs = capture_screen_with_attrs(session)
+        screen = capture_screen(session)
         steps.append({
-            "key": "n",
-            "description": "Select neutral alignment",
-            "screen": lines,
-            "attrs": attrs
-        })
+            'key': 'n',
+            'action': 'select-align',
+            'rng': [],
+            'screen': screen        })
 
-        # Step 7: Confirm character (y)
-        # Should show confirmation screen
-        if any('confirm' in line.lower() or 'archeologist' in line.lower() for line in lines):
-            tmux_send(session, 'y', delay=0.5)
-            lines, attrs = capture_screen_with_attrs(session)
-            steps.append({
-                "key": "y",
-                "description": "Confirm character",
-                "screen": lines,
-                "attrs": attrs
-            })
+        # Confirm if needed
+        tmux_send(session, 'y', delay=0.5)
+        screen = capture_screen(session)
+        steps.append({
+            'key': 'y',
+            'action': 'confirm',
+            'rng': [],
+            'screen': screen        })
 
     finally:
         kill_tmux_session(session)
 
     return {
-        "version": 2,
-        "type": "interface",
-        "subtype": "complete_chargen",
-        "description": "Complete character generation from startup to game start",
-        "steps": steps
+        'version': 3,
+        'seed': 0,
+        'source': 'c',
+        'type': 'interface',
+        'regen': {
+            'mode': 'interface',
+            'subtype': 'chargen',
+        },
+        'options': {
+            'description': 'Complete character generation from startup to game start'
+        },
+        'steps': steps
     }
+
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: gen_interface_sessions.py [--startup|--options|--chargen]")
+        print("Usage: gen_interface_sessions.py [--startup|--options|--chargen|--all]")
         sys.exit(1)
 
     os.makedirs(SESSIONS_DIR, exist_ok=True)
+
+    if sys.argv[1] == '--all':
+        for mode in ['--startup', '--options', '--chargen']:
+            sys.argv[1] = mode
+            main()
+        return
 
     if sys.argv[1] == '--startup':
         data = capture_startup_sequence()
@@ -504,10 +372,11 @@ def main():
         sys.exit(1)
 
     with open(outfile, 'w') as f:
-        json.dump(data, f, indent=2)
+        f.write(compact_session_json(data))
 
-    print(f"✅ Generated {outfile}")
-    print(f"   {len(data['steps'])} steps captured")
+    print(f"Generated {outfile}")
+    print(f"  {len(data['steps'])} steps captured")
+
 
 if __name__ == '__main__':
     main()
