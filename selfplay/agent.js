@@ -1247,7 +1247,7 @@ export class Agent {
 
                 const blockedByMonsterCount = descendDecision.reason.startsWith('surrounded by ');
                 const onFirstDungeonLevel = (this.status?.dungeonLevel || this.dungeon.currentDepth || 1) <= 1;
-                if (blockedByMonsterCount && onFirstDungeonLevel && hpPercent >= 0.75 && unsafeRepeated >= 8) {
+                if (blockedByMonsterCount && onFirstDungeonLevel && hpPercent >= 0.65 && unsafeRepeated >= 4) {
                     console.log(`[DESCEND-STALL] Forcing descent at (${px},${py}) on Dlvl 1 after ${unsafeRepeated} unsafe checks (${descendDecision.reason}, HP ${Math.round(hpPercent * 100)}%)`);
                     this.unsafeDescendStreaks.delete(descendSig);
                     return { type: 'descend', key: '>', reason: `forced descent after stall: ${descendDecision.reason}` };
@@ -2371,7 +2371,10 @@ export class Agent {
         }
 
         // 2. Don't descend when surrounded by multiple monsters (risky regardless of HP)
-        if (nearbyMonsters.length >= 3) {
+        // Exception: on Dlvl 1, permit descent under pressure if we're still healthy and
+        // nearby threats are not high-danger. This breaks early stair stalls.
+        if (nearbyMonsters.length >= 3 &&
+            !(dungeonLevel <= 1 && hpPercent >= 0.7 && maxDanger < DangerLevel.HIGH)) {
             return { shouldDescend: false, reason: `surrounded by ${nearbyMonsters.length} monsters, too risky` };
         }
 
