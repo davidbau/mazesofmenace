@@ -703,6 +703,7 @@ def generate_group(group_name, seeds, verbose=False):
                 f'NETHACK_DUMPMAP={dumpmap_file} '
                 f'NETHACK_DUMPSNAP={checkpoint_file} '
                 f"{('NETHACK_RNGLOG=' + os.environ['NETHACK_RNGLOG'] + ' ') if os.environ.get('NETHACK_RNGLOG') else ''}"
+                f"{('NETHACK_RNDMON_TRACE=' + os.environ['NETHACK_RNDMON_TRACE'] + ' ') if os.environ.get('NETHACK_RNDMON_TRACE') else ''}"
                 f'HOME={RESULTS_DIR} '
                 f'TERM=xterm-256color '
                 f'{NETHACK_BINARY} -u Wizard -D; '

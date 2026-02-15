@@ -305,6 +305,7 @@ function undead_to_corpse(mndx) {
 // skipErosion: if true, skip mkobj_erosions (used by ini_inv — C's mksobj
 // path for starting inventory doesn't include erosion)
 function mksobj_init(obj, artif, skipErosion) {
+    const TRACE = (typeof process !== 'undefined' && process.env.WEBHACK_MKOBJ_TRACE === '1');
     const oclass = obj.oclass;
     const otyp = obj.otyp;
     const od = objectData[otyp];
@@ -331,30 +332,33 @@ function mksobj_init(obj, artif, skipErosion) {
     case FOOD_CLASS:
         // Check specific food types by name since we may not have all constants
         if (od.name === 'corpse') {
+            if (TRACE) console.log(`[MKOBJ] init food=${od.name} otyp=${otyp} depth=${_levelDepth}`);
             // C ref: mkobj.c:900-910 — retry if G_NOCORPSE
             let tryct = 50;
             do {
-                obj.corpsenm = undead_to_corpse(rndmonnum());
+                obj.corpsenm = undead_to_corpse(rndmonnum(_levelDepth));
             } while (obj.corpsenm >= 0
                      && (mons[obj.corpsenm].geno & G_NOCORPSE)
                      && --tryct > 0);
             if (tryct === 0) obj.corpsenm = mons.findIndex(m => m.name === 'human');
         } else if (od.name === 'egg') {
+            if (TRACE) console.log(`[MKOBJ] init food=${od.name} otyp=${otyp} depth=${_levelDepth}`);
             obj.corpsenm = -1;
             if (!rn2(3)) {
                 for (let tryct = 200; tryct > 0; --tryct) {
-                    obj.corpsenm = rndmonnum(); // can_be_hatched(rndmonnum())
+                    obj.corpsenm = rndmonnum(_levelDepth); // can_be_hatched(rndmonnum())
                     break; // simplified: first attempt succeeds
                 }
             }
         } else if (od.name === 'tin') {
+            if (TRACE) console.log(`[MKOBJ] init food=${od.name} otyp=${otyp} depth=${_levelDepth}`);
             obj.corpsenm = -1;
             if (!rn2(6)) {
                 // spinach tin -- no RNG
             } else {
                 // C ref: mkobj.c:930-937 — retry until cnutrit && !G_NOCORPSE
                 for (let tryct = 200; tryct > 0; --tryct) {
-                    const mndx = undead_to_corpse(rndmonnum());
+                    const mndx = undead_to_corpse(rndmonnum(_levelDepth));
                     if (mndx >= 0 && mons[mndx].nutrition > 0
                         && !(mons[mndx].geno & G_NOCORPSE)) {
                         obj.corpsenm = mndx;
@@ -419,9 +423,10 @@ function mksobj_init(obj, artif, skipErosion) {
         } else if (od.name === 'horn of plenty' || od.name === 'bag of tricks') {
             obj.spe = rn1(18, 3);
         } else if (od.name === 'figurine') {
+            if (TRACE) console.log(`[MKOBJ] init tool=${od.name} otyp=${otyp} depth=${_levelDepth}`);
             let tryct = 0;
             do {
-                obj.corpsenm = rndmonnum(); // rndmonnum_adj(5, 10)
+                obj.corpsenm = rndmonnum(_levelDepth); // rndmonnum_adj(5, 10)
             } while (tryct++ < 30 && false); // simplified: first attempt ok
             blessorcurse(obj, 4);
         } else if (od.name === 'Bell of Opening') {
@@ -509,6 +514,7 @@ function mksobj_init(obj, artif, skipErosion) {
 
     case ROCK_CLASS:
         if (od.name === 'statue') {
+            if (TRACE) console.log(`[MKOBJ] init rock=${od.name} otyp=${otyp} depth=${_levelDepth}`);
             obj.corpsenm = rndmonnum(_levelDepth); // Pass depth for correct monster selection
             // C ref: !verysmall() && rn2(level_difficulty()/2+10) > 10
             // verysmall = msize < MZ_SMALL (i.e., MZ_TINY)
@@ -608,7 +614,7 @@ function mksobj_postinit(obj) {
     const od = objectData[obj.otyp];
     // Corpse: if corpsenm not set, assign one
     if (od.name === 'corpse' && obj.corpsenm === -1) {
-        obj.corpsenm = undead_to_corpse(rndmonnum());
+        obj.corpsenm = undead_to_corpse(rndmonnum(_levelDepth));
     }
     // C ref: mkobj.c mksobj() SPE_NOVEL case:
     // initialize novelidx and consume noveltitle() selection RNG.
@@ -618,7 +624,7 @@ function mksobj_postinit(obj) {
     // Statue/figurine: if corpsenm not set, assign one
     // C ref: mkobj.c:1212 — otmp->corpsenm = rndmonnum()
     if ((od.name === 'statue' || od.name === 'figurine') && obj.corpsenm === -1) {
-        obj.corpsenm = rndmonnum();
+        obj.corpsenm = rndmonnum(_levelDepth);
     }
     // Gender assignment for corpse/statue/figurine
     // C ref: mkobj.c:1215-1218 — only rn2(2) if not neuter/female/male
