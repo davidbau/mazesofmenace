@@ -7,6 +7,7 @@ import { rhack } from '../../js/commands.js';
 import { movemon } from '../../js/monmove.js';
 import { FOV } from '../../js/vision.js';
 import { NORMAL_SPEED, A_DEX, A_CON } from '../../js/config.js';
+import { getSessionStartup } from './session_helpers.js';
 
 const session = JSON.parse(readFileSync('test/comparison/sessions/seed1.session.json', 'utf-8'));
 
@@ -18,7 +19,8 @@ wallification(map);
 const player = new Player();
 player.initRole(11);
 
-const screen = session.startup?.screen || [];
+const sessionStartup = getSessionStartup(session);
+const screen = sessionStartup?.screen || [];
 for (const line of screen) {
     if (!line) continue;
     const m = line.match(/St:(\d+)\s+Dx:(\d+)\s+Co:(\d+)\s+In:(\d+)\s+Wi:(\d+)\s+Ch:(\d+)/);

@@ -14,7 +14,7 @@ import {
     replaySession, extractTypGrid, compareGrids, formatDiffs, compareRng,
     checkWallCompleteness, checkConnectivity, checkStairs,
     checkDimensions, checkValidTypValues,
-    getSessionScreenLines,
+    getSessionScreenLines, getSessionStartup, getSessionCharacter, getSessionGameplaySteps,
     HeadlessDisplay,
 } from './session_helpers.js';
 
@@ -150,16 +150,17 @@ export function runGameplaySession(file, session) {
     // Full step-by-step replay is verified separately when the game engine
     // supports it; for now we verify the complete startup sequence.
 
+    const sessionStartup = getSessionStartup(session);
     let startup;
-    if (session.startup) {
+    if (sessionStartup) {
         it('startup generates successfully', () => {
             startup = generateStartupWithRng(session.seed, session);
         });
 
-        if (session.startup.typGrid) {
+        if (sessionStartup.typGrid) {
             it('startup typGrid matches', () => {
                 assert.ok(startup, 'Startup generation failed');
-                const diffs = compareGrids(startup.grid, session.startup.typGrid);
+                const diffs = compareGrids(startup.grid, sessionStartup.typGrid);
                 assert.equal(diffs.length, 0,
                     `Startup typGrid: ${formatDiffs(diffs)}`);
             });
@@ -179,18 +180,18 @@ export function runGameplaySession(file, session) {
             });
         }
 
-        if (session.startup.rngCalls !== undefined) {
+        if (sessionStartup.rngCalls !== undefined) {
             it('startup rngCalls matches', () => {
                 assert.ok(startup, 'Startup generation failed');
-                assert.equal(startup.rngCalls, session.startup.rngCalls,
-                    `seed=${session.seed}: JS=${startup.rngCalls} session=${session.startup.rngCalls}`);
+                assert.equal(startup.rngCalls, sessionStartup.rngCalls,
+                    `seed=${session.seed}: JS=${startup.rngCalls} session=${sessionStartup.rngCalls}`);
             });
         }
 
-        if (session.startup.rng) {
+        if (sessionStartup.rng) {
             it('startup RNG trace matches', () => {
                 assert.ok(startup, 'Startup generation failed');
-                const divergence = compareRng(startup.rng, session.startup.rng);
+                const divergence = compareRng(startup.rng, sessionStartup.rng);
                 assert.equal(divergence.index, -1,
                     `seed=${session.seed}: RNG diverges at call ${divergence.index}: ` +
                     `JS="${divergence.js}" session="${divergence.session}"`);
@@ -199,27 +200,28 @@ export function runGameplaySession(file, session) {
     }
 
     // Step-by-step replay: verify per-step RNG traces
-    if (session.steps && session.steps.length > 0 && session.startup?.rng) {
+    const gameplaySteps = getSessionGameplaySteps(session);
+    if (gameplaySteps.length > 0 && sessionStartup?.rng) {
         let replay;
         it('step replay completes', async () => {
             replay = await replaySession(session.seed, session);
         });
 
         // Verify startup still matches in replay context
-        if (session.startup.rngCalls !== undefined) {
+        if (sessionStartup.rngCalls !== undefined) {
             it('replay startup rngCalls matches', () => {
                 assert.ok(replay, 'Replay failed');
-                assert.equal(replay.startup.rngCalls, session.startup.rngCalls,
+                assert.equal(replay.startup.rngCalls, sessionStartup.rngCalls,
                     `seed=${session.seed}: replay startup JS=${replay.startup.rngCalls} ` +
-                    `session=${session.startup.rngCalls}`);
+                    `session=${sessionStartup.rngCalls}`);
             });
         }
 
         // Verify each step's RNG trace
-        for (let i = 0; i < session.steps.length; i++) {
-            const step = session.steps[i];
+        for (let i = 0; i < gameplaySteps.length; i++) {
+            const step = gameplaySteps[i];
             if (step.rng && step.rng.length > 0) {
-                it(`step ${i} RNG matches (${step.action}, turn ${step.turn})`, () => {
+                it(`step ${i} RNG matches (${step.action})`, () => {
                     assert.ok(replay, 'Replay failed');
                     assert.ok(replay.steps[i], `Step ${i} not produced`);
                     const divergence = compareRng(replay.steps[i].rng, step.rng);
@@ -228,12 +230,12 @@ export function runGameplaySession(file, session) {
                         `JS="${divergence.js}" session="${divergence.session}"`);
                 });
             } else {
-                it(`step ${i} RNG matches (${step.action}, turn ${step.turn})`, () => {
+                it(`step ${i} RNG matches (${step.action})`, () => {
                     assert.ok(replay, 'Replay failed');
                     assert.ok(replay.steps[i], `Step ${i} not produced`);
-                    assert.equal(replay.steps[i].rngCalls, step.rng.length,
+                    assert.equal(replay.steps[i].rngCalls, (step.rng || []).length,
                         `step ${i} (${step.action}): rngCalls JS=${replay.steps[i].rngCalls} ` +
-                        `session=${step.rng.length}`);
+                        `session=${(step.rng || []).length}`);
                 });
             }
         }
@@ -503,7 +505,8 @@ function buildNextMenu(roleIdx, raceIdx, gender, align, session) {
     const effectiveAlign = align !== -128 ? align : validAligns[0];
 
     // All determined → confirmation
-    return buildConfirmMenuLines(session.character.name, roleIdx, raceIdx, effectiveGender, effectiveAlign);
+    const character = getSessionCharacter(session);
+    return buildConfirmMenuLines(character.name, roleIdx, raceIdx, effectiveGender, effectiveAlign);
 }
 
 // Build chargen screen for a step and render on HeadlessDisplay.
@@ -573,7 +576,8 @@ function buildChargenScreen(step, state, session) {
                 : (roles[roleIdx].forceGender === 'female' ? FEMALE : MALE);
             const align = CHARGEN_ALIGN_MAP[state.align];
             const effectiveRace = raceIdx >= 0 ? raceIdx : validRacesForRole(roleIdx)[0];
-            lines = buildConfirmMenuLines(session.character.name, roleIdx, effectiveRace, gender, align);
+            const character = getSessionCharacter(session);
+            lines = buildConfirmMenuLines(character.name, roleIdx, effectiveRace, gender, align);
             break;
         }
         default:
@@ -610,7 +614,7 @@ function collectChargenStartupRng(session) {
 // Returns { role, race, gender, align } with values set as they become known.
 function deriveChargenState(session, stepIndex) {
     const state = {};
-    const character = session.character;
+    const character = getSessionCharacter(session);
 
     // Walk through steps up to (but not including) stepIndex to build state,
     // then the step AT stepIndex records the selection that just happened.
@@ -643,12 +647,14 @@ function deriveChargenState(session, stepIndex) {
 }
 
 export function runChargenSession(file, session) {
+    const character = getSessionCharacter(session);
+
     it('chargen session has valid data', () => {
-        assert.ok(session.character, 'Missing character data');
+        assert.ok(character.role, 'Missing character data');
         assert.ok(session.steps.length > 0, 'No steps recorded');
     });
 
-    const role = session.character?.role;
+    const role = character.role;
     if (!CHARGEN_SUPPORTED_ROLES.has(role)) {
         it(`chargen ${role} (not yet implemented)`, () => {
             assert.ok(true);

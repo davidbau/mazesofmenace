@@ -70,6 +70,70 @@ export function getSessionScreenLines(screenHolder) {
 }
 
 // ---------------------------------------------------------------------------
+// Session format abstraction (v1 vs v3)
+// ---------------------------------------------------------------------------
+
+// Get startup data from a session, handling both v1 and v3 formats:
+// - v1: session.startup is a separate object with { rng, rngCalls, typGrid, screen }
+// - v3: startup is the first step with key === null and action === 'startup'
+// Returns the startup object or null if not found.
+export function getSessionStartup(session) {
+    if (!session) return null;
+
+    // v1 format: explicit startup field
+    if (session.startup) {
+        return session.startup;
+    }
+
+    // v3 format: first step with key === null
+    if (session.steps && session.steps.length > 0) {
+        const firstStep = session.steps[0];
+        if (firstStep.key === null && firstStep.action === 'startup') {
+            // Map step fields to startup-like object
+            return {
+                rng: firstStep.rng || [],
+                rngCalls: (firstStep.rng || []).length,
+                typGrid: firstStep.typGrid,
+                screen: firstStep.screen,
+                screenAnsi: firstStep.screenAnsi,
+            };
+        }
+    }
+
+    return null;
+}
+
+// Get character config from session, handling both formats
+export function getSessionCharacter(session) {
+    if (!session) return {};
+    // v3: options.role, options.race, etc.
+    if (session.options) {
+        return {
+            name: session.options.name,
+            role: session.options.role,
+            race: session.options.race,
+            gender: session.options.gender,
+            align: session.options.align,
+        };
+    }
+    // v1: character object
+    return session.character || {};
+}
+
+// Get gameplay steps (excluding startup step in v3 format)
+export function getSessionGameplaySteps(session) {
+    if (!session?.steps) return [];
+
+    // v3: skip first step if it's startup
+    if (session.steps.length > 0 && session.steps[0].key === null) {
+        return session.steps.slice(1);
+    }
+
+    // v1: all steps are gameplay steps
+    return session.steps;
+}
+
+// ---------------------------------------------------------------------------
 // Grid comparison
 // ---------------------------------------------------------------------------
 
@@ -405,11 +469,20 @@ function getPreStartupRngEntries(session) {
     return [];
 }
 
-// Some keylog-derived gameplay sessions record startup RNG in step[0].rng
-// instead of startup.rng (which is empty). Detect that format so replay output
-// can be normalized for strict per-step comparison.
+// Detect when startup RNG is stored in step[0].rng instead of a separate startup field.
+// This happens in:
+// - v3 format: startup is intentionally the first step with key === null
+// - Some keylog-derived sessions: startup.rng was empty, RNG recorded in step[0]
+// In either case, replay output should be normalized for strict per-step comparison.
 export function hasStartupBurstInFirstStep(session) {
     if (!session) return false;
+
+    // v3 format: startup is the first step with key === null
+    if (session.steps?.[0]?.key === null && session.steps[0].action === 'startup') {
+        return true;
+    }
+
+    // Legacy quirk: session.startup exists but is empty, RNG in step[0]
     const startupCalls = session.startup?.rngCalls ?? 0;
     if (startupCalls !== 0) return false;
     if ((session.startup?.rng?.length ?? 0) !== 0) return false;
@@ -434,7 +507,7 @@ export function generateStartupWithRng(seed, session) {
     setGameSeed(seed);
 
     // Determine role before level generation (needed for role-specific RNG)
-    const charOpts = session.character || {};
+    const charOpts = getSessionCharacter(session);
     const roleIndex = ROLE_INDEX[charOpts.role] ?? 11; // default Valkyrie
 
     // Chargen sessions have RNG consumed during character selection menus
@@ -762,7 +835,8 @@ export async function replaySession(seed, session, opts = {}) {
     enableRngLog();
     initRng(seed);
     setGameSeed(seed);
-    const replayRoleIndex = ROLE_INDEX[session.character?.role] ?? 11;
+    const sessionChar = getSessionCharacter(session);
+    const replayRoleIndex = ROLE_INDEX[sessionChar.role] ?? 11;
 
     // Consume pre-map character generation RNG calls if session has chargen data
     // C ref: role.c pick_gend() — happens during role selection BEFORE initLevelGeneration
@@ -806,22 +880,23 @@ export async function replaySession(seed, session, opts = {}) {
     const player = new Player();
     player.initRole(replayRoleIndex);
     player.wizard = true;
-    player.name = session.character?.name || 'Wizard';
-    player.gender = session.character?.gender === 'female' ? 1 : 0;
+    player.name = sessionChar.name || 'Wizard';
+    player.gender = sessionChar.gender === 'female' ? 1 : 0;
 
     // Override alignment if session specifies one (for non-default alignment variants)
     const replayAlignMap = { lawful: 1, neutral: 0, chaotic: -1 };
-    if (session.character?.align && replayAlignMap[session.character.align] !== undefined) {
-        player.alignment = replayAlignMap[session.character.align];
+    if (sessionChar.align && replayAlignMap[sessionChar.align] !== undefined) {
+        player.alignment = replayAlignMap[sessionChar.align];
     }
 
     // Set race from session (default Human)
     const replayRaceMap = { human: RACE_HUMAN, elf: RACE_ELF, dwarf: RACE_DWARF, gnome: RACE_GNOME, orc: RACE_ORC };
-    player.race = replayRaceMap[session.character?.race] ?? RACE_HUMAN;
+    player.race = replayRaceMap[sessionChar.race] ?? RACE_HUMAN;
 
     // Parse actual attributes from session screen (u_init randomizes them)
     // Screen format: "St:18 Dx:11 Co:18 In:11 Wi:9 Ch:8"
-    const screen = getSessionScreenLines(session.startup || {});
+    const sessionStartup = getSessionStartup(session);
+    const screen = getSessionScreenLines(sessionStartup || {});
     for (const line of screen) {
         if (!line) continue;
         const m = line.match(/St:([0-9/*]+)\s+Dx:(\d+)\s+Co:(\d+)\s+In:(\d+)\s+Wi:(\d+)\s+Ch:(\d+)/);

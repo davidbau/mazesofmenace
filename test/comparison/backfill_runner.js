@@ -52,7 +52,7 @@ function isCompositeEntry(entry) {
 
 // Extract the fn(arg)=result portion, ignoring @ source:line tags and count prefix
 function rngCallPart(entry) {
-    if (!entry) return '';
+    if (!entry || typeof entry !== 'string') return '';
     // Strip leading count prefix if present: "1 rn2(...)" → "rn2(...)"
     let s = entry.replace(/^\d+\s+/, '');
     // Strip @ source:line suffix if present
@@ -96,6 +96,32 @@ function compareScreens(screen1, screen2) {
         if (l1 === l2) matching++;
     }
     return { match: matching === len, matchingLines: matching, totalLines: len };
+}
+
+// Get startup data from session (handles v1 and v3 formats)
+function getSessionStartup(session) {
+    if (!session) return null;
+    // v1: explicit startup field
+    if (session.startup) return session.startup;
+    // v3: first step with key === null and action === 'startup'
+    if (session.steps?.[0]?.key === null && session.steps[0].action === 'startup') {
+        const firstStep = session.steps[0];
+        return {
+            rng: firstStep.rng || [],
+            rngCalls: (firstStep.rng || []).length,
+            typGrid: firstStep.typGrid,
+            screen: firstStep.screen,
+        };
+    }
+    return null;
+}
+
+// Get gameplay steps (excluding startup step in v3 format)
+function getGameplaySteps(session) {
+    if (!session?.steps) return [];
+    // v3: skip first step if it's startup
+    if (session.steps[0]?.key === null) return session.steps.slice(1);
+    return session.steps;
 }
 
 function stripAnsi(str) {
@@ -316,9 +342,9 @@ async function runBackfillTests() {
                     }
 
                     // Compare RNG if available
-                    if (level.rngFingerprint && level.rngFingerprint.length > 0) {
+                    if (level.rng && level.rng.length > 0) {
                         results.metrics.map.rng.total++;
-                        const rngCmp = compareRngArrays(jsRng.slice(0, level.rngFingerprint.length), level.rngFingerprint);
+                        const rngCmp = compareRngArrays(jsRng.slice(0, level.rng.length), level.rng);
                         if (rngCmp.match) {
                             results.metrics.map.rng.passed++;
                         } else if (rngCmp.matches > rngCmp.total * 0.9) {
@@ -394,8 +420,8 @@ async function runBackfillTests() {
                     continue;
                 }
 
-                // Compare steps
-                const goldenSteps = session.steps || [];
+                // Compare steps (use getGameplaySteps to skip startup step in v3 format)
+                const goldenSteps = getGameplaySteps(session);
                 const jsSteps = jsResult.steps || [];
                 const stepCount = Math.min(goldenSteps.length, jsSteps.length);
 
@@ -429,7 +455,8 @@ async function runBackfillTests() {
                 }
 
                 // Overall RNG comparison
-                const startupRng = session.startup?.rng || [];
+                const sessionStartup = getSessionStartup(session);
+                const startupRng = sessionStartup?.rng || [];
                 const jsStartupRng = jsResult.startup?.rng || [];
                 if (startupRng.length > 0 || jsStartupRng.length > 0) {
                     results.metrics.gameplay.rng.total++;
@@ -456,7 +483,7 @@ async function runBackfillTests() {
     // 4d: Special session tests
     // ------------------------------------------------------------------------
     if (results.capabilities.spLev) {
-        const { initRng } = rng;
+        const { initRng, enableRngLog, getRngLog, disableRngLog } = rng;
         const { ROWNO = 21, COLNO = 80 } = config;
 
         // Try to load special level generators
@@ -549,9 +576,13 @@ async function runBackfillTests() {
                     // Initialize RNG with session seed
                     initRng(session.seed);
 
-                    // Generate the level
+                    // Generate the level with RNG logging enabled
                     resetLevelState();
+                    if (enableRngLog) enableRngLog();
                     generator();
+                    const jsRng = getRngLog ? getRngLog() || [] : [];
+                    if (disableRngLog) disableRngLog();
+
                     const state = getLevelState();
                     const map = state?.map;
 
@@ -578,9 +609,17 @@ async function runBackfillTests() {
                         sessionPassed = false;
                     }
 
-                    // Compare RNG if available
-                    if (level.rngFingerprint && level.rngFingerprint.length > 0) {
+                    // Compare RNG log if available
+                    if (level.rng && level.rng.length > 0) {
                         results.metrics.special.rng.total++;
+                        // Compare JS RNG log against golden log
+                        const rngCmp = compareRngArrays(
+                            jsRng.slice(0, level.rng.length),
+                            level.rng
+                        );
+                        if (rngCmp.match) {
+                            results.metrics.special.rng.passed++;
+                        }
                     }
                 } catch (e) {
                     sessionPassed = false;

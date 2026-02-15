@@ -9,7 +9,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
-import { compareRng, replaySession, generateStartupWithRng, hasStartupBurstInFirstStep } from './session_helpers.js';
+import { compareRng, replaySession, generateStartupWithRng, hasStartupBurstInFirstStep, getSessionStartup, getSessionCharacter, getSessionGameplaySteps } from './session_helpers.js';
 
 function loadSession(filepath) {
     return JSON.parse(fs.readFileSync(filepath, 'utf8'));
@@ -217,18 +217,21 @@ async function main() {
 
     const session = loadSession(sessionPath);
     const seed = session.seed;
+    const sessionStartup = getSessionStartup(session);
+    const sessionCharacter = getSessionCharacter(session);
+    const gameplaySteps = getSessionGameplaySteps(session);
 
     console.log(`Session: ${sessionPath}`);
     console.log(`Seed: ${seed}`);
-    if (session.character) {
-        console.log(`Character: ${session.character.name} (${session.character.role} ${session.character.race} ${session.character.gender} ${session.character.align})`);
+    if (sessionCharacter.name) {
+        console.log(`Character: ${sessionCharacter.name} (${sessionCharacter.role} ${sessionCharacter.race} ${sessionCharacter.gender} ${sessionCharacter.align})`);
     }
 
     let failures = 0;
 
-    if (compareRngEnabled && session.startup?.rng && !hasStartupBurstInFirstStep(session)) {
+    if (compareRngEnabled && sessionStartup?.rng && !hasStartupBurstInFirstStep(session)) {
         const startup = generateStartupWithRng(seed, session);
-        const div = compareRng(startup.rng, session.startup.rng);
+        const div = compareRng(startup.rng, sessionStartup.rng);
         if (div.index === -1) {
             console.log(`startup: ok (${startup.rngCalls} calls)`);
         } else {
@@ -247,13 +250,13 @@ async function main() {
         ...replayOpts,
         captureScreens: compareScreen,
     });
-    const totalSteps = (session.steps || []).length;
+    const totalSteps = gameplaySteps.length;
     let matchedSteps = 0;
     let matchedScreenSteps = 0;
 
     for (let i = 0; i < totalSteps; i++) {
         const jsStep = replay.steps[i];
-        const cStep = session.steps[i];
+        const cStep = gameplaySteps[i];
         if (compareRngEnabled) {
             const div = compareRng(jsStep?.rng || [], cStep?.rng || []);
             const ok = div.index === -1;
