@@ -271,6 +271,28 @@ export function compareRng(jsRng, sessionRng) {
     return { index: -1 };
 }
 
+// Return the JS index where the full session RNG prefix is consumed, or -1
+// if JS and session diverge before session RNG is exhausted.
+function matchingJsPrefixLength(jsRng, sessionRng) {
+    let si = 0;
+    let ji = 0;
+    while (ji < jsRng.length && si < sessionRng.length) {
+        if (isMidlogEntry(sessionRng[si])) { si++; continue; }
+        if (isMidlogEntry(jsRng[ji])) { ji++; continue; }
+        if (isCompositeEntry(rngCallPart(jsRng[ji]))) { ji++; continue; }
+        if (isCompositeEntry(rngCallPart(sessionRng[si]))) { si++; continue; }
+        if (rngCallPart(jsRng[ji]) !== rngCallPart(sessionRng[si])) return -1;
+        ji++;
+        si++;
+    }
+    while (si < sessionRng.length
+           && (isMidlogEntry(sessionRng[si]) || isCompositeEntry(rngCallPart(sessionRng[si])))) si++;
+    while (ji < jsRng.length
+           && (isMidlogEntry(jsRng[ji]) || isCompositeEntry(rngCallPart(jsRng[ji])))) ji++;
+    if (si < sessionRng.length) return -1;
+    return ji;
+}
+
 // Generate levels 1→maxDepth with RNG trace capture.
 // Returns { grids, maps, rngLogs } where rngLogs[depth] = { rngCalls, rng }.
 export function generateMapsWithRng(seed, maxDepth) {
@@ -840,6 +862,37 @@ export async function replaySession(seed, session, opts = {}) {
     let pendingCount = 0;
     let pendingTransitionTurn = false;
     let deferredSparseMoveKey = null;
+    let deferredMoreBoundaryRng = [];
+
+    const pushStepResult = (stepLogRaw, screen, step, stepScreen, stepIndex) => {
+        let raw = deferredMoreBoundaryRng.length > 0
+            ? deferredMoreBoundaryRng.concat(stepLogRaw)
+            : stepLogRaw;
+        deferredMoreBoundaryRng = [];
+        let compact = raw.map(toCompactRng);
+
+        // C replay captures can split a single turn at "--More--".
+        // Normalize by carrying unmatched trailing RNG to the next
+        // space-acknowledgement step when current step has a known-matching prefix.
+        const hasMore = ((stepScreen[0] || '').includes('--More--'));
+        const nextStep = allSteps[stepIndex + 1];
+        const nextKey = nextStep?.key || '';
+        const nextIsAcknowledge = nextKey === ' ' || nextKey === '\n' || nextKey === '\r';
+        if (hasMore && nextIsAcknowledge) {
+            const splitAt = matchingJsPrefixLength(compact, step.rng || []);
+            if (splitAt >= 0 && splitAt < compact.length) {
+                deferredMoreBoundaryRng = raw.slice(splitAt);
+                raw = raw.slice(0, splitAt);
+                compact = compact.slice(0, splitAt);
+            }
+        }
+
+        stepResults.push({
+            rngCalls: raw.length,
+            rng: compact,
+            screen,
+        });
+    };
     for (let stepIndex = 0; stepIndex < maxSteps; stepIndex++) {
         const step = allSteps[stepIndex];
         const prevCount = getRngLog().length;
@@ -874,11 +927,13 @@ export async function replaySession(seed, session, opts = {}) {
             }
             const fullLog = getRngLog();
             const stepLog = fullLog.slice(prevCount);
-            stepResults.push({
-                rngCalls: stepLog.length,
-                rng: stepLog.map(toCompactRng),
-                screen: opts.captureScreens ? game.display.getScreenLines() : undefined,
-            });
+            pushStepResult(
+                stepLog,
+                opts.captureScreens ? game.display.getScreenLines() : undefined,
+                step,
+                stepScreen,
+                stepIndex
+            );
             continue;
         }
         if (pendingTransitionTurn) {
@@ -895,11 +950,13 @@ export async function replaySession(seed, session, opts = {}) {
                 }
                 const fullLog = getRngLog();
                 const stepLog = fullLog.slice(prevCount);
-                stepResults.push({
-                    rngCalls: stepLog.length,
-                    rng: stepLog.map(toCompactRng),
-                    screen: opts.captureScreens ? game.display.getScreenLines() : undefined,
-                });
+                pushStepResult(
+                    stepLog,
+                    opts.captureScreens ? game.display.getScreenLines() : undefined,
+                    step,
+                    stepScreen,
+                    stepIndex
+                );
                 continue;
             }
             pendingTransitionTurn = false;
@@ -909,11 +966,13 @@ export async function replaySession(seed, session, opts = {}) {
 
         if (isCapturedDipPrompt && !pendingCommand) {
             game.display.setScreenLines(stepScreen);
-            stepResults.push({
-                rngCalls: 0,
-                rng: [],
-                screen: opts.captureScreens ? game.display.getScreenLines() : undefined,
-            });
+            pushStepResult(
+                [],
+                opts.captureScreens ? game.display.getScreenLines() : undefined,
+                step,
+                stepScreen,
+                stepIndex
+            );
             continue;
         }
 
@@ -956,11 +1015,13 @@ export async function replaySession(seed, session, opts = {}) {
 
             const fullLog = getRngLog();
             const stepLog = fullLog.slice(prevCount);
-            stepResults.push({
-                rngCalls: stepLog.length,
-                rng: stepLog.map(toCompactRng),
-                screen: opts.captureScreens ? game.display.getScreenLines() : undefined,
-            });
+            pushStepResult(
+                stepLog,
+                opts.captureScreens ? game.display.getScreenLines() : undefined,
+                step,
+                stepScreen,
+                stepIndex
+            );
             continue;
         }
 
@@ -970,11 +1031,13 @@ export async function replaySession(seed, session, opts = {}) {
         if (!pendingCommand && step.key.length === 1 && ch0 >= 48 && ch0 <= 57) { // '0'-'9'
             const digit = ch0 - 48;
             pendingCount = Math.min(32767, (pendingCount * 10) + digit);
-            stepResults.push({
-                rngCalls: 0,
-                rng: [],
-                screen: opts.captureScreens ? game.display.getScreenLines() : undefined,
-            });
+            pushStepResult(
+                [],
+                opts.captureScreens ? game.display.getScreenLines() : undefined,
+                step,
+                stepScreen,
+                stepIndex
+            );
             continue;
         }
 
@@ -984,11 +1047,13 @@ export async function replaySession(seed, session, opts = {}) {
             && ((step.rng && step.rng.length) || 0) === 0
             && stepMsg === ''
             && ((stepScreen[0] || '').trim() === '')) {
-            stepResults.push({
-                rngCalls: 0,
-                rng: [],
-                screen: opts.captureScreens ? game.display.getScreenLines() : undefined,
-            });
+            pushStepResult(
+                [],
+                opts.captureScreens ? game.display.getScreenLines() : undefined,
+                step,
+                stepScreen,
+                stepIndex
+            );
             continue;
         }
 
@@ -1001,11 +1066,13 @@ export async function replaySession(seed, session, opts = {}) {
             && typeof step.action === 'string'
             && step.action.startsWith('move-')
             && step.key.length === 1) {
-            stepResults.push({
-                rngCalls: 0,
-                rng: [],
-                screen: opts.captureScreens ? game.display.getScreenLines() : undefined,
-            });
+            pushStepResult(
+                [],
+                opts.captureScreens ? game.display.getScreenLines() : undefined,
+                step,
+                stepScreen,
+                stepIndex
+            );
             continue;
         }
         // Some sparse keylog sessions capture a display-only "Things that are
@@ -1030,11 +1097,13 @@ export async function replaySession(seed, session, opts = {}) {
             }
             const fullLog = getRngLog();
             const stepLog = fullLog.slice(prevCount);
-            stepResults.push({
-                rngCalls: stepLog.length,
-                rng: stepLog.map(toCompactRng),
-                screen: opts.captureScreens ? stepScreen : undefined,
-            });
+            pushStepResult(
+                stepLog,
+                opts.captureScreens ? stepScreen : undefined,
+                step,
+                stepScreen,
+                stepIndex
+            );
             continue;
         }
 
@@ -1300,11 +1369,13 @@ export async function replaySession(seed, session, opts = {}) {
 
         const fullLog = getRngLog();
         const stepLog = fullLog.slice(prevCount);
-        stepResults.push({
-            rngCalls: stepLog.length,
-            rng: stepLog.map(toCompactRng),
-            screen: opts.captureScreens ? (capturedScreenOverride || game.display.getScreenLines()) : undefined,
-        });
+        pushStepResult(
+            stepLog,
+            opts.captureScreens ? (capturedScreenOverride || game.display.getScreenLines()) : undefined,
+            step,
+            stepScreen,
+            stepIndex
+        );
     }
 
     // If session ends while a command is waiting for input, cancel it with ESC.

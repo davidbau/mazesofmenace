@@ -17,7 +17,9 @@ import { couldsee, m_cansee, do_clear_area } from './vision.js';
 import { can_teleport, noeyes } from './mondata.js';
 import { PM_GRID_BUG, PM_IRON_GOLEM, PM_SHOPKEEPER, mons,
          PM_LEPRECHAUN, PM_XAN, PM_YELLOW_LIGHT, PM_BLACK_LIGHT,
-         AT_CLAW, AT_BITE, AT_KICK, AT_BUTT, AT_TUCH, AT_STNG, AT_WEAP,
+         AT_NONE, AT_CLAW, AT_BITE, AT_KICK, AT_BUTT, AT_TUCH, AT_STNG, AT_WEAP,
+         AD_PHYS,
+         AD_ACID, AD_ENCH,
          M1_FLY, M1_SWIM, M1_AMPHIBIOUS, M1_AMORPHOUS, M1_CLING, M1_SEE_INVIS, S_MIMIC,
          MZ_TINY, MZ_SMALL, MR_FIRE, MR_SLEEP, G_FREQ, M3_INFRAVISION } from './monsters.js';
 import { STATUE_TRAP, MAGIC_TRAP, VIBRATING_SQUARE, RUST_TRAP, FIRE_TRAP,
@@ -229,6 +231,33 @@ function petCorpseChanceRoll(mon) {
     const verysmall = (mdat.size || 0) === MZ_TINY;
     const corpsetmp = 2 + (gfreq < 2 ? 1 : 0) + (verysmall ? 1 : 0);
     return rn2(corpsetmp);
+}
+
+// C ref: mhitm.c passivemm() RNG-only probe for pet melee path.
+// We currently model only RNG consumption order, not full passive effects.
+function consumePassivemmRng(attacker, defender, strike, defenderDied) {
+    const ddef = defender?.type || (Number.isInteger(defender?.mndx) ? mons[defender.mndx] : null);
+    const passive = ddef?.attacks?.find((a) => a && a.type === AT_NONE) || null;
+    // C has fixed-size mattk[] with implicit trailing AT_NONE entries.
+    // When no explicit passive attack exists, this falls back to AD_PHYS.
+    const adtyp = passive ? passive.damage : AD_PHYS;
+    // C ref: passivemm() AD_ACID special path consumes rn2(30)/rn2(6)
+    // regardless of hit, and rn2(2) on hit.
+    if (adtyp === AD_ACID) {
+        if (strike) rn2(2);
+        rn2(30);
+        rn2(6);
+        return;
+    }
+
+    // C ref: passivemm() AD_ENCH has no RNG.
+    if (adtyp === AD_ENCH) return;
+
+    // C ref: passivemm() early return if defender died or is cancelled.
+    if (defenderDied || defender?.mcan) return;
+
+    // C ref: passivemm() generic passive gate.
+    rn2(3);
 }
 
 // ========================================================================
@@ -712,8 +741,10 @@ function find_targ(mon, dx, dy, maxdist, map, player) {
         // C ref: dogmove.c:679 — if pet can't see this cell, stop
         if (!m_cansee(mon, map, curx, cury)) break;
         // C ref: dogmove.c:682-683 — if pet thinks player is here, return player
-        // For tame pets, mux/muy == u.ux/u.uy (see set_apparxy)
-        if (player && curx === player.x && cury === player.y) {
+        // Uses mtmp->mux/muy (apparent player position), not always u.ux/u.uy.
+        const mux = Number.isInteger(mon.mux) ? mon.mux : player?.x;
+        const muy = Number.isInteger(mon.muy) ? mon.muy : player?.y;
+        if (player && curx === mux && cury === muy) {
             return { isPlayer: true, mx: player.x, my: player.y };
         }
         // C ref: dogmove.c:685-693 — check for monster at position
@@ -831,9 +862,9 @@ function score_targ(mon, target, map, player) {
 
 // C ref: dogmove.c:842-890 best_target() — find best ranged attack target
 function best_target(mon, forced, map, player) {
-    // C ref: dogmove.c:854 — blind pets can't see targets
-    // mcansee is initialized TRUE for all new monsters (makemon.c:1298)
-    // and only set FALSE by blinding effects. We check mon.mblind here.
+    // C ref: dogmove.c:854 — if (!mtmp->mcansee) return 0;
+    if (mon.mcansee === false) return null;
+    // Keep blind fallback for incomplete state wiring.
     if (mon.mblind) return null;
     let bestscore = -40000;
     let bestTarg = null;
@@ -1168,12 +1199,10 @@ function dog_move(mon, map, player, display, fov, after = false) {
                         petCorpseChanceRoll(target);
                         rnd(1); // C ref: makemon.c grow_up()
                     } else {
-                        // C ref: mhitm.c passivemm() for adjacent non-lethal outcomes.
-                        rn2(3);
+                        consumePassivemmRng(mon, target, true, false);
                     }
                 } else {
-                    // C ref: mhitm.c passivemm() on miss/non-kill interactions.
-                    rn2(3);
+                    consumePassivemmRng(mon, target, false, false);
                 }
                 if (!hit && display && mon.name && target.name) {
                     display.putstr_message(`The ${mon.name} misses the ${target.name}.`);
