@@ -15,7 +15,7 @@ import { observeObject } from './discovery.js';
 import { dogfood, dog_eat, can_carry, DOGFOOD, CADAVER, ACCFOOD, MANFOOD, APPORT,
          POISON, UNDEF, TABU } from './dog.js';
 import { couldsee, m_cansee, do_clear_area } from './vision.js';
-import { can_teleport, noeyes } from './mondata.js';
+import { can_teleport, noeyes, perceives } from './mondata.js';
 import { PM_GRID_BUG, PM_IRON_GOLEM, PM_SHOPKEEPER, mons,
          PM_LEPRECHAUN, PM_XAN, PM_YELLOW_LIGHT, PM_BLACK_LIGHT,
          AT_NONE, AT_CLAW, AT_BITE, AT_KICK, AT_BUTT, AT_TUCH, AT_STNG, AT_WEAP,
@@ -144,6 +144,16 @@ function pointInShop(x, y, map) {
 
 // C ref: in_rooms(x,y,SHOPBASE) check used by monmove.c m_search_items().
 function monsterInShop(mon, map) {
+    // C ref: inhishop(shkp) checks shopkeeper's own assigned shop room.
+    if (mon?.isshk && Number.isInteger(mon.shoproom) && mon.shoproom >= ROOMOFFSET) {
+        const loc = map.at(mon.mx, mon.my);
+        const roomno = loc?.roomno || 0;
+        if (roomno === mon.shoproom) {
+            const room = map.rooms?.[roomno - ROOMOFFSET];
+            return !!(room && room.rtype >= SHOPBASE);
+        }
+        return false;
+    }
     return pointInShop(mon.mx, mon.my, map);
 }
 
@@ -386,9 +396,17 @@ function mfndpos(mon, map, player) {
                 }
             }
 
+            // C ref: mon.c mfndpos() only sets NOTONL when monster can see hero.
             const mux = Number.isInteger(mon.mux) ? mon.mux : player.x;
             const muy = Number.isInteger(mon.muy) ? mon.muy : player.y;
-            const notOnLine = (nx === mux || ny === muy || (ny - muy) === (nx - mux) || (ny - muy) === -(nx - mux));
+            const monSeeHero = (mon.mcansee !== false)
+                && !mon.blind
+                && m_cansee(mon, map, player.x, player.y)
+                && (!player.invisible || perceives(mon.type || {}));
+            const notOnLine = monSeeHero
+                && (nx === mux || ny === muy
+                    || (ny - muy) === (nx - mux)
+                    || (ny - muy) === -(nx - mux));
 
             positions.push({
                 x: nx,
@@ -1431,6 +1449,7 @@ function shk_move(mon, map, player) {
     const omy = mon.my;
     const home = mon.shk || { x: omx, y: omy };
     const door = mon.shd || { x: home.x, y: home.y };
+    const udist = dist2(omx, omy, player.x, player.y);
     const satdoor = (home.x === omx && home.y === omy);
     let appr = 1;
     let gtx = home.x;
@@ -1438,6 +1457,16 @@ function shk_move(mon, map, player) {
     let avoid = false;
     let uondoor = (player.x === door.x && player.y === door.y);
     let badinv = false;
+
+    // C ref: shk.c shk_move() near-player early checks.
+    if (udist < 3) {
+        if (!mon.peaceful) {
+            return 0;
+        }
+        if (mon.following && udist < 2) {
+            return 0;
+        }
+    }
 
     if (!mon.peaceful) {
         gtx = player.x;

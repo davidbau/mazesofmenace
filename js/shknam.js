@@ -17,7 +17,7 @@ import {
     WAN_LIGHT, SCR_LIGHT, SPE_LIGHT,
     SCR_FOOD_DETECTION, LUMP_OF_ROYAL_JELLY,
 } from './objects.js';
-import { MAXOCLASSES, ROOM, SHOPBASE, SDOOR, DOOR, D_NODOOR, D_ISOPEN, D_TRAPPED, D_LOCKED } from './config.js';
+import { MAXOCLASSES, ROOM, SHOPBASE, ROOMOFFSET, SDOOR, DOOR, D_NODOOR, D_ISOPEN, D_TRAPPED, D_LOCKED } from './config.js';
 import { makemon, mkclass, NO_MM_FLAGS, registerGetShopItem } from './makemon.js';
 import { mksobj, mkobj, RANDOM_CLASS } from './mkobj.js';
 import { PM_SHOPKEEPER, S_MIMIC } from './monsters.js';
@@ -342,13 +342,30 @@ function mkveggy_at(sx, sy) {
 // ========================================================================
 
 function good_shopdoor(sroom, map) {
+    const rmno = ((map.rooms || []).indexOf(sroom) + ROOMOFFSET);
     for (let i = 0; i < sroom.doorct; i++) {
         const di = sroom.fdoor + i;
         let sx = map.doors[di].x;
         let sy = map.doors[di].y;
 
-        // Regular rooms only (no irregular support needed)
-        if (sx === sroom.lx - 1) {
+        // C ref: shknam.c good_shopdoor() irregular-room branch
+        if (sroom.irregular) {
+            const left = map.at(sx - 1, sy);
+            const right = map.at(sx + 1, sy);
+            const up = map.at(sx, sy - 1);
+            const down = map.at(sx, sy + 1);
+            if (left && !left.edge && left.roomno === rmno) {
+                sx--;
+            } else if (right && !right.edge && right.roomno === rmno) {
+                sx++;
+            } else if (up && !up.edge && up.roomno === rmno) {
+                sy--;
+            } else if (down && !down.edge && down.roomno === rmno) {
+                sy++;
+            } else {
+                continue;
+            }
+        } else if (sx === sroom.lx - 1) {
             sx++;
         } else if (sx === sroom.hx + 1) {
             sx--;
@@ -371,12 +388,22 @@ function good_shopdoor(sroom, map) {
 function stock_room_goodpos(sroom, sh, sx, sy, map) {
     const doorx = map.doors[sh].x;
     const doory = map.doors[sh].y;
+    const rmno = ((map.rooms || []).indexOf(sroom) + ROOMOFFSET);
 
-    // Regular rooms: exclude row/column adjacent to door
-    if (sx === sroom.lx && doorx === sx - 1) return false;
-    if (sx === sroom.hx && doorx === sx + 1) return false;
-    if (sy === sroom.ly && doory === sy - 1) return false;
-    if (sy === sroom.hy && doory === sy + 1) return false;
+    const distmin = (x1, y1, x2, y2) => Math.max(Math.abs(x1 - x2), Math.abs(y1 - y2));
+
+    if (sroom.irregular) {
+        const loc = map.at(sx, sy);
+        if (!loc || loc.edge || loc.roomno !== rmno || distmin(sx, sy, doorx, doory) <= 1) {
+            return false;
+        }
+    } else {
+        // Regular rooms: exclude row/column adjacent to door
+        if (sx === sroom.lx && doorx === sx - 1) return false;
+        if (sx === sroom.hx && doorx === sx + 1) return false;
+        if (sy === sroom.ly && doory === sy - 1) return false;
+        if (sy === sroom.hy && doory === sy + 1) return false;
+    }
 
     // Only generate items on solid floor squares
     const loc = map.at(sx, sy);
@@ -475,6 +502,7 @@ function shkinit(shp, sroom, map, depth, seed) {
     // C ref: shknam.c:666-681 — set shopkeeper flags
     shk.peaceful = true;
     shk.isshk = true;
+    shk.shoproom = (map.rooms || []).indexOf(sroom) + ROOMOFFSET;
     // Minimal ESHK-like state used by shk_move/move_special parity.
     shk.shk = { x: sx, y: sy }; // shopkeeper "home" square
     shk.shd = { x: map.doors[sh].x, y: map.doors[sh].y }; // shop door square

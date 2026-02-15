@@ -20,7 +20,8 @@ import { isok, NUM_ATTRS,
          PM_ARCHEOLOGIST, PM_BARBARIAN, PM_CAVEMAN, PM_HEALER,
          PM_KNIGHT, PM_MONK, PM_PRIEST, PM_RANGER, PM_ROGUE,
          PM_SAMURAI, PM_TOURIST, PM_VALKYRIE, PM_WIZARD,
-         ACCESSIBLE, COLNO, ROWNO,
+         ACCESSIBLE, COLNO, ROWNO, IS_DOOR, D_CLOSED, D_LOCKED,
+         POOL, LAVAPOOL,
          RACE_HUMAN, RACE_ELF, RACE_DWARF, RACE_GNOME, RACE_ORC } from './config.js';
 import {
     // Weapons
@@ -87,7 +88,7 @@ import { discoverObject } from './discovery.js';
 import {
     mons, PM_LITTLE_DOG, PM_KITTEN, PM_PONY, PM_ERINYS,
     MS_LEADER, MS_NEMESIS, MS_GUARDIAN,
-    M2_MINION,
+    M2_MINION, M1_FLY, M1_SWIM, M1_AMPHIBIOUS,
 } from './monsters.js';
 
 // ========================================================================
@@ -133,6 +134,18 @@ function collectCoordsShuffle(cx, cy, maxRadius) {
         for (const pos of ring) allPositions.push(pos);
     }
     return allPositions;
+}
+
+// C ref: teleport.c goodpos() subset for mon_arrive/mnexto placement.
+function arrivalGoodPos(map, mon, x, y) {
+    const loc = map.at(x, y);
+    if (!loc || !ACCESSIBLE(loc.typ)) return false;
+    if (IS_DOOR(loc.typ) && (loc.flags & (D_CLOSED | D_LOCKED))) return false;
+    if (map.monsterAt(x, y)) return false;
+    const flags1 = mon?.type?.flags1 || 0;
+    const canFlyOrSwim = !!(flags1 & (M1_FLY | M1_SWIM | M1_AMPHIBIOUS));
+    if ((loc.typ === POOL || loc.typ === LAVAPOOL) && !canFlyOrSwim) return false;
+    return true;
 }
 
 // C ref: makemon.c adj_lev() — adjust monster level for difficulty
@@ -407,6 +420,12 @@ export function mon_arrive(oldMap, newMap, player, opts = {}) {
         const mtame = pet.mtame || (pet.tame ? 10 : 0);
         const bound = mtame > 0 ? 10 : (pet.mpeaceful ? 5 : 2);
 
+        // C ref: dog.c mon_arrive() — avoid stale apparent-hero coords and
+        // clear movement track history when migrating onto a new level.
+        pet.mux = heroX;
+        pet.muy = heroY;
+        pet.mtrack = new Array(4).fill(null).map(() => ({ x: 0, y: 0 }));
+
         let petX = 0;
         let petY = 0;
         let foundPos = false;
@@ -421,9 +440,7 @@ export function mon_arrive(oldMap, newMap, player, opts = {}) {
                 // C ref: dog.c mon_arrive(With_you): mnexto(mtmp, RLOC_NOMSG)
                 const positions = collectCoordsShuffle(heroX, heroY, 3);
                 for (const pos of positions) {
-                    const loc = newMap.at(pos.x, pos.y);
-                    if (loc && ACCESSIBLE(loc.typ)
-                        && !newMap.monsterAt(pos.x, pos.y)
+                    if (arrivalGoodPos(newMap, pet, pos.x, pos.y)
                         && !(pos.x === heroX && pos.y === heroY)) {
                         petX = pos.x;
                         petY = pos.y;
@@ -469,8 +486,7 @@ export function mon_arrive(oldMap, newMap, player, opts = {}) {
                 for (let tries = 0; tries < (COLNO * ROWNO); tries++) {
                     const rx = rn1(COLNO - 1, 1);
                     const ry = rn2(ROWNO);
-                    const loc = newMap.at(rx, ry);
-                    if (loc && ACCESSIBLE(loc.typ) && !newMap.monsterAt(rx, ry)) {
+                    if (arrivalGoodPos(newMap, pet, rx, ry)) {
                         petX = rx;
                         petY = ry;
                         foundPos = true;
@@ -479,15 +495,14 @@ export function mon_arrive(oldMap, newMap, player, opts = {}) {
                 }
             } else {
                 const exactLoc = newMap.at(localeX, localeY);
-                if (exact && exactLoc && ACCESSIBLE(exactLoc.typ) && !newMap.monsterAt(localeX, localeY)) {
+                if (exact && exactLoc && arrivalGoodPos(newMap, pet, localeX, localeY)) {
                     petX = localeX;
                     petY = localeY;
                     foundPos = true;
                 } else {
                     const positions = collectCoordsShuffle(localeX, localeY, 3);
                     for (const pos of positions) {
-                        const loc = newMap.at(pos.x, pos.y);
-                        if (loc && ACCESSIBLE(loc.typ) && !newMap.monsterAt(pos.x, pos.y)) {
+                        if (arrivalGoodPos(newMap, pet, pos.x, pos.y)) {
                             petX = pos.x;
                             petY = pos.y;
                             foundPos = true;
