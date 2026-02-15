@@ -1,50 +1,67 @@
 // test/comparison/test_result_format.js
-// Standard test result format utilities matching SESSION_FORMAT_V3.md spec
+// Standard test result format for session-based tests
 //
-// Creates comparison report JSON with metrics for:
-// - rngCalls: { matched, total }
-// - keys: { matched, total }
-// - grids: { matched, total }
-// - screens: { matched, total }
+// Produces per-session results that can be bundled together.
+// Used by backfill_runner.js and stored in git notes.
+
+import { execSync } from 'node:child_process';
 
 /**
- * Create a new test result object
- * @param {string} sessionFile - Name of the session file tested
- * @param {number} seed - PRNG seed
- * @param {string} source - Session source ("c" or "js")
+ * Create a new session test result
+ * @param {Object} session - Session object with file, seed, type info
  * @returns {Object} Test result object
  */
-export function createTestResult(sessionFile, seed, source = 'c') {
-    return {
-        session: sessionFile,
-        seed,
-        source,
-        timestamp: new Date().toISOString(),
+export function createSessionResult(session) {
+    const result = {
+        session: session.file,
+        type: inferSessionType(session.file),
+        seed: session.seed,
+        passed: true,
         metrics: {
             rngCalls: { matched: 0, total: 0 },
             keys: { matched: 0, total: 0 },
             grids: { matched: 0, total: 0 },
             screens: { matched: 0, total: 0 },
         },
-        passed: true,
-        firstDivergence: null,
-        gridDiffs: [],
-        screenDiffs: [],
     };
+
+    // Add metadata based on session type
+    if (result.type === 'chargen') {
+        const match = session.file.match(/chargen_(\w+)/);
+        if (match) result.role = match[1];
+        // Check for race/alignment variants
+        const variant = session.file.match(/chargen_\w+_(\w+)\./);
+        if (variant) result.variant = variant[1];
+    }
+
+    return result;
 }
 
 /**
- * Record RNG comparison result
- * @param {Object} result - Test result object
- * @param {boolean} matched - Whether all RNG calls matched
- * @param {number} matchedCount - Number of matching calls
- * @param {number} totalCount - Total number of calls
- * @param {Object} [divergence] - First divergence info if any
+ * Infer session type from filename
  */
-export function recordRngResult(result, matched, matchedCount, totalCount, divergence = null) {
-    result.metrics.rngCalls.matched += matchedCount;
-    result.metrics.rngCalls.total += totalCount;
-    if (!matched) {
+function inferSessionType(filename) {
+    if (filename.includes('_chargen')) return 'chargen';
+    if (filename.includes('_gameplay')) return 'gameplay';
+    if (filename.includes('interface_')) return 'interface';
+    if (filename.includes('_special_')) return 'special';
+    if (filename.startsWith('seed') && filename.includes('_')) {
+        // Option tests like seed301_verbose_on
+        const parts = filename.split('_');
+        if (parts.length >= 2 && !parts[1].includes('chargen') && !parts[1].includes('gameplay')) {
+            return 'option';
+        }
+    }
+    return 'unknown';
+}
+
+/**
+ * Record RNG comparison for a session
+ */
+export function recordRng(result, matched, total, divergence = null) {
+    result.metrics.rngCalls.matched += matched;
+    result.metrics.rngCalls.total += total;
+    if (matched < total) {
         result.passed = false;
         if (!result.firstDivergence && divergence) {
             result.firstDivergence = divergence;
@@ -53,144 +70,127 @@ export function recordRngResult(result, matched, matchedCount, totalCount, diver
 }
 
 /**
- * Record keystroke comparison result
- * @param {Object} result - Test result object
- * @param {boolean} matched - Whether this keystroke matched
+ * Record keystroke comparison
  */
-export function recordKeyResult(result, matched) {
-    result.metrics.keys.total++;
-    if (matched) {
-        result.metrics.keys.matched++;
-    } else {
+export function recordKeys(result, matched, total) {
+    result.metrics.keys.matched += matched;
+    result.metrics.keys.total += total;
+    if (matched < total) {
         result.passed = false;
     }
 }
 
 /**
- * Record grid comparison result
- * @param {Object} result - Test result object
- * @param {boolean} matched - Whether grids matched
- * @param {number} [stepIndex] - Step index where grid was compared
- * @param {number} [cellsDifferent] - Number of cells that differ
+ * Record grid comparison
  */
-export function recordGridResult(result, matched, stepIndex = -1, cellsDifferent = 0) {
-    result.metrics.grids.total++;
-    if (matched) {
-        result.metrics.grids.matched++;
-    } else {
+export function recordGrids(result, matched, total) {
+    result.metrics.grids.matched += matched;
+    result.metrics.grids.total += total;
+    if (matched < total) {
         result.passed = false;
-        if (stepIndex >= 0) {
-            result.gridDiffs.push({ step: stepIndex, cellsDifferent });
-        }
     }
 }
 
 /**
- * Record screen comparison result
- * @param {Object} result - Test result object
- * @param {boolean} matched - Whether screens matched
- * @param {number} [stepIndex] - Step index where screen was compared
- * @param {string} [description] - Description of difference
+ * Record screen comparison
  */
-export function recordScreenResult(result, matched, stepIndex = -1, description = '') {
-    result.metrics.screens.total++;
-    if (matched) {
-        result.metrics.screens.matched++;
-    } else {
+export function recordScreens(result, matched, total) {
+    result.metrics.screens.matched += matched;
+    result.metrics.screens.total += total;
+    if (matched < total) {
         result.passed = false;
-        if (stepIndex >= 0) {
-            result.screenDiffs.push({ step: stepIndex, description });
-        }
     }
 }
 
 /**
- * Finalize test result - clean up empty arrays
- * @param {Object} result - Test result object
- * @returns {Object} Cleaned up result
+ * Mark session as failed with optional error
+ */
+export function markFailed(result, error = null) {
+    result.passed = false;
+    if (error) {
+        result.error = typeof error === 'string' ? error : error.message;
+    }
+}
+
+/**
+ * Finalize a session result - remove empty/default fields
  */
 export function finalizeResult(result) {
-    // Remove empty arrays for cleaner output
-    if (result.gridDiffs.length === 0) delete result.gridDiffs;
-    if (result.screenDiffs.length === 0) delete result.screenDiffs;
-    if (result.firstDivergence === null) delete result.firstDivergence;
+    // Remove zero-total metrics for cleaner output
+    const m = result.metrics;
+    if (m.rngCalls.total === 0) delete m.rngCalls;
+    if (m.keys.total === 0) delete m.keys;
+    if (m.grids.total === 0) delete m.grids;
+    if (m.screens.total === 0) delete m.screens;
+
+    // Remove empty metrics object
+    if (Object.keys(m).length === 0) delete result.metrics;
+
     return result;
 }
 
 /**
- * Create aggregated results from multiple session results
- * @param {Object[]} results - Array of test results
- * @param {string} [commit] - Git commit hash
- * @returns {Object} Aggregated result
+ * Create a results bundle from multiple session results
+ * @param {Object[]} results - Array of session results
+ * @param {Object} options - Bundle options
+ * @returns {Object} Results bundle
  */
-export function aggregateResults(results, commit = '') {
-    const aggregate = {
+export function createResultsBundle(results, options = {}) {
+    const bundle = {
         timestamp: new Date().toISOString(),
-        commit,
-        sessions: results.length,
-        passed: results.filter(r => r.passed).length,
-        failed: results.filter(r => !r.passed).length,
-        totals: {
-            rngCalls: { matched: 0, total: 0 },
-            keys: { matched: 0, total: 0 },
-            grids: { matched: 0, total: 0 },
-            screens: { matched: 0, total: 0 },
-        },
-        failures: [],
+        commit: options.commit || getGitCommit(),
+        goldenBranch: options.goldenBranch || null,
+        results: results.map(finalizeResult),
     };
 
-    for (const result of results) {
-        aggregate.totals.rngCalls.matched += result.metrics.rngCalls.matched;
-        aggregate.totals.rngCalls.total += result.metrics.rngCalls.total;
-        aggregate.totals.keys.matched += result.metrics.keys.matched;
-        aggregate.totals.keys.total += result.metrics.keys.total;
-        aggregate.totals.grids.matched += result.metrics.grids.matched;
-        aggregate.totals.grids.total += result.metrics.grids.total;
-        aggregate.totals.screens.matched += result.metrics.screens.matched;
-        aggregate.totals.screens.total += result.metrics.screens.total;
+    // Add summary counts
+    bundle.summary = {
+        total: results.length,
+        passed: results.filter(r => r.passed).length,
+        failed: results.filter(r => !r.passed).length,
+    };
 
-        if (!result.passed) {
-            aggregate.failures.push({
-                session: result.session,
-                firstDivergence: result.firstDivergence,
-            });
-        }
+    return bundle;
+}
+
+/**
+ * Get current git commit hash
+ */
+function getGitCommit() {
+    try {
+        return execSync('git rev-parse HEAD', { encoding: 'utf8' }).trim().slice(0, 8);
+    } catch {
+        return '';
     }
-
-    return aggregate;
 }
 
 /**
- * Format a result for console output
- * @param {Object} result - Test result object
- * @returns {string} Formatted string
+ * Format a single result for console output
  */
-export function formatResultSummary(result) {
-    const m = result.metrics;
+export function formatResult(result) {
     const status = result.passed ? 'PASS' : 'FAIL';
-    const rng = m.rngCalls.total > 0 ? `${m.rngCalls.matched}/${m.rngCalls.total}` : '-';
-    const keys = m.keys.total > 0 ? `${m.keys.matched}/${m.keys.total}` : '-';
-    const grids = m.grids.total > 0 ? `${m.grids.matched}/${m.grids.total}` : '-';
-    const screens = m.screens.total > 0 ? `${m.screens.matched}/${m.screens.total}` : '-';
-    return `[${status}] ${result.session}: rng=${rng} keys=${keys} grids=${grids} screens=${screens}`;
+    const m = result.metrics || {};
+    const parts = [`[${status}] ${result.session}`];
+
+    if (m.rngCalls) parts.push(`rng=${m.rngCalls.matched}/${m.rngCalls.total}`);
+    if (m.grids) parts.push(`grids=${m.grids.matched}/${m.grids.total}`);
+    if (m.screens) parts.push(`screens=${m.screens.matched}/${m.screens.total}`);
+    if (result.error) parts.push(`error: ${result.error}`);
+
+    return parts.join(' ');
 }
 
 /**
- * Format aggregated results for console output
- * @param {Object} aggregate - Aggregated result object
- * @returns {string} Formatted string
+ * Format bundle summary for console output
  */
-export function formatAggregateSummary(aggregate) {
-    const t = aggregate.totals;
+export function formatBundleSummary(bundle) {
+    const s = bundle.summary;
     const lines = [
-        `Sessions: ${aggregate.passed}/${aggregate.sessions} passed (${aggregate.failed} failed)`,
-        `RNG calls: ${t.rngCalls.matched}/${t.rngCalls.total}`,
-        `Keys: ${t.keys.matched}/${t.keys.total}`,
-        `Grids: ${t.grids.matched}/${t.grids.total}`,
-        `Screens: ${t.screens.matched}/${t.screens.total}`,
+        `Commit: ${bundle.commit || '(unknown)'}`,
+        `Sessions: ${s.passed}/${s.total} passed (${s.failed} failed)`,
     ];
-    if (aggregate.commit) {
-        lines.unshift(`Commit: ${aggregate.commit}`);
+    if (bundle.goldenBranch) {
+        lines.splice(1, 0, `Golden: ${bundle.goldenBranch}`);
     }
     return lines.join('\n');
 }
