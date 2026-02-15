@@ -23,6 +23,7 @@ import { init_objects } from '../../js/o_init.js';
 import { Player, roles, rankOf } from '../../js/player.js';
 import { NORMAL_SPEED, A_STR, A_DEX, A_CON, A_WIS,
          RACE_HUMAN, RACE_ELF, RACE_DWARF, RACE_GNOME, RACE_ORC } from '../../js/config.js';
+import { SHOPBASE, ROOMOFFSET } from '../../js/config.js';
 import { rhack } from '../../js/commands.js';
 import { makemon } from '../../js/makemon.js';
 import { FOOD_CLASS } from '../../js/objects.js';
@@ -291,6 +292,15 @@ function matchingJsPrefixLength(jsRng, sessionRng) {
            && (isMidlogEntry(jsRng[ji]) || isCompositeEntry(rngCallPart(jsRng[ji])))) ji++;
     if (si < sessionRng.length) return -1;
     return ji;
+}
+
+function firstComparableEntry(entries) {
+    for (const e of entries || []) {
+        if (isMidlogEntry(e)) continue;
+        if (isCompositeEntry(rngCallPart(e))) continue;
+        return e;
+    }
+    return null;
 }
 
 // Generate levels 1→maxDepth with RNG trace capture.
@@ -672,6 +682,14 @@ class HeadlessGame {
 
     // C ref: sounds.c:202-339 dosounds() — ambient level sounds
     dosounds() {
+        const playerInShop = (() => {
+            const loc = this.map?.at?.(this.player.x, this.player.y);
+            if (!loc || !Number.isFinite(loc.roomno)) return false;
+            const ridx = loc.roomno - ROOMOFFSET;
+            const room = this.map?.rooms?.[ridx];
+            return !!(room && Number.isFinite(room.rtype) && room.rtype >= SHOPBASE);
+        })();
+        const tendedShop = (this.map?.monsters || []).some((m) => m && !m.dead && m.isshk);
         const f = this.map.flags;
         if (f.nfountains && !rn2(400)) { rn2(3); }
         if (f.nsinks && !rn2(300)) { rn2(2); }
@@ -683,11 +701,16 @@ class HeadlessGame {
         if (f.has_barracks && !rn2(200)) { rn2(3); return; }
         if (f.has_zoo && !rn2(200)) { return; }
         if (f.has_shop && !rn2(200)) {
-            const which = rn2(2);
-            if (which === 0) {
-                this.display.putstr_message('You hear someone cursing shoplifters.');
-            } else {
-                this.display.putstr_message('You hear the chime of a cash register.');
+            // C ref: sounds.c has_shop branch:
+            // only choose a message (rn2(2)) when in a tended shop and
+            // hero isn't currently inside any shop room.
+            if (tendedShop && !playerInShop) {
+                const which = rn2(2);
+                if (which === 0) {
+                    this.display.putstr_message('You hear someone cursing shoplifters.');
+                } else {
+                    this.display.putstr_message('You hear the chime of a cash register.');
+                }
             }
             return;
         }
@@ -881,9 +904,19 @@ export async function replaySession(seed, session, opts = {}) {
         if (hasMore && nextIsAcknowledge) {
             const splitAt = matchingJsPrefixLength(compact, step.rng || []);
             if (splitAt >= 0 && splitAt < compact.length) {
-                deferredMoreBoundaryRng = raw.slice(splitAt);
-                raw = raw.slice(0, splitAt);
-                compact = compact.slice(0, splitAt);
+                const remainderRaw = raw.slice(splitAt);
+                const remainderCompact = compact.slice(splitAt);
+                const firstRemainder = firstComparableEntry(remainderCompact);
+                const firstNextExpected = firstComparableEntry(nextStep?.rng || []);
+                // Only defer when we can prove this looks like a true C
+                // step-boundary split: the carried remainder should begin
+                // with the next step's first expected comparable RNG call.
+                if (firstRemainder && firstNextExpected
+                    && rngCallPart(firstRemainder) === rngCallPart(firstNextExpected)) {
+                    deferredMoreBoundaryRng = remainderRaw;
+                    raw = raw.slice(0, splitAt);
+                    compact = compact.slice(0, splitAt);
+                }
             }
         }
 

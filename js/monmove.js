@@ -733,6 +733,8 @@ function dochug(mon, map, player, display, fov) {
 // consuming extra rnd(5) calls that C never makes. This is a recurring bug
 // pattern — see memory/pet_ranged_attk_bug.md for full documentation.
 function find_targ(mon, dx, dy, maxdist, map, player) {
+    const mux = Number.isInteger(mon.mux) ? mon.mux : 0;
+    const muy = Number.isInteger(mon.muy) ? mon.muy : 0;
     let curx = mon.mx, cury = mon.my;
     for (let dist = 0; dist < maxdist; dist++) {
         curx += dx;
@@ -742,9 +744,7 @@ function find_targ(mon, dx, dy, maxdist, map, player) {
         if (!m_cansee(mon, map, curx, cury)) break;
         // C ref: dogmove.c:682-683 — if pet thinks player is here, return player
         // Uses mtmp->mux/muy (apparent player position), not always u.ux/u.uy.
-        const mux = Number.isInteger(mon.mux) ? mon.mux : player?.x;
-        const muy = Number.isInteger(mon.muy) ? mon.muy : player?.y;
-        if (player && curx === mux && cury === muy) {
+        if (curx === mux && cury === muy) {
             return { isPlayer: true, mx: player.x, my: player.y };
         }
         // C ref: dogmove.c:685-693 — check for monster at position
@@ -767,6 +767,8 @@ function find_targ(mon, dx, dy, maxdist, map, player) {
 function find_friends(mon, target, maxdist, map, player) {
     const dx = Math.sign(target.mx - mon.mx);
     const dy = Math.sign(target.my - mon.my);
+    const mux = Number.isInteger(mon.mux) ? mon.mux : 0;
+    const muy = Number.isInteger(mon.muy) ? mon.muy : 0;
     let curx = target.mx, cury = target.my;
     let dist = Math.max(Math.abs(target.mx - mon.mx), Math.abs(target.my - mon.my));
 
@@ -777,7 +779,7 @@ function find_friends(mon, target, maxdist, map, player) {
         // C ref: dogmove.c:717-718 — if pet can't see beyond, stop
         if (!m_cansee(mon, map, curx, cury)) return false;
         // C ref: dogmove.c:721-722 — player behind target
-        if (player && curx === player.x && cury === player.y) return true;
+        if (curx === mux && cury === muy) return true;
         // C ref: dogmove.c:724-736 — tame monster behind target
         const pal = map.monsterAt(curx, cury);
         if (pal && !pal.dead) {
@@ -863,9 +865,11 @@ function score_targ(mon, target, map, player) {
 // C ref: dogmove.c:842-890 best_target() — find best ranged attack target
 function best_target(mon, forced, map, player) {
     // C ref: dogmove.c:854 — if (!mtmp->mcansee) return 0;
-    if (mon.mcansee === false) return null;
-    // Keep blind fallback for incomplete state wiring.
-    if (mon.mblind) return null;
+    const monCanSee = (mon.mcansee !== false)
+        && !mon.blind
+        && !(Number.isFinite(mon.mblinded) && mon.mblinded > 0)
+        && !mon.mblind;
+    if (!monCanSee) return null;
     let bestscore = -40000;
     let bestTarg = null;
     // C ref: dogmove.c:861-882 — scan all 8 directions
@@ -1259,7 +1263,7 @@ function dog_move(mon, map, player, display, fov, after = false) {
 
         // Cursed avoidance
         // C ref: dogmove.c:1230-1232
-        if (cursemsg[i] && uncursedcnt > 0 && rn2(13 * uncursedcnt)) {
+        if (cursemsg[i] && !mon.mleashed && uncursedcnt > 0 && rn2(13 * uncursedcnt)) {
             continue;
         }
 
@@ -1338,7 +1342,9 @@ function dog_move(mon, map, player, display, fov, after = false) {
 // ========================================================================
 
 function onlineu(mon, player) {
-    return mon.mx === player.x || mon.my === player.y;
+    const dx = mon.mx - player.x;
+    const dy = mon.my - player.y;
+    return dx === 0 || dy === 0 || dy === dx || dy === -dx;
 }
 
 // C ref: priest.c move_special() — shared special movement path for
