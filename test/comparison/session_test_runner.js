@@ -10,7 +10,12 @@ import {
     generateMapsWithCoreReplay,
     generateStartupWithCoreReplay,
 } from '../../js/headless_runtime.js';
-import { compareRng, compareGrids, compareScreenLines } from './comparators.js';
+import {
+    compareRng,
+    compareGrids,
+    compareScreenLines,
+    findFirstGridDiff,
+} from './comparators.js';
 import { loadAllSessions } from './session_loader.js';
 import {
     createSessionResult,
@@ -41,7 +46,9 @@ function createReplayResult(session) {
 
 function recordRngComparison(result, actual, expected, context = {}) {
     const cmp = compareRng(actual, expected);
-    const divergence = cmp.firstDivergence ? { ...cmp.firstDivergence, ...context } : null;
+    const divergence = cmp.firstDivergence
+        ? { channel: 'rng', ...cmp.firstDivergence, ...context }
+        : null;
     recordRng(result, cmp.matched, cmp.total, divergence);
 }
 
@@ -58,6 +65,12 @@ async function runChargenResult(session) {
         if (session.startup?.typGrid) {
             const diffs = compareGrids(startup?.grid || [], session.startup.typGrid);
             recordGrids(result, diffs.length === 0 ? 1 : 0, 1);
+            if (!result.firstDivergence && diffs.length > 0) {
+                const first = findFirstGridDiff(startup?.grid || [], session.startup.typGrid);
+                if (first) {
+                    result.firstDivergence = { channel: 'grid', stage: 'startup', ...first };
+                }
+            }
         }
         const screenSteps = session.steps.filter((step) => step.screen.length > 0).length;
         if (screenSteps > 0) {
@@ -138,6 +151,9 @@ async function runGameplayResult(session) {
                 screensTotal++;
                 const screenCmp = compareScreenLines(actual.screen || [], expected.screen);
                 if (screenCmp.match) screensMatched++;
+                if (!screenCmp.match && !result.firstDivergence && screenCmp.firstDiff) {
+                    result.firstDivergence = { channel: 'screen', step: i, ...screenCmp.firstDiff };
+                }
             }
         }
 
@@ -171,6 +187,12 @@ async function runMapResult(session) {
             if (level.typGrid) {
                 const diffs = compareGrids(generated?.grids?.[depth] || [], level.typGrid);
                 recordGrids(result, diffs.length === 0 ? 1 : 0, 1);
+                if (!result.firstDivergence && diffs.length > 0) {
+                    const first = findFirstGridDiff(generated?.grids?.[depth] || [], level.typGrid);
+                    if (first) {
+                        result.firstDivergence = { channel: 'grid', depth, ...first };
+                    }
+                }
             }
 
             const generatedRng = generated?.rngLogs?.[depth]?.rng || [];
@@ -229,6 +251,7 @@ export async function runSessionBundle({
     goldenBranch = 'golden',
     typeFilter = null,
     sessionPath = null,
+    failFast = false,
 } = {}) {
     const sessions = loadAllSessions({
         sessionsDir: SESSIONS_DIR,
@@ -252,6 +275,10 @@ export async function runSessionBundle({
         const result = await runSessionResult(session);
         results.push(result);
         if (verbose) console.log(formatResult(result));
+        if (failFast && result.passed !== true) {
+            if (verbose) console.log(`Fail-fast: stopping after ${result.session}`);
+            break;
+        }
     }
 
     const bundle = createResultsBundle(results, {
@@ -269,16 +296,23 @@ export async function runSessionBundle({
 }
 
 export async function runSessionCli() {
-    const args = { verbose: false, useGolden: false, typeFilter: null, sessionPath: null };
+    const args = {
+        verbose: false,
+        useGolden: false,
+        typeFilter: null,
+        sessionPath: null,
+        failFast: false,
+    };
     const argv = process.argv.slice(2);
     for (let i = 0; i < argv.length; i++) {
         const arg = argv[i];
         if (arg === '--verbose') args.verbose = true;
         else if (arg === '--golden') args.useGolden = true;
+        else if (arg === '--fail-fast') args.failFast = true;
         else if (arg === '--type' && argv[i + 1]) args.typeFilter = argv[++i];
         else if (arg.startsWith('--type=')) args.typeFilter = arg.slice('--type='.length);
         else if (arg === '--help' || arg === '-h') {
-            console.log('Usage: node session_test_runner.js [--verbose] [--golden] [--type type1,type2] [session-file]');
+            console.log('Usage: node session_test_runner.js [--verbose] [--golden] [--fail-fast] [--type type1,type2] [session-file]');
             process.exit(0);
         } else if (arg.startsWith('--')) {
             throw new Error(`Unknown argument: ${arg}`);
@@ -294,6 +328,7 @@ export async function runSessionCli() {
         goldenBranch,
         typeFilter: args.typeFilter,
         sessionPath: args.sessionPath,
+        failFast: args.failFast,
     });
     console.log('\n__RESULTS_JSON__');
     console.log(JSON.stringify(bundle));

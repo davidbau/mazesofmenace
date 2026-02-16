@@ -90,6 +90,7 @@ export function compareScreenLines(actualLines = [], expectedLines = []) {
         total,
         match: matched === total,
         diffs,
+        firstDiff: diffs.length > 0 ? diffs[0] : null,
     };
 }
 
@@ -110,4 +111,19 @@ export function compareGrids(actualGrid = [], expectedGrid = []) {
     }
 
     return diffs;
+}
+
+export function findFirstGridDiff(actualGrid = [], expectedGrid = []) {
+    const rows = Math.max(actualGrid.length || 0, expectedGrid.length || 0);
+    for (let y = 0; y < rows; y++) {
+        const actualRow = Array.isArray(actualGrid[y]) ? actualGrid[y] : [];
+        const expectedRow = Array.isArray(expectedGrid[y]) ? expectedGrid[y] : [];
+        const cols = Math.max(actualRow.length || 0, expectedRow.length || 0);
+        for (let x = 0; x < cols; x++) {
+            if (actualRow[x] !== expectedRow[x]) {
+                return { x, y, js: actualRow[x], session: expectedRow[x] };
+            }
+        }
+    }
+    return null;
 }
