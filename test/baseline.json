@@ -69,9 +69,13 @@
       "lines": 1486,
       "role": "Core game headless support + full replay API"
     },
+    "js/replay_core.js": {
+      "lines": 1475,
+      "role": "Core replay runtime (replaySession + helpers)"
+    },
     "test/comparison/session_runtime.js": {
-      "lines": 1469,
-      "role": "Session replay runtime with migration to core documented"
+      "lines": 41,
+      "role": "Thin re-export facade for backwards compatibility"
     },
     "test/comparison/session_helpers.js": {
       "lines": 41,

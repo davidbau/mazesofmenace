@@ -1,26 +1,35 @@
 # Core Replay Unification Plan
 
-## Status: COMPLETE (claude2 branch)
+## Status: COMPLETE (claude2 branch - merged with codex2 insights)
 
-All phases of the plan have been implemented on the `claude2` branch.
-See `test/baseline.json` for detailed phase completion tracking.
+All phases implemented. Best-of-both-worlds merge combines:
+- claude2's well-tested HeadlessGame APIs (60 unit tests)
+- codex2's thin facade architecture (41-line session_runtime.js)
 
-### Summary of Changes
+### Final Architecture
 
-**Core APIs Added to `js/headless_runtime.js`:**
-- `HeadlessGame.start(seed, options)` - Canonical async init path
+| File | Lines | Role |
+|------|-------|------|
+| `js/headless_runtime.js` | 1486 | Core replay API (HeadlessGame class) |
+| `js/replay_core.js` | 1475 | Full replay runtime (replaySession + helpers) |
+| `test/comparison/session_runtime.js` | 41 | Thin re-export facade |
+| `test/comparison/comparators.js` | 250 | Comparison + diagnostic formatters |
+
+### Core APIs (js/headless_runtime.js)
+
+- `HeadlessGame.start(seed, options)` - Canonical async init
 - `sendKey(key)` / `sendKeys(keys)` - Execute commands
 - `getTypGrid()` / `getScreen()` - State capture
 - `enableRngLogging()` / `getRngLog()` / `clearRngLog()` - RNG instrumentation
 - `teleportToLevel(depth)` / `revealMap()` - Wizard mode helpers
 - `checkpoint(phase)` - Debug state capture
 - `replayStep(key, options)` - Replay with count prefix handling
-- `generateMapsWithRng(seed, maxDepth)` - Map generation API
-- `generateStartupWithRng(seed, options)` - Startup generation API
+- `generateMapsWithRng(seed, maxDepth)` - Map generation
+- `generateStartupWithRng(seed, options)` - Startup generation
 
-**Unit Tests Added:** 60 tests (43 replay API + 17 comparator)
+### Unit Tests
 
-**Documentation:** Migration path documented in session_runtime.js
+60 tests total (43 replay API + 17 comparator)
 
 ---
 
