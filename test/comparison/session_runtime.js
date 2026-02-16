@@ -2,6 +2,10 @@
 //
 // Phase 7 extracted runtime-heavy logic from session_helpers.js so helpers can
 // stay small and focused on comparison/normalization wiring.
+//
+// NOTE: Phase 5 (Core Replay Unification) is migrating game-aware functions
+// to js/headless_runtime.js. Functions marked [CORE] are now available from
+// HeadlessGame and should be used from there for new code.
 
 import {
     COLNO, ROWNO, STONE, VWALL, HWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
@@ -1455,3 +1459,11 @@ export function checkValidTypValues(grid) {
     }
     return errors;
 }
+
+// ---------------------------------------------------------------------------
+// Re-exports from Core (Phase 5)
+// ---------------------------------------------------------------------------
+// These functions are now available from HeadlessGame in js/headless_runtime.js.
+// Re-exported here for backwards compatibility. Use core APIs for new code.
+
+export { extractTypGridFromMap } from '../../js/headless_runtime.js';
