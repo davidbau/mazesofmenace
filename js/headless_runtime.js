@@ -1,7 +1,7 @@
 // headless_runtime.js -- Shared headless runtime for session tests and selfplay.
 
 import { setInputRuntime } from './input.js';
-import { initRng, rn2, rnd, rn1 } from './rng.js';
+import { initRng, rn2, rnd, rn1, enableRngLog, getRngLog, disableRngLog } from './rng.js';
 import { exercise, exerchk, initExerciseState } from './attrib_exercise.js';
 import { initLevelGeneration, makelevel, setGameSeed } from './dungeon.js';
 import { simulatePostLevelInit, mon_arrive } from './u_init.js';
@@ -410,6 +410,131 @@ HeadlessGame.prototype.executeCommand = async function executeCommand(ch) {
     }
 
     return result;
+};
+
+// ---------------------------------------------------------------------------
+// Core Replay API (Phase 1)
+// ---------------------------------------------------------------------------
+
+// Canonical async initialization path for replay and tests.
+// options: { role, race, gender, align, name, wizard, DECgraphics, startDnum, dungeonAlignOverride }
+HeadlessGame.start = async function start(seed, options = {}) {
+    const roleIndex = Number.isInteger(options.roleIndex) ? options.roleIndex : 11;
+    const game = HeadlessGame.fromSeed(seed, roleIndex, {
+        name: options.name || 'Player',
+        gender: options.gender,
+        alignment: options.alignment,
+        wizard: options.wizard !== false,
+        startDnum: options.startDnum,
+        dungeonAlignOverride: options.dungeonAlignOverride,
+        DECgraphics: options.DECgraphics,
+        flags: options.flags,
+    });
+    return game;
+};
+
+// Send a single key and execute one command/turn.
+// Returns the command result (same as executeCommand).
+HeadlessGame.prototype.sendKey = async function sendKey(key) {
+    return this.executeCommand(key);
+};
+
+// Send multiple keys sequentially.
+// Returns array of command results.
+HeadlessGame.prototype.sendKeys = async function sendKeys(keys) {
+    const results = [];
+    for (const key of keys) {
+        results.push(await this.sendKey(key));
+    }
+    return results;
+};
+
+// Extract the current level's typ grid (21x80 array of terrain type integers).
+HeadlessGame.prototype.getTypGrid = function getTypGrid() {
+    const grid = [];
+    for (let y = 0; y < ROWNO; y++) {
+        const row = [];
+        for (let x = 0; x < COLNO; x++) {
+            const loc = this.map.at(x, y);
+            row.push(loc ? loc.typ : 0);
+        }
+        grid.push(row);
+    }
+    return grid;
+};
+
+// Get the current terminal screen as 24 lines of text.
+HeadlessGame.prototype.getScreen = function getScreen() {
+    return this.display.getScreenLines();
+};
+
+// Get the current terminal screen with ANSI escape codes.
+// Currently returns plain text; ANSI support can be added later.
+HeadlessGame.prototype.getAnsiScreen = function getAnsiScreen() {
+    // Placeholder: return plain screen for now
+    return this.display.getScreenLines();
+};
+
+// RNG Instrumentation
+// Enable RNG call logging for replay fidelity checking.
+HeadlessGame.prototype.enableRngLogging = function enableRngLogging(withTags = false) {
+    enableRngLog(withTags);
+};
+
+// Get the current RNG log (array of call strings).
+HeadlessGame.prototype.getRngLog = function getRngLogMethod() {
+    return getRngLog();
+};
+
+// Clear the RNG log (for per-step capture).
+HeadlessGame.prototype.clearRngLog = function clearRngLog() {
+    // getRngLog returns the array directly; clearing means starting fresh
+    const log = getRngLog();
+    log.length = 0;
+};
+
+// Wizard Mode Helpers
+
+// Teleport to a specific dungeon level (Ctrl+V equivalent).
+// Generates the level if it doesn't exist.
+HeadlessGame.prototype.teleportToLevel = function teleportToLevel(depth) {
+    if (!this.wizard) {
+        throw new Error('teleportToLevel requires wizard mode');
+    }
+    this.changeLevel(depth);
+};
+
+// Reveal the entire map (Ctrl+F equivalent for wizard mode).
+HeadlessGame.prototype.revealMap = function revealMap() {
+    if (!this.wizard) {
+        throw new Error('revealMap requires wizard mode');
+    }
+    // Mark all cells as seen
+    for (let y = 0; y < ROWNO; y++) {
+        for (let x = 0; x < COLNO; x++) {
+            const loc = this.map.at(x, y);
+            if (loc) {
+                loc.seenv = 0xFF;
+            }
+        }
+    }
+    this.renderCurrentScreen();
+};
+
+// Capture a checkpoint of the current game state for debugging.
+HeadlessGame.prototype.checkpoint = function checkpoint(phase = 'unknown') {
+    return {
+        phase,
+        seed: this.seed,
+        turnCount: this.turnCount,
+        dungeonLevel: this.player.dungeonLevel,
+        playerPos: { x: this.player.x, y: this.player.y },
+        hp: this.player.hp,
+        hpmax: this.player.hpmax,
+        rngLog: this.getRngLog().slice(),
+        typGrid: this.getTypGrid(),
+        screen: this.getScreen(),
+    };
 };
 
 export function createHeadlessGame(seed, roleIndex = 11, opts = {}) {
