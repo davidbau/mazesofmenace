@@ -11,6 +11,7 @@ import { Agent } from '../agent.js';
 import { JSAdapter, HeadlessDisplay } from '../interface/js_adapter.js';
 import { parseScreen } from '../perception/screen_parser.js';
 import { parseStatus } from '../perception/status_parser.js';
+import { buildInventoryLines } from '../../js/headless_runtime.js';
 
 // Import game modules
 import { initRng, rn2, rnd, rn1 } from '../../js/rng.js';
@@ -31,8 +32,6 @@ import {
     DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, AIR, CLOUD, SDOOR, SCORR,
     D_NODOOR, D_CLOSED, D_ISOPEN, D_LOCKED, ACCESSIBLE, MAXLEVEL,
 } from '../../js/config.js';
-import { doname } from '../../js/mkobj.js';
-
 // Terrain symbol mapping (matches display.js)
 function getTerrainSymbol(loc) {
     const typ = loc.typ;
@@ -64,37 +63,7 @@ function getTerrainSymbol(loc) {
     return syms[typ] || { ch: '?', color: 5 };
 }
 
-const INVENTORY_CLASS_NAMES = {
-    1: 'Weapons', 2: 'Armor', 3: 'Rings', 4: 'Amulets',
-    5: 'Tools', 6: 'Comestibles', 7: 'Potions', 8: 'Scrolls',
-    9: 'Spellbooks', 10: 'Wands', 11: 'Coins', 12: 'Gems/Stones',
-};
-
-const INVENTORY_ORDER = [11, 4, 1, 2, 6, 8, 9, 7, 3, 10, 5, 12, 13, 14, 15];
-
-function buildInventoryLines(player) {
-    if (!player || player.inventory.length === 0) {
-        return ['Not carrying anything.'];
-    }
-
-    const groups = {};
-    for (const item of player.inventory) {
-        const cls = item.oclass;
-        if (!groups[cls]) groups[cls] = [];
-        groups[cls].push(item);
-    }
-
-    const lines = [];
-    for (const cls of INVENTORY_ORDER) {
-        if (!groups[cls]) continue;
-        lines.push(` ${INVENTORY_CLASS_NAMES[cls] || 'Other'}`);
-        for (const item of groups[cls]) {
-            lines.push(` ${item.invlet} - ${doname(item, player)}`);
-        }
-    }
-    lines.push(' (end)');
-    return lines;
-}
+// buildInventoryLines is now imported from js/headless_runtime.js
 
 /**
  * A headless game instance that mirrors NetHackGame but without DOM dependencies.

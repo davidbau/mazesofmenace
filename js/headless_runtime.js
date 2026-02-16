@@ -678,3 +678,43 @@ export async function createHeadlessGame(options = {}) {
 
     return { game, display, input };
 }
+
+// --- Inventory Display Utilities ---
+
+/**
+ * Build inventory display lines matching C NetHack format.
+ * Used by selfplay and other headless consumers.
+ */
+import { doname } from './mkobj.js';
+
+const INVENTORY_CLASS_NAMES = {
+    1: 'Weapons', 2: 'Armor', 3: 'Rings', 4: 'Amulets',
+    5: 'Tools', 6: 'Comestibles', 7: 'Potions', 8: 'Scrolls',
+    9: 'Spellbooks', 10: 'Wands', 11: 'Coins', 12: 'Gems/Stones',
+};
+
+const INVENTORY_ORDER = [11, 4, 1, 2, 6, 8, 9, 7, 3, 10, 5, 12, 13, 14, 15];
+
+export function buildInventoryLines(player) {
+    if (!player || !player.inventory || player.inventory.length === 0) {
+        return ['Not carrying anything.'];
+    }
+
+    const groups = {};
+    for (const item of player.inventory) {
+        const cls = item.oclass;
+        if (!groups[cls]) groups[cls] = [];
+        groups[cls].push(item);
+    }
+
+    const lines = [];
+    for (const cls of INVENTORY_ORDER) {
+        if (!groups[cls]) continue;
+        lines.push(` ${INVENTORY_CLASS_NAMES[cls] || 'Other'}`);
+        for (const item of groups[cls]) {
+            lines.push(` ${item.invlet} - ${doname(item, player)}`);
+        }
+    }
+    lines.push(' (end)');
+    return lines;
+}
