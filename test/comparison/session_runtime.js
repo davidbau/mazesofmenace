@@ -31,4 +31,5 @@ export {
 export {
     generateMapsWithCoreReplay as generateMapsWithRng,
     generateStartupWithCoreReplay as generateStartupWithRng,
+    HeadlessGame,
 } from '../../js/headless_runtime.js';
