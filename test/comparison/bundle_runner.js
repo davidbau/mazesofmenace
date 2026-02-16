@@ -3,15 +3,16 @@
 // Runs all sessions and collects results into a bundle format.
 // This module is the CLI entry point for session test runs.
 
-import { join, dirname } from 'node:path';
+import { join, dirname, resolve, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
 
 import {
     generateMapsWithRng, generateStartupWithRng,
     replaySession, compareGrids, compareRngArrays, compareScreens,
 } from './session_helpers.js';
 import {
-    loadSessions, classifySession,
+    loadSessions, classifySession, normalizeSession,
     getSessionScreenLines, getSessionStartup, getSessionGameplaySteps,
 } from './session_loader.js';
 import {
@@ -28,10 +29,6 @@ import {
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-
-function hasArg(flag) {
-    return process.argv.includes(flag);
-}
 
 function createTypedSessionResult(session, type) {
     const result = createSessionResult(session);
@@ -209,33 +206,72 @@ async function runSessionResult(session) {
     return runGameplayResult(session);
 }
 
-export async function runSessionBundle({ verbose = false, useGolden = false, goldenBranch = 'golden' } = {}) {
+// Parse type filter string into a Set
+function parseTypeFilter(typeFilter) {
+    if (!typeFilter) return null;
+    if (Array.isArray(typeFilter)) {
+        return new Set(typeFilter.map((t) => String(t).trim()).filter(Boolean));
+    }
+    return new Set(String(typeFilter).split(',').map((t) => t.trim()).filter(Boolean));
+}
+
+// Load a single session file
+function loadSingleSession(sessionPath) {
+    const resolved = resolve(sessionPath);
+    const text = readFileSync(resolved, 'utf8');
+    const raw = JSON.parse(text);
+    return normalizeSession({ ...raw, file: basename(resolved), dir: dirname(resolved) });
+}
+
+export async function runSessionBundle({
+    verbose = false,
+    useGolden = false,
+    goldenBranch = 'golden',
+    typeFilter = null,
+    sessionPath = null,
+} = {}) {
     const sessionsDir = join(__dirname, 'sessions');
     const mapsDir = join(__dirname, 'maps');
-    const chargenSessions = loadSessions(
-        sessionsDir,
-        useGolden,
-        goldenBranch,
-        (s) => s.file.includes('_chargen'),
-    );
-    const gameplaySessions = loadSessions(
-        sessionsDir,
-        useGolden,
-        goldenBranch,
-        // Temporary exclusion: this replay currently terminates the process
-        // via game quit path before results can be emitted.
-        (s) => s.file.includes('_gameplay') && s.file !== 'seed6_tourist_gameplay.session.json',
-    );
-    const mapAndSpecialSessions = loadSessions(
-        mapsDir,
-        useGolden,
-        goldenBranch,
-        (s) => s?.type === 'map' || s?.type === 'special',
-    );
-    const sessions = [...chargenSessions, ...gameplaySessions, ...mapAndSpecialSessions];
+    const typeSet = parseTypeFilter(typeFilter);
+
+    let sessions;
+    if (sessionPath) {
+        // Load single session
+        sessions = [loadSingleSession(sessionPath)];
+    } else {
+        // Load all sessions from directories
+        const chargenSessions = loadSessions(
+            sessionsDir,
+            useGolden,
+            goldenBranch,
+            (s) => s.file.includes('_chargen'),
+        );
+        const gameplaySessions = loadSessions(
+            sessionsDir,
+            useGolden,
+            goldenBranch,
+            // Temporary exclusion: this replay currently terminates the process
+            // via game quit path before results can be emitted.
+            (s) => s.file.includes('_gameplay') && s.file !== 'seed6_tourist_gameplay.session.json',
+        );
+        const mapAndSpecialSessions = loadSessions(
+            mapsDir,
+            useGolden,
+            goldenBranch,
+            (s) => s?.type === 'map' || s?.type === 'special',
+        );
+        sessions = [...chargenSessions, ...gameplaySessions, ...mapAndSpecialSessions];
+    }
+
+    // Apply type filter if specified
+    if (typeSet) {
+        sessions = sessions.filter((s) => typeSet.has(classifySession(s)));
+    }
 
     if (verbose) {
         console.log('=== Session Test Runner ===');
+        if (typeFilter) console.log(`Type filter: ${typeFilter}`);
+        if (sessionPath) console.log(`Single session: ${sessionPath}`);
         if (useGolden) console.log(`Using golden branch: ${goldenBranch}`);
         console.log(`Loaded sessions: ${sessions.length}`);
     }
@@ -262,8 +298,43 @@ export async function runSessionBundle({ verbose = false, useGolden = false, gol
 }
 
 export async function runSessionCli() {
-    const verbose = hasArg('--verbose');
-    const useGolden = hasArg('--golden');
+    const args = {
+        verbose: false,
+        useGolden: false,
+        typeFilter: null,
+        sessionPath: null,
+    };
+    const argv = process.argv.slice(2);
+
+    for (let i = 0; i < argv.length; i++) {
+        const arg = argv[i];
+        if (arg === '--verbose' || arg === '-v') {
+            args.verbose = true;
+        } else if (arg === '--golden') {
+            args.useGolden = true;
+        } else if (arg === '--type' && argv[i + 1]) {
+            args.typeFilter = argv[++i];
+        } else if (arg.startsWith('--type=')) {
+            args.typeFilter = arg.slice('--type='.length);
+        } else if (arg === '--help' || arg === '-h') {
+            console.log('Usage: node bundle_runner.js [options] [session-file]');
+            console.log('');
+            console.log('Options:');
+            console.log('  --verbose, -v     Show detailed output');
+            console.log('  --golden          Load sessions from golden branch');
+            console.log('  --type TYPE       Filter by session type (chargen,gameplay,map,special)');
+            console.log('  --help, -h        Show this help message');
+            console.log('');
+            console.log('If session-file is provided, runs only that session.');
+            process.exit(0);
+        } else if (arg.startsWith('--')) {
+            console.error(`Unknown argument: ${arg}`);
+            process.exit(1);
+        } else if (!args.sessionPath) {
+            args.sessionPath = arg;
+        }
+    }
+
     const goldenBranch = process.env.GOLDEN_BRANCH || 'golden';
 
     const originalExit = process.exit.bind(process);
@@ -272,7 +343,13 @@ export async function runSessionCli() {
     });
 
     try {
-        const bundle = await runSessionBundle({ verbose, useGolden, goldenBranch });
+        const bundle = await runSessionBundle({
+            verbose: args.verbose,
+            useGolden: args.useGolden,
+            goldenBranch,
+            typeFilter: args.typeFilter,
+            sessionPath: args.sessionPath,
+        });
         console.log('\n__RESULTS_JSON__');
         console.log(JSON.stringify(bundle));
         originalExit(bundle.summary.failed > 0 ? 1 : 0);
