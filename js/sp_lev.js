@@ -47,7 +47,7 @@ import {
     GEM_CLASS, SPBOOK_CLASS, ROCK_CLASS, BALL_CLASS, CHAIN_CLASS, VENOM_CLASS,
     SCR_EARTH, objectData, GOLD_PIECE, STATUE
 } from './objects.js';
-import { mons, M2_FEMALE, M2_MALE, G_NOGEN, PM_MINOTAUR, MR_STONE } from './monsters.js';
+import { mons, M2_FEMALE, M2_MALE, G_NOGEN, G_IGNORE, PM_MINOTAUR, MR_STONE } from './monsters.js';
 import { findSpecialLevelByName, GEHENNOM } from './special_levels.js';
 
 // Aliases for compatibility with C naming
@@ -2723,6 +2723,45 @@ function getLocationCoord(rawX, rawY, humidity, croom) {
     return { x: rawX, y: rawY };
 }
 
+function getRoomLoc(rawX, rawY, croom) {
+    if (!croom) {
+        return getLocationCoord(rawX, rawY, GETLOC_DRY, null);
+    }
+    let x = (rawX === undefined || rawX === null) ? -1 : rawX;
+    let y = (rawY === undefined || rawY === null) ? -1 : rawY;
+
+    if (x < 0 && y < 0) {
+        const pos = somexy(croom, levelState.map);
+        if (!pos) throw new Error('getRoomLoc: cannot find room location');
+        return { x: pos.x, y: pos.y };
+    }
+
+    if (x < 0) x = rn2(croom.hx - croom.lx + 1);
+    if (y < 0) y = rn2(croom.hy - croom.ly + 1);
+    x += croom.lx;
+    y += croom.ly;
+    return { x, y };
+}
+
+function getFreeRoomLoc(rawX, rawY, croom) {
+    let { x, y } = getLocationCoord(rawX, rawY, GETLOC_DRY, croom);
+    if (x < 0 || y < 0 || x >= COLNO || y >= ROWNO) return { x, y };
+
+    if (levelState.map.locations[x][y].typ !== ROOM) {
+        let trycnt = 0;
+        do {
+            const pos = getRoomLoc(rawX, rawY, croom);
+            x = pos.x;
+            y = pos.y;
+        } while (levelState.map.locations[x][y].typ !== ROOM && ++trycnt <= 100);
+
+        if (trycnt > 100) {
+            throw new Error('getFreeRoomLoc: cannot find room location');
+        }
+    }
+    return { x, y };
+}
+
 /**
  * des.terrain(x, y, type)
  *
@@ -2824,10 +2863,13 @@ export function replace_terrain(opts) {
         levelState.map = new GameMap();
     }
 
+    const fromToken = (typeof opts.fromterrain === 'string' && opts.fromterrain.length > 0)
+        ? opts.fromterrain[0]
+        : null;
     const fromType = mapchrToTerrain(opts.fromterrain);
     const toType = mapchrToTerrain(opts.toterrain);
 
-    if (fromType === -1 || toType === -1) return;
+    if ((fromToken !== 'w' && fromType === -1) || toType === -1) return;
 
     const chance = opts.chance !== undefined ? opts.chance : 100;
 
@@ -2835,13 +2877,15 @@ export function replace_terrain(opts) {
     let minX = 0, minY = 0, maxX = COLNO - 1, maxY = ROWNO - 1;
     let selSet = null;
 
-    if (opts.region && opts.region.coords) {
+    const scope = opts.selection || opts.region;
+
+    if (scope && scope.coords) {
         selSet = new Set();
         minX = COLNO - 1;
         minY = ROWNO - 1;
         maxX = 0;
         maxY = 0;
-        for (const coord of opts.region.coords) {
+        for (const coord of scope.coords) {
             if (!coord) continue;
             const x = Math.trunc(coord.x);
             const y = Math.trunc(coord.y);
@@ -2853,18 +2897,18 @@ export function replace_terrain(opts) {
             if (y > maxY) maxY = y;
         }
         if (selSet.size === 0) return;
-    } else if (opts.region && Array.isArray(opts.region) && opts.region.length >= 4) {
+    } else if (scope && Array.isArray(scope) && scope.length >= 4) {
         // des.replace_terrain({ region: [x1,y1,x2,y2], ... })
-        const p1 = getLocation(opts.region[0], opts.region[1], GETLOC_ANY_LOC, levelState.currentRoom || null);
-        const p2 = getLocation(opts.region[2], opts.region[3], GETLOC_ANY_LOC, levelState.currentRoom || null);
+        const p1 = getLocation(scope[0], scope[1], GETLOC_ANY_LOC, levelState.currentRoom || null);
+        const p2 = getLocation(scope[2], scope[3], GETLOC_ANY_LOC, levelState.currentRoom || null);
         minX = Math.max(0, Math.min(p1.x, p2.x));
         minY = Math.max(0, Math.min(p1.y, p2.y));
         maxX = Math.min(COLNO - 1, Math.max(p1.x, p2.x));
         maxY = Math.min(ROWNO - 1, Math.max(p1.y, p2.y));
-    } else if (opts.region && opts.region.x1 !== undefined) {
+    } else if (scope && scope.x1 !== undefined) {
         // C ref: rectangle args are passed through get_location(..., ANY_LOC, croom).
-        const p1 = getLocation(opts.region.x1, opts.region.y1, GETLOC_ANY_LOC, levelState.currentRoom || null);
-        const p2 = getLocation(opts.region.x2, opts.region.y2, GETLOC_ANY_LOC, levelState.currentRoom || null);
+        const p1 = getLocation(scope.x1, scope.y1, GETLOC_ANY_LOC, levelState.currentRoom || null);
+        const p2 = getLocation(scope.x2, scope.y2, GETLOC_ANY_LOC, levelState.currentRoom || null);
         minX = Math.max(0, Math.min(p1.x, p2.x));
         minY = Math.max(0, Math.min(p1.y, p2.y));
         maxX = Math.min(COLNO - 1, Math.max(p1.x, p2.x));
@@ -2875,9 +2919,18 @@ export function replace_terrain(opts) {
         for (let y = minY; y <= maxY; y++) {
             if (selSet && !selSet.has(`${x},${y}`)) continue;
             const loc = levelState.map.locations[x][y];
-            if (loc.typ !== fromType) continue;
+            const matchesFrom = (fromToken === 'w')
+                ? (IS_WALL(loc.typ) || loc.typ === IRONBARS)
+                : (loc.typ === fromType);
+            if (!matchesFrom) continue;
             if (rn2(100) < chance) {
-                loc.typ = toType;
+                // C ref: arboral garden fixup path uses replace_terrain(S -> A) to
+                // mark secret doors as arboreal, not to turn them into AIR tiles.
+                if (fromType === SDOOR && toType === AIR && loc.typ === SDOOR) {
+                    loc.arboreal_sdoor = true;
+                } else {
+                    loc.typ = toType;
+                }
             }
         }
     }
@@ -3117,21 +3170,6 @@ export function room(opts = {}) {
         lit = litstate_rnd(lit, levelState.depth || 1);
         if (DEBUG_BUILD) {
             console.log(`  [RNG ${getRngCallCount()}] litstate_rnd -> ${lit}`);
-        }
-
-        // C ref: sp_lev.c — special levels call rnd_rect() to select from rect pool
-        // Top-level rooms (depth 0) need to select a rect from the BSP pool
-        // Nested rooms don't use the rect pool
-        if (levelState.roomDepth === 0) {
-            const rect = rnd_rect();
-            if (!rect) {
-                console.warn('des.room(): No rects available in pool');
-                // Signal failure to themed room generator
-                if (levelState.roomFailureCallback) {
-                    levelState.roomFailureCallback();
-                }
-                return; // Can't place room without a rect
-            }
         }
 
         // C ref: sp_lev.c:1598-1619 — Convert grid coordinates to absolute map coordinates
@@ -3940,6 +3978,9 @@ export function object(name_or_opts, x, y) {
             x = name_or_opts.coord.x;
             y = name_or_opts.coord.y;
         }
+    } else if (typeof name_or_opts === 'object' && x === undefined && y === undefined) {
+        x = name_or_opts?.x;
+        y = name_or_opts?.y;
     }
 
     const pos = getLocationCoord(x, y, GETLOC_DRY, levelState.currentRoom || null);
@@ -4012,7 +4053,16 @@ export function object(name_or_opts, x, y) {
             // for corpses (unconditionally), unlike mkcorpstat's conditional check.
             const lowerName = name_or_opts.id.toLowerCase();
             if (name_or_opts.montype && (lowerName === 'corpse' || lowerName === 'statue')) {
-                const mndx = monsterNameToIndex(name_or_opts.montype);
+                let mndx = -1;
+                const montype = String(name_or_opts.montype);
+                // C ref: lspo_object() montype single-char class path:
+                // mkclass(def_char_to_monclass(*montype), G_NOGEN | G_IGNORE)
+                if (montype.length === 1) {
+                    const mclass = def_char_to_monclass(montype[0]);
+                    mndx = mkclass(mclass, G_NOGEN | G_IGNORE, levelState.depth || 1);
+                } else {
+                    mndx = monsterNameToIndex(montype);
+                }
                 obj = mksobj(otyp, true, artif);
                 if (mndx >= 0) {
                     set_corpsenm(obj, mndx);
@@ -4020,6 +4070,13 @@ export function object(name_or_opts, x, y) {
             } else {
                 obj = mksobj(otyp, true, artif);
             }
+        }
+    } else if (name_or_opts && typeof name_or_opts === 'object'
+               && typeof name_or_opts.class === 'string'
+               && name_or_opts.class.length > 0) {
+        const objClass = objectClassToType(name_or_opts.class[0]);
+        if (objClass >= 0) {
+            obj = mkobj(objClass, artif);
         }
     }
     if (obj) {
@@ -5228,7 +5285,10 @@ export function altar(opts) {
         return;
     }
 
-    const pos = getLocationCoord(ax, ay, GETLOC_DRY, levelState.currentRoom || null);
+    const currentRoom = levelState.currentRoom || null;
+    const pos = currentRoom
+        ? getFreeRoomLoc(ax, ay, currentRoom)
+        : getLocationCoord(ax, ay, GETLOC_DRY, null);
     if (pos.x < 0 || pos.x >= COLNO || pos.y < 0 || pos.y >= ROWNO) {
         return;
     }
