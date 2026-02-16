@@ -1,0 +1,48 @@
+{
+  "description": "Test baseline metrics for Phase 0 guardrails (2026-02-16)",
+  "purpose": "Detect regressions during test infrastructure unification",
+  "unit": {
+    "total": 1468,
+    "pass": 1467,
+    "fail": 0,
+    "skipped": 1,
+    "duration_ms": 952
+  },
+  "session": {
+    "total": 174,
+    "pass": 142,
+    "fail": 32,
+    "duration_ms": 1154,
+    "notes": "32 failures are known C-parity gaps, not infrastructure issues"
+  },
+  "e2e": {
+    "total": 47,
+    "pass": 43,
+    "fail": 4,
+    "duration_ms": 45177,
+    "notes": "e2e tests run in browser via puppeteer"
+  },
+  "file_baselines": {
+    "test/comparison/session_helpers.js": {
+      "lines": 2250,
+      "target": 500,
+      "notes": "Remove HeadlessGame class and game logic"
+    },
+    "test/comparison/session_test_runner.js": {
+      "lines": 1133,
+      "target": 350,
+      "notes": "Keep only orchestration, no game logic"
+    },
+    "test/comparison/headless_game.js": {
+      "lines": 615,
+      "target": 0,
+      "notes": "DELETE - use shared runtime instead"
+    }
+  },
+  "acceptance_thresholds": {
+    "unit_pass_min": 1467,
+    "session_pass_min": 142,
+    "session_duration_max_ms": 2000,
+    "notes": "Migration should not regress these values"
+  }
+}
