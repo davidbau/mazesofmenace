@@ -6,17 +6,25 @@ import { fileURLToPath } from 'node:url';
 import {
     replaySession,
 } from '../../js/replay_core.js';
+import { NetHackGame } from '../../js/nethack.js';
 import {
+    createHeadlessInput,
+    HeadlessDisplay,
     generateMapsWithCoreReplay,
     generateStartupWithCoreReplay,
 } from '../../js/headless_runtime.js';
+import {
+    enableRngLog,
+    getRngLog,
+    disableRngLog,
+} from '../../js/rng.js';
 import {
     compareRng,
     compareGrids,
     compareScreenLines,
     findFirstGridDiff,
 } from './comparators.js';
-import { loadAllSessions } from './session_loader.js';
+import { loadAllSessions, stripAnsiSequences } from './session_loader.js';
 import {
     createSessionResult,
     recordRng,
@@ -50,6 +58,128 @@ function recordRngComparison(result, actual, expected, context = {}) {
         ? { channel: 'rng', ...cmp.firstDivergence, ...context }
         : null;
     recordRng(result, cmp.matched, cmp.total, divergence);
+}
+
+function getExpectedScreenLines(stepLike) {
+    if (!stepLike) return [];
+    if (Array.isArray(stepLike.screenAnsi)) return stepLike.screenAnsi.map((line) => stripAnsiSequences(line));
+    if (Array.isArray(stepLike.screen)) return stepLike.screen.map((line) => stripAnsiSequences(line));
+    if (typeof stepLike.screen === 'string') return stepLike.screen.split('\n').map((line) => stripAnsiSequences(line));
+    return [];
+}
+
+function normalizeInterfaceLineForComparison(line) {
+    const text = String(line || '');
+    if (/^\s*NetHack,\s+Copyright\b/.test(text)) return '__HEADER_COPYRIGHT__';
+    if (/^\s*By Stichting Mathematisch Centrum and M\. Stephenson\./.test(text)) return '__HEADER_AUTHOR__';
+    if (/^\s*Version\b/.test(text)) return '__HEADER_VERSION__';
+    if (/^\s*See license for details\./.test(text)) return '__HEADER_LICENSE__';
+    return text;
+}
+
+function normalizeInterfaceScreenLines(lines) {
+    return (Array.isArray(lines) ? lines : []).map((line) => normalizeInterfaceLineForComparison(line));
+}
+
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForStableScreen(display, {
+    timeoutMs = 600,
+    intervalMs = 5,
+    stableReads = 3,
+    requireNonEmpty = false,
+} = {}) {
+    const start = Date.now();
+    let lastSig = null;
+    let stableCount = 0;
+    let latest = display.getScreenLines() || [];
+
+    while (Date.now() - start < timeoutMs) {
+        const lines = display.getScreenLines() || [];
+        latest = lines;
+        const hasContent = lines.some((line) => String(line || '').trim().length > 0);
+        if (requireNonEmpty && !hasContent) {
+            await sleep(intervalMs);
+            continue;
+        }
+        const sig = lines.join('\n');
+        if (sig === lastSig) {
+            stableCount++;
+            if (stableCount >= stableReads) return lines;
+        } else {
+            lastSig = sig;
+            stableCount = 1;
+        }
+        await sleep(intervalMs);
+    }
+    return latest;
+}
+
+async function replayInterfacePregame(session) {
+    if (typeof globalThis.window === 'undefined') {
+        globalThis.window = { location: { search: '' } };
+    } else if (!globalThis.window.location) {
+        globalThis.window.location = { search: '' };
+    } else if (typeof globalThis.window.location.search !== 'string') {
+        globalThis.window.location.search = '';
+    }
+    const backing = new Map();
+    globalThis.localStorage = {
+        getItem(key) { return backing.has(key) ? backing.get(key) : null; },
+        setItem(key, value) { backing.set(key, String(value)); },
+        removeItem(key) { backing.delete(key); },
+        clear() { backing.clear(); },
+    };
+
+    const seed = session.meta.seed;
+    const display = new HeadlessDisplay();
+    const input = createHeadlessInput();
+    const game = new NetHackGame({ display, input });
+    const subtype = session.meta.regen?.subtype;
+    if (subtype === 'startup') {
+        // C startup interface captures are recorded after login-derived name selection.
+        // Mirror that state so replay starts at autopick prompt rather than name prompt.
+        globalThis.localStorage.setItem('webhack-options', JSON.stringify({ name: 'wizard' }));
+    } else {
+        globalThis.localStorage.removeItem('webhack-options');
+    }
+
+    enableRngLog();
+    const initPromise = game.init({ seed, wizard: false });
+    const startupScreen = await waitForStableScreen(display, { requireNonEmpty: true });
+    let prevRngCount = (getRngLog() || []).length;
+    const startupRng = (getRngLog() || []).slice(0, prevRngCount);
+
+    const recordedSteps = [];
+    const sourceSteps = Array.isArray(session.raw?.steps) ? session.raw.steps : [];
+    for (let i = 1; i < sourceSteps.length; i++) {
+        const key = sourceSteps[i]?.key;
+        if (typeof key !== 'string' || key.length === 0) continue;
+        for (let j = 0; j < key.length; j++) {
+            input.pushKey(key.charCodeAt(j));
+        }
+        const screen = await waitForStableScreen(display);
+        const fullLog = getRngLog() || [];
+        const stepRng = fullLog.slice(prevRngCount);
+        prevRngCount = fullLog.length;
+        recordedSteps.push({
+            rngCalls: stepRng.length,
+            rng: stepRng,
+            screen,
+        });
+    }
+
+    // Do not await initPromise: these interface captures intentionally stop
+    // mid-chargen and would otherwise block waiting for more input.
+    void initPromise;
+    disableRngLog();
+
+    return {
+        startup: { rngCalls: startupRng.length, rng: startupRng, screen: startupScreen },
+        steps: recordedSteps,
+    };
 }
 
 async function runChargenResult(session) {
@@ -167,6 +297,91 @@ async function runGameplayResult(session) {
     return result;
 }
 
+async function runInterfaceResult(session) {
+    const result = createReplayResult(session);
+    result.type = 'interface';
+    const start = Date.now();
+
+    try {
+        const replay = await replayInterfacePregame(session);
+        if (!replay || replay.error) {
+            markFailed(result, replay?.error || 'Replay failed');
+            setDuration(result, Date.now() - start);
+            return result;
+        }
+
+        if (session.startup?.rng?.length > 0) {
+            recordRngComparison(result, replay.startup?.rng || [], session.startup.rng, { stage: 'startup' });
+        } else if (Number.isInteger(session.startup?.rngCalls)) {
+            const actualCalls = (replay.startup?.rng || []).length;
+            recordRng(result, actualCalls === session.startup.rngCalls ? 1 : 0, 1, {
+                expected: String(session.startup.rngCalls),
+                actual: String(actualCalls),
+                stage: 'startup',
+            });
+        }
+
+        // Interface captures include a startup frame (key=null) that replaySession
+        // does not emit as a step screen, so align expected[1..] to replay.steps[0..].
+        const expectedSteps = Array.isArray(session.raw?.steps) ? session.raw.steps.slice(1) : [];
+        const actualSteps = replay.steps || [];
+        const count = Math.min(expectedSteps.length, actualSteps.length);
+        let screensMatched = 0;
+        let screensTotal = 0;
+        let rngMatched = 0;
+        let rngTotal = 0;
+
+        for (let i = 0; i < count; i++) {
+            const expected = expectedSteps[i] || {};
+            const actual = actualSteps[i] || {};
+
+            const expectedScreen = getExpectedScreenLines(expected);
+            if (expectedScreen.length > 0) {
+                screensTotal++;
+                const screenCmp = compareScreenLines(
+                    normalizeInterfaceScreenLines(actual.screen || []),
+                    normalizeInterfaceScreenLines(expectedScreen),
+                );
+                if (screenCmp.match) {
+                    screensMatched++;
+                } else if (!result.firstDivergence && screenCmp.firstDiff) {
+                    result.firstDivergence = { channel: 'screen', step: i + 1, ...screenCmp.firstDiff };
+                }
+            }
+
+            const expectedRng = Array.isArray(expected.rng) ? expected.rng : [];
+            if (expectedRng.length > 0) {
+                const rngCmp = compareRng(actual.rng || [], expectedRng);
+                rngMatched += rngCmp.matched;
+                rngTotal += rngCmp.total;
+                if (!result.firstDivergence && rngCmp.firstDivergence) {
+                    result.firstDivergence = { ...rngCmp.firstDivergence, step: i + 1 };
+                }
+            } else if (Number.isInteger(expected.rngCalls)) {
+                const actualCalls = (actual.rng || []).length;
+                rngTotal += 1;
+                if (actualCalls === expected.rngCalls) {
+                    rngMatched += 1;
+                } else if (!result.firstDivergence) {
+                    result.firstDivergence = {
+                        step: i + 1,
+                        expected: String(expected.rngCalls),
+                        actual: String(actualCalls),
+                    };
+                }
+            }
+        }
+
+        if (rngTotal > 0) recordRng(result, rngMatched, rngTotal, result.firstDivergence);
+        if (screensTotal > 0) recordScreens(result, screensMatched, screensTotal);
+    } catch (error) {
+        markFailed(result, error);
+    }
+
+    setDuration(result, Date.now() - start);
+    return result;
+}
+
 async function runMapResult(session) {
     const result = createReplayResult(session);
     const start = Date.now();
@@ -240,6 +455,7 @@ async function runSessionResult(session) {
     if (session.meta.type === 'interface' && session.meta.regen?.subtype === 'chargen') {
         return runChargenResult(session);
     }
+    if (session.meta.type === 'interface') return runInterfaceResult(session);
     if (session.meta.type === 'map') return runMapResult(session);
     if (session.meta.type === 'special') return runSpecialResult(session);
     return runGameplayResult(session);
