@@ -1,4 +1,62 @@
-# Test Infrastructure Unification Plan
+# Test Infrastructure Unification Plan (Best-of-Both)
+
+## Purpose
+
+This document merges:
+
+1. The architectural rigor and governance of the unification plan.
+2. The concrete API and migration details from cleanup planning.
+3. Extensive tutorial background for contributors new to the codebase.
+
+It is both a design doc and a practical implementation guide.
+
+---
+
+## Decision Record (2026-02-16)
+
+These choices resolve design decisions and establish non-negotiable constraints.
+
+### Executive Decisions
+
+1. There are only **three official ways of running tests**:
+   - `unit`
+   - `e2e`
+   - `session`
+2. Session tests may have multiple logical subtypes (chargen, gameplay, map, special, interface, option), but they must run through **one session runner path**.
+3. Session infrastructure must not re-implement game behavior.
+4. NetHack behavior must live in game code; test code should drive and compare.
+
+### Technical Decisions
+
+1. **Core startup uses one init path.**
+   - Decision: keep `async init(initOptions)` as the only startup entrypoint; no separate `initInteractive` vs `parityInit`.
+   - Rationale: one startup codepath eliminates divergence risk between browser and replay boot.
+
+2. **Hooks belong in dependencies, not gameplay options.**
+   - Decision: keep hooks under `deps.hooks`.
+   - Rationale: options represent game state/flags (seed, role, wizard); hooks are integration observers and should be runtime-injected.
+
+3. **Use a single headless runtime module.**
+   - Decision: `js/headless_runtime.js` is the shared location for headless display/runtime wiring.
+
+4. **Standardize immediately on `test:session`.**
+   - Decision: remove `test:sessions` alias from scripts and docs.
+
+5. **No feature-flag rollout; use phased rollout with guardrails.**
+   - Decision: use side-by-side runner diff checks during migration, then delete temporary scaffolding.
+
+6. **Hard cleanup goals tied to baseline observations.**
+   - Baseline observations (current files):
+     - `test/comparison/session_helpers.js` is 2250 lines
+     - `test/comparison/session_test_runner.js` is 1133 lines
+     - `test/comparison/headless_game.js` is 615 lines
+   - Decision: enforce measurable reduction targets in acceptance criteria.
+
+7. **Use `session_loader.js` + `comparators.js` naming.**
+   - Decision: canonical split is format normalization (`session_loader.js`) and pure comparison functions (`comparators.js`).
+   - Rationale: simpler, role-specific naming than a broad `comparison_utils.js`.
+
+---
 
 ## How To Use This Document
 
@@ -219,10 +277,13 @@ When replay logic has to implement command semantics, turn scheduling, and level
 
 ### Initialization Options (Command-Line Equivalent)
 
+Options represent game state and configuration flags—the equivalent of command-line arguments or `.nethackrc` settings.
+
 ```javascript
 const options = {
   // RNG
   seed: 42,
+  enableRngLog: false,
 
   // Mode
   wizard: true,
@@ -236,100 +297,162 @@ const options = {
 
   // Game flags
   flags: {
-    symset: "DECgraphics",
+    DECgraphics: true,
     autopickup: false,
     time: false,
-    showexp: true,
+    verbose: true,
   },
 
-  // Hooks for observability
-  hooks: {
-    onStartup: (snapshot) => { ... },
-    onStep: ({ key, action, rng, screen, turn }) => { ... },
-    onLevelGenerated: ({ depth, typGrid, flagGrid }) => { ... },
+  // Startup parameters
+  startup: {
+    startDepth: 1,
+    startDnum: 0,
+    startDlevel: 1,
+    tutorialMode: false,
   }
 };
 ```
 
 ### Dependency Injection Contract
 
+Dependencies represent runtime integrations—I/O adapters, storage backends, and observability hooks. **Hooks belong here, not in options**, because they are runtime observers rather than game state.
+
 ```javascript
-const dependencies = {
+const deps = {
+  // Display provider
+  display: {
+    putstr: (col, row, text, color, attr) => void,
+    putstr_message: (msg) => void,
+    clearRow: (row) => void,
+    clearScreen: () => void,
+    setCell: (col, row, ch, color, attr) => void,
+    renderMap: (map, player, fov, flags) => void,
+    renderStatus: (player) => void,
+    renderChargenMenu: (lines, isFirstMenu) => void,
+    getScreenLines: () => string[],  // For testing
+  },
+
   // Input provider
   input: {
     nhgetch: async () => keyCode,
     getlin: async (prompt) => string,
-    pushKey: (key) => void,
-  },
-
-  // Display provider
-  display: {
-    putstr: (row, col, text, color) => void,
-    renderMap: (map, player, fov, flags) => void,
-    renderStatus: (player) => void,
-    putstr_message: (msg) => void,
-    clearScreen: () => void,
-    getScreenLines: () => string[],  // For testing
+    pushInput: (key) => void,  // For replay
   },
 
   // Storage provider (optional)
   storage: {
     loadSave: () => saveData,
     saveGame: (data) => void,
+    deleteSave: () => void,
     loadFlags: () => flags,
     saveFlags: (flags) => void,
   },
 
-  // Lifecycle callbacks
+  // Lifecycle callbacks (browser equivalents)
   lifecycle: {
-    restart: () => void,           // Instead of window.location.reload()
-    replaceUrlParams: (params) => void,
+    restart: () => void,              // Instead of window.location.reload()
+    replaceUrlParams: (params) => void,  // Instead of window.history
+  },
+
+  // Observability hooks (runtime-injected, not game state)
+  hooks: {
+    onStartup: (snapshot) => void,
+    onStep: ({ key, action, rng, screen, typGrid, turn, depth }) => void,
+    onLevelGenerated: ({ depth, dnum, dlevel, typGrid, flagGrid, wallInfoGrid, checkpoints }) => void,
   }
 };
 
 // Construction
-const game = new NetHackGame(options, dependencies);
+const game = new NetHackGame(options, deps);
 await game.init();
+```
+
+### Hook Contract (Emitted by Core)
+
+Hooks should be emitted by game code, not synthesized by tests.
+
+```javascript
+// onStartup(snapshot)
+{ rng, screen, typGrid, turn, depth, checkpoints }
+
+// onStep(snapshot)
+{ key, action, rng, screen, typGrid, turn, depth }
+
+// onLevelGenerated(snapshot)
+{ depth, dnum, dlevel, typGrid, flagGrid, wallInfoGrid, checkpoints }
 ```
 
 ### Core Methods
 
 ```javascript
 class NetHackGame {
-  constructor(options = {}, dependencies = {}) { ... }
+  constructor(options = {}, deps = {}) {
+    // options: seed, wizard, role/race/gender/align/name, flags, startup
+    // deps: display, input, storage, lifecycle, hooks
+  }
 
-  // Initialize game (replaces current init() browser-coupled version)
-  async init() { ... }
+  // Single startup path for both interactive and parity modes
+  async init(initOptions) { ... }
 
   // Inject keystroke and process (for replay)
-  async feedKey(key) {
-    this.dependencies.input.pushKey(key);
-    // Process command via rhack()
-    // Emit onStep hook with results
-  }
+  async feedKey(key) { ... }
 
-  // Wizard mode commands
-  wizardLevelTeleport(targetDepth) {
-    if (!this.wizard) throw new Error('Requires wizard mode');
-    // Save current level, generate/load target, place player
-  }
+  // State extraction
+  getTypGrid() { ... }
+  getRngLog() { ... }
 
-  // State extraction (called by hooks or directly)
-  getTypGrid() {
-    const grid = [];
-    for (let y = 0; y < ROWNO; y++) {
-      const row = [];
-      for (let x = 0; x < COLNO; x++) {
-        row.push(this.map.levl[x][y].typ);
-      }
-      grid.push(row);
+  // Wizard commands
+  async wizardLevelTeleport(targetDepth) { ... }
+
+  // Screen capture from active display adapter
+  snapshotScreen() { ... }
+}
+```
+
+### `init(initOptions)` Expected Behavior
+
+The single `init()` method handles both interactive and parity modes:
+
+1. Set seed and initialize RNG.
+2. Apply character options directly for parity mode (skip interactive chargen UI).
+3. Apply wizard mode/flags.
+4. Initialize level generation in C-faithful order.
+5. Generate and place player on first level.
+6. Run post-level initialization.
+7. Emit `onStartup` hook snapshot.
+
+### `feedKey(key)` Expected Behavior
+
+1. Inject key via input adapter (`pushInput` or equivalent).
+2. Process command through core command path.
+3. Run any resulting turn effects through core turn logic.
+4. Capture delta artifacts (RNG/screen/typGrid when relevant).
+5. Emit `onStep` hook snapshot.
+
+### State Extraction Methods
+
+```javascript
+// Read current terrain grid from core map state
+getTypGrid() {
+  const grid = [];
+  for (let y = 0; y < ROWNO; y++) {
+    const row = [];
+    for (let x = 0; x < COLNO; x++) {
+      row.push(this.map.levl[x][y].typ);
     }
-    return grid;
+    grid.push(row);
   }
+  return grid;
+}
 
-  getRngLog() {
-    return getRngLog();
-  }
+// Return current RNG trace
+getRngLog() {
+  return getRngLog();
+}
+
+// Capture screen from active display adapter
+snapshotScreen() {
+  return this.deps.display.getScreenLines();
 }
 ```
 
@@ -593,24 +716,31 @@ export async function runSession(sessionPath) {
     const raw = JSON.parse(fs.readFileSync(sessionPath));
     const session = normalizeSession(raw);  // Handle v1/v2/v3 differences
 
-    const { game, display, input } = await createHeadlessGame({
-        seed: session.seed,
-        wizard: session.options.wizard,
-        name: session.options.name,
-        role: session.options.role,
-        race: session.options.race,
-        gender: session.options.gender,
-        align: session.options.align,
-        flags: session.options.flags,
-        hooks: {
-            onStep: (data) => stepResults.push(data),
-            onLevelGenerated: (data) => levelResults.push(data),
-        }
-    });
-
-    const results = { passed: true, steps: [] };
     const stepResults = [];
     const levelResults = [];
+
+    const { game, display, input } = await createHeadlessGame(
+        // Options (game state)
+        {
+            seed: session.seed,
+            wizard: session.options.wizard,
+            name: session.options.name,
+            role: session.options.role,
+            race: session.options.race,
+            gender: session.options.gender,
+            align: session.options.align,
+            flags: session.options.flags,
+        },
+        // Deps (runtime observers) - hooks go here, not in options
+        {
+            hooks: {
+                onStep: (data) => stepResults.push(data),
+                onLevelGenerated: (data) => levelResults.push(data),
+            }
+        }
+    );
+
+    const results = { passed: true, steps: [] };
 
     for (const step of session.steps) {
         if (step.key !== null) {
@@ -658,7 +788,8 @@ export async function runSession(sessionPath) {
 **Exit Criteria:**
 - One session replay path for all session files
 - No gameplay/turn logic in session helper modules
-- Session runner is ~200 lines (down from ~1100)
+- Session runner reduced to ≤350 lines (from 1133 lines)
+- Session helpers reduced to ≤500 lines (from 2250 lines)
 
 **Files Changed:**
 | File | Change |
@@ -779,7 +910,9 @@ wizardLevelTeleport(targetDepth) {
 **Exit Criteria:**
 - No dead alternate session runner paths remain
 - One headless implementation
-- Session runner is ~200 lines
+- `test/comparison/headless_game.js` deleted
+- `test/comparison/session_test_runner.js` ≤350 lines
+- `test/comparison/session_helpers.js` ≤500 lines
 
 ---
 
@@ -799,11 +932,11 @@ wizardLevelTeleport(targetDepth) {
 
 | File | Current State | Target State |
 |------|---------------|--------------|
-| `session_helpers.js` | HeadlessGame + utilities (~1900 lines) | Utilities only (~300 lines) |
-| `session_test_runner.js` | Complex with game logic (~1100 lines) | Simple driver (~200 lines) |
-| `session_loader.js` | N/A | NEW: v1/v2/v3 normalization |
-| `comparators.js` | N/A | NEW: Pure comparison functions |
-| `sessions.test.js` | Wrapper | Simplified wrapper |
+| `session_helpers.js` | HeadlessGame + utilities (2250 lines) | Parse/compare utilities only (≤500 lines) |
+| `session_test_runner.js` | Complex with game logic (1133 lines) | Orchestrator only (≤350 lines) |
+| `session_loader.js` | N/A | NEW: Format normalization layer |
+| `comparators.js` | N/A | NEW: RNG/grid/screen comparators |
+| `sessions.test.js` | Wrapper | Wrapper around unified runner output |
 
 ### Selfplay
 
@@ -847,16 +980,44 @@ wizardLevelTeleport(targetDepth) {
 
 ## Acceptance Criteria
 
-Cleanup is complete when all are true:
+Cleanup is complete when **all** are true:
 
-- [ ] Only three official run categories: `unit`, `e2e`, `session`
-- [ ] Session tests have one execution path
-- [ ] Session infrastructure does not implement game turn mechanics
-- [ ] Core game initializes from explicit options without URL dependency
-- [ ] One shared headless runtime used by session and selfplay
-- [ ] Wizard mode and level teleport work in unified session flow
-- [ ] Legacy runner duplicates removed
-- [ ] ~600 lines of duplicated game logic eliminated
+### Architecture Criteria
+
+- [ ] Official command contract is exactly three run categories: `unit`, `e2e`, `session`
+- [ ] Session logical subtypes exist only as grouping/filtering, not separate execution paths
+- [ ] Session infrastructure does not duplicate game turn or level logic
+- [ ] Core game can run in both browser and headless via dependency injection
+- [ ] Shared headless runtime is used by session and selfplay
+
+### Implementation Criteria
+
+- [ ] Wizard mode and level teleport workflows are covered in unified session replay
+- [ ] `package.json` exposes `test:session` (singular) as the canonical session command
+- [ ] `package.json` does not include `test:sessions` alias
+
+### Measurable Reduction Targets (from Baseline)
+
+- [ ] `test/comparison/headless_game.js` is deleted (current baseline: 615 lines)
+- [ ] `test/comparison/session_helpers.js` is reduced from 2250 lines to utility-only scope (target: ≤500 lines, no game loop/turn/level emulation)
+- [ ] `test/comparison/session_test_runner.js` is reduced from 1133 lines to orchestrator-only scope (target: ≤350 lines)
+
+### Documentation Criteria
+
+- [ ] Docs match implemented command contract
+- [ ] No alternate session runner path remains documented
+
+---
+
+## Verification Checklist
+
+After each migration phase:
+
+1. `npm run test:unit` passes or expected diffs are explained.
+2. `npm run test:e2e` passes or expected diffs are explained.
+3. `npm run test:session` parity trend is stable or improved.
+4. Runtime is not regressing materially for session runs.
+5. Browser interactive gameplay still boots and accepts input.
 
 ---
 
@@ -864,49 +1025,107 @@ Cleanup is complete when all are true:
 
 | PR | Description | Risk Level |
 |----|-------------|------------|
-| PR 1 | Core extraction scaffolding + browser bootstrap split | Medium |
-| PR 2 | Injected input/display/lifecycle interfaces | Medium |
-| PR 3 | Shared headless runtime introduction | Low |
-| PR 4 | Unified session loader + runner (behind feature flag) | Medium |
-| PR 5 | Switch `test:session` to new runner; temporary comparison mode | High |
-| PR 6 | Migrate selfplay to shared runtime | Low |
-| PR 7 | Remove old runner paths; finalize docs/scripts | Low |
+| PR 1 | Runtime boundary extraction (core vs browser) | Medium |
+| PR 2 | Injected input/display/lifecycle contracts | Medium |
+| PR 3 | Add concrete parity APIs (`init` parity mode, `feedKey`, helpers) | Medium |
+| PR 4 | Shared headless display/runtime modules | Low |
+| PR 5 | Session normalization loader (`session_loader.js`) + pure comparators (`comparators.js`) | Low |
+| PR 6 | Replace session runner internals with unified orchestrator | High |
+| PR 7 | Migrate selfplay to shared runtime | Low |
+| PR 8 | Script/docs canonicalization and legacy cleanup | Low |
+
+### Migration Safety
+
+Each PR should include:
+1. Side-by-side old/new runner diff checks where applicable
+2. Baseline timing comparison
+3. Verification that browser gameplay still boots and accepts input
+
+At PR 8 completion, delete all temporary migration scaffolding.
 
 ---
 
-## Appendix A: Display Interface Methods
+## Appendix A: Headless Display Contract
 
-HeadlessDisplay must implement these methods:
+`HeadlessDisplay` implementation lives in `js/headless_runtime.js` (shared by session tests and selfplay).
+
+### Required Methods
 
 ```javascript
 // Core rendering
-putstr(row, col, text, color)           // Write text at position
-putstr_message(msg)                      // Add to message line
-clearScreen()                            // Clear entire screen
-renderMap(map, player, fov, flags)       // Render dungeon map
-renderStatus(player)                     // Render status lines (bottom 2 rows)
+putstr(col, row, text, color, attr?)     // Write text at position
+putstr_message(msg)                       // Add to message line
+clearRow(row)                             // Clear specific row
+clearScreen()                             // Clear entire screen
+setCell(col, row, ch, color, attr?)       // Set single character
+renderMap(map, player, fov, flags)        // Render dungeon map
+renderStatus(player)                      // Render status lines (bottom 2 rows)
+renderChargenMenu(lines, isFirstMenu)     // Render chargen menu screen
+```
 
-// Menu rendering
-renderChargenMenu(lines, isFirstMenu)    // Render chargen menu screen
-showMenu(items, prompt, flags)           // General menu display
+### Test-Support Methods
 
-// Message handling
-acknowledgeMessages()                    // Handle --More-- prompts
-
-// Test utilities
-getScreenLines()                         // Return string[24] of screen content
+```javascript
+getScreenLines()                          // Return string[24] of screen content
+getScreenAnsi()                           // (optional) ANSI parity workflows
+setScreenLines(lines)                     // (optional) Compatibility/testing only
 ```
 
 ---
 
-## Appendix B: Session Format Reference (v3)
+## Appendix B: Session Format Strategy
+
+### Normalize First, Replay Second
+
+Create a normalization module (`session_loader.js`) that maps v1/v2/v3 session files into one canonical internal schema.
+
+Why:
+1. Keeps format complexity out of gameplay execution.
+2. Reduces runner conditionals.
+3. Makes unsupported edge cases explicit.
+
+### Canonical Internal Schema
+
+After normalization, all sessions have this shape:
+
+```javascript
+{
+  meta: {
+    version,
+    source,
+    seed,
+    type,       // chargen | gameplay | map | special | interface | options
+    options,
+  },
+  startup: {
+    rng,
+    screen,
+    screenAnsi,
+    typGrid,
+    checkpoints,
+  },
+  steps: [
+    {
+      key,
+      action,
+      rng,
+      screen,
+      screenAnsi,
+      typGrid,
+      checkpoints,
+    }
+  ]
+}
+```
+
+### External v3 Format (from C harness)
 
 ```javascript
 {
   "version": 3,
   "seed": 1,
   "source": "c",
-  "type": "gameplay",  // chargen | gameplay | map | special | interface
+  "type": "gameplay",
   "options": {
     "name": "Wizard",
     "role": "Valkyrie",
