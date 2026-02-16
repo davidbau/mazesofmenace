@@ -28,15 +28,19 @@ For faithful C parity work, we need one source of behavior truth: core game runt
 
 ---
 
-## Codebase Baseline (Observed)
+## Current State
 
-Current surface area (from the latest merged phase docs):
+| File | Lines | Role |
+|------|-------|------|
+| `js/headless_runtime.js` | 977 | Core game: HeadlessGame, HeadlessDisplay |
+| `test/comparison/session_runtime.js` | 1457 | **Game-aware test code (target for elimination)** |
+| `test/comparison/session_helpers.js` | 41 | Re-exports (game-unaware) |
+| `test/comparison/comparators.js` | ~150 | Pure comparison functions (game-unaware) |
+| `test/comparison/session_loader.js` | ~200 | Session file loading (game-unaware) |
 
-1. `js/headless_runtime.js` is the intended core headless boundary.
-2. `test/comparison/session_runtime.js` is still the main game-aware harness module and remains the primary elimination target.
-3. `test/comparison/comparators.js` and `test/comparison/session_loader.js` are already mostly game-unaware and should stay focused.
-
-This plan keeps those observations, but tightens the end-state contract so only core owns replay behavior.
+**Target**: Delete `session_runtime.js` by pushing functionality into
+`js/headless_runtime.js` (game behavior) or keeping only pure comparison
+logic in test utilities.
 
 ---
 
@@ -70,16 +74,55 @@ These constraints are design guardrails, not optional optimizations:
 
 `session_runtime.js` responsibilities should migrate by category:
 
-1. Map generation helpers:
-   - Move to core wizard-driven behavior (`teleportToLevel` path), not harness loops calling generation internals.
-2. Startup generation helpers:
-   - Replace with one core init path that accepts seed + startup options.
-3. Replay step semantics:
-   - Move prompt/turn/continuation/count behavior into core step execution.
-4. Structural validators:
-   - Keep in test infrastructure as pure assertions over game-provided state.
-5. Grid/screen extraction:
-   - Keep extraction logic in core accessors; harness should not inspect map internals.
+### 1. Map Generation (lines ~195-440)
+
+```javascript
+generateMapsSequential(seed, maxDepth)
+generateMapsWithRng(seed, maxDepth)
+```
+
+Custom map generation loop that manually calls `initLevelGeneration()`,
+`makelevel()`, etc. **Migration**: Use wizard mode teleport (`teleportToLevel`)
+instead of harness loops calling generation internals.
+
+### 2. Startup Generation (lines ~480-565)
+
+```javascript
+generateStartupWithRng(seed, session)
+```
+
+Manually constructs Player, Map, HeadlessGame. **Migration**: Replace with
+one core init path `HeadlessGame.start(seed, options)`.
+
+### 3. Session Replay (lines ~566-1312)
+
+```javascript
+async replaySession(seed, session, opts = {})
+```
+
+750+ lines implementing turn logic, prompt handling, monster movement, FOV.
+**Migration**: Move prompt/turn/continuation/count behavior into core step
+execution. Harness becomes a simple key-send loop.
+
+### 4. Structural Validators (lines ~1313-1457)
+
+```javascript
+checkWallCompleteness(map)
+checkConnectivity(map)
+checkStairs(map, depth)
+```
+
+**Keep in test infrastructure** as pure assertions over game-provided state.
+
+### 5. Grid/Screen Extraction
+
+```javascript
+extractTypGrid(map)
+parseTypGrid(text)
+```
+
+**Migration**: Keep extraction logic in core accessors (`getTypGrid()`,
+`getScreen()`); harness should not inspect map internals.
 
 ---
 
@@ -116,7 +159,32 @@ Target capabilities in core/runtime:
 4. Compare expected vs actual streams.
 5. Emit diagnostics and result summaries.
 
-No gameplay simulation in harness.
+**No gameplay simulation in harness.**
+
+Target harness code:
+
+```javascript
+async function replaySession(session) {
+    const game = await HeadlessGame.start(session.seed, session.options);
+    const results = { startup: captureState(game), steps: [] };
+
+    for (const step of session.steps.slice(1)) {
+        game.clearRngLog();
+        await game.sendKey(step.key);
+        results.steps.push(captureState(game));
+    }
+
+    return results;
+}
+
+function captureState(game) {
+    return {
+        rng: game.getRngLog(),
+        screen: game.getScreen(),
+        typGrid: game.getTypGrid(),
+    };
+}
+```
 
 ## 3) Comparators Stay Focused
 
@@ -150,21 +218,38 @@ Disallowed acceleration directions:
 
 Add or standardize APIs in core/headless runtime:
 
-1. One init path:
-   - `HeadlessGame.start(seed, options)` (name may differ, semantics required),
-   - options include: `wizard`, character tuple, optional start level context, symbol/runtime flags.
-2. One step path:
-   - `game.sendKey(key)` or `game.step(key)` for canonical replay stepping,
-   - step call returns structured observation for comparison/debugging.
-3. Core state accessors:
-   - `getTypGrid()`, `getScreen()`, `getAnsiScreen()`.
-4. RNG instrumentation accessors in core path:
-   - `enableRngLogging()`, `getRngLog()`, `clearRngLog()`.
-5. Wizard-only replay helpers in core path:
-   - level teleport and map reveal behaviors needed by map/special sessions.
-6. Trace hooks (under `deps.hooks`) for step boundaries:
-   - `onStepStart`, `onCommandResult`, `onTurnAdvanced`, `onScreenRendered`,
-     `onLevelChange`, `onReplayPrompt`.
+```javascript
+class HeadlessGame {
+    // Initialization
+    static async start(seed, options);  // Full startup with all options
+    // options: wizard, role/race/gender/align, start level context, symbol/runtime flags
+
+    // Replay stepping
+    async sendKey(key);                 // Execute one command/turn
+    async sendKeys(keys);               // Execute multiple keys
+
+    // State capture
+    getTypGrid();                       // Current level typGrid (21x80)
+    getScreen();                        // Current terminal screen (24x80)
+    getAnsiScreen();                    // ANSI-encoded screen string
+
+    // RNG instrumentation
+    enableRngLogging();
+    getRngLog();
+    clearRngLog();
+
+    // Wizard mode (for map sessions)
+    teleportToLevel(depth);             // Ctrl+V equivalent
+    revealMap();                        // Ctrl+F equivalent
+
+    // Debugging
+    checkpoint(phase);                  // Capture full state snapshot
+}
+```
+
+Trace hooks (under `deps.hooks`) for step boundaries:
+- `onStepStart`, `onCommandResult`, `onTurnAdvanced`, `onScreenRendered`,
+  `onLevelChange`, `onReplayPrompt`
 
 These hooks are observability only, not behavior overrides.
 
