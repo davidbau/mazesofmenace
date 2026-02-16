@@ -28,6 +28,18 @@ For faithful C parity work, we need one source of behavior truth: core game runt
 
 ---
 
+## Codebase Baseline (Observed)
+
+Current surface area (from the latest merged phase docs):
+
+1. `js/headless_runtime.js` is the intended core headless boundary.
+2. `test/comparison/session_runtime.js` is still the main game-aware harness module and remains the primary elimination target.
+3. `test/comparison/comparators.js` and `test/comparison/session_loader.js` are already mostly game-unaware and should stay focused.
+
+This plan keeps those observations, but tightens the end-state contract so only core owns replay behavior.
+
+---
+
 ## Hard Goals
 
 The end state should satisfy all of these:
@@ -51,6 +63,23 @@ These constraints are design guardrails, not optional optimizations:
 3. Do not hide behavior behind caching/sampling that changes replay semantics.
 4. Do not skip PRNG/typgrid/screen work to improve runtime numbers.
 5. Favor clear data flow and direct diagnostics over clever indirection.
+
+---
+
+## Harness/Game Boundary by Category
+
+`session_runtime.js` responsibilities should migrate by category:
+
+1. Map generation helpers:
+   - Move to core wizard-driven behavior (`teleportToLevel` path), not harness loops calling generation internals.
+2. Startup generation helpers:
+   - Replace with one core init path that accepts seed + startup options.
+3. Replay step semantics:
+   - Move prompt/turn/continuation/count behavior into core step execution.
+4. Structural validators:
+   - Keep in test infrastructure as pure assertions over game-provided state.
+5. Grid/screen extraction:
+   - Keep extraction logic in core accessors; harness should not inspect map internals.
 
 ---
 
@@ -105,7 +134,9 @@ Allowed acceleration directions:
 1. cheaper data plumbing (fewer redundant conversions/copies),
 2. faster comparator internals with identical outputs,
 3. better failure slicing/filtering that shortens time-to-diagnosis,
-4. tight single-session debug runs that still preserve full-fidelity evidence.
+4. tight single-session debug runs that still preserve full-fidelity evidence,
+5. bounded worker parallelism for independent sessions with unchanged per-session checks,
+6. stream/emit first failure details immediately rather than waiting for full-suite completion.
 
 Disallowed acceleration directions:
 
@@ -119,15 +150,19 @@ Disallowed acceleration directions:
 
 Add or standardize APIs in core/headless runtime:
 
-1. `createHeadlessGame(options)` (or equivalent) with explicit replay-safe options:
-   - `seed`, `wizard`, `character`, `startDnum`, `startDlevel`, `startDungeonAlign`,
-     runtime flags, symbol mode.
-2. `executeReplayStep(key, replayContext)` (name can differ) that:
-   - feeds key,
-   - executes command,
-   - runs canonical end-of-turn behavior when appropriate,
-   - returns structured observation.
-3. Trace hooks (under `deps.hooks`) for step boundaries:
+1. One init path:
+   - `HeadlessGame.start(seed, options)` (name may differ, semantics required),
+   - options include: `wizard`, character tuple, optional start level context, symbol/runtime flags.
+2. One step path:
+   - `game.sendKey(key)` or `game.step(key)` for canonical replay stepping,
+   - step call returns structured observation for comparison/debugging.
+3. Core state accessors:
+   - `getTypGrid()`, `getScreen()`, `getAnsiScreen()`.
+4. RNG instrumentation accessors in core path:
+   - `enableRngLogging()`, `getRngLog()`, `clearRngLog()`.
+5. Wizard-only replay helpers in core path:
+   - level teleport and map reveal behaviors needed by map/special sessions.
+6. Trace hooks (under `deps.hooks`) for step boundaries:
    - `onStepStart`, `onCommandResult`, `onTurnAdvanced`, `onScreenRendered`,
      `onLevelChange`, `onReplayPrompt`.
 
@@ -194,19 +229,39 @@ Exit criteria:
 
 1. Baseline artifact exists for regression comparison.
 
-## Phase 1: Define Core Replay Contract
+## Phase 1: Consolidate Core Replay API
 
-1. Specify structured replay-step return schema.
-2. Add hook event contracts in core runtime.
+1. Finalize one init path and one step path in `HeadlessGame`.
+2. Define structured replay-step return schema and hook contracts.
 3. Add unit tests for replay-step invariants.
 
 Exit criteria:
 
-1. Core exposes stable replay API used by tests.
+1. Core exposes stable replay API used by tests without harness gameplay imports.
 
-## Phase 2: Move Step Semantics into Core
+## Phase 2: Migrate Map/Special Generation to Wizard-Core Path
 
-Move behavior currently emulated in harness into core replay path:
+1. Replace harness map generation loops with wizard-capable core level navigation.
+2. Capture typgrid/screen/RNG through core accessors only.
+3. Keep deterministic regeneration checks intact.
+
+Exit criteria:
+
+1. Map/special session execution no longer calls generation internals from harness.
+
+## Phase 3: Migrate Startup/Chargen Semantics to Core Init
+
+1. Replace startup helper emulation with `HeadlessGame.start(seed, options)`.
+2. Ensure startup RNG and screen capture are produced by core, not harness heuristics.
+3. Preserve chargen and interface startup fidelity checks.
+
+Exit criteria:
+
+1. Startup session categories run through one core init path.
+
+## Phase 4: Move Replay Step Semantics into Core
+
+Move behavior currently emulated in harness into core replay stepping:
 
 1. pending input/prompt continuation semantics,
 2. count-prefix handling,
@@ -215,41 +270,33 @@ Move behavior currently emulated in harness into core replay path:
 
 Exit criteria:
 
-1. Harness no longer contains these semantics.
+1. Harness no longer contains replay turn/prompt semantics.
 
-## Phase 3: Unify All Session Types on Core Path
-
-1. Chargen, gameplay, map, special, interface all use one execution primitive.
-2. Wizard-specific navigation stays in core, not harness.
-
-Exit criteria:
-
-1. Type branching in harness is only comparison/reporting policy, not behavior emulation.
-
-## Phase 4: Replace Harness Runtime Module
+## Phase 5: Replace Harness Runtime Module with Thin Wiring
 
 1. Remove gameplay logic from `test/comparison/session_runtime.js`.
-2. Keep only adapters needed to call core replay APIs.
+2. Keep only thin adapter wiring or extract retained pure validators to a small utility module.
+3. Ensure session runner flow is: load -> start -> step -> compare -> report.
 
 Exit criteria:
 
-1. `session_runtime.js` is removed or reduced to thin wiring.
+1. `session_runtime.js` is deleted or reduced to a thin, game-unaware layer.
 
-## Phase 5: Harden Comparators and Diagnostics
+## Phase 6: Harden Comparators, Diagnostics, and Insight Speed
 
 1. Keep strict PRNG/typgrid/screen fidelity checks.
 2. Improve first-divergence diagnostics where currently vague.
-3. Add a single-session debug mode for rapid iteration.
+3. Add single-session debug mode with full evidence capture.
 4. Optimize comparator/runtime overhead only where outputs remain bit-for-bit equivalent.
 
 Exit criteria:
 
-1. Failure reports are at least as actionable as before.
+1. Failure reports are at least as actionable as before and appear faster.
 
-## Phase 6: Cleanup and Docs
+## Phase 7: Final Cleanup and Docs
 
 1. Delete obsolete harness-only compatibility paths.
-2. Update docs to describe core replay architecture.
+2. Update docs to describe the final core replay architecture.
 3. Keep only three run categories (`unit`, `e2e`, `session`) in docs/scripts.
 4. Remove any temporary migration toggles or split replay paths.
 
@@ -270,6 +317,7 @@ All must be true:
 5. Debug output can identify first divergence with step-level context.
 6. Session runtime improvements do not reduce captured evidence quality.
 7. No explicit feature-flagged replay split remains in final code.
+8. `session_runtime.js` is deleted or reduced to a thin game-unaware adapter/validator layer.
 
 ---
 
@@ -288,6 +336,13 @@ Mitigation:
 
 1. Port behavior incrementally with sentinel sessions.
 2. Land small, reviewable steps that keep one replay path live at all times.
+
+## Risk: Overcomplicated migration scaffolding
+
+Mitigation:
+
+1. Allow temporary parity assertions in tests, but no second long-lived replay implementation.
+2. Remove transitional helpers in the same phase they were introduced for.
 
 ## Risk: Core API churn breaks selfplay
 
