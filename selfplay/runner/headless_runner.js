@@ -503,8 +503,10 @@ export class HeadlessAdapter {
     }
 
     async readScreen() {
-        if (!this.stripColors) return this.game.display.grid;
-        const grid = this.game.display.grid;
+        // Use cells for {ch, color} format
+        const cells = this.game.display.cells || this.game.display.grid;
+        if (!this.stripColors) return cells;
+        const grid = cells;
         const stripped = [];
         for (let r = 0; r < grid.length; r++) {
             stripped[r] = [];
