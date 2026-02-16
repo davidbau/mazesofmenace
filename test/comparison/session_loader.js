@@ -34,11 +34,13 @@ function deriveType(raw, fileName) {
 
 function normalizeStep(step, index) {
     const row = step || {};
+    const rng = Array.isArray(row.rng) ? row.rng : [];
     return {
         index,
         key: row.key ?? null,
         action: row.action || null,
-        rng: Array.isArray(row.rng) ? row.rng : [],
+        rng,
+        rngCalls: Number.isInteger(row.rngCalls) ? row.rngCalls : rng.length,
         screen: getSessionScreenLines(row),
         screenAnsi: Array.isArray(row.screenAnsi) ? row.screenAnsi : null,
         typGrid: Array.isArray(row.typGrid) ? row.typGrid : null,
@@ -79,6 +81,9 @@ export function normalizeSession(raw, meta = {}) {
     const startup = startupRaw
         ? {
             rng: Array.isArray(startupRaw.rng) ? startupRaw.rng : [],
+            rngCalls: Number.isInteger(startupRaw.rngCalls)
+                ? startupRaw.rngCalls
+                : (Array.isArray(startupRaw.rng) ? startupRaw.rng.length : 0),
             screen: getSessionScreenLines(startupRaw),
             screenAnsi: Array.isArray(startupRaw.screenAnsi) ? startupRaw.screenAnsi : null,
             typGrid: Array.isArray(startupRaw.typGrid) ? startupRaw.typGrid : null,

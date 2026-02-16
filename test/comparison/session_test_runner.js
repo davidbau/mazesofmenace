@@ -83,8 +83,17 @@ async function runGameplayResult(session) {
             return result;
         }
 
-        if (session.startup?.rng?.length || (replay.startup?.rng || []).length) {
-            recordRngComparison(result, replay.startup?.rng || [], session.startup?.rng || []);
+        if (session.startup?.rng?.length > 0) {
+            recordRngComparison(result, replay.startup?.rng || [], session.startup.rng);
+        } else if (Number.isInteger(session.startup?.rngCalls)) {
+            const actualCalls = (replay.startup?.rng || []).length;
+            recordRng(result, actualCalls === session.startup.rngCalls ? 1 : 0, 1, {
+                expected: String(session.startup.rngCalls),
+                actual: String(actualCalls),
+                stage: 'startup',
+            });
+        } else if ((replay.startup?.rng || []).length > 0) {
+            recordRngComparison(result, replay.startup?.rng || [], []);
         }
 
         const count = Math.min(session.steps.length, (replay.steps || []).length);
@@ -97,11 +106,32 @@ async function runGameplayResult(session) {
             const expected = session.steps[i];
             const actual = replay.steps[i] || {};
 
-            const rngCmp = compareRng(actual.rng || [], expected.rng || []);
-            rngMatched += rngCmp.matched;
-            rngTotal += rngCmp.total;
-            if (!result.firstDivergence && rngCmp.firstDivergence) {
-                result.firstDivergence = { ...rngCmp.firstDivergence, step: i };
+            if (expected.rng.length > 0) {
+                const rngCmp = compareRng(actual.rng || [], expected.rng);
+                rngMatched += rngCmp.matched;
+                rngTotal += rngCmp.total;
+                if (!result.firstDivergence && rngCmp.firstDivergence) {
+                    result.firstDivergence = { ...rngCmp.firstDivergence, step: i };
+                }
+            } else if (Number.isInteger(expected.rngCalls)) {
+                const actualCalls = (actual.rng || []).length;
+                rngTotal += 1;
+                if (actualCalls === expected.rngCalls) {
+                    rngMatched += 1;
+                } else if (!result.firstDivergence) {
+                    result.firstDivergence = {
+                        step: i,
+                        expected: String(expected.rngCalls),
+                        actual: String(actualCalls),
+                    };
+                }
+            } else {
+                const rngCmp = compareRng(actual.rng || [], []);
+                rngMatched += rngCmp.matched;
+                rngTotal += rngCmp.total;
+                if (!result.firstDivergence && rngCmp.firstDivergence) {
+                    result.firstDivergence = { ...rngCmp.firstDivergence, step: i };
+                }
             }
 
             if (expected.screen.length > 0) {
