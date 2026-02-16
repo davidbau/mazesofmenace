@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
     replaySession,
-} from './session_runtime.js';
+} from '../../js/replay_core.js';
 import {
     generateMapsWithCoreReplay,
     generateStartupWithCoreReplay,
