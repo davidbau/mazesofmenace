@@ -4,10 +4,12 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
-    generateStartupWithRng,
     replaySession,
+    getSessionCharacter,
+    getPreStartupRngEntries,
 } from './session_runtime.js';
 import { HeadlessGame } from '../../js/headless_runtime.js';
+import { RACE_HUMAN, RACE_ELF, RACE_DWARF, RACE_GNOME, RACE_ORC } from '../../js/config.js';
 import { compareRng, compareGrids, compareScreenLines } from './comparators.js';
 import { loadAllSessions } from './session_loader.js';
 import {
@@ -43,13 +45,31 @@ function recordRngComparison(result, actual, expected, context = {}) {
     recordRng(result, cmp.matched, cmp.total, divergence);
 }
 
+// Convert session character options to core API format
+function convertCharacterOptions(session) {
+    const charOpts = getSessionCharacter(session);
+    const alignMap = { lawful: 1, neutral: 0, chaotic: -1 };
+    const raceMap = { human: RACE_HUMAN, elf: RACE_ELF, dwarf: RACE_DWARF, gnome: RACE_GNOME, orc: RACE_ORC };
+
+    return {
+        roleIndex: HeadlessGame.getRoleIndex(charOpts.role),
+        name: charOpts.name || 'Wizard',
+        gender: charOpts.gender === 'female' ? 1 : 0,
+        alignment: charOpts.align ? alignMap[charOpts.align] : undefined,
+        race: charOpts.race ? raceMap[charOpts.race] : RACE_HUMAN,
+        preStartupRngEntries: getPreStartupRngEntries(session),
+    };
+}
+
 async function runChargenResult(session) {
     const result = createReplayResult(session);
     result.type = 'chargen';
     const start = Date.now();
 
     try {
-        const startup = generateStartupWithRng(session.meta.seed, session.raw);
+        // Phase 3: Use core HeadlessGame.generateStartupWithRng
+        const options = convertCharacterOptions(session.raw);
+        const startup = HeadlessGame.generateStartupWithRng(session.meta.seed, options);
         if (session.startup?.rng?.length) {
             recordRngComparison(result, startup?.rng || [], session.startup.rng);
         }

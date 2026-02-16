@@ -5,7 +5,7 @@ import { initRng, rn2, rnd, rn1, enableRngLog, getRngLog, disableRngLog } from '
 import { exercise, exerchk, initExerciseState } from './attrib_exercise.js';
 import { initLevelGeneration, makelevel, setGameSeed } from './dungeon.js';
 import { simulatePostLevelInit, mon_arrive } from './u_init.js';
-import { Player, rankOf } from './player.js';
+import { Player, rankOf, roles } from './player.js';
 import { rhack } from './commands.js';
 import { makemon } from './makemon.js';
 import { movemon, initrack, settrack } from './monmove.js';
@@ -680,6 +680,118 @@ function extractTypGridFromMap(map) {
 
 // Export the helper for external use
 export { extractTypGridFromMap };
+
+// ---------------------------------------------------------------------------
+// Startup Generation API (Phase 3)
+// ---------------------------------------------------------------------------
+
+// Build role name → index map
+const ROLE_INDEX = {};
+for (let i = 0; i < roles.length; i++) {
+    ROLE_INDEX[roles[i].name] = i;
+}
+
+// Look up role index by name (returns 11/Valkyrie as default)
+HeadlessGame.getRoleIndex = function getRoleIndex(roleName) {
+    return ROLE_INDEX[roleName] ?? 11;
+};
+
+// Generate full startup with RNG trace capture.
+// This is the canonical core path for chargen/startup session testing.
+// Options: { roleIndex, name, gender, alignment, race, preStartupRngEntries }
+// Returns { grid, map, player, rngCalls, rng }.
+HeadlessGame.generateStartupWithRng = function generateStartupWithRng(seed, options = {}) {
+    initrack(); // reset player track buffer between tests
+    enableRngLog();
+    initRng(seed);
+    setGameSeed(seed);
+
+    const roleIndex = options.roleIndex ?? 11; // default Valkyrie
+
+    // Chargen sessions may have RNG consumed during character selection menus
+    // (e.g., pick_align) before newgame() startup. Consume those first.
+    const preStartupEntries = options.preStartupRngEntries || [];
+    for (const entry of preStartupEntries) {
+        consumeRngEntryHelper(entry);
+    }
+
+    initLevelGeneration(roleIndex);
+    const map = makelevel(1);
+    const grid = extractTypGridFromMap(map);
+
+    // Set up player matching the character configuration
+    const player = new Player();
+    player.initRole(roleIndex);
+    player.name = options.name || 'Wizard';
+    player.gender = options.gender === 'female' ? 1 : (options.gender === 1 ? 1 : 0);
+
+    // Set alignment if specified
+    if (options.alignment !== undefined) {
+        player.alignment = options.alignment;
+    }
+
+    // Set race if specified (default Human = 0)
+    if (options.race !== undefined) {
+        player.race = options.race;
+    }
+
+    // Place player at upstair
+    if (map.upstair) {
+        player.x = map.upstair.x;
+        player.y = map.upstair.y;
+    }
+
+    // Capture pre-chargen RNG count for isolating chargen calls
+    const preChargenCount = getRngLog().length;
+
+    // Post-level init: pet creation, inventory, attributes, welcome
+    simulatePostLevelInit(player, map, 1);
+
+    const fullLog = getRngLog();
+    disableRngLog();
+
+    // Strip pre-startup entries from the log
+    const stripCount = preStartupEntries.length;
+    const startupLog = fullLog.slice(stripCount);
+
+    // Isolate chargen-only RNG (post-map: pet + inventory + attributes + welcome)
+    const chargenLog = fullLog.slice(preChargenCount);
+
+    // Compact the RNG entries (strip count prefix)
+    const toCompact = (entry) =>
+        typeof entry === 'string' ? entry.replace(/^\d+\s+/, '') : entry;
+
+    return {
+        grid,
+        map,
+        player,
+        rngCalls: startupLog.length,
+        rng: startupLog.map(toCompact),
+        chargenRngCalls: chargenLog.length,
+        chargenRng: chargenLog.map(toCompact),
+    };
+};
+
+// Helper to consume an RNG entry (replay RNG call from session)
+function consumeRngEntryHelper(entry) {
+    const atIdx = entry.indexOf(' @ ');
+    const call = atIdx >= 0 ? entry.substring(0, atIdx) : entry;
+    const match = call.match(/^([a-z0-9_]+)\(([^)]*)\)=/i);
+    if (!match) return;
+
+    const fn = match[1];
+    const args = match[2]
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean)
+        .map(s => Number.parseInt(s, 10));
+
+    switch (fn) {
+        case 'rn2': if (args.length >= 1) rn2(args[0]); break;
+        case 'rnd': if (args.length >= 1) rnd(args[0]); break;
+        case 'rn1': if (args.length >= 2) rn1(args[0], args[1]); break;
+    }
+}
 
 export function createHeadlessGame(seed, roleIndex = 11, opts = {}) {
     return HeadlessGame.fromSeed(seed, roleIndex, opts);

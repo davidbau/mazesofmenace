@@ -248,6 +248,58 @@ describe('HeadlessDisplay', () => {
     });
 });
 
+describe('HeadlessGame.generateStartupWithRng (Phase 3)', () => {
+    it('generates grid with correct dimensions', () => {
+        const result = HeadlessGame.generateStartupWithRng(12345, {});
+        const grid = result.grid;
+
+        assert.strictEqual(grid.length, ROWNO);
+        for (let y = 0; y < ROWNO; y++) {
+            assert.strictEqual(grid[y].length, COLNO, `Row ${y} should have ${COLNO} columns`);
+        }
+    });
+
+    it('captures RNG log', () => {
+        const result = HeadlessGame.generateStartupWithRng(12345, {});
+
+        assert.ok(result.rngCalls > 0, 'Should have RNG calls');
+        assert.ok(Array.isArray(result.rng), 'RNG log should be array');
+    });
+
+    it('respects roleIndex option', () => {
+        const result = HeadlessGame.generateStartupWithRng(12345, { roleIndex: 0 });
+
+        assert.ok(result.player, 'Should have player');
+        // Role index 0 is Archeologist
+    });
+
+    it('respects name option', () => {
+        const result = HeadlessGame.generateStartupWithRng(12345, { name: 'TestPlayer' });
+
+        assert.strictEqual(result.player.name, 'TestPlayer');
+    });
+
+    it('is deterministic for same seed', () => {
+        const result1 = HeadlessGame.generateStartupWithRng(99999, {});
+        const result2 = HeadlessGame.generateStartupWithRng(99999, {});
+
+        // Compare grids
+        for (let y = 0; y < ROWNO; y++) {
+            for (let x = 0; x < COLNO; x++) {
+                assert.strictEqual(result1.grid[y][x], result2.grid[y][x],
+                    `Grid[${y}][${x}] should match for same seed`);
+            }
+        }
+    });
+
+    it('HeadlessGame.getRoleIndex returns correct index', () => {
+        // Valkyrie should be index 11
+        assert.strictEqual(HeadlessGame.getRoleIndex('Valkyrie'), 11);
+        // Unknown role should default to 11
+        assert.strictEqual(HeadlessGame.getRoleIndex('UnknownRole'), 11);
+    });
+});
+
 describe('HeadlessGame.generateMapsWithRng (Phase 2)', () => {
     it('generates grids for each depth', () => {
         const result = HeadlessGame.generateMapsWithRng(12345, 3);

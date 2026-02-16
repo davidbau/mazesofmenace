@@ -436,7 +436,7 @@ for (let i = 0; i < roles.length; i++) ROLE_INDEX[roles[i].name] = i;
 // For chargen sessions, steps before "confirm-ok" may consume RNG (e.g., pick_align).
 // For gameplay sessions with chargen data, collect RNG from chargen steps before confirm-ok.
 // C ref: role.c pick_gend() — happens during role selection BEFORE initLevelGeneration.
-function getPreStartupRngEntries(session) {
+export function getPreStartupRngEntries(session) {
     if (session.type === 'chargen') {
         const out = [];
         for (const step of (session.steps || [])) {
