@@ -186,6 +186,7 @@ export class NetHackGame {
 
         // Apply flags
         this.player.showExp = this.flags.showexp;
+        this.player.showScore = this.flags.showscore;
         this.player.showTime = this.flags.time;
 
         // Initial display
@@ -314,6 +315,7 @@ export class NetHackGame {
         this.flags = restored.flags || loadFlags();
         this._emitRuntimeBindings();
         this.player.showExp = this.flags.showexp;
+        this.player.showScore = this.flags.showscore;
         this.player.showTime = this.flags.time;
 
         // Render

@@ -471,7 +471,8 @@ export class Player {
         this.deathCause = '';
 
         // Display options
-        this.showExp = true;
+        this.showExp = false;
+        this.showScore = false;
         this.showTime = false;
     }
 

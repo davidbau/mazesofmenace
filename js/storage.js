@@ -559,7 +559,7 @@ const C_DEFAULTS = {
     hilite_pet: false, hilite_pile: false, lit_corridor: false,
     lootabc: false, menucolors: false, number_pad: false,
     perm_invent: false, pushweapon: false, rest_on_space: false,
-    showdamage: false, showexp: false, showrace: false, time: false,
+    showdamage: false, showexp: false, showscore: false, showrace: false, time: false,
 
     // Compound options
     fruit: 'slime mold', pickup_types: '', menustyle: 'full',

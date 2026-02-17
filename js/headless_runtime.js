@@ -371,6 +371,9 @@ export class HeadlessGame {
         this.seerTurn = opts.seerTurn || 0;
         this.occupation = null; // C ref: cmd.c go.occupation — multi-turn action
         this.flags = { ...DEFAULT_GAME_FLAGS, ...(opts.flags || {}) }; // Game flags for commands
+        this.player.showExp = !!this.flags.showexp;
+        this.player.showScore = !!this.flags.showscore;
+        this.player.showTime = !!this.flags.time;
         this.menuRequested = false; // 'm' prefix command state
         this.lastHP = this.player?.hp;
         initrack(); // C ref: track.c — initialize player track buffer
@@ -1417,7 +1420,7 @@ export class HeadlessDisplay {
         const alignStr = player.alignment < 0 ? 'Chaotic'
             : player.alignment > 0 ? 'Lawful' : 'Neutral';
         line1Parts.push(alignStr);
-        if (player.score > 0) line1Parts.push(`S:${player.score}`);
+        if (player.showScore && player.score > 0) line1Parts.push(`S:${player.score}`);
 
         this.clearRow(STATUS_ROW_1);
         const line1 = `${title.padEnd(31)}${line1Parts.join(' ')}`;
@@ -1429,9 +1432,8 @@ export class HeadlessDisplay {
         line2Parts.push(`HP:${player.hp}(${player.hpmax})`);
         line2Parts.push(`Pw:${player.pw}(${player.pwmax})`);
         line2Parts.push(`AC:${player.ac}`);
-        const expValue = Number.isFinite(player.exp) ? player.exp : 0;
         if (player.showExp) {
-            line2Parts.push(expValue > 0 ? `Xp:${player.level}/${expValue}` : `Xp:${player.level}`);
+            line2Parts.push(`Xp:${player.level}`);
         } else {
             line2Parts.push(`Exp:${player.level}`);
         }

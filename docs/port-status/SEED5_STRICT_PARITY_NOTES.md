@@ -172,3 +172,40 @@ Date: 2026-02-16
   `dochugw`, not just pre-input `monster_nearby`/adjacency checks.
 - When transition steps include explicit C turn-end RNG, replay should not
   short-circuit movement bookkeeping on destination level for that step.
+
+---
+
+Date: 2026-02-17
+
+## Additional Progress
+
+- First strict screen mismatch for `seed5_gnomish_mines_gameplay` moved from
+  step 56 to step 175 while preserving the same first RNG mismatch step (201).
+- Seed5 strict screen match count improved from `69/2616` to `207/2616`.
+
+## Additional C-Faithful Fixes
+
+1. Replay screen loader parity for string-backed session captures.
+   - Some v3 gameplay fixtures store `step.screen` as a newline-delimited
+     string instead of an array.
+   - `getSessionScreenLines()` in `js/replay_core.js` now accepts:
+     - `screenAnsi: string[] | string`
+     - `screen: string[] | string`
+   - This prevents accidental empty-screen handling on valid captured steps.
+
+2. Replay status-option inference from captured startup state.
+   - For sessions without explicit option bits in metadata, replay now infers
+     status formatting toggles from captured startup status lines:
+     - `Xp:` vs `Exp:` -> `showexp`
+     - presence of `T:` -> `time`
+     - presence of `S:` -> `showscore`
+   - These inferred flags are applied before the first replay render, keeping
+     status text aligned with the recorded C session.
+
+3. Score visibility gating in status renderer.
+   - Status line 1 now prints `S:<score>` only when `showscore` is enabled.
+   - Added `showscore` to flag defaults and runtime propagation paths.
+
+4. `Xp` formatting parity.
+   - In showexp mode, status line 2 now renders as `Xp:<level>` rather than
+     `Xp:<level>/<exp>`, matching captured C status format in replay sessions.

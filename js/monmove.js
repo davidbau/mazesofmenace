@@ -3,10 +3,10 @@
 // Focus: exact RNG consumption alignment with C NetHack
 
 import { COLNO, ROWNO, STONE, IS_WALL, IS_DOOR, IS_ROOM,
-         ACCESSIBLE, CORR, DOOR, D_CLOSED, D_LOCKED, D_BROKEN,
+         ACCESSIBLE, IS_OBSTRUCTED, CORR, DOOR, D_CLOSED, D_LOCKED, D_BROKEN,
          POOL, LAVAPOOL, SHOPBASE, ROOMOFFSET,
          NORMAL_SPEED, isok } from './config.js';
-import { rn2, rnd, c_d } from './rng.js';
+import { rn2, rnd, c_d, getRngLog } from './rng.js';
 import { monsterAttackPlayer } from './combat.js';
 import { FOOD_CLASS, COIN_CLASS, BOULDER, ROCK_CLASS, BALL_CLASS, CHAIN_CLASS,
          PICK_AXE, DWARVISH_MATTOCK } from './objects.js';
@@ -23,7 +23,8 @@ import { PM_GRID_BUG, PM_IRON_GOLEM, PM_SHOPKEEPER, mons,
          AD_PHYS,
          AD_ACID, AD_ENCH,
          M1_FLY, M1_SWIM, M1_AMPHIBIOUS, M1_AMORPHOUS, M1_CLING, M1_SEE_INVIS, S_MIMIC,
-         MZ_TINY, MZ_SMALL, MR_FIRE, MR_SLEEP, G_FREQ } from './monsters.js';
+         M1_WALLWALK, M1_TUNNEL, M1_NEEDPICK, M1_SLITHY, M1_UNSOLID,
+         MZ_TINY, MZ_SMALL, MZ_MEDIUM, MR_FIRE, MR_SLEEP, G_FREQ } from './monsters.js';
 import { STATUE_TRAP, MAGIC_TRAP, VIBRATING_SQUARE, RUST_TRAP, FIRE_TRAP,
          SLP_GAS_TRAP, BEAR_TRAP, PIT, SPIKED_PIT, HOLE, TRAPDOOR,
          WEB, ANTI_MAGIC, MAGIC_PORTAL } from './symbols.js';
@@ -476,6 +477,17 @@ function mfndpos(mon, map, player) {
                 }
             }
 
+            // C ref: mon.c:2329-2330 diagonal tight-squeeze check.
+            // If both orthogonal side cells are bad_rock for this monster
+            // and it cannot squeeze through, diagonal move is disallowed.
+            if (nx !== omx && ny !== omy) {
+                const sideAIsBadRock = bad_rock_for_mon(mon, map, omx, ny);
+                const sideBIsBadRock = bad_rock_for_mon(mon, map, nx, omy);
+                if (sideAIsBadRock && sideBIsBadRock && cant_squeeze_thru_mon(mon)) {
+                    continue;
+                }
+            }
+
             // C ref: mon.c mfndpos() only sets NOTONL when monster can see hero.
             const mux = Number.isInteger(mon.mux) ? mon.mux : player.x;
             const muy = Number.isInteger(mon.muy) ? mon.muy : player.y;
@@ -498,6 +510,38 @@ function mfndpos(mon, map, player) {
         }
     }
     return positions;
+}
+
+// C ref: hack.c bad_rock() / cant_squeeze_thru() subset used by mon.c mfndpos().
+function bad_rock_for_mon(mon, map, x, y) {
+    const loc = map.at(x, y);
+    if (!loc) return true;
+    if (!IS_OBSTRUCTED(loc.typ)) return false;
+    const f1 = mon.type?.flags1 || 0;
+    const canTunnel = !!(f1 & M1_TUNNEL);
+    const needsPick = !!(f1 & M1_NEEDPICK);
+    const canPassWall = !!(f1 & M1_WALLWALK);
+    // JS terrain metadata does not yet model nonpasswall/nondiggable fully.
+    // Keep conservative parity: wallwalk bypasses obstructions; tunneling
+    // monsters without NEEDPICK can generally treat rock as passable.
+    if (canPassWall) return false;
+    if (canTunnel && !needsPick) return false;
+    return true;
+}
+
+function cant_squeeze_thru_mon(mon) {
+    const ptr = mon.type || {};
+    const f1 = ptr.flags1 || 0;
+    if (f1 & M1_WALLWALK) return false;
+    const size = ptr.size || 0;
+    const canMorph = !!(f1 & (M1_AMORPHOUS | M1_UNSOLID | M1_SLITHY));
+    // C bigmonst gate (size > MZ_MEDIUM) unless morphic/unsolid/slithy.
+    if (size > MZ_MEDIUM && !canMorph) return true;
+    // C load gate uses curr_mon_load() > WT_TOOMUCH_DIAGONAL (600).
+    const load = Array.isArray(mon.minvent)
+        ? mon.minvent.reduce((a, o) => a + (o?.owt || 0), 0)
+        : 0;
+    return load > 600;
 }
 
 // ========================================================================
@@ -818,15 +862,6 @@ function dochug(mon, map, player, display, fov) {
         const playerHasGoldNow = playerHasGold(player);
         const monHasGold = hasGold(mon.minvent);
         if (!playerHasGoldNow && (monHasGold || rn2(2))) phase3Cond = true;
-    }
-    if (typeof process !== 'undefined' && process.env.DEBUG_DOG_GATE === '1' && mon.tame) {
-        console.error(
-            `[dog-gate] call=${typeof getRngCallCount === 'function' ? getRngCallCount() : '?'} `
-            + `pet=${mon.type?.name} at=${mon.mx},${mon.my} target=${targetX},${targetY} `
-            + `inrange=${inrange} nearby=${nearby} phase3=${phase3Cond} `
-            + `peaceful=${!!mon.peaceful} mpeaceful=${!!mon.mpeaceful} `
-            + `tame=${!!mon.tame} mtame=${mon.mtame ?? 0}`
-        );
     }
     if (!phase3Cond && isWanderer) phase3Cond = !rn2(4);
     // skip Conflict check
@@ -1738,7 +1773,8 @@ function m_move(mon, map, player) {
             for (let j = 0; j < jcnt; j++) {
                 if (nx === mon.mtrack[j].x && ny === mon.mtrack[j].y) {
                     const denom = 4 * (cnt - j);
-                    if (rn2(denom)) {
+                    const trackRoll = rn2(denom);
+                    if (trackRoll) {
                         skipThis = true;
                         break;
                     }

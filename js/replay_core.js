@@ -75,6 +75,9 @@ export function getSessionScreenLines(screenHolder) {
     if (Array.isArray(screenHolder?.screen)) {
         return screenHolder.screen.map((line) => stripAnsiSequences(line));
     }
+    if (typeof screenHolder?.screenAnsi === 'string') {
+        return screenHolder.screenAnsi.split('\n').map((line) => stripAnsiSequences(line));
+    }
     if (typeof screenHolder?.screen === 'string') {
         return screenHolder.screen.split('\n').map((line) => stripAnsiSequences(line));
     }
@@ -642,6 +645,9 @@ export async function replaySession(seed, session, opts = {}) {
     // Screen format: "St:18 Dx:11 Co:18 In:11 Wi:9 Ch:8"
     const sessionStartup = getSessionStartup(session);
     const screen = getSessionScreenLines(sessionStartup || {});
+    let inferredShowExp = null;
+    let inferredShowTime = null;
+    let inferredShowScore = null;
     for (const line of screen) {
         if (!line) continue;
         const m = line.match(/St:([0-9/*]+)\s+Dx:(\d+)\s+Co:(\d+)\s+In:(\d+)\s+Wi:(\d+)\s+Ch:(\d+)/);
@@ -662,7 +668,14 @@ export async function replaySession(seed, session, opts = {}) {
             player.pwmax = parseInt(hpm[4]);
             player.ac = parseInt(hpm[5]);
         }
+        if (line.includes(' Xp:')) inferredShowExp = true;
+        if (line.includes(' Exp:')) inferredShowExp = false;
+        if (line.includes(' T:')) inferredShowTime = true;
+        if (line.includes(' S:')) inferredShowScore = true;
     }
+    if (inferredShowExp !== null) player.showExp = inferredShowExp;
+    if (inferredShowTime !== null) player.showTime = inferredShowTime;
+    if (inferredShowScore !== null) player.showScore = inferredShowScore;
 
     if (map.upstair) {
         player.x = map.upstair.x;
@@ -674,11 +687,15 @@ export async function replaySession(seed, session, opts = {}) {
     const startupLog = getRngLog();
     const startupRng = startupLog.map(toCompactRng);
 
+    const replayFlags = { ...(opts.flags && typeof opts.flags === 'object' ? opts.flags : {}) };
+    if (inferredShowExp !== null) replayFlags.showexp = inferredShowExp;
+    if (inferredShowTime !== null) replayFlags.time = inferredShowTime;
+    if (inferredShowScore !== null) replayFlags.showscore = inferredShowScore;
     const game = new HeadlessGame(player, map, {
         seerTurn: initResult.seerTurn,
         startDnum,
         dungeonAlignOverride: startDungeonAlign,
-        flags: (opts.flags && typeof opts.flags === 'object') ? opts.flags : undefined,
+        flags: replayFlags,
     });
     const sessionSymset = session?.options?.symset || session?.meta?.options?.symset;
     const decgraphicsMode = session.screenMode === 'decgraphics' || sessionSymset === 'DECgraphics';
@@ -785,6 +802,7 @@ export async function replaySession(seed, session, opts = {}) {
     };
     for (let stepIndex = 0; stepIndex < maxSteps; stepIndex++) {
         const step = allSteps[stepIndex];
+        game.map._replayStepIndex = stepIndex;
         const prevCount = getRngLog().length;
         const stepScreen = getSessionScreenLines(step);
         if (isTutorialPromptScreen(stepScreen)) {
