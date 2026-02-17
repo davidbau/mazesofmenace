@@ -112,6 +112,20 @@ const DEC_TO_UNICODE = {
     '~': '\u00b7',
     a: '\u00b7',
 };
+const UNICODE_TO_ASCII = {
+    '\u250c': '+',
+    '\u2500': '-',
+    '\u2510': '+',
+    '\u2502': '|',
+    '\u2514': '+',
+    '\u2518': '+',
+    '\u253c': '+',
+    '\u251c': '+',
+    '\u2524': '+',
+    '\u2534': '+',
+    '\u252c': '+',
+    '\u00b7': '.',
+};
 
 function normalizeGameplayScreenLines(lines, session, { captured = false, prependCol0 = true } = {}) {
     const decgraphics = session?.meta?.options?.symset === 'DECgraphics';
@@ -120,6 +134,7 @@ function normalizeGameplayScreenLines(lines, session, { captured = false, prepen
         if (captured && prependCol0 && row >= 1 && row <= 21) out = ` ${out}`;
         if (decgraphics && row >= 1 && row <= 21) {
             out = [...out].map((ch) => DEC_TO_UNICODE[ch] || ch).join('');
+            out = [...out].map((ch) => UNICODE_TO_ASCII[ch] || ch).join('');
         }
         return out;
     });
@@ -244,6 +259,7 @@ async function replayInterfaceSession(session) {
             captureScreens: true,
             startupBurstInFirstStep: false,
             flags: replayFlags,
+            inferStatusFromScreen: false,
         });
     }
     const startupOptions = {};
@@ -348,14 +364,13 @@ async function runGameplayResult(session) {
 
         const replayFlags = { ...DEFAULT_FLAGS };
         if (session.meta.options?.autopickup === false) replayFlags.pickup = false;
-        if (session.meta.options?.symset === 'DECgraphics') replayFlags.DECgraphics = true;
+        const useDecgraphics = session.meta.options?.symset === 'DECgraphics';
+        replayFlags.DECgraphics = !!useDecgraphics;
+        if (useDecgraphics) replayFlags.symset = 'DECgraphics, active, handler=DEC';
         if (typeof session.meta.options?.tutorial === 'boolean') replayFlags.tutorial = session.meta.options.tutorial;
         replayFlags.bgcolors = true;
         replayFlags.customcolors = true;
         replayFlags.customsymbols = true;
-        if (replayFlags.DECgraphics) {
-            replayFlags.symset = 'DECgraphics, active, handler=DEC';
-        }
         const replay = await replaySession(session.meta.seed, replayInput, {
             captureScreens: true,
             // Keep startup as a distinct channel so gameplay step indexing is stable.

@@ -673,9 +673,12 @@ export async function replaySession(seed, session, opts = {}) {
         if (line.includes(' T:')) inferredShowTime = true;
         if (line.includes(' S:')) inferredShowScore = true;
     }
-    if (inferredShowExp !== null) player.showExp = inferredShowExp;
-    if (inferredShowTime !== null) player.showTime = inferredShowTime;
-    if (inferredShowScore !== null) player.showScore = inferredShowScore;
+    const inferStatusFromScreen = opts.inferStatusFromScreen !== false;
+    if (inferStatusFromScreen) {
+        if (inferredShowExp !== null) player.showExp = inferredShowExp;
+        if (inferredShowTime !== null) player.showTime = inferredShowTime;
+        if (inferredShowScore !== null) player.showScore = inferredShowScore;
+    }
 
     if (map.upstair) {
         player.x = map.upstair.x;
@@ -688,9 +691,11 @@ export async function replaySession(seed, session, opts = {}) {
     const startupRng = startupLog.map(toCompactRng);
 
     const replayFlags = { ...(opts.flags && typeof opts.flags === 'object' ? opts.flags : {}) };
-    if (inferredShowExp !== null) replayFlags.showexp = inferredShowExp;
-    if (inferredShowTime !== null) replayFlags.time = inferredShowTime;
-    if (inferredShowScore !== null) replayFlags.showscore = inferredShowScore;
+    if (inferStatusFromScreen) {
+        if (inferredShowExp !== null) replayFlags.showexp = inferredShowExp;
+        if (inferredShowTime !== null) replayFlags.time = inferredShowTime;
+        if (inferredShowScore !== null) replayFlags.showscore = inferredShowScore;
+    }
     const game = new HeadlessGame(player, map, {
         seerTurn: initResult.seerTurn,
         startDnum,

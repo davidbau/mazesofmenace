@@ -895,9 +895,10 @@ function sort_rooms(map) {
             console.log(`> [${i}] lx=${r.lx} ly=${r.ly} hx=${r.hx} hy=${r.hy} w=${w} h=${h} roomnoidx=${r.roomnoidx} rtype=${r.rtype}`);
         }
     }
-    // C uses libc qsort(); Array.sort() is currently the closest practical
-    // runtime match for equal-key ordering behavior in this environment.
-    mainRooms.sort(mkroom_cmp);
+    // C ref: qsort(svr.rooms, svn.nroom, sizeof(struct mkroom), mkroom_cmp)
+    // Use the local qsort port rather than stable Array.sort to preserve
+    // equal-key (same lx) ordering behavior.
+    bsdQsort(mainRooms, mkroom_cmp);
     for (let i = 0; i < n; i++) {
         map.rooms[i] = mainRooms[i];
     }
@@ -2372,6 +2373,7 @@ function generate_stairs_room_good(map, croom, phase) {
 // C ref: mklev.c generate_stairs_find_room()
 function generate_stairs_find_room(map) {
     if (!map.nroom) return null;
+    const traceStairs = typeof process !== 'undefined' && process.env.WEBHACK_STAIRS_TRACE === '1';
 
     for (let phase = 2; phase > -1; phase--) {
         const candidates = [];
@@ -2380,23 +2382,48 @@ function generate_stairs_find_room(map) {
                 candidates.push(i);
         }
         if (candidates.length > 0) {
-            return map.rooms[candidates[rn2(candidates.length)]];
+            const rngBefore = getRngCallCount();
+            const pick = rn2(candidates.length);
+            const roomIndex = candidates[pick];
+            if (traceStairs) {
+                const chosen = map.rooms[roomIndex];
+                const candidateSummary = candidates.map((idx) => {
+                    const r = map.rooms[idx];
+                    if (!r) return `${idx}:null`;
+                    return `${idx}:[${r.lx},${r.ly}]-[${r.hx},${r.hy}] rtype=${r.rtype} needjoining=${r.needjoining ? 1 : 0}`;
+                }).join(' ');
+                console.log(`[STAIRS] find_room phase=${phase} rng_before=${rngBefore} n=${candidates.length} pick=${pick} roomIndex=${roomIndex} chosen=[${chosen?.lx},${chosen?.ly}]-[${chosen?.hx},${chosen?.hy}] candidates=${candidateSummary}`);
+            }
+            return map.rooms[roomIndex];
         }
     }
-    return map.rooms[rn2(map.nroom)];
+    const rngBefore = getRngCallCount();
+    const roomIndex = rn2(map.nroom);
+    if (traceStairs) {
+        const chosen = map.rooms[roomIndex];
+        console.log(`[STAIRS] find_room fallback rng_before=${rngBefore} nroom=${map.nroom} roomIndex=${roomIndex} chosen=[${chosen?.lx},${chosen?.ly}]-[${chosen?.hx},${chosen?.hy}]`);
+    }
+    return map.rooms[roomIndex];
 }
 
 // C ref: mklev.c generate_stairs()
 function generate_stairs(map, depth) {
+    const traceStairs = typeof process !== 'undefined' && process.env.WEBHACK_STAIRS_TRACE === '1';
     // Place downstairs (unless bottom level -- we don't track that yet)
     let croom = generate_stairs_find_room(map);
     if (croom) {
+        if (traceStairs) {
+            console.log(`[STAIRS] down room=[${croom.lx},${croom.ly}]-[${croom.hx},${croom.hy}] rng_before_somexyspace=${getRngCallCount()}`);
+        }
         const pos = somexyspace(map, croom);
         let x, y;
         if (pos) {
             x = pos.x; y = pos.y;
         } else {
             x = somex(croom); y = somey(croom);
+        }
+        if (traceStairs) {
+            console.log(`[STAIRS] down pos=(${x},${y}) rng_after_pick=${getRngCallCount()}`);
         }
         const loc = map.at(x, y);
         if (loc) {
@@ -2410,12 +2437,18 @@ function generate_stairs(map, depth) {
     if (depth > 1) {
         croom = generate_stairs_find_room(map);
         if (croom) {
+            if (traceStairs) {
+                console.log(`[STAIRS] up room=[${croom.lx},${croom.ly}]-[${croom.hx},${croom.hy}] rng_before_somexyspace=${getRngCallCount()}`);
+            }
             const pos = somexyspace(map, croom);
             let x, y;
             if (pos) {
                 x = pos.x; y = pos.y;
             } else {
                 x = somex(croom); y = somey(croom);
+            }
+            if (traceStairs) {
+                console.log(`[STAIRS] up pos=(${x},${y}) rng_after_pick=${getRngCallCount()}`);
             }
             const loc = map.at(x, y);
             if (loc) {

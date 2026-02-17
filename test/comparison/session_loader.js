@@ -41,6 +41,9 @@ export function stripAnsiSequences(text) {
         // (e.g., "\x1b[9CVersion ...") as literal leading spaces.
         .replace(/\x1b\[(\d*)C/g, (_m, n) => ' '.repeat(Math.max(1, Number(n || '1'))))
         .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '')
+        // Some legacy captures can leave malformed CSI tails (e.g. "\x1b[97-").
+        .replace(/\x1b\[[0-9;?]*[-+]/g, '')
+        .replace(/\x1b\[[0-9;?]*/g, '')
         .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '')
         .replace(/\x1b[@-Z\\-_]/g, '')
         .replace(/\x9b[0-?]*[ -/]*[@-~]/g, '');
