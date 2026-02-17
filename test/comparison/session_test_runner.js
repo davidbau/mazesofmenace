@@ -304,6 +304,9 @@ async function runGameplayResult(session) {
 
     try {
         const replayFlags = { ...DEFAULT_FLAGS };
+        // C harness gameplay captures default to concise messaging unless
+        // verbose is explicitly set in session options.
+        replayFlags.verbose = (session.meta.options?.verbose === true);
         if (session.meta.options?.autopickup === false) replayFlags.pickup = false;
         if (session.meta.options?.symset === 'DECgraphics') replayFlags.DECgraphics = true;
         replayFlags.bgcolors = true;

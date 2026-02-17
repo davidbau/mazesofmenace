@@ -527,6 +527,15 @@ async function handleMovement(dir, player, map, display, game) {
         }
     }
 
+    // C ref: cmd.c do_fight() + hack.c domove()/do_attack() fallback.
+    // Forced-fight into an empty square produces "You attack thin air."
+    // and does not perform normal movement handling.
+    if (game.forceFight && !map.monsterAt(nx, ny)) {
+        display.putstr_message('You attack thin air.');
+        game.forceFight = false;
+        return { moved: false, tookTime: true };
+    }
+
     // Check for monster at target position
     const mon = map.monsterAt(nx, ny);
     if (mon) {
