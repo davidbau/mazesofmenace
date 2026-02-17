@@ -615,46 +615,164 @@ function migrateFlags(saved) {
     return saved;
 }
 
-// Parse URL parameters, coercing types based on C_DEFAULTS
-function parseUrlFlags() {
-    if (typeof window === 'undefined') return {};
-    const params = new URLSearchParams(window.location.search);
-    const urlFlags = {};
-    for (const [key, value] of params) {
-        // Special non-flag params pass through as-is
-        if (['wizard', 'reset', 'seed'].includes(key)) {
-            urlFlags[key] = key === 'seed'
-                ? parseInt(value, 10)
-                : (value === '1' || value === 'true');
+function parseBooleanLike(value) {
+    const v = String(value ?? '').trim().toLowerCase();
+    if (v === '' || v === '1' || v === 'true' || v === 'yes' || v === 'on') return true;
+    if (v === '0' || v === 'false' || v === 'no' || v === 'off') return false;
+    return true; // Presence with unknown token means enabled.
+}
+
+function normalizeOptionKey(rawKey) {
+    if (!rawKey) return null;
+    const key = String(rawKey).trim();
+    if (!key) return null;
+    if (key in C_DEFAULTS) return key;
+    const lower = key.toLowerCase();
+    if (lower === 'autopickup') return 'pickup';
+    if (lower === 'showexp') return 'showexp';
+    const exactLower = Object.keys(C_DEFAULTS).find((k) => k.toLowerCase() === lower);
+    return exactLower || null;
+}
+
+function coerceOptionValue(optionKey, rawValue, { implicitBoolean = false } = {}) {
+    const defVal = C_DEFAULTS[optionKey];
+    if (typeof defVal === 'boolean') {
+        if (implicitBoolean) return true;
+        return parseBooleanLike(rawValue);
+    }
+    if (typeof defVal === 'number') {
+        const parsed = Number.parseInt(rawValue, 10);
+        return Number.isFinite(parsed) ? parsed : defVal;
+    }
+    return String(rawValue ?? '');
+}
+
+function parseNethackOptionsString(spec) {
+    const out = {};
+    for (const rawToken of String(spec || '').split(',')) {
+        const token = rawToken.trim();
+        if (!token) continue;
+
+        // !option -> false
+        if (token.startsWith('!')) {
+            const key = normalizeOptionKey(token.slice(1));
+            if (key) out[key] = coerceOptionValue(key, '0');
             continue;
         }
-        // Known flag — coerce type from C_DEFAULTS
-        if (key in C_DEFAULTS) {
-            const defVal = C_DEFAULTS[key];
-            if (typeof defVal === 'boolean')
-                urlFlags[key] = value === '1' || value === 'true' || value === '';
-            else if (typeof defVal === 'number')
-                urlFlags[key] = parseInt(value, 10);
-            else
-                urlFlags[key] = value;
+
+        // nooption -> false (common NetHack syntax)
+        if (!token.includes(':') && !token.includes('=')
+            && token.toLowerCase().startsWith('no')) {
+            const key = normalizeOptionKey(token.slice(2));
+            if (key) out[key] = coerceOptionValue(key, '0');
+            continue;
+        }
+
+        // option:value or option=value
+        const colon = token.indexOf(':');
+        const equals = token.indexOf('=');
+        let sep = -1;
+        if (colon === -1) sep = equals;
+        else if (equals === -1) sep = colon;
+        else sep = Math.min(colon, equals);
+
+        if (sep !== -1) {
+            const key = normalizeOptionKey(token.slice(0, sep));
+            if (!key) continue;
+            const value = token.slice(sep + 1);
+            out[key] = coerceOptionValue(key, value);
+            continue;
+        }
+
+        // bare option -> true
+        const key = normalizeOptionKey(token);
+        if (!key) continue;
+        out[key] = coerceOptionValue(key, '', { implicitBoolean: true });
+    }
+    return out;
+}
+
+// Parse URL query: supports ?NETHACKOPTIONS=... and explicit ?name=...&pickup=...
+function parseUrlConfig() {
+    if (typeof window === 'undefined') {
+        return { control: {}, optionFlags: {} };
+    }
+    const params = new URLSearchParams(window.location.search);
+
+    const control = {};
+    const optionFlags = {};
+
+    // 1) NETHACKOPTIONS blob
+    const nethackOptRaw = params.get('NETHACKOPTIONS') ?? params.get('nethackoptions');
+    if (nethackOptRaw) {
+        Object.assign(optionFlags, parseNethackOptionsString(nethackOptRaw));
+    }
+
+    // 2) Explicit key=value URL options override NETHACKOPTIONS
+    for (const [rawKey, value] of params) {
+        const keyLower = rawKey.toLowerCase();
+        if (keyLower === 'nethackoptions') continue;
+
+        if (keyLower === 'wizard') {
+            control.wizard = parseBooleanLike(value);
+            continue;
+        }
+        if (keyLower === 'reset') {
+            control.reset = parseBooleanLike(value);
+            continue;
+        }
+        if (keyLower === 'seed') {
+            const parsed = Number.parseInt(value, 10);
+            if (Number.isFinite(parsed)) control.seed = parsed;
+            continue;
+        }
+        if (keyLower === 'role') {
+            control.role = value;
+            continue;
+        }
+
+        const optionKey = normalizeOptionKey(rawKey);
+        if (!optionKey) continue;
+        optionFlags[optionKey] = coerceOptionValue(optionKey, value);
+    }
+
+    return { control, optionFlags };
+}
+
+// Remove URL parameters consumed by game startup/options parsing.
+// Keeps unrelated query parameters intact.
+export function clearGameUrlParams() {
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    const entries = [...url.searchParams.entries()];
+    for (const [rawKey] of entries) {
+        const keyLower = rawKey.toLowerCase();
+        if (keyLower === 'nethackoptions'
+            || keyLower === 'wizard'
+            || keyLower === 'reset'
+            || keyLower === 'seed'
+            || keyLower === 'role'
+            || normalizeOptionKey(rawKey)) {
+            url.searchParams.delete(rawKey);
         }
     }
-    return urlFlags;
+    const next = `${url.pathname}${url.search}${url.hash}`;
+    window.history.replaceState({}, '', next);
 }
 
 // Get non-flag URL parameters for game init (wizard mode, seed, etc.)
 export function getUrlParams() {
-    const url = parseUrlFlags();
+    const { control } = parseUrlConfig();
     return {
-        wizard: url.wizard || false,
-        seed: url.seed || null,
-        role: url.role || null,
-        reset: url.reset || false,
+        wizard: control.wizard || false,
+        seed: Number.isFinite(control.seed) ? control.seed : null,
+        role: control.role || null,
+        reset: control.reset || false,
     };
 }
 
 // C ref: options.c initoptions() — load flags from localStorage, merged with defaults
-export function loadFlags() {
+export function loadFlags(apiOverrides = null) {
     const defaults = { ...C_DEFAULTS, ...JS_OVERRIDES };
 
     // localStorage
@@ -667,11 +785,19 @@ export function loadFlags() {
         } catch (e) {}
     }
 
-    // URL parameters (highest priority)
-    const urlFlags = parseUrlFlags();
+    // URL parameters
+    const { optionFlags: urlFlags } = parseUrlConfig();
+    // API overrides (highest priority, for harness/headless callers)
+    const overrideFlags = (apiOverrides && typeof apiOverrides === 'object')
+        ? Object.fromEntries(
+            Object.entries(apiOverrides)
+                .map(([k, v]) => [normalizeOptionKey(k), v])
+                .filter(([k]) => !!k)
+        )
+        : {};
 
-    // Merge: defaults < localStorage < URL
-    const flags = { ...defaults, ...saved, ...urlFlags };
+    // Merge: defaults < localStorage < NETHACKOPTIONS < explicit URL < API overrides
+    const flags = { ...defaults, ...saved, ...urlFlags, ...overrideFlags };
 
     // Persist URL flag overrides to localStorage
     const persistable = {};

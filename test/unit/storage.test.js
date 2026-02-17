@@ -25,7 +25,7 @@ import {
     serializeRng, deserializeRng,
     buildSaveData, loadSave, deleteSave, saveGame,
     saveBones, loadBones, deleteBones,
-    loadFlags, saveFlags, getFlag, setFlag,
+    loadFlags, saveFlags, getFlag, setFlag, getUrlParams, clearGameUrlParams,
     DEFAULT_FLAGS, OPTION_DEFS,
     hasSave, listSavedData, clearAllData,
     // backward-compatible aliases
@@ -824,6 +824,94 @@ describe('Flags (localStorage)', () => {
         const chars = OPTION_DEFS.map(d => d.menuChar);
         const unique = new Set(chars);
         assert.equal(unique.size, chars.length, 'menuChars should be unique');
+    });
+
+    it('supports NETHACKOPTIONS URL syntax', () => {
+        const prevWindow = globalThis.window;
+        globalThis.window = {
+            location: {
+                search: '?NETHACKOPTIONS=color,!pickup,name:Blue%20Meanie,pickup_types:$',
+            },
+        };
+        try {
+            const flags = loadFlags();
+            assert.equal(flags.color, true);
+            assert.equal(flags.pickup, false);
+            assert.equal(flags.name, 'Blue Meanie');
+            assert.equal(flags.pickup_types, '$');
+        } finally {
+            globalThis.window = prevWindow;
+        }
+    });
+
+    it('explicit URL params override NETHACKOPTIONS', () => {
+        const prevWindow = globalThis.window;
+        globalThis.window = {
+            location: {
+                search: '?NETHACKOPTIONS=name:Blue%20Meanie,!pickup&name=Mindy&pickup=1',
+            },
+        };
+        try {
+            const flags = loadFlags();
+            assert.equal(flags.name, 'Mindy');
+            assert.equal(flags.pickup, true);
+        } finally {
+            globalThis.window = prevWindow;
+        }
+    });
+
+    it('loadFlags API overrides win over URL and storage', () => {
+        const prevWindow = globalThis.window;
+        store.set('menace-options', JSON.stringify({ name: 'Stored', pickup: false }));
+        globalThis.window = {
+            location: {
+                search: '?NETHACKOPTIONS=name:UrlBlob&name=UrlParam&pickup=1',
+            },
+        };
+        try {
+            const flags = loadFlags({ name: 'HeadlessAPI', pickup: false });
+            assert.equal(flags.name, 'HeadlessAPI');
+            assert.equal(flags.pickup, false);
+        } finally {
+            globalThis.window = prevWindow;
+        }
+    });
+
+    it('wizard mode is not parsed from NETHACKOPTIONS', () => {
+        const prevWindow = globalThis.window;
+        globalThis.window = {
+            location: {
+                search: '?NETHACKOPTIONS=wizard=1&wizard=0',
+            },
+        };
+        try {
+            const flags = loadFlags();
+            assert.equal(flags.wizard, undefined);
+            const url = getUrlParams();
+            assert.equal(url.wizard, false);
+        } finally {
+            globalThis.window = prevWindow;
+        }
+    });
+
+    it('clearGameUrlParams removes game-related params but keeps unrelated ones', () => {
+        const prevWindow = globalThis.window;
+        const replaced = [];
+        globalThis.window = {
+            location: {
+                href: 'https://example.test/?NETHACKOPTIONS=name:Blue,!pickup&name=Mindy&pickup=1&wizard=1&seed=42&foo=bar#frag',
+            },
+            history: {
+                replaceState: (_s, _t, next) => replaced.push(next),
+            },
+        };
+        try {
+            clearGameUrlParams();
+            assert.equal(replaced.length, 1);
+            assert.equal(replaced[0], '/?foo=bar#frag');
+        } finally {
+            globalThis.window = prevWindow;
+        }
     });
 });
 

@@ -3,7 +3,7 @@
 
 import { Display } from './display.js';
 import { initBrowserInput } from './browser_input.js';
-import { getUrlParams } from './storage.js';
+import { clearGameUrlParams, getUrlParams } from './storage.js';
 import { NetHackGame } from './nethack.js';
 import { getKeylog, saveKeylog, startReplay } from './keylog.js';
 
@@ -60,6 +60,7 @@ window.addEventListener('DOMContentLoaded', async () => {
                 window.gameDisplay = display;
             },
             onGameplayStart: () => {
+                clearGameUrlParams();
                 document.body.classList.add('gameplay-active');
             },
             onGameOver: () => {

@@ -33,14 +33,37 @@ You can control game initialization via URL query parameters:
 
 **Option Overrides**
 
-Any option can be set via URL and will be saved to localStorage:
+WebHack supports two URL syntaxes for options:
+
+1. **NetHack style blob** via `NETHACKOPTIONS`:
+
+```
+?NETHACKOPTIONS=color,!pickup,name:Blue%20Meanie,pickup_types:$
+```
+
+2. **Explicit per-option params**:
 
 ```
 ?pickup=1&showexp=1&time=1
 ?name=Gandalf&color=0
 ```
 
-Boolean options accept `1`, `true`, or empty string for true; `0` or `false` for false.
+If both are present, explicit per-option params win:
+
+```
+?NETHACKOPTIONS=name:Blue%20Meanie,!pickup&name=Mindy&pickup=1
+```
+
+In that example, the effective values are `name=Mindy` and `pickup=1`.
+
+Boolean options accept `1`, `true`, `yes`, `on` (or empty) for true;
+`0`, `false`, `no`, `off` for false.
+
+Wizard/debug mode is **not** a NetHack option and must be set separately:
+
+```
+?wizard=1
+```
 
 ### 9.4. Customization options
 
@@ -126,4 +149,3 @@ Menace uses a fixed 80×24 terminal display with:
 
 **Side Panels**: The keyboard reference and hover info panels can be
 toggled with the `☰` button. On narrow screens they move below the game.
-
