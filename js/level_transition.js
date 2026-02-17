@@ -5,7 +5,7 @@ import { ACCESSIBLE, COLNO, ROWNO } from './config.js';
 import { rn1 } from './rng.js';
 import {
     CORR, ROOM, AIR,
-    ACCESSIBLE, IS_FURNITURE, IS_LAVA, IS_POOL, MAGIC_PORTAL, VIBRATING_SQUARE,
+    IS_FURNITURE, IS_LAVA, IS_POOL, MAGIC_PORTAL, VIBRATING_SQUARE,
 } from './config.js';
 
 function isTeleportArrivalBlocked(map, x, y) {
