@@ -282,10 +282,14 @@ async function runGameplayResult(session) {
         const gameplaySteps = Array.isArray(session.steps) ? session.steps : (getSessionGameplaySteps(session.raw) || []);
         const startupBurst = hasStartupBurstInFirstStep(session.raw);
 
+        const sessionTutorial = session.meta?.options?.tutorial;
         const replay = await replaySession(session.meta.seed, replayInput, {
             captureScreens: true,
             // Keep startup as a distinct channel so gameplay step indexing is stable.
             startupBurstInFirstStep: false,
+            flags: (typeof sessionTutorial === 'boolean')
+                ? { tutorial: sessionTutorial }
+                : undefined,
         });
         if (!replay || replay.error) {
             markFailed(result, replay?.error || 'Replay failed');
