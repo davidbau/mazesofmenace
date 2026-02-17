@@ -9,12 +9,17 @@ Build a **100% faithful JavaScript port of NetHack 3.7.0** while keeping the JS 
 3. Clear, maintainable JS code with explicit module boundaries.
 4. Safe extension points for non-intrusive UI features (e.g., rollover identify helper, inventory sidebar).
 
+## 2.1 Work Types
+1. Porting Work: faithful C-to-JS behavior implementation and parity validation.
+2. Agent Work: building a competent JS selfplay agent for exploration, survival, item/ability usage, and automated scenario generation.
+
 ## 3. Scope
 ### In Scope
 - Game mechanics parity (RNG, map gen, combat, items, status, monsters, dungeon progression, interfaces).
 - Replay/session harness parity against C NetHack.
 - Architecture cleanup that preserves behavior.
 - Read-only UI augmentations layered on top of canonical game state.
+- Selfplay agent development as a parallel workstream (non-blocking for parity acceptance unless explicitly required for a test objective).
 
 ### Out of Scope (for parity milestone)
 - Rule changes or “quality of life” mechanics that alter gameplay outcomes.
@@ -63,6 +68,15 @@ The project reaches parity when all are true:
   - running inventory sidebar outside playfield
 - Add snapshot/integration tests to confirm overlay code is non-invasive.
 
+## E. Selfplay Agent Development (Parallel)
+- Build a JS selfplay agent that can competently:
+  - explore unseen map regions and descend levels
+  - survive early/mid combat reliably
+  - use/apply/pick up/drop items and invoke abilities in context
+- Use agent traces as a scalable source of deterministic gameplay sessions.
+- Support browser "preview" mode where agent play can run when no human is playing.
+- Keep agent behavior and tuning separate from parity harness logic.
+
 ## 6. Milestones
 ## M1: Reproducible Foundations
 - Deterministic harness controls are enforced (seed, datetime, terminal size, options, symbol mode, deterministic sort behavior).
@@ -105,24 +119,32 @@ The project reaches parity when all are true:
 - Deterministic services isolated.
 - Refactors complete with no parity regressions.
 
-## M5: JS Enhancement Delivery (Non-Parity-Changing)
+## M5: Selfplay Agent Competency (Parallel Phase)
+- This phase runs in parallel with M1-M4 and continues as needed.
+- Raise baseline competence in exploration, combat survival, and item/ability handling.
+- Validate improvements on rotating train/holdout seed sets with clear metrics (survival, depth reached, progression rate, action quality).
+- Produce reusable deterministic agent-recorded sessions for parity testing and regression hunting.
+- Define integration hooks for browser preview mode without altering core game mechanics.
+
+## M6: JS Enhancement Delivery (Non-Parity-Changing)
 - Build user-facing enhancements on top of stable read-only/state-safe interfaces.
 - Initial targets:
   - rollover look/inspect helper UI
   - running inventory sidebar
   - additional quality-of-life presentation features that do not alter core simulation
   - evaluate/prototype optional online bones community integration
+  - selfplay animation in the JS window before first keypress and after game over
 - Ship enhancements behind feature flags with explicit behavior-isolation tests.
 - Validation proves base game mechanics and deterministic replay remain unchanged when enhancements are enabled.
 
-## M6: Final 3.7.0 Release Readiness and Delta Port
+## M7: Final 3.7.0 Release Readiness and Delta Port
 - Rebase/sync reference C code to final NetHack 3.7.0 release.
 - Produce an upstream delta audit (changed files/functions/behavior branches).
 - Re-run parity matrix against final C and classify divergences (expected upstream change vs JS bug vs harness issue).
 - Port required final-release behavior changes into JS while keeping harness neutrality.
 - Re-record sessions only when behavior truly changed upstream.
 
-## M7: Parity Release Candidate
+## M8: Parity Release Candidate
 - Full parity suite green.
 - Documentation complete (build, test, replay, extension guide).
 - Final signoff checklist complete.
@@ -132,7 +154,7 @@ Every behavior change should:
 1. Reproduce baseline and candidate on agreed held-out seeds.
 2. Show non-regression (or improvement, when targeted) on holdout.
 3. Include/update deterministic tests or session traces.
-4. Update `selfplay/LEARNINGS.md` (or equivalent) with outcome.
+4. Update `docs/LORE.md` for porting work and `selfplay/LEARNINGS.md` for agent work.
 5. Pass harness-neutrality review: no harness logic that hides, rewrites, or bypasses true divergences.
 
 ## 8. Metrics & Reporting
