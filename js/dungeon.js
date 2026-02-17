@@ -62,7 +62,7 @@ import {
     VLADS_TOWER,
     TUTORIAL
 } from './special_levels.js';
-import { setLevelContext, clearLevelContext, initLuaMT, setSpecialLevelDepth, setFinalizeContext } from './sp_lev.js';
+import { setLevelContext, clearLevelContext, initLuaMT, setSpecialLevelDepth, setFinalizeContext, resetLevelState } from './sp_lev.js';
 import {
     themerooms_generate as themermsGenerate,
     post_level_generate as themeroomsPostLevelGenerate,
@@ -1588,8 +1588,9 @@ function okdoor(map, x, y) {
 function good_rm_wall_doorpos(map, x, y, dir, room) {
     if (!isok(x, y) || !room.needjoining) return false;
     const loc = map.at(x, y);
-    if (!(loc.typ === HWALL || loc.typ === VWALL
-          || IS_DOOR(loc.typ) || loc.typ === SDOOR))
+    if (!(IS_WALL(loc.typ)
+          || IS_DOOR(loc.typ) || loc.typ === SDOOR
+          || loc.typ === ROOM || loc.typ === CORR || loc.typ === SCORR))
         return false;
     if (bydoor(map, x, y)) return false;
 
@@ -1897,7 +1898,16 @@ function dig_corridor(map, org, dest, nxcor, depth) {
         let dix = Math.abs(xx - tx);
         let diy = Math.abs(yy - ty);
 
-        if ((dix > diy) && diy && !rn2(dix - diy + 1)) {
+        const specialDig = (map._genDnum === undefined);
+        if (specialDig) {
+            const xgap = dix - diy;
+            const ygap = diy - dix;
+            if ((dix > diy) && diy && xgap > 1 && !rn2(xgap)) {
+                dix = 0;
+            } else if ((diy > dix) && dix && ygap > 1 && !rn2(ygap)) {
+                diy = 0;
+            }
+        } else if ((dix > diy) && diy && !rn2(dix - diy + 1)) {
             dix = 0;
         } else if ((diy > dix) && dix && !rn2(diy - dix + 1)) {
             diy = 0;
@@ -4885,6 +4895,11 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
             setMakemonLevelContext({ dungeonAlign: specialAlign });
 
             if (DEBUG) console.log(`Generating special level: ${special.name} at (${useDnum}, ${useDlevel})`);
+            // Reset special-level Lua/des state for each special level generation.
+            // Prevents stale rect/room/deferred state from prior levels affecting
+            // RNG and placement on subsequent specials.
+            resetLevelState();
+
             // C parity: special-level depth-sensitive logic should use absolute depth,
             // not branch-local dlevel.
             setSpecialLevelDepth(depth);

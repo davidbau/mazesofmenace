@@ -470,6 +470,20 @@ symbols mapped to Unicode box-drawing characters. No canvas, no WebGL.
 - **Constants match C**: `STONE`, `VWALL`, `ROOM`, etc. are identical values.
   See `js/config.js`.
 
+## Current Parity Findings (2026-02-17)
+
+- Map-session status is currently **9/10 passing** in `session_test_runner --type map`.
+- The remaining map failure is `seed16_maps_c.session.json` at depth 5.
+- A meaningful improvement landed in special-level corridor parity:
+  `seed16_maps_c` now matches farther before first divergence
+  (**12420/13100** RNG calls matched, up from **12276/13154** before this pass).
+- Key confirmed C reference:
+  `nethack-c/src/sp_lev.c:2611-2614` uses `rn2(dix - diy + 1)` /
+  `rn2(diy - dix + 1)` in corridor tie-break logic.
+- Remaining drift is now narrowed to a later `dig_corridor`/`maybe_sdoor` transition
+  in the same seed/depth trace; use the first divergence context from
+  `session_test_runner` to continue.
+
 ## Further Reading
 
 - **[DESIGN.md](DESIGN.md)** — Detailed architecture and module design
