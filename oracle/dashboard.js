@@ -43,16 +43,8 @@ async function loadData() {
       .filter(d => d !== null)
       .sort((a, b) => new Date(a.date) - new Date(b.date));
 
-    // Filter out entries from worktrees with incomplete test suites.
-    // An entry is an outlier if its total is less than half of both neighbors.
-    allData = parsed.filter((d, i) => {
-      const total = d.stats?.total || 0;
-      if (total === 0) return false;
-      const prev = parsed[i - 1]?.stats?.total || 0;
-      const next = parsed[i + 1]?.stats?.total || 0;
-      if (prev && next && total < prev * 0.5 && total < next * 0.5) return false;
-      return true;
-    });
+    // Filter out entries with too few tests (incomplete worktree runs).
+    allData = parsed.filter(d => (d.stats?.total || 0) >= 10);
 
     if (allData.length === 0) {
       showError('No data found in results.jsonl');
