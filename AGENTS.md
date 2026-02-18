@@ -95,6 +95,7 @@ Issue hygiene:
 - Close obsolete/superseded issues with a clear reason.
 - Update issue body/labels/status comments promptly when new evidence changes scope or priority.
 - Use `parity` label for C-vs-JS divergence/parity issues in the unified backlog.
+- If a `gh` command fails due sandbox/network restrictions, request command escalation and rerun it immediately.
 
 ## Agent Ownership and Intake
 1. Agent name is the current working directory basename; use it as identity for issue ownership.
