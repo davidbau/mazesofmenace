@@ -1,29 +1,20 @@
 # PROJECT PLAN
 
-## Background
-
 > *"Never build a dungeon you wouldn't be happy to spend the night in yourself."*
 > — Terry Pratchett, quoted in the NetHack 3.6.0 release notes
 
-NetHack is the greatest game most people have never heard of. First released on July 28, 1987, it is a single-player dungeon exploration game in which a character descends through procedurally generated levels, fights monsters, solves puzzles, and ultimately retrieves the Amulet of Yendor from the depths of Gehennom to offer it to their deity and achieve ascension. The game runs in a terminal. The hero is an `@` sign. A newt is a `:`. A dragon is a `D`. The entire world—objects, monsters, traps, terrain—is rendered in 24 lines of 80 columns of text characters. It is arguably the most complex and deeply interactive single-player game ever created, with interaction rules so thorough that the community's highest compliment is: *"The DevTeam thinks of everything."*
+**Context:** [README.md](README.md) explains what Royal Jelly is, why NetHack matters, and the intersection of the 3.7.0 release moment with AI-assisted software development. This document describes **how** we build it—the strategy, phases, gates, and working discipline that will transform an audacious goal into a real, shipped product.
 
-NetHack is maintained by a secretive volunteer group known simply as the DevTeam, whose release schedule is governed by a single policy: *"When it's ready."* They mean it. After releasing version 3.4.3 in December 2003, the DevTeam went silent for **twelve years**. During that gap, the community created dozens of fan variants, the NetHack Wiki ran humorous "next version pools" where fans bet on the release date, and a leak of work-in-progress code in 2014 fueled a fresh round of speculation. Then, in December 2015, NetHack 3.6.0 appeared—focused on infrastructure modernization rather than gameplay changes.
+## Strategic Thesis
 
-The 3.6.x series continued through 3.6.7 (February 2023, a security patch), but the real action has been happening on the 3.7 development branch. NetHack 3.7.0 represents the most ambitious set of gameplay changes in the game's 38-year history: a Gehennom overhaul, themed rooms, four new monsters including the dreaded genetic engineer (who polymorphs you and teleports away), dragon scale mail granting two extrinsics instead of one, nerfed unicorn horns (a meta-shattering shock to a generation of players who kept one in every kit), mirrored special levels, and much more.
+When NetHack 3.7.0 releases (unknown date, certain to happen), there will be a brief window of intense community attention. We aim to be in the browser within 48 hours, with a faithful, playable JavaScript port ready to ship.
 
-As of early 2026, 3.7.0 remains unreleased. The DevTeam's README warns: *"Don't treat NetHack-3.7 branch as released code."* The community plays it on the Hardfought server. Variants have already forked from it. Prediction markets give it roughly even odds of shipping this year. Everyone waits. The DevTeam thinks of everything—except telling you when.
+This is only possible because:
+1. **Agentic engineering works.** AI agents can produce readable, correct code at scale when guided by someone who understands the problem deeply and enforces strict testing discipline.
+2. **Parity-first methodology works.** By treating failing tests as the primary signal and porting C behavior directly (not fitting to traces), we can achieve behavior fidelity without understanding every line of 200,000-line C codebase manually.
+3. **Parallel tracks accelerate.** Parity work (Phase 2) and self-play development (Phase 5) run together, neither blocking the other—parity enables agent training, agents generate test traces, both feed into release readiness.
 
-## Motivation
-
-This project exists at the intersection of two unlikely forces.
-
-The first is the pending release of NetHack 3.7.0. Whenever the DevTeam finally ships it, there will be a moment of intense community excitement—players who haven't thought about NetHack in years coming back to see what changed, newcomers drawn in by the buzz, and a brief window in which the world's attention turns to the Mazes of Menace. That window is an opportunity to offer the community a high-quality way to play instantly in any browser, with no installation, no configuration, and no `.nethackrc` to debug.
-
-The second is the rise of AI-assisted software development. In February 2025, Andrej Karpathy coined the term **"vibe coding"** to describe a new way of working: describe what you want to an AI, accept its code without reading the diffs, paste error messages back when things break, and see what happens. *"I 'Accept All' always,"* he wrote. *"I don't read the diffs anymore."* The idea went viral, became Collins Dictionary's Word of the Year, and by early 2026 had matured into what Karpathy now calls **"agentic engineering"**—the same core approach, but with more structure, more oversight, and the recognition that orchestrating AI agents to produce real software is itself *"an art and science and expertise."*
-
-This project is a test of that proposition at scale. Can AI agents, directed by a human who understands the game deeply, produce a faithful port of one of the most complex single-player codebases in gaming history? Not a toy demo or a weekend throwaway, but a real, playable, parity-correct reimplementation—tens of thousands of lines of readable JavaScript that match NetHack's behavior down to the random number generator, ready to ship the day the official release drops?
-
-We believe the answer is yes. But the Amulet of Yendor is not retrieved by believing. It is retrieved by careful, systematic descent through every level of the dungeon, one step at a time. You bring a light source. You check for traps. You test unidentified potions on your pet before drinking them yourself. This document is the light source.
+This is not "I accept all diffs and hope for the best." This is **disciplined agentic engineering**: strict test gates, human-directed strategy, evidence-driven work, and frequent commits with clear regression checks.
 
 ## Purpose
 
