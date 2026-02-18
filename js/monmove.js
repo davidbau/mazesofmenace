@@ -515,8 +515,23 @@ function m_avoid_kicked_loc(mon, nx, ny, player) {
     const monCanSee = (mon?.mcansee !== false) && !mon?.blind;
     if (!kl || !isok(kl.x, kl.y)) return false;
     if (!(mon?.peaceful || mon?.tame)) return false;
+    if (player?.conflict) return false;
     if (!monCanSee || mon?.confused || mon?.stunned) return false;
     return nx === kl.x && ny === kl.y && dist2(nx, ny, player.x, player.y) <= 2;
+}
+
+// C ref: monmove.c m_avoid_soko_push_loc()
+function m_avoid_soko_push_loc(mon, nx, ny, map, player) {
+    if (!map?.flags?.sokoban) return false;
+    if (!(mon?.peaceful || mon?.tame)) return false;
+    if (mon?.confused || mon?.stunned) return false;
+    if (player?.conflict) return false;
+    if (dist2(nx, ny, player.x, player.y) !== 4) return false;
+    const bx = nx + Math.sign(player.x - nx);
+    const by = ny + Math.sign(player.y - ny);
+    return (map.objects || []).some((obj) =>
+        !obj?.buried && obj.otyp === BOULDER && obj.ox === bx && obj.oy === by
+    );
 }
 
 // C ref: monmove.c set_apparxy().
@@ -2082,6 +2097,9 @@ function dog_move(mon, map, player, display, fov, after = false, game = null) {
         if (m_avoid_kicked_loc(mon, nx, ny, player)) {
             continue;
         }
+        if (m_avoid_soko_push_loc(mon, nx, ny, map, player)) {
+            continue;
+        }
 
         // Trap avoidance — C ref: dogmove.c:1182-1204
         // Pets avoid harmful seen traps with 39/40 probability
@@ -2149,7 +2167,9 @@ function dog_move(mon, map, player, display, fov, after = false, game = null) {
                     // Duplicate coordinates can consume additional rn2() calls.
                 }
             }
-            if (skipThis) continue;
+            if (skipThis) {
+                continue;
+            }
         }
 
         // Distance comparison

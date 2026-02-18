@@ -28,7 +28,7 @@ import { rhack } from './commands.js';
 import { makemon } from './makemon.js';
 import { FOOD_CLASS } from './objects.js';
 import { pushInput } from './input.js';
-import { movemon, initrack, settrack } from './monmove.js';
+import { movemon, initrack } from './monmove.js';
 import { FOV } from './vision.js';
 import { getArrivalPosition } from './level_transition.js';
 import { HeadlessGame, HeadlessDisplay } from './headless_runtime.js';
@@ -1036,7 +1036,6 @@ export async function replaySession(seed, session, opts = {}) {
             const deferredResult = await rhack(moveCh, game);
             if (deferredResult && deferredResult.tookTime) {
                 game.fov.compute(game.map, game.player.x, game.player.y);
-                settrack(game.player);
                 movemon(game.map, game.player, game.display, game.fov, game);
                 game.simulateTurnEnd();
             }
@@ -1064,7 +1063,6 @@ export async function replaySession(seed, session, opts = {}) {
             const isAcknowledge = key === ' ' || key === '\n' || key === '\r';
             if (isAcknowledge) {
                 game.fov.compute(game.map, game.player.x, game.player.y);
-                settrack(game.player);
                 movemon(game.map, game.player, game.display, game.fov, game);
                 game.simulateTurnEnd();
                 pendingTransitionTurn = false;
