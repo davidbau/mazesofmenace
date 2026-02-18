@@ -5,6 +5,7 @@ import { rhack } from '../../js/commands.js';
 import { GameMap } from '../../js/map.js';
 import { Player } from '../../js/player.js';
 import { clearInputQueue, pushInput } from '../../js/input.js';
+import { WEAPON_CLASS, FOOD_CLASS, LANCE, LONG_SWORD } from '../../js/objects.js';
 
 function makeGame() {
     const map = new GameMap();
@@ -27,6 +28,7 @@ function makeGame() {
 
 test('fire command keeps prompt open until canceled', async () => {
     const game = makeGame();
+    game.player.weapon = { otyp: LONG_SWORD, oclass: WEAPON_CLASS, invlet: 'a', name: 'long sword' };
     clearInputQueue();
     pushInput('u'.charCodeAt(0));
     pushInput('l'.charCodeAt(0));
@@ -36,5 +38,45 @@ test('fire command keeps prompt open until canceled', async () => {
     const result = await rhack('f'.charCodeAt(0), game);
     assert.equal(result.tookTime, false);
     assert.equal(game.display.messages[0], 'What do you want to fire? [*]');
+    assert.equal(game.display.topMessage, 'Never mind.');
+});
+
+test('fire command with wielded polearm and no quiver prints C-style no-target message', async () => {
+    const game = makeGame();
+    game.player.weapon = { otyp: LANCE, oclass: WEAPON_CLASS, invlet: 'a', name: 'lance' };
+    clearInputQueue();
+
+    const result = await rhack('f'.charCodeAt(0), game);
+    assert.equal(result.tookTime, false);
+    assert.equal(game.display.topMessage, "Don't know what to hit.");
+});
+
+test('fire prompt includes C-style candidate letters for non-wielded weapon plus wielded non-weapon', async () => {
+    const game = makeGame();
+    const lance = { otyp: LANCE, oclass: WEAPON_CLASS, invlet: 'b', name: 'lance' };
+    const carrots = { otyp: 0, oclass: FOOD_CLASS, invlet: 'h', name: 'carrot', quan: 11 };
+    game.player.inventory = [lance, carrots];
+    game.player.weapon = carrots;
+    clearInputQueue();
+    pushInput(27);
+
+    const result = await rhack('f'.charCodeAt(0), game);
+    assert.equal(result.tookTime, false);
+    assert.equal(game.display.messages[0], 'What do you want to fire? [bh or ?*]');
+    assert.equal(game.display.topMessage, 'Never mind.');
+});
+
+test('fire prompt shows count after second digit prefix', async () => {
+    const game = makeGame();
+    const lance = { otyp: LANCE, oclass: WEAPON_CLASS, invlet: 'b', name: 'lance' };
+    game.player.inventory = [lance];
+    clearInputQueue();
+    pushInput('1'.charCodeAt(0));
+    pushInput('4'.charCodeAt(0));
+    pushInput(27);
+
+    const result = await rhack('f'.charCodeAt(0), game);
+    assert.equal(result.tookTime, false);
+    assert.equal(game.display.messages[1], 'Count: 14');
     assert.equal(game.display.topMessage, 'Never mind.');
 });

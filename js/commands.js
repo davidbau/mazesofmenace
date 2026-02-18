@@ -5,7 +5,7 @@
 import { COLNO, ROWNO, DOOR, CORR, SDOOR, SCORR, STAIRS, LADDER, FOUNTAIN, SINK, THRONE, ALTAR, GRAVE,
          POOL, LAVAPOOL, IRONBARS, TREE, ROOM, IS_DOOR, D_CLOSED, D_LOCKED,
          D_ISOPEN, D_NODOOR, D_BROKEN, ACCESSIBLE, IS_WALL, MAXLEVEL, VERSION_STRING, ICE,
-         isok, A_STR, A_DEX, A_CON, A_WIS } from './config.js';
+         isok, A_STR, A_DEX, A_CON, A_WIS, STATUS_ROW_1 } from './config.js';
 import { SQKY_BOARD, SLP_GAS_TRAP, FIRE_TRAP, PIT, SPIKED_PIT, ANTI_MAGIC } from './symbols.js';
 import { rn2, rnd, rnl, d, c_d } from './rng.js';
 import { exercise } from './attrib_exercise.js';
@@ -317,6 +317,12 @@ export async function rhack(ch, game) {
     // Wear armor
     if (c === 'W') {
         return await handleWear(player, display);
+    }
+
+    // Put on ring/accessory
+    // C ref: do_wear.c doputon()
+    if (c === 'P') {
+        return await handlePutOn(player, display);
     }
 
     // Take off armor
@@ -1387,8 +1393,10 @@ async function handleInventory(player, display) {
         if (!groups[cls]) continue;
         lines.push(` ${CLASS_NAMES[cls] || 'Other'}`);
         for (const item of groups[cls]) {
-            const invName = doname(item, player)
-                .replace('(wielded)', '(weapon in right hand)');
+            const named = doname(item, player);
+            const invName = (item.oclass === WEAPON_CLASS)
+                ? named.replace('(wielded)', '(weapon in right hand)')
+                : named;
             lines.push(` ${item.invlet} - ${invName}`);
         }
     }
@@ -1399,6 +1407,15 @@ async function handleInventory(player, display) {
     } else {
         display.renderChargenMenu(lines, false);
     }
+    const invByLetter = new Map();
+    for (const item of player.inventory || []) {
+        if (item?.invlet) invByLetter.set(String(item.invlet), item);
+    }
+    const clearTopline = () => {
+        if (typeof display.clearRow === 'function') display.clearRow(0);
+        if (display && Object.hasOwn(display, 'topMessage')) display.topMessage = null;
+        if (display && Object.hasOwn(display, 'messageNeedsMore')) display.messageNeedsMore = false;
+    };
     // C tty/menu parity: inventory stays up until an explicit dismissal key.
     // Non-dismiss keys can be consumed without closing the menu frame.
     while (true) {
@@ -1406,10 +1423,58 @@ async function handleInventory(player, display) {
         // C tty parity: inventory stays open through regular command keys;
         // explicit dismissal keys include space, escape, and enter.
         if (ch === 32 || ch === 27 || ch === 10 || ch === 13) break;
+        const c = String.fromCharCode(ch);
+        const selected = invByLetter.get(c);
+        if (selected) {
+            const baseName = String(selected.name || 'item');
+            const noun = ((selected.quan || 1) > 1 && !baseName.endsWith('s'))
+                ? `${baseName}s`
+                : baseName;
+            if (typeof display.setCell === 'function'
+                && Number.isInteger(display.cols)
+                && Number.isInteger(display.rows)) {
+                let maxcol = 0;
+                for (const line of lines) {
+                    if (line.length > maxcol) maxcol = line.length;
+                }
+                const offx = Math.max(10, Math.min(41, display.cols - maxcol - 2));
+                const menuRows = Math.min(lines.length, STATUS_ROW_1);
+                for (let r = 0; r < menuRows; r++) {
+                    for (let col = offx; col < display.cols; col++) {
+                        display.setCell(col, r, ' ', 7, 0);
+                    }
+                }
+            }
+            display.putstr_message(`                                  Do what with the ${noun}?`);
+            const stackActions = ((selected.quan || 1) > 1)
+                ? [
+                    `                                  c - Name this stack of ${noun}`,
+                    '                                  d - Drop this stack',
+                    '                                  e - Eat one of these',
+                    '                                  i - Adjust inventory by assigning new letter',
+                    '                                  I - Adjust inventory by splitting this stack',
+                    '                                  t - Throw one of these',
+                    '                                  w - Wield this stack in your hands',
+                    '                                  / - Look up information about these',
+                    '                                  (end)',
+                ]
+                : [];
+            if (typeof display.putstr === 'function') {
+                for (let i = 0; i < stackActions.length; i++) {
+                    display.putstr(0, i + 2, stackActions[i]);
+                }
+            }
+            await nhgetch();
+            if (typeof display.clearRow === 'function') {
+                for (let i = 0; i < stackActions.length; i++) {
+                    display.clearRow(i + 2);
+                }
+            }
+            clearTopline();
+            return { moved: false, tookTime: false };
+        }
     }
-    if (typeof display.clearRow === 'function') display.clearRow(0);
-    if (display && Object.hasOwn(display, 'topMessage')) display.topMessage = null;
-    if (display && Object.hasOwn(display, 'messageNeedsMore')) display.messageNeedsMore = false;
+    clearTopline();
 
     return { moved: false, tookTime: false };
 }
@@ -1418,23 +1483,28 @@ async function handleInventory(player, display) {
 // C ref: wield.c dowield()
 // C ref: wield.c dowield() — wield a weapon (instant action, no time cost)
 async function handleWield(player, display) {
-    const weapons = player.inventory.filter(o => o.oclass === 1); // WEAPON_CLASS
-    if (weapons.length === 0) {
-        display.putstr_message('You have no weapons to wield.');
-        return { moved: false, tookTime: false };
-    }
+    const inventory = Array.isArray(player.inventory) ? player.inventory : [];
+    const suggestWield = (obj) => {
+        if (!obj) return false;
+        if (obj.oclass === WEAPON_CLASS) return true;
+        // C ref: wield.c wield_ok() includes is_weptool() in suggestions.
+        return obj.oclass === TOOL_CLASS && (objectData[obj.otyp]?.sub || 0) !== 0;
+    };
 
     // C ref: wield.c getobj() prompt format for wield command.
     // Keep wording/options aligned for session screen parity.
-    const letters = weapons.map(w => w.invlet).join('');
+    const letters = inventory.filter(suggestWield).map((item) => item.invlet).join('');
     const replacePromptMessage = () => {
         if (typeof display.clearRow === 'function') display.clearRow(0);
         display.topMessage = null;
         display.messageNeedsMore = false;
     };
+    const wieldPrompt = letters.length > 0
+        ? `What do you want to wield? [- ${letters} or ?*]`
+        : 'What do you want to wield? [- or ?*]';
+    display.putstr_message(wieldPrompt);
 
     while (true) {
-        display.putstr_message(`What do you want to wield? [- ${letters} or ?*]`);
         const ch = await nhgetch();
         const c = String.fromCharCode(ch);
 
@@ -1446,21 +1516,33 @@ async function handleWield(player, display) {
         if (c === '?' || c === '*') continue;
 
         if (c === '-') {
-            player.weapon = null;
             replacePromptMessage();
-            display.putstr_message('You are bare handed.');
-            // C ref: wield.c:dowield returns ECMD_TIME (wielding takes a turn)
-            return { moved: false, tookTime: true };
+            if (player.weapon) {
+                player.weapon = null;
+                display.putstr_message('You are bare handed.');
+                // C ref: wield.c ready_weapon(NULL) uses a turn when unwielding.
+                return { moved: false, tookTime: true };
+            }
+            display.putstr_message('You are already bare handed.');
+            return { moved: false, tookTime: false };
         }
 
-        const item = player.inventory.find((o) => o.invlet === c);
+        const item = inventory.find((o) => o.invlet === c);
         if (!item) continue;
-        if (item.oclass !== WEAPON_CLASS) {
+        const weapon = item;
+        if (
+            weapon === player.armor
+            || weapon === player.shield
+            || weapon === player.helmet
+            || weapon === player.gloves
+            || weapon === player.boots
+            || weapon === player.cloak
+            || weapon === player.amulet
+        ) {
             replacePromptMessage();
             display.putstr_message('You cannot wield that!');
             return { moved: false, tookTime: false };
         }
-        const weapon = item;
 
         // C ref: wield.c dowield() — selecting uswapwep triggers doswapweapon().
         if (player.swapWeapon && weapon === player.swapWeapon) {
@@ -1480,7 +1562,7 @@ async function handleWield(player, display) {
             player.swapWeapon = null;
         }
         replacePromptMessage();
-        display.putstr_message(`${weapon.invlet} - ${weapon.name} (weapon in hand).`);
+        display.putstr_message(`${weapon.invlet} - ${doname(weapon, player)}.`);
         // C ref: wield.c:dowield returns ECMD_TIME (wielding takes a turn)
         return { moved: false, tookTime: true };
     }
@@ -1489,9 +1571,17 @@ async function handleWield(player, display) {
 // Handle wearing armor
 // C ref: do_wear.c dowear()
 async function handleWear(player, display) {
-    const armor = player.inventory.filter((o) => o.oclass === 2 && o !== player.armor); // ARMOR_CLASS
+    const wornArmor = new Set([
+        player.armor,
+        player.shield,
+        player.helmet,
+        player.gloves,
+        player.boots,
+        player.cloak,
+    ].filter(Boolean));
+    const armor = player.inventory.filter((o) => o.oclass === ARMOR_CLASS && !wornArmor.has(o));
     if (armor.length === 0) {
-        if (player.armor) {
+        if (wornArmor.size > 0) {
             display.putstr_message("You don't have anything else to wear.");
         } else {
             display.putstr_message('You have no armor to wear.');
@@ -1513,6 +1603,31 @@ async function handleWear(player, display) {
 
     display.putstr_message("Never mind.");
     return { moved: false, tookTime: false };
+}
+
+// Handle putting on rings/accessories
+// C ref: do_wear.c doputon()
+async function handlePutOn(player, display) {
+    const rings = (player.inventory || []).filter((o) => o.oclass === RING_CLASS
+        && o !== player.leftRing
+        && o !== player.rightRing);
+    if (rings.length === 0) {
+        display.putstr_message("You don't have anything else to put on.");
+        return { moved: false, tookTime: false };
+    }
+
+    display.putstr_message(`What do you want to put on? [${rings.map(r => r.invlet).join('')}]`);
+    const ch = await nhgetch();
+    const c = String.fromCharCode(ch);
+    const item = rings.find(r => r.invlet === c);
+    if (!item) {
+        display.putstr_message('Never mind.');
+        return { moved: false, tookTime: false };
+    }
+    if (!player.leftRing) player.leftRing = item;
+    else player.rightRing = item;
+    display.putstr_message(`You are now wearing ${item.name}.`);
+    return { moved: false, tookTime: true };
 }
 
 // Handle taking off armor
@@ -1894,12 +2009,11 @@ async function handleThrow(player, map, display) {
     } else {
         throwChoices = '';
     }
+    const throwPrompt = throwChoices
+        ? `What do you want to throw? [${throwChoices} or ?*]`
+        : 'What do you want to throw? [*]';
+    display.putstr_message(throwPrompt);
     while (true) {
-        if (throwChoices) {
-            display.putstr_message(`What do you want to throw? [${throwChoices} or ?*]`);
-        } else {
-            display.putstr_message('What do you want to throw? [*]');
-        }
         const ch = await nhgetch();
         const c = String.fromCharCode(ch);
         if (ch === 27 || ch === 10 || ch === 13 || c === ' ') {
@@ -1973,7 +2087,39 @@ async function handleFire(player, display) {
         display.topMessage = null;
         display.messageNeedsMore = false;
     };
-    display.putstr_message('What do you want to fire? [*]');
+    const weapon = player.weapon || null;
+    const weaponSkill = weapon ? objectData[weapon.otyp]?.sub : null;
+    const wieldingPolearm = !!weapon
+        && weapon.oclass === WEAPON_CLASS
+        && (weaponSkill === 18 /* P_POLEARMS */ || weaponSkill === 19 /* P_LANCE */);
+
+    // C ref: dothrow.c dofire() routes to use_pole(..., TRUE) when no
+    // quiver ammo is readied and a polearm/lance is wielded.
+    if (!player.quiver && wieldingPolearm) {
+        display.putstr_message("Don't know what to hit.");
+        return { moved: false, tookTime: false };
+    }
+
+    const fireLetters = [];
+    for (const item of (player.inventory || [])) {
+        if (!item?.invlet) continue;
+        if (item.oclass === WEAPON_CLASS && item !== player.weapon) {
+            fireLetters.push(item.invlet);
+        }
+    }
+    if (player.weapon
+        && player.weapon.oclass !== WEAPON_CLASS
+        && (player.inventory || []).includes(player.weapon)
+        && player.weapon.invlet) {
+        fireLetters.push(player.weapon.invlet);
+    }
+    const fireChoices = compactInvletPromptChars(fireLetters.join(''));
+    if (fireChoices) {
+        display.putstr_message(`What do you want to fire? [${fireChoices} or ?*]`);
+    } else {
+        display.putstr_message('What do you want to fire? [*]');
+    }
+    let pendingCount = '';
     while (true) {
         const ch = await nhgetch();
         const c = String.fromCharCode(ch);
@@ -1981,6 +2127,16 @@ async function handleFire(player, display) {
             replacePromptMessage();
             display.putstr_message('Never mind.');
             return { moved: false, tookTime: false };
+        }
+        if (c >= '0' && c <= '9') {
+            if (pendingCount.length === 0) {
+                pendingCount = c;
+            } else {
+                pendingCount += c;
+                replacePromptMessage();
+                display.putstr_message(`Count: ${pendingCount}`);
+            }
+            continue;
         }
         if (c === '?' || c === '*') continue;
         // Keep prompt active for unsupported letters (fixture parity).
@@ -2512,6 +2668,7 @@ const COMMAND_DESCRIPTIONS = {
     'i': 'Show your inventory.',
     'o': 'Open a door.',
     'q': 'Drink (quaff) a potion.',
+    'P': 'Put on a ring or other accessory.',
     's': 'Search for secret doors and traps around you.',
     'w': 'Wield a weapon. w- means wield bare hands.',
     'S': 'Save the game.',

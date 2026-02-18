@@ -52,7 +52,7 @@ test('wield prompt stays open on invalid letters until canceled', async () => {
     assert.equal(game.display.topMessage, 'Never mind.');
 });
 
-test('wielding a non-weapon item is rejected with C wording', async () => {
+test('wielding a non-weapon item is allowed and reports wielded item', async () => {
     const game = makeGame();
     game.player.inventory.push({
         invlet: 'd',
@@ -66,6 +66,6 @@ test('wielding a non-weapon item is rejected with C wording', async () => {
     pushInput('d'.charCodeAt(0));
 
     const result = await rhack('w'.charCodeAt(0), game);
-    assert.equal(result.tookTime, false);
-    assert.equal(game.display.topMessage, 'You cannot wield that!');
+    assert.equal(result.tookTime, true);
+    assert.match(game.display.topMessage, /^d - .* \(wielded\)\.$/);
 });

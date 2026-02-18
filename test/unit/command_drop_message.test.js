@@ -21,6 +21,8 @@ function makeGame() {
     sword.dknown = true;
     sword.bknown = true;
     sword.spe = 1;
+    sword.cursed = false;
+    sword.blessed = false;
     player.inventory = [sword];
 
     const display = {

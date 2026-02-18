@@ -120,4 +120,18 @@ describe('throw prompt behavior', () => {
         assert.equal(game.display.messages.length, 2);
         assert.equal(game.display.topMessage, null);
     });
+
+    it('keeps throw prompt stable on invalid letters', async () => {
+        const game = makeGame();
+        pushInput('i'.charCodeAt(0));
+        pushInput('o'.charCodeAt(0));
+        pushInput('n'.charCodeAt(0));
+        pushInput(27);
+        const result = await rhack('t'.charCodeAt(0), game);
+        assert.equal(result.tookTime, false);
+        assert.deepEqual(game.display.messages, [
+            'What do you want to throw? [b or ?*]',
+            'Never mind.',
+        ]);
+    });
 });
