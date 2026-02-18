@@ -1,0 +1,44 @@
+{
+  "commit": "3aef207",
+  "parent": "33d4202",
+  "date": "2026-02-18T12:07:17-05:00",
+  "author": "David Bau",
+  "message": "Regenerate tutorial session with depth-2 Lua RNG annotations",
+  "stats": {
+    "total": 356,
+    "pass": 319,
+    "fail": 37,
+    "skip": 0,
+    "duration": 30
+  },
+  "categories": {
+    "chargen": {
+      "total": 0,
+      "pass": 00,
+      "fail": 00
+    },
+    "gameplay": {
+      "total": 2,
+      "pass": 00,
+      "fail": 2
+    },
+    "map": {
+      "total": 0,
+      "pass": 00,
+      "fail": 00
+    },
+    "special": {
+      "total": 0,
+      "pass": 00,
+      "fail": 00
+    },
+    "unit": {
+      "total": 0,
+      "pass": 00,
+      "fail": 00
+    }
+  },
+  "regression": false,
+  "newTests": 0,
+  "backfilled": true
+}
