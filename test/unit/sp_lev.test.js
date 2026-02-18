@@ -281,6 +281,20 @@ describe('sp_lev.js - des.* API', () => {
         assert.ok(randomGold.quan >= 1 && randomGold.quan <= 200, 'gold() amount should be rnd(200)');
     });
 
+    it('des.monster fleeing option sets runtime flee state', () => {
+        resetLevelState();
+        des.level_init({ style: 'solidfill', fg: '.' });
+
+        des.monster({ id: 'goblin', x: 12, y: 8, fleeing: 9 });
+
+        const monsters = getLevelState().map.monsters;
+        assert.equal(monsters.length, 1);
+        assert.equal(monsters[0].mx, 12);
+        assert.equal(monsters[0].my, 8);
+        assert.equal(monsters[0].flee, true);
+        assert.equal(monsters[0].fleetim, 9);
+    });
+
     it('finalize_level applies C solidify_map to untouched stone/walls', () => {
         resetLevelState();
         des.level_init({ style: 'solidfill', fg: ' ' });

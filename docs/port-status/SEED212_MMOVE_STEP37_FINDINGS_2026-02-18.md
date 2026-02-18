@@ -145,3 +145,23 @@ Validation snapshot:
 
 So this was a correctness-hardening change for hidden flee state, but it does
 not by itself resolve the current step-90 blocker.
+
+## Additional Correction (sp_lev fleeing state)
+
+Implemented a targeted special-level monster-state fix:
+
+- `js/sp_lev.js`: `des.monster({ fleeing: N })` now initializes runtime
+  `flee`/`fleetim` fields (and keeps `mflee`/`mfleetim` aliases in sync).
+
+Added regression coverage:
+
+- `test/unit/sp_lev.test.js`: new unit test verifying that a monster created
+  via `des.monster` with `fleeing` set has `flee === true` and expected
+  `fleetim`.
+
+Validation snapshot after this change:
+
+- Unit tests: `sp_lev`, `monmove`, `combat`, `safe_pet` passing.
+- `seed42_gameplay`: still full pass (`3017/3017`, `12/12`).
+- `seed212_valkyrie_wizard`: unchanged current baseline
+  (`2475/10886`, `150/407`, first RNG divergence step `90`).

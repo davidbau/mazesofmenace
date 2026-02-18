@@ -6082,8 +6082,12 @@ function executeDeferredMonster(deferred) {
                 mtmp.mfrozen = Math.trunc(opts.paralyzed) % 127;
             }
             if (Number.isFinite(opts.fleeing) && Math.trunc(opts.fleeing) > 0) {
+                const fleeTurns = Math.trunc(opts.fleeing) % 127;
+                // Runtime movement logic reads flee/fleetim; keep C-style aliases in sync.
+                mtmp.flee = true;
+                mtmp.fleetim = fleeTurns;
                 mtmp.mflee = true;
-                mtmp.mfleetim = Math.trunc(opts.fleeing) % 127;
+                mtmp.mfleetim = fleeTurns;
             }
             if (parsedAppearAs) {
                 // C ref: lspo_monster stores appear type + payload string.

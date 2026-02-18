@@ -141,6 +141,16 @@ des.door("closed", 8, 3)
 
 *Source: `src/sp_lev.c`. See [MAP_COORDINATE_SYSTEM.md](archive/MAP_COORDINATE_SYSTEM.md).*
 
+### `des.monster({ fleeing = N })` must set runtime flee fields
+
+Special-level Lua options may use C-style names, but JS movement logic reads
+runtime `flee`/`fleetim`. Writing only `mflee`/`mfleetim` leaves monsters
+effectively non-fleeing for behavior code even though the script asked for
+fleeing state.
+
+Practical rule: when loading `fleeing`, set both aliases in sync:
+`flee` + `fleetim` and `mflee` + `mfleetim`.
+
 ### Wallification must run twice around geometric transforms
 
 Any operation that changes cell positions (flipping, rotation) invalidates
