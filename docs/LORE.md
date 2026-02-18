@@ -284,6 +284,22 @@ Getting this wrong shifts every role-dependent RNG path.
 6:Priest 7:Ranger 8:Rogue 9:Samurai 10:Tourist 11:Valkyrie 12:Wizard
 ```
 
+### C step snapshots narrow hidden-state drift faster than RNG-only diffs
+
+When RNG divergence appears late, capture same-step C and JS monster/object
+state and compare coordinates directly. This catches upstream hidden-state
+drift before it surfaces as an RNG mismatch.
+
+In `seed212_valkyrie_wizard`, snapshotting showed the first monster-position
+drift at step 10 (goblin Y offset). Porting a minimal collector-only
+`m_search_items` retargeting subset in JS `m_move` aligned monster positions
+at steps 36/37 and moved first RNG divergence from step 37 (`rn2(20)` vs
+`rn2(32)`) to step 38 (`distfleeck` `rn2(5)` in C).
+
+Practical rule: use step snapshots to verify state alignment at the first
+visual or behavior drift, then apply narrow C-faithful movement-target fixes
+before chasing deeper RNG stacks.
+
 ---
 
 ## Phase Chronicles

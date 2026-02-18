@@ -57,6 +57,22 @@ replays:
 
 - `test/comparison/c-harness/capture_step_snapshot.py`
 
+## Latest Refinement (same day)
+
+Implemented a minimal `m_search_items` targeting subset in JS `m_move`
+for collector monsters (C-style loot-interest retargeting, no extra RNG).
+
+Observed effect:
+
+- C/JS monster positions now align at the previously problematic checkpoints:
+  - step 36: `jackal (47,5)`, `goblin (32,13)`, `dog (75,17)`
+  - step 37: `jackal (47,4)`, `goblin (33,13)`, `dog (77,16)`
+- first RNG divergence moved from step 37 denominator mismatch
+  (`rn2(20)` vs `rn2(32)`) to a later step-38 mismatch involving an
+  extra C `distfleeck` call during runmode-delay output handling.
+
+This confirms the step-10 goblin drift was one real upstream contributor.
+
 ## Additional Fix Landed During This Pass
 
 - Corrected a typo in `dog_move` candidate filtering:

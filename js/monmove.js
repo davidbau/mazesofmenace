@@ -9,7 +9,7 @@ import { COLNO, ROWNO, STONE, IS_WALL, IS_DOOR, IS_ROOM,
          NORMAL_SPEED, isok } from './config.js';
 import { rn2, rnd, c_d } from './rng.js';
 import { monsterAttackPlayer, checkLevelUp } from './combat.js';
-import { CORPSE, FOOD_CLASS, COIN_CLASS, BOULDER, ROCK_CLASS, BALL_CLASS, CHAIN_CLASS,
+import { CORPSE, FOOD_CLASS, COIN_CLASS, BOULDER, ROCK, ROCK_CLASS, BALL_CLASS, CHAIN_CLASS,
          WEAPON_CLASS,
          PICK_AXE, DWARVISH_MATTOCK, SKELETON_KEY, LOCK_PICK, CREDIT_CARD,
          UNICORN_HORN, SCR_SCARE_MONSTER, CLOAK_OF_DISPLACEMENT,
@@ -30,6 +30,7 @@ import { PM_GRID_BUG, PM_IRON_GOLEM, PM_SHOPKEEPER, mons,
          AD_ACID, AD_ENCH,
          M1_FLY, M1_SWIM, M1_AMPHIBIOUS, M1_AMORPHOUS, M1_CLING, M1_SEE_INVIS, S_MIMIC,
          M1_WALLWALK, M1_TUNNEL, M1_NEEDPICK, M1_SLITHY, M1_UNSOLID,
+         M2_COLLECT,
          MZ_TINY, MZ_SMALL, MZ_MEDIUM, MR_FIRE, MR_SLEEP, G_FREQ, G_NOCORPSE,
          PM_DISPLACER_BEAST, PM_FIRE_ELEMENTAL, PM_SALAMANDER,
          S_EYE, S_LIGHT, S_EEL, S_VORTEX, S_ELEMENTAL } from './monsters.js';
@@ -970,6 +971,63 @@ function onscary(map, x, y) {
         if (/elbereth/i.test(String(engr.text || ''))) return true;
     }
     return false;
+}
+
+// C ref: monmove.c m_search_items() subset.
+// Determine whether a monster should temporarily retarget movement toward
+// nearby pickup-able objects. This subset is intentionally deterministic:
+// it performs no RNG calls and only adjusts ggx/ggy.
+function m_search_items_goal(mon, map, ggx, ggy) {
+    const mflags2 = Number(mon?.type?.flags2 || 0);
+    const canCollect = !!(mflags2 & M2_COLLECT) || mon?.mndx === PM_LEPRECHAUN;
+    if (!canCollect) return null;
+
+    const omx = mon.mx;
+    const omy = mon.my;
+    let minr = SQSRCHRADIUS;
+
+    const mux = Number.isInteger(mon.mux) ? mon.mux : ggx;
+    const muy = Number.isInteger(mon.muy) ? mon.muy : ggy;
+    if (!mon.peaceful && distmin(mux, muy, omx, omy) < SQSRCHRADIUS) {
+        minr--;
+    }
+
+    const hmx = Math.min(COLNO - 1, omx + minr);
+    const hmy = Math.min(ROWNO - 1, omy + minr);
+    const lmx = Math.max(1, omx - minr);
+    const lmy = Math.max(0, omy - minr);
+
+    let targetX = ggx;
+    let targetY = ggy;
+    let found = false;
+
+    for (let xx = lmx; xx <= hmx; xx++) {
+        for (let yy = lmy; yy <= hmy; yy++) {
+            if (distmin(omx, omy, xx, yy) > minr) continue;
+            if (!could_reach_item(map, mon, xx, yy)) continue;
+            if (onscary(map, xx, yy)) continue;
+            if (!m_cansee(mon, map, xx, yy)) continue;
+
+            const pile = map.objectsAt
+                ? map.objectsAt(xx, yy)
+                : map.objects.filter((o) => !o.buried && o.ox === xx && o.oy === yy);
+            if (!pile || pile.length === 0) continue;
+
+            for (const obj of pile) {
+                // C ref: m_search_items() — ignore common rocks as goal objects.
+                if (obj?.otyp === ROCK) continue;
+                if (can_carry(mon, obj) <= 0) continue;
+
+                minr = distmin(omx, omy, xx, yy);
+                targetX = xx;
+                targetY = yy;
+                found = true;
+                break;
+            }
+        }
+    }
+
+    return found ? { x: targetX, y: targetY } : null;
 }
 
 // ========================================================================
@@ -2439,7 +2497,13 @@ function m_move(mon, map, player, display = null, fov = null) {
                 <= (Math.floor(heroStr / 2) + 1));
         if (appr !== 1 || !inLine) getitems = true;
     }
-    void getitems;
+    if (getitems) {
+        const itemGoal = m_search_items_goal(mon, map, ggx, ggy);
+        if (itemGoal) {
+            ggx = itemGoal.x;
+            ggy = itemGoal.y;
+        }
+    }
 
     // C ref: monmove.c m_search_items() shop short-circuit:
     // "in shop, usually skip" -> rn2(25) consumed for non-peaceful movers.
