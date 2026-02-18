@@ -1,0 +1,16 @@
+{
+  "commit": "ef9ef7e",
+  "parent": "3423e90",
+  "date": "2026-02-18T15:06:37-05:00",
+  "author": "David Bau",
+  "message": "commands: align throw prompt flow with C getdir ordering",
+  "stats": {"total": 547, "pass": 499, "fail": 48, "skip": 0, "duration": 0},
+  "categories": {
+    "chargen": {"total": 91, "pass": 91, "fail": 0},
+    "gameplay": {"total": 43, "pass": 11, "fail": 32},
+    "map": {"total": 10, "pass": 10, "fail": 0},
+    "special": {"total": 50, "pass": 50, "fail": 0},
+    "unit": {"total": 344, "pass": 331, "fail": 13}
+  },
+  "backfilled": true
+}
