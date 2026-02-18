@@ -1,0 +1,44 @@
+{
+  "commit": "f227763",
+  "parent": "9083331",
+  "date": "2026-02-16T15:58:34-05:00",
+  "author": "David Bau",
+  "message": "Improve gameplay replay parity for seed3/seed200 paths",
+  "stats": {
+    "total": 346,
+    "pass": 293,
+    "fail": 53,
+    "skip": 0,
+    "duration": 6
+  },
+  "categories": {
+    "chargen": {
+      "total": 1,
+      "pass": 00,
+      "fail": 1
+    },
+    "gameplay": {
+      "total": 7,
+      "pass": 00,
+      "fail": 7
+    },
+    "map": {
+      "total": 9,
+      "pass": 00,
+      "fail": 9
+    },
+    "special": {
+      "total": 1,
+      "pass": 00,
+      "fail": 1
+    },
+    "unit": {
+      "total": 0,
+      "pass": 00,
+      "fail": 00
+    }
+  },
+  "regression": false,
+  "newTests": 0,
+  "backfilled": true
+}
