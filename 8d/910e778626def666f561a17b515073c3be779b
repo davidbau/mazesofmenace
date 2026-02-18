@@ -1,0 +1,44 @@
+{
+  "commit": "8d910e7",
+  "parent": "792b15a",
+  "date": "2026-02-16T18:50:17-05:00",
+  "author": "David Bau",
+  "message": "Improve Oracle special-level parity and clear leaked finalize context",
+  "stats": {
+    "total": 353,
+    "pass": 294,
+    "fail": 59,
+    "skip": 0,
+    "duration": 7
+  },
+  "categories": {
+    "chargen": {
+      "total": 0,
+      "pass": 00,
+      "fail": 00
+    },
+    "gameplay": {
+      "total": 20,
+      "pass": 00,
+      "fail": 20
+    },
+    "map": {
+      "total": 1,
+      "pass": 00,
+      "fail": 1
+    },
+    "special": {
+      "total": 1,
+      "pass": 00,
+      "fail": 1
+    },
+    "unit": {
+      "total": 0,
+      "pass": 00,
+      "fail": 00
+    }
+  },
+  "regression": false,
+  "newTests": 0,
+  "backfilled": true
+}
