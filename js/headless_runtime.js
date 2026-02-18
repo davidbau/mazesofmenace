@@ -25,6 +25,7 @@ import { FOV } from './vision.js';
 import { getArrivalPosition } from './level_transition.js';
 import { doname } from './mkobj.js';
 import { enexto } from './dungeon.js';
+import { monsterMapGlyph, objectMapGlyph } from './display_rng.js';
 import {
     COLNO, ROWNO, NORMAL_SPEED,
     A_STR, A_DEX, A_CON,
@@ -1435,7 +1436,9 @@ export class HeadlessDisplay {
                     } else {
                         loc.mem_obj = 0;
                     }
-                    this.setCell(col, row, mon.displayChar, mon.displayColor);
+                    const hallu = !!player?.hallucinating;
+                    const glyph = monsterMapGlyph(mon, hallu);
+                    this.setCell(col, row, glyph.ch, glyph.color);
                     continue;
                 }
 
@@ -1443,7 +1446,9 @@ export class HeadlessDisplay {
                 if (objs.length > 0) {
                     const topObj = objs[objs.length - 1];
                     loc.mem_obj = topObj.displayChar || 0;
-                    this.setCell(col, row, topObj.displayChar, topObj.displayColor);
+                    const hallu = !!player?.hallucinating;
+                    const glyph = objectMapGlyph(topObj, hallu);
+                    this.setCell(col, row, glyph.ch, glyph.color);
                     continue;
                 }
                 loc.mem_obj = 0;

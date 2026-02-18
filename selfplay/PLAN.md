@@ -120,3 +120,13 @@ Action Layer    → "Move east (press 'l')"
 3. Build basic map tracking
 4. Implement explore-and-survive loop
 5. Test against the JS port in headless mode
+
+## Parity Burndown Note (RNG)
+
+- As part of current parity burndown, fully flesh out `DISP` RNG infrastructure
+  and callsite parity:
+  - Keep `CORE` vs `DISP` stream separation in JS aligned with C `rnd.c`.
+  - Port remaining display-only callsites to `rn2_on_display_rng` (hallucination
+    and temporary glyph paths such as display/detect/throw/zap/pickup/inventory naming).
+  - Ensure save/restore and replay diagnostics can preserve and inspect both RNG streams.
+  - Keep this non-regressive: no gameplay RNG drift from display-only changes.

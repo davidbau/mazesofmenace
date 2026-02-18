@@ -5,7 +5,8 @@
 
 import { isaac64_init, isaac64_next_uint64 } from './isaac64.js';
 
-let ctx = null; // ISAAC64 context
+let coreCtx = null; // CORE ISAAC64 context (C rn2)
+let dispCtx = null; // DISP ISAAC64 context (C rn2_on_display_rng)
 
 // --- PRNG call logging ---
 // When enabled, every rn2/rnd/rnl/d call is logged in the same format
@@ -101,6 +102,18 @@ function logRng(func, args, result) {
 
 let _currentSeed = 0;
 
+function cloneIsaacCtx(state) {
+    if (!state) return null;
+    return {
+        a: state.a,
+        b: state.b,
+        c: state.c,
+        n: state.n,
+        r: state.r.slice(),
+        m: state.m.slice(),
+    };
+}
+
 // Get the current RNG seed
 export function getRngSeed() {
     return _currentSeed;
@@ -118,7 +131,8 @@ export function initRng(seed) {
         bytes[i] = Number(s & 0xFFn);
         s >>= 8n;
     }
-    ctx = isaac64_init(bytes);
+    coreCtx = isaac64_init(bytes);
+    dispCtx = isaac64_init(bytes);
     // Reset log counter on re-init (like C's init_random)
     if (rngLog) {
         rngLog.length = 0;
@@ -129,7 +143,12 @@ export function initRng(seed) {
 // Raw 64-bit value, modulo x -- matches C's RND(x) macro
 // C ref: rnd.c RND() = isaac64_next_uint64() % x
 function RND(x) {
-    const raw = isaac64_next_uint64(ctx);
+    const raw = isaac64_next_uint64(coreCtx);
+    return Number(raw % BigInt(x));
+}
+
+function DRND(x) {
+    const raw = isaac64_next_uint64(dispCtx);
     return Number(raw % BigInt(x));
 }
 
@@ -150,6 +169,27 @@ export function rn2(x) {
     logRng('rn2', x, result);
     exitRng();
     return result;
+}
+
+// 0 <= rn2_on_display_rng(x) < x
+// C ref: rnd.c rn2_on_display_rng() -- separate stream for display-only randomness.
+export function rn2_on_display_rng(x) {
+    if (x <= 0) return 0;
+    const result = DRND(x);
+    if (rngLog
+        && typeof process !== 'undefined'
+        && process.env.RNG_LOG_DISP === '1') {
+        const tag = rngCallerTag ? ` @ ${rngCallerTag}` : '';
+        rngLog.push(`~drn2(${x})=${result}${tag}`);
+    }
+    return result;
+}
+
+// 1 <= rnd_on_display_rng(x) <= x
+// C ref: rnd.c drnd() helper semantics.
+export function rnd_on_display_rng(x) {
+    if (x <= 0) return 1;
+    return rn2_on_display_rng(x) + 1;
 }
 
 // 1 <= rnd(x) <= x
@@ -229,7 +269,7 @@ export function c_d(n, x) {
 // Used only for narrow parity fixes when C consumes raw PRNG output
 // through non-logged paths between logged rn2/rnd calls.
 export function advanceRngRaw(count = 1) {
-    if (!ctx) return;
+    if (!coreCtx) return;
     const n = Math.max(0, Number.isInteger(count) ? count : 0);
     if (rngLog
         && typeof process !== 'undefined'
@@ -247,7 +287,7 @@ export function advanceRngRaw(count = 1) {
         rngLog.push(`~advanceRngRaw(${n})${tag}`);
     }
     for (let i = 0; i < n; i++) {
-        isaac64_next_uint64(ctx);
+        isaac64_next_uint64(coreCtx);
     }
 }
 
@@ -290,18 +330,33 @@ export function rne(x) {
 // doesn't implement yet, aligning the PRNG state for level generation.
 export function skipRng(n) {
     for (let i = 0; i < n; i++) {
-        isaac64_next_uint64(ctx);
+        isaac64_next_uint64(coreCtx);
     }
 }
 
 // Return the raw ISAAC64 context (for save/restore)
 export function getRngState() {
-    return ctx;
+    return cloneIsaacCtx(coreCtx);
 }
 
 // Restore ISAAC64 context (for save/restore)
 export function setRngState(savedCtx) {
-    ctx = savedCtx;
+    if (!savedCtx) return;
+    // Backward-compatible behavior: setting core state also syncs DISP
+    // when no explicit DISP state has been provided.
+    coreCtx = cloneIsaacCtx(savedCtx);
+    dispCtx = cloneIsaacCtx(savedCtx);
+}
+
+// Return DISP RNG state (for display-focused diagnostics/save parity)
+export function getDispRngState() {
+    return cloneIsaacCtx(dispCtx);
+}
+
+// Restore DISP RNG state (for display-focused diagnostics/save parity)
+export function setDispRngState(savedCtx) {
+    if (!savedCtx) return;
+    dispCtx = cloneIsaacCtx(savedCtx);
 }
 
 // Get the RNG call count (for save/restore)
