@@ -789,7 +789,7 @@ async function runSingleSessionWithTimeout(session, timeoutMs) {
     });
 }
 
-async function runSessionsParallel(sessions, { numWorkers, verbose, onProgress }) {
+async function runSessionsParallel(sessions, { numWorkers, verbose, onProgress, sessionTimeoutMs }) {
     const workerPath = join(__dirname, 'session_worker.js');
     const results = new Array(sessions.length);
 
@@ -805,61 +805,103 @@ async function runSessionsParallel(sessions, { numWorkers, verbose, onProgress }
     let completed = 0;
 
     return new Promise((resolve, reject) => {
-        const workers = [];
+        const workerStates = new Set();
+        let settled = false;
 
-        function spawnWorker() {
-            const worker = new Worker(workerPath);
-            workers.push(worker);
-
-            worker.on('message', (msg) => {
-                if (msg.type === 'result') {
-                    results[msg.id] = msg.result;
-                    completed++;
-                    if (onProgress) {
-                        onProgress(completed, sessions.length, msg.result);
-                    }
-                    if (verbose) {
-                        console.log(formatResult(msg.result));
-                    }
-                    // Send next task or finish
-                    if (nextTask < indexed.length) {
-                        const task = indexed[nextTask++];
-                        worker.postMessage({
-                            type: 'run',
-                            id: task.index,
-                            filePath: task.filePath,
-                        });
-                    } else if (completed === sessions.length) {
-                        // All done - terminate workers
-                        workers.forEach((w) => w.postMessage({ type: 'exit' }));
-                        resolve(results);
-                    }
+        const maybeResolve = () => {
+            if (settled) return;
+            if (completed !== sessions.length) return;
+            settled = true;
+            for (const state of workerStates) {
+                clearTimeout(state.timer);
+                state.timer = null;
+                try {
+                    state.worker.postMessage({ type: 'exit' });
+                } catch {
+                    // Worker may already be terminated.
                 }
+            }
+            resolve(results);
+        };
+
+        const deliverResult = (id, result) => {
+            if (settled) return;
+            if (results[id]) return;
+            results[id] = result;
+            completed++;
+            if (onProgress) onProgress(completed, sessions.length, result);
+            if (verbose) console.log(formatResult(result));
+            maybeResolve();
+        };
+
+        const assignNextTask = (state) => {
+            if (settled) return false;
+            if (nextTask >= indexed.length) {
+                state.task = null;
+                return false;
+            }
+            const task = indexed[nextTask++];
+            state.task = task;
+            if (Number.isInteger(sessionTimeoutMs) && sessionTimeoutMs > 0) {
+                clearTimeout(state.timer);
+                state.timer = setTimeout(() => {
+                    const timedOutTask = state.task;
+                    if (!timedOutTask || settled) return;
+                    state.terminatedForTimeout = true;
+                    clearTimeout(state.timer);
+                    state.timer = null;
+                    state.task = null;
+                    deliverResult(
+                        timedOutTask.index,
+                        createSessionTimeoutResult(timedOutTask.session, sessionTimeoutMs)
+                    );
+                    state.worker.terminate().catch(() => {});
+                    if (!settled && nextTask < indexed.length) spawnWorker();
+                }, sessionTimeoutMs);
+            }
+            state.worker.postMessage({
+                type: 'run',
+                id: task.index,
+                filePath: task.filePath,
+            });
+            return true;
+        };
+
+        const spawnWorker = () => {
+            if (settled) return;
+            const state = {
+                worker: new Worker(workerPath),
+                task: null,
+                timer: null,
+                terminatedForTimeout: false,
+            };
+            workerStates.add(state);
+
+            state.worker.on('message', (msg) => {
+                if (settled || msg.type !== 'result') return;
+                clearTimeout(state.timer);
+                state.timer = null;
+                state.task = null;
+                deliverResult(msg.id, msg.result);
+                assignNextTask(state);
             });
 
-            worker.on('error', reject);
+            state.worker.on('error', (error) => {
+                if (settled) return;
+                if (state.terminatedForTimeout) return;
+                reject(error);
+            });
 
-            // Start first task for this worker
-            if (nextTask < indexed.length) {
-                const task = indexed[nextTask++];
-                worker.postMessage({
-                    type: 'run',
-                    id: task.index,
-                    filePath: task.filePath,
-                });
-            }
-        }
+            state.worker.on('exit', () => {
+                workerStates.delete(state);
+            });
 
-        // Spawn workers
+            assignNextTask(state);
+        };
+
         const count = Math.min(numWorkers, sessions.length);
-        for (let i = 0; i < count; i++) {
-            spawnWorker();
-        }
-
-        // Handle empty sessions list
-        if (sessions.length === 0) {
-            resolve([]);
-        }
+        for (let i = 0; i < count; i++) spawnWorker();
+        if (sessions.length === 0) resolve([]);
     });
 }
 
@@ -872,7 +914,7 @@ export async function runSessionBundle({
     failFast = false,
     parallel = availableParallelism(),
     onProgress = null,
-    sessionTimeoutMs = null,
+    sessionTimeoutMs = 10000,
 } = {}) {
     const sessions = loadAllSessions({
         sessionsDir: SESSIONS_DIR,
@@ -889,8 +931,8 @@ export async function runSessionBundle({
         if (sessionPath) console.log(`Single session: ${sessionPath}`);
         if (useGolden) console.log(`Using golden branch: ${goldenBranch}`);
         if (parallel > 0) console.log(`Parallel workers: ${parallel}`);
-        if (sessions.length === 1 && Number.isInteger(sessionTimeoutMs) && sessionTimeoutMs > 0) {
-            console.log(`Single-session timeout: ${sessionTimeoutMs}ms`);
+        if (Number.isInteger(sessionTimeoutMs) && sessionTimeoutMs > 0) {
+            console.log(`Per-session timeout: ${sessionTimeoutMs}ms`);
         }
         console.log(`Loaded sessions: ${sessions.length}`);
     }
@@ -902,15 +944,15 @@ export async function runSessionBundle({
             numWorkers: parallel,
             verbose,
             onProgress,
+            sessionTimeoutMs,
         });
     } else {
         // Run sequentially
         results = [];
-        const useSingleSessionTimeout = sessions.length === 1
-            && Number.isInteger(sessionTimeoutMs)
+        const useSessionTimeout = Number.isInteger(sessionTimeoutMs)
             && sessionTimeoutMs > 0;
         for (const session of sessions) {
-            const result = useSingleSessionTimeout
+            const result = useSessionTimeout
                 ? await runSingleSessionWithTimeout(session, sessionTimeoutMs)
                 : await runSessionResult(session);
             results.push(result);
@@ -944,7 +986,7 @@ export async function runSessionCli() {
         sessionPath: null,
         failFast: false,
         parallel: availableParallelism(),
-        sessionTimeoutMs: null,
+        sessionTimeoutMs: 10000,
     };
     const argv = process.argv.slice(2);
     for (let i = 0; i < argv.length; i++) {
@@ -981,10 +1023,6 @@ export async function runSessionCli() {
         } else if (!args.sessionPath) {
             args.sessionPath = arg;
         }
-    }
-
-    if (args.sessionPath && !(Number.isInteger(args.sessionTimeoutMs) && args.sessionTimeoutMs > 0)) {
-        args.sessionTimeoutMs = 10000;
     }
 
     const goldenBranch = process.env.GOLDEN_BRANCH || 'golden';

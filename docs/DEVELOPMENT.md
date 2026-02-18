@@ -67,6 +67,7 @@ npm run test:all
 Timeout policy (hang detection):
 - `npm run test:unit` enforces a `1000ms` timeout per unit test.
 - Single-session replay runs (`node test/comparison/session_test_runner.js <session>`) enforce a `10000ms` timeout per session by default.
+- `session_test_runner` runs the full selected set by default; add `--fail-fast` only when you explicitly want to stop on first failure.
 
 ### Session Tests In Detail
 

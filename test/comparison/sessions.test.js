@@ -220,6 +220,7 @@ describe('Session Tests', () => {
             bundle = await runSessionBundle({
                 verbose: false,
                 useGolden: false,
+                failFast: false,
                 onProgress(done, total, result) {
                     if (isTTY) {
                         const elapsed = ((Date.now() - suiteStartMs) / 1000).toFixed(1);
