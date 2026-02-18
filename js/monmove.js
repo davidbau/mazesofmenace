@@ -1017,7 +1017,7 @@ function dochug(mon, map, player, display, fov, game = null) {
             // Inside condition block: m_move (routes to dog_move for tame)
             // C ref: monmove.c:911 — m_move() for all monsters in this path
             const omx = mon.mx, omy = mon.my;
-            dog_move(mon, map, player, display, fov);
+            dog_move(mon, map, player, display, fov, false, game);
             if (!mon.dead && (mon.mx !== omx || mon.my !== omy)) {
                 mintrap_postmove(mon, map);
             }
@@ -1248,7 +1248,7 @@ function pet_ranged_attk(mon, map, player, display, game = null) {
 
 // C ref: dogmove.c dog_move() — full pet movement logic
 // Returns: -2 (skip), 0 (stay), 1 (moved), 2 (moved+ate)
-function dog_move(mon, map, player, display, fov, after = false) {
+function dog_move(mon, map, player, display, fov, after = false, game = null) {
     const omx = mon.mx, omy = mon.my;
     // C ref: hack.h #define distu(xx,yy) dist2(xx,yy,u.ux,u.uy)
     const udist = dist2(omx, omy, player.x, player.y);
@@ -1511,11 +1511,14 @@ function dog_move(mon, map, player, display, fov, after = false) {
                     const roll = rnd(20 + ai); // C ref: mhitm.c mattackm to-hit roll
                     const toHit = (target.mac ?? 10) + (mon.mlevel || 1);
                     const hit = toHit > roll;
+                    const monVisible = fov?.canSee ? fov.canSee(mon.mx, mon.my) : couldsee(map, player, mon.mx, mon.my);
+                    const targetVisible = fov?.canSee ? fov.canSee(target.mx, target.my) : couldsee(map, player, target.mx, target.my);
+                    const mmVisible = monVisible && targetVisible;
                     if (hit) {
                         anyHit = true;
-                        const targetVisible = couldsee(map, player, target.mx, target.my);
-                        const suppressDetail = !!player.displacedPetThisTurn;
-                        if (display && mon.name && target.name && targetVisible && !suppressDetail) {
+                        const suppressDetail = !!player.displacedPetThisTurn
+                            || game?.occupation?.occtxt === 'searching';
+                        if (display && mon.name && target.name && mmVisible && !suppressDetail) {
                             display.putstr_message(`The ${mon.name} ${attackVerb(attk?.type)} the ${target.name}.`);
                         }
                         const dice = (attk && attk.dice) ? attk.dice : 1;
@@ -1535,7 +1538,7 @@ function dog_move(mon, map, player, display, fov, after = false) {
                                 target.minvent = [];
                             }
                             target.dead = true;
-                            if (display && target.name) {
+                            if (display && target.name && mmVisible) {
                                 display.putstr_message(`The ${target.name} is killed!`);
                             }
                             if (petCorpseChanceRoll(target) === 0) {
@@ -1556,7 +1559,7 @@ function dog_move(mon, map, player, display, fov, after = false) {
                         }
                     } else {
                         consumePassivemmRng(mon, target, false, false);
-                        if (display && mon.name && target.name) {
+                        if (display && mon.name && target.name && mmVisible) {
                             display.putstr_message(`The ${mon.name} misses the ${target.name}.`);
                         }
                     }
