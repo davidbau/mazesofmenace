@@ -31,11 +31,44 @@ function normalizeRngEntries(entries, {
         });
 }
 
+// Build index mapping from normalized entries back to raw entries
+function buildIndexMap(entries, options) {
+    const list = Array.isArray(entries) ? entries : [];
+    const ignoreMidlog = options.ignoreMidlog !== false;
+    const ignoreComposite = options.ignoreComposite !== false;
+    const map = [];
+    for (let i = 0; i < list.length; i++) {
+        const stripped = stripRngSourceTag(list[i]);
+        if (!stripped) continue;
+        if (ignoreMidlog && isMidlogEntry(stripped)) continue;
+        if (ignoreComposite && isCompositeEntry(stripped)) continue;
+        map.push(i);
+    }
+    return map;
+}
+
+// Extract the call stack (recent >funcname entries) before a given raw index
+function extractCallStack(rawEntries, rawIndex, maxDepth = 3) {
+    const stack = [];
+    for (let i = rawIndex - 1; i >= 0 && stack.length < maxDepth; i--) {
+        const entry = rawEntries[i];
+        if (typeof entry === 'string' && entry.startsWith('>')) {
+            stack.unshift(entry); // prepend to maintain order
+        }
+    }
+    return stack;
+}
+
 export function compareRng(jsRng = [], expectedRng = [], options = {}) {
     const actual = normalizeRngEntries(jsRng, options);
     const expected = normalizeRngEntries(expectedRng, options);
+    // Keep original entries (with source locations) for display
+    const jsRaw = Array.isArray(jsRng) ? jsRng : [];
+    const sessionRaw = Array.isArray(expectedRng) ? expectedRng : [];
+    // Build index maps to find raw entries from normalized indices
+    const jsIndexMap = buildIndexMap(jsRng, options);
+    const sessionIndexMap = buildIndexMap(expectedRng, options);
     const total = Math.max(actual.length, expected.length);
-    const contextLines = options.contextLines || 3;
 
     let matched = 0;
     let firstDivergence = null;
@@ -46,20 +79,18 @@ export function compareRng(jsRng = [], expectedRng = [], options = {}) {
             continue;
         }
         if (!firstDivergence) {
-            const contextStart = Math.max(0, i - contextLines);
-            const contextEnd = Math.min(Math.max(actual.length, expected.length), i + contextLines + 1);
+            const jsRawIndex = jsIndexMap[i];
+            const sessionRawIndex = sessionIndexMap[i];
             firstDivergence = {
                 index: i,
                 js: actual[i],
                 session: expected[i],
-                contextBefore: {
-                    js: actual.slice(contextStart, i),
-                    session: expected.slice(contextStart, i),
-                },
-                contextAfter: {
-                    js: actual.slice(i + 1, contextEnd),
-                    session: expected.slice(i + 1, contextEnd),
-                },
+                // Include original entries with source locations
+                jsRaw: jsRawIndex !== undefined ? jsRaw[jsRawIndex] : undefined,
+                sessionRaw: sessionRawIndex !== undefined ? sessionRaw[sessionRawIndex] : undefined,
+                // Include call stack context (recent >funcname entries)
+                jsStack: jsRawIndex !== undefined ? extractCallStack(jsRaw, jsRawIndex) : [],
+                sessionStack: sessionRawIndex !== undefined ? extractCallStack(sessionRaw, sessionRawIndex) : [],
             };
         }
     }

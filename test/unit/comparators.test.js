@@ -23,17 +23,16 @@ describe('comparators.compareRng', () => {
         assert.equal(result.firstDivergence, null);
     });
 
-    it('captures first divergence and context', () => {
-        const result = compareRng(
-            ['rn2(10)=1', 'rn2(10)=2', 'rn2(10)=3', 'rn2(10)=4'],
-            ['rn2(10)=1', 'rn2(10)=9', 'rn2(10)=3', 'rn2(10)=4'],
-            { contextLines: 1 }
-        );
+    it('captures first divergence with raw entries', () => {
+        const jsEntries = ['rn2(10)=1 @ foo.c:1', 'rn2(10)=2 @ foo.c:2', 'rn2(10)=3 @ foo.c:3'];
+        const sessionEntries = ['rn2(10)=1 @ bar.c:1', 'rn2(10)=9 @ bar.c:2', 'rn2(10)=3 @ bar.c:3'];
+        const result = compareRng(jsEntries, sessionEntries);
         assert.equal(result.firstDivergence.index, 1);
         assert.equal(result.firstDivergence.js, 'rn2(10)=2');
         assert.equal(result.firstDivergence.session, 'rn2(10)=9');
-        assert.deepEqual(result.firstDivergence.contextBefore.js, ['rn2(10)=1']);
-        assert.deepEqual(result.firstDivergence.contextAfter.js, ['rn2(10)=3']);
+        // Raw entries include source locations
+        assert.equal(result.firstDivergence.jsRaw, 'rn2(10)=2 @ foo.c:2');
+        assert.equal(result.firstDivergence.sessionRaw, 'rn2(10)=9 @ bar.c:2');
     });
 });
 

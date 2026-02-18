@@ -35,32 +35,26 @@ async function loadTypeResults(type) {
     }
 }
 
-function formatContext(contextBefore, contextAfter, jsVal, sessionVal) {
-    const lines = [];
-    // Show context before (last 3 matching calls)
-    if (contextBefore?.js?.length > 0) {
-        const before = contextBefore.js.slice(-3);
-        lines.push(`  before: ${before.join(' → ')}`);
-    }
-    // Show the divergence point
-    lines.push(`  js:      ${jsVal || '(missing)'}`);
-    lines.push(`  session: ${sessionVal || '(missing)'}`);
-    // Show context after (next 3 calls)
-    if (contextAfter?.js?.length > 0) {
-        const after = contextAfter.js.slice(0, 3);
-        lines.push(`  after:  ${after.join(' → ')}`);
-    }
-    return lines.join('\n');
+function formatCallStack(stack) {
+    if (!stack || stack.length === 0) return '';
+    // Format: >innermost >outer >outermost (reverse order for display)
+    return ' ' + stack.map(s => s.split(' @ ')[0]).reverse().join(' ');
+}
+
+function formatRngEntry(raw, stack) {
+    if (!raw) return '(missing)';
+    // Append call stack to the raw entry: rn2(5)=3 @ foo.c:32 >inner >outer
+    const stackStr = formatCallStack(stack);
+    return raw + stackStr;
 }
 
 function stringifyFirstDivergence(first) {
     if (!first) return null;
     if (first.channel === 'rng') {
         const header = `rng divergence at step=${first.step ?? 'n/a'} index=${first.index ?? 'n/a'}`;
-        if (first.contextBefore || first.contextAfter) {
-            return `${header}\n${formatContext(first.contextBefore, first.contextAfter, first.js ?? first.actual, first.session ?? first.expected)}`;
-        }
-        return `${header}: js=${first.js ?? first.actual ?? ''} session=${first.session ?? first.expected ?? ''}`;
+        const jsVal = formatRngEntry(first.jsRaw || first.js || first.actual, first.jsStack);
+        const sessionVal = formatRngEntry(first.sessionRaw || first.session || first.expected, first.sessionStack);
+        return `${header}\n  js:      ${jsVal}\n  session: ${sessionVal}`;
     }
     if (first.channel === 'screen') {
         return `screen divergence at step=${first.step ?? 'n/a'} row=${first.row ?? 'n/a'}\n  js:      ${JSON.stringify(first.js ?? '')}\n  session: ${JSON.stringify(first.session ?? '')}`;
