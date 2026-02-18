@@ -2121,6 +2121,10 @@ async function handleEat(player, display, game) {
 
         if (reqtime > 1) {
             const finishEatingAfterTurn = (gameCtx) => {
+                // C ref: eat.c done_eating()/useup() effects become visible after
+                // the final turn's monster actions. Keep inventory removal in this
+                // post-turn hook rather than during occupation fn().
+                consumeInventoryItem();
                 if (isCorpse && corpseTasteIdx !== null) {
                     const tastes = ['okay', 'stringy', 'gamey', 'fatty', 'tough'];
                     const idx = Math.max(0, Math.min(tastes.length - 1, corpseTasteIdx));
@@ -2159,9 +2163,6 @@ async function handleEat(player, display, game) {
                 fn: () => {
                     usedtime++;
                     if (usedtime >= reqtime) {
-                        // Consume inventory food before movement on the final turn;
-                        // C done_eating()/useup() runs during eatfood() before movemon.
-                        consumeInventoryItem();
                         return 0; // done
                     }
                     doBite();

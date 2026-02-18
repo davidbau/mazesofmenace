@@ -42,7 +42,7 @@ describe('eat occupation timing', () => {
         clearInputQueue();
     });
 
-    it('removes inventory food when occupation finishes (before post-turn callbacks)', async () => {
+    it('removes inventory food in the post-turn finish hook', async () => {
         const game = makeGame();
         const ration = game.player.inventory[0];
         pushInput('d'.charCodeAt(0));
@@ -53,23 +53,28 @@ describe('eat occupation timing', () => {
         assert.ok(game.player.inventory.includes(ration), 'food should remain during ongoing occupation');
 
         let sawContinue = false;
-        let removedOnDone = false;
+        let removedInFinishHook = false;
 
         while (game.occupation) {
+            const occ = game.occupation;
             const hadBefore = game.player.inventory.includes(ration);
-            const cont = game.occupation.fn();
+            const cont = occ.fn();
             const hasAfter = game.player.inventory.includes(ration);
             if (cont) {
                 sawContinue = true;
                 assert.ok(hasAfter, 'food should still be present on non-final occupation turns');
             } else {
-                removedOnDone = hadBefore && !hasAfter;
+                assert.ok(hadBefore && hasAfter, 'food should remain through final occupation tick');
                 game.occupation = null;
+                if (typeof occ.onFinishAfterTurn === 'function') {
+                    occ.onFinishAfterTurn(game);
+                }
+                removedInFinishHook = !game.player.inventory.includes(ration);
             }
         }
 
         assert.ok(sawContinue, 'food ration should require multiple occupation turns');
-        assert.ok(removedOnDone, 'food should be removed on the finishing occupation turn');
+        assert.ok(removedInFinishHook, 'food should be removed by the finish hook');
     });
 
     it('keeps split stack piece in inventory until eating finishes', async () => {
@@ -88,8 +93,14 @@ describe('eat occupation timing', () => {
         assert.equal(splitPiece.quan, 1);
 
         while (game.occupation) {
-            const cont = game.occupation.fn();
-            if (!cont) game.occupation = null;
+            const occ = game.occupation;
+            const cont = occ.fn();
+            if (!cont) {
+                game.occupation = null;
+                if (typeof occ.onFinishAfterTurn === 'function') {
+                    occ.onFinishAfterTurn(game);
+                }
+            }
         }
 
         assert.equal(game.player.inventory.length, 1, 'split piece should be removed on completion');
