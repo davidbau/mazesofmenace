@@ -2,6 +2,8 @@
 
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { availableParallelism } from 'node:os';
+import { Worker } from 'node:worker_threads';
 
 import {
     replaySession,
@@ -581,7 +583,7 @@ async function runSpecialResult(session) {
     return result;
 }
 
-async function runSessionResult(session) {
+export async function runSessionResult(session) {
     if (session.meta.type === 'chargen') return runChargenResult(session);
     if (session.meta.type === 'interface' && session.meta.regen?.subtype === 'chargen') {
         return runChargenResult(session);
@@ -592,6 +594,68 @@ async function runSessionResult(session) {
     return runGameplayResult(session);
 }
 
+async function runSessionsParallel(sessions, { numWorkers, verbose }) {
+    const workerPath = join(__dirname, 'session_worker.js');
+    const results = new Array(sessions.length);
+    let nextIndex = 0;
+    let completed = 0;
+
+    return new Promise((resolve, reject) => {
+        const workers = [];
+
+        function spawnWorker() {
+            const worker = new Worker(workerPath);
+            workers.push(worker);
+
+            worker.on('message', (msg) => {
+                if (msg.type === 'result') {
+                    results[msg.id] = msg.result;
+                    completed++;
+                    if (verbose) {
+                        console.log(formatResult(msg.result));
+                    }
+                    // Send next task or finish
+                    if (nextIndex < sessions.length) {
+                        const idx = nextIndex++;
+                        worker.postMessage({
+                            type: 'run',
+                            id: idx,
+                            filePath: join(sessions[idx].dir, sessions[idx].file),
+                        });
+                    } else if (completed === sessions.length) {
+                        // All done - terminate workers
+                        workers.forEach((w) => w.postMessage({ type: 'exit' }));
+                        resolve(results);
+                    }
+                }
+            });
+
+            worker.on('error', reject);
+
+            // Start first task for this worker
+            if (nextIndex < sessions.length) {
+                const idx = nextIndex++;
+                worker.postMessage({
+                    type: 'run',
+                    id: idx,
+                    filePath: join(sessions[idx].dir, sessions[idx].file),
+                });
+            }
+        }
+
+        // Spawn workers
+        const count = Math.min(numWorkers, sessions.length);
+        for (let i = 0; i < count; i++) {
+            spawnWorker();
+        }
+
+        // Handle empty sessions list
+        if (sessions.length === 0) {
+            resolve([]);
+        }
+    });
+}
+
 export async function runSessionBundle({
     verbose = false,
     useGolden = false,
@@ -599,6 +663,7 @@ export async function runSessionBundle({
     typeFilter = null,
     sessionPath = null,
     failFast = false,
+    parallel = 0,
 } = {}) {
     const sessions = loadAllSessions({
         sessionsDir: SESSIONS_DIR,
@@ -614,17 +679,28 @@ export async function runSessionBundle({
         if (typeFilter) console.log(`Type filter: ${String(typeFilter)}`);
         if (sessionPath) console.log(`Single session: ${sessionPath}`);
         if (useGolden) console.log(`Using golden branch: ${goldenBranch}`);
+        if (parallel > 0) console.log(`Parallel workers: ${parallel}`);
         console.log(`Loaded sessions: ${sessions.length}`);
     }
 
-    const results = [];
-    for (const session of sessions) {
-        const result = await runSessionResult(session);
-        results.push(result);
-        if (verbose) console.log(formatResult(result));
-        if (failFast && result.passed !== true) {
-            if (verbose) console.log(`Fail-fast: stopping after ${result.session}`);
-            break;
+    let results;
+    if (parallel > 0 && !failFast && sessions.length > 1) {
+        // Run in parallel using worker threads
+        results = await runSessionsParallel(sessions, {
+            numWorkers: parallel,
+            verbose,
+        });
+    } else {
+        // Run sequentially
+        results = [];
+        for (const session of sessions) {
+            const result = await runSessionResult(session);
+            results.push(result);
+            if (verbose) console.log(formatResult(result));
+            if (failFast && result.passed !== true) {
+                if (verbose) console.log(`Fail-fast: stopping after ${result.session}`);
+                break;
+            }
         }
     }
 
@@ -649,6 +725,7 @@ export async function runSessionCli() {
         typeFilter: null,
         sessionPath: null,
         failFast: false,
+        parallel: 0,
     };
     const argv = process.argv.slice(2);
     for (let i = 0; i < argv.length; i++) {
@@ -656,10 +733,21 @@ export async function runSessionCli() {
         if (arg === '--verbose') args.verbose = true;
         else if (arg === '--golden') args.useGolden = true;
         else if (arg === '--fail-fast') args.failFast = true;
+        else if (arg === '--parallel') args.parallel = availableParallelism();
+        else if (arg.startsWith('--parallel=')) {
+            const val = arg.slice('--parallel='.length);
+            args.parallel = val === 'auto' ? availableParallelism() : parseInt(val, 10);
+        }
         else if (arg === '--type' && argv[i + 1]) args.typeFilter = argv[++i];
         else if (arg.startsWith('--type=')) args.typeFilter = arg.slice('--type='.length);
         else if (arg === '--help' || arg === '-h') {
-            console.log('Usage: node session_test_runner.js [--verbose] [--golden] [--fail-fast] [--type type1,type2] [session-file]');
+            console.log('Usage: node session_test_runner.js [options] [session-file]');
+            console.log('Options:');
+            console.log('  --verbose         Show detailed output');
+            console.log('  --parallel[=N]    Run with N workers (default: auto-detect CPU count)');
+            console.log('  --fail-fast       Stop on first failure');
+            console.log('  --type=TYPE       Filter by session type (chargen,gameplay,etc)');
+            console.log('  --golden          Compare against golden branch');
             process.exit(0);
         } else if (arg.startsWith('--')) {
             throw new Error(`Unknown argument: ${arg}`);
@@ -676,6 +764,7 @@ export async function runSessionCli() {
         typeFilter: args.typeFilter,
         sessionPath: args.sessionPath,
         failFast: args.failFast,
+        parallel: args.parallel,
     });
     console.log('\n__RESULTS_JSON__');
     console.log(JSON.stringify(bundle));
