@@ -30,6 +30,12 @@ Recommended parent/child pattern:
 - Child issues track concrete implementation/test/doc tasks.
 - Parent includes a checklist linking child issues.
 
+## Issue Hygiene
+
+- Run periodic issue triage (`gh issue list --state open`) to keep tracking current.
+- Close obsolete or superseded issues with a clear reason in the closing comment.
+- When new information is discovered, update the relevant issue immediately (body, labels, and status comment).
+
 ## Landing the Plane (Session Completion)
 
 **When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.

@@ -174,3 +174,7 @@ Milestones use a hybrid model: phase completion + parity gates + release-timing 
 6. Enforce execution discipline.
    - Default rule: do not move an issue to `In Progress` while declared blockers are open.
    - Exception: if a blocker link is stale/incorrect, opportunistic work is allowed; update the dependency links/labels as part of that work.
+7. Keep issue tracking clean and current.
+   - Perform periodic triage reviews of open issues.
+   - Close obsolete/canceled issues explicitly with a short rationale.
+   - Update issue descriptions/comments promptly when new evidence changes scope, root cause, or priority.
