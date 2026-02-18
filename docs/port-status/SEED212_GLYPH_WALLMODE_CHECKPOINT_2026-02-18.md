@@ -48,6 +48,8 @@ After this change:
 - RNG first divergence remains at step 37 index 8:
   - JS: `rn2(20)=13`
   - C:  `rn2(32)=25`
+- Detailed follow-up diagnosis and C-source confirmation:
+  `docs/port-status/SEED212_MMOVE_STEP37_FINDINGS_2026-02-18.md`
 - The startup color mismatch noted during this checkpoint was resolved later
   the same day; see
   `docs/port-status/SEED212_HIMETAL_COLOR_CHECKPOINT_2026-02-18.md`.

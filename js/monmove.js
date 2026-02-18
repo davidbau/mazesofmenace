@@ -1934,7 +1934,7 @@ function dog_move(mon, map, player, display, fov, after = false, game = null) {
     // C ref: dogmove.c:1063-1072
     for (let i = 0; i < cnt; i++) {
         const nx = positions[i].x, ny = positions[i].y;
-        if (map.monsterAt(nx, ny) && !positions[i].allowM && !positions[i].allowMdisp) {
+        if (map.monsterAt(nx, ny) && !positions[i].allowM && !positions[i].allowMDisp) {
             continue;
         }
         if (cursed_object_at(map, nx, ny)) continue;
