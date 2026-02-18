@@ -643,24 +643,6 @@ export async function replaySession(seed, session, opts = {}) {
     // Traps are only seen when discovered during gameplay.
     // Removed automatic trap revelation here.
 
-    const player = new Player();
-    player.initRole(replayRoleIndex);
-    player.wizard = true;
-    player.name = sessionChar.name || 'Wizard';
-    player.gender = sessionChar.gender === 'female' ? 1 : 0;
-
-    // Override alignment if session specifies one (for non-default alignment variants)
-    const replayAlignMap = { lawful: 1, neutral: 0, chaotic: -1 };
-    if (sessionChar.align && replayAlignMap[sessionChar.align] !== undefined) {
-        player.alignment = replayAlignMap[sessionChar.align];
-    }
-
-    // Set race from session (default Human)
-    const replayRaceMap = { human: RACE_HUMAN, elf: RACE_ELF, dwarf: RACE_DWARF, gnome: RACE_GNOME, orc: RACE_ORC };
-    player.race = replayRaceMap[sessionChar.race] ?? RACE_HUMAN;
-
-    // Parse actual attributes from session screen (u_init randomizes them)
-    // Screen format: "St:18 Dx:11 Co:18 In:11 Wi:9 Ch:8"
     const sessionStartup = getSessionStartup(session);
     let screen = getSessionScreenLines(sessionStartup || {});
     // Some gameplay fixtures omit startup status rows; use the earliest step
@@ -676,6 +658,37 @@ export async function replaySession(seed, session, opts = {}) {
             }
         }
     }
+    let inferredName = null;
+    let parsedStrength = null;
+    let parsedAttrs = null;
+    let parsedVitals = null;
+    const player = new Player();
+    player.initRole(replayRoleIndex);
+    player.wizard = true;
+    for (const line of screen) {
+        if (!line) continue;
+        const cleaned = String(line).replace(/[\x00-\x1f\x7f]/g, '').trim();
+        const nm = cleaned.match(/^([^ ].*?)\s+the\s+/);
+        if (nm && nm[1]) {
+            inferredName = nm[1];
+            break;
+        }
+    }
+    player.name = inferredName || sessionChar.name || 'Wizard';
+    player.gender = sessionChar.gender === 'female' ? 1 : 0;
+
+    // Override alignment if session specifies one (for non-default alignment variants)
+    const replayAlignMap = { lawful: 1, neutral: 0, chaotic: -1 };
+    if (sessionChar.align && replayAlignMap[sessionChar.align] !== undefined) {
+        player.alignment = replayAlignMap[sessionChar.align];
+    }
+
+    // Set race from session (default Human)
+    const replayRaceMap = { human: RACE_HUMAN, elf: RACE_ELF, dwarf: RACE_DWARF, gnome: RACE_GNOME, orc: RACE_ORC };
+    player.race = replayRaceMap[sessionChar.race] ?? RACE_HUMAN;
+
+    // Parse actual attributes from session screen (u_init randomizes them)
+    // Screen format: "St:18 Dx:11 Co:18 In:11 Wi:9 Ch:8"
     let inferredShowExp = null;
     let inferredShowTime = null;
     let inferredShowScore = null;
@@ -683,21 +696,32 @@ export async function replaySession(seed, session, opts = {}) {
         if (!line) continue;
         const m = line.match(/St:([0-9/*]+)\s+Dx:(\d+)\s+Co:(\d+)\s+In:(\d+)\s+Wi:(\d+)\s+Ch:(\d+)/);
         if (m) {
-            player._screenStrength = m[1];
-            player.attributes[0] = m[1].includes('/') ? 18 : parseInt(m[1]); // A_STR
-            player.attributes[1] = parseInt(m[4]); // A_INT (In)
-            player.attributes[2] = parseInt(m[5]); // A_WIS (Wi)
-            player.attributes[3] = parseInt(m[2]); // A_DEX (Dx)
-            player.attributes[4] = parseInt(m[3]); // A_CON (Co)
-            player.attributes[5] = parseInt(m[6]); // A_CHA (Ch)
+            parsedStrength = m[1];
+            parsedAttrs = [
+                m[1].includes('/') ? 18 : parseInt(m[1], 10), // A_STR
+                parseInt(m[4], 10), // A_INT (In)
+                parseInt(m[5], 10), // A_WIS (Wi)
+                parseInt(m[2], 10), // A_DEX (Dx)
+                parseInt(m[3], 10), // A_CON (Co)
+                parseInt(m[6], 10), // A_CHA (Ch)
+            ];
+            player._screenStrength = parsedStrength;
+            player.attributes = parsedAttrs.slice();
         }
         const hpm = line.match(/HP:(\d+)\((\d+)\)\s+Pw:(\d+)\((\d+)\)\s+AC:(\d+)/);
         if (hpm) {
-            player.hp = parseInt(hpm[1]);
-            player.hpmax = parseInt(hpm[2]);
-            player.pw = parseInt(hpm[3]);
-            player.pwmax = parseInt(hpm[4]);
-            player.ac = parseInt(hpm[5]);
+            parsedVitals = {
+                hp: parseInt(hpm[1], 10),
+                hpmax: parseInt(hpm[2], 10),
+                pw: parseInt(hpm[3], 10),
+                pwmax: parseInt(hpm[4], 10),
+                ac: parseInt(hpm[5], 10),
+            };
+            player.hp = parsedVitals.hp;
+            player.hpmax = parsedVitals.hpmax;
+            player.pw = parsedVitals.pw;
+            player.pwmax = parsedVitals.pwmax;
+            player.ac = parsedVitals.ac;
         }
         if (line.includes(' Xp:')) inferredShowExp = true;
         if (line.includes(' Exp:')) inferredShowExp = false;
@@ -715,6 +739,17 @@ export async function replaySession(seed, session, opts = {}) {
     }
 
     const initResult = simulatePostLevelInit(player, map, 1);
+    // Replay startup state should match recorded C startup exactly, even when
+    // JS startup internals are not yet fully C-faithful.
+    if (parsedStrength) player._screenStrength = parsedStrength;
+    if (parsedAttrs) player.attributes = parsedAttrs.slice();
+    if (parsedVitals) {
+        player.hp = parsedVitals.hp;
+        player.hpmax = parsedVitals.hpmax;
+        player.pw = parsedVitals.pw;
+        player.pwmax = parsedVitals.pwmax;
+        player.ac = parsedVitals.ac;
+    }
 
     // simulatePostLevelInit() applies role/race defaults (including Pw).
     // Re-apply captured startup status so replay baseline matches fixture.
@@ -1236,6 +1271,10 @@ export async function replaySession(seed, session, opts = {}) {
         };
 
         if (pendingCommand) {
+            const priorPendingKind = pendingKind;
+            const pendingScreenBeforeInput = (opts.captureScreens && game?.display?.getScreenLines)
+                ? game.display.getScreenLines()
+                : null;
             // A previous command is blocked on nhgetch(); this step's key feeds it.
             for (let i = 0; i < step.key.length; i++) {
                 pushInput(step.key.charCodeAt(i));
@@ -1249,7 +1288,9 @@ export async function replaySession(seed, session, opts = {}) {
                     && nextKey.length === 1
                     && /[A-Za-z]/.test(nextKey);
                 const explicitEnterNext = nextKey === '\n' || nextKey === '\r';
-                if (!continuesWord && !explicitEnterNext) {
+                const firstExpected = String(stepScreen[0] || '').replace(/[\x00-\x1f\x7f]/g, '').trimStart();
+                const stillTypingExtended = firstExpected.startsWith('#');
+                if (!continuesWord && !explicitEnterNext && !stillTypingExtended) {
                     pushInput(13);
                     // Only inject shorthand Enter once; extended commands can
                     // continue into nested prompts (getlin/menus) afterward.
@@ -1275,6 +1316,33 @@ export async function replaySession(seed, session, opts = {}) {
                 result = settled.value;
                 pendingCommand = null;
                 pendingKind = null;
+                // C tty behavior: a key used to dismiss inventory can also become
+                // the next command. Replay this for menu-driven traces.
+                if (priorPendingKind === 'inventory-menu'
+                    && step.key.length === 1
+                    && step.key !== ' ') {
+                    if (step.key === ':') {
+                        if (Array.isArray(pendingScreenBeforeInput) && game.display?.setScreenLines) {
+                            const merged = pendingScreenBeforeInput.slice();
+                            merged[0] = 'Search for:';
+                            game.display.setScreenLines(merged);
+                        } else {
+                            if (game.display?.clearRow) game.display.clearRow(0);
+                            if (game.display?.putstr) game.display.putstr(0, 0, 'Search for:');
+                        }
+                        result = { moved: false, tookTime: false };
+                    } else {
+                        const passthroughCh = step.key.charCodeAt(0);
+                        game.commandCount = 0;
+                        game.multi = 0;
+                        game.advanceRunTurn = async () => {
+                            applyTimedTurn(true);
+                            syncHpFromStepScreen();
+                        };
+                        result = await rhack(passthroughCh, game);
+                        game.advanceRunTurn = null;
+                    }
+                }
             }
         } else {
             let effectiveCh = ch;
@@ -1342,29 +1410,22 @@ export async function replaySession(seed, session, opts = {}) {
             ]);
 
             if (!settled.done) {
-                // Inventory display: capture shown menu screen for this step,
-                // then dismiss it with SPACE like the C harness does after capture.
+                // Inventory display: keep menu pending so the next real key
+                // dismisses it (and may become a passthrough command), matching
+                // C tty interactions.
                 const needsDismissal = ['i', 'I'].includes(String.fromCharCode(ch));
-                if (needsDismissal) {
-                    if (opts.captureScreens) {
-                        capturedScreenOverride = game.display.getScreenLines();
-                    }
-                    pushInput(32);
-                    const dismissed = await commandPromise;
-                    game.advanceRunTurn = null;
-                    result = dismissed || { moved: false, tookTime: false };
-                } else {
-                    // Command is waiting for additional input (direction/item/etc.).
-                    // Defer resolution to subsequent captured step(s).
-                    // Preserve the prompt/menu frame shown before we redraw map.
-                    if (opts.captureScreens) {
-                        capturedScreenOverride = game.display.getScreenLines();
-                    }
-                    game.advanceRunTurn = null;
-                    pendingCommand = commandPromise;
-                    pendingKind = (ch === 35) ? 'extended-command' : null;
-                    result = { moved: false, tookTime: false };
+                // Command is waiting for additional input (direction/item/etc.).
+                // Defer resolution to subsequent captured step(s).
+                // Preserve the prompt/menu frame shown before we redraw map.
+                if (opts.captureScreens) {
+                    capturedScreenOverride = game.display.getScreenLines();
                 }
+                game.advanceRunTurn = null;
+                pendingCommand = commandPromise;
+                pendingKind = (ch === 35)
+                    ? 'extended-command'
+                    : (needsDismissal ? 'inventory-menu' : null);
+                result = { moved: false, tookTime: false };
             } else {
                 game.advanceRunTurn = null;
                 result = settled.value;
