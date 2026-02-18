@@ -1284,7 +1284,9 @@ async function handleClose(player, map, display, game) {
     const c = String.fromCharCode(dirCh);
     const dir = DIRECTION_KEYS[c];
     if (!dir) {
-        display.putstr_message("Never mind.");
+        if (typeof display.clearRow === 'function') display.clearRow(0);
+        display.topMessage = null;
+        display.messageNeedsMore = false;
         return { moved: false, tookTime: false };
     }
 
@@ -1505,7 +1507,10 @@ async function handleDrop(player, map, display) {
         item.ox = player.x;
         item.oy = player.y;
         map.objects.push(item);
-        display.putstr_message(`You drop ${item.name}.`);
+        if (typeof display.clearRow === 'function') display.clearRow(0);
+        display.topMessage = null;
+        display.messageNeedsMore = false;
+        display.putstr_message(`You drop ${doname(item, null)}.`);
         return { moved: false, tookTime: true };
     }
 }
@@ -1770,8 +1775,13 @@ async function handleThrow(player, map, display) {
         display.putstr_message("You don't have anything to throw.");
         return { moved: false, tookTime: false };
     }
+    const throwChoices = compactInvletPromptChars(player.inventory.map((o) => o.invlet).join(''));
     while (true) {
-        display.putstr_message('What do you want to throw? [*]');
+        if (throwChoices) {
+            display.putstr_message(`What do you want to throw? [${throwChoices} or ?*]`);
+        } else {
+            display.putstr_message('What do you want to throw? [*]');
+        }
         const ch = await nhgetch();
         const c = String.fromCharCode(ch);
         if (ch === 27 || ch === 10 || ch === 13 || c === ' ') {
@@ -1952,18 +1962,21 @@ async function handleKnownSpells(player, display) {
         return { moved: false, tookTime: false };
     }
 
-    const lines = [' Currently known spells'];
+    const lines = ['Currently known spells'];
     for (const book of spellbooks) {
         const od = objectData[book.otyp];
         const spellName = od?.name || book.name || 'unknown spell';
-        lines.push(` ${book.invlet} - ${spellName}`);
+        lines.push(`${book.invlet} - ${spellName}`);
     }
     lines.push(' (end)');
+    // C spell menu uses a wide column layout; keep width comparable so
+    // tty overlay offset matches captured sessions.
+    const paddedLines = lines.map((line) => String(line).padEnd(65, ' '));
 
     if (typeof display.renderOverlayMenu === 'function') {
-        display.renderOverlayMenu(lines);
+        display.renderOverlayMenu(paddedLines);
     } else {
-        display.renderChargenMenu(lines, false);
+        display.renderChargenMenu(paddedLines, false);
     }
 
     while (true) {

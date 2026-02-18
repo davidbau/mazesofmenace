@@ -62,6 +62,6 @@ describe('known spells command', () => {
         const result = await rhack('+'.charCodeAt(0), game);
         assert.equal(result.tookTime, false);
         assert.ok(Array.isArray(game.display.lastOverlay));
-        assert.equal(game.display.lastOverlay[0], ' Currently known spells');
+        assert.ok(game.display.lastOverlay[0].startsWith('Currently known spells'));
     });
 });
