@@ -1,0 +1,44 @@
+{
+  "commit": "3000bb1",
+  "parent": "9083331",
+  "date": "2026-02-16T16:00:16-05:00",
+  "author": "David Bau",
+  "message": "Align level-transition/map parity: teleport arrival, mon_arrive ordering, makemon sleep gates, and midlog join/dig hooks",
+  "stats": {
+    "total": 359,
+    "pass": 292,
+    "fail": 67,
+    "skip": 0,
+    "duration": 6
+  },
+  "categories": {
+    "chargen": {
+      "total": 0,
+      "pass": 00,
+      "fail": 00
+    },
+    "gameplay": {
+      "total": 20,
+      "pass": 00,
+      "fail": 20
+    },
+    "map": {
+      "total": 9,
+      "pass": 00,
+      "fail": 9
+    },
+    "special": {
+      "total": 1,
+      "pass": 00,
+      "fail": 1
+    },
+    "unit": {
+      "total": 0,
+      "pass": 00,
+      "fail": 00
+    }
+  },
+  "regression": false,
+  "newTests": 0,
+  "backfilled": true
+}
