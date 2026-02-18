@@ -1,0 +1,44 @@
+{
+  "commit": "628b106",
+  "parent": "28b922f",
+  "date": "2026-02-16T04:21:00-05:00",
+  "author": "David Bau",
+  "message": "Session runner: classify interface_chargen results as chargen",
+  "stats": {
+    "total": 2002,
+    "pass": 545,
+    "fail": 1457,
+    "skip": 0,
+    "duration": 30
+  },
+  "categories": {
+    "chargen": {
+      "total": 181,
+      "pass": 179,
+      "fail": 2
+    },
+    "gameplay": {
+      "total": 59,
+      "pass": 21,
+      "fail": 38
+    },
+    "map": {
+      "total": 14,
+      "pass": 5,
+      "fail": 9
+    },
+    "special": {
+      "total": 51,
+      "pass": 50,
+      "fail": 1
+    },
+    "unit": {
+      "total": 0,
+      "pass": 00,
+      "fail": 00
+    }
+  },
+  "regression": false,
+  "newTests": 0,
+  "backfilled": true
+}
