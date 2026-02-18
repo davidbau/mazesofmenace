@@ -531,7 +531,7 @@ export class Display {
                 // S_hodoor (horizontal open door): '|' (walls E/W)
                 const isHorizontalDoor = this._isDoorHorizontal(gameMap, x, y);
                 return useDEC
-                    ? { ch: '\u00b7', color: CLR_BROWN }  // Middle dot for both in DECgraphics
+                    ? { ch: '\u2592', color: CLR_BROWN }  // DEC checkerboard (S_vodoor/S_hodoor)
                     : { ch: isHorizontalDoor ? '|' : '-', color: CLR_BROWN };
             } else if (loc.flags & D_CLOSED || loc.flags & D_LOCKED) {
                 return { ch: '+', color: CLR_BROWN };

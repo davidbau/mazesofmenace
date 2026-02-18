@@ -1205,14 +1205,15 @@ export class HeadlessDisplay {
         }
         this.topMessage = null; // Track current message for concatenation
         this.messages = []; // Message history
-        this.flags = { msg_window: false, DECgraphics: false, lit_corridor: false }; // Default flags
+        this.flags = { msg_window: false, DECgraphics: false, lit_corridor: false, color: true }; // Default flags
         this.messageNeedsMore = false; // For message concatenation
     }
 
     setCell(col, row, ch, color = CLR_GRAY, attr = 0) {
         if (row >= 0 && row < this.rows && col >= 0 && col < this.cols) {
             this.grid[row][col] = ch;
-            this.colors[row][col] = color;
+            const displayColor = (this.flags.color !== false) ? color : CLR_GRAY;
+            this.colors[row][col] = displayColor;
             this.attrs[row][col] = attr;
         }
     }
@@ -1703,7 +1704,7 @@ export class HeadlessDisplay {
                 // S_hodoor (horizontal open door): '|' (walls E/W)
                 const isHorizontalDoor = this._isDoorHorizontal(gameMap, x, y);
                 return useDEC
-                    ? { ch: '\u00b7', color: CLR_BROWN }  // Middle dot for both in DECgraphics
+                    ? { ch: '\u2592', color: CLR_BROWN }  // DEC checkerboard (S_vodoor/S_hodoor)
                     : { ch: isHorizontalDoor ? '|' : '-', color: CLR_BROWN };
             } else if (loc.flags & D_CLOSED || loc.flags & D_LOCKED) {
                 return { ch: '+', color: CLR_BROWN };

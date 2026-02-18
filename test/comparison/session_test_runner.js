@@ -59,6 +59,10 @@ function createReplayResult(session) {
     return result;
 }
 
+function sessionColorEnabled(session) {
+    return session?.meta?.options?.color === true;
+}
+
 function setFirstDivergence(result, channel, divergence) {
     if (!divergence) return;
     if (!result.firstDivergences) result.firstDivergences = {};
@@ -236,6 +240,7 @@ async function replayInterfaceSession(session) {
     const inGameInterface = subtype === 'options' || session.meta.options?.wizard === true;
     if (replaySessionInterface) {
         const replayFlags = { ...DEFAULT_FLAGS };
+        replayFlags.color = sessionColorEnabled(session);
         if (session.meta.options?.autopickup === false) replayFlags.pickup = false;
         const wantsDec = session.meta.options?.symset === 'DECgraphics';
         if (wantsDec) replayFlags.DECgraphics = true;
@@ -355,6 +360,7 @@ async function runGameplayResult(session) {
 
     try {
         const replayFlags = { ...DEFAULT_FLAGS };
+        replayFlags.color = sessionColorEnabled(session);
         // C harness gameplay captures default to concise messaging unless
         // verbose is explicitly set in session options.
         replayFlags.verbose = (session.meta.options?.verbose === true);

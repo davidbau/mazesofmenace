@@ -52,7 +52,7 @@ function terrainChar(loc) {
     const typ = loc.typ;
 
     if (typ === DOOR) {
-        if (loc.flags & D_ISOPEN) return '\u00b7';
+        if (loc.flags & D_ISOPEN) return '\u2592';
         if (loc.flags & (D_CLOSED | D_LOCKED)) return '+';
         return '\u00b7'; // doorway
     }
