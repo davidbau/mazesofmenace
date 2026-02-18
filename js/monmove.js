@@ -832,6 +832,7 @@ function dog_invent(mon, edog, udist, map, turnCount, display, player) {
 // Called from gameLoop after hero action, BEFORE mcalcmove.
 export function movemon(map, player, display, fov, game = null) {
     if (game) game._suppressMonsterHitMessagesThisTurn = false;
+    const turnCount = (player.turns || 0) + 1;
     let anyMoved;
     do {
         anyMoved = false;
@@ -842,6 +843,7 @@ export function movemon(map, player, display, fov, game = null) {
                 const oldy = mon.my;
                 const alreadySawMon = !!(game && game.occupation && couldsee(map, player, oldx, oldy));
                 mon.movement -= NORMAL_SPEED;
+                mon.mlstmv = turnCount;
                 anyMoved = true;
                 dochug(mon, map, player, display, fov, game);
                 // C ref: monmove.c dochugw() threat-notice interruption gate.
@@ -1565,10 +1567,27 @@ function dog_move(mon, map, player, display, fov, after = false) {
                     && target.mlstmv !== turnCount
                     && monnear(target, mon.mx, mon.my)) {
                     // C ref: dogmove.c retaliation uses mattackm(target, mon).
-                    // Keep a compact parity model: to-hit + optional damage path,
-                    // then passive-effect RNG on the defender.
-                    rnd(20);
-                    consumePassivemmRng(target, mon, false, false);
+                    const retaliateAttk = (Array.isArray(target.attacks) && target.attacks.length > 0)
+                        ? target.attacks.find((a) => a && a.type !== AT_NONE)
+                        : null;
+                    const dice = (retaliateAttk && retaliateAttk.dice) ? retaliateAttk.dice : 1;
+                    const sides = (retaliateAttk && retaliateAttk.sides) ? retaliateAttk.sides : 1;
+                    const roll = rnd(20);
+                    const toHit = (mon.mac ?? 10) + (target.mlevel || 1);
+                    const hit = toHit > roll;
+                    if (hit) {
+                        const dmg = c_d(Math.max(1, dice), Math.max(1, sides));
+                        rn2(3); // mhitm_knockback distance probe
+                        rn2(6); // mhitm_knockback chance probe
+                        mon.mhp -= Math.max(1, dmg);
+                        const monDied = mon.mhp <= 0;
+                        if (monDied) {
+                            mon.dead = true;
+                        }
+                        consumePassivemmRng(target, mon, true, monDied);
+                    } else {
+                        consumePassivemmRng(target, mon, false, false);
+                    }
                 }
                 return 0; // MMOVE_DONE-equivalent for this simplified path
             }
