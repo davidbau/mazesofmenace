@@ -960,8 +960,8 @@ function create_room_splev(x, y, w, h, xalign, yalign, rtype, rlit, depth, skipL
             return null;
         }
 
-        // Extract the last room that was added to map.rooms
-        const room = levelState.map.rooms[levelState.map.rooms.length - 1];
+        // Extract the last main room that was added by add_room_to_map().
+        const room = levelState.map.rooms[levelState.map.nroom - 1];
 
         // C ref: mklev.c - OROOM and THEMEROOM rooms get needfill=FILL_NORMAL
         const OROOM_LOCAL = 0;
@@ -3309,8 +3309,8 @@ export function room(opts = {}) {
                 return false;
             }
 
-            // Extract the room that was just added
-            const room = levelState.map.rooms[levelState.map.rooms.length - 1];
+            // Extract the room that was just added as the newest main room.
+            const room = levelState.map.rooms[levelState.map.nroom - 1];
 
             const OROOM_LOCAL = 0;
             const THEMEROOM_LOCAL = 1;
@@ -3420,8 +3420,8 @@ export function room(opts = {}) {
                 return false;
             }
 
-            // Extract the room that was just added
-            const room = levelState.map.rooms[levelState.map.rooms.length - 1];
+            // Extract the room that was just added as the newest main room.
+            const room = levelState.map.rooms[levelState.map.nroom - 1];
 
             // C ref: sp_lev.c lspo_room() — needfill defaults depend on context:
             // During themed room generation (in_mk_themerooms): default 0 (FILL_NONE)

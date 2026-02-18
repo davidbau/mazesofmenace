@@ -578,7 +578,13 @@ export function create_room(map, x, y, w, h, xal, yal, rtype, rlit, depth, inThe
 
             if (r1) {
                 const result = check_room(map, xabs, wtmp, yabs, htmp, vault, inThemerooms);
-                if (!result) r1 = null;
+                if (!result) {
+                    r1 = null;
+                } else {
+                    // C check_room() mutates xabs/yabs via pointer args here.
+                    xabs = result.lowx;
+                    yabs = result.lowy;
+                }
             }
 
             if (!r1) continue;
@@ -1670,15 +1676,9 @@ function okdoor(map, x, y) {
 function good_rm_wall_doorpos(map, x, y, dir, room) {
     if (!isok(x, y) || !room.needjoining) return false;
     const loc = map.at(x, y);
-    const strictWallLike = (loc.typ === HWALL || loc.typ === VWALL
-        || IS_DOOR(loc.typ) || loc.typ === SDOOR);
-    // C-parity fallback for irregular-room edge cases where JS wallification can
-    // leave corridor/floor on the sampled boundary; keep strict behavior for
-    // regular rooms to avoid over-placing doors.
-    if (!strictWallLike) {
-        if (!room.irregular || !(loc.typ === STONE || loc.typ === CORR))
-            return false;
-    }
+    if (!(loc.typ === HWALL || loc.typ === VWALL
+        || IS_DOOR(loc.typ) || loc.typ === SDOOR))
+        return false;
     if (bydoor(map, x, y)) return false;
 
     const tx = x + xdir[dir];
