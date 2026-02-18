@@ -87,6 +87,22 @@ export function getSessionScreenLines(screenHolder) {
     return [];
 }
 
+export function getSessionScreenAnsiLines(screenHolder) {
+    if (Array.isArray(screenHolder?.screenAnsi)) {
+        return screenHolder.screenAnsi.map((line) => String(line || ''));
+    }
+    if (Array.isArray(screenHolder?.screen)) {
+        return screenHolder.screen.map((line) => String(line || ''));
+    }
+    if (typeof screenHolder?.screenAnsi === 'string') {
+        return screenHolder.screenAnsi.split('\n').map((line) => String(line || ''));
+    }
+    if (typeof screenHolder?.screen === 'string') {
+        return screenHolder.screen.split('\n').map((line) => String(line || ''));
+    }
+    return [];
+}
+
 // ---------------------------------------------------------------------------
 // Session format helpers (v3 format only)
 // ---------------------------------------------------------------------------
@@ -613,6 +629,7 @@ export async function replaySession(seed, session, opts = {}) {
     const sessionChar = getSessionCharacter(session);
     const replayRoleIndex = ROLE_INDEX[sessionChar.role] ?? 11;
     const firstStepScreen = getSessionScreenLines(session.steps?.[0] || {});
+    const firstStepScreenAnsi = getSessionScreenAnsiLines(session.steps?.[0] || {});
     const tutorialPromptStartup = isTutorialPromptScreen(firstStepScreen)
         && (session?.type === 'interface' || opts.replayMode === 'interface');
 
@@ -813,7 +830,12 @@ export async function replaySession(seed, session, opts = {}) {
     let inTutorialPrompt = tutorialPromptStartup;
     let pendingTutorialStart = false;
     if (inTutorialPrompt && firstStepScreen.length > 0) {
-        game.display.setScreenLines(firstStepScreen);
+        if (firstStepScreenAnsi.length > 0
+            && typeof game.display?.setScreenAnsiLines === 'function') {
+            game.display.setScreenAnsiLines(firstStepScreenAnsi);
+        } else {
+            game.display.setScreenLines(firstStepScreen);
+        }
     }
 
     // Replay each step
@@ -974,6 +996,17 @@ export async function replaySession(seed, session, opts = {}) {
         game.map._replayStepIndex = stepIndex;
         const prevCount = getRngLog().length;
         const stepScreen = getSessionScreenLines(step);
+        const stepScreenAnsi = getSessionScreenAnsiLines(step);
+        const applyStepScreen = () => {
+            if (stepScreenAnsi.length > 0
+                && typeof game.display?.setScreenAnsiLines === 'function') {
+                game.display.setScreenAnsiLines(stepScreenAnsi);
+                return;
+            }
+            if (stepScreen.length > 0) {
+                game.display.setScreenLines(stepScreen);
+            }
+        };
         if (isTutorialPromptScreen(stepScreen)) {
             inTutorialPrompt = true;
         }
@@ -1047,7 +1080,7 @@ export async function replaySession(seed, session, opts = {}) {
             && ((step.rng && step.rng.length) || 0) === 0;
 
         if (isCapturedDipPrompt && !pendingCommand) {
-            game.display.setScreenLines(stepScreen);
+            applyStepScreen();
             pushStepResult(
                 [],
                 opts.captureScreens ? game.display.getScreenLines() : undefined,
@@ -1063,9 +1096,7 @@ export async function replaySession(seed, session, opts = {}) {
         if (!pendingCommand
             && (stepMsg.includes('--More--'))
             && ((step.rng && step.rng.length) || 0) === 0) {
-            if (stepScreen.length > 0) {
-                game.display.setScreenLines(stepScreen);
-            }
+            applyStepScreen();
             pushStepResult(
                 [],
                 opts.captureScreens ? game.display.getScreenLines() : undefined,
@@ -1084,9 +1115,7 @@ export async function replaySession(seed, session, opts = {}) {
             && deferredMoreBoundaryTarget === stepIndex
             && step.action === 'key-'
             && step.key === ' ') {
-            if (stepScreen.length > 0) {
-                game.display.setScreenLines(stepScreen);
-            }
+            applyStepScreen();
             pushStepResult(
                 [],
                 opts.captureScreens ? game.display.getScreenLines() : undefined,
@@ -1130,18 +1159,14 @@ export async function replaySession(seed, session, opts = {}) {
                     pendingTutorialStart = true;
                 }
                 inTutorialPrompt = false;
-                if (stepScreen.length > 0) {
-                    game.display.setScreenLines(stepScreen);
-                }
+                applyStepScreen();
             } else if (key === 'n') {
                 pendingTutorialStart = false;
                 inTutorialPrompt = false;
-                if (stepScreen.length > 0) {
-                    game.display.setScreenLines(stepScreen);
-                }
-            } else if (stepScreen.length > 0) {
+                applyStepScreen();
+            } else if (stepScreen.length > 0 || stepScreenAnsi.length > 0) {
                 // Keep the yes/no prompt UI visible across ignored keys.
-                game.display.setScreenLines(stepScreen);
+                applyStepScreen();
             }
 
             const fullLog = getRngLog();

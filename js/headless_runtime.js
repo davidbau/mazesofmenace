@@ -1478,6 +1478,73 @@ export class HeadlessDisplay {
         }
     }
 
+    // Overwrite terminal grid from ANSI-colored session lines.
+    setScreenAnsiLines(lines) {
+        this.clearScreen();
+        const src = Array.isArray(lines) ? lines : [];
+        for (let r = 0; r < this.rows && r < src.length; r++) {
+            const line = String(src[r] || '');
+            let i = 0;
+            let col = 0;
+            let fg = CLR_GRAY;
+            let attr = 0; // bit1=inverse, bit2=bold, bit4=underline
+
+            const applySgr = (codes) => {
+                const list = codes.length ? codes : [0];
+                for (const code of list) {
+                    if (code === 0) {
+                        fg = CLR_GRAY;
+                        attr = 0;
+                    } else if (code === 1) attr |= 2;
+                    else if (code === 4) attr |= 4;
+                    else if (code === 7) attr |= 1;
+                    else if (code === 22) attr &= ~2;
+                    else if (code === 24) attr &= ~4;
+                    else if (code === 27) attr &= ~1;
+                    else if (code >= 30 && code <= 37) fg = code - 30;
+                    else if (code >= 90 && code <= 97) fg = 8 + (code - 90);
+                    else if (code === 39) fg = CLR_GRAY;
+                }
+            };
+
+            while (i < line.length && col < this.cols) {
+                const ch = line[i];
+                if (ch === '\x0e' || ch === '\x0f') {
+                    i++;
+                    continue;
+                }
+                if (ch === '\x1b' && line[i + 1] === '[') {
+                    let j = i + 2;
+                    while (j < line.length && !/[A-Za-z]/.test(line[j])) j++;
+                    if (j < line.length) {
+                        const cmd = line[j];
+                        const body = line.slice(i + 2, j);
+                        if (cmd === 'm') {
+                            const codes = body.length === 0
+                                ? [0]
+                                : body.split(';')
+                                    .map((s) => Number.parseInt(s || '0', 10))
+                                    .filter((n) => Number.isFinite(n));
+                            applySgr(codes);
+                        } else if (cmd === 'C') {
+                            const n = Math.max(1, Number.parseInt(body || '1', 10) || 1);
+                            for (let k = 0; k < n && col < this.cols; k++, col++) {
+                                this.setCell(col, r, ' ', fg, attr);
+                            }
+                        }
+                        i = j + 1;
+                        continue;
+                    }
+                }
+                if (ch !== '\r' && ch !== '\n') {
+                    this.setCell(col, r, ch, fg, attr);
+                    col++;
+                }
+                i++;
+            }
+        }
+    }
+
     // Return 24-line attribute array matching session format
     // Each line is 80 chars where each char is an attribute code:
     // '0' = normal, '1' = inverse, '2' = bold, '4' = underline

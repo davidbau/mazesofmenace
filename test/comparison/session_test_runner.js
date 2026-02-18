@@ -60,7 +60,8 @@ function createReplayResult(session) {
 }
 
 function sessionColorEnabled(session) {
-    return session?.meta?.options?.color === true;
+    // C interface captures default to color enabled unless explicitly disabled.
+    return session?.meta?.options?.color !== false;
 }
 
 function setFirstDivergence(result, channel, divergence) {
