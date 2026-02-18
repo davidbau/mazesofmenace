@@ -680,7 +680,8 @@ export async function replaySession(seed, session, opts = {}) {
     // Removed automatic trap revelation here.
 
     const sessionStartup = getSessionStartup(session);
-    let screen = getSessionScreenLines(sessionStartup || {});
+    const startupScreen = getSessionScreenLines(sessionStartup || {});
+    let screen = startupScreen;
     // Some gameplay fixtures omit startup status rows; use the earliest step
     // that includes status lines so replayed baseline attrs/Pw match C capture.
     const hasStatusLine = (lines) => Array.isArray(lines)
@@ -835,6 +836,14 @@ export async function replaySession(seed, session, opts = {}) {
             game.display.setScreenAnsiLines(firstStepScreenAnsi);
         } else {
             game.display.setScreenLines(firstStepScreen);
+        }
+    } else if (startupScreen.length > 0) {
+        // Preserve startup topline so first-step count-prefix digits keep the
+        // same C-visible message state without forcing startup map rows.
+        const startupTopline = startupScreen[0] || '';
+        if (startupTopline.trim() !== ''
+            && typeof game.display?.putstr_message === 'function') {
+            game.display.putstr_message(startupTopline);
         }
     }
 
