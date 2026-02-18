@@ -43,8 +43,13 @@ async function loadData() {
       .filter(d => d !== null)
       .sort((a, b) => new Date(a.date) - new Date(b.date));
 
-    // Filter out entries with too few tests (incomplete worktree runs).
-    allData = parsed.filter(d => (d.stats?.total || 0) >= 10);
+    // Filter out entries with too few categorized tests (incomplete runs).
+    allData = parsed.filter(d => {
+      const cats = d.categories;
+      if (!cats) return false;
+      const sum = Object.values(cats).reduce((s, c) => s + (c.total || 0), 0);
+      return sum >= 10;
+    });
 
     if (allData.length === 0) {
       showError('No data found in results.jsonl');
