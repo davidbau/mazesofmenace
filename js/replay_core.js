@@ -1723,7 +1723,11 @@ export async function replaySession(seed, session, opts = {}) {
             }
         }
 
-        game.renderCurrentScreen();
+        // Keep prompt/menu frames visible while a command is still awaiting
+        // follow-up input (inventory, directions, item selectors, etc.).
+        if (!pendingCommand) {
+            game.renderCurrentScreen();
+        }
         if ((step.action === 'descend' || step.action === 'ascend') && stepScreen.length > 0) {
             const capturedMsg = (stepScreen[0] || '').trimEnd();
             const currentMsg = ((game.display.getScreenLines?.() || [])[0] || '').trimEnd();

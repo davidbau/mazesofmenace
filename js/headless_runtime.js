@@ -125,7 +125,7 @@ function normalizeRace(race, fallback = RACE_HUMAN) {
 }
 
 export function buildInventoryLines(player) {
-    if (!player || player.inventory.length === 0) {
+    if (!player || (player.inventory.length === 0 && (player.gold || 0) <= 0)) {
         return ['Not carrying anything.'];
     }
 
@@ -138,6 +138,13 @@ export function buildInventoryLines(player) {
 
     const lines = [];
     for (const cls of INVENTORY_ORDER) {
+        if (cls === 11 && !groups[cls] && (player.gold || 0) > 0) {
+            const gold = player.gold || 0;
+            const goldLabel = gold === 1 ? 'gold piece' : 'gold pieces';
+            lines.push(' Coins');
+            lines.push(` $ - ${gold} ${goldLabel}`);
+            continue;
+        }
         if (!groups[cls]) continue;
         lines.push(` ${INVENTORY_CLASS_NAMES[cls] || 'Other'}`);
         for (const item of groups[cls]) {
@@ -1338,8 +1345,9 @@ export class HeadlessDisplay {
         }
         const offx = Math.max(10, Math.min(41, this.cols - maxcol - 2));
 
-        // Clear only the overlay area above status lines.
-        for (let r = 0; r < STATUS_ROW_1; r++) {
+        const menuRows = Math.min(lines.length, STATUS_ROW_1);
+        // C tty parity: clear only rows occupied by the menu itself.
+        for (let r = 0; r < menuRows; r++) {
             for (let c = offx; c < this.cols; c++) {
                 this.grid[r][c] = ' ';
                 this.colors[r][c] = CLR_GRAY;
@@ -1347,7 +1355,7 @@ export class HeadlessDisplay {
             }
         }
 
-        for (let i = 0; i < lines.length && i < STATUS_ROW_1; i++) {
+        for (let i = 0; i < menuRows; i++) {
             this.putstr(offx, i, lines[i], CLR_GRAY, 0);
         }
         return offx;

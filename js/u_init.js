@@ -1342,6 +1342,37 @@ function u_init_carry_attr_boost(player) {
     }
 }
 
+const STARTUP_BOW_LAUNCHERS = new Set([BOW, YUMI, ELVEN_BOW, ORCISH_BOW]);
+const STARTUP_ARROW_AMMO = new Set([ARROW, ELVEN_ARROW, ORCISH_ARROW, YA]);
+
+function hasStartupLauncher(player, launcherSet) {
+    return (player.inventory || []).some((item) =>
+        item?.oclass === WEAPON_CLASS && launcherSet.has(item.otyp));
+}
+
+function selectStartupQuiverItem(player) {
+    const inv = Array.isArray(player.inventory) ? player.inventory : [];
+
+    if (hasStartupLauncher(player, STARTUP_BOW_LAUNCHERS)) {
+        const arrow = inv.find((item) => STARTUP_ARROW_AMMO.has(item?.otyp));
+        if (arrow) return arrow;
+    }
+    if (inv.some((item) => item?.oclass === WEAPON_CLASS && item.otyp === CROSSBOW)) {
+        const bolt = inv.find((item) => item?.otyp === CROSSBOW_BOLT);
+        if (bolt) return bolt;
+    }
+    if (inv.some((item) => item?.oclass === WEAPON_CLASS && item.otyp === SLING)) {
+        const stone = inv.find((item) => item?.otyp === FLINT) || inv.find((item) => item?.otyp === ROCK);
+        if (stone) return stone;
+    }
+
+    const dart = inv.find((item) => item?.otyp === DART);
+    if (dart) return dart;
+
+    return inv.find((item) =>
+        item?.oclass === WEAPON_CLASS && (objectData[item.otyp]?.sub ?? 0) < 0) || null;
+}
+
 function equipInitialGear(player) {
     // C ref: worn.c setworn()/setuwep() during startup inventory setup.
     // Equip one armor piece per slot category and wield first usable melee weapon.
@@ -1353,6 +1384,7 @@ function equipInitialGear(player) {
     player.gloves = null;
     player.boots = null;
     player.cloak = null;
+    player.quiver = null;
 
     for (const item of player.inventory) {
         if (item.oclass !== ARMOR_CLASS) continue;
@@ -1401,6 +1433,8 @@ function equipInitialGear(player) {
             }
         }
     }
+
+    player.quiver = selectStartupQuiverItem(player);
 }
 
 // C ref: u_init.c ini_inv_use_obj() discovery side effects.

@@ -11,7 +11,7 @@ import {
     WAND_CLASS, COIN_CLASS, GEM_CLASS, ROCK_CLASS, BALL_CLASS,
     CHAIN_CLASS, VENOM_CLASS,
     IRON, COPPER, WOOD, PLASTIC, GLASS, DRAGON_HIDE, LIQUID,
-    ARROW, DART, ROCK,
+    ARROW, ELVEN_ARROW, ORCISH_ARROW, YA, CROSSBOW_BOLT, DART, FLINT, ROCK,
     GOLD_PIECE, DILITHIUM_CRYSTAL, LOADSTONE,
     WAN_CANCELLATION, WAN_LIGHT, WAN_LIGHTNING,
     BAG_OF_HOLDING, OILSKIN_SACK, BAG_OF_TRICKS, SACK,
@@ -942,6 +942,8 @@ function pluralizeName(name) {
     return makeplural(s);
 }
 
+const QUIVER_IN_QUIVER_TYPES = new Set([ARROW, ELVEN_ARROW, ORCISH_ARROW, YA, CROSSBOW_BOLT]);
+
 // C ref: objnam.c xname() (subset used by current JS engine)
 function xname_for_doname(obj, dknown = true, known = true, bknown = false) {
     const od = objectData[obj.otyp];
@@ -1047,6 +1049,8 @@ function xname_for_doname(obj, dknown = true, known = true, bknown = false) {
         base = od.name;
         break;
     }
+    // C uses gem-name logic that yields "flint stone(s)" for FLINT.
+    if (obj.otyp === FLINT) base = 'flint stone';
     if ((obj.quan || 1) !== 1) base = pluralizeName(base);
     return base;
 }
@@ -1114,6 +1118,14 @@ export function doname(obj, player) {
             }
         } else if (player.swapWeapon === obj) {
             result += ' (alternate weapon; not wielded)';
+        } else if (player.quiver === obj) {
+            if (obj.otyp === FLINT || obj.otyp === ROCK) {
+                result += ' (in quiver pouch)';
+            } else if (QUIVER_IN_QUIVER_TYPES.has(obj.otyp)) {
+                result += ' (in quiver)';
+            } else {
+                result += ' (at the ready)';
+            }
         } else if (
             player.armor === obj
             || player.shield === obj

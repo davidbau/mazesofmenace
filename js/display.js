@@ -786,14 +786,15 @@ export class Display {
         }
         const offx = Math.max(10, Math.min(41, this.cols - maxcol - 2));
 
-        // Clear only the overlay area above the status lines.
-        for (let r = 0; r < STATUS_ROW_1; r++) {
+        const menuRows = Math.min(lines.length, STATUS_ROW_1);
+        // C tty parity: clear only rows occupied by the menu itself.
+        for (let r = 0; r < menuRows; r++) {
             for (let c = offx; c < this.cols; c++) {
                 this.setCell(c, r, ' ', CLR_GRAY, 0);
             }
         }
 
-        for (let i = 0; i < lines.length && i < STATUS_ROW_1; i++) {
+        for (let i = 0; i < menuRows; i++) {
             this.putstr(offx, i, lines[i], CLR_WHITE, 0);
         }
         return offx;

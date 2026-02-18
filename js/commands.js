@@ -11,7 +11,7 @@ import { rn2, rnd, rnl, d, c_d } from './rng.js';
 import { exercise } from './attrib_exercise.js';
 import { objectData, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
          TOOL_CLASS, FOOD_CLASS, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS,
-         WAND_CLASS, COIN_CLASS, GEM_CLASS, ROCK_CLASS, CORPSE } from './objects.js';
+         WAND_CLASS, COIN_CLASS, GEM_CLASS, ROCK_CLASS, CORPSE, LANCE } from './objects.js';
 import { nhgetch, ynFunction, getlin } from './input.js';
 import { playerAttackMonster } from './combat.js';
 import { makemon, setMakemonPlayerContext } from './makemon.js';
@@ -189,6 +189,16 @@ export async function rhack(ch, game) {
         game.lastSafetyWarningMessage = '';
     }
 
+    // C ref: cmd.c do_rush()/do_run() prefix handling.
+    // If the next key after g/G is not a movement command, cancel prefix
+    // with a specific message instead of treating it as an unknown command.
+    if (game.runMode && c !== 'g' && c !== 'G' && ch !== 27) {
+        const prefix = game.runMode === 2 ? 'g' : 'G';
+        game.runMode = 0;
+        display.putstr_message(`The '${prefix}' prefix should be followed by a movement command.`);
+        return { moved: false, tookTime: false };
+    }
+
     function performWaitSearch(cmd) {
         // C ref: do.c cmd_safety_prevention() — prevent wait/search when hostile adjacent
         // only when not in counted-repeat mode.
@@ -306,6 +316,12 @@ export async function rhack(ch, game) {
         return await handleQuaff(player, map, display);
     }
 
+    // Apply / use item
+    // C ref: apply.c doapply()
+    if (c === 'a') {
+        return await handleApply(player, display);
+    }
+
     // Pay shopkeeper
     // C ref: shk.c dopay() -- full billing flow is not yet ported; preserve no-shopkeeper message.
     if (c === 'p') {
@@ -374,6 +390,21 @@ export async function rhack(ch, game) {
     // C ref: pager.c dohistory()
     if (c === 'V') {
         return await handleHistory(game);
+    }
+
+    // List known spells (+)
+    // C ref: spell.c dovspell()
+    if (c === '+') {
+        return await handleKnownSpells(player, display);
+    }
+
+    // Version (v)
+    // C ref: pager.c doversion()
+    if (c === 'v') {
+        if (typeof display.clearRow === 'function') display.clearRow(0);
+        display.topMessage = null;
+        display.messageNeedsMore = false;
+        return { moved: false, tookTime: false };
     }
 
     // Kick (Ctrl+D)
@@ -1284,7 +1315,7 @@ async function handleClose(player, map, display, game) {
 // Handle inventory display
 // C ref: invent.c ddoinv()
 async function handleInventory(player, display) {
-    if (player.inventory.length === 0) {
+    if (player.inventory.length === 0 && (player.gold || 0) <= 0) {
         display.putstr_message('Not carrying anything.');
         return { moved: false, tookTime: false };
     }
@@ -1307,6 +1338,13 @@ async function handleInventory(player, display) {
 
     const lines = [];
     for (const cls of INV_ORDER) {
+        if (cls === 11 && !groups[cls] && (player.gold || 0) > 0) {
+            const gold = player.gold || 0;
+            const goldLabel = gold === 1 ? 'gold piece' : 'gold pieces';
+            lines.push(' Coins');
+            lines.push(` $ - ${gold} ${goldLabel}`);
+            continue;
+        }
         if (!groups[cls]) continue;
         lines.push(` ${CLASS_NAMES[cls] || 'Other'}`);
         for (const item of groups[cls]) {
@@ -1322,7 +1360,17 @@ async function handleInventory(player, display) {
     } else {
         display.renderChargenMenu(lines, false);
     }
-    await nhgetch(); // wait for dismissal
+    // C tty/menu parity: inventory stays up until an explicit dismissal key.
+    // Non-dismiss keys can be consumed without closing the menu frame.
+    while (true) {
+        const ch = await nhgetch();
+        // C tty parity: inventory stays open through regular command keys;
+        // explicit dismissal is space or escape.
+        if (ch === 32 || ch === 27) break;
+    }
+    if (typeof display.clearRow === 'function') display.clearRow(0);
+    if (display && Object.hasOwn(display, 'topMessage')) display.topMessage = null;
+    if (display && Object.hasOwn(display, 'messageNeedsMore')) display.messageNeedsMore = false;
 
     return { moved: false, tookTime: false };
 }
@@ -1803,29 +1851,128 @@ async function handleQuaff(player, map, display) {
         return { moved: false, tookTime: false };
     }
 
-    display.putstr_message(`Drink what? [${potions.map(p => p.invlet).join('')}]`);
+    display.putstr_message(`What do you want to drink? [${potions.map(p => p.invlet).join('')} or ?*]`);
     const ch = await nhgetch();
     const c = String.fromCharCode(ch);
+    const replacePromptMessage = () => {
+        if (typeof display.clearRow === 'function') display.clearRow(0);
+        display.topMessage = null;
+        display.messageNeedsMore = false;
+    };
+
+    if (ch === 27 || ch === 10 || ch === 13 || c === ' ') {
+        replacePromptMessage();
+        display.putstr_message('Never mind.');
+        return { moved: false, tookTime: false };
+    }
+
+    const selected = player.inventory.find((obj) => obj.invlet === c);
+    if (selected && selected.oclass !== 7) {
+        replacePromptMessage();
+        display.putstr_message('That is a silly thing to drink.');
+        return { moved: false, tookTime: false };
+    }
 
     const item = potions.find(p => p.invlet === c);
     if (item) {
         player.removeFromInventory(item);
         // Simple potion effects
         if (item.name.includes('healing')) {
+            replacePromptMessage();
             const heal = c_d(4, 4) + 2;
             player.heal(heal);
             display.putstr_message(`You feel better. (${heal} HP restored)`);
         } else if (item.name.includes('extra healing')) {
+            replacePromptMessage();
             const heal = c_d(8, 4) + 4;
             player.heal(heal);
             display.putstr_message(`You feel much better. (${heal} HP restored)`);
         } else {
+            replacePromptMessage();
             display.putstr_message("Hmm, that tasted like water.");
         }
         return { moved: false, tookTime: true };
     }
 
+    replacePromptMessage();
     display.putstr_message("Never mind.");
+    return { moved: false, tookTime: false };
+}
+
+function isApplyCandidate(obj) {
+    if (!obj) return false;
+    // Lances are offered by C's apply prompt for one-handed use actions.
+    if (obj.otyp === LANCE) return true;
+    return obj.oclass === TOOL_CLASS;
+}
+
+// Handle apply/use command
+// C ref: apply.c doapply()
+async function handleApply(player, display) {
+    const candidates = (player.inventory || []).filter(isApplyCandidate);
+    if (candidates.length === 0) {
+        display.putstr_message("You don't have anything to use or apply.");
+        return { moved: false, tookTime: false };
+    }
+
+    const letters = candidates.map((item) => item.invlet).join('');
+    display.putstr_message(`What do you want to use or apply? [${letters} or ?*]`);
+    const replacePromptMessage = () => {
+        if (typeof display.clearRow === 'function') display.clearRow(0);
+        display.topMessage = null;
+        display.messageNeedsMore = false;
+    };
+
+    while (true) {
+        const ch = await nhgetch();
+        const c = String.fromCharCode(ch);
+
+        if (ch === 27 || ch === 10 || ch === 13 || c === ' ') {
+            replacePromptMessage();
+            display.putstr_message('Never mind.');
+            return { moved: false, tookTime: false };
+        }
+        if (c === '?' || c === '*') continue;
+
+        const selected = (player.inventory || []).find((obj) => obj.invlet === c);
+        if (!selected) continue;
+
+        replacePromptMessage();
+        display.putstr_message("Sorry, I don't know how to use that.");
+        return { moved: false, tookTime: false };
+    }
+}
+
+// Handle known-spells list
+// C ref: spell.c dovspell()
+async function handleKnownSpells(player, display) {
+    const spellbooks = (player.inventory || []).filter((obj) => obj.oclass === SPBOOK_CLASS);
+    if (spellbooks.length === 0) {
+        display.putstr_message("You don't know any spells right now.");
+        return { moved: false, tookTime: false };
+    }
+
+    const lines = [' Currently known spells'];
+    for (const book of spellbooks) {
+        const od = objectData[book.otyp];
+        const spellName = od?.name || book.name || 'unknown spell';
+        lines.push(` ${book.invlet} - ${spellName}`);
+    }
+    lines.push(' (end)');
+
+    if (typeof display.renderOverlayMenu === 'function') {
+        display.renderOverlayMenu(lines);
+    } else {
+        display.renderChargenMenu(lines, false);
+    }
+
+    while (true) {
+        const ch = await nhgetch();
+        if (ch === 32 || ch === 27 || ch === 10 || ch === 13) break;
+    }
+    if (typeof display.clearRow === 'function') display.clearRow(0);
+    display.topMessage = null;
+    display.messageNeedsMore = false;
     return { moved: false, tookTime: false };
 }
 

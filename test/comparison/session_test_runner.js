@@ -134,10 +134,22 @@ function compareInterfaceScreens(actualLines, expectedLines) {
 }
 
 function normalizeGameplayScreenLines(lines, session, { captured = false, prependCol0 = true } = {}) {
+    const isLikelyOverlayText = (line) => {
+        const text = String(line || '').trimStart();
+        if (!text) return false;
+        if (text.includes(' - ') || text.startsWith('(end)')) return true;
+        if (/^(Weapons|Armor|Rings|Amulets|Tools|Comestibles|Potions|Scrolls|Spellbooks|Wands|Coins|Gems\/Stones|Other)\b/.test(text)) {
+            return true;
+        }
+        return false;
+    };
+
     const decgraphics = session?.meta?.options?.symset === 'DECgraphics';
     return (Array.isArray(lines) ? lines : []).map((line, row) => {
         let out = String(line || '').replace(/\r$/, '').replace(/[\x0e\x0f]/g, '');
-        if (captured && prependCol0 && row >= 1 && row <= 21) out = ` ${out}`;
+        if (captured && prependCol0 && row >= 1 && row <= 21 && !isLikelyOverlayText(out)) {
+            out = ` ${out}`;
+        }
         if (decgraphics && row >= 1 && row <= 21) {
             out = normalizeSymsetLine(out, { decGraphics: true });
         }
@@ -166,8 +178,17 @@ function compareGameplayScreens(actualLines, expectedLines, session) {
 }
 
 function prependGameplayMapCol0(lines) {
+    const isLikelyOverlayText = (line) => {
+        const text = stripAnsiSequences(String(line || '')).trimStart();
+        if (!text) return false;
+        if (text.includes(' - ') || text.startsWith('(end)')) return true;
+        if (/^(Weapons|Armor|Rings|Amulets|Tools|Comestibles|Potions|Scrolls|Spellbooks|Wands|Coins|Gems\/Stones|Other)\b/.test(text)) {
+            return true;
+        }
+        return false;
+    };
     return (Array.isArray(lines) ? lines : []).map((line, row) => {
-        if (row >= 1 && row <= 21) return ` ${String(line || '')}`;
+        if (row >= 1 && row <= 21 && !isLikelyOverlayText(line)) return ` ${String(line || '')}`;
         return String(line || '');
     });
 }
