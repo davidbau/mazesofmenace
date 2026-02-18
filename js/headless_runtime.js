@@ -19,7 +19,7 @@ import { initLevelGeneration, makelevel, setGameSeed } from './dungeon.js';
 import { simulatePostLevelInit, mon_arrive } from './u_init.js';
 import { Player, rankOf, roles } from './player.js';
 import { rhack } from './commands.js';
-import { makemon } from './makemon.js';
+import { makemon, setMakemonPlayerContext } from './makemon.js';
 import { movemon, initrack, settrack } from './monmove.js';
 import { FOV } from './vision.js';
 import { getArrivalPosition } from './level_transition.js';
@@ -761,6 +761,7 @@ export class HeadlessGame {
         if (!rn2(70) && !(this.map?.flags?.nomongen) && !(this.map?.flags?.is_tutorial)) {
             // Spawn at random valid location; new monster misses its first turn
             // because movement allocation already happened above.
+            setMakemonPlayerContext(this.player);
             makemon(null, 0, 0, 0, this.player.dungeonLevel, this.map);
         }
 

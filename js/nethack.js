@@ -1599,6 +1599,7 @@ export class NetHackGame {
         // C ref: allmain.c:232-236 — occasionally spawn a new monster.
         // New monster spawns after movement allocation and therefore loses its first turn.
         if (!rn2(70) && !(this.map?.flags?.nomongen) && !(this.map?.flags?.is_tutorial)) {
+            setMakemonPlayerContext(this.player);
             makemon(null, 0, 0, 0, this.player.dungeonLevel, this.map);
         }
 

@@ -49,6 +49,12 @@ function attackVerb(type) {
     }
 }
 
+function monAttackName(mon) {
+    const name = String(mon?.name || 'monster');
+    const namedPet = !!(mon?.tame && !/(dog|cat|kitten|pony|horse)/i.test(name));
+    return namedPet ? name : `The ${name}`;
+}
+
 // ========================================================================
 // Player track — C ref: track.c
 // Circular buffer recording player positions for pet pathfinding.
@@ -1540,14 +1546,15 @@ function dog_move(mon, map, player, display, fov, after = false, game = null) {
                     const mmVisible = monVisible && targetVisible;
                     if (hit) {
                         anyHit = true;
-                        const suppressDetail = !!player.displacedPetThisTurn
-                            || game?.occupation?.occtxt === 'searching';
-                        if (display && mon.name && target.name && mmVisible && !suppressDetail) {
-                            display.putstr_message(`The ${mon.name} ${attackVerb(attk?.type)} the ${target.name}.`);
-                        }
                         const dice = (attk && attk.dice) ? attk.dice : 1;
                         const sides = (attk && attk.sides) ? attk.sides : 1;
                         const dmg = c_d(Math.max(1, dice), Math.max(1, sides));
+                        const willKill = (target.mhp - Math.max(1, dmg)) <= 0;
+                        const suppressDetail = (!!player.displacedPetThisTurn && !willKill)
+                            || (game?.occupation?.occtxt === 'searching' && !willKill);
+                        if (display && mon.name && target.name && mmVisible && !suppressDetail) {
+                            display.putstr_message(`${monAttackName(mon)} ${attackVerb(attk?.type)} the ${target.name}.`);
+                        }
                         // C ref: mhitm.c mdamagem() rolls damage before knockback RNG.
                         rn2(3);
                         rn2(6);
@@ -1568,6 +1575,8 @@ function dog_move(mon, map, player, display, fov, after = false, game = null) {
                             if (petCorpseChanceRoll(target) === 0
                                 && !(((target?.type?.geno || 0) & G_NOCORPSE) !== 0)) {
                                 const corpse = mkcorpstat(CORPSE, target.mndx || 0, true);
+                                // C ref: corpse age should reflect current move count.
+                                corpse.age = turnCount;
                                 corpse.ox = target.mx;
                                 corpse.oy = target.my;
                                 placeFloorObject(map, corpse);
@@ -1585,7 +1594,7 @@ function dog_move(mon, map, player, display, fov, after = false, game = null) {
                     } else {
                         consumePassivemmRng(mon, target, false, false);
                         if (display && mon.name && target.name && mmVisible) {
-                            display.putstr_message(`The ${mon.name} misses the ${target.name}.`);
+                            display.putstr_message(`${monAttackName(mon)} misses the ${target.name}.`);
                         }
                     }
                 }
@@ -1736,8 +1745,10 @@ function dog_move(mon, map, player, display, fov, after = false, game = null) {
 
         // C ref: dogmove.c:1324-1327 — eat after moving
         if (do_eat && eatObj) {
-            if (display && couldsee(map, player, mon.mx, mon.my)) {
-                display.putstr_message(`Your ${mon.name} eats ${doname(eatObj, null)}.`);
+            const sawPet = fov?.canSee ? fov.canSee(omx, omy) : couldsee(map, player, omx, omy);
+            const seeObj = fov?.canSee ? fov.canSee(mon.mx, mon.my) : couldsee(map, player, mon.mx, mon.my);
+            if (display && (sawPet || seeObj)) {
+                display.putstr_message(`${monAttackName(mon)} eats ${doname(eatObj, null)}.`);
             }
             dog_eat(mon, eatObj, map, turnCount);
         }
