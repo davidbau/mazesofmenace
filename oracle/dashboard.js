@@ -9,13 +9,10 @@ const GITHUB_REPO = 'https://github.com/davidbau/mazesofmenace';
 // State
 let allData = [];
 let filteredData = [];
-let currentView = 'sessions';
+let currentView = 'categories';
 let currentRange = 'all';
 let selectedCommit = null;
 let chart = null;
-
-// Session groups to show (toggleable)
-const SESSION_GROUPS = ['chargen', 'gameplay', 'selfplay', 'options', 'special'];
 
 // Chart colors - parchment-friendly palette
 const COLORS = {
@@ -25,31 +22,6 @@ const COLORS = {
   failFill: 'rgba(139, 44, 44, 0.25)',
   rate: 'rgba(44, 74, 107, 0.9)',
   rateFill: 'rgba(44, 74, 107, 0.15)',
-  // Session groups
-  chargen: 'rgba(74, 122, 74, 0.85)',
-  gameplay: 'rgba(138, 90, 74, 0.85)',
-  selfplay: 'rgba(122, 90, 122, 0.85)',
-  options: 'rgba(122, 122, 74, 0.85)',
-  special: 'rgba(90, 90, 138, 0.85)',
-  // Metrics
-  sessions: 'rgba(74, 122, 74, 0.9)',
-  steps: 'rgba(42, 107, 42, 0.9)',
-  rng: 'rgba(44, 74, 107, 0.9)',
-  screen: 'rgba(138, 90, 74, 0.9)',
-  // Code metrics
-  main: 'rgba(42, 107, 42, 0.85)',
-  test: 'rgba(44, 74, 107, 0.85)',
-  docs: 'rgba(122, 122, 74, 0.85)',
-  other: 'rgba(122, 90, 122, 0.85)',
-};
-
-// Group icons
-const GROUP_ICONS = {
-  chargen: '🧙',
-  gameplay: '🎮',
-  selfplay: '🤖',
-  options: '⚙️',
-  special: '🗺️',
 };
 
 // Load data
@@ -105,7 +77,6 @@ function updateDisplay() {
   updateChart();
   updateTable();
   updateCategoryBreakdown();
-  updateSessionBreakdown();
 }
 
 // Update summary stats
@@ -125,51 +96,6 @@ function updateStats() {
   // Code metrics from latest commit
   const mainLines = latest.codeMetrics?.main?.lines || 0;
   document.querySelector('#stat-lines .stat-value').textContent = mainLines.toLocaleString();
-}
-
-// Get enabled session groups
-function getEnabledGroups() {
-  return SESSION_GROUPS.filter(g => document.getElementById(`show-${g}`)?.checked);
-}
-
-// Aggregate session stats for enabled groups from a commit
-function getAggregatedStats(d) {
-  const enabledGroups = getEnabledGroups();
-
-  // Try new sessionGroups format first
-  if (d.sessionGroups) {
-    let sessions = 0, sessionsPassing = 0;
-    let steps = 0, stepsPassing = 0;
-    let rng = 0, rngPassing = 0;
-
-    for (const group of enabledGroups) {
-      const g = d.sessionGroups[group];
-      if (g) {
-        sessions += g.total || 0;
-        sessionsPassing += g.passing || 0;
-        steps += g.steps || 0;
-        stepsPassing += g.stepsPassing || 0;
-        rng += g.rng || 0;
-        rngPassing += g.rngPassing || 0;
-      }
-    }
-
-    return { sessions, sessionsPassing, steps, stepsPassing, rng, rngPassing };
-  }
-
-  // Fallback to old sessionStats format
-  if (d.sessionStats) {
-    return {
-      sessions: d.sessionStats.sessionsTotal || 0,
-      sessionsPassing: d.sessionStats.sessionsPassing || 0,
-      steps: d.sessionStats.stepsTotal || 0,
-      stepsPassing: d.sessionStats.stepsPassing || 0,
-      rng: d.sessionStats.rngTotal || 0,
-      rngPassing: d.sessionStats.rngPassing || 0,
-    };
-  }
-
-  return null;
 }
 
 // Update main chart
@@ -248,194 +174,33 @@ function updateChart() {
     }
 
   } else if (currentView === 'categories') {
-    const categories = ['unit', 'chargen', 'special', 'gameplay', 'map'];
+    const categories = ['gameplay', 'unit', 'chargen', 'special', 'map'];
+    const catColors = {
+      gameplay: 'rgba(139, 44, 44, 0.9)',
+      unit: 'rgba(44, 74, 107, 0.9)',
+      chargen: 'rgba(74, 122, 74, 0.9)',
+      special: 'rgba(122, 90, 122, 0.9)',
+      map: 'rgba(122, 122, 74, 0.9)',
+    };
     scales.y = {
+      title: { display: true, text: 'Failing Tests', color: '#6b5b4b' },
       ticks: { color: '#6b5b4b', font: { size: 10 } },
       grid: { color: 'rgba(196, 168, 130, 0.2)' },
     };
     categories.forEach(cat => {
       datasets.push({
         label: cat,
-        data: filteredData.map(d => d.categories?.[cat]?.pass || 0),
-        borderColor: COLORS[cat] || COLORS.pass,
-        borderWidth: 1,
-        fill: false,
-        tension: 0.1,
-        pointRadius: 1,
+        data: filteredData.map(d => d.categories?.[cat]?.fail ?? null),
+        borderColor: catColors[cat] || COLORS.fail,
+        backgroundColor: (catColors[cat] || COLORS.fail).replace('0.9', '0.1'),
+        borderWidth: 2,
+        fill: true,
+        tension: 0.3,
+        pointRadius: 2,
+        spanGaps: true,
       });
     });
 
-  } else if (currentView === 'sessions') {
-    // Session view with separate Y axes for sessions, steps, RNG, screen
-    const showSessions = document.getElementById('show-sessions')?.checked ?? true;
-    const showSteps = document.getElementById('show-steps')?.checked ?? true;
-    const showRng = document.getElementById('show-rng')?.checked ?? false;
-    const showScreen = document.getElementById('show-screen')?.checked ?? false;
-
-    // Calculate data for each metric
-    const sessionData = filteredData.map(d => getAggregatedStats(d));
-
-    let axisCount = 0;
-
-    // Sessions axis (left)
-    if (showSessions) {
-      scales.ySessions = {
-        type: 'linear',
-        position: 'left',
-        title: { display: true, text: 'Sessions', color: COLORS.sessions },
-        ticks: { color: COLORS.sessions, font: { size: 9 } },
-        grid: { color: 'rgba(196, 168, 130, 0.15)' },
-      };
-      datasets.push({
-        label: 'Sessions Passing',
-        data: sessionData.map(s => s?.sessionsPassing ?? null),
-        borderColor: COLORS.sessions,
-        backgroundColor: COLORS.sessions.replace('0.9', '0.2'),
-        borderWidth: 2,
-        fill: true,
-        tension: 0.3,
-        pointRadius: 3,
-        yAxisID: 'ySessions',
-        spanGaps: true,
-      });
-      axisCount++;
-    }
-
-    // Steps axis
-    if (showSteps) {
-      scales.ySteps = {
-        type: 'linear',
-        position: axisCount === 0 ? 'left' : 'right',
-        title: { display: true, text: 'Steps', color: COLORS.steps },
-        ticks: { color: COLORS.steps, font: { size: 9 } },
-        grid: { display: axisCount === 0 },
-      };
-      datasets.push({
-        label: 'Steps Passing',
-        data: sessionData.map(s => s?.stepsPassing ?? null),
-        borderColor: COLORS.steps,
-        backgroundColor: COLORS.steps.replace('0.9', '0.15'),
-        borderWidth: 2,
-        fill: true,
-        tension: 0.3,
-        pointRadius: 3,
-        yAxisID: 'ySteps',
-        spanGaps: true,
-      });
-      axisCount++;
-    }
-
-    // RNG axis
-    if (showRng) {
-      scales.yRng = {
-        type: 'linear',
-        position: 'right',
-        title: { display: true, text: 'RNG Calls', color: COLORS.rng },
-        ticks: { color: COLORS.rng, font: { size: 9 } },
-        grid: { display: false },
-      };
-      datasets.push({
-        label: 'RNG Matching',
-        data: sessionData.map(s => s?.rngPassing ?? null),
-        borderColor: COLORS.rng,
-        backgroundColor: COLORS.rng.replace('0.9', '0.1'),
-        borderWidth: 2,
-        fill: true,
-        tension: 0.3,
-        pointRadius: 3,
-        yAxisID: 'yRng',
-        spanGaps: true,
-      });
-      axisCount++;
-    }
-
-    // Screen axis (placeholder for now)
-    if (showScreen) {
-      scales.yScreen = {
-        type: 'linear',
-        position: 'right',
-        title: { display: true, text: 'Screen', color: COLORS.screen },
-        ticks: { color: COLORS.screen, font: { size: 9 } },
-        grid: { display: false },
-      };
-      // Screen data not yet implemented - use steps as placeholder
-      datasets.push({
-        label: 'Screen Matching',
-        data: sessionData.map(s => s?.stepsPassing ?? null),
-        borderColor: COLORS.screen,
-        borderWidth: 2,
-        borderDash: [5, 5],
-        fill: false,
-        tension: 0.3,
-        pointRadius: 2,
-        yAxisID: 'yScreen',
-        spanGaps: true,
-      });
-    }
-
-  } else if (currentView === 'code') {
-    // Code metrics view
-    const showMain = document.getElementById('show-main')?.checked ?? true;
-    const showTest = document.getElementById('show-test')?.checked ?? true;
-    const showDocs = document.getElementById('show-docs')?.checked ?? false;
-    const showOther = document.getElementById('show-other')?.checked ?? false;
-
-    scales.y = {
-      type: 'linear',
-      position: 'left',
-      title: { display: true, text: 'Lines of Code' },
-      ticks: { color: '#6b5b4b', font: { size: 10 } },
-      grid: { color: 'rgba(196, 168, 130, 0.2)' },
-    };
-
-    if (showMain) {
-      datasets.push({
-        label: 'Main Code',
-        data: filteredData.map(d => d.codeMetrics?.main?.lines || 0),
-        borderColor: COLORS.main,
-        backgroundColor: COLORS.main.replace('0.85', '0.2'),
-        borderWidth: 2,
-        fill: true,
-        tension: 0.3,
-        pointRadius: 2,
-      });
-    }
-    if (showTest) {
-      datasets.push({
-        label: 'Test Code',
-        data: filteredData.map(d => d.codeMetrics?.test?.lines || 0),
-        borderColor: COLORS.test,
-        backgroundColor: COLORS.test.replace('0.85', '0.2'),
-        borderWidth: 2,
-        fill: true,
-        tension: 0.3,
-        pointRadius: 2,
-      });
-    }
-    if (showDocs) {
-      datasets.push({
-        label: 'Documentation',
-        data: filteredData.map(d => d.codeMetrics?.docs?.lines || 0),
-        borderColor: COLORS.docs,
-        backgroundColor: COLORS.docs.replace('0.85', '0.2'),
-        borderWidth: 2,
-        fill: true,
-        tension: 0.3,
-        pointRadius: 2,
-      });
-    }
-    if (showOther) {
-      datasets.push({
-        label: 'Other',
-        data: filteredData.map(d => d.codeMetrics?.other?.lines || 0),
-        borderColor: COLORS.other,
-        backgroundColor: COLORS.other.replace('0.85', '0.2'),
-        borderWidth: 2,
-        fill: true,
-        tension: 0.3,
-        pointRadius: 2,
-      });
-    }
   }
 
   // Common x-axis
@@ -663,80 +428,6 @@ function updateCategoryBreakdown() {
   grid.innerHTML = html;
 }
 
-// Update session breakdown with grouped sessions
-function updateSessionBreakdown() {
-  const latest = filteredData[filteredData.length - 1];
-  const list = document.getElementById('session-list');
-
-  if (!latest?.sessionGroups) {
-    list.innerHTML = '<div style="color:#777;font-style:italic;">No session data available</div>';
-    return;
-  }
-
-  let html = '';
-
-  // Show each group
-  for (const group of SESSION_GROUPS) {
-    const g = latest.sessionGroups[group];
-    if (!g || g.total === 0) continue;
-
-    const icon = GROUP_ICONS[group] || '📋';
-    const pct = g.total > 0 ? Math.round(g.passing / g.total * 100) : 0;
-    const isEnabled = document.getElementById(`show-${group}`)?.checked;
-    const enabledClass = isEnabled ? '' : 'disabled';
-
-    html += `<div class="session-group ${enabledClass}">
-      <div class="session-group-header" onclick="toggleGroupExpand('${group}')">
-        <span class="group-icon">${icon}</span>
-        <span class="group-name">${group}</span>
-        <span class="group-stats">${g.passing}/${g.total} sessions (${pct}%)</span>
-        <span class="group-expand" id="expand-${group}">▶</span>
-      </div>
-      <div class="session-group-details" id="details-${group}" style="display:none;">`;
-
-    // Session metrics for this group
-    if (g.steps > 0) {
-      const stepPct = Math.round(g.stepsPassing / g.steps * 100);
-      html += `<div class="group-metric"><span>Steps:</span> ${g.stepsPassing.toLocaleString()}/${g.steps.toLocaleString()} (${stepPct}%)</div>`;
-    }
-    if (g.rng > 0) {
-      const rngPct = Math.round(g.rngPassing / g.rng * 100);
-      html += `<div class="group-metric"><span>RNG:</span> ${g.rngPassing.toLocaleString()}/${g.rng.toLocaleString()} (${rngPct}%)</div>`;
-    }
-
-    // Individual sessions
-    if (g.sessions && g.sessions.length > 0) {
-      html += `<div class="session-items">`;
-      for (const session of g.sessions) {
-        const status = session.status === 'pass' ? 'pass' : 'fail';
-        const statusIcon = session.status === 'pass' ? '✓' : '✗';
-        html += `<div class="session-item ${status}">
-          <span class="session-status">${statusIcon}</span>
-          <span class="session-name">${session.name}</span>
-        </div>`;
-      }
-      html += `</div>`;
-    }
-
-    html += `</div></div>`;
-  }
-
-  list.innerHTML = html;
-}
-
-// Toggle group expansion
-function toggleGroupExpand(group) {
-  const details = document.getElementById(`details-${group}`);
-  const expand = document.getElementById(`expand-${group}`);
-  if (details.style.display === 'none') {
-    details.style.display = 'block';
-    expand.textContent = '▼';
-  } else {
-    details.style.display = 'none';
-    expand.textContent = '▶';
-  }
-}
-
 // Event listeners
 document.querySelectorAll('.view-btn').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -747,18 +438,10 @@ document.querySelectorAll('.view-btn').forEach(btn => {
     // Show/hide breakdown sections
     document.getElementById('category-breakdown').style.display =
       currentView === 'categories' ? 'block' : 'none';
-    document.getElementById('session-breakdown').style.display =
-      currentView === 'sessions' ? 'block' : 'none';
 
     // Show/hide appropriate controls
     document.getElementById('test-controls').style.display =
       currentView === 'tests' ? 'flex' : 'none';
-    document.getElementById('session-controls').style.display =
-      currentView === 'sessions' ? 'flex' : 'none';
-    document.getElementById('session-metrics-controls').style.display =
-      currentView === 'sessions' ? 'flex' : 'none';
-    document.getElementById('code-controls').style.display =
-      currentView === 'code' ? 'flex' : 'none';
 
     updateChart();
   });
@@ -778,23 +461,6 @@ document.querySelectorAll('#show-pass, #show-fail, #show-rate').forEach(cb => {
   cb.addEventListener('change', updateChart);
 });
 
-// Session view controls (groups)
-document.querySelectorAll('#show-chargen, #show-gameplay, #show-selfplay, #show-options, #show-special').forEach(cb => {
-  cb.addEventListener('change', () => {
-    updateChart();
-    updateSessionBreakdown();
-  });
-});
-
-// Session view controls (metrics)
-document.querySelectorAll('#show-sessions, #show-steps, #show-rng, #show-screen').forEach(cb => {
-  cb.addEventListener('change', updateChart);
-});
-
-// Code view controls
-document.querySelectorAll('#show-main, #show-test, #show-docs, #show-other').forEach(cb => {
-  cb.addEventListener('change', updateChart);
-});
 
 document.getElementById('zoom-reset').addEventListener('click', () => {
   if (chart) {

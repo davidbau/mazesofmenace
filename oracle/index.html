@@ -44,9 +44,7 @@
       <div class="control-group">
         <span class="control-label">View:</span>
         <button class="view-btn" data-view="tests">Tests</button>
-        <button class="view-btn" data-view="categories">Categories</button>
-        <button class="view-btn active" data-view="sessions">Sessions</button>
-        <button class="view-btn" data-view="code">Code</button>
+        <button class="view-btn active" data-view="categories">Categories</button>
       </div>
       <div class="control-group">
         <span class="control-label">Range:</span>
@@ -65,54 +63,6 @@
           <input type="checkbox" id="show-rate"> Rate %
         </label>
       </div>
-      <div class="control-group" id="session-controls">
-        <span class="control-label">Groups:</span>
-        <label class="checkbox-label">
-          <input type="checkbox" id="show-chargen" checked> Chargen
-        </label>
-        <label class="checkbox-label">
-          <input type="checkbox" id="show-gameplay" checked> Gameplay
-        </label>
-        <label class="checkbox-label">
-          <input type="checkbox" id="show-selfplay" checked> Selfplay
-        </label>
-        <label class="checkbox-label">
-          <input type="checkbox" id="show-options" checked> Options
-        </label>
-        <label class="checkbox-label">
-          <input type="checkbox" id="show-special" checked> Special
-        </label>
-      </div>
-      <div class="control-group" id="session-metrics-controls">
-        <span class="control-label">Metrics:</span>
-        <label class="checkbox-label">
-          <input type="checkbox" id="show-sessions" checked> Sessions
-        </label>
-        <label class="checkbox-label">
-          <input type="checkbox" id="show-steps" checked> Steps
-        </label>
-        <label class="checkbox-label">
-          <input type="checkbox" id="show-rng"> RNG
-        </label>
-        <label class="checkbox-label">
-          <input type="checkbox" id="show-screen"> Screen
-        </label>
-      </div>
-      <div class="control-group" id="code-controls" style="display:none;">
-        <span class="control-label">Metrics:</span>
-        <label class="checkbox-label">
-          <input type="checkbox" id="show-main" checked> Main
-        </label>
-        <label class="checkbox-label">
-          <input type="checkbox" id="show-test" checked> Test
-        </label>
-        <label class="checkbox-label">
-          <input type="checkbox" id="show-docs"> Docs
-        </label>
-        <label class="checkbox-label">
-          <input type="checkbox" id="show-other"> Other
-        </label>
-      </div>
       <div class="control-group zoom-controls">
         <button id="zoom-reset" title="Reset zoom">⟲</button>
         <span class="zoom-hint">Drag to zoom, scroll to pan</span>
@@ -127,16 +77,11 @@
     </section>
 
     <!-- Category Breakdown (shown when Categories view active) -->
-    <section class="breakdown-section" id="category-breakdown" style="display: none;">
-      <h2>Category Breakdown <span class="section-hint">(The Oracle knows all categories)</span></h2>
+    <section class="breakdown-section" id="category-breakdown">
+      <h2>Failures by Category <span class="section-hint">(The Oracle knows what remains)</span></h2>
       <div class="category-grid" id="category-grid"></div>
     </section>
 
-    <!-- Session Coverage (shown when Sessions view active) -->
-    <section class="breakdown-section" id="session-breakdown">
-      <h2>Session Coverage <span class="section-hint">(Seek ye truth in every session)</span></h2>
-      <div class="session-list" id="session-list"></div>
-    </section>
 
     <!-- Commit Table -->
     <section class="table-section">
