@@ -338,6 +338,17 @@ movement are aligned.
 Practical rule: when screen divergence appears on an item-action frame, diff
 the exact action list and row-clearing behavior before touching turn logic.
 
+### M2_COLLECT does not imply gold-targeting in monster item search
+
+In C `mon_would_take_item`, monsters only path toward `GOLD_PIECE` when their
+data `likes_gold` (`M2_GREEDY`) is set. `M2_COLLECT` by itself is not enough.
+This matters in early gameplay parity because non-greedy collectors (for
+example goblins) can drift movement and downstream RNG if JS treats any
+carryable gold as a valid search target.
+
+Practical rule: keep `m_search_items` gold retargeting gated by
+`likes_gold` (with leprechaun exception), not by `M2_COLLECT` alone.
+
 ---
 
 ## Phase Chronicles

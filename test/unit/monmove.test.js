@@ -8,6 +8,8 @@ import { COLNO, ROWNO, ROOM, STONE, HWALL } from '../../js/config.js';
 import { GameMap } from '../../js/map.js';
 import { movemon } from '../../js/monmove.js';
 import { Player } from '../../js/player.js';
+import { GOLD_PIECE, COIN_CLASS, WEAPON_CLASS, ORCISH_DAGGER } from '../../js/objects.js';
+import { mons, PM_GOBLIN } from '../../js/monsters.js';
 
 // Mock display
 const mockDisplay = { putstr_message() {} };
@@ -30,6 +32,29 @@ function makeSimpleMap() {
 }
 
 describe('Monster movement', () => {
+    function makeGoblin(mx, my, player) {
+        const type = mons[PM_GOBLIN];
+        return {
+            name: 'goblin',
+            mnum: PM_GOBLIN,
+            mndx: PM_GOBLIN,
+            type,
+            mx, my,
+            mhp: 7, mhpmax: 7,
+            ac: 10, mac: 10,
+            mlevel: 1,
+            speed: 12, movement: 12,
+            attacks: type.attacks || [],
+            dead: false, sleeping: false,
+            confused: false, peaceful: false,
+            tame: false, flee: false,
+            isshk: false, ispriest: false,
+            mux: player.x, muy: player.y,
+            minvent: [],
+            mtrack: [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }],
+        };
+    }
+
     it('hostile monsters move toward player', () => {
         initRng(42);
         const map = makeSimpleMap();
@@ -165,5 +190,53 @@ describe('Monster movement', () => {
         // Monster should not have passed through the wall
         assert.ok(mon.mx <= 16 || mon.mx >= 18,
             `Monster at ${mon.mx} should not be on wall at x=17`);
+    });
+
+    it('collectors do not retarget to gold unless they like gold', () => {
+        initRng(42);
+        const map = makeSimpleMap();
+        const player = new Player();
+        player.x = 24; player.y = 10;
+        player.initRole(0);
+
+        const goblin = makeGoblin(15, 10, player);
+        map.monsters.push(goblin);
+        map.objects.push({
+            otyp: GOLD_PIECE,
+            oclass: COIN_CLASS,
+            quan: 7,
+            owt: 1,
+            ox: 16,
+            oy: 11,
+            buried: false,
+        });
+
+        movemon(map, player, mockDisplay);
+        assert.equal(goblin.mx, 16);
+        assert.equal(goblin.my, 10);
+    });
+
+    it('collectors still retarget to practical items', () => {
+        initRng(42);
+        const map = makeSimpleMap();
+        const player = new Player();
+        player.x = 24; player.y = 10;
+        player.initRole(0);
+
+        const goblin = makeGoblin(15, 10, player);
+        map.monsters.push(goblin);
+        map.objects.push({
+            otyp: ORCISH_DAGGER,
+            oclass: WEAPON_CLASS,
+            quan: 1,
+            owt: 10,
+            ox: 16,
+            oy: 11,
+            buried: false,
+        });
+
+        movemon(map, player, mockDisplay);
+        assert.equal(goblin.mx, 16);
+        assert.equal(goblin.my, 11);
     });
 });

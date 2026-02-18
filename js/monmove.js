@@ -10,7 +10,7 @@ import { COLNO, ROWNO, STONE, IS_WALL, IS_DOOR, IS_ROOM,
 import { rn2, rnd, c_d } from './rng.js';
 import { monsterAttackPlayer, checkLevelUp } from './combat.js';
 import { CORPSE, FOOD_CLASS, COIN_CLASS, BOULDER, ROCK, ROCK_CLASS, BALL_CLASS, CHAIN_CLASS,
-         WEAPON_CLASS,
+         WEAPON_CLASS, GOLD_PIECE,
          PICK_AXE, DWARVISH_MATTOCK, SKELETON_KEY, LOCK_PICK, CREDIT_CARD,
          UNICORN_HORN, SCR_SCARE_MONSTER, CLOAK_OF_DISPLACEMENT,
          objectData } from './objects.js';
@@ -20,7 +20,8 @@ import { dogfood, dog_eat, can_carry, DOGFOOD, CADAVER, ACCFOOD, MANFOOD, APPORT
          POISON, UNDEF, TABU } from './dog.js';
 import { couldsee, m_cansee, do_clear_area } from './vision.js';
 import { can_teleport, noeyes, perceives, is_animal, is_mindless, nohands, nonliving,
-         is_displacer, monDisplayName, hasGivenName, monNam } from './mondata.js';
+         is_displacer, monDisplayName, hasGivenName, monNam,
+         likes_gold } from './mondata.js';
 import { PM_GRID_BUG, PM_IRON_GOLEM, PM_SHOPKEEPER, mons,
          PM_LEPRECHAUN, PM_XAN, PM_YELLOW_LIGHT, PM_BLACK_LIGHT,
          PM_PURPLE_WORM, PM_BABY_PURPLE_WORM, PM_SHRIEKER,
@@ -1031,6 +1032,13 @@ function m_search_items_goal(mon, map, ggx, ggy, appr) {
             for (const obj of pile) {
                 // C ref: m_search_items() — ignore common rocks as goal objects.
                 if (obj?.otyp === ROCK) continue;
+                // C ref: mon_would_take_item() — GOLD_PIECE targeting requires
+                // likes_gold() (M2_GREEDY). M2_COLLECT alone is not enough.
+                if (obj?.otyp === GOLD_PIECE
+                    && mon?.mndx !== PM_LEPRECHAUN
+                    && !likes_gold(mon?.type || {})) {
+                    continue;
+                }
                 if (can_carry(mon, obj) <= 0) continue;
 
                 minr = distmin(omx, omy, xx, yy);
