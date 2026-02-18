@@ -51,7 +51,9 @@ describe('direction prompt cancel flow', () => {
         assert.equal(messages.at(-1), 'Never mind.');
     });
 
-    it('close command cancels on invalid direction without consuming time', async () => {
+    // C ref: doopen() routes through get_adjacent_loc() and emits "Never mind.",
+    // while doclose() uses getdir() directly and just clears the prompt.
+    it('close command invalid direction clears prompt without a cancel message', async () => {
         const { game, messages } = makeGame();
         pushInput('t'.charCodeAt(0));
 
@@ -59,7 +61,8 @@ describe('direction prompt cancel flow', () => {
 
         assert.equal(result.tookTime, false);
         assert.equal(messages[0], 'In what direction?');
-        assert.equal(messages.at(-1), 'Never mind.');
+        assert.equal(messages.at(-1), 'In what direction?');
+        assert.equal(game.display.topMessage, null);
     });
 
     it('open cancel message is still emitted when verbose is false', async () => {
