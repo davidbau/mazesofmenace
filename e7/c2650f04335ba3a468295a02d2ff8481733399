@@ -5,9 +5,9 @@
   "author": "David Bau",
   "message": "Improve map/corridor parity and session harness normalization",
   "stats": {
-    "total": 320,
-    "pass": 254,
-    "fail": 66,
+    "total": 612,
+    "pass": 508,
+    "fail": 104,
     "skip": 0,
     "duration": 1
   },
@@ -33,9 +33,9 @@
       "fail": 00
     },
     "unit": {
-      "total": 24,
-      "pass": 00,
-      "fail": 24
+      "total": 292,
+      "pass": 254,
+      "fail": 38
     }
   },
   "regression": false,
