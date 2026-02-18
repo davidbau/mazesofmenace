@@ -1205,14 +1205,15 @@ export class HeadlessDisplay {
         }
         this.topMessage = null; // Track current message for concatenation
         this.messages = []; // Message history
-        this.flags = { msg_window: false, DECgraphics: false, lit_corridor: false }; // Default flags
+        this.flags = { msg_window: false, DECgraphics: false, lit_corridor: false, color: true }; // Default flags
         this.messageNeedsMore = false; // For message concatenation
     }
 
     setCell(col, row, ch, color = CLR_GRAY, attr = 0) {
         if (row >= 0 && row < this.rows && col >= 0 && col < this.cols) {
             this.grid[row][col] = ch;
-            this.colors[row][col] = color;
+            const displayColor = (this.flags.color !== false) ? color : CLR_GRAY;
+            this.colors[row][col] = displayColor;
             this.attrs[row][col] = attr;
         }
     }
@@ -1357,6 +1358,93 @@ export class HeadlessDisplay {
             result.push(line);
         }
         return result;
+    }
+
+    // Return 24-line ANSI string array including SGR color/attribute changes.
+    // Used for color-faithfulness comparisons against C captures with screenAnsi.
+    getScreenAnsiLines() {
+        const fgCode = (color) => {
+            switch (color) {
+                case 0: return 30;  // black
+                case 1: return 31;  // red
+                case 2: return 32;  // green
+                case 3: return 33;  // brown
+                case 4: return 34;  // blue
+                case 5: return 35;  // magenta
+                case 6: return 36;  // cyan
+                case 7: return 37;  // gray
+                case 9: return 33;  // orange -> yellow-ish
+                case 10: return 92; // bright green
+                case 11: return 93; // yellow
+                case 12: return 94; // bright blue
+                case 13: return 95; // bright magenta
+                case 14: return 96; // bright cyan
+                case 15: return 97; // white
+                default: return 37;
+            }
+        };
+        const bgCode = (color) => {
+            switch (color) {
+                case 0: return 40;
+                case 1: return 41;
+                case 2: return 42;
+                case 3: return 43;
+                case 4: return 44;
+                case 5: return 45;
+                case 6: return 46;
+                case 7: return 47;
+                case 9: return 43;
+                case 10: return 102;
+                case 11: return 103;
+                case 12: return 104;
+                case 13: return 105;
+                case 14: return 106;
+                case 15: return 107;
+                default: return 40;
+            }
+        };
+        const styleKey = (fg, bg, attr) => `${fg}|${bg}|${attr}`;
+
+        const out = [];
+        for (let r = 0; r < this.rows; r++) {
+            const chars = this.grid[r].slice();
+            const colors = this.colors[r].slice();
+            const attrs = this.attrs[r].slice();
+
+            // Match getScreenLines right-trim semantics.
+            let end = chars.length - 1;
+            while (end >= 0 && chars[end] === ' ') end--;
+            if (end < 0) {
+                out.push('');
+                continue;
+            }
+
+            let line = '';
+            let curKey = '';
+            for (let c = 0; c <= end; c++) {
+                const ch = chars[c] || ' ';
+                const fg = Number.isInteger(colors[c]) ? colors[c] : 7;
+                const attr = Number.isInteger(attrs[c]) ? attrs[c] : 0;
+                const inverse = (attr & 1) !== 0;
+                const bold = (attr & 2) !== 0;
+                const underline = (attr & 4) !== 0;
+                const styleFg = fg;
+                const styleBg = 0;
+                const key = styleKey(styleFg, styleBg, attr);
+                if (key !== curKey) {
+                    const sgr = [0, fgCode(styleFg), bgCode(styleBg)];
+                    if (bold) sgr.push(1);
+                    if (underline) sgr.push(4);
+                    if (inverse) sgr.push(7);
+                    line += `\x1b[${sgr.join(';')}m`;
+                    curKey = key;
+                }
+                line += ch;
+            }
+            line += '\x1b[0m';
+            out.push(line);
+        }
+        return out;
     }
 
     // Overwrite the terminal grid from captured 24-line session text.
@@ -1616,7 +1704,7 @@ export class HeadlessDisplay {
                 // S_hodoor (horizontal open door): '|' (walls E/W)
                 const isHorizontalDoor = this._isDoorHorizontal(gameMap, x, y);
                 return useDEC
-                    ? { ch: '\u00b7', color: CLR_BROWN }  // Middle dot for both in DECgraphics
+                    ? { ch: '\u2592', color: CLR_BROWN }  // DEC checkerboard (S_vodoor/S_hodoor)
                     : { ch: isHorizontalDoor ? '|' : '-', color: CLR_BROWN };
             } else if (loc.flags & D_CLOSED || loc.flags & D_LOCKED) {
                 return { ch: '+', color: CLR_BROWN };
