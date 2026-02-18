@@ -273,7 +273,7 @@ Prayer is NetHack's most powerful survival tool - the god can fully heal, cure s
 
 ## Next Steps
 
-Based on open bd issues (selfplay-7 through selfplay-20):
+Based on open GitHub issues (legacy selfplay scope formerly tracked as selfplay-7 through selfplay-20):
 
 **High Priority:**
 1. Combat evaluation - threat assessment, fleeing strategy

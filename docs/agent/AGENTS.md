@@ -1,16 +1,33 @@
 # Agent Instructions
 
-This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get started.
+This project uses **GitHub Issues** for issue tracking.
 
 ## Quick Reference
 
 ```bash
-bd ready              # Find available work
-bd show <id>          # View issue details
-bd update <id> --status in_progress  # Claim work
-bd close <id>         # Complete work
-bd sync               # Sync with git
+gh issue list --state open                    # Find available work
+gh issue view <number>                        # View issue details
+gh issue edit <number> --add-assignee @me     # Claim work
+gh issue close <number> --comment "Done"      # Complete work
+gh issue comment <number> --body "Status..."  # Post progress updates
 ```
+
+## Issue Dependencies
+
+Use explicit dependency links in every scoped issue:
+- `Blocked by #<issue>`
+- `Blocks #<issue>`
+
+Operational rules:
+- Apply `blocked` label when prerequisites are open.
+- Apply `has-dependents` label when the issue gates others.
+- Keep workflow status in sync (`Ready`, `Blocked`, `In Progress`, `Done`).
+- Never start `In Progress` while any declared blocker remains open.
+
+Recommended parent/child pattern:
+- Parent issue tracks outcome and acceptance criteria.
+- Child issues track concrete implementation/test/doc tasks.
+- Parent includes a checklist linking child issues.
 
 ## Landing the Plane (Session Completion)
 
@@ -24,7 +41,6 @@ bd sync               # Sync with git
 4. **PUSH TO REMOTE** - This is MANDATORY:
    ```bash
    git pull --rebase
-   bd sync
    git push
    git status  # MUST show "up to date with origin"
    ```

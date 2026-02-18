@@ -18,9 +18,9 @@ JS port of NetHack 3.7 with RNG-faithful replay testing. C harness generates gol
 - Run all tests (unit + session): `npm test`
 - Run everything (unit + session + E2E): `npm run test:all`
 
-## Beads (bd) Issue Tracking
-- Use `bd ready` to find available work, `bd close <id>` when done, `bd sync` at session end
-- Beads dir is gitignored; sync handles persistence separately
+## GitHub Issue Tracking
+- Use GitHub Issues for work tracking and handoff (`gh issue list --state open`, `gh issue view <number>`, `gh issue close <number>`)
+- Keep issue status current in comments/checklists when starting or finishing scoped work
 
 ## Session Status (as of 2026-02-09)
 - seed2_wizard_fountains: ALL 37 STEPS PASS (startup + steps 0-36)

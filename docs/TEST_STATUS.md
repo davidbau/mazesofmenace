@@ -35,7 +35,7 @@ All 13 roles × multiple variants pass:
 - des.* API implementation (des.room, des.door, des.stair, des.monster, des.object, des.trap, etc.)
 - Selection API for geometric map operations
 - Port of special level Lua scripts to JavaScript
-- **Tracked**: Beads issues interface-0yz through interface-53v (P2 tasks)
+- **Tracked**: GitHub Issues (P2 tasks; migrated from legacy `interface-*` IDs)
 
 ### 2. Map Sessions - Depth 2+ (65 tests)
 **Status**: Complex RNG Misalignment
@@ -138,7 +138,7 @@ This is NOT an RNG consumption bug - it's an algorithmic difference in how the l
 4. **Special Levels Implementation** - Future work
    - Tests already pass with stubs
    - Implement des.* API when needed for actual special level content
-   - Tracked in beads P2 tasks
+   - Tracked in GitHub P2 issues
 
 ## Statistics
 

@@ -152,3 +152,24 @@ Milestones use a hybrid model: phase completion + parity gates + release-timing 
     - On official 3.7.0 release, re-baseline quickly and focus only on release-critical parity closure.
 13. Report probable upstream bugs responsibly.
     - Document concise repro steps and reasoning before reporting to the official NetHack dev team.
+
+## Issue Dependency Workflow (GitHub Issues)
+
+1. Declare dependencies explicitly in issue bodies.
+   - Use `Blocked by #<issue>` for prerequisites.
+   - Use `Blocks #<issue>` for downstream work.
+2. Use dependency labels consistently.
+   - `blocked` for issues with open prerequisites.
+   - `has-dependents` for issues that gate other open issues.
+3. Track dependency state in project workflow.
+   - Use status values `Ready`, `Blocked`, `In Progress`, `Done`.
+4. Use parent/child issue structure for larger outcomes.
+   - Parent issue defines the outcome.
+   - Child issues define concrete implementation/test/documentation tasks.
+   - Parent issue checklist links all child issues.
+5. Automate state transitions where possible.
+   - Move to `Blocked` when blockers are open.
+   - Move to `Ready` when all blockers close.
+   - Close via merged PR references (for example `Fixes #<issue>`).
+6. Enforce execution discipline.
+   - Do not move an issue to `In Progress` while any declared blocker is still open.

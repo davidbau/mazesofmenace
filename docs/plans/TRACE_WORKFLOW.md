@@ -43,16 +43,15 @@ Look for:
 - Dungeon generation issues
 - UI/display differences
 
-### 3. Create BD Issues
+### 3. Create GitHub Issues
 
 For each interesting trace, create a tracking issue:
 
 ```bash
-bd create \
-  --title="Trace SEED: [brief description]" \
-  --type=task \
-  --priority=2 \
-  --notes="traces/captured/trace_SEED_role_scoreNN.json"
+gh issue create \
+  --title "Trace SEED: [brief description]" \
+  --label "trace-improvement" \
+  --body "Trace: traces/captured/trace_SEED_role_scoreNN.json"
 ```
 
 Tag with `trace-improvement` label and note specific turns of interest.
@@ -62,13 +61,13 @@ Tag with `trace-improvement` label and note specific turns of interest.
 **Choose one trace to work on:**
 
 1. Select highest priority unassigned trace issue
-2. Mark as in_progress: `bd update ISSUE_ID --status=in_progress`
+2. Mark as in progress by assigning yourself and adding a status comment on the issue
 3. Analyze the specific gameplay situation
 4. Identify JS code that needs improvement
 5. Implement fixes/improvements
 6. Test against the trace
 7. Commit and push incremental work
-8. Close issue when complete: `bd close ISSUE_ID`
+8. Close issue when complete: `gh issue close ISSUE_NUMBER --comment "Fixed [description]"`
 
 ### 5. Implementation Process
 
@@ -99,7 +98,7 @@ git push
 node selfplay/runner/headless_runner.js --seed=SEED --turns=100
 
 # 8. Close issue
-bd close ISSUE_ID --reason="Fixed [description]"
+gh issue close ISSUE_NUMBER --comment "Fixed [description]"
 ```
 
 ## Schedule
