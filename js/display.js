@@ -520,10 +520,20 @@ export class Display {
     terrainSymbol(loc, gameMap = null, x = -1, y = -1) {
         const typ = loc.typ;
         const useDEC = this.flags.DECgraphics || false;
+        const wallMode = loc.flags & 0x07;
 
         // Choose symbol set based on DECgraphics option
         // C ref: dat/symbols — DECgraphics vs default ASCII
         const TERRAIN_SYMBOLS = useDEC ? TERRAIN_SYMBOLS_DEC : TERRAIN_SYMBOLS_ASCII;
+
+        // C display uses wall_info mode bits to adjust some T-wall glyphs.
+        // Keep the proven parity case here: TRWALL + WM_T_LONG renders as TLCORNER.
+        if (typ === TRWALL && wallMode === 1) {
+            return TERRAIN_SYMBOLS[TLCORNER] || TERRAIN_SYMBOLS[TRWALL];
+        }
+        if (typ === TLWALL && wallMode === 1) {
+            return TERRAIN_SYMBOLS[TRCORNER] || TERRAIN_SYMBOLS[TLWALL];
+        }
 
         // Handle door states
         if (typ === DOOR) {
@@ -876,8 +886,8 @@ export class Display {
         if (S && E && !N && !W) return BRCORNER;  // Bottom-right: walls below and right
 
         // T-junctions and crosses
-        if (N && S && E && !W) return TLWALL;     // T pointing left
-        if (N && S && W && !E) return TRWALL;     // T pointing right
+        if (N && S && E && !W) return TRWALL;     // T pointing right
+        if (N && S && W && !E) return TLWALL;     // T pointing left
         if (E && W && N && !S) return TUWALL;     // T pointing up
         if (E && W && S && !N) return TDWALL;     // T pointing down
         if (N && S && E && W) return CROSSWALL;   // Cross

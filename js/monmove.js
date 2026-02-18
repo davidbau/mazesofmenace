@@ -60,6 +60,7 @@ function monAttackName(mon) {
     return monNam(mon, { article: 'the', capitalize: true });
 }
 
+
 // ========================================================================
 // Player track — C ref: track.c
 // Circular buffer recording player positions for pet pathfinding.
@@ -172,7 +173,7 @@ function linedUpToPlayer(mon, map, player, fov = null) {
         cy += dy;
         if (blockingTerrainForLinedup(map, cx, cy)) return false;
         const objs = map.objectsAt?.(cx, cy) || [];
-        if (objs.some((o) => o && o.otyp === BOULDER)) boulderspots++;
+        if (objs.some((o) => o && !o.buried && o.otyp === BOULDER)) boulderspots++;
     } while (cx !== ax || cy !== ay);
     const denom = 2 + boulderspots;
     return rn2(denom) < 2;
@@ -276,10 +277,13 @@ function m_throw(mon, startX, startY, dx, dy, range, weapon, map, player, displa
                 if (mtmp.mhp <= 0) {
                     mtmp.dead = true;
                     map.removeMonster(mtmp);
-                    // C ref: ohitmon → mondied (context.mon_moving is true
-                    // during monster throws, so mondied not xkilled).
-                    // mondied: mondead() then corpse_chance(); no treasure
-                    // drop rn2(6) and no XP award to player.
+                    // C ref: mon.c xkilled() — award XP and create corpse
+                    const exp = (mtmp.mlevel + 1) * (mtmp.mlevel + 1);
+                    player.exp += exp;
+                    player.score += exp;
+                    checkLevelUp(player, display);
+                    // C ref: mon.c:3581 — treasure drop rn2(6)
+                    rn2(6);
                     // C ref: mon.c corpse_chance()
                     const mdat2 = mons[mtmp.mndx] || {};
                     const gfreq = (mdat2.geno || 0) & G_FREQ;
@@ -764,9 +768,7 @@ function mfndpos(mon, map, player, opts = {}) {
                 && !(isAmorphous && !mon.engulfing)
                 && (((loc.flags & D_CLOSED) && !allowDoorOpen)
                     || ((loc.flags & D_LOCKED) && !allowDoorUnlock))
-                && !thrudoor) {
-                continue;
-            }
+                && !thrudoor) continue;
             // 5. LAVAWALL — requires lavaok and ALLOW_WALL equivalent
             // C ref: mon.c:2240 — (!lavaok || !(flag & ALLOW_WALL)) && LAVAWALL
             if (ntyp === LAVAWALL && !lavaok) continue;
@@ -812,6 +814,7 @@ function mfndpos(mon, map, player, opts = {}) {
             // (simplified: no monster can move boulders for now)
             let hasBoulder = false;
             for (const obj of map.objects) {
+                if (obj.buried) continue;
                 if (obj.ox === nx && obj.oy === ny && obj.otyp === BOULDER) {
                     hasBoulder = true;
                     break;
@@ -839,9 +842,8 @@ function mfndpos(mon, map, player, opts = {}) {
             if (nx !== omx && ny !== omy) {
                 const sideAIsBadRock = bad_rock_for_mon(mon, map, omx, ny);
                 const sideBIsBadRock = bad_rock_for_mon(mon, map, nx, omy);
-                if (sideAIsBadRock && sideBIsBadRock && cant_squeeze_thru_mon(mon)) {
+                if (sideAIsBadRock && sideBIsBadRock && cant_squeeze_thru_mon(mon))
                     continue;
-                }
             }
 
             // C ref: mon.c mfndpos() only sets NOTONL when monster can see hero.
@@ -917,6 +919,7 @@ function passes_bars(mdat) {
 // C ref: mon.c onscary() subset used by mfndpos().
 function onscary(map, x, y) {
     for (const obj of map.objects) {
+        if (obj.buried) continue;
         if (obj.ox === x && obj.oy === y
             && obj.otyp === SCR_SCARE_MONSTER
             && !obj.cursed) {
@@ -938,6 +941,7 @@ function onscary(map, x, y) {
 // Checks if ANY object at position (x, y) is cursed
 function cursed_object_at(map, x, y) {
     for (const obj of map.objects) {
+        if (obj.buried) continue;
         if (obj.ox === x && obj.oy === y && obj.cursed)
             return true;
     }
@@ -956,6 +960,7 @@ function could_reach_item(map, mon, nx, ny) {
     // C: sobj_at(BOULDER, nx, ny) — is there a boulder at this position?
     let hasBoulder = false;
     for (const obj of map.objects) {
+        if (obj.buried) continue;
         if (obj.ox === nx && obj.oy === ny && obj.otyp === BOULDER) {
             hasBoulder = true; break;
         }
@@ -1074,27 +1079,38 @@ function droppables(mon) {
 }
 
 function canStackFloorObject(a, b) {
-    if (!a || !b || a === b) return false;
+    if (!a || !b) return false;
     if (a.otyp !== b.otyp) return false;
-    const od = objectData[a.otyp];
-    if (!od?.merge || a.nomerge || b.nomerge) return false;
     if (a.oclass === COIN_CLASS) return true;
-    if (!!a.cursed !== !!b.cursed || !!a.blessed !== !!b.blessed) return false;
-    if ((a.spe ?? 0) !== (b.spe ?? 0)) return false;
-    if (!!a.no_charge !== !!b.no_charge) return false;
-    if (!!a.obroken !== !!b.obroken || !!a.otrapped !== !!b.otrapped) return false;
+    if (!objectData[a.otyp]?.merge) return false;
+    if (!!a.cursed !== !!b.cursed) return false;
+    if (!!a.blessed !== !!b.blessed) return false;
+    if ((a.spe || 0) !== (b.spe || 0)) return false;
+    if ((a.known || 0) !== (b.known || 0)) return false;
+    if ((a.oeroded || 0) !== (b.oeroded || 0)) return false;
+    if ((a.oeroded2 || 0) !== (b.oeroded2 || 0)) return false;
+    if (!!a.oerodeproof !== !!b.oerodeproof) return false;
+    if ((a.odiluted || 0) !== (b.odiluted || 0)) return false;
+    if ((a.recharged || 0) !== (b.recharged || 0)) return false;
+    if ((a.corpsenm || 0) !== (b.corpsenm || 0)) return false;
+    if ((a.oeaten || 0) !== (b.oeaten || 0)) return false;
+    if ((a.ovar1 || 0) !== (b.ovar1 || 0)) return false;
+    if ((a.ovar2 || 0) !== (b.ovar2 || 0)) return false;
+    if ((a.ovar3 || 0) !== (b.ovar3 || 0)) return false;
+    if ((a.age || 0) !== (b.age || 0)) return false;
+    if (!!a.olocked !== !!b.olocked) return false;
+    if (!!a.obroken !== !!b.obroken) return false;
+    if (!!a.otrapped !== !!b.otrapped) return false;
+    if ((a.no_charge || 0) !== (b.no_charge || 0)) return false;
     if (!!a.lamplit !== !!b.lamplit) return false;
-    if (a.oclass === FOOD_CLASS
-        && ((a.oeaten ?? 0) !== (b.oeaten ?? 0) || !!a.orotten !== !!b.orotten)) return false;
-    if (!!a.dknown !== !!b.dknown || !!a.bknown !== !!b.bknown) return false;
-    if ((a.oeroded ?? 0) !== (b.oeroded ?? 0) || (a.oeroded2 ?? 0) !== (b.oeroded2 ?? 0)) return false;
-    if (!!a.greased !== !!b.greased) return false;
-    if (!!a.oerodeproof !== !!b.oerodeproof || !!a.rknown !== !!b.rknown) return false;
-    if ((a.corpsenm ?? -1) !== (b.corpsenm ?? -1)) return false;
-    if ((a.age ?? -1) !== (b.age ?? -1)) return false;
-    if (!!a.opoisoned !== !!b.opoisoned) return false;
-    if (!!a.known !== !!b.known) return false;
-    return true;
+    if ((a.poisoned || 0) !== (b.poisoned || 0)) return false;
+    if ((a.material || 0) !== (b.material || 0)) return false;
+    if ((a.wt || a.owt || 0) !== (b.wt || b.owt || 0)) return false;
+    if ((a.unpaid || 0) !== (b.unpaid || 0)) return false;
+    if ((a.shopOwned || 0) !== (b.shopOwned || 0)) return false;
+    if ((a.noDrop || 0) !== (b.noDrop || 0)) return false;
+    return (a.corpsenm === b.corpsenm)
+        && (a.age === b.age);
 }
 
 function placeFloorObject(map, obj) {
@@ -1147,6 +1163,7 @@ function dog_invent(mon, edog, udist, map, turnCount, display, player) {
         // Find the top object at pet's position (last in array = top of C's chain)
         let obj = null;
         for (let i = map.objects.length - 1; i >= 0; i--) {
+            if (map.objects[i].buried) continue;
             if (map.objects[i].ox === omx && map.objects[i].oy === omy) {
                 obj = map.objects[i]; break;
             }
@@ -1162,9 +1179,10 @@ function dog_invent(mon, edog, udist, map, turnCount, display, player) {
             if ((edible <= CADAVER
                 || (edog.mhpmax_penalty && edible === ACCFOOD))
                 && could_reach_item(map, mon, obj.ox, obj.oy)) {
-                dog_eat(mon, obj, map, turnCount, {
-                    display, player, startX: omx, startY: omy,
-                });
+                if (display && player && couldsee(map, player, mon.mx, mon.my)) {
+                    display.putstr_message(`${monNam(mon, { capitalize: true })} eats ${doname(obj, null)}.`);
+                }
+                dog_eat(mon, obj, map, turnCount);
                 return 1;
             }
 
@@ -1733,6 +1751,7 @@ function dog_move(mon, map, player, display, fov, after = false, game = null) {
         // C's fobj is LIFO (place_object prepends), so iterate in reverse to match
         for (let oi = map.objects.length - 1; oi >= 0; oi--) {
             const obj = map.objects[oi];
+            if (obj.buried) continue;
             const ox = obj.ox, oy = obj.oy;
 
             if (ox < minX || ox > maxX || oy < minY || oy > maxY) continue;
@@ -1760,14 +1779,11 @@ function dog_move(mon, map, player, display, fov, after = false, game = null) {
             } else if (gtyp === UNDEF && inMastersSight
                     && !dogHasMinvent
                     && (!dogLit || playerLit)
-                    && (otyp === MANFOOD || m_cansee(mon, map, ox, oy))) {
-                const apportRoll = rn2(8);
-                const carry = can_carry(mon, obj);
-                if (edog.apport > apportRoll
-                    && carry > 0) {
+                    && (otyp === MANFOOD || m_cansee(mon, map, ox, oy))
+                    && edog.apport > rn2(8)
+                    && can_carry(mon, obj) > 0) {
                 // C ref: dogmove.c:543-552 — APPORT/MANFOOD with apport+carry check
-                    gx = ox; gy = oy; gtyp = APPORT;
-                }
+                gx = ox; gy = oy; gtyp = APPORT;
             }
         }
     }
@@ -1807,7 +1823,12 @@ function dog_move(mon, map, player, display, fov, after = false, game = null) {
             } else {
                 // C ref: scan player inventory for DOGFOOD items
                 // Each dogfood() call consumes rn2(100) via obj_resists
-                for (const invObj of player.inventory) {
+                const invItems = [...player.inventory].sort((a, b) => {
+                    const ra = ((a?.invlet || '\x7f').charCodeAt(0) ^ 32);
+                    const rb = ((b?.invlet || '\x7f').charCodeAt(0) ^ 32);
+                    return ra - rb;
+                });
+                for (const invObj of invItems) {
                     const invFood = dogfood(mon, invObj, turnCount);
                     if (invFood === DOGFOOD) {
                         appr = 1;
@@ -2060,6 +2081,7 @@ function dog_move(mon, map, player, display, fov, after = false, game = null) {
             const canReachFood = could_reach_item(map, mon, nx, ny);
             for (let oi = map.objects.length - 1; oi >= 0; oi--) {
                 const obj = map.objects[oi];
+                if (obj.buried) continue;
                 if (obj.ox !== nx || obj.oy !== ny) continue;
                 if (obj.cursed) {
                     cursemsg[i] = true;
@@ -2148,9 +2170,14 @@ function dog_move(mon, map, player, display, fov, after = false, game = null) {
 
         // C ref: dogmove.c:1324-1327 — eat after moving
         if (do_eat && eatObj) {
-            dog_eat(mon, eatObj, map, turnCount, {
-                display, player, fov, startX: omx, startY: omy,
-            });
+            const sawPet = fov?.canSee ? fov.canSee(omx, omy) : couldsee(map, player, omx, omy);
+            const seeObj = fov?.canSee ? fov.canSee(mon.mx, mon.my) : couldsee(map, player, mon.mx, mon.my);
+            if (display && (sawPet || seeObj)) {
+                // C ref: dogmove.c:290 uses noit_Monnam() which gives "Your" for tame,
+                // unlike the Monnam() used elsewhere which always gives "The".
+                display.putstr_message(`${monNam(mon, { capitalize: true })} eats ${doname(eatObj, null)}.`);
+            }
+            dog_eat(mon, eatObj, map, turnCount);
         }
     }
 
@@ -2380,7 +2407,23 @@ function m_move(mon, map, player, display = null, fov = null) {
     // Collect valid positions via mfndpos (column-major, NODIAG, boulder filter)
     const positions = mfndpos(mon, map, player, { allowDoorOpen: can_open, allowDoorUnlock: can_unlock });
     const cnt = positions.length;
-    if (cnt === 0) return false; // no valid positions
+    const maybeTeleportAfterFailedMove = () => {
+        // C ref: monmove.c fallback path can call rloc() for teleporting monsters.
+        if (!can_teleport(ptr) || (map.flags && map.flags.noteleport)) return false;
+        for (let tries = 0; tries < 200; tries++) {
+            const nx = rnd(COLNO - 1);
+            const ny = rn2(ROWNO);
+            const loc = map.at(nx, ny);
+            if (!loc || !ACCESSIBLE(loc.typ)) continue;
+            if (map.monsterAt(nx, ny)) continue;
+            if (nx === player.x && ny === player.y) continue;
+            mon.mx = nx;
+            mon.my = ny;
+            return true;
+        }
+        return false;
+    };
+    if (cnt === 0) return maybeTeleportAfterFailedMove(); // no valid positions
 
     // ========================================================================
     // Position evaluation — C-faithful m_move logic
@@ -2447,6 +2490,7 @@ function m_move(mon, map, player, display = null, fov = null) {
             mmoved = true;
         }
     }
+    if (!mmoved && maybeTeleportAfterFailedMove()) return true;
 
     // Move the monster
     if (nix !== omx || niy !== omy) {

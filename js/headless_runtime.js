@@ -1795,8 +1795,8 @@ export class HeadlessDisplay {
         if (N && E && !S && !W) return TRCORNER;
         if (S && W && !N && !E) return BLCORNER;
         if (S && E && !N && !W) return BRCORNER;
-        if (N && S && E && !W) return TLWALL;
-        if (N && S && W && !E) return TRWALL;
+        if (N && S && E && !W) return TRWALL;
+        if (N && S && W && !E) return TLWALL;
         if (E && W && N && !S) return TUWALL;
         if (E && W && S && !N) return TDWALL;
         if (N && S && E && W) return CROSSWALL;
@@ -1813,6 +1813,16 @@ export class HeadlessDisplay {
         const typ = loc.typ;
         const useDEC = this.flags.DECgraphics || false;
         const TERRAIN_SYMBOLS = useDEC ? TERRAIN_SYMBOLS_DEC : TERRAIN_SYMBOLS_ASCII;
+        const wallMode = loc.flags & 0x07;
+
+        // C display uses wall_info mode bits to adjust some T-wall glyphs.
+        // Keep the proven parity case here: TRWALL + WM_T_LONG renders as TLCORNER.
+        if (typ === TRWALL && wallMode === 1) {
+            return TERRAIN_SYMBOLS[TLCORNER] || TERRAIN_SYMBOLS[TRWALL];
+        }
+        if (typ === TLWALL && wallMode === 1) {
+            return TERRAIN_SYMBOLS[TRCORNER] || TERRAIN_SYMBOLS[TLWALL];
+        }
 
         // Handle door states
         if (typ === DOOR) {

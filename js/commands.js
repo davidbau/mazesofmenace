@@ -1739,7 +1739,7 @@ async function handleEat(player, display, game) {
         // C ref: eat.c eatcorpse() overrides reqtime to 3 + (corpse weight >> 6).
         const reqtime = isCorpse
             ? (3 + ((mons[cnum].weight || 0) >> 6))
-            : ((od ? od.delay : 0) + 1);
+            : Math.max(1, (od ? od.delay : 1));
         const baseNutr = isCorpse
             ? (mons[cnum].nutrition || (od ? od.nutrition : 200))
             : (od ? od.nutrition : 200);
