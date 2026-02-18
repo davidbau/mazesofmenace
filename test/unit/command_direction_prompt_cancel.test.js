@@ -74,4 +74,24 @@ describe('direction prompt cancel flow', () => {
         assert.equal(result.tookTime, false);
         assert.equal(messages.at(-1), 'Never mind.');
     });
+
+    it('open uses C wording when no door exists in chosen direction', async () => {
+        const { game, messages } = makeGame();
+        pushInput('l'.charCodeAt(0));
+
+        const result = await rhack('o'.charCodeAt(0), game);
+
+        assert.equal(result.tookTime, false);
+        assert.equal(messages.at(-1), 'You see no door there.');
+    });
+
+    it('close uses C wording when no door exists in chosen direction', async () => {
+        const { game, messages } = makeGame();
+        pushInput('l'.charCodeAt(0));
+
+        const result = await rhack('c'.charCodeAt(0), game);
+
+        assert.equal(result.tookTime, false);
+        assert.equal(messages.at(-1), 'You see no door there.');
+    });
 });

@@ -5,7 +5,7 @@ import { rhack } from '../../js/commands.js';
 import { GameMap } from '../../js/map.js';
 import { Player } from '../../js/player.js';
 import { clearInputQueue, pushInput } from '../../js/input.js';
-import { LONG_SWORD } from '../../js/objects.js';
+import { LONG_SWORD, SMALL_SHIELD } from '../../js/objects.js';
 import { mksobj } from '../../js/mkobj.js';
 
 function makeGame() {
@@ -53,5 +53,20 @@ describe('drop message formatting', () => {
         const result = await rhack('d'.charCodeAt(0), game);
         assert.equal(result.tookTime, true);
         assert.equal(game.display.topMessage, 'You drop a +1 long sword.');
+    });
+
+    it('rejects dropping worn armor pieces directly', async () => {
+        const game = makeGame();
+        const shield = mksobj(SMALL_SHIELD, true, false);
+        shield.invlet = 'b';
+        game.player.inventory.push(shield);
+        game.player.shield = shield;
+
+        pushInput('b'.charCodeAt(0));
+        const result = await rhack('d'.charCodeAt(0), game);
+        assert.equal(result.tookTime, false);
+        assert.equal(game.display.topMessage, 'You cannot drop something you are wearing.');
+        assert.equal(game.player.inventory.includes(shield), true);
+        assert.equal(game.player.shield, shield);
     });
 });

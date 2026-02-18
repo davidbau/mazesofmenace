@@ -44,4 +44,16 @@ describe('run/rush prefix validation', () => {
         assert.equal(game.runMode, 0);
         assert.equal(game.display.topMessage, "The 'g' prefix should be followed by a movement command.");
     });
+
+    it('falls through to normal unknown-command handling for space after g-prefix', async () => {
+        const game = makeGame();
+        const setPrefix = await rhack('g'.charCodeAt(0), game);
+        assert.equal(setPrefix.tookTime, false);
+        assert.equal(game.runMode, 2);
+
+        const afterSpace = await rhack(' '.charCodeAt(0), game);
+        assert.equal(afterSpace.tookTime, false);
+        assert.equal(game.runMode, 0);
+        assert.equal(game.display.topMessage, "Unknown command ' '.");
+    });
 });

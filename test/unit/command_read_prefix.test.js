@@ -36,3 +36,14 @@ test('m-prefix does not block read command prompt', async () => {
     assert.equal(game.menuRequested, false);
     assert.equal(game.display.topMessage, 'Never mind.');
 });
+
+test('read command rejects non-readable inventory items with C wording', async () => {
+    const game = makeGame();
+    game.player.inventory = [{ invlet: 'a', oclass: 7, name: 'potion of healing' }];
+    clearInputQueue();
+    pushInput('a'.charCodeAt(0));
+
+    const result = await rhack('r'.charCodeAt(0), game);
+    assert.equal(result.tookTime, false);
+    assert.equal(game.display.topMessage, 'That is a silly thing to read.');
+});

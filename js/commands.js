@@ -201,8 +201,13 @@ export async function rhack(ch, game) {
     if (game.runMode && c !== 'g' && c !== 'G' && ch !== 27) {
         const prefix = game.runMode === 2 ? 'g' : 'G';
         game.runMode = 0;
-        display.putstr_message(`The '${prefix}' prefix should be followed by a movement command.`);
-        return { moved: false, tookTime: false };
+        // C getdir-style quit keys after a run/rush prefix do not produce
+        // the prefix-specific warning; they fall through as ordinary input.
+        const isQuitLike = (ch === 32 || ch === 10 || ch === 13);
+        if (!isQuitLike) {
+            display.putstr_message(`The '${prefix}' prefix should be followed by a movement command.`);
+            return { moved: false, tookTime: false };
+        }
     }
 
     function performWaitSearch(cmd) {
@@ -1270,7 +1275,7 @@ async function handleOpen(player, map, display, game) {
     const loc = map.at(nx, ny);
 
     if (!loc || !IS_DOOR(loc.typ)) {
-        display.putstr_message("There's no door there.");
+        display.putstr_message('You see no door there.');
         return { moved: false, tookTime: false };
     }
 
@@ -1327,7 +1332,7 @@ async function handleClose(player, map, display, game) {
     const loc = map.at(nx, ny);
 
     if (!loc || !IS_DOOR(loc.typ)) {
-        display.putstr_message("There's no door there.");
+        display.putstr_message('You see no door there.');
         return { moved: false, tookTime: false };
     }
 
@@ -1448,8 +1453,14 @@ async function handleWield(player, display) {
             return { moved: false, tookTime: true };
         }
 
-        const weapon = weapons.find(w => w.invlet === c);
-        if (!weapon) continue;
+        const item = player.inventory.find((o) => o.invlet === c);
+        if (!item) continue;
+        if (item.oclass !== WEAPON_CLASS) {
+            replacePromptMessage();
+            display.putstr_message('You cannot wield that!');
+            return { moved: false, tookTime: false };
+        }
+        const weapon = item;
 
         // C ref: wield.c dowield() — selecting uswapwep triggers doswapweapon().
         if (player.swapWeapon && weapon === player.swapWeapon) {
@@ -1564,9 +1575,22 @@ async function handleDrop(player, map, display) {
         const item = player.inventory.find(o => o.invlet === c);
         if (!item) continue;
 
-        // Unequip if necessary
+        const isWornArmor =
+            player.armor === item
+            || player.shield === item
+            || player.helmet === item
+            || player.gloves === item
+            || player.boots === item
+            || player.cloak === item
+            || player.amulet === item;
+        if (isWornArmor) {
+            replacePromptMessage();
+            display.putstr_message('You cannot drop something you are wearing.');
+            return { moved: false, tookTime: false };
+        }
+
+        // Unequip wielded weapon if dropping it.
         if (player.weapon === item) player.weapon = null;
-        if (player.armor === item) { player.armor = null; player.ac = 10; }
 
         player.removeFromInventory(item);
         item.ox = player.x;
@@ -1894,6 +1918,8 @@ async function handleThrow(player, map, display) {
         }
         const item = player.inventory.find(o => o.invlet === c);
         if (!item) continue;
+        // C ref: dothrow.c throw_obj() prompts for direction before checks
+        // like canletgo()/wearing-state rejection.
         replacePromptMessage();
         display.putstr_message('In what direction?');
         const dirCh = await nhgetch();
@@ -1982,6 +2008,12 @@ async function handleRead(player, display) {
         if (c === '?') {
             // In C this can show item help/menu; return to prompt afterward.
             continue;
+        }
+        const anyItem = (player.inventory || []).find((o) => o && o.invlet === c);
+        if (anyItem) {
+            replacePromptMessage();
+            display.putstr_message('That is a silly thing to read.');
+            return { moved: false, tookTime: false };
         }
         // Keep waiting for a supported selection.
     }

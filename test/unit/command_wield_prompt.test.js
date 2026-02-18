@@ -5,7 +5,7 @@ import { rhack } from '../../js/commands.js';
 import { GameMap } from '../../js/map.js';
 import { Player } from '../../js/player.js';
 import { clearInputQueue, pushInput } from '../../js/input.js';
-import { DAGGER, WEAPON_CLASS } from '../../js/objects.js';
+import { DAGGER, WEAPON_CLASS, GEM_CLASS } from '../../js/objects.js';
 
 function makeGame() {
     const map = new GameMap();
@@ -50,4 +50,22 @@ test('wield prompt stays open on invalid letters until canceled', async () => {
     assert.equal(result.tookTime, false);
     assert.equal(game.display.messages[0], 'What do you want to wield? [- b or ?*]');
     assert.equal(game.display.topMessage, 'Never mind.');
+});
+
+test('wielding a non-weapon item is rejected with C wording', async () => {
+    const game = makeGame();
+    game.player.inventory.push({
+        invlet: 'd',
+        oclass: GEM_CLASS,
+        otyp: 0,
+        name: 'rock',
+        quan: 1,
+    });
+
+    clearInputQueue();
+    pushInput('d'.charCodeAt(0));
+
+    const result = await rhack('w'.charCodeAt(0), game);
+    assert.equal(result.tookTime, false);
+    assert.equal(game.display.topMessage, 'You cannot wield that!');
 });
