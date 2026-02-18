@@ -404,6 +404,11 @@ export class Display {
                     if (loc && loc.seenv) {
                         // C-like memory: remembered object glyph overlays
                         // remembered terrain when out of sight.
+                        if (loc.mem_invis) {
+                            this.setCell(col, row, 'I', CLR_GRAY);
+                            this.cellInfo[row][col] = { name: 'remembered invisible monster', desc: '(remembered)', color: CLR_GRAY };
+                            continue;
+                        }
                         if (loc.mem_obj) {
                             const rememberedObjColor = Number.isInteger(loc.mem_obj_color)
                                 ? loc.mem_obj_color
@@ -450,6 +455,7 @@ export class Display {
                 // Check for monsters
                 const mon = gameMap.monsterAt(x, y);
                 if (mon) {
+                    loc.mem_invis = false;
                     // Keep remembered object glyph under visible monsters in sync
                     // so when LOS drops, memory matches C back_to_glyph behavior.
                     const underObjs = gameMap.objectsAt(x, y);
@@ -469,6 +475,11 @@ export class Display {
                     const classInfo = this._monsterClassDesc(mon.displayChar);
                     const stats = `Level ${mon.mlevel}, AC ${mon.mac}, Speed ${mon.speed}`;
                     this.cellInfo[row][col] = { name: monDisplayName(mon), desc: classInfo, stats: stats, color: mon.displayColor };
+                    continue;
+                }
+                if (loc.mem_invis) {
+                    this.setCell(col, row, 'I', CLR_GRAY);
+                    this.cellInfo[row][col] = { name: 'remembered invisible monster', desc: '(remembered)', color: CLR_GRAY };
                     continue;
                 }
 

@@ -61,3 +61,50 @@ test('headless remembered objects keep remembered object color', () => {
     assert.equal(display.grid[row][x], '$');
     assert.equal(display.colors[row][x], 11);
 });
+
+test('headless remembered invisible marker overrides remembered objects', () => {
+    const display = new HeadlessDisplay();
+    const map = new GameMap();
+    const x = 8;
+    const y = 8;
+    const row = y + 1;
+
+    const loc = map.at(x, y);
+    loc.seenv = 0xff;
+    loc.mem_invis = true;
+    loc.mem_obj = '$';
+    loc.mem_obj_color = 11;
+
+    const fov = { canSee: () => false };
+    display.renderMap(map, null, fov, { msg_window: false, DECgraphics: false, color: true });
+
+    assert.equal(display.grid[row][x], 'I');
+});
+
+test('headless visible monsters clear remembered invisible marker', () => {
+    const display = new HeadlessDisplay();
+    const map = new GameMap();
+    const x = 9;
+    const y = 9;
+    const row = y + 1;
+
+    const loc = map.at(x, y);
+    loc.typ = ROOM;
+    loc.seenv = 0xff;
+    loc.mem_invis = true;
+
+    map.monsters.push({
+        mx: x,
+        my: y,
+        mhp: 1,
+        displayChar: 'd',
+        displayColor: 7,
+        mndx: 0,
+    });
+
+    const fov = { canSee: (cx, cy) => cx === x && cy === y };
+    display.renderMap(map, null, fov, { msg_window: false, DECgraphics: false, color: true });
+
+    assert.notEqual(display.grid[row][x], 'I');
+    assert.equal(loc.mem_invis, false);
+});

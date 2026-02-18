@@ -1538,6 +1538,9 @@ async function handleInventory(player, display, game) {
                 && !/^spellbook\b/i.test(rawName)
                 && !/^book of the dead$/i.test(rawName))
                 ? `spellbook of ${rawName}`
+                : (selected.oclass === WAND_CLASS
+                    && !/^wand\b/i.test(rawName))
+                    ? `wand of ${rawName}`
                 : rawName;
             const lowerBaseName = baseName.toLowerCase();
             const noun = ((selected.quan || 1) > 1 && !baseName.endsWith('s'))
@@ -1603,6 +1606,19 @@ async function handleInventory(player, display, game) {
                         '/ - Look up information about this',
                         '(end)',
                     ]
+                    : (selected.oclass === WAND_CLASS
+                        ? [
+                            'a - Break this wand',
+                            `c - Name this specific ${noun}`,
+                            'd - Drop this item',
+                            'E - Engrave on the floor with this item',
+                            'i - Adjust inventory by assigning new letter',
+                            't - Throw this item',
+                            'w - Wield this item in your hands',
+                            'z - Zap this wand to release its magic',
+                            '/ - Look up information about this',
+                            '(end)',
+                        ]
                     : [
                         ...(isLightSource
                             ? [selected.lamplit
@@ -1620,7 +1636,7 @@ async function handleInventory(player, display, game) {
                         'w - Wield this item in your hands',
                         '/ - Look up information about this',
                         '(end)',
-                    ]));
+                    ])));
 
             const promptText = `Do what with the ${noun}?`;
             if (Number.isInteger(display.cols)) {

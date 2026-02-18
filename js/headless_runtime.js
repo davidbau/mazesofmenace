@@ -1613,6 +1613,10 @@ export class HeadlessDisplay {
                 if (!fov || !fov.canSee(x, y)) {
                     const loc = gameMap.at(x, y);
                     if (loc && loc.seenv) {
+                        if (loc.mem_invis) {
+                            this.setCell(col, row, 'I', CLR_GRAY);
+                            continue;
+                        }
                         if (loc.mem_obj) {
                             const rememberedObjColor = Number.isInteger(loc.mem_obj_color)
                                 ? loc.mem_obj_color
@@ -1648,6 +1652,7 @@ export class HeadlessDisplay {
 
                 const mon = gameMap.monsterAt(x, y);
                 if (mon) {
+                    loc.mem_invis = false;
                     const underObjs = gameMap.objectsAt(x, y);
                     if (underObjs.length > 0) {
                         const underTop = underObjs[underObjs.length - 1];
@@ -1662,6 +1667,10 @@ export class HeadlessDisplay {
                     const hallu = !!player?.hallucinating;
                     const glyph = monsterMapGlyph(mon, hallu);
                     this.setCell(col, row, glyph.ch, glyph.color);
+                    continue;
+                }
+                if (loc.mem_invis) {
+                    this.setCell(col, row, 'I', CLR_GRAY);
                     continue;
                 }
 

@@ -63,6 +63,24 @@ function monAttackName(mon) {
     return monNam(mon, { article: 'the', capitalize: true });
 }
 
+function rememberInvisibleAt(map, x, y, player) {
+    if (!map || !isok(x, y)) return;
+    if (player && x === player.x && y === player.y) return;
+    const loc = map.at(x, y);
+    if (!loc) return;
+    loc.mem_invis = true;
+}
+
+function canSpotMonsterForMap(mon, map, player, fov) {
+    if (!mon || !map || !player) return false;
+    const visible = fov?.canSee ? fov.canSee(mon.mx, mon.my) : couldsee(map, player, mon.mx, mon.my);
+    if (!visible) return false;
+    if (player.blind) return false;
+    if (mon.mundetected) return false;
+    if (mon.minvis && !player.seeInvisible) return false;
+    return true;
+}
+
 
 // ========================================================================
 // Player track — C ref: track.c
@@ -2054,6 +2072,15 @@ function dog_move(mon, map, player, display, fov, after = false, game = null) {
                 // C ref: mhitm.c mattackm() sets visibility when either
                 // participant is visible to the hero, not only when both are.
                 const mmVisible = monVisible || targetVisible;
+                // C ref: mhitm.c pre_mm_attack() map_invisible() for unseen participants.
+                if (mmVisible) {
+                    if (!canSpotMonsterForMap(mon, map, player, fov)) {
+                        rememberInvisibleAt(map, mon.mx, mon.my, player);
+                    }
+                    if (!canSpotMonsterForMap(target, map, player, fov)) {
+                        rememberInvisibleAt(map, target.mx, target.my, player);
+                    }
+                }
                 const suppressTurnDetail = !!player.displacedPetThisTurn
                     || (game?.occupation?.occtxt === 'searching');
                 let anyHit = false;
