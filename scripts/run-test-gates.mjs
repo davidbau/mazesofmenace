@@ -32,9 +32,7 @@ const c = useColor ? {
     yellow: '\x1b[33m',
     cyan: '\x1b[36m',
     gray: '\x1b[90m',
-    brightRed: '\x1b[91m',
-    brightGreen: '\x1b[92m',
-} : { reset: '', bold: '', dim: '', red: '', green: '', yellow: '', cyan: '', gray: '', brightRed: '', brightGreen: '' };
+} : { reset: '', bold: '', dim: '', red: '', green: '', yellow: '', cyan: '', gray: '' };
 
 // ── Progress bar ──────────────────────────────────────────────
 
@@ -304,7 +302,19 @@ function stringifyFirstDivergence(first) {
         return `${header}\n  js:      ${formatRngEntry(first.jsRaw || first.js || first.actual, first.jsStack)}\n  session: ${formatRngEntry(first.sessionRaw || first.session || first.expected, first.sessionStack)}`;
     }
     if (first.channel === 'screen') {
-        return `screen divergence at step=${first.step ?? 'n/a'} row=${first.row ?? 'n/a'}\n  js:      ${JSON.stringify(first.js ?? '')}\n  session: ${JSON.stringify(first.session ?? '')}`;
+        let jsStr = first.js ?? '';
+        let sessStr = first.session ?? '';
+        // Strip identical leading characters to highlight where they diverge
+        const minLen = Math.min(jsStr.length, sessStr.length);
+        let common = 0;
+        while (common < minLen && jsStr[common] === sessStr[common]) common++;
+        if (common > 0) {
+            const prefix = jsStr.slice(0, common);
+            jsStr = jsStr.slice(common);
+            sessStr = sessStr.slice(common);
+            return `screen divergence at step=${first.step ?? 'n/a'} row=${first.row ?? 'n/a'} col=${common}\n  common:  ${JSON.stringify(prefix)}\n  js:      ${JSON.stringify(jsStr)}\n  session: ${JSON.stringify(sessStr)}`;
+        }
+        return `screen divergence at step=${first.step ?? 'n/a'} row=${first.row ?? 'n/a'}\n  js:      ${JSON.stringify(jsStr)}\n  session: ${JSON.stringify(sessStr)}`;
     }
     if (first.channel === 'color') {
         return `color divergence at step=${first.step ?? 'n/a'} row=${first.row ?? 'n/a'} col=${first.col ?? 'n/a'}\n  js:      ${JSON.stringify(first.js ?? {})}\n  session: ${JSON.stringify(first.session ?? {})}`;

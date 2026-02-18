@@ -37,7 +37,19 @@ function stringifyFirstDivergence(first) {
         return `${header}\n  js:      ${jsVal}\n  session: ${sessionVal}`;
     }
     if (first.channel === 'screen') {
-        return `screen divergence at step=${first.step ?? 'n/a'} row=${first.row ?? 'n/a'}\n  js:      ${JSON.stringify(first.js ?? '')}\n  session: ${JSON.stringify(first.session ?? '')}`;
+        let jsStr = first.js ?? '';
+        let sessStr = first.session ?? '';
+        // Strip identical leading characters to highlight where they diverge
+        const minLen = Math.min(jsStr.length, sessStr.length);
+        let common = 0;
+        while (common < minLen && jsStr[common] === sessStr[common]) common++;
+        if (common > 0) {
+            const prefix = jsStr.slice(0, common);
+            jsStr = jsStr.slice(common);
+            sessStr = sessStr.slice(common);
+            return `screen divergence at step=${first.step ?? 'n/a'} row=${first.row ?? 'n/a'} col=${common}\n  common:  ${JSON.stringify(prefix)}\n  js:      ${JSON.stringify(jsStr)}\n  session: ${JSON.stringify(sessStr)}`;
+        }
+        return `screen divergence at step=${first.step ?? 'n/a'} row=${first.row ?? 'n/a'}\n  js:      ${JSON.stringify(jsStr)}\n  session: ${JSON.stringify(sessStr)}`;
     }
     if (first.channel === 'color') {
         return `color divergence at step=${first.step ?? 'n/a'} row=${first.row ?? 'n/a'} col=${first.col ?? 'n/a'}\n  js:      ${JSON.stringify(first.js ?? {})}\n  session: ${JSON.stringify(first.session ?? {})}`;
