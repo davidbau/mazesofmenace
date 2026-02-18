@@ -385,6 +385,17 @@ function firstComparableEntry(entries) {
     return null;
 }
 
+function comparableCallParts(entries) {
+    const out = [];
+    for (const e of entries || []) {
+        if (isMidlogEntry(e)) continue;
+        const call = rngCallPart(e);
+        if (isCompositeEntry(call)) continue;
+        out.push(call);
+    }
+    return out;
+}
+
 // Generate levels 1→maxDepth with RNG trace capture.
 // Returns { grids, maps, rngLogs } where rngLogs[depth] = { rngCalls, rng }.
 export function generateMapsWithRng(seed, maxDepth) {
@@ -697,6 +708,7 @@ export async function replaySession(seed, session, opts = {}) {
     // Set race from session (default Human)
     const replayRaceMap = { human: RACE_HUMAN, elf: RACE_ELF, dwarf: RACE_DWARF, gnome: RACE_GNOME, orc: RACE_ORC };
     player.race = replayRaceMap[sessionChar.race] ?? RACE_HUMAN;
+    player.inTutorial = !!map?.flags?.is_tutorial;
 
     // Parse actual attributes from session screen (u_init randomizes them)
     // Screen format: "St:18 Dx:11 Co:18 In:11 Wi:9 Ch:8"
@@ -841,6 +853,8 @@ export async function replaySession(seed, session, opts = {}) {
         });
         game.levels[1] = game.map;
         game.player.dungeonLevel = 1;
+        game.player.inTutorial = true;
+        game.player.showExp = true;
         game.placePlayerOnLevel('down');
         game.renderCurrentScreen();
     };
@@ -897,6 +911,34 @@ export async function replaySession(seed, session, opts = {}) {
         const normalizedScreen = Array.isArray(screen)
             ? screen.map((line) => stripAnsiSequences(line))
             : [];
+        // Counted-search boundary normalization:
+        // Some keylog gameplay captures place the final timed-occupation RNG
+        // turn on the following digit step (e.g., "... 9 s" loops). When the
+        // current step's expected RNG is a strict prefix and the remainder
+        // begins exactly with the next step's first expected comparable call,
+        // defer that remainder to preserve C step attribution.
+        if (!hasMore) {
+            const splitAt = matchingJsPrefixLength(compact, step.rng || []);
+            if (splitAt >= 0 && splitAt < compact.length) {
+                const remainderRaw = raw.slice(splitAt);
+                const remainderCompact = compact.slice(splitAt);
+                const nextExpected = allSteps[stepIndex + 1]?.rng || [];
+                const remCalls = comparableCallParts(remainderCompact);
+                const nextCalls = comparableCallParts(nextExpected);
+                let prefixLen = 0;
+                while (prefixLen < remCalls.length
+                    && prefixLen < nextCalls.length
+                    && remCalls[prefixLen] === nextCalls[prefixLen]) {
+                    prefixLen++;
+                }
+                if (remCalls.length > 0 && prefixLen === remCalls.length) {
+                    deferredMoreBoundaryRng = remainderRaw;
+                    deferredMoreBoundaryTarget = stepIndex + 1;
+                    raw = raw.slice(0, splitAt);
+                    compact = compact.slice(0, splitAt);
+                }
+            }
+        }
         stepResults.push({
             rngCalls: raw.length,
             rng: compact,
