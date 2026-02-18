@@ -3,7 +3,7 @@
 ## Purpose
 This file defines how coding agents should work in this repository.
 
-Primary project direction is in `PROJECT_PLAN.md`. Agents should read that first and follow the current phase goals.
+This project uses GitHub Issues for work tracking. `PROJECT_PLAN.md` is the authoritative source for goals, scope, and milestone priorities.
 
 ## Source of Truth and Priorities
 1. NetHack C 3.7.0 behavior is the gameplay source of truth.
@@ -65,9 +65,47 @@ Not allowed:
 2. Replay behavior that injects synthetic decisions not in session keys
 3. Any workaround that makes failing gameplay look passing
 
+## Issue Dependencies and Hygiene
+Use explicit dependency links in every scoped issue:
+- `Blocked by #<issue>`
+- `Blocks #<issue>`
+
+Operational rules:
+- Apply `blocked` label when prerequisites are open.
+- Apply `has-dependents` label when an issue gates others.
+- Keep workflow status in sync (`Ready`, `Blocked`, `In Progress`, `Done`).
+- Default: do not start `In Progress` while declared blockers are open.
+- Exception: if a blocker advisory is stale/incorrect, proceed opportunistically and fix links/labels in the same cycle.
+
+Issue hygiene:
+- Run periodic triage (`gh issue list --state open`).
+- Close obsolete/superseded issues with a clear reason.
+- Update issue body/labels/status comments promptly when new evidence changes scope or priority.
+- Use `parity` label for C-vs-JS divergence/parity issues in the unified backlog.
+
+## Agent Ownership and Intake
+1. Agent name is the current working directory basename; use it as identity for issue ownership.
+2. Directory/topic affinity is suggestive only; any agent may take any issue.
+3. If no pending task exists, pull another actionable open issue.
+4. If starting work not tracked yet, create/update a GitHub issue immediately.
+5. Issues are unowned by default; do not assign ownership labels until work is actively claimed.
+6. Track ownership with `agent:<name>` label only while actively working.
+7. Use at most one `agent:*` label in normal flow; temporary overlap is allowed only during explicit handoff.
+8. When starting work: `gh issue edit <number> --add-label "agent:<name>"`
+9. If intentionally abandoning: `gh issue edit <number> --remove-label "agent:<name>"`
+
 ## Practical Commands
 - Install/run basics: see `docs/DEVELOPMENT.md`.
-- Issue tracking workflow: see `docs/agent/AGENTS.md` (`bd` workflow).
+- Issue workflow quick reference:
+
+```bash
+gh issue list --state open
+gh issue view <number>
+gh issue edit <number> --add-label "agent:<name>"
+gh issue edit <number> --remove-label "agent:<name>"
+gh issue close <number> --comment "Done"
+gh issue comment <number> --body "Status..."
+```
 
 ## Priority Docs (Read Order)
 1. Always start with:
@@ -91,7 +129,23 @@ Not allowed:
 
 ## Completion Discipline
 When a task is complete:
-1. Run relevant tests.
-2. Commit with a clear message.
-3. Push to remote (do not leave validated work stranded locally).
-4. Report what changed, what was validated, and any remaining risks.
+1. File issues for any remaining follow-up work.
+2. Run relevant quality gates.
+3. Update issue status.
+4. Pull/rebase and push (do not leave validated work stranded locally):
+   ```bash
+   git pull --rebase
+   git push
+   git status
+   ```
+5. Verify changes are committed and pushed.
+6. Report what changed, what was validated, and remaining risks.
+
+Critical rules:
+- Work is not complete until `git push` succeeds.
+- If push fails, resolve and retry until it succeeds.
+- When multiple developers are active, push meaningful validated increments rather than batching too long locally.
+
+## Documentation Hygiene
+1. If docs are inaccurate or stale, fix or remove them immediately.
+2. Keep `docs/` aligned to actual code behavior and active workflows.

@@ -165,7 +165,7 @@ All seed*_special_* tests fail with "unknown session type".
 
 **Cause**: Special level generation not implemented (bigroom, castle, medusa, oracle, etc.)
 **Fix Required**: Implement des.* API (des.room, des.monster, des.trap, etc.)
-**Tracked**: Beads issues interface-0yz, interface-5yl, interface-1xn, etc.
+**Tracked**: GitHub issues (legacy IDs: interface-0yz, interface-5yl, interface-1xn, etc.)
 
 ### Map Sessions (50 tests)
 Depth 2+ RNG mismatches with cascading failures.

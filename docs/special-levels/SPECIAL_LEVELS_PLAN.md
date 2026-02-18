@@ -1,5 +1,8 @@
 # Special Levels Implementation Plan
 
+> Plan hierarchy: This is a subordinate subplan to root [`PROJECT_PLAN.md`](../../PROJECT_PLAN.md).  
+> If scope, priority, or milestone details conflict, `PROJECT_PLAN.md` is authoritative.
+
 > *"You feel the mass of scripted levels pressing on your mind."*
 
 ## Overview
@@ -196,7 +199,7 @@ The recommended order prioritizes getting testable results quickly:
 **Elemental Planes cannot be reached via wizard teleport:**
 - `In_endgame(&u.uz)` check in `level_tele()` blocks all wizard teleport once in endgame
 - Alternative approaches needed: C binary modification, save file manipulation, or scripted gameplay to reach endgame
-- Deferred to later (tracked in bd issue interface-kr2)
+- Deferred to later (tracked in GitHub issues; legacy ID: interface-kr2)
 
 **Sokoban has 2 variants per level, selected by RNG:**
 - `dungeon.lua` specifies `nlevels=2` for each Sokoban level (soko1 through soko4)
@@ -225,7 +228,7 @@ The recommended order prioritizes getting testable results quickly:
 - 4 corner-vs-junction errors: spoiler has T-junction where C generates corner
 - 12 staircase discrepancies: extra upstairs or shifted positions
 - Root cause: spoiler maps drawn visually without applying wall_extends() algorithm
-- Created bd issue interface-llb to fix after debugging convergence issues in wall computation script
+- Created follow-up GitHub issue to fix after debugging convergence issues in wall computation script (legacy ID: interface-llb)
 
 ### des.* API Implementation
 

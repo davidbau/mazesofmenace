@@ -30,10 +30,19 @@ import {
     A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC
 } from './config.js';
 import { GameMap, makeRoom, FILL_NONE, FILL_NORMAL } from './map.js';
-import { rn2, rnd, rn1, d, getRngCallCount } from './rng.js';
+import { rn2, rnd, rn1, d, getRngCallCount, advanceRngRaw } from './rng.js';
 import { getbones } from './bones.js';
-import { mkobj, mksobj, mkcorpstat, weight, setLevelDepth, TAINT_AGE, RANDOM_CLASS } from './mkobj.js';
-import { makemon, mkclass, rndmonnum_adj, NO_MM_FLAGS, MM_NOGRP, setMakemonRoleContext, setMakemonLevelContext, getMakemonRoleIndex } from './makemon.js';
+import {
+    mkobj,
+    mksobj,
+    mkcorpstat,
+    weight,
+    setLevelDepth,
+    setMklevObjectContext,
+    TAINT_AGE,
+    RANDOM_CLASS,
+} from './mkobj.js';
+import { makemon, mkclass, rndmonnum_adj, NO_MM_FLAGS, MM_NOGRP, setMakemonRoleContext, setMakemonLevelContext, getMakemonRoleIndex, setMakemonInMklevContext } from './makemon.js';
 import { mons, S_HUMAN, S_UNICORN, PM_ELF, PM_HUMAN, PM_GNOME, PM_DWARF, PM_ORC, PM_ARCHEOLOGIST, PM_WIZARD, PM_MINOTAUR } from './monsters.js';
 import { init_objects } from './o_init.js';
 import { roles } from './player.js';
@@ -52,15 +61,7 @@ import {
 } from './objects.js';
 import { RUMORS_FILE_TEXT } from './rumor_data.js';
 import {
-    getSpecialLevel,
-    DUNGEONS_OF_DOOM,
-    GNOMISH_MINES,
-    SOKOBAN,
-    QUEST,
-    KNOX,
-    GEHENNOM,
-    VLADS_TOWER,
-    TUTORIAL
+    getSpecialLevel
 } from './special_levels.js';
 import { setLevelContext, clearLevelContext, initLuaMT, setSpecialLevelDepth, setFinalizeContext, resetLevelState } from './sp_lev.js';
 import {
@@ -110,12 +111,23 @@ const BR_NO_END1 = 1;
 const BR_NO_END2 = 2;
 const BR_PORTAL = 3;
 
+// Dungeon branch numbers (mirrors special_levels.js; local to avoid circular-init TDZ).
+const DUNGEONS_OF_DOOM = 0;
+const GNOMISH_MINES = 1;
+const SOKOBAN = 2;
+const QUEST = 3;
+const KNOX = 4;
+const GEHENNOM = 5;
+const VLADS_TOWER = 6;
+const TUTORIAL = 8;
+
 // Snapshot of branch topology chosen during simulateDungeonInit().
 // Each entry: { type, end1:{dnum,dlevel}, end2:{dnum,dlevel}, end1_up }.
 let _branchTopology = [];
 // C ref: dungeon.c global oracle_level; populated during init_dungeons().
 // Used by mklev.c fill_ordinary_room() bonus supply chest gating.
-let _oracleLevel = { dnum: DUNGEONS_OF_DOOM, dlevel: 5 };
+// Keep default dnum literal (0 = DUNGEONS_OF_DOOM) to avoid circular-import TDZ.
+let _oracleLevel = { dnum: 0, dlevel: 5 };
 // C ref: decl.h gi.in_mklev — true only while makelevel() runs.
 let inMklev = false;
 
@@ -123,10 +135,14 @@ let inMklev = false;
 // Exposed for sp_lev.js to bracket des.* generation phases.
 export function enterMklevContext() {
     inMklev = true;
+    setMakemonInMklevContext(true);
+    setMklevObjectContext(true);
 }
 
 export function leaveMklevContext() {
     inMklev = false;
+    setMakemonInMklevContext(false);
+    setMklevObjectContext(false);
 }
 
 // C ref: dungeon.c init_dungeons() -> svd.dungeons[dnum].flags.align
@@ -3093,6 +3109,15 @@ export function mktrap(map, num, mktrapflags, croom, tm, depth) {
 
     // WEB: create giant spider (needs makemon — skip for now)
     // At depth < 7, WEB can't generate anyway
+    // C ref: mklev.c mktrap() assigns MAGIC_PORTAL destination from
+    // u.ucamefrom when present. In JS, honor map-level portal destination
+    // context when provided by level-generation callers.
+    if (kind === MAGIC_PORTAL && map?._portalDestOverride) {
+        t.dst = {
+            dnum: map._portalDestOverride.dnum,
+            dlevel: map._portalDestOverride.dlevel,
+        };
+    }
 
     // C ref: mklev.c:2124-2140 mktrap predecessor victim block.
     const victimRoll = (!(mktrapflags & MKTRAP_NOVICTIM) && inMklev && kind !== NO_TRAP)
@@ -4949,6 +4974,7 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
     const bonesMap = getbones(null, depth);
     if (bonesMap) return bonesMap;
     inMklev = true;
+    setMklevObjectContext(true);
     try {
 
     // Check for special level.
@@ -5009,9 +5035,13 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
                 && special.name.startsWith('tut-');
             if (!_themesLoaded || depthOnlyOracleSpecial) {
                 _themesLoaded = true;
-                rn2(3); rn2(2);
-            } else if (isTutorialSpecial) {
-                rn2(3); rn2(2);
+                rn2(3);
+                // Tutorial level entry has one non-logged PRNG draw between
+                // nhlua shuffle calls in C startup path.
+                const tutShuffleRawShim = (typeof process === 'undefined'
+                    || process.env.WEBHACK_TUT_SHIM_MAKELEVEL !== '0');
+                if (isTutorialSpecial && tutShuffleRawShim) advanceRngRaw(1);
+                rn2(2);
             }
 
             const specialMap = special.generator();
@@ -5262,7 +5292,7 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
 
     return map;
     } finally {
-        inMklev = false;
+        leaveMklevContext();
     }
 }
 

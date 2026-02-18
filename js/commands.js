@@ -2,11 +2,11 @@
 // Mirrors cmd.c from the C source.
 // Maps keyboard input to game actions.
 
-import { COLNO, ROWNO, DOOR, CORR, SCORR, STAIRS, LADDER, FOUNTAIN, SINK, THRONE, ALTAR, GRAVE,
+import { COLNO, ROWNO, DOOR, CORR, SDOOR, SCORR, STAIRS, LADDER, FOUNTAIN, SINK, THRONE, ALTAR, GRAVE,
          POOL, LAVAPOOL, IRONBARS, TREE, ROOM, IS_DOOR, D_CLOSED, D_LOCKED,
          D_ISOPEN, D_NODOOR, D_BROKEN, ACCESSIBLE, IS_WALL, MAXLEVEL, VERSION_STRING, ICE,
          isok, A_STR, A_DEX, A_CON, A_WIS } from './config.js';
-import { SQKY_BOARD, SLP_GAS_TRAP, FIRE_TRAP, PIT, SPIKED_PIT } from './symbols.js';
+import { SQKY_BOARD, SLP_GAS_TRAP, FIRE_TRAP, PIT, SPIKED_PIT, ANTI_MAGIC } from './symbols.js';
 import { rn2, rnd, rnl, d, c_d } from './rng.js';
 import { exercise } from './attrib_exercise.js';
 import { objectData, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
@@ -16,6 +16,7 @@ import { nhgetch, ynFunction, getlin } from './input.js';
 import { playerAttackMonster } from './combat.js';
 import { makemon, setMakemonPlayerContext } from './makemon.js';
 import { mons, PM_LIZARD, PM_LICHEN, PM_NEWT } from './monsters.js';
+import { monDisplayName, hasGivenName, monNam } from './mondata.js';
 import { doname, next_ident } from './mkobj.js';
 import { observeObject, getDiscoveriesMenuLines } from './discovery.js';
 import { showPager } from './pager.js';
@@ -60,6 +61,37 @@ function formatGoldPickupMessage(gold, player) {
         return `$ - ${count} gold piece${plural} (${total} in total).`;
     }
     return `$ - ${count} gold piece${plural}.`;
+}
+
+function invletSortValue(ch) {
+    if (ch === '$') return 0;
+    if (ch >= 'a' && ch <= 'z') return ch.charCodeAt(0);
+    if (ch >= 'A' && ch <= 'Z') return ch.charCodeAt(0) + 100;
+    if (ch === '#') return 1000;
+    return 2000 + ch.charCodeAt(0);
+}
+
+function compactInvletPromptChars(chars) {
+    if (!chars) return '';
+    const sorted = [...new Set(chars.split(''))].sort((a, b) => invletSortValue(a) - invletSortValue(b));
+    if (sorted.length <= 5) return sorted.join('');
+    const out = [];
+    let i = 0;
+    while (i < sorted.length) {
+        const start = sorted[i];
+        let j = i;
+        while (j + 1 < sorted.length && sorted[j + 1].charCodeAt(0) === sorted[j].charCodeAt(0) + 1) {
+            j++;
+        }
+        const runLen = j - i + 1;
+        if (runLen >= 3) {
+            out.push(start, '-', sorted[j]);
+        } else {
+            for (let k = i; k <= j; k++) out.push(sorted[k]);
+        }
+        i = j + 1;
+    }
+    return out.join('');
 }
 
 // Direction key mappings
@@ -235,6 +267,12 @@ export async function rhack(ch, game) {
     // Quaff (drink)
     if (c === 'q') {
         return await handleQuaff(player, map, display);
+    }
+
+    // Pay shopkeeper
+    // C ref: shk.c dopay() -- full billing flow is not yet ported; preserve no-shopkeeper message.
+    if (c === 'p') {
+        return await handlePay(player, map, display);
     }
 
     // Read scroll/spellbook
@@ -506,6 +544,7 @@ export async function rhack(ch, game) {
 // Handle directional movement
 // C ref: hack.c domove() -- the core movement function
 async function handleMovement(dir, player, map, display, game) {
+    const flags = game.flags || {};
     const oldX = player.x;
     const oldY = player.y;
     const nx = player.x + dir[0];
@@ -563,9 +602,11 @@ async function handleMovement(dir, player, map, display, game) {
                         mon.flee = true;
                     }
                 if (mon.tame) {
-                    display.putstr_message(`You stop.  Your ${mon.name} is in the way!`);
+                    display.putstr_message(
+                        `You stop.  ${monNam(mon, { capitalize: true })} is in the way!`
+                    );
                 } else {
-                    const label = mon.name ? mon.name.charAt(0).toUpperCase() + mon.name.slice(1) : 'It';
+                    const label = mon.name ? monNam(mon, { capitalize: true }) : 'It';
                     display.putstr_message(`You stop. ${label} is in the way!`);
                 }
                 game.forceFight = false;
@@ -584,22 +625,22 @@ async function handleMovement(dir, player, map, display, game) {
             game.lastMoveDir = dir;
             maybeSmudgeEngraving(map, oldPlayerX, oldPlayerY, player.x, player.y);
             player.displacedPetThisTurn = true;
+            // C ref: hack.c:2150 — x_monnam with ARTICLE_YOUR for tame
+            // includes "saddled" when the monster has a saddle worn.
+            display.putstr_message(`You swap places with ${monNam(mon)}.`);
             const landedObjs = map.objectsAt(nx, ny);
             if (landedObjs.length > 0) {
                 const seen = landedObjs[0];
                 if (seen.oclass === COIN_CLASS) {
                     const count = seen.quan || 1;
-                    const plural = count === 1 ? '' : 's';
-                    display.putstr_message(`You see here ${count} gold piece${plural}.`);
+                    if (count === 1) {
+                        display.putstr_message('You see here a gold piece.');
+                    } else {
+                        display.putstr_message(`You see here ${count} gold pieces.`);
+                    }
                 } else {
                     observeObject(seen);
                     display.putstr_message(`You see here ${doname(seen, null)}.`);
-                }
-            } else {
-                display.putstr_message(`You swap places with your ${mon.name}.`);
-                // Keep later same-turn combat messages from concatenating with displacement text.
-                if (display && Object.prototype.hasOwnProperty.call(display, 'topMessage')) {
-                    display.topMessage = null;
                 }
             }
             game.forceFight = false; // Clear prefix (shouldn't reach here but be safe)
@@ -608,16 +649,16 @@ async function handleMovement(dir, player, map, display, game) {
 
         // Safety checks before attacking
         // C ref: flag.h flags.safe_pet - prevent attacking pets
-        if (mon.tame && flags.safe_pet) {
+        if (mon.tame && game.flags?.safe_pet) {
             display.putstr_message("You cannot attack your pet!");
             game.forceFight = false;
             return { moved: false, tookTime: false };
         }
 
         // C ref: flag.h flags.confirm - confirm attacking peacefuls
-        if (mon.peaceful && !mon.tame && flags.confirm) {
+        if (mon.peaceful && !mon.tame && game.flags?.confirm) {
             const answer = await ynFunction(
-                `Really attack ${mon.name}?`,
+                `Really attack ${monDisplayName(mon)}?`,
                 'yn',
                 'n'.charCodeAt(0),
                 display
@@ -646,13 +687,24 @@ async function handleMovement(dir, player, map, display, game) {
 
     // Check terrain
     if (IS_WALL(loc.typ)) {
-        // C parity: failed movement into a wall generally doesn't emit
-        // a standalone look-style terrain message.
+        if (map?.flags?.mention_walls || map?.flags?.is_tutorial) {
+            display.putstr_message("It's a wall.");
+        }
         return { moved: false, tookTime: false };
     }
 
     if (loc.typ === 0) { // STONE
-        // Keep behavior aligned with wall collision handling.
+        if (map?.flags?.mention_walls || map?.flags?.is_tutorial) {
+            display.putstr_message("It's a wall.");
+        }
+        return { moved: false, tookTime: false };
+    }
+
+    // C ref: secret doors/corridors behave like walls until discovered.
+    if (loc.typ === SDOOR || loc.typ === SCORR) {
+        if (map?.flags?.mention_walls || map?.flags?.is_tutorial) {
+            display.putstr_message("It's a wall.");
+        }
         return { moved: false, tookTime: false };
     }
 
@@ -682,6 +734,19 @@ async function handleMovement(dir, player, map, display, game) {
     if (!ACCESSIBLE(loc.typ)) {
         display.putstr_message("You can't move there.");
         return { moved: false, tookTime: false };
+    }
+    const steppingTrap = map.trapAt(nx, ny);
+    // C-style confirmation prompt for known anti-magic fields.
+    if (steppingTrap && steppingTrap.ttyp === ANTI_MAGIC && steppingTrap.tseen) {
+        const ans = await ynFunction(
+            'Really step onto that anti-magic field?',
+            'yn',
+            'n'.charCodeAt(0),
+            display
+        );
+        if (ans !== 'y'.charCodeAt(0)) {
+            return { moved: false, tookTime: false };
+        }
     }
 
     // Move the player
@@ -746,6 +811,38 @@ async function handleMovement(dir, player, map, display, game) {
             display.putstr_message(trap.ttyp === SPIKED_PIT
                 ? 'You land on a set of sharp iron spikes!'
                 : 'You fall into a pit!');
+        }
+        // C ref: trap.c trapeffect_anti_magic()
+        else if (trap.ttyp === ANTI_MAGIC) {
+            // C ref: trap.c trapeffect_anti_magic() + drain_en()
+            let drain = c_d(2, 6); // 2..12
+            const halfd = rnd(Math.max(1, Math.floor(drain / 2)));
+            let exclaim = false;
+            if (player.pwmax > drain) {
+                player.pwmax = Math.max(0, player.pwmax - halfd);
+                drain -= halfd;
+                exclaim = true;
+            }
+            if (player.pwmax < 1) {
+                player.pw = 0;
+                player.pwmax = 0;
+                display.putstr_message('You feel momentarily lethargic.');
+            } else {
+                let n = drain;
+                if (n > Math.floor((player.pw + player.pwmax) / 3)) {
+                    n = rnd(n);
+                }
+                let punct = exclaim ? '!' : '.';
+                if (n > player.pw) punct = '!';
+                player.pw -= n;
+                if (player.pw < 0) {
+                    player.pwmax = Math.max(0, player.pwmax - rnd(-player.pw));
+                    player.pw = 0;
+                } else if (player.pw > player.pwmax) {
+                    player.pw = player.pwmax;
+                }
+                display.putstr_message(`You feel your magical energy drain away${punct}`);
+            }
         }
     }
 
@@ -819,14 +916,20 @@ async function handleMovement(dir, player, map, display, game) {
             const seen = objs[0];
             if (seen.oclass === COIN_CLASS) {
                 const count = seen.quan || 1;
-                const plural = count === 1 ? '' : 's';
-                display.putstr_message(`You see here ${count} gold piece${plural}.`);
+                if (count === 1) {
+                    display.putstr_message('You see here a gold piece.');
+                } else {
+                    display.putstr_message(`You see here ${count} gold pieces.`);
+                }
             } else {
                 observeObject(seen);
                 display.putstr_message(`You see here ${doname(seen, null)}.`);
             }
         } else {
-            display.putstr_message(`You see here several objects.`);
+            // C ref: invent.c look_here() — for 2+ objects, C uses a NHW_MENU
+            // popup window ("Things that are here:") that the player dismisses,
+            // leaving the message line blank.  We skip the message line here to
+            // match C's screen behaviour for session comparison.
         }
     }
 
@@ -1291,11 +1394,18 @@ async function handleDrop(player, map, display) {
         return { moved: false, tookTime: false };
     }
 
+    const dropChoices = compactInvletPromptChars(player.inventory.map((o) => o.invlet).join(''));
     while (true) {
-        display.putstr_message('What do you want to drop? [*]');
+        if (typeof display.clearRow === 'function') display.clearRow(0);
+        display.topMessage = null;
+        display.messageNeedsMore = false;
+        display.putstr_message(`What do you want to drop? [${dropChoices} or ?*]`);
         const ch = await nhgetch();
         const c = String.fromCharCode(ch);
         if (ch === 27 || ch === 10 || ch === 13 || c === ' ') {
+            if (typeof display.clearRow === 'function') display.clearRow(0);
+            display.topMessage = null;
+            display.messageNeedsMore = false;
             display.putstr_message('Never mind.');
             return { moved: false, tookTime: false };
         }
@@ -1412,13 +1522,38 @@ async function handleEat(player, display, game) {
         return { moved: false, tookTime: false };
     }
 
-    const eatChoices = food.map(f => f.invlet).join('');
-    display.putstr_message(`What do you want to eat? [${eatChoices} or ?*]`);
-    const ch = await nhgetch();
-    const c = String.fromCharCode(ch);
+    const eatChoices = compactInvletPromptChars(food.map(f => f.invlet).join(''));
+    while (true) {
+        if (typeof display.clearRow === 'function') display.clearRow(0);
+        display.topMessage = null;
+        display.messageNeedsMore = false;
+        display.putstr_message(`What do you want to eat? [${eatChoices} or ?*]`);
+        const ch = await nhgetch();
+        const c = String.fromCharCode(ch);
 
-    const item = food.find(f => f.invlet === c);
-    if (item) {
+        if (ch === 27 || ch === 10 || ch === 13 || c === ' ') {
+            if (typeof display.clearRow === 'function') display.clearRow(0);
+            display.topMessage = null;
+            display.messageNeedsMore = false;
+            display.putstr_message('Never mind.');
+            return { moved: false, tookTime: false };
+        }
+        if (c === '?' || c === '*') {
+            continue;
+        }
+
+        const item = food.find(f => f.invlet === c);
+        if (!item) {
+            const anyItem = player.inventory.find((o) => o.invlet === c);
+            if (anyItem) {
+                if (typeof display.clearRow === 'function') display.clearRow(0);
+                display.topMessage = null;
+                display.messageNeedsMore = false;
+                display.putstr_message('You cannot eat that!');
+                return { moved: false, tookTime: false };
+            }
+            continue;
+        }
         // C ref: eat.c doesplit() path for stacked comestibles:
         // splitobj() creates a single-item object and consumes next_ident() (rnd(2)).
         const eatingFromStack = ((item.quan || 1) > 1 && item.oclass === FOOD_CLASS);
@@ -1535,8 +1670,15 @@ async function handleEat(player, display, game) {
         }
         return { moved: false, tookTime: true };
     }
+}
 
-    display.putstr_message("Never mind.");
+async function handlePay(player, map, display) {
+    const shopkeepers = (map.monsters || []).filter((m) => m && !m.dead && m.isshk);
+    if (!shopkeepers.length) {
+        display.putstr_message('There appears to be no shopkeeper here to receive your payment.');
+        return { moved: false, tookTime: false };
+    }
+    display.putstr_message('You do not owe any shopkeeper anything.');
     return { moved: false, tookTime: false };
 }
 
@@ -1753,6 +1895,7 @@ function handleLook(player, map, display) {
     return { moved: false, tookTime: false };
 }
 
+
 // Handle kicking
 // C ref: dokick.c dokick()
 async function handleKick(player, map, display, game) {
@@ -1779,12 +1922,12 @@ async function handleKick(player, map, display, game) {
     // Kick a monster
     const mon = map.monsterAt(nx, ny);
     if (mon) {
-        display.putstr_message(`You kick the ${mon.name}!`);
+        display.putstr_message(`You kick the ${monDisplayName(mon)}!`);
         const damage = rnd(4) + player.strDamage;
         mon.mhp -= Math.max(1, damage);
         if (mon.mhp <= 0) {
             mon.dead = true;
-            display.putstr_message(`The ${mon.name} dies!`);
+            display.putstr_message(`The ${monDisplayName(mon)} dies!`);
             map.removeMonster(mon);
         }
         return { moved: false, tookTime: true };
@@ -2248,7 +2391,6 @@ async function showGuidebook(display) {
 // Search for hidden doors and traps adjacent to player
 // C ref: detect.c dosearch0()
 export function dosearch0(player, map, display, game = null) {
-    let found = false;
     for (let dx = -1; dx <= 1; dx++) {
         for (let dy = -1; dy <= 1; dy++) {
             if (dx === 0 && dy === 0) continue;
@@ -2258,52 +2400,41 @@ export function dosearch0(player, map, display, game = null) {
             const loc = map.at(nx, ny);
             if (!loc) continue;
 
-            // Find secret doors
-            // C ref: detect.c -- secret doors become regular doors
-            if (loc.typ === 14) { // SDOOR
+            // C ref: detect.c dosearch0() — if-else structure matches C:
+            // SDOOR, SCORR, or else (monsters/traps).
+            if (loc.typ === SDOOR) {
                 if (rnl(7) === 0) {
                     loc.typ = DOOR;
                     loc.flags = D_CLOSED;
-                    display.putstr_message('You find a hidden door!');
-                    found = true;
-                    // C ref: detect.c dosearch0() calls nomul(0) when a hidden
-                    // feature is found, interrupting counted search.
+                    exercise(player, A_WIS, true);
                     if (game && Number.isInteger(game.multi) && game.multi > 0) {
                         game.multi = 0;
                     }
+                    display.putstr_message('You find a hidden door.');
                 }
-            }
-            // Find secret corridors
-            if (loc.typ === 15) { // SCORR
+            } else if (loc.typ === SCORR) {
                 if (rnl(7) === 0) {
-                    loc.typ = 24; // CORR
-                    display.putstr_message('You find a hidden passage!');
-                    found = true;
-                    // C ref: detect.c dosearch0() calls nomul(0) when a hidden
-                    // feature is found, interrupting counted search.
+                    loc.typ = CORR;
+                    exercise(player, A_WIS, true);
                     if (game && Number.isInteger(game.multi) && game.multi > 0) {
                         game.multi = 0;
                     }
+                    display.putstr_message('You find a hidden passage.');
                 }
-            }
-            // C ref: detect.c mfind0() in dosearch0() can interrupt explicit
-            // counted searches when an adjacent monster is discovered.
-            // Keep this minimal (no extra messaging/RNG) to preserve replay
-            // parity where visible adjacent monsters should halt count search.
-            const mon = map.monsterAt(nx, ny);
-            if (mon && !mon.dead && !mon.tame && !mon.peaceful) {
-                if (game && Number.isInteger(game.multi) && game.multi > 0) {
-                    game.multi = 0;
+            } else {
+                // C ref: detect.c:2080 — trap detection with rnl(8)
+                const trap = map.trapAt?.(nx, ny);
+                if (trap && !trap.tseen && !rnl(8)) {
+                    trap.tseen = true;
+                    exercise(player, A_WIS, true);
+                    if (game && Number.isInteger(game.multi) && game.multi > 0) {
+                        game.multi = 0;
+                    }
                 }
             }
         }
     }
-    if (!found) {
-        // No message on search failure (matches C behavior)
-    } else {
-        // C ref: detect.c successful search exercises wisdom positively.
-        exercise(player, A_WIS, true);
-    }
+    // exercise(A_WIS, TRUE) is called per-discovery above, matching C.
 }
 
 // Handle save game (S)
@@ -2393,10 +2524,12 @@ async function handleSet(game) {
         }
     }
 
-    function renderCenteredList(lines, left = 41) {
+    function renderCenteredList(lines, left = 41, headerInverse = false) {
         display.clearScreen();
         for (let i = 0; i < lines.length && i < display.rows; i++) {
-            display.putstr(left, i, lines[i].substring(0, Math.max(0, display.cols - left)));
+            const text = lines[i].substring(0, Math.max(0, display.cols - left));
+            const attr = (headerInverse && i === 0) ? 1 : 0;
+            display.putstr(left, i, text, undefined, attr);
         }
     }
 
@@ -2568,7 +2701,7 @@ async function handleSet(game) {
             "f - -1 (off, 'z' to move upper-left, 'y' to zap wands)",
             '(end)',
         ];
-        renderCenteredList(lines, 24);
+        renderCenteredList(lines, 24, true);
         const ch = await nhgetch();
         const c = String.fromCharCode(ch);
         const modeByKey = { a: 0, b: 1, c: 2, d: 3, e: 4, f: -1 };
@@ -2716,9 +2849,8 @@ async function handleExtendedCommand(game) {
             return { moved: false, tookTime: false };
         }
         default:
-            display.putstr_message(
-                `Unknown extended command: ${cmd}. Try: options, levelchange, map, teleport, genesis, quit.`
-            );
+            // C-style unknown extended command feedback
+            display.putstr_message(`#${cmd}: unknown extended command.`);
             return { moved: false, tookTime: false };
     }
 }

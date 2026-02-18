@@ -20,6 +20,8 @@ import {
 } from './config.js';
 
 import { def_monsyms, def_oc_syms } from './symbols.js';
+import { monDisplayName } from './mondata.js';
+import { monsterMapGlyph, objectMapGlyph } from './display_rng.js';
 
 // Color constants (color.h)
 // C ref: include/color.h
@@ -302,12 +304,12 @@ export class Display {
         // C ref: win/tty/topl.c:262-267 — Concatenate messages if they fit
         // ONLY if no keypress happened between messages (toplin == TOPLINE_NEED_MORE)
         // If there's a current message and both messages fit on one line, combine them
+        // C reserves space for " --More--" (9 chars) when deciding whether to concatenate.
         const notDied = !msg.startsWith('You die');
         // Only concatenate if messageNeedsMore is true (no keypress since last message)
         if (this.topMessage && this.messageNeedsMore && notDied) {
             const combined = this.topMessage + '  ' + msg;
-            // Room for combined message + --More-- (8 chars)
-            if (combined.length + 3 < this.cols - 8) {
+            if (combined.length + 9 <= this.cols) {
                 this.clearRow(MESSAGE_ROW);
                 this.putstr(0, MESSAGE_ROW, combined, CLR_WHITE);
                 this.topMessage = combined;
@@ -452,10 +454,12 @@ export class Display {
                     } else {
                         loc.mem_obj = 0;
                     }
-                    this.setCell(col, row, mon.displayChar, mon.displayColor);
+                    const hallu = !!player?.hallucinating;
+                    const glyph = monsterMapGlyph(mon, hallu);
+                    this.setCell(col, row, glyph.ch, glyph.color);
                     const classInfo = this._monsterClassDesc(mon.displayChar);
                     const stats = `Level ${mon.mlevel}, AC ${mon.mac}, Speed ${mon.speed}`;
-                    this.cellInfo[row][col] = { name: mon.name, desc: classInfo, stats: stats, color: mon.displayColor };
+                    this.cellInfo[row][col] = { name: monDisplayName(mon), desc: classInfo, stats: stats, color: mon.displayColor };
                     continue;
                 }
 
@@ -464,7 +468,9 @@ export class Display {
                 if (objs.length > 0) {
                     const topObj = objs[objs.length - 1];
                     loc.mem_obj = topObj.displayChar || 0;
-                    this.setCell(col, row, topObj.displayChar, topObj.displayColor);
+                    const hallu = !!player?.hallucinating;
+                    const glyph = objectMapGlyph(topObj, hallu);
+                    this.setCell(col, row, glyph.ch, glyph.color);
                     const classInfo = this._objectClassDesc(topObj.oc_class);
                     const extra = objs.length > 1 ? ` (+${objs.length - 1} more)` : '';
                     const stats = this._objectStats(topObj);
@@ -525,7 +531,7 @@ export class Display {
                 // S_hodoor (horizontal open door): '|' (walls E/W)
                 const isHorizontalDoor = this._isDoorHorizontal(gameMap, x, y);
                 return useDEC
-                    ? { ch: '\u00b7', color: CLR_BROWN }  // Middle dot for both in DECgraphics
+                    ? { ch: '\u2592', color: CLR_BROWN }  // DEC checkerboard (S_vodoor/S_hodoor)
                     : { ch: isHorizontalDoor ? '|' : '-', color: CLR_BROWN };
             } else if (loc.flags & D_CLOSED || loc.flags & D_LOCKED) {
                 return { ch: '+', color: CLR_BROWN };
@@ -615,7 +621,8 @@ export class Display {
         // Status line 2: Dungeon level, HP, Pw, AC, etc.
         // C ref: botl.c bot2str()
         const line2Parts = [];
-        line2Parts.push(`Dlvl:${player.dungeonLevel}`);
+        const levelLabel = player.inTutorial ? 'Tutorial' : 'Dlvl';
+        line2Parts.push(`${levelLabel}:${player.dungeonLevel}`);
         line2Parts.push(`$:${player.gold}`);
         line2Parts.push(`HP:${player.hp}(${player.hpmax})`);
         line2Parts.push(`Pw:${player.pw}(${player.pwmax})`);
@@ -755,11 +762,17 @@ export class Display {
         // C ref: win/tty/wintty.c - menu headers use inverse video
         for (let i = 0; i < lines.length && i < this.rows; i++) {
             const line = lines[i];
-            // First line (menu header) gets inverse video if it starts with space and contains text
-            // C ref: role.c - headers like " Pick a role or profession" use inverse
-            const isHeader = (i === 0 && line.trim().length > 0 && line.startsWith(' '));
-            const attr = isHeader ? 1 : 0;  // 1 = inverse video
-            this.putstr(offx, i, line, CLR_WHITE, attr);
+            // C ref: role.c — first line is menu header with inverse video.
+            const isHeader = (i === 0 && line.trim().length > 0);
+            if (isHeader && line.startsWith(' ')) {
+                // Keep explicit leading pad non-inverse, invert remaining header text.
+                this.setCell(offx, i, ' ', CLR_WHITE, 0);
+                this.putstr(offx + 1, i, line.slice(1), CLR_WHITE, 1);
+            } else if (isHeader) {
+                this.putstr(offx, i, line, CLR_WHITE, 1);
+            } else {
+                this.putstr(offx, i, line, CLR_WHITE, 0);
+            }
         }
 
         return offx;

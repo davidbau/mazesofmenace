@@ -169,6 +169,24 @@ npm run test:session
 
 ## Common Development Tasks
 
+### Unified Backlog Intake
+
+Use one project backlog for all work, with labels for classification.
+
+1. Capture candidate issues from:
+   - failing tests/sessions and CI regressions,
+   - C-to-JS audit/coverage gaps,
+   - manual playtesting findings,
+   - selfplay findings,
+   - release blockers and user/developer bug reports.
+2. Classify every new issue with labels.
+   - Use `parity` for C-vs-JS divergence/parity work.
+   - Add other domain labels as appropriate (`selfplay`, `infra`, `docs`, etc.).
+3. Keep new issues unowned by default.
+   - Add `agent:<name>` only when an agent actively claims the issue.
+4. Use evidence-first issue bodies for `parity` issues.
+   - Include seed/session/command, first mismatch point, and expected vs actual behavior.
+
 ## C Parity Policy
 
 When working on C-vs-JS parity, follow this rule:
@@ -178,6 +196,24 @@ When working on C-vs-JS parity, follow this rule:
 - Do not "fix to the trace" with JS-only heuristics when C code disagrees.
 - If a test reveals missing behavior, port the corresponding C logic path.
 - Keep changes incremental and keep tests green after each port batch.
+
+### Tutorial Parity Notes
+
+Recent parity work on tutorial sessions established a few stable rules:
+
+- Tutorial status rows should use `Tutorial:<level>` instead of `Dlvl:<level>`.
+- Tutorial startup/replay should expose `Xp`-style status output for parity with
+  captured interface sessions.
+- `nh.parse_config("OPTIONS=...")` options used by tutorial scripts now feed map
+  flags (`mention_walls`, `mention_decor`, `lit_corridor`) so movement/rendering
+  behavior follows script intent rather than ad-hoc tutorial checks.
+- Blocked wall movement now keys off `mention_walls` behavior and matches C
+  tutorial captures (`It's a wall.`).
+
+With those in place, tutorial interface screen matching is now complete in the
+manual tutorial session. The remaining first mismatch is RNG-only: an early
+`nhl_random` (`rn2(100)`) divergence immediately after the first tutorial
+`mktrap` call.
 
 ### Modifying the dungeon generator
 
@@ -217,6 +253,50 @@ python3 test/comparison/c-harness/gen_map_sessions.py --from-config
 #### Diagnostic Tools for RNG Divergence
 
 Two specialized tools help isolate RNG divergence at specific game turns:
+
+**`test/comparison/rng_step_diff.js`** — Step-level C-vs-JS RNG caller diff
+
+Replays a session in JS and compares RNG stream against captured C data. By
+default it compares a specific step; use `--phase startup` to compare startup
+RNG (useful when the first step already starts divergent).
+
+```bash
+# Inspect first divergence on tutorial accept step
+node test/comparison/rng_step_diff.js \
+  test/comparison/sessions/manual/interface_tutorial.session.json \
+  --step 1 --window 3
+
+# Inspect startup-phase divergence (pre-step RNG drift)
+node test/comparison/rng_step_diff.js \
+  test/comparison/sessions/manual/interface_tutorial.session.json \
+  --phase startup --window 5
+
+# Example output:
+# first divergence index=5
+# >> [5] JS=rn2(100)=27 | C=rn2(100)=97
+#      JS raw: rn2(100)=27 @ percent(sp_lev.js:6607)
+#      C  raw: rn2(100)=97 @ nhl_random(nhlua.c:948)
+```
+
+**Use when**: `session_test_runner` reports a mismatch and you need exact
+call-site context at the first divergent RNG call within a specific step.
+
+For tutorial-specific RNG drift, two debug env flags are available:
+
+```bash
+# Log non-counted raw PRNG advances in JS RNG log output.
+WEBHACK_LOG_RAW_ADVANCES=1 \
+node test/comparison/rng_step_diff.js \
+  test/comparison/sessions/manual/interface_tutorial.session.json \
+  --step 1 --window 8
+
+# Probe whether adding N raw draws before first tutorial percent() changes
+# alignment (diagnostic only; default behavior unchanged at N=0).
+WEBHACK_TUT_EXTRA_RAW_BEFORE_PERCENT=0 \
+node test/comparison/rng_step_diff.js \
+  test/comparison/sessions/manual/interface_tutorial.session.json \
+  --step 1 --window 3
+```
 
 **`selfplay/runner/pet_rng_probe.js`** — Per-turn RNG delta comparison
 
@@ -273,6 +353,17 @@ and outcomes.
 3. Use `pet_rng_probe.js` to identify which turn RNG consumption differs
 4. Add targeted RNG logging around the suspicious code path
 5. Compare RNG logs to find the extra/missing call
+
+### CORE vs DISP RNG Audits
+
+For display-only RNG investigations (C `rn2_on_display_rng` / `newsym_rn2` paths),
+follow the focused playbook in:
+
+- `docs/plans/RNG_DISPRNG_AUDIT_PLAN.md`
+
+Use that workflow before adding any new RNG infrastructure. The default policy is:
+- port C logic first;
+- add DISP-specific tracing only when repeated first-divergence evidence points to display paths.
 
 ### Adding a new test seed
 

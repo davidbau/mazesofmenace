@@ -14,7 +14,7 @@
 //   4. welcome(TRUE)           — rndencode + seer_turn
 
 import { rn2, rnd, rn1, rne, d, c_d, getRngLog } from './rng.js';
-import { mksobj, mkobj, weight } from './mkobj.js';
+import { mksobj, mkobj, weight, setStartupInventoryMode } from './mkobj.js';
 import { isok, NUM_ATTRS,
          A_STR, A_CON,
          PM_ARCHEOLOGIST, PM_BARBARIAN, PM_CAVEMAN, PM_HEALER,
@@ -235,6 +235,14 @@ function peace_minded(ptr, player) {
 function makedog(map, player, depth) {
     const pmIdx = pet_type(player.roleIndex);
     const petData = mons[pmIdx];
+    let petName = '';
+    // C ref: dog.c makedog() default starting pet names.
+    if (pmIdx === PM_LITTLE_DOG) {
+        if (player.roleIndex === PM_CAVEMAN) petName = 'Slasher';
+        else if (player.roleIndex === PM_SAMURAI) petName = 'Hachi';
+        else if (player.roleIndex === PM_BARBARIAN) petName = 'Idefix';
+        else if (player.roleIndex === PM_RANGER) petName = 'Sirius';
+    }
 
     // C ref: makemon.c:1180-1186 — enexto_core for byyou placement
     // NEW_ENEXTO calls collect_coords(candy, ux, uy, 3, CC_NO_FLAGS, NULL)
@@ -278,23 +286,28 @@ function makedog(map, player, depth) {
     peace_minded(petData, player);
 
     // C ref: dog.c:264-267 — put_saddle_on_mon(NULL, mtmp) for pony
-    // Creates a saddle and adds to pony's minvent
+    // Creates a saddle and adds to pony's minvent with owornmask set.
+    // C ref: steed.c put_saddle_on_mon() sets owornmask = W_SADDLE (0x100000).
     let saddleObj = null;
     if (pmIdx === PM_PONY) {
         saddleObj = mksobj(SADDLE, true, false);
+        if (saddleObj) saddleObj.owornmask = 0x100000; // W_SADDLE
     }
 
     // Create the pet monster object (matches makemon structure)
     const pet = {
         type: petData,
-        name: petData.name,
+        name: petName || petData.name,
         displayChar: MONSYM_CHARS[petData.symbol] || '?',
         displayColor: petData.color,
         mx: petX,
         my: petY,
         mhp: mhp,
         mhpmax: mhp,
-        mlevel: petData.level,
+        // C ref: makemon.c newmonhp() adjusted level (m_lev), not base species level.
+        // This affects pet aggressiveness checks (dogmove balk logic) and combat parity.
+        mlevel: m_lev,
+        m_lev: m_lev,
         mac: petData.ac,
         speed: petData.speed,
         movement: 0, // C ref: *mtmp = cg.zeromonst (zero-init)
@@ -315,6 +328,9 @@ function makedog(map, player, depth) {
         mtrack: [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }],
         mndx: pmIdx,     // C ref: monst.h — index into mons[] (also set mnum for compat)
         mnum: pmIdx,     // Alias for mndx - some code uses mnum, some uses mndx
+        // C ref: monst.c struct monst misc_worn_check; used by x_monnam()
+        // to prepend "saddled" when W_SADDLE is set.
+        misc_worn_check: saddleObj ? 0x100000 : 0,
         minvent: saddleObj ? [saddleObj] : [],
         // C ref: mextra.h struct edog — pet-specific data
         // C ref: dog.c initedog(mtmp, TRUE) — full initialization
@@ -773,7 +789,9 @@ function iniInv(player, table) {
     let quan = trquan(table[tropIdx]);
     let gotSp1 = false;
 
-    while (tropIdx < table.length) {
+    setStartupInventoryMode(true);
+    try {
+        while (tropIdx < table.length) {
         const trop = table[tropIdx];
         let obj, otyp;
 
@@ -871,11 +889,14 @@ function iniInv(player, table) {
             gotSp1 = true;
         }
 
-        if (--quan > 0) continue; // make another of same entry
-        tropIdx++;
-        if (tropIdx < table.length) {
-            quan = trquan(table[tropIdx]);
+            if (--quan > 0) continue; // make another of same entry
+            tropIdx++;
+            if (tropIdx < table.length) {
+                quan = trquan(table[tropIdx]);
+            }
         }
+    } finally {
+        setStartupInventoryMode(false);
     }
 }
 
@@ -1218,7 +1239,11 @@ function equipInitialGear(player) {
     for (const item of player.inventory) {
         if (item.oclass !== WEAPON_CLASS) continue;
         const info = objectData[item.otyp];
-        if (info && info.dir !== 0) {
+        // C ref: u_init.c:1282-1293 ini_inv_use_obj() — ammo (is_ammo)
+        // and missiles (is_missile) go to quiver, not uwep.  Both have
+        // negative oc_skill (sub < 0); melee weapons and launchers have
+        // non-negative oc_skill.
+        if (info && info.sub >= 0) {
             if (!player.weapon) {
                 player.weapon = item;
             } else if (!player.swapWeapon) {
@@ -1319,6 +1344,12 @@ export function simulatePostLevelInit(player, map, depth) {
     initAttributes(player);
     //    e. u_init_carry_attr_boost() — no RNG
     u_init_carry_attr_boost(player);
+
+    // C ref: attrib.c role ability tables — level 1 intrinsics.
+    // Monks and samurai gain intrinsic Speed (Fast) at level 1.
+    if (player.roleIndex === PM_MONK || player.roleIndex === PM_SAMURAI) {
+        player.fast = true;
+    }
 
     // Set HP/PW from role + race
     // C ref: u_init.c u_init_misc() — newhp() = role_hp + race_hp

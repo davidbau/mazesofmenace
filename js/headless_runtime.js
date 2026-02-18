@@ -19,12 +19,13 @@ import { initLevelGeneration, makelevel, setGameSeed } from './dungeon.js';
 import { simulatePostLevelInit, mon_arrive } from './u_init.js';
 import { Player, rankOf, roles } from './player.js';
 import { rhack } from './commands.js';
-import { makemon } from './makemon.js';
+import { makemon, setMakemonPlayerContext } from './makemon.js';
 import { movemon, initrack, settrack } from './monmove.js';
 import { FOV } from './vision.js';
 import { getArrivalPosition } from './level_transition.js';
 import { doname } from './mkobj.js';
 import { enexto } from './dungeon.js';
+import { monsterMapGlyph, objectMapGlyph } from './display_rng.js';
 import {
     COLNO, ROWNO, NORMAL_SPEED,
     A_STR, A_DEX, A_CON,
@@ -526,6 +527,9 @@ export class HeadlessGame {
 
         const result = await rhack(ch, this);
         if (result && result.tookTime && !options.skipTurnEnd) {
+            // C ref: vision.c vision_recalc() runs during domove(), so FOV
+            // is up-to-date before movemon().  Recompute here to match.
+            this.fov.compute(this.map, this.player.x, this.player.y);
             if (!options.skipMonsterMove) {
                 settrack(this.player);
                 movemon(this.map, this.player, this.display, this.fov, this);
@@ -552,6 +556,7 @@ export class HeadlessGame {
                     this.occupation = null;
                 }
                 if (interruptedOcc) continue;
+                this.fov.compute(this.map, this.player.x, this.player.y);
                 if (!options.skipMonsterMove) {
                     settrack(this.player);
                     movemon(this.map, this.player, this.display, this.fov, this);
@@ -573,6 +578,7 @@ export class HeadlessGame {
                 this.multi--;
                 const repeated = await rhack(this.cmdKey, this);
                 if (!repeated || !repeated.tookTime) break;
+                this.fov.compute(this.map, this.player.x, this.player.y);
                 if (!options.skipMonsterMove) {
                     settrack(this.player);
                     movemon(this.map, this.player, this.display, this.fov, this);
@@ -598,6 +604,7 @@ export class HeadlessGame {
                         this.occupation = null;
                     }
                     if (interruptedOcc) continue;
+                    this.fov.compute(this.map, this.player.x, this.player.y);
                     if (!options.skipMonsterMove) {
                         settrack(this.player);
                         movemon(this.map, this.player, this.display, this.fov, this);
@@ -724,6 +731,15 @@ export class HeadlessGame {
 
     // C ref: allmain.c moveloop_core() — per-turn effects
     simulateTurnEnd() {
+        // C ref: allmain.c moveloop_core() — the turn-end block (mcalcmove,
+        // spawn, u_calc_moveamt, once-per-turn effects) only runs when both
+        // hero and monsters are out of movement.  When Fast/Very Fast grants
+        // extra movement, the hero acts again WITHOUT a new turn-end.
+        if (this._bonusMovement > 0) {
+            this._bonusMovement--;
+            return; // bonus action: skip turn-end processing
+        }
+
         // C ref: allmain.c:239 — settrack() called after movemon, before moves++
         settrack(this.player);
         this.turnCount++;
@@ -761,7 +777,21 @@ export class HeadlessGame {
         if (!rn2(70) && !(this.map?.flags?.nomongen) && !(this.map?.flags?.is_tutorial)) {
             // Spawn at random valid location; new monster misses its first turn
             // because movement allocation already happened above.
+            setMakemonPlayerContext(this.player);
             makemon(null, 0, 0, 0, this.player.dungeonLevel, this.map);
+        }
+
+        // C ref: allmain.c:238 u_calc_moveamt(wtcap) — player movement allocation.
+        // Fast intrinsic (monks, samurai): gain extra turn 1/3 of the time via rn2(3).
+        // Very Fast (speed boots + intrinsic): gain extra turn 2/3 of the time.
+        if (this.player.veryFast) {
+            if (rn2(3) !== 0) {
+                this._bonusMovement = (this._bonusMovement || 0) + 1;
+            }
+        } else if (this.player.fast) {
+            if (rn2(3) === 0) {
+                this._bonusMovement = (this._bonusMovement || 0) + 1;
+            }
         }
 
         // C ref: allmain.c:289-295 regen_hp()
@@ -834,6 +864,8 @@ export class HeadlessGame {
 
     // C ref: sounds.c:202-339 dosounds() — ambient level sounds
     dosounds() {
+        if (this.flags && this.flags.acoustics === false) return;
+        const hallu = this.player?.hallucinating ? 1 : 0;
         const playerInShop = (() => {
             const loc = this.map?.at?.(this.player.x, this.player.y);
             if (!loc || !Number.isFinite(loc.roomno)) return false;
@@ -842,27 +874,59 @@ export class HeadlessGame {
             return !!(room && Number.isFinite(room.rtype) && room.rtype >= SHOPBASE);
         })();
         const tendedShop = (this.map?.monsters || []).some((m) => m && !m.dead && m.isshk);
-        const f = this.map.flags;
-        if (f.nfountains && !rn2(400)) { rn2(3); }
-        if (f.nsinks && !rn2(300)) { rn2(2); }
+        const f = this.map.flags || {};
+        if (f.nfountains && !rn2(400)) {
+            const fountainMsg = [
+                'You hear bubbling water.',
+                'You hear water falling on coins.',
+                'You hear the splashing of a naiad.',
+                'You hear a soda fountain!',
+            ];
+            this.display.putstr_message(fountainMsg[rn2(3) + hallu]);
+        }
+        if (f.nsinks && !rn2(300)) {
+            const sinkMsg = [
+                'You hear a slow drip.',
+                'You hear a gurgling noise.',
+                'You hear dishes being washed!',
+            ];
+            this.display.putstr_message(sinkMsg[rn2(2) + hallu]);
+        }
         if (f.has_court && !rn2(200)) { return; }
-        if (f.has_swamp && !rn2(200)) { rn2(2); return; }
+        if (f.has_swamp && !rn2(200)) {
+            const swampMsg = [
+                'You hear mosquitoes!',
+                'You smell marsh gas!',
+                'You hear Donald Duck!',
+            ];
+            this.display.putstr_message(swampMsg[rn2(2) + hallu]);
+            return;
+        }
         if (f.has_vault && !rn2(200)) { rn2(2); return; }
         if (f.has_beehive && !rn2(200)) { return; }
         if (f.has_morgue && !rn2(200)) { return; }
-        if (f.has_barracks && !rn2(200)) { rn2(3); return; }
+        if (f.has_barracks && !rn2(200)) {
+            const barracksMsg = [
+                'You hear blades being honed.',
+                'You hear loud snoring.',
+                'You hear dice being thrown.',
+                'You hear General MacArthur!',
+            ];
+            this.display.putstr_message(barracksMsg[rn2(3) + hallu]);
+            return;
+        }
         if (f.has_zoo && !rn2(200)) { return; }
         if (f.has_shop && !rn2(200)) {
             // C ref: sounds.c has_shop branch:
             // only choose a message (rn2(2)) when in a tended shop and
             // hero isn't currently inside any shop room.
             if (tendedShop && !playerInShop) {
-                const which = rn2(2);
-                if (which === 0) {
-                    this.display.putstr_message('You hear someone cursing shoplifters.');
-                } else {
-                    this.display.putstr_message('You hear the chime of a cash register.');
-                }
+                const shopMsg = [
+                    'You hear someone cursing shoplifters.',
+                    'You hear the chime of a cash register.',
+                    'You hear Neiman and Marcus arguing!',
+                ];
+                this.display.putstr_message(shopMsg[rn2(2) + hallu]);
             }
             return;
         }
@@ -924,6 +988,7 @@ export class HeadlessGame {
             created = true;
         }
         this.player.dungeonLevel = depth;
+        this.player.inTutorial = !!this.map?.flags?.is_tutorial;
         this.placePlayerOnLevel(transitionDir);
         // C ref: do.c goto_level(): u_on_rndspot()/u_on_newpos happens
         // before losedogs()->mon_arrive(), so follower arrival sees the
@@ -983,6 +1048,7 @@ HeadlessGame.fromSeed = function fromSeed(seed, roleIndex = 11, opts = {}) {
         player.y = map.upstair.y;
     }
     player.dungeonLevel = startDlevel;
+    player.inTutorial = !!map?.flags?.is_tutorial;
 
     const initResult = simulatePostLevelInit(player, map, startDlevel);
 
@@ -1011,6 +1077,8 @@ HeadlessGame.prototype.executeCommand = async function executeCommand(ch) {
     }
 
     if (result && result.tookTime) {
+        // C ref: vision_recalc() runs during domove(), update FOV before monsters act
+        this.fov.compute(this.map, this.player.x, this.player.y);
         movemon(this.map, this.player, this.display, this.fov, this);
         this.simulateTurnEnd();
         if (typeof this.hooks.onTurnAdvanced === 'function') {
@@ -1145,14 +1213,15 @@ export class HeadlessDisplay {
         }
         this.topMessage = null; // Track current message for concatenation
         this.messages = []; // Message history
-        this.flags = { msg_window: false, DECgraphics: false, lit_corridor: false }; // Default flags
+        this.flags = { msg_window: false, DECgraphics: false, lit_corridor: false, color: true }; // Default flags
         this.messageNeedsMore = false; // For message concatenation
     }
 
     setCell(col, row, ch, color = CLR_GRAY, attr = 0) {
         if (row >= 0 && row < this.rows && col >= 0 && col < this.cols) {
             this.grid[row][col] = ch;
-            this.colors[row][col] = color;
+            const displayColor = (this.flags.color !== false) ? color : CLR_GRAY;
+            this.colors[row][col] = displayColor;
             this.attrs[row][col] = attr;
         }
     }
@@ -1187,10 +1256,13 @@ export class HeadlessDisplay {
         }
 
         // C ref: win/tty/topl.c:264-267 — Concatenate messages if they fit
+        // C reserves space for " --More--" (9 chars) when checking if messages
+        // can be concatenated.  When the combined message plus --More-- would
+        // exceed the line width, C shows --More-- and starts a new line instead.
         const notDied = !msg.startsWith('You die');
         if (this.topMessage && this.messageNeedsMore && notDied) {
             const combined = this.topMessage + '  ' + msg;
-            if (combined.length < this.cols) {
+            if (combined.length + 9 <= this.cols) {
                 this.clearRow(0);
                 this.putstr(0, 0, combined.substring(0, this.cols));
                 this.topMessage = combined;
@@ -1234,10 +1306,17 @@ export class HeadlessDisplay {
         // C ref: role.c - headers like " Pick a role or profession" use inverse
         for (let i = 0; i < lines.length && i < this.rows; i++) {
             const line = lines[i];
-            // First line (menu header) gets inverse video if it starts with space and contains text
-            const isHeader = (i === 0 && line.trim().length > 0 && line.startsWith(' '));
-            const attr = isHeader ? 1 : 0;  // 1 = inverse video
-            this.putstr(offx, i, line, CLR_GRAY, attr);
+            // First line is a highlighted header in tty role/race/option menus.
+            const isHeader = (i === 0 && line.trim().length > 0);
+            if (isHeader && line.startsWith(' ')) {
+                // When header has explicit leading pad, C keeps that pad non-inverse.
+                this.setCell(offx, i, ' ', CLR_GRAY, 0);
+                this.putstr(offx + 1, i, line.slice(1), CLR_GRAY, 1);
+            } else if (isHeader) {
+                this.putstr(offx, i, line, CLR_GRAY, 1);
+            } else {
+                this.putstr(offx, i, line, CLR_GRAY, 0);
+            }
         }
 
         return offx;
@@ -1294,6 +1373,95 @@ export class HeadlessDisplay {
             result.push(line);
         }
         return result;
+    }
+
+    // Return 24-line ANSI string array including SGR color/attribute changes.
+    // Used for color-faithfulness comparisons against C captures with screenAnsi.
+    getScreenAnsiLines() {
+        const fgCode = (color) => {
+            switch (color) {
+                case 0: return 30;  // black
+                case 1: return 31;  // red
+                case 2: return 32;  // green
+                case 3: return 33;  // brown
+                case 4: return 34;  // blue
+                case 5: return 35;  // magenta
+                case 6: return 36;  // cyan
+                case 7: return 37;  // gray
+                case 9: return 33;  // orange -> yellow-ish
+                case 10: return 92; // bright green
+                case 11: return 93; // yellow
+                case 12: return 94; // bright blue
+                case 13: return 95; // bright magenta
+                case 14: return 96; // bright cyan
+                case 15: return 97; // white
+                default: return 37;
+            }
+        };
+        const bgCode = (color) => {
+            switch (color) {
+                case 0: return 40;
+                case 1: return 41;
+                case 2: return 42;
+                case 3: return 43;
+                case 4: return 44;
+                case 5: return 45;
+                case 6: return 46;
+                case 7: return 47;
+                case 9: return 43;
+                case 10: return 102;
+                case 11: return 103;
+                case 12: return 104;
+                case 13: return 105;
+                case 14: return 106;
+                case 15: return 107;
+                default: return 40;
+            }
+        };
+        const styleKey = (fg, bg, attr) => `${fg}|${bg}|${attr}`;
+
+        const out = [];
+        for (let r = 0; r < this.rows; r++) {
+            const chars = this.grid[r].slice();
+            const colors = this.colors[r].slice();
+            const attrs = this.attrs[r].slice();
+
+            // Match getScreenLines trimming for plain trailing blanks, but keep
+            // styled trailing spaces (inverse/bold/underline) because C captures
+            // preserve those via cursor movement + active SGR.
+            let end = chars.length - 1;
+            while (end >= 0 && chars[end] === ' ' && !attrs[end]) end--;
+            if (end < 0) {
+                out.push('');
+                continue;
+            }
+
+            let line = '';
+            let curKey = '';
+            for (let c = 0; c <= end; c++) {
+                const ch = chars[c] || ' ';
+                const fg = Number.isInteger(colors[c]) ? colors[c] : 7;
+                const attr = Number.isInteger(attrs[c]) ? attrs[c] : 0;
+                const inverse = (attr & 1) !== 0;
+                const bold = (attr & 2) !== 0;
+                const underline = (attr & 4) !== 0;
+                const styleFg = fg;
+                const styleBg = 0;
+                const key = styleKey(styleFg, styleBg, attr);
+                if (key !== curKey) {
+                    const sgr = [0, fgCode(styleFg), bgCode(styleBg)];
+                    if (bold) sgr.push(1);
+                    if (underline) sgr.push(4);
+                    if (inverse) sgr.push(7);
+                    line += `\x1b[${sgr.join(';')}m`;
+                    curKey = key;
+                }
+                line += ch;
+            }
+            line += '\x1b[0m';
+            out.push(line);
+        }
+        return out;
     }
 
     // Overwrite the terminal grid from captured 24-line session text.
@@ -1373,7 +1541,9 @@ export class HeadlessDisplay {
                     } else {
                         loc.mem_obj = 0;
                     }
-                    this.setCell(col, row, mon.displayChar, mon.displayColor);
+                    const hallu = !!player?.hallucinating;
+                    const glyph = monsterMapGlyph(mon, hallu);
+                    this.setCell(col, row, glyph.ch, glyph.color);
                     continue;
                 }
 
@@ -1381,7 +1551,9 @@ export class HeadlessDisplay {
                 if (objs.length > 0) {
                     const topObj = objs[objs.length - 1];
                     loc.mem_obj = topObj.displayChar || 0;
-                    this.setCell(col, row, topObj.displayChar, topObj.displayColor);
+                    const hallu = !!player?.hallucinating;
+                    const glyph = objectMapGlyph(topObj, hallu);
+                    this.setCell(col, row, glyph.ch, glyph.color);
                     continue;
                 }
                 loc.mem_obj = 0;
@@ -1437,7 +1609,8 @@ export class HeadlessDisplay {
         this.putstr(0, STATUS_ROW_1, line1.substring(0, this.cols), CLR_GRAY);
 
         const line2Parts = [];
-        line2Parts.push(`Dlvl:${player.dungeonLevel}`);
+        const levelLabel = player.inTutorial ? 'Tutorial' : 'Dlvl';
+        line2Parts.push(`${levelLabel}:${player.dungeonLevel}`);
         line2Parts.push(`$:${player.gold}`);
         line2Parts.push(`HP:${player.hp}(${player.hpmax})`);
         line2Parts.push(`Pw:${player.pw}(${player.pwmax})`);
@@ -1548,7 +1721,7 @@ export class HeadlessDisplay {
                 // S_hodoor (horizontal open door): '|' (walls E/W)
                 const isHorizontalDoor = this._isDoorHorizontal(gameMap, x, y);
                 return useDEC
-                    ? { ch: '\u00b7', color: CLR_BROWN }  // Middle dot for both in DECgraphics
+                    ? { ch: '\u2592', color: CLR_BROWN }  // DEC checkerboard (S_vodoor/S_hodoor)
                     : { ch: isHorizontalDoor ? '|' : '-', color: CLR_BROWN };
             } else if (loc.flags & D_CLOSED || loc.flags & D_LOCKED) {
                 return { ch: '+', color: CLR_BROWN };

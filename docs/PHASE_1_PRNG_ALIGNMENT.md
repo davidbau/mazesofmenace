@@ -43,7 +43,7 @@ diverge unpredictably. Exact porting lets you test with confidence.
 ## 2. Phase 1: Port ISAAC64
 
 **Commits:** `0c296c7`, `342f2f5`
-**Beads:** `mazesofmenace-dkm`, `mazesofmenace-2ed`
+**GitHub Issues:** `mazesofmenace-dkm`, `mazesofmenace-2ed`
 
 NetHack 3.7 uses ISAAC64, a cryptographic-quality PRNG with 64-bit output.
 The JS port initially used xoshiro128**, a different generator. Step one was
@@ -95,7 +95,7 @@ export function rnd(x) { return RND(x) + 1; }  // [1, x]
 ## 3. Phase 2: Build the Comparison Harness
 
 **Commits:** `342f2f5`, `324b9ef`
-**Beads:** `mazesofmenace-rgq`, `mazesofmenace-5nd`, `mazesofmenace-b77`
+**GitHub Issues:** `mazesofmenace-rgq`, `mazesofmenace-5nd`, `mazesofmenace-b77`
 
 With ISAAC64 matching at the raw value level, the next step was comparing
 actual map output. This required building a C NetHack binary that could be
@@ -148,7 +148,7 @@ Early runs showed hundreds of differences per map. The road to zero began.
 ## 4. Phase 3: Add RNG Call Logging
 
 **Commits:** `324b9ef`
-**Beads:** `mazesofmenace-qha`, `mazesofmenace-0n3`
+**GitHub Issues:** `mazesofmenace-qha`, `mazesofmenace-0n3`
 
 When maps differ, the question is: *where did the RNG sequences diverge?* A
 map-level diff can't answer this — you need to see every RNG call in order.
@@ -201,7 +201,7 @@ This bisection approach was used repeatedly throughout the project.
 ## 5. Phase 4: Align the Pre-Level RNG Sequence
 
 **Commits:** `e82fecf`, `e553c35`
-**Beads:** `mazesofmenace-2xj`, `mazesofmenace-zqi`, `mazesofmenace-1wa`
+**GitHub Issues:** `mazesofmenace-2xj`, `mazesofmenace-zqi`, `mazesofmenace-1wa`
 
 Before `makelevel()` is called, C NetHack consumes RNG calls during startup.
 The JS side must consume the same calls in the same order, or the PRNG state
@@ -299,7 +299,7 @@ because the backtracking algorithm matches C exactly.
 ## 6. Phase 5: Port the Level Generator
 
 **Commits:** `387fd57`, `53f6acf`, `e553c35`
-**Beads:** `mazesofmenace-0sd`, `mazesofmenace-3p3`
+**GitHub Issues:** `mazesofmenace-0sd`, `mazesofmenace-3p3`
 
 With PRNG state aligned at `makelevel()` entry, the next step was porting the
 level generator itself. C's `mklev.c` is ~2500 lines; the JS port follows
@@ -371,7 +371,7 @@ function themeroom_fill(map, room) {
 ## 7. Phase 6: Port Object, Monster, and Trap Creation
 
 **Commits:** `3706d5c`, `e82fecf`, `fcf70a9`
-**Beads:** `mazesofmenace-9f9`, `mazesofmenace-6yq`, `mazesofmenace-6kd`
+**GitHub Issues:** `mazesofmenace-9f9`, `mazesofmenace-6yq`, `mazesofmenace-6kd`
 
 `fill_ordinary_room()` populates rooms with objects, monsters, traps, and
 gold. Each of these creates complex chains of RNG calls.
@@ -424,7 +424,7 @@ mktrap → mkobj → makemon.
 ## 8. Phase 7: Fix the Long Tail of Divergences
 
 **Commits:** `fcf70a9`, `472d3ca`, `157ac22`, `89379b9`
-**Beads:** `mazesofmenace-kk4`
+**GitHub Issues:** `mazesofmenace-kk4`
 
 After porting the major systems, the RNG log comparison would show matches
 for hundreds of calls, then a divergence at some specific point. Each bug

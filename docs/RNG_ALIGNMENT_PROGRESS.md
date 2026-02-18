@@ -142,7 +142,7 @@ The `< 80` check may affect room properties or statistics, but does NOT prevent 
 
 - Test suite: `test/comparison/session_runner.test.js`
 - Memory file: `~/.claude/projects/-share-u-davidbau-git-mazesofmenace/memory/MEMORY.md`
-- Beads issue: `interface-61u` (depth 2 map structure differences)
+- GitHub issue: depth 2 map structure differences (legacy ID: `interface-61u`)
 - Related commits:
   - `73ac431`: Mausoleum inner room fix (+828 RNG calls)
   - `719e890`: Needfill fix (depths 1-3 passing)

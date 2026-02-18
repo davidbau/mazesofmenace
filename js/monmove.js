@@ -3,20 +3,24 @@
 // Focus: exact RNG consumption alignment with C NetHack
 
 import { COLNO, ROWNO, STONE, IS_WALL, IS_DOOR, IS_ROOM,
-         ACCESSIBLE, IS_OBSTRUCTED, CORR, DOOR, D_CLOSED, D_LOCKED, D_BROKEN,
-         POOL, LAVAPOOL, SHOPBASE, ROOMOFFSET, IS_POOL, IS_LAVA,
+         ACCESSIBLE, IS_OBSTRUCTED, CORR, DOOR, D_ISOPEN, D_CLOSED, D_LOCKED, D_BROKEN,
+         POOL, LAVAPOOL, WATER, LAVAWALL, IRONBARS,
+         SHOPBASE, ROOMOFFSET, IS_POOL, IS_LAVA,
          NORMAL_SPEED, isok } from './config.js';
 import { rn2, rnd, c_d, getRngLog } from './rng.js';
-import { monsterAttackPlayer } from './combat.js';
+import { monsterAttackPlayer, checkLevelUp } from './combat.js';
 import { CORPSE, FOOD_CLASS, COIN_CLASS, BOULDER, ROCK_CLASS, BALL_CLASS, CHAIN_CLASS,
+         WEAPON_CLASS,
          PICK_AXE, DWARVISH_MATTOCK, SKELETON_KEY, LOCK_PICK, CREDIT_CARD,
-         UNICORN_HORN, SCR_SCARE_MONSTER } from './objects.js';
+         UNICORN_HORN, SCR_SCARE_MONSTER, CLOAK_OF_DISPLACEMENT,
+         objectData } from './objects.js';
 import { doname, mkcorpstat, next_ident } from './mkobj.js';
 import { observeObject } from './discovery.js';
 import { dogfood, dog_eat, can_carry, DOGFOOD, CADAVER, ACCFOOD, MANFOOD, APPORT,
          POISON, UNDEF, TABU } from './dog.js';
 import { couldsee, m_cansee, do_clear_area } from './vision.js';
-import { can_teleport, noeyes, perceives, is_animal, is_mindless, nohands } from './mondata.js';
+import { can_teleport, noeyes, perceives, is_animal, is_mindless, nohands, nonliving,
+         monDisplayName, hasGivenName, monNam } from './mondata.js';
 import { PM_GRID_BUG, PM_IRON_GOLEM, PM_SHOPKEEPER, mons,
          PM_LEPRECHAUN, PM_XAN, PM_YELLOW_LIGHT, PM_BLACK_LIGHT,
          PM_PURPLE_WORM, PM_BABY_PURPLE_WORM, PM_SHRIEKER,
@@ -25,7 +29,9 @@ import { PM_GRID_BUG, PM_IRON_GOLEM, PM_SHOPKEEPER, mons,
          AD_ACID, AD_ENCH,
          M1_FLY, M1_SWIM, M1_AMPHIBIOUS, M1_AMORPHOUS, M1_CLING, M1_SEE_INVIS, S_MIMIC,
          M1_WALLWALK, M1_TUNNEL, M1_NEEDPICK, M1_SLITHY, M1_UNSOLID,
-         MZ_TINY, MZ_SMALL, MZ_MEDIUM, MR_FIRE, MR_SLEEP, G_FREQ, G_NOCORPSE } from './monsters.js';
+         MZ_TINY, MZ_SMALL, MZ_MEDIUM, MR_FIRE, MR_SLEEP, G_FREQ, G_NOCORPSE,
+         PM_DISPLACER_BEAST, PM_FIRE_ELEMENTAL, PM_SALAMANDER,
+         S_EYE, S_LIGHT, S_EEL, S_VORTEX, S_ELEMENTAL } from './monsters.js';
 import { STATUE_TRAP, MAGIC_TRAP, VIBRATING_SQUARE, RUST_TRAP, FIRE_TRAP,
          SLP_GAS_TRAP, BEAR_TRAP, PIT, SPIKED_PIT, HOLE, TRAPDOOR,
          WEB, ANTI_MAGIC, MAGIC_PORTAL } from './symbols.js';
@@ -46,6 +52,12 @@ function attackVerb(type) {
         case AT_WEAP: return 'hits';
         default: return 'hits';
     }
+}
+
+function monAttackName(mon) {
+    // C ref: do_name.c Monnam() — uses ARTICLE_THE regardless of tame status,
+    // and "saddled" is prepended when a saddle is worn.
+    return monNam(mon, { article: 'the', capitalize: true });
 }
 
 // ========================================================================
@@ -96,13 +108,16 @@ function dist2(x1, y1, x2, y2) {
     return (x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2);
 }
 
+// C ref: hack.h distmin()
+function distmin(x1, y1, x2, y2) {
+    return Math.max(Math.abs(x1 - x2), Math.abs(y1 - y2));
+}
+
 // C ref: mon.c monnear() + NODIAG()
 function monnear(mon, x, y) {
     const distance = dist2(mon.mx, mon.my, x, y);
-    const nodiag = mon.mndx === PM_GRID_BUG
-        || mon.mndx === PM_XAN
-        || mon.mndx === PM_YELLOW_LIGHT
-        || mon.mndx === PM_BLACK_LIGHT;
+    // C ref: hack.h NODIAG(monnum) is only PM_GRID_BUG.
+    const nodiag = mon.mndx === PM_GRID_BUG;
     if (distance === 2 && nodiag) return false;
     return distance < 3;
 }
@@ -110,6 +125,271 @@ function monnear(mon, x, y) {
 function hasGold(inv) {
     return Array.isArray(inv)
         && inv.some(o => o && o.oclass === COIN_CLASS && (o.quan ?? 1) > 0);
+}
+
+// C ref: mthrowu.c blocking_terrain() subset used by lined_up().
+function blockingTerrainForLinedup(map, x, y) {
+    if (!isok(x, y)) return true;
+    const loc = map.at(x, y);
+    if (!loc) return true;
+    if (IS_OBSTRUCTED(loc.typ)) return true;
+    if (IS_DOOR(loc.typ) && (loc.flags & (D_CLOSED | D_LOCKED))) return true;
+    return false;
+}
+
+// C ref: mthrowu.c linedup()/lined_up() for monster vs hero.
+function linedUpToPlayer(mon, map, player, fov = null) {
+    const ax = Number.isInteger(mon.mux) ? mon.mux : player.x;
+    const ay = Number.isInteger(mon.muy) ? mon.muy : player.y;
+    const bx = mon.mx;
+    const by = mon.my;
+    const tbx = ax - bx;
+    const tby = ay - by;
+    if (!tbx && !tby) return false;
+
+    if (!(!tbx || !tby || Math.abs(tbx) === Math.abs(tby))) return false;
+    if (distmin(tbx, tby, 0, 0) >= BOLT_LIM) return false;
+
+    // C ref: if target is hero square, use couldsee(mon_pos), otherwise clear_path().
+    const inSight = (ax === player.x && ay === player.y)
+        // C ref: linedup() uses couldsee(bx, by) for hero target.
+        // Use current FOV COULD_SEE bitmap when available.
+        ? ((fov && typeof fov.couldSee === 'function')
+            ? fov.couldSee(bx, by)
+            : couldsee(map, player, bx, by))
+        // C ref: linedup() uses clear_path(ax, ay, bx, by) for non-hero target.
+        : m_cansee({ mx: ax, my: ay }, map, bx, by);
+    if (inSight) return true;
+
+    // C ref: hero target uses boulderhandling=2.
+    const dx = Math.sign(ax - bx);
+    const dy = Math.sign(ay - by);
+    let cx = bx;
+    let cy = by;
+    let boulderspots = 0;
+    do {
+        cx += dx;
+        cy += dy;
+        if (blockingTerrainForLinedup(map, cx, cy)) return false;
+        const objs = map.objectsAt?.(cx, cy) || [];
+        if (objs.some((o) => o && o.otyp === BOULDER)) boulderspots++;
+    } while (cx !== ax || cy !== ay);
+    const denom = 2 + boulderspots;
+    return rn2(denom) < 2;
+}
+
+// ========================================================================
+// Monster ranged attacks (throwing)
+// C ref: mthrowu.c thrwmu(), monshoot(), monmulti(), m_throw()
+// ========================================================================
+
+// C ref: weapon.c select_rwep() — select best ranged weapon from monster inventory.
+// Deterministic (no RNG). Returns the weapon object or null.
+function select_rwep(mon) {
+    const inv = mon.minvent || [];
+    if (inv.length === 0) return null;
+    // Simple heuristic matching C priority: find first weapon-class item.
+    // C scans for: cockatrice eggs, pies (kops), boulders (giants),
+    // polearms, throw-and-return weapons, ammo+launcher, stackable weapons.
+    // For early-game monsters (goblins, orcs), the typical case is a
+    // stackable weapon (daggers, arrows) that they carry.
+    for (const obj of inv) {
+        if (!obj) continue;
+        const od = objectData[obj.otyp];
+        if (!od) continue;
+        if (od.oc_class === WEAPON_CLASS) return obj;
+    }
+    return null;
+}
+
+// C ref: mthrowu.c monmulti() — compute multishot count.
+// Consumes rnd(multishot) when multishot > 0 and quan > 1.
+function monmulti(mon, otmp) {
+    let multishot = 1;
+    const quan = otmp.quan ?? 1;
+    // C ref: mthrowu.c:207 — only enter multishot block when quan > 1
+    // and the weapon is a stackable weapon (not ammo needing launcher,
+    // which we simplify since we don't track launchers).
+    const od = objectData[otmp.otyp];
+    if (quan > 1 && od && od.oc_class === WEAPON_CLASS && !mon.confused) {
+        // C ref: prince/lord/mplayer bonuses (deterministic)
+        // Simplified: most early-game monsters are none of these.
+        // rnd(multishot) is the randomizer.
+        multishot = rnd(multishot);
+    }
+    if (multishot > quan) multishot = quan;
+    if (multishot < 1) multishot = 1;
+    return multishot;
+}
+
+// C ref: mthrowu.c m_throw() — simulate projectile flight.
+// Consumes rn2(5) at each step, plus hit/damage rolls on collision.
+function m_throw(mon, startX, startY, dx, dy, range, weapon, map, player, display, game) {
+    let x = startX;
+    let y = startY;
+
+    // C ref: mthrowu.c:601 — misfire check for cursed/greased weapons
+    if ((weapon.cursed || weapon.greased) && (dx || dy) && !rn2(7)) {
+        dx = rn2(3) - 1;
+        dy = rn2(3) - 1;
+        if (!dx && !dy) return; // missile drops at monster's feet
+    }
+
+    const od = objectData[weapon.otyp];
+
+    // C ref: mthrowu.c:652 — main flight loop
+    while (range-- > 0) {
+        x += dx;
+        y += dy;
+        if (!isok(x, y)) break;
+        const loc = map.at(x, y);
+        if (!loc) break;
+
+        // Check for monster at this position
+        const mtmp = map.monsterAt(x, y);
+        if (mtmp && !mtmp.dead) {
+            // C ref: mthrowu.c:664 ohitmon() — hit roll and damage
+            const mac = mtmp.mac ?? 10;
+            const hitThreshold = 5 + mac;
+            const dieRoll = rnd(20);
+            if (hitThreshold < dieRoll) {
+                // Miss — projectile continues if range > 0, stops otherwise
+                if (!range) break; // last step, missile drops
+                // Missile continues past the miss
+            } else {
+                // Hit! Calculate damage
+                // C ref: weapon.c dmgval() — rnd(oc_wsdam) for small monsters
+                const sdam = od ? (od.sdam || 0) : 0;
+                let damage = sdam > 0 ? rnd(sdam) : 0;
+                damage += (weapon.spe || 0);
+                if (damage < 1) damage = 1;
+
+                mtmp.mhp -= damage;
+                if (mtmp.mhp <= 0) {
+                    mtmp.dead = true;
+                    const mdat = mtmp.type || {};
+                    const killVerb = nonliving(mdat) ? 'destroy' : 'kill';
+                    if (display) {
+                        display.putstr_message(`You ${killVerb} the ${monDisplayName(mtmp)}!`);
+                    }
+                    map.removeMonster(mtmp);
+                    // C ref: ohitmon → mondied (context.mon_moving is true
+                    // during monster throws, so mondied not xkilled).
+                    // mondied: mondead() then corpse_chance(); no treasure
+                    // drop rn2(6) and no XP award to player.
+                    // C ref: mon.c corpse_chance()
+                    const mdat2 = mons[mtmp.mndx] || {};
+                    const gfreq = (mdat2.geno || 0) & G_FREQ;
+                    const verysmall = (mdat2.size || 0) === MZ_TINY;
+                    const corpsetmp = 2 + (gfreq < 2 ? 1 : 0) + (verysmall ? 1 : 0);
+                    if (!rn2(corpsetmp)) {
+                        // Corpse creation stub — consume the same RNG as mkcorpstat path
+                        // TODO: full corpse creation
+                    }
+                }
+                break; // projectile stops after hitting
+            }
+        }
+
+        // Check for player at this position
+        if (x === player.x && y === player.y) {
+            // C ref: mthrowu.c:694-716 thitu() — hit roll against player AC
+            const sdam = od ? (od.sdam || 0) : 0;
+            let dam = sdam > 0 ? rnd(sdam) : 0;
+            dam += (weapon.spe || 0);
+            if (dam < 1) dam = 1;
+            const hitv = 3 - distmin(player.x, player.y, mon.mx, mon.my) + 8 + (weapon.spe || 0);
+            const dieRoll = rnd(20);
+            if (player.ac + hitv <= dieRoll) {
+                // Miss
+                if (display) {
+                    display.putstr_message('It misses.');
+                }
+            } else {
+                // Hit
+                const weapName = od ? od.name : 'weapon';
+                if (display) {
+                    display.putstr_message(`You are hit by an ${weapName}!`);
+                }
+                if (player.takeDamage) {
+                    player.takeDamage(dam, monDisplayName(mon));
+                } else {
+                    player.hp -= dam;
+                }
+                // C ref: allmain.c stop_occupation()
+                if (game && game.occupation) {
+                    if (game.occupation.occtxt === 'waiting' || game.occupation.occtxt === 'searching') {
+                        display.putstr_message(`You stop ${game.occupation.occtxt}.`);
+                    }
+                    game.occupation = null;
+                    game.multi = 0;
+                }
+            }
+            break; // projectile stops at player position
+        }
+
+        // Check for wall/blocked terrain
+        if (IS_WALL(loc.typ) || IS_OBSTRUCTED(loc.typ)
+            || (IS_DOOR(loc.typ) && (loc.flags & (D_CLOSED | D_LOCKED)))) {
+            break;
+        }
+
+        // C ref: mthrowu.c:772 — forcehit = !rn2(5); iron bars check
+        // This rn2(5) is consumed every step that doesn't hit a creature.
+        const forcehit = !rn2(5);
+        // C ref: MT_FLIGHTCHECK — if end of range or iron bars + forcehit
+        if (!range) break; // end of path
+        if (loc.typ === IRONBARS && forcehit) break; // iron bars with forcehit
+    }
+}
+
+// C ref: mthrowu.c thrwmu() — monster throws at player.
+// Returns true if the monster acted (threw something).
+function thrwmu(mon, map, player, display, game) {
+    // C ref: mthrowu.c:1157-1161 — mon_wield_item check (simplified: skip)
+    // C ref: mthrowu.c:1165 — select_rwep (deterministic)
+    const otmp = select_rwep(mon);
+    if (!otmp) return false;
+
+    // C ref: mthrowu.c:1169 — polearm check (simplified: skip for now)
+
+    // C ref: mthrowu.c:1228 — lined_up check
+    if (!linedUpToPlayer(mon, map, player)) return false;
+
+    // C ref: mthrowu.c:1229-1231 — URETREATING distance-based skip
+    // TODO: implement URETREATING check (rn2(BOLT_LIM - dist))
+
+    // C ref: mthrowu.c:1235 — monshoot(mtmp, otmp, mwep)
+    const targetX = Number.isInteger(mon.mux) ? mon.mux : player.x;
+    const targetY = Number.isInteger(mon.muy) ? mon.muy : player.y;
+    const dm = distmin(mon.mx, mon.my, targetX, targetY);
+    const multishot = monmulti(mon, otmp);
+
+    // Show throw message
+    const od = objectData[otmp.otyp];
+    const weapName = od ? od.name : 'weapon';
+    if (display) {
+        const article = /^[aeiou]/i.test(weapName) ? 'an' : 'a';
+        display.putstr_message(`The ${monDisplayName(mon)} throws ${article} ${weapName}!`);
+    }
+
+    // Direction from monster to target (set by linedUpToPlayer via tbx/tby)
+    const ddx = Math.sign(targetX - mon.mx);
+    const ddy = Math.sign(targetY - mon.my);
+
+    // Fire each missile
+    for (let i = 0; i < multishot; i++) {
+        m_throw(mon, mon.mx, mon.my, ddx, ddy, dm, otmp, map, player, display, game);
+        if (mon.dead) break;
+    }
+
+    return true;
+}
+
+// Check if a monster has any AT_WEAP attacks (can throw weapons).
+function hasWeaponAttack(mon) {
+    const attacks = mon.attacks || (mon.type && mon.type.attacks) || [];
+    return attacks.some(a => a && a.type === AT_WEAP);
 }
 
 function playerHasGold(player) {
@@ -231,9 +511,17 @@ function set_apparxy(mon, map, player) {
     const mdat = mons[mon.mndx] || mon.type || {};
     const monCanSee = mon.mcansee !== false;
     const notseen = (!monCanSee || (player.invisible && !perceives(mdat)));
-    // We currently do not model displacement at runtime.
-    const notthere = false;
-    let displ = notseen ? 1 : 0;
+    // C ref: Displaced && mtmp->data != &mons[PM_DISPLACER_BEAST]
+    const playerDisplaced = !!(player.cloak && player.cloak.otyp === CLOAK_OF_DISPLACEMENT);
+    const notthere = playerDisplaced && mon.mndx !== PM_DISPLACER_BEAST;
+    let displ;
+    if (notseen) {
+        displ = 1;
+    } else if (notthere) {
+        displ = couldsee(map, player, mx, my) ? 2 : 1;
+    } else {
+        displ = 0;
+    }
 
     if (!displ) {
         mon.mux = player.x;
@@ -260,7 +548,7 @@ function set_apparxy(mon, map, player) {
             if (!isok(mx, my)) continue;
             if (displ !== 2 && mx === mon.mx && my === mon.my) continue;
             if ((mx !== player.x || my !== player.y) && blocked) continue;
-            if (!couldsee(mx, my)) continue;
+            if (!couldsee(map, player, mx, my)) continue;
             break;
         } while (true);
     } else {
@@ -273,9 +561,9 @@ function set_apparxy(mon, map, player) {
 }
 
 // C ref: mon.c:3243 corpse_chance() RNG.
+// Always consumes rn2() to match C; caller checks G_NOCORPSE separately.
 function petCorpseChanceRoll(mon) {
     const mdat = mon?.type || {};
-    if (((mdat.geno || 0) & G_NOCORPSE) !== 0) return 1;
     const gfreq = (mdat.geno || 0) & G_FREQ;
     const verysmall = (mdat.size || 0) === MZ_TINY;
     const corpsetmp = 2 + (gfreq < 2 ? 1 : 0) + (verysmall ? 1 : 0);
@@ -394,12 +682,33 @@ function mintrap_postmove(mon, map) {
 // C ref: mon.c mfndpos() — returns positions a monster can move to
 // Iterates (x-1..x+1) × (y-1..y+1) in column-major order, skipping current pos.
 // Handles NODIAG (grid bugs), terrain, doors, monsters, player, boulders.
-function mfndpos(mon, map, player) {
+function mfndpos(mon, map, player, opts = {}) {
+    const allowDoorOpen = !!opts.allowDoorOpen;
+    const allowDoorUnlock = !!opts.allowDoorUnlock;
     const omx = mon.mx, omy = mon.my;
     const nodiag = (mon.mndx === PM_GRID_BUG);
     const mflags1 = mon.type?.flags1 || 0;
-    const poolok = !!(mflags1 & (M1_FLY | M1_SWIM | M1_AMPHIBIOUS));
-    const lavaok = !!(mflags1 & M1_FLY);
+    const mdat = mon.type || {};
+    const mlet = mdat.symbol ?? -1;
+    // C ref: mon.c:2112-2118 m_in_air — flyers, floaters, ceiling clingers
+    const isFlyer = !!(mflags1 & M1_FLY);
+    const isFloater = (mlet === S_EYE || mlet === S_LIGHT);
+    const m_in_air = isFlyer || isFloater;
+    // C ref: mon.c:2147-2148 — eels want water, swimmers can handle pools
+    const wantpool = (mlet === S_EEL);
+    const isSwimmer = !!(mflags1 & (M1_SWIM | M1_AMPHIBIOUS));
+    const poolok = (m_in_air || (isSwimmer && !wantpool));
+    // C ref: mon.c:2152-2154 — lavaok includes likes_lava but not floating eye
+    // C ref: mondata.h:190 — likes_lava(ptr) = fire elemental or salamander
+    const likesLava = (mon.mndx === PM_FIRE_ELEMENTAL || mon.mndx === PM_SALAMANDER);
+    const lavaok = (m_in_air && !isFloater) || likesLava;
+    // C ref: mon.c:2155 — thrudoor if ALLOW_WALL or BUSTDOOR
+    const canPassWall = !!(mflags1 & M1_WALLWALK);
+    const thrudoor = canPassWall; // simplified: ALLOW_WALL implies passes_walls
+    // C ref: mon.c:2086-2091 — ALLOW_BARS for passes_bars monsters
+    const allowBars = passes_bars(mdat);
+    // C ref: mon.c:2218 — amorphous/can_fog can move under/through closed doors
+    const isAmorphous = !!(mflags1 & M1_AMORPHOUS);
     // C ref: mon.c:2061-2062 — tame monsters get ALLOW_M | ALLOW_TRAPS
     const allowM = !!mon.tame;
     const allowSSM = !!(mon.tame || mon.peaceful || mon.isshk || mon.ispriest);
@@ -415,18 +724,41 @@ function mfndpos(mon, map, player) {
             if (nx !== omx && ny !== omy && nodiag) continue;
 
             const loc = map.at(nx, ny);
-            if (!loc || !ACCESSIBLE(loc.typ)) continue;
-            if (IS_POOL(loc.typ) && !poolok) continue;
-            if (IS_LAVA(loc.typ) && !lavaok) continue;
+            if (!loc) continue;
+            const ntyp = loc.typ;
 
-            // C ref: door checks
-            if (IS_DOOR(loc.typ) && (loc.flags & (D_CLOSED | D_LOCKED))) continue;
+            // ---- C-faithful terrain gate (mon.c:2196-2243) ----
+            // 1. IS_OBSTRUCTED: stone, walls, tree, sdoor, scorr (typ < POOL)
+            // C ref: mon.c:2196-2199 — ALLOW_WALL/may_passwall or ALLOW_DIG/may_dig
+            // Simplified: passes_walls bypasses, otherwise obstructed means skip.
+            if (ntyp < POOL) {
+                if (!canPassWall) continue;
+            }
+            // 2. WATER terrain — only swimmers pass (C ref: mon.c:2206-2207)
+            if (ntyp === WATER && !isSwimmer) continue;
+            // 3. IRONBARS — only monsters that pass bars (C ref: mon.c:2209-2214)
+            if (ntyp === IRONBARS && !allowBars) continue;
+            // 4. Doors — closed/locked need OPENDOOR/UNLOCKDOOR or amorphous
+            // C ref: mon.c:2215-2222
+            if (IS_DOOR(ntyp)
+                && !(isAmorphous && !mon.engulfing)
+                && (((loc.flags & D_CLOSED) && !allowDoorOpen)
+                    || ((loc.flags & D_LOCKED) && !allowDoorUnlock))
+                && !thrudoor) {
+                continue;
+            }
+            // 5. LAVAWALL — requires lavaok and ALLOW_WALL equivalent
+            // C ref: mon.c:2240 — (!lavaok || !(flag & ALLOW_WALL)) && LAVAWALL
+            if (ntyp === LAVAWALL && !lavaok) continue;
+            // 6. Pool/lava positive gate (C ref: mon.c:2242-2243)
+            if (!poolok && IS_POOL(ntyp) !== wantpool) continue;
+            if (!lavaok && IS_LAVA(ntyp)) continue;
 
             // C ref: mon.c:2228-2238 — no diagonal moves through doorways
             // If either current pos or target is a non-broken door, diagonal blocked
             if (nx !== omx && ny !== omy) {
                 const monLoc = map.at(omx, omy);
-                if ((IS_DOOR(loc.typ) && (loc.flags & ~D_BROKEN))
+                if ((IS_DOOR(ntyp) && (loc.flags & ~D_BROKEN))
                     || (monLoc && IS_DOOR(monLoc.typ) && (monLoc.flags & ~D_BROKEN)))
                     continue;
             }
@@ -546,6 +878,20 @@ function cant_squeeze_thru_mon(mon) {
         ? mon.minvent.reduce((a, o) => a + (o?.owt || 0), 0)
         : 0;
     return load > 600;
+}
+
+// C ref: mondata.c passes_bars() — can this monster pass through iron bars?
+// passes_walls || amorphous || is_whirly || verysmall || (slithy && !bigmonst)
+function passes_bars(mdat) {
+    const f1 = mdat?.flags1 || 0;
+    if (f1 & M1_WALLWALK) return true;  // passes_walls
+    if (f1 & M1_AMORPHOUS) return true; // amorphous
+    const mlet = mdat?.symbol ?? -1;
+    if (mlet === S_VORTEX || mlet === S_ELEMENTAL) return true; // is_whirly
+    const size = mdat?.size || 0;
+    if (size === MZ_TINY) return true;  // verysmall
+    if ((f1 & M1_SLITHY) && size <= MZ_MEDIUM) return true; // slithy && !bigmonst
+    return false;
 }
 
 // C ref: mon.c onscary() subset used by mfndpos().
@@ -700,19 +1046,35 @@ function droppables(mon) {
         default:
             break;
         }
+        // C ref: dogmove.c droppables() — generic drop candidates skip worn/wielded.
+        // Cursed filtering is handled only for specific tool classes above.
         if (!obj.owornmask && obj !== wep) return obj;
     }
     return null;
 }
 
 function canStackFloorObject(a, b) {
-    if (!a || !b) return false;
+    if (!a || !b || a === b) return false;
     if (a.otyp !== b.otyp) return false;
-    if (a.otyp !== CORPSE) return false;
-    return (a.corpsenm === b.corpsenm)
-        && (a.age === b.age)
-        && (!!a.cursed === !!b.cursed)
-        && (!!a.blessed === !!b.blessed);
+    const od = objectData[a.otyp];
+    if (!od?.merge || a.nomerge || b.nomerge) return false;
+    if (a.oclass === COIN_CLASS) return true;
+    if (!!a.cursed !== !!b.cursed || !!a.blessed !== !!b.blessed) return false;
+    if ((a.spe ?? 0) !== (b.spe ?? 0)) return false;
+    if (!!a.no_charge !== !!b.no_charge) return false;
+    if (!!a.obroken !== !!b.obroken || !!a.otrapped !== !!b.otrapped) return false;
+    if (!!a.lamplit !== !!b.lamplit) return false;
+    if (a.oclass === FOOD_CLASS
+        && ((a.oeaten ?? 0) !== (b.oeaten ?? 0) || !!a.orotten !== !!b.orotten)) return false;
+    if (!!a.dknown !== !!b.dknown || !!a.bknown !== !!b.bknown) return false;
+    if ((a.oeroded ?? 0) !== (b.oeroded ?? 0) || (a.oeroded2 ?? 0) !== (b.oeroded2 ?? 0)) return false;
+    if (!!a.greased !== !!b.greased) return false;
+    if (!!a.oerodeproof !== !!b.oerodeproof || !!a.rknown !== !!b.rknown) return false;
+    if ((a.corpsenm ?? -1) !== (b.corpsenm ?? -1)) return false;
+    if ((a.age ?? -1) !== (b.age ?? -1)) return false;
+    if (!!a.opoisoned !== !!b.opoisoned) return false;
+    if (!!a.known !== !!b.known) return false;
+    return true;
 }
 
 function placeFloorObject(map, obj) {
@@ -750,7 +1112,9 @@ function dog_invent(mon, edog, udist, map, turnCount, display, player) {
                     placeFloorObject(map, dropObj);
                     if (display && player && couldsee(map, player, mon.mx, mon.my)) {
                         observeObject(dropObj);
-                        display.putstr_message(`The ${mon.name} drops ${doname(dropObj, null)}.`);
+                        // C ref: weapon.c:766 — Monnam(mon) uses ARTICLE_THE
+                        const monLabel = monNam(mon, { article: 'the', capitalize: true });
+                        display.putstr_message(`${monLabel} drops ${doname(dropObj, null)}.`);
                     }
                 }
                 if (edog.apport > 1) edog.apport--;
@@ -778,7 +1142,9 @@ function dog_invent(mon, edog, udist, map, turnCount, display, player) {
             if ((edible <= CADAVER
                 || (edog.mhpmax_penalty && edible === ACCFOOD))
                 && could_reach_item(map, mon, obj.ox, obj.oy)) {
-                dog_eat(mon, obj, map, turnCount);
+                dog_eat(mon, obj, map, turnCount, {
+                    display, player, startX: omx, startY: omy,
+                });
                 return 1;
             }
 
@@ -805,7 +1171,9 @@ function dog_invent(mon, edog, udist, map, turnCount, display, player) {
                         // C ref: dogmove.c "The <pet> picks up <obj>." when observed.
                         if (display && player && couldsee(map, player, mon.mx, mon.my)) {
                             observeObject(picked);
-                            display.putstr_message(`The ${mon.name} picks up ${doname(picked, null)}.`);
+                            // C ref: dogmove.c:454 — Monnam(mtmp) uses ARTICLE_THE
+                            const monLabel = monNam(mon, { article: 'the', capitalize: true });
+                            display.putstr_message(`${monLabel} picks up ${doname(picked, null)}.`);
                         }
                     }
                 }
@@ -823,6 +1191,8 @@ function dog_invent(mon, edog, udist, map, turnCount, display, player) {
 // C ref: mon.c movemon() — multi-pass loop until no monster can move
 // Called from gameLoop after hero action, BEFORE mcalcmove.
 export function movemon(map, player, display, fov, game = null) {
+    if (game) game._suppressMonsterHitMessagesThisTurn = false;
+    const turnCount = (player.turns || 0) + 1;
     let anyMoved;
     do {
         anyMoved = false;
@@ -833,6 +1203,7 @@ export function movemon(map, player, display, fov, game = null) {
                 const oldy = mon.my;
                 const alreadySawMon = !!(game && game.occupation && couldsee(map, player, oldx, oldy));
                 mon.movement -= NORMAL_SPEED;
+                mon.mlstmv = turnCount;
                 anyMoved = true;
                 dochug(mon, map, player, display, fov, game);
                 // C ref: monmove.c dochugw() threat-notice interruption gate.
@@ -861,6 +1232,11 @@ export function movemon(map, player, display, fov, game = null) {
                 }
             }
         }
+        // C ref: allmain.c:206-207 — when the hero has bonus movement
+        // (u.umovement >= NORMAL_SPEED, i.e. Fast/Very Fast triggered),
+        // the outer movemon loop breaks after one pass so the hero acts
+        // before monsters spend their remaining movement budget.
+        if (game && game._bonusMovement > 0) break;
     } while (anyMoved);
 
     // Remove dead monsters
@@ -995,6 +1371,12 @@ function dochug(mon, map, player, display, fov, game = null) {
     if (!phase3Cond && !monCanSee) phase3Cond = !rn2(4);
     if (!phase3Cond) phase3Cond = !!(mon.peaceful);
 
+    // C ref: monmove.c:911-962 — Phase 3 movement + optional Phase 4 ranged.
+    // After m_move, C recalculates distfleeck. If the monster MOVED
+    // (MMOVE_MOVED) and is still not nearby but has ranged attacks (AT_WEAP),
+    // it falls through to Phase 4 for a ranged attack on the same turn.
+    let mmoved = false; // track if the monster actually moved
+    let phase4Allowed = !phase3Cond; // Phase 4 is always allowed if Phase 3 was skipped
     if (phase3Cond) {
         // C ref: monmove.c:1743-1748 — meating check (inside m_move)
         // If monster is still eating, decrement meating and skip movement
@@ -1006,15 +1388,17 @@ function dochug(mon, map, player, display, fov, game = null) {
             // Inside condition block: m_move (routes to dog_move for tame)
             // C ref: monmove.c:911 — m_move() for all monsters in this path
             const omx = mon.mx, omy = mon.my;
-            dog_move(mon, map, player, display, fov);
+            dog_move(mon, map, player, display, fov, false, game);
             if (!mon.dead && (mon.mx !== omx || mon.my !== omy)) {
                 mintrap_postmove(mon, map);
+                mmoved = true;
             }
         } else {
             const omx = mon.mx, omy = mon.my;
-            m_move(mon, map, player);
+            m_move(mon, map, player, display, fov);
             if (!mon.dead && (mon.mx !== omx || mon.my !== omy)) {
                 mintrap_postmove(mon, map);
+                mmoved = true;
             }
             if (mon.mcanmove !== false
                 && !mon.tame
@@ -1024,15 +1408,43 @@ function dochug(mon, map, player, display, fov, game = null) {
             }
         }
         // distfleeck recalc after m_move
-        // C ref: monmove.c:915
+        // C ref: monmove.c:919 — distfleeck(mtmp, &inrange, &nearby, &scared);
         rn2(5);
-    } else {
-        // Phase 4: Standard Attacks
-        // C ref: monmove.c:966-973 — attack only when in range and not scared.
-        // We do not model full distfleeck scared state yet, but should still
-        // avoid off-range attacks.
-        if (!mon.peaceful && nearby && !mon.flee) {
-            monsterAttackPlayer(mon, player, display, game);
+
+        // C ref: monmove.c:949-953 — MMOVE_MOVED case:
+        // "Monsters can move and then shoot on same turn"
+        // If monster moved and still not nearby but has ranged attacks, allow Phase 4.
+        if (mmoved && !mon.dead) {
+            const targetX2 = Number.isInteger(mon.mux) ? mon.mux : player.x;
+            const targetY2 = Number.isInteger(mon.muy) ? mon.muy : player.y;
+            const nearby2 = monnear(mon, targetX2, targetY2);
+            if (!nearby2 && hasWeaponAttack(mon)) {
+                phase4Allowed = true;
+            }
+        }
+    }
+
+    // Phase 4: Standard Attacks
+    // C ref: monmove.c:966-975 — attack when in range and not scared.
+    // C calls mattacku(mtmp) which computes range2 = !monnear(mtmp, mux, muy).
+    // For AT_WEAP with range2=TRUE, C dispatches to thrwmu() (ranged throw).
+    // For melee attacks (range2=FALSE), C uses normal hit/miss rolls.
+    if (phase4Allowed && !mon.peaceful && !mon.flee && !mon.dead) {
+        const targetX2 = Number.isInteger(mon.mux) ? mon.mux : player.x;
+        const targetY2 = Number.isInteger(mon.muy) ? mon.muy : player.y;
+        const inrange2 = dist2(mon.mx, mon.my, targetX2, targetY2) <= (BOLT_LIM * BOLT_LIM);
+        const nearby2 = inrange2 && monnear(mon, targetX2, targetY2);
+        if (inrange2) {
+            if (nearby2) {
+                // Adjacent: melee attack (only if not already handled by Phase 3)
+                if (!phase3Cond) {
+                    monsterAttackPlayer(mon, player, display, game);
+                }
+            } else if (hasWeaponAttack(mon)) {
+                // At range with AT_WEAP: ranged throw
+                // C ref: mhitu.c:882-885 — AT_WEAP + range2 -> thrwmu(mtmp)
+                thrwmu(mon, map, player, display, game);
+            }
         }
     }
 }
@@ -1237,7 +1649,7 @@ function pet_ranged_attk(mon, map, player, display, game = null) {
 
 // C ref: dogmove.c dog_move() — full pet movement logic
 // Returns: -2 (skip), 0 (stay), 1 (moved), 2 (moved+ate)
-function dog_move(mon, map, player, display, fov, after = false) {
+function dog_move(mon, map, player, display, fov, after = false, game = null) {
     const omx = mon.mx, omy = mon.my;
     // C ref: hack.h #define distu(xx,yy) dist2(xx,yy,u.ux,u.uy)
     const udist = dist2(omx, omy, player.x, player.y);
@@ -1275,13 +1687,7 @@ function dog_move(mon, map, player, display, fov, after = false) {
         : couldsee(map, player, omx, omy);
 
     // C ref: dogmove.c:498 — dog_has_minvent = (droppables(mtmp) != 0)
-    // Worn/wielded items (like a worn saddle on pony) do not count.
-    const dogHasMinvent = !!(mon.minvent && mon.minvent.some((o) => {
-        if (!o) return false;
-        if (o.owornmask) return false;
-        if (mon.weapon && o === mon.weapon) return false;
-        return true;
-    }));
+    const dogHasMinvent = !!droppables(mon);
 
     // C ref: dogmove.c:545 — lighting check for apport branch
     const dogLoc = map.at(omx, omy);
@@ -1305,7 +1711,6 @@ function dog_move(mon, map, player, display, fov, after = false) {
             if (ox < minX || ox > maxX || oy < minY || oy > maxY) continue;
 
             const otyp = dogfood(mon, obj, turnCount);
-
             // C ref: dogmove.c:526 — skip inferior goals
             if (otyp > gtyp || otyp === UNDEF) continue;
 
@@ -1328,11 +1733,14 @@ function dog_move(mon, map, player, display, fov, after = false) {
             } else if (gtyp === UNDEF && inMastersSight
                     && !dogHasMinvent
                     && (!dogLit || playerLit)
-                    && (otyp === MANFOOD || m_cansee(mon, map, ox, oy))
-                    && edog.apport > rn2(8)
-                    && can_carry(mon, obj) > 0) {
+                    && (otyp === MANFOOD || m_cansee(mon, map, ox, oy))) {
+                const apportRoll = rn2(8);
+                const carry = can_carry(mon, obj);
+                if (edog.apport > apportRoll
+                    && carry > 0) {
                 // C ref: dogmove.c:543-552 — APPORT/MANFOOD with apport+carry check
-                gx = ox; gy = oy; gtyp = APPORT;
+                    gx = ox; gy = oy; gtyp = APPORT;
+                }
             }
         }
     }
@@ -1500,16 +1908,21 @@ function dog_move(mon, map, player, display, fov, after = false) {
                     const roll = rnd(20 + ai); // C ref: mhitm.c mattackm to-hit roll
                     const toHit = (target.mac ?? 10) + (mon.mlevel || 1);
                     const hit = toHit > roll;
+                    const monVisible = fov?.canSee ? fov.canSee(mon.mx, mon.my) : couldsee(map, player, mon.mx, mon.my);
+                    const targetVisible = fov?.canSee ? fov.canSee(target.mx, target.my) : couldsee(map, player, target.mx, target.my);
+                    const mmVisible = monVisible && targetVisible;
                     if (hit) {
                         anyHit = true;
-                        const targetVisible = couldsee(map, player, target.mx, target.my);
-                        const suppressDetail = !!player.displacedPetThisTurn;
-                        if (display && mon.name && target.name && targetVisible && !suppressDetail) {
-                            display.putstr_message(`The ${mon.name} ${attackVerb(attk?.type)} the ${target.name}.`);
-                        }
                         const dice = (attk && attk.dice) ? attk.dice : 1;
                         const sides = (attk && attk.sides) ? attk.sides : 1;
                         const dmg = c_d(Math.max(1, dice), Math.max(1, sides));
+                        const willKill = (target.mhp - Math.max(1, dmg)) <= 0;
+                        const suppressDetail = (!!player.displacedPetThisTurn && !willKill)
+                            || (game?.occupation?.occtxt === 'searching' && !willKill);
+                        if (display && mon.name && target.name && mmVisible && !suppressDetail) {
+                            // C ref: mhitm.c — mon_nam(mdef) uses ARTICLE_THE
+                            display.putstr_message(`${monAttackName(mon)} ${attackVerb(attk?.type)} ${monNam(target, { article: 'the' })}.`);
+                        }
                         // C ref: mhitm.c mdamagem() rolls damage before knockback RNG.
                         rn2(3);
                         rn2(6);
@@ -1524,11 +1937,18 @@ function dog_move(mon, map, player, display, fov, after = false) {
                                 target.minvent = [];
                             }
                             target.dead = true;
-                            if (display && target.name) {
-                                display.putstr_message(`The ${target.name} is killed!`);
+                            if (display && target.name && mmVisible) {
+                                // C ref: mon.c:3382 — Monnam(mdef) uses ARTICLE_THE
+                                // C ref: nonliving monsters (undead, golems) are "destroyed" not "killed"
+                                const tdat = target.type || {};
+                                const deathVerb = nonliving(tdat) ? 'destroyed' : 'killed';
+                                display.putstr_message(`${monNam(target, { article: 'the', capitalize: true })} is ${deathVerb}!`);
                             }
-                            if (petCorpseChanceRoll(target) === 0) {
+                            if (petCorpseChanceRoll(target) === 0
+                                && !(((target?.type?.geno || 0) & G_NOCORPSE) !== 0)) {
                                 const corpse = mkcorpstat(CORPSE, target.mndx || 0, true);
+                                // C ref: corpse age should reflect current move count.
+                                corpse.age = turnCount;
                                 corpse.ox = target.mx;
                                 corpse.oy = target.my;
                                 placeFloorObject(map, corpse);
@@ -1545,8 +1965,9 @@ function dog_move(mon, map, player, display, fov, after = false) {
                         }
                     } else {
                         consumePassivemmRng(mon, target, false, false);
-                        if (display && mon.name && target.name) {
-                            display.putstr_message(`The ${mon.name} misses the ${target.name}.`);
+                        if (display && mon.name && target.name && mmVisible) {
+                            // C ref: mhitm.c missmm — mon_nam(mdef) uses ARTICLE_THE
+                            display.putstr_message(`${monAttackName(mon)} misses ${monNam(target, { article: 'the' })}.`);
                         }
                     }
                 }
@@ -1556,10 +1977,27 @@ function dog_move(mon, map, player, display, fov, after = false) {
                     && target.mlstmv !== turnCount
                     && monnear(target, mon.mx, mon.my)) {
                     // C ref: dogmove.c retaliation uses mattackm(target, mon).
-                    // Keep a compact parity model: to-hit + optional damage path,
-                    // then passive-effect RNG on the defender.
-                    rnd(20);
-                    consumePassivemmRng(target, mon, false, false);
+                    const retaliateAttk = (Array.isArray(target.attacks) && target.attacks.length > 0)
+                        ? target.attacks.find((a) => a && a.type !== AT_NONE)
+                        : null;
+                    const dice = (retaliateAttk && retaliateAttk.dice) ? retaliateAttk.dice : 1;
+                    const sides = (retaliateAttk && retaliateAttk.sides) ? retaliateAttk.sides : 1;
+                    const roll = rnd(20);
+                    const toHit = (mon.mac ?? 10) + (target.mlevel || 1);
+                    const hit = toHit > roll;
+                    if (hit) {
+                        const dmg = c_d(Math.max(1, dice), Math.max(1, sides));
+                        rn2(3); // mhitm_knockback distance probe
+                        rn2(6); // mhitm_knockback chance probe
+                        mon.mhp -= Math.max(1, dmg);
+                        const monDied = mon.mhp <= 0;
+                        if (monDied) {
+                            mon.dead = true;
+                        }
+                        consumePassivemmRng(target, mon, true, monDied);
+                    } else {
+                        consumePassivemmRng(target, mon, false, false);
+                    }
                 }
                 return 0; // MMOVE_DONE-equivalent for this simplified path
             }
@@ -1680,10 +2118,9 @@ function dog_move(mon, map, player, display, fov, after = false) {
 
         // C ref: dogmove.c:1324-1327 — eat after moving
         if (do_eat && eatObj) {
-            if (display && couldsee(map, player, mon.mx, mon.my)) {
-                display.putstr_message(`Your ${mon.name} eats ${doname(eatObj, null)}.`);
-            }
-            dog_eat(mon, eatObj, map, turnCount);
+            dog_eat(mon, eatObj, map, turnCount, {
+                display, player, fov, startX: omx, startY: omy,
+            });
         }
     }
 
@@ -1829,7 +2266,7 @@ function shk_move(mon, map, player) {
 //   - Position eval: first valid pos accepted (mmoved), then only strictly nearer
 //   - No rn2(3)/rn2(12) fallback for worse positions (that's dog_move only)
 //   - mfndpos provides positions in column-major order with NODIAG filtering
-function m_move(mon, map, player) {
+function m_move(mon, map, player, display = null, fov = null) {
     // C ref: monmove.c dispatch for shopkeeper/guard/priest before generic m_move().
     if (mon.isshk) {
         const omx = mon.mx, omy = mon.my;
@@ -1849,7 +2286,15 @@ function m_move(mon, map, player) {
     }
 
     const omx = mon.mx, omy = mon.my;
-    let ggx = player.x, ggy = player.y;
+    const ptr = mon.type || {};
+    const verysmall = (ptr.size || 0) === MZ_TINY;
+    const can_open = !(nohands(ptr) || verysmall);
+    const can_unlock = !!mon.iswiz; // inventory-based unlock path is not modeled yet
+
+    // C ref: monmove.c:1763 — set_apparxy(mtmp) before main movement logic.
+    set_apparxy(mon, map, player);
+
+    let ggx = mon.mux ?? player.x, ggy = mon.muy ?? player.y;
 
     // C ref: monmove.c — appr setup
     let appr = mon.flee ? -1 : 1;
@@ -1883,6 +2328,18 @@ function m_move(mon, map, player) {
         }
     }
 
+    // C ref: monmove.c:1890-1907 — getitems gate consumes lined_up() RNG.
+    let getitems = false;
+    const isRogueLevel = !!(map?.flags?.is_rogue || map?.flags?.roguelike || map?.flags?.is_rogue_lev);
+    if ((!mon.peaceful || !rn2(10)) && !isRogueLevel) {
+        const heroStr = Number(player?.str) || Number(player?.acurrstr) || 10;
+        const inLine = linedUpToPlayer(mon, map, player, fov)
+            && (distmin(mon.mx, mon.my, mon.mux ?? player.x, mon.muy ?? player.y)
+                <= (Math.floor(heroStr / 2) + 1));
+        if (appr !== 1 || !inLine) getitems = true;
+    }
+    void getitems;
+
     // C ref: monmove.c m_search_items() shop short-circuit:
     // "in shop, usually skip" -> rn2(25) consumed for non-peaceful movers.
     // Full item-search port is pending; keep this RNG-visible gate aligned.
@@ -1891,7 +2348,7 @@ function m_move(mon, map, player) {
     }
 
     // Collect valid positions via mfndpos (column-major, NODIAG, boulder filter)
-    const positions = mfndpos(mon, map, player);
+    const positions = mfndpos(mon, map, player, { allowDoorOpen: can_open, allowDoorUnlock: can_unlock });
     const cnt = positions.length;
     if (cnt === 0) return false; // no valid positions
 
@@ -1972,6 +2429,26 @@ function m_move(mon, map, player) {
         }
         mon.mx = nix;
         mon.my = niy;
+
+        // C ref: monmove.c postmov door-opening feedback.
+        const here = map.at(mon.mx, mon.my);
+        if (here && IS_DOOR(here.typ)) {
+            const wasLocked = !!(here.flags & D_LOCKED);
+            const wasClosed = !!(here.flags & D_CLOSED);
+            if ((wasLocked && can_unlock) || (wasClosed && can_open)) {
+                here.flags &= ~(D_LOCKED | D_CLOSED);
+                here.flags |= D_ISOPEN;
+                if (display) {
+                    const canSeeDoor = fov?.canSee ? fov.canSee(mon.mx, mon.my) : couldsee(map, player, mon.mx, mon.my);
+                    if (canSeeDoor && mon.name) {
+                        // C ref: monmove.c:1587 — Monnam(mtmp) uses ARTICLE_THE
+                        display.putstr_message(`${monNam(mon, { article: 'the', capitalize: true })} opens a door.`);
+                    } else {
+                        display.putstr_message('You hear a door open.');
+                    }
+                }
+            }
+        }
         return true;
     }
     return false;

@@ -100,7 +100,7 @@ export const roles = [
       forceGender: null,
       gods: ['Shan Lai Ching', 'Chih Sung-tzu', 'Huan Ti'],
       ranks: [
-        {m:'Bonze',f:'Bonze'}, {m:'Mendicant',f:'Mendicant'},
+        {m:'Candidate',f:'Candidate'}, {m:'Mendicant',f:'Mendicant'},
         {m:'Acolyte',f:'Acolyte'}, {m:'Monk',f:'Nun'},
         {m:'Lama',f:'Lama'}, {m:'Abbot',f:'Abbess'},
         {m:'Guru',f:'Guru'}, {m:'Swami',f:'Swami'},
@@ -417,6 +417,7 @@ export class Player {
         // Dungeon position
         this.dungeonLevel = 1;
         this.maxDungeonLevel = 1;
+        this.inTutorial = false;
 
         // Resources
         this.gold = 0;

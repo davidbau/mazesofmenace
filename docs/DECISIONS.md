@@ -344,7 +344,7 @@ become JS modules:
 - No debug library
 - No `load()` or `dofile()` (no runtime code generation)
 
-**Porting order** (tracked in beads):
+**Porting order** (tracked in GitHub Issues):
 
 ```
 Phase 1 (foundation):

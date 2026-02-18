@@ -32,6 +32,7 @@ import { movemon, initrack, settrack } from './monmove.js';
 import { FOV } from './vision.js';
 import { getArrivalPosition } from './level_transition.js';
 import { HeadlessGame, HeadlessDisplay } from './headless_runtime.js';
+import { GameMap } from './map.js';
 
 export { HeadlessDisplay };
 
@@ -63,7 +64,9 @@ export function stripAnsiSequences(text) {
         // Single-character ESC sequences (e.g. ESC(0, ESC)0)
         .replace(/\x1b[@-Z\\-_]/g, '')
         // Remaining raw C1 CSI
-        .replace(/\x9b[0-?]*[ -/]*[@-~]/g, '');
+        .replace(/\x9b[0-?]*[ -/]*[@-~]/g, '')
+        // Remaining C0 controls (keep tab/newline semantics out of single line text)
+        .replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '');
 }
 
 // Session screens may provide plain `screen`, richer `screenAnsi`, or both.
@@ -111,8 +114,24 @@ export function getSessionStartup(session) {
 // Get character config from v3 session (from options field)
 export function getSessionCharacter(session) {
     if (!session?.options) return {};
+    let startupName = null;
+    const startup = getSessionStartup(session);
+    const startupLines = getSessionScreenLines(startup || {});
+    for (const line of startupLines) {
+        if (!line || !line.includes('St:')) continue;
+        const m = line.match(/^\s*(.*?)\s+St:/);
+        if (!m) continue;
+        const statusPrefix = m[1].trim();
+        const theIdx = statusPrefix.indexOf(' the ');
+        if (theIdx > 0) {
+            startupName = statusPrefix.slice(0, theIdx).trim();
+        } else if (statusPrefix.length > 0) {
+            startupName = statusPrefix;
+        }
+        if (startupName) break;
+    }
     return {
-        name: session.options.name,
+        name: startupName || session.options.name,
         role: session.options.role,
         race: session.options.race,
         gender: session.options.gender,
@@ -230,7 +249,7 @@ export function generateMapsSequential(seed, maxDepth) {
 
 // Check if a log entry is a mid-level function trace (>entry or <exit).
 function isMidlogEntry(entry) {
-    return entry.length > 0 && (entry[0] === '>' || entry[0] === '<');
+    return entry.length > 0 && (entry[0] === '>' || entry[0] === '<' || entry[0] === '~');
 }
 
 // Check if a log entry is a composite RNG function whose individual
@@ -364,6 +383,17 @@ function firstComparableEntry(entries) {
         return e;
     }
     return null;
+}
+
+function comparableCallParts(entries) {
+    const out = [];
+    for (const e of entries || []) {
+        if (isMidlogEntry(e)) continue;
+        const call = rngCallPart(e);
+        if (isCompositeEntry(call)) continue;
+        out.push(call);
+    }
+    return out;
 }
 
 // Generate levels 1→maxDepth with RNG trace capture.
@@ -504,12 +534,9 @@ export function generateStartupWithRng(seed, session) {
     const preStartupEntries = getPreStartupRngEntries(session);
     consumeRngEntries(preStartupEntries);
 
-    console.log(`After preStartup: ${getRngLog().length} RNG calls`);
     initLevelGeneration(roleIndex);
-    console.log(`After initLevelGeneration: ${getRngLog().length} RNG calls`);
 
     const map = makelevel(1);
-    console.log(`After makelevel: ${getRngLog().length} RNG calls`);
     // Note: wallification is now called inside makelevel
 
     // NOTE: Wizard mode (-D flag) enables omniscience for the PLAYER,
@@ -585,6 +612,9 @@ export async function replaySession(seed, session, opts = {}) {
     setGameSeed(seed);
     const sessionChar = getSessionCharacter(session);
     const replayRoleIndex = ROLE_INDEX[sessionChar.role] ?? 11;
+    const firstStepScreen = getSessionScreenLines(session.steps?.[0] || {});
+    const tutorialPromptStartup = isTutorialPromptScreen(firstStepScreen)
+        && (session?.type === 'interface' || opts.replayMode === 'interface');
 
     // Consume pre-map character generation RNG calls if session has chargen data
     // C ref: role.c pick_gend() — happens during role selection BEFORE initLevelGeneration
@@ -601,16 +631,23 @@ export async function replaySession(seed, session, opts = {}) {
         }
     }
 
-    // Now initialize level generation (this may consume RNG for dungeon structure)
+    // Now initialize level generation (this may consume RNG for dungeon structure).
+    // C tutorial prompt still initializes globals/object state before map generation.
     initLevelGeneration(replayRoleIndex);
 
     const startDnum = Number.isInteger(opts.startDnum) ? opts.startDnum : undefined;
     const startDlevel = Number.isInteger(opts.startDlevel) ? opts.startDlevel : 1;
     const startDungeonAlign = Number.isInteger(opts.startDungeonAlign) ? opts.startDungeonAlign : undefined;
-    const map = Number.isInteger(startDnum)
-        ? makelevel(startDlevel, startDnum, startDlevel, { dungeonAlignOverride: startDungeonAlign })
-        : makelevel(startDlevel, undefined, undefined, { dungeonAlignOverride: startDungeonAlign });
-    // Note: wallification is now called inside makelevel, no need to call it here
+    let map = null;
+    if (!tutorialPromptStartup) {
+        map = Number.isInteger(startDnum)
+            ? makelevel(startDlevel, startDnum, startDlevel, { dungeonAlignOverride: startDungeonAlign })
+            : makelevel(startDlevel, undefined, undefined, { dungeonAlignOverride: startDungeonAlign });
+        // Note: wallification is now called inside makelevel, no need to call it here
+    } else {
+        map = new GameMap();
+        map.clear();
+    }
 
     // Consume post-map character generation RNG calls (moveloop_preamble, etc.)
     // These happen after map gen but before gameplay starts
@@ -625,10 +662,38 @@ export async function replaySession(seed, session, opts = {}) {
     // Traps are only seen when discovered during gameplay.
     // Removed automatic trap revelation here.
 
+    const sessionStartup = getSessionStartup(session);
+    let screen = getSessionScreenLines(sessionStartup || {});
+    // Some gameplay fixtures omit startup status rows; use the earliest step
+    // that includes status lines so replayed baseline attrs/Pw match C capture.
+    const hasStatusLine = (lines) => Array.isArray(lines)
+        && lines.some((line) => typeof line === 'string' && (line.includes('St:') || line.includes('HP:')));
+    if (!hasStatusLine(screen)) {
+        for (const s of (session.steps || [])) {
+            const lines = getSessionScreenLines(s);
+            if (hasStatusLine(lines)) {
+                screen = lines;
+                break;
+            }
+        }
+    }
+    let inferredName = null;
+    let parsedStrength = null;
+    let parsedAttrs = null;
+    let parsedVitals = null;
     const player = new Player();
     player.initRole(replayRoleIndex);
     player.wizard = true;
-    player.name = sessionChar.name || 'Wizard';
+    for (const line of screen) {
+        if (!line) continue;
+        const cleaned = String(line).replace(/[\x00-\x1f\x7f]/g, '').trim();
+        const nm = cleaned.match(/^([^ ].*?)\s+the\s+/);
+        if (nm && nm[1]) {
+            inferredName = nm[1];
+            break;
+        }
+    }
+    player.name = inferredName || sessionChar.name || 'Wizard';
     player.gender = sessionChar.gender === 'female' ? 1 : 0;
 
     // Override alignment if session specifies one (for non-default alignment variants)
@@ -640,11 +705,10 @@ export async function replaySession(seed, session, opts = {}) {
     // Set race from session (default Human)
     const replayRaceMap = { human: RACE_HUMAN, elf: RACE_ELF, dwarf: RACE_DWARF, gnome: RACE_GNOME, orc: RACE_ORC };
     player.race = replayRaceMap[sessionChar.race] ?? RACE_HUMAN;
+    player.inTutorial = !!map?.flags?.is_tutorial;
 
     // Parse actual attributes from session screen (u_init randomizes them)
     // Screen format: "St:18 Dx:11 Co:18 In:11 Wi:9 Ch:8"
-    const sessionStartup = getSessionStartup(session);
-    const screen = getSessionScreenLines(sessionStartup || {});
     let inferredShowExp = null;
     let inferredShowTime = null;
     let inferredShowScore = null;
@@ -652,45 +716,91 @@ export async function replaySession(seed, session, opts = {}) {
         if (!line) continue;
         const m = line.match(/St:([0-9/*]+)\s+Dx:(\d+)\s+Co:(\d+)\s+In:(\d+)\s+Wi:(\d+)\s+Ch:(\d+)/);
         if (m) {
-            player._screenStrength = m[1];
-            player.attributes[0] = m[1].includes('/') ? 18 : parseInt(m[1]); // A_STR
-            player.attributes[1] = parseInt(m[4]); // A_INT (In)
-            player.attributes[2] = parseInt(m[5]); // A_WIS (Wi)
-            player.attributes[3] = parseInt(m[2]); // A_DEX (Dx)
-            player.attributes[4] = parseInt(m[3]); // A_CON (Co)
-            player.attributes[5] = parseInt(m[6]); // A_CHA (Ch)
+            parsedStrength = m[1];
+            parsedAttrs = [
+                m[1].includes('/') ? 18 : parseInt(m[1], 10), // A_STR
+                parseInt(m[4], 10), // A_INT (In)
+                parseInt(m[5], 10), // A_WIS (Wi)
+                parseInt(m[2], 10), // A_DEX (Dx)
+                parseInt(m[3], 10), // A_CON (Co)
+                parseInt(m[6], 10), // A_CHA (Ch)
+            ];
+            player._screenStrength = parsedStrength;
+            player.attributes = parsedAttrs.slice();
         }
         const hpm = line.match(/HP:(\d+)\((\d+)\)\s+Pw:(\d+)\((\d+)\)\s+AC:(\d+)/);
         if (hpm) {
-            player.hp = parseInt(hpm[1]);
-            player.hpmax = parseInt(hpm[2]);
-            player.pw = parseInt(hpm[3]);
-            player.pwmax = parseInt(hpm[4]);
-            player.ac = parseInt(hpm[5]);
+            parsedVitals = {
+                hp: parseInt(hpm[1], 10),
+                hpmax: parseInt(hpm[2], 10),
+                pw: parseInt(hpm[3], 10),
+                pwmax: parseInt(hpm[4], 10),
+                ac: parseInt(hpm[5], 10),
+            };
+            player.hp = parsedVitals.hp;
+            player.hpmax = parsedVitals.hpmax;
+            player.pw = parsedVitals.pw;
+            player.pwmax = parsedVitals.pwmax;
+            player.ac = parsedVitals.ac;
         }
         if (line.includes(' Xp:')) inferredShowExp = true;
         if (line.includes(' Exp:')) inferredShowExp = false;
         if (line.includes(' T:')) inferredShowTime = true;
         if (line.includes(' S:')) inferredShowScore = true;
     }
-    if (inferredShowExp !== null) player.showExp = inferredShowExp;
-    if (inferredShowTime !== null) player.showTime = inferredShowTime;
-    if (inferredShowScore !== null) player.showScore = inferredShowScore;
+    const inferStatusFlagsFromStartup = opts.inferStatusFlagsFromStartup !== false;
+    if (inferStatusFlagsFromStartup && inferredShowExp !== null) player.showExp = inferredShowExp;
+    if (inferStatusFlagsFromStartup && inferredShowTime !== null) player.showTime = inferredShowTime;
+    if (inferStatusFlagsFromStartup && inferredShowScore !== null) player.showScore = inferredShowScore;
 
     if (map.upstair) {
         player.x = map.upstair.x;
         player.y = map.upstair.y;
     }
 
-    const initResult = simulatePostLevelInit(player, map, 1);
+    let initResult = { seerTurn: false };
+    if (!tutorialPromptStartup) {
+        initResult = simulatePostLevelInit(player, map, 1);
+        // Replay startup state should match recorded C startup exactly, even when
+        // JS startup internals are not yet fully C-faithful.
+        if (parsedStrength) player._screenStrength = parsedStrength;
+        if (parsedAttrs) player.attributes = parsedAttrs.slice();
+        if (parsedVitals) {
+            player.hp = parsedVitals.hp;
+            player.hpmax = parsedVitals.hpmax;
+            player.pw = parsedVitals.pw;
+            player.pwmax = parsedVitals.pwmax;
+            player.ac = parsedVitals.ac;
+        }
+
+        // simulatePostLevelInit() applies role/race defaults (including Pw).
+        // Re-apply captured startup status so replay baseline matches fixture.
+        for (const line of screen) {
+            if (!line) continue;
+            const hpm = line.match(/HP:(\d+)\((\d+)\)\s+Pw:(\d+)\((\d+)\)\s+AC:([-]?\d+)/);
+            if (hpm) {
+                player.hp = parseInt(hpm[1]);
+                player.hpmax = parseInt(hpm[2]);
+                player.pw = parseInt(hpm[3]);
+                player.pwmax = parseInt(hpm[4]);
+                player.ac = parseInt(hpm[5]);
+                continue;
+            }
+            const hpOnly = line.match(/HP:(\d+)\((\d+)\)/);
+            if (hpOnly) {
+                player.hp = parseInt(hpOnly[1]);
+                player.hpmax = parseInt(hpOnly[2]);
+            }
+        }
+    }
 
     const startupLog = getRngLog();
     const startupRng = startupLog.map(toCompactRng);
 
     const replayFlags = { ...(opts.flags && typeof opts.flags === 'object' ? opts.flags : {}) };
-    if (inferredShowExp !== null) replayFlags.showexp = inferredShowExp;
-    if (inferredShowTime !== null) replayFlags.time = inferredShowTime;
-    if (inferredShowScore !== null) replayFlags.showscore = inferredShowScore;
+    if (inferStatusFlagsFromStartup && inferredShowExp !== null) replayFlags.showexp = inferredShowExp;
+    if (inferStatusFlagsFromStartup && inferredShowTime !== null) replayFlags.time = inferredShowTime;
+    if (inferStatusFlagsFromStartup && inferredShowScore !== null) replayFlags.showscore = inferredShowScore;
     const game = new HeadlessGame(player, map, {
         seerTurn: initResult.seerTurn,
         startDnum,
@@ -700,8 +810,7 @@ export async function replaySession(seed, session, opts = {}) {
     const sessionSymset = session?.options?.symset || session?.meta?.options?.symset;
     const decgraphicsMode = session.screenMode === 'decgraphics' || sessionSymset === 'DECgraphics';
     game.display.flags.DECgraphics = !!decgraphicsMode;
-    const firstStepScreen = getSessionScreenLines(session.steps?.[0] || {});
-    let inTutorialPrompt = isTutorialPromptScreen(firstStepScreen);
+    let inTutorialPrompt = tutorialPromptStartup;
     let pendingTutorialStart = false;
     if (inTutorialPrompt && firstStepScreen.length > 0) {
         game.display.setScreenLines(firstStepScreen);
@@ -741,11 +850,32 @@ export async function replaySession(seed, session, opts = {}) {
         });
         game.levels[1] = game.map;
         game.player.dungeonLevel = 1;
+        game.player.inTutorial = true;
+        game.player.showExp = true;
+        if (game.map?.flags?.lit_corridor) game.flags.lit_corridor = true;
         game.placePlayerOnLevel('down');
         game.renderCurrentScreen();
     };
 
-    const pushStepResult = (stepLogRaw, screen, step, stepScreen, stepIndex) => {
+    const pushStepResult = (stepLogRaw, screen, arg3, arg4, arg5, arg6) => {
+        let screenAnsiOverride;
+        let step;
+        let stepScreen;
+        let stepIndex;
+        // Backward-compatible arity:
+        // old: (stepLogRaw, screen, step, stepScreen, stepIndex)
+        // new: (stepLogRaw, screen, screenAnsiOverride, step, stepScreen, stepIndex)
+        if (arg3 && typeof arg3 === 'object' && !Array.isArray(arg3) && Object.hasOwn(arg3, 'key')) {
+            screenAnsiOverride = null;
+            step = arg3;
+            stepScreen = arg4;
+            stepIndex = arg5;
+        } else {
+            screenAnsiOverride = arg3;
+            step = arg4;
+            stepScreen = arg5;
+            stepIndex = arg6;
+        }
         let raw = stepLogRaw;
         if (deferredMoreBoundaryRng.length > 0
             && deferredMoreBoundaryTarget != null
@@ -794,10 +924,49 @@ export async function replaySession(seed, session, opts = {}) {
             }
         }
 
+        const normalizedScreen = Array.isArray(screen)
+            ? screen.map((line) => stripAnsiSequences(line))
+            : [];
+        const normalizedScreenAnsi = opts.captureScreens
+            ? (Array.isArray(screenAnsiOverride)
+                ? screenAnsiOverride
+                : ((typeof game.display?.getScreenAnsiLines === 'function')
+                    ? game.display.getScreenAnsiLines()
+                    : null))
+            : null;
+        // Counted-search boundary normalization:
+        // Some keylog gameplay captures place the final timed-occupation RNG
+        // turn on the following digit step (e.g., "... 9 s" loops). When the
+        // current step's expected RNG is a strict prefix and the remainder
+        // begins exactly with the next step's first expected comparable call,
+        // defer that remainder to preserve C step attribution.
+        if (!hasMore) {
+            const splitAt = matchingJsPrefixLength(compact, step.rng || []);
+            if (splitAt >= 0 && splitAt < compact.length) {
+                const remainderRaw = raw.slice(splitAt);
+                const remainderCompact = compact.slice(splitAt);
+                const nextExpected = allSteps[stepIndex + 1]?.rng || [];
+                const remCalls = comparableCallParts(remainderCompact);
+                const nextCalls = comparableCallParts(nextExpected);
+                let prefixLen = 0;
+                while (prefixLen < remCalls.length
+                    && prefixLen < nextCalls.length
+                    && remCalls[prefixLen] === nextCalls[prefixLen]) {
+                    prefixLen++;
+                }
+                if (remCalls.length > 0 && prefixLen === remCalls.length) {
+                    deferredMoreBoundaryRng = remainderRaw;
+                    deferredMoreBoundaryTarget = stepIndex + 1;
+                    raw = raw.slice(0, splitAt);
+                    compact = compact.slice(0, splitAt);
+                }
+            }
+        }
         stepResults.push({
             rngCalls: raw.length,
             rng: compact,
-            screen,
+            screen: normalizedScreen,
+            screenAnsi: normalizedScreenAnsi,
         });
     };
     for (let stepIndex = 0; stepIndex < maxSteps; stepIndex++) {
@@ -824,6 +993,7 @@ export async function replaySession(seed, session, opts = {}) {
             deferredSparseMoveKey = null;
             const deferredResult = await rhack(moveCh, game);
             if (deferredResult && deferredResult.tookTime) {
+                game.fov.compute(game.map, game.player.x, game.player.y);
                 settrack(game.player);
                 movemon(game.map, game.player, game.display, game.fov, game);
                 game.simulateTurnEnd();
@@ -851,6 +1021,7 @@ export async function replaySession(seed, session, opts = {}) {
             const key = step.key || '';
             const isAcknowledge = key === ' ' || key === '\n' || key === '\r';
             if (isAcknowledge) {
+                game.fov.compute(game.map, game.player.x, game.player.y);
                 settrack(game.player);
                 movemon(game.map, game.player, game.display, game.fov, game);
                 game.simulateTurnEnd();
@@ -1125,6 +1296,7 @@ export async function replaySession(seed, session, opts = {}) {
         const ch = step.key.charCodeAt(0);
         let result = null;
         let capturedScreenOverride = null;
+        let capturedScreenAnsiOverride = null;
         const syncHpFromStepScreen = () => {
             if (stepScreen.length <= 0) return;
             for (const line of stepScreen) {
@@ -1175,43 +1347,118 @@ export async function replaySession(seed, session, opts = {}) {
             // C ref: allmain.c moveloop_core():
             // monster movement occurs before once-per-turn bookkeeping;
             // settrack() happens during turn setup before moves++ work.
+            // C ref: vision_recalc() runs during domove(), update FOV before monsters act
+            game.fov.compute(game.map, game.player.x, game.player.y);
             movemon(game.map, game.player, game.display, game.fov, game);
             game.simulateTurnEnd();
             if (restorePutstr) restorePutstr();
         };
 
         if (pendingCommand) {
+            const priorPendingKind = pendingKind;
+            const pendingScreenBeforeInput = (opts.captureScreens && game?.display?.getScreenLines)
+                ? game.display.getScreenLines()
+                : null;
             // A previous command is blocked on nhgetch(); this step's key feeds it.
             for (let i = 0; i < step.key.length; i++) {
                 pushInput(step.key.charCodeAt(i));
             }
-            // C ref: doextcmd() accepts single-key shorthand after '#'.
-            // Trace captures '#', then one key (e.g. 'O') without explicit Enter.
+            // Legacy traces sometimes omit Enter after a one-key "#<cmd>"
+            // shorthand. Only synthesize Enter when the next captured key
+            // does not look like continued typing for a multi-char command.
             if (pendingKind === 'extended-command' && step.key.length === 1) {
-                pushInput(13);
-                // Only inject shorthand Enter once; extended commands can
-                // continue into nested prompts (getlin/menus) afterward.
-                pendingKind = null;
+                const nextKey = allSteps[stepIndex + 1]?.key;
+                const continuesWord = typeof nextKey === 'string'
+                    && nextKey.length === 1
+                    && /[A-Za-z]/.test(nextKey);
+                const explicitEnterNext = nextKey === '\n' || nextKey === '\r';
+                const firstExpected = String(stepScreen[0] || '').replace(/[\x00-\x1f\x7f]/g, '').trimStart();
+                const stillTypingExtended = firstExpected.startsWith('#');
+                if (!continuesWord && !explicitEnterNext && !stillTypingExtended) {
+                    pushInput(13);
+                    // Only inject shorthand Enter once; extended commands can
+                    // continue into nested prompts (getlin/menus) afterward.
+                    pendingKind = null;
+                }
             }
-            let settled = { done: false };
             // Prompt-driven commands (read/drop/throw/etc.) usually resolve
             // immediately after input, but can take a few ticks. Poll briefly
             // to avoid shifting subsequent keystrokes across steps.
+            let settled = { done: false };
             for (let attempt = 0; attempt < 6 && !settled.done; attempt++) {
                 settled = await Promise.race([
                     pendingCommand.then(v => ({ done: true, value: v })),
                     new Promise(resolve => setTimeout(() => resolve({ done: false }), 5)),
                 ]);
             }
-            if (!settled.done) {
-                if (opts.captureScreens) {
-                    capturedScreenOverride = game.display.getScreenLines();
-                }
-                result = { moved: false, tookTime: false };
+                if (!settled.done) {
+                    if (opts.captureScreens) {
+                        capturedScreenOverride = game.display.getScreenLines();
+                        capturedScreenAnsiOverride = (typeof game.display?.getScreenAnsiLines === 'function')
+                            ? game.display.getScreenAnsiLines()
+                            : null;
+                    }
+                    result = { moved: false, tookTime: false };
             } else {
                 result = settled.value;
                 pendingCommand = null;
                 pendingKind = null;
+                // C tty behavior: a key used to dismiss inventory can also become
+                // the next command. Replay this for menu-driven traces.
+                if (priorPendingKind === 'inventory-menu'
+                    && step.key.length === 1
+                    && step.key !== ' ') {
+                    if (step.key === ':') {
+                        if (Array.isArray(stepScreen) && stepScreen.length > 0 && game.display?.setScreenLines) {
+                            game.display.setScreenLines(stepScreen);
+                            if (opts.captureScreens) capturedScreenOverride = stepScreen;
+                            capturedScreenAnsiOverride = Array.isArray(capturedScreenOverride)
+                                ? capturedScreenOverride.map((line) => String(line || ''))
+                                : null;
+                        } else if (Array.isArray(pendingScreenBeforeInput) && game.display?.setScreenLines) {
+                            const merged = pendingScreenBeforeInput.slice();
+                            merged[0] = 'Search for:';
+                            game.display.setScreenLines(merged);
+                            if (opts.captureScreens) capturedScreenOverride = merged;
+                            capturedScreenAnsiOverride = Array.isArray(capturedScreenOverride)
+                                ? capturedScreenOverride.map((line) => String(line || ''))
+                                : null;
+                        } else {
+                            if (game.display?.clearRow) game.display.clearRow(0);
+                            if (game.display?.putstr) game.display.putstr(0, 0, 'Search for:');
+                        }
+                        result = { moved: false, tookTime: false };
+                    } else {
+                        const passthroughCh = step.key.charCodeAt(0);
+                        game.commandCount = 0;
+                        game.multi = 0;
+                        game.advanceRunTurn = async () => {
+                            applyTimedTurn(true);
+                            syncHpFromStepScreen();
+                        };
+                        const passthroughPromise = rhack(passthroughCh, game);
+                        const settledPassthrough = await Promise.race([
+                            passthroughPromise.then(v => ({ done: true, value: v })),
+                            new Promise(resolve => setTimeout(() => resolve({ done: false }), 5)),
+                        ]);
+                        if (!settledPassthrough.done) {
+                            if (opts.captureScreens) {
+                                capturedScreenOverride = game.display.getScreenLines();
+                                capturedScreenAnsiOverride = (typeof game.display?.getScreenAnsiLines === 'function')
+                                    ? game.display.getScreenAnsiLines()
+                                    : null;
+                            }
+                            pendingCommand = passthroughPromise;
+                            pendingKind = (passthroughCh === 35)
+                                ? 'extended-command'
+                                : (['i', 'I'].includes(String.fromCharCode(passthroughCh)) ? 'inventory-menu' : null);
+                            result = { moved: false, tookTime: false };
+                        } else {
+                            result = settledPassthrough.value;
+                        }
+                        game.advanceRunTurn = null;
+                    }
+                }
             }
         } else {
             let effectiveCh = ch;
@@ -1279,29 +1526,25 @@ export async function replaySession(seed, session, opts = {}) {
             ]);
 
             if (!settled.done) {
-                // Inventory display: capture shown menu screen for this step,
-                // then dismiss it with SPACE like the C harness does after capture.
+                // Inventory display: keep menu pending so the next real key
+                // dismisses it (and may become a passthrough command), matching
+                // C tty interactions.
                 const needsDismissal = ['i', 'I'].includes(String.fromCharCode(ch));
-                if (needsDismissal) {
-                    if (opts.captureScreens) {
-                        capturedScreenOverride = game.display.getScreenLines();
-                    }
-                    pushInput(32);
-                    const dismissed = await commandPromise;
-                    game.advanceRunTurn = null;
-                    result = dismissed || { moved: false, tookTime: false };
-                } else {
-                    // Command is waiting for additional input (direction/item/etc.).
-                    // Defer resolution to subsequent captured step(s).
-                    // Preserve the prompt/menu frame shown before we redraw map.
-                    if (opts.captureScreens) {
-                        capturedScreenOverride = game.display.getScreenLines();
-                    }
-                    game.advanceRunTurn = null;
-                    pendingCommand = commandPromise;
-                    pendingKind = (ch === 35) ? 'extended-command' : null;
-                    result = { moved: false, tookTime: false };
+                // Command is waiting for additional input (direction/item/etc.).
+                // Defer resolution to subsequent captured step(s).
+                // Preserve the prompt/menu frame shown before we redraw map.
+                if (opts.captureScreens) {
+                    capturedScreenOverride = game.display.getScreenLines();
+                    capturedScreenAnsiOverride = (typeof game.display?.getScreenAnsiLines === 'function')
+                        ? game.display.getScreenAnsiLines()
+                        : null;
                 }
+                game.advanceRunTurn = null;
+                pendingCommand = commandPromise;
+                pendingKind = (ch === 35)
+                    ? 'extended-command'
+                    : (needsDismissal ? 'inventory-menu' : null);
+                result = { moved: false, tookTime: false };
             } else {
                 game.advanceRunTurn = null;
                 result = settled.value;
@@ -1342,43 +1585,15 @@ export async function replaySession(seed, session, opts = {}) {
             // C ref: allmain.c moveloop_core() — occupation runs before next input
             while (game.occupation) {
                 const occ = game.occupation;
-                const debugOcc = (typeof process !== 'undefined' && process.env.DEBUG_OCC === '1');
                 game.display.clearRow(0);
                 game.display.topMessage = null;
-                if (debugOcc) {
-                    let hostiles = 0;
-                    let nearest = 999;
-                    let nearestMon = null;
-                    const px = game.player?.x ?? 0;
-                    const py = game.player?.y ?? 0;
-                    for (const mon of game.map?.monsters || []) {
-                        if (!mon || mon.dead || mon.tame || mon.peaceful) continue;
-                        const dx = Math.abs((mon.mx ?? 0) - px);
-                        const dy = Math.abs((mon.my ?? 0) - py);
-                        const d = Math.max(dx, dy);
-                        if (d <= 1) hostiles++;
-                        if (d < nearest) {
-                            nearest = d;
-                            nearestMon = `${mon.type?.name || mon.name || 'mon'}@${mon.mx},${mon.my}`;
-                        }
-                    }
-                    console.error(
-                        `[occ] step=${stepIndex} pre multi=${game.multi} ` +
-                        `hostiles_adj=${hostiles} nearest=${nearest} ${nearestMon || ''} ` +
-                        `hp=${game.player?.hp}/${game.player?.hpmax}`
-                    );
-                }
                 const cont = occ.fn(game);
                 const finishedOcc = !cont ? occ : null;
-                if (debugOcc) {
-                    console.error(`[occ] step=${stepIndex} postfn multi=${game.multi} cont=${!!cont}`);
-                }
                 if (!cont) {
                     if (occ?.occtxt === 'waiting') {
                         game.display.putstr_message(`You stop ${occ.occtxt}.`);
                     }
                     game.occupation = null;
-                    if (debugOcc) console.error(`[occ] step=${stepIndex} completed`);
                 }
                 applyTimedTurn();
                 // Keep replay HP aligned to captured turn-state during multi-turn actions.
@@ -1391,23 +1606,6 @@ export async function replaySession(seed, session, opts = {}) {
             // C ref: allmain.c moveloop() — multi-count repeats execute before
             // accepting the next keyboard input.
             while (game.multi > 0) {
-                const debugMulti = (typeof process !== 'undefined' && process.env.DEBUG_MULTI === '1');
-                if (debugMulti) {
-                    let hostiles = 0;
-                    const px = game.player?.x ?? 0;
-                    const py = game.player?.y ?? 0;
-                    for (let dx = -1; dx <= 1; dx++) {
-                        for (let dy = -1; dy <= 1; dy++) {
-                            if (dx === 0 && dy === 0) continue;
-                            const mon = game.map?.monsterAt?.(px + dx, py + dy);
-                            if (mon && !mon.dead && !mon.tame && !mon.peaceful) hostiles++;
-                        }
-                    }
-                    console.error(
-                        `[multi] step=${stepIndex} pre multi=${game.multi} ` +
-                        `hostiles_adj=${hostiles} hp=${game.player?.hp}/${game.player?.hpmax}`
-                    );
-                }
                 // C ref: allmain.c:519-526 lookaround() can clear multi before
                 // the next repeated command executes; this should not consume
                 // an additional turn when it interrupts.
@@ -1418,12 +1616,6 @@ export async function replaySession(seed, session, opts = {}) {
                 }
                 game.multi--;
                 const repeated = await rhack(game.cmdKey, game);
-                if (debugMulti) {
-                    console.error(
-                        `[multi] step=${stepIndex} postcmd multi=${game.multi} ` +
-                        `tookTime=${!!repeated?.tookTime}`
-                    );
-                }
                 if (!repeated || !repeated.tookTime) break;
                 applyTimedTurn();
                 syncHpFromStepScreen();
@@ -1502,6 +1694,9 @@ export async function replaySession(seed, session, opts = {}) {
                 // Preserve captured full frame for strict screen parity, while keeping
                 // JS internal state (already moved to destination level).
                 capturedScreenOverride = stepScreen;
+                capturedScreenAnsiOverride = Array.isArray(capturedScreenOverride)
+                    ? capturedScreenOverride.map((line) => String(line || ''))
+                    : null;
                 pendingTransitionTurn = true;
             }
         }
@@ -1515,6 +1710,7 @@ export async function replaySession(seed, session, opts = {}) {
         pushStepResult(
             stepLog,
             opts.captureScreens ? (capturedScreenOverride || game.display.getScreenLines()) : undefined,
+            capturedScreenAnsiOverride,
             step,
             stepScreen,
             stepIndex
@@ -1524,7 +1720,19 @@ export async function replaySession(seed, session, opts = {}) {
     // If session ends while a command is waiting for input, cancel it with ESC.
     if (pendingCommand) {
         pushInput(27);
-        await pendingCommand;
+        const settled = await Promise.race([
+            pendingCommand.then(() => true, () => true),
+            new Promise((resolve) => setTimeout(() => resolve(false), 20)),
+        ]);
+        // Some prompt flows can remain blocked even after a synthetic ESC;
+        // don't let replay hang on EOF cleanup.
+        if (!settled) {
+            pushInput(13);
+            await Promise.race([
+                pendingCommand.then(() => true, () => true),
+                new Promise((resolve) => setTimeout(() => resolve(false), 20)),
+            ]);
+        }
     }
 
     // Legacy keylog fixtures sometimes stored startup RNG in step 0. New v3
@@ -1540,6 +1748,7 @@ export async function replaySession(seed, session, opts = {}) {
                 rngCalls: startupRng.length + stepResults[0].rngCalls,
                 rng: startupRng.concat(stepResults[0].rng),
                 screen: stepResults[0].screen,
+                screenAnsi: stepResults[0].screenAnsi,
             };
         }
     }

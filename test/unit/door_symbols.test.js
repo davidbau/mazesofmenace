@@ -84,7 +84,7 @@ test('door symbols: doorway (no door) uses .', () => {
     assert.strictEqual(sym.color, 7, 'Doorway should use CLR_GRAY (7)');
 });
 
-test('door symbols: DECgraphics always uses middle dot for open doors', () => {
+test('door symbols: DECgraphics uses checkerboard for open doors', () => {
     const display = new HeadlessDisplay(80, 24);
     display.flags = { DECgraphics: true };
     const map = new GameMap();
@@ -96,6 +96,6 @@ test('door symbols: DECgraphics always uses middle dot for open doors', () => {
     map.at(x + 1, y).typ = HWALL;
 
     const sym = display.terrainSymbol(map.at(x, y), map, x, y);
-    assert.strictEqual(sym.ch, '\u00b7', 'DECgraphics open door should use middle dot');
+    assert.strictEqual(sym.ch, '\u2592', 'DECgraphics open door should use checkerboard');
     assert.strictEqual(sym.color, 3, 'Open door should use CLR_BROWN (3)');
 });
