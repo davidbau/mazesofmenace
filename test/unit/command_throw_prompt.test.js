@@ -46,7 +46,18 @@ describe('throw prompt behavior', () => {
 
         const result = await rhack('t'.charCodeAt(0), game);
         assert.equal(result.tookTime, false);
-        assert.equal(game.display.messages[0], 'What do you want to throw? [bd or ?*]');
+        assert.equal(game.display.messages[0], 'What do you want to throw? [b or ?*]');
+        assert.equal(game.display.topMessage, 'Never mind.');
+    });
+
+    it('still allows selecting a non-weapon inventory letter manually', async () => {
+        const game = makeGame();
+        pushInput('d'.charCodeAt(0));
+        pushInput(27);
+
+        const result = await rhack('t'.charCodeAt(0), game);
+        assert.equal(result.tookTime, false);
+        assert.equal(game.display.messages[1], 'In what direction?');
         assert.equal(game.display.topMessage, 'Never mind.');
     });
 });

@@ -11,7 +11,8 @@ import { rn2, rnd, rnl, d, c_d } from './rng.js';
 import { exercise } from './attrib_exercise.js';
 import { objectData, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
          TOOL_CLASS, FOOD_CLASS, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS,
-         WAND_CLASS, COIN_CLASS, GEM_CLASS, ROCK_CLASS, CORPSE, LANCE } from './objects.js';
+         WAND_CLASS, COIN_CLASS, GEM_CLASS, ROCK_CLASS, CORPSE, LANCE,
+         BOW, ELVEN_BOW, ORCISH_BOW, YUMI, SLING, CROSSBOW } from './objects.js';
 import { nhgetch, ynFunction, getlin } from './input.js';
 import { playerAttackMonster } from './combat.js';
 import { makemon, setMakemonPlayerContext } from './makemon.js';
@@ -1781,7 +1782,23 @@ async function handleThrow(player, map, display) {
         display.putstr_message("You don't have anything to throw.");
         return { moved: false, tookTime: false };
     }
-    const throwChoices = compactInvletPromptChars(player.inventory.map((o) => o.invlet).join(''));
+    const replacePromptMessage = () => {
+        if (typeof display.clearRow === 'function') display.clearRow(0);
+        display.topMessage = null;
+        display.messageNeedsMore = false;
+    };
+    const launcherTypes = new Set([BOW, ELVEN_BOW, ORCISH_BOW, YUMI, SLING, CROSSBOW]);
+    const weaponItems = (player.inventory || []).filter((o) => o && o.oclass === WEAPON_CLASS);
+    let throwChoices = '';
+    const preferredThrowItem = weaponItems.find((o) => launcherTypes.has(o.otyp))
+        || ((player.quiver && player.inventory.includes(player.quiver)) ? player.quiver : null)
+        || weaponItems[0]
+        || null;
+    if (preferredThrowItem?.invlet) {
+        throwChoices = compactInvletPromptChars(String(preferredThrowItem.invlet));
+    } else {
+        throwChoices = '';
+    }
     while (true) {
         if (throwChoices) {
             display.putstr_message(`What do you want to throw? [${throwChoices} or ?*]`);
@@ -1791,6 +1808,7 @@ async function handleThrow(player, map, display) {
         const ch = await nhgetch();
         const c = String.fromCharCode(ch);
         if (ch === 27 || ch === 10 || ch === 13 || c === ' ') {
+            replacePromptMessage();
             display.putstr_message('Never mind.');
             return { moved: false, tookTime: false };
         }
@@ -1800,12 +1818,13 @@ async function handleThrow(player, map, display) {
         const item = player.inventory.find(o => o.invlet === c);
         if (!item) continue;
 
+        replacePromptMessage();
         display.putstr_message('In what direction?');
         const dirCh = await nhgetch();
         const dch = String.fromCharCode(dirCh);
         const dir = DIRECTION_KEYS[dch];
-        display.topMessage = null;
         if (!dir) {
+            replacePromptMessage();
             display.putstr_message('Never mind.');
             return { moved: false, tookTime: false };
         }
