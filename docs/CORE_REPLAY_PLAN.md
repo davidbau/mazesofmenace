@@ -1,7 +1,13 @@
 # Core Replay Unification Plan
 
-> Plan hierarchy: This is a subordinate subplan to root [`PROJECT_PLAN.md`](../PROJECT_PLAN.md).  
+> Plan hierarchy: This is a subordinate subplan to root [`PROJECT_PLAN.md`](../PROJECT_PLAN.md).
 > If scope, priority, or milestone details conflict, `PROJECT_PLAN.md` is authoritative.
+
+**See also:**
+[PARITY_TEST_MATRIX.md](PARITY_TEST_MATRIX.md) (test reference) |
+[TESTING.md](TESTING.md) (testing infrastructure) |
+[SESSION_FORMAT_V3.md](SESSION_FORMAT_V3.md) (session format) |
+[DEVELOPMENT.md](DEVELOPMENT.md) (dev workflow)
 
 ## Purpose
 

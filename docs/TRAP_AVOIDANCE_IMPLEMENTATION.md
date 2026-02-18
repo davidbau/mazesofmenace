@@ -1,8 +1,11 @@
 # Pet Trap Avoidance Implementation
 
-**Date**: 2026-02-09
-**Commit**: ca877e4
-**Test Impact**: +32 tests (1020→1052 passing)
+**Date**: 2026-02-09 | **Commit**: ca877e4 | **Test Impact**: +32 tests (1020→1052 passing)
+
+**See also:**
+[LORE.md](LORE.md) (porting lessons) |
+[C_PARITY_WORKLIST.md](C_PARITY_WORKLIST.md) (implementation plan) |
+[DEVELOPMENT.md](DEVELOPMENT.md) (dev workflow)
 
 ## Overview
 

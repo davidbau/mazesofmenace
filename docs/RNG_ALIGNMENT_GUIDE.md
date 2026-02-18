@@ -15,7 +15,8 @@ This document captures lessons learned while achieving bit-exact RNG alignment b
 | 100002 | 1-6 (6 turns) | Turn 7           | 99.8%                   | Good overall match |
 | 55555  | 0 turns       | Turn 2           | 99.9%                   | Best overall match, but no consecutive alignment |
 
-For detailed analysis of seed 99999, see [RNG_ALIGNMENT_RESULTS.md](RNG_ALIGNMENT_RESULTS.md).
+For detailed analysis of seed 99999, see [archive/RNG_ALIGNMENT_RESULTS.md](archive/RNG_ALIGNMENT_RESULTS.md).
+For distilled porting lessons, see [LORE.md](LORE.md).
 
 ## Current Status (2026-02-09)
 

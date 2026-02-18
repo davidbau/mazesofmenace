@@ -3,6 +3,13 @@
 > *"Welcome, strider, to the Mazes of Development!  You fall through a trap
 > door into a large room filled with source code."*
 
+**See also:**
+[DESIGN.md](DESIGN.md) (architecture) |
+[DECISIONS.md](DECISIONS.md) (trade-offs) |
+[PARITY_TEST_MATRIX.md](PARITY_TEST_MATRIX.md) (test suites & gates) |
+[LORE.md](LORE.md) (porting lessons) |
+[TESTING.md](TESTING.md) (test dashboard & workflows)
+
 ## Prerequisites
 
 - **Node.js 25+** (see `.nvmrc`)
@@ -609,7 +616,7 @@ symbols mapped to Unicode box-drawing characters. No canvas, no WebGL.
 
 - **[DESIGN.md](DESIGN.md)** — Detailed architecture and module design
 - **[DECISIONS.md](DECISIONS.md)** — Design decision log with rationale
-- **[SESSION_FORMAT.md](SESSION_FORMAT.md)** — Session JSON format specification
+- **[SESSION_FORMAT.md](archive/SESSION_FORMAT.md)** — Session JSON format specification
 - **[COLLECTING_SESSIONS.md](COLLECTING_SESSIONS.md)** — How to capture C reference sessions
 - **[PHASE_1_PRNG_ALIGNMENT.md](PHASE_1_PRNG_ALIGNMENT.md)** — The story of achieving bit-exact C-JS parity
 - **[PHASE_2_GAMEPLAY_ALIGNMENT.md](PHASE_2_GAMEPLAY_ALIGNMENT.md)** — Gameplay session alignment goals & progress

@@ -3,6 +3,11 @@
 > *"You enter the C harness laboratory.  Instruments hum and tmux sessions
 > flicker on ancient terminals."*
 
+**See also:**
+[PARITY_TEST_MATRIX.md](PARITY_TEST_MATRIX.md) (session categories & counts) |
+[SESSION_FORMAT_V3.md](SESSION_FORMAT_V3.md) (file format) |
+[TESTING.md](TESTING.md) (test workflows)
+
 ## Overview
 
 The C harness (`test/comparison/c-harness/`) drives a patched C NetHack binary

@@ -1,5 +1,11 @@
 # Next Steps for RNG Alignment
 
+**See also:**
+[LORE.md](LORE.md) (porting lessons) |
+[RNG_ALIGNMENT_GUIDE.md](RNG_ALIGNMENT_GUIDE.md) (RNG techniques) |
+[PHASE_1_PRNG_ALIGNMENT.md](PHASE_1_PRNG_ALIGNMENT.md) (RNG history) |
+[C_PARITY_WORKLIST.md](C_PARITY_WORKLIST.md) (implementation plan)
+
 ## Current Status
 - **RNG Divergence:** Entry 551 (22.1% aligned: 551/2491)
 - **Improvement:** +84 calls from entry 467 (+18% progress)

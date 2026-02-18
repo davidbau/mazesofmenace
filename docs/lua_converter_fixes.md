@@ -1,5 +1,10 @@
 # Lua→JS Converter Error Fixes
 
+**See also:**
+[DEVELOPMENT.md](DEVELOPMENT.md) (dev workflow) |
+[SPECIAL_LEVEL_FINALIZATION.md](SPECIAL_LEVEL_FINALIZATION.md) (special levels) |
+[LORE.md](LORE.md) (porting lessons)
+
 ## Status (2026-02-10)
 
 **Test Suite: 81.6% pass rate (985/1207 tests)**

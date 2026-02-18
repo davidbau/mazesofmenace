@@ -1,5 +1,9 @@
 # Evaluation Protocol for NetHack Agent Development
 
+**See also:**
+[DEVELOPMENT.md](DEVELOPMENT.md) (dev workflow) |
+[PARITY_TEST_MATRIX.md](PARITY_TEST_MATRIX.md) (test reference)
+
 ## Seed Sets
 
 ### Development Set (5 seeds)

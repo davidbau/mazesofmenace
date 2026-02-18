@@ -1,5 +1,10 @@
 # Animation System Implementation - COMPLETE ✅
 
+**See also:**
+[DESIGN.md](DESIGN.md) (architecture) |
+[DEVELOPMENT.md](DEVELOPMENT.md) (dev workflow) |
+[LORE.md](LORE.md) (porting lessons)
+
 ## Epic: interface-nyx
 **Implement ephemeral animation system (tmp_at, projectiles, rays)**
 

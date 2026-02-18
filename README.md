@@ -6,7 +6,7 @@
 
 A faithful JavaScript port of NetHack, playable in any modern web browser.
 ASCII terminal display with DEC line-drawing graphics, native keyboard
-commands, no build step required. The Strstrstrstrstrength of this port
+commands, no build step required. The strength of this port
 lies in its fidelity to the original C source.
 
 **Play it now:** [https://mazesofmenace.net/](https://mazesofmenace.net/)
@@ -59,7 +59,7 @@ throughout. See the full architecture and design documents:
 - **Async/await game loop** — The C code's blocking `nhgetch()` becomes
   `await nhgetch()`, preserving the sequential logic of the original.
 - **`<pre>` with per-cell `<span>`** — 80x24 terminal grid, 16 ANSI colors,
-  DEC box-drawing characters for walls. It's less straining on your strstrstr
+  DEC box-drawing characters for walls. It's less straining on your
   eyes than you might think.
 - **Faithful C references** — Comments like `// C ref: uhitm.c find_roll_to_hit()`
   link every function to its C source counterpart. It makes for dry reading,
@@ -200,23 +200,44 @@ writer/
 
 ### Architecture & Development
 
-- **[docs/DESIGN.md](docs/DESIGN.md)** — Architecture & design overview
-- **[docs/DECISIONS.md](docs/DECISIONS.md)** — Key design trade-offs
-- **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)** — Development guide
-- **[docs/TESTING.md](docs/TESTING.md)** — Complete testing guide
+- **[docs/DESIGN.md](docs/DESIGN.md)** — Architecture and module structure
+- **[docs/DECISIONS.md](docs/DECISIONS.md)** — Key design trade-offs and rationale
+- **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)** — Development workflow guide
+
+### Testing & Parity
+
+- **[docs/PARITY_TEST_MATRIX.md](docs/PARITY_TEST_MATRIX.md)** — Canonical parity reference: test suites, session categories, comparison channels, quality gates
+- **[docs/TESTING.md](docs/TESTING.md)** — Testing dashboard, enforcement, and workflows
+- **[docs/COLLECTING_SESSIONS.md](docs/COLLECTING_SESSIONS.md)** — How to capture C reference sessions
+- **[docs/SESSION_FORMAT_V3.md](docs/SESSION_FORMAT_V3.md)** — Session file format specification
+
+### Porting Knowledge
+
+- **[docs/LORE.md](docs/LORE.md)** — Hard-won porting lessons: RNG parity, special levels, pet AI, translation patterns
+- **[docs/RNG_ALIGNMENT_GUIDE.md](docs/RNG_ALIGNMENT_GUIDE.md)** — Deep reference on RNG alignment techniques
+- **[docs/PHASE_1_PRNG_ALIGNMENT.md](docs/PHASE_1_PRNG_ALIGNMENT.md)** — Chronicle: from xoshiro128 to ISAAC64
+- **[docs/PHASE_2_GAMEPLAY_ALIGNMENT.md](docs/PHASE_2_GAMEPLAY_ALIGNMENT.md)** — Chronicle: live gameplay, monster AI, pet behavior
+- **[docs/PHASE_3_MULTI_DEPTH_ALIGNMENT.md](docs/PHASE_3_MULTI_DEPTH_ALIGNMENT.md)** — Chronicle: multi-depth generation, state isolation
+
+### Active Work & Plans
+
+- **[docs/C_PARITY_WORKLIST.md](docs/C_PARITY_WORKLIST.md)** — C-to-JS correspondence ledger
+- **[docs/NEXT_STEPS.md](docs/NEXT_STEPS.md)** — Prioritized next steps
+- **[docs/CORE_REPLAY_PLAN.md](docs/CORE_REPLAY_PLAN.md)** — Replay unification plan
 
 ### Detailed Documentation (`docs/`)
 
 - **docs/agent/** — Agent coordination and progress tracking
-- **docs/plans/** — Feature implementation plans (shops, traces, RNG audit)
+- **docs/plans/** — Feature implementation plans
 - **docs/port-status/** — Port progress, fixes, known issues
 - **docs/special-levels/** — Special level implementation guide
 - **docs/level-conversion/** — Lua-to-JS conversion reports
 - **docs/reference/** — NetHack reference materials
+- **docs/archive/** — Historical progress snapshots and investigation notes
 
 ### Other Resources
 
-- **[oracle/](oracle/)** — Dashboard (GitHub Pages)
+- **[oracle/](oracle/)** — Testing dashboard (GitHub Pages)
 - **[.githooks/QUICK_REFERENCE.md](.githooks/QUICK_REFERENCE.md)** — Command cheat sheet
 
 ## License

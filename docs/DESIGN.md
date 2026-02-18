@@ -3,6 +3,11 @@
 > *"You enter a vast hall of interconnected modules. The architecture is elegant,
 > if somewhat maze-like."*
 
+**See also:**
+[DEVELOPMENT.md](DEVELOPMENT.md) (dev workflow) |
+[DECISIONS.md](DECISIONS.md) (trade-offs) |
+[LORE.md](LORE.md) (porting lessons)
+
 ## Overview
 
 This project is a faithful JavaScript port of NetHack 3.7, rendering the classic

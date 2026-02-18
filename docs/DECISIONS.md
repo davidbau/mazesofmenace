@@ -3,6 +3,11 @@
 > *"You feel as if someone is watching you make choices. It must be
 > the DevTeam."*
 
+**See also:**
+[DESIGN.md](DESIGN.md) (architecture) |
+[DEVELOPMENT.md](DEVELOPMENT.md) (dev workflow) |
+[LORE.md](LORE.md) (porting lessons)
+
 ## Decision 1: Async Game Loop via Promise Queue
 
 > *"You are momentarily blinded by the Promise."*

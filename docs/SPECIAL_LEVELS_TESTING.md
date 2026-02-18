@@ -1,5 +1,10 @@
 # C NetHack Alignment Testing Strategy for Special Levels
 
+**See also:**
+[SPECIAL_LEVEL_FINALIZATION.md](SPECIAL_LEVEL_FINALIZATION.md) (finalization pipeline) |
+[PARITY_TEST_MATRIX.md](PARITY_TEST_MATRIX.md) (test reference) |
+[TESTING.md](TESTING.md) (testing infrastructure)
+
 ## Overview
 
 Our testing approach differs between **pre-mapped** and **procedural** special levels due to RNG alignment challenges.

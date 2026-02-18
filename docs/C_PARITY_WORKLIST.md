@@ -1,5 +1,11 @@
 # C Parity Worklist
 
+**See also:**
+[DESIGN.md](DESIGN.md) (architecture) |
+[DEVELOPMENT.md](DEVELOPMENT.md) (dev workflow) |
+[PARITY_TEST_MATRIX.md](PARITY_TEST_MATRIX.md) (test reference) |
+[DECISIONS.md](DECISIONS.md) (design choices)
+
 Scope: replace simulation/stub behavior with faithful C NetHack logic while keeping replay/unit tests green after each batch.
 
 ## Phase 1: Gameplay RNG and Turn Logic

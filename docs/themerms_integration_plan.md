@@ -1,7 +1,12 @@
 # Themerms Integration Plan
 
-> Plan hierarchy: This is a subordinate subplan to root [`PROJECT_PLAN.md`](../PROJECT_PLAN.md).  
+> Plan hierarchy: This is a subordinate subplan to root [`PROJECT_PLAN.md`](../PROJECT_PLAN.md).
 > If scope, priority, or milestone details conflict, `PROJECT_PLAN.md` is authoritative.
+
+**See also:**
+[C_PARITY_WORKLIST.md](C_PARITY_WORKLIST.md) (implementation plan) |
+[SPECIAL_LEVEL_FINALIZATION.md](SPECIAL_LEVEL_FINALIZATION.md) (special levels) |
+[LORE.md](LORE.md) (porting lessons)
 
 ## Problem Summary
 

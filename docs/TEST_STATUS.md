@@ -1,5 +1,10 @@
 # Test Status Summary
 
+**See also:**
+[TESTING.md](TESTING.md) (testing infrastructure) |
+[PARITY_TEST_MATRIX.md](PARITY_TEST_MATRIX.md) (test reference) |
+[DEVELOPMENT.md](DEVELOPMENT.md) (dev workflow)
+
 **Last Updated**: 2026-02-09
 **Test Results**: 1090 pass / 74 fail (93.6% pass rate)
 **Session Progress**: +70 tests (1020 → 1052 → 1090)

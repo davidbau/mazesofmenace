@@ -1,5 +1,10 @@
 # Special Level Finalization Pipeline
 
+**See also:**
+[DESIGN.md](DESIGN.md) (architecture) |
+[LORE.md](LORE.md) (porting lessons) |
+[C_PARITY_WORKLIST.md](C_PARITY_WORKLIST.md) (implementation plan)
+
 ## Overview
 
 Special levels (Oracle, Mines, Castle, etc.) require a complete finalization pipeline to match C NetHack's RNG behavior. This document describes the required steps discovered through test regression debugging (2026-02-10).

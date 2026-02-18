@@ -2,6 +2,11 @@
 
 > *"You carefully read the scroll. It describes a unified session format."*
 
+**See also:**
+[PARITY_TEST_MATRIX.md](PARITY_TEST_MATRIX.md) (test reference) |
+[COLLECTING_SESSIONS.md](COLLECTING_SESSIONS.md) (session collection) |
+[TESTING.md](TESTING.md) (testing infrastructure)
+
 ## Overview
 
 A **session file** is a JSON document that captures reference data from C NetHack
