@@ -336,6 +336,17 @@ and outcomes.
 4. Add targeted RNG logging around the suspicious code path
 5. Compare RNG logs to find the extra/missing call
 
+### CORE vs DISP RNG Audits
+
+For display-only RNG investigations (C `rn2_on_display_rng` / `newsym_rn2` paths),
+follow the focused playbook in:
+
+- `docs/plans/RNG_DISPRNG_AUDIT_PLAN.md`
+
+Use that workflow before adding any new RNG infrastructure. The default policy is:
+- port C logic first;
+- add DISP-specific tracing only when repeated first-divergence evidence points to display paths.
+
 ### Adding a new test seed
 
 1. Add the seed to `test/comparison/seeds.json`:

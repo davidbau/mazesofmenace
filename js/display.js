@@ -21,6 +21,7 @@ import {
 
 import { def_monsyms, def_oc_syms } from './symbols.js';
 import { monDisplayName } from './mondata.js';
+import { monsterMapGlyph, objectMapGlyph } from './display_rng.js';
 
 // Color constants (color.h)
 // C ref: include/color.h
@@ -453,7 +454,9 @@ export class Display {
                     } else {
                         loc.mem_obj = 0;
                     }
-                    this.setCell(col, row, mon.displayChar, mon.displayColor);
+                    const hallu = !!player?.hallucinating;
+                    const glyph = monsterMapGlyph(mon, hallu);
+                    this.setCell(col, row, glyph.ch, glyph.color);
                     const classInfo = this._monsterClassDesc(mon.displayChar);
                     const stats = `Level ${mon.mlevel}, AC ${mon.mac}, Speed ${mon.speed}`;
                     this.cellInfo[row][col] = { name: monDisplayName(mon), desc: classInfo, stats: stats, color: mon.displayColor };
@@ -465,7 +468,9 @@ export class Display {
                 if (objs.length > 0) {
                     const topObj = objs[objs.length - 1];
                     loc.mem_obj = topObj.displayChar || 0;
-                    this.setCell(col, row, topObj.displayChar, topObj.displayColor);
+                    const hallu = !!player?.hallucinating;
+                    const glyph = objectMapGlyph(topObj, hallu);
+                    this.setCell(col, row, glyph.ch, glyph.color);
                     const classInfo = this._objectClassDesc(topObj.oc_class);
                     const extra = objs.length > 1 ? ` (+${objs.length - 1} more)` : '';
                     const stats = this._objectStats(topObj);
