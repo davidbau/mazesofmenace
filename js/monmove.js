@@ -311,7 +311,28 @@ function m_throw(mon, startX, startY, dx, dy, range, weapon, map, player, displa
             if (player.ac + hitv <= dieRoll) {
                 // Miss
                 if (display) {
-                    display.putstr_message('It misses.');
+                    let missMsg = 'It misses.';
+                    const verbose = game?.flags?.verbose !== false;
+                    if (player.blind || !verbose) {
+                        missMsg = 'It misses.';
+                    } else if (player.ac + hitv <= dieRoll - 2) {
+                        const objName = thrownObjectName(weapon, player);
+                        const capName = objName.charAt(0).toUpperCase() + objName.slice(1);
+                        missMsg = `${capName} misses you.`;
+                    } else {
+                        missMsg = `You are almost hit by ${thrownObjectName(weapon, player)}.`;
+                    }
+                    // C ref: mthrowu.c may require --More-- between stacked
+                    // combat messages. We don't block for input here, so avoid
+                    // replacing prior messages when this miss line won't fit.
+                    if (display.topMessage && display.messageNeedsMore
+                        && Number.isInteger(display.cols)) {
+                        const combined = `${display.topMessage}  ${missMsg}`;
+                        if (combined.length + 9 >= display.cols) {
+                            break;
+                        }
+                    }
+                    display.putstr_message(missMsg);
                 }
             } else {
                 // Hit
