@@ -564,11 +564,13 @@ async function handleMovement(dir, player, map, display, game) {
                         mon.flee = true;
                     }
                 if (mon.tame) {
+                    const hasSaddle = (mon.minvent || []).some(o => o && (o.owornmask & 0x100000));
+                    const adjName = hasSaddle ? `saddled ${mon.name}` : mon.name;
                     const namedPet = !!(mon.name && !/(dog|cat|kitten|pony|horse)/i.test(mon.name));
                     display.putstr_message(
                         namedPet
                             ? `You stop.  ${mon.name} is in the way!`
-                            : `You stop.  Your ${mon.name} is in the way!`
+                            : `You stop.  Your ${adjName} is in the way!`
                     );
                 } else {
                     const label = mon.name ? mon.name.charAt(0).toUpperCase() + mon.name.slice(1) : 'It';
