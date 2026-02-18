@@ -1002,6 +1002,28 @@ export async function replaySession(seed, session, opts = {}) {
                     deferredMoreBoundaryTarget = stepIndex + 1;
                     raw = raw.slice(0, splitAt);
                     compact = compact.slice(0, splitAt);
+                } else if (remCalls.length > 0) {
+                    // Sparse keylog captures can place the remainder on a
+                    // later step after one or more display-only frames.
+                    let targetIdx = stepIndex + 1;
+                    let firstNextExpected = null;
+                    while (targetIdx < allSteps.length) {
+                        const targetStep = allSteps[targetIdx];
+                        firstNextExpected = firstComparableEntry(targetStep?.rng || []);
+                        if (firstNextExpected) break;
+                        if (((targetStep?.rng || []).length === 0)) {
+                            targetIdx++;
+                            continue;
+                        }
+                        break;
+                    }
+                    if (firstNextExpected
+                        && remCalls[0] === rngCallPart(firstNextExpected)) {
+                        deferredMoreBoundaryRng = remainderRaw;
+                        deferredMoreBoundaryTarget = targetIdx;
+                        raw = raw.slice(0, splitAt);
+                        compact = compact.slice(0, splitAt);
+                    }
                 }
             }
         }

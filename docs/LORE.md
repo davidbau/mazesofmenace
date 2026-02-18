@@ -349,6 +349,18 @@ carryable gold as a valid search target.
 Practical rule: keep `m_search_items` gold retargeting gated by
 `likes_gold` (with leprechaun exception), not by `M2_COLLECT` alone.
 
+### Sparse replay frames can shift RNG attribution across later steps
+
+Some C keylog-derived gameplay captures include display-only frames with no RNG
+between two comparable RNG-bearing steps. When JS executes a command and
+captures extra trailing RNG in the same replay step, that tail may need to be
+deferred to a later step (not always the immediate next one) where comparable
+RNG resumes.
+
+Practical rule: if a step has an exact expected RNG prefix plus extra tail, and
+the first extra comparable call matches a later step's first comparable call
+after zero-RNG frames, defer the tail to that later step for comparison.
+
 ---
 
 ## Phase Chronicles
