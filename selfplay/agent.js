@@ -749,23 +749,31 @@ export class Agent {
 
                 let blacklisted = 0;
                 const frontier = level.getExplorationFrontier();
-                for (const target of frontier) {
-                    const dist = Math.max(Math.abs(target.x - px), Math.abs(target.y - py));
-                    if (dist <= 3) {
-                        const tKey = target.y * 80 + target.x;
-                        this._addFailedTarget(tKey);
-                        blacklisted++;
-                    }
+                const closeFrontier = frontier
+                    .map(target => ({
+                        target,
+                        dist: Math.max(Math.abs(target.x - px), Math.abs(target.y - py)),
+                    }))
+                    .filter(entry => entry.dist <= 3)
+                    .sort((a, b) => a.dist - b.dist)
+                    .slice(0, 8);
+                for (const entry of closeFrontier) {
+                    const tKey = entry.target.y * 80 + entry.target.x;
+                    if (this._addFailedTarget(tKey)) blacklisted++;
                 }
 
                 const searchCandidates = level.getSearchCandidates();
-                for (const cand of searchCandidates) {
-                    const dist = Math.max(Math.abs(cand.x - px), Math.abs(cand.y - py));
-                    if (dist <= 3) {
-                        const cKey = cand.y * 80 + cand.x;
-                        this._addFailedTarget(cKey);
-                        blacklisted++;
-                    }
+                const closeSearch = searchCandidates
+                    .map(cand => ({
+                        cand,
+                        dist: Math.max(Math.abs(cand.x - px), Math.abs(cand.y - py)),
+                    }))
+                    .filter(entry => entry.dist <= 3)
+                    .sort((a, b) => a.dist - b.dist)
+                    .slice(0, 6);
+                for (const entry of closeSearch) {
+                    const cKey = entry.cand.y * 80 + entry.cand.x;
+                    if (this._addFailedTarget(cKey)) blacklisted++;
                 }
 
                 // Reset counter to try different targets
@@ -1838,23 +1846,31 @@ export class Agent {
                     // Blacklist nearby frontier cells only if frontier is small (they're probably unreachable)
                     if (frontier.length <= 30) {
                         let blacklistedCount = 0;
-                        for (const target of frontier) {
-                            const dist = Math.max(Math.abs(target.x - px), Math.abs(target.y - py));
-                            if (dist <= 5) {
-                                const tKey = target.y * 80 + target.x;
-                                this._addFailedTarget(tKey);
-                                blacklistedCount++;
-                            }
+                        const nearbyFrontier = frontier
+                            .map(target => ({
+                                target,
+                                dist: Math.max(Math.abs(target.x - px), Math.abs(target.y - py)),
+                            }))
+                            .filter(entry => entry.dist <= 5)
+                            .sort((a, b) => a.dist - b.dist)
+                            .slice(0, 10);
+                        for (const entry of nearbyFrontier) {
+                            const tKey = entry.target.y * 80 + entry.target.x;
+                            if (this._addFailedTarget(tKey)) blacklistedCount++;
                         }
                         // Also blacklist search candidates that we're stuck near
                         const searchCandidates = level.getSearchCandidates();
-                        for (const cand of searchCandidates) {
-                            const dist = Math.max(Math.abs(cand.x - px), Math.abs(cand.y - py));
-                            if (dist <= 3) {
-                                const cKey = cand.y * 80 + cand.x;
-                                this._addFailedTarget(cKey);
-                                blacklistedCount++;
-                            }
+                        const nearbySearch = searchCandidates
+                            .map(cand => ({
+                                cand,
+                                dist: Math.max(Math.abs(cand.x - px), Math.abs(cand.y - py)),
+                            }))
+                            .filter(entry => entry.dist <= 3)
+                            .sort((a, b) => a.dist - b.dist)
+                            .slice(0, 6);
+                        for (const entry of nearbySearch) {
+                            const cKey = entry.cand.y * 80 + entry.cand.x;
+                            if (this._addFailedTarget(cKey)) blacklistedCount++;
                         }
 
                         // Only do this blacklisting once per stuck period

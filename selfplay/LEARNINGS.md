@@ -109,3 +109,21 @@
   - Baseline: survived `13/13`, avg depth `1.385`, depth>=3 `0/13`, XL2+ `1/13`, failedAdd `43.69`.
   - Candidate: survived `13/13`, avg depth `1.462`, depth>=3 `1/13`, XL2+ `1/13`, failedAdd `43.85`.
 - Net: holdout progression improved with unchanged survival and no train regression; keep.
+
+## 2026-02-18 - Keep: Cap Bulk Blacklisting During Stuck Recovery
+
+- Change: in `selfplay/agent.js`, limited bulk failed-target blacklisting in stuck handlers to nearest cells only, and only counted blacklist additions when `_addFailedTarget(...)` inserted a new key.
+  - Same-position stuck handler:
+    - frontier blacklist now nearest `8` cells within distance `<=3` (instead of all within range),
+    - search blacklist now nearest `6` cells within distance `<=3`.
+  - High-stuck small-frontier handler:
+    - frontier blacklist now nearest `10` cells within distance `<=5`,
+    - search blacklist now nearest `6` cells within distance `<=3`.
+- Why: broad local blacklisting was creating excessive failed-target churn and repeated retarget loops without improving survival/progression.
+- Validation gate: C role matrix, `turns=600`, `key-delay=0`, `train=21..33`, `holdout=31..43`.
+- Train:
+  - Candidate: survived `11/13`, avg depth `2.000`, depth>=3 `4/13`, XL2+ `0/13`, failedAdd `23.69`.
+- Holdout:
+  - Baseline (current main): survived `13/13`, avg depth `1.462`, depth>=3 `1/13`, XL2+ `1/13`, noProg `2.31`, failedAdd `43.85`.
+  - Candidate: survived `13/13`, avg depth `1.462`, depth>=3 `1/13`, XL2+ `1/13`, noProg `2.08`, failedAdd `36.92`.
+- Net: no survival/progression regression with substantial failed-target churn reduction on holdout; keep.
