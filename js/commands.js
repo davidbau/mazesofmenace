@@ -1894,6 +1894,16 @@ async function handleThrow(player, map, display) {
         }
         const item = player.inventory.find(o => o.invlet === c);
         if (!item) continue;
+        replacePromptMessage();
+        display.putstr_message('In what direction?');
+        const dirCh = await nhgetch();
+        const dch = String.fromCharCode(dirCh);
+        const dir = DIRECTION_KEYS[dch];
+        if (!dir) {
+            replacePromptMessage();
+            return { moved: false, tookTime: false };
+        }
+        replacePromptMessage();
         if (
             player.armor === item
             || player.shield === item
@@ -1902,19 +1912,7 @@ async function handleThrow(player, map, display) {
             || player.boots === item
             || player.cloak === item
         ) {
-            replacePromptMessage();
             display.putstr_message('You cannot throw something you are wearing.');
-            return { moved: false, tookTime: false };
-        }
-
-        replacePromptMessage();
-        display.putstr_message('In what direction?');
-        const dirCh = await nhgetch();
-        const dch = String.fromCharCode(dirCh);
-        const dir = DIRECTION_KEYS[dch];
-        if (!dir) {
-            replacePromptMessage();
-            display.putstr_message('Never mind.');
             return { moved: false, tookTime: false };
         }
 
@@ -1936,8 +1934,8 @@ async function handleThrow(player, map, display) {
             thrownItem.oy = player.y;
         }
         map.objects.push(thrownItem);
-        // C ref: dothrow.c throw_obj() does not print a generic single-throw
-        // message; clear the direction prompt instead of synthesizing one.
+        // C ref: dothrow.c throw_obj() only emits a throw topline for
+        // multishot/count cases; a normal single throw should just resolve.
         replacePromptMessage();
         return { moved: false, tookTime: true };
     }

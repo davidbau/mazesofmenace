@@ -129,6 +129,7 @@ Use one project backlog for all work, with labels for classification.
 When working on C-vs-JS parity, follow this rule:
 
 - Use failing unit/session tests to decide what to work on next.
+- Treat session replay results as the primary gameplay parity authority; use unit tests as focused guardrails.
 - Use C source code (`nethack-c/src/*.c`) as the behavior spec.
 - Do not "fix to the trace" with JS-only heuristics when C code disagrees.
 - If a test reveals missing behavior, port the corresponding C logic path.

@@ -9,6 +9,7 @@ This project uses GitHub Issues for work tracking. `PROJECT_PLAN.md` is the auth
 1. NetHack C 3.7.0 behavior is the gameplay source of truth.
 2. `PROJECT_PLAN.md` is the execution roadmap and phase gate definition.
 3. Test harness outputs are evidence for divergences, not a place to hide or special-case them.
+4. For gameplay parity sign-off, session replay results are authoritative over unit tests.
 
 ## Work Types and Primary Metrics
 1. Porting Work

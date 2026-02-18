@@ -58,7 +58,8 @@ describe('throw prompt behavior', () => {
         const result = await rhack('t'.charCodeAt(0), game);
         assert.equal(result.tookTime, false);
         assert.equal(game.display.messages[1], 'In what direction?');
-        assert.equal(game.display.topMessage, 'Never mind.');
+        assert.equal(game.display.messages.length, 2);
+        assert.equal(game.display.topMessage, null);
     });
 
     it('treats "-" selection as mime-throw cancel', async () => {
@@ -77,5 +78,46 @@ describe('throw prompt behavior', () => {
         const result = await rhack('t'.charCodeAt(0), game);
         assert.equal(result.tookTime, false);
         assert.equal(game.display.messages[0], 'What do you want to throw? [*]');
+    });
+
+    it('single throw clears direction prompt without synthetic throw topline', async () => {
+        const game = makeGame();
+        pushInput('b'.charCodeAt(0));
+        pushInput('l'.charCodeAt(0));
+
+        const result = await rhack('t'.charCodeAt(0), game);
+        assert.equal(result.tookTime, true);
+        assert.equal(game.display.messages[0], 'What do you want to throw? [b or ?*]');
+        assert.equal(game.display.messages[1], 'In what direction?');
+        assert.equal(game.display.messages.length, 2);
+        assert.equal(game.display.topMessage, null);
+    });
+
+    it('asks direction before rejecting worn item throw', async () => {
+        const game = makeGame();
+        const worn = { invlet: 'e', oclass: 2, name: 'leather armor' };
+        game.player.inventory.push(worn);
+        game.player.armor = worn;
+        pushInput('e'.charCodeAt(0));
+        pushInput('l'.charCodeAt(0));
+
+        const result = await rhack('t'.charCodeAt(0), game);
+        assert.equal(result.tookTime, false);
+        assert.equal(game.display.messages[0], 'What do you want to throw? [b or ?*]');
+        assert.equal(game.display.messages[1], 'In what direction?');
+        assert.equal(game.display.messages.at(-1), 'You cannot throw something you are wearing.');
+    });
+
+    it('space cancels throw direction prompt without extra cancel message', async () => {
+        const game = makeGame();
+        pushInput('d'.charCodeAt(0));
+        pushInput(' '.charCodeAt(0));
+
+        const result = await rhack('t'.charCodeAt(0), game);
+        assert.equal(result.tookTime, false);
+        assert.equal(game.display.messages[0], 'What do you want to throw? [b or ?*]');
+        assert.equal(game.display.messages[1], 'In what direction?');
+        assert.equal(game.display.messages.length, 2);
+        assert.equal(game.display.topMessage, null);
     });
 });
