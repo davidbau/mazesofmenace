@@ -165,3 +165,29 @@ Validation snapshot after this change:
 - `seed42_gameplay`: still full pass (`3017/3017`, `12/12`).
 - `seed212_valkyrie_wizard`: unchanged current baseline
   (`2475/10886`, `150/407`, first RNG divergence step `90`).
+
+## Additional Narrowing (turn-8 goblin backtrack roll)
+
+Using temporary JS-only `m_move` tracing on the current baseline run:
+
+- The step-90/91 RNG divergence maps to goblin movement at **turn 8**.
+- Goblin pre-move state in JS:
+  - position `(33,12)`
+  - `mtrack`: `(33,13) (32,13) (31,14) (0,0)`
+  - `cnt=6` candidate positions:
+    `(32,12) (32,13) (33,11) (33,13) (34,12) (34,13)`
+- JS consumes two backtrack checks in that move:
+  - `rn2(20)=9` on `(32,13)` vs `mtrack[1]`
+  - `rn2(24)=23` on `(33,13)` vs `mtrack[0]`  ← divergence point
+
+C midlog at the same point reports:
+
+- `<mfndpos=5 ...>`
+- one backtrack roll `rn2(20)=9`
+- then immediately `distfleeck rn2(5)=3` (where JS still has the extra `rn2(24)`).
+
+Interpretation:
+
+- There is still a pre-turn hidden-state mismatch feeding this call:
+  candidate-space size and/or goblin `mtrack` contents are not yet aligned
+  at turn 8, even though later visible screens are still matching.
