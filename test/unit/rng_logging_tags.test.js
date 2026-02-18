@@ -38,6 +38,15 @@ function runTaggedSample() {
 }
 
 describe('RNG log caller tags', () => {
+    it('enables caller+parent tags by default when env is unset', () => {
+        const first = withRngEnv({ RNG_LOG_TAGS: undefined, RNG_LOG_PARENT: undefined }, () => {
+            enableRngLog();
+            return runTaggedSample();
+        });
+        assert.match(first, / @ /, `missing caller tag in "${first}"`);
+        assert.match(first, / <= /, `missing parent chain in "${first}"`);
+    });
+
     it('includes parent chain by default when tags are enabled via env', () => {
         const first = withRngEnv({ RNG_LOG_TAGS: '1', RNG_LOG_PARENT: undefined }, () => {
             enableRngLog();
@@ -45,6 +54,14 @@ describe('RNG log caller tags', () => {
         });
         assert.match(first, / @ /, `missing caller tag in "${first}"`);
         assert.match(first, / <= /, `missing parent chain in "${first}"`);
+    });
+
+    it('allows fully disabling caller tags with RNG_LOG_TAGS=0', () => {
+        const first = withRngEnv({ RNG_LOG_TAGS: '0', RNG_LOG_PARENT: undefined }, () => {
+            enableRngLog();
+            return runTaggedSample();
+        });
+        assert.doesNotMatch(first, / @ /, `unexpected caller tag in "${first}"`);
     });
 
     it('allows opting out of parent chain with RNG_LOG_PARENT=0', () => {

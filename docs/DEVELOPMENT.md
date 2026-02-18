@@ -225,7 +225,6 @@ Two specialized tools help isolate RNG divergence at specific game turns:
 
 ```bash
 # 1) Reproduce one failing session with caller context on JS RNG entries.
-RNG_LOG_TAGS=1 \
 node test/comparison/session_test_runner.js --verbose \
   test/comparison/sessions/seed202_barbarian_wizard.session.json
 
@@ -236,11 +235,11 @@ node test/comparison/rng_step_diff.js \
 ```
 
 Notes:
-- `RNG_LOG_TAGS=1` adds `@ caller(file:line)` to JS RNG entries.
-- Parent/grandparent context (`<= ... <= ...`) is on by default with `RNG_LOG_TAGS=1`.
+- Caller tags are on by default in replay/session tooling (`@ caller(file:line)`).
+- Parent/grandparent context (`<= ... <= ...`) is on by default with caller tags.
+- Set `RNG_LOG_TAGS=0` to disable caller tags (faster, shorter logs).
 - Set `RNG_LOG_PARENT=0` to disable parent/grandparent context for shorter lines.
-- `rng_step_diff.js` already forces `RNG_LOG_TAGS=1`; export it explicitly only when using other runners.
-- Keep caller tags as an opt-in debug mode: stack capture adds overhead and should not be forced for regular gameplay runs.
+- `rng_step_diff.js` already forces caller tags; export `RNG_LOG_TAGS=1` explicitly only when using other runners that override it.
 
 **`test/comparison/rng_step_diff.js`** — Step-level C-vs-JS RNG caller diff
 
