@@ -5,14 +5,15 @@ import { rn2, rnd, d, c_d } from './rng.js';
 import { exercise } from './attrib_exercise.js';
 import { A_DEX, A_CON } from './config.js';
 import {
-    mons, G_FREQ, MZ_TINY, MZ_HUMAN, M2_NEUTER, M2_MALE, M2_FEMALE, M2_COLLECT,
+    mons, G_FREQ, G_NOCORPSE, MZ_TINY, MZ_HUMAN, M2_NEUTER, M2_MALE, M2_FEMALE, M2_COLLECT,
     MZ_LARGE,
     AT_CLAW, AT_BITE, AT_KICK, AT_BUTT, AT_TUCH, AT_STNG, AT_WEAP,
     S_ZOMBIE, S_MUMMY, S_VAMPIRE, S_WRAITH, S_LICH, S_GHOST, S_DEMON, S_KOP,
 } from './monsters.js';
-import { CORPSE, FOOD_CLASS, objectData } from './objects.js';
+import { CORPSE, FIGURINE, FOOD_CLASS, objectData } from './objects.js';
 import { mkobj, mkcorpstat, RANDOM_CLASS } from './mkobj.js';
 import { nonliving, monDisplayName } from './mondata.js';
+import { obj_resists } from './objdata.js';
 
 function isUndeadOrDemon(monsterType) {
     if (!monsterType) return false;
@@ -39,6 +40,22 @@ function weaponDamageSides(weapon, monster) {
     return isLarge ? (info.ldam || 0) : (info.sdam || 0);
 }
 
+// C ref: uhitm.c find_roll_to_hit() — Luck component.
+// sgn(Luck) * ((abs(Luck) + 2) / 3)  (integer division)
+function luckBonus(luck) {
+    if (!luck) return 0;
+    return Math.sign(luck) * Math.floor((Math.abs(luck) + 2) / 3);
+}
+
+// C ref: weapon.c abon() — DEX component of to-hit bonus.
+function dexToHit(dex) {
+    if (dex < 4) return -3;
+    if (dex < 6) return -2;
+    if (dex < 8) return -1;
+    if (dex < 14) return 0;
+    return dex - 14;
+}
+
 function monsterHitVerb(attackType) {
     switch (attackType) {
         case AT_BITE: return 'bites';
@@ -56,12 +73,24 @@ function monsterHitVerb(attackType) {
 // C ref: uhitm.c attack() -> hmon_hitmon() -> hmon_hitmon_core()
 export function playerAttackMonster(player, monster, display, map) {
     // To-hit calculation
-    // C ref: uhitm.c find_roll_to_hit() -- tmp = 1 + abon + find_mac(mtmp) + level
-    // then mhit = (tmp > rnd(20)); lower AC = better defense
+    // C ref: uhitm.c find_roll_to_hit():
+    //   tmp = 1 + abon() + find_mac(mtmp) + u.uhitinc
+    //         + (sgn(Luck)*((abs(Luck)+2)/3)) + u.ulevel
+    //   then: mhit = (tmp > rnd(20))
     const dieRoll = rnd(20);
-    const toHit = 1 + player.strToHit + monster.mac + player.level + weaponEnchantment(player.weapon);
+    // C ref: weapon.c abon() = str_bonus + (ulevel<3?1:0) + dex_bonus
+    const abon = player.strToHit + (player.level < 3 ? 1 : 0)
+        + dexToHit(player.attributes?.[A_DEX] ?? 10);
+    let toHit = 1 + abon + monster.mac + player.level
+        + luckBonus(player.luck || 0)
+        + weaponEnchantment(player.weapon);
+    // C ref: uhitm.c:386-393 — monster state adjustments
+    if (monster.stunned) toHit += 2;
+    if (monster.flee) toHit += 2;
+    if (monster.sleeping) toHit += 2;
+    if (monster.mcanmove === false) toHit += 4;
 
-    if (toHit <= dieRoll || dieRoll === 20) {
+    if (toHit <= dieRoll) {
         // Miss
         // C ref: uhitm.c -- "You miss the <monster>"
         display.putstr_message(`You miss the ${monDisplayName(monster)}.`);
@@ -123,7 +152,9 @@ export function playerAttackMonster(player, monster, display, map) {
 
         // C ref: mon.c:3581-3609 xkilled() — "illogical but traditional" treasure drop.
         const treasureRoll = rn2(6);
+        // C ref: mon.c:3582 — mvitals[mndx].mvflags & G_NOCORPSE (init'd from geno)
         const canDropTreasure = treasureRoll === 0
+            && !((mdat.geno || 0) & G_NOCORPSE)
             && !monster.mcloned
             && (monster.mx !== player.x || monster.my !== player.y)
             && mdat.symbol !== S_KOP;
@@ -132,9 +163,17 @@ export function playerAttackMonster(player, monster, display, map) {
             const flags2 = mdat.flags2 || 0;
             const isSmallMonster = (mdat.size || 0) < MZ_HUMAN;
             const isPermaFood = otmp && otmp.oclass === FOOD_CLASS && !otmp.oartifact;
+            // C ref: mon.c:3600 — FIGURINE exempted from size check
             const dropTooBig = isSmallMonster && !!otmp
+                && otmp.otyp !== FIGURINE
                 && ((otmp.owt || 0) > 30 || !!objectData[otmp.otyp]?.oc_big);
-            if (!(isPermaFood && !(flags2 & M2_COLLECT)) && !dropTooBig) {
+            if (isPermaFood && !(flags2 & M2_COLLECT)) {
+                // C ref: mon.c:3599 delobj(otmp) — consumes rn2(100) via obj_resists
+                obj_resists(otmp, 0, 0);
+            } else if (dropTooBig) {
+                // C ref: mon.c:3606 delobj(otmp) — consumes rn2(100) via obj_resists
+                obj_resists(otmp, 0, 0);
+            } else {
                 otmp.ox = monster.mx;
                 otmp.oy = monster.my;
                 map.objects.push(otmp);
@@ -172,14 +211,18 @@ export function playerAttackMonster(player, monster, display, map) {
         } else {
             display.putstr_message(`You hit the ${monDisplayName(monster)}.`);
         }
-        // C ref: uhitm.c hmon_hitmon() -> mhitm_knockback():
-        // for non-unarmed melee weapon hits with damage > 1 against a
-        // surviving target, knockback logic consumes rn2(3) distance and
-        // rn2(chance) (normally chance=6) before deciding effect.
+        // C ref: uhitm.c hmon_hitmon_core():
+        // For armed melee hits with damage > 1: mhitm_knockback() → rn2(3), rn2(6).
+        // For unarmed hits with damage > 1: hmon_hitmon_stagger() → rnd(100).
         if (player.weapon && damage > 1 && !player.twoweap) {
             rn2(3);
             rn2(6);
+        } else if (!player.weapon && damage > 1) {
+            // C ref: uhitm.c:1554 hmon_hitmon_stagger — rnd(100) stun chance check
+            rnd(100);
         }
+        // C ref: uhitm.c:624 known_hitum() — 1/25 morale/flee check on surviving hit
+        rn2(25);
         // C ref: uhitm.c:5997 passive() — rn2(3) when monster alive after hit
         rn2(3);
         return false;
