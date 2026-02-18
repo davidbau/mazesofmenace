@@ -2,6 +2,10 @@
 
 This project uses **GitHub Issues** for issue tracking.
 
+## Project Authority
+
+- `PROJECT_PLAN.md` is the overarching project plan and the authoritative source for project goals, scope, and milestone priorities.
+
 ## Quick Reference
 
 ```bash
