@@ -304,7 +304,10 @@ function makedog(map, player, depth) {
         my: petY,
         mhp: mhp,
         mhpmax: mhp,
-        mlevel: petData.level,
+        // C ref: makemon.c newmonhp() adjusted level (m_lev), not base species level.
+        // This affects pet aggressiveness checks (dogmove balk logic) and combat parity.
+        mlevel: m_lev,
+        m_lev: m_lev,
         mac: petData.ac,
         speed: petData.speed,
         movement: 0, // C ref: *mtmp = cg.zeromonst (zero-init)
