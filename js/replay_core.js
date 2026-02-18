@@ -1631,12 +1631,12 @@ export async function replaySession(seed, session, opts = {}) {
                     game.occupation = null;
                 }
                 applyTimedTurn();
-                if (reachedFinalRecordedStepTarget()) break;
-                // Keep replay HP aligned to captured turn-state during multi-turn actions.
-                syncHpFromStepScreen();
                 if (finishedOcc && typeof finishedOcc.onFinishAfterTurn === 'function') {
                     finishedOcc.onFinishAfterTurn(game);
                 }
+                if (reachedFinalRecordedStepTarget()) break;
+                // Keep replay HP aligned to captured turn-state during multi-turn actions.
+                syncHpFromStepScreen();
             }
 
             // C ref: allmain.c moveloop() — multi-count repeats execute before

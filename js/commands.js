@@ -1644,11 +1644,17 @@ async function handleEat(player, display, game) {
         // C ref: eat.c doesplit() path for stacked comestibles:
         // splitobj() creates a single-item object and consumes next_ident() (rnd(2)).
         const eatingFromStack = ((item.quan || 1) > 1 && item.oclass === FOOD_CLASS);
-        const eatenItem = eatingFromStack
-            ? { ...item, quan: 1, o_id: next_ident() }
-            : item;
+        let eatenItem = item;
         if (eatingFromStack) {
+            // C ref: splitobj() keeps both pieces in inventory until done_eating().
+            // Keep a 1-quantity piece in inventory for the consumed item.
+            eatenItem = { ...item, quan: 1, o_id: next_ident() };
             item.quan = (item.quan || 1) - 1;
+            const itemIndex = player.inventory.indexOf(item);
+            if (itemIndex >= 0) {
+                eatenItem.invlet = item.invlet;
+                player.inventory.splice(itemIndex + 1, 0, eatenItem);
+            }
         }
 
         let corpseTasteIdx = null;
@@ -1701,7 +1707,7 @@ async function handleEat(player, display, game) {
         const consumeInventoryItem = () => {
             if (consumedInventoryItem) return;
             consumedInventoryItem = true;
-            if (!eatingFromStack) player.removeFromInventory(item);
+            player.removeFromInventory(eatingFromStack ? eatenItem : item);
         };
 
         if (reqtime > 1) {

@@ -6,7 +6,7 @@ import { GameMap } from '../../js/map.js';
 import { Player } from '../../js/player.js';
 import { clearInputQueue, pushInput } from '../../js/input.js';
 
-function makeGame() {
+function makeGame({ quan = 1 } = {}) {
     const map = new GameMap();
     const player = new Player();
     player.initRole(11);
@@ -17,7 +17,7 @@ function makeGame() {
         oclass: 6,
         otyp: 291, // FOOD_RATION
         name: 'food ration',
-        quan: 1,
+        quan,
     };
     player.inventory = [ration];
 
@@ -70,5 +70,30 @@ describe('eat occupation timing', () => {
 
         assert.ok(sawContinue, 'food ration should require multiple occupation turns');
         assert.ok(removedOnDone, 'food should be removed on the finishing occupation turn');
+    });
+
+    it('keeps split stack piece in inventory until eating finishes', async () => {
+        const game = makeGame({ quan: 2 });
+        const stack = game.player.inventory[0];
+        pushInput('d'.charCodeAt(0));
+
+        const result = await rhack('e'.charCodeAt(0), game);
+        assert.equal(result.tookTime, true);
+        assert.ok(game.occupation, 'expected eating occupation');
+        assert.equal(stack.quan, 1, 'stack should decrement immediately');
+        assert.equal(game.player.inventory.length, 2, 'split piece should stay in inventory while eating');
+
+        const splitPiece = game.player.inventory.find((obj) => obj !== stack && obj.invlet === 'd');
+        assert.ok(splitPiece, 'expected split piece in inventory');
+        assert.equal(splitPiece.quan, 1);
+
+        while (game.occupation) {
+            const cont = game.occupation.fn();
+            if (!cont) game.occupation = null;
+        }
+
+        assert.equal(game.player.inventory.length, 1, 'split piece should be removed on completion');
+        assert.equal(game.player.inventory[0], stack, 'original stack should remain');
+        assert.equal(stack.quan, 1, 'one ration should remain after eating one from stack');
     });
 });
