@@ -912,6 +912,10 @@ export async function replaySession(seed, session, opts = {}) {
         const normalizedScreen = Array.isArray(screen)
             ? screen.map((line) => stripAnsiSequences(line))
             : [];
+        const normalizedScreenAnsi = (opts.captureScreens
+            && typeof game.display?.getScreenAnsiLines === 'function')
+            ? game.display.getScreenAnsiLines()
+            : null;
         // Counted-search boundary normalization:
         // Some keylog gameplay captures place the final timed-occupation RNG
         // turn on the following digit step (e.g., "... 9 s" loops). When the
@@ -944,6 +948,7 @@ export async function replaySession(seed, session, opts = {}) {
             rngCalls: raw.length,
             rng: compact,
             screen: normalizedScreen,
+            screenAnsi: normalizedScreenAnsi,
         });
     };
     for (let stepIndex = 0; stepIndex < maxSteps; stepIndex++) {
@@ -1752,6 +1757,7 @@ export async function replaySession(seed, session, opts = {}) {
                 rngCalls: startupRng.length + stepResults[0].rngCalls,
                 rng: startupRng.concat(stepResults[0].rng),
                 screen: stepResults[0].screen,
+                screenAnsi: stepResults[0].screenAnsi,
             };
         }
     }
