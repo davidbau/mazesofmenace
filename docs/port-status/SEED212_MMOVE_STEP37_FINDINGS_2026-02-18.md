@@ -6,9 +6,17 @@ checkpoints.
 
 ## Current First Divergence
 
-- RNG divergence remains at gameplay `step 37`, RNG index `8`:
-  - JS: `rn2(20)=13 @ m_move(...)`
-  - C: `rn2(32)=25 @ m_move(monmove.c:1966)`
+This note began as a step-37 `m_move` denominator mismatch investigation.
+After the landed fixes below, that blocker is cleared. Current state:
+
+- first screen divergence now appears later at gameplay `step 80`
+  (message/glyph text frame mismatch)
+- first RNG divergence now appears at gameplay `step 90`, RNG index `20`:
+  - JS: `rn2(24)=23 @ m_move(...)`
+  - C: `rn2(5)=3 @ distfleeck(monmove.c:539)`
+
+Compared with the pre-fix state (first RNG divergence at step 37),
+this is a substantial forward shift in matched replay prefix.
 
 ## Verified C Semantics (source check)
 
@@ -72,6 +80,22 @@ Observed effect:
   extra C `distfleeck` call during runmode-delay output handling.
 
 This confirms the step-10 goblin drift was one real upstream contributor.
+
+## Follow-on Replay Control Refinement (same day)
+
+Two replay/input semantics fixes were added after the movement-target patch:
+
+- `replay_core`: keep `cmdKey` aligned to the actual executed command key
+  each step (matching moveloop repeat bookkeeping).
+- `commands`: refine `Enter` (`\\n`/`\\r`) keypad-down handling so pet-
+  displacement flows can continue in run-style movement, while defaulting
+  to single-step movement outside that context.
+
+Observed effect on `seed212_valkyrie_wizard`:
+
+- RNG matched calls improved from `2305/11044` to `2475/10886`
+- first RNG divergence moved from step 38 to step 90
+- first screen divergence moved from step 38 to step 80
 
 ## Additional Fix Landed During This Pass
 

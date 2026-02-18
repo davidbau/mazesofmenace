@@ -237,8 +237,18 @@ export async function rhack(ch, game) {
         player.kickedloc = null;
     }
 
-    // C tty/keypad behavior in recorded traces: Enter acts like south movement.
+    // C tty/keypad behavior in recorded traces: Enter maps to keypad-down.
+    // For pet displacement flows, Enter can continue as run-style movement;
+    // otherwise keep single-step south movement semantics.
     if (ch === 10 || ch === 13) {
+        const southX = player.x + DIRECTION_KEYS.j[0];
+        const southY = player.y + DIRECTION_KEYS.j[1];
+        const southMon = map.monsterAt(southX, southY);
+        const noExplicitCount = (game.commandCount || 0) === 0 && (game.multi || 0) === 0;
+        const runDisplaceFlow = noExplicitCount && !!southMon && (southMon.tame || southMon.peaceful);
+        if (runDisplaceFlow) {
+            return await handleRun(DIRECTION_KEYS.j, player, map, display, fov, game);
+        }
         return await handleMovement(DIRECTION_KEYS.j, player, map, display, game);
     }
 

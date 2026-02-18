@@ -300,6 +300,17 @@ Practical rule: use step snapshots to verify state alignment at the first
 visual or behavior drift, then apply narrow C-faithful movement-target fixes
 before chasing deeper RNG stacks.
 
+### Enter key replay can need a run-style follow-on in pet-displacement flows
+
+In gameplay replay traces, `Enter` (`\n`/`\r`) is usually a one-step keypad-
+down movement, but pet-displacement turns can require a run-style follow-on
+cycle to stay aligned. Keeping active `cmdKey` tracking in sync with moveloop
+repeat state is also required in this path.
+
+Practical rule: if an Enter step matches one turn and then misses an immediate
+follow-on monster-turn block, verify keypad Enter + pet-displacement handling
+and `cmdKey` bookkeeping before changing monster AI logic.
+
 ---
 
 ## Phase Chronicles

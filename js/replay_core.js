@@ -1589,6 +1589,8 @@ export async function replaySession(seed, session, opts = {}) {
             if (ch !== 1 && game.multi === 0) {
                 lastCommand = { key: ch, count: game.commandCount || 0 };
             }
+            // Keep the active command key aligned with moveloop-style repeat logic.
+            game.cmdKey = execCh;
             game.advanceRunTurn = async () => {
                 applyTimedTurn(true);
                 syncHpFromStepScreen();
