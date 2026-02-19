@@ -6,9 +6,9 @@ import { COLNO, ROWNO, DOOR, CORR, SDOOR, SCORR, STAIRS, LADDER, FOUNTAIN, SINK,
          POOL, LAVAPOOL, IRONBARS, TREE, ROOM, IS_DOOR, D_CLOSED, D_LOCKED,
          D_ISOPEN, D_NODOOR, D_BROKEN, ACCESSIBLE, IS_WALL, MAXLEVEL, VERSION_STRING, ICE,
          isok, A_STR, A_INT, A_DEX, A_CON, A_WIS, A_CHA, STATUS_ROW_1, MAP_ROW_START,
-         SHOPBASE, ROOMOFFSET } from './config.js';
+         SHOPBASE, ROOMOFFSET, PM_CAVEMAN, RACE_ORC } from './config.js';
 import { SQKY_BOARD, SLP_GAS_TRAP, FIRE_TRAP, PIT, SPIKED_PIT, ANTI_MAGIC, IS_SOFT } from './symbols.js';
-import { rn2, rnd, rnl, d, c_d } from './rng.js';
+import { rn2, rn1, rnd, rnl, d, c_d } from './rng.js';
 import { exercise } from './attrib_exercise.js';
 import { objectData, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
          TOOL_CLASS, FOOD_CLASS, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS,
@@ -18,7 +18,7 @@ import { objectData, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
          TALLOW_CANDLE, WAX_CANDLE, FLINT, ROCK,
          TOUCHSTONE, LUCKSTONE, LOADSTONE, MAGIC_MARKER,
          CREAM_PIE, EUCALYPTUS_LEAF, LUMP_OF_ROYAL_JELLY,
-         POT_OIL } from './objects.js';
+         POT_OIL, TRIPE_RATION } from './objects.js';
 import { nhgetch, ynFunction, getlin } from './input.js';
 import { playerAttackMonster } from './combat.js';
 import { makemon, setMakemonPlayerContext } from './makemon.js';
@@ -2600,11 +2600,28 @@ async function handleEat(player, display, game) {
         // First bite (turn 1) — mirrors C start_eating() + bite()
         usedtime++;
         doBite();
-        // C ref: eat.c start_eating() — "You begin eating X." is only shown
-        // for partly-eaten food or multi-turn fresh food. Single-turn fresh
-        // food goes through fprefx() which shows its own flavor message.
-        if (!isCorpse && reqtime > 1) {
-            display.putstr_message(`You begin eating the ${eatenItem.name}.`);
+        // C ref: eat.c start_eating() — fprefx() is called for fresh
+        // (not already partly eaten) non-corpse food, producing flavor
+        // messages and RNG calls for specific food types.
+        if (!isCorpse) {
+            // C ref: eat.c:2094-2212 fprefx()
+            if (eatenItem.otyp === TRIPE_RATION) {
+                // C ref: eat.c:2126-2141 — Tripe flavor + possible vomiting
+                // carnivorous non-humanoid: "surprisingly good!" (no RNG)
+                // orc: "Mmm, tripe..." (no RNG)
+                // else: "Yak - dog food!" + rn2(2) vomit check
+                const isOrc = player.race === RACE_ORC;
+                // Player is always humanoid, so carnivorous && !humanoid is false
+                if (!isOrc) {
+                    const cannibalAllowed = (player.roleIndex === PM_CAVEMAN || isOrc);
+                    if (rn2(2) && !cannibalAllowed) {
+                        rn1(reqtime, 14); // make_vomiting duration
+                    }
+                }
+            }
+            if (reqtime > 1) {
+                display.putstr_message(`You begin eating the ${eatenItem.name}.`);
+            }
         }
         let consumedInventoryItem = false;
         const consumeInventoryItem = () => {

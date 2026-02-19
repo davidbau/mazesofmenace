@@ -185,7 +185,7 @@ function clearMonsterTrack(monster) {
 }
 
 // C ref: monmove.c monflee() subset used by melee morale checks.
-function applyMonflee(monster, fleetime, first = false) {
+export function applyMonflee(monster, fleetime, first = false) {
     const oldFleetim = Number(monster?.fleetim || 0);
     if (!first || !monster.flee) {
         if (!fleetime) {

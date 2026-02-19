@@ -9,7 +9,7 @@ import { COLNO, ROWNO, STONE, IS_WALL, IS_DOOR, IS_ROOM,
          NORMAL_SPEED, isok, A_STR } from './config.js';
 import { rn2, rnd, c_d } from './rng.js';
 import { exercise } from './attrib_exercise.js';
-import { monsterAttackPlayer, checkLevelUp } from './combat.js';
+import { monsterAttackPlayer, checkLevelUp, applyMonflee } from './combat.js';
 import { CORPSE, FOOD_CLASS, COIN_CLASS, BOULDER, ROCK, ROCK_CLASS, BALL_CLASS, CHAIN_CLASS,
          WEAPON_CLASS, ARMOR_CLASS, GEM_CLASS,
          AMULET_CLASS, POTION_CLASS, SCROLL_CLASS, WAND_CLASS, RING_CLASS, SPBOOK_CLASS,
@@ -1726,7 +1726,21 @@ function dochug(mon, map, player, display, fov, game = null) {
     // Each rn2() is only consumed if earlier conditions didn't short-circuit
     let phase3Cond = !nearby;
     if (!phase3Cond) phase3Cond = !!(mon.flee);
-    if (!phase3Cond) phase3Cond = false; // scared (simplified: no Elbereth)
+    if (!phase3Cond) {
+        // C ref: monmove.c:552-567 — distfleeck scared check
+        // Determine position where monster checks for scary things
+        // C: if (!mtmp->mcansee || (Invis && !perceives(mtmp->data)))
+        //      use remembered hero pos; else use actual hero pos
+        const seescaryX = monCanSee ? player.x : targetX;
+        const seescaryY = monCanSee ? player.y : targetY;
+        const sawscary = onscary(map, seescaryX, seescaryY);
+        // flees_light: Gremlin + artifact light — not yet implemented
+        // in_your_sanctuary: temple mechanics — not yet implemented
+        if (nearby && sawscary) {
+            phase3Cond = true; // scared
+            applyMonflee(mon, rnd(rn2(7) ? 10 : 100), true);
+        }
+    }
     if (!phase3Cond) phase3Cond = !!(mon.confused);
     if (!phase3Cond) phase3Cond = !!(mon.stunned);
     if (!phase3Cond && mon.minvis) phase3Cond = !rn2(3);
