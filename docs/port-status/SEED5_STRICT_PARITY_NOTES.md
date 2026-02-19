@@ -478,8 +478,8 @@ Date: 2026-02-19 (run timing parity: blocked run steps)
   - `seed112_valkyrie_selfplay200` pass,
   - `seed42_items_gameplay` pass.
 - `seed5_gnomish_mines_gameplay` frontier is unchanged:
-  - RNG matched remains `17626 / 57591`,
-  - first RNG drift remains step `539` index `18`.
+  - RNG matched remains `17508 / 50449`,
+  - first RNG drift remains step `517` index `0`.
 
 ## Current Read
 
