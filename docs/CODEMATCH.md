@@ -303,11 +303,11 @@ Discovery/identification functions split into `discovery.js` (camelCase, noted b
 | `shuffle_all` | 321 | o_init.js | `shuffle_all` | 154 | Match (private) |
 | `objdescr_is` | 351 | o_init.js | `objdescr_is` | — | Match (exported) |
 | `oinit` | 368 | — | — | — | Subsumed — `init_objects` + `setgemprobs` cover this |
-| `savenames` | 374 | discovery.js | `getDiscoveryState` | 163 | Renamed — save/restore via JSON |
-| `restnames` | 410 | discovery.js | `setDiscoveryState` | 171 | Renamed — save/restore via JSON |
-| `observe_object` | 441 | discovery.js | `observeObject` | 75 | Renamed (camelCase) |
+| `savenames` | 374 | discovery.js | `getDiscoveryState` | 178 | Renamed — save/restore via JSON; now also serializes extra disco entries |
+| `restnames` | 410 | discovery.js | `setDiscoveryState` | 188 | Renamed — save/restore via JSON; restores extra disco entries (oc_uname path) |
+| `observe_object` | 441 | discovery.js | `observeObject` | 105 | Renamed (camelCase) |
 | `discover_object` | 448 | discovery.js | `discoverObject` | 64 | Renamed (camelCase) |
-| `undiscover_object` | 492 | — | — | — | TODO |
+| `undiscover_object` | 492 | discovery.js | `undiscoverObject` | 75 | Renamed (camelCase); gem_learned TODO |
 | `interesting_to_discover` | 520 | discovery.js | `interestingToDiscover` | 82 | Renamed (private, camelCase) |
 | `discovered_cmp` | 543 | — | — | — | N/A — JS sort uses closures |
 | `sortloot_descr` | 557 | — | — | — | N/A — merged into menu output |
