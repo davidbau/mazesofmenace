@@ -211,6 +211,9 @@ established these practical replay/parity rules:
 - Throw prompt `?/*` in this trace is not generic help; it opens an in-prompt
   inventory overlay (right-side menu) and keeps prompt flow pending until an
   explicit dismiss key.
+- For throw/inventory overlay parity, cap right-side overlay offset at column
+  `41` (`offx <= 41`) rather than pure `cols - maxcol - 2`; C tty commonly
+  clamps here for these menu windows.
 - Overlay dismiss must clear the right-side menu region before re-showing the
   throw prompt, or stale menu rows leak into later captured frames.
 - `--More--`-split steps and extended-command (`#...`) typing frames in this

@@ -847,10 +847,12 @@ export class Display {
         for (const line of lines) {
             if (line.length > maxcol) maxcol = line.length;
         }
-        // C ref: wintty.c cw->offx = ttyDisplay->cols - cw->maxcol - 1
-        // C's maxcol includes +1 padding beyond the longest line, so for
-        // JS (where maxcol is the raw longest line length) we use -2.
-        const offx = Math.max(0, this.cols - maxcol - 2);
+        // C ref: wintty.c cw->offx = ttyDisplay->cols - cw->maxcol - 1.
+        // C overlay windows clamp the starting column to 41 in common
+        // inventory/throw-help flows; preserve that cap for screen parity.
+        // C's maxcol includes +1 padding beyond the longest line, so for JS
+        // (where maxcol is the raw longest line length) we use -2.
+        const offx = Math.max(0, Math.min(41, this.cols - maxcol - 2));
 
         const menuRows = Math.min(lines.length, STATUS_ROW_1);
         // C tty parity: clear only rows occupied by the menu itself.
@@ -863,7 +865,10 @@ export class Display {
         for (let i = 0; i < menuRows; i++) {
             const line = lines[i];
             const isHeader = isCategoryHeader(line);
-            if (isHeader) {
+            if (isHeader && line.startsWith(' ')) {
+                this.setCell(offx, i, ' ', CLR_WHITE, 0);
+                this.putstr(offx + 1, i, line.slice(1), CLR_WHITE, 1);
+            } else if (isHeader) {
                 this.putstr(offx, i, line, CLR_WHITE, 1);
             } else {
                 this.putstr(offx, i, line, CLR_WHITE, 0);

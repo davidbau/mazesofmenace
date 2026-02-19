@@ -553,6 +553,16 @@ as run-style south movement for parity with C turn consumption.
 Practical rule: in replay, detect this exact sparse-move/Enter pattern and set
 a narrow replay flag so Enter follows run-style handling only for that step.
 
+### Throw `?` overlay menus can require a right-offset cap at column 41
+
+In non-wizard tourist gameplay, the throw prompt (`What do you want to throw?`)
+`?/*` help overlay can drift horizontally if overlay placement always uses pure
+right-alignment (`cols - maxcol - 2`).
+
+Practical rule: clamp overlay menu `offx` to `<= 41` (matching C tty behavior
+in these flows) and keep leading-pad header spaces non-inverse when rendering
+category headers like ` Weapons`/` Coins`.
+
 ---
 
 ## Phase Chronicles
