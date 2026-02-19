@@ -68,3 +68,11 @@ python3 test/comparison/c-harness/keylog_to_session.py \
 - `--startup-mode=auto` is the safe default for manual keylogs.
 - It detects startup keys in the keylog (`in_moveloop=0`) and replays startup
   exactly from the log instead of auto-advancing prompts.
+- Tutorial prompt mode defaults to keylog metadata (`tutorial: true/false`).
+  Override with `--tutorial=on|off` if needed.
+
+To regenerate all keylog-backed fixtures configured in `seeds.json`:
+
+```bash
+python3 test/comparison/c-harness/keylog_to_session.py --from-config
+```

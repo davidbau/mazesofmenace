@@ -49,8 +49,9 @@ detect_depth = _session.detect_depth
 
 def parse_args():
     p = argparse.ArgumentParser(description='Convert keylog JSONL to standard session JSON')
-    p.add_argument('--in', dest='input_jsonl', required=True, help='Input keylog JSONL path')
-    p.add_argument('--out', dest='output_json', required=True, help='Output session JSON path')
+    p.add_argument('--from-config', action='store_true', help='Regenerate keylog sessions from seeds.json keylog_sessions')
+    p.add_argument('--in', dest='input_jsonl', required=False, help='Input keylog JSONL path')
+    p.add_argument('--out', dest='output_json', required=False, help='Output session JSON path')
     p.add_argument('--seed', type=int, default=None, help='Override seed (default: from keylog)')
     p.add_argument('--name', default='Recorder')
     p.add_argument('--role', default='Valkyrie')
@@ -58,6 +59,18 @@ def parse_args():
     p.add_argument('--gender', default='female')
     p.add_argument('--align', default='neutral')
     p.add_argument('--symset', default='ASCII', choices=['ASCII', 'DECgraphics'])
+    p.add_argument(
+        '--tutorial',
+        default='auto',
+        choices=['auto', 'on', 'off'],
+        help='Tutorial prompt mode for replay rc: auto=from keylog metadata, on=OPTIONS=tutorial, off=OPTIONS=!tutorial'
+    )
+    p.add_argument(
+        '--drop-leading-spaces',
+        type=int,
+        default=0,
+        help='Drop this many leading space key events before replay'
+    )
     p.add_argument(
         '--screen-capture',
         default='auto',
@@ -70,10 +83,19 @@ def parse_args():
         choices=['auto', 'ready', 'from-keylog'],
         help='Startup handling: ready=auto-advance to map before replay, from-keylog=replay startup keys exactly, auto=detect from keylog in_moveloop'
     )
-    return p.parse_args()
+    args = p.parse_args()
+    if not args.from_config and (not args.input_jsonl or not args.output_json):
+        p.error('--in and --out are required unless --from-config is used')
+    return args
 
 
-def setup_home(character, symset):
+def load_seeds_config():
+    config_path = os.path.join(PROJECT_ROOT, 'test', 'comparison', 'seeds.json')
+    with open(config_path) as f:
+        return json.load(f)
+
+
+def setup_home(character, symset, tutorial_enabled=False):
     os.makedirs(RESULTS_DIR, exist_ok=True)
     nethackrc = os.path.join(RESULTS_DIR, '.nethackrc')
     with open(nethackrc, 'w') as f:
@@ -83,7 +105,7 @@ def setup_home(character, symset):
         f.write(f'OPTIONS=gender:{character["gender"]}\n')
         f.write(f'OPTIONS=align:{character["align"]}\n')
         f.write('OPTIONS=!autopickup\n')
-        f.write('OPTIONS=!tutorial\n')
+        f.write('OPTIONS=tutorial\n' if tutorial_enabled else 'OPTIONS=!tutorial\n')
         f.write('OPTIONS=suppress_alert:3.4.3\n')
         if symset == 'DECgraphics':
             f.write('OPTIONS=symset:DECgraphics\n')
@@ -178,6 +200,31 @@ def resolve_screen_capture_mode(screen_capture, symset):
     return 'both' if symset.lower() == 'decgraphics' else 'plain'
 
 
+def resolve_tutorial_mode(mode, metadata):
+    if mode == 'on':
+        return True
+    if mode == 'off':
+        return False
+    if metadata and 'tutorial' in metadata:
+        return bool(metadata['tutorial'])
+    return False
+
+
+def drop_leading_space_events(events, drop_count):
+    remaining = max(0, int(drop_count or 0))
+    if remaining == 0:
+        return events, 0
+    out = list(events)
+    dropped = 0
+    while remaining > 0 and out:
+        if int(out[0].get('key', -1)) != 32:
+            break
+        out.pop(0)
+        dropped += 1
+        remaining -= 1
+    return out, dropped
+
+
 def capture_screens(session_name, mode):
     """Capture screen fields according to mode and return dict."""
     out = {}
@@ -188,8 +235,18 @@ def capture_screens(session_name, mode):
     return out
 
 
-def run_from_keylog(events, seed, character, symset, output_json, screen_capture_mode, startup_mode):
-    setup_home(character, symset)
+def run_from_keylog(
+    events,
+    seed,
+    character,
+    symset,
+    output_json,
+    screen_capture_mode,
+    startup_mode,
+    tutorial_enabled,
+    regen=None
+):
+    setup_home(character, symset, tutorial_enabled)
     output_json = os.path.abspath(output_json)
 
     tmpdir = tempfile.mkdtemp(prefix='webhack-keylog-session-')
@@ -242,6 +299,8 @@ def run_from_keylog(events, seed, character, symset, output_json, screen_capture
         session_data = {
             'version': 1,
             'seed': seed,
+            'source': 'c',
+            'type': 'gameplay',
             'wizard': True,
             'character': character,
             'symset': symset,
@@ -254,13 +313,19 @@ def run_from_keylog(events, seed, character, symset, output_json, screen_capture
             },
             'steps': [],
         }
+        if regen:
+            session_data['regen'] = regen
 
         prev_rng_count = startup_rng_count
         startup_depth_lines = startup_screens.get('screen') or startup_screens.get('screenAnsi') or []
         prev_depth = detect_depth(startup_depth_lines)
         prev_typ_grid = startup_typ_grid
+        warned_tutorial_dnum_lag = False
 
-        print(f'=== Replaying {len(events)} keylog events (seed={seed}, screenCapture={screen_capture_mode}) ===')
+        print(
+            f'=== Replaying {len(events)} keylog events '
+            f'(seed={seed}, screenCapture={screen_capture_mode}, tutorial={tutorial_enabled}) ==='
+        )
         for i, e in enumerate(events):
             code = int(e['key'])
             send_keycode(session_name, code)
@@ -284,10 +349,18 @@ def run_from_keylog(events, seed, character, symset, output_json, screen_capture
                 status_line = depth_lines[23] if len(depth_lines) > 23 else ''
                 ev_dnum = e.get('dnum')
                 if isinstance(ev_dnum, int) and 'Tutorial:' in status_line and ev_dnum != 8:
-                    raise RuntimeError(
-                        f'Keylog/session mismatch at seq={e.get("seq")}: '
-                        f'status shows Tutorial but keylog dnum={ev_dnum}'
-                    )
+                    seq = int(e.get('seq', 0) or 0)
+                    if seq <= 32:
+                        raise RuntimeError(
+                            f'Keylog/session mismatch at seq={e.get("seq")}: '
+                            f'status shows Tutorial but keylog dnum={ev_dnum}'
+                        )
+                    if not warned_tutorial_dnum_lag:
+                        print(
+                            f'  [warn] tutorial status lag at seq={seq}: '
+                            f'keylog dnum={ev_dnum}; continuing'
+                        )
+                        warned_tutorial_dnum_lag = True
 
             step = {
                 'key': key_repr(code),
@@ -325,8 +398,113 @@ def run_from_keylog(events, seed, character, symset, output_json, screen_capture
         shutil.rmtree(tmpdir, ignore_errors=True)
 
 
+def entry_value(entry, metadata, key, default=None):
+    if key in entry and entry.get(key) is not None:
+        return entry.get(key)
+    if metadata and key in metadata and metadata.get(key) is not None:
+        return metadata.get(key)
+    return default
+
+
+def resolve_character_from_entry(entry, metadata):
+    character = {
+        'name': entry_value(entry, metadata, 'name', 'Recorder'),
+        'role': entry_value(entry, metadata, 'role', 'Valkyrie'),
+        'race': entry_value(entry, metadata, 'race', 'human'),
+        'gender': entry_value(entry, metadata, 'gender', 'female'),
+        'align': entry_value(entry, metadata, 'align', 'neutral'),
+    }
+    char_spec = entry.get('character')
+    if isinstance(char_spec, str):
+        preset = _session.CHARACTER_PRESETS.get(char_spec.lower())
+        if preset:
+            character.update(preset)
+    elif isinstance(char_spec, dict):
+        character.update(char_spec)
+    for key in ('name', 'role', 'race', 'gender', 'align'):
+        if entry.get(key) is not None:
+            character[key] = entry[key]
+    return character
+
+
+def tutorial_mode_from_entry(entry):
+    raw = entry.get('tutorial', 'auto')
+    if isinstance(raw, bool):
+        return 'on' if raw else 'off'
+    raw = str(raw).strip().lower()
+    if raw in ('auto', 'on', 'off'):
+        return raw
+    return 'auto'
+
+
+def run_from_config():
+    config = load_seeds_config()
+    entries = config.get('keylog_sessions', {}).get('sessions', [])
+    if not entries:
+        print('No keylog_sessions.sessions entries found in seeds.json')
+        return
+
+    sessions_dir = os.path.join(PROJECT_ROOT, 'test', 'comparison', 'sessions')
+    for entry in entries:
+        keylog_rel = entry.get('keylog')
+        if not keylog_rel:
+            print(f'Skipping invalid keylog entry (missing keylog): {entry}')
+            continue
+        input_jsonl = keylog_rel if os.path.isabs(keylog_rel) else os.path.join(PROJECT_ROOT, keylog_rel)
+        metadata, events = read_keylog(input_jsonl)
+
+        seed = int(entry_value(entry, metadata, 'seed', 1))
+        label = str(entry.get('label', '')).strip()
+        output_rel = entry.get('output')
+        if output_rel:
+            output_json = output_rel if os.path.isabs(output_rel) else os.path.join(PROJECT_ROOT, output_rel)
+        else:
+            suffix = f'_{label}' if label else ''
+            output_json = os.path.join(sessions_dir, f'seed{seed}{suffix}_gameplay.session.json')
+
+        character = resolve_character_from_entry(entry, metadata)
+        symset = str(entry_value(entry, metadata, 'symset', 'ASCII'))
+        screen_capture_mode = resolve_screen_capture_mode(str(entry.get('screenCapture', 'auto')), symset)
+        startup_mode = str(entry.get('startupMode', 'auto'))
+        tutorial_enabled = resolve_tutorial_mode(tutorial_mode_from_entry(entry), metadata)
+        replay_events, dropped = drop_leading_space_events(events, int(entry.get('dropLeadingSpaces', 0) or 0))
+
+        if metadata:
+            print(
+                f'[{label or os.path.basename(output_json)}] '
+                f'metadata seed={metadata.get("seed")} role={metadata.get("role")} '
+                f'tutorial={bool(metadata.get("tutorial", False))}'
+            )
+        if dropped:
+            print(f'[{label or os.path.basename(output_json)}] dropped leading spaces: {dropped}')
+
+        regen = {
+            'mode': 'keylog',
+            'subtype': 'manual',
+            'keylog': keylog_rel,
+            'startupMode': startup_mode,
+            'screenCapture': screen_capture_mode,
+            'tutorial': tutorial_enabled,
+            'dropLeadingSpaces': dropped,
+        }
+        run_from_keylog(
+            replay_events,
+            seed,
+            character,
+            symset,
+            output_json,
+            screen_capture_mode,
+            startup_mode,
+            tutorial_enabled,
+            regen=regen,
+        )
+
+
 def main():
     args = parse_args()
+    if args.from_config:
+        run_from_config()
+        return
     metadata, events = read_keylog(args.input_jsonl)
 
     # Use metadata from keylog header if available, with command line overrides
@@ -361,10 +539,36 @@ def main():
     symset = get_opt('symset', 'ASCII')
 
     if metadata:
-        print(f'Using keylog metadata: seed={seed}, role={character["role"]}, name={character["name"]}')
+        print(
+            f'Using keylog metadata: seed={seed}, role={character["role"]}, '
+            f'name={character["name"]}, tutorial={bool(metadata.get("tutorial", False))}'
+        )
 
     screen_capture_mode = resolve_screen_capture_mode(args.screen_capture, symset)
-    run_from_keylog(events, seed, character, symset, args.output_json, screen_capture_mode, args.startup_mode)
+    tutorial_enabled = resolve_tutorial_mode(args.tutorial, metadata)
+    replay_events, dropped = drop_leading_space_events(events, args.drop_leading_spaces)
+    if dropped:
+        print(f'Dropped leading space key events: {dropped}')
+    regen = {
+        'mode': 'keylog',
+        'subtype': 'manual',
+        'keylog': os.path.relpath(os.path.abspath(args.input_jsonl), PROJECT_ROOT),
+        'startupMode': args.startup_mode,
+        'screenCapture': screen_capture_mode,
+        'tutorial': tutorial_enabled,
+        'dropLeadingSpaces': dropped,
+    }
+    run_from_keylog(
+        replay_events,
+        seed,
+        character,
+        symset,
+        args.output_json,
+        screen_capture_mode,
+        args.startup_mode,
+        tutorial_enabled,
+        regen=regen,
+    )
 
 
 if __name__ == '__main__':

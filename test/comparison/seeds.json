@@ -562,6 +562,21 @@
       }
     ]
   },
+  "keylog_sessions": {
+    "sessions": [
+      {
+        "seed": 8,
+        "label": "tutorial_manual",
+        "keylog": "test/comparison/keylogs/seed8_tutorial_manual.jsonl",
+        "character": "valkyrie",
+        "symset": "DECgraphics",
+        "screenCapture": "both",
+        "startupMode": "auto",
+        "tutorial": "on",
+        "dropLeadingSpaces": 2
+      }
+    ]
+  },
   "special_seeds": {
     "seeds": [
       1,
