@@ -532,6 +532,17 @@ Practical rule: model this as a modal no-object `--More--` loop in command
 logic (non-space keys keep the same `--More--` frame; space/enter/esc resume
 the eat prompt) rather than immediately reprompting.
 
+### `doopen` invalid direction wording splits cancel vs invalid keys
+
+For `open` direction prompts, C distinguishes cancel-like keys from other
+invalid keys:
+
+- cancel keys (`Esc`, `Enter`, `Space`) -> `Never mind.`
+- other invalid direction keys -> `What a strange direction!  Never mind.`
+
+Practical rule: keep this split in command handling and tests; collapsing both
+cases to `Never mind.` regresses non-wizard tourist session parity.
+
 ---
 
 ## Phase Chronicles

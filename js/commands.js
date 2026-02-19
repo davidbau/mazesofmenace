@@ -1457,10 +1457,13 @@ async function handleOpen(player, map, display, game) {
         dir = [0, 0];
     }
     if (!dir) {
-        // C ref: cmd.c getdir() — when iflags.cmdassist is true (default),
-        // help_dir() is shown instead of "What a strange direction!".
-        // The caller then prints "Never mind."
-        display.putstr_message('Never mind.');
+        // C getdir parity: cancel keys produce plain "Never mind.", while
+        // other invalid direction keys report a strange direction first.
+        if (dirCh === 27 || dirCh === 10 || dirCh === 13 || dirCh === 32) {
+            display.putstr_message('Never mind.');
+        } else {
+            display.putstr_message('What a strange direction!  Never mind.');
+        }
         return { moved: false, tookTime: false };
     }
 
@@ -2191,8 +2194,13 @@ async function handleEat(player, display, game) {
                 display.putstr_message('You cannot eat that!');
                 return { moved: false, tookTime: false };
             }
-            // C ref: getobj() prints "You don't have that object." and
-            // immediately re-prompts without --More--.
+            // C tty replay parity: missing inventory letters can yield a sticky
+            // "--More--" frame that only clears on Space/Enter/Esc.
+            display.putstr_message("You don't have that object.--More--");
+            while (true) {
+                const moreCh = await nhgetch();
+                if (moreCh === 32 || moreCh === 10 || moreCh === 13 || moreCh === 27) break;
+            }
             continue;
         }
         // C ref: eat.c doesplit() path for stacked comestibles:
