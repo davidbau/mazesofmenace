@@ -10,9 +10,10 @@ import { COLNO, ROWNO, STONE, IS_WALL, IS_DOOR, IS_ROOM,
 import { rn2, rnd, c_d } from './rng.js';
 import { monsterAttackPlayer, checkLevelUp } from './combat.js';
 import { CORPSE, FOOD_CLASS, COIN_CLASS, BOULDER, ROCK, ROCK_CLASS, BALL_CLASS, CHAIN_CLASS,
-         WEAPON_CLASS, GOLD_PIECE,
+         WEAPON_CLASS, ARMOR_CLASS, GEM_CLASS,
+         AMULET_CLASS, POTION_CLASS, SCROLL_CLASS, WAND_CLASS, RING_CLASS, SPBOOK_CLASS,
          PICK_AXE, DWARVISH_MATTOCK, SKELETON_KEY, LOCK_PICK, CREDIT_CARD,
-         UNICORN_HORN, SCR_SCARE_MONSTER, CLOAK_OF_DISPLACEMENT,
+         UNICORN_HORN, SCR_SCARE_MONSTER, CLOAK_OF_DISPLACEMENT, MINERAL, GOLD_PIECE,
          objectData } from './objects.js';
 import { doname, mkcorpstat, next_ident } from './mkobj.js';
 import { observeObject } from './discovery.js';
@@ -21,7 +22,7 @@ import { dogfood, dog_eat, can_carry, DOGFOOD, CADAVER, ACCFOOD, MANFOOD, APPORT
 import { couldsee, m_cansee, do_clear_area } from './vision.js';
 import { can_teleport, noeyes, perceives, is_animal, is_mindless, nohands, nonliving,
          is_displacer, monDisplayName, hasGivenName, monNam,
-         likes_gold } from './mondata.js';
+         } from './mondata.js';
 import { PM_GRID_BUG, PM_IRON_GOLEM, PM_SHOPKEEPER, mons,
          PM_LEPRECHAUN, PM_XAN, PM_YELLOW_LIGHT, PM_BLACK_LIGHT,
          PM_PURPLE_WORM, PM_BABY_PURPLE_WORM, PM_SHRIEKER,
@@ -31,8 +32,8 @@ import { PM_GRID_BUG, PM_IRON_GOLEM, PM_SHOPKEEPER, mons,
          AD_ACID, AD_ENCH,
          M1_FLY, M1_SWIM, M1_AMPHIBIOUS, M1_AMORPHOUS, M1_CLING, M1_SEE_INVIS, S_MIMIC,
          M1_WALLWALK, M1_TUNNEL, M1_NEEDPICK, M1_SLITHY, M1_UNSOLID,
-         M2_COLLECT,
-         MZ_TINY, MZ_SMALL, MZ_MEDIUM, MR_FIRE, MR_SLEEP, G_FREQ, G_NOCORPSE,
+         M2_COLLECT, M2_STRONG, M2_ROCKTHROW, M2_GREEDY, M2_JEWELS, M2_MAGIC,
+         MZ_TINY, MZ_SMALL, MZ_MEDIUM, MZ_HUMAN, WT_HUMAN, MR_FIRE, MR_SLEEP, G_FREQ, G_NOCORPSE,
          PM_DISPLACER_BEAST, PM_FIRE_ELEMENTAL, PM_SALAMANDER,
          S_EYE, S_LIGHT, S_EEL, S_VORTEX, S_ELEMENTAL } from './monsters.js';
 import { STATUE_TRAP, MAGIC_TRAP, VIBRATING_SQUARE, RUST_TRAP, FIRE_TRAP,
@@ -487,15 +488,90 @@ function monsterInShop(mon, map) {
     return pointInShop(mon.mx, mon.my, map);
 }
 
+const MAX_CARR_CAP = 1000; // C ref: weight.h
+const PRACTICAL_CLASSES = new Set([WEAPON_CLASS, ARMOR_CLASS, GEM_CLASS, FOOD_CLASS]);
+const MAGICAL_CLASSES = new Set([AMULET_CLASS, POTION_CLASS, SCROLL_CLASS, WAND_CLASS, RING_CLASS, SPBOOK_CLASS]);
+
+function max_mon_load_for_search(mon) {
+    const mdat = mon?.type || {};
+    const strong = !!(mdat.flags2 & M2_STRONG);
+    const cwt = Number(mdat.weight || 0);
+    const msize = Number(mdat.size || 0);
+    let maxload;
+    if (!cwt) {
+        maxload = (MAX_CARR_CAP * msize) / MZ_HUMAN;
+    } else if (!strong || cwt > WT_HUMAN) {
+        maxload = (MAX_CARR_CAP * cwt) / WT_HUMAN;
+    } else {
+        maxload = MAX_CARR_CAP;
+    }
+    if (!strong) maxload = Math.floor(maxload / 2);
+    return Math.max(1, Math.floor(maxload));
+}
+
+function curr_mon_load_for_search(mon) {
+    let load = 0;
+    const throwsRocks = !!(mon?.type?.flags2 & M2_ROCKTHROW);
+    for (const obj of mon?.minvent || []) {
+        if (obj?.otyp === BOULDER && throwsRocks) continue;
+        load += Number(obj?.owt || 0);
+    }
+    return load;
+}
+
+function mon_would_take_item_search(mon, obj, map) {
+    const ptr = mon?.type || {};
+    if (!obj) return false;
+    if (mon?.tame && obj.cursed) return false;
+
+    const maxload = max_mon_load_for_search(mon);
+    const pctload = Math.floor((curr_mon_load_for_search(mon) * 100) / maxload);
+
+    const likesGold = !!(ptr.flags2 & M2_GREEDY);
+    const likesGems = !!(ptr.flags2 & M2_JEWELS);
+    const likesObjs = !!(ptr.flags2 & M2_COLLECT)
+        || (Array.isArray(ptr.attacks) && ptr.attacks.some((atk) => atk?.type === AT_WEAP));
+    const likesMagic = !!(ptr.flags2 & M2_MAGIC);
+    const throwsRocks = !!(ptr.flags2 & M2_ROCKTHROW);
+
+    if (likesGold && obj.otyp === GOLD_PIECE && pctload < 95) return true;
+    if (likesGems && obj.oclass === GEM_CLASS
+        && (objectData[obj.otyp]?.material !== MINERAL)
+        && pctload < 85) return true;
+    if (likesObjs && PRACTICAL_CLASSES.has(obj.oclass) && pctload < 75) return true;
+    if (likesMagic && MAGICAL_CLASSES.has(obj.oclass) && pctload < 85) return true;
+    if (throwsRocks && obj.otyp === BOULDER && pctload < 50 && !map?.flags?.sokoban) return true;
+    return false;
+}
+
 // C ref: mon.c mpickstuff() early gates.
 function maybeMonsterPickStuff(mon, map) {
-    // prevent shopkeepers from leaving their shop door behavior
+    // C ref: mpickstuff() in-shop gates.
     if (mon.isshk && monsterInShop(mon, map)) return false;
 
-    // non-tame monsters normally don't go shopping
+    // Non-tame monsters usually skip looting shop floor merchandise.
     if (!mon.tame && monsterInShop(mon, map) && rn2(25)) return false;
 
-    // Full pickup behavior is pending; current port keeps RNG-visible gates.
+    const pile = (map.objectsAt?.(mon.mx, mon.my) || [])
+        .filter((obj) => obj && !obj.buried);
+    for (const obj of pile) {
+        if (obj.otyp === ROCK) continue;
+        if (!mon_would_take_item_search(mon, obj, map)) continue;
+        const carryAmt = can_carry(mon, obj);
+        if (carryAmt <= 0) continue;
+
+        let picked = obj;
+        const quan = Number(obj.quan || 1);
+        if (carryAmt < quan) {
+            obj.quan = quan - carryAmt;
+            picked = { ...obj, quan: carryAmt, o_id: next_ident() };
+        } else {
+            map.removeObject(obj);
+        }
+        if (!mon.minvent) mon.minvent = [];
+        mon.minvent.push(picked);
+        return true;
+    }
     return false;
 }
 
@@ -1009,7 +1085,20 @@ function m_search_items_goal(mon, map, ggx, ggy, appr) {
     const mflags2 = Number(mon?.type?.flags2 || 0);
     const canCollect = !!(mflags2 & M2_COLLECT) || mon?.mndx === PM_LEPRECHAUN;
     if (!canCollect) {
-        return { ggx, ggy, appr };
+        return { ggx, ggy, appr, done: false };
+    }
+
+    // C ref: monmove.c m_search_items() — in shop, usually skip.
+    if (pointInShop(omx, omy, map) && (rn2(25) || mon.isshk)) {
+        if (minr < SQSRCHRADIUS && appr === -1) {
+            if (distmin(omx, omy, mux, muy) <= 3) {
+                ggx = mux;
+                ggy = muy;
+            } else {
+                appr = 1;
+            }
+        }
+        return { ggx, ggy, appr, done: false };
     }
 
     const hmx = Math.min(COLNO - 1, omx + minr);
@@ -1030,20 +1119,16 @@ function m_search_items_goal(mon, map, ggx, ggy, appr) {
             if (!pile || pile.length === 0) continue;
 
             for (const obj of pile) {
-                // C ref: m_search_items() — ignore common rocks as goal objects.
                 if (obj?.otyp === ROCK) continue;
-                // C ref: mon_would_take_item() — GOLD_PIECE targeting requires
-                // likes_gold() (M2_GREEDY). M2_COLLECT alone is not enough.
-                if (obj?.otyp === GOLD_PIECE
-                    && mon?.mndx !== PM_LEPRECHAUN
-                    && !likes_gold(mon?.type || {})) {
-                    continue;
-                }
+                if (!mon_would_take_item_search(mon, obj, map)) continue;
                 if (can_carry(mon, obj) <= 0) continue;
 
                 minr = distmin(omx, omy, xx, yy);
                 ggx = xx;
                 ggy = yy;
+                if (ggx === omx && ggy === omy) {
+                    return { ggx, ggy, appr, done: true };
+                }
                 break;
             }
         }
@@ -1059,7 +1144,7 @@ function m_search_items_goal(mon, map, ggx, ggy, appr) {
         }
     }
 
-    return { ggx, ggy, appr };
+    return { ggx, ggy, appr, done: false };
 }
 
 // ========================================================================
@@ -1569,15 +1654,21 @@ function dochug(mon, map, player, display, fov, game = null) {
         } else {
             const omx = mon.mx, omy = mon.my;
             m_move(mon, map, player, display, fov);
+            const moveDone = !!mon._mMoveDone;
             if (!mon.dead && (mon.mx !== omx || mon.my !== omy)) {
                 mintrap_postmove(mon, map);
                 mmoved = true;
             }
-            if (mon.mcanmove !== false
-                && !mon.tame
-                && monsterInShop(mon, map)
-                && map.objectsAt(mon.mx, mon.my).length > 0) {
-                maybeMonsterPickStuff(mon, map);
+            if (!mon.dead
+                && mon.mcanmove !== false
+                && (mmoved || moveDone)
+                && map.objectsAt(mon.mx, mon.my).length > 0
+                && maybeMonsterPickStuff(mon, map)) {
+                // C ref: mpickstuff() can convert MMOVE_MOVED into MMOVE_DONE,
+                // suppressing follow-on attack handling for this turn.
+                mmoved = false;
+            } else if (moveDone) {
+                mmoved = false;
             }
         }
         // distfleeck recalc after m_move
@@ -2480,6 +2571,7 @@ function shk_move(mon, map, player) {
 //   - No rn2(3)/rn2(12) fallback for worse positions (that's dog_move only)
 //   - mfndpos provides positions in column-major order with NODIAG filtering
 function m_move(mon, map, player, display = null, fov = null) {
+    mon._mMoveDone = false;
     // C ref: monmove.c dispatch for shopkeeper/guard/priest before generic m_move().
     if (mon.isshk) {
         const omx = mon.mx, omy = mon.my;
@@ -2556,13 +2648,10 @@ function m_move(mon, map, player, display = null, fov = null) {
         ggx = searchState.ggx;
         ggy = searchState.ggy;
         appr = searchState.appr;
-    }
-
-    // C ref: monmove.c m_search_items() shop short-circuit:
-    // "in shop, usually skip" -> rn2(25) consumed for non-peaceful movers.
-    // Full item-search port is pending; keep this RNG-visible gate aligned.
-    if (!mon.peaceful && monsterInShop(mon, map)) {
-        rn2(25);
+        if (searchState.done) {
+            mon._mMoveDone = true;
+            return false;
+        }
     }
 
     // Collect valid positions via mfndpos (column-major, NODIAG, boulder filter)

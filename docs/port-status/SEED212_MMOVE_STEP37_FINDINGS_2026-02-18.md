@@ -9,11 +9,11 @@ checkpoints.
 This note began as a step-37 `m_move` denominator mismatch investigation.
 After the landed fixes below, that blocker is cleared. Current state:
 
-- first screen divergence now appears later at gameplay `step 121`
+- first screen divergence now appears later at gameplay `step 181`
   (post-turn glyph placement mismatch)
-- first RNG divergence now appears at gameplay `step 90`, RNG index `20`:
-  - JS: `rn2(24)=23 @ m_move(...)`
-  - C: `rn2(5)=3 @ distfleeck(monmove.c:539)`
+- first RNG divergence now appears at gameplay `step 260`, RNG index `1157`:
+  - JS: `rn2(3)=1 @ fill_ordinary_room(...)`
+  - C: `rn2(5)=1 @ pick_room(mkroom.c:238)`
 
 Compared with the pre-fix state (first RNG divergence at step 37),
 this is a substantial forward shift in matched replay prefix.
@@ -191,3 +191,31 @@ Interpretation:
 - There is still a pre-turn hidden-state mismatch feeding this call:
   candidate-space size and/or goblin `mtrack` contents are not yet aligned
   at turn 8, even though later visible screens are still matching.
+
+## Faithful `m_search_items` / `mpickstuff` Port (2026-02-19)
+
+To avoid heuristic-only behavior and follow C movement intent more closely,
+JS monster item logic was updated in `js/monmove.js`:
+
+- replaced broad "any carryable object" retargeting with C-style item-affinity
+  gates (load-threshold + likes-gold/gems/objects/magic class filters)
+- added C in-shop `m_search_items` short-circuit behavior (`rn2(25)` path)
+- added `MMOVE_DONE`-style early stop when an item target is under the monster
+- implemented `mpickstuff`-style pickup handling (including partial-stack carry)
+- applied C-like `MMOVE_MOVED -> MMOVE_DONE` suppression semantics for the same
+  turn's follow-on attack handling after pickup
+
+Observed effect on `seed212_valkyrie_wizard`:
+
+- previously divergent goblin hidden-state checkpoints now align:
+  - gameplay step 39: goblin `(34,14)` (C and JS)
+  - gameplay step 91: goblin `(35,14)` (C and JS)
+- first RNG divergence moved from step 90 to step 260
+- first screen divergence moved from step 121 to step 181
+
+Related issue sessions after this pass:
+
+- `seed103_caveman_selfplay200`: pass
+- `seed112_valkyrie_selfplay200`: pass
+- `seed42_items_gameplay`: still fails (first divergence step 18)
+- `seed5_gnomish_mines_gameplay`: still fails (first screen divergence step 46)

@@ -317,6 +317,16 @@ Practical rule: use step snapshots to verify state alignment at the first
 visual or behavior drift, then apply narrow C-faithful movement-target fixes
 before chasing deeper RNG stacks.
 
+### Monster item-search parity needs full intent gates, not broad carry checks
+
+`m_search_items` is not "move toward any carryable floor object." In C it
+passes through `mon_would_take_item`/`mon_would_consume_item`, load-threshold
+limits, in-shop skip behavior, and `MMOVE_DONE`/`mpickstuff` side effects.
+
+Practical rule: if monsters retarget oddly around loot (especially toward
+gold/food underfoot), port the full intent gating and pickup semantics before
+tuning path selection or RNG order.
+
 ### Enter key replay can need a run-style follow-on in pet-displacement flows
 
 In gameplay replay traces, `Enter` (`\n`/`\r`) is usually a one-step keypad-
