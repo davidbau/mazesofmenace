@@ -660,3 +660,33 @@
 
 - Net:
   - Keep as an observability accuracy improvement (no policy-behavior change, no train/holdout regression).
+
+## 2026-02-19 - Keep: Role-Matrix JSON A/B Comparator with Guardrails
+
+- Change:
+  - Added `selfplay/runner/c_role_matrix_diff.js` to compare two `c_role_matrix --json-out` artifacts.
+  - Added `selfplay/test/role_matrix_diff.test.js` for guardrail and comparability checks.
+  - Comparator reports:
+    - summary metric deltas (`candidate - baseline`),
+    - default guardrails (survival/depth/XL2/XP non-regression and `failedAdd` non-increase),
+    - run-level changed-row counts,
+    - top per-assignment regressions/improvements.
+  - Added comparability enforcement:
+    - fails when baseline/candidate assignment sets differ (e.g., comparing a 13-run matrix to a 7-run triage).
+
+- Why:
+  - We already generate machine-readable matrix artifacts, but candidate acceptance was still mostly manual.
+  - This makes train/holdout gate decisions faster, more reproducible, and less error-prone.
+
+- Validation:
+  - `node --check selfplay/runner/c_role_matrix_diff.js`
+  - `node --check selfplay/test/role_matrix_diff.test.js`
+  - `node --test selfplay/test/role_matrix_diff.test.js`
+  - Real-data smoke:
+    - `node selfplay/runner/c_role_matrix_diff.js --baseline=/tmp/holdout_baseline_20260219b.json --candidate=/tmp/holdout_candidate_swapmsg_20260219.json --top=3` (PASS)
+    - `node selfplay/runner/c_role_matrix_diff.js --baseline=/tmp/holdout_baseline_20260219b.json --candidate=/tmp/candidate_dogswap_gate2_triage_20260219.json --top=3` (FAIL with assignment mismatch details)
+
+- Usage:
+  - `node selfplay/runner/c_role_matrix_diff.js --baseline=<baseline.json> --candidate=<candidate.json> --top=8`
+  - Optional machine-readable diff export:
+    - `--json-out=/tmp/role_matrix_diff.json`
