@@ -36,6 +36,7 @@ import {
     mkobj,
     mksobj,
     mkcorpstat,
+    next_ident,
     weight,
     setLevelDepth,
     setMklevObjectContext,
@@ -168,15 +169,55 @@ export function induced_align(pct, specialAlign = A_NONE, dungeonAlign = A_NONE)
 export function clearBranchTopology() {
     _branchTopology = [];
     _oracleLevel = { dnum: DUNGEONS_OF_DOOM, dlevel: 5 };
+    _dungeonLedgerStartByDnum = new Map([[DUNGEONS_OF_DOOM, 0]]);
 }
 import { EPITAPH_FILE_TEXT } from './epitaph_data.js';
 import { ENGRAVE_FILE_TEXT } from './engrave_data.js';
 import { shtypes, stock_room } from './shknam.js';
 import { obj_resists } from './objdata.js';
 
-// Module-level game seed for nameshk() — set by setGameSeed() before level gen
-let _gameSeed = 0;
-export function setGameSeed(seed) { _gameSeed = seed; }
+// Module-level ubirthday surrogate for nameshk() — set by setGameSeed() before level gen.
+// C ref: shknam.c uses ubirthday (seconds since epoch) rather than game seed.
+const DEFAULT_FIXED_DATETIME = '20000110090000';
+let _gameUbirthday = 0;
+let _dungeonLedgerStartByDnum = new Map([[DUNGEONS_OF_DOOM, 0]]);
+
+function parseFixedDatetimeToEpochSeconds(dt) {
+    if (typeof dt !== 'string' || !/^\d{14}$/.test(dt)) return null;
+    const y = Number.parseInt(dt.slice(0, 4), 10);
+    const mo = Number.parseInt(dt.slice(4, 6), 10);
+    const md = Number.parseInt(dt.slice(6, 8), 10);
+    const h = Number.parseInt(dt.slice(8, 10), 10);
+    const mi = Number.parseInt(dt.slice(10, 12), 10);
+    const s = Number.parseInt(dt.slice(12, 14), 10);
+    const ms = new Date(y, mo - 1, md, h, mi, s).getTime();
+    if (!Number.isFinite(ms)) return null;
+    return Math.floor(ms / 1000);
+}
+
+function resolveUbirthday(seed) {
+    const fixed = (typeof process !== 'undefined' && process?.env?.NETHACK_FIXED_DATETIME)
+        || DEFAULT_FIXED_DATETIME;
+    const parsed = parseFixedDatetimeToEpochSeconds(fixed);
+    if (Number.isFinite(parsed)) return parsed;
+    if (Number.isFinite(seed)) return seed;
+    return 0;
+}
+
+export function setGameSeed(seed) {
+    _gameUbirthday = resolveUbirthday(seed);
+}
+
+function getLedgerNoForLevel(dnum, dlevel) {
+    const cdnum = Number.isInteger(dnum) ? dnum : DUNGEONS_OF_DOOM;
+    const clev = Number.isInteger(dlevel) && dlevel > 0 ? dlevel : 1;
+    const ledgerStart = _dungeonLedgerStartByDnum.get(cdnum);
+    if (Number.isInteger(ledgerStart)) {
+        return ledgerStart + clev;
+    }
+    // Fallback keeps deterministic behavior in stripped-down test contexts.
+    return clev;
+}
 
 // ========================================================================
 // rect.c -- Rectangle pool for BSP room placement
@@ -1554,7 +1595,7 @@ function mazexy(map) {
 }
 
 // Helper function to place stairs
-function mkstairs(map, x, y, isUp) {
+function mkstairs(map, x, y, isUp, isBranch = false) {
     // C ref: mkroom.c:891-920 mkstairs()
     const loc = map.at(x, y);
     if (!loc) return;
@@ -1562,6 +1603,7 @@ function mkstairs(map, x, y, isUp) {
     loc.typ = STAIRS;
     loc.stairdir = isUp ? 1 : 0; // 1 = up, 0 = down
     loc.flags = isUp ? 1 : 0;
+    loc.branchStair = !!isBranch;
     if (isUp) {
         map.upstair = { x, y };
     } else {
@@ -3950,7 +3992,7 @@ function do_fill_vault(map, vaultCheck, depth) {
     for (let vx = vroom.lx; vx <= vroom.hx; vx++) {
         for (let vy = vroom.ly; vy <= vroom.hy; vy++) {
             rn2(Math.abs(depth) * 100 || 100); // rn1 amount
-            rnd(2); // C ref: mkobj.c:521 — next_ident() in newobj()
+            next_ident(); // C ref: mkobj.c:521 — next_ident() in newobj()
         }
     }
 
@@ -4519,9 +4561,11 @@ export function initDungeon(roleIndex, wizard = true) {
         SOKOBAN,          // 4: Sokoban
         KNOX,             // 5: Ludios
         VLADS_TOWER,      // 6: Tower
-        -1,               // 7: Planes (not a special_levels branch dnum)
-        -1,               // 8: Tutorial
+        -1,               // 7: Planes (not a playable dnum in JS)
+        TUTORIAL,         // 8: Tutorial
     ];
+    _dungeonLedgerStartByDnum = new Map();
+    let ledgerCursor = 0;
 
     // Process each dungeon
     for (let dgnIndex = 0; dgnIndex < DUNGEON_DEFS.length; dgnIndex++) {
@@ -4537,6 +4581,8 @@ export function initDungeon(roleIndex, wizard = true) {
         const numLevels = dgn.range > 0
             ? rn2(dgn.range) + dgn.base
             : dgn.base;
+        const ledgerStart = ledgerCursor;
+        ledgerCursor += numLevels;
 
         // 2b. parent_dlevel → rn2(num)
         let parentRoll = 0;
@@ -4557,6 +4603,7 @@ export function initDungeon(roleIndex, wizard = true) {
         if (jsDnum >= 0) {
             parentRolls.set(jsDnum, parentRoll);
             dungeonLayouts.set(jsDnum, { numLevels, parentRoll, placed });
+            _dungeonLedgerStartByDnum.set(jsDnum, ledgerStart);
             if (jsDnum === DUNGEONS_OF_DOOM) {
                 const oracleDlevel = Number.isInteger(placed[1]) && placed[1] > 0 ? placed[1] : 5;
                 _oracleLevel = { dnum: DUNGEONS_OF_DOOM, dlevel: oracleDlevel };
@@ -5234,6 +5281,8 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
                 if (loc) {
                     loc.typ = STAIRS;
                     loc.flags = 1; // up (branch goes up to surface)
+                    loc.stairdir = 1;
+                    loc.branchStair = true;
                     map.upstair = { x: pos.x, y: pos.y };
                 }
             }
@@ -5299,7 +5348,14 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
         const croom = map.rooms[i];
         if (!croom || croom.hx <= 0) continue;
         if (croom.rtype >= SHOPBASE && croom.needfill === FILL_NORMAL) {
-            stock_room(croom.rtype - SHOPBASE, croom, map, depth, _gameSeed);
+            stock_room(
+                croom.rtype - SHOPBASE,
+                croom,
+                map,
+                depth,
+                _gameUbirthday,
+                getLedgerNoForLevel(map._genDnum, map._genDlevel),
+            );
         }
     }
     // For VAULT rooms, gold was already placed during vault creation (first fill),
@@ -5539,11 +5595,11 @@ function placeBranchFeature(map, x, y) {
         return;
     }
     if (hint === 'stair-up') {
-        mkstairs(map, x, y, true);
+        mkstairs(map, x, y, true, true);
         return;
     }
     if (hint === 'stair-down') {
-        mkstairs(map, x, y, false);
+        mkstairs(map, x, y, false, true);
     }
 }
 

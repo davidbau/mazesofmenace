@@ -2064,9 +2064,10 @@ export class HeadlessDisplay {
         }
 
         if (typ === STAIRS) {
+            const isBranchStair = !!loc.branchStair;
             return loc.flags === 1
-                ? { ch: '<', color: CLR_YELLOW }
-                : { ch: '>', color: CLR_GRAY };
+                ? { ch: '<', color: isBranchStair ? CLR_YELLOW : CLR_GRAY }
+                : { ch: '>', color: isBranchStair ? CLR_YELLOW : CLR_GRAY };
         }
 
         // Handle altar alignment colors

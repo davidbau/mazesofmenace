@@ -119,9 +119,10 @@ function can_be_hatched(mnum) {
 }
 
 // C ref: mkobj.c svc.context.ident — monotonic ID counter for objects and monsters.
+// C ref: allmain.c startup sets context.ident = 2 (id 1 reserved for hero monster).
 // next_ident() returns current value, then increments by rnd(2).
 // Tracked here so nameshk() can use the shopkeeper's m_id value.
-let _identCounter = 0;
+let _identCounter = 2;
 export function next_ident() {
     const res = _identCounter;
     _identCounter += rnd(2);
@@ -130,7 +131,7 @@ export function next_ident() {
 }
 export function getIdentCounter() { return _identCounter; }
 export function resetIdentCounter() {
-    _identCounter = 0;
+    _identCounter = 2;
 }
 
 // Some parity tests generate special levels directly without running the full

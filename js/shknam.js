@@ -427,14 +427,14 @@ function mkmonmoney(amount) {
 // nameshk — C ref: shknam.c:487-554
 // ========================================================================
 
-function nameshk(shk, nlp, seed, depth) {
+function nameshk(shk, nlp, ubirthday, ledgerNo) {
     let name_wanted = shk.m_id;
 
     // C ref: shknam.c:505 — nseed = ubirthday / 257
-    const nseed = Math.floor(seed / 257);
+    const nseed = Math.floor(ubirthday / 257);
 
-    // C ref: shknam.c:507 — ledger_no for main dungeon = depth
-    name_wanted += depth + (nseed % 13) - (nseed % 5);
+    // C ref: shknam.c:507 — name_wanted += ledger_no(&u.uz) + ...
+    name_wanted += ledgerNo + (nseed % 13) - (nseed % 5);
     if (name_wanted < 0) name_wanted += (13 + 5);
 
     // C ref: shknam.c:510 — gender from name_wanted
@@ -485,7 +485,7 @@ function nameshk(shk, nlp, seed, depth) {
 // shkinit — C ref: shknam.c:628-692
 // ========================================================================
 
-function shkinit(shp, sroom, map, depth, seed) {
+function shkinit(shp, sroom, map, depth, ubirthday, ledgerNo) {
     // C ref: shknam.c:636 — find good door
     const door = good_shopdoor(sroom, map);
     if (!door) return -1;
@@ -527,7 +527,7 @@ function shkinit(shp, sroom, map, depth, seed) {
     }
 
     // C ref: shknam.c:689 — name the shopkeeper
-    nameshk(shk, shp.shknms, seed, depth);
+    nameshk(shk, shp.shknms, ubirthday, ledgerNo);
 
     return sh;
 }
@@ -591,11 +591,11 @@ function mon_at(sx, sy, map) {
 // stock_room — C ref: shknam.c:718-801
 // ========================================================================
 
-export function stock_room(shp_indx, sroom, map, depth, seed) {
+export function stock_room(shp_indx, sroom, map, depth, ubirthday, ledgerNo) {
     const shp = shtypes[shp_indx];
 
     // C ref: shknam.c:733 — create shopkeeper
-    const sh = shkinit(shp, sroom, map, depth, seed);
+    const sh = shkinit(shp, sroom, map, depth, ubirthday, ledgerNo);
     if (sh < 0) return;
 
     // C ref: shknam.c:737-748 — fix door

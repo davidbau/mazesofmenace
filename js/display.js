@@ -660,10 +660,11 @@ export class Display {
 
         // Handle stairs
         if (typ === STAIRS) {
+            const isBranchStair = !!loc.branchStair;
             if (loc.flags === 1) { // up
-                return { ch: '<', color: HI_GOLD };
+                return { ch: '<', color: isBranchStair ? HI_GOLD : CLR_GRAY };
             } else { // down
-                return { ch: '>', color: CLR_GRAY };
+                return { ch: '>', color: isBranchStair ? HI_GOLD : CLR_GRAY };
             }
         }
 

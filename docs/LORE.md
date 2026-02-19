@@ -713,6 +713,26 @@ Missing these lines causes prompt/message screen drift even when RNG is stable.
 Practical rule: before the generic pickup message, check terrain and emit C text,
 including open-door: `It won't come off the hinges.`
 
+### Stair glyph color parity depends on branch semantics, not up/down direction
+
+In C TTY symbol/color behavior, branch staircases are highlighted (yellow),
+while ordinary up/down stairs are gray. Treating all up-stairs as highlighted
+causes early color drift in mixed gameplay sessions.
+
+Practical rule: track explicit branch-stair placement metadata and color stairs
+from that metadata, not from stair direction alone.
+
+### Shopkeeper-name parity requires `ubirthday`, `ledger_no`, and correct `ident` flow
+
+Shopkeeper greeting/name tokens are sensitive to C initialization details:
+- `nameshk()` uses `ubirthday / 257`, not the gameplay seed.
+- Name selection uses `ledger_no(&u.uz)`, not raw depth.
+- `context.ident` starts at `2`, and object-creation paths (including vault
+  fill) consume `next_ident()` in order.
+
+Practical rule: preserve all three inputs in JS; partial fixes can hide one
+token mismatch but still leave deterministic drift downstream.
+
 ---
 
 ## Phase Chronicles

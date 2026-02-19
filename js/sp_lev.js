@@ -3765,6 +3765,7 @@ export function stair(direction, x, y) {
         const up = (dir === 'up') ? 1 : 0;
         loc.stairdir = up;
         loc.flags = up;
+        loc.branchStair = false;
         if (up) {
             levelState.map.upstair = { x: stairX, y: stairY };
         } else {
