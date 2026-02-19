@@ -4070,6 +4070,12 @@ export function object(name_or_opts, x, y) {
         if (obj.corpsenm !== undefined && obj.corpsenm !== null && obj.corpsenm !== -1) {
             spObjTrace(`[SPLEV_OBJ_JS] ev=${ev} phase=corpsenm call=${getRngCallCount()} got=${obj.corpsenm} otyp=${obj.otyp ?? -1}`);
         }
+        // C ref: lspo_object() marks special branch prizes via achievement ids
+        // (tracked by object id in context.achieveo for mines/sokoban prizes).
+        // Preserve this marker on the object so monster pickup logic can skip it.
+        if (name_or_opts && typeof name_or_opts === 'object' && name_or_opts.achievement) {
+            obj.achievement = Number(name_or_opts.achievement) || 1;
+        }
     }
 
     const isBuried = !!(name_or_opts && typeof name_or_opts === 'object' && name_or_opts.buried);

@@ -626,6 +626,9 @@ function curr_mon_load_for_search(mon) {
 function mon_would_take_item_search(mon, obj, map) {
     const ptr = mon?.type || {};
     if (!obj) return false;
+    // C ref: mon.c/mpickstuff() and dogmove.c dog_invent() skip special
+    // branch-prize objects (mines/sokoban) until the hero has picked them up.
+    if (obj.achievement) return false;
     if (mon?.tame && obj.cursed) return false;
 
     const maxload = max_mon_load_for_search(mon);
@@ -1509,7 +1512,8 @@ function dog_invent(mon, edog, udist, map, turnCount, display, player, fov = nul
         if (obj
             && obj.oclass !== BALL_CLASS
             && obj.oclass !== CHAIN_CLASS
-            && obj.oclass !== ROCK_CLASS) {
+            && obj.oclass !== ROCK_CLASS
+            && !obj.achievement) {
             const edible = dogfood(mon, obj, turnCount);
 
             // C ref: dogmove.c:436-438 — eat if edible enough

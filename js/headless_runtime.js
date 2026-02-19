@@ -1829,6 +1829,10 @@ export class HeadlessDisplay {
                         loc.mem_obj_color = Number.isInteger(underGlyph.color)
                             ? underGlyph.color
                             : CLR_GRAY;
+                    } else if (player?.wizard && gameMap.engravingAt(x, y)) {
+                        const engrCh = (loc.typ === CORR || loc.typ === SCORR) ? '#' : '`';
+                        loc.mem_obj = engrCh;
+                        loc.mem_obj_color = CLR_BRIGHT_BLUE;
                     } else {
                         loc.mem_obj = 0;
                         loc.mem_obj_color = 0;

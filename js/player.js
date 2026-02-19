@@ -564,6 +564,10 @@ export class Player {
     // Add an item to inventory, assigning an inventory letter
     // C ref: invent.c addinv()
     addToInventory(obj) {
+        // C ref: the special mines/sokoban prize marker is cleared once the
+        // hero picks the object up, allowing normal monster interactions later.
+        if (obj && obj.achievement) obj.achievement = 0;
+
         // Keep coins in inventory for existing gameplay logic, but do not let
         // them consume a normal inventory letter slot.
         if (obj.oclass === COIN_CLASS) {

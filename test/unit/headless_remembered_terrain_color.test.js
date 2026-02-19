@@ -113,3 +113,39 @@ test('headless visible monsters clear remembered invisible marker', () => {
     assert.notEqual(display.grid[row][col], 'I');
     assert.equal(loc.mem_invis, false);
 });
+
+test('headless keeps remembered engraving under visible monster in wizard mode', () => {
+    const display = new HeadlessDisplay();
+    const map = new GameMap();
+    const x = 10;
+    const y = 10;
+    const row = y + 1;
+    const col = x - 1;
+
+    const loc = map.at(x, y);
+    loc.typ = ROOM;
+    loc.seenv = 0xff;
+    map.engravings.push({ x, y, type: 'mark', text: 'Elbereth' });
+    map.monsters.push({
+        mx: x,
+        my: y,
+        mhp: 1,
+        displayChar: 'f',
+        displayColor: 15,
+        mndx: 0,
+    });
+
+    const player = { x: 1, y: 1, wizard: true, hallucinating: false };
+    let visible = true;
+    const fov = { canSee: (cx, cy) => visible && cx === x && cy === y };
+
+    display.renderMap(map, player, fov, { msg_window: false, DECgraphics: true, color: true });
+    assert.equal(display.grid[row][col], 'f');
+    assert.equal(loc.mem_obj, '`');
+    assert.equal(loc.mem_obj_color, 12);
+
+    visible = false;
+    display.renderMap(map, player, fov, { msg_window: false, DECgraphics: true, color: true });
+    assert.equal(display.grid[row][col], '`');
+    assert.equal(display.colors[row][col], 12);
+});

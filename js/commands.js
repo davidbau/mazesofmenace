@@ -841,11 +841,16 @@ async function handleMovement(dir, player, map, display, game) {
 
     const loc = map.at(nx, ny);
 
-    // C ref: movement into doorways — diagonal entry into an intact doorway is blocked.
+    // C ref: hack.c crawl_destination()/test_move:
+    // diagonal movement into a doorway is blocked unless the target door is
+    // effectively doorless (D_NODOOR or D_BROKEN).
     if (loc && IS_DOOR(loc.typ) && Math.abs(dir[0]) + Math.abs(dir[1]) === 2) {
-        const openDoorway = (loc.flags & D_ISOPEN) !== 0;
-        if (openDoorway) {
-            display.putstr_message("You can't move diagonally into an intact doorway.");
+        const doorFlags = loc.flags || 0;
+        const doorlessDoor = (doorFlags & ~(D_NODOOR | D_BROKEN)) === 0;
+        if (!doorlessDoor) {
+            if (map?.flags?.mention_walls || map?.flags?.is_tutorial) {
+                display.putstr_message("You can't move diagonally into an intact doorway.");
+            }
             return { moved: false, tookTime: false };
         }
     }

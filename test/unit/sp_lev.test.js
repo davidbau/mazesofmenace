@@ -223,6 +223,17 @@ describe('sp_lev.js - des.* API', () => {
         assert.equal((loc.flags & 2) !== 0, loc.featureFlags.warned);
     });
 
+    it('des.object preserves achievement marker for branch prize objects', () => {
+        resetLevelState();
+        des.level_init({ style: 'solidfill', fg: '.' });
+        const obj = des.object({ id: 'luckstone', x: 12, y: 7, achievement: 1 });
+
+        assert.ok(obj, 'object should be created');
+        assert.equal(obj.achievement, 1, 'achievement marker should be copied to object');
+        const deferred = getLevelState().deferredObjects.at(-1);
+        assert.equal(deferred?.obj?.achievement, 1, 'deferred placement should keep achievement marker');
+    });
+
     it('des.gas_cloud uses absolute x/y and C-style ttl override semantics', () => {
         resetLevelState();
         des.level_init({ style: 'solidfill', fg: ' ' });
