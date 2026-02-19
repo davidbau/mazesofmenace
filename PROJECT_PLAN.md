@@ -3,6 +3,8 @@
 > *"Never build a dungeon you wouldn't be happy to spend the night in yourself."*
 > — Terry Pratchett, quoted in the NetHack 3.6.0 release notes
 
+**Current phase:** Phase 2 (testing burndown) + Phase 3 (full-coverage closure) running in parallel, with Phase 5 (self-play) as a concurrent track. Progress is tracked on the [Oracle dashboard](https://davidbau.github.io/mazesofmenace/oracle/) with per-commit parity metrics sourced from [oracle/results.jsonl](oracle/results.jsonl).
+
 **Context:** [README.md](README.md) explains what Royal Jelly is, why NetHack matters, and the intersection of the 3.7.0 release moment with AI-assisted software development. This document describes **how** we build it—the strategy, phases, gates, and working discipline that will transform an audacious goal into a real, shipped product.
 
 ## Strategic Thesis
@@ -88,7 +90,7 @@ Selfplay train/holdout seed policy and acceptance criteria are defined in `selfp
 
 ## Milestones
 
-Milestones use a hybrid model: phase completion + parity gates + release-timing gates.
+Milestones use a hybrid model: phase completion + parity gates + release-timing gates. Per-commit parity metrics (RNG match rates, screen fidelity, session pass/fail across 200+ test sessions) are recorded in [oracle/results.jsonl](oracle/results.jsonl) and visualized on the [Oracle dashboard](https://davidbau.github.io/mazesofmenace/oracle/).
 
 1. **Phase 0: Rough playable draft**
    - Browser port launches and supports basic level-1 gameplay.
