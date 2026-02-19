@@ -125,6 +125,10 @@ for (let i = 0; i < assignments.length; i++) {
     const xl1AttackTurns = extractInt(text, /Action telemetry:.*\bxl1Attack=(\d+)/);
     const reallyAttackPrompts = extractInt(text, /Action telemetry:.*\breallyAttack=(\d+)/);
     const petSwapCount = extractInt(text, /Action telemetry:.*\bpetSwap=(\d+)/);
+    const attackPetClassTurns = extractInt(text, /Attack target telemetry:\s+petClass=(\d+)/);
+    const attackPetClassLowXpDlvl1Turns = extractInt(text, /Attack target telemetry:.*\bpetClassLowXpDlvl1=(\d+)/);
+    const attackDogTurns = extractInt(text, /Attack target telemetry:.*\bdog=(\d+)/);
+    const attackDogLowXpDlvl1Turns = extractInt(text, /Attack target telemetry:.*\bdogLowXpDlvl1=(\d+)/);
     const targetAssign = extractInt(text, /Explore telemetry:.*\bassign=(\d+)/);
     const targetComplete = extractInt(text, /Explore telemetry:.*\bcomplete=(\d+)/);
     const abandonNoProgress = extractInt(text, /Explore telemetry:.*\babandonNoProgress=(\d+)/);
@@ -148,6 +152,10 @@ for (let i = 0; i < assignments.length; i++) {
         xl1AttackTurns: Number.isFinite(xl1AttackTurns) ? xl1AttackTurns : null,
         reallyAttackPrompts: Number.isFinite(reallyAttackPrompts) ? reallyAttackPrompts : null,
         petSwapCount: Number.isFinite(petSwapCount) ? petSwapCount : null,
+        attackPetClassTurns: Number.isFinite(attackPetClassTurns) ? attackPetClassTurns : null,
+        attackPetClassLowXpDlvl1Turns: Number.isFinite(attackPetClassLowXpDlvl1Turns) ? attackPetClassLowXpDlvl1Turns : null,
+        attackDogTurns: Number.isFinite(attackDogTurns) ? attackDogTurns : null,
+        attackDogLowXpDlvl1Turns: Number.isFinite(attackDogLowXpDlvl1Turns) ? attackDogLowXpDlvl1Turns : null,
         xl2: xl2 || 'never',
         xl3: xl3 || 'never',
         targetAssign: Number.isFinite(targetAssign) ? targetAssign : null,
@@ -160,7 +168,7 @@ for (let i = 0; i < assignments.length; i++) {
     };
     results.push(row);
 
-    console.log(`  -> depth=${row.depth ?? 'NA'} cause=${row.cause} maxXL=${row.maxXL ?? 'NA'} maxXP=${row.maxXP ?? 'NA'} xp100=${row.xp100 ?? 'NA'} xp200=${row.xp200 ?? 'NA'} xp400=${row.xp400 ?? 'NA'} xp600=${row.xp600 ?? 'NA'} atk=${row.attackTurns ?? 'NA'} flee=${row.fleeTurns ?? 'NA'} xl1Atk=${row.xl1AttackTurns ?? 'NA'} reallyAtk=${row.reallyAttackPrompts ?? 'NA'} petSwap=${row.petSwapCount ?? 'NA'} xl2=${row.xl2} xl3=${row.xl3} assign=${row.targetAssign ?? 'NA'} complete=${row.targetComplete ?? 'NA'} noProg=${row.abandonNoProgress ?? 'NA'} failedAdd=${row.failedAdds ?? 'NA'} doorOpen=${row.doorOpen ?? 'NA'} doorKick=${row.doorKick ?? 'NA'}`);
+    console.log(`  -> depth=${row.depth ?? 'NA'} cause=${row.cause} maxXL=${row.maxXL ?? 'NA'} maxXP=${row.maxXP ?? 'NA'} xp100=${row.xp100 ?? 'NA'} xp200=${row.xp200 ?? 'NA'} xp400=${row.xp400 ?? 'NA'} xp600=${row.xp600 ?? 'NA'} atk=${row.attackTurns ?? 'NA'} flee=${row.fleeTurns ?? 'NA'} xl1Atk=${row.xl1AttackTurns ?? 'NA'} reallyAtk=${row.reallyAttackPrompts ?? 'NA'} petSwap=${row.petSwapCount ?? 'NA'} petAtk=${row.attackPetClassTurns ?? 'NA'} petAtkLow=${row.attackPetClassLowXpDlvl1Turns ?? 'NA'} dogAtk=${row.attackDogTurns ?? 'NA'} dogAtkLow=${row.attackDogLowXpDlvl1Turns ?? 'NA'} xl2=${row.xl2} xl3=${row.xl3} assign=${row.targetAssign ?? 'NA'} complete=${row.targetComplete ?? 'NA'} noProg=${row.abandonNoProgress ?? 'NA'} failedAdd=${row.failedAdds ?? 'NA'} doorOpen=${row.doorOpen ?? 'NA'} doorKick=${row.doorKick ?? 'NA'}`);
     if (!row.ok && opts.verboseFailures) {
         console.log(`  status=${out.status} signal=${out.signal || 'none'} error=${out.error ? (out.error.code || out.error.message) : 'none'}`);
         console.log('  stderr/stdout (failure):');
@@ -187,6 +195,10 @@ const avgFleeTurns = avgOf(results.map(r => r.fleeTurns));
 const avgXl1AttackTurns = avgOf(results.map(r => r.xl1AttackTurns));
 const avgReallyAttackPrompts = avgOf(results.map(r => r.reallyAttackPrompts));
 const avgPetSwaps = avgOf(results.map(r => r.petSwapCount));
+const avgAttackPetClassTurns = avgOf(results.map(r => r.attackPetClassTurns));
+const avgAttackPetClassLowXpDlvl1Turns = avgOf(results.map(r => r.attackPetClassLowXpDlvl1Turns));
+const avgAttackDogTurns = avgOf(results.map(r => r.attackDogTurns));
+const avgAttackDogLowXpDlvl1Turns = avgOf(results.map(r => r.attackDogLowXpDlvl1Turns));
 const avgAssign = avgOf(results.map(r => r.targetAssign));
 const avgComplete = avgOf(results.map(r => r.targetComplete));
 const avgNoProg = avgOf(results.map(r => r.abandonNoProgress));
@@ -201,10 +213,11 @@ console.log(`  Reached XL3+: ${reachedXL3}/${results.length}`);
 console.log(`  XP avg: maxXP=${fmtAvg(avgMaxXP)} t100=${fmtAvg(avgXP100)} t200=${fmtAvg(avgXP200)} t400=${fmtAvg(avgXP400)} t600=${fmtAvg(avgXP600)}`);
 console.log(`  XP by turn 600: >=10 ${reachedXP10By600}/${results.length}, >=20 ${reachedXP20By600}/${results.length}`);
 console.log(`  Action avg: attack=${fmtAvg(avgAttackTurns)} flee=${fmtAvg(avgFleeTurns)} xl1Attack=${fmtAvg(avgXl1AttackTurns)} reallyAttack=${fmtAvg(avgReallyAttackPrompts)} petSwap=${fmtAvg(avgPetSwaps)}`);
+console.log(`  Attack target avg: petClass=${fmtAvg(avgAttackPetClassTurns)} petClassLowXpDlvl1=${fmtAvg(avgAttackPetClassLowXpDlvl1Turns)} dog=${fmtAvg(avgAttackDogTurns)} dogLowXpDlvl1=${fmtAvg(avgAttackDogLowXpDlvl1Turns)}`);
 console.log(`  Explore avg: assign=${fmtAvg(avgAssign)} complete=${fmtAvg(avgComplete)} noProg=${fmtAvg(avgNoProg)} failedAdd=${fmtAvg(avgFailedAdds)} doorOpen=${fmtAvg(avgDoorOpen)} doorKick=${fmtAvg(avgDoorKick)}`);
 console.log('\nPer-role results');
 for (const r of results) {
-    console.log(`  role=${r.role} seed=${r.seed} depth=${r.depth ?? 'NA'} cause=${r.cause} maxXL=${r.maxXL ?? 'NA'} maxXP=${r.maxXP ?? 'NA'} xp100=${r.xp100 ?? 'NA'} xp200=${r.xp200 ?? 'NA'} xp400=${r.xp400 ?? 'NA'} xp600=${r.xp600 ?? 'NA'} atk=${r.attackTurns ?? 'NA'} flee=${r.fleeTurns ?? 'NA'} xl1Atk=${r.xl1AttackTurns ?? 'NA'} reallyAtk=${r.reallyAttackPrompts ?? 'NA'} petSwap=${r.petSwapCount ?? 'NA'} xl2=${r.xl2} xl3=${r.xl3} assign=${r.targetAssign ?? 'NA'} complete=${r.targetComplete ?? 'NA'} noProg=${r.abandonNoProgress ?? 'NA'} failedAdd=${r.failedAdds ?? 'NA'} doorOpen=${r.doorOpen ?? 'NA'} doorKick=${r.doorKick ?? 'NA'}`);
+    console.log(`  role=${r.role} seed=${r.seed} depth=${r.depth ?? 'NA'} cause=${r.cause} maxXL=${r.maxXL ?? 'NA'} maxXP=${r.maxXP ?? 'NA'} xp100=${r.xp100 ?? 'NA'} xp200=${r.xp200 ?? 'NA'} xp400=${r.xp400 ?? 'NA'} xp600=${r.xp600 ?? 'NA'} atk=${r.attackTurns ?? 'NA'} flee=${r.fleeTurns ?? 'NA'} xl1Atk=${r.xl1AttackTurns ?? 'NA'} reallyAtk=${r.reallyAttackPrompts ?? 'NA'} petSwap=${r.petSwapCount ?? 'NA'} petAtk=${r.attackPetClassTurns ?? 'NA'} petAtkLow=${r.attackPetClassLowXpDlvl1Turns ?? 'NA'} dogAtk=${r.attackDogTurns ?? 'NA'} dogAtkLow=${r.attackDogLowXpDlvl1Turns ?? 'NA'} xl2=${r.xl2} xl3=${r.xl3} assign=${r.targetAssign ?? 'NA'} complete=${r.targetComplete ?? 'NA'} noProg=${r.abandonNoProgress ?? 'NA'} failedAdd=${r.failedAdds ?? 'NA'} doorOpen=${r.doorOpen ?? 'NA'} doorKick=${r.doorKick ?? 'NA'}`);
 }
 
 function avgOf(values) {

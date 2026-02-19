@@ -123,6 +123,10 @@ export class Agent {
             firstXpLevel3Turn: null,
             reallyAttackPrompts: 0,
             petDisplacements: 0,
+            attackPetClassTurns: 0,
+            attackPetClassLowXpDlvl1Turns: 0,
+            attackDogTurns: 0,
+            attackDogLowXpDlvl1Turns: 0,
             died: false,
             deathCause: '',
             targetAssignments: 0,
@@ -407,6 +411,22 @@ export class Agent {
         const turn = this.status.turns || (this.turnNumber + 1);
         if (xl >= 2 && this.stats.firstXpLevel2Turn === null) this.stats.firstXpLevel2Turn = turn;
         if (xl >= 3 && this.stats.firstXpLevel3Turn === null) this.stats.firstXpLevel3Turn = turn;
+    }
+
+    _recordAttackTarget(monsterChar) {
+        const isPetClass = monsterChar === 'd' || monsterChar === 'f' || monsterChar === 'C';
+        const xp = this.status?.xpPoints || 0;
+        const dlvl = this.status?.dungeonLevel || this.dungeon.currentDepth || 1;
+        const lowXpDlvl1 = xp <= 1 && dlvl <= 1;
+
+        if (isPetClass) {
+            this.stats.attackPetClassTurns++;
+            if (lowXpDlvl1) this.stats.attackPetClassLowXpDlvl1Turns++;
+        }
+        if (monsterChar === 'd') {
+            this.stats.attackDogTurns++;
+            if (lowXpDlvl1) this.stats.attackDogLowXpDlvl1Turns++;
+        }
     }
 
     /**
@@ -1303,6 +1323,7 @@ export class Agent {
                     const dy = adjacentMonster.y - py;
                     const key = DIR_KEYS[`${dx},${dy}`];
                     if (key) {
+                        this._recordAttackTarget(adjacentMonster.ch);
                         this.fleeLoopCounter = 0; // Reset counter
                         this.lastFleePosition = null;
                         return { type: 'attack', key, reason: `breaking flee loop by fighting ${adjacentMonster.ch}` };
@@ -1321,6 +1342,7 @@ export class Agent {
                 const dy = adjacentMonster.y - py;
                 const key = DIR_KEYS[`${dx},${dy}`];
                 if (key) {
+                    this._recordAttackTarget(adjacentMonster.ch);
                     return { type: 'attack', key, reason: `forced to fight ${adjacentMonster.ch} (cornered)` };
                 }
             } else if (engagement.shouldEngage) {
@@ -1329,6 +1351,7 @@ export class Agent {
                 const dy = adjacentMonster.y - py;
                 const key = DIR_KEYS[`${dx},${dy}`];
                 if (key) {
+                    this._recordAttackTarget(adjacentMonster.ch);
                     return { type: 'attack', key, reason: engagement.reason };
                 }
             }

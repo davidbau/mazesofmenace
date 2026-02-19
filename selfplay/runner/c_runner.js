@@ -181,6 +181,10 @@ try {
     const unknownTurns = actionCount('unknown');
     const reallyAttackPrompts = stats.reallyAttackPrompts ?? 0;
     const petDisplacements = stats.petDisplacements ?? 0;
+    const attackPetClassTurns = stats.attackPetClassTurns ?? 0;
+    const attackPetClassLowXpDlvl1Turns = stats.attackPetClassLowXpDlvl1Turns ?? 0;
+    const attackDogTurns = stats.attackDogTurns ?? 0;
+    const attackDogLowXpDlvl1Turns = stats.attackDogLowXpDlvl1Turns ?? 0;
 
     runnerLog('');
     runnerLog(`Game ended after ${stats.turns} turns:`);
@@ -189,6 +193,7 @@ try {
     runnerLog(`  XP progression: maxXL=${Math.max(stats.maxXpLevel || 0, progression.maxXL)} maxXP=${Math.max(stats.maxXpPoints || 0, progression.maxXP)} XL2_turn=${stats.firstXpLevel2Turn ?? progression.firstXL2Turn ?? 'never'} XL3_turn=${stats.firstXpLevel3Turn ?? progression.firstXL3Turn ?? 'never'}`);
     runnerLog(`  XP checkpoints: t100=${xpAt100} t200=${xpAt200} t400=${xpAt400} t600=${xpAt600}`);
     runnerLog(`  Action telemetry: attack=${attackTurns} flee=${fleeTurns} explore=${exploreTurns} navigate=${navigateTurns} search=${searchTurns} rest=${restTurnsTaken} wait=${waitTurns} pickup=${pickupTurns} xl1Attack=${progression.xl1AttackTurns} reallyAttack=${reallyAttackPrompts} petSwap=${petDisplacements} unknown=${unknownTurns}`);
+    runnerLog(`  Attack target telemetry: petClass=${attackPetClassTurns} petClassLowXpDlvl1=${attackPetClassLowXpDlvl1Turns} dog=${attackDogTurns} dogLowXpDlvl1=${attackDogLowXpDlvl1Turns}`);
     runnerLog(`  Explore telemetry: assign=${stats.targetAssignments ?? 0} reassign=${stats.targetReassignments ?? 0} complete=${stats.targetCompletions ?? 0} abandonInvalid=${stats.targetAbandonsInvalid ?? 0} abandonNoPath=${stats.targetAbandonsNoPath ?? 0} abandonNoProgress=${stats.targetAbandonsNoProgress ?? 0} failedAdd=${stats.failedTargetAdds ?? 0} failedClear=${stats.failedTargetClears ?? 0} frontierResets=${stats.systematicFrontierResets ?? 0} doorOpen=${stats.doorOpenAttempts ?? 0} doorKick=${stats.doorKickAttempts ?? 0}`);
     if (finalStatus) {
         const hunger = finalStatus.fainting ? 'fainting'

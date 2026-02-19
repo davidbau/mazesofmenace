@@ -306,3 +306,25 @@
       - depth remained `1`.
   - Net:
     - Rejected (no measurable effect on target failure case).
+
+## 2026-02-19 - Keep: Attack-Target Telemetry for Low-XP Loop Diagnosis
+
+- Change:
+  - `selfplay/agent.js` now tracks attack-target counters:
+    - `attackPetClassTurns`,
+    - `attackPetClassLowXpDlvl1Turns`,
+    - `attackDogTurns`,
+    - `attackDogLowXpDlvl1Turns`.
+  - `selfplay/runner/c_runner.js` emits:
+    - `Attack target telemetry: petClass=... petClassLowXpDlvl1=... dog=... dogLowXpDlvl1=...`.
+  - `selfplay/runner/c_role_matrix.js` parses and summarizes these fields.
+- Why:
+  - Existing `attack` and `petSwap` totals show churn, but not whether attacks are concentrated on likely pet-class targets in low-XP Dlvl1 states.
+  - This telemetry makes that distinction explicit so future policy changes can target the right failure mode.
+- Evidence (smoke check: `Tourist 41`, 120 turns):
+  - `attack=36`, `petSwap=6`,
+  - `petClass=36`, `petClassLowXpDlvl1=36`,
+  - `dog=36`, `dogLowXpDlvl1=36`,
+  - `maxXP=0`.
+  - Interpretation:
+    - In this known failure case, early attacks are fully concentrated on low-XP Dlvl1 dog targets.
