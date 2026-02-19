@@ -585,17 +585,6 @@ Practical rule: keep read command pending across these keys and model `?/*`
 as modal listing acknowledgement flow rather than immediately returning to the
 prompt.
 
-### AT_WEAP monsters can spend a turn wielding before attack resolution
-
-C `dochug` includes a pre-movement weapon check where in-range monsters with
-`AT_WEAP` may wield a carried weapon and spend the turn. Missing this causes
-direct hit messages where C shows a wield message first (for example goblin
-wielding a crude dagger) and shifts downstream RNG.
-
-Practical rule: before phase-3 movement/phase-4 attacks, allow in-range hostile
-`AT_WEAP` monsters with no wielded weapon to equip one from inventory and end
-the turn.
-
 ---
 
 ## Phase Chronicles

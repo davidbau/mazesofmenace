@@ -221,9 +221,6 @@ established these practical replay/parity rules:
   throw prompt, or stale menu rows leak into later captured frames.
 - Read prompt `?/*` is a modal `--More--` listing flow; non-dismiss keys keep
   the listing frame until `space`/`enter`/`esc` returns to the prompt.
-- In `dochug` parity work, remember pre-movement `AT_WEAP` wield turns:
-  in-range hostile monsters may equip a carried weapon and spend the turn
-  before movement/attack resolution.
 - `--More--`-split steps and extended-command (`#...`) typing frames in this
   session are best handled as capture-authoritative replay frames (screen parity
   first) when they carry no gameplay state progression.
