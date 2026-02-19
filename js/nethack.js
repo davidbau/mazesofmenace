@@ -1342,7 +1342,7 @@ export class NetHackGame {
                 let interruptedOcc = false;
                 const cont = occ.fn(this);
                 const finishedOcc = !cont ? occ : null;
-                if (this.shouldInterruptMulti()) {
+                if (this.shouldInterruptOccupation()) {
                     this.multi = 0;
                     if (occ?.occtxt === 'waiting') {
                         this.display.putstr_message(`You stop ${occ.occtxt}.`);
@@ -1550,6 +1550,9 @@ export class NetHackGame {
         if (this.runMode > 0) {
             return false;
         }
+        if (this.occupation) {
+            return this.shouldInterruptOccupation();
+        }
 
         // Interrupt if there's a hostile monster adjacent to player
         const { x, y } = this.player;
@@ -1570,6 +1573,25 @@ export class NetHackGame {
         }
         this.lastHP = this.player.hp;
 
+        return false;
+    }
+
+    // C ref: do.c cmd_safety_prevention() called from timed_occupation()
+    // only checks hostile-nearby interruption for occupations.
+    shouldInterruptOccupation() {
+        if (this.runMode > 0) {
+            return false;
+        }
+        const { x, y } = this.player;
+        for (let dx = -1; dx <= 1; dx++) {
+            for (let dy = -1; dy <= 1; dy++) {
+                if (dx === 0 && dy === 0) continue;
+                const mon = this.map.monsterAt(x + dx, y + dy);
+                if (mon && !mon.tame && !mon.peaceful) {
+                    return true;
+                }
+            }
+        }
         return false;
     }
 

@@ -2124,25 +2124,26 @@ async function handleEat(player, display, game) {
                 };
 
                 if (reqtime > 1) {
+                    const finishFloorEating = () => {
+                        consumeFloorItem();
+                        if (rottenTriggered) {
+                            display.putstr_message(`Blecch!  Rotten food!  You finish eating the ${floorName}.`);
+                        } else {
+                            display.putstr_message(`You finish eating the ${floorName}.`);
+                        }
+                    };
                     game.occupation = {
                         fn: () => {
                             usedtime++;
                             // C ref: eat.c eatfood(): done when ++usedtime > reqtime.
                             if (usedtime > reqtime) {
-                                consumeFloorItem();
+                                finishFloorEating();
                                 return 0;
                             }
                             return 1;
                         },
                         txt: `eating ${floorName}`,
                         xtime: reqtime,
-                        onFinishAfterTurn: () => {
-                            if (rottenTriggered) {
-                                display.putstr_message(`Blecch!  Rotten food!  You finish eating the ${floorName}.`);
-                            } else {
-                                display.putstr_message(`You finish eating the ${floorName}.`);
-                            }
-                        },
                     };
                 } else {
                     consumeFloorItem();
@@ -2277,10 +2278,9 @@ async function handleEat(player, display, game) {
         };
 
         if (reqtime > 1) {
-            const finishEatingAfterTurn = (gameCtx) => {
-                // C ref: eat.c done_eating()/useup() effects become visible after
-                // the final turn's monster actions. Keep inventory removal in this
-                // post-turn hook rather than during occupation fn().
+            const finishEating = (gameCtx) => {
+                // C ref: eat.c done_eating()/cpostfx() runs from eatfood() when
+                // occupation reaches completion, before moveloop's next monster turn.
                 consumeInventoryItem();
                 if (isCorpse && corpseTasteIdx !== null) {
                     const tastes = ['okay', 'stringy', 'gamey', 'fatty', 'tough'];
@@ -2321,6 +2321,7 @@ async function handleEat(player, display, game) {
                     usedtime++;
                     // C ref: eat.c eatfood(): done when ++usedtime > reqtime.
                     if (usedtime > reqtime) {
+                        finishEating(game);
                         return 0; // done
                     }
                     doBite();
@@ -2328,7 +2329,6 @@ async function handleEat(player, display, game) {
                 },
                 txt: `eating ${eatenItem.name}`,
                 xtime: reqtime,
-                onFinishAfterTurn: finishEatingAfterTurn,
             };
         } else {
             // Single-turn food — eat instantly

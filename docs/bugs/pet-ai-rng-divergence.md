@@ -16,6 +16,20 @@ ALLOW_M in mfndpos, player tracking with !in_masters_sight goal redirect,
 dog_invent, and diagonal-through-door filtering. See `PHASE_2_GAMEPLAY_ALIGNMENT.md`
 for the full writeup.
 
+### Update (2026-02-19)
+
+- Eating occupations are now implemented in JS replay/runtime and are no longer a
+  missing subsystem.
+- For C parity, eating completion effects (`done_eating`/`cpostfx`, including
+  `eye_of_newt_buzz`) must execute at occupation completion time, not via a delayed
+  post-turn hook.
+- Occupation interruption must use hostile-nearby safety checks (C
+  `cmd_safety_prevention`) rather than the broader multi-repeat interruption rule
+  that includes HP-change checks.
+- After these fixes, `seed5_gnomish_mines_gameplay` first RNG drift moved from
+  step 206 to a later dog-goal path (step 387), improving alignment while leaving
+  remaining pet-food scanning work in `dog_move`/`dog_goal`.
+
 ## Root Cause Analysis
 
 ### What happens at step 22
@@ -152,9 +166,9 @@ The JS `dogfood()` in `dog.js` (lines 131-284) implements the full food classifi
 
 ## What's NOT yet implemented
 
-1. **Occupation system for eating** — C's `doeat()` is a multi-turn occupation (~6 turns
-   for food rations). Each turn processes monster movement. JS treats eat as instant.
-   The seed42_items session step 8 shows 230 RNG calls (6 turns × ~38 per-turn).
+1. **Dog-goal micro-parity in mixed food scans** — Some gameplay sessions still diverge
+   in `dog_move`/`dog_goal` on intermittent `rn2(8)` and adjacent `obj_resists()`
+   ordering when pets evaluate food goals.
 
 2. **Level transition / getbones** — Step 66 in seed1 shows JS=18 vs C=2615 RNG calls.
    C calls `getbones()` on level descent, which consumes extensive RNG for bones file
