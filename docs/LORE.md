@@ -476,6 +476,18 @@ Practical rule: for parity around piercers/mimics, model the pre-`dochug`
 hider gate in the movement loop (not inside `m_move`/`dog_move`), or RNG
 alignment will drift by one monster-cycle (`distfleeck`) call.
 
+### `thrwmu` retreat gating uses pre-command hero position (`u.ux0/u.uy0`)
+
+In C `mthrowu.c`, `thrwmu()` can skip a ranged throw when the hero is
+retreating relative to the monster:
+`URETREATING(x, y) && rn2(BOLT_LIM - distmin(x, y, mux, muy))`.
+That pre-throw check consumes RNG (for example `rn2(6)` at `thrwmu`) before
+`monshoot()`/`m_throw()` is entered.
+
+Practical rule: track hero pre-command coordinates in JS (C's `u.ux0/u.uy0`)
+and run the retreat gate before multishot/flight logic; otherwise JS can
+incorrectly execute `m_throw()` and consume extra per-step `rn2(5)` calls.
+
 ### Inventory `:` search prompt is modal input, not a one-shot menu dismissal
 
 On C tty inventory overlays, `:` starts a modal `Search for:` line-input prompt

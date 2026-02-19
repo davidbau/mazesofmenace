@@ -241,6 +241,10 @@ export async function rhack(ch, game) {
     const c = String.fromCharCode(ch);
     const isMetaKey = ch >= 128 && ch <= 255;
     const metaBaseChar = isMetaKey ? String.fromCharCode(ch & 0x7f).toLowerCase() : '';
+    // C ref: you.h u.ux0/u.uy0 are the hero's pre-command position.
+    // Monster throw logic (mthrowu.c URETREATING) compares against these.
+    game.ux0 = player.x;
+    game.uy0 = player.y;
     // C ref: tty command input acknowledges previous topline state before
     // processing a new command, so cross-turn messages don't auto-concatenate.
     if (display && 'messageNeedsMore' in display) {
@@ -766,6 +770,9 @@ async function handleMovement(dir, player, map, display, game) {
     const flags = game.flags || {};
     const oldX = player.x;
     const oldY = player.y;
+    // Preserve pre-move coordinates for C-style URETREATING checks.
+    game.ux0 = oldX;
+    game.uy0 = oldY;
     const nx = player.x + dir[0];
     const ny = player.y + dir[1];
 

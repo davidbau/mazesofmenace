@@ -422,12 +422,19 @@ function thrwmu(mon, map, player, display, game) {
     // C ref: mthrowu.c:1228 — lined_up check
     if (!linedUpToPlayer(mon, map, player)) return false;
 
-    // C ref: mthrowu.c:1229-1231 — URETREATING distance-based skip
-    // TODO: implement URETREATING check (rn2(BOLT_LIM - dist))
-
-    // C ref: mthrowu.c:1235 — monshoot(mtmp, otmp, mwep)
     const targetX = Number.isInteger(mon.mux) ? mon.mux : player.x;
     const targetY = Number.isInteger(mon.muy) ? mon.muy : player.y;
+    // C ref: mthrowu.c:1229-1231 URETREATING:
+    // distmin(u.ux, u.uy, mon) > distmin(u.ux0, u.uy0, mon).
+    // JS stores u.ux0/u.uy0 as game.ux0/game.uy0 at command start.
+    const ux0 = Number.isInteger(game?.ux0) ? game.ux0 : player.x;
+    const uy0 = Number.isInteger(game?.uy0) ? game.uy0 : player.y;
+    const retreating = distmin(player.x, player.y, mon.mx, mon.my)
+        > distmin(ux0, uy0, mon.mx, mon.my);
+    const retreatRange = BOLT_LIM - distmin(mon.mx, mon.my, targetX, targetY);
+    if (retreating && retreatRange > 0 && rn2(retreatRange)) return false;
+
+    // C ref: mthrowu.c:1235 — monshoot(mtmp, otmp, mwep)
     const dm = distmin(mon.mx, mon.my, targetX, targetY);
     const multishot = monmulti(mon, otmp);
 
