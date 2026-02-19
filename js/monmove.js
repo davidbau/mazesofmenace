@@ -6,7 +6,7 @@ import { COLNO, ROWNO, STONE, IS_WALL, IS_DOOR, IS_ROOM,
          ACCESSIBLE, IS_OBSTRUCTED, CORR, DOOR, D_ISOPEN, D_CLOSED, D_LOCKED, D_BROKEN,
          POOL, LAVAPOOL, WATER, LAVAWALL, IRONBARS,
          SHOPBASE, ROOM, ROOMOFFSET, IS_POOL, IS_LAVA,
-         NORMAL_SPEED, isok, A_STR } from './config.js';
+         NORMAL_SPEED, isok, A_STR, STAIRS, LADDER } from './config.js';
 import { rn2, rnd, c_d } from './rng.js';
 import { exercise } from './attrib_exercise.js';
 import { monsterAttackPlayer, checkLevelUp, applyMonflee } from './combat.js';
@@ -41,7 +41,7 @@ import { PM_GRID_BUG, PM_IRON_GOLEM, PM_SHOPKEEPER, mons,
          S_EYE, S_LIGHT, S_EEL, S_PIERCER, S_VORTEX, S_ELEMENTAL } from './monsters.js';
 import { STATUE_TRAP, MAGIC_TRAP, VIBRATING_SQUARE, RUST_TRAP, FIRE_TRAP,
          SLP_GAS_TRAP, BEAR_TRAP, PIT, SPIKED_PIT, HOLE, TRAPDOOR,
-         WEB, ANTI_MAGIC, MAGIC_PORTAL } from './symbols.js';
+         TELEP_TRAP, WEB, ANTI_MAGIC, MAGIC_PORTAL } from './symbols.js';
 
 function monmoveTraceEnabled() {
     const env = (typeof process !== 'undefined' && process.env) ? process.env : {};
@@ -869,8 +869,9 @@ function m_harmless_trap(mon, trap) {
 const Trap_Effect_Finished = 0;
 const Trap_Caught_Mon = 1;
 const Trap_Killed_Mon = 2;
+const Trap_Moved_Mon = 3;
 
-function mintrap_postmove(mon, map) {
+function mintrap_postmove(mon, map, player) {
     const trap = map.trapAt(mon.mx, mon.my);
     if (!trap) {
         mon.mtrapped = 0;
@@ -895,6 +896,26 @@ function mintrap_postmove(mon, map) {
             return Trap_Killed_Mon;
         }
         return Trap_Caught_Mon;
+    }
+    case TELEP_TRAP: {
+        // C ref: teleport.c mtele_trap() — monster teleported by trap.
+        // tele_restrict: skip if level prevents teleportation.
+        if (map.flags && map.flags.noteleport) return Trap_Effect_Finished;
+        // C ref: teleport.c rloc() — 50 random attempts for a valid position.
+        for (let tries = 0; tries < 50; tries++) {
+            const nx = rnd(COLNO - 1); // C: rnd(COLNO-1) = 1..79
+            const ny = rn2(ROWNO);     // C: rn2(ROWNO) = 0..20
+            const loc = map.at(nx, ny);
+            if (!loc || !ACCESSIBLE(loc.typ)) continue;
+            if (map.monsterAt(nx, ny)) continue;
+            if (player && nx === player.x && ny === player.y) continue;
+            if (nx === mon.mx && ny === mon.my) continue;
+            mon.mx = nx;
+            mon.my = ny;
+            return Trap_Moved_Mon;
+        }
+        // Fallback: exhaustive search not implemented; RNG consumed above.
+        return Trap_Moved_Mon;
     }
     default:
         return Trap_Effect_Finished;
@@ -1791,18 +1812,28 @@ function dochug(mon, map, player, display, fov, game = null) {
             const omx = mon.mx, omy = mon.my;
             dog_move(mon, map, player, display, fov, false, game);
             if (!mon.dead && (mon.mx !== omx || mon.my !== omy)) {
-                mintrap_postmove(mon, map);
+                const trapResult = mintrap_postmove(mon, map, player);
+                if (trapResult === Trap_Killed_Mon || trapResult === Trap_Moved_Mon) {
+                    // C ref: postmov() returns MMOVE_DIED for trap kill/teleport.
+                    // distfleeck rn2(5) is skipped; no further processing.
+                    return;
+                }
                 mmoved = true;
             }
         } else {
             const omx = mon.mx, omy = mon.my;
             m_move(mon, map, player, display, fov);
             const moveDone = !!mon._mMoveDone;
+            let trapDied = false;
             if (!mon.dead && (mon.mx !== omx || mon.my !== omy)) {
-                mintrap_postmove(mon, map);
-                mmoved = true;
+                const trapResult = mintrap_postmove(mon, map, player);
+                if (trapResult === Trap_Killed_Mon || trapResult === Trap_Moved_Mon) {
+                    trapDied = true;
+                } else {
+                    mmoved = true;
+                }
             }
-            if (!mon.dead
+            if (!trapDied && !mon.dead
                 && mon.mcanmove !== false
                 && (mmoved || moveDone)
                 && map.objectsAt(mon.mx, mon.my).length > 0
@@ -1813,9 +1844,10 @@ function dochug(mon, map, player, display, fov, game = null) {
             } else if (moveDone) {
                 mmoved = false;
             }
+            if (trapDied) return;
         }
         // distfleeck recalc after m_move
-        // C ref: monmove.c:919 — distfleeck(mtmp, &inrange, &nearby, &scared);
+        // C ref: monmove.c:918-919 — skipped when status == MMOVE_DIED
         const postMoveBraveRoll = rn2(5);
         monmoveTrace('distfleeck-postmove',
             `id=${mon.m_id ?? '?'}`,
@@ -2186,9 +2218,20 @@ function dog_move(mon, map, player, display, fov, after = false, game = null) {
 
         // C ref: dogmove.c:583-606 — check stairs, food in inventory, portal
         if (appr === 0) {
-            // Check if player is on stairs
-            if ((player.x === map.upstair.x && player.y === map.upstair.y)
-                || (player.x === map.dnstair.x && player.y === map.dnstair.y)) {
+            // C ref: On_stairs(u.ux, u.uy) — checks ALL stairway types
+            // (regular stairs, ladders, branch stairs)
+            const onStairs = (player.x === map.upstair?.x && player.y === map.upstair?.y)
+                || (player.x === map.dnstair?.x && player.y === map.dnstair?.y)
+                || (player.x === map.upladder?.x && player.y === map.upladder?.y)
+                || (player.x === map.dnladder?.x && player.y === map.dnladder?.y);
+            const pLoc = map.at(player.x, player.y);
+            // C ref: On_stairs() checks stairway_at() which maintains a
+            // linked list of ALL stairways (regular, ladders, branch).
+            // JS tracks only one up/down stair, so also check the tile type
+            // as a fallback for any untracked branch stairs or ladders.
+            const onStairsOrTile = onStairs
+                || (pLoc && (pLoc.typ === STAIRS || pLoc.typ === LADDER));
+            if (onStairsOrTile) {
                 appr = 1;
             } else {
                 // C ref: scan player inventory for DOGFOOD items
