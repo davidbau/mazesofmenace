@@ -111,6 +111,30 @@ describe('Player', () => {
         assert.equal(p.inventory[2].invlet, 'c');
     });
 
+    it('addToInventory does not immediately reuse removed letters', () => {
+        const p = new Player();
+        const a = p.addToInventory({ name: 'dagger', oclass: 1, otyp: 1 });
+        const b = p.addToInventory({ name: 'arrow', oclass: 1, otyp: 2 });
+        const c = p.addToInventory({ name: 'armor', oclass: 2, otyp: 3 });
+        p.removeFromInventory(b);
+        const next = p.addToInventory({ name: 'scroll', oclass: 8, otyp: 4 });
+        assert.equal(a.invlet, 'a');
+        assert.equal(c.invlet, 'c');
+        assert.equal(next.invlet, 'd');
+    });
+
+    it('addToInventory wraps and reuses holes after cycling inventory letters', () => {
+        const p = new Player();
+        const items = [];
+        for (let i = 0; i < 52; i++) {
+            items.push(p.addToInventory({ name: `item${i}`, oclass: 1, otyp: i + 1 }));
+        }
+        const removed = items.find((it) => it.invlet === 'b');
+        p.removeFromInventory(removed);
+        const wrapped = p.addToInventory({ name: 'replacement', oclass: 1, otyp: 999 });
+        assert.equal(wrapped.invlet, 'b');
+    });
+
     it('removeFromInventory removes items', () => {
         const p = new Player();
         const item = { name: 'dagger', oc_class: 0 };

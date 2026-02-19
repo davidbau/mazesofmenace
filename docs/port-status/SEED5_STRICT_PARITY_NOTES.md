@@ -243,3 +243,47 @@ Date: 2026-02-18
      `obj_resists`-driven `rn2(100)` in a spot JS currently produces `rn2(8)`.
    - This indicates remaining divergence is in pet object-scan/goal branch order,
      not early replay boundary handling.
+
+---
+
+Date: 2026-02-19
+
+## Additional Progress
+
+- `seed5_gnomish_mines_gameplay` strict screen frontier moved from step `249`
+  to step `361` in this pass while keeping the same first RNG mismatch step
+  (`387`).
+- Gameplay issue-#11 targets remained stable:
+  - `seed103_caveman_selfplay200` pass
+  - `seed112_valkyrie_selfplay200` pass
+  - `seed42_items_gameplay` pass
+
+## Additional C-Faithful Fixes
+
+1. Inventory letter assignment now follows C `assigninvlet()` cursor behavior.
+   - `Player.addToInventory()` no longer reuses the first free letter
+     immediately after an item is removed.
+   - Added persistent `lastInvlet` state and save/restore wiring.
+   - Added unit coverage for:
+     - non-reuse before wrap, and
+     - reuse after cycling through the full letter set.
+
+2. Vault ambient sound message parity.
+   - `dosounds()` now emits the C vault message text after the existing
+     `rn2(2)` selection instead of consuming RNG silently.
+   - This resolved the missing `"You hear the footsteps of a guard on patrol."`
+     strict-screen divergence in seed5 around the mid-run vault/shop area.
+
+3. Floor-corpse eat prompt naming parity.
+   - Floor-food prompt now derives the noun from `doname()` and strips only the
+     leading article, preserving corpse specificity (`jackal corpse`) while
+     keeping C-style phrasing (`There is a ... here; eat it?`).
+
+## What We Learned
+
+- Letter-assignment fidelity matters for strict replay even when turn RNG is
+  unchanged: C inventory slot progression influences later message text and
+  screen anchors.
+- Some strict mismatches were pure UI omissions (vault ambient message text)
+  with RNG already aligned; fixing message emission can move the frontier
+  without touching gameplay state evolution.

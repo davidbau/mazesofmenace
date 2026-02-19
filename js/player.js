@@ -8,6 +8,8 @@ import { A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA, NUM_ATTRS,
 import { M2_HUMAN, M2_ELF, M2_DWARF, M2_GNOME, M2_ORC } from './monsters.js';
 import { objectData, COIN_CLASS, FOOD_CLASS } from './objects.js';
 
+const INVENTORY_LETTERS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
 // Roles table -- from role.c
 // C ref: src/role.c roles[] array
 // Gods: names starting with '_' indicate a goddess (strip underscore for display)
@@ -448,6 +450,8 @@ export class Player {
         // Inventory
         // C ref: decl.h invent (linked list in C, array in JS)
         this.inventory = [];
+        // C ref: invent.c static lastinvnr (starts at max index so first item is 'a')
+        this.lastInvlet = INVENTORY_LETTERS.length - 1;
 
         // Equipment slots
         // C ref: decl.h uarm, uarmc, uarmh, etc.
@@ -608,14 +612,30 @@ export class Player {
             return existing;
         }
 
-        // Find first unused inventory letter
-        const usedLetters = new Set(this.inventory.map(o => o.invlet));
-        const letters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
-        for (const letter of letters) {
-            if (!usedLetters.has(letter)) {
-                obj.invlet = letter;
+        // C ref: invent.c assigninvlet() — rotate from lastinvnr and wrap.
+        const usedLetters = new Set(
+            this.inventory
+                .map(o => (o?.invlet ? String(o.invlet) : ''))
+                .filter(Boolean)
+        );
+        const letterCount = INVENTORY_LETTERS.length;
+        const start = Number.isInteger(this.lastInvlet)
+            ? this.lastInvlet
+            : (letterCount - 1);
+        let assignedIndex = -1;
+        for (let offset = 1; offset <= letterCount; offset++) {
+            const idx = (start + offset) % letterCount;
+            const candidate = INVENTORY_LETTERS[idx];
+            if (!usedLetters.has(candidate)) {
+                assignedIndex = idx;
+                obj.invlet = candidate;
                 break;
             }
+        }
+        if (assignedIndex >= 0) {
+            this.lastInvlet = assignedIndex;
+        } else {
+            obj.invlet = '?';
         }
         this.inventory.push(obj);
         return obj;

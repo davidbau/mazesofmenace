@@ -1800,7 +1800,15 @@ export class NetHackGame {
             this.display.putstr_message(swampMsg[rn2(2) + hallu]);
             return;
         }
-        if (f.has_vault && !rn2(200)) { rn2(2); return; }
+        if (f.has_vault && !rn2(200)) {
+            const vaultMsg = [
+                'You hear the footsteps of a guard on patrol.',
+                'You hear someone counting gold coins.',
+                'You hear Ebenezer Scrooge!',
+            ];
+            this.display.putstr_message(vaultMsg[rn2(2) + hallu]);
+            return;
+        }
         if (f.has_beehive && !rn2(200)) { return; }
         if (f.has_morgue && !rn2(200)) { return; }
         if (f.has_barracks && !rn2(200)) {

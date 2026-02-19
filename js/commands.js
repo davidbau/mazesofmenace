@@ -2075,7 +2075,8 @@ async function handleEat(player, display, game) {
     // hero square, ask before opening inventory selector.
     if (floorFoods.length > 0) {
         const floorItem = floorFoods[0];
-        const floorName = floorItem.name || doname(floorItem, null);
+        const floorDescribed = doname(floorItem, null);
+        const floorName = floorDescribed.replace(/^(?:an?|the)\s+/i, '');
         const article = /^[aeiou]/i.test(floorName) ? 'an' : 'a';
         display.putstr_message(`There is ${article} ${floorName} here; eat it? [ynq] (n)`);
         const ans = String.fromCharCode(await nhgetch()).toLowerCase();

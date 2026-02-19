@@ -266,6 +266,7 @@ export function saveYou(player) {
         blind: player.blind, confused: player.confused, stunned: player.stunned,
         hallucinating: player.hallucinating, sick: player.sick,
         foodpoisoned: player.foodpoisoned,
+        lastInvlet: player.lastInvlet,
         turns: player.turns, showExp: player.showExp,
     };
 }
@@ -281,6 +282,7 @@ export function restYou(data) {
         'movement', 'speed', 'moved', 'luck', 'moreluck',
         'blind', 'confused', 'stunned', 'hallucinating', 'sick',
         'foodpoisoned', 'turns', 'showExp',
+        'lastInvlet',
     ];
     for (const f of fields) {
         if (data[f] !== undefined) p[f] = data[f];
