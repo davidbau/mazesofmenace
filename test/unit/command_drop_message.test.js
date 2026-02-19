@@ -71,4 +71,23 @@ describe('drop message formatting', () => {
         assert.equal(game.player.inventory.includes(shield), true);
         assert.equal(game.player.shield, shield);
     });
+
+    it('supports selecting an item letter from the ? overlay menu', async () => {
+        const game = makeGame();
+        const shield = mksobj(SMALL_SHIELD, true, false);
+        shield.invlet = 'b';
+        game.player.inventory.push(shield);
+
+        game.display.cols = 80;
+        game.display.renderOverlayMenu = () => 0;
+
+        pushInput('?'.charCodeAt(0));
+        pushInput('j'.charCodeAt(0)); // consumed while menu stays open
+        pushInput('b'.charCodeAt(0)); // menu selection letter
+
+        const result = await rhack('d'.charCodeAt(0), game);
+        assert.equal(result.tookTime, true);
+        assert.equal(game.player.inventory.includes(shield), false);
+        assert.match(game.display.topMessage, /^You drop /);
+    });
 });

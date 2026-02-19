@@ -81,3 +81,35 @@ test('replay accumulates sparse boundary carries targeting the same step (seed5 
         else process.env.RNG_LOG_TAGS = prevTags;
     }
 });
+
+test('replay keeps runmode close-only boundary frame non-timed (seed5 step 540)', async () => {
+    const raw = JSON.parse(readFileSync('test/comparison/sessions/seed5_gnomish_mines_gameplay.session.json', 'utf8'));
+    const session = normalizeSession(raw, {
+        file: 'seed5_gnomish_mines_gameplay.session.json',
+        dir: 'test/comparison/sessions',
+    });
+
+    const prevTags = process.env.RNG_LOG_TAGS;
+    process.env.RNG_LOG_TAGS = '1';
+    try {
+        const replay = await replaySession(session.meta.seed, session.raw, {
+            captureScreens: true,
+            startupBurstInFirstStep: false,
+            maxSteps: 541,
+            flags: { ...DEFAULT_FLAGS, bgcolors: true, customcolors: true },
+        });
+
+        // normalizeSession strips startup, so capture step 540 maps to index 539.
+        const expected540 = comparable(session.steps[539]?.rng || []);
+        const actual540 = comparable(replay.steps[539]?.rng || []);
+        assert.deepEqual(actual540, expected540);
+        assert.equal(actual540.length, 0);
+
+        const expected541 = comparable(session.steps[540]?.rng || []);
+        const actual541 = comparable(replay.steps[540]?.rng || []);
+        assert.deepEqual(actual541, expected541);
+    } finally {
+        if (prevTags === undefined) delete process.env.RNG_LOG_TAGS;
+        else process.env.RNG_LOG_TAGS = prevTags;
+    }
+});

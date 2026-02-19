@@ -896,6 +896,18 @@ monster/pet interactions.
 Practical rule: keep the pre-move wield-turn gate in `dochug()` (before phase 3),
 not only in phase-four attack dispatch.
 
+### `getobj` `?/*` overlay must return selected letter back to prompt flow
+
+For `drop`/`throw`-style `getobj` prompts, C tty `?/*` opens `display_pickinv`
+and keeps the command modal. Two details matter for replay parity:
+- non-dismiss keys can be consumed while the overlay remains open (`j`, `k`, etc.);
+- typing an inventory letter in the overlay closes it and returns that letter to
+  the same prompt flow (rather than discarding it).
+
+If JS treats the overlay as dismiss-only, or ignores in-menu letter selections,
+prompt-state drift appears quickly (for example in seed5 around drop prompt/menu
+steps near 593-594), then cascades into later RNG divergence.
+
 ---
 
 ## Phase Chronicles

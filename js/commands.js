@@ -2,9 +2,9 @@
 // Mirrors cmd.c from the C source.
 // Maps keyboard input to game actions.
 
-import { COLNO, ROWNO, DOOR, CORR, SDOOR, SCORR, STAIRS, LADDER, FOUNTAIN, SINK, THRONE, ALTAR, GRAVE,
+import { COLNO, ROWNO, STONE, DOOR, CORR, SDOOR, SCORR, STAIRS, LADDER, FOUNTAIN, SINK, THRONE, ALTAR, GRAVE,
          POOL, LAVAPOOL, IRONBARS, TREE, ROOM, IS_DOOR, D_CLOSED, D_LOCKED,
-         D_ISOPEN, D_NODOOR, D_BROKEN, ACCESSIBLE, IS_WALL, MAXLEVEL, VERSION_STRING, ICE,
+         D_ISOPEN, D_NODOOR, D_BROKEN, ACCESSIBLE, IS_OBSTRUCTED, IS_WALL, MAXLEVEL, VERSION_STRING, ICE,
          isok, A_STR, A_INT, A_DEX, A_CON, A_WIS, A_CHA, STATUS_ROW_1, MAP_ROW_START,
          SHOPBASE, ROOMOFFSET, PM_CAVEMAN, RACE_ORC } from './config.js';
 import { SQKY_BOARD, SLP_GAS_TRAP, FIRE_TRAP, PIT, SPIKED_PIT, ANTI_MAGIC, IS_SOFT } from './symbols.js';
@@ -257,6 +257,21 @@ const RUN_KEYS = {
     'N': [ 1,  1],
 };
 
+function runTraceEnabled() {
+    const env = (typeof process !== 'undefined' && process.env) ? process.env : {};
+    return env.WEBHACK_RUN_TRACE === '1';
+}
+
+function runTrace(...args) {
+    if (!runTraceEnabled()) return;
+    console.log('[RUN_TRACE]', ...args);
+}
+
+function replayStepLabel(map) {
+    const idx = map?._replayStepIndex;
+    return Number.isInteger(idx) ? String(idx + 1) : '?';
+}
+
 // Process a command from the player
 // C ref: cmd.c rhack() -- main command dispatch
 // Returns: { moved: boolean, tookTime: boolean }
@@ -281,10 +296,16 @@ export async function rhack(ch, game) {
         player.kickedloc = null;
     }
 
-    // C tty/keypad behavior in recorded traces: Enter maps to keypad-down.
-    // For pet displacement flows, Enter can continue as run-style movement;
-    // otherwise keep single-step south movement semantics.
-    if (ch === 10 || ch === 13) {
+    // C ref: cmdhelp/keyhelp + fixes3-6-3:
+    // ^J (LF/newline) is bound to a south "go until near something" command
+    // in non-numpad mode, while ^M is separate (often transformed before core).
+    if (ch === 10) {
+        return await handleRun(DIRECTION_KEYS.j, player, map, display, fov, game, 'rush');
+    }
+
+    // Carriage return can still appear from some non-tty inputs; preserve
+    // existing compatibility behavior here.
+    if (ch === 13) {
         const southX = player.x + DIRECTION_KEYS.j[0];
         const southY = player.y + DIRECTION_KEYS.j[1];
         const southMon = map.monsterAt(southX, southY);
@@ -1516,13 +1537,32 @@ function maybeSmudgeEngraving(map, x1, y1, x2, y2) {
 
 // Handle running in a direction
 // C ref: cmd.c do_run() -> hack.c domove() with context.run
-async function handleRun(dir, player, map, display, fov, game) {
+async function handleRun(dir, player, map, display, fov, game, runStyle = 'run') {
+    let runDir = dir;
     let steps = 0;
     let timedTurns = 0;
     const hasRunTurnHook = typeof game?.advanceRunTurn === 'function';
+    runTrace(
+        `step=${replayStepLabel(map)}`,
+        `start=(${player.x},${player.y})`,
+        `dir=(${runDir[0]},${runDir[1]})`,
+        `style=${runStyle}`,
+        `hook=${hasRunTurnHook ? 1 : 0}`,
+    );
     while (steps < 80) { // safety limit
-        const result = await handleMovement(dir, player, map, display, game);
+        const beforeX = player.x;
+        const beforeY = player.y;
+        const result = await handleMovement(runDir, player, map, display, game);
         if (result.tookTime) timedTurns++;
+        runTrace(
+            `step=${replayStepLabel(map)}`,
+            `iter=${steps + 1}`,
+            `dir=(${runDir[0]},${runDir[1]})`,
+            `from=(${beforeX},${beforeY})`,
+            `to=(${player.x},${player.y})`,
+            `moved=${result.moved ? 1 : 0}`,
+            `time=${result.tookTime ? 1 : 0}`,
+        );
 
         // C-faithful run timing: each successful run step advances time once.
         // Important: blocked run steps that still consume time (pet in way,
@@ -1535,8 +1575,31 @@ async function handleRun(dir, player, map, display, fov, game) {
 
         // Stop if we see a monster, item, or interesting feature
         fov.compute(map, player.x, player.y);
-        const shouldStop = checkRunStop(map, player, fov, dir);
+        const stopReason = checkRunStop(map, player, fov, runDir, runStyle);
+        const shouldStop = !!stopReason;
+        if (shouldStop) {
+            runTrace(
+                `step=${replayStepLabel(map)}`,
+                `iter=${steps}`,
+                `stop=${stopReason}`,
+                `at=(${player.x},${player.y})`,
+            );
+        }
         if (shouldStop) break;
+
+        // C ref: hack.c lookaround() corner-following while running.
+        // In corridors, auto-turn when there is exactly one forward continuation
+        // aside from the tile we just came from.
+        const nextDir = pickRunContinuationDir(map, player, runDir);
+        if (nextDir[0] !== runDir[0] || nextDir[1] !== runDir[1]) {
+            runTrace(
+                `step=${replayStepLabel(map)}`,
+                `iter=${steps}`,
+                `turn=(${runDir[0]},${runDir[1]})->(${nextDir[0]},${nextDir[1]})`,
+                `at=(${player.x},${player.y})`,
+            );
+        }
+        runDir = nextDir;
 
         // Update display during run
         display.renderMap(map, player, fov);
@@ -1550,27 +1613,92 @@ async function handleRun(dir, player, map, display, fov, game) {
     };
 }
 
+function pickRunContinuationDir(map, player, dir) {
+    const loc = map?.at(player.x, player.y);
+    if (!loc || (loc.typ !== CORR && loc.typ !== SCORR)) return dir;
+
+    const backDx = -dir[0];
+    const backDy = -dir[1];
+    const options = [];
+    const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    for (const [dx, dy] of dirs) {
+        if (dx === backDx && dy === backDy) continue;
+        const nx = player.x + dx;
+        const ny = player.y + dy;
+        if (!isok(nx, ny)) continue;
+        const nloc = map.at(nx, ny);
+        if (nloc && ACCESSIBLE(nloc.typ)) {
+            options.push([dx, dy]);
+        }
+    }
+    return options.length === 1 ? options[0] : dir;
+}
+
 // Check if running should stop
 // C ref: hack.c lookaround() -- checks for interesting things while running
-function checkRunStop(map, player, fov, dir) {
-    // C-like behavior: don't stop for any distant visible monster; only nearby
-    // threats should break a run.
+function checkRunStop(map, player, fov, dir, runStyle = 'run') {
+    const inFrontX = player.x + dir[0];
+    const inFrontY = player.y + dir[1];
+    // C lookaround() stops when a visible monster blocks the current heading,
+    // even for otherwise safe monsters; nearby unsafe monsters also stop run.
     for (const mon of map.monsters) {
         if (mon.dead) continue;
-        // C-like run lookaround should not stop for obviously non-threatening pets.
+        if (!fov.canSee(mon.mx, mon.my)) continue;
+        if (mon.mx === inFrontX && mon.my === inFrontY) return 'monster-in-front';
         if (mon.tame || mon.peaceful || mon.mpeaceful) continue;
         const dx = Math.abs(mon.mx - player.x);
         const dy = Math.abs(mon.my - player.y);
-        if (dx <= 1 && dy <= 1 && fov.canSee(mon.mx, mon.my)) return true;
+        if (dx <= 1 && dy <= 1) return 'hostile-nearby';
     }
 
     // Check for objects at current position
     const objs = map.objectsAt(player.x, player.y);
-    if (objs.length > 0) return true;
+    if (objs.length > 0) return 'objects-on-square';
+
+    // C ref: hack.c lookaround() run=3 ("rush") nearby-interesting scan.
+    if (runStyle === 'rush') {
+        for (let dx = -1; dx <= 1; dx++) {
+            for (let dy = -1; dy <= 1; dy++) {
+                if (dx === 0 && dy === 0) continue;
+                const x = player.x + dx;
+                const y = player.y + dy;
+                if (!isok(x, y)) continue;
+                const inFront = (x === inFrontX && y === inFrontY);
+                // C: ignore the exact square we're moving away from.
+                if (x === player.x - dir[0] && y === player.y - dir[1]) continue;
+                const mon = map.monsterAt(x, y);
+                if (mon && !mon.dead && fov.canSee(mon.mx, mon.my)) {
+                    const hostile = !(mon.tame || mon.peaceful || mon.mpeaceful);
+                    if (hostile || inFront) return 'rush-mon-scan';
+                }
+                const loc = map.at(x, y);
+                if (!loc) continue;
+                if (loc.typ === STONE) continue;
+                const isClosedDoor = IS_DOOR(loc.typ) && (loc.flags & (D_CLOSED | D_LOCKED));
+                if (isClosedDoor) {
+                    // C ignores diagonal doors for this stop path.
+                    if (x !== player.x && y !== player.y) continue;
+                    return 'rush-door-near';
+                }
+                if (loc.typ === CORR || loc.typ === SCORR) continue;
+                if (IS_OBSTRUCTED(loc.typ) || loc.typ === ROOM || loc.typ === ICE) continue;
+                if ((loc.typ === POOL || loc.typ === LAVAPOOL) && inFront) return 'rush-liquid-ahead';
+                if (map.trapAt(x, y) && inFront) return 'rush-trap-ahead';
+                // C's final "interesting square" branch keeps some behind-edge
+                // exclusions to avoid stopping on irrelevant side squares.
+                if (mon && !mon.dead) continue;
+                if ((x === player.x - dir[0] && y !== player.y + dir[1])
+                    || (y === player.y - dir[1] && x !== player.x + dir[0])) {
+                    continue;
+                }
+                return 'rush-interesting-near';
+            }
+        }
+    }
 
     // Check for interesting terrain
     const loc = map.at(player.x, player.y);
-    if (loc && (loc.typ === STAIRS || loc.typ === FOUNTAIN)) return true;
+    if (loc && (loc.typ === STAIRS || loc.typ === FOUNTAIN)) return 'interesting-terrain';
 
     // Only treat corridor forks as run-stoppers.
     if (loc && (loc.typ === CORR || loc.typ === SCORR)) {
@@ -1583,10 +1711,10 @@ function checkRunStop(map, player, fov, dir) {
             const nloc = map.at(nx, ny);
             if (nloc && ACCESSIBLE(nloc.typ)) exits++;
         }
-        if (exits > 2) return true;
+        if (exits > 2) return 'corridor-fork';
     }
 
-    return false;
+    return null;
 }
 
 // Handle picking up items
@@ -1894,6 +2022,48 @@ function buildInventoryOverlayLines(player) {
     return lines;
 }
 
+function isMenuDismissKey(ch) {
+    return ch === 32 || ch === 27 || ch === 10 || ch === 13;
+}
+
+async function renderOverlayMenuUntilDismiss(display, lines, allowedSelectionChars = '') {
+    const allowedSelections = new Set((allowedSelectionChars || '').split(''));
+    let menuOffx = null;
+    if (typeof display.renderOverlayMenu === 'function') {
+        menuOffx = display.renderOverlayMenu(lines);
+    } else {
+        menuOffx = display.renderChargenMenu(lines, false);
+    }
+
+    let selection = null;
+    while (true) {
+        const ch = await nhgetch();
+        if (isMenuDismissKey(ch)) break;
+        const c = String.fromCharCode(ch);
+        if (allowedSelections.has(c)) {
+            selection = c;
+            break;
+        }
+    }
+
+    const menuRows = Math.min(lines.length, STATUS_ROW_1);
+    if (typeof display.setCell === 'function'
+        && Number.isInteger(display.cols)
+        && Number.isInteger(menuOffx)) {
+        for (let r = 0; r < menuRows; r++) {
+            for (let col = menuOffx; col < display.cols; col++) {
+                display.setCell(col, r, ' ', 7, 0);
+            }
+        }
+    } else if (typeof display.clearRow === 'function') {
+        for (let r = 0; r < menuRows; r++) {
+            display.clearRow(r);
+        }
+    }
+
+    return selection;
+}
+
 // Handle inventory display
 // C ref: invent.c ddoinv()
 async function handleInventory(player, display, game) {
@@ -2189,7 +2359,7 @@ async function handleWield(player, display) {
 
     while (true) {
         const ch = await nhgetch();
-        const c = String.fromCharCode(ch);
+        let c = String.fromCharCode(ch);
 
         if (ch === 27 || ch === 10 || ch === 13 || c === ' ') {
             replacePromptMessage();
@@ -2351,7 +2521,7 @@ async function handleDrop(player, map, display) {
             display.putstr_message(`What do you want to drop? [${dropChoices} or ?*]`);
         }
         const ch = await nhgetch();
-        const c = String.fromCharCode(ch);
+        let c = String.fromCharCode(ch);
         if (ch === 22) { // Ctrl+V
             countMode = true;
             countDigits = '';
@@ -2367,7 +2537,11 @@ async function handleDrop(player, map, display) {
             return { moved: false, tookTime: false };
         }
         if (c === '?' || c === '*') {
-            continue;
+            replacePromptMessage();
+            const invLines = buildInventoryOverlayLines(player);
+            const selection = await renderOverlayMenuUntilDismiss(display, invLines, dropChoices);
+            if (!selection) continue;
+            c = selection;
         }
 
         const item = player.inventory.find(o => o.invlet === c);
@@ -2890,33 +3064,11 @@ async function handleThrow(player, map, display) {
                 invLines.push(`${item.invlet} - ${invName}`);
             }
             invLines.push('(end)');
-            let menuOffx = null;
-            if (typeof display.renderOverlayMenu === 'function') {
-                menuOffx = display.renderOverlayMenu(invLines);
-            } else {
-                menuOffx = display.renderChargenMenu(invLines, false);
-            }
-            while (true) {
-                const invCh = await nhgetch();
-                if (invCh === 32 || invCh === 27 || invCh === 10 || invCh === 13) break;
-            }
-            const menuRows = Math.min(invLines.length, STATUS_ROW_1);
-            if (typeof display.setCell === 'function'
-                && Number.isInteger(display.cols)
-                && Number.isInteger(menuOffx)) {
-                for (let r = 0; r < menuRows; r++) {
-                    for (let col = menuOffx; col < display.cols; col++) {
-                        display.setCell(col, r, ' ', 7, 0);
-                    }
-                }
-            } else if (typeof display.clearRow === 'function') {
-                for (let r = 0; r < menuRows; r++) {
-                    display.clearRow(r);
-                }
-            }
+            const selection = await renderOverlayMenuUntilDismiss(display, invLines, throwLetters);
             replacePromptMessage();
             display.putstr_message(throwPrompt);
-            continue;
+            if (!selection) continue;
+            c = selection;
         }
         if (c === '-') {
             replacePromptMessage();

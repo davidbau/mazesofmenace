@@ -435,6 +435,29 @@ function hasNoComparableRngEntries(entries) {
     return true;
 }
 
+function hasRunmodeDelayOpen(entries) {
+    for (const e of entries || []) {
+        if (typeof e !== 'string') continue;
+        if (e.startsWith('>runmode_delay_output')) return true;
+    }
+    return false;
+}
+
+function hasRunmodeDelayClose(entries) {
+    for (const e of entries || []) {
+        if (typeof e !== 'string') continue;
+        if (e.startsWith('<runmode_delay_output')) return true;
+    }
+    return false;
+}
+
+function hasRunmodeDelayCloseOnlyBoundary(entries) {
+    if (!Array.isArray(entries) || entries.length === 0) return false;
+    if (!hasRunmodeDelayClose(entries)) return false;
+    if (hasRunmodeDelayOpen(entries)) return false;
+    return hasNoComparableRngEntries(entries);
+}
+
 function hasTurnBoundaryRng(entries) {
     for (const e of entries || []) {
         if (typeof e !== 'string') continue;
@@ -458,6 +481,26 @@ function hasStopOccupationBoundary(entries) {
         if (e.includes('stop_occupation(')) return true;
     }
     return false;
+}
+
+function replayBoundaryTraceEnabled() {
+    const env = (typeof process !== 'undefined' && process.env) ? process.env : {};
+    return env.WEBHACK_REPLAY_BOUNDARY_TRACE === '1';
+}
+
+function replayBoundaryTrace(...args) {
+    if (!replayBoundaryTraceEnabled()) return;
+    console.log('[REPLAY_BOUNDARY_TRACE]', ...args);
+}
+
+function replayPendingTraceEnabled() {
+    const env = (typeof process !== 'undefined' && process.env) ? process.env : {};
+    return env.WEBHACK_REPLAY_PENDING_TRACE === '1';
+}
+
+function replayPendingTrace(...args) {
+    if (!replayPendingTraceEnabled()) return;
+    console.log('[REPLAY_PENDING_TRACE]', ...args);
 }
 
 // Generate levels 1→maxDepth with RNG trace capture.
@@ -950,6 +993,7 @@ export async function replaySession(seed, session, opts = {}) {
     let deferredMoreBoundarySource = null;
     const deferMoreBoundaryRng = (remainderRaw, targetIdx, sourceIdx) => {
         if (!Array.isArray(remainderRaw) || remainderRaw.length === 0) return;
+        replayBoundaryTrace(`defer source=${sourceIdx + 1} target=${targetIdx + 1} raw=${remainderRaw.length}`);
         // Multiple sparse boundary carries can target the same future step.
         // Preserve source order by appending rather than replacing.
         if (deferredMoreBoundaryTarget === targetIdx) {
@@ -1043,6 +1087,11 @@ export async function replaySession(seed, session, opts = {}) {
                 // with the next step's first expected comparable RNG call.
                 if (firstRemainder && firstNextExpected
                     && rngCallPart(firstRemainder) === rngCallPart(firstNextExpected)) {
+                    replayBoundaryTrace(
+                        `more-split step=${stepIndex + 1} splitAt=${splitAt} raw=${raw.length} ` +
+                        `rem=${remainderRaw.length} firstRem=${rngCallPart(firstRemainder)} ` +
+                        `firstNext=${rngCallPart(firstNextExpected)} target=${targetIdx + 1}`
+                    );
                     deferMoreBoundaryRng(remainderRaw, targetIdx, stepIndex);
                     raw = raw.slice(0, splitAt);
                     compact = compact.slice(0, splitAt);
@@ -1078,6 +1127,10 @@ export async function replaySession(seed, session, opts = {}) {
                     prefixLen++;
                 }
                 if (remCalls.length > 0 && prefixLen === remCalls.length) {
+                    replayBoundaryTrace(
+                        `plain-split-next step=${stepIndex + 1} splitAt=${splitAt} raw=${raw.length} ` +
+                        `rem=${remainderRaw.length} target=${stepIndex + 2}`
+                    );
                     deferMoreBoundaryRng(remainderRaw, stepIndex + 1, stepIndex);
                     raw = raw.slice(0, splitAt);
                     compact = compact.slice(0, splitAt);
@@ -1099,6 +1152,11 @@ export async function replaySession(seed, session, opts = {}) {
                     }
                     if (firstNextExpected
                         && remCalls[0] === rngCallPart(firstNextExpected)) {
+                        replayBoundaryTrace(
+                            `plain-split-later step=${stepIndex + 1} splitAt=${splitAt} raw=${raw.length} ` +
+                            `rem=${remainderRaw.length} firstRem=${remCalls[0]} ` +
+                            `firstNext=${rngCallPart(firstNextExpected)} target=${targetIdx + 1}`
+                        );
                         deferMoreBoundaryRng(remainderRaw, targetIdx, stepIndex);
                         raw = raw.slice(0, splitAt);
                         compact = compact.slice(0, splitAt);
@@ -1191,6 +1249,7 @@ export async function replaySession(seed, session, opts = {}) {
             typeof e === 'string' && !e.startsWith('>') && !e.startsWith('<')
         ) || '');
         const prevStep = stepIndex > 0 ? allSteps[stepIndex - 1] : null;
+        const nextStep = stepIndex + 1 < allSteps.length ? allSteps[stepIndex + 1] : null;
         const prevStepScreen = prevStep ? getSessionScreenLines(prevStep) : [];
         const prevStepSparseMove = !!(prevStep
             && typeof prevStep.action === 'string'
@@ -1415,6 +1474,31 @@ export async function replaySession(seed, session, opts = {}) {
             );
             continue;
         }
+        // C runmode-delay boundary: a sparse frame can carry only the
+        // runmode_delay_output close marker while consuming no command turn.
+        // Keep this frame display-only when it closes a prior open marker.
+        if (!pendingCommand
+            && hasRunmodeDelayCloseOnlyBoundary(step.rng || [])
+            && hasRunmodeDelayOpen(prevStep?.rng || [])
+            && typeof step.action === 'string'
+            && step.action.startsWith('move-')
+            && typeof step.key === 'string'
+            && step.key.length === 1
+            && nextStep
+            && nextStep.key === step.key
+            && nextStep.action === step.action
+            && comparableCallParts(nextStep.rng || []).length > 0) {
+            applyStepScreen();
+            pushStepResult(
+                [],
+                opts.captureScreens ? game.display.getScreenLines() : undefined,
+                stepScreenAnsi.length > 0 ? stepScreenAnsi : null,
+                step,
+                stepScreen,
+                stepIndex
+            );
+            continue;
+        }
 
         const isCountPrefixDigit = !!(
             !pendingCommand
@@ -1533,7 +1617,6 @@ export async function replaySession(seed, session, opts = {}) {
         // as a command by tty input (no prompt, no RNG, no time).
         // Keep a narrow guard so we don't swallow real kick-prefix commands
         // whose direction and effects are captured in the following step.
-        const nextStep = allSteps[stepIndex + 1] || null;
         const nextLooksLikeKickFollowup = !!(nextStep
             && typeof nextStep.key === 'string'
             && nextStep.key.length === 1
@@ -1691,6 +1774,12 @@ export async function replaySession(seed, session, opts = {}) {
 
         if (pendingCommand) {
             const priorPendingKind = pendingKind;
+            replayPendingTrace(
+                `step=${stepIndex + 1}`,
+                `key=${JSON.stringify(step.key || '')}`,
+                `pendingKind=${String(priorPendingKind || '') || 'none'}`,
+                'pending-start'
+            );
             const pendingScreenBeforeInput = (opts.captureScreens && game?.display?.getScreenLines)
                 ? game.display.getScreenLines()
                 : null;
@@ -1770,6 +1859,12 @@ export async function replaySession(seed, session, opts = {}) {
                     new Promise(resolve => setTimeout(() => resolve({ done: false }), 1)),
                 ]);
             }
+            replayPendingTrace(
+                `step=${stepIndex + 1}`,
+                `key=${JSON.stringify(step.key || '')}`,
+                `pendingKind=${String(priorPendingKind || '') || 'none'}`,
+                `settled=${settled.done ? 1 : 0}`
+            );
             if (!settled.done) {
                 const capturedNeverMind = stepMsgPlain === 'Never mind.'
                     && ((step.rng && step.rng.length) || 0) === 0;
@@ -1841,6 +1936,13 @@ export async function replaySession(seed, session, opts = {}) {
                 result = { moved: false, tookTime: false };
             } else {
                 result = settled.value;
+                replayPendingTrace(
+                    `step=${stepIndex + 1}`,
+                    `key=${JSON.stringify(step.key || '')}`,
+                    `pendingKind=${String(priorPendingKind || '') || 'none'}`,
+                    `resolvedMoved=${result?.moved ? 1 : 0}`,
+                    `resolvedTime=${result?.tookTime ? 1 : 0}`
+                );
                 pendingCommand = null;
                 pendingKind = null;
                 const isAckStep = step.key === ' ' || step.key === '\n' || step.key === '\r';
@@ -2032,6 +2134,11 @@ export async function replaySession(seed, session, opts = {}) {
                 pendingKind = (ch === 35)
                     ? 'extended-command'
                     : (needsDismissal ? 'inventory-menu' : null);
+                replayPendingTrace(
+                    `step=${stepIndex + 1}`,
+                    `key=${JSON.stringify(step.key || '')}`,
+                    `setPendingKind=${String(pendingKind || '') || 'none'}`
+                );
                 result = { moved: false, tookTime: false };
             } else {
                 game.advanceRunTurn = null;

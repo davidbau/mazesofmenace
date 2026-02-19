@@ -53,6 +53,21 @@ function monmoveTrace(...args) {
     console.log('[MONMOVE_TRACE]', ...args);
 }
 
+function monmovePhase3TraceEnabled() {
+    const env = (typeof process !== 'undefined' && process.env) ? process.env : {};
+    return env.WEBHACK_MONMOVE_PHASE3_TRACE === '1';
+}
+
+function monmovePhase3Trace(...args) {
+    if (!monmovePhase3TraceEnabled()) return;
+    console.log('[MONMOVE_PHASE3]', ...args);
+}
+
+function monmoveStepLabel(map) {
+    const idx = map?._replayStepIndex;
+    return Number.isInteger(idx) ? String(idx + 1) : '?';
+}
+
 const MTSZ = 4;           // C ref: monst.h — track history size
 const SQSRCHRADIUS = 5;   // C ref: dogmove.c — object search radius
 const FARAWAY = 127;      // C ref: hack.h — large distance sentinel
@@ -1571,6 +1586,7 @@ export function movemon(map, player, display, fov, game = null) {
                 mon.movement -= NORMAL_SPEED;
                 anyMoved = true;
                 monmoveTrace('turn-start',
+                    `step=${monmoveStepLabel(map)}`,
                     `id=${mon.m_id ?? '?'}`,
                     `mndx=${mon.mndx ?? '?'}`,
                     `name=${mon.type?.name || mon.name || '?'}`,
@@ -1723,6 +1739,7 @@ function dochug(mon, map, player, display, fov, game = null) {
     // C ref: monmove.c:792 — distfleeck(mtmp, &inrange, &nearby, &scared)
     const braveGremlinRoll = rn2(5);
     monmoveTrace('distfleeck',
+        `step=${monmoveStepLabel(map)}`,
         `id=${mon.m_id ?? '?'}`,
         `mndx=${mon.mndx ?? '?'}`,
         `name=${mon.type?.name || mon.name || '?'}`,
@@ -1745,10 +1762,29 @@ function dochug(mon, map, player, display, fov, game = null) {
     const monCanSee = (mon.mcansee !== false) && !mon.blind;
 
     let scaredNow = false;
+    monmovePhase3Trace(
+        `step=${monmoveStepLabel(map)}`,
+        `id=${mon.m_id ?? '?'}`,
+        `mndx=${mon.mndx ?? '?'}`,
+        `name=${mon.type?.name || mon.name || '?'}`,
+        `pos=(${mon.mx},${mon.my})`,
+        `target=(${targetX},${targetY})`,
+        `inrange=${inrange ? 1 : 0}`,
+        `nearby=${nearby ? 1 : 0}`,
+        `flee=${mon.flee ? 1 : 0}`,
+        `conf=${mon.confused ? 1 : 0}`,
+        `stun=${mon.stunned ? 1 : 0}`,
+        `minvis=${mon.minvis ? 1 : 0}`,
+        `wander=${isWanderer ? 1 : 0}`,
+        `mcansee=${monCanSee ? 1 : 0}`,
+        `peace=${mon.peaceful ? 1 : 0}`,
+    );
     // Short-circuit OR matching C's evaluation order
     // Each rn2() is only consumed if earlier conditions didn't short-circuit
     let phase3Cond = !nearby;
+    if (phase3Cond) monmovePhase3Trace(`step=${monmoveStepLabel(map)}`, `id=${mon.m_id ?? '?'}`, 'gate=!nearby');
     if (!phase3Cond) phase3Cond = !!(mon.flee);
+    if (phase3Cond && mon.flee) monmovePhase3Trace(`step=${monmoveStepLabel(map)}`, `id=${mon.m_id ?? '?'}`, 'gate=mflee');
     if (!phase3Cond) {
         // C ref: monmove.c:552-567 — distfleeck scared check
         // Determine position where monster checks for scary things
@@ -1763,11 +1799,24 @@ function dochug(mon, map, player, display, fov, game = null) {
             phase3Cond = true; // scared
             scaredNow = true;
             applyMonflee(mon, rnd(rn2(7) ? 10 : 100), true);
+            monmovePhase3Trace(`step=${monmoveStepLabel(map)}`, `id=${mon.m_id ?? '?'}`, 'gate=scared');
         }
     }
     if (!phase3Cond) phase3Cond = !!(mon.confused);
+    if (phase3Cond && mon.confused) monmovePhase3Trace(`step=${monmoveStepLabel(map)}`, `id=${mon.m_id ?? '?'}`, 'gate=confused');
     if (!phase3Cond) phase3Cond = !!(mon.stunned);
-    if (!phase3Cond && mon.minvis) phase3Cond = !rn2(3);
+    if (phase3Cond && mon.stunned) monmovePhase3Trace(`step=${monmoveStepLabel(map)}`, `id=${mon.m_id ?? '?'}`, 'gate=stunned');
+    if (!phase3Cond && mon.minvis) {
+        const invisRoll = rn2(3);
+        phase3Cond = !invisRoll;
+        monmovePhase3Trace(
+            `step=${monmoveStepLabel(map)}`,
+            `id=${mon.m_id ?? '?'}`,
+            `gate=minvis`,
+            `roll=rn2(3)=${invisRoll}`,
+            `take=${phase3Cond ? 1 : 0}`,
+        );
+    }
     // C ref: monmove.c phase-three leprechaun clause:
     // (mdat->mlet == S_LEPRECHAUN && !findgold(player_inventory)
     //  && (findgold(mon_inventory) || rn2(2)))
@@ -1776,10 +1825,32 @@ function dochug(mon, map, player, display, fov, game = null) {
         const monHasGold = hasGold(mon.minvent);
         if (!playerHasGoldNow && (monHasGold || rn2(2))) phase3Cond = true;
     }
-    if (!phase3Cond && isWanderer) phase3Cond = !rn2(4);
+    if (!phase3Cond && isWanderer) {
+        const wanderRoll = rn2(4);
+        phase3Cond = !wanderRoll;
+        monmovePhase3Trace(
+            `step=${monmoveStepLabel(map)}`,
+            `id=${mon.m_id ?? '?'}`,
+            `gate=wander`,
+            `roll=rn2(4)=${wanderRoll}`,
+            `take=${phase3Cond ? 1 : 0}`,
+        );
+    }
     // skip Conflict check
-    if (!phase3Cond && !monCanSee) phase3Cond = !rn2(4);
+    if (!phase3Cond && !monCanSee) {
+        const blindRoll = rn2(4);
+        phase3Cond = !blindRoll;
+        monmovePhase3Trace(
+            `step=${monmoveStepLabel(map)}`,
+            `id=${mon.m_id ?? '?'}`,
+            `gate=!mcansee`,
+            `roll=rn2(4)=${blindRoll}`,
+            `take=${phase3Cond ? 1 : 0}`,
+        );
+    }
     if (!phase3Cond) phase3Cond = !!(mon.peaceful);
+    if (phase3Cond && mon.peaceful) monmovePhase3Trace(`step=${monmoveStepLabel(map)}`, `id=${mon.m_id ?? '?'}`, 'gate=peaceful');
+    monmovePhase3Trace(`step=${monmoveStepLabel(map)}`, `id=${mon.m_id ?? '?'}`, `phase3Cond=${phase3Cond ? 1 : 0}`);
 
     // C ref: monmove.c phase-two wield gate before movement.
     // Monsters with AT_WEAP may spend their turn wielding when in range.
@@ -1850,6 +1921,7 @@ function dochug(mon, map, player, display, fov, game = null) {
         // C ref: monmove.c:918-919 — skipped when status == MMOVE_DIED
         const postMoveBraveRoll = rn2(5);
         monmoveTrace('distfleeck-postmove',
+            `step=${monmoveStepLabel(map)}`,
             `id=${mon.m_id ?? '?'}`,
             `mndx=${mon.mndx ?? '?'}`,
             `name=${mon.type?.name || mon.name || '?'}`,
@@ -2856,6 +2928,7 @@ function m_move(mon, map, player, display = null, fov = null) {
         ? mon.mtrack.map((t) => `(${t?.x ?? '?'},${t?.y ?? '?'})`).join(' ')
         : 'none';
     monmoveTrace('m_move-begin',
+        `step=${monmoveStepLabel(map)}`,
         `id=${mon.m_id ?? '?'}`,
         `mndx=${mon.mndx ?? '?'}`,
         `name=${mon.type?.name || mon.name || '?'}`,
@@ -2938,6 +3011,7 @@ function m_move(mon, map, player, display = null, fov = null) {
                     const denom = 4 * (cnt - j);
                     const trackRoll = rn2(denom);
                     monmoveTrace('m_move-track',
+                        `step=${monmoveStepLabel(map)}`,
                         `id=${mon.m_id ?? '?'}`,
                         `mndx=${mon.mndx ?? '?'}`,
                         `name=${mon.type?.name || mon.name || '?'}`,
