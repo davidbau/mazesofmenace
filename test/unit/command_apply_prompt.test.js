@@ -5,7 +5,7 @@ import { rhack } from '../../js/commands.js';
 import { GameMap } from '../../js/map.js';
 import { Player } from '../../js/player.js';
 import { clearInputQueue, pushInput } from '../../js/input.js';
-import { BATTLE_AXE, LANCE, SPE_HEALING, STETHOSCOPE } from '../../js/objects.js';
+import { BATTLE_AXE, CREDIT_CARD, LANCE, SPE_HEALING, STETHOSCOPE } from '../../js/objects.js';
 
 function makeBaseGame() {
     const map = new GameMap();
@@ -38,7 +38,7 @@ describe('apply prompt behavior', () => {
         clearInputQueue();
     });
 
-    it('keeps prompt open on unrelated key and handles item selection', async () => {
+    it('allows selecting non-suggested inventory letters in apply prompt', async () => {
         const game = makeBaseGame();
         game.player.inventory = [
             { invlet: 'a', oclass: 1, otyp: 1, name: 'long sword' },
@@ -46,6 +46,7 @@ describe('apply prompt behavior', () => {
         ];
         pushInput('q'.charCodeAt(0));
         pushInput('a'.charCodeAt(0));
+        pushInput(' '.charCodeAt(0));
 
         const result = await rhack('a'.charCodeAt(0), game);
         assert.equal(result.tookTime, false);
@@ -103,6 +104,16 @@ describe('apply prompt behavior', () => {
         pushInput('t'.charCodeAt(0)); // invalid direction key
         const result = await rhack('a'.charCodeAt(0), game);
         assert.equal(result.tookTime, false);
-        assert.equal(game.display.topMessage, null);
+        assert.equal(game.display.topMessage, 'What a strange direction!  Never mind.');
+    });
+
+    it('credit card apply path asks direction and cancels on invalid direction', async () => {
+        const game = makeBaseGame();
+        game.player.inventory = [{ invlet: 'c', oclass: 5, otyp: CREDIT_CARD, name: 'credit card' }];
+        pushInput('c'.charCodeAt(0));
+        pushInput('t'.charCodeAt(0)); // invalid direction key
+        const result = await rhack('a'.charCodeAt(0), game);
+        assert.equal(result.tookTime, false);
+        assert.equal(game.display.topMessage, 'What a strange direction!  Never mind.');
     });
 });

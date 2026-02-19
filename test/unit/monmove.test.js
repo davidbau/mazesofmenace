@@ -8,8 +8,8 @@ import { COLNO, ROWNO, ROOM, STONE, HWALL, WATER } from '../../js/config.js';
 import { GameMap } from '../../js/map.js';
 import { movemon } from '../../js/monmove.js';
 import { Player } from '../../js/player.js';
-import { GOLD_PIECE, COIN_CLASS, WEAPON_CLASS, ORCISH_DAGGER } from '../../js/objects.js';
-import { mons, PM_GOBLIN, PM_LITTLE_DOG, AT_WEAP } from '../../js/monsters.js';
+import { GOLD_PIECE, COIN_CLASS, WEAPON_CLASS, ARMOR_CLASS, ORCISH_DAGGER, ORCISH_HELM } from '../../js/objects.js';
+import { mons, PM_GOBLIN, PM_LITTLE_DOG, AT_WEAP, G_NOCORPSE } from '../../js/monsters.js';
 
 // Mock display
 const mockDisplay = { putstr_message() {} };
@@ -390,5 +390,39 @@ describe('Monster movement', () => {
         movemon(waterMap, waterPlayer, mockDisplay);
         assert.equal(waterDog.minvent.length, 0, 'dog should not pick up while in WATER');
         assert.equal(waterMap.objects.length, 1, 'floor item should remain in WATER square');
+    });
+
+    it('monster-vs-monster death drops preserve C top-of-pile ordering', () => {
+        initRng(7);
+        const map = makeSimpleMap();
+        const player = new Player();
+        player.x = 28;
+        player.y = 10;
+        player.initRole(0);
+
+        const attacker = makeLittleDog(12, 10, player);
+        attacker.mlevel = 30;
+        attacker.attacks = [{ type: 1, dice: 3, sides: 6 }];
+
+        const target = makeGoblin(13, 10, player);
+        target.mhp = 1;
+        target.mhpmax = 1;
+        target.mac = 10;
+        target.type = { ...target.type, geno: (target.type.geno || 0) | G_NOCORPSE };
+        target.minvent = [
+            { otyp: ORCISH_HELM, oclass: ARMOR_CLASS, quan: 1 },
+            { otyp: ORCISH_DAGGER, oclass: WEAPON_CLASS, quan: 1 },
+        ];
+
+        map.monsters.push(attacker, target);
+        movemon(map, player, mockDisplay);
+
+        const pile = map.objectsAt(13, 10);
+        assert.ok(pile.length >= 2, 'target inventory should drop on death');
+        assert.equal(
+            pile[pile.length - 1].otyp,
+            ORCISH_HELM,
+            'top floor object should match C drop ordering for this inventory layout'
+        );
     });
 });

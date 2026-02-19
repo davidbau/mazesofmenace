@@ -2478,12 +2478,18 @@ function dog_move(mon, map, player, display, fov, after = false, game = null) {
                         target.mhp -= Math.max(1, dmg);
                         if (target.mhp <= 0) {
                             if (Array.isArray(target.minvent) && target.minvent.length > 0) {
-                                for (const obj of target.minvent) {
+                                // C ref: relobj()/mdrop_obj() drops minvent in chain order;
+                                // JS inventory arrays are push-ordered, so reverse to match
+                                // floor pile top ordering seen in C captures.
+                                for (let idx = target.minvent.length - 1; idx >= 0; idx--) {
+                                    const obj = target.minvent[idx];
+                                    if (!obj) continue;
                                     obj.ox = target.mx;
                                     obj.oy = target.my;
-                                    map.objects.push(obj);
+                                    placeFloorObject(map, obj);
                                 }
                                 target.minvent = [];
+                                target.weapon = null;
                             }
                             target.dead = true;
                             if (display && mmVisible) {

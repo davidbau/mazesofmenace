@@ -219,6 +219,17 @@ established these practical replay/parity rules:
 - Throw prompt `?/*` in this trace is not generic help; it opens an in-prompt
   inventory overlay (right-side menu) and keeps prompt flow pending until an
   explicit dismiss key.
+- Apply prompt `?/*` in this trace also behaves as an in-prompt modal list:
+  while the list is open, non-listed keys are ignored and only listed apply
+  candidate letters should be accepted as selection keys.
+- Outside that `?/*` list mode, apply prompt letter selection is broader than
+  the suggestion list; selecting non-suggested inventory letters can still hit
+  C-style fallback text (`Sorry, I don't know how to use that.`).
+- Tourist credit-card apply path is direction-driven (`In what direction?`);
+  invalid non-wizard direction input must report
+  `What a strange direction!  Never mind.`.
+- `$` must route to C-style wallet reporting (`Your wallet contains N zorkmid(s).`).
+- `:` on an empty square should report `You see no objects here.` in this trace.
 - Throw prompt suggestion letters follow C's class-filtered set (coins always;
   weapons when not slinging; gems/stones when slinging; exclude worn/equipped
   items). This only affects prompt text; manual letter entry is still allowed.
@@ -267,11 +278,11 @@ established these practical replay/parity rules:
   comparator.
 
 Measured progress in the latest pass:
-- First screen divergence moved from step `605` row `0` (missing AT_WEAP
-  pre-hit phrase) to step `616` row `14` (floor glyph mismatch `)` vs `[`).
-- Current metrics: `rng=9867/16026`, `screens=924/1284`, `colors=29815/30776`.
-- Current frontier is object/equipment state parity around step `616` in the
-  tourist non-wizard session.
+- First divergence moved from early AT_WEAP messaging drift (`step 605`) to a
+  late monster-turn RNG boundary (`step 760`, `distfleeck` context).
+- Current metrics: `rng=10447/14063`, `screens=1071/1284`, `colors=29988/30776`.
+- Current frontier is late-turn monster/replay boundary alignment in the
+  tourist non-wizard session (first visible map drift at step `761`).
 
 ### Modifying the dungeon generator
 

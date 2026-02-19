@@ -19,7 +19,7 @@ import { objectData, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
          TOUCHSTONE, LUCKSTONE, LOADSTONE, MAGIC_MARKER,
          CREAM_PIE, EUCALYPTUS_LEAF, LUMP_OF_ROYAL_JELLY,
          POT_OIL, TRIPE_RATION, CLOVE_OF_GARLIC, PICK_AXE, DWARVISH_MATTOCK,
-         EXPENSIVE_CAMERA, MIRROR, FIGURINE } from './objects.js';
+         CREDIT_CARD, EXPENSIVE_CAMERA, MIRROR, FIGURINE } from './objects.js';
 import { nhgetch, ynFunction, getlin } from './input.js';
 import { playerAttackMonster, applyMonflee } from './combat.js';
 import { makemon, setMakemonPlayerContext } from './makemon.js';
@@ -474,6 +474,14 @@ export async function rhack(ch, game) {
     // Inventory
     if (c === 'i') {
         return await handleInventory(player, display, game);
+    }
+
+    // Count gold
+    // C ref: cmd.c doprgold()
+    if (c === '$') {
+        const amount = Number.isFinite(player.gold) ? Math.max(0, Math.floor(player.gold)) : 0;
+        display.putstr_message(`Your wallet contains ${amount} ${currency(amount)}.`);
+        return { moved: false, tookTime: false };
     }
 
     // Wield weapon
@@ -3529,6 +3537,11 @@ async function handleApply(player, display) {
     // C getobj() behavior: when no preferred apply candidates exist but
     // downplay items do, keep the prompt open as "[*]".
     const letters = candidates.map((item) => item.invlet).join('');
+    const candidateByInvlet = new Map(
+        candidates
+            .filter((item) => item?.invlet)
+            .map((item) => [String(item.invlet), item])
+    );
     const prompt = letters.length > 0
         ? `What do you want to use or apply? [${letters} or ?*]`
         : 'What do you want to use or apply? [*]';
@@ -3538,23 +3551,9 @@ async function handleApply(player, display) {
         display.topMessage = null;
         display.messageNeedsMore = false;
     };
-
-    while (true) {
-        const ch = await nhgetch();
-        const c = String.fromCharCode(ch);
-
-        if (ch === 27 || ch === 10 || ch === 13 || c === ' ') {
-            replacePromptMessage();
-            display.putstr_message('Never mind.');
-            return { moved: false, tookTime: false };
-        }
-        if (c === '?' || c === '*') continue;
-
-        const selected = inventory.find((obj) => obj.invlet === c);
-        if (!selected) continue;
-
+    const resolveApplySelection = async (selected) => {
+        replacePromptMessage();
         if (isApplyChopWeapon(selected)) {
-            replacePromptMessage();
             // C ref: apply.c use_axe() direction prompt text.
             display.putstr_message('In what direction do you want to chop? [>]');
             await nhgetch();
@@ -3568,16 +3567,21 @@ async function handleApply(player, display) {
         // use_stethoscope() for stethoscope, use_pole() for polearms.
         if (selected.otyp === PICK_AXE || selected.otyp === DWARVISH_MATTOCK
             || selected.otyp === BULLWHIP || selected.otyp === STETHOSCOPE
+            || selected.otyp === CREDIT_CARD
             || selected.otyp === EXPENSIVE_CAMERA || selected.otyp === MIRROR
             || selected.otyp === FIGURINE
             || isApplyPolearm(selected)) {
-            replacePromptMessage();
             display.putstr_message('In what direction?');
             const dirCh = await nhgetch();
             const dch = String.fromCharCode(dirCh);
             const dir = DIRECTION_KEYS[dch];
             if (!dir) {
                 replacePromptMessage();
+                if (player?.wizard) {
+                    display.putstr_message('Never mind.');
+                } else {
+                    display.putstr_message('What a strange direction!  Never mind.');
+                }
                 return { moved: false, tookTime: false };
             }
             // TODO: implement actual effects (digging, whip, etc.) for full parity
@@ -3586,7 +3590,6 @@ async function handleApply(player, display) {
         }
 
         if (selected.oclass === SPBOOK_CLASS) {
-            replacePromptMessage();
             const fades = ['fresh', 'slightly faded', 'very faded', 'extremely faded', 'barely visible'];
             const studied = Math.max(0, Math.min(4, Number(selected.spestudied || 0)));
             const magical = !!objectData[selected.otyp]?.magic;
@@ -3594,9 +3597,36 @@ async function handleApply(player, display) {
             return { moved: false, tookTime: true };
         }
 
-        replacePromptMessage();
         display.putstr_message("Sorry, I don't know how to use that.");
         return { moved: false, tookTime: false };
+    };
+
+    while (true) {
+        const ch = await nhgetch();
+        const c = String.fromCharCode(ch);
+
+        if (ch === 27 || ch === 10 || ch === 13 || c === ' ') {
+            replacePromptMessage();
+            display.putstr_message('Never mind.');
+            return { moved: false, tookTime: false };
+        }
+        if (c === '?' || c === '*') {
+            // C tty getobj() help/list mode: consume keys until dismissal or
+            // explicit inventory-letter selection; unrelated keys can leave
+            // the list frame up without changing the pending apply prompt.
+            while (true) {
+                const listCh = await nhgetch();
+                const listC = String.fromCharCode(listCh);
+                if (listCh === 27 || listCh === 10 || listCh === 13 || listC === ' ') break;
+                const picked = candidateByInvlet.get(listC);
+                if (picked) return await resolveApplySelection(picked);
+            }
+            continue;
+        }
+
+        const selected = inventory.find((obj) => obj.invlet === c);
+        if (!selected) continue;
+        return await resolveApplySelection(selected);
     }
 }
 
@@ -3902,7 +3932,7 @@ function handleLook(player, map, display) {
         msg += `Things that are here: ${objs.map(o => o.name).join(', ')}`;
     }
 
-    if (!msg) msg = 'You see nothing special.';
+    if (!msg) msg = 'You see no objects here.';
     display.putstr_message(msg.substring(0, 79));
     return { moved: false, tookTime: false };
 }
