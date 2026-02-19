@@ -589,3 +589,26 @@
 - Net:
   - Rejected. Holdout gained slightly, but train progression regressed materially.
   - Keep as a documented negative result; do not ship policy.
+
+## 2026-02-19 - Keep: Variance-Aware Role Matrix Repeats
+
+- Change:
+  - Added `--repeats=N` to `selfplay/runner/c_role_matrix.js`.
+  - The runner now executes each role/seed assignment `N` times, prints:
+    - overall summary over all runs,
+    - per-assignment aggregate summary (when `N > 1`),
+    - per-run rows with `repeat=K`.
+
+- Why:
+  - Recent selfplay checks showed meaningful run-to-run variance on some seeds.
+  - Single-run gates can overfit to noise; repeated samples improve signal quality for policy decisions.
+
+- Validation:
+  - `node --check selfplay/runner/c_role_matrix.js`
+  - Smoke test:
+    - `node selfplay/runner/c_role_matrix.js --mode=custom --seeds=40 --roles=Samurai --turns=120 --key-delay=0 --quiet --repeats=2`
+  - Confirmed new aggregate + per-run outputs render correctly.
+
+- Usage guidance:
+  - Keep default `--repeats=1` for fast iteration.
+  - Use `--repeats=2` or `3` before commit decisions when candidate deltas are small.

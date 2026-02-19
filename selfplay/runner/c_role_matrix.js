@@ -8,6 +8,7 @@
 //   node selfplay/runner/c_role_matrix.js --mode=train
 //   node selfplay/runner/c_role_matrix.js --mode=holdout
 //   node selfplay/runner/c_role_matrix.js --mode=train --seeds=21-33 --turns=1200 --key-delay=0
+//   node selfplay/runner/c_role_matrix.js --mode=holdout --repeats=3
 //   node selfplay/runner/c_role_matrix.js --seeds=31-40 --roles=Wizard,Tourist,Valkyrie
 
 import { spawnSync } from 'child_process';
@@ -34,6 +35,7 @@ const opts = {
     turns: 1200,
     keyDelay: 0,
     quiet: true,
+    repeats: 1,         // runs per role/seed assignment
     seeds: null,        // comma list and/or ranges, e.g. 21-33 or 21,22,30-35
     roles: null,        // comma-separated list
     verboseFailures: false,
@@ -49,6 +51,7 @@ for (let i = 0; i < args.length; i++) {
             if (k === '--mode') opts.mode = v;
             else if (k === '--turns') opts.turns = parseInt(v, 10);
             else if (k === '--key-delay') opts.keyDelay = parseInt(v, 10);
+            else if (k === '--repeats') opts.repeats = parseInt(v, 10);
             else if (k === '--seeds') opts.seeds = v;
             else if (k === '--roles') opts.roles = v;
             else if (k === '--quiet') opts.quiet = (v !== 'false');
@@ -58,6 +61,7 @@ for (let i = 0; i < args.length; i++) {
     if (arg === '--mode' && args[i + 1]) opts.mode = args[++i];
     else if (arg === '--turns' && args[i + 1]) opts.turns = parseInt(args[++i], 10);
     else if (arg === '--key-delay' && args[i + 1]) opts.keyDelay = parseInt(args[++i], 10);
+    else if (arg === '--repeats' && args[i + 1]) opts.repeats = parseInt(args[++i], 10);
     else if (arg === '--seeds' && args[i + 1]) opts.seeds = args[++i];
     else if (arg === '--roles' && args[i + 1]) opts.roles = args[++i];
     else if (arg === '--verbose-failures') opts.verboseFailures = true;
@@ -75,11 +79,16 @@ if (seedPool.length === 0) {
     console.error('No seeds specified/resolved.');
     process.exit(1);
 }
+if (!Number.isFinite(opts.repeats) || opts.repeats < 1) {
+    console.error(`Invalid --repeats value: ${opts.repeats}`);
+    process.exit(1);
+}
 
 console.log('C NetHack Role Matrix Benchmark');
 console.log(`  Mode: ${opts.mode}`);
 console.log(`  Turns: ${opts.turns}`);
 console.log(`  Key delay: ${opts.keyDelay}`);
+console.log(`  Repeats: ${opts.repeats}`);
 console.log(`  Roles (${roles.length}): ${roles.join(', ')}`);
 console.log(`  Seed pool (${seedPool.length}): ${seedPool.join(', ')}`);
 if (seedPool.length < roles.length) {
@@ -89,26 +98,31 @@ console.log('');
 
 const assignments = roles.map((role, i) => ({ role, seed: seedPool[i % seedPool.length] }));
 const results = [];
+const totalRuns = assignments.length * opts.repeats;
+let runIndex = 0;
 
 for (let i = 0; i < assignments.length; i++) {
     const a = assignments[i];
-    const runLabel = `[${i + 1}/${assignments.length}] role=${a.role} seed=${a.seed}`;
-    console.log(runLabel);
+    for (let rep = 1; rep <= opts.repeats; rep++) {
+        runIndex++;
+        const runLabel = `[${runIndex}/${totalRuns}] role=${a.role} seed=${a.seed}` +
+            (opts.repeats > 1 ? ` repeat=${rep}/${opts.repeats}` : '');
+        console.log(runLabel);
 
-    const cmdArgs = [
-        'selfplay/runner/c_runner.js',
-        `--seed=${a.seed}`,
-        `--turns=${opts.turns}`,
-        `--role=${a.role}`,
-        `--key-delay=${opts.keyDelay}`,
-        opts.quiet ? '--quiet' : '--verbose',
-    ];
+        const cmdArgs = [
+            'selfplay/runner/c_runner.js',
+            `--seed=${a.seed}`,
+            `--turns=${opts.turns}`,
+            `--role=${a.role}`,
+            `--key-delay=${opts.keyDelay}`,
+            opts.quiet ? '--quiet' : '--verbose',
+        ];
 
-    const out = spawnSync('node', cmdArgs, {
-        encoding: 'utf-8',
-        maxBuffer: 64 * 1024 * 1024,
-    });
-    const text = `${out.stdout || ''}\n${out.stderr || ''}`;
+        const out = spawnSync('node', cmdArgs, {
+            encoding: 'utf-8',
+            maxBuffer: 64 * 1024 * 1024,
+        });
+        const text = `${out.stdout || ''}\n${out.stderr || ''}`;
 
     const depth = extractInt(text, /Max depth reached:\s+(\d+)/);
     const cause = extractString(text, /Death cause:\s+(.+)/) || (out.status === 0 ? 'survived' : 'error');
@@ -143,50 +157,52 @@ for (let i = 0; i < assignments.length; i++) {
     const doorOpen = extractInt(text, /Explore telemetry:.*\bdoorOpen=(\d+)/);
     const doorKick = extractInt(text, /Explore telemetry:.*\bdoorKick=(\d+)/);
 
-    const row = {
-        role: a.role,
-        seed: a.seed,
-        depth: Number.isFinite(depth) ? depth : null,
-        cause: cause || (out.error ? `spawn_error:${out.error.code || out.error.message}` : 'unknown'),
-        maxXL: Number.isFinite(maxXL) ? maxXL : null,
-        maxXP: Number.isFinite(maxXP) ? maxXP : null,
-        xp100: Number.isFinite(xp100) ? xp100 : null,
-        xp200: Number.isFinite(xp200) ? xp200 : null,
-        xp400: Number.isFinite(xp400) ? xp400 : null,
-        xp600: Number.isFinite(xp600) ? xp600 : null,
-        attackTurns: Number.isFinite(attackTurns) ? attackTurns : null,
-        fleeTurns: Number.isFinite(fleeTurns) ? fleeTurns : null,
-        xl1AttackTurns: Number.isFinite(xl1AttackTurns) ? xl1AttackTurns : null,
-        reallyAttackPrompts: Number.isFinite(reallyAttackPrompts) ? reallyAttackPrompts : null,
-        petSwapCount: Number.isFinite(petSwapCount) ? petSwapCount : null,
-        attackPetClassTurns: Number.isFinite(attackPetClassTurns) ? attackPetClassTurns : null,
-        attackPetClassLowXpDlvl1Turns: Number.isFinite(attackPetClassLowXpDlvl1Turns) ? attackPetClassLowXpDlvl1Turns : null,
-        attackDogTurns: Number.isFinite(attackDogTurns) ? attackDogTurns : null,
-        attackDogLowXpDlvl1Turns: Number.isFinite(attackDogLowXpDlvl1Turns) ? attackDogLowXpDlvl1Turns : null,
-        lowXpDogLoopTurns: Number.isFinite(lowXpDogLoopTurns) ? lowXpDogLoopTurns : null,
-        lowXpDogLoopDoorAdjTurns: Number.isFinite(lowXpDogLoopDoorAdjTurns) ? lowXpDogLoopDoorAdjTurns : null,
-        attackLowXpDogLoopDoorAdjTurns: Number.isFinite(attackLowXpDogLoopDoorAdjTurns) ? attackLowXpDogLoopDoorAdjTurns : null,
-        lowXpDogLoopBlockingTurns: Number.isFinite(lowXpDogLoopBlockingTurns) ? lowXpDogLoopBlockingTurns : null,
-        lowXpDogLoopNonBlockingTurns: Number.isFinite(lowXpDogLoopNonBlockingTurns) ? lowXpDogLoopNonBlockingTurns : null,
-        attackLowXpDogLoopBlockingTurns: Number.isFinite(attackLowXpDogLoopBlockingTurns) ? attackLowXpDogLoopBlockingTurns : null,
-        attackLowXpDogLoopNonBlockingTurns: Number.isFinite(attackLowXpDogLoopNonBlockingTurns) ? attackLowXpDogLoopNonBlockingTurns : null,
-        xl2: xl2 || 'never',
-        xl3: xl3 || 'never',
-        targetAssign: Number.isFinite(targetAssign) ? targetAssign : null,
-        targetComplete: Number.isFinite(targetComplete) ? targetComplete : null,
-        abandonNoProgress: Number.isFinite(abandonNoProgress) ? abandonNoProgress : null,
-        failedAdds: Number.isFinite(failedAdds) ? failedAdds : null,
-        doorOpen: Number.isFinite(doorOpen) ? doorOpen : null,
-        doorKick: Number.isFinite(doorKick) ? doorKick : null,
-        ok: out.status === 0,
-    };
-    results.push(row);
+        const row = {
+            role: a.role,
+            seed: a.seed,
+            repeat: rep,
+            depth: Number.isFinite(depth) ? depth : null,
+            cause: cause || (out.error ? `spawn_error:${out.error.code || out.error.message}` : 'unknown'),
+            maxXL: Number.isFinite(maxXL) ? maxXL : null,
+            maxXP: Number.isFinite(maxXP) ? maxXP : null,
+            xp100: Number.isFinite(xp100) ? xp100 : null,
+            xp200: Number.isFinite(xp200) ? xp200 : null,
+            xp400: Number.isFinite(xp400) ? xp400 : null,
+            xp600: Number.isFinite(xp600) ? xp600 : null,
+            attackTurns: Number.isFinite(attackTurns) ? attackTurns : null,
+            fleeTurns: Number.isFinite(fleeTurns) ? fleeTurns : null,
+            xl1AttackTurns: Number.isFinite(xl1AttackTurns) ? xl1AttackTurns : null,
+            reallyAttackPrompts: Number.isFinite(reallyAttackPrompts) ? reallyAttackPrompts : null,
+            petSwapCount: Number.isFinite(petSwapCount) ? petSwapCount : null,
+            attackPetClassTurns: Number.isFinite(attackPetClassTurns) ? attackPetClassTurns : null,
+            attackPetClassLowXpDlvl1Turns: Number.isFinite(attackPetClassLowXpDlvl1Turns) ? attackPetClassLowXpDlvl1Turns : null,
+            attackDogTurns: Number.isFinite(attackDogTurns) ? attackDogTurns : null,
+            attackDogLowXpDlvl1Turns: Number.isFinite(attackDogLowXpDlvl1Turns) ? attackDogLowXpDlvl1Turns : null,
+            lowXpDogLoopTurns: Number.isFinite(lowXpDogLoopTurns) ? lowXpDogLoopTurns : null,
+            lowXpDogLoopDoorAdjTurns: Number.isFinite(lowXpDogLoopDoorAdjTurns) ? lowXpDogLoopDoorAdjTurns : null,
+            attackLowXpDogLoopDoorAdjTurns: Number.isFinite(attackLowXpDogLoopDoorAdjTurns) ? attackLowXpDogLoopDoorAdjTurns : null,
+            lowXpDogLoopBlockingTurns: Number.isFinite(lowXpDogLoopBlockingTurns) ? lowXpDogLoopBlockingTurns : null,
+            lowXpDogLoopNonBlockingTurns: Number.isFinite(lowXpDogLoopNonBlockingTurns) ? lowXpDogLoopNonBlockingTurns : null,
+            attackLowXpDogLoopBlockingTurns: Number.isFinite(attackLowXpDogLoopBlockingTurns) ? attackLowXpDogLoopBlockingTurns : null,
+            attackLowXpDogLoopNonBlockingTurns: Number.isFinite(attackLowXpDogLoopNonBlockingTurns) ? attackLowXpDogLoopNonBlockingTurns : null,
+            xl2: xl2 || 'never',
+            xl3: xl3 || 'never',
+            targetAssign: Number.isFinite(targetAssign) ? targetAssign : null,
+            targetComplete: Number.isFinite(targetComplete) ? targetComplete : null,
+            abandonNoProgress: Number.isFinite(abandonNoProgress) ? abandonNoProgress : null,
+            failedAdds: Number.isFinite(failedAdds) ? failedAdds : null,
+            doorOpen: Number.isFinite(doorOpen) ? doorOpen : null,
+            doorKick: Number.isFinite(doorKick) ? doorKick : null,
+            ok: out.status === 0,
+        };
+        results.push(row);
 
-    console.log(`  -> depth=${row.depth ?? 'NA'} cause=${row.cause} maxXL=${row.maxXL ?? 'NA'} maxXP=${row.maxXP ?? 'NA'} xp100=${row.xp100 ?? 'NA'} xp200=${row.xp200 ?? 'NA'} xp400=${row.xp400 ?? 'NA'} xp600=${row.xp600 ?? 'NA'} atk=${row.attackTurns ?? 'NA'} flee=${row.fleeTurns ?? 'NA'} xl1Atk=${row.xl1AttackTurns ?? 'NA'} reallyAtk=${row.reallyAttackPrompts ?? 'NA'} petSwap=${row.petSwapCount ?? 'NA'} petAtk=${row.attackPetClassTurns ?? 'NA'} petAtkLow=${row.attackPetClassLowXpDlvl1Turns ?? 'NA'} dogAtk=${row.attackDogTurns ?? 'NA'} dogAtkLow=${row.attackDogLowXpDlvl1Turns ?? 'NA'} dogLoop=${row.lowXpDogLoopTurns ?? 'NA'} dogLoopDoorAdj=${row.lowXpDogLoopDoorAdjTurns ?? 'NA'} dogLoopDoorAdjAtk=${row.attackLowXpDogLoopDoorAdjTurns ?? 'NA'} dogLoopBlock=${row.lowXpDogLoopBlockingTurns ?? 'NA'} dogLoopNonBlock=${row.lowXpDogLoopNonBlockingTurns ?? 'NA'} dogLoopAtkBlock=${row.attackLowXpDogLoopBlockingTurns ?? 'NA'} dogLoopAtkNonBlock=${row.attackLowXpDogLoopNonBlockingTurns ?? 'NA'} xl2=${row.xl2} xl3=${row.xl3} assign=${row.targetAssign ?? 'NA'} complete=${row.targetComplete ?? 'NA'} noProg=${row.abandonNoProgress ?? 'NA'} failedAdd=${row.failedAdds ?? 'NA'} doorOpen=${row.doorOpen ?? 'NA'} doorKick=${row.doorKick ?? 'NA'}`);
-    if (!row.ok && opts.verboseFailures) {
-        console.log(`  status=${out.status} signal=${out.signal || 'none'} error=${out.error ? (out.error.code || out.error.message) : 'none'}`);
-        console.log('  stderr/stdout (failure):');
-        console.log(text.slice(-4000));
+        console.log(`  -> depth=${row.depth ?? 'NA'} cause=${row.cause} maxXL=${row.maxXL ?? 'NA'} maxXP=${row.maxXP ?? 'NA'} xp100=${row.xp100 ?? 'NA'} xp200=${row.xp200 ?? 'NA'} xp400=${row.xp400 ?? 'NA'} xp600=${row.xp600 ?? 'NA'} atk=${row.attackTurns ?? 'NA'} flee=${row.fleeTurns ?? 'NA'} xl1Atk=${row.xl1AttackTurns ?? 'NA'} reallyAtk=${row.reallyAttackPrompts ?? 'NA'} petSwap=${row.petSwapCount ?? 'NA'} petAtk=${row.attackPetClassTurns ?? 'NA'} petAtkLow=${row.attackPetClassLowXpDlvl1Turns ?? 'NA'} dogAtk=${row.attackDogTurns ?? 'NA'} dogAtkLow=${row.attackDogLowXpDlvl1Turns ?? 'NA'} dogLoop=${row.lowXpDogLoopTurns ?? 'NA'} dogLoopDoorAdj=${row.lowXpDogLoopDoorAdjTurns ?? 'NA'} dogLoopDoorAdjAtk=${row.attackLowXpDogLoopDoorAdjTurns ?? 'NA'} dogLoopBlock=${row.lowXpDogLoopBlockingTurns ?? 'NA'} dogLoopNonBlock=${row.lowXpDogLoopNonBlockingTurns ?? 'NA'} dogLoopAtkBlock=${row.attackLowXpDogLoopBlockingTurns ?? 'NA'} dogLoopAtkNonBlock=${row.attackLowXpDogLoopNonBlockingTurns ?? 'NA'} xl2=${row.xl2} xl3=${row.xl3} assign=${row.targetAssign ?? 'NA'} complete=${row.targetComplete ?? 'NA'} noProg=${row.abandonNoProgress ?? 'NA'} failedAdd=${row.failedAdds ?? 'NA'} doorOpen=${row.doorOpen ?? 'NA'} doorKick=${row.doorKick ?? 'NA'}`);
+        if (!row.ok && opts.verboseFailures) {
+            console.log(`  status=${out.status} signal=${out.signal || 'none'} error=${out.error ? (out.error.code || out.error.message) : 'none'}`);
+            console.log('  stderr/stdout (failure):');
+            console.log(text.slice(-4000));
+        }
     }
 }
 
@@ -237,9 +253,17 @@ console.log(`  Action avg: attack=${fmtAvg(avgAttackTurns)} flee=${fmtAvg(avgFle
 console.log(`  Attack target avg: petClass=${fmtAvg(avgAttackPetClassTurns)} petClassLowXpDlvl1=${fmtAvg(avgAttackPetClassLowXpDlvl1Turns)} dog=${fmtAvg(avgAttackDogTurns)} dogLowXpDlvl1=${fmtAvg(avgAttackDogLowXpDlvl1Turns)}`);
 console.log(`  Dog loop avg: lowXpDogLoop=${fmtAvg(avgLowXpDogLoopTurns)} doorAdj=${fmtAvg(avgLowXpDogLoopDoorAdjTurns)} attackDoorAdj=${fmtAvg(avgAttackLowXpDogLoopDoorAdjTurns)} blocking=${fmtAvg(avgLowXpDogLoopBlockingTurns)} nonBlocking=${fmtAvg(avgLowXpDogLoopNonBlockingTurns)} attackBlocking=${fmtAvg(avgAttackLowXpDogLoopBlockingTurns)} attackNonBlocking=${fmtAvg(avgAttackLowXpDogLoopNonBlockingTurns)}`);
 console.log(`  Explore avg: assign=${fmtAvg(avgAssign)} complete=${fmtAvg(avgComplete)} noProg=${fmtAvg(avgNoProg)} failedAdd=${fmtAvg(avgFailedAdds)} doorOpen=${fmtAvg(avgDoorOpen)} doorKick=${fmtAvg(avgDoorKick)}`);
-console.log('\nPer-role results');
+if (opts.repeats > 1) {
+    console.log('\nPer-role aggregate results');
+    const grouped = groupByAssignment(results);
+    for (const g of grouped) {
+        console.log(`  role=${g.role} seed=${g.seed} runs=${g.runs} survived=${g.survived}/${g.runs} avgDepth=${fmtAvg(g.avgDepth)} avgMaxXP=${fmtAvg(g.avgMaxXP)} avgXP600=${fmtAvg(g.avgXP600)} avgAttack=${fmtAvg(g.avgAttackTurns)} avgFlee=${fmtAvg(g.avgFleeTurns)} avgDogLoop=${fmtAvg(g.avgLowXpDogLoopTurns)} avgFailedAdd=${fmtAvg(g.avgFailedAdds)}`);
+    }
+    console.log('\nPer-run results');
+}
 for (const r of results) {
-    console.log(`  role=${r.role} seed=${r.seed} depth=${r.depth ?? 'NA'} cause=${r.cause} maxXL=${r.maxXL ?? 'NA'} maxXP=${r.maxXP ?? 'NA'} xp100=${r.xp100 ?? 'NA'} xp200=${r.xp200 ?? 'NA'} xp400=${r.xp400 ?? 'NA'} xp600=${r.xp600 ?? 'NA'} atk=${r.attackTurns ?? 'NA'} flee=${r.fleeTurns ?? 'NA'} xl1Atk=${r.xl1AttackTurns ?? 'NA'} reallyAtk=${r.reallyAttackPrompts ?? 'NA'} petSwap=${r.petSwapCount ?? 'NA'} petAtk=${r.attackPetClassTurns ?? 'NA'} petAtkLow=${r.attackPetClassLowXpDlvl1Turns ?? 'NA'} dogAtk=${r.attackDogTurns ?? 'NA'} dogAtkLow=${r.attackDogLowXpDlvl1Turns ?? 'NA'} dogLoop=${r.lowXpDogLoopTurns ?? 'NA'} dogLoopDoorAdj=${r.lowXpDogLoopDoorAdjTurns ?? 'NA'} dogLoopDoorAdjAtk=${r.attackLowXpDogLoopDoorAdjTurns ?? 'NA'} dogLoopBlock=${r.lowXpDogLoopBlockingTurns ?? 'NA'} dogLoopNonBlock=${r.lowXpDogLoopNonBlockingTurns ?? 'NA'} dogLoopAtkBlock=${r.attackLowXpDogLoopBlockingTurns ?? 'NA'} dogLoopAtkNonBlock=${r.attackLowXpDogLoopNonBlockingTurns ?? 'NA'} xl2=${r.xl2} xl3=${r.xl3} assign=${r.targetAssign ?? 'NA'} complete=${r.targetComplete ?? 'NA'} noProg=${r.abandonNoProgress ?? 'NA'} failedAdd=${r.failedAdds ?? 'NA'} doorOpen=${r.doorOpen ?? 'NA'} doorKick=${r.doorKick ?? 'NA'}`);
+    const repTag = opts.repeats > 1 ? ` repeat=${r.repeat}` : '';
+    console.log(`  role=${r.role} seed=${r.seed}${repTag} depth=${r.depth ?? 'NA'} cause=${r.cause} maxXL=${r.maxXL ?? 'NA'} maxXP=${r.maxXP ?? 'NA'} xp100=${r.xp100 ?? 'NA'} xp200=${r.xp200 ?? 'NA'} xp400=${r.xp400 ?? 'NA'} xp600=${r.xp600 ?? 'NA'} atk=${r.attackTurns ?? 'NA'} flee=${r.fleeTurns ?? 'NA'} xl1Atk=${r.xl1AttackTurns ?? 'NA'} reallyAtk=${r.reallyAttackPrompts ?? 'NA'} petSwap=${r.petSwapCount ?? 'NA'} petAtk=${r.attackPetClassTurns ?? 'NA'} petAtkLow=${r.attackPetClassLowXpDlvl1Turns ?? 'NA'} dogAtk=${r.attackDogTurns ?? 'NA'} dogAtkLow=${r.attackDogLowXpDlvl1Turns ?? 'NA'} dogLoop=${r.lowXpDogLoopTurns ?? 'NA'} dogLoopDoorAdj=${r.lowXpDogLoopDoorAdjTurns ?? 'NA'} dogLoopDoorAdjAtk=${r.attackLowXpDogLoopDoorAdjTurns ?? 'NA'} dogLoopBlock=${r.lowXpDogLoopBlockingTurns ?? 'NA'} dogLoopNonBlock=${r.lowXpDogLoopNonBlockingTurns ?? 'NA'} dogLoopAtkBlock=${r.attackLowXpDogLoopBlockingTurns ?? 'NA'} dogLoopAtkNonBlock=${r.attackLowXpDogLoopNonBlockingTurns ?? 'NA'} xl2=${r.xl2} xl3=${r.xl3} assign=${r.targetAssign ?? 'NA'} complete=${r.targetComplete ?? 'NA'} noProg=${r.abandonNoProgress ?? 'NA'} failedAdd=${r.failedAdds ?? 'NA'} doorOpen=${r.doorOpen ?? 'NA'} doorKick=${r.doorKick ?? 'NA'}`);
 }
 
 function avgOf(values) {
@@ -250,6 +274,34 @@ function avgOf(values) {
 
 function fmtAvg(v) {
     return Number.isFinite(v) ? v.toFixed(2) : 'NA';
+}
+
+function groupByAssignment(rows) {
+    const groups = new Map();
+    for (const r of rows) {
+        const key = `${r.role}|${r.seed}`;
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(r);
+    }
+    const out = [];
+    for (const [key, list] of groups.entries()) {
+        const [role, seedStr] = key.split('|');
+        out.push({
+            role,
+            seed: parseInt(seedStr, 10),
+            runs: list.length,
+            survived: list.filter(r => r.cause === 'survived').length,
+            avgDepth: avgOf(list.map(r => r.depth)),
+            avgMaxXP: avgOf(list.map(r => r.maxXP)),
+            avgXP600: avgOf(list.map(r => r.xp600)),
+            avgAttackTurns: avgOf(list.map(r => r.attackTurns)),
+            avgFleeTurns: avgOf(list.map(r => r.fleeTurns)),
+            avgLowXpDogLoopTurns: avgOf(list.map(r => r.lowXpDogLoopTurns)),
+            avgFailedAdds: avgOf(list.map(r => r.failedAdds)),
+        });
+    }
+    out.sort((a, b) => a.seed - b.seed || a.role.localeCompare(b.role));
+    return out;
 }
 
 function resolveSeedPool(options) {
@@ -297,6 +349,7 @@ function printHelp() {
     console.log('  --roles=R1,R2,...             Override role list (default: all 13 roles)');
     console.log('  --turns=N                     Max turns per run (default: 1200)');
     console.log('  --key-delay=MS                Key delay (default: 0)');
+    console.log('  --repeats=N                   Repeat each role/seed assignment N times (default: 1)');
     console.log('  --quiet / --no-quiet          Pass quiet/verbose through to c_runner');
     console.log('  --verbose-failures            Print tail output for failed runs');
     console.log('');
