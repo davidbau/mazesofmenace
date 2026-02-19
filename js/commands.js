@@ -18,7 +18,8 @@ import { objectData, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
          TALLOW_CANDLE, WAX_CANDLE, FLINT, ROCK,
          TOUCHSTONE, LUCKSTONE, LOADSTONE, MAGIC_MARKER,
          CREAM_PIE, EUCALYPTUS_LEAF, LUMP_OF_ROYAL_JELLY,
-         POT_OIL, TRIPE_RATION } from './objects.js';
+         POT_OIL, TRIPE_RATION, PICK_AXE, DWARVISH_MATTOCK,
+         EXPENSIVE_CAMERA, MIRROR, FIGURINE } from './objects.js';
 import { nhgetch, ynFunction, getlin } from './input.js';
 import { playerAttackMonster } from './combat.js';
 import { makemon, setMakemonPlayerContext } from './makemon.js';
@@ -3302,6 +3303,12 @@ function isApplyChopWeapon(obj) {
     return skill === 3 /* P_AXE */ || skill === 4 /* P_PICK_AXE */;
 }
 
+function isApplyPolearm(obj) {
+    if (!obj || obj.oclass !== WEAPON_CLASS) return false;
+    const skill = objectData[obj.otyp]?.sub;
+    return skill === 18 /* P_POLEARMS */ || skill === 19 /* P_LANCE */;
+}
+
 // Handle apply/use command
 // C ref: apply.c doapply()
 async function handleApply(player, display) {
@@ -3343,7 +3350,14 @@ async function handleApply(player, display) {
             return { moved: false, tookTime: false };
         }
 
-        if (selected.otyp === STETHOSCOPE) {
+        // C ref: apply.c — tools that use getdir() "In what direction?" prompt:
+        // use_pick_axe2() for pick-axe/mattock, use_whip() for bullwhip,
+        // use_stethoscope() for stethoscope, use_pole() for polearms.
+        if (selected.otyp === PICK_AXE || selected.otyp === DWARVISH_MATTOCK
+            || selected.otyp === BULLWHIP || selected.otyp === STETHOSCOPE
+            || selected.otyp === EXPENSIVE_CAMERA || selected.otyp === MIRROR
+            || selected.otyp === FIGURINE
+            || isApplyPolearm(selected)) {
             replacePromptMessage();
             display.putstr_message('In what direction?');
             const dirCh = await nhgetch();
@@ -3353,6 +3367,7 @@ async function handleApply(player, display) {
                 replacePromptMessage();
                 return { moved: false, tookTime: false };
             }
+            // TODO: implement actual effects (digging, whip, etc.) for full parity
             replacePromptMessage();
             return { moved: false, tookTime: false };
         }
