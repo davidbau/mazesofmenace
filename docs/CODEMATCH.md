@@ -128,7 +128,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[ ]` | role.c | — | Role/race/gender selection. JS: `player.js` |
 | `[ ]` | rumors.c | — | Rumor system. JS: `rumor_data.js` (data only) |
 | `[ ]` | save.c | — | Game save. JS: `storage.js` |
-| `[a]` | selvar.c | — | Selection geometry. JS: `selection` object in `sp_lev.js`. Most geometry functions aligned; ellipse/gradient/is_irregular/size_description not yet implemented |
+| `[a]` | selvar.c | — | Selection geometry. JS: `selection` object in `sp_lev.js`. All major geometry functions aligned including ellipse/gradient/is_irregular/size_description |
 | `[N/A]` | sfbase.c | — | Save file base I/O routines |
 | `[N/A]` | sfstruct.c | — | Save file structure definitions |
 | `[~]` | shk.c | — | Shopkeeper behavior. JS: partially in `shknam.js` |
@@ -789,13 +789,13 @@ Selection geometry functions are implemented as methods of the `selection` objec
 | `sel_flood_havepoint` | 379 | N/A | — | Internal staticfn helper |
 | `selection_floodfill` | 395 | `selection.floodfill(x, y, matchFn)` | 7415 | Match |
 | `selection_do_ellipse` | 456 | `selection.ellipse(xc, yc, a, b, filled)` | — | Match (static factory) |
-| `line_dist_coord` | 542 | N/A | — | Internal helper for gradient |
-| `selection_do_gradient` | 570 | N/A | — | TODO (not yet in JS) |
+| `line_dist_coord` | 542 | N/A | — | Inlined in `selection.gradient()` |
+| `selection_do_gradient` | 570 | `selection.gradient(x,y,x2,y2,gtyp,mind,maxd)` | 7318 | Match (static factory) |
 | `selection_do_line` | 626 | `selection.line(x1, y1, x2, y2)` | 6980 | Match (Bresenham) |
 | `selection_do_randline` | 683 | `selection.randline(...)` | 7011 | Match |
 | `selection_iterate` | 726 | `sel.iterate(func)` | 7149 | Match |
-| `selection_is_irregular` | 747 | N/A | — | Not yet in JS |
-| `selection_size_description` | 764 | N/A | — | Not yet in JS |
+| `selection_is_irregular` | 747 | `sel.is_irregular()` | 7231 | Match (method on sel object) |
+| `selection_size_description` | 764 | `sel.size_description()` | 7249 | Match (method on sel object) |
 | `selection_from_mkroom` | 781 | `selection.room()` | 6824 | Match (C ref comment present in JS) |
 | `selection_force_newsyms` | 802 | N/A | — | Display concern — not needed in JS |
 
