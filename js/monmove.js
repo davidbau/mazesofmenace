@@ -2695,10 +2695,18 @@ function dog_move(mon, map, player, display, fov, after = false, game = null) {
                     const hit = toHit > roll;
                     if (hit) {
                         anyHit = true;
-                        const dice = (attk && attk.dice) ? attk.dice : 1;
-                        const sides = (attk && attk.sides) ? attk.sides : 1;
-                        const dmg = c_d(Math.max(1, dice), Math.max(1, sides));
-                        const willKill = (target.mhp - Math.max(1, dmg)) <= 0;
+                        // C ref: mhitm.c mattackchoice — mdamagemm is called BEFORE mhitm_ad_stck.
+                        // Allow d(0,0)=0 for attacks with 0 damage dice (e.g. lichen AD_STCK 0d0).
+                        const dice = attk?.dice ?? 0;
+                        const sides = attk?.sides ?? 0;
+                        const dmg = c_d(dice, sides);
+                        // C ref: mhitm.c mhitm_mgc_atk_negated — called after damage roll,
+                        // for non-physical attacks. armpro=0 for unarmored monsters so never
+                        // negated, but rn2(10) is always consumed.
+                        if (attk && attk.damage !== AD_PHYS && !mon.mcan) {
+                            rn2(10);
+                        }
+                        const willKill = (target.mhp - dmg) <= 0;
                         const suppressDetail = suppressTurnDetail && !willKill;
                         if (display && mmVisible && !suppressDetail) {
                             // C ref: mhitm.c — mon_nam(mdef) uses ARTICLE_THE
@@ -2707,7 +2715,7 @@ function dog_move(mon, map, player, display, fov, after = false, game = null) {
                         // C ref: mhitm.c mdamagem() rolls damage before knockback RNG.
                         rn2(3);
                         rn2(6);
-                        target.mhp -= Math.max(1, dmg);
+                        target.mhp -= dmg;
                         if (target.mhp <= 0) {
                             if (Array.isArray(target.minvent) && target.minvent.length > 0) {
                                 // C ref: relobj()/mdrop_obj() drops minvent in chain order;
@@ -2743,7 +2751,20 @@ function dog_move(mon, map, player, display, fov, after = false, game = null) {
                             const victimLevel = Number.isInteger(target.m_lev) ? target.m_lev
                                 : (Number.isInteger(target.mlevel) ? target.mlevel
                                     : (Number.isInteger(target.type?.level) ? target.type.level : 0));
-                            rnd(Math.max(1, victimLevel + 1)); // C ref: makemon.c grow_up(victim)
+                            // C ref: makemon.c grow_up() — attacker gains HP when killing a monster.
+                            // max_increase = rnd(victim->m_lev + 1), clamped to hp_threshold.
+                            // cur_increase = rn2(max_increase) only if max_increase > 1.
+                            // mhpmax and mhp are always updated.
+                            const growAttackerLevel = Number.isInteger(mon.m_lev) ? mon.m_lev
+                                : (Number.isInteger(mon.mlevel) ? mon.mlevel
+                                    : (Number.isInteger(mon.type?.level) ? mon.type.level : 0));
+                            const hp_threshold = growAttackerLevel > 0 ? growAttackerLevel * 8 : 4;
+                            let max_increase = rnd(Math.max(1, victimLevel + 1));
+                            if ((mon.mhpmax ?? 0) + max_increase > hp_threshold + 1)
+                                max_increase = Math.max(0, (hp_threshold + 1) - (mon.mhpmax ?? 0));
+                            const cur_increase = (max_increase > 1) ? rn2(max_increase) : 0;
+                            mon.mhpmax = (mon.mhpmax ?? 0) + max_increase;
+                            mon.mhp = (mon.mhp ?? 0) + cur_increase;
                             consumePassivemmRng(mon, target, true, true);
                             defenderDied = true;
                             break;
@@ -2768,14 +2789,21 @@ function dog_move(mon, map, player, display, fov, after = false, game = null) {
                     const retaliateAttk = (Array.isArray(target.attacks) && target.attacks.length > 0)
                         ? target.attacks.find((a) => a && a.type !== AT_NONE)
                         : null;
-                    const dice = (retaliateAttk && retaliateAttk.dice) ? retaliateAttk.dice : 1;
-                    const sides = (retaliateAttk && retaliateAttk.sides) ? retaliateAttk.sides : 1;
+                    // C ref: mhitm.c mattackchoice — mdamagemm called BEFORE mhitm_ad_stck.
+                    // Allow d(0,0)=0 for attacks with 0 damage dice (e.g. lichen AD_STCK 0d0).
+                    const retDice = retaliateAttk?.dice ?? 0;
+                    const retSides = retaliateAttk?.sides ?? 0;
                     const roll = rnd(20);
                     const toHit = (mon.mac ?? 10) + (target.mlevel || 1);
                     const hit = toHit > roll;
                     if (hit) {
-                        const dmg = c_d(Math.max(1, dice), Math.max(1, sides));
-                        const monDied = (mon.mhp - Math.max(1, dmg)) <= 0;
+                        const dmg = c_d(retDice, retSides);
+                        // C ref: mhitm.c mhitm_mgc_atk_negated — called after damage roll,
+                        // for non-physical attacks.
+                        if (retaliateAttk && retaliateAttk.damage !== AD_PHYS && !target.mcan) {
+                            rn2(10);
+                        }
+                        const monDied = (mon.mhp - dmg) <= 0;
                         const suppressDetail = suppressTurnDetail && !monDied;
                         if (display && mmVisible && !suppressDetail) {
                             // C ref: mhitm.c — retaliation is mattackm(target, mon).
@@ -2783,7 +2811,7 @@ function dog_move(mon, map, player, display, fov, after = false, game = null) {
                         }
                         rn2(3); // mhitm_knockback distance probe
                         rn2(6); // mhitm_knockback chance probe
-                        mon.mhp -= Math.max(1, dmg);
+                        mon.mhp -= dmg;
                         const monDiedNow = mon.mhp <= 0;
                         if (monDiedNow) {
                             mon.dead = true;
