@@ -15,7 +15,10 @@ import { objectData, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
          WAND_CLASS, COIN_CLASS, GEM_CLASS, ROCK_CLASS, CORPSE, LANCE,
          BULLWHIP, BOW, ELVEN_BOW, ORCISH_BOW, YUMI, SLING, CROSSBOW, STETHOSCOPE,
          QUARTERSTAFF, ROBE, SMALL_SHIELD, DUNCE_CAP, POT_WATER,
-         TALLOW_CANDLE, WAX_CANDLE, FLINT, ROCK } from './objects.js';
+         TALLOW_CANDLE, WAX_CANDLE, FLINT, ROCK,
+         TOUCHSTONE, LUCKSTONE, LOADSTONE, MAGIC_MARKER,
+         CREAM_PIE, EUCALYPTUS_LEAF, LUMP_OF_ROYAL_JELLY,
+         POT_OIL } from './objects.js';
 import { nhgetch, ynFunction, getlin } from './input.js';
 import { playerAttackMonster } from './combat.js';
 import { makemon, setMakemonPlayerContext } from './makemon.js';
@@ -2016,16 +2019,20 @@ async function handleInventory(player, display, game) {
                             '(end)',
                         ]
                     : [
-                        ...(isLightSource
+                        ...(selected.otyp === MAGIC_MARKER
+                            ? ['a - Write on something with this marker']
+                            : isLightSource
                             ? [selected.lamplit
                                 ? 'a - Snuff out this light source'
                                 : 'a - Light this light source']
-                            : []),
-                        ...(baseName.toLowerCase() === 'stethoscope'
+                            : baseName.toLowerCase() === 'stethoscope'
                             ? ['a - Listen through the stethoscope']
                             : []),
                         `c - Name this specific ${noun}`,
                         'd - Drop this item',
+                        ...(selected.otyp === MAGIC_MARKER
+                            ? ['E - Scribble graffiti on the floor']
+                            : []),
                         'i - Adjust inventory by assigning new letter',
                         ...(isRubbableLamp ? [`R - Rub this ${noun}`] : []),
                         't - Throw this item',
@@ -3208,6 +3215,20 @@ function isApplyCandidate(obj) {
             || skill === 19 /* P_LANCE */) {
             return true;
         }
+    }
+    // C ref: apply.c apply_ok() — suggest certain foods.
+    if (obj.otyp === CREAM_PIE || obj.otyp === EUCALYPTUS_LEAF
+        || obj.otyp === LUMP_OF_ROYAL_JELLY) {
+        return true;
+    }
+    // C ref: apply.c apply_ok() — suggest graystones (touchstone rubbing).
+    if (obj.otyp === TOUCHSTONE || obj.otyp === LUCKSTONE
+        || obj.otyp === LOADSTONE || obj.otyp === FLINT) {
+        return true;
+    }
+    // C ref: apply.c apply_ok() — suggest POT_OIL if discovered.
+    if (obj.otyp === POT_OIL && obj.dknown) {
+        return true;
     }
     return false;
 }
