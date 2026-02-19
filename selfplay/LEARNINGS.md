@@ -196,3 +196,38 @@
     - Valkyrie seed 42: `attack=187`, `petSwap=54`, `maxXP=5`.
   - Interpretation:
     - Current low-XP behavior in many runs is driven more by pet displacement churn than by `"Really attack?"` prompt loops.
+
+## 2026-02-19 - Rejected: Pet-Loop Suppression Policy Variants
+
+- Goal:
+  - Reduce non-productive `petSwap` churn without regressing progression quality (`XL2+`, XP throughput) on holdout.
+
+- Variant A (broad char-follow in `_updatePets`):
+  - Policy:
+    - After one displacement confirms a pet character, treat nearby monsters of that character as pets.
+  - Holdout (`31..43`, 600 turns):
+    - Survived `13/13` (flat),
+    - Avg depth `1.615` (up vs `1.462` baseline),
+    - XP avg `t600=8.62` (up vs `8.23`),
+    - XP>=10 by 600: `6/13` (up vs `4/13`),
+    - `petSwap=0.62` (down vs `26.31`),
+    - but `XL2+ 0/13` (regression vs `1/13`),
+    - and `failedAdd=54.77` (regression vs `36.92`).
+  - Net:
+    - Rejected due progression/churn tradeoff and loss of XL2 path.
+
+- Variant B (narrow post-displacement lone `d/f/C` ignore on Dlvl1):
+  - Policy:
+    - After any pet displacement, ignore lone adjacent `d/f/C` on Dlvl1.
+  - Quick triage (`Caveman 33`, `Healer 34`, `Tourist 41`, 600 turns):
+    - Survived `3/3`,
+    - Avg depth `1.000`,
+    - `XL2+ 0/3`,
+    - XP avg `t600=6.67`,
+    - `petSwap=1.00`.
+  - Net:
+    - Rejected (Healer/Tourist progression regressed despite lower pet churn).
+
+- Combined learning:
+  - Reducing pet-swap churn alone is not sufficient; naive suppression tends to trade away meaningful combat/progression.
+  - Next candidate should prioritize "productive combat selection" (target identity/confidence + path/progression context), not blanket pet-class avoidance.
