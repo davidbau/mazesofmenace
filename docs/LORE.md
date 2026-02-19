@@ -510,6 +510,10 @@ pad/no-pad fallback matching.
 - `08da1fac` - Removed legacy col-0 prepend fallback path from
   `test/comparison/test_session_replay.js`, deleting padded-vs-unpadded and
   hybrid mixed-row fallback matching there as well.
+- Follow-up simplification (2026-02-19):
+  removed remaining gameplay col-0/overlay fallback matching paths from
+  `test/comparison/session_test_runner.js` and restored direct normalized-row
+  comparison for gameplay screen diffs.
 
 ### TTY map x-coordinates are 1-based and render at terminal column x-1
 
