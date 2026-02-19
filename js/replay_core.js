@@ -1367,22 +1367,33 @@ export async function replaySession(seed, session, opts = {}) {
         // When deferred "--More--" boundary RNG is targeted at this step,
         // some logs use a raw space key solely as acknowledgement. Treat that
         // as an ack-only frame to avoid injecting an extra command side-effect.
+        // Also handles non-space keys consumed by mid-monster-turn nhgetch()
+        // (e.g. a thrown-projectile animation in m_throw): when the deferred
+        // entries fully cover all of C's expected RNG for this step, the key
+        // was consumed by the animation, not by a player command.
         if (!pendingCommand
             && deferredMoreBoundaryRng.length > 0
             && deferredMoreBoundaryTarget === stepIndex
             && typeof step.action === 'string'
-            && step.action.startsWith('key-')
-            && step.key === ' ') {
-            applyStepScreen();
-            pushStepResult(
-                [],
-                opts.captureScreens ? game.display.getScreenLines() : undefined,
-                stepScreenAnsi.length > 0 ? stepScreenAnsi : null,
-                step,
-                stepScreen,
-                stepIndex
-            );
-            continue;
+            && step.action.startsWith('key-')) {
+            const stepExpectedCount = comparableCallParts(step.rng || []).length;
+            const deferredCount = comparableCallParts(
+                deferredMoreBoundaryRng.map(toCompactRng)
+            ).length;
+            const deferredCoversStep = step.key === ' '
+                || (stepExpectedCount > 0 && deferredCount >= stepExpectedCount);
+            if (deferredCoversStep) {
+                applyStepScreen();
+                pushStepResult(
+                    [],
+                    opts.captureScreens ? game.display.getScreenLines() : undefined,
+                    stepScreenAnsi.length > 0 ? stepScreenAnsi : null,
+                    step,
+                    stepScreen,
+                    stepIndex
+                );
+                continue;
+            }
         }
         // Some captures store post-"--More--" continuation as a key-space frame
         // with authoritative non-empty topline plus RNG. Treat it as
