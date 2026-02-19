@@ -61,7 +61,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[a]` | dogmove.c | dogmove.js | Pet movement AI. All functions except `quickmimic` |
 | `[ ]` | dokick.c | — | Kicking mechanics |
 | `[ ]` | dothrow.c | — | Throwing mechanics |
-| `[ ]` | drawing.c | — | Symbol/glyph drawing tables. JS: `symbols.js` |
+| `[a]` | drawing.c | symbols.js | Symbol/glyph drawing tables and lookup functions. Data tables in symbols.js; 3 lookup functions implemented |
 | `[~]` | dungeon.c | dungeon.js | Dungeon structure and level management |
 | `[ ]` | eat.c | — | Eating mechanics |
 | `[ ]` | end.c | — | Game over, death, scoring |
@@ -141,7 +141,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[ ]` | steal.c | — | Monster stealing |
 | `[ ]` | steed.c | — | Riding steeds |
 | `[N/A]` | strutil.c | — | String utilities (strbuf, pmatch). JS: native string ops |
-| `[~]` | symbols.c | symbols.js | Symbol/glyph definitions |
+| `[N/A]` | symbols.c | — | Terminal graphics mode management (ASCII/IBM/curses/UTF-8 symbol-set switching). Browser port uses static data in symbols.js; no runtime mode switching |
 | `[N/A]` | sys.c | — | System-level interface |
 | `[ ]` | teleport.c | — | Teleportation |
 | `[ ]` | timeout.c | — | Timer-based effects |
@@ -168,13 +168,13 @@ don't follow the same 1:1 C→JS mapping pattern.
 ### Summary
 
 - **Total C files**: 129
-- **N/A (system/platform)**: 18
-- **Game logic files**: 111
+- **N/A (system/platform)**: 19
+- **Game logic files**: 110
 - **Complete (`[x]`)**: 4
-- **Aligned (`[a]`)**: 12
+- **Aligned (`[a]`)**: 13
 - **Present (`[p]`)**: 1
-- **Needs alignment (`[~]`)**: 18
-- **No JS file yet (`[ ]`)**: 76
+- **Needs alignment (`[~]`)**: 17
+- **No JS file yet (`[ ]`)**: 75
 
 ### JS Files Without C Counterparts
 
@@ -418,4 +418,52 @@ Notes:
 | `score_wanted` | 1112 | — | — | N/A (CLI score query mode not in browser) |
 | `prscore` | 1194 | — | — | N/A (CLI argc/argv scoring mode) |
 | `classmon` | 1356 | — | — | N/A (CLI helper for prscore) |
+
+### drawing.c → symbols.js
+
+Notes:
+- drawing.c is primarily data tables (defsyms[], def_monsyms[], def_oc_syms[]) embedded in symbols.js.
+- Three lookup utility functions are implemented in symbols.js under C-matching names.
+
+| C Function | C Line | JS Function | JS Line | Status |
+|------------|--------|-------------|---------|--------|
+| `def_char_to_objclass` | 91 | `def_char_to_objclass` | 997 | Match (exported — searches def_oc_syms[]) |
+| `def_char_to_monclass` | 108 | `def_char_to_monclass` | 1005 | Match (exported — searches def_monsyms[]) |
+| `def_char_is_furniture` | 120 | `def_char_is_furniture` | 1014 | Match (exported — uses S_upstair..S_fountain constants instead of scanning explanations) |
+
+### symbols.c — N/A
+
+All functions in symbols.c manage runtime terminal graphics mode switching
+(ASCII / IBM PC graphics / curses / UTF-8 symbol sets). The browser JS port
+uses static symbol data in symbols.js with no mode switching at runtime.
+
+| C Function | C Line | Status |
+|------------|--------|--------|
+| `init_symbols` | 85 | N/A — symbol data is static in symbols.js |
+| `init_showsyms` | 95 | N/A — no showsyms/primary_syms distinction in JS |
+| `init_ov_rogue_symbols` | 113 | N/A — no rogue mode in JS |
+| `init_ov_primary_symbols` | 122 | N/A — no primary symset in JS |
+| `get_othersym` | 131 | N/A — no alternative symbol sets in JS |
+| `init_primary_symbols` | 167 | N/A — static data |
+| `init_rogue_symbols` | 187 | N/A — no rogue mode in JS |
+| `assign_graphics` | 217 | N/A — no terminal graphics mode in JS |
+| `switch_symbols` | 253 | N/A — no mode switching in JS |
+| `update_ov_primary_symset` | 295 | N/A — no override symbol sets |
+| `update_ov_rogue_symset` | 301 | N/A — no rogue symbol set |
+| `update_primary_symset` | 307 | N/A — no primary symset |
+| `update_rogue_symset` | 313 | N/A — no rogue symbol set |
+| `clear_symsetentry` | 319 | N/A — no runtime symbol sets |
+| `symset_is_compatible` | 353 | N/A — no symbol set loading |
+| `proc_symset_line` | 431 | N/A — no config file parsing |
+| `parse_sym_line` | 438 | N/A — no config file parsing |
+| `set_symhandling` | 657 | N/A — no terminal handling modes |
+| `load_symset` | 673 | N/A — no external symbol files in browser |
+| `free_symsets` | 693 | N/A — GC handles memory |
+| `savedsym_free` | 712 | N/A — GC handles memory |
+| `savedsym_find` | 726 | N/A — no saved symbol overrides |
+| `savedsym_add` | 739 | N/A — no saved symbol overrides |
+| `savedsym_strbuf` | 757 | N/A — no saved symbol overrides |
+| `parsesymbols` | 773 | N/A — no config file option parsing |
+| `match_sym` | 852 | N/A — no config file option parsing |
+| `do_symset` | 909 | N/A — no interactive options menu in JS |
 
