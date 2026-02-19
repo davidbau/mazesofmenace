@@ -5226,8 +5226,8 @@ async function wizLevelChange(game) {
         return { moved: false, tookTime: false };
     }
     game.changeLevel(level, 'teleport');
-    // C ref: wizcmds.c wiz_level_tele() returns ECMD_OK (no turn consumed).
-    return { moved: false, tookTime: false };
+    // C ref: wizcmds.c wiz_level_tele() returns ECMD_OK (time consumed).
+    return { moved: false, tookTime: true };
 }
 
 // Wizard mode: reveal entire map (magic mapping)
