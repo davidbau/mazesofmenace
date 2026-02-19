@@ -115,24 +115,8 @@ function normalizeInterfaceScreenLines(lines) {
     return (Array.isArray(lines) ? lines : []).map((line) => normalizeInterfaceLineForComparison(line));
 }
 
-function shiftLinesLeftOne(lines) {
-    return (Array.isArray(lines) ? lines : []).map((line) => {
-        const text = String(line || '');
-        return text.startsWith(' ') ? text.slice(1) : text;
-    });
-}
-
 function compareInterfaceScreens(actualLines, expectedLines) {
-    const base = compareScreenLines(actualLines, expectedLines);
-    if (base.match) return base;
-    const shiftActual = compareScreenLines(shiftLinesLeftOne(actualLines), expectedLines);
-    if (shiftActual.match) return shiftActual;
-    const shiftExpected = compareScreenLines(actualLines, shiftLinesLeftOne(expectedLines));
-    if (shiftExpected.match) return shiftExpected;
-    let best = base;
-    if (shiftActual.matched > best.matched) best = shiftActual;
-    if (shiftExpected.matched > best.matched) best = shiftExpected;
-    return best;
+    return compareScreenLines(actualLines, expectedLines);
 }
 
 function normalizeGameplayScreenLines(lines) {

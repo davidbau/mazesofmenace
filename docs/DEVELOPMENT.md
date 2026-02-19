@@ -81,6 +81,8 @@ comparison orchestration.
 - For gameplay screen text diffs, prefer ANSI-cell-derived plain rows when ANSI
   capture is available; avoid comparator-side column-shift heuristics. Use
   plain-line DEC decoding only as a legacy fallback when ANSI is unavailable.
+- For interface screen text diffs, compare normalized rows directly (no
+  left-shift fallback matching).
 
 ### Session Tests In Detail
 
