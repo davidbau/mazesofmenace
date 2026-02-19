@@ -100,7 +100,7 @@ five channels, implemented in `test/comparison/comparators.js`:
 | Channel | What it checks | How mismatches are reported |
 |---------|---------------|---------------------------|
 | **RNG** | PRNG call sequence (ISAAC64). Entries are normalized: source tags stripped, midlog and composite entries filtered. | First divergent call index with JS and session values, plus call-stack context (the `>funcname` entries preceding the divergence). |
-| **Screen** | Terminal text output (24 lines). Trailing whitespace trimmed. Gameplay screens get col-0 padding normalization; interface screens normalize box-drawing chars (`┌→-`) and version/copyright strings. | First mismatched row with both line contents. |
+| **Screen** | Terminal text output (24 lines). Trailing whitespace trimmed. Gameplay screens compare direct normalized rows (no column-shift padding heuristics); interface screens normalize box-drawing chars (`┌→-`) and version/copyright strings. | First mismatched row with both line contents. |
 | **Grid** | Dungeon typGrid — the 21×80 integer array of tile types. Cell-by-cell comparison. | First differing cell: (x, y) coordinates, JS value, session value. |
 | **Color** | ANSI terminal attributes per cell: foreground, background, bold, inverse, underline. Parses full SGR sequences and DEC special graphics (SO/SI mode). | First mismatched (row, col) with full attribute details for both sides. |
 | **Metrics** | Aggregate counts: rng matched/total, screens matched/total, grids matched/total, colors matched/total. | Summary object on the result — the bird's-eye view of how close you are. |

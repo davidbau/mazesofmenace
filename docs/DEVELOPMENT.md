@@ -79,8 +79,8 @@ comparison orchestration.
 - If replay needs a special case, prefer a generic capture policy (for example,
   display-only acknowledgement frames) over per-command behavior forks.
 - For gameplay screen text diffs, prefer ANSI-cell-derived plain rows when ANSI
-  capture is available; keep DECgraphics decoding scoped to map segments so
-  overlay/menu text is not rewritten by harness normalization.
+  capture is available; avoid comparator-side column-shift heuristics. Use
+  plain-line DEC decoding only as a legacy fallback when ANSI is unavailable.
 
 ### Session Tests In Detail
 
@@ -221,9 +221,9 @@ established these practical replay/parity rules:
   treating control keys (for example `Esc`) as shorthand can leak a stray
   `Enter` into the input queue and misalign subsequent command prompts.
 - Some C captures mix left-side map glyphs and right-side overlay text on the
-  same row (for example inventory category headers). For these rows, parity
-  comparison should apply tmux col-0 compensation to the map segment only, not
-  the full row, or overlays can appear falsely shifted by one column.
+  same row (for example inventory category headers). Preserve raw column
+  alignment from core rendering; do not apply tmux col-0 compensation in the
+  comparator.
 
 Measured progress in this pass:
 - First divergence moved from step `274` to step `346`.

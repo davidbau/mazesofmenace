@@ -135,111 +135,33 @@ function compareInterfaceScreens(actualLines, expectedLines) {
     return best;
 }
 
-function looksLikeOverlayTextLine(line) {
-    const text = stripAnsiSequences(String(line || ''))
-        .replace(/[\x0e\x0f]/g, '')
-        .trimStart();
-    if (!text) return false;
-    if (/^\S\s+[*-]\s+/.test(text)) return true;
-    if (text.includes(' - ') || text.startsWith('(end)')) return true;
-    if (/^(Weapons|Armor|Rings|Amulets|Tools|Comestibles|Potions|Scrolls|Spellbooks|Wands|Coins|Gems\/Stones|Other)\b/.test(text)) {
-        return true;
-    }
-    return false;
-}
-
-function detectOverlayTextColumn(line) {
-    const text = stripAnsiSequences(String(line || ''))
-        .replace(/[\x0e\x0f]/g, '');
-    const selectorAtRight = text.slice(30).match(/\S\s+[*-]\s+/);
-    if (selectorAtRight && Number.isInteger(selectorAtRight.index)) {
-        return 30 + selectorAtRight.index;
-    }
-    for (let col = 30; col < text.length; col++) {
-        const right = text.slice(col);
-        // Menu item/key rows can use non-letter selectors (e.g. "/" in adjust menus).
-        if (text[col] !== ' ' && text.slice(col + 1, col + 4) === ' - ') return col;
-        if (!/[A-Za-z(]/.test(text[col])) continue;
-        if (right.includes(' - ')
-            || right.startsWith('(end)')
-            || /^(Weapons|Armor|Rings|Amulets|Tools|Comestibles|Potions|Scrolls|Spellbooks|Wands|Coins|Gems\/Stones|Other)\b/.test(right)) {
-            return col;
-        }
-    }
-    return null;
-}
-
-function prependAnsiMapSegmentOnly(line) {
-    const src = String(line || '');
-    const cursorMatches = [...src.matchAll(/\x1b\[(\d*)C/g)];
-    if (cursorMatches.length < 2) return ` ${src}`;
-    let seenCursor = 0;
-    return src.replace(/\x1b\[(\d*)C/g, (_m, n) => {
-        seenCursor++;
-        let val = Number.parseInt(n || '1', 10);
-        if (!Number.isFinite(val) || val < 0) val = 1;
-        if (seenCursor === 1) val += 1;
-        else if (seenCursor === 2 && val > 0) val -= 1;
-        return `\x1b[${val}C`;
-    });
-}
-
-function normalizeGameplayScreenLines(lines, { captured = false, prependCol0 = true } = {}) {
-    return (Array.isArray(lines) ? lines : []).map((line, row) => {
-        let out = String(line || '').replace(/\r$/, '').replace(/[\x0e\x0f]/g, '');
-        if (captured && prependCol0 && row >= 1 && row <= 21) {
-            const textCol = detectOverlayTextColumn(line);
-            if (Number.isInteger(textCol)) {
-                const left = out.slice(0, textCol);
-                const right = out.slice(textCol);
-                if (left.endsWith(' ')) {
-                    out = ` ${left.slice(0, -1)}${right}`;
-                } else {
-                    out = ` ${left}${right}`;
-                }
-            } else if (!looksLikeOverlayTextLine(out)) {
-                out = ` ${out}`;
-            }
-        }
-        return out;
-    });
+function normalizeGameplayScreenLines(lines) {
+    return (Array.isArray(lines) ? lines : [])
+        .map((line) => String(line || '').replace(/\r$/, '').replace(/[\x0e\x0f]/g, ''));
 }
 
 function ansiCellsToPlainLine(line) {
     return ansiLineToCells(line).map((cell) => cell?.ch || ' ').join('');
 }
 
-function decodeDecMapSegment(line, row, overlaySource = line) {
-    const out = String(line || '');
-    if (row < 1 || row > 21) return out;
-    const textCol = detectOverlayTextColumn(overlaySource);
-    if (Number.isInteger(textCol)) {
-        const left = [...out.slice(0, textCol)].map((ch) => decodeDecSpecialChar(ch)).join('');
-        const right = out.slice(textCol);
-        return `${left}${right}`;
-    }
-    if (looksLikeOverlayTextLine(out)) return out;
-    return [...out].map((ch) => decodeDecSpecialChar(ch)).join('');
-}
-
 function resolveGameplayComparableLines(plainLines, ansiLines, session) {
     const ansi = Array.isArray(ansiLines) ? ansiLines : [];
     const decgraphics = session?.meta?.options?.symset === 'DECgraphics';
     if (ansi.length > 0) {
-        return ansi.map((line, row) => {
+        return ansi.map((line) => {
             const plain = ansiCellsToPlainLine(line);
-            if (!decgraphics) return plain;
-            return decodeDecMapSegment(plain, row, line);
+            return plain;
         });
     }
     const plain = Array.isArray(plainLines) ? plainLines : [];
     if (!decgraphics) {
         return plain.map((line) => String(line || '').replace(/\r$/, '').replace(/[\x0e\x0f]/g, ''));
     }
-    return plain.map((line, row) => {
-        const out = String(line || '').replace(/\r$/, '').replace(/[\x0e\x0f]/g, '');
-        return decodeDecMapSegment(out, row, out);
-    });
+    // Legacy plain-only DECgraphics sessions cannot preserve SO/SI mode
+    // boundaries, so decode the stripped line consistently as a fallback.
+    return plain
+        .map((line) => String(line || '').replace(/\r$/, '').replace(/[\x0e\x0f]/g, ''))
+        .map((line) => [...line].map((ch) => decodeDecSpecialChar(ch)).join(''));
 }
 
 function compareGameplayScreens(actualLines, expectedLines, session, {
@@ -248,108 +170,9 @@ function compareGameplayScreens(actualLines, expectedLines, session, {
 } = {}) {
     const comparableActual = resolveGameplayComparableLines(actualLines, actualAnsi, session);
     const comparableExpected = resolveGameplayComparableLines(expectedLines, expectedAnsi, session);
-    const normalizedExpectedWithPad = normalizeGameplayScreenLines(comparableExpected, {
-        captured: true,
-        prependCol0: true,
-    });
-    const normalizedExpectedNoPad = normalizeGameplayScreenLines(comparableExpected, {
-        captured: true,
-        prependCol0: false,
-    });
-    const normalizedActual = normalizeGameplayScreenLines(comparableActual, {
-        captured: false,
-        prependCol0: false,
-    });
-    const withPad = compareScreenLines(normalizedActual, normalizedExpectedWithPad);
-    if (withPad.match) return withPad;
-    const noPad = compareScreenLines(normalizedActual, normalizedExpectedNoPad);
-    if (noPad.match) return noPad;
-    return (withPad.matched >= noPad.matched) ? withPad : noPad;
-}
-
-function prependGameplayMapCol0(lines) {
-    return (Array.isArray(lines) ? lines : []).map((line, row) => {
-        if (row >= 1 && row <= 21) {
-            const textCol = detectOverlayTextColumn(line);
-            if (Number.isInteger(textCol)) return prependAnsiMapSegmentOnly(line);
-            if (!looksLikeOverlayTextLine(line)) return ` ${String(line || '')}`;
-        }
-        return String(line || '');
-    });
-}
-
-function compareGameplayColors(actualAnsi, expectedAnsi) {
-    const actual = Array.isArray(actualAnsi) ? actualAnsi : [];
-    const expected = Array.isArray(expectedAnsi) ? expectedAnsi : [];
-    const expectedWithPad = prependGameplayMapCol0(expected);
-    const total = Math.max(actual.length, expected.length);
-    let matched = 0;
-    const diffs = [];
-
-    const compareAnsiCellRow = (aCells, eCells) => {
-        for (let col = 0; col < 80; col++) {
-            const a = aCells[col] || { ch: ' ', fg: 7, bg: 0, attr: 0 };
-            const e = eCells[col] || { ch: ' ', fg: 7, bg: 0, attr: 0 };
-            if (a.ch !== e.ch || a.fg !== e.fg || a.bg !== e.bg || a.attr !== e.attr) {
-                return {
-                    match: false,
-                    firstDiff: {
-                        col,
-                        js: { ch: a.ch, fg: a.fg, bg: a.bg, attr: a.attr },
-                        session: { ch: e.ch, fg: e.fg, bg: e.bg, attr: e.attr },
-                    },
-                };
-            }
-        }
-        return { match: true, firstDiff: null };
-    };
-
-    const alignActualDecGraphicsCells = (cells, expectedCells, row) => {
-        if (row < 1 || row > 21) return cells;
-        return cells.map((cell, col) => {
-            const ch = String(cell?.ch || ' ');
-            const decoded = decodeDecSpecialChar(ch);
-            if (decoded === ch) return cell;
-            const expectedCh = String(expectedCells[col]?.ch || ' ');
-            if (expectedCh === decoded) return { ...cell, ch: decoded };
-            return cell;
-        });
-    };
-
-    for (let row = 0; row < total; row++) {
-        const actualCellsRaw = ansiLineToCells(actual[row] || '');
-        const expectedWithPadCells = ansiLineToCells(expectedWithPad[row] || '');
-        const expectedNoPadCells = ansiLineToCells(expected[row] || '');
-        const withPad = compareAnsiCellRow(
-            alignActualDecGraphicsCells(actualCellsRaw, expectedWithPadCells, row),
-            expectedWithPadCells
-        );
-        const noPad = compareAnsiCellRow(
-            alignActualDecGraphicsCells(actualCellsRaw, expectedNoPadCells, row),
-            expectedNoPadCells
-        );
-        let chosen = withPad;
-        if (noPad.match && !withPad.match) {
-            chosen = noPad;
-        } else if (!withPad.match && !noPad.match) {
-            const withPadCol = withPad.firstDiff?.col ?? -1;
-            const noPadCol = noPad.firstDiff?.col ?? -1;
-            if (noPadCol > withPadCol) chosen = noPad;
-        }
-        if (chosen.match) {
-            matched++;
-        } else if (chosen.firstDiff) {
-            diffs.push({ row, ...chosen.firstDiff });
-        }
-    }
-
-    return {
-        matched,
-        total,
-        match: matched === total,
-        diffs,
-        firstDiff: diffs.length > 0 ? diffs[0] : null,
-    };
+    const normalizedExpected = normalizeGameplayScreenLines(comparableExpected);
+    const normalizedActual = normalizeGameplayScreenLines(comparableActual);
+    return compareScreenLines(normalizedActual, normalizedExpected);
 }
 
 function sleep(ms) {
@@ -639,7 +462,7 @@ async function runGameplayResult(session) {
                 }
             }
             if (expectedAnsi.length > 0 && Array.isArray(actual.screenAnsi)) {
-                const colorCmp = compareGameplayColors(actual.screenAnsi, expectedAnsi);
+                const colorCmp = compareScreenAnsi(actual.screenAnsi, expectedAnsi);
                 if (!result._colorStats) result._colorStats = { matched: 0, total: 0 };
                 result._colorStats.matched += colorCmp.matched;
                 result._colorStats.total += colorCmp.total;

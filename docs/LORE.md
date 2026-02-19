@@ -471,14 +471,15 @@ Practical rule: inventory `:` handling should enter `getlin("Search for: ")`
 style pending input semantics so replay can consume and render each typed
 character before command flow resumes.
 
-### Mixed map+overlay rows need segment-aware col-0 compensation in comparisons
+### Remove gameplay col-0 compensation heuristics from the comparator
 
-Some captured gameplay rows contain both left map glyphs and right overlay
-text. Applying whole-row col-0 map compensation falsely shifts overlay text by
-one column and creates fake diffs.
+After aligning JS rendering with C tty coordinate mapping (`map x -> term col
+x-1`), comparison-layer col-0 padding heuristics became counterproductive.
+They could hide real coordinate bugs or create fake mixed-row shifts.
 
-Practical rule: for mixed rows, apply col-0 compensation only to the left map
-segment and preserve right-side overlay text alignment.
+Practical rule: gameplay screen/color comparison should be direct (after basic
+control-character normalization), without synthetic leading-space insertion or
+pad/no-pad fallback matching.
 
 ### TTY map x-coordinates are 1-based and render at terminal column x-1
 
