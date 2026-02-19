@@ -1171,6 +1171,16 @@ export function createHeadlessGame(seed, roleIndex = 11, opts = {}) {
     return HeadlessGame.fromSeed(seed, roleIndex, opts);
 }
 
+// DEC Special Graphics Character Set — map raw VT100 alternate charset
+// codes to Unicode so the display grid always holds display-ready characters.
+// C ref: nethack win/tty uses SO/SI (\x0e/\x0f) to toggle this charset.
+const DEC_TO_UNICODE = {
+    '`': '\u25c6', a: '\u2592', f: '\u00b0', g: '\u00b1',
+    j: '\u2518', k: '\u2510', l: '\u250c', m: '\u2514', n: '\u253c',
+    q: '\u2500', t: '\u251c', u: '\u2524', v: '\u2534', w: '\u252c',
+    x: '\u2502', '~': '\u00b7',
+};
+
 const CLR_BLACK = 0;
 const CLR_BROWN = 3;
 const CLR_GRAY = 7;
@@ -1611,12 +1621,11 @@ export class HeadlessDisplay {
                 }
             };
 
+            let decGraphics = false;
             while (i < line.length && col < this.cols) {
                 const ch = line[i];
-                if (ch === '\x0e' || ch === '\x0f') {
-                    i++;
-                    continue;
-                }
+                if (ch === '\x0e') { decGraphics = true; i++; continue; }
+                if (ch === '\x0f') { decGraphics = false; i++; continue; }
                 if (ch === '\x1b' && line[i + 1] === '[') {
                     let j = i + 2;
                     while (j < line.length && !/[A-Za-z]/.test(line[j])) j++;
@@ -1641,7 +1650,11 @@ export class HeadlessDisplay {
                     }
                 }
                 if (ch !== '\r' && ch !== '\n') {
-                    this.setCell(col, r, ch, fg, attr);
+                    // C ref: DEC Special Graphics — SO (\x0e) activates
+                    // alternate charset; map raw DEC codes to Unicode so
+                    // the grid always holds display-ready characters.
+                    const decoded = decGraphics ? (DEC_TO_UNICODE[ch] || ch) : ch;
+                    this.setCell(col, r, decoded, fg, attr);
                     col++;
                 }
                 i++;
