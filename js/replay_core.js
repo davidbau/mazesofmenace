@@ -1816,9 +1816,9 @@ export async function replaySession(seed, session, opts = {}) {
                 const cont = occ.fn(game);
                 const finishedOcc = !cont ? occ : null;
                 if (!cont) {
-                    if (occ?.occtxt === 'waiting' || occ?.occtxt === 'searching') {
-                        game.display.putstr_message(`You stop ${occ.occtxt}.`);
-                    }
+                    // C ref: allmain.c:497 — natural occupation completion
+                    // just clears go.occupation silently. "You stop X." is
+                    // only printed by stop_occupation() on external interrupt.
                     game.occupation = null;
                 }
                 applyTimedTurn();
@@ -1872,9 +1872,7 @@ export async function replaySession(seed, session, opts = {}) {
                     const cont = occ.fn(game);
                     const finishedOcc = !cont ? occ : null;
                     if (!cont) {
-                        if (occ?.occtxt === 'waiting' || occ?.occtxt === 'searching') {
-                            game.display.putstr_message(`You stop ${occ.occtxt}.`);
-                        }
+                        // C ref: natural completion — no message (see above)
                         game.occupation = null;
                     }
                     applyTimedTurn(true);
