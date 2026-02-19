@@ -239,6 +239,20 @@ function select_rwep(mon) {
     return null;
 }
 
+function monsterUseup(mon, obj) {
+    if (!mon || !obj) return;
+    const inv = mon.minvent || [];
+    const idx = inv.indexOf(obj);
+    if (idx < 0) return;
+    const qty = Number.isInteger(obj.quan) ? obj.quan : 1;
+    if (qty > 1) {
+        obj.quan = qty - 1;
+        return;
+    }
+    inv.splice(idx, 1);
+    if (mon.weapon === obj) mon.weapon = null;
+}
+
 // C ref: mthrowu.c monmulti() — compute multishot count.
 // Consumes rnd(multishot) when multishot > 0 and quan > 1.
 function monmulti(mon, otmp) {
@@ -272,12 +286,16 @@ function thrownObjectName(obj, player) {
 function m_throw(mon, startX, startY, dx, dy, range, weapon, map, player, display, game) {
     let x = startX;
     let y = startY;
+    let dropX = startX;
+    let dropY = startY;
 
     // C ref: mthrowu.c:601 — misfire check for cursed/greased weapons
     if ((weapon.cursed || weapon.greased) && (dx || dy) && !rn2(7)) {
         dx = rn2(3) - 1;
         dy = rn2(3) - 1;
-        if (!dx && !dy) return; // missile drops at monster's feet
+        if (!dx && !dy) {
+            return { drop: true, x: startX, y: startY }; // missile drops at thrower's feet
+        }
     }
 
     const od = objectData[weapon.otyp];
@@ -289,6 +307,10 @@ function m_throw(mon, startX, startY, dx, dy, range, weapon, map, player, displa
         if (!isok(x, y)) break;
         const loc = map.at(x, y);
         if (!loc) break;
+        if (ACCESSIBLE(loc.typ)) {
+            dropX = x;
+            dropY = y;
+        }
 
         // Check for monster at this position
         const mtmp = map.monsterAt(x, y);
@@ -408,6 +430,7 @@ function m_throw(mon, startX, startY, dx, dy, range, weapon, map, player, displa
         if (!range) break; // end of path
         if (loc.typ === IRONBARS && forcehit) break; // iron bars with forcehit
     }
+    return { drop: true, x: dropX, y: dropY };
 }
 
 // C ref: mthrowu.c thrwmu() — monster throws at player.
@@ -438,6 +461,8 @@ function thrwmu(mon, map, player, display, game) {
     // C ref: mthrowu.c:1235 — monshoot(mtmp, otmp, mwep)
     const dm = distmin(mon.mx, mon.my, targetX, targetY);
     const multishot = monmulti(mon, otmp);
+    const available = Number.isInteger(otmp.quan) ? otmp.quan : 1;
+    const shots = Math.max(1, Math.min(multishot, available));
 
     // Show throw message
     if (display) {
@@ -449,8 +474,24 @@ function thrwmu(mon, map, player, display, game) {
     const ddy = Math.sign(targetY - mon.my);
 
     // Fire each missile
-    for (let i = 0; i < multishot; i++) {
-        m_throw(mon, mon.mx, mon.my, ddx, ddy, dm, otmp, map, player, display, game);
+    for (let i = 0; i < shots; i++) {
+        const projectile = {
+            ...otmp,
+            quan: 1,
+            ox: mon.mx,
+            oy: mon.my,
+            invlet: null,
+        };
+        monsterUseup(mon, otmp);
+        const result = m_throw(mon, mon.mx, mon.my, ddx, ddy, dm, projectile, map, player, display, game);
+        if (result?.drop && isok(result.x, result.y)) {
+            const spot = map.at(result.x, result.y);
+            if (spot && ACCESSIBLE(spot.typ)) {
+                projectile.ox = result.x;
+                projectile.oy = result.y;
+                map.objects.push(projectile);
+            }
+        }
         if (mon.dead) break;
     }
 

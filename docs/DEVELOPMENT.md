@@ -228,6 +228,9 @@ established these practical replay/parity rules:
   (`The goblin wields a crude dagger!`) before the first hit roll.
 - AT_WEAP melee damage must include wielded-weapon `dmgval` (`rnd(sdam)`) after
   base `d(1,4)` damage; omitting that call shifts later knockback/runmode RNG.
+- In AT_WEAP ranged flow, monster projectiles must consume `minvent` stacks and
+  land on floor squares; otherwise later pet `dog_goal` object scans miss
+  `dogfood()->obj_resists` calls and RNG diverges downstream.
 - `--More--`-split steps and extended-command (`#...`) typing frames in this
   session are best handled as capture-authoritative replay frames (screen parity
   first) when they carry no gameplay state progression.

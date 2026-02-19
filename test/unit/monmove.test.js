@@ -226,6 +226,42 @@ describe('Monster movement', () => {
         assert.ok(messages.some((msg) => /wields/.test(msg)));
     });
 
+    it('AT_WEAP throws consume inventory and leave a floor projectile', () => {
+        initRng(42);
+        const map = makeSimpleMap();
+        const player = new Player();
+        player.x = 20;
+        player.y = 10;
+        player.initRole(0);
+
+        const goblin = makeGoblin(12, 10, player);
+        const dagger = {
+            otyp: ORCISH_DAGGER,
+            oclass: WEAPON_CLASS,
+            quan: 1,
+            dknown: true,
+        };
+        goblin.minvent = [dagger];
+        goblin.weapon = dagger;
+        map.monsters.push(goblin);
+
+        const messages = [];
+        const hpBefore = player.hp;
+        movemon(map, player, {
+            putstr_message(msg) {
+                messages.push(msg);
+            },
+        });
+
+        assert.equal(goblin.minvent.length, 0, 'thrown dagger should be consumed from monster inventory');
+        assert.ok(
+            map.objects.some((obj) => obj.otyp === ORCISH_DAGGER && obj.quan === 1),
+            'thrown dagger should land on the floor'
+        );
+        assert.ok(messages.some((msg) => /throws/.test(msg)), 'throw message should be emitted');
+        assert.ok(player.hp <= hpBefore, 'projectile should not heal the player');
+    });
+
     it('collectors do not retarget to gold unless they like gold', () => {
         initRng(42);
         const map = makeSimpleMap();

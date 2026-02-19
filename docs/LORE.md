@@ -636,6 +636,19 @@ Practical rule:
 - Apply this gate before `monshoot`/`m_throw`; otherwise JS enters throw-flight
   RNG when C exits early.
 
+### Monster-thrown projectiles must be materialized on floor and consumed from `minvent`
+
+In C `mthrowu` flow, monster projectiles are real objects: throws consume stack
+quantity from monster inventory and the projectile lands on the map unless
+destroyed. If JS models only damage/message side effects (without object
+consumption/placement), later pet `dog_goal` scans miss `dogfood()->obj_resists`
+calls and RNG diverges in pet movement turns.
+
+Practical rule:
+- decrement/remove thrown stack entries from `mon.minvent` as missiles are fired
+- place each surviving projectile on a valid floor square at end of flight
+- avoid adding new RNG in this bookkeeping path (ID assignment included)
+
 ### `doread` `?/*` help is a modal `--More--` listing, not a one-key no-op
 
 In tourist traces, pressing `?` (or `*`) at `What do you want to read?` opens a
