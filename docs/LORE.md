@@ -666,6 +666,28 @@ Building item action prompts from ad-hoc `item.name` strings causes drift like
 Practical rule: derive prompt noun text from `xname()` (singular/plural as
 needed) so menu wording and right-side offset match C inventory action menus.
 
+### Do not drop typed `#` getlin frames; only skip keyless prompt echoes
+
+In strict gameplay replay, keylog frames for extended commands can appear as:
+`#`, then typed letters (`# l`, `# lo`, ...), then `Enter`, all with `rng=0`.
+Dropping those keyed frames causes state drift because the command never reaches
+`getlin` (for example `#loot` at a door), and a later `Enter` can be misread as
+normal movement input.
+
+Practical rule: for `rng=0` frames whose topline starts with `#`, skip only
+keyless display-only echoes. Keep keyed frames so extended-command input is
+delivered exactly.
+
+### Pickup no-object messages are terrain-dependent in C
+
+`pickup_checks()` in C (`hack.c`) does not always print the generic
+`There is nothing here to pick up.` when no object is on the square. It emits
+terrain-specific lines for throne/sink/grave/fountain/open-door/altar/stairs.
+Missing these lines causes prompt/message screen drift even when RNG is stable.
+
+Practical rule: before the generic pickup message, check terrain and emit C text,
+including open-door: `It won't come off the hinges.`
+
 ---
 
 ## Phase Chronicles

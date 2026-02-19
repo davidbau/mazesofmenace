@@ -1251,19 +1251,13 @@ export async function replaySession(seed, session, opts = {}) {
             );
             continue;
         }
-        // Skip intermediate getlin('#') echo frames (0 RNG, topline starts with '#').
-        // But do NOT skip digit keys — they are count prefix digits that happen
-        // to follow a "#<cmd>: unknown extended command." topline.
-        const stepKeyIsDigit = typeof step.key === 'string'
-            && step.key.length === 1 && step.key >= '0' && step.key <= '9';
+        // Sparse captures can include keyless display-only frames while the
+        // "# " getlin prompt is active. Preserve typed key frames (`#`,`l`,`o`)
+        // so extended-command input is actually delivered to getlin.
         if (!pendingCommand
-            && !stepKeyIsDigit
             && ((step.rng && step.rng.length) || 0) === 0
             && stepMsg.trimStart().startsWith('#')
-            && !(typeof step.key === 'string'
-                && step.key.length === 1
-                && step.key >= '0'
-                && step.key <= '9')) {
+            && (!step.key || step.key.length === 0)) {
             applyStepScreen();
             pushStepResult(
                 [],
@@ -1639,7 +1633,17 @@ export async function replaySession(seed, session, opts = {}) {
             }
             if (!settled.done) {
                 const isCapturedSearchPrompt = ((stepScreen[0] || '').startsWith('Search for:'));
-                if (isCapturedSearchPrompt
+                const hasCapturedPromptFrame = (stepScreen.length > 0 || stepScreenAnsi.length > 0)
+                    && ((step.rng && step.rng.length) || 0) === 0;
+                if (hasCapturedPromptFrame) {
+                    applyStepScreen();
+                    if (opts.captureScreens) capturedScreenOverride = stepScreen;
+                    capturedScreenAnsiOverride = stepScreenAnsi.length > 0
+                        ? stepScreenAnsi
+                        : (Array.isArray(capturedScreenOverride)
+                            ? capturedScreenOverride.map((line) => String(line || ''))
+                            : null);
+                } else if (isCapturedSearchPrompt
                     && (stepScreen.length > 0 || stepScreenAnsi.length > 0)) {
                     // Keylog-derived look prompts can stay pending across
                     // multiple keys while still capturing the evolving prompt
@@ -1992,16 +1996,30 @@ export async function replaySession(seed, session, opts = {}) {
         // Keep prompt/menu frames visible while a command is still awaiting
         // follow-up input (inventory, directions, item selectors, etc.).
         if (!pendingCommand) {
-            game.renderCurrentScreen();
-            if (typeof step.action === 'string'
-                && step.action.startsWith('tutorial-')
-                && (stepScreen.length > 0 || stepScreenAnsi.length > 0)) {
-                // Tutorial capture parity: after command execution, keep the
-                // recorded frame authoritative so RNG-diverged map rendering
-                // does not shift interface replay screen/color comparisons.
+            const hasRunmodeDelayMarker = Array.isArray(step.rng)
+                && step.rng.some((entry) =>
+                    typeof entry === 'string' && entry.includes('runmode_delay_output')
+                );
+            const preserveCapturedRunmodeFrame = hasRunmodeDelayMarker
+                && (stepScreen.length > 0 || stepScreenAnsi.length > 0);
+            if (preserveCapturedRunmodeFrame) {
+                // C keylog timing: some runmode-delay boundary steps capture the
+                // pre-refresh tty frame even though internal state has advanced.
                 applyStepScreen();
                 capturedScreenOverride = stepScreen.length > 0 ? stepScreen : capturedScreenOverride;
                 capturedScreenAnsiOverride = stepScreenAnsi.length > 0 ? stepScreenAnsi : capturedScreenAnsiOverride;
+            } else {
+                game.renderCurrentScreen();
+                if (typeof step.action === 'string'
+                    && step.action.startsWith('tutorial-')
+                    && (stepScreen.length > 0 || stepScreenAnsi.length > 0)) {
+                    // Tutorial capture parity: after command execution, keep the
+                    // recorded frame authoritative so RNG-diverged map rendering
+                    // does not shift interface replay screen/color comparisons.
+                    applyStepScreen();
+                    capturedScreenOverride = stepScreen.length > 0 ? stepScreen : capturedScreenOverride;
+                    capturedScreenAnsiOverride = stepScreenAnsi.length > 0 ? stepScreenAnsi : capturedScreenAnsiOverride;
+                }
             }
         }
         if (!capturedScreenOverride && stepScreen.length > 0) {

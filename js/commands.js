@@ -1592,6 +1592,30 @@ function handlePickup(player, map, display) {
     const objs = map.objectsAt(player.x, player.y);
     if (objs.length === 0) {
         const loc = map.at(player.x, player.y);
+        if (loc && loc.typ === THRONE) {
+            display.putstr_message(`It must weigh${loc.looted ? ' almost' : ''} a ton!`);
+            return { moved: false, tookTime: false };
+        }
+        if (loc && loc.typ === SINK) {
+            display.putstr_message('The plumbing connects it to the floor.');
+            return { moved: false, tookTime: false };
+        }
+        if (loc && loc.typ === GRAVE) {
+            display.putstr_message("You don't need a gravestone.  Yet.");
+            return { moved: false, tookTime: false };
+        }
+        if (loc && loc.typ === FOUNTAIN) {
+            display.putstr_message('You could drink the water...');
+            return { moved: false, tookTime: false };
+        }
+        if (loc && IS_DOOR(loc.typ) && (loc.flags & D_ISOPEN)) {
+            display.putstr_message("It won't come off the hinges.");
+            return { moved: false, tookTime: false };
+        }
+        if (loc && loc.typ === ALTAR) {
+            display.putstr_message('Moving the altar would be a very bad idea.');
+            return { moved: false, tookTime: false };
+        }
         if (loc && loc.typ === STAIRS) {
             display.putstr_message('The stairs are solidly affixed.');
             return { moved: false, tookTime: false };
