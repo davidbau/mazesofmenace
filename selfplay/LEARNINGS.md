@@ -595,6 +595,7 @@
 - Change:
   - Added `--repeats=N` to `selfplay/runner/c_role_matrix.js`.
   - Added `--exclusive/--no-exclusive` lock control to prevent accidental overlapping matrix runs.
+  - Added `--json-out=PATH` to write full machine-readable evaluation artifacts.
   - The runner now executes each role/seed assignment `N` times, prints:
     - overall summary over all runs,
     - per-assignment aggregate summary (when `N > 1`),
@@ -609,6 +610,7 @@
   - `node --check selfplay/runner/c_role_matrix.js`
   - Smoke test:
     - `node selfplay/runner/c_role_matrix.js --mode=custom --seeds=40 --roles=Samurai --turns=120 --key-delay=0 --quiet --repeats=2`
+    - `node selfplay/runner/c_role_matrix.js --mode=custom --seeds=40 --roles=Samurai --turns=60 --key-delay=0 --quiet --repeats=2 --json-out=/tmp/role_matrix_smoke.json`
   - Confirmed new aggregate + per-run outputs render correctly.
 
 - Usage guidance:

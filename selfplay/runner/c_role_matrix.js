@@ -10,8 +10,10 @@
 //   node selfplay/runner/c_role_matrix.js --mode=train --seeds=21-33 --turns=1200 --key-delay=0
 //   node selfplay/runner/c_role_matrix.js --mode=holdout --repeats=3
 //   node selfplay/runner/c_role_matrix.js --seeds=31-40 --roles=Wizard,Tourist,Valkyrie
+//   node selfplay/runner/c_role_matrix.js --mode=holdout --repeats=2 --json-out=/tmp/holdout.json
 
 import fs from 'fs';
+import path from 'path';
 import { spawnSync } from 'child_process';
 
 const ALL_ROLES = [
@@ -38,6 +40,7 @@ const opts = {
     quiet: true,
     exclusive: true,    // prevent concurrent matrix runs
     repeats: 1,         // runs per role/seed assignment
+    jsonOut: null,      // optional output path for machine-readable results
     seeds: null,        // comma list and/or ranges, e.g. 21-33 or 21,22,30-35
     roles: null,        // comma-separated list
     verboseFailures: false,
@@ -55,6 +58,7 @@ for (let i = 0; i < args.length; i++) {
             else if (k === '--key-delay') opts.keyDelay = parseInt(v, 10);
             else if (k === '--exclusive') opts.exclusive = (v !== 'false');
             else if (k === '--repeats') opts.repeats = parseInt(v, 10);
+            else if (k === '--json-out') opts.jsonOut = v;
             else if (k === '--seeds') opts.seeds = v;
             else if (k === '--roles') opts.roles = v;
             else if (k === '--quiet') opts.quiet = (v !== 'false');
@@ -67,6 +71,7 @@ for (let i = 0; i < args.length; i++) {
     else if (arg === '--exclusive') opts.exclusive = true;
     else if (arg === '--no-exclusive') opts.exclusive = false;
     else if (arg === '--repeats' && args[i + 1]) opts.repeats = parseInt(args[++i], 10);
+    else if (arg === '--json-out' && args[i + 1]) opts.jsonOut = args[++i];
     else if (arg === '--seeds' && args[i + 1]) opts.seeds = args[++i];
     else if (arg === '--roles' && args[i + 1]) opts.roles = args[++i];
     else if (arg === '--verbose-failures') opts.verboseFailures = true;
@@ -249,6 +254,7 @@ const avgNoProg = avgOf(results.map(r => r.abandonNoProgress));
 const avgFailedAdds = avgOf(results.map(r => r.failedAdds));
 const avgDoorOpen = avgOf(results.map(r => r.doorOpen));
 const avgDoorKick = avgOf(results.map(r => r.doorKick));
+const groupedAssignments = groupByAssignment(results);
 console.log(`  Survived: ${survived}/${results.length}`);
 console.log(`  Avg depth: ${Number.isFinite(avgDepth) ? avgDepth.toFixed(3) : 'NA'}`);
 console.log(`  Reached depth>=3: ${reached3}/${results.length}`);
@@ -262,13 +268,12 @@ console.log(`  Dog loop avg: lowXpDogLoop=${fmtAvg(avgLowXpDogLoopTurns)} doorAd
 console.log(`  Explore avg: assign=${fmtAvg(avgAssign)} complete=${fmtAvg(avgComplete)} noProg=${fmtAvg(avgNoProg)} failedAdd=${fmtAvg(avgFailedAdds)} doorOpen=${fmtAvg(avgDoorOpen)} doorKick=${fmtAvg(avgDoorKick)}`);
 if (opts.repeats > 1) {
     console.log('\nPer-role aggregate results');
-    const grouped = groupByAssignment(results);
-    for (const g of grouped) {
+    for (const g of groupedAssignments) {
         console.log(`  role=${g.role} seed=${g.seed} runs=${g.runs} survived=${g.survived}/${g.runs} avgDepth=${fmtAvg(g.avgDepth)} avgMaxXP=${fmtAvg(g.avgMaxXP)} avgXP600=${fmtAvg(g.avgXP600)} avgAttack=${fmtAvg(g.avgAttackTurns)} avgFlee=${fmtAvg(g.avgFleeTurns)} avgDogLoop=${fmtAvg(g.avgLowXpDogLoopTurns)} avgFailedAdd=${fmtAvg(g.avgFailedAdds)}`);
     }
-    const variable = grouped.filter(g => g.signatureCount > 1);
+    const variable = groupedAssignments.filter(g => g.signatureCount > 1);
     console.log('\nRepeat variance diagnostics');
-    console.log(`  Assignments with run-to-run differences: ${variable.length}/${grouped.length}`);
+    console.log(`  Assignments with run-to-run differences: ${variable.length}/${groupedAssignments.length}`);
     for (const g of variable) {
         console.log(`  role=${g.role} seed=${g.seed} signatures=${g.signatureCount} depthRange=${fmtRange(g.minDepth, g.maxDepth)} maxXPRange=${fmtRange(g.minMaxXP, g.maxMaxXP)} xp600Range=${fmtRange(g.minXP600, g.maxXP600)} failedAddRange=${fmtRange(g.minFailedAdds, g.maxFailedAdds)} causes=${g.causeSet.join('|')}`);
     }
@@ -278,6 +283,62 @@ for (const r of results) {
     const repTag = opts.repeats > 1 ? ` repeat=${r.repeat}` : '';
     console.log(`  role=${r.role} seed=${r.seed}${repTag} depth=${r.depth ?? 'NA'} cause=${r.cause} maxXL=${r.maxXL ?? 'NA'} maxXP=${r.maxXP ?? 'NA'} xp100=${r.xp100 ?? 'NA'} xp200=${r.xp200 ?? 'NA'} xp400=${r.xp400 ?? 'NA'} xp600=${r.xp600 ?? 'NA'} atk=${r.attackTurns ?? 'NA'} flee=${r.fleeTurns ?? 'NA'} xl1Atk=${r.xl1AttackTurns ?? 'NA'} reallyAtk=${r.reallyAttackPrompts ?? 'NA'} petSwap=${r.petSwapCount ?? 'NA'} petAtk=${r.attackPetClassTurns ?? 'NA'} petAtkLow=${r.attackPetClassLowXpDlvl1Turns ?? 'NA'} dogAtk=${r.attackDogTurns ?? 'NA'} dogAtkLow=${r.attackDogLowXpDlvl1Turns ?? 'NA'} dogLoop=${r.lowXpDogLoopTurns ?? 'NA'} dogLoopDoorAdj=${r.lowXpDogLoopDoorAdjTurns ?? 'NA'} dogLoopDoorAdjAtk=${r.attackLowXpDogLoopDoorAdjTurns ?? 'NA'} dogLoopBlock=${r.lowXpDogLoopBlockingTurns ?? 'NA'} dogLoopNonBlock=${r.lowXpDogLoopNonBlockingTurns ?? 'NA'} dogLoopAtkBlock=${r.attackLowXpDogLoopBlockingTurns ?? 'NA'} dogLoopAtkNonBlock=${r.attackLowXpDogLoopNonBlockingTurns ?? 'NA'} xl2=${r.xl2} xl3=${r.xl3} assign=${r.targetAssign ?? 'NA'} complete=${r.targetComplete ?? 'NA'} noProg=${r.abandonNoProgress ?? 'NA'} failedAdd=${r.failedAdds ?? 'NA'} doorOpen=${r.doorOpen ?? 'NA'} doorKick=${r.doorKick ?? 'NA'}`);
 }
+
+const summary = {
+    survived,
+    totalRuns: results.length,
+    avgDepth,
+    reachedDepthGte3: reached3,
+    reachedXL2,
+    reachedXL3,
+    avgMaxXP,
+    avgXP100,
+    avgXP200,
+    avgXP400,
+    avgXP600,
+    reachedXP10By600,
+    reachedXP20By600,
+    avgAttackTurns,
+    avgFleeTurns,
+    avgXl1AttackTurns,
+    avgReallyAttackPrompts,
+    avgPetSwaps,
+    avgAttackPetClassTurns,
+    avgAttackPetClassLowXpDlvl1Turns,
+    avgAttackDogTurns,
+    avgAttackDogLowXpDlvl1Turns,
+    avgLowXpDogLoopTurns,
+    avgLowXpDogLoopDoorAdjTurns,
+    avgAttackLowXpDogLoopDoorAdjTurns,
+    avgLowXpDogLoopBlockingTurns,
+    avgLowXpDogLoopNonBlockingTurns,
+    avgAttackLowXpDogLoopBlockingTurns,
+    avgAttackLowXpDogLoopNonBlockingTurns,
+    avgAssign,
+    avgComplete,
+    avgNoProg,
+    avgFailedAdds,
+    avgDoorOpen,
+    avgDoorKick,
+};
+
+if (opts.jsonOut) {
+    const resolved = writeJsonOut(opts.jsonOut, {
+        generatedAt: new Date().toISOString(),
+        cwd: process.cwd(),
+        pid: process.pid,
+        options: opts,
+        roles,
+        seedPool,
+        assignments,
+        summary,
+        groupedAssignments,
+        results,
+    });
+    console.log(`\nJSON results written: ${resolved}`);
+}
+
+lockState.release();
 
 function avgOf(values) {
     const nums = values.filter(v => Number.isFinite(v));
@@ -292,6 +353,14 @@ function fmtAvg(v) {
 function fmtRange(minV, maxV) {
     if (!Number.isFinite(minV) || !Number.isFinite(maxV)) return 'NA';
     return `${minV}..${maxV}`;
+}
+
+function writeJsonOut(outputPath, payload) {
+    const resolved = path.resolve(outputPath);
+    const dir = path.dirname(resolved);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(resolved, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+    return resolved;
 }
 
 function groupByAssignment(rows) {
@@ -483,6 +552,7 @@ function printHelp() {
     console.log('  --key-delay=MS                Key delay (default: 0)');
     console.log('  --exclusive/--no-exclusive    Enable lock to prevent overlapping matrix runs (default: on)');
     console.log('  --repeats=N                   Repeat each role/seed assignment N times (default: 1)');
+    console.log('  --json-out=PATH               Write machine-readable results JSON');
     console.log('  --quiet / --no-quiet          Pass quiet/verbose through to c_runner');
     console.log('  --verbose-failures            Print tail output for failed runs');
     console.log('');
