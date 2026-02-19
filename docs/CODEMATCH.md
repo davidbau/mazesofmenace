@@ -584,7 +584,7 @@ Notes:
 | `little_to_big` | 1303 | `little_to_big` | — | Match (exported; uses grownups table) |
 | `big_to_little` | 1316 | `big_to_little` | — | Match (exported; uses grownups table) |
 | `big_little_match` | 1331 | `big_little_match` | — | Match (exported; checks grow-up chain membership) |
-| `levl_follower` | 1211 | — | — | TODO (needs player steed/tame/wiz state) |
+| `levl_follower` | 1211 | `levl_follower` | — | Match (exported; takes mon + player arg for steed/inventory access) |
 | `mon_knows_traps` | — | `mon_knows_traps` | 367 | Match (exported; predates this section) |
 | `mon_learns_traps` | — | `mon_learns_traps` | 377 | Match (exported; predates this section) |
 

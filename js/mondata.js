@@ -95,6 +95,8 @@ import {
     PM_KOBOLD_ZOMBIE, PM_KOBOLD_MUMMY,
 } from './monsters.js';
 
+import { AMULET_OF_YENDOR } from './objects.js';
+
 // ========================================================================
 // Diet predicates — C ref: mondata.h
 // ========================================================================
@@ -849,4 +851,22 @@ export function same_race(pm1, pm2) {
     // Longworm family
     if (is_longworm(pm1)) return is_longworm(pm2);
     return false;
+}
+
+// C ref: mondata.c:1211 — determine if monster will follow player across levels
+// player arg carries: player.usteed (steed ref), player.inventory (to check for Amulet of Yendor)
+// mon arg is a live monster (not just permonst ptr): has tame, iswiz, flee, isshk, following, minvent
+export function levl_follower(mon, player) {
+    // C: if (mtmp == u.usteed) return TRUE
+    if (player && mon === player.usteed) return true;
+    // C: if (mtmp->iswiz && mon_has_amulet(mtmp)) return FALSE
+    // mon_has_amulet: monster inventory contains the Amulet of Yendor
+    if (mon.iswiz && (mon.minvent || []).some(o => o?.otyp === AMULET_OF_YENDOR)) return false;
+    // C: if (mtmp->mtame || mtmp->iswiz || is_fshk(mtmp)) return TRUE
+    // is_fshk: isshk && eshk->following
+    if (mon.tame || mon.iswiz || (mon.isshk && mon.following)) return true;
+    // C: return (mtmp->data->mflags2 & M2_STALK) && (!mtmp->mflee || u.uhave.amulet)
+    const playerHasAmulet = player && Array.isArray(player.inventory)
+        && player.inventory.some(o => o?.otyp === AMULET_OF_YENDOR);
+    return !!(mon.type?.flags2 & M2_STALK) && (!mon.flee || !!playerHasAmulet);
 }

@@ -5,7 +5,8 @@
 //        haseyes, hates_light, mon_hates_light, poly_when_stoned, can_track,
 //        can_blow, can_chant, can_be_strangled,
 //        little_to_big, big_to_little, big_little_match, same_race,
-//        is_mind_flayer, is_unicorn, is_rider, is_longworm
+//        is_mind_flayer, is_unicorn, is_rider, is_longworm,
+//        levl_follower
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -21,6 +22,7 @@ import {
     can_blow, can_chant, can_be_strangled,
     little_to_big, big_to_little, big_little_match, same_race,
     is_mind_flayer, is_unicorn, is_rider, is_longworm,
+    levl_follower,
 } from '../../js/mondata.js';
 import {
     mons,
@@ -39,6 +41,7 @@ import {
     AT_CLAW, AT_BITE,
     AD_STCK, AD_FIRE,
 } from '../../js/monsters.js';
+import { AMULET_OF_YENDOR } from '../../js/objects.js';
 
 // ========================================================================
 // noattacks
@@ -650,5 +653,73 @@ describe('same_race', () => {
     it('returns false for tengu and imp (tengu exception)', () => {
         // tengu is S_IMP but does not match imps
         assert.equal(same_race(mons[PM_TENGU], mons[PM_TENGU - 1]), false);
+    });
+});
+
+// ========================================================================
+// levl_follower (C ref: mondata.c:1211)
+// ========================================================================
+
+describe('levl_follower', () => {
+    function makeMon(overrides = {}) {
+        return { type: mons[PM_DOG], tame: 0, iswiz: false, isshk: false,
+                 following: false, flee: false, minvent: [], ...overrides };
+    }
+
+    it('steed always follows (mtmp == u.usteed)', () => {
+        const mon = makeMon();
+        const player = { usteed: mon, inventory: [] };
+        assert.equal(levl_follower(mon, player), true);
+    });
+
+    it('tame monster always follows', () => {
+        const mon = makeMon({ tame: 5 });
+        assert.equal(levl_follower(mon, { inventory: [] }), true);
+    });
+
+    it('wizard follows (iswiz=true, no amulet)', () => {
+        const mon = makeMon({ iswiz: true });
+        assert.equal(levl_follower(mon, { inventory: [] }), true);
+    });
+
+    it('wizard with Amulet of Yendor does NOT follow', () => {
+        const amulet = { otyp: AMULET_OF_YENDOR };
+        const mon = makeMon({ iswiz: true, minvent: [amulet] });
+        assert.equal(levl_follower(mon, { inventory: [] }), false);
+    });
+
+    it('following shopkeeper follows (is_fshk)', () => {
+        const mon = makeMon({ isshk: true, following: true });
+        assert.equal(levl_follower(mon, { inventory: [] }), true);
+    });
+
+    it('non-following shopkeeper does not follow via is_fshk path', () => {
+        // isshk but not following — falls through to M2_STALK check
+        // PM_DOG has no M2_STALK, so should be false
+        const mon = makeMon({ isshk: true, following: false });
+        assert.equal(levl_follower(mon, { inventory: [] }), false);
+    });
+
+    it('stalking monster (Death) follows when not fleeing', () => {
+        const mon = makeMon({ type: mons[PM_DEATH], flee: false });
+        assert.equal(levl_follower(mon, { inventory: [] }), true);
+    });
+
+    it('stalking monster fleeing does NOT follow (no player amulet)', () => {
+        const mon = makeMon({ type: mons[PM_DEATH], flee: true });
+        assert.equal(levl_follower(mon, { inventory: [] }), false);
+    });
+
+    it('stalking monster fleeing DOES follow when player has Amulet of Yendor', () => {
+        const mon = makeMon({ type: mons[PM_DEATH], flee: true });
+        const player = { inventory: [{ otyp: AMULET_OF_YENDOR }] };
+        assert.equal(levl_follower(mon, player), true);
+    });
+
+    it('non-stalking, non-tame monster does not follow', () => {
+        // PM_GRID_BUG has no M2_STALK
+        const gridBugIdx = mons.findIndex(m => m.name === 'grid bug');
+        const mon = makeMon({ type: mons[gridBugIdx] });
+        assert.equal(levl_follower(mon, { inventory: [] }), false);
     });
 });
