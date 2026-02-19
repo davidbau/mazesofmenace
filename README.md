@@ -36,7 +36,7 @@ In February 2025, Andrej Karpathy coined the term **"vibe coding"** to describe 
 
 This project is a test of that proposition at scale. Can AI agents, directed by a human who understands the game deeply, produce a faithful port of one of the most complex single-player codebases in gaming history? Not a toy demo or a weekend throwaway, but a real, playable, parity-correct reimplementation—tens of thousands of lines of readable JavaScript that match NetHack's behavior down to the random number generator?
 
-The entire codebase—50+ JavaScript modules, 500+ passing unit tests, 170+ golden C-comparison sessions, and a suite of Python test harness scripts—was produced through natural-language conversation with AI agents. The human provided direction, taste, and domain knowledge about NetHack; the agents wrote the code, tests, and documentation.
+The entire codebase—180 JavaScript modules, 1,500+ passing unit tests, 200+ golden C-comparison sessions, and a suite of Python test harness scripts—was produced through natural-language conversation with AI agents. The human provided direction, taste, and domain knowledge about NetHack; the agents wrote the code, tests, and documentation.
 
 ## Architecture
 
@@ -93,8 +93,8 @@ throughout. See the full architecture and design documents:
 
 Shops, special levels, altars/prayer, spellcasting, wand/potion/scroll
 effects, polymorph, full inventory management (wear/wield/quaff/read/zap),
-and many other subsystems. NetHack has ~150,000 lines of C — this port
-covers the core loop and early gameplay.
+and many other subsystems. NetHack has ~280,000 lines of C — this port
+covers the core loop and early gameplay with 75,000+ lines of JavaScript.
 
 The Hive is aware of this.
 
@@ -161,7 +161,7 @@ python3 scripts/generators/gen_objects.py > js/objects.js      # 478 objects
 ```
 writer/
 ├── index.html              Main web entry point
-├── js/                     Game source (50+ modules mirroring C structure)
+├── js/                     Game source (180 modules mirroring C structure)
 │   ├── commands.js         Command dispatch
 │   ├── dungeon.js          Dungeon generation & management
 │   ├── display.js          Terminal rendering
@@ -172,10 +172,10 @@ writer/
 │   ├── isaac64.js          ISAAC64 PRNG (bit-identical to C)
 │   ├── monsters.js         382 monster definitions (generated)
 │   ├── objects.js          478 object definitions (generated)
-│   ├── levels/             100+ special level modules
+│   ├── levels/             131 special level modules
 │   └── ...
 ├── test/
-│   ├── unit/               110+ unit test files
+│   ├── unit/               135 unit test files
 │   ├── comparison/         C-vs-JS golden session tests
 │   ├── e2e/                Puppeteer browser tests
 │   └── selfplay/           Self-play harness tests
