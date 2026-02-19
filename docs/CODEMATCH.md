@@ -94,7 +94,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[~]` | mkobj.c | mkobj.js | Object creation |
 | `[ ]` | mkroom.c | — | Room generation. JS: partially in `sp_lev.js` |
 | `[a]` | mon.c | mon.js | Monster lifecycle: movemon, mfndpos, mm_aggression, corpse_chance, passivemm, hider premove |
-| `[a]` | mondata.c | mondata.js | Monster data queries: predicates, mon_knows_traps, passes_bars |
+| `[a]` | mondata.c | mondata.js | Monster data queries: predicates, mon_knows_traps, passes_bars, dmgtype, hates_silver, sticks, etc. |
 | `[a]` | monmove.c | monmove.js | Monster movement: dochug, m_move, m_move_aggress, set_apparxy, m_search_items |
 | `[ ]` | monst.c | — | Monster data tables. JS: `monsters.js` |
 | `[ ]` | mplayer.c | — | Player-like monster generation |
@@ -512,6 +512,51 @@ Notes:
 | `tamedog` | 1139 | — | — | — | TODO (taming a monster) |
 | `wary_dog` | 1288 | — | — | — | TODO (make pet wary after death) |
 | `abuse_dog` | 1358 | — | — | — | TODO (abuse pet — decrease tameness) |
+
+### mondata.c → mondata.js
+
+Notes:
+- JS uses `ptr.attacks[i].type` (aatyp) and `ptr.attacks[i].damage` (adtyp); C uses `mattk[i].aatyp`/`adtyp`.
+- `DISTANCE_ATTK_TYPE` = AT_SPIT || AT_BREA || AT_MAGC || AT_GAZE (from monattk.h); used in `ranged_attk`.
+- `is_whirly(ptr)` = S_VORTEX || PM_AIR_ELEMENTAL; `noncorporeal(ptr)` = S_GHOST (from mondata.h).
+- `bigmonst(ptr)` = size >= MZ_LARGE; `verysmall(ptr)` = size < MZ_SMALL.
+- `mon_hates_silver`/`mon_hates_blessings`: C also checks `is_vampshifter()`; JS omits (no shapeshifter-form tracking).
+- Many mondata.h macro predicates (carnivorous, is_undead, etc.) are already in mondata.js — listed separately below.
+
+| C function | C line | JS function | JS line | Status |
+|---|---|---|---|---|
+| `set_mon_data` | 13 | — | — | N/A (in JS: inline assignment) |
+| `attacktype_fordmg` | 42 | `dmgtype_fromattack` | 418 | Match (exported; arg order matches C `dmgtype_fromattack`) |
+| `attacktype` | 54 | `attacktype` | 266 | Match (exported; predates this section) |
+| `noattacks` | 61 | `noattacks` | 435 | Match (exported) |
+| `poly_when_stoned` | 80 | — | — | TODO (needs mvitals[PM_STONE_GOLEM].mvflags) |
+| `defended` | 91 | — | — | TODO (needs inventory/worn items) |
+| `Resists_Elem` | 139 | — | — | TODO (needs full resistance stack) |
+| `resists_drli` | 192 | — | — | TODO (needs player state) |
+| `resists_magm` | 201 | — | — | TODO (needs player state) |
+| `resists_blnd` | 212 | — | — | TODO (needs player state) |
+| `ranged_attk` | 402 | `ranged_attk` | 447 | Match (exported; uses DISTANCE_ATTK_TYPE) |
+| `mon_hates_silver` | 517 | `mon_hates_silver` | 482 | Match (exported; vampshifter check omitted) |
+| `hates_silver` | 524 | `hates_silver` | 471 | Match (exported) |
+| `mon_hates_blessings` | 533 | `mon_hates_blessings` | 496 | Match (exported; vampshifter check omitted) |
+| `hates_blessings` | 540 | `hates_blessings` | 489 | Match (exported) |
+| `mon_hates_light` | 547 | — | — | TODO (needs hates_light(ptr)) |
+| `passes_bars` | 554 | `passes_bars` | 399 | Match (exported; predates this section) |
+| `can_blow` | 566 | — | — | TODO (needs player Strangled state) |
+| `can_chant` | 579 | — | — | TODO (needs player Strangled state) |
+| `can_be_strangled` | 590 | — | — | TODO (needs player state) |
+| `can_track` | 622 | — | — | TODO (needs Excalibur artifact check) |
+| `sliparm` | 632 | `sliparm` | 528 | Match (exported) |
+| `breakarm` | 640 | `breakarm` | 538 | Match (exported) |
+| `sticks` | 654 | `sticks` | 459 | Match (exported) |
+| `cantvomit` | 663 | `cantvomit` | 507 | Match (exported) |
+| `num_horns` | 678 | `num_horns` | 517 | Match (exported) |
+| `dmgtype_fromattack` | 700 | `dmgtype_fromattack` | 418 | Match (see attacktype_fordmg above) |
+| `dmgtype` | 712 | `dmgtype` | 429 | Match (exported) |
+| `max_passive_dmg` | 720 | — | — | TODO (needs resistance checks) |
+| `same_race` | 771 | — | — | TODO (complex species matching; dog.js has simplified version) |
+| `mon_knows_traps` | — | `mon_knows_traps` | 367 | Match (exported; predates this section) |
+| `mon_learns_traps` | — | `mon_learns_traps` | 377 | Match (exported; predates this section) |
 
 ### makemon.c → makemon.js
 
