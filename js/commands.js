@@ -2914,26 +2914,37 @@ async function handleFire(player, map, display, game) {
         }
         return throwResult;
     }
-    if (quiverItem?.invlet) {
-        fireLetters.push(quiverItem.invlet);
-    }
+    // C ref: wield.c ready_ok() — classify each item as SUGGEST or DOWNPLAY.
+    // P_BOW=20, P_SLING=21, P_CROSSBOW=22.
+    const isLauncher = (o) => {
+        if (o.oclass !== WEAPON_CLASS) return false;
+        const sk = objectData[o.otyp]?.sub ?? 0;
+        return sk >= 20 && sk <= 22; // P_BOW..P_CROSSBOW
+    };
+    const isAmmo = (o) => {
+        if (o.oclass !== WEAPON_CLASS && o.oclass !== GEM_CLASS) return false;
+        const sk = objectData[o.otyp]?.sub ?? 0;
+        return sk >= -22 && sk <= -20; // -P_CROSSBOW..-P_BOW
+    };
     for (const item of inventory) {
         if (!item?.invlet) continue;
-        if (item.oclass === WEAPON_CLASS && item !== player.weapon) {
+        // Wielded weapon: downplay if single quantity
+        if (item === player.weapon) {
+            if ((item.quan || 1) > 1) fireLetters.push(item.invlet);
+            continue;
+        }
+        if (isAmmo(item)) {
+            // Ammo: suggest only if matching a wielded launcher
+            if (ammoAndLauncher(item, player.weapon)
+                || ammoAndLauncher(item, player.swapWeapon)) {
+                fireLetters.push(item.invlet);
+            }
+        } else if (isLauncher(item)) {
+            // Launchers: downplay
+        } else if (item.oclass === WEAPON_CLASS || item.oclass === COIN_CLASS) {
             fireLetters.push(item.invlet);
         }
-    }
-    if (player.weapon
-        && player.weapon.oclass !== WEAPON_CLASS
-        && inventory.includes(player.weapon)
-        && player.weapon.invlet) {
-        fireLetters.push(player.weapon.invlet);
-    }
-    if (fireLetters.length === 0) {
-        const coinItem = inventory.find((item) => item?.invlet === '$' || item?.oclass === COIN_CLASS);
-        if (coinItem?.invlet) {
-            fireLetters.push(coinItem.invlet);
-        }
+        // Everything else: downplay
     }
     const fireChoices = compactInvletPromptChars(fireLetters.join(''));
     if (fireChoices) {
