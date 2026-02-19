@@ -37,6 +37,7 @@ import {
     PM_WHITE_UNICORN, PM_GRAY_UNICORN, PM_BLACK_UNICORN, PM_KI_RIN,
     PM_HORNED_DEVIL, PM_MINOTAUR, PM_ASMODEUS, PM_BALROG,
     PM_MARILITH, PM_WINGED_GARGOYLE, PM_AIR_ELEMENTAL,
+    PM_GREMLIN, PM_STONE_GOLEM,
 } from './monsters.js';
 
 // ========================================================================
@@ -542,4 +543,32 @@ export function breakarm(ptr) {
         || (sz > MZ_SMALL && !is_humanoid(ptr))
         || ptr === mons[PM_MARILITH]
         || ptr === mons[PM_WINGED_GARGOYLE];
+}
+
+// C ref: mondata.h haseyes macro — #define haseyes(ptr) (((ptr)->mflags1 & M1_NOEYES) == 0)
+export function haseyes(ptr) { return !(ptr.flags1 & M1_NOEYES); }
+
+// C ref: mondata.h hates_light macro — #define hates_light(ptr) ((ptr) == &mons[PM_GREMLIN])
+export function hates_light(ptr) { return ptr === mons[PM_GREMLIN]; }
+
+// C ref: mondata.c:547 — mon_hates_light(mon)
+export function mon_hates_light(mon) {
+    const ptr = monsdat(mon);
+    return ptr ? hates_light(ptr) : false;
+}
+
+// C ref: mondata.c:80 — poly_when_stoned(ptr)
+// Returns true if a non-stone golem should polymorph into a stone golem when stoned.
+// Note: C also checks if PM_STONE_GOLEM is genocided (G_GENOD flag); JS omits genocide tracking.
+export function poly_when_stoned(ptr) {
+    return is_golem(ptr) && ptr !== mons[PM_STONE_GOLEM];
+}
+
+// C ref: mondata.c:622 — can_track(ptr)
+// Returns true if monster type can track the player.
+// Note: C also returns true if player wields Excalibur (u_wield_art check); JS omits
+// the artifact check since it needs player state — pass player.wieldsExcalibur to override.
+export function can_track(ptr, wieldsExcalibur = false) {
+    if (wieldsExcalibur) return true;
+    return haseyes(ptr);
 }

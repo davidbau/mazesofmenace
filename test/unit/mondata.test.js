@@ -1,7 +1,8 @@
 // mondata.test.js — Unit tests for new mondata.js exported functions
 // Tests: dmgtype_fromattack, dmgtype, noattacks, ranged_attk,
 //        hates_silver, hates_blessings, mon_hates_silver, mon_hates_blessings,
-//        sticks, cantvomit, num_horns, sliparm, breakarm
+//        sticks, cantvomit, num_horns, sliparm, breakarm,
+//        haseyes, hates_light, mon_hates_light, poly_when_stoned, can_track
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -12,6 +13,8 @@ import {
     mon_hates_silver, mon_hates_blessings,
     sticks, cantvomit, num_horns,
     sliparm, breakarm,
+    haseyes, hates_light, mon_hates_light,
+    poly_when_stoned, can_track,
 } from '../../js/mondata.js';
 import {
     mons,
@@ -19,7 +22,7 @@ import {
     PM_ROCK_MOLE, PM_WOODCHUCK, PM_HORSE, PM_WARHORSE,
     PM_WHITE_UNICORN, PM_GRAY_UNICORN, PM_BLACK_UNICORN, PM_KI_RIN,
     PM_HORNED_DEVIL, PM_MINOTAUR, PM_ASMODEUS, PM_BALROG,
-    PM_GAS_SPORE,
+    PM_GAS_SPORE, PM_GREMLIN, PM_STONE_GOLEM, PM_IRON_GOLEM,
     AT_CLAW, AT_BITE,
     AD_STCK, AD_FIRE,
 } from '../../js/monsters.js';
@@ -307,5 +310,95 @@ describe('breakarm', () => {
 
     it('returns true for minotaur (MZ_LARGE, bigmonst)', () => {
         assert.equal(breakarm(mons[PM_MINOTAUR]), true);
+    });
+});
+
+// ========================================================================
+// haseyes
+// ========================================================================
+
+describe('haseyes', () => {
+    it('returns true for little dog (has eyes)', () => {
+        assert.equal(haseyes(mons[PM_LITTLE_DOG]), true);
+    });
+
+    it('returns true for human (has eyes)', () => {
+        // mons[183] = lich (has eyes as an ex-human)
+        assert.equal(haseyes(mons[183]), true);
+    });
+
+    it('returns false for quivering blob (PM_QUIVERING_BLOB — M1_NOEYES)', () => {
+        // quivering blob has M1_NOEYES (gas spore does not — it IS an eye type)
+        assert.equal(haseyes(mons[7]), false); // PM_QUIVERING_BLOB = 7
+    });
+});
+
+// ========================================================================
+// hates_light / mon_hates_light
+// ========================================================================
+
+describe('hates_light', () => {
+    it('returns true for gremlin (only light-hating monster)', () => {
+        assert.equal(hates_light(mons[PM_GREMLIN]), true);
+    });
+
+    it('returns false for little dog', () => {
+        assert.equal(hates_light(mons[PM_LITTLE_DOG]), false);
+    });
+
+    it('returns false for vampire (not PM_GREMLIN)', () => {
+        assert.equal(hates_light(mons[PM_VAMPIRE]), false);
+    });
+});
+
+describe('mon_hates_light', () => {
+    it('returns true for a gremlin monster instance', () => {
+        const mon = { mnum: PM_GREMLIN };
+        assert.equal(mon_hates_light(mon), true);
+    });
+
+    it('returns false for a little dog monster instance', () => {
+        const mon = { mnum: PM_LITTLE_DOG };
+        assert.equal(mon_hates_light(mon), false);
+    });
+});
+
+// ========================================================================
+// poly_when_stoned
+// ========================================================================
+
+describe('poly_when_stoned', () => {
+    it('returns true for iron golem (golem, not stone golem)', () => {
+        assert.equal(poly_when_stoned(mons[PM_IRON_GOLEM]), true);
+    });
+
+    it('returns false for stone golem itself', () => {
+        assert.equal(poly_when_stoned(mons[PM_STONE_GOLEM]), false);
+    });
+
+    it('returns false for little dog (not a golem)', () => {
+        assert.equal(poly_when_stoned(mons[PM_LITTLE_DOG]), false);
+    });
+});
+
+// ========================================================================
+// can_track
+// ========================================================================
+
+describe('can_track', () => {
+    it('returns true for little dog (has eyes)', () => {
+        assert.equal(can_track(mons[PM_LITTLE_DOG]), true);
+    });
+
+    it('returns false for quivering blob (no eyes, no Excalibur)', () => {
+        assert.equal(can_track(mons[7]), false); // PM_QUIVERING_BLOB
+    });
+
+    it('returns true for quivering blob when wieldsExcalibur=true', () => {
+        assert.equal(can_track(mons[7], true), true); // PM_QUIVERING_BLOB
+    });
+
+    it('returns true for gremlin (has eyes)', () => {
+        assert.equal(can_track(mons[PM_GREMLIN]), true);
     });
 });

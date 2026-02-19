@@ -93,7 +93,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[ ]` | mkmaze.c | — | Maze generation |
 | `[~]` | mkobj.c | mkobj.js | Object creation |
 | `[ ]` | mkroom.c | — | Room generation. JS: partially in `sp_lev.js` |
-| `[a]` | mon.c | mon.js | Monster lifecycle: movemon, mfndpos, mm_aggression, corpse_chance, passivemm, hider premove |
+| `[a]` | mon.c | mon.js | Monster lifecycle: movemon, mfndpos, mm_aggression, corpse_chance, passivemm, hider premove, zombie_maker, zombie_form, undead_to_corpse, genus, pm_to_cham |
 | `[a]` | mondata.c | mondata.js | Monster data queries: predicates, mon_knows_traps, passes_bars, dmgtype, hates_silver, sticks, etc. |
 | `[a]` | monmove.c | monmove.js | Monster movement: dochug, m_move, m_move_aggress, set_apparxy, m_search_items |
 | `[ ]` | monst.c | — | Monster data tables. JS: `monsters.js` |
@@ -105,7 +105,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[N/A]` | nhlsel.c | — | Lua selection bindings (l_selection_*). All ~40 functions wrap selvar.c for Lua; JS port uses the `selection` object exported from sp_lev.js directly |
 | `[N/A]` | nhlua.c | — | Lua interpreter integration |
 | `[N/A]` | nhmd4.c | — | MD4 hash implementation |
-| `[a]` | o_init.c | o_init.js | Object class initialization. Core shuffle functions aligned; discovery functions in `discovery.js` |
+| `[a]` | o_init.c | o_init.js | Object class initialization. Core shuffle functions aligned; setgemprobs, obj_shuffle_range, objdescr_is added; discovery functions in `discovery.js` |
 | `[ ]` | objects.c | — | Object data tables. JS: `objects.js` (data), `objdata.js` (queries) |
 | `[ ]` | objnam.c | — | Object naming (xname, doname). JS: partially in `mkobj.js` |
 | `[ ]` | options.c | — | Game options. JS: `options_menu.js`, `storage.js` |
@@ -155,7 +155,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[N/A]` | version.c | — | Version info |
 | `[a]` | vision.c | vision.js | FOV / LOS. Core algorithm (view_from, right_side, left_side, clear_path, do_clear_area) matches C. block_point/dig_point/rogue_vision TODO |
 | `[ ]` | weapon.c | — | Weapon skills |
-| `[a]` | were.c | were.js | Lycanthropy. 5 of 8 functions aligned, 3 TODO |
+| `[a]` | were.c | were.js | Lycanthropy. 6 of 8 functions aligned; you_were/you_unwere TODO (need polymon/rehumanize) |
 | `[ ]` | wield.c | — | Wielding weapons |
 | `[N/A]` | windows.c | — | Windowing system interface. JS: `display.js`, `browser_input.js` |
 | `[ ]` | wizard.c | — | Wizard of Yendor AI |
@@ -294,15 +294,15 @@ Discovery/identification functions split into `discovery.js` (camelCase, noted b
 | C Function | C Line | JS File | JS Function | JS Line | Status |
 |------------|--------|---------|-------------|---------|--------|
 | `shuffle_tiles` | 34 | — | — | — | N/A — tile graphics not in JS port |
-| `setgemprobs` | 53 | — | — | — | TODO — level-depth gem probability init |
+| `setgemprobs` | 53 | o_init.js | `setgemprobs` | — | Match (exported) |
 | `randomize_gem_colors` | 84 | o_init.js | `randomize_gem_colors` | 79 | Match (private) |
 | `shuffle` | 112 | o_init.js | `shuffle` | 107 | Match (private) |
 | `init_objects` | 150 | o_init.js | `init_objects` | 204 | Match (exported) |
 | `init_oclass_probs` | 239 | objects.js | `initObjectData` | 9183 | Split — merged with `bases[]` init; C ref noted |
-| `obj_shuffle_range` | 268 | — | — | — | TODO — needed for wand-direction reveal etc. |
+| `obj_shuffle_range` | 268 | o_init.js | `obj_shuffle_range` | — | Match (exported) |
 | `shuffle_all` | 321 | o_init.js | `shuffle_all` | 154 | Match (private) |
-| `objdescr_is` | 351 | — | — | — | TODO |
-| `oinit` | 368 | — | — | — | Subsumed — `init_objects` covers; `setgemprobs` is TODO |
+| `objdescr_is` | 351 | o_init.js | `objdescr_is` | — | Match (exported) |
+| `oinit` | 368 | — | — | — | Subsumed — `init_objects` + `setgemprobs` cover this |
 | `savenames` | 374 | discovery.js | `getDiscoveryState` | 163 | Renamed — save/restore via JSON |
 | `restnames` | 410 | discovery.js | `setDiscoveryState` | 171 | Renamed — save/restore via JSON |
 | `observe_object` | 441 | discovery.js | `observeObject` | 75 | Renamed (camelCase) |
@@ -328,7 +328,7 @@ Discovery/identification functions split into `discovery.js` (camelCase, noted b
 | `counter_were` | 48 | `counter_were` | 17 | Match (exported, renamed from `counterWere`) |
 | `were_beastie` | 70 | `were_beastie` | 36 | Match |
 | `new_were` | 96 | `new_were` | 72 | Match (exported, renamed from `applyWereFormChange`) |
-| `were_summon` | 142 | — | — | TODO (needs makemon) |
+| `were_summon` | 142 | `were_summon` | 163 | Match (tamedog path TODO) |
 | `you_were` | 192 | — | — | TODO (needs polymon) |
 | `you_unwere` | 213 | — | — | TODO (needs rehumanize) |
 | `set_ulycn` | 232 | `set_ulycn` | 134 | Match (partial — needs set_uasmon) |
@@ -513,6 +513,32 @@ Notes:
 | `wary_dog` | 1288 | — | — | — | TODO (make pet wary after death) |
 | `abuse_dog` | 1358 | — | — | — | TODO (abuse pet — decrease tameness) |
 
+### mon.c → mon.js
+
+Notes:
+- C `zombie_maker` is `staticfn` (private); exported in JS for testability and reuse.
+- `zombie_form` uses ptr identity (`ptr == &mons[PM_ETTIN]`) in C; JS uses `ptr === mons[PM_ETTIN]` (same identity comparison since mons is a shared array).
+- `pm_to_cham` uses `ismnum(mndx)` in C (= `mndx >= 0 && mndx < NUMMONS`); JS checks same bounds inline.
+- `corpse_chance` and `xkilled` from C mon.c live in JS `zap.js` (see zap.c section).
+- Many C mon.c functions (xkilled, monkilled, mondied, grow_up, minliquid, make_corpse) require full game state; not yet in JS.
+
+| C function | C line | JS function | JS line | Status |
+|---|---|---|---|---|
+| `set_mon_data` | 13 | — | — | N/A (see mondata.c) |
+| `attacktype_fordmg` | 42 | — | — | N/A (see mondata.c: `dmgtype_fromattack`) |
+| `m_poisongas_ok` | 312 | — | — | TODO (needs full resistance/state checks) |
+| `zombie_maker` | 344 | `zombie_maker` | 100 | Match (exported) |
+| `zombie_form` | 368 | `zombie_form` | 111 | Match (exported) |
+| `undead_to_corpse` | 399 | `undead_to_corpse` | 137 | Match (exported) |
+| `genus` | 452 | `genus` | 155 | Match (exported) |
+| `pm_to_cham` | 517 | `pm_to_cham` | 184 | Match (exported) |
+| `make_corpse` | 546 | — | — | TODO (needs obj creation system) |
+| `onscary` | — | `onscary` | 63 | Match (exported; predates this section) |
+| `mfndpos` | — | `mfndpos` | 250 | Match (exported; predates this section) |
+| `handleHiderPremove` | — | `handleHiderPremove` | 402 | Match (exported; predates this section) |
+| `movemon` | — | `movemon` | 469 | Match (exported; predates this section) |
+| `mm_aggression` | — | `mm_aggression` | 205 | Match (private; predates this section) |
+
 ### mondata.c → mondata.js
 
 Notes:
@@ -529,7 +555,7 @@ Notes:
 | `attacktype_fordmg` | 42 | `dmgtype_fromattack` | 418 | Match (exported; arg order matches C `dmgtype_fromattack`) |
 | `attacktype` | 54 | `attacktype` | 266 | Match (exported; predates this section) |
 | `noattacks` | 61 | `noattacks` | 435 | Match (exported) |
-| `poly_when_stoned` | 80 | — | — | TODO (needs mvitals[PM_STONE_GOLEM].mvflags) |
+| `poly_when_stoned` | 80 | `poly_when_stoned` | — | Match (genocide check omitted — no JS mvitals) |
 | `defended` | 91 | — | — | TODO (needs inventory/worn items) |
 | `Resists_Elem` | 139 | — | — | TODO (needs full resistance stack) |
 | `resists_drli` | 192 | — | — | TODO (needs player state) |
@@ -540,12 +566,12 @@ Notes:
 | `hates_silver` | 524 | `hates_silver` | 471 | Match (exported) |
 | `mon_hates_blessings` | 533 | `mon_hates_blessings` | 496 | Match (exported; vampshifter check omitted) |
 | `hates_blessings` | 540 | `hates_blessings` | 489 | Match (exported) |
-| `mon_hates_light` | 547 | — | — | TODO (needs hates_light(ptr)) |
+| `mon_hates_light` | 547 | `mon_hates_light` | — | Match (exported) |
 | `passes_bars` | 554 | `passes_bars` | 399 | Match (exported; predates this section) |
 | `can_blow` | 566 | — | — | TODO (needs player Strangled state) |
 | `can_chant` | 579 | — | — | TODO (needs player Strangled state) |
 | `can_be_strangled` | 590 | — | — | TODO (needs player state) |
-| `can_track` | 622 | — | — | TODO (needs Excalibur artifact check) |
+| `can_track` | 622 | `can_track` | — | Match (Excalibur check via optional wieldsExcalibur param) |
 | `sliparm` | 632 | `sliparm` | 528 | Match (exported) |
 | `breakarm` | 640 | `breakarm` | 538 | Match (exported) |
 | `sticks` | 654 | `sticks` | 459 | Match (exported) |
@@ -762,7 +788,7 @@ Selection geometry functions are implemented as methods of the `selection` objec
 | `set_selection_floodfillchk` | 372 | N/A | — | JS closures capture matchFn directly |
 | `sel_flood_havepoint` | 379 | N/A | — | Internal staticfn helper |
 | `selection_floodfill` | 395 | `selection.floodfill(x, y, matchFn)` | 7415 | Match |
-| `selection_do_ellipse` | 456 | N/A | — | TODO (not yet in JS) |
+| `selection_do_ellipse` | 456 | `selection.ellipse(xc, yc, a, b, filled)` | — | Match (static factory) |
 | `line_dist_coord` | 542 | N/A | — | Internal helper for gradient |
 | `selection_do_gradient` | 570 | N/A | — | TODO (not yet in JS) |
 | `selection_do_line` | 626 | `selection.line(x1, y1, x2, y2)` | 6980 | Match (Bresenham) |
