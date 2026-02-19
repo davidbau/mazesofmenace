@@ -3309,6 +3309,15 @@ function isApplyPolearm(obj) {
     return skill === 18 /* P_POLEARMS */ || skill === 19 /* P_LANCE */;
 }
 
+function isApplyDownplay(obj) {
+    if (!obj) return false;
+    // C ref: apply_ok() GETOBJ_DOWNPLAY cases include coins and unknown
+    // potions; these force a prompt even when no suggested items exist.
+    if (obj.oclass === COIN_CLASS) return true;
+    if (obj.oclass === POTION_CLASS && !obj.dknown) return true;
+    return false;
+}
+
 // Handle apply/use command
 // C ref: apply.c doapply()
 async function handleApply(player, display) {
@@ -3319,6 +3328,14 @@ async function handleApply(player, display) {
     }
 
     const candidates = inventory.filter(isApplyCandidate);
+    const hasDownplay = inventory.some(isApplyDownplay);
+    if (candidates.length === 0 && !hasDownplay) {
+        display.putstr_message("You don't have anything to use or apply.");
+        return { moved: false, tookTime: false };
+    }
+
+    // C getobj() behavior: when no preferred apply candidates exist but
+    // downplay items do, keep the prompt open as "[*]".
     const letters = candidates.map((item) => item.invlet).join('');
     const prompt = letters.length > 0
         ? `What do you want to use or apply? [${letters} or ?*]`
