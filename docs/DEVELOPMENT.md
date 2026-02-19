@@ -203,6 +203,14 @@ manual tutorial session. The remaining first mismatch is RNG-only: an early
 `nhl_random` (`rn2(100)`) divergence immediately after the first tutorial
 `mktrap` call.
 
+### Inventory-Letter Parity Notes
+
+For C-faithful pickup lettering (`assigninvlet` behavior):
+
+- A dropped item can keep its prior `invlet` when picked back up, as long as that letter is currently free in inventory.
+- If that carried-over `invlet` collides with an in-use letter, inventory-letter assignment falls back to rotated `lastinvnr` allocation.
+- This affects visible pickup messages (`<invlet> - <item>.`) even when RNG remains fully aligned.
+
 ### Tourist Session Parity Notes (seed6, non-wizard)
 
 Recent work on `test/comparison/sessions/seed6_tourist_gameplay.session.json`

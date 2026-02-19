@@ -123,6 +123,18 @@ describe('Player', () => {
         assert.equal(next.invlet, 'd');
     });
 
+    it('addToInventory preserves dropped item invlet when that letter is free', () => {
+        const p = new Player();
+        const dropped = p.addToInventory({ name: 'dagger', oclass: 1, otyp: 1 });
+        p.addToInventory({ name: 'arrow', oclass: 1, otyp: 2 });
+        p.addToInventory({ name: 'armor', oclass: 2, otyp: 3 });
+        p.removeFromInventory(dropped);
+
+        const pickedBack = p.addToInventory({ name: 'dagger', oclass: 1, otyp: 1, invlet: 'a' });
+        assert.equal(pickedBack.invlet, 'a');
+        assert.equal(p.lastInvlet, 2);
+    });
+
     it('addToInventory wraps and reuses holes after cycling inventory letters', () => {
         const p = new Player();
         const items = [];

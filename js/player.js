@@ -613,12 +613,20 @@ export class Player {
             return existing;
         }
 
-        // C ref: invent.c assigninvlet() — rotate from lastinvnr and wrap.
+        // C ref: invent.c assigninvlet() — preserve an object's existing invlet
+        // when possible, otherwise rotate from lastinvnr and wrap.
         const usedLetters = new Set(
             this.inventory
                 .map(o => (o?.invlet ? String(o.invlet) : ''))
                 .filter(Boolean)
         );
+        const currentInvlet = String(obj?.invlet || '');
+        const isAlphabeticInvlet = /^[a-zA-Z]$/.test(currentInvlet);
+        if (isAlphabeticInvlet && !usedLetters.has(currentInvlet)) {
+            obj.invlet = currentInvlet;
+            this.inventory.push(obj);
+            return obj;
+        }
         const letterCount = INVENTORY_LETTERS.length;
         const start = Number.isInteger(this.lastInvlet)
             ? this.lastInvlet
