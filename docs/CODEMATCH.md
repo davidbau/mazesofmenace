@@ -57,7 +57,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[ ]` | do.c | — | Miscellaneous actions (drop, down, up) |
 | `[ ]` | do_name.c | — | Naming things (docallcmd, do_mgivenname) |
 | `[ ]` | do_wear.c | — | Wearing/removing armor and accessories |
-| `[~]` | dog.c | dog.js | Pet behavior |
+| `[a]` | dog.c | dog.js | Pet behavior. dogfood in dog.js; makedog/mon_arrive in u_init.js; losedogs/keepdogs/migrate TODO |
 | `[a]` | dogmove.c | dogmove.js | Pet movement AI. All functions except `quickmimic` |
 | `[ ]` | dokick.c | — | Kicking mechanics |
 | `[ ]` | dothrow.c | — | Throwing mechanics |
@@ -171,9 +171,9 @@ don't follow the same 1:1 C→JS mapping pattern.
 - **N/A (system/platform)**: 19
 - **Game logic files**: 110
 - **Complete (`[x]`)**: 4
-- **Aligned (`[a]`)**: 16
+- **Aligned (`[a]`)**: 17
 - **Present (`[p]`)**: 1
-- **Needs alignment (`[~]`)**: 14
+- **Needs alignment (`[~]`)**: 13
 - **No JS file yet (`[ ]`)**: 75
 
 ### JS Files Without C Counterparts
@@ -466,6 +466,40 @@ uses static symbol data in symbols.js with no mode switching at runtime.
 | `parsesymbols` | 773 | N/A — no config file option parsing |
 | `match_sym` | 852 | N/A — no config file option parsing |
 | `do_symset` | 909 | N/A — no interactive options menu in JS |
+
+### dog.c → dog.js (and u_init.js)
+
+Notes:
+- `newedog`/`free_edog` are N/A (no edog struct in JS — edog fields set inline on monster).
+- `makedog`, `mon_arrive`, `mon_catchup_elapsed_time` are in `u_init.js` (level transition module).
+- `dogfood` is in `dog.js` under the C name.
+- Many `mondata.h` predicates included in dog.js are from mondata.c (documented separately).
+- `losedogs`, `keepdogs`, `migrate_to_level`, `discard_migrations` are partially in `u_init.js` (inlined into mon_arrive).
+- JS-only helpers in dog.js: re-exports of dogmove.js functions, mondata predicates.
+
+| C Function | C Line | JS File | JS Function | JS Line | Status |
+|------------|--------|---------|-------------|---------|--------|
+| `newedog` | 23 | — | — | — | N/A (no edog struct — fields inline on monster object) |
+| `free_edog` | 35 | — | — | — | N/A (GC handles memory) |
+| `initedog` | 45 | — | — | — | TODO (edog initialization; partially inlined in shkinit/nameshk) |
+| `pet_type` | 91 | u_init.js | `pet_type` | 176 | Match (private — in u_init.js where makedog is called) |
+| `pick_familiar_pm` | 104 | — | — | — | TODO (wizard familiar selection not yet implemented) |
+| `make_familiar` | 138 | — | — | — | TODO (familiar creation for wizard) |
+| `makedog` | 219 | u_init.js | `makedog` | 236 | Split (private in u_init.js — pet placed during newgame) |
+| `set_mon_lastmove` | 287 | — | — | — | TODO (monster last-move tracking not yet needed) |
+| `update_mlstmv` | 295 | — | — | — | TODO (mlstmv update) |
+| `losedogs` | 304 | — | — | — | TODO (check for pets lost on level; partially in mon_arrive) |
+| `mon_arrive` | 420 | u_init.js | `mon_arrive` | 390 | Split (exported from u_init.js — handles level transition for pets) |
+| `mon_catchup_elapsed_time` | 623 | u_init.js | (inlined) | 484 | Split (inlined in mon_arrive — catch-up for time in limbo) |
+| `mon_leave` | 725 | — | — | — | TODO (monster leaving level) |
+| `keep_mon_accessible` | 764 | — | — | — | TODO (accessibility check for keepdogs) |
+| `keepdogs` | 785 | — | — | — | TODO (partially inlined in mon_arrive; full version needed for keep/follow logic) |
+| `migrate_to_level` | 883 | — | — | — | TODO (pending migration tracking) |
+| `discard_migrations` | 934 | — | — | — | TODO (discard queued migrations) |
+| `dogfood` | 991 | dog.js | `dogfood` | 115 | Match (exported) |
+| `tamedog` | 1139 | — | — | — | TODO (taming a monster) |
+| `wary_dog` | 1288 | — | — | — | TODO (make pet wary after death) |
+| `abuse_dog` | 1358 | — | — | — | TODO (abuse pet — decrease tameness) |
 
 ### makemon.c → makemon.js
 
