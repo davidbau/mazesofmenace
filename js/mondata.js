@@ -29,10 +29,12 @@ import {
     S_VORTEX, S_ELEMENTAL,
     S_KOBOLD, S_OGRE, S_NYMPH, S_CENTAUR, S_DRAGON, S_NAGA,
     S_ZOMBIE, S_MUMMY, S_LICH, S_WRAITH, S_UNICORN,
+    S_EYE, S_LIGHT, S_TROLL, S_MIMIC, S_FUNGUS, S_JELLY, S_BLOB, S_PUDDING, S_BAT,
     MZ_TINY, MZ_SMALL, MZ_MEDIUM, MZ_LARGE,
     AT_ANY, AT_NONE, AT_BOOM, AT_SPIT, AT_GAZE, AT_MAGC,
-    AT_ENGL, AT_HUGS, AT_BREA,
-    AD_ANY, AD_STCK, AD_WRAP,
+    AT_ENGL, AT_HUGS, AT_BREA, AT_WEAP,
+    AD_ANY, AD_STCK, AD_WRAP, AD_DGST,
+    G_UNIQ,
     PM_SHADE, PM_TENGU,
     PM_ROCK_MOLE, PM_WOODCHUCK,
     PM_PONY, PM_HORSE, PM_WARHORSE,
@@ -40,6 +42,19 @@ import {
     PM_HORNED_DEVIL, PM_MINOTAUR, PM_ASMODEUS, PM_BALROG,
     PM_MARILITH, PM_WINGED_GARGOYLE, PM_AIR_ELEMENTAL,
     PM_GREMLIN, PM_STONE_GOLEM,
+    PM_FIRE_VORTEX, PM_FLAMING_SPHERE, PM_SHOCKING_SPHERE, PM_SALAMANDER,
+    PM_FIRE_ELEMENTAL,
+    PM_CYCLOPS, PM_FLOATING_EYE,
+    PM_ROPE_GOLEM, PM_WOOD_GOLEM, PM_FLESH_GOLEM, PM_LEATHER_GOLEM, PM_PAPER_GOLEM,
+    PM_STRAW_GOLEM, PM_IRON_GOLEM,
+    PM_STALKER,
+    PM_GREEN_SLIME, PM_BLACK_PUDDING,
+    PM_BLACK_LIGHT,
+    PM_MEDUSA,
+    PM_GHOUL, PM_PIRANHA,
+    PM_GIANT, PM_HUMAN,
+    PM_VAMPIRE_BAT,
+    PM_HEZROU, PM_VROCK,
     MS_SILENT, MS_BUZZ, MS_BURBLE,
     S_EEL,
     // For grownups table (little_to_big / big_to_little / same_race)
@@ -256,10 +271,13 @@ export function is_shapeshifter(ptr) { return !!(ptr.flags2 & M2_SHAPESHIFTER); 
 // C ref: #define is_golem(ptr)      ((ptr)->mlet == S_GOLEM)
 export function is_golem(ptr) { return ptr.symbol === S_GOLEM; }
 
-// C ref: #define nonliving(ptr)     (is_golem(ptr) || is_undead(ptr))
-// In C NetHack, nonliving() also checks MH_NONLIVING race flag for vortexes/elementals,
-// but is_golem + is_undead covers the primary cases (golems, zombies, mummies, etc.)
-export function nonliving(ptr) { return is_golem(ptr) || is_undead(ptr); }
+// C ref: #define weirdnonliving(ptr) (is_golem(ptr) || (ptr)->mlet == S_VORTEX)
+export function weirdnonliving(ptr) { return is_golem(ptr) || ptr.symbol === S_VORTEX; }
+
+// C ref: #define nonliving(ptr) (is_undead(ptr) || (ptr) == &mons[PM_MANES] || weirdnonliving(ptr))
+export function nonliving(ptr) {
+    return is_undead(ptr) || ptr === mons[PM_MANES] || weirdnonliving(ptr);
+}
 
 // ========================================================================
 // Behavior predicates — C ref: mondata.h (flags2)
@@ -293,8 +311,8 @@ export function likes_gold(ptr) { return !!(ptr.flags2 & M2_GREEDY); }
 // C ref: #define likes_gems(ptr)    ((ptr)->mflags2 & M2_JEWELS)
 export function likes_gems(ptr) { return !!(ptr.flags2 & M2_JEWELS); }
 
-// C ref: #define likes_objs(ptr)    ((ptr)->mflags2 & M2_COLLECT)
-export function likes_objs(ptr) { return !!(ptr.flags2 & M2_COLLECT); }
+// C ref: #define likes_objs(ptr)    ((ptr)->mflags2 & M2_COLLECT || is_armed(ptr))
+export function likes_objs(ptr) { return !!(ptr.flags2 & M2_COLLECT) || is_armed(ptr); }
 
 // C ref: #define likes_magic(ptr)   ((ptr)->mflags2 & M2_MAGIC)
 export function likes_magic(ptr) { return !!(ptr.flags2 & M2_MAGIC); }
@@ -869,4 +887,284 @@ export function levl_follower(mon, player) {
     const playerHasAmulet = player && Array.isArray(player.inventory)
         && player.inventory.some(o => o?.otyp === AMULET_OF_YENDOR);
     return !!(mon.type?.flags2 & M2_STALK) && (!mon.flee || !!playerHasAmulet);
+}
+
+// ========================================================================
+// Missing mondata.h macro predicates — C ref: include/mondata.h
+// ========================================================================
+
+// C ref: #define pm_resistance(ptr, typ) (((ptr)->mresists & (typ)) != 0)
+// JS: C's mresists maps to ptr.mr1 in the JS monster struct.
+export function pm_resistance(ptr, typ) { return !!(ptr.mr1 & typ); }
+
+// C ref: #define immune_poisongas(ptr) ((ptr)==&mons[PM_HEZROU] || (ptr)==&mons[PM_VROCK])
+export function immune_poisongas(ptr) {
+    return ptr === mons[PM_HEZROU] || ptr === mons[PM_VROCK];
+}
+
+// Movement aliases — C ref: mondata.h
+// C ref: #define is_flyer(ptr)   (((ptr)->mflags1 & M1_FLY) != 0L)
+export function is_flyer(ptr) { return !!(ptr.flags1 & M1_FLY); }
+
+// C ref: #define is_swimmer(ptr) (((ptr)->mflags1 & M1_SWIM) != 0L)
+export function is_swimmer(ptr) { return !!(ptr.flags1 & M1_SWIM); }
+
+// C ref: #define tunnels(ptr)    (((ptr)->mflags1 & M1_TUNNEL) != 0L)
+export function tunnels(ptr) { return !!(ptr.flags1 & M1_TUNNEL); }
+
+// C ref: #define needspick(ptr)  (((ptr)->mflags1 & M1_NEEDPICK) != 0L)
+export function needspick(ptr) { return !!(ptr.flags1 & M1_NEEDPICK); }
+
+// C ref: #define is_floater(ptr) ((ptr)->mlet == S_EYE || (ptr)->mlet == S_LIGHT)
+export function is_floater(ptr) { return ptr.symbol === S_EYE || ptr.symbol === S_LIGHT; }
+
+// C ref: #define noncorporeal(ptr) ((ptr)->mlet == S_GHOST)
+export function noncorporeal(ptr) { return ptr.symbol === S_GHOST; }
+
+// C ref: #define is_whirly(ptr) ((ptr)->mlet == S_VORTEX || (ptr)==&mons[PM_AIR_ELEMENTAL])
+export function is_whirly(ptr) {
+    return ptr.symbol === S_VORTEX || ptr === mons[PM_AIR_ELEMENTAL];
+}
+
+// C ref: #define cant_drown(ptr) (is_swimmer(ptr) || amphibious(ptr) || breathless(ptr))
+export function cant_drown(ptr) { return is_swimmer(ptr) || amphibious(ptr) || breathless(ptr); }
+
+// C ref: #define grounded(ptr) (!is_flyer(ptr) && !is_floater(ptr) && (!is_clinger(ptr) || !has_ceiling(&u.uz)))
+// hasCeiling: pass false for levels without a ceiling (outdoors, Astral Plane, etc.).
+// Defaults to true (standard dungeon levels have a ceiling).
+export function grounded(ptr, hasCeiling = true) {
+    return !is_flyer(ptr) && !is_floater(ptr) && (!is_clinger(ptr) || !hasCeiling);
+}
+
+// C ref: #define ceiling_hider(ptr) (is_hider(ptr) && ((is_clinger(ptr) && (ptr)->mlet != S_MIMIC) || is_flyer(ptr)))
+export function ceiling_hider(ptr) {
+    return is_hider(ptr)
+        && ((is_clinger(ptr) && ptr.symbol !== S_MIMIC) || is_flyer(ptr));
+}
+
+// C ref: #define eyecount(ptr) (!haseyes(ptr) ? 0 : ((ptr)==&mons[PM_CYCLOPS] || (ptr)==&mons[PM_FLOATING_EYE]) ? 1 : 2)
+export function eyecount(ptr) {
+    if (!haseyes(ptr)) return 0;
+    if (ptr === mons[PM_CYCLOPS] || ptr === mons[PM_FLOATING_EYE]) return 1;
+    return 2;
+}
+
+// C ref: #define has_head(ptr) (((ptr)->mflags1 & M1_NOHEAD) == 0L)
+export function has_head(ptr) { return !(ptr.flags1 & M1_NOHEAD); }
+
+// C ref: #define has_horns(ptr) (num_horns(ptr) > 0)
+export function has_horns(ptr) { return num_horns(ptr) > 0; }
+
+// C ref: #define is_wooden(ptr) ((ptr) == &mons[PM_WOOD_GOLEM])
+export function is_wooden(ptr) { return ptr === mons[PM_WOOD_GOLEM]; }
+
+// C ref: #define hug_throttles(ptr) ((ptr) == &mons[PM_ROPE_GOLEM])
+export function hug_throttles(ptr) { return ptr === mons[PM_ROPE_GOLEM]; }
+
+// C ref: #define flaming(ptr) (PM_FIRE_VORTEX || PM_FLAMING_SPHERE || PM_FIRE_ELEMENTAL || PM_SALAMANDER)
+export function flaming(ptr) {
+    return ptr === mons[PM_FIRE_VORTEX] || ptr === mons[PM_FLAMING_SPHERE]
+        || ptr === mons[PM_FIRE_ELEMENTAL] || ptr === mons[PM_SALAMANDER];
+}
+
+// C ref: #define is_silent(ptr) ((ptr)->msound == MS_SILENT)
+export function is_silent(ptr) { return ptr.sound === MS_SILENT; }
+
+// C ref: #define is_vampire(ptr) ((ptr)->mlet == S_VAMPIRE)
+export function is_vampire(ptr) { return ptr.symbol === S_VAMPIRE; }
+
+// C ref: #define passes_rocks(ptr) (passes_walls(ptr) && !unsolid(ptr))
+export function passes_rocks(ptr) { return passes_walls(ptr) && !unsolid(ptr); }
+
+// Race/gender predicates — C ref: mondata.h (flags2)
+// C ref: #define is_male(ptr)    (((ptr)->mflags2 & M2_MALE) != 0L)
+export function is_male(ptr) { return !!(ptr.flags2 & M2_MALE); }
+
+// C ref: #define is_female(ptr)  (((ptr)->mflags2 & M2_FEMALE) != 0L)
+export function is_female(ptr) { return !!(ptr.flags2 & M2_FEMALE); }
+
+// C ref: #define is_neuter(ptr)  (((ptr)->mflags2 & M2_NEUTER) != 0L)
+export function is_neuter(ptr) { return !!(ptr.flags2 & M2_NEUTER); }
+
+// C ref: #define type_is_pname(ptr) (((ptr)->mflags2 & M2_PNAME) != 0L)
+export function type_is_pname(ptr) { return !!(ptr.flags2 & M2_PNAME); }
+
+// C ref: #define is_lord(ptr)    (((ptr)->mflags2 & M2_LORD) != 0L)
+export function is_lord(ptr) { return !!(ptr.flags2 & M2_LORD); }
+
+// C ref: #define is_prince(ptr)  (((ptr)->mflags2 & M2_PRINCE) != 0L)
+export function is_prince(ptr) { return !!(ptr.flags2 & M2_PRINCE); }
+
+// C ref: #define is_ndemon(ptr) (is_demon(ptr) && (((ptr)->mflags2 & (M2_LORD|M2_PRINCE)) == 0L))
+export function is_ndemon(ptr) { return is_demon(ptr) && !(ptr.flags2 & (M2_LORD | M2_PRINCE)); }
+
+// C ref: #define is_dlord(ptr) (is_demon(ptr) && is_lord(ptr))
+export function is_dlord(ptr) { return is_demon(ptr) && is_lord(ptr); }
+
+// C ref: #define is_dprince(ptr) (is_demon(ptr) && is_prince(ptr))
+export function is_dprince(ptr) { return is_demon(ptr) && is_prince(ptr); }
+
+// C ref: #define polyok(ptr) (((ptr)->mflags2 & M2_NOPOLY) == 0L)
+export function polyok(ptr) { return !(ptr.flags2 & M2_NOPOLY); }
+
+// C ref: #define extra_nasty(ptr) (((ptr)->mflags2 & M2_NASTY) != 0L)
+export function extra_nasty(ptr) { return !!(ptr.flags2 & M2_NASTY); }
+
+// C ref: #define throws_rocks(ptr) (((ptr)->mflags2 & M2_ROCKTHROW) != 0L)
+export function throws_rocks(ptr) { return !!(ptr.flags2 & M2_ROCKTHROW); }
+
+// Combat predicates — C ref: mondata.h
+// C ref: #define is_armed(ptr) attacktype(ptr, AT_WEAP)
+export function is_armed(ptr) { return attacktype(ptr, AT_WEAP); }
+
+// C ref: #define cantwield(ptr) (nohands(ptr) || verysmall(ptr))
+// verysmall(ptr): (ptr)->msize < MZ_SMALL
+export function cantwield(ptr) { return nohands(ptr) || (ptr.size || 0) < MZ_SMALL; }
+
+// C ref: #define could_twoweap(ptr) — multiple AT_WEAP in first 3 attack slots
+export function could_twoweap(ptr) {
+    const atks = ptr.attacks;
+    if (!atks) return false;
+    let count = 0;
+    for (let i = 0; i < 3; i++) {
+        if (atks[i]?.type === AT_WEAP) count++;
+    }
+    return count > 1;
+}
+
+// C ref: #define cantweararm(ptr) (breakarm(ptr) || sliparm(ptr))
+export function cantweararm(ptr) { return breakarm(ptr) || sliparm(ptr); }
+
+// Food/digestion predicates — C ref: mondata.h
+// C ref: #define digests(ptr) (dmgtype_fromattack((ptr), AD_DGST, AT_ENGL) != 0)
+export function digests(ptr) { return dmgtype_fromattack(ptr, AD_DGST, AT_ENGL); }
+
+// C ref: #define enfolds(ptr) (dmgtype_fromattack((ptr), AD_WRAP, AT_ENGL) != 0)
+export function enfolds(ptr) { return dmgtype_fromattack(ptr, AD_WRAP, AT_ENGL); }
+
+// C ref: #define slimeproof(ptr) ((ptr)==&mons[PM_GREEN_SLIME] || flaming(ptr) || noncorporeal(ptr))
+export function slimeproof(ptr) {
+    return ptr === mons[PM_GREEN_SLIME] || flaming(ptr) || noncorporeal(ptr);
+}
+
+// C ref: #define eggs_in_water(ptr) (lays_eggs(ptr) && (ptr)->mlet == S_EEL && is_swimmer(ptr))
+export function eggs_in_water(ptr) {
+    return lays_eggs(ptr) && ptr.symbol === S_EEL && is_swimmer(ptr);
+}
+
+// C ref: #define telepathic(ptr) (PM_FLOATING_EYE || PM_MIND_FLAYER || PM_MASTER_MIND_FLAYER)
+export function telepathic(ptr) {
+    return ptr === mons[PM_FLOATING_EYE]
+        || ptr === mons[PM_MIND_FLAYER]
+        || ptr === mons[PM_MASTER_MIND_FLAYER];
+}
+
+// Monster identity predicates — C ref: mondata.h
+// C ref: #define webmaker(ptr) ((ptr)==&mons[PM_CAVE_SPIDER] || (ptr)==&mons[PM_GIANT_SPIDER])
+export function webmaker(ptr) {
+    return ptr === mons[PM_CAVE_SPIDER] || ptr === mons[PM_GIANT_SPIDER];
+}
+
+// C ref: #define is_mplayer(ptr) ((ptr) >= &mons[PM_ARCHEOLOGIST] && (ptr) <= &mons[PM_WIZARD])
+export function is_mplayer(ptr) {
+    const idx = mons.indexOf(ptr);
+    return idx >= PM_ARCHEOLOGIST && idx <= PM_WIZARD;
+}
+
+// C ref: #define is_watch(ptr) ((ptr)==&mons[PM_WATCHMAN] || (ptr)==&mons[PM_WATCH_CAPTAIN])
+export function is_watch(ptr) {
+    return ptr === mons[PM_WATCHMAN] || ptr === mons[PM_WATCH_CAPTAIN];
+}
+
+// C ref: #define is_placeholder(ptr) ((ptr)==&mons[PM_ORC] || PM_GIANT || PM_ELF || PM_HUMAN)
+export function is_placeholder(ptr) {
+    return ptr === mons[PM_ORC] || ptr === mons[PM_GIANT]
+        || ptr === mons[PM_ELF] || ptr === mons[PM_HUMAN];
+}
+
+// C ref: #define is_reviver(ptr) (is_rider(ptr) || (ptr)->mlet == S_TROLL)
+export function is_reviver(ptr) { return is_rider(ptr) || ptr.symbol === S_TROLL; }
+
+// C ref: #define unique_corpstat(ptr) (((ptr)->geno & G_UNIQ) != 0)
+export function unique_corpstat(ptr) { return !!(ptr.geno & G_UNIQ); }
+
+// C ref: #define emits_light(ptr) — returns light range (0 or 1)
+export function emits_light(ptr) {
+    if (ptr.symbol === S_LIGHT
+        || ptr === mons[PM_FLAMING_SPHERE]
+        || ptr === mons[PM_SHOCKING_SPHERE]
+        || ptr === mons[PM_BABY_GOLD_DRAGON]
+        || ptr === mons[PM_FIRE_VORTEX]) return 1;
+    if (ptr === mons[PM_FIRE_ELEMENTAL] || ptr === mons[PM_GOLD_DRAGON]) return 1;
+    return 0;
+}
+
+// C ref: #define likes_lava(ptr) (PM_FIRE_ELEMENTAL || PM_SALAMANDER)
+export function likes_lava(ptr) {
+    return ptr === mons[PM_FIRE_ELEMENTAL] || ptr === mons[PM_SALAMANDER];
+}
+
+// C ref: #define pm_invisible(ptr) (PM_STALKER || PM_BLACK_LIGHT)
+export function pm_invisible(ptr) {
+    return ptr === mons[PM_STALKER] || ptr === mons[PM_BLACK_LIGHT];
+}
+
+// C ref: #define likes_fire(ptr) (PM_FIRE_VORTEX || PM_FLAMING_SPHERE || likes_lava(ptr))
+export function likes_fire(ptr) {
+    return ptr === mons[PM_FIRE_VORTEX] || ptr === mons[PM_FLAMING_SPHERE] || likes_lava(ptr);
+}
+
+// C ref: #define touch_petrifies(ptr) (PM_COCKATRICE || PM_CHICKATRICE)
+export function touch_petrifies(ptr) {
+    return ptr === mons[PM_COCKATRICE] || ptr === mons[PM_CHICKATRICE];
+}
+
+// C ref: #define flesh_petrifies(pm) (touch_petrifies(pm) || (pm)==&mons[PM_MEDUSA])
+export function flesh_petrifies(ptr) { return touch_petrifies(ptr) || ptr === mons[PM_MEDUSA]; }
+
+// Golem destruction predicates — C ref: mondata.h
+// C ref: #define completelyburns(ptr) (PM_PAPER_GOLEM || PM_STRAW_GOLEM)
+export function completelyburns(ptr) {
+    return ptr === mons[PM_PAPER_GOLEM] || ptr === mons[PM_STRAW_GOLEM];
+}
+
+// C ref: #define completelyrots(ptr) (PM_WOOD_GOLEM || PM_LEATHER_GOLEM)
+export function completelyrots(ptr) {
+    return ptr === mons[PM_WOOD_GOLEM] || ptr === mons[PM_LEATHER_GOLEM];
+}
+
+// C ref: #define completelyrusts(ptr) ((ptr)==&mons[PM_IRON_GOLEM])
+export function completelyrusts(ptr) { return ptr === mons[PM_IRON_GOLEM]; }
+
+// Bat predicates — C ref: mondata.h
+// C ref: #define is_bat(ptr) (PM_BAT || PM_GIANT_BAT || PM_VAMPIRE_BAT)
+export function is_bat(ptr) {
+    return ptr === mons[PM_BAT] || ptr === mons[PM_GIANT_BAT] || ptr === mons[PM_VAMPIRE_BAT];
+}
+
+// C ref: #define is_bird(ptr) ((ptr)->mlet == S_BAT && !is_bat(ptr))
+export function is_bird(ptr) { return ptr.symbol === S_BAT && !is_bat(ptr); }
+
+// Diet predicates — C ref: mondata.h
+// C ref: #define vegan(ptr) (blobs/jellies/fungi/vortexes/lights/most elementals/most golems/noncorporeal)
+export function vegan(ptr) {
+    const sym = ptr.symbol;
+    if (sym === S_BLOB || sym === S_JELLY || sym === S_FUNGUS
+        || sym === S_VORTEX || sym === S_LIGHT) return true;
+    if (sym === S_ELEMENTAL && ptr !== mons[PM_STALKER]) return true;
+    if (sym === S_GOLEM && ptr !== mons[PM_FLESH_GOLEM] && ptr !== mons[PM_LEATHER_GOLEM])
+        return true;
+    return noncorporeal(ptr);
+}
+
+// C ref: #define vegetarian(ptr) (vegan(ptr) || (S_PUDDING && not PM_BLACK_PUDDING))
+export function vegetarian(ptr) {
+    return vegan(ptr)
+        || (ptr.symbol === S_PUDDING && ptr !== mons[PM_BLACK_PUDDING]);
+}
+
+// C ref: #define corpse_eater(ptr) (PM_PURPLE_WORM || PM_BABY_PURPLE_WORM || PM_GHOUL || PM_PIRANHA)
+export function corpse_eater(ptr) {
+    return ptr === mons[PM_PURPLE_WORM] || ptr === mons[PM_BABY_PURPLE_WORM]
+        || ptr === mons[PM_GHOUL] || ptr === mons[PM_PIRANHA];
 }

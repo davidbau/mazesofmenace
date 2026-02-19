@@ -547,7 +547,7 @@ Notes:
 - `is_whirly(ptr)` = S_VORTEX || PM_AIR_ELEMENTAL; `noncorporeal(ptr)` = S_GHOST (from mondata.h).
 - `bigmonst(ptr)` = size >= MZ_LARGE; `verysmall(ptr)` = size < MZ_SMALL.
 - `mon_hates_silver`/`mon_hates_blessings`: C also checks `is_vampshifter()`; JS omits (no shapeshifter-form tracking).
-- Many mondata.h macro predicates (carnivorous, is_undead, etc.) are already in mondata.js — listed separately below.
+- Many mondata.h macro predicates (carnivorous, is_undead, etc.) are in mondata.js — see `include/mondata.h → mondata.js` section below.
 
 | C function | C line | JS function | JS line | Status |
 |---|---|---|---|---|
@@ -587,6 +587,139 @@ Notes:
 | `levl_follower` | 1211 | `levl_follower` | — | Match (exported; takes mon + player arg for steed/inventory access) |
 | `mon_knows_traps` | — | `mon_knows_traps` | 367 | Match (exported; predates this section) |
 | `mon_learns_traps` | — | `mon_learns_traps` | 377 | Match (exported; predates this section) |
+
+### include/mondata.h → mondata.js (macro predicates)
+
+Notes:
+- All macros operate on a permonst pointer (ptr), which in JS is the `mons[]` entry.
+- JS uses `ptr.flags1`/`ptr.flags2`/`ptr.flags3` for C's `mflags1`/`mflags2`/`mflags3`.
+- C's `mresists` maps to `ptr.mr1` in the JS monster struct.
+- `grounded(ptr)` takes optional `hasCeiling=true` param (C reads `u.uz` global; JS avoids global state).
+- `nonliving`: C definition includes `is_undead || PM_MANES || weirdnonliving`; updated from previous stub.
+- `likes_objs`: C includes `is_armed(ptr)` in addition to `M2_COLLECT`; JS updated accordingly.
+
+| C macro | JS function | Status |
+|---|---|---|
+| `pm_resistance(ptr, typ)` | `pm_resistance` | Match (uses ptr.mr1) |
+| `immune_poisongas(ptr)` | `immune_poisongas` | Match |
+| `is_flyer(ptr)` | `is_flyer` | Match (alias for can_fly) |
+| `is_floater(ptr)` | `is_floater` | Match |
+| `is_swimmer(ptr)` | `is_swimmer` | Match (alias for can_swim) |
+| `breathless(ptr)` | `breathless` | Match (predates this section) |
+| `amphibious(ptr)` | `amphibious` | Match (predates this section) |
+| `cant_drown(ptr)` | `cant_drown` | Match |
+| `passes_walls(ptr)` | `passes_walls` | Match (predates this section) |
+| `amorphous(ptr)` | `amorphous` | Match (predates this section) |
+| `noncorporeal(ptr)` | `noncorporeal` | Match |
+| `tunnels(ptr)` | `tunnels` | Match (alias for can_tunnel) |
+| `needspick(ptr)` | `needspick` | Match (alias for needs_pick) |
+| `hides_under(ptr)` | `hides_under` | Match (predates this section) |
+| `is_hider(ptr)` | `is_hider` | Match (predates this section) |
+| `ceiling_hider(ptr)` | `ceiling_hider` | Match |
+| `haseyes(ptr)` | `haseyes` | Match (predates this section) |
+| `eyecount(ptr)` | `eyecount` | Match |
+| `nohands(ptr)` | `nohands` | Match (predates this section) |
+| `nolimbs(ptr)` | `nolimbs` | Match (predates this section) |
+| `notake(ptr)` | `notake` | Match (predates this section) |
+| `has_head(ptr)` | `has_head` | Match |
+| `has_horns(ptr)` | `has_horns` | Match |
+| `is_whirly(ptr)` | `is_whirly` | Match |
+| `flaming(ptr)` | `flaming` | Match |
+| `is_silent(ptr)` | `is_silent` | Match |
+| `unsolid(ptr)` | `unsolid` | Match (predates this section) |
+| `mindless(ptr)` | `is_mindless` | Match (predates this section; JS uses is_mindless) |
+| `humanoid(ptr)` | `is_humanoid` | Match (predates this section; JS uses is_humanoid) |
+| `is_animal(ptr)` | `is_animal` | Match (predates this section) |
+| `slithy(ptr)` | `slithy` | Match (predates this section) |
+| `is_wooden(ptr)` | `is_wooden` | Match |
+| `thick_skinned(ptr)` | `thick_skinned` | Match (predates this section) |
+| `hug_throttles(ptr)` | `hug_throttles` | Match |
+| `digests(ptr)` | `digests` | Match |
+| `enfolds(ptr)` | `enfolds` | Match |
+| `slimeproof(ptr)` | `slimeproof` | Match |
+| `lays_eggs(ptr)` | `lays_eggs` | Match (predates this section) |
+| `eggs_in_water(ptr)` | `eggs_in_water` | Match |
+| `regenerates(ptr)` | `regenerates` | Match (predates this section) |
+| `perceives(ptr)` | `perceives` | Match (predates this section) |
+| `can_teleport(ptr)` | `can_teleport` | Match (predates this section) |
+| `control_teleport(ptr)` | `control_teleport` | Match (predates this section) |
+| `telepathic(ptr)` | `telepathic` | Match |
+| `is_armed(ptr)` | `is_armed` | Match |
+| `acidic(ptr)` | `acidic` | Match (predates this section) |
+| `poisonous(ptr)` | `poisonous` | Match (predates this section) |
+| `carnivorous(ptr)` | `carnivorous` | Match (predates this section) |
+| `herbivorous(ptr)` | `herbivorous` | Match (predates this section) |
+| `metallivorous(ptr)` | `is_metallivore` | Match (predates this section; JS uses is_metallivore) |
+| `polyok(ptr)` | `polyok` | Match |
+| `is_shapeshifter(ptr)` | `is_shapeshifter` | Match (predates this section) |
+| `is_undead(ptr)` | `is_undead` | Match (predates this section) |
+| `is_were(ptr)` | `is_were` | Match (predates this section) |
+| `is_elf/dwarf/gnome/orc/human(ptr)` | same | Match (predates this section) |
+| `is_bat(ptr)` | `is_bat` | Match |
+| `is_bird(ptr)` | `is_bird` | Match |
+| `is_giant(ptr)` | `is_giant` | Match (predates this section) |
+| `is_golem(ptr)` | `is_golem` | Match (predates this section) |
+| `is_domestic(ptr)` | `is_domestic` | Match (predates this section) |
+| `is_demon(ptr)` | `is_demon` | Match (predates this section) |
+| `is_mercenary(ptr)` | `is_mercenary` | Match (predates this section) |
+| `is_male(ptr)` | `is_male` | Match |
+| `is_female(ptr)` | `is_female` | Match |
+| `is_neuter(ptr)` | `is_neuter` | Match |
+| `is_wanderer(ptr)` | `is_wanderer` | Match (predates this section) |
+| `always_hostile(ptr)` | `always_hostile` | Match (predates this section) |
+| `always_peaceful(ptr)` | `always_peaceful` | Match (predates this section) |
+| `extra_nasty(ptr)` | `extra_nasty` | Match |
+| `strongmonst(ptr)` | `strongmonst` | Match (predates this section) |
+| `can_breathe(ptr)` | `can_breathe` | Match (predates this section) |
+| `cantwield(ptr)` | `cantwield` | Match |
+| `could_twoweap(ptr)` | `could_twoweap` | Match |
+| `cantweararm(ptr)` | `cantweararm` | Match |
+| `throws_rocks(ptr)` | `throws_rocks` | Match |
+| `type_is_pname(ptr)` | `type_is_pname` | Match |
+| `is_lord(ptr)` | `is_lord` | Match |
+| `is_prince(ptr)` | `is_prince` | Match |
+| `is_ndemon(ptr)` | `is_ndemon` | Match |
+| `is_dlord(ptr)` | `is_dlord` | Match |
+| `is_dprince(ptr)` | `is_dprince` | Match |
+| `is_minion(ptr)` | `is_minion` | Match (predates this section) |
+| `likes_gold(ptr)` | `likes_gold` | Match (predates this section) |
+| `likes_gems(ptr)` | `likes_gems` | Match (predates this section) |
+| `likes_objs(ptr)` | `likes_objs` | Match (fixed: now includes is_armed) |
+| `likes_magic(ptr)` | `likes_magic` | Match (predates this section) |
+| `webmaker(ptr)` | `webmaker` | Match |
+| `is_unicorn(ptr)` | `is_unicorn` | Match (predates this section) |
+| `is_longworm(ptr)` | `is_longworm` | Match (predates this section) |
+| `is_covetous(ptr)` | `is_covetous` | Match (predates this section) |
+| `infravision(ptr)` | `infravision` | Match (predates this section) |
+| `infravisible(ptr)` | `infravisible` | Match (predates this section) |
+| `is_displacer(ptr)` | `is_displacer` | Match (predates this section) |
+| `is_mplayer(ptr)` | `is_mplayer` | Match |
+| `is_watch(ptr)` | `is_watch` | Match |
+| `is_rider(ptr)` | `is_rider` | Match (predates this section) |
+| `is_placeholder(ptr)` | `is_placeholder` | Match |
+| `is_reviver(ptr)` | `is_reviver` | Match |
+| `unique_corpstat(ptr)` | `unique_corpstat` | Match |
+| `emits_light(ptr)` | `emits_light` | Match (returns 0 or 1 like C) |
+| `likes_lava(ptr)` | `likes_lava` | Match |
+| `pm_invisible(ptr)` | `pm_invisible` | Match |
+| `likes_fire(ptr)` | `likes_fire` | Match |
+| `touch_petrifies(ptr)` | `touch_petrifies` | Match |
+| `flesh_petrifies(ptr)` | `flesh_petrifies` | Match |
+| `passes_rocks(ptr)` | `passes_rocks` | Match |
+| `is_mind_flayer(ptr)` | `is_mind_flayer` | Match (predates this section) |
+| `is_vampire(ptr)` | `is_vampire` | Match |
+| `hates_light(ptr)` | `hates_light` | Match (predates this section) |
+| `weirdnonliving(ptr)` | `weirdnonliving` | Match |
+| `nonliving(ptr)` | `nonliving` | Match (fixed: now includes PM_MANES + weirdnonliving) |
+| `completelyburns(ptr)` | `completelyburns` | Match |
+| `completelyrots(ptr)` | `completelyrots` | Match |
+| `completelyrusts(ptr)` | `completelyrusts` | Match |
+| `vegan(ptr)` | `vegan` | Match |
+| `vegetarian(ptr)` | `vegetarian` | Match |
+| `corpse_eater(ptr)` | `corpse_eater` | Match |
+| `grounded(ptr)` | `grounded` | Match (hasCeiling param replaces `has_ceiling(&u.uz)` global) |
+| `befriend_with_obj(ptr, obj)` | — | TODO (needs FOOD_CLASS/object type checks) |
+| `immune_poisongas(ptr)` | `immune_poisongas` | Match |
 
 ### makemon.c → makemon.js
 
