@@ -74,7 +74,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[ ]` | getpos.c | — | Position selection UI |
 | `[ ]` | glyphs.c | — | Glyph system. JS: partially in `display.js`, `symbols.js` |
 | `[~]` | hack.c | — | Core movement and actions. JS: split across multiple files |
-| `[~]` | hacklib.c | hacklib.js | Utility functions |
+| `[a]` | hacklib.c | hacklib.js | String/char utilities. All C functions implemented; in-place string ops return new strings in JS |
 | `[ ]` | iactions.c | — | Implicit actions |
 | `[ ]` | insight.c | — | Player knowledge/enlightenment |
 | `[ ]` | invent.c | — | Inventory management |
@@ -171,9 +171,9 @@ don't follow the same 1:1 C→JS mapping pattern.
 - **N/A (system/platform)**: 18
 - **Game logic files**: 111
 - **Complete (`[x]`)**: 4
-- **Aligned (`[a]`)**: 10
+- **Aligned (`[a]`)**: 11
 - **Present (`[p]`)**: 1
-- **Needs alignment (`[~]`)**: 20
+- **Needs alignment (`[~]`)**: 19
 - **No JS file yet (`[ ]`)**: 76
 
 ### JS Files Without C Counterparts
@@ -228,6 +228,42 @@ These JS files don't directly correspond to a single C file:
 | `isaac64_reseed` | 124 | `isaac64_reseed` | 126 | Match (exported) |
 | `isaac64_next_uint64` | 161 | `isaac64_next_uint64` | 178 | Match (exported) |
 | `isaac64_next_uint` | 166 | `isaac64_next_uint` | 184 | Match (exported, added) |
+
+### hacklib.c → hacklib.js
+
+Note: C functions that modify strings in-place return new strings in JS (immutable strings).
+`xcrypt(str, buf)` in C → `xcrypt(str)` in JS (no output buffer).
+`nh_deterministic_qsort` takes a JS array directly rather than raw byte pointer.
+
+| C Function | C Line | JS Function | JS Line | Status |
+|------------|--------|-------------|---------|--------|
+| `nh_deterministic_qsort` | 36 | `nh_deterministic_qsort` | 309 | Match (exported; JS array API instead of void*) |
+| `digit` | 126 | `digit` | 14 | Match (exported) |
+| `letter` | 133 | `letter` | 19 | Match (exported) |
+| `highc` | 140 | `highc` | 24 | Match (exported) |
+| `lowc` | 147 | `lowc` | 31 | Match (exported) |
+| `lcase` | 154 | `lcase` | 44 | Match (exported; returns new string) |
+| `ucase` | 166 | `ucase` | 49 | Match (exported; returns new string) |
+| `upstart` | 178 | `upstart` | 54 | Match (exported; returns new string) |
+| `upwords` | 187 | `upwords` | 60 | Match (exported; returns new string) |
+| `mungspaces` | 206 | `mungspaces` | 86 | Match (exported; returns new string) |
+| `trimspaces` | 228 | `trimspaces` | 102 | Match (exported; returns new string) |
+| `strip_newline` | 244 | `strip_newline` | 107 | Match (exported; returns new string) |
+| `eos` | 258 | `eos` | 119 | Match (exported; returns length, not pointer) |
+| `c_eos` | 267 | `c_eos` | 124 | Match (exported; returns length, not pointer) |
+| `str_start_is` | 277 | `str_start_is` | 134 | Match (exported) |
+| `str_end_is` | 305 | `str_end_is` | 141 | Match (exported) |
+| `str_lines_maxlen` | 316 | `str_lines_maxlen` | 146 | Match (exported) |
+| `strkitten` | 340 | `strkitten` | 162 | Match (exported; returns new string) |
+| `copynchars` | 351 | `copynchars` | 168 | Match (exported; no dst arg, returns new string) |
+| `chrcasecpy` | 365 | `chrcasecpy` | 177 | Match (exported) |
+| `strcasecpy` | 387 | `strcasecpy` | 188 | Match (exported; returns new string) |
+| `s_suffix` | 409 | `s_suffix` | 206 | Match (exported) |
+| `ing_suffix` | 427 | `ing_suffix` | 215 | Match (exported) |
+| `xcrypt` | 464 | `xcrypt` | 326 | Match (exported; JS takes str only, no buf arg) |
+| `onlyspace` | 483 | `onlyspace` | 255 | Match (exported) |
+| `tabexpand` | 493 | `tabexpand` | 264 | Match (exported; returns new string) |
+| `visctrl` | 533 | `visctrl` | 281 | Match (exported; no rotating static buffers needed) |
 
 ### o_init.c → o_init.js (and discovery.js)
 
