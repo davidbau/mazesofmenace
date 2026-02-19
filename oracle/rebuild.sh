@@ -68,6 +68,8 @@ TEMP_FILE=$(mktemp)
 
 if git show-ref refs/notes/test-results >/dev/null 2>&1; then
   git notes --ref=test-results list | while read note_hash commit_hash; do
+    # Skip notes for commits that no longer exist (e.g. rebased away)
+    git cat-file -e "${commit_hash}^{commit}" 2>/dev/null || continue
     SHORT=$(git rev-parse --short "$commit_hash" 2>/dev/null || echo "")
     NOTE=$(git notes --ref=test-results show "$commit_hash" 2>/dev/null || echo "")
     if [ -n "$NOTE" ] && echo "$NOTE" | jq empty 2>/dev/null; then
