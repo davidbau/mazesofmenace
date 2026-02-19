@@ -18,7 +18,7 @@ import { exercise, exerchk, initExerciseState } from './attrib_exercise.js';
 import { initLevelGeneration, makelevel, setGameSeed, isBranchLevelToDnum } from './dungeon.js';
 import { simulatePostLevelInit, mon_arrive } from './u_init.js';
 import { Player, rankOf, roles } from './player.js';
-import { rhack, dosearch0 } from './commands.js';
+import { rhack, dosearch0, ageSpells } from './commands.js';
 import { makemon, setMakemonPlayerContext, runtimeDecideToShapeshift } from './makemon.js';
 import { M2_WERE } from './monsters.js';
 import { movemon, initrack, settrack } from './monmove.js';
@@ -923,6 +923,9 @@ export class HeadlessGame {
         this.dosounds();
         rn2(20);   // gethungry
         this.player.hunger--;
+
+        // C ref: allmain.c:354 age_spells() — decrement spell retention each turn
+        ageSpells(this.player);
 
         // C ref: attrib.c exerper() — periodic exercise updates.
         // C's svm.moves starts at 1 and increments before exerper/exerchk.

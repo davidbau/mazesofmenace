@@ -20,7 +20,7 @@ import { M2_WERE } from './monsters.js';
 import { FOOD_CLASS } from './objects.js';
 import { setObjectMoves } from './mkobj.js';
 import { were_change } from './were.js';
-import { rhack } from './commands.js';
+import { rhack, ageSpells } from './commands.js';
 import { movemon, initrack, settrack } from './monmove.js';
 import { simulatePostLevelInit, mon_arrive } from './u_init.js';
 import { getArrivalPosition } from './level_transition.js';
@@ -1735,6 +1735,9 @@ export class NetHackGame {
         if (this.player.hunger === 300) {
             this.display.putstr_message('You are beginning to feel hungry.');
         }
+
+        // C ref: allmain.c:354 age_spells() — decrement spell retention each turn
+        ageSpells(this.player);
 
         // C ref: allmain.c:359 — engrave wipe check
         // rn2(40 + ACURR(A_DEX) * 3) — for Valkyrie with DEX ~14, this is rn2(82)

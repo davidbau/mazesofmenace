@@ -931,6 +931,14 @@ function iniInvMkobjFilter(oclass, gotSp1, roleIndex, race) {
     return mksobj(FOOD_RATION, true, false, true);
 }
 
+// C ref: spell.c initialspell() — learn a spell from a starting inventory spellbook
+function initialSpell(player, obj) {
+    const spells = player.spells || (player.spells = []);
+    if (spells.some(s => s.otyp === obj.otyp)) return; // already known
+    const od = objectData[obj.otyp] || {};
+    spells.push({ otyp: obj.otyp, sp_lev: od.oc2 || 1, sp_know: 20000 }); // KEEN=20000
+}
+
 // ---- ini_inv: Create starting inventory from trobj table ----
 // C ref: u_init.c ini_inv() — processes table entries, handles UNDEF_TYP
 function iniInv(player, table) {
@@ -1033,6 +1041,11 @@ function iniInv(player, table) {
 
         // Add to player inventory
         player.addToInventory(obj);
+
+        // C ref: u_init.c ini_inv_use_obj() — initial spellbooks are auto-learned
+        if (obj.oclass === SPBOOK_CLASS && obj.otyp !== SPE_BLANK_PAPER) {
+            initialSpell(player, obj);
+        }
 
         // Track level-1 spellbooks for filter
         if (obj.oclass === SPBOOK_CLASS && (objectData[otyp].oc2 || 0) === 1) {
