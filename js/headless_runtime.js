@@ -26,6 +26,7 @@ import { getArrivalPosition } from './level_transition.js';
 import { doname, setObjectMoves } from './mkobj.js';
 import { enexto } from './dungeon.js';
 import { monsterMapGlyph, objectMapGlyph } from './display_rng.js';
+import { defsyms, trap_to_defsym } from './symbols.js';
 import {
     COLNO, ROWNO, NORMAL_SPEED,
     A_STR, A_DEX, A_CON,
@@ -1125,6 +1126,7 @@ export function createHeadlessGame(seed, roleIndex = 11, opts = {}) {
 const CLR_BLACK = 0;
 const CLR_BROWN = 3;
 const CLR_GRAY = 7;
+const NO_COLOR = 8;
 const CLR_CYAN = 6;
 const CLR_WHITE = 15;
 const CLR_MAGENTA = 5;
@@ -1170,6 +1172,15 @@ const TERRAIN_SYMBOLS_ASCII = {
     [SDOOR]:   { ch: '|', color: CLR_GRAY },
     [SCORR]:   { ch: ' ', color: CLR_GRAY },
 };
+
+function trapDisplayGlyph(ttyp) {
+    const idx = trap_to_defsym(ttyp);
+    const sym = (idx >= 0 && idx < defsyms.length) ? defsyms[idx] : null;
+    return {
+        ch: sym?.ch || '^',
+        color: Number.isInteger(sym?.color) ? sym.color : CLR_MAGENTA,
+    };
+}
 
 const TERRAIN_SYMBOLS_DEC = {
     [STONE]:   { ch: ' ', color: CLR_GRAY },
@@ -1238,7 +1249,9 @@ export class HeadlessDisplay {
     setCell(col, row, ch, color = CLR_GRAY, attr = 0) {
         if (row >= 0 && row < this.rows && col >= 0 && col < this.cols) {
             this.grid[row][col] = ch;
-            const displayColor = (this.flags.color !== false) ? color : CLR_GRAY;
+            const displayColor = (this.flags.color !== false)
+                ? ((color === CLR_BLACK && this.flags.use_darkgray !== false) ? NO_COLOR : color)
+                : CLR_GRAY;
             this.colors[row][col] = displayColor;
             this.attrs[row][col] = attr;
         }
@@ -1695,8 +1708,9 @@ export class HeadlessDisplay {
 
                 const trap = gameMap.trapAt(x, y);
                 if (trap && trap.tseen) {
-                    loc.mem_trap = '^';
-                    this.setCell(col, row, '^', CLR_MAGENTA);
+                    const trapGlyph = trapDisplayGlyph(trap.ttyp);
+                    loc.mem_trap = trapGlyph.ch;
+                    this.setCell(col, row, trapGlyph.ch, trapGlyph.color);
                     continue;
                 }
                 loc.mem_trap = 0;

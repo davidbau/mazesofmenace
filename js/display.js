@@ -11,15 +11,10 @@ import {
     WATER, LAVAPOOL, LAVAWALL, ICE, IRONBARS, TREE,
     DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, AIR, CLOUD, SDOOR, SCORR,
     D_NODOOR, D_CLOSED, D_ISOPEN, D_LOCKED,
-    IS_WALL, IS_DOOR, IS_ROOM,
-    ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD, BEAR_TRAP,
-    LANDMINE, ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP,
-    FIRE_TRAP, PIT, SPIKED_PIT, HOLE, TRAPDOOR, TELEP_TRAP,
-    LEVEL_TELEP, MAGIC_PORTAL, WEB, STATUE_TRAP, MAGIC_TRAP,
-    ANTI_MAGIC, POLY_TRAP, VIBRATING_SQUARE
+    IS_WALL, IS_DOOR, IS_ROOM
 } from './config.js';
 
-import { def_monsyms, def_oc_syms } from './symbols.js';
+import { def_monsyms, def_oc_syms, defsyms, trap_to_defsym } from './symbols.js';
 import { monDisplayName } from './mondata.js';
 import { monsterMapGlyph, objectMapGlyph } from './display_rng.js';
 
@@ -245,7 +240,9 @@ export class Display {
 
         // Apply color flag - disable colors when color=false
         // C ref: iflags.wc_color
-        const displayColor = (this.flags.color !== false) ? color : CLR_GRAY;
+        const displayColor = (this.flags.color !== false)
+            ? ((color === CLR_BLACK && this.flags.use_darkgray !== false) ? NO_COLOR : color)
+            : CLR_GRAY;
 
         // Apply attributes via CSS
         // C ref: win/tty/termcap.c - inverse video, bold, underline
@@ -510,10 +507,14 @@ export class Display {
                 // Check for traps
                 const trap = gameMap.trapAt(x, y);
                 if (trap && trap.tseen) {
-                    loc.mem_trap = '^';
-                    this.setCell(col, row, '^', CLR_MAGENTA);
-                    const trapName = this._trapName(trap.ttyp);
-                    this.cellInfo[row][col] = { name: trapName, desc: 'trap', color: CLR_MAGENTA };
+                    const trapGlyph = this._trapGlyph(trap.ttyp);
+                    loc.mem_trap = trapGlyph.ch;
+                    this.setCell(col, row, trapGlyph.ch, trapGlyph.color);
+                    this.cellInfo[row][col] = {
+                        name: trapGlyph.name,
+                        desc: 'trap',
+                        color: trapGlyph.color,
+                    };
                     continue;
                 }
                 loc.mem_trap = 0;
@@ -1002,23 +1003,15 @@ export class Display {
         return parts.join(', ');
     }
 
-    // Get trap name from trap type
-    _trapName(ttyp) {
-        const names = {
-            [ARROW_TRAP]: 'arrow trap', [DART_TRAP]: 'dart trap',
-            [ROCKTRAP]: 'falling rock trap', [SQKY_BOARD]: 'squeaky board',
-            [BEAR_TRAP]: 'bear trap', [LANDMINE]: 'land mine',
-            [ROLLING_BOULDER_TRAP]: 'rolling boulder trap',
-            [SLP_GAS_TRAP]: 'sleeping gas trap', [RUST_TRAP]: 'rust trap',
-            [FIRE_TRAP]: 'fire trap', [PIT]: 'pit', [SPIKED_PIT]: 'spiked pit',
-            [HOLE]: 'hole', [TRAPDOOR]: 'trap door',
-            [TELEP_TRAP]: 'teleportation trap', [LEVEL_TELEP]: 'level teleporter',
-            [MAGIC_PORTAL]: 'magic portal', [WEB]: 'web',
-            [STATUE_TRAP]: 'statue trap', [MAGIC_TRAP]: 'magic trap',
-            [ANTI_MAGIC]: 'anti-magic field', [POLY_TRAP]: 'polymorph trap',
-            [VIBRATING_SQUARE]: 'vibrating square',
+    // C ref: trap_to_defsym(ttyp) + defsyms[] entry in defsym.h
+    _trapGlyph(ttyp) {
+        const idx = trap_to_defsym(ttyp);
+        const sym = (idx >= 0 && idx < defsyms.length) ? defsyms[idx] : null;
+        return {
+            ch: sym?.ch || '^',
+            color: Number.isInteger(sym?.color) ? sym.color : CLR_MAGENTA,
+            name: sym?.desc || 'trap',
         };
-        return names[ttyp] || 'trap';
     }
 
     // Set up mouseover handling for the hover info panel
