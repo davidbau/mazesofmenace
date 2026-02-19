@@ -82,7 +82,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[ ]` | light.c | — | Light source management |
 | `[ ]` | lock.c | — | Lock picking and door opening |
 | `[N/A]` | mail.c | — | In-game mail system (uses real mail on Unix) |
-| `[~]` | makemon.c | makemon.js | Monster creation |
+| `[a]` | makemon.c | makemon.js | Monster creation. Core functions aligned; clone_mon/propagate/mbirth_limit TODO |
 | `[ ]` | mcastu.c | — | Monster spellcasting |
 | `[N/A]` | mdlib.c | — | Metadata library utilities |
 | `[ ]` | mhitm.c | — | Monster-vs-monster combat |
@@ -171,9 +171,9 @@ don't follow the same 1:1 C→JS mapping pattern.
 - **N/A (system/platform)**: 19
 - **Game logic files**: 110
 - **Complete (`[x]`)**: 4
-- **Aligned (`[a]`)**: 15
+- **Aligned (`[a]`)**: 16
 - **Present (`[p]`)**: 1
-- **Needs alignment (`[~]`)**: 15
+- **Needs alignment (`[~]`)**: 14
 - **No JS file yet (`[ ]`)**: 75
 
 ### JS Files Without C Counterparts
@@ -466,6 +466,48 @@ uses static symbol data in symbols.js with no mode switching at runtime.
 | `parsesymbols` | 773 | N/A — no config file option parsing |
 | `match_sym` | 852 | N/A — no config file option parsing |
 | `do_symset` | 909 | N/A — no interactive options menu in JS |
+
+### makemon.c → makemon.js
+
+Notes:
+- C's `mextra` struct (extra per-monster data) has no JS equivalent; fields are set inline on the monster object.
+- `rndmonst()` renamed to `rndmonnum()` in JS (clearer name; wraps `rndmonst_adj(0,0,depth)`).
+- JS-only: many `mondata.h` predicates (is_mercenary, is_lord, etc.) included locally. Also: rndmonnum_adj, runtimeDecideToShapeshift, group/newcham helpers.
+- `monhp_per_lvl` inlined into `newmonhp` logic (not a separate function).
+- Debugging functions (dump_mongen, check_mongen_order, cmp_init_mongen_order) are N/A.
+
+| C Function | C Line | JS Function | JS Line | Status |
+|------------|--------|-------------|---------|--------|
+| `is_home_elemental` | 35 | — | — | TODO (elemental home types not yet tracked) |
+| `wrong_elem_type` | 58 | — | — | TODO (depends on is_home_elemental) |
+| `m_initgrp` | 81 | — | — | TODO (group spawn not yet implemented) |
+| `m_initthrow` | 150 | `m_initthrow` | 617 | Match (private) |
+| `m_initweap` | 163 | `m_initweap` | 629 | Match (private) |
+| `mkmonmoney` | 578 | `mkmonmoney` | 1041 | Match (private) |
+| `m_initinv` | 591 | `m_initinv` | 1050 | Match (private) |
+| `clone_mon` | 839 | — | — | TODO (needed for level transfer and polymorph) |
+| `propagate` | 960 | — | — | TODO (spawning copies of unique monsters) |
+| `monhp_per_lvl` | 988 | — | — | Inlined — logic embedded in `newmonhp` |
+| `newmonhp` | 1014 | `newmonhp` | 580 | Match (exported) |
+| `init_mextra` | 1061 | — | — | N/A (no mextra struct in JS — fields set inline) |
+| `newmextra` | 1068 | — | — | N/A (no mextra struct in JS) |
+| `makemon_rnd_goodpos` | 1078 | `makemon_rnd_goodpos` | 1548 | Match (private) |
+| `makemon` | 1149 | `makemon` | 1648 | Match (exported) |
+| `unmakemon` | 1511 | — | — | TODO (remove monster from map; not yet needed) |
+| `mbirth_limit` | 1539 | — | — | TODO (birth limit not yet tracked) |
+| `create_critters` | 1553 | — | — | TODO (special level monster creation) |
+| `uncommon` | 1590 | `uncommon` | 286 | Match (private) |
+| `align_shift` | 1608 | `align_shift` | 297 | Match (private) |
+| `temperature_shift` | 1638 | `temperature_shift` | 312 | Match (private) |
+| `rndmonst` | 1649 | `rndmonnum` | 397 | Renamed (exported; `rndmonnum()` wraps `rndmonst_adj(0,0,depth)`) |
+| `rndmonst_adj` | 1656 | `rndmonst_adj` | 317 | Match (exported) |
+| `mk_gen_ok` | 1733 | `mk_gen_ok` | 430 | Match (private) |
+| `cmp_init_mongen_order` | 1757 | — | — | N/A (JS sort uses closure comparator) |
+| `check_mongen_order` | 1778 | — | — | N/A (debugging utility) |
+| `init_mongen_order` | 1801 | `init_mongen_order` | 442 | Match (private) |
+| `dump_mongen` | 1829 | — | — | N/A (debugging utility) |
+| `mkclass` | 1867 | `mkclass` | 483 | Match (exported) |
+| `mkclass_aligned` | 1874 | — | — | TODO (alignment-filtered class pick; merged into mkclass atyp param partially) |
 
 ### shknam.c → shknam.js
 
