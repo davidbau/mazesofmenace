@@ -1698,9 +1698,14 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
     const { hp, m_lev } = newmonhp(mndx, depth || 1);
 
     // Gender assignment
-    // C ref: makemon.c:1278-1290
-    if (!is_male(ptr) && !is_female(ptr) && !is_neuter(ptr)) {
-        rn2(2); // random gender
+    // C ref: makemon.c:1262-1281
+    let monFemale = false;
+    if (is_female(ptr)) {
+        monFemale = true;
+    } else if (is_male(ptr)) {
+        monFemale = false;
+    } else if (!is_neuter(ptr)) {
+        monFemale = !!rn2(2); // random sex for gendered-but-unfixed forms
     }
 
     // C ref: makemon.c:1299-1310 — post-placement switch on mlet
@@ -1771,6 +1776,7 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
         attacks: ptr.attacks,
         peaceful: peace_minded(ptr),
         mpeaceful: false,
+        female: monFemale,
         tame: false,
         flee: false,
         confused: false,

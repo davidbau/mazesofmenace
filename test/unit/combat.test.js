@@ -7,7 +7,7 @@ import { initRng } from '../../js/rng.js';
 import { Player, roles } from '../../js/player.js';
 import { playerAttackMonster, monsterAttackPlayer, checkLevelUp } from '../../js/combat.js';
 import { POTION_CLASS, POT_HEALING, ORCISH_DAGGER, WEAPON_CLASS } from '../../js/objects.js';
-import { AT_WEAP } from '../../js/monsters.js';
+import { AT_WEAP, M1_HUMANOID } from '../../js/monsters.js';
 
 // Mock display object
 const mockDisplay = {
@@ -123,6 +123,40 @@ describe('Combat system', () => {
 
         assert.ok(withWeaponTotal > noWeaponTotal,
             `AT_WEAP with weapon should deal more damage (${withWeaponTotal} > ${noWeaponTotal})`);
+    });
+
+    it('AT_WEAP monster attacks show C-style swing message with possessive weapon', () => {
+        initRng(42);
+        const p = new Player();
+        p.initRole(0);
+        p.ac = 10;
+
+        const mon = makeMonster({
+            name: 'goblin',
+            level: 10,
+            attacks: [{ type: AT_WEAP, dice: 1, sides: 4 }],
+        });
+        mon.type = { flags1: M1_HUMANOID, flags2: 0, geno: 0 };
+        mon.female = true;
+        mon.weapon = {
+            otyp: ORCISH_DAGGER,
+            oclass: WEAPON_CLASS,
+            quan: 1,
+            dknown: true,
+            known: false,
+        };
+        mon.mx = 5;
+        mon.my = 5;
+
+        const messages = [];
+        const display = {
+            putstr_message: (msg) => messages.push(msg),
+            putstr() {},
+        };
+        const game = { flags: { verbose: true }, fov: { canSee: () => true } };
+        monsterAttackPlayer(mon, p, display, game);
+
+        assert.equal(messages[0], 'The goblin thrusts her crude dagger.');
     });
 
     it('checkLevelUp advances player level', () => {

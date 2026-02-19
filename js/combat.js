@@ -5,19 +5,22 @@ import { rn2, rnd, d, c_d } from './rng.js';
 import { exercise } from './attrib_exercise.js';
 import { A_DEX, A_CON } from './config.js';
 import {
-    mons, G_FREQ, G_NOCORPSE, MZ_TINY, MZ_HUMAN, M2_NEUTER, M2_MALE, M2_FEMALE, M2_COLLECT,
+    mons, G_FREQ, G_NOCORPSE, G_UNIQ, MZ_TINY, MZ_HUMAN, M2_NEUTER, M2_MALE, M2_FEMALE, M2_PNAME, M2_COLLECT,
     MZ_LARGE,
     AT_CLAW, AT_BITE, AT_KICK, AT_BUTT, AT_TUCH, AT_STNG, AT_WEAP,
     S_ZOMBIE, S_MUMMY, S_VAMPIRE, S_WRAITH, S_LICH, S_GHOST, S_DEMON, S_KOP, PM_SHADE,
 } from './monsters.js';
 import {
     CORPSE, FIGURINE, FOOD_CLASS, objectData,
+    BULLWHIP,
     POTION_CLASS, POT_HEALING, POT_EXTRA_HEALING, POT_FULL_HEALING,
     POT_RESTORE_ABILITY, POT_GAIN_ABILITY,
 } from './objects.js';
-import { mkobj, mkcorpstat, RANDOM_CLASS, next_ident } from './mkobj.js';
-import { nonliving, monDisplayName } from './mondata.js';
+import { mkobj, mkcorpstat, RANDOM_CLASS, next_ident, xname } from './mkobj.js';
+import { nonliving, monDisplayName, is_humanoid } from './mondata.js';
 import { obj_resists } from './objdata.js';
+
+const PIERCE = 1;
 
 function isUndeadOrDemon(monsterType) {
     if (!monsterType) return false;
@@ -83,6 +86,49 @@ function monsterHitVerb(attackType) {
         case AT_WEAP: return 'hits';
         default: return 'hits';
     }
+}
+
+// C ref: mhitu.c mswings_verb() / mswings().
+function monsterWeaponSwingVerb(weapon, bash = false) {
+    if (!weapon) return 'swings';
+    const info = objectData[weapon.otyp] || {};
+    const dir = Number.isInteger(info.dir) ? info.dir : 0;
+    const lash = weapon.otyp === BULLWHIP;
+    const thrust = (dir & PIERCE) !== 0 && (((dir & ~PIERCE) === 0) || !rn2(2));
+
+    if (bash) return 'bashes with';
+    if (lash) return 'lashes';
+    return thrust ? 'thrusts' : 'swings';
+}
+
+// C ref: mondata.c pronoun_gender() and mhis().
+function monsterPossessive(monster) {
+    const mdat = monster?.type || {};
+    const flags2 = mdat.flags2 || 0;
+    if (flags2 & M2_NEUTER) return 'its';
+
+    const useGenderedPronoun = is_humanoid(mdat)
+        || !!((mdat.geno || 0) & G_UNIQ)
+        || !!(flags2 & M2_PNAME);
+    if (!useGenderedPronoun) return 'its';
+
+    if (flags2 & M2_FEMALE) return 'her';
+    if (flags2 & M2_MALE) return 'his';
+    return monster?.female ? 'her' : 'his';
+}
+
+// C ref: mhitu.c AT_WEAP path emits swing/thrust text before hit/miss.
+function maybeMonsterWeaponSwingMessage(monster, player, display, suppressHitMsg) {
+    if (!monster?.weapon || suppressHitMsg) return;
+    if (player?.blind) return;
+    if (monster.minvis && !player?.seeInvisible) return;
+
+    const bash = false;
+    const swingVerb = monsterWeaponSwingVerb(monster.weapon, bash);
+    const oneOf = ((monster.weapon.quan || 1) > 1) ? 'one of ' : '';
+    display.putstr_message(
+        `The ${monDisplayName(monster)} ${swingVerb} ${oneOf}${monsterPossessive(monster)} ${xname(monster.weapon)}.`
+    );
 }
 
 function consumeMeleePotion(player, weapon) {
@@ -346,7 +392,6 @@ export function monsterAttackPlayer(monster, player, display, game = null) {
         // To-hit calculation for monster
         // C ref: mhitu.c:707-708 — tmp = AC_VALUE(u.uac) + 10 + mtmp->m_lev
         // C ref: mhitu.c:804 — rnd(20+i) where i is attack index
-        const dieRoll = rnd(20 + i);
         // C ref: AC_VALUE(ac) macro:
         //   ac >= 0 ? ac : -rnd(-ac)
         const playerAc = Number.isInteger(player.ac)
@@ -354,6 +399,12 @@ export function monsterAttackPlayer(monster, player, display, game = null) {
             : (Number.isInteger(player.effectiveAC) ? player.effectiveAC : 10);
         const acValue = (playerAc >= 0) ? playerAc : -rnd(-playerAc);
         const toHit = acValue + 10 + monster.mlevel;
+
+        if (attack.type === AT_WEAP && monster.weapon) {
+            maybeMonsterWeaponSwingMessage(monster, player, display, suppressHitMsg);
+        }
+
+        const dieRoll = rnd(20 + i);
 
         if (toHit <= dieRoll) {
             // Miss — C ref: mhitu.c:86-98 missmu()

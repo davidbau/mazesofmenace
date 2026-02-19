@@ -234,6 +234,13 @@ established these practical replay/parity rules:
   the listing frame until `space`/`enter`/`esc` returns to the prompt.
 - In AT_WEAP melee flow, monsters can spend a turn wielding a carried weapon
   (`The goblin wields a crude dagger!`) before the first hit roll.
+- In AT_WEAP melee hit/miss messaging, session parity expects the C-style
+  pre-hit weapon phrase on the same topline as the hit result (for example
+  `The goblin thrusts her crude dagger.  The goblin hits!`), so replay must
+  preserve this pre-hit text in weapon attack flows.
+- Correct AT_WEAP possessive phrasing depends on monster sex state from
+  creation (`mon.female`), plus C-style object naming (`xname`) for the
+  wielded weapon's appearance name (`crude dagger` vs discovered object name).
 - AT_WEAP melee damage must include wielded-weapon `dmgval` (`rnd(sdam)`) after
   base `d(1,4)` damage; omitting that call shifts later knockback/runmode RNG.
 - In AT_WEAP ranged flow, monster projectiles must consume `minvent` stacks and
@@ -259,13 +266,12 @@ established these practical replay/parity rules:
   alignment from core rendering; do not apply tmux col-0 compensation in the
   comparator.
 
-Measured progress in this pass:
-- First RNG divergence moved to step `693` (dog movement food scoring path).
-- Current metrics: `rng=9848/15050`, `screens=729/1284`, `colors=25088/30816`.
-- `thrwmu` ranged-throw parity now includes the C `URETREATING` gate
-  (`rn2(BOLT_LIM - dist)` early-return before `m_throw`).
-- Current frontier is in `dog_move` candidate/food-scoring ordering
-  (`obj_resists`/`dogfood` vs `rn2(12)` selection path).
+Measured progress in the latest pass:
+- First screen divergence moved from step `605` row `0` (missing AT_WEAP
+  pre-hit phrase) to step `616` row `14` (floor glyph mismatch `)` vs `[`).
+- Current metrics: `rng=9867/16026`, `screens=924/1284`, `colors=29815/30776`.
+- Current frontier is object/equipment state parity around step `616` in the
+  tourist non-wizard session.
 
 ### Modifying the dungeon generator
 
