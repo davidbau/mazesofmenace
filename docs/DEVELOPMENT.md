@@ -240,10 +240,12 @@ established these practical replay/parity rules:
   comparator.
 
 Measured progress in this pass:
-- First RNG divergence moved to step `608` (`thrwmu` multishot/throw path).
-- Current metrics: `rng=8605/16898`, `screens=732/1284`, `colors=28878/30816`.
-- Current frontier is AT_WEAP ranged-throw parity (`thrwmu`/`m_throw`) after
-  the goblin wield-before-hit and melee weapon-damage fixes.
+- First RNG divergence moved to step `693` (dog movement food scoring path).
+- Current metrics: `rng=9848/15050`, `screens=729/1284`, `colors=25088/30816`.
+- `thrwmu` ranged-throw parity now includes the C `URETREATING` gate
+  (`rn2(BOLT_LIM - dist)` early-return before `m_throw`).
+- Current frontier is in `dog_move` candidate/food-scoring ordering
+  (`obj_resists`/`dogfood` vs `rn2(12)` selection path).
 
 ### Modifying the dungeon generator
 

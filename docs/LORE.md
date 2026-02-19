@@ -601,6 +601,19 @@ Practical rule:
   turn on wielding a carried weapon.
 - AT_WEAP melee damage must include weapon `dmgval` RNG after base attack dice.
 
+### `thrwmu` ranged throws are gated by `URETREATING` before `m_throw`
+
+In C `mthrowu.c`, lined-up ranged throws are not unconditional. When the hero
+is retreating from the thrower, `thrwmu()` consumes `rn2(BOLT_LIM - dist)` and
+returns early on non-zero rolls, so `m_throw()` is skipped that turn.
+
+Practical rule:
+- Track previous hero position (`u.ux0/u.uy0` equivalent) each command.
+- In `thrwmu`, compute retreating as distance from current hero position to the
+  monster being greater than distance from previous hero position.
+- Apply this gate before `monshoot`/`m_throw`; otherwise JS enters throw-flight
+  RNG when C exits early.
+
 ### `doread` `?/*` help is a modal `--More--` listing, not a one-key no-op
 
 In tourist traces, pressing `?` (or `*`) at `What do you want to read?` opens a
