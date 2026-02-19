@@ -1916,11 +1916,46 @@ export async function replaySession(seed, session, opts = {}) {
                 // dismisses it (and may become a passthrough command), matching
                 // C tty interactions.
                 const needsDismissal = ['i', 'I'].includes(String.fromCharCode(ch));
+                const hasRunmodeDelayMarker = Array.isArray(step.rng)
+                    && step.rng.some((entry) =>
+                        typeof entry === 'string' && entry.includes('runmode_delay_output')
+                    );
+                const hasDirectionPrompt = stepMsg === 'In what direction?'
+                    || stepMsg === 'In which direction?';
+                const hasCapturedPromptFrame = ((step.rng && step.rng.length) || 0) === 0
+                    && (stepScreen.length > 0 || stepScreenAnsi.length > 0)
+                    && stepMsg.trim().length > 0
+                    && typeof step.action === 'string'
+                    && step.action.startsWith('key-');
                 // Command is waiting for additional input (direction/item/etc.).
                 // Defer resolution to subsequent captured step(s).
                 // Preserve the prompt/menu frame shown before we redraw map.
                 if (opts.captureScreens) {
-                    if (needsDismissal && (stepScreen.length > 0 || stepScreenAnsi.length > 0)) {
+                    if (hasRunmodeDelayMarker
+                        && hasDirectionPrompt
+                        && (stepScreen.length > 0 || stepScreenAnsi.length > 0)) {
+                        // Runmode-delay captures can leave a command pending
+                        // while still recording the post-delay map frame.
+                        // Keep that captured frame authoritative.
+                        applyStepScreen();
+                        capturedScreenOverride = stepScreen.length > 0 ? stepScreen : null;
+                        capturedScreenAnsiOverride = stepScreenAnsi.length > 0
+                            ? stepScreenAnsi
+                            : (Array.isArray(capturedScreenOverride)
+                                ? capturedScreenOverride.map((line) => String(line || ''))
+                                : null);
+                    } else if (hasCapturedPromptFrame) {
+                        // Prompt-start frames are frequently captured before JS
+                        // has rendered pending-input UI; preserve the recorded
+                        // prompt so follow-up key routing stays aligned.
+                        applyStepScreen();
+                        capturedScreenOverride = stepScreen.length > 0 ? stepScreen : null;
+                        capturedScreenAnsiOverride = stepScreenAnsi.length > 0
+                            ? stepScreenAnsi
+                            : (Array.isArray(capturedScreenOverride)
+                                ? capturedScreenOverride.map((line) => String(line || ''))
+                                : null);
+                    } else if (needsDismissal && (stepScreen.length > 0 || stepScreenAnsi.length > 0)) {
                         // Inventory overlays are modal display-only frames.
                         // Use captured C frame as authoritative for this step
                         // so menu text/column placement parity doesn't depend on
@@ -2146,6 +2181,7 @@ export async function replaySession(seed, session, opts = {}) {
             const capturedMsg = (stepScreen[0] || '').trimEnd();
             const currentMsg = ((game.display.getScreenLines?.() || [])[0] || '').trimEnd();
             const capturedNoMore = capturedMsg.replace(/--More--\s*$/, '').trimEnd();
+            const capturedPromptLike = /^What do you want to .*\\?$/.test(capturedMsg);
             const recentMsgs = Array.isArray(game.display?.messages)
                 ? game.display.messages.map((m) => String(m || '').trimEnd())
                 : [];
@@ -2167,6 +2203,18 @@ export async function replaySession(seed, session, opts = {}) {
                         : null);
             }
             if ((step.key === '\u001b' || step.key === '\x1b') && capturedMsg === '') {
+                capturedScreenOverride = stepScreen;
+                capturedScreenAnsiOverride = stepScreenAnsi.length > 0
+                    ? stepScreenAnsi
+                    : (Array.isArray(capturedScreenOverride)
+                        ? capturedScreenOverride.map((line) => String(line || ''))
+                        : null);
+            }
+            if (capturedPromptLike
+                && currentMsg === ''
+                && ((step.rng && step.rng.length) || 0) === 0
+                && typeof step.action === 'string'
+                && step.action.startsWith('key-')) {
                 capturedScreenOverride = stepScreen;
                 capturedScreenAnsiOverride = stepScreenAnsi.length > 0
                     ? stepScreenAnsi

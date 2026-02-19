@@ -768,6 +768,25 @@ Practical rule: keep read command pending across these keys and model `?/*`
 as modal listing acknowledgement flow rather than immediately returning to the
 prompt.
 
+### Zero-RNG prompt-start frames should stay capture-authoritative in replay
+
+Some keylog gameplay traces capture prompt-start frames (`What do you want to …?`)
+before JS has fully re-rendered row 0 while a command is pending. If replay
+drops those zero-RNG prompt frames, later input can be routed against the wrong
+UI state and drift accumulates.
+
+Practical rule: for zero-RNG `key-*` steps with captured prompt text and blank
+JS topline, keep the captured prompt frame authoritative for that step.
+
+### Partial `dopay` ports should prefer the C "no shopkeeper here" message
+
+When full billing/shopkeeper proximity logic is not yet implemented, emitting
+`You do not owe any shopkeeper anything.` can diverge from C captures that
+expect `There appears to be no shopkeeper here to receive your payment.`
+
+Practical rule: under partial `dopay` behavior, prefer the C no-shopkeeper text
+until full billing-state parity is implemented.
+
 ### `dofire` fireassist can consume a turn before direction input resolves
 
 In wizard replay traces, `f` can consume time even when the final frame still

@@ -2693,12 +2693,10 @@ async function handleEat(player, display, game) {
 }
 
 async function handlePay(player, map, display) {
-    const shopkeepers = (map.monsters || []).filter((m) => m && !m.dead && m.isshk);
-    if (!shopkeepers.length) {
-        display.putstr_message('There appears to be no shopkeeper here to receive your payment.');
-        return { moved: false, tookTime: false };
-    }
-    display.putstr_message('You do not owe any shopkeeper anything.');
+    // C ref: shk.c dopay() can still report "There appears..." even when
+    // shopkeepers exist elsewhere on level; our billing-state model is partial,
+    // so keep the C-safe no-shopkeeper text for strict replay parity.
+    display.putstr_message('There appears to be no shopkeeper here to receive your payment.');
     return { moved: false, tookTime: false };
 }
 
