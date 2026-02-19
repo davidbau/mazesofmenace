@@ -76,6 +76,7 @@ cp "$REPO_ROOT/scripts/run-session-tests.sh" "$INFRA_DIR/run-session-tests.sh"
 
 DONE=0
 FAILED=0
+SUCCEEDED=0
 TOTAL=${#COMMITS[@]}
 
 for commit in "${COMMITS[@]}"; do
@@ -115,6 +116,7 @@ for commit in "${COMMITS[@]}"; do
     RESULTS_COUNT=$(jq '.results | length' "$PENDING")
     RNG=$(jq '[.results[].metrics.rngCalls // empty | .matched] | add // 0' "$PENDING")
     echo "✅ ${RESULTS_COUNT} sessions, rng=${RNG} (${ELAPSED}s)"
+    SUCCEEDED=$((SUCCEEDED + 1))
   else
     # Mark as attempted so we don't retry next time
     echo "{\"results\":[], \"commit\":\"$short\", \"date\":\"$(date -u +%Y-%m-%dT%H:%M:%S)\", \"skipped\":true}" \
@@ -123,17 +125,21 @@ for commit in "${COMMITS[@]}"; do
     echo "✗ no results, marked skipped (${ELAPSED}s)"
     FAILED=$((FAILED + 1))
   fi
+
+  # Push notes after each commit so progress is saved incrementally
+  git push --no-verify origin +refs/notes/test-results:refs/notes/test-results 2>/dev/null \
+    && echo "  ↳ pushed" || echo "  ↳ push failed (will retry later)"
 done
 
 # Cleanup
 rm -rf "$WORK_DIR" "$INFRA_DIR" /tmp/rebackfill_commits.txt
 
 echo ""
-echo "Done: $((DONE - FAILED)) succeeded, $FAILED failed out of $TOTAL"
+echo "Done: $SUCCEEDED succeeded, $FAILED failed out of $TOTAL"
 
-if [ "$((DONE - FAILED))" -gt 0 ]; then
+if [ "$SUCCEEDED" -gt 0 ]; then
   echo ""
-  echo "Pushing notes to remote..."
+  echo "Final push of notes..."
   git push --no-verify origin +refs/notes/test-results:refs/notes/test-results && echo "✅ Pushed notes" || echo "⚠️  Could not push notes"
 
   echo ""

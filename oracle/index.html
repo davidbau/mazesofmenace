@@ -46,6 +46,7 @@
         <button class="view-btn" data-view="tests">Tests</button>
         <button class="view-btn active" data-view="categories">Categories</button>
         <button class="view-btn" data-view="metrics">Metrics</button>
+        <button class="view-btn" data-view="sessions">Sessions</button>
       </div>
       <div class="control-group">
         <span class="control-label">Range:</span>
@@ -94,6 +95,22 @@
       <div class="category-grid" id="category-grid"></div>
     </section>
 
+
+    <!-- Session Grid (shown when Sessions view active) -->
+    <section class="breakdown-section" id="session-grid-section" style="display:none;">
+      <h2>Session &times; Commit Grid <span class="section-hint">(The Oracle's full vision)</span></h2>
+      <div class="session-grid-controls">
+        <label class="checkbox-label"><input type="checkbox" id="grid-show-pass" checked> Passing</label>
+        <label class="checkbox-label"><input type="checkbox" id="grid-show-fail" checked> Failing</label>
+        <span class="control-label">Color by:</span>
+        <select id="grid-color-metric">
+          <option value="rng">RNG Match</option>
+          <option value="screen">Screen Match</option>
+          <option value="pass">Pass/Fail</option>
+        </select>
+      </div>
+      <div class="session-grid-wrapper" id="session-grid-wrapper"></div>
+    </section>
 
     <!-- Commit Table -->
     <section class="table-section">

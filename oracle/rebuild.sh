@@ -109,7 +109,18 @@ if [ -s "$TEMP_FILE" ]; then
               fail: [.[] | select(.passed | not)] | length
             }
           }) | from_entries
-        )
+        ),
+        session_detail: [.results[] | {
+          s: .session,
+          t: .type,
+          p: .passed,
+          rm: (.metrics.rngCalls.matched // 0),
+          rt: (.metrics.rngCalls.total // 0),
+          sm: (.metrics.screens.matched // 0),
+          st: (.metrics.screens.total // 0),
+          gm: (.metrics.grids.matched // 0),
+          gt: (.metrics.grids.total // 0)
+        }]
       }
     else
       # Already summarized (backfilled) — pass through

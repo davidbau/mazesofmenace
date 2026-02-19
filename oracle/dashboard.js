@@ -13,6 +13,7 @@ let currentView = 'categories';
 let currentRange = 'all';
 let selectedCommit = null;
 let chart = null;
+let gridTooltipEl = null;
 
 // Chart colors - parchment-friendly palette
 const COLORS = {
@@ -34,6 +35,15 @@ const CAT_COLORS = {
   option_test: 'rgba(107, 74, 44, 0.9)',
 };
 
+// Format date as MM/DD HH:MM (skip year, include time)
+function fmtDate(d) {
+  if (!d) return '–';
+  // d is ISO string like "2026-02-18T23:41:32.905Z"
+  const m = d.match(/(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+  if (!m) return d;
+  return `${m[2]}/${m[3]} ${m[4]}:${m[5]}`;
+}
+
 // Helper: get pass/fail from either field naming convention
 function getPass(d) {
   return d.stats?.passed ?? d.stats?.pass ?? 0;
@@ -43,6 +53,42 @@ function getFail(d) {
 }
 function getTotal(d) {
   return d.stats?.total ?? (getPass(d) + getFail(d));
+}
+
+// Color helpers for heatmap cells
+function rngColor(matched, total) {
+  if (total === 0) return 'rgba(180, 180, 180, 0.3)';
+  const pct = matched / total;
+  // red(0%) -> yellow(50%) -> green(100%)
+  if (pct < 0.5) {
+    const r = 180, g = Math.round(160 * pct * 2), b = 40;
+    return `rgba(${r}, ${g}, ${b}, 0.8)`;
+  } else {
+    const r = Math.round(180 * (1 - (pct - 0.5) * 2)), g = 160, b = 40;
+    return `rgba(${r}, ${g}, ${b}, 0.8)`;
+  }
+}
+
+function screenColor(matched, total) {
+  if (total === 0) return 'rgba(180, 180, 180, 0.3)';
+  const pct = matched / total;
+  if (pct < 0.5) {
+    const r = 140, g = Math.round(120 * pct * 2), b = 160;
+    return `rgba(${r}, ${g}, ${b}, 0.8)`;
+  } else {
+    const r = Math.round(140 * (1 - (pct - 0.5) * 2)), g = 120 + Math.round(40 * (pct - 0.5) * 2), b = Math.round(160 * (1 - (pct - 0.5) * 2));
+    return `rgba(${r}, ${g}, ${b}, 0.8)`;
+  }
+}
+
+function passFailColor(passed) {
+  return passed ? 'rgba(42, 107, 42, 0.7)' : 'rgba(139, 44, 44, 0.7)';
+}
+
+function getCellColor(session, metric) {
+  if (metric === 'rng') return rngColor(session.rm, session.rt);
+  if (metric === 'screen') return screenColor(session.sm, session.st);
+  return passFailColor(session.p);
 }
 
 // Load data
@@ -106,6 +152,9 @@ function updateDisplay() {
   updateChart();
   updateTable();
   updateCategoryBreakdown();
+  if (currentView === 'sessions') {
+    updateSessionGrid();
+  }
 }
 
 // Update summary stats
@@ -134,6 +183,15 @@ function updateStats() {
 
 // Update main chart
 function updateChart() {
+  const chartSection = document.querySelector('.chart-section');
+
+  // Hide chart for sessions view
+  if (currentView === 'sessions') {
+    chartSection.style.display = 'none';
+    return;
+  }
+  chartSection.style.display = 'block';
+
   const ctx = document.getElementById('timeline-chart').getContext('2d');
 
   if (chart) {
@@ -334,51 +392,7 @@ function updateChart() {
           },
         },
         tooltip: {
-          backgroundColor: '#222',
-          titleColor: '#eee',
-          bodyColor: '#ccc',
-          borderColor: '#444',
-          borderWidth: 1,
-          callbacks: {
-            title: (items) => {
-              if (items.length > 0) {
-                const idx = items[0].dataIndex;
-                const d = filteredData[idx];
-                return `${d.commit} - ${d.date?.slice(0, 10) || 'unknown'}`;
-              }
-              return '';
-            },
-            afterTitle: (items) => {
-              if (items.length > 0) {
-                const idx = items[0].dataIndex;
-                const d = filteredData[idx];
-                return d.message?.slice(0, 60) || '';
-              }
-              return '';
-            },
-            label: (context) => {
-              const value = context.parsed.y;
-              if (value === null || value === undefined) return null;
-              if (currentView === 'metrics') {
-                return `${context.dataset.label}: ${value}%`;
-              }
-              return `${context.dataset.label}: ${value.toLocaleString()}`;
-            },
-            afterBody: (items) => {
-              if (currentView === 'metrics' && items.length > 0) {
-                const idx = items[0].dataIndex;
-                const d = filteredData[idx];
-                const m = d.metrics;
-                if (!m) return '';
-                const lines = [];
-                if (m.rng?.total > 0) lines.push(`  RNG: ${m.rng.matched.toLocaleString()}/${m.rng.total.toLocaleString()}`);
-                if (m.screens?.total > 0) lines.push(`  Screens: ${m.screens.matched.toLocaleString()}/${m.screens.total.toLocaleString()}`);
-                if (m.grids?.total > 0) lines.push(`  Grids: ${m.grids.matched.toLocaleString()}/${m.grids.total.toLocaleString()}`);
-                return lines.join('\n');
-              }
-              return '';
-            },
-          },
+          enabled: false,
         },
         zoom: {
           pan: { enabled: true, mode: 'x' },
@@ -420,7 +434,7 @@ function showDetailPanel(d) {
   // Commit info
   html += `<div class="detail-group">
     <h3>Commit Info</h3>
-    <div class="detail-row"><span class="detail-label">Date</span><span class="detail-value">${d.date?.slice(0, 19) || 'unknown'}</span></div>
+    <div class="detail-row"><span class="detail-label">Date</span><span class="detail-value">${fmtDate(d.date)}</span></div>
     <div class="detail-row"><span class="detail-label">Author</span><span class="detail-value">${d.author || 'unknown'}</span></div>
     <div class="detail-row"><span class="detail-label">Sessions</span><span class="detail-value">${d.sessions || '–'}</span></div>
     <div class="detail-row"><span class="detail-label">GitHub</span><span class="detail-value"><a href="${GITHUB_REPO}/commit/${d.commit}" target="_blank" style="color:#6b8;">View on GitHub</a></span></div>
@@ -468,8 +482,67 @@ function showDetailPanel(d) {
     html += `</div>`;
   }
 
+  // Per-session breakdown
+  if (d.session_detail && d.session_detail.length > 0) {
+    // Group by type
+    const byType = {};
+    for (const s of d.session_detail) {
+      if (!byType[s.t]) byType[s.t] = [];
+      byType[s.t].push(s);
+    }
+
+    html += `<div class="detail-group" style="grid-column: 1 / -1;">
+      <h3>Sessions</h3>
+      <div class="session-list">`;
+
+    for (const [type, sessions] of Object.entries(byType).sort((a, b) => a[0].localeCompare(b[0]))) {
+      const passCount = sessions.filter(s => s.p).length;
+      const totalCount = sessions.length;
+      const expanded = sessions.some(s => !s.p); // expand groups with failures
+
+      html += `<div class="session-group">
+        <div class="session-group-header" onclick="this.parentElement.classList.toggle('collapsed')">
+          <span class="group-name">${type}</span>
+          <span class="group-stats"><span style="color:var(--pass)">${passCount}</span>/${totalCount}</span>
+          <span class="group-expand">&#9660;</span>
+        </div>
+        <div class="session-group-details"${expanded ? '' : ' style="display:none"'}>
+          <div class="session-items">`;
+
+      for (const s of sessions.sort((a, b) => a.s.localeCompare(b.s))) {
+        const name = s.s.replace('.session.json', '');
+        const cls = s.p ? 'pass' : 'fail';
+        const icon = s.p ? '\u2713' : '\u2717';
+        let metricText = '';
+        if (s.rt > 0) metricText = `RNG ${Math.round(s.rm / s.rt * 100)}%`;
+        else if (s.st > 0) metricText = `Scr ${Math.round(s.sm / s.st * 100)}%`;
+        else if (s.gt > 0) metricText = `Grid ${Math.round(s.gm / s.gt * 100)}%`;
+
+        html += `<div class="session-item ${cls}">
+          <span class="session-status">${icon}</span>
+          <span class="session-name" title="${s.s}">${name}</span>
+          <span class="session-coverage">${metricText}</span>
+        </div>`;
+      }
+
+      html += `</div></div></div>`;
+    }
+
+    html += `</div></div>`;
+  }
+
   content.innerHTML = html;
   panel.style.display = 'block';
+
+  // Wire up collapse toggles
+  content.querySelectorAll('.session-group-header').forEach(header => {
+    header.addEventListener('click', () => {
+      const details = header.nextElementSibling;
+      if (details) {
+        details.style.display = details.style.display === 'none' ? '' : 'none';
+      }
+    });
+  });
 }
 
 // Highlight table row
@@ -506,7 +579,7 @@ function updateTable() {
 
     html += `<tr class="${rowClass}" data-commit="${d.commit}" onclick="selectCommit(filteredData[${filteredData.length - 1 - i}])">
       <td><a class="commit-hash" href="${GITHUB_REPO}/commit/${d.commit}" target="_blank" onclick="event.stopPropagation();">${d.commit}</a></td>
-      <td>${d.date?.slice(0, 10) || ''}</td>
+      <td>${fmtDate(d.date)}</td>
       <td class="message-text" title="${d.message || ''}">${d.message?.slice(0, 50) || ''}</td>
       <td style="color:#5a5;">${getPass(d)}</td>
       <td style="color:#d55;">${getFail(d)}</td>
@@ -546,7 +619,222 @@ function updateCategoryBreakdown() {
   grid.innerHTML = html;
 }
 
-// Event listeners
+// ===== Session Grid =====
+
+function updateSessionGrid() {
+  const wrapper = document.getElementById('session-grid-wrapper');
+  if (!wrapper) return;
+
+  const showPass = document.getElementById('grid-show-pass').checked;
+  const showFail = document.getElementById('grid-show-fail').checked;
+  const colorMetric = document.getElementById('grid-color-metric').value;
+
+  // Only use commits that have session_detail
+  const commitsWithSessions = filteredData.filter(d => d.session_detail && d.session_detail.length > 0);
+
+  if (commitsWithSessions.length === 0) {
+    wrapper.innerHTML = '<div style="padding:1rem;color:#777;font-style:italic;">No per-session data available for the selected range. Session details are only available for commits tested with the full session runner.</div>';
+    return;
+  }
+
+  // Build the union of all session names, grouped by type
+  const sessionMap = new Map(); // session name -> { type, latestPassed }
+  for (const d of commitsWithSessions) {
+    for (const s of d.session_detail) {
+      if (!sessionMap.has(s.s)) {
+        sessionMap.set(s.s, { type: s.t, latestPassed: s.p });
+      } else {
+        sessionMap.get(s.s).latestPassed = s.p;
+      }
+    }
+  }
+
+  // Filter sessions by pass/fail checkbox (based on latest known state)
+  let sessionNames = [...sessionMap.entries()]
+    .filter(([_, info]) => {
+      if (info.latestPassed && !showPass) return false;
+      if (!info.latestPassed && !showFail) return false;
+      return true;
+    })
+    .sort((a, b) => {
+      // Sort by type, then by name
+      const typeCmp = a[1].type.localeCompare(b[1].type);
+      if (typeCmp !== 0) return typeCmp;
+      return a[0].localeCompare(b[0]);
+    });
+
+  if (sessionNames.length === 0) {
+    wrapper.innerHTML = '<div style="padding:1rem;color:#777;font-style:italic;">No sessions match the current filter.</div>';
+    return;
+  }
+
+  // Build lookup: commit -> session name -> session data
+  const commitSessionLookup = new Map();
+  for (const d of commitsWithSessions) {
+    const map = new Map();
+    for (const s of d.session_detail) {
+      map.set(s.s, s);
+    }
+    commitSessionLookup.set(d.commit, map);
+  }
+
+  // Build table HTML
+  let html = '<table class="session-grid-table">';
+
+  // Header row: corner + commit columns
+  html += '<thead><tr>';
+  html += '<th class="corner"></th>';
+  for (const d of commitsWithSessions) {
+    html += `<th class="commit-col" data-commit="${d.commit}" title="${d.commit} - ${fmtDate(d.date)}\n${d.message?.slice(0, 60) || ''}">${d.commit.slice(0, 6)}</th>`;
+  }
+  html += '</tr></thead>';
+
+  // Body: one row per session, grouped by type
+  html += '<tbody>';
+  let lastType = null;
+  for (const [sessionName, info] of sessionNames) {
+    // Type separator row
+    if (info.type !== lastType) {
+      lastType = info.type;
+      html += `<tr><th class="type-separator" colspan="${commitsWithSessions.length + 1}">${info.type}</th></tr>`;
+    }
+
+    const shortName = sessionName.replace('.session.json', '');
+    html += `<tr data-session="${sessionName}">`;
+    html += `<th class="row-header" title="${sessionName}">${shortName}</th>`;
+
+    for (const d of commitsWithSessions) {
+      const sessionData = commitSessionLookup.get(d.commit)?.get(sessionName);
+      if (!sessionData) {
+        html += '<td class="no-data"></td>';
+      } else {
+        const color = getCellColor(sessionData, colorMetric);
+        html += `<td data-commit="${d.commit}" data-session="${sessionName}" style="background:${color}"><span class="grid-cell"></span></td>`;
+      }
+    }
+
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+
+  wrapper.innerHTML = html;
+
+  // Add event listeners for tooltips and clicks
+  setupGridInteractions(wrapper, commitsWithSessions, commitSessionLookup);
+}
+
+function setupGridInteractions(wrapper, commitsWithSessions, commitSessionLookup) {
+  // Create tooltip element
+  if (!gridTooltipEl) {
+    gridTooltipEl = document.createElement('div');
+    gridTooltipEl.className = 'grid-tooltip';
+    gridTooltipEl.style.display = 'none';
+    document.body.appendChild(gridTooltipEl);
+  }
+
+  // Cell hover -> tooltip
+  wrapper.addEventListener('mouseover', (e) => {
+    const td = e.target.closest('td[data-session]');
+    if (!td) {
+      gridTooltipEl.style.display = 'none';
+      return;
+    }
+
+    const sessionName = td.dataset.session;
+    const commitHash = td.dataset.commit;
+    const sessionData = commitSessionLookup.get(commitHash)?.get(sessionName);
+    const commitData = commitsWithSessions.find(d => d.commit === commitHash);
+
+    if (!sessionData || !commitData) {
+      gridTooltipEl.style.display = 'none';
+      return;
+    }
+
+    const shortName = sessionName.replace('.session.json', '');
+    const passText = sessionData.p
+      ? '<span class="tt-pass">\u2713 PASS</span>'
+      : '<span class="tt-fail">\u2717 FAIL</span>';
+
+    let metricLines = '';
+    if (sessionData.rt > 0) {
+      const pct = (sessionData.rm / sessionData.rt * 100).toFixed(1);
+      metricLines += `<div class="tt-metric">RNG: ${sessionData.rm.toLocaleString()}/${sessionData.rt.toLocaleString()} (${pct}%)</div>`;
+    }
+    if (sessionData.st > 0) {
+      const pct = (sessionData.sm / sessionData.st * 100).toFixed(1);
+      metricLines += `<div class="tt-metric">Screens: ${sessionData.sm}/${sessionData.st} (${pct}%)</div>`;
+    }
+    if (sessionData.gt > 0) {
+      const pct = (sessionData.gm / sessionData.gt * 100).toFixed(1);
+      metricLines += `<div class="tt-metric">Grids: ${sessionData.gm}/${sessionData.gt} (${pct}%)</div>`;
+    }
+
+    gridTooltipEl.innerHTML = `
+      <div class="tt-session">${shortName}</div>
+      <div class="tt-commit">${commitData.commit} - ${fmtDate(commitData.date)}</div>
+      <div>${passText}</div>
+      ${metricLines}
+    `;
+    gridTooltipEl.style.display = 'block';
+
+    // Position near mouse
+    const rect = td.getBoundingClientRect();
+    gridTooltipEl.style.left = (rect.right + 8) + 'px';
+    gridTooltipEl.style.top = (rect.top - 10) + 'px';
+
+    // Keep tooltip on screen
+    const ttRect = gridTooltipEl.getBoundingClientRect();
+    if (ttRect.right > window.innerWidth - 10) {
+      gridTooltipEl.style.left = (rect.left - ttRect.width - 8) + 'px';
+    }
+    if (ttRect.bottom > window.innerHeight - 10) {
+      gridTooltipEl.style.top = (window.innerHeight - ttRect.height - 10) + 'px';
+    }
+  });
+
+  wrapper.addEventListener('mouseout', (e) => {
+    if (!e.relatedTarget || !wrapper.contains(e.relatedTarget)) {
+      gridTooltipEl.style.display = 'none';
+    }
+  });
+
+  // Cell click -> select commit
+  wrapper.addEventListener('click', (e) => {
+    const td = e.target.closest('td[data-session]');
+    if (td) {
+      const commitHash = td.dataset.commit;
+      const commitData = commitsWithSessions.find(d => d.commit === commitHash);
+      if (commitData) selectCommit(commitData);
+      return;
+    }
+
+    // Column header click -> select commit
+    const th = e.target.closest('th.commit-col');
+    if (th) {
+      const commitHash = th.dataset.commit;
+      const commitData = commitsWithSessions.find(d => d.commit === commitHash);
+      if (commitData) selectCommit(commitData);
+      return;
+    }
+  });
+
+  // Row hover highlight
+  wrapper.addEventListener('mouseover', (e) => {
+    const row = e.target.closest('tr[data-session]');
+    wrapper.querySelectorAll('tr.highlighted').forEach(r => r.classList.remove('highlighted'));
+    wrapper.querySelectorAll('th.commit-col.highlighted').forEach(r => r.classList.remove('highlighted'));
+    if (row) row.classList.add('highlighted');
+
+    const td = e.target.closest('td[data-commit]');
+    if (td) {
+      const commitHash = td.dataset.commit;
+      wrapper.querySelectorAll(`th.commit-col[data-commit="${commitHash}"]`).forEach(h => h.classList.add('highlighted'));
+    }
+  });
+}
+
+// ===== Event listeners =====
+
 document.querySelectorAll('.view-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
@@ -556,6 +844,8 @@ document.querySelectorAll('.view-btn').forEach(btn => {
     // Show/hide breakdown sections
     document.getElementById('category-breakdown').style.display =
       currentView === 'categories' ? 'block' : 'none';
+    document.getElementById('session-grid-section').style.display =
+      currentView === 'sessions' ? 'block' : 'none';
 
     // Show/hide appropriate controls
     document.getElementById('test-controls').style.display =
@@ -564,6 +854,9 @@ document.querySelectorAll('.view-btn').forEach(btn => {
       currentView === 'metrics' ? 'flex' : 'none';
 
     updateChart();
+    if (currentView === 'sessions') {
+      updateSessionGrid();
+    }
   });
 });
 
@@ -586,6 +879,13 @@ document.querySelectorAll('#show-rng, #show-screens, #show-grids').forEach(cb =>
   cb.addEventListener('change', updateChart);
 });
 
+// Session grid controls
+document.querySelectorAll('#grid-show-pass, #grid-show-fail, #grid-color-metric').forEach(el => {
+  el.addEventListener('change', () => {
+    if (currentView === 'sessions') updateSessionGrid();
+  });
+});
+
 document.getElementById('zoom-reset').addEventListener('click', () => {
   if (chart) {
     chart.resetZoom();
@@ -604,6 +904,7 @@ document.getElementById('detail-close').addEventListener('click', () => {
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     document.getElementById('detail-panel').style.display = 'none';
+    if (gridTooltipEl) gridTooltipEl.style.display = 'none';
   }
 });
 
