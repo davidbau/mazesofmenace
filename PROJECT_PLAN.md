@@ -97,8 +97,9 @@ Milestones use a hybrid model: phase completion + parity gates + release-timing 
    - Fast strict session tests exist and intentionally expose many fidelity failures.
 3. **Phase 2: Testing burndown** *(active)*
    - Port C logic into JS to drive session tests toward green across semantics, PRNG, typgrid, and screen parity.
-4. **Phase 3: Full-coverage closure** *(planned)*
-   - Maintain C-to-JS audit table (file-by-file and function-by-function mapping).
+4. **Phase 3: Full-coverage closure** *(active)*
+   - Maintain the [C-to-JS code correspondence ledger](docs/CODEMATCH.md) (file-by-file and function-by-function mapping).
+   - Refactor JS files to match C file/function naming (one GitHub issue per C file, labeled `codematch`; [issues #32–#138](https://github.com/davidbau/menace/issues?q=label%3Acodematch)).
    - Run and maintain JS code-coverage tooling to identify unexercised codepaths.
    - Build targeted sessions to drive coverage toward 100% and debug residual parity gaps.
 5. **Phase 4: Architectural stabilization** *(planned)*
@@ -141,7 +142,7 @@ Milestones use a hybrid model: phase completion + parity gates + release-timing 
 
 1. **Latent parity drift in rare paths not yet exercised.**
    Many of NetHack's deepest interactions involve rare events—polymorphed quest leaders, artifact theft while engulfed, riding a steed over a polymorph trap. Paths like these are easy to miss and hard to test.
-   - *Mitigation:* Maintain and expand the C-to-JS audit map (file/function correspondence). Maintain resilient, fast, high-coverage targeted sessions for uncovered or low-confidence logic.
+   - *Mitigation:* Maintain and expand the [C-to-JS code correspondence ledger](docs/CODEMATCH.md) (file/function mapping). Maintain resilient, fast, high-coverage targeted sessions for uncovered or low-confidence logic.
 
 2. **Parity work surfaces probable bugs in official C NetHack.**
    When you port 200,000 lines of C at the level of individual RNG calls, you find things. Some of them are bugs upstream.
@@ -184,7 +185,7 @@ Milestones use a hybrid model: phase completion + parity gates + release-timing 
    Core terminal gameplay behavior remains historically accurate. Browser UX enhancements must not alter canonical in-screen behavior. The game inside the rectangle is sacred.
 
 9. **Maintain explicit auditability.**
-   Keep C↔JS correspondence documentation current. Track coverage and close uncovered paths with targeted sessions. If you can't explain why the JS does what it does by pointing at the C, something is wrong.
+   Keep [C↔JS correspondence documentation](docs/CODEMATCH.md) current. Track coverage and close uncovered paths with targeted sessions. If you can't explain why the JS does what it does by pointing at the C, something is wrong.
 
 10. **Share progress continuously with quality gates.**
     Commit and push meaningful, test-backed improvements frequently. Keep mainline collaboration-friendly for parallel contributors.
@@ -232,6 +233,6 @@ Milestones use a hybrid model: phase completion + parity gates + release-timing 
 ## Immediate Next Steps
 
 1. Maintain a prioritized unified project backlog: begin by analyzing current failing tests/sessions to identify highest-impact systematic divergences, file and prioritize an initial set of `parity` GitHub issues, then continue intake from tests/audits/bugs with label classification, unowned-until-claimed ownership, and evidence-first issue bodies for `parity` entries.
-2. Start and maintain the C-to-JS correspondence ledger in `docs/C_PARITY_WORKLIST.md`, beginning with core gameplay files/functions so coverage-phase closure work has a validated mapping baseline.
+2. ~~Start and maintain the C-to-JS correspondence ledger.~~ **Done.** See [docs/CODEMATCH.md](docs/CODEMATCH.md) for the file-by-file mapping and [codematch issues](https://github.com/davidbau/menace/issues?q=label%3Acodematch) for per-file refactoring tasks (#32–#138).
 
 The canonical parity test matrix is published at [docs/PARITY_TEST_MATRIX.md](docs/PARITY_TEST_MATRIX.md) — it defines session categories, test commands, comparison channels, deterministic controls, and quality gates.
