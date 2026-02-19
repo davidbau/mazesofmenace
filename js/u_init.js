@@ -14,7 +14,7 @@
 //   4. welcome(TRUE)           — rndencode + seer_turn
 
 import { rn2, rnd, rn1, rne, d, c_d, getRngLog } from './rng.js';
-import { mksobj, mkobj, weight, setStartupInventoryMode, Is_container } from './mkobj.js';
+import { mksobj, mkobj, weight, setStartupInventoryMode, Is_container, next_ident } from './mkobj.js';
 import { isok, NUM_ATTRS,
          A_STR, A_CON,
          PM_ARCHEOLOGIST, PM_BARBARIAN, PM_CAVEMAN, PM_HEALER,
@@ -267,7 +267,7 @@ function makedog(map, player, depth) {
     if (!foundPos) return null;
 
     // C ref: makemon.c:1252 — mtmp->m_id = next_ident()
-    rnd(2);
+    const m_id = next_ident();
 
     // C ref: makemon.c:1018+1043 — newmonhp
     // Uses c_d() (C-style d()) which logs composite d(n,x) entry,
@@ -329,6 +329,7 @@ function makedog(map, player, depth) {
         mtrack: [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }],
         mndx: pmIdx,     // C ref: monst.h — index into mons[] (also set mnum for compat)
         mnum: pmIdx,     // Alias for mndx - some code uses mnum, some uses mndx
+        m_id: m_id,
         // C ref: monst.c struct monst misc_worn_check; used by x_monnam()
         // to prepend "saddled" when W_SADDLE is set.
         misc_worn_check: saddleObj ? 0x100000 : 0,

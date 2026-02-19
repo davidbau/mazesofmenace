@@ -321,3 +321,35 @@ Date: 2026-02-19 (shop-entry/message pass)
 - Some strict mismatches were pure UI omissions (vault ambient message text)
   with RNG already aligned; fixing message emission can move the frontier
   without touching gameplay state evolution.
+
+---
+
+Date: 2026-02-19 (pet m_id parity pass)
+
+## Additional Progress
+
+- Applied a C-faithful startup pet identity fix in `u_init.js`:
+  - `makedog()` now assigns `m_id` via `next_ident()` instead of consuming a
+    standalone `rnd(2)` without updating ident state.
+  - This aligns the pet-creation identity path with C `makemon.c` semantics
+    while preserving RNG call consumption.
+
+## Validation Snapshot
+
+- No regression on issue-#11 guard sessions:
+  - `seed103_caveman_selfplay200` pass,
+  - `seed112_valkyrie_selfplay200` pass,
+  - `seed42_items_gameplay` pass.
+- `seed5_gnomish_mines_gameplay` changed profile:
+  - RNG matched: `15385 -> 15548` (improved),
+  - screens matched: `775 -> 776` (slight improvement),
+  - colors matched: `42525 -> 39008` (regression),
+  - first screen mismatch still step `361` (shopkeeper name token),
+  - first RNG mismatch still step `387` (`dog_goal` ordering path).
+
+## Current Read
+
+- This confirms missing pet `m_id` assignment was a real identity-parity gap
+  and improves RNG alignment depth.
+- Remaining naming mismatch now appears tied to broader `next_ident`/shop-name
+  input parity (`nameshk` context), not the shop-entry message trigger itself.
