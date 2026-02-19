@@ -498,6 +498,19 @@ Practical rule: gameplay screen/color comparison should be direct (after basic
 control-character normalization), without synthetic leading-space insertion or
 pad/no-pad fallback matching.
 
+### Record Book: comparator simplification commits (2026-02-19)
+
+- `e2deeac2` - Removed gameplay comparator col-shift compensation in
+  `test/comparison/session_test_runner.js`:
+  no synthetic col-0 space prepend, no pad/no-pad fallback chooser, no
+  mixed-row map-segment pad logic.
+- `48535727` - Removed interface screen left-shift fallback ("remove one
+  leading space and retry") in `test/comparison/session_test_runner.js`;
+  interface comparisons now use direct normalized-row matching.
+- `08da1fac` - Removed legacy col-0 prepend fallback path from
+  `test/comparison/test_session_replay.js`, deleting padded-vs-unpadded and
+  hybrid mixed-row fallback matching there as well.
+
 ### TTY map x-coordinates are 1-based and render at terminal column x-1
 
 In C tty, map redraw loops emit glyphs for `x` in `[1, COLNO-1]` and call
