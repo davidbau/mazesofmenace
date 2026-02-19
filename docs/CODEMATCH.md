@@ -555,7 +555,7 @@ Notes:
 | `attacktype_fordmg` | 42 | `dmgtype_fromattack` | 418 | Match (exported; arg order matches C `dmgtype_fromattack`) |
 | `attacktype` | 54 | `attacktype` | 266 | Match (exported; predates this section) |
 | `noattacks` | 61 | `noattacks` | 435 | Match (exported) |
-| `poly_when_stoned` | 80 | — | — | TODO (needs mvitals[PM_STONE_GOLEM].mvflags) |
+| `poly_when_stoned` | 80 | `poly_when_stoned` | — | Match (genocide check omitted — no JS mvitals) |
 | `defended` | 91 | — | — | TODO (needs inventory/worn items) |
 | `Resists_Elem` | 139 | — | — | TODO (needs full resistance stack) |
 | `resists_drli` | 192 | — | — | TODO (needs player state) |
@@ -566,12 +566,12 @@ Notes:
 | `hates_silver` | 524 | `hates_silver` | 471 | Match (exported) |
 | `mon_hates_blessings` | 533 | `mon_hates_blessings` | 496 | Match (exported; vampshifter check omitted) |
 | `hates_blessings` | 540 | `hates_blessings` | 489 | Match (exported) |
-| `mon_hates_light` | 547 | — | — | TODO (needs hates_light(ptr)) |
+| `mon_hates_light` | 547 | `mon_hates_light` | — | Match (exported) |
 | `passes_bars` | 554 | `passes_bars` | 399 | Match (exported; predates this section) |
 | `can_blow` | 566 | — | — | TODO (needs player Strangled state) |
 | `can_chant` | 579 | — | — | TODO (needs player Strangled state) |
 | `can_be_strangled` | 590 | — | — | TODO (needs player state) |
-| `can_track` | 622 | — | — | TODO (needs Excalibur artifact check) |
+| `can_track` | 622 | `can_track` | — | Match (Excalibur check via optional wieldsExcalibur param) |
 | `sliparm` | 632 | `sliparm` | 528 | Match (exported) |
 | `breakarm` | 640 | `breakarm` | 538 | Match (exported) |
 | `sticks` | 654 | `sticks` | 459 | Match (exported) |
