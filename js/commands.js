@@ -18,12 +18,14 @@ import { objectData, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
          TALLOW_CANDLE, WAX_CANDLE, FLINT, ROCK,
          TOUCHSTONE, LUCKSTONE, LOADSTONE, MAGIC_MARKER,
          CREAM_PIE, EUCALYPTUS_LEAF, LUMP_OF_ROYAL_JELLY,
-         POT_OIL, TRIPE_RATION, PICK_AXE, DWARVISH_MATTOCK,
+         POT_OIL, TRIPE_RATION, CLOVE_OF_GARLIC, PICK_AXE, DWARVISH_MATTOCK,
          EXPENSIVE_CAMERA, MIRROR, FIGURINE } from './objects.js';
 import { nhgetch, ynFunction, getlin } from './input.js';
-import { playerAttackMonster } from './combat.js';
+import { playerAttackMonster, applyMonflee } from './combat.js';
 import { makemon, setMakemonPlayerContext } from './makemon.js';
-import { mons, PM_LIZARD, PM_LICHEN, PM_NEWT } from './monsters.js';
+import { mons, PM_LIZARD, PM_LICHEN, PM_NEWT,
+         S_GOLEM, S_EYE, S_JELLY, S_PUDDING, S_BLOB, S_VORTEX,
+         S_ELEMENTAL, S_FUNGUS, S_LIGHT } from './monsters.js';
 import { monDisplayName, hasGivenName, monNam } from './mondata.js';
 import { doname, next_ident, xname } from './mkobj.js';
 import { observeObject, getDiscoveriesMenuLines, isObjectNameKnown } from './discovery.js';
@@ -2864,6 +2866,25 @@ async function handleEat(player, display, game) {
             // Single-turn food — eat instantly
             consumeInventoryItem();
             display.putstr_message(`This ${eatenItem.name} is delicious!`);
+            // C ref: eat.c:2162 — garlic_breath: scare nearby olfaction monsters.
+            if (eatenItem.otyp === CLOVE_OF_GARLIC && map) {
+                for (const mon of map.monsters) {
+                    if (mon.dead) continue;
+                    const sym = mon.type?.symbol ?? (mons[mon.mndx]?.symbol);
+                    // C ref: mondata.c olfaction() — golems, eyes, jellies, puddings,
+                    // blobs, vortexes, elementals, fungi, and lights lack olfaction.
+                    if (sym === S_GOLEM || sym === S_EYE || sym === S_JELLY
+                        || sym === S_PUDDING || sym === S_BLOB || sym === S_VORTEX
+                        || sym === S_ELEMENTAL || sym === S_FUNGUS || sym === S_LIGHT) {
+                        continue;
+                    }
+                    // C ref: eat.c garlic_breath() — distu(mtmp) < 7
+                    const dx = mon.mx - player.x, dy = mon.my - player.y;
+                    if (dx * dx + dy * dy < 7) {
+                        applyMonflee(mon, 0, false);
+                    }
+                }
+            }
         }
         return { moved: false, tookTime: true };
     }

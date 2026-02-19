@@ -404,16 +404,17 @@ function m_throw(mon, startX, startY, dx, dy, range, weapon, map, player, displa
                         missMsg = `You are almost hit by ${thrownObjectName(weapon, player)}.`;
                     }
                     // C ref: mthrowu.c may require --More-- between stacked
-                    // combat messages. We don't block for input here, so avoid
-                    // replacing prior messages when this miss line won't fit.
+                    // combat messages. We don't block for input here, so suppress
+                    // the message when it won't fit. Never break the flight loop
+                    // here — C continues the missile and consumes rn2(5) per step.
                     if (display.topMessage && display.messageNeedsMore
                         && Number.isInteger(display.cols)) {
                         const combined = `${display.topMessage}  ${missMsg}`;
                         if (combined.length + 9 >= display.cols) {
-                            break;
+                            missMsg = null;
                         }
                     }
-                    display.putstr_message(missMsg);
+                    if (missMsg) display.putstr_message(missMsg);
                 }
                 // Do NOT break — missile continues past player on miss
             } else {
