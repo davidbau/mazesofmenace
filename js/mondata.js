@@ -25,6 +25,8 @@ import {
     M3_COVETOUS, M3_WAITMASK,
     M3_INFRAVISION, M3_INFRAVISIBLE, M3_DISPLACES,
     S_DOG, S_FELINE, S_GOLEM,
+    S_VORTEX, S_ELEMENTAL,
+    MZ_TINY, MZ_MEDIUM,
     AT_BREA,
 } from './monsters.js';
 
@@ -346,4 +348,53 @@ export function monNam(mon, { capitalize = false, article = null } = {}) {
         result = result.charAt(0).toUpperCase() + result.slice(1);
     }
     return result;
+}
+
+// ========================================================================
+// Trap awareness — C ref: mondata.c
+// ========================================================================
+
+// C ref: mondata.c mon_knows_traps(mtmp, ttyp)
+export function mon_knows_traps(mon, ttyp) {
+    const seen = Number(mon?.mtrapseen || 0) >>> 0;
+    if (ttyp === -1) return seen !== 0; // ALL_TRAPS
+    if (ttyp === 0) return seen === 0;  // NO_TRAP
+    const bit = ttyp - 1;
+    if (bit < 0 || bit >= 31) return false;
+    return (seen & (1 << bit)) !== 0;
+}
+
+// C ref: mondata.c mon_learns_traps(mtmp, ttyp)
+export function mon_learns_traps(mon, ttyp) {
+    if (!mon) return;
+    const seen = Number(mon.mtrapseen || 0) >>> 0;
+    if (ttyp === -1) {
+        mon.mtrapseen = 0x7fffffff;
+        return;
+    }
+    if (ttyp === 0) {
+        mon.mtrapseen = 0;
+        return;
+    }
+    const bit = ttyp - 1;
+    if (bit < 0 || bit >= 31) return;
+    mon.mtrapseen = (seen | (1 << bit)) >>> 0;
+}
+
+// ========================================================================
+// passes_bars — C ref: mondata.c
+// ========================================================================
+
+// C ref: mondata.c passes_bars() — can this monster pass through iron bars?
+// passes_walls || amorphous || is_whirly || verysmall || (slithy && !bigmonst)
+export function passes_bars(mdat) {
+    const f1 = mdat?.flags1 || 0;
+    if (f1 & M1_WALLWALK) return true;  // passes_walls
+    if (f1 & M1_AMORPHOUS) return true; // amorphous
+    const mlet = mdat?.symbol ?? -1;
+    if (mlet === S_VORTEX || mlet === S_ELEMENTAL) return true; // is_whirly
+    const size = mdat?.size || 0;
+    if (size === MZ_TINY) return true;  // verysmall
+    if ((f1 & M1_SLITHY) && size <= MZ_MEDIUM) return true; // slithy && !bigmonst
+    return false;
 }

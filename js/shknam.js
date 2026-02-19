@@ -17,7 +17,8 @@ import {
     WAN_LIGHT, SCR_LIGHT, SPE_LIGHT,
     SCR_FOOD_DETECTION, LUMP_OF_ROYAL_JELLY,
 } from './objects.js';
-import { MAXOCLASSES, ROOM, SHOPBASE, ROOMOFFSET, SDOOR, DOOR, D_NODOOR, D_ISOPEN, D_TRAPPED, D_LOCKED } from './config.js';
+import { MAXOCLASSES, ROOM, SHOPBASE, ROOMOFFSET, SDOOR, DOOR, CORR,
+         D_NODOOR, D_ISOPEN, D_TRAPPED, D_LOCKED } from './config.js';
 import { makemon, mkclass, NO_MM_FLAGS, registerGetShopItem } from './makemon.js';
 import { mksobj, mkobj, RANDOM_CLASS } from './mkobj.js';
 import { PM_SHOPKEEPER, S_MIMIC } from './monsters.js';
@@ -648,3 +649,54 @@ export function stock_room(shp_indx, sroom, map, depth, ubirthday, ledgerNo) {
     if (!map.flags) map.flags = {};
     map.flags.has_shop = true;
 }
+
+// ========================================================================
+// Shop utility predicates — used by monster movement code
+// ========================================================================
+
+// C ref: in_rooms(x,y,SHOPBASE) — is (x,y) inside a shop?
+export function pointInShop(x, y, map) {
+    const loc = map.at(x, y);
+    const roomno = loc?.roomno || 0;
+
+    if (roomno >= ROOMOFFSET) {
+        const roomIdx = roomno - ROOMOFFSET;
+        const room = map.rooms?.[roomIdx];
+        return !!(room && room.rtype >= SHOPBASE);
+    }
+
+    // C ref: in_rooms() handles SHARED/SHARED_PLUS tiles by scanning
+    // nearby roomno entries for eligible rooms. Our map roomno assignment
+    // can leave doorway/corridor connectors as NO_ROOM, so use a narrow
+    // fallback for door/corridor (and shared-like roomno values).
+    const isSharedLike = roomno === 1 || roomno === 2;
+    const isDoorCorr = loc && (loc.typ === DOOR || loc.typ === CORR);
+    if (!isSharedLike && !isDoorCorr) return false;
+
+    for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+            const nloc = map.at(x + dx, y + dy);
+            const nr = nloc?.roomno || 0;
+            if (nr < ROOMOFFSET) continue;
+            const room = map.rooms?.[nr - ROOMOFFSET];
+            if (room && room.rtype >= SHOPBASE) return true;
+        }
+    }
+    return false;
+}
+
+// C ref: in_rooms(x,y,SHOPBASE) check used by monmove.c m_search_items().
+export function monsterInShop(mon, map) {
+    // C ref: inhishop(shkp) checks shopkeeper's own assigned shop room.
+    if (mon?.isshk && Number.isInteger(mon.shoproom) && mon.shoproom >= ROOMOFFSET) {
+        const loc = map.at(mon.mx, mon.my);
+        const roomno = loc?.roomno || 0;
+        if (roomno === mon.shoproom) {
+            const room = map.rooms?.[roomno - ROOMOFFSET];
+            return !!(room && room.rtype >= SHOPBASE);
+        }
+        return false;
+    }
+    return pointInShop(mon.mx, mon.my, map);
+}
+

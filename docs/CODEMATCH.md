@@ -58,7 +58,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[ ]` | do_name.c | — | Naming things (docallcmd, do_mgivenname) |
 | `[ ]` | do_wear.c | — | Wearing/removing armor and accessories |
 | `[~]` | dog.c | dog.js | Pet behavior |
-| `[ ]` | dogmove.c | — | Pet movement AI. JS: partially in `monmove.js` |
+| `[a]` | dogmove.c | dogmove.js | Pet movement AI. All functions except `quickmimic` |
 | `[ ]` | dokick.c | — | Kicking mechanics |
 | `[ ]` | dothrow.c | — | Throwing mechanics |
 | `[ ]` | drawing.c | — | Symbol/glyph drawing tables. JS: `symbols.js` |
@@ -93,12 +93,12 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[ ]` | mkmaze.c | — | Maze generation |
 | `[~]` | mkobj.c | mkobj.js | Object creation |
 | `[ ]` | mkroom.c | — | Room generation. JS: partially in `sp_lev.js` |
-| `[ ]` | mon.c | — | Monster management (big file: damage, death, etc.) |
-| `[~]` | mondata.c | mondata.js | Monster data queries (flags, predicates) |
-| `[~]` | monmove.c | monmove.js | Monster movement |
+| `[a]` | mon.c | mon.js | Monster lifecycle: movemon, mfndpos, mm_aggression, corpse_chance, passivemm, hider premove |
+| `[a]` | mondata.c | mondata.js | Monster data queries: predicates, mon_knows_traps, passes_bars |
+| `[a]` | monmove.c | monmove.js | Monster movement: dochug, m_move, m_move_aggress, set_apparxy, m_search_items |
 | `[ ]` | monst.c | — | Monster data tables. JS: `monsters.js` |
 | `[ ]` | mplayer.c | — | Player-like monster generation |
-| `[ ]` | mthrowu.c | — | Monster ranged attacks. JS: partially in `monmove.js` |
+| `[a]` | mthrowu.c | mthrowu.js | Monster ranged attacks: m_throw, thrwmu, lined_up, select_rwep, monmulti |
 | `[ ]` | muse.c | — | Monster item usage AI |
 | `[ ]` | music.c | — | Musical instruments |
 | `[~]` | nhlobj.c | — | Lua object utilities (place, container ops). JS: in `sp_lev.js` |
@@ -123,7 +123,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[ ]` | region.c | — | Region effects (gas clouds, etc.) |
 | `[N/A]` | report.c | — | Bug reporting, panic trace |
 | `[ ]` | restore.c | — | Game restore. JS: `storage.js` |
-| `[~]` | rip.c | display.js | RIP screen. `genl_outrip` in display.js:1131 |
+| `[~]` | rip.c | display.js | RIP screen. `genl_outrip` in display.js:1131, should extract to rip.js |
 | `[x]` | rnd.c | rng.js | Random number generation |
 | `[ ]` | role.c | — | Role/race/gender selection. JS: `player.js` |
 | `[ ]` | rumors.c | — | Rumor system. JS: `rumor_data.js` (data only) |
@@ -147,7 +147,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[ ]` | timeout.c | — | Timer-based effects |
 | `[~]` | topten.c | topten.js | High score table |
 | `[p]` | track.c | track.js | Player tracking for pets. save/rest not yet implemented |
-| `[ ]` | trap.c | — | Trap mechanics |
+| `[a]` | trap.c | trap.js | Trap mechanics: m_harmless_trap, floor_trigger, mintrap_postmove, mon_check_in_air |
 | `[~]` | u_init.c | u_init.js | Player initialization |
 | `[ ]` | uhitm.c | — | Player-vs-monster combat. JS: partially in `combat.js` |
 | `[N/A]` | utf8map.c | — | UTF-8 glyph mapping for terminal |
@@ -171,8 +171,8 @@ don't follow the same 1:1 C→JS mapping pattern.
 - **N/A (system/platform)**: 18
 - **Game logic files**: 111
 - **Complete (`[x]`)**: 1
-- **Aligned (`[a]`)**: 1
-- **Needs alignment (`[~]`)**: 25
+- **Aligned (`[a]`)**: 2
+- **Needs alignment (`[~]`)**: 24
 - **No JS file yet (`[ ]`)**: 84
 
 ### JS Files Without C Counterparts
@@ -240,3 +240,30 @@ These JS files don't directly correspond to a single C file:
 | `you_were` | 192 | — | — | TODO (needs polymon) |
 | `you_unwere` | 213 | — | — | TODO (needs rehumanize) |
 | `set_ulycn` | 232 | `set_ulycn` | 134 | Match (partial — needs set_uasmon) |
+
+### dogmove.c → dogmove.js
+
+| C Function | C Line | JS Function | JS Line | Status |
+|------------|--------|-------------|---------|--------|
+| `dog_nutrition` | 155 | `dog_nutrition` | 114 | Match (internal, moved from dog.js) |
+| `dog_eat` | 217 | `dog_eat` | 229 | Match (exported, moved from dog.js) |
+| `dog_starve` | 342 | `dog_starve` | 291 | Match (internal) |
+| `dog_hunger` | 356 | `dog_hunger` | 311 | Match (internal) |
+| `cursed_object_at` | 144 | `cursed_object_at` | 381 | Match (internal) |
+| `could_reach_item` | 1353 | `could_reach_item` | 392 | Match (exported) |
+| `can_reach_location` | 1371 | `can_reach_location` | 417 | Match (internal) |
+| `droppables` | 344 | `droppables` | 443 | Match (internal) |
+| `dog_invent` | 392 | `dog_invent` | 525 | Match (internal) |
+| `dog_goal` | 500 | (inlined in `dog_move`) | — | Inlined |
+| `find_targ` | 654 | `find_targ` | 644 | Match (internal) |
+| `find_friends` | 698 | `find_friends` | 676 | Match (internal) |
+| `score_targ` | 742 | `score_targ` | 714 | Match (internal) |
+| `best_target` | 842 | `best_target` | 775 | Match (internal) |
+| `pet_ranged_attk` | 892 | `pet_ranged_attk` | 806 | Match (exported) |
+| `dog_move` | 1016 | `dog_move` | 830 | Match (exported) |
+| `finish_meating` | 1442 | `finish_meating` | 347 | Match (exported) |
+| `mnum_leashable` | 1456 | `mnum_leashable` | 359 | Match (internal) |
+| `quickmimic` | 1466 | — | — | TODO (needs mimic appearance system) |
+| `max_mon_load` | 1908 | `max_mon_load` | 151 | Match (internal, moved from dog.js) |
+| `curr_mon_load` | 1894 | `curr_mon_load` | 173 | Match (internal, moved from dog.js) |
+| `can_carry` | 1971 | `can_carry` | 186 | Match (exported, moved from dog.js) |
