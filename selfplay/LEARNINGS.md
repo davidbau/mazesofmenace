@@ -597,6 +597,7 @@
   - The runner now executes each role/seed assignment `N` times, prints:
     - overall summary over all runs,
     - per-assignment aggregate summary (when `N > 1`),
+    - repeat-variance diagnostics (count and ranges for assignments that differ across repeats),
     - per-run rows with `repeat=K`.
 
 - Why:

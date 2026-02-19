@@ -259,6 +259,12 @@ if (opts.repeats > 1) {
     for (const g of grouped) {
         console.log(`  role=${g.role} seed=${g.seed} runs=${g.runs} survived=${g.survived}/${g.runs} avgDepth=${fmtAvg(g.avgDepth)} avgMaxXP=${fmtAvg(g.avgMaxXP)} avgXP600=${fmtAvg(g.avgXP600)} avgAttack=${fmtAvg(g.avgAttackTurns)} avgFlee=${fmtAvg(g.avgFleeTurns)} avgDogLoop=${fmtAvg(g.avgLowXpDogLoopTurns)} avgFailedAdd=${fmtAvg(g.avgFailedAdds)}`);
     }
+    const variable = grouped.filter(g => g.signatureCount > 1);
+    console.log('\nRepeat variance diagnostics');
+    console.log(`  Assignments with run-to-run differences: ${variable.length}/${grouped.length}`);
+    for (const g of variable) {
+        console.log(`  role=${g.role} seed=${g.seed} signatures=${g.signatureCount} depthRange=${fmtRange(g.minDepth, g.maxDepth)} maxXPRange=${fmtRange(g.minMaxXP, g.maxMaxXP)} xp600Range=${fmtRange(g.minXP600, g.maxXP600)} failedAddRange=${fmtRange(g.minFailedAdds, g.maxFailedAdds)} causes=${g.causeSet.join('|')}`);
+    }
     console.log('\nPer-run results');
 }
 for (const r of results) {
@@ -276,6 +282,11 @@ function fmtAvg(v) {
     return Number.isFinite(v) ? v.toFixed(2) : 'NA';
 }
 
+function fmtRange(minV, maxV) {
+    if (!Number.isFinite(minV) || !Number.isFinite(maxV)) return 'NA';
+    return `${minV}..${maxV}`;
+}
+
 function groupByAssignment(rows) {
     const groups = new Map();
     for (const r of rows) {
@@ -286,6 +297,8 @@ function groupByAssignment(rows) {
     const out = [];
     for (const [key, list] of groups.entries()) {
         const [role, seedStr] = key.split('|');
+        const signatureSet = new Set(list.map(r => signatureForRow(r)));
+        const causeSet = Array.from(new Set(list.map(r => r.cause))).sort();
         out.push({
             role,
             seed: parseInt(seedStr, 10),
@@ -298,10 +311,43 @@ function groupByAssignment(rows) {
             avgFleeTurns: avgOf(list.map(r => r.fleeTurns)),
             avgLowXpDogLoopTurns: avgOf(list.map(r => r.lowXpDogLoopTurns)),
             avgFailedAdds: avgOf(list.map(r => r.failedAdds)),
+            minDepth: minOf(list.map(r => r.depth)),
+            maxDepth: maxOf(list.map(r => r.depth)),
+            minMaxXP: minOf(list.map(r => r.maxXP)),
+            maxMaxXP: maxOf(list.map(r => r.maxXP)),
+            minXP600: minOf(list.map(r => r.xp600)),
+            maxXP600: maxOf(list.map(r => r.xp600)),
+            minFailedAdds: minOf(list.map(r => r.failedAdds)),
+            maxFailedAdds: maxOf(list.map(r => r.failedAdds)),
+            signatureCount: signatureSet.size,
+            causeSet,
         });
     }
     out.sort((a, b) => a.seed - b.seed || a.role.localeCompare(b.role));
     return out;
+}
+
+function signatureForRow(r) {
+    return [
+        r.cause ?? 'NA',
+        r.depth ?? 'NA',
+        r.maxXP ?? 'NA',
+        r.xp600 ?? 'NA',
+        r.failedAdds ?? 'NA',
+        r.lowXpDogLoopTurns ?? 'NA',
+    ].join('|');
+}
+
+function minOf(values) {
+    const nums = values.filter(v => Number.isFinite(v));
+    if (nums.length === 0) return NaN;
+    return Math.min(...nums);
+}
+
+function maxOf(values) {
+    const nums = values.filter(v => Number.isFinite(v));
+    if (nums.length === 0) return NaN;
+    return Math.max(...nums);
 }
 
 function resolveSeedPool(options) {
