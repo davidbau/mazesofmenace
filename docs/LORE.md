@@ -579,6 +579,28 @@ Practical rule: clamp overlay menu `offx` to `<= 41` (matching C tty behavior
 in these flows) and keep leading-pad header spaces non-inverse when rendering
 category headers like ` Weapons`/` Coins`.
 
+### Throw prompt suggestion letters are class-filtered (but manual letters still work)
+
+For `What do you want to throw?` prompt text, C suggests only a filtered set
+of inventory letters rather than every possible throwable object:
+
+- always include coins
+- include non-wielded weapons when not slinging
+- include gems/stones when slinging
+- exclude worn/equipped items from prompt suggestions
+
+Practical rule: keep this as prompt suggestion behavior only. Manual letter
+selection should still be accepted and validated afterward (including worn-item
+rejection at throw execution).
+
+### Double `m` command prefix cancels silently
+
+In C command-prefix flow, entering `m` when the `m` no-pickup prefix is already
+active clears the prefix without emitting a message.
+
+Practical rule: second `m` should toggle prefix state off silently (no
+`Double m prefix, canceled.` topline), or replay/topline parity can drift.
+
 ### Inventory overlay frames are replay-authoritative when command remains modal
 
 For `i` inventory steps that stay pending (menu not yet dismissed), C-captured

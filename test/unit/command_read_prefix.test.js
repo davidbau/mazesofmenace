@@ -39,6 +39,20 @@ test('m-prefix does not block read command prompt', async () => {
     assert.equal(game.display.topMessage, 'Never mind.');
 });
 
+test('double m-prefix cancels silently', async () => {
+    const game = makeGame();
+    clearInputQueue();
+    await rhack('m'.charCodeAt(0), game);
+    assert.equal(game.menuRequested, true);
+    assert.equal(game.display.topMessage, null);
+
+    const result = await rhack('m'.charCodeAt(0), game);
+    assert.equal(result.tookTime, false);
+    assert.equal(game.menuRequested, false);
+    assert.equal(game.display.topMessage, null);
+    assert.equal(game.display.messages.length, 0);
+});
+
 test('read command rejects non-readable inventory items with C wording', async () => {
     const game = makeGame();
     game.player.inventory = [{ invlet: 'a', oclass: 7, name: 'potion of healing' }];

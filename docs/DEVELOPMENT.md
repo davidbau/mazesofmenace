@@ -211,6 +211,9 @@ established these practical replay/parity rules:
 - Throw prompt `?/*` in this trace is not generic help; it opens an in-prompt
   inventory overlay (right-side menu) and keeps prompt flow pending until an
   explicit dismiss key.
+- Throw prompt suggestion letters follow C's class-filtered set (coins always;
+  weapons when not slinging; gems/stones when slinging; exclude worn/equipped
+  items). This only affects prompt text; manual letter entry is still allowed.
 - For throw/inventory overlay parity, cap right-side overlay offset at column
   `41` (`offx <= 41`) rather than pure `cols - maxcol - 2`; C tty commonly
   clamps here for these menu windows.
@@ -234,6 +237,8 @@ established these practical replay/parity rules:
 - Extended-command shorthand Enter synthesis should only apply to letter keys;
   treating control keys (for example `Esc`) as shorthand can leak a stray
   `Enter` into the input queue and misalign subsequent command prompts.
+- Double `m` prefix should cancel silently (clear `menuRequested` with no
+  message) to match C command-prefix behavior.
 - Some C captures mix left-side map glyphs and right-side overlay text on the
   same row (for example inventory category headers). Preserve raw column
   alignment from core rendering; do not apply tmux col-0 compensation in the

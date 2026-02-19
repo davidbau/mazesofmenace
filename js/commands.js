@@ -712,7 +712,6 @@ export async function rhack(ch, game) {
     // C ref: cmd.c:1624 do_reqmenu() — 'm' prefix
     if (c === 'm') {
         if (game.menuRequested) {
-            display.putstr_message('Double m prefix, canceled.');
             game.menuRequested = false;
         } else {
             game.menuRequested = true;
@@ -2760,29 +2759,30 @@ async function handleThrow(player, map, display) {
         display.topMessage = null;
         display.messageNeedsMore = false;
     };
-    const launcherTypes = new Set([BOW, ELVEN_BOW, ORCISH_BOW, YUMI, SLING, CROSSBOW]);
-    const slinging = !!(player.weapon && player.weapon.otyp === SLING);
-    const weaponItems = (player.inventory || [])
-        .filter((o) => o && o.oclass === WEAPON_CLASS && o !== player.weapon);
-    const slingGemItems = slinging
-        ? (player.inventory || []).filter((o) => o && o.oclass === GEM_CLASS)
-        : [];
-    const coinItem = (player.inventory || []).find((o) =>
-        o && (o.invlet === '$' || o.oclass === COIN_CLASS));
-    const throwLetters = [];
-    const preferredThrowItem = weaponItems.find((o) => launcherTypes.has(o.otyp))
-        || weaponItems[0]
-        || slingGemItems[0]
-        || coinItem
-        || null;
-    if (coinItem?.invlet) throwLetters.push(String(coinItem.invlet));
-    for (const item of weaponItems) {
-        if (item?.invlet) throwLetters.push(String(item.invlet));
-    }
-    for (const item of slingGemItems) {
-        if (item?.invlet) throwLetters.push(String(item.invlet));
-    }
-    const throwChoices = compactInvletPromptChars(throwLetters.join(''));
+    const equippedItems = new Set([
+        player.armor,
+        player.shield,
+        player.helmet,
+        player.gloves,
+        player.boots,
+        player.cloak,
+        player.amulet,
+        player.leftRing,
+        player.rightRing,
+    ].filter(Boolean));
+    const invSorted = [...(player.inventory || [])]
+        .filter((o) => o?.invlet)
+        .sort((a, b) => String(a.invlet).localeCompare(String(b.invlet)));
+    const uslinging = !!(player.weapon && player.weapon.otyp === SLING);
+    const promptItems = invSorted.filter((o) => {
+        if (!o || o.owornmask || equippedItems.has(o)) return false;
+        if (o.oclass === COIN_CLASS) return true;
+        if (!uslinging && o.oclass === WEAPON_CLASS && o !== player.weapon) return true;
+        if (uslinging && o.oclass === GEM_CLASS) return true;
+        return false;
+    });
+    const throwLetters = promptItems.map((o) => String(o.invlet)).join('');
+    const throwChoices = compactInvletPromptChars(throwLetters);
     const throwPrompt = throwChoices
         ? `What do you want to throw? [${throwChoices} or ?*]`
         : 'What do you want to throw? [*]';
@@ -2798,23 +2798,25 @@ async function handleThrow(player, map, display) {
         if (c === '?' || c === '*') {
             replacePromptMessage();
             const invLines = [];
-            if (coinItem && (player.gold || 0) > 0) {
-                const gold = player.gold || 0;
-                const goldLabel = gold === 1 ? 'gold piece' : 'gold pieces';
-                invLines.push('Coins');
-                invLines.push(`$ - ${gold} ${goldLabel}`);
-            }
-            if (preferredThrowItem) {
+            let currentHeader = null;
+            for (const item of promptItems) {
                 let header = 'Other';
-                if (preferredThrowItem.oclass === WEAPON_CLASS) header = 'Weapons';
-                else if (preferredThrowItem.oclass === GEM_CLASS) header = 'Gems/Stones';
-                else if (preferredThrowItem.oclass === TOOL_CLASS) header = 'Tools';
-                const named = doname(preferredThrowItem, player);
-                const invName = (preferredThrowItem.oclass === WEAPON_CLASS)
-                    ? named.replace('(wielded)', '(weapon in right hand)')
-                    : named;
-                invLines.push(header);
-                invLines.push(`${preferredThrowItem.invlet} - ${invName}`);
+                if (item.oclass === WEAPON_CLASS) header = 'Weapons';
+                else if (item.oclass === COIN_CLASS) header = 'Coins';
+                else if (item.oclass === GEM_CLASS) header = 'Gems/Stones';
+                else if (item.oclass === TOOL_CLASS) header = 'Tools';
+                if (header !== currentHeader) {
+                    invLines.push(header);
+                    currentHeader = header;
+                }
+                let invName;
+                if (item.oclass === COIN_CLASS) {
+                    const count = item.quan || player.gold || 0;
+                    invName = `${count} ${count === 1 ? 'gold piece' : 'gold pieces'}`;
+                } else {
+                    invName = doname(item, player);
+                }
+                invLines.push(`${item.invlet} - ${invName}`);
             }
             invLines.push('(end)');
             let menuOffx = null;
