@@ -43,7 +43,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[ ]` | ball.c | — | Ball & chain handling |
 | `[~]` | bones.c | bones.js | Bones file save/load |
 | `[ ]` | botl.c | — | Bottom status line |
-| `[ ]` | calendar.c | — | Time, moon phase, Friday 13th, night/midnight. Affects gameplay |
+| `[x]` | calendar.c | calendar.js | Time, moon phase, Friday 13th, night/midnight. Affects gameplay |
 | `[N/A]` | cfgfiles.c | — | Config file parsing. JS: `storage.js` handles config differently |
 | `[ ]` | cmd.c | — | Command dispatch. JS: `commands.js`, `input.js` |
 | `[N/A]` | coloratt.c | — | Terminal color attribute mapping |

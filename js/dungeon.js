@@ -181,31 +181,16 @@ import { EPITAPH_FILE_TEXT } from './epitaph_data.js';
 import { ENGRAVE_FILE_TEXT } from './engrave_data.js';
 import { shtypes, stock_room } from './shknam.js';
 import { obj_resists } from './objdata.js';
+import { getnow } from './calendar.js';
 
 // Module-level ubirthday surrogate for nameshk() — set by setGameSeed() before level gen.
 // C ref: shknam.c uses ubirthday (seconds since epoch) rather than game seed.
-const DEFAULT_FIXED_DATETIME = '20000110090000';
 let _gameUbirthday = 0;
 let _dungeonLedgerStartByDnum = new Map([[DUNGEONS_OF_DOOM, 0]]);
 
-function parseFixedDatetimeToEpochSeconds(dt) {
-    if (typeof dt !== 'string' || !/^\d{14}$/.test(dt)) return null;
-    const y = Number.parseInt(dt.slice(0, 4), 10);
-    const mo = Number.parseInt(dt.slice(4, 6), 10);
-    const md = Number.parseInt(dt.slice(6, 8), 10);
-    const h = Number.parseInt(dt.slice(8, 10), 10);
-    const mi = Number.parseInt(dt.slice(10, 12), 10);
-    const s = Number.parseInt(dt.slice(12, 14), 10);
-    const ms = new Date(y, mo - 1, md, h, mi, s).getTime();
-    if (!Number.isFinite(ms)) return null;
-    return Math.floor(ms / 1000);
-}
-
 function resolveUbirthday(seed) {
-    const fixed = (typeof process !== 'undefined' && process?.env?.NETHACK_FIXED_DATETIME)
-        || DEFAULT_FIXED_DATETIME;
-    const parsed = parseFixedDatetimeToEpochSeconds(fixed);
-    if (Number.isFinite(parsed)) return parsed;
+    const parsed = getnow();
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
     if (Number.isFinite(seed)) return seed;
     return 0;
 }
