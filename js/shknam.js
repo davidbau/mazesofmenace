@@ -3,6 +3,7 @@
 // C ref: shknam.c — shop stocking, shopkeeper creation and naming
 
 import { rn2, rnd } from './rng.js';
+import { letter, upstart } from './hacklib.js';
 import {
     objectData, bases, NUM_OBJECTS,
     FOOD_CLASS, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
@@ -486,7 +487,7 @@ function nameshk(shk, nlp, ubirthday, ledgerNo) {
 // shkinit — C ref: shknam.c:628-692
 // ========================================================================
 
-function shkinit(shp, sroom, map, depth, ubirthday, ledgerNo) {
+function shkinit(shp, shp_indx, sroom, map, depth, ubirthday, ledgerNo) {
     // C ref: shknam.c:636 — find good door
     const door = good_shopdoor(sroom, map);
     if (!door) return -1;
@@ -503,6 +504,7 @@ function shkinit(shp, sroom, map, depth, ubirthday, ledgerNo) {
     // C ref: shknam.c:666-681 — set shopkeeper flags
     shk.peaceful = true;
     shk.isshk = true;
+    shk.shoptype = shp_indx + SHOPBASE; // C ref: shknam.c:672 eshkp->shoptype = sroom->rtype
     shk.shoproom = (map.rooms || []).indexOf(sroom) + ROOMOFFSET;
     // Minimal ESHK-like state used by shk_move/move_special parity.
     shk.shk = { x: sx, y: sy }; // shopkeeper "home" square
@@ -596,7 +598,7 @@ export function stock_room(shp_indx, sroom, map, depth, ubirthday, ledgerNo) {
     const shp = shtypes[shp_indx];
 
     // C ref: shknam.c:733 — create shopkeeper
-    const sh = shkinit(shp, sroom, map, depth, ubirthday, ledgerNo);
+    const sh = shkinit(shp, shp_indx, sroom, map, depth, ubirthday, ledgerNo);
     if (sh < 0) return;
 
     // C ref: shknam.c:737-748 — fix door
@@ -683,6 +685,74 @@ export function pointInShop(x, y, map) {
         }
     }
     return false;
+}
+
+// ========================================================================
+// saleable — C ref: shknam.c:805-827
+// Does shkp's shop stock this item type?
+// ========================================================================
+
+export function saleable(shkp, obj) {
+    const shp_indx = shkp.shoptype - SHOPBASE;
+    const shp = shtypes[shp_indx];
+    if (!shp) return false;
+    if (shp.symb === RANDOM_CLASS) return true;
+    for (let i = 0; i < shp.iprobs.length && shp.iprobs[i].iprob; i++) {
+        const itype = shp.iprobs[i].itype;
+        if (itype === VEGETARIAN_CLASS) {
+            if (veggy_item(obj.otyp)) return true;
+        } else if (itype < 0) {
+            if (itype === -obj.otyp) return true;
+        } else {
+            if (itype === obj.oclass) return true;
+        }
+    }
+    return false;
+}
+
+// ========================================================================
+// shkname — C ref: shknam.c:856-898
+// Returns shopkeeper's name, stripped of gender-prefix char.
+// Hallucination support omitted (requires game state).
+// ========================================================================
+
+export function shkname(shk) {
+    let shknm = shk.shknam || '';
+    // C ref: if (!letter(*shknm)) ++shknm;
+    if (shknm.length > 0 && !letter(shknm[0])) shknm = shknm.slice(1);
+    return shknm;
+}
+
+// ========================================================================
+// Shknam — C ref: shknam.c:843-854
+// Capitalized version of shkname() for beginning of sentence.
+// ========================================================================
+
+export function Shknam(shk) {
+    return upstart(shkname(shk));
+}
+
+// ========================================================================
+// shkname_is_pname — C ref: shknam.c:900-906
+// Returns true if shopkeeper's name has a "personal name" prefix
+// (i.e., starts with '-', '+', or '=').
+// ========================================================================
+
+export function shkname_is_pname(shk) {
+    const c = shk.shknam?.[0];
+    return c === '-' || c === '+' || c === '=';
+}
+
+// ========================================================================
+// is_izchak — C ref: shknam.c:908-927
+// Returns true if the shopkeeper is Izchak.
+// Note: C also checks in_town() and hallucination state; JS omits these
+// since in_town() is not yet implemented as a standalone utility.
+// ========================================================================
+
+export function is_izchak(shkp) {
+    if (!shkp.isshk) return false;
+    return shkname(shkp) === 'Izchak';
 }
 
 // C ref: in_rooms(x,y,SHOPBASE) check used by monmove.c m_search_items().

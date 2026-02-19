@@ -132,7 +132,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[N/A]` | sfbase.c | — | Save file base I/O routines |
 | `[N/A]` | sfstruct.c | — | Save file structure definitions |
 | `[~]` | shk.c | — | Shopkeeper behavior. JS: partially in `shknam.js` |
-| `[a]` | shknam.c | shknam.js | Shop naming and stocking. Core stock/init/nameshk aligned; Shknam/shkname/is_izchak/saleable TODO |
+| `[a]` | shknam.c | shknam.js | Shop naming and stocking. All C functions aligned; hallucination in shkname/is_izchak and in_town() in is_izchak deferred |
 | `[ ]` | sit.c | — | Sitting on things |
 | `[ ]` | sounds.c | — | Monster sounds |
 | `[~]` | sp_lev.c | sp_lev.js | Special level interpreter |
@@ -558,10 +558,10 @@ Notes:
 ### shknam.c → shknam.js
 
 Notes:
-- The JS port stores shopkeeper name as `shk.shknam` field (set by `nameshk`).
+- The JS port stores shopkeeper name as `shk.shknam` field (set by `nameshk`); `shk.shoptype` stores shop type.
 - `veggy_item(obj, otyp)` simplified to `veggy_item(otyp)` — obj parameter dropped (TIN/CORPSE species not tracked).
 - `neweshk`/`free_eshk` are N/A (JS has no struct allocation/deallocation).
-- `Shknam`/`shkname`/`shkname_is_pname`/`is_izchak` are TODO (need monster shk.shknam field access + hallucination).
+- `shkname`/`is_izchak` skip hallucination support (needs game state) and `is_izchak` skips `in_town()` (not yet in JS).
 - JS-only functions: `mkmonmoney` (gold helper), `mon_at` (position lookup), `pointInShop`/`monsterInShop` (display helpers).
 
 | C Function | C Line | JS Function | JS Line | Status |
@@ -575,15 +575,15 @@ Notes:
 | `neweshk` | 557 | — | — | N/A (no struct allocation in JS — eshk fields set inline on monster object) |
 | `free_eshk` | 569 | — | — | N/A (GC handles memory) |
 | `good_shopdoor` | 582 | `good_shopdoor` | 345 | Match (private — returns {di,sx,sy} instead of output pointers) |
-| `shkinit` | 628 | `shkinit` | 489 | Match (private — extra map/depth/ubirthday/ledgerNo params) |
+| `shkinit` | 628 | `shkinit` | 490 | Match (private — extra shp_indx/map/depth/ubirthday/ledgerNo params; stores shk.shoptype) |
 | `stock_room_goodpos` | 695 | `stock_room_goodpos` | 389 | Match (private — rmno param dropped, map added) |
-| `stock_room` | 718 | `stock_room` | 595 | Match (exported — extra map/depth/ubirthday/ledgerNo params) |
-| `saleable` | 805 | — | — | TODO (needed for shop pricing and selling; requires shopkeeper inventory logic) |
+| `stock_room` | 718 | `stock_room` | 597 | Match (exported — extra map/depth/ubirthday/ledgerNo params) |
+| `saleable` | 805 | `saleable` | 695 | Match (exported — checks shk.shoptype against shop iprobs table) |
 | `get_shop_item` | 829 | `get_shop_item` | 288 | Match (exported) |
-| `Shknam` | 843 | — | — | TODO (capitalize shk.shknam — trivial, blocked on shkname) |
-| `shkname` | 856 | — | — | TODO (get shopkeeper name from shk.shknam, handle hallucination) |
-| `shkname_is_pname` | 900 | — | — | TODO (check shk.shknam prefix chars '-', '+', '=') |
-| `is_izchak` | 908 | — | — | TODO (check if shopkeeper is Izchak in town; needs in_town()) |
+| `Shknam` | 843 | `Shknam` | 731 | Match (exported — returns upstart(shkname(shk))) |
+| `shkname` | 856 | `shkname` | 719 | Match (exported — strips prefix char; hallucination omitted) |
+| `shkname_is_pname` | 900 | `shkname_is_pname` | 741 | Match (exported — checks for '-', '+', or '=' prefix) |
+| `is_izchak` | 908 | `is_izchak` | 753 | Match (exported — hallucination and in_town() checks omitted) |
 
 ### vision.c → vision.js
 
