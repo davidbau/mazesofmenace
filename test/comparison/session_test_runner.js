@@ -27,7 +27,6 @@ import {
     compareGrids,
     compareScreenLines,
     compareScreenAnsi,
-    ansiLineToCells,
     findFirstGridDiff,
 } from './comparators.js';
 import { loadAllSessions, stripAnsiSequences, getSessionScreenAnsiLines } from './session_loader.js';
@@ -135,34 +134,47 @@ function compareInterfaceScreens(actualLines, expectedLines) {
     return best;
 }
 
-function findGameplayOverlayStart(line) {
-    const text = String(line || '');
-    const candidates = [];
-    const push = (idx) => {
-        if (Number.isInteger(idx) && idx >= 10) candidates.push(idx);
-    };
-
-    const itemEntry = text.match(/\b[a-z] - /);
-    if (itemEntry && Number.isInteger(itemEntry.index)) push(itemEntry.index);
-    push(text.indexOf('(end)'));
-    push(text.indexOf('Currently known spells'));
-    const spellHeaderIdx = text.search(/Name\s+Level\s+Category\s+Fail\s+Retention/);
-    if (spellHeaderIdx >= 0) push(spellHeaderIdx);
-    for (const category of [
-        'Weapons', 'Armor', 'Rings', 'Amulets', 'Tools', 'Comestibles',
-        'Potions', 'Scrolls', 'Spellbooks', 'Wands', 'Coins', 'Gems/Stones', 'Other',
-    ]) {
-        push(text.indexOf(category));
+function looksLikeOverlayTextLine(line) {
+    const text = stripAnsiSequences(String(line || ''))
+        .replace(/[\x0e\x0f]/g, '')
+        .trimStart();
+    if (!text) return false;
+    if (text.includes(' - ') || text.startsWith('(end)')) return true;
+    if (/^(Weapons|Armor|Rings|Amulets|Tools|Comestibles|Potions|Scrolls|Spellbooks|Wands|Coins|Gems\/Stones|Other)\b/.test(text)) {
+        return true;
     }
-    if (candidates.length <= 0) return -1;
-    return Math.min(...candidates);
+    return false;
 }
 
-function shiftPrefixRightOne(line, splitCol) {
-    const text = String(line || '');
-    const split = Math.max(0, Math.min(Number(splitCol) || 0, text.length));
-    if (split <= 0) return ` ${text}`;
-    return ` ${text.slice(0, split - 1)}${text.slice(split)}`;
+function detectOverlayTextColumn(line) {
+    const text = stripAnsiSequences(String(line || ''))
+        .replace(/[\x0e\x0f]/g, '');
+    for (let col = 30; col < text.length; col++) {
+        const ch = text[col];
+        if (!/[A-Za-z(]/.test(ch)) continue;
+        const right = text.slice(col);
+        if (right.includes(' - ')
+            || right.startsWith('(end)')
+            || /^(Weapons|Armor|Rings|Amulets|Tools|Comestibles|Potions|Scrolls|Spellbooks|Wands|Coins|Gems\/Stones|Other)\b/.test(right)) {
+            return col;
+        }
+    }
+    return null;
+}
+
+function prependAnsiMapSegmentOnly(line) {
+    const src = String(line || '');
+    const cursorMatches = [...src.matchAll(/\x1b\[(\d*)C/g)];
+    if (cursorMatches.length < 2) return ` ${src}`;
+    let seenCursor = 0;
+    return src.replace(/\x1b\[(\d*)C/g, (_m, n) => {
+        seenCursor++;
+        let val = Number.parseInt(n || '1', 10);
+        if (!Number.isFinite(val) || val < 0) val = 1;
+        if (seenCursor === 1) val += 1;
+        else if (seenCursor === 2 && val > 0) val -= 1;
+        return `\x1b[${val}C`;
+    });
 }
 
 function normalizeGameplayScreenLines(lines, session, { captured = false, prependCol0 = true } = {}) {
@@ -170,10 +182,18 @@ function normalizeGameplayScreenLines(lines, session, { captured = false, prepen
     return (Array.isArray(lines) ? lines : []).map((line, row) => {
         let out = String(line || '').replace(/\r$/, '').replace(/[\x0e\x0f]/g, '');
         if (captured && prependCol0 && row >= 1 && row <= 21) {
-            const overlayStart = findGameplayOverlayStart(out);
-            out = overlayStart >= 1
-                ? shiftPrefixRightOne(out, overlayStart)
-                : ` ${out}`;
+            const textCol = detectOverlayTextColumn(line);
+            if (Number.isInteger(textCol)) {
+                const left = out.slice(0, textCol);
+                const right = out.slice(textCol);
+                if (left.endsWith(' ')) {
+                    out = ` ${left.slice(0, -1)}${right}`;
+                } else {
+                    out = ` ${left}${right}`;
+                }
+            } else if (!looksLikeOverlayTextLine(out)) {
+                out = ` ${out}`;
+            }
         }
         if (decgraphics && row >= 1 && row <= 21) {
             out = normalizeSymsetLine(out, { decGraphics: true });
@@ -202,63 +222,44 @@ function compareGameplayScreens(actualLines, expectedLines, session) {
     return (withPad.matched >= noPad.matched) ? withPad : noPad;
 }
 
-function blankAnsiCell() {
-    return { ch: ' ', fg: 7, bg: 0, attr: 0 };
-}
-
-function shiftAnsiPrefixRightOne(cells, splitCol, width = 80) {
-    const out = Array.isArray(cells)
-        ? cells.slice(0, width).map((cell) => ({ ...cell }))
-        : [];
-    while (out.length < width) out.push(blankAnsiCell());
-
-    const split = Math.max(0, Math.min(Number(splitCol) || 0, width));
-    if (split <= 0) {
-        for (let col = width - 1; col >= 1; col--) {
-            out[col] = out[col - 1];
+function prependGameplayMapCol0(lines) {
+    return (Array.isArray(lines) ? lines : []).map((line, row) => {
+        if (row >= 1 && row <= 21) {
+            const textCol = detectOverlayTextColumn(line);
+            if (Number.isInteger(textCol)) return prependAnsiMapSegmentOnly(line);
+            if (!looksLikeOverlayTextLine(line)) return ` ${String(line || '')}`;
         }
-        out[0] = blankAnsiCell();
-        return out;
-    }
-
-    for (let col = split - 1; col >= 1; col--) {
-        out[col] = out[col - 1];
-    }
-    out[0] = blankAnsiCell();
-    return out;
+        return String(line || '');
+    });
 }
 
-function compareAnsiCellRows(actualRows, expectedRows, width = 80) {
-    const total = Math.max(actualRows.length, expectedRows.length);
+function compareGameplayColors(actualAnsi, expectedAnsi) {
+    const actual = Array.isArray(actualAnsi) ? actualAnsi : [];
+    const expected = Array.isArray(expectedAnsi) ? expectedAnsi : [];
+    const expectedWithPad = prependGameplayMapCol0(expected);
+    const total = Math.max(actual.length, expected.length);
     let matched = 0;
     const diffs = [];
+
     for (let row = 0; row < total; row++) {
-        const aCells = Array.isArray(actualRows[row]) ? actualRows[row] : [];
-        const eCells = Array.isArray(expectedRows[row]) ? expectedRows[row] : [];
-        let rowMatch = true;
-        let firstCol = -1;
-        for (let col = 0; col < width; col++) {
-            const a = aCells[col] || blankAnsiCell();
-            const e = eCells[col] || blankAnsiCell();
-            if (a.ch !== e.ch || a.fg !== e.fg || a.bg !== e.bg || a.attr !== e.attr) {
-                rowMatch = false;
-                firstCol = col;
-                break;
-            }
+        const a = [actual[row] || ''];
+        const withPad = compareScreenAnsi(a, [expectedWithPad[row] || '']);
+        const noPad = compareScreenAnsi(a, [expected[row] || '']);
+        let chosen = withPad;
+        if (noPad.match && !withPad.match) {
+            chosen = noPad;
+        } else if (!withPad.match && !noPad.match) {
+            const withPadCol = withPad.firstDiff?.col ?? -1;
+            const noPadCol = noPad.firstDiff?.col ?? -1;
+            if (noPadCol > withPadCol) chosen = noPad;
         }
-        if (rowMatch) {
+        if (chosen.match) {
             matched++;
-        } else {
-            const a = aCells[firstCol] || blankAnsiCell();
-            const e = eCells[firstCol] || blankAnsiCell();
-            diffs.push({
-                row,
-                col: firstCol,
-                js: { ch: a.ch, fg: a.fg, bg: a.bg, attr: a.attr },
-                session: { ch: e.ch, fg: e.fg, bg: e.bg, attr: e.attr },
-            });
+        } else if (chosen.firstDiff) {
+            diffs.push({ row, ...chosen.firstDiff });
         }
     }
+
     return {
         matched,
         total,
@@ -266,28 +267,6 @@ function compareAnsiCellRows(actualRows, expectedRows, width = 80) {
         diffs,
         firstDiff: diffs.length > 0 ? diffs[0] : null,
     };
-}
-
-function compareGameplayColors(actualAnsi, expectedAnsi) {
-    const actualRows = (Array.isArray(actualAnsi) ? actualAnsi : [])
-        .map((line) => ansiLineToCells(line || ''));
-    const expectedRowsNoPad = (Array.isArray(expectedAnsi) ? expectedAnsi : [])
-        .map((line) => ansiLineToCells(line || ''));
-    const expectedRowsShifted = expectedRowsNoPad.map((cells, row) => {
-        if (row < 1 || row > 21) return cells;
-        const plain = stripAnsiSequences(expectedAnsi[row] || '').replace(/[\x0e\x0f]/g, '');
-        const overlayStart = findGameplayOverlayStart(plain);
-        if (overlayStart >= 1) {
-            return shiftAnsiPrefixRightOne(cells, overlayStart);
-        }
-        return shiftAnsiPrefixRightOne(cells, 0);
-    });
-
-    const shifted = compareAnsiCellRows(actualRows, expectedRowsShifted);
-    if (shifted.match) return shifted;
-    const noPad = compareAnsiCellRows(actualRows, expectedRowsNoPad);
-    if (noPad.match) return noPad;
-    return (shifted.matched >= noPad.matched) ? shifted : noPad;
 }
 
 function sleep(ms) {

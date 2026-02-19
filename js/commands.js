@@ -1567,6 +1567,12 @@ async function handleInventory(player, display, game) {
         // explicit dismissal keys include space, escape, and enter.
         if (ch === 32 || ch === 27 || ch === 10 || ch === 13) break;
         const c = String.fromCharCode(ch);
+        if (c === ':') {
+            // C tty menu parity: ':' enters in-menu incremental search.
+            // We keep menu rows in place and update only topline prompt text.
+            await getlin('Search for: ', display);
+            continue;
+        }
         const selected = invByLetter.get(c);
         if (selected) {
             const rawName = String(selected.name || objectData[selected.otyp]?.name || 'item');

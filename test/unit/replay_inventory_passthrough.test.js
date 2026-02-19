@@ -61,7 +61,7 @@ describe('replay inventory modal handling', () => {
         assert.doesNotMatch((replay.steps[1].screen || [])[0] || '', /Unknown command|You see no|Do what|Weapons/);
     });
 
-    it('transitions inventory dismissal to look search prompt on ":"', async () => {
+    it('propagates typed chars while inventory ":" search prompt is pending', async () => {
         const session = {
             version: 3,
             seed: 42,
@@ -91,6 +91,12 @@ describe('replay inventory modal handling', () => {
                     rng: [],
                     screen: ['Search for:'],
                 },
+                {
+                    key: 'k',
+                    action: 'move-north',
+                    rng: [],
+                    screen: ['Search for: k'],
+                },
             ],
         };
 
@@ -99,9 +105,10 @@ describe('replay inventory modal handling', () => {
             startupBurstInFirstStep: false,
         });
 
-        assert.equal(replay.steps.length, 2);
+        assert.equal(replay.steps.length, 3);
         assert.match((replay.steps[0].screen || [])[0] || '', /Weapons/);
         assert.equal((replay.steps[1].screen || [])[0] || '', 'Search for:');
-        assert.equal(replay.steps[1].rngCalls || 0, 0);
+        assert.equal((replay.steps[2].screen || [])[0] || '', 'Search for: k');
+        assert.equal(replay.steps[2].rngCalls || 0, 0);
     });
 });

@@ -217,6 +217,10 @@ established these practical replay/parity rules:
 - Extended-command shorthand Enter synthesis should only apply to letter keys;
   treating control keys (for example `Esc`) as shorthand can leak a stray
   `Enter` into the input queue and misalign subsequent command prompts.
+- Some C captures mix left-side map glyphs and right-side overlay text on the
+  same row (for example inventory category headers). For these rows, parity
+  comparison should apply tmux col-0 compensation to the map segment only, not
+  the full row, or overlays can appear falsely shifted by one column.
 
 Measured progress in this pass:
 - First divergence moved from step `274` to step `346`.
