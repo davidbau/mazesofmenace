@@ -72,7 +72,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[ ]` | iactions.c | — | Implicit actions |
 | `[ ]` | insight.c | — | Player knowledge/enlightenment |
 | `[ ]` | invent.c | — | Inventory management |
-| `[~]` | isaac64.c | isaac64.js | ISAAC64 PRNG |
+| `[x]` | isaac64.c | isaac64.js | ISAAC64 PRNG. All 8 functions matched |
 | `[ ]` | light.c | — | Light source management |
 | `[ ]` | lock.c | — | Lock picking and door opening |
 | `[N/A]` | mail.c | — | In-game mail system (uses real mail on Unix) |
@@ -202,3 +202,20 @@ These JS files don't directly correspond to a single C file:
 | special_levels.js | Special level registry | sp_lev.c, extralev.c |
 | storage.js | Save/load/config | save.c, restore.c, files.c |
 | xoshiro256.js | Xoshiro256 PRNG | None (JS-only, display RNG) |
+
+---
+
+## Completed File Details
+
+### isaac64.c → isaac64.js
+
+| C Function | C Line | JS Function | JS Line | Status |
+|------------|--------|-------------|---------|--------|
+| `lower_bits` | 39 | `lower_bits` | 14 | Match |
+| `upper_bits` | 45 | `upper_bits` | 20 | Match |
+| `isaac64_update` | 50 | `isaac64_update` | 39 | Match |
+| `isaac64_mix` | 103 | `isaac64_mix` | 25 | Match |
+| `isaac64_init` | 118 | `isaac64_init` | 111 | Match (exported) |
+| `isaac64_reseed` | 124 | `isaac64_reseed` | 126 | Match (exported) |
+| `isaac64_next_uint64` | 161 | `isaac64_next_uint64` | 178 | Match (exported) |
+| `isaac64_next_uint` | 166 | `isaac64_next_uint` | 184 | Match (exported, added) |

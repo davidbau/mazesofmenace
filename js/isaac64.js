@@ -1,7 +1,7 @@
 // isaac64.js -- ISAAC64 PRNG (public domain)
 // Faithful port of nethack-c/src/isaac64.c by Timothy B. Terriberry.
 // Uses BigInt for 64-bit unsigned integer arithmetic.
-// C ref: isaac64.c, isaac64.h
+// cf. isaac64.c — ISAAC64 cryptographic PRNG implementation
 
 const MASK = 0xFFFFFFFFFFFFFFFFn;
 const SZ_LOG = 8;
@@ -9,19 +9,17 @@ const SZ = 256;               // 1 << SZ_LOG
 const SEED_SZ_MAX = SZ * 8;   // 2048
 const GOLDEN = 0x9E3779B97F4A7C13n;
 
-// Extract SZ_LOG bits starting at bit 3
-// C ref: isaac64.c lower_bits()
+// cf. isaac64.c:39 — extract SZ_LOG bits starting at bit 3
 function lower_bits(x) {
     return Number((x >> 3n) & 0xFFn);
 }
 
-// Extract SZ_LOG bits starting at bit SZ_LOG+3 = 11
-// C ref: isaac64.c upper_bits()
+// cf. isaac64.c:45 — extract SZ_LOG bits starting at bit SZ_LOG+3 = 11
 function upper_bits(y) {
     return Number((y >> 11n) & 0xFFn);
 }
 
-// C ref: isaac64.c isaac64_mix()
+// cf. isaac64.c:103 — mix 8 values using alternating shift pattern
 function isaac64_mix(x) {
     const SHIFT = [9, 9, 23, 15, 14, 20, 17, 14];
     for (let i = 0; i < 8; i++) {
@@ -35,7 +33,7 @@ function isaac64_mix(x) {
     }
 }
 
-// C ref: isaac64.c isaac64_update()
+// cf. isaac64.c:50 — generate next batch of 256 random values
 function isaac64_update(ctx) {
     const m = ctx.m;
     const r = ctx.r;
@@ -106,8 +104,7 @@ function isaac64_update(ctx) {
     ctx.n = SZ;
 }
 
-// Create a new ISAAC64 context
-// C ref: isaac64.c isaac64_init()
+// cf. isaac64.c:118 — create a new ISAAC64 context and seed it
 export function isaac64_init(seed_bytes) {
     const ctx = {
         a: 0n,
@@ -121,8 +118,7 @@ export function isaac64_init(seed_bytes) {
     return ctx;
 }
 
-// Mix seed into state and reinitialize
-// C ref: isaac64.c isaac64_reseed()
+// cf. isaac64.c:124 — mix seed into state and reinitialize
 export function isaac64_reseed(ctx, seed_bytes) {
     const m = ctx.m;
     const r = ctx.r;
@@ -173,9 +169,20 @@ export function isaac64_reseed(ctx, seed_bytes) {
     isaac64_update(ctx);
 }
 
-// Return next random uint64
-// C ref: isaac64.c isaac64_next_uint64()
+// cf. isaac64.c:161 — return next random uint64
 export function isaac64_next_uint64(ctx) {
     if (!ctx.n) isaac64_update(ctx);
     return ctx.r[--ctx.n];
+}
+
+// cf. isaac64.c:166 — return unbiased random value in [0, n)
+export function isaac64_next_uint(ctx, n) {
+    n = BigInt(n);
+    let r, v, d;
+    do {
+        r = isaac64_next_uint64(ctx);
+        v = r % n;
+        d = r - v;
+    } while (((d + n - 1n) & MASK) < d);
+    return v;
 }
