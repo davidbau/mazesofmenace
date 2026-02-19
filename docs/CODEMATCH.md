@@ -163,7 +163,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[ ]` | worm.c | — | Long worm mechanics |
 | `[ ]` | worn.c | — | Equipment slot management |
 | `[a]` | write.c | write.js | Writing on scrolls. cost, write_ok, new_book_description implemented; dowrite TODO |
-| `[~]` | zap.c | zap.js | Wand/spell zapping |
+| `[a]` | zap.c | zap.js | Wand beam effects. zhitm, zap_hit, resist, burnarmor, xkilled, corpse_chance, dobuzz implemented. dozap/weffects/bhitm/revive/polyuse and many others TODO |
 
 ### Summary
 
@@ -171,9 +171,9 @@ don't follow the same 1:1 C→JS mapping pattern.
 - **N/A (system/platform)**: 21
 - **Game logic files**: 108
 - **Complete (`[x]`)**: 4
-- **Aligned (`[a]`)**: 20
+- **Aligned (`[a]`)**: 21
 - **Present (`[p]`)**: 1
-- **Needs alignment (`[~]`)**: 8
+- **Needs alignment (`[~]`)**: 7
 - **No JS file yet (`[ ]`)**: 75
 
 ### JS Files Without C Counterparts
@@ -756,4 +756,32 @@ Notes:
 | `ini_inv` | 1299 | `ini_inv` | 944 | Match (renamed from camelCase) |
 | `u_init_inventory_attrs` | 1371 | (in `simulatePostLevelInit`) | 1596 | Combined into wrapper |
 | `u_init_skills_discoveries` | 1396 | `applyStartupDiscoveries` | 1460 | Renamed (JS-style) |
+
+### zap.c → zap.js
+
+Notes:
+- `burnarmor` is from trap.c in C, but implemented in zap.js for beam effect locality.
+- `corpse_chance` and `xkilled` are from mon.c in C, but in zap.js in JS.
+- `resist` is simplified: C takes 4 args (monst, oclass, damage, dflags); JS takes 2 (mon, oclass).
+- `zap_hit` is `staticfn` in C; exported in JS for use by combat and wand code.
+- `wandToBeamType`, `beamDamageDice` are JS-only internal helpers.
+
+| C Function | C File | C Line | JS Function | JS Line | Notes |
+|---|---|---|---|---|---|
+| `zhitm` | zap.c | 4224 | `zhitm` | 113 | Match |
+| `zap_hit` | zap.c | 4646 | `zap_hit` | 101 | Match (staticfn in C, public in JS) |
+| `resist` | zap.c | 6070 | `resist` | 66 | Match (simplified 2-arg form) |
+| `dobuzz` | zap.c | ~4900 | `dobuzz` | 240 | Match |
+| `burnarmor` | trap.c | 88 | `burnarmor` | 86 | Match (different source C file) |
+| `corpse_chance` | mon.c | 3243 | `corpse_chance` | 168 | Match (different source C file) |
+| `xkilled` | mon.c | 3581 | `xkilled` | 178 | Match (different source C file; simplified) |
+| `bhitm` | zap.c | 158 | N/A | — | TODO (beam-hit-monster via wand obj; larger function) |
+| `bhitpile` | zap.c | 2426 | N/A | — | TODO (beam-hit-pile) |
+| `dozap` | zap.c | 2615 | N/A | — | TODO (top-level wand zap command) |
+| `zapnodir` | zap.c | 2537 | N/A | — | TODO (no-direction wands) |
+| `zapyourself` | zap.c | 2693 | N/A | — | TODO (wand self-zap) |
+| `revive` | zap.c | 882 | N/A | — | TODO (corpse revival) |
+| `poly_obj` | zap.c | 1700 | N/A | — | TODO (object polymorph) |
+| `learnwand` | zap.c | 121 | N/A | — | TODO (identify wand after zapping) |
+| `cancel_item` | zap.c | 1237 | N/A | — | TODO (cancellation beam) |
 
