@@ -1723,6 +1723,7 @@ function dochug(mon, map, player, display, fov, game = null) {
     const isWanderer = !!(mon.type && mon.type.flags2 & M2_WANDER);
     const monCanSee = (mon.mcansee !== false) && !mon.blind;
 
+    let scaredNow = false;
     // Short-circuit OR matching C's evaluation order
     // Each rn2() is only consumed if earlier conditions didn't short-circuit
     let phase3Cond = !nearby;
@@ -1739,6 +1740,7 @@ function dochug(mon, map, player, display, fov, game = null) {
         // in_your_sanctuary: temple mechanics — not yet implemented
         if (nearby && sawscary) {
             phase3Cond = true; // scared
+            scaredNow = true;
             applyMonflee(mon, rnd(rn2(7) ? 10 : 100), true);
         }
     }
@@ -1757,6 +1759,18 @@ function dochug(mon, map, player, display, fov, game = null) {
     // skip Conflict check
     if (!phase3Cond && !monCanSee) phase3Cond = !rn2(4);
     if (!phase3Cond) phase3Cond = !!(mon.peaceful);
+
+    // C ref: monmove.c phase-two wield gate before movement.
+    // Monsters with AT_WEAP may spend their turn wielding when in range.
+    if (!mon.peaceful
+        && inrange
+        && dist2(mon.mx, mon.my, targetX, targetY) <= 8
+        && hasWeaponAttack(mon)
+        && !scaredNow) {
+        if (maybeMonsterWieldBeforeAttack(mon, player, display)) {
+            return;
+        }
+    }
 
     // C ref: monmove.c:911-962 — Phase 3 movement + optional Phase 4 ranged.
     // After m_move, C recalculates distfleeck. If the monster MOVED

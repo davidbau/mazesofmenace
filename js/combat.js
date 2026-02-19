@@ -44,6 +44,18 @@ function weaponDamageSides(weapon, monster) {
     return isLarge ? (info.ldam || 0) : (info.sdam || 0);
 }
 
+// C ref: uhitm.c hmon_hitmon_weapon() routes launchers and wielded
+// ammo/missiles to hmon_hitmon_weapon_ranged(), which uses rnd(2) damage
+// instead of normal melee dmgval/enchantment math.
+function usesRangedMeleeDamage(weapon) {
+    if (!weapon) return false;
+    const sub = objectData[weapon.otyp]?.sub;
+    if (!Number.isInteger(sub)) return false;
+    const isLauncher = sub >= 20 && sub <= 22;      // P_BOW..P_CROSSBOW
+    const isAmmoOrMissile = sub <= -20 && sub >= -24; // -P_BOW..-P_SHURIKEN
+    return isLauncher || isAmmoOrMissile;
+}
+
 // C ref: uhitm.c find_roll_to_hit() — Luck component.
 // sgn(Luck) * ((abs(Luck) + 2) / 3)  (integer division)
 function luckBonus(luck) {
@@ -257,8 +269,12 @@ export function playerAttackMonster(player, monster, display, map) {
     // Hit! Calculate damage
     // C ref: weapon.c:265 dmgval() -- rnd(oc_wsdam) for small monsters
     let damage = 0;
+    const rangedMelee = usesRangedMeleeDamage(player.weapon);
     const wsdam = weaponDamageSides(player.weapon, monster);
-    if (player.weapon && wsdam > 0) {
+    if (player.weapon && rangedMelee) {
+        // C ref: uhitm.c hmon_hitmon_weapon_ranged() base damage.
+        damage = rnd(2);
+    } else if (player.weapon && wsdam > 0) {
         damage = rnd(wsdam);
         damage += weaponEnchantment(player.weapon);
         // C ref: weapon.c dmgval() — blessed weapon bonus vs undead/demons.
@@ -275,7 +291,9 @@ export function playerAttackMonster(player, monster, display, map) {
     }
 
     // Add strength bonus
-    damage += player.strDamage;
+    if (!rangedMelee) {
+        damage += player.strDamage;
+    }
 
     // Minimum 1 damage on a hit
     if (damage < 1) damage = 1;

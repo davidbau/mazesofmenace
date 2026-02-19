@@ -876,6 +876,26 @@ Practical rule: only emit `You don't have anything to use or apply.` when
 inventory is truly empty; otherwise show `[*]` and continue `getobj`-style
 selection handling.
 
+### Wielded launchers/missiles in melee use ranged-damage semantics
+
+In C `uhitm.c`, melee hits while wielding a launcher (bow/crossbow/slings) or
+ammo/missile object route through `hmon_hitmon_weapon_ranged()` damage logic.
+That path uses low fixed `rnd(2)`-style damage rather than normal melee
+`dmgval + enchantment + strength`.
+
+Practical rule: in JS player melee, detect launcher/ammo/missile weapon subskills
+and use the ranged-melee damage path; do not add strength bonus there.
+
+### AT_WEAP monsters can spend turn wielding before movement
+
+C `dochug()` has a phase-two wield gate: hostile in-range `AT_WEAP` monsters can
+use their turn to wield a carried weapon before phase-three movement. If this is
+missing, monsters may move/throw in turns where C only wields, shifting downstream
+monster/pet interactions.
+
+Practical rule: keep the pre-move wield-turn gate in `dochug()` (before phase 3),
+not only in phase-four attack dispatch.
+
 ---
 
 ## Phase Chronicles
