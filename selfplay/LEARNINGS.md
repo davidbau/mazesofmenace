@@ -374,3 +374,25 @@
     - Healer regressed (`XL2` lost; `maxXP=10` vs baseline `21`).
   - Net:
     - Rejected (progression regression).
+
+- Variant D (single displaced-pet continuity tracking):
+  - Policy:
+    - Track one displaced pet entity by local position continuity and treat it as pet to prevent repeat attacks.
+  - Quick triage (`Caveman 33`, `Samurai 40`, `Tourist 41`, `Healer 34`, 600 turns):
+    - Some seed improvements (e.g., Caveman `maxXP=14`, Tourist depth `2`),
+    - but critical regression on control seed:
+      - Healer dropped from baseline `maxXP=21`/XL2 to `maxXP=2`/no XL2.
+  - Net:
+    - Rejected (unacceptable regression on control seed).
+
+- Variant E (tracker only under severe loop evidence):
+  - Policy:
+    - Same continuity tracker, but only applied when low-XP Dlvl1 dog-loop counters were already high.
+  - Quick triage (`Caveman 33`, `Samurai 40`, `Tourist 41`, `Healer 34`, 600 turns):
+    - Survived `4/4` (flat), XL2+ `1/4` (flat),
+    - XP avg `t600=7.50` (flat-ish),
+    - but severe churn regression:
+      - failedAdd avg `85.50` (vs baseline subset ~`41.25`),
+      - Caveman failedAdd `195`.
+  - Net:
+    - Rejected (major exploration churn regression).
