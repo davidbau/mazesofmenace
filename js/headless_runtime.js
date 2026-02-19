@@ -18,7 +18,7 @@ import { exercise, exerchk, initExerciseState } from './attrib_exercise.js';
 import { initLevelGeneration, makelevel, setGameSeed, isBranchLevelToDnum } from './dungeon.js';
 import { simulatePostLevelInit, mon_arrive } from './u_init.js';
 import { Player, rankOf, roles } from './player.js';
-import { rhack } from './commands.js';
+import { rhack, dosearch0 } from './commands.js';
 import { makemon, setMakemonPlayerContext, runtimeDecideToShapeshift } from './makemon.js';
 import { M2_WERE } from './monsters.js';
 import { movemon, initrack, settrack } from './monmove.js';
@@ -851,6 +851,12 @@ export class HeadlessGame {
             if (this.flags?.verbose !== false) {
                 this.display.putstr_message('You are in full health.');
             }
+        }
+
+        // C ref: allmain.c:341-343 — autosearch for players with Searching
+        // intrinsic (Archeologists/Rangers at level 1, Rogues at 10, etc.)
+        if (this.player.searching && this.multi >= 0) {
+            dosearch0(this.player, this.map, this.display, this);
         }
 
         this.dosounds();

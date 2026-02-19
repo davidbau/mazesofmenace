@@ -2024,6 +2024,11 @@ async function handleEat(player, display, game) {
         const article = /^[aeiou]/i.test(floorName) ? 'an' : 'a';
         display.putstr_message(`There is ${article} ${floorName} here; eat it? [ynq] (n)`);
         const ans = String.fromCharCode(await nhgetch()).toLowerCase();
+        if (ans === 'q') {
+            // C ref: floorfood() — 'q' exits immediately
+            display.putstr_message('Never mind.');
+            return { moved: false, tookTime: false };
+        }
         if (ans === 'y') {
             if (floorItem.otyp === CORPSE) {
                 const cnum = Number.isInteger(floorItem.corpsenm) ? floorItem.corpsenm : -1;
@@ -2091,8 +2096,8 @@ async function handleEat(player, display, game) {
                 return { moved: false, tookTime: true };
             }
         }
-        display.putstr_message('Never mind.');
-        return { moved: false, tookTime: false };
+        // C ref: floorfood() — 'n' (or default) falls through to getobj()
+        // for inventory food selection, NOT "Never mind."
     }
 
     const food = player.inventory.filter(o => o.oclass === 6); // FOOD_CLASS

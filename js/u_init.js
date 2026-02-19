@@ -1612,6 +1612,11 @@ export function simulatePostLevelInit(player, map, depth) {
     if (player.roleIndex === PM_MONK || player.roleIndex === PM_SAMURAI) {
         player.fast = true;
     }
+    // C ref: attrib.c arc_abil/ran_abil — Archeologists and Rangers get
+    // intrinsic Searching at level 1.
+    if (player.roleIndex === PM_ARCHEOLOGIST || player.roleIndex === PM_RANGER) {
+        player.searching = true;
+    }
 
     // Set HP/PW from role + race
     // C ref: u_init.c u_init_misc() — newhp() = role_hp + race_hp
