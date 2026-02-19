@@ -124,6 +124,8 @@ try {
         xpAt400: null,
         xpAt600: null,
         lastObservedXP: 0,
+        actionCounts: new Map(),
+        xl1AttackTurns: 0,
     };
 
     const agent = new Agent(adapter, {
@@ -141,6 +143,9 @@ try {
             if (progression.xpAt200 === null && info.turn >= 200) progression.xpAt200 = xp;
             if (progression.xpAt400 === null && info.turn >= 400) progression.xpAt400 = xp;
             if (progression.xpAt600 === null && info.turn >= 600) progression.xpAt600 = xp;
+            const actionType = info.action?.type || 'unknown';
+            progression.actionCounts.set(actionType, (progression.actionCounts.get(actionType) || 0) + 1);
+            if (actionType === 'attack' && xl <= 1) progression.xl1AttackTurns++;
 
             if (!opts.verbose) return;
             if (info.turn % 20 === 0 || info.turn <= 10) {
@@ -164,6 +169,16 @@ try {
     const xpAt200 = progression.xpAt200 ?? finalXP;
     const xpAt400 = progression.xpAt400 ?? finalXP;
     const xpAt600 = progression.xpAt600 ?? finalXP;
+    const actionCount = (name) => progression.actionCounts.get(name) || 0;
+    const attackTurns = actionCount('attack');
+    const fleeTurns = actionCount('flee');
+    const exploreTurns = actionCount('explore');
+    const navigateTurns = actionCount('navigate');
+    const searchTurns = actionCount('search');
+    const restTurnsTaken = actionCount('rest');
+    const waitTurns = actionCount('wait');
+    const pickupTurns = actionCount('pickup');
+    const unknownTurns = actionCount('unknown');
 
     runnerLog('');
     runnerLog(`Game ended after ${stats.turns} turns:`);
@@ -171,6 +186,7 @@ try {
     runnerLog(`  Death cause: ${stats.deathCause || 'survived'}`);
     runnerLog(`  XP progression: maxXL=${Math.max(stats.maxXpLevel || 0, progression.maxXL)} maxXP=${Math.max(stats.maxXpPoints || 0, progression.maxXP)} XL2_turn=${stats.firstXpLevel2Turn ?? progression.firstXL2Turn ?? 'never'} XL3_turn=${stats.firstXpLevel3Turn ?? progression.firstXL3Turn ?? 'never'}`);
     runnerLog(`  XP checkpoints: t100=${xpAt100} t200=${xpAt200} t400=${xpAt400} t600=${xpAt600}`);
+    runnerLog(`  Action telemetry: attack=${attackTurns} flee=${fleeTurns} explore=${exploreTurns} navigate=${navigateTurns} search=${searchTurns} rest=${restTurnsTaken} wait=${waitTurns} pickup=${pickupTurns} xl1Attack=${progression.xl1AttackTurns} unknown=${unknownTurns}`);
     runnerLog(`  Explore telemetry: assign=${stats.targetAssignments ?? 0} reassign=${stats.targetReassignments ?? 0} complete=${stats.targetCompletions ?? 0} abandonInvalid=${stats.targetAbandonsInvalid ?? 0} abandonNoPath=${stats.targetAbandonsNoPath ?? 0} abandonNoProgress=${stats.targetAbandonsNoProgress ?? 0} failedAdd=${stats.failedTargetAdds ?? 0} failedClear=${stats.failedTargetClears ?? 0} frontierResets=${stats.systematicFrontierResets ?? 0} doorOpen=${stats.doorOpenAttempts ?? 0} doorKick=${stats.doorKickAttempts ?? 0}`);
     if (finalStatus) {
         const hunger = finalStatus.fainting ? 'fainting'

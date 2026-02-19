@@ -165,3 +165,12 @@
 - Combined learning:
   - Naive "fight more at XL1" rules reduced robustness and did not improve XP throughput in aggregate.
   - Next XP-focused attempts should be more context-aware (weapon readiness, monster class, path safety, and escape routes), not simple HP + adjacency gating.
+
+## 2026-02-18 - Keep: Action-Mix Telemetry for XP Diagnosis
+
+- Change:
+  - `selfplay/runner/c_runner.js` now emits `Action telemetry` counts per run (attack/flee/explore/navigate/search/rest/wait/pickup, plus `xl1Attack` turns).
+  - `selfplay/runner/c_role_matrix.js` parses those fields and reports matrix averages for `attack`, `flee`, and `xl1Attack`.
+- Why:
+  - XP checkpoint telemetry alone shows *outcome* (low XP throughput), but action-mix telemetry helps attribute *cause* (e.g., too little productive combat vs too much fleeing/navigation churn).
+  - This supports evidence-driven XP-by-600 tuning without changing gameplay policy.
