@@ -6,7 +6,8 @@ import assert from 'node:assert/strict';
 import { initRng } from '../../js/rng.js';
 import { Player, roles } from '../../js/player.js';
 import { playerAttackMonster, monsterAttackPlayer, checkLevelUp } from '../../js/combat.js';
-import { POTION_CLASS, POT_HEALING } from '../../js/objects.js';
+import { POTION_CLASS, POT_HEALING, ORCISH_DAGGER, WEAPON_CLASS } from '../../js/objects.js';
+import { AT_WEAP } from '../../js/monsters.js';
 
 // Mock display object
 const mockDisplay = {
@@ -79,6 +80,49 @@ describe('Combat system', () => {
             p.hp = startHp; // reset for next attack
         }
         assert.ok(totalDamage > 0, 'Monster should deal damage over 50 attacks');
+    });
+
+    it('AT_WEAP monster attacks apply wielded weapon damage', () => {
+        const p = new Player();
+        p.initRole(0);
+        p.ac = 10;
+        const baseHp = p.hp;
+        const weapon = {
+            otyp: ORCISH_DAGGER,
+            oclass: WEAPON_CLASS,
+            quan: 1,
+            spe: 0,
+            enchantment: 0,
+        };
+
+        const withWeapon = makeMonster({
+            attacks: [{ type: AT_WEAP, dice: 1, sides: 4 }],
+        });
+        withWeapon.weapon = weapon;
+        let withWeaponTotal = 0;
+        initRng(123);
+        for (let i = 0; i < 200; i++) {
+            const before = p.hp;
+            monsterAttackPlayer(withWeapon, p, mockDisplay);
+            withWeaponTotal += before - p.hp;
+            p.hp = baseHp;
+        }
+
+        const noWeapon = makeMonster({
+            attacks: [{ type: AT_WEAP, dice: 1, sides: 4 }],
+        });
+        noWeapon.weapon = null;
+        let noWeaponTotal = 0;
+        initRng(123);
+        for (let i = 0; i < 200; i++) {
+            const before = p.hp;
+            monsterAttackPlayer(noWeapon, p, mockDisplay);
+            noWeaponTotal += before - p.hp;
+            p.hp = baseHp;
+        }
+
+        assert.ok(withWeaponTotal > noWeaponTotal,
+            `AT_WEAP with weapon should deal more damage (${withWeaponTotal} > ${noWeaponTotal})`);
     });
 
     it('checkLevelUp advances player level', () => {

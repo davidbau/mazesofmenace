@@ -355,6 +355,12 @@ export function monsterAttackPlayer(monster, player, display, game = null) {
         } else if (attack.dmg) {
             damage = c_d(attack.dmg[0], attack.dmg[1]);
         }
+        // C ref: mhitu.c hitmu() uses weapon.c dmgval() for AT_WEAP melee hits.
+        if (attack.type === AT_WEAP && monster.weapon) {
+            const wsdam = weaponDamageSides(monster.weapon, null);
+            if (wsdam > 0) damage += rnd(wsdam);
+            damage += weaponEnchantment(monster.weapon);
+        }
 
         // Handle special attack effects
         if (attack.special) {

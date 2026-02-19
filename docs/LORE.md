@@ -577,6 +577,18 @@ columns and drift screen parity even when gameplay state is unchanged.
 Practical rule: while inventory command is still modal/pending and the step has
 a captured screen, use the captured frame as authoritative for that step.
 
+### AT_WEAP monster melee has a two-stage parity contract: wield turn, then dmgval
+
+In tourist non-wizard traces, adjacent goblins with AT_WEAP can spend one turn
+on `The goblin wields a crude dagger!` before any melee hit roll. On later hit
+turns, C consumes base melee `d(1,4)` and then weapon `dmgval` (`rnd(3)` for
+orcish dagger in this trace) before knockback RNG.
+
+Practical rule:
+- Adjacent AT_WEAP monsters without a wielded weapon should spend the attack
+  turn on wielding a carried weapon.
+- AT_WEAP melee damage must include weapon `dmgval` RNG after base attack dice.
+
 ### `doread` `?/*` help is a modal `--More--` listing, not a one-key no-op
 
 In tourist traces, pressing `?` (or `*`) at `What do you want to read?` opens a

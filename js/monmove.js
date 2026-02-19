@@ -455,6 +455,29 @@ function hasWeaponAttack(mon) {
     return attacks.some(a => a && a.type === AT_WEAP);
 }
 
+function chooseMonsterWieldWeapon(mon) {
+    if (!Array.isArray(mon?.minvent)) return null;
+    for (const obj of mon.minvent) {
+        if (!obj || obj.oclass !== WEAPON_CLASS) continue;
+        return obj;
+    }
+    return null;
+}
+
+function maybeMonsterWieldBeforeAttack(mon, player, display) {
+    // C ref: monmove.c mattacku path can spend a turn wielding weapon
+    // before the first AT_WEAP melee/ranged attack.
+    if (!hasWeaponAttack(mon)) return false;
+    if (mon.weapon) return false;
+    const wieldObj = chooseMonsterWieldWeapon(mon);
+    if (!wieldObj) return false;
+    mon.weapon = wieldObj;
+    if (display) {
+        display.putstr_message(`The ${monDisplayName(mon)} wields ${thrownObjectName(wieldObj, player)}!`);
+    }
+    return true;
+}
+
 function playerHasGold(player) {
     return (player?.gold || 0) > 0 || hasGold(player?.inventory);
 }
@@ -1785,6 +1808,9 @@ function dochug(mon, map, player, display, fov, game = null) {
             if (nearby2) {
                 // Adjacent: melee attack (only if not already handled by Phase 3)
                 if (!phase3Cond) {
+                    if (maybeMonsterWieldBeforeAttack(mon, player, display)) {
+                        return;
+                    }
                     monsterAttackPlayer(mon, player, display, game);
                 }
             } else if (hasWeaponAttack(mon)) {

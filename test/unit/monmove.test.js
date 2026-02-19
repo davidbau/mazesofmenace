@@ -9,7 +9,7 @@ import { GameMap } from '../../js/map.js';
 import { movemon } from '../../js/monmove.js';
 import { Player } from '../../js/player.js';
 import { GOLD_PIECE, COIN_CLASS, WEAPON_CLASS, ORCISH_DAGGER } from '../../js/objects.js';
-import { mons, PM_GOBLIN } from '../../js/monsters.js';
+import { mons, PM_GOBLIN, AT_WEAP } from '../../js/monsters.js';
 
 // Mock display
 const mockDisplay = { putstr_message() {} };
@@ -190,6 +190,40 @@ describe('Monster movement', () => {
         // Monster should not have passed through the wall
         assert.ok(mon.mx <= 16 || mon.mx >= 18,
             `Monster at ${mon.mx} should not be on wall at x=17`);
+    });
+
+    it('AT_WEAP monsters wield before melee attacking when currently unarmed', () => {
+        initRng(42);
+        const map = makeSimpleMap();
+        const player = new Player();
+        player.x = 20; player.y = 10;
+        player.initRole(0);
+
+        const goblin = makeGoblin(19, 10, player);
+        const dagger = {
+            otyp: ORCISH_DAGGER,
+            oclass: WEAPON_CLASS,
+            quan: 1,
+            dknown: true,
+        };
+        goblin.minvent = [dagger];
+        goblin.weapon = null;
+        map.monsters.push(goblin);
+
+        assert.ok((goblin.attacks || []).some((atk) => atk?.type === AT_WEAP));
+        const hpBefore = player.hp;
+        const messages = [];
+        const display = {
+            putstr_message(msg) {
+                messages.push(msg);
+            },
+        };
+
+        movemon(map, player, display);
+
+        assert.equal(goblin.weapon, dagger);
+        assert.equal(player.hp, hpBefore);
+        assert.ok(messages.some((msg) => /wields/.test(msg)));
     });
 
     it('collectors do not retarget to gold unless they like gold', () => {

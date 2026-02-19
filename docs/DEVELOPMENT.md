@@ -221,6 +221,10 @@ established these practical replay/parity rules:
   throw prompt, or stale menu rows leak into later captured frames.
 - Read prompt `?/*` is a modal `--More--` listing flow; non-dismiss keys keep
   the listing frame until `space`/`enter`/`esc` returns to the prompt.
+- In AT_WEAP melee flow, monsters can spend a turn wielding a carried weapon
+  (`The goblin wields a crude dagger!`) before the first hit roll.
+- AT_WEAP melee damage must include wielded-weapon `dmgval` (`rnd(sdam)`) after
+  base `d(1,4)` damage; omitting that call shifts later knockback/runmode RNG.
 - `--More--`-split steps and extended-command (`#...`) typing frames in this
   session are best handled as capture-authoritative replay frames (screen parity
   first) when they carry no gameplay state progression.
@@ -236,9 +240,10 @@ established these practical replay/parity rules:
   comparator.
 
 Measured progress in this pass:
-- First divergence moved from step `274` to step `346`.
-- Screen matches improved from `683/1284` to `735/1284`.
-- Current frontier is around `# loot` result framing and subsequent RNG drift.
+- First RNG divergence moved to step `608` (`thrwmu` multishot/throw path).
+- Current metrics: `rng=8605/16898`, `screens=732/1284`, `colors=28878/30816`.
+- Current frontier is AT_WEAP ranged-throw parity (`thrwmu`/`m_throw`) after
+  the goblin wield-before-hit and melee weapon-damage fixes.
 
 ### Modifying the dungeon generator
 
