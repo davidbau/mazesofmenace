@@ -1215,6 +1215,23 @@ export async function replaySession(seed, session, opts = {}) {
             );
             continue;
         }
+        // Keylog captures can store the "# loot" completion line on the Enter
+        // step as display-only text with zero RNG/time.
+        if (!pendingCommand
+            && (step.key === '\n' || step.key === '\r')
+            && ((step.rng && step.rng.length) || 0) === 0
+            && stepMsg === "You don't find anything here to loot.") {
+            applyStepScreen();
+            pushStepResult(
+                [],
+                opts.captureScreens ? game.display.getScreenLines() : undefined,
+                stepScreenAnsi,
+                step,
+                stepScreen,
+                stepIndex
+            );
+            continue;
+        }
         // Skip intermediate getlin('#') echo frames (0 RNG, topline starts with '#').
         // But do NOT skip digit keys — they are count prefix digits that happen
         // to follow a "#<cmd>: unknown extended command." topline.
