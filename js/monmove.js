@@ -42,6 +42,16 @@ import { STATUE_TRAP, MAGIC_TRAP, VIBRATING_SQUARE, RUST_TRAP, FIRE_TRAP,
          SLP_GAS_TRAP, BEAR_TRAP, PIT, SPIKED_PIT, HOLE, TRAPDOOR,
          WEB, ANTI_MAGIC, MAGIC_PORTAL } from './symbols.js';
 
+function monmoveTraceEnabled() {
+    const env = (typeof process !== 'undefined' && process.env) ? process.env : {};
+    return env.WEBHACK_MONMOVE_TRACE === '1';
+}
+
+function monmoveTrace(...args) {
+    if (!monmoveTraceEnabled()) return;
+    console.log('[MONMOVE_TRACE]', ...args);
+}
+
 const MTSZ = 4;           // C ref: monst.h — track history size
 const SQSRCHRADIUS = 5;   // C ref: dogmove.c — object search radius
 const FARAWAY = 127;      // C ref: hack.h — large distance sentinel
@@ -1088,12 +1098,6 @@ function m_search_items_goal(mon, map, ggx, ggy, appr) {
         minr--;
     }
 
-    const mflags2 = Number(mon?.type?.flags2 || 0);
-    const canCollect = !!(mflags2 & M2_COLLECT) || mon?.mndx === PM_LEPRECHAUN;
-    if (!canCollect) {
-        return { ggx, ggy, appr, done: false };
-    }
-
     // C ref: monmove.c m_search_items() — in shop, usually skip.
     if (pointInShop(omx, omy, map) && (rn2(25) || mon.isshk)) {
         if (minr < SQSRCHRADIUS && appr === -1) {
@@ -1508,6 +1512,14 @@ export function movemon(map, player, display, fov, game = null) {
                     && ((fov?.canSee ? fov.canSee(oldx, oldy) : couldsee(map, player, oldx, oldy))));
                 mon.movement -= NORMAL_SPEED;
                 anyMoved = true;
+                monmoveTrace('turn-start',
+                    `id=${mon.m_id ?? '?'}`,
+                    `mndx=${mon.mndx ?? '?'}`,
+                    `name=${mon.type?.name || mon.name || '?'}`,
+                    `pos=(${oldx},${oldy})`,
+                    `flee=${mon.flee ? 1 : 0}`,
+                    `peace=${mon.peaceful ? 1 : 0}`,
+                    `conf=${mon.confused ? 1 : 0}`);
                 if (handleHiderPremove(mon, map, player, fov)) {
                     continue;
                 }
@@ -1650,7 +1662,13 @@ function dochug(mon, map, player, display, fov, game = null) {
 
     // distfleeck: always rn2(5) for every non-sleeping monster
     // C ref: monmove.c:792 — distfleeck(mtmp, &inrange, &nearby, &scared)
-    rn2(5);
+    const braveGremlinRoll = rn2(5);
+    monmoveTrace('distfleeck',
+        `id=${mon.m_id ?? '?'}`,
+        `mndx=${mon.mndx ?? '?'}`,
+        `name=${mon.type?.name || mon.name || '?'}`,
+        `pos=(${mon.mx},${mon.my})`,
+        `roll=${braveGremlinRoll}`);
 
     // Phase 3: Evaluate condition block for ALL monsters (including tame)
     // C ref: monmove.c:882-887 — short-circuit OR evaluation
@@ -1732,7 +1750,13 @@ function dochug(mon, map, player, display, fov, game = null) {
         }
         // distfleeck recalc after m_move
         // C ref: monmove.c:919 — distfleeck(mtmp, &inrange, &nearby, &scared);
-        rn2(5);
+        const postMoveBraveRoll = rn2(5);
+        monmoveTrace('distfleeck-postmove',
+            `id=${mon.m_id ?? '?'}`,
+            `mndx=${mon.mndx ?? '?'}`,
+            `name=${mon.type?.name || mon.name || '?'}`,
+            `pos=(${mon.mx},${mon.my})`,
+            `roll=${postMoveBraveRoll}`);
 
         // C ref: monmove.c:949-953 — MMOVE_MOVED case:
         // "Monsters can move and then shoot on same turn"
@@ -2716,6 +2740,24 @@ function m_move(mon, map, player, display = null, fov = null) {
     // Collect valid positions via mfndpos (column-major, NODIAG, boulder filter)
     const positions = mfndpos(mon, map, player, { allowDoorOpen: can_open, allowDoorUnlock: can_unlock });
     const cnt = positions.length;
+    const posSummary = positions.map((p) => `(${p.x},${p.y})`).join(' ');
+    const trackSummary = Array.isArray(mon.mtrack)
+        ? mon.mtrack.map((t) => `(${t?.x ?? '?'},${t?.y ?? '?'})`).join(' ')
+        : 'none';
+    monmoveTrace('m_move-begin',
+        `id=${mon.m_id ?? '?'}`,
+        `mndx=${mon.mndx ?? '?'}`,
+        `name=${mon.type?.name || mon.name || '?'}`,
+        `pos=(${omx},${omy})`,
+        `target=(${ggx},${ggy})`,
+        `mcansee=${mon.mcansee === false ? 0 : 1}`,
+        `blind=${mon.blind ? 1 : 0}`,
+        `shouldSee=${should_see ? 1 : 0}`,
+        `shortsighted=${map?.flags?.shortsighted ? 1 : 0}`,
+        `appr=${appr}`,
+        `cnt=${cnt}`,
+        `poss=${posSummary}`,
+        `track=${trackSummary}`);
     const maybeTeleportAfterFailedMove = () => {
         // C ref: monmove.c fallback path can call rloc() for teleporting monsters.
         if (!can_teleport(ptr) || (map.flags && map.flags.noteleport)) return false;
@@ -2746,6 +2788,14 @@ function m_move(mon, map, player, display = null, fov = null) {
     let chcnt = 0;
     let mmoved = false; // C: mmoved = MMOVE_NOTHING
     const jcnt = Math.min(MTSZ, cnt - 1);
+    // C ref: monmove.c:1938-1941 — shortsighted levels make distant hostiles
+    // wander rather than strictly approach the hero.
+    if (!mon.peaceful
+        && map?.flags?.shortsighted
+        && nidist > (couldsee(map, player, nix, niy) ? 144 : 36)
+        && appr === 1) {
+        appr = 0;
+    }
     // C ref: monmove.c should_displace() gate; JS mdisplacement behavior is
     // not yet implemented, so keep this false but preserve skip ordering.
     const betterWithDisplacing = false;
@@ -2776,6 +2826,15 @@ function m_move(mon, map, player, display = null, fov = null) {
                 if (nx === mon.mtrack[j].x && ny === mon.mtrack[j].y) {
                     const denom = 4 * (cnt - j);
                     const trackRoll = rn2(denom);
+                    monmoveTrace('m_move-track',
+                        `id=${mon.m_id ?? '?'}`,
+                        `mndx=${mon.mndx ?? '?'}`,
+                        `name=${mon.type?.name || mon.name || '?'}`,
+                        `pos=(${omx},${omy})`,
+                        `cand=(${nx},${ny})`,
+                        `j=${j}`,
+                        `denom=${denom}`,
+                        `roll=${trackRoll}`);
                     if (trackRoll) {
                         skipThis = true;
                         break;

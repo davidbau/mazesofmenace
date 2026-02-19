@@ -424,6 +424,23 @@ carryable gold as a valid search target.
 Practical rule: keep `m_search_items` gold retargeting gated by
 `likes_gold` (with leprechaun exception), not by `M2_COLLECT` alone.
 
+### `m_search_items` should not be pre-gated by collect-only monster flags
+
+In C `monmove.c`, `m_search_items()` scans nearby piles for any monster and
+relies on `mon_would_take_item()` / `mon_would_consume_item()` to decide
+interest per object. Adding an early JS return like "only run for
+`M2_COLLECT`" drops legitimate search behavior for other item-affinity
+monsters (for example `M2_GREEDY` or `M2_MAGIC`) and causes hidden movement
+state drift.
+
+Observed parity effect in `seed212_valkyrie_wizard.session.json` after removing
+the collect-only pre-gate:
+- RNG matched prefix improved (`8691 -> 8713` calls)
+- first RNG divergence shifted later (`step 260 -> step 267`)
+
+Practical rule: keep the broad search loop active and let item-intent helpers
+filter per-object eligibility; do not add top-level "collector-only" gates.
+
 ### eatfood occupation completes on `++usedtime > reqtime` (not `>=`)
 
 For multi-turn inventory eating, C `eatfood()` ends when the incremented
