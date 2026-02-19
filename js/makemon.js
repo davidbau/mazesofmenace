@@ -205,8 +205,8 @@ export function setMakemonPlayerContext(playerLike) {
     });
 }
 
-export function setMakemonRoleContext(roleIndex) {
-    _makemonPlayerCtx = normalizePlayerContext({ roleIndex });
+export function setMakemonRoleContext(roleIndex, opts = {}) {
+    _makemonPlayerCtx = normalizePlayerContext({ roleIndex, ...opts });
 }
 
 export function getMakemonRoleIndex() {

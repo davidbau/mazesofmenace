@@ -573,7 +573,14 @@ export function generateStartupWithRng(seed, session) {
     const preStartupEntries = getPreStartupRngEntries(session);
     consumeRngEntries(preStartupEntries);
 
-    initLevelGeneration(roleIndex, session.options?.wizard ?? true);
+    // Pass player's actual alignment and race so peace_minded() uses
+    // them during level generation (C sets u.ualign.type before mklev).
+    const alignMap0 = { lawful: 1, neutral: 0, chaotic: -1 };
+    const raceMap0 = { human: RACE_HUMAN, elf: RACE_ELF, dwarf: RACE_DWARF, gnome: RACE_GNOME, orc: RACE_ORC };
+    initLevelGeneration(roleIndex, session.options?.wizard ?? true, {
+        alignment: alignMap0[charOpts.align],
+        race: raceMap0[charOpts.race],
+    });
 
     const map = makelevel(1);
     // Note: wallification is now called inside makelevel
@@ -673,7 +680,13 @@ export async function replaySession(seed, session, opts = {}) {
 
     // Now initialize level generation (this may consume RNG for dungeon structure).
     // C tutorial prompt still initializes globals/object state before map generation.
-    initLevelGeneration(replayRoleIndex, session.options?.wizard ?? true);
+    // Pass player's actual alignment and race so peace_minded() uses them during mklev.
+    const preAlignMap = { lawful: 1, neutral: 0, chaotic: -1 };
+    const preRaceMap = { human: RACE_HUMAN, elf: RACE_ELF, dwarf: RACE_DWARF, gnome: RACE_GNOME, orc: RACE_ORC };
+    initLevelGeneration(replayRoleIndex, session.options?.wizard ?? true, {
+        alignment: preAlignMap[sessionChar.align],
+        race: preRaceMap[sessionChar.race],
+    });
 
     const sessionStartup = getSessionStartup(session);
     const startupScreen = getSessionScreenLines(sessionStartup || {});
@@ -1099,6 +1112,7 @@ export async function replaySession(seed, session, opts = {}) {
         const step = allSteps[stepIndex];
         game.map._replayStepIndex = stepIndex;
         const prevCount = getRngLog().length;
+
         const stepScreen = getSessionScreenLines(step);
         const stepScreenAnsi = getSessionScreenAnsiLines(step);
         const applyStepScreen = () => {
@@ -1607,6 +1621,7 @@ export async function replaySession(seed, session, opts = {}) {
             game.multi = 0;
             return true;
         };
+
         if (pendingCommand) {
             const priorPendingKind = pendingKind;
             const pendingScreenBeforeInput = (opts.captureScreens && game?.display?.getScreenLines)
@@ -1721,6 +1736,7 @@ export async function replaySession(seed, session, opts = {}) {
                         ? game.display.getScreenAnsiLines()
                         : null;
                 }
+
                 result = { moved: false, tookTime: false };
             } else {
                 result = settled.value;

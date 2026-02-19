@@ -4988,9 +4988,9 @@ function mkshop(map) {
 // castle tune + u_init + themerooms shuffle.
 // C ref: early_init() → o_init.c init_objects(), dungeon.c init_dungeons(),
 //        u_init.c u_init(), nhlua pre_themerooms
-export function initLevelGeneration(roleIndex, wizard = true) {
+export function initLevelGeneration(roleIndex, wizard = true, opts = {}) {
     init_objects();
-    setMakemonRoleContext(roleIndex);
+    setMakemonRoleContext(roleIndex, opts);
     _branchTopology = [];  // reset before recalculating from init_dungeons RNG
     initDungeon(roleIndex, wizard);
     _themeroomsLoaded = false;
