@@ -435,6 +435,31 @@ function hasNoComparableRngEntries(entries) {
     return true;
 }
 
+function hasTurnBoundaryRng(entries) {
+    for (const e of entries || []) {
+        if (typeof e !== 'string') continue;
+        if (e.includes('distfleeck(')
+            || e.includes('mcalcmove(')
+            || e.includes('moveloop_core(')
+            || e.includes('regen_hp(')
+            || e.includes('dosounds(')
+            || e.includes('gethungry(')
+            || e.includes('u_calc_moveamt(')
+            || e.includes('dosearch0(')) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function hasStopOccupationBoundary(entries) {
+    for (const e of entries || []) {
+        if (typeof e !== 'string') continue;
+        if (e.includes('stop_occupation(')) return true;
+    }
+    return false;
+}
+
 // Generate levels 1→maxDepth with RNG trace capture.
 // Returns { grids, maps, rngLogs } where rngLogs[depth] = { rngCalls, rng }.
 export function generateMapsWithRng(seed, maxDepth) {
@@ -918,6 +943,7 @@ export async function replaySession(seed, session, opts = {}) {
     let pendingCount = 0;
     let lastCommand = null; // C ref: do_repeat() remembered command for Ctrl+A
     let pendingTransitionTurn = false;
+    let pendingDeferredTimedTurn = false;
     let deferredSparseMoveKey = null;
     let deferredMoreBoundaryRng = [];
     let deferredMoreBoundaryTarget = null;
@@ -1205,6 +1231,15 @@ export async function replaySession(seed, session, opts = {}) {
                 continue;
             }
             pendingTransitionTurn = false;
+        }
+        // Some sparse captures place stop_occupation bookkeeping on one key
+        // and defer the actual timed-turn monster cycle to the next key frame.
+        // Keep that boundary by running the deferred timed turn here.
+        if (pendingDeferredTimedTurn) {
+            game.fov.compute(game.map, game.player.x, game.player.y);
+            movemon(game.map, game.player, game.display, game.fov, game);
+            game.simulateTurnEnd();
+            pendingDeferredTimedTurn = false;
         }
         const isCapturedDipPrompt = stepMsg.startsWith('What do you want to dip into one of the potions of water?')
             && ((step.rng && step.rng.length) || 0) === 0;
@@ -1917,6 +1952,18 @@ export async function replaySession(seed, session, opts = {}) {
             && PREFIX_CMDS.has(String.fromCharCode(ch))) {
             const nextCh = step.key.charCodeAt(1);
             result = await rhack(nextCh, game);
+        }
+
+        const stepExpectedRng = step.rng || [];
+        const nextExpectedRng = allSteps[stepIndex + 1]?.rng || [];
+        const deferPendingTurnBoundary = result
+            && result.tookTime
+            && hasStopOccupationBoundary(stepExpectedRng)
+            && !hasTurnBoundaryRng(stepExpectedRng)
+            && hasTurnBoundaryRng(nextExpectedRng);
+        if (deferPendingTurnBoundary) {
+            pendingDeferredTimedTurn = true;
+            result = { ...result, tookTime: false };
         }
 
         // If the command took time, run monster movement and turn effects.

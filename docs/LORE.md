@@ -569,6 +569,18 @@ as run-style south movement for parity with C turn consumption.
 Practical rule: in replay, detect this exact sparse-move/Enter pattern and set
 a narrow replay flag so Enter follows run-style handling only for that step.
 
+### `stop_occupation` sparse boundary frames can defer timed turn execution
+
+Some gameplay captures split a single command across two adjacent frames:
+- current frame: combat/occupation-stop bookkeeping (`stop_occupation`) with no
+  monster-cycle/turn-end RNG markers
+- next frame: the deferred timed-turn block (`distfleeck`, `mcalcmove`,
+  `moveloop_core`, etc.)
+
+Practical rule: when replay sees this exact signature, do not execute the timed
+turn on the bookkeeping frame; defer it to the next captured frame so state and
+RNG attribution match C keylog boundaries.
+
 ### Throw `?` overlay menus can require a right-offset cap at column 41
 
 In non-wizard tourist gameplay, the throw prompt (`What do you want to throw?`)
