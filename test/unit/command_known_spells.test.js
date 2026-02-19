@@ -65,6 +65,11 @@ describe('known spells command', () => {
             otyp: SPE_STONE_TO_FLESH,
             name: 'stone to flesh',
         }];
+        // handleKnownSpells reads player.spells (populated by initialSpell at game start)
+        game.player.spells = [
+            { otyp: SPE_HEALING, sp_lev: 1, sp_know: 19994 },
+            { otyp: SPE_STONE_TO_FLESH, sp_lev: 3, sp_know: 19994 },
+        ];
         pushInput(' '.charCodeAt(0));
         const result = await rhack('+'.charCodeAt(0), game);
         assert.equal(result.tookTime, false);
