@@ -2142,31 +2142,9 @@ async function handleEat(player, display, game) {
                 display.putstr_message('You cannot eat that!');
                 return { moved: false, tookTime: false };
             }
-            // C tty parity: invalid selector stays in modal getobj flow with a
-            // "You don't have that object.--More--" message, then re-prompts.
-            const moreStr = '--More--';
-            const renderNoObjectMore = () => {
-                if (typeof display.clearRow === 'function') display.clearRow(0);
-                display.topMessage = null;
-                display.messageNeedsMore = false;
-                display.putstr_message("You don't have that object.");
-                if (typeof display.putstr === 'function' && Number.isInteger(display.cols)) {
-                    const msg = String(display.topMessage || "You don't have that object.");
-                    const col = Math.min(msg.length, Math.max(0, display.cols - moreStr.length));
-                    display.putstr(col, 0, moreStr);
-                }
-            };
-            renderNoObjectMore();
-            while (true) {
-                const ackCh = await nhgetch();
-                if (ackCh === 32 || ackCh === 10 || ackCh === 13 || ackCh === 27) {
-                    if (typeof display.clearRow === 'function') display.clearRow(0);
-                    display.topMessage = null;
-                    display.messageNeedsMore = false;
-                    break;
-                }
-                renderNoObjectMore();
-            }
+            // C ref: invent.c getobj() — You("don't have that object.");
+            // then continue (re-prompt). No --More-- modal, no extra keypress.
+            display.putstr_message("You don't have that object.");
             continue;
         }
         // C ref: eat.c doesplit() path for stacked comestibles:
@@ -2228,7 +2206,10 @@ async function handleEat(player, display, game) {
         // First bite (turn 1) — mirrors C start_eating() + bite()
         usedtime++;
         doBite();
-        if (!isCorpse) {
+        // C ref: eat.c start_eating() — "You begin eating X." is only shown
+        // for partly-eaten food or multi-turn fresh food. Single-turn fresh
+        // food goes through fprefx() which shows its own flavor message.
+        if (!isCorpse && reqtime > 1) {
             display.putstr_message(`You begin eating the ${eatenItem.name}.`);
         }
         let consumedInventoryItem = false;
@@ -2362,10 +2343,13 @@ async function promptDirectionAndThrowItem(player, map, display, item, { fromFir
         display.putstr_message('You cannot throw something you are wearing.');
         return { moved: false, tookTime: false };
     }
-    // C ref: throw_obj() consumes a one-point rnd() probe before stack split.
-    rnd(1);
-
     // Minimal throw behavior for replay flow fidelity.
+    // C ref: dothrow.c throw_obj() multishot calculation —
+    // rnd(multishot) is called only for stacked weapon-class items.
+    // For basic throws multishot=1, so rnd(1) consumes one RNG call.
+    if ((item.quan || 1) > 1 && item.oclass === WEAPON_CLASS) {
+        rnd(1);
+    }
     let thrownItem = item;
     if ((item.quan || 1) > 1) {
         item.quan = (item.quan || 1) - 1;
