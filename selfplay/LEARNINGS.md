@@ -874,3 +874,29 @@
 
 - Net:
   - Keep as behavior-neutral observability infrastructure for candidate triage.
+
+## 2026-02-19 - Keep: Optional Attack-Decision Guardrails in Matrix Diff
+
+- Change:
+  - Extended `selfplay/runner/c_role_matrix_diff.js` with optional `--include-attack-decision-guardrails`.
+  - New optional guardrails gate non-increase of:
+    - `avgAttackLoneDog`
+    - `avgAttackForced`
+    - `avgAttackFleeLoopBreak`
+  - Kept default behavior unchanged (opt-in only).
+
+- Why:
+  - Attack volume alone (`avgAttack`) can hide harmful composition shifts.
+  - We now have attack-decision telemetry; this adds a fast gate to catch
+    regressions in known problematic attack modes while preserving existing
+    default acceptance semantics.
+
+- Validation:
+  - `node --check selfplay/runner/c_role_matrix_diff.js`
+  - `node --check selfplay/test/role_matrix_diff.test.js`
+  - `node --test selfplay/test/role_matrix_diff.test.js`
+  - Smoke:
+    - `node selfplay/runner/c_role_matrix_diff.js --baseline=/tmp/role_matrix_smoke_attacktele_20260219.json --candidate=/tmp/role_matrix_smoke_attacktele_20260219.json --include-attack-decision-guardrails --top=2`
+
+- Net:
+  - Keep as behavior-neutral triage hardening for selfplay candidate evaluation.

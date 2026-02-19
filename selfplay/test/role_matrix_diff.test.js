@@ -16,6 +16,11 @@ function makeData(overrides = {}) {
             reachedXP20By600: 1,
             avgFailedAdds: 30,
             avgAttackTurns: 100,
+            avgAttackFleeLoopBreakTurns: 5,
+            avgAttackForcedCorneredTurns: 3,
+            avgAttackBlockingTurns: 20,
+            avgAttackLoneDogTurns: 40,
+            avgAttackOtherTurns: 32,
             avgFleeTurns: 20,
             avgFleeHpEmergencyTurns: 8,
             avgFleeDlvl2RetreatTurns: 2,
@@ -202,6 +207,29 @@ describe('compareRoleMatrix', () => {
         const fleeGuard = out.guardrails.find(g => g.key === 'avgFleeTurns');
         assert.ok(fleeGuard);
         assert.equal(fleeGuard.pass, false);
+    });
+
+    it('optionally fails on attack-decision regression guardrails', () => {
+        const baseline = makeData({
+            summary: {
+                avgAttackLoneDogTurns: 40,
+                avgAttackForcedCorneredTurns: 3,
+                avgAttackFleeLoopBreakTurns: 5,
+            },
+        });
+        const candidate = makeData({
+            summary: {
+                avgAttackLoneDogTurns: 49, // regression
+                avgAttackForcedCorneredTurns: 3,
+                avgAttackFleeLoopBreakTurns: 5,
+            },
+        });
+
+        const out = compareRoleMatrix(baseline, candidate, { includeAttackDecisionGuardrails: true });
+        assert.equal(out.passed, false);
+        const loneDogGuard = out.guardrails.find(g => g.key === 'avgAttackLoneDogTurns');
+        assert.ok(loneDogGuard);
+        assert.equal(loneDogGuard.pass, false);
     });
 
     it('optionally fails on flee-cause regression guardrails', () => {
