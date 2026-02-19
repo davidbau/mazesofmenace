@@ -126,4 +126,12 @@ describe('browser key mapping', () => {
         );
         assert.equal(code, 1);
     });
+
+    it('maps alt-letter combinations from physical key code even with composed key values', () => {
+        const code = mapBrowserKeyToNhCode(
+            { key: 'ì', code: 'KeyL', location: 0, ctrlKey: false, altKey: true, metaKey: false },
+            {}
+        );
+        assert.equal(code, ('l'.charCodeAt(0) | 0x80));
+    });
 });

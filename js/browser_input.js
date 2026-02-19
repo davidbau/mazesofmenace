@@ -52,7 +52,17 @@ export function mapBrowserKeyToNhCode(e, flags = {}) {
     // Handle Meta (Alt) key combinations
     // C ref: cmd.c uses M('x') which is (x | 0x80)
     else if (e.altKey && !e.ctrlKey && !e.metaKey) {
+        // Prefer physical key location for alphabetic meta commands so
+        // locale-composed e.key values (e.g. Alt+L => "ì") still map to M-l.
+        if (typeof e.code === 'string' && /^Key[A-Z]$/.test(e.code)) {
+            const base = e.code[3].toLowerCase().charCodeAt(0);
+            return base | 0x80;
+        }
         if (e.key.length === 1) {
+            const lower = e.key.toLowerCase();
+            if (lower >= 'a' && lower <= 'z') {
+                return lower.charCodeAt(0) | 0x80;
+            }
             return e.key.charCodeAt(0) | 0x80;
         }
     }

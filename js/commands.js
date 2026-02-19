@@ -239,6 +239,8 @@ const RUN_KEYS = {
 export async function rhack(ch, game) {
     const { player, map, display, fov } = game;
     const c = String.fromCharCode(ch);
+    const isMetaKey = ch >= 128 && ch <= 255;
+    const metaBaseChar = isMetaKey ? String.fromCharCode(ch & 0x7f).toLowerCase() : '';
     // C ref: tty command input acknowledges previous topline state before
     // processing a new command, so cross-turn messages don't auto-concatenate.
     if (display && 'messageNeedsMore' in display) {
@@ -264,6 +266,12 @@ export async function rhack(ch, game) {
             return await handleRun(DIRECTION_KEYS.j, player, map, display, fov, game);
         }
         return await handleMovement(DIRECTION_KEYS.j, player, map, display, game);
+    }
+
+    // Meta command keys (M-x / Alt+x).
+    // C ref: command set includes M('l') for loot.
+    if (metaBaseChar === 'l') {
+        return await handleLoot(game);
     }
 
     // Movement keys
@@ -1343,6 +1351,54 @@ function handlePickup(player, map, display) {
     return { moved: false, tookTime: true };
 }
 
+function getContainerContents(container) {
+    if (Array.isArray(container?.contents)) return container.contents;
+    if (Array.isArray(container?.cobj)) return container.cobj;
+    return [];
+}
+
+function setContainerContents(container, items) {
+    const out = Array.isArray(items) ? items : [];
+    if (Array.isArray(container?.contents)) container.contents = out;
+    if (Array.isArray(container?.cobj)) container.cobj = out;
+    if (!Array.isArray(container?.contents) && !Array.isArray(container?.cobj)) {
+        container.contents = out;
+    }
+}
+
+async function handleLoot(game) {
+    const { player, map, display } = game;
+    const containers = (map.objectsAt(player.x, player.y) || [])
+        .filter((obj) => !!objectData[obj?.otyp]?.container);
+
+    if (containers.length === 0) {
+        display.putstr_message("You don't find anything here to loot.");
+        return { moved: false, tookTime: false };
+    }
+
+    const container = containers[0];
+    if (container.olocked && !container.obroken) {
+        display.putstr_message('Hmmm, it seems to be locked.');
+        return { moved: false, tookTime: false };
+    }
+
+    const contents = getContainerContents(container);
+    if (contents.length === 0) {
+        display.putstr_message("You don't find anything here to loot.");
+        return { moved: false, tookTime: false };
+    }
+
+    for (const item of contents) {
+        player.addToInventory(item);
+        observeObject(item);
+    }
+    setContainerContents(container, []);
+
+    const count = contents.length;
+    display.putstr_message(`You loot ${count} item${count === 1 ? '' : 's'}.`);
+    return { moved: false, tookTime: true };
+}
+
 // Handle going downstairs
 // C ref: do.c dodown()
 async function handleDownstairs(player, map, display, game) {
@@ -1412,11 +1468,8 @@ async function handleOpen(player, map, display, game) {
     }
 
     // C ref: doopen() with self-direction routes through loot handling.
-    // Full container/saddle loot is not yet implemented; preserve canonical
-    // no-target message for this path.
     if (dir[0] === 0 && dir[1] === 0) {
-        display.putstr_message("You don't find anything here to loot.");
-        return { moved: false, tookTime: false };
+        return await handleLoot(game);
     }
 
     const nx = player.x + dir[0];
@@ -4313,9 +4366,7 @@ async function handleExtendedCommand(game) {
             }
         }
         case 'loot':
-            // C ref: do.c doloot() with no lootable target on current square.
-            display.putstr_message("You don't find anything here to loot.");
-            return { moved: false, tookTime: false };
+            return await handleLoot(game);
         case 'levelchange':
             return await wizLevelChange(game);
         case 'map':
