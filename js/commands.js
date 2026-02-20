@@ -12,22 +12,20 @@ import { rn2, rn1, rnd, rnl, d, c_d } from './rng.js';
 import { exercise } from './attrib_exercise.js';
 import { objectData, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
          TOOL_CLASS, FOOD_CLASS, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS,
-         WAND_CLASS, COIN_CLASS, GEM_CLASS, VENOM_CLASS, ROCK_CLASS, CORPSE, LANCE,
+         WAND_CLASS, COIN_CLASS, GEM_CLASS, VENOM_CLASS, ROCK_CLASS, LANCE,
          BULLWHIP, BOW, ELVEN_BOW, ORCISH_BOW, YUMI, SLING, CROSSBOW, STETHOSCOPE,
          QUARTERSTAFF, ROBE, SMALL_SHIELD, DUNCE_CAP, POT_WATER,
          TALLOW_CANDLE, WAX_CANDLE, FLINT, ROCK,
          TOUCHSTONE, LUCKSTONE, LOADSTONE, MAGIC_MARKER,
          CREAM_PIE, EUCALYPTUS_LEAF, LUMP_OF_ROYAL_JELLY,
-         POT_OIL, TRIPE_RATION, CLOVE_OF_GARLIC, PICK_AXE, DWARVISH_MATTOCK,
+         POT_OIL, PICK_AXE, DWARVISH_MATTOCK,
          CREDIT_CARD, EXPENSIVE_CAMERA, MIRROR, FIGURINE,
          SPE_BLANK_PAPER, SPE_NOVEL, SPE_BOOK_OF_THE_DEAD } from './objects.js';
 import { nhgetch, ynFunction, getlin } from './input.js';
 import { playerAttackMonster } from './uhitm.js';
-import { applyMonflee } from './mhitu.js';
+import { handleEat } from './eat.js';
 import { makemon, setMakemonPlayerContext } from './makemon.js';
-import { mons, PM_LIZARD, PM_LICHEN, PM_NEWT,
-         S_GOLEM, S_EYE, S_JELLY, S_PUDDING, S_BLOB, S_VORTEX,
-         S_ELEMENTAL, S_FUNGUS, S_LIGHT } from './monsters.js';
+import { mons } from './monsters.js';
 import { monDisplayName, hasGivenName, monNam } from './mondata.js';
 import { doname, next_ident, xname } from './mkobj.js';
 import { observeObject, getDiscoveriesMenuLines, isObjectNameKnown } from './discovery.js';
@@ -200,7 +198,7 @@ function invletSortValue(ch) {
     return 2000 + ch.charCodeAt(0);
 }
 
-function compactInvletPromptChars(chars) {
+export function compactInvletPromptChars(chars) {
     if (!chars) return '';
     const sorted = [...new Set(chars.split(''))].sort((a, b) => invletSortValue(a) - invletSortValue(b));
     if (sorted.length <= 5) return sorted.join('');
@@ -2606,318 +2604,6 @@ async function handleDrop(player, map, display) {
         display.topMessage = null;
         display.messageNeedsMore = false;
         display.putstr_message(`You drop ${doname(item, null)}.`);
-        return { moved: false, tookTime: true };
-    }
-}
-
-// Handle eating
-// C ref: eat.c doeat() → start_eating() → eatfood() occupation
-async function handleEat(player, display, game) {
-    const map = game?.map;
-    const floorFoods = map
-        ? map.objectsAt(player.x, player.y).filter((o) => o && o.oclass === FOOD_CLASS)
-        : [];
-
-    // C ref: eat.c floor-food prompt (corpse traces): if edible food is at
-    // hero square, ask before opening inventory selector.
-    if (floorFoods.length > 0) {
-        const floorItem = floorFoods[0];
-        const floorDescribed = doname(floorItem, null);
-        const floorName = floorDescribed.replace(/^(?:an?|the)\s+/i, '');
-        const article = /^[aeiou]/i.test(floorName) ? 'an' : 'a';
-        display.putstr_message(`There is ${article} ${floorName} here; eat it? [ynq] (n)`);
-        const ans = String.fromCharCode(await nhgetch()).toLowerCase();
-        if (ans === 'q') {
-            // C ref: floorfood() — 'q' exits immediately
-            display.putstr_message('Never mind.');
-            return { moved: false, tookTime: false };
-        }
-        if (ans === 'y') {
-            if (floorItem.otyp === CORPSE) {
-                const cnum = Number.isInteger(floorItem.corpsenm) ? floorItem.corpsenm : -1;
-                const nonrotting = (cnum === PM_LIZARD || cnum === PM_LICHEN);
-                let rottenTriggered = false;
-                if (!nonrotting) {
-                    rn2(20); // C: rotted age denominator
-                    if (!rn2(7)) {
-                        rottenTriggered = true;
-                        // C ref: rottenfood() branch probes
-                        const c1 = rn2(4);
-                        if (c1 !== 0) {
-                            const c2 = rn2(4);
-                            if (c2 !== 0) rn2(3);
-                        }
-                    }
-                }
-                const corpseWeight = (cnum >= 0 && mons[cnum]) ? (mons[cnum].weight || 0) : 0;
-                // C ref: eat.c eatcorpse() -> reqtime from corpse weight, then
-                // rotten path consume_oeaten(..., 2) effectively quarters meal size.
-                const baseReqtime = 3 + (corpseWeight >> 6);
-                const reqtime = rottenTriggered
-                    ? Math.max(1, Math.floor((baseReqtime + 2) / 4))
-                    : baseReqtime;
-                let usedtime = 1; // first bite happens immediately
-                let consumedFloorItem = false;
-                const consumeFloorItem = () => {
-                    if (consumedFloorItem) return;
-                    consumedFloorItem = true;
-                    // C ref: eat.c done_eating() -> useupf() -> delobj() -> delobj_core()
-                    // delobj_core consumes obj_resists(obj, 0, 0) for ordinary objects.
-                    obj_resists(floorItem, 0, 0);
-                    map.removeObject(floorItem);
-                };
-
-                if (reqtime > 1) {
-                    const finishFloorEating = () => {
-                        consumeFloorItem();
-                        if (rottenTriggered) {
-                            display.putstr_message(`Blecch!  Rotten food!  You finish eating the ${floorName}.`);
-                        } else {
-                            display.putstr_message(`You finish eating the ${floorName}.`);
-                        }
-                    };
-                    game.occupation = {
-                        fn: () => {
-                            usedtime++;
-                            // C ref: eat.c eatfood(): done when ++usedtime > reqtime.
-                            if (usedtime > reqtime) {
-                                finishFloorEating();
-                                return 0;
-                            }
-                            return 1;
-                        },
-                        txt: `eating ${floorName}`,
-                        xtime: reqtime,
-                    };
-                } else {
-                    consumeFloorItem();
-                    if (rottenTriggered) {
-                        display.putstr_message(`Blecch!  Rotten food!  You finish eating the ${floorName}.`);
-                    } else {
-                        display.putstr_message(`You finish eating the ${floorName}.`);
-                    }
-                }
-                return { moved: false, tookTime: true };
-            }
-        }
-        // C ref: floorfood() — 'n' (or default) falls through to getobj()
-        // for inventory food selection, NOT "Never mind."
-    }
-
-    const food = player.inventory.filter(o => o.oclass === 6); // FOOD_CLASS
-    if (food.length === 0) {
-        display.putstr_message("You don't have anything to eat.");
-        return { moved: false, tookTime: false };
-    }
-
-    const eatChoices = compactInvletPromptChars(food.map(f => f.invlet).join(''));
-    while (true) {
-        if (typeof display.clearRow === 'function') display.clearRow(0);
-        display.topMessage = null;
-        display.messageNeedsMore = false;
-        display.putstr_message(`What do you want to eat? [${eatChoices} or ?*]`);
-        const ch = await nhgetch();
-        const c = String.fromCharCode(ch);
-
-        if (ch === 27 || ch === 10 || ch === 13 || c === ' ') {
-            if (typeof display.clearRow === 'function') display.clearRow(0);
-            display.topMessage = null;
-            display.messageNeedsMore = false;
-            display.putstr_message('Never mind.');
-            return { moved: false, tookTime: false };
-        }
-        if (c === '?' || c === '*') {
-            continue;
-        }
-
-        const item = food.find(f => f.invlet === c);
-        if (!item) {
-            const anyItem = player.inventory.find((o) => o.invlet === c);
-            if (anyItem) {
-                // C ref: eat.c doeat() → getobj returns non-food item
-                // (eat_ok returns GETOBJ_EXCLUDE_SELECTABLE), then
-                // is_edible() check fails → "You cannot eat that!" and exit.
-                display.putstr_message('You cannot eat that!');
-                return { moved: false, tookTime: false };
-            }
-            // C ref: getobj() handles invalid letters differently depending
-            // on mode. In non-wizard mode, it emits a "--More--" that blocks
-            // until Space/Enter/Esc; in wizard mode it silently re-prompts.
-            if (!player.wizard) {
-                display.putstr_message("You don't have that object.--More--");
-                while (true) {
-                    const moreCh = await nhgetch();
-                    if (moreCh === 32 || moreCh === 10 || moreCh === 13 || moreCh === 27) break;
-                }
-            }
-            continue;
-        }
-        // C ref: eat.c doesplit() path for stacked comestibles:
-        // splitobj() creates a single-item object and consumes next_ident() (rnd(2)).
-        const eatingFromStack = ((item.quan || 1) > 1 && item.oclass === FOOD_CLASS);
-        let eatenItem = item;
-        if (eatingFromStack) {
-            // C ref: splitobj() keeps both pieces in inventory until done_eating().
-            // Keep a 1-quantity piece in inventory for the consumed item.
-            eatenItem = { ...item, quan: 1, o_id: next_ident() };
-            item.quan = (item.quan || 1) - 1;
-            const itemIndex = player.inventory.indexOf(item);
-            if (itemIndex >= 0) {
-                eatenItem.invlet = item.invlet;
-                player.inventory.splice(itemIndex + 1, 0, eatenItem);
-            }
-        }
-
-        let corpseTasteIdx = null;
-        // C ref: eat.c eatcorpse() RNG used by taint/rotting checks.
-        if (eatenItem.otyp === CORPSE) {
-            const cnum = Number.isInteger(eatenItem.corpsenm) ? eatenItem.corpsenm : -1;
-            const nonrotting = (cnum === PM_LIZARD || cnum === PM_LICHEN);
-            if (!nonrotting) {
-                rn2(20); // rotted denominator
-                rn2(7);  // rottenfood gate (when no prior taste effect triggered)
-            }
-            rn2(10); // palatable taste gate
-            corpseTasteIdx = rn2(5);  // palatable message choice index
-        }
-        const od = objectData[eatenItem.otyp];
-        const cnum = Number.isInteger(eatenItem.corpsenm) ? eatenItem.corpsenm : -1;
-        const isCorpse = eatenItem.otyp === CORPSE && cnum >= 0 && cnum < mons.length;
-        // C ref: eat.c eatcorpse() overrides reqtime to 3 + (corpse weight >> 6).
-        const reqtime = isCorpse
-            ? (3 + ((mons[cnum].weight || 0) >> 6))
-            : Math.max(1, (od ? od.delay : 1));
-        const baseNutr = isCorpse
-            ? (mons[cnum].nutrition || (od ? od.nutrition : 200))
-            : (od ? od.nutrition : 200);
-        // C ref: eat.c nmod calculation — nutrition distributed per bite
-        // nmod < 0 means add -nmod each turn; nmod > 0 means add 1 some turns
-        const nmod = (reqtime === 0 || baseNutr === 0) ? 0
-            : (baseNutr >= reqtime) ? -Math.floor(baseNutr / reqtime)
-            : reqtime % baseNutr;
-        let usedtime = 0;
-
-        // C ref: eat.c bite() — apply incremental nutrition
-        function doBite() {
-            if (nmod < 0) {
-                player.hunger += (-nmod);
-                player.nutrition += (-nmod);
-            } else if (nmod > 0 && (usedtime % nmod)) {
-                player.hunger += 1;
-                player.nutrition += 1;
-            }
-        }
-
-        // First bite (turn 1) — mirrors C start_eating() + bite()
-        usedtime++;
-        doBite();
-        // C ref: eat.c start_eating() — fprefx() is called for fresh
-        // (not already partly eaten) non-corpse food, producing flavor
-        // messages and RNG calls for specific food types.
-        if (!isCorpse) {
-            // C ref: eat.c:2094-2212 fprefx()
-            if (eatenItem.otyp === TRIPE_RATION) {
-                // C ref: eat.c:2126-2141 — Tripe flavor + possible vomiting
-                // carnivorous non-humanoid: "surprisingly good!" (no RNG)
-                // orc: "Mmm, tripe..." (no RNG)
-                // else: "Yak - dog food!" + rn2(2) vomit check
-                const isOrc = player.race === RACE_ORC;
-                // Player is always humanoid, so carnivorous && !humanoid is false
-                if (!isOrc) {
-                    const cannibalAllowed = (player.roleIndex === PM_CAVEMAN || isOrc);
-                    if (rn2(2) && !cannibalAllowed) {
-                        rn1(reqtime, 14); // make_vomiting duration
-                    }
-                }
-            }
-            if (reqtime > 1) {
-                display.putstr_message(`You begin eating the ${eatenItem.name}.`);
-            }
-        }
-        let consumedInventoryItem = false;
-        const consumeInventoryItem = () => {
-            if (consumedInventoryItem) return;
-            consumedInventoryItem = true;
-            player.removeFromInventory(eatingFromStack ? eatenItem : item);
-        };
-
-        if (reqtime > 1) {
-            const finishEating = (gameCtx) => {
-                // C ref: eat.c done_eating()/cpostfx() runs from eatfood() when
-                // occupation reaches completion, before moveloop's next monster turn.
-                consumeInventoryItem();
-                if (isCorpse && corpseTasteIdx !== null) {
-                    const tastes = ['okay', 'stringy', 'gamey', 'fatty', 'tough'];
-                    const idx = Math.max(0, Math.min(tastes.length - 1, corpseTasteIdx));
-                    const verb = idx === 0 ? 'tastes' : 'is';
-                    display.putstr_message(
-                        `This ${eatenItem.name} ${verb} ${tastes[idx]}.  `
-                        + `You finish eating the ${eatenItem.name}.--More--`
-                    );
-                } else {
-                    // C ref: eat.c done_eating() generic multi-turn completion line.
-                    display.putstr_message("You're finally finished.");
-                }
-                if (isCorpse && cnum === PM_NEWT) {
-                    // C ref: eat.c eye_of_newt_buzz() from cpostfx(PM_NEWT).
-                    if (rn2(3) || (3 * (player.pw || 0) <= 2 * (player.pwmax || 0))) {
-                        const oldPw = player.pw || 0;
-                        player.pw = (player.pw || 0) + rnd(3);
-                        if ((player.pw || 0) > (player.pwmax || 0)) {
-                            if (!rn2(3)) {
-                                player.pwmax = (player.pwmax || 0) + 1;
-                            }
-                            player.pw = player.pwmax || 0;
-                        }
-                        if ((player.pw || 0) !== oldPw) {
-                            if (gameCtx) {
-                                gameCtx.pendingToplineMessage = 'You feel a mild buzz.';
-                            } else {
-                                display.putstr_message('You feel a mild buzz.');
-                            }
-                        }
-                    }
-                }
-            };
-            // Set occupation for remaining turns — C ref: set_occupation(eatfood, ...)
-            game.occupation = {
-                fn: () => {
-                    usedtime++;
-                    // C ref: eat.c eatfood(): done when ++usedtime > reqtime.
-                    if (usedtime > reqtime) {
-                        finishEating(game);
-                        return 0; // done
-                    }
-                    doBite();
-                    return 1; // continue
-                },
-                txt: `eating ${eatenItem.name}`,
-                xtime: reqtime,
-            };
-        } else {
-            // Single-turn food — eat instantly
-            consumeInventoryItem();
-            display.putstr_message(`This ${eatenItem.name} is delicious!`);
-            // C ref: eat.c:2162 — garlic_breath: scare nearby olfaction monsters.
-            if (eatenItem.otyp === CLOVE_OF_GARLIC && map) {
-                for (const mon of map.monsters) {
-                    if (mon.dead) continue;
-                    const sym = mon.type?.symbol ?? (mons[mon.mndx]?.symbol);
-                    // C ref: mondata.c olfaction() — golems, eyes, jellies, puddings,
-                    // blobs, vortexes, elementals, fungi, and lights lack olfaction.
-                    if (sym === S_GOLEM || sym === S_EYE || sym === S_JELLY
-                        || sym === S_PUDDING || sym === S_BLOB || sym === S_VORTEX
-                        || sym === S_ELEMENTAL || sym === S_FUNGUS || sym === S_LIGHT) {
-                        continue;
-                    }
-                    // C ref: eat.c garlic_breath() — distu(mtmp) < 7
-                    const dx = mon.mx - player.x, dy = mon.my - player.y;
-                    if (dx * dx + dy * dy < 7) {
-                        applyMonflee(mon, 0, false);
-                    }
-                }
-            }
-        }
         return { moved: false, tookTime: true };
     }
 }

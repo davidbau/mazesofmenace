@@ -63,7 +63,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[ ]` | dothrow.c | — | Throwing mechanics |
 | `[a]` | drawing.c | symbols.js | Symbol/glyph drawing tables and lookup functions. Data tables in symbols.js; 3 lookup functions implemented |
 | `[~]` | dungeon.c | dungeon.js | Dungeon structure and level management |
-| `[ ]` | eat.c | — | Eating mechanics |
+| `[a]` | eat.c | eat.js | Eating mechanics. handleEat (doeat) implemented; ~50 functions TODO |
 | `[ ]` | end.c | — | Game over, death, scoring |
 | `[ ]` | engrave.c | — | Engraving mechanics. JS: `engrave_data.js` is data only |
 | `[a]` | exper.c | exper.js | Experience and leveling. newuexp, newexplevel, pluslvl implemented; experience, more_experienced, losexp, newpw, enermod, rndexp TODO |
