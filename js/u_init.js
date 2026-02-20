@@ -14,6 +14,10 @@
 //   4. welcome(TRUE)           — rndencode + seer_turn
 
 import { rn2, rnd, rn1, rne, d, c_d, getRngLog } from './rng.js';
+import { initrack } from './monmove.js';
+import { setMakemonPlayerContext } from './makemon.js';
+import { initLevelGeneration, makelevel } from './dungeon.js';
+import { getArrivalPosition } from './level_transition.js';
 import { mksobj, mkobj, weight, setStartupInventoryMode, Is_container, next_ident } from './mkobj.js';
 import { isok, NUM_ATTRS,
          A_STR, A_CON,
@@ -1669,4 +1673,30 @@ export function simulatePostLevelInit(player, map, depth) {
     const seerTurn = rnd(30);
 
     return { seerTurn };
+}
+
+// ========================================================================
+// First-level initialization (shared by browser and headless paths)
+// ========================================================================
+
+// Performs the full first-level init sequence: initrack, makemon context,
+// level generation init, makelevel, player placement, and post-level init.
+// C ref: allmain.c newgame() — from init_dungeons through welcome(TRUE)
+export function initFirstLevel(player, roleIndex, wizard, opts = {}) {
+    const startDlevel = opts.startDlevel ?? 1;
+    initrack();
+    setMakemonPlayerContext(player);
+    initLevelGeneration(roleIndex, wizard);
+    const map = (opts.startDnum != null)
+        ? makelevel(startDlevel, opts.startDnum, startDlevel,
+            { dungeonAlignOverride: opts.dungeonAlignOverride })
+        : makelevel(startDlevel, undefined, undefined,
+            { dungeonAlignOverride: opts.dungeonAlignOverride });
+    const pos = getArrivalPosition(map, startDlevel, null);
+    player.x = pos.x;
+    player.y = pos.y;
+    player.dungeonLevel = startDlevel;
+    player.inTutorial = !!map?.flags?.is_tutorial;
+    const initResult = simulatePostLevelInit(player, map, startDlevel);
+    return { map, initResult };
 }

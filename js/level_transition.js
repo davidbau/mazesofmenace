@@ -156,7 +156,7 @@ export function getArrivalPosition(map, dungeonLevel, transitionDir = null) {
     }
 
     // Backward-compatible default.
-    if (hasUpstair && dungeonLevel > 1) {
+    if (hasUpstair) {
         return { x: map.upstair.x, y: map.upstair.y };
     }
 

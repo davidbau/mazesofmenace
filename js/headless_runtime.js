@@ -15,8 +15,8 @@ import {
     setRngCallCount,
 } from './rng.js';
 import { exercise, exerchk, initExerciseState } from './attrib_exercise.js';
-import { initLevelGeneration, makelevel, setGameSeed, isBranchLevelToDnum } from './dungeon.js';
-import { simulatePostLevelInit, mon_arrive } from './u_init.js';
+import { makelevel, setGameSeed, isBranchLevelToDnum } from './dungeon.js';
+import { simulatePostLevelInit, mon_arrive, initFirstLevel } from './u_init.js';
 import { Player, rankOf, roles } from './player.js';
 import { rhack, dosearch0, ageSpells } from './commands.js';
 import { makemon, setMakemonPlayerContext, runtimeDecideToShapeshift } from './makemon.js';
@@ -1165,17 +1165,10 @@ HeadlessGame.fromSeed = function fromSeed(seed, roleIndex = 11, opts = {}) {
     const input = opts.input || createHeadlessInput();
     setInputRuntime(input);
 
-    initrack();
     if (!opts.preserveRngState) {
         initRng(seed);
     }
     setGameSeed(seed);
-    initLevelGeneration(roleIndex, opts.wizard ?? true);
-
-    const startDlevel = Number.isInteger(opts.startDlevel) ? opts.startDlevel : 1;
-    const map = Number.isInteger(opts.startDnum)
-        ? makelevel(startDlevel, opts.startDnum, startDlevel, { dungeonAlignOverride: opts.dungeonAlignOverride })
-        : makelevel(startDlevel, undefined, undefined, { dungeonAlignOverride: opts.dungeonAlignOverride });
 
     const player = new Player();
     player.initRole(roleIndex);
@@ -1186,14 +1179,10 @@ HeadlessGame.fromSeed = function fromSeed(seed, roleIndex = 11, opts = {}) {
         player.alignment = opts.alignment;
     }
 
-    if (map.upstair) {
-        player.x = map.upstair.x;
-        player.y = map.upstair.y;
-    }
-    player.dungeonLevel = startDlevel;
-    player.inTutorial = !!map?.flags?.is_tutorial;
-
-    const initResult = simulatePostLevelInit(player, map, startDlevel);
+    const startDlevel = Number.isInteger(opts.startDlevel) ? opts.startDlevel : 1;
+    const { map, initResult } = initFirstLevel(player, roleIndex, opts.wizard ?? true, {
+        startDlevel, startDnum: opts.startDnum, dungeonAlignOverride: opts.dungeonAlignOverride,
+    });
 
     const game = new HeadlessGame(player, map, {
         input,

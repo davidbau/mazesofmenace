@@ -22,7 +22,7 @@ import { setObjectMoves } from './mkobj.js';
 import { were_change } from './were.js';
 import { rhack, ageSpells } from './commands.js';
 import { movemon, initrack, settrack } from './monmove.js';
-import { simulatePostLevelInit, mon_arrive } from './u_init.js';
+import { simulatePostLevelInit, mon_arrive, initFirstLevel } from './u_init.js';
 import { getArrivalPosition } from './level_transition.js';
 import { loadSave, deleteSave, hasSave, saveGame,
          loadFlags, saveFlags, deserializeRng,
@@ -168,23 +168,11 @@ export class NetHackGame {
             await this.playerSelection();
         }
 
-        // One-time level generation init (init_objects + dungeon structure)
-        // Role-dependent RNG in C startup depends on selected role.
-        // C ref: allmain.c startup ordering around role selection and init_dungeons.
-        setMakemonPlayerContext(this.player);
-        initLevelGeneration(this.player.roleIndex, this.wizard);
-
-        // Generate first level
-        // C ref: mklev() — bones rn2(3) + makelevel
-        this.changeLevel(1);
-
-        // Place player at upstair position
-        // C ref: u_on_upstairs() — no RNG
-        this.placePlayerOnLevel();
-
-        // Post-level initialization: pet, inventory, attributes, welcome
-        // C ref: allmain.c newgame() — makedog through welcome(TRUE)
-        const initResult = simulatePostLevelInit(this.player, this.map, 1);
+        // First-level init: level generation, player placement, pet/inventory/attrs
+        // C ref: allmain.c newgame() — init_dungeons through welcome(TRUE)
+        const { map, initResult } = initFirstLevel(this.player, this.player.roleIndex, this.wizard);
+        this.map = map;
+        this.levels[1] = map;
         this.player.wizard = this.wizard;
         this.seerTurn = initResult.seerTurn;
 
