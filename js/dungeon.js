@@ -2541,11 +2541,24 @@ function makeniche(map, depth, trap_type) {
                 // C ref: mklev.c makeniche() places trap in niche cell (xx, yy + dy).
                 maketrap(map, xx, yy + dy, actual_trap, depth);
                 // C ref: mklev.c:757-763 — trap engraving + wipe
+                // C: make_engr_at(xx, yy-dy, trap_text, NULL, 0L, DUST)
+                //    wipe_engr_at(xx, yy-dy, 5, FALSE)  -- ages it a little
                 const engr = TRAP_ENGRAVINGS[actual_trap];
                 if (engr) {
-                    // C ref: wipe_engr_at(xx, yy-dy, 5, FALSE)
-                    // For DUST type, cnt stays at 5 (no reduction)
-                    wipeout_text(engr, 5);
+                    // For DUST type wipe_engr_at skips rn2(26) and calls wipeout_text directly.
+                    const agedText = wipeout_text(engr, 5);
+                    const trimmed = agedText.replace(/^ +/, '');
+                    if (trimmed) {
+                        map.engravings = map.engravings || [];
+                        map.engravings.push({
+                            x: xx,
+                            y: yy - dy,
+                            type: 'dust',
+                            text: trimmed,
+                            degrade: true,
+                            guardobjects: false,
+                        });
+                    }
                 }
             }
             dosdoor(map, xx, yy, aroom, SDOOR, depth);

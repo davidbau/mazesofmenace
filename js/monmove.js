@@ -373,16 +373,45 @@ function m_search_items_goal(mon, map, player, fov, ggx, ggy, appr) {
 // dochug — C ref: monmove.c:690
 // ========================================================================
 
+// C ref: engrave.c rubouts[] — partial rubout substitution table
+const WIPE_RUBOUTS = {
+    A: '^', B: 'Pb[', C: '(', D: '|)[', E: '|FL[_',
+    F: '|-', G: 'C(', H: '|-', I: '|', K: '|<',
+    L: '|_', M: '|', N: '|\\', O: 'C(', P: 'F',
+    Q: 'C(', R: 'PF', T: '|', U: 'J', V: '/\\',
+    W: 'V/\\', Z: '/',
+    b: '|', d: 'c|', e: 'c', g: 'c', h: 'n',
+    j: 'i', k: '|', l: '|', m: 'nr', n: 'r',
+    o: 'c', q: 'c', w: 'v', y: 'v',
+    ':': '.', ';': ',.:', ',': '.', '=': '-', '+': '-|',
+    '*': '+', '@': '0', '0': 'C(', '1': '|', '6': 'o',
+    '7': '/', '8': '3o',
+};
+
+// C ref: engrave.c wipeout_text() — degrade engraving text with RNG
+// Matches C's exact RNG consumption: rn2(lth) + rn2(4) per iteration,
+// plus rn2(wipeto.length) when rubout substitution applies.
+// IMPORTANT: if nxt hits a space, C does `continue` (decrements cnt but does
+// not retry), so the RNG calls are always consumed upfront.
 function wipeoutEngravingText(text, cnt) {
     if (!text || cnt <= 0) return text || '';
     const chars = text.split('');
     const lth = chars.length;
     while (cnt-- > 0) {
-        let nxt;
-        do {
-            nxt = rn2(lth);
-        } while (chars[nxt] === ' ');
-        chars[nxt] = ' ';
+        const nxt = rn2(lth);
+        const use_rubout = rn2(4);
+        const ch = chars[nxt];
+        if (ch === ' ') continue;
+        if ("?.,'`-|_".includes(ch)) {
+            chars[nxt] = ' ';
+            continue;
+        }
+        const wipeto = WIPE_RUBOUTS[ch];
+        if (use_rubout && wipeto) {
+            chars[nxt] = wipeto[rn2(wipeto.length)];
+        } else {
+            chars[nxt] = '?';
+        }
     }
     return chars.join('');
 }
