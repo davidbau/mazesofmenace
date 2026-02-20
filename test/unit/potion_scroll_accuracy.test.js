@@ -106,11 +106,11 @@ describe('Potion and Scroll Accuracy', () => {
       assert.strictEqual(SCR_ENCHANT_ARMOR, 321, 'SCR_ENCHANT_ARMOR should be 321');
     });
 
-    it('SCR_BLANK_PAPER should be last scroll (362)', () => {
-      assert.strictEqual(SCR_BLANK_PAPER, 362, 'SCR_BLANK_PAPER should be 362');
+    it('SCR_BLANK_PAPER should be last scroll (363)', () => {
+      assert.strictEqual(SCR_BLANK_PAPER, 363, 'SCR_BLANK_PAPER should be 363');
     });
 
-    it('scroll range should span from 321-362', () => {
+    it('scroll range should span from 321-363', () => {
       // Note: Not all indices are used (gaps in numbering)
       assert(SCR_BLANK_PAPER > SCR_ENCHANT_ARMOR,
         'Scroll range from ENCHANT_ARMOR to BLANK_PAPER');
@@ -260,12 +260,12 @@ describe('Potion and Scroll Accuracy', () => {
 
   describe('Special Scrolls', () => {
     it('should have blank paper', () => {
-      assert.strictEqual(SCR_BLANK_PAPER, 362, 'SCR_BLANK_PAPER should be 362');
+      assert.strictEqual(SCR_BLANK_PAPER, 363, 'SCR_BLANK_PAPER should be 363');
     });
 
     it('blank paper should be at end of scroll range', () => {
       // Blank paper is the last scroll
-      assert(SCR_BLANK_PAPER > 360, 'Blank paper is high index');
+      assert(SCR_BLANK_PAPER > 361, 'Blank paper is high index');
     });
   });
 
@@ -325,7 +325,7 @@ describe('Potion and Scroll Accuracy', () => {
       }
     });
 
-    it('all scrolls should be in range 321-362', () => {
+    it('all scrolls should be in range 321-363', () => {
       const scrolls = [
         SCR_ENCHANT_ARMOR, SCR_DESTROY_ARMOR, SCR_CONFUSE_MONSTER,
         SCR_SCARE_MONSTER, SCR_REMOVE_CURSE, SCR_ENCHANT_WEAPON,
@@ -337,8 +337,8 @@ describe('Potion and Scroll Accuracy', () => {
       ];
 
       for (const scr of scrolls) {
-        assert(scr >= 321 && scr <= 362,
-          `Scroll ${scr} should be in range [321, 362]`);
+        assert(scr >= 321 && scr <= 363,
+          `Scroll ${scr} should be in range [321, 363]`);
       }
     });
 
@@ -390,8 +390,8 @@ describe('Potion and Scroll Accuracy', () => {
       assert.strictEqual(SCR_ENCHANT_ARMOR, 321, 'SCR_ENCHANT_ARMOR must be 321');
     });
 
-    it('SCR_BLANK_PAPER should be 362 (last scroll)', () => {
-      assert.strictEqual(SCR_BLANK_PAPER, 362, 'SCR_BLANK_PAPER must be 362');
+    it('SCR_BLANK_PAPER should be 363 (last scroll)', () => {
+      assert.strictEqual(SCR_BLANK_PAPER, 363, 'SCR_BLANK_PAPER must be 363');
     });
 
     it('SCR_IDENTIFY should be 334 (critical utility)', () => {

@@ -3,8 +3,7 @@
 // C ref: o_init.c init_objects(), shuffle_all(), shuffle(), randomize_gem_colors()
 //
 // This module performs the same RNG-consuming operations as C's o_init.c:
-// randomize_gem_colors (3 rn2 calls), shuffle_all (194 rn2 calls),
-// WAN_NOTHING direction (1 rn2 call) = 198 total.
+// randomize_gem_colors (3 rn2 calls), shuffle_all, WAN_NOTHING direction (1 rn2 call).
 
 import { rn2 } from './rng.js';
 import { resetIdentCounter } from './mkobj.js';
@@ -106,6 +105,18 @@ function is_name_known(idx) {
     return !objectData[idx].desc;
 }
 
+// C ref: obj_shuffle_range() for AMULET/SCROLL/SPBOOK classes.
+// Returns the high index: scan from bases[cl] until oc_unique or !oc_magic.
+function classShuffleEnd(ocls) {
+    let i = bases[ocls];
+    while (objectData[i] && objectData[i].oc_class === ocls) {
+        if (objectData[i].unique || !objectData[i].magic)
+            break;
+        i++;
+    }
+    return i - 1;
+}
+
 function shuffle(o_low, o_high, domaterial) {
     // Count shufflable items
     let num_to_shuffle = 0;
@@ -157,28 +168,16 @@ function shuffle_all() {
     // Group 1: Entire classes (domaterial = true)
     // C ref: shuffle_classes[] = AMULET, POTION, RING, SCROLL, SPBOOK, WAND, VENOM
 
-    // Amulets: AMULET_OF_ESP(199)..AMULET_OF_FLYING(209) — 11 items
-    shuffle(AMULET_OF_ESP, AMULET_OF_FLYING, true);
-
-    // Potions: POT_GAIN_ABILITY(295)..POT_OIL(319) — 25 items
-    // (excludes POT_WATER which has fixed "clear" description)
-    shuffle(POT_GAIN_ABILITY, POT_OIL, true);
-
-    // Rings: entire class via bases[]
+    // C ref: shuffle_classes[] with obj_shuffle_range() for each class.
+    // AMULET/SCROLL/SPBOOK: bases[cl] up to last magic non-unique item.
+    // POTION: bases[cl] to POT_WATER - 1 (POT_WATER has fixed description).
+    // RING/WAND/VENOM: entire class via bases[].
+    shuffle(bases[AMULET_CLASS], classShuffleEnd(AMULET_CLASS), true);
+    shuffle(bases[POTION_CLASS], POT_WATER - 1, true);
     shuffle(bases[RING_CLASS], bases[RING_CLASS + 1] - 1, true);
-
-    // Scrolls: SCR_ENCHANT_ARMOR(321)..SC20(361) — 41 items
-    // (includes 21 real scrolls + 20 extra labels; excludes SCR_BLANK_PAPER)
-    shuffle(SCR_ENCHANT_ARMOR, SC20, true);
-
-    // Spellbooks: SPE_DIG(363)..SPE_CHAIN_LIGHTNING(403) — 41 items
-    // (excludes SPE_BLANK_PAPER, SPE_NOVEL, SPE_BOOK_OF_THE_DEAD)
-    shuffle(SPE_DIG, SPE_CHAIN_LIGHTNING, true);
-
-    // Wands: entire class via bases[]
+    shuffle(bases[SCROLL_CLASS], classShuffleEnd(SCROLL_CLASS), true);
+    shuffle(bases[SPBOOK_CLASS], classShuffleEnd(SPBOOK_CLASS), true);
     shuffle(bases[WAND_CLASS], bases[WAND_CLASS + 1] - 1, true);
-
-    // Venom: entire class via bases[]
     shuffle(bases[VENOM_CLASS], bases[VENOM_CLASS + 1] - 1, true);
 
     // Group 2: Armor sub-ranges (domaterial = false)
@@ -200,7 +199,7 @@ function shuffle_all() {
 // ========================================================================
 // init_objects -- main entry point
 // C ref: o_init.c init_objects()
-// Total: 198 rn2 calls (3 gem + 194 shuffle + 1 WAN_NOTHING)
+// Total rn2 calls: 3 gem + shuffle + 1 WAN_NOTHING
 // ========================================================================
 
 export function init_objects() {

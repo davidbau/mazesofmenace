@@ -172,8 +172,13 @@ def read_and_preprocess(path):
             elif stripped.startswith('#endif'):
                 skip_depth -= 1
             continue
-        # Skip #ifdef MAIL_STRUCTURES section
+        # Include #ifdef MAIL_STRUCTURES section (C defines MAIL_STRUCTURES
+        # in global.h so SCR_MAIL is part of the objects enum)
         if stripped.startswith('#ifdef MAIL_STRUCTURES'):
+            continue  # just skip the directive line, process contents
+        # Skip fencepost block: #if defined(OBJECTS_DESCR_INIT) || defined(OBJECTS_INIT)
+        # This is only for C array terminator, not part of the enum
+        if re.match(r'#if\s+defined\(OBJECTS_DESCR_INIT\)', stripped):
             skip_depth += 1
             continue
         # Handle multi-line preprocessor directives
@@ -882,9 +887,8 @@ def emit_js():
         if not re.match(r'^[A-Za-z_][A-Za-z0-9_]*$', sn):
             continue
         lines.append(f"export const {sn} = {obj['index']};")
-    # objectData includes a trailing fencepost sentinel; NUM_OBJECTS is real
-    # object count (highest valid object index + 1 in C enum space).
-    lines.append(f'export const NUM_OBJECTS = {max(0, len(objects) - 1)};')
+    # NUM_OBJECTS = count of objects = highest valid otyp + 1 (matches C enum).
+    lines.append(f'export const NUM_OBJECTS = {len(objects)};')
     lines.append('')
 
     # Markers — resolve expressions to numeric values
@@ -969,9 +973,9 @@ def emit_js():
     lines.append('        }')
     lines.append('        first = last;')
     lines.append('    }')
-    lines.append('    // C: bases[MAXOCLASSES] = NUM_OBJECTS (excludes fencepost entry)')
-    lines.append('    bases[MAXOCLASSES_OBJ] = objectData.length - 1;')
-    lines.append('    bases[MAXOCLASSES_OBJ + 1] = objectData.length - 1;')
+    lines.append('    // C: bases[MAXOCLASSES] = NUM_OBJECTS')
+    lines.append('    bases[MAXOCLASSES_OBJ] = objectData.length;')
+    lines.append('    bases[MAXOCLASSES_OBJ + 1] = objectData.length;')
     lines.append('    // Fill gaps: if a class has no objects, point to next class')
     lines.append('    for (let i = MAXOCLASSES_OBJ - 1; i >= 0; i--) {')
     lines.append('        if (!bases[i]) bases[i] = bases[i + 1];')

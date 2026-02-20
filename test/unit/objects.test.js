@@ -19,8 +19,8 @@ import { objectData, NUM_OBJECTS,
 
 describe('Objects database', () => {
     it('has correct total count', () => {
-        // objectData includes a fencepost sentinel at the end, so length = NUM_OBJECTS + 1
-        assert.equal(NUM_OBJECTS + 1, objectData.length);
+        // objectData has one entry per object; NUM_OBJECTS = total count (matches C enum)
+        assert.equal(NUM_OBJECTS, objectData.length);
         assert.ok(NUM_OBJECTS > 400, `Expected >400 objects, got ${NUM_OBJECTS}`);
     });
 

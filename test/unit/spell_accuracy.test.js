@@ -78,17 +78,17 @@ describe('Spell System Accuracy', () => {
   });
 
   describe('Spell Index Range', () => {
-    it('SPE_DIG should be first spell (363)', () => {
-      // C ref: include/obj.h spell object indices start at 363
-      assert.strictEqual(SPE_DIG, 363, 'SPE_DIG should be 363 (first spell)');
+    it('SPE_DIG should be first spell (364)', () => {
+      // C ref: include/obj.h spell object indices start at 364
+      assert.strictEqual(SPE_DIG, 364, 'SPE_DIG should be 364 (first spell)');
     });
 
-    it('SPE_BOOK_OF_THE_DEAD should be last spell (406)', () => {
-      assert.strictEqual(SPE_BOOK_OF_THE_DEAD, 406,
-        'SPE_BOOK_OF_THE_DEAD should be 406 (last spell)');
+    it('SPE_BOOK_OF_THE_DEAD should be last spell (407)', () => {
+      assert.strictEqual(SPE_BOOK_OF_THE_DEAD, 407,
+        'SPE_BOOK_OF_THE_DEAD should be 407 (last spell)');
     });
 
-    it('spell range should span 44 spells (363-406)', () => {
+    it('spell range should span 44 spells (364-407)', () => {
       const spellCount = SPE_BOOK_OF_THE_DEAD - SPE_DIG + 1;
       assert.strictEqual(spellCount, 44, 'Should have 44 spells total');
     });
@@ -97,13 +97,13 @@ describe('Spell System Accuracy', () => {
   describe('Attack Spells', () => {
     it('should have correct indices for attack spells', () => {
       // C ref: include/obj.h attack spell indices
-      assert.strictEqual(SPE_MAGIC_MISSILE, 364, 'SPE_MAGIC_MISSILE should be 364');
-      assert.strictEqual(SPE_FIREBALL, 365, 'SPE_FIREBALL should be 365');
-      assert.strictEqual(SPE_CONE_OF_COLD, 366, 'SPE_CONE_OF_COLD should be 366');
-      assert.strictEqual(SPE_FINGER_OF_DEATH, 368, 'SPE_FINGER_OF_DEATH should be 368');
-      assert.strictEqual(SPE_FORCE_BOLT, 373, 'SPE_FORCE_BOLT should be 373');
-      assert.strictEqual(SPE_DRAIN_LIFE, 376, 'SPE_DRAIN_LIFE should be 376');
-      assert.strictEqual(SPE_CHAIN_LIGHTNING, 403, 'SPE_CHAIN_LIGHTNING should be 403');
+      assert.strictEqual(SPE_MAGIC_MISSILE, 365, 'SPE_MAGIC_MISSILE should be 365');
+      assert.strictEqual(SPE_FIREBALL, 366, 'SPE_FIREBALL should be 366');
+      assert.strictEqual(SPE_CONE_OF_COLD, 367, 'SPE_CONE_OF_COLD should be 367');
+      assert.strictEqual(SPE_FINGER_OF_DEATH, 369, 'SPE_FINGER_OF_DEATH should be 369');
+      assert.strictEqual(SPE_FORCE_BOLT, 374, 'SPE_FORCE_BOLT should be 374');
+      assert.strictEqual(SPE_DRAIN_LIFE, 377, 'SPE_DRAIN_LIFE should be 377');
+      assert.strictEqual(SPE_CHAIN_LIGHTNING, 404, 'SPE_CHAIN_LIGHTNING should be 404');
     });
 
     it('attack spells should exist', () => {
@@ -114,7 +114,7 @@ describe('Spell System Accuracy', () => {
       ];
 
       for (const spell of attackSpells) {
-        assert(spell >= 363 && spell <= 406,
+        assert(spell >= 364 && spell <= 407,
           `Attack spell ${spell} should be in valid range`);
       }
     });
@@ -127,18 +127,18 @@ describe('Spell System Accuracy', () => {
     });
 
     it('should have magic missile (pure magic damage)', () => {
-      assert.strictEqual(SPE_MAGIC_MISSILE, 364, 'Magic missile is basic attack spell');
+      assert.strictEqual(SPE_MAGIC_MISSILE, 365, 'Magic missile is basic attack spell');
     });
   });
 
   describe('Healing Spells', () => {
     it('should have correct indices for healing spells', () => {
-      assert.strictEqual(SPE_HEALING, 371, 'SPE_HEALING should be 371');
-      assert.strictEqual(SPE_EXTRA_HEALING, 388, 'SPE_EXTRA_HEALING should be 388');
-      assert.strictEqual(SPE_CURE_BLINDNESS, 375, 'SPE_CURE_BLINDNESS should be 375');
-      assert.strictEqual(SPE_CURE_SICKNESS, 383, 'SPE_CURE_SICKNESS should be 383');
-      assert.strictEqual(SPE_RESTORE_ABILITY, 389, 'SPE_RESTORE_ABILITY should be 389');
-      assert.strictEqual(SPE_STONE_TO_FLESH, 402, 'SPE_STONE_TO_FLESH should be 402');
+      assert.strictEqual(SPE_HEALING, 372, 'SPE_HEALING should be 372');
+      assert.strictEqual(SPE_EXTRA_HEALING, 389, 'SPE_EXTRA_HEALING should be 389');
+      assert.strictEqual(SPE_CURE_BLINDNESS, 376, 'SPE_CURE_BLINDNESS should be 376');
+      assert.strictEqual(SPE_CURE_SICKNESS, 384, 'SPE_CURE_SICKNESS should be 384');
+      assert.strictEqual(SPE_RESTORE_ABILITY, 390, 'SPE_RESTORE_ABILITY should be 390');
+      assert.strictEqual(SPE_STONE_TO_FLESH, 403, 'SPE_STONE_TO_FLESH should be 403');
     });
 
     it('healing progression should exist', () => {
@@ -149,12 +149,12 @@ describe('Spell System Accuracy', () => {
 
   describe('Detection Spells', () => {
     it('should have correct indices for detection spells', () => {
-      assert.strictEqual(SPE_DETECT_MONSTERS, 370, 'SPE_DETECT_MONSTERS should be 370');
-      assert.strictEqual(SPE_DETECT_FOOD, 380, 'SPE_DETECT_FOOD should be 380');
-      assert.strictEqual(SPE_DETECT_UNSEEN, 386, 'SPE_DETECT_UNSEEN should be 386');
-      assert.strictEqual(SPE_DETECT_TREASURE, 391, 'SPE_DETECT_TREASURE should be 391');
-      assert.strictEqual(SPE_CLAIRVOYANCE, 382, 'SPE_CLAIRVOYANCE should be 382');
-      assert.strictEqual(SPE_IDENTIFY, 394, 'SPE_IDENTIFY should be 394');
+      assert.strictEqual(SPE_DETECT_MONSTERS, 371, 'SPE_DETECT_MONSTERS should be 371');
+      assert.strictEqual(SPE_DETECT_FOOD, 381, 'SPE_DETECT_FOOD should be 381');
+      assert.strictEqual(SPE_DETECT_UNSEEN, 387, 'SPE_DETECT_UNSEEN should be 387');
+      assert.strictEqual(SPE_DETECT_TREASURE, 392, 'SPE_DETECT_TREASURE should be 392');
+      assert.strictEqual(SPE_CLAIRVOYANCE, 383, 'SPE_CLAIRVOYANCE should be 383');
+      assert.strictEqual(SPE_IDENTIFY, 395, 'SPE_IDENTIFY should be 395');
     });
 
     it('should have detection spells for all major categories', () => {
@@ -173,14 +173,14 @@ describe('Spell System Accuracy', () => {
 
   describe('Utility Spells', () => {
     it('should have correct indices for utility spells', () => {
-      assert.strictEqual(SPE_LIGHT, 369, 'SPE_LIGHT should be 369');
-      assert.strictEqual(SPE_DIG, 363, 'SPE_DIG should be 363');
-      assert.strictEqual(SPE_KNOCK, 372, 'SPE_KNOCK should be 372');
-      assert.strictEqual(SPE_WIZARD_LOCK, 378, 'SPE_WIZARD_LOCK should be 378');
-      assert.strictEqual(SPE_LEVITATION, 387, 'SPE_LEVITATION should be 387');
-      assert.strictEqual(SPE_INVISIBILITY, 390, 'SPE_INVISIBILITY should be 390');
-      assert.strictEqual(SPE_HASTE_SELF, 385, 'SPE_HASTE_SELF should be 385');
-      assert.strictEqual(SPE_JUMPING, 401, 'SPE_JUMPING should be 401');
+      assert.strictEqual(SPE_LIGHT, 370, 'SPE_LIGHT should be 370');
+      assert.strictEqual(SPE_DIG, 364, 'SPE_DIG should be 364');
+      assert.strictEqual(SPE_KNOCK, 373, 'SPE_KNOCK should be 373');
+      assert.strictEqual(SPE_WIZARD_LOCK, 379, 'SPE_WIZARD_LOCK should be 379');
+      assert.strictEqual(SPE_LEVITATION, 388, 'SPE_LEVITATION should be 388');
+      assert.strictEqual(SPE_INVISIBILITY, 391, 'SPE_INVISIBILITY should be 391');
+      assert.strictEqual(SPE_HASTE_SELF, 386, 'SPE_HASTE_SELF should be 386');
+      assert.strictEqual(SPE_JUMPING, 402, 'SPE_JUMPING should be 402');
     });
 
     it('should have door manipulation spells', () => {
@@ -198,11 +198,11 @@ describe('Spell System Accuracy', () => {
 
   describe('Status Effect Spells', () => {
     it('should have correct indices for debuff spells', () => {
-      assert.strictEqual(SPE_SLEEP, 367, 'SPE_SLEEP should be 367');
-      assert.strictEqual(SPE_CONFUSE_MONSTER, 374, 'SPE_CONFUSE_MONSTER should be 374');
-      assert.strictEqual(SPE_SLOW_MONSTER, 377, 'SPE_SLOW_MONSTER should be 377');
-      assert.strictEqual(SPE_CAUSE_FEAR, 381, 'SPE_CAUSE_FEAR should be 381');
-      assert.strictEqual(SPE_CHARM_MONSTER, 384, 'SPE_CHARM_MONSTER should be 384');
+      assert.strictEqual(SPE_SLEEP, 368, 'SPE_SLEEP should be 368');
+      assert.strictEqual(SPE_CONFUSE_MONSTER, 375, 'SPE_CONFUSE_MONSTER should be 375');
+      assert.strictEqual(SPE_SLOW_MONSTER, 378, 'SPE_SLOW_MONSTER should be 378');
+      assert.strictEqual(SPE_CAUSE_FEAR, 382, 'SPE_CAUSE_FEAR should be 382');
+      assert.strictEqual(SPE_CHARM_MONSTER, 385, 'SPE_CHARM_MONSTER should be 385');
     });
 
     it('should have monster control spells', () => {
@@ -215,17 +215,17 @@ describe('Spell System Accuracy', () => {
       ];
 
       for (const spell of controlSpells) {
-        assert(spell >= 363 && spell <= 406, 'Control spell in valid range');
+        assert(spell >= 364 && spell <= 407, 'Control spell in valid range');
       }
     });
   });
 
   describe('Defensive/Protective Spells', () => {
     it('should have correct indices for defensive spells', () => {
-      assert.strictEqual(SPE_PROTECTION, 400, 'SPE_PROTECTION should be 400');
-      assert.strictEqual(SPE_REMOVE_CURSE, 392, 'SPE_REMOVE_CURSE should be 392');
-      assert.strictEqual(SPE_CANCELLATION, 399, 'SPE_CANCELLATION should be 399');
-      assert.strictEqual(SPE_TURN_UNDEAD, 395, 'SPE_TURN_UNDEAD should be 395');
+      assert.strictEqual(SPE_PROTECTION, 401, 'SPE_PROTECTION should be 401');
+      assert.strictEqual(SPE_REMOVE_CURSE, 393, 'SPE_REMOVE_CURSE should be 393');
+      assert.strictEqual(SPE_CANCELLATION, 400, 'SPE_CANCELLATION should be 400');
+      assert.strictEqual(SPE_TURN_UNDEAD, 396, 'SPE_TURN_UNDEAD should be 396');
     });
 
     it('should have curse removal', () => {
@@ -239,8 +239,8 @@ describe('Spell System Accuracy', () => {
 
   describe('Creation/Summoning Spells', () => {
     it('should have correct indices for creation spells', () => {
-      assert.strictEqual(SPE_CREATE_MONSTER, 379, 'SPE_CREATE_MONSTER should be 379');
-      assert.strictEqual(SPE_CREATE_FAMILIAR, 398, 'SPE_CREATE_FAMILIAR should be 398');
+      assert.strictEqual(SPE_CREATE_MONSTER, 380, 'SPE_CREATE_MONSTER should be 380');
+      assert.strictEqual(SPE_CREATE_FAMILIAR, 399, 'SPE_CREATE_FAMILIAR should be 399');
     });
 
     it('should have monster creation spells', () => {
@@ -251,14 +251,14 @@ describe('Spell System Accuracy', () => {
 
   describe('Divination/Map Spells', () => {
     it('should have magic mapping', () => {
-      assert.strictEqual(SPE_MAGIC_MAPPING, 393, 'SPE_MAGIC_MAPPING should be 393');
+      assert.strictEqual(SPE_MAGIC_MAPPING, 394, 'SPE_MAGIC_MAPPING should be 394');
     });
   });
 
   describe('Transformation Spells', () => {
     it('should have correct indices for transformation spells', () => {
-      assert.strictEqual(SPE_POLYMORPH, 396, 'SPE_POLYMORPH should be 396');
-      assert.strictEqual(SPE_TELEPORT_AWAY, 397, 'SPE_TELEPORT_AWAY should be 397');
+      assert.strictEqual(SPE_POLYMORPH, 397, 'SPE_POLYMORPH should be 397');
+      assert.strictEqual(SPE_TELEPORT_AWAY, 398, 'SPE_TELEPORT_AWAY should be 398');
     });
 
     it('should have polymorph spell', () => {
@@ -272,20 +272,20 @@ describe('Spell System Accuracy', () => {
 
   describe('Special Spellbooks', () => {
     it('should have correct indices for special books', () => {
-      assert.strictEqual(SPE_BLANK_PAPER, 404, 'SPE_BLANK_PAPER should be 404');
-      assert.strictEqual(SPE_NOVEL, 405, 'SPE_NOVEL should be 405');
-      assert.strictEqual(SPE_BOOK_OF_THE_DEAD, 406, 'SPE_BOOK_OF_THE_DEAD should be 406');
+      assert.strictEqual(SPE_BLANK_PAPER, 405, 'SPE_BLANK_PAPER should be 405');
+      assert.strictEqual(SPE_NOVEL, 406, 'SPE_NOVEL should be 406');
+      assert.strictEqual(SPE_BOOK_OF_THE_DEAD, 407, 'SPE_BOOK_OF_THE_DEAD should be 407');
     });
 
     it('special books should be at end of spell range', () => {
       // Blank paper, Novel, Book of the Dead are non-spell books at end
-      assert(SPE_BLANK_PAPER > 400, 'Special books are high indices');
+      assert(SPE_BLANK_PAPER > 401, 'Special books are high indices');
       assert(SPE_NOVEL > SPE_BLANK_PAPER, 'Novel after blank paper');
       assert(SPE_BOOK_OF_THE_DEAD > SPE_NOVEL, 'Book of the Dead is last');
     });
 
     it('Book of the Dead should be unique quest item', () => {
-      assert.strictEqual(SPE_BOOK_OF_THE_DEAD, 406,
+      assert.strictEqual(SPE_BOOK_OF_THE_DEAD, 407,
         'Book of the Dead is final quest item book');
     });
   });
@@ -317,7 +317,7 @@ describe('Spell System Accuracy', () => {
   });
 
   describe('Spell Value Ranges', () => {
-    it('all spells should be in range 363-406', () => {
+    it('all spells should be in range 364-407', () => {
       const spells = [
         SPE_DIG, SPE_MAGIC_MISSILE, SPE_FIREBALL, SPE_CONE_OF_COLD,
         SPE_SLEEP, SPE_FINGER_OF_DEATH, SPE_LIGHT, SPE_DETECT_MONSTERS,
@@ -336,8 +336,8 @@ describe('Spell System Accuracy', () => {
       ];
 
       for (const spell of spells) {
-        assert(spell >= 363 && spell <= 406,
-          `Spell ${spell} should be in range [363, 406]`);
+        assert(spell >= 364 && spell <= 407,
+          `Spell ${spell} should be in range [364, 407]`);
       }
     });
 
@@ -353,31 +353,31 @@ describe('Spell System Accuracy', () => {
     it('should have exactly 44 spells', () => {
       // C ref: NetHack has 44 spells from DIG to BOOK_OF_THE_DEAD
       const spellCount = SPE_BOOK_OF_THE_DEAD - SPE_DIG + 1;
-      assert.strictEqual(spellCount, 44, 'Exactly 44 spells (363-406)');
+      assert.strictEqual(spellCount, 44, 'Exactly 44 spells (364-407)');
     });
 
     it('should have 41 castable spells (excluding special books)', () => {
       // Blank paper, Novel, Book of the Dead are not castable spells
       const castableCount = SPE_BLANK_PAPER - SPE_DIG;
-      assert.strictEqual(castableCount, 41, '41 castable spells (363-403)');
+      assert.strictEqual(castableCount, 41, '41 castable spells (364-404)');
     });
   });
 
   describe('Critical Spell Values', () => {
-    it('SPE_DIG should be 363 (first spell)', () => {
+    it('SPE_DIG should be 364 (first spell)', () => {
       // Dig is the first actual spell
-      assert.strictEqual(SPE_DIG, 363, 'SPE_DIG must be 363');
+      assert.strictEqual(SPE_DIG, 364, 'SPE_DIG must be 364');
     });
 
-    it('SPE_MAGIC_MISSILE should be 364 (basic attack)', () => {
+    it('SPE_MAGIC_MISSILE should be 365 (basic attack)', () => {
       // Magic missile is the fundamental attack spell
-      assert.strictEqual(SPE_MAGIC_MISSILE, 364, 'Magic missile is spell 364');
+      assert.strictEqual(SPE_MAGIC_MISSILE, 365, 'Magic missile is spell 365');
     });
 
-    it('SPE_BOOK_OF_THE_DEAD should be 406 (last/quest item)', () => {
+    it('SPE_BOOK_OF_THE_DEAD should be 407 (last/quest item)', () => {
       // Book of the Dead is the final quest item
-      assert.strictEqual(SPE_BOOK_OF_THE_DEAD, 406,
-        'Book of the Dead must be 406');
+      assert.strictEqual(SPE_BOOK_OF_THE_DEAD, 407,
+        'Book of the Dead must be 407');
     });
   });
 });
