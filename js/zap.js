@@ -19,6 +19,7 @@ import { newexplevel } from './exper.js';
 import { nhgetch } from './input.js';
 import { nonliving, monDisplayName } from './mondata.js';
 import { mondead } from './monutil.js';
+import { placeFloorObject } from './floor_objects.js';
 
 // Direction vectors matching commands.js DIRECTION_KEYS
 const DIRECTION_KEYS = {
@@ -231,7 +232,7 @@ function xkilled(mon, map, player, display) {
                 // C ref: mkobj.c set_corpsenm() stamps corpse age with monstermoves.
                 age: (player?.turns || 0) + 1,
             };
-            map.objects.push(corpse);
+            placeFloorObject(map, corpse);
         }
     }
 }

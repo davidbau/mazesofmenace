@@ -26,6 +26,7 @@ import { monDisplayName } from './mondata.js';
 import { mons, AT_WEAP,
          MZ_TINY, G_FREQ } from './monsters.js';
 import { distmin, mondead, BOLT_LIM } from './monutil.js';
+import { placeFloorObject } from './floor_objects.js';
 
 // C ref: mthrowu.c blocking_terrain() subset used by lined_up().
 function blockingTerrainForLinedup(map, x, y) {
@@ -300,7 +301,7 @@ export function thrwmu(mon, map, player, display, game) {
             if (spot && ACCESSIBLE(spot.typ)) {
                 projectile.ox = result.x;
                 projectile.oy = result.y;
-                map.objects.push(projectile);
+                placeFloorObject(map, projectile);
             }
         }
         if (mon.dead) break;

@@ -51,6 +51,7 @@ import {
 } from './objects.js';
 import { mons, M2_FEMALE, M2_MALE, G_NOGEN, G_IGNORE, PM_MINOTAUR, MR_STONE } from './monsters.js';
 import { findSpecialLevelByName, GEHENNOM } from './special_levels.js';
+import { placeFloorObject } from './floor_objects.js';
 
 // Aliases for compatibility with C naming
 const STAIRS_UP = STAIRS;
@@ -5379,7 +5380,7 @@ export function gold(amountOrOpts, x, y) {
     gold.quan = amount;
     gold.owt = weight(gold);
     if (levelState.map && Array.isArray(levelState.map.objects)) {
-        levelState.map.objects.push(gold);
+        placeFloorObject(levelState.map, gold);
         markSpLevTouched(pos.x, pos.y);
     }
 }
@@ -5792,7 +5793,7 @@ function executeDeferredObject(deferred) {
             obj.buried = true;
             return;
         }
-        levelState.map.objects.push(obj);
+        placeFloorObject(levelState.map, obj);
     }
 }
 
@@ -7847,7 +7848,7 @@ function placeObjectAt(obj, x, y) {
     obj.ox = x;
     obj.oy = y;
     if (!levelState.map.objects) levelState.map.objects = [];
-    levelState.map.objects.push(obj);
+    placeFloorObject(levelState.map, obj);
 }
 
 // C ref: sp_lev.c maze1xy()

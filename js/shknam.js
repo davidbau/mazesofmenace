@@ -23,6 +23,7 @@ import { MAXOCLASSES, ROOM, SHOPBASE, ROOMOFFSET, SDOOR, DOOR, CORR,
 import { makemon, mkclass, NO_MM_FLAGS, registerGetShopItem } from './makemon.js';
 import { mksobj, mkobj, RANDOM_CLASS } from './mkobj.js';
 import { PM_SHOPKEEPER, S_MIMIC } from './monsters.js';
+import { placeFloorObject } from './floor_objects.js';
 
 const VEGETARIAN_CLASS = MAXOCLASSES + 1; // 19
 
@@ -546,7 +547,7 @@ function mkshobj_at(shp, shpIndex, sx, sy, mkspecl, map, depth) {
         if (obj) {
             obj.ox = sx;
             obj.oy = sy;
-            map.objects.push(obj);
+            placeFloorObject(map, obj);
         }
         // C: context.tribute.bookstock = TRUE
         return;
@@ -576,7 +577,7 @@ function mkshobj_at(shp, shpIndex, sx, sy, mkspecl, map, depth) {
         if (obj) {
             obj.ox = sx;
             obj.oy = sy;
-            map.objects.push(obj);
+            placeFloorObject(map, obj);
         }
     }
 }

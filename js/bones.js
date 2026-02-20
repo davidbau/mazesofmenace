@@ -25,6 +25,7 @@ import { rn2 } from './rng.js';
 import { ACCESSIBLE } from './config.js';
 import { CLASS_SYMBOLS } from './objects.js';
 import { mons, PM_GHOST, S_GHOST } from './monsters.js';
+import { placeFloorObject } from './floor_objects.js';
 import { def_monsyms } from './symbols.js';
 import {
     saveLev, restLev, saveObjChn,
@@ -98,7 +99,7 @@ export function drop_upon_death(game) {
         // Drop on floor
         obj.ox = x;
         obj.oy = y;
-        map.objects.push(obj);
+        placeFloorObject(map, obj);
         toRemove.push(obj);
     }
     // Clear inventory (all items distributed)

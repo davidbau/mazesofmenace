@@ -181,6 +181,7 @@ export function clearBranchTopology() {
 import { ENGRAVE_FILE_TEXT } from './engrave_data.js';
 import { shtypes, stock_room } from './shknam.js';
 import { obj_resists } from './objdata.js';
+import { placeFloorObject } from './floor_objects.js';
 import { getnow } from './calendar.js';
 
 // Module-level ubirthday surrogate for nameshk() — set by setGameSeed() before level gen.
@@ -1175,7 +1176,7 @@ function populate_maze(map, depth) {
         if (!obj) return;
         obj.ox = x;
         obj.oy = y;
-        map.objects.push(obj);
+        placeFloorObject(map, obj);
     };
 
     for (let i = rn1(8, 11); i > 0; i--) {
@@ -1851,7 +1852,7 @@ function dig_corridor(map, org, dest, nxcor, depth) {
                     if (otmp) {
                         otmp.ox = xx;
                         otmp.oy = yy;
-                        map.objects.push(otmp);
+                        placeFloorObject(map, otmp);
                     }
                 }
             }
@@ -2722,7 +2723,7 @@ function mk_trap_statue(map, x, y, depth = 1) {
     if (statue) {
         statue.ox = x;
         statue.oy = y;
-        map.objects.push(statue);
+        placeFloorObject(map, statue);
     }
 
     const mtmp = makemon(statueMndx, 0, 0, NO_MM_FLAGS, depth, map);
@@ -2790,7 +2791,7 @@ function maketrap(map, x, y, typ, depth = 1) {
             if (boulderObj) {
                 boulderObj.ox = launchCoord.x;
                 boulderObj.oy = launchCoord.y;
-                map.objects.push(boulderObj);
+                placeFloorObject(map, boulderObj);
             }
             trap.launch = { x: launchCoord.x, y: launchCoord.y };
             trap.launch2 = {
@@ -2988,7 +2989,7 @@ function mktrap_victim(map, trap, depth) {
     function placeObj(obj) {
         obj.ox = x;
         obj.oy = y;
-        map.objects.push(obj);
+        placeFloorObject(map, obj);
     }
 
     // Trap-specific item
@@ -3266,7 +3267,7 @@ export function fill_ordinary_room(map, croom, depth, bonusItems) {
                 gold.ox = pos.x; gold.oy = pos.y;
                 gold.quan = amount;
                 gold.owt = weight(gold);
-                map.objects.push(gold);
+                placeFloorObject(map, gold);
             }
         }
     }
@@ -3298,7 +3299,7 @@ export function fill_ordinary_room(map, croom, depth, bonusItems) {
             const statue = mksobj(STATUE, true, false);
             if (statue) {
                 statue.ox = pos.x; statue.oy = pos.y;
-                map.objects.push(statue);
+                placeFloorObject(map, statue);
             }
         }
     }
@@ -3323,7 +3324,7 @@ export function fill_ordinary_room(map, croom, depth, bonusItems) {
                 const food = mksobj(otyp, true, false);
                 if (food) {
                     food.ox = pos.x; food.oy = pos.y;
-                    map.objects.push(food);
+                    placeFloorObject(map, food);
                 }
             } else {
                 const oracleLevel = getOracleLevel();
@@ -3333,7 +3334,7 @@ export function fill_ordinary_room(map, croom, depth, bonusItems) {
                 // Create supply chest (2/3 chance)
                 // C ref: mklev.c:1033-1034
                 const chest = mksobj(rn2(3) ? CHEST : LARGE_BOX, false, false);
-                if (chest) { chest.ox = pos.x; chest.oy = pos.y; map.objects.push(chest); }
+                if (chest) { chest.ox = pos.x; chest.oy = pos.y; placeFloorObject(map, chest); }
                 rn2(6); // olocked check
                 if (chest && !Array.isArray(chest.cobj)) chest.cobj = [];
 
@@ -3394,7 +3395,7 @@ export function fill_ordinary_room(map, croom, depth, bonusItems) {
             const box = mksobj(rn2(3) ? LARGE_BOX : CHEST, true, false);
             if (box) {
                 box.ox = pos.x; box.oy = pos.y;
-                map.objects.push(box);
+                placeFloorObject(map, box);
             }
         }
     }
@@ -3419,7 +3420,7 @@ export function fill_ordinary_room(map, croom, depth, bonusItems) {
         const pos = somexyspace(map, croom);
         if (pos) {
             const obj = mkobj(0, true);
-            if (obj) { obj.ox = pos.x; obj.oy = pos.y; map.objects.push(obj); }
+            if (obj) { obj.ox = pos.x; obj.oy = pos.y; placeFloorObject(map, obj); }
         }
         trycnt = 0;
         while (!rn2(5)) {
@@ -3427,7 +3428,7 @@ export function fill_ordinary_room(map, croom, depth, bonusItems) {
             const pos2 = somexyspace(map, croom);
             if (pos2) {
                 const obj2 = mkobj(0, true);
-                if (obj2) { obj2.ox = pos2.x; obj2.oy = pos2.y; map.objects.push(obj2); }
+                if (obj2) { obj2.ox = pos2.x; obj2.oy = pos2.y; placeFloorObject(map, obj2); }
             }
         }
     }
@@ -3810,7 +3811,7 @@ function place_gold_stack(map, x, y, amount) {
     gold.oy = y;
     gold.quan = amount;
     gold.owt = weight(gold);
-    map.objects.push(gold);
+    placeFloorObject(map, gold);
 }
 
 // C ref: mkroom.c fill_zoo() — currently implements ZOO branch.
@@ -4735,7 +4736,7 @@ export function mineralize(map, depth, opts = null) {
                 if (kelp) {
                     kelp.ox = x;
                     kelp.oy = y;
-                    map.objects.push(kelp);
+                    placeFloorObject(map, kelp);
                 }
             }
         }
@@ -4797,7 +4798,7 @@ export function mineralize(map, depth, opts = null) {
                     otmp.owt = weight(otmp);
                     // C ref: !rn2(3) → add_to_buried, else place_object
                     if (rn2(3) !== 0) {
-                        map.objects.push(otmp);
+                        placeFloorObject(map, otmp);
                     }
                     // else: buried — don't add to map.objects
                 }
@@ -4816,7 +4817,7 @@ export function mineralize(map, depth, opts = null) {
                             otmp.oy = y;
                             // C ref: !rn2(3) → add_to_buried, else place_object
                             if (rn2(3) !== 0) {
-                                map.objects.push(otmp);
+                                placeFloorObject(map, otmp);
                             }
                             // else: buried — don't add to map.objects
                         }

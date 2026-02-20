@@ -21,6 +21,7 @@ import { obj_resists } from './objdata.js';
 import { newexplevel } from './exper.js';
 import { applyMonflee } from './mhitu.js';
 import { mondead } from './monutil.js';
+import { placeFloorObject } from './floor_objects.js';
 
 
 // ============================================================================
@@ -630,7 +631,7 @@ function handleMonsterKilled(player, monster, display, map) {
         } else {
             otmp.ox = monster.mx;
             otmp.oy = monster.my;
-            map.objects.push(otmp);
+            placeFloorObject(map, otmp);
         }
     }
 
@@ -646,7 +647,7 @@ function handleMonsterKilled(player, monster, display, map) {
         if (map) {
             corpse.ox = monster.mx;
             corpse.oy = monster.my;
-            map.objects.push(corpse);
+            placeFloorObject(map, corpse);
         }
     }
 
