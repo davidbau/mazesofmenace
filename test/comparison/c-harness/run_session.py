@@ -546,10 +546,11 @@ def execute_dumpmap(session, dumpmap_file):
 # Counter for tracking clear_more_prompts activity
 _clear_more_stats = {'cleared': 0, 'calls': 0}
 
-def clear_more_prompts(session, max_iterations=10):
+def clear_more_prompts(session, max_iterations=20):
     global _clear_more_stats
     _clear_more_stats['calls'] += 1
     content = ''
+    had_more = False
     for _ in range(max_iterations):
         time.sleep(0.02)
         try:
@@ -558,13 +559,38 @@ def clear_more_prompts(session, max_iterations=10):
             break
         if '--More--' in content:
             _clear_more_stats['cleared'] += 1
+            had_more = True
             tmux_send_special(session, 'Space', 0.1)
         elif 'Die?' in content:
             # Wizard mode death: answer 'n' to resurrect
+            had_more = True
             tmux_send(session, 'n', 0.1)
             print('  [WIZARD] Died and resurrected')
         else:
-            break
+            if not had_more:
+                break
+            # We just dismissed a --More--.  The game may still be processing
+            # the turn (e.g. m_throw flight after a "throws" --More--) and
+            # another --More-- could appear very soon.  Re-check a few times.
+            found = False
+            for _recheck in range(3):
+                time.sleep(0.05)
+                try:
+                    content = tmux_capture(session)
+                except subprocess.CalledProcessError:
+                    break
+                if '--More--' in content:
+                    _clear_more_stats['cleared'] += 1
+                    tmux_send_special(session, 'Space', 0.1)
+                    found = True
+                    break
+                elif 'Die?' in content:
+                    tmux_send(session, 'n', 0.1)
+                    print('  [WIZARD] Died and resurrected')
+                    found = True
+                    break
+            if not found:
+                break
     return content
 
 def get_clear_more_stats():
@@ -1750,7 +1776,7 @@ def run_session(seed, output_json, move_str, raw_moves=False, character=None, wi
 
             # Send the character
             send_char(ch)
-            time.sleep(0.003)  # 3ms delay for game to process input
+            time.sleep(0.02)  # 20ms delay for game to process input
 
             # Only clear --More-- if not raw_moves (raw moves include space keys)
             if not raw_moves:
