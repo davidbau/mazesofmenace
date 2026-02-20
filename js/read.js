@@ -132,8 +132,9 @@ async function handleRead(player, display, game) {
                 const knownEntry = spells.find(s => s.otyp === anyItem.otyp);
                 if (knownEntry && knownEntry.sp_know > SPELL_KEEN / 10) {
                     const spellName = String(od.name || 'this spell').toLowerCase();
-                    display.putstr_message(`You know "${spellName}" quite well already.`);
-                    display.putstr_message('Refresh your memory anyway? [yn] (n)');
+                    // cf. spell.c study_book() — show both messages on one line to match
+                    // C TTY behavior where pline() + yn() appear together.
+                    display.putstr_message(`You know "${spellName}" quite well already.  Refresh your memory anyway? [yn] (n)`);
                     const ans = await nhgetch();
                     replacePromptMessage();
                     if (String.fromCharCode(ans) !== 'y') {

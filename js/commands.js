@@ -2560,16 +2560,24 @@ async function handleApply(player, display) {
             return { moved: false, tookTime: false };
         }
         if (c === '?' || c === '*') {
-            // C tty getobj() help/list mode: consume keys until dismissal or
-            // explicit inventory-letter selection; unrelated keys can leave
-            // the list frame up without changing the pending apply prompt.
-            while (true) {
-                const listCh = await nhgetch();
-                const listC = String.fromCharCode(listCh);
-                if (listCh === 27 || listCh === 10 || listCh === 13 || listC === ' ') break;
-                const picked = candidateByInvlet.get(listC);
-                if (picked) return await resolveApplySelection(picked);
+            // C tty getobj() help/list mode: show each applicable item with
+            // --More-- prompt, then return to selection prompt.
+            // '?' shows preferred apply candidates; '*' shows all inventory items.
+            const showList = c === '*'
+                ? inventory.filter((item) => item?.invlet)
+                : candidates;
+            let picked = null;
+            for (const item of showList) {
+                replacePromptMessage();
+                display.putstr_message(`${item.invlet} - ${doname(item, player)}  --More--`);
+                const ack = await nhgetch();
+                const ackC = String.fromCharCode(ack);
+                if (ack === 27 || ack === 10 || ack === 13 || ackC === ' ') break;
+                const sel = candidateByInvlet.get(ackC)
+                    || (c === '*' ? inventory.find((o) => o?.invlet === ackC) : null);
+                if (sel) { picked = sel; break; }
             }
+            if (picked) return await resolveApplySelection(picked);
             continue;
         }
 

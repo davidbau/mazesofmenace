@@ -646,11 +646,16 @@ function mkbox_cnts(box) {
     n = rn2(n + 1); // actual count
     mkobjTrace(`mkbox count call=${getRngCallCount()} n=${n}`);
 
-    // For each item in box, generate it
+    // C ref: mkobj.c — container contents stored in cobj linked list.
+    // JS uses an array; initialize now so loot/tip commands find items.
+    if (!Array.isArray(box.cobj)) box.cobj = [];
+
+    // For each item in box, generate it and store in the container
     for (let i = 0; i < n; i++) {
         if (od.name === 'ice box') {
             // C ref: mkobj.c:347 — mksobj(CORPSE, TRUE, FALSE) for ice box
-            mksobj(CORPSE, true, false);
+            const corpse = mksobj(CORPSE, true, false);
+            if (corpse) box.cobj.push(corpse);
         } else {
             // rnd(100) for class selection from boxiprobs
             const tprob = rnd(100);
@@ -699,6 +704,7 @@ function mkbox_cnts(box) {
                 }
             }
             mkobjTrace(`mkbox item call=${getRngCallCount()} otyp=${otmp.otyp} oclass=${otmp.oclass} corpsenm=${otmp.corpsenm ?? -1}`);
+            box.cobj.push(otmp);
         }
     }
 }
