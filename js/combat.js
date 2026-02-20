@@ -1,80 +1,19 @@
-// combat.js -- Combat system
-// Mirrors uhitm.c (hero hits monster) and mhitu.c (monster hits hero)
+// combat.js -- Monster-vs-hero combat
+// cf. mhitu.c — monster hits hero (mattacku, hitmu, missmu, etc.)
+// Hero-vs-monster combat has moved to uhitm.js.
 
-import { rn2, rnd, d, c_d } from './rng.js';
-import { exercise } from './attrib_exercise.js';
-import { A_DEX, A_CON } from './config.js';
+import { rn2, rnd, c_d } from './rng.js';
+import { A_CON } from './config.js';
 import {
-    mons, G_FREQ, G_NOCORPSE, G_UNIQ, MZ_TINY, MZ_HUMAN, M2_NEUTER, M2_MALE, M2_FEMALE, M2_PNAME, M2_COLLECT,
-    MZ_LARGE,
+    G_UNIQ, M2_NEUTER, M2_MALE, M2_FEMALE, M2_PNAME,
     AT_CLAW, AT_BITE, AT_KICK, AT_BUTT, AT_TUCH, AT_STNG, AT_WEAP,
-    S_ZOMBIE, S_MUMMY, S_VAMPIRE, S_WRAITH, S_LICH, S_GHOST, S_DEMON, S_KOP, PM_SHADE,
 } from './monsters.js';
-import {
-    CORPSE, FIGURINE, FOOD_CLASS, objectData,
-    BULLWHIP,
-    POTION_CLASS, POT_HEALING, POT_EXTRA_HEALING, POT_FULL_HEALING,
-    POT_RESTORE_ABILITY, POT_GAIN_ABILITY,
-} from './objects.js';
-import { mkobj, mkcorpstat, RANDOM_CLASS, next_ident, xname } from './mkobj.js';
-import { nonliving, monDisplayName, is_humanoid } from './mondata.js';
-import { obj_resists } from './objdata.js';
-import { newexplevel } from './exper.js';
+import { objectData, BULLWHIP } from './objects.js';
+import { xname } from './mkobj.js';
+import { monDisplayName, is_humanoid } from './mondata.js';
+import { weaponEnchantment, weaponDamageSides } from './uhitm.js';
 
 const PIERCE = 1;
-
-function isUndeadOrDemon(monsterType) {
-    if (!monsterType) return false;
-    const sym = monsterType.symbol;
-    return sym === S_ZOMBIE
-        || sym === S_MUMMY
-        || sym === S_VAMPIRE
-        || sym === S_WRAITH
-        || sym === S_LICH
-        || sym === S_GHOST
-        || sym === S_DEMON;
-}
-
-function weaponEnchantment(weapon) {
-    return (weapon && (weapon.enchantment ?? weapon.spe)) || 0;
-}
-
-function weaponDamageSides(weapon, monster) {
-    if (!weapon) return 0;
-    if (weapon.wsdam) return weapon.wsdam;
-    const info = objectData[weapon.otyp];
-    if (!info) return 0;
-    const isLarge = (monster?.type?.size ?? MZ_TINY) >= MZ_LARGE;
-    return isLarge ? (info.ldam || 0) : (info.sdam || 0);
-}
-
-// C ref: uhitm.c hmon_hitmon_weapon() routes launchers and wielded
-// ammo/missiles to hmon_hitmon_weapon_ranged(), which uses rnd(2) damage
-// instead of normal melee dmgval/enchantment math.
-function usesRangedMeleeDamage(weapon) {
-    if (!weapon) return false;
-    const sub = objectData[weapon.otyp]?.sub;
-    if (!Number.isInteger(sub)) return false;
-    const isLauncher = sub >= 20 && sub <= 22;      // P_BOW..P_CROSSBOW
-    const isAmmoOrMissile = sub <= -20 && sub >= -24; // -P_BOW..-P_SHURIKEN
-    return isLauncher || isAmmoOrMissile;
-}
-
-// C ref: uhitm.c find_roll_to_hit() — Luck component.
-// sgn(Luck) * ((abs(Luck) + 2) / 3)  (integer division)
-function luckBonus(luck) {
-    if (!luck) return 0;
-    return Math.sign(luck) * Math.floor((Math.abs(luck) + 2) / 3);
-}
-
-// C ref: weapon.c abon() — DEX component of to-hit bonus.
-function dexToHit(dex) {
-    if (dex < 4) return -3;
-    if (dex < 6) return -2;
-    if (dex < 8) return -1;
-    if (dex < 14) return 0;
-    return dex - 14;
-}
 
 function monsterHitVerb(attackType) {
     switch (attackType) {
@@ -89,7 +28,7 @@ function monsterHitVerb(attackType) {
     }
 }
 
-// C ref: mhitu.c mswings_verb() / mswings().
+// cf. mhitu.c mswings_verb() / mswings().
 function monsterWeaponSwingVerb(weapon, bash = false) {
     if (!weapon) return 'swings';
     const info = objectData[weapon.otyp] || {};
@@ -102,7 +41,7 @@ function monsterWeaponSwingVerb(weapon, bash = false) {
     return thrust ? 'thrusts' : 'swings';
 }
 
-// C ref: mondata.c pronoun_gender() and mhis().
+// cf. mondata.c pronoun_gender() and mhis().
 function monsterPossessive(monster) {
     const mdat = monster?.type || {};
     const flags2 = mdat.flags2 || 0;
@@ -118,7 +57,7 @@ function monsterPossessive(monster) {
     return monster?.female ? 'her' : 'his';
 }
 
-// C ref: mhitu.c AT_WEAP path emits swing/thrust text before hit/miss.
+// cf. mhitu.c AT_WEAP path emits swing/thrust text before hit/miss.
 function maybeMonsterWeaponSwingMessage(monster, player, display, suppressHitMsg) {
     if (!monster?.weapon || suppressHitMsg) return;
     if (player?.blind) return;
@@ -132,110 +71,7 @@ function maybeMonsterWeaponSwingMessage(monster, player, display, suppressHitMsg
     );
 }
 
-function consumeMeleePotion(player, weapon) {
-    const potion = { ...weapon, quan: 1 };
-    if ((weapon.quan || 1) > 1) {
-        weapon.quan = (weapon.quan || 1) - 1;
-        potion.o_id = next_ident();
-    } else {
-        player.removeFromInventory(weapon);
-        if (player.weapon === weapon) player.weapon = null;
-        if (player.swapWeapon === weapon) player.swapWeapon = null;
-        if (player.quiver === weapon) player.quiver = null;
-    }
-    return potion;
-}
-
-function potionHealsMonster(potion) {
-    if (!potion) return false;
-    return potion.otyp === POT_HEALING
-        || potion.otyp === POT_EXTRA_HEALING
-        || potion.otyp === POT_FULL_HEALING
-        || potion.otyp === POT_RESTORE_ABILITY
-        || potion.otyp === POT_GAIN_ABILITY;
-}
-
-// C ref: uhitm.c hmon_hitmon_potion() -> potion.c potionhit()
-function hitMonsterWithPotion(player, monster, display, weapon) {
-    const potion = consumeMeleePotion(player, weapon);
-    const bottleChoices = player?.hallucinating ? 24 : 7;
-    rn2(bottleChoices); // bottlename()
-
-    // C ref: potion.c:1671
-    if (rn2(5) && monster.mhp > 1) {
-        monster.mhp--;
-    }
-
-    if (potionHealsMonster(potion) && monster.mhp < (monster.mhpmax || monster.mhp)) {
-        monster.mhp = monster.mhpmax || monster.mhp;
-        display.putstr_message(`The ${monDisplayName(monster)} looks sound and hale again.`);
-    }
-
-    // C ref: potion.c:1893 — distance<3 && !rn2((1+DEX)/2) gate for potionbreathe()
-    const dex = player.attributes?.[A_DEX] ?? 10;
-    const breatheDenom = Math.max(1, Math.floor((1 + dex) / 2));
-    rn2(breatheDenom);
-}
-
-function handleMonsterKilled(player, monster, display, map) {
-    // C ref: uhitm.c -> mon.c mondead() -> killed() -> xkilled()
-    const mdat = monster.type || {};
-    const killVerb = nonliving(mdat) ? 'destroy' : 'kill';
-    display.putstr_message(`You ${killVerb} the ${monDisplayName(monster)}!`);
-    monster.dead = true;
-
-    // C ref: exper.c experience() -- roughly monster level * level
-    const exp = (monster.mlevel + 1) * (monster.mlevel + 1);
-    player.exp += exp;
-    player.score += exp;
-    newexplevel(player, display);
-
-    // C ref: mon.c:3581-3609 xkilled() — "illogical but traditional" treasure drop.
-    const treasureRoll = rn2(6);
-    const canDropTreasure = treasureRoll === 0
-        && !((mdat.geno || 0) & G_NOCORPSE)
-        && !monster.mcloned
-        && (monster.mx !== player.x || monster.my !== player.y)
-        && mdat.symbol !== S_KOP;
-    if (canDropTreasure && map) {
-        const otmp = mkobj(RANDOM_CLASS, true, false);
-        const flags2 = mdat.flags2 || 0;
-        const isSmallMonster = (mdat.size || 0) < MZ_HUMAN;
-        const isPermaFood = otmp && otmp.oclass === FOOD_CLASS && !otmp.oartifact;
-        const dropTooBig = isSmallMonster && !!otmp
-            && otmp.otyp !== FIGURINE
-            && ((otmp.owt || 0) > 30 || !!objectData[otmp.otyp]?.oc_big);
-        if (isPermaFood && !(flags2 & M2_COLLECT)) {
-            obj_resists(otmp, 0, 0);
-        } else if (dropTooBig) {
-            obj_resists(otmp, 0, 0);
-        } else {
-            otmp.ox = monster.mx;
-            otmp.oy = monster.my;
-            map.objects.push(otmp);
-        }
-    }
-
-    // C ref: mon.c:3243 corpse_chance()
-    const gfreq = (mdat.geno || 0) & G_FREQ;
-    const verysmall = (mdat.size || 0) === MZ_TINY;
-    const corpsetmp = 2 + (gfreq < 2 ? 1 : 0) + (verysmall ? 1 : 0);
-    const createCorpse = !rn2(corpsetmp);
-
-    if (createCorpse) {
-        const corpse = mkcorpstat(CORPSE, monster.mndx || 0, true);
-        corpse.age = Math.max((player?.turns || 0) + 1, 1);
-        if (map) {
-            corpse.ox = monster.mx;
-            corpse.oy = monster.my;
-            map.objects.push(corpse);
-        }
-    }
-
-    return true;
-}
-
-// C ref: monmove.c mon_track_clear().
+// cf. monmove.c mon_track_clear().
 function clearMonsterTrack(monster) {
     if (!Array.isArray(monster?.mtrack)) return;
     for (let i = 0; i < monster.mtrack.length; i++) {
@@ -243,7 +79,7 @@ function clearMonsterTrack(monster) {
     }
 }
 
-// C ref: monmove.c monflee() subset used by melee morale checks.
+// cf. monmove.c monflee() subset used by melee morale checks.
 export function applyMonflee(monster, fleetime, first = false) {
     const oldFleetim = Number(monster?.fleetim || 0);
     if (!first || !monster.flee) {
@@ -259,130 +95,8 @@ export function applyMonflee(monster, fleetime, first = false) {
     clearMonsterTrack(monster);
 }
 
-// Attack a monster (hero attacking)
-// C ref: uhitm.c attack() -> hmon_hitmon() -> hmon_hitmon_core()
-export function playerAttackMonster(player, monster, display, map) {
-    // To-hit calculation
-    // C ref: uhitm.c find_roll_to_hit():
-    //   tmp = 1 + abon() + find_mac(mtmp) + u.uhitinc
-    //         + (sgn(Luck)*((abs(Luck)+2)/3)) + u.ulevel
-    //   then: mhit = (tmp > rnd(20))
-    const dieRoll = rnd(20);
-    // C ref: weapon.c abon() = str_bonus + (ulevel<3?1:0) + dex_bonus
-    const abon = player.strToHit + (player.level < 3 ? 1 : 0)
-        + dexToHit(player.attributes?.[A_DEX] ?? 10);
-    let toHit = 1 + abon + monster.mac + player.level
-        + luckBonus(player.luck || 0)
-        + weaponEnchantment(player.weapon);
-    // C ref: uhitm.c:386-393 — monster state adjustments
-    if (monster.stunned) toHit += 2;
-    if (monster.flee) toHit += 2;
-    if (monster.sleeping) toHit += 2;
-    if (monster.mcanmove === false) toHit += 4;
-
-    if (toHit <= dieRoll) {
-        // Miss
-        // C ref: uhitm.c -- "You miss the <monster>"
-        display.putstr_message(`You miss the ${monDisplayName(monster)}.`);
-        // C ref: uhitm.c:5997 passive() — rn2(3) when monster alive after attack
-        rn2(3);
-        return false;
-    }
-
-    // C ref: uhitm.c:742 exercise(A_DEX, TRUE) on successful hit
-    exercise(player, A_DEX, true);
-
-    if (player.weapon && player.weapon.oclass === POTION_CLASS) {
-        hitMonsterWithPotion(player, monster, display, player.weapon);
-        // C ref: uhitm.c hmon_hitmon_potion() sets base damage to 1 (or 0 vs shade)
-        // after potionhit(), then proceeds through normal kill/flee/passive handling.
-        if ((monster.mndx ?? -1) !== PM_SHADE) {
-            monster.mhp -= 1;
-        }
-        if (monster.mhp <= 0) {
-            return handleMonsterKilled(player, monster, display, map);
-        }
-        // C ref: uhitm.c:624-628 known_hitum() — 1/25 morale/flee check on surviving hit
-        if (!rn2(25) && monster.mhp < Math.floor((monster.mhpmax || 1) / 2)) {
-            // C ref: monflee(mon, !rn2(3) ? rnd(100) : 0, ...) — flee timer
-            const fleetime = !rn2(3) ? rnd(100) : 0;
-            applyMonflee(monster, fleetime, false);
-        }
-        // C ref: uhitm.c:5997 passive() — rn2(3) when monster alive after attack
-        rn2(3);
-        return false;
-    }
-
-    // Hit! Calculate damage
-    // C ref: weapon.c:265 dmgval() -- rnd(oc_wsdam) for small monsters
-    let damage = 0;
-    const rangedMelee = usesRangedMeleeDamage(player.weapon);
-    const wsdam = weaponDamageSides(player.weapon, monster);
-    if (player.weapon && rangedMelee) {
-        // C ref: uhitm.c hmon_hitmon_weapon_ranged() base damage.
-        damage = rnd(2);
-    } else if (player.weapon && wsdam > 0) {
-        damage = rnd(wsdam);
-        damage += weaponEnchantment(player.weapon);
-        // C ref: weapon.c dmgval() — blessed weapon bonus vs undead/demons.
-        if (player.weapon.blessed && isUndeadOrDemon(monster.type)) {
-            damage += rnd(4);
-        }
-    } else if (player.weapon && player.weapon.damage) {
-        damage = c_d(player.weapon.damage[0], player.weapon.damage[1]);
-        damage += player.weapon.enchantment || 0;
-    } else {
-        // Bare-handed combat
-        // C ref: uhitm.c -- barehand damage is 1d2 + martial arts bonuses
-        damage = rnd(2);
-    }
-
-    // Add strength bonus
-    if (!rangedMelee) {
-        damage += player.strDamage;
-    }
-
-    // Minimum 1 damage on a hit
-    if (damage < 1) damage = 1;
-
-    // Apply damage
-    // C ref: uhitm.c -- "You hit the <monster>!"
-    monster.mhp -= damage;
-
-    if (monster.mhp <= 0) {
-        // C ref: uhitm.c:5997 passive() — skipped when monster is killed
-        return handleMonsterKilled(player, monster, display, map);
-    } else {
-        // C ref: uhitm.c -- various hit messages
-        if (dieRoll >= 18) {
-            display.putstr_message(`You smite the ${monDisplayName(monster)}!`);
-        } else {
-            display.putstr_message(`You hit the ${monDisplayName(monster)}.`);
-        }
-        // C ref: uhitm.c hmon_hitmon_core():
-        // For armed melee hits with damage > 1: mhitm_knockback() → rn2(3), rn2(6).
-        // For unarmed hits with damage > 1: hmon_hitmon_stagger() → rnd(100).
-        if (player.weapon && damage > 1 && !player.twoweap) {
-            rn2(3);
-            rn2(6);
-        } else if (!player.weapon && damage > 1) {
-            // C ref: uhitm.c:1554 hmon_hitmon_stagger — rnd(100) stun chance check
-            rnd(100);
-        }
-        // C ref: uhitm.c:624-628 known_hitum() — 1/25 morale/flee check on surviving hit
-        if (!rn2(25) && monster.mhp < Math.floor((monster.mhpmax || 1) / 2)) {
-            // C ref: monflee(mon, !rn2(3) ? rnd(100) : 0, ...) — flee timer
-            const fleetime = !rn2(3) ? rnd(100) : 0;
-            applyMonflee(monster, fleetime, false);
-        }
-        // C ref: uhitm.c:5997 passive() — rn2(3) when monster alive after hit
-        rn2(3);
-        return false;
-    }
-}
-
 // Monster attacks the player
-// C ref: mhitu.c mattacku() -> mattackm core
+// cf. mhitu.c mattacku() -> mattackm core
 export function monsterAttackPlayer(monster, player, display, game = null) {
     if (!monster.attacks || monster.attacks.length === 0) return;
     if (monster.passive) return; // passive monsters don't initiate attacks
@@ -391,9 +105,9 @@ export function monsterAttackPlayer(monster, player, display, game = null) {
         const attack = monster.attacks[i];
         const suppressHitMsg = !!(game && game._suppressMonsterHitMessagesThisTurn);
         // To-hit calculation for monster
-        // C ref: mhitu.c:707-708 — tmp = AC_VALUE(u.uac) + 10 + mtmp->m_lev
-        // C ref: mhitu.c:804 — rnd(20+i) where i is attack index
-        // C ref: AC_VALUE(ac) macro:
+        // cf. mhitu.c:707-708 — tmp = AC_VALUE(u.uac) + 10 + mtmp->m_lev
+        // cf. mhitu.c:804 — rnd(20+i) where i is attack index
+        // cf. AC_VALUE(ac) macro:
         //   ac >= 0 ? ac : -rnd(-ac)
         const playerAc = Number.isInteger(player.ac)
             ? player.ac
@@ -408,7 +122,7 @@ export function monsterAttackPlayer(monster, player, display, game = null) {
         const dieRoll = rnd(20 + i);
 
         if (toHit <= dieRoll) {
-            // Miss — C ref: mhitu.c:86-98 missmu()
+            // Miss — cf. mhitu.c:86-98 missmu()
             // "just " prefix when nearmiss (toHit == dieRoll) and verbose.
             if (!suppressHitMsg) {
                 const just = (toHit === dieRoll) ? 'just ' : '';
@@ -418,14 +132,14 @@ export function monsterAttackPlayer(monster, player, display, game = null) {
         }
 
         // Calculate damage
-        // C ref: mhitu.c:1182 — d(dice, sides) for attack damage
+        // cf. mhitu.c:1182 — d(dice, sides) for attack damage
         let damage = 0;
         if (attack.dice && attack.sides) {
             damage = c_d(attack.dice, attack.sides);
         } else if (attack.dmg) {
             damage = c_d(attack.dmg[0], attack.dmg[1]);
         }
-        // C ref: mhitu.c hitmu() uses weapon.c dmgval() for AT_WEAP melee hits.
+        // cf. mhitu.c hitmu() uses weapon.c dmgval() for AT_WEAP melee hits.
         if (attack.type === AT_WEAP && monster.weapon) {
             const wsdam = weaponDamageSides(monster.weapon, null);
             if (wsdam > 0) damage += rnd(wsdam);
@@ -437,7 +151,7 @@ export function monsterAttackPlayer(monster, player, display, game = null) {
             handleSpecialAttack(attack.special, monster, player, display);
         }
 
-        // C ref: uhitm.c monster-vs-player electric attacks (AD_ELEC):
+        // cf. uhitm.c monster-vs-player electric attacks (AD_ELEC):
         // mhitm_mgc_atk_negated() then mhitm_ad_elec() consume rn2(10), rn2(20).
         // In monsters.js attack.damage stores adtyp numeric code (AD_ELEC=6).
         if (attack.damage === 6) {
@@ -457,12 +171,12 @@ export function monsterAttackPlayer(monster, player, display, game = null) {
                 }
             }
 
-            // C ref: uhitm.c:5236-5247 knockback after monster hits hero
+            // cf. uhitm.c:5236-5247 knockback after monster hits hero
             // rn2(3) distance + rn2(6) chance, for physical attacks
             rn2(3);
             rn2(6);
 
-            // C ref: allmain.c stop_occupation() via mhitu.c attack flow.
+            // cf. allmain.c stop_occupation() via mhitu.c attack flow.
             // A successful monster hit interrupts timed occupations/repeats.
             if (game && game.occupation) {
                 if (game.occupation.occtxt === 'waiting' || game.occupation.occtxt === 'searching') {
@@ -474,14 +188,14 @@ export function monsterAttackPlayer(monster, player, display, game = null) {
 
             if (died) {
                 if (player.wizard) {
-                    // C ref: end.c savelife() for wizard/discover survival path.
+                    // cf. end.c savelife() for wizard/discover survival path.
                     // givehp = 50 + 10 * (CON / 2), then clamp to hpmax.
                     const con = Number.isInteger(player.attributes?.[A_CON])
                         ? player.attributes[A_CON]
                         : 10;
                     const givehp = 50 + 10 * Math.floor(con / 2);
                     player.hp = Math.min(player.hpmax || givehp, givehp);
-                    // C ref: end.c done() prints "OK, so you don't die." then
+                    // cf. end.c done() prints "OK, so you don't die." then
                     // savelife() sets nomovemsg = "You survived..." for NEXT turn.
                     // Whether both appear concatenated on the same screen depends
                     // on message line state:  if previous combat messages caused
@@ -520,11 +234,11 @@ export function monsterAttackPlayer(monster, player, display, game = null) {
 }
 
 // Handle special monster attack effects
-// C ref: mhitu.c -- various AD_* damage types
+// cf. mhitu.c -- various AD_* damage types
 function handleSpecialAttack(special, monster, player, display) {
     switch (special) {
         case 'poison':
-            // C ref: mhitu.c AD_DRST -- poison attack
+            // cf. mhitu.c AD_DRST -- poison attack
             if (rn2(5) === 0) {
                 display.putstr_message(`You feel very sick!`);
                 player.attributes[3] = Math.max(1, player.attributes[3] - 1); // DEX loss
@@ -532,13 +246,13 @@ function handleSpecialAttack(special, monster, player, display) {
             break;
 
         case 'paralyze':
-            // C ref: mhitu.c AD_PLYS -- floating eye paralysis
+            // cf. mhitu.c AD_PLYS -- floating eye paralysis
             display.putstr_message(`You are frozen by the ${monDisplayName(monster)}'s gaze!`);
             // In full implementation, this would set multi = -rnd(5)
             break;
 
         case 'blind':
-            // C ref: mhitu.c AD_BLND -- blinding attack
+            // cf. mhitu.c AD_BLND -- blinding attack
             if (!player.blind) {
                 display.putstr_message(`You are blinded by the ${monDisplayName(monster)}!`);
                 player.blind = true;
@@ -546,9 +260,8 @@ function handleSpecialAttack(special, monster, player, display) {
             break;
 
         case 'stick':
-            // C ref: mhitu.c -- lichen sticking (holds you in place)
+            // cf. mhitu.c -- lichen sticking (holds you in place)
             display.putstr_message(`The ${monDisplayName(monster)} grabs you!`);
             break;
     }
 }
-

@@ -22,7 +22,8 @@ import { objectData, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
          CREDIT_CARD, EXPENSIVE_CAMERA, MIRROR, FIGURINE,
          SPE_BLANK_PAPER, SPE_NOVEL, SPE_BOOK_OF_THE_DEAD } from './objects.js';
 import { nhgetch, ynFunction, getlin } from './input.js';
-import { playerAttackMonster, applyMonflee } from './combat.js';
+import { playerAttackMonster } from './uhitm.js';
+import { applyMonflee } from './combat.js';
 import { makemon, setMakemonPlayerContext } from './makemon.js';
 import { mons, PM_LIZARD, PM_LICHEN, PM_NEWT,
          S_GOLEM, S_EYE, S_JELLY, S_PUDDING, S_BLOB, S_VORTEX,

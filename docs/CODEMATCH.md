@@ -149,7 +149,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[p]` | track.c | track.js | Player tracking for pets. save/rest not yet implemented |
 | `[a]` | trap.c | trap.js | Trap mechanics: m_harmless_trap, floor_trigger, mintrap_postmove, mon_check_in_air |
 | `[a]` | u_init.c | u_init.js | Player initialization. u_init_role, u_init_race, u_init_carry_attr_boost, trquan, ini_inv, ini_inv_mkobj_filter, restricted_spell_discipline aligned. JS-only wrappers: simulatePostLevelInit, initAttributes |
-| `[ ]` | uhitm.c | — | Player-vs-monster combat. JS: partially in `combat.js` |
+| `[a]` | uhitm.c | uhitm.js | Hero-vs-monster combat. playerAttackMonster implemented; 93 functions TODO |
 | `[N/A]` | utf8map.c | — | UTF-8 glyph mapping for terminal |
 | `[~]` | vault.c | `vault.js` | Vault guard behavior |
 | `[N/A]` | version.c | — | Version info |
@@ -186,7 +186,7 @@ These JS files don't directly correspond to a single C file:
 | animations.js | Visual animations | None (JS-only) |
 | attrib_exercise.js | Attribute exercise tracking | attrib.c |
 | browser_input.js | Browser keyboard/mouse input | None (JS-only) |
-| combat.js | Combat mechanics | uhitm.c, mhitu.c, mhitm.c |
+| combat.js | Monster-vs-hero combat | mhitu.c, mhitm.c |
 | commands.js | Command dispatch | cmd.c, apply.c, do.c, etc. |
 | config.js | Game configuration | decl.c, options.c |
 | delay.js | Delay/animation timing | None (JS-only) |
