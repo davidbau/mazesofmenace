@@ -50,6 +50,18 @@ export function typName(t) {
     return TYP_NAMES[t] || `UNKNOWN(${t})`;
 }
 
+// Navigation/direction key characters (vi-keys hjklyubn).
+// Action labels in session files are derived heuristically from the key pressed
+// and can be wrong when direction keys are used as command arguments (e.g. 'n'
+// labeled 'move-se' when thrown north in a throw command).  Use the key character
+// directly as the authoritative signal for movement steps; treat action labels as
+// backward-compat hints only.
+const MOVE_KEY_CHARS = new Set(['h', 'j', 'k', 'l', 'y', 'u', 'b', 'n']);
+function stepIsNavKey(step) {
+    return typeof step.key === 'string' && step.key.length === 1
+        && MOVE_KEY_CHARS.has(step.key);
+}
+
 // Strip ANSI escape/control sequences from a terminal line.
 export function stripAnsiSequences(text) {
     if (!text) return '';
@@ -1252,8 +1264,7 @@ export async function replaySession(seed, session, opts = {}) {
         const nextStep = stepIndex + 1 < allSteps.length ? allSteps[stepIndex + 1] : null;
         const prevStepScreen = prevStep ? getSessionScreenLines(prevStep) : [];
         const prevStepSparseMove = !!(prevStep
-            && typeof prevStep.action === 'string'
-            && prevStep.action.startsWith('move-')
+            && (prevStep.action?.startsWith('move-') || stepIsNavKey(prevStep))
             && ((prevStep.rng && prevStep.rng.length) || 0) === 0
             && String(prevStepScreen[0] || '').trim() === ''
             && typeof prevStep.key === 'string'
@@ -1374,8 +1385,7 @@ export async function replaySession(seed, session, opts = {}) {
         if (!pendingCommand
             && deferredMoreBoundaryRng.length > 0
             && deferredMoreBoundaryTarget === stepIndex
-            && typeof step.action === 'string'
-            && step.action.startsWith('key-')) {
+            && (step.action ? step.action.startsWith('key-') : !stepIsNavKey(step))) {
             const stepExpectedCount = comparableCallParts(step.rng || []).length;
             const deferredCount = comparableCallParts(
                 deferredMoreBoundaryRng.map(toCompactRng)
@@ -1399,8 +1409,7 @@ export async function replaySession(seed, session, opts = {}) {
         // with authoritative non-empty topline plus RNG. Treat it as
         // continuation/ack, not a literal "unknown space command".
         if (!pendingCommand
-            && typeof step.action === 'string'
-            && step.action.startsWith('key-')
+            && (step.action ? step.action.startsWith('key-') : !stepIsNavKey(step))
             && step.key === ' '
             && ((step.rng && step.rng.length) || 0) > 0
             && (stepMsg.trim().length > 0)
@@ -1479,8 +1488,7 @@ export async function replaySession(seed, session, opts = {}) {
             // Execute the movement (but not the monster turn) so the player
             // position stays aligned with C even though the monster-turn RNG
             // is deferred to the target step.
-            const isSparseMove = typeof step.action === 'string'
-                && step.action.startsWith('move-')
+            const isSparseMove = (step.action?.startsWith('move-') || stepIsNavKey(step))
                 && typeof step.key === 'string'
                 && step.key.length === 1;
             if (isSparseMove) {
@@ -1548,13 +1556,12 @@ export async function replaySession(seed, session, opts = {}) {
         if (!pendingCommand
             && hasRunmodeDelayCloseOnlyBoundary(step.rng || [])
             && hasRunmodeDelayOpen(prevStep?.rng || [])
-            && typeof step.action === 'string'
-            && step.action.startsWith('move-')
+            && (step.action?.startsWith('move-') || stepIsNavKey(step))
             && typeof step.key === 'string'
             && step.key.length === 1
             && nextStep
             && nextStep.key === step.key
-            && nextStep.action === step.action
+            && (!nextStep.action || nextStep.action === step.action || stepIsNavKey(nextStep))
             && comparableCallParts(nextStep.rng || []).length > 0) {
             applyStepScreen();
             pushStepResult(
@@ -1714,8 +1721,7 @@ export async function replaySession(seed, session, opts = {}) {
         if (!pendingCommand
             && ((step.rng && step.rng.length) || 0) === 0
             && stepScreen.length === 0
-            && typeof step.action === 'string'
-            && step.action.startsWith('move-')
+            && (step.action?.startsWith('move-') || stepIsNavKey(step))
             && step.key.length === 1) {
             pushStepResult(
                 [],
@@ -1731,8 +1737,7 @@ export async function replaySession(seed, session, opts = {}) {
         // space/ack step. Preserve that split so RNG stays on the captured step.
         if (!pendingCommand
             && ((step.rng && step.rng.length) || 0) === 0
-            && typeof step.action === 'string'
-            && step.action.startsWith('move-')
+            && (step.action?.startsWith('move-') || stepIsNavKey(step))
             && step.key.length === 1
             && (stepScreen[0] || '').includes('Things that are here:')
             && (allSteps[stepIndex + 1]?.key === ' ')
@@ -1808,7 +1813,8 @@ export async function replaySession(seed, session, opts = {}) {
             // C trace behavior: stair transitions consume time but do not run
             // immediate end-of-turn effects in steps where no turn-end RNG is
             // captured for that transition command.
-            const isLevelTransition = step.action === 'descend' || step.action === 'ascend';
+            const isLevelTransition = step.action === 'descend' || step.action === 'ascend'
+                || step.key === '>' || step.key === '<';
             const expectedStepRng = step.rng || [];
             const expectsTransitionTurnEnd = expectedStepRng.some((entry) =>
                 typeof entry === 'string'
@@ -2121,7 +2127,7 @@ export async function replaySession(seed, session, opts = {}) {
                 const firstRng = (step.rng || []).find((e) =>
                     typeof e === 'string' && !e.startsWith('>') && !e.startsWith('<')
                 );
-                const isTimedSpaceStep = (typeof step.action === 'string' && step.action.startsWith('key-'))
+                const isTimedSpaceStep = (step.action ? step.action.startsWith('key-') : !stepIsNavKey(step))
                     && ((step.rng || []).length > 0);
                 if ((firstRng && firstRng.includes('distfleeck(')) || isTimedSpaceStep) {
                     execCh = '.'.charCodeAt(0);
@@ -2155,8 +2161,7 @@ export async function replaySession(seed, session, opts = {}) {
                 const hasCapturedPromptFrame = ((step.rng && step.rng.length) || 0) === 0
                     && (stepScreen.length > 0 || stepScreenAnsi.length > 0)
                     && stepMsg.trim().length > 0
-                    && typeof step.action === 'string'
-                    && step.action.startsWith('key-');
+                    && (step.action ? step.action.startsWith('key-') : !stepIsNavKey(step));
                 // Command is waiting for additional input (direction/item/etc.).
                 // Defer resolution to subsequent captured step(s).
                 // Preserve the prompt/menu frame shown before we redraw map.
@@ -2417,8 +2422,7 @@ export async function replaySession(seed, session, opts = {}) {
             if (capturedPromptLike
                 && currentMsg === ''
                 && ((step.rng && step.rng.length) || 0) === 0
-                && typeof step.action === 'string'
-                && step.action.startsWith('key-')) {
+                && (step.action ? step.action.startsWith('key-') : !stepIsNavKey(step))) {
                 capturedScreenOverride = stepScreen;
                 capturedScreenAnsiOverride = stepScreenAnsi.length > 0
                     ? stepScreenAnsi
@@ -2427,7 +2431,8 @@ export async function replaySession(seed, session, opts = {}) {
                         : null);
             }
         }
-        if ((step.action === 'descend' || step.action === 'ascend') && stepScreen.length > 0) {
+        if ((step.action === 'descend' || step.action === 'ascend'
+            || step.key === '>' || step.key === '<') && stepScreen.length > 0) {
             const capturedMsg = (stepScreen[0] || '').trimEnd();
             const currentMsg = ((game.display.getScreenLines?.() || [])[0] || '').trimEnd();
             if (capturedMsg.includes('--More--') && currentMsg === '') {
