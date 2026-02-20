@@ -9,7 +9,7 @@ describe('monster throw overflow message seed206', () => {
 
 test('seed206 preserves stacked pet+throw message when throw miss line would overflow', async () => {
     const session = loadAllSessions({
-        sessionPath: 'test/comparison/sessions/seed206_monk_wizard.session.json',
+        sessionPath: 'test/comparison/sessions/seed206_monk_wizard_gameplay.session.json',
     })[0];
 
     const replayFlags = { ...DEFAULT_FLAGS };

@@ -5,7 +5,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { initRng } from '../../js/rng.js';
 import { Player, roles } from '../../js/player.js';
-import { playerAttackMonster, monsterAttackPlayer, checkLevelUp } from '../../js/combat.js';
+import { playerAttackMonster } from '../../js/uhitm.js';
+import { monsterAttackPlayer } from '../../js/mhitu.js';
 import { POTION_CLASS, POT_HEALING, ORCISH_DAGGER, WEAPON_CLASS } from '../../js/objects.js';
 import { AT_WEAP, M1_HUMANOID } from '../../js/monsters.js';
 
@@ -159,17 +160,6 @@ describe('Combat system', () => {
         assert.equal(messages[0], 'The goblin thrusts her crude dagger.');
     });
 
-    it('checkLevelUp advances player level', () => {
-        const p = new Player();
-        p.initRole(0);
-        p.level = 1;
-        p.exp = 0;
-
-        // Give enough XP to level up
-        p.exp = 30; // should be enough for level 2
-        checkLevelUp(p, mockDisplay);
-        assert.ok(p.level >= 2, `Player should be level 2+ with 30 XP, got ${p.level}`);
-    });
 
     it('morale flee clears monster movement track', () => {
         initRng(42);

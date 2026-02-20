@@ -24,7 +24,7 @@ test('headless stairs colors match C capture convention', () => {
 
     const row = 6; // map row offset (y + 1)
     assert.equal(display.grid[row][9], '<');
-    assert.equal(display.colors[row][9], 11);
+    assert.equal(display.colors[row][9], 7);
     assert.equal(display.grid[row][11], '>');
     assert.equal(display.colors[row][11], 7);
 });

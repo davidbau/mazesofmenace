@@ -6,7 +6,7 @@ import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { initRng } from '../../js/rng.js';
 import { Player, roles, races, rankOf, roleNameForGender } from '../../js/player.js';
-import { monsterAttackPlayer } from '../../js/combat.js';
+import { monsterAttackPlayer } from '../../js/mhitu.js';
 import { rhack } from '../../js/commands.js';
 import { pushInput, clearInputQueue } from '../../js/input.js';
 import { FEMALE, MALE, A_NEUTRAL, A_CHAOTIC, A_LAWFUL, RACE_HUMAN, STAIRS } from '../../js/config.js';

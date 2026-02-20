@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { monsterAttackPlayer } from '../../js/combat.js';
+import { monsterAttackPlayer } from '../../js/mhitu.js';
 import { initRng } from '../../js/rng.js';
 
 describe('monster attack missing AC', () => {

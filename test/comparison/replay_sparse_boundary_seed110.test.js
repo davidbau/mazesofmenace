@@ -22,9 +22,9 @@ function comparable(entries) {
 }
 
 test('replay defers sparse boundary RNG tail across zero-RNG frames (seed110 step 105)', async () => {
-    const raw = JSON.parse(readFileSync('test/comparison/sessions/seed110_samurai_selfplay200.session.json', 'utf8'));
+    const raw = JSON.parse(readFileSync('test/comparison/sessions/seed110_samurai_selfplay200_gameplay.session.json', 'utf8'));
     const session = normalizeSession(raw, {
-        file: 'seed110_samurai_selfplay200.session.json',
+        file: 'seed110_samurai_selfplay200_gameplay.session.json',
         dir: 'test/comparison/sessions',
     });
 

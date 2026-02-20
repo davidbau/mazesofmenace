@@ -9,7 +9,7 @@ describe('monster throw message naming', () => {
 
 test('monster throw message uses appearance name for unknown orcish dagger', async () => {
     const session = loadAllSessions({
-        sessionPath: 'test/comparison/sessions/seed113_wizard_selfplay200.session.json',
+        sessionPath: 'test/comparison/sessions/seed113_wizard_selfplay200_gameplay.session.json',
     })[0];
 
     const replayFlags = { ...DEFAULT_FLAGS };

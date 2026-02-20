@@ -9,7 +9,7 @@ describe('monster throw no spurious you kill seed110', () => {
 
 test('seed110 throw topline does not claim player killed pet', async () => {
     const session = loadAllSessions({
-        sessionPath: 'test/comparison/sessions/seed110_samurai_selfplay200.session.json',
+        sessionPath: 'test/comparison/sessions/seed110_samurai_selfplay200_gameplay.session.json',
     })[0];
 
     const replayFlags = { ...DEFAULT_FLAGS };

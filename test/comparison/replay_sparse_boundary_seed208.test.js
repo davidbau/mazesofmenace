@@ -26,9 +26,9 @@ function normalizeRow(line) {
 }
 
 test('replay keeps sparse stop_occupation boundary frame state (seed208 step 263)', async () => {
-    const raw = JSON.parse(readFileSync('test/comparison/sessions/seed208_ranger_wizard.session.json', 'utf8'));
+    const raw = JSON.parse(readFileSync('test/comparison/sessions/seed208_ranger_wizard_gameplay.session.json', 'utf8'));
     const session = normalizeSession(raw, {
-        file: 'seed208_ranger_wizard.session.json',
+        file: 'seed208_ranger_wizard_gameplay.session.json',
         dir: 'test/comparison/sessions',
     });
 

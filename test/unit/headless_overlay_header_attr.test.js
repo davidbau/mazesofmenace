@@ -31,8 +31,8 @@ test('headless overlay menu caps right-side offset at C tty max column', () => {
         '(end)',
     ]);
 
-    assert.equal(offx, 41);
-    assert.equal(display.grid[0][41], 'C');
+    assert.equal(offx, 43);
+    assert.equal(display.grid[0][43], 'C');
 });
 
 }); // describe

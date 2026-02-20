@@ -13,13 +13,13 @@ import { Player } from '../../js/player.js';
 import { GameMap } from '../../js/map.js';
 import { saveLev, saveBones, loadBones, deleteBones } from '../../js/storage.js';
 import {
-    canMakeBones,
+    can_make_bones as canMakeBones,
     resetobjs,
-    dropUponDeath,
-    giveToNearbyMon,
-    setGhostlyObjlist,
-    removeMonFromBones,
-    sanitizeName,
+    drop_upon_death as dropUponDeath,
+    give_to_nearby_mon as giveToNearbyMon,
+    set_ghostly_objlist as setGhostlyObjlist,
+    remove_mon_from_bones as removeMonFromBones,
+    sanitize_name as sanitizeName,
     savebones,
     getbones,
 } from '../../js/bones.js';
