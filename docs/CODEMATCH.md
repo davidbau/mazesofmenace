@@ -139,7 +139,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[ ]` | spell.c | — | Spell casting |
 | `[ ]` | stairs.c | — | Stairway management. JS: partially in `level_transition.js` |
 | `[~]` | steal.c | steal.js | Monster stealing. `findgold` in makemon.js; drop logic partially inline in monmove.js; all steal/mpickobj/relobj/mdrop_obj unimplemented |
-| `[ ]` | steed.c | — | Riding steeds |
+| `[~]` | steed.c | steed.js | Riding steeds. put_saddle_on_mon partially inline in u_init.js; all 15 functions are TODO stubs |
 | `[N/A]` | strutil.c | — | String utilities (strbuf, pmatch). JS: native string ops |
 | `[N/A]` | symbols.c | — | Terminal graphics mode management (ASCII/IBM/curses/UTF-8 symbol-set switching). Browser port uses static data in symbols.js; no runtime mode switching |
 | `[N/A]` | sys.c | — | System-level interface |
