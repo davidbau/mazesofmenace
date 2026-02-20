@@ -5,7 +5,8 @@
 
 import { COLNO, ROWNO, DOOR, SDOOR, POOL,
          IS_WALL, IS_DOOR, isok,
-         D_CLOSED, D_LOCKED,
+         D_CLOSED, D_LOCKED, D_TRAPPED,
+         WATER, CLOUD, LAVAWALL, MOAT, ROOMOFFSET, PM_ROGUE,
          CROSSWALL, TRWALL } from './config.js';
 import { BOULDER } from './objects.js';
 
@@ -17,6 +18,40 @@ const IN_SIGHT  = 0x2;
 let start_row, start_col, step;
 let cs_rows, cs_left, cs_right;
 let viz_clear;  // reference to FOV instance's viz_clear
+let right_ptrs_arr, left_ptrs_arr;
+let activeFov = null;
+let vision_full_recalc = 0;
+let vis_func = null;
+let varg = null;
+
+const MAX_RADIUS = 16;
+
+function getMapCloudVisibility(map, x, y) {
+    if (!map || !Array.isArray(map.gasClouds)) return false;
+    for (const cloud of map.gasClouds) {
+        if (cloud && (cloud.kind === 'selection') && Array.isArray(cloud.coords)) {
+            for (const p of cloud.coords) {
+                if (p && p.x === x && p.y === y) return true;
+            }
+            continue;
+        }
+
+        if (!cloud || typeof cloud !== 'object') continue;
+        const cx = cloud.x;
+        const cy = cloud.y;
+        const radius = Number.isFinite(cloud.radius) ? Math.trunc(cloud.radius) : 1;
+        if (!Number.isFinite(cx) || !Number.isFinite(cy) || !Number.isFinite(radius)) continue;
+        const dx = cx - x;
+        const dy = cy - y;
+        if (dx * dx + dy * dy <= radius * radius) return true;
+    }
+    return false;
+}
+
+function isLightblockerMonster(mon) {
+    if (!mon) return false;
+    return !!(mon.m_ap_type || mon.appear_as_type || mon.mappearance);
+}
 
 function sign(z) { return z < 0 ? -1 : (z ? 1 : 0); }
 
@@ -37,18 +72,78 @@ const seenv_matrix = [
 // does_block — C ref: vision.c:153 — what blocks vision
 // ========================================================================
 function does_block(map, x, y) {
+    if (!map) return true;
     const loc = map.at(x, y);
     if (!loc) return true;
     // C: IS_OBSTRUCTED(typ) = typ < POOL (types 0-15: stone, walls, tree, sdoor, scorr)
     if (loc.typ < POOL) return true;
-    // Closed/locked doors block
-    if (IS_DOOR(loc.typ) && (loc.flags & (D_CLOSED | D_LOCKED))) return true;
-    // Boulders block light
+
+    // Closed/locked/trapped doors block light.
+    if (IS_DOOR(loc.typ) && (loc.flags & (D_CLOSED | D_LOCKED | D_TRAPPED))) {
+        return true;
+    }
+
+    // Clouds and special obstructions block light.
+    if (loc.typ === CLOUD || loc.typ === WATER || loc.typ === LAVAWALL
+        || (map.flags?.is_waterlevel && loc.typ === MOAT)) {
+        return true;
+    }
+
+    // Boulders block light.
     const objs = map.objectsAt(x, y);
     for (const obj of objs) {
         if (obj.otyp === BOULDER) return true;
     }
+
+    const mon = map.monsterAt(x, y);
+    if (mon && !mon.minvis && isLightblockerMonster(mon)) return true;
+
+    if (getMapCloudVisibility(map, x, y)) return true;
     return false;
+}
+
+// C ref: vision.c:105 — get_viz_clear()
+export function get_viz_clear(x, y) {
+    if (!isok(x, y)) return false;
+    if (!viz_clear || !viz_clear[y]) return false;
+    return !viz_clear[y][x];
+}
+
+// C ref: vision.c:121, 121-? — vision_init()
+export function vision_init() {
+    vision_full_recalc = 0;
+    // C also sets gv pointers to a pair of could-see arrays.
+    // JS uses the active FOV object for that indirection.
+}
+
+// C ref: vision.c:205 — vision_reset()
+// Rebuild all visibility-clear and pointer tables from the current map.
+export function vision_reset(map) {
+    if (activeFov) {
+        activeFov.visionReset(map);
+    } else if (map) {
+        // Ensure a best-effort temporary state for callers.
+        const fallback = new FOV();
+        fallback.visionReset(map);
+    }
+}
+
+// C ref: vision.c:262 — get_unused_cs()
+function get_unused_cs() {
+    const rows = [];
+    const rmin = new Int16Array(ROWNO);
+    const rmax = new Int16Array(ROWNO);
+    for (let y = 0; y < ROWNO; y++) {
+        rows.push(new Uint8Array(COLNO));
+        rmin[y] = COLNO - 1;
+        rmax[y] = 1;
+    }
+    return { rows, rmin, rmax };
+}
+
+// C ref: vision.c:237-251 — view_init()
+function view_init() {
+    // No-op in this port. Kept for API and future hooks.
 }
 
 // ========================================================================
@@ -187,46 +282,69 @@ export function clear_path(col1, row1, col2, row2) {
 // right_side() -- recursive scanner for right half of vision
 // C ref: vision.c:1654-1840
 // ========================================================================
-function right_side(row, left, right_mark) {
+function right_side(row, left, right_mark, limits) {
     const nrow = row + step;
-    const deeper = nrow >= 0 && nrow < ROWNO;
-    const rowp = cs_rows[row];
-    const row_min_idx = row;
+    const next_limits = limits == null ? null : limits + 1;
+    const deeper = nrow >= 0 && nrow < ROWNO && (!next_limits || CIRCLE_DATA[limits] >= CIRCLE_DATA[next_limits]);
+    let lim_max;
+    let rowp = null;
+    let row_min = null;
+    let row_max = null;
+
+    if (!vis_func) {
+        rowp = cs_rows[row];
+        row_min = cs_left;
+        row_max = cs_right;
+    }
+
+    if (limits != null) {
+        lim_max = start_col + CIRCLE_DATA[limits];
+        if (lim_max > COLNO - 1)
+            lim_max = COLNO - 1;
+        if (right_mark > lim_max)
+            right_mark = lim_max;
+    } else {
+        lim_max = COLNO - 1;
+    }
 
     while (left <= right_mark) {
-        let right_edge = right_ptrs_arr[row][left];
-        if (right_edge > COLNO - 1) right_edge = COLNO - 1;
+        const right_edge = Math.min(right_ptrs_arr[row][left], lim_max);
+        let right;
 
         if (!viz_clear[row][left]) {
-            // Blocked segment -- mark walls as COULD_SEE
-            // Corner kludge: extend beyond right_mark if previous row was clear
-            if (right_edge > right_mark) {
-                right_edge = viz_clear[row - step]
+            let reach = right_edge;
+            if (reach > right_mark) {
+                reach = viz_clear[row - step]
                     ? (viz_clear[row - step][right_mark] ? right_mark + 1 : right_mark)
                     : right_mark;
             }
-            for (let i = left; i <= right_edge; i++)
-                rowp[i] = COULD_SEE;
-            if (cs_left[row] > left) cs_left[row] = left;
-            if (cs_right[row] < right_edge) cs_right[row] = right_edge;
-            left = right_edge + 1;
+            if (vis_func) {
+                for (let i = left; i <= reach; i++) vis_func(i, row, varg);
+            } else {
+                for (let i = left; i <= reach; i++) rowp[i] = COULD_SEE;
+                if (row_min[row] > left) row_min[row] = left;
+                if (row_max[row] < reach) row_max[row] = reach;
+            }
+            left = reach + 1;
             continue;
         }
 
-        // Clear segment -- find visible range
         if (left !== start_col) {
-            // Find left edge of visible area
             for (; left <= right_edge; left++) {
-                let result;
-                if (step < 0) result = q1_path(start_row, start_col, row, left);
-                else result = q4_path(start_row, start_col, row, left);
-                if (result) break;
+                const clear = step < 0
+                    ? q1_path(start_row, start_col, row, left)
+                    : q4_path(start_row, start_col, row, left);
+                if (clear) break;
             }
 
-            if (left > COLNO - 1) return;
-            if (left === COLNO - 1) {
-                rowp[COLNO - 1] = COULD_SEE;
-                if (cs_right[row] < COLNO - 1) cs_right[row] = COLNO - 1;
+            if (left > lim_max)
+                return;
+            if (left === lim_max) {
+                if (vis_func) vis_func(lim_max, row, varg);
+                else {
+                    rowp[lim_max] = COULD_SEE;
+                    if (row_max[row] < lim_max) row_max[row] = lim_max;
+                }
                 return;
             }
             if (left >= right_edge) {
@@ -235,14 +353,12 @@ function right_side(row, left, right_mark) {
             }
         }
 
-        // Find right edge of visible area
-        let right;
         if (right_mark < right_edge) {
             for (right = right_mark; right <= right_edge; right++) {
-                let result;
-                if (step < 0) result = q1_path(start_row, start_col, row, right);
-                else result = q4_path(start_row, start_col, row, right);
-                if (!result) break;
+                const clear = step < 0
+                    ? q1_path(start_row, start_col, row, right)
+                    : q4_path(start_row, start_col, row, right);
+                if (!clear) break;
             }
             --right;
         } else {
@@ -250,70 +366,91 @@ function right_side(row, left, right_mark) {
         }
 
         if (left <= right) {
-            // Adjacent vertical wall special case
             if (left === right && left === start_col && start_col < (COLNO - 1)
-                && !viz_clear[row][start_col + 1])
+                && !viz_clear[row][start_col + 1]) {
                 right = start_col + 1;
+            }
 
-            if (right > COLNO - 1) right = COLNO - 1;
-            // Mark visible range
-            for (let i = left; i <= right; i++)
-                rowp[i] = COULD_SEE;
-            if (cs_left[row] > left) cs_left[row] = left;
-            if (cs_right[row] < right) cs_right[row] = right;
+            if (right > lim_max)
+                right = lim_max;
 
-            // Recurse
-            if (deeper) right_side(nrow, left, right);
+            if (vis_func) {
+                for (let i = left; i <= right; i++) vis_func(i, row, varg);
+            } else {
+                for (let i = left; i <= right; i++) rowp[i] = COULD_SEE;
+                if (row_min[row] > left) row_min[row] = left;
+                if (row_max[row] < right) row_max[row] = right;
+            }
+
+            if (deeper)
+                right_side(nrow, left, right, next_limits);
             left = right + 1;
         }
     }
 }
 
-// Need a module-level reference for right_ptrs and left_ptrs
-let right_ptrs_arr, left_ptrs_arr;
-
 // ========================================================================
 // left_side() -- recursive scanner for left half of vision
 // C ref: vision.c:1846-1974
 // ========================================================================
-function left_side(row, left_mark, right) {
+function left_side(row, left_mark, right, limits) {
     const nrow = row + step;
-    const deeper = nrow >= 0 && nrow < ROWNO;
-    const rowp = cs_rows[row];
+    const next_limits = limits == null ? null : limits + 1;
+    const deeper = nrow >= 0 && nrow < ROWNO && (!next_limits || CIRCLE_DATA[limits] >= CIRCLE_DATA[next_limits]);
     let lim_min = 0;
+    let rowp = null;
+    let row_min = null;
+    let row_max = null;
+
+    if (!vis_func) {
+        rowp = cs_rows[row];
+        row_min = cs_left;
+        row_max = cs_right;
+    }
+
+    if (limits != null) {
+        lim_min = start_col - CIRCLE_DATA[limits];
+        if (lim_min < 0) lim_min = 0;
+        if (left_mark < lim_min) left_mark = lim_min;
+    }
 
     while (right >= left_mark) {
         let left_edge = left_ptrs_arr[row][right];
         if (left_edge < lim_min) left_edge = lim_min;
 
         if (!viz_clear[row][right]) {
-            // Blocked segment
             if (left_edge < left_mark) {
                 left_edge = viz_clear[row - step]
                     ? (viz_clear[row - step][left_mark] ? left_mark - 1 : left_mark)
                     : left_mark;
             }
-            for (let i = left_edge; i <= right; i++)
-                rowp[i] = COULD_SEE;
-            if (cs_left[row] > left_edge) cs_left[row] = left_edge;
-            if (cs_right[row] < right) cs_right[row] = right;
+
+            if (vis_func) {
+                for (let i = left_edge; i <= right; i++) vis_func(i, row, varg);
+            } else {
+                for (let i = left_edge; i <= right; i++) rowp[i] = COULD_SEE;
+                if (row_min[row] > left_edge) row_min[row] = left_edge;
+                if (row_max[row] < right) row_max[row] = right;
+            }
             right = left_edge - 1;
             continue;
         }
 
-        // Clear segment
         if (right !== start_col) {
             for (; right >= left_edge; right--) {
-                let result;
-                if (step < 0) result = q2_path(start_row, start_col, row, right);
-                else result = q3_path(start_row, start_col, row, right);
-                if (result) break;
+                const clear = step < 0
+                    ? q2_path(start_row, start_col, row, right)
+                    : q3_path(start_row, start_col, row, right);
+                if (clear) break;
             }
 
             if (right < lim_min) return;
             if (right === lim_min) {
-                rowp[lim_min] = COULD_SEE;
-                if (cs_left[row] > lim_min) cs_left[row] = lim_min;
+                if (vis_func) vis_func(lim_min, row, varg);
+                else {
+                    rowp[lim_min] = COULD_SEE;
+                    if (row_min[row] > lim_min) row_min[row] = lim_min;
+                }
                 return;
             }
             if (right <= left_edge) {
@@ -322,14 +459,13 @@ function left_side(row, left_mark, right) {
             }
         }
 
-        // Find left edge
         let left;
         if (left_mark > left_edge) {
             for (left = left_mark; left >= left_edge; --left) {
-                let result;
-                if (step < 0) result = q2_path(start_row, start_col, row, left);
-                else result = q3_path(start_row, start_col, row, left);
-                if (!result) break;
+                const clear = step < 0
+                    ? q2_path(start_row, start_col, row, left)
+                    : q3_path(start_row, start_col, row, left);
+                if (!clear) break;
             }
             left++;
         } else {
@@ -337,18 +473,23 @@ function left_side(row, left_mark, right) {
         }
 
         if (left <= right) {
-            // Adjacent vertical wall special case
             if (left === right && right === start_col && start_col > 0
-                && !viz_clear[row][start_col - 1])
+                && !viz_clear[row][start_col - 1]) {
                 left = start_col - 1;
+            }
 
             if (left < lim_min) left = lim_min;
-            for (let i = left; i <= right; i++)
-                rowp[i] = COULD_SEE;
-            if (cs_left[row] > left) cs_left[row] = left;
-            if (cs_right[row] < right) cs_right[row] = right;
 
-            if (deeper) left_side(nrow, left, right);
+            if (vis_func) {
+                for (let i = left; i <= right; i++) vis_func(i, row, varg);
+            } else {
+                for (let i = left; i <= right; i++) rowp[i] = COULD_SEE;
+                if (row_min[row] > left) row_min[row] = left;
+                if (row_max[row] < right) row_max[row] = right;
+            }
+
+            if (deeper)
+                left_side(nrow, left, right, next_limits);
             right = left - 1;
         }
     }
@@ -358,12 +499,15 @@ function left_side(row, left_mark, right) {
 // view_from() -- Algorithm C entry point
 // C ref: vision.c:1991-2080
 // ========================================================================
-function view_from(srow, scol, loc_cs_rows, left_most, right_most) {
+function view_from(srow, scol, loc_cs_rows, left_most, right_most, range = 0, func, arg) {
     start_col = scol;
     start_row = srow;
     cs_rows = loc_cs_rows;
     cs_left = left_most;
     cs_right = right_most;
+    vis_func = func;
+    varg = arg;
+    let limits = null;
 
     // Determine starting row extent
     let left, right;
@@ -378,26 +522,222 @@ function view_from(srow, scol, loc_cs_rows, left_most, right_most) {
             : (viz_clear[srow][scol + 1] ? right_ptrs_arr[srow][scol + 1] : scol + 1);
     }
 
-    // Mark starting row as COULD_SEE
-    const rowp = cs_rows[srow];
-    for (let i = left; i <= right; i++)
-        rowp[i] = COULD_SEE;
-    cs_left[srow] = left;
-    cs_right[srow] = right;
+    if (range) {
+        if (range > MAX_RADIUS || range < 1)
+            throw new Error(`view_from called with range ${range}`);
+        limits = circle_ptr(range) + 1;
+        if (left < scol - range)
+            left = scol - range;
+        if (right > scol + range)
+            right = scol + range;
+    }
+
+    if (vis_func) {
+        for (let i = left; i <= right; i++)
+            vis_func(i, srow, arg);
+    } else {
+        const rowp = cs_rows[srow];
+        for (let i = left; i <= right; i++)
+            rowp[i] = COULD_SEE;
+        cs_left[srow] = left;
+        cs_right[srow] = right;
+    }
 
     // Scan downward
     let nrow;
     if ((nrow = srow + 1) < ROWNO) {
         step = 1;
-        if (scol < COLNO - 1) right_side(nrow, scol, right);
-        if (scol) left_side(nrow, left, scol);
+        if (scol < COLNO - 1) right_side(nrow, scol, right, limits);
+        if (scol) left_side(nrow, left, scol, limits);
     }
 
     // Scan upward
     if ((nrow = srow - 1) >= 0) {
         step = -1;
-        if (scol < COLNO - 1) right_side(nrow, scol, right);
-        if (scol) left_side(nrow, left, scol);
+        if (scol < COLNO - 1) right_side(nrow, scol, right, limits);
+        if (scol) left_side(nrow, left, scol, limits);
+    }
+}
+
+// ========================================================================
+// fill_point() / dig_point() — maintain clear/block pointers
+// C ref: vision.c:956-1040
+// ========================================================================
+function fill_point(row, col) {
+    let i;
+
+    if (!viz_clear[row][col]) return;
+    viz_clear[row][col] = 0;
+
+    if (col === 0) {
+        if (viz_clear[row][1]) {
+            right_ptrs_arr[row][0] = 0;
+        } else {
+            right_ptrs_arr[row][0] = right_ptrs_arr[row][1];
+            for (i = 1; i <= right_ptrs_arr[row][1]; i++)
+                left_ptrs_arr[row][i] = 0;
+        }
+    } else if (col === (COLNO - 1)) {
+        if (viz_clear[row][COLNO - 2]) {
+            right_ptrs_arr[row][COLNO - 1] = COLNO - 1;
+        } else {
+            right_ptrs_arr[row][COLNO - 1] = right_ptrs_arr[row][COLNO - 2];
+            for (i = left_ptrs_arr[row][COLNO - 2]; i < COLNO - 1; i++)
+                right_ptrs_arr[row][i] = COLNO - 1;
+        }
+
+    } else if (viz_clear[row][col - 1] && viz_clear[row][col + 1]) {
+        for (i = left_ptrs_arr[row][col - 1] + 1; i <= col; i++)
+            right_ptrs_arr[row][i] = col;
+        if (!left_ptrs_arr[row][col - 1])
+            right_ptrs_arr[row][0] = col;
+
+        for (i = col; i < right_ptrs_arr[row][col + 1]; i++)
+            left_ptrs_arr[row][i] = col;
+        if (right_ptrs_arr[row][col + 1] === (COLNO - 1))
+            left_ptrs_arr[row][COLNO - 1] = col;
+
+    } else if (viz_clear[row][col - 1]) {
+        for (i = col + 1; i <= right_ptrs_arr[row][col + 1]; i++)
+            left_ptrs_arr[row][i] = col;
+        for (i = left_ptrs_arr[row][col - 1] + 1; i < col; i++)
+            right_ptrs_arr[row][i] = col;
+        left_ptrs_arr[row][col] = left_ptrs_arr[row][col - 1];
+
+    } else if (viz_clear[row][col + 1]) {
+        for (i = left_ptrs_arr[row][col - 1]; i <= col; i++)
+            right_ptrs_arr[row][i] = col;
+        for (i = col + 1; i < right_ptrs_arr[row][col + 1]; i++)
+            left_ptrs_arr[row][i] = col;
+        if (right_ptrs_arr[row][col + 1] === (COLNO - 1))
+            left_ptrs_arr[row][col] = col;
+        left_ptrs_arr[row][col] = left_ptrs_arr[row][col - 1];
+
+    } else {
+        for (i = left_ptrs_arr[row][col - 1]; i <= col; i++)
+            right_ptrs_arr[row][i] = right_ptrs_arr[row][col + 1];
+        for (i = col; i <= right_ptrs_arr[row][col + 1]; i++)
+            left_ptrs_arr[row][i] = left_ptrs_arr[row][col - 1];
+    }
+}
+
+function dig_point(row, col) {
+    let i;
+
+    if (viz_clear[row][col]) return;
+    viz_clear[row][col] = 1;
+
+    if (col === 0) {
+        if (viz_clear[row][1]) {
+            right_ptrs_arr[row][0] = right_ptrs_arr[row][1];
+        } else {
+            left_ptrs_arr[row][0] = 1;
+            for (i = 1; i <= right_ptrs_arr[row][1]; i++)
+                left_ptrs_arr[row][i] = 1;
+        }
+    } else if (col === (COLNO - 1)) {
+        if (viz_clear[row][COLNO - 2]) {
+            right_ptrs_arr[row][COLNO - 1] = right_ptrs_arr[row][COLNO - 2];
+        } else {
+            right_ptrs_arr[row][COLNO - 1] = COLNO - 2;
+            for (i = left_ptrs_arr[row][COLNO - 2]; i < COLNO - 1; i++)
+                right_ptrs_arr[row][i] = COLNO - 2;
+        }
+    } else if (viz_clear[row][col - 1] && viz_clear[row][col + 1]) {
+        for (i = left_ptrs_arr[row][col - 1] + 1; i <= col; i++) {
+            if (!viz_clear[row][i]) continue;
+            right_ptrs_arr[row][i] = col;
+        }
+        for (i = col + 1; i < right_ptrs_arr[row][col + 1]; i++) {
+            if (!viz_clear[row][i]) continue;
+            left_ptrs_arr[row][i] = col;
+        }
+    } else if (viz_clear[row][col - 1]) {
+        for (i = col + 1; i <= right_ptrs_arr[row][col + 1]; i++)
+            left_ptrs_arr[row][i] = col + 1;
+        for (i = left_ptrs_arr[row][col - 1] + 1; i < col; i++)
+            right_ptrs_arr[row][i] = col;
+        left_ptrs_arr[row][col] = left_ptrs_arr[row][col - 1];
+    } else if (viz_clear[row][col + 1]) {
+        for (i = left_ptrs_arr[row][col - 1]; i <= col; i++)
+            right_ptrs_arr[row][i] = col - 1;
+        for (i = col + 1; i < right_ptrs_arr[row][col + 1]; i++)
+            left_ptrs_arr[row][i] = col - 1;
+        if (right_ptrs_arr[row][col + 1] === (COLNO - 1))
+            left_ptrs_arr[row][col] = col - 1;
+        left_ptrs_arr[row][col] = left_ptrs_arr[row][col - 1];
+    } else {
+        for (i = left_ptrs_arr[row][col - 1]; i < col; i++)
+            right_ptrs_arr[row][i] = col - 1;
+        for (i = col + 1; i <= right_ptrs_arr[row][col + 1]; i++)
+            left_ptrs_arr[row][i] = col + 1;
+        left_ptrs_arr[row][col] = col - 1;
+        right_ptrs_arr[row][col] = col + 1;
+    }
+}
+
+export function block_point(x, y) {
+    if (!isok(x, y)) return;
+    fill_point(y, x);
+    if (activeFov?.couldSee(x, y)) vision_full_recalc = 1;
+}
+
+export function unblock_point(x, y) {
+    if (!isok(x, y)) return;
+    dig_point(y, x);
+    if (activeFov?.couldSee(x, y)) vision_full_recalc = 1;
+}
+
+export function recalc_block_point(x, y) {
+    if (!activeFov || !activeFov._map || !isok(x, y)) return;
+    if (does_block(activeFov._map, x, y)) block_point(x, y);
+    else unblock_point(x, y);
+}
+
+// ========================================================================
+// rogue_vision() — old rogue style visibility
+// C ref: vision.c:302-358
+// ========================================================================
+function rogue_vision(next, rmin, rmax) {
+    if (!activeFov || !activeFov._map) return;
+    const gameMap = activeFov._map;
+    const px = activeFov._playerX;
+    const py = activeFov._playerY;
+    if (!isok(px, py)) return;
+
+    const loc = gameMap.at(px, py);
+    if (!loc) return;
+    const rnum = Number(loc.roomno) - ROOMOFFSET;
+
+    if (rnum >= 0 && rnum < gameMap.rooms.length) {
+        const room = gameMap.rooms[rnum];
+        for (let zy = room.ly - 1; zy <= room.hy + 1; zy++) {
+            if (!isok(0, zy)) continue;
+            const start = Math.max(0, room.lx - 1);
+            const end = Math.min(COLNO - 1, room.hx + 1);
+            rmin[zy] = start;
+            rmax[zy] = end;
+            for (let zx = start; zx <= end; zx++) {
+                next[zy][zx] = room.rlit ? (COULD_SEE | IN_SIGHT) : COULD_SEE;
+            }
+        }
+    }
+
+    const in_door = loc.typ === DOOR;
+    const ylo = Math.max(0, py - 1);
+    const yhi = Math.min(ROWNO - 1, py + 1);
+    const xlo = Math.max(1, px - 1);
+    const xhi = Math.min(COLNO - 1, px + 1);
+
+    for (let zy = ylo; zy <= yhi; zy++) {
+        if (rmin[zy] > xlo) rmin[zy] = xlo;
+        if (rmax[zy] < xhi) rmax[zy] = xhi;
+        for (let zx = xlo; zx <= xhi; zx++) {
+            next[zy][zx] = COULD_SEE | IN_SIGHT;
+            if (in_door && (zx === px || zy === py)) {
+                // noop redraw hook for compatibility
+            }
+        }
     }
 }
 
@@ -473,11 +813,15 @@ export class FOV {
     compute(gameMap, px, py) {
         // Build lookup tables (once per level, or rebuild each time for simplicity)
         this.visionReset(gameMap);
+        activeFov = this;
+        this._playerX = px;
+        this._playerY = py;
 
         // Set module-level references for the recursive functions
         viz_clear = this.viz_clear;
         right_ptrs_arr = this.right_ptrs;
         left_ptrs_arr = this.left_ptrs;
+        vision_full_recalc = 0;
 
         // Allocate cs_array[ROWNO][COLNO] for COULD_SEE/IN_SIGHT bits
         const cs = [];
@@ -488,7 +832,14 @@ export class FOV {
         }
 
         // Run Algorithm C to compute COULD_SEE
-        view_from(py, px, cs, csLeft, csRight);
+        const isRogueLevel = !!(gameMap?.flags?.is_rogue
+            || gameMap?.flags?.roguelike
+            || gameMap?.flags?.is_rogue_lev);
+        if (isRogueLevel) {
+            rogue_vision(cs, csLeft, csRight);
+        } else {
+            view_from(py, px, cs, csLeft, csRight);
+        }
 
         // Apply night vision (range 1): adjacent squares with COULD_SEE get IN_SIGHT.
         // C ref: vision.c:670-699 (u.nv_range = 1 for standard hero)
@@ -652,6 +1003,13 @@ function clear_path_map(map, col1, row1, col2, row2) {
     return true;
 }
 
+function circle_ptr(range) {
+    if (!Number.isInteger(range) || range < 1 || range > MAX_RADIUS) {
+        throw new Error(`do_clear_area: illegal range ${range}`);
+    }
+    return CIRCLE_START[range];
+}
+
 // Monster can see target position
 // C ref: vision.h #define m_cansee(mtmp, x2, y2) clear_path(mtmp->mx, mtmp->my, x2, y2)
 export function m_cansee(mon, map, x2, y2) {
@@ -692,37 +1050,51 @@ const CIRCLE_START = [0, 1, 3, 6, 10, 15, 21, 28, 36, 45, 55, 66, 78, 91, 105, 1
 // Compute LOS from (scol, srow) and call func(x, y, arg) for each visible
 // position within range. Used by dog_goal's wantdoor search.
 export function do_clear_area(fov, map, scol, srow, range, func, arg) {
-    void fov; // unused: LOS is computed directly from map like C's non-hero path
-    if (!map || typeof func !== 'function') return;
-    const r = Math.max(1, Math.min(15, range | 0));
-    const base = CIRCLE_START[r];
-    const ymin = Math.max(0, srow - r);
-    const ymax = Math.min(ROWNO - 1, srow + r);
+    const fovObj = fov || activeFov;
+    if (!map || !isok(scol, srow) || typeof func !== 'function') return;
+    const r = range | 0;
+    if (r < 1 || r > MAX_RADIUS)
+        throw new Error(`do_clear_area: illegal range ${r}`);
 
-    const scanRow = (y) => {
-        const offset = CIRCLE_DATA[base + Math.abs(srow - y)] || 0;
-        const xmin = Math.max(1, scol - offset);
-        const xmax = Math.min(COLNO - 1, scol + offset);
-        if (scol >= xmin && scol <= xmax && clear_path_map(map, scol, srow, scol, y)) {
-            func(scol, y, arg);
-        }
-        for (let x = Math.max(scol + 1, xmin); x <= xmax; x++) {
-            if (clear_path_map(map, scol, srow, x, y)) {
-                func(x, y, arg);
-            }
-        }
-        for (let x = Math.min(scol - 1, xmax); x >= xmin; x--) {
-            if (clear_path_map(map, scol, srow, x, y)) {
-                func(x, y, arg);
-            }
-        }
-    };
-
-    scanRow(srow);
-    for (let y = srow + 1; y <= ymax; y++) {
-        scanRow(y);
+    if (fovObj && fovObj.viz_clear) {
+        viz_clear = fovObj.viz_clear;
+        right_ptrs_arr = fovObj.right_ptrs;
+        left_ptrs_arr = fovObj.left_ptrs;
     }
-    for (let y = srow - 1; y >= ymin; y--) {
-        scanRow(y);
+
+    const isHeroCenter = fovObj
+        && isok(fovObj._playerX, fovObj._playerY)
+        && fovObj._playerX === scol
+        && fovObj._playerY === srow;
+
+    if (!isHeroCenter) {
+        view_from(srow, scol, null, null, null, r, func, arg);
+        return;
+    }
+
+    const px = fovObj._playerX;
+    const py = fovObj._playerY;
+    if (vision_full_recalc && fovObj?.compute) {
+        fovObj.compute(map || fovObj._map, px, py);
+    }
+    const ylo = Math.max(0, py - r);
+    const ymax = Math.min(ROWNO - 1, py + r);
+    const base = circle_ptr(r);
+
+    const canSee = (x, y) => (fovObj?.couldSee?.(x, y)
+        || clear_path_map(map, px, py, x, y));
+
+    // Override only in legacy detection contexts where detection bypasses terrain.
+    // JS currently has no direct hook for function identity like C's detecting().
+    const override_vision = false;
+
+    for (let y = ylo; y <= ymax; y++) {
+        const offset = CIRCLE_DATA[base + Math.abs(py - y)] || 0;
+        const xmin = Math.max(1, px - offset);
+        const xmax = Math.min(COLNO - 1, px + offset);
+        for (let x = xmin; x <= xmax; x++) {
+            if (override_vision || canSee(x, y))
+                func(x, y, arg);
+        }
     }
 }
