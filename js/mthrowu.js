@@ -14,7 +14,7 @@
 // - No buzzmu (spell ray) implementation
 
 import { ACCESSIBLE, IS_OBSTRUCTED, IS_DOOR, IS_WALL,
-         D_CLOSED, D_LOCKED, IRONBARS, isok, A_STR } from './config.js';
+         D_CLOSED, D_LOCKED, IRONBARS, SINK, isok, A_STR } from './config.js';
 import { rn2, rnd } from './rng.js';
 import { exercise } from './attrib_exercise.js';
 import { monsterAttackPlayer } from './mhitu.js';
@@ -146,6 +146,28 @@ export function m_throw(mon, startX, startY, dx, dy, range, weapon, map, player,
 
     const od = objectData[weapon.otyp];
 
+    // C ref: mthrowu.c:531-548 MT_FLIGHTCHECK — check if a cell blocks missile flight
+    function flightBlocked(bx, by, pre, forcehit) {
+        const nx = bx + dx, ny = by + dy;
+        if (!isok(nx, ny)) return true;
+        const nloc = map.at(nx, ny);
+        if (!nloc) return true;
+        if (IS_OBSTRUCTED(nloc.typ)) return true;
+        if (IS_DOOR(nloc.typ) && (nloc.flags & (D_CLOSED | D_LOCKED))) return true;
+        if (nloc.typ === IRONBARS && forcehit) return true;
+        // Current-cell sink check (only in non-pre check)
+        if (!pre) {
+            const cloc = map.at(bx, by);
+            if (cloc && cloc.typ === SINK) return true;
+        }
+        return false;
+    }
+
+    // C ref: mthrowu.c:618 — pre-flight check: if first cell is blocked, drop immediately
+    if (flightBlocked(startX, startY, true, 0)) {
+        return { drop: true, x: startX, y: startY };
+    }
+
     // C ref: mthrowu.c:652 — main flight loop
     while (range-- > 0) {
         x += dx;
@@ -244,15 +266,9 @@ export function m_throw(mon, startX, startY, dx, dy, range, weapon, map, player,
             }
         }
 
-        // Check for wall/blocked terrain
-        if (IS_WALL(loc.typ) || IS_OBSTRUCTED(loc.typ)
-            || (IS_DOOR(loc.typ) && (loc.flags & (D_CLOSED | D_LOCKED)))) {
-            break;
-        }
-
+        // C ref: mthrowu.c:772-773 — forcehit + MT_FLIGHTCHECK(FALSE, forcehit)
         const forcehit = !rn2(5);
-        if (!range) break;
-        if (loc.typ === IRONBARS && forcehit) break;
+        if (!range || flightBlocked(x, y, false, forcehit)) break;
     }
     return { drop: true, x: dropX, y: dropY };
 }
