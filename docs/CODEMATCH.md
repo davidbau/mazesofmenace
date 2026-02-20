@@ -126,7 +126,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[a]` | rip.c | display.js | RIP screen. genl_outrip as Display.renderTombstone (method); center() inlined |
 | `[x]` | rnd.c | rng.js | Random number generation |
 | `[ ]` | role.c | — | Role/race/gender selection. JS: `player.js` |
-| `[ ]` | rumors.c | — | Rumor system. JS: `rumor_data.js` (data only) |
+| `[~]` | rumors.c | rumors.js | Rumor/oracle/CapitalMon system. JS: `rumor_data.js` (data); unpadline/init_rumors/get_rnd_line in `hacklib.js`; getrumor inlined in `dungeon.js`; outoracle/doconsult/CapitalMon TODO |
 | `[ ]` | save.c | — | Game save. JS: `storage.js` |
 | `[a]` | selvar.c | — | Selection geometry. JS: `selection` object in `sp_lev.js`. All major geometry functions aligned including ellipse/gradient/is_irregular/size_description |
 | `[N/A]` | sfbase.c | — | Save file base I/O routines |
