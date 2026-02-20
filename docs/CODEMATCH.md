@@ -56,7 +56,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[N/A]` | dlb.c | — | Data librarian (file bundling). Not needed in JS |
 | `[ ]` | do.c | — | Miscellaneous actions (drop, down, up) |
 | `[ ]` | do_name.c | — | Naming things (docallcmd, do_mgivenname) |
-| `[ ]` | do_wear.c | — | Wearing/removing armor and accessories |
+| `[a]` | do_wear.c | do_wear.js | Wearing/removing armor and accessories. handleWear/handlePutOn/handleTakeOff (dowear/doputon/dotakeoff); ~68 functions TODO |
 | `[a]` | dog.c | dog.js | Pet behavior. dogfood in dog.js; makedog/mon_arrive in u_init.js; losedogs/keepdogs/migrate TODO |
 | `[a]` | dogmove.c | dogmove.js | Pet movement AI. All functions except `quickmimic` |
 | `[ ]` | dokick.c | — | Kicking mechanics |

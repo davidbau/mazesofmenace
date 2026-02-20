@@ -25,6 +25,7 @@ import { playerAttackMonster } from './uhitm.js';
 import { handleEat } from './eat.js';
 import { handleQuaff } from './potion.js';
 import { handleRead } from './read.js';
+import { handleWear, handlePutOn, handleTakeOff } from './do_wear.js';
 import { makemon, setMakemonPlayerContext } from './makemon.js';
 import { mons } from './monsters.js';
 import { monDisplayName, hasGivenName, monNam } from './mondata.js';
@@ -2451,82 +2452,6 @@ async function handleWield(player, display) {
         // C ref: wield.c:dowield returns ECMD_TIME (wielding takes a turn)
         return { moved: false, tookTime: true };
     }
-}
-
-// Handle wearing armor
-// C ref: do_wear.c dowear()
-async function handleWear(player, display) {
-    const wornArmor = new Set([
-        player.armor,
-        player.shield,
-        player.helmet,
-        player.gloves,
-        player.boots,
-        player.cloak,
-    ].filter(Boolean));
-    const armor = player.inventory.filter((o) => o.oclass === ARMOR_CLASS && !wornArmor.has(o));
-    if (armor.length === 0) {
-        if (wornArmor.size > 0) {
-            display.putstr_message("You don't have anything else to wear.");
-        } else {
-            display.putstr_message('You have no armor to wear.');
-        }
-        return { moved: false, tookTime: false };
-    }
-
-    display.putstr_message(`Wear what? [${armor.map(a => a.invlet).join('')}]`);
-    const ch = await nhgetch();
-    const c = String.fromCharCode(ch);
-
-    const item = armor.find(a => a.invlet === c);
-    if (item) {
-        player.armor = item;
-        player.ac = item.ac + (item.enchantment || 0);
-        display.putstr_message(`You are now wearing ${item.name}.`);
-        return { moved: false, tookTime: true };
-    }
-
-    display.putstr_message("Never mind.");
-    return { moved: false, tookTime: false };
-}
-
-// Handle putting on rings/accessories
-// C ref: do_wear.c doputon()
-async function handlePutOn(player, display) {
-    const rings = (player.inventory || []).filter((o) => o.oclass === RING_CLASS
-        && o !== player.leftRing
-        && o !== player.rightRing);
-    if (rings.length === 0) {
-        display.putstr_message("You don't have anything else to put on.");
-        return { moved: false, tookTime: false };
-    }
-
-    display.putstr_message(`What do you want to put on? [${rings.map(r => r.invlet).join('')}]`);
-    const ch = await nhgetch();
-    const c = String.fromCharCode(ch);
-    const item = rings.find(r => r.invlet === c);
-    if (!item) {
-        display.putstr_message('Never mind.');
-        return { moved: false, tookTime: false };
-    }
-    if (!player.leftRing) player.leftRing = item;
-    else player.rightRing = item;
-    display.putstr_message(`You are now wearing ${item.name}.`);
-    return { moved: false, tookTime: true };
-}
-
-// Handle taking off armor
-// C ref: do_wear.c dotakeoff()
-async function handleTakeOff(player, display) {
-    if (!player.armor) {
-        display.putstr_message("You're not wearing any armor.");
-        return { moved: false, tookTime: false };
-    }
-
-    display.putstr_message(`You take off ${player.armor.name}.`);
-    player.armor = null;
-    player.ac = 10;
-    return { moved: false, tookTime: true };
 }
 
 // Handle dropping an item
