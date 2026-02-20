@@ -82,7 +82,7 @@ import { m_harmless_trap, floor_trigger, mintrap_postmove } from './trap.js';
 export { m_harmless_trap, floor_trigger, mintrap_postmove };
 
 // Re-export mthrowu.c functions
-import { thrwmu, hasWeaponAttack, maybeMonsterWieldBeforeAttack, linedUpToPlayer } from './mthrowu.js';
+import { hasWeaponAttack, maybeMonsterWieldBeforeAttack, linedUpToPlayer } from './mthrowu.js';
 
 // ========================================================================
 // movemon — wrapper that binds dochug into mon.js movemon
@@ -621,6 +621,8 @@ function dochug(mon, map, player, display, fov, game = null) {
     }
 
     // Phase 4: Standard Attacks
+    // cf. mhitu.c mattacku() — both melee and ranged attacks are dispatched
+    // through the attack table.  range2 determines which attack types fire.
     if (phase4Allowed && !mon.peaceful && !mon.flee && !mon.dead) {
         const targetX2 = Number.isInteger(mon.mux) ? mon.mux : player.x;
         const targetY2 = Number.isInteger(mon.muy) ? mon.muy : player.y;
@@ -634,8 +636,10 @@ function dochug(mon, map, player, display, fov, game = null) {
                     }
                     monsterAttackPlayer(mon, player, display, game);
                 }
-            } else if (hasWeaponAttack(mon)) {
-                thrwmu(mon, map, player, display, game);
+            } else {
+                // At range: route through monsterAttackPlayer with range2=true
+                // so it iterates the attack table and calls thrwmu for AT_WEAP.
+                monsterAttackPlayer(mon, player, display, game, { range2: true, map });
             }
         }
     }

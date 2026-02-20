@@ -12,6 +12,7 @@ import { objectData, BULLWHIP } from './objects.js';
 import { xname } from './mkobj.js';
 import { monDisplayName, is_humanoid } from './mondata.js';
 import { weaponEnchantment, weaponDamageSides } from './uhitm.js';
+import { thrwmu } from './mthrowu.js';
 
 const PIERCE = 1;
 
@@ -97,12 +98,32 @@ export function applyMonflee(monster, fleetime, first = false) {
 }
 
 // cf. mhitu.c mattacku() / hitmu() (partial).
-export function monsterAttackPlayer(monster, player, display, game = null) {
+// opts.range2: true if monster is not adjacent (ranged attacks only)
+// opts.map: map object (needed for thrwmu ranged throwing)
+export function monsterAttackPlayer(monster, player, display, game = null, opts = {}) {
     if (!monster.attacks || monster.attacks.length === 0) return;
     if (monster.passive) return; // passive monsters don't initiate attacks
 
+    const range2 = !!opts.range2;
+    const map = opts.map || null;
+
     for (let i = 0; i < monster.attacks.length; i++) {
         const attack = monster.attacks[i];
+
+        // cf. mhitu.c mattacku() attack dispatch:
+        // Melee attacks (AT_CLAW, AT_BITE, etc.) only fire when !range2.
+        // AT_WEAP: melee when !range2, thrwmu when range2.
+        // AT_BREA, AT_SPIT, AT_MAGC: only when range2 (not implemented yet).
+        if (range2) {
+            if (attack.type === AT_WEAP) {
+                // cf. mhitu.c:882-885 — AT_WEAP at range calls thrwmu
+                if (map) thrwmu(monster, map, player, display, game);
+                continue;
+            }
+            // Skip melee-only attack types when at range
+            continue;
+        }
+
         const suppressHitMsg = !!(game && game._suppressMonsterHitMessagesThisTurn);
         // To-hit calculation for monster
         // cf. mhitu.c:707-708 — tmp = AC_VALUE(u.uac) + 10 + mtmp->m_lev
