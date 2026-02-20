@@ -181,7 +181,8 @@ export function isok(x, y) {
 
 // Check terrain type helpers (rm.h)
 export function IS_WALL(typ) {
-    return typ >= VWALL && typ <= TRWALL;
+    // C ref: rm.h — IS_WALL(typ) ((typ) && (typ) <= DBWALL)
+    return typ >= VWALL && typ <= DBWALL;
 }
 export function IS_STWALL(typ) {
     return typ <= DBWALL; // includes STONE and all wall types
@@ -204,13 +205,16 @@ export function ACCESSIBLE(typ) {
     return typ >= DOOR;
 }
 export function IS_POOL(typ) {
-    return typ === POOL || typ === MOAT || typ === WATER;
+    // C ref: rm.h — IS_POOL(typ) ((typ) >= POOL && (typ) <= DRAWBRIDGE_UP)
+    return typ >= POOL && typ <= DRAWBRIDGE_UP;
 }
 export function IS_LAVA(typ) {
-    return typ === LAVAPOOL;
+    // C ref: rm.h — IS_LAVA(typ) ((typ) == LAVAPOOL || (typ) == LAVAWALL)
+    return typ === LAVAPOOL || typ === LAVAWALL;
 }
 export function IS_OBSTRUCTED(typ) {
-    return IS_STWALL(typ) || typ === TREE || typ === IRONBARS;
+    // C ref: rm.h — IS_OBSTRUCTED(typ) ((typ) < POOL)
+    return typ < POOL;
 }
 
 // Trap types (trap.h)
