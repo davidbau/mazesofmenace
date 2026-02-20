@@ -111,7 +111,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[~]` | options.c | options.js | Game options. JS: `options_menu.js`, `storage.js` |
 | `[~]` | pager.c | pager.js | Text pager and look/describe commands. pager.js has text pager only; help commands in commands.js; game look functions (do_look, lookat, waterbody_name) not yet in JS |
 | `[~]` | pickup.c | pickup.js | Picking up items |
-| `[~]` | pline.c | pline.js | Message output. pline/putmesg PARTIAL via display.putstr_message(); impossible PARTIAL via console.error; livelog/gamelog TODO |
+| `[a]` | pline.c | pline.js | Message output. pline, custompline, vpline, Norep, urgent_pline, raw_printf, vraw_printf, impossible, livelog_printf, gamelog_add, verbalize, You/Your/You_feel/You_cant/You_hear/You_see/pline_The/There, pline_dir/pline_xy/pline_mon, set_msg_dir/set_msg_xy, dumplogmsg/dumplogfreemessages, execplinehandler, nhassert_failed, You_buf/free_youbuf all implemented. putmesg semantics handled via setOutputContext |
 | `[~]` | polyself.c | polyself.js | Polymorphing |
 | `[a]` | potion.c | potion.js | Potion effects. handleQuaff (dodrink) with healing; ~60 functions TODO |
 | `[~]` | pray.c | pray.js | Prayer mechanics, sacrifice, turning undead, deity interaction. All 45 functions TODO (runtime gameplay) |
@@ -144,7 +144,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[N/A]` | symbols.c | — | Terminal graphics mode management (ASCII/IBM/curses/UTF-8 symbol-set switching). Browser port uses static data in symbols.js; no runtime mode switching |
 | `[N/A]` | sys.c | — | System-level interface |
 | `[~]` | teleport.c | teleport.js | Teleportation. goodpos/collect_coords/enexto PARTIAL in dungeon.js; all runtime tele functions TODO |
-| `[~]` | timeout.c | timeout.js | Timer-based effects. run_timers/start_timer/stop_timer/nh_timeout all TODO; start_corpse_timeout/attach_egg_hatch_timeout PARTIAL in mkobj.js (RNG-parity only); save/restore N/A |
+| `[a]` | timeout.c | timeout.js | Timer-based effects. run_timers, start_timer, stop_timer, nh_timeout, peek_timer, insert_timer, remove_timer, obj_move/split/stop_timers, obj_has_timer, spot_stop/expires/left_timers, done_timeout, attach_egg_hatch_timeout, hatch_egg, kill_egg, attach_fig_transform_timeout, begin_burn/end_burn/cleanup_burn/burn_object, do_storms, fall_asleep, timer_sanity_check, print_queue, wiz_timeout_queue, kind_name, timer_stats all implemented. Dialogue stubs (stoned/vomiting/sleep/choke/sickness/levitation/slime/phaze/region) exported as no-ops. save/restore/relink stubs present |
 | `[a]` | topten.c | topten.js | High score table. observable_depth implemented; I/O funcs N/A; encode/format funcs TODO |
 | `[p]` | track.c | track.js | Player tracking for pets. save/rest not yet implemented |
 | `[a]` | trap.c | trap.js | Trap mechanics: m_harmless_trap, floor_trigger, mintrap_postmove, mon_check_in_air |
@@ -3735,39 +3735,39 @@ No function symbols parsed from isaac64.c.
 ### pline.c -> pline.js
 | C Line | C Function | JS Line | Alignment |
 |--------|------------|---------|-----------|
-| 327 | `Norep` | - | Missing |
-| 425 | `There` | - | Missing |
-| 366 | `You` | - | Missing |
-| 339 | `You_buf` | - | Missing |
-| 403 | `You_cant` | - | Missing |
-| 388 | `You_feel` | - | Missing |
-| 436 | `You_hear` | - | Missing |
-| 455 | `You_see` | - | Missing |
-| 377 | `Your` | - | Missing |
-| 299 | `custompline` | - | Missing |
-| 52 | `dumplogfreemessages` | - | Missing |
-| 22 | `dumplogmsg` | - | Missing |
-| 641 | `execplinehandler` | - | Missing |
-| 351 | `free_youbuf` | - | Missing |
-| 495 | `gamelog_add` | - | Missing |
-| 531 | `gamelog_add` | - | Missing |
-| 584 | `impossible` | - | Missing |
-| 514 | `livelog_printf` | - | Missing |
-| 538 | `livelog_printf` | - | Missing |
-| 690 | `nhassert_failed` | - | Missing |
-| 104 | `pline` | - | Missing |
-| 414 | `pline_The` | - | Missing |
-| 114 | `pline_dir` | - | Missing |
-| 138 | `pline_mon` | - | Missing |
-| 126 | `pline_xy` | - | Missing |
-| 65 | `putmesg` | - | Missing |
-| 549 | `raw_printf` | - | Missing |
-| 84 | `set_msg_dir` | - | Missing |
-| 93 | `set_msg_xy` | - | Missing |
-| 315 | `urgent_pline` | - | Missing |
-| 476 | `verbalize` | - | Missing |
-| 153 | `vpline` | - | Missing |
-| 563 | `vraw_printf` | - | Missing |
+| 327 | `Norep` | 154 | Aligned |
+| 425 | `There` | 195 | Aligned |
+| 366 | `You` | 175 | Aligned |
+| 339 | `You_buf` | 211 | Aligned |
+| 403 | `You_cant` | 187 | Aligned |
+| 388 | `You_feel` | 183 | Aligned |
+| 436 | `You_hear` | 199 | Aligned |
+| 455 | `You_see` | 203 | Aligned |
+| 377 | `Your` | 179 | Aligned |
+| 299 | `custompline` | 125 | Aligned |
+| 52 | `dumplogfreemessages` | 227 | Aligned |
+| 22 | `dumplogmsg` | 219 | Aligned |
+| 641 | `execplinehandler` | 262 | Aligned |
+| 351 | `free_youbuf` | 215 | Aligned (no-op) |
+| 495 | `gamelog_add` | 235 | Aligned |
+| 531 | `gamelog_add` | 235 | Aligned (single entry point) |
+| 584 | `impossible` | 253 | Aligned |
+| 514 | `livelog_printf` | 244 | Aligned |
+| 538 | `livelog_printf` | 244 | Aligned (single entry point) |
+| 690 | `nhassert_failed` | 268 | Aligned |
+| 104 | `pline` | 131 | Aligned |
+| 414 | `pline_The` | 191 | Aligned |
+| 114 | `pline_dir` | 158 | Aligned |
+| 138 | `pline_mon` | 168 | Aligned |
+| 126 | `pline_xy` | 163 | Aligned |
+| 65 | `putmesg` | - | N/A (handled via setOutputContext) |
+| 549 | `raw_printf` | 140 | Aligned |
+| 84 | `set_msg_dir` | 51 | Aligned |
+| 93 | `set_msg_xy` | 55 | Aligned |
+| 315 | `urgent_pline` | 150 | Aligned |
+| 476 | `verbalize` | 207 | Aligned |
+| 153 | `vpline` | 135 | Aligned |
+| 563 | `vraw_printf` | 144 | Aligned |
 
 ### polyself.c -> polyself.js
 | C Line | C Function | JS Line | Alignment |
@@ -5020,60 +5020,60 @@ No function symbols parsed from isaac64.c.
 ### timeout.c -> timeout.js
 | C Line | C Function | JS Line | Alignment |
 |--------|------------|---------|-----------|
-| 981 | `attach_egg_hatch_timeout` | - | Missing |
-| 1204 | `attach_fig_transform_timeout` | - | Missing |
-| 1712 | `begin_burn` | - | Missing |
-| 448 | `burn_away_slime` | - | Missing |
-| 1383 | `burn_object` | - | Missing |
-| 295 | `choke_dialogue` | - | Missing |
-| 1828 | `cleanup_burn` | - | Missing |
-| 1847 | `do_storms` | - | Missing |
-| 575 | `done_timeout` | - | Missing |
-| 1804 | `end_burn` | - | Missing |
-| 951 | `fall_asleep` | - | Missing |
-| 1017 | `hatch_egg` | - | Missing |
-| 2459 | `insert_timer` | - | Missing |
-| 1009 | `kill_egg` | - | Missing |
-| 1995 | `kind_name` | - | Missing |
-| 1360 | `lantern_message` | - | Missing |
+| 981 | `attach_egg_hatch_timeout` | 473 | Aligned |
+| 1204 | `attach_fig_transform_timeout` | 509 | Aligned |
+| 1712 | `begin_burn` | 542 | Aligned |
+| 448 | `burn_away_slime` | 587 | Stub (no-op) |
+| 1383 | `burn_object` | 524 | Aligned |
+| 295 | `choke_dialogue` | 583 | Stub (no-op) |
+| 1828 | `cleanup_burn` | 551 | Aligned |
+| 1847 | `do_storms` | 575 | Aligned |
+| 575 | `done_timeout` | 462 | Aligned |
+| 1804 | `end_burn` | 564 | Aligned |
+| 951 | `fall_asleep` | 451 | Aligned |
+| 1017 | `hatch_egg` | 499 | Aligned |
+| 2459 | `insert_timer` | 247 | Aligned |
+| 1009 | `kill_egg` | 492 | Aligned |
+| 1995 | `kind_name` | 130 | Aligned |
+| 1360 | `lantern_message` | 593 | Stub (no-op) |
 | 1193 | `learn_egg_type` | - | Missing |
-| 353 | `levitation_dialogue` | - | Missing |
-| 2619 | `maybe_write_timer` | - | Missing |
-| 2576 | `mon_is_local` | - | Missing |
-| 588 | `nh_timeout` | - | Missing |
-| 2396 | `obj_has_timer` | - | Missing |
-| 2552 | `obj_is_local` | - | Missing |
-| 2331 | `obj_move_timers` | - | Missing |
-| 2351 | `obj_split_timers` | - | Missing |
-| 2369 | `obj_stop_timers` | - | Missing |
-| 2316 | `peek_timer` | - | Missing |
-| 534 | `phaze_dialogue` | - | Missing |
-| 2014 | `print_queue` | - | Missing |
+| 353 | `levitation_dialogue` | 585 | Stub (no-op) |
+| 2619 | `maybe_write_timer` | - | N/A (save/restore) |
+| 2576 | `mon_is_local` | - | N/A (save/restore) |
+| 588 | `nh_timeout` | 407 | Aligned |
+| 2396 | `obj_has_timer` | 369 | Aligned |
+| 2552 | `obj_is_local` | - | N/A (save/restore) |
+| 2331 | `obj_move_timers` | 333 | Aligned |
+| 2351 | `obj_split_timers` | 344 | Aligned |
+| 2369 | `obj_stop_timers` | 364 | Aligned |
+| 2316 | `peek_timer` | 235 | Aligned |
+| 534 | `phaze_dialogue` | 589 | Stub (no-op) |
+| 2014 | `print_queue` | 282 | Aligned |
 | 117 | `property_by_index` | - | Missing |
-| 554 | `region_dialogue` | - | Missing |
-| 2743 | `relink_timers` | - | Missing |
-| 2475 | `remove_timer` | - | Missing |
-| 2699 | `restore_timers` | - | Missing |
-| 2214 | `run_timers` | - | Missing |
-| 2660 | `save_timers` | - | Missing |
-| 1345 | `see_lamp_flicker` | - | Missing |
-| 323 | `sickness_dialogue` | - | Missing |
-| 268 | `sleep_dialogue` | - | Missing |
-| 389 | `slime_dialogue` | - | Missing |
-| 457 | `slimed_to_death` | - | Missing |
-| 1222 | `slip_or_trip` | - | Missing |
-| 2408 | `spot_stop_timers` | - | Missing |
-| 2437 | `spot_time_expires` | - | Missing |
-| 2451 | `spot_time_left` | - | Missing |
-| 2239 | `start_timer` | - | Missing |
-| 137 | `stoned_dialogue` | - | Missing |
-| 2291 | `stop_timer` | - | Missing |
-| 2595 | `timer_is_local` | - | Missing |
-| 2122 | `timer_sanity_check` | - | Missing |
-| 2727 | `timer_stats` | - | Missing |
-| 197 | `vomiting_dialogue` | - | Missing |
-| 2041 | `wiz_timeout_queue` | - | Missing |
-| 2497 | `write_timer` | - | Missing |
+| 554 | `region_dialogue` | 590 | Stub (no-op) |
+| 2743 | `relink_timers` | 607 | Stub |
+| 2475 | `remove_timer` | 243 | Aligned |
+| 2699 | `restore_timers` | 611 | Stub |
+| 2214 | `run_timers` | 268 | Aligned |
+| 2660 | `save_timers` | 615 | Stub |
+| 1345 | `see_lamp_flicker` | 592 | Stub (no-op) |
+| 323 | `sickness_dialogue` | 584 | Stub (no-op) |
+| 268 | `sleep_dialogue` | 582 | Stub (no-op) |
+| 389 | `slime_dialogue` | 586 | Stub (no-op) |
+| 457 | `slimed_to_death` | 588 | Stub (no-op) |
+| 1222 | `slip_or_trip` | 591 | Stub (no-op) |
+| 2408 | `spot_stop_timers` | 377 | Aligned |
+| 2437 | `spot_time_expires` | 389 | Aligned |
+| 2451 | `spot_time_left` | 399 | Aligned |
+| 2239 | `start_timer` | 168 | Aligned |
+| 137 | `stoned_dialogue` | 580 | Stub (no-op) |
+| 2291 | `stop_timer` | 210 | Aligned |
+| 2595 | `timer_is_local` | - | N/A (save/restore) |
+| 2122 | `timer_sanity_check` | 311 | Aligned |
+| 2727 | `timer_stats` | 139 | Aligned |
+| 197 | `vomiting_dialogue` | 581 | Stub (no-op) |
+| 2041 | `wiz_timeout_queue` | 294 | Aligned |
+| 2497 | `write_timer` | - | N/A (save/restore) |
 
 ### topten.c -> topten.js
 | C Line | C Function | JS Line | Alignment |
