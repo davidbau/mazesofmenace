@@ -116,7 +116,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[a]` | potion.c | potion.js | Potion effects. handleQuaff (dodrink) with healing; ~60 functions TODO |
 | `[ ]` | pray.c | — | Prayer mechanics |
 | `[ ]` | priest.c | — | Priest behavior |
-| `[ ]` | quest.c | — | Quest mechanics |
+| `[~]` | quest.c | quest.js | Quest mechanics. All 22 functions are runtime gameplay (NPC dialog, eligibility, expulsion); none in JS |
 | `[ ]` | questpgr.c | — | Quest text/pager |
 | `[ ]` | read.c | — | Reading scrolls/spellbooks |
 | `[x]` | rect.c | rect.js | Rectangle allocation for room placement |
