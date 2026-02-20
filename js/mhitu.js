@@ -1,5 +1,5 @@
-// combat.js -- Monster-vs-hero combat
-// cf. mhitu.c — monster hits hero (mattacku, hitmu, missmu, etc.)
+// mhitu.js -- Monster-vs-hero combat
+// cf. mhitu.c — monster attacks hero (mattacku, hitmu, missmu, etc.)
 // Hero-vs-monster combat has moved to uhitm.js.
 
 import { rn2, rnd, c_d } from './rng.js';
@@ -15,6 +15,7 @@ import { weaponEnchantment, weaponDamageSides } from './uhitm.js';
 
 const PIERCE = 1;
 
+// cf. mhitu.c hitmsg() (partial).
 function monsterHitVerb(attackType) {
     switch (attackType) {
         case AT_BITE: return 'bites';
@@ -57,7 +58,7 @@ function monsterPossessive(monster) {
     return monster?.female ? 'her' : 'his';
 }
 
-// cf. mhitu.c AT_WEAP path emits swing/thrust text before hit/miss.
+// cf. mhitu.c AT_WEAP swing path (partial).
 function maybeMonsterWeaponSwingMessage(monster, player, display, suppressHitMsg) {
     if (!monster?.weapon || suppressHitMsg) return;
     if (player?.blind) return;
@@ -95,8 +96,7 @@ export function applyMonflee(monster, fleetime, first = false) {
     clearMonsterTrack(monster);
 }
 
-// Monster attacks the player
-// cf. mhitu.c mattacku() -> mattackm core
+// cf. mhitu.c mattacku() / hitmu() (partial).
 export function monsterAttackPlayer(monster, player, display, game = null) {
     if (!monster.attacks || monster.attacks.length === 0) return;
     if (monster.passive) return; // passive monsters don't initiate attacks
@@ -233,8 +233,7 @@ export function monsterAttackPlayer(monster, player, display, game = null) {
     }
 }
 
-// Handle special monster attack effects
-// cf. mhitu.c -- various AD_* damage types
+// cf. mhitu.c AD_* damage-type handlers in hitmu() (partial).
 function handleSpecialAttack(special, monster, player, display) {
     switch (special) {
         case 'poison':
@@ -265,3 +264,120 @@ function handleSpecialAttack(special, monster, player, display) {
             break;
     }
 }
+
+// ============================================================================
+// TODO stubs for remaining mhitu.c functions
+// ============================================================================
+
+// --- Group 1: Hit/miss messages (mhitu.c:30-145) ---
+
+// TODO: cf. mhitu.c hitmsg() — full hit message dispatch
+// function hitmsg() {}
+
+// TODO: cf. mhitu.c missmu() — monster miss message
+// function missmu() {}
+
+// TODO: cf. mhitu.c mswings_verb() — weapon swing verb selection
+// function mswings_verb() {}
+
+// TODO: cf. mhitu.c mswings() — print swing message
+// function mswings() {}
+
+// --- Group 2: Poison/slow/wildmiss (mhitu.c:146-262) ---
+
+// TODO: cf. mhitu.c mpoisons_subj() — poison subject message
+// function mpoisons_subj() {}
+
+// TODO: cf. mhitu.c u_slow_down() — hero slowdown from attack
+// function u_slow_down() {}
+
+// TODO: cf. mhitu.c wildmiss() — invisible/displaced miss message
+// function wildmiss() {}
+
+// --- Group 3: Engulf expulsion (mhitu.c:263-308) ---
+
+// TODO: cf. mhitu.c expels() — expel hero from engulfer
+// function expels() {}
+
+// --- Group 4: Attack dispatch (mhitu.c:309-953) ---
+
+// TODO: cf. mhitu.c getmattk() — get monster attack for index
+// function getmattk() {}
+
+// TODO: cf. mhitu.c calc_mattacku_vars() — calculate attack variables
+// function calc_mattacku_vars() {}
+
+// TODO: cf. mhitu.c mtrapped_in_pit() — monster trapped in pit check
+// function mtrapped_in_pit() {}
+
+// TODO: cf. mhitu.c mattacku() — main monster-attacks-hero dispatch
+// function mattacku() {}
+
+// --- Group 5: Summoning/disease/slip (mhitu.c:954-1084) ---
+
+// TODO: cf. mhitu.c summonmu() — summon minions during attack
+// function summonmu() {}
+
+// TODO: cf. mhitu.c diseasemu() — disease attack
+// function diseasemu() {}
+
+// TODO: cf. mhitu.c u_slip_free() — hero slips free from grab
+// function u_slip_free() {}
+
+// --- Group 6: Magic negation/hit (mhitu.c:1085-1268) ---
+
+// TODO: cf. mhitu.c magic_negation() — compute magic cancellation
+// function magic_negation() {}
+
+// TODO: cf. mhitu.c hitmu() — process single attack hit on hero
+// function hitmu() {}
+
+// --- Group 7: Engulf/explode/gaze (mhitu.c:1269-1894) ---
+
+// TODO: cf. mhitu.c gulp_blnd_check() — blindness check during engulf
+// function gulp_blnd_check() {}
+
+// TODO: cf. mhitu.c gulpmu() — engulf attack
+// function gulpmu() {}
+
+// TODO: cf. mhitu.c explmu() — exploding monster attack
+// function explmu() {}
+
+// TODO: cf. mhitu.c gazemu() — gaze attack
+// function gazemu() {}
+
+// --- Group 8: Damage/seduction (mhitu.c:1895-2348) ---
+
+// TODO: cf. mhitu.c mdamageu() — apply damage to hero
+// function mdamageu() {}
+
+// TODO: cf. mhitu.c could_seduce() — check if seduction possible
+// function could_seduce() {}
+
+// TODO: cf. mhitu.c doseduce() — seduction attack
+// function doseduce() {}
+
+// TODO: cf. mhitu.c mayberem() — maybe remove armor during seduction
+// function mayberem() {}
+
+// --- Group 9: Assessment/avoidance (mhitu.c:2349-2424) ---
+
+// TODO: cf. mhitu.c assess_dmg() — assess damage for fleeing
+// function assess_dmg() {}
+
+// TODO: cf. mhitu.c ranged_attk_assessed() — check if ranged attack assessed
+// function ranged_attk_assessed() {}
+
+// TODO: cf. mhitu.c mon_avoiding_this_attack() — monster avoidance check
+// function mon_avoiding_this_attack() {}
+
+// TODO: cf. mhitu.c ranged_attk_available() — check for available ranged attack
+// function ranged_attk_available() {}
+
+// --- Group 10: Passive/clone (mhitu.c:2425-2640) ---
+
+// TODO: cf. mhitu.c passiveum() — passive counterattack damage
+// function passiveum() {}
+
+// TODO: cf. mhitu.c cloneu() — clone hero attack
+// function cloneu() {}

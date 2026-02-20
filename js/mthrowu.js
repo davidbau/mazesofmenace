@@ -17,7 +17,7 @@ import { ACCESSIBLE, IS_OBSTRUCTED, IS_DOOR, IS_WALL,
          D_CLOSED, D_LOCKED, IRONBARS, isok, A_STR } from './config.js';
 import { rn2, rnd } from './rng.js';
 import { exercise } from './attrib_exercise.js';
-import { monsterAttackPlayer } from './combat.js';
+import { monsterAttackPlayer } from './mhitu.js';
 import { newexplevel } from './exper.js';
 import { BOULDER, WEAPON_CLASS, objectData } from './objects.js';
 import { doname } from './mkobj.js';

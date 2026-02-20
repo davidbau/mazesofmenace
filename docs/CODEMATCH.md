@@ -86,7 +86,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[ ]` | mcastu.c | — | Monster spellcasting |
 | `[N/A]` | mdlib.c | — | Metadata library utilities |
 | `[ ]` | mhitm.c | — | Monster-vs-monster combat |
-| `[ ]` | mhitu.c | — | Monster-vs-player combat. JS: partially in `combat.js` |
+| `[a]` | mhitu.c | mhitu.js | Monster-vs-hero combat. monsterAttackPlayer implemented; 22 functions TODO |
 | `[ ]` | minion.c | — | Minion summoning (angels, demons) |
 | `[ ]` | mklev.c | — | Level generation. JS: partially in `sp_lev.js`, `map.js` |
 | `[ ]` | mkmap.c | — | Map generation algorithms. JS: in `sp_lev.js` |
@@ -186,7 +186,6 @@ These JS files don't directly correspond to a single C file:
 | animations.js | Visual animations | None (JS-only) |
 | attrib_exercise.js | Attribute exercise tracking | attrib.c |
 | browser_input.js | Browser keyboard/mouse input | None (JS-only) |
-| combat.js | Monster-vs-hero combat | mhitu.c, mhitm.c |
 | commands.js | Command dispatch | cmd.c, apply.c, do.c, etc. |
 | config.js | Game configuration | decl.c, options.c |
 | delay.js | Delay/animation timing | None (JS-only) |
@@ -1056,7 +1055,7 @@ Notes:
 | `find_pmmonst` | 376 | — | TODO (needs monster list + mvitals access) |
 | `bee_eat_jelly` | 395 | — | TODO (needs grow_up, delobj) |
 | `gelcube_digests` | 425 | — | TODO (needs digestion system) |
-| `monflee` | 463 | (partial) | Subset in `applyMonflee` (combat.js); full version TODO |
+| `monflee` | 463 | (partial) | Subset in `applyMonflee` (mhitu.js); full version TODO |
 | `distfleeck` | 534 | — | TODO (brave_gremlin roll consumed but not applied) |
 | `m_arrival` | 575 | — | TODO (arrival effects not yet in JS) |
 | `mind_blast` | 584 | — | TODO (mind blast not yet in JS) |

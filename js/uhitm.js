@@ -19,7 +19,7 @@ import { mkobj, mkcorpstat, RANDOM_CLASS, next_ident, xname } from './mkobj.js';
 import { nonliving, monDisplayName } from './mondata.js';
 import { obj_resists } from './objdata.js';
 import { newexplevel } from './exper.js';
-import { applyMonflee } from './combat.js';
+import { applyMonflee } from './mhitu.js';
 
 
 // ============================================================================
@@ -490,7 +490,7 @@ import { applyMonflee } from './combat.js';
 
 
 // ============================================================================
-// Implemented functions (moved from combat.js)
+// Implemented functions (moved from mhitu.js)
 // ============================================================================
 
 // cf. uhitm.c find_roll_to_hit() — luck component (partial)

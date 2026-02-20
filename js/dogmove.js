@@ -6,7 +6,7 @@ import { COLNO, ROWNO, IS_ROOM, IS_DOOR, IS_POOL, IS_LAVA,
          D_CLOSED, D_LOCKED,
          POOL, STAIRS, LADDER, isok } from './config.js';
 import { rn2, rnd, c_d } from './rng.js';
-import { monsterAttackPlayer } from './combat.js';
+import { monsterAttackPlayer } from './mhitu.js';
 import { CORPSE, BALL_CLASS, CHAIN_CLASS, ROCK_CLASS, FOOD_CLASS,
          COIN_CLASS, GEM_CLASS,
          PICK_AXE, DWARVISH_MATTOCK, UNICORN_HORN,

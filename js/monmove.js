@@ -22,7 +22,7 @@ import { COLNO, ROWNO, IS_WALL, IS_DOOR, IS_ROOM,
          SHOPBASE, ROOM, ROOMOFFSET,
          NORMAL_SPEED, isok } from './config.js';
 import { rn2, rnd, c_d } from './rng.js';
-import { monsterAttackPlayer, applyMonflee } from './combat.js';
+import { monsterAttackPlayer, applyMonflee } from './mhitu.js';
 import { FOOD_CLASS, COIN_CLASS, BOULDER, ROCK, ROCK_CLASS,
          WEAPON_CLASS, ARMOR_CLASS, GEM_CLASS,
          AMULET_CLASS, POTION_CLASS, SCROLL_CLASS, WAND_CLASS, RING_CLASS, SPBOOK_CLASS,
