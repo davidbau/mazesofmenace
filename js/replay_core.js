@@ -1239,7 +1239,6 @@ export async function replaySession(seed, session, opts = {}) {
         const step = allSteps[stepIndex];
         game.map._replayStepIndex = stepIndex;
         const prevCount = getRngLog().length;
-
         const stepScreen = getSessionScreenLines(step);
         const stepScreenAnsi = getSessionScreenAnsiLines(step);
         const applyStepScreen = () => {
@@ -1664,6 +1663,129 @@ export async function replaySession(seed, session, opts = {}) {
             continue;
         }
 
+        // C ref: counted-command occupation pass-through — when a non-digit
+        // command step follows an accumulated count digit and there is deferred
+        // boundary RNG targeting a later step, the command key in C was consumed
+        // by runmode_delay_output mid-occupation (not by parse()). Skip command
+        // execution and emit an empty pass-through frame. The digit count is
+        // cleared so the next digit step re-accumulates cleanly.
+        if (!pendingCommand
+            && deferredMoreBoundaryRng.length > 0
+            && deferredMoreBoundaryTarget > stepIndex
+            && pendingCount > 0
+            && ((step.rng && step.rng.length) || 0) === 0
+            && typeof step.action === 'string'
+            && !step.action.startsWith('key-')
+            && !step.action.startsWith('move-')) {
+            applyStepScreen();
+            pendingCount = 0;
+            pushStepResult(
+                [],
+                opts.captureScreens ? game.display.getScreenLines() : undefined,
+                step,
+                stepScreen,
+                stepIndex
+            );
+            continue;
+        }
+
+        // C ref: moveloop_core — when a counted occupation is in progress,
+        // runmode_delay_output creates step boundaries by consuming buffered
+        // keys. The step key was consumed as a boundary marker, not as a
+        // game command.
+        // For 0-comp steps (pure buffer frames): emit an empty pass-through.
+        // For non-zero-comp steps: run occupation iters (and when occupation
+        // ends, eagerly execute subsequent 0-comp buffered steps as commands)
+        // until the expected comp count is covered.
+        if (!pendingCommand && game.occupation) {
+            const stepCompCount = comparableCallParts(step.rng || []).length;
+            if (stepCompCount > 0) {
+                // Occupation-driven step: run iters and possibly start new
+                // commands from buffered steps until targetComp is reached.
+                let extraStepsConsumed = 0;
+                const consumedBufSteps = [];
+                let occLoopSafe = 0;
+                while (occLoopSafe++ < 200) {
+                    const ownComp = comparableCallParts(
+                        getRngLog().slice(prevCount).map(toCompactRng)
+                    ).length;
+                    if (ownComp >= stepCompCount) break;
+                    if (game.occupation) {
+                        const occ = game.occupation;
+                        const cont = occ.fn(game);
+                        if (!cont) game.occupation = null;
+                        game.fov.compute(game.map, game.player.x, game.player.y);
+                        movemon(game.map, game.player, game.display, game.fov, game);
+                        game.simulateTurnEnd();
+                    } else {
+                        // Occupation ended; look at next buffered step for a
+                        // new command to start (only 0-comp buffer frames).
+                        const nextBufIdx = stepIndex + 1 + extraStepsConsumed;
+                        const nextBufStep = allSteps[nextBufIdx];
+                        if (!nextBufStep || ((nextBufStep.rng && nextBufStep.rng.length) || 0) !== 0) break;
+                        extraStepsConsumed++;
+                        const nextCh = nextBufStep.key.charCodeAt(0);
+                        if (pendingCount > 0) {
+                            game.commandCount = pendingCount;
+                            game.multi = pendingCount;
+                            if (game.multi > 0) game.multi--;
+                            pendingCount = 0;
+                        } else {
+                            game.commandCount = 0;
+                            game.multi = 0;
+                        }
+                        game.cmdKey = nextCh;
+                        game.advanceRunTurn = async () => {
+                            game.fov.compute(game.map, game.player.x, game.player.y);
+                            movemon(game.map, game.player, game.display, game.fov, game);
+                            game.simulateTurnEnd();
+                        };
+                        await rhack(nextCh, game);
+                        game.advanceRunTurn = null;
+                        // Run one game turn (movemon + turnEnd) after the new command.
+                        // In C, moveloop_core runs movemon after every rhack.
+                        game.fov.compute(game.map, game.player.x, game.player.y);
+                        movemon(game.map, game.player, game.display, game.fov, game);
+                        game.simulateTurnEnd();
+                        // Record consumed buffer step (pass-throughs pushed after main result).
+                        consumedBufSteps.push({ bufStep: nextBufStep, bufIdx: nextBufIdx });
+                    }
+                }
+                // Push main result for this step first (correct comparison order).
+                const occupStepLog = getRngLog().slice(prevCount);
+                applyStepScreen();
+                pushStepResult(
+                    occupStepLog,
+                    opts.captureScreens ? game.display.getScreenLines() : undefined,
+                    step,
+                    stepScreen,
+                    stepIndex
+                );
+                // Then push pass-throughs for consumed buffer steps in order.
+                for (const { bufStep, bufIdx } of consumedBufSteps) {
+                    pushStepResult(
+                        [],
+                        opts.captureScreens ? game.display.getScreenLines() : undefined,
+                        bufStep,
+                        getSessionScreenLines(bufStep),
+                        bufIdx
+                    );
+                }
+                stepIndex += extraStepsConsumed;
+                continue;
+            }
+            // 0-comp: pure buffer frame, emit empty pass-through.
+            applyStepScreen();
+            pushStepResult(
+                [],
+                opts.captureScreens ? game.display.getScreenLines() : undefined,
+                step,
+                stepScreen,
+                stepIndex
+            );
+            continue;
+        }
+
         // C ref: cmd.c:4958 — digit keys start count prefix accumulation.
         // First digit keeps prior topline; continued count (or leading zero)
         // updates topline to "Count: N". No time/RNG is consumed.
@@ -1678,6 +1800,89 @@ export async function replaySession(seed, session, opts = {}) {
                 game.display.putstr_message(`Count: ${pendingCount}`);
             }
             game.renderCurrentScreen();
+
+            // C ref: counted-search boundary attribution — when deferred boundary
+            // RNG targets this digit step but doesn't fully cover C's expected,
+            // the remaining entries come from the *next* step's command. In C,
+            // this digit was consumed mid-execution by runmode_delay_output (not
+            // by parse()), so the subsequent command ran within the same step
+            // boundary. Eagerly execute that command so all entries land in this
+            // step's comparison window. Only ONE movemon turn is attributed here;
+            // the remaining occupation iterations continue in subsequent steps.
+            const digitStepExpected = comparableCallParts(step.rng || []).length;
+            const digitDeferredCount = deferredMoreBoundaryRng.length > 0
+                && deferredMoreBoundaryTarget === stepIndex
+                ? comparableCallParts(deferredMoreBoundaryRng.map(toCompactRng)).length
+                : 0;
+            const eagerNextStep = nextStep !== null
+                && digitStepExpected > 0
+                && digitDeferredCount > 0
+                && digitDeferredCount < digitStepExpected
+                && comparableCallParts(nextStep.rng || []).length === 0
+                && typeof nextStep.key === 'string'
+                && nextStep.key.length === 1
+                && !(nextStep.key >= '0' && nextStep.key <= '9');
+            if (eagerNextStep) {
+                const nextCh = nextStep.key.charCodeAt(0);
+                game.commandCount = pendingCount;
+                game.multi = pendingCount;
+                if (game.multi > 0) game.multi--;
+                game.cmdKey = nextCh;
+                pendingCount = 0;
+                game.advanceRunTurn = async () => {
+                    game.fov.compute(game.map, game.player.x, game.player.y);
+                    movemon(game.map, game.player, game.display, game.fov, game);
+                    game.simulateTurnEnd();
+                };
+                const eagerResult = await rhack(nextCh, game);
+                game.advanceRunTurn = null;
+                if (eagerResult && eagerResult.tookTime) {
+                    // Run the first movemon+turn-end for the new occupation, then
+                    // continue running occupation iterations until we have produced
+                    // enough comparable entries to cover this digit step's window.
+                    // C ref: moveloop_core — between two runmode_delay_output yields,
+                    // multiple occupation iterations may complete in one step.
+                    game.fov.compute(game.map, game.player.x, game.player.y);
+                    movemon(game.map, game.player, game.display, game.fov, game);
+                    game.simulateTurnEnd();
+                    const targetNewComp = digitStepExpected - digitDeferredCount;
+                    while (game.occupation) {
+                        const ownComp = comparableCallParts(getRngLog().slice(prevCount).map(toCompactRng)).length;
+                        if (ownComp >= targetNewComp) break;
+                        const occ = game.occupation;
+                        const cont = occ.fn(game);
+                        if (!cont) { game.occupation = null; }
+                        game.fov.compute(game.map, game.player.x, game.player.y);
+                        movemon(game.map, game.player, game.display, game.fov, game);
+                        game.simulateTurnEnd();
+                    }
+                }
+                const eagerStepLogRaw = getRngLog().slice(prevCount);
+                applyStepScreen();
+                pushStepResult(
+                    eagerStepLogRaw,
+                    opts.captureScreens ? game.display.getScreenLines() : undefined,
+                    step,
+                    stepScreen,
+                    stepIndex
+                );
+                // Push a pass-through for nextStep (key='s', 0 comp) since it
+                // was consumed eagerly and the comparison loop expects one
+                // result per session step to stay aligned.
+                stepIndex++;
+                const skippedNextStep = allSteps[stepIndex];
+                if (skippedNextStep) {
+                    pushStepResult(
+                        [],
+                        opts.captureScreens ? game.display.getScreenLines() : undefined,
+                        skippedNextStep,
+                        getSessionScreenLines(skippedNextStep),
+                        stepIndex
+                    );
+                }
+                continue;
+            }
+
             pushStepResult(
                 [],
                 opts.captureScreens ? game.display.getScreenLines() : undefined,
