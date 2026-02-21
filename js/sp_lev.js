@@ -1490,6 +1490,8 @@ function fixupSpecialLevel() {
 
     if (!addedBranch && ctx.isBranchLevel) {
         // C fallback: fixup_special() places branch if Is_branchlev(&u.uz) true.
+        // C always calls place_branch → find_branch_room (consuming RNG for position),
+        // even for BR_NO_END1 branches where no stairs are actually placed.
         const explicit = levelState.finalizeContext?.branchPlacement;
         if (explicit === 'portal') {
             withBranchHint('portal', () => place_lregion(levelState.map, 0, 0, 0, 0, 0, 0, 0, 0, LR_BRANCH));
@@ -1505,9 +1507,12 @@ function fixupSpecialLevel() {
                 withBranchHint('stair-up', () => place_lregion(levelState.map, 0, 0, 0, 0, 0, 0, 0, 0, LR_BRANCH));
             } else if (branch.placement === 'stair-down') {
                 withBranchHint('stair-down', () => place_lregion(levelState.map, 0, 0, 0, 0, 0, 0, 0, 0, LR_BRANCH));
+            } else {
+                // BR_NO_END1 or similar: C still consumes RNG via find_branch_room
+                // even though no stairs are placed. Call place_lregion for RNG parity.
+                place_lregion(levelState.map, 0, 0, 0, 0, 0, 0, 0, 0, LR_BRANCH);
             }
         }
-        /* else explicit none => intentionally no branch placement */
     }
 
     if (specialName === 'baalz') {

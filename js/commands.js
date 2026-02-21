@@ -10,6 +10,7 @@ import { COLNO, ROWNO, STONE, DOOR, CORR, SDOOR, SCORR, STAIRS, LADDER, FOUNTAIN
 import { SQKY_BOARD, SLP_GAS_TRAP, FIRE_TRAP, PIT, SPIKED_PIT, ANTI_MAGIC, IS_SOFT } from './symbols.js';
 import { rn2, rn1, rnd, rnl, d, c_d } from './rng.js';
 import { resetLevelState, setFinalizeContext, setSpecialLevelDepth } from './sp_lev.js';
+import { isBranchLevel } from './dungeon.js';
 import { otherSpecialLevels } from './special_levels.js';
 import { wipe_engr_at } from './engrave.js';
 import { exercise } from './attrib_exercise.js';
@@ -4270,8 +4271,15 @@ async function handleWizLoadDes(game) {
     rn2(2);
     resetLevelState();
     setSpecialLevelDepth(player.dungeonLevel);
+    // C ref: fixup_special() uses Is_branchlev(&u.uz) for branch placement.
+    // Must pass dnum/dlevel so isBranchLevel is computed correctly.
+    const dnum = 0; // JS currently only tracks Dungeons of Doom
+    const dlevel = player.dungeonLevel;
     setFinalizeContext({
+        dnum,
+        dlevel,
         specialName: levelName,
+        isBranchLevel: isBranchLevel(dnum, dlevel),
     });
     const newMap = generator();
     if (newMap) {

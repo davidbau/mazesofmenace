@@ -122,6 +122,7 @@ const QUEST = 3;
 const KNOX = 4;
 const GEHENNOM = 5;
 const VLADS_TOWER = 6;
+const ELEMENTAL_PLANES = 7;
 const TUTORIAL = 8;
 
 // Snapshot of branch topology chosen during initDungeon().
@@ -992,7 +993,7 @@ function getBranchAtLevel(dnum, dlevel) {
     return null;
 }
 
-function isBranchLevel(dnum, dlevel) {
+export function isBranchLevel(dnum, dlevel) {
     return !!getBranchAtLevel(dnum, dlevel);
 }
 
@@ -4300,6 +4301,12 @@ function buildBranchTopology(dungeonLayouts, parentRolls) {
             childDnum: VLADS_TOWER, childEntry: 1, parentDnum: GEHENNOM,
             selector: { kind: 'fixed', base: 9, count: 5 },
             type: BR_STAIR, end1_up: true
+        },
+        // child dnum 7: Elemental Planes, parent DoD base1, no_down, direction up
+        {
+            childDnum: ELEMENTAL_PLANES, childEntry: 1, parentDnum: DUNGEONS_OF_DOOM,
+            selector: { kind: 'fixed', base: 1, count: 1 },
+            type: BR_NO_END1, end1_up: true
         }
     ];
 
@@ -4445,7 +4452,7 @@ export function initDungeon(roleIndex, wizard = true) {
         SOKOBAN,          // 4: Sokoban
         KNOX,             // 5: Ludios
         VLADS_TOWER,      // 6: Tower
-        -1,               // 7: Planes (not a playable dnum in JS)
+        ELEMENTAL_PLANES, // 7: Elemental Planes
         TUTORIAL,         // 8: Tutorial
     ];
     _dungeonLedgerStartByDnum = new Map();
@@ -5075,7 +5082,7 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
                 dnum: useDnum,
                 dlevel: useDlevel,
                 specialName,
-                isBranchLevel: resolveBranchPlacementForLevel(useDnum, useDlevel).placement !== 'none',
+                isBranchLevel: isBranchLevel(useDnum, useDlevel),
             });
 
             // C ref: mklev.c:365-380 — Lua theme shuffle when loading special level
