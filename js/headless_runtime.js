@@ -24,6 +24,7 @@ import { M2_WERE } from './monsters.js';
 import { movemon, initrack, settrack } from './monmove.js';
 import { were_change } from './were.js';
 import { FOV } from './vision.js';
+import { monsterNearby } from './monutil.js';
 import { getArrivalPosition } from './level_transition.js';
 import { nh_timeout, setCurrentTurn } from './timeout.js';
 import { doname, setObjectMoves } from './mkobj.js';
@@ -769,16 +770,7 @@ export class HeadlessGame {
         if ((this.runMode || 0) > 0) return false;
         if (this.occupation) return this.shouldInterruptOccupation();
 
-        const { x, y } = this.player;
-        for (let dx = -1; dx <= 1; dx++) {
-            for (let dy = -1; dy <= 1; dy++) {
-                if (dx === 0 && dy === 0) continue;
-                const mon = this.map.monsterAt(x + dx, y + dy);
-                if (mon && !mon.dead && !mon.tame && !mon.peaceful) {
-                    return true;
-                }
-            }
-        }
+        if (monsterNearby(this.map, this.player, this.fov)) return true;
 
         if (this.lastHP !== undefined && this.player.hp !== this.lastHP) {
             this.lastHP = this.player.hp;
@@ -792,17 +784,7 @@ export class HeadlessGame {
     // adjacent hostile monsters; HP-change interruption is for multi-repeat.
     shouldInterruptOccupation() {
         if ((this.runMode || 0) > 0) return false;
-        const { x, y } = this.player;
-        for (let dx = -1; dx <= 1; dx++) {
-            for (let dy = -1; dy <= 1; dy++) {
-                if (dx === 0 && dy === 0) continue;
-                const mon = this.map.monsterAt(x + dx, y + dy);
-                if (mon && !mon.dead && !mon.tame && !mon.peaceful) {
-                    return true;
-                }
-            }
-        }
-        return false;
+        return monsterNearby(this.map, this.player, this.fov);
     }
 
     // C ref: mon.c mcalcmove() — random rounding of monster speed

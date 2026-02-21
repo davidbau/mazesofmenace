@@ -22,6 +22,7 @@ import { setObjectMoves } from './mkobj.js';
 import { were_change } from './were.js';
 import { rhack, ageSpells } from './commands.js';
 import { movemon, initrack, settrack } from './monmove.js';
+import { monsterNearby } from './monutil.js';
 import { simulatePostLevelInit, mon_arrive, initFirstLevel } from './u_init.js';
 import { getArrivalPosition } from './level_transition.js';
 import { nh_timeout, setCurrentTurn } from './timeout.js';
@@ -1544,17 +1545,7 @@ export class NetHackGame {
             return this.shouldInterruptOccupation();
         }
 
-        // Interrupt if there's a hostile monster adjacent to player
-        const { x, y } = this.player;
-        for (let dx = -1; dx <= 1; dx++) {
-            for (let dy = -1; dy <= 1; dy++) {
-                if (dx === 0 && dy === 0) continue;
-                const mon = this.map.monsterAt(x + dx, y + dy);
-                if (mon && !mon.tame && !mon.peaceful) {
-                    return true; // Hostile monster nearby!
-                }
-            }
-        }
+        if (monsterNearby(this.map, this.player, this.fov)) return true;
 
         // Interrupt if HP changed (took damage or healed)
         if (this.lastHP !== undefined && this.player.hp !== this.lastHP) {
@@ -1572,17 +1563,7 @@ export class NetHackGame {
         if (this.runMode > 0) {
             return false;
         }
-        const { x, y } = this.player;
-        for (let dx = -1; dx <= 1; dx++) {
-            for (let dy = -1; dy <= 1; dy++) {
-                if (dx === 0 && dy === 0) continue;
-                const mon = this.map.monsterAt(x + dx, y + dy);
-                if (mon && !mon.tame && !mon.peaceful) {
-                    return true;
-                }
-            }
-        }
-        return false;
+        return monsterNearby(this.map, this.player, this.fov);
     }
 
     // C ref: mon.c mcalcmove() — calculate monster's movement for a turn

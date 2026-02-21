@@ -33,7 +33,7 @@ import { handleInventory, compactInvletPromptChars, buildInventoryOverlayLines, 
 import { makemon, setMakemonPlayerContext } from './makemon.js';
 import { mons } from './monsters.js';
 import { monDisplayName, hasGivenName, monNam } from './mondata.js';
-import { mondead } from './monutil.js';
+import { mondead, monsterNearby } from './monutil.js';
 import { doname, next_ident, xname } from './mkobj.js';
 import { observeObject, getDiscoveriesMenuLines, isObjectNameKnown } from './discovery.js';
 import { showPager } from './pager.js';
@@ -355,17 +355,7 @@ export async function rhack(ch, game) {
         // only when not in counted-repeat mode.
         if (game && game.flags && game.flags.safe_wait
             && !game.menuRequested && !(game.multi > 0) && !game.occupation) {
-            let monNearby = false;
-            for (let dx = -1; dx <= 1 && !monNearby; dx++) {
-                for (let dy = -1; dy <= 1 && !monNearby; dy++) {
-                    if (dx === 0 && dy === 0) continue;
-                    const mon = map.monsterAt(player.x + dx, player.y + dy);
-                    if (mon && !mon.dead && !mon.tame && !mon.peaceful) {
-                        monNearby = true;
-                    }
-                }
-            }
-            if (monNearby) {
+            if (monsterNearby(map, player, fov)) {
                 safetyWarning(cmd);
                 return { moved: false, tookTime: false };
             }

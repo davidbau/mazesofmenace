@@ -7,9 +7,11 @@ import { PM_GRID_BUG,
          AT_BITE, AT_CLAW, AT_KICK, AT_BUTT, AT_TUCH, AT_STNG, AT_WEAP } from './monsters.js';
 import { couldsee } from './vision.js';
 import { monNam } from './mondata.js';
+import { is_hider, noattacks } from './mondata.js';
 import { weight } from './mkobj.js';
 import { pushRngLogEntry } from './rng.js';
 import { placeFloorObject } from './floor_objects.js';
+import { SCR_SCARE_MONSTER } from './objects.js';
 
 // ========================================================================
 // Constants — C ref: hack.h / monst.h / dogmove.c
@@ -112,6 +114,97 @@ export function canSpotMonsterForMap(mon, map, player, fov) {
     if (mon.mundetected) return false;
     if (mon.minvis && !player.seeInvisible) return false;
     return true;
+}
+
+function onscary(map, x, y) {
+    if (!map) return false;
+    const objects = Array.isArray(map.objects) ? map.objects : [];
+
+    for (const obj of objects) {
+        if (!obj || obj.buried) continue;
+        if (obj.ox === x && obj.oy === y
+            && obj.otyp === SCR_SCARE_MONSTER
+            && !obj.cursed) {
+            return true;
+        }
+    }
+
+    if (!Array.isArray(map.engravings)) return false;
+    for (const engr of map.engravings) {
+        if (!engr || engr.x !== x || engr.y !== y) continue;
+        if (/elbereth/i.test(String(engr.text || ''))) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function monsterHelpless(mon) {
+    if (!mon) return true;
+    if (mon.sleeping) return true;
+    if (mon.mfrozen > 0) return true;
+    if (mon.mcanmove === false) return true;
+    if (mon.stunned) return true;
+    return false;
+}
+
+function sanitizeMonsterType(mon) {
+    const ptr = mon?.type;
+    const ptrIsObject = ptr && typeof ptr === 'object';
+    const attacks = ptrIsObject && Array.isArray(ptr.attacks)
+        ? ptr.attacks
+        : (!ptrIsObject ? [{ type: AT_WEAP }] : []);
+
+    return {
+        ...(ptrIsObject ? ptr : {}),
+        attacks,
+        flags1: Number(ptr?.flags1 ?? 0),
+        flags2: Number(ptr?.flags2 ?? 0),
+        flags3: Number(ptr?.flags3 ?? 0),
+    };
+}
+
+// C ref: hack.c:3988 — monster_nearby()
+// Checks adjacent monsters that can actually threaten the player this turn.
+export function monsterNearby(map, player, fov) {
+    if (!map || !player) return false;
+    const px = player.x;
+    const py = player.y;
+    const playerHallucinating = !!player.hallucinating;
+
+    for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+            if (dx === 0 && dy === 0) continue;
+            const x = px + dx;
+            const y = py + dy;
+            if (!isok(x, y)) continue;
+
+            const mon = map.monsterAt(x, y);
+            if (!mon || mon.dead) continue;
+            if (mon.m_ap_type === 'furniture' || mon.m_ap_type === 'object') continue;
+
+            const mptr = sanitizeMonsterType(mon);
+            const isPeaceful = !!(mon.mpeaceful || mon.peaceful);
+            if (!(playerHallucinating || (!mon.tame && !isPeaceful && !noattacks(mptr)))) continue;
+
+            if (is_hider(mptr || {}) && mon.mundetected) continue;
+            if (monsterHelpless(mon)) continue;
+            if (onscary(map, px, py)) continue;
+
+            let visible = true;
+            try {
+                visible = canSpotMonsterForMap(mon, map, player, fov);
+            } catch (_err) {
+                visible = true;
+            }
+            if (!visible) continue;
+
+            return true;
+        }
+    }
+
+    return false;
 }
 
 // ========================================================================
