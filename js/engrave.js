@@ -19,6 +19,9 @@
 //   save/rest_engravings: persistence across level changes.
 
 import { pushRngLogEntry, rn2 } from './rng.js';
+import { nhgetch } from './input.js';
+import { WAND_CLASS } from './objects.js';
+import { compactInvletPromptChars } from './invent.js';
 
 // C engraving type constants (engrave.h):
 // DUST=1, ENGRAVE=2, BURN=3, MARK=4, ENGR_BLOOD=5, HEADSTONE=6
@@ -170,7 +173,39 @@ export function wipe_engr_at(map, x, y, cnt, magical = false) {
 
 // cf. engrave.c:955 — doengrave(void): #engrave command handler
 // Selects stylus, prompts for text, handles effects, starts engraving occupation.
-// TODO: engrave.c:955 — doengrave(): engrave command handler
+// PARTIAL: engrave.c:955 — doengrave() ↔ handleEngrave()
+export async function handleEngrave(player, display) {
+    const replacePromptMessage = () => {
+        if (typeof display.clearRow === 'function') display.clearRow(0);
+        display.topMessage = null;
+        display.messageNeedsMore = false;
+    };
+    const writeLetters = compactInvletPromptChars((player.inventory || [])
+        .filter((item) => item && item.oclass === WAND_CLASS && item.invlet)
+        .map((item) => item.invlet)
+        .join(''));
+    if (writeLetters) {
+        display.putstr_message(`What do you want to write with? [- ${writeLetters} or ?*]`);
+    } else {
+        display.putstr_message('What do you want to write with? [- or ?*]');
+    }
+    while (true) {
+        const ch = await nhgetch();
+        const c = String.fromCharCode(ch);
+        if (ch === 27 || ch === 10 || ch === 13 || c === ' ') {
+            replacePromptMessage();
+            display.putstr_message('Never mind.');
+            return { moved: false, tookTime: false };
+        }
+        if (c === '?' || c === '*') continue;
+        if (c === '-' || (writeLetters && writeLetters.includes(c))) {
+            replacePromptMessage();
+            display.putstr_message('Engraving is not implemented yet.');
+            return { moved: false, tookTime: false };
+        }
+        // Keep prompt active for unsupported letters.
+    }
+}
 
 // cf. engrave.c:1266 — engrave(void): engraving occupation callback
 // Gradually engraves text char by char; handles stylus wear and marker ink.

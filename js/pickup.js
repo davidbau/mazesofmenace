@@ -1,5 +1,13 @@
+import { THRONE, SINK, GRAVE, FOUNTAIN, STAIRS, ALTAR, IS_DOOR, D_ISOPEN } from './config.js';
+import { objectData, COIN_CLASS } from './objects.js';
+import { nhgetch } from './input.js';
+import { doname } from './mkobj.js';
+import { observeObject } from './discovery.js';
+import { formatGoldPickupMessage, formatInventoryPickupMessage } from './do.js';
+
 // pickup.js -- Autopickup, floor object pickup, container looting
-// cf. pickup.c — u_safe_from_fatal_corpse, fatal_corpse_mistake,
+// cf. pickup.c — pickup(), doloot(), doloot_core(),
+//                u_safe_from_fatal_corpse, fatal_corpse_mistake,
 //                rider_corpse_revival, force_decor, describe_decor,
 //                check_here, n_or_more, menu_class_present,
 //                add_valid_menu_class, all_but_uchain, allow_all,
@@ -26,7 +34,9 @@
 //   observe_quantum_cat(): handle Schrodinger's cat in containers.
 //
 // JS implementations:
-//   commands.js:1808 — handleLoot(): container looting
+//   handlePickup(): floor object pickup (pickup.c pickup())
+//   handleLoot(): container looting (pickup.c doloot/doloot_core)
+//   handlePay(): shopkeeper payment stub (shk.c dopay)
 
 // cf. pickup.c:273 — u_safe_from_fatal_corpse(obj, tests): safe from corpse check
 // Checks if the hero is protected from fatal corpse effects.
@@ -142,8 +152,8 @@
 
 // cf. pickup.c:2160 — doloot(void): #loot command handler
 // Handles the #loot extended command.
-// JS equiv: commands.js:1808 — handleLoot()
-// PARTIAL: pickup.c:2160 — doloot() ↔ commands.js:1808
+// JS equiv: handleLoot() below
+// PARTIAL: pickup.c:2160 — doloot() ↔ handleLoot()
 
 // cf. pickup.c:2172 [static] — doloot_core(void): core loot function
 // Core loot function for containers on floor or saddle.
@@ -232,3 +242,186 @@
 // cf. pickup.c:3853 [static] — tipcontainer_gettarget(box, cancelled): get tip target container
 // Gets the target container for a tipping operation.
 // TODO: pickup.c:3853 — tipcontainer_gettarget(): tip target selection
+
+// ---------------------------------------------------------------------------
+// Implemented pickup / loot / pay functions
+// ---------------------------------------------------------------------------
+
+// Handle picking up items
+// C ref: pickup.c pickup()
+function handlePickup(player, map, display) {
+    const objs = map.objectsAt(player.x, player.y);
+    if (objs.length === 0) {
+        const loc = map.at(player.x, player.y);
+        if (loc && loc.typ === THRONE) {
+            display.putstr_message(`It must weigh${loc.looted ? ' almost' : ''} a ton!`);
+            return { moved: false, tookTime: false };
+        }
+        if (loc && loc.typ === SINK) {
+            display.putstr_message('The plumbing connects it to the floor.');
+            return { moved: false, tookTime: false };
+        }
+        if (loc && loc.typ === GRAVE) {
+            display.putstr_message("You don't need a gravestone.  Yet.");
+            return { moved: false, tookTime: false };
+        }
+        if (loc && loc.typ === FOUNTAIN) {
+            display.putstr_message('You could drink the water...');
+            return { moved: false, tookTime: false };
+        }
+        if (loc && IS_DOOR(loc.typ) && (loc.flags & D_ISOPEN)) {
+            display.putstr_message("It won't come off the hinges.");
+            return { moved: false, tookTime: false };
+        }
+        if (loc && loc.typ === ALTAR) {
+            display.putstr_message('Moving the altar would be a very bad idea.');
+            return { moved: false, tookTime: false };
+        }
+        if (loc && loc.typ === STAIRS) {
+            display.putstr_message('The stairs are solidly affixed.');
+            return { moved: false, tookTime: false };
+        }
+        display.putstr_message('There is nothing here to pick up.');
+        return { moved: false, tookTime: false };
+    }
+
+    // Pick up gold first if present
+    const gold = objs.find(o => o.oclass === COIN_CLASS);
+    if (gold) {
+        player.addToInventory(gold);
+        map.removeObject(gold);
+        display.putstr_message(formatGoldPickupMessage(gold, player));
+        return { moved: false, tookTime: true };
+    }
+
+    // Pick up first other item
+    // TODO: show menu if multiple items (like C NetHack)
+    const obj = objs[0];
+    if (!obj) {
+        display.putstr_message('There is nothing here to pick up.');
+        return { moved: false, tookTime: false };
+    }
+
+    const inventoryObj = player.addToInventory(obj);
+    map.removeObject(obj);
+    observeObject(obj);
+    display.putstr_message(formatInventoryPickupMessage(obj, inventoryObj, player));
+    return { moved: false, tookTime: true };
+}
+
+function getContainerContents(container) {
+    if (Array.isArray(container?.contents)) return container.contents;
+    if (Array.isArray(container?.cobj)) return container.cobj;
+    return [];
+}
+
+function setContainerContents(container, items) {
+    const out = Array.isArray(items) ? items : [];
+    if (Array.isArray(container?.contents)) container.contents = out;
+    if (Array.isArray(container?.cobj)) container.cobj = out;
+    if (!Array.isArray(container?.contents) && !Array.isArray(container?.cobj)) {
+        container.contents = out;
+    }
+}
+
+async function handleLoot(game) {
+    const { player, map, display } = game;
+
+    // Check floor containers at player's position.
+    const floorContainers = (map.objectsAt(player.x, player.y) || [])
+        .filter((obj) => !!objectData[obj?.otyp]?.container);
+
+    // Check inventory containers the player is carrying.
+    // cf. pickup.c doloot_core() — also offers to loot carried containers.
+    const invContainers = (player.inventory || [])
+        .filter((obj) => obj && !!objectData[obj?.otyp]?.container);
+
+    if (floorContainers.length === 0 && invContainers.length === 0) {
+        display.putstr_message("You don't find anything here to loot.");
+        return { moved: false, tookTime: false };
+    }
+
+    // Loot floor container first (C behavior: floor takes priority).
+    if (floorContainers.length > 0) {
+        const container = floorContainers[0];
+        if (container.olocked && !container.obroken) {
+            display.putstr_message('Hmmm, it seems to be locked.');
+            return { moved: false, tookTime: false };
+        }
+        const contents = getContainerContents(container);
+        if (contents.length === 0) {
+            display.putstr_message("It's empty.");
+            return { moved: false, tookTime: true };
+        }
+        for (const item of contents) {
+            player.addToInventory(item);
+            observeObject(item);
+        }
+        setContainerContents(container, []);
+        const count = contents.length;
+        display.putstr_message(`You loot ${count} item${count === 1 ? '' : 's'}.`);
+        return { moved: false, tookTime: true };
+    }
+
+    // Loot an inventory container (take things out).
+    // cf. pickup.c doloot_core() — "Do you want to take things out?"
+    // If only one inventory container, offer it directly; else prompt for letter.
+    let container;
+    if (invContainers.length === 1) {
+        container = invContainers[0];
+    } else {
+        // Build letter prompt from inventory letters.
+        const letters = invContainers.map((o) => o.invlet).filter(Boolean).join('');
+        const prompt = letters
+            ? `Loot which container? [${letters} or ?*]`
+            : 'Loot which container? [?*]';
+        while (true) {
+            display.putstr_message(prompt);
+            const ch = await nhgetch();
+            const c = String.fromCharCode(ch);
+            if (ch === 27 || ch === 10 || ch === 13 || ch === 32) {
+                display.topMessage = null;
+                display.putstr_message('Never mind.');
+                return { moved: false, tookTime: false };
+            }
+            container = invContainers.find((o) => o.invlet === c);
+            if (container) break;
+        }
+        display.topMessage = null;
+    }
+
+    // cf. pickup.c doloot_core() — "Do you want to take things out of <x>? [yn]"
+    const containerName = doname(container, player);
+    display.putstr_message(`Do you want to take things out of your ${containerName}? [yn] `);
+    const ans = await nhgetch();
+    display.topMessage = null;
+    if (String.fromCharCode(ans) !== 'y') {
+        display.putstr_message('Never mind.');
+        return { moved: false, tookTime: false };
+    }
+
+    const contents = getContainerContents(container);
+    if (contents.length === 0) {
+        display.putstr_message("It's empty.");
+        return { moved: false, tookTime: true };
+    }
+    for (const item of contents) {
+        player.addToInventory(item);
+        observeObject(item);
+    }
+    setContainerContents(container, []);
+    const count = contents.length;
+    display.putstr_message(`You take out ${count} item${count === 1 ? '' : 's'}.`);
+    return { moved: false, tookTime: true };
+}
+
+// C ref: shk.c dopay() — stub; full billing flow not yet ported.
+async function handlePay(player, map, display) {
+    // C ref: shk.c dopay() can still report "There appears..." even when
+    // shopkeepers exist elsewhere on level; our billing-state model is partial,
+    // so keep the C-safe no-shopkeeper text for strict replay parity.
+    display.putstr_message('There appears to be no shopkeeper here to receive your payment.');
+    return { moved: false, tookTime: false };
+}
+
+export { handlePickup, handleLoot, handlePay };

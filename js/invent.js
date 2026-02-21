@@ -6,7 +6,7 @@ import { COLNO, STATUS_ROW_1 } from './config.js';
 import { objectData, WEAPON_CLASS, FOOD_CLASS, WAND_CLASS, SPBOOK_CLASS,
          FLINT, ROCK, SLING, MAGIC_MARKER, COIN_CLASS } from './objects.js';
 import { doname, xname } from './mkobj.js';
-import { promptDirectionAndThrowItem, ammoAndLauncher } from './commands.js';
+import { promptDirectionAndThrowItem, ammoAndLauncher } from './dothrow.js';
 
 
 // ============================================================

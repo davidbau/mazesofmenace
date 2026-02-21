@@ -30,7 +30,20 @@
 //   dorub/dojump: rubbing and physical jumping commands.
 //
 // JS implementations:
-//   doapply → commands.js:2858 handleApply() (PARTIAL)
+//   doapply → handleApply() (PARTIAL)
+
+import { objectData, WEAPON_CLASS, TOOL_CLASS, FOOD_CLASS, SPBOOK_CLASS,
+         WAND_CLASS, COIN_CLASS, POTION_CLASS, LANCE, BULLWHIP, STETHOSCOPE,
+         PICK_AXE, DWARVISH_MATTOCK, EXPENSIVE_CAMERA, MIRROR, FIGURINE,
+         CREDIT_CARD, LOCK_PICK, SKELETON_KEY,
+         CREAM_PIE, EUCALYPTUS_LEAF, LUMP_OF_ROYAL_JELLY,
+         POT_OIL, TOUCHSTONE, LUCKSTONE, LOADSTONE } from './objects.js';
+import { nhgetch, ynFunction } from './input.js';
+import { doname } from './mkobj.js';
+import { IS_DOOR, D_CLOSED, D_LOCKED, D_ISOPEN, D_NODOOR, D_BROKEN,
+         A_DEX, PM_ROGUE } from './config.js';
+import { rn2 } from './rng.js';
+import { exercise } from './attrib_exercise.js';
 
 // cf. apply.c:61 — do_blinding_ray(obj): fire blinding ray
 // Fires a blinding ray at targeted monster/location from camera or similar device.
@@ -304,14 +317,271 @@
 // Handles breaking a wand and its explosive effects.
 // TODO: apply.c:3905 — do_break_wand(): wand breaking
 
+// Direction key mappings (matching commands.js DIRECTION_KEYS)
+const DIRECTION_KEYS = {
+    'h': [-1,  0],  // west
+    'j': [ 0,  1],  // south
+    'k': [ 0, -1],  // north
+    'l': [ 1,  0],  // east
+    'y': [-1, -1],  // northwest
+    'u': [ 1, -1],  // northeast
+    'b': [-1,  1],  // southwest
+    'n': [ 1,  1],  // southeast
+};
+
 // cf. apply.c:4146 [static] — apply_ok(obj): object can be applied?
 // Filter callback for getobj(); rates objects applicable with #apply.
-// TODO: apply.c:4146 — apply_ok(): applicable object filter
+export function isApplyCandidate(obj) {
+    if (!obj) return false;
+    // C ref: apply.c apply_ok() — suggest all tools, wands, spellbooks.
+    if (obj.oclass === TOOL_CLASS || obj.oclass === WAND_CLASS || obj.oclass === SPBOOK_CLASS) {
+        return true;
+    }
+    // C ref: apply.c apply_ok() — suggest weapons that satisfy
+    // is_pick/is_axe/is_pole plus bullwhip.
+    if (obj.oclass === WEAPON_CLASS) {
+        const skill = objectData[obj.otyp]?.sub;
+        if (obj.otyp === BULLWHIP || obj.otyp === LANCE
+            || skill === 3 /* P_AXE */
+            || skill === 4 /* P_PICK_AXE */
+            || skill === 18 /* P_POLEARMS */
+            || skill === 19 /* P_LANCE */) {
+            return true;
+        }
+    }
+    // C ref: apply.c apply_ok() — suggest certain foods.
+    if (obj.otyp === CREAM_PIE || obj.otyp === EUCALYPTUS_LEAF
+        || obj.otyp === LUMP_OF_ROYAL_JELLY) {
+        return true;
+    }
+    // C ref: apply.c apply_ok() — suggest touchstone/luckstone/loadstone.
+    // FLINT is throwable ammo but should not appear as apply-eligible in
+    // C prompt flows for normal play sessions.
+    if (obj.otyp === TOUCHSTONE || obj.otyp === LUCKSTONE
+        || obj.otyp === LOADSTONE) {
+        return true;
+    }
+    // C ref: apply.c apply_ok() — suggest POT_OIL if discovered.
+    if (obj.otyp === POT_OIL && obj.dknown) {
+        return true;
+    }
+    return false;
+}
+
+export function isApplyChopWeapon(obj) {
+    if (!obj || obj.oclass !== WEAPON_CLASS) return false;
+    const skill = objectData[obj.otyp]?.sub;
+    return skill === 3 /* P_AXE */ || skill === 4 /* P_PICK_AXE */;
+}
+
+export function isApplyPolearm(obj) {
+    if (!obj || obj.oclass !== WEAPON_CLASS) return false;
+    const skill = objectData[obj.otyp]?.sub;
+    return skill === 18 /* P_POLEARMS */ || skill === 19 /* P_LANCE */;
+}
+
+export function isApplyDownplay(obj) {
+    if (!obj) return false;
+    // C ref: apply_ok() GETOBJ_DOWNPLAY cases include coins and unknown
+    // potions; these force a prompt even when no suggested items exist.
+    if (obj.oclass === COIN_CLASS) return true;
+    if (obj.oclass === POTION_CLASS && !obj.dknown) return true;
+    return false;
+}
 
 // cf. apply.c:4209 — doapply(void): #apply command
-// Main apply command handler; dispatches to specific use_* function.
-// JS equiv: commands.js:2858 — handleApply() (PARTIAL)
-// PARTIAL: apply.c:4209 — doapply() ↔ commands.js:2858
+// Handle apply/use command
+// C ref: apply.c doapply()
+export async function handleApply(player, map, display, game) {
+    const inventory = player.inventory || [];
+    if (inventory.length === 0) {
+        display.putstr_message("You don't have anything to use or apply.");
+        return { moved: false, tookTime: false };
+    }
+
+    const candidates = inventory.filter(isApplyCandidate);
+    const hasDownplay = inventory.some(isApplyDownplay);
+    if (candidates.length === 0 && !hasDownplay) {
+        display.putstr_message("You don't have anything to use or apply.");
+        return { moved: false, tookTime: false };
+    }
+
+    // C getobj() behavior: when no preferred apply candidates exist but
+    // downplay items do, keep the prompt open as "[*]".
+    const letters = candidates.map((item) => item.invlet).join('');
+    const candidateByInvlet = new Map(
+        candidates
+            .filter((item) => item?.invlet)
+            .map((item) => [String(item.invlet), item])
+    );
+    const prompt = letters.length > 0
+        ? `What do you want to use or apply? [${letters} or ?*]`
+        : 'What do you want to use or apply? [*]';
+    display.putstr_message(prompt);
+    const replacePromptMessage = () => {
+        if (typeof display.clearRow === 'function') display.clearRow(0);
+        display.topMessage = null;
+        display.messageNeedsMore = false;
+    };
+    const resolveApplySelection = async (selected) => {
+        replacePromptMessage();
+        if (isApplyChopWeapon(selected)) {
+            // C ref: apply.c use_axe() direction prompt text.
+            display.putstr_message('In what direction do you want to chop? [>]');
+            await nhgetch();
+            // For unsupported chop targets, preserve no-op flow fidelity.
+            replacePromptMessage();
+            return { moved: false, tookTime: false };
+        }
+
+        // C ref: lock.c pick_lock() — credit card / lock pick / skeleton key
+        // applied to a door: ask direction, find door, prompt, set picklock occupation.
+        if (selected.otyp === CREDIT_CARD || selected.otyp === LOCK_PICK
+            || selected.otyp === SKELETON_KEY) {
+            display.putstr_message('In what direction?');
+            const dirCh = await nhgetch();
+            const dch = String.fromCharCode(dirCh);
+            const dir = DIRECTION_KEYS[dch];
+            if (!dir) {
+                replacePromptMessage();
+                if (!player?.wizard) {
+                    display.putstr_message('What a strange direction!  Never mind.');
+                }
+                return { moved: false, tookTime: false };
+            }
+            replacePromptMessage();
+            const nx = player.x + dir[0];
+            const ny = player.y + dir[1];
+            const loc = map.at(nx, ny);
+            if (!loc || !IS_DOOR(loc.typ)) {
+                display.putstr_message('You see no door there.');
+                return { moved: false, tookTime: true };
+            }
+            if (loc.flags === D_NODOOR) {
+                display.putstr_message('This doorway has no door.');
+                return { moved: false, tookTime: true };
+            }
+            if (loc.flags & D_ISOPEN) {
+                display.putstr_message('You cannot lock an open door.');
+                return { moved: false, tookTime: true };
+            }
+            if (loc.flags & D_BROKEN) {
+                display.putstr_message('This door is broken.');
+                return { moved: false, tookTime: true };
+            }
+            // C ref: lock.c pick_lock() — credit card can only unlock, not lock
+            if (selected.otyp === CREDIT_CARD && !(loc.flags & D_LOCKED)) {
+                display.putstr_message("You can't lock a door with a credit card.");
+                return { moved: false, tookTime: true };
+            }
+            const isLocked = !!(loc.flags & D_LOCKED);
+            const ans = await ynFunction(`${isLocked ? 'Unlock' : 'Lock'} it?`, 'ynq',
+                'n'.charCodeAt(0), display);
+            if (String.fromCharCode(ans) !== 'y') {
+                return { moved: false, tookTime: false };
+            }
+            // C ref: lock.c pick_lock() — chance per turn (rn2(100) < chance)
+            const dex = player.attributes ? player.attributes[A_DEX] : 11;
+            const isRogue = (player.roleIndex === PM_ROGUE) ? 1 : 0;
+            let chance;
+            if (selected.otyp === CREDIT_CARD) {
+                chance = 2 * dex + 20 * isRogue;
+            } else if (selected.otyp === LOCK_PICK) {
+                chance = 3 * dex + 30 * isRogue;
+            } else { // SKELETON_KEY
+                chance = 70 + dex;
+            }
+            let usedtime = 0;
+            game.occupation = {
+                occtxt: isLocked ? 'unlocking the door' : 'locking the door',
+                fn(g) {
+                    if (usedtime++ >= 50) {
+                        display.putstr_message(`You give up your attempt at ${isLocked ? 'unlocking' : 'locking'} the door.`);
+                        exercise(player, A_DEX, true);
+                        return false;
+                    }
+                    if (rn2(100) >= chance) return true; // still busy
+                    display.putstr_message(`You succeed in ${isLocked ? 'unlocking' : 'locking'} the door.`);
+                    loc.flags = isLocked ? D_CLOSED : D_LOCKED;
+                    exercise(player, A_DEX, true);
+                    return false;
+                },
+            };
+            return { moved: false, tookTime: true };
+        }
+
+        // C ref: apply.c — tools that use getdir() "In what direction?" prompt:
+        // use_pick_axe2() for pick-axe/mattock, use_whip() for bullwhip,
+        // use_stethoscope() for stethoscope, use_pole() for polearms.
+        if (selected.otyp === PICK_AXE || selected.otyp === DWARVISH_MATTOCK
+            || selected.otyp === BULLWHIP || selected.otyp === STETHOSCOPE
+            || selected.otyp === EXPENSIVE_CAMERA || selected.otyp === MIRROR
+            || selected.otyp === FIGURINE
+            || isApplyPolearm(selected)) {
+            display.putstr_message('In what direction?');
+            const dirCh = await nhgetch();
+            const dch = String.fromCharCode(dirCh);
+            const dir = DIRECTION_KEYS[dch];
+            if (!dir) {
+                replacePromptMessage();
+                if (!player?.wizard) {
+                    display.putstr_message('What a strange direction!  Never mind.');
+                }
+                return { moved: false, tookTime: false };
+            }
+            // TODO: implement actual effects (digging, whip, etc.) for full parity
+            replacePromptMessage();
+            return { moved: false, tookTime: false };
+        }
+
+        if (selected.oclass === SPBOOK_CLASS) {
+            const fades = ['fresh', 'slightly faded', 'very faded', 'extremely faded', 'barely visible'];
+            const studied = Math.max(0, Math.min(4, Number(selected.spestudied || 0)));
+            const magical = !!objectData[selected.otyp]?.magic;
+            display.putstr_message(`The${magical ? ' magical' : ''} ink in this spellbook is ${fades[studied]}.`);
+            return { moved: false, tookTime: true };
+        }
+
+        display.putstr_message("Sorry, I don't know how to use that.");
+        return { moved: false, tookTime: false };
+    };
+
+    while (true) {
+        const ch = await nhgetch();
+        const c = String.fromCharCode(ch);
+
+        if (ch === 27 || ch === 10 || ch === 13 || c === ' ') {
+            replacePromptMessage();
+            display.putstr_message('Never mind.');
+            return { moved: false, tookTime: false };
+        }
+        if (c === '?' || c === '*') {
+            // C tty getobj() help/list mode: show each applicable item with
+            // --More-- prompt, then return to selection prompt.
+            // '?' shows preferred apply candidates; '*' shows all inventory items.
+            const showList = c === '*'
+                ? inventory.filter((item) => item?.invlet)
+                : candidates;
+            let picked = null;
+            for (const item of showList) {
+                replacePromptMessage();
+                display.putstr_message(`${item.invlet} - ${doname(item, player)}  --More--`);
+                const ack = await nhgetch();
+                const ackC = String.fromCharCode(ack);
+                if (ack === 27 || ack === 10 || ack === 13 || ackC === ' ') break;
+                const sel = candidateByInvlet.get(ackC)
+                    || (c === '*' ? inventory.find((o) => o?.invlet === ackC) : null);
+                if (sel) { picked = sel; break; }
+            }
+            if (picked) return await resolveApplySelection(picked);
+            continue;
+        }
+
+        const selected = inventory.find((obj) => obj.invlet === c);
+        if (!selected) continue;
+        return await resolveApplySelection(selected);
+    }
+}
 
 // cf. apply.c:4426 — unfixable_trouble_count(is_horn): count unfixable problems
 // Counts permanent troubles that unicorn horn cannot cure.

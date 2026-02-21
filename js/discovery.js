@@ -8,6 +8,7 @@ import {
     COIN_CLASS, GEM_CLASS, ROCK_CLASS, BALL_CLASS, CHAIN_CLASS, VENOM_CLASS,
     ARM_GLOVES, ARM_BOOTS,
 } from './objects.js';
+import { nhgetch } from './input.js';
 
 // Generic placeholder object indices occupy [0..17] in this port.
 const FIRST_OBJECT = 18;
@@ -206,4 +207,93 @@ export function setDiscoveryState(state) {
     if (Array.isArray(state.disco)) {
         for (const otyp of state.disco) pushDisco(otyp);
     }
+}
+
+// -----------------------------------------------------------------------
+// Discoveries display UI (moved from commands.js)
+// C ref: o_init.c dodiscovered()
+// -----------------------------------------------------------------------
+
+const DISCOVERIES_TITLE = 'Discoveries, by order of discovery within each class';
+const DISCOVERY_HEADER_RE = /^(Unique items|Artifact items|Discovered items|Weapons|Armor|Rings|Amulets|Tools|Comestibles|Potions|Scrolls|Spellbooks|Wands|Coins|Gems\/Stones|Rocks|Balls|Chains|Venoms)$/;
+
+function buildDiscoveriesPages(lines, rows) {
+    const contentRows = Math.max(1, (rows || 24) - 1); // reserve bottom row for --More--
+    const entries = [
+        { text: DISCOVERIES_TITLE, attr: 0 },
+        { text: '', attr: 0 },
+        ...lines.map((line) => ({
+            text: String(line || ''),
+            attr: DISCOVERY_HEADER_RE.test(String(line || '')) ? 1 : 0,
+        })),
+    ];
+    const pages = [];
+    for (let i = 0; i < entries.length; i += contentRows) {
+        pages.push(entries.slice(i, i + contentRows));
+    }
+    return pages.length > 0 ? pages : [[{ text: DISCOVERIES_TITLE, attr: 0 }]];
+}
+
+function drawDiscoveriesPage(display, page) {
+    const contentRows = Math.max(1, (display.rows || 24) - 1);
+    const cols = display.cols || 80;
+    display.clearScreen();
+    for (let r = 0; r < contentRows; r++) {
+        const row = page[r];
+        if (!row) continue;
+        display.putstr(0, r, row.text.substring(0, cols), undefined, row.attr || 0);
+    }
+    display.clearRow(contentRows);
+    display.putstr(0, contentRows, '--More--', undefined, 0);
+}
+
+export async function handleDiscoveries(game) {
+    const { display } = game;
+    const lines = getDiscoveriesMenuLines();
+    if (!lines.length) {
+        display.putstr_message("You haven't discovered anything yet...");
+        return { moved: false, tookTime: false };
+    }
+
+    const savedAnsi = (typeof display.getScreenAnsiLines === 'function')
+        ? display.getScreenAnsiLines()
+        : null;
+    const savedLines = (typeof display.getScreenLines === 'function')
+        ? display.getScreenLines()
+        : null;
+
+    const pages = buildDiscoveriesPages(lines, display.rows || 24);
+    let pageIndex = 0;
+    while (true) {
+        drawDiscoveriesPage(display, pages[pageIndex] || []);
+        const ch = await nhgetch();
+        if (ch === 32 || ch === 10 || ch === 13) {
+            if (pageIndex + 1 < pages.length) {
+                pageIndex++;
+                continue;
+            }
+            break;
+        }
+        if (ch === 98 && pageIndex > 0) { // 'b' = previous page
+            pageIndex--;
+            continue;
+        }
+        // q/ESC and any other key dismiss the discoveries window.
+        break;
+    }
+
+    if (Array.isArray(savedAnsi)
+        && savedAnsi.length > 0
+        && typeof display.setScreenAnsiLines === 'function') {
+        display.setScreenAnsiLines(savedAnsi);
+    } else if (Array.isArray(savedLines)
+        && savedLines.length > 0
+        && typeof display.setScreenLines === 'function') {
+        display.setScreenLines(savedLines);
+    } else if (typeof game.renderCurrentScreen === 'function') {
+        game.renderCurrentScreen();
+    }
+    display.topMessage = null;
+    display.messageNeedsMore = false;
+    return { moved: false, tookTime: false };
 }
