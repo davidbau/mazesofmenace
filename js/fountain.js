@@ -1,3 +1,7 @@
+import { rn2, rnd } from './rng.js';
+import { FOUNTAIN, ROOM, A_WIS, A_CON } from './config.js';
+import { exercise } from './attrib_exercise.js';
+
 // fountain.js -- Fountain and sink effects: quaff, dip, wash
 // cf. fountain.c — floating_above, dowatersnakes, dowaterdemon, dowaternymph,
 //                  dogushforth, gush, dofindgem, watchman_warn_fountain,
@@ -49,14 +53,67 @@
 // TODO: fountain.c:179 — watchman_warn_fountain(): guard fountain warning
 
 // cf. fountain.c:201 — dryup(x, y, isyou): dry up fountain or sink
-// Drains the fountain or sink; optionally triggers guard warning.
-// JS equiv: commands.js:3234 — dryup() (PARTIAL)
-// PARTIAL: fountain.c:201 — dryup() ↔ commands.js:3234
+function dryup(x, y, map, display) {
+    const loc = map.at(x, y);
+    if (loc && loc.typ === FOUNTAIN) {
+        if (!rn2(3)) {
+            loc.typ = ROOM;
+            loc.flags = 0;
+            loc.blessedftn = 0;
+            display.putstr_message('The fountain dries up!');
+        }
+    }
+}
 
 // cf. fountain.c:243 — drinkfountain(void): drink from fountain
-// Handles all random effects when player quaffs from a fountain.
-// JS equiv: commands.js:3184 — drinkfountain() (PARTIAL — RNG parity)
-// PARTIAL: fountain.c:243 — drinkfountain() ↔ commands.js:3184
+export function drinkfountain(player, map, display) {
+    const loc = map.at(player.x, player.y);
+    const mgkftn = loc && loc.blessedftn === 1;
+    const fate = rnd(30);
+
+    // C ref: fountain.c:254 — blessed fountain jackpot
+    if (mgkftn && (player.luck || 0) >= 0 && fate >= 10) {
+        display.putstr_message('Wow!  This makes you feel great!');
+        rn2(6); // rn2(A_MAX) — random starting attribute
+        // adjattrib loop — simplified, no RNG for basic case
+        display.putstr_message('A wisp of vapor escapes the fountain...');
+        exercise(player, A_WIS, true);
+        if (loc) loc.blessedftn = 0;
+        return; // NO dryup on blessed jackpot path
+    }
+
+    if (fate < 10) {
+        // C ref: fountain.c:279 — cool draught refreshes
+        display.putstr_message('The cool draught refreshes you.');
+        player.hunger += rnd(10);
+        if (mgkftn) return; // blessed fountain, no dryup
+    } else {
+        // C ref: fountain.c:286-387 — switch on fate
+        switch (fate) {
+        case 19:
+            display.putstr_message('You feel self-knowledgeable...');
+            exercise(player, A_WIS, true);
+            break;
+        case 20:
+            display.putstr_message('The water is foul!  You gag and vomit.');
+            rn2(20) + 11; // rn1(20, 11) = rn2(20) + 11 for morehungry
+            break;
+        case 21:
+            display.putstr_message('The water is contaminated!');
+            rn2(4) + 3; // rn1(4, 3) for poison_strdmg
+            rnd(10);    // damage
+            exercise(player, A_CON, false);
+            break;
+        // cases 22-30: complex effects with sub-functions
+        // TODO: implement dowatersnakes, dowaterdemon, etc.
+        default:
+            display.putstr_message('This tepid water is tasteless.');
+            break;
+        }
+    }
+    // C ref: fountain.c:389 — dryup at end of all non-jackpot paths
+    dryup(player.x, player.y, map, display);
+}
 
 // cf. fountain.c:394 — dipfountain(obj): dip object into fountain
 // Handles magical effects of dipping objects into a fountain.

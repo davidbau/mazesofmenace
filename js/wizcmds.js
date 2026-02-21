@@ -15,10 +15,11 @@
 //
 // JS implementations: several wizard debug commands are implemented in commands.js
 //   as part of the game's wizard/debug mode support:
-//   wiz_level_change() → commands.js:4750 (wizLevelChange) [PARTIAL]
-//   wiz_map()          → commands.js:4776 (wizMap) [PARTIAL]
-//   wiz_teleport()     → commands.js:4801 (wizTeleport) [PARTIAL]
-//   wiz_genesis()      → commands.js:4863 (wizGenesis) [PARTIAL]
+//   wiz_level_change() → wizLevelChange() [PARTIAL]
+//   wiz_map()          → wizMap() [PARTIAL]
+//   wiz_teleport()     → wizTeleport() [PARTIAL]
+//   wiz_genesis()      → wizGenesis() [PARTIAL]
+//   wiz_load_splua()   → handleWizLoadDes() [PARTIAL]
 //   wiz_wish()         → commands.js (handleWizWish) [PARTIAL]
 //   wiz_identify()     → commands.js (handleWizIdentify) [PARTIAL]
 // Sanity checks, Lua-based commands, and advanced debug commands → not implemented.
@@ -48,14 +49,131 @@
 // TODO: wizcmds.c:156 — wiz_makemap(): regenerate current level
 
 // cf. wizcmds.c:176 — wiz_map(): reveal level map, traps, and engravings
-// Sets seenv=full on all cells; calls do_mapping() equivalent.
-// JS equiv: commands.js:4776 (wizMap) — reveals map via seenv, rerenders.
-// PARTIAL: wizcmds.c:176 — wiz_map() ↔ wizMap (commands.js:4776)
+export function wizMap(game) {
+    const { map, player, display, fov } = game;
+    if (!game.wizard) {
+        display.putstr_message('Unavailable command.');
+        return { moved: false, tookTime: false };
+    }
+    for (let x = 0; x < COLNO; x++) {
+        for (let y = 0; y < ROWNO; y++) {
+            const loc = map.at(x, y);
+            if (loc) {
+                loc.seenv = 0xff;
+                loc.lit = true;
+            }
+        }
+    }
+    fov.compute(map, player.x, player.y);
+    display.renderMap(map, player, fov);
+    display.putstr_message('You feel knowledgeable.');
+    return { moved: false, tookTime: false };
+}
 
 // cf. wizcmds.c:203 — wiz_genesis(): generate monster(s) at hero's location
-// Calls makemon() at hero position; respects count prefix for quantity.
-// JS equiv: commands.js:4863 (wizGenesis) — partial monster creation.
-// PARTIAL: wizcmds.c:203 — wiz_genesis() ↔ wizGenesis (commands.js:4863)
+export async function wizGenesis(game) {
+    const { player, map, display } = game;
+    if (!game.wizard) {
+        display.putstr_message('Unavailable command.');
+        return { moved: false, tookTime: false };
+    }
+    const input = await getlin('Create what monster? ', display);
+    if (input === null || input.trim() === '') {
+        return { moved: false, tookTime: false };
+    }
+    const name = input.trim().toLowerCase();
+    let mndx = mons.findIndex(m => m.name.toLowerCase() === name);
+    if (mndx < 0) {
+        mndx = mons.findIndex(m => m.name.toLowerCase().includes(name));
+    }
+    if (mndx < 0) {
+        display.putstr_message(`Unknown monster: "${input.trim()}".`);
+        return { moved: false, tookTime: false };
+    }
+    let placed = false;
+    for (let dx = -1; dx <= 1 && !placed; dx++) {
+        for (let dy = -1; dy <= 1 && !placed; dy++) {
+            if (dx === 0 && dy === 0) continue;
+            const mx = player.x + dx;
+            const my = player.y + dy;
+            if (!isok(mx, my)) continue;
+            const loc = map.at(mx, my);
+            if (!loc || !ACCESSIBLE(loc.typ)) continue;
+            if (map.monsterAt(mx, my)) continue;
+            setMakemonPlayerContext(player);
+            const mon = makemon(mndx, mx, my, 0, player.dungeonLevel, map);
+            if (mon) {
+                mon.sleeping = false;
+                display.putstr_message(`A ${mons[mndx].name} appears!`);
+                placed = true;
+            }
+        }
+    }
+    if (!placed) {
+        display.putstr_message('There is no room near you to create a monster.');
+    }
+    return { moved: false, tookTime: false };
+}
+
+// cf. wizcmds.c — wiz_teleport (via teleport.c tele())
+export async function wizTeleport(game) {
+    const { player, map, display, fov } = game;
+    if (!game.wizard) {
+        display.putstr_message('Unavailable command.');
+        return { moved: false, tookTime: false };
+    }
+    const input = await getlin('Teleport to (x,y): ', display);
+    let nx, ny;
+    if (input === null) {
+        return { moved: false, tookTime: false };
+    }
+    const trimmed = input.trim();
+    if (trimmed === '') {
+        let found = false;
+        for (let attempts = 0; attempts < 500; attempts++) {
+            const rx = 1 + rn2(COLNO - 2);
+            const ry = rn2(ROWNO);
+            const loc = map.at(rx, ry);
+            if (loc && ACCESSIBLE(loc.typ) && !map.monsterAt(rx, ry)) {
+                nx = rx;
+                ny = ry;
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            display.putstr_message('Failed to find a valid teleport destination.');
+            return { moved: false, tookTime: false };
+        }
+    } else {
+        const parts = trimmed.split(',');
+        if (parts.length !== 2) {
+            display.putstr_message('Bad format. Use: x,y');
+            return { moved: false, tookTime: false };
+        }
+        nx = parseInt(parts[0].trim(), 10);
+        ny = parseInt(parts[1].trim(), 10);
+        if (isNaN(nx) || isNaN(ny)) {
+            display.putstr_message('Bad coordinates.');
+            return { moved: false, tookTime: false };
+        }
+        if (!isok(nx, ny)) {
+            display.putstr_message('Out of bounds.');
+            return { moved: false, tookTime: false };
+        }
+        const loc = map.at(nx, ny);
+        if (!loc || !ACCESSIBLE(loc.typ)) {
+            display.putstr_message('That location is not accessible.');
+            return { moved: false, tookTime: false };
+        }
+    }
+    player.x = nx;
+    player.y = ny;
+    fov.compute(map, player.x, player.y);
+    display.renderMap(map, player, fov);
+    display.putstr_message(`You teleport to (${nx},${ny}).`);
+    return { moved: true, tookTime: true };
+}
 
 // cf. wizcmds.c:218 — wiz_where(): display dungeon layout
 // Prints level number, branch, depth; lists nearby stairs and shops.
@@ -75,24 +193,85 @@
 // N/A: wizcmds.c:353 — wiz_load_lua() (Lua interpreter not available)
 
 // cf. wizcmds.c:376 — wiz_load_splua(): load special-level Lua file
-// Loads and executes a special-level definition Lua file via sp_lev interpreter.
-// N/A: browser port has no Lua interpreter.
-// N/A: wizcmds.c:376 — wiz_load_splua() (Lua interpreter not available)
+// JS equivalent: handleWizLoadDes() below — loads a JS special level generator.
+
+import { rn2 } from './rng.js';
+import { resetLevelState, setFinalizeContext, setSpecialLevelDepth } from './sp_lev.js';
+import { isBranchLevel } from './dungeon.js';
+import { otherSpecialLevels } from './special_levels.js';
+import { getlin } from './input.js';
+import { COLNO, ROWNO, ACCESSIBLE, MAXLEVEL, isok } from './config.js';
+import { makemon, setMakemonPlayerContext } from './makemon.js';
+import { mons } from './monsters.js';
+
+// cf. wizcmds.c:376 wiz_load_splua()
+// JS version loads a special level generator by name instead of a Lua file.
+export async function handleWizLoadDes(game) {
+    const { player, display } = game;
+    const input = await getlin('Load which level?', display);
+    if (input === null || input.trim() === '') {
+        return { moved: false, tookTime: false };
+    }
+    const levelName = input.trim();
+    const generator = otherSpecialLevels[levelName];
+    if (!generator) {
+        display.putstr_message(`Cannot find level: ${levelName}`);
+        return { moved: false, tookTime: false };
+    }
+    // C ref: nhl_init() creates a fresh Lua state and loads nhlib.lua,
+    // whose top-level shuffle(align) consumes rn2(3), rn2(2).
+    rn2(3);
+    rn2(2);
+    resetLevelState();
+    setSpecialLevelDepth(player.dungeonLevel);
+    // C ref: fixup_special() uses Is_branchlev(&u.uz) for branch placement.
+    // Must pass dnum/dlevel so isBranchLevel is computed correctly.
+    const dnum = 0; // JS currently only tracks Dungeons of Doom
+    const dlevel = player.dungeonLevel;
+    setFinalizeContext({
+        dnum,
+        dlevel,
+        specialName: levelName,
+        isBranchLevel: isBranchLevel(dnum, dlevel),
+    });
+    const newMap = generator();
+    if (newMap) {
+        // Route through changeLevel for hero placement, pet migration, and
+        // arrival collision — matching C's goto_level() flow.
+        game.changeLevel(player.dungeonLevel, 'teleport', { map: newMap });
+    }
+    return { moved: false, tookTime: false };
+}
 
 // cf. wizcmds.c:399 — wiz_level_tele(): level teleportation wizard command
-// Wrapper that calls level_tele(); returns ECMD_OK (time consumed).
-// JS equiv: commands.js:4750 (wizLevelChange) — prompts for level number.
-// PARTIAL: wizcmds.c:399 — wiz_level_tele() ↔ wizLevelChange (commands.js:4750)
+// cf. wizcmds.c:446 — wiz_level_change(): adjust hero experience level
+// JS combines both into wizLevelChange — prompts for dungeon level number.
+export async function wizLevelChange(game) {
+    const { player, display } = game;
+    if (!game.wizard) {
+        display.putstr_message('Unavailable command.');
+        return { moved: false, tookTime: false };
+    }
+    const input = await getlin('To what level do you want to teleport? ', display);
+    if (input === null || input.trim() === '') {
+        return { moved: false, tookTime: false };
+    }
+    const level = parseInt(input.trim(), 10);
+    if (isNaN(level) || level < 1 || level > MAXLEVEL) {
+        display.putstr_message(`Bad level number (1-${MAXLEVEL}).`);
+        return { moved: false, tookTime: false };
+    }
+    if (level === player.dungeonLevel) {
+        display.putstr_message('You are already on that level.');
+        return { moved: false, tookTime: false };
+    }
+    game.changeLevel(level, 'teleport');
+    return { moved: false, tookTime: true };
+}
 
 // cf. wizcmds.c:412 — wiz_flip_level(): transpose current level
 // Flips level vertically, horizontally, or randomly; adjusts all coordinates.
 // TODO: wizcmds.c:412 — wiz_flip_level(): level transpose/mirror
-
-// cf. wizcmds.c:446 — wiz_level_change(): adjust hero experience level
-// Asks for target level; calls pluslvl() or losexp() to reach it.
-// JS equiv: commands.js:4750 (wizLevelChange) — currently handles dungeon level,
-//   not XL; full XL adjustment TODO.
-// PARTIAL: wizcmds.c:446 — wiz_level_change() ↔ wizLevelChange (commands.js:4750)
 
 // cf. wizcmds.c:494 — wiz_telekinesis(): pick monster to hurtle in a direction
 // Interactive getpos(); applies hurl effect on target monster.

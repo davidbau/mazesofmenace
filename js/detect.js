@@ -1,3 +1,7 @@
+import { isok, SDOOR, SCORR, DOOR, CORR, D_CLOSED, A_WIS } from './config.js';
+import { rnl } from './rng.js';
+import { exercise } from './attrib_exercise.js';
+
 // detect.js -- Detection spells, scrolls, and searching
 // cf. detect.c — unconstrain_map, reconstrain_map, map_redisplay, browse_map,
 //                map_monst, trapped_chest_at, trapped_door_at, o_in, o_material,
@@ -165,9 +169,52 @@
 // TODO: detect.c:1965 — mfind0(): hidden monster revelation
 
 // cf. detect.c:2016 — dosearch0(aflag): search for hidden items
-// Searches for secret doors, traps, and hidden monsters at adjacent locations.
-// JS equiv: commands.js:3818 — dosearch0() (PARTIAL — RNG parity)
-// PARTIAL: detect.c:2016 — dosearch0() ↔ commands.js:3818
+export function dosearch0(player, map, display, game = null) {
+    for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+            if (dx === 0 && dy === 0) continue;
+            const nx = player.x + dx;
+            const ny = player.y + dy;
+            if (!isok(nx, ny)) continue;
+            const loc = map.at(nx, ny);
+            if (!loc) continue;
+
+            // C ref: detect.c dosearch0() — if-else structure matches C:
+            // SDOOR, SCORR, or else (monsters/traps).
+            if (loc.typ === SDOOR) {
+                if (rnl(7) === 0) {
+                    loc.typ = DOOR;
+                    loc.flags = D_CLOSED;
+                    exercise(player, A_WIS, true);
+                    if (game && Number.isInteger(game.multi) && game.multi > 0) {
+                        game.multi = 0;
+                    }
+                    display.putstr_message('You find a hidden door.');
+                }
+            } else if (loc.typ === SCORR) {
+                if (rnl(7) === 0) {
+                    loc.typ = CORR;
+                    exercise(player, A_WIS, true);
+                    if (game && Number.isInteger(game.multi) && game.multi > 0) {
+                        game.multi = 0;
+                    }
+                    display.putstr_message('You find a hidden passage.');
+                }
+            } else {
+                // C ref: detect.c:2080 — trap detection with rnl(8)
+                const trap = map.trapAt?.(nx, ny);
+                if (trap && !trap.tseen && !rnl(8)) {
+                    trap.tseen = true;
+                    exercise(player, A_WIS, true);
+                    if (game && Number.isInteger(game.multi) && game.multi > 0) {
+                        game.multi = 0;
+                    }
+                }
+            }
+        }
+    }
+    // exercise(A_WIS, TRUE) is called per-discovery above, matching C.
+}
 
 // cf. detect.c:2097 — dosearch(void): #search command
 // Executes explicit search command; calls dosearch0.

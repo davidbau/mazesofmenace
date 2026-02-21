@@ -6,7 +6,7 @@ import { nhgetch } from './input.js';
 import { POTION_CLASS, POT_WATER } from './objects.js';
 import { FOUNTAIN, A_CON, A_STR, A_WIS } from './config.js';
 import { exercise } from './attrib_exercise.js';
-import { drinkfountain } from './commands.js';
+import { drinkfountain } from './fountain.js';
 
 
 // ============================================================

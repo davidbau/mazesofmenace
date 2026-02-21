@@ -4,21 +4,21 @@
 
 import { COLNO, ROWNO, STONE, DOOR, CORR, SDOOR, SCORR, STAIRS, LADDER, FOUNTAIN, SINK, THRONE, ALTAR, GRAVE,
          POOL, LAVAPOOL, IRONBARS, TREE, ROOM, IS_DOOR, D_CLOSED, D_LOCKED,
-         D_ISOPEN, D_NODOOR, D_BROKEN, ACCESSIBLE, IS_OBSTRUCTED, IS_WALL, MAXLEVEL, VERSION_STRING, ICE,
-         isok, A_STR, A_INT, A_DEX, A_CON, A_WIS, A_CHA, STATUS_ROW_1, MAP_ROW_START,
+         D_ISOPEN, D_NODOOR, D_BROKEN, ACCESSIBLE, IS_OBSTRUCTED, IS_WALL, VERSION_STRING, ICE,
+         isok, A_STR, A_DEX, A_CON, A_WIS, A_CHA, STATUS_ROW_1, MAP_ROW_START,
          SHOPBASE, ROOMOFFSET, PM_CAVEMAN, PM_ROGUE, RACE_ORC } from './config.js';
 import { SQKY_BOARD, SLP_GAS_TRAP, FIRE_TRAP, PIT, SPIKED_PIT, ANTI_MAGIC, IS_SOFT } from './symbols.js';
 import { rn2, rn1, rnd, rnl, d, c_d } from './rng.js';
-import { resetLevelState, setFinalizeContext, setSpecialLevelDepth } from './sp_lev.js';
-import { isBranchLevel } from './dungeon.js';
-import { otherSpecialLevels } from './special_levels.js';
+import { handleWizLoadDes, wizLevelChange, wizMap, wizTeleport, wizGenesis } from './wizcmds.js';
+import { ageSpells, handleKnownSpells } from './spell.js';
+import { dosearch0 } from './detect.js';
 import { wipe_engr_at } from './engrave.js';
 import { exercise } from './attrib_exercise.js';
 import { objectData, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
          TOOL_CLASS, FOOD_CLASS, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS,
          WAND_CLASS, COIN_CLASS, GEM_CLASS, VENOM_CLASS, ROCK_CLASS, LANCE,
          BULLWHIP, BOW, ELVEN_BOW, ORCISH_BOW, YUMI, SLING, CROSSBOW, STETHOSCOPE,
-         QUARTERSTAFF, ROBE, SMALL_SHIELD, DUNCE_CAP, POT_WATER,
+         DUNCE_CAP, POT_WATER,
          TALLOW_CANDLE, WAX_CANDLE, FLINT, ROCK,
          TOUCHSTONE, LUCKSTONE, LOADSTONE, MAGIC_MARKER,
          CREAM_PIE, EUCALYPTUS_LEAF, LUMP_OF_ROYAL_JELLY,
@@ -34,8 +34,6 @@ import { handleWear, handlePutOn, handleTakeOff, handleRemove } from './do_wear.
 import { handleWield, handleSwapWeapon, handleQuiver, uwepgone, uswapwepgone, uqwepgone, setuqwep } from './wield.js';
 import { handleDownstairs, handleUpstairs, handleDrop, formatGoldPickupMessage, formatInventoryPickupMessage } from './do.js';
 import { handleInventory, compactInvletPromptChars, buildInventoryOverlayLines, renderOverlayMenuUntilDismiss, currency } from './invent.js';
-import { makemon, setMakemonPlayerContext } from './makemon.js';
-import { mons } from './monsters.js';
 import { monDisplayName, hasGivenName, monNam } from './mondata.js';
 import { mondead, monsterNearby } from './monutil.js';
 import { doname, next_ident, xname } from './mkobj.js';
@@ -43,7 +41,7 @@ import { observeObject, getDiscoveriesMenuLines, isObjectNameKnown } from './dis
 import { showPager } from './pager.js';
 import { handleZap } from './zap.js';
 import { saveGame, saveFlags } from './storage.js';
-import { obj_resists, is_metallic } from './objdata.js';
+import { obj_resists } from './objdata.js';
 import { placeFloorObject } from './floor_objects.js';
 import { greetingForRole } from './player.js';
 import { shtypes } from './shknam.js';
@@ -77,104 +75,6 @@ const STATUS_CONDITION_DEFAULT_ON = new Set([
     'cond_ride', 'cond_slime', 'cond_stone', 'cond_strngl', 'cond_stun', 'cond_termIll'
 ]);
 
-const SPELL_KEEN_TURNS = 20000;
-const SPELL_KEEN = 20000; // C ref: spell.c KEEN (also in read.js)
-const SPELL_SKILL_UNSKILLED = 1;
-const SPELL_SKILL_BASIC = 2;
-const SPELL_CATEGORY_ATTACK = 'attack';
-const SPELL_CATEGORY_HEALING = 'healing';
-const SPELL_CATEGORY_DIVINATION = 'divination';
-const SPELL_CATEGORY_ENCHANTMENT = 'enchantment';
-const SPELL_CATEGORY_CLERICAL = 'clerical';
-const SPELL_CATEGORY_ESCAPE = 'escape';
-const SPELL_CATEGORY_MATTER = 'matter';
-
-// C refs: src/spell.c spell_skilltype()/spelltypemnemonic(), include/objects.h SPELL().
-const SPELL_CATEGORY_BY_NAME = new Map([
-    ['dig', SPELL_CATEGORY_MATTER],
-    ['magic missile', SPELL_CATEGORY_ATTACK],
-    ['fireball', SPELL_CATEGORY_ATTACK],
-    ['cone of cold', SPELL_CATEGORY_ATTACK],
-    ['sleep', SPELL_CATEGORY_ENCHANTMENT],
-    ['finger of death', SPELL_CATEGORY_ATTACK],
-    ['light', SPELL_CATEGORY_DIVINATION],
-    ['detect monsters', SPELL_CATEGORY_DIVINATION],
-    ['healing', SPELL_CATEGORY_HEALING],
-    ['knock', SPELL_CATEGORY_MATTER],
-    ['force bolt', SPELL_CATEGORY_ATTACK],
-    ['confuse monster', SPELL_CATEGORY_ENCHANTMENT],
-    ['cure blindness', SPELL_CATEGORY_HEALING],
-    ['drain life', SPELL_CATEGORY_ATTACK],
-    ['slow monster', SPELL_CATEGORY_ENCHANTMENT],
-    ['wizard lock', SPELL_CATEGORY_MATTER],
-    ['create monster', SPELL_CATEGORY_CLERICAL],
-    ['detect food', SPELL_CATEGORY_DIVINATION],
-    ['cause fear', SPELL_CATEGORY_ENCHANTMENT],
-    ['clairvoyance', SPELL_CATEGORY_DIVINATION],
-    ['cure sickness', SPELL_CATEGORY_HEALING],
-    ['charm monster', SPELL_CATEGORY_ENCHANTMENT],
-    ['haste self', SPELL_CATEGORY_ESCAPE],
-    ['detect unseen', SPELL_CATEGORY_DIVINATION],
-    ['levitation', SPELL_CATEGORY_ESCAPE],
-    ['extra healing', SPELL_CATEGORY_HEALING],
-    ['restore ability', SPELL_CATEGORY_HEALING],
-    ['invisibility', SPELL_CATEGORY_ESCAPE],
-    ['detect treasure', SPELL_CATEGORY_DIVINATION],
-    ['remove curse', SPELL_CATEGORY_CLERICAL],
-    ['magic mapping', SPELL_CATEGORY_DIVINATION],
-    ['identify', SPELL_CATEGORY_DIVINATION],
-    ['turn undead', SPELL_CATEGORY_CLERICAL],
-    ['polymorph', SPELL_CATEGORY_MATTER],
-    ['teleport away', SPELL_CATEGORY_ESCAPE],
-    ['create familiar', SPELL_CATEGORY_CLERICAL],
-    ['cancellation', SPELL_CATEGORY_MATTER],
-    ['protection', SPELL_CATEGORY_CLERICAL],
-    ['jumping', SPELL_CATEGORY_ESCAPE],
-    ['stone to flesh', SPELL_CATEGORY_HEALING],
-    ['chain lightning', SPELL_CATEGORY_ATTACK],
-]);
-
-// C refs: src/role.c roles[] spell stats (spelbase/spelheal/spelshld/spelarmr/spelstat/spelspec/spelsbon).
-const ROLE_SPELLCAST = new Map([
-    [0, { spelbase: 5, spelheal: 0, spelshld: 2, spelarmr: 10, spelstat: A_INT, spelspec: 'magic mapping', spelsbon: -4 }],
-    [1, { spelbase: 14, spelheal: 0, spelshld: 0, spelarmr: 8, spelstat: A_INT, spelspec: 'haste self', spelsbon: -4 }],
-    [2, { spelbase: 12, spelheal: 0, spelshld: 1, spelarmr: 8, spelstat: A_INT, spelspec: 'dig', spelsbon: -4 }],
-    [3, { spelbase: 3, spelheal: -3, spelshld: 2, spelarmr: 10, spelstat: A_WIS, spelspec: 'cure sickness', spelsbon: -4 }],
-    [4, { spelbase: 8, spelheal: -2, spelshld: 0, spelarmr: 9, spelstat: A_WIS, spelspec: 'turn undead', spelsbon: -4 }],
-    [5, { spelbase: 8, spelheal: -2, spelshld: 2, spelarmr: 20, spelstat: A_WIS, spelspec: 'restore ability', spelsbon: -4 }],
-    [6, { spelbase: 3, spelheal: -2, spelshld: 2, spelarmr: 10, spelstat: A_WIS, spelspec: 'remove curse', spelsbon: -4 }],
-    [7, { spelbase: 8, spelheal: 0, spelshld: 1, spelarmr: 9, spelstat: A_INT, spelspec: 'detect treasure', spelsbon: -4 }],
-    [8, { spelbase: 9, spelheal: 2, spelshld: 1, spelarmr: 10, spelstat: A_INT, spelspec: 'invisibility', spelsbon: -4 }],
-    [9, { spelbase: 10, spelheal: 0, spelshld: 0, spelarmr: 8, spelstat: A_INT, spelspec: 'clairvoyance', spelsbon: -4 }],
-    [10, { spelbase: 5, spelheal: 1, spelshld: 2, spelarmr: 10, spelstat: A_INT, spelspec: 'charm monster', spelsbon: -4 }],
-    [11, { spelbase: 10, spelheal: -2, spelshld: 0, spelarmr: 9, spelstat: A_WIS, spelspec: 'cone of cold', spelsbon: -4 }],
-    [12, { spelbase: 1, spelheal: 0, spelshld: 3, spelarmr: 10, spelstat: A_INT, spelspec: 'magic missile', spelsbon: -4 }],
-]);
-
-const ROLE_BASIC_SPELL_CATEGORIES = new Map([
-    [0, new Set([SPELL_CATEGORY_ATTACK, SPELL_CATEGORY_HEALING, SPELL_CATEGORY_DIVINATION, SPELL_CATEGORY_MATTER])],
-    [1, new Set([SPELL_CATEGORY_ATTACK, SPELL_CATEGORY_ESCAPE])],
-    [2, new Set([SPELL_CATEGORY_ATTACK, SPELL_CATEGORY_MATTER])],
-    [3, new Set([SPELL_CATEGORY_HEALING])],
-    [4, new Set([SPELL_CATEGORY_ATTACK, SPELL_CATEGORY_HEALING, SPELL_CATEGORY_CLERICAL])],
-    [5, new Set([SPELL_CATEGORY_ATTACK, SPELL_CATEGORY_HEALING, SPELL_CATEGORY_DIVINATION, SPELL_CATEGORY_ENCHANTMENT, SPELL_CATEGORY_CLERICAL, SPELL_CATEGORY_ESCAPE, SPELL_CATEGORY_MATTER])],
-    [6, new Set([SPELL_CATEGORY_HEALING, SPELL_CATEGORY_DIVINATION, SPELL_CATEGORY_CLERICAL])],
-    [7, new Set([SPELL_CATEGORY_DIVINATION, SPELL_CATEGORY_ESCAPE, SPELL_CATEGORY_MATTER])],
-    [8, new Set([SPELL_CATEGORY_HEALING, SPELL_CATEGORY_DIVINATION, SPELL_CATEGORY_ESCAPE])],
-    [9, new Set([SPELL_CATEGORY_ATTACK, SPELL_CATEGORY_DIVINATION, SPELL_CATEGORY_CLERICAL])],
-    [10, new Set([SPELL_CATEGORY_DIVINATION, SPELL_CATEGORY_ENCHANTMENT, SPELL_CATEGORY_ESCAPE])],
-    [11, new Set([SPELL_CATEGORY_ATTACK, SPELL_CATEGORY_ESCAPE])],
-    [12, new Set([SPELL_CATEGORY_ATTACK, SPELL_CATEGORY_HEALING, SPELL_CATEGORY_DIVINATION, SPELL_CATEGORY_ENCHANTMENT, SPELL_CATEGORY_CLERICAL, SPELL_CATEGORY_ESCAPE, SPELL_CATEGORY_MATTER])],
-]);
-
-const HEALING_BONUS_SPELLS = new Set([
-    'healing',
-    'extra healing',
-    'cure blindness',
-    'cure sickness',
-    'restore ability',
-    'remove curse',
-]);
 
 
 // C ref: dothrow.c ammo_and_launcher() for dofire fireassist behavior.
@@ -2767,200 +2667,7 @@ async function handleDiscoveries(game) {
     return { moved: false, tookTime: false };
 }
 
-function spellCategoryForName(name) {
-    return SPELL_CATEGORY_BY_NAME.get(String(name || '').toLowerCase()) || SPELL_CATEGORY_MATTER;
-}
 
-function spellSkillRank(player, category) {
-    const basic = ROLE_BASIC_SPELL_CATEGORIES.get(player.roleIndex);
-    return basic?.has(category) ? SPELL_SKILL_BASIC : SPELL_SKILL_UNSKILLED;
-}
-
-function spellRetentionText(turnsLeft, skillRank) {
-    if (turnsLeft < 1) return '(gone)';
-    if (turnsLeft >= SPELL_KEEN_TURNS) return '100%';
-    const percent = Math.floor((turnsLeft - 1) / (SPELL_KEEN_TURNS / 100)) + 1;
-    const accuracy = skillRank >= SPELL_SKILL_BASIC ? 10 : 25;
-    const hi = Math.min(100, accuracy * Math.floor((percent + accuracy - 1) / accuracy));
-    const lo = Math.max(1, hi - accuracy + 1);
-    return `${lo}%-${hi}%`;
-}
-
-function estimateSpellFailPercent(player, spellName, spellLevel, category) {
-    const role = ROLE_SPELLCAST.get(player.roleIndex)
-        || { spelbase: 10, spelheal: 0, spelshld: 2, spelarmr: 10, spelstat: A_INT, spelspec: '', spelsbon: 0 };
-    const statValue = Math.max(3, Math.min(25, Number(player.attributes?.[role.spelstat] || 10)));
-    const spellSkill = spellSkillRank(player, category);
-    const heroLevel = Math.max(1, Number(player.level || 1));
-    const spellLvl = Math.max(1, Number(spellLevel || 1));
-
-    const paladinBonus = player.roleIndex === 4 && category === SPELL_CATEGORY_CLERICAL;
-    const armor = player.armor || null;
-    const cloak = player.cloak || null;
-    const shield = player.shield || null;
-    const helmet = player.helmet || null;
-    const gloves = player.gloves || null;
-    const boots = player.boots || null;
-    const weapon = player.weapon || null;
-
-    let splcaster = role.spelbase;
-    if (armor && is_metallic(armor) && !paladinBonus) {
-        splcaster += (cloak?.otyp === ROBE) ? Math.floor(role.spelarmr / 2) : role.spelarmr;
-    } else if (cloak?.otyp === ROBE) {
-        splcaster -= role.spelarmr;
-    }
-    if (shield) splcaster += role.spelshld;
-    if (weapon?.otyp === QUARTERSTAFF) splcaster -= 3;
-    if (!paladinBonus) {
-        if (helmet && is_metallic(helmet)) splcaster += 4;
-        if (gloves && is_metallic(gloves)) splcaster += 6;
-        if (boots && is_metallic(boots)) splcaster += 2;
-    }
-    if (String(spellName || '').toLowerCase() === role.spelspec) splcaster += role.spelsbon;
-    if (HEALING_BONUS_SPELLS.has(String(spellName || '').toLowerCase())) splcaster += role.spelheal;
-    splcaster = Math.min(20, splcaster);
-
-    let chance = Math.floor((11 * statValue) / 2);
-    const skill = Math.max(spellSkill, SPELL_SKILL_UNSKILLED) - 1;
-    const difficulty = ((spellLvl - 1) * 4) - ((skill * 6) + Math.floor(heroLevel / 3) + 1);
-    if (difficulty > 0) {
-        chance -= Math.floor(Math.sqrt((900 * difficulty) + 2000));
-    } else {
-        chance += Math.min(20, Math.floor((15 * -difficulty) / spellLvl));
-    }
-    chance = Math.max(0, Math.min(120, chance));
-
-    const shieldWeight = Number(objectData[shield?.otyp]?.weight || 0);
-    const smallShieldWeight = Number(objectData[SMALL_SHIELD]?.weight || 40);
-    if (shield && shieldWeight > smallShieldWeight) {
-        chance = (String(spellName || '').toLowerCase() === role.spelspec)
-            ? Math.floor(chance / 2)
-            : Math.floor(chance / 4);
-    }
-
-    chance = Math.floor((chance * (20 - splcaster)) / 15) - splcaster;
-    chance = Math.max(0, Math.min(100, chance));
-    return Math.max(0, Math.min(99, 100 - chance));
-}
-
-// C ref: spell.c age_spells() — decrement spell retention each turn
-export function ageSpells(player) {
-    const spells = player.spells;
-    if (!spells) return;
-    for (const s of spells) {
-        if (s.sp_know > 0) s.sp_know--;
-    }
-}
-
-async function handleKnownSpells(player, display) {
-    const knownSpells = (player.spells || []).filter(s => s.sp_know > 0);
-    if (knownSpells.length === 0) {
-        display.putstr_message("You don't know any spells right now.");
-        return { moved: false, tookTime: false };
-    }
-
-    const rows = ['Currently known spells', ''];
-    const showTurns = !!player.wizard;
-    rows.push(showTurns
-        ? '    Name                 Level Category     Fail Retention  turns'
-        : '    Name                 Level Category     Fail Retention');
-
-    for (let i = 0; i < knownSpells.length && i < 52; i++) {
-        const sp = knownSpells[i];
-        const od = objectData[sp.otyp] || null;
-        const spellName = String(od?.name || 'unknown spell').toLowerCase();
-        const spellLevel = Math.max(1, Number(od?.oc2 || sp.sp_lev || 1));
-        const category = spellCategoryForName(spellName);
-        const skillRank = spellSkillRank(player, category);
-        const turnsLeft = Math.max(0, sp.sp_know);
-        const fail = estimateSpellFailPercent(player, spellName, spellLevel, category);
-        const retention = spellRetentionText(turnsLeft, skillRank);
-        const menuLet = i < 26 ? String.fromCharCode('a'.charCodeAt(0) + i) : String.fromCharCode('A'.charCodeAt(0) + i - 26);
-        const base = `${menuLet} - ${spellName.padEnd(20)}  ${String(spellLevel).padStart(2)}   ${category.padEnd(12)} ${String(fail).padStart(3)}% ${retention.padStart(9)}`;
-        rows.push(showTurns ? `${base}  ${String(turnsLeft).padStart(5)}` : base);
-    }
-    rows.push('+ - [sort spells]');
-    rows.push('(end)');
-
-    if (typeof display.renderOverlayMenu === 'function') {
-        display.renderOverlayMenu(rows);
-    } else {
-        display.renderChargenMenu(rows, false);
-    }
-
-    while (true) {
-        const ch = await nhgetch();
-        if (ch === 32 || ch === 27 || ch === 10 || ch === 13) break;
-    }
-    if (typeof display.clearRow === 'function') display.clearRow(0);
-    display.topMessage = null;
-    display.messageNeedsMore = false;
-    return { moved: false, tookTime: false };
-}
-
-// C ref: fountain.c:243 drinkfountain() — drink from a fountain
-export function drinkfountain(player, map, display) {
-    const loc = map.at(player.x, player.y);
-    const mgkftn = loc && loc.blessedftn === 1;
-    const fate = rnd(30);
-
-    // C ref: fountain.c:254 — blessed fountain jackpot
-    if (mgkftn && (player.luck || 0) >= 0 && fate >= 10) {
-        display.putstr_message('Wow!  This makes you feel great!');
-        rn2(6); // rn2(A_MAX) — random starting attribute
-        // adjattrib loop — simplified, no RNG for basic case
-        display.putstr_message('A wisp of vapor escapes the fountain...');
-        exercise(player, A_WIS, true);
-        if (loc) loc.blessedftn = 0;
-        return; // NO dryup on blessed jackpot path
-    }
-
-    if (fate < 10) {
-        // C ref: fountain.c:279 — cool draught refreshes
-        display.putstr_message('The cool draught refreshes you.');
-        player.hunger += rnd(10);
-        if (mgkftn) return; // blessed fountain, no dryup
-    } else {
-        // C ref: fountain.c:286-387 — switch on fate
-        switch (fate) {
-        case 19:
-            display.putstr_message('You feel self-knowledgeable...');
-            exercise(player, A_WIS, true);
-            break;
-        case 20:
-            display.putstr_message('The water is foul!  You gag and vomit.');
-            rn2(20) + 11; // rn1(20, 11) = rn2(20) + 11 for morehungry
-            break;
-        case 21:
-            display.putstr_message('The water is contaminated!');
-            rn2(4) + 3; // rn1(4, 3) for poison_strdmg
-            rnd(10);    // damage
-            exercise(player, A_CON, false);
-            break;
-        // cases 22-30: complex effects with sub-functions
-        // TODO: implement dowatersnakes, dowaterdemon, etc.
-        default:
-            display.putstr_message('This tepid water is tasteless.');
-            break;
-        }
-    }
-    // C ref: fountain.c:389 — dryup at end of all non-jackpot paths
-    dryup(player.x, player.y, map, display);
-}
-
-// C ref: fountain.c:200 dryup() — chance to dry up fountain
-function dryup(x, y, map, display) {
-    const loc = map.at(x, y);
-    if (loc && loc.typ === FOUNTAIN) {
-        if (!rn2(3)) {
-            // Fountain dries up
-            loc.typ = ROOM;
-            loc.flags = 0;
-            loc.blessedftn = 0;
-            display.putstr_message('The fountain dries up!');
-        }
-    }
-}
 
 // Handle looking at what's here
 // C ref: cmd.c dolook()
@@ -3535,53 +3242,6 @@ async function showGuidebook(display) {
 }
 
 // Search for hidden doors and traps adjacent to player
-// C ref: detect.c dosearch0()
-export function dosearch0(player, map, display, game = null) {
-    for (let dx = -1; dx <= 1; dx++) {
-        for (let dy = -1; dy <= 1; dy++) {
-            if (dx === 0 && dy === 0) continue;
-            const nx = player.x + dx;
-            const ny = player.y + dy;
-            if (!isok(nx, ny)) continue;
-            const loc = map.at(nx, ny);
-            if (!loc) continue;
-
-            // C ref: detect.c dosearch0() — if-else structure matches C:
-            // SDOOR, SCORR, or else (monsters/traps).
-            if (loc.typ === SDOOR) {
-                if (rnl(7) === 0) {
-                    loc.typ = DOOR;
-                    loc.flags = D_CLOSED;
-                    exercise(player, A_WIS, true);
-                    if (game && Number.isInteger(game.multi) && game.multi > 0) {
-                        game.multi = 0;
-                    }
-                    display.putstr_message('You find a hidden door.');
-                }
-            } else if (loc.typ === SCORR) {
-                if (rnl(7) === 0) {
-                    loc.typ = CORR;
-                    exercise(player, A_WIS, true);
-                    if (game && Number.isInteger(game.multi) && game.multi > 0) {
-                        game.multi = 0;
-                    }
-                    display.putstr_message('You find a hidden passage.');
-                }
-            } else {
-                // C ref: detect.c:2080 — trap detection with rnl(8)
-                const trap = map.trapAt?.(nx, ny);
-                if (trap && !trap.tseen && !rnl(8)) {
-                    trap.tseen = true;
-                    exercise(player, A_WIS, true);
-                    if (game && Number.isInteger(game.multi) && game.multi > 0) {
-                        game.multi = 0;
-                    }
-                }
-            }
-        }
-    }
-    // exercise(A_WIS, TRUE) is called per-discovery above, matching C.
-}
 
 // Handle save game (S)
 // C ref: cmd.c dosave()
@@ -4251,206 +3911,6 @@ async function handleExtendedCommand(game) {
     }
 }
 
-// Wizard mode: load a special level description
-// C ref: wizcmds.c wiz_load_splua()
-async function handleWizLoadDes(game) {
-    const { player, display } = game;
-    const input = await getlin('Load which level?', display);
-    if (input === null || input.trim() === '') {
-        return { moved: false, tookTime: false };
-    }
-    const levelName = input.trim();
-    const generator = otherSpecialLevels[levelName];
-    if (!generator) {
-        display.putstr_message(`Cannot find level: ${levelName}`);
-        return { moved: false, tookTime: false };
-    }
-    // C ref: nhl_init() creates a fresh Lua state and loads nhlib.lua,
-    // whose top-level shuffle(align) consumes rn2(3), rn2(2).
-    rn2(3);
-    rn2(2);
-    resetLevelState();
-    setSpecialLevelDepth(player.dungeonLevel);
-    // C ref: fixup_special() uses Is_branchlev(&u.uz) for branch placement.
-    // Must pass dnum/dlevel so isBranchLevel is computed correctly.
-    const dnum = 0; // JS currently only tracks Dungeons of Doom
-    const dlevel = player.dungeonLevel;
-    setFinalizeContext({
-        dnum,
-        dlevel,
-        specialName: levelName,
-        isBranchLevel: isBranchLevel(dnum, dlevel),
-    });
-    const newMap = generator();
-    if (newMap) {
-        // Route through changeLevel for hero placement, pet migration, and
-        // arrival collision — matching C's goto_level() flow.
-        game.changeLevel(player.dungeonLevel, 'teleport', { map: newMap });
-    }
-    return { moved: false, tookTime: false };
-}
-
-// Wizard mode: change dungeon level
-// C ref: cmd.c wiz_level_change()
-async function wizLevelChange(game) {
-    const { player, display } = game;
-    if (!game.wizard) {
-        display.putstr_message('Unavailable command.');
-        return { moved: false, tookTime: false };
-    }
-    const input = await getlin('To what level do you want to teleport? ', display);
-    if (input === null || input.trim() === '') {
-        return { moved: false, tookTime: false };
-    }
-    const level = parseInt(input.trim(), 10);
-    if (isNaN(level) || level < 1 || level > MAXLEVEL) {
-        display.putstr_message(`Bad level number (1-${MAXLEVEL}).`);
-        return { moved: false, tookTime: false };
-    }
-    if (level === player.dungeonLevel) {
-        display.putstr_message('You are already on that level.');
-        return { moved: false, tookTime: false };
-    }
-    game.changeLevel(level, 'teleport');
-    // C ref: wizcmds.c wiz_level_tele() returns ECMD_OK (time consumed).
-    return { moved: false, tookTime: true };
-}
-
-// Wizard mode: reveal entire map (magic mapping)
-// C ref: cmd.c wiz_map() / detect.c do_mapping()
-function wizMap(game) {
-    const { map, player, display, fov } = game;
-    if (!game.wizard) {
-        display.putstr_message('Unavailable command.');
-        return { moved: false, tookTime: false };
-    }
-    // Reveal every cell on the map by setting seenv to full visibility
-    for (let x = 0; x < COLNO; x++) {
-        for (let y = 0; y < ROWNO; y++) {
-            const loc = map.at(x, y);
-            if (loc) {
-                loc.seenv = 0xff;
-                loc.lit = true;
-            }
-        }
-    }
-    // Re-render the map with everything revealed
-    fov.compute(map, player.x, player.y);
-    display.renderMap(map, player, fov);
-    display.putstr_message('You feel knowledgeable.');
-    return { moved: false, tookTime: false };
-}
-
-// Wizard mode: teleport to coordinates
-// C ref: cmd.c wiz_teleport()
-async function wizTeleport(game) {
-    const { player, map, display, fov } = game;
-    if (!game.wizard) {
-        display.putstr_message('Unavailable command.');
-        return { moved: false, tookTime: false };
-    }
-    const input = await getlin('Teleport to (x,y): ', display);
-    let nx, ny;
-    if (input === null) {
-        return { moved: false, tookTime: false };
-    }
-    const trimmed = input.trim();
-    if (trimmed === '') {
-        // Random teleport: find a random accessible spot
-        let found = false;
-        for (let attempts = 0; attempts < 500; attempts++) {
-            const rx = 1 + rn2(COLNO - 2);
-            const ry = rn2(ROWNO);
-            const loc = map.at(rx, ry);
-            if (loc && ACCESSIBLE(loc.typ) && !map.monsterAt(rx, ry)) {
-                nx = rx;
-                ny = ry;
-                found = true;
-                break;
-            }
-        }
-        if (!found) {
-            display.putstr_message('Failed to find a valid teleport destination.');
-            return { moved: false, tookTime: false };
-        }
-    } else {
-        const parts = trimmed.split(',');
-        if (parts.length !== 2) {
-            display.putstr_message('Bad format. Use: x,y');
-            return { moved: false, tookTime: false };
-        }
-        nx = parseInt(parts[0].trim(), 10);
-        ny = parseInt(parts[1].trim(), 10);
-        if (isNaN(nx) || isNaN(ny)) {
-            display.putstr_message('Bad coordinates.');
-            return { moved: false, tookTime: false };
-        }
-        if (!isok(nx, ny)) {
-            display.putstr_message('Out of bounds.');
-            return { moved: false, tookTime: false };
-        }
-        const loc = map.at(nx, ny);
-        if (!loc || !ACCESSIBLE(loc.typ)) {
-            display.putstr_message('That location is not accessible.');
-            return { moved: false, tookTime: false };
-        }
-    }
-    player.x = nx;
-    player.y = ny;
-    fov.compute(map, player.x, player.y);
-    display.renderMap(map, player, fov);
-    display.putstr_message(`You teleport to (${nx},${ny}).`);
-    return { moved: true, tookTime: true };
-}
-
-// Wizard mode: create a monster (genesis)
-// C ref: cmd.c wiz_genesis() / makemon.c
-async function wizGenesis(game) {
-    const { player, map, display } = game;
-    if (!game.wizard) {
-        display.putstr_message('Unavailable command.');
-        return { moved: false, tookTime: false };
-    }
-    const input = await getlin('Create what monster? ', display);
-    if (input === null || input.trim() === '') {
-        return { moved: false, tookTime: false };
-    }
-    const name = input.trim().toLowerCase();
-    // Find the monster type by name (case-insensitive match against mons[])
-    let mndx = mons.findIndex(m => m.name.toLowerCase() === name);
-    if (mndx < 0) {
-        // Try substring match as fallback
-        mndx = mons.findIndex(m => m.name.toLowerCase().includes(name));
-    }
-    if (mndx < 0) {
-        display.putstr_message(`Unknown monster: "${input.trim()}".`);
-        return { moved: false, tookTime: false };
-    }
-    // Find an adjacent accessible spot to place the monster
-    let placed = false;
-    for (let dx = -1; dx <= 1 && !placed; dx++) {
-        for (let dy = -1; dy <= 1 && !placed; dy++) {
-            if (dx === 0 && dy === 0) continue;
-            const mx = player.x + dx;
-            const my = player.y + dy;
-            if (!isok(mx, my)) continue;
-            const loc = map.at(mx, my);
-            if (!loc || !ACCESSIBLE(loc.typ)) continue;
-            if (map.monsterAt(mx, my)) continue;
-            setMakemonPlayerContext(player);
-            const mon = makemon(mndx, mx, my, 0, player.dungeonLevel, map);
-            if (mon) {
-                mon.sleeping = false; // wizard-created monsters are awake
-                display.putstr_message(`A ${mons[mndx].name} appears!`);
-                placed = true;
-            }
-        }
-    }
-    if (!placed) {
-        display.putstr_message('There is no room near you to create a monster.');
-    }
-    return { moved: false, tookTime: false };
-}
 
 // BFS pathfinding for travel command
 // C ref: cmd.c dotravel() -> hack.c findtravelpath()
