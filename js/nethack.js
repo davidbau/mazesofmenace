@@ -1332,7 +1332,7 @@ export class NetHackGame {
 
             // Travel continuation - C ref: hack.c domove() with context.travel
             if (this.travelPath && this.travelStep < this.travelPath.length) {
-                const { executeTravelStep } = await import('./commands.js');
+                const { executeTravelStep } = await import('./hack.js');
                 const result = await executeTravelStep(this);
 
                 if (result.tookTime) {
