@@ -338,9 +338,10 @@ Uses `pushRngLogEntry()` from `js/rng.js`. Instrumented functions:
 | `js/engrave.js` | `logWipeEvent()` | `^wipe` |
 | `js/dungeon.js` | `mktrap()`, `deltrap()` | `^trap`, `^dtrap` |
 
-**JS coverage gap:** ~25 direct `map.objects.push(obj)` calls bypass
-`placeFloorObject()` and emit no `^place` event. Tracked in
-[issue #150](https://github.com/davidbau/menace/issues/150).
+**JS coverage gap:** Runtime placement now routes through `placeFloorObject()`
+so floor object insertions should emit `^place` consistently. See
+[issue #150](https://github.com/davidbau/menace/issues/150) for the completed
+placement audit.
 
 ### Traced Functions
 
