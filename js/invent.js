@@ -92,6 +92,51 @@ export function buildInventoryOverlayLines(player) {
     return lines;
 }
 
+function buildInventoryPages(lines, rows = STATUS_ROW_1) {
+    const contentRows = Math.max(1, rows - 1); // reserve one row for "--More--"
+    const pages = [];
+    for (let i = 0; i < lines.length; i += contentRows) {
+        const chunk = lines.slice(i, i + contentRows);
+        const hasMore = i + contentRows < lines.length;
+        pages.push(hasMore ? [...chunk, '--More--'] : chunk);
+    }
+    return pages.length > 0 ? pages : [['--More--']];
+}
+
+function clearInventoryOverlayArea(display, lines = []) {
+    if (!display || !Number.isInteger(display.rows) || !Number.isInteger(display.cols)) return;
+    if (!Number.isInteger(STATUS_ROW_1)) return;
+    let maxcol = 0;
+    for (const line of lines) {
+        const len = String(line || '').length;
+        if (len > maxcol) maxcol = len;
+    }
+    const menuOffx = Math.max(10, Math.min(display.cols, display.cols - maxcol - 2));
+    const menuRows = Math.min(STATUS_ROW_1, display.rows);
+    if (typeof display.setCell === 'function') {
+        for (let r = 0; r < menuRows; r++) {
+            for (let col = menuOffx; col < display.cols; col++) {
+                display.setCell(col, r, ' ', 7, 0);
+            }
+        }
+        return;
+    }
+    if (typeof display.clearRow === 'function') {
+        for (let r = 0; r < menuRows; r++) {
+            display.clearRow(r);
+        }
+    }
+}
+
+function drawInventoryPage(display, lines) {
+    clearInventoryOverlayArea(display, lines);
+    if (typeof display.renderOverlayMenu === 'function') {
+        display.renderOverlayMenu(lines);
+    } else {
+        display.renderChargenMenu(lines, false);
+    }
+}
+
 function isMenuDismissKey(ch) {
     return ch === 32 || ch === 27 || ch === 10 || ch === 13;
 }
@@ -143,12 +188,10 @@ export async function handleInventory(player, display, game) {
     }
 
     const lines = buildInventoryOverlayLines(player);
+    const pages = buildInventoryPages(lines, STATUS_ROW_1);
+    let pageIndex = 0;
 
-    if (typeof display.renderOverlayMenu === 'function') {
-        display.renderOverlayMenu(lines);
-    } else {
-        display.renderChargenMenu(lines, false);
-    }
+    drawInventoryPage(display, pages[pageIndex] || []);
     const invByLetter = new Map();
     for (const item of player.inventory || []) {
         if (item?.invlet) invByLetter.set(String(item.invlet), item);
@@ -162,9 +205,44 @@ export async function handleInventory(player, display, game) {
     // Non-dismiss keys can be consumed without closing the menu frame.
     while (true) {
         const ch = await nhgetch();
-        // C tty parity: inventory stays open through regular command keys;
-        // explicit dismissal keys include space, escape, and enter.
-        if (ch === 32 || ch === 27 || ch === 10 || ch === 13) break;
+        // C tty parity: space advances pages when present; otherwise it
+        // dismisses the inventory only at the end of the final page.
+        if (ch === 32) {
+            if (pageIndex + 1 < pages.length) {
+                pageIndex++;
+                drawInventoryPage(display, pages[pageIndex] || []);
+                continue;
+            }
+            break;
+        }
+        if (ch === 62) { // '>'
+            if (pageIndex + 1 < pages.length) {
+                pageIndex++;
+                drawInventoryPage(display, pages[pageIndex] || []);
+            }
+            continue;
+        }
+        if (ch === 98 && pageIndex > 0) { // b
+            pageIndex--;
+            drawInventoryPage(display, pages[pageIndex] || []);
+            continue;
+        }
+        if (ch === 60 && pageIndex > 0) { // '<'
+            pageIndex--;
+            drawInventoryPage(display, pages[pageIndex] || []);
+            continue;
+        }
+        if (ch === 94 && pageIndex > 0) { // '^'
+            pageIndex = 0;
+            drawInventoryPage(display, pages[pageIndex] || []);
+            continue;
+        }
+        if (ch === 124 && pageIndex + 1 < pages.length) { // '|'
+            pageIndex = pages.length - 1;
+            drawInventoryPage(display, pages[pageIndex] || []);
+            continue;
+        }
+        if (ch === 27 || ch === 10 || ch === 13) break;
         const c = String.fromCharCode(ch);
         if (c === ':') {
             // C tty menu parity: ':' enters in-menu incremental search.
