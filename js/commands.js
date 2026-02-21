@@ -6,7 +6,7 @@ import { COLNO, ROWNO, STONE, DOOR, CORR, SDOOR, SCORR, STAIRS, LADDER, FOUNTAIN
          POOL, LAVAPOOL, IRONBARS, TREE, ROOM, IS_DOOR, D_CLOSED, D_LOCKED,
          D_ISOPEN, D_NODOOR, D_BROKEN, ACCESSIBLE, IS_OBSTRUCTED, IS_WALL, MAXLEVEL, VERSION_STRING, ICE,
          isok, A_STR, A_INT, A_DEX, A_CON, A_WIS, A_CHA, STATUS_ROW_1, MAP_ROW_START,
-         SHOPBASE, ROOMOFFSET, PM_CAVEMAN, RACE_ORC } from './config.js';
+         SHOPBASE, ROOMOFFSET, PM_CAVEMAN, PM_ROGUE, RACE_ORC } from './config.js';
 import { SQKY_BOARD, SLP_GAS_TRAP, FIRE_TRAP, PIT, SPIKED_PIT, ANTI_MAGIC, IS_SOFT } from './symbols.js';
 import { rn2, rn1, rnd, rnl, d, c_d } from './rng.js';
 import { wipe_engr_at } from './engrave.js';
@@ -20,7 +20,8 @@ import { objectData, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
          TOUCHSTONE, LUCKSTONE, LOADSTONE, MAGIC_MARKER,
          CREAM_PIE, EUCALYPTUS_LEAF, LUMP_OF_ROYAL_JELLY,
          POT_OIL, PICK_AXE, DWARVISH_MATTOCK,
-         CREDIT_CARD, EXPENSIVE_CAMERA, MIRROR, FIGURINE } from './objects.js';
+         CREDIT_CARD, LOCK_PICK, SKELETON_KEY,
+         EXPENSIVE_CAMERA, MIRROR, FIGURINE } from './objects.js';
 import { nhgetch, ynFunction, getlin } from './input.js';
 import { playerAttackMonster } from './uhitm.js';
 import { handleEat } from './eat.js';
@@ -2528,12 +2529,87 @@ async function handleApply(player, display) {
             return { moved: false, tookTime: false };
         }
 
+        // C ref: lock.c pick_lock() — credit card / lock pick / skeleton key
+        // applied to a door: ask direction, find door, prompt, set picklock occupation.
+        if (selected.otyp === CREDIT_CARD || selected.otyp === LOCK_PICK
+            || selected.otyp === SKELETON_KEY) {
+            display.putstr_message('In what direction?');
+            const dirCh = await nhgetch();
+            const dch = String.fromCharCode(dirCh);
+            const dir = DIRECTION_KEYS[dch];
+            if (!dir) {
+                replacePromptMessage();
+                if (!player?.wizard) {
+                    display.putstr_message('What a strange direction!  Never mind.');
+                }
+                return { moved: false, tookTime: false };
+            }
+            replacePromptMessage();
+            const nx = player.x + dir[0];
+            const ny = player.y + dir[1];
+            const loc = map.at(nx, ny);
+            if (!loc || !IS_DOOR(loc.typ)) {
+                display.putstr_message('You see no door there.');
+                return { moved: false, tookTime: true };
+            }
+            if (loc.flags === D_NODOOR) {
+                display.putstr_message('This doorway has no door.');
+                return { moved: false, tookTime: true };
+            }
+            if (loc.flags & D_ISOPEN) {
+                display.putstr_message('You cannot lock an open door.');
+                return { moved: false, tookTime: true };
+            }
+            if (loc.flags & D_BROKEN) {
+                display.putstr_message('This door is broken.');
+                return { moved: false, tookTime: true };
+            }
+            // C ref: lock.c pick_lock() — credit card can only unlock, not lock
+            if (selected.otyp === CREDIT_CARD && !(loc.flags & D_LOCKED)) {
+                display.putstr_message("You can't lock a door with a credit card.");
+                return { moved: false, tookTime: true };
+            }
+            const isLocked = !!(loc.flags & D_LOCKED);
+            const ans = await ynFunction(`${isLocked ? 'Unlock' : 'Lock'} it?`, 'ynq',
+                'n'.charCodeAt(0), display);
+            if (String.fromCharCode(ans) !== 'y') {
+                return { moved: false, tookTime: false };
+            }
+            // C ref: lock.c pick_lock() — chance per turn (rn2(100) < chance)
+            const dex = player.attributes ? player.attributes[A_DEX] : 11;
+            const isRogue = (player.roleIndex === PM_ROGUE) ? 1 : 0;
+            let chance;
+            if (selected.otyp === CREDIT_CARD) {
+                chance = 2 * dex + 20 * isRogue;
+            } else if (selected.otyp === LOCK_PICK) {
+                chance = 3 * dex + 30 * isRogue;
+            } else { // SKELETON_KEY
+                chance = 70 + dex;
+            }
+            let usedtime = 0;
+            game.occupation = {
+                occtxt: isLocked ? 'unlocking the door' : 'locking the door',
+                fn(g) {
+                    if (usedtime++ >= 50) {
+                        display.putstr_message(`You give up your attempt at ${isLocked ? 'unlocking' : 'locking'} the door.`);
+                        exercise(player, A_DEX, true);
+                        return false;
+                    }
+                    if (rn2(100) >= chance) return true; // still busy
+                    display.putstr_message(`You succeed in ${isLocked ? 'unlocking' : 'locking'} the door.`);
+                    loc.flags = isLocked ? D_CLOSED : D_LOCKED;
+                    exercise(player, A_DEX, true);
+                    return false;
+                },
+            };
+            return { moved: false, tookTime: true };
+        }
+
         // C ref: apply.c — tools that use getdir() "In what direction?" prompt:
         // use_pick_axe2() for pick-axe/mattock, use_whip() for bullwhip,
         // use_stethoscope() for stethoscope, use_pole() for polearms.
         if (selected.otyp === PICK_AXE || selected.otyp === DWARVISH_MATTOCK
             || selected.otyp === BULLWHIP || selected.otyp === STETHOSCOPE
-            || selected.otyp === CREDIT_CARD
             || selected.otyp === EXPENSIVE_CAMERA || selected.otyp === MIRROR
             || selected.otyp === FIGURINE
             || isApplyPolearm(selected)) {
