@@ -214,12 +214,6 @@ export let levelState = {
     currentRoom: null,      // Current room being populated
     roomStack: [],          // Stack of nested rooms
     roomDepth: 0,           // Current nesting depth
-    // Deferred execution queues (for RNG alignment with C)
-    // C defers object/monster/trap placement until after corridor generation
-    deferredObjects: [],    // Queued object placements
-    deferredMonsters: [],   // Queued monster placements
-    deferredTraps: [],      // Queued trap placements
-    deferredActions: [],    // Queued placements in original script order
     containerStack: [],     // Active des.object contents callback container context
     monsterInventoryStack: [], // Active des.monster inventory callback context
     // Optional context to emulate C topology/fixup behavior.
@@ -1206,10 +1200,6 @@ export function resetLevelState() {
         currentRoom: null,
         roomStack: [],
         roomDepth: 0,
-        deferredObjects: [],
-        deferredMonsters: [],
-        deferredTraps: [],
-        deferredActions: [],
         containerStack: [],
         monsterInventoryStack: [],
         finalizeContext: null,
@@ -3993,9 +3983,8 @@ export function object(name_or_opts, x, y) {
     let absY = pos.y;
     const ev = ++spObjTraceEvent;
 
-    // C ref: Object creation happens IMMEDIATELY (calls next_ident, rndmonst_adj, etc.)
-    // even though map placement is deferred until after corridors
-    // This ensures RNG timing matches C: create during loop, place after corridors
+    // C ref: Object creation AND placement happens immediately in script order
+    // (calls next_ident, rndmonst_adj, etc. then place_object)
 
     let obj = null;
     // C ref: sp_lev.c create_object() -> mkobj_at/mksobj_at(..., !named)
@@ -4139,11 +4128,14 @@ export function object(name_or_opts, x, y) {
         if (absX >= 0 && absX < COLNO && absY >= 0 && absY < ROWNO) {
             markSpLevTouched(absX, absY);
         }
-        levelState.deferredObjects.push({ obj, x: absX, y: absY, buried: isBuried });
-        // C ref: lspo_* handlers execute in script order. Keep deferred
-        // placements ordered by insertion so finalize_level() can replay
-        // object/monster interleaving faithfully.
-        levelState.deferredActions.push({ kind: 'object', idx: levelState.deferredObjects.length - 1 });
+        // Place object immediately in script order (matching C)
+        obj.ox = absX;
+        obj.oy = absY;
+        if (isBuried) {
+            obj.buried = true;
+        } else if (absX >= 0 && absX < COLNO && absY >= 0 && absY < ROWNO) {
+            placeFloorObject(levelState.map, obj);
+        }
 
         // C ref: lspo_object() executes contents callback with this object as
         // active container, then pops container context.
@@ -4273,7 +4265,7 @@ export function trap(type_or_opts, x, y) {
         // C ref: sp_lev.c lspo_trap() creates traps immediately in script order.
         // In parity mode, defer coordinate resolution to execution time to keep
         // get_location_coord() timing aligned with C.
-        executeDeferredTrap({
+        createScriptTrap({
             type_or_opts,
             deferCoord: true,
             rawX: srcX,
@@ -4305,7 +4297,7 @@ export function trap(type_or_opts, x, y) {
 
     // C ref: sp_lev.c lspo_trap()/create_trap() applies trap RNG side effects
     // inline in script order. Execute immediately for parity.
-    executeDeferredTrap({ type_or_opts, x: absX, y: absY });
+    createScriptTrap({ type_or_opts, x: absX, y: absY });
 }
 
 /**
@@ -4843,7 +4835,6 @@ export function monster(opts_or_class, x, y) {
     }
 
     // NOTE: Lua RNG simulation removed - all themed rooms converted to JS
-    // Monster creation RNG happens during executeDeferredMonsters()
 
     // Normalize coordinates from object-style calls:
     // des.monster({ x, y }) or des.monster({ coord: [x, y] }).
@@ -4878,7 +4869,7 @@ export function monster(opts_or_class, x, y) {
     // C ref: sp_lev.c lspo_monster() creates monsters during script execution
     // rather than batching them by type. Resolve coordinates at execution time
     // to keep get_location_coord() call timing aligned.
-    executeDeferredMonster({
+    createScriptMonster({
         opts_or_class,
         deferCoord: true,
         rawX: srcX,
@@ -5784,44 +5775,11 @@ export function mineralize(opts = {}) {
 }
 
 /**
- * Execute all deferred object placements
- * Called from finalize_level() after corridor generation
- * Objects are already created (RNG consumed), just need to be placed on the map
+ * Create a monster from script options, resolving coordinates and applying
+ * all C-parity logic (class resolution, inventory, alignment, etc.)
+ * C ref: sp_lev.c create_monster()
  */
-function executeDeferredObject(deferred) {
-    const { obj, x, y, buried } = deferred;
-
-    if (!obj) return;
-
-    // Place the pre-created object on the map
-    // If coordinates not specified, use random dungeon position
-    const coordX = (x !== undefined) ? x : rn2(60) + 10;
-    const coordY = (y !== undefined) ? y : rn2(15) + 3;
-
-    if (coordX >= 0 && coordX < 80 && coordY >= 0 && coordY < 21) {
-        obj.ox = coordX;
-        obj.oy = coordY;
-        if (buried) {
-            // C ref: bury_an_obj() removes floor placement and stores the
-            // object in buried chains. We currently only model "not on floor".
-            obj.buried = true;
-            return;
-        }
-        placeFloorObject(levelState.map, obj);
-    }
-}
-
-function executeDeferredObjects() {
-    for (const deferred of levelState.deferredObjects) {
-        executeDeferredObject(deferred);
-    }
-}
-
-/**
- * Execute all deferred monster placements
- * Called from finalize_level() after corridor generation
- */
-function executeDeferredMonster(deferred) {
+function createScriptMonster(deferred) {
     const { opts_or_class, x, y } = deferred;
     const immediateParity = !!levelState.finalizeContext || !!deferred.parityImmediate;
     const traceMon = (typeof process !== 'undefined' && process.env.WEBHACK_MON_TRACE === '1');
@@ -6143,17 +6101,11 @@ function executeDeferredMonster(deferred) {
     }
 }
 
-function executeDeferredMonsters() {
-    for (const deferred of levelState.deferredMonsters) {
-        executeDeferredMonster(deferred);
-    }
-}
-
 /**
- * Execute all deferred trap placements
- * Called from finalize_level() after corridor generation
+ * Create a trap from script options, resolving coordinates and type.
+ * C ref: sp_lev.c create_trap()
  */
-function executeDeferredTrap(deferred) {
+function createScriptTrap(deferred) {
     const { type_or_opts, x, y, deferCoord, rawX, rawY, room } = deferred;
 
     // Execute the original trap() logic
@@ -6335,12 +6287,6 @@ function executeDeferredTrap(deferred) {
     markSpLevTouched(trapX, trapY);
 }
 
-function executeDeferredTraps() {
-    for (const deferred of levelState.deferredTraps) {
-        executeDeferredTrap(deferred);
-    }
-}
-
 /**
  * des.finalize_level()
  * Finalize level generation - must be called after all des.* calls.
@@ -6481,27 +6427,6 @@ export function finalize_level() {
     if (extraPhaseTrace) {
         captureCheckpoint('after_script');
     }
-    // CRITICAL: Execute deferred placements BEFORE wallification
-    // This matches C's execution order: rooms → corridors → entities → wallify
-    if (levelState.deferredActions.length > 0) {
-        for (const action of levelState.deferredActions) {
-            if (action.kind === 'object') {
-                executeDeferredObject(levelState.deferredObjects[action.idx]);
-            } else if (action.kind === 'monster') {
-                executeDeferredMonster(levelState.deferredMonsters[action.idx]);
-            } else if (action.kind === 'trap') {
-                executeDeferredTrap(levelState.deferredTraps[action.idx]);
-            }
-        }
-    } else {
-        executeDeferredObjects();
-        executeDeferredMonsters();
-        executeDeferredTraps();
-    }
-    if (extraPhaseTrace) {
-        captureCheckpoint('after_deferred');
-    }
-
     // Copy monster requests to map
     if (levelState.monsters && levelState.map) {
         if (!levelState.map.monsters) {

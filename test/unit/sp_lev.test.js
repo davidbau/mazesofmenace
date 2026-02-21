@@ -230,8 +230,9 @@ describe('sp_lev.js - des.* API', () => {
 
         assert.ok(obj, 'object should be created');
         assert.equal(obj.achievement, 1, 'achievement marker should be copied to object');
-        const deferred = getLevelState().deferredObjects.at(-1);
-        assert.equal(deferred?.obj?.achievement, 1, 'deferred placement should keep achievement marker');
+        // Object is placed immediately on the floor (no deferral)
+        assert.equal(obj.ox, 12, 'object should be placed at x=12');
+        assert.equal(obj.oy, 7, 'object should be placed at y=7');
     });
 
     it('des.gas_cloud uses absolute x/y and C-style ttl override semantics', () => {

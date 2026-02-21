@@ -92,7 +92,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[~]` | mkmap.c | mkmap.js | Map generation algorithms. JS: in `sp_lev.js` |
 | `[~]` | mkmaze.c | mkmaze.js | Maze generation. wallification/create_maze/makemaz PARTIAL in dungeon.js; water plane (movebubbles etc.) TODO; save/restore N/A |
 | `[~]` | mkobj.c | mkobj.js | Object creation |
-| `[~]` | mkroom.c | mkroom.js | Room generation. somex/somey/inside_room/somexy/somexyspace ALIGNED in dungeon.js; mkshop/mktemple/fill_zoo PARTIAL; save/restore N/A |
+| `[~]` | mkroom.c | mkroom.js | Room generation. somex/somey/inside_room/somexy/somexyspace ALIGNED in dungeon.js; mkshop/mktemple PARTIAL; fill_zoo ALIGNED; save/restore N/A |
 | `[a]` | mon.c | mon.js | Monster lifecycle: movemon, mfndpos, mm_aggression, corpse_chance, passivemm, hider premove, zombie_maker, zombie_form, undead_to_corpse, genus, pm_to_cham |
 | `[a]` | mondata.c | mondata.js | Monster data queries: predicates, mon_knows_traps, passes_bars, dmgtype, hates_silver, sticks, etc. |
 | `[a]` | monmove.c | monmove.js | Monster movement: dochug, m_move, m_move_aggress, set_apparxy, m_search_items |
@@ -2306,7 +2306,7 @@ No function symbols parsed from isaac64.c.
 | 81 | `m_initgrp` | - | Missing |
 | 591 | `m_initinv` | - | Missing |
 | 150 | `m_initthrow` | - | Missing |
-| 163 | `m_initweap` | - | Missing |
+| 163 | `m_initweap` | monsters.js `m_initweap()` | Aligned — fixed offensive item check |
 | 1149 | `makemon` | - | Missing |
 | 1078 | `makemon_rnd_goodpos` | - | Missing |
 | 1539 | `mbirth_limit` | - | Missing |
@@ -2324,7 +2324,7 @@ No function symbols parsed from isaac64.c.
 | 960 | `propagate` | - | Missing |
 | 1649 | `rndmonst` | - | Missing |
 | 1656 | `rndmonst_adj` | - | Missing |
-| 2315 | `set_malign` | - | Missing |
+| 2315 | `set_malign` | monsters.js `set_malign()` | Aligned |
 | 2387 | `set_mimic_sym` | - | Missing |
 | 2599 | `summon_furies` | - | Missing |
 | 1638 | `temperature_shift` | - | Missing |
@@ -2439,7 +2439,7 @@ No function symbols parsed from isaac64.c.
 | 467 | `lose_guardian_angel` | - | Missing |
 | 40 | `monster_census` | - | Missing |
 | 59 | `msummon` | - | Missing |
-| 443 | `ndemon` | - | Missing |
+| 443 | `ndemon` | monsters.js `ndemon()` | Aligned |
 | 17 | `newemin` | - | Missing |
 | 198 | `summon_minion` | - | Missing |
 
@@ -2611,13 +2611,13 @@ No function symbols parsed from isaac64.c.
 | 2286 | `is_rottable` | - | Missing |
 | 1988 | `is_treefruit` | - | Missing |
 | 1440 | `item_on_ice` | - | Missing |
-| 178 | `may_generate_eroded` | - | Missing |
+| 178 | `may_generate_eroded` | objects.js `mayGenerateEroded()` | Aligned — in_mklev context ordering fixed |
 | 1701 | `maybe_adjust_light` | - | Missing |
 | 2250 | `mk_named_object` | - | Missing |
-| 2224 | `mk_tt_object` | - | Missing |
+| 2224 | `mk_tt_object` | sp_lev.js `mk_tt_object()` | Aligned |
 | 305 | `mkbox_cnts` | - | Missing |
 | 2064 | `mkcorpstat` | - | Missing |
-| 2000 | `mkgold` | - | Missing |
+| 2000 | `mkgold` | sp_lev.js `mkgold()` | Aligned |
 | 271 | `mkobj` | - | Missing |
 | 228 | `mkobj_at` | - | Missing |
 | 197 | `mkobj_erosions` | - | Missing |
@@ -2680,7 +2680,7 @@ No function symbols parsed from isaac64.c.
 | 913 | `cmap_to_type` | - | Missing |
 | 784 | `courtmon` | - | Missing |
 | 53 | `do_mkroom` | - | Missing |
-| 277 | `fill_zoo` | - | Missing |
+| 277 | `fill_zoo` | sp_lev.js `fill_zoo()` | Aligned — all room types, ndemon, mkgold merge, mongets/set_malign, mk_tt_object |
 | 641 | `has_dnstairs` | - | Missing |
 | 654 | `has_upstairs` | - | Missing |
 | 679 | `inside_room` | - | Missing |
@@ -4681,7 +4681,7 @@ No function symbols parsed from isaac64.c.
 | 6444 | `create_des_coder` | - | Missing |
 | 1715 | `create_door` | - | Missing |
 | 1926 | `create_monster` | - | Missing |
-| 2186 | `create_object` | - | Missing |
+| 2186 | `create_object` | sp_lev.js `object()` | Aligned — executes in script order (deferral removed) |
 | 1487 | `create_room` | - | Missing |
 | 1669 | `create_subroom` | - | Missing |
 | 1813 | `create_trap` | - | Missing |
@@ -4690,7 +4690,7 @@ No function symbols parsed from isaac64.c.
 | 2542 | `dig_corridor` | - | Missing |
 | 5214 | `ensure_way_out` | - | Missing |
 | 2924 | `fill_empty_maze` | - | Missing |
-| 2729 | `fill_special_room` | - | Missing |
+| 2729 | `fill_special_room` | sp_lev.js `fill_special_room()` | Aligned — called from finalize_level |
 | 3141 | `find_montype` | - | Missing |
 | 3464 | `find_objtype` | - | Missing |
 | 429 | `flip_dbridge_horizontal` | - | Missing |
