@@ -569,7 +569,7 @@ function mksobj_init(obj, artif, skipErosion) {
         break;
 
     case WAND_CLASS:
-        if (od.name === 'wand of wishing') {
+        if (od.name === 'wishing') {
             obj.spe = 1;
         } else {
             obj.spe = rn1(5, (od.dir === 1) ? 11 : 4); // NODIR=1

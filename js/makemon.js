@@ -2,7 +2,7 @@
 // Faithful port of makemon.c from NetHack 3.7
 // C ref: makemon.c — monster creation, selection, weapon/inventory assignment
 
-import { rn2, rnd, rn1, d, c_d, getRngLog, getRngCallCount } from './rng.js';
+import { rn2, rnd, rn1, d, c_d, getRngLog, getRngCallCount, pushRngLogEntry } from './rng.js';
 import { mksobj, mkobj, next_ident, weight } from './mkobj.js';
 import { def_monsyms } from './symbols.js';
 import {
@@ -1929,5 +1929,7 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
         }
     }
 
+    // C ref: event_log("makemon[%d@%d,%d]", mndx, mtmp->mx, mtmp->my)
+    pushRngLogEntry(`^makemon[${mndx}@${mon?.mx ?? 0},${mon?.my ?? 0}]`);
     return mon;
 }

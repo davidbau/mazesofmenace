@@ -49,6 +49,19 @@ export function getRngLog() {
 export function pushRngLogEntry(entry) {
     if (!rngLog) return;
     if (typeof entry !== 'string' || entry.length === 0) return;
+    // For event entries (^...), append caller context when tag logging is enabled.
+    if (rngLogWithTags && entry[0] === '^') {
+        const e = new Error();
+        const frames = (e.stack || '').split('\n').slice(2, 4);
+        const callers = frames.map(f => {
+            const m = f.match(/at (\S+)/);
+            return m ? m[1] : '?';
+        }).join(' <= ');
+        if (callers) {
+            rngLog.push(`${entry} @ ${callers}`);
+            return;
+        }
+    }
     rngLog.push(entry);
 }
 

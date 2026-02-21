@@ -125,6 +125,17 @@ diff --git a/src/engrave.c b/src/engrave.c
      } else {
          struct engr *ept;
 
+diff --git a/src/makemon.c b/src/makemon.c
+--- a/src/makemon.c
++++ b/src/makemon.c
+@@ -1503,6 +1503,7 @@ makemon(
+         /* TODO: unify with teleport appears msg */
+     }
+
++    event_log("makemon[%d@%d,%d]", mndx, mtmp->mx, mtmp->my);
+     return mtmp;
+ }
+
 diff --git a/src/trap.c b/src/trap.c
 --- a/src/trap.c
 +++ b/src/trap.c

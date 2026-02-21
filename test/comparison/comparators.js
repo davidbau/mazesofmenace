@@ -539,6 +539,13 @@ function isEventEntry(entry) {
     return typeof entry === 'string' && entry.length > 0 && entry[0] === '^';
 }
 
+// Strip JS caller context (` @ caller <= parent`) appended by pushRngLogEntry.
+function stripEventContext(entry) {
+    if (typeof entry !== 'string') return entry;
+    const at = entry.indexOf('] @');
+    return at >= 0 ? entry.slice(0, at + 1) : entry;
+}
+
 export function compareEvents(jsRng = [], sessionRng = []) {
     const js = (Array.isArray(jsRng) ? jsRng : []).filter(isEventEntry);
     const session = (Array.isArray(sessionRng) ? sessionRng : []).filter(isEventEntry);
@@ -548,7 +555,7 @@ export function compareEvents(jsRng = [], sessionRng = []) {
     let firstDivergence = null;
 
     for (let i = 0; i < total; i++) {
-        if (js[i] === session[i]) {
+        if (stripEventContext(js[i]) === stripEventContext(session[i])) {
             matched++;
             continue;
         }
