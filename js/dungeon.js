@@ -56,6 +56,7 @@ import {
     PM_SOLDIER_ANT, PM_FIRE_ANT, PM_GIANT_ANT,
     PM_GHOST, PM_WRAITH,
     PM_OGRE_TYRANT, PM_ELVEN_MONARCH, PM_DWARF_RULER, PM_GNOME_RULER,
+    M2_PRINCE, M2_LORD, M2_DEMON, M2_HOSTILE, M2_PEACEFUL,
 } from './monsters.js';
 import { init_objects } from './o_init.js';
 import { roles } from './player.js';
@@ -3811,14 +3812,22 @@ function do_fill_vault(map, vaultCheck, depth) {
     }
 }
 
-function place_gold_stack(map, x, y, amount) {
-    const gold = mksobj(GOLD_PIECE, true, false);
-    if (!gold) return;
-    gold.ox = x;
-    gold.oy = y;
-    gold.quan = amount;
-    gold.owt = weight(gold);
-    placeFloorObject(map, gold);
+// C ref: mkobj.c mkgold() — create or merge gold at position.
+// If gold already exists at (x,y), merge into it (no mksobj call).
+// Otherwise create new gold object via mksobj_at.
+function mkgold(map, amount, x, y) {
+    const existing = map.objectsAt(x, y).find(o => o.otyp === GOLD_PIECE);
+    if (existing) {
+        existing.quan += amount;
+        existing.owt = weight(existing);
+        return existing;
+    }
+    const gold = mksobj_at(map, GOLD_PIECE, x, y, true, false);
+    if (gold) {
+        gold.quan = amount;
+        gold.owt = weight(gold);
+    }
+    return gold;
 }
 
 // C ref: mkroom.c squadmon() — return soldier type for BARRACKS.
@@ -3862,29 +3871,42 @@ function morguemon(depth) {
     const difficulty = Math.max(Math.trunc(depth), 1);
     const i = rn2(100);
     const hd = rn2(difficulty);
-    // Note: Inhell/In_endgame checks skipped — we don't generate morgues there in session tests.
-    // If hd > 10 && i < 10, C would call ndemon(A_NONE) or mkclass(S_DEMON) for Gehennom.
-    // For normal dungeon, fall through to ghost/wraith/zombie.
+
+    if (hd > 10 && i < 10) {
+        // C: Inhell || In_endgame → mkclass(S_DEMON, 0)
+        // During level gen we're never in Gehennom/endgame, so use ndemon path.
+        // C: ndemon(A_NONE) → mkclass_aligned(S_DEMON, 0, A_NONE) + is_ndemon filter
+        const ndemon_res = ndemon(A_NONE, depth);
+        if (ndemon_res >= 0) return mons[ndemon_res];
+        // C: if ndemon_res == NON_PM, fall through to ghost/wraith/zombie below
+    }
+
     if (hd > 8 && i > 85) return mkclass(S_VAMPIRE, 0, depth);
+
     if (i < 20) return mons[PM_GHOST];
     else if (i < 40) return mons[PM_WRAITH];
     else return mkclass(S_ZOMBIE, 0, depth);
 }
 
-// C ref: mkroom.c antholemon() — return ant type for ANTHOLE rooms.
-// Deterministic (no RNG).
+// C ref: mkroom.c:502-528 antholemon() — return ant type for ANTHOLE rooms.
+// Deterministic (no RNG). Retries up to 3 times if chosen type is genocided.
 function antholemon(depth) {
     const difficulty = Math.max(Math.trunc(depth), 1);
     const indx = Math.trunc(_gameUbirthday % 3) + difficulty;
-    // C tries up to 3 times if monster is genocided; we skip genocide checks.
-    switch (indx % 3) {
-    case 0: return mons[PM_SOLDIER_ANT];
-    case 1: return mons[PM_FIRE_ANT];
-    default: return mons[PM_GIANT_ANT];
-    }
+    let mtyp, trycnt = 0;
+    do {
+        switch ((indx + trycnt) % 3) {
+        case 0: mtyp = PM_SOLDIER_ANT; break;
+        case 1: mtyp = PM_FIRE_ANT; break;
+        default: mtyp = PM_GIANT_ANT; break;
+        }
+        // C: check mvitals[mtyp].mvflags & G_GONE — genocide not tracked yet
+    } while (++trycnt < 3 && false /* (mvitals[mtyp] & G_GONE) */);
+    // C: return NULL if all 3 are genocided
+    return mons[mtyp];
 }
 
-// C ref: mkroom.c mk_zoo_thronemon() — place throne ruler for COURT rooms.
+// C ref: mkroom.c:257 mk_zoo_thronemon() — place throne ruler for COURT rooms.
 function mk_zoo_thronemon(map, x, y, depth) {
     const difficulty = Math.max(Math.trunc(depth), 1);
     const i = rnd(difficulty);
@@ -3896,21 +3918,84 @@ function mk_zoo_thronemon(map, x, y, depth) {
     if (mon) {
         mon.sleeping = true;
         mon.mpeaceful = false;
-        // C: set_malign(mon) — adjusts alignment; no RNG calls.
-        // C: mongets(mon, MACE) — give sceptre
-        mongets_zoo(mon, MACE);
+        set_malign(mon);
+        // Give him a sceptre to pound in judgment
+        mongets(mon, MACE);
     }
 }
 
-// C ref: makemon.c mongets() — simplified for zoo context (gives monster an item).
-// The key RNG consumption is from mksobj(otyp, TRUE, FALSE).
-function mongets_zoo(mon, otyp) {
+// C ref: makemon.c:2316 set_malign() — set monster alignment value.
+// No RNG calls. Determines alignment penalty for killing.
+function set_malign(mtmp) {
+    if (!mtmp || !mtmp.data) return;
+    let mal = mtmp.data.maligntyp || 0;
+    // C: priest/minion alignment checks — skipped (not relevant for zoo monsters)
+    // Player alignment assumed A_NEUTRAL for level gen context
+    const coaligned = (Math.sign(mal) === Math.sign(0));
+    if (mtmp.data.msound === 12 /* MS_LEADER */) {
+        mtmp.malign = -20;
+    } else if (mal === A_NONE) {
+        mtmp.malign = mtmp.mpeaceful ? 0 : 20;
+    } else if (mtmp.data.mflags2 & M2_PEACEFUL) {
+        const absmal = Math.abs(mal);
+        mtmp.malign = mtmp.mpeaceful ? -3 * Math.max(5, absmal) : 3 * Math.max(5, absmal);
+    } else if (mtmp.data.mflags2 & M2_HOSTILE) {
+        const absmal = Math.abs(mal);
+        mtmp.malign = coaligned ? 0 : Math.max(5, absmal);
+    } else if (coaligned) {
+        const absmal = Math.abs(mal);
+        mtmp.malign = mtmp.mpeaceful ? -3 * Math.max(5, absmal) : 3 * Math.max(5, absmal);
+    } else {
+        mtmp.malign = mtmp.mpeaceful ? 0 : Math.max(5, Math.abs(mal));
+    }
+}
+
+// C ref: makemon.c:2176 mongets() — give monster an object.
+function mongets(mon, otyp) {
     if (!otyp) return null;
     const otmp = mksobj(otyp, true, false);
     if (otmp) {
+        // C: demons never get blessed objects
+        if (mon.data && mon.data.mlet === S_DEMON) {
+            if (otmp.blessed) {
+                otmp.blessed = false;
+                otmp.cursed = true;
+            }
+        }
+        // C: is_mplayer check for sword spe — skipped (no mplayers in zoo context)
+        // C: leaders don't tolerate inferior quality battle gear
+        if (mon.data && is_prince(mon.data)) {
+            if (otmp.oclass === WEAPON_CLASS && (otmp.spe || 0) < 1)
+                otmp.spe = 1;
+            else if (otmp.oclass === ARMOR_CLASS && (otmp.spe || 0) < 0)
+                otmp.spe = 0;
+        }
         mpickobj(mon, otmp);
     }
     return otmp;
+}
+
+// C ref: monst.h is_prince macro — checks M2_PRINCE flag
+function is_prince(data) {
+    return !!(data && data.mflags2 & M2_PRINCE);
+}
+
+// C ref: mondata.h is_demon macro — checks M2_DEMON flag
+function is_demon(data) {
+    return !!(data && data.mflags2 & M2_DEMON);
+}
+
+// C ref: mondata.h is_ndemon macro — demon but not lord or prince
+function is_ndemon(data) {
+    return is_demon(data) && !(data.mflags2 & (M2_LORD | M2_PRINCE));
+}
+
+// C ref: minion.c ndemon() — pick a random non-lord, non-prince demon
+// Calls mkclass_aligned(S_DEMON, 0, atyp), then filters with is_ndemon.
+// Returns mndx or -1 (NON_PM), matching C's return type.
+function ndemon(atyp, depth) {
+    const mndx = mkclass(S_DEMON, 0, depth, atyp);
+    return (mndx >= 0 && is_ndemon(mons[mndx])) ? mndx : -1;
 }
 
 // C ref: mkobj.c mksobj_at() — make specific object at location.
@@ -3936,12 +4021,17 @@ function mkobj_at(map, oclass, x, y, artif) {
 }
 
 // C ref: mkobj.c mk_tt_object() — make CORPSE or STATUE with scoreboard name.
-// Since we have no scoreboard, always falls through to random player class.
+// C's tt_oname() calls get_rnd_toptenentry() which always consumes rnd(10)
+// (sysopt.tt_oname_maxrank defaults to 10) before returning NULL for an empty
+// scoreboard.  We have no scoreboard, so simulate the RNG consumption and
+// fall through to the random player class path.
 function mk_tt_object(map, objtype, x, y) {
     const initialize_it = (objtype !== STATUE);
     const otmp = mksobj_at(map, objtype, x, y, initialize_it, false);
     if (otmp) {
-        // C: tt_oname() returns null if no scoreboard → random player class
+        // C: get_rnd_toptenentry() → rnd(sysopt.tt_oname_maxrank) = rnd(10)
+        rnd(10);
+        // C: tt_oname returns NULL (empty scoreboard) → random player class
         const pm = rn1(PM_WIZARD - PM_ARCHEOLOGIST + 1, PM_ARCHEOLOGIST);
         set_corpsenm(otmp, pm);
     }
@@ -3955,9 +4045,9 @@ function make_grave(map, x, y) {
     if (loc.typ !== ROOM && loc.typ !== GRAVE) return;
     if (map.trapAt && map.trapAt(x, y)) return;
     loc.typ = GRAVE;
-    // C: get_rnd_text(EPITAPHFILE, buf, rn2, MD_PAD_RUMORS)
+    // C: del_engr_at(x, y) then get_rnd_text(EPITAPHFILE, buf, rn2, MD_PAD_RUMORS)
     const text = random_epitaph_text();
-    make_engr_at(map, x, y, text, 0, 0); // HEADSTONE type
+    make_engr_at(map, x, y, text, 'headstone');
 }
 
 // C ref: mkroom.c fill_zoo() — fill a zoo-type room with appropriate monsters/objects.
@@ -4046,7 +4136,7 @@ function fill_zoo_room(map, sroom, depth) {
                 mon.sleeping = true;
                 if (type === COURT && mon.mpeaceful) {
                     mon.mpeaceful = false;
-                    // C: set_malign(mon) — no RNG
+                    set_malign(mon);
                 }
             }
 
@@ -4065,7 +4155,7 @@ function fill_zoo_room(map, sroom, depth) {
                 }
                 if (i >= goldlim) i = 5 * difficulty;
                 goldlim -= i;
-                place_gold_stack(map, sx, sy, rn1(Math.max(i, 1), 10));
+                mkgold(map, rn1(i, 10), sx, sy);
                 break;
             }
             case MORGUE:
