@@ -16,7 +16,7 @@ import {
 } from './rng.js';
 import { exercise, exerchk, initExerciseState } from './attrib_exercise.js';
 import { makelevel, setGameSeed, isBranchLevelToDnum } from './dungeon.js';
-import { simulatePostLevelInit, mon_arrive, initFirstLevel } from './u_init.js';
+import { simulatePostLevelInit, initFirstLevel } from './u_init.js';
 import { Player, rankOf, roles } from './player.js';
 import { rhack, dosearch0, ageSpells } from './commands.js';
 import { makemon, setMakemonPlayerContext, runtimeDecideToShapeshift } from './makemon.js';
@@ -25,10 +25,9 @@ import { movemon, initrack, settrack } from './monmove.js';
 import { were_change } from './were.js';
 import { FOV } from './vision.js';
 import { monsterNearby } from './monutil.js';
-import { getArrivalPosition } from './level_transition.js';
+import { getArrivalPosition, changeLevel as changeLevelCore } from './do.js';
 import { nh_timeout, setCurrentTurn } from './timeout.js';
 import { doname, setObjectMoves } from './mkobj.js';
-import { enexto } from './dungeon.js';
 import { monsterMapGlyph, objectMapGlyph } from './display_rng.js';
 import { defsyms, trap_to_defsym } from './symbols.js';
 import { setOutputContext } from './pline.js';
@@ -1055,80 +1054,11 @@ export class HeadlessGame {
         if (f.has_temple && !rn2(200)) { return; }
     }
 
-    // Generate or retrieve a level (for stair traversal)
-    resolveArrivalCollision() {
-        const mtmp = this.map?.monsterAt?.(this.player.x, this.player.y);
-        if (!mtmp || mtmp === this.player?.usteed) return;
-
-        const moveMonsterNearby = () => {
-            const pos = enexto(this.player.x, this.player.y, this.map);
-            if (pos) {
-                mtmp.mx = pos.x;
-                mtmp.my = pos.y;
-            }
-        };
-
-        // C ref: do.c u_collide_m() -- randomize whether hero or monster moves.
-        if (!rn2(2)) {
-            const cc = enexto(this.player.x, this.player.y, this.map);
-            if (cc && Math.abs(cc.x - this.player.x) <= 1 && Math.abs(cc.y - this.player.y) <= 1) {
-                this.player.x = cc.x;
-                this.player.y = cc.y;
-            } else {
-                moveMonsterNearby();
-            }
-        } else {
-            moveMonsterNearby();
-        }
-
-        const still = this.map?.monsterAt?.(this.player.x, this.player.y);
-        if (!still) return;
-        const fallback = enexto(this.player.x, this.player.y, this.map);
-        if (fallback) {
-            still.mx = fallback.x;
-            still.my = fallback.y;
-        } else {
-            this.map.removeMonster(still);
-        }
-    }
-
-    changeLevel(depth, transitionDir = null) {
-        const previousDepth = this.player?.dungeonLevel;
-        const fromX = this.player?.x;
-        const fromY = this.player?.y;
-        if (this.map) {
-            this.levels[this.player.dungeonLevel] = this.map;
-        }
-        const previousMap = this.levels[this.player.dungeonLevel];
-        let created = false;
-        if (this.levels[depth]) {
-            this.map = this.levels[depth];
-        } else {
-            this.map = Number.isInteger(this.dnum)
-                ? makelevel(depth, this.dnum, depth, { dungeonAlignOverride: this.dungeonAlignOverride })
-                : makelevel(depth, undefined, undefined, { dungeonAlignOverride: this.dungeonAlignOverride });
-            this.levels[depth] = this.map;
-            created = true;
-        }
-        this.player.dungeonLevel = depth;
-        this.player.inTutorial = !!this.map?.flags?.is_tutorial;
-        this.placePlayerOnLevel(transitionDir);
-        // C ref: cmd.c goto_level() clears hero track history on level change.
-        if (Number.isInteger(previousDepth) && depth !== previousDepth) {
-            initrack();
-        }
-        // C ref: do.c goto_level(): u_on_rndspot()/u_on_newpos happens
-        // before losedogs()->mon_arrive(), so follower arrival sees the
-        // final hero position on the destination level.
-        if (created && depth > 1) {
-            mon_arrive(previousMap, this.map, this.player, {
-                sourceHeroX: fromX,
-                sourceHeroY: fromY,
-                heroX: this.player.x,
-                heroY: this.player.y,
-            });
-            this.resolveArrivalCollision();
-        }
+    changeLevel(depth, transitionDir = null, opts = {}) {
+        const makeLevel = Number.isInteger(this.dnum)
+            ? (d) => makelevel(d, this.dnum, d, { dungeonAlignOverride: this.dungeonAlignOverride })
+            : undefined;
+        changeLevelCore(this, depth, transitionDir, { ...opts, makeLevel });
         this.renderCurrentScreen();
         this.maybeShowQuestLocateHint(depth);
         if (typeof this.hooks.onLevelChange === 'function') {

@@ -58,7 +58,7 @@ import {
     PM_OGRE_TYRANT, PM_ELVEN_MONARCH, PM_DWARF_RULER, PM_GNOME_RULER,
     M2_PRINCE, M2_LORD, M2_DEMON, M2_HOSTILE, M2_PEACEFUL,
 } from './monsters.js';
-import { init_objects } from './o_init.js';
+import { init_objects, setgemprobs } from './o_init.js';
 import { roles } from './player.js';
 import {
     ARROW, DART, ROCK, BOULDER, LARGE_BOX, CHEST, GOLD_PIECE, CORPSE,
@@ -5404,6 +5404,8 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
     });
 
     setLevelDepth(depth);
+    // C ref: mklev.c:1260, sp_lev.c:6004 — oinit() calls setgemprobs(&u.uz)
+    setgemprobs(getLedgerNoForLevel(dnum, dlevel));
     resetThemermsState(); // Reset themed room state for new level
     setMtInitialized(false); // Reset MT RNG state - init happens per level, not per session
 

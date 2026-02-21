@@ -4110,9 +4110,19 @@ export function object(name_or_opts, x, y) {
 
         const activeContainer = levelState.containerStack[levelState.containerStack.length - 1];
 
-        // C ref: sp_lev.c create_object() with SP_OBJ_CONTENT creates object
-        // using normal RNG path, then moves it into container inventory.
+        // C ref: sp_lev.c create_object() with SP_OBJ_CONTENT — C creates
+        // the object on the floor first (mkobj_at → place_object emitting
+        // ^place), then calls remove_object + add_to_container.
         if (activeContainer) {
+            // Place on floor to emit ^place event (matching C)
+            obj.ox = absX;
+            obj.oy = absY;
+            if (absX >= 0 && absX < COLNO && absY >= 0 && absY < ROWNO) {
+                placeFloorObject(levelState.map, obj);
+                // Remove from floor (C calls remove_object)
+                const idx = levelState.map.objects.indexOf(obj);
+                if (idx >= 0) levelState.map.objects.splice(idx, 1);
+            }
             if (!activeContainer.contents) activeContainer.contents = [];
             activeContainer.contents.push(obj);
             return obj;

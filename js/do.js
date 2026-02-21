@@ -2,7 +2,13 @@
 // cf. do.c — dodrop, dodown, doup, flooreffects, goto_level, donull, dowipe
 
 import { nhgetch, ynFunction } from './input.js';
-import { STAIRS } from './config.js';
+import { ACCESSIBLE, COLNO, ROWNO, STAIRS,
+         CORR, ROOM, AIR,
+         IS_FURNITURE, IS_LAVA, IS_POOL, MAGIC_PORTAL, VIBRATING_SQUARE } from './config.js';
+import { rn1, rn2 } from './rng.js';
+import { deltrap, enexto, makelevel } from './dungeon.js';
+import { mon_arrive } from './dog.js';
+import { initrack } from './monmove.js';
 import { COIN_CLASS } from './objects.js';
 import { doname } from './mkobj.js';
 import { placeFloorObject } from './floor_objects.js';
@@ -209,21 +215,280 @@ export async function handleUpstairs(player, map, display, game) {
 
 
 // ============================================================
-// 5. Level transitions
+// 5. Level transitions — C ref: do.c goto_level(), u_collide_m()
+//    and dungeon.c u_on_rndspot(), mkmaze.c place_lregion()
 // ============================================================
 
-// TODO: cf. do.c goto_level() — change dungeon level (main level transition logic)
 // TODO: cf. do.c schedule_goto() — schedule a deferred level change
 // TODO: cf. do.c deferred_goto() — execute a scheduled level change
 // TODO: cf. do.c save_currentstate() — save current level state before transition
 // TODO: cf. do.c currentlevel_rewrite() — rewrite current level after transition
 // TODO: cf. do.c badspot() — check if landing spot is unsuitable
-// TODO: cf. do.c u_collide_m() — handle hero colliding with monster on arrival
 // TODO: cf. do.c familiar_level_msg() — "You have a sense of déjà vu" message
 // TODO: cf. do.c final_level() — handle arrival on the Astral Plane
 // TODO: cf. do.c hellish_smoke_mesg() — Gehennom smoke flavor messages
 // TODO: cf. do.c temperature_change_msg() — temperature change on level transition
 // TODO: cf. do.c maybe_lvltport_feedback() — feedback after level teleport
+
+// --- Teleport arrival placement (C ref: dungeon.c u_on_rndspot, mkmaze.c place_lregion) ---
+
+function isTeleportArrivalBlocked(map, x, y) {
+    if (map?.trapAt?.(x, y)) return true;
+    const loc = map?.at?.(x, y);
+    if (!loc) return true;
+    if (IS_FURNITURE(loc.typ)) return true;
+    if (IS_LAVA(loc.typ) || IS_POOL(loc.typ)) return true;
+    if (map._isInvocationLevel && map._invPos
+        && x === map._invPos.x && y === map._invPos.y) {
+        return true;
+    }
+    return false;
+}
+
+function isValidTeleportArrivalCell(map, x, y) {
+    if (isTeleportArrivalBlocked(map, x, y)) return false;
+    const loc = map?.at?.(x, y);
+    if (!loc) return false;
+    return ((loc.typ === CORR && !!map?.flags?.is_maze_lev)
+        || loc.typ === ROOM
+        || loc.typ === AIR);
+}
+
+function withinBoundedArea(x, y, lx, ly, hx, hy) {
+    return x >= lx && x <= hx && y >= ly && y <= hy;
+}
+
+function normalizeRegion(region) {
+    return {
+        lx: Number.isFinite(region?.lx) ? region.lx : 0,
+        ly: Number.isFinite(region?.ly) ? region.ly : 0,
+        hx: Number.isFinite(region?.hx) ? region.hx : 0,
+        hy: Number.isFinite(region?.hy) ? region.hy : 0,
+        nlx: Number.isFinite(region?.nlx) ? region.nlx : 0,
+        nly: Number.isFinite(region?.nly) ? region.nly : 0,
+        nhx: Number.isFinite(region?.nhx) ? region.nhx : 0,
+        nhy: Number.isFinite(region?.nhy) ? region.nhy : 0,
+    };
+}
+
+// C ref: dungeon.c u_on_rndspot() + mkmaze.c place_lregion().
+function getTeleportRegion(map, opts = {}) {
+    const up = !!opts.up;
+    const wasInWTower = !!opts.wasInWTower;
+    if (wasInWTower && map?.dndest) {
+        return normalizeRegion({
+            lx: map.dndest.nlx,
+            ly: map.dndest.nly,
+            hx: map.dndest.nhx,
+            hy: map.dndest.nhy,
+            nlx: 0, nly: 0, nhx: 0, nhy: 0,
+        });
+    }
+    return normalizeRegion(up ? map?.updest : map?.dndest);
+}
+
+// C ref: dungeon.c u_on_rndspot() -> mkmaze.c place_lregion().
+function getTeleportArrivalPosition(map, opts = {}) {
+    let { lx, ly, hx, hy, nlx, nly, nhx, nhy } = getTeleportRegion(map, opts);
+
+    if (!lx) {
+        lx = 1;
+        hx = COLNO - 1;
+        ly = 0;
+        hy = ROWNO - 1;
+    }
+
+    if (lx < 1) lx = 1;
+    if (hx > COLNO - 1) hx = COLNO - 1;
+    if (ly < 0) ly = 0;
+    if (hy > ROWNO - 1) hy = ROWNO - 1;
+
+    const oneshot = (lx === hx && ly === hy);
+
+    const isBadLocation = (x, y) => {
+        if (withinBoundedArea(x, y, nlx, nly, nhx, nhy)) return true;
+        if (!isValidTeleportArrivalCell(map, x, y)) return true;
+        return false;
+    };
+
+    const canPlaceAt = (x, y, force) => {
+        let invalid = isBadLocation(x, y);
+        if (invalid && !force) return false;
+        if (invalid && force) {
+            const trap = map?.trapAt?.(x, y);
+            if (trap && trap.ttyp !== MAGIC_PORTAL && trap.ttyp !== VIBRATING_SQUARE) {
+                deltrap(map, trap);
+            }
+            invalid = isBadLocation(x, y);
+            if (invalid) return false;
+        }
+        const mon = map?.monsterAt?.(x, y);
+        if (mon) return false;
+        return true;
+    };
+
+    for (let i = 0; i < 200; i++) {
+        const x = rn1((hx - lx) + 1, lx);
+        const y = rn1((hy - ly) + 1, ly);
+        if (canPlaceAt(x, y, oneshot)) {
+            return { x, y };
+        }
+    }
+
+    for (let x = lx; x <= hx; x++) {
+        for (let y = ly; y <= hy; y++) {
+            if (canPlaceAt(x, y, true)) {
+                return { x, y };
+            }
+        }
+    }
+
+    return { x: 1, y: 1 };
+}
+
+// --- Hero arrival position (C ref: stairs.c u_on_upstairs/u_on_dnstairs, dungeon.c u_on_rndspot) ---
+
+// Determine the hero arrival position on a level.
+// transitionDir:
+//   'down' -> arriving from above, place on upstair
+//   'up'   -> arriving from below, place on downstairs
+//   'teleport' -> random placement via place_lregion
+//   null   -> default startup/legacy behavior
+export function getArrivalPosition(map, dungeonLevel, transitionDir = null) {
+    if (transitionDir === 'teleport') {
+        return getTeleportArrivalPosition(map, { up: false, wasInWTower: false });
+    }
+
+    const hasUpstair = !!(map?.upstair && map.upstair.x > 0 && map.upstair.y > 0);
+    const hasDownstair = !!(map?.dnstair && map.dnstair.x > 0 && map.dnstair.y > 0);
+    const hasUpdest = !!(map?.updest && Number.isFinite(map.updest.lx) && Number.isFinite(map.updest.ly));
+    const hasDndest = !!(map?.dndest && Number.isFinite(map.dndest.lx) && Number.isFinite(map.dndest.ly));
+
+    if (transitionDir === 'down' && hasUpdest) {
+        return { x: map.updest.lx, y: map.updest.ly };
+    }
+    if (transitionDir === 'up' && hasDndest) {
+        return { x: map.dndest.lx, y: map.dndest.ly };
+    }
+
+    if (transitionDir === 'down' && hasUpstair) {
+        return { x: map.upstair.x, y: map.upstair.y };
+    }
+    if (transitionDir === 'up' && hasDownstair) {
+        return { x: map.dnstair.x, y: map.dnstair.y };
+    }
+
+    // Backward-compatible default.
+    if (hasUpstair) {
+        return { x: map.upstair.x, y: map.upstair.y };
+    }
+
+    if (map.rooms.length > 0) {
+        const room = map.rooms[0];
+        return {
+            x: Math.floor((room.lx + room.hx) / 2),
+            y: Math.floor((room.ly + room.hy) / 2),
+        };
+    }
+
+    for (let x = 1; x < COLNO - 1; x++) {
+        for (let y = 1; y < ROWNO - 1; y++) {
+            const loc = map.at(x, y);
+            if (loc && ACCESSIBLE(loc.typ)) {
+                return { x, y };
+            }
+        }
+    }
+
+    return { x: 1, y: 1 };
+}
+
+// --- u_collide_m (C ref: do.c u_collide_m) ---
+
+// Handle hero landing on a monster at arrival.
+export function resolveArrivalCollision(game) {
+    const mtmp = game.map?.monsterAt?.(game.player.x, game.player.y);
+    if (!mtmp || mtmp === game.player?.usteed) return;
+
+    const moveMonsterNearby = () => {
+        const pos = enexto(game.player.x, game.player.y, game.map);
+        if (pos) { mtmp.mx = pos.x; mtmp.my = pos.y; }
+    };
+
+    if (!rn2(2)) {
+        const cc = enexto(game.player.x, game.player.y, game.map);
+        if (cc && Math.abs(cc.x - game.player.x) <= 1 && Math.abs(cc.y - game.player.y) <= 1) {
+            game.player.x = cc.x;
+            game.player.y = cc.y;
+        } else {
+            moveMonsterNearby();
+        }
+    } else {
+        moveMonsterNearby();
+    }
+
+    const still = game.map?.monsterAt?.(game.player.x, game.player.y);
+    if (!still) return;
+    const fallback = enexto(game.player.x, game.player.y, game.map);
+    if (fallback) { still.mx = fallback.x; still.my = fallback.y; }
+    else { game.map.removeMonster(still); }
+}
+
+// --- goto_level core (C ref: do.c goto_level) ---
+
+// Core level transition: cache old level, install new map, place hero,
+// migrate followers, resolve collisions.
+//
+// game must provide: .map, .player, .levels
+// opts.map: pre-generated map (e.g., wizloaddes)
+// opts.makeLevel(depth): custom level generator (default: makelevel(depth))
+export function changeLevel(game, depth, transitionDir = null, opts = {}) {
+    const previousDepth = game.player?.dungeonLevel;
+    const fromX = game.player?.x;
+    const fromY = game.player?.y;
+
+    // Cache current level
+    if (game.map) {
+        game.levels[game.player.dungeonLevel] = game.map;
+    }
+    const previousMap = game.levels[game.player.dungeonLevel];
+
+    // Use pre-generated map if provided, otherwise check cache or generate new.
+    if (opts.map) {
+        game.map = opts.map;
+        game.levels[depth] = opts.map;
+    } else if (game.levels[depth]) {
+        game.map = game.levels[depth];
+    } else {
+        game.map = opts.makeLevel ? opts.makeLevel(depth) : makelevel(depth);
+        game.levels[depth] = game.map;
+    }
+
+    game.player.dungeonLevel = depth;
+    game.player.inTutorial = !!game.map?.flags?.is_tutorial;
+
+    // C ref: dungeon.c u_on_rndspot() / stairs.c u_on_upstairs()
+    const pos = getArrivalPosition(game.map, depth, transitionDir);
+    game.player.x = pos.x;
+    game.player.y = pos.y;
+
+    // C ref: cmd.c goto_level() clears hero track history on level change.
+    if (Number.isInteger(previousDepth) && depth !== previousDepth) {
+        initrack();
+    }
+
+    // C ref: do.c goto_level() -> losedogs() -> mon_arrive()
+    // Migrate followers from old level; resolve hero-monster collision.
+    if (previousMap && previousMap !== game.map) {
+        mon_arrive(previousMap, game.map, game.player, {
+            sourceHeroX: fromX,
+            sourceHeroY: fromY,
+            heroX: game.player.x,
+            heroY: game.player.y,
+        });
+        resolveArrivalCollision(game);
+    }
+}
 
 
 // ============================================================

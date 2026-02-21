@@ -18,7 +18,8 @@ import { initRng, enableRngLog, getRngLog, disableRngLog, rn2, rnd, rn1, rnl, rn
 import { exercise, exerchk, initExerciseState } from './attrib_exercise.js';
 import { initLevelGeneration, makelevel, setGameSeed, wallification } from './dungeon.js';
 import { DUNGEONS_OF_DOOM, TUTORIAL } from './special_levels.js';
-import { simulatePostLevelInit, mon_arrive } from './u_init.js';
+import { simulatePostLevelInit } from './u_init.js';
+import { mon_arrive } from './dog.js';
 import { init_objects } from './o_init.js';
 import { Player, roles, rankOf } from './player.js';
 import { NORMAL_SPEED, A_STR, A_DEX, A_CON, A_WIS,
@@ -30,7 +31,7 @@ import { FOOD_CLASS } from './objects.js';
 import { pushInput } from './input.js';
 import { movemon, initrack } from './monmove.js';
 import { FOV } from './vision.js';
-import { getArrivalPosition } from './level_transition.js';
+import { getArrivalPosition } from './do.js';
 import { HeadlessGame, HeadlessDisplay } from './headless_runtime.js';
 import { GameMap } from './map.js';
 

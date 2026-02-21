@@ -4283,10 +4283,9 @@ async function handleWizLoadDes(game) {
     });
     const newMap = generator();
     if (newMap) {
-        game.map = newMap;
-        game.levels[player.dungeonLevel] = newMap;
-        game.fov.compute(game.map, player.x, player.y);
-        display.renderMap(game.map, player, game.fov, game.flags);
+        // Route through changeLevel for hero placement, pet migration, and
+        // arrival collision — matching C's goto_level() flow.
+        game.changeLevel(player.dungeonLevel, 'teleport', { map: newMap });
     }
     return { moved: false, tookTime: false };
 }

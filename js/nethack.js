@@ -21,10 +21,10 @@ import { FOOD_CLASS } from './objects.js';
 import { setObjectMoves } from './mkobj.js';
 import { were_change } from './were.js';
 import { rhack, ageSpells } from './commands.js';
-import { movemon, initrack, settrack } from './monmove.js';
+import { movemon, settrack } from './monmove.js';
 import { monsterNearby } from './monutil.js';
-import { simulatePostLevelInit, mon_arrive, initFirstLevel } from './u_init.js';
-import { getArrivalPosition } from './level_transition.js';
+import { simulatePostLevelInit, initFirstLevel } from './u_init.js';
+import { getArrivalPosition, changeLevel as changeLevelCore } from './do.js';
 import { nh_timeout, setCurrentTurn } from './timeout.js';
 import { loadSave, deleteSave, hasSave, saveGame,
          loadFlags, saveFlags, deserializeRng,
@@ -1237,44 +1237,9 @@ export class NetHackGame {
 
     // Generate or retrieve a level
     // C ref: dungeon.c -- level management
-    changeLevel(depth, transitionDir = null) {
-        const previousDepth = this.player?.dungeonLevel;
+    changeLevel(depth, transitionDir = null, opts = {}) {
         setMakemonPlayerContext(this.player);
-        const previousMap = this.map || this.levels[this.player.dungeonLevel] || null;
-
-        // Cache current level
-        if (this.map) {
-            this.levels[this.player.dungeonLevel] = this.map;
-        }
-
-        // Check cache
-        if (this.levels[depth]) {
-            this.map = this.levels[depth];
-        } else {
-            // Generate new level (wallification called inside makelevel)
-            this.map = makelevel(depth);
-            this.levels[depth] = this.map;
-        }
-
-        // C ref: dog.c keepdogs/losedogs/mon_arrive — pets can follow on
-        // level transitions regardless of whether destination was newly made
-        // or restored from cache.
-        if (previousMap && previousMap !== this.map
-            && (transitionDir === 'down' || transitionDir === 'up')) {
-            const arrival = getArrivalPosition(this.map, depth, transitionDir);
-            mon_arrive(previousMap, this.map, this.player, {
-                heroX: arrival.x,
-                heroY: arrival.y,
-            });
-        }
-
-        this.player.dungeonLevel = depth;
-        this.player.inTutorial = !!this.map?.flags?.is_tutorial;
-        this.placePlayerOnLevel(transitionDir);
-        // C ref: cmd.c goto_level() clears hero track history on level change.
-        if (Number.isInteger(previousDepth) && depth !== previousDepth) {
-            initrack();
-        }
+        changeLevelCore(this, depth, transitionDir, opts);
 
         // Bones level message
         if (this.map.isBones) {
@@ -1285,14 +1250,6 @@ export class NetHackGame {
         this.fov.compute(this.map, this.player.x, this.player.y);
         this.display.renderMap(this.map, this.player, this.fov, this.flags);
         this.display.renderStatus(this.player);
-    }
-
-    // Place player on the current level
-    // C ref: allmain.c moveloop_preamble() -> places hero at stair position
-    placePlayerOnLevel(transitionDir = null) {
-        const pos = getArrivalPosition(this.map, this.player.dungeonLevel, transitionDir);
-        this.player.x = pos.x;
-        this.player.y = pos.y;
     }
 
     // Handle ?reset=1 — list saved data and prompt for deletion
