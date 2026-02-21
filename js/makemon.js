@@ -32,7 +32,7 @@ import {
     M2_MERC, M2_LORD, M2_PRINCE, M2_NASTY, M2_FEMALE, M2_MALE, M2_STRONG, M2_ROCKTHROW,
     M2_HOSTILE, M2_PEACEFUL, M2_DOMESTIC, M2_NEUTER, M2_GREEDY,
     M2_SHAPESHIFTER, M2_WERE, M2_PNAME, M2_HUMAN,
-    M2_MINION,
+    M2_MINION, M2_DEMON,
     M1_FLY, M1_NOHANDS, M1_SWIM, M1_AMPHIBIOUS, M1_WALLWALK, M1_AMORPHOUS,
     PM_ORC, PM_GIANT, PM_ELF, PM_HUMAN, PM_ETTIN, PM_MINOTAUR, PM_NAZGUL,
     PM_MASTER_LICH, PM_ARCH_LICH,
@@ -50,6 +50,7 @@ import {
     PM_CHAMELEON,
     MS_LEADER, MS_NEMESIS, MS_GUARDIAN,
     PM_CROESUS,
+    PM_ARCHEOLOGIST, PM_WIZARD,
 } from './monsters.js';
 import {
     ROCK, STATUE, FIGURINE, EGG, TIN, STRANGE_OBJECT, GOLD_PIECE, DILITHIUM_CRYSTAL,
@@ -58,7 +59,7 @@ import {
     ROCK_CLASS, GEM_CLASS, SPBOOK_CLASS,
     TALLOW_CANDLE, WAX_CANDLE,
     ARROW, DAGGER, KNIFE, SHORT_SWORD, LONG_SWORD, SILVER_SABER, BROADSWORD,
-    ATHAME,
+    ATHAME, KATANA,
     SCIMITAR, SPEAR, JAVELIN, TRIDENT, AXE, BATTLE_AXE, MACE, WAR_HAMMER, LUCERN_HAMMER,
     FLAIL, HALBERD, CLUB, AKLYS, RUBBER_HOSE, BULLWHIP, QUARTERSTAFF,
     TWO_HANDED_SWORD, MORNING_STAR, STILETTO, PICK_AXE,
@@ -93,9 +94,11 @@ import {
     SCR_EARTH, SCR_TELEPORTATION, SCR_CREATE_MONSTER,
     RIN_INVISIBILITY,
     AMULET_OF_LIFE_SAVING, AMULET_OF_YENDOR,
+    CANDELABRUM_OF_INVOCATION, BELL_OF_OPENING, SPE_BOOK_OF_THE_DEAD,
     CORPSE, LUCKSTONE, objectData,
 } from './objects.js';
 import { roles, races, initialAlignmentRecordForRole } from './player.js';
+import { mpickobj } from './monutil.js';
 
 // ========================================================================
 // Monster flags needed for m_initweap/m_initinv checks
@@ -117,6 +120,15 @@ function is_hobbit(ptr) { return ptr.symbol === S_HUMANOID && ptr.name && ptr.na
 function is_giant_species(ptr) { return ptr.symbol === S_GIANT && ptr.name && ptr.name.includes('giant'); }
 // C ref: mondata.h:87 — #define is_armed(ptr) attacktype(ptr, AT_WEAP)
 function is_armed(ptr) { return ptr.attacks && ptr.attacks.some(a => a.type === AT_WEAP); }
+// C ref: #define is_sword(otmp) (otmp->otyp >= SHORT_SWORD && otmp->otyp <= KATANA)
+function is_sword(otmp) { return otmp && otmp.otyp >= SHORT_SWORD && otmp.otyp <= KATANA; }
+// C ref: #define is_mplayer(ptr) ((ptr) >= &mons[PM_ARCHEOLOGIST] && (ptr) <= &mons[PM_WIZARD])
+function is_mplayer_idx(mndx) { return mndx >= PM_ARCHEOLOGIST && mndx <= PM_WIZARD; }
+// C ref: is_lminion — lawful minion (angel aligned to lawful god)
+// During level generation, we approximate: angel with A_LAWFUL alignment
+function is_lminion(mon) {
+    return mon.type?.symbol === S_ANGEL && (mon.type?.align || 0) > 0;
+}
 function attacktype(ptr, atyp) { return ptr.attacks && ptr.attacks.some(a => a.type === atyp); }
 function is_animal(ptr) { return !!(ptr.flags1 & 0x00040000); } // M1_ANIMAL
 function mindless(ptr) { return !!(ptr.flags1 & 0x00010000); } // M1_MINDLESS
@@ -618,13 +630,74 @@ export function newmonhp(mndx, depth = 1) {
 }
 
 // ========================================================================
+// mongets -- give a monster an object (C ref: makemon.c:2176-2225)
+// Creates the object via mksobj, applies monster-specific adjustments,
+// then adds to monster inventory via mpickobj.
+// ========================================================================
+
+function mongets(mon,otyp) {
+    if (!otyp) return null;
+    const otmp = mksobj(otyp, true, false);
+    if (!otmp) return null;
+
+    const ptr = mon?.type || (mon?.mndx != null ? mons[mon.mndx] : null);
+    if (ptr) {
+        // C ref: makemon.c:2186 — demons never get blessed objects
+        if (ptr.flags2 & M2_DEMON) {
+            if (otmp.blessed) {
+                otmp.blessed = false;
+                otmp.cursed = true;
+            }
+        } else if (is_lminion(mon)) {
+            // C ref: makemon.c:2190 — lawful minions don't get cursed/bad/rusting
+            otmp.cursed = false;
+            if ((otmp.spe || 0) < 0) otmp.spe = 0;
+            otmp.oerodeproof = true;
+            otmp.oeroded = 0;
+            otmp.oeroded2 = 0;
+        } else if (is_mplayer_idx(mon.mndx) && is_sword(otmp)) {
+            // C ref: makemon.c:2196 — monster players get enchanted swords
+            otmp.spe = 3 + rn2(4);
+        }
+
+        // C ref: makemon.c:2199-2211 — special artifact handling
+        if (otmp.otyp === CANDELABRUM_OF_INVOCATION) {
+            otmp.spe = 0;
+            otmp.age = 0;
+            otmp.lamplit = false;
+            otmp.blessed = false;
+            otmp.cursed = false;
+        } else if (otmp.otyp === BELL_OF_OPENING) {
+            otmp.blessed = false;
+            otmp.cursed = false;
+        } else if (otmp.otyp === SPE_BOOK_OF_THE_DEAD) {
+            otmp.blessed = false;
+            otmp.cursed = true;
+        }
+
+        // C ref: makemon.c:2215 — leaders don't tolerate inferior gear
+        if (is_prince(ptr)) {
+            if (otmp.oclass === WEAPON_CLASS && (otmp.spe || 0) < 1)
+                otmp.spe = 1;
+            else if (otmp.oclass === ARMOR_CLASS && (otmp.spe || 0) < 0)
+                otmp.spe = 0;
+        }
+    }
+
+    if (mon) mpickobj(mon, otmp);
+    return otmp;
+}
+
+// ========================================================================
 // m_initthrow -- create missile objects
 // C ref: makemon.c:149-159
 // ========================================================================
 
-function m_initthrow(otyp, oquan) {
+function m_initthrow(mon, otyp, oquan) {
     const otmp = mksobj(otyp, true, false);
     otmp.quan = rn1(oquan, 3);
+    otmp.owt = weight(otmp);
+    if (mon && otmp) mpickobj(mon, otmp);
     return otmp;
 }
 
@@ -638,23 +711,15 @@ function m_initweap(mon, mndx, depth) {
     const ptr = mons[mndx];
     const mm = ptr.symbol; // mlet
     const bias = is_lord(ptr) ? 1 : is_prince(ptr) ? 2 : is_nasty(ptr) ? 1 : 0;
-    const mongets = (otyp, init = true, artif = false) => {
-        const obj = mksobj(otyp, init, artif);
-        if (mon) {
-            if (!mon.minvent) mon.minvent = [];
-            mon.minvent.push(obj);
-        }
-        return obj;
-    };
 
     switch (mm) {
     case S_GIANT:
         // C ref: makemon.c:182-185
         if (rn2(2)) {
-            mksobj((mndx !== PM_ETTIN) ? BOULDER : CLUB, true, false);
+            mongets(mon,(mndx !== PM_ETTIN) ? BOULDER : CLUB);
         }
         if ((mndx !== PM_ETTIN) && !rn2(5)) {
-            mksobj(rn2(2) ? TWO_HANDED_SWORD : BATTLE_AXE, true, false);
+            mongets(mon,rn2(2) ? TWO_HANDED_SWORD : BATTLE_AXE);
         }
         break;
 
@@ -688,54 +753,54 @@ function m_initweap(mon, mndx, depth) {
                 if (!rn2(7)) w2 = SPEAR;
                 break;
             }
-            if (w1) mksobj(w1, true, false);
+            if (w1) mongets(mon,w1);
             if (!w2 && w1 !== DAGGER && !rn2(4)) w2 = KNIFE;
-            if (w2) mksobj(w2, true, false);
+            if (w2) mongets(mon,w2);
         } else if (is_elf(ptr)) {
             // Elf equipment
             if (rn2(2)) {
-                mksobj(rn2(2) ? ELVEN_MITHRIL_COAT : ELVEN_CLOAK, true, false);
+                mongets(mon,rn2(2) ? ELVEN_MITHRIL_COAT : ELVEN_CLOAK);
             }
-            if (rn2(2)) mksobj(ELVEN_LEATHER_HELM, true, false);
-            if (!rn2(4)) mksobj(ELVEN_BOOTS, true, false);
-            if (!rn2(2)) mksobj(ELVEN_DAGGER, true, false);
+            if (rn2(2)) mongets(mon,ELVEN_LEATHER_HELM);
+            if (!rn2(4)) mongets(mon,ELVEN_BOOTS);
+            if (!rn2(2)) mongets(mon,ELVEN_DAGGER);
             const w = rn2(3);
             if (w === 0) {
-                if (!rn2(4)) mksobj(ELVEN_SHIELD, true, false);
-                if (!rn2(3)) mksobj(ELVEN_SHORT_SWORD, true, false);
-                mksobj(ELVEN_BOW, true, false);
-                m_initthrow(ELVEN_ARROW, 12);
+                if (!rn2(4)) mongets(mon,ELVEN_SHIELD);
+                if (!rn2(3)) mongets(mon,ELVEN_SHORT_SWORD);
+                mongets(mon,ELVEN_BOW);
+                m_initthrow(mon, ELVEN_ARROW, 12);
             } else if (w === 1) {
-                if (!rn2(2)) mksobj(ELVEN_SHIELD, true, false);
-                mksobj(ELVEN_SHORT_SWORD, true, false);
+                if (!rn2(2)) mongets(mon,ELVEN_SHIELD);
+                mongets(mon,ELVEN_SHORT_SWORD);
             } else {
-                if (!rn2(2)) mksobj(ELVEN_SPEAR || SPEAR, true, false);
-                mksobj(ELVEN_SHORT_SWORD, true, false);
+                if (!rn2(2)) mongets(mon,ELVEN_SPEAR);
+                mongets(mon,ELVEN_SHORT_SWORD);
             }
         } else {
             // Generic human — check specific types
             // Ninja, priest, cleric, etc. — simplified
             if (ptr.name && (ptr.name === 'priest' || ptr.name === 'priestess')) {
-                const otmp = mksobj(MACE, true, false);
+                const otmp = mongets(mon,MACE);
                 otmp.spe = rnd(3);
                 if (!rn2(2)) otmp.cursed = true;
             } else if (ptr.name && ptr.name === 'ninja') {
-                if (rn2(4)) m_initthrow(SHURIKEN, 8);
-                else m_initthrow(DART, 8);
-                if (rn2(4)) mksobj(SHORT_SWORD, true, false);
-                else mksobj(AXE, true, false);
+                if (rn2(4)) m_initthrow(mon, SHURIKEN, 8);
+                else m_initthrow(mon, DART, 8);
+                if (rn2(4)) mongets(mon,SHORT_SWORD);
+                else mongets(mon,AXE);
             }
         }
         break;
 
     case S_ANGEL:
         if (rn2(3)) {
-            mksobj(rn2(2) ? LONG_SWORD : MACE, true, false);
+            mongets(mon,rn2(2) ? LONG_SWORD : MACE);
         }
         // Artifact check — rn2(20)
         if (!rn2(20)) { /* mk_artifact */ }
         {
-            const otmp = mksobj(rn2(4) ? SHIELD_OF_REFLECTION : LARGE_SHIELD, true, false);
+            const otmp = mongets(mon,rn2(4) ? SHIELD_OF_REFLECTION : LARGE_SHIELD);
             otmp.spe = rn2(4);
         }
         break;
@@ -743,60 +808,60 @@ function m_initweap(mon, mndx, depth) {
     case S_HUMANOID:
         if (is_hobbit(ptr)) {
             const w = rn2(3);
-            if (w === 0) mksobj(DAGGER, true, false);
-            else if (w === 1) mksobj(ELVEN_DAGGER, true, false);
-            else mksobj(SLING, true, false);
-            if (rn2(4)) m_initthrow(FLINT, 8);
-            else m_initthrow(ROCK, 8);
-            if (!rn2(10)) mksobj(ELVEN_MITHRIL_COAT, true, false);
-            if (!rn2(10)) mksobj(DWARVISH_CLOAK, true, false);
+            if (w === 0) mongets(mon,DAGGER);
+            else if (w === 1) mongets(mon,ELVEN_DAGGER);
+            else mongets(mon,SLING);
+            if (rn2(4)) m_initthrow(mon, FLINT, 8);
+            else m_initthrow(mon, ROCK, 8);
+            if (!rn2(10)) mongets(mon,ELVEN_MITHRIL_COAT);
+            if (!rn2(10)) mongets(mon,DWARVISH_CLOAK);
         } else if (is_dwarf(ptr)) {
-            if (rn2(7)) mksobj(DWARVISH_CLOAK, true, false);
-            if (rn2(7)) mksobj(IRON_SHOES, true, false);
+            if (rn2(7)) mongets(mon,DWARVISH_CLOAK);
+            if (rn2(7)) mongets(mon,IRON_SHOES);
             if (!rn2(4)) {
-                mksobj(DWARVISH_SHORT_SWORD, true, false);
+                mongets(mon,DWARVISH_SHORT_SWORD);
                 if (rn2(2)) {
-                    mksobj(DWARVISH_MATTOCK, true, false);
+                    mongets(mon,DWARVISH_MATTOCK);
                 } else {
-                    mksobj(rn2(2) ? AXE : DWARVISH_SPEAR, true, false);
-                    mksobj(DWARVISH_ROUNDSHIELD, true, false);
+                    mongets(mon,rn2(2) ? AXE : DWARVISH_SPEAR);
+                    mongets(mon,DWARVISH_ROUNDSHIELD);
                 }
-                mksobj(DWARVISH_IRON_HELM, true, false);
-                if (!rn2(3)) mksobj(DWARVISH_MITHRIL_COAT, true, false);
+                mongets(mon,DWARVISH_IRON_HELM);
+                if (!rn2(3)) mongets(mon,DWARVISH_MITHRIL_COAT);
             } else {
-                mksobj(!rn2(3) ? PICK_AXE : DAGGER, true, false);
+                mongets(mon,!rn2(3) ? PICK_AXE : DAGGER);
             }
         }
         break;
 
     case S_KOP:
-        if (!rn2(4)) m_initthrow(CREAM_PIE, 2);
-        if (!rn2(3)) mksobj(rn2(2) ? CLUB : RUBBER_HOSE, true, false);
+        if (!rn2(4)) m_initthrow(mon, CREAM_PIE, 2);
+        if (!rn2(3)) mongets(mon,rn2(2) ? CLUB : RUBBER_HOSE);
         break;
 
     case S_ORC: {
         // C ref: makemon.c:411-446
-        if (rn2(2)) mongets(ORCISH_HELM, true, false);
+        if (rn2(2)) mongets(mon,ORCISH_HELM);
         const orcType = (mndx !== PM_ORC_CAPTAIN) ? mndx
             : rn2(2) ? PM_MORDOR_ORC : PM_URUK_HAI;
         if (orcType === PM_MORDOR_ORC) {
-            if (!rn2(3)) mongets(SCIMITAR, true, false);
-            if (!rn2(3)) mongets(ORCISH_SHIELD, true, false);
-            if (!rn2(3)) mongets(KNIFE, true, false);
-            if (!rn2(3)) mongets(ORCISH_CHAIN_MAIL, true, false);
+            if (!rn2(3)) mongets(mon,SCIMITAR);
+            if (!rn2(3)) mongets(mon,ORCISH_SHIELD);
+            if (!rn2(3)) mongets(mon,KNIFE);
+            if (!rn2(3)) mongets(mon,ORCISH_CHAIN_MAIL);
         } else if (orcType === PM_URUK_HAI) {
-            if (!rn2(3)) mongets(ORCISH_CLOAK, true, false);
-            if (!rn2(3)) mongets(ORCISH_SHORT_SWORD, true, false);
-            if (!rn2(3)) mongets(IRON_SHOES, true, false);
+            if (!rn2(3)) mongets(mon,ORCISH_CLOAK);
+            if (!rn2(3)) mongets(mon,ORCISH_SHORT_SWORD);
+            if (!rn2(3)) mongets(mon,IRON_SHOES);
             if (!rn2(3)) {
-                mongets(ORCISH_BOW, true, false);
-                m_initthrow(ORCISH_ARROW, 12);
+                mongets(mon,ORCISH_BOW);
+                m_initthrow(mon, ORCISH_ARROW, 12);
             }
-            if (!rn2(3)) mongets(URUK_HAI_SHIELD, true, false);
+            if (!rn2(3)) mongets(mon,URUK_HAI_SHIELD);
         } else {
             // default: common orc
             if (mndx !== PM_ORC_SHAMAN && rn2(2))
-                mongets((mndx === PM_GOBLIN || rn2(2) === 0) ? ORCISH_DAGGER : SCIMITAR, true, false);
+                mongets(mon,(mndx === PM_GOBLIN || rn2(2) === 0) ? ORCISH_DAGGER : SCIMITAR);
         }
         break;
     }
@@ -804,9 +869,9 @@ function m_initweap(mon, mndx, depth) {
     case S_OGRE:
         // C ref: makemon.c:447-452
         if (!rn2(mndx === PM_OGRE_TYRANT ? 3 : mndx === PM_OGRE_LEADER ? 6 : 12)) {
-            mksobj(BATTLE_AXE, true, false);
+            mongets(mon,BATTLE_AXE);
         } else {
-            mksobj(CLUB, true, false);
+            mongets(mon,CLUB);
         }
         break;
 
@@ -814,42 +879,42 @@ function m_initweap(mon, mndx, depth) {
         // C ref: makemon.c:454-467
         if (!rn2(2)) {
             const w = rn2(4);
-            if (w === 0) mksobj(RANSEUR, true, false);
-            else if (w === 1) mksobj(PARTISAN, true, false);
-            else if (w === 2) mksobj(GLAIVE, true, false);
-            else mksobj(SPETUM, true, false);
+            if (w === 0) mongets(mon,RANSEUR);
+            else if (w === 1) mongets(mon,PARTISAN);
+            else if (w === 2) mongets(mon,GLAIVE);
+            else mongets(mon,SPETUM);
         }
         break;
 
     case S_KOBOLD:
-        if (!rn2(4)) m_initthrow(DART, 12);
+        if (!rn2(4)) m_initthrow(mon, DART, 12);
         break;
 
     case S_CENTAUR:
         if (rn2(2)) {
-            mksobj(BOW, true, false);
-            m_initthrow(CROSSBOW_BOLT, 12);
+            mongets(mon,BOW);
+            m_initthrow(mon, CROSSBOW_BOLT, 12);
         }
         break;
 
     case S_WRAITH:
-        mksobj(KNIFE, true, false);
-        mksobj(LONG_SWORD, true, false);
+        mongets(mon,KNIFE);
+        mongets(mon,LONG_SWORD);
         break;
 
     case S_ZOMBIE:
-        if (!rn2(4)) mksobj(LEATHER_ARMOR, true, false);
+        if (!rn2(4)) mongets(mon,LEATHER_ARMOR);
         if (!rn2(4)) {
-            mksobj(rn2(3) ? KNIFE : SHORT_SWORD, true, false);
+            mongets(mon,rn2(3) ? KNIFE : SHORT_SWORD);
         }
         break;
 
     case S_LIZARD:
         // Salamander
         if (ptr.name && ptr.name === 'salamander') {
-            if (!rn2(7)) mksobj(SPEAR, true, false);
-            else if (!rn2(3)) mksobj(TRIDENT, true, false);
-            else mksobj(STILETTO, true, false);
+            if (!rn2(7)) mongets(mon,SPEAR);
+            else if (!rn2(3)) mongets(mon,TRIDENT);
+            else mongets(mon,STILETTO);
         }
         break;
 
@@ -857,7 +922,7 @@ function m_initweap(mon, mndx, depth) {
         // Horned devil
         if (ptr.name && ptr.name === 'horned devil') {
             if (!rn2(4)) {
-                mksobj(rn2(2) ? TRIDENT : BULLWHIP, true, false);
+                mongets(mon,rn2(2) ? TRIDENT : BULLWHIP);
             }
         }
         break;
@@ -869,27 +934,27 @@ function m_initweap(mon, mndx, depth) {
             const w = rnd(Math.max(1, 14 - 2 * bias));
             switch (w) {
             case 1:
-                if (strongmonst(ptr)) mksobj(BATTLE_AXE, true, false);
-                else m_initthrow(DART, 12);
+                if (strongmonst(ptr)) mongets(mon,BATTLE_AXE);
+                else m_initthrow(mon, DART, 12);
                 break;
             case 2:
-                if (strongmonst(ptr)) mksobj(TWO_HANDED_SWORD, true, false);
+                if (strongmonst(ptr)) mongets(mon,TWO_HANDED_SWORD);
                 else {
-                    mksobj(CROSSBOW, true, false);
-                    m_initthrow(CROSSBOW_BOLT, 12);
+                    mongets(mon,CROSSBOW);
+                    m_initthrow(mon, CROSSBOW_BOLT, 12);
                 }
                 break;
             case 3:
-                mksobj(BOW, true, false);
-                m_initthrow(ARROW, 12);
+                mongets(mon,BOW);
+                m_initthrow(mon, ARROW, 12);
                 break;
             case 4:
-                if (strongmonst(ptr)) mksobj(LONG_SWORD, true, false);
-                else m_initthrow(DAGGER, 3);
+                if (strongmonst(ptr)) mongets(mon,LONG_SWORD);
+                else m_initthrow(mon, DAGGER, 3);
                 break;
             case 5:
-                if (strongmonst(ptr)) mksobj(LUCERN_HAMMER, true, false);
-                else mksobj(AKLYS, true, false);
+                if (strongmonst(ptr)) mongets(mon,LUCERN_HAMMER);
+                else mongets(mon,AKLYS);
                 break;
             default:
                 break;
@@ -927,7 +992,7 @@ function m_initweap(mon, mndx, depth) {
                 }
             }
         }
-        if (otyp) mongets(otyp, true, false);
+        if (otyp) mongets(mon,otyp);
     }
 }
 
@@ -1040,30 +1105,21 @@ function findgold(minvent) {
     return minvent.some((obj) => obj && obj.otyp === GOLD_PIECE && Number(obj.quan || 0) > 0);
 }
 
-function addToMinvent(mon, obj) {
-    if (!mon || !obj) return;
-    if (!Array.isArray(mon.minvent)) mon.minvent = [];
-    mon.minvent.push(obj);
-}
-
 function mkmonmoney(mon, amount) {
     if (!Number.isFinite(amount) || amount <= 0) return;
     const gold = mksobj(GOLD_PIECE, false, false);
     if (!gold) return;
     gold.quan = Math.trunc(amount);
     gold.owt = weight(gold);
-    addToMinvent(mon, gold);
+    // C ref: mkmonmoney uses add_to_minv (not mpickobj), no pickup event
+    if (mon && Array.isArray(mon.minvent)) {
+        mon.minvent.push(gold);
+    }
 }
 
 function m_initinv(mon, mndx, depth, m_lev) {
     const ptr = mons[mndx];
     const mm = ptr.symbol;
-    const mongets = (otyp, init = true, artif = false) => {
-        const obj = mksobj(otyp, init, artif);
-        addToMinvent(mon, obj);
-        return obj;
-    };
-
     switch (mm) {
     case S_HUMAN:
         if (is_mercenary(ptr)) {
@@ -1079,7 +1135,7 @@ function m_initinv(mon, mndx, depth, m_lev) {
 
             const addAc = (otyp) => {
                 if (!Number.isFinite(otyp)) return;
-                const obj = mksobj(otyp, true, false);
+                const obj = mongets(mon,otyp);
                 const baseAc = Number(objectData[otyp]?.oc1 || 0);
                 const spe = Number(obj?.spe || 0);
                 const erosion = Math.max(Number(obj?.oeroded || 0), Number(obj?.oeroded2 || 0));
@@ -1124,41 +1180,41 @@ function m_initinv(mon, mndx, depth, m_lev) {
             if (mndx === PM_WATCH_CAPTAIN) {
                 // No extra gear in C.
             } else if (mndx === PM_WATCHMAN) {
-                if (rn2(3)) mksobj(TIN_WHISTLE, true, false);
+                if (rn2(3)) mongets(mon,TIN_WHISTLE);
             } else if (mndx === PM_GUARD) {
-                mksobj(TIN_WHISTLE, true, false);
+                mongets(mon,TIN_WHISTLE);
             } else {
                 // Soldiers and officers.
-                if (!rn2(3)) mksobj(K_RATION, true, false);
-                if (!rn2(2)) mksobj(C_RATION, true, false);
-                if (mndx !== PM_SOLDIER && !rn2(3)) mksobj(BUGLE, true, false);
+                if (!rn2(3)) mongets(mon,K_RATION);
+                if (!rn2(2)) mongets(mon,C_RATION);
+                if (mndx !== PM_SOLDIER && !rn2(3)) mongets(mon,BUGLE);
             }
         } else if (ptr.name && (ptr.name === 'priest' || ptr.name === 'priestess')) {
-            mksobj(rn2(7) ? ROBE : (rn2(3) ? CLOAK_OF_PROTECTION : CLOAK_OF_MAGIC_RESISTANCE), true, false);
-            mksobj(SMALL_SHIELD, true, false);
+            mongets(mon,rn2(7) ? ROBE : (rn2(3) ? CLOAK_OF_PROTECTION : CLOAK_OF_MAGIC_RESISTANCE));
+            mongets(mon,SMALL_SHIELD);
             mkmonmoney(mon, rn1(10, 20));
         } else if (mndx === PM_SHOPKEEPER) {
             // C ref: makemon.c:703-721 — SKELETON_KEY + fall-through switch
-            mksobj(SKELETON_KEY, true, false);
+            mongets(mon,SKELETON_KEY);
             const w = rn2(4);
             // MAJOR fall through: case 0 gets all items, case 3 only WAN_STRIKING
-            if (w <= 0) mksobj(WAN_MAGIC_MISSILE, true, false);
-            if (w <= 1) mksobj(POT_EXTRA_HEALING, true, false);
-            if (w <= 2) mksobj(POT_HEALING, true, false);
-            mksobj(WAN_STRIKING, true, false); // case 3 always executes
+            if (w <= 0) mongets(mon,WAN_MAGIC_MISSILE);
+            if (w <= 1) mongets(mon,POT_EXTRA_HEALING);
+            if (w <= 2) mongets(mon,POT_HEALING);
+            mongets(mon,WAN_STRIKING); // case 3 always executes
         }
         break;
 
     case S_NYMPH:
-        if (!rn2(2)) mksobj(MIRROR, true, false);
-        if (!rn2(2)) mksobj(POT_OBJECT_DETECTION, true, false);
+        if (!rn2(2)) mongets(mon,MIRROR);
+        if (!rn2(2)) mongets(mon,POT_OBJECT_DETECTION);
         break;
 
     case S_GIANT:
         // C ref: makemon.c:740-751
         if (mndx === PM_MINOTAUR) {
             if (!rn2(3)) {
-                mksobj(WAN_DIGGING, true, false);
+                mongets(mon,WAN_DIGGING);
             }
         } else if (is_giant_species(ptr)) {
             const cnt = rn2(Math.floor(m_lev / 2));
@@ -1167,6 +1223,7 @@ function m_initinv(mon, mndx, depth, m_lev) {
                 const otmp = mksobj(otyp, false, false);
                 otmp.quan = rn1(2, 3);
                 otmp.owt = otmp.quan * (objectData[otmp.otyp].weight || 1);
+                mpickobj(mon, otmp);
             }
         }
         break;
@@ -1175,17 +1232,18 @@ function m_initinv(mon, mndx, depth, m_lev) {
         if (mndx === PM_NAZGUL) {
             const otmp = mksobj(RIN_INVISIBILITY, false, false);
             otmp.cursed = true;
+            mpickobj(mon, otmp);
         }
         break;
 
     case S_LICH:
         // C ref: makemon.c lich equipment
         if (mndx === PM_MASTER_LICH) {
-            if (!rn2(13)) mksobj(rn2(7) ? ATHAME : WAN_NOTHING, true, false);
+            if (!rn2(13)) mongets(mon,rn2(7) ? ATHAME : WAN_NOTHING);
         } else if (mndx === PM_ARCH_LICH && !rn2(3)) {
             // C ref: mksobj(rn2(3) ? ATHAME : QUARTERSTAFF, TRUE, rn2(13)?FALSE:TRUE)
             // Consume the enchantment RNG draw regardless; cursedness is not fully modeled here.
-            const otmp = mksobj(rn2(3) ? ATHAME : QUARTERSTAFF, true, false);
+            const otmp = mongets(mon,rn2(3) ? ATHAME : QUARTERSTAFF);
             rn2(13);
             if (otmp && (otmp.spe || 0) < 2) {
                 otmp.spe = rnd(3);
@@ -1198,14 +1256,14 @@ function m_initinv(mon, mndx, depth, m_lev) {
 
     case S_MUMMY:
         // C ref: makemon.c gives wrapping on rn2(7)!=0 (6/7 chance)
-        if (rn2(7)) mksobj(MUMMY_WRAPPING, true, false);
+        if (rn2(7)) mongets(mon,MUMMY_WRAPPING);
         break;
 
     case S_GNOME:
         // C ref: makemon.c:811 — gnome candle
         // Not in mines at depth 1, so rn2(60)
         if (!rn2(60)) {
-            mksobj(rn2(4) ? TALLOW_CANDLE : WAX_CANDLE, true, false);
+            mongets(mon,rn2(4) ? TALLOW_CANDLE : WAX_CANDLE);
         }
         break;
 
@@ -1227,11 +1285,11 @@ function m_initinv(mon, mndx, depth, m_lev) {
     const rollDef = rn2(50);
     if (m_lev > rollDef) {
         const otyp = rnd_defensive_item(mndx);
-        if (otyp) mongets(otyp, true, false);
+        if (otyp) mongets(mon,otyp);
     }
     if (m_lev > rn2(100)) {
         const otyp = rnd_misc_item(mon);
-        if (otyp) mongets(otyp, true, false);
+        if (otyp) mongets(mon,otyp);
     }
     if ((ptr.flags2 & M2_GREEDY) && !findgold(mon?.minvent) && !rn2(5)) {
         // C ref: mkmonmoney(mtmp, d(level_difficulty(), minvent ? 5 : 10))
@@ -1832,9 +1890,6 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
     if (mndx === PM_CROESUS) {
         mitem = TWO_HANDED_SWORD;
     }
-    if (mitem !== STRANGE_OBJECT) {
-        mksobj(mitem, true, false);
-    }
 
     // Build full monster object for gameplay.
     // C ref: makemon.c creates/places monster before group and inventory setup.
@@ -1926,6 +1981,10 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
     }
 
     // Weapon/inventory initialization
+    // C ref: makemon.c:1380-1381 — mitem mongets, guarded by allow_minvent
+    if (allowMinvent && mitem !== STRANGE_OBJECT) {
+        mongets(mon,mitem);
+    }
     // C ref: makemon.c:1438-1448 (guarded by allow_minvent)
     if (allowMinvent) {
         if (is_armed(ptr))
@@ -1934,7 +1993,7 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
 
         // C evaluates !rn2(100) first (always consumed), then is_domestic
         if (!rn2(100) && is_domestic(ptr)) {
-            mksobj(SADDLE, true, false);
+            mongets(mon,SADDLE);
         }
     }
 
