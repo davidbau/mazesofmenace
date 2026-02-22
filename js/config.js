@@ -1,11 +1,13 @@
 // config.js -- Game constants and configuration
 // Mirrors constants from include/hack.h, include/global.h, include/rm.h
 
+import { COMMIT_NUMBER } from './version.js';
+
 // Version (patchlevel.h)
 export const VERSION_MAJOR = 3;
 export const VERSION_MINOR = 7;
 export const PATCHLEVEL = 0;
-export const VERSION_STRING = `NetHack ${VERSION_MAJOR}.${VERSION_MINOR}.${PATCHLEVEL} Royal Jelly — vibe-coded by The Hive`;
+export const VERSION_STRING = `NetHack ${VERSION_MAJOR}.${VERSION_MINOR}.${PATCHLEVEL} Royal Jelly #${COMMIT_NUMBER} — vibe-coded by The Hive`;
 
 // Map dimensions (global.h)
 export const COLNO = 80;   // number of columns
