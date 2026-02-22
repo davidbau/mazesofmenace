@@ -1030,9 +1030,8 @@
     (function() {
         var panelToggle = document.getElementById('panel-toggle');
         var menu = document.getElementById('hamburger-menu');
-        var confirmModal = document.getElementById('confirm-modal');
-
         function showConfirm(msg) {
+            var confirmModal = document.getElementById('confirm-modal');
             return new Promise(function(resolve) {
                 document.getElementById('confirm-msg').textContent = msg;
                 confirmModal.classList.add('open');
@@ -1053,8 +1052,9 @@
 
         // Close confirm on Escape
         document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape' && confirmModal.classList.contains('open')) {
-                confirmModal.classList.remove('open');
+            var cm = document.getElementById('confirm-modal');
+            if (e.key === 'Escape' && cm && cm.classList.contains('open')) {
+                cm.classList.remove('open');
             }
         });
 
