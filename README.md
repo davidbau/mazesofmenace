@@ -1,6 +1,6 @@
 # Mazes of Menace
 
-**Royal Jelly — a vibe-coded JavaScript port of NetHack 3.7**
+**Royal Jelly #{{ site.data.version.commit_number }} — a vibe-coded JavaScript port of NetHack 3.7**
 
 *You feel a strange vibration under your feet.*
 
