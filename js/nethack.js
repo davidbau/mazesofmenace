@@ -211,6 +211,7 @@ export class NetHackGame {
     _rerenderGame() {
         if (!this.fov || !this.map || !this.display) return;
         this.fov.compute(this.map, this.player.x, this.player.y);
+        this.display.renderMessageWindow();
         this.display.renderMap(this.map, this.player, this.fov, this.flags);
         this.display.renderStatus(this.player);
     }
