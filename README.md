@@ -266,4 +266,11 @@ deliberately ported, which is both the hard part and the point.
 
 NHPL (NetHack General Public License)
 
+The JavaScript source is an independent rewrite with no C code copied or
+transpiled. However, the game data (`dat/`), generated monster and object
+definitions, and converted special levels are all derived from NetHack's
+creative work, so NHPL is the appropriate license regardless. We also think
+it's the right spirit: this project exists in gratitude to the DevTeam and
+the NetHack community, not in competition with them.
+
 *Do you want your possessions identified?*
