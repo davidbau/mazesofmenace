@@ -1,5 +1,8 @@
 # Agent Instructions
 
+> *"The strength of a dwarf lies less in brute force than in stubborn refusal to leave a bug unfixed."*
+> -- The Oracle of Delphi (paraphrased)
+
 ## Purpose
 This file defines how coding agents should work in this repository.
 

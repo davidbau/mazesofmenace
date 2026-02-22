@@ -34,10 +34,27 @@ const OPTIONS_KEY = 'menace-options';
 const TOPTEN_KEY = 'menace-topten';
 const SAVE_VERSION = 2;
 
-// Safe localStorage access -- returns null when unavailable (e.g. Node.js tests)
+// Safe localStorage access -- returns null when unavailable (e.g. Node.js tests).
+// In Node.js 22+, globalThis.localStorage exists but warns without --localstorage-file.
+// Suppress that one-time warning on first access.
+let _storageWarned = false;
 function storage() {
-    try { return typeof localStorage !== 'undefined' ? localStorage : null; }
-    catch (e) { return null; }
+    try {
+        if (typeof localStorage === 'undefined') return null;
+        if (!_storageWarned && typeof process !== 'undefined' && typeof window === 'undefined') {
+            // Node.js: accessing localStorage triggers a warning. Suppress it once.
+            _storageWarned = true;
+            const orig = process.emitWarning;
+            process.emitWarning = function(msg, ...args) {
+                if (typeof msg === 'string' && msg.includes('--localstorage-file')) return;
+                return orig.call(this, msg, ...args);
+            };
+            const s = localStorage;
+            process.emitWarning = orig;
+            return s;
+        }
+        return localStorage;
+    } catch (e) { return null; }
 }
 
 // ========================================================================

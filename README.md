@@ -34,7 +34,7 @@ The project exists at the intersection of two unlikely forces: the pending relea
 
 In February 2025, Andrej Karpathy coined the term **"vibe coding"** to describe a new way of working: describe what you want to an AI, accept its code without reading the diffs, paste error messages back when things break, and see what happens. By early 2026 the approach had matured into what Karpathy calls **"agentic engineering"**—the same core idea, but with more structure, more oversight, and the recognition that orchestrating AI agents to produce real software is itself *"an art and science and expertise."*
 
-This project is a test of that proposition at scale. Can AI agents, directed by a human who understands the game deeply, produce a faithful port of one of the most complex single-player codebases in gaming history? Not a toy demo or a weekend throwaway, but a real, playable, parity-correct reimplementation—tens of thousands of lines of readable JavaScript that match NetHack's behavior down to the random number generator?
+This project is a test of that proposition at scale. Can AI agents, directed by a non-expert human, produce a faithful port of one of the most complex single-player codebases in gaming history? Not a toy demo or a weekend throwaway, but a real, playable, parity-correct reimplementation—tens of thousands of lines of readable JavaScript that match NetHack's behavior down to the random number generator?
 
 The entire codebase—180 JavaScript modules, 1,500+ passing unit tests, 200+ golden C-comparison sessions, and a suite of Python test harness scripts—was produced through natural-language conversation with AI agents. The human provided direction, taste, and domain knowledge about NetHack; the agents wrote the code, tests, and documentation.
 

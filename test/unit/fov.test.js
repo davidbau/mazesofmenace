@@ -107,11 +107,12 @@ describe('FOV', () => {
         assert.ok(!fov.visible[25][1], 'Stone far from corridor should not be visible');
     });
 
-    it('does not reveal opaque diagonal around blocked corner', () => {
+    it('night vision reveals adjacent diagonal wall even when one orthogonal side is stone', () => {
+        // C ref: vision.c:670-699 — night vision marks ALL adjacent COULD_SEE
+        // cells as IN_SIGHT, regardless of whether orthogonal neighbors are clear.
         const fov = new FOV();
         const map = new GameMap();
         const px = 10, py = 10;
-        // Keep one orthogonal side blocked by stone and make the diagonal tile opaque.
         map.at(px + 1, py).typ = CORR;
         map.at(px + 1, py).lit = false;
         map.at(px, py - 1).typ = STONE;
@@ -119,7 +120,7 @@ describe('FOV', () => {
         map.at(px + 1, py - 1).lit = true;
 
         fov.compute(map, px, py);
-        assert.ok(!fov.visible[px + 1][py - 1],
-            'Opaque diagonal should stay hidden when one orthogonal side is blocked');
+        assert.ok(fov.visible[px + 1][py - 1],
+            'Adjacent diagonal wall should be visible via night vision (C-faithful)');
     });
 });
