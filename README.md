@@ -241,6 +241,27 @@ writer/
 - **[oracle/](oracle/)** — Testing dashboard (GitHub Pages)
 - **[.githooks/QUICK_REFERENCE.md](.githooks/QUICK_REFERENCE.md)** — Command cheat sheet
 
+## FAQ
+
+*The Oracle speaks.*
+
+**Why not just compile the C to WebAssembly?**
+
+The DevTeam actually anticipated this. NetHack's C source has a clean
+windowing abstraction layer (`win/`) with pluggable backends — `tty`, `curses`,
+`X11`, `Qt`, `win32`, and notably `shim`, which is explicitly designed for
+cross-compilation to WebAssembly via Emscripten. The shim backend serializes
+every display call to a JavaScript callback, and an Emscripten-compiled NetHack
+running in a browser is a real possibility the DevTeam has in mind.
+
+This project takes a different path: porting the game logic directly to
+JavaScript rather than compiling C to WASM. The result is a codebase that is
+readable, debuggable, and hackable in any browser devtools — no WASM toolchain,
+no C build step, no binary blob. It also allows a natural async/await game loop
+that maps cleanly onto the browser's event model. The tradeoff is faithfulness
+by construction rather than faithfulness by compilation: every behavior must be
+deliberately ported, which is both the hard part and the point.
+
 ## License
 
 NHPL (NetHack General Public License)
