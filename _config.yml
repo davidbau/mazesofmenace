@@ -15,6 +15,7 @@ defaults:
       path: "README.md"
     values:
       layout: doc
+      permalink: /README.html
   - scope:
       path: "AGENTS.md"
     values:
