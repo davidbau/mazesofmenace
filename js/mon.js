@@ -4,7 +4,6 @@
 //
 // INCOMPLETE / MISSING vs C mon.c:
 // - No xkilled/monkilled/mondied (monster death processing)
-// - No mcalcmove (speed-based movement budget)
 // - No grow_up/mon_adjust_speed
 // - No mpickstuff/mpickgold (full item pickup logic — stub in monmove.js)
 // - No minliquid (monsters falling in pools/lava)
@@ -86,6 +85,53 @@ import { m_harmless_trap } from './trap.js';
 import { dist2, distmin, monnear,
          monmoveTrace, monmoveStepLabel,
          canSpotMonsterForMap, BOLT_LIM } from './monutil.js';
+
+// ========================================================================
+// Monster speed constants — C ref: include/monsym.h
+// ========================================================================
+const MSLOW = 1;
+const MFAST = 2;
+
+// ========================================================================
+// mcalcmove — C ref: mon.c mcalcmove()
+// Calculate monster's movement budget for a turn.
+// Randomly rounds speed to a multiple of NORMAL_SPEED (12).
+// ========================================================================
+export function mcalcmove(mon) {
+    let mmove = mon.speed;  // mon->data->mmove
+
+    // C ref: mon.c:1120-1129 — MSLOW/MFAST adjustments
+    if (mon.mspeed === MSLOW) {
+        if (mmove < 12)
+            mmove = Math.floor((2 * mmove + 1) / 3);
+        else
+            mmove = 4 + Math.floor(mmove / 3);
+    } else if (mon.mspeed === MFAST) {
+        mmove = Math.floor((4 * mmove + 2) / 3);
+    }
+    // Note: usteed/gallop check (C mon.c:1131-1136) skipped — riding not ported.
+
+    // C ref: mon.c:1138-1146 — random rounding for non-standard speeds
+    const mmoveAdj = mmove % NORMAL_SPEED;
+    mmove -= mmoveAdj;
+    if (rn2(NORMAL_SPEED) < mmoveAdj) {
+        mmove += NORMAL_SPEED;
+    }
+    return mmove;
+}
+
+// ========================================================================
+// allocateMonsterMovement — C ref: allmain.c:226-227 moveloop_core
+// Reallocate movement rations to all living monsters via mcalcmove.
+// ========================================================================
+export function allocateMonsterMovement(map) {
+    for (const mon of map.monsters) {
+        if (mon.dead) continue;
+        const oldMv = mon.movement;
+        mon.movement += mcalcmove(mon);
+        pushRngLogEntry(`^mcalcmove[${mon.mndx}@${mon.mx},${mon.my} speed=${mon.speed} mv=${oldMv}->${mon.movement}]`);
+    }
+}
 
 // ========================================================================
 // onscary — C ref: mon.c onscary()
@@ -641,7 +687,7 @@ export function movemon(map, player, display, fov, game = null, { dochug, handle
         for (const mon of map.monsters) {
             if (mon.dead) continue;
             if (mon.movement >= NORMAL_SPEED) {
-                pushRngLogEntry(`^movemon_turn[${mon.mndx}@${mon.mx},${mon.my} mv=${mon.movement}]`);
+                pushRngLogEntry(`^movemon_turn[${mon.mndx}@${mon.mx},${mon.my} mv=${mon.movement}->${mon.movement - NORMAL_SPEED}]`);
                 const oldx = mon.mx;
                 const oldy = mon.my;
                 const alreadySawMon = !!(game && game.occupation

@@ -25,8 +25,9 @@ diff --git a/src/mon.c b/src/mon.c
      if (mtmp->movement < NORMAL_SPEED)
          return FALSE;
 
-+    event_log("movemon_turn[%d@%d,%d mv=%d]",
-+              monsndx(mtmp->data), mtmp->mx, mtmp->my, mtmp->movement);
++    event_log("movemon_turn[%d@%d,%d mv=%d->%d]",
++              monsndx(mtmp->data), mtmp->mx, mtmp->my,
++              mtmp->movement, mtmp->movement - NORMAL_SPEED);
      mtmp->movement -= NORMAL_SPEED;
      if (mtmp->movement >= NORMAL_SPEED)
          gs.somebody_can_move = TRUE;

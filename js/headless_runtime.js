@@ -25,6 +25,7 @@ import { ageSpells } from './spell.js';
 import { makemon, setMakemonPlayerContext, runtimeDecideToShapeshift } from './makemon.js';
 import { M2_WERE } from './monsters.js';
 import { movemon, initrack, settrack } from './monmove.js';
+import { allocateMonsterMovement } from './mon.js';
 import { were_change } from './were.js';
 import { FOV } from './vision.js';
 import { monsterNearby } from './monutil.js';
@@ -790,15 +791,6 @@ export class HeadlessGame {
         return monsterNearby(this.map, this.player, this.fov);
     }
 
-    // C ref: mon.c mcalcmove() — random rounding of monster speed
-    mcalcmove(mon) {
-        let mmove = mon.speed;
-        const mmoveAdj = mmove % NORMAL_SPEED;
-        mmove -= mmoveAdj;
-        if (rn2(NORMAL_SPEED) < mmoveAdj) mmove += NORMAL_SPEED;
-        return mmove;
-    }
-
     // Run the deferred timed turn postponed from a stop_occupation frame.
     // See NetHackGame.runPendingDeferredTimedTurn() for full commentary.
     runPendingDeferredTimedTurn() {
@@ -873,12 +865,7 @@ export class HeadlessGame {
             }
         }
 
-        for (const mon of this.map.monsters) {
-            if (mon.dead) continue;
-            const oldMv = mon.movement;
-            mon.movement += this.mcalcmove(mon);
-            pushRngLogEntry(`^mcalcmove[${mon.mndx}@${mon.mx},${mon.my} speed=${mon.speed} mv=${oldMv}->${mon.movement}]`);
-        }
+        allocateMonsterMovement(this.map);
 
         // C ref: allmain.c moveloop_core() — occasional random spawn.
         if (!rn2(70) && !(this.map?.flags?.nomongen) && !(this.map?.flags?.is_tutorial)) {

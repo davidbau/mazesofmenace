@@ -24,6 +24,7 @@ import { rhack } from './cmd.js';
 import { ageSpells } from './spell.js';
 import { wipe_engr_at } from './engrave.js';
 import { movemon, settrack } from './monmove.js';
+import { allocateMonsterMovement } from './mon.js';
 import { monsterNearby } from './monutil.js';
 import { simulatePostLevelInit, initFirstLevel } from './u_init.js';
 import { getArrivalPosition, changeLevel as changeLevelCore } from './do.js';
@@ -1525,20 +1526,6 @@ export class NetHackGame {
         return monsterNearby(this.map, this.player, this.fov);
     }
 
-    // C ref: mon.c mcalcmove() — calculate monster's movement for a turn
-    // Randomly rounds speed to a multiple of NORMAL_SPEED (12).
-    // Returns the movement to ADD for this turn.
-    mcalcmove(mon) {
-        let mmove = mon.speed;
-        // C ref: mon.c:1143-1146 — random rounding for non-standard speeds
-        const mmoveAdj = mmove % NORMAL_SPEED;
-        mmove -= mmoveAdj;
-        if (rn2(NORMAL_SPEED) < mmoveAdj) {
-            mmove += NORMAL_SPEED;
-        }
-        return mmove;
-    }
-
     // C ref: allmain.c moveloop_core() — per-turn effects after monster movement
     // Called once per turn after movemon() is done.
     // Order matches C: mcalcmove → rn2(70) → dosounds → gethungry → engrave wipe → seer_turn
@@ -1604,12 +1591,7 @@ export class NetHackGame {
         }
 
         // C ref: allmain.c:226-227 — reallocate movement to monsters via mcalcmove
-        for (const mon of this.map.monsters) {
-            if (mon.dead) continue;
-            const oldMv = mon.movement;
-            mon.movement += this.mcalcmove(mon);
-            pushRngLogEntry(`^mcalcmove[${mon.mndx}@${mon.mx},${mon.my} speed=${mon.speed} mv=${oldMv}->${mon.movement}]`);
-        }
+        allocateMonsterMovement(this.map);
 
         // C ref: allmain.c:232-236 — occasionally spawn a new monster.
         // New monster spawns after movement allocation and therefore loses its first turn.
