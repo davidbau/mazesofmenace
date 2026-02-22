@@ -5,7 +5,10 @@
 //
 // INCOMPLETE / MISSING vs C monmove.c:
 // - dochug: no Conflict handling (C:870), no covetous/quest/vault guards
-// - dochug: m_respond() not implemented (C:764, handles spell/gaze/breath)
+// - dochug: m_respond() partially implemented — shrieker rn2(10) consumed but makemon stubbed,
+//           medusa gazemu stubbed, erinyes aggravate implemented
+// - dochug: find_defensive/find_misc stubbed (return false, no RNG consumed)
+// - dochug: mind_blast RNG-faithful (rn2(20) gate, hero lock-on, monster loop), losehp stubbed
 // - dochug: flees_light (gremlin+artifact light) not implemented (C:555)
 // - dochug: in_your_sanctuary (temple) not implemented (C:564)
 // - m_move: no boulder-pushing by strong monsters (C:2020)
@@ -36,18 +39,20 @@ import { can_carry } from './dogmove.js';
 import { couldsee, m_cansee } from './vision.js';
 import { can_teleport, noeyes, perceives, nohands,
          hides_under, is_mercenary, monDisplayName, monNam,
-         mon_knows_traps, is_rider } from './mondata.js';
+         mon_knows_traps, is_rider, is_mind_flayer,
+         is_mindless, telepathic } from './mondata.js';
 import { PM_GRID_BUG, PM_SHOPKEEPER, mons,
          PM_LEPRECHAUN,
          PM_DISPLACER_BEAST,
          PM_WHITE_UNICORN, PM_GRAY_UNICORN, PM_BLACK_UNICORN,
+         PM_SHRIEKER, PM_PURPLE_WORM, PM_MEDUSA, PM_ERINYS,
          AT_WEAP,
          S_MIMIC,
          S_DOG, S_NYMPH, S_LEPRECHAUN, S_HUMAN,
          M2_COLLECT, M2_STRONG, M2_ROCKTHROW, M2_GREEDY, M2_JEWELS, M2_MAGIC,
          MZ_TINY, MZ_HUMAN, WT_HUMAN,
          M2_WANDER,
-         MS_LEADER } from './monsters.js';
+         MS_LEADER, MS_SHRIEK } from './monsters.js';
 import { dog_move, could_reach_item } from './dogmove.js';
 import { initrack, settrack, gettrack } from './track.js';
 import { pointInShop, monsterInShop } from './shknam.js';
@@ -84,6 +89,7 @@ export { m_harmless_trap, floor_trigger, mintrap_postmove };
 
 // Re-export mthrowu.c functions
 import { hasWeaponAttack, maybeMonsterWieldBeforeAttack, linedUpToPlayer } from './mthrowu.js';
+import { find_defensive, use_defensive, find_misc, use_misc } from './muse.js';
 
 // ========================================================================
 // movemon — wrapper that binds dochug into mon.js movemon
@@ -374,6 +380,160 @@ function m_search_items_goal(mon, map, player, fov, ggx, ggy, appr) {
 }
 
 // ========================================================================
+// m_respond — C ref: mon.c:4117
+// Dispatcher for special monster responses (shrieker, medusa, erinyes).
+// Called from dochug after flee teleport, before courage regain.
+// ========================================================================
+
+// C ref: mon.c:4084 — m_respond_shrieker(mtmp)
+// 1/10 chance to create a purple worm (or random monster) when adjacent to hero.
+function m_respond_shrieker(mon, map, player) {
+    if (distmin(mon.mx, mon.my, player.x, player.y) > 1) return;
+    if (rn2(10)) return;
+    // TODO: makemon(PM_PURPLE_WORM) or random monster near shrieker
+    // TODO: message "a]shrieking noise" if canseemon || distu <= 4*4
+    monmoveTrace('m_respond_shrieker',
+        `step=${monmoveStepLabel(map)}`,
+        `id=${mon.m_id ?? '?'}`,
+        `triggered`);
+}
+
+// C ref: mon.c:4068 — m_respond_medusa(mtmp)
+// Medusa's gaze attack (gazemu). Complex petrification logic.
+function m_respond_medusa(mon, map, player) {
+    // TODO: gazemu(mtmp, &youmonst) — Medusa petrification gaze
+    // Involves hero reflection check, stone resistance, hallucination, etc.
+}
+
+// C ref: wizard.c:488 — aggravate()
+// Wakes all monsters on level; 1/5 chance to unfreeze frozen ones.
+function aggravate(map) {
+    for (const mtmp of map.monsters || []) {
+        if (mtmp.dead) continue;
+        // C: clears STRAT_WAITFORU | STRAT_APPEARMSG from mstrategy
+        // JS: mstrategy is not widely used; clear waiting flag
+        if (mtmp.waiting) mtmp.waiting = false;
+        mtmp.sleeping = false;
+        if (mtmp.mcanmove === false && !rn2(5)) {
+            mtmp.mfrozen = 0;
+            mtmp.mcanmove = true;
+        }
+    }
+}
+
+// C ref: mon.c:4117 — m_respond(mtmp)
+function m_respond(mon, map, player) {
+    if (mon.mndx === PM_MEDUSA) {
+        m_respond_medusa(mon, map, player);
+    } else if (mon.type?.sound === MS_SHRIEK) {
+        m_respond_shrieker(mon, map, player);
+    } else if (mon.mndx === PM_ERINYS) {
+        // C ref: mon.c:4126 — aggravate()
+        aggravate(map);
+    }
+}
+
+// ========================================================================
+// mind_blast — C ref: monmove.c:582-646
+// Mind flayer psychic blast. RNG-faithful implementation.
+// ========================================================================
+function mind_blast(mon, map, player, display = null, fov = null) {
+    const BOLT_LIM_SQ = BOLT_LIM * BOLT_LIM;
+
+    // C ref: monmove.c:590 — canseemon message
+    const vismon = canSpotMonsterForMap(mon, map, player, fov);
+    if (vismon && display) {
+        display.putstr_message(`${monNam(mon, { article: 'the', capitalize: true })} concentrates.`);
+    }
+
+    // C ref: monmove.c:592 — distance check
+    const d2 = dist2(mon.mx, mon.my, player.x, player.y);
+    if (d2 > BOLT_LIM_SQ) {
+        // C: "You sense a faint wave of psychic energy."
+        if (display) display.putstr_message('You sense a faint wave of psychic energy.');
+        return;
+    }
+
+    // C: "A wave of psychic energy pours over you!"
+    if (display) display.putstr_message('A wave of psychic energy pours over you!');
+
+    // C ref: monmove.c:597-598 — peaceful check
+    if (mon.peaceful) {
+        // C: "It feels quite soothing." (no Conflict check — not implemented)
+        if (display) display.putstr_message('It feels quite soothing.');
+    } else {
+        // C ref: monmove.c:602 — lock-on check
+        // C: sensemon(mtmp) — true if hero has telepathy and monster is not mindless
+        // JS: approximate via player.telepathy (intrinsic or helmet)
+        const m_sen = !!(player.telepathy) && !is_mindless(mon.type || {});
+        const blind_telepat = !!(player.telepathy) && !!player.blind;
+
+        // C: if (m_sen || (Blind_telepat && rn2(2)) || !rn2(10))
+        // Short-circuit evaluation: rn2 calls only happen if prior conditions false
+        let locksOn = false;
+        if (m_sen) {
+            locksOn = true;
+        } else if (blind_telepat && rn2(2)) {
+            locksOn = true;
+        } else if (!rn2(10)) {
+            locksOn = true;
+        }
+
+        if (locksOn) {
+            // C ref: monmove.c:620 — damage
+            let dmg = rnd(15);
+            // C: Half_spell_damage halves
+            if (player.halfSpellDamage) dmg = Math.floor((dmg + 1) / 2);
+            // TODO: losehp(dmg, "psychic blast", KILLED_BY_AN)
+            // TODO: unhide hero if hidden
+            monmoveTrace('mind_blast',
+                `step=${monmoveStepLabel(map)}`,
+                `id=${mon.m_id ?? '?'}`,
+                `locksOn=hero`,
+                `dmg=${dmg}`);
+        }
+    }
+
+    // C ref: monmove.c:630-645 — blast hits other monsters
+    for (const m2 of map.monsters || []) {
+        if (m2.dead) continue;
+        if (!!(m2.peaceful) === !!(mon.peaceful)) continue;
+        if (is_mindless(m2.type || {})) continue;
+        if (m2 === mon) continue;
+
+        // C: if ((telepathic(m2->data) && (rn2(2) || m2->mblinded)) || !rn2(10))
+        const m2dat = m2.type || {};
+        let m2hit = false;
+        if (telepathic(m2dat)) {
+            if (rn2(2) || m2.blind) {
+                m2hit = true;
+            }
+        }
+        if (!m2hit && !rn2(10)) {
+            m2hit = true;
+        }
+
+        if (m2hit) {
+            // C: wakeup(m2, FALSE) — not yet ported
+            m2.sleeping = false;
+            const m2dmg = rnd(15);
+            m2.mhp = (m2.mhp ?? 0) - m2dmg;
+            monmoveTrace('mind_blast',
+                `step=${monmoveStepLabel(map)}`,
+                `id=${mon.m_id ?? '?'}`,
+                `target=${m2.m_id ?? '?'}(${m2dat.name || '?'})`,
+                `dmg=${m2dmg}`,
+                `hp=${m2.mhp}`);
+            if (m2.mhp <= 0) {
+                // C: monkilled(m2, "", AD_DRIN)
+                // TODO: proper monkilled with death reason
+                mondead(m2, map, null);
+            }
+        }
+    }
+}
+
+// ========================================================================
 // dochug — C ref: monmove.c:690
 // ========================================================================
 
@@ -418,12 +578,11 @@ function dochug(mon, map, player, display, fov, game = null) {
     // Sleeping monsters don't wipe dust engravings.
     wipe_engr_at(map, mon.mx, mon.my, 1);
 
-    // INCOMPLETE: C:745 m_respond() — monster spell/gaze/breath attacks not implemented
-    // INCOMPLETE: C:759 special monster actions (covetous, quest nemesis) not implemented
-
+    // C ref: monmove.c:738-743 — confused/stunned clearing
     if (mon.confused && !rn2(50)) mon.confused = false;
     if (mon.stunned && !rn2(10)) mon.stunned = false;
 
+    // C ref: monmove.c:746 — flee teleport
     if (mon.flee && !rn2(40) && can_teleport(mon.type || {})
         && !mon.iswiz && !(map.flags && map.flags.noteleport)) {
             for (let tries = 0; tries < 50; tries++) {
@@ -440,6 +599,10 @@ function dochug(mon, map, player, display, fov, game = null) {
             return;
     }
 
+    // C ref: monmove.c:754 — m_respond() for special monsters
+    m_respond(mon, map, player);
+
+    // C ref: monmove.c:759 — courage regain
     if (mon.flee && !(mon.fleetim > 0)
         && (mon.mhp ?? 0) >= (mon.mhpmax ?? 0)
         && !rn2(25)) {
@@ -458,6 +621,30 @@ function dochug(mon, map, player, display, fov, game = null) {
         `name=${mon.type?.name || mon.name || '?'}`,
         `pos=(${mon.mx},${mon.my})`,
         `roll=${braveGremlinRoll}`);
+
+    // C ref: monmove.c:795-803 — find_defensive / find_misc
+    // Monsters check inventory for defensive or misc items to use.
+    // Stubs return false for now (no RNG consumed when returning false).
+    if (find_defensive(mon, false)) {
+        if (use_defensive(mon) !== 0) return;
+    } else if (find_misc(mon)) {
+        if (use_misc(mon) !== 0) return;
+    }
+
+    // INCOMPLETE: C:803 — demonic blackmail (rare demon interaction)
+
+    // C ref: monmove.c:832-836 — mind flayer psychic blast
+    const mdat = mon.type || {};
+    if (is_mind_flayer(mdat) && !rn2(20)) {
+        mind_blast(mon, map, player, display, fov);
+        set_apparxy(mon, map, player);
+        // C recalculates distfleeck here; consume the rn2(5)
+        const mindBlastBraveRoll = rn2(5);
+        monmoveTrace('distfleeck-mindblast',
+            `step=${monmoveStepLabel(map)}`,
+            `id=${mon.m_id ?? '?'}`,
+            `roll=${mindBlastBraveRoll}`);
+    }
 
     const targetX = Number.isInteger(mon.mux) ? mon.mux : player.x;
     const targetY = Number.isInteger(mon.muy) ? mon.muy : player.y;

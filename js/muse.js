@@ -129,3 +129,41 @@
 // cf. muse.c:2360 — use_misc(mtmp): execute monster miscellaneous action
 // Executes miscellaneous actions like becoming invisible, polymorphing, or looting containers.
 // TODO: muse.c:2360 — use_misc(): monster misc action execution
+
+// ========================================================================
+// Stub exports — called from dochug (monmove.js)
+// These return false/0 for now, matching C behavior for monsters without
+// specific defensive items. No RNG consumed when returning false.
+// ========================================================================
+
+// C ref: muse.c:439 — find_defensive(mtmp, tryescape)
+// Searches monster inventory for defensive items or escape routes.
+// Returns true if a defensive action was found.
+export function find_defensive(mon, tryescape) {
+    // TODO: Full inventory search for healing potions, escape items, etc.
+    return false;
+}
+
+// C ref: muse.c:794 — use_defensive(mtmp)
+// Executes the defensive action selected by find_defensive.
+// Returns nonzero if the monster's turn was consumed.
+export function use_defensive(mon) {
+    // TODO: Execute defensive item use (quaff potion, zap wand, etc.)
+    return 0;
+}
+
+// C ref: muse.c:2074 — find_misc(mtmp)
+// Searches for miscellaneous items (invisibility, speed, polymorph potions).
+// Returns true if a misc action was found.
+export function find_misc(mon) {
+    // TODO: Full inventory search for misc items
+    return false;
+}
+
+// C ref: muse.c:2360 — use_misc(mtmp)
+// Executes miscellaneous actions like becoming invisible or polymorphing.
+// Returns nonzero if the monster's turn was consumed.
+export function use_misc(mon) {
+    // TODO: Execute misc item use
+    return 0;
+}

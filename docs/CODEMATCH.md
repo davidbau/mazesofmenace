@@ -2796,9 +2796,9 @@ No function symbols parsed from isaac64.c.
 | 2112 | `m_in_air` | - | Missing |
 | 3829 | `m_into_limbo` | - | Missing |
 | 312 | `m_poisongas_ok` | - | Missing |
-| 4117 | `m_respond` | - | Missing |
-| 4104 | `m_respond_medusa` | - | Missing |
-| 4084 | `m_respond_shrieker` | - | Missing |
+| 4117 | `m_respond` | monmove.js | Partial — dispatcher calls m_respond_shrieker/medusa/erinyes; shrieker rn2(10) gate faithful but makemon stubbed; medusa gazemu stubbed; erinyes aggravate faithful |
+| 4104 | `m_respond_medusa` | monmove.js | Stub — gazemu not implemented |
+| 4084 | `m_respond_shrieker` | monmove.js | Partial — rn2(10) gate faithful, makemon stubbed |
 | 4622 | `m_restartcham` | - | Missing |
 | 546 | `make_corpse` | - | Missing |
 | 1909 | `max_mon_load` | - | Missing |
@@ -2981,7 +2981,7 @@ No function symbols parsed from isaac64.c.
 | 1334 | `m_search_items` | - | Missing |
 | 1273 | `maybe_spin_web` | - | Missing |
 | 55 | `mb_trapped` | - | Missing |
-| 584 | `mind_blast` | - | Missing |
+| 584 | `mind_blast` | monmove.js | Partial — RNG-faithful: rn2(20) gate, hero lock-on (sensemon/Blind_telepat/rn2(10)), rnd(15) damage, monster loop with telepathic/rn2(2)/rn2(10)/rnd(15); losehp stubbed, hero unhide stubbed |
 | 308 | `mon_regen` | - | Missing |
 | 79 | `mon_track_add` | - | Missing |
 | 90 | `mon_track_clear` | - | Missing |
@@ -3053,8 +3053,8 @@ No function symbols parsed from isaac64.c.
 | 3211 | `cures_sliming` | - | Missing |
 | 2950 | `cures_stoning` | - | Missing |
 | 1705 | `fhito_loc` | - | Missing |
-| 440 | `find_defensive` | - | Missing |
-| 2075 | `find_misc` | - | Missing |
+| 440 | `find_defensive` | muse.js | Stub — returns false, no RNG consumed |
+| 2075 | `find_misc` | muse.js | Stub — returns false, no RNG consumed |
 | 1420 | `find_offensive` | - | Missing |
 | 3234 | `green_mon` | - | Missing |
 | 1343 | `hero_behind_chokepoint` | - | Missing |
@@ -3089,8 +3089,8 @@ No function symbols parsed from isaac64.c.
 | 2015 | `rnd_offensive_item` | - | Missing |
 | 2671 | `searches_for_item` | - | Missing |
 | 2801 | `ureflects` | - | Missing |
-| 795 | `use_defensive` | - | Missing |
-| 2361 | `use_misc` | - | Missing |
+| 795 | `use_defensive` | muse.js | Stub — returns 0, no RNG consumed |
+| 2361 | `use_misc` | muse.js | Stub — returns 0, no RNG consumed |
 | 1816 | `use_offensive` | - | Missing |
 | 2596 | `you_aggravate` | - | Missing |
 
@@ -5674,7 +5674,7 @@ No function symbols parsed from isaac64.c.
 ### wizard.c -> wizard.js
 | C Line | C Function | JS Line | Alignment |
 |--------|------------|---------|-----------|
-| 488 | `aggravate` | - | Missing |
+| 488 | `aggravate` | monmove.js | Faithful — wakes sleeping monsters, rn2(5) unfreeze chance; In_W_tower check omitted |
 | 61 | `amulet` | - | Missing |
 | 332 | `choose_stairs` | - | Missing |
 | 511 | `clonewiz` | - | Missing |
