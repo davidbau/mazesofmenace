@@ -11,7 +11,8 @@ import {
     WATER, LAVAPOOL, LAVAWALL, ICE, IRONBARS, TREE,
     DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, AIR, CLOUD, SDOOR, SCORR,
     D_NODOOR, D_CLOSED, D_ISOPEN, D_LOCKED,
-    IS_WALL, IS_DOOR, IS_ROOM
+    IS_WALL, IS_DOOR, IS_ROOM,
+    Amask2align
 } from './config.js';
 
 import { def_monsyms, def_oc_syms, defsyms, trap_to_defsym } from './symbols.js';
@@ -734,7 +735,8 @@ export class Display {
         // Handle altar alignment colors
         // C ref: display.h altar_color enum, display.c altarcolors[]
         if (typ === ALTAR) {
-            const align = loc.altarAlign !== undefined ? loc.altarAlign : 0;
+            const align = loc.altarAlign !== undefined ? loc.altarAlign
+                : (loc.flags !== undefined ? Amask2align(loc.flags) : 0);
             let altarColor;
             if (align === 1) {        // A_LAWFUL
                 altarColor = CLR_WHITE;

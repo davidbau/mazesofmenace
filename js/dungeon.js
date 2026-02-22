@@ -28,7 +28,8 @@ import {
     MKTRAP_NOFLAGS, MKTRAP_MAZEFLAG, MKTRAP_NOSPIDERONWEB, MKTRAP_NOVICTIM,
     PM_ARCHEOLOGIST as ROLE_ARCHEOLOGIST, PM_WIZARD as ROLE_WIZARD,
     PM_PRIEST as ROLE_PRIEST,
-    A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC
+    A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC,
+    AM_SHRINE, AM_MASK, Align2amask, Amask2align
 } from './config.js';
 import { GameMap, makeRoom, FILL_NONE, FILL_NORMAL } from './map.js';
 import { rn2, rnd, rn1, d, getRngCallCount, advanceRngRaw, pushRngLogEntry } from './rng.js';
@@ -48,14 +49,16 @@ import {
 import { makemon, mkclass, rndmonnum_adj, NO_MM_FLAGS, MM_NOGRP, setMakemonRoleContext, setMakemonLevelContext, getMakemonRoleIndex, setMakemonInMklevContext } from './makemon.js';
 import {
     mons, S_HUMAN, S_UNICORN, S_DRAGON, S_GIANT, S_TROLL, S_CENTAUR, S_ORC, S_GNOME, S_KOBOLD,
-    S_VAMPIRE, S_ZOMBIE, S_DEMON,
+    S_VAMPIRE, S_ZOMBIE, S_DEMON, S_FUNGUS,
     PM_ELF, PM_HUMAN, PM_GNOME, PM_DWARF, PM_ORC, PM_ARCHEOLOGIST, PM_WIZARD, PM_MINOTAUR, PM_GIANT_SPIDER,
     PM_SOLDIER, PM_SERGEANT, PM_LIEUTENANT, PM_CAPTAIN,
     PM_BUGBEAR, PM_HOBGOBLIN,
     PM_QUEEN_BEE, PM_KILLER_BEE, PM_LEPRECHAUN, PM_COCKATRICE,
     PM_SOLDIER_ANT, PM_FIRE_ANT, PM_GIANT_ANT,
+    PM_GIANT_EEL, PM_PIRANHA, PM_ELECTRIC_EEL,
     PM_GHOST, PM_WRAITH,
     PM_OGRE_TYRANT, PM_ELVEN_MONARCH, PM_DWARF_RULER, PM_GNOME_RULER,
+    PM_ALIGNED_CLERIC, PM_HIGH_CLERIC,
     M2_PRINCE, M2_LORD, M2_DEMON, M2_HOSTILE, M2_PEACEFUL,
 } from './monsters.js';
 import { init_objects, setgemprobs } from './o_init.js';
@@ -3777,8 +3780,8 @@ function do_fill_vault(map, vaultCheck, depth) {
     const vroom = map.rooms[map.nroom - 1];
     for (let vx = vroom.lx; vx <= vroom.hx; vx++) {
         for (let vy = vroom.ly; vy <= vroom.hy; vy++) {
-            rn2(Math.abs(depth) * 100 || 100); // rn1 amount
-            next_ident(); // C ref: mkobj.c:521 — next_ident() in newobj()
+            // C ref: sp_lev.c:2758-2762 — mkgold(rn1(abs(depth)*100, 51), x, y)
+            mkgold(map, rn1(Math.abs(depth) * 100, 51), vx, vy);
         }
     }
 
@@ -5245,6 +5248,32 @@ function has_upstairs_room(croom, map) {
         && map.upstair.y >= croom.ly && map.upstair.y <= croom.hy;
 }
 
+// C ref: mkroom.c:623-638 nexttodoor() — is (sx,sy) adjacent to a door?
+// C checks all 8 neighbors; returns TRUE if any is IS_DOOR or SDOOR.
+function nexttodoor(sx, sy, map) {
+    for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+            if (!isok(sx + dx, sy + dy)) continue;
+            const loc = map.at(sx + dx, sy + dy);
+            if (loc && (IS_DOOR(loc.typ) || loc.typ === SDOOR)) return true;
+        }
+    }
+    return false;
+}
+
+// C ref: mkroom.c:577-596 shrine_pos() — find altar position in temple room.
+// Center of room, with rn2(2) jitter when even dimension.
+function shrine_pos(roomno, map) {
+    const troom = map.rooms[roomno - ROOMOFFSET];
+    let delta = troom.hx - troom.lx;
+    let x = troom.lx + Math.trunc(delta / 2);
+    if ((delta % 2) && rn2(2)) x++;
+    delta = troom.hy - troom.ly;
+    let y = troom.ly + Math.trunc(delta / 2);
+    if ((delta % 2) && rn2(2)) y++;
+    return { x, y };
+}
+
 // C ref: mkroom.c:219-241 pick_room()
 function pick_room(map, strict) {
     if (!map.nroom) return null;
@@ -5275,8 +5304,130 @@ function mkzoo(map, type) {
     sroom.needfill = FILL_NORMAL;
 }
 
+// C ref: priest.c:220-276 priestini() — create temple priest near altar.
+// Called exclusively from mktemple(). sanctum=true for high priest.
+function priestini(sroom, sx, sy, sanctum, depth, map) {
+    const si = rn2(N_DIRS);
+    const prim = sanctum ? mons[PM_HIGH_CLERIC] : mons[PM_ALIGNED_CLERIC];
+
+    // Find adjacent valid position for priest
+    let px = 0, py = 0, i;
+    for (i = 0; i < N_DIRS; i++) {
+        px = sx + xdir[(i + si) % N_DIRS];
+        py = sy + ydir[(i + si) % N_DIRS];
+        // C: pm_good_location — check terrain is walkable for this monster
+        const loc = map.at(px, py);
+        if (loc && IS_ROOM(loc.typ) && !map.monsterAt(px, py)) break;
+    }
+    if (i === N_DIRS) { px = sx; py = sy; }
+
+    // C: MON_AT check + rloc — during mklev, unlikely to have monster here
+    // If there is one, just place on top (makemon will find a spot)
+
+    // C: makemon(prim, px, py, MM_EPRI)
+    // MM_EPRI tells makemon to allocate EPRI struct; we handle priest fields after
+    const priest = makemon(prim, px, py, NO_MM_FLAGS, depth, map);
+    if (priest) {
+        // C ref: EPRI fields — store temple data on the monster
+        priest.ispriest = true;
+        priest.isminion = false;
+        priest.mpeaceful = true;
+        priest.msleeping = false;
+        // Store shrine info for runtime priest behavior
+        priest._shroom = (map.rooms.indexOf(sroom)) + ROOMOFFSET;
+        priest._shralign = Amask2align(map.at(sx, sy).flags & AM_MASK);
+        priest._shrpos = { x: sx, y: sy };
+        set_malign(priest); // recalc after mpeaceful change
+
+        // C: 2 to 4 spellbooks — rn1(3,2) = rn2(3)+2
+        const cnt = rn1(3, 2);
+        for (let s = 0; s < cnt; s++) {
+            const book = mkobj(SPBOOK_CLASS, false);
+            if (book) mpickobj(priest, book);
+        }
+        // C: rn2(2) && which_armor check for robe curse/bless
+        // which_armor not yet ported; consume RNG for parity
+        rn2(2);
+    }
+}
+
+// C ref: mkroom.c:598-621 mktemple() — create temple with altar and priest.
+function mktemple(map, depth) {
+    const sroom = pick_room(map, true);
+    if (!sroom) return;
+
+    sroom.rtype = TEMPLE;
+
+    // Find shrine position (center of room with rn2 jitter)
+    const roomno = (map.rooms.indexOf(sroom)) + ROOMOFFSET;
+    const shrine = shrine_pos(roomno, map);
+    const loc = map.at(shrine.x, shrine.y);
+    if (!loc) return;
+
+    loc.typ = ALTAR;
+    // C: induced_align(80) checks special level align, then dungeon align, then random.
+    // Our induced_align returns aligntyp; convert to AM_* mask for flags.
+    const dnum = Number.isInteger(map?._genDnum) ? map._genDnum : DUNGEONS_OF_DOOM;
+    const dungeonAlign = DUNGEON_ALIGN_BY_DNUM[dnum] ?? A_NONE;
+    const altarAlignTyp = induced_align(80, A_NONE, dungeonAlign);
+    loc.flags = Align2amask(altarAlignTyp);
+    loc.altarAlign = altarAlignTyp; // compat: display code reads this
+
+    priestini(sroom, shrine.x, shrine.y, false, depth, map);
+
+    loc.flags |= AM_SHRINE;
+    map.flags.has_temple = true;
+}
+
+// C ref: mkroom.c:530-575 mkswamp() — turn up to 5 rooms into swamps.
+// Converts floor to POOL on odd (x+y) cells, places eels in water, fungi on land.
+function mkswamp(map, depth) {
+    let eelct = 0;
+    for (let i = 0; i < 5; i++) {
+        const sroom = map.rooms[rn2(map.nroom)];
+        if (!sroom || sroom.hx < 0 || sroom.rtype !== OROOM
+            || has_upstairs_room(sroom, map) || has_dnstairs_room(sroom, map))
+            continue;
+
+        const rmno = (map.rooms.indexOf(sroom)) + ROOMOFFSET;
+
+        sroom.rtype = SWAMP;
+        for (let sx = sroom.lx; sx <= sroom.hx; sx++) {
+            for (let sy = sroom.ly; sy <= sroom.hy; sy++) {
+                const loc = map.at(sx, sy);
+                if (!loc || !IS_ROOM(loc.typ)) continue;
+                if (loc.roomno !== rmno) continue;
+                if (map.objectsAt(sx, sy).length > 0) continue;
+                if (map.monsterAt(sx, sy)) continue;
+                if (map.trapAt(sx, sy)) continue;
+                if (nexttodoor(sx, sy, map)) continue;
+
+                if ((sx + sy) % 2) {
+                    // C: del_engr_at(sx, sy) — no engravings during mklev
+                    loc.typ = POOL;
+                    if (!eelct || !rn2(4)) {
+                        // C: mkclass() won't do, as we might get kraken
+                        const eelmon = rn2(5)
+                            ? mons[PM_GIANT_EEL]
+                            : rn2(2)
+                                ? mons[PM_PIRANHA]
+                                : mons[PM_ELECTRIC_EEL];
+                        makemon(eelmon, sx, sy, NO_MM_FLAGS, depth, map);
+                        eelct++;
+                    }
+                } else if (!rn2(4)) {
+                    // swamps tend to be moldy
+                    const fungusMndx = mkclass(S_FUNGUS, 0, depth);
+                    makemon(fungusMndx >= 0 ? mons[fungusMndx] : null, sx, sy, NO_MM_FLAGS, depth, map);
+                }
+            }
+        }
+        map.flags.has_swamp = true;
+    }
+}
+
 // C ref: mkroom.c:52-92 do_mkroom()
-function do_mkroom(map, roomtype) {
+function do_mkroom(map, roomtype, depth) {
     if (roomtype >= SHOPBASE) {
         mkshop(map);
         return;
@@ -5289,14 +5440,14 @@ function do_mkroom(map, roomtype) {
     case BARRACKS:
     case LEPREHALL:
     case COCKNEST:
+    case ANTHOLE:
         mkzoo(map, roomtype);
         return;
-    case ANTHOLE:
-        // C gates this on antholemon(); keep existing behavior for now.
-        return;
     case TEMPLE:
+        mktemple(map, depth);
+        return;
     case SWAMP:
-        // Full temple/swamp generation is not yet ported; preserve prior behavior.
+        mkswamp(map, depth);
         return;
     default:
         return;
@@ -5592,25 +5743,25 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
         if (depth > 1 && map.nroom >= room_threshold && rn2(depth) < 3) {
             mkshop(map);
         } else if (depth > 4 && !rn2(6)) {
-            do_mkroom(map, COURT);
+            do_mkroom(map, COURT, depth);
         } else if (depth > 5 && !rn2(8)) {
-            do_mkroom(map, LEPREHALL);
+            do_mkroom(map, LEPREHALL, depth);
         } else if (depth > 6 && !rn2(7)) {
-            do_mkroom(map, ZOO);
+            do_mkroom(map, ZOO, depth);
         } else if (depth > 8 && !rn2(5)) {
-            do_mkroom(map, TEMPLE);
+            do_mkroom(map, TEMPLE, depth);
         } else if (depth > 9 && !rn2(5)) {
-            do_mkroom(map, BEEHIVE);
+            do_mkroom(map, BEEHIVE, depth);
         } else if (depth > 11 && !rn2(6)) {
-            do_mkroom(map, MORGUE);
+            do_mkroom(map, MORGUE, depth);
         } else if (depth > 12 && !rn2(8)) {
-            // do_mkroom(ANTHOLE) — antholemon() check skipped
+            do_mkroom(map, ANTHOLE, depth);
         } else if (depth > 14 && !rn2(4)) {
-            do_mkroom(map, BARRACKS);
+            do_mkroom(map, BARRACKS, depth);
         } else if (depth > 15 && !rn2(6)) {
-            do_mkroom(map, SWAMP);
+            do_mkroom(map, SWAMP, depth);
         } else if (depth > 16 && !rn2(8)) {
-            do_mkroom(map, COCKNEST);
+            do_mkroom(map, COCKNEST, depth);
         }
     }
 

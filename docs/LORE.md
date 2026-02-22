@@ -1066,6 +1066,44 @@ After moving logic into bottleneck functions, callers may have leftover imports
 (`addToMonsterInventory`, `pushRngLogEntry`, `placeFloorObject`) that are no
 longer used directly. Always verify and clean up.
 
+### Port large-scale logic before entering bug burndown
+
+During the initial port, many subsystems were "stubbed" — consuming the correct
+RNG calls without creating actual game objects (gold, traps, engravings, etc.)
+or performing the full logic. This was intended to maintain RNG parity while
+deferring full implementation, under the assumption that unported subsystems
+were "test-irrelevant."
+
+**The meta-lesson: get the large-scale logic correct before entering a bug
+burndown phase.** It is not efficient to chase test metrics empirically when
+large subsystems are still stubbed — stubs create an illusion of parity that
+makes individual bugs harder to diagnose:
+
+1. **Missing objects cascade.** A vault gold stub consumes RNG without creating
+   gold → no `^place` events → monsters don't path toward gold that doesn't
+   exist → pet AI diverges → RNG shifts → every subsequent turn is wrong. The
+   failure manifests in `dog_move`, but the root cause is in `mklev`.
+
+2. **Diagnosis wastes time.** When 13 of 19 failing sessions trace back to
+   stubbed level generation, debugging individual pet AI or combat differences
+   is fighting symptoms. You can't distinguish "real AI bug" from "cascading
+   from missing vault gold" without first porting the missing code.
+
+3. **Incremental burndown stalls.** Each stub removal potentially fixes multiple
+   sessions and reveals new "real" bugs. But if stubs remain, fixing one real
+   bug may not flip any session green, because the cascading stub divergence
+   still dominates.
+
+Analysis of 19 failing gameplay sessions showed that 13 (68%) had their first
+event divergence in level generation code where JS consumed RNG but didn't
+create objects. The remaining sessions had runtime divergences that largely
+cascaded from these level-gen differences.
+
+Practical rule: before entering a "get all tests green" bug burndown, ensure
+all major subsystems are faithfully ported — not stubbed. If C creates an
+object and places it, JS must too. The RNG stub pattern saves short-term
+effort but creates compounding debugging pain downstream.
+
 ---
 
 ## Phase Chronicles

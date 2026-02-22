@@ -105,6 +105,28 @@ export const A_CHAOTIC = -1;
 export const A_NEUTRAL = 0;
 export const A_LAWFUL = 1;
 
+// Altar mask bits (C ref: align.h:29-37, rm.h:179)
+export const AM_NONE = 0x00;
+export const AM_CHAOTIC = 0x01;
+export const AM_NEUTRAL = 0x02;
+export const AM_LAWFUL = 0x04;
+export const AM_MASK = 0x07;
+export const AM_SHRINE = 0x08;
+export const AM_SANCTUM = 0x10;
+
+// C ref: align.h Align2amask / Amask2align
+export function Align2amask(x) {
+    if (x === A_NONE) return AM_NONE;
+    if (x === A_LAWFUL) return AM_LAWFUL;
+    return (x + 2) & 0xff; // A_NEUTRAL(0)->2, A_CHAOTIC(-1)->1
+}
+export function Amask2align(x) {
+    const masked = x & AM_MASK;
+    if (masked === 0) return A_NONE;
+    if (masked === AM_LAWFUL) return A_LAWFUL;
+    return masked - 2; // 2->0 (NEUTRAL), 1->-1 (CHAOTIC)
+}
+
 // Gender
 export const MALE = 0;
 export const FEMALE = 1;

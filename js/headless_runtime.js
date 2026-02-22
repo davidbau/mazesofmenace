@@ -37,7 +37,7 @@ import { wipe_engr_at } from './engrave.js';
 import {
     COLNO, ROWNO, NORMAL_SPEED,
     A_STR, A_DEX, A_CON,
-    A_LAWFUL, A_CHAOTIC,
+    A_LAWFUL, A_CHAOTIC, Amask2align,
     RACE_HUMAN, RACE_ELF, RACE_DWARF, RACE_GNOME, RACE_ORC,
     ROOMOFFSET, SHOPBASE,
     TERMINAL_COLS, TERMINAL_ROWS,
@@ -2004,7 +2004,8 @@ export class HeadlessDisplay {
         // Handle altar alignment colors
         // C ref: display.h altar_color enum
         if (typ === ALTAR) {
-            const align = loc.altarAlign !== undefined ? loc.altarAlign : 0;
+            const align = loc.altarAlign !== undefined ? loc.altarAlign
+                : (loc.flags !== undefined ? Amask2align(loc.flags) : 0);
             let altarColor;
             if (align === A_LAWFUL) {
                 altarColor = 15;  // CLR_WHITE
