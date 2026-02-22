@@ -649,6 +649,76 @@
             }
         }
 
+        /* ============================================================
+           Confirmation Dialog
+           ============================================================ */
+        #confirm-modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 200;
+            background: rgba(0, 0, 0, 0.35);
+            align-items: center;
+            justify-content: center;
+        }
+
+        #confirm-modal.open {
+            display: flex;
+        }
+
+        #confirm-box {
+            background: var(--color-bg);
+            border: 2px solid var(--color-accent);
+            border-radius: 4px;
+            padding: 1.2em 1.5em;
+            font-family: var(--font-mono);
+            color: var(--color-accent);
+            box-shadow: 0 4px 16px var(--color-shadow);
+            max-width: 280px;
+        }
+
+        #confirm-msg {
+            margin: 0 0 1em 0;
+            font-size: calc(var(--game-font-size) * 0.875);
+        }
+
+        #confirm-buttons {
+            display: flex;
+            gap: var(--spacing-sm);
+            justify-content: flex-end;
+        }
+
+        #confirm-buttons button {
+            background: var(--color-bg);
+            border: 2px solid var(--color-accent);
+            color: var(--color-accent);
+            padding: 0.3em 0.9em;
+            font-family: var(--font-mono);
+            font-size: calc(var(--game-font-size) * 0.875);
+            font-weight: 600;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: all var(--transition-fast);
+        }
+
+        #confirm-buttons button:hover {
+            background: var(--color-accent);
+            color: #fff;
+        }
+
+        body.dark-mode #confirm-box {
+            background: #222;
+        }
+
+        body.dark-mode #confirm-buttons button {
+            background: #222;
+        }
+
+        body.dark-mode #confirm-buttons button:hover {
+            background: #444;
+            border-color: #666;
+        }
+
     </style>
 </head>
 <body>
@@ -960,6 +1030,33 @@
     (function() {
         var panelToggle = document.getElementById('panel-toggle');
         var menu = document.getElementById('hamburger-menu');
+        var confirmModal = document.getElementById('confirm-modal');
+
+        function showConfirm(msg) {
+            return new Promise(function(resolve) {
+                document.getElementById('confirm-msg').textContent = msg;
+                confirmModal.classList.add('open');
+                function done(result) {
+                    confirmModal.classList.remove('open');
+                    btnYes.removeEventListener('click', onYes);
+                    btnNo.removeEventListener('click', onNo);
+                    resolve(result);
+                }
+                function onYes() { done(true); }
+                function onNo()  { done(false); }
+                var btnYes = document.getElementById('confirm-yes');
+                var btnNo  = document.getElementById('confirm-no');
+                btnYes.addEventListener('click', onYes);
+                btnNo.addEventListener('click', onNo);
+            });
+        }
+
+        // Close confirm on Escape
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' && confirmModal.classList.contains('open')) {
+                confirmModal.classList.remove('open');
+            }
+        });
 
         function isOpen() { return menu.classList.contains('open'); }
 
@@ -1030,10 +1127,13 @@
             if (window._saveAndQuit) window._saveAndQuit();
         });
 
-        document.getElementById('hm-new-game').addEventListener('click', function() {
+        document.getElementById('hm-new-game').addEventListener('click', async function() {
             closeMenu();
             var inGame = document.body.classList.contains('gameplay-active');
-            if (inGame && !confirm('Quit the current game without saving?')) return;
+            if (inGame) {
+                var ok = await showConfirm('Quit the current game without saving?');
+                if (!ok) return;
+            }
             if (window._newGame) window._newGame();
         });
 
@@ -1353,6 +1453,17 @@
         }
     })();
     </script>
+
+    <!-- Confirmation dialog -->
+    <div id="confirm-modal">
+        <div id="confirm-box">
+            <p id="confirm-msg"></p>
+            <div id="confirm-buttons">
+                <button id="confirm-no">No</button>
+                <button id="confirm-yes">Yes</button>
+            </div>
+        </div>
+    </div>
 
     <!-- ES6 Module entry point -->
     <script type="module" src="js/menace.js"></script>
