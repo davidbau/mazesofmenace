@@ -66,7 +66,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[a]` | eat.c | eat.js | Eating mechanics. handleEat (doeat) implemented; ~50 functions TODO |
 | `[~]` | end.c | end.js | Game over, death, scoring |
 | `[a]` | engrave.c | engrave.js | Engraving mechanics. handleEngrave (doengrave) approximation, maybeSmudgeEngraving (wipe_engr_at); engrave_data.js has text data; ~30 functions TODO |
-| `[a]` | exper.c | exper.js | Experience and leveling. newuexp, newexplevel, pluslvl implemented; experience, more_experienced, losexp, newpw, enermod, rndexp TODO |
+| `[a]` | exper.c | exper.js | Experience and leveling. newuexp, newexplevel, pluslvl, losexp implemented; experience, more_experienced, newpw, enermod, rndexp TODO |
 | `[~]` | explode.c | explode.js | Explosion effects |
 | `[~]` | extralev.c | extralev.js | Special level generation helpers |
 | `[N/A]` | files.c | — | File I/O operations. JS: `storage.js` |
@@ -86,7 +86,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[~]` | mcastu.c | mcastu.js | Monster spellcasting. castmu/buzzmu and all 11 spell functions TODO (runtime gameplay) |
 | `[N/A]` | mdlib.c | — | Metadata library utilities |
 | `[a]` | mhitm.c | mhitm.js | Monster-vs-monster combat. mattackm/hitmm/mdamagem/passivemm/fightm implemented (m-vs-m path); RNG parity for pets in dogmove.js; 5 functions TODO |
-| `[a]` | mhitu.c | mhitu.js | Monster-vs-hero combat. monsterAttackPlayer implemented; 22 functions TODO |
+| `[a]` | mhitu.c | mhitu.js | Monster-vs-hero combat. monsterAttackPlayer restructured to match hitmu() flow; hitmsg, mhitm_knockback, mhitu_adtyping dispatcher, ~30 AD_* handlers (phys/fire/cold/elec/acid/stck/plys/slee/conf/stun/blnd/drst/drli/dren/drin/slow/ston etc.) implemented with real effects; gazemu/gulpmu/expels/summonmu/doseduce TODO |
 | `[~]` | minion.c | minion.js | Minion summoning: msummon, summon_minion, demon_talk, bribe, guardian angels. All 14 functions TODO (runtime gameplay) |
 | `[~]` | mklev.c | mklev.js | Level generation. makelevel/makerooms/makecorridors/mineralize PARTIAL in dungeon.js; topologize/mkinvokearea/place_branch TODO |
 | `[~]` | mkmap.c | mkmap.js | Map generation algorithms. JS: in `sp_lev.js` |
@@ -149,7 +149,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[p]` | track.c | track.js | Player tracking for pets. save/rest not yet implemented |
 | `[a]` | trap.c | trap.js | Trap mechanics: m_harmless_trap, floor_trigger, mintrap_postmove, mon_check_in_air |
 | `[a]` | u_init.c | u_init.js | Player initialization. u_init_role, u_init_race, u_init_carry_attr_boost, trquan, ini_inv, ini_inv_mkobj_filter, restricted_spell_discipline aligned. JS-only wrappers: simulatePostLevelInit, initAttributes |
-| `[a]` | uhitm.c | uhitm.js | Hero-vs-monster combat. playerAttackMonster, all mhitm_ad_* handlers (40+), mhitm_adtyping dispatcher, mhitm_mgc_atk_negated implemented; 50 functions TODO |
+| `[a]` | uhitm.c | uhitm.js | Hero-vs-monster combat. playerAttackMonster, all mhitm_ad_* handlers (40+), mhitm_adtyping dispatcher, mhitm_mgc_atk_negated, mhitm_knockback (with eligibility + messages) implemented; 50 functions TODO |
 | `[N/A]` | utf8map.c | — | UTF-8 glyph mapping for terminal |
 | `[~]` | vault.c | `vault.js` | Vault guard behavior |
 | `[N/A]` | version.c | — | Version info |
@@ -1691,15 +1691,15 @@ This section is generated from source symbol tables and includes function rows f
 ### exper.c -> exper.js
 | C Line | C Function | JS Line | Alignment |
 |--------|------------|---------|-----------|
-| 26 | `enermod` | - | Missing |
-| 85 | `experience` | - | Missing |
-| 207 | `losexp` | - | Missing |
-| 169 | `more_experienced` | - | Missing |
-| 300 | `newexplevel` | - | Missing |
-| 45 | `newpw` | - | Missing |
-| 14 | `newuexp` | - | Missing |
-| 307 | `pluslvl` | - | Missing |
-| 378 | `rndexp` | - | Missing |
+| 26 | `enermod` | - | Missing (needs Role_switch data from roles.js) |
+| 85 | `experience` | - | Missing (needs find_mac, permonst attack data, extra_nasty) |
+| 207 | `losexp` | exper.js:losexp | Implemented — RNG-faithful (rnd(10) HP, rn2(5) PW); simplified newhp/newpw (placeholder ranges vs role-dependent) |
+| 169 | `more_experienced` | - | Missing (needs u.urexp, flags.showexp, disp.botl) |
+| 300 | `newexplevel` | exper.js:newexplevel | Implemented |
+| 45 | `newpw` | - | Missing (needs enadv struct data from roles/races) |
+| 14 | `newuexp` | exper.js:newuexp | Implemented |
+| 307 | `pluslvl` | exper.js:pluslvl | Implemented — RNG-faithful; simplified newhp/newpw (rnd(8)/rn2(3) placeholders vs role-dependent) |
+| 378 | `rndexp` | - | Missing (needs LARGEST_INT handling) |
 
 ### explode.c -> explode.js
 | C Line | C Function | JS Line | Alignment |
@@ -2410,18 +2410,59 @@ No function symbols parsed from isaac64.c.
 | 309 | `getmattk` | - | Missing |
 | 1269 | `gulp_blnd_check` | - | Missing |
 | 1285 | `gulpmu` | - | Missing |
-| 30 | `hitmsg` | - | Missing |
-| 1140 | `hitmu` | - | Missing |
+| 30 | `hitmsg` | mhitu.js:hitmsg | Implemented — C-faithful attack verb dispatch (bite/kick/sting/butt/touch/tentacle/hit) |
+| 1140 | `hitmu` | mhitu.js:monsterAttackPlayer | Implemented — restructured to match C hitmu() flow: mhm state object, mhitu_adtyping dispatch, mhitm_knockback, negative AC damage reduction |
 | 1085 | `magic_negation` | mondata.js | Implemented (simplified) |
-| 490 | `mattacku` | - | Missing |
+| 490 | `mattacku` | mhitu.js:monsterAttackPlayer | Implemented — attack loop with AT_WEAP weapon swing messages, range2 dispatch for thrwmu |
 | 2303 | `mayberem` | - | Missing |
-| 1895 | `mdamageu` | - | Missing |
-| 86 | `missmu` | - | Missing |
+| 1895 | `mdamageu` | - | Missing (damage applied inline in monsterAttackPlayer) |
+| 86 | `missmu` | mhitu.js:monsterAttackPlayer | Implemented — miss message with "just misses" variant |
 | 2386 | `mon_avoiding_this_attack` | - | Missing |
 | 146 | `mpoisons_subj` | - | Missing |
-| 131 | `mswings` | - | Missing |
-| 106 | `mswings_verb` | - | Missing |
+| 131 | `mswings` | mhitu.js:monsterWeaponSwingMsg | Implemented — weapon swing verb/message for AT_WEAP |
+| 106 | `mswings_verb` | mhitu.js:monsterWeaponSwingVerb | Implemented — thrust/swing/slash verb selection |
 | 466 | `mtrapped_in_pit` | - | Missing |
+| - | `mhitu_adtyping` | mhitu.js:mhitu_adtyping | Implemented — dispatcher for ~30 AD_* handlers in mhitu (monster-attacks-hero) branch |
+| - | `mhitu_ad_phys` | mhitu.js | Implemented — AT_HUGS grab, AT_WEAP weapon dmgval, AT_TUCH gate |
+| - | `mhitu_ad_fire` | mhitu.js | Implemented — Fire_resistance check, rn2(20) destroy_items gate |
+| - | `mhitu_ad_cold` | mhitu.js | Implemented — Cold_resistance check, rn2(20) destroy_items gate |
+| - | `mhitu_ad_elec` | mhitu.js | Implemented — Shock_resistance check, rn2(20) destroy_items gate |
+| - | `mhitu_ad_acid` | mhitu.js | Implemented — Acid_resistance check, exercise(A_STR) |
+| - | `mhitu_ad_stck` | mhitu.js | Implemented — sets player.ustuck |
+| - | `mhitu_ad_wrap` | mhitu.js | Implemented — mcan check, sets ustuck |
+| - | `mhitu_ad_plys` | mhitu.js | Implemented — rn2(3) gate, Free_action check, paralysis via game.multi |
+| - | `mhitu_ad_slee` | mhitu.js | Implemented — rn2(5) gate, Sleep_resistance + Free_action check |
+| - | `mhitu_ad_conf` | mhitu.js | Implemented — rn2(4) + mspec_used gate, make_confused() |
+| - | `mhitu_ad_stun` | mhitu.js | Implemented — make_stunned() |
+| - | `mhitu_ad_blnd` | mhitu.js | Implemented — make_blinded() |
+| - | `mhitu_ad_drst` | mhitu.js | Implemented — Poison_resistance check, rn2(8) gate; approximation: uses fixed stat drain instead of poisoned() subsystem |
+| - | `mhitu_ad_drli` | mhitu.js | Implemented — rn2(3) gate, Drain_resistance check, losexp() |
+| - | `mhitu_ad_dren` | mhitu.js | Implemented — drain_en (player.pw) inline |
+| - | `mhitu_ad_drin` | mhitu.js | Implemented — brain eating: INT drain, level loss; approximation: no helmet check |
+| - | `mhitu_ad_slow` | mhitu.js | Implemented — speed reduction; approximation: simple flag set vs full HFast property manipulation |
+| - | `mhitu_ad_ston` | mhitu.js | Implemented — rn2(3) + rn2(10) gates, messages; approximation: no actual petrification yet |
+| - | `mhitu_ad_tlpt` | mhitu.js | Stub — negation check only, no teleport system |
+| - | `mhitu_ad_sgld` | mhitu.js | Stub — hitmsg + damage=0 (no gold theft) |
+| - | `mhitu_ad_sedu` | mhitu.js | Stub — hitmsg + damage=0 (no seduction/item theft) |
+| - | `mhitu_ad_ssex` | mhitu.js | Stub — hitmsg + damage=0 |
+| - | `mhitu_ad_curs` | mhitu.js | Stub — hitmsg + damage=0 (no curse system) |
+| - | `mhitu_ad_slim` | mhitu.js | Stub — hitmsg + damage=0 (no sliming) |
+| - | `mhitu_ad_ench` | mhitu.js | Stub — hitmsg + damage=0 (no enchantment drain) |
+| - | `mhitu_ad_poly` | mhitu.js | Stub — hitmsg + damage=0 (no polymorph) |
+| - | `mhitu_ad_were` | mhitu.js | Stub — hitmsg + damage=0 (no lycanthropy) |
+| - | `mhitu_ad_heal` | mhitu.js | Implemented — restores player HP |
+| - | `mhitu_ad_legs` | mhitu.js | Implemented — delegates to AD_PHYS |
+| - | `mhitu_ad_dgst` | mhitu.js | Stub — hitmsg + damage=0 (no engulfing) |
+| - | `mhitu_ad_samu` | mhitu.js | Stub — hitmsg + damage=0 (no artifact theft) |
+| - | `mhitu_ad_dise` | mhitu.js | Stub — hitmsg + damage=0 (no disease) |
+| - | `mhitu_ad_deth` | mhitu.js | Implemented — redirects to drli |
+| - | `mhitu_ad_pest` | mhitu.js | Stub — physical damage only |
+| - | `mhitu_ad_famn` | mhitu.js | Stub — physical damage only |
+| - | `mhitu_ad_halu` | mhitu.js | Stub — hitmsg + damage=0 (no hallucination) |
+| - | `mhitu_ad_rust` | mhitu.js | Stub — hitmsg + damage=0 (no armor erosion) |
+| - | `mhitu_ad_corr` | mhitu.js | Stub — hitmsg + damage=0 (no armor erosion) |
+| - | `mhitu_ad_dcay` | mhitu.js | Stub — hitmsg + damage=0 (no armor erosion) |
+| - | `mhitm_knockback` | mhitu.js | Implemented — rn2(3) distance, rn2(6) chance, eligibility (AD_PHYS, attack type, size), rn2(2)+rn2(2) message |
 | 2425 | `passiveum` | - | Missing |
 | 954 | `summonmu` | - | Missing |
 | 1045 | `u_slip_free` | - | Missing |
@@ -5356,7 +5397,7 @@ No function symbols parsed from isaac64.c.
 | 4243 | `mhitm_ad_were` | uhitm.js | Stub (no m-vs-m effect) |
 | 3315 | `mhitm_ad_wrap` | uhitm.js | Implemented (m-vs-m path) |
 | 4760 | `mhitm_adtyping` | uhitm.js | Implemented |
-| 5225 | `mhitm_knockback` | - | Missing (RNG consumed in mdamagem) |
+| 5225 | `mhitm_knockback` | mhitu.js + uhitm.js | Implemented — rn2(3) distance, rn2(6) chance, eligibility checks (AD_PHYS, attack type, size), rn2(2)+rn2(2) message; no actual monster movement |
 | 3082 | `mhitm_really_poison` | uhitm.js | Implemented |
 | 1920 | `mhurtle_to_doom` | - | Missing |
 | 5176 | `missum` | - | Missing |
