@@ -18,6 +18,7 @@ import {
 import { def_monsyms, def_oc_syms, defsyms, trap_to_defsym } from './symbols.js';
 import { monDisplayName } from './mondata.js';
 import { monsterMapGlyph, objectMapGlyph } from './display_rng.js';
+import { isObjectNameKnown, isObjectEncountered, discoveryTypeName } from './discovery.js';
 
 // Color constants (color.h)
 // C ref: include/color.h
@@ -597,8 +598,7 @@ export class Display {
                     const glyph = monsterMapGlyph(mon, hallu);
                     this.setCell(col, row, glyph.ch, glyph.color);
                     const classInfo = this._monsterClassDesc(mon.displayChar);
-                    const stats = `Level ${mon.mlevel}, AC ${mon.mac}, Speed ${mon.speed}`;
-                    this.cellInfo[row][col] = { name: monDisplayName(mon), desc: classInfo, stats: stats, color: mon.displayColor };
+                    this.cellInfo[row][col] = { name: monDisplayName(mon), desc: classInfo, color: mon.displayColor };
                     continue;
                 }
                 if (loc.mem_invis) {
@@ -623,8 +623,13 @@ export class Display {
                     this.setCell(col, row, glyph.ch, glyph.color);
                     const classInfo = this._objectClassDesc(topObj.oc_class);
                     const extra = objs.length > 1 ? ` (+${objs.length - 1} more)` : '';
-                    const stats = this._objectStats(topObj);
-                    this.cellInfo[row][col] = { name: topObj.name + extra, desc: classInfo, stats: stats, color: topObj.displayColor };
+                    const nameKnown = isObjectNameKnown(topObj.otyp);
+                    const encountered = isObjectEncountered(topObj.otyp);
+                    const hoverName = (nameKnown || encountered)
+                        ? discoveryTypeName(topObj.otyp) + extra
+                        : classInfo + extra;
+                    const stats = nameKnown ? this._objectStats(topObj) : '';
+                    this.cellInfo[row][col] = { name: hoverName, desc: nameKnown ? classInfo : '', stats, color: topObj.displayColor };
                     continue;
                 }
                 loc.mem_obj = 0;

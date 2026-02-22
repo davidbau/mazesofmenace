@@ -104,7 +104,7 @@ function interestingToDiscover(otyp) {
     return ((ocNameKnown[otyp] || ocEncountered[otyp]) && !!od.desc);
 }
 
-function discoveryTypeName(otyp) {
+export function discoveryTypeName(otyp) {
     const od = objectData[otyp];
     if (!od) return 'unknown object';
     const nn = ocNameKnown[otyp];
