@@ -22,6 +22,7 @@ import { make_confused, make_stunned } from './potion.js';
 import { makemon, MM_EDOG, NO_MINVENT, MM_ADJACENTOK } from './makemon.js';
 import { mons, PM_ACID_BLOB, PM_YELLOW_LIGHT, PM_BLACK_LIGHT, S_HUMAN } from './monsters.js';
 import { resist } from './zap.js';
+import { monflee } from './monmove.js';
 
 const SPELL_KEEN = 20000; // cf. spell.c KEEN
 const MAX_SPELL_STUDY = 3; // cf. spell.h MAX_SPELL_STUDY
@@ -529,14 +530,13 @@ function seffect_scare_monster(sobj, player, display, game) {
             if (!canSee) continue;
 
             if (confused || scursed) {
-                mtmp.mflee = false;
+                mtmp.flee = false;
                 mtmp.mfrozen = 0;
                 mtmp.msleeping = 0;
                 mtmp.mcanmove = true;
             } else if (!resist(mtmp, SCROLL_CLASS)) {
-                // cf. monflee(mtmp, 0, FALSE, FALSE)
-                mtmp.mflee = true;
-                mtmp.mfleetim = 0;
+                // cf. read.c:1420 monflee(mtmp, 0, FALSE, FALSE)
+                monflee(mtmp, 0, false, false);
             }
             if (!mtmp.tame) ct++;
         }

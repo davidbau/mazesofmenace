@@ -51,7 +51,7 @@ import { is_hider, hides_under, is_mindless, is_displacer, perceives,
          mon_knows_traps, passes_bars, nohands, is_clinger,
          is_giant, is_undead, is_unicorn, is_minion, throws_rocks,
          is_golem, is_rider, is_mplayer } from './mondata.js';
-import { PM_GRID_BUG, PM_FIRE_ELEMENTAL, PM_SALAMANDER,
+import { PM_ANGEL, PM_GRID_BUG, PM_FIRE_ELEMENTAL, PM_SALAMANDER,
          PM_FLOATING_EYE, PM_MINOTAUR,
          PM_PURPLE_WORM, PM_BABY_PURPLE_WORM, PM_SHRIEKER,
          PM_GHOUL, PM_SKELETON,
@@ -90,7 +90,20 @@ import { dist2, distmin, monnear,
 // ========================================================================
 // onscary — C ref: mon.c onscary()
 // ========================================================================
-export function onscary(map, x, y) {
+export function onscary(map, x, y, mon = null) {
+    // C ref: mon.c:252-264 — monster immunity checks
+    if (mon) {
+        const mdat = mon.type || {};
+        if (mon.iswiz) return false;
+        if (is_rider(mdat)) return false;
+        // C: is_lminion — skip (minion system not ported)
+        if (mdat.mndx === PM_ANGEL) return false;
+        // C: magical scare (not auditory) has additional immunities
+        if (is_human(mdat) || (mdat.geno & G_UNIQ)
+            || mon.isshk || mon.ispriest) return false;
+        // C: blind, minotaur, Gehennom plane checks — skip for now
+    }
+
     for (const obj of map.objects) {
         if (obj.buried) continue;
         if (obj.ox === x && obj.oy === y

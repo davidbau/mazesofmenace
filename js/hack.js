@@ -22,6 +22,7 @@ import { observeObject } from './discovery.js';
 import { DIRECTION_KEYS } from './dothrow.js';
 import { dosearch0 } from './detect.js';
 import { monsterNearby, monnear } from './monutil.js';
+import { monflee } from './monmove.js';
 import { ynFunction } from './input.js';
 
 // Run direction keys (shift = run)
@@ -183,22 +184,8 @@ export async function handleMovement(dir, player, map, display, game) {
             // Early-game parity: model the rn2(7) gate before displacement.
                 if (rn2(7) === 0) {
                     if (mon.tame) {
-                        // C ref: monmove.c monflee(mtmp, rnd(6), FALSE, FALSE)
-                        // first=FALSE always refreshes timed flee and enforces
-                        // at least 2 turns of visible fleeing.
-                        let fleetime = rnd(6);
-                        const oldFleetim = mon.fleetim || 0;
-                        if (!mon.flee || oldFleetim > 0) {
-                            fleetime += oldFleetim;
-                            if (fleetime === 1) fleetime = 2;
-                            mon.fleetim = Math.min(fleetime, 127);
-                        }
-                        mon.flee = true;
-                        if (Array.isArray(mon.mtrack)) {
-                            for (let i = 0; i < mon.mtrack.length; i++) {
-                                mon.mtrack[i] = { x: 0, y: 0 };
-                            }
-                        }
+                        // C ref: uhitm.c:496 monflee(mtmp, rnd(6), FALSE, FALSE)
+                        monflee(mon, rnd(6), false, false, player, display, null);
                     }
                 if (mon.tame) {
                     display.putstr_message(

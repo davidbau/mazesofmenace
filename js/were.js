@@ -3,6 +3,7 @@
 
 import { rn2, rnd } from './rng.js';
 import { makemon, NO_MM_FLAGS } from './makemon.js';
+import { canseemon } from './mondata.js';
 import {
     mons,
     PM_WERERAT,
@@ -74,15 +75,8 @@ function isHumanWereForm(mndx) {
         || mndx === PM_HUMAN_WEREWOLF;
 }
 
-// Helper: simplified canseemon check (cf. mon.c canseemon macro)
-function canSeeMonster(mon, player, fov) {
-    if (!mon || !player || !fov?.canSee) return false;
-    if (!fov.canSee(mon.mx, mon.my)) return false;
-    if (player.blind) return false;
-    if (mon.mundetected) return false;
-    if (mon.minvis && !player.seeInvisible) return false;
-    return true;
-}
+// canSeeMonster: alias for shared canseemon (mondata.js)
+const canSeeMonster = canseemon;
 
 // Helper: wake monsters near a location (cf. mon.c:4369 wake_nearto_core)
 function wakeNear(map, x, y, dist2max) {

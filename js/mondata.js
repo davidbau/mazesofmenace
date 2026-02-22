@@ -1200,6 +1200,16 @@ export function is_bat(ptr) {
 // C ref: #define is_bird(ptr) ((ptr)->mlet == S_BAT && !is_bat(ptr))
 export function is_bird(ptr) { return ptr.symbol === S_BAT && !is_bat(ptr); }
 
+// cf. monst.h canseemon(mon) — player can see this monster
+export function canseemon(mon, player, fov) {
+    if (!mon || !player) return false;
+    if (!(fov?.canSee ? fov.canSee(mon.mx, mon.my) : false)) return false;
+    if (player.blind) return false;
+    if (mon.mundetected) return false;
+    if (mon.minvis && !player.seeInvisible) return false;
+    return true;
+}
+
 // Diet predicates — C ref: mondata.h
 // C ref: #define vegan(ptr) (blobs/jellies/fungi/vortexes/lights/most elementals/most golems/noncorporeal)
 export function vegan(ptr) {

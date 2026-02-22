@@ -28,7 +28,7 @@ import { COLNO, ROWNO, IS_WALL, IS_DOOR, IS_ROOM,
          NORMAL_SPEED, isok } from './config.js';
 import { rn2, rnd } from './rng.js';
 import { wipe_engr_at } from './engrave.js';
-import { monsterAttackPlayer, applyMonflee } from './mhitu.js';
+import { monsterAttackPlayer } from './mhitu.js';
 import { FOOD_CLASS, COIN_CLASS, BOULDER, ROCK, ROCK_CLASS,
          WEAPON_CLASS, ARMOR_CLASS, GEM_CLASS,
          AMULET_CLASS, POTION_CLASS, SCROLL_CLASS, WAND_CLASS, RING_CLASS, SPBOOK_CLASS,
@@ -44,7 +44,7 @@ import { can_teleport, noeyes, perceives, nohands,
          mon_knows_traps, is_rider, is_mind_flayer,
          is_mindless, telepathic,
          is_giant, is_undead, is_unicorn, is_minion, throws_rocks,
-         passes_bars, is_human } from './mondata.js';
+         passes_bars, is_human, canseemon } from './mondata.js';
 import { PM_GRID_BUG, PM_SHOPKEEPER, PM_MINOTAUR, mons,
          PM_LEPRECHAUN,
          PM_DISPLACER_BEAST,
@@ -68,7 +68,7 @@ import { dist2, distmin, monnear,
          attackVerb, monAttackName,
          canSpotMonsterForMap, rememberInvisibleAt,
          addToMonsterInventory, canMergeMonsterInventoryObj,
-         mondead, mpickobj, mdrop_obj,
+         mondead, mpickobj, mdrop_obj, unstuck,
          MTSZ, SQSRCHRADIUS, FARAWAY, BOLT_LIM } from './monutil.js';
 export { dist2, distmin, monnear,
          monmoveTrace, monmovePhase3Trace, monmoveStepLabel,
@@ -163,6 +163,40 @@ export function mon_track_clear(mon) {
     if (!Array.isArray(mon?.mtrack)) return;
     for (let j = 0; j < mon.mtrack.length; j++)
         mon.mtrack[j] = { x: 0, y: 0 };
+}
+
+// ========================================================================
+// monflee — C ref: monmove.c:463
+// ========================================================================
+
+// cf. monmove.c monflee(mtmp, fleetime, first, fleemsg)
+export function monflee(mon, fleetime, first, fleemsg, player, display, fov) {
+    if (!mon || mon.dead) return;
+
+    // C ref: monmove.c:473 — release hero if stuck
+    if (player && player.ustuck === mon) {
+        unstuck(mon, player);
+    }
+
+    if (!first || !mon.flee) {
+        if (!fleetime) {
+            mon.fleetim = 0;
+        } else if (!mon.flee || (mon.fleetim > 0)) {
+            let ft = fleetime + (mon.fleetim || 0);
+            if (ft === 1) ft = 2;
+            mon.fleetim = Math.min(ft, 127);
+        }
+        // C ref: monmove.c:487-520 — flee message
+        if (!mon.flee && fleemsg && canseemon(mon, player, fov)) {
+            if (!mon.mcanmove || !(mon.type?.speed)) {
+                display?.putstr_message(`${monNam(mon, { capitalize: true })} seems to flinch.`);
+            } else {
+                display?.putstr_message(`${monNam(mon, { capitalize: true })} turns to flee.`);
+            }
+        }
+        mon.flee = true;
+    }
+    mon_track_clear(mon);
 }
 
 // ========================================================================
@@ -777,13 +811,13 @@ function dochug(mon, map, player, display, fov, game = null) {
     if (!phase3Cond) {
         const seescaryX = monCanSee ? player.x : targetX;
         const seescaryY = monCanSee ? player.y : targetY;
-        const sawscary = onscary(map, seescaryX, seescaryY);
+        const sawscary = onscary(map, seescaryX, seescaryY, mon);
         // INCOMPLETE: flees_light (gremlin+artifact) not implemented (C:555)
         // INCOMPLETE: in_your_sanctuary (temple) not implemented (C:564)
         if (nearby && sawscary) {
             phase3Cond = true;
             scaredNow = true;
-            applyMonflee(mon, rnd(rn2(7) ? 10 : 100), true);
+            monflee(mon, rnd(rn2(7) ? 10 : 100), true, true, player, display, fov);
             monmovePhase3Trace(`step=${monmoveStepLabel(map)}`, `id=${mon.m_id ?? '?'}`, 'gate=scared');
         }
     }
