@@ -4,6 +4,9 @@ title: Mazes of Menace
 description: JavaScript port of NetHack 3.7
 
 # Plugins (all are on the GitHub Pages whitelist)
+readme_index:
+  enabled: false
+
 plugins:
   - jekyll-optional-front-matter   # process .md files without requiring front matter
   - jekyll-relative-links          # convert relative .md links to site page URLs
