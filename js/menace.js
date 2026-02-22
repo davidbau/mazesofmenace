@@ -6,6 +6,8 @@ import { initBrowserInput } from './browser_input.js';
 import { clearGameUrlParams, getUrlParams } from './storage.js';
 import { NetHackGame } from './nethack.js';
 import { getKeylog, saveKeylog, startReplay } from './keylog.js';
+import { VERSION_STRING } from './config.js';
+window.MENACE_VERSION = VERSION_STRING;
 
 function createBrowserLifecycle() {
     return {

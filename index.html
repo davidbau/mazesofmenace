@@ -163,18 +163,65 @@
             }
         }
 
-        /* Panel toggle button state indication */
-        #panel-toggle.panels-hidden {
-            opacity: 0.6;
+        /* Hamburger button active state */
+        #panel-toggle.menu-open {
+            background: var(--color-accent);
+            color: var(--color-bg);
         }
 
-        #panel-toggle.panels-hidden:hover {
-            opacity: 1;
+        /* Hamburger popup menu */
+        #hamburger-menu {
+            display: none;
+            position: absolute;
+            bottom: calc(100% + 8px);
+            left: 0;
+            flex-direction: column;
+            background: var(--color-bg);
+            border: 2px solid var(--color-accent);
+            border-radius: 4px;
+            min-width: 200px;
+            box-shadow: 0 4px 16px var(--color-shadow);
+            z-index: 100;
         }
 
-        #panel-toggle.panels-auto-hidden {
-            opacity: 0.3;
-            pointer-events: none;
+        #hamburger-menu.open {
+            display: flex;
+        }
+
+        #hamburger-menu .hm-item {
+            background: none;
+            border: none;
+            border-top: 1px solid var(--color-accent);
+            border-radius: 0;
+            color: var(--color-accent);
+            padding: 0.5em 1em;
+            text-align: left;
+            cursor: pointer;
+            font-family: var(--font-mono);
+            font-size: calc(var(--game-font-size) * 0.8);
+            white-space: nowrap;
+            width: 100%;
+            transition: background var(--transition-fast), color var(--transition-fast);
+            filter: none;
+        }
+
+        #hamburger-menu .hm-item:first-child {
+            border-top: none;
+        }
+
+        #hamburger-menu .hm-item:hover:not(:disabled) {
+            background: var(--color-accent);
+            color: #fff;
+        }
+
+        #hamburger-menu .hm-item:disabled {
+            opacity: 0.35;
+            cursor: default;
+        }
+
+        .hm-divider {
+            border-top: 2px solid var(--color-accent);
+            margin: 0;
         }
 
         /* ============================================================
@@ -224,6 +271,25 @@
         body.dark-mode #controls button:hover {
             background: #333;
             border-color: #666;
+        }
+
+        body.dark-mode #hamburger-menu {
+            background: #222;
+        }
+
+        body.dark-mode #hamburger-menu .hm-item {
+            background: #222;
+            color: #888;
+            border-top-color: #444;
+        }
+
+        body.dark-mode #hamburger-menu .hm-item:hover:not(:disabled) {
+            background: #444;
+            color: #ccc;
+        }
+
+        body.dark-mode .hm-divider {
+            border-top-color: #444;
         }
 
         body.dark-mode #keyref td:first-child {
@@ -588,10 +654,17 @@
             <a href="README.html" tabindex="-1">About This Project</a>
         </nav>
         <div id="controls">
-            <button id="panel-toggle" title="Show/hide side panels" aria-label="Toggle side panels" tabindex="-1">☰</button>
+            <button id="panel-toggle" title="Game menu" aria-label="Open game menu" tabindex="-1">☰</button>
+            <div id="hamburger-menu">
+                <button class="hm-item" id="hm-keyref">Toggle control help</button>
+                <button class="hm-item" id="hm-darkmode">Toggle dark mode</button>
+                <button class="hm-item" id="hm-version">Show version info</button>
+                <div class="hm-divider"></div>
+                <button class="hm-item" id="hm-reset-opts">Reset options</button>
+                <button class="hm-item" id="hm-del-bones">Delete bones</button>
+            </div>
             <button id="font-smaller" title="Decrease font size" aria-label="Decrease font size" tabindex="-1">A−</button>
             <button id="font-larger" title="Increase font size" aria-label="Increase font size" tabindex="-1">A+</button>
-            <button id="theme-toggle" title="Toggle dark/light mode" aria-label="Toggle dark/light mode" tabindex="-1">◐</button>
         </div>
         <main id="main" role="main">
             <!-- Left: keyboard controls -->
@@ -766,17 +839,6 @@
             updateToggleButton();
         }
 
-        panelToggle.addEventListener('click', function(e) {
-            if (e.ctrlKey || e.metaKey) {
-                e.preventDefault();
-                e.stopPropagation();
-                if (window.save_keylog) window.save_keylog();
-                return;
-            }
-            togglePanels();
-            this.blur();
-        });
-
         // Restore user preference
         if (userWantsHidden()) setPanelsVisible(false);
 
@@ -793,6 +855,12 @@
 
         // Expose so font-size controls can trigger a re-check
         window._checkPanelFit = checkPanelFit;
+
+        // Expose for hamburger menu
+        window._panelFns = {
+            toggle: togglePanels,
+            isAutoHidden: function() { return autoHidden; },
+        };
     })();
 
     /* ============================================================
@@ -801,7 +869,6 @@
        Preferences persist via localStorage with error handling
        ============================================================ */
     (function() {
-        const themeToggle = document.getElementById('theme-toggle');
         const fontSmaller = document.getElementById('font-smaller');
         const fontLarger = document.getElementById('font-larger');
         const gameDiv = document.getElementById('game');
@@ -842,15 +909,12 @@
         applyFontSize(savedFontSize);
         if (window._checkPanelFit) requestAnimationFrame(window._checkPanelFit);
 
-        // Theme toggle
-        themeToggle.addEventListener('click', function() {
+        // Expose for hamburger menu
+        window._toggleDarkMode = function() {
             document.body.classList.toggle('dark-mode');
             const isDark = document.body.classList.contains('dark-mode');
-            try {
-                localStorage.setItem('menace-theme', isDark ? 'dark' : 'light');
-            } catch(e) {}
-            this.blur();
-        });
+            try { localStorage.setItem('menace-theme', isDark ? 'dark' : 'light'); } catch(e) {}
+        };
 
         // Font size controls
         fontSmaller.addEventListener('click', function() {
@@ -879,6 +943,99 @@
                 localStorage.setItem('menace-font-size', size);
             } catch(e) {}
             this.blur();
+        });
+    })();
+
+    /* ============================================================
+       Hamburger Menu
+       Popup menu attached to the ☰ button with game options
+       ============================================================ */
+    (function() {
+        var panelToggle = document.getElementById('panel-toggle');
+        var menu = document.getElementById('hamburger-menu');
+
+        function isOpen() { return menu.classList.contains('open'); }
+
+        function openMenu() {
+            // Update grayed-out state for data-dependent items
+            var hasOptions = false;
+            try { hasOptions = !!localStorage.getItem('menace-options'); } catch(e) {}
+            document.getElementById('hm-reset-opts').disabled = !hasOptions;
+
+            var hasBones = false;
+            try {
+                for (var i = 0; i < localStorage.length; i++) {
+                    if (localStorage.key(i).startsWith('menace-bones-')) { hasBones = true; break; }
+                }
+            } catch(e) {}
+            document.getElementById('hm-del-bones').disabled = !hasBones;
+
+            menu.classList.add('open');
+            panelToggle.classList.add('menu-open');
+        }
+
+        function closeMenu() {
+            menu.classList.remove('open');
+            panelToggle.classList.remove('menu-open');
+        }
+
+        // Toggle menu on hamburger click; Ctrl/Cmd+click saves keylog
+        panelToggle.addEventListener('click', function(e) {
+            if (e.ctrlKey || e.metaKey) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (window.save_keylog) window.save_keylog();
+                return;
+            }
+            if (isOpen()) closeMenu(); else openMenu();
+            this.blur();
+        });
+
+        // Close on outside click
+        document.addEventListener('click', function(e) {
+            if (isOpen() && !menu.contains(e.target) && e.target !== panelToggle) {
+                closeMenu();
+            }
+        });
+
+        // Close on Escape
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' && isOpen()) closeMenu();
+        });
+
+        // Menu actions
+        document.getElementById('hm-keyref').addEventListener('click', function() {
+            if (window._panelFns) window._panelFns.toggle();
+            closeMenu();
+        });
+
+        document.getElementById('hm-darkmode').addEventListener('click', function() {
+            if (window._toggleDarkMode) window._toggleDarkMode();
+            closeMenu();
+        });
+
+        document.getElementById('hm-version').addEventListener('click', function() {
+            var v = window.MENACE_VERSION || 'NetHack 3.7.0 Royal Jelly';
+            alert(v);
+            closeMenu();
+        });
+
+        document.getElementById('hm-reset-opts').addEventListener('click', function() {
+            if (this.disabled) return;
+            try { localStorage.removeItem('menace-options'); } catch(e) {}
+            closeMenu();
+        });
+
+        document.getElementById('hm-del-bones').addEventListener('click', function() {
+            if (this.disabled) return;
+            try {
+                var keys = [];
+                for (var i = 0; i < localStorage.length; i++) {
+                    if (localStorage.key(i).startsWith('menace-bones-')) keys.push(localStorage.key(i));
+                }
+                keys.forEach(function(k) { localStorage.removeItem(k); });
+            } catch(e) {}
+            closeMenu();
         });
     })();
 
