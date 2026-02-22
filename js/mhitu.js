@@ -27,6 +27,7 @@ import { xname } from './mkobj.js';
 import {
     monDisplayName, is_humanoid, thick_skinned,
     resists_fire, resists_cold, resists_elec, resists_acid,
+    sticks, unsolid, attacktype,
 } from './mondata.js';
 import {
     weaponEnchantment, weaponDamageSides,
@@ -179,17 +180,22 @@ function mhitm_knockback(monster, attack, weaponUsed, display) {
         return false;
     }
 
-    // Don't knockback if attacker also wants to grab or engulf
+    // C ref: uhitm.c:5288 — attacker engulfs/hugs/sticks → no knockback
     const mdat = monster?.type || {};
-    const attacks = mdat.attacks || [];
-    for (const atk of attacks) {
-        if (atk.type === AT_ENGL || atk.type === AT_HUGS) return false;
+    if (attacktype(mdat, AT_ENGL) || attacktype(mdat, AT_HUGS) || sticks(mdat)) {
+        return false;
     }
 
     // Size check: attacker must be much larger than defender
     const agrSize = mdat.size ?? 0;
     const defSize = MZ_HUMAN; // hero is human-sized
     if (!(agrSize > defSize + 1)) return false;
+
+    // C ref: uhitm.c:5303 — unsolid attacker can't knockback
+    if (unsolid(mdat)) return false;
+
+    // C ref: uhitm.c:5326 — m_is_steadfast (stub: hero steadfastness not checked here)
+    // C ref: uhitm.c:5338 — movement validation (stub: test_move not ported)
 
     // cf. uhitm.c:5350-5352 — knockback message
     const adj = rn2(2) ? 'forceful' : 'powerful';
@@ -199,6 +205,9 @@ function mhitm_knockback(monster, attack, weaponUsed, display) {
             `The ${monDisplayName(monster)} knocks you back with a ${adj} ${noun}!`
         );
     }
+
+    // C ref: uhitm.c:5383-5398 — stun chance
+    // For mon-vs-hero, stun effect would apply to hero (complex); skip for now
 
     return true;
 }

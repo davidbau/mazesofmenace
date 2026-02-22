@@ -22,7 +22,7 @@ import { monnear, mondead, monAttackName } from './monutil.js';
 import {
     monNam, monDisplayName, touch_petrifies, unsolid, resists_fire, resists_cold,
     resists_elec, resists_acid, resists_sleep, resists_ston,
-    nonliving,
+    nonliving, sticks, attacktype,
 } from './mondata.js';
 import {
     AT_NONE, AT_CLAW, AT_KICK, AT_BITE, AT_TUCH, AT_BUTT, AT_STNG,
@@ -381,6 +381,67 @@ function explmm(magr, mdef, mattk, display, vis, map, ctx) {
 
 
 // ============================================================================
+// mhitm_knockback — mon-vs-mon knockback eligibility (RNG faithful)
+// ============================================================================
+
+// cf. uhitm.c:5225 mhitm_knockback() — mon-vs-mon path.
+// Always consumes rn2(3) for distance and rn2(chance) for trigger.
+// If triggered and eligible: rn2(2)+rn2(2) for message, rn2(4) for stun.
+// Returns true if knockback would fire.
+function mhitm_knockback_mm(magr, mdef, mattk, mwep, vis, display, ctx) {
+    rn2(3); // knockback distance (always consumed)
+    const chance = 6; // default; Ogresmasher would use 2
+    if (rn2(chance)) return false; // didn't trigger
+
+    // Eligibility: only AD_PHYS + specific melee attack types
+    if (!(mattk.damage === AD_PHYS
+          && (mattk.type === AT_CLAW || mattk.type === AT_KICK
+              || mattk.type === AT_BUTT || mattk.type === AT_WEAP))) {
+        return false;
+    }
+
+    // C ref: uhitm.c:5288 — attacker engulfs/hugs → no knockback
+    const pa = magr.type || {};
+    if (attacktype(pa, AT_ENGL) || attacktype(pa, AT_HUGS) || sticks(pa)) {
+        return false;
+    }
+
+    // C ref: uhitm.c:5298 — size check: agr must be much larger
+    const agrSize = pa.size ?? 0;
+    const defSize = (mdef.type || {}).size ?? 0;
+    if (!(agrSize > defSize + 1)) return false;
+
+    // C ref: uhitm.c:5303 — unsolid attacker can't knockback
+    if (unsolid(pa)) return false;
+
+    // C ref: uhitm.c:5326 — m_is_steadfast (Woodchuck / Gauntlets of Power)
+    // Stub: always false for now (very rare)
+
+    // C ref: uhitm.c:5338 — movement validation (isok + door diagonal)
+    // Stub: skip movement validation (we don't implement actual mhurtle)
+
+    // C ref: uhitm.c:5350-5352 — knockback message
+    const adj = rn2(2) ? 'forceful' : 'powerful';
+    const noun = rn2(2) ? 'blow' : 'strike';
+    if (vis && display) {
+        const agrName = monCombatName(magr, ctx?.agrVisible, { capitalize: true });
+        const defName = monCombatName(mdef, ctx?.defVisible);
+        display.putstr_message(
+            `${agrName} knocks ${defName} back with a ${adj} ${noun}!`
+        );
+    }
+
+    // C ref: uhitm.c:5383-5398 — stun chance
+    if (!rn2(4)) {
+        mdef.mstun = 1;
+    }
+
+    // C ref: actual mhurtle movement skipped (complex displacement)
+    return true;
+}
+
+
+// ============================================================================
 // mdamagem — apply damage and special effects
 // ============================================================================
 
@@ -408,9 +469,7 @@ function mdamagem(magr, mdef, mattk, mwep, dieroll, display, vis, map, ctx) {
     mhitm_adtyping(magr, mattk, mdef, mhm);
 
     // C ref: mhitm.c:1061-1065 — mhitm_knockback
-    // Simplified: consume RNG for knockback probe but don't implement movement
-    rn2(3);  // knockback distance
-    rn2(6);  // knockback chance
+    mhitm_knockback_mm(magr, mdef, mattk, mwep, vis, display, ctx);
 
     if (mhm.done) return mhm.hitflags;
     if (!mhm.damage) return mhm.hitflags;

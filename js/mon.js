@@ -83,7 +83,7 @@ import { PM_GRID_BUG, PM_FIRE_ELEMENTAL, PM_SALAMANDER,
          S_DOG, S_NYMPH, S_LEPRECHAUN, S_HUMAN } from './monsters.js';
 import { PIT, SPIKED_PIT, HOLE } from './symbols.js';
 import { m_harmless_trap } from './trap.js';
-import { dist2, monnear,
+import { dist2, distmin, monnear,
          monmoveTrace, monmoveStepLabel,
          canSpotMonsterForMap, BOLT_LIM } from './monutil.js';
 
@@ -647,6 +647,20 @@ export function movemon(map, player, display, fov, game = null, { dochug, handle
                 if ((hhp || handleHiderPremove)(mon, map, player, fov)) {
                     continue;
                 }
+                // TODO: minliquid(mon) — drowning/sinking not yet ported
+                // TODO: m_dowear(mon, FALSE) — monster armor equipping not yet ported
+                // C ref: mon.c:1277-1284 — eel hiding
+                if (mon.type?.symbol === S_EEL && !mon.mundetected
+                    && (mon.flee || distmin(mon.mx, mon.my, player.x, player.y) > 1)
+                    && !(fov?.canSee ? fov.canSee(mon.mx, mon.my) : couldsee(map, player, mon.mx, mon.my))
+                    && !rn2(4)) {
+                    // C ref: hideunder() — set mundetected if on water terrain
+                    if (IS_POOL(map.at(mon.mx, mon.my)?.typ)) {
+                        mon.mundetected = true;
+                        continue;
+                    }
+                }
+                // TODO: fightm() — Conflict not implemented
                 dochug(mon, map, player, display, fov, game);
                 if (game && game.occupation && !mon.dead) {
                     if (game.occupation.occtxt === 'waiting' || game.occupation.occtxt === 'searching') {
