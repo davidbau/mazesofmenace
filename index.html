@@ -585,7 +585,7 @@
         <nav id="nav" role="navigation" aria-label="Main navigation">
             <a href="guidebook/" tabindex="-1">How to Play NetHack</a>
             <a href="spoilers/" tabindex="-1">Spoilers</a>
-            <a href="https://github.com/davidbau/menace#readme" target="_blank" tabindex="-1">About This Project</a>
+            <a href="README.html" tabindex="-1">About This Project</a>
         </nav>
         <div id="controls">
             <button id="panel-toggle" title="Show/hide side panels" aria-label="Toggle side panels" tabindex="-1">☰</button>
@@ -1009,7 +1009,8 @@
         // Map of hash keys to iframe sources
         const docsRoutes = {
             'guidebook': 'guidebook/',
-            'spoilers': 'spoilers/'
+            'spoilers': 'spoilers/',
+            'readme': 'README.html'
         };
 
         var ignoreHashChange = false;
@@ -1112,6 +1113,10 @@
                 e.preventDefault();
                 e.stopPropagation();
                 openDocs('spoilers/', 'spoilers', true);
+            } else if (href.startsWith('README')) {
+                e.preventDefault();
+                e.stopPropagation();
+                openDocs('README.html', 'readme', true);
             }
         });
 
