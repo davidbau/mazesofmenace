@@ -663,6 +663,9 @@
             <button id="font-larger" title="Increase font size" aria-label="Increase font size" tabindex="-1">A+</button>
             <button id="panel-toggle" title="Game menu" aria-label="Open game menu" tabindex="-1">☰</button>
             <div id="hamburger-menu">
+                <button class="hm-item" id="hm-save-quit"><span class="hm-check"></span>Save &amp; quit</button>
+                <button class="hm-item" id="hm-new-game"><span class="hm-check"></span>New game</button>
+                <div class="hm-divider"></div>
                 <button class="hm-item" id="hm-del-bones"><span class="hm-check"></span>Delete bones</button>
                 <button class="hm-item" id="hm-reset-opts"><span class="hm-check"></span>Reset options</button>
                 <div class="hm-divider"></div>
@@ -961,6 +964,11 @@
         function isOpen() { return menu.classList.contains('open'); }
 
         function openMenu() {
+            // Enable/disable game-state items
+            var inGame = document.body.classList.contains('gameplay-active');
+            document.getElementById('hm-save-quit').disabled = !inGame;
+            document.getElementById('hm-new-game').disabled = false;
+
             // Checkmark toggles
             var isDark = document.body.classList.contains('dark-mode');
             document.querySelector('#hm-darkmode .hm-check').textContent = isDark ? '✓' : '';
@@ -1016,6 +1024,19 @@
         });
 
         // Menu actions
+        document.getElementById('hm-save-quit').addEventListener('click', function() {
+            if (this.disabled) return;
+            closeMenu();
+            if (window._saveAndQuit) window._saveAndQuit();
+        });
+
+        document.getElementById('hm-new-game').addEventListener('click', function() {
+            closeMenu();
+            var inGame = document.body.classList.contains('gameplay-active');
+            if (inGame && !confirm('Quit the current game without saving?')) return;
+            if (window._newGame) window._newGame();
+        });
+
         document.getElementById('hm-keyref').addEventListener('click', function() {
             if (window._panelFns) window._panelFns.toggle();
             closeMenu();

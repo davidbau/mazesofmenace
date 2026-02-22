@@ -3,7 +3,7 @@
 
 import { Display } from './display.js';
 import { initBrowserInput } from './browser_input.js';
-import { clearGameUrlParams, getUrlParams } from './storage.js';
+import { clearGameUrlParams, getUrlParams, saveGame, deleteSave } from './storage.js';
 import { NetHackGame } from './nethack.js';
 import { getKeylog, saveKeylog, startReplay } from './keylog.js';
 import { VERSION_STRING } from './config.js';
@@ -26,6 +26,17 @@ function createBrowserLifecycle() {
     };
 }
 
+function registerMenuApis() {
+    window._saveAndQuit = async function() {
+        if (window.gameInstance) await saveGame(window.gameInstance);
+        window.location.reload();
+    };
+    window._newGame = function() {
+        deleteSave();
+        window.location.reload();
+    };
+}
+
 function registerKeylogApis() {
     window.get_keylog = () => {
         const kl = getKeylog();
@@ -40,6 +51,7 @@ function registerKeylogApis() {
 }
 
 window.addEventListener('DOMContentLoaded', async () => {
+    registerMenuApis();
     registerKeylogApis();
     const opts = getUrlParams();
     let currentFlags = null;
