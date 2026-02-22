@@ -13,6 +13,7 @@ import {
     enableRngLog,
     getRngLog as readRngLog,
     setRngCallCount,
+    pushRngLogEntry,
 } from './rng.js';
 import { exercise, exerchk, initExerciseState } from './attrib_exercise.js';
 import { makelevel, setGameSeed, isBranchLevelToDnum } from './dungeon.js';
@@ -874,7 +875,9 @@ export class HeadlessGame {
 
         for (const mon of this.map.monsters) {
             if (mon.dead) continue;
+            const oldMv = mon.movement;
             mon.movement += this.mcalcmove(mon);
+            pushRngLogEntry(`^mcalcmove[${mon.mndx}@${mon.mx},${mon.my} speed=${mon.speed} mv=${oldMv}->${mon.movement}]`);
         }
 
         // C ref: allmain.c moveloop_core() — occasional random spawn.

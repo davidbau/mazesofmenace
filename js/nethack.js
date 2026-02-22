@@ -5,7 +5,7 @@ import { NORMAL_SPEED, A_DEX, A_CON,
          A_LAWFUL, A_NEUTRAL, A_CHAOTIC, A_NONE,
          RACE_HUMAN, RACE_ELF, RACE_DWARF, RACE_GNOME, RACE_ORC,
          FEMALE, MALE, TERMINAL_COLS, ROOMOFFSET, SHOPBASE } from './config.js';
-import { initRng, rn2, rnd, rn1, getRngState, setRngState, getRngCallCount, setRngCallCount } from './rng.js';
+import { initRng, rn2, rnd, rn1, getRngState, setRngState, getRngCallCount, setRngCallCount, pushRngLogEntry } from './rng.js';
 import { CLR_GRAY } from './display.js';
 import { nhgetch, getCount, getlin, setInputRuntime } from './input.js';
 import { FOV } from './vision.js';
@@ -1606,7 +1606,9 @@ export class NetHackGame {
         // C ref: allmain.c:226-227 — reallocate movement to monsters via mcalcmove
         for (const mon of this.map.monsters) {
             if (mon.dead) continue;
+            const oldMv = mon.movement;
             mon.movement += this.mcalcmove(mon);
+            pushRngLogEntry(`^mcalcmove[${mon.mndx}@${mon.mx},${mon.my} speed=${mon.speed} mv=${oldMv}->${mon.movement}]`);
         }
 
         // C ref: allmain.c:232-236 — occasionally spawn a new monster.

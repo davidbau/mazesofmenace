@@ -1,0 +1,32 @@
+diff --git a/src/allmain.c b/src/allmain.c
+--- a/src/allmain.c
++++ b/src/allmain.c
+@@ -224,8 +224,13 @@
+                 /* reallocate movement rations to monsters; don't need
+                    to skip dead monsters here because they will have
+                    been purged at end of their previous round of moving */
+-                for (mtmp = fmon; mtmp; mtmp = mtmp->nmon)
+-                    mtmp->movement += mcalcmove(mtmp, TRUE);
++                for (mtmp = fmon; mtmp; mtmp = mtmp->nmon) {
++                    int old_mv = mtmp->movement;
++                    int added = mcalcmove(mtmp, TRUE);
++                    mtmp->movement += added;
++                    event_log("mcalcmove[%d@%d,%d speed=%d mv=%d->%d]",
++                              monsndx(mtmp->data), mtmp->mx, mtmp->my,
++                              mtmp->data->mmove, old_mv, mtmp->movement);
++                }
+
+                 /* occasionally add another monster; since this takes
+                    place after movement has been allotted, the new
+diff --git a/src/mon.c b/src/mon.c
+--- a/src/mon.c
++++ b/src/mon.c
+@@ -1233,6 +1233,8 @@
+     if (mtmp->movement < NORMAL_SPEED)
+         return FALSE;
+
++    event_log("movemon_turn[%d@%d,%d mv=%d]",
++              monsndx(mtmp->data), mtmp->mx, mtmp->my, mtmp->movement);
+     mtmp->movement -= NORMAL_SPEED;
+     if (mtmp->movement >= NORMAL_SPEED)
+         gs.somebody_can_move = TRUE;

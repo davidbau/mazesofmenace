@@ -43,7 +43,7 @@ export const ALLOW_BARS   = 0x10000000;
 export const ALLOW_SANCT  = 0x20000000;
 export const ALLOW_SSM    = 0x40000000;
 export const NOGARLIC     = 0x80000000 | 0; // force signed 32-bit
-import { rn2, rnd } from './rng.js';
+import { rn2, rnd, pushRngLogEntry } from './rng.js';
 import { BOULDER, SCR_SCARE_MONSTER, CLOVE_OF_GARLIC } from './objects.js';
 import { couldsee, m_cansee } from './vision.js';
 import { is_hider, hides_under, is_mindless, is_displacer, perceives,
@@ -641,6 +641,7 @@ export function movemon(map, player, display, fov, game = null, { dochug, handle
         for (const mon of map.monsters) {
             if (mon.dead) continue;
             if (mon.movement >= NORMAL_SPEED) {
+                pushRngLogEntry(`^movemon_turn[${mon.mndx}@${mon.mx},${mon.my} mv=${mon.movement}]`);
                 const oldx = mon.mx;
                 const oldy = mon.my;
                 const alreadySawMon = !!(game && game.occupation
