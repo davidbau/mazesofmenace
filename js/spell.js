@@ -14,6 +14,7 @@ import { A_INT, A_WIS } from './config.js';
 import { objectData, ROBE, QUARTERSTAFF, SMALL_SHIELD } from './objects.js';
 import { is_metallic } from './objdata.js';
 import { nhgetch } from './input.js';
+import { create_nhwindow, destroy_nhwindow, NHW_MENU } from './windows.js';
 
 // C ref: spell.c KEEN — spell retention threshold
 const SPELL_KEEN_TURNS = 20000;
@@ -207,6 +208,8 @@ export async function handleKnownSpells(player, display) {
         return { moved: false, tookTime: false };
     }
 
+    const win = create_nhwindow(NHW_MENU);
+    try {
     const rows = ['Currently known spells', ''];
     const showTurns = !!player.wizard;
     rows.push(showTurns
@@ -244,4 +247,7 @@ export async function handleKnownSpells(player, display) {
     display.topMessage = null;
     display.messageNeedsMore = false;
     return { moved: false, tookTime: false };
+    } finally {
+        destroy_nhwindow(win);
+    }
 }

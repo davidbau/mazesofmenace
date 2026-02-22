@@ -7,6 +7,8 @@ import { TERMINAL_COLS, TERMINAL_ROWS, STAIRS, LADDER, FOUNTAIN, SINK, THRONE,
          VERSION_STRING } from './config.js';
 import { nhgetch } from './input.js';
 import { CLR_GRAY, CLR_WHITE, CLR_GREEN, CLR_CYAN } from './display.js';
+import { create_nhwindow, destroy_nhwindow, start_menu, add_menu, end_menu, select_menu,
+         NHW_MENU, NHW_TEXT, MENU_BEHAVE_STANDARD, PICK_ONE, ATR_NONE } from './windows.js';
 
 // Number of usable text rows (reserve 1 for status bar at bottom)
 const PAGE_ROWS = TERMINAL_ROWS - 1;
@@ -23,6 +25,15 @@ const STATUS_LINE = TERMINAL_ROWS - 1;
 //   Home, g                = go to top
 //   End, G                 = go to bottom
 export async function showPager(display, text, title) {
+    const win = create_nhwindow(NHW_TEXT);
+    try {
+        await _showPagerCore(display, text, title);
+    } finally {
+        destroy_nhwindow(win);
+    }
+}
+
+async function _showPagerCore(display, text, title) {
     // Split text into lines, wrapping long lines to terminal width
     const lines = wrapText(text, TERMINAL_COLS);
 
@@ -402,91 +413,62 @@ const SYMBOL_DESCRIPTIONS = {
 export async function handleHelp(game) {
     const { display } = game;
 
-    // Build menu lines matching C's help menu structure
-    const menuLines = [
-        ' Select one item:',
-        '',
-        ' a - About NetHack (version information).',
-        ' b - Long description of the game and commands.',
-        ' c - List of game commands.',
-        ' d - Concise history of NetHack.',
-        ' e - Info on a character in the game display.',
-        ' f - Info on what a given key does.',
-        ' g - Longer explanation of game options.',
-        ' h - Full list of keyboard commands.',
-        ' i - List of extended commands.',
-        ' j - The NetHack Guidebook.',
-    ];
+    // Build help menu using nhwindow API
+    const win = create_nhwindow(NHW_MENU);
+    start_menu(win, MENU_BEHAVE_STANDARD);
+    add_menu(win, null, 'a', 'a'.charCodeAt(0), 0, ATR_NONE, 0, 'About NetHack (version information).', 0);
+    add_menu(win, null, 'b', 'b'.charCodeAt(0), 0, ATR_NONE, 0, 'Long description of the game and commands.', 0);
+    add_menu(win, null, 'c', 'c'.charCodeAt(0), 0, ATR_NONE, 0, 'List of game commands.', 0);
+    add_menu(win, null, 'd', 'd'.charCodeAt(0), 0, ATR_NONE, 0, 'Concise history of NetHack.', 0);
+    add_menu(win, null, 'e', 'e'.charCodeAt(0), 0, ATR_NONE, 0, 'Info on a character in the game display.', 0);
+    add_menu(win, null, 'f', 'f'.charCodeAt(0), 0, ATR_NONE, 0, 'Info on what a given key does.', 0);
+    add_menu(win, null, 'g', 'g'.charCodeAt(0), 0, ATR_NONE, 0, 'Longer explanation of game options.', 0);
+    add_menu(win, null, 'h', 'h'.charCodeAt(0), 0, ATR_NONE, 0, 'Full list of keyboard commands.', 0);
+    add_menu(win, null, 'i', 'i'.charCodeAt(0), 0, ATR_NONE, 0, 'List of extended commands.', 0);
+    add_menu(win, null, 'j', 'j'.charCodeAt(0), 0, ATR_NONE, 0, 'The NetHack Guidebook.', 0);
     if (game.wizard) {
-        menuLines.push(' w - List of wizard-mode commands.');
+        add_menu(win, null, 'w', 'w'.charCodeAt(0), 0, ATR_NONE, 0, 'List of wizard-mode commands.', 0);
     }
-    menuLines.push(' (end)');
+    end_menu(win, ' Select one item:');
+    const sel = await select_menu(win, PICK_ONE);
+    destroy_nhwindow(win);
 
-    display.renderChargenMenu(menuLines, true);
-
-    const ch = await nhgetch();
-    const c = String.fromCharCode(ch);
-
+    const c = sel ? sel[0].identifier : null;
     if (c === 'a') {
         // About NetHack
         display.putstr_message(`${VERSION_STRING}`);
     } else if (c === 'b') {
-        // Long description
         const text = await fetchDataFile('dat/help.txt');
-        if (text) {
-            await showPager(display, text, 'Long Description');
-        } else {
-            display.putstr_message('Failed to load help text.');
-        }
+        if (text) await showPager(display, text, 'Long Description');
+        else display.putstr_message('Failed to load help text.');
     } else if (c === 'c') {
-        // List of game commands
         const text = await fetchDataFile('dat/hh.txt');
-        if (text) {
-            await showPager(display, text, 'Game Commands');
-        } else {
-            display.putstr_message('Failed to load command list.');
-        }
+        if (text) await showPager(display, text, 'Game Commands');
+        else display.putstr_message('Failed to load command list.');
     } else if (c === 'd') {
-        // History
         const text = await fetchDataFile('dat/history.txt');
-        if (text) {
-            await showPager(display, text, 'History of NetHack');
-        } else {
-            display.putstr_message('Failed to load history.');
-        }
+        if (text) await showPager(display, text, 'History of NetHack');
+        else display.putstr_message('Failed to load history.');
     } else if (c === 'e') {
-        // Whatis (same as /)
         return await handleWhatis(game);
     } else if (c === 'f') {
-        // Whatdoes (same as &)
         return await handleWhatdoes(game);
     } else if (c === 'g') {
-        // Game options
         const text = await fetchDataFile('dat/opthelp.txt');
-        if (text) {
-            await showPager(display, text, 'Game Options');
-        } else {
-            display.putstr_message('Failed to load options help.');
-        }
+        if (text) await showPager(display, text, 'Game Options');
+        else display.putstr_message('Failed to load options help.');
     } else if (c === 'h') {
-        // Full list of keyboard commands
         await showPager(display, keyHelpText, 'Key Bindings');
     } else if (c === 'i') {
-        // Extended commands list
         await showPager(display, extendedCommandsText, 'Extended Commands');
     } else if (c === 'j') {
-        // Guidebook
         await showGuidebook(display);
     } else if (c === 'w' && game.wizard) {
-        // Wizard help
         const text = await fetchDataFile('dat/wizhelp.txt');
-        if (text) {
-            await showPager(display, text, 'Wizard Mode Commands');
-        } else {
-            display.putstr_message('Failed to load wizard help.');
-        }
+        if (text) await showPager(display, text, 'Wizard Mode Commands');
+        else display.putstr_message('Failed to load wizard help.');
     }
-    // ESC, q, or anything else = dismiss
+    // ESC, q, or anything else = dismiss (sel is null)
 
     return { moved: false, tookTime: false };
 }

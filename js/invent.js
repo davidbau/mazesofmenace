@@ -2,6 +2,7 @@
 // cf. invent.c — ddoinv, display_inventory, display_pickinv, compactify, getobj, askchain
 
 import { nhgetch, getlin } from './input.js';
+import { create_nhwindow, destroy_nhwindow, NHW_MENU } from './windows.js';
 import { COLNO, STATUS_ROW_1 } from './config.js';
 import { objectData, WEAPON_CLASS, FOOD_CLASS, WAND_CLASS, SPBOOK_CLASS,
          FLINT, ROCK, SLING, MAGIC_MARKER, COIN_CLASS } from './objects.js';
@@ -187,6 +188,8 @@ export async function handleInventory(player, display, game) {
         return { moved: false, tookTime: false };
     }
 
+    const win = create_nhwindow(NHW_MENU);
+    try {
     const lines = buildInventoryOverlayLines(player);
     const pages = buildInventoryPages(lines, STATUS_ROW_1);
     let pageIndex = 0;
@@ -531,6 +534,9 @@ export async function handleInventory(player, display, game) {
     clearTopline();
 
     return { moved: false, tookTime: false };
+    } finally {
+        destroy_nhwindow(win);
+    }
 }
 
 

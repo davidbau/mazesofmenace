@@ -36,6 +36,9 @@ import { savebones } from './bones.js';
 import { buildEntry, saveScore, loadScores, formatTopTenEntry, formatTopTenHeader } from './topten.js';
 import { startRecording } from './keylog.js';
 import { setOutputContext } from './pline.js';
+import { init_nhwindows, create_nhwindow, destroy_nhwindow,
+         start_menu, add_menu, end_menu, select_menu,
+         NHW_MENU, MENU_BEHAVE_STANDARD, PICK_ONE, ATR_NONE } from './windows.js';
 
 // --- Game State ---
 // C ref: decl.h -- globals are accessed via NH object (see DECISIONS.md #7)
@@ -124,6 +127,9 @@ export class NetHackGame {
             }
         }
 
+        // Wire up nhwindow infrastructure
+        init_nhwindows(this.display, nhgetch, () => this._rerenderGame());
+
         // Handle ?reset=1 — prompt to delete all saved data
         if (urlOpts.reset) {
             await this.handleReset();
@@ -201,36 +207,24 @@ export class NetHackGame {
         this._emitGameplayStart();
     }
 
+    // Re-render game view (map + status). Called after a modal window closes.
+    _rerenderGame() {
+        if (!this.fov || !this.map || !this.display) return;
+        this.fov.compute(this.map, this.player.x, this.player.y);
+        this.display.renderMap(this.map, this.player, this.fov, this.flags);
+        this.display.renderStatus(this.player);
+    }
+
     async _maybeDoTutorial() {
-        const baseLines = [
-            ' Do you want a tutorial?',
-            '',
-            ' y - Yes, do a tutorial',
-            ' n - No, just start play',
-            '',
-            '(end)',
-        ];
-        let lines = baseLines;
-        while (true) {
-            this.display.renderChargenMenu(lines, false);
-            const ch = await nhgetch();
-            const c = String.fromCharCode(ch).toLowerCase();
-            if (c === 'y') {
-                await this._enterTutorial();
-                return;
-            }
-            if (c === 'n' || c === 'q' || ch === 27) {
-                this.fov.compute(this.map, this.player.x, this.player.y);
-                this.display.renderMap(this.map, this.player, this.fov, this.flags);
-                this.display.renderStatus(this.player);
-                return;
-            }
-            lines = [
-                ...baseLines.slice(0, 5),
-                "(Please choose 'y' or 'n'.)",
-                '',
-                '(end)',
-            ];
+        const win = create_nhwindow(NHW_MENU);
+        start_menu(win, MENU_BEHAVE_STANDARD);
+        add_menu(win, null, { ival: 'y' }, 'y'.charCodeAt(0), 0, ATR_NONE, 0, 'Yes, do a tutorial', 0);
+        add_menu(win, null, { ival: 'n' }, 'n'.charCodeAt(0), 0, ATR_NONE, 0, 'No, just start play', 0);
+        end_menu(win, ' Do you want a tutorial?');
+        const sel = await select_menu(win, PICK_ONE);
+        destroy_nhwindow(win);  // triggers _rerenderGame(), fixing bug #162
+        if (sel && sel[0].identifier.ival === 'y') {
+            await this._enterTutorial();
         }
     }
 
