@@ -4,7 +4,9 @@
 import { A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA, NUM_ATTRS,
          NORMAL_SPEED, A_NEUTRAL, A_LAWFUL, A_CHAOTIC,
          RACE_HUMAN, RACE_ELF, RACE_DWARF, RACE_GNOME, RACE_ORC,
-         FEMALE, MALE } from './config.js';
+         FEMALE, MALE,
+         CONFUSION, STUNNED, BLINDED, HALLUC, HALLUC_RES, SICK, FAST,
+         TIMEOUT, INTRINSIC, SICK_VOMITABLE, SICK_NONVOMITABLE } from './config.js';
 import { M2_HUMAN, M2_ELF, M2_DWARF, M2_GNOME, M2_ORC } from './monsters.js';
 import { objectData, COIN_CLASS, FOOD_CLASS } from './objects.js';
 
@@ -439,13 +441,12 @@ export class Player {
         this.luck = 0;
         this.moreluck = 0;
 
-        // Status effects
-        this.blind = false;
-        this.confused = false;
-        this.stunned = false;
-        this.hallucinating = false;
-        this.sick = false;
-        this.foodpoisoned = false;
+        // Intrinsic properties (C ref: you.h u.uprops[])
+        // Sparse object: only populated properties have entries.
+        // Each entry: { intrinsic: number, extrinsic: number, blocked: number }
+        this.uprops = {};
+        // Sickness type (C ref: you.h u.usick_type)
+        this.usick_type = 0;
 
         // Inventory
         // C ref: decl.h invent (linked list in C, array in JS)
@@ -690,6 +691,160 @@ export class Player {
     // Heal
     heal(amount) {
         this.hp = Math.min(this.hp + amount, this.hpmax);
+    }
+
+    // --- Intrinsic property helpers ---
+
+    // Ensure a uprops entry exists for the given property index.
+    // Returns the entry { intrinsic, extrinsic, blocked }.
+    ensureUProp(prop) {
+        if (!this.uprops[prop]) {
+            this.uprops[prop] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
+        }
+        return this.uprops[prop];
+    }
+
+    // Get the timeout value for a property (intrinsic & TIMEOUT).
+    getPropTimeout(prop) {
+        const entry = this.uprops[prop];
+        if (!entry) return 0;
+        return entry.intrinsic & TIMEOUT;
+    }
+
+    // Check if a property is active from any source (intrinsic, extrinsic, or blocked=0).
+    hasProp(prop) {
+        const entry = this.uprops[prop];
+        if (!entry) return false;
+        return (entry.intrinsic !== 0) || (entry.extrinsic !== 0);
+    }
+
+    // --- Backward-compatible getter/setters for status effects ---
+    // Getters return truthy (timeout value) or falsy (0).
+    // Setters accept boolean for backward compat: true → default timeout, false → clear.
+
+    get confused() {
+        return this.getPropTimeout(CONFUSION);
+    }
+    set confused(val) {
+        const entry = this.ensureUProp(CONFUSION);
+        if (val === true) {
+            entry.intrinsic = (entry.intrinsic & ~TIMEOUT) | 100;
+        } else if (val === false || val === 0) {
+            entry.intrinsic = entry.intrinsic & ~TIMEOUT;
+        } else if (typeof val === 'number') {
+            entry.intrinsic = (entry.intrinsic & ~TIMEOUT) | (val & TIMEOUT);
+        }
+    }
+
+    get stunned() {
+        return this.getPropTimeout(STUNNED);
+    }
+    set stunned(val) {
+        const entry = this.ensureUProp(STUNNED);
+        if (val === true) {
+            entry.intrinsic = (entry.intrinsic & ~TIMEOUT) | 100;
+        } else if (val === false || val === 0) {
+            entry.intrinsic = entry.intrinsic & ~TIMEOUT;
+        } else if (typeof val === 'number') {
+            entry.intrinsic = (entry.intrinsic & ~TIMEOUT) | (val & TIMEOUT);
+        }
+    }
+
+    // C ref: youprop.h — Blind = (HBlinded || EBlinded) && !BBlinded
+    get blind() {
+        const entry = this.uprops[BLINDED];
+        if (!entry) return 0;
+        if (entry.blocked) return 0;
+        return (entry.intrinsic & TIMEOUT) || entry.extrinsic || 0;
+    }
+    set blind(val) {
+        const entry = this.ensureUProp(BLINDED);
+        if (val === true) {
+            entry.intrinsic = (entry.intrinsic & ~TIMEOUT) | 100;
+        } else if (val === false || val === 0) {
+            entry.intrinsic = entry.intrinsic & ~TIMEOUT;
+        } else if (typeof val === 'number') {
+            entry.intrinsic = (entry.intrinsic & ~TIMEOUT) | (val & TIMEOUT);
+        }
+    }
+
+    // C ref: youprop.h — Hallucination = HHallucination && !Halluc_resistance
+    get hallucinating() {
+        const hh = this.getPropTimeout(HALLUC);
+        if (!hh) return 0;
+        const res = this.uprops[HALLUC_RES];
+        if (res && (res.intrinsic || res.extrinsic)) return 0;
+        return hh;
+    }
+    set hallucinating(val) {
+        const entry = this.ensureUProp(HALLUC);
+        if (val === true) {
+            entry.intrinsic = (entry.intrinsic & ~TIMEOUT) | 100;
+        } else if (val === false || val === 0) {
+            entry.intrinsic = entry.intrinsic & ~TIMEOUT;
+        } else if (typeof val === 'number') {
+            entry.intrinsic = (entry.intrinsic & ~TIMEOUT) | (val & TIMEOUT);
+        }
+    }
+
+    get sick() {
+        return this.getPropTimeout(SICK);
+    }
+    set sick(val) {
+        const entry = this.ensureUProp(SICK);
+        if (val === true) {
+            entry.intrinsic = (entry.intrinsic & ~TIMEOUT) | 100;
+            this.usick_type = SICK_NONVOMITABLE;
+        } else if (val === false || val === 0) {
+            entry.intrinsic = entry.intrinsic & ~TIMEOUT;
+            this.usick_type = 0;
+        } else if (typeof val === 'number') {
+            entry.intrinsic = (entry.intrinsic & ~TIMEOUT) | (val & TIMEOUT);
+        }
+    }
+
+    get foodpoisoned() {
+        return (this.getPropTimeout(SICK) > 0) && (this.usick_type & SICK_VOMITABLE);
+    }
+    set foodpoisoned(val) {
+        if (val) {
+            const entry = this.ensureUProp(SICK);
+            if (!(entry.intrinsic & TIMEOUT)) {
+                entry.intrinsic = (entry.intrinsic & ~TIMEOUT) | 100;
+            }
+            this.usick_type |= SICK_VOMITABLE;
+        } else {
+            this.usick_type &= ~SICK_VOMITABLE;
+            // If no sickness type remains, clear the timeout
+            if (!this.usick_type) {
+                const entry = this.uprops[SICK];
+                if (entry) entry.intrinsic = entry.intrinsic & ~TIMEOUT;
+            }
+        }
+    }
+
+    // C ref: youprop.h — Fast = HFast || EFast
+    get fast() {
+        const entry = this.uprops[FAST];
+        if (!entry) return 0;
+        return entry.intrinsic || entry.extrinsic || 0;
+    }
+    set fast(val) {
+        const entry = this.ensureUProp(FAST);
+        if (val === true) {
+            entry.intrinsic = (entry.intrinsic & ~TIMEOUT) | 1;
+        } else if (val === false || val === 0) {
+            entry.intrinsic = entry.intrinsic & ~TIMEOUT;
+        } else if (typeof val === 'number') {
+            entry.intrinsic = (entry.intrinsic & ~TIMEOUT) | (val & TIMEOUT);
+        }
+    }
+
+    // C ref: youprop.h — Very_fast = (HFast & ~INTRINSIC) || EFast
+    get veryFast() {
+        const entry = this.uprops[FAST];
+        if (!entry) return 0;
+        return (entry.intrinsic & ~INTRINSIC) || entry.extrinsic || 0;
     }
 
 }

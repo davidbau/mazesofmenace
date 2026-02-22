@@ -363,7 +363,7 @@ describe('Player save/restore (saveYou/restYou)', () => {
         assert.equal(restored.x, 30);
         assert.equal(restored.y, 12);
         assert.equal(restored.luck, 3);
-        assert.equal(restored.confused, true);
+        assert.ok(restored.confused, 'restored player should be confused');
         assert.equal(restored.alignmentRecord, p.alignmentRecord);
         assert.equal(restored.alignmentAbuse, 2);
         assert.equal(restored.roleName, 'Monk');
@@ -645,7 +645,7 @@ describe('Save/load game (localStorage, v2 format)', () => {
         assert.equal(restored.player.hp, 5);
         assert.equal(restored.player.gold, 999);
         assert.equal(restored.player.luck, -2);
-        assert.equal(restored.player.confused, true);
+        assert.ok(restored.player.confused, 'restored player should be confused');
         assert.equal(restored.player.roleName, 'Knight');
     });
 

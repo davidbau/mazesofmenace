@@ -23,6 +23,8 @@ import { def_monsyms } from './symbols.js';
 import { CLASS_SYMBOLS } from './objects.js';
 import { COLNO, ROWNO } from './config.js';
 import { Player } from './player.js';
+import { CONFUSION, STUNNED, BLINDED, HALLUC, SICK,
+         TIMEOUT, SICK_VOMITABLE, SICK_NONVOMITABLE } from './config.js';
 import { GameMap, makeRoom } from './map.js';
 import { getDiscoveryState, setDiscoveryState } from './discovery.js';
 
@@ -264,9 +266,8 @@ export function saveYou(player) {
         gold: player.gold, hunger: player.hunger, nutrition: player.nutrition,
         movement: player.movement, speed: player.speed, moved: player.moved,
         luck: player.luck, moreluck: player.moreluck,
-        blind: player.blind, confused: player.confused, stunned: player.stunned,
-        hallucinating: player.hallucinating, sick: player.sick,
-        foodpoisoned: player.foodpoisoned,
+        uprops: player.uprops ? { ...player.uprops } : {},
+        usick_type: player.usick_type || 0,
         lastInvlet: player.lastInvlet,
         turns: player.turns, showExp: player.showExp,
     };
@@ -281,14 +282,29 @@ export function restYou(data) {
         'hp', 'hpmax', 'pw', 'pwmax', 'ac', 'level', 'exp', 'score',
         'dungeonLevel', 'maxDungeonLevel', 'gold', 'hunger', 'nutrition',
         'movement', 'speed', 'moved', 'luck', 'moreluck',
-        'blind', 'confused', 'stunned', 'hallucinating', 'sick',
-        'foodpoisoned', 'turns', 'showExp',
+        'turns', 'showExp',
         'lastInvlet',
     ];
     for (const f of fields) {
         if (data[f] !== undefined) p[f] = data[f];
     }
     if (data.attributes) p.attributes = [...data.attributes];
+    // Restore uprops if present (new format)
+    if (data.uprops && typeof data.uprops === 'object') {
+        p.uprops = {};
+        for (const [key, entry] of Object.entries(data.uprops)) {
+            p.uprops[key] = { ...entry };
+        }
+        p.usick_type = data.usick_type || 0;
+    } else {
+        // Backward compat: convert old boolean fields to uprops
+        if (data.confused) p.confused = true;
+        if (data.stunned) p.stunned = true;
+        if (data.blind) p.blind = true;
+        if (data.hallucinating) p.hallucinating = true;
+        if (data.sick) p.sick = true;
+        if (data.foodpoisoned) p.foodpoisoned = true;
+    }
     return p;
 }
 

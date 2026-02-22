@@ -256,3 +256,86 @@ export const MKTRAP_SEEN = 0x01;
 export const MKTRAP_MAZEFLAG = 0x02;
 export const MKTRAP_NOSPIDERONWEB = 0x04;
 export const MKTRAP_NOVICTIM = 0x08;
+
+// Intrinsic property indices (prop.h)
+// C ref: include/prop.h — enum for you.uprops[] indices
+export const FIRE_RES = 0;
+export const COLD_RES = 1;
+export const SLEEP_RES = 2;
+export const DISINT_RES = 3;
+export const SHOCK_RES = 4;
+export const POISON_RES = 5;
+export const ACID_RES = 6;
+export const STONE_RES = 7;
+export const DRAIN_RES = 8;
+export const SICK_RES = 9;
+export const INVULNERABLE = 10;
+export const ANTIMAGIC = 11;
+export const PROP_INDEX_START_ABILITIES = 12; // marker
+export const STUNNED = 12;
+export const CONFUSION = 13;
+export const BLINDED = 14;
+export const DEAF = 15;
+export const SICK = 16;
+export const STONED = 17;
+export const STRANGLED = 18;
+export const VOMITING = 19;
+export const GLIB = 20;
+export const SLIMED = 21;
+export const HALLUC = 22;
+export const HALLUC_RES = 23;
+export const FUMBLING = 24;
+export const WOUNDED_LEGS = 25;
+export const SLEEPING = 26;
+export const HUNGER = 27;
+export const FAST = 28;
+export const WARN_OF_MON = 29;
+export const WARNING = 30;
+export const SEARCHING = 31;
+export const SEE_INVIS = 32;
+export const INVIS = 33;
+export const TELEPORT = 34;
+export const TELEPORT_CONTROL = 35;
+export const POLYMORPH = 36;
+export const POLYMORPH_CONTROL = 37;
+export const LEVITATION = 38;
+export const STEALTH = 39;
+export const AGGRAVATE_MONSTER = 40;
+export const CONFLICT = 41;
+export const PROTECTION = 42;
+export const PROT_FROM_SHAPE_CHANGERS = 43;
+export const DETECT_MONSTERS = 44;
+export const ENERGY_REGENERATION = 45;
+export const HALF_SPDAM = 46;
+export const HALF_PHDAM = 47;
+export const REGENERATION = 48;
+export const TELEPAT = 49;
+export const INFRAVISION = 50;
+export const CLAIRVOYANT = 51;
+export const FLYING = 52;
+export const WATERPROOF = 53;
+export const SWIMMING = 54;
+export const FREE_ACTION = 55;
+export const FIXED_ABIL = 56;
+export const LIFESAVED = 57;
+export const DISPLACED = 58;
+export const UNCHANGING = 59;
+export const REFLECTING = 60;
+export const MAGICAL_BREATHING = 61;
+export const PASSES_WALLS = 62;
+export const SLOW_DIGESTION = 63;
+export const LAST_PROP = 63;
+
+// Intrinsic bitmask constants (prop.h)
+// C ref: include/prop.h — bitmask for intrinsic field
+export const TIMEOUT = 0x00FFFFFF;     // timeout portion of intrinsic
+export const FROM_ROLE = 0x01000000;   // from role
+export const FROM_RACE = 0x02000000;   // from race
+export const FROM_FORM = 0x04000000;   // from polymorph form
+export const FROMOUTSIDE = 0x08000000; // from outside source (corpse, potion)
+export const INTRINSIC = 0x10000000;   // generic intrinsic bit
+export const I_SPECIAL = 0x20000000;   // property-specific flag
+
+// Sickness types (C ref: you.h usick_type)
+export const SICK_VOMITABLE = 0x01;    // food poisoning
+export const SICK_NONVOMITABLE = 0x02; // illness (from corpse, etc.)

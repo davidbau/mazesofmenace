@@ -7,8 +7,16 @@
 //   - exported callbacks used by higher-level effects (burning, egg hatch, etc.)
 //   - basic foundation for `nh_timeout()` and status-processing hooks
 
-import { rnd } from './rng.js';
-import { pline } from './pline.js';
+import { rnd, rn2 } from './rng.js';
+import { pline, You, You_feel } from './pline.js';
+import { TIMEOUT, INTRINSIC, FROMOUTSIDE,
+         CONFUSION, STUNNED, BLINDED, HALLUC, SICK, VOMITING, DEAF, GLIB,
+         FAST, FUMBLING, WOUNDED_LEGS, SLEEPING, LEVITATION,
+         STONED, SLIMED, STRANGLED, INVIS, SEE_INVIS, DISPLACED,
+         PASSES_WALLS, MAGICAL_BREATHING, FLYING,
+         FIRE_RES, STONE_RES, DETECT_MONSTERS, PROT_FROM_SHAPE_CHANGERS,
+         SICK_NONVOMITABLE, A_CON } from './config.js';
+import { exercise } from './attrib_exercise.js';
 
 export const TIMER_KIND = {
     SHORT: 0,
@@ -413,6 +421,33 @@ export function nh_timeout(context = {}) {
     const player = context.player || _timeoutContext.player;
     if (!player) return;
 
+    // --- Dialogue callbacks for active countdowns (C ref: timeout.c:640-680) ---
+    // These fire BEFORE the timeout decrement, giving countdown messages
+    if (player.getPropTimeout(STONED)) stoned_dialogue();
+    if (player.getPropTimeout(SLIMED)) slime_dialogue();
+    if (player.getPropTimeout(VOMITING)) vomiting_dialogue();
+    if (player.getPropTimeout(STRANGLED)) choke_dialogue();
+    if (player.getPropTimeout(SICK)) sickness_dialogue();
+
+    // --- Intrinsic timeout decrements (C ref: timeout.c nh_timeout()) ---
+    if (player.uprops) {
+        const props = Object.keys(player.uprops);
+        for (const key of props) {
+            const prop = Number(key);
+            const entry = player.uprops[key];
+            if (!entry) continue;
+            const timeout = entry.intrinsic & TIMEOUT;
+            if (timeout > 0) {
+                const newTimeout = timeout - 1;
+                entry.intrinsic = (entry.intrinsic & ~TIMEOUT) | newTimeout;
+                // On reaching zero, fire expiry effects
+                if (newTimeout === 0) {
+                    _fireExpiryEffect(player, prop);
+                }
+            }
+        }
+    }
+
     if (player.fast) {
         player._fastMessageCooldown = Math.max((player._fastMessageCooldown || 1) - 1, 0);
     }
@@ -445,6 +480,170 @@ export function nh_timeout(context = {}) {
                 player._timed[key] = next;
             }
         }
+    }
+}
+
+// Status effect function registry — set by potion.js at import time via
+// registerMakeStatusFns() to avoid circular import issues.
+let _makeStatusFns = {};
+
+// Called by potion.js to register make_* functions for expiry callbacks.
+export function registerMakeStatusFns(fns) {
+    _makeStatusFns = fns || {};
+}
+
+// Fire expiry effect when an intrinsic timeout reaches zero.
+// C ref: timeout.c nh_timeout() — the big switch on each prop (lines 690-940)
+function _fireExpiryEffect(player, prop) {
+    const fns = _makeStatusFns || {};
+    const entry = player.uprops[prop];
+
+    switch (prop) {
+    case STONED:
+        // C ref: done_timeout(STONING, STONED) — petrification death
+        pline("You have turned to stone.");
+        done_timeout('stoned', 'petrification');
+        break;
+
+    case SLIMED:
+        // C ref: slimed_to_death() — sliming death
+        pline("You have become a green slime.");
+        done_timeout('slimed', 'sliming');
+        break;
+
+    case VOMITING:
+        if (fns.make_vomiting) fns.make_vomiting(player, 0, true);
+        break;
+
+    case SICK:
+        // C ref: hero might recover from food poisoning if good CON
+        if ((player.usick_type & SICK_NONVOMITABLE) === 0
+            && rn2(100) < (player.attributes?.[A_CON] || 10)) {
+            You("have recovered from your illness.");
+            if (fns.make_sick) fns.make_sick(player, 0, null, false, 0xFF);
+            exercise(player, A_CON, false);
+            // C ref: adjattrib(A_CON, -1, 1) — lose 1 CON
+            if (player.attributes && player.attributes[A_CON] > 3)
+                player.attributes[A_CON] -= 1;
+            break;
+        }
+        // Fatal illness
+        pline("You die from your illness.");
+        done_timeout('illness', player.usick_cause || 'illness');
+        player.usick_type = 0;
+        break;
+
+    case FAST:
+        // C ref: if (!Very_fast) You_feel("yourself slow down%s.");
+        if (!player.veryFast)
+            You_feel("yourself slow down%s.",
+                     player.fast ? " a bit" : "");
+        break;
+
+    case CONFUSION:
+        // C ref: set_itimeout(&HConfusion, 1L); make_confused(0L, TRUE);
+        if (entry) entry.intrinsic = (entry.intrinsic & ~TIMEOUT) | 1;
+        if (fns.make_confused) fns.make_confused(player, 0, true);
+        break;
+
+    case STUNNED:
+        // C ref: set_itimeout(&HStun, 1L); make_stunned(0L, TRUE);
+        if (entry) entry.intrinsic = (entry.intrinsic & ~TIMEOUT) | 1;
+        if (fns.make_stunned) fns.make_stunned(player, 0, true);
+        break;
+
+    case BLINDED:
+        // C ref: set_itimeout(&HBlinded, 1L); make_blinded(0L, TRUE);
+        if (entry) entry.intrinsic = (entry.intrinsic & ~TIMEOUT) | 1;
+        if (fns.make_blinded) fns.make_blinded(player, 0, true);
+        break;
+
+    case DEAF:
+        if (entry) entry.intrinsic = (entry.intrinsic & ~TIMEOUT) | 1;
+        if (fns.make_deaf) fns.make_deaf(player, 0, true);
+        player._botl = true;
+        break;
+
+    case INVIS:
+        // C ref: newsym(); "You are no longer invisible."
+        if (!player.blind) {
+            const seeInvisEntry = player.uprops[SEE_INVIS];
+            const canSeeInvis = seeInvisEntry && (seeInvisEntry.intrinsic || seeInvisEntry.extrinsic);
+            You(!canSeeInvis
+                ? "are no longer invisible."
+                : "can no longer see through yourself.");
+        }
+        break;
+
+    case SEE_INVIS:
+        // C ref: set_mimic_blocking(); see_monsters(); newsym();
+        break;
+
+    case HALLUC:
+        // C ref: set_itimeout(&HHallucination, 1L); make_hallucinated(0L, TRUE, 0L);
+        if (entry) entry.intrinsic = (entry.intrinsic & ~TIMEOUT) | 1;
+        if (fns.make_hallucinated) fns.make_hallucinated(player, 0, true, 0);
+        break;
+
+    case SLEEPING:
+        // C ref: if (Sleepy) { fall_asleep(); incr_itimeout(); }
+        break;
+
+    case LEVITATION:
+        // C ref: float_down(I_SPECIAL | TIMEOUT, 0L);
+        break;
+
+    case FLYING:
+        // C ref: if (was_flying && !Flying) { "You land."; spoteffects(TRUE); }
+        player._botl = true;
+        break;
+
+    case STRANGLED:
+        // C ref: done_timeout(DIED, STRANGLED) — strangulation death
+        pline("You suffocate.");
+        done_timeout('strangled', 'strangulation');
+        break;
+
+    case FUMBLING:
+        // C ref: if (u.umoved && !(Levitation || Flying)) slip_or_trip();
+        //     HFumbling &= ~FROMOUTSIDE;
+        //     if (Fumbling) incr_itimeout(&HFumbling, rnd(20));
+        if (entry) entry.intrinsic &= ~FROMOUTSIDE;
+        if (entry && (entry.intrinsic || entry.extrinsic)) {
+            // Still fumbling from another source — restart timer
+            const e = player.ensureUProp(FUMBLING);
+            e.intrinsic = (e.intrinsic & ~TIMEOUT) | rnd(20);
+        }
+        break;
+
+    case WOUNDED_LEGS:
+        // C ref: heal_legs(0);
+        You_feel("better.");
+        break;
+
+    case GLIB:
+        if (fns.make_glib) fns.make_glib(player, 0, false);
+        break;
+
+    case DETECT_MONSTERS:
+        // C ref: see_monsters();
+        break;
+
+    case DISPLACED:
+        // C ref: if (!Displaced) toggle_displacement(0, 0L, FALSE);
+        break;
+
+    case PASSES_WALLS:
+        pline("You're back to your normal self again.");
+        break;
+
+    case MAGICAL_BREATHING:
+        // C ref: if (!Breathless) { message about coughing }
+        break;
+
+    // Other props: timeout expiry is passive
+    default:
+        break;
     }
 }
 

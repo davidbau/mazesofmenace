@@ -56,7 +56,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[N/A]` | dlb.c | — | Data librarian (file bundling). Not needed in JS |
 | `[a]` | do.c | do.js | Miscellaneous actions. handleDrop/handleDownstairs/handleUpstairs (dodrop/dodown/doup); ~45 functions TODO |
 | `[~]` | do_name.c | do_name.js | Naming things (docallcmd, do_mgivenname) |
-| `[~]` | do_wear.c | do_wear.js | Wearing/removing armor and accessories. Multi-slot handleWear/handlePutOn/handleTakeOff/handleRemove; canwearobj, cursed_check, find_ac; on/off stubs for all slots. Intrinsic effects, multi-takeoff(A), armor destruction TODO. |
+| `[~]` | do_wear.c | do_wear.js | Wearing/removing armor and accessories. Multi-slot handleWear/handlePutOn/handleTakeOff/handleRemove; canwearobj, cursed_check, find_ac. Equipment on/off effects implemented for all slot types: Boots (speed/stealth/fumble/levitation with messages and makeknown), Cloaks (stealth/displacement/invisibility/protection), Helmets (brilliance/telepathy/dunce cap), Gloves (fumbling/power/dexterity), all 28 ring types (resistances, teleport, polymorph, conflict, etc. with extrinsic tracking), Amulets (ESP, life saving, strangulation, change, etc.). Uses toggle_extrinsic/toggle_stealth/toggle_displacement helpers. adj_abon and learnring implemented. Remaining gaps: float_up/float_down for levitation, vision system calls (see_monsters, newsym), cockatrice corpse wielding check, multi-takeoff(A), armor destruction. |
 | `[a]` | dog.c | dog.js | Pet behavior. dogfood/makedog/mon_arrive in dog.js; losedogs/keepdogs/migrate TODO |
 | `[a]` | dogmove.c | dogmove.js | Pet movement AI. All functions except `quickmimic` |
 | `[a]` | dokick.c | kick.js | Kicking mechanics. handleKick (dokick) approximation; full kick effects TODO |
@@ -113,7 +113,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[a]` | pickup.c | pickup.js | Picking up items. handlePickup/handleLoot/handlePay/handleTogglePickup (dopickup/doloot/dopay/dotogglepickup); pay is a stub; ~50 functions TODO |
 | `[a]` | pline.c | pline.js | Message output. pline, custompline, vpline, Norep, urgent_pline, raw_printf, vraw_printf, impossible, livelog_printf, gamelog_add, verbalize, You/Your/You_feel/You_cant/You_hear/You_see/pline_The/There, pline_dir/pline_xy/pline_mon, set_msg_dir/set_msg_xy, dumplogmsg/dumplogfreemessages, execplinehandler, nhassert_failed, You_buf/free_youbuf all implemented. putmesg semantics handled via setOutputContext |
 | `[~]` | polyself.c | polyself.js | Polymorphing |
-| `[a]` | potion.c | potion.js | Potion effects. handleQuaff (dodrink) with healing; ~60 functions TODO |
+| `[~]` | potion.c | potion.js | Potion effects. handleQuaff (dodrink) with name-string matching for healing/gain level. Intrinsic timeout system: itimeout/set_itimeout/incr_itimeout. Status effect functions: make_confused/stunned/blinded/sick/hallucinated/vomiting/deaf/glib/slimed/stoned (all match C structure with Unaware check, Sick_resistance, partial cure logic, Halluc_resistance mask param). peffects dispatcher with 18 peffect_* functions for all potion types. Resistance checks for FREE_ACTION (sleeping/paralysis), ACID_RES (acid). healup with curesick/cureblind params. Remaining gaps: handleQuaff not yet using peffects dispatcher, unkn/identification tracking, speed_up(), vision system calls, vapors/throwing/dipping/mixing. |
 | `[~]` | pray.c | pray.js | Prayer mechanics, sacrifice, turning undead, deity interaction. All 45 functions TODO (runtime gameplay) |
 | `[~]` | priest.c | priest.js | Priest behavior, temple management, shrine, minion roamers. move_special() PARTIAL in monmove.js:679; all other functions TODO |
 | `[~]` | quest.c | quest.js | Quest mechanics. All 22 functions are runtime gameplay (NPC dialog, eligibility, expulsion); none in JS |
@@ -144,7 +144,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[N/A]` | symbols.c | — | Terminal graphics mode management (ASCII/IBM/curses/UTF-8 symbol-set switching). Browser port uses static data in symbols.js; no runtime mode switching |
 | `[N/A]` | sys.c | — | System-level interface |
 | `[~]` | teleport.c | teleport.js | Teleportation. goodpos/collect_coords/enexto PARTIAL in dungeon.js; all runtime tele functions TODO |
-| `[a]` | timeout.c | timeout.js | Timer-based effects. run_timers, start_timer, stop_timer, nh_timeout, peek_timer, insert_timer, remove_timer, obj_move/split/stop_timers, obj_has_timer, spot_stop/expires/left_timers, done_timeout, attach_egg_hatch_timeout, hatch_egg, kill_egg, attach_fig_transform_timeout, begin_burn/end_burn/cleanup_burn/burn_object, do_storms, fall_asleep, timer_sanity_check, print_queue, wiz_timeout_queue, kind_name, timer_stats all implemented. Dialogue stubs (stoned/vomiting/sleep/choke/sickness/levitation/slime/phaze/region) exported as no-ops. save/restore/relink stubs present |
+| `[~]` | timeout.c | timeout.js | Timer-based effects. Full timer queue: run_timers, start/stop/peek/insert/remove_timer, obj_move/split/stop_timers, obj_has_timer, spot timers, done_timeout, egg/figurine/burn timers, fall_asleep. nh_timeout() has intrinsic timeout decrement loop matching C structure: calls dialogue functions before decrement, then on expiry fires effect via _fireExpiryEffect with full switch covering STONED/SLIMED/STRANGLED death, SICK death-or-recovery (CON check), CONFUSION/STUNNED/BLINDED/DEAF/HALLUC set-to-1-then-clear pattern, FAST slow message, INVIS expiry message, FUMBLING re-increment, VOMITING/GLIB/WOUNDED_LEGS/DISPLACED/PASSES_WALLS/DETECT_MONSTERS handlers. Dialogue stubs exported for stoned/vomiting/sleep/choke/sickness/levitation/slime/phaze. Remaining gaps: full dialogue countdown text sequences, float_down for levitation, vision system calls |
 | `[a]` | topten.c | topten.js | High score table. observable_depth implemented; I/O funcs N/A; encode/format funcs TODO |
 | `[p]` | track.c | track.js | Player tracking for pets. save/rest not yet implemented |
 | `[a]` | trap.c | trap.js | Trap mechanics: m_harmless_trap, floor_trigger, mintrap_postmove, mon_check_in_air |
@@ -1217,32 +1217,32 @@ This section is generated from source symbol tables and includes function rows f
 ### do_wear.c -> do_wear.js
 | C Line | C Function | JS Line | Alignment |
 |--------|------------|---------|-----------|
-| 1085 | `Amulet_off` | 68 | Stub (no-op) |
-| 958 | `Amulet_on` | 67 | Stub (no-op) |
+| 1085 | `Amulet_off` | 309 | Full: ESP, life saving, strangulation, sleep, unchanging, reflection, breathing, guarding, flying extrinsic toggles |
+| 958 | `Amulet_on` | 264 | Full: ESP, life saving, strangulation msg, sleep, change (gender swap), unchanging, reflection, breathing, guarding, flying |
 | 934 | `Armor_gone` | - | Missing |
-| 904 | `Armor_off` | 62 | Stub (no-op) |
-| 882 | `Armor_on` | 61 | Stub (no-op) |
+| 904 | `Armor_off` | 259 | No-op (matches C) |
+| 882 | `Armor_on` | 258 | No-op (matches C) |
 | 1490 | `Blindf_off` | - | Missing |
 | 1456 | `Blindf_on` | - | Missing |
-| 261 | `Boots_off` | 36 | Stub (no-op) |
-| 186 | `Boots_on` | 35 | Stub (no-op) |
-| 382 | `Cloak_off` | 40 | Stub (no-op) |
-| 325 | `Cloak_on` | 39 | Stub (no-op) |
-| 645 | `Gloves_off` | 49 | Stub (no-op) |
-| 575 | `Gloves_on` | 48 | Stub (no-op) |
-| 517 | `Helmet_off` | 44 | Stub (no-op) |
-| 433 | `Helmet_on` | 43 | Stub (no-op) |
-| 1450 | `Ring_gone` | - | Missing |
-| 1444 | `Ring_off` | 72 | Stub (no-op) |
-| 1342 | `Ring_off_or_gone` | - | Missing |
-| 1237 | `Ring_on` | 71 | Stub (no-op) |
-| 730 | `Shield_off` | 54 | Stub (no-op) |
-| 704 | `Shield_on` | 53 | Stub (no-op) |
-| 773 | `Shirt_off` | 58 | Stub (no-op) |
-| 754 | `Shirt_on` | 57 | Stub (no-op) |
+| 261 | `Boots_off` | 104 | Speed slow message+makeknown, stealth, fumble clear, levitation. Missing: float_down, water walking sink check |
+| 186 | `Boots_on` | 84 | Speed message+makeknown, stealth, fumble timeout, levitation+makeknown. Missing: float_up, water walking |
+| 382 | `Cloak_off` | 147 | Stealth, displacement, invisibility+makeknown. Missing: mummy wrapping, alchemy smock acid_res |
+| 325 | `Cloak_on` | 124 | Stealth, displacement, invisibility+makeknown, protection+makeknown. Missing: mummy wrapping, oilskin, alchemy smock |
+| 645 | `Gloves_off` | 228 | Fumble clear, power STR restore, dexterity. Missing: cockatrice corpse check |
+| 575 | `Gloves_on` | 209 | Fumble timeout, power STR=25+makeknown, dexterity |
+| 517 | `Helmet_off` | 189 | Brilliance adj_abon reverse, telepathy, dunce cap. Missing: fedora luck, cornuthaum CHA, helm of opposite alignment |
+| 433 | `Helmet_on` | 168 | Brilliance adj_abon, telepathy, dunce cap. Missing: fedora luck, cornuthaum, helm of opposite alignment |
+| 1450 | `Ring_gone` | - | Missing (wrapper for Ring_off_or_gone with gone=true) |
+| 1444 | `Ring_off` | 399 | All 28 ring types with extrinsic toggles. Missing: Ring_off_or_gone shared setworn logic |
+| 1342 | `Ring_off_or_gone` | - | Missing (JS uses separate Ring_off) |
+| 1237 | `Ring_on` | 366 | All 28 ring types: passive extrinsics, stealth, warning, see_invis, invis, levitation, attribute rings, accuracy/damage, protection+find_ac, shape changers. Uses oldprop via RING_OPROP_MAP. Missing: float_up, self_invis_message, see_monsters, newsym |
+| 730 | `Shield_off` | 252 | No-op (matches C) |
+| 704 | `Shield_on` | 251 | No-op (matches C) |
+| 773 | `Shirt_off` | 256 | No-op (matches C) |
+| 754 | `Shirt_on` | 255 | No-op (matches C) |
 | 2204 | `accessory_or_armor_on` | - | Missing |
-| 3254 | `adj_abon` | - | Missing |
-| 1218 | `adjust_attrib` | - | Missing |
+| 3254 | `adj_abon` | 343 | Simplified: clamps attr to [3,25], no racial cap or Fixed_abil check |
+| 1218 | `adjust_attrib` | - | Missing (C uses for ring attribute changes; JS uses adj_abon directly) |
 | 2006 | `already_wearing` | - | Missing |
 | 2012 | `already_wearing2` | - | Missing |
 | 3415 | `any_worn_armor_ok` | - | Missing |
@@ -1271,7 +1271,7 @@ This section is generated from source symbol tables and includes function rows f
 | 567 | `hard_helmet` | - | Missing |
 | 1857 | `ia_dotakeoff` | - | Missing |
 | 3277 | `inaccessible_equipment` | - | Missing |
-| 1188 | `learnring` | - | Missing |
+| 1188 | `learnring` | 349 | Simplified: sets obj.known=true (C also handles discovery tracking) |
 | 3184 | `maybe_destroy_armor` | - | Missing |
 | 3085 | `menu_remarm` | - | Missing |
 | 67 | `off_msg` | - | Missing |
@@ -3825,57 +3825,57 @@ No function symbols parsed from isaac64.c.
 | 618 | `dopotion` | - | Missing |
 | 505 | `drink_ok` | - | Missing |
 | 481 | `ghost_from_bottle` | - | Missing |
-| 1424 | `healup` | - | Missing |
+| 1424 | `healup` | 324 | Full: heal HP, max HP increase, cure blindness, cure sickness |
 | 2229 | `hold_potion` | - | Missing |
 | 1591 | `impact_arti_light` | - | Missing |
-| 83 | `incr_itimeout` | - | Missing |
-| 56 | `itimeout` | - | Missing |
-| 68 | `itimeout_incr` | - | Missing |
-| 261 | `make_blinded` | - | Missing |
-| 89 | `make_confused` | - | Missing |
-| 443 | `make_deaf` | - | Missing |
-| 461 | `make_glib` | - | Missing |
-| 369 | `make_hallucinated` | - | Missing |
-| 137 | `make_sick` | - | Missing |
-| 195 | `make_slimed` | - | Missing |
-| 222 | `make_stoned` | - | Missing |
-| 107 | `make_stunned` | - | Missing |
-| 243 | `make_vomiting` | - | Missing |
+| 83 | `incr_itimeout` | 53 | Full match |
+| 56 | `itimeout` | 29 | Full match |
+| 68 | `itimeout_incr` | 37 | Full match |
+| 261 | `make_blinded` | 133 | Probe-ahead with BBlinded, message paths for regaining/losing sight, Unaware check. Missing: Eyes of Overworld special messages, Blindfolded sub-paths, toggle_blindness vision calls |
+| 89 | `make_confused` | 66 | Full: Unaware check, Hallucination-aware message, botl flag |
+| 443 | `make_deaf` | 176 | Full match |
+| 461 | `make_glib` | 190 | Full match |
+| 369 | `make_hallucinated` | 152 | Full: mask parameter for Halluc_resistance toggling, Blind-aware verb, botl flag. Missing: uswallow/mimicking/vision recalc |
+| 137 | `make_sick` | 104 | Full: Sick_resistance check, partial cure (clearing one type keeps other with doubled timer), cause tracking, CON exercise. Missing: delayed_killer allocation |
+| 195 | `make_slimed` | 193 | Simplified: set/clear with message and botl. Missing: fake appearance handling |
+| 222 | `make_stoned` | 200 | Simplified: set/clear with message and botl. Missing: delayed_killer |
+| 107 | `make_stunned` | 85 | Full: Unaware check, stagger message, botl flag. Missing: u.usteed wobble |
+| 243 | `make_vomiting` | 167 | Full: Unaware check, message on clear, botl flag |
 | 2108 | `mixtype` | - | Missing |
 | 2782 | `mongrantswish` | - | Missing |
-| 1293 | `peffect_acid` | - | Missing |
-| 1069 | `peffect_blindness` | - | Missing |
-| 768 | `peffect_booze` | - | Missing |
-| 1010 | `peffect_confusion` | - | Missing |
+| 1293 | `peffect_acid` | 510 | Acid_resistance check, damage, exercise |
+| 1069 | `peffect_blindness` | 352 | Blessed cure, cursed extension |
+| 768 | `peffect_booze` | 560 | Confusion from booze |
+| 1010 | `peffect_confusion` | 337 | Blessed cure, cursed extension |
 | 792 | `peffect_enlightenment` | - | Missing |
-| 1124 | `peffect_extra_healing` | - | Missing |
-| 1140 | `peffect_full_healing` | - | Missing |
-| 1026 | `peffect_gain_ability` | - | Missing |
-| 1220 | `peffect_gain_energy` | - | Missing |
-| 1079 | `peffect_gain_level` | - | Missing |
-| 693 | `peffect_hallucination` | - | Missing |
-| 1115 | `peffect_healing` | - | Missing |
-| 808 | `peffect_invisibility` | - | Missing |
+| 1124 | `peffect_extra_healing` | 456 | Heal + max HP, cure hallucination, exercise |
+| 1140 | `peffect_full_healing` | 469 | Full heal, cure hallucination, exercise |
+| 1026 | `peffect_gain_ability` | 546 | Simplified: random attr +1. Missing: blessed=all attrs, proper adjattrib |
+| 1220 | `peffect_gain_energy` | 492 | Energy gain/drain with max increase |
+| 1079 | `peffect_gain_level` | 480 | Level gain/loss. Missing: pluslvl() with adjabil/newhp/newpw |
+| 693 | `peffect_hallucination` | 433 | Blessed cure, cursed extension |
+| 1115 | `peffect_healing` | 445 | Heal, cure blindness, exercise |
+| 808 | `peffect_invisibility` | 521 | Timed invisibility via incr_itimeout |
 | 1161 | `peffect_levitation` | - | Missing |
 | 910 | `peffect_monster_detection` | - | Missing |
 | 951 | `peffect_object_detection` | - | Missing |
 | 1256 | `peffect_oil` | - | Missing |
-| 877 | `peffect_paralysis` | - | Missing |
+| 877 | `peffect_paralysis` | 396 | FREE_ACTION check, confusion-aware message |
 | 1314 | `peffect_polymorph` | - | Missing |
-| 646 | `peffect_restore_ability` | - | Missing |
-| 838 | `peffect_see_invisible` | - | Missing |
-| 960 | `peffect_sickness` | - | Missing |
-| 897 | `peffect_sleeping` | - | Missing |
-| 1048 | `peffect_speed` | - | Missing |
+| 646 | `peffect_restore_ability` | 539 | Stub: no attribute restoration yet |
+| 838 | `peffect_see_invisible` | 532 | Timed see_invis via incr_itimeout |
+| 960 | `peffect_sickness` | 416 | Blessed cure, cursed illness, uncursed vomiting |
+| 897 | `peffect_sleeping` | 380 | FREE_ACTION check, blessed wake, sleep mechanism |
+| 1048 | `peffect_speed` | 364 | Speed up with incr_itimeout. Missing: full speed_up() |
 | 714 | `peffect_water` | - | Missing |
-| 1329 | `peffects` | - | Missing |
+| 1329 | `peffects` | 577 | Dispatcher for 18 potion types |
 | 2394 | `poof` | - | Missing |
 | 2428 | `potion_dip` | - | Missing |
 | 1918 | `potionbreathe` | - | Missing |
 | 1621 | `potionhit` | - | Missing |
 | 471 | `self_invis_message` | - | Missing |
-| 75 | `set_itimeout` | - | Missing |
-| 2905 | `speed_up` | - | Missing |
+| 75 | `set_itimeout` | 46 | Full match |
+| 2905 | `speed_up` | - | Missing (peffect_speed uses incr_itimeout directly) |
 | 2859 | `split_mon` | - | Missing |
 | 1457 | `strange_feeling` | - | Missing |
 | 336 | `toggle_blindness` | - | Missing |
@@ -5043,7 +5043,7 @@ No function symbols parsed from isaac64.c.
 | 353 | `levitation_dialogue` | 585 | Stub (no-op) |
 | 2619 | `maybe_write_timer` | - | N/A (save/restore) |
 | 2576 | `mon_is_local` | - | N/A (save/restore) |
-| 588 | `nh_timeout` | 407 | Aligned |
+| 588 | `nh_timeout` | 407 | Aligned: intrinsic timeout decrement loop, dialogue calls before decrement, _fireExpiryEffect with death/status/equipment handlers |
 | 2396 | `obj_has_timer` | 369 | Aligned |
 | 2552 | `obj_is_local` | - | N/A (save/restore) |
 | 2331 | `obj_move_timers` | 333 | Aligned |
