@@ -6,8 +6,8 @@
 
 A faithful JavaScript port of NetHack, playable in any modern web browser.
 ASCII terminal display with DEC line-drawing graphics, native keyboard
-commands, no build step required. The strength of this port
-lies in its fidelity to the original C source.
+commands, no build step. Open the page. Pick a role. Descend.
+The strength of this port lies in its fidelity to the original C source.
 
 **Play it now:** [https://mazesofmenace.net/](https://mazesofmenace.net/)
 
@@ -34,7 +34,7 @@ The project exists at the intersection of two unlikely forces: the pending relea
 
 In February 2025, Andrej Karpathy coined the term **"vibe coding"** to describe a new way of working: describe what you want to an AI, accept its code without reading the diffs, paste error messages back when things break, and see what happens. By early 2026 the approach had matured into what Karpathy calls **"agentic engineering"**—the same core idea, but with more structure, more oversight, and the recognition that orchestrating AI agents to produce real software is itself *"an art and science and expertise."*
 
-This project is a test of that proposition at scale. Can AI agents, directed by a non-expert human, produce a faithful port of one of the most complex single-player codebases in gaming history? Not a toy demo or a weekend throwaway, but a real, playable, parity-correct reimplementation—tens of thousands of lines of readable JavaScript that match NetHack's behavior down to the random number generator?
+This project is a test of that proposition at scale. Can AI agents, directed by a non-expert human, produce a faithful port of one of the most complex single-player codebases in gaming history? Not a toy demo or a weekend throwaway, but a real, playable, parity-correct reimplementation—over eighty thousand lines of readable JavaScript that match NetHack's behavior down to the random number generator?
 
 The entire codebase—136 JavaScript modules, 2,200+ passing unit tests, 204 golden C-comparison sessions, and a suite of Python test harness scripts—was produced through natural-language conversation with AI agents. The human provided direction, taste, and domain knowledge about NetHack; the agents wrote the code, tests, and documentation.
 
@@ -52,6 +52,8 @@ throughout. See the full architecture and design documents:
   DECGraphics via Unicode, simplified FOV
 
 ### Key Design Choices
+
+*A voice whispers: "The build step has been removed from the game."*
 
 - **ES6 modules, no build step** — Just serve the directory and open
   `index.html`. Each JS module maps to a C source file. Do not kick it,
@@ -91,11 +93,14 @@ throughout. See the full architecture and design documents:
 
 *A cloud of gas surrounds you! You have a peculiar feeling about your code.*
 
-Shops, special levels, altars/prayer, spellcasting, wand/potion/scroll
-effects, polymorph, full inventory management (wear/wield/quaff/read/zap),
-and many other subsystems. NetHack 3.7 has ~420,000 lines of C, headers, and Lua across ~8,600 functions —
-so far, this port covers the core loop and early gameplay with 83,000+ lines of JavaScript
-(with the goal of replicating the whole game faithfully).
+- **Shops** — the shopkeeper glares at you across an unimplemented counter
+- **Special levels** — Medusa's Island, the Castle, Vlad's Tower, Gehennom; the dungeon goes deeper
+- **Altars and prayer** — your god is not yet listening
+- **Spellcasting** — your spell fizzles
+- **Wand, potion, and scroll effects** — zap, quaff, read; something happens, but not yet
+- **Full inventory management** — wear, wield, remove, throw; the item sits there patiently
+- **Polymorph** — you feel like a different data structure
+- **And much more** — NetHack 3.7 has ~420,000 lines of C, headers, and Lua across ~8,600 functions; so far, this port covers the core loop and early gameplay with 83,000+ lines of JavaScript (with the goal of replicating the whole game faithfully)
 
 The Hive is aware of this.
 
@@ -160,7 +165,6 @@ python3 scripts/generators/gen_objects.py > js/objects.js      # 478 objects
 *You read a scroll labeled "STRSTRSTRSTRINGS ATTACHED".*
 
 ```
-writer/
 ├── index.html              Main web entry point
 ├── js/                     Game source (136 modules mirroring C structure)
 │   ├── commands.js         Command dispatch
