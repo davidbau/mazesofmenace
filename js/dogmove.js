@@ -1099,8 +1099,11 @@ export function dog_move(mon, map, player, display, fov, after = false, game = n
     // ========================================================================
 
     // Collect valid positions (column-major order, no stay pos, boulder filter)
-    const positions = mfndpos(mon, map, player, mon_allowflags(mon));
+    const allowflags = mon_allowflags(mon);
+    const positions = mfndpos(mon, map, player, allowflags);
     const cnt = positions.length;
+    pushRngLogEntry(`^dog_move_entry[${mon.mndx}@${omx},${omy} goal=${gx},${gy} appr=${appr}]`);
+    pushRngLogEntry(`^dog_move_mfndpos[cnt=${cnt} flags=0x${(allowflags >>> 0).toString(16)}]`);
     monmoveTrace('dog_move-begin',
         `step=${(Number.isInteger(map?._replayStepIndex) ? map._replayStepIndex + 1 : '?')}`,
         `id=${mon.m_id ?? '?'}`,
@@ -1348,6 +1351,7 @@ export function dog_move(mon, map, player, display, fov, after = false, game = n
     // Move the dog
     // C ref: dogmove.c:1274-1348 — newdogpos label
     if (nix !== omx || niy !== omy) {
+        pushRngLogEntry(`^dog_move_exit[${mon.mndx}@${omx},${omy}->${nix},${niy} chi=${chi} do_eat=${do_eat ? 1 : 0}]`);
         monmoveTrace('dog_move-pick',
             `step=${(Number.isInteger(map?._replayStepIndex) ? map._replayStepIndex + 1 : '?')}`,
             `id=${mon.m_id ?? '?'}`,
