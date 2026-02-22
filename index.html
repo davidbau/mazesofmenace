@@ -666,7 +666,6 @@
                 <button class="hm-item" id="hm-del-bones"><span class="hm-check"></span>Delete bones</button>
                 <button class="hm-item" id="hm-reset-opts"><span class="hm-check"></span>Reset options</button>
                 <div class="hm-divider"></div>
-                <button class="hm-item" id="hm-version"><span class="hm-check"></span>Show version info</button>
                 <button class="hm-item" id="hm-darkmode"><span class="hm-check"></span>Dark mode</button>
                 <button class="hm-item" id="hm-keyref"><span class="hm-check"></span>Control help</button>
             </div>
@@ -1024,12 +1023,6 @@
 
         document.getElementById('hm-darkmode').addEventListener('click', function() {
             if (window._toggleDarkMode) window._toggleDarkMode();
-            closeMenu();
-        });
-
-        document.getElementById('hm-version').addEventListener('click', function() {
-            var v = window.MENACE_VERSION || 'NetHack 3.7.0 Royal Jelly';
-            alert(v);
             closeMenu();
         });
 
