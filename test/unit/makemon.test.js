@@ -9,6 +9,19 @@ import { makemon, rndmonnum, NO_MM_FLAGS, MM_NOGRP, setMakemonPlayerContext, mbi
 import { mons, PM_NAZGUL, PM_ERINYS, PM_LITTLE_DOG } from '../../js/monsters.js';
 import { initLevelGeneration, makelevel, wallification } from '../../js/dungeon.js';
 
+/** Find an unoccupied accessible tile in a room. */
+function findEmptyTile(map, room) {
+    for (let y = room.ly; y <= room.hy; y++) {
+        for (let x = room.lx; x <= room.hx; x++) {
+            const loc = map.at(x, y);
+            if (loc && ACCESSIBLE(loc.typ) && !map.monsterAt(x, y)) {
+                return { x, y };
+            }
+        }
+    }
+    return null;
+}
+
 describe('Monster creation (C-faithful)', () => {
     it('mons[] has many entries', () => {
         assert.ok(mons.length > 300, `Expected >300 monster types, got ${mons.length}`);
@@ -21,17 +34,17 @@ describe('Monster creation (C-faithful)', () => {
         wallification(map);
 
         const room = map.rooms[0];
-        const cx = Math.floor((room.lx + room.hx) / 2);
-        const cy = Math.floor((room.ly + room.hy) / 2);
+        const pos = findEmptyTile(map, room);
+        assert.ok(pos, 'Should find an empty tile in room');
 
         // Find a grid bug in mons[]
         const mndx = mons.findIndex(m => m.name === 'grid bug');
         assert.ok(mndx >= 0, 'grid bug should exist in mons[]');
 
-        const mon = makemon(mndx, cx, cy, NO_MM_FLAGS, 1, map);
+        const mon = makemon(mndx, pos.x, pos.y, NO_MM_FLAGS, 1, map);
         assert.ok(mon, 'Should create a monster');
-        assert.equal(mon.mx, cx);
-        assert.equal(mon.my, cy);
+        assert.equal(mon.mx, pos.x);
+        assert.equal(mon.my, pos.y);
         assert.ok(mon.mhp > 0, 'Monster should have HP');
         assert.ok(mon.speed > 0, 'Monster should have speed');
         assert.equal(mon.name, 'grid bug');
@@ -46,10 +59,10 @@ describe('Monster creation (C-faithful)', () => {
         wallification(map);
 
         const room = map.rooms[0];
-        const cx = Math.floor((room.lx + room.hx) / 2);
-        const cy = Math.floor((room.ly + room.hy) / 2);
+        const pos = findEmptyTile(map, room);
+        assert.ok(pos, 'Should find an empty tile in room');
 
-        const mon = makemon(null, cx, cy, NO_MM_FLAGS, 1, map);
+        const mon = makemon(null, pos.x, pos.y, NO_MM_FLAGS, 1, map);
         assert.ok(mon, 'Should create a random monster');
         assert.ok(mon.mhp > 0, 'Monster should have HP');
         assert.ok(mon.name, 'Monster should have a name');
@@ -69,7 +82,12 @@ describe('Monster creation (C-faithful)', () => {
         assert.ok(gremlin >= 0, 'gremlin should exist in mons[]');
 
         // Use a simple accessible tile map so only monster-creation logic is exercised.
-        const map = { monsters: [], at: () => ({ typ: 100 }), addMonster(m) { this.monsters.unshift(m); } };
+        const map = {
+            monsters: [],
+            at: () => ({ typ: 100 }),
+            monsterAt() { return null; },
+            addMonster(m) { this.monsters.unshift(m); },
+        };
 
         initRng(1234);
         setMakemonPlayerContext({

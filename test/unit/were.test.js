@@ -169,6 +169,8 @@ describe('were_summon', () => {
         initLevelGeneration();
         const map = makelevel(1);
         wallification(map);
+        // Clear existing monsters so were_summon has room to spawn
+        map.monsters.length = 0;
         const room = map.rooms[0];
         const cx = Math.floor((room.lx + room.hx) / 2);
         const cy = Math.floor((room.ly + room.hy) / 2);

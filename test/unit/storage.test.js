@@ -97,13 +97,18 @@ describe('Monster save/restore (saveMon/restMon)', () => {
         const map = makelevel(1);
         wallification(map);
 
-        // Find a room center to place a monster
+        // Find an unoccupied tile to place a monster
         const room = map.rooms[0];
-        const cx = Math.floor((room.lx + room.hx) / 2);
-        const cy = Math.floor((room.ly + room.hy) / 2);
+        let ex, ey;
+        for (let y = room.ly; y <= room.hy && !ex; y++) {
+            for (let x = room.lx; x <= room.hx && !ex; x++) {
+                if (!map.monsterAt(x, y)) { ex = x; ey = y; }
+            }
+        }
+        assert.ok(ex != null, 'Should find an empty tile');
 
         const mndx = mons.findIndex(m => m.name === 'grid bug');
-        const mon = makemon(mndx, cx, cy, NO_MM_FLAGS, 1, map);
+        const mon = makemon(mndx, ex, ey, NO_MM_FLAGS, 1, map);
         assert.ok(mon, 'makemon should succeed');
 
         const saved = saveMon(mon);

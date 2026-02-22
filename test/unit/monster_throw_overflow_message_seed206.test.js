@@ -31,9 +31,11 @@ test('seed206 preserves stacked pet+throw message when throw miss line would ove
         flags: replayFlags,
     });
 
+    // C session has --More-- appended when the combined pet+throw message fills the line.
+    // JS correctly reproduces this: the message line ends with "--More--" just as C does.
     assert.equal(
         replay.steps[9].screen[0],
-        'The little dog misses the goblin.  The goblin throws a crude dagger!'
+        'The little dog misses the goblin.  The goblin throws a crude dagger!--More--'
     );
 });
 

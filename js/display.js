@@ -198,6 +198,62 @@ function wallIsVisible(typ, seenv, wallInfo) {
     }
 }
 
+/**
+ * Compute the optimal line-height for seamless box-drawing characters.
+ *
+ * Terminal box-drawing glyphs (│, ┌, ─, └, etc.) are designed to tile
+ * seamlessly by extending to the font's full cell height, which is defined
+ * by the OS/2 table's usWinAscent + usWinDescent (the clipping bounds),
+ * NOT the smaller sTypoAscender + sTypoDescender (typographic metrics).
+ *
+ * Chrome (and most browsers) compute "normal" line-height from the typo
+ * metrics when USE_TYPO_METRICS is set, which for DejaVu Sans Mono gives
+ * line-height: 1.0 — too short, clipping box-drawing glyphs. Meanwhile
+ * line-height: 1.2 is too tall, leaving visible gaps between lines.
+ *
+ * The ideal ratio is (usWinAscent + usWinDescent) / unitsPerEm, but
+ * the product of line-height × font-size must land on an INTEGER pixel
+ * value, otherwise sub-pixel rounding causes inconsistent row heights
+ * and occasional 1px gaps between lines.
+ *
+ * This function measures the actual loaded font's metrics via the Canvas
+ * API (fontBoundingBoxAscent + fontBoundingBoxDescent), computes the
+ * natural ratio, then rounds down to the nearest value whose product
+ * with fontSize is a whole pixel.
+ *
+ * @param {number} fontSize - The font size in pixels (e.g. 16)
+ * @param {string} fontFamily - The CSS font-family string
+ * @returns {number} line-height as a unitless ratio (e.g. 1.125)
+ */
+function computeTerminalLineHeight(fontSize, fontFamily) {
+    // Default: for DejaVu Sans Mono, (usWinAscent=1901 + usWinDescent=483)
+    // / unitsPerEm=2048 ≈ 1.164. Rounded to whole pixels at 16px: 1.125.
+    const DEFAULT_LINE_HEIGHT = 1.125;
+    if (typeof document === 'undefined') return DEFAULT_LINE_HEIGHT;
+    try {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        ctx.font = `${fontSize}px ${fontFamily}`;
+        const metrics = ctx.measureText('│');
+        // fontBoundingBox metrics give the font-wide ascent/descent
+        // (not per-glyph), matching usWinAscent/usWinDescent.
+        if (metrics.fontBoundingBoxAscent != null &&
+            metrics.fontBoundingBoxDescent != null) {
+            const naturalHeight = metrics.fontBoundingBoxAscent
+                                + metrics.fontBoundingBoxDescent;
+            const naturalRatio = naturalHeight / fontSize;
+            // Round down to nearest value giving a whole-pixel line height.
+            // E.g. at 16px, ratio 1.164 → 18.62px → floor to 18px → 1.125.
+            const wholePixelHeight = Math.floor(naturalRatio * fontSize);
+            // Don't go below 1.0
+            return Math.max(wholePixelHeight / fontSize, 1.0);
+        }
+    } catch (e) {
+        // Canvas not available (e.g. Node.js tests)
+    }
+    return DEFAULT_LINE_HEIGHT;
+}
+
 export class Display {
     constructor(containerId) {
         this.container = document.getElementById(containerId);
@@ -241,10 +297,13 @@ export class Display {
         // Create the pre element
         const pre = document.createElement('pre');
         pre.id = 'terminal';
+        const fontFamily = '"DejaVu Sans Mono", "Courier New", monospace';
+        const fontSize = 16;
+        const lineHeight = computeTerminalLineHeight(fontSize, fontFamily);
         pre.style.cssText = `
-            font-family: "DejaVu Sans Mono", "Courier New", monospace;
-            font-size: 16px;
-            line-height: 1.2;
+            font-family: ${fontFamily};
+            font-size: ${fontSize}px;
+            line-height: ${lineHeight};
             background: #000;
             color: #ccc;
             padding: 8px;
