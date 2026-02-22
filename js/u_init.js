@@ -88,6 +88,7 @@ import { roles, races } from './player.js';
 import { discoverObject } from './discovery.js';
 import { mons } from './monsters.js';
 import { makedog, mon_arrive, MON_ARRIVE_WITH_YOU } from './dog.js';
+export { mon_arrive, MON_ARRIVE_WITH_YOU } from './dog.js';
 
 // ========================================================================
 // Inventory Creation
