@@ -541,14 +541,11 @@
 
         /* Docs mode: two-phase animation
            Phase 1 (docs-fixed): position fixed at scale(1) — instant
-           Phase 2 (docs-mode):  scale down to 0.3 — animated */
+           Phase 2 (docs-mode):  scale down to saved scale — animated
+           Position + scale are JS-controlled (drag/resize/persist). */
         body.docs-fixed #page {
             position: fixed;
-            bottom: 10px;
-            right: 10px;
             z-index: 102;
-            transform-origin: bottom right;
-            transform: scale(1);
             pointer-events: auto;
             overflow: hidden;
             transition: transform 0.4s ease, box-shadow 0.4s ease, border-radius 0.4s ease, outline 0.4s ease;
@@ -560,8 +557,8 @@
         }
 
         body.docs-mode #page {
-            transform: scale(0.5);
-            cursor: pointer;
+            /* position + scale set via inline styles by minimap JS */
+            cursor: grab;
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
             border-radius: 8px;
             outline: 3px solid var(--color-accent);
@@ -1327,29 +1324,236 @@
 
         var ignoreHashChange = false;
 
+        // ── Minimap drag / resize / persist ──────────────────────────────────
+        // The minimap (#page scaled down) is draggable from the interior and
+        // resizable by dragging any border edge.  Position is persisted as an
+        // offset from the nearest horizontal/vertical edge-or-center so it
+        // stays anchored correctly when the window is resized.
+
+        var MM_KEY  = 'menace-docs-minimap';
+        var MM_EDGE = 8;     // px hit-zone for resize border
+        var MM_MIN  = 0.15;  // minimum scale
+        var MM_MAX  = 0.90;  // maximum scale
+        var MM_DEFAULT_SCALE = 0.50;
+
+        var mmState   = null;   // null = idle; object while dragging/resizing
+        var mmDidMove = false;  // suppress click-to-close after drag
+        var mmOverlay = null;   // transparent capture div during drag
+
+        function mmLoad() {
+            try { return JSON.parse(localStorage.getItem(MM_KEY)) || null; }
+            catch(e) { return null; }
+        }
+
+        // Persist position as offset from nearest edge-or-center
+        function mmSave(left, top, scale) {
+            var vw = window.innerWidth, vh = window.innerHeight;
+            var nw = page.scrollWidth,  nh = page.scrollHeight;
+            var w = nw * scale, h = nh * scale;
+            var cx = left + w / 2, cy = top + h / 2;
+
+            var dL = left, dR = vw - left - w, dCH = Math.abs(cx - vw / 2);
+            var dT = top,  dB = vh - top  - h, dCV = Math.abs(cy - vh / 2);
+
+            var hSide, hOff;
+            if (dL <= dR && dL <= dCH)      { hSide = 'left';   hOff = left; }
+            else if (dR <= dL && dR <= dCH) { hSide = 'right';  hOff = vw - left - w; }
+            else                            { hSide = 'center'; hOff = cx - vw / 2; }
+
+            var vSide, vOff;
+            if (dT <= dB && dT <= dCV)      { vSide = 'top';    vOff = top; }
+            else if (dB <= dT && dB <= dCV) { vSide = 'bottom'; vOff = vh - top - h; }
+            else                            { vSide = 'center'; vOff = cy - vh / 2; }
+
+            try { localStorage.setItem(MM_KEY, JSON.stringify(
+                { scale: scale, hSide: hSide, hOff: hOff, vSide: vSide, vOff: vOff }
+            )); } catch(e) {}
+        }
+
+        // Compute { left, top, scale } from saved anchor (or default bottom-right)
+        function mmRestore() {
+            var d = mmLoad();
+            var nw = page.scrollWidth, nh = page.scrollHeight;
+            var vw = window.innerWidth,  vh = window.innerHeight;
+            var scale = (d && d.scale) ? d.scale : MM_DEFAULT_SCALE;
+            var w = nw * scale, h = nh * scale;
+            var left, top;
+            if (!d) {
+                left = vw - w - 10;
+                top  = vh - h - 10;
+            } else {
+                if      (d.hSide === 'left')   left = d.hOff;
+                else if (d.hSide === 'right')  left = vw - w - d.hOff;
+                else                           left = vw / 2 + d.hOff - w / 2;
+                if      (d.vSide === 'top')    top  = d.vOff;
+                else if (d.vSide === 'bottom') top  = vh - h - d.vOff;
+                else                           top  = vh / 2 + d.vOff - h / 2;
+            }
+            // Clamp so minimap is never fully off-screen
+            left = Math.max(-(w * 0.8), Math.min(vw - w * 0.2, left));
+            top  = Math.max(-(h * 0.8), Math.min(vh - h * 0.2, top));
+            return { left: left, top: top, scale: scale };
+        }
+
+        // Apply { left, top, scale } as inline styles (instant=true suppresses transition)
+        function mmApply(pos, instant) {
+            if (instant) { page.style.transition = 'none'; page.offsetHeight; }
+            page.style.left           = pos.left + 'px';
+            page.style.top            = pos.top  + 'px';
+            page.style.right          = 'auto';
+            page.style.bottom         = 'auto';
+            page.style.transformOrigin = 'top left';
+            page.style.transform      = 'scale(' + pos.scale + ')';
+            if (instant) { page.offsetHeight; page.style.transition = ''; }
+        }
+
+        // Update cursor based on mouse position over the minimap
+        function mmUpdateCursor(e) {
+            if (mmState) return;
+            var rect = page.getBoundingClientRect();
+            var x = e.clientX - rect.left, y = e.clientY - rect.top;
+            var w = rect.width, h = rect.height;
+            var L = x < MM_EDGE, R = x > w - MM_EDGE;
+            var T = y < MM_EDGE, B = y > h - MM_EDGE;
+            if      (L && T) page.style.cursor = 'nw-resize';
+            else if (R && T) page.style.cursor = 'ne-resize';
+            else if (L && B) page.style.cursor = 'sw-resize';
+            else if (R && B) page.style.cursor = 'se-resize';
+            else if (L)      page.style.cursor = 'w-resize';
+            else if (R)      page.style.cursor = 'e-resize';
+            else if (T)      page.style.cursor = 'n-resize';
+            else if (B)      page.style.cursor = 's-resize';
+            else             page.style.cursor = 'grab';
+        }
+
+        page.addEventListener('mousemove', function(e) {
+            if (document.body.classList.contains('docs-mode')) mmUpdateCursor(e);
+        });
+
+        page.addEventListener('mousedown', function(e) {
+            if (!document.body.classList.contains('docs-mode')) return;
+            e.preventDefault();
+
+            var rect  = page.getBoundingClientRect();
+            var x = e.clientX - rect.left, y = e.clientY - rect.top;
+            var w = rect.width, h = rect.height;
+            var L = x < MM_EDGE, R = x > w - MM_EDGE;
+            var T = y < MM_EDGE, B = y > h - MM_EDGE;
+            var onEdge = L || R || T || B;
+            var scale = page.scrollWidth ? w / page.scrollWidth : MM_DEFAULT_SCALE;
+
+            mmState = {
+                mode:   onEdge ? 'resize' : 'drag',
+                edges:  { L: L, R: R, T: T, B: B },
+                mx0: e.clientX, my0: e.clientY,
+                left0: rect.left, top0: rect.top,
+                w0: w, h0: h, scale0: scale,
+                nw: page.scrollWidth, nh: page.scrollHeight,
+            };
+            mmDidMove = false;
+
+            // Overlay captures mouse events even when over the iframe
+            var cur = onEdge ? page.style.cursor : 'grabbing';
+            mmOverlay = document.createElement('div');
+            mmOverlay.style.cssText = 'position:fixed;inset:0;z-index:9999;cursor:' + cur;
+            document.body.appendChild(mmOverlay);
+
+            page.style.transition = 'none';  // no easing during drag
+        });
+
+        document.addEventListener('mousemove', function(e) {
+            if (!mmState) return;
+            var dx = e.clientX - mmState.mx0, dy = e.clientY - mmState.my0;
+            if (Math.abs(dx) > 2 || Math.abs(dy) > 2) mmDidMove = true;
+
+            if (mmState.mode === 'drag') {
+                page.style.left = (mmState.left0 + dx) + 'px';
+                page.style.top  = (mmState.top0  + dy) + 'px';
+            } else {
+                // Resize: compute new scale from dragged edge(s)
+                var scale = mmState.scale0;
+                var left  = mmState.left0, top = mmState.top0;
+                var e_ = mmState.edges;
+
+                if (e_.R) {
+                    scale = Math.max(MM_MIN, Math.min(MM_MAX, (mmState.w0 + dx) / mmState.nw));
+                } else if (e_.L) {
+                    scale = Math.max(MM_MIN, Math.min(MM_MAX, (mmState.w0 - dx) / mmState.nw));
+                    left  = mmState.left0 + mmState.w0 - scale * mmState.nw;
+                }
+                if (e_.B) {
+                    var sv = Math.max(MM_MIN, Math.min(MM_MAX, (mmState.h0 + dy) / mmState.nh));
+                    scale  = (e_.R || e_.L) ? (scale + sv) / 2 : sv;
+                } else if (e_.T) {
+                    var sv = Math.max(MM_MIN, Math.min(MM_MAX, (mmState.h0 - dy) / mmState.nh));
+                    scale  = (e_.R || e_.L) ? (scale + sv) / 2 : sv;
+                    top    = mmState.top0 + mmState.h0 - scale * mmState.nh;
+                }
+
+                page.style.left      = left  + 'px';
+                page.style.top       = top   + 'px';
+                page.style.transform = 'scale(' + scale + ')';
+            }
+        });
+
+        document.addEventListener('mouseup', function() {
+            if (!mmState) return;
+            page.style.transition = '';   // restore CSS transition
+            if (mmOverlay) { document.body.removeChild(mmOverlay); mmOverlay = null; }
+
+            var bcrW  = page.getBoundingClientRect().width;
+            var scale = page.scrollWidth ? bcrW / page.scrollWidth : MM_DEFAULT_SCALE;
+            mmSave(parseFloat(page.style.left) || 0, parseFloat(page.style.top) || 0, scale);
+            mmState = null;
+        });
+
+        // Reposition minimap when viewport is resized
+        window.addEventListener('resize', function() {
+            if (document.body.classList.contains('docs-mode')) mmApply(mmRestore(), true);
+        });
+
+        // ── end minimap ───────────────────────────────────────────────────────
+
         function openDocs(src, hash, animate) {
             docsFrame.src = src;
+            var target = mmRestore();
+
             if (animate) {
-                // Phase 1: fix position at current scale
+                // Phase 1: freeze page at its current natural position (scale 1)
+                var naturalRect = page.getBoundingClientRect();
                 document.body.classList.add('docs-fixed');
-                // Phase 2: next frame, scale down + show overlay
+                page.style.transition    = 'none';
+                page.style.left          = naturalRect.left + 'px';
+                page.style.top           = naturalRect.top  + 'px';
+                page.style.right         = 'auto';
+                page.style.bottom        = 'auto';
+                page.style.transformOrigin = 'top left';
+                page.style.transform     = 'scale(1)';
+                page.offsetHeight;        // force layout
+                page.style.transition    = '';
+
+                // Phase 2: next two frames — show overlay + animate to minimap position
                 requestAnimationFrame(function() {
                     requestAnimationFrame(function() {
                         document.body.classList.add('docs-mode');
+                        mmApply(target, false);
                     });
                 });
             } else {
-                // Instant: suppress transitions
-                page.style.transition = 'none';
                 document.body.classList.add('docs-fixed');
                 document.body.classList.add('docs-mode');
-                page.offsetHeight; // force layout with no transition
-                page.style.transition = '';
+                mmApply(target, true);
             }
             if (window.location.hash !== '#' + hash) {
                 ignoreHashChange = true;
                 window.location.hash = '#' + hash;
             }
+        }
+
+        function mmClearStyles() {
+            page.style.left = page.style.top = page.style.right = page.style.bottom = '';
+            page.style.transform = page.style.transformOrigin = page.style.transition = '';
+            page.style.cursor = '';
         }
 
         function closeDocs(animate) {
@@ -1359,6 +1563,7 @@
 
                 document.body.classList.remove('docs-mode');
                 document.body.classList.remove('docs-fixed');
+                mmClearStyles();  // clear inline minimap styles before measuring natural pos
                 var last = page.getBoundingClientRect();
 
                 // Hide surrounding UI during zoom — they'll fade in after
@@ -1402,6 +1607,7 @@
             } else {
                 document.body.classList.remove('docs-mode');
                 document.body.classList.remove('docs-fixed');
+                mmClearStyles();
             }
 
             docsFrame.src = 'about:blank';
@@ -1438,9 +1644,10 @@
             this.blur();
         });
 
-        // Click on minimized game to restore
+        // Click on minimized game to restore (suppressed if we just dragged/resized)
         page.addEventListener('click', function(e) {
             if (document.body.classList.contains('docs-mode')) {
+                if (mmDidMove) { mmDidMove = false; return; }
                 e.preventDefault();
                 e.stopPropagation();
                 closeDocs(true);
