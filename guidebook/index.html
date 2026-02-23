@@ -1507,9 +1507,11 @@ Figure 3
     var textEls = section.querySelectorAll(':scope > p, :scope > ul > li, :scope > ol > li, :scope > table td, :scope > blockquote p');
     var text = '';
     textEls.forEach(function(el) { text += el.textContent + ' '; });
-    // Also gather text from inline code elements (for single-char key searches)
+    // Also gather text from inline code elements (for single-char key searches),
+    // including any <code> in the heading itself (e.g. "Scrolls (<code>?</code>)")
     var codeEls = section.querySelectorAll(':scope > p code, :scope > ul > li code, :scope > ol > li code, :scope > table td code, :scope > blockquote p code');
     var codeText = '';
+    heading.querySelectorAll('code').forEach(function(el) { codeText += el.textContent + ' '; });
     codeEls.forEach(function(el) { codeText += el.textContent + ' '; });
     searchData.push({
       id: section.id,
