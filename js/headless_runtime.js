@@ -1153,24 +1153,17 @@ export class HeadlessDisplay {
 
     // Render message window (for testing msg_window option)
     renderMessageWindow() {
-        const MSG_WINDOW_ROWS = 3;
-        // Clear message window area
-        for (let r = 0; r < MSG_WINDOW_ROWS; r++) {
-            this.clearRow(r);
-        }
+        // Clear message window area (row 0 = topline only; rows 1-2 are part of
+        // the map in headless/tty mode, not a multi-line message buffer).
+        this.clearRow(0);
 
-        // Show last 3 messages (most recent at bottom)
-        if (!this.messages) this.messages = [];
-        const recentMessages = this.messages.slice(-MSG_WINDOW_ROWS);
-        for (let i = 0; i < recentMessages.length; i++) {
-            const msg = recentMessages[i];
-            const row = MSG_WINDOW_ROWS - recentMessages.length + i;
-            if (msg.length <= this.cols) {
-                this.putstr(0, row, msg.substring(0, this.cols));
-            } else {
-                // Truncate long messages
-                this.putstr(0, row, msg.substring(0, this.cols - 3) + '...');
-            }
+        // C ref: tty docrt() after menu close — show current topMessage only.
+        // Historical messages are NOT re-shown; the map redraws clean except for
+        // whatever message is currently pending.  Showing stale messages from
+        // this.messages would put old text on row 0 after actions like throw-from-
+        // inventory that clear topMessage before the map redraws.
+        if (this.topMessage) {
+            this.putstr(0, 0, this.topMessage.substring(0, this.cols));
         }
     }
 

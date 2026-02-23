@@ -1129,7 +1129,7 @@ function moneyCount(player) {
 // Simulate the full post-level initialization sequence.
 // Must be called after level generation and player placement.
 // C ref: allmain.c newgame() — makedog through welcome
-export function simulatePostLevelInit(player, map, depth) {
+export function simulatePostLevelInit(player, map, depth, opts = {}) {
     const role = roles[player.roleIndex];
 
     // Update makemon context with player's placed position (x/y).
@@ -1179,11 +1179,12 @@ export function simulatePostLevelInit(player, map, depth) {
 
     // Set HP/PW from role + race
     // C ref: u_init.c u_init_misc() — newhp() = role_hp + race_hp
+    // C ref: exper.c newpw() — rnd(enadv) added if role has non-zero energy advance
     const raceHP = RACE_HP[player.race] ?? 2;
     const racePW = RACE_PW[player.race] ?? 1;
     player.hp = role.startingHP + raceHP;
     player.hpmax = player.hp;
-    player.pw = role.startingPW + racePW;
+    player.pw = role.startingPW + racePW + (opts.enadv_roll || 0);
     player.pwmax = player.pw;
 
     // Set AC from worn equipment.
@@ -1222,7 +1223,10 @@ export function initFirstLevel(player, roleIndex, wizard, opts = {}) {
     const startDlevel = opts.startDlevel ?? 1;
     initrack();
     setMakemonPlayerContext(player);
-    initLevelGeneration(roleIndex, wizard);
+    const { enadv_roll } = initLevelGeneration(roleIndex, wizard, {
+        alignment: player.alignment,
+        race: player.race,
+    });
     const map = (opts.startDnum != null)
         ? makelevel(startDlevel, opts.startDnum, startDlevel,
             { dungeonAlignOverride: opts.dungeonAlignOverride })
@@ -1233,6 +1237,6 @@ export function initFirstLevel(player, roleIndex, wizard, opts = {}) {
     player.y = pos.y;
     player.dungeonLevel = startDlevel;
     player.inTutorial = !!map?.flags?.is_tutorial;
-    const initResult = simulatePostLevelInit(player, map, startDlevel);
+    const initResult = simulatePostLevelInit(player, map, startDlevel, { enadv_roll });
     return { map, initResult };
 }
