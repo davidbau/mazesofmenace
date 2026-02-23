@@ -1554,7 +1554,7 @@
         // stays anchored correctly when the window is resized.
 
         var MM_OPTS_KEY = 'menace-options';
-        var MM_EDGE = 8;     // px hit-zone for resize border
+        var MM_EDGE = 14;    // px hit-zone for resize border
         var MM_MIN  = 0.15;  // minimum scale
         var MM_MAX  = 0.90;  // maximum scale
         var MM_SNAP = 15;    // px snap zone for center/middle alignment
@@ -1680,6 +1680,8 @@
         page.addEventListener('mousedown', function(e) {
             if (!document.body.classList.contains('docs-mode')) return;
             e.preventDefault();
+            // Reclaim keyboard focus from the docs iframe so game keys work
+            window.focus();
 
             var rect  = page.getBoundingClientRect();
             var x = e.clientX - rect.left, y = e.clientY - rect.top;
@@ -1764,7 +1766,12 @@
             if (mmOverlay) { document.body.removeChild(mmOverlay); mmOverlay = null; }
 
             if (!mmDidMove) {
-                // Quick click (no drag) — restore full game
+                if (mmState.mode === 'resize') {
+                    // Quick click on border — focus already given, stay in minimap mode
+                    mmState = null;
+                    return;
+                }
+                // Quick click on interior — restore full game
                 mmState = null;
                 closeDocs(true);
                 return;
