@@ -89,7 +89,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[a]` | mhitu.c | mhitu.js | Monster-vs-hero combat. monsterAttackPlayer restructured to match hitmu() flow; hitmsg, mhitm_knockback, mhitu_adtyping dispatcher, ~30 AD_* handlers (phys/fire/cold/elec/acid/stck/plys/slee/conf/stun/blnd/drst/drli/dren/drin/slow/ston etc.) implemented with real effects; mpoisons_subj, u_slow_down, wildmiss, getmattk (attack substitution), assess_dmg, passiveum (hero passive counter); AD_SGLD→stealgold, AD_SEDU→steal, AD_RUST/CORR/DCAY→erode_obj wired; artifact spec_dbon wired into mhitu_ad_phys; gazemu/gulpmu/expels/summonmu/doseduce TODO |
 | `[~]` | minion.c | minion.js | Minion summoning: msummon, summon_minion, demon_talk, bribe, guardian angels. All 14 functions TODO (runtime gameplay) |
 | `[~]` | mklev.c | mklev.js | Level generation. Helpers moved to `mklev.js`: door/door-position (`mkroom_cmp`, `bydoor`, `okdoor`, `good_rm_wall_doorpos`, `finddpos_shift`, `finddpos`, `maybe_sdoor`), stairs/feature placement (`mkstairs`, `generate_stairs*`, `cardinal_nextto_room`, `place_niche`, `occupied`, `find_okay_roompos`, `mkfount`, `mksink`, `mkaltar`, `mkgrave`), and niche pipeline (`makeniche`, `make_niches`, `makevtele`); remaining generation pipeline still in `dungeon.js` |
-| `[~]` | mkmap.c | mkmap.js | Map generation algorithms. JS: in `sp_lev.js` |
+| `[~]` | mkmap.c | mkmap.js | Map generation algorithms now implemented in `mkmap.js` (`init_map`, `init_fill`, `get_map`, `pass_*`, `flood_fill_rm`, `join_map`, `finish_map`, `mkmap`, room cleanup/removal); `sp_lev.js` now calls `mkmap.js` directly |
 | `[~]` | mkmaze.c | mkmaze.js | Maze generation. Core helpers (`iswall*`, `is_solid`, `set_levltyp*`, `extend_spine`, `wall_cleanup`, `okay`, `maze0xy`, `maze_inbounds`) live in `mkmaze.js`; major generation path (`makemaz`/`create_maze`/`populate_maze`/`place_lregion`) currently delegated to `dungeon.js`; water plane still stubbed |
 | `[a]` | mkobj.c | mkobj.js | Object creation. mksobj/mkobj/mkcorpstat/xname/doname/weight/Is_container implemented; BUC functions exported (bless/unbless/curse/uncurse/blessorcurse/bcsign/set_bknown); erosion predicates exported (is_flammable/is_rustprone/is_rottable/is_corrodeable/is_crackable/erosion_matters); splitobj, container_weight added; ~30 functions TODO |
 | `[~]` | mkroom.c | mkroom.js | Room generation. Room predicates/helpers (`isbig`, `has_dnstairs`, `has_upstairs`, `nexttodoor`, `shrine_pos`) moved to `mkroom.js`; remaining room-generation pipeline stays in `dungeon.js` |
@@ -2627,20 +2627,20 @@ No function symbols parsed from isaac64.c.
 ### mkmap.c -> mkmap.js
 | C Line | C Function | JS Line | Alignment |
 |--------|------------|---------|-----------|
-| 331 | `finish_map` | - | Missing |
-| 153 | `flood_fill_rm` | - | Missing |
-| 55 | `get_map` | - | Missing |
-| 37 | `init_fill` | - | Missing |
-| 24 | `init_map` | - | Missing |
-| 258 | `join_map` | - | Missing |
-| 246 | `join_map_cleanup` | - | Missing |
-| 443 | `litstate_rnd` | - | Missing |
-| 451 | `mkmap` | - | Missing |
-| 68 | `pass_one` | - | Missing |
-| 124 | `pass_three` | - | Missing |
-| 101 | `pass_two` | - | Missing |
-| 412 | `remove_room` | - | Missing |
-| 379 | `remove_rooms` | - | Missing |
+| 331 | `finish_map` | mkmap.js:322 | Aligned |
+| 153 | `flood_fill_rm` | mkmap.js:112 | Aligned |
+| 55 | `get_map` | mkmap.js:44 | Aligned |
+| 37 | `init_fill` | mkmap.js:31 | Aligned |
+| 24 | `init_map` | mkmap.js:20 | Aligned |
+| 258 | `join_map` | mkmap.js:272 | Aligned |
+| 246 | `join_map_cleanup` | mkmap.js:343 | Aligned |
+| 443 | `litstate_rnd` | mkmap.js:406 | Aligned |
+| 451 | `mkmap` | mkmap.js:411 | Aligned |
+| 68 | `pass_one` | mkmap.js:51 | Aligned |
+| 124 | `pass_three` | mkmap.js:90 | Aligned |
+| 101 | `pass_two` | mkmap.js:68 | Aligned |
+| 412 | `remove_room` | mkmap.js:372 | Aligned |
+| 379 | `remove_rooms` | mkmap.js:355 | Aligned |
 
 ### mkmaze.c -> mkmaze.js
 | C Line | C Function | JS Line | Alignment |

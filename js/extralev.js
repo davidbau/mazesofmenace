@@ -8,8 +8,9 @@ import {
 } from './objects.js';
 import { CORR, D_NODOOR, OROOM, SCORR } from './config.js';
 import {
-    add_room_to_map, dodoor, fill_ordinary_room, generate_stairs, sort_rooms,
+    add_room_to_map, dodoor, fill_ordinary_room, sort_rooms,
 } from './dungeon.js';
+import { generate_stairs } from './mklev.js';
 
 export const XL_UP = 1;
 export const XL_DOWN = 2;

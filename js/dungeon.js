@@ -116,35 +116,6 @@ import {
     makevtele,
 } from './mklev.js';
 import { makeroguerooms } from './extralev.js';
-export { isbig, has_dnstairs_room, has_upstairs_room, nexttodoor, shrine_pos } from './mkroom.js';
-export {
-    mkroom_cmp,
-    bydoor,
-    okdoor,
-    good_rm_wall_doorpos,
-    finddpos_shift,
-    finddpos,
-    maybe_sdoor,
-    mkstairs,
-    generate_stairs_room_good,
-    generate_stairs_find_room,
-    generate_stairs,
-    cardinal_nextto_room,
-    place_niche,
-    occupied,
-    find_okay_roompos,
-    mkfount,
-    mksink,
-    mkaltar,
-    mkgrave,
-    makeniche,
-    make_niches,
-    makevtele,
-} from './mklev.js';
-export {
-    XL_UP, XL_DOWN, XL_LEFT, XL_RIGHT,
-    miniwalk, corr, rogue_corr, roguejoin, roguecorr, makerogueghost, makeroguerooms,
-} from './extralev.js';
 
 /**
  * Bridge function: Call themed room generation with des.* API bridge
