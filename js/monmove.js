@@ -18,7 +18,7 @@
 // - set_apparxy: displacement displacement-offset details simplified
 // - shk_move: simplified from full C shk.c; no billing/theft tracking
 // - undesirable_disp: not yet implemented (C:2279)
-// - distfleeck: brave_gremlin roll consumed but not applied (C:541)
+// - distfleeck: flees_light (gremlin+artifact), in_your_sanctuary not implemented
 // - mon_allowflags: ALLOW_DIG deferred (needs wielded pick tracking)
 // - mon_allowflags: Conflict ALLOW_U not implemented
 
@@ -197,6 +197,76 @@ export function monflee(mon, fleetime, first, fleemsg, player, display, fov) {
         mon.flee = true;
     }
     mon_track_clear(mon);
+}
+
+// ========================================================================
+// distfleeck — C ref: monmove.c:534-568
+// ========================================================================
+
+// C ref: monmove.c:534 — determine whether a monster is in range, nearby,
+// and/or scared of something at or near the hero's position.
+// Sets inrange (within BOLT_LIM), nearby (adjacent), and scared (triggers flee).
+// Always consumes rn2(5) for bravegremlin check.
+function distfleeck(mon, map, player, display, fov) {
+    const bravegremlin = (rn2(5) === 0);
+
+    const targetX = Number.isInteger(mon.mux) ? mon.mux : player.x;
+    const targetY = Number.isInteger(mon.muy) ? mon.muy : player.y;
+    const inrange = dist2(mon.mx, mon.my, targetX, targetY) <= (BOLT_LIM * BOLT_LIM);
+    const nearby = inrange && monnear(mon, targetX, targetY);
+
+    let scared = 0;
+    if (nearby) {
+        // C ref: monmove.c:552-558 — displaced image vs real position
+        const monCanSee = (mon.mcansee !== false) && !mon.blind;
+        const seescaryX = monCanSee ? player.x : targetX;
+        const seescaryY = monCanSee ? player.y : targetY;
+
+        const sawscary = onscary(map, seescaryX, seescaryY, mon);
+        // INCOMPLETE: flees_light (gremlin+artifact) not fully implemented
+        // C ref: monmove.c:562 — flees_light(mtmp) && !bravegremlin
+        // INCOMPLETE: in_your_sanctuary not implemented (C:563)
+        if (sawscary) {
+            scared = 1;
+            monflee(mon, rnd(rn2(7) ? 10 : 100), true, true, player, display, fov);
+        }
+    }
+
+    monmoveTrace('distfleeck',
+        `step=${monmoveStepLabel(map)}`,
+        `id=${mon.m_id ?? '?'}`,
+        `mndx=${mon.mndx ?? '?'}`,
+        `name=${mon.type?.name || mon.name || '?'}`,
+        `pos=(${mon.mx},${mon.my})`,
+        `roll=${bravegremlin ? 0 : 1}`);
+
+    return { inrange, nearby, scared };
+}
+
+// ========================================================================
+// mon_regen — C ref: monmove.c:308-321
+// ========================================================================
+
+// C ref: monmove.c:308 — regenerate monster HP, decrement mspec_used,
+// and handle digesting (meating countdown).
+export function mon_regen(mon, digest_meal, moves) {
+    const mdat = mon.type || {};
+    // C: every 20 turns or if monster regenerates naturally
+    if (moves % 20 === 0 || mdat.regen) {
+        if ((mon.mhp ?? 0) < (mon.mhpmax ?? 0)) {
+            mon.mhp = (mon.mhp ?? 0) + 1;
+        }
+    }
+    if (mon.mspec_used) {
+        mon.mspec_used--;
+    }
+    if (digest_meal) {
+        if (mon.meating) {
+            mon.meating--;
+            // C ref: monmove.c:319 — finish_meating when countdown reaches 0
+            // INCOMPLETE: finish_meating not fully ported
+        }
+    }
 }
 
 // ========================================================================
@@ -743,15 +813,8 @@ function dochug(mon, map, player, display, fov, game = null) {
     // C ref: monmove.c:779 — set_apparxy after flee checks
     set_apparxy(mon, map, player);
 
-    // distfleeck: always rn2(5) for every non-sleeping monster
-    const braveGremlinRoll = rn2(5);
-    monmoveTrace('distfleeck',
-        `step=${monmoveStepLabel(map)}`,
-        `id=${mon.m_id ?? '?'}`,
-        `mndx=${mon.mndx ?? '?'}`,
-        `name=${mon.type?.name || mon.name || '?'}`,
-        `pos=(${mon.mx},${mon.my})`,
-        `roll=${braveGremlinRoll}`);
+    // C ref: monmove.c:792 — distfleeck: determine range, proximity, fear
+    let { inrange, nearby, scared } = distfleeck(mon, map, player, display, fov);
 
     // C ref: monmove.c:795-803 — find_defensive / find_misc
     // Monsters check inventory for defensive or misc items to use.
@@ -769,23 +832,16 @@ function dochug(mon, map, player, display, fov, game = null) {
     if (is_mind_flayer(mdat) && !rn2(20)) {
         mind_blast(mon, map, player, display, fov);
         set_apparxy(mon, map, player);
-        // C recalculates distfleeck here; consume the rn2(5)
-        const mindBlastBraveRoll = rn2(5);
-        monmoveTrace('distfleeck-mindblast',
-            `step=${monmoveStepLabel(map)}`,
-            `id=${mon.m_id ?? '?'}`,
-            `roll=${mindBlastBraveRoll}`);
+        // C ref: monmove.c:835 — recalculate distfleeck after mind_blast
+        ({ inrange, nearby, scared } = distfleeck(mon, map, player, display, fov));
     }
 
     const targetX = Number.isInteger(mon.mux) ? mon.mux : player.x;
     const targetY = Number.isInteger(mon.muy) ? mon.muy : player.y;
-    const BOLT_LIM_LOCAL = 8;
-    const inrange = dist2(mon.mx, mon.my, targetX, targetY) <= (BOLT_LIM_LOCAL * BOLT_LIM_LOCAL);
-    const nearby = inrange && monnear(mon, targetX, targetY);
     const isWanderer = !!(mon.type && mon.type.flags2 & M2_WANDER);
     const monCanSee = (mon.mcansee !== false) && !mon.blind;
 
-    let scaredNow = false;
+    let scaredNow = !!scared;
     monmovePhase3Trace(
         `step=${monmoveStepLabel(map)}`,
         `id=${mon.m_id ?? '?'}`,
@@ -803,23 +859,14 @@ function dochug(mon, map, player, display, fov, game = null) {
         `mcansee=${monCanSee ? 1 : 0}`,
         `peace=${mon.peaceful ? 1 : 0}`,
     );
-    // Short-circuit OR matching C's evaluation order
+    // Short-circuit OR matching C's evaluation order (C ref: monmove.c:883-888)
     let phase3Cond = !nearby;
     if (phase3Cond) monmovePhase3Trace(`step=${monmoveStepLabel(map)}`, `id=${mon.m_id ?? '?'}`, 'gate=!nearby');
     if (!phase3Cond) phase3Cond = !!(mon.flee);
     if (phase3Cond && mon.flee) monmovePhase3Trace(`step=${monmoveStepLabel(map)}`, `id=${mon.m_id ?? '?'}`, 'gate=mflee');
-    if (!phase3Cond) {
-        const seescaryX = monCanSee ? player.x : targetX;
-        const seescaryY = monCanSee ? player.y : targetY;
-        const sawscary = onscary(map, seescaryX, seescaryY, mon);
-        // INCOMPLETE: flees_light (gremlin+artifact) not implemented (C:555)
-        // INCOMPLETE: in_your_sanctuary (temple) not implemented (C:564)
-        if (nearby && sawscary) {
-            phase3Cond = true;
-            scaredNow = true;
-            monflee(mon, rnd(rn2(7) ? 10 : 100), true, true, player, display, fov);
-            monmovePhase3Trace(`step=${monmoveStepLabel(map)}`, `id=${mon.m_id ?? '?'}`, 'gate=scared');
-        }
+    if (!phase3Cond && scared) {
+        phase3Cond = true;
+        monmovePhase3Trace(`step=${monmoveStepLabel(map)}`, `id=${mon.m_id ?? '?'}`, 'gate=scared');
     }
     if (!phase3Cond) phase3Cond = !!(mon.confused);
     if (phase3Cond && mon.confused) monmovePhase3Trace(`step=${monmoveStepLabel(map)}`, `id=${mon.m_id ?? '?'}`, 'gate=confused');
@@ -922,15 +969,8 @@ function dochug(mon, map, player, display, fov, game = null) {
             }
             if (trapDied) return;
         }
-        // distfleeck recalc after m_move
-        const postMoveBraveRoll = rn2(5);
-        monmoveTrace('distfleeck-postmove',
-            `step=${monmoveStepLabel(map)}`,
-            `id=${mon.m_id ?? '?'}`,
-            `mndx=${mon.mndx ?? '?'}`,
-            `name=${mon.type?.name || mon.name || '?'}`,
-            `pos=(${mon.mx},${mon.my})`,
-            `roll=${postMoveBraveRoll}`);
+        // C ref: monmove.c:919 — recalculate distfleeck after m_move
+        ({ inrange, nearby, scared } = distfleeck(mon, map, player, display, fov));
 
         // C ref: monmove.c:949-953 — after movement, ranged attack check
         if (mmoved && !mon.dead) {
@@ -953,12 +993,8 @@ function dochug(mon, map, player, display, fov, game = null) {
     // cf. mhitu.c mattacku() — both melee and ranged attacks are dispatched
     // through the attack table.  range2 determines which attack types fire.
     if (phase4Allowed && !mon.peaceful && !mon.flee && !mon.dead) {
-        const targetX2 = Number.isInteger(mon.mux) ? mon.mux : player.x;
-        const targetY2 = Number.isInteger(mon.muy) ? mon.muy : player.y;
-        const inrange2 = dist2(mon.mx, mon.my, targetX2, targetY2) <= (BOLT_LIM_LOCAL * BOLT_LIM_LOCAL);
-        const nearby2 = inrange2 && monnear(mon, targetX2, targetY2);
-        if (inrange2) {
-            if (nearby2) {
+        if (inrange) {
+            if (nearby) {
                 // C ref: monmove.c:938-959 — MMOVE_MOVED returns 0 (skip Phase 4
                 // melee), but MMOVE_NOTHING/MMOVE_NOMOVES fall through to Phase 4.
                 // !phase3Cond: monster never entered movement (was already adjacent).

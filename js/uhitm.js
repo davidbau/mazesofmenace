@@ -5,7 +5,7 @@
 import { rn2, rnd, d, c_d } from './rng.js';
 import { exercise } from './attrib_exercise.js';
 import { corpse_chance } from './mon.js';
-import { A_DEX } from './config.js';
+import { A_STR, A_DEX } from './config.js';
 import {
     G_FREQ, G_NOCORPSE, MZ_TINY, MZ_HUMAN, MZ_LARGE, M2_COLLECT,
     S_ZOMBIE, S_MUMMY, S_VAMPIRE, S_WRAITH, S_LICH, S_GHOST, S_DEMON, S_KOP,
@@ -26,7 +26,7 @@ import {
     POT_RESTORE_ABILITY, POT_GAIN_ABILITY,
 } from './objects.js';
 import { mkobj, mkcorpstat, RANDOM_CLASS, next_ident, xname } from './mkobj.js';
-import { hitval as weapon_hitval, dmgval } from './weapon.js';
+import { hitval as weapon_hitval, dmgval, abon, dbon, weapon_hit_bonus, weapon_dam_bonus } from './weapon.js';
 import {
     nonliving, monDisplayName, is_undead, is_demon,
     magic_negation,
@@ -102,10 +102,11 @@ function mon_maybe_unparalyze(mon) {
 function find_roll_to_hit(player, mtmp, aatyp, weapon) {
     // cf. uhitm.c:375 — base formula:
     //   tmp = 1 + abon() + find_mac(mtmp) + u.uhitinc
-    //         + (sgn(Luck)*((abs(Luck)+2)/3)) + u.ulevel
-    const abon = player.strToHit + (player.level < 3 ? 1 : 0)
-        + dexToHit(player.attributes?.[A_DEX] ?? 10);
-    let tmp = 1 + abon + (mtmp.mac ?? (mtmp.type?.ac ?? 10))
+    //         + Luck_bonus + u.ulevel
+    const str = player.attributes?.[A_STR] ?? 10;
+    const dex = player.attributes?.[A_DEX] ?? 10;
+    let tmp = 1 + abon(str, dex, player.level)
+        + (mtmp.mac ?? (mtmp.type?.ac ?? 10))
         + (player.uhitinc || 0) // rings of increase accuracy etc.
         + luckBonus(player.luck || 0)
         + player.level;
@@ -127,7 +128,7 @@ function find_roll_to_hit(player, mtmp, aatyp, weapon) {
     if (aatyp === AT_WEAP || aatyp === AT_CLAW) {
         if (weapon) tmp += weapon_hitval(weapon, mtmp);
         else tmp += weaponEnchantment(weapon); // fallback for bare-handed
-        // TODO: weapon_hit_bonus(weapon) — skill-based bonus
+        tmp += weapon_hit_bonus(weapon); // skill-based (stub: returns 0)
     }
 
     return tmp;
@@ -803,14 +804,7 @@ function luckBonus(luck) {
     return Math.sign(luck) * Math.floor((Math.abs(luck) + 2) / 3);
 }
 
-// cf. weapon.c abon() — DEX component of to-hit bonus.
-function dexToHit(dex) {
-    if (dex < 4) return -3;
-    if (dex < 6) return -2;
-    if (dex < 8) return -1;
-    if (dex < 14) return 0;
-    return dex - 14;
-}
+// cf. weapon.c abon() — now fully ported as abon() in weapon.js
 
 // cf. uhitm.c hmon_hitmon_potion() -> potion.c potionhit()
 function consumeMeleePotion(player, weapon) {
@@ -1031,32 +1025,25 @@ export function playerAttackMonster(player, monster, display, map) {
     }
 
     // Hit! Calculate damage
-    // cf. weapon.c:265 dmgval() -- rnd(oc_wsdam) for small monsters
+    // cf. uhitm.c hmon_hitmon() → hmon_hitmon_weapon_melee() / weapon_ranged / barehands
     let damage = 0;
     const rangedMelee = usesRangedMeleeDamage(player.weapon);
-    const wsdam = weaponDamageSides(player.weapon, monster);
     if (player.weapon && rangedMelee) {
-        // cf. uhitm.c hmon_hitmon_weapon_ranged() base damage.
+        // cf. uhitm.c:884 hmon_hitmon_weapon_ranged() — rnd(2) base
         damage = rnd(2);
-    } else if (player.weapon && wsdam > 0) {
-        damage = rnd(wsdam);
-        damage += weaponEnchantment(player.weapon);
-        // cf. weapon.c dmgval() — blessed weapon bonus vs undead/demons.
-        if (player.weapon.blessed && isUndeadOrDemon(monster.type)) {
-            damage += rnd(4);
-        }
-    } else if (player.weapon && player.weapon.damage) {
-        damage = c_d(player.weapon.damage[0], player.weapon.damage[1]);
-        damage += player.weapon.enchantment || 0;
+    } else if (player.weapon) {
+        // cf. uhitm.c:919 hmon_hitmon_weapon_melee() → dmgval()
+        damage = dmgval(player.weapon, monster);
     } else {
         // Bare-handed combat
-        // cf. uhitm.c -- barehand damage is 1d2 + martial arts bonuses
+        // cf. uhitm.c:837 hmon_hitmon_barehands() — 1d2 base + martial arts
         damage = rnd(2);
     }
 
-    // Add strength bonus
+    // cf. uhitm.c:1414 hmon_hitmon_dmg_recalc() — add strength and skill bonuses
     if (!rangedMelee) {
-        damage += player.strDamage;
+        damage += dbon(player.attributes?.[A_STR] ?? 10);
+        damage += weapon_dam_bonus(player.weapon); // skill-based (stub: returns 0)
     }
 
     // Minimum 1 damage on a hit

@@ -37,9 +37,16 @@
 //   +2 if blessed vs undead/demon, +2 if spear vs kebabable monsters,
 //   +4 trident vs swimmer in water (+2 in eel/snake territory), +2 if pick vs xorn/earth elem,
 //   spec_abon() for artifacts.
-import { objectData, WEAPON_CLASS } from './objects.js';
+import { objectData, WEAPON_CLASS, CREAM_PIE,
+         IRON_CHAIN, CROSSBOW_BOLT, MORNING_STAR, PARTISAN, RUNESWORD,
+         ELVEN_BROADSWORD, BROADSWORD, FLAIL, RANSEUR, VOULGE,
+         ACID_VENOM, HALBERD, SPETUM, BATTLE_AXE, BARDICHE, TRIDENT,
+         TSURUGI, DWARVISH_MATTOCK, TWO_HANDED_SWORD,
+         MACE, SILVER_MACE, WAR_HAMMER,
+         BILL_GUISARME, GUISARME, LUCERN_HAMMER,
+       } from './objects.js';
 import { rnd, d } from './rng.js';
-import { mon_hates_blessings, mon_hates_silver } from './mondata.js';
+import { mon_hates_blessings, mon_hates_silver, thick_skinned } from './mondata.js';
 import { MZ_LARGE, S_EEL, S_SNAKE, S_XORN, S_DRAGON, S_JABBERWOCK,
          S_NAGA, S_WORM_TAIL } from './monsters.js';
 
@@ -99,37 +106,79 @@ function isKebabable(mlet) {
 }
 
 // cf. weapon.c:216 — dmgval(otmp, mon): damage of weapon vs. monster
-// Returns base damage roll. Does NOT add spe (that's done by caller).
-// Missing: thick_skinned, shade, heavy iron ball, silver, artifact, erosion.
 export function dmgval(otmp, mon) {
     if (!otmp) return 0;
-    const info = objectData[otmp.otyp];
+    const otyp = otmp.otyp;
+    const info = objectData[otyp];
     if (!info) return 0;
+    if (otyp === CREAM_PIE) return 0;
+
     const ptr = mon?.type || mon?.data || {};
     const isLarge = (ptr.size ?? 0) >= MZ_LARGE;
-    const base = isLarge ? (info.ldam || 0) : (info.sdam || 0);
-    let tmp = base > 0 ? rnd(base) : 0;
+    let tmp = 0;
 
-    // cf. weapon.c:231-247 — weapon type bonus for big/small
-    // Simplified: we don't add weapon-type extra dice yet
+    // cf. weapon.c:225-296 — base damage + weapon-type bonus dice
+    if (isLarge) {
+        if (info.ldam) tmp = rnd(info.ldam);
+        // cf. weapon.c:228-262 — large-monster bonus dice by weapon type
+        switch (otyp) {
+        case IRON_CHAIN: case CROSSBOW_BOLT: case MORNING_STAR:
+        case PARTISAN: case RUNESWORD: case ELVEN_BROADSWORD: case BROADSWORD:
+            tmp++; break;
+        case FLAIL: case RANSEUR: case VOULGE:
+            tmp += rnd(4); break;
+        case ACID_VENOM: case HALBERD: case SPETUM:
+            tmp += rnd(6); break;
+        case BATTLE_AXE: case BARDICHE: case TRIDENT:
+            tmp += d(2, 4); break;
+        case TSURUGI: case DWARVISH_MATTOCK: case TWO_HANDED_SWORD:
+            tmp += d(2, 6); break;
+        }
+    } else {
+        if (info.sdam) tmp = rnd(info.sdam);
+        // cf. weapon.c:266-295 — small-monster bonus dice by weapon type
+        switch (otyp) {
+        case IRON_CHAIN: case CROSSBOW_BOLT: case MACE: case SILVER_MACE:
+        case WAR_HAMMER: case FLAIL: case SPETUM: case TRIDENT:
+            tmp++; break;
+        case BATTLE_AXE: case BARDICHE: case BILL_GUISARME: case GUISARME:
+        case LUCERN_HAMMER: case MORNING_STAR: case RANSEUR:
+        case BROADSWORD: case ELVEN_BROADSWORD: case RUNESWORD: case VOULGE:
+            tmp += rnd(4); break;
+        case ACID_VENOM:
+            tmp += rnd(6); break;
+        }
+    }
 
-    // cf. weapon.c:258 — spe bonus for weapons (clamped >= 0)
+    // cf. weapon.c:297-302 — spe bonus for weapons (negative must not go below 0)
     const Is_weapon = (info.oc_class === WEAPON_CLASS || info.weptool);
-    if (Is_weapon) tmp += Math.max(0, otmp.spe || 0);
+    if (Is_weapon) {
+        tmp += (otmp.spe || 0);
+        if (tmp < 0) tmp = 0;
+    }
 
-    // cf. weapon.c:279-281 — blessed vs undead/demon (+d4)
-    if (mon && otmp.blessed && mon_hates_blessings(mon))
-        tmp += d(1, 4);
+    // cf. weapon.c:304-306 — thick-skinned immunity to soft weapons
+    if (info.material !== undefined && info.material <= 7 /* LEATHER */
+        && thick_skinned(ptr))
+        tmp = 0;
+    // cf. weapon.c:307-308 — shade immunity (not implemented: shade_glare)
 
-    // cf. weapon.c:283-285 — axe vs wood golem (+d4)
-    if (info.sub === P_AXE && ptr.body === 'wood')
-        tmp += d(1, 4);
+    // cf. weapon.c:322-342 — weapon vs monster type damage bonuses
+    if (Is_weapon || info.oc_class === 1 /* GEM */ || info.oc_class === 9 /* BALL */
+        || info.oc_class === 10 /* CHAIN */) {
+        let bonus = 0;
+        if (mon && otmp.blessed && mon_hates_blessings(mon))
+            bonus += rnd(4);
+        if (info.sub === P_AXE && ptr.body === 'wood')
+            bonus += rnd(4);
+        if (mon && info.material === 14 /* SILVER */ && mon_hates_silver(mon))
+            bonus += rnd(20);
+        // cf. weapon.c:333-334 — artifact light vs light-hating (not implemented)
+        // cf. weapon.c:338-339 — artifact double-damage adjustment (not implemented)
+        tmp += bonus;
+    }
 
-    // cf. weapon.c:287-296 — silver vs silver-hating (+d20)
-    if (mon && info.material === 14 /* SILVER */ && mon_hates_silver(mon))
-        tmp += rnd(20);
-
-    // cf. weapon.c:307-310 — erosion subtracted (min 1)
+    // cf. weapon.c:344-353 — erosion subtraction (min 1 if tmp > 0)
     // TODO: greatest_erosion() subtraction
 
     return Math.max(tmp, 0);
@@ -196,16 +245,42 @@ export function dmgval(otmp, mon) {
 // STR component: <6→-2, <8→-1, <17→0, ≤18/50→+1, <18/100→+2, else→+3; +1 if ulevel<3.
 // DEX component: <4→-3, <6→-2, <8→-1, <14→0, else→+(dex-14).
 // Polymorphed: returns adj_lev(youmonst.data) - 3 instead.
-// Partially implemented as player.strToHit (player.js:532); JS version
-//   lacks full STR18 encoding and DEX component; credited to attrib.c.
-// TODO: weapon.c:950 — abon(): full attack bonus (STR + DEX)
+// Also available as player.strToHit + dexToHit() (split components).
+export function abon(str, dex, level) {
+    // C ref: weapon.c:957-968 — STR component
+    let sbon;
+    if (str < 6) sbon = -2;
+    else if (str < 8) sbon = -1;
+    else if (str < 17) sbon = 0;
+    else if (str <= 18) sbon = 1;  // JS: no 18/xx encoding, treat ≤18 as 18/50
+    else if (str < 22) sbon = 2;   // mapped from STR18(100)
+    else sbon = 3;
+
+    // C ref: weapon.c:972 — low-level bonus
+    sbon += (level < 3) ? 1 : 0;
+
+    // C ref: weapon.c:974-983 — DEX component
+    if (dex < 4) return sbon - 3;
+    if (dex < 6) return sbon - 2;
+    if (dex < 8) return sbon - 1;
+    if (dex < 14) return sbon;
+    return sbon + dex - 14;
+}
 
 // cf. weapon.c:988 — dbon(): hero's damage bonus from STR
 // <6→-1, <16→0, <18→+1, ==18→+2, ≤18/75→+3, ≤18/90→+4, <18/100→+5, else→+6.
-// Polymorphed: returns 0.
-// Partially implemented as player.strDamage (player.js:544); lacks STR18 encoding;
-//   credited to attrib.c.
-// TODO: weapon.c:988 — dbon(): full damage bonus (STR)
+// Also available as player.strDamage (split component).
+export function dbon(str) {
+    // C ref: weapon.c:995-1011 — STR damage bonus table
+    if (str < 6) return -1;
+    if (str < 16) return 0;
+    if (str < 18) return 1;
+    if (str === 18) return 2;
+    if (str <= 20) return 3;  // mapped from STR18(75)
+    if (str <= 22) return 4;  // mapped from STR18(90)
+    if (str < 25) return 5;   // mapped from STR18(100)
+    return 6;
+}
 
 // cf. weapon.c:1014 [static] — finish_towel_change(obj, newspe): apply towel wetness change
 // Clamps spe to [0,7]; if wielded, updates u.unweapon; calls update_inventory().
@@ -309,14 +384,22 @@ export function dmgval(otmp, mon) {
 // Two-weapon: takes min of twoweap skill and weapon skill; -9/-7/-5/-3.
 // Bare-handed/martial arts: scales with skill level (×2 for martial).
 // Riding penalty: -2/-1/0/0 for unskilled/basic/skilled/expert; -2 extra for twoweap.
-// TODO: weapon.c:1540 — weapon_hit_bonus(): skill-based to-hit bonus
+// STUB: Returns 0 (P_BASIC equivalent) — requires P_SKILL system to implement fully.
+export function weapon_hit_bonus(weapon) {
+    // TODO: implement once skill system is ported (skill_init, use_skill, etc.)
+    return 0;
+}
 
 // cf. weapon.c:1639 — weapon_dam_bonus(weapon): damage bonus from weapon skill
 // P_NONE: 0. Weapon skill: -2/0/+1/+2 for unskilled/basic/skilled/expert.
 // Two-weapon: -3/-1/0/+1 for unskilled through expert.
 // Bare-handed/martial arts: scales with skill (×3 for martial).
 // Riding bonus: +1/+2 for skilled/expert (not for two-weapon).
-// TODO: weapon.c:1639 — weapon_dam_bonus(): skill-based damage bonus
+// STUB: Returns 0 (P_BASIC equivalent) — requires P_SKILL system to implement fully.
+export function weapon_dam_bonus(weapon) {
+    // TODO: implement once skill system is ported (skill_init, use_skill, etc.)
+    return 0;
+}
 
 // cf. weapon.c:1733 — skill_init(class_skill): initialize weapon skills for new game
 // Resets all skills to restricted; sets P_BASIC for weapons in starting inventory

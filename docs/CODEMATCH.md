@@ -508,7 +508,7 @@ This section is generated from source symbol tables and includes function rows f
 | 408 | `change_luck` | - | Missing |
 | 815 | `check_innate_abil` | - | Missing |
 | 595 | `exerchk` | - | Missing |
-| 486 | `exercise` | - | Missing |
+| 486 | `exercise` | attrib_exercise.js | Partial — rn2(19) exercise call, A_DEX and A_STR. Missing: full exercise tracking (AEXE array), exerchk periodic processing |
 | 518 | `exerper` | - | Missing |
 | 1265 | `extremeattr` | - | Missing |
 | 902 | `from_what` | - | Missing |
@@ -1376,7 +1376,7 @@ This section is generated from source symbol tables and includes function rows f
 |--------|------------|---------|-----------|
 | 1358 | `abuse_dog` | - | Missing |
 | 934 | `discard_migrations` | - | Missing |
-| 991 | `dogfood` | - | Missing |
+| 991 | `dogfood` | dog.js:124 | Partial — food type classification for pets. May differ in edge cases |
 | 35 | `free_edog` | - | Missing |
 | 45 | `initedog` | - | Missing |
 | 764 | `keep_mon_accessible` | - | Missing |
@@ -1403,13 +1403,13 @@ This section is generated from source symbol tables and includes function rows f
 | 1394 | `can_reach_location` | - | Missing |
 | 1377 | `could_reach_item` | - | Missing |
 | 146 | `cursed_object_at` | - | Missing |
-| 219 | `dog_eat` | - | Missing |
+| 219 | `dog_eat` | dogmove.js:229 | Partial — nutrition, tameness, split food, eat message, apport. Has spurious obj_resists call. Missing: devour, killer bee jelly, rust monster, distant_name side-effects |
 | 477 | `dog_goal` | - | Missing |
-| 356 | `dog_hunger` | - | Missing |
-| 394 | `dog_invent` | - | Missing |
-| 992 | `dog_move` | - | Missing |
-| 157 | `dog_nutrition` | - | Missing |
-| 342 | `dog_starve` | - | Missing |
+| 356 | `dog_hunger` | dogmove.js:319 | Partial — starvation check, hunger confusion, mhpmax penalty. Missing: beg(), couldsee for message, stop_occupation |
+| 394 | `dog_invent` | dogmove.js:535 | Partial — drop and pickup paths. Missing: some pickup edge cases |
+| 992 | `dog_move` | dogmove.js:851 | Partial — core movement loop, combat, mfndpos, distfleeck. Missing: best_target, score_targ, find_friends, wantdoor |
+| 157 | `dog_nutrition` | dogmove.js:114 | Partial — base nutrition from oc_nutrition and dog_eat_time. Missing: some food type adjustments |
+| 342 | `dog_starve` | dogmove.js:296 | Partial — death message, mondead. Missing: usteed, Hallucination |
 | 709 | `find_friends` | - | Missing |
 | 665 | `find_targ` | - | Missing |
 | 1463 | `finish_meating` | - | Missing |
@@ -3034,9 +3034,9 @@ No function symbols parsed from isaac64.c.
 | 2184 | `closed_door` | - | Missing |
 | 1248 | `count_webbing_walls` | - | Missing |
 | 2173 | `dissolve_bars` | - | Missing |
-| 534 | `distfleeck` | - | Missing |
+| 534 | `distfleeck` | monmove.js | Implemented — rn2(5) bravegremlin, inrange/nearby from dist2, onscary scared check, monflee call. Missing: flees_light, in_your_sanctuary |
 | 328 | `disturb` | - | Missing |
-| 691 | `dochug` | - | Missing |
+| 691 | `dochug` | monmove.js:672 | Partial — core turn logic, dog_move dispatch, combat. Missing: many special cases |
 | 205 | `dochugw` | - | Missing |
 | 376 | `find_pmmonst` | - | Missing |
 | 425 | `gelcube_digests` | - | Missing |
@@ -3052,22 +3052,22 @@ No function symbols parsed from isaac64.c.
 | 134 | `m_can_break_boulder` | - | Missing |
 | 1112 | `m_digweapon_check` | - | Missing |
 | 651 | `m_everyturn_effect` | - | Missing |
-| 1717 | `m_move` | - | Missing |
-| 2091 | `m_move_aggress` | - | Missing |
+| 1717 | `m_move` | monmove.js:1145 | Partial — core movement, fleeing, mfndpos integration. Missing: many special cases |
+| 2091 | `m_move_aggress` | monmove.js:1379 | Partial — aggression checks on movement |
 | 673 | `m_postmove_effect` | - | Missing |
 | 1334 | `m_search_items` | - | Missing |
 | 1273 | `maybe_spin_web` | - | Missing |
 | 55 | `mb_trapped` | - | Missing |
 | 584 | `mind_blast` | monmove.js | Partial — RNG-faithful: rn2(20) gate, hero lock-on (sensemon/Blind_telepat/rn2(10)), rnd(15) damage, monster loop with telepathic/rn2(2)/rn2(10)/rnd(15); losehp stubbed, hero unhide stubbed |
-| 308 | `mon_regen` | - | Missing |
-| 79 | `mon_track_add` | - | Missing |
-| 90 | `mon_track_clear` | - | Missing |
+| 308 | `mon_regen` | monmove.js | Implemented — HP regen every 20 turns, mspec_used decrement, meating countdown. Missing: finish_meating |
+| 79 | `mon_track_add` | monmove.js:154 | Implemented — ring buffer push |
+| 90 | `mon_track_clear` | monmove.js:162 | Implemented — zero all entries |
 | 1040 | `mon_would_consume_item` | - | Missing |
 | 1003 | `mon_would_take_item` | - | Missing |
 | 107 | `mon_yells` | - | Missing |
-| 463 | `monflee` | - | Missing |
-| 97 | `monhaskey` | - | Missing |
-| 242 | `onscary` | - | Missing |
+| 463 | `monflee` | monmove.js:173 | Implemented — flee timer, ustuck release, flee messages. Missing: Vrock gas cloud, flees_light message, M_AP_FURNITURE/OBJECT check |
+| 97 | `monhaskey` | monmove.js:270 | Implemented — skeleton key, lock pick, credit card |
+| 242 | `onscary` | mon.js:139 | Partial — immunity checks (iswiz, rider, angel, human, unique, shk, priest), SCR_SCARE_MONSTER, Elbereth. Missing: altar/vampire, blind/minotaur/Gehennom, Displaced |
 | 1459 | `postmov` | - | Missing |
 | 363 | `release_hero` | - | Missing |
 | 2201 | `set_apparxy` | monmove.js | Partial — pet/ustuck/position early-return, notseen/displaced displacement, rn2(3)/rn2(4) gotu, offset loop faithful; Approximations: missing Underwater check, missing Xorn smell, loop exit omits passes_walls/can_ooze/can_fog, Displaced detected via cloak otyp not intrinsic |
@@ -5403,7 +5403,7 @@ No function symbols parsed from isaac64.c.
 | 4927 | `end_engulf` | - | Missing |
 | 125 | `erode_armor` | - | Missing |
 | 4869 | `explum` | - | Missing |
-| 364 | `find_roll_to_hit` | uhitm.js | Partial — base formula (abon, find_mac, luck, level), monster state bonuses, hitval(oc_hitbon), weaponEnchantment. Missing: weapon_hit_bonus (skill), near_capacity, u.utrap, Monk bonus, Elf vs orc |
+| 364 | `find_roll_to_hit` | uhitm.js | Partial — abon() (STR+DEX+level), find_mac, luck, hitval, weapon_hit_bonus (stub). Missing: near_capacity, u.utrap, Monk bonus, Elf vs orc |
 | 1941 | `first_weapon_hit` | - | Missing |
 | 6319 | `flash_hits_mon` | - | Missing |
 | 431 | `force_attack` | - | Missing |
@@ -5580,20 +5580,20 @@ No function symbols parsed from isaac64.c.
 ### weapon.c -> weapon.js
 | C Line | C Function | JS Line | Alignment |
 |--------|------------|---------|-----------|
-| 950 | `abon` | - | Missing |
+| 950 | `abon` | weapon.js | Implemented — STR component (<6→-2 through 22+→3), level<3 bonus, DEX component. No STR18/xx encoding (JS uses plain integers) |
 | 1224 | `add_skills_to_menu` | - | Missing |
 | 1432 | `add_weapon_skill` | - | Missing |
 | 520 | `autoreturn_weapon` | - | Missing |
 | 1151 | `can_advance` | - | Missing |
 | 1168 | `could_advance` | - | Missing |
-| 988 | `dbon` | - | Missing |
-| 216 | `dmgval` | - | Missing |
+| 988 | `dbon` | weapon.js | Implemented — STR damage bonus table. No STR18/xx encoding (JS uses plain integers) |
+| 216 | `dmgval` | weapon.js | Partial — base roll, weapon-type bonus dice (large/small tables), spe, thick_skinned, blessed +d4, silver +d20, axe vs wood +d4. Missing: shade, heavy iron ball, erosion, artifact light, spec_dbon |
 | 1471 | `drain_weapon_skill` | - | Missing |
 | 1062 | `dry_a_towel` | - | Missing |
 | 1324 | `enhance_weapon_skill` | - | Missing |
 | 1015 | `finish_towel_change` | - | Missing |
 | 76 | `give_may_advance_msg` | - | Missing |
-| 149 | `hitval` | - | Missing |
+| 149 | `hitval` | weapon.js | Implemented — spe, oc_hitbon, blessed vs undead/demon, spear vs kebabable, trident vs swimmer, pick vs earthen. Missing: spec_abon (artifacts) |
 | 1448 | `lose_weapon_skill` | - | Missing |
 | 801 | `mon_wield_item` | - | Missing |
 | 680 | `monmightthrowwep` | - | Missing |
@@ -5615,9 +5615,9 @@ No function symbols parsed from isaac64.c.
 | 1409 | `unrestrict_weapon_skill` | - | Missing |
 | 1419 | `use_skill` | - | Missing |
 | 1527 | `uwep_skill_type` | - | Missing |
-| 1639 | `weapon_dam_bonus` | - | Missing |
+| 1639 | `weapon_dam_bonus` | weapon.js | Stub — returns 0 (P_BASIC equivalent). Requires P_SKILL system |
 | 90 | `weapon_descr` | - | Missing |
-| 1540 | `weapon_hit_bonus` | - | Missing |
+| 1540 | `weapon_hit_bonus` | weapon.js | Stub — returns 0 (P_BASIC equivalent). Requires P_SKILL system |
 | 1512 | `weapon_type` | - | Missing |
 | 1033 | `wet_a_towel` | - | Missing |
 
