@@ -271,9 +271,8 @@ export function renderOptionsMenu(page, showHelp, flags) {
 
     // Footer - page indicator on current row (exactly 20 chars)
     const totalPages = getTotalPages(showHelp);
-    const navHint = totalPages > 1 ? '  (use > < to page)' : '';
-    screen[row] = ' (' + normalizedPage + ' of ' + totalPages + ')' + navHint;
-    attrs[row] = '0'.repeat(screen[row].length);
+    screen[row] = ' (' + normalizedPage + ' of ' + totalPages + ')           ';
+    attrs[row] = '0'.repeat(20);
     row += 1;
 
     // Fill remaining rows with blank lines (20 chars each)
@@ -818,7 +817,7 @@ export async function handleSet(game) {
         const c = String.fromCharCode(ch);
 
         // Check for exit
-        if (ch === 27 || ch === 10 || ch === 13 || c === 'q') { // ESC, Enter, or q
+        if (ch === 27 || ch === 10 || ch === 13 || c === 'q' || c === ' ') { // ESC, Enter, space, or q
             break;
         }
 
