@@ -66,7 +66,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[a]` | eat.c | eat.js | Eating mechanics. handleEat (doeat) implemented; ~50 functions TODO |
 | `[~]` | end.c | end.js | Game over, death, scoring |
 | `[a]` | engrave.c | engrave.js | Engraving mechanics. handleEngrave (doengrave) approximation, maybeSmudgeEngraving (wipe_engr_at); engrave_data.js has text data; ~30 functions TODO |
-| `[a]` | exper.c | exper.js | Experience and leveling. newuexp, newexplevel, pluslvl, losexp implemented; experience, more_experienced, newpw, enermod, rndexp TODO |
+| `[a]` | exper.c | exper.js | Experience and leveling. newuexp, newexplevel, pluslvl, losexp, newpw, newhp, enermod implemented; experience, more_experienced, rndexp TODO. Role/race hpadv/enadv_full/xlev data in player.js. |
 | `[~]` | explode.c | explode.js | Explosion effects |
 | `[~]` | extralev.c | extralev.js | Special level generation helpers |
 | `[N/A]` | files.c | — | File I/O operations. JS: `storage.js` |
@@ -125,7 +125,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[~]` | restore.c | restore.js | Game state restoration. All functions N/A (JS uses storage.js/IndexedDB with different format) |
 | `[a]` | rip.c | display.js | RIP screen. genl_outrip as Display.renderTombstone (method); center() inlined |
 | `[x]` | rnd.c | rng.js | Random number generation |
-| `[~]` | role.c | role.js | Role/race/gender/alignment selection. roles[] data in player.js; ok_role/ok_race/ok_align PARTIAL in chargen.js; role_init PARTIAL in chargen.js+u_init.js; Hello() in player.js; all others TODO |
+| `[~]` | role.c | role.js | Role/race/gender/alignment selection. roles[] data in player.js (includes hpadv/enadv_full/xlev structs for all roles, hpadv/enadv for all races); ok_role/ok_race/ok_align PARTIAL in chargen.js; role_init PARTIAL in chargen.js+u_init.js; Hello() in player.js; all others TODO |
 | `[~]` | rumors.c | rumors.js | Rumor/oracle/CapitalMon system. JS: `rumor_data.js` (data); unpadline/init_rumors/get_rnd_line in `hacklib.js`; getrumor inlined in `dungeon.js`; outoracle/doconsult/CapitalMon TODO |
 | `[~]` | save.c | save.js | Game state serialization. N/A (JS uses storage.js/IndexedDB); handleSave in storage.js |
 | `[a]` | selvar.c | — | Selection geometry. JS: `selection` object in `sp_lev.js`. All major geometry functions aligned including ellipse/gradient/is_irregular/size_description |
@@ -313,7 +313,7 @@ This section is generated from source symbol tables and includes function rows f
 | 169 | `moveloop_core` | - | Missing |
 | 50 | `moveloop_preamble` | - | Missing |
 | 764 | `newgame` | - | Missing |
-| 621 | `regen_hp` | - | Missing |
+| 621 | `regen_hp` | allmain.js:regen_hp | Approximation — core heal formula ported (level+CON vs rn2(100)), Regeneration intrinsic bonus. Missing: polymorph HP (u.mh), eel-out-of-water, encumbrance check (wtcap/MOD_ENCUMBER), Sleepy+asleep bonus |
 | 599 | `regen_pw` | - | Missing |
 | 680 | `stop_occupation` | - | Missing |
 | 1182 | `timet_delta` | - | Missing |
@@ -519,7 +519,7 @@ This section is generated from source symbol tables and includes function rows f
 | 877 | `is_innate` | - | Missing |
 | 218 | `losestr` | - | Missing |
 | 1144 | `minuhpmax` | - | Missing |
-| 1077 | `newhp` | - | Missing |
+| 1077 | `newhp` | exper.js:newhp | Implemented — role/race hpadv structs, Con adjustment for level-up. Init path uses infix+rnd(inrnd), level-up uses lo/hi with xlev cutoff |
 | 271 | `poison_strdmg` | - | Missing |
 | 314 | `poisoned` | - | Missing |
 | 291 | `poisontell` | - | Missing |
@@ -1768,14 +1768,14 @@ This section is generated from source symbol tables and includes function rows f
 ### exper.c -> exper.js
 | C Line | C Function | JS Line | Alignment |
 |--------|------------|---------|-----------|
-| 26 | `enermod` | - | Missing (needs Role_switch data from roles.js) |
+| 26 | `enermod` | exper.js:enermod | Implemented — role-dependent energy modifier (Priest/Wizard 2x, Healer/Knight 3/2x, Barbarian/Valkyrie 3/4x) |
 | 85 | `experience` | - | Missing (needs find_mac, permonst attack data, extra_nasty) |
-| 207 | `losexp` | exper.js:losexp | Implemented — RNG-faithful (rnd(10) HP, rn2(5) PW); simplified newhp/newpw (placeholder ranges vs role-dependent) |
+| 207 | `losexp` | exper.js:losexp | Implemented — RNG-faithful (rnd(10) HP, rn2(5) PW); simplified (placeholder ranges vs C's uhpinc/ueninc arrays) |
 | 169 | `more_experienced` | - | Missing (needs u.urexp, flags.showexp, disp.botl) |
 | 300 | `newexplevel` | exper.js:newexplevel | Implemented |
-| 45 | `newpw` | - | Missing (needs enadv struct data from roles/races) |
+| 45 | `newpw` | exper.js:newpw | Implemented — role/race enadv_full structs with enermod(). Init path uses infix+rnd(inrnd), level-up uses lo/hi with xlev cutoff and Wis-based bonus |
 | 14 | `newuexp` | exper.js:newuexp | Implemented |
-| 307 | `pluslvl` | exper.js:pluslvl | Implemented — RNG-faithful; simplified newhp/newpw (rnd(8)/rn2(3) placeholders vs role-dependent) |
+| 307 | `pluslvl` | exper.js:pluslvl | Implemented — calls newhp()/newpw() for role-dependent HP/PW gains. Missing: adjabil() |
 | 378 | `rndexp` | - | Missing (needs LARGEST_INT handling) |
 
 ### explode.c -> explode.js
@@ -3970,7 +3970,7 @@ No function symbols parsed from isaac64.c.
 | 1140 | `peffect_full_healing` | 469 | Full heal, cure hallucination, exercise |
 | 1026 | `peffect_gain_ability` | 546 | Simplified: random attr +1. Missing: blessed=all attrs, proper adjattrib |
 | 1220 | `peffect_gain_energy` | 492 | Energy gain/drain with max increase |
-| 1079 | `peffect_gain_level` | 480 | Level gain/loss. Missing: pluslvl() with adjabil/newhp/newpw |
+| 1079 | `peffect_gain_level` | 480 | Level gain/loss. pluslvl() now uses newhp()/newpw(). Missing: adjabil() |
 | 693 | `peffect_hallucination` | 433 | Blessed cure, cursed extension |
 | 1115 | `peffect_healing` | 445 | Heal, cure blindness, exercise |
 | 808 | `peffect_invisibility` | 521 | Timed invisibility via incr_itimeout |

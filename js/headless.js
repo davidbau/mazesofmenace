@@ -567,6 +567,12 @@ export class HeadlessDisplay {
         this.messages = []; // Message history
         this.flags = { msg_window: false, DECgraphics: false, lit_corridor: false, color: true }; // Default flags
         this.messageNeedsMore = false; // For message concatenation
+        // C ref: pline.c:274 — every pline() call does flush_screen(1) before
+        // displaying, which shows --More-- on any pending message and clears it.
+        // The selfplay harness auto-dismisses these, so each message replaces
+        // the previous one.  Set noConcatenateMessages=true to match this
+        // behavior (used during session replay comparison).
+        this.noConcatenateMessages = false;
     }
 
     setCell(col, row, ch, color = CLR_GRAY, attr = 0) {
@@ -617,8 +623,12 @@ export class HeadlessDisplay {
         // C reserves space for " --More--" (9 chars) when checking if messages
         // can be concatenated.  When the combined message plus --More-- would
         // exceed the line width, C shows --More-- and starts a new line instead.
+        // However, C's pline() calls flush_screen(1) before every message, which
+        // shows --More-- and clears the topline.  In selfplay captures, the
+        // harness auto-dismisses these, so messages are never concatenated.
+        // When noConcatenateMessages is set, we skip concatenation to match C.
         const notDied = !msg.startsWith('You die');
-        if (this.topMessage && this.messageNeedsMore && notDied) {
+        if (!this.noConcatenateMessages && this.topMessage && this.messageNeedsMore && notDied) {
             const combined = this.topMessage + '  ' + msg;
             // C ref: win/tty/topl.c update_topl() uses strict '<' for fit check.
             if (combined.length + 9 < this.cols) {
@@ -963,11 +973,13 @@ export class HeadlessDisplay {
 
                 if (!fov || !fov.canSee(x, y)) {
                     const loc = gameMap.at(x, y);
+                    // C ref: map_invisible() uses show_glyph() directly,
+                    // so mem_invis displays even at unseen locations.
+                    if (loc && loc.mem_invis) {
+                        this.setCell(col, row, 'I', CLR_GRAY);
+                        continue;
+                    }
                     if (loc && loc.seenv) {
-                        if (loc.mem_invis) {
-                            this.setCell(col, row, 'I', CLR_GRAY);
-                            continue;
-                        }
                         if (loc.mem_obj) {
                             const rememberedObjColor = Number.isInteger(loc.mem_obj_color)
                                 ? loc.mem_obj_color

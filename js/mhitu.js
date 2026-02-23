@@ -66,7 +66,7 @@ function hitmsg(monster, attack, display, suppressHitMsg) {
 }
 
 // cf. mhitu.c mswings_verb() / mswings().
-function monsterWeaponSwingVerb(weapon, bash = false) {
+export function monsterWeaponSwingVerb(weapon, bash = false) {
     if (!weapon) return 'swings';
     const info = objectData[weapon.otyp] || {};
     const dir = Number.isInteger(info.dir) ? info.dir : 0;
@@ -79,7 +79,7 @@ function monsterWeaponSwingVerb(weapon, bash = false) {
 }
 
 // cf. mondata.c pronoun_gender() and mhis().
-function monsterPossessive(monster) {
+export function monsterPossessive(monster) {
     const mdat = monster?.type || {};
     const flags2 = mdat.flags2 || 0;
     if (flags2 & M2_NEUTER) return 'its';

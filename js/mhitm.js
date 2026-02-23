@@ -18,7 +18,8 @@
 
 import { rn2, rnd, d, c_d } from './rng.js';
 import { distmin } from './hacklib.js';
-import { monnear, mondead, monAttackName } from './monutil.js';
+import { monnear, mondead, monAttackName, map_invisible } from './monutil.js';
+import { cansee } from './vision.js';
 import {
     monNam, monDisplayName, touch_petrifies, unsolid, resists_fire, resists_cold,
     resists_elec, resists_acid, resists_sleep, resists_ston,
@@ -32,13 +33,14 @@ import {
     AD_ELEC, AD_WRAP, AD_STCK, AD_DGST,
 } from './monsters.js';
 import { corpse_chance } from './mon.js';
-import { mkcorpstat } from './mkobj.js';
-import { CORPSE } from './objects.js';
+import { mkcorpstat, xname } from './mkobj.js';
+import { CORPSE, WEAPON_CLASS, objectData } from './objects.js';
 import {
     M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED,
     M_ATTK_AGR_DIED, M_ATTK_AGR_DONE,
     mhitm_adtyping,
 } from './uhitm.js';
+import { monsterWeaponSwingVerb, monsterPossessive } from './mhitu.js';
 
 // Re-export M_ATTK_* for convenience
 export { M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE };
@@ -80,11 +82,19 @@ function noises(magr, mattk) {
     // TODO: implement distant combat noises
 }
 
-// cf. mhitm.c:40 — pre_mm_attack(magr, mdef): prepare for mm attack
-// Simplified: unhide/unmimic not yet implemented
-function pre_mm_attack(magr, mdef) {
+// cf. mhitm.c:40-72 — pre_mm_attack(): unhide/unmimic, newsym/map_invisible
+function pre_mm_attack(magr, mdef, vis, map, ctx) {
     if (mdef.mundetected) mdef.mundetected = 0;
     if (magr.mundetected) magr.mundetected = 0;
+    // C ref: mhitm.c:62-71 — mark invisible monsters on map
+    if (vis && map) {
+        if (!ctx?.agrVisible) {
+            map_invisible(map, magr.mx, magr.my, ctx?.player);
+        }
+        if (!ctx?.defVisible) {
+            map_invisible(map, mdef.mx, mdef.my, ctx?.player);
+        }
+    }
 }
 
 // cf. do_name.c:863 x_monnam() — returns "it" when player can't spot the monster.
@@ -95,8 +105,8 @@ function monCombatName(mon, visible, { capitalize = false, article = 'the' } = {
 }
 
 // cf. mhitm.c:75 — missmm(magr, mdef, mattk): miss message
-function missmm(magr, mdef, mattk, display, vis, ctx) {
-    pre_mm_attack(magr, mdef);
+function missmm(magr, mdef, mattk, display, vis, map, ctx) {
+    pre_mm_attack(magr, mdef, vis, map, ctx);
     if (vis && display) {
         display.putstr_message(
             `${monCombatName(magr, ctx?.agrVisible, { capitalize: true })} misses ${monCombatName(mdef, ctx?.defVisible)}.`
@@ -320,7 +330,7 @@ export function passivemm(magr, mdef, mhitb, mdead, mwep, map) {
 
 // cf. mhitm.c:643 — hitmm(magr, mdef, mattk, mwep, dieroll)
 function hitmm(magr, mdef, mattk, mwep, dieroll, display, vis, map, ctx) {
-    pre_mm_attack(magr, mdef);
+    pre_mm_attack(magr, mdef, vis, map, ctx);
 
     // Display hit message
     if (vis && display) {
@@ -477,8 +487,11 @@ function mdamagem(magr, mdef, mattk, mwep, dieroll, display, vis, map, ctx) {
     // Apply damage
     mdef.mhp -= mhm.damage;
     if (mdef.mhp <= 0) {
-        // C ref: mhitm.c:1100 → monkilled(mdef) → mondead + corpse + kill msg
-        if (vis && display) {
+        // C ref: mon.c:3384-3388 monkilled() — kill message gated on
+        // cansee(mdef->mx, mdef->my), i.e. location in FOV, not monster
+        // visibility.  An invisible monster dying at a visible location
+        // still produces "It is killed!".
+        if (cansee(map, ctx?.player, ctx?.fov, mdef.mx, mdef.my) && display) {
             const killVerb = nonliving(pd) ? 'destroyed' : 'killed';
             display.putstr_message(
                 `${monCombatName(mdef, ctx?.defVisible, { article: 'the', capitalize: true })} is ${killVerb}!`
@@ -576,8 +589,21 @@ export function mattackm(magr, mdef, display, vis, map, ctx) {
                 attk = 0;
                 break;
             }
-            // C ref: check for weapon / wield
-            mwep = magr.mw || null; // monster's weapon
+            // C ref: mhitm.c:406-416 — find wielded weapon
+            // In C, mon_wield_item(magr) selects best weapon from inventory.
+            // Simplified: find first weapon-class item in minvent.
+            if (!magr.mw && Array.isArray(magr.minvent)) {
+                for (const obj of magr.minvent) {
+                    if (obj.oclass === WEAPON_CLASS) {
+                        magr.mw = obj;
+                        break;
+                    }
+                }
+            }
+            mwep = magr.mw || null;
+            if (mwep) {
+                mswingsm(magr, mdef, mwep, display, vis, ctx);
+            }
             // Fall through to melee
             // FALLTHROUGH
         case AT_CLAW:
@@ -606,7 +632,7 @@ export function mattackm(magr, mdef, display, vis, map, ctx) {
                 }
                 res[i] = hitmm(magr, mdef, mattk, mwep, dieroll, display, vis, map, ctx);
             } else {
-                missmm(magr, mdef, mattk, display, vis, ctx);
+                missmm(magr, mdef, mattk, display, vis, map, ctx);
             }
             break;
 
@@ -652,7 +678,7 @@ export function mattackm(magr, mdef, display, vis, map, ctx) {
                     res[i] = mdamagem(magr, mdef, mattk, null, 0, display, vis, map, ctx);
                 }
             } else {
-                missmm(magr, mdef, mattk, display, vis, ctx);
+                missmm(magr, mdef, mattk, display, vis, map, ctx);
             }
             break;
 
@@ -732,4 +758,14 @@ export function fightm(mtmp, map, display, vis) {
 // ============================================================================
 
 // cf. mhitm.c:1282 — mswingsm(magr, mdef, obj)
-// TODO: mhitm.c:1282 — mswingsm(): full implementation
+function mswingsm(magr, mdef, otemp, display, vis, ctx) {
+    if (!vis || !display) return;
+    const bash = false; // is_pole check omitted; adjacent polearm bash not yet needed
+    const verb = monsterWeaponSwingVerb(otemp, bash);
+    const oneOf = ((otemp.quan || 1) > 1) ? 'one of ' : '';
+    const agrName = monCombatName(magr, ctx?.agrVisible, { capitalize: true });
+    const defName = monCombatName(mdef, ctx?.defVisible);
+    display.putstr_message(
+        `${agrName} ${verb} ${oneOf}${monsterPossessive(magr)} ${xname(otemp)} at ${defName}.`
+    );
+}

@@ -516,14 +516,16 @@ export class Display {
                 if (!fov || !fov.canSee(x, y)) {
                     // Show remembered terrain or nothing
                     const loc = gameMap.at(x, y);
+                    // C ref: map_invisible() uses show_glyph() directly,
+                    // so mem_invis displays even at unseen locations.
+                    if (loc && loc.mem_invis) {
+                        this.setCell(col, row, 'I', CLR_GRAY);
+                        this.cellInfo[row][col] = { name: 'remembered invisible monster', desc: '(remembered)', color: CLR_GRAY };
+                        continue;
+                    }
                     if (loc && loc.seenv) {
                         // C-like memory: remembered object glyph overlays
                         // remembered terrain when out of sight.
-                        if (loc.mem_invis) {
-                            this.setCell(col, row, 'I', CLR_GRAY);
-                            this.cellInfo[row][col] = { name: 'remembered invisible monster', desc: '(remembered)', color: CLR_GRAY };
-                            continue;
-                        }
                         if (loc.mem_obj) {
                             const rememberedObjColor = Number.isInteger(loc.mem_obj_color)
                                 ? loc.mem_obj_color
