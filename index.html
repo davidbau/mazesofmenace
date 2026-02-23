@@ -1007,10 +1007,14 @@
             if (terminal) {
                 terminal.style.fontSize = size + 'px';
             }
+
+            // Re-check panel fit synchronously: getComputedStyle returns updated ch-based
+            // min-width immediately after fontSize is set, so panels are shown/hidden
+            // correctly on the first paint (avoids a one-frame layout shift via RAF).
+            if (window._checkPanelFit) window._checkPanelFit();
         }
 
         applyFontSize(savedFontSize);
-        if (window._checkPanelFit) requestAnimationFrame(window._checkPanelFit);
 
         // Expose for hamburger menu
         window._toggleDarkMode = function() {
@@ -1027,7 +1031,6 @@
             } catch(e) {}
             size = Math.max(12, size - 2);
             applyFontSize(size);
-            if (window._checkPanelFit) requestAnimationFrame(window._checkPanelFit);
             try {
                 localStorage.setItem('menace-font-size', size);
             } catch(e) {}
@@ -1041,7 +1044,6 @@
             } catch(e) {}
             size = Math.min(24, size + 2);
             applyFontSize(size);
-            if (window._checkPanelFit) requestAnimationFrame(window._checkPanelFit);
             try {
                 localStorage.setItem('menace-font-size', size);
             } catch(e) {}
