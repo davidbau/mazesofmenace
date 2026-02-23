@@ -1147,15 +1147,20 @@
 
         function enterFullscreen() {
             try { preFontSize = parseInt(localStorage.getItem('menace-font-size')) || 16; } catch(e) {}
-            document.documentElement.requestFullscreen().catch(function() {});
+            var el = document.documentElement;
+            var req = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen;
+            if (req) req.call(el).catch(function(err) { console.warn('Fullscreen failed:', err); });
         }
 
         function exitFullscreen() {
-            if (document.fullscreenElement) document.exitFullscreen().catch(function() {});
+            var exit = document.exitFullscreen || document.webkitExitFullscreen || document.mozCancelFullScreen;
+            if (exit) exit.call(document).catch(function() {});
         }
 
-        document.addEventListener('fullscreenchange', function() {
-            if (document.fullscreenElement) {
+        function onFullscreenChange() {
+            var fsEl = document.fullscreenElement || document.webkitFullscreenElement
+                    || document.mozFullScreenElement;
+            if (fsEl) {
                 document.body.classList.add('fullscreen-mode');
                 if (window._applyFontSize) window._applyFontSize(computeFullscreenFontSize());
             } else {
@@ -1164,7 +1169,10 @@
                 preFontSize = null;
             }
             if (window._checkPanelFit) window._checkPanelFit();
-        });
+        }
+        document.addEventListener('fullscreenchange',       onFullscreenChange);
+        document.addEventListener('webkitfullscreenchange', onFullscreenChange);
+        document.addEventListener('mozfullscreenchange',    onFullscreenChange);
 
         // Refit on resize while fullscreen (e.g. rotation)
         window.addEventListener('resize', function() {
@@ -1174,8 +1182,9 @@
         });
 
         window._toggleFullscreen = function() {
-            if (document.fullscreenElement) exitFullscreen();
-            else enterFullscreen();
+            var fsEl = document.fullscreenElement || document.webkitFullscreenElement
+                    || document.mozFullScreenElement;
+            if (fsEl) exitFullscreen(); else enterFullscreen();
         };
     })();
 
@@ -1230,7 +1239,8 @@
             var isDark = document.body.classList.contains('dark-mode');
             document.querySelector('#hm-darkmode .hm-check').textContent = isDark ? '✓' : '';
 
-            var isFs = !!document.fullscreenElement;
+            var isFs = !!(document.fullscreenElement || document.webkitFullscreenElement
+                       || document.mozFullScreenElement);
             document.querySelector('#hm-fullscreen .hm-check').textContent = isFs ? '✓' : '';
 
             var keyref = document.getElementById('keyref');
