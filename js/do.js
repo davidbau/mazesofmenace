@@ -3,18 +3,46 @@
 
 import { nhgetch, ynFunction } from './input.js';
 import { ACCESSIBLE, COLNO, ROWNO, STAIRS,
-         CORR, ROOM, AIR,
+         CORR, ROOM, AIR, A_DEX,
          IS_FURNITURE, IS_LAVA, IS_POOL, MAGIC_PORTAL, VIBRATING_SQUARE } from './config.js';
-import { rn1, rn2 } from './rng.js';
+import { rn1, rn2, rnd, d } from './rng.js';
 import { deltrap, enexto, makelevel } from './dungeon.js';
 import { mon_arrive } from './dog.js';
 import { initrack } from './monmove.js';
-import { COIN_CLASS } from './objects.js';
-import { doname } from './mkobj.js';
+import { COIN_CLASS, RING_CLASS, POTION_CLASS,
+         BOULDER, CORPSE, LOADSTONE, LEASH, CRYSKNIFE, WORM_TOOTH,
+         MEAT_RING, MEATBALL, MEAT_STICK, ENORMOUS_MEATBALL,
+         GLOB_OF_GREEN_SLIME, POT_OIL,
+         RIN_ADORNMENT, RIN_GAIN_STRENGTH, RIN_GAIN_CONSTITUTION,
+         RIN_INCREASE_ACCURACY, RIN_INCREASE_DAMAGE, RIN_PROTECTION,
+         RIN_REGENERATION, RIN_SEARCHING, RIN_STEALTH,
+         RIN_SUSTAIN_ABILITY, RIN_LEVITATION, RIN_HUNGER,
+         RIN_AGGRAVATE_MONSTER, RIN_CONFLICT, RIN_WARNING,
+         RIN_POISON_RESISTANCE, RIN_FIRE_RESISTANCE, RIN_COLD_RESISTANCE,
+         RIN_SHOCK_RESISTANCE, RIN_FREE_ACTION, RIN_SLOW_DIGESTION,
+         RIN_TELEPORTATION, RIN_TELEPORT_CONTROL,
+         RIN_POLYMORPH, RIN_POLYMORPH_CONTROL,
+         RIN_INVISIBILITY, RIN_SEE_INVISIBLE,
+         RIN_PROTECTION_FROM_SHAPE_CHAN,
+         objectData } from './objects.js';
+import { doname, xname, splitobj, set_bknown } from './mkobj.js';
 import { placeFloorObject } from './floor_objects.js';
 import { uwepgone, uswapwepgone, uqwepgone } from './wield.js';
 import { observeObject } from './discovery.js';
 import { compactInvletPromptChars, buildInventoryOverlayLines, renderOverlayMenuUntilDismiss } from './invent.js';
+import { pline, pline_The, You, Your, You_hear, You_see, You_feel, There, Norep } from './pline.js';
+import { hcolor, hliquid, rndmonnam } from './do_name.js';
+import { body_part, FACE, HAND, LEG, STOMACH } from './polyself.js';
+import { IS_SINK, IS_ALTAR } from './symbols.js';
+import { newsym } from './monutil.js';
+import { digests, touch_petrifies, is_rider, is_reviver, throws_rocks, passes_walls, is_whirly } from './mondata.js';
+import { mons, S_ZOMBIE, NON_PM, PM_DEATH, PM_PESTILENCE, PM_FAMINE,
+         PM_GREEN_SLIME, PM_WRAITH, PM_NURSE } from './monsters.js';
+import { zombie_form } from './mon.js';
+import { W_ARMOR, W_ACCESSORY, W_SADDLE } from './worn.js';
+import { revive } from './zap.js';
+import { cansee } from './vision.js';
+import { canseemon } from './mondata.js';
 
 
 // ============================================================
@@ -50,18 +78,572 @@ export function formatInventoryPickupMessage(pickedObj, inventoryObj, player) {
 // 1. Drop mechanics
 // ============================================================
 
-// TODO: cf. do.c dodrop() — full drop command (menu_drop, count handling)
-// TODO: cf. do.c drop() — drop a single object
-// TODO: cf. do.c dropx() — drop helper with floor effects
-// TODO: cf. do.c dropy() — place object on floor at hero location
-// TODO: cf. do.c dropz() — drop into water/lava
-// TODO: cf. do.c canletgo() — check if object can be released (cursed ball etc)
-// TODO: cf. do.c doddrop() — drop from inventory prompt
-// TODO: cf. do.c menu_drop() — menu-driven multi-drop
-// TODO: cf. do.c menudrop_split() — split stack for partial drop
-// TODO: cf. do.c better_not_try_to_drop_that() — warn about dropping quest artifact etc
+// cf. do.c canletgo() — check if object can be released (cursed ball etc)
+// Returns true if object can be let go, false otherwise.
+// word: the action verb ("drop", "throw", etc.); if empty, suppresses messages.
+export function canletgo(obj, word, player) {
+    if (!obj) return false;
+    const owornmask = obj.owornmask || 0;
+    if (owornmask & (W_ARMOR | W_ACCESSORY)) {
+        if (word)
+            Norep("You cannot %s %s you are wearing.", word, "something");
+        return false;
+    }
+    if (obj === player.weapon && obj.welded) {
+        if (word) {
+            let hand = body_part(HAND, player);
+            if (obj.bimanual)
+                hand = makeplural_simple(hand);
+            Norep("You cannot %s %s welded to your %s.", word, "something", hand);
+        }
+        return false;
+    }
+    if (obj.otyp === LOADSTONE && obj.cursed) {
+        if (word) {
+            pline("For some reason, you cannot %s the stone%s!",
+                  word, (obj.quan || 1) > 1 ? "s" : "");
+        }
+        set_bknown(obj, 1);
+        return false;
+    }
+    if (obj.otyp === LEASH && obj.leashmon) {
+        if (word)
+            pline_The("leash is tied around your %s.", body_part(HAND, player));
+        return false;
+    }
+    if (owornmask & W_SADDLE) {
+        if (word)
+            You("cannot %s %s you are sitting on.", word, "something");
+        return false;
+    }
+    return true;
+}
 
-// Handle dropping an item
+// Simple makeplural for body part strings
+function makeplural_simple(word) {
+    if (!word) return word;
+    if (word.endsWith('s') || word.endsWith('x') || word.endsWith('z') ||
+        word.endsWith('sh') || word.endsWith('ch'))
+        return word + 'es';
+    if (word.endsWith('y') && !'aeiou'.includes(word[word.length - 2]))
+        return word.slice(0, -1) + 'ies';
+    if (word.endsWith('f'))
+        return word.slice(0, -1) + 'ves';
+    if (word.endsWith('foot'))
+        return word.slice(0, -4) + 'feet';
+    if (word.endsWith('tooth'))
+        return word.slice(0, -5) + 'teeth';
+    return word + 's';
+}
+
+// cf. do.c obj_no_longer_held() — cleanup when object leaves inventory.
+// Things that must change when not held; recurse into containers.
+// Called for both player and monster drops.
+export function obj_no_longer_held(obj) {
+    if (!obj) return;
+    // Recurse into containers
+    if (obj.cobj && Array.isArray(obj.cobj)) {
+        for (const contents of obj.cobj) {
+            obj_no_longer_held(contents);
+        }
+    }
+    switch (obj.otyp) {
+    case CRYSKNIFE:
+        // Normal crysknife reverts to worm tooth when not held;
+        // fixed crysknife has only 10% chance of reverting.
+        if (!obj.oerodeproof || !rn2(10)) {
+            obj.otyp = WORM_TOOTH;
+            obj.oerodeproof = 0;
+        }
+        break;
+    }
+}
+
+// cf. do.c better_not_try_to_drop_that() — warn about dropping
+// corpses that could petrify the hero without glove protection.
+// Returns true if the player decided NOT to drop it.
+function better_not_try_to_drop_that(otmp, player) {
+    // In the full C code this checks for petrifying corpses without gloves.
+    // Simplified: if dropping a cockatrice/chickatrice corpse without gloves,
+    // we would warn. For now, return false (allow drop).
+    if (otmp.otyp === CORPSE && touch_petrifies(mons[otmp.corpsenm])) {
+        if (!player.gloves) {
+            // Would prompt "Drop the cockatrice corpse without hand protection on?"
+            // For now, allow it (the damage would happen via flooreffects or pickup)
+            return false;
+        }
+    }
+    return false;
+}
+
+// cf. do.c menudrop_split() — handle splitting a stack for partial drop
+function menudrop_split(otmp, cnt, player, map) {
+    if (cnt && cnt < (otmp.quan || 1)) {
+        if (otmp.welded) {
+            // don't split
+        } else if (otmp.otyp === LOADSTONE && otmp.cursed) {
+            // don't split, same kludge as C
+        } else {
+            otmp = splitobj(otmp, cnt);
+        }
+    }
+    return drop_single(otmp, player, map);
+}
+
+// cf. do.c drop() — drop a single object from inventory.
+// Returns true if time was consumed.
+function drop_single(obj, player, map) {
+    if (!obj) return false;
+    if (!canletgo(obj, "drop", player)) return false;
+    if (obj.otyp === CORPSE && better_not_try_to_drop_that(obj, player))
+        return false;
+
+    if (obj === player.weapon) {
+        if (obj.welded) return false;
+        uwepgone(player);
+    }
+    if (obj === player.quiver) uqwepgone(player);
+    if (obj === player.swapWeapon) uswapwepgone(player);
+
+    if (player.uswallow) {
+        // Barrier between you and the floor
+        You("drop %s into %s.", doname(obj, null),
+            player.ustuck ? "the monster" : "the void");
+    } else {
+        const loc = map.at(player.x, player.y);
+        if ((obj.oclass === RING_CLASS || obj.otyp === MEAT_RING)
+            && loc && IS_SINK(loc.typ)) {
+            player.removeFromInventory(obj);
+            dosinkring(obj, player, map);
+            return true;
+        }
+        if (loc && IS_ALTAR(loc.typ)) {
+            // Altar drop: don't print "You drop" — altar message instead
+        } else {
+            You("drop %s.", doname(obj, null));
+        }
+    }
+    // Remove from inventory and place
+    player.removeFromInventory(obj);
+    dropx(obj, player, map);
+    return true;
+}
+
+// cf. do.c dropx() — take dropped item out of inventory;
+// may produce output (eg altar identification).
+export function dropx(obj, player, map) {
+    if (!player.uswallow) {
+        const loc = map.at(player.x, player.y);
+        if (loc && IS_ALTAR(loc.typ))
+            doaltarobj(obj, player, map); // set bknown
+    }
+    dropy(obj, player, map);
+}
+
+// cf. do.c dropy() — put dropped object at destination
+export function dropy(obj, player, map) {
+    dropz(obj, false, player, map);
+}
+
+// cf. do.c dropz() — really put dropped object at its destination
+export function dropz(obj, with_impact, player, map) {
+    if (obj === player.weapon) uwepgone(player);
+    if (obj === player.quiver) uqwepgone(player);
+    if (obj === player.swapWeapon) uswapwepgone(player);
+
+    if (player.uswallow) {
+        // Hero has dropped an item while inside an engulfer.
+        // In C, this adds to the engulfer's inventory or digests food.
+        if (player.ustuck) {
+            if (!engulfer_digests_food(obj, player)) {
+                // Would add to engulfer's inventory via mpickobj
+                // For now, the object is consumed
+            }
+        }
+    } else {
+        if (flooreffects(obj, player.x, player.y, "drop", player, map))
+            return;
+        // Place on floor
+        obj.ox = player.x;
+        obj.oy = player.y;
+        placeFloorObject(map, obj);
+        newsym(map, player.x, player.y);
+    }
+}
+
+// cf. do.c engulfer_digests_food() — when swallowed, engulfer may
+// eat dropped food items. Returns true if object is consumed.
+export function engulfer_digests_food(obj, player) {
+    if (!player.ustuck) return false;
+    const mptr = player.ustuck.type || player.ustuck.data;
+    if (!mptr) return false;
+    // Animal swallower (purple worm) eats corpses, globs, meat items
+    if (digests(mptr)
+        && (obj.otyp === CORPSE || obj.globby
+            || obj.otyp === MEATBALL || obj.otyp === ENORMOUS_MEATBALL
+            || obj.otyp === MEAT_RING || obj.otyp === MEAT_STICK)) {
+        let could_petrify = false, could_grow = false, could_heal = false;
+        if (obj.otyp === CORPSE) {
+            could_petrify = touch_petrifies(mons[obj.corpsenm]);
+            could_grow = (obj.corpsenm === PM_WRAITH);
+            could_heal = (obj.corpsenm === PM_NURSE);
+        }
+        pline("%s instantly digested!",
+              (obj.quan || 1) > 1 ? `${doname(obj, null)} are` : `${doname(obj, null)} is`);
+        // Effects on the engulfer would go here (petrify, polymorph, etc.)
+        // Object is consumed
+        return true;
+    }
+    return false;
+}
+
+
+// ============================================================
+// 2. Floor effects
+// ============================================================
+
+// cf. do.c boulder_hits_pool() — boulder falls into pool/lava.
+// Returns true if the boulder is consumed.
+export function boulder_hits_pool(otmp, rx, ry, pushing, player, map) {
+    if (!otmp || otmp.otyp !== BOULDER) return false;
+    const loc = map?.at?.(rx, ry);
+    if (!loc) return false;
+    if (!IS_POOL(loc.typ) && !IS_LAVA(loc.typ)) return false;
+
+    const lava = IS_LAVA(loc.typ);
+    const chance = rn2(10); // water: 90%; lava: 10%
+    // Simplified fill-up chance: lava 10%, water 90%
+    const fills_up = lava ? (chance === 0) : (chance !== 0);
+
+    if (fills_up) {
+        loc.typ = ROOM;
+        loc.flags = 0;
+        newsym(map, rx, ry);
+        if (pushing) {
+            pline("You push %s into the %s.", xname(otmp),
+                  lava ? "lava" : "water");
+            if (!player.blind)
+                pline("Now you can cross it!");
+        }
+    }
+    if (!fills_up || !pushing) {
+        // Splashing
+        if (pushing ? !player.blind : true) {
+            There("is a large splash as %s %s the %s.",
+                  xname(otmp),
+                  fills_up ? "fills" : "falls into",
+                  lava ? "lava" : "water");
+        } else if (!player.deaf) {
+            You_hear("a%s splash.", lava ? " sizzling" : "");
+        }
+    }
+    // Boulder is now gone — remove from map objects if present
+    const idx = map.objects?.indexOf(otmp);
+    if (idx >= 0) map.objects.splice(idx, 1);
+    return true;
+}
+
+// cf. do.c flooreffects() — effects of object landing on floor.
+// Returns true if the object goes away.
+export function flooreffects(obj, x, y, verb, player, map) {
+    if (!obj) return false;
+
+    if (obj.otyp === BOULDER && boulder_hits_pool(obj, x, y, false, player, map)) {
+        return true;
+    }
+    // Boulder into pit/hole — simplified: skip trap interactions for now
+    // as trap system is not fully wired
+
+    if (IS_LAVA(map?.at?.(x, y)?.typ)) {
+        // lava_damage would destroy most objects
+        // Simplified: object is destroyed
+        return true;
+    }
+    if (IS_POOL(map?.at?.(x, y)?.typ)) {
+        // water_damage
+        // Simplified: some objects may be destroyed
+        return false;
+    }
+    // Altar interaction when monster drops object
+    const loc = map?.at?.(x, y);
+    if (loc && IS_ALTAR(loc.typ)) {
+        doaltarobj(obj, player, map);
+    }
+    return false;
+}
+
+
+// ============================================================
+// 3. Altar/sink/fountain interactions
+// ============================================================
+
+// cf. do.c doaltarobj() — drop object on altar (BUC identification)
+export function doaltarobj(obj, player, map) {
+    if (player.blind) return;
+
+    if (obj.oclass !== COIN_CLASS) {
+        // KMH, conduct — atheism broken
+    } else {
+        // coins don't have bless/curse status
+        obj.blessed = 0;
+        obj.cursed = 0;
+    }
+
+    if (obj.blessed || obj.cursed) {
+        There("is %s flash as %s hit%s the altar.",
+              obj.blessed ? "an amber" : "a black",
+              doname(obj, null),
+              (obj.quan || 1) > 1 ? "" : "s");
+        if (!player.hallucinating)
+            obj.bknown = 1;
+    } else {
+        pline("%s land%s on the altar.",
+              doname(obj, null),
+              (obj.quan || 1) > 1 ? "" : "s");
+        if (obj.oclass !== COIN_CLASS)
+            obj.bknown = 1;
+    }
+}
+
+// cf. do.c trycall() — prompt to name object class after identification.
+// If obj is neither formally identified nor informally named, prompt to call it.
+export function trycall(obj) {
+    // In C this calls docall() to let player name the object type.
+    // Simplified: just mark as observed for discovery tracking.
+    if (obj && typeof observeObject === 'function') {
+        observeObject(obj);
+    }
+}
+
+// cf. do.c polymorph_sink() — transforms the sink at the player's position
+// into a fountain, throne, altar or grave.
+export function polymorph_sink(player, map) {
+    const loc = map.at(player.x, player.y);
+    if (!loc || !IS_SINK(loc.typ)) return;
+
+    const sinklooted = loc.looted ? 1 : 0;
+    loc.flags = 0;
+    const FOUNTAIN = 28, THRONE = 29, SINK = 30, GRAVE = 31, ALTAR = 32;
+    switch (rn2(4)) {
+    default:
+    case 0:
+        loc.typ = FOUNTAIN;
+        loc.blessedftn = 0;
+        if (sinklooted) loc.looted = 1;
+        pline_The("sink transforms into a fountain!");
+        break;
+    case 1:
+        loc.typ = THRONE;
+        if (sinklooted) loc.looted = 1;
+        pline_The("sink transforms into a throne!");
+        break;
+    case 2: {
+        loc.typ = ALTAR;
+        const algn = rn2(3) - 1; // -1, 0, or +1
+        loc.altarmask = algn + 1; // simplified alignment mask
+        pline_The("sink transforms into an altar!");
+        break;
+    }
+    case 3:
+        loc.typ = ROOM;
+        // Would call make_grave() here
+        pline_The("sink vanishes.");
+        break;
+    }
+    newsym(map, player.x, player.y);
+}
+
+// cf. do.c teleport_sink() — teleport the sink at the player's position
+// to a random location. Returns true if sink teleported.
+function teleport_sink(player, map) {
+    let trycnt = 0;
+    const SINK = 30;
+    do {
+        const cx = 1 + rnd((COLNO - 1) - 2);  // 2..COLNO-2
+        const cy = 1 + rn2(ROWNO - 2);         // 1..ROWNO-2
+        const loc = map.at(cx, cy);
+        if (loc && loc.typ === ROOM && !map.trapAt?.(cx, cy)) {
+            const dist = (cx - player.x) * (cx - player.x) + (cy - player.y) * (cy - player.y);
+            if (!cansee(map, player, null, cx, cy) || dist > 9) {
+                const oldloc = map.at(player.x, player.y);
+                const alreadylooted = oldloc.looted || 0;
+                // Remove old sink
+                oldloc.typ = ROOM;
+                oldloc.looted = 0;
+                newsym(map, player.x, player.y);
+                // Create sink at new position
+                loc.typ = SINK;
+                loc.looted = alreadylooted ? 1 : 0;
+                newsym(map, cx, cy);
+                return true;
+            }
+        }
+    } while (++trycnt < 200);
+    return false;
+}
+
+// cf. do.c dosinkring() — drop ring into kitchen sink effects
+export function dosinkring(obj, player, map) {
+    let ideed = true;
+    let nosink = false;
+
+    You("drop %s down the drain.", doname(obj, null));
+    obj.in_use = true; // block free identification via interrupt
+
+    switch (obj.otyp) {
+    // Effects that can be noticed without eyes
+    case RIN_SEARCHING:
+        You("thought %s got lost in the sink, but there it is!", doname(obj, null));
+        // Give back the ring
+        obj.in_use = false;
+        obj.ox = player.x;
+        obj.oy = player.y;
+        placeFloorObject(map, obj);
+        trycall(obj);
+        return;
+    case RIN_SLOW_DIGESTION:
+        pline_The("ring is regurgitated!");
+        obj.in_use = false;
+        obj.ox = player.x;
+        obj.oy = player.y;
+        placeFloorObject(map, obj);
+        trycall(obj);
+        return;
+    case RIN_LEVITATION:
+        pline_The("sink quivers upward for a moment.");
+        break;
+    case RIN_POISON_RESISTANCE:
+        You("smell rotten fruit.");
+        break;
+    case RIN_AGGRAVATE_MONSTER:
+        pline("Several %s buzz angrily around the sink.",
+              player.hallucinating ? rndmonnam() + "s" : "flies");
+        break;
+    case RIN_SHOCK_RESISTANCE:
+        pline("Static electricity surrounds the sink.");
+        break;
+    case RIN_CONFLICT:
+        You_hear("loud noises coming from the drain.");
+        break;
+    case RIN_SUSTAIN_ABILITY:
+        pline_The("%s flow seems fixed.", hliquid("water"));
+        break;
+    case RIN_GAIN_STRENGTH:
+        pline_The("%s flow seems %ser now.",
+                  hliquid("water"),
+                  (obj.spe < 0) ? "weak" : "strong");
+        break;
+    case RIN_GAIN_CONSTITUTION:
+        pline_The("%s flow seems %ser now.",
+                  hliquid("water"),
+                  (obj.spe < 0) ? "less" : "great");
+        break;
+    case RIN_INCREASE_ACCURACY:
+        pline_The("%s flow %s the drain.",
+                  hliquid("water"),
+                  (obj.spe < 0) ? "misses" : "hits");
+        break;
+    case RIN_INCREASE_DAMAGE:
+        pline("The water's force seems %ser now.",
+              (obj.spe < 0) ? "small" : "great");
+        break;
+    case RIN_HUNGER:
+        ideed = false;
+        // Would eat floor objects at the sink location
+        break;
+    case MEAT_RING:
+        pline("Several flies buzz around the sink.");
+        break;
+    case RIN_TELEPORTATION:
+        nosink = teleport_sink(player, map);
+        pline_The("sink %svanishes.", nosink ? "" : "momentarily ");
+        ideed = false;
+        break;
+    case RIN_POLYMORPH:
+        polymorph_sink(player, map);
+        nosink = true;
+        ideed = (map.at(player.x, player.y)?.typ !== ROOM);
+        break;
+    default:
+        ideed = false;
+        break;
+    }
+    if (!player.blind && !ideed) {
+        ideed = true;
+        switch (obj.otyp) {
+        case RIN_ADORNMENT:
+            pline_The("faucets flash brightly for a moment.");
+            break;
+        case RIN_REGENERATION:
+            pline_The("sink looks as good as new.");
+            break;
+        case RIN_INVISIBILITY:
+            You("don't see anything happen to the sink.");
+            break;
+        case RIN_FREE_ACTION:
+            You_see("the ring slide right down the drain!");
+            break;
+        case RIN_SEE_INVISIBLE:
+            You_see("some %s in the sink.",
+                    player.hallucinating ? "oxygen molecules" : "air");
+            break;
+        case RIN_STEALTH:
+            pline_The("sink seems to blend into the floor for a moment.");
+            break;
+        case RIN_FIRE_RESISTANCE:
+            pline_The("hot %s faucet flashes brightly for a moment.",
+                      hliquid("water"));
+            break;
+        case RIN_COLD_RESISTANCE:
+            pline_The("cold %s faucet flashes brightly for a moment.",
+                      hliquid("water"));
+            break;
+        case RIN_PROTECTION_FROM_SHAPE_CHAN:
+            pline_The("sink looks nothing like a fountain.");
+            break;
+        case RIN_PROTECTION:
+            pline_The("sink glows %s for a moment.",
+                      hcolor((obj.spe < 0) ? "black" : "silver"));
+            break;
+        case RIN_WARNING:
+            pline_The("sink glows %s for a moment.", hcolor("white"));
+            break;
+        case RIN_TELEPORT_CONTROL:
+            pline_The("sink looks like it is being beamed aboard somewhere.");
+            break;
+        case RIN_POLYMORPH_CONTROL:
+            pline_The("sink momentarily looks like a regularly erupting geyser.");
+            break;
+        default:
+            break;
+        }
+    }
+    if (ideed) {
+        trycall(obj);
+    } else if (!nosink) {
+        You_hear("the ring bouncing down the drainpipe.");
+    }
+    if (!rn2(20) && !nosink) {
+        pline_The("sink backs up, leaving %s.", doname(obj, null));
+        obj.in_use = false;
+        obj.ox = player.x;
+        obj.oy = player.y;
+        placeFloorObject(map, obj);
+    } else if (!rn2(5)) {
+        // Bury the ring
+        obj.in_use = false;
+        obj.ox = player.x;
+        obj.oy = player.y;
+        obj.buried = true;
+        // In C this calls add_to_buried(); simplified — just mark as buried
+    } else {
+        // Ring is consumed (useup)
+        // Object is gone
+    }
+}
+
+
+// Handle dropping an item (the interactive UI handler)
 // C ref: do.c dodrop()
 export async function handleDrop(player, map, display) {
     if (player.inventory.length === 0) {
@@ -144,30 +726,28 @@ export async function handleDrop(player, map, display) {
 
 
 // ============================================================
-// 2. Floor effects
-// ============================================================
-
-// TODO: cf. do.c boulder_hits_pool() — boulder falls into pool/lava/moat
-// TODO: cf. do.c flooreffects() — effects of object landing on floor (sink, altar, etc)
-// TODO: cf. do.c obj_no_longer_held() — cleanup when object leaves inventory
-
-
-// ============================================================
-// 3. Altar/sink/fountain interactions
-// ============================================================
-
-// TODO: cf. do.c doaltarobj() — drop object on altar (BUC identification)
-// TODO: cf. do.c trycall() — prompt to name object class after altar drop
-// TODO: cf. do.c polymorph_sink() — polymorph effect at kitchen sink
-// TODO: cf. do.c teleport_sink() — teleportation effect at kitchen sink
-// TODO: cf. do.c dosinkring() — drop ring into kitchen sink effects
-
-
-// ============================================================
 // 4. Stair commands
 // ============================================================
 
-// TODO: cf. do.c u_stuck_cannot_go() — check if engulfed/grabbed preventing movement
+// cf. do.c u_stuck_cannot_go() — check if engulfed/grabbed preventing movement
+export function u_stuck_cannot_go(updn, player) {
+    if (player.ustuck) {
+        if (player.uswallow || !player.sticksToMonsters) {
+            const mptr = player.ustuck.type || player.ustuck.data;
+            You("are %s, and cannot go %s.",
+                !player.uswallow ? "being held"
+                : (mptr && digests(mptr)) ? "swallowed"
+                : "engulfed", updn);
+            return true;
+        } else {
+            // Release the monster
+            const mtmp = player.ustuck;
+            player.ustuck = null;
+            You("release %s.", mtmp.name || "it");
+        }
+    }
+    return false;
+}
 
 // Handle going downstairs
 // C ref: do.c dodown()
@@ -219,16 +799,126 @@ export async function handleUpstairs(player, map, display, game) {
 //    and dungeon.c u_on_rndspot(), mkmaze.c place_lregion()
 // ============================================================
 
-// TODO: cf. do.c schedule_goto() — schedule a deferred level change
-// TODO: cf. do.c deferred_goto() — execute a scheduled level change
-// TODO: cf. do.c save_currentstate() — save current level state before transition
-// TODO: cf. do.c currentlevel_rewrite() — rewrite current level after transition
-// TODO: cf. do.c badspot() — check if landing spot is unsuitable
-// TODO: cf. do.c familiar_level_msg() — "You have a sense of déjà vu" message
-// TODO: cf. do.c final_level() — handle arrival on the Astral Plane
-// TODO: cf. do.c hellish_smoke_mesg() — Gehennom smoke flavor messages
-// TODO: cf. do.c temperature_change_msg() — temperature change on level transition
-// TODO: cf. do.c maybe_lvltport_feedback() — feedback after level teleport
+// cf. do.c schedule_goto() — schedule a deferred level change.
+// In C this sets u.utotype and u.utolev for deferred_goto() to process
+// at end of turn. In JS we store on the player object.
+export function schedule_goto(player, tolev, utotype_flags, pre_msg, post_msg) {
+    player.utotype = (utotype_flags || 0) | 0x80; // UTOTYPE_DEFERRED
+    player.utolev = tolev;
+    player.dfr_pre_msg = pre_msg || null;
+    player.dfr_post_msg = post_msg || null;
+}
+
+// cf. do.c deferred_goto() — execute a scheduled level change.
+// Called at end of turn if player.utotype is set.
+export function deferred_goto(player, game) {
+    if (!player.utolev || !player.utotype) return;
+    const dest = player.utolev;
+    if (dest !== player.dungeonLevel) {
+        if (player.dfr_pre_msg)
+            pline(player.dfr_pre_msg);
+        // In C this calls goto_level(); in JS we use changeLevel()
+        game.changeLevel(dest, 'teleport');
+        if (player.dfr_post_msg)
+            pline(player.dfr_post_msg);
+    }
+    player.utotype = 0;
+    player.dfr_pre_msg = null;
+    player.dfr_post_msg = null;
+}
+
+// cf. do.c maybe_lvltport_feedback() — print level teleport arrival message
+export function maybe_lvltport_feedback(player) {
+    if (player.dfr_post_msg
+        && player.dfr_post_msg.startsWith("You materialize")) {
+        pline(player.dfr_post_msg);
+        player.dfr_post_msg = null;
+    }
+}
+
+// cf. do.c familiar_level_msg() — "You have a sense of deja vu" etc.
+export function familiar_level_msg(player) {
+    const fam_msgs = [
+        "You have a sense of deja vu.",
+        "You feel like you've been here before.",
+        "This place %s familiar...",
+        null, // no message
+    ];
+    const halu_fam_msgs = [
+        "Whoa!  Everything %s different.",
+        "You are surrounded by twisty little passages, all alike.",
+        "Gee, this %s like uncle Conan's place...",
+        null, // no message
+    ];
+    const which = rn2(4);
+    let mesg = player.hallucinating ? halu_fam_msgs[which] : fam_msgs[which];
+    if (mesg && mesg.includes('%s')) {
+        mesg = mesg.replace('%s', !player.blind ? "looks" : "seems");
+    }
+    if (mesg)
+        pline(mesg);
+}
+
+// cf. do.c hellish_smoke_mesg() — Gehennom smoke flavor messages.
+// Also given if restoring a game in Gehennom.
+export function hellish_smoke_mesg(map, player) {
+    const temperature = map?.flags?.temperature || 0;
+    if (temperature)
+        pline("It is %s here.", temperature > 0 ? "hot" : "cold");
+    if (temperature > 0)
+        You("%s smoke...", "sense");
+}
+
+// cf. do.c temperature_change_msg() — temperature change on level transition
+export function temperature_change_msg(prev_temperature, map, player) {
+    const cur_temperature = map?.flags?.temperature || 0;
+    if (prev_temperature !== cur_temperature) {
+        if (cur_temperature)
+            hellish_smoke_mesg(map, player);
+        else if (prev_temperature > 0)
+            pline_The("heat is gone.");
+        else if (prev_temperature < 0)
+            You("are out of the cold.");
+    }
+}
+
+// cf. do.c final_level() — handle arrival on the Astral Plane.
+// Creates player-monsters and a guardian angel.
+export function final_level(player, map) {
+    // Reset monster hostility
+    if (map.monsters) {
+        for (const mon of map.monsters) {
+            if (mon.dead) continue;
+            mon.mpeaceful = false;
+        }
+    }
+    // Create some player-monsters: rn1(4, 3) = 3..6
+    const nplayers = rn1(4, 3);
+    // Would call create_mplayers(nplayers, true) and gain_guardian_angel()
+    // These subsystems are not yet fully wired in JS
+}
+
+// cf. do.c save_currentstate() — save current level state.
+// In JS, level state is kept in memory (game.levels[]), so this is a no-op.
+export function save_currentstate() {
+    // No file I/O needed in JS — levels are cached in game.levels[]
+}
+
+// cf. do.c currentlevel_rewrite() — rewrite current level file.
+// No-op in JS.
+export function currentlevel_rewrite() {
+    return true; // always succeeds in JS
+}
+
+// cf. do.c badspot() — check if landing spot is unsuitable.
+// Commented out in C source; included for completeness.
+export function badspot(map, x, y) {
+    const loc = map?.at?.(x, y);
+    if (!loc) return true;
+    if (loc.typ !== ROOM && loc.typ !== AIR && loc.typ !== CORR) return true;
+    if (map.monsterAt?.(x, y)) return true;
+    return false;
+}
 
 // --- Teleport arrival placement (C ref: dungeon.c u_on_rndspot, mkmaze.c place_lregion) ---
 
@@ -495,27 +1185,215 @@ export function changeLevel(game, depth, transitionDir = null, opts = {}) {
 // 6. Corpse revival
 // ============================================================
 
-// TODO: cf. do.c revive_corpse() — revive a corpse into a monster
-// TODO: cf. do.c revive_mon() — internal revive helper
-// TODO: cf. do.c zombify_mon() — turn corpse into zombie
+// cf. do.c revive_corpse() — revive a corpse into a monster.
+// Returns true if we created a monster for the corpse. If successful,
+// the corpse is gone.
+export function revive_corpse(corpse, player, map) {
+    if (!corpse || corpse.otyp !== CORPSE) return false;
+
+    const montype = corpse.corpsenm;
+    const is_zomb = (mons[montype]?.symbol === S_ZOMBIE
+                     || (corpse.buried && is_reviver(mons[montype])));
+    const chewed = (corpse.oeaten || 0) !== 0;
+    const where = corpse.where || 'floor';
+
+    // Attempt to revive via zap.js revive()
+    const mtmp = revive(corpse, false, map);
+    if (!mtmp) return false;
+
+    // Give appropriate messages based on location
+    if (where === 'invent') {
+        You_feel("squirming in your backpack!");
+    } else if (where === 'floor' || !where) {
+        const ptr = mtmp.type || mtmp.data;
+        let effect = "";
+        if (ptr === mons[PM_DEATH]) effect = " in a whirl of spectral skulls";
+        else if (ptr === mons[PM_PESTILENCE]) effect = " in a churning pillar of flies";
+        else if (ptr === mons[PM_FAMINE]) effect = " in a ring of withered crops";
+
+        if (!player.blind) {
+            const name = chewed ? `A bite-covered ${ptr?.name || "monster"}`
+                                : (ptr?.name || "Something");
+            pline("%s rises from the dead%s!", name, effect);
+        }
+    }
+    return true;
+}
+
+// cf. do.c revive_mon() — timeout callback to revive a corpse.
+export function revive_mon(body, player, map) {
+    if (!body || body.otyp !== CORPSE) return;
+    const mptr = mons[body.corpsenm];
+
+    // Rider displacement logic (simplified)
+    // If the corpse is on floor and a monster is at that spot,
+    // try to move the monster away
+    // (Full implementation would need get_obj_location, rloc, etc.)
+
+    if (!revive_corpse(body, player, map)) {
+        // Revival failed; in C this would schedule ROT_CORPSE or retry for Riders
+        if (is_rider(mptr) && rn2(99)) {
+            // Rider usually tries again — would reschedule timer
+        } else {
+            // rot this corpse away — would start ROT_CORPSE timer
+        }
+    }
+}
+
+// cf. do.c zombify_mon() — timeout callback to revive corpse as zombie.
+export function zombify_mon(body, player, map) {
+    if (!body || body.otyp !== CORPSE) return;
+    const zmon = zombie_form(mons[body.corpsenm]);
+    if (zmon !== NON_PM && zmon !== undefined) {
+        body.corpsenm = zmon;
+        revive_mon(body, player, map);
+    } else {
+        // rot_corpse — would start rot timer
+    }
+}
 
 
 // ============================================================
 // 7. Null/wait/wipe
 // ============================================================
 
-// TODO: cf. do.c donull() — do nothing (wait/search command)
-// TODO: cf. do.c wipeoff() — wipe face while blinded (continuation)
-// TODO: cf. do.c dowipe() — start wiping face
-// TODO: cf. do.c cmd_safety_prevention() — prevent dangerous commands
-// TODO: cf. do.c danger_uprops() — check dangerous hero properties
-// TODO: cf. do.c engulfer_digests_food() — engulfing monster digests held food
+// cf. do.c danger_uprops() — return true if hero properties are dangerous
+export function danger_uprops(player) {
+    return !!(player.stoned || player.slimed || player.strangled || player.sick);
+}
+
+// cf. do.c cmd_safety_prevention() — prevent dangerous commands when
+// monsters are nearby or hero has dangerous properties.
+// Returns true if the command should be prevented.
+export function cmd_safety_prevention(ucverb, cmddesc, act, player) {
+    if (player.safe_wait && !player.menu_requested) {
+        if (player.monsterNearby) {
+            Norep("%s", act);
+            return true;
+        } else if (danger_uprops(player)) {
+            Norep("%s doesn't feel like a good idea right now.", ucverb);
+            return true;
+        }
+    }
+    return false;
+}
+
+// cf. do.c donull() — do nothing (wait/search command).
+// '.' command: rest. Returns true if time was consumed.
+export function donull(player) {
+    // In C, this checks cmd_safety_prevention first.
+    // Simplified: always succeeds (time passes).
+    return true; // Do nothing, but let other things happen
+}
+
+// cf. do.c wipeoff() — continuation function for wiping face while blinded.
+// Returns 1 if still busy, 0 if done.
+export function wipeoff(player) {
+    let udelta = player.ucreamed || 0;
+    let ldelta = player.blindedTimeout || 0;
+
+    if (udelta > 4) udelta = 4;
+    player.ucreamed = (player.ucreamed || 0) - udelta;
+
+    if (ldelta > 4) ldelta = 4;
+    if (player.blindedTimeout)
+        player.blindedTimeout = Math.max(0, player.blindedTimeout - ldelta);
+
+    if (!player.blindedTimeout) {
+        pline("You've got the glop off.");
+        player.ucreamed = 0;
+        return 0; // done
+    } else if (!player.ucreamed) {
+        Your("%s feels clean now.", body_part(FACE, player));
+        return 0; // done
+    }
+    return 1; // still busy
+}
+
+// cf. do.c dowipe() — the #wipe command: start wiping face.
+// Returns true if time was consumed.
+export function dowipe(player) {
+    if (player.ucreamed) {
+        // Set occupation to wipeoff
+        // In C, set_occupation(wipeoff, "wiping off your face", 0)
+        // Simplified: do one wipe step
+        wipeoff(player);
+        return true;
+    }
+    Your("%s is already clean.", body_part(FACE, player));
+    return true;
+}
 
 
 // ============================================================
 // 8. Wounded legs
 // ============================================================
 
-// TODO: cf. do.c legs_in_no_shape() — check if legs are too wounded to act
-// TODO: cf. do.c set_wounded_legs() — set wounded legs condition
-// TODO: cf. do.c heal_legs() — heal wounded legs
+// cf. do.c legs_in_no_shape() — common wounded legs feedback.
+// for_what: "jumping", "kicking", "riding", etc.
+// by_steed: true if the steed's legs are the issue.
+export function legs_in_no_shape(for_what, by_steed, player) {
+    const BOTH_SIDES = 0x30;
+    const LEFT_SIDE = 0x10;
+    const RIGHT_SIDE = 0x20;
+
+    if (by_steed && player.usteed) {
+        const name = player.usteed.name || player.usteed.data?.name || "Your steed";
+        pline("%s is in no shape for %s.", name, for_what);
+    } else {
+        const wl = (player.eWoundedLegs || 0) & BOTH_SIDES;
+        let bp = body_part(LEG, player);
+        if (wl === BOTH_SIDES)
+            bp = makeplural_simple(bp);
+        Your("%s%s %s in no shape for %s.",
+             (wl === LEFT_SIDE) ? "left " : (wl === RIGHT_SIDE) ? "right " : "",
+             bp, (wl === BOTH_SIDES) ? "are" : "is", for_what);
+    }
+}
+
+// cf. do.c set_wounded_legs() — set wounded legs condition.
+// side: LEFT_SIDE or RIGHT_SIDE or BOTH_SIDES
+// timex: duration of the condition
+export function set_wounded_legs(side, timex, player) {
+    const BOTH_SIDES = 0x30;
+
+    if (!player.woundedLegs) {
+        // First time getting wounded legs: reduce DEX
+        if (player.atempDex !== undefined)
+            player.atempDex--;
+        else if (player.attributes)
+            player.attributes[A_DEX] = (player.attributes[A_DEX] || 0) - 1;
+    }
+
+    if (!player.woundedLegs || (player.hWoundedLegs || 0) < timex)
+        player.hWoundedLegs = timex;
+    player.eWoundedLegs = (player.eWoundedLegs || 0) | side;
+    player.woundedLegs = true;
+}
+
+// cf. do.c heal_legs() — heal wounded legs.
+// how: 0 = ordinary, 1 = dismounting steed, 2 = limbs turn to stone
+export function heal_legs(how, player) {
+    const BOTH_SIDES = 0x30;
+
+    if (player.woundedLegs) {
+        // Restore DEX
+        if (player.atempDex !== undefined && player.atempDex < 0)
+            player.atempDex++;
+        else if (player.attributes) {
+            player.attributes[A_DEX] = (player.attributes[A_DEX] || 0) + 1;
+        }
+
+        if (!player.usteed && how !== 2) {
+            const wl = (player.eWoundedLegs || 0) & BOTH_SIDES;
+            let legs = body_part(LEG, player);
+            if (wl === BOTH_SIDES)
+                legs = makeplural_simple(legs);
+            Your("%s %s better.", legs, (wl === BOTH_SIDES) ? "feel" : "feels");
+        }
+
+        player.hWoundedLegs = 0;
+        player.eWoundedLegs = 0;
+        player.woundedLegs = false;
+    }
+}

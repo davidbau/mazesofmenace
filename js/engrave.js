@@ -18,10 +18,21 @@
 //   make_grave/disturb_grave: grave creation and disturbance.
 //   save/rest_engravings: persistence across level changes.
 
-import { pushRngLogEntry, rn2, rnd } from './rng.js';
+import { pushRngLogEntry, rn1, rn2, rnd } from './rng.js';
 import { nhgetch } from './input.js';
 import { WAND_CLASS } from './objects.js';
 import { compactInvletPromptChars } from './invent.js';
+import { pline, You, You_cant, impossible, You_see } from './pline.js';
+import {
+    COLNO, ROWNO, ROOM, GRAVE, FOUNTAIN, ICE,
+    ACCESSIBLE, isok,
+} from './config.js';
+import { is_lava, is_pool, is_pool_or_lava } from './dbridge.js';
+import { IS_GRAVE, IS_AIR } from './symbols.js';
+import { newsym } from './monutil.js';
+import { goodpos } from './teleport.js';
+import { makemon } from './makemon.js';
+import { exercise } from './attrib_exercise.js';
 
 // C engraving type constants (engrave.h):
 // DUST=1, ENGRAVE=2, BURN=3, MARK=4, ENGR_BLOOD=5, HEADSTONE=6
@@ -60,6 +71,15 @@ export function del_engr(map, x, y) {
     if (idx >= 0) {
         pushRngLogEntry(`^dengr[${x},${y}]`);
         map.engravings.splice(idx, 1);
+    }
+}
+
+// cf. engrave.c:461 — del_engr_at(x, y)
+// Deletes any engraving at location (x,y). Convenience wrapper around del_engr.
+export function del_engr_at(map, x, y) {
+    const ep = engr_at(map, x, y);
+    if (ep) {
+        del_engr(map, x, y);
     }
 }
 
@@ -118,7 +138,7 @@ export function wipe_engr_at(map, x, y, cnt, magical = false) {
     const engr = map.engravings[idx];
     if (!engr || engr.type === 'headstone' || engr.nowipeout) return;
     const loc = map.at ? map.at(x, y) : null;
-    const isIce = !!loc && loc.typ === 10; // ICE
+    const isIce = !!loc && loc.typ === ICE;
     if (engr.type !== 'burn' || isIce || (magical && !rn2(2))) {
         let erase = cnt;
         if (engr.type !== 'dust' && engr.type !== 'blood') {
@@ -135,15 +155,47 @@ export function wipe_engr_at(map, x, y, cnt, magical = false) {
 
 // cf. engrave.c:51 — random_engraving(outbuf, pristine_copy): random engraving text
 // Selects random engraving text from rumors or engrave file; degrades it.
-// TODO: engrave.c:51 — random_engraving(): random engraving selection
+// NOTE: The actual RNG-consuming implementation is in dungeon.js as random_engraving_rng()
+// because the engrave file data and rumor infrastructure live there.
+// This is intentionally left as a reference stub.
 
 // cf. engrave.c:187 — can_reach_floor(check_pit): can reach floor?
 // Returns TRUE if hero can reach floor (not levitating, swallowed, stuck, etc.).
-// TODO: engrave.c:187 — can_reach_floor(): floor reach check
+// C checks: uswallow, ustuck+AT_HUGS, Levitation, riding skill, ceiling_hider,
+//           Flying/huge size, pit teetering.
+// In JS the player properties for Levitation/Flying/etc. are not yet uniformly
+// available, so this is a simplified version that covers the common cases.
+export function can_reach_floor(player, map) {
+    if (!player) return true;
+    // C: if (u.uswallow) return FALSE
+    if (player.uswallow) return false;
+    // C: if (u.ustuck && !sticks(youmonst.data) && attacktype(ustuck.data, AT_HUGS))
+    // Simplified: if stuck and not sticking, can't reach
+    // C: if (Levitation && !(Is_airlevel || Is_waterlevel)) return FALSE
+    const props = player.uprops || {};
+    const HLevitation = (props[19] && props[19].intrinsic) || 0; // LEVITATION = 19
+    const ELevitation = (props[19] && props[19].extrinsic) || 0;
+    if (HLevitation || ELevitation) return false;
+    // C: if (u.usteed && P_SKILL(P_RIDING) < P_BASIC) return FALSE
+    if (player.usteed) return false; // simplified: all riders can't reach
+    // C: Flying or huge size => can reach
+    // For simplicity, assume reachable in the common ground case
+    return true;
+}
 
-// cf. engrave.c:218 — cant_reach_floor(x, y, up, check_pit, wand_engraving): explain unreachable
+// cf. engrave.c:218 — cant_reach_floor(x, y, up, check_pit, wand_engraving)
 // Prints message explaining why hero can't reach floor or ceiling.
-// TODO: engrave.c:218 — cant_reach_floor(): unreachable floor message
+export function cant_reach_floor(player, map, x, y, up, check_pit, wand_engraving) {
+    const surface_name = "floor"; // simplified surface()
+    const what = wand_engraving
+        ? "The wand does nothing more, and the tip of the wand"
+        : "You";
+    if (up) {
+        pline("%s can't reach the ceiling.", what);
+    } else {
+        pline("%s can't reach the %s.", what, surface_name);
+    }
+}
 
 // cf. engrave.c:231 — engr_at(x, y): engraving at location
 // Returns engraving struct at given coordinates, or null if none.
@@ -153,52 +205,260 @@ export function engr_at(map, x, y) {
 }
 
 // cf. engrave.c:251 — sengr_at(s, x, y, strict): find engraving with string
-// Finds engraving at location containing string s (substring or exact match).
-// TODO: engrave.c:251 — sengr_at(): engraving string search
+// Finds engraving at location containing string s (case-insensitive).
+// If strict, requires exact match of entire text.
+// Ignores headstones. In C also checks engr_time <= moves (not tracked in JS).
+export function sengr_at(map, s, x, y, strict) {
+    const ep = engr_at(map, x, y);
+    if (ep && ep.type !== 'headstone') {
+        const epText = (ep.text || '').toLowerCase();
+        const searchText = (s || '').toLowerCase();
+        if (strict) {
+            if (epText === searchText) return ep;
+        } else {
+            if (epText.includes(searchText)) return ep;
+        }
+    }
+    return null;
+}
 
 // cf. engrave.c:264 — u_wipe_engr(cnt): wipe engraving at hero's location
 // Wipes cnt characters from engraving at hero's position if reachable.
-// TODO: engrave.c:264 — u_wipe_engr(): hero position engraving wipe
+export function u_wipe_engr(player, map, cnt) {
+    if (can_reach_floor(player, map)) {
+        wipe_engr_at(map, player.x, player.y, cnt, false);
+    }
+}
 
 // cf. engrave.c:297 — engr_can_be_felt(ep): engraving can be felt?
 // Returns TRUE if engraving type can be detected by blind characters.
-// TODO: engrave.c:297 — engr_can_be_felt(): tactile engrave check
+export function engr_can_be_felt(ep) {
+    if (!ep) return false;
+    switch (ep.type) {
+    case 'engrave':
+    case 'headstone':
+    case 'burn':
+        return true;
+    case 'dust':
+    case 'mark':
+    case 'blood':
+    default:
+        return false;
+    }
+}
 
 // cf. engrave.c:318 — read_engr_at(x, y): display engraving text
 // Shows engraving text at location with appropriate sense message.
-// TODO: engrave.c:318 — read_engr_at(): engraving text display
+export function read_engr_at(map, x, y, player) {
+    const ep = engr_at(map, x, y);
+    if (!ep || !ep.text) return;
+
+    const blind = !!(player && player.blind);
+    let sensed = false;
+
+    const loc = map.at ? map.at(x, y) : null;
+    const onIce = loc && loc.typ === ICE;
+
+    switch (ep.type) {
+    case 'dust':
+        if (!blind) {
+            sensed = true;
+            pline("Something is written here in the %s.",
+                  onIce ? "frost" : "dust");
+        }
+        break;
+    case 'engrave':
+    case 'headstone':
+        if (!blind || can_reach_floor(player, map)) {
+            sensed = true;
+            pline("Something is engraved here on the floor.");
+        }
+        break;
+    case 'burn':
+        if (!blind || can_reach_floor(player, map)) {
+            sensed = true;
+            pline("Some text has been %s into the floor here.",
+                  onIce ? "melted" : "burned");
+        }
+        break;
+    case 'mark':
+        if (!blind) {
+            sensed = true;
+            pline("There's some graffiti on the floor here.");
+        }
+        break;
+    case 'blood':
+        if (!blind) {
+            sensed = true;
+            You_see("a message scrawled in blood here.");
+        }
+        break;
+    default:
+        impossible("Something is written in a very strange way.");
+        sensed = true;
+    }
+
+    if (sensed) {
+        const et = ep.text;
+        // C: check if last char is original punctuation
+        const endpunct = (et.length >= 2 && ".!?".includes(et[et.length - 1]))
+            ? "" : ".";
+        You("%s: \"%s\"%s", blind ? "feel the words" : "read", et, endpunct);
+        ep.eread = true;
+        ep.erevealed = true;
+        // C: if (svc.context.run > 0) nomul(0) — stop running
+    }
+}
 
 // cf. engrave.c:473 — freehand(void): player has free hand?
 // Returns TRUE if player has a free hand to engrave with.
-// TODO: engrave.c:473 — freehand(): free hand check
+export function freehand(player) {
+    if (!player) return true;
+    const uwep = player.uwep;
+    if (!uwep) return true;
+    // C: (!uwep || !welded(uwep) || (!bimanual(uwep) && (!uarms || !uarms->cursed)))
+    // Simplified: if weapon is welded (cursed and worn), check bimanual
+    if (uwep.cursed && uwep.owornmask) {
+        // Welded weapon; check if bimanual
+        if (uwep.bimanual) return false;
+        // Not bimanual; check shield
+        const uarms = player.uarms;
+        if (uarms && uarms.cursed) return false;
+    }
+    return true;
+}
 
 // cf. engrave.c:481 [static] — stylus_ok(obj): object is engraving stylus?
 // Filter callback for getobj; rates objects as suitable engraving tools.
-// TODO: engrave.c:481 — stylus_ok(): engraving tool filter
+// In C returns GETOBJ_SUGGEST or GETOBJ_DOWNPLAY.
+// In JS, returns true if the object is a suggested engraving tool.
+function stylus_ok(obj) {
+    if (!obj) return true; // fingers
+    if (obj.oclass === 'WEAPON_CLASS' || obj.oclass === WAND_CLASS
+        || obj.oclass === 'GEM_CLASS' || obj.oclass === 'RING_CLASS')
+        return true;
+    if (obj.oclass === 'TOOL_CLASS'
+        && (obj.otyp === 'TOWEL' || obj.otyp === 'MAGIC_MARKER'))
+        return true;
+    return false;
+}
 
 // cf. engrave.c:503 [static] — u_can_engrave(void): player can engrave?
 // Checks if player is at a valid location for engraving.
-// TODO: engrave.c:503 — u_can_engrave(): engrave location check
+function u_can_engrave(player, map) {
+    if (!player || !map) return false;
+    const loc = map.at ? map.at(player.x, player.y) : null;
+    if (!loc) return false;
+    const levtyp = loc.typ;
+
+    if (player.uswallow) {
+        // C: is_animal / is_whirly checks
+        return false;
+    }
+    if (is_lava(player.x, player.y, map)) {
+        You_cant("write on the lava!");
+        return false;
+    }
+    if (is_pool(player.x, player.y, map) || levtyp === FOUNTAIN) {
+        You_cant("write on the water!");
+        return false;
+    }
+    if (IS_AIR(levtyp)) {
+        You_cant("write in thin air!");
+        return false;
+    }
+    if (!ACCESSIBLE(levtyp)) {
+        You_cant("write here.");
+        return false;
+    }
+    return true;
+}
 
 // cf. engrave.c:545 [static] — doengrave_ctx_init(de): init engrave context
 // Initializes doengrave context structure with defaults.
-// TODO: engrave.c:545 — doengrave_ctx_init(): engrave context initialization
+// In JS, returns a context object rather than mutating a struct pointer.
+function doengrave_ctx_init(player, map) {
+    const oep = engr_at(map, player.x, player.y);
+    const loc = map.at ? map.at(player.x, player.y) : null;
+    return {
+        dengr: false,
+        doblind: false,
+        doknown: false,
+        eow: false,
+        ptext: true,
+        teleengr: false,
+        zapwand: false,
+        disprefresh: false,
+        adding: false,
+        ret: 0, // ECMD_OK
+        type: 'dust',
+        oetype: oep ? oep.type : null,
+        otmp: null,
+        oep,
+        buf: '',
+        ebuf: '',
+        post_engr_text: '',
+        writer: null,
+        everb: null,
+        eloc: null,
+        len: 0,
+        jello: false,
+        frosted: !!(loc && loc.typ === ICE),
+    };
+}
 
 // cf. engrave.c:583 [static] — doengrave_sfx_item_WAN(de): wand engraving effects
 // Handles special wand effects during engraving (fire, lightning, digging, etc.).
-// TODO: engrave.c:583 — doengrave_sfx_item_WAN(): wand engrave special effects
+// NOTE: Full implementation requires wand infrastructure (zapnodir, wand types, etc.)
+// that is not yet available. This is a stub that preserves the interface.
+function doengrave_sfx_item_WAN(de) {
+    // Stub: wand engraving effects not yet implemented
+    // Would handle WAN_LIGHT, WAN_FIRE, WAN_DIGGING, etc.
+}
 
 // cf. engrave.c:741 [static] — doengrave_sfx_item(de): object engraving effects
 // Handles special effects for all object types used for engraving.
-// TODO: engrave.c:741 — doengrave_sfx_item(): engrave object effects
+// NOTE: Full implementation requires object class infrastructure.
+// This is a stub that returns true (continue) for all cases.
+function doengrave_sfx_item(de) {
+    return true;
+}
 
 // cf. engrave.c:895 [static] — doengrave_ctx_verb(de): engrave verb selection
 // Sets verb phrasing for engraving prompt (write/engrave/burn/melt/scrawl).
-// TODO: engrave.c:895 — doengrave_ctx_verb(): engrave verb
+function doengrave_ctx_verb(de) {
+    switch (de.type) {
+    default:
+        de.everb = de.adding ? "add to the weird writing on"
+                             : "write strangely on";
+        break;
+    case 'dust':
+        de.everb = de.adding ? "add to the writing in" : "write in";
+        de.eloc = de.frosted ? "frost" : "dust";
+        break;
+    case 'headstone':
+        de.everb = de.adding ? "add to the epitaph on" : "engrave on";
+        break;
+    case 'engrave':
+        de.everb = de.adding ? "add to the engraving in" : "engrave in";
+        break;
+    case 'burn':
+        de.everb = de.adding ? (de.frosted ? "add to the text melted into"
+                                : "add to the text burned into")
+                   : (de.frosted ? "melt into" : "burn into");
+        break;
+    case 'mark':
+        de.everb = de.adding ? "add to the graffiti on" : "scribble on";
+        break;
+    case 'blood':
+        de.everb = de.adding ? "add to the scrawl on" : "scrawl on";
+        break;
+    }
+}
 
 // cf. engrave.c:955 — doengrave(void): #engrave command handler
 // Selects stylus, prompts for text, handles effects, starts engraving occupation.
-// PARTIAL: engrave.c:955 — doengrave() ↔ handleEngrave()
+// PARTIAL: engrave.c:955 — doengrave() <-> handleEngrave()
 export async function handleEngrave(player, display) {
     const replacePromptMessage = () => {
         if (typeof display.clearRow === 'function') display.clearRow(0);
@@ -234,55 +494,189 @@ export async function handleEngrave(player, display) {
 
 // cf. engrave.c:1266 — engrave(void): engraving occupation callback
 // Gradually engraves text char by char; handles stylus wear and marker ink.
-// TODO: engrave.c:1266 — engrave(): engrave occupation callback
+// NOTE: Full implementation requires the occupation system (set_occupation).
+// This is a stub that preserves the interface.
+function engrave_occupation() {
+    // Stub: occupation callback not yet implemented.
+    // Would handle char-by-char engraving, stylus dulling, marker ink usage.
+    return 0; // finished
+}
 
 // cf. engrave.c:1764 [static] — blengr(void): blind engraving text
 // Returns encrypted blind-writing text for blind player engraving attempts.
-// TODO: engrave.c:1764 — blengr(): blind engraving text
+// C uses xcrypt() to decode these; they are obfuscated strings.
+const blind_writing = [
+    [0x44, 0x66, 0x6d, 0x69, 0x62, 0x65, 0x22, 0x45, 0x7b, 0x71,
+     0x65, 0x6d, 0x72],
+    [0x51, 0x67, 0x60, 0x7a, 0x7f, 0x21, 0x40, 0x71, 0x6b, 0x71,
+     0x6f, 0x67, 0x63],
+    [0x49, 0x6d, 0x73, 0x69, 0x62, 0x65, 0x22, 0x4c, 0x61, 0x7c,
+     0x6d, 0x67, 0x24, 0x42, 0x7f, 0x69, 0x6c, 0x77, 0x67, 0x7e],
+    [0x4b, 0x6d, 0x6c, 0x66, 0x30, 0x4c, 0x6b, 0x68, 0x7c, 0x7f,
+     0x6f],
+    [0x51, 0x67, 0x70, 0x7a, 0x7f, 0x6f, 0x67, 0x68, 0x64, 0x71,
+     0x21, 0x4f, 0x6b, 0x6d, 0x7e, 0x72],
+    [0x4c, 0x63, 0x76, 0x61, 0x71, 0x21, 0x48, 0x6b, 0x7b, 0x75,
+     0x67, 0x63, 0x24, 0x45, 0x65, 0x6b, 0x6b, 0x65],
+    [0x4c, 0x67, 0x68, 0x6b, 0x78, 0x68, 0x6d, 0x76, 0x7a, 0x75,
+     0x21, 0x4f, 0x71, 0x7a, 0x75, 0x6f, 0x77],
+    [0x44, 0x66, 0x6d, 0x7c, 0x78, 0x21, 0x50, 0x65, 0x66, 0x65,
+     0x6c],
+    [0x44, 0x66, 0x73, 0x69, 0x62, 0x65, 0x22, 0x56, 0x7d, 0x63,
+     0x69, 0x76, 0x6b, 0x66],
+];
+
+function blengr() {
+    // C: ROLL_FROM(blind_writing) — pick a random entry
+    return blind_writing[rn2(blind_writing.length)];
+}
 
 // cf. engrave.c:1497 — sanitize_engravings(void): remove control chars
 // Removes terminal-disrupting characters from engravings when loading bones.
-// TODO: engrave.c:1497 — sanitize_engravings(): engraving sanitization
+export function sanitize_engravings(map) {
+    if (!map || !Array.isArray(map.engravings)) return;
+    for (const ep of map.engravings) {
+        if (ep && ep.text) {
+            // C: sanitize_name() removes control characters
+            ep.text = ep.text.replace(/[\x00-\x1f\x7f]/g, '');
+        }
+    }
+}
 
 // cf. engrave.c:1508 — forget_engravings(void): mark engravings as unread
 // Marks all engravings as unseen/unread before saving bones.
-// TODO: engrave.c:1508 — forget_engravings(): engraving reset for bones
+export function forget_engravings(map) {
+    if (!map || !Array.isArray(map.engravings)) return;
+    for (const ep of map.engravings) {
+        if (ep) {
+            ep.eread = false;
+            ep.erevealed = false;
+        }
+    }
+}
 
 // cf. engrave.c:1523 — engraving_sanity_check(void): validate engravings
 // Checks all engravings have legal locations and accessible terrain.
-// TODO: engrave.c:1523 — engraving_sanity_check(): engraving validation
+export function engraving_sanity_check(map) {
+    if (!map || !Array.isArray(map.engravings)) return;
+    for (const ep of map.engravings) {
+        if (!ep) continue;
+        const x = ep.x, y = ep.y;
+        if (!isok(x, y)) {
+            impossible("engraving sanity: !isok <%d,%d>", x, y);
+            continue;
+        }
+        const loc = map.at ? map.at(x, y) : null;
+        if (!loc) continue;
+        const levtyp = loc.typ;
+        if (is_pool_or_lava(x, y, map) || IS_AIR(levtyp) || !ACCESSIBLE(levtyp)) {
+            impossible("engraving sanity: illegal surface (%d)", levtyp);
+            continue;
+        }
+    }
+}
 
 // cf. engrave.c:1550 — save_engravings(nhfp): serialize engravings
-// Writes engraving structures to save file.
 // N/A: engrave.c:1550 — save_engravings() (JS uses storage.js)
 
 // cf. engrave.c:1583 — rest_engravings(nhfp): deserialize engravings
-// Reads engravings from save file.
 // N/A: engrave.c:1583 — rest_engravings() (JS uses storage.js)
 
 // cf. engrave.c:1625 — engr_stats(hdrfmt, hdrbuf, count, size): engraving stats
-// Calculates memory usage statistics for engraving data.
-// TODO: engrave.c:1625 — engr_stats(): engraving memory stats
+// Calculates statistics for engraving data.
+export function engr_stats(map) {
+    let count = 0;
+    let size = 0;
+    if (map && Array.isArray(map.engravings)) {
+        for (const ep of map.engravings) {
+            if (ep) {
+                count++;
+                size += (ep.text || '').length;
+            }
+        }
+    }
+    return { count, size };
+}
 
 // cf. engrave.c:1666 — rloc_engr(ep): relocate engraving randomly
 // Moves engraving to a new valid location on the level.
-// TODO: engrave.c:1666 — rloc_engr(): engraving relocation
+export function rloc_engr(map, ep) {
+    if (!ep || !map) return;
+    let tryct = 200;
+    while (--tryct >= 0) {
+        const tx = rn1(COLNO - 3, 2);
+        const ty = rn2(ROWNO);
+        if (engr_at(map, tx, ty)) continue;
+        if (!goodpos(tx, ty, null, 0, map)) continue;
+        ep.x = tx;
+        ep.y = ty;
+        newsym(map, tx, ty);
+        return;
+    }
+}
 
 // cf. engrave.c:1686 — make_grave(x, y, str): create headstone
 // Creates headstone at location with epitaph text.
-// TODO: engrave.c:1686 — make_grave(): headstone creation
+// The caller is responsible for newsym(x, y).
+export function make_grave(map, x, y, str) {
+    if (!map) return;
+    const loc = map.at ? map.at(x, y) : null;
+    if (!loc) return;
+    // C: Can we put a grave here?
+    if (loc.typ !== ROOM && loc.typ !== GRAVE) return;
+    if (map.trapAt && map.trapAt(x, y)) return;
+    // Make the grave
+    loc.typ = GRAVE;
+    // Engrave the headstone
+    del_engr_at(map, x, y);
+    // C: if (!str) str = get_rnd_text(EPITAPHFILE, buf, rn2, MD_PAD_RUMORS);
+    // str should be provided by caller or left as empty
+    if (!str) str = '';
+    make_engr_at(map, x, y, str, 'headstone');
+}
 
 // cf. engrave.c:1706 — disturb_grave(x, y): disturb a grave
 // Summons ghoul when grave is disturbed by engraving or kicking.
-// TODO: engrave.c:1706 — disturb_grave(): grave disturbance
+export function disturb_grave(map, x, y, player, depth) {
+    if (!map) return;
+    const loc = map.at ? map.at(x, y) : null;
+    if (!loc) return;
+    if (!IS_GRAVE(loc.typ)) {
+        impossible("Disturbing grave that isn't a grave? (%d)", loc.typ);
+    } else if (loc.disturbed) {
+        impossible("Disturbing already disturbed grave?");
+    } else {
+        You("disturb the undead!");
+        loc.disturbed = true;
+        // C: makemon(&mons[PM_GHOUL], x, y, NO_MM_FLAGS)
+        if (typeof makemon === 'function') {
+            makemon('PM_GHOUL', x, y, 0, depth, map);
+        }
+        // C: exercise(A_WIS, FALSE)
+        if (player) {
+            exercise(player, 2, false); // A_WIS = 2
+        }
+    }
+}
 
 // cf. engrave.c:1723 — see_engraving(ep): update engraving display
 // Updates display symbol at engraving location.
-// TODO: engrave.c:1723 — see_engraving(): engraving display update
+export function see_engraving(map, ep) {
+    if (!ep || !map) return;
+    newsym(map, ep.x, ep.y);
+}
 
 // cf. engrave.c:1731 — feel_engraving(ep): feel engraving (blind)
 // Marks engraving as read/revealed for engravings detectable by touch.
-// TODO: engrave.c:1731 — feel_engraving(): tactile engraving detection
+export function feel_engraving(map, ep) {
+    if (!ep || !map) return;
+    if (engr_can_be_felt(ep)) {
+        ep.eread = true;
+        ep.erevealed = true;
+        // C: map_engraving(ep, 1) — not yet ported
+        newsym(map, ep.x, ep.y);
+    }
+}
 
 // C ref: hack.c:3001-3012 maybe_smudge_engr()
 // On successful movement, attempt to smudge engravings at origin/destination.

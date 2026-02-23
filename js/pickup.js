@@ -1,247 +1,1065 @@
-import { THRONE, SINK, GRAVE, FOUNTAIN, STAIRS, ALTAR, IS_DOOR, D_ISOPEN } from './config.js';
-import { objectData, COIN_CLASS } from './objects.js';
+import { THRONE, SINK, GRAVE, FOUNTAIN, STAIRS, ALTAR, IS_DOOR, D_ISOPEN,
+         IS_POOL, IS_LAVA, isok, SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER,
+         EXT_ENCUMBER, A_WIS, STONE } from './config.js';
+import { objectData, COIN_CLASS, CORPSE, ICE_BOX, LARGE_BOX, CHEST,
+         BAG_OF_HOLDING, BAG_OF_TRICKS, WAN_CANCELLATION, LOADSTONE,
+         BOULDER, STATUE, AMULET_OF_YENDOR, CANDELABRUM_OF_INVOCATION,
+         BELL_OF_OPENING, SPE_BOOK_OF_THE_DEAD, LEASH, SCR_SCARE_MONSTER,
+         GOLD_PIECE, SADDLE, HORN_OF_PLENTY, SACK, OILSKIN_SACK } from './objects.js';
 import { nhgetch } from './input.js';
-import { doname } from './mkobj.js';
+import { doname, xname, Is_container, weight, splitobj, unbless, set_bknown,
+         set_corpsenm } from './mkobj.js';
 import { observeObject } from './discovery.js';
 import { formatGoldPickupMessage, formatInventoryPickupMessage } from './do.js';
+import { mons, PM_HOUSECAT, PM_ICE_TROLL, MZ_LARGE } from './monsters.js';
+import { is_rider, touch_petrifies, nohands, nolimbs, notake,
+         poly_when_stoned } from './mondata.js';
+import { W_ARMOR, W_ACCESSORY, W_WEAPONS, W_SADDLE } from './worn.js';
+import { rn2, rnd, d } from './rng.js';
+import { pline, You, Your, You_cant, pline_The, There, Norep,
+         impossible } from './pline.js';
+import { body_part, HAND, FOOT } from './polyself.js';
+import { instapetrify } from './trap.js';
+import { exercise } from './attrib_exercise.js';
+import { newsym } from './monutil.js';
+import { currency } from './invent.js';
+import { makemon, NO_MM_FLAGS, NO_MINVENT, MM_ADJACENTOK } from './makemon.js';
+import { christen_monst, Monnam, mon_nam, x_monnam, ARTICLE_THE,
+         SUPPRESS_SADDLE } from './do_name.js';
+import { revive as revive_corpse } from './zap.js';
 
 // pickup.js -- Autopickup, floor object pickup, container looting
-// cf. pickup.c — pickup(), doloot(), doloot_core(),
-//                u_safe_from_fatal_corpse, fatal_corpse_mistake,
-//                rider_corpse_revival, force_decor, describe_decor,
-//                check_here, n_or_more, menu_class_present,
-//                add_valid_menu_class, all_but_uchain, allow_all,
-//                allow_category, allow_cat_no_uchain, is_worn_by_type,
-//                reset_justpicked, count_justpicked, find_justpicked,
-//                check_autopickup_exceptions, autopick_testobj,
-//                count_categories, delta_cwt, carry_count, lift_object,
-//                pick_obj, pickup_prinv, encumber_msg, container_at,
-//                mon_beside, doloot, doloot_core, reverse_loot,
-//                loot_mon, mbag_explodes, is_boh_item_gone,
-//                do_boh_explosion, boh_loss, in_container, ck_bag,
-//                out_container, removed_from_icebox, mbag_item_gone,
-//                observe_quantum_cat, explain_container_prompt,
-//                u_handsy, stash_ok, traditional_loot, menu_loot,
-//                tip_ok, choose_tip_container_menu, dotip,
-//                tipcontainer_gettarget
-//
-// pickup.c handles all object pickup and container looting:
-//   autopick_testobj(): check if object matches autopickup conditions.
-//   pick_obj(): perform actual pickup from floor into inventory.
-//   doloot(): #loot command — loot container or saddle.
-//   loot_mon(): loot container from monster or remove saddle.
-//   dotip(): #tip command — empty container contents onto floor.
-//   observe_quantum_cat(): handle Schrodinger's cat in containers.
-//
-// JS implementations:
-//   handlePickup(): floor object pickup (pickup.c pickup())
-//   handleLoot(): container looting (pickup.c doloot/doloot_core)
-//   handlePay(): shopkeeper payment stub (shk.c dopay)
+// Ported from NetHack pickup.c
 
-// cf. pickup.c:273 — u_safe_from_fatal_corpse(obj, tests): safe from corpse check
-// Checks if the hero is protected from fatal corpse effects.
-// TODO: pickup.c:273 — u_safe_from_fatal_corpse(): fatal corpse protection check
+// ---------------------------------------------------------------------------
+// Module-level state (cf. C globals)
+// ---------------------------------------------------------------------------
+let current_container = null;      // gc.current_container
+let valid_menu_classes = '';        // gv.valid_menu_classes
+let class_filter = false;          // gc.class_filter
+let bucx_filter = false;           // gb.bucx_filter
+let shop_filter = false;           // gs.shop_filter
+let picked_filter = false;         // gp.picked_filter
+let val_for_n_or_more = 0;         // gv.val_for_n_or_more
+let abort_looting = false;         // ga.abort_looting
+let pickup_encumbrance = 0;        // gp.pickup_encumbrance
+let oldcap = 0;                    // go.oldcap
+let loot_reset_justpicked = false; // gl.loot_reset_justpicked
 
-// cf. pickup.c:285 [static] — fatal_corpse_mistake(obj, remotely): bare-hand corpse check
-// Checks if the hero is bare-handedly touching a cockatrice corpse.
-// TODO: pickup.c:285 — fatal_corpse_mistake(): bare-hand cockatrice corpse check
+// ---------------------------------------------------------------------------
+// Helper predicates (not exported from other modules)
+// ---------------------------------------------------------------------------
 
-// cf. pickup.c:303 — rider_corpse_revival(obj, remotely): Rider corpse revival
-// Manipulating a Rider's corpse triggers its revival.
-// TODO: pickup.c:303 — rider_corpse_revival(): Rider corpse manipulation
+// cf. C macro: #define bigmonst(ptr) ((ptr)->msize >= MZ_LARGE)
+function bigmonst(ptr) {
+    return (ptr.size || ptr.msize || 0) >= MZ_LARGE;
+}
 
-// cf. pickup.c:317 — force_decor(via_probing): describe dungeon feature
-// Describes a dungeon feature when revealed by a probing wand.
-// TODO: pickup.c:317 — force_decor(): probed feature description
+// cf. C macro: Is_mbag(obj) — bag of holding, sack, or oilskin sack type
+function Is_mbag(obj) {
+    return obj.otyp === BAG_OF_HOLDING;
+}
 
-// cf. pickup.c:353 [static] — describe_decor(void): mention decor when walking
-// Handles mention_decor when walking onto stairs/altar/special features.
-// TODO: pickup.c:353 — describe_decor(): floor feature mention
+function Has_contents(obj) {
+    return obj.cobj != null && (Array.isArray(obj.cobj) ? obj.cobj.length > 0 : !!obj.cobj);
+}
 
-// cf. pickup.c:430 [static] — check_here(picked_some): look at floor objects
-// Looks at floor objects unless too many to display.
-// TODO: pickup.c:430 — check_here(): floor object display check
+function Is_box(obj) {
+    return obj.otyp === LARGE_BOX || obj.otyp === CHEST;
+}
 
-// cf. pickup.c:460 [static] — n_or_more(obj): count threshold query callback
-// Query callback returning TRUE if object count >= reference value.
-// TODO: pickup.c:460 — n_or_more(): count threshold callback
+function SchroedingersBox(obj) {
+    return obj.spe === 1 && Is_box(obj);
+}
 
-// cf. pickup.c:469 — menu_class_present(c): check valid menu class
-// Checks if the valid_menu_classes array contains an entry.
-// TODO: pickup.c:469 — menu_class_present(): menu class presence check
+function carried(obj) {
+    return obj.where === 'OBJ_INVENT' || obj.where === 'invent';
+}
 
-// cf. pickup.c:475 — add_valid_menu_class(c): add menu class entry
-// Adds an entry to the valid_menu_classes array.
-// TODO: pickup.c:475 — add_valid_menu_class(): menu class addition
+function age_is_relative(obj) {
+    // In C: rotting food items have relative age.  Corpses, tins, etc.
+    return obj.otyp === CORPSE;
+}
 
-// cf. pickup.c:509 [static] — all_but_uchain(obj): all-except-chain filter
-// Query callback returning TRUE if not the player's chain.
-// TODO: pickup.c:509 — all_but_uchain(): chain exclusion filter
+function obj_extract_self(obj) {
+    // Stub: in the JS port, object list management is handled differently.
+    // This is a no-op placeholder for C's obj_extract_self().
+}
 
-// cf. pickup.c:517 — allow_all(obj): allow all objects filter
-// Always returns TRUE for all objects.
-// TODO: pickup.c:517 — allow_all(): universal allow filter
+function is_worn(obj) {
+    return !!(obj.owornmask);
+}
 
-// cf. pickup.c:523 — allow_category(obj): allow by category filter
-// Returns TRUE for objects in the valid category.
-// TODO: pickup.c:523 — allow_category(): category filter
+// ---------------------------------------------------------------------------
+// Ported pickup.c functions
+// ---------------------------------------------------------------------------
 
-// cf. pickup.c:597 [static] — allow_cat_no_uchain(obj): category filter excluding chain
-// Query callback for valid category excluding player's chain.
-// TODO: pickup.c:597 — allow_cat_no_uchain(): category no-chain filter
+// cf. pickup.c:273 — u_safe_from_fatal_corpse(obj, tests)
+const st_gloves = 0x01;
+const st_corpse = 0x02;
+const st_petrifies = 0x04;
+const st_resists = 0x08;
+const st_all = st_gloves | st_corpse | st_petrifies | st_resists;
 
-// cf. pickup.c:609 — is_worn_by_type(otmp): worn item by class filter
-// Query callback for valid class objects currently worn by player.
-// TODO: pickup.c:609 — is_worn_by_type(): worn by type filter
+function u_safe_from_fatal_corpse(obj, tests, player) {
+    if (((tests & st_gloves) && player.uarmg)
+        || ((tests & st_corpse) && obj.otyp !== CORPSE)
+        || ((tests & st_petrifies) && !touch_petrifies(mons[obj.corpsenm]))
+        || ((tests & st_resists) && player.Stone_resistance))
+        return true;
+    return false;
+}
 
-// cf. pickup.c:616 — reset_justpicked(olist): reset just-picked flags
-// Resets last-picked-up flags on an object list.
-// TODO: pickup.c:616 — reset_justpicked(): just-picked flag reset
+// cf. pickup.c:285 — fatal_corpse_mistake(obj, remotely)
+function fatal_corpse_mistake(obj, remotely, player) {
+    if (u_safe_from_fatal_corpse(obj, st_all, player) || remotely)
+        return false;
 
-// cf. pickup.c:635 — count_justpicked(olist): count recently picked objects
-// Counts recently picked up objects in a list.
-// TODO: pickup.c:635 — count_justpicked(): just-picked object count
+    if (poly_when_stoned(player.data)) {
+        // polymon(PM_STONE_GOLEM) not yet ported; skip
+        return false;
+    }
 
-// cf. pickup.c:648 — find_justpicked(olist): find recently picked object
-// Finds the first recently picked up object in a list.
-// TODO: pickup.c:648 — find_justpicked(): just-picked object search
+    pline("Touching %s is a fatal mistake.", doname(obj, player));
+    instapetrify("cockatrice corpse", player);
+    return true;
+}
 
-// cf. pickup.c:913 — check_autopickup_exceptions(obj): check autopickup exception patterns
-// Tests if an object matches any autopickup exception pattern.
-// TODO: pickup.c:913 — check_autopickup_exceptions(): autopickup exception matching
+// cf. pickup.c:303 — rider_corpse_revival(obj, remotely)
+function rider_corpse_revival(obj, remotely, player, map) {
+    if (!obj || obj.otyp !== CORPSE || !is_rider(mons[obj.corpsenm]))
+        return false;
 
-// cf. pickup.c:930 — autopick_testobj(otmp, calc_costly): check autopickup conditions
-// Checks if an object matches autopickup conditions.
-// TODO: pickup.c:930 — autopick_testobj(): autopickup eligibility check
+    pline("At your %s, the corpse suddenly moves...",
+          remotely ? "attempted acquisition" : "touch");
+    revive_corpse(obj, false, map);
+    exercise(player, A_WIS, false);
+    return true;
+}
 
-// cf. pickup.c:1511 [static] — count_categories(olist, qflags): count object categories
-// Counts object categories in a list.
-// TODO: pickup.c:1511 — count_categories(): object category count
+// cf. pickup.c:317 — force_decor(via_probing)
+// Stub: describe_decor/mention_decor system not yet ported
+function force_decor(_via_probing) { }
 
-// cf. pickup.c:1544 [static] — delta_cwt(container, obj): weight change calculation
-// Calculates weight change when removing an object from a container.
-// TODO: pickup.c:1544 — delta_cwt(): container weight change
+// cf. pickup.c:337 — deferred_decor(setup)
+function deferred_decor(_setup) { }
 
-// cf. pickup.c:1574 [static] — carry_count(obj, container, count_p, telekinesis, allow_pickup): pickup count
-// Determines the number of items to pick up.
-// TODO: pickup.c:1574 — carry_count(): pickup quantity determination
+// cf. pickup.c:353 — describe_decor()
+function describe_decor() { return false; }
 
-// cf. pickup.c:1709 [static] — lift_object(obj, container, cnt_p, telekinesis, allow_pickup): lift object
-// Performs the actual pickup of an object into inventory.
-// TODO: pickup.c:1709 — lift_object(): object inventory lift
+// cf. pickup.c:430 — check_here(picked_some)
+// Stub: look_here/read_engr not yet ported
+function check_here(_picked_some) { }
 
-// cf. pickup.c:1897 — pick_obj(otmp): pick up object from floor
-// Performs actual pickup of an object from floor or monster.
-// TODO: pickup.c:1897 — pick_obj(): floor object pickup
+// cf. pickup.c:460 — n_or_more(obj)
+function n_or_more(obj, player) {
+    if (obj === player.uchain)
+        return false;
+    return obj.quan >= val_for_n_or_more;
+}
 
-// cf. pickup.c:1945 [static] — pickup_prinv(obj, count, verb): print pickup message
-// Prints added-to-inventory message for a picked up object.
-// TODO: pickup.c:1945 — pickup_prinv(): pickup inventory message
+// cf. pickup.c:469 — menu_class_present(c)
+function menu_class_present(c) {
+    return (c && valid_menu_classes.indexOf(String.fromCharCode(c)) >= 0)
+        || (typeof c === 'string' && c && valid_menu_classes.indexOf(c) >= 0);
+}
 
-// cf. pickup.c:1972 — encumber_msg(void): encumbrance status message
-// Prints message if encumbrance status changed since last check.
-// TODO: pickup.c:1972 — encumber_msg(): encumbrance change message
+// cf. pickup.c:475 — add_valid_menu_class(c)
+function add_valid_menu_class(c) {
+    if (c === 0 || c === '\0') {
+        valid_menu_classes = '';
+        class_filter = false;
+        bucx_filter = false;
+        shop_filter = false;
+        picked_filter = false;
+    } else {
+        const ch = typeof c === 'number' ? String.fromCharCode(c) : c;
+        if (!menu_class_present(c)) {
+            valid_menu_classes += ch;
+            switch (ch) {
+            case 'B': case 'U': case 'C': case 'X':
+                bucx_filter = true;
+                break;
+            case 'P':
+                picked_filter = true;
+                break;
+            case 'u':
+                shop_filter = true;
+                break;
+            default:
+                class_filter = true;
+                break;
+            }
+        }
+    }
+}
 
-// cf. pickup.c:2018 — container_at(x, y, countem): check container at position
-// Checks if a container exists at a position, optionally counting containers.
-// TODO: pickup.c:2018 — container_at(): container position check
+// cf. pickup.c:509 — all_but_uchain(obj)
+function all_but_uchain(obj, player) {
+    return obj !== player.uchain;
+}
 
-// cf. pickup.c:2066 [static] — mon_beside(x, y): monster at position check
-// Checks if a monster exists at a position (can't loot in water with monster).
-// TODO: pickup.c:2066 — mon_beside(): monster adjacency check
+// cf. pickup.c:517 — allow_all(_obj)
+function allow_all(_obj) {
+    return true;
+}
 
-// cf. pickup.c:2160 — doloot(void): #loot command handler
-// Handles the #loot extended command.
-// JS equiv: handleLoot() below
-// PARTIAL: pickup.c:2160 — doloot() ↔ handleLoot()
+// cf. pickup.c:523 — allow_category(obj)
+function allow_category(obj, player) {
+    if (!class_filter && !shop_filter && !bucx_filter && !picked_filter)
+        return false;
 
-// cf. pickup.c:2172 [static] — doloot_core(void): core loot function
-// Core loot function for containers on floor or saddle.
-// TODO: pickup.c:2172 — doloot_core(): loot core mechanics
+    if (obj.oclass === COIN_CLASS && class_filter)
+        return valid_menu_classes.indexOf(String.fromCharCode(COIN_CLASS)) >= 0;
 
-// cf. pickup.c:2344 [static] — reverse_loot(void): confused loot
-// Called when attempting #loot while confused.
-// TODO: pickup.c:2344 — reverse_loot(): confused looting
+    if (bucx_filter) {
+        let bucx;
+        if (obj.oclass === COIN_CLASS) {
+            bucx = 'U';
+        } else {
+            bucx = !obj.bknown ? 'X'
+                 : obj.blessed ? 'B'
+                 : obj.cursed ? 'C'
+                 : 'U';
+        }
+        if (valid_menu_classes.indexOf(bucx) < 0)
+            return false;
+    }
+    if (class_filter && valid_menu_classes.indexOf(String.fromCharCode(obj.oclass)) < 0)
+        return false;
+    if (shop_filter && !obj.unpaid)
+        return false;
+    if (picked_filter && !obj.pickup_prev)
+        return false;
+    return true;
+}
 
-// cf. pickup.c:2425 — loot_mon(mtmp, passed_info, prev_loot): loot container from monster
-// Loots a container from a monster or removes a saddle.
-// TODO: pickup.c:2425 — loot_mon(): monster container loot
+// cf. pickup.c:597 — allow_cat_no_uchain(obj)  [not used in C either]
+function allow_cat_no_uchain(obj, player) {
+    if (obj !== player.uchain
+        && ((valid_menu_classes.indexOf('u') >= 0 && obj.unpaid)
+            || valid_menu_classes.indexOf(String.fromCharCode(obj.oclass)) >= 0))
+        return true;
+    return false;
+}
 
-// cf. pickup.c:2482 [static] — mbag_explodes(obj, depthin): magic bag explosion check
-// Decides if a magic bag will explode when an object is inserted.
-// TODO: pickup.c:2482 — mbag_explodes(): magic bag explosion check
+// cf. pickup.c:609 — is_worn_by_type(otmp)
+function is_worn_by_type(otmp, player) {
+    return is_worn(otmp) && allow_category(otmp, player);
+}
 
-// cf. pickup.c:2504 [static] — is_boh_item_gone(void): bag of holding item check
-// Checks if a bag of holding item was destroyed.
-// TODO: pickup.c:2504 — is_boh_item_gone(): bag of holding item check
+// cf. pickup.c:616 — reset_justpicked(olist)
+function reset_justpicked(olist) {
+    if (Array.isArray(olist)) {
+        for (const otmp of olist)
+            otmp.pickup_prev = 0;
+    } else {
+        for (let otmp = olist; otmp; otmp = otmp.nobj)
+            otmp.pickup_prev = 0;
+    }
+}
 
-// cf. pickup.c:2512 [static] — do_boh_explosion(boh, on_floor): bag of holding explosion
-// Scatters destroyed bag of holding contents.
-// TODO: pickup.c:2512 — do_boh_explosion(): bag of holding explosion
+// cf. pickup.c:635 — count_justpicked(olist)
+function count_justpicked(olist) {
+    let cnt = 0;
+    if (Array.isArray(olist)) {
+        for (const otmp of olist)
+            if (otmp.pickup_prev) cnt++;
+    } else {
+        for (let otmp = olist; otmp; otmp = otmp.nobj)
+            if (otmp.pickup_prev) cnt++;
+    }
+    return cnt;
+}
 
-// cf. pickup.c:2531 [static] — boh_loss(container, held): bag of holding item loss
-// Handles items lost from magic bags.
-// TODO: pickup.c:2531 — boh_loss(): magic bag item loss
+// cf. pickup.c:648 — find_justpicked(olist)
+function find_justpicked(olist) {
+    if (Array.isArray(olist)) {
+        for (const otmp of olist)
+            if (otmp.pickup_prev) return otmp;
+    } else {
+        for (let otmp = olist; otmp; otmp = otmp.nobj)
+            if (otmp.pickup_prev) return otmp;
+    }
+    return null;
+}
 
-// cf. pickup.c:2552 [static] — in_container(obj): object can go in container filter
-// Filter for putting objects into containers.
-// TODO: pickup.c:2552 — in_container(): containable object filter
+// cf. pickup.c:913 — check_autopickup_exceptions(obj)
+// Stub: autopickup exception regex system not yet ported
+function check_autopickup_exceptions(_obj) {
+    return null;
+}
 
-// cf. pickup.c:2714 — ck_bag(obj): intact container filter
-// Filter for intact containers excluding the current container.
-// TODO: pickup.c:2714 — ck_bag(): intact container filter
+// cf. pickup.c:930 — autopick_testobj(otmp, calc_costly)
+function autopick_testobj(otmp, calc_costly, player) {
+    const otypes = (player.flags && player.flags.pickup_types) || '';
 
-// cf. pickup.c:2721 [static] — out_container(obj): object can leave container filter
-// Filter for removing objects from containers.
-// TODO: pickup.c:2721 — out_container(): removable container object filter
+    // first check: reject if an unpaid item in a shop
+    // (costly_spot not yet ported, skip this check)
 
-// cf. pickup.c:2775 — removed_from_icebox(obj): icebox corpse adjustment
-// Adjusts corpse when removed from an ice box.
-// TODO: pickup.c:2775 — removed_from_icebox(): icebox corpse adjustment
+    // pickup_thrown/pickup_stolen/nopick_dropped
+    if (otmp.how_lost === 'LOST_THROWN')
+        return true;
+    if (otmp.how_lost === 'LOST_DROPPED')
+        return false;
+    if (otmp.how_lost === 'LOST_EXPLODING')
+        return false;
 
-// cf. pickup.c:2797 [static] — mbag_item_gone(held, item, silent): magic bag item destruction
-// Handles item destruction in magic bags.
-// TODO: pickup.c:2797 — mbag_item_gone(): magic bag item destruction
+    // check for pickup_types
+    let pickit = (!otypes || otypes.indexOf(String.fromCharCode(otmp.oclass)) >= 0);
 
-// cf. pickup.c:2820 — observe_quantum_cat(box, makecat, givemsg): Schrodinger's cat
-// Handles Schrodinger's cat when accessing a container.
-// TODO: pickup.c:2820 — observe_quantum_cat(): quantum cat observation
+    // check for autopickup exceptions
+    const ape = check_autopickup_exceptions(otmp);
+    if (ape)
+        pickit = ape.grab;
 
-// cf. pickup.c:2891 [static] — explain_container_prompt(more_containers): explain container prompt
-// Explains the container handling prompt to the player.
-// TODO: pickup.c:2891 — explain_container_prompt(): container prompt explanation
+    return pickit;
+}
 
-// cf. pickup.c:2923 — u_handsy(void): container manipulation prompt
-// Displays the container manipulation prompt options.
-// TODO: pickup.c:2923 — u_handsy(): container manipulation prompt
+// cf. pickup.c:1511 — count_categories(olist, qflags)
+function count_categories(olist, qflags, player) {
+    const pack = (player.flags && player.flags.inv_order) || '';
+    const do_worn = !!(qflags & 0x100); // WORN_TYPES
+    let ccount = 0;
+    for (let pi = 0; pi < pack.length; pi++) {
+        let counted_category = false;
+        const cls = pack.charCodeAt(pi);
+        const items = Array.isArray(olist) ? olist : [];
+        for (const curr of items) {
+            if (curr.oclass === cls) {
+                if (do_worn && !(curr.owornmask & (W_ARMOR | W_ACCESSORY | W_WEAPONS)))
+                    continue;
+                if (!counted_category) {
+                    ccount++;
+                    counted_category = true;
+                }
+            }
+        }
+    }
+    return ccount;
+}
 
-// cf. pickup.c:2937 [static] — stash_ok(obj): object can be stashed filter
-// Filter for objects that can be stashed in containers.
-// TODO: pickup.c:2937 — stash_ok(): stashable object filter
+// cf. pickup.c:1544 — delta_cwt(container, obj)
+function delta_cwt(container, obj) {
+    if (container.otyp !== BAG_OF_HOLDING)
+        return obj.owt || 0;
 
-// cf. pickup.c:3210 [static] — traditional_loot(put_in): traditional loot prompting
-// Loots a container by prompting for each item.
-// TODO: pickup.c:3210 — traditional_loot(): item-by-item container loot
+    const owt = container.owt || 0;
+    // Temporarily remove obj from container contents to calculate new weight
+    const contents = container.cobj;
+    if (Array.isArray(contents)) {
+        const idx = contents.indexOf(obj);
+        if (idx < 0) return obj.owt || 0;
+        contents.splice(idx, 1);
+        const nwt = weight(container);
+        contents.splice(idx, 0, obj);
+        return owt - nwt;
+    }
+    return obj.owt || 0;
+}
 
-// cf. pickup.c:3245 [static] — menu_loot(retry, put_in): menu-based looting
-// Loots a container using a menu interface.
-// TODO: pickup.c:3245 — menu_loot(): menu container loot
+// cf. pickup.c:1574 — carry_count(obj, container, count, telekinesis)
+// Simplified: returns how many of obj we can carry
+function carry_count(obj, container, count, telekinesis, player) {
+    // Simplified stub: allow picking up everything (weight system partial)
+    return count;
+}
 
-// cf. pickup.c:3461 [static] — tip_ok(obj): tippable object filter
-// Filter for objects that can be tipped into containers.
-// TODO: pickup.c:3461 — tip_ok(): tippable object filter
+// cf. pickup.c:1709 — lift_object(obj, container, cnt_p, telekinesis)
+// Returns: 1 = ok, 0 = skip, -1 = abort
+function lift_object(obj, container, cnt_p, telekinesis, player) {
+    if (obj.otyp === BOULDER) {
+        // Sokoban check would go here
+    }
+    if (obj.otyp === LOADSTONE) {
+        return 1; // lift regardless
+    }
 
-// cf. pickup.c:3485 [static] — choose_tip_container_menu(void): tip container menu
-// Displays menu of containers under hero for tipping.
-// TODO: pickup.c:3485 — choose_tip_container_menu(): tip container selection
+    cnt_p.value = carry_count(obj, container, cnt_p.value, telekinesis, player);
+    if (cnt_p.value < 1)
+        return -1;
 
-// cf. pickup.c:3542 — dotip(void): #tip command handler
-// Handles the #tip command to empty container contents.
-// TODO: pickup.c:3542 — dotip(): tip container command
+    // Encumbrance check stub: always allow
+    if (obj.otyp === SCR_SCARE_MONSTER && !container)
+        ; // spe handling done by caller
 
-// cf. pickup.c:3853 [static] — tipcontainer_gettarget(box, cancelled): get tip target container
-// Gets the target container for a tipping operation.
-// TODO: pickup.c:3853 — tipcontainer_gettarget(): tip target selection
+    return 1;
+}
+
+// cf. pickup.c:1897 — pick_obj(otmp)
+function pick_obj(otmp, player, map) {
+    const ox = otmp.ox, oy = otmp.oy;
+
+    obj_extract_self(otmp);
+    if (map) newsym(map, ox, oy);
+
+    // Shop billing stub: addtobill/remote_burglary not yet ported
+    const result = player.addToInventory ? player.addToInventory(otmp) : otmp;
+    return result;
+}
+
+// cf. pickup.c:1802 — pickup_object(obj, count, telekinesis)
+function pickup_object(obj, count, telekinesis, player, map) {
+    if (obj.quan < count) {
+        impossible("pickup_object: count %d > quan %d?", count, obj.quan);
+        return 0;
+    }
+
+    observeObject(obj);
+
+    if (obj === player.uchain)
+        return 0;
+
+    if (obj.otyp === CORPSE) {
+        if (fatal_corpse_mistake(obj, telekinesis, player)
+            || rider_corpse_revival(obj, telekinesis, player, map))
+            return -1;
+    } else if (obj.otyp === SCR_SCARE_MONSTER) {
+        if (obj.blessed) {
+            unbless(obj);
+        } else if (!obj.spe && !obj.cursed) {
+            obj.spe = 1;
+        } else {
+            pline_The("scroll%s %s to dust as you %s %s up.",
+                      obj.quan !== 1 ? "s" : "",
+                      obj.quan !== 1 ? "turn" : "turns",
+                      telekinesis ? "raise" : "pick",
+                      obj.quan === 1 ? "it" : "them");
+            // useupf not yet ported
+            return 1;
+        }
+    }
+
+    const cnt_p = { value: count || obj.quan };
+    const res = lift_object(obj, null, cnt_p, telekinesis, player);
+    if (res <= 0)
+        return res;
+
+    if (obj.quan !== cnt_p.value && obj.otyp !== LOADSTONE)
+        obj = splitobj(obj, cnt_p.value);
+
+    obj = pick_obj(obj, player, map);
+    return 1;
+}
+
+// cf. pickup.c:1945 — pickup_prinv(obj, count, verb)
+// Stub: prinv not yet ported; message handled by handlePickup
+function pickup_prinv(_obj, _count, _verb) { }
+
+// cf. pickup.c:1972 — encumber_msg()
+function encumber_msg(player) {
+    // near_capacity not yet fully ported; stub
+    const newcap = player.near_capacity ? player.near_capacity() : 0;
+
+    if (oldcap < newcap) {
+        switch (newcap) {
+        case 1:
+            Your("movements are slowed slightly because of your load.");
+            break;
+        case 2:
+            You("rebalance your load.  Movement is difficult.");
+            break;
+        case 3:
+            You("stagger under your heavy load.  Movement is very hard.");
+            break;
+        default:
+            You("%s move a handspan with this load!",
+                newcap === 4 ? "can barely" : "can't even");
+            break;
+        }
+    } else if (oldcap > newcap) {
+        switch (newcap) {
+        case 0:
+            Your("movements are now unencumbered.");
+            break;
+        case 1:
+            Your("movements are only slowed slightly by your load.");
+            break;
+        case 2:
+            You("rebalance your load.  Movement is still difficult.");
+            break;
+        case 3:
+            You("stagger under your load.  Movement is still very hard.");
+            break;
+        }
+    }
+    oldcap = newcap;
+}
+
+// cf. pickup.c:2018 — container_at(x, y, countem)
+function container_at(x, y, countem, map) {
+    let container_count = 0;
+    const objs = map.objectsAt(x, y) || [];
+    for (const cobj of objs) {
+        if (Is_container(cobj)) {
+            container_count++;
+            if (!countem)
+                break;
+        }
+    }
+    return container_count;
+}
+
+// cf. pickup.c:2034 — able_to_loot(x, y, looting)
+function able_to_loot(x, y, looting, player, map) {
+    const verb = looting ? "loot" : "tip";
+    const loc = map.at(x, y);
+    if (loc && IS_POOL(loc.typ)) {
+        You("cannot %s things that are deep in the water.", verb);
+        return false;
+    }
+    if (loc && IS_LAVA(loc.typ)) {
+        You("cannot %s things that are deep in the lava.", verb);
+        return false;
+    }
+    if (nolimbs(player.data || {})) {
+        pline("Without limbs, you cannot %s anything.", verb);
+        return false;
+    }
+    if (looting && nohands(player.data || {})) {
+        pline("Without a free %s, you cannot loot anything.",
+              body_part(HAND, player));
+        return false;
+    }
+    return true;
+}
+
+// cf. pickup.c:2066 — mon_beside(x, y)
+function mon_beside(x, y, map) {
+    for (let i = -1; i <= 1; i++) {
+        for (let j = -1; j <= 1; j++) {
+            const nx = x + i;
+            const ny = y + j;
+            if (isok(nx, ny) && map.monAt(nx, ny))
+                return true;
+        }
+    }
+    return false;
+}
+
+// cf. pickup.c:2082 — do_loot_cont(cobjp, cindex, ccount)
+function do_loot_cont(cobj, cindex, ccount, player, map, display) {
+    if (!cobj)
+        return 0;
+    if (cobj.olocked) {
+        if (cobj.lknown)
+            pline("%s is locked.", xname(cobj));
+        else
+            pline("Hmmm, %s turns out to be locked.", xname(cobj));
+        cobj.lknown = 1;
+        return 0;
+    }
+    cobj.lknown = 1;
+
+    if (cobj.otyp === BAG_OF_TRICKS) {
+        You("carefully open %s...", xname(cobj));
+        pline("It develops a huge set of teeth and bites you!");
+        const tmp = rnd(10);
+        // losehp stub: damage not yet applied
+        abort_looting = true;
+        return 1;
+    }
+    return use_container_simple(cobj, false, cindex < ccount, player, map, display);
+}
+
+// cf. pickup.c:2160 — doloot()
+function doloot(player, map, display) {
+    loot_reset_justpicked = true;
+    const res = doloot_core(player, map, display);
+    loot_reset_justpicked = false;
+    return res;
+}
+
+// cf. pickup.c:2172 — doloot_core()
+function doloot_core(player, map, display) {
+    let c = -1;
+    let timepassed = 0;
+    abort_looting = false;
+
+    if (nohands(player.data || {})) {
+        You("have no hands!");
+        return 0;
+    }
+    if (player.Confusion) {
+        // cf. pickup.c:2197 — RNG: rn2(6) then rn2(2)
+        if (rn2(6) && reverse_loot(player, map, display))
+            return 1;
+        if (rn2(2)) {
+            pline("Being confused, you find nothing to loot.");
+            return 1;
+        }
+    }
+
+    const x = player.x, y = player.y;
+    const num_conts = container_at(x, y, true, map);
+    if (num_conts > 0) {
+        if (!able_to_loot(x, y, true, player, map))
+            return 0;
+
+        const floorObjs = map.objectsAt(x, y) || [];
+        for (const cobj of floorObjs) {
+            if (Is_container(cobj)) {
+                timepassed |= do_loot_cont(cobj, 1, 1, player, map, display);
+                if (abort_looting)
+                    return timepassed ? 1 : 0;
+            }
+        }
+        if (timepassed)
+            c = 'y';
+    }
+
+    if (c !== 'y') {
+        You("don't find anything here to loot.");
+    }
+    return timepassed ? 1 : 0;
+}
+
+// cf. pickup.c:2344 — reverse_loot()
+function reverse_loot(player, map, display) {
+    // cf. pickup.c:2351 — RNG: rn2(3)
+    if (!rn2(3)) {
+        // n objects: 1/(n+1) chance per object
+        const inv = player.inventory || [];
+        let n = inv.length;
+        for (const otmp of inv) {
+            // cf. pickup.c:2355 — RNG: rn2(n+1) for each item
+            if (!rn2(n + 1)) {
+                pline("You find old loot: %s", doname(otmp, player));
+                return true;
+            }
+            n--;
+        }
+        return false;
+    }
+
+    // find gold to mess with
+    const inv = player.inventory || [];
+    let goldob = null;
+    for (const otmp of inv) {
+        if (otmp.oclass === COIN_CLASS) {
+            goldob = otmp;
+            // cf. pickup.c:2365 — RNG: rnd(5)
+            const contribution = Math.floor((rnd(5) * otmp.quan + 4) / 5);
+            if (contribution < otmp.quan)
+                goldob = splitobj(otmp, contribution);
+            break;
+        }
+    }
+    if (!goldob)
+        return false;
+
+    // Simplified: just drop gold on floor
+    pline("Ok, now there is loot here.");
+    return true;
+}
+
+// cf. pickup.c:2425 — loot_mon(mtmp, passed_info, prev_loot)
+// Stub: saddle removal not yet fully ported
+function loot_mon(mtmp, passed_info, prev_loot, player) {
+    return 0;
+}
+
+// cf. pickup.c:2482 — mbag_explodes(obj, depthin)
+function mbag_explodes(obj, depthin) {
+    if ((obj.otyp === WAN_CANCELLATION || obj.otyp === BAG_OF_TRICKS)
+        && (obj.spe || 0) <= 0)
+        return false;
+
+    // cf. pickup.c:2491 — RNG: rn2(1 << min(depthin, 7))
+    if ((Is_mbag(obj) || obj.otyp === WAN_CANCELLATION)
+        && (rn2(1 << (depthin > 7 ? 7 : depthin)) <= depthin))
+        return true;
+    else if (Has_contents(obj)) {
+        const contents = Array.isArray(obj.cobj) ? obj.cobj : [];
+        for (const otmp of contents)
+            if (mbag_explodes(otmp, depthin + 1))
+                return true;
+    }
+    return false;
+}
+
+// cf. pickup.c:2504 — is_boh_item_gone()
+function is_boh_item_gone() {
+    // cf. pickup.c:2506 — RNG: rn2(13)
+    return !rn2(13);
+}
+
+// cf. pickup.c:2512 — do_boh_explosion(boh, on_floor)
+// Stub: scatter not yet ported; just destroy contents
+function do_boh_explosion(boh, on_floor) {
+    const contents = Array.isArray(boh.cobj) ? [...boh.cobj] : [];
+    for (const otmp of contents) {
+        if (is_boh_item_gone()) {
+            obj_extract_self(otmp);
+            mbag_item_gone(!on_floor, otmp, true);
+        } else {
+            // scatter stub: items vanish (scatter not yet ported)
+            obj_extract_self(otmp);
+        }
+    }
+    if (Array.isArray(boh.cobj)) boh.cobj.length = 0;
+}
+
+// cf. pickup.c:2531 — boh_loss(container, held)
+function boh_loss(container, held) {
+    if (Is_mbag(container) && container.cursed && Has_contents(container)) {
+        let loss = 0;
+        const contents = Array.isArray(container.cobj) ? [...container.cobj] : [];
+        for (const curr of contents) {
+            if (is_boh_item_gone()) {
+                obj_extract_self(curr);
+                loss += mbag_item_gone(held, curr, false);
+                // Remove from container array
+                if (Array.isArray(container.cobj)) {
+                    const idx = container.cobj.indexOf(curr);
+                    if (idx >= 0) container.cobj.splice(idx, 1);
+                }
+            }
+        }
+        return loss;
+    }
+    return 0;
+}
+
+// cf. pickup.c:2552 — in_container(obj)
+function in_container(obj, player) {
+    if (!current_container) {
+        impossible("<in> no current_container?");
+        return 0;
+    }
+    if (obj === player.uball || obj === player.uchain) {
+        You("must be kidding.");
+        return 0;
+    }
+    if (obj === current_container) {
+        pline("That would be an interesting topological exercise.");
+        return 0;
+    }
+    if (obj.owornmask & (W_ARMOR | W_ACCESSORY)) {
+        Norep("You cannot %s %s you are wearing.",
+              current_container.otyp === ICE_BOX ? "refrigerate" : "stash",
+              "something");
+        return 0;
+    }
+    if (obj.otyp === LOADSTONE && obj.cursed) {
+        set_bknown(obj, 1);
+        pline_The("stone%s won't leave your person.", obj.quan !== 1 ? "s" : "");
+        return 0;
+    }
+    if (obj.otyp === AMULET_OF_YENDOR
+        || obj.otyp === CANDELABRUM_OF_INVOCATION
+        || obj.otyp === BELL_OF_OPENING
+        || obj.otyp === SPE_BOOK_OF_THE_DEAD) {
+        pline("%s cannot be confined in such trappings.", xname(obj));
+        return 0;
+    }
+    if (obj.otyp === LEASH && obj.leashmon) {
+        pline("%s attached to your pet.", doname(obj, player));
+        return 0;
+    }
+
+    if (fatal_corpse_mistake(obj, false, player))
+        return -1;
+
+    // boxes, boulders, big statues can't fit
+    if (obj.otyp === ICE_BOX || Is_box(obj) || obj.otyp === BOULDER
+        || (obj.otyp === STATUE && bigmonst(mons[obj.corpsenm] || {}))) {
+        You("cannot fit %s into %s.", doname(obj, player), xname(current_container));
+        return 0;
+    }
+
+    // Simplified: put object in container
+    if (current_container.otyp === ICE_BOX && !age_is_relative(obj)) {
+        // freeze: record age
+        obj.age = (player.moves || 0) - (obj.age || 0);
+    } else if (Is_mbag(current_container) && mbag_explodes(obj, 0)) {
+        pline("As you put %s inside, you are blasted by a magical explosion!",
+              doname(obj, player));
+        // d(6,6) damage — RNG preserved
+        const dmg = d(6, 6);
+        // losehp stub
+        do_boh_explosion(current_container, !carried(current_container));
+        current_container = null;
+    }
+
+    if (current_container) {
+        You("put %s into %s.", doname(obj, player), xname(current_container));
+        if (!Array.isArray(current_container.cobj))
+            current_container.cobj = [];
+        current_container.cobj.push(obj);
+        current_container.owt = weight(current_container);
+    }
+    return current_container ? 1 : -1;
+}
+
+// cf. pickup.c:2714 — ck_bag(obj)
+function ck_bag(obj) {
+    return (current_container && obj !== current_container);
+}
+
+// cf. pickup.c:2721 — out_container(obj)
+function out_container(obj, player, map) {
+    if (!current_container) {
+        impossible("<out> no current_container?");
+        return -1;
+    }
+
+    if (fatal_corpse_mistake(obj, false, player))
+        return -1;
+
+    const count = obj.quan;
+    const cnt_p = { value: count };
+    const res = lift_object(obj, current_container, cnt_p, false, player);
+    if (res <= 0)
+        return res;
+
+    if (obj.quan !== cnt_p.value && obj.otyp !== LOADSTONE)
+        obj = splitobj(obj, cnt_p.value);
+
+    // Remove from container
+    obj_extract_self(obj);
+    if (Array.isArray(current_container.cobj)) {
+        const idx = current_container.cobj.indexOf(obj);
+        if (idx >= 0) current_container.cobj.splice(idx, 1);
+    }
+    current_container.owt = weight(current_container);
+
+    if (current_container.otyp === ICE_BOX)
+        removed_from_icebox(obj, player);
+
+    // Add to inventory
+    if (player.addToInventory)
+        player.addToInventory(obj);
+
+    return 1;
+}
+
+// cf. pickup.c:2775 — removed_from_icebox(obj)
+function removed_from_icebox(obj, player) {
+    if (!age_is_relative(obj)) {
+        obj.age = (player.moves || 0) - (obj.age || 0);
+        if (obj.otyp === CORPSE) {
+            const iceT = obj.corpsenm === PM_ICE_TROLL;
+            obj.norevive = iceT ? 0 : 1;
+            // start_corpse_timeout stub
+        }
+    }
+}
+
+// cf. pickup.c:2797 — mbag_item_gone(held, item, silent)
+function mbag_item_gone(held, item, silent) {
+    let loss = 0;
+    if (!silent) {
+        if (item.dknown)
+            pline("%s %s vanished!", doname(item), item.quan !== 1 ? "have" : "has");
+        else
+            You("see %s disappear!", doname(item));
+    }
+    // Shop billing stub
+    // obfree stub — item is effectively destroyed
+    return loss;
+}
+
+// cf. pickup.c:2820 — observe_quantum_cat(box, makecat, givemsg)
+function observe_quantum_cat(box, makecat, givemsg, player, map) {
+    // cf. pickup.c:2826 — RNG: rn2(2)
+    const itsalive = !rn2(2);
+
+    if (box.ox === undefined) box.ox = player.x;
+    if (box.oy === undefined) box.oy = player.y;
+
+    const deadcat = Array.isArray(box.cobj) ? box.cobj[0] : box.cobj;
+
+    if (itsalive) {
+        let livecat = null;
+        if (makecat && map) {
+            livecat = makemon(mons[PM_HOUSECAT], box.ox, box.oy,
+                              NO_MINVENT | MM_ADJACENTOK, 1, map);
+        }
+        if (livecat) {
+            livecat.mpeaceful = 1;
+            if (givemsg)
+                pline("%s inside the box is still alive!", Monnam(livecat));
+            christen_monst(livecat, "Schroedinger's Cat");
+            if (deadcat && Array.isArray(box.cobj)) {
+                box.cobj = [];
+            }
+            box.owt = weight(box);
+            box.spe = 0;
+        }
+    } else {
+        box.spe = 0;
+        if (deadcat) {
+            deadcat.age = player.moves || 0;
+            set_corpsenm(deadcat, PM_HOUSECAT);
+        }
+        if (givemsg)
+            pline_The("housecat inside the box is dead!");
+    }
+}
+
+// cf. pickup.c:2883 — container_gone(fn)
+function container_gone(fn) {
+    return (fn === in_container || fn === out_container) && !current_container;
+}
+
+// cf. pickup.c:2891 — explain_container_prompt(more_containers)
+// Stub: NHW_TEXT window system not yet ported
+function explain_container_prompt(more_containers) {
+    pline("Container actions: : look, o out, i in, b both, r reversed, s stash, n next, q quit");
+}
+
+// cf. pickup.c:2923 — u_handsy()
+function u_handsy(player) {
+    if (nohands(player.data || {})) {
+        You("have no hands!");
+        return false;
+    }
+    return true;
+}
+
+// cf. pickup.c:2937 — stash_ok(obj)
+function stash_ok(obj) {
+    if (!obj) return false;
+    if (!ck_bag(obj)) return false;
+    return true;
+}
+
+// cf. pickup.c:2951 — use_container (simplified)
+function use_container_simple(obj, held, more_containers, player, map, display) {
+    // Simplified use_container for the JS port
+    // Just handles basic open-and-loot for floor containers
+    current_container = obj;
+    let used = 0;
+
+    if (!u_handsy(player)) {
+        current_container = null;
+        return 0;
+    }
+
+    if (!obj.lknown) {
+        obj.lknown = 1;
+    }
+    if (obj.olocked) {
+        pline("%s is locked.", xname(obj));
+        current_container = null;
+        return 0;
+    }
+
+    // Check for Schroedinger's cat
+    if (SchroedingersBox(current_container)) {
+        observe_quantum_cat(current_container, true, true, player, map);
+        used = 1;
+    }
+
+    // Cursed magic bag losses
+    if (Is_mbag(current_container) && current_container.cursed
+        && Has_contents(current_container)) {
+        const loss = boh_loss(current_container, held);
+        if (loss) {
+            used = 1;
+            You("owe %d %s for lost merchandise.", loss, currency(loss));
+            current_container.owt = weight(current_container);
+        }
+    }
+
+    current_container = null;
+    return used;
+}
+
+// cf. pickup.c:3210 — traditional_loot(put_in)
+// Stub: askchain/query_classes not yet ported
+function traditional_loot(_put_in) {
+    return 0;
+}
+
+// cf. pickup.c:3245 — menu_loot(retry, put_in)
+// Stub: query_objlist/query_category not yet ported
+function menu_loot(_retry, _put_in) {
+    return 0;
+}
+
+// cf. pickup.c:3376 — in_or_out_menu(prompt, obj, outokay, inokay, alreadyused, more_containers)
+// Stub: menu system not yet ported
+function in_or_out_menu(_prompt, _obj, _outokay, _inokay, _alreadyused, _more_containers) {
+    return 'q';
+}
+
+// cf. pickup.c:3461 — tip_ok(obj)
+function tip_ok(obj) {
+    if (!obj || obj.oclass === COIN_CLASS)
+        return false;
+    if (Is_container(obj))
+        return true;
+    if (obj.otyp === HORN_OF_PLENTY && obj.dknown)
+        return true;
+    return false;
+}
+
+// cf. pickup.c:3485 — choose_tip_container_menu()
+// Stub: menu system not yet ported
+function choose_tip_container_menu() {
+    return 0;
+}
+
+// cf. pickup.c:3542 — dotip()
+// Stub: getobj/tipcontainer flow not yet ported
+function dotip(player, map) {
+    return 0;
+}
+
+// cf. pickup.c:3668 — tipcontainer(box)
+// Stub: tip flow not yet fully ported
+function tipcontainer(_box) { }
+
+// cf. pickup.c:3851 — tipcontainer_gettarget(box, cancelled)
+// Stub: menu system not yet ported
+function tipcontainer_gettarget(_box) {
+    return null;
+}
+
+// cf. pickup.c:3934 — tipcontainer_checks(box, targetbox, allowempty)
+// Stub: chest_trap not yet ported
+function tipcontainer_checks(_box, _targetbox, _allowempty) {
+    return 0; // TIPCHECK_OK
+}
+
+// cf. pickup.c:100 — collect_obj_classes(ilets, otmp, here, filter, itemcount)
+function collect_obj_classes(objs, filter) {
+    const ilets = new Set();
+    let itemcount = 0;
+    for (const obj of objs) {
+        if (!filter || filter(obj)) {
+            ilets.add(obj.oclass);
+        }
+        itemcount++;
+    }
+    return { classes: [...ilets], itemcount };
+}
+
+// cf. pickup.c:1168 — count_unpaid(list)
+function count_unpaid(list) {
+    if (!list) return 0;
+    const items = Array.isArray(list) ? list : [];
+    let count = 0;
+    for (const obj of items) {
+        if (obj.unpaid) count++;
+    }
+    return count;
+}
+
+// cf. pickup.c count_buc — count objects by BUC status
+function count_buc(list) {
+    const items = Array.isArray(list) ? list : [];
+    let bcnt = 0, ucnt = 0, ccnt = 0, xcnt = 0;
+    for (const obj of items) {
+        if (!obj.bknown) xcnt++;
+        else if (obj.blessed) bcnt++;
+        else if (obj.cursed) ccnt++;
+        else ucnt++;
+    }
+    return { bcnt, ucnt, ccnt, xcnt };
+}
 
 // ---------------------------------------------------------------------------
 // Implemented pickup / loot / pay functions
@@ -449,4 +1267,29 @@ async function handleTogglePickup(game) {
     return { moved: false, tookTime: false };
 }
 
-export { handlePickup, handleLoot, handlePay, handleTogglePickup };
+export {
+    handlePickup, handleLoot, handlePay, handleTogglePickup,
+    // Ported from pickup.c
+    u_safe_from_fatal_corpse, fatal_corpse_mistake, rider_corpse_revival,
+    force_decor, deferred_decor, describe_decor, check_here,
+    n_or_more, menu_class_present, add_valid_menu_class,
+    all_but_uchain, allow_all, allow_category, allow_cat_no_uchain,
+    is_worn_by_type,
+    reset_justpicked, count_justpicked, find_justpicked,
+    check_autopickup_exceptions, autopick_testobj,
+    count_categories, delta_cwt, carry_count, lift_object,
+    pick_obj, pickup_object, pickup_prinv, encumber_msg,
+    container_at, able_to_loot, mon_beside,
+    do_loot_cont, doloot, doloot_core,
+    reverse_loot, loot_mon,
+    mbag_explodes, is_boh_item_gone, do_boh_explosion, boh_loss,
+    in_container, ck_bag, out_container,
+    removed_from_icebox, mbag_item_gone,
+    observe_quantum_cat, container_gone,
+    explain_container_prompt, u_handsy, stash_ok,
+    use_container_simple,
+    traditional_loot, menu_loot, in_or_out_menu,
+    tip_ok, choose_tip_container_menu, dotip,
+    tipcontainer, tipcontainer_gettarget, tipcontainer_checks,
+    collect_obj_classes, count_unpaid, count_buc,
+};

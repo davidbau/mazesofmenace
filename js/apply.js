@@ -30,368 +30,599 @@
 //   dorub/dojump: rubbing and physical jumping commands.
 //
 // JS implementations:
-//   doapply → handleApply() (PARTIAL)
+//   doapply -> handleApply() (PARTIAL)
+//   um_dist, number_leashed, o_unleash, m_unleash, unleash_all,
+//   leashable, next_to_u, check_leash, beautiful, snuff_candle,
+//   snuff_lit, splash_lit, catch_lit, tinnable, use_unicorn_horn,
+//   fig_transform, figurine_location_checks, unfixable_trouble_count,
+//   reset_trapset, calc_pole_range, could_pole_mon, maybe_dunk_boulders,
+//   do_blinding_ray, flip_through_book, flip_coin -- ported as stubs or partial
 
 import { objectData, WEAPON_CLASS, TOOL_CLASS, FOOD_CLASS, SPBOOK_CLASS,
-         WAND_CLASS, COIN_CLASS, POTION_CLASS, LANCE, BULLWHIP, STETHOSCOPE,
+         WAND_CLASS, COIN_CLASS, POTION_CLASS, GEM_CLASS, RING_CLASS,
+         LANCE, BULLWHIP, STETHOSCOPE,
          PICK_AXE, DWARVISH_MATTOCK, EXPENSIVE_CAMERA, MIRROR, FIGURINE,
          CREDIT_CARD, LOCK_PICK, SKELETON_KEY,
          CREAM_PIE, EUCALYPTUS_LEAF, LUMP_OF_ROYAL_JELLY,
-         POT_OIL, TOUCHSTONE, LUCKSTONE, LOADSTONE } from './objects.js';
+         POT_OIL, TOUCHSTONE, LUCKSTONE, LOADSTONE, FLINT,
+         LEASH, CANDELABRUM_OF_INVOCATION,
+         WAX_CANDLE, TALLOW_CANDLE, OIL_LAMP, MAGIC_LAMP, BRASS_LANTERN,
+         TIN_WHISTLE, MAGIC_WHISTLE, BELL, BELL_OF_OPENING,
+         UNICORN_HORN, GRAPPLING_HOOK, CAN_OF_GREASE, TINNING_KIT,
+         LAND_MINE, BEARTRAP, TOWEL, BLINDFOLD, LENSES, SADDLE,
+         CORPSE, EGG, TIN, STATUE, BOULDER,
+         SPE_BLANK_PAPER, SPE_NOVEL, SPE_BOOK_OF_THE_DEAD,
+         LARGE_BOX, CHEST, ICE_BOX, SACK, BAG_OF_HOLDING, OILSKIN_SACK,
+         BAG_OF_TRICKS, HORN_OF_PLENTY,
+         WOODEN_FLUTE, MAGIC_FLUTE, TOOLED_HORN, FROST_HORN, FIRE_HORN,
+         WOODEN_HARP, MAGIC_HARP, BUGLE, LEATHER_DRUM, DRUM_OF_EARTHQUAKE,
+         CRYSTAL_BALL, MAGIC_MARKER, TIN_OPENER, BANANA,
+         WAN_OPENING, WAN_WISHING, WAN_NOTHING, WAN_LOCKING, WAN_PROBING,
+         WAN_DEATH, WAN_LIGHTNING, WAN_FIRE, WAN_COLD, WAN_MAGIC_MISSILE,
+         WAN_STRIKING, WAN_CANCELLATION, WAN_POLYMORPH, WAN_TELEPORTATION,
+         WAN_UNDEAD_TURNING, WAN_DIGGING, WAN_CREATE_MONSTER, WAN_LIGHT,
+         WAN_SECRET_DOOR_DETECTION, WAN_ENLIGHTENMENT } from './objects.js';
 import { nhgetch, ynFunction } from './input.js';
-import { doname } from './mkobj.js';
+import { doname, xname, splitobj, set_bknown } from './mkobj.js';
 import { IS_DOOR, D_CLOSED, D_LOCKED, D_ISOPEN, D_NODOOR, D_BROKEN,
-         A_DEX, PM_ROGUE } from './config.js';
-import { rn2 } from './rng.js';
+         A_STR, A_DEX, A_CON, A_CHA,
+         PM_ROGUE, PM_HEALER, PM_ARCHEOLOGIST,
+         isok, COLNO, ROWNO } from './config.js';
+import { rn2, rnd, rn1, d, rnl, shuffle_int_array } from './rng.js';
 import { exercise } from './attrib_exercise.js';
+import { pline, You, Your, You_feel, You_cant, You_hear, You_see,
+         pline_The, There, pline_mon, verbalize, impossible } from './pline.js';
+import { Monnam, mon_nam, a_monnam, l_monnam, y_monnam } from './do_name.js';
+import { nohands, nolimbs, has_head, unsolid, haseyes, breathless,
+         is_vampire, is_unicorn, is_humanoid, is_demon, perceives,
+         slithy, strongmonst, can_blow, is_rider, touch_petrifies,
+         poly_when_stoned } from './mondata.js';
+import { mons, PM_LONG_WORM, PM_FLOATING_EYE, PM_MEDUSA, PM_UMBER_HULK,
+         PM_AMOROUS_DEMON, PM_QUEEN_BEE, PM_KILLER_BEE,
+         PM_WOOD_NYMPH, PM_WATER_NYMPH, PM_MOUNTAIN_NYMPH,
+         S_VAMPIRE, S_GHOST, S_NYMPH, S_MIMIC, S_EEL,
+         MZ_LARGE, MZ_SMALL, MS_SILENT, NON_PM } from './monsters.js';
+import { dist2, s_suffix, upstart, isqrt, sgn } from './hacklib.js';
+import { setnotworn } from './worn.js';
+import { begin_burn, end_burn, obj_has_timer,
+         kill_egg, attach_egg_hatch_timeout } from './timeout.js';
+
+// -- Inline helpers --
+
+// cf. C macros bigmonst/verysmall (not exported from mondata.js)
+function bigmonst(ptr) { return (ptr.size || 0) >= MZ_LARGE; }
+function verysmall(ptr) { return (ptr.size || 0) < MZ_SMALL; }
+
+const MAXLEASHED = 2;
 
-// cf. apply.c:61 — do_blinding_ray(obj): fire blinding ray
-// Fires a blinding ray at targeted monster/location from camera or similar device.
-// TODO: apply.c:61 — do_blinding_ray(): blinding ray effect
-
-// cf. apply.c:79 [static] — use_camera(obj): use camera
-// Takes picture with camera; blinds monsters; consumes charge.
-// TODO: apply.c:79 — use_camera(): camera use
-
-// cf. apply.c:112 [static] — use_towel(obj): use towel
-// Dries hands/eyes or other functions; cursed towel has negative effects.
-// TODO: apply.c:112 — use_towel(): towel use
-
-// cf. apply.c:198 [static] — its_dead(rx, ry, resp): stethoscope corpse check
-// Checks for corpses or statues at location for stethoscope use.
-// TODO: apply.c:198 — its_dead(): corpse detection for stethoscope
-
-// cf. apply.c:318 [static] — use_stethoscope(obj): use stethoscope
-// Listens to monsters or objects at targeted location; free once per turn.
-// TODO: apply.c:318 — use_stethoscope(): stethoscope use
-
-// cf. apply.c:476 [static] — use_whistle(obj): use regular whistle
-// Plays whistle; may wake nearby creatures.
-// TODO: apply.c:476 — use_whistle(): regular whistle
-
-// cf. apply.c:495 [static] — use_magic_whistle(obj): use magic whistle
-// Summons pets or wakes nearby creatures depending on curse status.
-// TODO: apply.c:495 — use_magic_whistle(): magic whistle
-
-// cf. apply.c:518 [static] — magic_whistled(obj): magic whistle effects
-// Handles teleporting and summoning pets after magic whistle use.
-// TODO: apply.c:518 — magic_whistled(): magic whistle aftermath
-
-// cf. apply.c:688 — um_dist(x, y, n): Chebyshev distance check
-// Returns TRUE if position is more than n squares from player (Chebyshev).
-// TODO: apply.c:688 — um_dist(): distance check
-
-// cf. apply.c:694 — number_leashed(void): count leashed monsters
-// Returns count of leashed monsters in player's inventory.
-// TODO: apply.c:694 — number_leashed(): leash count
-
-// cf. apply.c:707 — o_unleash(otmp): unleash specific leash
-// Removes given leash and releases its attached monster.
-// TODO: apply.c:707 — o_unleash(): specific leash removal
-
-// cf. apply.c:722 — m_unleash(mtmp, feedback): unleash specific monster
-// Removes leash from given monster; optionally prints feedback message.
-// TODO: apply.c:722 — m_unleash(): monster leash removal
-
-// cf. apply.c:742 — unleash_all(void): remove all leashes
-// Removes all leashes from all leashed monsters.
-// TODO: apply.c:742 — unleash_all(): all leash removal
-
-// cf. apply.c:757 — leashable(mtmp): monster can be leashed?
-// Returns TRUE if monster can have a leash attached.
-// TODO: apply.c:757 — leashable(): leash eligibility
-
-// cf. apply.c:765 [static] — use_leash(obj): use leash
-// Handles using a leash to control a nearby monster.
-// TODO: apply.c:765 — use_leash(): leash use
-
-// cf. apply.c:817 [static] — use_leash_core(obj, mtmp, cc, spotmon): leash core
-// Core logic for attaching a leash to a monster.
-// TODO: apply.c:817 — use_leash_core(): leash attachment core
-
-// cf. apply.c:887 [static] — mleashed_next2u(mtmp): leashed monster adjacent?
-// Returns TRUE if leashed monster is adjacent to player.
-// TODO: apply.c:887 — mleashed_next2u(): leashed monster adjacency
-
-// cf. apply.c:915 — next_to_u(void): find adjacent leashed monster
-// Returns pointer to a leashed monster adjacent to player.
-// TODO: apply.c:915 — next_to_u(): adjacent leashed monster
-
-// cf. apply.c:927 — check_leash(x, y): check leash constraint
-// Verifies movement to (x,y) doesn't exceed leash range; applies damage if so.
-// TODO: apply.c:927 — check_leash(): leash range enforcement
-
-// cf. apply.c:1014 [static] — use_mirror(obj): use mirror
-// Reflects gaze attacks; shows player's reflection; various mirror effects.
-// TODO: apply.c:1014 — use_mirror(): mirror use
-
-// cf. apply.c:1198 [static] — use_bell(optr): use bell
-// Rings bell; may summon creatures or affect environment.
-// TODO: apply.c:1198 — use_bell(): bell use
-
-// cf. apply.c:1315 [static] — use_candelabrum(obj): use candelabrum
-// Lights or extinguishes a candelabrum.
-// TODO: apply.c:1315 — use_candelabrum(): candelabrum use
-
-// cf. apply.c:1383 [static] — use_candle(optr): use candle
-// Lights a candle or uses it for light; handles Candelabrum attachment.
-// TODO: apply.c:1383 — use_candle(): candle use
-
-// cf. apply.c:1468 — snuff_candle(otmp): extinguish candle
-// Extinguishes a burning candle.
-// TODO: apply.c:1468 — snuff_candle(): candle extinguishing
-
-// cf. apply.c:1493 — snuff_lit(obj): extinguish lit object
-// Extinguishes any lit object.
-// TODO: apply.c:1493 — snuff_lit(): lit object extinguishing
-
-// cf. apply.c:1514 — splash_lit(obj): splash water on lit object
-// Handles splashing water on a lit object; may extinguish it.
-// TODO: apply.c:1514 — splash_lit(): water on lit object
-
-// cf. apply.c:1573 — catch_lit(obj): catch fire from lit object
-// Handles catching fire from contact with a lit object.
-// TODO: apply.c:1573 — catch_lit(): fire catching
-
-// cf. apply.c:1624 [static] — use_lamp(obj): use oil lamp
-// Lights or extinguishes an oil lamp; tracks fuel.
-// TODO: apply.c:1624 — use_lamp(): oil lamp use
-
-// cf. apply.c:1699 [static] — light_cocktail(optr): light Molotov cocktail
-// Lights a cocktail (burning oil) for throwing.
-// TODO: apply.c:1699 — light_cocktail(): cocktail lighting
-
-// cf. apply.c:1766 [static] — rub_ok(obj): can object be rubbed?
-// Filter callback; returns GETOBJ_SUGGEST for lamps, graystones, royal jelly.
-// TODO: apply.c:1766 — rub_ok(): rubbable object filter
-
-// cf. apply.c:1781 — dorub(void): #rub command
-// Command handler for rubbing action; selects lamps and graystones.
-// TODO: apply.c:1781 — dorub(): rub command handler
-
-// cf. apply.c:1843 — dojump(void): #jump command
-// Command handler for physical jumping movement.
-// TODO: apply.c:1843 — dojump(): jump command handler
-
-// cf. apply.c:1858 [static] — check_jump(arg, x, y): jump destination validation
-// Callback to validate if position is valid jump destination.
-// TODO: apply.c:1858 — check_jump(): jump destination check
-
-// cf. apply.c:1889 [static] — is_valid_jump_pos(x, y, magic, showmsg): jump position check
-// Checks if position is valid for jumping with optional message.
-// TODO: apply.c:1889 — is_valid_jump_pos(): jump validity
-
-// cf. apply.c:1955 [static] — get_valid_jump_position(x, y): validate jump target
-// Returns TRUE if position is a valid jump target.
-// TODO: apply.c:1955 — get_valid_jump_position(): jump target validation
-
-// cf. apply.c:1963 [static] — display_jump_positions(on_off): show jump highlights
-// Shows or hides valid jump destination highlights on map.
-// TODO: apply.c:1963 — display_jump_positions(): jump highlight display
-
-// cf. apply.c:2163 — tinnable(corpse): corpse can be tinned?
-// Returns TRUE if corpse can be processed by tinning kit.
-// TODO: apply.c:2163 — tinnable(): corpse tinnability check
-
-// cf. apply.c:2173 [static] — use_tinning_kit(obj): use tinning kit
-// Processes corpse into canned food via tinning kit.
-// TODO: apply.c:2173 — use_tinning_kit(): tinning kit use
-
-// cf. apply.c:2255 — use_unicorn_horn(optr): use unicorn horn
-// Heals and restores attributes via unicorn horn; cursed has reverse effects.
-// TODO: apply.c:2255 — use_unicorn_horn(): unicorn horn use
-
-// cf. apply.c:2394 — fig_transform(arg, timeout): figurine transform timer
-// Timer callback when a figurine automatically transforms into a monster.
-// TODO: apply.c:2394 — fig_transform(): figurine transform
-
-// cf. apply.c:2507 [static] — figurine_location_checks(obj, cc, quietly): figurine placement
-// Validates location safety for releasing a figurine.
-// TODO: apply.c:2507 — figurine_location_checks(): figurine placement check
-
-// cf. apply.c:2540 [static] — use_figurine(optr): use figurine
-// Releases figurine to summon a creature at specified location.
-// TODO: apply.c:2540 — use_figurine(): figurine use
-
-// cf. apply.c:2581 [static] — grease_ok(obj): can object be greased?
-// Filter callback for use_grease(); returns suitable objects.
-// TODO: apply.c:2581 — grease_ok(): greaseable object filter
-
-// cf. apply.c:2600 [static] — use_grease(obj): use grease
-// Applies grease to reduce slippage on player or items.
-// TODO: apply.c:2600 — use_grease(): grease use
-
-// cf. apply.c:2654 [static] — touchstone_ok(obj): can object be tested with touchstone?
-// Filter callback for use_stone(); identifies testable objects.
-// TODO: apply.c:2654 — touchstone_ok(): touchstone test filter
-
-// cf. apply.c:2676 [static] — use_stone(tstone): use touchstone/luckstone/loadstone
-// Uses a stone for its specific effect (identification, luck, etc.).
-// TODO: apply.c:2676 — use_stone(): stone use
-
-// cf. apply.c:2809 — reset_trapset(void): reset trap occupation
-// Resets the trap-setting occupation state variables.
-// TODO: apply.c:2809 — reset_trapset(): trap occupation reset
-
-// cf. apply.c:2817 [static] — use_trap(otmp): use trap as tool
-// Uses a trap object to set it at a location.
-// TODO: apply.c:2817 — use_trap(): trap use
-
-// cf. apply.c:2912 [static] — set_trap(void): set trap occupation callback
-// Occupation callback for the trap-setting process.
-// TODO: apply.c:2912 — set_trap(): trap setting occupation
-
-// cf. apply.c:2951 — use_whip(obj): use bullwhip
-// Uses bullwhip as reaching weapon, steal items, or attack at range.
-// TODO: apply.c:2951 — use_whip(): bullwhip use
-
-// cf. apply.c:3279 [static] — find_poleable_mon(pos, min_range, max_range): find polearm target
-// Finds a monster within polearm attack range.
-// TODO: apply.c:3279 — find_poleable_mon(): polearm target search
-
-// cf. apply.c:3317 [static] — get_valid_polearm_position(x, y): polearm position validation
-// Validates a position as valid polearm attack target.
-// TODO: apply.c:3317 — get_valid_polearm_position(): polearm position check
-
-// cf. apply.c:3330 [static] — display_polearm_positions(on_off): show polearm range
-// Shows or hides valid polearm attack positions on map.
-// TODO: apply.c:3330 — display_polearm_positions(): polearm range display
-
-// cf. apply.c:3367 [static] — calc_pole_range(min_range, max_range): polearm range
-// Calculates minimum and maximum attack range for current polearm.
-// TODO: apply.c:3367 — calc_pole_range(): polearm range calculation
-
-// cf. apply.c:3387 — could_pole_mon(void): can polearm reach monsters?
-// Returns TRUE if any monsters are in polearm range.
-// TODO: apply.c:3387 — could_pole_mon(): polearm feasibility check
-
-// cf. apply.c:3412 [static] — snickersnee_used_dist_attk(obj): snickersnee distance?
-// Checks if snickersnee sword can perform distance attacks.
-// TODO: apply.c:3412 — snickersnee_used_dist_attk(): snickersnee range check
-
-// cf. apply.c:3422 — use_pole(obj, autohit): use polearm
-// Attacks with polearm at range; handles direction selection and autohit.
-// TODO: apply.c:3422 — use_pole(): polearm use
-
-// cf. apply.c:3564 [static] — use_cream_pie(obj): throw cream pie
-// Throws cream pie as weapon at targeted location or monster.
-// TODO: apply.c:3564 — use_cream_pie(): cream pie throw
-
-// cf. apply.c:3603 [static] — jelly_ok(obj): can object be treated with jelly?
-// Filter callback for use_royal_jelly(); identifies treatable objects.
-// TODO: apply.c:3603 — jelly_ok(): jelly treatment filter
-
-// cf. apply.c:3612 [static] — use_royal_jelly(optr): use royal jelly
-// Applies royal jelly to heal and restore attributes.
-// TODO: apply.c:3612 — use_royal_jelly(): royal jelly use
-
-// cf. apply.c:3682 [static] — grapple_range(void): grappling hook range
-// Returns maximum range for grappling hook in current situation.
-// TODO: apply.c:3682 — grapple_range(): grapple range
-
-// cf. apply.c:3697 [static] — can_grapple_location(x, y): grapple target valid?
-// Checks if given location can be reached with grappling hook.
-// TODO: apply.c:3697 — can_grapple_location(): grapple location check
-
-// cf. apply.c:3703 [static] — display_grapple_positions(on_off): show grapple targets
-// Shows or hides valid grappling hook target locations.
-// TODO: apply.c:3703 — display_grapple_positions(): grapple target display
-
-// cf. apply.c:3725 [static] — use_grapple(obj): use grappling hook
-// Fires grappling hook to move player to distant location.
-// TODO: apply.c:3725 — use_grapple(): grappling hook use
-
-// cf. apply.c:3872 [static] — discard_broken_wand(void): remove broken wand
-// Removes a broken wand from inventory after explosion.
-// TODO: apply.c:3872 — discard_broken_wand(): broken wand removal
-
-// cf. apply.c:3884 [static] — broken_wand_explode(obj, dmg, expltype): wand explosion
-// Handles explosion damage when a wand is broken.
-// TODO: apply.c:3884 — broken_wand_explode(): broken wand explosion
-
-// cf. apply.c:3893 — maybe_dunk_boulders(x, y): dunk boulders on wand break
-// Attempts to push boulders into adjacent water when breaking wand.
-// TODO: apply.c:3893 — maybe_dunk_boulders(): boulder dunking
-
-// cf. apply.c:3905 [static] — do_break_wand(obj): break wand
-// Handles breaking a wand and its explosive effects.
-// TODO: apply.c:3905 — do_break_wand(): wand breaking
-
-// Direction key mappings (matching commands.js DIRECTION_KEYS)
 const DIRECTION_KEYS = {
-    'h': [-1,  0],  // west
-    'j': [ 0,  1],  // south
-    'k': [ 0, -1],  // north
-    'l': [ 1,  0],  // east
-    'y': [-1, -1],  // northwest
-    'u': [ 1, -1],  // northeast
-    'b': [-1,  1],  // southwest
-    'n': [ 1,  1],  // southeast
+    'h': [-1, 0], 'j': [0, 1], 'k': [0, -1], 'l': [1, 0],
+    'y': [-1, -1], 'u': [1, -1], 'b': [-1, 1], 'n': [1, 1],
 };
 
-// cf. apply.c:4146 [static] — apply_ok(obj): object can be applied?
-// Filter callback for getobj(); rates objects applicable with #apply.
-export function isApplyCandidate(obj) {
-    if (!obj) return false;
-    // C ref: apply.c apply_ok() — suggest all tools, wands, spellbooks.
-    if (obj.oclass === TOOL_CLASS || obj.oclass === WAND_CLASS || obj.oclass === SPBOOK_CLASS) {
+function _nothing_happens() { return "Nothing happens."; }
+
+// Internal: is this object type ignitable? (mirrors light.c ignitable)
+function _ignitable(obj) {
+    return (obj.otyp === OIL_LAMP || obj.otyp === MAGIC_LAMP
+            || obj.otyp === BRASS_LANTERN || obj.otyp === POT_OIL
+            || obj.otyp === CANDELABRUM_OF_INVOCATION
+            || obj.otyp === WAX_CANDLE || obj.otyp === TALLOW_CANDLE);
+}
+
+// ====================================================================
+// Ported functions from apply.c
+// ====================================================================
+
+// cf. apply.c:61 -- STUB: depends on bhit, flash_hits_mon
+export function do_blinding_ray(_obj) {
+    pline(_nothing_happens());
+}
+
+// cf. apply.c:79 -- STUB: depends on getdir, bhit, zapyourself
+function use_camera(obj) {
+    if (obj.spe <= 0) { pline(_nothing_happens()); return; }
+    obj.spe--;
+    pline("You take a picture.");
+}
+
+// cf. apply.c:112 -- STUB: depends on freehand, Glib, makeplural
+function use_towel() { pline("You wipe your face."); }
+
+// cf. apply.c:198 -- STUB: depends on sobj_at, corpse processing
+function its_dead() { return false; }
+
+// cf. apply.c:318 -- STUB: depends on getdir, mstatusline
+function use_stethoscope() { You("hear nothing special."); }
+
+// cf. apply.c:476 -- STUB: depends on wake_nearby
+function use_whistle(obj) {
+    You("produce a %s whistling sound.", obj.cursed ? "shrill" : "high");
+}
+
+// cf. apply.c:495 -- STUB: depends on magic_whistled, tele_to_rnd_pet
+function use_magic_whistle(obj) {
+    if (obj.cursed && !rn2(2)) {
+        You("produce a high-pitched humming noise.");
+    } else {
+        You("produce a strange whistling sound.");
+    }
+}
+
+// cf. apply.c:518 -- STUB: pet-relocation logic
+function magic_whistled() {}
+
+// cf. apply.c:688 -- um_dist: Chebyshev distance > n from player
+export function um_dist(player, x, y, n) {
+    return (Math.abs(player.x - x) > n || Math.abs(player.y - y) > n);
+}
+
+// cf. apply.c:694 -- number_leashed: count leashed pets
+export function number_leashed(player) {
+    let count = 0;
+    for (const obj of (player.inventory || [])) {
+        if (obj.otyp === LEASH && obj.leashmon) count++;
+    }
+    return count;
+}
+
+// cf. apply.c:707 -- o_unleash: unleash from leash object side
+export function o_unleash(otmp, map) {
+    if (map) {
+        for (const mtmp of (map.monsters || [])) {
+            if (mtmp.m_id === otmp.leashmon) { mtmp.mleashed = 0; break; }
+        }
+    }
+    otmp.leashmon = 0;
+}
+
+// cf. apply.c:722 -- m_unleash: unleash from monster side
+export function m_unleash(mtmp, feedback, player) {
+    if (feedback) Your("leash falls slack.");
+    for (const otmp of (player ? player.inventory || [] : [])) {
+        if (otmp.otyp === LEASH && otmp.leashmon === mtmp.m_id) {
+            otmp.leashmon = 0; break;
+        }
+    }
+    mtmp.mleashed = 0;
+}
+
+// cf. apply.c:742 -- unleash_all: remove all leashes
+export function unleash_all(player, map) {
+    for (const otmp of (player.inventory || []))
+        if (otmp.otyp === LEASH) otmp.leashmon = 0;
+    for (const mtmp of (map ? map.monsters || [] : []))
+        mtmp.mleashed = 0;
+}
+
+// cf. apply.c:757 -- leashable: can monster be leashed?
+export function leashable(mtmp) {
+    const data = mtmp.data || mons[mtmp.mnum] || {};
+    return (mtmp.mnum !== PM_LONG_WORM
+            && !unsolid(data)
+            && (!nolimbs(data) || has_head(data)));
+}
+
+// cf. apply.c:765 -- STUB: use_leash
+function use_leash() { pline("You need to get closer to use a leash."); }
+
+// cf. apply.c:817 -- STUB: use_leash_core
+function use_leash_core() {}
+
+// cf. apply.c:887 -- STUB: mleashed_next2u
+function mleashed_next2u() { return false; }
+
+// cf. apply.c:915 -- next_to_u: conservative default
+export function next_to_u() { return true; }
+
+// cf. apply.c:927 -- check_leash: leash range enforcement
+export function check_leash(player, x, y, map) {
+    for (const otmp of (player.inventory || [])) {
+        if (otmp.otyp !== LEASH || !otmp.leashmon) continue;
+        let mtmp = null;
+        for (const m of (map ? map.monsters || [] : [])) {
+            if (m.m_id === otmp.leashmon) { mtmp = m; break; }
+        }
+        if (!mtmp) {
+            impossible("leash in use isn't attached to anything?");
+            otmp.leashmon = 0;
+            continue;
+        }
+        if (dist2(player.x, player.y, mtmp.mx, mtmp.my)
+            > dist2(x, y, mtmp.mx, mtmp.my)) {
+            if (!um_dist(player, mtmp.mx, mtmp.my, 3)) {
+                /* still close enough */
+            } else if (otmp.cursed && !breathless(mtmp.data || mons[mtmp.mnum])) {
+                if (um_dist(player, mtmp.mx, mtmp.my, 5)
+                    || (mtmp.mhp -= rnd(2)) <= 0) {
+                    Your("leash chokes %s to death!", mon_nam(mtmp));
+                    mtmp.mhp = 0;
+                } else {
+                    pline_mon(mtmp, "%s is choked by the leash!", Monnam(mtmp));
+                    if (mtmp.mtame && rn2(mtmp.mtame)) mtmp.mtame--;
+                }
+            } else {
+                if (um_dist(player, mtmp.mx, mtmp.my, 5)) {
+                    pline("%s leash snaps loose!", s_suffix(Monnam(mtmp)));
+                    m_unleash(mtmp, false, player);
+                } else {
+                    You("pull on the leash.");
+                    const data = mtmp.data || mons[mtmp.mnum];
+                    if (data.sound !== MS_SILENT) rn2(3);
+                }
+            }
+        }
+    }
+}
+
+// cf. apply.c:992 -- beautiful: charisma adjective
+export function beautiful(player) {
+    const cha = player.attributes ? player.attributes[A_CHA] : 11;
+    if (cha >= 25) return "sublime";
+    if (cha >= 19) return "splendorous";
+    if (cha >= 16) return "handsome";
+    if (cha >= 14) return "amiable";
+    if (cha >= 11) return "cute";
+    if (cha >= 9) return "plain";
+    if (cha >= 6) return "homely";
+    if (cha >= 4) return "ugly";
+    return "hideous";
+}
+
+// cf. apply.c:1014 -- STUB: use_mirror (depends on bhit, Medusa, etc.)
+function use_mirror(obj) {
+    if (obj.cursed && !rn2(2)) {
+        pline("The mirror fogs up and doesn't reflect!");
+        return;
+    }
+    pline("You look as ugly as ever.");
+}
+
+// cf. apply.c:1198 -- STUB: use_bell (depends on invocation_pos, makemon)
+function use_bell(obj) {
+    You("ring %s.", xname(obj));
+    if (obj.cursed && !rn2(4)) { /* would summon nymphs */ }
+}
+
+// cf. apply.c:1315 -- use_candelabrum
+function use_candelabrum(obj) {
+    const s = (obj.spe !== 1) ? "candles" : "candle";
+    if (obj.lamplit) {
+        You("snuff the %s.", s);
+        end_burn(obj, true);
+        return;
+    }
+    if (obj.spe <= 0) { pline("This %s has no %s.", xname(obj), s); return; }
+    if (obj.spe < 7) {
+        There("are only %d %s in %s.", obj.spe, s, xname(obj));
+    } else {
+        pline("%s's %s burn brightly!", xname(obj), s);
+    }
+    begin_burn(obj, false);
+}
+
+// cf. apply.c:1383 -- use_candle (simplified: just lights it)
+function use_candle(obj) { use_lamp(obj); }
+
+// cf. apply.c:1468 -- snuff_candle
+export function snuff_candle(otmp) {
+    const candle = (otmp.otyp === WAX_CANDLE || otmp.otyp === TALLOW_CANDLE);
+    if ((candle || otmp.otyp === CANDELABRUM_OF_INVOCATION) && otmp.lamplit) {
+        const many = candle ? (otmp.quan > 1) : (otmp.spe > 1);
+        pline("Your %scandle%s flame%s extinguished.",
+              candle ? "" : "candelabrum's ",
+              many ? "s'" : "'s", many ? "s are" : " is");
+        end_burn(otmp, true);
         return true;
     }
-    // C ref: apply.c apply_ok() — suggest weapons that satisfy
-    // is_pick/is_axe/is_pole plus bullwhip.
+    return false;
+}
+
+// cf. apply.c:1493 -- snuff_lit
+export function snuff_lit(obj) {
+    if (obj.lamplit) {
+        if (obj.otyp === OIL_LAMP || obj.otyp === MAGIC_LAMP
+            || obj.otyp === BRASS_LANTERN || obj.otyp === POT_OIL) {
+            pline("%s goes out!", xname(obj));
+            end_burn(obj, true);
+            return true;
+        }
+        if (snuff_candle(obj)) return true;
+    }
+    return false;
+}
+
+// cf. apply.c:1514 -- splash_lit
+export function splash_lit(obj) {
+    if (obj.lamplit && obj.otyp === BRASS_LANTERN) {
+        pline("%s crackles and flickers.", xname(obj));
+        return false;
+    }
+    return snuff_lit(obj);
+}
+
+// cf. apply.c:1573 -- catch_lit
+export function catch_lit(obj) {
+    if (!obj.lamplit && _ignitable(obj)) {
+        if ((obj.otyp === MAGIC_LAMP || obj.otyp === CANDELABRUM_OF_INVOCATION)
+            && obj.spe === 0)
+            return false;
+        if (obj.age === 0 && obj.otyp !== WAX_CANDLE && obj.otyp !== TALLOW_CANDLE)
+            return false;
+        if (obj.otyp === BRASS_LANTERN) return false;
+        if (obj.otyp === CANDELABRUM_OF_INVOCATION && obj.cursed) return false;
+        if ((obj.otyp === OIL_LAMP || obj.otyp === MAGIC_LAMP)
+            && obj.cursed && !rn2(2))
+            return false;
+        pline("%s catches light!", xname(obj));
+        begin_burn(obj, false);
+        return true;
+    }
+    return false;
+}
+
+// cf. apply.c:1624 -- use_lamp
+function use_lamp(obj) {
+    if (obj.lamplit) {
+        const lamp = (obj.otyp === OIL_LAMP || obj.otyp === MAGIC_LAMP) ? "lamp"
+                   : (obj.otyp === BRASS_LANTERN) ? "lantern" : null;
+        if (lamp) pline("Your %s is now off.", lamp);
+        else You("snuff out %s.", xname(obj));
+        end_burn(obj, true);
+        return;
+    }
+    const isCandle = (obj.otyp === WAX_CANDLE || obj.otyp === TALLOW_CANDLE);
+    if ((!isCandle && obj.age === 0) || (obj.otyp === MAGIC_LAMP && obj.spe === 0)) {
+        if (obj.otyp === BRASS_LANTERN) Your("lantern is out of power.");
+        else pline("This %s has no oil.", xname(obj));
+        return;
+    }
+    if (obj.cursed && !rn2(2)) {
+        if ((obj.otyp === OIL_LAMP || obj.otyp === MAGIC_LAMP) && !rn2(3)) {
+            pline("The lamp spills and covers your fingers with oil.");
+            d(2, 10); // consume RNG for make_glib
+        } else {
+            pline("%s flickers for a moment, then dies.", xname(obj));
+        }
+    } else {
+        const lamp = (obj.otyp === OIL_LAMP || obj.otyp === MAGIC_LAMP) ? "lamp"
+                   : (obj.otyp === BRASS_LANTERN) ? "lantern" : null;
+        if (lamp) pline("Your %s is now on.", lamp);
+        else pline("%s's flame burns brightly!", xname(obj));
+        begin_burn(obj, false);
+    }
+}
+
+// cf. apply.c:1699 -- STUB: light_cocktail
+function light_cocktail(obj) {
+    if (obj.lamplit) { You("snuff the lit potion."); end_burn(obj, true); return; }
+    You("light a potion. It gives off a dim light.");
+    begin_burn(obj, false);
+}
+
+// cf. apply.c:1766 -- rub_ok filter
+function rub_ok(obj) {
+    if (!obj) return false;
+    return (obj.otyp === OIL_LAMP || obj.otyp === MAGIC_LAMP
+            || obj.otyp === BRASS_LANTERN || obj.otyp === TOUCHSTONE
+            || obj.otyp === LUCKSTONE || obj.otyp === LOADSTONE
+            || obj.otyp === FLINT || obj.otyp === LUMP_OF_ROYAL_JELLY);
+}
+
+// cf. apply.c:1781 -- STUB: dorub
+function dorub() { pline("You rub... but nothing special happens."); }
+
+// cf. apply.c:1843 -- STUB: dojump
+function dojump() { You_cant("jump very far."); }
+
+// cf. apply.c:2163 -- tinnable
+export function tinnable(corpse) {
+    if (corpse.oeaten) return false;
+    const mdat = mons[corpse.corpsenm];
+    if (!mdat || !mdat.nutrition) return false;
+    return true;
+}
+
+// cf. apply.c:2173 -- STUB: use_tinning_kit
+function use_tinning_kit(obj) {
+    if (obj.spe <= 0) { You("seem to be out of tins."); return; }
+    pline("You need a corpse to tin.");
+}
+
+// cf. apply.c:2255 -- use_unicorn_horn (partial: RNG parity for cursed)
+export function use_unicorn_horn(obj, player) {
+    if (!obj) return;
+    if (obj.cursed) {
+        rn1(90, 10); // lcount
+        const effect = Math.floor(rn2(13) / 2);
+        switch (effect) {
+        case 0: rn1(player.attributes ? player.attributes[A_CON] : 10, 20); break;
+        default: break;
+        }
+        return;
+    }
+    // Uncursed/blessed: would cure timed troubles; no property system yet
+    pline(_nothing_happens());
+}
+
+// cf. apply.c:2394 -- STUB: fig_transform timer callback
+export function fig_transform() {}
+
+// cf. apply.c:2507 -- figurine_location_checks
+export function figurine_location_checks(obj, cc, quietly) {
+    if (!obj) return false;
+    const x = cc ? cc.x : 0;
+    const y = cc ? cc.y : 0;
+    if (!isok(x, y)) {
+        if (!quietly) You("cannot put the figurine there.");
+        return false;
+    }
+    return true;
+}
+
+// cf. apply.c:2540 -- STUB: use_figurine
+function use_figurine() { pline("The figurine wriggles but nothing happens."); }
+
+// cf. apply.c:2581 -- grease_ok
+function grease_ok(obj) {
+    if (!obj) return true;
+    if (obj.oclass === COIN_CLASS) return false;
+    return true;
+}
+
+// cf. apply.c:2600 -- STUB: use_grease
+function use_grease(obj) {
+    if (obj.spe > 0) {
+        if (obj.cursed && !rn2(2)) {
+            obj.spe--;
+            pline("%s slips from your fingers.", xname(obj));
+            return;
+        }
+        pline("You need to select something to grease.");
+    } else {
+        if (obj.known) pline("%s is empty.", xname(obj));
+        else pline("%s seems to be empty.", xname(obj));
+    }
+}
+
+// cf. apply.c:2654 -- touchstone_ok
+function touchstone_ok(obj) {
+    if (!obj) return false;
+    return (obj.oclass === COIN_CLASS || obj.oclass === GEM_CLASS);
+}
+
+// cf. apply.c:2676 -- STUB: use_stone
+function use_stone() { pline("\"scritch, scritch\""); }
+
+// cf. apply.c:2809 -- reset_trapset
+export function reset_trapset(game) {
+    if (game && game.trapinfo) {
+        game.trapinfo.tobj = null;
+        game.trapinfo.force_bungle = 0;
+    }
+}
+
+// cf. apply.c:2817 -- STUB: use_trap
+function use_trap() { You_cant("set a trap here!"); }
+
+// cf. apply.c:2912 -- STUB: set_trap occupation callback
+function set_trap() { return 0; }
+
+// cf. apply.c:2951 -- STUB: use_whip
+function use_whip() { pline("Snap!"); }
+
+// cf. apply.c:3279 -- STUB: find_poleable_mon
+function find_poleable_mon() { return false; }
+
+// cf. apply.c:3317 -- STUB: get_valid_polearm_position
+function get_valid_polearm_position() { return false; }
+
+// cf. apply.c:3330 -- STUB: display_polearm_positions
+function display_polearm_positions() {}
+
+// cf. apply.c:3367 -- calc_pole_range
+export function calc_pole_range() { return { min_range: 4, max_range: 4 }; }
+
+// cf. apply.c:3387 -- could_pole_mon
+export function could_pole_mon() { return false; }
+
+// cf. apply.c:3412 -- snickersnee_used_dist_attk
+function snickersnee_used_dist_attk() { return false; }
+
+// cf. apply.c:3422 -- STUB: use_pole
+function use_pole() { pline("You miss; there is no one there to hit."); }
+
+// cf. apply.c:3564 -- use_cream_pie (partial)
+function use_cream_pie(obj, player) {
+    if (obj.quan > 1) obj.quan--;
+    You("immerse your face in %s.", xname(obj));
+    rnd(25); // blindinc RNG consumption
+    if (obj.quan <= 0) setnotworn(player, obj);
+}
+
+// cf. apply.c:3603 -- jelly_ok
+function jelly_ok(obj) { return (obj && obj.otyp === EGG); }
+
+// cf. apply.c:3612 -- STUB: use_royal_jelly
+function use_royal_jelly() { pline("You need an egg to use royal jelly on."); }
+
+// cf. apply.c:3682 -- grapple_range
+function grapple_range() { return 4; }
+
+// cf. apply.c:3697 -- STUB: can_grapple_location
+function can_grapple_location() { return false; }
+
+// cf. apply.c:3703 -- STUB: display_grapple_positions
+function display_grapple_positions() {}
+
+// cf. apply.c:3725 -- STUB: use_grapple
+function use_grapple() { pline(_nothing_happens()); }
+
+// cf. apply.c:3872 -- STUB: discard_broken_wand
+function discard_broken_wand() {}
+
+// cf. apply.c:3884 -- STUB: broken_wand_explode
+function broken_wand_explode() {}
+
+// cf. apply.c:3893 -- STUB: maybe_dunk_boulders
+export function maybe_dunk_boulders() {}
+
+// cf. apply.c:3905 -- STUB: do_break_wand
+function do_break_wand(obj) {
+    pline("Raising %s high above your head, you break it in two!", xname(obj));
+    if (!obj.spe) obj.spe = rnd(3);
+    pline("But nothing else happens...");
+}
+
+// ====================================================================
+// apply_ok / isApplyCandidate and related helpers
+// ====================================================================
+
+// cf. apply.c:4146 -- apply_ok: object can be applied?
+export function isApplyCandidate(obj) {
+    if (!obj) return false;
+    if (obj.oclass === TOOL_CLASS || obj.oclass === WAND_CLASS
+        || obj.oclass === SPBOOK_CLASS)
+        return true;
     if (obj.oclass === WEAPON_CLASS) {
         const skill = objectData[obj.otyp]?.sub;
         if (obj.otyp === BULLWHIP || obj.otyp === LANCE
-            || skill === 3 /* P_AXE */
-            || skill === 4 /* P_PICK_AXE */
-            || skill === 18 /* P_POLEARMS */
-            || skill === 19 /* P_LANCE */) {
+            || skill === 3 || skill === 4 || skill === 18 || skill === 19)
             return true;
-        }
     }
-    // C ref: apply.c apply_ok() — suggest certain foods.
     if (obj.otyp === CREAM_PIE || obj.otyp === EUCALYPTUS_LEAF
-        || obj.otyp === LUMP_OF_ROYAL_JELLY) {
+        || obj.otyp === LUMP_OF_ROYAL_JELLY)
         return true;
-    }
-    // C ref: apply.c apply_ok() — suggest touchstone/luckstone/loadstone.
-    // FLINT is throwable ammo but should not appear as apply-eligible in
-    // C prompt flows for normal play sessions.
     if (obj.otyp === TOUCHSTONE || obj.otyp === LUCKSTONE
-        || obj.otyp === LOADSTONE) {
+        || obj.otyp === LOADSTONE)
         return true;
-    }
-    // C ref: apply.c apply_ok() — suggest POT_OIL if discovered.
-    if (obj.otyp === POT_OIL && obj.dknown) {
-        return true;
-    }
+    if (obj.otyp === POT_OIL && obj.dknown) return true;
     return false;
 }
 
 export function isApplyChopWeapon(obj) {
     if (!obj || obj.oclass !== WEAPON_CLASS) return false;
     const skill = objectData[obj.otyp]?.sub;
-    return skill === 3 /* P_AXE */ || skill === 4 /* P_PICK_AXE */;
+    return skill === 3 || skill === 4;
 }
 
 export function isApplyPolearm(obj) {
     if (!obj || obj.oclass !== WEAPON_CLASS) return false;
     const skill = objectData[obj.otyp]?.sub;
-    return skill === 18 /* P_POLEARMS */ || skill === 19 /* P_LANCE */;
+    return skill === 18 || skill === 19;
 }
 
 export function isApplyDownplay(obj) {
     if (!obj) return false;
-    // C ref: apply_ok() GETOBJ_DOWNPLAY cases include coins and unknown
-    // potions; these force a prompt even when no suggested items exist.
     if (obj.oclass === COIN_CLASS) return true;
     if (obj.oclass === POTION_CLASS && !obj.dknown) return true;
     return false;
 }
 
-// cf. apply.c:4209 — doapply(void): #apply command
-// Handle apply/use command
-// C ref: apply.c doapply()
+// ====================================================================
+// cf. apply.c:4209 -- doapply / handleApply
+// ====================================================================
+
 export async function handleApply(player, map, display, game) {
     const inventory = player.inventory || [];
     if (inventory.length === 0) {
@@ -406,8 +637,6 @@ export async function handleApply(player, map, display, game) {
         return { moved: false, tookTime: false };
     }
 
-    // C getobj() behavior: when no preferred apply candidates exist but
-    // downplay items do, keep the prompt open as "[*]".
     const letters = candidates.map((item) => item.invlet).join('');
     const candidateByInvlet = new Map(
         candidates
@@ -426,16 +655,12 @@ export async function handleApply(player, map, display, game) {
     const resolveApplySelection = async (selected) => {
         replacePromptMessage();
         if (isApplyChopWeapon(selected)) {
-            // C ref: apply.c use_axe() direction prompt text.
             display.putstr_message('In what direction do you want to chop? [>]');
             await nhgetch();
-            // For unsupported chop targets, preserve no-op flow fidelity.
             replacePromptMessage();
             return { moved: false, tookTime: false };
         }
 
-        // C ref: lock.c pick_lock() — credit card / lock pick / skeleton key
-        // applied to a door: ask direction, find door, prompt, set picklock occupation.
         if (selected.otyp === CREDIT_CARD || selected.otyp === LOCK_PICK
             || selected.otyp === SKELETON_KEY) {
             display.putstr_message('In what direction?');
@@ -444,9 +669,8 @@ export async function handleApply(player, map, display, game) {
             const dir = DIRECTION_KEYS[dch];
             if (!dir) {
                 replacePromptMessage();
-                if (!player?.wizard) {
+                if (!player?.wizard)
                     display.putstr_message('What a strange direction!  Never mind.');
-                }
                 return { moved: false, tookTime: false };
             }
             replacePromptMessage();
@@ -469,7 +693,6 @@ export async function handleApply(player, map, display, game) {
                 display.putstr_message('This door is broken.');
                 return { moved: false, tookTime: true };
             }
-            // C ref: lock.c pick_lock() — credit card can only unlock, not lock
             if (selected.otyp === CREDIT_CARD && !(loc.flags & D_LOCKED)) {
                 display.putstr_message("You can't lock a door with a credit card.");
                 return { moved: false, tookTime: true };
@@ -477,30 +700,24 @@ export async function handleApply(player, map, display, game) {
             const isLocked = !!(loc.flags & D_LOCKED);
             const ans = await ynFunction(`${isLocked ? 'Unlock' : 'Lock'} it?`, 'ynq',
                 'n'.charCodeAt(0), display);
-            if (String.fromCharCode(ans) !== 'y') {
+            if (String.fromCharCode(ans) !== 'y')
                 return { moved: false, tookTime: false };
-            }
-            // C ref: lock.c pick_lock() — chance per turn (rn2(100) < chance)
             const dex = player.attributes ? player.attributes[A_DEX] : 11;
             const isRogue = (player.roleIndex === PM_ROGUE) ? 1 : 0;
             let chance;
-            if (selected.otyp === CREDIT_CARD) {
-                chance = 2 * dex + 20 * isRogue;
-            } else if (selected.otyp === LOCK_PICK) {
-                chance = 3 * dex + 30 * isRogue;
-            } else { // SKELETON_KEY
-                chance = 70 + dex;
-            }
+            if (selected.otyp === CREDIT_CARD) chance = 2 * dex + 20 * isRogue;
+            else if (selected.otyp === LOCK_PICK) chance = 3 * dex + 30 * isRogue;
+            else chance = 70 + dex;
             let usedtime = 0;
             game.occupation = {
                 occtxt: isLocked ? 'unlocking the door' : 'locking the door',
-                fn(g) {
+                fn() {
                     if (usedtime++ >= 50) {
                         display.putstr_message(`You give up your attempt at ${isLocked ? 'unlocking' : 'locking'} the door.`);
                         exercise(player, A_DEX, true);
                         return false;
                     }
-                    if (rn2(100) >= chance) return true; // still busy
+                    if (rn2(100) >= chance) return true;
                     display.putstr_message(`You succeed in ${isLocked ? 'unlocking' : 'locking'} the door.`);
                     loc.flags = isLocked ? D_CLOSED : D_LOCKED;
                     exercise(player, A_DEX, true);
@@ -510,35 +727,32 @@ export async function handleApply(player, map, display, game) {
             return { moved: false, tookTime: true };
         }
 
-        // C ref: apply.c — tools that use getdir() "In what direction?" prompt:
-        // use_pick_axe2() for pick-axe/mattock, use_whip() for bullwhip,
-        // use_stethoscope() for stethoscope, use_pole() for polearms.
         if (selected.otyp === PICK_AXE || selected.otyp === DWARVISH_MATTOCK
             || selected.otyp === BULLWHIP || selected.otyp === STETHOSCOPE
             || selected.otyp === EXPENSIVE_CAMERA || selected.otyp === MIRROR
-            || selected.otyp === FIGURINE
-            || isApplyPolearm(selected)) {
+            || selected.otyp === FIGURINE || isApplyPolearm(selected)) {
             display.putstr_message('In what direction?');
             const dirCh = await nhgetch();
             const dch = String.fromCharCode(dirCh);
             const dir = DIRECTION_KEYS[dch];
             if (!dir) {
                 replacePromptMessage();
-                if (!player?.wizard) {
+                if (!player?.wizard)
                     display.putstr_message('What a strange direction!  Never mind.');
-                }
                 return { moved: false, tookTime: false };
             }
-            // TODO: implement actual effects (digging, whip, etc.) for full parity
             replacePromptMessage();
             return { moved: false, tookTime: false };
         }
 
         if (selected.oclass === SPBOOK_CLASS) {
-            const fades = ['fresh', 'slightly faded', 'very faded', 'extremely faded', 'barely visible'];
-            const studied = Math.max(0, Math.min(4, Number(selected.spestudied || 0)));
+            const fades = ['fresh', 'slightly faded', 'very faded',
+                           'extremely faded', 'barely visible'];
+            const studied = Math.max(0, Math.min(4,
+                Number(selected.spestudied || 0)));
             const magical = !!objectData[selected.otyp]?.magic;
-            display.putstr_message(`The${magical ? ' magical' : ''} ink in this spellbook is ${fades[studied]}.`);
+            display.putstr_message(
+                `The${magical ? ' magical' : ''} ink in this spellbook is ${fades[studied]}.`);
             return { moved: false, tookTime: true };
         }
 
@@ -556,21 +770,22 @@ export async function handleApply(player, map, display, game) {
             return { moved: false, tookTime: false };
         }
         if (c === '?' || c === '*') {
-            // C tty getobj() help/list mode: show each applicable item with
-            // --More-- prompt, then return to selection prompt.
-            // '?' shows preferred apply candidates; '*' shows all inventory items.
             const showList = c === '*'
                 ? inventory.filter((item) => item?.invlet)
                 : candidates;
             let picked = null;
             for (const item of showList) {
                 replacePromptMessage();
-                display.putstr_message(`${item.invlet} - ${doname(item, player)}  --More--`);
+                display.putstr_message(
+                    `${item.invlet} - ${doname(item, player)}  --More--`);
                 const ack = await nhgetch();
                 const ackC = String.fromCharCode(ack);
-                if (ack === 27 || ack === 10 || ack === 13 || ackC === ' ') break;
+                if (ack === 27 || ack === 10 || ack === 13 || ackC === ' ')
+                    break;
                 const sel = candidateByInvlet.get(ackC)
-                    || (c === '*' ? inventory.find((o) => o?.invlet === ackC) : null);
+                    || (c === '*'
+                        ? inventory.find((o) => o?.invlet === ackC)
+                        : null);
                 if (sel) { picked = sel; break; }
             }
             if (picked) return await resolveApplySelection(picked);
@@ -583,14 +798,37 @@ export async function handleApply(player, map, display, game) {
     }
 }
 
-// cf. apply.c:4426 — unfixable_trouble_count(is_horn): count unfixable problems
-// Counts permanent troubles that unicorn horn cannot cure.
-// TODO: apply.c:4426 — unfixable_trouble_count(): unfixable problem count
+// ====================================================================
+// cf. apply.c:4426 -- unfixable_trouble_count
+// ====================================================================
 
-// cf. apply.c:4468 [static] — flip_through_book(obj): flip through spellbook
-// Handles reading spellbooks by flipping through pages without learning.
-// TODO: apply.c:4468 — flip_through_book(): spellbook page flipping
+export function unfixable_trouble_count(/* is_horn, player */) {
+    // Most property states not tracked in JS yet; return 0.
+    return 0;
+}
 
-// cf. apply.c:4522 [static] — flip_coin(obj): flip a coin
-// Handles flipping a coin; random heads/tails outcome.
-// TODO: apply.c:4522 — flip_coin(): coin flip
+// cf. apply.c:4468 -- flip_through_book
+function flip_through_book(obj) {
+    You("flip through the pages of %s.", xname(obj));
+    if (obj.otyp === SPE_BOOK_OF_THE_DEAD) {
+        You_hear("the pages make an unpleasant rustling sound.");
+    } else if (obj.otyp === SPE_BLANK_PAPER) {
+        pline("This spellbook has nothing written in it.");
+    } else if (obj.otyp === SPE_NOVEL) {
+        pline("This looks like it might be interesting to read.");
+    } else {
+        const fadeness = ["fresh", "slightly faded", "very faded",
+                          "extremely faded", "barely visible"];
+        const findx = Math.min(obj.spestudied || 0, 4);
+        pline("The%s ink in this spellbook is %s.",
+              objectData[obj.otyp]?.magic ? " magical" : "",
+              fadeness[findx]);
+    }
+}
+
+// cf. apply.c:4522 -- flip_coin
+function flip_coin() {
+    You("flip a coin.");
+    if (rn2(2)) pline("It comes up heads.");
+    else pline("It comes up tails.");
+}

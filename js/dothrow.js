@@ -11,25 +11,145 @@
 //                 breaktest, breakmsg, throw_gold
 //
 // dothrow.c handles all throwing and firing mechanics:
-//   dothrow(): #throw command — select object, choose direction, execute throw.
-//   dofire(): #fire command — throw from quiver slot.
+//   dothrow(): #throw command -- select object, choose direction, execute throw.
+//   dofire(): #fire command -- throw from quiver slot.
 //   throwit(): core throw execution including hit resolution and landing.
 //   thitmonst(): thrown object hitting a monster with full combat mechanics.
 //   hurtle(): move hero through air after kick or impact.
 //   breakobj()/breaktest(): object breakage mechanics.
 
 import { ACCESSIBLE, isok } from './config.js';
-import { IS_SOFT } from './symbols.js';
+import { IS_SOFT, ZAP_POS } from './symbols.js';
 import { rn2, rnd } from './rng.js';
 import { nhgetch } from './input.js';
 import { objectData, WEAPON_CLASS, COIN_CLASS, GEM_CLASS, TOOL_CLASS,
-         FLINT, ROCK, SLING, BULLWHIP } from './objects.js';
+         ARMOR_CLASS, POTION_CLASS, SCROLL_CLASS, VENOM_CLASS,
+         FLINT, ROCK, SLING, BULLWHIP, BOOMERANG, AKLYS, WAR_HAMMER,
+         BOULDER, HEAVY_IRON_BALL,
+         EGG, CREAM_PIE, MELON,
+         MIRROR, EXPENSIVE_CAMERA, CRYSTAL_BALL, LENSES,
+         POT_WATER,
+         ACID_VENOM, BLINDING_VENOM,
+         YA, YUMI, ELVEN_ARROW, ORCISH_ARROW, ELVEN_BOW, ORCISH_BOW,
+         RUBBER_HOSE, BAG_OF_TRICKS, SACK, OILSKIN_SACK, BAG_OF_HOLDING,
+         EUCALYPTUS_LEAF, KELP_FROND, SPRIG_OF_WOLFSBANE, FORTUNE_COOKIE, PANCAKE,
+         WAN_STRIKING,
+         GLASS, GEMSTONE, MINERAL, CLOTH,
+       } from './objects.js';
 import { compactInvletPromptChars, renderOverlayMenuUntilDismiss } from './invent.js';
-import { doname, next_ident } from './mkobj.js';
-import { monDisplayName } from './mondata.js';
+import { doname, next_ident, xname, is_crackable } from './mkobj.js';
+import { monDisplayName, is_unicorn, nohands, notake } from './mondata.js';
 import { obj_resists } from './objdata.js';
 import { uwepgone, uswapwepgone, uqwepgone, handleSwapWeapon, setuqwep } from './wield.js';
 import { placeFloorObject } from './floor_objects.js';
+import { pline } from './pline.js';
+import { sgn, distmin } from './hacklib.js';
+import { Monnam, a_monnam, mon_nam } from './do_name.js';
+import { wakeup, setmangry } from './mon.js';
+import { MZ_MEDIUM, MZ_HUGE, PM_HOMUNCULUS, PM_IMP, mons } from './monsters.js';
+import { hitval, dmgval, weapon_hit_bonus, weapon_type } from './weapon.js';
+import { find_mac, W_WEP, W_QUIVER, W_SWAPWEP } from './worn.js';
+import { spec_abon } from './artifact.js';
+import { erode_obj, ERODE_CRACK, EF_DESTROY, EF_VERBOSE, ER_DESTROYED } from './trap.js';
+import { goodpos } from './teleport.js';
+import { mpickobj } from './monutil.js';
+import { makemon } from './makemon.js';
+import { exercise } from './attrib_exercise.js';
+
+// ============================================================================
+// C macro equivalents -- weapon classification helpers
+// cf. obj.h macros: is_ammo, is_missile, is_spear, is_blade, is_sword, etc.
+// ============================================================================
+
+// Skill constants (matching weapon.js P_* values)
+const P_DAGGER = 1;
+const P_KNIFE = 2;
+const P_SHORT_SWORD = 5;
+const P_SABER = 9;
+const P_SPEAR = 17;
+const P_BOW = 20;
+const P_SLING = 21;
+const P_CROSSBOW = 22;
+const P_DART = 23;
+const P_SHURIKEN = 24;
+const P_BOOMERANG = 25;
+
+// Direction flags (cf. objclass.h)
+const PIERCE = 1;
+
+// cf. obj.h: is_ammo(otmp)
+export function is_ammo(otmp) {
+    if (!otmp) return false;
+    if (otmp.oclass !== WEAPON_CLASS && otmp.oclass !== GEM_CLASS) return false;
+    const sk = objectData[otmp.otyp]?.sub ?? 0;
+    return sk >= -P_CROSSBOW && sk <= -P_BOW;
+}
+
+// cf. obj.h: is_missile(otmp)
+export function is_missile(otmp) {
+    if (!otmp) return false;
+    if (otmp.oclass !== WEAPON_CLASS && otmp.oclass !== TOOL_CLASS) return false;
+    const sk = objectData[otmp.otyp]?.sub ?? 0;
+    return sk >= -P_BOOMERANG && sk <= -P_DART;
+}
+
+// cf. obj.h: is_spear(otmp)
+function is_spear(otmp) {
+    return otmp && otmp.oclass === WEAPON_CLASS
+        && (objectData[otmp.otyp]?.sub ?? 0) === P_SPEAR;
+}
+
+// cf. obj.h: is_blade(otmp)
+function is_blade(otmp) {
+    if (!otmp || otmp.oclass !== WEAPON_CLASS) return false;
+    const sk = objectData[otmp.otyp]?.sub ?? 0;
+    return sk >= P_DAGGER && sk <= P_SABER;
+}
+
+// cf. obj.h: is_sword(otmp)
+function is_sword(otmp) {
+    if (!otmp || otmp.oclass !== WEAPON_CLASS) return false;
+    const sk = objectData[otmp.otyp]?.sub ?? 0;
+    return sk >= P_SHORT_SWORD && sk <= P_SABER;
+}
+
+// cf. obj.h: is_weptool(o)
+function is_weptool(o) {
+    if (!o || o.oclass !== TOOL_CLASS) return false;
+    return (objectData[o.otyp]?.sub ?? 0) !== 0;
+}
+
+// cf. obj.h: matching_launcher(a, l)
+function matching_launcher(a, l) {
+    if (!l) return false;
+    return (objectData[a.otyp]?.sub ?? 0) === -(objectData[l.otyp]?.sub ?? 0);
+}
+
+// cf. obj.h: uslinging() -- player is wielding a sling
+function uslinging_check(player) {
+    return !!(player.weapon && (objectData[player.weapon.otyp]?.sub ?? 0) === P_SLING);
+}
+
+// Helper: greatest_erosion(obj) -- cf. obj.h
+function greatest_erosion(obj) {
+    return Math.max(obj.oeroded || 0, obj.oeroded2 || 0);
+}
+
+// Helper: change_luck(player, delta)
+function change_luck(player, delta) {
+    player.luck = (player.luck || 0) + delta;
+}
+
+// Helper: Has_contents(obj)
+function Has_contents(obj) {
+    return obj && Array.isArray(obj.cobj) && obj.cobj.length > 0;
+}
+
+// Breakflags constants (cf. hack.h)
+const BRK_FROM_INV = 1;
+const BRK_KNOWN2BREAK = 4;
+const BRK_KNOWN2NOTBREAK = 8;
+const BRK_KNOWN_OUTCOME = BRK_KNOWN2BREAK | BRK_KNOWN2NOTBREAK;
 
 // Direction key mappings
 // C ref: cmd.c -- movement key definitions
@@ -47,7 +167,6 @@ export const DIRECTION_KEYS = {
 // C ref: dothrow.c ammo_and_launcher() for dofire fireassist behavior.
 export function ammoAndLauncher(ammo, launcher) {
     if (!ammo || !launcher) return false;
-    // C ref: flint/rock are sling ammo even when gem metadata is sparse.
     if ((ammo.otyp === FLINT || ammo.otyp === ROCK) && launcher.otyp === SLING) {
         return true;
     }
@@ -59,20 +178,22 @@ export function ammoAndLauncher(ammo, launcher) {
         && launcherSub === -ammoSub;
 }
 
+// cf. dothrow.c ammo_and_launcher() -- C macro version using is_ammo + matching_launcher
+export function ammo_and_launcher(a, l) {
+    return is_ammo(a) && matching_launcher(a, l);
+}
+
 export async function promptDirectionAndThrowItem(player, map, display, item, { fromFire = false } = {}) {
     const replacePromptMessage = () => {
         if (typeof display.clearRow === 'function') display.clearRow(0);
         display.topMessage = null;
         display.messageNeedsMore = false;
     };
-    // C ref: dothrow.c throw_obj() prompts for direction before checks
-    // like canletgo()/wearing-state rejection.
     replacePromptMessage();
     display.putstr_message('In what direction?');
     const dirCh = await nhgetch();
     const dch = String.fromCharCode(dirCh);
     let dir = DIRECTION_KEYS[dch];
-    // C tty/keypad parity: Enter maps to keypad-down ('j') in getdir flows.
     if (!dir && (dirCh === 10 || dirCh === 13)) {
         dir = DIRECTION_KEYS.j;
     }
@@ -87,13 +208,8 @@ export async function promptDirectionAndThrowItem(player, map, display, item, { 
     let landingX = targetX;
     let landingY = targetY;
     if (targetMonster) {
-        // C ref: dothrow.c thitmonst()/tmiss() consumes hit + miss RNG.
-        // Replay currently models this branch as a miss while preserving
-        // RNG and messaging parity for captured early-game traces.
         rnd(20);
         rn2(3);
-        // TODO: C ref: dothrow.c thitmonst() has full combat simulation here.
-        // The obj_resists(0,0) stub is empirical; replace with proper thitmonst() port.
         obj_resists(item, 0, 0);
         const od = objectData[item.otyp];
         const baseName = od?.name || item.name || 'item';
@@ -114,10 +230,6 @@ export async function promptDirectionAndThrowItem(player, map, display, item, { 
         display.putstr_message('You cannot throw something you are wearing.');
         return { moved: false, tookTime: false };
     }
-    // Minimal throw behavior for replay flow fidelity.
-    // C ref: dothrow.c throw_obj() multishot calculation — for stack throws,
-    // rnd(multishot) is consumed when ammo is paired with a launcher or for
-    // stacked thrown weapons.
     if ((item.quan || 1) > 1) {
         const matchedLauncher = ammoAndLauncher(item, player.weapon);
         if (item.oclass === WEAPON_CLASS || matchedLauncher) {
@@ -135,7 +247,6 @@ export async function promptDirectionAndThrowItem(player, map, display, item, { 
         if (player.quiver === item) uqwepgone(player);
     }
     if (!targetMonster && fromFire) {
-        // TODO: C fire path has different obj_resists call site; replace with proper port.
         obj_resists(thrownItem, 0, 0);
     }
     const landingLoc = (typeof map.at === 'function')
@@ -159,14 +270,10 @@ export async function promptDirectionAndThrowItem(player, map, display, item, { 
             ? map.getCell(thrownItem.ox, thrownItem.oy)
             : (map?.cells?.[thrownItem.oy]?.[thrownItem.ox] || null));
     if (!targetMonster && !fromFire && finalLoc && !IS_SOFT(finalLoc.typ)) {
-        // C ref: dothrow.c breaktest() probes obj_resists(nonbreak=1, art=99)
-        // for ordinary throws that strike hard terrain.
         obj_resists(thrownItem, 1, 99);
     }
     thrownItem._thrownByPlayer = true;
     placeFloorObject(map, thrownItem);
-    // C ref: dothrow.c throw_obj() only emits a throw topline for
-    // multishot/count cases; a normal single throw should just resolve.
     replacePromptMessage();
     if (throwMessage) {
         display.putstr_message(throwMessage);
@@ -187,15 +294,9 @@ export async function handleThrow(player, map, display) {
         display.messageNeedsMore = false;
     };
     const equippedItems = new Set([
-        player.armor,
-        player.shield,
-        player.helmet,
-        player.gloves,
-        player.boots,
-        player.cloak,
-        player.amulet,
-        player.leftRing,
-        player.rightRing,
+        player.armor, player.shield, player.helmet,
+        player.gloves, player.boots, player.cloak,
+        player.amulet, player.leftRing, player.rightRing,
     ].filter(Boolean));
     const invSorted = [...(player.inventory || [])]
         .filter((o) => o?.invlet)
@@ -226,24 +327,24 @@ export async function handleThrow(player, map, display) {
             replacePromptMessage();
             const invLines = [];
             let currentHeader = null;
-            for (const item of promptItems) {
+            for (const itm of promptItems) {
                 let header = 'Other';
-                if (item.oclass === WEAPON_CLASS) header = 'Weapons';
-                else if (item.oclass === COIN_CLASS) header = 'Coins';
-                else if (item.oclass === GEM_CLASS) header = 'Gems/Stones';
-                else if (item.oclass === TOOL_CLASS) header = 'Tools';
+                if (itm.oclass === WEAPON_CLASS) header = 'Weapons';
+                else if (itm.oclass === COIN_CLASS) header = 'Coins';
+                else if (itm.oclass === GEM_CLASS) header = 'Gems/Stones';
+                else if (itm.oclass === TOOL_CLASS) header = 'Tools';
                 if (header !== currentHeader) {
                     invLines.push(header);
                     currentHeader = header;
                 }
                 let invName;
-                if (item.oclass === COIN_CLASS) {
-                    const count = item.quan || player.gold || 0;
+                if (itm.oclass === COIN_CLASS) {
+                    const count = itm.quan || player.gold || 0;
                     invName = `${count} ${count === 1 ? 'gold piece' : 'gold pieces'}`;
                 } else {
-                    invName = doname(item, player);
+                    invName = doname(itm, player);
                 }
-                invLines.push(`${item.invlet} - ${invName}`);
+                invLines.push(`${itm.invlet} - ${invName}`);
             }
             invLines.push('(end)');
             const selection = await renderOverlayMenuUntilDismiss(display, invLines, throwLetters);
@@ -254,13 +355,12 @@ export async function handleThrow(player, map, display) {
         }
         if (c === '-') {
             replacePromptMessage();
-            // C ref: dothrow() with '-' selected and no launcher context.
             display.putstr_message('You mime throwing something.');
             return { moved: false, tookTime: false };
         }
-        const item = player.inventory.find(o => o.invlet === c);
-        if (!item) continue;
-        return await promptDirectionAndThrowItem(player, map, display, item);
+        const selItem = player.inventory.find(o => o.invlet === c);
+        if (!selItem) continue;
+        return await promptDirectionAndThrowItem(player, map, display, selItem);
     }
 }
 
@@ -274,18 +374,13 @@ export async function handleFire(player, map, display, game) {
     const weaponSkill = weapon ? objectData[weapon.otyp]?.sub : null;
     const wieldingPolearm = !!weapon
         && weapon.oclass === WEAPON_CLASS
-        && (weaponSkill === 18 /* P_POLEARMS */ || weaponSkill === 19 /* P_LANCE */);
+        && (weaponSkill === 18 || weaponSkill === 19);
 
-    // C ref: dothrow.c dofire() routes to use_pole(..., TRUE) when no
-    // quiver ammo is readied and a polearm/lance is wielded.
     if (!player.quiver && wieldingPolearm) {
         display.putstr_message("Don't know what to hit.");
         return { moved: false, tookTime: false };
     }
 
-    // C ref: dothrow.c dofire() — when no quiver and wielding bullwhip,
-    // routes to use_whip(uwep) which shows "In what direction?" and reads
-    // one direction character (matching apply.c use_whip() behavior).
     if (!player.quiver && weapon && weapon.otyp === BULLWHIP) {
         display.putstr_message('In what direction?');
         const dirCh = await nhgetch();
@@ -298,7 +393,6 @@ export async function handleFire(player, map, display, game) {
             }
             return { moved: false, tookTime: false };
         }
-        // TODO: implement actual whip crack effects for full parity
         replacePromptMessage();
         return { moved: false, tookTime: false };
     }
@@ -306,8 +400,7 @@ export async function handleFire(player, map, display, game) {
     const inventory = player.inventory || [];
     const fireLetters = [];
     const quiverItem = player.quiver && inventory.includes(player.quiver)
-        ? player.quiver
-        : null;
+        ? player.quiver : null;
     const hasRunTurnHook = typeof game?.advanceRunTurn === 'function';
     let deferredTimedTurn = false;
     if (quiverItem && game?.flags?.fireassist !== false) {
@@ -339,37 +432,32 @@ export async function handleFire(player, map, display, game) {
         }
         return throwResult;
     }
-    // C ref: wield.c ready_ok() — classify each item as SUGGEST or DOWNPLAY.
-    // P_BOW=20, P_SLING=21, P_CROSSBOW=22.
     const isLauncher = (o) => {
         if (o.oclass !== WEAPON_CLASS) return false;
         const sk = objectData[o.otyp]?.sub ?? 0;
-        return sk >= 20 && sk <= 22; // P_BOW..P_CROSSBOW
+        return sk >= 20 && sk <= 22;
     };
     const isAmmo = (o) => {
         if (o.oclass !== WEAPON_CLASS && o.oclass !== GEM_CLASS) return false;
         const sk = objectData[o.otyp]?.sub ?? 0;
-        return sk >= -22 && sk <= -20; // -P_CROSSBOW..-P_BOW
+        return sk >= -22 && sk <= -20;
     };
-    for (const item of inventory) {
-        if (!item?.invlet) continue;
-        // Wielded weapon: downplay if single quantity
-        if (item === player.weapon) {
-            if ((item.quan || 1) > 1) fireLetters.push(item.invlet);
+    for (const itm of inventory) {
+        if (!itm?.invlet) continue;
+        if (itm === player.weapon) {
+            if ((itm.quan || 1) > 1) fireLetters.push(itm.invlet);
             continue;
         }
-        if (isAmmo(item)) {
-            // Ammo: suggest only if matching a wielded launcher
-            if (ammoAndLauncher(item, player.weapon)
-                || ammoAndLauncher(item, player.swapWeapon)) {
-                fireLetters.push(item.invlet);
+        if (isAmmo(itm)) {
+            if (ammoAndLauncher(itm, player.weapon)
+                || ammoAndLauncher(itm, player.swapWeapon)) {
+                fireLetters.push(itm.invlet);
             }
-        } else if (isLauncher(item)) {
+        } else if (isLauncher(itm)) {
             // Launchers: downplay
-        } else if (item.oclass === WEAPON_CLASS || item.oclass === COIN_CLASS) {
-            fireLetters.push(item.invlet);
+        } else if (itm.oclass === WEAPON_CLASS || itm.oclass === COIN_CLASS) {
+            fireLetters.push(itm.invlet);
         }
-        // Everything else: downplay
     }
     const fireChoices = compactInvletPromptChars(fireLetters.join(''));
     if (fireChoices) {
@@ -397,10 +485,8 @@ export async function handleFire(player, map, display, game) {
             continue;
         }
         if (c === '?' || c === '*') continue;
-        const selected = inventory.find((item) => item?.invlet === c);
+        const selected = inventory.find((itm) => itm?.invlet === c);
         if (selected) {
-            // C ref: dothrow.c dofire() asks before reusing the currently wielded
-            // item as ready ammo.
             if (selected === player.weapon) {
                 replacePromptMessage();
                 display.putstr_message('You are wielding that.  Ready it instead? [ynq] (q)');
@@ -415,167 +501,768 @@ export async function handleFire(player, map, display, game) {
                     if (a === 'y') break;
                 }
             }
-            // C ref: selecting an item to fire updates the readied quiver item
-            // even if the subsequent direction prompt is canceled.
             setuqwep(player, selected);
             return await promptDirectionAndThrowItem(player, map, display, selected, { fromFire: true });
         }
-        // Keep prompt active for unsupported letters (fixture parity).
     }
 }
 
-// cf. dothrow.c:38 — multishot_class_bonus(pm, ammo, launcher): multishot volley bonus
-// Determines multishot volley bonus based on character class, ammo, and launcher.
-// TODO: dothrow.c:38 — multishot_class_bonus(): multishot bonus calculation
+// ============================================================================
+// Ported C functions
+// ============================================================================
 
-// cf. dothrow.c:86 [static] — throw_obj(obj, shotlimit): core throwing logic
-// Core throwing logic: direction, multishot, item disposal.
-// TODO: dothrow.c:86 — throw_obj(): core throw logic
+// cf. dothrow.c:38 -- multishot_class_bonus(pm, ammo, launcher)
+export function multishot_class_bonus(pm, ammo, launcher) {
+    let multishot = 0;
+    const skill = objectData[ammo.otyp]?.sub ?? 0;
+    switch (pm) {
+    case 1: // PM_CAVE_DWELLER
+        if (skill === -P_SLING || skill === P_SPEAR) multishot++;
+        break;
+    case 5: // PM_MONK
+        if (skill === -P_SHURIKEN) multishot++;
+        break;
+    case 8: // PM_RANGER
+        if (skill !== P_DAGGER) multishot++;
+        break;
+    case 7: // PM_ROGUE
+        if (skill === P_DAGGER) multishot++;
+        break;
+    case 9: // PM_SAMURAI
+        if (ammo.otyp === YA && launcher && launcher.otyp === YUMI) multishot++;
+        break;
+    default:
+        break;
+    }
+    return multishot;
+}
 
-// cf. dothrow.c:296 [static] — ok_to_throw(shotlimit_p): throw precondition check
-// Checks preconditions for throwing and initializes shot limit.
-// TODO: dothrow.c:296 — ok_to_throw(): throw precondition check
+// cf. dothrow.c:86 [static] -- throw_obj(obj, shotlimit)
+export function throw_obj(player, obj, shotlimit) {
+    let multishot = 1;
+    const skill = objectData[obj.otyp]?.sub ?? 0;
+    const uwep = player.weapon;
+    if ((obj.quan || 1) > 1
+        && (is_ammo(obj) ? matching_launcher(obj, uwep) : obj.oclass === WEAPON_CLASS)) {
+        const role = player.role || 0;
+        const weakmultishot = (role === 12 || role === 2
+            || (role === 3 && skill !== P_KNIFE)
+            || (role === 10 && skill !== -P_DART)
+            || (player.dex || 10) <= 6);
+        const pskill = player.skills?.[weapon_type(obj)] || 0;
+        if (pskill >= 4) { multishot++; if (!weakmultishot) multishot++; }
+        else if (pskill >= 3) { if (!weakmultishot) multishot++; }
+        multishot += multishot_class_bonus(role, obj, uwep);
+        if (!weakmultishot) {
+            const race = player.race || 0;
+            if (race === 264 && obj.otyp === ELVEN_ARROW && uwep && uwep.otyp === ELVEN_BOW) multishot++;
+            else if (race === 72 && obj.otyp === ORCISH_ARROW && uwep && uwep.otyp === ORCISH_BOW) multishot++;
+        }
+        if (multishot > 1 && skill === -P_CROSSBOW
+            && ammo_and_launcher(obj, uwep) && (player.str || 10) < 18)
+            multishot = rnd(multishot);
+        multishot = rnd(multishot);
+        if (multishot > (obj.quan || 1)) multishot = obj.quan || 1;
+        if (shotlimit > 0 && multishot > shotlimit) multishot = shotlimit;
+    }
+    return multishot;
+}
 
-// cf. dothrow.c:316 [static] — throw_ok(obj): getobj callback for throwable objects
-// Getobj callback to determine if an object is suitable to throw.
-// TODO: dothrow.c:316 — throw_ok(): throwable object filter
+// cf. dothrow.c:296 [static] -- ok_to_throw(shotlimit_p)
+export function ok_to_throw(player, command_count) {
+    const shotlimit = Math.max(0, command_count || 0);
+    if (player.polyData && notake(player.polyData)) {
+        pline("You are physically incapable of throwing or shooting anything.");
+        return { ok: false, shotlimit };
+    }
+    if (player.polyData && nohands(player.polyData)) {
+        pline("You can't throw or shoot without hands.");
+        return { ok: false, shotlimit };
+    }
+    return { ok: true, shotlimit };
+}
 
-// cf. dothrow.c:351 — dothrow(void): #throw command handler
-// The #throw extended command handler.
-// TODO: dothrow.c:351 — dothrow(): throw command handler
+// cf. dothrow.c:316 [static] -- throw_ok(obj)
+export function throw_ok(obj, player) {
+    if (!obj) return 0;
+    if (obj.bknown && obj.welded) return 2;
+    if (obj.otyp === BOOMERANG || obj.otyp === AKLYS) return 1;
+    if ((obj.quan || 1) === 1 && (obj === player.weapon || obj === player.swapWeapon)) return 2;
+    if (obj.oclass === COIN_CLASS) return 1;
+    if (!uslinging_check(player) && obj.oclass === WEAPON_CLASS) return 1;
+    if (uslinging_check(player) && obj.oclass === GEM_CLASS) return 1;
+    return 2;
+}
 
-// cf. dothrow.c:380 [static] — autoquiver(void): automatic quiver selection
-// Automatically selects an appropriate item for the quiver slot.
-// TODO: dothrow.c:380 — autoquiver(): quiver auto-selection
+// cf. dothrow.c:380 [static] -- autoquiver(player)
+export function autoquiver(player) {
+    if (player.quiver) return;
+    let oammo = null, omissile = null, omisc = null, altammo = null;
+    const uwep = player.weapon;
+    const uswapwep = player.swapWeapon;
+    for (const otmp of (player.inventory || [])) {
+        if (!otmp) continue;
+        if (otmp.owornmask || otmp.oartifact || !otmp.dknown) {
+            continue;
+        } else if (otmp.otyp === ROCK
+                   || (otmp.otyp === FLINT && objectData[otmp.otyp]?.known)
+                   || (otmp.oclass === GEM_CLASS
+                       && (objectData[otmp.otyp]?.material ?? 0) === GLASS
+                       && objectData[otmp.otyp]?.known)) {
+            if (uslinging_check(player)) oammo = otmp;
+            else if (ammo_and_launcher(otmp, uswapwep)) altammo = otmp;
+            else if (!omisc) omisc = otmp;
+        } else if (otmp.oclass === GEM_CLASS) {
+            continue;
+        } else if (is_ammo(otmp)) {
+            if (ammo_and_launcher(otmp, uwep)) oammo = otmp;
+            else if (ammo_and_launcher(otmp, uswapwep)) altammo = otmp;
+            else omisc = otmp;
+        } else if (is_missile(otmp)) {
+            omissile = otmp;
+        } else if (otmp.oclass === WEAPON_CLASS && throwing_weapon(otmp)) {
+            if ((objectData[otmp.otyp]?.sub ?? 0) === P_DAGGER && !omissile) omissile = otmp;
+            else if (otmp.otyp === AKLYS) continue;
+            else omisc = otmp;
+        }
+    }
+    if (oammo) setuqwep(player, oammo);
+    else if (omissile) setuqwep(player, omissile);
+    else if (altammo) setuqwep(player, altammo);
+    else if (omisc) setuqwep(player, omisc);
+}
 
-// cf. dothrow.c:446 [static] — find_launcher(ammo): find matching launcher
-// Finds a launcher in inventory matching the given ammunition.
-// TODO: dothrow.c:446 — find_launcher(): ammo launcher lookup
+// cf. dothrow.c:446 [static] -- find_launcher(ammo, player)
+export function find_launcher(ammo, player) {
+    if (!ammo) return null;
+    let oX = null;
+    for (const otmp of (player.inventory || [])) {
+        if (!otmp) continue;
+        if (otmp.cursed && otmp.bknown) continue;
+        if (ammo_and_launcher(ammo, otmp)) {
+            if (otmp.bknown) return otmp;
+            if (!oX) oX = otmp;
+        }
+    }
+    return oX;
+}
 
-// cf. dothrow.c:468 — dofire(void): #fire command handler
-// The #fire extended command handler (throw from quiver).
-// TODO: dothrow.c:468 — dofire(): fire from quiver command
+// cf. dothrow.c:589 -- endmultishot(verbose, m_shot)
+export function endmultishot(verbose, m_shot) {
+    if (!m_shot) return;
+    if (m_shot.i < m_shot.n) {
+        if (verbose) {
+            const ord = m_shot.i === 1 ? '1st' : m_shot.i === 2 ? '2nd'
+                : m_shot.i === 3 ? '3rd' : `${m_shot.i}th`;
+            pline(`You stop ${m_shot.s ? 'firing' : 'throwing'} after the ${ord} ${m_shot.s ? 'shot' : 'toss'}.`);
+        }
+        m_shot.n = m_shot.i;
+    }
+}
 
-// cf. dothrow.c:589 — endmultishot(verbose): stop multishot sequence
-// Stops a multishot sequence early with optional message.
-// TODO: dothrow.c:589 — endmultishot(): multishot sequence end
+// cf. dothrow.c:605 -- hitfloor(obj, verbosely, player, map)
+export function hitfloor(obj, verbosely, player, map) {
+    const ux = player.x, uy = player.y;
+    const loc = typeof map.at === 'function' ? map.at(ux, uy) : null;
+    if (loc && (IS_SOFT(loc.typ) || player.uinwater || player.uswallow)) {
+        obj.ox = ux; obj.oy = uy;
+        placeFloorObject(map, obj);
+        return;
+    }
+    if (verbosely && loc) {
+        const verb = (obj.otyp === WAN_STRIKING) ? 'strikes' : 'hits';
+        pline(`The ${xname(obj)} ${verb} the floor.`);
+    }
+    if (hero_breaks(obj, ux, uy, BRK_FROM_INV, player, map)) return;
+    obj.ox = ux; obj.oy = uy;
+    placeFloorObject(map, obj);
+}
 
-// cf. dothrow.c:605 — hitfloor(obj, verbosely): object hits floor at hero's feet
-// Handles an object hitting the floor at the hero's position.
-// TODO: dothrow.c:605 — hitfloor(): floor landing
+// cf. dothrow.c:655 -- walk_path(src_cc, dest_cc, check_proc, arg)
+export function walk_path(src_cc, dest_cc, check_proc, arg) {
+    let dx = dest_cc.x - src_cc.x;
+    let dy = dest_cc.y - src_cc.y;
+    let prev_x = src_cc.x, prev_y = src_cc.y;
+    let x = src_cc.x, y = src_cc.y;
+    let x_change, y_change;
+    if (dx < 0) { x_change = -1; dx = -dx; } else { x_change = 1; }
+    if (dy < 0) { y_change = -1; dy = -dy; } else { y_change = 1; }
+    let i = 0, err = 0;
+    let keep_going = true;
+    if (dx < dy) {
+        while (i++ < dy) {
+            prev_x = x; prev_y = y;
+            y += y_change;
+            err += dx << 1;
+            if (err > dy) { x += x_change; err -= dy << 1; }
+            if (!(keep_going = check_proc(arg, x, y))) break;
+        }
+    } else {
+        while (i++ < dx) {
+            prev_x = x; prev_y = y;
+            x += x_change;
+            err += dy << 1;
+            if (err > dx) { y += y_change; err -= dx << 1; }
+            if (!(keep_going = check_proc(arg, x, y))) break;
+        }
+    }
+    if (keep_going) return true;
+    dest_cc.x = prev_x; dest_cc.y = prev_y;
+    return false;
+}
 
-// cf. dothrow.c:655 — walk_path(src_cc, dest_cc, check_proc, arg): Bresenham path walker
-// Walks a Bresenham path calling a callback for each location along the way.
-// TODO: dothrow.c:655 — walk_path(): Bresenham path traversal
+// cf. dothrow.c:741 -- hurtle_jump(arg, x, y)
+export function hurtle_jump(arg, x, y) {
+    const save = arg._ewwalking_special || false;
+    arg._ewwalking_special = true;
+    const res = hurtle_step(arg, x, y);
+    arg._ewwalking_special = save;
+    return res;
+}
 
-// cf. dothrow.c:741 — hurtle_jump(arg, x, y): hurtle step (no water jump)
-// Wrapper for hurtle_step that prevents jumping into water.
-// TODO: dothrow.c:741 — hurtle_jump(): hurtle water barrier
+// cf. dothrow.c:772 -- hurtle_step(arg, x, y)
+export function hurtle_step(arg, x, y) {
+    const { player, map } = arg;
+    if (!isok(x, y)) { pline("You feel the spirits holding you back."); return false; }
+    if (arg.range <= 0) return false;
+    const loc = typeof map.at === 'function' ? map.at(x, y) : null;
+    if (!loc) return false;
+    if (loc.typ !== undefined && !ACCESSIBLE(loc.typ)) {
+        pline("Ouch!");
+        rnd(2 + arg.range); // consume RNG for damage
+        return false;
+    }
+    const mon = map.monsterAt ? map.monsterAt(x, y) : null;
+    if (mon) {
+        pline(`You bump into ${a_monnam(mon)}.`);
+        wakeup(mon, false, map, player);
+        setmangry(mon, false, map, player);
+        return false;
+    }
+    player.x = x; player.y = y;
+    if (--arg.range < 0) arg.range = 0;
+    return true;
+}
 
-// cf. dothrow.c:772 — hurtle_step(arg, x, y): single hurtle step
-// Executes a single step of the player hurtling through the air.
-// TODO: dothrow.c:772 — hurtle_step(): player hurtle single step
+// cf. dothrow.c:976 -- will_hurtle(mon, x, y, map, player)
+export function will_hurtle(mon, x, y, map, player) {
+    if (!isok(x, y)) return false;
+    const data = mon.data || (mons ? mons[mon.mndx] : null) || {};
+    if ((data.msize || 0) >= MZ_HUGE || mon.mtrapped) return false;
+    return goodpos(x, y, mon, 0, map, player);
+}
 
-// cf. dothrow.c:976 — will_hurtle(mon, x, y): check monster knockback location
-// Checks if a monster can be knocked back to a given location.
-// TODO: dothrow.c:976 — will_hurtle(): monster knockback location check
+// cf. dothrow.c:991 [static] -- mhurtle_step(mon, x, y, map, player)
+function mhurtle_step(mon, x, y, map, player) {
+    if (!isok(x, y)) return false;
+    if (will_hurtle(mon, x, y, map, player)) {
+        if (typeof map.removeMonster === 'function') map.removeMonster(mon.mx, mon.my);
+        mon.mx = x; mon.my = y;
+        if (typeof map.placeMonster === 'function') map.placeMonster(mon, x, y);
+        return true;
+    }
+    const mtmp = map.monsterAt ? map.monsterAt(x, y) : null;
+    if (mtmp && mtmp !== mon) {
+        pline(`${Monnam(mon)} bumps into ${a_monnam(mtmp)}.`);
+        wakeup(mtmp, true, map, player);
+    } else if (player && x === player.x && y === player.y) {
+        pline(`${Monnam(mon)} bumps into you.`);
+    }
+    return false;
+}
 
-// cf. dothrow.c:991 [static] — mhurtle_step(arg, x, y): single monster hurtle step
-// Executes a single step of a monster being hurtled through the air.
-// TODO: dothrow.c:991 — mhurtle_step(): monster hurtle single step
+// cf. dothrow.c:1077 -- hurtle(dx, dy, range, verbose, player, map)
+export function hurtle(dx, dy, range, verbose, player, map) {
+    if (player.utrap) { pline("You are anchored by the trap."); return; }
+    dx = sgn(dx); dy = sgn(dy);
+    if (!range || (!dx && !dy)) return;
+    if (verbose) pline(`You ${range > 1 ? 'hurtle' : 'float'} in the opposite direction.`);
+    endmultishot(true, player._m_shot);
+    const uc = { x: player.x, y: player.y };
+    const cc = { x: player.x + dx * range, y: player.y + dy * range };
+    const arg = { range, player, map };
+    walk_path(uc, cc, (a, hx, hy) => hurtle_step(a, hx, hy), arg);
+}
 
-// cf. dothrow.c:1077 — hurtle(dx, dy, range, verbose): move hero through air
-// Moves the hero through the air after a kick or impact.
-// TODO: dothrow.c:1077 — hurtle(): hero air movement
+// cf. dothrow.c:1129 -- mhurtle(mon, dx, dy, range, map, player)
+export function mhurtle(mon, dx, dy, range, map, player) {
+    wakeup(mon, true, map, player);
+    mon.movement = 0; mon.mstun = 1;
+    const data = mon.data || (mons ? mons[mon.mndx] : null) || {};
+    if ((data.msize || 0) >= MZ_HUGE || mon.mtrapped) {
+        pline(`${Monnam(mon)} doesn't budge!`);
+        return;
+    }
+    dx = sgn(dx); dy = sgn(dy);
+    if (!range || (!dx && !dy)) return;
+    if (mon.mundetected) mon.mundetected = 0;
+    const mc = { x: mon.mx, y: mon.my };
+    const cc = { x: mon.mx + dx * range, y: mon.my + dy * range };
+    walk_path(mc, cc, (_a, hx, hy) => mhurtle_step(mon, hx, hy, map, player), mon);
+}
 
-// cf. dothrow.c:1129 — mhurtle(mon, dx, dy, range): move monster through air
-// Moves a monster through the air after being struck.
-// TODO: dothrow.c:1129 — mhurtle(): monster air movement
+// cf. dothrow.c:1180 [static] -- check_shop_obj(obj, x, y, broken)
+function check_shop_obj(obj, x, y, broken) {
+    if (broken) obj.no_charge = 1;
+}
 
-// cf. dothrow.c:1180 [static] — check_shop_obj(obj, x, y, broken): shop thrown-object accounting
-// Handles shop accounting for thrown objects.
-// TODO: dothrow.c:1180 — check_shop_obj(): throw shop accounting
+// cf. dothrow.c:1219 -- harmless_missile(obj)
+export function harmless_missile(obj) {
+    switch (obj.otyp) {
+    case SLING: case EUCALYPTUS_LEAF: case KELP_FROND:
+    case SPRIG_OF_WOLFSBANE: case FORTUNE_COOKIE: case PANCAKE:
+        return true;
+    case RUBBER_HOSE: case BAG_OF_TRICKS:
+        return (obj.spe || 0) < 1;
+    case SACK: case OILSKIN_SACK: case BAG_OF_HOLDING:
+        return !Has_contents(obj);
+    default:
+        if (obj.oclass === SCROLL_CLASS) return true;
+        if ((objectData[obj.otyp]?.material ?? 0) === CLOTH) return true;
+        break;
+    }
+    return false;
+}
 
-// cf. dothrow.c:1219 — harmless_missile(obj): check if thrown object hurts hero
-// Determines if a thrown object causes damage if it falls on the hero.
-// TODO: dothrow.c:1219 — harmless_missile(): safe missile check
+// cf. dothrow.c:1255 [static] -- toss_up(obj, hitsroof, player, map)
+export function toss_up(obj, hitsroof, player, map) {
+    if (hitsroof) {
+        if (breaktest(obj)) {
+            pline(`The ${xname(obj)} hits the ceiling.`);
+            breakmsg(obj, !player.blind);
+            if (breakobj(obj, player.x, player.y, true, true, player, map)) return false;
+            hitfloor(obj, false, player, map);
+            return true;
+        }
+    }
+    pline(`The ${xname(obj)} hits the ceiling, then falls back on top of your head.`);
+    if (obj.oclass === POTION_CLASS) {
+        // potionhit stub
+        return false;
+    } else if (breaktest(obj)) {
+        breakmsg(obj, !player.blind);
+        if (breakobj(obj, player.x, player.y, true, true, player, map)) return false;
+        hitfloor(obj, false, player, map);
+    } else if (harmless_missile(obj)) {
+        pline("It doesn't hurt.");
+        hitfloor(obj, false, player, map);
+    } else {
+        let dmg = dmgval(obj, player);
+        if (!dmg) {
+            dmg = Math.floor(((obj.owt || 1) + 2) / 3);
+            dmg = dmg <= 1 ? 1 : rnd(dmg);
+            if (dmg > 6) dmg = 6;
+        }
+        hitfloor(obj, true, player, map);
+    }
+    return true;
+}
 
-// cf. dothrow.c:1255 [static] — toss_up(obj, hitsroof): object thrown upward
-// Handles an object thrown upward with ceiling collision and fallback.
-// TODO: dothrow.c:1255 — toss_up(): upward throw mechanics
+// cf. dothrow.c:1429 -- throwing_weapon(obj)
+export function throwing_weapon(obj) {
+    if (!obj) return false;
+    return is_missile(obj) || is_spear(obj)
+        || (is_blade(obj) && !is_sword(obj) && ((objectData[obj.otyp]?.dir ?? 0) & PIERCE) !== 0)
+        || obj.otyp === WAR_HAMMER || obj.otyp === AKLYS;
+}
 
-// cf. dothrow.c:1429 — throwing_weapon(obj): check if object is a throwing weapon
-// Determines if an object is designed to be thrown as a weapon.
-// TODO: dothrow.c:1429 — throwing_weapon(): throwing weapon check
+// cf. dothrow.c:1441 [static] -- sho_obj_return_to_u(obj)
+function sho_obj_return_to_u(_obj) {
+    // Display animation stub -- requires tmp_at display subsystem
+}
 
-// cf. dothrow.c:1441 [static] — sho_obj_return_to_u(obj): display returning weapon path
-// Displays the returning throw-and-return weapon path back to the hero.
-// TODO: dothrow.c:1441 — sho_obj_return_to_u(): returning weapon display
+// cf. dothrow.c:1459 [static] -- throwit_return(clear_thrownobj, game)
+function throwit_return(clear_thrownobj, game) {
+    if (game) game.returning_missile = null;
+    if (clear_thrownobj && game) game.thrownobj = null;
+}
 
-// cf. dothrow.c:1459 [static] — throwit_return(clear_thrownobj): return weapon cleanup
-// Cleans up after a throw-and-return weapon has been caught.
-// TODO: dothrow.c:1459 — throwit_return(): return weapon catch cleanup
+// cf. dothrow.c:1467 [static] -- swallowit(obj, player, game)
+function swallowit(obj, player, game) {
+    if (player.ustuck) {
+        mpickobj(player.ustuck, obj);
+        throwit_return(false, game);
+    } else {
+        throwit_return(true, game);
+    }
+}
 
-// cf. dothrow.c:1467 [static] — swallowit(obj): thrown object swallowed
-// Handles a thrown object being swallowed by a monster.
-// TODO: dothrow.c:1467 — swallowit(): object swallow on throw
+// cf. dothrow.c:1481 -- throwit_mon_hit(obj, mon, player, map, game)
+export function throwit_mon_hit(obj, mon, player, map, game) {
+    if (mon) {
+        if (mon.isshk && obj.where === 'minvent' && obj.ocarry === mon) return true;
+        const obj_gone = thitmonst(mon, obj, player, map, game);
+        if (obj_gone && game) game.thrownobj = null;
+    }
+    return false;
+}
 
-// cf. dothrow.c:1481 — throwit_mon_hit(obj, mon): process thrown object hitting monster
-// Processes a thrown object hitting a monster.
-// TODO: dothrow.c:1481 — throwit_mon_hit(): throw monster hit
+// cf. dothrow.c:1509 -- throwit(obj, wep_mask, twoweap, oldslot, player, map, game)
+export function throwit(obj, wep_mask, twoweap, oldslot, player, map, game) {
+    const uwep = player.weapon;
+    if ((obj.cursed || obj.greased) && (player.dx || player.dy) && !rn2(7)) {
+        let slipok = true;
+        if (ammo_and_launcher(obj, uwep)) {
+            pline(`The ${xname(obj)} misfires!`);
+        } else {
+            if (obj.greased || throwing_weapon(obj))
+                pline(`The ${xname(obj)} slips as you throw it!`);
+            else slipok = false;
+        }
+        if (slipok) {
+            player.dx = rn2(3) - 1;
+            player.dy = rn2(3) - 1;
+            if (!player.dx && !player.dy) player.dz = 1;
+        }
+    }
+    if (game) { game.thrownobj = obj; obj.how_lost = 'thrown'; }
 
-// cf. dothrow.c:1509 — throwit(obj, wep_mask, twoweap, oldslot): execute throw
-// Executes a throw including collision resolution and landing.
-// TODO: dothrow.c:1509 — throwit(): full throw execution
+    if (player.dz) {
+        if (player.dz < 0) toss_up(obj, rn2(5), player, map);
+        else hitfloor(obj, true, player, map);
+        throwit_return(true, game);
+        return;
+    }
 
-// cf. dothrow.c:1854 [static] — return_throw_to_inv(obj, wep_mask, twoweap, oldslot): add returning weapon to inv
-// Returns a throw-and-return weapon back to inventory.
-// TODO: dothrow.c:1854 — return_throw_to_inv(): catch returning weapon
+    const crossbowing = ammo_and_launcher(obj, uwep) && weapon_type(uwep) === P_CROSSBOW;
+    let urange = (crossbowing ? 18 : (player.str || 10)) >> 1;
+    let range;
+    if (obj.otyp === HEAVY_IRON_BALL) range = urange - Math.floor((obj.owt || 0) / 100);
+    else range = urange - Math.floor((obj.owt || 0) / 40);
+    if (range < 1) range = 1;
+    if (is_ammo(obj)) {
+        if (ammo_and_launcher(obj, uwep)) {
+            if (crossbowing) range = 8; else range++;
+        } else if (obj.oclass !== GEM_CLASS) {
+            range = Math.floor(range / 2);
+        }
+    }
+    if (obj.otyp === BOULDER) range = 20;
 
-// cf. dothrow.c:1912 — omon_adj(mon, obj, mon_notices): monster to-hit adjustment
-// Calculates to-hit adjustments for a monster being thrown at.
-// TODO: dothrow.c:1912 — omon_adj(): throw vs monster to-hit
+    let hitMon = null;
+    const dx = player.dx || 0, dy = player.dy || 0;
+    let bx = player.x, by = player.y;
+    for (let i = 0; i < range; i++) {
+        const nx = bx + dx, ny = by + dy;
+        if (!isok(nx, ny)) break;
+        const loc = typeof map.at === 'function' ? map.at(nx, ny) : null;
+        if (!loc || !ZAP_POS(loc.typ)) break;
+        bx = nx; by = ny;
+        const mon = map.monsterAt ? map.monsterAt(bx, by) : null;
+        if (mon) { hitMon = mon; break; }
+    }
+    if (game) game.bhitpos = { x: bx, y: by };
 
-// cf. dothrow.c:1950 [static] — tmiss(obj, mon, maybe_wakeup): thrown object miss message
-// Displays message for a thrown object missing its target.
-// TODO: dothrow.c:1950 — tmiss(): throw miss message
+    if (throwit_mon_hit(obj, hitMon, player, map, game)) { throwit_return(true, game); return; }
+    if (game && !game.thrownobj) { throwit_return(false, game); return; }
 
-// cf. dothrow.c:1975 — should_mulch_missile(obj): check if ammo should be destroyed
-// Determines if ammo or missile should be destroyed on impact.
-// TODO: dothrow.c:1975 — should_mulch_missile(): ammo destruction check
+    const landLoc = typeof map.at === 'function' ? map.at(bx, by) : null;
+    if (landLoc && !IS_SOFT(landLoc.typ) && breaktest(obj)) {
+        breakmsg(obj, true);
+        if (breakobj(obj, bx, by, true, true, player, map)) { throwit_return(true, game); return; }
+    }
+    obj.ox = bx; obj.oy = by;
+    placeFloorObject(map, obj);
+    if (game) game.thrownobj = null;
+    throwit_return(false, game);
+}
 
-// cf. dothrow.c:2010 — thitmonst(mon, obj): thrown object hits monster
-// Processes a thrown object hitting a monster with full combat mechanics.
-// TODO: dothrow.c:2010 — thitmonst(): full throw monster hit
+// cf. dothrow.c:1854 [static] -- return_throw_to_inv(obj, wep_mask, twoweap, oldslot, player)
+export function return_throw_to_inv(obj, wep_mask, _twoweap, _oldslot, player) {
+    if (player.inventory) player.inventory.push(obj);
+    if ((wep_mask & W_WEP) && !player.weapon) {
+        player.weapon = obj; obj.owornmask = (obj.owornmask || 0) | W_WEP;
+    } else if ((wep_mask & W_SWAPWEP) && !player.swapWeapon) {
+        player.swapWeapon = obj; obj.owornmask = (obj.owornmask || 0) | W_SWAPWEP;
+    } else if ((wep_mask & W_QUIVER) && !player.quiver) {
+        setuqwep(player, obj);
+    }
+    return obj;
+}
 
-// cf. dothrow.c:2308 [static] — gem_accept(mon, obj): unicorn accepts gem
-// Handles a unicorn accepting a thrown gem and resulting luck changes.
-// TODO: dothrow.c:2308 — gem_accept(): unicorn gem gift
+// cf. dothrow.c:1912 -- omon_adj(mon, obj, mon_notices)
+export function omon_adj(mon, obj, mon_notices) {
+    let tmp = 0;
+    const data = mon.data || (mons ? mons[mon.mndx] : null) || {};
+    tmp += ((data.msize || MZ_MEDIUM) - MZ_MEDIUM);
+    if (mon.msleeping) tmp += 2;
+    if (!mon.mcanmove || !(data.mmove || data.speed || 0)) {
+        tmp += 4;
+        if (mon_notices && (data.mmove || data.speed || 0) && !rn2(10)) {
+            mon.mcanmove = 1; mon.mfrozen = 0;
+        }
+    }
+    switch (obj.otyp) {
+    case HEAVY_IRON_BALL: tmp += 2; break;
+    case BOULDER: tmp += 6; break;
+    default:
+        if (obj.oclass === WEAPON_CLASS || is_weptool(obj) || obj.oclass === GEM_CLASS)
+            tmp += hitval(obj, mon);
+        break;
+    }
+    return tmp;
+}
 
-// cf. dothrow.c:2416 — hero_breaks(obj, x, y, breakflags): hero-caused break
-// Breaks an object as a result of hero action.
-// TODO: dothrow.c:2416 — hero_breaks(): hero object breaking
+// cf. dothrow.c:1950 [static] -- tmiss(obj, mon, maybe_wakeup, player, map)
+function tmiss(obj, mon, maybe_wakeup, player, map) {
+    pline(`The ${xname(obj)} misses ${mon_nam(mon)}.`);
+    if (maybe_wakeup && !rn2(3)) wakeup(mon, true, map, player);
+}
 
-// cf. dothrow.c:2443 — breaks(obj, x, y): break object
-// Breaks an object for reasons other than direct hero action.
-// TODO: dothrow.c:2443 — breaks(): object breaking
+// cf. dothrow.c:1975 -- should_mulch_missile(obj)
+export function should_mulch_missile(obj) {
+    if (!obj) return false;
+    if (!(is_ammo(obj) || is_missile(obj))) return false;
+    if (obj.otyp === BOOMERANG) return false;
+    if (objectData[obj.otyp]?.magic) return false;
+    let chance = 3 + greatest_erosion(obj) - (obj.spe || 0);
+    let broken = chance > 1 ? !!rn2(chance) : !rn2(4);
+    if (obj.blessed && !rn2(4)) broken = false;
+    if (((obj.oclass === GEM_CLASS && objectData[obj.otyp]?.tough)
+         || obj.otyp === FLINT) && !rn2(2))
+        broken = false;
+    return broken;
+}
 
-// cf. dothrow.c:2456 — release_camera_demon(obj, x, y): camera break demon
-// Unleashes demon from a broken expensive camera.
-// TODO: dothrow.c:2456 — release_camera_demon(): camera demon release
+// cf. dothrow.c:2010 -- thitmonst(mon, obj, player, map, game)
+export function thitmonst(mon, obj, player, map, game) {
+    const uwep = player.weapon;
+    const otyp = obj.otyp;
+    const data = mon.data || (mons ? mons[mon.mndx] : null) || {};
+    let tmp = -1 + (player.luck || 0) + find_mac(mon) + (player.uhitinc || 0) + (player.level || 1);
+    const dex = player.dex || 10;
+    if (dex < 4) tmp -= 3;
+    else if (dex < 6) tmp -= 2;
+    else if (dex < 8) tmp -= 1;
+    else if (dex >= 14) tmp += (dex - 14);
 
-// cf. dothrow.c:2479 — breakobj(obj, x, y, hero_caused, from_invent): actually break object
-// Actually breaks an object and handles all side effects.
-// TODO: dothrow.c:2479 — breakobj(): object break execution
+    let disttmp = 3 - distmin(player.x, player.y, mon.mx, mon.my);
+    if (disttmp < -4) disttmp = -4;
+    tmp += disttmp;
 
-// cf. dothrow.c:2581 — breaktest(obj): test if object will break
-// Tests if an object will break on impact without actually breaking it.
-// TODO: dothrow.c:2581 — breaktest(): break probability test
+    if (player.gloves && uwep && (objectData[uwep.otyp]?.sub ?? 0) === P_BOW) tmp -= 2;
 
-// cf. dothrow.c:2611 [static] — breakmsg(obj, in_view): object break message
-// Displays a message about an object breaking.
-// TODO: dothrow.c:2611 — breakmsg(): break message display
+    tmp += omon_adj(mon, obj, true);
 
-// cf. dothrow.c:2655 [static] — throw_gold(obj): throw gold coins
-// Handles throwing gold coins as a special case.
-// TODO: dothrow.c:2655 — throw_gold(): gold coin throwing
+    // Unicorn gem acceptance
+    if (obj.oclass === GEM_CLASS && is_unicorn(data)
+        && (objectData[obj.otyp]?.material ?? 0) !== MINERAL && !uslinging_check(player)) {
+        if (mon.msleeping || !mon.mcanmove) { tmiss(obj, mon, false, player, map); return 0; }
+        else if (mon.mtame) { pline(`${Monnam(mon)} catches and drops the ${xname(obj)}.`); return 0; }
+        else { pline(`${Monnam(mon)} catches the ${xname(obj)}.`); return gem_accept(mon, obj, player, map); }
+    }
+
+    const dieroll = rnd(20);
+    if (obj.oclass === WEAPON_CLASS || is_weptool(obj) || obj.oclass === GEM_CLASS) {
+        if (is_ammo(obj)) {
+            if (!ammo_and_launcher(obj, uwep)) tmp -= 4;
+            else {
+                tmp += (uwep.spe || 0) - greatest_erosion(uwep);
+                tmp += weapon_hit_bonus(uwep);
+                if (uwep.oartifact) tmp += spec_abon(uwep, mon);
+            }
+        } else {
+            if (otyp === BOOMERANG) tmp += 4;
+            else if (throwing_weapon(obj)) tmp += 2;
+            else tmp -= 2;
+            tmp += weapon_hit_bonus(obj);
+        }
+        if (tmp >= dieroll) {
+            const dmg = dmgval(obj, mon);
+            if (mon.mhp !== undefined) mon.mhp -= dmg;
+            exercise(player, 3, true);
+            if (should_mulch_missile(obj)) return 1;
+        } else {
+            tmiss(obj, mon, true, player, map);
+        }
+    } else if (otyp === HEAVY_IRON_BALL) {
+        exercise(player, 0, true);
+        if (tmp >= dieroll) {
+            exercise(player, 3, true);
+            const dmg = dmgval(obj, mon);
+            if (mon.mhp !== undefined) mon.mhp -= dmg;
+        } else { tmiss(obj, mon, true, player, map); }
+    } else if (otyp === BOULDER) {
+        exercise(player, 0, true);
+        if (tmp >= dieroll) {
+            exercise(player, 3, true);
+            const dmg = dmgval(obj, mon);
+            if (mon.mhp !== undefined) mon.mhp -= dmg;
+        } else { tmiss(obj, mon, true, player, map); }
+    } else if ((otyp === EGG || otyp === CREAM_PIE || otyp === BLINDING_VENOM || otyp === ACID_VENOM)
+               && (dex > rnd(25))) {
+        const dmg = dmgval(obj, mon);
+        if (mon.mhp !== undefined) mon.mhp -= dmg;
+        return 1;
+    } else if (obj.oclass === POTION_CLASS && (dex > rnd(25))) {
+        // potionhit stub
+        return 1;
+    } else {
+        tmiss(obj, mon, true, player, map);
+    }
+    return 0;
+}
+
+// cf. dothrow.c:2308 [static] -- gem_accept(mon, obj, player, map)
+function gem_accept(mon, obj, player, _map) {
+    const data = mon.data || (mons ? mons[mon.mndx] : null) || {};
+    const is_buddy = sgn(data.maligntyp || 0) === sgn(player.alignment || 0);
+    const is_gem = (objectData[obj.otyp]?.material ?? 0) === GEMSTONE;
+    let ret = 0;
+    let buf = Monnam(mon);
+    mon.mpeaceful = 1; mon.mavenge = 0;
+
+    if (obj.dknown && objectData[obj.otyp]?.known) {
+        if (is_gem) {
+            if (is_buddy) { buf += ' gratefully'; change_luck(player, 5); }
+            else { buf += ' hesitatingly'; change_luck(player, rn2(7) - 3); }
+        } else { pline(`${buf} is not interested in your junk.`); return 0; }
+    } else if (obj.oname || objectData[obj.otyp]?.uname) {
+        if (is_gem) {
+            if (is_buddy) { buf += ' gratefully'; change_luck(player, 2); }
+            else { buf += ' hesitatingly'; change_luck(player, rn2(3) - 1); }
+        } else { pline(`${buf} is not interested in your junk.`); return 0; }
+    } else {
+        if (is_gem) {
+            if (is_buddy) { buf += ' gratefully'; change_luck(player, 1); }
+            else { buf += ' hesitatingly'; change_luck(player, rn2(3) - 1); }
+        } else { buf += ' graciously'; }
+    }
+    buf += ' accepts your gift.';
+    mpickobj(mon, obj);
+    ret = 1;
+    pline(buf);
+    return ret;
+}
+
+// cf. dothrow.c:2416 -- hero_breaks(obj, x, y, breakflags, player, map)
+export function hero_breaks(obj, x, y, breakflags, player, map) {
+    const from_invent = (breakflags & BRK_FROM_INV) !== 0;
+    const in_view = player.blind ? false : from_invent;
+    let brk = breakflags & BRK_KNOWN_OUTCOME;
+    if (!brk) brk = breaktest(obj) ? BRK_KNOWN2BREAK : BRK_KNOWN2NOTBREAK;
+    if (brk === BRK_KNOWN2NOTBREAK) return 0;
+    breakmsg(obj, in_view);
+    return breakobj(obj, x, y, true, from_invent, player, map);
+}
+
+// cf. dothrow.c:2443 -- breaks(obj, x, y, player, map)
+export function breaks(obj, x, y, player, map) {
+    const in_view = player && !player.blind;
+    if (!breaktest(obj)) return 0;
+    breakmsg(obj, in_view);
+    return breakobj(obj, x, y, false, false, player, map);
+}
+
+// cf. dothrow.c:2456 -- release_camera_demon(obj, x, y, map)
+export function release_camera_demon(obj, x, y, map) {
+    if (!rn2(3)) {
+        const pm = rn2(3) ? PM_HOMUNCULUS : PM_IMP;
+        const mtmp = makemon(mons[pm], x, y, 0x08, 0, map);
+        if (mtmp) {
+            pline("The picture-painting demon is released!");
+            mtmp.mpeaceful = !obj.cursed ? 1 : 0;
+        }
+    }
+}
+
+// cf. dothrow.c:2479 -- breakobj(obj, x, y, hero_caused, from_invent, player, map)
+export function breakobj(obj, x, y, hero_caused, from_invent, player, map) {
+    let fracture = false;
+    if (is_crackable(obj)) {
+        const result = erode_obj(obj, null, ERODE_CRACK, EF_DESTROY | EF_VERBOSE);
+        return result === ER_DESTROYED ? 1 : 0;
+    }
+    const etype = obj.oclass === POTION_CLASS ? POT_WATER : obj.otyp;
+    switch (etype) {
+    case MIRROR: if (hero_caused) change_luck(player, -2); break;
+    case POT_WATER: break; // potion effects stub
+    case EXPENSIVE_CAMERA: release_camera_demon(obj, x, y, map); break;
+    case EGG:
+        if (hero_caused && obj.spe && obj.corpsenm !== undefined && obj.corpsenm >= 0)
+            change_luck(player, -Math.min(obj.quan || 1, 5));
+        break;
+    case BOULDER: fracture = true; break;
+    default: break;
+    }
+    if (hero_caused && (from_invent || obj.unpaid)) check_shop_obj(obj, x, y, true);
+    if (!fracture) {
+        if (typeof map.removeFloorObject === 'function') map.removeFloorObject(obj);
+        obj._deleted = true;
+    }
+    return 1;
+}
+
+// cf. dothrow.c:2581 -- breaktest(obj)
+export function breaktest(obj) {
+    let nonbreakchance = 1;
+    if (obj.oclass === ARMOR_CLASS && (objectData[obj.otyp]?.material ?? 0) === GLASS)
+        nonbreakchance = 90;
+    if (obj_resists(obj, nonbreakchance, 99)) return false;
+    if ((objectData[obj.otyp]?.material ?? 0) === GLASS && !obj.oartifact && obj.oclass !== GEM_CLASS)
+        return true;
+    const etype = obj.oclass === POTION_CLASS ? POT_WATER : obj.otyp;
+    switch (etype) {
+    case EXPENSIVE_CAMERA: case POT_WATER: case EGG: case CREAM_PIE:
+    case MELON: case ACID_VENOM: case BLINDING_VENOM:
+        return true;
+    default: return false;
+    }
+}
+
+// cf. dothrow.c:2611 [static] -- breakmsg(obj, in_view)
+export function breakmsg(obj, in_view) {
+    if (is_crackable(obj)) return;
+    let to_pieces = '';
+    const etype = obj.oclass === POTION_CLASS ? POT_WATER : obj.otyp;
+    switch (etype) {
+    case LENSES: case MIRROR: case CRYSTAL_BALL: case EXPENSIVE_CAMERA:
+        to_pieces = ' into a thousand pieces';
+        // fall through
+    case POT_WATER: // eslint-disable-line no-fallthrough
+        if (!in_view) pline('You hear something shatter!');
+        else pline(`The ${xname(obj)} shatters${to_pieces}!`);
+        break;
+    case EGG: case MELON: pline("Splat!"); break;
+    case CREAM_PIE: if (in_view) pline("What a mess!"); break;
+    case ACID_VENOM: case BLINDING_VENOM: pline("Splash!"); break;
+    default:
+        if (!in_view) pline('You hear something shatter!');
+        else pline(`The ${xname(obj)} shatters${to_pieces}!`);
+        break;
+    }
+}
+
+// cf. dothrow.c:2655 [static] -- throw_gold(obj, player, map, game)
+export function throw_gold(obj, player, map, _game) {
+    const dx = player.dx || 0, dy = player.dy || 0, dz = player.dz || 0;
+    if (!dx && !dy && !dz) { pline("You cannot throw gold at yourself."); return 0; }
+    if (typeof player.removeFromInventory === 'function') player.removeFromInventory(obj);
+    if (player.uswallow && player.ustuck) {
+        pline(`The gold disappears into ${mon_nam(player.ustuck)}.`);
+        mpickobj(player.ustuck, obj);
+        return 1;
+    }
+    let bx = player.x, by = player.y;
+    if (dz) {
+        if (dz < 0) pline("The gold hits the ceiling, then falls back on top of your head.");
+    } else {
+        const range = Math.max(1, Math.floor((player.str || 10) / 2 - (obj.owt || 0) / 40));
+        const odx = player.x + dx, ody = player.y + dy;
+        if (isok(odx, ody)) {
+            for (let i = 0; i < range; i++) {
+                const nx = bx + dx, ny = by + dy;
+                if (!isok(nx, ny)) break;
+                const loc = typeof map.at === 'function' ? map.at(nx, ny) : null;
+                if (!loc || !ZAP_POS(loc.typ)) break;
+                bx = nx; by = ny;
+                const mon = map.monsterAt ? map.monsterAt(bx, by) : null;
+                if (mon) break;
+            }
+        }
+    }
+    if (dz > 0) pline("The gold hits the floor.");
+    obj.ox = bx; obj.oy = by;
+    placeFloorObject(map, obj);
+    return 1;
+}

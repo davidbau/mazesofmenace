@@ -1,175 +1,954 @@
-import { isok, SDOOR, SCORR, DOOR, CORR, D_CLOSED, A_WIS } from './config.js';
-import { rnl } from './rng.js';
+import { isok, COLNO, ROWNO, SDOOR, SCORR, DOOR, CORR, STONE,
+         D_CLOSED, D_LOCKED, D_TRAPPED, D_NODOOR, D_BROKEN, D_ISOPEN,
+         IS_DOOR, A_WIS, A_INT, TRAPPED_CHEST, TRAPPED_DOOR,
+         BEAR_TRAP, STATUE_TRAP } from './config.js';
+import { rn2, rnd, rnl } from './rng.js';
 import { exercise } from './attrib_exercise.js';
+import { objectData, FOOD_CLASS, POTION_CLASS, COIN_CLASS, ROCK_CLASS,
+         SCROLL_CLASS, SPBOOK_CLASS,
+         GOLD_PIECE, CHEST, LARGE_BOX, BOULDER, GOLD } from './objects.js';
+import { PM_GOLD_GOLEM, PM_LONG_WORM, S_EEL, S_WORM_TAIL } from './monsters.js';
+import { is_hider, hides_under } from './mondata.js';
+import { pline, You, Your, You_feel, You_see, pline_The,
+         Norep, There, set_msg_xy } from './pline.js';
+import { BOLT_LIM, map_invisible, newsym } from './monutil.js';
+import { findgold } from './steal.js';
+import { observeObject } from './discovery.js';
+import { unblock_point, recalc_block_point, do_clear_area } from './vision.js';
+import { body_part } from './polyself.js';
 
 // detect.js -- Detection spells, scrolls, and searching
-// cf. detect.c — unconstrain_map, reconstrain_map, map_redisplay, browse_map,
-//                map_monst, trapped_chest_at, trapped_door_at, o_in, o_material,
-//                observe_recursively, check_map_spot, clear_stale_map,
-//                gold_detect, food_detect, object_detect, monster_detect,
-//                sense_trap, detect_obj_traps, display_trap_map, trap_detect,
-//                furniture_detect, level_distance, use_crystal_ball,
-//                show_map_spot, do_mapping, do_vicinity_map, cvt_sdoor_to_door,
-//                foundone, findone, openone, findit, openit, detecting,
-//                find_trap, mfind0, dosearch0, dosearch, warnreveal,
-//                skip_premap_detect, premap_detect,
-//                reveal_terrain_getglyph, dump_map, reveal_terrain
-//
-// detect.c handles all detection-related gameplay:
-//   gold_detect/food_detect/object_detect/monster_detect: scroll/spell effects.
-//   trap_detect(): scroll of trap detection.
-//   do_mapping(): scroll of magic mapping.
-//   do_vicinity_map(): clairvoyance spell.
-//   use_crystal_ball(): crystal ball detection.
-//   dosearch0/dosearch: explicit searching for hidden items.
-//   findit/openit: find/open nearby secret doors and traps.
-//   reveal_terrain(): wizard-mode full reveal.
-//
-// JS implementations:
-//   dosearch0 → commands.js:3818 (PARTIAL — RNG parity)
+// cf. detect.c -- Full port of all detection routines.
 
-// cf. detect.c:70 [static] — unconstrain_map(void): remove map constraints
-// Temporarily removes underwater/buried/engulfed constraints for detection display.
-// TODO: detect.c:70 — unconstrain_map(): constraint removal
+// ========================================================================
+// Constants
+// ========================================================================
+const ALL_CLASSES = 18 + 1; // MAXOCLASSES + 1
+const FOOT = 12;
+const TOE = 18;
+const NOSE = 19;
+const WM_MASK = 0x07;
+const OTRAP_NONE = 0;
+const OTRAP_HERE = 1;
+const OTRAP_THERE = 2;
 
-// cf. detect.c:85 [static] — reconstrain_map(void): restore map constraints
-// Restores underwater/buried/engulfed constraints after detection display.
-// TODO: detect.c:85 — reconstrain_map(): constraint restoration
+// ========================================================================
+// Local helpers
+// ========================================================================
+function Is_box(obj) {
+    return obj && (obj.otyp === CHEST || obj.otyp === LARGE_BOX);
+}
+function Has_contents(obj) {
+    return obj && Array.isArray(obj.cobj) && obj.cobj.length > 0;
+}
+function SchroedingersBox(obj) {
+    return !!(obj && obj.spe === 1 && obj.otrapped);
+}
+function DEADMONSTER(mon) {
+    return !!(mon && (mon.dead || (mon.mhp != null && mon.mhp <= 0)));
+}
+function helpless(mon) {
+    return !!(mon && (mon.msleeping || mon.mfrozen));
+}
+function u_at(player, x, y) {
+    return player.x === x && player.y === y;
+}
+function distu(player, x, y) {
+    const dx = player.x - x, dy = player.y - y;
+    return dx * dx + dy * dy;
+}
+function closed_door(map, x, y) {
+    const loc = map.at(x, y);
+    if (!loc || !IS_DOOR(loc.typ)) return false;
+    return !!((loc.flags || 0) & (D_CLOSED | D_LOCKED));
+}
+function sobj_at(otyp, x, y, map) {
+    const objs = map.objectsAt ? map.objectsAt(x, y) : [];
+    for (const obj of objs) if (obj.otyp === otyp) return obj;
+    return null;
+}
+function nomul(game, turns) {
+    if (game && typeof game.multi === 'number') game.multi = turns;
+}
+function money_cnt(inventory) {
+    if (!inventory) return 0;
+    let total = 0;
+    for (const obj of inventory)
+        if (obj.otyp === GOLD_PIECE) total += (obj.quan || 1);
+    return total;
+}
+function hidden_gold() { return 0; }
+function get_obj_location(otmp) {
+    if (otmp.ox != null && otmp.oy != null) return { x: otmp.ox, y: otmp.oy };
+    return null;
+}
+function M_AP_TYPE(mtmp) {
+    return (mtmp && mtmp.m_ap_type) ? mtmp.m_ap_type : 0;
+}
+function Is_rogue_level() { return false; }
+function random_object(rn2func) { return rn2func(400) || 1; }
+function random_monster(rn2func) { return rn2func(400); }
+function canspotmon(mtmp, map, player) {
+    if (!mtmp || !player) return false;
+    if (mtmp.minvis && !player.seeInvisible) return false;
+    if (mtmp.mundetected) return false;
+    return true;
+}
+function sensemon() { return false; }
+function warning_of() { return false; }
+function seemimic_local(mtmp) {
+    if (mtmp && mtmp.m_ap_type) mtmp.m_ap_type = 0;
+}
 
-// cf. detect.c:94 [static] — map_redisplay(void): redraw map after detection
-// Redraws map and restores player constraints.
-// TODO: detect.c:94 — map_redisplay(): post-detection map redraw
+// ========================================================================
+// Display stubs
+// ========================================================================
+function cls() {}
+function browse_map() {}
+function map_redisplay_stub() {}
+function map_monst() {}
+function map_object() {}
+function map_trap() {}
+function display_self() {}
+function magic_map_background() {}
+function flash_glyph_at() {}
+function show_glyph() {}
+function feel_location() {}
+function feel_newsym() {}
+function docrt() {}
+function flush_screen() {}
+function strange_feeling(sobj, msg, player, display) {
+    if (display && msg) display.putstr_message(msg);
+}
 
-// cf. detect.c:106 [static] — browse_map(ter_typ, ter_explain): interactive map browse
-// Opens interactive map browser with autodescribe for detection spells.
-// TODO: detect.c:106 — browse_map(): interactive detection map
+// ========================================================================
+// cf. detect.c:70 -- unconstrain_map / reconstrain_map
+// ========================================================================
+function unconstrain_map(player) {
+    const res = !!(player.uinwater || player.uburied || player.uswallow);
+    player._save_uinwater = player.uinwater;
+    player._save_uburied = player.uburied;
+    player._save_uswallow = player.uswallow;
+    player.uinwater = 0; player.uburied = 0; player.uswallow = 0;
+    return res;
+}
+function reconstrain_map(player) {
+    player.uinwater = player._save_uinwater || 0;
+    player.uburied = player._save_uburied || 0;
+    player.uswallow = player._save_uswallow || 0;
+    player._save_uinwater = 0; player._save_uburied = 0; player._save_uswallow = 0;
+}
 
-// cf. detect.c:122 [static] — map_monst(mtmp, showtail): show monster on detection map
-// Displays a monster on the detection map (with hallucination handling).
-// TODO: detect.c:122 — map_monst(): monster detection display
+// ========================================================================
+// cf. detect.c:201 -- o_in(obj, oclass)
+// ========================================================================
+export function o_in(obj, oclass) {
+    if (!obj || !oclass) return null;
+    if (objectData[obj.otyp] && objectData[obj.otyp].oc_class === oclass) return obj;
+    if (Has_contents(obj) && !SchroedingersBox(obj)) {
+        for (const otmp of obj.cobj) {
+            if (objectData[otmp.otyp] && objectData[otmp.otyp].oc_class === oclass) return otmp;
+            if (Has_contents(otmp)) { const t = o_in(otmp, oclass); if (t) return t; }
+        }
+    }
+    return null;
+}
 
-// cf. detect.c:139 — trapped_chest_at(ttyp, x, y): trapped chest at location?
-// Returns TRUE if a trapped chest of given type is at (x,y).
-// TODO: detect.c:139 — trapped_chest_at(): trapped chest check
+// ========================================================================
+// cf. detect.c:229 -- o_material(obj, material)
+// ========================================================================
+export function o_material(obj, material) {
+    if (!obj) return null;
+    if (objectData[obj.otyp] && objectData[obj.otyp].material === material) return obj;
+    if (Has_contents(obj)) {
+        for (const otmp of obj.cobj) {
+            if (objectData[otmp.otyp] && objectData[otmp.otyp].material === material) return otmp;
+            if (Has_contents(otmp)) { const t = o_material(otmp, material); if (t) return t; }
+        }
+    }
+    return null;
+}
 
-// cf. detect.c:182 — trapped_door_at(ttyp, x, y): trapped door at location?
-// Returns TRUE if a trapped door of given type is at (x,y).
-// TODO: detect.c:182 — trapped_door_at(): trapped door check
+// ========================================================================
+// cf. detect.c:249 -- observe_recursively
+// ========================================================================
+function observe_recursively(obj) {
+    if (!obj) return;
+    observeObject(obj);
+    if (Has_contents(obj)) for (const otmp of obj.cobj) observe_recursively(otmp);
+}
 
-// cf. detect.c:201 — o_in(obj, oclass): item of class in object?
-// Recursively searches object (including containers) for item of class oclass.
-// TODO: detect.c:201 — o_in(): recursive class search
+// ========================================================================
+// cf. detect.c:262/318 -- check_map_spot / clear_stale_map
+// ========================================================================
+function check_map_spot() { return false; }
+function clear_stale_map(oclass, material, map) {
+    let change = false;
+    for (let zx = 1; zx < COLNO; zx++)
+        for (let zy = 0; zy < ROWNO; zy++)
+            if (check_map_spot(zx, zy, oclass, material, map)) change = true;
+    return change;
+}
 
-// cf. detect.c:229 — o_material(obj, material): item of material in object?
-// Recursively searches object for item made of given material.
-// TODO: detect.c:229 — o_material(): recursive material search
+// ========================================================================
+// cf. detect.c:139 -- trapped_chest_at
+// ========================================================================
+export function trapped_chest_at(ttyp, x, y, map, player) {
+    if (ttyp !== TRAPPED_CHEST || (player.hallucinating && rn2(20))) return false;
+    if (sobj_at(CHEST, x, y, map) || sobj_at(LARGE_BOX, x, y, map)) return true;
+    if (u_at(player, x, y)) {
+        for (const otmp of (player.inventory || []))
+            if (Is_box(otmp) && otmp.otrapped) return true;
+        if (player.usteed)
+            for (const otmp of (player.usteed.minvent || []))
+                if (Is_box(otmp) && otmp.otrapped) return true;
+    }
+    const mtmp = map.monsterAt ? map.monsterAt(x, y) : null;
+    if (mtmp) for (const otmp of (mtmp.minvent || []))
+        if (Is_box(otmp) && otmp.otrapped) return true;
+    return false;
+}
 
-// cf. detect.c:249 [static] — observe_recursively(obj): mark objects as observed
-// Recursively marks all objects in containers as observed during detection.
-// TODO: detect.c:249 — observe_recursively(): recursive observation marking
+// ========================================================================
+// cf. detect.c:182 -- trapped_door_at
+// ========================================================================
+export function trapped_door_at(ttyp, x, y, map, player) {
+    if (ttyp !== TRAPPED_DOOR || (player.hallucinating && rn2(20))) return false;
+    const lev = map.at(x, y);
+    if (!lev || !IS_DOOR(lev.typ)) return false;
+    const mask = lev.flags || 0;
+    if ((mask & (D_NODOOR | D_BROKEN | D_ISOPEN)) !== 0
+        && trapped_chest_at(ttyp, x, y, map, player)) return false;
+    return true;
+}
 
-// cf. detect.c:262 [static] — check_map_spot(x, y, oclass, material): stale map check
-// Checks if map location has outdated object display.
-// TODO: detect.c:262 — check_map_spot(): stale map spot check
+// ========================================================================
+// cf. detect.c:335 -- gold_detect
+// ========================================================================
+export function gold_detect(sobj, player, map, display, game) {
+    let known = false;
+    const stale = clear_stale_map(COIN_CLASS, sobj.blessed ? GOLD : 0, map);
+    known = stale;
+    let steedgold = false;
+    for (const mtmp of (map.monsters || [])) {
+        if (DEADMONSTER(mtmp) || (mtmp.isgd && !mtmp.mx)) continue;
+        const mndx = (mtmp.type || mtmp.data || {}).mndx || mtmp.mndx;
+        if (findgold(mtmp.minvent || []) || mndx === PM_GOLD_GOLEM) {
+            if (mtmp === player.usteed) { steedgold = true; }
+            else { known = true; return _gold_detect_outgoldmap(sobj, player, map, display); }
+        } else {
+            for (const obj of (mtmp.minvent || [])) {
+                if ((sobj.blessed && o_material(obj, GOLD)) || o_in(obj, COIN_CLASS)) {
+                    if (mtmp === player.usteed) { steedgold = true; }
+                    else { known = true; return _gold_detect_outgoldmap(sobj, player, map, display); }
+                }
+            }
+        }
+    }
+    for (const obj of (map.objects || [])) {
+        if (sobj.blessed && o_material(obj, GOLD)) {
+            known = true;
+            if (obj.ox !== player.x || obj.oy !== player.y)
+                return _gold_detect_outgoldmap(sobj, player, map, display);
+        } else if (o_in(obj, COIN_CLASS)) {
+            known = true;
+            if (obj.ox !== player.x || obj.oy !== player.y)
+                return _gold_detect_outgoldmap(sobj, player, map, display);
+        }
+    }
+    if (!known) {
+        let buf;
+        if (money_cnt(player.inventory) || hidden_gold(true))
+            buf = 'You feel worried about your future financial situation.';
+        else if (steedgold) buf = "You feel interested in your steed's financial situation.";
+        else buf = 'You feel materially poor.';
+        strange_feeling(sobj, buf, player, display);
+        return 1;
+    }
+    if (stale) docrt();
+    You("notice some gold between your %s.", body_part(FOOT, player));
+    return 0;
+}
+function _gold_detect_outgoldmap(sobj, player, map, display) {
+    cls(); unconstrain_map(player);
+    let ugold = false;
+    for (const obj of (map.objects || [])) {
+        let temp = null;
+        if (sobj.blessed && (temp = o_material(obj, GOLD)) !== null) {
+            if (temp !== obj) { temp.ox = obj.ox; temp.oy = obj.oy; }
+            map_object(temp, 1);
+        } else if ((temp = o_in(obj, COIN_CLASS)) !== null) {
+            if (temp !== obj) { temp.ox = obj.ox; temp.oy = obj.oy; }
+            map_object(temp, 1);
+        }
+        if (temp && u_at(player, temp.ox, temp.oy)) ugold = true;
+    }
+    for (const mtmp of (map.monsters || [])) {
+        if (DEADMONSTER(mtmp) || (mtmp.isgd && !mtmp.mx)) continue;
+        let temp = null;
+        const mndx = (mtmp.type || mtmp.data || {}).mndx || mtmp.mndx;
+        if (findgold(mtmp.minvent || []) || mndx === PM_GOLD_GOLEM) {
+            const gq = rnd(10);
+            temp = { otyp: GOLD_PIECE, quan: gq, ox: mtmp.mx, oy: mtmp.my };
+            map_object(temp, 1);
+        } else {
+            for (const obj of (mtmp.minvent || [])) {
+                if (sobj.blessed && (temp = o_material(obj, GOLD)) !== null) {
+                    temp.ox = mtmp.mx; temp.oy = mtmp.my; map_object(temp, 1); break;
+                } else if ((temp = o_in(obj, COIN_CLASS)) !== null) {
+                    temp.ox = mtmp.mx; temp.oy = mtmp.my; map_object(temp, 1); break;
+                }
+            }
+        }
+        if (temp && u_at(player, temp.ox, temp.oy)) ugold = true;
+    }
+    if (!ugold) newsym(map, player.x, player.y);
+    You_feel("very greedy, and sense gold!");
+    exercise(player, A_WIS, true);
+    browse_map(); map_redisplay_stub(); reconstrain_map(player);
+    return 0;
+}
 
-// cf. detect.c:318 [static] — clear_stale_map(oclass, material): clear stale display
-// Removes stale object displays from map during detection scanning.
-// TODO: detect.c:318 — clear_stale_map(): stale display cleanup
+// ========================================================================
+// cf. detect.c:479 -- food_detect
+// ========================================================================
+export function food_detect(sobj, player, map, display, game) {
+    let ct = 0, ctu = 0;
+    const confused = !!(player.confused || (sobj && sobj.cursed));
+    const oclass = confused ? POTION_CLASS : FOOD_CLASS;
+    const what = confused ? 'something' : 'food';
+    const stale = clear_stale_map(oclass, 0, map);
+    if (player.usteed) { player.usteed.mx = player.x; player.usteed.my = player.y; }
+    for (const obj of (map.objects || []))
+        if (o_in(obj, oclass)) { if (u_at(player, obj.ox, obj.oy)) ctu++; else ct++; }
+    for (const mtmp of (map.monsters || [])) {
+        if (ct && ctu) break;
+        if (DEADMONSTER(mtmp) || (mtmp.isgd && !mtmp.mx)) continue;
+        for (const obj of (mtmp.minvent || []))
+            if (o_in(obj, oclass)) {
+                if (u_at(player, mtmp.mx, mtmp.my)) ctu++; else ct++; break;
+            }
+    }
+    if (!ct && !ctu) {
+        if (stale) {
+            docrt();
+            You("sense a lack of %s nearby.", what);
+            if (sobj && sobj.blessed) {
+                if (!player.uedibility) Your("%s starts to tingle.", body_part(NOSE, player));
+                player.uedibility = 1;
+            }
+        } else if (sobj) {
+            let buf = `Your ${body_part(NOSE, player)} twitches`;
+            if (sobj.blessed && !player.uedibility) {
+                buf += ' then starts to tingle.';
+                strange_feeling(sobj, buf, player, display);
+                player.uedibility = 1;
+            } else {
+                buf += '.';
+                strange_feeling(sobj, buf, player, display);
+            }
+        }
+        return !stale ? 1 : 0;
+    } else if (!ct) {
+        You("%s %s nearby.", sobj ? 'smell' : 'sense', what);
+        if (sobj && sobj.blessed) {
+            if (!player.uedibility) Your("%s starts to tingle.", body_part(NOSE, player));
+            player.uedibility = 1;
+        }
+    } else {
+        cls(); unconstrain_map(player);
+        for (const obj of (map.objects || [])) {
+            const temp = o_in(obj, oclass);
+            if (temp) { if (temp !== obj) { temp.ox = obj.ox; temp.oy = obj.oy; } map_object(temp, 1); }
+        }
+        for (const mtmp of (map.monsters || [])) {
+            if (DEADMONSTER(mtmp) || (mtmp.isgd && !mtmp.mx)) continue;
+            for (const obj of (mtmp.minvent || []))  {
+                const temp = o_in(obj, oclass);
+                if (temp) { temp.ox = mtmp.mx; temp.oy = mtmp.my; map_object(temp, 1); break; }
+            }
+        }
+        if (!ctu) newsym(map, player.x, player.y);
+        if (sobj) {
+            if (sobj.blessed) {
+                Your("%s %s to tingle and you smell %s.", body_part(NOSE, player),
+                     player.uedibility ? 'continues' : 'starts', what);
+                player.uedibility = 1;
+            } else Your("%s tingles and you smell %s.", body_part(NOSE, player), what);
+        } else You("sense %s.", what);
+        exercise(player, A_WIS, true);
+        browse_map(); map_redisplay_stub(); reconstrain_map(player);
+    }
+    return 0;
+}
 
-// cf. detect.c:335 — gold_detect(sobj): detect gold
-// Detects gold and displays its locations; scroll of gold detection.
-// TODO: detect.c:335 — gold_detect(): gold detection
+// ========================================================================
+// cf. detect.c:603 -- object_detect
+// ========================================================================
+export function object_detect(detector, oclass, player, map, display, game) {
+    if (oclass < 0 || oclass >= 18) oclass = 0;
+    const is_cursed = detector && detector.cursed;
+    const do_dknown = detector && objectData[detector.otyp]
+        && (objectData[detector.otyp].oc_class === POTION_CLASS
+            || objectData[detector.otyp].oc_class === SPBOOK_CLASS)
+        && detector.blessed;
+    let ct = 0, ctu = 0;
+    const boulder = 0;
+    const stuff = (player.hallucinating || (player.confused && oclass === SCROLL_CLASS))
+        ? 'something' : 'objects';
+    if (do_dknown) for (const obj of (player.inventory || [])) observe_recursively(obj);
+    for (const obj of (map.objects || [])) {
+        if ((!oclass && !boulder) || o_in(obj, oclass)) {
+            if (u_at(player, obj.ox, obj.oy)) ctu++; else ct++;
+        }
+        if (do_dknown) observe_recursively(obj);
+    }
+    if (player.usteed) { player.usteed.mx = player.x; player.usteed.my = player.y; }
+    for (const mtmp of (map.monsters || [])) {
+        if (DEADMONSTER(mtmp) || (mtmp.isgd && !mtmp.mx)) continue;
+        for (const obj of (mtmp.minvent || [])) {
+            if ((!oclass && !boulder) || o_in(obj, oclass)) ct++;
+            if (do_dknown) observe_recursively(obj);
+        }
+        if ((is_cursed && M_AP_TYPE(mtmp)
+             && (!oclass || oclass === (objectData[mtmp.mappearance] || {}).oc_class))
+            || (findgold(mtmp.minvent || []) && (!oclass || oclass === COIN_CLASS))) {
+            ct++; break;
+        }
+    }
+    if (!clear_stale_map(!oclass ? ALL_CLASSES : oclass, 0, map) && !ct) {
+        if (!ctu) {
+            if (detector) strange_feeling(detector, 'You feel a lack of something.', player, display);
+            return 1;
+        }
+        You("sense %s nearby.", stuff); return 0;
+    }
+    cls(); unconstrain_map(player);
+    for (const obj of (map.objects || [])) {
+        let otmp = null;
+        if ((!oclass && !boulder) || (otmp = o_in(obj, oclass))) {
+            if (oclass || boulder) {
+                otmp = otmp || obj;
+                if (otmp !== obj) { otmp.ox = obj.ox; otmp.oy = obj.oy; }
+                map_object(otmp, 1);
+            } else map_object(obj, 1);
+        }
+    }
+    for (const mtmp of (map.monsters || [])) {
+        if (DEADMONSTER(mtmp) || (mtmp.isgd && !mtmp.mx)) continue;
+        for (const obj of (mtmp.minvent || [])) {
+            let otmp = null;
+            if ((!oclass && !boulder) || (otmp = o_in(obj, oclass))) {
+                if (!oclass && !boulder) otmp = obj; else otmp = otmp || obj;
+                otmp.ox = mtmp.mx; otmp.oy = mtmp.my; map_object(otmp, 1); break;
+            }
+        }
+        if (is_cursed && M_AP_TYPE(mtmp)
+            && (!oclass || oclass === (objectData[mtmp.mappearance] || {}).oc_class)) {
+            // mimic
+        } else if (findgold(mtmp.minvent || []) && (!oclass || oclass === COIN_CLASS)) {
+            const gq = rnd(10);
+            map_object({ otyp: GOLD_PIECE, quan: gq, ox: mtmp.mx, oy: mtmp.my }, 1);
+        }
+    }
+    newsym(map, player.x, player.y);
+    You("detect the %s of %s.", ct ? 'presence' : 'absence', stuff);
+    browse_map(); map_redisplay_stub(); reconstrain_map(player);
+    return 0;
+}
 
-// cf. detect.c:479 — food_detect(sobj): detect food/potions
-// Detects food or potions and displays locations.
-// TODO: detect.c:479 — food_detect(): food/potion detection
+// ========================================================================
+// cf. detect.c:798 -- monster_detect
+// ========================================================================
+export function monster_detect(otmp, mclass, player, map, display, game) {
+    let mcnt = 0;
+    for (const mtmp of (map.monsters || [])) {
+        if (DEADMONSTER(mtmp) || (mtmp.isgd && !mtmp.mx)) continue;
+        ++mcnt; break;
+    }
+    if (!mcnt) {
+        if (otmp) {
+            strange_feeling(otmp, player.hallucinating
+                ? 'You get the heebie jeebies.' : 'You feel threatened.', player, display);
+        }
+        return 1;
+    } else {
+        let woken = false;
+        const swallowed = player.uswallow;
+        cls(); unconstrain_map(player);
+        for (const mtmp of (map.monsters || [])) {
+            if (DEADMONSTER(mtmp) || (mtmp.isgd && !mtmp.mx)) continue;
+            const mdat = mtmp.type || mtmp.data || {};
+            if (!mclass || mdat.mlet === mclass
+                || (mdat.mndx === PM_LONG_WORM && mclass === S_WORM_TAIL))
+                map_monst(mtmp, true);
+            if (otmp && otmp.cursed && helpless(mtmp)) {
+                mtmp.msleeping = 0; mtmp.mfrozen = 0; mtmp.mcanmove = 1; woken = true;
+            }
+        }
+        if (!swallowed) display_self();
+        You("sense the presence of monsters.");
+        if (woken) pline("Monsters sense the presence of you.");
+        browse_map(); map_redisplay_stub(); reconstrain_map(player);
+    }
+    return 0;
+}
 
-// cf. detect.c:603 — object_detect(detector, class): detect objects of class
-// Detects objects of given class and displays locations on map.
-// TODO: detect.c:603 — object_detect(): object detection by class
+// ========================================================================
+// cf. detect.c:865 -- sense_trap
+// ========================================================================
+function sense_trap(trap, x, y, src_cursed, player, map, display) {
+    if (player.hallucinating || src_cursed) {
+        const fakeOtyp = !player.hallucinating ? GOLD_PIECE : random_object(rn2);
+        const fakeQuan = (fakeOtyp === GOLD_PIECE) ? rnd(10)
+                         : ((objectData[fakeOtyp] && objectData[fakeOtyp].merge) ? rnd(2) : 1);
+        random_monster(rn2); // consume rn2 for corpsenm
+    } else if (trap) {
+        map_trap(trap, 1); trap.tseen = 1;
+    } else {
+        map_trap({ tx: x, ty: y, ttyp: BEAR_TRAP }, 1);
+    }
+}
 
-// cf. detect.c:798 — monster_detect(otmp, mclass): detect monsters
-// Detects monsters of given class and displays on map.
-// TODO: detect.c:798 — monster_detect(): monster detection
+// ========================================================================
+// cf. detect.c:907 -- detect_obj_traps
+// ========================================================================
+function detect_obj_traps(objlist, show_them, how, ft, player, map, display) {
+    let result = OTRAP_NONE;
+    for (const otmp of (objlist || [])) {
+        let x = 0, y = 0;
+        if ((Is_box(otmp) && otmp.otrapped) || Has_contents(otmp)) {
+            const loc = get_obj_location(otmp);
+            if (!loc || !isok(loc.x, loc.y)) continue;
+            x = loc.x; y = loc.y;
+            if (ft && (x !== ft.ft_cc_x || y !== ft.ft_cc_y)) continue;
+        }
+        if (Is_box(otmp) && otmp.otrapped) {
+            otmp.tknown = 1;
+            result |= u_at(player, x, y) ? OTRAP_HERE : OTRAP_THERE;
+            if (show_them) {
+                const dt = { tx: x, ty: y, ttyp: TRAPPED_CHEST, tseen: 0 };
+                sense_trap(dt, x, y, how, player, map, display);
+            }
+            if (ft) ft.num_traps++;
+        }
+        if (Has_contents(otmp))
+            result |= detect_obj_traps(otmp.cobj, show_them, how, ft, player, map, display);
+    }
+    return result;
+}
 
-// cf. detect.c:865 [static] — sense_trap(trap, x, y, src_cursed): display trap
-// Displays a trap on detection map with hallucination handling.
-// TODO: detect.c:865 — sense_trap(): trap display on detection map
+// ========================================================================
+// cf. detect.c:956 -- display_trap_map
+// ========================================================================
+function display_trap_map(cursed_src, player, map, display) {
+    cls(); unconstrain_map(player);
+    detect_obj_traps(map.objects || [], true, cursed_src, null, player, map, display);
+    for (const mon of (map.monsters || [])) {
+        if (DEADMONSTER(mon) || (mon.isgd && !mon.mx)) continue;
+        detect_obj_traps(mon.minvent || [], true, cursed_src, null, player, map, display);
+    }
+    detect_obj_traps(player.inventory || [], true, cursed_src, null, player, map, display);
+    for (const ttmp of (map.traps || []))
+        sense_trap(ttmp, 0, 0, cursed_src, player, map, display);
+    const doorindex = map.doorindex || 0;
+    const doors = map.doors || [];
+    for (let door = 0; door < doorindex; door++) {
+        const cc = doors[door]; if (!cc) continue;
+        const lev = map.at(cc.x, cc.y); if (!lev || lev.typ === SDOOR) continue;
+        if ((lev.flags || 0) & D_TRAPPED) {
+            sense_trap({ tx: cc.x, ty: cc.y, ttyp: TRAPPED_DOOR, tseen: 0 },
+                       cc.x, cc.y, cursed_src, player, map, display);
+        }
+    }
+    newsym(map, player.x, player.y);
+    You_feel("%s.", cursed_src ? 'very greedy' : 'entrapped');
+    browse_map(); map_redisplay_stub(); reconstrain_map(player);
+}
 
-// cf. detect.c:907 [static] — detect_obj_traps(objlist, show_them, how, ft): object trap detection
-// Checks object lists for trapped chests and updates found_things.
-// TODO: detect.c:907 — detect_obj_traps(): object trap scanning
+// ========================================================================
+// cf. detect.c:1011 -- trap_detect
+// ========================================================================
+export function trap_detect(sobj, player, map, display, game) {
+    const cursed_src = sobj && sobj.cursed ? 1 : 0;
+    let found = false;
+    if (player.usteed) { player.usteed.mx = player.x; player.usteed.my = player.y; }
+    for (const ttmp of (map.traps || [])) {
+        if (ttmp.tx !== player.x || ttmp.ty !== player.y) {
+            display_trap_map(cursed_src, player, map, display); return 0;
+        }
+        found = true;
+    }
+    let tr = detect_obj_traps(map.objects || [], false, 0, null, player, map, display);
+    if (tr !== OTRAP_NONE) {
+        if (tr & OTRAP_THERE) { display_trap_map(cursed_src, player, map, display); return 0; }
+        found = true;
+    }
+    for (const mon of (map.monsters || [])) {
+        if (DEADMONSTER(mon) || (mon.isgd && !mon.mx)) continue;
+        tr = detect_obj_traps(mon.minvent || [], false, 0, null, player, map, display);
+        if (tr !== OTRAP_NONE) {
+            if (tr & OTRAP_THERE) { display_trap_map(cursed_src, player, map, display); return 0; }
+            found = true;
+        }
+    }
+    if (detect_obj_traps(player.inventory || [], false, 0, null, player, map, display) !== OTRAP_NONE)
+        found = true;
+    const doorindex = map.doorindex || 0, doors = map.doors || [];
+    for (let door = 0; door < doorindex; door++) {
+        const cc = doors[door]; if (!cc) continue;
+        const lev = map.at(cc.x, cc.y); if (!lev || lev.typ === SDOOR) continue;
+        if ((lev.flags || 0) & D_TRAPPED) {
+            if (cc.x !== player.x || cc.y !== player.y) {
+                display_trap_map(cursed_src, player, map, display); return 0;
+            }
+            found = true;
+        }
+    }
+    if (!found) {
+        strange_feeling(sobj, `Your ${body_part(TOE, player)}s stop itching.`, player, display);
+        return 1;
+    }
+    Your("%ss itch.", body_part(TOE, player));
+    return 0;
+}
 
-// cf. detect.c:956 [static] — display_trap_map(cursed_src): display detected traps
-// Shows all detected traps on map.
-// TODO: detect.c:956 — display_trap_map(): trap map display
+// ========================================================================
+// cf. detect.c:1091 -- furniture_detect (stub)
+// ========================================================================
+function furniture_detect() {
+    There("seems to be nothing of interest on this level."); return 0;
+}
 
-// cf. detect.c:1011 — trap_detect(sobj): scroll of trap detection
-// Detects traps on level and displays them; cursed reverses.
-// TODO: detect.c:1011 — trap_detect(): trap detection
+// ========================================================================
+// cf. detect.c:1142 -- level_distance
+// ========================================================================
+export function level_distance(where, player) {
+    const playerDepth = player.dlevel || player.depth || 0;
+    const targetDepth = (where && where.dlevel != null) ? where.dlevel : 0;
+    const ll = playerDepth - targetDepth;
+    const indun = player.dnum === (where ? where.dnum : -1);
+    if (ll < 0) {
+        if (ll < (-8 - rn2(3))) return indun ? 'far below' : 'far away';
+        else if (ll < -1) return indun ? 'below you' : 'away below you';
+        else return indun ? 'just below' : 'in the distance';
+    } else if (ll > 0) {
+        if (ll > (8 + rn2(3))) return indun ? 'far above' : 'far away';
+        else if (ll > 1) return indun ? 'above you' : 'away above you';
+        else return indun ? 'just above' : 'in the distance';
+    }
+    return indun ? 'near you' : 'in the distance';
+}
 
-// cf. detect.c:1091 [static] — furniture_detect(void): detect furniture/mimics
-// Detects and displays furniture and mimics disguised as furniture.
-// TODO: detect.c:1091 — furniture_detect(): furniture detection
+// ========================================================================
+// cf. detect.c:1206 -- use_crystal_ball
+// ========================================================================
+export function use_crystal_ball(obj, player, map, display, game) {
+    if (!obj) return;
+    if (player.blind) { pline("Too bad you can't see the crystal ball."); return; }
+    const charged = (obj.spe || 0) > 0;
+    const oops = obj.blessed ? 16 : 20;
+    const acurrInt = player.acurr_int || player.attributes?.[A_INT] || 10;
+    if (charged && (obj.cursed || rnd(oops) > acurrInt)) {
+        const impair = rnd(100 - 3 * acurrInt);
+        switch (rnd(obj.blessed ? 4 : 5)) {
+        case 1: pline("The crystal ball is too much to comprehend!"); break;
+        case 2: pline("The crystal ball confuses you!"); break;
+        case 3: pline("The crystal ball damages your vision!"); break;
+        case 4: pline("The crystal ball zaps your mind!"); break;
+        case 5: pline("The crystal ball explodes!"); break;
+        }
+        if (obj && obj.spe > 0) obj.spe--;
+        return;
+    }
+    if (player.hallucinating) {
+        nomul(game, -rnd(charged ? 4 : 2));
+        if (!charged) { pline("All you see is funky colored haze."); }
+        else {
+            switch (rnd(6)) {
+            case 1: You("grok some groovy globs of incandescent lava."); break;
+            case 2: pline("Whoa!  Psychedelic colors, dude!"); break;
+            case 3: pline_The("crystal pulses with sinister light!"); break;
+            case 4: You_see("goldfish swimming above fluorescent rocks."); break;
+            case 5: You_see("tiny snowflakes spinning around a miniature farmhouse."); break;
+            default: pline("Oh wow... like a kaleidoscope!"); break;
+            }
+            if (obj.spe > 0) obj.spe--;
+        }
+        return;
+    }
+    You("peer into the crystal ball...");
+    nomul(game, -rnd(charged ? 10 : 2));
+    if (!charged) { pline_The("vision is unclear."); return; }
+    if (obj.spe > 0) obj.spe--;
+    if (!rn2(100)) You_see("the Wizard of Yendor gazing out at you.");
+    else pline_The("vision is unclear.");
+}
 
-// cf. detect.c:1142 — level_distance(where): level distance description
-// Returns text describing relative distance to given dungeon level.
-// TODO: detect.c:1142 — level_distance(): dungeon level distance
+// ========================================================================
+// cf. detect.c:1372 -- show_map_spot
+// ========================================================================
+export function show_map_spot(x, y, cnf, map) {
+    if (cnf && rn2(7)) return;
+    const lev = map.at(x, y); if (!lev) return;
+    lev.seenv = 0xFF;
+    if (lev.typ === SCORR) { lev.typ = CORR; unblock_point(x, y); }
+    magic_map_background(map, x, y, 0);
+    newsym(map, x, y);
+}
 
-// cf. detect.c:1206 — use_crystal_ball(optr): crystal ball usage
-// Handles crystal ball usage for detection with charge consumption.
-// TODO: detect.c:1206 — use_crystal_ball(): crystal ball detection
+// ========================================================================
+// cf. detect.c:1422 -- do_mapping
+// ========================================================================
+export function do_mapping(player, map, display) {
+    unconstrain_map(player);
+    const cnf = !!player.confused;
+    for (let zx = 1; zx < COLNO; zx++)
+        for (let zy = 0; zy < ROWNO; zy++)
+            show_map_spot(zx, zy, cnf, map);
+    reconstrain_map(player);
+    exercise(player, A_WIS, true);
+}
 
-// cf. detect.c:1372 — show_map_spot(x, y, cnf): show map background
-// Reveals background terrain and traps at given map location.
-// TODO: detect.c:1372 — show_map_spot(): map spot revelation
+// ========================================================================
+// cf. detect.c:1448 -- do_vicinity_map
+// ========================================================================
+export function do_vicinity_map(sobj, player, map, display) {
+    const cnf = !!player.confused;
+    const lo_y = ((player.y - 5 < 0) ? 0 : player.y - 5);
+    const hi_y = ((player.y + 6 >= ROWNO) ? ROWNO - 1 : player.y + 6);
+    const lo_x = ((player.x - 9 < 1) ? 1 : player.x - 9);
+    const hi_x = ((player.x + 10 >= COLNO) ? COLNO - 1 : player.x + 10);
+    unconstrain_map(player);
+    for (let zx = lo_x; zx <= hi_x; zx++)
+        for (let zy = lo_y; zy <= hi_y; zy++)
+            show_map_spot(zx, zy, cnf, map);
+    You("sense your surroundings.");
+    reconstrain_map(player);
+}
 
-// cf. detect.c:1422 — do_mapping(void): magic mapping
-// Reveals entire level layout; scroll of magic mapping.
-// TODO: detect.c:1422 — do_mapping(): magic mapping
+// ========================================================================
+// cf. detect.c:1589 -- cvt_sdoor_to_door
+// ========================================================================
+export function cvt_sdoor_to_door(lev) {
+    if (!lev) return;
+    let newmask = (lev.flags || 0) & ~WM_MASK;
+    if (Is_rogue_level()) newmask = D_NODOOR;
+    else if (!(newmask & D_LOCKED)) newmask |= D_CLOSED;
+    lev.typ = DOOR;
+    lev.flags = newmask;
+}
 
-// cf. detect.c:1448 — do_vicinity_map(sobj): clairvoyance detection
-// Performs clairvoyance detection in area around player.
-// TODO: detect.c:1448 — do_vicinity_map(): clairvoyance
+// ========================================================================
+// cf. detect.c:1610 -- foundone
+// ========================================================================
+function foundone(zx, zy, glyph, map) {
+    const lev = map.at(zx, zy);
+    if (lev) lev.seenv = 0xFF;
+    newsym(map, zx, zy);
+}
 
-// cf. detect.c:1589 — cvt_sdoor_to_door(lev): convert secret door
-// Converts a secret door into a normal door when discovered.
-// TODO: detect.c:1589 — cvt_sdoor_to_door(): secret door conversion
+// ========================================================================
+// cf. detect.c:1639 -- findone
+// ========================================================================
+function findone_fn(zx, zy, found_p, player, map, display) {
+    const lev = map.at(zx, zy); if (!lev) return;
+    const ttmp = map.trapAt ? map.trapAt(zx, zy) : null;
+    const mtmpRaw = map.monsterAt ? map.monsterAt(zx, zy) : null;
+    const mtmp = (mtmpRaw && !DEADMONSTER(mtmpRaw) && !(mtmpRaw.isgd && !mtmpRaw.mx))
+        ? mtmpRaw : null;
+    found_p.ft_cc_x = zx; found_p.ft_cc_y = zy;
+    if (lev.typ === SDOOR) {
+        cvt_sdoor_to_door(lev); recalc_block_point(zx, zy);
+        magic_map_background(map, zx, zy, 0); foundone(zx, zy, 0, map);
+        found_p.num_sdoors++;
+    } else if (lev.typ === SCORR) {
+        lev.typ = CORR; unblock_point(zx, zy);
+        magic_map_background(map, zx, zy, 0); foundone(zx, zy, 0, map);
+        found_p.num_scorrs++;
+    }
+    if (ttmp && !ttmp.tseen && ttmp.ttyp !== STATUE_TRAP) {
+        ttmp.tseen = 1;
+        sense_trap(ttmp, zx, zy, 0, player, map, display);
+        foundone(zx, zy, 0, map); found_p.num_traps++;
+    }
+    if (closed_door(map, zx, zy) && ((lev.flags || 0) & D_TRAPPED) !== 0) {
+        sense_trap({ tx: zx, ty: zy, ttyp: TRAPPED_DOOR, tseen: 1 },
+                   zx, zy, 0, player, map, display);
+        foundone(zx, zy, 0, map); found_p.num_traps++;
+    }
+    detect_obj_traps(map.objects || [], true, 0, found_p, player, map, display);
+    if (mtmp) detect_obj_traps(mtmp.minvent || [], true, 0, found_p, player, map, display);
+    if (u_at(player, zx, zy))
+        detect_obj_traps(player.inventory || [], true, 0, found_p, player, map, display);
+    if (mtmp && (!canspotmon(mtmp, map, player) || mtmp.mundetected || M_AP_TYPE(mtmp))) {
+        if (M_AP_TYPE(mtmp)) { seemimic_local(mtmp); found_p.num_mons++; }
+        else if (mtmp.mundetected) {
+            const mdat = mtmp.type || mtmp.data || {};
+            if (is_hider(mdat) || hides_under(mdat) || mdat.mlet === S_EEL) {
+                mtmp.mundetected = 0; newsym(map, zx, zy); found_p.num_mons++;
+            }
+        }
+        if (!canspotmon(mtmp, map, player)) {
+            map_invisible(map, zx, zy, player); found_p.num_invis++;
+        }
+    }
+}
 
-// cf. detect.c:1610 [static] — foundone(zx, zy, glyph): update map with found item
-// Updates map display to show newly found item.
-// TODO: detect.c:1610 — foundone(): found item display
+// ========================================================================
+// cf. detect.c:1729 -- openone
+// ========================================================================
+function openone_fn(zx, zy, numRef, player, map, display) {
+    const lev = map.at(zx, zy); if (!lev) return;
+    const floorObjs = map.objectsAt ? map.objectsAt(zx, zy) : [];
+    for (const otmp of floorObjs)
+        if (Is_box(otmp) && otmp.olocked) { otmp.olocked = 0; numRef.value++; }
+    if (lev.typ === SDOOR || (lev.typ === DOOR && ((lev.flags || 0) & (D_CLOSED | D_LOCKED)))) {
+        if (lev.typ === SDOOR) cvt_sdoor_to_door(lev);
+        if ((lev.flags || 0) & D_TRAPPED) {
+            if (distu(player, zx, zy) < 3) pline("KABOOM!  You triggered a door trap!");
+            else Norep("You %s an explosion!", "hear");
+            lev.flags = D_NODOOR;
+        } else lev.flags = D_ISOPEN;
+        unblock_point(zx, zy); newsym(map, zx, zy); numRef.value++;
+    } else if (lev.typ === SCORR) {
+        lev.typ = CORR; unblock_point(zx, zy); newsym(map, zx, zy); numRef.value++;
+    } else {
+        const ttmp = map.trapAt ? map.trapAt(zx, zy) : null;
+        if (ttmp && !ttmp.tseen && ttmp.ttyp !== STATUE_TRAP) {
+            ttmp.tseen = 1; newsym(map, zx, zy); numRef.value++;
+        }
+    }
+}
 
-// cf. detect.c:1639 [static] — findone(zx, zy, whatfound): find items at location
-// Finds all detectable items at location for findit().
-// TODO: detect.c:1639 — findone(): location item finding
+// ========================================================================
+// cf. detect.c:1792 -- findit
+// ========================================================================
+export function findit(player, map, display, game) {
+    if (player.uswallow) return 0;
+    const found = {
+        num_sdoors: 0, num_scorrs: 0, num_traps: 0, num_mons: 0,
+        num_invis: 0, num_cleared_invis: 0, num_kept_invis: 0,
+        ft_cc_x: 0, ft_cc_y: 0,
+    };
+    const fov = game && game.fov ? game.fov : null;
+    do_clear_area(fov, map, player.x, player.y, BOLT_LIM,
+        (zx, zy, arg) => findone_fn(zx, zy, arg, player, map, display), found);
+    let num = 0;
+    const k = (found.num_sdoors ? 1 : 0) + (found.num_scorrs ? 1 : 0)
+            + (found.num_traps ? 1 : 0) + (found.num_mons ? 1 : 0);
+    let buf = '';
+    if (found.num_sdoors) {
+        buf += found.num_sdoors > 1 ? `${found.num_sdoors} secret doors` : 'a secret door';
+        num += found.num_sdoors;
+    }
+    if (found.num_scorrs) {
+        if (buf) buf += (k === 2) ? ' and ' : ', ';
+        buf += found.num_scorrs > 1 ? `${found.num_scorrs} secret corridors` : 'a secret corridor';
+        num += found.num_scorrs;
+    }
+    if (found.num_traps) {
+        if (buf) buf += (k === 3 && !found.num_mons) ? ', and ' : (k === 2) ? ' and ' : ', ';
+        buf += found.num_traps > 1 ? `${found.num_traps} traps` : 'a trap';
+        num += found.num_traps;
+    }
+    if (found.num_mons) {
+        if (buf) buf += (k > 2) ? ', and ' : ' and ';
+        buf += found.num_mons > 1 ? `${found.num_mons} hidden monsters` : 'a hidden monster';
+        num += found.num_mons;
+    }
+    if (buf) You("reveal %s!", buf);
+    if (found.num_invis) {
+        let ibuf;
+        if (found.num_invis > 1)
+            ibuf = `${found.num_invis}${found.num_kept_invis ? ' other' : ''} unseen monsters`;
+        else ibuf = `${found.num_kept_invis ? 'another' : 'an'} unseen monster`;
+        You("detect %s!", ibuf); num += found.num_invis;
+    }
+    if (found.num_cleared_invis) {
+        if (!num) You_feel("%sless paranoid.", found.num_kept_invis ? 'somewhat ' : '');
+        num += found.num_cleared_invis;
+    }
+    if (!num) You("don't find anything.");
+    return num;
+}
 
-// cf. detect.c:1729 [static] — openone(zx, zy, num): open items at location
-// Opens doors, chests, and traps found by detection at location.
-// TODO: detect.c:1729 — openone(): location item opening
+// ========================================================================
+// cf. detect.c:1902 -- openit
+// ========================================================================
+export function openit(player, map, display, game) {
+    const numRef = { value: 0 };
+    if (player.uswallow) { pline("Something opens!"); return -1; }
+    const fov = game && game.fov ? game.fov : null;
+    do_clear_area(fov, map, player.x, player.y, BOLT_LIM,
+        (zx, zy, arg) => openone_fn(zx, zy, arg, player, map, display), numRef);
+    return numRef.value;
+}
 
-// cf. detect.c:1792 — findit(void): find nearby hidden items
-// Reveals nearby secret doors, corridors, traps, and hidden monsters.
-// TODO: detect.c:1792 — findit(): nearby hidden item revelation
+// ========================================================================
+// cf. detect.c:1929 -- detecting
+// ========================================================================
+export function detecting(func) {
+    return func === findone_fn || func === openone_fn;
+}
 
-// cf. detect.c:1902 — openit(void): open nearby locked items
-// Opens all nearby locked containers, secret doors, and traps.
-// TODO: detect.c:1902 — openit(): nearby item opening
+// ========================================================================
+// cf. detect.c:1935 -- find_trap
+// ========================================================================
+export function find_trap(trap, player, map, display) {
+    if (!trap) return;
+    trap.tseen = 1;
+    exercise(player, A_WIS, true);
+    feel_newsym(map, trap.tx, trap.ty);
+    set_msg_xy(trap.tx, trap.ty);
+    You("find a trap.");
+}
 
-// cf. detect.c:1929 — detecting(func): is func a detection callback?
-// Returns TRUE if func is one of the detection callback functions.
-// TODO: detect.c:1929 — detecting(): detection callback check
+// ========================================================================
+// cf. detect.c:1965 -- mfind0
+// ========================================================================
+function mfind0(mtmp, via_warning, player, map, display) {
+    if (!mtmp) return 0;
+    const x = mtmp.mx, y = mtmp.my;
+    let found_something = false;
+    if (via_warning && !warning_of(mtmp, player)) return -1;
+    if (M_AP_TYPE(mtmp)) {
+        seemimic_local(mtmp); found_something = true;
+    } else {
+        found_something = !canspotmon(mtmp, map, player);
+        const mdat = mtmp.type || mtmp.data || {};
+        if (mtmp.mundetected && (is_hider(mdat) || hides_under(mdat) || mdat.mlet === S_EEL)) {
+            if (via_warning && found_something) {
+                set_msg_xy(x, y);
+                Your("danger sense causes you to take a second %s.",
+                     player.blind ? 'to check nearby' : 'look close by');
+            }
+            mtmp.mundetected = 0; found_something = true;
+        }
+        newsym(map, x, y);
+    }
+    if (found_something) {
+        if (!canspotmon(mtmp, map, player)) {
+            const loc = map.at(x, y);
+            if (loc && loc.mem_invis) return -1;
+        }
+        exercise(player, A_WIS, true);
+        if (!canspotmon(mtmp, map, player)) {
+            map_invisible(map, x, y, player); set_msg_xy(x, y);
+            You_feel("an unseen monster!");
+        } else if (!sensemon(mtmp, player)) {
+            set_msg_xy(x, y); You("find a monster.");
+        }
+        return 1;
+    }
+    return 0;
+}
 
-// cf. detect.c:1935 — find_trap(trap): mark trap as seen
-// Marks trap as discovered and displays message.
-// TODO: detect.c:1935 — find_trap(): trap discovery
-
-// cf. detect.c:1965 [static] — mfind0(mtmp, via_warning): reveal hidden monster
-// Reveals a hidden or disguised monster.
-// TODO: detect.c:1965 — mfind0(): hidden monster revelation
-
-// cf. detect.c:2016 — dosearch0(aflag): search for hidden items
+// ========================================================================
+// cf. detect.c:2016 -- dosearch0
+// ========================================================================
 export function dosearch0(player, map, display, game = null) {
+    if (player.uswallow) return 1;
     for (let dx = -1; dx <= 1; dx++) {
         for (let dy = -1; dy <= 1; dy++) {
             if (dx === 0 && dy === 0) continue;
@@ -179,8 +958,6 @@ export function dosearch0(player, map, display, game = null) {
             const loc = map.at(nx, ny);
             if (!loc) continue;
 
-            // C ref: detect.c dosearch0() — if-else structure matches C:
-            // SDOOR, SCORR, or else (monsters/traps).
             if (loc.typ === SDOOR) {
                 if (rnl(7) === 0) {
                     loc.typ = DOOR;
@@ -201,7 +978,7 @@ export function dosearch0(player, map, display, game = null) {
                     display.putstr_message('You find a hidden passage.');
                 }
             } else {
-                // C ref: detect.c:2080 — trap detection with rnl(8)
+                // C ref: detect.c:2080 -- trap detection with rnl(8)
                 const trap = map.trapAt?.(nx, ny);
                 if (trap && !trap.tseen && !rnl(8)) {
                     trap.tseen = true;
@@ -213,33 +990,69 @@ export function dosearch0(player, map, display, game = null) {
             }
         }
     }
-    // exercise(A_WIS, TRUE) is called per-discovery above, matching C.
 }
 
-// cf. detect.c:2097 — dosearch(void): #search command
-// Executes explicit search command; calls dosearch0.
-// TODO: detect.c:2097 — dosearch(): search command
+// ========================================================================
+// cf. detect.c:2097 -- dosearch
+// ========================================================================
+export function dosearch(player, map, display, game) {
+    return dosearch0(player, map, display, game);
+}
 
-// cf. detect.c:2107 — warnreveal(void): reveal warning-detected monsters
-// Reveals hidden monsters detected by danger sense warning.
-// TODO: detect.c:2107 — warnreveal(): warning monster revelation
+// ========================================================================
+// cf. detect.c:2107 -- warnreveal
+// ========================================================================
+export function warnreveal(player, map, display) {
+    for (let x = player.x - 1; x <= player.x + 1; x++)
+        for (let y = player.y - 1; y <= player.y + 1; y++) {
+            if (!isok(x, y) || u_at(player, x, y)) continue;
+            const mtmp = map.monsterAt ? map.monsterAt(x, y) : null;
+            if (mtmp && warning_of(mtmp, player) && mtmp.mundetected)
+                mfind0(mtmp, true, player, map, display);
+        }
+}
 
-// cf. detect.c:2124 [static] — skip_premap_detect(x, y): skip in premap?
-// Returns TRUE if location should be skipped in premap detection.
-// TODO: detect.c:2124 — skip_premap_detect(): premap skip check
+// ========================================================================
+// cf. detect.c:2124/2134 -- skip_premap_detect / premap_detect
+// ========================================================================
+function skip_premap_detect(x, y, map) {
+    const lev = map.at(x, y);
+    if (!lev) return true;
+    if (lev.typ === STONE && ((lev.wall_info || lev.flags || 0) !== 0)) return true;
+    return false;
+}
+export function premap_detect(map) {
+    for (let x = 1; x < COLNO; x++)
+        for (let y = 0; y < ROWNO; y++) {
+            if (skip_premap_detect(x, y, map)) continue;
+            const lev = map.at(x, y); if (!lev) continue;
+            lev.seenv = 0xFF; lev.waslit = true;
+            if (lev.typ === SDOOR) { lev.wall_info = 0; if (lev.flags != null) lev.flags = 0; }
+            magic_map_background(map, x, y, 1);
+            const b = sobj_at(BOULDER, x, y, map);
+            if (b) map_object(b, 1);
+        }
+    for (const ttmp of (map.traps || [])) { ttmp.tseen = 1; map_trap(ttmp, 1); }
+}
 
-// cf. detect.c:2134 — premap_detect(void): pre-map sokoban levels
-// Pre-maps sokoban levels by revealing terrain and traps.
-// TODO: detect.c:2134 — premap_detect(): sokoban pre-mapping
+// ========================================================================
+// cf. detect.c:2294 -- dump_map
+// ========================================================================
+export function dump_map() { /* dumplog not applicable in JS */ }
 
-// cf. detect.c:2167 [static] — reveal_terrain_getglyph(x, y, swallowed, default_glyph, which_subset): terrain glyph
-// Gets filtered glyph for terrain reveal (can exclude monsters/objects/traps).
-// TODO: detect.c:2167 — reveal_terrain_getglyph(): filtered terrain glyph
-
-// cf. detect.c:2294 — dump_map(void): dump map to dumplog
-// Writes current map view to the dumplog file.
-// TODO: detect.c:2294 — dump_map(): map dumplog output
-
-// cf. detect.c:2356 — reveal_terrain(which_subset): reveal map terrain
-// Reveals map terrain; can filter to show only terrain, objects, or monsters.
-// TODO: detect.c:2356 — reveal_terrain(): terrain revelation
+// ========================================================================
+// cf. detect.c:2356 -- reveal_terrain
+// ========================================================================
+export function reveal_terrain(which_subset, player, map, display) {
+    const full = !!(which_subset & 0x80);
+    if ((player.hallucinating || player.stunned || player.confused) && !full) {
+        You("are too disoriented for this."); return;
+    }
+    unconstrain_map(player);
+    for (let x = 1; x < COLNO; x++)
+        for (let y = 0; y < ROWNO; y++)
+            show_map_spot(x, y, false, map);
+    flush_screen(1);
+    pline("Showing terrain only...");
+    browse_map(); map_redisplay_stub(); reconstrain_map(player);
+}

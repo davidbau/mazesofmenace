@@ -5,9 +5,22 @@ import { nhgetch, getlin } from './input.js';
 import { create_nhwindow, destroy_nhwindow, NHW_MENU } from './windows.js';
 import { COLNO, STATUS_ROW_1 } from './config.js';
 import { objectData, WEAPON_CLASS, FOOD_CLASS, WAND_CLASS, SPBOOK_CLASS,
-         FLINT, ROCK, SLING, MAGIC_MARKER, COIN_CLASS } from './objects.js';
-import { doname, xname } from './mkobj.js';
+         FLINT, ROCK, SLING, MAGIC_MARKER, COIN_CLASS, ARMOR_CLASS,
+         RING_CLASS, AMULET_CLASS, TOOL_CLASS, POTION_CLASS, SCROLL_CLASS,
+         GEM_CLASS, ROCK_CLASS, BALL_CLASS, CHAIN_CLASS, VENOM_CLASS,
+         ILLOBJ_CLASS,
+         AMULET_OF_YENDOR, CANDELABRUM_OF_INVOCATION, BELL_OF_OPENING,
+         SPE_BOOK_OF_THE_DEAD, LOADSTONE, FIGURINE, SCR_SCARE_MONSTER,
+         CORPSE, EGG, TIN, POT_OIL, SPE_NOVEL, LEASH, STATUE,
+         GLASS, GEMSTONE, MINERAL,
+         ARM_SUIT, ARM_SHIELD, ARM_HELM, ARM_GLOVES, ARM_BOOTS, ARM_CLOAK, ARM_SHIRT,
+         CLASS_SYMBOLS } from './objects.js';
+import { doname, xname, weight, splitobj, Is_container, erosion_matters } from './mkobj.js';
 import { promptDirectionAndThrowItem, ammoAndLauncher } from './dothrow.js';
+import { pline, You, Your } from './pline.js';
+import { rn2 } from './rng.js';
+import { touch_petrifies } from './mondata.js';
+import { newsym } from './monutil.js';
 
 
 // ============================================================
@@ -541,153 +554,1357 @@ export async function handleInventory(player, display, game) {
 
 
 // ============================================================
-// TODO stubs — functions from invent.c not yet implemented
+// Ported functions from invent.c
+// ============================================================
+// JS architecture notes:
+//   - Player state passed as parameter (not global)
+//   - Inventory is player.inventory (array), not linked list
+//   - Floor objects in map.objects (array), not level.objects[x][y]
+//   - Worn items: player.weapon, player.armor, player.shield, etc.
+//   - Constants: invlet_basic = 52 (a-z + A-Z)
+
+const invlet_basic = 52;
+const NOINVSYM = '#';
+const GOLD_SYM = '$';
+const HANDS_SYM = '-';
+const CONTAINED_SYM = '>';
+const INVENTORY_LETTERS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
+// BUC filter constants — cf. pickup.c
+export const BUC_BLESSED = 1;
+export const BUC_UNCURSED = 2;
+export const BUC_CURSED = 3;
+export const BUC_UNKNOWN = 4;
+
+// GETOBJ return codes — cf. invent.c
+export const GETOBJ_EXCLUDE = 0;
+export const GETOBJ_SUGGEST = 1;
+export const GETOBJ_DOWNPLAY = 2;
+export const GETOBJ_EXCLUDE_INACCESS = 3;
+export const GETOBJ_EXCLUDE_SELECTABLE = 4;
+export const GETOBJ_EXCLUDE_NONINVENT = 5;
+
+// GETOBJ control flags
+export const GETOBJ_ALLOWCNT = 0x01;
+export const GETOBJ_PROMPT = 0x02;
+export const GETOBJ_NOFLAGS = 0;
+
+// Object class names — cf. invent.c names[]
+const CLASS_NAMES = [
+    null, 'Illegal objects', 'Weapons', 'Armor', 'Rings', 'Amulets', 'Tools',
+    'Comestibles', 'Potions', 'Scrolls', 'Spellbooks', 'Wands', 'Coins',
+    'Gems/Stones', 'Boulders/Statues', 'Iron balls', 'Chains', 'Venoms',
+];
+
+
+// ============================================================
+// 1. Sort / classify
 // ============================================================
 
-// --- 1. Sort / classify ---
-// TODO: cf. invent.c inuse_classify() — classify object as worn/wielded for loot sorting
-// TODO: cf. invent.c loot_classify() — classify object for loot menu grouping
-// TODO: cf. invent.c loot_xname() — extended name for loot menu display
-// TODO: cf. invent.c sortloot_cmp() — comparison function for sortloot
-// TODO: cf. invent.c sortloot() — sort a chain of objects for display
-// TODO: cf. invent.c unsortloot() — free sorted loot list
-// TODO: cf. invent.c reorder_invent() — reorder hero inventory by class
+// C ref: invent.c inuse_classify() — classify object as worn/wielded for loot sorting
+export function inuse_classify(sort_item, obj, player) {
+    let rating = 0;
+    let altclass = 0;
+    const w_mask = obj.owornmask || 0;
 
-// --- 2. Inventory add / remove ---
-// TODO: cf. invent.c assigninvlet() — assign an inventory letter to an object
-// TODO: cf. invent.c merge_choice() — ask player about merging with existing stack
-// TODO: cf. invent.c merged() — check and perform object merging
-// TODO: cf. invent.c addinv_core0() — core add-to-inventory (phase 0)
-// TODO: cf. invent.c addinv_core1() — core add-to-inventory (phase 1, assign letter)
-// TODO: cf. invent.c addinv_core2() — core add-to-inventory (phase 2, merge)
-// TODO: cf. invent.c addinv() — add object to hero inventory
-// TODO: cf. invent.c addinv_before() — add object before a specific inventory item
-// TODO: cf. invent.c addinv_nomerge() — add object without attempting merge
-// TODO: cf. invent.c carry_obj_effects() — side effects of carrying an object
-// TODO: cf. invent.c hold_another_object() — check if hero can hold another object
+    function USE_RATING(test) {
+        ++rating;
+        if (test) return true;
+        return false;
+    }
 
-// --- 3. Object consumption ---
-// TODO: cf. invent.c useupall() — consume entire stack of an object
-// TODO: cf. invent.c useup() — consume one item from a stack
-// TODO: cf. invent.c consume_obj_charge() — consume a charge from a wand/tool
-// TODO: cf. invent.c useupf() — consume one item from floor stack
+    // Miscellaneous
+    ++altclass; // 1
+    if (USE_RATING(!w_mask && obj.otyp === LEASH && obj.leashmon)) { assign(); return; }
+    if (USE_RATING(!w_mask && obj.oclass === TOOL_CLASS && obj.lamplit)) { assign(); return; }
+    // Armor
+    ++altclass; // 2
+    if (USE_RATING(obj === player?.shirt)) { assign(); return; }
+    if (USE_RATING(obj === player?.boots)) { assign(); return; }
+    if (USE_RATING(obj === player?.gloves)) { assign(); return; }
+    if (USE_RATING(obj === player?.helmet)) { assign(); return; }
+    if (USE_RATING(obj === player?.shield)) { assign(); return; }
+    if (USE_RATING(obj === player?.cloak)) { assign(); return; }
+    if (USE_RATING(obj === player?.armor)) { assign(); return; }
+    // Weapons
+    ++altclass; // 3
+    if (USE_RATING(obj === player?.quiver)) { assign(); return; }
+    if (USE_RATING(obj === player?.swapWeapon)) { assign(); return; }
+    if (USE_RATING(obj === player?.weapon)) { assign(); return; }
+    // Accessories
+    ++altclass; // 4
+    if (USE_RATING(obj === player?.blindfold)) { assign(); return; }
+    if (USE_RATING(obj === player?.leftRing)) { assign(); return; }
+    if (USE_RATING(obj === player?.rightRing)) { assign(); return; }
+    if (USE_RATING(obj === player?.amulet)) { assign(); return; }
 
-// --- 4. Free / delete ---
-// TODO: cf. invent.c freeinv_core() — core free-from-inventory
-// TODO: cf. invent.c freeinv() — remove object from hero inventory chain
-// TODO: cf. invent.c delallobj() — delete all objects at a location
-// TODO: cf. invent.c delobj() — delete a single object
-// TODO: cf. invent.c delobj_core() — core object deletion
+    rating = 0;
+    altclass = -1;
 
-// --- 5. Object queries ---
-// TODO: cf. invent.c sobj_at() — find specific object type at location
-// TODO: cf. invent.c nxtobj() — find next object of given type in chain
-// TODO: cf. invent.c carrying() — check if hero carries object of given type
-// TODO: cf. invent.c carrying_stoning_corpse() — check for cockatrice corpse in inventory
-// TODO: cf. invent.c u_carried_gloves() — check if hero carries gloves
-// TODO: cf. invent.c u_have_novel() — check if hero has a novel
-// TODO: cf. invent.c o_on() — find object by id in a chain
-// TODO: cf. invent.c obj_here() — check if specific object is at location
-// TODO: cf. invent.c g_at() — find gold at location
+    function assign() {
+        sort_item.inuse = rating;
+        sort_item.orderclass = altclass;
+        sort_item.subclass = 0;
+        sort_item.disco = 0;
+    }
+    assign();
+}
 
-// --- 6. Splitting ---
-// TODO: cf. invent.c splittable() — check if object stack can be split
+// C ref: invent.c loot_classify() — classify object for loot menu grouping
+export function loot_classify(sort_item, obj) {
+    const def_srt_order = [
+        COIN_CLASS, AMULET_CLASS, RING_CLASS, WAND_CLASS, POTION_CLASS,
+        SCROLL_CLASS, SPBOOK_CLASS, GEM_CLASS, FOOD_CLASS, TOOL_CLASS,
+        WEAPON_CLASS, ARMOR_CLASS, ROCK_CLASS, BALL_CLASS, CHAIN_CLASS,
+    ];
+    const otyp = obj.otyp;
+    const oclass = obj.oclass;
+    const od = objectData[otyp] || {};
+    const seen = !!obj.dknown;
+    const discovered = !!od.name_known;
 
-// --- 7. getobj / ggetobj ---
-// TODO: cf. invent.c taking_off() — check if action is a take-off operation
-// TODO: cf. invent.c mime_action() — mime gesture for empty-handed action
-// TODO: cf. invent.c any_obj_ok() — check if any object is acceptable for action
-// TODO: cf. invent.c getobj_hands_txt() — text for empty-hand prompts
-// TODO: cf. invent.c getobj() — prompt player to select an inventory object
-// TODO: cf. invent.c silly_thing() — message for using silly object
-// TODO: cf. invent.c ckvalidcat() — check if object belongs to valid category
-// TODO: cf. invent.c ckunpaid() — check if object is unpaid
-// TODO: cf. invent.c wearing_armor() — check if hero is wearing armor
-// TODO: cf. invent.c is_worn() — check if object is being worn
-// TODO: cf. invent.c is_inuse() — check if object is in use (worn/wielded)
-// TODO: cf. invent.c safeq_xprname() — safe extended name for quit prompts
-// TODO: cf. invent.c safeq_shortxprname() — safe short extended name for quit prompts
-// TODO: cf. invent.c ggetobj() — get object with class filter
-// TODO: cf. invent.c askchain() — ask about each object in a chain
+    // class order
+    const idx = def_srt_order.indexOf(oclass);
+    sort_item.orderclass = idx >= 0 ? idx + 1 : def_srt_order.length + 1 + (oclass !== VENOM_CLASS ? 1 : 0);
 
-// --- 8. Identification ---
-// TODO: cf. invent.c reroll_menu() — reroll identification menu
-// TODO: cf. invent.c set_cknown_lknown() — set container/lock known flags
-// TODO: cf. invent.c fully_identify_obj() — fully identify an object
-// TODO: cf. invent.c identify() — identify objects (scroll of identify)
-// TODO: cf. invent.c menu_identify() — menu-driven identification
-// TODO: cf. invent.c count_unidentified() — count unidentified objects in inventory
-// TODO: cf. invent.c identify_pack() — identify entire pack
-// TODO: cf. invent.c learn_unseen_invent() — learn about unseen inventory
+    // subclass
+    let k;
+    switch (oclass) {
+    case ARMOR_CLASS: {
+        const armcatMap = [7, 4, 1, 2, 3, 5, 6]; // ARM_SUIT..ARM_SHIRT -> sort order
+        const ac = od.sub ?? 0;
+        k = (ac >= 0 && ac < 7) ? (armcatMap[ac] || 8) : 8;
+        break;
+    }
+    case WEAPON_CLASS: {
+        const skill = od.skill || 0;
+        k = (skill < 0) ? 3 : 5;
+        break;
+    }
+    case TOOL_CLASS:
+        if (Is_container(obj)) k = 1;
+        else k = 4;
+        break;
+    case FOOD_CLASS:
+        if (otyp === CORPSE) k = 5;
+        else if (otyp === EGG) k = 4;
+        else if (otyp === TIN) k = 3;
+        else k = 2;
+        break;
+    case GEM_CLASS: {
+        const mat = od.material;
+        if (mat === GEMSTONE) k = !seen ? 1 : !discovered ? 2 : 3;
+        else if (mat === GLASS) k = !seen ? 1 : !discovered ? 2 : 4;
+        else k = !seen ? 5 : 8;
+        break;
+    }
+    default:
+        k = 1;
+        break;
+    }
+    sort_item.subclass = k;
 
-// --- 9. Display ---
-// TODO: cf. invent.c update_inventory() — update permanent inventory window
-// TODO: cf. invent.c doperminv() — display permanent inventory
-// TODO: cf. invent.c obj_to_let() — convert object to inventory letter
-// TODO: cf. invent.c prinv() — print inventory item
-// TODO: cf. invent.c xprname() — extended name for inventory display
-// TODO: cf. invent.c dispinv_with_action() — display inventory with action prompt
-// TODO: cf. invent.c ddoinv() — full inventory display command
-// TODO: cf. invent.c find_unpaid() — find unpaid items in inventory
-// TODO: cf. invent.c free_pickinv_cache() — free pick-inventory cache
-// TODO: cf. invent.c display_pickinv() — display pick-from-inventory menu
-// TODO: cf. invent.c display_inventory() — display full inventory
-// TODO: cf. invent.c repopulate_perminvent() — repopulate permanent inventory window
-// TODO: cf. invent.c display_used_invlets() — show which inventory letters are in use
+    // discovery status
+    k = !seen ? 1
+        : (discovered || !od.desc) ? 4
+        : (od.uname) ? 3
+        : 2;
+    sort_item.disco = k;
+    sort_item.inuse = 0;
+}
 
-// --- 10. Counting ---
-// TODO: cf. invent.c count_unpaid() — count unpaid items
-// TODO: cf. invent.c count_buc() — count blessed/uncursed/cursed items
-// TODO: cf. invent.c tally_BUCX() — tally BUC status of inventory
-// TODO: cf. invent.c count_contents() — count items in a container
-// TODO: cf. invent.c dounpaid() — list unpaid items
-// TODO: cf. invent.c this_type_only() — filter for specific object type
-// TODO: cf. invent.c dotypeinv() — type-filtered inventory display
+// C ref: invent.c sortloot() — sort a list of objects for display
+// In JS, takes an array of objects and returns a sorted array of
+// {obj, indx, orderclass, subclass, disco, inuse, str} items.
+export function sortloot(objList, mode, filterfunc) {
+    const SORTLOOT_PACK = 0x01;
+    const SORTLOOT_INVLET = 0x02;
+    const SORTLOOT_LOOT = 0x04;
+    const SORTLOOT_INUSE = 0x08;
 
-// --- 11. Look here ---
-// TODO: cf. invent.c dfeature_at() — describe dungeon feature at location
-// TODO: cf. invent.c look_here() — look at objects at hero location
-// TODO: cf. invent.c dolook() — look command
-// TODO: cf. invent.c will_feel_cockatrice() — check if touching will petrify
-// TODO: cf. invent.c feel_cockatrice() — handle touching cockatrice corpse
+    const items = [];
+    let i = 0;
+    for (const o of objList) {
+        if (filterfunc && !filterfunc(o)) continue;
+        items.push({ obj: o, indx: i++, orderclass: 0, subclass: 0, disco: 0, inuse: 0, str: null });
+    }
 
-// --- 12. Stacking / merging ---
-// TODO: cf. invent.c stackobj() — try to merge object into existing stack
-// TODO: cf. invent.c mergable() — check if two objects can merge
+    if (mode && items.length > 1) {
+        items.sort((a, b) => {
+            // in-use takes precedence
+            if (mode & SORTLOOT_INUSE) {
+                if (!a.orderclass) inuse_classify(a, a.obj);
+                if (!b.orderclass) inuse_classify(b, b.obj);
+                if (a.inuse !== b.inuse) return b.inuse - a.inuse;
+                return a.indx - b.indx;
+            }
+            // class order
+            if ((mode & (SORTLOOT_PACK | SORTLOOT_INVLET)) !== SORTLOOT_INVLET) {
+                if (!a.orderclass) loot_classify(a, a.obj);
+                if (!b.orderclass) loot_classify(b, b.obj);
+                if (a.orderclass !== b.orderclass) return a.orderclass - b.orderclass;
+                if (!(mode & SORTLOOT_INVLET)) {
+                    if (a.subclass !== b.subclass) return a.subclass - b.subclass;
+                    if (a.disco !== b.disco) return a.disco - b.disco;
+                }
+            }
+            // invlet order
+            if (mode & SORTLOOT_INVLET) {
+                const va = invletSortValue(a.obj.invlet || '?');
+                const vb = invletSortValue(b.obj.invlet || '?');
+                if (va !== vb) return va - vb;
+            }
+            // tiebreak
+            return a.indx - b.indx;
+        });
+    }
+    return items;
+}
 
-// --- 13. Print equipment ---
-// TODO: cf. invent.c doprgold() — print gold amount
-// TODO: cf. invent.c doprwep() — print wielded weapon
-// TODO: cf. invent.c noarmor() — check if hero wears no armor
-// TODO: cf. invent.c doprarm() — print worn armor
-// TODO: cf. invent.c doprring() — print worn rings
-// TODO: cf. invent.c dopramulet() — print worn amulet
-// TODO: cf. invent.c tool_being_used() — check if tool is in active use
-// TODO: cf. invent.c doprtool() — print tools in use
-// TODO: cf. invent.c doprinuse() — print all items in use
+// C ref: invent.c unsortloot() — no-op in JS (GC handles it)
+export function unsortloot() {}
 
-// --- 14. Inventory letters ---
-// TODO: cf. invent.c let_to_name() — convert inventory letter to class name
-// TODO: cf. invent.c free_invbuf() — free inventory buffer
-// TODO: cf. invent.c reassign() — reassign inventory letters
-// TODO: cf. invent.c check_invent_gold() — check inventory gold consistency
-// TODO: cf. invent.c adjust_ok() — check if inventory adjustment is ok
-// TODO: cf. invent.c adjust_gold_ok() — check if gold adjustment is ok
-// TODO: cf. invent.c doorganize() — organize inventory (adjust command)
-// TODO: cf. invent.c adjust_split() — adjust by splitting a stack
-// TODO: cf. invent.c doorganize_core() — core inventory organization
+// C ref: invent.c reorder_invent() — sort inventory by invlet
+// JS adaptation: sort the player.inventory array in-place
+export function reorder_invent(player) {
+    if (!player || !player.inventory) return;
+    player.inventory.sort((a, b) => {
+        const ra = inv_rank_value(a);
+        const rb = inv_rank_value(b);
+        return ra - rb;
+    });
+}
 
-// --- 15. Monster / container inventory ---
-// TODO: cf. invent.c invdisp_nothing() — display "nothing" for empty inventory
-// TODO: cf. invent.c worn_wield_only() — filter to worn/wielded items only
-// TODO: cf. invent.c display_minventory() — display monster inventory
-// TODO: cf. invent.c cinv_doname() — container inventory doname
-// TODO: cf. invent.c cinv_ansimpleoname() — container inventory simple name
-// TODO: cf. invent.c display_cinventory() — display container inventory
-// TODO: cf. invent.c only_here() — filter objects at current location
-// TODO: cf. invent.c display_binventory() — display buried inventory
+// Helper for reorder_invent: toggling bit puts lowercase before uppercase
+function inv_rank_value(obj) {
+    const c = (obj.invlet || '?').charCodeAt(0);
+    return c ^ 0x20;
+}
 
-// --- 16. Permanent inventory ---
-// TODO: cf. invent.c prepare_perminvent() — prepare permanent inventory display
-// TODO: cf. invent.c sync_perminvent() — sync permanent inventory with actual
-// TODO: cf. invent.c perm_invent_toggled() — handle permanent inventory toggle
+
+// ============================================================
+// 2. Inventory add / remove
+// ============================================================
+
+// C ref: invent.c assigninvlet() — assign an inventory letter to an object
+export function assigninvlet(obj, player) {
+    if (obj.oclass === COIN_CLASS) {
+        obj.invlet = GOLD_SYM;
+        return;
+    }
+
+    const inuse = new Array(invlet_basic).fill(false);
+    for (const o of player.inventory) {
+        if (o === obj) continue;
+        const ch = o.invlet;
+        if (ch >= 'a' && ch <= 'z') inuse[ch.charCodeAt(0) - 97] = true;
+        else if (ch >= 'A' && ch <= 'Z') inuse[ch.charCodeAt(0) - 65 + 26] = true;
+        if (ch === obj.invlet) obj.invlet = null;
+    }
+
+    // If existing invlet is still valid, keep it
+    const ic = obj.invlet;
+    if (ic && ((ic >= 'a' && ic <= 'z') || (ic >= 'A' && ic <= 'Z'))) return;
+
+    const lastinvnr = player.lastInvlet ?? (invlet_basic - 1);
+    let i = lastinvnr + 1;
+    const start = i;
+    do {
+        if (i === invlet_basic) { i = 0; continue; }
+        if (!inuse[i]) break;
+        i++;
+    } while (i !== start);
+
+    if (inuse[i]) {
+        obj.invlet = NOINVSYM;
+    } else {
+        obj.invlet = i < 26 ? String.fromCharCode(97 + i) : String.fromCharCode(65 + i - 26);
+    }
+    player.lastInvlet = i;
+}
+
+// C ref: invent.c merge_choice() — find an object in objList that can merge with obj
+export function merge_choice(objList, obj) {
+    if (!objList || !objList.length) return null;
+    if (obj.otyp === SCR_SCARE_MONSTER) return null;
+    for (const o of objList) {
+        if (mergable(o, obj)) return o;
+    }
+    return null;
+}
+
+// C ref: invent.c merged() — merge obj into otmp if compatible; returns true if merged
+export function merged(otmp, obj) {
+    if (!mergable(otmp, obj)) return false;
+
+    // Approximate age
+    if (!obj.lamplit && !obj.globby) {
+        otmp.age = Math.floor(
+            ((otmp.age || 0) * (otmp.quan || 1) + (obj.age || 0) * (obj.quan || 1))
+            / ((otmp.quan || 1) + (obj.quan || 1))
+        );
+    }
+
+    if (!obj.globby) {
+        otmp.quan = (otmp.quan || 1) + (obj.quan || 1);
+    }
+
+    // Recompute weight
+    if (otmp.oclass === COIN_CLASS) {
+        otmp.owt = weight(otmp);
+        otmp.bknown = false;
+    } else if (!obj.globby) { // not Is_pudding check simplified
+        otmp.owt = weight(otmp);
+    }
+
+    // Copy name if otmp lacks one
+    if (!otmp.oname && obj.oname) {
+        otmp.oname = obj.oname;
+    }
+
+    // Identification by comparison
+    if (obj.known !== otmp.known) otmp.known = true;
+    if (obj.rknown !== otmp.rknown) otmp.rknown = true;
+    if (obj.bknown !== otmp.bknown) otmp.bknown = true;
+
+    // Handle worn mask merging (for wielded stacks)
+    if (obj.owornmask) {
+        const wmask = (otmp.owornmask || 0) | (obj.owornmask || 0);
+        // simplified: just keep otmp's mask
+        otmp.owornmask = otmp.owornmask || obj.owornmask;
+    }
+
+    if (obj.bypass) otmp.bypass = true;
+
+    return true;
+}
+
+// C ref: invent.c addinv_core1() — side effects before adding to inventory
+export function addinv_core1(obj, player) {
+    if (obj.oclass === COIN_CLASS) {
+        // botl update — handled elsewhere in JS
+    } else if (obj.otyp === AMULET_OF_YENDOR) {
+        if (!player.uhave) player.uhave = {};
+        player.uhave.amulet = true;
+    } else if (obj.otyp === CANDELABRUM_OF_INVOCATION) {
+        if (!player.uhave) player.uhave = {};
+        player.uhave.menorah = true;
+    } else if (obj.otyp === BELL_OF_OPENING) {
+        if (!player.uhave) player.uhave = {};
+        player.uhave.bell = true;
+    } else if (obj.otyp === SPE_BOOK_OF_THE_DEAD) {
+        if (!player.uhave) player.uhave = {};
+        player.uhave.book = true;
+    }
+}
+
+// C ref: invent.c addinv_core2() — side effects after adding to inventory
+export function addinv_core2(obj, player) {
+    // confers_luck check would go here
+    // archeologist scroll identification would go here
+}
+
+// C ref: invent.c carry_obj_effects() — side effects of carrying an object
+export function carry_obj_effects(obj) {
+    // Cursed figurines can spontaneously transform — not yet implemented in JS
+}
+
+// C ref: invent.c addinv() — add object to hero inventory
+// This is now a standalone function wrapping player.addToInventory
+export function addinv(obj, player) {
+    return player.addToInventory(obj);
+}
+
+// C ref: invent.c addinv_nomerge() — add without merging
+export function addinv_nomerge(obj, player) {
+    const save = obj.nomerge;
+    obj.nomerge = true;
+    const result = player.addToInventory(obj);
+    obj.nomerge = save;
+    return result;
+}
+
+// C ref: invent.c hold_another_object() — add object or drop if can't hold
+export function hold_another_object(obj, player, drop_fmt, drop_arg, hold_msg) {
+    const result = player.addToInventory(obj);
+    if (hold_msg) {
+        pline('%s%s%s', hold_msg, hold_msg ? ' ' : '', xprname_simple(result));
+    }
+    return result;
+}
+
+
+// ============================================================
+// 3. Object consumption
+// ============================================================
+
+// C ref: invent.c useupall() — consume entire stack of an object
+export function useupall(obj, player) {
+    setnotworn_safe(obj, player);
+    freeinv(obj, player);
+}
+
+// C ref: invent.c useup() — consume one item from a stack
+export function useup(obj, player) {
+    if ((obj.quan || 1) > 1) {
+        obj.in_use = false;
+        obj.quan--;
+        obj.owt = weight(obj);
+        update_inventory(player);
+    } else {
+        useupall(obj, player);
+    }
+}
+
+// C ref: invent.c consume_obj_charge() — consume a charge from a wand/tool
+export function consume_obj_charge(obj, maybe_unpaid, player) {
+    // maybe_unpaid shop billing not yet implemented
+    obj.spe = (obj.spe || 0) - 1;
+    if (obj.known) update_inventory(player);
+}
+
+// C ref: invent.c useupf() — consume one item from floor stack
+export function useupf(obj, numused, map) {
+    if ((obj.quan || 1) > numused) {
+        obj.quan -= numused;
+        obj.owt = weight(obj);
+    } else {
+        delobj(obj, map);
+    }
+}
+
+
+// ============================================================
+// 4. Free / delete
+// ============================================================
+
+// C ref: invent.c freeinv_core() — intrinsics adjustment when removing from inventory
+export function freeinv_core(obj, player) {
+    if (obj.oclass === COIN_CLASS) return;
+    if (!player.uhave) player.uhave = {};
+    if (obj.otyp === AMULET_OF_YENDOR) player.uhave.amulet = false;
+    else if (obj.otyp === CANDELABRUM_OF_INVOCATION) player.uhave.menorah = false;
+    else if (obj.otyp === BELL_OF_OPENING) player.uhave.bell = false;
+    else if (obj.otyp === SPE_BOOK_OF_THE_DEAD) player.uhave.book = false;
+
+    if (obj.otyp === LOADSTONE) {
+        obj.cursed = true;
+        obj.blessed = false;
+    }
+}
+
+// C ref: invent.c freeinv() — remove object from hero inventory chain
+export function freeinv(obj, player) {
+    player.removeFromInventory(obj);
+    obj.pickup_prev = 0;
+    freeinv_core(obj, player);
+}
+
+// C ref: invent.c delallobj() — delete all objects at a location
+export function delallobj(x, y, map) {
+    if (!map || !map.objects) return;
+    const toDelete = map.objects.filter(o => o.ox === x && o.oy === y && !o.buried);
+    for (const obj of toDelete) {
+        delobj(obj, map);
+    }
+}
+
+// C ref: invent.c delobj() — delete a single object
+export function delobj(obj, map) {
+    delobj_core(obj, map, false);
+}
+
+// C ref: invent.c delobj_core() — core object deletion
+export function delobj_core(obj, map, force) {
+    if (!force && obj_resists(obj)) {
+        obj.in_use = false;
+        return;
+    }
+    const wasOnFloor = map && map.objects;
+    if (wasOnFloor) {
+        const idx = map.objects.indexOf(obj);
+        if (idx >= 0) {
+            map.objects.splice(idx, 1);
+            if (typeof newsym === 'function') {
+                newsym(map, obj.ox, obj.oy);
+            }
+        }
+    }
+}
+
+// Helper: obj_resists — simplified check for indestructible objects
+function obj_resists(obj) {
+    if (obj.otyp === AMULET_OF_YENDOR) return true;
+    if (obj.otyp === CANDELABRUM_OF_INVOCATION) return true;
+    if (obj.otyp === BELL_OF_OPENING) return true;
+    if (obj.otyp === SPE_BOOK_OF_THE_DEAD) return true;
+    return false;
+}
+
+
+// ============================================================
+// 5. Object queries
+// ============================================================
+
+// C ref: invent.c sobj_at() — find specific object type at location
+export function sobj_at(otyp, x, y, map) {
+    if (!map || !map.objects) return null;
+    for (const obj of map.objects) {
+        if (obj.ox === x && obj.oy === y && obj.otyp === otyp && !obj.buried) return obj;
+    }
+    return null;
+}
+
+// C ref: invent.c nxtobj() — find next object of given type after obj in a list
+export function nxtobj(list, obj, type) {
+    let found = false;
+    for (const o of list) {
+        if (found && o.otyp === type) return o;
+        if (o === obj) found = true;
+    }
+    return null;
+}
+
+// C ref: invent.c carrying() — check if hero carries object of given type
+export function carrying(type, player) {
+    for (const obj of (player.inventory || [])) {
+        if (obj.otyp === type) return obj;
+    }
+    return null;
+}
+
+// C ref: invent.c carrying_stoning_corpse() — check for cockatrice corpse
+export function carrying_stoning_corpse(player) {
+    for (const obj of (player.inventory || [])) {
+        if (obj.otyp === CORPSE && obj.corpsenm != null && touch_petrifies_corpsenm(obj.corpsenm)) {
+            return obj;
+        }
+    }
+    return null;
+}
+
+// Helper: check if monster type causes petrification on touch
+function touch_petrifies_corpsenm(corpsenm) {
+    // Requires mons data; simplified stub — checks for cockatrice-like
+    try {
+        const { mons } = require('./monsters.js');
+        if (corpsenm >= 0 && corpsenm < mons.length) {
+            return touch_petrifies(mons[corpsenm]);
+        }
+    } catch (e) { /* mons not available */ }
+    return false;
+}
+
+// C ref: invent.c u_carried_gloves() — check if hero carries gloves
+export function u_carried_gloves(player) {
+    if (player.gloves) return player.gloves;
+    for (const obj of (player.inventory || [])) {
+        if (obj.oclass === ARMOR_CLASS && (objectData[obj.otyp]?.sub === ARM_GLOVES)) {
+            return obj;
+        }
+    }
+    return null;
+}
+
+// C ref: invent.c u_have_novel() — check if hero has a novel
+export function u_have_novel(player) {
+    for (const obj of (player.inventory || [])) {
+        if (obj.otyp === SPE_NOVEL) return obj;
+    }
+    return null;
+}
+
+// C ref: invent.c o_on() — find object by id in a chain (recursive for containers)
+export function o_on(id, objList) {
+    for (const obj of (objList || [])) {
+        if (obj.o_id === id) return obj;
+        if (obj.cobj) {
+            const found = o_on(id, obj.cobj);
+            if (found) return found;
+        }
+    }
+    return null;
+}
+
+// C ref: invent.c obj_here() — check if specific object is at location
+export function obj_here(obj, x, y, map) {
+    if (!map || !map.objects) return false;
+    for (const o of map.objects) {
+        if (o === obj && o.ox === x && o.oy === y && !o.buried) return true;
+    }
+    return false;
+}
+
+// C ref: invent.c g_at() — find gold at location
+export function g_at(x, y, map) {
+    if (!map || !map.objects) return null;
+    for (const obj of map.objects) {
+        if (obj.ox === x && obj.oy === y && obj.oclass === COIN_CLASS && !obj.buried) return obj;
+    }
+    return null;
+}
+
+
+// ============================================================
+// 6. Splitting
+// ============================================================
+
+// C ref: invent.c splittable() — check if object stack can be split
+export function splittable(obj, player) {
+    if (obj.otyp === LOADSTONE && obj.cursed) return false;
+    if (obj === player?.weapon && obj.welded) return false;
+    return true;
+}
+
+
+// ============================================================
+// 7. getobj / ggetobj
+// ============================================================
+
+// C ref: invent.c taking_off() — check if action is a take-off operation
+export function taking_off(action) {
+    return action === 'take off' || action === 'remove';
+}
+
+// C ref: invent.c mime_action() — mime gesture for empty-handed action
+export function mime_action(word) {
+    You('mime %sing something.', word);
+}
+
+// C ref: invent.c any_obj_ok() — callback that allows any object but not hands
+export function any_obj_ok(obj) {
+    if (obj) return GETOBJ_SUGGEST;
+    return GETOBJ_EXCLUDE;
+}
+
+// C ref: invent.c silly_thing() — message for using silly object
+export function silly_thing(word, otmp) {
+    pline("That is a silly thing to %s.", word);
+}
+
+// C ref: invent.c ckvalidcat() — check if object belongs to valid category
+export function ckvalidcat(otmp) {
+    // Simplified: always valid
+    return 1;
+}
+
+// C ref: invent.c ckunpaid() — check if object is unpaid
+export function ckunpaid(otmp) {
+    return !!(otmp.unpaid || (otmp.cobj && count_unpaid(otmp.cobj)));
+}
+
+// C ref: invent.c wearing_armor() — check if hero is wearing any armor
+export function wearing_armor(player) {
+    return !!(player.armor || player.cloak || player.boots
+              || player.gloves || player.helmet || player.shield || player.shirt);
+}
+
+// C ref: invent.c is_worn() — check if object is being worn/wielded
+export function is_worn(obj, player) {
+    if (!player) {
+        // Check owornmask as fallback
+        return !!(obj.owornmask);
+    }
+    return obj === player.armor || obj === player.shield
+        || obj === player.helmet || obj === player.gloves
+        || obj === player.boots || obj === player.cloak
+        || obj === player.shirt || obj === player.amulet
+        || obj === player.leftRing || obj === player.rightRing
+        || obj === player.weapon || obj === player.swapWeapon
+        || obj === player.quiver || obj === player.blindfold;
+}
+
+// C ref: invent.c is_inuse() — check if object is in use (worn/wielded/active tool)
+export function is_inuse(obj, player) {
+    return is_worn(obj, player) || tool_being_used(obj, player);
+}
+
+// C ref: invent.c getobj() — prompt player to select an inventory object
+// Simplified JS version that works with the existing input system
+export function getobj_simple(word, obj_ok, player) {
+    // Returns the first suggested object, or null
+    for (const obj of (player.inventory || [])) {
+        const result = obj_ok(obj);
+        if (result === GETOBJ_SUGGEST) return obj;
+    }
+    return null;
+}
+
+// C ref: invent.c ggetobj() — get object with class filter
+// Simplified: just returns count of suggested items
+export function ggetobj_count(word, player) {
+    if (!player.inventory || !player.inventory.length) return 0;
+    return player.inventory.length;
+}
+
+// C ref: invent.c safeq_xprname() / safeq_shortxprname() — safe name for prompts
+export function safeq_xprname(obj) {
+    return xprname_simple(obj);
+}
+
+export function safeq_shortxprname(obj) {
+    return xprname_simple(obj);
+}
+
+// C ref: invent.c getobj_hands_txt() — text for empty-hand prompts
+export function getobj_hands_txt(action) {
+    if (action === 'wield') return 'your bare hands';
+    if (action === 'ready') return 'empty quiver';
+    return 'your hands';
+}
+
+
+// ============================================================
+// 8. Identification
+// ============================================================
+
+// C ref: invent.c set_cknown_lknown() — set container/lock known flags
+export function set_cknown_lknown(obj) {
+    if (Is_container(obj) || obj.otyp === STATUE) {
+        obj.cknown = true;
+        obj.lknown = true;
+    } else if (obj.otyp === TIN) {
+        obj.cknown = true;
+    }
+}
+
+// C ref: invent.c not_fully_identified() — check if object is not fully ID'd
+export function not_fully_identified(obj) {
+    const od = objectData[obj.otyp] || {};
+    if (!od.name_known) return true;
+    if (!obj.known || !obj.bknown || !obj.rknown) return true;
+    if ((Is_container(obj) || obj.otyp === STATUE) && !obj.cknown) return true;
+    return false;
+}
+
+// C ref: invent.c fully_identify_obj() — fully identify an object
+export function fully_identify_obj(otmp) {
+    const od = objectData[otmp.otyp];
+    if (od) od.name_known = true; // makeknown
+    otmp.known = true;
+    otmp.bknown = true;
+    otmp.rknown = true;
+    otmp.dknown = true;
+    set_cknown_lknown(otmp);
+}
+
+// C ref: invent.c identify() — identify object and give feedback
+export function identify(otmp, player) {
+    fully_identify_obj(otmp);
+    prinv(null, otmp, 0, player);
+    return 1;
+}
+
+// C ref: invent.c count_unidentified() — count unidentified objects
+export function count_unidentified(objList) {
+    let count = 0;
+    for (const obj of (objList || [])) {
+        if (not_fully_identified(obj)) count++;
+    }
+    return count;
+}
+
+// C ref: invent.c identify_pack() — identify pack items
+export function identify_pack(id_limit, player, learning_id) {
+    const inv = player.inventory || [];
+    let unid_cnt = count_unidentified(inv);
+
+    if (!unid_cnt) {
+        You('have already identified %s of your possessions.',
+            !learning_id ? 'all' : 'the rest');
+        return;
+    }
+    if (!id_limit || id_limit >= unid_cnt) {
+        for (const obj of inv) {
+            if (not_fully_identified(obj)) {
+                identify(obj, player);
+                if (--unid_cnt < 1) break;
+            }
+        }
+    } else {
+        // identify up to id_limit items — simplified: identify first N
+        let remaining = id_limit;
+        for (const obj of inv) {
+            if (remaining <= 0) break;
+            if (not_fully_identified(obj)) {
+                identify(obj, player);
+                remaining--;
+            }
+        }
+    }
+    update_inventory(player);
+}
+
+// C ref: invent.c learn_unseen_invent() — mark inventory objects as seen
+export function learn_unseen_invent(player) {
+    for (const obj of (player.inventory || [])) {
+        if (!obj.dknown) {
+            obj.dknown = true;
+        }
+    }
+}
+
+
+// ============================================================
+// 9. Display
+// ============================================================
+
+// C ref: invent.c update_inventory() — update permanent inventory window
+// In JS, this is a no-op placeholder; the UI refreshes via other mechanisms
+export function update_inventory(player) {
+    // Placeholder — UI updates are driven by the game loop in JS
+}
+
+// C ref: invent.c obj_to_let() — get inventory letter for an object
+export function obj_to_let(obj) {
+    return obj.invlet || NOINVSYM;
+}
+
+// C ref: invent.c xprname() — format an inventory line
+export function xprname(obj, txt, let_char, dot, cost, quan) {
+    let savequan = 0;
+    if (quan && obj) {
+        savequan = obj.quan;
+        obj.quan = quan;
+    }
+    if (!txt) {
+        txt = obj ? doname(obj) : '???';
+    }
+    let suffix = '';
+    if (cost) {
+        suffix = `  ${cost} ${currency(cost)}`;
+    } else {
+        suffix = dot ? '.' : '';
+    }
+
+    const result = `${let_char} - ${txt}${suffix}`;
+
+    if (savequan && obj) obj.quan = savequan;
+    return result;
+}
+
+// Simplified xprname for internal use
+function xprname_simple(obj) {
+    if (!obj) return '???';
+    const let_char = obj.invlet || NOINVSYM;
+    const txt = doname(obj);
+    return `${let_char} - ${txt}`;
+}
+
+// C ref: invent.c prinv() — print an inventory item
+export function prinv(prefix, obj, quan, player) {
+    if (!prefix) prefix = '';
+    const let_char = obj_to_let(obj);
+    const txt = doname(obj);
+    const line = xprname(obj, null, let_char, true, 0, quan);
+    pline('%s%s%s', prefix, prefix ? ' ' : '', line);
+}
+
+// C ref: invent.c find_unpaid() — find unpaid items recursively
+export function find_unpaid(list, last_found_ref) {
+    for (const obj of (list || [])) {
+        if (obj.unpaid) {
+            if (last_found_ref.obj) {
+                if (obj === last_found_ref.obj) last_found_ref.obj = null;
+            } else {
+                last_found_ref.obj = obj;
+                return obj;
+            }
+        }
+        if (obj.cobj) {
+            const found = find_unpaid(obj.cobj, last_found_ref);
+            if (found) return found;
+        }
+    }
+    return null;
+}
+
+// C ref: invent.c display_inventory() — placeholder; actual UI is in handleInventory
+export function display_inventory_items(lets, player) {
+    // Actual display is handled by buildInventoryOverlayLines / handleInventory
+    return buildInventoryOverlayLines(player);
+}
+
+// C ref: invent.c invdisp_nothing() — display "nothing" message
+export function invdisp_nothing(hdr, txt) {
+    pline('%s: %s', hdr, txt);
+}
+
+
+// ============================================================
+// 10. Counting
+// ============================================================
+
+// C ref: invent.c count_unpaid() — count unpaid items including containers
+export function count_unpaid(list) {
+    let count = 0;
+    for (const obj of (list || [])) {
+        if (obj.unpaid) count++;
+        if (obj.cobj) count += count_unpaid(obj.cobj);
+    }
+    return count;
+}
+
+// C ref: invent.c count_buc() — count items by BUC status
+export function count_buc(list, type, filterfunc) {
+    let count = 0;
+    for (const obj of (list || [])) {
+        if (filterfunc && !filterfunc(obj)) continue;
+        if (obj.oclass === COIN_CLASS) {
+            if (type === BUC_UNCURSED) count++;
+            continue;
+        }
+        if (!obj.bknown) {
+            if (type === BUC_UNKNOWN) count++;
+        } else if (obj.blessed) {
+            if (type === BUC_BLESSED) count++;
+        } else if (obj.cursed) {
+            if (type === BUC_CURSED) count++;
+        } else {
+            if (type === BUC_UNCURSED) count++;
+        }
+    }
+    return count;
+}
+
+// C ref: invent.c tally_BUCX() — tally all BUC states at once
+export function tally_BUCX(list) {
+    let bcp = 0, ucp = 0, ccp = 0, xcp = 0, ocp = 0, jcp = 0;
+    for (const obj of (list || [])) {
+        if (obj.pickup_prev) jcp++;
+        if (obj.oclass === COIN_CLASS) { ucp++; continue; }
+        if (!obj.bknown) xcp++;
+        else if (obj.blessed) bcp++;
+        else if (obj.cursed) ccp++;
+        else ucp++;
+    }
+    return { bcp, ucp, ccp, xcp, ocp, jcp };
+}
+
+// C ref: invent.c count_contents() — count items in a container
+export function count_contents(container, nested, quantity, everything) {
+    let count = 0;
+    for (const obj of (container.cobj || [])) {
+        if (nested && obj.cobj) {
+            count += count_contents(obj, nested, quantity, everything);
+        }
+        if (everything || obj.unpaid) {
+            count += quantity ? (obj.quan || 1) : 1;
+        }
+    }
+    return count;
+}
+
+// C ref: invent.c this_type_only() — filter for specific object type
+export function this_type_only(obj, filterType) {
+    if (filterType === 'P') return !!obj.pickup_prev;
+    if (obj.oclass === COIN_CLASS) {
+        if (filterType && 'BUCX'.includes(filterType))
+            return filterType === 'U';
+    }
+    switch (filterType) {
+    case 'B': return !!(obj.bknown && obj.blessed);
+    case 'U': return !!(obj.bknown && !obj.blessed && !obj.cursed);
+    case 'C': return !!(obj.bknown && obj.cursed);
+    case 'X': return !obj.bknown;
+    default: return obj.oclass === filterType;
+    }
+}
+
+// C ref: invent.c inv_cnt() — count inventory items
+export function inv_cnt(incl_gold, player) {
+    let ct = 0;
+    for (const obj of (player.inventory || [])) {
+        if (incl_gold || obj.invlet !== GOLD_SYM) ct++;
+    }
+    return ct;
+}
+
+
+// ============================================================
+// 11. Look here
+// ============================================================
+
+// C ref: invent.c dfeature_at() — describe dungeon feature at location
+export function dfeature_at(x, y, map) {
+    if (!map || !map.grid) return null;
+    const cell = map.grid[y]?.[x];
+    if (!cell) return null;
+    // Simplified: return feature description from cell type
+    const typ = cell.typ || cell.type;
+    if (typ === 'fountain') return 'fountain';
+    if (typ === 'throne') return 'opulent throne';
+    if (typ === 'sink') return 'sink';
+    if (typ === 'altar') return 'altar';
+    if (typ === 'grave') return 'grave';
+    if (typ === 'tree') return 'tree';
+    return null;
+}
+
+// C ref: invent.c look_here() — look at objects at hero location
+export function look_here(player, map, obj_cnt) {
+    const x = player.x, y = player.y;
+    const objects = (map?.objects || []).filter(o => o.ox === x && o.oy === y && !o.buried);
+    const dfeature = dfeature_at(x, y, map);
+
+    if (dfeature) {
+        pline('There is %s here.', dfeature);
+    }
+
+    if (objects.length === 0) {
+        You('see no objects here.');
+    } else if (objects.length === 1) {
+        You('see here %s.', doname(objects[0]));
+    } else {
+        pline('Things that are here:');
+        for (const obj of objects) {
+            pline('  %s', doname(obj));
+        }
+    }
+}
+
+// C ref: invent.c dolook() — look command
+export function dolook(player, map) {
+    return look_here(player, map, 0);
+}
+
+// C ref: invent.c will_feel_cockatrice() — check if touching will petrify
+export function will_feel_cockatrice(otmp, force_touch, player) {
+    if ((!player?.blind && !force_touch) || player?.gloves) return false;
+    if (otmp.otyp === CORPSE && otmp.corpsenm != null) {
+        return touch_petrifies_corpsenm(otmp.corpsenm);
+    }
+    return false;
+}
+
+// C ref: invent.c feel_cockatrice() — handle touching cockatrice corpse
+export function feel_cockatrice(otmp, force_touch, player) {
+    if (will_feel_cockatrice(otmp, force_touch, player)) {
+        pline('Touching that is a fatal mistake...');
+        // instapetrify would be called here
+    }
+}
+
+
+// ============================================================
+// 12. Stacking / merging
+// ============================================================
+
+// C ref: invent.c stackobj() — try to merge object into existing stack on floor
+export function stackobj(obj, map) {
+    if (!map || !map.objects) return;
+    for (const otmp of map.objects) {
+        if (otmp !== obj && otmp.ox === obj.ox && otmp.oy === obj.oy
+            && !otmp.buried && !obj.buried && mergable(otmp, obj)) {
+            // Merge obj into otmp
+            otmp.quan = (otmp.quan || 1) + (obj.quan || 1);
+            otmp.owt = weight(otmp);
+            // Remove obj from map
+            const idx = map.objects.indexOf(obj);
+            if (idx >= 0) map.objects.splice(idx, 1);
+            return;
+        }
+    }
+}
+
+// C ref: invent.c mergable() — check if two objects can merge
+export function mergable(otmp, obj) {
+    if (obj === otmp) return false;
+    if (obj.otyp !== otmp.otyp) return false;
+    if (obj.nomerge || otmp.nomerge) return false;
+    const od = objectData[obj.otyp];
+    if (!od || !od.merge) return false;
+
+    // Coins always merge
+    if (obj.oclass === COIN_CLASS) return true;
+
+    if (!!obj.cursed !== !!otmp.cursed || !!obj.blessed !== !!otmp.blessed)
+        return false;
+
+    // Globs always merge (beyond bless/curse check)
+    if (obj.globby) return true;
+
+    if (!!obj.unpaid !== !!otmp.unpaid) return false;
+    if ((obj.spe ?? 0) !== (otmp.spe ?? 0)) return false;
+    if (!!obj.no_charge !== !!otmp.no_charge) return false;
+    if (!!obj.obroken !== !!otmp.obroken) return false;
+    if (!!obj.otrapped !== !!otmp.otrapped) return false;
+    if (!!obj.lamplit !== !!otmp.lamplit) return false;
+
+    if (obj.oclass === FOOD_CLASS) {
+        if ((obj.oeaten ?? 0) !== (otmp.oeaten ?? 0)) return false;
+        if (!!obj.orotten !== !!otmp.orotten) return false;
+    }
+
+    if (!!obj.dknown !== !!otmp.dknown) return false;
+    if (!!obj.bknown !== !!otmp.bknown) return false;
+    if ((obj.oeroded ?? 0) !== (otmp.oeroded ?? 0)) return false;
+    if ((obj.oeroded2 ?? 0) !== (otmp.oeroded2 ?? 0)) return false;
+    if (!!obj.greased !== !!otmp.greased) return false;
+
+    if (erosion_matters(obj)) {
+        if (!!obj.oerodeproof !== !!otmp.oerodeproof) return false;
+        if (!!obj.rknown !== !!otmp.rknown) return false;
+    }
+
+    if (obj.otyp === CORPSE || obj.otyp === EGG || obj.otyp === TIN) {
+        if ((obj.corpsenm ?? -1) !== (otmp.corpsenm ?? -1)) return false;
+    }
+
+    // Hatching eggs don't merge
+    if (obj.otyp === EGG && (obj.timed || otmp.timed)) return false;
+
+    // Burning oil never merges
+    if (obj.otyp === POT_OIL && obj.lamplit) return false;
+
+    // Names must match
+    const oname1 = obj.oname || '';
+    const oname2 = otmp.oname || '';
+    if (oname1 !== oname2) {
+        // Corpses must have matching names (both or neither)
+        if (obj.otyp === CORPSE) return false;
+        // One named, one not: allow merge if only one is named
+        if (oname1 && oname2) return false;
+    }
+
+    // Artifacts must match
+    if ((obj.oartifact || 0) !== (otmp.oartifact || 0)) return false;
+
+    if (!!obj.known !== !!otmp.known) return false;
+    if (!!obj.opoisoned !== !!otmp.opoisoned) return false;
+
+    return true;
+}
+
+
+// ============================================================
+// 13. Print equipment
+// ============================================================
+
+// C ref: invent.c doprgold() — print gold amount
+export function doprgold(player) {
+    const gold = player.gold || 0;
+    if (gold) {
+        Your('wallet contains %d %s.', gold, currency(gold));
+    } else {
+        Your('wallet is empty.');
+    }
+}
+
+// C ref: invent.c doprwep() — print wielded weapon
+export function doprwep(player) {
+    if (!player.weapon) {
+        You('are empty handed.');
+    } else {
+        prinv(null, player.weapon, 0, player);
+    }
+}
+
+// C ref: invent.c noarmor() — report no armor worn
+export function noarmor() {
+    You('are not wearing any armor.');
+}
+
+// C ref: invent.c doprarm() — print worn armor
+export function doprarm(player) {
+    if (!wearing_armor(player)) {
+        noarmor();
+    } else {
+        const pieces = [player.armor, player.cloak, player.shield,
+                       player.helmet, player.gloves, player.boots, player.shirt]
+                       .filter(Boolean);
+        for (const obj of pieces) {
+            prinv(null, obj, 0, player);
+        }
+    }
+}
+
+// C ref: invent.c doprring() — print worn rings
+export function doprring(player) {
+    if (!player.leftRing && !player.rightRing) {
+        You('are not wearing any rings.');
+    } else {
+        if (player.rightRing) prinv(null, player.rightRing, 0, player);
+        if (player.leftRing) prinv(null, player.leftRing, 0, player);
+    }
+}
+
+// C ref: invent.c dopramulet() — print worn amulet
+export function dopramulet(player) {
+    if (!player.amulet) {
+        You('are not wearing an amulet.');
+    } else {
+        prinv(null, player.amulet, 0, player);
+    }
+}
+
+// C ref: invent.c tool_being_used() — check if tool is in active use
+export function tool_being_used(obj, player) {
+    if (!obj) return false;
+    if (obj === player?.blindfold) return true;
+    if (obj.oclass !== TOOL_CLASS) return false;
+    return !!(obj === player?.weapon || obj.lamplit
+              || (obj.otyp === LEASH && obj.leashmon));
+}
+
+// C ref: invent.c doprtool() — print tools in use
+export function doprtool(player) {
+    const tools = (player.inventory || []).filter(o => tool_being_used(o, player));
+    if (!tools.length) {
+        You('are not using any tools.');
+    } else {
+        for (const obj of tools) {
+            prinv(null, obj, 0, player);
+        }
+    }
+}
+
+// C ref: invent.c doprinuse() — print all items in use
+export function doprinuse(player) {
+    const inuse = (player.inventory || []).filter(o => is_inuse(o, player));
+    if (!inuse.length) {
+        You('are not wearing or wielding anything.');
+    } else {
+        for (const obj of inuse) {
+            prinv(null, obj, 0, player);
+        }
+    }
+}
+
+
+// ============================================================
+// 14. Inventory letters
+// ============================================================
+
+// C ref: invent.c let_to_name() — convert class to name string
+export function let_to_name(let_char, unpaid, showsym) {
+    const oclass = (typeof let_char === 'number' && let_char >= 1 && let_char <= 16)
+        ? let_char : 0;
+    let name;
+    if (oclass) {
+        name = CLASS_NAMES[oclass] || 'Illegal objects';
+    } else if (let_char === CONTAINED_SYM) {
+        name = 'Bagged/Boxed items';
+    } else {
+        name = 'Illegal objects';
+    }
+    if (unpaid) name = 'Unpaid ' + name;
+    if (oclass && showsym) {
+        const sym = CLASS_SYMBOLS[oclass] || '?';
+        name += `  ('${sym}')`;
+    }
+    return name;
+}
+
+// C ref: invent.c reassign() — reassign consecutive inventory letters
+export function reassign(player) {
+    const inv = player.inventory || [];
+    // Separate gold
+    const goldIdx = inv.findIndex(o => o.oclass === COIN_CLASS);
+    let goldObj = null;
+    if (goldIdx >= 0) {
+        goldObj = inv.splice(goldIdx, 1)[0];
+    }
+    // Re-letter
+    for (let i = 0; i < inv.length; i++) {
+        if (i < 26) inv[i].invlet = String.fromCharCode(97 + i); // a-z
+        else if (i < 52) inv[i].invlet = String.fromCharCode(65 + i - 26); // A-Z
+        else inv[i].invlet = NOINVSYM;
+    }
+    // Re-insert gold at front
+    if (goldObj) {
+        goldObj.invlet = GOLD_SYM;
+        inv.unshift(goldObj);
+    }
+    player.lastInvlet = Math.min(inv.length - 1, 51);
+}
+
+// C ref: invent.c check_invent_gold() — check inventory gold consistency
+export function check_invent_gold(player) {
+    const inv = player.inventory || [];
+    let goldStacks = 0;
+    let wrongSlot = 0;
+    for (const obj of inv) {
+        if (obj.oclass === COIN_CLASS) {
+            goldStacks++;
+            if (obj.invlet !== GOLD_SYM) wrongSlot++;
+        }
+    }
+    return goldStacks > 1 || wrongSlot > 0;
+}
+
+
+// ============================================================
+// 15. Monster / container inventory
+// ============================================================
+
+// C ref: invent.c worn_wield_only() — filter to worn/wielded items only
+export function worn_wield_only(obj) {
+    return !!(obj.owornmask);
+}
+
+// C ref: invent.c display_minventory() — display monster inventory
+export function display_minventory(mon) {
+    if (!mon || !mon.minvent || !mon.minvent.length) {
+        return null;
+    }
+    // Simplified: return formatted lines
+    return mon.minvent.map(obj => doname(obj));
+}
+
+// C ref: invent.c display_cinventory() — display container inventory
+export function display_cinventory(obj) {
+    if (!obj.cobj || !obj.cobj.length) return null;
+    obj.cknown = true;
+    return obj.cobj.map(o => doname(o));
+}
+
+// C ref: invent.c only_here() — filter objects at current location
+export function only_here(obj, x, y) {
+    return obj.ox === x && obj.oy === y;
+}
+
+// C ref: invent.c display_binventory() — display buried inventory
+export function display_binventory(x, y, map) {
+    if (!map || !map.objects) return 0;
+    const buried = map.objects.filter(o => o.ox === x && o.oy === y && o.buried);
+    return buried.length;
+}
+
+
+// ============================================================
+// 16. Permanent inventory — no-ops in JS
+// ============================================================
+
+// C ref: invent.c prepare_perminvent() — prepare permanent inventory display
+export function prepare_perminvent() {}
+
+// C ref: invent.c sync_perminvent() — sync permanent inventory with actual
+export function sync_perminvent() {}
+
+// C ref: invent.c perm_invent_toggled() — handle permanent inventory toggle
+export function perm_invent_toggled() {}
+
+
+// ============================================================
+// Helpers
+// ============================================================
+
+// Helper: safely un-wear an object
+function setnotworn_safe(obj, player) {
+    if (!player) return;
+    if (obj === player.weapon) player.weapon = null;
+    if (obj === player.armor) player.armor = null;
+    if (obj === player.shield) player.shield = null;
+    if (obj === player.helmet) player.helmet = null;
+    if (obj === player.gloves) player.gloves = null;
+    if (obj === player.boots) player.boots = null;
+    if (obj === player.cloak) player.cloak = null;
+    if (obj === player.shirt) player.shirt = null;
+    if (obj === player.amulet) player.amulet = null;
+    if (obj === player.leftRing) player.leftRing = null;
+    if (obj === player.rightRing) player.rightRing = null;
+    if (obj === player.swapWeapon) player.swapWeapon = null;
+    if (obj === player.quiver) player.quiver = null;
+    if (obj === player.blindfold) player.blindfold = null;
+}

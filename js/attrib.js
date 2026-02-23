@@ -6,156 +6,1252 @@
 //                check_innate_abil, innately, is_innate, from_what, adjabil,
 //                newhp, minuhpmax, setuhpmax, adjuhploss, acurr, acurrstr,
 //                extremeattr, adjalign, uchangealign
-//
-// attrib.c manages all player attribute mechanics:
-//   adjattrib(): raise or lower an attribute with messaging and bounds.
-//   gainstr/losestr: specific strength adjustment paths with consequences.
-//   poisoned(): full poison application (attribute loss + HP damage).
-//   exercise/exerper/exerchk: attribute training system (exercise/abuse tracking).
-//   init_attr/redist_attr: attribute rolling and polymorphism adjustments.
-//   adjabil(): grant/revoke innate abilities on level change.
-//   newhp/setuhpmax: HP maximum adjustments on leveling.
-//   acurr/acurrstr: effective attribute value with modifiers.
-//   adjalign/uchangealign: alignment record adjustment and type change.
-//
-// JS implementations:
-//   exercise() → attrib_exercise.js:22 (PARTIAL — RNG-parity implementation)
-//   exerchk() → attrib_exercise.js:42 (PARTIAL — RNG-parity, no attribute mutation)
 
-// cf. attrib.c:116 — adjattrib(ndx, incr, msgflg): adjust an attribute
-// Raises or lowers attribute ndx by incr; prints message if msgflg set.
-// TODO: attrib.c:116 — adjattrib(): attribute adjustment
+import { rn2, rnd, rn1, d } from './rng.js';
+import { A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA, NUM_ATTRS,
+         RACE_HUMAN, RACE_ELF, RACE_DWARF, RACE_GNOME, RACE_ORC,
+         PM_ARCHEOLOGIST, PM_BARBARIAN, PM_CAVEMAN, PM_HEALER,
+         PM_KNIGHT, PM_MONK, PM_PRIEST, PM_ROGUE, PM_RANGER,
+         PM_SAMURAI, PM_TOURIST, PM_VALKYRIE, PM_WIZARD,
+         FAST, STEALTH, SEARCHING, SEE_INVIS, WARNING,
+         FIRE_RES, COLD_RES, SHOCK_RES, POISON_RES, SLEEP_RES,
+         TELEPORT_CONTROL, INFRAVISION, DRAIN_RES,
+         FIXED_ABIL, INTRINSIC, TIMEOUT,
+         FROM_ROLE as FROMEXPER_BIT, FROM_RACE as FROMRACE_BIT,
+         FROM_FORM as FROMFORM_BIT, FROMOUTSIDE } from './config.js';
+import { roles, races } from './player.js';
+import { pline, You, Your, You_feel, pline_The, livelog_printf } from './pline.js';
+import { sgn, strstri } from './hacklib.js';
+import { DUNCE_CAP, GAUNTLETS_OF_POWER, HELM_OF_OPPOSITE_ALIGNMENT, LUCKSTONE } from './objects.js';
+import { confers_luck } from './artifact.js';
+import { add_weapon_skill, lose_weapon_skill } from './weapon.js';
 
-// cf. attrib.c:199 — gainstr(otmp, incr, givemsg): gain strength
-// Grants strength increase, possibly from cursed source; handles exceptional str.
-// TODO: attrib.c:199 — gainstr(): strength gain
+// C ref: attrib.c bitmask values for intrinsic source tracking
+// In C these are FROM_ROLE=0x01000000 etc but here we use them as FROMEXPER/FROMRACE
+const FROMEXPER = FROMEXPER_BIT;
+const FROMRACE = FROMRACE_BIT;
+const FROMFORM = FROMFORM_BIT;
 
-// cf. attrib.c:218 — losestr(num, knam, k_format): lose strength
-// Applies strength loss with potential HP damage and possible death.
-// TODO: attrib.c:218 — losestr(): strength loss
+// String encoding: STR18(x) = 18+x, STR19(y) = 100+y
+function STR18(x) { return 18 + x; }
+function STR19(y) { return 100 + y; }
 
-// cf. attrib.c:271 — poison_strdmg(strloss, dmg, knam, k_format): poison damage
-// Combined strength loss and HP damage from poisoning.
-// TODO: attrib.c:271 — poison_strdmg(): combined poison damage
+const MAXULEV = 30;
+const LUCKMIN = -10;
+const LUCKMAX = 10;
+const LUCKADD = 3;
+const AVAL = 50; // tune value for exercise gains
 
-// cf. attrib.c:291 — poisontell(typ, exclaim): poison feedback message
-// Prints attribute-loss feedback message for poison type.
-// TODO: attrib.c:291 — poisontell(): poison message
+// reasons for innate ability
+const FROM_NONE = 0;
+const FROM_ROLE_REASON = 1; // from experience at level 1
+const FROM_RACE_REASON = 2;
+const FROM_INTR = 3; // intrinsically (eating some corpse or prayer reward)
+const FROM_EXP = 4;  // from experience for some level > 1
+const FROM_FORM_REASON = 5;
+const FROM_LYCN = 6;
 
-// cf. attrib.c:314 — poisoned(reason, typ, pkiller, fatal, thrown_weapon): full poison
-// Applies complete poisoning: attribute loss, HP damage, potential death.
-// TODO: attrib.c:314 — poisoned(): full poison application
+// Alignment change reasons
+export const A_CG_CONVERT = 0;
+export const A_CG_HELM_ON = 1;
+export const A_CG_HELM_OFF = 2;
 
-// cf. attrib.c:408 — change_luck(n): modify luck value
-// Adjusts luck up or down with bounds checking.
-// TODO: attrib.c:408 — change_luck(): luck adjustment
+const ALIGNLIM = 14;
 
-// cf. attrib.c:420 — stone_luck(include_uncursed): luck from stones
-// Calculates net luck bonus from blessed/cursed luck stones in inventory.
-// TODO: attrib.c:420 — stone_luck(): luck stone bonus
+// part of the output on gain or loss of attribute
+const plusattr = ["strong", "smart", "wise", "agile", "tough", "charismatic"];
+const minusattr = ["weak", "stupid", "foolish", "clumsy", "fragile", "repulsive"];
+const attrname = ["strength", "intelligence", "wisdom", "dexterity", "constitution", "charisma"];
 
-// cf. attrib.c:438 — set_moreluck(void): update luck modifier
-// Recalculates luck bonus based on current luck-giving items.
-// TODO: attrib.c:438 — set_moreluck(): luck modifier update
+// exercise/abuse text (must be in attribute order)
+const exertext = [
+    ["exercising diligently", "exercising properly"],           // Str
+    [null, null],                                                // Int
+    ["very observant", "paying attention"],                     // Wis
+    ["working on your reflexes", "working on reflexes lately"], // Dex
+    ["leading a healthy life-style", "watching your health"],   // Con
+    [null, null],                                                // Cha
+];
 
-// cf. attrib.c:452 — restore_attrib(void): restore temporary attribute losses
-// Processes timed attribute restoration (currently unused in NH3.7+).
-// TODO: attrib.c:452 — restore_attrib(): timed attribute restoration
+// --- Innate ability tables for roles and races ---
+// Each entry: { ulevel, propid, gainstr, losestr }
+// propid is the property index constant (SEARCHING, STEALTH, etc.)
 
-// cf. attrib.c:486 — exercise(i, inc_or_dec): track attribute exercise/abuse
-// Records exercise or abuse of attribute i for periodic adjustment.
-// JS equiv: attrib_exercise.js:22 — exercise() (PARTIAL — RNG parity, no attribute change)
-// PARTIAL: attrib.c:486 — exercise() ↔ attrib_exercise.js:22
+const arc_abil = [
+    { ulevel: 1, propid: SEARCHING, gainstr: "", losestr: "" },
+    { ulevel: 5, propid: STEALTH, gainstr: "stealthy", losestr: "" },
+    { ulevel: 10, propid: FAST, gainstr: "quick", losestr: "slow" },
+];
 
-// cf. attrib.c:518 [static] — exerper(void): periodic exercise processing
-// Periodically checks exercise/abuse based on hunger and encumbrance.
-// TODO: attrib.c:518 — exerper(): periodic exercise check
+const bar_abil = [
+    { ulevel: 1, propid: POISON_RES, gainstr: "", losestr: "" },
+    { ulevel: 7, propid: FAST, gainstr: "quick", losestr: "slow" },
+    { ulevel: 15, propid: STEALTH, gainstr: "stealthy", losestr: "" },
+];
 
-// cf. attrib.c:595 — exerchk(void): apply accumulated exercise/abuse
-// At intervals, applies attribute changes from accumulated exercise/abuse.
-// JS equiv: attrib_exercise.js:42 — exerchk() (PARTIAL — RNG parity, no attribute mutation)
-// PARTIAL: attrib.c:595 — exerchk() ↔ attrib_exercise.js:42
+const cav_abil = [
+    { ulevel: 7, propid: FAST, gainstr: "quick", losestr: "slow" },
+    { ulevel: 15, propid: WARNING, gainstr: "sensitive", losestr: "" },
+];
 
-// cf. attrib.c:679 [static] — rnd_attr(void): random attribute index
-// Returns random attribute index weighted by role distribution.
-// TODO: attrib.c:679 — rnd_attr(): random attribute selection
+const hea_abil = [
+    { ulevel: 1, propid: POISON_RES, gainstr: "", losestr: "" },
+    { ulevel: 15, propid: WARNING, gainstr: "sensitive", losestr: "" },
+];
 
-// cf. attrib.c:696 [static] — init_attr_role_redist(np, addition): distribute role points
-// Distributes attribute points from role-specific starting array.
-// TODO: attrib.c:696 — init_attr_role_redist(): role point distribution
+const kni_abil = [
+    { ulevel: 7, propid: FAST, gainstr: "quick", losestr: "slow" },
+];
 
-// cf. attrib.c:720 — init_attr(np): initialize starting attributes
-// Rolls and distributes starting attributes for the hero.
-// TODO: attrib.c:720 — init_attr(): attribute initialization
+const mon_abil = [
+    { ulevel: 1, propid: FAST, gainstr: "", losestr: "" },
+    { ulevel: 1, propid: SLEEP_RES, gainstr: "", losestr: "" },
+    { ulevel: 1, propid: SEE_INVIS, gainstr: "", losestr: "" },
+    { ulevel: 3, propid: POISON_RES, gainstr: "healthy", losestr: "" },
+    { ulevel: 5, propid: STEALTH, gainstr: "stealthy", losestr: "" },
+    { ulevel: 7, propid: WARNING, gainstr: "sensitive", losestr: "" },
+    { ulevel: 9, propid: SEARCHING, gainstr: "perceptive", losestr: "unaware" },
+    { ulevel: 11, propid: FIRE_RES, gainstr: "cool", losestr: "warmer" },
+    { ulevel: 13, propid: COLD_RES, gainstr: "warm", losestr: "cooler" },
+    { ulevel: 15, propid: SHOCK_RES, gainstr: "insulated", losestr: "conductive" },
+    { ulevel: 17, propid: TELEPORT_CONTROL, gainstr: "controlled", losestr: "uncontrolled" },
+];
 
-// cf. attrib.c:737 — redist_attr(void): redistribute for polymorphing
-// Adjusts attributes when hero polymorphs into different form.
-// TODO: attrib.c:737 — redist_attr(): polymorph attribute redistribution
+const pri_abil = [
+    { ulevel: 15, propid: WARNING, gainstr: "sensitive", losestr: "" },
+    { ulevel: 20, propid: FIRE_RES, gainstr: "cool", losestr: "warmer" },
+];
 
-// cf. attrib.c:761 — vary_init_attr(void): random starting variation
-// Applies minor random variation to starting attribute values.
-// TODO: attrib.c:761 — vary_init_attr(): starting attribute variation
+const ran_abil = [
+    { ulevel: 1, propid: SEARCHING, gainstr: "", losestr: "" },
+    { ulevel: 7, propid: STEALTH, gainstr: "stealthy", losestr: "" },
+    { ulevel: 15, propid: SEE_INVIS, gainstr: "", losestr: "" },
+];
 
-// cf. attrib.c:777 [static] — postadjabil(ability): post-process innate ability
-// Applies side effects after innate ability change.
-// TODO: attrib.c:777 — postadjabil(): innate ability post-processing
+const rog_abil = [
+    { ulevel: 1, propid: STEALTH, gainstr: "", losestr: "" },
+    { ulevel: 10, propid: SEARCHING, gainstr: "perceptive", losestr: "" },
+];
 
-// cf. attrib.c:786 [static] — role_abil(r): innate ability table for role
-// Returns the innate ability progression table for role r.
-// TODO: attrib.c:786 — role_abil(): role ability table
+const sam_abil = [
+    { ulevel: 1, propid: FAST, gainstr: "", losestr: "" },
+    { ulevel: 15, propid: STEALTH, gainstr: "stealthy", losestr: "" },
+];
 
-// cf. attrib.c:815 [static] — check_innate_abil(ability, frommask): innate ability check
-// Returns ability entry if ability qualifies as innate from frommask source.
-// TODO: attrib.c:815 — check_innate_abil(): innate ability verification
+const tou_abil = [
+    { ulevel: 10, propid: SEARCHING, gainstr: "perceptive", losestr: "" },
+    { ulevel: 20, propid: POISON_RES, gainstr: "hardy", losestr: "" },
+];
 
-// cf. attrib.c:861 [static] — innately(ability): innate ability source
-// Returns whether an ability was obtained innately (role/race/form).
-// TODO: attrib.c:861 — innately(): innate ability determination
+const val_abil = [
+    { ulevel: 1, propid: COLD_RES, gainstr: "", losestr: "" },
+    { ulevel: 3, propid: STEALTH, gainstr: "stealthy", losestr: "" },
+    { ulevel: 7, propid: FAST, gainstr: "quick", losestr: "slow" },
+];
 
-// cf. attrib.c:877 — is_innate(propidx): property source type
-// Returns source type of property (role innate, race innate, worn item, etc.).
-// TODO: attrib.c:877 — is_innate(): property source determination
+const wiz_abil = [
+    { ulevel: 15, propid: WARNING, gainstr: "sensitive", losestr: "" },
+    { ulevel: 17, propid: TELEPORT_CONTROL, gainstr: "controlled", losestr: "uncontrolled" },
+];
 
-// cf. attrib.c:902 — from_what(propidx): property source description
-// Returns text describing source of property (wizard mode diagnostic).
-// TODO: attrib.c:902 — from_what(): property source text
+// Race intrinsics
+const dwa_abil = [
+    { ulevel: 1, propid: INFRAVISION, gainstr: "", losestr: "" },
+];
 
-// cf. attrib.c:1003 — adjabil(oldlevel, newlevel): adjust innate abilities on level change
-// Grants or revokes innate abilities as hero changes experience level.
-// TODO: attrib.c:1003 — adjabil(): level-change innate ability adjustment
+const elf_abil = [
+    { ulevel: 1, propid: INFRAVISION, gainstr: "", losestr: "" },
+    { ulevel: 4, propid: SLEEP_RES, gainstr: "awake", losestr: "tired" },
+];
 
-// cf. attrib.c:1077 — newhp(void): HP gain for new level
-// Calculates hit point gain on level up based on role/race/CON.
-// TODO: attrib.c:1077 — newhp(): level-up HP calculation
+const gno_abil = [
+    { ulevel: 1, propid: INFRAVISION, gainstr: "", losestr: "" },
+];
 
-// cf. attrib.c:1144 — minuhpmax(altmin): minimum allowed maximum HP
-// Returns the minimum value that maximum HP can be reduced to.
-// TODO: attrib.c:1144 — minuhpmax(): minimum HP max
+const orc_abil = [
+    { ulevel: 1, propid: INFRAVISION, gainstr: "", losestr: "" },
+    { ulevel: 1, propid: POISON_RES, gainstr: "", losestr: "" },
+];
 
-// cf. attrib.c:1154 — setuhpmax(newmax, even_when_polyd): update max HP
-// Sets maximum HP; adjusts current HP proportionally if needed.
-// TODO: attrib.c:1154 — setuhpmax(): max HP adjustment
+const hum_abil = [];
 
-// cf. attrib.c:1179 — adjuhploss(loss, olduhp): recalculate pending HP loss
-// Recalculates pending HP loss after max HP reduction.
-// TODO: attrib.c:1179 — adjuhploss(): HP loss recalculation
+// --- Helper functions to access player attribute arrays ---
+
+// Ensure player has attrMax, abon, atemp, atime arrays initialized
+function ensureAttrArrays(player) {
+    if (!player.attrMax || player.attrMax.length < NUM_ATTRS) {
+        player.attrMax = player.attributes.slice();
+    }
+    if (!player.abon || player.abon.length < NUM_ATTRS) {
+        player.abon = new Array(NUM_ATTRS).fill(0);
+    }
+    if (!player.atemp || player.atemp.length < NUM_ATTRS) {
+        player.atemp = new Array(NUM_ATTRS).fill(0);
+    }
+    if (!player.atime || player.atime.length < NUM_ATTRS) {
+        player.atime = new Array(NUM_ATTRS).fill(0);
+    }
+}
+
+// C: ABASE(i)
+function ABASE(player, i) { return player.attributes[i]; }
+function setABASE(player, i, v) { player.attributes[i] = v; }
+
+// C: AMAX(i)
+function AMAX(player, i) {
+    ensureAttrArrays(player);
+    return player.attrMax[i];
+}
+function setAMAX(player, i, v) {
+    ensureAttrArrays(player);
+    player.attrMax[i] = v;
+}
+
+// C: ABON(i)
+function ABON(player, i) {
+    ensureAttrArrays(player);
+    return player.abon[i];
+}
+
+// C: ATEMP(i)
+function ATEMP(player, i) {
+    ensureAttrArrays(player);
+    return player.atemp[i];
+}
+function setATEMP(player, i, v) {
+    ensureAttrArrays(player);
+    player.atemp[i] = v;
+}
+
+// C: ATIME(i)
+function ATIME(player, i) {
+    ensureAttrArrays(player);
+    return player.atime[i];
+}
+function setATIME(player, i, v) {
+    ensureAttrArrays(player);
+    player.atime[i] = v;
+}
+
+// C: AEXE(i) - exercise accumulation
+function AEXE(player, i) {
+    if (!player.aexercise) player.aexercise = new Array(NUM_ATTRS).fill(0);
+    return player.aexercise[i] || 0;
+}
+function setAEXE(player, i, v) {
+    if (!player.aexercise) player.aexercise = new Array(NUM_ATTRS).fill(0);
+    player.aexercise[i] = v;
+}
+
+// C: ATTRMIN(i) and ATTRMAX(i) -- from race
+function ATTRMIN(player, i) {
+    const race = races[player.race];
+    return race ? race.attrmin[i] : 3;
+}
+function ATTRMAX(player, i) {
+    const race = races[player.race];
+    return race ? race.attrmax[i] : 18;
+}
+
+// Ensure uprops entry
+function ensureUProp(player, prop) {
+    if (!player.uprops) player.uprops = {};
+    if (!player.uprops[prop]) {
+        player.uprops[prop] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
+    }
+    return player.uprops[prop];
+}
+
+function getIntrinsic(player, prop) {
+    if (!player.uprops || !player.uprops[prop]) return 0;
+    return player.uprops[prop].intrinsic || 0;
+}
+
+function getExtrinsic(player, prop) {
+    if (!player.uprops || !player.uprops[prop]) return 0;
+    return player.uprops[prop].extrinsic || 0;
+}
+
+// C: Fixed_abil
+function Fixed_abil(player) {
+    return !!(getIntrinsic(player, FIXED_ABIL) || getExtrinsic(player, FIXED_ABIL));
+}
+
+// C: Upolyd
+function isUpolyd(player) {
+    return !!(player.Upolyd || (player.mtimedone && player.mtimedone > 0));
+}
+
+// C: Poison_resistance
+function hasPoisonRes(player) {
+    return !!(getIntrinsic(player, POISON_RES) || getExtrinsic(player, POISON_RES));
+}
+
+// C: u_wield_art(ART_OGRESMASHER)
+function u_wield_art(player, artid) {
+    return player.weapon && player.weapon.oartifact === artid;
+}
+
+// Stub for see_monsters — called after Warning/See_invisible changes
+function see_monsters() {
+    // Display refresh; a no-op in contexts where display isn't available
+}
+
+// Stub for encumber_msg
+function encumber_msg(_player) {
+    // Encumbrance message; handled externally in pickup.js
+}
+
+// Stub for losehp
+function losehp(player, dmg, knam, _k_format) {
+    if (!player) return;
+    if (isUpolyd(player)) {
+        player.mh = (player.mh || 0) - dmg;
+    } else {
+        player.hp -= dmg;
+    }
+}
+
+// Stub for done
+function done(_how, _player) {
+    // Death handling; in actual game this triggers the death screen
+}
+
+// Stub for shieldeff
+function shieldeff(_x, _y) {
+    // Visual shield effect at location
+}
+
+// Stub for make_confused
+function make_confused(player, duration, _something) {
+    // Apply confusion
+    if (player && duration > 0) {
+        const entry = ensureUProp(player, 13); // CONFUSION
+        entry.intrinsic = (entry.intrinsic & ~0x00FFFFFF) | (duration & 0x00FFFFFF);
+    }
+}
+
+// Stub for summon_furies
+function summon_furies(_count) {
+    // Summon furies; not yet implemented
+}
+
+// Stub for adj_erinys
+function adj_erinys(_abuse) {
+    // Adjust erinys tracking; not yet implemented
+}
+
+// Stub for retouch_equipment
+function retouch_equipment_stub(_flags) {
+    // Retouch equipment after alignment change
+}
+
+// --- Poison effect messages ---
+const poiseff = [
+    { func: You_feel, msg: "weaker" },             // A_STR
+    { func: Your, msg: "brain is on fire" },       // A_INT
+    { func: Your, msg: "judgement is impaired" },  // A_WIS
+    { func: Your, msg: "muscles won't obey you" }, // A_DEX
+    { func: You_feel, msg: "very sick" },          // A_CON
+    { func: You, msg: "break out in hives" },      // A_CHA
+];
+
+// --- Exported functions ---
 
 // cf. attrib.c:1197 — acurr(chridx): current effective attribute value
-// Returns current attribute value including temporary modifiers and bonuses.
-// TODO: attrib.c:1197 — acurr(): effective attribute value
+export function acurr(player, chridx) {
+    ensureAttrArrays(player);
+    let tmp = (player.abon[chridx] || 0) + (player.atemp[chridx] || 0) + player.attributes[chridx];
+    let result = 0;
 
-// cf. attrib.c:1242 — acurrstr(void): normalized strength value
-// Converts exceptional strength (18/xx) to standardized 3-25 range.
-// TODO: attrib.c:1242 — acurrstr(): normalized strength
+    if (chridx === A_STR) {
+        if (tmp >= STR19(25) || (player.gloves && player.gloves.otyp === GAUNTLETS_OF_POWER))
+            result = STR19(25); // 125
+        else
+            result = Math.max(tmp, 3);
+    } else if (chridx === A_CHA) {
+        if (tmp < 18) {
+            const data = player.data || (player.monsterData);
+            if (data && (data.mlet === 'n' /* S_NYMPH */))
+                result = 18;
+            // PM_AMOROUS_DEMON check omitted for now
+        }
+    } else if (chridx === A_CON) {
+        const ART_OGRESMASHER = 16;
+        if (u_wield_art(player, ART_OGRESMASHER))
+            result = 25;
+    } else if (chridx === A_INT || chridx === A_WIS) {
+        if (player.helmet && player.helmet.otyp === DUNCE_CAP)
+            result = 6;
+    }
 
-// cf. attrib.c:1265 — extremeattr(attrindx): attribute at limit?
-// Returns TRUE if attribute is at its maximum or minimum value.
-// TODO: attrib.c:1265 — extremeattr(): attribute limit check
+    if (result === 0)
+        result = (tmp >= 25) ? 25 : (tmp <= 3) ? 3 : tmp;
 
-// cf. attrib.c:1295 — adjalign(n): adjust alignment record
-// Adds n to alignment record with bounds checking; tracks abuse.
-// TODO: attrib.c:1295 — adjalign(): alignment record adjustment
+    return result;
+}
 
-// cf. attrib.c:1317 — uchangealign(newalign, reason): change alignment type
-// Changes hero's alignment to newalign; handles helm-based conversion.
-// TODO: attrib.c:1317 — uchangealign(): alignment type change
+// cf. attrib.c:1242 — acurrstr(): normalized strength value
+export function acurrstr(player) {
+    const str = acurr(player, A_STR); // 3..125
+    let result;
+
+    if (str <= STR18(0)) // <= 18
+        result = Math.max(str, 3);
+    else if (str <= STR19(21)) // <= 121
+        result = 19 + Math.floor(str / 50);
+    else
+        result = Math.min(str, 125) - 100;
+
+    return result;
+}
+
+// cf. attrib.c:116 — adjattrib(ndx, incr, msgflg): adjust an attribute
+// Returns true if change was made, false otherwise.
+// msgflg: positive => no message, zero => message, negative => conditional
+export function adjattrib(player, ndx, incr, msgflg) {
+    if (Fixed_abil(player) || !incr)
+        return false;
+
+    if ((ndx === A_INT || ndx === A_WIS) && player.helmet && player.helmet.otyp === DUNCE_CAP) {
+        if (msgflg === 0)
+            Your("cap constricts briefly, then relaxes again.");
+        return false;
+    }
+
+    ensureAttrArrays(player);
+
+    const old_acurr = acurr(player, ndx);
+    const old_abase = ABASE(player, ndx);
+    const old_amax = AMAX(player, ndx);
+
+    setABASE(player, ndx, ABASE(player, ndx) + incr);
+
+    let attrstr, abonflg;
+    if (incr > 0) {
+        if (ABASE(player, ndx) > AMAX(player, ndx)) {
+            setAMAX(player, ndx, ABASE(player, ndx));
+            if (AMAX(player, ndx) > ATTRMAX(player, ndx)) {
+                setABASE(player, ndx, ATTRMAX(player, ndx));
+                setAMAX(player, ndx, ATTRMAX(player, ndx));
+            }
+        }
+        attrstr = plusattr[ndx];
+        abonflg = (ABON(player, ndx) < 0);
+    } else {
+        if (ABASE(player, ndx) < ATTRMIN(player, ndx)) {
+            const decr = rn2(ATTRMIN(player, ndx) - ABASE(player, ndx) + 1);
+            setABASE(player, ndx, ATTRMIN(player, ndx));
+            setAMAX(player, ndx, AMAX(player, ndx) - decr);
+            if (AMAX(player, ndx) < ATTRMIN(player, ndx))
+                setAMAX(player, ndx, ATTRMIN(player, ndx));
+        }
+        attrstr = minusattr[ndx];
+        abonflg = (ABON(player, ndx) > 0);
+    }
+
+    if (acurr(player, ndx) === old_acurr) {
+        if (msgflg === 0) {
+            if (ABASE(player, ndx) === old_abase && AMAX(player, ndx) === old_amax) {
+                pline("You're %s as %s as you can get.",
+                      abonflg ? "currently" : "already", attrstr);
+            } else {
+                Your("innate %s has %s.", attrname[ndx],
+                     (incr > 0) ? "improved" : "declined");
+            }
+        }
+        return false;
+    }
+
+    if (msgflg <= 0)
+        You_feel("%s%s!", (incr > 1 || incr < -1) ? "very " : "", attrstr);
+    if (ndx === A_STR || ndx === A_CON)
+        encumber_msg(player);
+    return true;
+}
+
+// cf. attrib.c:199 — gainstr(otmp, incr, givemsg)
+export function gainstr(player, otmp, incr, givemsg) {
+    let num = incr;
+
+    if (!num) {
+        if (ABASE(player, A_STR) < 18)
+            num = (rn2(4) ? 1 : rnd(6));
+        else if (ABASE(player, A_STR) < STR18(85))
+            num = rnd(10);
+        else
+            num = 1;
+    }
+    adjattrib(player, A_STR, (otmp && otmp.cursed) ? -num : num,
+              givemsg ? -1 : 1);
+}
+
+// cf. attrib.c:218 — losestr(num, knam, k_format)
+export function losestr(player, num, knam, k_format) {
+    const uhpmin = minuhpmax(player, 1);
+    let ustr = ABASE(player, A_STR) - num;
+    const waspolyd = isUpolyd(player);
+    let dmg = 0;
+
+    if (num <= 0 || ABASE(player, A_STR) < ATTRMIN(player, A_STR)) {
+        return;
+    }
+
+    while (ustr < ATTRMIN(player, A_STR)) {
+        ++ustr;
+        --num;
+        const amt = rn1(4, 3); // 3..6
+        dmg += amt;
+    }
+    if (dmg) {
+        if (!knam || knam === '') {
+            knam = "terminal frailty";
+            k_format = 1; // KILLED_BY
+        }
+        losehp(player, dmg, knam, k_format);
+
+        if (isUpolyd(player)) {
+            setuhpmax(player, Math.max((player.mhmax || 1) - dmg, 1), false);
+        } else if (!waspolyd) {
+            if ((player.hpmax || 1) > uhpmin)
+                setuhpmax(player, Math.max((player.hpmax || 1) - dmg, uhpmin), false);
+        }
+    }
+
+    if (num > 0 && (isUpolyd(player) || !waspolyd))
+        adjattrib(player, A_STR, -num, 1);
+}
+
+// cf. attrib.c:271 — poison_strdmg(strloss, dmg, knam, k_format)
+export function poison_strdmg(player, strloss, dmg, knam, k_format) {
+    losestr(player, strloss, knam, k_format);
+    losehp(player, dmg, knam, k_format);
+}
+
+// cf. attrib.c:291 — poisontell(typ, exclaim)
+export function poisontell(player, typ, exclaim) {
+    const entry = poiseff[typ];
+    let msg = entry.msg;
+
+    if (typ === A_STR && acurr(player, A_STR) === STR19(25))
+        msg = "innately weaker";
+    else if (typ === A_CON && acurr(player, A_CON) === 25)
+        msg = "sick inside";
+
+    entry.func("%s%s", msg, exclaim ? '!' : '.');
+}
+
+// cf. attrib.c:314 — poisoned(reason, typ, pkiller, fatal, thrown_weapon)
+export function poisoned(player, reason, typ, pkiller, fatal, thrown_weapon) {
+    let kprefix = 0; // KILLED_BY_AN
+    const blast = (reason === "blast");
+
+    if (!blast && !strstri(reason, "poison")) {
+        const plural = reason[reason.length - 1] === 's';
+        pline("%s%s %s poisoned!",
+              (reason[0] >= 'A' && reason[0] <= 'Z') ? "" : "The ",
+              reason,
+              plural ? "were" : "was");
+    }
+    if (hasPoisonRes(player)) {
+        if (blast)
+            shieldeff(player.x, player.y);
+        pline_The("poison doesn't seem to affect you.");
+        return;
+    }
+
+    // suppress killer prefix if it already has one
+    if (pkiller && (pkiller.toLowerCase().startsWith("the ") ||
+                    pkiller.toLowerCase().startsWith("an ") ||
+                    pkiller.toLowerCase().startsWith("a "))) {
+        kprefix = 1; // KILLED_BY
+    }
+
+    const i = !fatal ? 1 : rn2(fatal + (thrown_weapon ? 20 : 0));
+    if (i === 0 && typ !== A_CHA) {
+        // sometimes survivable instant kill
+        const loss0 = 6 + d(4, 6); // 10..34
+        if (player.hp <= loss0) {
+            player.hp = -1;
+            pline_The("poison was deadly...");
+        } else {
+            const olduhp = player.hp;
+            const newuhpmax = (player.hpmax || 1) - Math.floor(loss0 / 2);
+            setuhpmax(player, Math.max(newuhpmax, minuhpmax(player, 3)), true);
+            const loss1 = adjuhploss(player, loss0, olduhp);
+
+            losehp(player, loss1, pkiller, kprefix);
+            if (adjattrib(player, A_CON, (typ !== A_CON) ? -1 : -3, true))
+                poisontell(player, A_CON, true);
+            if (typ !== A_CON && adjattrib(player, typ, -3, 1))
+                poisontell(player, typ, true);
+        }
+    } else if (i > 5) {
+        const cloud = (reason === "gas cloud");
+        let loss = thrown_weapon ? rnd(6) : rn1(10, 6);
+        if ((blast || cloud) && player.halfGasDamage)
+            loss = Math.floor((loss + 1) / 2);
+        losehp(player, loss, pkiller, kprefix);
+    } else {
+        const loss = (thrown_weapon || !fatal) ? 1 : d(2, 2);
+        if (adjattrib(player, typ, -loss, 1))
+            poisontell(player, typ, true);
+    }
+
+    if (player.hp < 1) {
+        player.deathCause = pkiller || "poison";
+        done(strstri(pkiller || "", "poison") ? 0 /* DIED */ : 2 /* POISONING */, player);
+    }
+    encumber_msg(player);
+}
+
+// cf. attrib.c:408 — change_luck(n)
+export function change_luck(player, n) {
+    player.luck = (player.luck || 0) + n;
+    if (player.luck < 0 && player.luck < LUCKMIN)
+        player.luck = LUCKMIN;
+    if (player.luck > 0 && player.luck > LUCKMAX)
+        player.luck = LUCKMAX;
+}
+
+// cf. attrib.c:420 — stone_luck(include_uncursed)
+export function stone_luck(player, include_uncursed) {
+    let bonchance = 0;
+    const inv = player.inventory || [];
+
+    for (const otmp of inv) {
+        if (otmp && confers_luck(otmp)) {
+            if (otmp.cursed)
+                bonchance -= (otmp.quan || 1);
+            else if (otmp.blessed || include_uncursed)
+                bonchance += (otmp.quan || 1);
+        }
+    }
+
+    return sgn(bonchance);
+}
+
+// cf. attrib.c:438 — set_moreluck()
+export function set_moreluck(player) {
+    const luckbon = stone_luck(player, true);
+    const hasLuckstone = (player.inventory || []).some(o => o && o.otyp === LUCKSTONE);
+
+    if (!luckbon && !hasLuckstone)
+        player.moreluck = 0;
+    else if (luckbon >= 0)
+        player.moreluck = LUCKADD;
+    else
+        player.moreluck = -LUCKADD;
+}
+
+// cf. attrib.c:452 — restore_attrib()
+export function restore_attrib(player) {
+    ensureAttrArrays(player);
+    let botl = false;
+
+    for (let i = 0; i < NUM_ATTRS; i++) {
+        const equilibrium = ((i === A_STR && (player.uhs || 0) >= 3 /* WEAK */)
+                            || (i === A_DEX && player.woundedLegs)) ? -1 : 0;
+        if (ATEMP(player, i) !== equilibrium && ATIME(player, i) !== 0) {
+            setATIME(player, i, ATIME(player, i) - 1);
+            if (ATIME(player, i) === 0) {
+                setATEMP(player, i, ATEMP(player, i) + (ATEMP(player, i) > 0 ? -1 : 1));
+                botl = true;
+                if (ATEMP(player, i))
+                    setATIME(player, i, Math.floor(100 / acurr(player, A_CON)));
+            }
+        }
+    }
+    if (botl)
+        encumber_msg(player);
+}
+
+// cf. attrib.c:486 — exercise(i, inc_or_dec)
+// Note: The full exercise() is in attrib_exercise.js for RNG parity.
+// This version is the faithful C port for use when full attribute mutation is needed.
+export function exercise(player, i, inc_or_dec) {
+    if (i === A_INT || i === A_CHA) return;
+    if (isUpolyd(player) && i !== A_WIS) return;
+
+    if (Math.abs(AEXE(player, i)) < AVAL) {
+        if (inc_or_dec) {
+            setAEXE(player, i, AEXE(player, i) + ((rn2(19) > acurr(player, i)) ? 1 : 0));
+        } else {
+            setAEXE(player, i, AEXE(player, i) - rn2(2));
+        }
+    }
+    if (i === A_STR || i === A_CON)
+        encumber_msg(player);
+}
+
+// cf. attrib.c:518 — exerper() [static]
+function exerper(player) {
+    const moves = player.turns || 0;
+
+    if (!(moves % 10)) {
+        // Hunger checks
+        const uhunger = player.nutrition || player.hunger || 0;
+        const hs = (uhunger > 1000) ? 0 /* SATIATED */
+                 : (uhunger > 150) ? 1 /* NOT_HUNGRY */
+                 : (uhunger > 50) ? 2 /* HUNGRY */
+                 : (uhunger > 0) ? 3 /* WEAK */
+                 : 4; /* FAINTING */
+
+        switch (hs) {
+        case 0: // SATIATED
+            exercise(player, A_DEX, false);
+            if (player.roleIndex === PM_MONK)
+                exercise(player, A_WIS, false);
+            break;
+        case 1: // NOT_HUNGRY
+            exercise(player, A_CON, true);
+            break;
+        case 3: // WEAK
+            exercise(player, A_STR, false);
+            if (player.roleIndex === PM_MONK)
+                exercise(player, A_WIS, true);
+            break;
+        case 4: // FAINTING
+            exercise(player, A_CON, false);
+            break;
+        }
+
+        // Encumbrance checks
+        const cap = player.near_capacity ? player.near_capacity() : 0;
+        switch (cap) {
+        case 2: // MOD_ENCUMBER
+            exercise(player, A_STR, true);
+            break;
+        case 3: // HVY_ENCUMBER
+            exercise(player, A_STR, true);
+            exercise(player, A_DEX, false);
+            break;
+        case 4: // EXT_ENCUMBER
+            exercise(player, A_DEX, false);
+            exercise(player, A_CON, false);
+            break;
+        }
+    }
+
+    // Status checks
+    if (!(moves % 5)) {
+        // Clairvoyant check
+        const clairIntr = getIntrinsic(player, 51 /* CLAIRVOYANT */);
+        const clairBlocked = player.uprops && player.uprops[51] && player.uprops[51].blocked;
+        if ((clairIntr & (INTRINSIC | TIMEOUT)) && !clairBlocked)
+            exercise(player, A_WIS, true);
+        // Regeneration
+        if (getIntrinsic(player, 48 /* REGENERATION */))
+            exercise(player, A_STR, true);
+
+        // Sick or Vomiting
+        const sick = getIntrinsic(player, 7 /* SICK */);
+        const vomiting = getIntrinsic(player, 12 /* VOMITING */);
+        if (sick || vomiting)
+            exercise(player, A_CON, false);
+        // Confusion or Hallucination
+        const confused = getIntrinsic(player, 13 /* CONFUSION */);
+        const hallu = getIntrinsic(player, 16 /* HALLUC */);
+        if (confused || hallu)
+            exercise(player, A_WIS, false);
+        // Wounded legs / Fumbling / Stun
+        const wlegs = player.woundedLegs;
+        const fumbling = getIntrinsic(player, 37 /* FUMBLING */);
+        const stun = getIntrinsic(player, 15 /* STUNNED */);
+        if ((wlegs && !player.usteed) || fumbling || stun)
+            exercise(player, A_DEX, false);
+    }
+}
+
+// cf. attrib.c:595 — exerchk()
+export function exerchk(player) {
+    const moves = player.turns || 0;
+
+    // Check periodic accumulations
+    exerper(player);
+
+    // Are we ready for a test?
+    if (!player.nextAttrCheck) player.nextAttrCheck = 600;
+    if (moves >= player.nextAttrCheck && !player.multi) {
+        for (let i = 0; i < NUM_ATTRS; ++i) {
+            let ax = AEXE(player, i);
+            if (!ax) continue;
+
+            const mod_val = sgn(ax);
+            let lolim = ATTRMIN(player, i);
+            let hilim = ATTRMAX(player, i);
+            if (hilim > 18) hilim = 18;
+
+            if ((ax < 0) ? (ABASE(player, i) <= lolim) : (ABASE(player, i) >= hilim)) {
+                // nextattrib: decay exercise
+                setAEXE(player, i, Math.floor(Math.abs(ax) / 2) * mod_val);
+                continue;
+            }
+            if (isUpolyd(player) && i !== A_WIS) {
+                setAEXE(player, i, Math.floor(Math.abs(ax) / 2) * mod_val);
+                continue;
+            }
+
+            if (rn2(AVAL) > ((i !== A_WIS) ? Math.floor(Math.abs(ax) * 2 / 3) : Math.abs(ax))) {
+                setAEXE(player, i, Math.floor(Math.abs(ax) / 2) * mod_val);
+                continue;
+            }
+
+            if (adjattrib(player, i, mod_val, -1)) {
+                setAEXE(player, i, 0);
+                ax = 0;
+                You("%s %s.",
+                    (mod_val > 0) ? "must have been" : "haven't been",
+                    exertext[i][(mod_val > 0) ? 0 : 1]);
+            }
+            setAEXE(player, i, Math.floor(Math.abs(ax) / 2) * mod_val);
+        }
+        player.nextAttrCheck += rn1(200, 800);
+    }
+}
+
+// cf. attrib.c:679 — rnd_attr() [static]
+function rnd_attr(player) {
+    const role = roles[player.roleIndex];
+    if (!role) return NUM_ATTRS;
+    // Get attribute distribution - uses ROLE_ATTRDIST if available, else default
+    const attrdist = role.attrdist || [17, 17, 17, 17, 16, 16];
+    let x = rn2(100);
+
+    for (let i = 0; i < NUM_ATTRS; ++i) {
+        if ((x -= attrdist[i]) < 0)
+            return i;
+    }
+    return NUM_ATTRS;
+}
+
+// cf. attrib.c:696 — init_attr_role_redist(np, addition) [static]
+function init_attr_role_redist(player, np, addition) {
+    let tryct = 0;
+    const adj = addition ? 1 : -1;
+
+    while ((addition ? (np > 0) : (np < 0)) && tryct < 100) {
+        const i = rnd_attr(player);
+
+        if (i >= NUM_ATTRS
+            || (addition ? (ABASE(player, i) >= ATTRMAX(player, i))
+                         : (ABASE(player, i) <= ATTRMIN(player, i)))) {
+            tryct++;
+            continue;
+        }
+        tryct = 0;
+        setABASE(player, i, ABASE(player, i) + adj);
+        setAMAX(player, i, AMAX(player, i) + adj);
+        np -= adj;
+    }
+    return np;
+}
+
+// cf. attrib.c:720 — init_attr(np)
+export function init_attr(player, np) {
+    ensureAttrArrays(player);
+    const role = roles[player.roleIndex];
+    if (!role) return;
+
+    const attrbase = [role.str, role.int, role.wis, role.dex, role.con, role.cha];
+    for (let i = 0; i < NUM_ATTRS; i++) {
+        setABASE(player, i, attrbase[i]);
+        setAMAX(player, i, attrbase[i]);
+        setATEMP(player, i, 0);
+        setATIME(player, i, 0);
+        np -= attrbase[i];
+    }
+
+    np = init_attr_role_redist(player, np, true);
+    np = init_attr_role_redist(player, np, false);
+}
+
+// cf. attrib.c:737 — redist_attr()
+export function redist_attr(player) {
+    ensureAttrArrays(player);
+
+    for (let i = 0; i < NUM_ATTRS; i++) {
+        if (i === A_INT || i === A_WIS) continue;
+        const tmp = AMAX(player, i);
+        let newmax = tmp + (rn2(5) - 2);
+        if (newmax > ATTRMAX(player, i)) newmax = ATTRMAX(player, i);
+        if (newmax < ATTRMIN(player, i)) newmax = ATTRMIN(player, i);
+        setAMAX(player, i, newmax);
+        let newbase = Math.floor(ABASE(player, i) * newmax / tmp);
+        if (newbase < ATTRMIN(player, i)) newbase = ATTRMIN(player, i);
+        setABASE(player, i, newbase);
+    }
+}
+
+// cf. attrib.c:761 — vary_init_attr()
+export function vary_init_attr(player) {
+    for (let i = 0; i < NUM_ATTRS; i++) {
+        if (!rn2(20)) {
+            const xd = rn2(7) - 2;
+            adjattrib(player, i, xd, true);
+            if (ABASE(player, i) < AMAX(player, i))
+                setAMAX(player, i, ABASE(player, i));
+        }
+    }
+}
+
+// cf. attrib.c:777 — postadjabil(propid) [static]
+function postadjabil(propid) {
+    if (propid === WARNING || propid === SEE_INVIS)
+        see_monsters();
+}
+
+// cf. attrib.c:786 — role_abil(r) [static]
+function role_abil(r) {
+    const roleabils = {
+        [PM_ARCHEOLOGIST]: arc_abil,
+        [PM_BARBARIAN]: bar_abil,
+        [PM_CAVEMAN]: cav_abil,
+        [PM_HEALER]: hea_abil,
+        [PM_KNIGHT]: kni_abil,
+        [PM_MONK]: mon_abil,
+        [PM_PRIEST]: pri_abil,
+        [PM_RANGER]: ran_abil,
+        [PM_ROGUE]: rog_abil,
+        [PM_SAMURAI]: sam_abil,
+        [PM_TOURIST]: tou_abil,
+        [PM_VALKYRIE]: val_abil,
+        [PM_WIZARD]: wiz_abil,
+    };
+    return roleabils[r] || null;
+}
+
+// cf. attrib.c:815 — check_innate_abil(propid, frommask) [static]
+function check_innate_abil(player, propid, frommask) {
+    let abil = null;
+
+    if (frommask === FROMEXPER) {
+        abil = role_abil(player.roleIndex);
+    } else if (frommask === FROMRACE) {
+        switch (player.race) {
+        case RACE_DWARF: abil = dwa_abil; break;
+        case RACE_ELF:   abil = elf_abil; break;
+        case RACE_GNOME: abil = gno_abil; break;
+        case RACE_ORC:   abil = orc_abil; break;
+        case RACE_HUMAN: abil = hum_abil; break;
+        default: break;
+        }
+    }
+
+    if (!abil) return null;
+    const ulevel = player.level || 1;
+    for (const entry of abil) {
+        if (entry.propid === propid && ulevel >= entry.ulevel)
+            return entry;
+    }
+    return null;
+}
+
+// cf. attrib.c:861 — innately(player, propid) [static]
+function innately(player, propid) {
+    let iptr;
+
+    if ((iptr = check_innate_abil(player, propid, FROMEXPER)) !== null)
+        return (iptr.ulevel === 1) ? FROM_ROLE_REASON : FROM_EXP;
+    if ((iptr = check_innate_abil(player, propid, FROMRACE)) !== null)
+        return FROM_RACE_REASON;
+    if ((getIntrinsic(player, propid) & FROMOUTSIDE) !== 0)
+        return FROM_INTR;
+    if ((getIntrinsic(player, propid) & FROMFORM) !== 0)
+        return FROM_FORM_REASON;
+    return FROM_NONE;
+}
+
+// cf. attrib.c:877 — is_innate(propidx)
+export function is_innate(player, propidx) {
+    let innateness;
+
+    if (propidx === DRAIN_RES && player.ulycn !== undefined && player.ulycn >= 0)
+        return FROM_LYCN;
+    if (propidx === FAST && player.veryFast)
+        return FROM_NONE;
+    if ((innateness = innately(player, propidx)) !== FROM_NONE)
+        return innateness;
+    if (propidx === 47 /* JUMPING */ && player.roleIndex === PM_KNIGHT
+        && !getExtrinsic(player, propidx))
+        return FROM_ROLE_REASON;
+    return FROM_NONE;
+}
+
+// cf. attrib.c:902 — from_what(propidx)
+export function from_what(player, propidx) {
+    // Simplified: only provides basic innate source info
+    if (!player.wizard) return "";
+
+    if (propidx >= 0) {
+        const innateness = is_innate(player, propidx);
+
+        if (innateness === FROM_ROLE_REASON || innateness === FROM_RACE_REASON)
+            return " innately";
+        else if (innateness === FROM_INTR)
+            return " intrinsically";
+        else if (innateness === FROM_EXP)
+            return " because of your experience";
+        else if (innateness === FROM_LYCN)
+            return " due to your lycanthropy";
+        else if (innateness === FROM_FORM_REASON)
+            return " from your creature form";
+    }
+    return "";
+}
+
+// cf. attrib.c:1003 — adjabil(oldlevel, newlevel)
+export function adjabil(player, oldlevel, newlevel) {
+    let abil = role_abil(player.roleIndex);
+    let rabil = null;
+
+    switch (player.race) {
+    case RACE_ELF: rabil = elf_abil; break;
+    case RACE_ORC: rabil = orc_abil; break;
+    case RACE_HUMAN:
+    case RACE_DWARF:
+    case RACE_GNOME:
+    default: rabil = null; break;
+    }
+
+    let mask = FROMEXPER;
+    let abilIdx = 0;
+    let rabilIdx = 0;
+    let currentAbil = abil;
+    let currentIdx = 0;
+    let usingRabil = false;
+
+    // Flatten the iteration to match C's while(abil || rabil) pattern
+    while (true) {
+        // If we've exhausted the current role ability list
+        if (!currentAbil || currentIdx >= currentAbil.length) {
+            if (!usingRabil && rabil && rabil.length > 0) {
+                currentAbil = rabil;
+                currentIdx = 0;
+                usingRabil = true;
+                mask = FROMRACE;
+            } else {
+                break;
+            }
+        }
+        if (currentIdx >= currentAbil.length) break;
+
+        const entry = currentAbil[currentIdx];
+        const propid = entry.propid;
+        const propEntry = ensureUProp(player, propid);
+        const prevabil = propEntry.intrinsic;
+
+        if (oldlevel < entry.ulevel && newlevel >= entry.ulevel) {
+            // Gained this ability
+            if (entry.ulevel === 1)
+                propEntry.intrinsic |= (mask | FROMOUTSIDE);
+            else
+                propEntry.intrinsic |= mask;
+
+            if (!(propEntry.intrinsic & INTRINSIC & ~mask)) {
+                if (entry.gainstr)
+                    You_feel("%s!", entry.gainstr);
+            }
+        } else if (oldlevel >= entry.ulevel && newlevel < entry.ulevel) {
+            // Lost this ability
+            propEntry.intrinsic &= ~mask;
+            if (!(propEntry.intrinsic & INTRINSIC)) {
+                if (entry.losestr)
+                    You_feel("%s!", entry.losestr);
+                else if (entry.gainstr)
+                    You_feel("less %s!", entry.gainstr);
+            }
+        }
+
+        if (prevabil !== propEntry.intrinsic)
+            postadjabil(propid);
+
+        currentIdx++;
+    }
+
+    if (oldlevel > 0) {
+        if (newlevel > oldlevel)
+            add_weapon_skill(newlevel - oldlevel);
+        else
+            lose_weapon_skill(oldlevel - newlevel);
+    }
+}
+
+// cf. attrib.c:1077 — newhp()
+// Already ported in exper.js as newhp(). Re-export here for completeness.
+export function newhp(player) {
+    const role = roles[player.roleIndex];
+    const race = races[player.race];
+    if (!role || !race) return 1;
+    const roleHpadv = role.hpadv || {infix:10, inrnd:0, lofix:0, lornd:8, hifix:1, hirnd:0};
+    const raceHpadv = race.hpadv || {infix:2, inrnd:0, lofix:0, lornd:2, hifix:1, hirnd:0};
+    let hp;
+
+    if ((player.level || 0) === 0) {
+        hp = roleHpadv.infix + raceHpadv.infix;
+        if (roleHpadv.inrnd > 0)
+            hp += rnd(roleHpadv.inrnd);
+        if (raceHpadv.inrnd > 0)
+            hp += rnd(raceHpadv.inrnd);
+
+        if ((player.turns || 0) === 0) {
+            // Initialize alignment
+            // Already done in u_init; included here for C parity
+        }
+    } else {
+        if (player.level < (role.xlev || 14)) {
+            hp = roleHpadv.lofix + raceHpadv.lofix;
+            if (roleHpadv.lornd > 0) hp += rnd(roleHpadv.lornd);
+            if (raceHpadv.lornd > 0) hp += rnd(raceHpadv.lornd);
+        } else {
+            hp = roleHpadv.hifix + raceHpadv.hifix;
+            if (roleHpadv.hirnd > 0) hp += rnd(roleHpadv.hirnd);
+            if (raceHpadv.hirnd > 0) hp += rnd(raceHpadv.hirnd);
+        }
+        const con = acurr(player, A_CON);
+        let conplus;
+        if (con <= 3) conplus = -2;
+        else if (con <= 6) conplus = -1;
+        else if (con <= 14) conplus = 0;
+        else if (con <= 16) conplus = 1;
+        else if (con === 17) conplus = 2;
+        else if (con === 18) conplus = 3;
+        else conplus = 4;
+        hp += conplus;
+    }
+    if (hp <= 0) hp = 1;
+
+    if ((player.level || 0) < MAXULEV) {
+        if (!player.uhpinc) player.uhpinc = [];
+        player.uhpinc[player.level || 0] = hp;
+    } else {
+        let lim = 5 - Math.floor((player.hpmax || 0) / 300);
+        lim = Math.max(lim, 1);
+        if (hp > lim) hp = lim;
+    }
+    return hp;
+}
+
+// cf. attrib.c:1144 — minuhpmax(altmin)
+export function minuhpmax(player, altmin) {
+    if (altmin < 1) altmin = 1;
+    return Math.max(player.level || 1, altmin);
+}
+
+// cf. attrib.c:1154 — setuhpmax(newmax, even_when_polyd)
+export function setuhpmax(player, newmax, even_when_polyd) {
+    if (!isUpolyd(player) || even_when_polyd) {
+        if (newmax !== (player.hpmax || 0)) {
+            player.hpmax = newmax;
+            if (player.hpmax > (player.uhppeak || 0))
+                player.uhppeak = player.hpmax;
+        }
+        if (player.hp > player.hpmax)
+            player.hp = player.hpmax;
+    } else {
+        // Upolyd
+        if (newmax !== (player.mhmax || 0)) {
+            player.mhmax = newmax;
+        }
+        if ((player.mh || 0) > player.mhmax)
+            player.mh = player.mhmax;
+    }
+}
+
+// cf. attrib.c:1179 — adjuhploss(loss, olduhp)
+export function adjuhploss(player, loss, olduhp) {
+    if (!isUpolyd(player)) {
+        if (player.hp < olduhp)
+            loss -= (olduhp - player.hp);
+    } else {
+        if ((player.mh || 0) < olduhp)
+            loss -= (olduhp - (player.mh || 0));
+    }
+    return Math.max(loss, 1);
+}
+
+// cf. attrib.c:1265 — extremeattr(attrindx)
+export function extremeattr(player, attrindx) {
+    let lolimit = 3, hilimit = 25;
+    const curval = acurr(player, attrindx);
+
+    if (attrindx === A_STR) {
+        hilimit = STR19(25); // 125
+        if (player.gloves && player.gloves.otyp === GAUNTLETS_OF_POWER)
+            lolimit = hilimit;
+    } else if (attrindx === A_CON) {
+        const ART_OGRESMASHER = 16;
+        if (u_wield_art(player, ART_OGRESMASHER))
+            lolimit = hilimit;
+    }
+    if (attrindx === A_INT || attrindx === A_WIS) {
+        if (player.helmet && player.helmet.otyp === DUNCE_CAP)
+            hilimit = lolimit = 6;
+    }
+
+    return (curval === lolimit || curval === hilimit);
+}
+
+// cf. attrib.c:1295 — adjalign(n)
+export function adjalign(player, n) {
+    let newalign = (player.alignmentRecord || 0) + n;
+
+    if (n < 0) {
+        const newabuse = (player.alignmentAbuse || 0) - n;
+        if (newalign < (player.alignmentRecord || 0))
+            player.alignmentRecord = newalign;
+        if (newabuse > (player.alignmentAbuse || 0)) {
+            player.alignmentAbuse = newabuse;
+            adj_erinys(newabuse);
+        }
+    } else if (newalign > (player.alignmentRecord || 0)) {
+        player.alignmentRecord = newalign;
+        if (player.alignmentRecord > ALIGNLIM)
+            player.alignmentRecord = ALIGNLIM;
+    }
+}
+
+// cf. attrib.c:1317 — uchangealign(newalign, reason)
+export function uchangealign(player, newalign, reason) {
+    const oldalign = player.alignment;
+
+    player.ublessed = 0;
+    if (reason === A_CG_CONVERT) {
+        // Conversion via altar
+        livelog_printf(0, "permanently converted to %s",
+                       newalign === -1 ? "chaotic" : newalign === 0 ? "neutral" : "lawful");
+        player.alignmentBase = newalign;
+        if (!player.helmet || player.helmet.otyp !== HELM_OF_OPPOSITE_ALIGNMENT)
+            player.alignment = player.alignmentBase;
+        You("have a %ssense of a new direction.",
+            (player.alignment !== oldalign) ? "sudden " : "");
+    } else {
+        player.alignment = newalign;
+        if (reason === A_CG_HELM_ON) {
+            adjalign(player, -7);
+            const hallu = getIntrinsic(player, 16 /* HALLUC */);
+            Your("mind oscillates %s.", hallu ? "wildly" : "briefly");
+            make_confused(player, rn1(2, 3), false);
+            // summon_furies check simplified
+            livelog_printf(0, "used a helm to turn %s",
+                           newalign === -1 ? "chaotic" : newalign === 0 ? "neutral" : "lawful");
+        } else if (reason === A_CG_HELM_OFF) {
+            const hallu = getIntrinsic(player, 16 /* HALLUC */);
+            Your("mind is %s.", hallu
+                                    ? "much of a muchness"
+                                    : "back in sync with your body");
+        }
+    }
+    if (player.alignment !== oldalign) {
+        player.alignmentRecord = 0;
+        retouch_equipment_stub(0);
+    }
+}
+
+// Export utility functions for use by other modules
+export { acurr as ACURR };
+export { ensureAttrArrays };
+export { STR18, STR19 };
+export { AVAL, LUCKMIN, LUCKMAX, LUCKADD };
+export { FROM_NONE, FROM_ROLE_REASON, FROM_RACE_REASON, FROM_INTR, FROM_EXP, FROM_FORM_REASON, FROM_LYCN };
+export { attrname, plusattr, minusattr };
