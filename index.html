@@ -344,6 +344,8 @@
             flex-shrink: 0;
             /* Pre-size to prevent layout shift when game loads */
             /* Terminal is 80 cols × 24 rows at 16px font, 1.125 line-height, 8px padding */
+            /* font-family must match terminal so ch unit is computed correctly */
+            font-family: var(--font-mono);
             min-width: calc(80ch + 16px);  /* 80 chars + padding */
             min-height: calc(24 * var(--game-font-size) * 1.125 + 16px);  /* 24 rows × line-height + padding */
             max-width: 100%;
