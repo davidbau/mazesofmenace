@@ -93,6 +93,13 @@
             width: 100%;
         }
 
+        #nav-spacer {
+            visibility: hidden;
+            pointer-events: none;
+            flex-shrink: 0;
+            width: 100%;
+        }
+
         /* ============================================================
            Navigation
            ============================================================ */
@@ -816,6 +823,9 @@
                 </div>
             </aside>
         </main>
+        <!-- Phantom spacer that mirrors #nav height so body centering aligns
+             the game (not the nav+game block) with the viewport midpoint. -->
+        <div id="nav-spacer" aria-hidden="true"></div>
     </div>
 
     <!-- Documentation iframe overlay (hidden by default) -->
@@ -1046,6 +1056,21 @@
             } catch(e) {}
             this.blur();
         });
+    })();
+
+    /* ============================================================
+       Nav Spacer — keeps game vertically centered in viewport
+       A phantom div at the bottom of #page mirrors #nav height so
+       body's align-items:center aligns the game, not the nav+game.
+       ============================================================ */
+    (function() {
+        var navEl  = document.getElementById('nav');
+        var spacer = document.getElementById('nav-spacer');
+        if (!navEl || !spacer) return;
+        function syncSpacer() { spacer.style.height = navEl.offsetHeight + 'px'; }
+        syncSpacer();
+        if (window.ResizeObserver) new ResizeObserver(syncSpacer).observe(navEl);
+        window.addEventListener('resize', syncSpacer);
     })();
 
     /* ============================================================
