@@ -1550,50 +1550,35 @@
             docsFrame.src = src;
 
             if (animate) {
-                // Phase 1: freeze page at its current natural position, scale 1
-                var naturalRect = page.getBoundingClientRect();
+                // Capture the game terminal's rect BEFORE any layout changes.
+                // We use #game (not #page) because #page is width:100% in normal
+                // flow but width:fit-content in docs-mode — different left edges.
+                var gameEl = document.getElementById('game');
+                var fromRect = (gameEl || page).getBoundingClientRect();
+
+                // Apply docs-mode + minimap position instantly (no transition yet).
+                // mmRestore() needs docs-mode active for correct page.scrollWidth.
                 document.body.classList.add('docs-fixed');
-                page.style.transition      = 'none';
-                page.style.left            = naturalRect.left + 'px';
-                page.style.top             = naturalRect.top  + 'px';
-                page.style.right           = 'auto';
-                page.style.bottom          = 'auto';
-                page.style.transformOrigin = 'top left';
-                page.style.transform       = 'scale(1)';
-                page.offsetHeight;          // commit with transition:none
+                document.body.classList.add('docs-mode');
+                var target = mmRestore();
+                mmApply(target, true);   // sets left/top/scale with transition:none
 
-                // Phase 2: animate position + scale together via translate()+scale()
-                // so both move simultaneously through the single CSS transition.
-                // left/top stay at naturalRect; only transform changes (no jump).
-                // After transition ends, swap to explicit left/top for drag support.
-                requestAnimationFrame(function() {
-                    requestAnimationFrame(function() {
-                        document.body.classList.add('docs-mode');
-                        page.offsetHeight;    // commit docs-mode (width:fit-content)
+                // FLIP invert: translate+scale so the element visually appears
+                // to still be at fromRect (the game's natural position).
+                var nw = page.scrollWidth;
+                var dx = fromRect.left - target.left;
+                var dy = fromRect.top  - target.top;
+                var si = nw > 0 ? fromRect.width / nw : 1;
 
-                        var target = mmRestore();  // correct scrollWidth now available
-                        var dx = target.left - naturalRect.left;
-                        var dy = target.top  - naturalRect.top;
+                page.style.transition = 'none';
+                page.style.transform  =
+                    'translate(' + dx + 'px,' + dy + 'px) scale(' + si + ')';
+                page.offsetHeight;   // commit FLIP invert with no transition
 
-                        page.style.transition = '';  // re-enable CSS transition
-                        page.style.transform =
-                            'translate(' + dx + 'px,' + dy + 'px) scale(' + target.scale + ')';
-
-                        function onEnd() {
-                            page.removeEventListener('transitionend', onEnd);
-                            clearTimeout(fallback);
-                            // Switch from translate+scale to explicit left/top+scale
-                            page.style.transition = 'none';
-                            page.style.left  = target.left + 'px';
-                            page.style.top   = target.top  + 'px';
-                            page.style.transform = 'scale(' + target.scale + ')';
-                            page.offsetHeight;
-                            page.style.transition = '';
-                        }
-                        var fallback = setTimeout(onEnd, 500);
-                        page.addEventListener('transitionend', onEnd);
-                    });
-                });
+                // Remove invert — CSS transition animates from fromRect to target.
+                // No cleanup needed: final state is scale(target.scale) at left/top.
+                page.style.transition = '';
+                page.style.transform  = 'scale(' + target.scale + ')';
             } else {
                 document.body.classList.add('docs-fixed');
                 document.body.classList.add('docs-mode');
