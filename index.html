@@ -158,6 +158,8 @@
             transition: all var(--transition-fast);
             font-family: var(--font-serif);
             will-change: transform, background-color, color;
+            user-select: none;
+            -webkit-user-select: none;
         }
 
         /* Game glyphs and key labels stay in the game font */
@@ -220,6 +222,8 @@
             width: 100%;
             transition: background var(--transition-fast), color var(--transition-fast);
             filter: none;
+            user-select: none;
+            -webkit-user-select: none;
         }
 
         #hamburger-menu .hm-item:first-child {
@@ -593,6 +597,29 @@
         }
 
         /* ============================================================
+           Fullscreen Mode
+           Game terminal fills the screen; all chrome hidden
+           ============================================================ */
+        body.fullscreen-mode {
+            background: #000;
+            overflow: hidden;
+        }
+
+        body.fullscreen-mode #nav,
+        body.fullscreen-mode #nav-spacer,
+        body.fullscreen-mode #controls,
+        body.fullscreen-mode .side-panel {
+            display: none;
+        }
+
+        body.fullscreen-mode #game {
+            padding: 0;
+            border: none;
+            min-width: 0;
+            min-height: 0;
+        }
+
+        /* ============================================================
            Responsive Design - Tablet & Below (< 1100px)
            Stack panels vertically, hide panel toggle, adjust controls
            ============================================================ */
@@ -771,6 +798,7 @@
                 <button class="hm-item" id="hm-del-bones"><span class="hm-check"></span>Delete bones</button>
                 <button class="hm-item" id="hm-reset-opts"><span class="hm-check"></span>Reset options</button>
                 <div class="hm-divider"></div>
+                <button class="hm-item" id="hm-fullscreen"><span class="hm-check"></span>Fullscreen</button>
                 <button class="hm-item" id="hm-darkmode"><span class="hm-check"></span>Dark mode</button>
                 <button class="hm-item" id="hm-keyref"><span class="hm-check"></span>Control help</button>
             </div>
@@ -1034,7 +1062,9 @@
 
         applyFontSize(savedFontSize);
 
-        // Expose for hamburger menu
+        // Expose for hamburger menu and fullscreen
+        window._applyFontSize = applyFontSize;
+
         // Menu toggle: flip between explicit 'light' and 'dark' (ignores 'system' once clicked)
         window._toggleDarkMode = function() {
             var isDark = document.body.classList.contains('dark-mode');
@@ -1091,12 +1121,72 @@
     })();
 
     /* ============================================================
+       Fullscreen Mode
+       Fills viewport with 80×24 terminal at optimal font size.
+       ============================================================ */
+    (function() {
+        var preFontSize = null;  // font size before entering fullscreen
+
+        // Compute largest integer font size where 80 cols and 24 rows fit
+        function computeFullscreenFontSize() {
+            var vw = window.innerWidth, vh = window.innerHeight;
+            // Measure character width for the game font at a reference size
+            var ref = 100;
+            var testEl = document.createElement('span');
+            testEl.style.cssText = 'position:fixed;visibility:hidden;' +
+                'font-family:"Courier New","Liberation Mono",monospace;' +
+                'font-size:' + ref + 'px;line-height:1;';
+            testEl.textContent = '0';
+            document.body.appendChild(testEl);
+            var chWidth = testEl.offsetWidth;
+            document.body.removeChild(testEl);
+            var fromW = Math.floor(vw * ref / (80 * chWidth));
+            var fromH = Math.floor(vh / (24 * 1.125));
+            return Math.max(8, Math.min(fromW, fromH));
+        }
+
+        function enterFullscreen() {
+            try { preFontSize = parseInt(localStorage.getItem('menace-font-size')) || 16; } catch(e) {}
+            document.documentElement.requestFullscreen().catch(function() {});
+        }
+
+        function exitFullscreen() {
+            if (document.fullscreenElement) document.exitFullscreen().catch(function() {});
+        }
+
+        document.addEventListener('fullscreenchange', function() {
+            if (document.fullscreenElement) {
+                document.body.classList.add('fullscreen-mode');
+                if (window._applyFontSize) window._applyFontSize(computeFullscreenFontSize());
+            } else {
+                document.body.classList.remove('fullscreen-mode');
+                if (window._applyFontSize && preFontSize) window._applyFontSize(preFontSize);
+                preFontSize = null;
+            }
+            if (window._checkPanelFit) window._checkPanelFit();
+        });
+
+        // Refit on resize while fullscreen (e.g. rotation)
+        window.addEventListener('resize', function() {
+            if (document.body.classList.contains('fullscreen-mode') && window._applyFontSize) {
+                window._applyFontSize(computeFullscreenFontSize());
+            }
+        });
+
+        window._toggleFullscreen = function() {
+            if (document.fullscreenElement) exitFullscreen();
+            else enterFullscreen();
+        };
+    })();
+
+    /* ============================================================
        Hamburger Menu
        Popup menu attached to the ☰ button with game options
        ============================================================ */
     (function() {
         var panelToggle = document.getElementById('panel-toggle');
         var menu = document.getElementById('hamburger-menu');
+        var menuBackdrop = null;  // transparent overlay to catch outside clicks
         function showConfirm(msg) {
             var confirmModal = document.getElementById('confirm-modal');
             return new Promise(function(resolve) {
@@ -1128,6 +1218,9 @@
         function isOpen() { return menu.classList.contains('open'); }
 
         function openMenu() {
+            // Block during docs-mode transition
+            if (document.body.classList.contains('docs-fixed')) return;
+
             // Enable/disable game-state items
             var inGame = document.body.classList.contains('gameplay-active');
             document.getElementById('hm-save-quit').disabled = !inGame;
@@ -1136,6 +1229,9 @@
             // Checkmark toggles
             var isDark = document.body.classList.contains('dark-mode');
             document.querySelector('#hm-darkmode .hm-check').textContent = isDark ? '✓' : '';
+
+            var isFs = !!document.fullscreenElement;
+            document.querySelector('#hm-fullscreen .hm-check').textContent = isFs ? '✓' : '';
 
             var keyref = document.getElementById('keyref');
             var keyrefVisible = keyref && !keyref.classList.contains('hidden');
@@ -1154,11 +1250,22 @@
             } catch(e) {}
             document.getElementById('hm-del-bones').disabled = !hasBones;
 
+            // Backdrop captures outside clicks to dismiss
+            if (!menuBackdrop) {
+                menuBackdrop = document.createElement('div');
+                menuBackdrop.style.cssText = 'position:fixed;inset:0;z-index:99;';
+                menuBackdrop.addEventListener('mousedown', closeMenu);
+                document.body.appendChild(menuBackdrop);
+            }
             menu.classList.add('open');
             panelToggle.classList.add('menu-open');
         }
 
         function closeMenu() {
+            if (menuBackdrop) {
+                document.body.removeChild(menuBackdrop);
+                menuBackdrop = null;
+            }
             menu.classList.remove('open');
             panelToggle.classList.remove('menu-open');
         }
@@ -1175,17 +1282,14 @@
             this.blur();
         });
 
-        // Close on outside click
-        document.addEventListener('click', function(e) {
-            if (isOpen() && !menu.contains(e.target) && e.target !== panelToggle) {
-                closeMenu();
-            }
-        });
-
-        // Close on Escape
+        // Close on Escape (backdrop handles outside clicks)
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape' && isOpen()) closeMenu();
         });
+
+        // Also close if font button clicked while menu open
+        document.getElementById('font-smaller').addEventListener('mousedown', closeMenu);
+        document.getElementById('font-larger').addEventListener('mousedown', closeMenu);
 
         // Menu actions
         document.getElementById('hm-save-quit').addEventListener('click', function() {
@@ -1207,6 +1311,11 @@
         document.getElementById('hm-keyref').addEventListener('click', function() {
             if (window._panelFns) window._panelFns.toggle();
             closeMenu();
+        });
+
+        document.getElementById('hm-fullscreen').addEventListener('click', function() {
+            closeMenu();
+            if (window._toggleFullscreen) window._toggleFullscreen();
         });
 
         document.getElementById('hm-darkmode').addEventListener('click', function() {
@@ -1670,6 +1779,7 @@
                 var extras = page.querySelectorAll('#nav, #controls, .side-panel');
                 extras.forEach(function(el) {
                     el.style.opacity = '0';
+                    el.style.pointerEvents = 'none';
                     el.style.transition = 'none';
                 });
 
@@ -1692,6 +1802,7 @@
                     page.style.transformOrigin = '';
                     page.style.transform = '';
                     extras.forEach(function(el) {
+                        el.style.pointerEvents = '';
                         el.style.transition = 'opacity 0.3s ease';
                         el.style.opacity = '';
                     });
