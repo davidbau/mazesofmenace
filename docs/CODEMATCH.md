@@ -138,7 +138,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[~]` | sp_lev.c | sp_lev.js | Special level interpreter |
 | `[a]` | spell.c | spell.js | Spell casting. ageSpells (age_spells), handleKnownSpells (dovspell/dospellmenu), estimateSpellFailPercent (percent_success approximation), spellRetentionText (spellretention). Spell category/skill tables from C. ~40 functions TODO |
 | `[~]` | stairs.c | stairs.js | Stairway management. JS uses map.upstair/dnstair objects; u_on_upstairs/dnstairs → getArrivalPosition in do.js; stairway_find_*, On_stairs_*, stairs_description TODO |
-| `[~]` | steal.c | steal.js | Monster stealing. `findgold` in makemon.js; drop logic partially inline in monmove.js; all steal/mpickobj/relobj/mdrop_obj unimplemented |
+| `[a]` | steal.c | steal.js | Monster stealing. somegold, findgold, stealgold, thiefdead, unresponsive, remove_worn_item, steal (weighted random), relobj implemented. stealamulet/maybe_absorb_item/mdrop_special_objs stubs. stealarm/unstolenarm/worn_item_removal/mpickobj TODO |
 | `[~]` | steed.c | steed.js | Riding steeds. put_saddle_on_mon partially inline in u_init.js; all 15 functions are TODO stubs |
 | `[N/A]` | strutil.c | — | String utilities (strbuf, pmatch). JS: native string ops |
 | `[N/A]` | symbols.c | — | Terminal graphics mode management (ASCII/IBM/curses/UTF-8 symbol-set switching). Browser port uses static data in symbols.js; no runtime mode switching |
@@ -154,14 +154,14 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[~]` | vault.c | `vault.js` | Vault guard behavior |
 | `[N/A]` | version.c | — | Version info |
 | `[a]` | vision.c | vision.js | FOV / LOS. Core algorithm (view_from, right_side, left_side, clear_path, do_clear_area) matches C. block_point/dig_point/rogue_vision TODO |
-| `[~]` | weapon.c | `weapon.js` | Weapon skills, hit/damage bonuses, monster weapon AI. abon→player.strToHit, dbon→player.strDamage (player.js); select_rwep partial in mthrowu.js. |
+| `[a]` | weapon.c | weapon.js | Weapon skills, hit/damage bonuses, monster weapon AI. select_hwep, select_rwep (full), mon_wield_item, possibly_unwield, mwepgone, setmnotwielded, oselect, monmightthrowwep, autoreturn_weapon, weapon_type, skill_level_name, skill_name, wet/dry_a_towel implemented. weapon_hit/dam_bonus gated (returns 0). Skill system infrastructure (P_* constants, weapon_check state machine) complete. skill_init/enhance/advance and role tables TODO |
 | `[a]` | were.c | were.js | Lycanthropy. 6 of 8 functions aligned; you_were/you_unwere TODO (need polymon/rehumanize) |
-| `[~]` | wield.c | `wield.js` | Wielding weapons. setuwep/setuswapwep/setuqwep, uwepgone/uswapwepgone/uqwepgone, welded/weldmsg, ready_weapon, can_twoweapon(stub). handleWield/handleSwapWeapon/handleQuiver. Two-weapon combat, chwepon, corpse petrify, wield_tool TODO. |
+| `[a]` | wield.c | wield.js | Wielding weapons. setuwep/setuswapwep/setuqwep, uwepgone/uswapwepgone/uqwepgone, welded/weldmsg, ready_weapon, handleWield/handleSwapWeapon/handleQuiver. will_weld, mwelded, erodeable_wep, empty_handed, can_twoweapon (full), set_twoweap, untwoweapon, drop_uswapwep, handleTwoWeapon (dotwoweapon), chwepon, wield_tool, cant_wield_corpse implemented. finish_splitting/ready_ok/wield_ok TODO |
 | `[N/A]` | windows.c | — | Windowing system interface. JS: `display.js`, `browser_input.js` |
 | `[~]` | wizard.c | wizard.js | Wizard of Yendor AI. All 21 functions are runtime gameplay AI; none implemented in JS |
 | `[a]` | wizcmds.c | wizcmds.js | Wizard-mode debug commands. handleWizLoadDes (wiz_load_splua), wizLevelChange (wiz_level_change), wizMap (wiz_map), wizTeleport (wiz_level_tele), wizGenesis (wiz_genesis); Lua commands N/A; sanity checks and advanced debug TODO |
 | `[~]` | worm.c | worm.js | Long worm mechanics. save/rest_worm are N/A (no save file). All 24 other functions are TODO stubs |
-| `[~]` | worn.c | `worn.js` | Equipment slot management |
+| `[a]` | worn.c | worn.js | Equipment slot management. setworn, setnotworn, allunworn, wearmask_to_obj, wearslot, wornmask_to_armcat, armcat_to_wornmask, update_mon_extrinsics, mon_set_minvis, mon_adjust_speed, extract_from_minvent, m_lose_armor, mon_break_armor, extra_pref, racial_exception, m_dowear, m_dowear_type, find_mac, bypass stubs (bypass_obj, clear_bypasses, nxt_unbypassed_obj/loot) implemented. check_wornmask_slots/which_armor/recalc_telepat_range TODO |
 | `[a]` | write.c | write.js | Writing on scrolls. cost, write_ok, new_book_description implemented; dowrite TODO |
 | `[a]` | zap.c | zap.js | Wand beam effects. zhitm, zap_hit, resist (faithful alev/dlev), burnarmor, xkilled, corpse_chance, dobuzz implemented. dozap/weffects/bhitm/revive/polyuse and many others TODO |
 
@@ -171,9 +171,9 @@ don't follow the same 1:1 C→JS mapping pattern.
 - **N/A (system/platform)**: 22
 - **Game logic files**: 107
 - **Complete (`[x]`)**: 4
-- **Aligned (`[a]`)**: 46
+- **Aligned (`[a]`)**: 50
 - **Present (`[p]`)**: 1
-- **Needs alignment (`[~]`)**: 57
+- **Needs alignment (`[~]`)**: 53
 - **No JS file yet (`[ ]`)**: 0
 
 ### JS Files Without C Counterparts
@@ -5009,22 +5009,22 @@ No function symbols parsed from isaac64.c.
 ### steal.c -> steal.js
 | C Line | C Function | JS Line | Alignment |
 |--------|------------|---------|-----------|
-| 45 | `findgold` | - | Missing |
-| 772 | `maybe_absorb_item` | - | Missing |
-| 814 | `mdrop_obj` | - | Missing |
-| 852 | `mdrop_special_objs` | - | Missing |
-| 618 | `mpickobj` | - | Missing |
-| 875 | `relobj` | - | Missing |
-| 213 | `remove_worn_item` | - | Missing |
-| 14 | `somegold` | - | Missing |
-| 343 | `steal` | - | Missing |
-| 689 | `stealamulet` | - | Missing |
-| 165 | `stealarm` | - | Missing |
-| 58 | `stealgold` | - | Missing |
-| 120 | `thiefdead` | - | Missing |
-| 133 | `unresponsive` | - | Missing |
-| 147 | `unstolenarm` | - | Missing |
-| 294 | `worn_item_removal` | - | Missing |
+| 14 | `somegold` | steal.js:12 | Implemented — proportional gold subset using rn1 |
+| 45 | `findgold` | steal.js:38 | Implemented — returns gold object from inventory |
+| 58 | `stealgold` | steal.js:51 | Implemented — leprechaun gold theft (simplified: no floor gold, no teleport) |
+| 120 | `thiefdead` | steal.js:102 | Stub — multi-turn armor theft not ported |
+| 133 | `unresponsive` | steal.js:110 | Implemented — hero consciousness check |
+| 147 | `unstolenarm` | - | Missing — multi-turn armor theft callback |
+| 165 | `stealarm` | - | Missing — multi-turn armor theft callback |
+| 213 | `remove_worn_item` | steal.js:123 | Implemented — clears equipment slots and owornmask |
+| 294 | `worn_item_removal` | - | Missing — remove worn item with theft message |
+| 343 | `steal` | steal.js:150 | Implemented — simplified nymph/monkey theft with weighted random selection |
+| 618 | `mpickobj` | - | Missing — full monster pickup with side effects |
+| 689 | `stealamulet` | steal.js:217 | Stub — requires quest artifact tracking |
+| 772 | `maybe_absorb_item` | steal.js:225 | Stub — mimic absorption |
+| 814 | `mdrop_obj` | monutil.js | Partial — uses extract_from_minvent |
+| 852 | `mdrop_special_objs` | steal.js:234 | Stub — requires obj_resists |
+| 875 | `relobj` | steal.js:243 | Implemented — release all monster inventory to floor |
 
 ### steed.c -> steed.js
 | C Line | C Function | JS Line | Alignment |
@@ -5580,46 +5580,46 @@ No function symbols parsed from isaac64.c.
 ### weapon.c -> weapon.js
 | C Line | C Function | JS Line | Alignment |
 |--------|------------|---------|-----------|
-| 950 | `abon` | weapon.js | Implemented — STR component (<6→-2 through 22+→3), level<3 bonus, DEX component. No STR18/xx encoding (JS uses plain integers) |
-| 1224 | `add_skills_to_menu` | - | Missing |
-| 1432 | `add_weapon_skill` | - | Missing |
-| 520 | `autoreturn_weapon` | - | Missing |
-| 1151 | `can_advance` | - | Missing |
-| 1168 | `could_advance` | - | Missing |
-| 988 | `dbon` | weapon.js | Implemented — STR damage bonus table. No STR18/xx encoding (JS uses plain integers) |
-| 216 | `dmgval` | weapon.js | Partial — base roll, weapon-type bonus dice (large/small tables), spe, thick_skinned, blessed +d4, silver +d20, axe vs wood +d4. Missing: shade, heavy iron ball, erosion, artifact light, spec_dbon |
-| 1471 | `drain_weapon_skill` | - | Missing |
-| 1062 | `dry_a_towel` | - | Missing |
-| 1324 | `enhance_weapon_skill` | - | Missing |
-| 1015 | `finish_towel_change` | - | Missing |
-| 76 | `give_may_advance_msg` | - | Missing |
+| 76 | `give_may_advance_msg` | - | Missing — skill advance message |
+| 90 | `weapon_descr` | - | Missing — generic weapon skill name |
 | 149 | `hitval` | weapon.js | Implemented — spe, oc_hitbon, blessed vs undead/demon, spear vs kebabable, trident vs swimmer, pick vs earthen. Missing: spec_abon (artifacts) |
-| 1448 | `lose_weapon_skill` | - | Missing |
-| 801 | `mon_wield_item` | - | Missing |
-| 680 | `monmightthrowwep` | - | Missing |
-| 938 | `mwepgone` | - | Missing |
-| 476 | `oselect` | - | Missing |
-| 1182 | `peaked_skill` | - | Missing |
-| 747 | `possibly_unwield` | - | Missing |
-| 705 | `select_hwep` | - | Missing |
-| 533 | `select_rwep` | - | Missing |
-| 1809 | `setmnotwielded` | - | Missing |
-| 1301 | `show_skills` | - | Missing |
-| 436 | `silver_sears` | - | Missing |
-| 1193 | `skill_advance` | - | Missing |
-| 1733 | `skill_init` | - | Missing |
-| 1087 | `skill_level_name` | - | Missing |
-| 1120 | `skill_name` | - | Missing |
-| 1127 | `slots_required` | - | Missing |
-| 361 | `special_dmgval` | - | Missing |
-| 1409 | `unrestrict_weapon_skill` | - | Missing |
-| 1419 | `use_skill` | - | Missing |
-| 1527 | `uwep_skill_type` | - | Missing |
-| 1639 | `weapon_dam_bonus` | weapon.js | Stub — returns 0 (P_BASIC equivalent). Requires P_SKILL system |
-| 90 | `weapon_descr` | - | Missing |
-| 1540 | `weapon_hit_bonus` | weapon.js | Stub — returns 0 (P_BASIC equivalent). Requires P_SKILL system |
-| 1512 | `weapon_type` | - | Missing |
-| 1033 | `wet_a_towel` | - | Missing |
+| 216 | `dmgval` | weapon.js | Partial — base roll, weapon-type bonus dice, spe, thick_skinned, blessed +d4, silver +d20, axe vs wood +d4. Missing: shade, heavy iron ball, erosion, artifact light, spec_dbon |
+| 361 | `special_dmgval` | - | Missing — blessed/silver damage for unarmed |
+| 436 | `silver_sears` | - | Missing — silver ring hit message |
+| 476 | `oselect` | weapon.js | Implemented — find typed item in monster inventory |
+| 520 | `autoreturn_weapon` | weapon.js | Implemented — check for aklys |
+| 533 | `select_rwep` | weapon.js | Implemented — full ranged weapon selection (cockatrice eggs, pies, boulders, polearms, rwep[] list, propellor matching) |
+| 680 | `monmightthrowwep` | weapon.js | Implemented — test if weapon is in rwep[] list |
+| 705 | `select_hwep` | weapon.js | Implemented — full melee weapon priority list (hwep[] ~30 types) |
+| 747 | `possibly_unwield` | weapon.js | Implemented — re-evaluate weapon after theft/polymorph |
+| 801 | `mon_wield_item` | weapon.js | Implemented — dispatches on weapon_check state (NEED_HTH_WEAPON, NEED_RANGED_WEAPON, etc.) |
+| 938 | `mwepgone` | weapon.js | Implemented — setmnotwielded + weapon_check = NEED_WEAPON |
+| 950 | `abon` | weapon.js | Implemented — STR/DEX/level hit bonus |
+| 988 | `dbon` | weapon.js | Implemented — STR damage bonus |
+| 1015 | `finish_towel_change` | - | Missing — towel wetness helper |
+| 1033 | `wet_a_towel` | weapon.js | Implemented — towel wetness |
+| 1062 | `dry_a_towel` | weapon.js | Implemented — towel drying |
+| 1087 | `skill_level_name` | weapon.js | Implemented — skill level display name |
+| 1120 | `skill_name` | weapon.js | Implemented — skill name lookup |
+| 1127 | `slots_required` | - | Missing — skill slot requirements |
+| 1151 | `can_advance` | - | Missing — skill advance check |
+| 1168 | `could_advance` | - | Missing — skill could-advance check |
+| 1182 | `peaked_skill` | - | Missing — skill peaked check |
+| 1193 | `skill_advance` | - | Missing — advance a skill |
+| 1224 | `add_skills_to_menu` | - | Missing — skill menu UI |
+| 1301 | `show_skills` | - | Missing — skill display UI |
+| 1324 | `enhance_weapon_skill` | - | Missing — #enhance command |
+| 1409 | `unrestrict_weapon_skill` | - | Missing — unrestrict skill |
+| 1419 | `use_skill` | - | Missing — record skill practice |
+| 1432 | `add_weapon_skill` | - | Missing — add skill points |
+| 1448 | `lose_weapon_skill` | - | Missing — lose skill points |
+| 1471 | `drain_weapon_skill` | - | Missing — drain skill (has rn2) |
+| 1512 | `weapon_type` | weapon.js | Implemented — skill category lookup |
+| 1527 | `uwep_skill_type` | - | Missing — hero weapon skill type |
+| 1540 | `weapon_hit_bonus` | weapon.js | Gated — returns 0 until skill_init wired |
+| 1639 | `weapon_dam_bonus` | weapon.js | Gated — returns 0 until skill_init wired |
+| 1733 | `skill_init` | - | Missing — initialize skills from role tables |
+| 1809 | `setmnotwielded` | weapon.js | Implemented — clear W_WEP from owornmask |
 
 ### were.c -> were.js
 | C Line | C Function | JS Line | Alignment |
@@ -5636,31 +5636,31 @@ No function symbols parsed from isaac64.c.
 ### wield.c -> wield.js
 | C Line | C Function | JS Line | Alignment |
 |--------|------------|---------|-----------|
-| 756 | `can_twoweapon` | 64 | Stub (returns false) |
-| 133 | `cant_wield_corpse` | - | Missing |
-| 909 | `chwepon` | - | Missing |
-| 507 | `doquiver_core` | 212 | handleQuiver — Q command |
-| 456 | `doswapweapon` | 184 | handleSwapWeapon — x command |
-| 836 | `dotwoweapon` | - | Missing |
-| 350 | `dowield` | 116 | handleWield — w command |
-| 500 | `dowieldquiver` | 212 | handleQuiver — Q command |
-| 804 | `drop_uswapwep` | - | Missing |
-| 153 | `empty_handed` | - | Missing |
-| 341 | `finish_splitting` | - | Missing |
-| 1069 | `mwelded` | - | Missing |
-| 289 | `ready_ok` | - | Missing |
-| 164 | `ready_weapon` | 73 | Core wield logic |
-| 829 | `set_twoweap` | - | Missing |
-| 271 | `setuqwep` | 23 | Set quiver slot |
-| 280 | `setuswapwep` | 18 | Set swap weapon slot |
-| 897 | `untwoweapon` | - | Missing |
-| 888 | `uqwepgone` | 38 | Force-remove quiver |
-| 879 | `uswapwepgone` | 33 | Force-remove swap weapon |
-| 864 | `uwepgone` | 28 | Force-remove main weapon |
-| 1042 | `welded` | 48 | Cursed weapon check |
-| 1052 | `weldmsg` | 57 | Weld message |
-| 326 | `wield_ok` | - | Missing |
-| 678 | `wield_tool` | - | Missing |
+| 133 | `cant_wield_corpse` | wield.js | Implemented — cockatrice petrification stub |
+| 153 | `empty_handed` | wield.js | Implemented — description when not wielding |
+| 164 | `ready_weapon` | wield.js | Implemented — core wield logic with two-weapon compat |
+| 271 | `setuqwep` | wield.js | Implemented — set quiver slot |
+| 280 | `setuswapwep` | wield.js | Implemented — set swap weapon slot |
+| 289 | `ready_ok` | - | Missing — weapon readiness check |
+| 326 | `wield_ok` | - | Missing — wield validation |
+| 341 | `finish_splitting` | - | Missing — stack splitting after wield |
+| 350 | `dowield` | wield.js | handleWield — w command |
+| 456 | `doswapweapon` | wield.js | handleSwapWeapon — x command |
+| 500 | `dowieldquiver` | wield.js | handleQuiver — Q command |
+| 507 | `doquiver_core` | wield.js | handleQuiver — Q command |
+| 678 | `wield_tool` | wield.js | Implemented — wield tool during apply |
+| 756 | `can_twoweapon` | wield.js | Implemented — full TWOWEAPOK checks |
+| 804 | `drop_uswapwep` | wield.js | Implemented — drop secondary weapon |
+| 829 | `set_twoweap` | wield.js | Implemented — toggle two-weapon flag |
+| 836 | `dotwoweapon` | wield.js | handleTwoWeapon — #twoweapon with rnd(20) dex check |
+| 864 | `uwepgone` | wield.js | Implemented — force-remove main weapon |
+| 879 | `uswapwepgone` | wield.js | Implemented — force-remove swap weapon |
+| 888 | `uqwepgone` | wield.js | Implemented — force-remove quiver |
+| 897 | `untwoweapon` | wield.js | Implemented — disable two-weapon mode |
+| 909 | `chwepon` | wield.js | Implemented — enchant/corrode weapon (rn2(3) evaporate, rn2(7) vibrate) |
+| 1042 | `welded` | wield.js | Implemented — uses will_weld() for cursed check |
+| 1052 | `weldmsg` | wield.js | Implemented — weld message |
+| 1069 | `mwelded` | wield.js | Implemented — monster version of welded() |
 
 ### windows.c -> —
 | C Line | C Function | JS Line | Alignment |
@@ -5857,33 +5857,33 @@ No function symbols parsed from isaac64.c.
 ### worn.c -> worn.js
 | C Line | C Function | JS Line | Alignment |
 |--------|------------|---------|-----------|
-| 180 | `allunworn` | - | Missing |
-| 242 | `armcat_to_wornmask` | - | Missing |
-| 1109 | `bypass_obj` | - | Missing |
-| 1117 | `bypass_objlist` | - | Missing |
-| 347 | `check_wornmask_slots` | - | Missing |
-| 1045 | `clear_bypass` | - | Missing |
-| 1060 | `clear_bypasses` | - | Missing |
-| 1329 | `extra_pref` | - | Missing |
-| 1367 | `extract_from_minvent` | - | Missing |
-| 707 | `find_mac` | - | Missing |
-| 747 | `m_dowear` | - | Missing |
-| 789 | `m_dowear_type` | - | Missing |
-| 1030 | `m_lose_armor` | - | Missing |
-| 478 | `mon_adjust_speed` | - | Missing |
-| 1167 | `mon_break_armor` | - | Missing |
-| 466 | `mon_set_minvis` | - | Missing |
-| 1149 | `nxt_unbypassed_loot` | - | Missing |
-| 1132 | `nxt_unbypassed_obj` | - | Missing |
-| 1350 | `racial_exception` | - | Missing |
-| 50 | `recalc_telepat_range` | - | Missing |
-| 147 | `setnotworn` | - | Missing |
-| 73 | `setworn` | - | Missing |
-| 569 | `update_mon_extrinsics` | - | Missing |
-| 198 | `wearmask_to_obj` | - | Missing |
-| 274 | `wearslot` | - | Missing |
-| 996 | `which_armor` | - | Missing |
-| 210 | `wornmask_to_armcat` | - | Missing |
+| 50 | `recalc_telepat_range` | - | Missing — telepathy range recalculation |
+| 73 | `setworn` | worn.js | Implemented — set worn item in slot with owornmask |
+| 147 | `setnotworn` | worn.js | Implemented — clear worn item (item destroyed while worn) |
+| 180 | `allunworn` | worn.js | Implemented — clear all worn items |
+| 198 | `wearmask_to_obj` | worn.js | Implemented — get object for wornmask |
+| 210 | `wornmask_to_armcat` | worn.js | Implemented — mask to armor category |
+| 242 | `armcat_to_wornmask` | worn.js | Implemented — armor category to mask |
+| 274 | `wearslot` | worn.js | Implemented — valid slots for object |
+| 347 | `check_wornmask_slots` | - | Missing — sanity check for worn slots |
+| 466 | `mon_set_minvis` | worn.js | Implemented — set monster invisible |
+| 478 | `mon_adjust_speed` | worn.js | Implemented — monster speed from equipment |
+| 569 | `update_mon_extrinsics` | worn.js | Implemented — set/clear monster mextrinsics |
+| 707 | `find_mac` | worn.js | Implemented — calculate monster AC from worn armor |
+| 747 | `m_dowear` | worn.js | Implemented — monster equip armor |
+| 789 | `m_dowear_type` | worn.js | Implemented — equip specific armor type |
+| 996 | `which_armor` | - | Missing — get worn armor by slot |
+| 1030 | `m_lose_armor` | worn.js | Implemented — monster lose armor piece |
+| 1045 | `clear_bypass` | worn.js | Stub — bypass system not needed |
+| 1060 | `clear_bypasses` | worn.js | Stub — bypass system not needed |
+| 1109 | `bypass_obj` | worn.js | Stub — bypass system not needed |
+| 1117 | `bypass_objlist` | - | Missing — bypass system stub |
+| 1132 | `nxt_unbypassed_obj` | worn.js | Stub — bypass system not needed |
+| 1149 | `nxt_unbypassed_loot` | worn.js | Stub — bypass system not needed |
+| 1167 | `mon_break_armor` | worn.js | Implemented — armor removal on polymorph |
+| 1329 | `extra_pref` | worn.js | Implemented — speed boots preference |
+| 1350 | `racial_exception` | worn.js | Implemented — hobbit+elven armor |
+| 1367 | `extract_from_minvent` | worn.js | Implemented — centralized monster inventory removal |
 
 ### write.c -> write.js
 | C Line | C Function | JS Line | Alignment |
