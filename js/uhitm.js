@@ -40,6 +40,7 @@ import { applyMonflee } from './mhitu.js';
 import { mondead } from './monutil.js';
 import { placeFloorObject } from './floor_objects.js';
 import { uwepgone, uswapwepgone, uqwepgone } from './wield.js';
+import { find_mac } from './worn.js';
 
 
 // ============================================================================
@@ -106,7 +107,7 @@ function find_roll_to_hit(player, mtmp, aatyp, weapon) {
     const str = player.attributes?.[A_STR] ?? 10;
     const dex = player.attributes?.[A_DEX] ?? 10;
     let tmp = 1 + abon(str, dex, player.level)
-        + (mtmp.mac ?? (mtmp.type?.ac ?? 10))
+        + find_mac(mtmp)
         + (player.uhitinc || 0) // rings of increase accuracy etc.
         + luckBonus(player.luck || 0)
         + player.level;
