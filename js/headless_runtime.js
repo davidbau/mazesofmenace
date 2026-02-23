@@ -15,13 +15,11 @@ import {
     setRngCallCount,
     pushRngLogEntry,
 } from './rng.js';
-import { exercise, exerchk, initExerciseState } from './attrib_exercise.js';
+import { initExerciseState } from './attrib_exercise.js';
 import { makelevel, setGameSeed, isBranchLevelToDnum } from './dungeon.js';
 import { simulatePostLevelInit, initFirstLevel } from './u_init.js';
 import { Player, rankOf, roles } from './player.js';
 import { rhack } from './cmd.js';
-import { dosearch0 } from './detect.js';
-import { ageSpells } from './spell.js';
 import { makemon, setMakemonPlayerContext, runtimeDecideToShapeshift } from './makemon.js';
 import { M2_WERE } from './monsters.js';
 import { movemon, initrack, settrack } from './monmove.js';
@@ -35,7 +33,7 @@ import { doname, setObjectMoves } from './mkobj.js';
 import { monsterMapGlyph, objectMapGlyph } from './display_rng.js';
 import { defsyms, trap_to_defsym } from './symbols.js';
 import { setOutputContext } from './pline.js';
-import { wipe_engr_at } from './engrave.js';
+import { moveloop_turnend, moveloop_dosounds } from './allmain.js';
 import {
     COLNO, ROWNO, NORMAL_SPEED,
     A_STR, A_DEX, A_CON,
@@ -802,252 +800,14 @@ export class HeadlessGame {
     }
 
     // C ref: allmain.c moveloop_core() — per-turn effects
+    // C ref: allmain.c moveloop_core() turn-end block — delegates to allmain.js
     simulateTurnEnd() {
-        // C ref: allmain.c moveloop_core() — the turn-end block (mcalcmove,
-        // spawn, u_calc_moveamt, once-per-turn effects) only runs when both
-        // hero and monsters are out of movement.  When Fast/Very Fast grants
-        // extra movement, the hero acts again WITHOUT a new turn-end.
-        if (this._bonusMovement > 0) {
-            this._bonusMovement--;
-            return; // bonus action: skip turn-end processing
-        }
-
-        // C ref: allmain.c:239 — settrack() called after movemon, before moves++
-        settrack(this.player);
-        this.turnCount++;
-        this.player.turns = this.turnCount;
-        setCurrentTurn(this.turnCount);
-        setOutputContext(this.display);
-        nh_timeout({
-            player: this.player,
-            map: this.map,
-            display: this.display,
-        });
-        // C ref: allmain.c -- random spawn happens before svm.moves++.
-        // During this turn-end frame, mkobj-side erosion checks should
-        // still observe the pre-increment move count.
-        setObjectMoves(this.turnCount);
-
-        // Minimal C-faithful wounded-legs timer (set_wounded_legs): while active,
-        // DEX stays penalized; recover when timeout expires.
-        if ((this.player.woundedLegsTimeout || 0) > 0) {
-            this.player.woundedLegsTimeout--;
-            if (this.player.woundedLegsTimeout <= 0 && this.player.attributes) {
-                this.player.woundedLegsTimeout = 0;
-                this.player.attributes[A_DEX] = Math.min(25, this.player.attributes[A_DEX] + 1);
-                this.player.justHealedLegs = true;
-            }
-        }
-
-        // C ref: mon.c m_calcdistress() — temporary flee timeout handling.
-        for (const mon of this.map.monsters) {
-            if (mon.dead) continue;
-            if (mon.fleetim && mon.fleetim > 0) {
-                mon.fleetim--;
-                if (mon.fleetim <= 0) {
-                    mon.fleetim = 0;
-                    mon.flee = false;
-                }
-            }
-        }
-
-        // C ref: mon.c m_calcdistress() shapechange + lycanthropy pass.
-        for (const mon of this.map.monsters) {
-            if (mon.dead) continue;
-            runtimeDecideToShapeshift(mon, this.player.dungeonLevel);
-            if (mon.type && (mon.type.flags2 & M2_WERE)) {
-                were_change(mon, {
-                    player: this.player,
-                    map: this.map,
-                    fov: this.fov,
-                    display: this.display,
-                });
-            }
-        }
-
-        allocateMonsterMovement(this.map);
-
-        // C ref: allmain.c moveloop_core() — occasional random spawn.
-        if (!rn2(70) && !(this.map?.flags?.nomongen) && !(this.map?.flags?.is_tutorial)) {
-            // Spawn at random valid location; new monster misses its first turn
-            // because movement allocation already happened above.
-            setMakemonPlayerContext(this.player);
-            makemon(null, 0, 0, 0, this.player.dungeonLevel, this.map);
-        }
-
-        // C ref: allmain.c:238 u_calc_moveamt(wtcap) — player movement allocation.
-        // Fast intrinsic (monks, samurai): gain extra turn 1/3 of the time via rn2(3).
-        // Very Fast (speed boots + intrinsic): gain extra turn 2/3 of the time.
-        if (this.player.veryFast) {
-            if (rn2(3) !== 0) {
-                this._bonusMovement = (this._bonusMovement || 0) + 1;
-            }
-        } else if (this.player.fast) {
-            if (rn2(3) === 0) {
-                this._bonusMovement = (this._bonusMovement || 0) + 1;
-            }
-        }
-
-        // C ref: allmain.c:289-295 regen_hp()
-        let reachedFullHealth = false;
-        if (this.player.hp < this.player.hpmax) {
-            const con = this.player.attributes ? this.player.attributes[A_CON] : 10;
-            const heal = (this.player.level + con) > rn2(100) ? 1 : 0;
-            if (heal) {
-                this.player.hp = Math.min(this.player.hp + heal, this.player.hpmax);
-                reachedFullHealth = (this.player.hp === this.player.hpmax);
-            }
-        }
-        // C ref: allmain.c regen_hp() -> interrupt_multi("You are in full health.")
-        if (reachedFullHealth
-            && this.multi > 0
-            && !this.travelPath?.length
-            && !this.runMode) {
-            this.multi = 0;
-            if (this.flags?.verbose !== false) {
-                this.display.putstr_message('You are in full health.');
-            }
-        }
-
-        // C ref: allmain.c:341-343 — autosearch for players with Searching
-        // intrinsic (Archeologists/Rangers at level 1, Rogues at 10, etc.)
-        if (this.player.searching && this.multi >= 0) {
-            dosearch0(this.player, this.map, this.display, this);
-        }
-
-        this.dosounds();
-        rn2(20);   // gethungry
-        this.player.hunger--;
-
-        // C ref: allmain.c:354 age_spells() — decrement spell retention each turn
-        ageSpells(this.player);
-
-        // C ref: attrib.c exerper() — periodic exercise updates.
-        // C's svm.moves starts at 1 and increments before exerper/exerchk.
-        const moves = this.turnCount + 1;
-        if (moves % 10 === 0) {
-            // C ref: attrib.c exerper() hunger switch
-            if (this.player.hunger > 1000) {
-                exercise(this.player, A_DEX, false);
-            } else if (this.player.hunger > 150) {
-                exercise(this.player, A_CON, true);
-            } else if (this.player.hunger > 50) { // HUNGRY
-                // no exercise
-            } else if (this.player.hunger > 0) {
-                exercise(this.player, A_STR, false);
-            } else {
-                exercise(this.player, A_CON, false);
-            }
-            // C ref: attrib.c exerper() role/behavioral hooks.
-            // Minimal subset for replay parity:
-            // - searches/trap handling already exercise WIS at action sites.
-            // - resting encourages strength.
-            if (this.player.restingTurn) {
-                exercise(this.player, A_STR, true);
-            }
-        }
-        if (moves % 5 === 0 && (this.player.woundedLegsTimeout || 0) > 0) {
-            exercise(this.player, A_DEX, false);
-        }
-
-        // C ref: attrib.c exerchk()
-        exerchk(this.player, moves);
-
-        const dex = this.player.attributes ? this.player.attributes[A_DEX] : 14;
-        if (!rn2(40 + dex * 3)) {
-            // C ref: allmain.c:359-360 u_wipe_engr(rnd(3))
-            // u_wipe_engr calls wipe_engr_at(u.ux, u.uy, cnt, FALSE)
-            // (skipping can_reach_floor check for now)
-            wipe_engr_at(this.map, this.player.x, this.player.y, rnd(3), false);
-        }
-
-        // C ref: allmain.c:414 seer_turn check
-        // C's svm.moves is +1 ahead of turnCount (same offset as exerchk)
-        if (moves >= this.seerTurn) {
-            this.seerTurn = moves + rn1(31, 15);
-        }
-        // After turn-end completes, subsequent command processing observes
-        // the incremented move counter.
-        setObjectMoves(this.turnCount + 1);
+        moveloop_turnend(this);
     }
 
-    // C ref: sounds.c:202-339 dosounds() — ambient level sounds
+    // C ref: sounds.c:202-339 dosounds() — delegates to allmain.js
     dosounds() {
-        if (this.flags && this.flags.acoustics === false) return;
-        const hallu = this.player?.hallucinating ? 1 : 0;
-        const playerInShop = (() => {
-            const loc = this.map?.at?.(this.player.x, this.player.y);
-            if (!loc || !Number.isFinite(loc.roomno)) return false;
-            const ridx = loc.roomno - ROOMOFFSET;
-            const room = this.map?.rooms?.[ridx];
-            return !!(room && Number.isFinite(room.rtype) && room.rtype >= SHOPBASE);
-        })();
-        const tendedShop = (this.map?.monsters || []).some((m) => m && !m.dead && m.isshk);
-        const f = this.map.flags || {};
-        if (f.nfountains && !rn2(400)) {
-            const fountainMsg = [
-                'You hear bubbling water.',
-                'You hear water falling on coins.',
-                'You hear the splashing of a naiad.',
-                'You hear a soda fountain!',
-            ];
-            this.display.putstr_message(fountainMsg[rn2(3) + hallu]);
-        }
-        if (f.nsinks && !rn2(300)) {
-            const sinkMsg = [
-                'You hear a slow drip.',
-                'You hear a gurgling noise.',
-                'You hear dishes being washed!',
-            ];
-            this.display.putstr_message(sinkMsg[rn2(2) + hallu]);
-        }
-        if (f.has_court && !rn2(200)) { return; }
-        if (f.has_swamp && !rn2(200)) {
-            const swampMsg = [
-                'You hear mosquitoes!',
-                'You smell marsh gas!',
-                'You hear Donald Duck!',
-            ];
-            this.display.putstr_message(swampMsg[rn2(2) + hallu]);
-            return;
-        }
-        if (f.has_vault && !rn2(200)) {
-            const vaultMsg = [
-                'You hear the footsteps of a guard on patrol.',
-                'You hear someone counting gold coins.',
-                'You hear Ebenezer Scrooge!',
-            ];
-            this.display.putstr_message(vaultMsg[rn2(2) + hallu]);
-            return;
-        }
-        if (f.has_beehive && !rn2(200)) { return; }
-        if (f.has_morgue && !rn2(200)) { return; }
-        if (f.has_barracks && !rn2(200)) {
-            const barracksMsg = [
-                'You hear blades being honed.',
-                'You hear loud snoring.',
-                'You hear dice being thrown.',
-                'You hear General MacArthur!',
-            ];
-            this.display.putstr_message(barracksMsg[rn2(3) + hallu]);
-            return;
-        }
-        if (f.has_zoo && !rn2(200)) { return; }
-        if (f.has_shop && !rn2(200)) {
-            // C ref: sounds.c has_shop branch:
-            // only choose a message (rn2(2)) when in a tended shop and
-            // hero isn't currently inside any shop room.
-            if (tendedShop && !playerInShop) {
-                const shopMsg = [
-                    'You hear someone cursing shoplifters.',
-                    'You hear the chime of a cash register.',
-                    'You hear Neiman and Marcus arguing!',
-                ];
-                this.display.putstr_message(shopMsg[rn2(2) + hallu]);
-            }
-            return;
-        }
-        if (f.has_temple && !rn2(200)) { return; }
+        moveloop_dosounds(this);
     }
 
     changeLevel(depth, transitionDir = null, opts = {}) {

@@ -40,6 +40,7 @@ import { setOutputContext } from './pline.js';
 import { init_nhwindows, create_nhwindow, destroy_nhwindow,
          start_menu, add_menu, end_menu, select_menu,
          NHW_MENU, MENU_BEHAVE_STANDARD, PICK_ONE, ATR_NONE } from './windows.js';
+import { moveloop_turnend, moveloop_dosounds } from './allmain.js';
 
 // --- Game State ---
 // C ref: decl.h -- globals are accessed via NH object (see DECISIONS.md #7)
@@ -1529,162 +1530,10 @@ export class NetHackGame {
     // C ref: allmain.c moveloop_core() — per-turn effects after monster movement
     // Called once per turn after movemon() is done.
     // Order matches C: mcalcmove → rn2(70) → dosounds → gethungry → engrave wipe → seer_turn
+    // C ref: allmain.c moveloop_core() turn-end block.
+    // Order matches C: mcalcmove → rn2(70) → dosounds → gethungry → engrave wipe → seer_turn
     processTurnEnd() {
-        // C ref: allmain.c moveloop_core() — the turn-end block only runs when
-        // both hero and monsters are out of movement.  When Fast/Very Fast
-        // grants extra movement, the hero acts again WITHOUT a new turn-end.
-        if (this._bonusMovement > 0) {
-            this._bonusMovement--;
-            return;
-        }
-
-        // C ref: allmain.c:239 — settrack() happens after movemon and before moves++.
-        settrack(this.player);
-        this.turnCount++;
-        this.player.turns = this.turnCount;
-        setCurrentTurn(this.turnCount);
-        setOutputContext(this.display);
-        nh_timeout({
-            player: this.player,
-            map: this.map,
-            display: this.display,
-        });
-        // C ref: allmain.c -- random spawn happens before svm.moves++.
-        // Preserve pre-increment move count during this turn-end frame.
-        setObjectMoves(this.turnCount);
-
-        // Minimal C-faithful wounded-legs timer (set_wounded_legs): while active,
-        // DEX stays penalized; recover when timeout expires.
-        if ((this.player.woundedLegsTimeout || 0) > 0) {
-            this.player.woundedLegsTimeout--;
-            if (this.player.woundedLegsTimeout <= 0 && this.player.attributes) {
-                this.player.woundedLegsTimeout = 0;
-                this.player.attributes[A_DEX] = Math.min(25, this.player.attributes[A_DEX] + 1);
-                this.player.justHealedLegs = true;
-            }
-        }
-
-        // C ref: allmain.c:221 mcalcdistress() / mon.c mcalcdistress().
-        for (const mon of this.map.monsters) {
-            if (mon.dead) continue;
-            if (mon.fleetim && mon.fleetim > 0) {
-                mon.fleetim--;
-                if (mon.fleetim <= 0) {
-                    mon.fleetim = 0;
-                    mon.flee = false;
-                }
-            }
-        }
-
-        // C ref: mon.c m_calcdistress() shapechange + lycanthropy pass.
-        for (const mon of this.map.monsters) {
-            if (mon.dead) continue;
-            runtimeDecideToShapeshift(mon, this.player.dungeonLevel);
-            if (mon.type && (mon.type.flags2 & M2_WERE)) {
-                were_change(mon, {
-                    player: this.player,
-                    map: this.map,
-                    fov: this.fov,
-                    display: this.display,
-                });
-            }
-        }
-
-        // C ref: allmain.c:226-227 — reallocate movement to monsters via mcalcmove
-        allocateMonsterMovement(this.map);
-
-        // C ref: allmain.c:232-236 — occasionally spawn a new monster.
-        // New monster spawns after movement allocation and therefore loses its first turn.
-        if (!rn2(70) && !(this.map?.flags?.nomongen) && !(this.map?.flags?.is_tutorial)) {
-            setMakemonPlayerContext(this.player);
-            makemon(null, 0, 0, 0, this.player.dungeonLevel, this.map);
-        }
-
-        // C ref: allmain.c:238 u_calc_moveamt(wtcap) — player movement allocation.
-        // Fast intrinsic (monks, samurai): gain extra turn 1/3 of the time via rn2(3).
-        // Very Fast (speed boots + intrinsic): gain extra turn 2/3 of the time.
-        if (this.player.veryFast) {
-            if (rn2(3) !== 0) {
-                this._bonusMovement = (this._bonusMovement || 0) + 1;
-            }
-        } else if (this.player.fast) {
-            if (rn2(3) === 0) {
-                this._bonusMovement = (this._bonusMovement || 0) + 1;
-            }
-        }
-
-        // C ref: allmain.c:241 — svm.moves++ (already done via this.turnCount++)
-
-        // --- Once-per-turn effects ---
-
-        // C ref: allmain.c:289-295 regen_hp()
-        // heal = (u.ulevel + ACURR(A_CON)) > rn2(100); only when hp < max
-        let reachedFullHealth = false;
-        if (this.player.hp < this.player.hpmax) {
-            const con = this.player.attributes ? this.player.attributes[A_CON] : 10;
-            const heal = (this.player.level + con) > rn2(100) ? 1 : 0;
-            if (heal) {
-                this.player.hp = Math.min(this.player.hp + heal, this.player.hpmax);
-                reachedFullHealth = (this.player.hp === this.player.hpmax);
-            }
-        }
-        // C ref: allmain.c regen_hp() -> interrupt_multi("You are in full health.")
-        if (reachedFullHealth
-            && this.multi > 0
-            && !this.travelPath?.length
-            && !this.runMode) {
-            this.multi = 0;
-            if (this.flags?.verbose !== false) {
-                this.display.putstr_message('You are in full health.');
-            }
-        }
-
-        // C ref: allmain.c:351 dosounds() — ambient sounds
-        // sounds.c:202-339 — chain of feature-dependent checks with short-circuit &&
-        this.dosounds();
-
-        // C ref: allmain.c:353 gethungry()
-        // eat.c:3186 — rn2(20) for accessory hunger timing
-        rn2(20);
-        // Also decrement hunger counter for gameplay
-        this.player.hunger--;
-        if (this.player.hunger <= 0) {
-            this.display.putstr_message('You faint from lack of food.');
-            this.player.hunger = 1;
-            this.player.hp -= rnd(3);
-            if (this.player.hp <= 0) {
-                this.player.deathCause = 'starvation';
-            }
-        }
-        if (this.player.hunger === 150) {
-            this.display.putstr_message('You are beginning to feel weak.');
-        }
-        if (this.player.hunger === 300) {
-            this.display.putstr_message('You are beginning to feel hungry.');
-        }
-
-        // C ref: allmain.c:354 age_spells() — decrement spell retention each turn
-        ageSpells(this.player);
-
-        // C ref: allmain.c:359 — engrave wipe check
-        // rn2(40 + ACURR(A_DEX) * 3) — for Valkyrie with DEX ~14, this is rn2(82)
-        const dex = this.player.attributes ? this.player.attributes[A_DEX] : 14;
-        if (!rn2(40 + dex * 3)) {
-            // C ref: allmain.c:359-360 u_wipe_engr(rnd(3))
-            wipe_engr_at(this.map, this.player.x, this.player.y, rnd(3), false);
-        }
-
-        // --- Once-per-hero-took-time effects ---
-
-        // C ref: allmain.c:408-414 — seer_turn (clairvoyance timer)
-        // Checked after hero took time; initially seer_turn=0 so fires on turn 1
-        if (this.turnCount >= this.seerTurn) {
-            // rn1(31, 15) = 15 + rn2(31), range 15..45
-            this.seerTurn = this.turnCount + rn1(31, 15);
-        }
-
-        // Note: regen_hp() with rn2(100) is now handled above (before dosounds)
-        setObjectMoves(this.turnCount + 1);
+        moveloop_turnend(this);
     }
 
     // Run the deferred timed turn (monster cycle + turn end) that was
@@ -1706,83 +1555,9 @@ export class NetHackGame {
         return this.processTurnEnd();
     }
 
-    // C ref: sounds.c:202-339 dosounds() — ambient level sounds
-    // Each feature check uses short-circuit && so rn2() is only called
-    // when the feature exists. Fountains/sinks don't return early;
-    // all others return on a triggered sound.
+    // C ref: sounds.c:202-339 dosounds() — delegates to allmain.js
     dosounds() {
-        if (this.flags && this.flags.acoustics === false) return;
-        const hallu = this.player?.hallucinating ? 1 : 0;
-        const f = this.map.flags || {};
-        if (f.nfountains && !rn2(400)) {
-            const fountainMsg = [
-                'You hear bubbling water.',
-                'You hear water falling on coins.',
-                'You hear the splashing of a naiad.',
-                'You hear a soda fountain!',
-            ];
-            this.display.putstr_message(fountainMsg[rn2(3) + hallu]);
-        }
-        if (f.nsinks && !rn2(300)) {
-            const sinkMsg = [
-                'You hear a slow drip.',
-                'You hear a gurgling noise.',
-                'You hear dishes being washed!',
-            ];
-            this.display.putstr_message(sinkMsg[rn2(2) + hallu]);
-        }
-        if (f.has_court && !rn2(200)) { return; }     // throne sound
-        if (f.has_swamp && !rn2(200)) {
-            const swampMsg = [
-                'You hear mosquitoes!',
-                'You smell marsh gas!',
-                'You hear Donald Duck!',
-            ];
-            this.display.putstr_message(swampMsg[rn2(2) + hallu]);
-            return;
-        }
-        if (f.has_vault && !rn2(200)) {
-            const vaultMsg = [
-                'You hear the footsteps of a guard on patrol.',
-                'You hear someone counting gold coins.',
-                'You hear Ebenezer Scrooge!',
-            ];
-            this.display.putstr_message(vaultMsg[rn2(2) + hallu]);
-            return;
-        }
-        if (f.has_beehive && !rn2(200)) { return; }
-        if (f.has_morgue && !rn2(200)) { return; }
-        if (f.has_barracks && !rn2(200)) {
-            const barracksMsg = [
-                'You hear blades being honed.',
-                'You hear loud snoring.',
-                'You hear dice being thrown.',
-                'You hear General MacArthur!',
-            ];
-            this.display.putstr_message(barracksMsg[rn2(3) + hallu]);
-            return;
-        }
-        if (f.has_zoo && !rn2(200)) { return; }
-        if (f.has_shop && !rn2(200)) {
-            const playerInShop = (() => {
-                const loc = this.map?.at?.(this.player.x, this.player.y);
-                if (!loc || !Number.isFinite(loc.roomno)) return false;
-                const ridx = loc.roomno - ROOMOFFSET;
-                const room = this.map?.rooms?.[ridx];
-                return !!(room && Number.isFinite(room.rtype) && room.rtype >= SHOPBASE);
-            })();
-            const tendedShop = (this.map?.monsters || []).some((m) => m && !m.dead && m.isshk);
-            if (tendedShop && !playerInShop) {
-                const shopMsg = [
-                    'You hear someone cursing shoplifters.',
-                    'You hear the chime of a cash register.',
-                    'You hear Neiman and Marcus arguing!',
-                ];
-                this.display.putstr_message(shopMsg[rn2(2) + hallu]);
-            }
-            return;
-        }
-        if (f.has_temple && !rn2(200)) { return; }
+        moveloop_dosounds(this);
     }
 
     // Display game over screen
