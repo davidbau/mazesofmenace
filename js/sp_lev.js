@@ -1590,21 +1590,21 @@ export function level_init(opts = {}) {
         // consume additional RNG.
         const lit = levelState.init.lit < 0 ? rn2(2) : levelState.init.lit;
 
-        mkmap_c.mkmapInitMap(map, bgTyp);
-        mkmap_c.mkmapInitFill(map, bgTyp, fgTyp);
-        mkmap_c.mkmapPassOne(map, bgTyp, fgTyp);
-        mkmap_c.mkmapPassTwo(map, bgTyp, fgTyp);
+        mkmap_c.init_map(map, bgTyp);
+        mkmap_c.init_fill(map, bgTyp, fgTyp);
+        mkmap_c.pass_one(map, bgTyp, fgTyp);
+        mkmap_c.pass_two(map, bgTyp, fgTyp);
         if (levelState.init.smoothed) {
-            mkmap_c.mkmapPassThree(map, bgTyp, fgTyp);
-            mkmap_c.mkmapPassThree(map, bgTyp, fgTyp);
+            mkmap_c.pass_three(map, bgTyp, fgTyp);
+            mkmap_c.pass_three(map, bgTyp, fgTyp);
         }
         if (levelState.init.joined) {
-            const regions = mkmap_c.mkmapFloodRegions(map, bgTyp, fgTyp);
+            const regions = mkmap_c.flood_fill_rm(map, bgTyp, fgTyp);
             if (regions.length > 1) {
-                mkmap_c.mkmapJoin(map, bgTyp, fgTyp, regions);
+                mkmap_c.join_map(map, bgTyp, fgTyp, regions);
             }
         }
-        mkmap_c.mkmapFinish(map, fgTyp, bgTyp, lit, !!levelState.init.walled);
+        mkmap_c.finish_map(map, fgTyp, bgTyp, lit, !!levelState.init.walled);
     } else {
         // Unknown style - default to solidfill behavior
         console.warn(`Level init style "${style}" using default solidfill behavior`);

@@ -23,7 +23,6 @@ export function corr(map, x, y) {
     if (!loc) return;
     loc.typ = rn2(50) ? CORR : SCORR;
 }
-export const rogue_corr = corr;
 
 // C ref: extralev.c:20 roguejoin()
 export function roguejoin(map, x1, y1, x2, y2, horiz) {

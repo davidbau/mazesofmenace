@@ -17,7 +17,7 @@ function resolveMap(firstArg) {
     return firstArg && firstArg.at ? firstArg : null;
 }
 
-export function mkmapInitMap(map, bgTyp) {
+export function init_map(map, bgTyp) {
     for (let x = 1; x < COLNO; x++) {
         for (let y = 0; y < ROWNO; y++) {
             const loc = map.locations[x][y];
@@ -28,7 +28,7 @@ export function mkmapInitMap(map, bgTyp) {
     }
 }
 
-export function mkmapInitFill(map, bgTyp, fgTyp) {
+export function init_fill(map, bgTyp, fgTyp) {
     const limit = Math.floor((MKMAP_WIDTH * MKMAP_HEIGHT * 2) / 5);
     let count = 0;
     while (count < limit) {
@@ -41,14 +41,14 @@ export function mkmapInitFill(map, bgTyp, fgTyp) {
     }
 }
 
-export function mkmapGet(map, x, y, bgTyp) {
+export function get_map(map, x, y, bgTyp) {
     if (x <= 0 || y < 0 || x > MKMAP_WIDTH || y >= MKMAP_HEIGHT) {
         return bgTyp;
     }
     return map.locations[x][y].typ;
 }
 
-export function mkmapPassOne(map, bgTyp, fgTyp) {
+export function pass_one(map, bgTyp, fgTyp) {
     const dirs = [
         [-1, -1], [-1, 0], [-1, 1], [0, -1],
         [0, 1], [1, -1], [1, 0], [1, 1],
@@ -57,7 +57,7 @@ export function mkmapPassOne(map, bgTyp, fgTyp) {
         for (let y = 1; y < MKMAP_HEIGHT; y++) {
             let count = 0;
             for (const [dx, dy] of dirs) {
-                if (mkmapGet(map, x + dx, y + dy, bgTyp) === fgTyp) count++;
+                if (get_map(map, x + dx, y + dy, bgTyp) === fgTyp) count++;
             }
             if (count <= 2) map.locations[x][y].typ = bgTyp;
             else if (count >= 5) map.locations[x][y].typ = fgTyp;
@@ -65,7 +65,7 @@ export function mkmapPassOne(map, bgTyp, fgTyp) {
     }
 }
 
-export function mkmapPassTwo(map, bgTyp, fgTyp) {
+export function pass_two(map, bgTyp, fgTyp) {
     const dirs = [
         [-1, -1], [-1, 0], [-1, 1], [0, -1],
         [0, 1], [1, -1], [1, 0], [1, 1],
@@ -75,9 +75,9 @@ export function mkmapPassTwo(map, bgTyp, fgTyp) {
         for (let y = 1; y < MKMAP_HEIGHT; y++) {
             let count = 0;
             for (const [dx, dy] of dirs) {
-                if (mkmapGet(map, x + dx, y + dy, bgTyp) === fgTyp) count++;
+                if (get_map(map, x + dx, y + dy, bgTyp) === fgTyp) count++;
             }
-            next[x][y] = (count === 5) ? bgTyp : mkmapGet(map, x, y, bgTyp);
+            next[x][y] = (count === 5) ? bgTyp : get_map(map, x, y, bgTyp);
         }
     }
     for (let x = 2; x <= MKMAP_WIDTH; x++) {
@@ -87,7 +87,7 @@ export function mkmapPassTwo(map, bgTyp, fgTyp) {
     }
 }
 
-export function mkmapPassThree(map, bgTyp, fgTyp) {
+export function pass_three(map, bgTyp, fgTyp) {
     const dirs = [
         [-1, -1], [-1, 0], [-1, 1], [0, -1],
         [0, 1], [1, -1], [1, 0], [1, 1],
@@ -97,9 +97,9 @@ export function mkmapPassThree(map, bgTyp, fgTyp) {
         for (let y = 1; y < MKMAP_HEIGHT; y++) {
             let count = 0;
             for (const [dx, dy] of dirs) {
-                if (mkmapGet(map, x + dx, y + dy, bgTyp) === fgTyp) count++;
+                if (get_map(map, x + dx, y + dy, bgTyp) === fgTyp) count++;
             }
-            next[x][y] = (count < 3) ? bgTyp : mkmapGet(map, x, y, bgTyp);
+            next[x][y] = (count < 3) ? bgTyp : get_map(map, x, y, bgTyp);
         }
     }
     for (let x = 2; x <= MKMAP_WIDTH; x++) {
@@ -109,7 +109,7 @@ export function mkmapPassThree(map, bgTyp, fgTyp) {
     }
 }
 
-export function mkmapFloodRegions(map, bgTyp, fgTyp) {
+export function flood_fill_rm(map, bgTyp, fgTyp) {
     const seen = new Set();
     const key = (x, y) => `${x},${y}`;
     const regions = [];
@@ -269,7 +269,7 @@ function mkmapDigCorridor(map, org, dest, fgTyp, bgTyp) {
     return true;
 }
 
-export function mkmapJoin(map, bgTyp, fgTyp, regions) {
+export function join_map(map, bgTyp, fgTyp, regions) {
     let cur = 0;
     for (let next = 1; next < regions.length; next++) {
         const croom = regions[cur];
@@ -287,7 +287,7 @@ export function mkmapJoin(map, bgTyp, fgTyp, regions) {
     }
 }
 
-export function mkmapWallifyMap(map, x1, y1, x2, y2) {
+export function wallify_map(map, x1, y1, x2, y2) {
     y1 = Math.max(y1, 0);
     x1 = Math.max(x1, 1);
     y2 = Math.min(y2, ROWNO - 1);
@@ -319,9 +319,9 @@ export function mkmapWallifyMap(map, x1, y1, x2, y2) {
     }
 }
 
-export function mkmapFinish(map, fgTyp, bgTyp, lit, walled) {
+export function finish_map(map, fgTyp, bgTyp, lit, walled) {
     if (walled) {
-        mkmapWallifyMap(map, 1, 0, COLNO - 1, ROWNO - 1);
+        wallify_map(map, 1, 0, COLNO - 1, ROWNO - 1);
     }
 
     if (lit) {
@@ -419,20 +419,20 @@ export function mkmap(initLev = {}) {
     const joined = !!initLev.joined;
     const walled = !!initLev.walled;
 
-    mkmapInitMap(map, bgTyp);
-    mkmapInitFill(map, bgTyp, fgTyp);
-    mkmapPassOne(map, bgTyp, fgTyp);
-    mkmapPassTwo(map, bgTyp, fgTyp);
+    init_map(map, bgTyp);
+    init_fill(map, bgTyp, fgTyp);
+    pass_one(map, bgTyp, fgTyp);
+    pass_two(map, bgTyp, fgTyp);
     if (smoothed) {
-        mkmapPassThree(map, bgTyp, fgTyp);
-        mkmapPassThree(map, bgTyp, fgTyp);
+        pass_three(map, bgTyp, fgTyp);
+        pass_three(map, bgTyp, fgTyp);
     }
     if (joined) {
-        const regions = mkmapFloodRegions(map, bgTyp, fgTyp);
+        const regions = flood_fill_rm(map, bgTyp, fgTyp);
         if (regions.length > 1) {
-            mkmapJoin(map, bgTyp, fgTyp, regions);
+            join_map(map, bgTyp, fgTyp, regions);
         }
     }
-    mkmapFinish(map, fgTyp, bgTyp, lit, walled);
+    finish_map(map, fgTyp, bgTyp, lit, walled);
     return map;
 }

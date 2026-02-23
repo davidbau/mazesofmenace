@@ -9,7 +9,7 @@ export function isbig(sroom) {
 }
 
 // C ref: mkroom.c:640-663
-export function has_dnstairs_room(croom, map) {
+export function has_dnstairs(croom, map) {
     if (!Number.isInteger(map?.dnstair?.x) || !Number.isInteger(map?.dnstair?.y)) {
         return false;
     }
@@ -18,7 +18,7 @@ export function has_dnstairs_room(croom, map) {
 }
 
 // C ref: mkroom.c:653-663
-export function has_upstairs_room(croom, map) {
+export function has_upstairs(croom, map) {
     if (!Number.isInteger(map?.upstair?.x) || !Number.isInteger(map?.upstair?.y)) {
         return false;
     }

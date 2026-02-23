@@ -86,8 +86,8 @@ import {
 } from './levels/themerms.js';
 import {
     isbig,
-    has_dnstairs_room,
-    has_upstairs_room,
+    has_dnstairs,
+    has_upstairs,
     nexttodoor,
     shrine_pos,
 } from './mkroom.js';
@@ -4528,11 +4528,11 @@ export function pick_room(map, strict) {
         if (!sroom || sroom.hx < 0) return null;
         if (sroom.rtype !== OROOM) continue;
         if (!strict) {
-            if (has_upstairs_room(sroom, map)
-                || (has_dnstairs_room(sroom, map) && rn2(3))) {
+            if (has_upstairs(sroom, map)
+                || (has_dnstairs(sroom, map) && rn2(3))) {
                 continue;
             }
-        } else if (has_upstairs_room(sroom, map) || has_dnstairs_room(sroom, map)) {
+        } else if (has_upstairs(sroom, map) || has_dnstairs(sroom, map)) {
             continue;
         }
         if (sroom.doorct === 1 || !rn2(5) || _wizardMode) return sroom;
@@ -4630,7 +4630,7 @@ export function mkswamp(map, depth) {
     for (let i = 0; i < 5; i++) {
         const sroom = map.rooms[rn2(map.nroom)];
         if (!sroom || sroom.hx < 0 || sroom.rtype !== OROOM
-            || has_upstairs_room(sroom, map) || has_dnstairs_room(sroom, map))
+            || has_upstairs(sroom, map) || has_dnstairs(sroom, map))
             continue;
 
         const rmno = (map.rooms.indexOf(sroom)) + ROOMOFFSET;
@@ -4736,7 +4736,7 @@ export function mkshop(map) {
     for (const sroom of map.rooms) {
         if (sroom.hx < 0) return;
         if (sroom.rtype !== OROOM) continue;
-        if (has_dnstairs_room(sroom, map) || has_upstairs_room(sroom, map)) continue;
+        if (has_dnstairs(sroom, map) || has_upstairs(sroom, map)) continue;
         if (sroom.doorct !== 1) continue;
         if (invalid_shop_shape(sroom, map)) continue;
 

@@ -16,7 +16,6 @@ import { S_HUMAN } from './monsters.js';
 import { mkclass } from './makemon.js';
 import { make_engr_at, wipe_engr_at } from './engrave.js';
 import { random_epitaph_text } from './rumors.js';
-import { has_dnstairs_room, has_upstairs_room } from './mkroom.js';
 import { dosdoor, maketrap, somexy } from './dungeon.js';
 
 // C ref: mklev.c mkroom_cmp() — sort rooms by lx only
