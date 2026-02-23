@@ -251,3 +251,91 @@ export async function handleKnownSpells(player, display) {
         destroy_nhwindow(win);
     }
 }
+
+// ── Phase 6: Spell casting system ──
+
+// cf. spell.c study_book() — read spellbook to learn spell
+export function study_book(spellbook, player) {
+  // Stub — would handle spellbook study with confusion/curse checks
+  // Returns 1 if study started, 0 otherwise
+  if (!spellbook || !player) return 0;
+  return 0;
+}
+
+// cf. spell.c book_cursed() — cursed book effects
+export function book_cursed(spellbook, player) {
+  // Stub — cursed book explodes or summons monsters
+  return 0;
+}
+
+// cf. spell.c confused_book() — confused reading effects
+export function confused_book(spellbook, player) {
+  // Stub — confused reading produces random effects
+  return 0;
+}
+
+// cf. spell.c spell_skilltype() — skill category for spell
+export function spell_skilltype(booktype) {
+  return spellCategoryForName(
+    objectData[booktype] ? objectData[booktype].name : ''
+  );
+}
+
+// cf. spell.c docast() — main cast command
+export async function docast(player, display, map) {
+  // Stub — would prompt for spell selection and cast
+  if (!player || !player.spells || player.spells.length === 0) {
+    if (display) display.putstr_message("You don't know any spells.");
+    return { moved: false, tookTime: false };
+  }
+  // Full implementation would call getspell() then spelleffects()
+  return { moved: false, tookTime: false };
+}
+
+// cf. spell.c spelleffects() — dispatch spell effect
+export function spelleffects(spell, atme, player, map, display) {
+  // Stub — dispatch individual spell effects
+  // Would switch on spell type and apply effects
+  return 0;
+}
+
+// cf. spell.c spell_damage_bonus() — damage bonus calculation
+export function spell_damage_bonus(spell, player) {
+  // Returns damage bonus based on spell skill
+  return 0;
+}
+
+// cf. spell.c spell_would_be_useless() — uselessness check
+export function spell_would_be_useless_hero(spell, player) {
+  // Check if casting this spell would be useless
+  return false;
+}
+
+// cf. spell.c learn() — learn a spell
+export function learn(spellbook, player) {
+  // Stub — add spell to player's known spells
+  if (!player || !spellbook) return;
+  if (!player.spells) player.spells = [];
+  // Would check if already known, update retention, etc.
+}
+
+// cf. spell.c getspell() — select spell from menu
+export async function getspell(prompt, player, display) {
+  // Stub — would display spell menu and return selection
+  return -1; // no spell selected
+}
+
+// cf. spell.c dovspell() — view spells (alias for handleKnownSpells)
+export const dovspell = handleKnownSpells;
+
+// cf. spell.c check_unpaid() — unpaid spellbook check
+export function check_unpaid(obj) {
+  // Stub — check if spellbook is unpaid (shop)
+  return false;
+}
+
+// cf. spell.c rejectcasting() — cast rejection reasons
+export function rejectcasting(player) {
+  // Stub — check if casting is possible (confusion, stunned, etc.)
+  return false; // no rejection
+}

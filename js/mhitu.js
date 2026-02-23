@@ -42,6 +42,7 @@ import { stealgold, steal } from './steal.js';
 import { erode_obj, ERODE_RUST, ERODE_CORRODE, ERODE_ROT,
          EF_GREASE, EF_VERBOSE } from './trap.js';
 import { xkilled, XKILL_NOMSG } from './mon.js';
+import { spec_dbon } from './artifact.js';
 
 const PIERCE = 1;
 
@@ -248,11 +249,15 @@ function mhitu_ad_phys(monster, attack, player, mhm, ctx) {
             if (wsdam > 0) mhm.damage += rnd(wsdam);
             // Gauntlets of power: rn1(4,3) — skip, monsters rarely have them
             if (mhm.damage <= 0) mhm.damage = 1;
-            // Artifact check — not implemented; use hitmsg
             hitmsg(monster, attack, display, suppressHitMsg);
             mhm.hitflags |= M_ATTK_HIT;
             // Weapon enchantment
             mhm.damage += weaponEnchantment(monster.weapon);
+            // cf. mhitu.c — artifact damage bonus
+            if (monster.weapon.oartifact) {
+                const [bonus] = spec_dbon(monster.weapon, player, mhm.damage);
+                mhm.damage += bonus;
+            }
             // Weapon poison: C checks dieroll <= 5 for poisoned weapons
             // TODO: implement weapon poison path
         } else if (attack.type !== AT_TUCH || mhm.damage !== 0

@@ -3,70 +3,330 @@
 //                cursetxt, m_cure_self, touch_of_death, death_inflicted_by,
 //                cast_wizard_spell, cast_cleric_spell,
 //                is_undirected_spell, spell_would_be_useless
-//
-// mcastu.c handles monster spellcasting:
-//   castmu(mtmp, mattk, vis, thrown): monster casts a spell at the hero.
-//     Selects spell type (wizard or cleric) based on mattk.aatyp;
-//     calls cast_wizard_spell or cast_cleric_spell.
-//   buzzmu(mtmp, mattk): monster uses a ranged spell attack (beam).
-//
-// Wizard spells (cast_wizard_spell): PSI bolt, death touch, clone wiz,
-//   summon nasties, disappear, haste self, aggravate, drain energy,
-//   curse items, cause fear.
-// Cleric spells (cast_cleric_spell): geyser, fire pillar, lightning, insects,
-//   cold, sleep, distress, curse items, blind, paralyze, confuse, cure self.
-//
-// JS implementations: none — all monster spellcasting is runtime gameplay.
 
-// cf. mcastu.c:48 [static] — cursetxt(mtmp, vis): spell failure feedback
-// Prints message when monster's spell is frustrated (e.g., anti-magic zone).
-// TODO: mcastu.c:48 — cursetxt(): spell frustration message
+import { rn2, rnd, d } from './rng.js';
+import { AD_FIRE, AD_COLD, AD_ELEC, AD_MAGM, AT_MAGC } from './monsters.js';
 
-// cf. mcastu.c:75 [static] — choose_magic_spell(n): map level to wizard spell enum
-// Converts random roll n (1..max) into specific MS_WIZARD_* spell.
-// TODO: mcastu.c:75 — choose_magic_spell(): wizard spell selection
+// Wizard spell constants (C ref: mcastu.c)
+export const MGC_PSI_BOLT = 0;
+export const MGC_CURE_SELF = 1;
+export const MGC_HASTE_SELF = 2;
+export const MGC_STUN_YOU = 3;
+export const MGC_DISAPPEAR = 4;
+export const MGC_WEAKEN_YOU = 5;
+export const MGC_DESTRY_ARMR = 6;
+export const MGC_CURSE_ITEMS = 7;
+export const MGC_AGGRAVATION = 8;
+export const MGC_SUMMON_MONS = 9;
+export const MGC_CLONE_WIZ = 10;
+export const MGC_DEATH_TOUCH = 11;
 
-// cf. mcastu.c:129 [static] — choose_clerical_spell(n): map level to cleric spell enum
-// Converts random roll n (1..max) into specific MS_CLER_* spell.
-// TODO: mcastu.c:129 — choose_clerical_spell(): cleric spell selection
+// Cleric spell constants
+export const CLC_OPEN_WOUNDS = 0;
+export const CLC_CURE_SELF = 1;
+export const CLC_CONFUSE_YOU = 2;
+export const CLC_PARALYZE = 3;
+export const CLC_BLIND_YOU = 4;
+export const CLC_INSECTS = 5;
+export const CLC_CURSE_ITEMS = 6;
+export const CLC_LIGHTNING = 7;
+export const CLC_FIRE_PILLAR = 8;
+export const CLC_GEYSER = 9;
 
-// cf. mcastu.c:176 — castmu(mtmp, mattk, vis, thrown): monster casts spell at hero
-// Selects wizard or cleric spell; calls cast_wizard_spell or cast_cleric_spell.
-// Returns 1 if spell was cast, 0 if failed.
-// TODO: mcastu.c:176 — castmu(): monster spell casting
+// cf. mcastu.c:48 — cursetxt(mtmp, vis)
+export function cursetxt(mtmp, vis) {
+  // Message when monster's spell is frustrated
+  // Stub — would print "The <monster> points at you, then curses."
+}
 
-// cf. mcastu.c:359 [static] — m_cure_self(mtmp, dmg): monster heals itself
-// Restores monster HP; prints message if visible. Returns remaining damage.
-// TODO: mcastu.c:359 — m_cure_self(): monster self-healing spell
+// cf. mcastu.c:75 — choose_magic_spell(n)
+// Maps a spell value to a wizard spell type
+export function choose_magic_spell(n) {
+  // C ref: mcastu.c:75-126
+  // The spell value is recursively reduced: while > 24 && rn2(25), re-roll
+  while (n > 24 && rn2(25)) {
+    n = rn2(n);
+  }
 
-// cf. mcastu.c:374 — touch_of_death(mtmp): touch of death spell
-// Instant kill or massive damage; calls fry_by_god-style death or big HP loss.
-// TODO: mcastu.c:374 — touch_of_death(): instant-kill spell
+  if (n >= 24) return MGC_DEATH_TOUCH;
+  if (n >= 22) return MGC_CLONE_WIZ;
+  if (n >= 20) return MGC_SUMMON_MONS;
+  if (n >= 16) return MGC_AGGRAVATION;
+  if (n >= 14) return MGC_CURSE_ITEMS;
+  if (n >= 12) return MGC_DESTRY_ARMR;
+  if (n >= 10) return MGC_WEAKEN_YOU;
+  if (n >= 8) return MGC_DISAPPEAR;
+  if (n >= 6) return MGC_STUN_YOU;
+  if (n >= 4) return MGC_HASTE_SELF;
+  if (n >= 2) return MGC_CURE_SELF;
+  return MGC_PSI_BOLT;
+}
 
-// cf. mcastu.c:409 — death_inflicted_by(buf, who, mtmp): format death message for spell
-// Formats death cause string for spell-induced deaths.
-// TODO: mcastu.c:409 — death_inflicted_by(): spell death message formatter
+// cf. mcastu.c:129 — choose_clerical_spell(n)
+export function choose_clerical_spell(n) {
+  while (n > 24 && rn2(25)) {
+    n = rn2(n);
+  }
 
-// cf. mcastu.c:448 [static] — cast_wizard_spell(mtmp, dmg, spellid): wizard spell effects
-// Dispatches on spellid: PSI bolt, death touch, clone wiz, summon, disappear,
-//   haste self, aggravate monsters, drain energy, curse items, cause fear.
-// TODO: mcastu.c:448 — cast_wizard_spell(): wizard spell effect handler
+  if (n >= 22) return CLC_GEYSER;
+  if (n >= 20) return CLC_FIRE_PILLAR;
+  if (n >= 16) return CLC_LIGHTNING;
+  if (n >= 14) return CLC_CURSE_ITEMS;
+  if (n >= 12) return CLC_INSECTS;
+  if (n >= 10) return CLC_BLIND_YOU;
+  if (n >= 8) return CLC_PARALYZE;
+  if (n >= 6) return CLC_CONFUSE_YOU;
+  if (n >= 4) return CLC_OPEN_WOUNDS;
+  if (n >= 2) return CLC_CURE_SELF;
+  return CLC_OPEN_WOUNDS;
+}
 
-// cf. mcastu.c:631 [static] — cast_cleric_spell(mtmp, dmg, spellid): cleric spell effects
-// Dispatches on spellid: geyser, fire pillar, lightning, summon insects,
-//   cold beam, sleep, distress, curse items, blind, paralyze, confuse, cure self.
-// TODO: mcastu.c:631 — cast_cleric_spell(): cleric spell effect handler
+// cf. mcastu.c:359 — m_cure_self(mtmp, dmg)
+export function m_cure_self(mtmp, dmg) {
+  const heal = d(3, 6);
+  if (mtmp.mhp < mtmp.mhpmax) {
+    mtmp.mhp = Math.min(mtmp.mhpmax, mtmp.mhp + heal);
+  }
+  return Math.max(0, dmg - heal);
+}
 
-// cf. mcastu.c:884 [static] — is_undirected_spell(aatyp, spellid): spell needs direction?
-// Returns TRUE if spell does not require aiming (clone, summon, aggravate,
-//   disappear, haste, cure self).
-// TODO: mcastu.c:884 — is_undirected_spell(): undirected spell predicate
+// cf. mcastu.c:374 — touch_of_death(mtmp)
+export function touch_of_death(mtmp, player) {
+  // Stub — instant kill or massive damage to player
+  // Full implementation requires player death handling
+  if (!player) return;
+  const dmg = 50 + d(8, 6);
+  // Would check for Antimagic, magic resistance, etc.
+  // For now this is a stub
+}
 
-// cf. mcastu.c:912 [static] — spell_would_be_useless(mtmp, aatyp, spellid): useless?
-// Returns TRUE if spell would have no effect (already hasted, anti-magic area, etc.).
-// TODO: mcastu.c:912 — spell_would_be_useless(): spell uselessness check
+// cf. mcastu.c:409 — death_inflicted_by(who, mtmp)
+export function death_inflicted_by(who, mtmp) {
+  // Format death message for spell-induced deaths
+  return `killed by a spell cast by ${who}`;
+}
 
-// cf. mcastu.c:980 — buzzmu(mtmp, mattk): monster ranged spell attack
-// Monster fires a directed beam (fire, cold, lightning, etc.) at hero.
-// Calls buzz() for beam traversal.
-// TODO: mcastu.c:980 — buzzmu(): monster ranged spell beam
+// cf. mcastu.c:448 — cast_wizard_spell(mtmp, dmg, spellid)
+export function cast_wizard_spell(mtmp, dmg, spellid, player, map) {
+  switch (spellid) {
+    case MGC_DEATH_TOUCH:
+      // Touch of death
+      touch_of_death(mtmp, player);
+      break;
+    case MGC_CLONE_WIZ:
+      // Clone wizard — stub
+      break;
+    case MGC_SUMMON_MONS:
+      // Summon nasties — stub
+      break;
+    case MGC_AGGRAVATION:
+      // Aggravate monsters
+      aggravation(map);
+      break;
+    case MGC_CURSE_ITEMS:
+      // Curse hero items
+      curse_objects(player);
+      break;
+    case MGC_DESTRY_ARMR:
+      // Destroy armor — stub
+      break;
+    case MGC_WEAKEN_YOU:
+      // Weaken (drain STR)
+      if (player && dmg > 0) {
+        // Would drain rnd(dmg) STR
+      }
+      break;
+    case MGC_DISAPPEAR:
+      // Monster goes invisible
+      if (mtmp) mtmp.minvis = true;
+      break;
+    case MGC_STUN_YOU:
+      // Stun hero — stub
+      break;
+    case MGC_HASTE_SELF:
+      // Monster hastes itself
+      if (mtmp) mtmp.mspeed = 2; // fast
+      break;
+    case MGC_CURE_SELF:
+      m_cure_self(mtmp, 0);
+      break;
+    case MGC_PSI_BOLT:
+      // Psi bolt: dmg to player
+      if (player) {
+        // Would apply dmg with Antimagic halving
+      }
+      break;
+  }
+}
+
+// cf. mcastu.c:631 — cast_cleric_spell(mtmp, dmg, spellid)
+export function cast_cleric_spell(mtmp, dmg, spellid, player, map) {
+  switch (spellid) {
+    case CLC_GEYSER:
+      // Geyser: d(8, 6) physical damage
+      if (player) {
+        const gdam = d(8, 6);
+        // Would apply physical damage
+      }
+      break;
+    case CLC_FIRE_PILLAR:
+      // Fire pillar: d(8, 6) fire damage
+      if (player) {
+        const fdam = d(8, 6);
+        // Would apply fire damage + burnarmor
+      }
+      break;
+    case CLC_LIGHTNING:
+      // Lightning: d(8, 6) electrical damage
+      if (player) {
+        const edam = d(8, 6);
+        // Would apply electrical damage + blind via flashburn(rnd(100))
+        rnd(100); // blind duration RNG consumed
+      }
+      break;
+    case CLC_INSECTS:
+      // Summon insects
+      if (mtmp) {
+        const mlev = mtmp.m_lev || mtmp.mlevel || 1;
+        let quan = (mlev < 2) ? 1 : rnd(Math.floor(mlev / 2));
+        if (quan < 3) quan = 3;
+        // Would spawn quan insects
+      }
+      break;
+    case CLC_CURSE_ITEMS:
+      curse_objects(player);
+      break;
+    case CLC_BLIND_YOU:
+      // Blind hero — stub
+      break;
+    case CLC_PARALYZE:
+      // Paralyze hero — stub
+      break;
+    case CLC_CONFUSE_YOU:
+      // Confuse hero — stub
+      break;
+    case CLC_OPEN_WOUNDS:
+      // Open wounds: direct damage
+      if (player) {
+        // Would apply dmg
+      }
+      break;
+    case CLC_CURE_SELF:
+      m_cure_self(mtmp, 0);
+      break;
+  }
+}
+
+// cf. mcastu.c:176 — castmu(mtmp, mattk, vis, thrown)
+// Monster casts a spell at the hero
+// Returns 1 if spell was cast, 0 if failed
+export function castmu(mtmp, mattk, vis, thrown, player, map) {
+  if (!mtmp || !mattk) return 0;
+
+  const ml = mtmp.m_lev || mtmp.mlevel || 1;
+  const aatyp = mattk.aatyp || mattk.at || 0;
+
+  // Spell fumble check
+  if (rn2(ml * 10) < (mtmp.mconf ? 100 : 20)) {
+    if (vis) cursetxt(mtmp, vis);
+    return 1; // spell fumbled but turn consumed
+  }
+
+  // Select spell
+  let spellnum = rn2(ml);
+  let dmg;
+  if (mattk.damd) {
+    dmg = d(Math.floor(ml / 2) + (mattk.damn || 0), mattk.damd);
+  } else {
+    dmg = d(Math.floor(ml / 2) + 1, 6);
+  }
+
+  // Determine spell type (wizard vs cleric)
+  const isWizard = (aatyp === AT_MAGC);
+  // In C, AT_MAGC = wizard spells; AT_CLER would be cleric
+  // For simplicity, check monster data for caster type
+
+  if (isWizard) {
+    const spell = choose_magic_spell(spellnum);
+    if (spell_would_be_useless(mtmp, aatyp, spell)) return 0;
+    cast_wizard_spell(mtmp, dmg, spell, player, map);
+  } else {
+    const spell = choose_clerical_spell(spellnum);
+    if (spell_would_be_useless(mtmp, aatyp, spell)) return 0;
+    cast_cleric_spell(mtmp, dmg, spell, player, map);
+  }
+
+  return 1;
+}
+
+// cf. mcastu.c:884 — is_undirected_spell(aatyp, spellid)
+export function is_undirected_spell(aatyp, spellid) {
+  if (aatyp === AT_MAGC) {
+    switch (spellid) {
+      case MGC_CLONE_WIZ:
+      case MGC_SUMMON_MONS:
+      case MGC_AGGRAVATION:
+      case MGC_DISAPPEAR:
+      case MGC_HASTE_SELF:
+      case MGC_CURE_SELF:
+        return true;
+    }
+  } else {
+    switch (spellid) {
+      case CLC_INSECTS:
+      case CLC_CURE_SELF:
+        return true;
+    }
+  }
+  return false;
+}
+
+// cf. mcastu.c:912 — spell_would_be_useless(mtmp, aatyp, spellid)
+export function spell_would_be_useless(mtmp, aatyp, spellid) {
+  if (aatyp === AT_MAGC) {
+    switch (spellid) {
+      case MGC_HASTE_SELF:
+        return mtmp.mspeed >= 2; // already fast
+      case MGC_CURE_SELF:
+        return mtmp.mhp >= mtmp.mhpmax; // already at full HP
+      case MGC_DISAPPEAR:
+        return !!mtmp.minvis; // already invisible
+      default:
+        return false;
+    }
+  } else {
+    switch (spellid) {
+      case CLC_CURE_SELF:
+        return mtmp.mhp >= mtmp.mhpmax;
+      default:
+        return false;
+    }
+  }
+}
+
+// cf. mcastu.c:980 — buzzmu(mtmp, mattk)
+// Monster fires a directed beam at hero
+export function buzzmu(mtmp, mattk, player, map) {
+  if (!mtmp || !mattk || !player) return 0;
+
+  // Determine beam type from mattk
+  const adtyp = mattk.adtyp || mattk.ad || AD_MAGM;
+  // Would call dobuzz() with appropriate parameters
+  // Stub — full implementation needs beam traversal integration
+
+  return 1;
+}
+
+// ── Helper functions ──
+
+// cf. mcastu.c aggravation — wake all monsters
+export function aggravation(map) {
+  if (!map) return;
+  // Would iterate all monsters and set msleeping = false
+}
+
+// cf. mcastu.c curse_objects — curse hero inventory items
+export function curse_objects(player) {
+  if (!player) return;
+  // Would iterate inventory and curse random items
+}

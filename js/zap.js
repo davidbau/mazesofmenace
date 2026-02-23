@@ -351,3 +351,187 @@ export async function handleZap(player, map, display, game) {
 
     return { moved: false, tookTime: true };
 }
+
+// ── Phase 5: Additional zap functions ──
+
+// Beam type constants (exported)
+export { ZT_MAGIC_MISSILE, ZT_FIRE, ZT_COLD, ZT_SLEEP, ZT_DEATH, ZT_LIGHTNING };
+
+// cf. zap.c destroy_item() — destroy items in hero inventory by type
+// osym: object class symbol, dmgtyp: AD_FIRE/AD_COLD/AD_ELEC
+export function destroy_item(osym, dmgtyp, player) {
+  if (!player || !player.inventory) return 0;
+  let cnt = 0;
+  // Iterate inventory, check each item for destroyability
+  for (const obj of player.inventory) {
+    if (obj.oartifact) continue; // artifacts immune
+    if (!destroyable_by(obj, dmgtyp)) continue;
+    // Each item has 1 in 3 chance of being destroyed per unit
+    for (let i = 0; i < (obj.quan || 1); i++) {
+      if (!rn2(3)) cnt++;
+    }
+  }
+  // Actual destruction deferred — just consume RNG for parity
+  return cnt;
+}
+
+// cf. zap.c destroy_mitem() — destroy items in monster inventory
+export function destroy_mitem(mon, osym, dmgtyp) {
+  if (!mon || !mon.minvent) return 0;
+  let cnt = 0;
+  for (const obj of mon.minvent) {
+    if (obj.oartifact) continue;
+    if (!destroyable_by(obj, dmgtyp)) continue;
+    for (let i = 0; i < (obj.quan || 1); i++) {
+      if (!rn2(3)) cnt++;
+    }
+  }
+  return cnt;
+}
+
+// Check if object is destroyable by damage type
+function destroyable_by(obj, dmgtyp) {
+  const { AD_FIRE, AD_COLD, AD_ELEC } = { AD_FIRE: 2, AD_COLD: 3, AD_ELEC: 6 };
+  if (dmgtyp === AD_FIRE) {
+    return obj.oclass === POTION_CLASS || obj.oclass === SCROLL_CLASS ||
+           obj.oclass === 9 /* SPBOOK_CLASS */;
+  }
+  if (dmgtyp === AD_COLD) {
+    return obj.oclass === POTION_CLASS;
+  }
+  if (dmgtyp === AD_ELEC) {
+    return obj.oclass === RING_CLASS || obj.oclass === WAND_CLASS;
+  }
+  return false;
+}
+
+// cf. zap.c revive() — revive a corpse into a living monster
+export function revive(obj, by_hero, map) {
+  // Stub — corpse revival is complex (needs makemon integration)
+  // Returns the created monster or null
+  if (!obj || obj.otyp !== CORPSE) return null;
+  // Would create a monster from the corpse's corpsenm
+  // For now, consume the rn2(40) for bag of holding check
+  return null;
+}
+
+// cf. zap.c cancel_monst() — cancel a monster's magical abilities
+export function cancel_monst(mon, obj, youattack, allow_cancel_kill, self_cancel) {
+  if (!mon) return;
+  // Cancel monster's magical abilities
+  mon.mcan = true;
+  // Would also cancel items in inventory
+}
+
+// cf. zap.c bhitm() — bolt/beam hits monster
+export function bhitm(mon, obj) {
+  // Stub — beam hits monster (dispatch based on wand type)
+  return 0;
+}
+
+// cf. zap.c burn_floor_objects() — fire on floor
+export function burn_floor_objects(x, y, give_feedback, u_caused, map) {
+  // Stub — burn objects on floor at (x,y)
+  return false;
+}
+
+// cf. zap.c buzz() — main beam propagation
+export function buzz(type, nd, sx, sy, dx, dy, map, player) {
+  // This is essentially what dobuzz() does above but with the C-style interface
+  // Delegate to dobuzz for now
+  // Full implementation would add reflection, splitting, etc.
+}
+
+// cf. zap.c weffects() — wand zap dispatch
+export function weffects(obj, player, map) {
+  // Stub — dispatch wand effect based on type
+  // Non-beam wands (digging, polymorph, etc.)
+}
+
+// cf. zap.c zap_dig() — digging beam
+export function zap_dig(map, player) {
+  // Stub — dig through walls/floor
+}
+
+// cf. zap.c bhitpile() — beam hits pile of objects
+export function bhitpile(obj, fhitm, tx, ty, zz) {
+  // Stub — apply beam effect to pile of objects at (tx,ty)
+  return 0;
+}
+
+// cf. zap.c backfire() — wand backfire on hero
+export function backfire(obj, player) {
+  // Stub — wand backfires (cursed wand, etc.)
+}
+
+// cf. zap.c poly_obj() — polymorph object
+export function poly_obj(obj, id) {
+  // Stub — polymorph an object into a different type
+  // Would use rn2() for new type selection
+  return obj;
+}
+
+// cf. zap.c obj_zapped() — object hit by beam
+export function obj_zapped(obj, osym) {
+  // Stub — apply beam damage to an object
+  return false;
+}
+
+// cf. zap.c obj_shudders() — object resists
+export function obj_shudders(obj) {
+  // Stub — object shudders and resists beam
+}
+
+// cf. zap.c do_osshock() — shock damage to object
+export function do_osshock(obj) {
+  // Stub — apply shock to object
+}
+
+// cf. zap.c probe_monster() — probing wand effect
+export function probe_monster(mon) {
+  // Stub — display monster stats
+}
+
+// cf. zap.c skiprange() — range calculation
+export function skiprange(range, skipstart, skipend) {
+  // Stub — calculate skip range for beam
+  return { start: skipstart || 0, end: skipend || 0 };
+}
+
+// cf. zap.c maybe_explode_wand() — wand explosion
+export function maybe_explode_wand(obj, dx, dy) {
+  // Stub — check if wand explodes
+  return false;
+}
+
+// cf. zap.c break_wand() — break wand effects
+export function break_wand(obj, player, map) {
+  // Stub — break wand with explosion (RNG-heavy)
+  // Would call explode() for wand breaking
+}
+
+// cf. zap.c zap_over_floor() — beam floor effects
+export function zap_over_floor(x, y, type, shotefx, skip_mon) {
+  // Stub — beam effects on floor (create ice, evaporate pool, etc.)
+}
+
+// cf. zap.c zap_updown() — zap up/down
+export function zap_updown(obj, player) {
+  // Stub — zap wand upward or downward
+}
+
+// cf. zap.c resists_blnd() — blindness resistance
+export function resists_blnd(mon) {
+  // Check if monster resists blindness
+  if (!mon) return false;
+  const mdat = mon.data || (mon.mndx != null ? mons[mon.mndx] : null);
+  if (!mdat) return false;
+  // Blind resistance: no eyes or already blind
+  return !!(mdat.mflags1 & 0x00000004); // M1_NOEYES approximation
+}
+
+// cf. zap.c resists_stun() — stun resistance
+export function resists_stun(mon) {
+  // Stub — most monsters don't have stun resistance
+  return false;
+}

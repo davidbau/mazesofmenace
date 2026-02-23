@@ -38,7 +38,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[~]` | allmain.c | allmain.js | Main game loop, newgame, moveloop. JS: chargen UI split into `chargen.js`; browser entry point in `nethack.js` |
 | `[N/A]` | alloc.c | — | Memory allocation (nhalloc, nhfree). JS uses GC |
 | `[a]` | apply.c | apply.js | Applying items. handleApply (doapply) with isApplyCandidate/isApplyChopWeapon/isApplyPolearm/isApplyDownplay helpers; ~70 functions TODO |
-| `[~]` | artifact.c | artifact.js | Artifact creation and effects |
+| `[p]` | artifact.c | artifact.js | Artifact system. Generated data table (artifacts.js) with artilist[], SPFX_*, ART_* constants. ~70 functions implemented: existence tracking (init/exist/found/find/mk_artifact), pure predicates (spec_ability, confers_luck, arti_reflects, shade_glare, restrict_name, attacks, defends, protects, arti_immune, artifact_has_invprop, arti_cost, is_art, permapoisoned, spec_m2), combat (spec_applies, bane_applies, spec_abon, spec_dbon — wired into uhitm/mhitm/mhitu), discovery, glow/Sting. Stubs: set_artifact_intrinsic, Mb_hit, doinvoke, arti_invoke, all invoke_* functions, retouch_object/equipment |
 | `[~]` | attrib.c | attrib.js | Attribute system. JS: partially in `attrib_exercise.js` |
 | `[~]` | ball.c | ball.js | Ball & chain handling |
 | `[a]` | bones.c | bones.js | Bones file save/load. All 9 functions aligned; 3 static TODO (no_bones_level, goodfruit, fixuporacle) |
@@ -67,7 +67,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[~]` | end.c | end.js | Game over, death, scoring |
 | `[a]` | engrave.c | engrave.js | Engraving mechanics. handleEngrave (doengrave) approximation, maybeSmudgeEngraving (wipe_engr_at); engrave_data.js has text data; ~30 functions TODO |
 | `[a]` | exper.c | exper.js | Experience and leveling. newuexp, newexplevel, pluslvl, losexp, newpw, newhp, enermod implemented; experience, more_experienced, rndexp TODO. Role/race hpadv/enadv_full/xlev data in player.js. |
-| `[~]` | explode.c | explode.js | Explosion effects |
+| `[p]` | explode.c | explode.js | Explosion effects. All 9 functions present: adtyp_to_expltype, explosionmask (stub), engulfer_explosion_msg (stub), explode (3x3 area with resistance checks), scatter (stub), splatter_burning_oil, explode_oil, mon_explodes, ugolemeffects (stub) |
 | `[~]` | extralev.c | extralev.js | Special level generation helpers |
 | `[N/A]` | files.c | — | File I/O operations. JS: `storage.js` |
 | `[a]` | fountain.c | fountain.js | Fountain effects. drinkfountain/dryup implemented (RNG-parity); ~12 functions TODO |
@@ -83,10 +83,10 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[a]` | lock.c | lock.js | Lock picking and door opening. handleForce/handleOpen/handleClose (doforce/doopen/doclose) approximations; ~15 functions TODO |
 | `[N/A]` | mail.c | — | In-game mail system (uses real mail on Unix) |
 | `[a]` | makemon.c | makemon.js | Monster creation. Core functions aligned; clone_mon/propagate TODO |
-| `[~]` | mcastu.c | mcastu.js | Monster spellcasting. castmu/buzzmu and all 11 spell functions TODO (runtime gameplay) |
+| `[p]` | mcastu.c | mcastu.js | Monster spellcasting. All 14 functions present: castmu (full spell selection pipeline with fumble check), buzzmu (stub), choose_magic_spell, choose_clerical_spell, cast_wizard_spell, cast_cleric_spell, m_cure_self, touch_of_death, death_inflicted_by, cursetxt (stub), is_undirected_spell, spell_would_be_useless, aggravation (stub), curse_objects (stub) |
 | `[N/A]` | mdlib.c | — | Metadata library utilities |
-| `[a]` | mhitm.c | mhitm.js | Monster-vs-monster combat. mattackm/hitmm/mdamagem/passivemm/fightm implemented (m-vs-m path); RNG parity for pets in dogmove.js; monCombatName per-monster visibility pronouns; rustm (full erode_obj dispatch), mdisplacem (position swap + petrification), engulf_target, gulpmm (simplified), mon_poly (simplified). gazemu/gulpmm full effects TODO |
-| `[a]` | mhitu.c | mhitu.js | Monster-vs-hero combat. monsterAttackPlayer restructured to match hitmu() flow; hitmsg, mhitm_knockback, mhitu_adtyping dispatcher, ~30 AD_* handlers (phys/fire/cold/elec/acid/stck/plys/slee/conf/stun/blnd/drst/drli/dren/drin/slow/ston etc.) implemented with real effects; mpoisons_subj, u_slow_down, wildmiss, getmattk (attack substitution), assess_dmg, passiveum (hero passive counter); AD_SGLD→stealgold, AD_SEDU→steal, AD_RUST/CORR/DCAY→erode_obj wired; gazemu/gulpmu/expels/summonmu/doseduce TODO |
+| `[a]` | mhitm.c | mhitm.js | Monster-vs-monster combat. mattackm/hitmm/mdamagem/passivemm/fightm implemented (m-vs-m path); RNG parity for pets in dogmove.js; monCombatName per-monster visibility pronouns; rustm (full erode_obj dispatch), mdisplacem (position swap + petrification), engulf_target, gulpmm (simplified), mon_poly (simplified); artifact spec_dbon wired into mdamagem. gazemu/gulpmm full effects TODO |
+| `[a]` | mhitu.c | mhitu.js | Monster-vs-hero combat. monsterAttackPlayer restructured to match hitmu() flow; hitmsg, mhitm_knockback, mhitu_adtyping dispatcher, ~30 AD_* handlers (phys/fire/cold/elec/acid/stck/plys/slee/conf/stun/blnd/drst/drli/dren/drin/slow/ston etc.) implemented with real effects; mpoisons_subj, u_slow_down, wildmiss, getmattk (attack substitution), assess_dmg, passiveum (hero passive counter); AD_SGLD→stealgold, AD_SEDU→steal, AD_RUST/CORR/DCAY→erode_obj wired; artifact spec_dbon wired into mhitu_ad_phys; gazemu/gulpmu/expels/summonmu/doseduce TODO |
 | `[~]` | minion.c | minion.js | Minion summoning: msummon, summon_minion, demon_talk, bribe, guardian angels. All 14 functions TODO (runtime gameplay) |
 | `[~]` | mklev.c | mklev.js | Level generation. makelevel/makerooms/makecorridors/mineralize PARTIAL in dungeon.js; topologize/mkinvokearea/place_branch TODO |
 | `[~]` | mkmap.c | mkmap.js | Map generation algorithms. JS: in `sp_lev.js` |
@@ -136,7 +136,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[~]` | sit.c | sit.js | Sitting effects. All 7 functions (dosit, rndcurse, attrcurse, take_gold, throne_sit_effect, special_throne_effect, lay_an_egg) are TODO stubs |
 | `[~]` | sounds.c | sounds.js | Monster sounds, ambient room sounds, chat. dosounds() partial in chargen.js/headless.js; domonnoise/growl/yelp/whimper/beg/dotalk TODO; sound library N/A |
 | `[~]` | sp_lev.c | sp_lev.js | Special level interpreter |
-| `[a]` | spell.c | spell.js | Spell casting. ageSpells (age_spells), handleKnownSpells (dovspell/dospellmenu), estimateSpellFailPercent (percent_success approximation), spellRetentionText (spellretention). Spell category/skill tables from C. ~40 functions TODO |
+| `[a]` | spell.c | spell.js | Spell casting. ageSpells (age_spells), handleKnownSpells (dovspell/dospellmenu), estimateSpellFailPercent (percent_success approximation), spellRetentionText (spellretention). Spell category/skill tables from C. New stubs: study_book, book_cursed, confused_book, spell_skilltype, spelleffects, spell_damage_bonus, spell_would_be_useless_hero, learn, check_unpaid, rejectcasting. ~30 functions TODO |
 | `[~]` | stairs.c | stairs.js | Stairway management. JS uses map.upstair/dnstair objects; u_on_upstairs/dnstairs → getArrivalPosition in do.js; stairway_find_*, On_stairs_*, stairs_description TODO |
 | `[a]` | steal.c | steal.js | Monster stealing. somegold, findgold, stealgold, thiefdead, unresponsive, remove_worn_item, steal (weighted random), relobj implemented. stealamulet/maybe_absorb_item/mdrop_special_objs stubs. stealarm/unstolenarm/worn_item_removal/mpickobj TODO |
 | `[~]` | steed.c | steed.js | Riding steeds. put_saddle_on_mon partially inline in u_init.js; all 15 functions are TODO stubs |
@@ -149,7 +149,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[p]` | track.c | track.js | Player tracking for pets. save/rest not yet implemented |
 | `[a]` | trap.c | trap.js | Trap mechanics: m_harmless_trap, floor_trigger, mintrap_postmove, mon_check_in_air; erosion system: erode_obj/grease_protect (ERODE_BURN/RUST/ROT/CORRODE/CRACK); damage chains: water_damage/fire_damage/acid_damage/water_damage_chain/fire_damage_chain; petrification: selftouch/mselftouch/instapetrify/minstapetrify |
 | `[a]` | u_init.c | u_init.js | Player initialization. u_init_role, u_init_race, u_init_carry_attr_boost, trquan, ini_inv, ini_inv_mkobj_filter, restricted_spell_discipline aligned. JS-only wrappers: simulatePostLevelInit, initAttributes |
-| `[a]` | uhitm.c | uhitm.js | Hero-vs-monster combat. playerAttackMonster, all mhitm_ad_* handlers (40+), mhitm_adtyping dispatcher, mhitm_mgc_atk_negated, mhitm_knockback (with eligibility + messages) implemented; 50 functions TODO |
+| `[a]` | uhitm.c | uhitm.js | Hero-vs-monster combat. playerAttackMonster, all mhitm_ad_* handlers (40+), mhitm_adtyping dispatcher, mhitm_mgc_atk_negated, mhitm_knockback (with eligibility + messages) implemented; artifact spec_abon wired into find_roll_to_hit, spec_dbon wired into damage calc; 50 functions TODO |
 | `[N/A]` | utf8map.c | — | UTF-8 glyph mapping for terminal |
 | `[~]` | vault.c | `vault.js` | Vault guard behavior |
 | `[N/A]` | version.c | — | Version info |
@@ -163,7 +163,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[~]` | worm.c | worm.js | Long worm mechanics. save/rest_worm are N/A (no save file). All 24 other functions are TODO stubs |
 | `[a]` | worn.c | worn.js | Equipment slot management. setworn, setnotworn, allunworn, wearmask_to_obj, wearslot, wornmask_to_armcat, armcat_to_wornmask, update_mon_extrinsics, mon_set_minvis, mon_adjust_speed, extract_from_minvent, m_lose_armor, mon_break_armor, extra_pref, racial_exception, m_dowear, m_dowear_type, find_mac, bypass stubs (bypass_obj, clear_bypasses, nxt_unbypassed_obj/loot) implemented. check_wornmask_slots/which_armor/recalc_telepat_range TODO |
 | `[a]` | write.c | write.js | Writing on scrolls. cost, write_ok, new_book_description implemented; dowrite TODO |
-| `[a]` | zap.c | zap.js | Wand beam effects. zhitm, zap_hit, resist (faithful alev/dlev), burnarmor, xkilled, corpse_chance, dobuzz implemented. dozap/weffects/bhitm/revive/polyuse and many others TODO |
+| `[a]` | zap.c | zap.js | Wand beam effects. zhitm, zap_hit, resist (faithful alev/dlev), burnarmor, xkilled, corpse_chance, dobuzz implemented. New: destroy_item, destroy_mitem, destroyable_by, resists_blnd, resists_stun. Stubs: revive, cancel_monst, bhitm, burn_floor_objects, buzz, weffects, zap_dig, bhitpile, backfire, poly_obj, obj_zapped, obj_shudders, do_osshock, probe_monster, skiprange, maybe_explode_wand, break_wand, zap_over_floor, zap_updown. ~40 functions TODO |
 
 ### Summary
 
@@ -172,8 +172,8 @@ don't follow the same 1:1 C→JS mapping pattern.
 - **Game logic files**: 107
 - **Complete (`[x]`)**: 4
 - **Aligned (`[a]`)**: 50
-- **Present (`[p]`)**: 1
-- **Needs alignment (`[~]`)**: 53
+- **Present (`[p]`)**: 4
+- **Needs alignment (`[~]`)**: 50
 - **No JS file yet (`[ ]`)**: 0
 
 ### JS Files Without C Counterparts
@@ -419,82 +419,82 @@ This section is generated from source symbol tables and includes function rows f
 ### artifact.c -> artifact.js
 | C Line | C Function | JS Line | Alignment |
 |--------|------------|---------|-----------|
-| 1249 | `Mb_hit` | - | Missing |
-| 2466 | `Sting_effects` | - | Missing |
-| 2320 | `abil_to_adtyp` | - | Missing |
-| 2344 | `abil_to_spfx` | - | Missing |
-| 2309 | `arti_cost` | - | Missing |
-| 979 | `arti_immune` | - | Missing |
-| 2131 | `arti_invoke` | - | Missing |
-| 2106 | `arti_invoke_cost` | - | Missing |
-| 2091 | `arti_invoke_cost_pw` | - | Missing |
-| 537 | `arti_reflects` | - | Missing |
-| 2279 | `arti_speak` | - | Missing |
-| 371 | `artifact_exists` | - | Missing |
-| 2299 | `artifact_has_invprop` | - | Missing |
+| 1249 | `Mb_hit` | artifact.js:610 | Stub |
+| 2466 | `Sting_effects` | artifact.js:502 | Implemented |
+| 2320 | `abil_to_adtyp` | artifact.js:654 | Implemented |
+| 2344 | `abil_to_spfx` | artifact.js:670 | Implemented |
+| 2309 | `arti_cost` | artifact.js:328 | Implemented |
+| 979 | `arti_immune` | artifact.js:314 | Implemented |
+| 2131 | `arti_invoke` | artifact.js:622 | Stub |
+| 2106 | `arti_invoke_cost` | artifact.js:642 | Stub |
+| 2091 | `arti_invoke_cost_pw` | artifact.js:641 | Stub |
+| 537 | `arti_reflects` | artifact.js:234 | Implemented |
+| 2279 | `arti_speak` | artifact.js:646 | Implemented |
+| 371 | `artifact_exists` | artifact.js:140 | Implemented |
+| 2299 | `artifact_has_invprop` | artifact.js:322 | Implemented |
 | 1447 | `artifact_hit` | - | Missing |
-| 2264 | `artifact_light` | - | Missing |
-| 329 | `artifact_name` | - | Missing |
-| 478 | `artifact_origin` | - | Missing |
-| 151 | `artiname` | - | Missing |
-| 626 | `attacks` | - | Missing |
-| 993 | `bane_applies` | - | Missing |
-| 526 | `confers_luck` | - | Missing |
-| 2708 | `count_surround_traps` | - | Missing |
-| 636 | `defends` | - | Missing |
-| 687 | `defends_when_carried` | - | Missing |
-| 1113 | `discover_artifact` | - | Missing |
-| 1147 | `disp_artifact_discoveries` | - | Missing |
+| 2264 | `artifact_light` | artifact.js:337 | Implemented |
+| 329 | `artifact_name` | artifact.js:78 | Implemented |
+| 478 | `artifact_origin` | artifact.js:173 | Implemented |
+| 151 | `artiname` | artifact.js:71 | Implemented |
+| 626 | `attacks` | artifact.js:274 | Implemented |
+| 993 | `bane_applies` | artifact.js:358 | Implemented |
+| 526 | `confers_luck` | artifact.js:228 | Implemented |
+| 2708 | `count_surround_traps` | artifact.js:697 | Stub |
+| 636 | `defends` | artifact.js:283 | Implemented |
+| 687 | `defends_when_carried` | artifact.js:294 | Implemented |
+| 1113 | `discover_artifact` | artifact.js:449 | Implemented |
+| 1147 | `disp_artifact_discoveries` | artifact.js:463 | Stub |
 | 312 | `dispose_of_orig_obj` | - | Missing |
-| 1749 | `doinvoke` | - | Missing |
-| 1177 | `dump_artifact_info` | - | Missing |
-| 356 | `exist_artifact` | - | Missing |
-| 422 | `find_artifact` | - | Missing |
-| 2236 | `finesse_ahriman` | - | Missing |
-| 409 | `found_artifact` | - | Missing |
-| 2821 | `get_artifact` | - | Missing |
-| 2427 | `glow_color` | - | Missing |
+| 1749 | `doinvoke` | artifact.js:616 | Stub |
+| 1177 | `dump_artifact_info` | artifact.js:469 | Stub |
+| 356 | `exist_artifact` | artifact.js:128 | Implemented |
+| 422 | `find_artifact` | artifact.js:202 | Implemented |
+| 2236 | `finesse_ahriman` | artifact.js:643 | Stub |
+| 409 | `found_artifact` | artifact.js:195 | Implemented |
+| 2821 | `get_artifact` | artifact.js:60 | Implemented |
+| 2427 | `glow_color` | artifact.js:476 | Implemented |
 | 2442 | `glow_strength` | - | Missing |
-| 2451 | `glow_verb` | - | Missing |
-| 87 | `hack_artifacts` | - | Missing |
-| 2790 | `has_magic_key` | - | Missing |
-| 111 | `init_artifacts` | - | Missing |
-| 1963 | `invoke_banish` | - | Missing |
-| 2054 | `invoke_blinding_ray` | - | Missing |
-| 1848 | `invoke_charge_obj` | - | Missing |
-| 1934 | `invoke_create_ammo` | - | Missing |
-| 1867 | `invoke_create_portal` | - | Missing |
-| 1818 | `invoke_energy_boost` | - | Missing |
-| 2022 | `invoke_fling_poison` | - | Missing |
-| 1780 | `invoke_healing` | - | Missing |
-| 1727 | `invoke_ok` | - | Missing |
-| 2040 | `invoke_storm_spell` | - | Missing |
-| 1769 | `invoke_taming` | - | Missing |
-| 1838 | `invoke_untrap` | - | Missing |
-| 2808 | `is_art` | - | Missing |
-| 2775 | `is_magic_key` | - | Missing |
-| 172 | `mk_artifact` | - | Missing |
-| 2753 | `mkot_trap_warn` | - | Missing |
-| 462 | `nartifact_exist` | - | Missing |
-| 1762 | `nothing_special` | - | Missing |
-| 2837 | `permapoisoned` | - | Missing |
-| 698 | `protects` | - | Missing |
-| 133 | `restore_artifacts` | - | Missing |
-| 575 | `restrict_name` | - | Missing |
-| 2640 | `retouch_equipment` | - | Missing |
-| 2508 | `retouch_object` | - | Missing |
-| 119 | `save_artifacts` | - | Missing |
-| 716 | `set_artifact_intrinsic` | - | Missing |
-| 555 | `shade_glare` | - | Missing |
-| 516 | `spec_ability` | - | Missing |
-| 1076 | `spec_abon` | - | Missing |
-| 1009 | `spec_applies` | - | Missing |
-| 1091 | `spec_dbon` | - | Missing |
-| 1065 | `spec_m2` | - | Missing |
-| 908 | `touch_artifact` | - | Missing |
-| 1131 | `undiscovered_artifact` | - | Missing |
+| 2451 | `glow_verb` | artifact.js:495 | Implemented |
+| 87 | `hack_artifacts` | - | Missing (init_artifacts serves similar role) |
+| 2790 | `has_magic_key` | artifact.js:717 | Implemented |
+| 111 | `init_artifacts` | artifact.js:102 | Implemented |
+| 1963 | `invoke_banish` | artifact.js:637 | Stub |
+| 2054 | `invoke_blinding_ray` | artifact.js:640 | Stub |
+| 1848 | `invoke_charge_obj` | artifact.js:634 | Stub |
+| 1934 | `invoke_create_ammo` | artifact.js:636 | Stub |
+| 1867 | `invoke_create_portal` | artifact.js:635 | Stub |
+| 1818 | `invoke_energy_boost` | artifact.js:632 | Stub |
+| 2022 | `invoke_fling_poison` | artifact.js:638 | Stub |
+| 1780 | `invoke_healing` | artifact.js:631 | Stub |
+| 1727 | `invoke_ok` | artifact.js:628 | Stub |
+| 2040 | `invoke_storm_spell` | artifact.js:639 | Stub |
+| 1769 | `invoke_taming` | artifact.js:630 | Stub |
+| 1838 | `invoke_untrap` | artifact.js:633 | Stub |
+| 2808 | `is_art` | artifact.js:342 | Implemented |
+| 2775 | `is_magic_key` | artifact.js:708 | Implemented |
+| 172 | `mk_artifact` | artifact.js:551 | Implemented (RNG-consuming candidate selection) |
+| 2753 | `mkot_trap_warn` | artifact.js:703 | Stub |
+| 462 | `nartifact_exist` | artifact.js:211 | Implemented |
+| 1762 | `nothing_special` | artifact.js:629 | Stub |
+| 2837 | `permapoisoned` | artifact.js:347 | Implemented |
+| 698 | `protects` | artifact.js:303 | Implemented |
+| 133 | `restore_artifacts` | artifact.js:737 | Implemented |
+| 575 | `restrict_name` | artifact.js:256 | Implemented |
+| 2640 | `retouch_equipment` | artifact.js:535 | Stub |
+| 2508 | `retouch_object` | artifact.js:528 | Stub |
+| 119 | `save_artifacts` | artifact.js:729 | Implemented |
+| 716 | `set_artifact_intrinsic` | artifact.js:543 | Stub |
+| 555 | `shade_glare` | artifact.js:246 | Implemented |
+| 516 | `spec_ability` | artifact.js:222 | Implemented |
+| 1076 | `spec_abon` | artifact.js:415 | Implemented (wired into uhitm.js find_roll_to_hit) |
+| 1009 | `spec_applies` | artifact.js:373 | Implemented |
+| 1091 | `spec_dbon` | artifact.js:426 | Implemented (wired into uhitm/mhitm/mhitu damage) |
+| 1065 | `spec_m2` | artifact.js:352 | Implemented |
+| 908 | `touch_artifact` | artifact.js:510 | Implemented |
+| 1131 | `undiscovered_artifact` | artifact.js:458 | Implemented |
 | 2598 | `untouchable` | - | Missing |
-| 2376 | `what_gives` | - | Missing |
+| 2376 | `what_gives` | artifact.js:689 | Implemented |
 
 ### attrib.c -> attrib.js
 | C Line | C Function | JS Line | Alignment |
@@ -1781,14 +1781,14 @@ This section is generated from source symbol tables and includes function rows f
 ### explode.c -> explode.js
 | C Line | C Function | JS Line | Alignment |
 |--------|------------|---------|-----------|
-| 985 | `adtyp_to_expltype` | - | Missing |
-| 118 | `engulfer_explosion_msg` | - | Missing |
-| 199 | `explode` | - | Missing |
-| 972 | `explode_oil` | - | Missing |
-| 26 | `explosionmask` | - | Missing |
-| 1017 | `mon_explodes` | - | Missing |
-| 721 | `scatter` | - | Missing |
-| 960 | `splatter_burning_oil` | - | Missing |
+| 985 | `adtyp_to_expltype` | explode.js:37 | Implemented |
+| 118 | `engulfer_explosion_msg` | explode.js:60 | Stub |
+| 199 | `explode` | explode.js:70 | Implemented (3x3 area damage with resistance checks) |
+| 972 | `explode_oil` | explode.js:148 | Implemented |
+| 26 | `explosionmask` | explode.js:51 | Stub |
+| 1017 | `mon_explodes` | explode.js:157 | Implemented (self-destruct with type encoding) |
+| 721 | `scatter` | explode.js:133 | Stub |
+| 960 | `splatter_burning_oil` | explode.js:142 | Implemented |
 
 ### extralev.c -> extralev.js
 | C Line | C Function | JS Line | Alignment |
@@ -2415,18 +2415,18 @@ No function symbols parsed from isaac64.c.
 ### mcastu.c -> mcastu.js
 | C Line | C Function | JS Line | Alignment |
 |--------|------------|---------|-----------|
-| 981 | `buzzmu` | - | Missing |
-| 632 | `cast_cleric_spell` | - | Missing |
-| 449 | `cast_wizard_spell` | - | Missing |
-| 177 | `castmu` | - | Missing |
-| 130 | `choose_clerical_spell` | - | Missing |
-| 76 | `choose_magic_spell` | - | Missing |
-| 49 | `cursetxt` | - | Missing |
-| 410 | `death_inflicted_by` | - | Missing |
-| 885 | `is_undirected_spell` | - | Missing |
-| 360 | `m_cure_self` | - | Missing |
-| 913 | `spell_would_be_useless` | - | Missing |
-| 375 | `touch_of_death` | - | Missing |
+| 981 | `buzzmu` | mcastu.js:309 | Stub (beam type determined, no traversal) |
+| 632 | `cast_cleric_spell` | mcastu.js:163 | Implemented (all CLC_* spell dispatch) |
+| 449 | `cast_wizard_spell` | mcastu.js:110 | Implemented (all MGC_* spell dispatch) |
+| 177 | `castmu` | mcastu.js:223 | Implemented (full pipeline: fumble check, spell selection, dispatch) |
+| 130 | `choose_clerical_spell` | mcastu.js:66 | Implemented (recursive rn2 reduction) |
+| 76 | `choose_magic_spell` | mcastu.js:44 | Implemented (recursive rn2 reduction) |
+| 49 | `cursetxt` | mcastu.js:37 | Stub |
+| 410 | `death_inflicted_by` | mcastu.js:104 | Implemented |
+| 885 | `is_undirected_spell` | mcastu.js:263 | Implemented |
+| 360 | `m_cure_self` | mcastu.js:85 | Implemented (d(3,6) heal) |
+| 913 | `spell_would_be_useless` | mcastu.js:285 | Implemented |
+| 375 | `touch_of_death` | mcastu.js:94 | Stub (damage calc only) |
 
 ### mdlib.c -> —
 | C Line | C Function | JS Line | Alignment |
@@ -4942,31 +4942,31 @@ No function symbols parsed from isaac64.c.
 | C Line | C Function | JS Line | Alignment |
 |--------|------------|---------|-----------|
 | 669 | `age_spells` | spell.js:ageSpells | Aligned — decrement spell retention |
-| 343 | `book_cursed` | - | Missing |
+| 343 | `book_cursed` | spell.js:266 | Stub |
 | 646 | `book_disappears` | - | Missing |
 | 658 | `book_substitution` | - | Missing |
 | 1619 | `can_center_spell_location` | - | Missing |
 | 1003 | `cast_chain_lightning` | - | Missing |
 | 1104 | `cast_protection` | - | Missing |
-| 189 | `confused_book` | - | Missing |
+| 189 | `confused_book` | spell.js:272 | Stub |
 | 130 | `cursed_book` | - | Missing |
 | 231 | `deadbook` | - | Missing |
 | 211 | `deadbook_pacify_undead` | - | Missing |
 | 1627 | `display_spell_target_positions` | - | Missing |
-| 820 | `docast` | - | Missing |
+| 820 | `docast` | - | Missing (spelleffects stub exists) |
 | 2075 | `dospellmenu` | spell.js:handleKnownSpells | APPROX — spell list display |
 | 2021 | `dovspell` | spell.js:handleKnownSpells | APPROX — known spells command |
 | 787 | `dowizcast` | - | Missing |
 | 2391 | `force_learn_spell` | - | Missing |
-| 715 | `getspell` | - | Missing |
+| 715 | `getspell` | - | Missing (inline in handleKnownSpells) |
 | 2340 | `initialspell` | - | Missing |
 | 2363 | `known_spell` | - | Missing |
-| 356 | `learn` | - | Missing |
+| 356 | `learn` | spell.js:315 | Stub |
 | 1763 | `losespells` | - | Missing |
 | 2417 | `num_spells` | - | Missing |
 | 2173 | `percent_success` | spell.js:estimateSpellFailPercent | APPROX — spell failure calculation |
 | 952 | `propagate_chain_lightning` | - | Missing |
-| 687 | `rejectcasting` | - | Missing |
+| 687 | `rejectcasting` | spell.js:338 | Stub |
 | 2059 | `show_spells` | - | Missing |
 | 864 | `skill_based_spellbook_id` | - | Missing |
 | 1927 | `sortspells` | - | Missing |
@@ -4976,12 +4976,12 @@ No function symbols parsed from isaac64.c.
 | 2379 | `spell_idx` | - | Missing |
 | 115 | `spell_let_to_idx` | - | Missing |
 | 856 | `spell_skilltype` | spell.js:spellCategoryForName | APPROX — spell category lookup |
-| 1385 | `spelleffects` | - | Missing |
+| 1385 | `spelleffects` | spell.js:296 | Stub |
 | 1220 | `spelleffects_check` | - | Missing |
 | 2295 | `spellretention` | spell.js:spellRetentionText | APPROX — retention display |
 | 1976 | `spellsortmenu` | - | Missing |
 | 832 | `spelltypemnemonic` | spell.js:spellCategoryForName | APPROX — category for display |
-| 468 | `study_book` | - | Missing |
+| 468 | `study_book` | spell.js:258 | Stub |
 | 1655 | `throwspell` | - | Missing |
 | 1707 | `tport_spell` | - | Missing |
 
@@ -5582,8 +5582,8 @@ No function symbols parsed from isaac64.c.
 |--------|------------|---------|-----------|
 | 76 | `give_may_advance_msg` | - | Missing — skill advance message |
 | 90 | `weapon_descr` | - | Missing — generic weapon skill name |
-| 149 | `hitval` | weapon.js | Implemented — spe, oc_hitbon, blessed vs undead/demon, spear vs kebabable, trident vs swimmer, pick vs earthen. Missing: spec_abon (artifacts) |
-| 216 | `dmgval` | weapon.js | Partial — base roll, weapon-type bonus dice, spe, thick_skinned, blessed +d4, silver +d20, axe vs wood +d4. Missing: shade, heavy iron ball, erosion, artifact light, spec_dbon |
+| 149 | `hitval` | weapon.js | Implemented — spe, oc_hitbon, blessed vs undead/demon, spear vs kebabable, trident vs swimmer, pick vs earthen. spec_abon now wired in uhitm.js find_roll_to_hit |
+| 216 | `dmgval` | weapon.js | Partial — base roll, weapon-type bonus dice, spe, thick_skinned, blessed +d4, silver +d20, axe vs wood +d4. spec_dbon now wired in uhitm/mhitm/mhitu. Missing: shade, heavy iron ball, erosion, artifact light |
 | 361 | `special_dmgval` | - | Missing — blessed/silver damage for unarmed |
 | 436 | `silver_sears` | - | Missing — silver ring hit message |
 | 476 | `oselect` | weapon.js | Implemented — find typed item in monster inventory |
@@ -5896,26 +5896,26 @@ No function symbols parsed from isaac64.c.
 | C Line | C Function | JS Line | Alignment |
 |--------|------------|---------|-----------|
 | 5624 | `adtyp_to_prop` | - | Missing |
-| 2593 | `backfire` | - | Missing |
+| 2593 | `backfire` | zap.js:463 | Stub |
 | 3815 | `bhit` | - | Missing |
-| 158 | `bhitm` | - | Missing |
+| 158 | `bhitm` | zap.js:427 | Stub |
 | 2117 | `bhito` | - | Missing |
-| 2426 | `bhitpile` | - | Missing |
+| 2426 | `bhitpile` | zap.js:457 | Stub |
 | 1365 | `blank_novel` | - | Missing |
 | 4136 | `boomhit` | - | Missing |
 | 2675 | `boxlock_invent` | - | Missing |
 | 5552 | `break_statue` | - | Missing |
-| 4584 | `burn_floor_objects` | - | Missing |
-| 4706 | `buzz` | - | Missing |
+| 4584 | `burn_floor_objects` | zap.js:433 | Stub |
+| 4706 | `buzz` | zap.js:439 | Stub |
 | 1237 | `cancel_item` | - | Missing |
-| 3138 | `cancel_monst` | - | Missing |
+| 3138 | `cancel_monst` | zap.js:419 | Stub |
 | 1544 | `create_polymon` | - | Missing |
-| 5935 | `destroy_items` | - | Missing |
-| 5583 | `destroyable` | - | Missing |
+| 5935 | `destroy_items` | zap.js:362 | Implemented (destroy_item — iterate inventory, RNG per item) |
+| 5583 | `destroyable` | zap.js:393 | Implemented (destroyable_by — type/damage matching) |
 | 4664 | `disintegrate_mon` | - | Missing |
 | 2523 | `do_enlightenment_effect` | - | Missing |
-| 1635 | `do_osshock` | - | Missing |
-| 4721 | `dobuzz` | - | Missing |
+| 1635 | `do_osshock` | zap.js:486 | Stub |
+| 4721 | `dobuzz` | zap.js:246 | Implemented (beam traversal with monster/hero hits) |
 | 2615 | `dozap` | - | Missing |
 | 1380 | `drain_item` | - | Missing |
 | 3535 | `exclam` | - | Missing |
@@ -5931,7 +5931,7 @@ No function symbols parsed from isaac64.c.
 | 121 | `learnwand` | - | Missing |
 | 3014 | `lightdamage` | - | Missing |
 | 6194 | `makewish` | - | Missing |
-| 5768 | `maybe_destroy_item` | - | Missing |
+| 5768 | `maybe_destroy_item` | zap.js:379 | Implemented (destroy_mitem — monster inventory) |
 | 3582 | `maybe_explode_trap` | - | Missing |
 | 5010 | `melt_ice` | - | Missing |
 | 5089 | `melt_ice_away` | - | Missing |
@@ -5939,18 +5939,18 @@ No function symbols parsed from isaac64.c.
 | 5471 | `mon_spell_hits_spot` | - | Missing |
 | 711 | `montraits` | - | Missing |
 | 1456 | `obj_resists` | - | Missing |
-| 1474 | `obj_shudders` | - | Missing |
+| 1474 | `obj_shudders` | zap.js:481 | Stub |
 | 1676 | `obj_unpolyable` | - | Missing |
-| 1700 | `poly_obj` | - | Missing |
+| 1700 | `poly_obj` | zap.js:468 | Stub |
 | 1503 | `polyuse` | - | Missing |
-| 624 | `probe_monster` | - | Missing |
+| 624 | `probe_monster` | zap.js:491 | Stub |
 | 610 | `probe_objchain` | - | Missing |
 | 576 | `release_hold` | - | Missing |
 | 6070 | `resist` | zap.js:71 | Implemented (faithful: alev per oclass, dlev capped, rn2(100+alev-dlev) < mr) |
-| 882 | `revive` | - | Missing |
+| 882 | `revive` | zap.js:409 | Stub |
 | 1141 | `revive_egg` | - | Missing |
-| 3567 | `skiprange` | - | Missing |
-| 3468 | `spell_damage_bonus` | - | Missing |
+| 3567 | `skiprange` | zap.js:496 | Stub |
+| 3468 | `spell_damage_bonus` | spell.js:303 | Stub (in spell.js not zap.js) |
 | 3497 | `spell_hit_bonus` | - | Missing |
 | 5058 | `start_melt_ice_timeout` | - | Missing |
 | 1991 | `stone_to_flesh_obj` | - | Missing |
@@ -5959,21 +5959,21 @@ No function symbols parsed from isaac64.c.
 | 4700 | `ubuzz` | - | Missing |
 | 1154 | `unturn_dead` | - | Missing |
 | 1223 | `unturn_you` | - | Missing |
-| 3419 | `weffects` | - | Missing |
+| 3419 | `weffects` | zap.js:446 | Stub |
 | 6135 | `wishcmdassist` | - | Missing |
-| 4646 | `zap_hit` | - | Missing |
+| 4646 | `zap_hit` | zap.js:113 | Implemented |
 | 3616 | `zap_map` | - | Missing |
 | 2606 | `zap_ok` | - | Missing |
-| 5111 | `zap_over_floor` | - | Missing |
+| 5111 | `zap_over_floor` | zap.js:514 | Stub |
 | 3075 | `zap_steed` | - | Missing |
-| 3207 | `zap_updown` | - | Missing |
+| 3207 | `zap_updown` | zap.js:519 | Stub |
 | 2537 | `zapnodir` | - | Missing |
 | 2512 | `zappable` | - | Missing |
 | 3403 | `zapsetup` | - | Missing |
 | 87 | `zaptype` | - | Missing |
 | 3409 | `zapwrapup` | - | Missing |
 | 2693 | `zapyourself` | - | Missing |
-| 4224 | `zhitm` | - | Missing |
+| 4224 | `zhitm` | zap.js:125 | Implemented (beam hits monster with damage/resistance) |
 | 4387 | `zhitu` | - | Missing |
 | 861 | `zombie_can_dig` | - | Missing |
 

@@ -46,6 +46,7 @@ import {
 import { monsterWeaponSwingVerb, monsterPossessive } from './mhitu.js';
 import { find_mac, W_ARMG, W_ARMF, W_ARMH } from './worn.js';
 import { mon_wield_item, possibly_unwield, NEED_WEAPON, NEED_HTH_WEAPON } from './weapon.js';
+import { spec_dbon } from './artifact.js';
 
 // Re-export M_ATTK_* for convenience
 export { M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE };
@@ -492,6 +493,12 @@ function mdamagem(magr, mdef, mattk, mwep, dieroll, display, vis, map, ctx) {
 
     // Dispatch to AD_* handler
     mhitm_adtyping(magr, mattk, mdef, mhm);
+
+    // cf. mhitm.c — artifact damage bonus for monster-vs-monster
+    if (mwep && mwep.oartifact) {
+        const [bonus] = spec_dbon(mwep, mdef, mhm.damage);
+        mhm.damage += bonus;
+    }
 
     // C ref: mhitm.c:1061-1065 — mhitm_knockback
     mhitm_knockback_mm(magr, mdef, mattk, mwep, vis, display, ctx);

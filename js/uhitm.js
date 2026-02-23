@@ -6,6 +6,7 @@ import { rn2, rnd, d, c_d } from './rng.js';
 import { exercise } from './attrib_exercise.js';
 import { corpse_chance } from './mon.js';
 import { A_STR, A_DEX } from './config.js';
+import { spec_abon, spec_dbon } from './artifact.js';
 import {
     G_FREQ, G_NOCORPSE, MZ_TINY, MZ_HUMAN, MZ_LARGE, M2_COLLECT,
     S_ZOMBIE, S_MUMMY, S_VAMPIRE, S_WRAITH, S_LICH, S_GHOST, S_DEMON, S_KOP,
@@ -130,6 +131,8 @@ function find_roll_to_hit(player, mtmp, aatyp, weapon) {
         if (weapon) tmp += weapon_hitval(weapon, mtmp);
         else tmp += weaponEnchantment(weapon); // fallback for bare-handed
         tmp += weapon_hit_bonus(weapon); // skill-based (stub: returns 0)
+        // cf. uhitm.c:423 — artifact to-hit bonus
+        if (weapon && weapon.oartifact) tmp += spec_abon(weapon, mtmp);
     }
 
     return tmp;
@@ -1045,6 +1048,11 @@ export function playerAttackMonster(player, monster, display, map) {
     if (!rangedMelee) {
         damage += dbon(player.attributes?.[A_STR] ?? 10);
         damage += weapon_dam_bonus(player.weapon); // skill-based (stub: returns 0)
+        // cf. uhitm.c — artifact damage bonus
+        if (player.weapon && player.weapon.oartifact) {
+            const [bonus] = spec_dbon(player.weapon, monster, damage);
+            damage += bonus;
+        }
     }
 
     // Minimum 1 damage on a hit

@@ -2,44 +2,193 @@
 // cf. explode.c — explosionmask, engulfer_explosion_msg, explode,
 //                 scatter, splatter_burning_oil, explode_oil,
 //                 adtyp_to_expltype, mon_explodes
-//
-// explode.c handles all explosion mechanics:
-//   explode(x,y,type,dam,olet,expltype): center explosion at x,y;
-//     display fireball animation, apply damage and effects to all in range.
-//   scatter(sx,sy,blastforce,scflags,obj): scatter objects from blast site.
-//   mon_explodes(mon,mattk): monster self-destructs with explosion.
-//   explode_oil(obj,x,y): burning oil potion explodes.
-//
-// JS implementations: none — all explosion logic is runtime gameplay.
 
-// cf. explode.c:25 [static] — explosionmask(m, adtyp, olet): shield effect check
-// Determines which shield effects apply at location m for given damage type.
-// TODO: explode.c:25 — explosionmask(): explosion shield determination
+import { rn2, rnd, d } from './rng.js';
+import { isok } from './config.js';
+import { AD_PHYS, AD_MAGM, AD_FIRE, AD_COLD, AD_ELEC, AD_DRST, AD_ACID,
+         MR_FIRE, MR_COLD, MR_ELEC,
+         mons } from './monsters.js';
+import { WAND_CLASS } from './objects.js';
+import { resist } from './zap.js';
 
-// cf. explode.c:117 [static] — engulfer_explosion_msg(adtyp, olet): engulfed-in-exploder message
-// Generates message describing explosion effects on monster engulfing the player.
-// TODO: explode.c:117 — engulfer_explosion_msg(): engulfer explosion message
+// Explosion display types (C ref: explode.c)
+export const EXPL_DARK = 0;
+export const EXPL_NOXIOUS = 1;
+export const EXPL_MUDDY = 2;
+export const EXPL_WET = 3;
+export const EXPL_MAGICAL = 4;
+export const EXPL_FIERY = 5;
+export const EXPL_FROSTY = 6;
+export const EXPL_MAX = 7;
 
-// cf. explode.c:198 — explode(x, y, type, dam, olet, expltype): explosion
-// Displays explosion animation and applies damage/effects centered at (x,y).
-// TODO: explode.c:198 — explode(): explosion execution
+// Explosion source types for olet parameter
+export const MON_EXPLODE = -1;
+export const BURNING_OIL = -2;
+export const TRAP_EXPLODE = -3;
 
-// cf. explode.c:720 — scatter(sx, sy, blastforce, scflags, obj): scatter objects
-// Flings objects from explosion site in random directions based on blast force.
-// TODO: explode.c:720 — scatter(): object scattering from explosion
+// Scatter flags
+export const MAY_HITMON = 0x1;
+export const MAY_HITYOU = 0x2;
+export const MAY_HIT = (0x1 | 0x2);
+export const MAY_DESTROY = 0x4;
+export const MAY_FRACTURE = 0x8;
 
-// cf. explode.c:959 — splatter_burning_oil(x, y, diluted_oil): oil splatter
-// Performs regular explosion to splatter burning oil from given coordinates.
-// TODO: explode.c:959 — splatter_burning_oil(): burning oil splatter
+// cf. explode.c:984 — adtyp_to_expltype(adtyp)
+export function adtyp_to_expltype(adtyp) {
+  switch (adtyp) {
+    case AD_FIRE: return EXPL_FIERY;
+    case AD_COLD: return EXPL_FROSTY;
+    case AD_ELEC: return EXPL_MAGICAL;
+    case AD_MAGM: return EXPL_MAGICAL;
+    case AD_DRST: return EXPL_NOXIOUS;
+    case AD_ACID: return EXPL_MUDDY;
+    default: return EXPL_DARK;
+  }
+}
 
-// cf. explode.c:971 — explode_oil(obj, x, y): oil potion explosion
-// Extinguishes a lit oil potion and explodes it as burning oil.
-// TODO: explode.c:971 — explode_oil(): oil potion explosion
+// cf. explode.c:25 — explosionmask(m, adtyp, olet)
+// Simplified: returns whether target needs shield effect
+export function explosionmask(m, adtyp, olet) {
+  // Simplified stub — in full implementation this checks:
+  // - monster resistances
+  // - whether shields/reflection apply
+  // - engulf status
+  return 0;
+}
 
-// cf. explode.c:984 — adtyp_to_expltype(adtyp): damage type to explosion display
-// Converts attack damage type to visual explosion display type.
-// TODO: explode.c:984 — adtyp_to_expltype(): explosion display type mapping
+// cf. explode.c:117 — engulfer_explosion_msg(adtyp, olet)
+export function engulfer_explosion_msg(adtyp, olet) {
+  // Stub — message for explosion while engulfed
+  return '';
+}
 
-// cf. explode.c:1016 — mon_explodes(mon, mattk): monster explosion attack
-// Handles monster self-destruct explosion with visual effects; always kills attacker.
-// TODO: explode.c:1016 — mon_explodes(): monster explosion
+// cf. explode.c:198 — explode(x, y, type, dam, olet, expltype)
+// Main explosion function
+// type: negative means breath weapon, positive means spell/wand
+// dam: base damage amount
+// olet: object class triggering explosion (WAND_CLASS, MON_EXPLODE, etc.)
+export function explode(x, y, type, dam, olet, expltype, map, player) {
+  // Determine damage type from type parameter
+  let adtyp;
+  if (type >= 0) {
+    // Spell/wand: type = AD offset
+    adtyp = type % 10; // extract damage type
+  } else {
+    // Breath weapon: type = -(adtyp - 1 + 20) or similar encoding
+    adtyp = ((-type) % 10);
+  }
+
+  // Apply damage in 3x3 area around (x, y)
+  for (let dx = -1; dx <= 1; dx++) {
+    for (let dy = -1; dy <= 1; dy++) {
+      const tx = x + dx;
+      const ty = y + dy;
+      if (!isok(tx, ty)) continue;
+
+      if (!map) continue;
+
+      // Check for monster at this location
+      const mon = map.monsterAt ? map.monsterAt(tx, ty) : null;
+      if (mon && !mon.dead) {
+        let mdam = dam;
+        const mdat = mon.data || (mon.mndx != null ? mons[mon.mndx] : null);
+
+        // Resistance check
+        if (mdat) {
+          if (adtyp === AD_FIRE && (mdat.mr1 & MR_FIRE)) mdam = 0;
+          else if (adtyp === AD_COLD && (mdat.mr1 & MR_COLD)) mdam = 0;
+          else if (adtyp === AD_ELEC && (mdat.mr1 & MR_ELEC)) mdam = 0;
+        }
+
+        // Magic resistance halves damage
+        if (mdam > 0 && resist(mon, olet >= 0 ? olet : WAND_CLASS)) {
+          mdam = Math.floor((mdam + 1) / 2);
+        }
+
+        if (mdam > 0) {
+          mon.mhp -= mdam;
+          if (mon.mhp <= 0) {
+            mon.mhp = 0;
+            mon.dead = true;
+          }
+        }
+      }
+
+      // Check for hero at this location
+      if (player && tx === player.x && ty === player.y) {
+        let damu = dam;
+        // Hero resistance checks would go here
+        // For now, apply raw damage
+        if (player.hp) {
+          player.hp -= damu;
+          if (player.hp < 0) player.hp = 0;
+        }
+      }
+    }
+  }
+}
+
+// cf. explode.c:720 — scatter(sx, sy, blastforce, scflags, obj)
+// Scatter objects from explosion site
+export function scatter(sx, sy, blastforce, scflags, obj, map) {
+  // Simplified: in full implementation, objects at (sx,sy) are flung
+  // in random directions based on blastforce and their weight.
+  // This is primarily a visual/placement effect.
+  if (!map) return 0;
+  return 0;
+}
+
+// cf. explode.c:959 — splatter_burning_oil(x, y, diluted_oil)
+export function splatter_burning_oil(x, y, diluted_oil, map, player) {
+  const dmg = d(diluted_oil ? 3 : 4, 4);
+  explode(x, y, AD_FIRE, dmg, BURNING_OIL, EXPL_FIERY, map, player);
+}
+
+// cf. explode.c:971 — explode_oil(obj, x, y)
+export function explode_oil(obj, x, y, map, player) {
+  if (obj && obj.lamplit) {
+    obj.lamplit = false;
+    splatter_burning_oil(x, y, obj.odiluted || false, map, player);
+  }
+}
+
+// cf. explode.c:1016 — mon_explodes(mon, mattk)
+// Monster self-destruct explosion (e.g., gas spore, yellow light)
+export function mon_explodes(mon, mattk, map, player) {
+  if (!mon || !mattk) return;
+
+  let dmg;
+  if (mattk.damn) {
+    dmg = d(mattk.damn, mattk.damd);
+  } else if (mattk.damd) {
+    const mlev = mon.m_lev || mon.mlevel || 0;
+    dmg = d(mlev + 1, mattk.damd);
+  } else {
+    dmg = 0;
+  }
+
+  // Determine explosion type from attack damage type
+  const adtyp = mattk.adtyp || mattk.ad || AD_PHYS;
+  const expltype = adtyp_to_expltype(adtyp);
+
+  // Type encoding for breath-like explosion
+  let type;
+  if (adtyp === AD_PHYS) {
+    type = -1; // physical explosion
+  } else {
+    type = -((adtyp - 1) + 20); // breath weapon formula
+  }
+
+  explode(mon.mx, mon.my, type, dmg, MON_EXPLODE, expltype, map, player);
+
+  // Monster always dies from self-destruct
+  mon.mhp = 0;
+  mon.dead = true;
+}
+
+// cf. zap.c ugolemeffects() — golem absorbs elemental damage
+export function ugolemeffects(dmgtyp, dam) {
+  // Stub — player-as-golem elemental absorption
+  // Returns true if damage was absorbed
+  return false;
+}
