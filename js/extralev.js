@@ -1,7 +1,15 @@
 // extralev.c helper functions moved out of dungeon.js to mirror C file layout.
 
-import { rn2 } from './rng.js';
-import { CORR, SCORR } from './config.js';
+import { d, rn1, rn2, rnd } from './rng.js';
+import { GameMap } from './map.js';
+import { mksobj, next_ident, weight } from './mkobj.js';
+import {
+    ARROW, BOW, FAKE_AMULET_OF_YENDOR, FOOD_RATION, MACE, PLATE_MAIL, RING_MAIL, TWO_HANDED_SWORD,
+} from './objects.js';
+import { CORR, D_NODOOR, OROOM, SCORR } from './config.js';
+import {
+    add_room_to_map, dodoor, fill_ordinary_room, generate_stairs, sort_rooms,
+} from './dungeon.js';
 
 export const XL_UP = 1;
 export const XL_DOWN = 2;
@@ -82,4 +90,195 @@ export function miniwalk(rooms, x, y) {
         }
         miniwalk(rooms, x, y);
     }
+}
+
+// C ref: extralev.c:45 roguecorr()
+export function roguecorr(map, rooms, x0, y0, dir, depth) {
+    let x = x0;
+    let y = y0;
+    let fromx; let fromy; let tox; let toy;
+
+    if (dir === XL_DOWN) {
+        rooms[x][y].doortable &= ~XL_DOWN;
+        if (!rooms[x][y].real) {
+            fromx = 1 + 26 * x + rooms[x][y].rlx;
+            fromy = 7 * y + rooms[x][y].rly;
+        } else {
+            fromx = 1 + 26 * x + rooms[x][y].rlx + rn2(rooms[x][y].dx);
+            fromy = 7 * y + rooms[x][y].rly + rooms[x][y].dy;
+            dodoor(map, fromx, fromy, map.rooms[rooms[x][y].nroom], depth);
+            map.at(fromx, fromy).flags = D_NODOOR;
+            fromy++;
+        }
+
+        if (y >= 2) return;
+        y++;
+        rooms[x][y].doortable &= ~XL_UP;
+        if (!rooms[x][y].real) {
+            tox = 1 + 26 * x + rooms[x][y].rlx;
+            toy = 7 * y + rooms[x][y].rly;
+        } else {
+            tox = 1 + 26 * x + rooms[x][y].rlx + rn2(rooms[x][y].dx);
+            toy = 7 * y + rooms[x][y].rly - 1;
+            dodoor(map, tox, toy, map.rooms[rooms[x][y].nroom], depth);
+            map.at(tox, toy).flags = D_NODOOR;
+            toy--;
+        }
+        roguejoin(map, fromx, fromy, tox, toy, false);
+        return;
+    }
+
+    if (dir !== XL_RIGHT) return;
+    rooms[x][y].doortable &= ~XL_RIGHT;
+    if (!rooms[x][y].real) {
+        fromx = 1 + 26 * x + rooms[x][y].rlx;
+        fromy = 7 * y + rooms[x][y].rly;
+    } else {
+        fromx = 1 + 26 * x + rooms[x][y].rlx + rooms[x][y].dx;
+        fromy = 7 * y + rooms[x][y].rly + rn2(rooms[x][y].dy);
+        dodoor(map, fromx, fromy, map.rooms[rooms[x][y].nroom], depth);
+        map.at(fromx, fromy).flags = D_NODOOR;
+        fromx++;
+    }
+
+    if (x >= 2) return;
+    x++;
+    rooms[x][y].doortable &= ~XL_LEFT;
+    if (!rooms[x][y].real) {
+        tox = 1 + 26 * x + rooms[x][y].rlx;
+        toy = 7 * y + rooms[x][y].rly;
+    } else {
+        tox = 1 + 26 * x + rooms[x][y].rlx - 1;
+        toy = 7 * y + rooms[x][y].rly + rn2(rooms[x][y].dy);
+        dodoor(map, tox, toy, map.rooms[rooms[x][y].nroom], depth);
+        map.at(tox, toy).flags = D_NODOOR;
+        tox--;
+    }
+    roguejoin(map, fromx, fromy, tox, toy, true);
+}
+
+// C ref: extralev.c:288 makerogueghost()
+export function makerogueghost(map, _depth) {
+    if (!map.nroom) return;
+
+    const croom = map.rooms[rn2(map.nroom)];
+    rn1(croom.hx - croom.lx + 1, croom.lx);
+    rn1(croom.hy - croom.ly + 1, croom.ly);
+
+    next_ident();
+    d(11, 8);
+    rn2(2);
+    if (rn2(7)) rn2(34);
+    rn2(100);
+
+    rn2(3);
+    rn2(2);
+
+    if (rn2(4)) {
+        const ration = mksobj(FOOD_RATION, false, false);
+        ration.quan = rnd(7);
+        ration.owt = weight(ration);
+    }
+
+    if (rn2(2)) {
+        const mace = mksobj(MACE, false, false);
+        mace.spe = rnd(3);
+        if (rn2(4)) { /* curse() no RNG side effects */ }
+    } else {
+        const sword = mksobj(TWO_HANDED_SWORD, false, false);
+        sword.spe = rnd(5) - 2;
+        if (rn2(4)) { /* curse() no RNG side effects */ }
+    }
+
+    const bow = mksobj(BOW, false, false);
+    bow.spe = 1;
+    if (rn2(4)) { /* curse() no RNG side effects */ }
+
+    const arrows = mksobj(ARROW, false, false);
+    arrows.spe = 0;
+    arrows.quan = rn1(10, 25);
+    arrows.owt = weight(arrows);
+    if (rn2(4)) { /* curse() no RNG side effects */ }
+
+    if (rn2(2)) {
+        const ringMail = mksobj(RING_MAIL, false, false);
+        ringMail.spe = rn2(3);
+        if (!rn2(3)) ringMail.oerodeproof = true;
+        if (rn2(4)) { /* curse() no RNG side effects */ }
+    } else {
+        const plateMail = mksobj(PLATE_MAIL, false, false);
+        plateMail.spe = rnd(5) - 2;
+        if (!rn2(3)) plateMail.oerodeproof = true;
+        if (rn2(4)) { /* curse() no RNG side effects */ }
+    }
+
+    if (rn2(2)) {
+        const fakeAmulet = mksobj(FAKE_AMULET_OF_YENDOR, true, false);
+        fakeAmulet.known = true;
+    }
+}
+
+// C ref: extralev.c:193 makeroguerooms()
+export function makeroguerooms(depth = 15) {
+    const map = new GameMap();
+    map.clear();
+
+    // C ref: mklev.c makelevel() pre-rogue RNG calls.
+    rn2(3);
+    rn2(5);
+
+    const rooms = Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => ({})));
+    let nroom = 0;
+    for (let y = 0; y < 3; y++) {
+        for (let x = 0; x < 3; x++) {
+            if (!rn2(5) && (nroom || (x < 2 && y < 2))) {
+                rooms[x][y].real = false;
+                rooms[x][y].rlx = rn1(22, 2);
+                rooms[x][y].rly = rn1((y === 2) ? 4 : 3, 2);
+            } else {
+                rooms[x][y].real = true;
+                rooms[x][y].dx = rn1(22, 2);
+                rooms[x][y].dy = rn1((y === 2) ? 4 : 3, 2);
+                rooms[x][y].rlx = rnd(23 - rooms[x][y].dx + 1);
+                rooms[x][y].rly = rnd(((y === 2) ? 5 : 4) - rooms[x][y].dy + 1);
+                nroom++;
+            }
+            rooms[x][y].doortable = 0;
+        }
+    }
+
+    const startY = rn2(3);
+    const startX = rn2(3);
+    miniwalk(rooms, startX, startY);
+
+    for (let y = 0; y < 3; y++) {
+        for (let x = 0; x < 3; x++) {
+            if (!rooms[x][y].real) continue;
+
+            rooms[x][y].nroom = map.nroom;
+            map.smeq[map.nroom] = map.nroom;
+
+            const lowx = 1 + 26 * x + rooms[x][y].rlx;
+            const lowy = 7 * y + rooms[x][y].rly;
+            const hix = lowx + rooms[x][y].dx - 1;
+            const hiy = lowy + rooms[x][y].dy - 1;
+            add_room_to_map(map, lowx, lowy, hix, hiy, !rn2(7), OROOM, false);
+        }
+    }
+
+    for (let y = 0; y < 3; y++) {
+        for (let x = 0; x < 3; x++) {
+            if (rooms[x][y].doortable & XL_DOWN) roguecorr(map, rooms, x, y, XL_DOWN, depth);
+            if (rooms[x][y].doortable & XL_RIGHT) roguecorr(map, rooms, x, y, XL_RIGHT, depth);
+        }
+    }
+
+    makerogueghost(map, depth);
+    sort_rooms(map);
+    generate_stairs(map, depth);
+
+    for (let i = 0; i < map.nroom; i++) {
+        fill_ordinary_room(map, map.rooms[i], depth, false);
+    }
+    return map;
 }
