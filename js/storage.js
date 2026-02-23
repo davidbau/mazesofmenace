@@ -730,7 +730,7 @@ function parseNethackOptionsString(spec) {
 
 // Parse URL query: supports ?NETHACKOPTIONS=... and explicit ?name=...&pickup=...
 function parseUrlConfig() {
-    if (typeof window === 'undefined') {
+    if (typeof window === 'undefined' || !window.location) {
         return { control: {}, optionFlags: {} };
     }
     const params = new URLSearchParams(window.location.search);
@@ -778,7 +778,7 @@ function parseUrlConfig() {
 // Remove URL parameters consumed by game startup/options parsing.
 // Keeps unrelated query parameters intact.
 export function clearGameUrlParams() {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined' || !window.location) return;
     const url = new URL(window.location.href);
     const entries = [...url.searchParams.entries()];
     for (const [rawKey] of entries) {
