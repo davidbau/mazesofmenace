@@ -605,8 +605,8 @@ const C_DEFAULTS = {
 
     // JS-specific UI options
     minimap: '',      // compact minimap position: e.g. "r17b10s47" (see index.html mmParse)
-    darkmode: false,  // dark color theme
-    helppanel: true,  // show side panels when viewport is wide enough
+    darkmode: 'system',  // color scheme: 'light', 'dark', or 'system' (follow OS)
+    helppanel: 'both',   // side panels: 'none', 'control' (LHS), 'objects' (RHS), or 'both'
 };
 
 // JS-specific overrides from C defaults
