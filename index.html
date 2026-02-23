@@ -1186,6 +1186,13 @@
                     || document.mozFullScreenElement;
             if (fsEl) exitFullscreen(); else enterFullscreen();
         };
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault();
+                window._toggleFullscreen();
+            }
+        });
     })();
 
     /* ============================================================
