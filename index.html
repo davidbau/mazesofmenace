@@ -1541,7 +1541,6 @@
 
         function openDocs(src, hash, animate) {
             docsFrame.src = src;
-            var target = mmRestore();
 
             if (animate) {
                 // Phase 1: freeze page at its current natural position (scale 1)
@@ -1558,16 +1557,18 @@
                 page.style.transition    = '';
 
                 // Phase 2: next two frames — show overlay + animate to minimap position
+                // mmRestore() called AFTER docs-mode so page.scrollWidth is content width
                 requestAnimationFrame(function() {
                     requestAnimationFrame(function() {
                         document.body.classList.add('docs-mode');
-                        mmApply(target, false);
+                        mmApply(mmRestore(), false);
                     });
                 });
             } else {
                 document.body.classList.add('docs-fixed');
                 document.body.classList.add('docs-mode');
-                mmApply(target, true);
+                // mmRestore() called AFTER docs-mode so page.scrollWidth is content width
+                mmApply(mmRestore(), true);
             }
             if (window.location.hash !== '#' + hash) {
                 ignoreHashChange = true;
