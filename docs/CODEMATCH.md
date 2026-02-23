@@ -5395,7 +5395,7 @@ No function symbols parsed from isaac64.c.
 | 2111 | `demonpet` | - | Missing |
 | 6286 | `disguised_as_mon` | - | Missing |
 | 6278 | `disguised_as_non_mon` | - | Missing |
-| 447 | `do_attack` | - | Missing |
+| 447 | `do_attack` | hack.js | Partial — safemon displacement (rn2(7) gate, monflee(rnd(6)), frozen/helpless/immobile rn2(6)), messages. Missing: Stormbringer, shopkeeper/inshop, leprechaun evasion, longworm, obstructed terrain |
 | 3923 | `do_stone_mon` | - | Missing |
 | 3902 | `do_stone_u` | - | Missing |
 | 735 | `double_punch` | - | Missing |
@@ -5403,7 +5403,7 @@ No function symbols parsed from isaac64.c.
 | 4927 | `end_engulf` | - | Missing |
 | 125 | `erode_armor` | - | Missing |
 | 4869 | `explum` | - | Missing |
-| 364 | `find_roll_to_hit` | - | Missing |
+| 364 | `find_roll_to_hit` | uhitm.js | Partial — base formula (abon, find_mac, luck, level), monster state bonuses, hitval(oc_hitbon), weaponEnchantment. Missing: weapon_hit_bonus (skill), near_capacity, u.utrap, Monk bonus, Elf vs orc |
 | 1941 | `first_weapon_hit` | - | Missing |
 | 6319 | `flash_hits_mon` | - | Missing |
 | 431 | `force_attack` | - | Missing |
@@ -5478,9 +5478,9 @@ No function symbols parsed from isaac64.c.
 | 3082 | `mhitm_really_poison` | uhitm.js | Implemented |
 | 1920 | `mhurtle_to_doom` | - | Missing |
 | 5176 | `missum` | - | Missing |
-| 350 | `mon_maybe_unparalyze` | - | Missing |
+| 350 | `mon_maybe_unparalyze` | uhitm.js | Implemented — rn2(10) wake paralyzed monster before dieroll |
 | 6293 | `nohandglow` | - | Missing |
-| 5843 | `passive` | - | Missing |
+| 5843 | `passive` | uhitm.js | Partial — AT_NONE search, damage dice, AD_ACID first switch, rn2(3) alive gate. Missing: full damage effects, weapon erosion, exercise(A_STR) |
 | 6105 | `passive_obj` | - | Missing |
 | 1970 | `shade_aware` | - | Missing |
 | 1994 | `shade_miss` | - | Missing |

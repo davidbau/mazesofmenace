@@ -34,18 +34,106 @@
 
 // cf. weapon.c:149 — hitval(otmp, mon): "to hit" bonus of weapon vs. monster
 // Adds: otmp->spe (for weapons/weptools), objects[otyp].oc_hitbon,
-//   +2 if blessed vs undead/demon, +2 if spear vs kebabable monsters (S_XORN/DRAGON/etc.),
+//   +2 if blessed vs undead/demon, +2 if spear vs kebabable monsters,
 //   +4 trident vs swimmer in water (+2 in eel/snake territory), +2 if pick vs xorn/earth elem,
 //   spec_abon() for artifacts.
-// TODO: weapon.c:149 — hitval(): weapon to-hit bonus
+import { objectData, WEAPON_CLASS } from './objects.js';
+import { rnd, d } from './rng.js';
+import { mon_hates_blessings, mon_hates_silver } from './mondata.js';
+import { MZ_LARGE, S_EEL, S_SNAKE, S_XORN, S_DRAGON, S_JABBERWOCK,
+         S_NAGA, S_WORM_TAIL } from './monsters.js';
 
-// cf. weapon.c:216 — dmgval(otmp, mon): damage bonus of weapon vs. monster
-// Rolls oc_wldam (large) or oc_wsdam (small) base; adds extra per weapon type for big/small;
-//   adds otmp->spe for weapons (clamp to >=0), thick_skinned → 0, shade check → 0,
-//   heavy iron ball weight bonus, blessed vs undead/demon (+1d4), axe vs wooden (+1d4),
-//   silver vs silver-hating (+1d20), artifact_light vs hates_light (+1d8),
-//   artifact spec_dbon doubling adjustment, greatest_erosion() subtracted (min 1).
-// TODO: weapon.c:216 — dmgval(): weapon damage bonus
+// cf. objclass.h — weapon sub-class constants matching objects.js sub field
+const P_SPEAR = 17;
+const P_TRIDENT = 18;
+const P_PICK_AXE = 4;
+const P_AXE = 3;
+
+// cf. weapon.c:149
+export function hitval(otmp, mon) {
+    if (!otmp) return 0;
+    let tmp = 0;
+    const info = objectData[otmp.otyp];
+    if (!info) return 0;
+    const Is_weapon = (info.oc_class === WEAPON_CLASS || info.weptool);
+
+    // cf. weapon.c:156 — spe bonus for weapons/weptools
+    if (Is_weapon) tmp += (otmp.spe || 0);
+
+    // cf. weapon.c:159 — oc_hitbon (stored as oc1 in JS)
+    tmp += (info.oc1 || 0);
+
+    if (mon) {
+        const ptr = mon.type || mon.data || {};
+        // cf. weapon.c:164 — blessed vs undead/demon
+        if (Is_weapon && otmp.blessed && mon_hates_blessings(mon))
+            tmp += 2;
+
+        // cf. weapon.c:167-168 — spear vs kebabable (large snake-like/dragon/etc.)
+        const mlet = ptr.mlet;
+        if (info.sub === P_SPEAR && isKebabable(mlet))
+            tmp += 2;
+
+        // cf. weapon.c:171-176 — trident vs swimmer
+        if (info.sub === P_TRIDENT && ptr.swim) {
+            // +2 base for eels/snakes, +4 if in water (simplified: always +2)
+            if (mlet === S_EEL || mlet === S_SNAKE)
+                tmp += 2;
+        }
+
+        // cf. weapon.c:179-180 — pick vs xorn/earth elemental
+        if (info.sub === P_PICK_AXE && ptr.passes_walls && ptr.thick_skinned)
+            tmp += 2;
+    }
+
+    // cf. weapon.c:183-184 — artifact spec_abon (not implemented)
+
+    return tmp;
+}
+
+// cf. weapon.c:67 — kebabable monster letters
+function isKebabable(mlet) {
+    return mlet === S_XORN || mlet === S_DRAGON || mlet === S_JABBERWOCK
+        || mlet === S_NAGA || mlet === S_WORM_TAIL
+        || mlet === S_SNAKE; // S_SNAKE maps to 'S' which C includes
+}
+
+// cf. weapon.c:216 — dmgval(otmp, mon): damage of weapon vs. monster
+// Returns base damage roll. Does NOT add spe (that's done by caller).
+// Missing: thick_skinned, shade, heavy iron ball, silver, artifact, erosion.
+export function dmgval(otmp, mon) {
+    if (!otmp) return 0;
+    const info = objectData[otmp.otyp];
+    if (!info) return 0;
+    const ptr = mon?.type || mon?.data || {};
+    const isLarge = (ptr.size ?? 0) >= MZ_LARGE;
+    const base = isLarge ? (info.ldam || 0) : (info.sdam || 0);
+    let tmp = base > 0 ? rnd(base) : 0;
+
+    // cf. weapon.c:231-247 — weapon type bonus for big/small
+    // Simplified: we don't add weapon-type extra dice yet
+
+    // cf. weapon.c:258 — spe bonus for weapons (clamped >= 0)
+    const Is_weapon = (info.oc_class === WEAPON_CLASS || info.weptool);
+    if (Is_weapon) tmp += Math.max(0, otmp.spe || 0);
+
+    // cf. weapon.c:279-281 — blessed vs undead/demon (+d4)
+    if (mon && otmp.blessed && mon_hates_blessings(mon))
+        tmp += d(1, 4);
+
+    // cf. weapon.c:283-285 — axe vs wood golem (+d4)
+    if (info.sub === P_AXE && ptr.body === 'wood')
+        tmp += d(1, 4);
+
+    // cf. weapon.c:287-296 — silver vs silver-hating (+d20)
+    if (mon && info.material === 14 /* SILVER */ && mon_hates_silver(mon))
+        tmp += rnd(20);
+
+    // cf. weapon.c:307-310 — erosion subtracted (min 1)
+    // TODO: greatest_erosion() subtraction
+
+    return Math.max(tmp, 0);
+}
 
 // cf. weapon.c:361 — special_dmgval(magr, mdef, armask, silverhit_p): blessed/silver
 // damage for non-weapon hits (unarmed strikes with worn armor/rings).

@@ -26,6 +26,7 @@ import {
     POT_RESTORE_ABILITY, POT_GAIN_ABILITY,
 } from './objects.js';
 import { mkobj, mkcorpstat, RANDOM_CLASS, next_ident, xname } from './mkobj.js';
+import { hitval as weapon_hitval, dmgval } from './weapon.js';
 import {
     nonliving, monDisplayName, is_undead, is_demon,
     magic_negation,
@@ -95,10 +96,42 @@ function mon_maybe_unparalyze(mon) {
     }
 }
 
-// cf. uhitm.c:364 — find_roll_to_hit(mtmp, aatyp, weapon, attknum):
-//   Compute to-hit roll including level, luck, DEX, enchantment, monster state.
-//   Partially implemented in playerAttackMonster() below.
-// TODO: uhitm.c:364 — find_roll_to_hit(): full implementation
+// cf. uhitm.c:364 — find_roll_to_hit(mtmp, aatyp, weapon, attk_count, role_roll_penalty)
+//   Compute to-hit modifier for hero attacking monster.
+//   Returns tmp where hit = (tmp > rnd(20)).
+function find_roll_to_hit(player, mtmp, aatyp, weapon) {
+    // cf. uhitm.c:375 — base formula:
+    //   tmp = 1 + abon() + find_mac(mtmp) + u.uhitinc
+    //         + (sgn(Luck)*((abs(Luck)+2)/3)) + u.ulevel
+    const abon = player.strToHit + (player.level < 3 ? 1 : 0)
+        + dexToHit(player.attributes?.[A_DEX] ?? 10);
+    let tmp = 1 + abon + (mtmp.mac ?? (mtmp.type?.ac ?? 10))
+        + (player.uhitinc || 0) // rings of increase accuracy etc.
+        + luckBonus(player.luck || 0)
+        + player.level;
+
+    // cf. uhitm.c:386-393 — monster state adjustments
+    if (mtmp.stunned || mtmp.mstun) tmp += 2;
+    if (mtmp.flee || mtmp.mflee) tmp += 2;
+    if (mtmp.sleeping || mtmp.msleeping) tmp += 2;
+    if (mtmp.mcanmove === false) tmp += 4;
+
+    // cf. uhitm.c:396-404 — role/race adjustments
+    // TODO: Monk bonus (unarmed +ulevel/3+2, armor penalty)
+    // TODO: Elf vs orc bonus
+
+    // cf. uhitm.c:407-410 — encumbrance and trap penalties
+    // TODO: near_capacity() penalty, u.utrap penalty
+
+    // cf. uhitm.c:417-423 — weapon bonuses
+    if (aatyp === AT_WEAP || aatyp === AT_CLAW) {
+        if (weapon) tmp += weapon_hitval(weapon, mtmp);
+        else tmp += weaponEnchantment(weapon); // fallback for bare-handed
+        // TODO: weapon_hit_bonus(weapon) — skill-based bonus
+    }
+
+    return tmp;
+}
 
 // cf. uhitm.c:431 — force_attack(mtmp, pets_too):
 //   Force attack on a monster in the way (e.g. 'F' prefix).
@@ -742,6 +775,8 @@ export function weaponEnchantment(weapon) {
     return (weapon && (weapon.enchantment ?? weapon.spe)) || 0;
 }
 
+// hitval now in weapon.js — includes spe, oc_hitbon, blessed/silver/type bonuses
+
 export function weaponDamageSides(weapon, monster) {
     if (!weapon) return 0;
     if (weapon.wsdam) return weapon.wsdam;
@@ -955,41 +990,24 @@ function passive(mon, mhit, malive) {
 }
 
 
-// cf. uhitm.c do_attack() / hmon_hitmon() — hero attacks monster
+// cf. uhitm.c do_attack() / hitum() / known_hitum() — hero attacks monster
 export function playerAttackMonster(player, monster, display, map) {
-    // To-hit calculation
-    // cf. uhitm.c find_roll_to_hit():
-    //   tmp = 1 + abon() + find_mac(mtmp) + u.uhitinc
-    //         + (sgn(Luck)*((abs(Luck)+2)/3)) + u.ulevel
-    //   then: mhit = (tmp > rnd(20))
-
-    // cf. uhitm.c:778 — mon_maybe_unparalyze before dieroll
+    // cf. uhitm.c:777 — find_roll_to_hit, mon_maybe_unparalyze, rnd(20)
+    const toHit = find_roll_to_hit(player, monster, AT_WEAP, player.weapon);
     mon_maybe_unparalyze(monster);
-
     const dieRoll = rnd(20);
-    // cf. weapon.c abon() = str_bonus + (ulevel<3?1:0) + dex_bonus
-    const abon = player.strToHit + (player.level < 3 ? 1 : 0)
-        + dexToHit(player.attributes?.[A_DEX] ?? 10);
-    let toHit = 1 + abon + monster.mac + player.level
-        + luckBonus(player.luck || 0)
-        + weaponEnchantment(player.weapon);
-    // cf. uhitm.c:386-393 — monster state adjustments
-    if (monster.stunned || monster.mstun) toHit += 2;
-    if (monster.flee || monster.mflee) toHit += 2;
-    if (monster.sleeping || monster.msleeping) toHit += 2;
-    if (monster.mcanmove === false) toHit += 4;
+    const mhit = (toHit > dieRoll);
 
-    if (toHit <= dieRoll) {
-        // Miss
-        // cf. uhitm.c -- "You miss the <monster>"
+    // cf. uhitm.c:781-782 — exercise A_DEX before known_hitum if hit
+    if (mhit) exercise(player, A_DEX, true);
+
+    if (!mhit) {
+        // cf. uhitm.c:608 — known_hitum miss path → missum()
         display.putstr_message(`You miss the ${monDisplayName(monster)}.`);
-        // cf. uhitm.c:788 passive() on miss
+        // cf. uhitm.c:788 passive() after miss
         passive(monster, false, true);
         return false;
     }
-
-    // cf. uhitm.c:742 exercise(A_DEX, TRUE) on successful hit
-    exercise(player, A_DEX, true);
 
     if (player.weapon && player.weapon.oclass === POTION_CLASS) {
         hitMonsterWithPotion(player, monster, display, player.weapon);

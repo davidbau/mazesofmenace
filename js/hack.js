@@ -180,21 +180,29 @@ export async function handleMovement(dir, player, map, display, game) {
         const shouldDisplace = (mon.tame || mon.peaceful) && !game.forceFight;
 
         if (shouldDisplace) {
-            // C ref: uhitm.c:473 foo = Punished || !rn2(7) || ...
-            // Early-game parity: model the rn2(7) gate before displacement.
-                if (rn2(7) === 0) {
-                    if (mon.tame) {
-                        // C ref: uhitm.c:496 monflee(mtmp, rnd(6), FALSE, FALSE)
-                        monflee(mon, rnd(6), false, false, player, display, null);
-                    }
+            // C ref: uhitm.c:462-509 — displacement logic for safemon
+            // Stormbringer override skipped (artifact not modeled)
+            // foo = blocked from displacing (Punished, random, longworm, obstructed)
+            const foo = (/* Punished */ false || !rn2(7)
+                         /* || is_longworm || IS_OBSTRUCTED */);
+            // inshop check skipped for simplicity
+            if (foo) {
+                // C ref: uhitm.c:495-501 — blocked: flee + "in the way" message
                 if (mon.tame) {
-                    display.putstr_message(
-                        `You stop.  ${monNam(mon, { capitalize: true })} is in the way!`
-                    );
-                } else {
-                    const label = mon.name ? monNam(mon, { capitalize: true }) : 'It';
-                    display.putstr_message(`You stop. ${label} is in the way!`);
+                    monflee(mon, rnd(6), false, false, player, display, null);
                 }
+                // C ref: uhitm.c:497 — y_monnam for "Your little dog"
+                const label = mon.tame
+                    ? monNam(mon, { article: 'your', capitalize: true })
+                    : monNam(mon, { capitalize: true });
+                display.putstr_message(`You stop.  ${label} is in the way!`);
+                game.forceFight = false;
+                return { moved: false, tookTime: true };
+            } else if (mon.mfrozen || mon.mcanmove === false || mon.msleeping
+                       || ((mon.type?.speed ?? 0) === 0 && rn2(6))) {
+                // C ref: uhitm.c:502-506 — frozen/helpless/immobile monster
+                const label = monNam(mon, { capitalize: true });
+                display.putstr_message(`${label} doesn't seem to move!`);
                 game.forceFight = false;
                 return { moved: false, tookTime: true };
             }
