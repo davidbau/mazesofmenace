@@ -1145,6 +1145,48 @@ effort but creates compounding debugging pain downstream.
 
 ---
 
+## Game Orchestration
+
+### Separate game orchestration from comparison
+
+Don't contort the game engine to produce output shaped for comparison.
+Run the game naturally, collect a flat log, and compare post-hoc.
+
+**What happened:** `replay_core.js` grew ~1700 lines of complexity because it tried
+to produce RNG logs in step-sized chunks matching C's screen-frame boundaries.
+C's test harness creates artificial step boundaries mid-occupation
+(`runmode_delay_output`) and mid-turn (`--More--` pagination). replay_core
+contorted itself with RNG-count-driven loops, deferred boundary carrying, sparse
+move handling, and step-consumption lookahead — all to match artifacts that
+have nothing to do with game logic.
+
+Meanwhile, three independent implementations (nethack.js, headless_runtime.js,
+replay_core.js) each drove the same post-rhack orchestration (occupation loops,
+multi-repeat, running mode) independently, creating a deployment risk: a bug in
+the browser's orchestration wouldn't be caught by session tests using a different
+orchestration.
+
+**The fix:** Separate the two concerns completely:
+1. **Game orchestration** — one shared `run_command()` function in `allmain.js`
+   used by nethack.js (browser) and headless_runtime.js (tests/selfplay), so
+   what you test is what you deploy.
+2. **RNG comparison** — flatten both C and JS RNG streams into one sequence each,
+   compare them post-hoc with relaxed boundary matching. Step boundaries from C
+   are only used for diagnostic context ("divergence near step 42"), not as
+   loop-control signals.
+
+replay_core.js remains on its own orchestration for now because its loops are
+fundamentally RNG-count-driven (using `reachedFinalRecordedStepTarget()` to
+break loops based on matching C's RNG output count). This will be unified when
+the comparison is reworked to post-hoc flat matching.
+
+**Why it matters:** When comparison logic drives execution, you can't tell whether
+a test failure is a real game divergence or a boundary-matching artifact. When
+orchestration is duplicated, you can't tell whether a passing test means the
+deployed code is correct. Separating these concerns makes both problems tractable.
+
+---
+
 ## Phase Chronicles
 
 The full narratives of the porting campaign, rich with war stories and

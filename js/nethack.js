@@ -18,7 +18,6 @@ import { TUTORIAL } from './special_levels.js';
 import { setMakemonPlayerContext } from './makemon.js';
 import { FOOD_CLASS } from './objects.js';
 import { setObjectMoves } from './mkobj.js';
-import { rhack } from './cmd.js';
 import { monsterNearby } from './monutil.js';
 import { simulatePostLevelInit, initFirstLevel } from './u_init.js';
 import { getArrivalPosition, changeLevel as changeLevelCore } from './do.js';
@@ -32,7 +31,7 @@ import { setOutputContext } from './pline.js';
 import { init_nhwindows, create_nhwindow, destroy_nhwindow,
          start_menu, add_menu, end_menu, select_menu,
          NHW_MENU, MENU_BEHAVE_STANDARD, PICK_ONE, ATR_NONE } from './windows.js';
-import { moveloop_core } from './allmain.js';
+import { moveloop_core, run_command } from './allmain.js';
 
 // --- Game State ---
 // C ref: decl.h -- globals are accessed via NH object (see DECISIONS.md #7)
@@ -1277,48 +1276,6 @@ export class NetHackGame {
     // C ref: allmain.c moveloop() -> moveloop_core()
     async gameLoop() {
         while (!this.gameOver) {
-            // C ref: allmain.c moveloop_core() — occupation check before input
-            if (this.occupation) {
-                const occ = this.occupation;
-                let interruptedOcc = false;
-                const cont = occ.fn(this);
-                const finishedOcc = !cont ? occ : null;
-                if (this.shouldInterruptOccupation()) {
-                    this.multi = 0;
-                    if (occ?.occtxt === 'waiting') {
-                        this.display.putstr_message(`You stop ${occ.occtxt}.`);
-                    }
-                    this.occupation = null;
-                    interruptedOcc = true;
-                } else
-                if (!cont) {
-                    if (occ?.occtxt === 'waiting') {
-                        this.display.putstr_message(`You stop ${occ.occtxt}.`);
-                    }
-                    this.occupation = null;
-                }
-                if (interruptedOcc) {
-                    this.fov.compute(this.map, this.player.x, this.player.y);
-                    this.display.renderMap(this.map, this.player, this.fov, this.flags);
-                    this.display.renderStatus(this.player);
-                    continue;
-                }
-                // Occupation turn takes time: run full turn effects
-                moveloop_core(this);
-                this.fov.compute(this.map, this.player.x, this.player.y);
-                this.display.renderMap(this.map, this.player, this.fov, this.flags);
-                this.display.renderStatus(this.player);
-                if (finishedOcc && typeof finishedOcc.onFinishAfterTurn === 'function') {
-                    finishedOcc.onFinishAfterTurn(this);
-                }
-                // Yield to browser event loop so display can paint and input
-                // events can be processed between occupation turns.
-                // C ref: In C NetHack, each occupation turn is a full iteration
-                // of moveloop_core() which includes display refresh.
-                await new Promise(r => setTimeout(r, 0));
-                continue;
-            }
-
             // Travel continuation - C ref: hack.c domove() with context.travel
             if (this.travelPath && this.travelStep < this.travelPath.length) {
                 const { executeTravelStep } = await import('./hack.js');
@@ -1334,112 +1291,80 @@ export class NetHackGame {
                 continue;
             }
 
+            // Get player input with optional count prefix
+            // C ref: cmd.c:4942-4960 parse() -> get_count()
+            const firstCh = await nhgetch();
             let ch;
+            let countPrefix = 0;
 
-            // C ref: allmain.c:519-535 — multi-command repeat handling
-            if (this.multi > 0) {
-                // Repeating a command
-                this.multi--;
-                ch = this.cmdKey;
-                // Don't clear message line on repeats (user might want to see "Count: N")
-            } else {
-                // Get player input with optional count prefix
-                // C ref: cmd.c:4942-4960 parse() -> get_count()
-                // Note: Don't clear message line here - messages should persist until
-                // a new message is displayed (putstr_message clears it automatically)
-
-                // Read first character
-                const firstCh = await nhgetch();
-
-                // C ref: cmd.c:1687 do_repeat() — Ctrl+A repeats last command
-                if (firstCh === 1) { // Ctrl+A
-                    if (this.lastCommand) {
-                        // Replay the last command
-                        this.commandCount = this.lastCommand.count;
-                        ch = this.lastCommand.key;
-                    } else {
-                        this.display.putstr_message('There is no command available to repeat.');
-                        ch = 0; // No command
-                    }
-                } else if (firstCh >= 48 && firstCh <= 57) { // '0'-'9'
-                    // Check if it's a digit - if so, collect count
-                    // C ref: cmd.c:4958 — uses LARGEST_INT (32767) as max count
-                    const { count, key } = await getCount(firstCh, 32767, this.display);
-                    this.commandCount = count;
-                    ch = key;
-
-                    // C ref: cmd.c:4963-4966 — ESC cancels count
-                    if (ch === 27) { // ESC
-                        this.display.clearRow(0);
-                        this.commandCount = 0;
-                        ch = 0; // No command
-                    }
+            // C ref: cmd.c:1687 do_repeat() — Ctrl+A repeats last command
+            if (firstCh === 1) { // Ctrl+A
+                if (this.lastCommand) {
+                    countPrefix = this.lastCommand.count;
+                    ch = this.lastCommand.key;
                 } else {
-                    // Not a digit, just a regular command
-                    this.commandCount = 0;
-                    ch = firstCh;
+                    this.display.putstr_message('There is no command available to repeat.');
+                    continue;
                 }
+            } else if (firstCh >= 48 && firstCh <= 57) { // '0'-'9'
+                // Digit count prefix
+                // C ref: cmd.c:4958 — uses LARGEST_INT (32767) as max count
+                const result = await getCount(firstCh, 32767, this.display);
+                countPrefix = result.count;
+                ch = result.key;
 
-                // C ref: cmd.c:4981-4983 — set multi from command_count
-                this.multi = this.commandCount;
-                if (this.multi > 0) {
-                    this.multi--; // First execution is now, multi counts remaining
+                // C ref: cmd.c:4963-4966 — ESC cancels count
+                if (ch === 27) { // ESC
+                    this.display.clearRow(0);
+                    continue;
                 }
-                this.cmdKey = ch;
+            } else {
+                ch = firstCh;
             }
 
-            // Skip if no command (e.g., ESC was pressed)
-            if (ch === 0) {
-                continue;
-            }
+            // Skip if no command
+            if (!ch) continue;
 
             // Save command for repeat (but don't save Ctrl+A itself)
             // C ref: cmd.c:3575 — stores command in CQ_REPEAT queue
-            if (ch !== 1 && this.multi === 0) { // Don't save during multi-repeat
-                this.lastCommand = { key: ch, count: this.commandCount };
-            }
-
-            // Process command
-            // C-faithful running: allow run commands to advance one timed turn
-            // per movement step instead of batching all movement first.
-            this.advanceRunTurn = async () => {
-                moveloop_core(this);
-            };
-            const result = await rhack(ch, this);
-            this.advanceRunTurn = null;
-
-            // C ref: allmain.c:948 interrupt_multi() — check for interruptions
-            // Interrupt multi-command sequences if something interesting happens
-            if (this.multi > 0 && result.tookTime) {
-                if (this.shouldInterruptMulti()) {
-                    this.multi = 0;
-                    this.display.putstr_message('--More--');
-                    await nhgetch(); // Wait for keypress
-                }
-            }
-            // C behavior: if wounded legs recover during counted search/rest,
-            // occupation ends with a stop-searching message.
-            if (this.multi > 0 && this.player.justHealedLegs
-                && (this.cmdKey === '.'.charCodeAt(0) || this.cmdKey === 's'.charCodeAt(0))) {
-                this.player.justHealedLegs = false;
-                this.multi = 0;
-                this.display.putstr_message('Your leg feels better.  You stop searching.');
+            if (firstCh !== 1) {
+                this.lastCommand = { key: ch, count: countPrefix };
             }
 
             // Run any monster turn deferred from a preceding stop_occupation frame.
             // Must run after the player's command so hero position is updated.
             this.runPendingDeferredTimedTurn();
 
-            // If time passed, process turn effects
-            // C ref: allmain.c moveloop_core() -- context.move handling
-            if (result.tookTime) {
-                moveloop_core(this);
-            }
+            // Execute command via shared orchestration
+            await run_command(this, ch, {
+                countPrefix,
+                onTimedTurn: async () => {
+                    // Render and yield between occupation/multi turns so the
+                    // browser can paint and process input events.
+                    this.fov.compute(this.map, this.player.x, this.player.y);
+                    this.display.renderMap(this.map, this.player, this.fov, this.flags);
+                    this.display.renderStatus(this.player);
+                    await new Promise(r => setTimeout(r, 0));
+                },
+                onBeforeRepeat: async () => {
+                    // C ref: allmain.c:948 interrupt_multi()
+                    if (this.shouldInterruptMulti()) {
+                        this.multi = 0;
+                        this.display.putstr_message('--More--');
+                        await nhgetch();
+                    }
+                    // C behavior: wounded legs recovery interrupts counted search/rest
+                    if (this.multi > 0 && this.player.justHealedLegs
+                        && (this.cmdKey === '.'.charCodeAt(0) || this.cmdKey === 's'.charCodeAt(0))) {
+                        this.player.justHealedLegs = false;
+                        this.multi = 0;
+                        this.display.putstr_message('Your leg feels better.  You stop searching.');
+                    }
+                },
+            });
 
-            // Recompute FOV
+            // Recompute FOV and render
             this.fov.compute(this.map, this.player.x, this.player.y);
-
-            // Render
             this.display.renderMap(this.map, this.player, this.fov, this.flags);
             this.display.renderStatus(this.player);
         }

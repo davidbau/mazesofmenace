@@ -30,6 +30,7 @@ import { ageSpells } from './spell.js';
 import { wipe_engr_at } from './engrave.js';
 import { dosearch0 } from './detect.js';
 import { exercise, exerchk } from './attrib_exercise.js';
+import { rhack } from './cmd.js';
 
 // cf. allmain.c:169 — moveloop_core() monster movement + turn-end processing.
 // Called after the hero's action took time.  Runs movemon() for monster turns,
@@ -321,6 +322,129 @@ export function moveloop_dosounds(game) {
         return;
     }
     if (f.has_temple && !rn2(200)) { return; }
+}
+
+// cf. allmain.c moveloop() — shared post-input command orchestration.
+// Executes a single command (rhack), then drains any occupation it creates,
+// then handles multi-repeat (counted commands like "20s").
+// Used by nethack.js (browser), headless_runtime.js (tests/selfplay), and
+// replay_core.js (session comparison) so that all three drive the same
+// orchestration logic.
+//
+// opts.countPrefix:      digit count (e.g. 20 for "20s")
+// opts.onTimedTurn:      hook called after each moveloop_core
+// opts.onBeforeRepeat:   hook called before each multi-repeat iteration
+// opts.skipMonsterMove:  passed through to moveloop_core
+// opts.computeFov:       passed through to moveloop_core
+// opts.skipTurnEnd:      skip all post-rhack processing (moveloop, occ, multi)
+export async function run_command(game, ch, opts = {}) {
+    const {
+        countPrefix = 0,
+        onTimedTurn,
+        onBeforeRepeat,
+        skipMonsterMove,
+        computeFov = false,
+        skipTurnEnd = false,
+    } = opts;
+
+    const chCode = typeof ch === 'number' ? ch
+        : (typeof ch === 'string' && ch.length > 0) ? ch.charCodeAt(0) : 0;
+
+    // Set multi from countPrefix, set cmdKey
+    game.commandCount = countPrefix;
+    if (countPrefix > 0) {
+        game.multi = countPrefix - 1; // first execution is now
+    } else {
+        game.multi = 0;
+    }
+    game.cmdKey = chCode;
+
+    const coreOpts = {};
+    if (computeFov) coreOpts.computeFov = true;
+    if (skipMonsterMove) coreOpts.skipMonsterMove = true;
+
+    // Set advanceRunTurn for running mode (G/g commands process monster
+    // turns between each movement step rather than batching all movement).
+    game.advanceRunTurn = async () => {
+        moveloop_core(game, coreOpts);
+        if (onTimedTurn) await onTimedTurn();
+    };
+
+    // Execute command
+    const result = await rhack(chCode, game);
+
+    // Clear advanceRunTurn
+    game.advanceRunTurn = null;
+
+    // Post-rhack processing: moveloop_core, occupation, multi-repeat
+    if (result && result.tookTime && !skipTurnEnd) {
+        moveloop_core(game, coreOpts);
+        if (onTimedTurn) await onTimedTurn();
+
+        // Drain any occupation created by the command
+        await _drainOccupation(game, coreOpts, onTimedTurn);
+
+        // Multi-repeat loop
+        while (game.multi > 0) {
+            if (onBeforeRepeat) {
+                await onBeforeRepeat();
+            }
+            if (game.multi <= 0) break; // hook may have cleared multi
+
+            game.multi--;
+            game.advanceRunTurn = async () => {
+                moveloop_core(game, coreOpts);
+                if (onTimedTurn) await onTimedTurn();
+            };
+            const repeated = await rhack(game.cmdKey, game);
+            game.advanceRunTurn = null;
+
+            if (!repeated || !repeated.tookTime) break;
+            moveloop_core(game, coreOpts);
+            if (onTimedTurn) await onTimedTurn();
+
+            // Drain occupation from repeated command
+            await _drainOccupation(game, coreOpts, onTimedTurn);
+        }
+    }
+
+    return result;
+}
+
+// Internal helper: drain a multi-turn occupation until it completes or is
+// interrupted by an adjacent hostile monster.
+async function _drainOccupation(game, coreOpts, onTimedTurn) {
+    while (game.occupation) {
+        const occ = game.occupation;
+        const cont = occ.fn(game);
+        const finishedOcc = !cont ? occ : null;
+
+        // C ref: do.c cmd_safety_prevention() — interrupt if hostile nearby
+        if (typeof game.shouldInterruptOccupation === 'function'
+            && game.shouldInterruptOccupation()) {
+            game.multi = 0;
+            if (occ?.occtxt === 'waiting') {
+                game.display?.putstr_message(`You stop ${occ.occtxt}.`);
+            }
+            game.occupation = null;
+            break; // interrupted — no turn processing for this step
+        }
+
+        if (!cont) {
+            if (occ?.occtxt === 'waiting') {
+                game.display?.putstr_message(`You stop ${occ.occtxt}.`);
+            }
+            game.occupation = null;
+        }
+
+        // Occupation step took time — process monster moves + turn-end
+        moveloop_core(game, coreOpts);
+        if (onTimedTurn) await onTimedTurn();
+
+        if (finishedOcc && typeof finishedOcc.onFinishAfterTurn === 'function') {
+            finishedOcc.onFinishAfterTurn(game);
+        }
+    }
 }
 
 // --- Remaining allmain.c stubs ---

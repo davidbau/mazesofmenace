@@ -19,7 +19,6 @@ import { initExerciseState } from './attrib_exercise.js';
 import { makelevel, setGameSeed, isBranchLevelToDnum } from './dungeon.js';
 import { simulatePostLevelInit, initFirstLevel } from './u_init.js';
 import { Player, rankOf, roles } from './player.js';
-import { rhack } from './cmd.js';
 import { initrack } from './monmove.js';
 import { FOV } from './vision.js';
 import { monsterNearby } from './monutil.js';
@@ -28,7 +27,7 @@ import { doname, setObjectMoves } from './mkobj.js';
 import { monsterMapGlyph, objectMapGlyph } from './display_rng.js';
 import { defsyms, trap_to_defsym } from './symbols.js';
 import { setOutputContext } from './pline.js';
-import { moveloop_core } from './allmain.js';
+import { moveloop_core, run_command } from './allmain.js';
 import {
     COLNO, ROWNO, NORMAL_SPEED,
     A_STR, A_DEX, A_CON,
@@ -583,90 +582,18 @@ export class HeadlessGame {
     }
 
     async replayStep(key, options = {}) {
-        const ch = typeof key === 'string' ? key.charCodeAt(0) : key;
-        if (options.countPrefix && options.countPrefix > 0) {
-            this.commandCount = options.countPrefix;
-            this.multi = options.countPrefix;
-            if (this.multi > 0) this.multi--;
-            this.cmdKey = ch;
-        } else {
-            this.commandCount = 0;
-            this.multi = 0;
-        }
-
-        const result = await rhack(ch, this);
-        const coreOpts = {
-            computeFov: true,
+        const result = await run_command(this, key, {
+            countPrefix: (options.countPrefix && options.countPrefix > 0) ? options.countPrefix : 0,
             skipMonsterMove: options.skipMonsterMove,
-        };
-        if (result && result.tookTime && !options.skipTurnEnd) {
-            moveloop_core(this, coreOpts);
-
-            while (this.occupation) {
-                const occ = this.occupation;
-                let interruptedOcc = false;
-                const cont = occ.fn(this);
-                const finishedOcc = !cont ? occ : null;
-                if (this.shouldInterruptOccupation()) {
-                    this.multi = 0;
-                    if (occ?.occtxt === 'waiting') {
-                        this.display.putstr_message(`You stop ${occ.occtxt}.`);
-                    }
-                    this.occupation = null;
-                    interruptedOcc = true;
-                } else
-                if (!cont) {
-                    if (occ?.occtxt === 'waiting') {
-                        this.display.putstr_message(`You stop ${occ.occtxt}.`);
-                    }
-                    this.occupation = null;
-                }
-                if (interruptedOcc) continue;
-                moveloop_core(this, coreOpts);
-                if (finishedOcc && typeof finishedOcc.onFinishAfterTurn === 'function') {
-                    finishedOcc.onFinishAfterTurn(this);
-                }
-            }
-
-            while (this.multi > 0) {
-                // C ref: allmain.c lookaround() before each repeated command:
-                // interrupting here should stop repetition without consuming time.
+            computeFov: true,
+            skipTurnEnd: !!options.skipTurnEnd,
+            onBeforeRepeat: () => {
                 if (typeof this.shouldInterruptMulti === 'function'
                     && this.shouldInterruptMulti()) {
                     this.multi = 0;
-                    break;
                 }
-                this.multi--;
-                const repeated = await rhack(this.cmdKey, this);
-                if (!repeated || !repeated.tookTime) break;
-                moveloop_core(this, coreOpts);
-                while (this.occupation) {
-                    const occ = this.occupation;
-                    let interruptedOcc = false;
-                    const cont = occ.fn(this);
-                    const finishedOcc = !cont ? occ : null;
-                    if (this.shouldInterruptOccupation()) {
-                        this.multi = 0;
-                        if (occ?.occtxt === 'waiting') {
-                            this.display.putstr_message(`You stop ${occ.occtxt}.`);
-                        }
-                        this.occupation = null;
-                        interruptedOcc = true;
-                    } else
-                    if (!cont) {
-                        if (occ?.occtxt === 'waiting') {
-                            this.display.putstr_message(`You stop ${occ.occtxt}.`);
-                        }
-                        this.occupation = null;
-                    }
-                    if (interruptedOcc) continue;
-                    moveloop_core(this, coreOpts);
-                    if (finishedOcc && typeof finishedOcc.onFinishAfterTurn === 'function') {
-                        finishedOcc.onFinishAfterTurn(this);
-                    }
-                }
-            }
-        }
+            },
+        });
 
         this.renderCurrentScreen();
 
@@ -856,16 +783,13 @@ HeadlessGame.fromSeed = function fromSeed(seed, roleIndex = 11, opts = {}) {
 
 HeadlessGame.prototype.executeCommand = async function executeCommand(ch) {
     const code = typeof ch === 'string' ? ch.charCodeAt(0) : ch;
-    const result = await rhack(code, this);
+    const result = await run_command(this, code, { computeFov: true });
+
     if (typeof this.hooks.onCommandResult === 'function') {
         this.hooks.onCommandResult({ game: this, keyCode: code, result });
     }
-
-    if (result && result.tookTime) {
-        moveloop_core(this, { computeFov: true });
-        if (typeof this.hooks.onTurnAdvanced === 'function') {
-            this.hooks.onTurnAdvanced({ game: this, keyCode: code, result });
-        }
+    if (result && result.tookTime && typeof this.hooks.onTurnAdvanced === 'function') {
+        this.hooks.onTurnAdvanced({ game: this, keyCode: code, result });
     }
 
     this.fov.compute(this.map, this.player.x, this.player.y);
