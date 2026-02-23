@@ -7,7 +7,7 @@
 
 :root {
   --font-body: 'EB Garamond', 'Garamond', 'Georgia', serif;
-  --font-mono: 'Source Code Pro', 'Menlo', 'Consolas', monospace;
+  --font-mono: "Courier New", "Liberation Mono", monospace;
   --color-text: #1a1a1a;
   --color-bg: #fffff8;
   --color-accent: #6b2c2c;
@@ -171,7 +171,7 @@ code {
 pre {
   font-family: var(--font-mono);
   font-size: 0.78em;
-  line-height: 1.45;
+  line-height: 1.125;
   background: var(--color-code-bg);
   padding: 1em 1.2em;
   border-radius: 4px;

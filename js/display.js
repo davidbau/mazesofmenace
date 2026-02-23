@@ -299,7 +299,7 @@ export class Display {
         // Create the pre element
         const pre = document.createElement('pre');
         pre.id = 'terminal';
-        const fontFamily = '"DejaVu Sans Mono", "Courier New", monospace';
+        const fontFamily = '"Courier New", "Liberation Mono", monospace';
         const fontSize = 16;
         const lineHeight = computeTerminalLineHeight(fontSize, fontFamily);
         pre.style.cssText = `
