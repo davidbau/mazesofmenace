@@ -37,13 +37,14 @@
 //   +2 if blessed vs undead/demon, +2 if spear vs kebabable monsters,
 //   +4 trident vs swimmer in water (+2 in eel/snake territory), +2 if pick vs xorn/earth elem,
 //   spec_abon() for artifacts.
-import { objectData, WEAPON_CLASS, CREAM_PIE,
+import { objectData, WEAPON_CLASS, GEM_CLASS, BALL_CLASS, CHAIN_CLASS,
+         CREAM_PIE,
          IRON_CHAIN, CROSSBOW_BOLT, MORNING_STAR, PARTISAN, RUNESWORD,
          ELVEN_BROADSWORD, BROADSWORD, FLAIL, RANSEUR, VOULGE,
          ACID_VENOM, HALBERD, SPETUM, BATTLE_AXE, BARDICHE, TRIDENT,
          TSURUGI, DWARVISH_MATTOCK, TWO_HANDED_SWORD,
          MACE, SILVER_MACE, WAR_HAMMER,
-         BILL_GUISARME, GUISARME, LUCERN_HAMMER,
+         BILL_GUISARME, GUISARME, LUCERN_HAMMER, LEATHER,
        } from './objects.js';
 import { rnd, d } from './rng.js';
 import { mon_hates_blessings, mon_hates_silver, thick_skinned } from './mondata.js';
@@ -158,14 +159,14 @@ export function dmgval(otmp, mon) {
     }
 
     // cf. weapon.c:304-306 — thick-skinned immunity to soft weapons
-    if (info.material !== undefined && info.material <= 7 /* LEATHER */
+    if (info.material !== undefined && info.material <= LEATHER
         && thick_skinned(ptr))
         tmp = 0;
     // cf. weapon.c:307-308 — shade immunity (not implemented: shade_glare)
 
     // cf. weapon.c:322-342 — weapon vs monster type damage bonuses
-    if (Is_weapon || info.oc_class === 1 /* GEM */ || info.oc_class === 9 /* BALL */
-        || info.oc_class === 10 /* CHAIN */) {
+    if (Is_weapon || info.oc_class === GEM_CLASS || info.oc_class === BALL_CLASS
+        || info.oc_class === CHAIN_CLASS) {
         let bonus = 0;
         if (mon && otmp.blessed && mon_hates_blessings(mon))
             bonus += rnd(4);
