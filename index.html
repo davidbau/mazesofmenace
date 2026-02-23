@@ -1379,8 +1379,20 @@
         var MM_EDGE = 8;     // px hit-zone for resize border
         var MM_MIN  = 0.15;  // minimum scale
         var MM_MAX  = 0.90;  // maximum scale
-        var MM_SNAP = 10;    // px snap zone for center/middle alignment
+        var MM_SNAP = 15;    // px snap zone for center/middle alignment
         var MM_DEFAULT_SCALE = 0.50;
+
+        // Classify minimap position into nearest anchor (same logic as mmSave)
+        function computeAnchor(left, top, w, h) {
+            var vw = window.innerWidth, vh = window.innerHeight;
+            var cx = left + w / 2, cy = top + h / 2;
+            var dL = left, dR = vw - left - w, dCH = Math.abs(cx - vw / 2);
+            var dT = top,  dB = vh - top  - h, dCV = Math.abs(cy - vh / 2);
+            return {
+                hSide: (dL <= dR && dL <= dCH) ? 'l' : (dR <= dL && dR <= dCH) ? 'r' : 'c',
+                vSide: (dT <= dB && dT <= dCV) ? 't' : (dB <= dT && dB <= dCV) ? 'b' : 'm',
+            };
+        }
 
         var mmState   = null;   // null = idle; object while dragging/resizing
         var mmDidMove = false;  // suppress click-to-close after drag
@@ -1414,24 +1426,17 @@
         // Persist position as compact string into menace-options
         function mmSave(left, top, scale) {
             var vw = window.innerWidth, vh = window.innerHeight;
-            var nw = page.scrollWidth,  nh = page.scrollHeight;
+            var nw = page.scrollWidth, nh = page.scrollHeight;
             var w = nw * scale, h = nh * scale;
-            var cx = left + w / 2, cy = top + h / 2;
-
-            var dL = left, dR = vw - left - w, dCH = Math.abs(cx - vw / 2);
-            var dT = top,  dB = vh - top  - h, dCV = Math.abs(cy - vh / 2);
-
-            var hSide, hOff;
-            if (dL <= dR && dL <= dCH)      { hSide = 'l'; hOff = left; }
-            else if (dR <= dL && dR <= dCH) { hSide = 'r'; hOff = vw - left - w; }
-            else                            { hSide = 'c'; hOff = cx - vw / 2; }
-
-            var vSide, vOff;
-            if (dT <= dB && dT <= dCV)      { vSide = 't'; vOff = top; }
-            else if (dB <= dT && dB <= dCV) { vSide = 'b'; vOff = vh - top - h; }
-            else                            { vSide = 'm'; vOff = cy - vh / 2; }
-
-            var str = hSide + Math.round(hOff) + vSide + Math.round(vOff) +
+            var anch = computeAnchor(left, top, w, h);
+            var hOff = anch.hSide === 'l' ? left :
+                       anch.hSide === 'r' ? vw - left - w :
+                                            (left + w / 2) - vw / 2;
+            var vOff = anch.vSide === 't' ? top :
+                       anch.vSide === 'b' ? vh - top - h :
+                                            (top + h / 2) - vh / 2;
+            var str = anch.hSide + Math.round(hOff) +
+                      anch.vSide + Math.round(vOff) +
                       's' + Math.round(scale * 100);
             try {
                 var opts = JSON.parse(localStorage.getItem(MM_OPTS_KEY)) || {};
@@ -1513,6 +1518,7 @@
                 left0: rect.left, top0: rect.top,
                 w0: w, h0: h, scale0: scale,
                 nw: page.scrollWidth, nh: page.scrollHeight,
+                anchor: computeAnchor(rect.left, rect.top, w, h),
             };
             mmDidMove = false;
 
@@ -1542,25 +1548,31 @@
                 page.style.left = snapLeft + 'px';
                 page.style.top  = snapTop  + 'px';
             } else {
-                // Resize: compute new scale from dragged edge(s)
-                var scale = mmState.scale0;
-                var left  = mmState.left0, top = mmState.top0;
+                // Resize: scale from dragged edge(s), position pinned to anchor
                 var e_ = mmState.edges;
+                var scale = mmState.scale0;
 
-                if (e_.R) {
-                    scale = Math.max(MM_MIN, Math.min(MM_MAX, (mmState.w0 + dx) / mmState.nw));
-                } else if (e_.L) {
-                    scale = Math.max(MM_MIN, Math.min(MM_MAX, (mmState.w0 - dx) / mmState.nw));
-                    left  = mmState.left0 + mmState.w0 - scale * mmState.nw;
+                // Determine scale from whichever edges are being dragged
+                if (e_.R || e_.L) {
+                    var sh = e_.R ? (mmState.w0 + dx) / mmState.nw
+                                  : (mmState.w0 - dx) / mmState.nw;
+                    scale = sh;
                 }
-                if (e_.B) {
-                    var sv = Math.max(MM_MIN, Math.min(MM_MAX, (mmState.h0 + dy) / mmState.nh));
-                    scale  = (e_.R || e_.L) ? (scale + sv) / 2 : sv;
-                } else if (e_.T) {
-                    var sv = Math.max(MM_MIN, Math.min(MM_MAX, (mmState.h0 - dy) / mmState.nh));
-                    scale  = (e_.R || e_.L) ? (scale + sv) / 2 : sv;
-                    top    = mmState.top0 + mmState.h0 - scale * mmState.nh;
+                if (e_.B || e_.T) {
+                    var sv = e_.B ? (mmState.h0 + dy) / mmState.nh
+                                  : (mmState.h0 - dy) / mmState.nh;
+                    scale = (e_.R || e_.L) ? (scale + sv) / 2 : sv;
                 }
+                scale = Math.max(MM_MIN, Math.min(MM_MAX, scale));
+
+                // Position: pin the anchor side (the side/center nearest the viewport edge)
+                var anch = mmState.anchor;
+                var left = anch.hSide === 'r' ? mmState.left0 + mmState.w0 - scale * mmState.nw :
+                           anch.hSide === 'c' ? mmState.left0 + mmState.w0 / 2 - scale * mmState.nw / 2 :
+                                                mmState.left0;  // 'l': left edge pinned
+                var top  = anch.vSide === 'b' ? mmState.top0 + mmState.h0 - scale * mmState.nh :
+                           anch.vSide === 'm' ? mmState.top0 + mmState.h0 / 2 - scale * mmState.nh / 2 :
+                                                mmState.top0;   // 't': top edge pinned
 
                 page.style.left      = left  + 'px';
                 page.style.top       = top   + 'px';
