@@ -1740,7 +1740,8 @@
         // ── end minimap ───────────────────────────────────────────────────────
 
         function openDocs(src, hash, animate) {
-            docsFrame.src = src;
+            // Use replace() so the iframe doesn't push its own entry into the joint session history
+            try { docsFrame.contentWindow.location.replace(src); } catch(e) { docsFrame.src = src; }
 
             if (animate) {
                 // Capture the game terminal's rect BEFORE any layout changes.
@@ -1909,12 +1910,20 @@
             }
         });
 
-        // Handle browser back from docs-standalone: remove standalone, close docs, return to /
+        // Handle browser back while docs are open
         window.addEventListener('popstate', function() {
             if (document.body.classList.contains('docs-standalone')) {
+                // Back from standalone: remove standalone, close docs, return to /
                 ignoreHashChange = true;
                 document.body.classList.remove('docs-standalone');
-                closeDocs(false);   // closeDocs clears the hash via replaceState
+                closeDocs(false);
+            } else if (document.body.classList.contains('docs-mode')) {
+                // Back from normal docs-mode: close if we've left the docs hash
+                var hash = window.location.hash.replace('#', '');
+                if (!docsRoutes[hash]) {
+                    ignoreHashChange = true;   // suppress the hashchange that follows popstate
+                    closeDocs(false);
+                }
             }
         });
 
