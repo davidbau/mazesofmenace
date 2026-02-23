@@ -1,7 +1,13 @@
 // exper.js -- Experience points and leveling
 // cf. exper.c — newuexp, newexplevel, pluslvl, experience, losexp, more_experienced
 
-import { rn2, rnd } from './rng.js';
+import { rn1, rn2, rnd } from './rng.js';
+import { roles, races } from './player.js';
+import { A_CON, A_WIS,
+         PM_PRIEST, PM_WIZARD, PM_HEALER, PM_KNIGHT,
+         PM_BARBARIAN, PM_VALKYRIE } from './config.js';
+
+const MAXULEV = 30;
 
 // cf. exper.c:14 — newuexp(): experience points threshold for given level
 export function newuexp(lev) {
@@ -14,18 +20,106 @@ export function newuexp(lev) {
     return 10000000 * (lev - 19);
 }
 
-// cf. exper.c:25 [static] — enermod(): role-dependent energy modifier
-// TODO: exper.c:25 — enermod(): needs Role_switch data from roles.js
-// export function enermod(en) { ... }
+// cf. exper.c:25 — enermod(): role-dependent energy modifier for level-up
+export function enermod(en, roleIndex) {
+    switch (roleIndex) {
+    case PM_PRIEST:
+    case PM_WIZARD:
+        return (2 * en);
+    case PM_HEALER:
+    case PM_KNIGHT:
+        return Math.floor((3 * en) / 2);
+    case PM_BARBARIAN:
+    case PM_VALKYRIE:
+        return Math.floor((3 * en) / 4);
+    default:
+        return en;
+    }
+}
 
-// cf. exper.c:44 — newpw(): calculate spell power gain for new level
-// TODO: exper.c:44 — newpw(): needs enadv struct data from roles/races (urole.enadv, urace.enadv)
+// cf. exper.c:44 — newpw(): calculate spell power gain for new/current level
+// For ulevel==0 (init): en = role.enadv.infix + race.enadv.infix + optional rnd(inrnd)
+// For ulevel>0 (level-up): en = enermod(rn1(enrnd, enfix))
+export function newpw(player) {
+    const role = roles[player.roleIndex];
+    const race = races[player.race];
+    if (!role || !race) return 1;
+    const roleEnadv = role.enadv_full || {infix:1, inrnd:0, lofix:0, lornd:1, hifix:0, hirnd:1};
+    const raceEnadv = race.enadv || {infix:0, inrnd:0, lofix:0, lornd:0, hifix:0, hirnd:0};
+    let en = 0;
 
-// cf. exper.c:84 — experience(): full XP calculation with AC/speed/attack bonuses
-// TODO: exper.c:84 — experience(mtmp, nk): needs find_mac, permonst attack data, extra_nasty
+    if (player.level === 0) {
+        // Initialization
+        en = roleEnadv.infix + raceEnadv.infix;
+        if (roleEnadv.inrnd > 0)
+            en += rnd(roleEnadv.inrnd);
+        if (raceEnadv.inrnd > 0)
+            en += rnd(raceEnadv.inrnd);
+    } else {
+        // Level-up
+        const enrndWis = Math.floor((player.attributes?.[A_WIS] || 10) / 2);
+        let enrnd, enfix;
+        if (player.level < (role.xlev || 14)) {
+            enrnd = enrndWis + roleEnadv.lornd + raceEnadv.lornd;
+            enfix = roleEnadv.lofix + raceEnadv.lofix;
+        } else {
+            enrnd = enrndWis + roleEnadv.hirnd + raceEnadv.hirnd;
+            enfix = roleEnadv.hifix + raceEnadv.hifix;
+        }
+        en = enermod(rn1(enrnd, enfix), player.roleIndex);
+    }
+    if (en <= 0) en = 1;
+    return en;
+}
 
-// cf. exper.c:168 — more_experienced(): award XP and score with wraparound cap
-// TODO: exper.c:168 — more_experienced(exper, rexp): needs u.urexp, flags.showexp, disp.botl
+// cf. attrib.c:1077 — newhp(): calculate hit point gain for new/current level
+// For ulevel==0 (init): hp = role.hpadv.infix + race.hpadv.infix + optional rnd(inrnd)
+// For ulevel>0 (level-up): hp = role.hpadv.lo/hifix + race + optional rnd(lo/hirnd) + conplus
+export function newhp(player) {
+    const role = roles[player.roleIndex];
+    const race = races[player.race];
+    if (!role || !race) return 1;
+    const roleHpadv = role.hpadv || {infix:10, inrnd:0, lofix:0, lornd:8, hifix:1, hirnd:0};
+    const raceHpadv = race.hpadv || {infix:2, inrnd:0, lofix:0, lornd:2, hifix:1, hirnd:0};
+    let hp;
+
+    if (player.level === 0) {
+        // Initialization — no Con adjustment
+        hp = roleHpadv.infix + raceHpadv.infix;
+        if (roleHpadv.inrnd > 0)
+            hp += rnd(roleHpadv.inrnd);
+        if (raceHpadv.inrnd > 0)
+            hp += rnd(raceHpadv.inrnd);
+    } else {
+        // Level-up
+        if (player.level < (role.xlev || 14)) {
+            hp = roleHpadv.lofix + raceHpadv.lofix;
+            if (roleHpadv.lornd > 0)
+                hp += rnd(roleHpadv.lornd);
+            if (raceHpadv.lornd > 0)
+                hp += rnd(raceHpadv.lornd);
+        } else {
+            hp = roleHpadv.hifix + raceHpadv.hifix;
+            if (roleHpadv.hirnd > 0)
+                hp += rnd(roleHpadv.hirnd);
+            if (raceHpadv.hirnd > 0)
+                hp += rnd(raceHpadv.hirnd);
+        }
+        // Con adjustment for level-up
+        const con = player.attributes?.[A_CON] || 10;
+        let conplus;
+        if (con <= 3) conplus = -2;
+        else if (con <= 6) conplus = -1;
+        else if (con <= 14) conplus = 0;
+        else if (con <= 16) conplus = 1;
+        else if (con === 17) conplus = 2;
+        else if (con === 18) conplus = 3;
+        else conplus = 4;
+        hp += conplus;
+    }
+    if (hp <= 0) hp = 1;
+    return hp;
+}
 
 // cf. exper.c:206 — losexp(): level drain (e.g., hit by drain life attack)
 // Partial: drains level and HP but does not implement adjabil/uhpinc/ueninc.
@@ -56,7 +150,6 @@ export function losexp(player, display, drainer) {
 
 // cf. exper.c:299 — newexplevel(): check if player should gain a level
 export function newexplevel(player, display) {
-    const MAXULEV = 30;
     if (player.level < MAXULEV && player.exp >= newuexp(player.level)) {
         pluslvl(player, display, true);
     }
@@ -64,19 +157,17 @@ export function newexplevel(player, display) {
 
 // cf. exper.c:306 — pluslvl(): gain an experience level
 export function pluslvl(player, display, incr) {
-    const MAXULEV = 30;
-
     if (!incr) {
         display.putstr_message('You feel more experienced.');
     }
 
-    // TODO: exper.c:324 newhp() — role-dependent HP gain; using rnd(8) placeholder
-    const hpGain = rnd(8);
+    // cf. exper.c:324 newhp() — role-dependent HP gain
+    const hpGain = newhp(player);
     player.hpmax += hpGain;
     player.hp += hpGain;
 
-    // TODO: exper.c:330 newpw() — role-dependent PW gain; using rn2(3) placeholder
-    const pwGain = rn2(3);
+    // cf. exper.c:330 newpw() — role-dependent PW gain
+    const pwGain = newpw(player);
     player.pwmax += pwGain;
     player.pw += pwGain;
 

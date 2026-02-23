@@ -14,6 +14,7 @@
 //   4. welcome(TRUE)           — rndencode + seer_turn
 
 import { rn2, rnd, rn1, rne, d, getRngLog } from './rng.js';
+import { newhp, newpw } from './exper.js';
 import { initrack } from './monmove.js';
 import { setMakemonPlayerContext } from './makemon.js';
 import { initLevelGeneration, makelevel } from './dungeon.js';
@@ -1177,8 +1178,12 @@ export function simulatePostLevelInit(player, map, depth) {
         player.searching = true;
     }
 
-    // Set HP/PW from role + race
-    // C ref: u_init.c u_init_misc() — newhp() = role_hp + race_hp
+    // Set HP/PW from role + race via newhp()/newpw()
+    // C ref: u_init.c:993-995 — u.ulevel=0, then newhp(), then newpw()
+    // Note: the RNG calls from newhp/newpw during init are consumed by the
+    // dungeon.js initDungeon() stub (which calls rnd(enadv) to keep the
+    // flat startup RNG stream aligned). We call the functions here for the
+    // correct HP/PW VALUES but their RNG has already been consumed.
     const raceHP = RACE_HP[player.race] ?? 2;
     const racePW = RACE_PW[player.race] ?? 1;
     player.hp = role.startingHP + raceHP;

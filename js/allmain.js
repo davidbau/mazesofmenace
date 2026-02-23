@@ -148,26 +148,8 @@ export function moveloop_turnend(game) {
         }
     }
 
-    // C ref: allmain.c:289-295 regen_hp()
-    let reachedFullHealth = false;
-    if (game.player.hp < game.player.hpmax) {
-        const con = game.player.attributes ? game.player.attributes[A_CON] : 10;
-        const heal = (game.player.level + con) > rn2(100) ? 1 : 0;
-        if (heal) {
-            game.player.hp = Math.min(game.player.hp + heal, game.player.hpmax);
-            reachedFullHealth = (game.player.hp === game.player.hpmax);
-        }
-    }
-    // C ref: allmain.c regen_hp() -> interrupt_multi("You are in full health.")
-    if (reachedFullHealth
-        && game.multi > 0
-        && !game.travelPath?.length
-        && !game.runMode) {
-        game.multi = 0;
-        if (game.flags?.verbose !== false) {
-            game.display.putstr_message('You are in full health.');
-        }
-    }
+    // C ref: allmain.c:295-301 — regen_hp(mvl_wtcap)
+    regen_hp(game);
 
     // C ref: allmain.c:341-343 — autosearch for players with Searching
     // intrinsic (Archeologists/Rangers at level 1, Rogues at 10, etc.)
@@ -474,7 +456,41 @@ async function _drainOccupation(game, coreOpts, onTimedTurn) {
 // TODO: allmain.c:599 — regen_pw(): power regeneration
 
 // cf. allmain.c:621 [static] — regen_hp(wtcap): hit point regeneration
-// TODO: allmain.c:621 — regen_hp(): hit point regeneration
+// Ported from C's regen_hp() (allmain.c:623-681).
+// Simplified: no polymorph HP (u.mh), no eel-out-of-water, no encumbrance.
+// U_CAN_REGEN: Regeneration intrinsic or Sleepy+asleep.
+function regen_hp(game) {
+    const player = game.player;
+    // C ref: allmain.c:656 — non-polymorph branch
+    if (player.hp < player.hpmax) {
+        const con = player.attributes ? player.attributes[A_CON] : 10;
+        // C ref: allmain.c:661 — heal = (ulevel + ACURR(A_CON)) > rn2(100)
+        let heal = (player.level + con) > rn2(100) ? 1 : 0;
+        // C ref: allmain.c:663 — U_CAN_REGEN bonus: +1 heal
+        if (player.regeneration) {
+            heal += 1;
+        }
+        // C ref: allmain.c:665 — Sleepy+asleep bonus: +1 heal
+        // (not tracked in JS yet)
+        if (heal) {
+            player.hp += heal;
+            if (player.hp > player.hpmax)
+                player.hp = player.hpmax;
+            // C ref: allmain.c:670 — stop voluntary multi-turn activity if fully healed
+            if (player.hp === player.hpmax) {
+                // interrupt_multi("You are in full health.")
+                if (game.multi > 0
+                    && !game.travelPath?.length
+                    && !game.runMode) {
+                    game.multi = 0;
+                    if (game.flags?.verbose !== false) {
+                        game.display.putstr_message('You are in full health.');
+                    }
+                }
+            }
+        }
+    }
+}
 
 // cf. allmain.c:680 — stop_occupation(void): halt multi-turn action
 // TODO: allmain.c:680 — stop_occupation(): occupation halt
