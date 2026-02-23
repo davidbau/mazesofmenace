@@ -4,7 +4,7 @@
 import { Display } from './display.js';
 import { initBrowserInput } from './browser_input.js';
 import { clearGameUrlParams, getUrlParams, saveGame, deleteSave } from './storage.js';
-import { NetHackGame } from './nethack.js';
+import { NetHackGame } from './allmain.js';
 import { getKeylog, saveKeylog, startReplay } from './keylog.js';
 import { VERSION_STRING } from './config.js';
 window.MENACE_VERSION = VERSION_STRING;

@@ -9,8 +9,8 @@ import {
 import { RACE_ELF } from '../../js/config.js';
 
 describe('HeadlessGame replay contract', () => {
-    it('start() applies explicit startup options', () => {
-        const game = HeadlessGame.start(123, {
+    it('start() applies explicit startup options', async () => {
+        const game = await HeadlessGame.start(123, {
             wizard: true,
             character: {
                 name: 'ReplayTester',
@@ -31,7 +31,7 @@ describe('HeadlessGame replay contract', () => {
 
     it('sendKey() returns structured per-step observation and invokes hooks', async () => {
         const events = [];
-        const game = HeadlessGame.start(5, {
+        const game = await HeadlessGame.start(5, {
             wizard: true,
             hooks: {
                 onStepStart: () => events.push('start'),
@@ -60,7 +60,7 @@ describe('HeadlessGame replay contract', () => {
     });
 
     it('supports no-loss capture helpers: typgrid/screen/rng/checkpoint', async () => {
-        const game = HeadlessGame.start(7, { wizard: true });
+        const game = await HeadlessGame.start(7, { wizard: true });
         game.enableRngLogging();
 
         await game.sendKey('.');
@@ -78,8 +78,8 @@ describe('HeadlessGame replay contract', () => {
         assert.equal(typeof game.getAnsiScreen(), 'string');
     });
 
-    it('can generate map depth traces via core wizard replay path', () => {
-        const out = generateMapsWithCoreReplay(11, 3);
+    it('can generate map depth traces via core wizard replay path', async () => {
+        const out = await generateMapsWithCoreReplay(11, 3);
         assert.equal(Object.keys(out.grids).length, 3);
         assert.equal(Object.keys(out.rngLogs).length, 3);
         assert.equal(Array.isArray(out.grids[1]), true);
@@ -88,8 +88,8 @@ describe('HeadlessGame replay contract', () => {
         assert.equal(typeof out.rngLogs[1].rngCalls, 'number');
     });
 
-    it('can generate startup state via core init path', () => {
-        const startup = generateStartupWithCoreReplay(42, {
+    it('can generate startup state via core init path', async () => {
+        const startup = await generateStartupWithCoreReplay(42, {
             type: 'chargen',
             options: {
                 name: 'CoreInit',

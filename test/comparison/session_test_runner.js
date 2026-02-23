@@ -9,7 +9,7 @@ import { Worker } from 'node:worker_threads';
 import {
     replaySession,
 } from '../../js/replay_core.js';
-import { NetHackGame } from '../../js/nethack.js';
+import { NetHackGame } from '../../js/allmain.js';
 import {
     createHeadlessInput,
     HeadlessDisplay,
@@ -368,7 +368,7 @@ async function runChargenResult(session) {
     const start = Date.now();
 
     try {
-        const startup = generateStartupWithCoreReplay(session.meta.seed, session.raw);
+        const startup = await generateStartupWithCoreReplay(session.meta.seed, session.raw);
         if (session.startup?.rng?.length) {
             recordRngComparison(result, startup?.rng || [], session.startup.rng);
         }
@@ -665,7 +665,7 @@ async function runMapResult(session) {
         }
 
         const maxDepth = Math.max(...levels.map((level) => level.depth || 1));
-        const generated = generateMapsWithCoreReplay(session.meta.seed, maxDepth);
+        const generated = await generateMapsWithCoreReplay(session.meta.seed, maxDepth);
 
         for (const level of levels) {
             const depth = level.depth || 1;

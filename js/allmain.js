@@ -24,13 +24,31 @@ import { runtimeDecideToShapeshift, makemon, setMakemonPlayerContext } from './m
 import { M2_WERE } from './monsters.js';
 import { were_change } from './were.js';
 import { allocateMonsterMovement } from './mon.js';
-import { rn2, rnd, rn1 } from './rng.js';
-import { NORMAL_SPEED, A_STR, A_DEX, A_CON, ROOMOFFSET, SHOPBASE } from './config.js';
+import { rn2, rnd, rn1, initRng, getRngState, setRngState, getRngCallCount, setRngCallCount,
+         enableRngLog, getRngLog as readRngLog } from './rng.js';
+import { NORMAL_SPEED, A_STR, A_DEX, A_CON, ROOMOFFSET, SHOPBASE,
+         COLNO, ROWNO, A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC,
+         FEMALE, MALE, TERMINAL_COLS,
+         RACE_HUMAN, RACE_ELF, RACE_DWARF, RACE_GNOME, RACE_ORC } from './config.js';
 import { ageSpells } from './spell.js';
 import { wipe_engr_at } from './engrave.js';
 import { dosearch0 } from './detect.js';
 import { exercise, exerchk } from './attrib_exercise.js';
 import { rhack } from './cmd.js';
+import { FOV } from './vision.js';
+import { monsterNearby } from './monutil.js';
+import { Player, roles, races } from './player.js';
+import { makelevel, setGameSeed, isBranchLevelToDnum } from './dungeon.js';
+import { getArrivalPosition, changeLevel as changeLevelCore } from './do.js';
+import { loadSave, deleteSave, loadFlags, saveFlags, deserializeRng,
+         restGameState, restLev, listSavedData, clearAllData } from './storage.js';
+import { buildEntry, saveScore, loadScores, formatTopTenEntry, formatTopTenHeader } from './topten.js';
+import { startRecording } from './keylog.js';
+import { nhgetch, getCount, setInputRuntime } from './input.js';
+import { init_nhwindows, NHW_MENU, MENU_BEHAVE_STANDARD, PICK_ONE, ATR_NONE,
+         create_nhwindow, destroy_nhwindow, start_menu, add_menu, end_menu, select_menu } from './windows.js';
+import { CLR_GRAY } from './display.js';
+import { initFirstLevel } from './u_init.js';
 
 // cf. allmain.c:169 — moveloop_core() monster movement + turn-end processing.
 // Called after the hero's action took time.  Runs movemon() for monster turns,
@@ -511,3 +529,622 @@ async function _drainOccupation(game, coreOpts, onTimedTurn) {
 
 // cf. allmain.c:1356 — dump_glyphids(void): dump glyph identifier constants
 // N/A: allmain.c:1356 — dump_glyphids() (build-time tool)
+
+// ============================================================================
+// DEFAULT_GAME_FLAGS — minimal defaults for the headless path
+// ============================================================================
+const DEFAULT_GAME_FLAGS = {
+    pickup: false,
+    verbose: false,
+    safe_wait: true,
+};
+
+// ============================================================================
+// NetHackGame — unified browser + headless game class
+// cf. allmain.c early_init(), moveloop(), newgame()
+// ============================================================================
+export class NetHackGame {
+    constructor(deps = {}) {
+        this.deps = deps;
+        this.lifecycle = deps.lifecycle || {};
+        this.hooks = deps.hooks || {};
+        this.fov = new FOV();
+        this.levels = {};
+        this.gameOver = false;
+        this.gameOverReason = '';
+        this.turnCount = 0;
+        setObjectMoves(1); // C ref: svm.moves starts at 1
+        this.wizard = false;
+        this.seerTurn = 0;
+        this.occupation = null;
+        this.pendingDeferredTimedTurn = false;
+        this.seed = 0;
+        this.multi = 0;
+        this.commandCount = 0;
+        this.cmdKey = 0;
+        this.lastCommand = null;
+        this._namePromptEcho = '';
+        this.menuRequested = false;
+        this.forceFight = false;
+        this.runMode = 0;
+        this._rngAccessors = { getRngState, setRngState, getRngCallCount, setRngCallCount };
+        this.rfilter = {
+            roles: new Array(roles.length).fill(false),
+            races: new Array(races.length).fill(false),
+            genders: new Array(2).fill(false),
+            aligns: new Array(3).fill(false),
+        };
+        this.lastHP = undefined;
+        this.dnum = undefined;
+        this.dungeonAlignOverride = undefined;
+
+        // Browser/headless path: player/map set up later in async init()
+        this.player = new Player();
+        this.map = null;
+        this.display = deps.display || null;
+        setOutputContext(this.display);
+        this.flags = null; // set in init()
+        this.input = deps.input || null;
+    }
+
+    // Emit lifecycle event
+    _runLifecycle(name, ...args) {
+        const fn = this.lifecycle[name];
+        if (typeof fn === 'function') {
+            return fn(...args);
+        }
+        return undefined;
+    }
+
+    // Emit hook events
+    _emitRuntimeBindings() {
+        if (typeof this.hooks.onRuntimeBindings === 'function') {
+            this.hooks.onRuntimeBindings({
+                game: this,
+                flags: this.flags,
+                display: this.display,
+            });
+        }
+    }
+
+    _emitGameplayStart() {
+        if (typeof this.hooks.onGameplayStart === 'function') {
+            this.hooks.onGameplayStart({ game: this });
+        }
+    }
+
+    _emitGameOver() {
+        if (typeof this.hooks.onGameOver === 'function') {
+            this.hooks.onGameOver({ game: this, reason: this.gameOverReason });
+        }
+    }
+
+    // Re-render game view (map + status). Called after a modal window closes.
+    _rerenderGame() {
+        if (!this.fov || !this.map || !this.display) return;
+        this.fov.compute(this.map, this.player.x, this.player.y);
+        this.display.renderMessageWindow();
+        this.display.renderMap(this.map, this.player, this.fov, this.flags);
+        this.display.renderStatus(this.player);
+    }
+
+    // Initialize a new game — browser chargen path
+    // C ref: allmain.c early_init() + moveloop_preamble()
+    async init(initOptions = {}) {
+        const urlOpts = {
+            wizard: false,
+            reset: false,
+            seed: null,
+            ...initOptions,
+        };
+        this.wizard = urlOpts.wizard;
+
+        if (!this.display) {
+            throw new Error('NetHackGame requires deps.display');
+        }
+
+        if (this.deps.input) {
+            setInputRuntime(this.deps.input);
+            this.input = this.deps.input;
+        } else if (typeof this.deps.initInput === 'function') {
+            const maybeRuntime = this.deps.initInput();
+            if (maybeRuntime && typeof maybeRuntime.nhgetch === 'function') {
+                setInputRuntime(maybeRuntime);
+                this.input = maybeRuntime;
+            }
+        }
+
+        // Wire up nhwindow infrastructure
+        init_nhwindows(this.display, nhgetch, () => this._rerenderGame());
+
+        // Dynamically import chargen functions from nethack.js to avoid circular deps
+        const nethackChargen = await import('./nethack.js');
+        const {
+            handleReset: _handleReset, restoreFromSave: _restoreFromSave,
+            playerSelection: _playerSelection, maybeDoTutorial: _maybeDoTutorial,
+        } = nethackChargen;
+
+        // Handle ?reset=1 — prompt to delete all saved data
+        if (urlOpts.reset) {
+            await _handleReset(this);
+        }
+
+        // Load user flags (C ref: flags struct from flag.h)
+        this.flags = loadFlags(urlOpts.flags || null);
+        this._emitRuntimeBindings();
+
+        // Check for saved game before RNG init
+        const saveData = loadSave();
+        if (saveData) {
+            const restored = await _restoreFromSave(this, saveData, urlOpts);
+            if (restored) return;
+            deleteSave();
+        }
+
+        // Initialize RNG with seed from URL or random
+        const seed = urlOpts.seed !== null
+            ? urlOpts.seed
+            : Math.floor(Math.random() * 0xFFFFFFFF);
+        this.seed = seed;
+        initRng(seed);
+        setGameSeed(seed);
+
+        // Start keystroke recording for reproducibility
+        startRecording(seed, this.flags);
+        this._emitRuntimeBindings();
+
+        // Show welcome message
+        const wizStr = this.wizard ? ' [WIZARD MODE]' : '';
+        const seedStr = urlOpts.seed !== null ? ` (seed:${seed})` : '';
+        this.display.putstr_message(`NetHack Royal Jelly -- Welcome to the Mazes of Menace!${wizStr}${seedStr}`);
+
+        // Player selection
+        if (urlOpts.character) {
+            // Headless/replay path: set player fields directly (no chargen RNG)
+            const char = urlOpts.character;
+            let roleIndex = 11; // default Valkyrie
+            if (Number.isInteger(char.roleIndex)) {
+                roleIndex = char.roleIndex;
+            } else if (typeof char.role === 'string') {
+                const idx = roles.findIndex(r => r.name === char.role);
+                if (idx >= 0) roleIndex = idx;
+            }
+            this.player.initRole(roleIndex);
+            this.player.name = char.name || 'Agent';
+            if (Number.isInteger(char.gender)) {
+                this.player.gender = char.gender;
+            } else if (typeof char.gender === 'string' && char.gender.toLowerCase() === 'female') {
+                this.player.gender = FEMALE;
+            }
+            const raceMap = { human: RACE_HUMAN, elf: RACE_ELF, dwarf: RACE_DWARF, gnome: RACE_GNOME, orc: RACE_ORC };
+            if (Number.isInteger(char.race)) {
+                this.player.race = char.race;
+            } else if (typeof char.race === 'string') {
+                const r = raceMap[char.race.toLowerCase()];
+                if (r !== undefined) this.player.race = r;
+            }
+            const alignMap = { lawful: A_LAWFUL, neutral: A_NEUTRAL, chaotic: A_CHAOTIC };
+            if (Number.isInteger(char.alignment)) {
+                this.player.alignment = char.alignment;
+            } else if (typeof char.align === 'string') {
+                const a = alignMap[char.align.toLowerCase()];
+                if (a !== undefined) this.player.alignment = a;
+            }
+        } else if (this.wizard) {
+            // Wizard mode: auto-select Valkyrie (index 11)
+            this.player.initRole(11); // PM_VALKYRIE
+            this.player.name = 'Wizard';
+            this.player.race = RACE_HUMAN;
+            this.player.gender = FEMALE;
+            this.player.alignment = A_NEUTRAL;
+        } else {
+            await _playerSelection(this);
+        }
+
+        // First-level init
+        this.dnum = Number.isInteger(urlOpts.startDnum) ? urlOpts.startDnum : undefined;
+        this.dungeonAlignOverride = Number.isInteger(urlOpts.dungeonAlignOverride)
+            ? urlOpts.dungeonAlignOverride : undefined;
+        const startDlevel = Number.isInteger(urlOpts.startDlevel) ? urlOpts.startDlevel : 1;
+        const { map, initResult } = initFirstLevel(this.player, this.player.roleIndex, this.wizard, {
+            startDlevel,
+            startDnum: this.dnum,
+            dungeonAlignOverride: this.dungeonAlignOverride,
+        });
+        this.map = map;
+        this.levels[startDlevel] = map;
+        this.player.wizard = this.wizard;
+        this.seerTurn = initResult.seerTurn;
+
+        // Apply flags
+        this.player.showExp = this.flags.showexp;
+        this.player.showScore = this.flags.showscore;
+        this.player.showTime = this.flags.time;
+
+        // Initial display
+        this.fov.compute(this.map, this.player.x, this.player.y);
+        this.display.renderMap(this.map, this.player, this.fov, this.flags);
+        this.display.renderStatus(this.player);
+
+        if (this.flags.tutorial) {
+            await _maybeDoTutorial(this);
+        }
+
+        this._emitGameplayStart();
+    }
+
+    // Generate or retrieve a level
+    // C ref: dungeon.c -- level management
+    changeLevel(depth, transitionDir = null, opts = {}) {
+        setMakemonPlayerContext(this.player);
+        const makeLevel = Number.isInteger(this.dnum)
+            ? (d) => makelevel(d, this.dnum, d, { dungeonAlignOverride: this.dungeonAlignOverride })
+            : undefined;
+        changeLevelCore(this, depth, transitionDir, { ...opts, makeLevel });
+
+        // Bones level message
+        if (this.map.isBones) {
+            this.display.putstr_message('You get an eerie feeling...');
+        }
+
+        // Update display
+        this.renderCurrentScreen();
+        this.maybeShowQuestLocateHint(depth);
+        if (typeof this.hooks.onLevelChange === 'function') {
+            this.hooks.onLevelChange({ game: this, depth });
+        }
+    }
+
+    maybeShowQuestLocateHint(depth) {
+        if (!this.display || !this.player || this.player.questLocateHintShown) return;
+        if (!Number.isInteger(depth)) return;
+        const currentDnum = Number.isInteger(this.dnum) ? this.dnum : 0;
+        const questLocateDepth = (currentDnum === 0 && depth === 14);
+        if (!questLocateDepth && !isBranchLevelToDnum(currentDnum, depth, 3)) return;
+        rn2(3);
+        rn2(2);
+        this.display.putstr_message("You couldn't quite make out that last message.");
+        this.player.questLocateHintShown = true;
+    }
+
+    placePlayerOnLevel(transitionDir = null) {
+        const pos = getArrivalPosition(this.map, this.player.dungeonLevel, transitionDir);
+        this.player.x = pos.x;
+        this.player.y = pos.y;
+    }
+
+    // C ref: allmain.c interrupt_multi() — check if multi-command should be interrupted
+    shouldInterruptMulti() {
+        if ((this.runMode || 0) > 0) return false;
+        if (this.occupation) return this.shouldInterruptOccupation();
+        if (monsterNearby(this.map, this.player, this.fov)) return true;
+        if (this.lastHP !== undefined && this.player.hp !== this.lastHP) {
+            this.lastHP = this.player.hp;
+            return true;
+        }
+        this.lastHP = this.player.hp;
+        return false;
+    }
+
+    // C ref: do.c cmd_safety_prevention()
+    shouldInterruptOccupation() {
+        if ((this.runMode || 0) > 0) return false;
+        return monsterNearby(this.map, this.player, this.fov);
+    }
+
+    // Run the deferred timed turn postponed from a stop_occupation frame.
+    runPendingDeferredTimedTurn() {
+        if (!this.pendingDeferredTimedTurn) return;
+        this.pendingDeferredTimedTurn = false;
+        moveloop_core(this, { computeFov: true });
+    }
+
+    // Render current screen state
+    renderCurrentScreen() {
+        this.fov.compute(this.map, this.player.x, this.player.y);
+        this.display.renderMap(this.map, this.player, this.fov, this.flags);
+        this.display.renderStatus(this.player);
+    }
+
+    _renderAll() {
+        this.renderCurrentScreen();
+    }
+
+    // Return the COLNO×ROWNO terrain type grid
+    getTypGrid() {
+        const grid = [];
+        for (let y = 0; y < ROWNO; y++) {
+            const row = [];
+            for (let x = 0; x < COLNO; x++) {
+                const loc = this.map?.at?.(x, y);
+                row.push(loc ? loc.typ : 0);
+            }
+            grid.push(row);
+        }
+        return grid;
+    }
+
+    getScreen() {
+        return this.display.getScreenLines();
+    }
+
+    getAnsiScreen() {
+        return this.getScreen().join('\n');
+    }
+
+    enableRngLogging(withTags = true) {
+        enableRngLog(withTags);
+    }
+
+    getRngLog() {
+        return [...(readRngLog() || [])];
+    }
+
+    clearRngLog() {
+        const log = readRngLog();
+        if (!log) return;
+        log.length = 0;
+        setRngCallCount(0);
+    }
+
+    checkpoint(phase = 'checkpoint') {
+        return {
+            phase,
+            level: this.player?.dungeonLevel || 0,
+            turn: this.turnCount,
+            player: {
+                x: this.player?.x ?? 0,
+                y: this.player?.y ?? 0,
+                hp: this.player?.hp ?? 0,
+                hpmax: this.player?.hpmax ?? 0,
+            },
+            rng: this.getRngLog(),
+            typGrid: this.getTypGrid(),
+            screen: this.getScreen(),
+        };
+    }
+
+    static isCountPrefixDigit(key) {
+        const ch = typeof key === 'string' ? key.charCodeAt(0) : key;
+        return ch >= 48 && ch <= 57;
+    }
+
+    static parseCountPrefixDigit(key) {
+        const ch = typeof key === 'string' ? key.charCodeAt(0) : key;
+        if (ch >= 48 && ch <= 57) return ch - 48;
+        return null;
+    }
+
+    static accumulateCountPrefix(currentCount, key) {
+        const digit = NetHackGame.parseCountPrefixDigit(key);
+        if (digit !== null) {
+            return {
+                isDigit: true,
+                newCount: Math.min(32767, (currentCount * 10) + digit),
+            };
+        }
+        return { isDigit: false, newCount: currentCount };
+    }
+
+    async executeCommand(ch) {
+        const code = typeof ch === 'string' ? ch.charCodeAt(0) : ch;
+        const result = await run_command(this, code, { computeFov: true });
+
+        if (typeof this.hooks.onCommandResult === 'function') {
+            this.hooks.onCommandResult({ game: this, keyCode: code, result });
+        }
+        if (result && result.tookTime && typeof this.hooks.onTurnAdvanced === 'function') {
+            this.hooks.onTurnAdvanced({ game: this, keyCode: code, result });
+        }
+
+        this.fov.compute(this.map, this.player.x, this.player.y);
+        this.display.renderMap(this.map, this.player, this.fov, this.flags);
+        this.display.renderStatus(this.player);
+        if (typeof this.hooks.onScreenRendered === 'function') {
+            this.hooks.onScreenRendered({ game: this, keyCode: code });
+        }
+
+        if (this.player.hp <= 0) {
+            this.gameOver = true;
+            this.gameOverReason = 'died';
+        }
+
+        return result;
+    }
+
+    async sendKey(key, replayContext = {}) {
+        const raw = typeof key === 'string' ? key : String.fromCharCode(key);
+        if (!raw) throw new Error('sendKey requires a non-empty key');
+        for (let i = 1; i < raw.length; i++) {
+            this.input.pushInput(raw.charCodeAt(i));
+        }
+        return this.executeReplayStep(raw[0], replayContext);
+    }
+
+    async sendKeys(keys, replayContext = {}) {
+        const out = [];
+        const seq = Array.isArray(keys) ? keys : String(keys || '').split('');
+        for (const key of seq) {
+            out.push(await this.sendKey(key, replayContext));
+        }
+        return out;
+    }
+
+    async replayStep(key, options = {}) {
+        const result = await run_command(this, key, {
+            countPrefix: (options.countPrefix && options.countPrefix > 0) ? options.countPrefix : 0,
+            skipMonsterMove: options.skipMonsterMove,
+            computeFov: true,
+            skipTurnEnd: !!options.skipTurnEnd,
+            onBeforeRepeat: () => {
+                if (typeof this.shouldInterruptMulti === 'function'
+                    && this.shouldInterruptMulti()) {
+                    this.multi = 0;
+                }
+            },
+        });
+
+        this.renderCurrentScreen();
+
+        return {
+            tookTime: result?.tookTime || false,
+            moved: result?.moved || false,
+            result,
+            screen: this.getScreen(),
+            typGrid: this.getTypGrid(),
+        };
+    }
+
+    async executeReplayStep(key, replayContext = {}) {
+        const raw = typeof key === 'string' ? key : String.fromCharCode(key);
+        if (!raw) throw new Error('executeReplayStep requires a key');
+        const beforeCount = readRngLog()?.length || 0;
+        if (typeof this.hooks.onStepStart === 'function') {
+            this.hooks.onStepStart({ game: this, key: raw, context: replayContext });
+        }
+        const result = await this.replayStep(raw, replayContext);
+        if (typeof this.hooks.onCommandResult === 'function') {
+            this.hooks.onCommandResult({ game: this, keyCode: raw.charCodeAt(0), result: result.result });
+        }
+        if (result.tookTime && typeof this.hooks.onTurnAdvanced === 'function') {
+            this.hooks.onTurnAdvanced({ game: this, keyCode: raw.charCodeAt(0), result: result.result });
+        }
+        if (typeof this.hooks.onScreenRendered === 'function') {
+            this.hooks.onScreenRendered({ game: this, keyCode: raw.charCodeAt(0) });
+        }
+        const fullLog = readRngLog() || [];
+        const stepRng = fullLog.slice(beforeCount);
+        if (typeof this.hooks.onReplayPrompt === 'function' && this.occupation) {
+            this.hooks.onReplayPrompt({ game: this, key: raw, context: replayContext });
+        }
+        return {
+            key: raw,
+            result,
+            rng: stepRng,
+            typGrid: this.getTypGrid(),
+            screen: this.getScreen(),
+            level: this.player?.dungeonLevel || 0,
+            turn: this.turnCount,
+        };
+    }
+
+    teleportToLevel(depth) {
+        if (!this.player?.wizard) {
+            return { ok: false, reason: 'wizard-disabled' };
+        }
+        if (!Number.isInteger(depth) || depth <= 0) {
+            return { ok: false, reason: 'invalid-depth' };
+        }
+        this.changeLevel(depth, 'teleport');
+        this.renderCurrentScreen();
+        if (typeof this.hooks.onLevelChange === 'function') {
+            this.hooks.onLevelChange({ game: this, depth });
+        }
+        return { ok: true, depth };
+    }
+
+    revealMap() {
+        if (!this.map) return;
+        for (let y = 0; y < ROWNO; y++) {
+            for (let x = 0; x < COLNO; x++) {
+                const loc = this.map.at(x, y);
+                if (loc) {
+                    loc.seenv = 0xFF;
+                    loc.lit = true;
+                }
+            }
+        }
+        this.renderCurrentScreen();
+    }
+
+    // Show game-over screen (tombstone + score). Delegates to nethack.js showGameOver.
+    // Also available as a standalone instance method for tests and external callers.
+    async showGameOver() {
+        const { showGameOver } = await import('./nethack.js');
+        await showGameOver(this);
+        this._emitGameOver();
+    }
+
+    // Main game loop — browser path
+    // C ref: allmain.c moveloop() -> moveloop_core()
+    async gameLoop() {
+        while (!this.gameOver) {
+            // Travel continuation
+            if (this.travelPath && this.travelStep < this.travelPath.length) {
+                const { executeTravelStep } = await import('./hack.js');
+                const result = await executeTravelStep(this);
+                if (result.tookTime) {
+                    moveloop_core(this);
+                }
+                this.fov.compute(this.map, this.player.x, this.player.y);
+                this.display.renderMap(this.map, this.player, this.fov, this.flags);
+                this.display.renderStatus(this.player);
+                continue;
+            }
+
+            // Get player input with optional count prefix
+            const firstCh = await nhgetch();
+            let ch;
+            let countPrefix = 0;
+
+            // C ref: cmd.c:1687 do_repeat() — Ctrl+A repeats last command
+            if (firstCh === 1) { // Ctrl+A
+                if (this.lastCommand) {
+                    countPrefix = this.lastCommand.count;
+                    ch = this.lastCommand.key;
+                } else {
+                    this.display.putstr_message('There is no command available to repeat.');
+                    continue;
+                }
+            } else if (firstCh >= 48 && firstCh <= 57) { // '0'-'9'
+                const result = await getCount(firstCh, 32767, this.display);
+                countPrefix = result.count;
+                ch = result.key;
+                if (ch === 27) { // ESC
+                    this.display.clearRow(0);
+                    continue;
+                }
+            } else {
+                ch = firstCh;
+            }
+
+            if (!ch) continue;
+
+            if (firstCh !== 1) {
+                this.lastCommand = { key: ch, count: countPrefix };
+            }
+
+            this.runPendingDeferredTimedTurn();
+
+            await run_command(this, ch, {
+                countPrefix,
+                onTimedTurn: async () => {
+                    this.fov.compute(this.map, this.player.x, this.player.y);
+                    this.display.renderMap(this.map, this.player, this.fov, this.flags);
+                    this.display.renderStatus(this.player);
+                    await new Promise(r => setTimeout(r, 0));
+                },
+                onBeforeRepeat: async () => {
+                    if (this.shouldInterruptMulti()) {
+                        this.multi = 0;
+                        this.display.putstr_message('--More--');
+                        await nhgetch();
+                    }
+                    if (this.multi > 0 && this.player.justHealedLegs
+                        && (this.cmdKey === '.'.charCodeAt(0) || this.cmdKey === 's'.charCodeAt(0))) {
+                        this.player.justHealedLegs = false;
+                        this.multi = 0;
+                        this.display.putstr_message('Your leg feels better.  You stop searching.');
+                    }
+                },
+            });
+
+            this.fov.compute(this.map, this.player.x, this.player.y);
+            this.display.renderMap(this.map, this.player, this.fov, this.flags);
+            this.display.renderStatus(this.player);
+        }
+
+        // Game over
+        await this.showGameOver();
+    }
+}

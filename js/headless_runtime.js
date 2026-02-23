@@ -1,6 +1,6 @@
 // headless_runtime.js -- Shared headless runtime for session tests and selfplay.
 
-import { setInputRuntime } from './input.js';
+// input.js (setInputRuntime called via game.init())
 import {
     initRng,
     rn2,
@@ -15,10 +15,8 @@ import {
     setRngCallCount,
     pushRngLogEntry,
 } from './rng.js';
-import { initExerciseState } from './attrib_exercise.js';
 import { makelevel, setGameSeed, isBranchLevelToDnum } from './dungeon.js';
-import { simulatePostLevelInit, initFirstLevel } from './u_init.js';
-import { Player, rankOf, roles } from './player.js';
+import { rankOf, roles } from './player.js';
 import { initrack } from './monmove.js';
 import { FOV } from './vision.js';
 import { monsterNearby } from './monutil.js';
@@ -27,7 +25,7 @@ import { doname, setObjectMoves } from './mkobj.js';
 import { monsterMapGlyph, objectMapGlyph } from './display_rng.js';
 import { defsyms, trap_to_defsym } from './symbols.js';
 import { setOutputContext } from './pline.js';
-import { moveloop_core, run_command } from './allmain.js';
+import { NetHackGame } from './allmain.js';
 import {
     COLNO, ROWNO, NORMAL_SPEED,
     A_STR, A_DEX, A_CON,
@@ -263,7 +261,62 @@ function rngCallPart(entry) {
     return atIdx >= 0 ? String(entry).substring(0, atIdx) : String(entry || '');
 }
 
-export function generateMapsWithCoreReplay(seed, maxDepth, options = {}) {
+// Internal factory: equivalent to old HeadlessGame.fromSeed
+// Used by createHeadlessGame() and generateStartupWithCoreReplay()
+async function headlessFromSeed(seed, roleIndex = 11, opts = {}) {
+    const input = opts.input || createHeadlessInput();
+    const display = new HeadlessDisplay();
+    const game = new NetHackGame({ display, input, hooks: opts.hooks });
+    await game.init({
+        seed,
+        wizard: opts.wizard ?? true,
+        character: {
+            roleIndex,
+            name: opts.name || 'Agent',
+            gender: opts.gender,
+            race: opts.race,
+            alignment: opts.alignment,
+        },
+        startDnum: opts.startDnum,
+        dungeonAlignOverride: opts.dungeonAlignOverride,
+        startDlevel: opts.startDlevel,
+        flags: { tutorial: false, ...opts.initFlags },
+    });
+    game.display.flags.DECgraphics = opts.DECgraphics !== false;
+    Object.assign(game.flags, SELFPLAY_GAME_FLAGS, opts.flags || {});
+    game.player.showExp = !!game.flags.showexp;
+    game.player.showScore = !!game.flags.showscore;
+    game.player.showTime = !!game.flags.time;
+    return game;
+}
+
+// Internal factory: equivalent to old HeadlessGame.start
+async function headlessStart(seed, options = {}) {
+    const character = options.character || {};
+    const roleValue = character.role ?? options.role ?? options.roleIndex;
+    const roleIndex = normalizeRoleIndex(roleValue, 11);
+    const gender = normalizeGender(character.gender ?? options.gender, 0);
+    const alignment = normalizeAlignment(character.align ?? options.align ?? options.alignment);
+    const race = normalizeRace(character.race ?? options.race, RACE_HUMAN);
+    const name = character.name ?? options.name ?? (options.wizard ? 'Wizard' : 'Agent');
+    return await headlessFromSeed(seed, roleIndex, {
+        ...options,
+        name,
+        gender,
+        alignment,
+        race,
+        wizard: !!options.wizard,
+        startDnum: Number.isInteger(options.startDnum) ? options.startDnum : undefined,
+        startDlevel: Number.isInteger(options.startDlevel) ? options.startDlevel : 1,
+        dungeonAlignOverride: Number.isInteger(options.startDungeonAlign)
+            ? options.startDungeonAlign
+            : options.dungeonAlignOverride,
+        DECgraphics: options.symbolMode !== 'ascii' && options.DECgraphics !== false,
+        hooks: options.hooks || {},
+    });
+}
+
+export async function generateMapsWithCoreReplay(seed, maxDepth, options = {}) {
     const targetDepth = Number.isInteger(maxDepth) ? maxDepth : 0;
     const grids = {};
     const maps = {};
@@ -272,7 +325,7 @@ export function generateMapsWithCoreReplay(seed, maxDepth, options = {}) {
 
     const withTags = (typeof options.rngWithTags === 'boolean') ? options.rngWithTags : undefined;
     enableRngLog(withTags);
-    const game = HeadlessGame.start(seed, {
+    const game = await headlessStart(seed, {
         wizard: true,
         roleIndex: Number.isInteger(options.roleIndex) ? options.roleIndex : 11,
         startDnum: options.startDnum,
@@ -301,106 +354,66 @@ export function generateMapsWithCoreReplay(seed, maxDepth, options = {}) {
     return { grids, maps, rngLogs };
 }
 
-function extractCharacterFromSession(session = {}) {
-    const opts = session.options || session.meta?.options || {};
-    return {
-        name: opts.name,
-        role: opts.role,
-        race: opts.race,
-        gender: opts.gender,
-        align: opts.align,
-    };
-}
-
-function getPreStartupRngEntries(session = {}) {
-    if (session.type === 'chargen') {
-        const out = [];
-        for (const step of (session.steps || [])) {
-            if (step.action === 'confirm-ok') break;
-            out.push(...(step.rng || []));
+// Extract chargen+init keystrokes from session (keys through tutorial response).
+// Collects all keys needed during game.init(): character selection, lore/welcome
+// more-prompts, and tutorial response — stopping at the game-ready marker.
+// Returns [] for non-chargen sessions (wizard path, no interactive menus).
+function getChargenKeysFromSession(session = {}) {
+    if (session.type !== 'chargen') return [];
+    const keys = [];
+    for (const step of (session.steps || [])) {
+        if (step.action === 'game-ready') break; // end of init phase
+        if (typeof step.key === 'string' && step.key.length > 0) {
+            keys.push(step.key);
         }
-        return out;
     }
-    if (session.chargen && session.chargen.length > 0) {
-        const out = [];
-        const confirmIndex = session.chargen.findIndex((s) => s.action === 'confirm-ok');
-        for (let i = 0; i < confirmIndex && i < session.chargen.length; i++) {
-            out.push(...(session.chargen[i].rng || []));
-        }
-        return out;
-    }
-    return [];
+    return keys;
 }
 
-function consumeRngEntry(entry) {
-    const call = rngCallPart(String(entry || ''));
-    const match = call.match(/^([a-z0-9_]+)\(([^)]*)\)=/i);
-    if (!match) return;
-    const fn = match[1];
-    const args = match[2]
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean)
-        .map((s) => Number.parseInt(s, 10));
-    switch (fn) {
-        case 'rn2':
-            if (args.length >= 1) rn2(args[0]);
-            break;
-        case 'rnd':
-            if (args.length >= 1) rnd(args[0]);
-            break;
-        case 'rn1':
-            if (args.length >= 2) rn1(args[0], args[1]);
-            break;
-        case 'rnl':
-            if (args.length >= 1) rnl(args[0]);
-            break;
-        case 'rne':
-            if (args.length >= 1) rne(args[0]);
-            break;
-        case 'rnz':
-            if (args.length >= 1) rnz(args[0]);
-            break;
-        case 'd':
-            if (args.length >= 2) d(args[0], args[1]);
-            break;
-    }
-}
-
-function consumeRngEntries(entries) {
-    for (const entry of entries || []) consumeRngEntry(entry);
-}
-
-export function generateStartupWithCoreReplay(seed, session, options = {}) {
+export async function generateStartupWithCoreReplay(seed, session, options = {}) {
     const rawSession = session || {};
-    const char = extractCharacterFromSession(rawSession);
-    const preStartupEntries = getPreStartupRngEntries(rawSession);
 
     const withTags = (typeof options.rngWithTags === 'boolean') ? options.rngWithTags : undefined;
     enableRngLog(withTags);
-    initRng(seed);
-    setGameSeed(seed);
-    consumeRngEntries(preStartupEntries);
 
-    const roleIndex = normalizeRoleIndex(char.role, 11);
-    const game = HeadlessGame.fromSeed(seed, roleIndex, {
-        preserveRngState: true,
-        wizard: options.wizard !== false,
-        name: char.name || options.name || 'Wizard',
-        gender: normalizeGender(char.gender, 0),
-        alignment: normalizeAlignment(char.align),
-        race: normalizeRace(char.race, RACE_HUMAN),
-        startDnum: options.startDnum,
-        startDlevel: Number.isInteger(options.startDlevel) ? options.startDlevel : 1,
-        dungeonAlignOverride: Number.isInteger(options.startDungeonAlign)
-            ? options.startDungeonAlign
-            : options.dungeonAlignOverride,
-        DECgraphics: options.symbolMode !== 'ascii' && options.DECgraphics !== false,
-    });
+    const input = createHeadlessInput({ throwOnEmpty: true });
+    const display = new HeadlessDisplay();
+    const game = new NetHackGame({ display, input });
 
-    const fullLog = game.getRngLog().map(toCompactRng);
-    const stripCount = rawSession.type === 'chargen' ? preStartupEntries.length : 0;
-    const startupRng = fullLog.slice(stripCount);
+    // Push chargen keystrokes for interactive chargen sessions
+    const chargenKeys = getChargenKeysFromSession(rawSession);
+    for (const key of chargenKeys) {
+        for (let i = 0; i < key.length; i++) {
+            input.pushKey(key.charCodeAt(i));
+        }
+    }
+
+    // Determine init options
+    const charOpts = extractCharacterFromSession(rawSession);
+    const initOpts = chargenKeys.length > 0
+        ? { seed, flags: { name: charOpts.name || '' } }
+        : {
+            seed,
+            wizard: options.wizard !== false,
+            character: {
+                role: charOpts.role,
+                name: charOpts.name || options.name || 'Wizard',
+                gender: normalizeGender(charOpts.gender, 0),
+                race: normalizeRace(charOpts.race, RACE_HUMAN),
+                alignment: normalizeAlignment(charOpts.align),
+            },
+            startDnum: options.startDnum,
+            startDlevel: Number.isInteger(options.startDlevel) ? options.startDlevel : 1,
+            dungeonAlignOverride: Number.isInteger(options.startDungeonAlign)
+                ? options.startDungeonAlign
+                : options.dungeonAlignOverride,
+            flags: { tutorial: false },
+        };
+
+    await game.init(initOpts);
+    game.display.flags.DECgraphics = options.symbolMode !== 'ascii' && options.DECgraphics !== false;
+
+    const startupRng = game.getRngLog().map(toCompactRng);
 
     return {
         game,
@@ -412,403 +425,15 @@ export function generateStartupWithCoreReplay(seed, session, options = {}) {
     };
 }
 
-export class HeadlessGame {
-    constructor(player, map, opts = {}) {
-        this.input = opts.input || createHeadlessInput();
-        setInputRuntime(this.input);
-        this.hooks = opts.hooks || {};
-        this.player = player;
-        initExerciseState(this.player);
-        this.map = map;
-        this.display = new HeadlessDisplay();
-        setOutputContext(this.display);
-        if (typeof this.input.setDisplay === 'function') {
-            this.input.setDisplay(this.display);
-        }
-        this.fov = new FOV();
-        const depth = this.player?.dungeonLevel || 1;
-        this.levels = { [depth]: map };
-        this.gameOver = false;
-        this.turnCount = 0;
-        setObjectMoves(1); // C ref: svm.moves starts at 1
-        this.wizard = true;
-        this.dnum = Number.isInteger(opts.startDnum) ? opts.startDnum : undefined;
-        this.dungeonAlignOverride = Number.isInteger(opts.dungeonAlignOverride)
-            ? opts.dungeonAlignOverride
-            : undefined;
-        this.seerTurn = opts.seerTurn || 0;
-        this.occupation = null; // C ref: cmd.c go.occupation — multi-turn action
-        this.pendingDeferredTimedTurn = false; // set by replay when stop_occupation defers the timed turn
-        this.flags = { ...DEFAULT_GAME_FLAGS, ...(opts.flags || {}) }; // Game flags for commands
-        this.player.showExp = !!this.flags.showexp;
-        this.player.showScore = !!this.flags.showscore;
-        this.player.showTime = !!this.flags.time;
-        this.menuRequested = false; // 'm' prefix command state
-        this.lastHP = this.player?.hp;
-        initrack(); // C ref: track.c — initialize player track buffer
-        this.renderCurrentScreen();
-    }
-
-    static start(seed, options = {}) {
-        const character = options.character || {};
-        const roleValue = character.role ?? options.role ?? options.roleIndex;
-        const roleIndex = normalizeRoleIndex(roleValue, 11);
-        const gender = normalizeGender(character.gender ?? options.gender, 0);
-        const alignment = normalizeAlignment(character.align ?? options.align ?? options.alignment);
-        const race = normalizeRace(character.race ?? options.race, RACE_HUMAN);
-        const name = character.name ?? options.name ?? (options.wizard ? 'Wizard' : 'Agent');
-        return HeadlessGame.fromSeed(seed, roleIndex, {
-            ...options,
-            name,
-            gender,
-            alignment,
-            race,
-            wizard: !!options.wizard,
-            startDnum: Number.isInteger(options.startDnum) ? options.startDnum : undefined,
-            startDlevel: Number.isInteger(options.startDlevel) ? options.startDlevel : 1,
-            dungeonAlignOverride: Number.isInteger(options.startDungeonAlign)
-                ? options.startDungeonAlign
-                : options.dungeonAlignOverride,
-            DECgraphics: options.symbolMode !== 'ascii' && options.DECgraphics !== false,
-            hooks: options.hooks || {},
-        });
-    }
-
-    renderCurrentScreen() {
-        this.fov.compute(this.map, this.player.x, this.player.y);
-        this.display.renderMap(this.map, this.player, this.fov, this.flags);
-        this.display.renderStatus(this.player);
-    }
-
-    _renderAll() {
-        this.renderCurrentScreen();
-    }
-
-    getTypGrid() {
-        const grid = [];
-        for (let y = 0; y < ROWNO; y++) {
-            const row = [];
-            for (let x = 0; x < COLNO; x++) {
-                const loc = this.map?.at?.(x, y);
-                row.push(loc ? loc.typ : 0);
-            }
-            grid.push(row);
-        }
-        return grid;
-    }
-
-    getScreen() {
-        return this.display.getScreenLines();
-    }
-
-    getAnsiScreen() {
-        // The headless runtime stores plain terminal cells today.
-        // Keep this method as a stable contract for session tooling.
-        return this.getScreen().join('\n');
-    }
-
-    enableRngLogging(withTags = true) {
-        enableRngLog(withTags);
-    }
-
-    getRngLog() {
-        return [...(readRngLog() || [])];
-    }
-
-    clearRngLog() {
-        const log = readRngLog();
-        if (!log) return;
-        log.length = 0;
-        setRngCallCount(0);
-    }
-
-    checkpoint(phase = 'checkpoint') {
-        return {
-            phase,
-            level: this.player?.dungeonLevel || 0,
-            turn: this.turnCount,
-            player: {
-                x: this.player?.x ?? 0,
-                y: this.player?.y ?? 0,
-                hp: this.player?.hp ?? 0,
-                hpmax: this.player?.hpmax ?? 0,
-            },
-            rng: this.getRngLog(),
-            typGrid: this.getTypGrid(),
-            screen: this.getScreen(),
-        };
-    }
-
-    static isCountPrefixDigit(key) {
-        const ch = typeof key === 'string' ? key.charCodeAt(0) : key;
-        return ch >= 48 && ch <= 57;
-    }
-
-    static parseCountPrefixDigit(key) {
-        const ch = typeof key === 'string' ? key.charCodeAt(0) : key;
-        if (ch >= 48 && ch <= 57) return ch - 48;
-        return null;
-    }
-
-    static accumulateCountPrefix(currentCount, key) {
-        const digit = HeadlessGame.parseCountPrefixDigit(key);
-        if (digit !== null) {
-            return {
-                isDigit: true,
-                newCount: Math.min(32767, (currentCount * 10) + digit),
-            };
-        }
-        return { isDigit: false, newCount: currentCount };
-    }
-
-    async sendKey(key, replayContext = {}) {
-        const raw = typeof key === 'string' ? key : String.fromCharCode(key);
-        if (!raw) {
-            throw new Error('sendKey requires a non-empty key');
-        }
-        for (let i = 1; i < raw.length; i++) {
-            this.input.pushInput(raw.charCodeAt(i));
-        }
-        return this.executeReplayStep(raw[0], replayContext);
-    }
-
-    async sendKeys(keys, replayContext = {}) {
-        const out = [];
-        const seq = Array.isArray(keys) ? keys : String(keys || '').split('');
-        for (const key of seq) {
-            out.push(await this.sendKey(key, replayContext));
-        }
-        return out;
-    }
-
-    async replayStep(key, options = {}) {
-        const result = await run_command(this, key, {
-            countPrefix: (options.countPrefix && options.countPrefix > 0) ? options.countPrefix : 0,
-            skipMonsterMove: options.skipMonsterMove,
-            computeFov: true,
-            skipTurnEnd: !!options.skipTurnEnd,
-            onBeforeRepeat: () => {
-                if (typeof this.shouldInterruptMulti === 'function'
-                    && this.shouldInterruptMulti()) {
-                    this.multi = 0;
-                }
-            },
-        });
-
-        this.renderCurrentScreen();
-
-        return {
-            tookTime: result?.tookTime || false,
-            moved: result?.moved || false,
-            result,
-            screen: this.getScreen(),
-            typGrid: this.getTypGrid(),
-        };
-    }
-
-    async executeReplayStep(key, replayContext = {}) {
-        const raw = typeof key === 'string' ? key : String.fromCharCode(key);
-        if (!raw) {
-            throw new Error('executeReplayStep requires a key');
-        }
-        const beforeCount = readRngLog()?.length || 0;
-        if (typeof this.hooks.onStepStart === 'function') {
-            this.hooks.onStepStart({ game: this, key: raw, context: replayContext });
-        }
-        const result = await this.replayStep(raw, replayContext);
-        if (typeof this.hooks.onCommandResult === 'function') {
-            this.hooks.onCommandResult({ game: this, keyCode: raw.charCodeAt(0), result: result.result });
-        }
-        if (result.tookTime && typeof this.hooks.onTurnAdvanced === 'function') {
-            this.hooks.onTurnAdvanced({ game: this, keyCode: raw.charCodeAt(0), result: result.result });
-        }
-        if (typeof this.hooks.onScreenRendered === 'function') {
-            this.hooks.onScreenRendered({ game: this, keyCode: raw.charCodeAt(0) });
-        }
-        const fullLog = readRngLog() || [];
-        const stepRng = fullLog.slice(beforeCount);
-        if (typeof this.hooks.onReplayPrompt === 'function' && this.occupation) {
-            this.hooks.onReplayPrompt({ game: this, key: raw, context: replayContext });
-        }
-        return {
-            key: raw,
-            result,
-            rng: stepRng,
-            typGrid: this.getTypGrid(),
-            screen: this.getScreen(),
-            level: this.player?.dungeonLevel || 0,
-            turn: this.turnCount,
-        };
-    }
-
-    teleportToLevel(depth) {
-        if (!this.player?.wizard) {
-            return { ok: false, reason: 'wizard-disabled' };
-        }
-        if (!Number.isInteger(depth) || depth <= 0) {
-            return { ok: false, reason: 'invalid-depth' };
-        }
-        this.changeLevel(depth, 'teleport');
-        this.renderCurrentScreen();
-        if (typeof this.hooks.onLevelChange === 'function') {
-            this.hooks.onLevelChange({ game: this, depth });
-        }
-        return { ok: true, depth };
-    }
-
-    revealMap() {
-        if (!this.map) return;
-        for (let y = 0; y < ROWNO; y++) {
-            for (let x = 0; x < COLNO; x++) {
-                const loc = this.map.at(x, y);
-                if (loc) {
-                    loc.seenv = 0xFF;
-                    loc.lit = true;
-                }
-            }
-        }
-        this.renderCurrentScreen();
-    }
-
-    // C ref: allmain.c interrupt_multi() — check if multi-count should be interrupted
-    // Interrupts search/wait/etc count when hostile monster appears adjacent.
-    shouldInterruptMulti() {
-        if ((this.runMode || 0) > 0) return false;
-        if (this.occupation) return this.shouldInterruptOccupation();
-
-        if (monsterNearby(this.map, this.player, this.fov)) return true;
-
-        if (this.lastHP !== undefined && this.player.hp !== this.lastHP) {
-            this.lastHP = this.player.hp;
-            return true;
-        }
-        this.lastHP = this.player.hp;
-        return false;
-    }
-
-    // C ref: do.c cmd_safety_prevention() used by timed_occupation() checks
-    // adjacent hostile monsters; HP-change interruption is for multi-repeat.
-    shouldInterruptOccupation() {
-        if ((this.runMode || 0) > 0) return false;
-        return monsterNearby(this.map, this.player, this.fov);
-    }
-
-    // Run the deferred timed turn postponed from a stop_occupation frame.
-    // See NetHackGame.runPendingDeferredTimedTurn() for full commentary.
-    runPendingDeferredTimedTurn() {
-        if (!this.pendingDeferredTimedTurn) return;
-        this.pendingDeferredTimedTurn = false;
-        moveloop_core(this, { computeFov: true });
-    }
-
-    changeLevel(depth, transitionDir = null, opts = {}) {
-        const makeLevel = Number.isInteger(this.dnum)
-            ? (d) => makelevel(d, this.dnum, d, { dungeonAlignOverride: this.dungeonAlignOverride })
-            : undefined;
-        changeLevelCore(this, depth, transitionDir, { ...opts, makeLevel });
-        this.renderCurrentScreen();
-        this.maybeShowQuestLocateHint(depth);
-        if (typeof this.hooks.onLevelChange === 'function') {
-            this.hooks.onLevelChange({ game: this, depth });
-        }
-    }
-
-    maybeShowQuestLocateHint(depth) {
-        if (!this.display || !this.player || this.player.questLocateHintShown) return;
-        if (!Number.isInteger(depth)) return;
-        const currentDnum = Number.isInteger(this.dnum) ? this.dnum : 0;
-        // C quest locate prompt: appears when reaching quest-locate depth in
-        // the main dungeon (typically depth 14), before full quest state exists.
-        const questLocateDepth = (currentDnum === 0 && depth === 14);
-        if (!questLocateDepth && !isBranchLevelToDnum(currentDnum, depth, 3)) return;
-        // C ref: do.c goto_level() -> com_pager("quest_portal") calls
-        // questpgr.c com_pager_core(), which creates a temporary Lua state.
-        // nhlua init loads nhlib.lua, whose top-level shuffle(align) consumes:
-        // rn2(3), rn2(2).
-        rn2(3);
-        rn2(2);
-        this.display.putstr_message("You couldn't quite make out that last message.");
-        this.player.questLocateHintShown = true;
-    }
-
-    placePlayerOnLevel(transitionDir = null) {
-        const pos = getArrivalPosition(this.map, this.player.dungeonLevel, transitionDir);
-        this.player.x = pos.x;
-        this.player.y = pos.y;
-    }
-}
-
-// Replay a gameplay session and return per-step RNG results.
-// Returns { startup: { rngCalls, rng }, steps: [{ rngCalls, rng }] }
-
-HeadlessGame.fromSeed = function fromSeed(seed, roleIndex = 11, opts = {}) {
-    const input = opts.input || createHeadlessInput();
-    setInputRuntime(input);
-
-    if (!opts.preserveRngState) {
-        initRng(seed);
-    }
-    setGameSeed(seed);
-
-    const player = new Player();
-    player.initRole(roleIndex);
-    player.name = opts.name || 'Agent';
-    player.gender = Number.isInteger(opts.gender) ? opts.gender : 0;
-    player.race = normalizeRace(opts.race, player.race);
-    if (Number.isInteger(opts.alignment)) {
-        player.alignment = opts.alignment;
-    }
-
-    const startDlevel = Number.isInteger(opts.startDlevel) ? opts.startDlevel : 1;
-    const { map, initResult } = initFirstLevel(player, roleIndex, opts.wizard ?? true, {
-        startDlevel, startDnum: opts.startDnum, dungeonAlignOverride: opts.dungeonAlignOverride,
-    });
-
-    const game = new HeadlessGame(player, map, {
-        input,
-        seerTurn: initResult?.seerTurn || 0,
-        startDnum: opts.startDnum,
-        dungeonAlignOverride: opts.dungeonAlignOverride,
-        hooks: opts.hooks,
-    });
-    game.seed = seed;
-    game.roleIndex = roleIndex;
-    game.wizard = !!opts.wizard;
-    player.wizard = game.wizard;
-    game.flags = { ...DEFAULT_GAME_FLAGS, ...SELFPLAY_GAME_FLAGS, ...(opts.flags || {}) };
-    game.display.flags.DECgraphics = opts.DECgraphics !== false;
-    game.renderCurrentScreen();
-    return game;
-};
-
-HeadlessGame.prototype.executeCommand = async function executeCommand(ch) {
-    const code = typeof ch === 'string' ? ch.charCodeAt(0) : ch;
-    const result = await run_command(this, code, { computeFov: true });
-
-    if (typeof this.hooks.onCommandResult === 'function') {
-        this.hooks.onCommandResult({ game: this, keyCode: code, result });
-    }
-    if (result && result.tookTime && typeof this.hooks.onTurnAdvanced === 'function') {
-        this.hooks.onTurnAdvanced({ game: this, keyCode: code, result });
-    }
-
-    this.fov.compute(this.map, this.player.x, this.player.y);
-    this.display.renderMap(this.map, this.player, this.fov, this.flags);
-    this.display.renderStatus(this.player);
-    if (typeof this.hooks.onScreenRendered === 'function') {
-        this.hooks.onScreenRendered({ game: this, keyCode: code });
-    }
-
-    if (this.player.hp <= 0) {
-        this.gameOver = true;
-        this.gameOverReason = 'died';
-    }
-
-    return result;
-};
-
-export function createHeadlessGame(seed, roleIndex = 11, opts = {}) {
-    return HeadlessGame.fromSeed(seed, roleIndex, opts);
+function extractCharacterFromSession(session = {}) {
+    const opts = session.options || session.meta?.options || {};
+    return {
+        name: opts.name,
+        role: opts.role,
+        race: opts.race,
+        gender: opts.gender,
+        align: opts.align,
+    };
 }
 
 // DEC Special Graphics Character Set — map raw VT100 alternate charset
@@ -1491,9 +1116,9 @@ export class HeadlessDisplay {
         line2Parts.push(`Pw:${player.pw}(${player.pwmax})`);
         line2Parts.push(`AC:${player.ac}`);
         if (player.showExp) {
-            line2Parts.push(`Xp:${player.level}`);
+            line2Parts.push(`Xp:${player.level}/${player.exp}`);
         } else {
-            line2Parts.push(`Exp:${player.level}`);
+            line2Parts.push(`Xp:${player.level}`);
         }
         if (player.showTime) line2Parts.push(`T:${player.turns}`);
         if (player.hunger > 1000) line2Parts.push('Satiated');
@@ -1666,3 +1291,18 @@ export class HeadlessDisplay {
         return TERRAIN_SYMBOLS[typ] || { ch: '?', color: CLR_MAGENTA };
     }
 }
+
+// ============================================================================
+// Compat shims — keep old HeadlessGame API working
+// ============================================================================
+export async function createHeadlessGame(seed, roleIndex = 11, opts = {}) {
+    return headlessFromSeed(seed, roleIndex, opts);
+}
+
+// HeadlessGame is now an alias for NetHackGame with static factory methods attached.
+// Callers using HeadlessGame.start(), HeadlessGame.fromSeed() continue to work.
+// These are now async — callers must await them.
+NetHackGame.fromSeed = headlessFromSeed;
+NetHackGame.start = headlessStart;
+NetHackGame.headless = headlessFromSeed;
+export { NetHackGame as HeadlessGame };

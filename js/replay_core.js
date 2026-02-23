@@ -14,13 +14,11 @@ import {
     MAP_ROW_START, STATUS_ROW_1, STATUS_ROW_2,
     A_LAWFUL, A_NEUTRAL, A_CHAOTIC
 } from './config.js';
-import { initRng, enableRngLog, getRngLog, disableRngLog, rn2, rnd, rn1, rnl, rne, rnz, d } from './rng.js';
-import { exercise, exerchk, initExerciseState } from './attrib_exercise.js';
-import { initLevelGeneration, makelevel, setGameSeed, wallification } from './dungeon.js';
+import { initRng, enableRngLog, getRngLog, disableRngLog } from './rng.js';
+import { initLevelGeneration, makelevel, setGameSeed } from './dungeon.js';
 import { DUNGEONS_OF_DOOM, TUTORIAL } from './special_levels.js';
 import { simulatePostLevelInit } from './u_init.js';
 import { mon_arrive } from './dog.js';
-import { init_objects } from './o_init.js';
 import { Player, roles, rankOf } from './player.js';
 import { NORMAL_SPEED, A_STR, A_DEX, A_CON, A_WIS,
          RACE_HUMAN, RACE_ELF, RACE_DWARF, RACE_GNOME, RACE_ORC } from './config.js';
@@ -30,11 +28,8 @@ import { makemon } from './makemon.js';
 import { FOOD_CLASS } from './objects.js';
 import { pushInput } from './input.js';
 import { initrack } from './monmove.js';
-import { moveloop_core } from './allmain.js';
-import { FOV } from './vision.js';
-import { getArrivalPosition } from './do.js';
-import { HeadlessGame, HeadlessDisplay } from './headless_runtime.js';
-import { GameMap } from './map.js';
+import { moveloop_core, NetHackGame } from './allmain.js';
+import { HeadlessDisplay, createHeadlessInput } from './headless_runtime.js';
 
 export { HeadlessDisplay };
 
@@ -322,45 +317,6 @@ function rngCallPart(entry) {
     return atIdx >= 0 ? entry.substring(0, atIdx) : entry;
 }
 
-function consumeRngEntry(entry) {
-    const call = rngCallPart(entry);
-    const match = call.match(/^([a-z0-9_]+)\(([^)]*)\)=/i);
-    if (!match) return;
-    const fn = match[1];
-    const args = match[2]
-        .split(',')
-        .map(s => s.trim())
-        .filter(Boolean)
-        .map(s => Number.parseInt(s, 10));
-
-    switch (fn) {
-        case 'rn2':
-            if (args.length >= 1) rn2(args[0]);
-            break;
-        case 'rnd':
-            if (args.length >= 1) rnd(args[0]);
-            break;
-        case 'rn1':
-            if (args.length >= 2) rn1(args[0], args[1]);
-            break;
-        case 'rnl':
-            if (args.length >= 1) rnl(args[0]);
-            break;
-        case 'rne':
-            if (args.length >= 1) rne(args[0]);
-            break;
-        case 'rnz':
-            if (args.length >= 1) rnz(args[0]);
-            break;
-        case 'd':
-            if (args.length >= 2) d(args[0], args[1]);
-            break;
-    }
-}
-
-function consumeRngEntries(entries) {
-    for (const entry of entries || []) consumeRngEntry(entry);
-}
 
 // Compare two RNG trace arrays.
 // Returns { index: -1 } on match, or { index, js, session } at first divergence.
@@ -595,28 +551,20 @@ export function generateMapsWithRng(seed, maxDepth) {
 const ROLE_INDEX = {};
 for (let i = 0; i < roles.length; i++) ROLE_INDEX[roles[i].name] = i;
 
-// Collect RNG calls consumed during character selection menus before newgame().
-// For chargen sessions, steps before "confirm-ok" may consume RNG (e.g., pick_align).
-// For gameplay sessions with chargen data, collect RNG from chargen steps before confirm-ok.
-// C ref: role.c pick_gend() — happens during role selection BEFORE initLevelGeneration.
-function getPreStartupRngEntries(session) {
-    if (session.type === 'chargen') {
-        const out = [];
-        for (const step of (session.steps || [])) {
-            if (step.action === 'confirm-ok') break;
-            out.push(...(step.rng || []));
+// Extract chargen+init keystrokes from a chargen session.
+// Collects all keys needed during game.init(): character selection, lore/welcome
+// more-prompts, and tutorial response — stopping at the game-ready marker.
+// Returns [] for non-chargen sessions (wizard path uses character opts directly).
+function getChargenKeys(session) {
+    if (session.type !== 'chargen') return [];
+    const keys = [];
+    for (const step of (session.steps || [])) {
+        if (step.action === 'game-ready') break; // end of init phase
+        if (typeof step.key === 'string' && step.key.length > 0) {
+            keys.push(step.key);
         }
-        return out;
     }
-    if (session.chargen && session.chargen.length > 0) {
-        const out = [];
-        const confirmIndex = session.chargen.findIndex(s => s.action === 'confirm-ok');
-        for (let i = 0; i < confirmIndex && i < session.chargen.length; i++) {
-            out.push(...(session.chargen[i].rng || []));
-        }
-        return out;
-    }
-    return [];
+    return keys;
 }
 
 // Detect when startup RNG is stored in step[0].rng instead of a separate startup field.
@@ -736,221 +684,69 @@ export async function replaySession(seed, session, opts = {}) {
     }
     initrack(); // clear hero track buffer between sessions
     enableRngLog();
-    initRng(seed);
-    setGameSeed(seed);
-    const sessionChar = getSessionCharacter(session);
-    const replayRoleIndex = ROLE_INDEX[sessionChar.role] ?? 11;
-    const firstStepScreen = getSessionScreenLines(session.steps?.[0] || {});
-    const firstStepScreenAnsi = getSessionScreenAnsiLines(session.steps?.[0] || {});
-    const tutorialPromptStartup = isTutorialPromptScreen(firstStepScreen)
-        && (session?.type === 'interface' || opts.replayMode === 'interface');
 
-    // Consume pre-map character generation RNG calls if session has chargen data
-    // C ref: role.c pick_gend() — happens during role selection BEFORE initLevelGeneration
-    // Map generation happens in the "confirm-ok" step, so we consume RNG only
-    // from steps before that (typically just pick-role with pick_gend call)
-    let mapGenStepIndex = -1;
-    if (session.chargen && session.chargen.length > 0) {
-        // Find the confirm-ok step (map generation)
-        mapGenStepIndex = session.chargen.findIndex(s => s.action === 'confirm-ok');
+    const display = new HeadlessDisplay();
+    const input = createHeadlessInput();
+    const game = new NetHackGame({ display, input });
 
-        // Consume RNG from steps before map generation (pick_gend, etc.)
-        for (let i = 0; i < mapGenStepIndex && i < session.chargen.length; i++) {
-            consumeRngEntries(session.chargen[i].rng || []);
+    // Determine chargen keys for interactive chargen sessions
+    const chargenKeys = getChargenKeys(session);
+    for (const key of chargenKeys) {
+        for (let i = 0; i < key.length; i++) {
+            input.pushKey(key.charCodeAt(i));
         }
     }
 
-    // Now initialize level generation (this may consume RNG for dungeon structure).
-    // C tutorial prompt still initializes globals/object state before map generation.
-    // Pass player's actual alignment and race so peace_minded() uses them during mklev.
-    const preAlignMap = { lawful: 1, neutral: 0, chaotic: -1 };
-    const preRaceMap = { human: RACE_HUMAN, elf: RACE_ELF, dwarf: RACE_DWARF, gnome: RACE_GNOME, orc: RACE_ORC };
-    initLevelGeneration(replayRoleIndex, session.options?.wizard ?? true, {
-        alignment: preAlignMap[sessionChar.align],
-        race: preRaceMap[sessionChar.race],
-    });
-
-    const sessionStartup = getSessionStartup(session);
-    const startupScreen = getSessionScreenLines(sessionStartup || {});
-    const startupScreenAnsi = getSessionScreenAnsiLines(sessionStartup || {});
-    const hasLegacyStartupScreen = !!session?.startup
-        && !hasStartupBurstInFirstStep(session);
+    const sessionChar = getSessionCharacter(session);
     const startDnum = Number.isInteger(opts.startDnum) ? opts.startDnum : undefined;
     const startDlevel = Number.isInteger(opts.startDlevel) ? opts.startDlevel : 1;
     const startDungeonAlign = Number.isInteger(opts.startDungeonAlign) ? opts.startDungeonAlign : undefined;
-    let map = null;
-    if (!tutorialPromptStartup) {
-        map = Number.isInteger(startDnum)
-            ? makelevel(startDlevel, startDnum, startDlevel, { dungeonAlignOverride: startDungeonAlign })
-            : makelevel(startDlevel, undefined, undefined, { dungeonAlignOverride: startDungeonAlign });
-        // Note: wallification is now called inside makelevel, no need to call it here
-    } else {
-        map = new GameMap();
-        map.clear();
-    }
 
-    // Consume post-map character generation RNG calls (moveloop_preamble, etc.)
-    // These happen after map gen but before gameplay starts
-    if (mapGenStepIndex >= 0 && session.chargen) {
-        for (let i = mapGenStepIndex + 1; i < session.chargen.length; i++) {
-            consumeRngEntries(session.chargen[i].rng || []);
-        }
-    }
+    const initOpts = chargenKeys.length > 0
+        ? { seed, flags: { name: sessionChar.name || '' } }
+        : {
+            seed,
+            wizard: session.options?.wizard ?? true,
+            character: {
+                role: sessionChar.role,
+                name: sessionChar.name,
+                gender: sessionChar.gender,
+                race: sessionChar.race,
+                align: sessionChar.align,
+            },
+            startDnum,
+            startDlevel,
+            dungeonAlignOverride: startDungeonAlign,
+            flags: { tutorial: false },
+        };
 
-    // NOTE: Wizard mode (-D flag) enables omniscience for the PLAYER,
-    // but does NOT make pets aware of trap locations (trap.tseen).
-    // Traps are only seen when discovered during gameplay.
-    // Removed automatic trap revelation here.
+    await game.init(initOpts);
 
-    let screen = startupScreen;
-    // Some gameplay fixtures omit startup status rows; use the earliest step
-    // that includes status lines so replayed baseline attrs/Pw match C capture.
-    const hasStatusLine = (lines) => Array.isArray(lines)
-        && lines.some((line) => typeof line === 'string' && (line.includes('St:') || line.includes('HP:')));
-    if (!hasStatusLine(screen)) {
-        for (const s of (session.steps || [])) {
-            const lines = getSessionScreenLines(s);
-            if (hasStatusLine(lines)) {
-                screen = lines;
-                break;
-            }
-        }
-    }
-    let inferredName = null;
-    let parsedStrength = null;
-    let parsedAttrs = null;
-    let parsedVitals = null;
-    const player = new Player();
-    player.initRole(replayRoleIndex);
-    player.wizard = !!(session.options?.wizard ?? true);
-    for (const line of screen) {
-        if (!line) continue;
-        const cleaned = String(line).replace(/[\x00-\x1f\x7f]/g, '').trim();
-        const nm = cleaned.match(/^([^ ].*?)\s+the\s+/);
-        if (nm && nm[1]) {
-            inferredName = nm[1];
-            break;
-        }
-    }
-    player.name = inferredName || sessionChar.name || 'Wizard';
-    player.gender = sessionChar.gender === 'female' ? 1 : 0;
-
-    // Override alignment if session specifies one (for non-default alignment variants)
-    const replayAlignMap = { lawful: 1, neutral: 0, chaotic: -1 };
-    if (sessionChar.align && replayAlignMap[sessionChar.align] !== undefined) {
-        player.alignment = replayAlignMap[sessionChar.align];
-    }
-
-    // Set race from session (default Human)
-    const replayRaceMap = { human: RACE_HUMAN, elf: RACE_ELF, dwarf: RACE_DWARF, gnome: RACE_GNOME, orc: RACE_ORC };
-    player.race = replayRaceMap[sessionChar.race] ?? RACE_HUMAN;
-    player.inTutorial = !!map?.flags?.is_tutorial;
-
-    // Parse actual attributes from session screen (u_init randomizes them)
-    // Screen format: "St:18 Dx:11 Co:18 In:11 Wi:9 Ch:8"
-    let inferredShowExp = null;
-    let inferredShowTime = null;
-    let inferredShowScore = null;
-    for (const line of screen) {
-        if (!line) continue;
-        const m = line.match(/St:([0-9/*]+)\s+Dx:(\d+)\s+Co:(\d+)\s+In:(\d+)\s+Wi:(\d+)\s+Ch:(\d+)/);
-        if (m) {
-            parsedStrength = m[1];
-            parsedAttrs = [
-                m[1].includes('/') ? 18 : parseInt(m[1], 10), // A_STR
-                parseInt(m[4], 10), // A_INT (In)
-                parseInt(m[5], 10), // A_WIS (Wi)
-                parseInt(m[2], 10), // A_DEX (Dx)
-                parseInt(m[3], 10), // A_CON (Co)
-                parseInt(m[6], 10), // A_CHA (Ch)
-            ];
-            player._screenStrength = parsedStrength;
-            player.attributes = parsedAttrs.slice();
-        }
-        const hpm = line.match(/HP:(\d+)\((\d+)\)\s+Pw:(\d+)\((\d+)\)\s+AC:(\d+)/);
-        if (hpm) {
-            parsedVitals = {
-                hp: parseInt(hpm[1], 10),
-                hpmax: parseInt(hpm[2], 10),
-                pw: parseInt(hpm[3], 10),
-                pwmax: parseInt(hpm[4], 10),
-                ac: parseInt(hpm[5], 10),
-            };
-            player.hp = parsedVitals.hp;
-            player.hpmax = parsedVitals.hpmax;
-            player.pw = parsedVitals.pw;
-            player.pwmax = parsedVitals.pwmax;
-            player.ac = parsedVitals.ac;
-        }
-        if (line.includes(' Xp:')) inferredShowExp = true;
-        if (line.includes(' Exp:')) inferredShowExp = false;
-        if (line.includes(' T:')) inferredShowTime = true;
-        if (line.includes(' S:')) inferredShowScore = true;
-    }
-    const inferStatusFlagsFromStartup = opts.inferStatusFlagsFromStartup !== false;
-    if (inferStatusFlagsFromStartup && inferredShowExp !== null) player.showExp = inferredShowExp;
-    if (inferStatusFlagsFromStartup && inferredShowTime !== null) player.showTime = inferredShowTime;
-    if (inferStatusFlagsFromStartup && inferredShowScore !== null) player.showScore = inferredShowScore;
-
-    if (map.upstair) {
-        player.x = map.upstair.x;
-        player.y = map.upstair.y;
-    }
-
-    let initResult = { seerTurn: false };
-    if (!tutorialPromptStartup) {
-        initResult = simulatePostLevelInit(player, map, 1);
-        // Replay startup state should match recorded C startup exactly, even when
-        // JS startup internals are not yet fully C-faithful.
-        if (parsedStrength) player._screenStrength = parsedStrength;
-        if (parsedAttrs) player.attributes = parsedAttrs.slice();
-        if (parsedVitals) {
-            player.hp = parsedVitals.hp;
-            player.hpmax = parsedVitals.hpmax;
-            player.pw = parsedVitals.pw;
-            player.pwmax = parsedVitals.pwmax;
-            player.ac = parsedVitals.ac;
-        }
-
-        // simulatePostLevelInit() applies role/race defaults (including Pw).
-        // Re-apply captured startup status so replay baseline matches fixture.
-        for (const line of screen) {
-            if (!line) continue;
-            const hpm = line.match(/HP:(\d+)\((\d+)\)\s+Pw:(\d+)\((\d+)\)\s+AC:([-]?\d+)/);
-            if (hpm) {
-                player.hp = parseInt(hpm[1]);
-                player.hpmax = parseInt(hpm[2]);
-                player.pw = parseInt(hpm[3]);
-                player.pwmax = parseInt(hpm[4]);
-                player.ac = parseInt(hpm[5]);
-                continue;
-            }
-            const hpOnly = line.match(/HP:(\d+)\((\d+)\)/);
-            if (hpOnly) {
-                player.hp = parseInt(hpOnly[1]);
-                player.hpmax = parseInt(hpOnly[2]);
-            }
-        }
+    const sessionSymset = session?.options?.symset || session?.meta?.options?.symset;
+    const decgraphicsMode = session.screenMode === 'decgraphics' || sessionSymset === 'DECgraphics';
+    game.display.flags.DECgraphics = !!decgraphicsMode;
+    game.flags.DECgraphics = !!decgraphicsMode;
+    if (opts.flags && typeof opts.flags === 'object') {
+        Object.assign(game.flags, opts.flags);
+        game.player.showExp = !!game.flags.showexp;
+        game.player.showTime = !!game.flags.time;
+        game.player.showScore = !!game.flags.showscore;
     }
 
     const startupLog = getRngLog();
     const startupRng = startupLog.map(toCompactRng);
 
-    const replayFlags = { ...(opts.flags && typeof opts.flags === 'object' ? opts.flags : {}) };
-    if (inferStatusFlagsFromStartup && inferredShowExp !== null) replayFlags.showexp = inferredShowExp;
-    if (inferStatusFlagsFromStartup && inferredShowTime !== null) replayFlags.time = inferredShowTime;
-    if (inferStatusFlagsFromStartup && inferredShowScore !== null) replayFlags.showscore = inferredShowScore;
-    const game = new HeadlessGame(player, map, {
-        seerTurn: initResult.seerTurn,
-        startDnum,
-        dungeonAlignOverride: startDungeonAlign,
-        flags: replayFlags,
-    });
-    const sessionSymset = session?.options?.symset || session?.meta?.options?.symset;
-    const decgraphicsMode = session.screenMode === 'decgraphics' || sessionSymset === 'DECgraphics';
-    game.wizard = player.wizard;
-    game.display.flags.DECgraphics = !!decgraphicsMode;
-    game.flags.DECgraphics = !!decgraphicsMode;
+    // Set display from session startup screen (for comparison baseline)
+    const sessionStartup = getSessionStartup(session);
+    const startupScreen = getSessionScreenLines(sessionStartup || {});
+    const startupScreenAnsi = getSessionScreenAnsiLines(sessionStartup || {});
+    const hasLegacyStartupScreen = !!session?.startup
+        && !hasStartupBurstInFirstStep(session);
+    const firstStepScreen = getSessionScreenLines(session.steps?.[0] || {});
+    const firstStepScreenAnsi = getSessionScreenAnsiLines(session.steps?.[0] || {});
+    const tutorialPromptStartup = isTutorialPromptScreen(firstStepScreen)
+        && (session?.type === 'interface' || opts.replayMode === 'interface');
+
     let inTutorialPrompt = tutorialPromptStartup;
     let pendingTutorialStart = false;
     if (inTutorialPrompt && firstStepScreen.length > 0) {

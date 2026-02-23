@@ -31,1503 +31,1143 @@ import { setOutputContext } from './pline.js';
 import { init_nhwindows, create_nhwindow, destroy_nhwindow,
          start_menu, add_menu, end_menu, select_menu,
          NHW_MENU, MENU_BEHAVE_STANDARD, PICK_ONE, ATR_NONE } from './windows.js';
-import { moveloop_core, run_command } from './allmain.js';
 
 // --- Game State ---
 // C ref: decl.h -- globals are accessed via NH object (see DECISIONS.md #7)
-export class NetHackGame {
-    constructor(deps = {}) {
-        this.deps = deps;
-        this.lifecycle = deps.lifecycle || {};
-        this.hooks = deps.hooks || {};
-        this.player = new Player();
-        this.map = null;
-        this.display = deps.display || null;
-        setOutputContext(this.display);
-        this.fov = new FOV();
-        this.levels = {};     // cached levels by depth
-        this.gameOver = false;
-        this.gameOverReason = '';
-        this.turnCount = 0;
-        setObjectMoves(1); // C ref: svm.moves starts at 1
-        this.wizard = false;  // C ref: flags.debug (wizard mode)
-        this.seerTurn = 0;    // C ref: context.seer_turn — clairvoyance timer
-        this.occupation = null; // C ref: cmd.c go.occupation — multi-turn action
-        this.pendingDeferredTimedTurn = false; // set by replay when stop_occupation defers the timed turn
-        this.seed = 0;        // original game seed (for save/restore)
-        this.multi = 0;       // C ref: allmain.c gm.multi — remaining command repeats
-        this.commandCount = 0; // C ref: cmd.c gc.command_count — user-entered count
-        this.cmdKey = 0;      // C ref: cmd.c gc.cmd_key — command to repeat
-        this.lastCommand = null; // C ref: cmd.c CQ_REPEAT — last command for Ctrl+A repeat
-        this._namePromptEcho = ''; // Preserve C-style startup name prompt line placement
-        // Prefix command flags
-        this.menuRequested = false; // C ref: iflags.menu_requested — 'm' prefix
-        this.forceFight = false;    // C ref: context.forcefight — 'F' prefix
-        this.runMode = 0;           // C ref: context.run — 'G'/'g' prefix (2=rush, 3=run)
-        // RNG accessors for storage.js (avoids circular imports)
-        this._rngAccessors = {
-            getRngState, setRngState, getRngCallCount, setRngCallCount,
-        };
-        // C ref: role.c rfilter — chargen filtering state
-        // true = filtered out (unacceptable)
-        this.rfilter = {
-            roles: new Array(roles.length).fill(false),
-            races: new Array(races.length).fill(false),
-            genders: new Array(2).fill(false),  // [MALE, FEMALE]
-            aligns: new Array(3).fill(false),   // indexed by align+1: [chaotic, neutral, lawful]
-        };
+
+// Player role selection -- faithful C chargen flow
+// C ref: role.c player_selection() -- choose role, race, gender, alignment
+export async function playerSelection(game) {
+    // Phase 0: Prompt for player name
+    // C ref: role.c plnamesuffix() -> askname() — prompts "Who are you?"
+    // Name prompt happens BEFORE role/race/gender/alignment selection
+    await promptPlayerName(game);
+
+    // Display copyright notice
+    // C ref: allmain.c -- copyright screen displayed with autopick prompt
+    game.display.clearScreen();
+    game.display.putstr(0, 4, "NetHack, Copyright 1985-2026", CLR_GRAY);
+    game.display.putstr(0, 5, "         By Stichting Mathematisch Centrum and M. Stephenson.", CLR_GRAY);
+    game.display.putstr(0, 6, "         Version 3.7.0 Royal Jelly — vibe-coded by The Hive.", CLR_GRAY);
+    game.display.putstr(0, 7, "         See license for details.", CLR_GRAY);
+    if (game._namePromptEcho) {
+        game.display.putstr(0, 12, game._namePromptEcho, CLR_GRAY);
     }
 
-    _emitRuntimeBindings() {
-        if (typeof this.hooks.onRuntimeBindings === 'function') {
-            this.hooks.onRuntimeBindings({
-                game: this,
-                flags: this.flags,
-                display: this.display,
-            });
-        }
+    // Phase 1: "Shall I pick character's race, role, gender and alignment for you?"
+    game.display.putstr_message(
+        "Shall I pick character's race, role, gender and alignment for you? [ynaq]"
+    );
+    const pickCh = await nhgetch();
+    const pickC = String.fromCharCode(pickCh);
+
+    if (pickC === 'q') {
+        game._runLifecycle('restart');
+        return;
     }
 
-    _runLifecycle(name, ...args) {
-        const fn = this.lifecycle[name];
-        if (typeof fn === 'function') {
-            return fn(...args);
-        }
-        return undefined;
+    if (pickC === 'y' || pickC === 'a') {
+        // Auto-pick all attributes randomly
+        await autoPickAll(game, pickC === 'y');
+        return;
     }
 
-    // Initialize a new game
-    // C ref: allmain.c early_init() + moveloop_preamble()
-    async init(initOptions = {}) {
-        const urlOpts = {
-            wizard: false,
-            reset: false,
-            seed: null,
-            ...initOptions,
-        };
-        this.wizard = urlOpts.wizard;
+    // 'n' or anything else → manual selection
+    await manualSelection(game);
+}
 
-        if (!this.display) {
-            throw new Error('NetHackGame requires deps.display');
-        }
+// Prompt for player name
+// C ref: role.c plnamesuffix() -> askname()
+export async function promptPlayerName(game) {
+    const MAX_NAME_LENGTH = 31; // C ref: global.h PL_NSIZ = 32 (31 chars + null)
 
-        if (this.deps.input) {
-            setInputRuntime(this.deps.input);
-        } else if (typeof this.deps.initInput === 'function') {
-            const maybeRuntime = this.deps.initInput();
-            if (maybeRuntime && typeof maybeRuntime.nhgetch === 'function') {
-                setInputRuntime(maybeRuntime);
-            }
-        }
-
-        // Wire up nhwindow infrastructure
-        init_nhwindows(this.display, nhgetch, () => this._rerenderGame());
-
-        // Handle ?reset=1 — prompt to delete all saved data
-        if (urlOpts.reset) {
-            await this.handleReset();
-        }
-
-        // Load user flags (C ref: flags struct from flag.h)
-        // loadFlags() merges: C defaults < JS overrides < localStorage < URL params
-        this.flags = loadFlags();
-        this._emitRuntimeBindings();
-
-        // Check for saved game before RNG init
-        const saveData = loadSave();
-        if (saveData) {
-            const restored = await this.restoreFromSave(saveData, urlOpts);
-            if (restored) return;
-            // User declined restore -- delete save (NetHack tradition)
-            deleteSave();
-        }
-
-        // Initialize RNG with seed from URL or random
-        const seed = urlOpts.seed !== null
-            ? urlOpts.seed
-            : Math.floor(Math.random() * 0xFFFFFFFF);
-        this.seed = seed;
-        initRng(seed);
-        setGameSeed(seed);
-
-        // Start keystroke recording for reproducibility
-        startRecording(seed, this.flags);
-        this._emitRuntimeBindings();
-
-        // Show welcome message
-        // C ref: allmain.c -- welcome messages
-        const wizStr = this.wizard ? ' [WIZARD MODE]' : '';
-        const seedStr = urlOpts.seed !== null ? ` (seed:${seed})` : '';
-        this.display.putstr_message(`NetHack Royal Jelly -- Welcome to the Mazes of Menace!${wizStr}${seedStr}`);
-
-        // Player selection
-        // C ref: In wizard mode, auto-selects Valkyrie/Human/Female/Neutral
-        // with NO RNG consumption. In normal mode, interactive selection.
-        if (this.wizard) {
-            // Wizard mode: auto-select Valkyrie (index 11)
-            this.player.initRole(11); // PM_VALKYRIE
-            this.player.name = 'Wizard';
-            this.player.race = RACE_HUMAN;
-            this.player.gender = FEMALE;
-            this.player.alignment = A_NEUTRAL;
-        } else {
-            await this.playerSelection();
-        }
-
-        // First-level init: level generation, player placement, pet/inventory/attrs
-        // C ref: allmain.c newgame() — init_dungeons through welcome(TRUE)
-        const { map, initResult } = initFirstLevel(this.player, this.player.roleIndex, this.wizard);
-        this.map = map;
-        this.levels[1] = map;
-        this.player.wizard = this.wizard;
-        this.seerTurn = initResult.seerTurn;
-
-        // Apply flags
-        this.player.showExp = this.flags.showexp;
-        this.player.showScore = this.flags.showscore;
-        this.player.showTime = this.flags.time;
-
-        // Initial display
-        this.fov.compute(this.map, this.player.x, this.player.y);
-        this.display.renderMap(this.map, this.player, this.fov, this.flags);
-        this.display.renderStatus(this.player);
-
-        if (this.flags.tutorial) {
-            await this._maybeDoTutorial();
-        }
-
-        // Notify that gameplay is starting
-        this._emitGameplayStart();
+    // Check if name is already saved in options (like C NetHack config file)
+    // C ref: options.c — name can be set via OPTIONS=name:playername
+    if (game.flags.name && game.flags.name.trim() !== '') {
+        // Use saved name (skip prompt)
+        game.player.name = game.flags.name.trim().substring(0, MAX_NAME_LENGTH);
+        game._namePromptEcho = '';
+        return;
     }
 
-    // Re-render game view (map + status). Called after a modal window closes.
-    _rerenderGame() {
-        if (!this.fov || !this.map || !this.display) return;
-        this.fov.compute(this.map, this.player.x, this.player.y);
-        this.display.renderMessageWindow();
-        this.display.renderMap(this.map, this.player, this.fov, this.flags);
-        this.display.renderStatus(this.player);
+    // No saved name - prompt for it
+    while (true) {
+        const name = await getlin('Who are you? ', game.display);
+
+        // C NetHack doesn't allow ESC to cancel - recursively prompts until valid
+        if (name === null || name.trim() === '') {
+            // Empty or cancelled - prompt again
+            continue;
+        }
+
+        // Enforce max length (truncate if too long)
+        const trimmedName = name.trim().substring(0, MAX_NAME_LENGTH);
+
+        // C NetHack accepts any non-empty name
+        game.player.name = trimmedName;
+        game._namePromptEcho = `Who are you? ${trimmedName}`;
+
+        // Save name to options for future games (like C NetHack config)
+        game.flags.name = trimmedName;
+        saveFlags(game.flags);
+
+        return;
+    }
+}
+
+// Display game over screen
+// C ref: end.c done() -> topten() -> outrip()
+export async function showGameOver(game) {
+    // Delete save file — game is over
+    deleteSave();
+
+    const p = game.player;
+    const deathCause = p.deathCause || game.gameOverReason || 'died';
+
+    // Calculate final score (simplified C formula from end.c)
+    // C ref: end.c done_in_by(), calc_score()
+    // Base score is accumulated from exp + kills during play
+    // Add gold
+    p.score += p.gold;
+    // Add 50 per dungeon level below 1
+    if (p.dungeonLevel > 1) {
+        p.score += (p.dungeonLevel - 1) * 50;
+    }
+    // Depth bonus for deep levels
+    if (p.maxDungeonLevel > 20) {
+        p.score += (p.maxDungeonLevel - 20) * 1000;
+    }
+    // Escaped bonus
+    if (game.gameOverReason === 'escaped') {
+        p.score += p.gold; // double gold for escaping
     }
 
-    async _maybeDoTutorial() {
-        const win = create_nhwindow(NHW_MENU);
-        start_menu(win, MENU_BEHAVE_STANDARD);
-        add_menu(win, null, { ival: 'y' }, 'y'.charCodeAt(0), 0, ATR_NONE, 0, 'Yes, do a tutorial', 0);
-        add_menu(win, null, { ival: 'n' }, 'n'.charCodeAt(0), 0, ATR_NONE, 0, 'No, just start play', 0);
-        end_menu(win, ' Do you want a tutorial?');
-        const sel = await select_menu(win, PICK_ONE);
-        destroy_nhwindow(win);  // triggers _rerenderGame(), fixing bug #162
-        if (sel && sel[0].identifier.ival === 'y') {
-            await this._enterTutorial();
-        }
-    }
-
-    async _enterTutorial() {
-        this.display.putstr_message('Entering the tutorial.');
-        await this.display.morePrompt(nhgetch);
-
-        // C tutorial startup uses a dedicated branch and starts without
-        // carried comestibles; tutorial places food explicitly in-map.
-        this.player.inventory = this.player.inventory.filter((obj) => obj.oclass !== FOOD_CLASS);
-
-        setMakemonPlayerContext(this.player);
-        this.map = makelevel(1, TUTORIAL, 1, { dungeonAlignOverride: A_NONE });
-        this.levels[1] = this.map;
-        this.player.dungeonLevel = 1;
-        this.player.inTutorial = true;
-        this.player.showExp = true;
-        if (this.map?.flags?.lit_corridor) this.flags.lit_corridor = true;
-        this.placePlayerOnLevel('down');
-
-        this.fov.compute(this.map, this.player.x, this.player.y);
-        this.display.renderMap(this.map, this.player, this.fov, this.flags);
-        this.display.renderStatus(this.player);
-        this.maybeShowQuestLocateHint(depth);
-    }
-
-    maybeShowQuestLocateHint(depth) {
-        if (!this.display || !this.player || this.player.questLocateHintShown) return;
-        if (!Number.isInteger(depth)) return;
-        const questLocateDepth = (depth === 14);
-        if (!questLocateDepth && !isBranchLevelToDnum(0, depth, 3)) return;
-        // C ref: do.c goto_level() -> com_pager("quest_portal") calls
-        // questpgr.c com_pager_core(), which creates a temporary Lua state.
-        // nhlua init loads nhlib.lua, whose top-level shuffle(align) consumes:
-        // rn2(3), rn2(2).
-        rn2(3);
-        rn2(2);
-        this.display.putstr_message("You couldn't quite make out that last message.");
-        this.player.questLocateHintShown = true;
-    }
-
-    _emitGameplayStart() {
-        if (typeof this.hooks.onGameplayStart === 'function') {
-            this.hooks.onGameplayStart({ game: this });
-        }
-    }
-
-    _emitGameOver() {
-        if (typeof this.hooks.onGameOver === 'function') {
-            this.hooks.onGameOver({ game: this, reason: this.gameOverReason });
-        }
-    }
-
-    // Restore game state from a save.
-    // Returns true if restored, false if user declined.
-    async restoreFromSave(saveData, urlOpts) {
-        this.display.putstr_message('Saved game found. Restore? [yn]');
-        const ans = await nhgetch();
-        if (String.fromCharCode(ans) !== 'y') {
-            this.display.putstr_message('Save deleted.');
-            return false;
-        }
-
-        // Restore game state (player, inventory, equip, context)
-        // C ref: dorecover() → restgamestate()
-        const gs = saveData.gameState;
-
-        // Replay o_init: init RNG with saved seed, run initLevelGeneration
-        this.seed = gs.seed;
-        initRng(gs.seed);
-        setGameSeed(gs.seed);
-        initLevelGeneration(gs.you?.roleIndex, gs.you?.wizard ?? true);
-
-        // Now overwrite RNG state with the saved state
-        const restoredCtx = deserializeRng(gs.rng);
-        setRngState(restoredCtx);
-        setRngCallCount(gs.rngCallCount);
-
-        // Restore game state: player + inventory + equip + context
-        const restored = restGameState(gs);
-        this.player = restored.player;
-        this.player.wizard = this.wizard;
-        setMakemonPlayerContext(this.player);
-        this.wizard = restored.wizard;
-        this.turnCount = restored.turnCount;
-        setObjectMoves(this.turnCount + 1);
-        this.seerTurn = restored.seerTurn;
-
-        // Restore current level (saved first in v2 format)
-        // C ref: dorecover() → getlev() for current level
-        const currentDepth = saveData.currentDepth;
-        this.levels = {};
-        if (saveData.currentLevel) {
-            this.levels[currentDepth] = restLev(saveData.currentLevel);
-        }
-
-        // Restore other cached levels
-        // C ref: dorecover() → getlev() loop for other levels
-        for (const [depth, levelData] of Object.entries(saveData.otherLevels || {})) {
-            this.levels[Number(depth)] = restLev(levelData);
-        }
-
-        // Set current level
-        this.player.dungeonLevel = currentDepth;
-        this.map = this.levels[currentDepth];
-
-        // Restore messages
-        if (restored.messages.length > 0) {
-            this.display.messages = restored.messages;
-        }
-
-        // Delete save (single-save semantics)
-        deleteSave();
-
-        // Load flags (C ref: flags struct)
-        this.flags = restored.flags || loadFlags();
-        this._emitRuntimeBindings();
-        this.player.showExp = this.flags.showexp;
-        this.player.showScore = this.flags.showscore;
-        this.player.showTime = this.flags.time;
-
-        // Render
-        this.fov.compute(this.map, this.player.x, this.player.y);
-        this.display.renderMap(this.map, this.player, this.fov, this.flags);
-        this.display.renderStatus(this.player);
-        this.display.putstr_message('Game restored.');
-
-        // Notify that gameplay is starting (restored game)
-        this._emitGameplayStart();
-        return true;
-    }
-
-    // Prompt for player name
-    // C ref: role.c plnamesuffix() -> askname()
-    async _promptPlayerName() {
-        const MAX_NAME_LENGTH = 31; // C ref: global.h PL_NSIZ = 32 (31 chars + null)
-
-        // Check if name is already saved in options (like C NetHack config file)
-        // C ref: options.c — name can be set via OPTIONS=name:playername
-        if (this.flags.name && this.flags.name.trim() !== '') {
-            // Use saved name (skip prompt)
-            this.player.name = this.flags.name.trim().substring(0, MAX_NAME_LENGTH);
-            this._namePromptEcho = '';
-            return;
-        }
-
-        // No saved name - prompt for it
-        while (true) {
-            const name = await getlin('Who are you? ', this.display);
-
-            // C NetHack doesn't allow ESC to cancel - recursively prompts until valid
-            if (name === null || name.trim() === '') {
-                // Empty or cancelled - prompt again
-                continue;
-            }
-
-            // Enforce max length (truncate if too long)
-            const trimmedName = name.trim().substring(0, MAX_NAME_LENGTH);
-
-            // C NetHack accepts any non-empty name
-            this.player.name = trimmedName;
-            this._namePromptEcho = `Who are you? ${trimmedName}`;
-
-            // Save name to options for future games (like C NetHack config)
-            this.flags.name = trimmedName;
-            saveFlags(this.flags);
-
-            return;
-        }
-    }
-
-    // Player role selection -- faithful C chargen flow
-    // C ref: role.c player_selection() -- choose role, race, gender, alignment
-    async playerSelection() {
-        // Phase 0: Prompt for player name
-        // C ref: role.c plnamesuffix() -> askname() — prompts "Who are you?"
-        // Name prompt happens BEFORE role/race/gender/alignment selection
-        await this._promptPlayerName();
-
-        // Display copyright notice
-        // C ref: allmain.c -- copyright screen displayed with autopick prompt
-        this.display.clearScreen();
-        this.display.putstr(0, 4, "NetHack, Copyright 1985-2026", CLR_GRAY);
-        this.display.putstr(0, 5, "         By Stichting Mathematisch Centrum and M. Stephenson.", CLR_GRAY);
-        this.display.putstr(0, 6, "         Version 3.7.0 Royal Jelly — vibe-coded by The Hive.", CLR_GRAY);
-        this.display.putstr(0, 7, "         See license for details.", CLR_GRAY);
-        if (this._namePromptEcho) {
-            this.display.putstr(0, 12, this._namePromptEcho, CLR_GRAY);
-        }
-
-        // Phase 1: "Shall I pick character's race, role, gender and alignment for you?"
-        this.display.putstr_message(
-            "Shall I pick character's race, role, gender and alignment for you? [ynaq]"
-        );
-        const pickCh = await nhgetch();
-        const pickC = String.fromCharCode(pickCh);
-
-        if (pickC === 'q') {
-            this._runLifecycle('restart');
-            return;
-        }
-
-        if (pickC === 'y' || pickC === 'a') {
-            // Auto-pick all attributes randomly
-            await this._autoPickAll(pickC === 'y');
-            return;
-        }
-
-        // 'n' or anything else → manual selection
-        await this._manualSelection();
-    }
-
-    // Auto-pick all chargen attributes randomly
-    // C ref: role.c plnamesiz auto-pick path
-    async _autoPickAll(showConfirm) {
-        // Pick role
-        let roleIdx = rn2(roles.length);
-        // Pick race
-        const vr = validRacesForRole(roleIdx);
-        let raceIdx = vr[rn2(vr.length)];
-        // Pick gender
-        let gender;
-        if (roles[roleIdx].forceGender === 'female') {
-            gender = FEMALE;
-            rn2(1); // C consumes rn2(1) for forced gender
-        } else {
-            gender = rn2(2); // 0=male, 1=female
-        }
-        // Pick alignment
-        const va = validAlignsForRoleRace(roleIdx, raceIdx);
-        let align = va[rn2(va.length)];
-
-        this.player.roleIndex = roleIdx;
-        this.player.race = raceIdx;
-        this.player.gender = gender;
-        this.player.alignment = align;
-
-        if (showConfirm) {
-            // Show confirmation screen
-            const confirmed = await this._showConfirmation(roleIdx, raceIdx, gender, align);
-            if (!confirmed) {
-                // 'n' → restart from manual selection
-                await this._manualSelection();
-                return;
-            }
-        }
-
-        // Apply the selection
-        this.player.initRole(roleIdx);
-        this.player.alignment = align;
-
-        // Show lore and welcome
-        await this._showLoreAndWelcome(roleIdx, raceIdx, gender, align);
-    }
-
-    // C ref: role.c ok_role/ok_race/ok_gend/ok_align — filter checks
-    _okRole(i) { return !this.rfilter.roles[i]; }
-    _okRace(i) { return !this.rfilter.races[i]; }
-    _okGend(g) { return !this.rfilter.genders[g]; }
-    _okAlign(a) { return !this.rfilter.aligns[a + 1]; } // a: -1,0,1 → index 0,1,2
-    _hasFilters() {
-        return this.rfilter.roles.some(Boolean) || this.rfilter.races.some(Boolean) ||
-               this.rfilter.genders.some(Boolean) || this.rfilter.aligns.some(Boolean);
-    }
-    _filterLabel() {
-        return this._hasFilters() ? 'Reset role/race/&c filtering' : 'Set role/race/&c filtering';
-    }
-
-    // Show the ~ filter menu (PICK_ANY multi-select)
-    // C ref: role.c reset_role_filtering() — four sections with toggle selection
-    async _showFilterMenu() {
-        const lines = [];
-        const prompt = this._hasFilters()
-            ? 'Pick all that apply and/or unpick any that no longer apply'
-            : 'Pick all that apply';
-        lines.push(prompt);
-        lines.push('');
-
-        // Build item list: letter → { type, index, selected }
-        const items = [];
-
-        // Section 1: Unacceptable roles
-        lines.push('Unacceptable roles');
-        for (let i = 0; i < roles.length; i++) {
-            const ch = roles[i].menuChar;
-            const sel = this.rfilter.roles[i];
-            const article = roles[i].menuArticle || 'a';
-            const nameDisplay = roles[i].namef
-                ? `${roles[i].name}/${roles[i].namef}`
-                : roles[i].name;
-            lines.push(` ${ch} ${sel ? '+' : '-'} ${article} ${nameDisplay}`);
-            items.push({ ch, type: 'roles', index: i, selected: sel });
-        }
-
-        // Section 2: Unacceptable races (uppercase to avoid conflict with role letters)
-        // C ref: setup_racemenu uses highc(this_ch) in filter mode
-        lines.push('Unacceptable races');
-        for (let i = 0; i < races.length; i++) {
-            const ch = races[i].menuChar.toUpperCase();
-            const sel = this.rfilter.races[i];
-            lines.push(` ${ch} ${sel ? '+' : '-'} ${races[i].name}`);
-            items.push({ ch, type: 'races', index: i, selected: sel });
-        }
-
-        // Section 3: Unacceptable genders (uppercase)
-        // C ref: setup_gendmenu uses highc(this_ch) in filter mode
-        lines.push('Unacceptable genders');
-        const genderChars = ['M', 'F'];
-        const genderNames = ['male', 'female'];
-        for (let i = 0; i < 2; i++) {
-            const ch = genderChars[i];
-            const sel = this.rfilter.genders[i];
-            lines.push(` ${ch} ${sel ? '+' : '-'} ${genderNames[i]}`);
-            items.push({ ch, type: 'genders', index: i, selected: sel });
-        }
-
-        // Section 4: Unacceptable alignments (uppercase)
-        // C ref: setup_algnmenu uses highc(this_ch) in filter mode
-        lines.push('Unacceptable alignments');
-        const alignChars = ['L', 'N', 'C'];
-        const alignNames = ['lawful', 'neutral', 'chaotic'];
-        const alignIndices = [2, 1, 0]; // A_LAWFUL=1→idx2, A_NEUTRAL=0→idx1, A_CHAOTIC=-1→idx0
-        for (let i = 0; i < 3; i++) {
-            const ch = alignChars[i];
-            const sel = this.rfilter.aligns[alignIndices[i]];
-            lines.push(` ${ch} ${sel ? '+' : '-'} ${alignNames[i]}`);
-            items.push({ ch, type: 'aligns', index: alignIndices[i], selected: sel });
-        }
-
-        lines.push('(end)');
-
-        // Build a lookup from char to item indices (some chars are reused across sections)
-        // In C, each item has a unique accelerator; we use the same scheme
-        const charToItems = {};
-        for (let i = 0; i < items.length; i++) {
-            if (!charToItems[items[i].ch]) charToItems[items[i].ch] = [];
-            charToItems[items[i].ch].push(i);
-        }
-
-        // Render and handle input loop
-        // PICK_ANY: user toggles items, Enter/Esc to finish
-        this.display.renderChargenMenu(lines, true);
-
-        while (true) {
-            const ch = await nhgetch();
-            const c = String.fromCharCode(ch);
-
-            if (c === '\r' || c === '\n' || c === ' ') {
-                // Confirm: apply current selections
-                for (const item of items) {
-                    this.rfilter[item.type][item.index] = item.selected;
-                }
-                return;
-            }
-
-            if (ch === 27) { // ESC
-                // Cancel: no changes
-                return;
-            }
-
-            // Toggle items matching this character
-            if (charToItems[c]) {
-                for (const idx of charToItems[c]) {
-                    items[idx].selected = !items[idx].selected;
-                }
-                // Re-render the menu with updated selections
-                const updatedLines = [];
-                updatedLines.push(lines[0]); // prompt
-                updatedLines.push('');
-                let itemIdx = 0;
-
-                updatedLines.push('Unacceptable roles');
-                for (let i = 0; i < roles.length; i++) {
-                    const item = items[itemIdx++];
-                    const article = roles[i].menuArticle || 'a';
-                    const nameDisplay = roles[i].namef
-                        ? `${roles[i].name}/${roles[i].namef}`
-                        : roles[i].name;
-                    updatedLines.push(` ${item.ch} ${item.selected ? '+' : '-'} ${article} ${nameDisplay}`);
-                }
-
-                updatedLines.push('Unacceptable races');
-                for (let i = 0; i < races.length; i++) {
-                    const item = items[itemIdx++];
-                    updatedLines.push(` ${item.ch} ${item.selected ? '+' : '-'} ${races[i].name}`);
-                }
-
-                updatedLines.push('Unacceptable genders');
-                for (let g = 0; g < 2; g++) {
-                    const item = items[itemIdx++];
-                    updatedLines.push(` ${item.ch} ${item.selected ? '+' : '-'} ${genderNames[g]}`);
-                }
-
-                updatedLines.push('Unacceptable alignments');
-                for (let ai = 0; ai < 3; ai++) {
-                    const item = items[itemIdx++];
-                    updatedLines.push(` ${item.ch} ${item.selected ? '+' : '-'} ${alignNames[ai]}`);
-                }
-
-                updatedLines.push('(end)');
-                this.display.renderChargenMenu(updatedLines, true);
-            }
-        }
-    }
-
-    // Manual selection loop: role → race → gender → alignment
-    // C ref: role.c player_selection() manual path
-    async _manualSelection() {
-        let roleIdx = -1;
-        let raceIdx = -1;
-        let gender = -1;
-        let align = -128; // A_NONE
-        let isFirstMenu = true;
-
-        // Selection loop
-        selectionLoop:
-        while (true) {
-            // Determine what we still need to pick
-            // C order: role → race → gender → alignment
-            // But navigation keys can jump to any step
-
-            // --- ROLE ---
-            if (roleIdx < 0) {
-                const result = await this._showRoleMenu(raceIdx, gender, align, isFirstMenu);
-                isFirstMenu = false;
-                if (result.action === 'quit') { this._runLifecycle('restart'); return; }
-                if (result.action === 'pick-race') { raceIdx = -1; roleIdx = -1; continue; }
-                if (result.action === 'pick-gender') { gender = -1; roleIdx = -1; continue; }
-                if (result.action === 'pick-align') { align = -128; roleIdx = -1; continue; }
-                if (result.action === 'filter') { await this._showFilterMenu(); isFirstMenu = true; continue; }
-                if (result.action === 'invalid') { continue; }
-                if (result.action === 'selected') {
-                    roleIdx = result.value;
-                    // Validate role index
-                    if (roleIdx < 0 || roleIdx >= roles.length) {
-                        roleIdx = -1;
-                        continue;
-                    }
-                    // Force gender if needed
-                    if (roles[roleIdx].forceGender === 'female') {
-                        gender = FEMALE;
-                        rn2(1); // C consumes rn2(1) for forced gender
-                    }
-                }
-            }
-
-            // --- RACE ---
-            if (roleIdx >= 0 && raceIdx < 0) {
-                const validRaces = validRacesForRole(roleIdx).filter(ri => this._okRace(ri));
-                // Filter down to valid races given current constraints
-                if (validRaces.length === 1) {
-                    raceIdx = validRaces[0];
-                    // Will show as forced in next menu
-                } else {
-                    const result = await this._showRaceMenu(roleIdx, gender, align, isFirstMenu);
-                    isFirstMenu = false;
-                    if (result.action === 'quit') { this._runLifecycle('restart'); return; }
-                    if (result.action === 'pick-role') { roleIdx = -1; raceIdx = -1; gender = -1; align = -128; continue; }
-                    if (result.action === 'pick-gender') { gender = -1; continue; }
-                    if (result.action === 'pick-align') { align = -128; continue; }
-                    if (result.action === 'filter') { await this._showFilterMenu(); roleIdx = -1; raceIdx = -1; gender = -1; align = -128; isFirstMenu = true; continue; }
-                    if (result.action === 'invalid') { continue; }
-                    if (result.action === 'selected') {
-                        raceIdx = result.value;
-                        // Validate race index
-                        if (raceIdx < 0 || raceIdx >= races.length) {
-                            raceIdx = -1;
-                            continue;
-                        }
-                    }
-                }
-            }
-
-            // --- GENDER ---
-            if (roleIdx >= 0 && raceIdx >= 0 && gender < 0) {
-                if (!needsGenderMenu(roleIdx)) {
-                    gender = roles[roleIdx].forceGender === 'female' ? FEMALE : MALE;
-                } else {
-                    const result = await this._showGenderMenu(roleIdx, raceIdx, align, isFirstMenu);
-                    isFirstMenu = false;
-                    if (result.action === 'quit') { this._runLifecycle('restart'); return; }
-                    if (result.action === 'pick-role') { roleIdx = -1; raceIdx = -1; gender = -1; align = -128; continue; }
-                    if (result.action === 'pick-race') { raceIdx = -1; gender = -1; continue; }
-                    if (result.action === 'pick-align') { align = -128; continue; }
-                    if (result.action === 'filter') { await this._showFilterMenu(); roleIdx = -1; raceIdx = -1; gender = -1; align = -128; isFirstMenu = true; continue; }
-                    if (result.action === 'invalid') { continue; }
-                    if (result.action === 'selected') {
-                        gender = result.value;
-                        // Validate gender (0=MALE, 1=FEMALE)
-                        if (gender < 0 || gender > 1) {
-                            gender = -1;
-                            continue;
-                        }
-                    }
-                }
-            }
-
-            // --- ALIGNMENT ---
-            if (roleIdx >= 0 && raceIdx >= 0 && gender >= 0 && align === -128) {
-                const validAligns = validAlignsForRoleRace(roleIdx, raceIdx).filter(a => this._okAlign(a));
-                if (validAligns.length === 1) {
-                    align = validAligns[0];
-                } else {
-                    const result = await this._showAlignMenu(roleIdx, raceIdx, gender, isFirstMenu);
-                    isFirstMenu = false;
-                    if (result.action === 'quit') { this._runLifecycle('restart'); return; }
-                    if (result.action === 'pick-role') { roleIdx = -1; raceIdx = -1; gender = -1; align = -128; continue; }
-                    if (result.action === 'pick-race') { raceIdx = -1; align = -128; continue; }
-                    if (result.action === 'pick-gender') { gender = -1; align = -128; continue; }
-                    if (result.action === 'filter') { await this._showFilterMenu(); roleIdx = -1; raceIdx = -1; gender = -1; align = -128; isFirstMenu = true; continue; }
-                    if (result.action === 'invalid') { continue; }
-                    if (result.action === 'selected') {
-                        align = result.value;
-                        // Validate alignment (0=LAWFUL, 1=NEUTRAL, 2=CHAOTIC)
-                        if (align < 0 || align > 2) {
-                            align = -128;
-                            continue;
-                        }
-                    }
-                }
-            }
-
-            // --- CONFIRMATION ---
-            if (roleIdx >= 0 && raceIdx >= 0 && gender >= 0 && align !== -128) {
-                const confirmed = await this._showConfirmation(roleIdx, raceIdx, gender, align);
-                if (confirmed) {
-                    // Apply selection
-                    this.player.roleIndex = roleIdx;
-                    this.player.race = raceIdx;
-                    this.player.gender = gender;
-                    this.player.alignment = align;
-                    this.player.initRole(roleIdx);
-                    this.player.alignment = align;
-                    // Show lore and welcome
-                    await this._showLoreAndWelcome(roleIdx, raceIdx, gender, align);
-                    return;
-                } else {
-                    // Start over
-                    roleIdx = -1;
-                    raceIdx = -1;
-                    gender = -1;
-                    align = -128;
-                    isFirstMenu = true;
-                    continue;
-                }
-            }
-        }
-    }
-
-    // Build the header line showing current selections
-    // C ref: role.c plnamesiz — "<role> <race> <gender> <alignment>"
-    _buildHeaderLine(roleIdx, raceIdx, gender, align) {
-        const parts = [];
-        // Role
-        if (roleIdx >= 0) {
-            const female = gender === FEMALE;
-            parts.push(roleNameForGender(roleIdx, female));
-        } else {
-            parts.push('<role>');
-        }
-        // Race
-        if (raceIdx >= 0) {
-            parts.push(races[raceIdx].name);
-        } else {
-            parts.push('<race>');
-        }
-        // Gender
-        if (gender === FEMALE) {
-            parts.push('female');
-        } else if (gender === MALE) {
-            parts.push('male');
-        } else {
-            parts.push('<gender>');
-        }
-        // Alignment
-        if (align !== -128) {
-            parts.push(alignName(align));
-        } else {
-            parts.push('<alignment>');
-        }
-        return parts.join(' ');
-    }
-
-    // Show role menu and wait for selection
-    async _showRoleMenu(raceIdx, gender, align, isFirstMenu) {
-        const lines = [];
-        lines.push(' Pick a role or profession');
-        lines.push('');
-        lines.push(' ' + this._buildHeaderLine(-1, raceIdx, gender, align));
-        lines.push('');
-
-        // Role items
-        const roleLetters = {};
-        for (let i = 0; i < roles.length; i++) {
-            const role = roles[i];
-            // Filter by ~ filtering
-            if (!this._okRole(i)) continue;
-            // Filter by race constraint if race is already picked
-            if (raceIdx >= 0 && !role.validRaces.includes(raceIdx)) continue;
-            // Filter by alignment constraint if alignment is already picked
-            if (align !== -128 && !role.validAligns.includes(align)) continue;
-
-            const ch = role.menuChar;
-            const article = role.menuArticle || 'a';
-            const nameDisplay = role.namef
-                ? `${role.name}/${role.namef}`
-                : role.name;
-            lines.push(` ${ch} - ${article} ${nameDisplay}`);
-            roleLetters[ch] = i;
-        }
-
-        // Extra items
-        lines.push(' * * Random');
-        lines.push(' / - Pick race first');
-        lines.push(' " - Pick gender first');
-        lines.push(' [ - Pick alignment first');
-        lines.push(` ~ - ${this._filterLabel()}`);
-        lines.push(' q - Quit');
-        lines.push(' (end)');
-
-        this.display.renderChargenMenu(lines, isFirstMenu);
-        const ch = await nhgetch();
-        const c = String.fromCharCode(ch);
-
-        if (c === 'q') return { action: 'quit' };
-        if (c === '/') return { action: 'pick-race' };
-        if (c === '"') return { action: 'pick-gender' };
-        if (c === '[') return { action: 'pick-align' };
-        if (c === '~') return { action: 'filter' };
-        if (c === '*') {
-            // Random role from valid ones
-            const validKeys = Object.keys(roleLetters);
-            const pick = validKeys[rn2(validKeys.length)];
-            return { action: 'selected', value: roleLetters[pick] };
-        }
-        if (roleLetters[c] !== undefined) {
-            return { action: 'selected', value: roleLetters[c] };
-        }
-        // Invalid key: re-show menu without mutating current selection.
-        return { action: 'invalid' };
-    }
-
-    // Show race menu and wait for selection
-    async _showRaceMenu(roleIdx, gender, align, isFirstMenu) {
-        const role = roles[roleIdx];
-        const validRaces = validRacesForRole(roleIdx);
-
-        // Check if alignment is forced across all valid races for this role
-        // If so, show the forced alignment in the header
-        const allAligns = new Set();
-        for (const ri of validRaces) {
-            for (const a of validAlignsForRoleRace(roleIdx, ri)) {
-                allAligns.add(a);
-            }
-        }
-        const alignForHeader = allAligns.size === 1 ? [...allAligns][0] : align;
-
-        const lines = [];
-        lines.push('Pick a race or species');
-        lines.push('');
-        lines.push(this._buildHeaderLine(roleIdx, -1, gender, alignForHeader));
-        lines.push('');
-
-        const raceLetters = {};
-        for (const ri of validRaces) {
-            const race = races[ri];
-            // Filter by ~ filtering
-            if (!this._okRace(ri)) continue;
-            // Filter by alignment constraint if already set
-            if (align !== -128) {
-                const vAligns = validAlignsForRoleRace(roleIdx, ri);
-                if (!vAligns.includes(align)) continue;
-            }
-            lines.push(`${race.menuChar} - ${race.name}`);
-            raceLetters[race.menuChar] = ri;
-        }
-        lines.push('* * Random');
-
-        // Navigation — C ref: wintty.c menu navigation items
-        // Order: ?, ", constraint notes, [, ~, q, (end)
-        lines.push('');
-        lines.push('? - Pick another role first');
-
-        // Only show gender nav if gender not forced
-        if (gender < 0 && needsGenderMenu(roleIdx)) {
-            lines.push('" - Pick gender first');
-        }
-
-        // Constraint notes
-        if (role.forceGender === 'female') {
-            lines.push('    role forces female');
-        }
-        if (allAligns.size === 1) {
-            lines.push('    role forces ' + alignName([...allAligns][0]));
-        }
-
-        // Alignment navigation if not forced
-        if (align === -128 && allAligns.size > 1) {
-            lines.push('[ - Pick alignment first');
-        }
-
-        lines.push(`~ - ${this._filterLabel()}`);
-        lines.push('q - Quit');
-        lines.push('(end)');
-
-        this.display.renderChargenMenu(lines, isFirstMenu);
-        const ch = await nhgetch();
-        const c = String.fromCharCode(ch);
-
-        if (c === 'q') return { action: 'quit' };
-        if (c === '?') return { action: 'pick-role' };
-        if (c === '/') return { action: 'pick-race' };
-        if (c === '"') return { action: 'pick-gender' };
-        if (c === '[') return { action: 'pick-align' };
-        if (c === '~') return { action: 'filter' };
-        if (c === '*') {
-            const validKeys = Object.keys(raceLetters);
-            const pick = validKeys[rn2(validKeys.length)];
-            return { action: 'selected', value: raceLetters[pick] };
-        }
-        if (raceLetters[c] !== undefined) {
-            return { action: 'selected', value: raceLetters[c] };
-        }
-        return { action: 'invalid' };
-    }
-
-    // Show gender menu
-    async _showGenderMenu(roleIdx, raceIdx, align, isFirstMenu) {
-        const role = roles[roleIdx];
-        const validAligns = validAlignsForRoleRace(roleIdx, raceIdx);
-        const lines = [];
-        lines.push('Pick a gender or sex');
-        lines.push('');
-
-        // Build header with current alignment if forced
-        const alignDisplay = validAligns.length === 1 ? validAligns[0] : -128;
-        lines.push(this._buildHeaderLine(roleIdx, raceIdx, -1, alignDisplay));
-        lines.push('');
-
-        const genderOptions = [];
-        if (this._okGend(MALE)) { lines.push('m - male'); genderOptions.push(MALE); }
-        if (this._okGend(FEMALE)) { lines.push('f - female'); genderOptions.push(FEMALE); }
-        lines.push('* * Random');
-
-        // Navigation — C ref: wintty.c menu navigation items
-        // Order: ?, /, constraint notes, [, ~, q, (end)
-        lines.push('');
-        lines.push('? - Pick another role first');
-
-        // Only show "/" if there are multiple valid races for this role
-        const validRaces = validRacesForRole(roleIdx);
-        if (validRaces.length > 1) {
-            lines.push('/ - Pick another race first');
-        }
-
-        // Constraint notes (after ? and / nav items)
-        if (validRaces.length === 1) {
-            lines.push('    role forces ' + races[validRaces[0]].name);
-        }
-        if (validAligns.length === 1) {
-            // C ref: "role forces" if role has only one alignment, "race forces" if race restricts it
-            const forcer = role.validAligns.length === 1 ? 'role' : 'race';
-            lines.push(`    ${forcer} forces ` + alignName(validAligns[0]));
-        }
-
-        // Alignment nav if multiple options
-        if (align === -128 && validAligns.length > 1) {
-            lines.push('[ - Pick alignment first');
-        }
-
-        lines.push(`~ - ${this._filterLabel()}`);
-        lines.push('q - Quit');
-        lines.push('(end)');
-
-        this.display.renderChargenMenu(lines, isFirstMenu);
-        const ch = await nhgetch();
-        const c = String.fromCharCode(ch);
-
-        if (c === 'q') return { action: 'quit' };
-        if (c === '?') return { action: 'pick-role' };
-        if (c === '/') return { action: 'pick-race' };
-        if (c === '"') return { action: 'pick-gender' };
-        if (c === '[') return { action: 'pick-align' };
-        if (c === '~') return { action: 'filter' };
-        if (c === 'm' && this._okGend(MALE)) return { action: 'selected', value: MALE };
-        if (c === 'f' && this._okGend(FEMALE)) return { action: 'selected', value: FEMALE };
-        if (c === '*') {
-            if (genderOptions.length > 0) return { action: 'selected', value: genderOptions[rn2(genderOptions.length)] };
-            return { action: 'selected', value: rn2(2) };
-        }
-        return { action: 'invalid' };
-    }
-
-    // Show alignment menu
-    async _showAlignMenu(roleIdx, raceIdx, gender, isFirstMenu) {
-        const validAligns = validAlignsForRoleRace(roleIdx, raceIdx);
-        const lines = [];
-        lines.push('Pick an alignment or creed');
-        lines.push('');
-        lines.push(this._buildHeaderLine(roleIdx, raceIdx, gender, -128));
-        lines.push('');
-
-        const alignLetters = {};
-        const alignChars = { [A_LAWFUL]: 'l', [A_NEUTRAL]: 'n', [A_CHAOTIC]: 'c' };
-        for (const a of validAligns) {
-            // Filter by ~ filtering
-            if (!this._okAlign(a)) continue;
-            const ch = alignChars[a];
-            lines.push(`${ch} - ${alignName(a)}`);
-            alignLetters[ch] = a;
-        }
-        lines.push('* * Random');
-
-        // Navigation — C ref: wintty.c menu navigation items
-        // Order: ?, /, constraint notes, ", ~, q, (end)
-        lines.push('');
-        lines.push('? - Pick another role first');
-
-        // Only show "/" if there are multiple valid races for this role
-        const role = roles[roleIdx];
-        const validRacesForAlign = validRacesForRole(roleIdx);
-        if (validRacesForAlign.length > 1) {
-            lines.push('/ - Pick another race first');
-        }
-
-        // Constraint notes (after ? and / nav items)
-        if (validRacesForAlign.length === 1) {
-            lines.push('    role forces ' + races[validRacesForAlign[0]].name);
-        }
-        if (role.forceGender === 'female') {
-            lines.push('    role forces female');
-        }
-
-        // Gender nav if gender is not forced
-        if (needsGenderMenu(roleIdx)) {
-            lines.push('" - Pick another gender first');
-        }
-
-        lines.push(`~ - ${this._filterLabel()}`);
-        lines.push('q - Quit');
-        lines.push('(end)');
-
-        this.display.renderChargenMenu(lines, isFirstMenu);
-        const ch = await nhgetch();
-        const c = String.fromCharCode(ch);
-
-        if (c === 'q') return { action: 'quit' };
-        if (c === '?') return { action: 'pick-role' };
-        if (c === '/') return { action: 'pick-race' };
-        if (c === '"') return { action: 'pick-gender' };
-        if (c === '~') return { action: 'filter' };
-        if (c === '*') {
-            const pick = validAligns[rn2(validAligns.length)];
-            return { action: 'selected', value: pick };
-        }
-        if (alignLetters[c] !== undefined) {
-            return { action: 'selected', value: alignLetters[c] };
-        }
-        return { action: 'invalid' };
-    }
-
-    // Show confirmation screen
-    // Returns true if confirmed, false if user wants to restart
-    async _showConfirmation(roleIdx, raceIdx, gender, align) {
-        const female = gender === FEMALE;
-        const rName = roleNameForGender(roleIdx, female);
-        const raceName = races[raceIdx].adj;
-        const genderStr = female ? 'female' : 'male';
-        const alignStr = alignName(align);
-        const confirmText = `${this.player.name} the ${alignStr} ${genderStr} ${raceName} ${rName}`;
-
-        const lines = [];
-        lines.push('Is this ok? [ynq]');
-        lines.push('');
-        lines.push(confirmText);
-        lines.push('');
-        lines.push('y * Yes; start game');
-        lines.push('n - No; choose role again');
-        lines.push('q - Quit');
-        lines.push('(end)');
-
-        this.display.renderChargenMenu(lines, false);
-        const ch = await nhgetch();
-        const c = String.fromCharCode(ch);
-
-        if (c === 'q') { this._runLifecycle('restart'); return false; }
-        // Both 'y' and '*' accept (as shown in menu: "y * Yes")
-        return c === 'y' || c === '*';
-    }
-
-    // Show lore text and welcome message
-    async _showLoreAndWelcome(roleIdx, raceIdx, gender, align) {
-        const female = gender === FEMALE;
-
-        // Get deity name for the alignment
-        let deityName = godForRoleAlign(roleIdx, align);
-        let goddess = isGoddess(roleIdx, align);
-
-        // Priest special case: gods are null, pick from random role's pantheon
-        // C ref: role.c role_init() — if Priest has no gods, pick random role's gods
-        // This must consume the same RNG as C
-        if (!deityName) {
-            // Find a role that has gods via rn2
-            let donorRole;
-            do {
-                donorRole = rn2(roles.length);
-            } while (!roles[donorRole].gods[0]);
-            // Use donor role's gods
-            deityName = godForRoleAlign(donorRole, align);
-            goddess = isGoddess(donorRole, align);
-            // Store the donor pantheon on the role temporarily
-            // so lore text references are correct
-        }
-
-        const godOrGoddess = goddess ? 'goddess' : 'god';
-        const rankTitle = rankOf(1, roleIdx, female);
-        const loreText = formatLoreText(deityName, godOrGoddess, rankTitle);
-        const loreLines = loreText.split('\n');
-
-        // Calculate offset for lore text display
-        // C ref: The lore text is displayed with an offset that allows the map to show through
-        let maxLoreWidth = 0;
-        for (const line of loreLines) {
-            if (line.length > maxLoreWidth) maxLoreWidth = line.length;
-        }
-        const loreOffx = Math.max(0, TERMINAL_COLS - maxLoreWidth - 1);
-
-        // Add --More-- at the end
-        loreLines.push('--More--');
-
-        // Render lore text overlaid on screen
-        this.display.renderLoreText(loreLines, loreOffx);
-
-        // Wait for key to dismiss lore
+    // Word-wrap death description for tombstone (max ~16 chars per line)
+    const deathLines = wrapDeathText(deathCause, 16);
+
+    // Show tombstone if flags.tombstone is enabled
+    if (game.flags && game.flags.tombstone) {
+        const year = String(new Date().getFullYear());
+        game.display.renderTombstone(p.name, p.gold, deathLines, year);
+        // Press any key prompt below tombstone
+        game.display.putstr(0, 20, '(Press any key)', 7);
         await nhgetch();
+    }
 
-        // Clear the lore text area
-        for (let r = 0; r < loreLines.length && r < this.display.rows - 2; r++) {
-            for (let c = loreOffx; c < this.display.cols; c++) {
-                this.display.setCell(c, r, ' ', 7);
+    // Build and save topten entry
+    const entry = buildEntry(p, game.gameOverReason, roles, races);
+    const rank = saveScore(entry);
+
+    // Display topten list
+    const scores = loadScores();
+    game.display.clearScreen();
+
+    const header = formatTopTenHeader();
+    let row = 0;
+    game.display.putstr(0, row++, header, 14); // CLR_WHITE
+
+    // Show entries around the player's rank
+    // Find the player's entry index in scores (0-based)
+    const playerIdx = rank > 0 ? rank - 1 : 0;
+    const showStart = Math.max(0, playerIdx - 5);
+    const showEnd = Math.min(scores.length, playerIdx + 6);
+
+    if (showStart > 0) {
+        game.display.putstr(0, row++, '  ...', 7);
+    }
+
+    for (let i = showStart; i < showEnd; i++) {
+        const lines = formatTopTenEntry(scores[i], i + 1);
+        const isPlayer = (i === playerIdx);
+        const color = isPlayer ? 10 : 7; // CLR_YELLOW : CLR_GRAY
+        for (const line of lines) {
+            if (row < game.display.rows - 2) {
+                game.display.putstr(0, row++, line.substring(0, game.display.cols), color);
             }
         }
+    }
 
-        // Welcome message
-        // C ref: allmain.c welcome() — "<greeting> <name>, welcome to NetHack!  You are a <align> <gender?> <race> <role>."
-        const greeting = greetingForRole(roleIdx);
-        const rName = roleNameForGender(roleIdx, female);
-        const raceAdj = races[raceIdx].adj;
-        const alignStr = alignName(align);
+    if (showEnd < scores.length) {
+        game.display.putstr(0, row++, '  ...', 7);
+    }
 
-        // C only shows gender in welcome when role has gendered variants or forced gender
-        // For Priestess/Cavewoman: gender is implicit in the role name, so it's omitted
-        // For Valkyrie: forceGender is set, so gender word is omitted
-        // For others: include gender if the role name doesn't change and gender isn't forced
-        let genderStr = '';
-        if (roles[roleIdx].namef || roles[roleIdx].forceGender) {
-            // Gender implicit in role name or forced — omit gender word
-        } else {
-            genderStr = female ? 'female ' : 'male ';
-        }
+    // Farewell message
+    row = Math.min(row + 1, game.display.rows - 3);
+    const female = p.gender === FEMALE;
+    const roleName = roleNameForGender(p.roleIndex, female);
+    const farewell = `Goodbye ${p.name} the ${roleName}...`;
+    game.display.putstr(0, row++, farewell, 14);
 
-        const welcomeMsg = `${greeting} ${this.player.name}, welcome to NetHack!  You are a ${alignStr} ${genderStr}${raceAdj} ${rName}.`;
-        this.display.putstr_message(welcomeMsg);
+    // Play again prompt
+    row = Math.min(row + 1, game.display.rows - 1);
+    game.display.putstr(0, row, 'Play again? [yn] ', 14);
+    const ch = await nhgetch();
+    if (String.fromCharCode(ch) === 'y') {
+        game._runLifecycle('restart');
+    }
+}
 
-        // Show --More-- after welcome
-        // Need to determine where the message ended (may have wrapped to 2 lines)
-        const moreStr = '--More--';
-        let moreRow = 0;
-        let moreCol;
+// C ref: tutorial startup
+export async function maybeDoTutorial(game) {
+    const win = create_nhwindow(NHW_MENU);
+    start_menu(win, MENU_BEHAVE_STANDARD);
+    add_menu(win, null, { ival: 'y' }, 'y'.charCodeAt(0), 0, ATR_NONE, 0, 'Yes, do a tutorial', 0);
+    add_menu(win, null, { ival: 'n' }, 'n'.charCodeAt(0), 0, ATR_NONE, 0, 'No, just start play', 0);
+    end_menu(win, ' Do you want a tutorial?');
+    const sel = await select_menu(win, PICK_ONE);
+    destroy_nhwindow(win);  // triggers _rerenderGame(), fixing bug #162
+    if (sel && sel[0].identifier.ival === 'y') {
+        await enterTutorial(game);
+    }
+}
 
-        if (welcomeMsg.length <= this.display.cols) {
-            // Message fits on one line
-            if (welcomeMsg.length + 8 >= this.display.cols) {
-                // --More-- won't fit on same line, wrap to next line
-                moreRow = 1;
-                moreCol = 0;
-            } else {
-                // --More-- fits on same line with space
-                moreRow = 0;
-                moreCol = welcomeMsg.length + 1;
-            }
-        } else {
-            // Message wrapped to two lines
-            // Find where the first line broke (last space before cols)
-            let breakPoint = welcomeMsg.lastIndexOf(' ', this.display.cols);
-            if (breakPoint === -1) breakPoint = this.display.cols;
+export async function enterTutorial(game) {
+    game.display.putstr_message('Entering the tutorial.');
+    await game.display.morePrompt(nhgetch);
 
-            const wrapped = welcomeMsg.substring(breakPoint).trim();
-            if (wrapped.length + 8 >= this.display.cols) {
-                // --More-- won't fit after wrapped text, use row 2
-                moreRow = 2;
-                moreCol = 0;
-            } else {
-                // --More-- fits after wrapped text on row 1
-                moreRow = 1;
-                moreCol = wrapped.length + 1;
-            }
-        }
+    // C tutorial startup uses a dedicated branch and starts without
+    // carried comestibles; tutorial places food explicitly in-map.
+    game.player.inventory = game.player.inventory.filter((obj) => obj.oclass !== FOOD_CLASS);
 
-        this.display.putstr(moreCol, moreRow, moreStr, 2); // CLR_GREEN
+    setMakemonPlayerContext(game.player);
+    game.map = makelevel(1, TUTORIAL, 1, { dungeonAlignOverride: A_NONE });
+    game.levels[1] = game.map;
+    game.player.dungeonLevel = 1;
+    game.player.inTutorial = true;
+    game.player.showExp = true;
+    if (game.map?.flags?.lit_corridor) game.flags.lit_corridor = true;
+    game.placePlayerOnLevel('down');
+
+    game.fov.compute(game.map, game.player.x, game.player.y);
+    game.display.renderMap(game.map, game.player, game.fov, game.flags);
+    game.display.renderStatus(game.player);
+    game.maybeShowQuestLocateHint(depth);
+}
+
+// Handle ?reset=1 — list saved data and prompt for deletion
+export async function handleReset(game) {
+    const items = listSavedData();
+    if (items.length === 0) {
+        game.display.putstr_message('No saved data found.');
         await nhgetch();
-        this.display.clearRow(0);
-        if (moreRow > 0) this.display.clearRow(1);
-        if (moreRow > 1) this.display.clearRow(2);
-    }
-
-    // Generate or retrieve a level
-    // C ref: dungeon.c -- level management
-    changeLevel(depth, transitionDir = null, opts = {}) {
-        setMakemonPlayerContext(this.player);
-        changeLevelCore(this, depth, transitionDir, opts);
-
-        // Bones level message
-        if (this.map.isBones) {
-            this.display.putstr_message('You get an eerie feeling...');
+    } else {
+        game.display.putstr_message('Saved data found:');
+        // Show each item on rows 2+
+        for (let i = 0; i < items.length && i < 18; i++) {
+            game.display.putstr(2, 2 + i, `- ${items[i].label}`, 7);
         }
-
-        // Update display
-        this.fov.compute(this.map, this.player.x, this.player.y);
-        this.display.renderMap(this.map, this.player, this.fov, this.flags);
-        this.display.renderStatus(this.player);
-    }
-
-    // Handle ?reset=1 — list saved data and prompt for deletion
-    async handleReset() {
-        const items = listSavedData();
-        if (items.length === 0) {
-            this.display.putstr_message('No saved data found.');
-            await nhgetch();
+        game.display.putstr(0, 2 + Math.min(items.length, 18),
+            'Delete all saved data? [yn]', 15);
+        const ch = await nhgetch();
+        if (String.fromCharCode(ch) === 'y') {
+            clearAllData();
+            game.display.putstr_message('All saved data deleted.');
         } else {
-            this.display.putstr_message('Saved data found:');
-            // Show each item on rows 2+
-            for (let i = 0; i < items.length && i < 18; i++) {
-                this.display.putstr(2, 2 + i, `- ${items[i].label}`, 7);
-            }
-            this.display.putstr(0, 2 + Math.min(items.length, 18),
-                'Delete all saved data? [yn]', 15);
-            const ch = await nhgetch();
-            if (String.fromCharCode(ch) === 'y') {
-                clearAllData();
-                this.display.putstr_message('All saved data deleted.');
-            } else {
-                this.display.putstr_message('Cancelled.');
-            }
-            // Clear the listing rows
-            for (let i = 0; i < 20; i++) {
-                this.display.clearRow(2 + i);
-            }
+            game.display.putstr_message('Cancelled.');
         }
-        // Remove ?reset from URL and reload clean.
-        this._runLifecycle('replaceUrlParams', { reset: null });
+        // Clear the listing rows
+        for (let i = 0; i < 20; i++) {
+            game.display.clearRow(2 + i);
+        }
     }
+    // Remove ?reset from URL and reload clean.
+    game._runLifecycle('replaceUrlParams', { reset: null });
+}
 
-    // Main game loop
-    // C ref: allmain.c moveloop() -> moveloop_core()
-    async gameLoop() {
-        while (!this.gameOver) {
-            // Travel continuation - C ref: hack.c domove() with context.travel
-            if (this.travelPath && this.travelStep < this.travelPath.length) {
-                const { executeTravelStep } = await import('./hack.js');
-                const result = await executeTravelStep(this);
-
-                if (result.tookTime) {
-                    moveloop_core(this);
-                }
-
-                this.fov.compute(this.map, this.player.x, this.player.y);
-                this.display.renderMap(this.map, this.player, this.fov, this.flags);
-                this.display.renderStatus(this.player);
-                continue;
-            }
-
-            // Get player input with optional count prefix
-            // C ref: cmd.c:4942-4960 parse() -> get_count()
-            const firstCh = await nhgetch();
-            let ch;
-            let countPrefix = 0;
-
-            // C ref: cmd.c:1687 do_repeat() — Ctrl+A repeats last command
-            if (firstCh === 1) { // Ctrl+A
-                if (this.lastCommand) {
-                    countPrefix = this.lastCommand.count;
-                    ch = this.lastCommand.key;
-                } else {
-                    this.display.putstr_message('There is no command available to repeat.');
-                    continue;
-                }
-            } else if (firstCh >= 48 && firstCh <= 57) { // '0'-'9'
-                // Digit count prefix
-                // C ref: cmd.c:4958 — uses LARGEST_INT (32767) as max count
-                const result = await getCount(firstCh, 32767, this.display);
-                countPrefix = result.count;
-                ch = result.key;
-
-                // C ref: cmd.c:4963-4966 — ESC cancels count
-                if (ch === 27) { // ESC
-                    this.display.clearRow(0);
-                    continue;
-                }
-            } else {
-                ch = firstCh;
-            }
-
-            // Skip if no command
-            if (!ch) continue;
-
-            // Save command for repeat (but don't save Ctrl+A itself)
-            // C ref: cmd.c:3575 — stores command in CQ_REPEAT queue
-            if (firstCh !== 1) {
-                this.lastCommand = { key: ch, count: countPrefix };
-            }
-
-            // Run any monster turn deferred from a preceding stop_occupation frame.
-            // Must run after the player's command so hero position is updated.
-            this.runPendingDeferredTimedTurn();
-
-            // Execute command via shared orchestration
-            await run_command(this, ch, {
-                countPrefix,
-                onTimedTurn: async () => {
-                    // Render and yield between occupation/multi turns so the
-                    // browser can paint and process input events.
-                    this.fov.compute(this.map, this.player.x, this.player.y);
-                    this.display.renderMap(this.map, this.player, this.fov, this.flags);
-                    this.display.renderStatus(this.player);
-                    await new Promise(r => setTimeout(r, 0));
-                },
-                onBeforeRepeat: async () => {
-                    // C ref: allmain.c:948 interrupt_multi()
-                    if (this.shouldInterruptMulti()) {
-                        this.multi = 0;
-                        this.display.putstr_message('--More--');
-                        await nhgetch();
-                    }
-                    // C behavior: wounded legs recovery interrupts counted search/rest
-                    if (this.multi > 0 && this.player.justHealedLegs
-                        && (this.cmdKey === '.'.charCodeAt(0) || this.cmdKey === 's'.charCodeAt(0))) {
-                        this.player.justHealedLegs = false;
-                        this.multi = 0;
-                        this.display.putstr_message('Your leg feels better.  You stop searching.');
-                    }
-                },
-            });
-
-            // Recompute FOV and render
-            this.fov.compute(this.map, this.player.x, this.player.y);
-            this.display.renderMap(this.map, this.player, this.fov, this.flags);
-            this.display.renderStatus(this.player);
-        }
-
-        // Game over
-        await this.showGameOver();
-        this._emitGameOver();
-    }
-
-    // Check if multi-command sequence should be interrupted
-    // C ref: allmain.c:948 interrupt_multi()
-    shouldInterruptMulti() {
-        // Don't interrupt during run mode (handled separately)
-        if (this.runMode > 0) {
-            return false;
-        }
-        if (this.occupation) {
-            return this.shouldInterruptOccupation();
-        }
-
-        if (monsterNearby(this.map, this.player, this.fov)) return true;
-
-        // Interrupt if HP changed (took damage or healed)
-        if (this.lastHP !== undefined && this.player.hp !== this.lastHP) {
-            this.lastHP = this.player.hp;
-            return true;
-        }
-        this.lastHP = this.player.hp;
-
+// Restore game state from a save.
+// Returns true if restored, false if user declined.
+export async function restoreFromSave(game, saveData, urlOpts) {
+    game.display.putstr_message('Saved game found. Restore? [yn]');
+    const ans = await nhgetch();
+    if (String.fromCharCode(ans) !== 'y') {
+        game.display.putstr_message('Save deleted.');
         return false;
     }
 
-    // C ref: do.c cmd_safety_prevention() called from timed_occupation()
-    // only checks hostile-nearby interruption for occupations.
-    shouldInterruptOccupation() {
-        if (this.runMode > 0) {
-            return false;
-        }
-        return monsterNearby(this.map, this.player, this.fov);
+    // Restore game state (player, inventory, equip, context)
+    // C ref: dorecover() → restgamestate()
+    const gs = saveData.gameState;
+
+    // Replay o_init: init RNG with saved seed, run initLevelGeneration
+    game.seed = gs.seed;
+    initRng(gs.seed);
+    setGameSeed(gs.seed);
+    initLevelGeneration(gs.you?.roleIndex, gs.you?.wizard ?? true);
+
+    // Now overwrite RNG state with the saved state
+    const restoredCtx = deserializeRng(gs.rng);
+    setRngState(restoredCtx);
+    setRngCallCount(gs.rngCallCount);
+
+    // Restore game state: player + inventory + equip + context
+    const restored = restGameState(gs);
+    game.player = restored.player;
+    game.player.wizard = game.wizard;
+    setMakemonPlayerContext(game.player);
+    game.wizard = restored.wizard;
+    game.turnCount = restored.turnCount;
+    setObjectMoves(game.turnCount + 1);
+    game.seerTurn = restored.seerTurn;
+
+    // Restore current level (saved first in v2 format)
+    // C ref: dorecover() → getlev() for current level
+    const currentDepth = saveData.currentDepth;
+    game.levels = {};
+    if (saveData.currentLevel) {
+        game.levels[currentDepth] = restLev(saveData.currentLevel);
     }
 
-    // Run the deferred timed turn (monster cycle + turn end) that was
-    // postponed from a stop_occupation frame.  Called by the replay after
-    // the player's command so monster decisions (e.g. dog_goal On_stairs)
-    // see the hero's post-move position, and also wired into the gameLoop
-    // so real gameplay honours the same ordering.
-    // C ref: dogmove.c:583 — On_stairs(u.ux,u.uy) requires hero's current pos.
-    runPendingDeferredTimedTurn() {
-        if (!this.pendingDeferredTimedTurn) return;
-        this.pendingDeferredTimedTurn = false;
-        moveloop_core(this, { computeFov: true });
+    // Restore other cached levels
+    // C ref: dorecover() → getlev() loop for other levels
+    for (const [depth, levelData] of Object.entries(saveData.otherLevels || {})) {
+        game.levels[Number(depth)] = restLev(levelData);
     }
 
-    // Display game over screen
-    // C ref: end.c done() -> topten() -> outrip()
-    async showGameOver() {
-        // Delete save file — game is over
-        deleteSave();
+    // Set current level
+    game.player.dungeonLevel = currentDepth;
+    game.map = game.levels[currentDepth];
 
-        const p = this.player;
-        const deathCause = p.deathCause || this.gameOverReason || 'died';
+    // Restore messages
+    if (restored.messages.length > 0) {
+        game.display.messages = restored.messages;
+    }
 
-        // Calculate final score (simplified C formula from end.c)
-        // C ref: end.c done_in_by(), calc_score()
-        // Base score is accumulated from exp + kills during play
-        // Add gold
-        p.score += p.gold;
-        // Add 50 per dungeon level below 1
-        if (p.dungeonLevel > 1) {
-            p.score += (p.dungeonLevel - 1) * 50;
+    // Delete save (single-save semantics)
+    deleteSave();
+
+    // Load flags (C ref: flags struct)
+    game.flags = restored.flags || loadFlags();
+    game._emitRuntimeBindings();
+    game.player.showExp = game.flags.showexp;
+    game.player.showScore = game.flags.showscore;
+    game.player.showTime = game.flags.time;
+
+    // Render
+    game.fov.compute(game.map, game.player.x, game.player.y);
+    game.display.renderMap(game.map, game.player, game.fov, game.flags);
+    game.display.renderStatus(game.player);
+    game.display.putstr_message('Game restored.');
+
+    // Notify that gameplay is starting (restored game)
+    game._emitGameplayStart();
+    return true;
+}
+
+// Show role menu and wait for selection
+export async function showRoleMenu(game, raceIdx, gender, align, isFirstMenu) {
+    const lines = [];
+    lines.push(' Pick a role or profession');
+    lines.push('');
+    lines.push(' ' + buildHeaderLine(game, -1, raceIdx, gender, align));
+    lines.push('');
+
+    // Role items
+    const roleLetters = {};
+    for (let i = 0; i < roles.length; i++) {
+        const role = roles[i];
+        // Filter by ~ filtering
+        if (!okRole(game, i)) continue;
+        // Filter by race constraint if race is already picked
+        if (raceIdx >= 0 && !role.validRaces.includes(raceIdx)) continue;
+        // Filter by alignment constraint if alignment is already picked
+        if (align !== -128 && !role.validAligns.includes(align)) continue;
+
+        const ch = role.menuChar;
+        const article = role.menuArticle || 'a';
+        const nameDisplay = role.namef
+            ? `${role.name}/${role.namef}`
+            : role.name;
+        lines.push(` ${ch} - ${article} ${nameDisplay}`);
+        roleLetters[ch] = i;
+    }
+
+    // Extra items
+    lines.push(' * * Random');
+    lines.push(' / - Pick race first');
+    lines.push(' " - Pick gender first');
+    lines.push(' [ - Pick alignment first');
+    lines.push(` ~ - ${filterLabel(game)}`);
+    lines.push(' q - Quit');
+    lines.push(' (end)');
+
+    game.display.renderChargenMenu(lines, isFirstMenu);
+    const ch = await nhgetch();
+    const c = String.fromCharCode(ch);
+
+    if (c === 'q') return { action: 'quit' };
+    if (c === '/') return { action: 'pick-race' };
+    if (c === '"') return { action: 'pick-gender' };
+    if (c === '[') return { action: 'pick-align' };
+    if (c === '~') return { action: 'filter' };
+    if (c === '*') {
+        // Random role from valid ones
+        const validKeys = Object.keys(roleLetters);
+        const pick = validKeys[rn2(validKeys.length)];
+        return { action: 'selected', value: roleLetters[pick] };
+    }
+    if (roleLetters[c] !== undefined) {
+        return { action: 'selected', value: roleLetters[c] };
+    }
+    // Invalid key: re-show menu without mutating current selection.
+    return { action: 'invalid' };
+}
+
+// Show race menu and wait for selection
+export async function showRaceMenu(game, roleIdx, gender, align, isFirstMenu) {
+    const role = roles[roleIdx];
+    const validRaces = validRacesForRole(roleIdx);
+
+    // Check if alignment is forced across all valid races for this role
+    // If so, show the forced alignment in the header
+    const allAligns = new Set();
+    for (const ri of validRaces) {
+        for (const a of validAlignsForRoleRace(roleIdx, ri)) {
+            allAligns.add(a);
         }
-        // Depth bonus for deep levels
-        if (p.maxDungeonLevel > 20) {
-            p.score += (p.maxDungeonLevel - 20) * 1000;
+    }
+    const alignForHeader = allAligns.size === 1 ? [...allAligns][0] : align;
+
+    const lines = [];
+    lines.push('Pick a race or species');
+    lines.push('');
+    lines.push(buildHeaderLine(game, roleIdx, -1, gender, alignForHeader));
+    lines.push('');
+
+    const raceLetters = {};
+    for (const ri of validRaces) {
+        const race = races[ri];
+        // Filter by ~ filtering
+        if (!okRace(game, ri)) continue;
+        // Filter by alignment constraint if already set
+        if (align !== -128) {
+            const vAligns = validAlignsForRoleRace(roleIdx, ri);
+            if (!vAligns.includes(align)) continue;
         }
-        // Escaped bonus
-        if (this.gameOverReason === 'escaped') {
-            p.score += p.gold; // double gold for escaping
+        lines.push(`${race.menuChar} - ${race.name}`);
+        raceLetters[race.menuChar] = ri;
+    }
+    lines.push('* * Random');
+
+    // Navigation — C ref: wintty.c menu navigation items
+    // Order: ?, ", constraint notes, [, ~, q, (end)
+    lines.push('');
+    lines.push('? - Pick another role first');
+
+    // Only show gender nav if gender not forced
+    if (gender < 0 && needsGenderMenu(roleIdx)) {
+        lines.push('" - Pick gender first');
+    }
+
+    // Constraint notes
+    if (role.forceGender === 'female') {
+        lines.push('    role forces female');
+    }
+    if (allAligns.size === 1) {
+        lines.push('    role forces ' + alignName([...allAligns][0]));
+    }
+
+    // Alignment navigation if not forced
+    if (align === -128 && allAligns.size > 1) {
+        lines.push('[ - Pick alignment first');
+    }
+
+    lines.push(`~ - ${filterLabel(game)}`);
+    lines.push('q - Quit');
+    lines.push('(end)');
+
+    game.display.renderChargenMenu(lines, isFirstMenu);
+    const ch = await nhgetch();
+    const c = String.fromCharCode(ch);
+
+    if (c === 'q') return { action: 'quit' };
+    if (c === '?') return { action: 'pick-role' };
+    if (c === '/') return { action: 'pick-race' };
+    if (c === '"') return { action: 'pick-gender' };
+    if (c === '[') return { action: 'pick-align' };
+    if (c === '~') return { action: 'filter' };
+    if (c === '*') {
+        const validKeys = Object.keys(raceLetters);
+        const pick = validKeys[rn2(validKeys.length)];
+        return { action: 'selected', value: raceLetters[pick] };
+    }
+    if (raceLetters[c] !== undefined) {
+        return { action: 'selected', value: raceLetters[c] };
+    }
+    return { action: 'invalid' };
+}
+
+// Show gender menu
+export async function showGenderMenu(game, roleIdx, raceIdx, align, isFirstMenu) {
+    const role = roles[roleIdx];
+    const validAligns = validAlignsForRoleRace(roleIdx, raceIdx);
+    const lines = [];
+    lines.push('Pick a gender or sex');
+    lines.push('');
+
+    // Build header with current alignment if forced
+    const alignDisplay = validAligns.length === 1 ? validAligns[0] : -128;
+    lines.push(buildHeaderLine(game, roleIdx, raceIdx, -1, alignDisplay));
+    lines.push('');
+
+    const genderOptions = [];
+    if (okGend(game, MALE)) { lines.push('m - male'); genderOptions.push(MALE); }
+    if (okGend(game, FEMALE)) { lines.push('f - female'); genderOptions.push(FEMALE); }
+    lines.push('* * Random');
+
+    // Navigation — C ref: wintty.c menu navigation items
+    // Order: ?, /, constraint notes, [, ~, q, (end)
+    lines.push('');
+    lines.push('? - Pick another role first');
+
+    // Only show "/" if there are multiple valid races for this role
+    const validRaces = validRacesForRole(roleIdx);
+    if (validRaces.length > 1) {
+        lines.push('/ - Pick another race first');
+    }
+
+    // Constraint notes (after ? and / nav items)
+    if (validRaces.length === 1) {
+        lines.push('    role forces ' + races[validRaces[0]].name);
+    }
+    if (validAligns.length === 1) {
+        // C ref: "role forces" if role has only one alignment, "race forces" if race restricts it
+        const forcer = role.validAligns.length === 1 ? 'role' : 'race';
+        lines.push(`    ${forcer} forces ` + alignName(validAligns[0]));
+    }
+
+    // Alignment nav if multiple options
+    if (align === -128 && validAligns.length > 1) {
+        lines.push('[ - Pick alignment first');
+    }
+
+    lines.push(`~ - ${filterLabel(game)}`);
+    lines.push('q - Quit');
+    lines.push('(end)');
+
+    game.display.renderChargenMenu(lines, isFirstMenu);
+    const ch = await nhgetch();
+    const c = String.fromCharCode(ch);
+
+    if (c === 'q') return { action: 'quit' };
+    if (c === '?') return { action: 'pick-role' };
+    if (c === '/') return { action: 'pick-race' };
+    if (c === '"') return { action: 'pick-gender' };
+    if (c === '[') return { action: 'pick-align' };
+    if (c === '~') return { action: 'filter' };
+    if (c === 'm' && okGend(game, MALE)) return { action: 'selected', value: MALE };
+    if (c === 'f' && okGend(game, FEMALE)) return { action: 'selected', value: FEMALE };
+    if (c === '*') {
+        if (genderOptions.length > 0) return { action: 'selected', value: genderOptions[rn2(genderOptions.length)] };
+        return { action: 'selected', value: rn2(2) };
+    }
+    return { action: 'invalid' };
+}
+
+// Show alignment menu
+export async function showAlignMenu(game, roleIdx, raceIdx, gender, isFirstMenu) {
+    const validAligns = validAlignsForRoleRace(roleIdx, raceIdx);
+    const lines = [];
+    lines.push('Pick an alignment or creed');
+    lines.push('');
+    lines.push(buildHeaderLine(game, roleIdx, raceIdx, gender, -128));
+    lines.push('');
+
+    const alignLetters = {};
+    const alignChars = { [A_LAWFUL]: 'l', [A_NEUTRAL]: 'n', [A_CHAOTIC]: 'c' };
+    for (const a of validAligns) {
+        // Filter by ~ filtering
+        if (!okAlign(game, a)) continue;
+        const ch = alignChars[a];
+        lines.push(`${ch} - ${alignName(a)}`);
+        alignLetters[ch] = a;
+    }
+    lines.push('* * Random');
+
+    // Navigation — C ref: wintty.c menu navigation items
+    // Order: ?, /, constraint notes, ", ~, q, (end)
+    lines.push('');
+    lines.push('? - Pick another role first');
+
+    // Only show "/" if there are multiple valid races for this role
+    const role = roles[roleIdx];
+    const validRacesForAlign = validRacesForRole(roleIdx);
+    if (validRacesForAlign.length > 1) {
+        lines.push('/ - Pick another race first');
+    }
+
+    // Constraint notes (after ? and / nav items)
+    if (validRacesForAlign.length === 1) {
+        lines.push('    role forces ' + races[validRacesForAlign[0]].name);
+    }
+    if (role.forceGender === 'female') {
+        lines.push('    role forces female');
+    }
+
+    // Gender nav if gender is not forced
+    if (needsGenderMenu(roleIdx)) {
+        lines.push('" - Pick another gender first');
+    }
+
+    lines.push(`~ - ${filterLabel(game)}`);
+    lines.push('q - Quit');
+    lines.push('(end)');
+
+    game.display.renderChargenMenu(lines, isFirstMenu);
+    const ch = await nhgetch();
+    const c = String.fromCharCode(ch);
+
+    if (c === 'q') return { action: 'quit' };
+    if (c === '?') return { action: 'pick-role' };
+    if (c === '/') return { action: 'pick-race' };
+    if (c === '"') return { action: 'pick-gender' };
+    if (c === '~') return { action: 'filter' };
+    if (c === '*') {
+        const pick = validAligns[rn2(validAligns.length)];
+        return { action: 'selected', value: pick };
+    }
+    if (alignLetters[c] !== undefined) {
+        return { action: 'selected', value: alignLetters[c] };
+    }
+    return { action: 'invalid' };
+}
+
+// Show confirmation screen
+// Returns true if confirmed, false if user wants to restart
+export async function showConfirmation(game, roleIdx, raceIdx, gender, align) {
+    const female = gender === FEMALE;
+    const rName = roleNameForGender(roleIdx, female);
+    const raceName = races[raceIdx].adj;
+    const genderStr = female ? 'female' : 'male';
+    const alignStr = alignName(align);
+    const confirmText = `${game.player.name} the ${alignStr} ${genderStr} ${raceName} ${rName}`;
+
+    const lines = [];
+    lines.push('Is this ok? [ynq]');
+    lines.push('');
+    lines.push(confirmText);
+    lines.push('');
+    lines.push('y * Yes; start game');
+    lines.push('n - No; choose role again');
+    lines.push('q - Quit');
+    lines.push('(end)');
+
+    game.display.renderChargenMenu(lines, false);
+    const ch = await nhgetch();
+    const c = String.fromCharCode(ch);
+
+    if (c === 'q') { game._runLifecycle('restart'); return false; }
+    // Both 'y' and '*' accept (as shown in menu: "y * Yes")
+    return c === 'y' || c === '*';
+}
+
+// Show lore text and welcome message
+export async function showLoreAndWelcome(game, roleIdx, raceIdx, gender, align) {
+    const female = gender === FEMALE;
+
+    // Get deity name for the alignment
+    let deityName = godForRoleAlign(roleIdx, align);
+    let goddess = isGoddess(roleIdx, align);
+
+    // Priest special case: gods are null, pick from random role's pantheon
+    // C ref: role.c role_init() — if Priest has no gods, pick random role's gods
+    // This must consume the same RNG as C
+    if (!deityName) {
+        // Find a role that has gods via rn2
+        let donorRole;
+        do {
+            donorRole = rn2(roles.length);
+        } while (!roles[donorRole].gods[0]);
+        // Use donor role's gods
+        deityName = godForRoleAlign(donorRole, align);
+        goddess = isGoddess(donorRole, align);
+        // Store the donor pantheon on the role temporarily
+        // so lore text references are correct
+    }
+
+    const godOrGoddess = goddess ? 'goddess' : 'god';
+    const rankTitle = rankOf(1, roleIdx, female);
+    const loreText = formatLoreText(deityName, godOrGoddess, rankTitle);
+    const loreLines = loreText.split('\n');
+
+    // Calculate offset for lore text display
+    // C ref: The lore text is displayed with an offset that allows the map to show through
+    let maxLoreWidth = 0;
+    for (const line of loreLines) {
+        if (line.length > maxLoreWidth) maxLoreWidth = line.length;
+    }
+    const loreOffx = Math.max(0, TERMINAL_COLS - maxLoreWidth - 1);
+
+    // Add --More-- at the end
+    loreLines.push('--More--');
+
+    // Render lore text overlaid on screen
+    game.display.renderLoreText(loreLines, loreOffx);
+
+    // Wait for key to dismiss lore
+    await nhgetch();
+
+    // Clear the lore text area
+    for (let r = 0; r < loreLines.length && r < game.display.rows - 2; r++) {
+        for (let c = loreOffx; c < game.display.cols; c++) {
+            game.display.setCell(c, r, ' ', 7);
+        }
+    }
+
+    // Welcome message
+    // C ref: allmain.c welcome() — "<greeting> <name>, welcome to NetHack!  You are a <align> <gender?> <race> <role>."
+    const greeting = greetingForRole(roleIdx);
+    const rName = roleNameForGender(roleIdx, female);
+    const raceAdj = races[raceIdx].adj;
+    const alignStr = alignName(align);
+
+    // C only shows gender in welcome when role has gendered variants or forced gender
+    // For Priestess/Cavewoman: gender is implicit in the role name, so it's omitted
+    // For Valkyrie: forceGender is set, so gender word is omitted
+    // For others: include gender if the role name doesn't change and gender isn't forced
+    let genderStr = '';
+    if (roles[roleIdx].namef || roles[roleIdx].forceGender) {
+        // Gender implicit in role name or forced — omit gender word
+    } else {
+        genderStr = female ? 'female ' : 'male ';
+    }
+
+    const welcomeMsg = `${greeting} ${game.player.name}, welcome to NetHack!  You are a ${alignStr} ${genderStr}${raceAdj} ${rName}.`;
+    game.display.putstr_message(welcomeMsg);
+
+    // Show --More-- after welcome
+    // Need to determine where the message ended (may have wrapped to 2 lines)
+    const moreStr = '--More--';
+    let moreRow = 0;
+    let moreCol;
+
+    if (welcomeMsg.length <= game.display.cols) {
+        // Message fits on one line
+        if (welcomeMsg.length + 8 >= game.display.cols) {
+            // --More-- won't fit on same line, wrap to next line
+            moreRow = 1;
+            moreCol = 0;
+        } else {
+            // --More-- fits on same line with space
+            moreRow = 0;
+            moreCol = welcomeMsg.length + 1;
+        }
+    } else {
+        // Message wrapped to two lines
+        // Find where the first line broke (last space before cols)
+        let breakPoint = welcomeMsg.lastIndexOf(' ', game.display.cols);
+        if (breakPoint === -1) breakPoint = game.display.cols;
+
+        const wrapped = welcomeMsg.substring(breakPoint).trim();
+        if (wrapped.length + 8 >= game.display.cols) {
+            // --More-- won't fit after wrapped text, use row 2
+            moreRow = 2;
+            moreCol = 0;
+        } else {
+            // --More-- fits after wrapped text on row 1
+            moreRow = 1;
+            moreCol = wrapped.length + 1;
+        }
+    }
+
+    game.display.putstr(moreCol, moreRow, moreStr, 2); // CLR_GREEN
+    await nhgetch();
+    game.display.clearRow(0);
+    if (moreRow > 0) game.display.clearRow(1);
+    if (moreRow > 1) game.display.clearRow(2);
+}
+
+// Show the ~ filter menu (PICK_ANY multi-select)
+// C ref: role.c reset_role_filtering() — four sections with toggle selection
+export async function showFilterMenu(game) {
+    const lines = [];
+    const prompt = hasFilters(game)
+        ? 'Pick all that apply and/or unpick any that no longer apply'
+        : 'Pick all that apply';
+    lines.push(prompt);
+    lines.push('');
+
+    // Build item list: letter → { type, index, selected }
+    const items = [];
+
+    // Section 1: Unacceptable roles
+    lines.push('Unacceptable roles');
+    for (let i = 0; i < roles.length; i++) {
+        const ch = roles[i].menuChar;
+        const sel = game.rfilter.roles[i];
+        const article = roles[i].menuArticle || 'a';
+        const nameDisplay = roles[i].namef
+            ? `${roles[i].name}/${roles[i].namef}`
+            : roles[i].name;
+        lines.push(` ${ch} ${sel ? '+' : '-'} ${article} ${nameDisplay}`);
+        items.push({ ch, type: 'roles', index: i, selected: sel });
+    }
+
+    // Section 2: Unacceptable races (uppercase to avoid conflict with role letters)
+    // C ref: setup_racemenu uses highc(this_ch) in filter mode
+    lines.push('Unacceptable races');
+    for (let i = 0; i < races.length; i++) {
+        const ch = races[i].menuChar.toUpperCase();
+        const sel = game.rfilter.races[i];
+        lines.push(` ${ch} ${sel ? '+' : '-'} ${races[i].name}`);
+        items.push({ ch, type: 'races', index: i, selected: sel });
+    }
+
+    // Section 3: Unacceptable genders (uppercase)
+    // C ref: setup_gendmenu uses highc(this_ch) in filter mode
+    lines.push('Unacceptable genders');
+    const genderChars = ['M', 'F'];
+    const genderNames = ['male', 'female'];
+    for (let i = 0; i < 2; i++) {
+        const ch = genderChars[i];
+        const sel = game.rfilter.genders[i];
+        lines.push(` ${ch} ${sel ? '+' : '-'} ${genderNames[i]}`);
+        items.push({ ch, type: 'genders', index: i, selected: sel });
+    }
+
+    // Section 4: Unacceptable alignments (uppercase)
+    // C ref: setup_algnmenu uses highc(this_ch) in filter mode
+    lines.push('Unacceptable alignments');
+    const alignChars = ['L', 'N', 'C'];
+    const alignNames = ['lawful', 'neutral', 'chaotic'];
+    const alignIndices = [2, 1, 0]; // A_LAWFUL=1→idx2, A_NEUTRAL=0→idx1, A_CHAOTIC=-1→idx0
+    for (let i = 0; i < 3; i++) {
+        const ch = alignChars[i];
+        const sel = game.rfilter.aligns[alignIndices[i]];
+        lines.push(` ${ch} ${sel ? '+' : '-'} ${alignNames[i]}`);
+        items.push({ ch, type: 'aligns', index: alignIndices[i], selected: sel });
+    }
+
+    lines.push('(end)');
+
+    // Build a lookup from char to item indices (some chars are reused across sections)
+    // In C, each item has a unique accelerator; we use the same scheme
+    const charToItems = {};
+    for (let i = 0; i < items.length; i++) {
+        if (!charToItems[items[i].ch]) charToItems[items[i].ch] = [];
+        charToItems[items[i].ch].push(i);
+    }
+
+    // Render and handle input loop
+    // PICK_ANY: user toggles items, Enter/Esc to finish
+    game.display.renderChargenMenu(lines, true);
+
+    while (true) {
+        const ch = await nhgetch();
+        const c = String.fromCharCode(ch);
+
+        if (c === '\r' || c === '\n' || c === ' ') {
+            // Confirm: apply current selections
+            for (const item of items) {
+                game.rfilter[item.type][item.index] = item.selected;
+            }
+            return;
         }
 
-        // Word-wrap death description for tombstone (max ~16 chars per line)
-        const deathLines = this.wrapDeathText(deathCause, 16);
-
-        // Show tombstone if flags.tombstone is enabled
-        if (this.flags && this.flags.tombstone) {
-            const year = String(new Date().getFullYear());
-            this.display.renderTombstone(p.name, p.gold, deathLines, year);
-            // Press any key prompt below tombstone
-            this.display.putstr(0, 20, '(Press any key)', 7);
-            await nhgetch();
+        if (ch === 27) { // ESC
+            // Cancel: no changes
+            return;
         }
 
-        // Build and save topten entry
-        const entry = buildEntry(p, this.gameOverReason, roles, races);
-        const rank = saveScore(entry);
+        // Toggle items matching this character
+        if (charToItems[c]) {
+            for (const idx of charToItems[c]) {
+                items[idx].selected = !items[idx].selected;
+            }
+            // Re-render the menu with updated selections
+            const updatedLines = [];
+            updatedLines.push(lines[0]); // prompt
+            updatedLines.push('');
+            let itemIdx = 0;
 
-        // Display topten list
-        const scores = loadScores();
-        this.display.clearScreen();
+            updatedLines.push('Unacceptable roles');
+            for (let i = 0; i < roles.length; i++) {
+                const item = items[itemIdx++];
+                const article = roles[i].menuArticle || 'a';
+                const nameDisplay = roles[i].namef
+                    ? `${roles[i].name}/${roles[i].namef}`
+                    : roles[i].name;
+                updatedLines.push(` ${item.ch} ${item.selected ? '+' : '-'} ${article} ${nameDisplay}`);
+            }
 
-        const header = formatTopTenHeader();
-        let row = 0;
-        this.display.putstr(0, row++, header, 14); // CLR_WHITE
+            updatedLines.push('Unacceptable races');
+            for (let i = 0; i < races.length; i++) {
+                const item = items[itemIdx++];
+                updatedLines.push(` ${item.ch} ${item.selected ? '+' : '-'} ${races[i].name}`);
+            }
 
-        // Show entries around the player's rank
-        // Find the player's entry index in scores (0-based)
-        const playerIdx = rank > 0 ? rank - 1 : 0;
-        const showStart = Math.max(0, playerIdx - 5);
-        const showEnd = Math.min(scores.length, playerIdx + 6);
+            updatedLines.push('Unacceptable genders');
+            for (let g = 0; g < 2; g++) {
+                const item = items[itemIdx++];
+                updatedLines.push(` ${item.ch} ${item.selected ? '+' : '-'} ${genderNames[g]}`);
+            }
 
-        if (showStart > 0) {
-            this.display.putstr(0, row++, '  ...', 7);
+            updatedLines.push('Unacceptable alignments');
+            for (let ai = 0; ai < 3; ai++) {
+                const item = items[itemIdx++];
+                updatedLines.push(` ${item.ch} ${item.selected ? '+' : '-'} ${alignNames[ai]}`);
+            }
+
+            updatedLines.push('(end)');
+            game.display.renderChargenMenu(updatedLines, true);
         }
+    }
+}
 
-        for (let i = showStart; i < showEnd; i++) {
-            const lines = formatTopTenEntry(scores[i], i + 1);
-            const isPlayer = (i === playerIdx);
-            const color = isPlayer ? 10 : 7; // CLR_YELLOW : CLR_GRAY
-            for (const line of lines) {
-                if (row < this.display.rows - 2) {
-                    this.display.putstr(0, row++, line.substring(0, this.display.cols), color);
+// --- Private helper functions (not exported) ---
+
+// Auto-pick all chargen attributes randomly
+// C ref: role.c plnamesiz auto-pick path
+async function autoPickAll(game, showConfirm) {
+    // Pick role
+    let roleIdx = rn2(roles.length);
+    // Pick race
+    const vr = validRacesForRole(roleIdx);
+    let raceIdx = vr[rn2(vr.length)];
+    // Pick gender
+    let gender;
+    if (roles[roleIdx].forceGender === 'female') {
+        gender = FEMALE;
+        rn2(1); // C consumes rn2(1) for forced gender
+    } else {
+        gender = rn2(2); // 0=male, 1=female
+    }
+    // Pick alignment
+    const va = validAlignsForRoleRace(roleIdx, raceIdx);
+    let align = va[rn2(va.length)];
+
+    game.player.roleIndex = roleIdx;
+    game.player.race = raceIdx;
+    game.player.gender = gender;
+    game.player.alignment = align;
+
+    if (showConfirm) {
+        // Show confirmation screen
+        const confirmed = await showConfirmation(game, roleIdx, raceIdx, gender, align);
+        if (!confirmed) {
+            // 'n' → restart from manual selection
+            await manualSelection(game);
+            return;
+        }
+    }
+
+    // Apply the selection
+    game.player.initRole(roleIdx);
+    game.player.alignment = align;
+
+    // Show lore and welcome
+    await showLoreAndWelcome(game, roleIdx, raceIdx, gender, align);
+}
+
+// Manual selection loop: role → race → gender → alignment
+// C ref: role.c player_selection() manual path
+async function manualSelection(game) {
+    let roleIdx = -1;
+    let raceIdx = -1;
+    let gender = -1;
+    let align = -128; // A_NONE
+    let isFirstMenu = true;
+
+    // Selection loop
+    selectionLoop:
+    while (true) {
+        // Determine what we still need to pick
+        // C order: role → race → gender → alignment
+        // But navigation keys can jump to any step
+
+        // --- ROLE ---
+        if (roleIdx < 0) {
+            const result = await showRoleMenu(game, raceIdx, gender, align, isFirstMenu);
+            isFirstMenu = false;
+            if (result.action === 'quit') { game._runLifecycle('restart'); return; }
+            if (result.action === 'pick-race') { raceIdx = -1; roleIdx = -1; continue; }
+            if (result.action === 'pick-gender') { gender = -1; roleIdx = -1; continue; }
+            if (result.action === 'pick-align') { align = -128; roleIdx = -1; continue; }
+            if (result.action === 'filter') { await showFilterMenu(game); isFirstMenu = true; continue; }
+            if (result.action === 'invalid') { continue; }
+            if (result.action === 'selected') {
+                roleIdx = result.value;
+                // Validate role index
+                if (roleIdx < 0 || roleIdx >= roles.length) {
+                    roleIdx = -1;
+                    continue;
+                }
+                // Force gender if needed
+                if (roles[roleIdx].forceGender === 'female') {
+                    gender = FEMALE;
+                    rn2(1); // C consumes rn2(1) for forced gender
                 }
             }
         }
 
-        if (showEnd < scores.length) {
-            this.display.putstr(0, row++, '  ...', 7);
-        }
-
-        // Farewell message
-        row = Math.min(row + 1, this.display.rows - 3);
-        const female = p.gender === FEMALE;
-        const roleName = roleNameForGender(p.roleIndex, female);
-        const farewell = `Goodbye ${p.name} the ${roleName}...`;
-        this.display.putstr(0, row++, farewell, 14);
-
-        // Play again prompt
-        row = Math.min(row + 1, this.display.rows - 1);
-        this.display.putstr(0, row, 'Play again? [yn] ', 14);
-        const ch = await nhgetch();
-        if (String.fromCharCode(ch) === 'y') {
-            this._runLifecycle('restart');
-        }
-    }
-
-    // Word-wrap a death description to fit within maxWidth chars per line.
-    // Returns array of up to 4 lines.
-    wrapDeathText(text, maxWidth) {
-        const words = text.split(' ');
-        const lines = [];
-        let current = '';
-        for (const word of words) {
-            if (current.length === 0) {
-                current = word;
-            } else if (current.length + 1 + word.length <= maxWidth) {
-                current += ' ' + word;
+        // --- RACE ---
+        if (roleIdx >= 0 && raceIdx < 0) {
+            const validRaces = validRacesForRole(roleIdx).filter(ri => okRace(game, ri));
+            // Filter down to valid races given current constraints
+            if (validRaces.length === 1) {
+                raceIdx = validRaces[0];
+                // Will show as forced in next menu
             } else {
-                lines.push(current);
-                current = word;
+                const result = await showRaceMenu(game, roleIdx, gender, align, isFirstMenu);
+                isFirstMenu = false;
+                if (result.action === 'quit') { game._runLifecycle('restart'); return; }
+                if (result.action === 'pick-role') { roleIdx = -1; raceIdx = -1; gender = -1; align = -128; continue; }
+                if (result.action === 'pick-gender') { gender = -1; continue; }
+                if (result.action === 'pick-align') { align = -128; continue; }
+                if (result.action === 'filter') { await showFilterMenu(game); roleIdx = -1; raceIdx = -1; gender = -1; align = -128; isFirstMenu = true; continue; }
+                if (result.action === 'invalid') { continue; }
+                if (result.action === 'selected') {
+                    raceIdx = result.value;
+                    // Validate race index
+                    if (raceIdx < 0 || raceIdx >= races.length) {
+                        raceIdx = -1;
+                        continue;
+                    }
+                }
             }
         }
-        if (current) lines.push(current);
-        // Limit to 4 lines
-        return lines.slice(0, 4);
+
+        // --- GENDER ---
+        if (roleIdx >= 0 && raceIdx >= 0 && gender < 0) {
+            if (!needsGenderMenu(roleIdx)) {
+                gender = roles[roleIdx].forceGender === 'female' ? FEMALE : MALE;
+            } else {
+                const result = await showGenderMenu(game, roleIdx, raceIdx, align, isFirstMenu);
+                isFirstMenu = false;
+                if (result.action === 'quit') { game._runLifecycle('restart'); return; }
+                if (result.action === 'pick-role') { roleIdx = -1; raceIdx = -1; gender = -1; align = -128; continue; }
+                if (result.action === 'pick-race') { raceIdx = -1; gender = -1; continue; }
+                if (result.action === 'pick-align') { align = -128; continue; }
+                if (result.action === 'filter') { await showFilterMenu(game); roleIdx = -1; raceIdx = -1; gender = -1; align = -128; isFirstMenu = true; continue; }
+                if (result.action === 'invalid') { continue; }
+                if (result.action === 'selected') {
+                    gender = result.value;
+                    // Validate gender (0=MALE, 1=FEMALE)
+                    if (gender < 0 || gender > 1) {
+                        gender = -1;
+                        continue;
+                    }
+                }
+            }
+        }
+
+        // --- ALIGNMENT ---
+        if (roleIdx >= 0 && raceIdx >= 0 && gender >= 0 && align === -128) {
+            const validAligns = validAlignsForRoleRace(roleIdx, raceIdx).filter(a => okAlign(game, a));
+            if (validAligns.length === 1) {
+                align = validAligns[0];
+            } else {
+                const result = await showAlignMenu(game, roleIdx, raceIdx, gender, isFirstMenu);
+                isFirstMenu = false;
+                if (result.action === 'quit') { game._runLifecycle('restart'); return; }
+                if (result.action === 'pick-role') { roleIdx = -1; raceIdx = -1; gender = -1; align = -128; continue; }
+                if (result.action === 'pick-race') { raceIdx = -1; align = -128; continue; }
+                if (result.action === 'pick-gender') { gender = -1; align = -128; continue; }
+                if (result.action === 'filter') { await showFilterMenu(game); roleIdx = -1; raceIdx = -1; gender = -1; align = -128; isFirstMenu = true; continue; }
+                if (result.action === 'invalid') { continue; }
+                if (result.action === 'selected') {
+                    align = result.value;
+                    // Validate alignment (A_CHAOTIC=-1, A_NEUTRAL=0, A_LAWFUL=1)
+                    if (align < -1 || align > 1) {
+                        align = -128;
+                        continue;
+                    }
+                }
+            }
+        }
+
+        // --- CONFIRMATION ---
+        if (roleIdx >= 0 && raceIdx >= 0 && gender >= 0 && align !== -128) {
+            const confirmed = await showConfirmation(game, roleIdx, raceIdx, gender, align);
+            if (confirmed) {
+                // Apply selection
+                game.player.roleIndex = roleIdx;
+                game.player.race = raceIdx;
+                game.player.gender = gender;
+                game.player.alignment = align;
+                game.player.initRole(roleIdx);
+                game.player.alignment = align;
+                // Show lore and welcome
+                await showLoreAndWelcome(game, roleIdx, raceIdx, gender, align);
+                return;
+            } else {
+                // Start over
+                roleIdx = -1;
+                raceIdx = -1;
+                gender = -1;
+                align = -128;
+                isFirstMenu = true;
+                continue;
+            }
+        }
     }
 }
+
+// Build the header line showing current selections
+// C ref: role.c plnamesiz — "<role> <race> <gender> <alignment>"
+function buildHeaderLine(game, roleIdx, raceIdx, gender, align) {
+    const parts = [];
+    // Role
+    if (roleIdx >= 0) {
+        const female = gender === FEMALE;
+        parts.push(roleNameForGender(roleIdx, female));
+    } else {
+        parts.push('<role>');
+    }
+    // Race
+    if (raceIdx >= 0) {
+        parts.push(races[raceIdx].name);
+    } else {
+        parts.push('<race>');
+    }
+    // Gender
+    if (gender === FEMALE) {
+        parts.push('female');
+    } else if (gender === MALE) {
+        parts.push('male');
+    } else {
+        parts.push('<gender>');
+    }
+    // Alignment
+    if (align !== -128) {
+        parts.push(alignName(align));
+    } else {
+        parts.push('<alignment>');
+    }
+    return parts.join(' ');
+}
+
+// C ref: role.c ok_role/ok_race/ok_gend/ok_align — filter checks
+function okRole(game, i) { return !game.rfilter.roles[i]; }
+function okRace(game, i) { return !game.rfilter.races[i]; }
+function okGend(game, g) { return !game.rfilter.genders[g]; }
+function okAlign(game, a) { return !game.rfilter.aligns[a + 1]; } // a: -1,0,1 → index 0,1,2
+function hasFilters(game) {
+    return game.rfilter.roles.some(Boolean) || game.rfilter.races.some(Boolean) ||
+           game.rfilter.genders.some(Boolean) || game.rfilter.aligns.some(Boolean);
+}
+function filterLabel(game) {
+    return hasFilters(game) ? 'Reset role/race/&c filtering' : 'Set role/race/&c filtering';
+}
+
+// Word-wrap a death description to fit within maxWidth chars per line.
+// Returns array of up to 4 lines.
+function wrapDeathText(text, maxWidth) {
+    const words = text.split(' ');
+    const lines = [];
+    let current = '';
+    for (const word of words) {
+        if (current.length === 0) {
+            current = word;
+        } else if (current.length + 1 + word.length <= maxWidth) {
+            current += ' ' + word;
+        } else {
+            lines.push(current);
+            current = word;
+        }
+    }
+    if (current) lines.push(current);
+    // Limit to 4 lines
+    return lines.slice(0, 4);
+}
+
+export { NetHackGame } from './allmain.js';

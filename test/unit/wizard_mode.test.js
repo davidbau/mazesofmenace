@@ -32,7 +32,7 @@ describe('wizard mode init and commands', () => {
     });
 
     it('Ctrl+V level teleport moves through depths 2-5 in wizard mode', async () => {
-        const game = createHeadlessGame(5, 11, { wizard: true });
+        const game = await createHeadlessGame(5, 11, { wizard: true });
 
         for (let depth = 2; depth <= 5; depth++) {
             queueLine(game.input, String(depth));
@@ -46,7 +46,7 @@ describe('wizard mode init and commands', () => {
     });
 
     it('Ctrl+V is unavailable when wizard mode is off', async () => {
-        const game = createHeadlessGame(5, 11, { wizard: false });
+        const game = await createHeadlessGame(5, 11, { wizard: false });
         const beforeDepth = game.player.dungeonLevel;
 
         queueLine(game.input, '5');
@@ -57,7 +57,7 @@ describe('wizard mode init and commands', () => {
     });
 
     it('Ctrl+F reveals the full level in wizard mode', async () => {
-        const game = createHeadlessGame(7, 11, { wizard: true });
+        const game = await createHeadlessGame(7, 11, { wizard: true });
 
         const result = await game.executeCommand(6); // Ctrl+F
         assert.equal(result.tookTime, false);
@@ -72,7 +72,7 @@ describe('wizard mode init and commands', () => {
     });
 
     it('Ctrl+T teleports to requested accessible coordinates in wizard mode', async () => {
-        const game = createHeadlessGame(9, 11, { wizard: true });
+        const game = await createHeadlessGame(9, 11, { wizard: true });
         const before = { x: game.player.x, y: game.player.y };
         const target = game.map.dnstair;
         assert.ok(target, 'Expected downstairs coordinates');
@@ -87,7 +87,7 @@ describe('wizard mode init and commands', () => {
     });
 
     it('Ctrl+T rejects inaccessible coordinates in wizard mode', async () => {
-        const game = createHeadlessGame(9, 11, { wizard: true });
+        const game = await createHeadlessGame(9, 11, { wizard: true });
         const before = { x: game.player.x, y: game.player.y };
 
         let stone = null;
@@ -111,7 +111,7 @@ describe('wizard mode init and commands', () => {
     });
 
     it('Ctrl+T is unavailable when wizard mode is off', async () => {
-        const game = createHeadlessGame(9, 11, { wizard: false });
+        const game = await createHeadlessGame(9, 11, { wizard: false });
         const before = { x: game.player.x, y: game.player.y };
 
         queueLine(game.input, '1,1');

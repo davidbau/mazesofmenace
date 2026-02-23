@@ -818,7 +818,7 @@ export class Display {
         if (player.showExp) {
             line2Parts.push(`Xp:${player.level}/${player.exp}`);
         } else {
-            line2Parts.push(`Exp:${player.level}`);
+            line2Parts.push(`Xp:${player.level}`);
         }
 
         // Turn counter (time option)
