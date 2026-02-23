@@ -20,14 +20,16 @@
   var m = document.title.match(/#(\d+)/);
   if (!m) return;
   var build = '#' + m[1];
-  document.querySelectorAll('strong, h1, h2, p').forEach(function(el) {
+  var els = document.querySelectorAll('strong, h1, h2, p');
+  for (var i = 0; i < els.length; i++) {
+    var el = els[i];
     if (el.childNodes.length === 1 && el.firstChild.nodeType === 3 &&
         el.firstChild.textContent.includes('Royal Jelly')) {
       el.firstChild.textContent = el.firstChild.textContent.replace(
         'Royal Jelly', 'Royal Jelly ' + build);
-      return;
+      break;
     }
-  });
+  }
 })();
 
 // Open external links in a new tab; internal links navigate normally within
