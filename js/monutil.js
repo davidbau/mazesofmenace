@@ -271,17 +271,21 @@ export function unstuck(mon, player) {
 export function mondead(mon, map, player) {
     mon.dead = true;
     pushRngLogEntry(`^die[${mon.mndx || 0}@${mon.mx},${mon.my}]`);
+    // C ref: mon.c mondead → newsym clears invisible marker at death location
+    if (map && isok(mon.mx, mon.my)) {
+        const loc = map.at(mon.mx, mon.my);
+        if (loc) loc.mem_invis = false;
+    }
     // C ref: mon.c:2685 mon_leaving_level → unstuck
     if (player) unstuck(mon, player);
-    // C ref: m_detach -> relobj: drop all inventory to floor
+    // C ref: m_detach -> relobj: drop all inventory to floor via mdrop_obj
     if (Array.isArray(mon.minvent) && mon.minvent.length > 0) {
         // Reverse order to match C's relobj chain-order floor pile ordering
-        for (let idx = mon.minvent.length - 1; idx >= 0; idx--) {
-            const obj = mon.minvent[idx];
+        const items = [...mon.minvent];
+        for (let idx = items.length - 1; idx >= 0; idx--) {
+            const obj = items[idx];
             if (!obj) continue;
-            obj.ox = mon.mx;
-            obj.oy = mon.my;
-            placeFloorObject(map, obj);
+            mdrop_obj(mon, obj, map);
         }
         mon.minvent = [];
         mon.weapon = null;
@@ -304,6 +308,7 @@ export function mdrop_obj(mon, obj, map) {
     if (mon.weapon === obj) mon.weapon = null;
     obj.ox = mon.mx;
     obj.oy = mon.my;
-    pushRngLogEntry(`^drop[${mon.mndx}@${mon.mx},${mon.my},${obj.otyp}]`);
+    // C ref: steal.c:838-841 — place_object first (^place), then event_log (^drop)
     placeFloorObject(map, obj);
+    pushRngLogEntry(`^drop[${mon.mndx}@${mon.mx},${mon.my},${obj.otyp}]`);
 }
