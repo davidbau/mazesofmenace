@@ -1356,22 +1356,43 @@
         // offset from the nearest horizontal/vertical edge-or-center so it
         // stays anchored correctly when the window is resized.
 
-        var MM_KEY  = 'menace-docs-minimap';
+        var MM_OPTS_KEY = 'menace-options';
         var MM_EDGE = 8;     // px hit-zone for resize border
         var MM_MIN  = 0.15;  // minimum scale
         var MM_MAX  = 0.90;  // maximum scale
+        var MM_SNAP = 10;    // px snap zone for center/middle alignment
         var MM_DEFAULT_SCALE = 0.50;
 
         var mmState   = null;   // null = idle; object while dragging/resizing
         var mmDidMove = false;  // suppress click-to-close after drag
         var mmOverlay = null;   // transparent capture div during drag
 
-        function mmLoad() {
-            try { return JSON.parse(localStorage.getItem(MM_KEY)) || null; }
-            catch(e) { return null; }
+        // Parse compact minimap string, e.g. "r17b10s47", "c0m0s50", "l".
+        // Tokens: l|r|c[n]  t|b|m[n]  s[n]  (any order, all optional).
+        // Defaults: r10, b10, s50; c and m default offset to 0.
+        function mmParse(str) {
+            var h = 'r', hOff = 10, v = 'b', vOff = 10, scale = MM_DEFAULT_SCALE;
+            var re = /([lrcbtms])([+-]?\d+)?/g, m;
+            while ((m = re.exec(str || '')) !== null) {
+                var n = m[2] !== undefined ? parseInt(m[2], 10) : null;
+                if      (m[1] === 'l') { h = 'l'; hOff = n !== null ? n : 10; }
+                else if (m[1] === 'r') { h = 'r'; hOff = n !== null ? n : 10; }
+                else if (m[1] === 'c') { h = 'c'; hOff = n !== null ? n : 0;  }
+                else if (m[1] === 't') { v = 't'; vOff = n !== null ? n : 10; }
+                else if (m[1] === 'b') { v = 'b'; vOff = n !== null ? n : 10; }
+                else if (m[1] === 'm') { v = 'm'; vOff = n !== null ? n : 0;  }
+                else if (m[1] === 's') { scale = (n !== null ? n : 50) / 100; }
+            }
+            return { hSide: h, hOff: hOff, vSide: v, vOff: vOff, scale: scale };
         }
 
-        // Persist position as offset from nearest edge-or-center
+        // Read minimap string from menace-options (returns '' if absent)
+        function mmLoad() {
+            try { return (JSON.parse(localStorage.getItem(MM_OPTS_KEY)) || {}).minimap || ''; }
+            catch(e) { return ''; }
+        }
+
+        // Persist position as compact string into menace-options
         function mmSave(left, top, scale) {
             var vw = window.innerWidth, vh = window.innerHeight;
             var nw = page.scrollWidth,  nh = page.scrollHeight;
@@ -1382,43 +1403,41 @@
             var dT = top,  dB = vh - top  - h, dCV = Math.abs(cy - vh / 2);
 
             var hSide, hOff;
-            if (dL <= dR && dL <= dCH)      { hSide = 'left';   hOff = left; }
-            else if (dR <= dL && dR <= dCH) { hSide = 'right';  hOff = vw - left - w; }
-            else                            { hSide = 'center'; hOff = cx - vw / 2; }
+            if (dL <= dR && dL <= dCH)      { hSide = 'l'; hOff = left; }
+            else if (dR <= dL && dR <= dCH) { hSide = 'r'; hOff = vw - left - w; }
+            else                            { hSide = 'c'; hOff = cx - vw / 2; }
 
             var vSide, vOff;
-            if (dT <= dB && dT <= dCV)      { vSide = 'top';    vOff = top; }
-            else if (dB <= dT && dB <= dCV) { vSide = 'bottom'; vOff = vh - top - h; }
-            else                            { vSide = 'center'; vOff = cy - vh / 2; }
+            if (dT <= dB && dT <= dCV)      { vSide = 't'; vOff = top; }
+            else if (dB <= dT && dB <= dCV) { vSide = 'b'; vOff = vh - top - h; }
+            else                            { vSide = 'm'; vOff = cy - vh / 2; }
 
-            try { localStorage.setItem(MM_KEY, JSON.stringify(
-                { scale: scale, hSide: hSide, hOff: hOff, vSide: vSide, vOff: vOff }
-            )); } catch(e) {}
+            var str = hSide + Math.round(hOff) + vSide + Math.round(vOff) +
+                      's' + Math.round(scale * 100);
+            try {
+                var opts = JSON.parse(localStorage.getItem(MM_OPTS_KEY)) || {};
+                opts.minimap = str;
+                localStorage.setItem(MM_OPTS_KEY, JSON.stringify(opts));
+            } catch(e) {}
         }
 
         // Compute { left, top, scale } from saved anchor (or default bottom-right)
         function mmRestore() {
-            var d = mmLoad();
+            var d = mmParse(mmLoad());
             var nw = page.scrollWidth, nh = page.scrollHeight;
-            var vw = window.innerWidth,  vh = window.innerHeight;
-            var scale = (d && d.scale) ? d.scale : MM_DEFAULT_SCALE;
-            var w = nw * scale, h = nh * scale;
+            var vw = window.innerWidth, vh = window.innerHeight;
+            var w = nw * d.scale, h = nh * d.scale;
             var left, top;
-            if (!d) {
-                left = vw - w - 10;
-                top  = vh - h - 10;
-            } else {
-                if      (d.hSide === 'left')   left = d.hOff;
-                else if (d.hSide === 'right')  left = vw - w - d.hOff;
-                else                           left = vw / 2 + d.hOff - w / 2;
-                if      (d.vSide === 'top')    top  = d.vOff;
-                else if (d.vSide === 'bottom') top  = vh - h - d.vOff;
-                else                           top  = vh / 2 + d.vOff - h / 2;
-            }
+            if      (d.hSide === 'l') left = d.hOff;
+            else if (d.hSide === 'r') left = vw - w - d.hOff;
+            else                      left = vw / 2 + d.hOff - w / 2;
+            if      (d.vSide === 't') top = d.vOff;
+            else if (d.vSide === 'b') top = vh - h - d.vOff;
+            else                      top = vh / 2 + d.vOff - h / 2;
             // Clamp so minimap is never fully off-screen
             left = Math.max(-(w * 0.8), Math.min(vw - w * 0.2, left));
             top  = Math.max(-(h * 0.8), Math.min(vh - h * 0.2, top));
-            return { left: left, top: top, scale: scale };
+            return { left: left, top: top, scale: d.scale };
         }
 
         // Apply { left, top, scale } as inline styles (instant=true suppresses transition)
@@ -1493,8 +1512,16 @@
             if (Math.abs(dx) > 2 || Math.abs(dy) > 2) mmDidMove = true;
 
             if (mmState.mode === 'drag') {
-                page.style.left = (mmState.left0 + dx) + 'px';
-                page.style.top  = (mmState.top0  + dy) + 'px';
+                var rawLeft = mmState.left0 + dx, rawTop = mmState.top0 + dy;
+                var vw = window.innerWidth, vh = window.innerHeight;
+                var w = mmState.scale0 * mmState.nw, h = mmState.scale0 * mmState.nh;
+                // Snap to horizontal center and vertical middle within MM_SNAP pixels
+                var snapLeft = Math.abs(rawLeft - (vw - w) / 2) < MM_SNAP
+                    ? (vw - w) / 2 : rawLeft;
+                var snapTop  = Math.abs(rawTop  - (vh - h) / 2) < MM_SNAP
+                    ? (vh - h) / 2 : rawTop;
+                page.style.left = snapLeft + 'px';
+                page.style.top  = snapTop  + 'px';
             } else {
                 // Resize: compute new scale from dragged edge(s)
                 var scale = mmState.scale0;

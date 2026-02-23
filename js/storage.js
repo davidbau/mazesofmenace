@@ -602,6 +602,9 @@ const C_DEFAULTS = {
     runmode: 'leap', pickup_burden: 'moderate', sortloot: 'loot',
     pile_limit: 5, msghistory: 20, statuslines: 2,
     msg_window: false, DECgraphics: false,
+
+    // JS-specific UI options
+    minimap: '',   // compact minimap position: e.g. "r17b10s47" (see index.html mmParse)
 };
 
 // JS-specific overrides from C defaults
