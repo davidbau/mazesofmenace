@@ -17,35 +17,36 @@ export const XL_LEFT = 4;
 export const XL_RIGHT = 8;
 
 // C ref: extralev.c:277 corr()
-export function rogue_corr(map, x, y) {
+export function corr(map, x, y) {
     const loc = map.at(x, y);
     if (!loc) return;
     loc.typ = rn2(50) ? CORR : SCORR;
 }
+export const rogue_corr = corr;
 
 // C ref: extralev.c:20 roguejoin()
 export function roguejoin(map, x1, y1, x2, y2, horiz) {
     if (horiz) {
         const middle = x1 + rn2(x2 - x1 + 1);
         for (let x = Math.min(x1, middle); x <= Math.max(x1, middle); x++) {
-            rogue_corr(map, x, y1);
+            corr(map, x, y1);
         }
         for (let y = Math.min(y1, y2); y <= Math.max(y1, y2); y++) {
-            rogue_corr(map, middle, y);
+            corr(map, middle, y);
         }
         for (let x = Math.min(middle, x2); x <= Math.max(middle, x2); x++) {
-            rogue_corr(map, x, y2);
+            corr(map, x, y2);
         }
     } else {
         const middle = y1 + rn2(y2 - y1 + 1);
         for (let y = Math.min(y1, middle); y <= Math.max(y1, middle); y++) {
-            rogue_corr(map, x1, y);
+            corr(map, x1, y);
         }
         for (let x = Math.min(x1, x2); x <= Math.max(x1, x2); x++) {
-            rogue_corr(map, x, middle);
+            corr(map, x, middle);
         }
         for (let y = Math.min(middle, y2); y <= Math.max(middle, y2); y++) {
-            rogue_corr(map, x2, y);
+            corr(map, x2, y);
         }
     }
 }

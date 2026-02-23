@@ -143,7 +143,7 @@ export {
 } from './mklev.js';
 export {
     XL_UP, XL_DOWN, XL_LEFT, XL_RIGHT,
-    miniwalk, rogue_corr, roguejoin, roguecorr, makerogueghost, makeroguerooms,
+    miniwalk, corr, rogue_corr, roguejoin, roguecorr, makerogueghost, makeroguerooms,
 } from './extralev.js';
 
 /**
