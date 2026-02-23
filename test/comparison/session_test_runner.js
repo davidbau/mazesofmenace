@@ -86,6 +86,31 @@ function recordRngComparison(result, actual, expected, context = {}) {
     recordRng(result, cmp.matched, cmp.total, divergence);
 }
 
+// Map a normalized RNG index back to an approximate C session step number.
+// The index is in the normalized space (midlog/composite entries removed),
+// so we count comparable entries per step to find the right boundary.
+function approximateStepForRngIndex(session, normalizedIndex) {
+    let cumulative = 0;
+    const count = (entries) => {
+        let n = 0;
+        for (const e of entries) {
+            if (typeof e !== 'string' || !e.length) continue;
+            const c = e[0];
+            if (c === '>' || c === '<' || c === '^') continue;
+            const stripped = e.replace(/^\d+\s+/, '').replace(/ @ .*/, '');
+            if (stripped.startsWith('rne(') || stripped.startsWith('rnz(') || stripped.startsWith('d(')) continue;
+            n++;
+        }
+        return n;
+    };
+    cumulative += count(session.startup?.rng || []);
+    for (let i = 0; i < session.steps.length; i++) {
+        cumulative += count(session.steps[i].rng || []);
+        if (normalizedIndex < cumulative) return i + 1;
+    }
+    return 'n/a';
+}
+
 function getExpectedScreenLines(stepLike) {
     if (!stepLike) return [];
     if (Array.isArray(stepLike.screenAnsi)) return stepLike.screenAnsi.map((line) => stripAnsiSequences(line));
@@ -399,29 +424,30 @@ async function runGameplayResult(session) {
             return result;
         }
 
-        if (session.startup?.rng?.length > 0) {
-            recordRngComparison(result, replay.startup?.rng || [], session.startup.rng);
-        } else if (Number.isInteger(session.startup?.rngCalls)) {
-            const actualCalls = (replay.startup?.rng || []).length;
-            if (actualCalls !== session.startup.rngCalls) {
-                setFirstDivergence(result, 'rng', {
-                    expected: String(session.startup.rngCalls),
-                    actual: String(actualCalls),
-                    stage: 'startup',
-                });
+        // Flat RNG comparison — flatten both C and JS per-step RNG into
+        // one stream each, compare post-hoc rather than per-step.
+        const allJsRng = [
+            ...(replay.startup?.rng || []),
+            ...(replay.steps || []).flatMap(s => s.rng || []),
+        ];
+        const allSessionRng = [
+            ...(session.startup?.rng || []),
+            ...session.steps.flatMap(s => s.rng || []),
+        ];
+        const rngCmp = compareRng(allJsRng, allSessionRng);
+        if (rngCmp.total > 0) {
+            if (rngCmp.firstDivergence) {
+                rngCmp.firstDivergence.step = approximateStepForRngIndex(
+                    session, rngCmp.firstDivergence.index, allSessionRng
+                );
             }
-            recordRng(result, actualCalls === session.startup.rngCalls ? 1 : 0, 1, {
-                expected: String(session.startup.rngCalls),
-                actual: String(actualCalls),
-                stage: 'startup',
-            });
-        } else if ((replay.startup?.rng || []).length > 0) {
-            recordRngComparison(result, replay.startup?.rng || [], []);
+            recordRng(result, rngCmp.matched, rngCmp.total, rngCmp.firstDivergence);
+            setFirstDivergence(result, 'rng', rngCmp.firstDivergence);
         }
 
+        // Per-step screen/color comparison (screens are meaningful at
+        // step boundaries, so these stay per-step).
         const count = Math.min(session.steps.length, (replay.steps || []).length);
-        let rngMatched = 0;
-        let rngTotal = 0;
         let screensMatched = 0;
         let screensTotal = 0;
 
@@ -429,30 +455,6 @@ async function runGameplayResult(session) {
             const expected = session.steps[i];
             const actual = replay.steps[i] || {};
             const expectedAnsi = getExpectedScreenAnsiLines(expected);
-
-            if (expected.rng.length > 0) {
-                const rngCmp = compareRng(actual.rng || [], expected.rng);
-                rngMatched += rngCmp.matched;
-                rngTotal += rngCmp.total;
-                setFirstDivergence(result, 'rng', rngCmp.firstDivergence ? { ...rngCmp.firstDivergence, step: i + 1 } : null);
-            } else if (Number.isInteger(expected.rngCalls)) {
-                const actualCalls = (actual.rng || []).length;
-                rngTotal += 1;
-                if (actualCalls === expected.rngCalls) {
-                    rngMatched += 1;
-                } else {
-                    setFirstDivergence(result, 'rng', {
-                        step: i + 1,
-                        expected: String(expected.rngCalls),
-                        actual: String(actualCalls),
-                    });
-                }
-            } else {
-                const rngCmp = compareRng(actual.rng || [], []);
-                rngMatched += rngCmp.matched;
-                rngTotal += rngCmp.total;
-                setFirstDivergence(result, 'rng', rngCmp.firstDivergence ? { ...rngCmp.firstDivergence, step: i + 1 } : null);
-            }
 
             if (expected.screen.length > 0) {
                 screensTotal++;
@@ -476,7 +478,6 @@ async function runGameplayResult(session) {
             }
         }
 
-        if (rngTotal > 0) recordRng(result, rngMatched, rngTotal, result.firstDivergence);
         if (screensTotal > 0) recordScreens(result, screensMatched, screensTotal);
         if (result._colorStats?.total > 0) {
             recordColors(result, result._colorStats.matched, result._colorStats.total);
@@ -484,14 +485,6 @@ async function runGameplayResult(session) {
         }
 
         // Event log comparison (^place, ^die, etc.)
-        const allJsRng = [
-            ...(replay.startup?.rng || []),
-            ...(replay.steps || []).flatMap(s => s.rng || []),
-        ];
-        const allSessionRng = [
-            ...(session.startup?.rng || []),
-            ...session.steps.flatMap(s => s.rng || []),
-        ];
         const eventCmp = compareEvents(allJsRng, allSessionRng);
         if (eventCmp.total > 0) {
             result.events = {

@@ -1001,26 +1001,7 @@ export async function replaySession(seed, session, opts = {}) {
     let lastCommand = null; // C ref: do_repeat() remembered command for Ctrl+A
     let pendingTransitionTurn = false;
     // game.pendingDeferredTimedTurn is used instead (game-level flag)
-    let deferredSparseMoveKey = null;
-    let deferredMoreBoundaryRng = [];
-    let deferredMoreBoundaryTarget = null;
-    let deferredMoreBoundarySource = null;
-    const deferMoreBoundaryRng = (remainderRaw, targetIdx, sourceIdx) => {
-        if (!Array.isArray(remainderRaw) || remainderRaw.length === 0) return;
-        replayBoundaryTrace(`defer source=${sourceIdx + 1} target=${targetIdx + 1} raw=${remainderRaw.length}`);
-        // Multiple sparse boundary carries can target the same future step.
-        // Preserve source order by appending rather than replacing.
-        if (deferredMoreBoundaryTarget === targetIdx) {
-            deferredMoreBoundaryRng = deferredMoreBoundaryRng.concat(remainderRaw);
-            if (deferredMoreBoundarySource == null || sourceIdx < deferredMoreBoundarySource) {
-                deferredMoreBoundarySource = sourceIdx;
-            }
-            return;
-        }
-        deferredMoreBoundaryRng = remainderRaw;
-        deferredMoreBoundaryTarget = targetIdx;
-        deferredMoreBoundarySource = sourceIdx;
-    };
+    // (Deferred boundary machinery removed — RNG comparison is now flat/post-hoc.)
     const startTutorialLevel = () => {
         const tutorialAlign = Number.isInteger(opts.tutorialDungeonAlign)
             ? opts.tutorialDungeonAlign
@@ -1059,145 +1040,20 @@ export async function replaySession(seed, session, opts = {}) {
             stepScreen = arg5;
             stepIndex = arg6;
         }
-        let raw = stepLogRaw;
-        if (deferredMoreBoundaryRng.length > 0
-            && deferredMoreBoundaryTarget != null
-            && stepIndex === deferredMoreBoundaryTarget) {
-            raw = deferredMoreBoundaryRng.concat(stepLogRaw);
-            deferredMoreBoundaryRng = [];
-            deferredMoreBoundaryTarget = null;
-            deferredMoreBoundarySource = null;
-        }
-        let compact = raw.map(toCompactRng);
-
-        let forceCapturedMoreScreen = false;
-        // C replay captures can split a single turn at "--More--".
-        // Normalize by carrying unmatched trailing RNG to the next
-        // space-acknowledgement step when current step has a known-matching prefix.
-        const hasMore = ((stepScreen[0] || '').includes('--More--'));
-        if (hasMore) {
-            const splitAt = matchingJsPrefixLength(compact, step.rng || []);
-            if (splitAt >= 0 && splitAt < compact.length) {
-                const remainderRaw = raw.slice(splitAt);
-                const remainderCompact = compact.slice(splitAt);
-                const firstRemainder = firstComparableEntry(remainderCompact);
-                let targetIdx = stepIndex + 1;
-                let firstNextExpected = null;
-                while (targetIdx < allSteps.length) {
-                    const targetStep = allSteps[targetIdx];
-                    firstNextExpected = firstComparableEntry(targetStep?.rng || []);
-                    if (firstNextExpected) break;
-                    const targetScreen = getSessionScreenLines(targetStep || {});
-                    const targetHasMore = ((targetScreen[0] || '').includes('--More--'));
-                    const targetRngLen = (targetStep?.rng || []).length;
-                    if (targetHasMore && targetRngLen === 0) {
-                        targetIdx++;
-                        continue;
-                    }
-                    break;
-                }
-                // Only defer when we can prove this looks like a true C
-                // step-boundary split: the carried remainder should begin
-                // with the next step's first expected comparable RNG call.
-                if (firstRemainder && firstNextExpected
-                    && rngCallPart(firstRemainder) === rngCallPart(firstNextExpected)) {
-                    replayBoundaryTrace(
-                        `more-split step=${stepIndex + 1} splitAt=${splitAt} raw=${raw.length} ` +
-                        `rem=${remainderRaw.length} firstRem=${rngCallPart(firstRemainder)} ` +
-                        `firstNext=${rngCallPart(firstNextExpected)} target=${targetIdx + 1}`
-                    );
-                    deferMoreBoundaryRng(remainderRaw, targetIdx, stepIndex);
-                    raw = raw.slice(0, splitAt);
-                    compact = compact.slice(0, splitAt);
-                } else if (firstRemainder && !firstNextExpected) {
-                    // Some sparse captures never record post-"--More--" turn continuation
-                    // RNG on subsequent steps. Keep the matching prefix and preserve the
-                    // captured prompt frame as authoritative for this boundary step.
-                    raw = raw.slice(0, splitAt);
-                    compact = compact.slice(0, splitAt);
-                    forceCapturedMoreScreen = true;
-                }
-            }
-        }
-
-        // Counted-search boundary normalization:
-        // Some keylog gameplay captures place the final timed-occupation RNG
-        // turn on the following digit step (e.g., "... 9 s" loops). When the
-        // current step's expected RNG is a strict prefix and the remainder
-        // begins exactly with the next step's first expected comparable call,
-        // defer that remainder to preserve C step attribution.
-        if (!hasMore) {
-            const splitAt = matchingJsPrefixLength(compact, step.rng || []);
-            if (splitAt >= 0 && splitAt < compact.length) {
-                const remainderRaw = raw.slice(splitAt);
-                const remainderCompact = compact.slice(splitAt);
-                const nextExpected = allSteps[stepIndex + 1]?.rng || [];
-                const remCalls = comparableCallParts(remainderCompact);
-                const nextCalls = comparableCallParts(nextExpected);
-                let prefixLen = 0;
-                while (prefixLen < remCalls.length
-                    && prefixLen < nextCalls.length
-                    && remCalls[prefixLen] === nextCalls[prefixLen]) {
-                    prefixLen++;
-                }
-                if (remCalls.length > 0 && prefixLen === remCalls.length) {
-                    replayBoundaryTrace(
-                        `plain-split-next step=${stepIndex + 1} splitAt=${splitAt} raw=${raw.length} ` +
-                        `rem=${remainderRaw.length} target=${stepIndex + 2}`
-                    );
-                    deferMoreBoundaryRng(remainderRaw, stepIndex + 1, stepIndex);
-                    raw = raw.slice(0, splitAt);
-                    compact = compact.slice(0, splitAt);
-                } else if (remCalls.length > 0) {
-                    // Sparse keylog captures can place the remainder on a
-                    // later step after one or more display-only frames, including
-                    // frames which carry only midlog wrappers.
-                    let targetIdx = stepIndex + 1;
-                    let firstNextExpected = null;
-                    while (targetIdx < allSteps.length) {
-                        const targetStep = allSteps[targetIdx];
-                        firstNextExpected = firstComparableEntry(targetStep?.rng || []);
-                        if (firstNextExpected) break;
-                        if (hasNoComparableRngEntries(targetStep?.rng || [])) {
-                            targetIdx++;
-                            continue;
-                        }
-                        break;
-                    }
-                    if (firstNextExpected
-                        && remCalls[0] === rngCallPart(firstNextExpected)) {
-                        replayBoundaryTrace(
-                            `plain-split-later step=${stepIndex + 1} splitAt=${splitAt} raw=${raw.length} ` +
-                            `rem=${remainderRaw.length} firstRem=${remCalls[0]} ` +
-                            `firstNext=${rngCallPart(firstNextExpected)} target=${targetIdx + 1}`
-                        );
-                        deferMoreBoundaryRng(remainderRaw, targetIdx, stepIndex);
-                        raw = raw.slice(0, splitAt);
-                        compact = compact.slice(0, splitAt);
-                    }
-                }
-            }
-        }
-        if (deferredMoreBoundarySource === stepIndex) {
-            forceCapturedMoreScreen = true;
-        }
-        // Compute the effective screen AFTER both More and non-More boundary
-        // checks are complete, so forceCapturedMoreScreen reflects the final
-        // value.  (Previously this ran before the non-More branch, so deferred
-        // animation-frame boundaries never used the C captured screen.)
-        const effectiveScreen = forceCapturedMoreScreen ? stepScreen : screen;
-        const normalizedScreen = Array.isArray(effectiveScreen)
-            ? effectiveScreen.map((line) => stripAnsiSequences(line))
+        const raw = stepLogRaw;
+        const compact = raw.map(toCompactRng);
+        // RNG comparison is now flat (post-hoc) — no per-step boundary
+        // normalization needed. Just record the raw RNG for this step's
+        // contribution to the flat stream.
+        const normalizedScreen = Array.isArray(screen)
+            ? screen.map((line) => stripAnsiSequences(line))
             : [];
-        const capturedMoreAnsi = forceCapturedMoreScreen ? getSessionScreenAnsiLines(step || {}) : null;
         const normalizedScreenAnsi = opts.captureScreens
-            ? (Array.isArray(capturedMoreAnsi) && capturedMoreAnsi.length > 0
-                ? capturedMoreAnsi
-                : (Array.isArray(screenAnsiOverride)
+            ? (Array.isArray(screenAnsiOverride)
                 ? screenAnsiOverride
                 : ((typeof game.display?.getScreenAnsiLines === 'function')
                     ? game.display.getScreenAnsiLines()
-                    : null)))
+                    : null))
             : null;
         stepResults.push({
             rngCalls: raw.length,
@@ -1205,11 +1061,9 @@ export async function replaySession(seed, session, opts = {}) {
             screen: normalizedScreen,
             screenAnsi: normalizedScreenAnsi,
         });
-        // Sync player stats from session screen data unless this step exported
-        // deferred RNG/state to a later frame. For deferred-source steps, keep
-        // runtime state so downstream deferred turns can observe prior effects
-        // (for example, projectile damage before regen checks).
-        if (deferredMoreBoundarySource !== stepIndex && stepScreen.length > 0) {
+        // Sync player stats from session screen data to keep game state
+        // aligned with the C trace during replay.
+        if (stepScreen && stepScreen.length > 0) {
             for (const line of stepScreen) {
                 const hpm = line.match(/HP:(\d+)\((\d+)\)/);
                 if (hpm) {
@@ -1276,38 +1130,8 @@ export async function replaySession(seed, session, opts = {}) {
             && prevStepSparseMove;
         game._replayForceEnterRun = forceReplayEnterRun;
 
-        // Some sparse keylog captures defer a movement turn's RNG to the next
-        // keypress (typically SPACE used as acknowledgement). Re-run the
-        // deferred move here and attribute its RNG to this captured step.
-        if (deferredSparseMoveKey
-            && !pendingCommand
-            && (step.key === ' ' || step.key === '\n' || step.key === '\r')
-            && stepFirstRng.includes('distfleeck(')) {
-            const moveCh = deferredSparseMoveKey.charCodeAt(0);
-            deferredSparseMoveKey = null;
-            const deferredResult = await rhack(moveCh, game);
-            if (deferredResult && deferredResult.tookTime) {
-                moveloop_core(game, { computeFov: true });
-            }
-            game.renderCurrentScreen();
-            if ((stepScreen[0] || '').trim() === '') {
-                game.display.clearRow(0);
-                game.display.topMessage = null;
-            }
-            if (typeof opts.onStep === 'function') {
-                opts.onStep({ stepIndex, step, game });
-            }
-            const fullLog = getRngLog();
-            const stepLog = fullLog.slice(prevCount);
-            pushStepResult(
-                stepLog,
-                opts.captureScreens ? game.display.getScreenLines() : undefined,
-                step,
-                stepScreen,
-                stepIndex
-            );
-            continue;
-        }
+        // (Deferred sparse move handling removed — flat RNG comparison
+        // doesn't require per-step RNG attribution.)
         if (pendingTransitionTurn) {
             const key = step.key || '';
             const isAcknowledge = key === ' ' || key === '\n' || key === '\r';
@@ -1366,52 +1190,7 @@ export async function replaySession(seed, session, opts = {}) {
             );
             continue;
         }
-        // When deferred "--More--" boundary RNG is targeted at this step,
-        // some logs use a raw space key solely as acknowledgement. Treat that
-        // as an ack-only frame to avoid injecting an extra command side-effect.
-        // Also handles non-space keys consumed by mid-monster-turn nhgetch()
-        // (e.g. a thrown-projectile animation in m_throw): when the deferred
-        // entries fully cover all of C's expected RNG for this step, the key
-        // was consumed by the animation, not by a player command.
-        if (!pendingCommand
-            && deferredMoreBoundaryRng.length > 0
-            && deferredMoreBoundaryTarget === stepIndex
-            && (step.action ? step.action.startsWith('key-') : !stepIsNavKey(step))) {
-            const stepExpectedCount = comparableCallParts(step.rng || []).length;
-            const deferredCount = comparableCallParts(
-                deferredMoreBoundaryRng.map(toCompactRng)
-            ).length;
-            const deferredCoversStep = step.key === ' '
-                || (stepExpectedCount > 0 && deferredCount >= stepExpectedCount);
-            if (deferredCoversStep) {
-                // If the step key is a movement key, execute the physical move
-                // without a new monster turn. The deferred RNG covers the monster
-                // turn for this step; the player's positional move (which generates
-                // no RNG in normal corridors) must still happen so the player's
-                // position matches C's reference state. This occurs when JS runs
-                // extra monster behaviour in one movemon call (e.g. a ranged attack
-                // after pets move) and the overflow entries are deferred here,
-                // covering the step's expected comparable count while leaving the
-                // player's movement un-executed.
-                if (stepIsNavKey(step) && step.key.length === 1) {
-                    const moveCh = step.key.charCodeAt(0);
-                    game.cmdKey = moveCh;
-                    game.commandCount = 0;
-                    game.multi = 0;
-                    await rhack(moveCh, game);
-                }
-                applyStepScreen();
-                pushStepResult(
-                    [],
-                    opts.captureScreens ? game.display.getScreenLines() : undefined,
-                    stepScreenAnsi.length > 0 ? stepScreenAnsi : null,
-                    step,
-                    stepScreen,
-                    stepIndex
-                );
-                continue;
-            }
-        }
+        // (Deferred boundary ack block removed — flat RNG comparison.)
         // Some captures store post-"--More--" continuation as a key-space frame
         // with authoritative non-empty topline plus RNG. Treat it as
         // continuation/ack, not a literal "unknown space command".
@@ -1482,81 +1261,7 @@ export async function replaySession(seed, session, opts = {}) {
             );
             continue;
         }
-        // Sparse keylog captures can insert display-only intermediary frames
-        // between a source step and deferred boundary target.
-        if (!pendingCommand
-            && deferredMoreBoundaryRng.length > 0
-            && deferredMoreBoundaryTarget != null
-            && stepIndex > (deferredMoreBoundarySource ?? -1)
-            && stepIndex < deferredMoreBoundaryTarget
-            && ((step.rng && step.rng.length) || 0) === 0) {
-            // C ref: when a sparse boundary defers RNG across multiple 0-RNG
-            // move steps, the player still physically moved on those steps.
-            // Execute the movement (but not the monster turn) so the player
-            // position stays aligned with C even though the monster-turn RNG
-            // is deferred to the target step.
-            const isSparseMove = (step.action?.startsWith('move-') || stepIsNavKey(step))
-                && typeof step.key === 'string'
-                && step.key.length === 1;
-            if (isSparseMove) {
-                const moveCh = step.key.charCodeAt(0);
-                game.cmdKey = moveCh;
-                game.commandCount = 0;
-                game.multi = 0;
-                // C ref: JS skips applyTimedTurn for intermediary steps, so
-                // monsters may be in positions that differ from C (which ran
-                // full monster turns). If a non-tame monster is blocking the
-                // player's target cell, relocate it to an adjacent free cell
-                // before calling rhack. In C the monster would have moved away
-                // during the skipped monster turns; combat here is never
-                // expected and would generate unexpected RNG.
-                if (game.player && game.map) {
-                    const dirCh = String.fromCharCode(moveCh);
-                    const dx = ({h:-1,l:1,k:0,j:0,y:-1,u:1,b:-1,n:1}[dirCh]||0);
-                    const dy = ({h:0,l:0,k:-1,j:1,y:-1,u:-1,b:1,n:1}[dirCh]||0);
-                    const tx = game.player.x + dx;
-                    const ty = game.player.y + dy;
-                    const blockingMon = game.map.monsterAt(tx, ty);
-                    if (blockingMon && !blockingMon.tame) {
-                        const adjDirs = [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,-1],[-1,1],[1,1]];
-                        for (const [adx, ady] of adjDirs) {
-                            const mx = blockingMon.mx + adx;
-                            const my = blockingMon.my + ady;
-                            if (mx === tx && my === ty) continue;
-                            if (mx === game.player.x && my === game.player.y) continue;
-                            const loc = game.map.at(mx, my);
-                            if (loc && ACCESSIBLE(loc.typ) && !game.map.monsterAt(mx, my)) {
-                                blockingMon.mx = mx;
-                                blockingMon.my = my;
-                                break;
-                            }
-                        }
-                    }
-                }
-                const movePromise = rhack(moveCh, game);
-                const moveSettled = await Promise.race([
-                    movePromise.then(v => ({ done: true, value: v })),
-                    new Promise(resolve => setTimeout(() => resolve({ done: false }), 1)),
-                ]);
-                if (!moveSettled.done) {
-                    // Movement didn't settle — treat this as a display-only step.
-                    pendingCommand = movePromise;
-                    pendingKind = null;
-                }
-                // Do NOT call applyTimedTurn — C shows 0 monster-turn RNG for
-                // these intermediate move steps.
-            }
-            applyStepScreen();
-            pushStepResult(
-                [],
-                opts.captureScreens ? game.display.getScreenLines() : undefined,
-                stepScreenAnsi.length > 0 ? stepScreenAnsi : null,
-                step,
-                stepScreen,
-                stepIndex
-            );
-            continue;
-        }
+        // (Sparse keylog intermediary frame handling removed — flat RNG comparison.)
         // C runmode-delay boundary: a sparse frame can carry only the
         // runmode_delay_output close marker while consuming no command turn.
         // Keep this frame display-only when it closes a prior open marker.
@@ -1671,112 +1376,12 @@ export async function replaySession(seed, session, opts = {}) {
             continue;
         }
 
-        // C ref: counted-command occupation pass-through — when a non-digit
-        // command step follows an accumulated count digit and there is deferred
-        // boundary RNG targeting a later step, the command key in C was consumed
-        // by runmode_delay_output mid-occupation (not by parse()). Skip command
-        // execution and emit an empty pass-through frame. The digit count is
-        // cleared so the next digit step re-accumulates cleanly.
-        if (!pendingCommand
-            && deferredMoreBoundaryRng.length > 0
-            && deferredMoreBoundaryTarget > stepIndex
-            && pendingCount > 0
-            && ((step.rng && step.rng.length) || 0) === 0
-            && typeof step.action === 'string'
-            && !step.action.startsWith('key-')
-            && !step.action.startsWith('move-')) {
-            applyStepScreen();
-            pendingCount = 0;
-            pushStepResult(
-                [],
-                opts.captureScreens ? game.display.getScreenLines() : undefined,
-                step,
-                stepScreen,
-                stepIndex
-            );
-            continue;
-        }
+        // (Counted-command occupation pass-through removed — flat RNG comparison.)
 
-        // C ref: moveloop_core — when a counted occupation is in progress,
-        // runmode_delay_output creates step boundaries by consuming buffered
-        // keys. The step key was consumed as a boundary marker, not as a
-        // game command.
-        // For 0-comp steps (pure buffer frames): emit an empty pass-through.
-        // For non-zero-comp steps: run occupation iters (and when occupation
-        // ends, eagerly execute subsequent 0-comp buffered steps as commands)
-        // until the expected comp count is covered.
+        // When occupation is active between steps, it was already drained by
+        // the prior command's execution. This step is a C-artifact boundary
+        // marker (runmode_delay_output). Record screen only.
         if (!pendingCommand && game.occupation) {
-            const stepCompCount = comparableCallParts(step.rng || []).length;
-            if (stepCompCount > 0) {
-                // Occupation-driven step: run iters and possibly start new
-                // commands from buffered steps until targetComp is reached.
-                let extraStepsConsumed = 0;
-                const consumedBufSteps = [];
-                let occLoopSafe = 0;
-                while (occLoopSafe++ < 200) {
-                    const ownComp = comparableCallParts(
-                        getRngLog().slice(prevCount).map(toCompactRng)
-                    ).length;
-                    if (ownComp >= stepCompCount) break;
-                    if (game.occupation) {
-                        const occ = game.occupation;
-                        const cont = occ.fn(game);
-                        if (!cont) game.occupation = null;
-                        moveloop_core(game, { computeFov: true });
-                    } else {
-                        // Occupation ended; look at next buffered step for a
-                        // new command to start (only 0-comp buffer frames).
-                        const nextBufIdx = stepIndex + 1 + extraStepsConsumed;
-                        const nextBufStep = allSteps[nextBufIdx];
-                        if (!nextBufStep || ((nextBufStep.rng && nextBufStep.rng.length) || 0) !== 0) break;
-                        extraStepsConsumed++;
-                        const nextCh = nextBufStep.key.charCodeAt(0);
-                        if (pendingCount > 0) {
-                            game.commandCount = pendingCount;
-                            game.multi = pendingCount;
-                            if (game.multi > 0) game.multi--;
-                            pendingCount = 0;
-                        } else {
-                            game.commandCount = 0;
-                            game.multi = 0;
-                        }
-                        game.cmdKey = nextCh;
-                        game.advanceRunTurn = async () => {
-                            moveloop_core(game, { computeFov: true });
-                        };
-                        await rhack(nextCh, game);
-                        game.advanceRunTurn = null;
-                        // Run one game turn (movemon + turnEnd) after the new command.
-                        // In C, moveloop_core runs movemon after every rhack.
-                        moveloop_core(game, { computeFov: true });
-                        // Record consumed buffer step (pass-throughs pushed after main result).
-                        consumedBufSteps.push({ bufStep: nextBufStep, bufIdx: nextBufIdx });
-                    }
-                }
-                // Push main result for this step first (correct comparison order).
-                const occupStepLog = getRngLog().slice(prevCount);
-                applyStepScreen();
-                pushStepResult(
-                    occupStepLog,
-                    opts.captureScreens ? game.display.getScreenLines() : undefined,
-                    step,
-                    stepScreen,
-                    stepIndex
-                );
-                // Then push pass-throughs for consumed buffer steps in order.
-                for (const { bufStep, bufIdx } of consumedBufSteps) {
-                    pushStepResult(
-                        [],
-                        opts.captureScreens ? game.display.getScreenLines() : undefined,
-                        bufStep,
-                        getSessionScreenLines(bufStep),
-                        bufIdx
-                    );
-                }
-                stepIndex += extraStepsConsumed;
-                continue;
-            }
-            // 0-comp: pure buffer frame, emit empty pass-through.
             applyStepScreen();
             pushStepResult(
                 [],
@@ -1803,82 +1408,7 @@ export async function replaySession(seed, session, opts = {}) {
             }
             game.renderCurrentScreen();
 
-            // C ref: counted-search boundary attribution — when deferred boundary
-            // RNG targets this digit step but doesn't fully cover C's expected,
-            // the remaining entries come from the *next* step's command. In C,
-            // this digit was consumed mid-execution by runmode_delay_output (not
-            // by parse()), so the subsequent command ran within the same step
-            // boundary. Eagerly execute that command so all entries land in this
-            // step's comparison window. Only ONE movemon turn is attributed here;
-            // the remaining occupation iterations continue in subsequent steps.
-            const digitStepExpected = comparableCallParts(step.rng || []).length;
-            const digitDeferredCount = deferredMoreBoundaryRng.length > 0
-                && deferredMoreBoundaryTarget === stepIndex
-                ? comparableCallParts(deferredMoreBoundaryRng.map(toCompactRng)).length
-                : 0;
-            const eagerNextStep = nextStep !== null
-                && digitStepExpected > 0
-                && digitDeferredCount > 0
-                && digitDeferredCount < digitStepExpected
-                && comparableCallParts(nextStep.rng || []).length === 0
-                && typeof nextStep.key === 'string'
-                && nextStep.key.length === 1
-                && !(nextStep.key >= '0' && nextStep.key <= '9');
-            if (eagerNextStep) {
-                const nextCh = nextStep.key.charCodeAt(0);
-                game.commandCount = pendingCount;
-                game.multi = pendingCount;
-                if (game.multi > 0) game.multi--;
-                game.cmdKey = nextCh;
-                pendingCount = 0;
-                game.advanceRunTurn = async () => {
-                    moveloop_core(game, { computeFov: true });
-                };
-                const eagerResult = await rhack(nextCh, game);
-                game.advanceRunTurn = null;
-                if (eagerResult && eagerResult.tookTime) {
-                    // Run the first movemon+turn-end for the new occupation, then
-                    // continue running occupation iterations until we have produced
-                    // enough comparable entries to cover this digit step's window.
-                    // C ref: moveloop_core — between two runmode_delay_output yields,
-                    // multiple occupation iterations may complete in one step.
-                    moveloop_core(game, { computeFov: true });
-                    const targetNewComp = digitStepExpected - digitDeferredCount;
-                    while (game.occupation) {
-                        const ownComp = comparableCallParts(getRngLog().slice(prevCount).map(toCompactRng)).length;
-                        if (ownComp >= targetNewComp) break;
-                        const occ = game.occupation;
-                        const cont = occ.fn(game);
-                        if (!cont) { game.occupation = null; }
-                        moveloop_core(game, { computeFov: true });
-                    }
-                }
-                const eagerStepLogRaw = getRngLog().slice(prevCount);
-                applyStepScreen();
-                pushStepResult(
-                    eagerStepLogRaw,
-                    opts.captureScreens ? game.display.getScreenLines() : undefined,
-                    step,
-                    stepScreen,
-                    stepIndex
-                );
-                // Push a pass-through for nextStep (key='s', 0 comp) since it
-                // was consumed eagerly and the comparison loop expects one
-                // result per session step to stay aligned.
-                stepIndex++;
-                const skippedNextStep = allSteps[stepIndex];
-                if (skippedNextStep) {
-                    pushStepResult(
-                        [],
-                        opts.captureScreens ? game.display.getScreenLines() : undefined,
-                        skippedNextStep,
-                        getSessionScreenLines(skippedNextStep),
-                        stepIndex
-                    );
-                }
-                continue;
-            }
-
+            // (Digit step eager execution removed — flat RNG comparison.)
             pushStepResult(
                 [],
                 opts.captureScreens ? game.display.getScreenLines() : undefined,
@@ -1933,52 +1463,15 @@ export async function replaySession(seed, session, opts = {}) {
             );
             continue;
         }
-        // Some sparse keylog sessions capture a display-only "Things that are
-        // here:" frame between movement keys, then consume time on a following
-        // space/ack step. Preserve that split so RNG stays on the captured step.
-        if (!pendingCommand
-            && ((step.rng && step.rng.length) || 0) === 0
-            && (step.action?.startsWith('move-') || stepIsNavKey(step))
-            && step.key.length === 1
-            && (stepScreen[0] || '').includes('Things that are here:')
-            && (allSteps[stepIndex + 1]?.key === ' ')
-            && (((allSteps[stepIndex + 1]?.rng || []).find((e) =>
-                typeof e === 'string' && !e.startsWith('>') && !e.startsWith('<')
-            ) || '').includes('distfleeck('))) {
-            // Preserve sparse keylog semantics: this captured frame is display-only
-            // while deferring the movement turn to the following ack step.
-            deferredSparseMoveKey = step.key;
-            game.display.setScreenLines(stepScreen);
-            if (typeof opts.onStep === 'function') {
-                opts.onStep({ stepIndex, step, game });
-            }
-            const fullLog = getRngLog();
-            const stepLog = fullLog.slice(prevCount);
-            pushStepResult(
-                stepLog,
-                opts.captureScreens ? stepScreen : undefined,
-                stepScreenAnsi.length > 0 ? stepScreenAnsi : null,
-                step,
-                stepScreen,
-                stepIndex
-            );
-            continue;
-        }
+        // (Sparse "Things that are here:" move deferral removed — flat RNG
+        // comparison doesn't require per-step RNG attribution.)
 
         const ch = step.key.charCodeAt(0);
         let result = null;
         let capturedScreenOverride = null;
         let capturedScreenAnsiOverride = null;
-        const isFinalRecordedStep = stepIndex === (allSteps.length - 1);
-        const finalStepComparableTarget = isFinalRecordedStep
-            ? comparableCallParts(step.rng || []).length
-            : 0;
-        const reachedFinalRecordedStepTarget = () => {
-            if (!isFinalRecordedStep) return false;
-            const raw = getRngLog().slice(prevCount).map(toCompactRng);
-            const comparable = comparableCallParts(raw).length;
-            return comparable >= finalStepComparableTarget;
-        };
+        // (reachedFinalRecordedStepTarget removed — flat RNG comparison
+        // doesn't need per-step RNG count matching.)
         const syncHpFromStepScreen = () => {
             if (stepScreen.length <= 0) return;
             for (const line of stepScreen) {
@@ -2444,18 +1937,6 @@ export async function replaySession(seed, session, opts = {}) {
         // C ref: dogmove.c:583 — On_stairs(u.ux, u.uy) needs hero's post-move pos.
         game.runPendingDeferredTimedTurn();
 
-        const stepExpectedRng = step.rng || [];
-        const nextExpectedRng = allSteps[stepIndex + 1]?.rng || [];
-        const deferPendingTurnBoundary = result
-            && result.tookTime
-            && hasStopOccupationBoundary(stepExpectedRng)
-            && !hasTurnBoundaryRng(stepExpectedRng)
-            && hasTurnBoundaryRng(nextExpectedRng);
-        if (deferPendingTurnBoundary) {
-            game.pendingDeferredTimedTurn = true;
-            result = { ...result, tookTime: false };
-        }
-
         // If the command took time, run monster movement and turn effects.
         // Running/rushing can pack multiple movement steps into one command.
         if (result && result.tookTime) {
@@ -2467,7 +1948,7 @@ export async function replaySession(seed, session, opts = {}) {
                     game.display.messageNeedsMore = false;
                 }
                 applyTimedTurn();
-                if (reachedFinalRecordedStepTarget()) break;
+
             }
             if (game.multi > 0 && typeof game.shouldInterruptMulti === 'function'
                 && game.shouldInterruptMulti()) {
@@ -2476,7 +1957,7 @@ export async function replaySession(seed, session, opts = {}) {
             // Run occupation continuation turns (multi-turn eating, etc.)
             // C ref: allmain.c moveloop_core() — occupation runs before next input
             while (game.occupation) {
-                if (reachedFinalRecordedStepTarget()) break;
+
                 const occ = game.occupation;
                 game.display.clearRow(0);
                 game.display.topMessage = null;
@@ -2493,7 +1974,7 @@ export async function replaySession(seed, session, opts = {}) {
                 if (finishedOcc && typeof finishedOcc.onFinishAfterTurn === 'function') {
                     finishedOcc.onFinishAfterTurn(game);
                 }
-                if (reachedFinalRecordedStepTarget()) break;
+
                 // Keep replay HP aligned to captured turn-state during multi-turn actions.
                 syncHpFromStepScreen();
             }
@@ -2508,7 +1989,7 @@ export async function replaySession(seed, session, opts = {}) {
                 game.multi = 0;
             }
             while (game.multi > 0) {
-                if (reachedFinalRecordedStepTarget()) break;
+
                 // C ref: allmain.c:519-526 lookaround() can clear multi before
                 // the next repeated command executes; this should not consume
                 // an additional turn when it interrupts.
@@ -2521,7 +2002,7 @@ export async function replaySession(seed, session, opts = {}) {
                 const repeated = await rhack(game.cmdKey, game);
                 if (!repeated || !repeated.tookTime) break;
                 applyTimedTurn();
-                if (reachedFinalRecordedStepTarget()) break;
+
                 syncHpFromStepScreen();
                 if (repeatedMoveCmd && repeated.moved === false) {
                     game.multi = 0;
