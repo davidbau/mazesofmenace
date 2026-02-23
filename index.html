@@ -235,6 +235,18 @@
             width: 1.2em;
         }
 
+        #hm-fullscreen {
+            display: flex;
+            align-items: center;
+        }
+
+        .hm-shortcut {
+            margin-left: auto;
+            padding-left: 0.8em;
+            font-size: 0.8em;
+            opacity: 0.55;
+        }
+
         #hamburger-menu .hm-item:hover:not(:disabled) {
             background: var(--color-accent);
             color: #fff;
@@ -828,7 +840,7 @@
                 <button class="hm-item" id="hm-del-bones"><span class="hm-check"></span>Delete bones</button>
                 <button class="hm-item" id="hm-reset-opts"><span class="hm-check"></span>Reset options</button>
                 <div class="hm-divider"></div>
-                <button class="hm-item" id="hm-fullscreen"><span class="hm-check"></span>Fullscreen</button>
+                <button class="hm-item" id="hm-fullscreen"><span class="hm-check"></span>Fullscreen<span class="hm-shortcut" id="hm-fullscreen-shortcut"></span></button>
                 <button class="hm-item" id="hm-darkmode"><span class="hm-check"></span>Dark mode</button>
                 <button class="hm-item" id="hm-keyref"><span class="hm-check"></span>Control help</button>
             </div>
@@ -1361,6 +1373,14 @@
             if (window._panelFns) window._panelFns.toggle();
             closeMenu();
         });
+
+        // Show platform-appropriate shortcut hint next to Fullscreen item
+        (function() {
+            var isMac = /Mac|iPhone|iPad|iPod/.test(navigator.platform ||
+                        navigator.userAgentData && navigator.userAgentData.platform || '');
+            document.getElementById('hm-fullscreen-shortcut').textContent =
+                isMac ? '\u2318\u23ce' : '^\u23ce';
+        })();
 
         document.getElementById('hm-fullscreen').addEventListener('click', function() {
             closeMenu();
