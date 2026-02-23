@@ -475,11 +475,16 @@ async function _drainOccupation(game, coreOpts, onTimedTurn) {
 
 // cf. allmain.c:621 [static] — regen_hp(wtcap): hit point regeneration
 // Ported from C's regen_hp() (allmain.c:623-681).
-// Simplified: no polymorph HP (u.mh), no eel-out-of-water, no encumbrance.
+// Simplified: no polymorph HP (u.mh), no eel-out-of-water.
 // U_CAN_REGEN: Regeneration intrinsic or Sleepy+asleep.
+// GAP: Missing encumbrance gate. C checks:
+//   encumbrance_ok = (wtcap < MOD_ENCUMBER || !u.umoved);
+//   if (u.uhp < u.uhpmax && (encumbrance_ok || U_CAN_REGEN())) ...
+// JS doesn't track wtcap or umoved, so we skip the gate.
+// This causes rn2(100) to be consumed when C would skip it in overencumbered+moved cases.
 function regen_hp(game) {
     const player = game.player;
-    // C ref: allmain.c:656 — non-polymorph branch
+    // C ref: allmain.c:656-660 — non-polymorph branch, encumbrance-gated
     if (player.hp < player.hpmax) {
         const con = player.attributes ? player.attributes[A_CON] : 10;
         // C ref: allmain.c:661 — heal = (ulevel + ACURR(A_CON)) > rn2(100)
