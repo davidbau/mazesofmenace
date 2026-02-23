@@ -324,6 +324,12 @@ export function mdrop_obj(mon, obj, map) {
     const idx = Array.isArray(mon.minvent) ? mon.minvent.indexOf(obj) : -1;
     if (idx >= 0) mon.minvent.splice(idx, 1);
     if (mon.weapon === obj) mon.weapon = null;
+    // C ref: extract_from_minvent → update_mon_extrinsics clears worn status.
+    // Must clear owornmask so dropped items aren't treated as worn by new owners.
+    if (obj.owornmask) {
+        mon.misc_worn_check &= ~obj.owornmask;
+        obj.owornmask = 0;
+    }
     obj.ox = mon.mx;
     obj.oy = mon.my;
     // C ref: steal.c:838-841 — place_object first (^place), then event_log (^drop)

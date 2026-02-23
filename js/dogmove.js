@@ -1028,10 +1028,16 @@ export function dog_move(mon, map, player, display, fov, after = false, game = n
                 appr = 1;
             } else {
                 // C ref: scan player inventory for DOGFOOD items
-                // C iterates gi.invent in linked-list order (sortpacked by class).
+                // C iterates gi.invent in linked-list order, maintained by
+                // reorder_invent() which sorts by inv_rank(o) = o->invlet ^ 040.
                 // Each dogfood() call consumes rn2(100) via obj_resists.
                 // Must iterate in same order as C to keep RNG aligned.
-                for (const invObj of player.inventory) {
+                const invItems = [...player.inventory].sort((a, b) => {
+                    const ra = ((a?.invlet || '').charCodeAt(0) ^ 32);
+                    const rb = ((b?.invlet || '').charCodeAt(0) ^ 32);
+                    return ra - rb;
+                });
+                for (const invObj of invItems) {
                     const invFood = dogfood(mon, invObj, turnCount);
                     if (invFood === DOGFOOD) {
                         appr = 1;
