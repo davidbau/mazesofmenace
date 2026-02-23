@@ -27,6 +27,7 @@ import { loadSave, deleteSave, hasSave, saveGame,
          listSavedData, clearAllData } from './storage.js';
 import { buildEntry, saveScore, loadScores, formatTopTenEntry, formatTopTenHeader } from './topten.js';
 import { startRecording } from './keylog.js';
+import { Promo } from './promo.js';
 import { setOutputContext } from './pline.js';
 import { init_nhwindows, create_nhwindow, destroy_nhwindow,
          start_menu, add_menu, end_menu, select_menu,
@@ -204,6 +205,8 @@ export async function showGameOver(game) {
     const ch = await nhgetch();
     if (String.fromCharCode(ch) === 'y') {
         game._runLifecycle('restart');
+    } else {
+        await new Promo().run(game.display, nhgetch, () => game._runLifecycle('restart'));
     }
 }
 
