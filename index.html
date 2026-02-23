@@ -1263,7 +1263,9 @@
             // Backdrop captures outside clicks to dismiss
             if (!menuBackdrop) {
                 menuBackdrop = document.createElement('div');
-                menuBackdrop.style.cssText = 'position:fixed;inset:0;z-index:99;';
+                // z-index:9 = below #controls (z-index:10, its own stacking context),
+                // so menu buttons are clickable; above regular content for outside-click capture
+                menuBackdrop.style.cssText = 'position:fixed;inset:0;z-index:9;';
                 menuBackdrop.addEventListener('mousedown', closeMenu);
                 document.body.appendChild(menuBackdrop);
             }
