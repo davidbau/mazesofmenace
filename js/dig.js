@@ -17,149 +17,1650 @@
 //   zap_dig(): wand-of-digging effects.
 //   bury_*/unearth_*: object/player burial mechanics.
 //   rot_organic/rot_corpse: timed decomposition of buried items.
-//
-// JS implementations: none — all digging logic is runtime gameplay.
 
-// cf. dig.c:47 [static] — mkcavepos(x, y, dist, waslit, rockit): cave position
-// Modifies terrain at location during ceiling collapse or cave creation.
-// TODO: dig.c:47 — mkcavepos(): cave position modification
+import {
+    COLNO, ROWNO, isok,
+    STONE, VWALL, HWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
+    CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL, DBWALL,
+    TREE, SDOOR, SCORR, POOL, MOAT, WATER,
+    DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, LAVAPOOL, LAVAWALL, IRONBARS,
+    DOOR, CORR, ROOM, STAIRS, LADDER, FOUNTAIN, THRONE, SINK, GRAVE, ALTAR,
+    ICE, AIR,
+    D_NODOOR, D_BROKEN, D_CLOSED, D_LOCKED, D_TRAPPED,
+    IS_WALL, IS_STWALL, IS_ROCK, IS_DOOR, IS_ROOM,
+    IS_OBSTRUCTED, IS_DRAWBRIDGE, IS_POOL, IS_LAVA,
+    IS_FURNITURE, ACCESSIBLE,
+    DB_NORTH, DB_SOUTH, DB_EAST, DB_WEST, DB_DIR,
+    DB_MOAT, DB_LAVA, DB_ICE, DB_UNDER,
+    BEAR_TRAP, LANDMINE, HOLE, TRAPDOOR, PIT, SPIKED_PIT,
+    SHOPBASE,
+} from './config.js';
+import { IS_TREE, IS_FOUNTAIN, IS_SINK, IS_GRAVE, IS_ALTAR, IS_THRONE } from './symbols.js';
+import { rn2, rnd, rn1 } from './rng.js';
+import { unblock_point, recalc_block_point } from './vision.js';
+import { newsym } from './monutil.js';
+import { mb_trapped } from './monmove.js';
+import { canseemon } from './mondata.js';
+import { mksobj } from './mkobj.js';
+import { placeFloorObject } from './floor_objects.js';
+import { makemon, mkclass } from './makemon.js';
+import {
+    BOULDER, ROCK, STATUE, HEAVY_IRON_BALL, CORPSE,
+    APPLE, ORANGE, PEAR, BANANA, EUCALYPTUS_LEAF,
+} from './objects.js';
+import { S_ZOMBIE, S_MUMMY } from './monsters.js';
+import {
+    is_pool, is_lava, is_pool_or_lava, is_moat, is_ice,
+    is_drawbridge_wall, find_drawbridge, destroy_drawbridge,
+} from './dbridge.js';
+import { deltrap } from './dungeon.js';
 
-// cf. dig.c:87 [static] — mkcavearea(rockit): create/collapse cave area
-// Creates or collapses a cave area around the player with visual/gameplay effects.
-// TODO: dig.c:87 — mkcavearea(): cave area modification
+// ============================================================================
+// Constants (cf. dig.c:19-27)
+// ============================================================================
 
-// cf. dig.c:140 [static] — pick_can_reach(pick, x, y): pickaxe reach check
-// Determines if a pickaxe can reach a target location.
-// TODO: dig.c:140 — pick_can_reach(): pickaxe reach check
+// Indices returned by dig_typ()
+export const DIGTYP_UNDIGGABLE = 0;
+export const DIGTYP_ROCK = 1;
+export const DIGTYP_STATUE = 2;
+export const DIGTYP_BOULDER = 3;
+export const DIGTYP_DOOR = 4;
+export const DIGTYP_TREE = 5;
+
+// ============================================================================
+// Helper functions (inline equivalents of C utility functions)
+// ============================================================================
+
+// C ref: closed_door(x, y) — location has a closed or locked door
+function closed_door(x, y, map) {
+    const loc = map.at(x, y);
+    if (!loc || !IS_DOOR(loc.typ)) return false;
+    return !!(loc.flags & (D_CLOSED | D_LOCKED));
+}
+
+// C ref: sobj_at(otyp, x, y) — is there an object of given type at (x,y)?
+function sobj_at(otyp, x, y, map) {
+    const objs = map.objectsAt ? map.objectsAt(x, y) : [];
+    return objs.find(o => o.otyp === otyp) || null;
+}
+
+// C ref: may_dig(x, y) — is digging allowed at this location?
+function may_dig(x, y, map) {
+    const loc = map.at(x, y);
+    if (!loc) return false;
+    return !loc.nondiggable;
+}
+
+// C ref: in_rooms(x, y, SHOPBASE) — is (x,y) inside a shop?
+// Simplified: check if the location's roomno indicates a shop.
+function in_rooms_shopbase(x, y, map) {
+    // Stub: shop damage tracking not yet wired
+    return false;
+}
+
+// C ref: in_town(x, y) — is (x,y) in a town?
+function in_town(x, y, map) {
+    return !!(map.flags && map.flags.has_town);
+}
+
+// C ref: mksobj_at(map, otyp, x, y, init, artif)
+// Create an object and place it on the floor.
+function mksobj_at(map, otyp, x, y, init, artif) {
+    const otmp = mksobj(otyp, init, artif);
+    if (otmp) {
+        otmp.ox = x;
+        otmp.oy = y;
+        placeFloorObject(map, otmp);
+    }
+    return otmp;
+}
+
+// C ref: rnd_treefruit_at(x, y) — random fruit from a tree
+// cf. mkobj.c:1975-1984 — ROLL_FROM(treefruits) => treefruits[rn2(5)]
+// RNG: rn2(5) for fruit selection, plus mksobj_at internals
+const treefruits = [APPLE, ORANGE, PEAR, BANANA, EUCALYPTUS_LEAF];
+function rnd_treefruit_at(map, x, y) {
+    const otyp = treefruits[rn2(treefruits.length)];
+    return mksobj_at(map, otyp, x, y, true, false);
+}
+
+// ============================================================================
+// dig_typ (cf. dig.c:168-192)
+// ============================================================================
 
 // cf. dig.c:168 — dig_typ(otmp, x, y): what can be dug at location
-// Returns the type of terrain/object that can be dug at location.
-// TODO: dig.c:168 — dig_typ(): diggable terrain type
+// When digging into location <x,y>, what are you actually digging into?
+// Pure predicate — no RNG consumption.
+export function dig_typ(otmp, x, y, map) {
+    if (!isok(x, y) || !otmp) return DIGTYP_UNDIGGABLE;
 
-// cf. dig.c:194 — is_digging(void): currently digging?
-// Returns TRUE if player is currently in a digging occupation.
-// TODO: dig.c:194 — is_digging(): dig occupation check
+    // C: is_pick(otmp) / is_axe(otmp)
+    const isPick = otmp.otyp === 880 || otmp.otyp === 881; // PICK_AXE, DWARVISH_MATTOCK
+    const isAxe = !!(otmp.oclass === 3 /* WEAPON_CLASS */ &&
+        otmp.otyp >= 362 && otmp.otyp <= 365); // axes range — simplified
+    // More robust: check by name or by object properties
+    // For now, treat the tool as a pick if it has the 'pick' property
+    // Fallback: if neither pick nor axe, undiggable
+    if (!isPick && !isAxe) return DIGTYP_UNDIGGABLE;
 
-// cf. dig.c:206 — dig_check(madeby, x, y): validate digging
-// Checks if digging is allowed at location; returns failure reason if not.
-// TODO: dig.c:206 — dig_check(): digging validation
+    const loc = map.at(x, y);
+    if (!loc) return DIGTYP_UNDIGGABLE;
+    const ltyp = loc.typ;
 
-// cf. dig.c:254 — digcheck_fail_message(digresult, madeby, x, y): dig fail message
-// Displays appropriate error message for failed dig attempt.
-// TODO: dig.c:254 — digcheck_fail_message(): digging failure message
+    if (isAxe) {
+        return closed_door(x, y, map) ? DIGTYP_DOOR
+            : IS_TREE(ltyp) ? DIGTYP_TREE
+            : DIGTYP_UNDIGGABLE;
+    }
 
-// cf. dig.c:299 [static] — dig(void): digging occupation callback
-// Gradually digs through terrain; accumulates effort per turn.
-// TODO: dig.c:299 — dig(): dig occupation callback
+    // assert(isPick)
+    if (sobj_at(STATUE, x, y, map)) return DIGTYP_STATUE;
+    if (sobj_at(BOULDER, x, y, map)) return DIGTYP_BOULDER;
+    if (closed_door(x, y, map)) return DIGTYP_DOOR;
+    if (IS_TREE(ltyp)) return DIGTYP_UNDIGGABLE; // pick vs tree
+    if (IS_OBSTRUCTED(ltyp)
+        && (!(map.flags && map.flags.arboreal) || IS_WALL(ltyp))) {
+        return DIGTYP_ROCK;
+    }
+    return DIGTYP_UNDIGGABLE;
+}
 
-// cf. dig.c:570 [static] — furniture_handled(x, y, madeby_u): furniture destruction
-// Processes terrain furniture destruction (fountains, sinks, drawbridges) when digging.
-// TODO: dig.c:570 — furniture_handled(): furniture dig effects
 
-// cf. dig.c:596 — holetime(void): estimate dig time remaining
-// Returns estimate of turns needed to complete current hole.
-// TODO: dig.c:596 — holetime(): dig time estimate
+// ============================================================================
+// mdig_tunnel (cf. dig.c:1413-1497)
+// Return TRUE if monster died, FALSE otherwise. Called from m_move().
+// ============================================================================
 
-// cf. dig.c:639 — digactualhole(x, y, madeby, ttyp): create pit/hole trap
-// Creates a pit or hole trap at given location with messaging.
-// TODO: dig.c:639 — digactualhole(): hole/pit creation
+// cf. dig.c:1413 — mdig_tunnel(mtmp)
+// Monster digs a tunnel through terrain.
+// RNG: rnd(12) always consumed at entry.
+// Additional RNG: rn2(3) for draft, rn2(5) for wall sound.
+export function mdig_tunnel(mtmp, map, player) {
+    const here = map.at(mtmp.mx, mtmp.my);
+    if (!here) return false;
 
-// cf. dig.c:837 — liquid_flow(x, y, typ, ttmp, fillmsg): liquid flooding
-// Handles liquid flooding when a pit is created near water or lava.
-// TODO: dig.c:837 — liquid_flow(): liquid flow into pit
+    const pile = rnd(12); // C: int pile = rnd(12);
 
-// cf. dig.c:884 — dighole(pit_only, by_magic, cc): dig a hole
+    // C: cvt_sdoor_to_door — convert secret door to door
+    if (here.typ === SDOOR) {
+        here.typ = DOOR;
+        // doormask is preserved (kept in here.flags)
+    }
+
+    // Eats away door if present & closed or locked
+    if (closed_door(mtmp.mx, mtmp.my, map)) {
+        // C: if (*in_rooms(mtmp->mx, mtmp->my, SHOPBASE)) add_damage(...)
+        // Shop damage tracking not yet wired
+
+        const sawit = canseemon(mtmp, player);
+        const trapped = !!(here.flags & D_TRAPPED);
+        here.flags = trapped ? D_NODOOR : D_BROKEN;
+        recalc_block_point(mtmp.mx, mtmp.my);
+        newsym(map, mtmp.mx, mtmp.my);
+
+        if (trapped) {
+            const seeit = canseemon(mtmp, player);
+            if (mb_trapped(mtmp, map, player)) { // mtmp is killed
+                newsym(map, mtmp.mx, mtmp.my);
+                return true;
+            }
+        } else {
+            // C: if (flags.verbose) { if (!Unaware && !rn2(3)) draft_message(TRUE); }
+            if (!rn2(3)) {
+                // draft_message(true) — "You feel an unexpected draft."
+                // Message only, no further RNG
+            }
+        }
+        return false;
+    } else if (here.typ === SCORR) {
+        here.typ = CORR;
+        here.flags = 0;
+        unblock_point(mtmp.mx, mtmp.my);
+        newsym(map, mtmp.mx, mtmp.my);
+        // draft_message(false) — "You feel a draft."
+        // C: draft_message consumes rn1(2, ...) + possibly rn1(3, ...) if hallucinating
+        // Since we can't detect hallucination state here, and this is a message-only
+        // path, we skip the draft_message RNG. This is safe because draft_message
+        // is only called for non-hallucinating players in the common case.
+        return false;
+    } else if (!IS_OBSTRUCTED(here.typ) && !IS_TREE(here.typ)) {
+        // No dig — nothing to tunnel through
+        return false;
+    }
+
+    // Only rock, trees, and walls fall through to this point.
+    if (here.nondiggable) {
+        // C: impossible("mdig_tunnel: ... is undiggable")
+        return false; // still alive
+    }
+
+    if (IS_WALL(here.typ)) {
+        // C: if (flags.verbose && !rn2(5)) You_hear("crashing rock.");
+        if (!rn2(5)) {
+            // "You hear crashing rock." — message only
+        }
+        // C: if (*in_rooms(..., SHOPBASE)) add_damage(...)
+        // Shop damage not yet wired
+
+        if (map.flags.is_maze_lev) {
+            here.typ = ROOM;
+            here.flags = 0;
+        } else if (map.flags.is_cavernous_lev && !in_town(mtmp.mx, mtmp.my, map)) {
+            here.typ = CORR;
+            here.flags = 0;
+        } else {
+            here.typ = DOOR;
+            here.flags = D_NODOOR;
+        }
+    } else if (IS_TREE(here.typ)) {
+        here.typ = ROOM;
+        here.flags = 0;
+        if (pile && pile < 5) {
+            rnd_treefruit_at(map, mtmp.mx, mtmp.my);
+        }
+    } else {
+        // Stone/SCORR — create corridor, maybe drop rock/boulder
+        here.typ = CORR;
+        here.flags = 0;
+        if (pile && pile < 5) {
+            mksobj_at(map, (pile === 1) ? BOULDER : ROCK,
+                      mtmp.mx, mtmp.my, true, false);
+        }
+    }
+
+    newsym(map, mtmp.mx, mtmp.my);
+    if (!sobj_at(BOULDER, mtmp.mx, mtmp.my, map)) {
+        unblock_point(mtmp.mx, mtmp.my); // vision
+    }
+
+    return false;
+}
+
+
+// ============================================================================
+// fillholetyp (cf. dig.c:606-637)
+// Return typ of liquid to fill a hole with, or ROOM if no liquid nearby.
+// RNG: consumes rn2() calls for each liquid type present.
+// ============================================================================
+
+export function fillholetyp(x, y, fill_if_any, map) {
+    const lo_x = Math.max(1, x - 1);
+    const hi_x = Math.min(x + 1, COLNO - 1);
+    const lo_y = Math.max(0, y - 1);
+    const hi_y = Math.min(y + 1, ROWNO - 1);
+    let pool_cnt = 0, moat_cnt = 0, lava_cnt = 0;
+
+    for (let x1 = lo_x; x1 <= hi_x; x1++) {
+        for (let y1 = lo_y; y1 <= hi_y; y1++) {
+            if (is_moat(x1, y1, map))
+                moat_cnt++;
+            else if (is_pool(x1, y1, map))
+                pool_cnt++;
+            else if (is_lava(x1, y1, map))
+                lava_cnt++;
+        }
+    }
+
+    if (!fill_if_any)
+        pool_cnt = Math.floor(pool_cnt / 3);
+
+    if ((lava_cnt > moat_cnt + pool_cnt && rn2(lava_cnt + 1))
+        || (lava_cnt && fill_if_any))
+        return LAVAPOOL;
+    else if ((moat_cnt > 0 && rn2(moat_cnt + 1)) || (moat_cnt && fill_if_any))
+        return MOAT;
+    else if ((pool_cnt > 0 && rn2(pool_cnt + 1)) || (pool_cnt && fill_if_any))
+        return POOL;
+    else
+        return ROOM;
+}
+
+
+// ============================================================================
+// furniture_handled (cf. dig.c:570-592)
+// Processes terrain furniture destruction when digging.
+// ============================================================================
+
+function furniture_handled(x, y, madeby_u, map) {
+    const lev = map.at(x, y);
+    if (!lev) return false;
+
+    if (IS_FOUNTAIN(lev.typ)) {
+        // C: dogushforth(FALSE); SET_FOUNTAIN_WARNED; dryup(x,y,madeby_u);
+        // Fountain effects not yet wired
+        lev.typ = ROOM;
+        lev.flags = 0;
+        newsym(map, x, y);
+    } else if (IS_SINK(lev.typ)) {
+        // C: breaksink(x, y);
+        lev.typ = ROOM;
+        lev.flags = 0;
+        newsym(map, x, y);
+    } else if (lev.typ === DRAWBRIDGE_DOWN
+               || (is_drawbridge_wall(x, y, map) >= 0)) {
+        let bx = x, by = y;
+        const result = find_drawbridge(bx, by, map);
+        bx = result.x;
+        by = result.y;
+        destroy_drawbridge(bx, by, map);
+    } else {
+        return false;
+    }
+    return true;
+}
+
+
+// ============================================================================
+// digactualhole (cf. dig.c:639-829)
+// Creates a pit or hole trap at given location.
+// ============================================================================
+
+export function digactualhole(x, y, madeby, ttyp, map, player) {
+    const madeby_u = (madeby === 'BY_YOU');
+    const madeby_obj = (madeby === 'BY_OBJECT');
+    const heros_fault = (madeby_u || madeby_obj);
+    const lev = map.at(x, y);
+    if (!lev) return;
+
+    // C: furniture_handled
+    if (furniture_handled(x, y, madeby_u, map))
+        return;
+
+    // C: maketrap(x, y, ttyp)
+    // Simplified trap creation — add trap to map
+    const ttmp = {
+        ttyp: ttyp,
+        tx: x,
+        ty: y,
+        tseen: false,
+        madeby_u: heros_fault,
+        conjoined: 0,
+        launched: 0,
+    };
+    // Remove any existing trap at this location
+    const existingIdx = map.traps.findIndex(t => t.tx === x && t.ty === y);
+    if (existingIdx >= 0) map.traps.splice(existingIdx, 1);
+    map.traps.push(ttmp);
+
+    newsym(map, x, y);
+
+    // C: PIT handling — if at_u and !wont_fall, set_utrap
+    if (ttyp === PIT || ttyp === SPIKED_PIT) {
+        // Pit effects (trapping, falling) handled by caller/traphandler
+        // C: rn1(4, 2) for utrap duration — consumed if player falls in
+        // We don't consume this here; it's part of set_utrap which is UI-side
+    }
+    // HOLE/TRAPDOOR: falling through handled by caller
+}
+
+
+// ============================================================================
+// liquid_flow (cf. dig.c:837-879)
+// Handle liquid flooding when a pit is created near water/lava.
+// ============================================================================
+
+export function liquid_flow(x, y, typ, ttmp, fillmsg, map) {
+    // C: caller should have changed levl[x][y].typ to POOL, MOAT, or LAVA
+    if (!is_pool_or_lava(x, y, map)) return;
+
+    if (ttmp) {
+        deltrap(map, ttmp);
+    }
+    // C: unearth_objs(x, y) — unearthing not yet wired
+    // C: obj_ice_effects(x, y, TRUE) — not yet wired
+    // C: fillmsg display — message only
+    newsym(map, x, y);
+}
+
+
+// ============================================================================
+// dighole (cf. dig.c:884-1024)
 // Main hole-creation function; creates hole, pit, or trapdoor.
-// TODO: dig.c:884 — dighole(): hole/pit/trapdoor creation
+// Returns TRUE if digging succeeded, FALSE otherwise.
+// ============================================================================
 
-// cf. dig.c:1026 [static] — dig_up_grave(cc): excavate grave
-// Digs up a grave and unearths objects buried within.
-// TODO: dig.c:1026 — dig_up_grave(): grave excavation
+export function dighole(pit_only, by_magic, cc, map, player) {
+    let dig_x, dig_y;
+    if (!cc) {
+        dig_x = player.x;
+        dig_y = player.y;
+    } else {
+        dig_x = cc.x;
+        dig_y = cc.y;
+        if (!isok(dig_x, dig_y)) return false;
+    }
 
-// cf. dig.c:1091 — use_pick_axe(obj): start digging occupation
-// Initiates the digging occupation when using a pick-axe.
-// TODO: dig.c:1091 — use_pick_axe(): pick-axe use
+    const ttmp = map.trapAt ? map.trapAt(dig_x, dig_y) : null;
+    const lev = map.at(dig_x, dig_y);
+    if (!lev) return false;
+    const old_typ = lev.typ;
+    let retval = false;
 
-// cf. dig.c:1161 — use_pick_axe2(obj): continue pick-axe use
-// Continues or repeats pick-axe usage after initial action.
-// TODO: dig.c:1161 — use_pick_axe2(): pick-axe continuation
+    // C: dig_check(BY_YOU, dig_x, dig_y) — simplified
+    // nohole = can't dig down on this level
+    const nohole = false; // TODO: Can_dig_down check
 
-// cf. dig.c:1361 [static] — watchman_canseeu(mtmp): watchman visibility
-// Checks if a watchman monster can see the player.
-// TODO: dig.c:1361 — watchman_canseeu(): watchman LOS check
+    if (is_pool_or_lava(dig_x, dig_y, map)) {
+        // C: "The water/lava sloshes furiously..."
+        // Message only, no RNG
+        return false;
 
-// cf. dig.c:1376 — watch_dig(mtmp, x, y, zap): watchman dig reaction
-// Handles watchman monster reactions when player digs nearby.
-// TODO: dig.c:1376 — watch_dig(): watchman dig warning
+    } else if (old_typ === DRAWBRIDGE_DOWN
+               || (is_drawbridge_wall(dig_x, dig_y, map) >= 0)) {
+        if (pit_only) {
+            // "The drawbridge seems too hard to dig through."
+        } else {
+            const result = find_drawbridge(dig_x, dig_y, map);
+            destroy_drawbridge(result.x, result.y, map);
+            retval = true;
+        }
 
-// cf. dig.c:1413 — mdig_tunnel(mtmp): monster digging
-// Allows a monster to dig a tunnel through terrain.
-// TODO: dig.c:1413 — mdig_tunnel(): monster tunneling
+    } else if (sobj_at(BOULDER, dig_x, dig_y, map)) {
+        if (ttmp && (ttmp.ttyp === PIT || ttmp.ttyp === SPIKED_PIT)
+            && rn2(2)) {
+            // "The boulder settles into the pit."
+            ttmp.ttyp = PIT; // crush spikes
+        } else {
+            // "KADOOM! The boulder falls in!"
+            if (ttmp) deltrap(map, ttmp);
+        }
+        // C: delobj(boulder_here) — remove boulder
+        const boulder = sobj_at(BOULDER, dig_x, dig_y, map);
+        if (boulder) {
+            const idx = map.objects.indexOf(boulder);
+            if (idx >= 0) map.objects.splice(idx, 1);
+        }
 
-// cf. dig.c:1503 — draft_message(unexpected): draft/wind message
-// Displays message about draft or wind from digging activities.
-// TODO: dig.c:1503 — draft_message(): dig draft message
+    } else if (IS_GRAVE(old_typ)) {
+        digactualhole(dig_x, dig_y, 'BY_YOU', PIT, map, player);
+        dig_up_grave(cc, map, player);
+        retval = true;
 
-// cf. dig.c:1547 — zap_dig(void): wand of digging effect
-// Processes digging when a wand of digging is used; creates holes by magic.
-// TODO: dig.c:1547 — zap_dig(): wand digging
+    } else if (old_typ === DRAWBRIDGE_UP) {
+        const typ = fillholetyp(dig_x, dig_y, false, map);
+        if (typ === ROOM) {
+            // "The surface here is too hard to dig in."
+        } else {
+            lev.drawbridgemask &= ~DB_UNDER;
+            lev.drawbridgemask |= (typ === LAVAPOOL) ? DB_LAVA : DB_MOAT;
+            liquid_flow(dig_x, dig_y, typ, ttmp,
+                        "As you dig, the hole fills with %s!", map);
+            retval = true;
+        }
 
-// cf. dig.c:1762 [static] — adj_pit_checks(cc, msg): pit adjacency validation
-// Validates and processes digging into pits with error messages.
-// TODO: dig.c:1762 — adj_pit_checks(): pit adjacency check
+    } else if (IS_THRONE(old_typ)) {
+        // "The throne is too hard to break apart."
 
-// cf. dig.c:1843 [static] — pit_flow(trap, filltyp): liquid into pit
-// Handles liquid flowing into a pit when digging creates contact.
-// TODO: dig.c:1843 — pit_flow(): pit liquid filling
+    } else if (IS_ALTAR(old_typ)) {
+        // "The altar is too hard to break apart."
 
-// cf. dig.c:1884 — buried_ball(cc): retrieve buried ball
-// Retrieves a buried iron ball or other buried object.
-// TODO: dig.c:1884 — buried_ball(): buried ball retrieval
+    } else {
+        const typ = fillholetyp(dig_x, dig_y, false, map);
+        lev.flags = 0;
 
-// cf. dig.c:1934 — buried_ball_to_punishment(void): move ball to punishment level
-// Moves a buried ball to the punishment dungeon level.
-// TODO: dig.c:1934 — buried_ball_to_punishment(): punishment ball relocation
+        if (typ !== ROOM) {
+            if (!furniture_handled(dig_x, dig_y, true, map)) {
+                lev.typ = typ;
+                liquid_flow(dig_x, dig_y, typ, ttmp,
+                            "As you dig, the hole fills with %s!", map);
+            }
+            retval = true;
+        } else {
+            // C: magical digging disarms settable traps
+            if (by_magic && ttmp
+                && (ttmp.ttyp === LANDMINE || ttmp.ttyp === BEAR_TRAP)) {
+                // C: cnv_trap_obj — not yet wired
+                deltrap(map, ttmp);
+            }
 
-// cf. dig.c:1957 — buried_ball_to_freedom(void): free punishment ball
-// Removes a buried ball, freeing the player from punishment.
-// TODO: dig.c:1957 — buried_ball_to_freedom(): punishment ball removal
+            // Finally make a hole
+            if (nohole || pit_only) {
+                digactualhole(dig_x, dig_y, 'BY_YOU', PIT, map, player);
+            } else {
+                digactualhole(dig_x, dig_y, 'BY_YOU', HOLE, map, player);
+            }
+            retval = true;
+        }
+    }
 
-// cf. dig.c:1983 — bury_an_obj(otmp, dealloced): bury an object
-// Buries an object underground, removing it from visibility.
-// TODO: dig.c:1983 — bury_an_obj(): single object burial
+    newsym(map, dig_x, dig_y);
+    return retval;
+}
 
-// cf. dig.c:2049 — bury_objs(x, y): bury all objects at location
-// Buries all objects at given location when a grave is dug.
-// TODO: dig.c:2049 — bury_objs(): location object burial
 
-// cf. dig.c:2085 — unearth_objs(x, y): unearth objects at location
-// Retrieves all buried objects from given location.
-// TODO: dig.c:2085 — unearth_objs(): object unearthing
+// ============================================================================
+// dig_up_grave (cf. dig.c:1026-1089)
+// Digs up a grave and unearths objects/monsters.
+// RNG: rn2(5) for what_happens (corpse, zombie, mummy, or empty).
+//      mkclass() calls also consume RNG.
+// ============================================================================
 
-// cf. dig.c:2124 — rot_organic(arg, timeout): organic decay timer
-// Timer callback for organic material decomposition while buried.
-// TODO: dig.c:2124 — rot_organic(): organic decay timer
+export function dig_up_grave(cc, map, player) {
+    let dig_x, dig_y;
+    if (!cc) {
+        dig_x = player.x;
+        dig_y = player.y;
+    } else {
+        dig_x = cc.x;
+        dig_y = cc.y;
+        if (!isok(dig_x, dig_y)) return;
+    }
 
-// cf. dig.c:2145 — rot_corpse(arg, timeout): corpse decomposition timer
-// Timer callback for corpse decomposition while buried.
-// TODO: dig.c:2145 — rot_corpse(): corpse decay timer
+    const lev = map.at(dig_x, dig_y);
+    if (!lev) return;
 
-// cf. dig.c:2192 — bury_monst(mtmp): bury a monster
-// Buries a monster underground.
-// TODO: dig.c:2192 — bury_monst(): monster burial
+    // C: exercise(A_WIS, FALSE) — wisdom exercise
+    // C: alignment adjustments for Archeologist, Samurai, Lawful
+    // These are player-state effects, stubbed for now
 
-// cf. dig.c:2211 — bury_you(void): bury the player
-// Buries the player underground with dungeon transitions.
-// TODO: dig.c:2211 — bury_you(): player burial
+    // C: what_happens = levl[dig_x][dig_y].emptygrave ? -1 : rn2(5)
+    // JS: we don't track emptygrave flag yet, so always rn2(5)
+    const what_happens = rn2(5);
 
-// cf. dig.c:2229 — unearth_you(void): unearth the player
-// Removes player from buried state and returns to dungeon.
-// TODO: dig.c:2229 — unearth_you(): player unearthing
+    switch (what_happens) {
+    case 0:
+    case 1:
+        // "You unearth a corpse."
+        // C: mk_tt_object(CORPSE, dig_x, dig_y) — creates tombstone corpse
+        // Object creation not fully wired
+        break;
+    case 2:
+        // "The grave's owner is very upset!" — zombie
+        // C: makemon(mkclass(S_ZOMBIE, 0), dig_x, dig_y, MM_NOMSG)
+        {
+            const zmndx = mkclass(S_ZOMBIE, 0);
+            if (zmndx >= 0) {
+                makemon(zmndx, dig_x, dig_y, 0x04 /* MM_NOMSG */, undefined, map);
+            }
+        }
+        break;
+    case 3:
+        // "You've disturbed a tomb!" — mummy
+        // C: makemon(mkclass(S_MUMMY, 0), dig_x, dig_y, MM_NOMSG)
+        {
+            const mmndx = mkclass(S_MUMMY, 0);
+            if (mmndx >= 0) {
+                makemon(mmndx, dig_x, dig_y, 0x04 /* MM_NOMSG */, undefined, map);
+            }
+        }
+        break;
+    default:
+        // "The grave is unoccupied. Strange..."
+        break;
+    }
 
-// cf. dig.c:2240 — escape_tomb(void): escape from tomb/burial
-// Allows player to escape from a tomb or burial location.
-// TODO: dig.c:2240 — escape_tomb(): tomb escape
+    lev.typ = ROOM;
+    lev.flags = 0;
+    lev.horizontal = false; // C: levl[dig_x][dig_y].disturbed = 0 (alias for horizontal)
+    // C: del_engr_at(dig_x, dig_y) — remove engravings
+    newsym(map, dig_x, dig_y);
+}
 
-// cf. dig.c:2287 — wiz_debug_cmd_bury(void): wizard burial toggle
-// Wizard mode command to toggle burial state for debugging.
-// TODO: dig.c:2287 — wiz_debug_cmd_bury(): wizard burial debug
+
+// ============================================================================
+// draft_message (cf. dig.c:1503-1543)
+// Display message about draft from digging activities.
+// RNG: when !unexpected && hallucinating: rn1(2, ...) + possibly rn1(3, ...)
+// Since hallucination detection requires player state, this is a light stub.
+// ============================================================================
+
+export function draft_message(unexpected) {
+    // Message display only — no gameplay effect
+    // RNG consumption for hallucination paths is deferred
+}
+
+
+// ============================================================================
+// watch_dig (cf. dig.c:1376-1410)
+// Town watchmen frown on damage to town walls, trees, or fountains.
+// ============================================================================
+
+export function watch_dig(mtmp, x, y, zap, map) {
+    // Stub: watchman AI not yet wired
+    // No RNG consumed in this function
+}
+
+
+// ============================================================================
+// zap_dig (cf. dig.c:1547-1754)
+// Wand of digging effect — digging via wand zap or spell cast.
+// RNG: rn1(18, 8) for digdepth; rnd(2) or rnd(6) for head damage;
+//      various rn2() calls in the loop.
+// ============================================================================
+
+export function zap_dig(map, player) {
+    if (!map || !player) return;
+
+    const u = player;
+
+    // C: if (u.uswallow) { ... } — swallowed handling
+    if (u.uswallow) {
+        // C: pierce stomach wall, expels monster
+        // Swallow handling not yet wired
+        return;
+    }
+
+    // C: if (u.dz) { ... } — up/down digging
+    if (u.dz) {
+        if (u.dz < 0) {
+            // Dig upward — rock falls on head
+            // C: rnd(hard_helmet(uarmh) ? 2 : 6) — always consumed
+            const dmg = rnd(6); // simplified: assume no hard helmet
+            // C: mksobj_at(ROCK, u.ux, u.uy, FALSE, FALSE)
+            mksobj_at(map, ROCK, u.x, u.y, false, false);
+            newsym(map, u.x, u.y);
+        } else {
+            // Dig downward
+            watch_dig(null, u.x, u.y, true, map);
+            dighole(false, true, null, map, player);
+        }
+        return;
+    }
+
+    // Normal case: digging across the level
+    const maze_dig = !!(map.flags && map.flags.is_maze_lev);
+    let zx = u.x + (u.dx || 0);
+    let zy = u.y + (u.dy || 0);
+    let shopdoor = false, shopwall = false;
+
+    // C: pitdig handling when in a pit — simplified/skipped for now
+    let digdepth = rn1(18, 8); // C: digdepth = rn1(18, 8)
+
+    // C: tmp_at(DISP_BEAM, ...) — beam display
+    while (--digdepth >= 0) {
+        if (!isok(zx, zy)) break;
+        const room = map.at(zx, zy);
+        if (!room) break;
+
+        // C: tmp_at(zx, zy); nh_delay_output(); — display beam
+
+        if (closed_door(zx, zy, map) || room.typ === SDOOR) {
+            // C: shop damage
+            if (room.typ === SDOOR) {
+                room.typ = DOOR;
+            }
+            watch_dig(null, zx, zy, true, map);
+            room.flags = D_NODOOR;
+            recalc_block_point(zx, zy);
+            digdepth -= 2;
+            if (maze_dig) break;
+        } else if (maze_dig) {
+            if (IS_WALL(room.typ)) {
+                if (!room.nondiggable) {
+                    room.typ = ROOM;
+                    room.flags = 0;
+                    unblock_point(zx, zy);
+                }
+                break;
+            } else if (IS_TREE(room.typ)) {
+                if (!room.nondiggable) {
+                    room.typ = ROOM;
+                    room.flags = 0;
+                    unblock_point(zx, zy);
+                }
+                break;
+            } else if (room.typ === STONE || room.typ === SCORR) {
+                if (!room.nondiggable) {
+                    room.typ = CORR;
+                    room.flags = 0;
+                    unblock_point(zx, zy);
+                }
+                break;
+            }
+        } else if (IS_OBSTRUCTED(room.typ)) {
+            if (!may_dig(zx, zy, map)) break;
+
+            if (IS_WALL(room.typ) || room.typ === SDOOR) {
+                watch_dig(null, zx, zy, true, map);
+                if (map.flags && map.flags.is_cavernous_lev && !in_town(zx, zy, map)) {
+                    room.typ = CORR;
+                    room.flags = 0;
+                } else {
+                    room.typ = DOOR;
+                    room.flags = D_NODOOR;
+                }
+                digdepth -= 2;
+            } else if (IS_TREE(room.typ)) {
+                room.typ = ROOM;
+                room.flags = 0;
+                digdepth -= 2;
+            } else {
+                // IS_OBSTRUCTED but not wall/sdoor/tree — stone
+                room.typ = CORR;
+                room.flags = 0;
+                digdepth--;
+            }
+            unblock_point(zx, zy);
+        }
+
+        newsym(map, zx, zy);
+        zx += (u.dx || 0);
+        zy += (u.dy || 0);
+    }
+
+    // C: tmp_at(DISP_END, 0) — close beam display
+    // C: shopdoor/shopwall pay_for_damage — not yet wired
+}
+
+
+// ============================================================================
+// holeable_floor (utility predicate)
+// cf. not a direct C function, but used in multiple places
+// ============================================================================
+
+export function holeable_floor(x, y, map) {
+    const loc = map.at(x, y);
+    if (!loc) return false;
+    const typ = loc.typ;
+    return IS_ROOM(typ) || typ === CORR || IS_FURNITURE(typ);
+}
+
+
+// ============================================================================
+// use_pick_axe / use_axe — player pick-axe use
+// cf. dig.c:1091 / dig.c:1161
+// Light stubs — these are player-input-driven functions.
+// ============================================================================
+
+// cf. dig.c:1091-1156 — use_pick_axe(obj)
+// Start digging occupation. In C, this prompts the user for a direction,
+// then calls use_pick_axe2(). In JS, the direction is expected to have
+// already been set on player.dx, player.dy, player.dz.
+// RNG: none directly (direction is player input)
+export function use_pick_axe(obj, map, player) {
+    if (!obj || !player) return 0;
+
+    const isPick = (obj.otyp === 257 || obj.otyp === 71); // PICK_AXE, DWARVISH_MATTOCK
+    const verb = isPick ? 'dig' : 'chop';
+
+    // Check: wielded?
+    if (player.uwep !== obj) {
+        // Would need to wield first — not yet wired
+        return 0;
+    }
+
+    // Check: entangled in web?
+    if (player.utrap && player.utraptype === 6) { // TT_WEB
+        // "Unfortunately, you can't dig while entangled in a web."
+        return 0;
+    }
+
+    // Direction should already be set on player; call use_pick_axe2
+    return use_pick_axe2(obj, map, player);
+}
+
+// cf. dig.c:1161-1359 — use_pick_axe2(obj)
+// Uses existing player.dx, player.dy, player.dz to begin digging.
+// RNG: rnd(2) for self-hit damage, rn2(3) for axe-boulder vibrate,
+//      d(2,2) for web entangle
+export function use_pick_axe2(obj, map, player) {
+    if (!obj || !player) return 1;
+
+    const isPick = (obj.otyp === 257 || obj.otyp === 71);
+    const verbing = isPick ? 'digging' : 'chopping';
+    const dx = player.dx || 0;
+    const dy = player.dy || 0;
+    const dz = player.dz || 0;
+
+    if (player.uswallow) {
+        // do_attack(u.ustuck) — attack from inside
+        return 1;
+    }
+
+    if (player.underwater) {
+        // "Turbulence torpedoes your digging attempts."
+        return 1;
+    }
+
+    if (dz < 0) {
+        // Can't dig up with pick
+        // "You don't have enough leverage." or "You can't reach the ceiling."
+        return 1;
+    }
+
+    if (!dx && !dy && !dz) {
+        // Hit self
+        const dam = Math.max(1, rnd(2) + (player.dbon || 0) + (obj.spe || 0));
+        // losehp(dam, "own pick-axe/mattock", KILLED_BY)
+        return 1;
+    }
+
+    if (dz === 0) {
+        // Horizontal digging
+        // confdir handling would go here
+        const rx = player.x + dx;
+        const ry = player.y + dy;
+        if (!isok(rx, ry)) {
+            // "Clash!"
+            return 1;
+        }
+
+        const lev = map.at(rx, ry);
+        if (!lev) return 1;
+
+        // Check for monster at target
+        // if (MON_AT(rx, ry) && do_attack(m_at(rx, ry))) return 1;
+
+        const dig_target = dig_typ(obj, rx, ry, map);
+        if (dig_target === DIGTYP_UNDIGGABLE) {
+            // Various special cases: web, iron bars, water wall, etc.
+            const trap = map.trapAt ? map.trapAt(rx, ry) : null;
+            if (lev.typ === IRONBARS) {
+                // "Clang!"
+            } else if (IS_TREE(lev.typ)) {
+                // "You need an axe to cut down a tree."
+            } else if (IS_OBSTRUCTED(lev.typ)) {
+                // "You need a pick to dig rock."
+            } else if (sobj_at(BOULDER, rx, ry, map)
+                       || sobj_at(STATUE, rx, ry, map)) {
+                if (!isPick) {
+                    const vibrate = !rn2(3);
+                    // "Sparks fly as you whack the boulder/statue."
+                    // if (vibrate) losehp(2, "axing a hard object", KILLED_BY)
+                }
+            }
+            // Other cases: pit clearing, thin air swing, etc.
+        } else {
+            // Start or continue digging occupation
+            const ctx = player.context = player.context || {};
+            ctx.digging = ctx.digging || {};
+
+            if (ctx.digging.pos === undefined
+                || ctx.digging.pos.x !== rx
+                || ctx.digging.pos.y !== ry
+                || ctx.digging.down) {
+                // New dig target
+                ctx.digging.down = false;
+                ctx.digging.chew = false;
+                ctx.digging.warned = false;
+                ctx.digging.pos = { x: rx, y: ry };
+                ctx.digging.effort = 0;
+                // "You start digging/chopping."
+            } else {
+                // "You continue digging/chopping."
+                ctx.digging.chew = false;
+            }
+            // set_occupation(dig, verbing, 0) — set dig as occupation
+            player.occupation = dig;
+            player.occupation_verb = verbing;
+        }
+    } else {
+        // Digging down (dz > 0)
+        // Various checks: air level, water level, can reach floor, pool/lava, etc.
+        if (is_pool_or_lava(player.x, player.y, map)) {
+            // "You cannot stay underwater/under lava long enough."
+            return 1;
+        }
+
+        if (!isPick) {
+            // Axe can only dig down onto traps
+            const trap = map.trapAt ? map.trapAt(player.x, player.y) : null;
+            if (!trap || (trap.ttyp !== LANDMINE && trap.ttyp !== BEAR_TRAP)) {
+                // "The axe merely scratches the surface."
+                return 1;
+            }
+        }
+
+        const ctx = player.context = player.context || {};
+        ctx.digging = ctx.digging || {};
+
+        if (ctx.digging.pos === undefined
+            || ctx.digging.pos.x !== player.x
+            || ctx.digging.pos.y !== player.y
+            || !ctx.digging.down) {
+            ctx.digging.chew = false;
+            ctx.digging.down = true;
+            ctx.digging.warned = false;
+            ctx.digging.pos = { x: player.x, y: player.y };
+            ctx.digging.effort = 0;
+            // "You start digging downward."
+        } else {
+            // "You continue digging downward."
+        }
+        player.occupation = dig;
+        player.occupation_verb = verbing;
+    }
+    return 1; // ECMD_TIME
+}
+
+
+// ============================================================================
+// dig — core digging occupation callback
+// cf. dig.c:299
+// Light stub — player occupation not yet wired.
+// ============================================================================
+
+// cf. dig.c:299-568 — dig()
+// Core digging occupation callback. Gradually digs through terrain.
+// RNG: rn2(3) for fumbling check, rn2(3) for fumble type, rnd(5) for legs,
+//      rn2(5)+10+abon+spe-erosion+udaminc for effort, rn2(3)/rn2(5) treefruit,
+//      rn2(2) for earth elemental type, etc.
+export function dig(map, player) {
+    if (!player || !player.context || !player.context.digging) return 0;
+    const ctx = player.context.digging;
+    const dpx = ctx.pos.x, dpy = ctx.pos.y;
+    const uwep = player.uwep;
+    const isPick = uwep && (uwep.otyp === 257 || uwep.otyp === 71); // PICK_AXE, DWARVISH_MATTOCK
+    const isAxeWep = uwep && !isPick && uwep.otyp >= 0; // simplified axe check
+    const verb = (!uwep || isPick) ? 'dig into' : 'chop through';
+    let dcresult = DIGCHECK_PASSED;
+
+    const lev = map.at(dpx, dpy);
+    if (!lev) return 0;
+
+    // Check if pick-axe was stolen or player teleported
+    if (player.uswallow || !uwep || (!isPick && !isAxeWep)
+        || (ctx.down ? (dpx !== player.x || dpy !== player.y)
+                     : !next2u(dpx, dpy, player))) {
+        return 0;
+    }
+
+    if (ctx.down) {
+        dcresult = dig_check(BY_YOU, player.x, player.y, map, player);
+        if (dcresult >= DIGCHECK_FAILED) {
+            // digcheck_fail_message would go here
+            return 0;
+        }
+    } else {
+        if (IS_TREE(lev.typ) && !may_dig(dpx, dpy, map)
+            && dig_typ(uwep, dpx, dpy, map) === DIGTYP_TREE) {
+            // "This tree seems to be petrified."
+            return 0;
+        }
+        if (IS_OBSTRUCTED(lev.typ) && !may_dig(dpx, dpy, map)
+            && dig_typ(uwep, dpx, dpy, map) === DIGTYP_ROCK) {
+            // "This wall/drawbridge is too hard to dig into/chop through."
+            return 0;
+        }
+    }
+
+    // Fumbling
+    if (player.fumbling && !rn2(3)) {
+        switch (rn2(3)) {
+        case 0:
+            if (!player.welded_weapon) {
+                // "You fumble and drop your weapon."
+                // dropx(uwep) — not yet wired
+            } else {
+                // weapon bounces, hit self or steed
+                // set_wounded_legs(RIGHT_SIDE, 5 + rnd(5))
+                rnd(5); // consume RNG for leg damage duration
+            }
+            break;
+        case 1:
+            // "Bang! You hit with the broad side!"
+            // wake_nearby(FALSE)
+            break;
+        default:
+            // "Your swing misses its mark."
+            break;
+        }
+        return 0;
+    }
+
+    // Add digging effort
+    const abon_val = player.abon ? player.abon() : 0;
+    const spe_val = uwep.spe || 0;
+    const erosion = Math.max(uwep.oeroded || 0, uwep.oeroded2 || 0);
+    const udaminc = player.udaminc || 0;
+    ctx.effort += 10 + rn2(5) + abon_val + spe_val - erosion + udaminc;
+    if (player.race === 'dwarf') { // Race_if(PM_DWARF)
+        ctx.effort *= 2;
+    }
+
+    if (ctx.down) {
+        const ttmp = map.trapAt ? map.trapAt(dpx, dpy) : null;
+
+        if (ctx.effort > 250
+            || (ttmp && ttmp.ttyp === HOLE)) {
+            dighole(false, false, null, map, player);
+            // Reset digging context
+            ctx.pos = { x: 0, y: 0 };
+            ctx.effort = 0;
+            ctx.down = false;
+            ctx.level = { dnum: 0, dlevel: -1 };
+            return 0;
+        }
+
+        if (ctx.effort <= 50
+            || (ttmp && (ttmp.ttyp === TRAPDOOR
+                || ttmp.ttyp === PIT || ttmp.ttyp === SPIKED_PIT))) {
+            return 1;
+        } else if (ttmp && (ttmp.ttyp === LANDMINE
+                    || (ttmp.ttyp === BEAR_TRAP && !player.utrap))) {
+            // Digging onto a set trap triggers it
+            // dotrap(ttmp, FORCETRAP) — not yet wired
+            ctx.pos = { x: 0, y: 0 };
+            ctx.effort = 0;
+            ctx.down = false;
+            ctx.level = { dnum: 0, dlevel: -1 };
+            return 0;
+        } else if (ttmp && ttmp.ttyp === BEAR_TRAP && player.utrap) {
+            // C: rnl(7) > (Fumbling ? 1 : 4) — hit self or destroy trap
+            const rnlval = rn2(7); // simplified rnl
+            if (rnlval > (player.fumbling ? 1 : 4)) {
+                // Hit self in foot
+                // dmgval + dbon + losehp
+            } else {
+                // Destroy bear trap
+                deltrap(map, ttmp);
+                // reset_utrap(TRUE)
+            }
+            ctx.effort = 0;
+            return 0;
+        } else if (ttmp && dcresult === DIGCHECK_PASSED_DESTROY_TRAP) {
+            // Destroy non-pit trap
+            deltrap(map, ttmp);
+            ctx.effort = 0;
+            return 0;
+        }
+
+        if (IS_ALTAR(lev.typ)) {
+            // altar_wrath(dpx, dpy); angry_priest()
+        }
+
+        // Make pit
+        if (dighole(true, false, null, map, player)) {
+            ctx.level = { dnum: 0, dlevel: -1 };
+        }
+        return 0;
+    }
+
+    // Horizontal digging — effort > 100 means we break through
+    if (ctx.effort > 100) {
+        let digtxt = null;
+        let dmgtxt = null;
+        const shopedge = in_rooms_shopbase(dpx, dpy, map);
+        const digtyp = dig_typ(uwep, dpx, dpy, map);
+
+        if (digtyp === DIGTYP_STATUE) {
+            const obj = sobj_at(STATUE, dpx, dpy, map);
+            if (obj) {
+                // break_statue(obj) — statue shattering
+                digtxt = 'The statue shatters.';
+            }
+        } else if (digtyp === DIGTYP_BOULDER) {
+            const obj = sobj_at(BOULDER, dpx, dpy, map);
+            if (obj) {
+                // fracture_rock(obj)
+                digtxt = 'The boulder falls apart.';
+            }
+        } else if (lev.typ === STONE || lev.typ === SCORR
+                   || IS_TREE(lev.typ)) {
+            if (digtyp === DIGTYP_TREE) {
+                digtxt = 'You cut down the tree.';
+                lev.typ = ROOM;
+                lev.flags = 0;
+                if (!rn2(5)) {
+                    rnd_treefruit_at(map, dpx, dpy);
+                }
+                // if (Race_if(PM_ELF) || Role_if(PM_RANGER)) adjalign(-1)
+            } else {
+                digtxt = 'You succeed in cutting away some rock.';
+                lev.typ = CORR;
+                lev.flags = 0;
+            }
+        } else if (IS_WALL(lev.typ)) {
+            if (shopedge) {
+                dmgtxt = 'damage';
+            }
+            if (map.flags && map.flags.is_maze_lev) {
+                lev.typ = ROOM;
+                lev.flags = 0;
+            } else if (map.flags && map.flags.is_cavernous_lev
+                       && !in_town(dpx, dpy, map)) {
+                lev.typ = CORR;
+                lev.flags = 0;
+            } else {
+                lev.typ = DOOR;
+                lev.flags = D_NODOOR;
+            }
+            digtxt = 'You make an opening in the wall.';
+        } else if (lev.typ === SDOOR) {
+            lev.typ = DOOR;
+            digtxt = 'You break through a secret door!';
+            if (!(lev.flags & D_TRAPPED)) {
+                lev.flags = D_BROKEN;
+            }
+        } else if (closed_door(dpx, dpy, map)) {
+            digtxt = 'You break through the door.';
+            if (!(lev.flags & D_TRAPPED)) {
+                lev.flags = D_BROKEN;
+            }
+        } else {
+            return 0; // statue or boulder got taken
+        }
+
+        if (!IS_OBSTRUCTED(lev.typ)) {
+            unblock_point(dpx, dpy);
+        }
+        newsym(map, dpx, dpy);
+
+        // Earth level: rn2(3), rn2(2) for earth elemental
+        if (map.flags && map.flags.is_earthlevel && !rn2(3)) {
+            const mndx = rn2(2); // PM_EARTH_ELEMENTAL or PM_XORN
+            // makemon — earth elemental spawning
+        }
+
+        if (IS_DOOR(lev.typ) && (lev.flags & D_TRAPPED)) {
+            lev.flags = D_NODOOR;
+            // b_trapped("door", NO_PART)
+            recalc_block_point(dpx, dpy);
+            newsym(map, dpx, dpy);
+        }
+
+        // cleanup
+        ctx.lastdigtime = player.moves || 0;
+        ctx.quiet = false;
+        ctx.level = { dnum: 0, dlevel: -1 };
+        return 0;
+    } else {
+        // Not enough effort yet — "You hit the rock/door/etc with all your might."
+        const dig_target = dig_typ(uwep, dpx, dpy, map);
+        if (IS_WALL(lev.typ) || dig_target === DIGTYP_DOOR) {
+            if (in_rooms_shopbase(dpx, dpy, map)) {
+                return 0;
+            }
+        } else if (dig_target === DIGTYP_UNDIGGABLE
+                   || (dig_target === DIGTYP_ROCK && !IS_OBSTRUCTED(lev.typ))) {
+            return 0; // statue or boulder got taken
+        }
+        // "You hit the <target> with all your might."
+    }
+    return 1;
+}
+
+// Helper: next2u — is position adjacent to player?
+function next2u(x, y, player) {
+    if (!player) return false;
+    return Math.abs(x - player.x) <= 1 && Math.abs(y - player.y) <= 1;
+}
+
+
+// ============================================================================
+// is_digging (cf. dig.c:194)
+// ============================================================================
+
+// cf. dig.c:194-201 — is_digging()
+// Returns true if the player's current occupation is digging.
+// In C, this checks (go.occupation == dig). In JS, the player's
+// occupation callback is stored on the player object.
+export function is_digging(player) {
+    if (player && player.occupation === dig) {
+        return true;
+    }
+    return false;
+}
+
+
+// ============================================================================
+// holetime (cf. dig.c:596)
+// ============================================================================
+
+// cf. dig.c:596-602 — holetime()
+// When will the hole be finished? Very rough indication used by shopkeeper.
+// Returns estimated remaining turns, or -1 if not currently digging in a shop.
+export function holetime(player) {
+    if (!player) return -1;
+    if (player.occupation !== dig || !player.ushops) return -1;
+    const effort = (player.context && player.context.digging)
+        ? player.context.digging.effort : 0;
+    return Math.floor((250 - effort) / 20);
+}
+
+
+// ============================================================================
+// dig_check (cf. dig.c:206-252)
+// Light stub for now.
+// ============================================================================
+
+// cf. dig.c:206-252 — dig_check result enum
+export const DIGCHECK_PASSED = 0;
+export const DIGCHECK_PASSED_PITONLY = 1;
+export const DIGCHECK_PASSED_DESTROY_TRAP = 2;
+export const DIGCHECK_FAILED = 10;
+export const DIGCHECK_FAIL_ONLADDER = 11;
+export const DIGCHECK_FAIL_ONSTAIRS = 12;
+export const DIGCHECK_FAIL_THRONE = 13;
+export const DIGCHECK_FAIL_ALTAR = 14;
+export const DIGCHECK_FAIL_AIRLEVEL = 15;
+export const DIGCHECK_FAIL_WATERLEVEL = 16;
+export const DIGCHECK_FAIL_TOOHARD = 17;
+export const DIGCHECK_FAIL_UNDESTROYABLETRAP = 18;
+export const DIGCHECK_FAIL_CANTDIG = 19;
+export const DIGCHECK_FAIL_BOULDER = 20;
+export const DIGCHECK_FAIL_OBJ_POOL_OR_TRAP = 21;
+
+const BY_YOU = 'BY_YOU';
+const BY_OBJECT = 'BY_OBJECT';
+
+// cf. dig.c:206-252 — dig_check(madeby, x, y)
+// Checks whether digging is possible at the given location.
+export function dig_check(madeby, x, y, map, player) {
+    const loc = map.at(x, y);
+    if (!loc) return DIGCHECK_FAILED;
+
+    const ttmp = map.trapAt ? map.trapAt(x, y) : null;
+
+    // On_stairs check
+    const stway = map.stairwayAt ? map.stairwayAt(x, y) : null;
+    if (stway) {
+        if (stway.isladder) {
+            return DIGCHECK_FAIL_ONLADDER;
+        } else {
+            return DIGCHECK_FAIL_ONSTAIRS;
+        }
+    }
+
+    if (IS_THRONE(loc.typ) && madeby !== BY_OBJECT) {
+        return DIGCHECK_FAIL_THRONE;
+    }
+
+    if (IS_ALTAR(loc.typ)
+        && (madeby !== BY_OBJECT
+            || (loc.altarmask !== undefined && (loc.altarmask & 0x04) !== 0))) {
+        // AM_SANCTUM = 0x04
+        return DIGCHECK_FAIL_ALTAR;
+    }
+
+    // Is_airlevel / Is_waterlevel checks
+    if (player && player.uz) {
+        if (map.flags && map.flags.is_airlevel) {
+            return DIGCHECK_FAIL_AIRLEVEL;
+        }
+        if (map.flags && map.flags.is_waterlevel) {
+            return DIGCHECK_FAIL_WATERLEVEL;
+        }
+    }
+
+    if (IS_OBSTRUCTED(loc.typ) && loc.typ !== SDOOR && loc.nondiggable) {
+        return DIGCHECK_FAIL_TOOHARD;
+    }
+
+    // undestroyable trap check
+    if (ttmp && ttmp.ttyp !== undefined) {
+        // C: undestroyable_trap — magic portal, vibrating square
+        const MAGIC_PORTAL = 23; // from config
+        const VIBRATING_SQUARE = 24;
+        if (ttmp.ttyp === MAGIC_PORTAL || ttmp.ttyp === VIBRATING_SQUARE) {
+            return DIGCHECK_FAIL_UNDESTROYABLETRAP;
+        }
+    }
+
+    // Can_dig_down check
+    const canDigDown = !!(map.flags && map.flags.can_dig_down) || !!(loc.candig);
+    if (!canDigDown) {
+        if (ttmp) {
+            const is_hole = (ttmp.ttyp === HOLE || ttmp.ttyp === TRAPDOOR);
+            const is_pit = (ttmp.ttyp === PIT || ttmp.ttyp === SPIKED_PIT);
+            if (!is_hole && !is_pit) {
+                return DIGCHECK_PASSED_DESTROY_TRAP;
+            } else {
+                return DIGCHECK_FAIL_CANTDIG;
+            }
+        } else {
+            return DIGCHECK_PASSED_PITONLY;
+        }
+    }
+
+    if (sobj_at(BOULDER, x, y, map)) {
+        return DIGCHECK_FAIL_BOULDER;
+    }
+
+    if (madeby === BY_OBJECT
+        && (ttmp || is_pool_or_lava(x, y, map))) {
+        return DIGCHECK_FAIL_OBJ_POOL_OR_TRAP;
+    }
+
+    return DIGCHECK_PASSED;
+}
+
+
+// ============================================================================
+// Burial functions — light stubs
+// cf. dig.c:1884-2321
+// ============================================================================
+
+// cf. dig.c:1884-1932 — buried_ball(cc)
+// Search for a buried heavy iron ball near the given coordinates.
+// Updates cc to point to the ball's actual location if found.
+// Returns the ball object, or null if not found.
+export function buried_ball(cc, map, player) {
+    if (!map || !player || !cc) return null;
+
+    // If player is trapped but not by buried ball, no search
+    if (player.utrap && player.utraptype !== 5) return null; // TT_BURIEDBALL = 5
+
+    let ball = null;
+    let bdist = COLNO;
+
+    // Search through all objects for buried heavy iron balls
+    for (const otmp of (map.objects || [])) {
+        if (otmp.otyp !== HEAVY_IRON_BALL || !otmp.buried) continue;
+
+        // If found at exact target spot, we're done
+        if (otmp.ox === cc.x && otmp.oy === cc.y) return otmp;
+
+        // Find nearest within allowable vicinity: dist2 <= 8
+        const odist = (otmp.ox - cc.x) * (otmp.ox - cc.x)
+                    + (otmp.oy - cc.y) * (otmp.oy - cc.y);
+        if (odist <= 8 && (!ball || odist < bdist)) {
+            ball = otmp;
+            bdist = odist;
+        }
+    }
+
+    if (ball) {
+        // Found, but not at <cc.x, cc.y>
+        cc.x = ball.ox;
+        cc.y = ball.oy;
+    }
+    return ball;
+}
+
+// cf. dig.c:1934-1955 — buried_ball_to_punishment()
+// Convert a buried iron ball into a punishment ball attached to the player.
+export function buried_ball_to_punishment(map, player) {
+    if (!map || !player) return;
+    const cc = { x: player.x, y: player.y };
+    const ball = buried_ball(cc, map, player);
+    if (ball) {
+        // obj_extract_self(ball) — remove from buried list
+        ball.buried = false;
+        // punish(ball) — attach as punishment ball
+        // reset_utrap(FALSE) — release from buried ball trap
+        if (player.utrap && player.utraptype === 5) { // TT_BURIEDBALL
+            player.utrap = 0;
+            player.utraptype = 0;
+        }
+        // del_engr_at(cc.x, cc.y) — remove engravings
+        newsym(map, cc.x, cc.y);
+    }
+}
+
+// cf. dig.c:1957-1979 — buried_ball_to_freedom()
+// Unearth a buried iron ball and place it on the floor, freeing the player.
+export function buried_ball_to_freedom(map, player) {
+    if (!map || !player) return;
+    const cc = { x: player.x, y: player.y };
+    const ball = buried_ball(cc, map, player);
+    if (ball) {
+        // obj_extract_self(ball) — remove from buried list
+        ball.buried = false;
+        // place_object + stackobj — place on floor
+        ball.ox = cc.x;
+        ball.oy = cc.y;
+        placeFloorObject(map, ball);
+        // reset_utrap(TRUE) — release from trap, maybe enable Lev or Fly
+        if (player.utrap && player.utraptype === 5) { // TT_BURIEDBALL
+            player.utrap = 0;
+            player.utraptype = 0;
+        }
+        // del_engr_at(cc.x, cc.y) — remove engravings
+        newsym(map, cc.x, cc.y);
+    }
+}
+
+// cf. dig.c:1983-2047 — bury_an_obj(otmp, dealloced)
+// Move an object from the floor to the buried object list.
+// Returns the next object in the floor chain (for iteration).
+// RNG: rn1(50, 20) for buried ball trap duration, rnd(250) for rot timer.
+export function bury_an_obj(otmp, map, player) {
+    if (!otmp || !map) return null;
+
+    // If this is the player's ball, unpunish and set buried ball trap
+    if (player && player.uball && otmp === player.uball) {
+        // unpunish() — would go here
+        // set_utrap(rn1(50, 20), TT_BURIEDBALL)
+        const trap_dur = rn1(50, 20);
+        if (player) {
+            player.utrap = trap_dur;
+            player.utraptype = 5; // TT_BURIEDBALL
+        }
+        // "The iron ball gets buried!"
+    }
+
+    // C: if (otmp == uchain || obj_resists(otmp, 0, 0)) return otmp2
+    // Skip chain and resistant objects (Amulet, invocation tools, Rider corpses)
+    // Simplified: skip if marked as no_bury
+    if (otmp.no_bury) return null;
+
+    // C: if (otmp->otyp == LEASH && otmp->leashmon != 0) o_unleash(otmp)
+    if (otmp.leashmon) {
+        otmp.leashmon = 0;
+    }
+
+    // C: if (otmp->lamplit && otmp->otyp != POT_OIL) end_burn(otmp, TRUE)
+    if (otmp.lamplit) {
+        otmp.lamplit = false;
+    }
+
+    // Remove from floor
+    const idx = map.objects.indexOf(otmp);
+    if (idx >= 0) map.objects.splice(idx, 1);
+
+    // C: rocks and boulders merge into burying material (destroyed)
+    const under_ice = is_ice(otmp.ox, otmp.oy, map);
+    if ((otmp.otyp === ROCK && !under_ice) || otmp.otyp === BOULDER) {
+        // Merged into ground — object is destroyed
+        return null;
+    }
+
+    // Start a rot timer on organic material (not corpses)
+    if (otmp.otyp === CORPSE) {
+        // Corpses already have their own timers; cancel if under ice
+    } else if (otmp.organic || under_ice) {
+        // C: start_timer((under_ice ? 0 : 250) + rnd(250), TIMER_OBJECT, ROT_ORGANIC, otmp)
+        const rot_time = (under_ice ? 0 : 250) + rnd(250);
+        // Timer integration would go here
+    }
+
+    // Mark as buried
+    otmp.buried = true;
+    placeFloorObject(map, otmp); // keep in map.objects but flagged as buried
+    return null;
+}
+
+// cf. dig.c:2049-2081 — bury_objs(x, y)
+// Bury all objects at the given location.
+export function bury_objs(x, y, map, player) {
+    if (!map) return;
+
+    // Gather all non-buried floor objects at this location
+    const atXY = (map.objects || []).filter(o =>
+        o.ox === x && o.oy === y && !o.buried
+    );
+
+    for (const otmp of atXY) {
+        // C: costly_spot handling for shopkeepers — simplified/skipped
+        bury_an_obj(otmp, map, player);
+    }
+
+    // del_engr_at(x, y) — remove engravings
+    newsym(map, x, y);
+}
+
+// cf. dig.c:2085-2112 — unearth_objs(x, y)
+// Move objects from buried state back to the floor at (x, y).
+export function unearth_objs(x, y, map, player) {
+    if (!map) return;
+
+    const cc = { x, y };
+    const bball = buried_ball(cc, map, player);
+
+    const buried = (map.objects || []).filter(o =>
+        o.ox === x && o.oy === y && o.buried
+    );
+
+    for (const otmp of buried) {
+        if (bball && otmp === bball
+            && player && player.utrap && player.utraptype === 5) {
+            // TT_BURIEDBALL — convert to punishment
+            buried_ball_to_punishment(map, player);
+        } else {
+            // Unbury: remove buried flag and place on floor
+            otmp.buried = false;
+            // C: if (otmp->timed) stop_timer(ROT_ORGANIC, obj_to_any(otmp))
+            // Timer cleanup would go here
+            // Already in map.objects; just unflag
+        }
+    }
+
+    // del_engr_at(x, y)
+    newsym(map, x, y);
+}
+
+// cf. dig.c:2124-2140 — rot_organic(arg, timeout)
+// Timer callback: organic material has rotted away while buried.
+// When a container rots away, its contents become newly buried objects.
+export function rot_organic(arg, timeout, map, player) {
+    if (!arg) return;
+    const obj = arg.a_obj || arg;
+
+    // If container, bury its contents first
+    if (obj.contents && obj.contents.length > 0) {
+        while (obj.contents.length > 0) {
+            const cobj = obj.contents.shift();
+            cobj.ox = obj.ox;
+            cobj.oy = obj.oy;
+            bury_an_obj(cobj, map, player);
+        }
+    }
+
+    // Remove the rotted object
+    if (map) {
+        const idx = map.objects.indexOf(obj);
+        if (idx >= 0) map.objects.splice(idx, 1);
+    }
+}
+
+// cf. dig.c:2145-2189 — rot_corpse(arg, timeout)
+// Timer callback: a corpse has rotted completely away.
+// Handles floor, inventory, and monster inventory cases, then calls rot_organic.
+export function rot_corpse(arg, timeout, map, player) {
+    if (!arg) return;
+    const obj = arg.a_obj || arg;
+    let x = 0, y = 0;
+    const on_floor = (obj.where === 'OBJ_FLOOR' || (!obj.where && !obj.buried && obj.ox !== undefined));
+    const in_invent = (obj.where === 'OBJ_INVENT');
+
+    if (on_floor) {
+        x = obj.ox;
+        y = obj.oy;
+    } else if (in_invent) {
+        // C: "Your <corpse> rots away."
+        // remove_worn_item, stop_occupation
+        if (obj.owornmask) {
+            obj.owornmask = 0;
+        }
+    } else if (obj.where === 'OBJ_MINVENT') {
+        // In monster inventory
+        if (obj.owornmask && obj.ocarry) {
+            obj.owornmask = 0;
+        }
+    } else if (obj.where === 'OBJ_MIGRATING') {
+        obj.owornmask = 0;
+    }
+
+    rot_organic(arg, timeout, map, player);
+
+    if (on_floor && map) {
+        // A hiding monster may be exposed
+        newsym(map, x, y);
+    }
+    // C: if (in_invent) update_inventory()
+}
+
+// cf. dig.c:2192-2209 — bury_monst(mtmp) [#if 0 in C]
+// Bury a monster in the ground. Currently disabled in C (under #if 0).
+// Ported for completeness.
+export function bury_monst(mtmp, map, player) {
+    if (!mtmp) return;
+
+    if (canseemon(mtmp, player)) {
+        // C: is_flyer/is_floater check — flying monsters aren't swallowed
+        if (mtmp.mflags && (mtmp.mflags.flyer || mtmp.mflags.floater)) {
+            // "The ground opens up, but <monster> is not swallowed!"
+            return;
+        }
+        // "The ground opens up and swallows <monster>!"
+    }
+
+    mtmp.mburied = true;
+    // wakeup(mtmp, FALSE)
+    if (map) newsym(map, mtmp.mx, mtmp.my);
+}
+
+// cf. dig.c:2211-2227 — bury_you() [#if 0 in C]
+// Bury the player in the ground. Currently disabled in C (under #if 0).
+export function bury_you(player) {
+    if (!player) return;
+
+    if (!player.levitation && !player.flying) {
+        if (player.uswallow) {
+            // "You feel a sensation like falling into a trap!"
+        } else {
+            // "The ground opens beneath you and you fall in!"
+        }
+
+        player.uburied = true;
+        // C: if (!Strangled && !Breathless) Strangled = 6
+        if (!player.strangled && !player.breathless) {
+            player.strangled = 6;
+        }
+        // under_ground(1)
+    }
+}
+
+// cf. dig.c:2229-2238 — unearth_you() [#if 0 in C]
+// Unbury the player.
+export function unearth_you(player) {
+    if (!player) return;
+    player.uburied = false;
+    // under_ground(0)
+    // C: if (!uamul || uamul->otyp != AMULET_OF_STRANGULATION) Strangled = 0
+    if (!player.amulet_of_strangulation) {
+        player.strangled = 0;
+    }
+    // vision_recalc(0)
+}
+
+// cf. dig.c:2240-2270 — escape_tomb() [#if 0 in C]
+// Attempt to escape from being buried alive.
+// RNG: rn2(3) for teleport check.
+export function escape_tomb(map, player) {
+    if (!player) return;
+
+    // C: if ((Teleportation || can_teleport(youmonst.data))
+    //        && (Teleport_control || rn2(3) < Luck+2))
+    const can_tele = !!(player.teleportation || player.can_teleport);
+    if (can_tele) {
+        const luck = player.luck || 0;
+        if (player.teleport_control || rn2(3) < luck + 2) {
+            // "You attempt a teleport spell."
+            // dotele(FALSE) — calls unearth_you()
+            unearth_you(player);
+            return;
+        }
+    }
+
+    if (player.uburied) {
+        // C: amorphous, Passes_walls, noncorporeal, unsolid, tunnels checks
+        const can_phase = !!(player.amorphous || player.passes_walls
+                            || player.noncorporeal || player.unsolid);
+        const can_tunnel = !!(player.tunnels && !player.needspick);
+
+        if (can_phase || can_tunnel) {
+            // "You ooze/phase/tunnel up through the ground."
+            let good;
+            if (can_tunnel) {
+                good = dighole(true, false, null, map, player);
+            } else {
+                good = true;
+            }
+            if (good) {
+                unearth_you(player);
+            }
+        }
+    }
+}

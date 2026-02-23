@@ -1,239 +1,1142 @@
 // sounds.js -- Monster sounds, ambient room sounds, chat command
 // cf. sounds.c — dosounds, domonnoise, growl/yelp/whimper/beg, dotalk/dochat,
 //                maybe_gasp, cry_sound, set_voice, sound library system
-//
-// Three subsystems:
-// 1. Ambient room sounds: dosounds() — per-turn feature-triggered messages
-//    (fountains, sinks, court, swamp, vault, beehive, morgue, barracks, zoo,
-//    shop, leprechaun hall, temple, zoo, oracle).
-// 2. Monster vocalization: domonnoise() dispatches on mtmp->data->msound (MS_*);
-//    pet distress: growl(), yelp(), whimper(), beg();
-//    helper strings: growl_sound(), cry_sound(); gasp: maybe_gasp().
-// 3. Chat command: dotalk() → dochat() → getdir + responsive_mon_at + domonnoise;
-//    tiphat() for non-monster 't' targets.
-// 4. Sound library (N/A for browser port): add_sound_mapping, play_sound_for_message,
-//    maybe_play_sound, release_sound_mappings, activate_chosen_soundlib,
-//    assign_soundlib, get_soundlib_name, soundlib_id_from_opt,
-//    get_sound_effect_filename, base_soundname_to_filename, set_voice, sound_speak.
-//    nosound_* no-op stubs for the null sound backend.
-//
-// JS implementations:
-//   dosounds() → dosounds() method on NetHack class (nethack.js:1759)
-//                and headless_runtime.js:977. Partially implemented:
-//                fountains/sinks/vault/barracks/shop messages done;
-//                throne/beehive/morgue/zoo stubs (return early consuming rn2).
-//   All other functions → not implemented in JS.
-//   Sound library and set_voice: N/A (browser port has no audio subsystem).
 
-// cf. sounds.c:19 [static] — mon_in_room(mon, rmtyp): check if monster is in room type
-// Returns TRUE if mon's tile has a room number and that room's rtype == rmtyp.
-// Used by throne/beehive/morgue/zoo/temple ambient sound helpers.
-// TODO: sounds.c:19 — mon_in_room(): monster room-type predicate
+import { rn2, rn1 } from './rng.js';
+import {
+    ROOMOFFSET, SHOPBASE, COURT, BEEHIVE, MORGUE, BARRACKS, ZOO,
+    TEMPLE, LEPREHALL,
+} from './config.js';
+import {
+    MS_SILENT, MS_BARK, MS_MEW, MS_ROAR, MS_BELLOW, MS_GROWL, MS_SQEEK,
+    MS_SQAWK, MS_CHIRP, MS_HISS, MS_BUZZ, MS_GRUNT, MS_NEIGH, MS_MOO,
+    MS_WAIL, MS_GURGLE, MS_BURBLE, MS_TRUMPET, MS_ANIMAL, MS_SHRIEK,
+    MS_BONES, MS_LAUGH, MS_MUMBLE, MS_IMITATE, MS_WERE, MS_ORC,
+    MS_HUMANOID, MS_ARREST, MS_SOLDIER, MS_GUARD, MS_DJINNI, MS_NURSE,
+    MS_SEDUCE, MS_VAMPIRE, MS_BRIBE, MS_CUSS, MS_RIDER, MS_LEADER,
+    MS_NEMESIS, MS_GUARDIAN, MS_SELL, MS_ORACLE, MS_PRIEST, MS_SPELL,
+    MS_BOAST, MS_GROAN,
+    S_ANT, S_EEL, S_NYMPH, S_CENTAUR, S_QUADRUPED,
+    PM_ORACLE, PM_GECKO, PM_LONG_WORM, PM_RAVEN, PM_DINGO,
+    PM_DEATH, PM_WATER_DEMON, PM_PRISONER,
+    PM_VAMPIRE, PM_VAMPIRE_LEADER, PM_WOLF, PM_WINTER_WOLF,
+    PM_WINTER_WOLF_CUB, PM_HUMAN_WERERAT,
+    PM_SILVER_DRAGON, PM_BABY_SILVER_DRAGON,
+    PM_HOBBIT, PM_ARCHEOLOGIST, PM_TOURIST,
+    mons,
+} from './monsters.js';
+import {
+    is_lord, is_prince, is_animal, is_undead, is_flyer, is_silent,
+    is_mercenary, is_elf, is_dwarf, is_gnome, is_humanoid,
+    carnivorous, herbivorous, likes_magic, same_race,
+    canseemon, monDisplayName, is_mplayer,
+} from './mondata.js';
+import { wake_nearto } from './mon.js';
+import { night, midnight } from './calendar.js';
 
-// cf. sounds.c:29 [static] — throne_mon_sound(mtmp): throne room ambient sound
-// Fires if monster is lord/prince or sleeping, non-animal, in COURT room.
-// Messages: courtly conversation / sceptre pounded / "Off with X head!" / Queen Beruthiel's cats.
-// Hallucination shifts selection up by 1 (toward sillier messages).
-// TODO: sounds.c:29 — throne_mon_sound(): throne room ambient
+// ============================================================================
+// Hallucination sound table (cf. sounds.c:341)
+// ============================================================================
 
-// cf. sounds.c:61 [static] — beehive_mon_sound(mtmp): beehive ambient sound
-// Fires for S_ANT flyers in BEEHIVE room. Messages: low buzzing / angry drone / bees in bonnet.
-// TODO: sounds.c:61 — beehive_mon_sound(): beehive ambient
+const h_sounds = [
+    'beep', 'boing', 'sing', 'belche', 'creak', 'cough',
+    'rattle', 'ululate', 'pop', 'jingle', 'sniffle', 'tinkle',
+    'eep', 'clatter', 'hum', 'sizzle', 'twitter', 'wheeze',
+    'rustle', 'honk', 'lisp', 'yodel', 'coo', 'burp',
+    'moo', 'boom', 'murmur', 'oink', 'quack', 'rumble',
+    'twang', 'toot', 'gargle', 'hoot', 'warble',
+];
 
-// cf. sounds.c:88 [static] — morgue_mon_sound(mtmp): morgue ambient sound
-// Fires for undead/vampshifters in MORGUE. Messages: "unnaturally quiet" /
-//   hair stands up on neck / hair seems to stand up.
-// TODO: sounds.c:88 — morgue_mon_sound(): morgue ambient
+// ============================================================================
+// Helper: mon_in_room (cf. sounds.c:19)
+// ============================================================================
 
-// cf. sounds.c:114 [static] — zoo_mon_sound(mtmp): zoo ambient sound
-// Fires for sleeping or animal monsters in ZOO.
-// Messages: elephant on peanut / seal barking / Doctor Dolittle.
-// TODO: sounds.c:114 — zoo_mon_sound(): zoo ambient
+// cf. sounds.c:19 — mon_in_room(mon, rmtyp): check if monster is in room type
+function mon_in_room(mon, rmtyp, map) {
+    const loc = map.at(mon.x, mon.y);
+    if (!loc || !Number.isFinite(loc.roomno)) return false;
+    const rno = loc.roomno;
+    if (rno >= ROOMOFFSET) {
+        const room = map.rooms?.[rno - ROOMOFFSET];
+        return !!(room && room.rtype === rmtyp);
+    }
+    return false;
+}
 
-// cf. sounds.c:130 [static] — temple_priest_sound(mtmp): temple ambient sound
+// ============================================================================
+// Ambient room sound helpers (cf. sounds.c:29-199)
+// These iterate monsters looking for qualifying ones in rooms.
+// Each returns true if a sound was produced (caller returns early).
+// ============================================================================
+
+// cf. sounds.c:29 — throne_mon_sound(mtmp): throne room ambient sound
+function throne_mon_sound(mtmp, hallu, game) {
+    const ptr = mtmp.type;
+    if ((mtmp.sleeping || is_lord(ptr) || is_prince(ptr))
+        && !is_animal(ptr)
+        && mon_in_room(mtmp, COURT, game.map)) {
+        const throne_msg = [
+            'the tones of courtly conversation.',
+            'a sceptre pounded in judgment.',
+            'Someone shouts "Off with %s head!"',
+            "Queen Beruthiel's cats!",
+        ];
+        const which = rn2(3) + hallu;
+        if (which !== 2) {
+            game.display.putstr_message(`You hear ${throne_msg[which]}`);
+        } else {
+            // "Someone shouts 'Off with his/her head!'"
+            const pron = game.player?.female ? 'her' : 'his';
+            game.display.putstr_message(throne_msg[2].replace('%s', pron));
+        }
+        return true;
+    }
+    return false;
+}
+
+// cf. sounds.c:61 — beehive_mon_sound(mtmp): beehive ambient sound
+function beehive_mon_sound(mtmp, hallu, game) {
+    const ptr = mtmp.type;
+    if ((ptr.symbol === S_ANT && is_flyer(ptr))
+        && mon_in_room(mtmp, BEEHIVE, game.map)) {
+        switch (rn2(2) + hallu) {
+        case 0:
+            game.display.putstr_message('You hear a low buzzing.');
+            break;
+        case 1:
+            game.display.putstr_message('You hear an angry drone.');
+            break;
+        case 2: {
+            const helmet = game.player?.helmet ? '' : '(nonexistent) ';
+            game.display.putstr_message(`You hear bees in your ${helmet}bonnet!`);
+            break;
+        }
+        }
+        return true;
+    }
+    return false;
+}
+
+// cf. sounds.c:88 — morgue_mon_sound(mtmp): morgue ambient sound
+function morgue_mon_sound(mtmp, hallu, game) {
+    const ptr = mtmp.type;
+    if (is_undead(ptr) && mon_in_room(mtmp, MORGUE, game.map)) {
+        switch (rn2(2) + hallu) {
+        case 0:
+            game.display.putstr_message('You suddenly realize it is unnaturally quiet.');
+            break;
+        case 1:
+            game.display.putstr_message('The hair on the back of your neck stands up.');
+            break;
+        case 2:
+            game.display.putstr_message('The hair on your head seems to stand up.');
+            break;
+        }
+        return true;
+    }
+    return false;
+}
+
+// cf. sounds.c:114 — zoo_mon_sound(mtmp): zoo ambient sound
+function zoo_mon_sound(mtmp, hallu, game) {
+    const ptr = mtmp.type;
+    if ((mtmp.sleeping || is_animal(ptr))
+        && mon_in_room(mtmp, ZOO, game.map)) {
+        const zoo_msg = [
+            'a sound reminiscent of an elephant stepping on a peanut.',
+            'a sound reminiscent of a seal barking.',
+            'Doctor Dolittle!',
+        ];
+        const selection = rn2(2) + hallu;
+        game.display.putstr_message(`You hear ${zoo_msg[selection]}`);
+        return true;
+    }
+    return false;
+}
+
+// cf. sounds.c:130 — temple_priest_sound(mtmp): temple ambient sound
 // Fires for awake priests in their temple, hero not in that temple.
-// Messages: praising deity / beseeching deity / animal sacrifice / plea for donations.
-// Skips speech messages if monster can't speak; skips altar message if priest/altar visible.
-// TODO: sounds.c:130 — temple_priest_sound(): temple ambient
+// Full implementation requires inhistemple, temple_occupied, EPRI which
+// are not yet ported. We consume RNG to match C, then emit a generic message.
+function temple_priest_sound(mtmp, hallu, game) {
+    if (mtmp.ispriest && !mtmp.sleeping) {
+        // Simplified check: priest must be in a TEMPLE room
+        if (!mon_in_room(mtmp, TEMPLE, game.map)) return false;
 
-// cf. sounds.c:180 [static] — oracle_sound(mtmp): oracle ambient sound
-// Fires for Oracle monster when hallucinating or out of sight.
-// Messages: strange wind / convulsive ravings / snoring snakes / no more woodchucks / loud ZOT.
-// TODO: sounds.c:180 — oracle_sound(): oracle ambient
+        // C does: do { rn2(SIZE(temple_msg)-1+hallu) } while (++trycount < 50)
+        // with retry logic for speechless/in_sight. We consume at least one rn2.
+        const temple_msg = [
+            'someone praising a deity.',
+            'someone beseeching a deity.',
+            'an animal carcass being offered in sacrifice.',
+            'a strident plea for donations.',
+        ];
+        const msgCount = temple_msg.length;
+        let trycount = 0;
+        let msgIdx;
+        do {
+            msgIdx = rn2(msgCount - 1 + hallu);
+        } while (++trycount < 50
+                 && ((msgIdx === 0 || msgIdx === 1 || msgIdx === 3)
+                     && mtmp.type.sound <= MS_ANIMAL));
+        game.display.putstr_message(`You hear ${temple_msg[msgIdx]}`);
+        return true;
+    }
+    return false;
+}
+
+// cf. sounds.c:180 — oracle_sound(mtmp): oracle ambient sound
+function oracle_sound(mtmp, hallu, game) {
+    if (mtmp.type !== mons[PM_ORACLE]) return false;
+
+    if (hallu || !canseemon(mtmp, game.player, game.fov)) {
+        const ora_msg = [
+            'a strange wind.',
+            'convulsive ravings.',
+            'snoring snakes.',
+            'someone say "No more woodchucks!"',
+            'a loud ZOT!',
+        ];
+        game.display.putstr_message(`You hear ${ora_msg[rn2(3) + hallu * 2]}`);
+    }
+    return true;
+}
+
+// ============================================================================
+// dosounds() — per-turn ambient level sound effects (cf. sounds.c:201)
+// CRITICAL: This is called every turn from moveloop. RNG consumption order
+// must match C exactly.
+// ============================================================================
 
 // cf. sounds.c:201 — dosounds(): per-turn ambient level sound effects
-// Checks level feature flags in order; each check uses !rn2(N) and short-circuits.
+// Checks level feature flags in order; each check uses !rn2(N).
 // Order: fountains(400) → sinks(300) → court(200) → swamp(200) → vault(200) →
 //   beehive(200) → morgue(200) → barracks(200) → zoo(200) → shop(200) →
 //   leprehall(200) → temple(200) → oracle(200).
-// Fountains and sinks don't return early; all others return after triggering.
-// Uses get_iter_mons() for throne/beehive/morgue/zoo/temple/oracle which walk
-//   monster list calling the appropriate *_mon_sound helper.
-// Skips entirely if Deaf or !flags.acoustics or swallowed or Underwater.
-// JS equivalent: dosounds() method in nethack.js:1759 and headless_runtime.js:977.
-//   Implemented: fountains, sinks, vault, barracks, shop, swamp.
-//   Stubbed (consumes rn2 only): court, beehive, morgue, zoo.
-//   Missing: leprehall, temple, oracle.
-// PARTIAL: sounds.c:201 — dosounds() ↔ dosounds() (nethack.js:1759, headless_runtime.js:977)
+export function dosounds(game) {
+    // C ref: if (Deaf || !flags.acoustics || u.uswallow || Underwater) return;
+    if (game.player?.deaf) return;
+    if (game.flags && game.flags.acoustics === false) return;
+    if (game.player?.uswallow) return;
+    if (game.player?.underwater) return;
 
-// cf. sounds.c:350 — growl_sound(mtmp): return growl verb string for monster's sound type
-// Maps MS_* sound type to string: MS_MEW/HISS→"hiss", MS_BARK/GROWL→"growl",
-//   MS_ROAR→"roar", MS_BELLOW→"bellow", MS_BUZZ→"buzz", MS_SQEEK→"squeal",
-//   MS_SQAWK→"screech", MS_NEIGH→"neigh", MS_WAIL→"wail", MS_GROAN→"groan",
-//   MS_MOO→"low", MS_SILENT→"commotion", default→"scream".
-// TODO: sounds.c:350 — growl_sound(): growl verb for monster type
+    const hallu = game.player?.hallucinating ? 1 : 0;
+    const f = game.map.flags || {};
+    const map = game.map;
+
+    // --- Fountains (rn2(400)) — does NOT return early ---
+    if (f.nfountains && !rn2(400)) {
+        const fountain_msg = [
+            'bubbling water.',
+            'water falling on coins.',
+            'the splashing of a naiad.',
+            'a soda fountain!',
+        ];
+        game.display.putstr_message(`You hear ${fountain_msg[rn2(3) + hallu]}`);
+    }
+
+    // --- Sinks (rn2(300)) — does NOT return early ---
+    if (f.nsinks && !rn2(300)) {
+        const sink_msg = [
+            'a slow drip.',
+            'a gurgling noise.',
+            'dishes being washed!',
+        ];
+        game.display.putstr_message(`You hear ${sink_msg[rn2(2) + hallu]}`);
+    }
+
+    // --- Court / throne room (rn2(200)) ---
+    if (f.has_court && !rn2(200)) {
+        // C: get_iter_mons(throne_mon_sound) — iterate all monsters
+        for (const mtmp of map.monsters) {
+            if (mtmp.dead) continue;
+            if (throne_mon_sound(mtmp, hallu, game)) return;
+        }
+    }
+
+    // --- Swamp (rn2(200)) ---
+    if (f.has_swamp && !rn2(200)) {
+        const swamp_msg = [
+            'You hear mosquitoes!',
+            'You smell marsh gas!',
+            'You hear Donald Duck!',
+        ];
+        game.display.putstr_message(swamp_msg[rn2(2) + hallu]);
+        return;
+    }
+
+    // --- Vault (rn2(200)) ---
+    if (f.has_vault && !rn2(200)) {
+        // C ref: gd_sound() check, search_special(VAULT), complex logic.
+        // Simplified: always produce sound (gd_sound not ported).
+        // RNG: rn2(2) + hallu to select message, matching C's switch.
+        switch (rn2(2) + hallu) {
+        case 1:
+            // C: checks gold_in_vault and vault_occupied; simplified here
+            game.display.putstr_message('You hear someone counting gold coins.');
+            break;
+        case 0:
+            game.display.putstr_message('You hear the footsteps of a guard on patrol.');
+            break;
+        case 2:
+            game.display.putstr_message('You hear Ebenezer Scrooge!');
+            break;
+        }
+        return;
+    }
+
+    // --- Beehive (rn2(200)) ---
+    if (f.has_beehive && !rn2(200)) {
+        for (const mtmp of map.monsters) {
+            if (mtmp.dead) continue;
+            if (beehive_mon_sound(mtmp, hallu, game)) return;
+        }
+    }
+
+    // --- Morgue (rn2(200)) ---
+    if (f.has_morgue && !rn2(200)) {
+        for (const mtmp of map.monsters) {
+            if (mtmp.dead) continue;
+            if (morgue_mon_sound(mtmp, hallu, game)) return;
+        }
+    }
+
+    // --- Barracks (rn2(200)) ---
+    if (f.has_barracks && !rn2(200)) {
+        const barracks_msg = [
+            'blades being honed.',
+            'loud snoring.',
+            'dice being thrown.',
+            'General MacArthur!',
+        ];
+        let count = 0;
+        for (const mtmp of map.monsters) {
+            if (mtmp.dead) continue;
+            if (is_mercenary(mtmp.type)
+                && mon_in_room(mtmp, BARRACKS, map)
+                && (mtmp.sleeping || ++count > 5)) {
+                game.display.putstr_message(`You hear ${barracks_msg[rn2(3) + hallu]}`);
+                return;
+            }
+        }
+    }
+
+    // --- Zoo (rn2(200)) ---
+    if (f.has_zoo && !rn2(200)) {
+        for (const mtmp of map.monsters) {
+            if (mtmp.dead) continue;
+            if (zoo_mon_sound(mtmp, hallu, game)) return;
+        }
+    }
+
+    // --- Shop (rn2(200)) ---
+    if (f.has_shop && !rn2(200)) {
+        // C: search_special(ANY_SHOP), tended_shop(sroom), ushops check
+        // Simplified: check if any shopkeeper is alive & player not in shop
+        const tendedShop = (map.monsters || []).some(
+            (m) => m && !m.dead && m.isshk
+        );
+        const playerInShop = (() => {
+            const loc = map.at?.(game.player.x, game.player.y);
+            if (!loc || !Number.isFinite(loc.roomno)) return false;
+            const ridx = loc.roomno - ROOMOFFSET;
+            const room = map.rooms?.[ridx];
+            return !!(room && Number.isFinite(room.rtype)
+                      && room.rtype >= SHOPBASE);
+        })();
+        if (tendedShop && !playerInShop) {
+            const shop_msg = [
+                'someone cursing shoplifters.',
+                'the chime of a cash register.',
+                'Neiman and Marcus arguing!',
+            ];
+            game.display.putstr_message(`You hear ${shop_msg[rn2(2) + hallu]}`);
+            // C: noisy_shop(sroom) — not ported, skip
+        }
+        return;
+    }
+
+    // --- Leprechaun hall (rn2(200)) ---
+    // C: has_leprehall check but no get_iter_mons — just returns.
+    // No messages in C either (the feature flag exists but dosounds
+    // doesn't print anything for leprehall; it just falls through).
+    // Actually looking at C more carefully: leprehall is NOT in dosounds.
+    // The comment in the stub was wrong. C goes: court→swamp→vault→
+    //   beehive→morgue→barracks→zoo→shop→temple→oracle.
+    // There is no leprehall check in C's dosounds(). Skip it.
+
+    // --- Temple (rn2(200)) ---
+    // C: if (has_temple && !rn2(200) && !(Is_astralevel || Is_sanctum))
+    if (f.has_temple && !rn2(200)) {
+        for (const mtmp of map.monsters) {
+            if (mtmp.dead) continue;
+            if (temple_priest_sound(mtmp, hallu, game)) return;
+        }
+    }
+
+    // --- Oracle (rn2(400)) ---
+    // C: if (Is_oracle_level(&u.uz) && !rn2(400))
+    if (f.is_oracle_level && !rn2(400)) {
+        for (const mtmp of map.monsters) {
+            if (mtmp.dead) continue;
+            if (oracle_sound(mtmp, hallu, game)) return;
+        }
+    }
+}
+
+// ============================================================================
+// growl_sound (cf. sounds.c:350)
+// ============================================================================
+
+// cf. sounds.c:350 — growl_sound(mtmp): return growl verb string
+export function growl_sound(mtmp) {
+    const ptr = mtmp.type || mtmp;
+    switch (ptr.sound) {
+    case MS_MEW:
+    case MS_HISS:
+        return 'hiss';
+    case MS_BARK:
+    case MS_GROWL:
+        return 'growl';
+    case MS_ROAR:
+        return 'roar';
+    case MS_BELLOW:
+        return 'bellow';
+    case MS_BUZZ:
+        return 'buzz';
+    case MS_SQEEK:
+        return 'squeal';
+    case MS_SQAWK:
+        return 'screech';
+    case MS_NEIGH:
+        return 'neigh';
+    case MS_WAIL:
+        return 'wail';
+    case MS_GROAN:
+        return 'groan';
+    case MS_MOO:
+        return 'low';
+    case MS_SILENT:
+        return 'commotion';
+    default:
+        return 'scream';
+    }
+}
+
+// ============================================================================
+// growl (cf. sounds.c:401)
+// ============================================================================
 
 // cf. sounds.c:401 — growl(mtmp): seriously abused pet growls at hero
-// Skips if helpless or MS_SILENT. Picks growl_sound() verb (or hallucination sound).
-// Prints "<Monster> <verb>s!" if can see or not Deaf; sets iflags.last_msg = PLNMSG_GROWL;
-//   stops running; wakes monsters within mlevel*18.
-// Called from dogmove.c when hero attacks own pet.
-// TODO: sounds.c:401 — growl(): pet growl on abuse
+export function growl(mtmp, game) {
+    if ((mtmp.sleeping || mtmp.paralyzed || mtmp.stunned)
+        || mtmp.type.sound === MS_SILENT)
+        return;
+
+    let verb;
+    if (game.player?.hallucinating) {
+        verb = h_sounds[rn2(h_sounds.length)];
+    } else {
+        verb = growl_sound(mtmp);
+    }
+    if (verb) {
+        const name = monDisplayName(mtmp);
+        // C: vtense — add "s" for 3rd person singular
+        const verbed = verb.endsWith('s') ? `${verb}es` : `${verb}s`;
+        game.display.putstr_message(`${name} ${verbed}!`);
+        wake_nearto(mtmp.x, mtmp.y, (mtmp.type.level || 0) * 18, game.map);
+    }
+}
+
+// ============================================================================
+// yelp (cf. sounds.c:426)
+// ============================================================================
 
 // cf. sounds.c:426 — yelp(mtmp): mistreated pet yelps
-// MS_ → verb: MEW→"yowl"/Deaf:"arch"; BARK/GROWL→"yelp"/Deaf:"recoil";
-//   ROAR→"snarl"/Deaf:"bluff"; SQEEK→"squeal"/Deaf:"quiver";
-//   SQAWK→"screak"/Deaf:"thrash"; WAIL→"wail"/Deaf:"cringe".
-// Plays sound effect. Stops running; wakes within mlevel*12.
-// Referenced as omitted in dogmove.js.
-// TODO: sounds.c:426 — yelp(): pet yelp on mistreatment
+export function yelp(mtmp, game) {
+    if ((mtmp.sleeping || mtmp.paralyzed) || !mtmp.type.sound)
+        return;
+
+    let verb = null;
+    if (game.player?.hallucinating) {
+        verb = h_sounds[rn2(h_sounds.length)];
+    } else {
+        switch (mtmp.type.sound) {
+        case MS_MEW:
+            verb = 'yowl';
+            break;
+        case MS_BARK:
+        case MS_GROWL:
+            verb = 'yelp';
+            break;
+        case MS_ROAR:
+            verb = 'snarl';
+            break;
+        case MS_SQEEK:
+            verb = 'squeal';
+            break;
+        case MS_SQAWK:
+            verb = 'screak';
+            break;
+        case MS_WAIL:
+            verb = 'wail';
+            break;
+        }
+    }
+    if (verb) {
+        const name = monDisplayName(mtmp);
+        const verbed = verb.endsWith('s') ? `${verb}es` : `${verb}s`;
+        game.display.putstr_message(`${name} ${verbed}!`);
+        wake_nearto(mtmp.x, mtmp.y, (mtmp.type.level || 0) * 12, game.map);
+    }
+}
+
+// ============================================================================
+// whimper (cf. sounds.c:478)
+// ============================================================================
 
 // cf. sounds.c:478 — whimper(mtmp): distressed pet whimpers
-// MS_MEW/GROWL→"whimper", MS_BARK→"whine", MS_SQEEK→"squeal".
-// Plays sound effect (non-hallucination). Stops running; wakes within mlevel*6.
-// Referenced as omitted in dogmove.js (leashed pet at trap).
-// TODO: sounds.c:478 — whimper(): pet whimper when distressed
+export function whimper(mtmp, game) {
+    if ((mtmp.sleeping || mtmp.paralyzed) || !mtmp.type.sound)
+        return;
+
+    let verb = null;
+    if (game.player?.hallucinating) {
+        verb = h_sounds[rn2(h_sounds.length)];
+    } else {
+        switch (mtmp.type.sound) {
+        case MS_MEW:
+        case MS_GROWL:
+            verb = 'whimper';
+            break;
+        case MS_BARK:
+            verb = 'whine';
+            break;
+        case MS_SQEEK:
+            verb = 'squeal';
+            break;
+        }
+    }
+    if (verb) {
+        const name = monDisplayName(mtmp);
+        const verbed = verb.endsWith('s') ? `${verb}es` : `${verb}s`;
+        game.display.putstr_message(`${name} ${verbed}.`);
+        wake_nearto(mtmp.x, mtmp.y, (mtmp.type.level || 0) * 6, game.map);
+    }
+}
+
+// ============================================================================
+// beg (cf. sounds.c:518)
+// ============================================================================
 
 // cf. sounds.c:518 — beg(mtmp): hungry pet begs for food
-// Skips if helpless or not carnivorous/herbivorous.
-// Animal (msound<=MS_ANIMAL, not silent): domonnoise().
-// Humanoid (msound>=MS_HUMANOID): verbalize("I'm hungry.") with map_invisible.
-// Other: "seems famished" pline if visible.
-// Referenced as omitted in dogmove.js.
-// TODO: sounds.c:518 — beg(): hungry pet begging
+export function beg(mtmp, game) {
+    if ((mtmp.sleeping || mtmp.paralyzed)
+        || !(carnivorous(mtmp.type) || herbivorous(mtmp.type)))
+        return;
 
-// cf. sounds.c:545 — maybe_gasp(mon): hero attacked a peaceful monster — does it gasp?
-// Returns one of "Gasp!"/"Uh-oh."/"Oh my!"/"What?"/"Why?" if monster can/would react.
-// Humanoid speech types (MS_HUMANOID, MS_ARREST, MS_SOLDIER, MS_GUARD, MS_NURSE,
-//   MS_SEDUCE, MS_LEADER, MS_GUARDIAN, MS_SELL, MS_ORACLE, MS_PRIEST, MS_BOAST,
-//   MS_IMITATE): always gasp.
-// Semi-speech types (MS_ORC, MS_GRUNT, MS_LAUGH, MS_ROAR, etc.): gasp only if
-//   same mlet as hero (similar creature).
-// Non-social (MS_BRIBE, MS_CUSS, MS_RIDER, MS_NEMESIS, MS_SILENT): no gasp.
-// Guardian and cross-aligned priest sounds downgraded to MS_SILENT.
-// TODO: sounds.c:545 — maybe_gasp(): peaceful monster reaction to being attacked
+    if (!is_silent(mtmp.type) && mtmp.type.sound <= MS_ANIMAL) {
+        domonnoise(mtmp, game);
+    } else if (mtmp.type.sound >= MS_HUMANOID) {
+        game.display.putstr_message(`"I'm hungry."`);
+    } else {
+        const name = monDisplayName(mtmp);
+        game.display.putstr_message(`${name} seems famished.`);
+    }
+}
+
+// ============================================================================
+// maybe_gasp (cf. sounds.c:545)
+// ============================================================================
+
+// cf. sounds.c:545 — maybe_gasp(mon): hero attacked a peaceful monster
+const Exclam = ['Gasp!', 'Uh-oh.', 'Oh my!', 'What?', 'Why?'];
+
+export function maybe_gasp(mon) {
+    const ptr = mon.type;
+    let msound = ptr.sound;
+    let dogasp = false;
+
+    // Guardian/priest adjustments
+    if (msound === MS_GUARDIAN) msound = MS_SILENT; // simplified
+    if (msound === MS_CUSS) msound = MS_HUMANOID; // simplified for co-aligned
+
+    switch (msound) {
+    case MS_HUMANOID:
+    case MS_ARREST:
+    case MS_SOLDIER:
+    case MS_GUARD:
+    case MS_NURSE:
+    case MS_SEDUCE:
+    case MS_LEADER:
+    case MS_GUARDIAN:
+    case MS_SELL:
+    case MS_ORACLE:
+    case MS_PRIEST:
+    case MS_BOAST:
+    case MS_IMITATE:
+        dogasp = true;
+        break;
+    case MS_ORC:
+    case MS_GRUNT:
+    case MS_LAUGH:
+    case MS_ROAR:
+    case MS_BELLOW:
+    case MS_DJINNI:
+    case MS_VAMPIRE:
+    case MS_WERE:
+    case MS_SPELL:
+        dogasp = false; // would need hero mlet comparison
+        break;
+    case MS_BRIBE:
+    case MS_CUSS:
+    case MS_RIDER:
+    case MS_NEMESIS:
+    case MS_SILENT:
+    default:
+        break;
+    }
+    if (dogasp) {
+        return Exclam[rn2(Exclam.length)];
+    }
+    return null;
+}
+
+// ============================================================================
+// cry_sound (cf. sounds.c:616)
+// ============================================================================
 
 // cf. sounds.c:616 — cry_sound(mtmp): sound verb for a hatching egg
-// Used with "ing" suffix: "chitter", "hiss", "growl", "chirp", "buzz",
-//   "screech", "grunt", "mumble" based on ms_sound type.
-// MS_SILENT+S_EEL → "gurgle"; MS_SILENT otherwise → "chitter".
-// TODO: sounds.c:616 — cry_sound(): hatchling sound string
+export function cry_sound(mtmp) {
+    const ptr = mtmp.type || mtmp;
+    switch (ptr.sound) {
+    default:
+    case MS_SILENT:
+        return (ptr.symbol === S_EEL) ? 'gurgle' : 'chitter';
+    case MS_HISS:
+        return 'hiss';
+    case MS_ROAR:
+    case MS_GROWL:
+        return 'growl';
+    case MS_CHIRP:
+        return 'chirp';
+    case MS_BUZZ:
+        return 'buzz';
+    case MS_SQAWK:
+        return 'screech';
+    case MS_GRUNT:
+        return 'grunt';
+    case MS_MUMBLE:
+        return 'mumble';
+    }
+}
 
-// cf. sounds.c:658 [static] — mon_is_gecko(mon): check if monster appears as gecko
-// Returns TRUE if actually gecko; FALSE if long worm; else checks glyph_to_mon() == PM_GECKO
-//   (could be true due to hallucination or mimicry).
-// Used by domonnoise to give gecko hallucination a "15 minutes" shopkeeper spiel.
-// TODO: sounds.c:658 — mon_is_gecko(): gecko appearance check
+// ============================================================================
+// mon_is_gecko (cf. sounds.c:658)
+// ============================================================================
 
-// cf. sounds.c:678 — domonnoise(mtmp): monster makes its characteristic sound/speech
-// Large dispatch on mtmp->data->msound (MS_*) after adjustments:
-//   leader override (quest leader by m_id), guardian same-genus fallback,
-//   shopkeeper → MS_SELL, orc + same-race/hallucination → MS_HUMANOID,
-//   non-tame moo → MS_BELLOW, hallucination+gecko → MS_SELL.
-// Key dispatches:
-//   MS_ORACLE → doconsult(); MS_PRIEST → priest_talk(); MS_LEADER/NEMESIS/GUARDIAN → quest_chat();
-//   MS_SELL → shk_chat() or hallucination GEICO joke;
-//   MS_VAMPIRE → varied messages by night/tameness/kindred;
-//   MS_WERE → moon-phase messages; MS_BARK → dog barking/howling/etc;
-//   MS_MEW → cat sounds; MS_ROAR → roaring; MS_GROWL/HISS/etc → animal sounds;
-//   MS_HUMANOID → random humanoid phrases; MS_GUARD → vault guard lines;
-//   MS_SOLDIER → army phrases; MS_ARREST → Kop lines; MS_NURSE → heal/strip message;
-//   MS_SEDUCE → nymph/demon seduction; MS_RIDER → "We are the Three";
-//   MS_SPELL → magic-user incantations; ... many more.
-// TODO: sounds.c:678 — domonnoise(): monster vocalization dispatch
+// cf. sounds.c:658 — mon_is_gecko(mon): check if monster appears as gecko
+function mon_is_gecko(mon) {
+    if (mon.type === mons[PM_GECKO]) return true;
+    if (mon.type === mons[PM_LONG_WORM]) return false;
+    // Simplified: would need glyph_at/glyph_to_mon for hallucination check
+    return false;
+}
 
-// cf. sounds.c:1247 — dotalk(): 't' command — talk to a monster
-// Thin wrapper: calls dochat() and returns result.
-// TODO: sounds.c:1247 — dotalk(): chat command handler
+// ============================================================================
+// domonnoise (cf. sounds.c:678)
+// ============================================================================
 
-// cf. sounds.c:1256 [static] — dochat(): implementation of talk command
-// Checks: hero is silent (can't speak), Strangled, swallowed, Underwater.
-// Standing on shop item → price_quote() (interrupts other chat).
-// getdir prompt; steed (dz<0) → domonnoise(usteed); dz≠0 → up/down message;
-//   dx==dy==0 → "talking to yourself" message.
-// responsive_mon_at(tx,ty) to find chatted-with monster.
-// No monster/mundetected: statue message or wall knock (IS_WALL/SDOOR).
-// Has monster: domonnoise(mtmp) or tiphat().
-// TODO: sounds.c:1256 — dochat(): chat implementation
+// cf. sounds.c:678 — domonnoise(mtmp): monster makes its characteristic sound
+// Large dispatch on msound. Many sub-functions (doconsult, priest_talk,
+// quest_chat, shk_chat, demon_talk) are not yet ported. We still consume
+// RNG in the correct order for all cases that use it.
+export function domonnoise(mtmp, game) {
+    const ptr = mtmp.type;
+    let msound = ptr.sound;
+    let pline_msg = null;
+    let verbl_msg = null;
 
-// cf. sounds.c:1412 [static] — responsive_mon_at(x, y): find monster at position for chat
-// Returns monster at (x,y) if visible/detectable (canspotmon or Blind+Telepat check).
-// Skips invisible/undetectable monsters for chat targeting.
-// TODO: sounds.c:1412 — responsive_mon_at(): chatting target selection
+    // C: if (Deaf) return
+    if (game.player?.deaf) return 0;
+    // C: if (is_silent(ptr) && !mtmp.isshk) return
+    if (is_silent(ptr) && !mtmp.isshk) return 0;
 
-// cf. sounds.c:1426 — tiphat(): non-monster target for 't' chat
-// Prints "You tip your <hat type>" when no monster to chat with.
-// Hat types: helmet/hard hat/dunce cap/pointy hat/fedora/porkpie/etc.
-// TODO: sounds.c:1426 — tiphat(): hat-tip when nothing to chat with
+    // --- msound adjustments (cf. sounds.c:696-714) ---
+    // leader override
+    if (mtmp.m_id === game.quest_status?.leader_m_id && msound > MS_ANIMAL)
+        msound = MS_LEADER;
+    // guardian check (simplified)
+    else if (msound === MS_GUARDIAN) {
+        // In full port: check urole.guardnum; fall back to genus msound
+        msound = MS_HUMANOID; // safe fallback
+    }
+    // shopkeeper override
+    else if (mtmp.isshk)
+        msound = MS_SELL;
+    // orc + same race or hallucination → humanoid
+    else if (msound === MS_ORC && game.player?.hallucinating)
+        msound = MS_HUMANOID;
+    // untamed moo → bellow
+    else if (msound === MS_MOO && !mtmp.tame)
+        msound = MS_BELLOW;
+    // hallucination + gecko → sell (GEICO joke)
+    else if (game.player?.hallucinating && mon_is_gecko(mtmp))
+        msound = MS_SELL;
 
-// cf. sounds.c:1555 — add_sound_mapping(mapping): add sound-effect → filename mapping
-// Parses "soundname=filename" option string; stored in sound_mappings[].
-// N/A: browser port has no audio file system.
-// N/A: sounds.c:1555 — add_sound_mapping()
+    // --- Main dispatch (cf. sounds.c:722-1220) ---
+    switch (msound) {
+    case MS_ORACLE:
+        // C: return doconsult(mtmp) — not yet ported
+        game.display.putstr_message(`${monDisplayName(mtmp)} speaks mysteriously.`);
+        return 1;
 
-// cf. sounds.c:1628 [static] — sound_matches_message(msg): check if sound mapping matches
-// N/A: sounds.c:1628 — sound_matches_message()
+    case MS_PRIEST:
+        // C: priest_talk(mtmp) — not yet ported
+        game.display.putstr_message(`${monDisplayName(mtmp)} mutters a prayer.`);
+        break;
 
-// cf. sounds.c:1641 — play_sound_for_message(msg): play audio matching a message string
-// N/A: sounds.c:1641 — play_sound_for_message()
+    case MS_LEADER:
+    case MS_NEMESIS:
+    case MS_GUARDIAN:
+        // C: quest_chat(mtmp) — not yet ported
+        game.display.putstr_message(`${monDisplayName(mtmp)} speaks to you.`);
+        break;
 
-// cf. sounds.c:1658 — maybe_play_sound(msg): conditionally play sound for message
-// N/A: sounds.c:1658 — maybe_play_sound()
+    case MS_SELL:
+        // C: shk_chat or GEICO joke
+        if (!game.player?.hallucinating || is_silent(ptr)
+            || (mtmp.isshk && !rn2(2))) {
+            // C: shk_chat(mtmp) — not yet ported
+            if (mtmp.isshk) {
+                game.display.putstr_message(`${monDisplayName(mtmp)} talks shop.`);
+            } else {
+                game.display.putstr_message(`${monDisplayName(mtmp)} talks to you.`);
+            }
+        } else {
+            verbl_msg = '15 minutes could save you 15 zorkmids.';
+        }
+        break;
 
-// cf. sounds.c:1675 — release_sound_mappings(): free sound mapping table
-// N/A: sounds.c:1675 — release_sound_mappings()
+    case MS_VAMPIRE: {
+        const isnight = night();
+        const kindred = false; // simplified: would need Upolyd check
+        const nightchild = false;
+        if (mtmp.tame) {
+            if (kindred) {
+                verbl_msg = isnight ? 'Good evening to you Master!'
+                    : 'Good day to you Master.  Why do we not rest?';
+            } else {
+                verbl_msg = midnight()
+                    ? 'I can stand this craving no longer!'
+                    : isnight
+                        ? 'I beg you, help me satisfy this growing craving!'
+                        : 'I find myself growing a little weary.';
+            }
+        } else if (mtmp.peaceful) {
+            verbl_msg = 'I only drink... potions.';
+        } else {
+            // Hostile vampire — consumes rn2(2)
+            const vampmsg = [
+                'I vant to suck your blood!',
+                'I vill come after you without regret!',
+            ];
+            const vampindex = rn2(vampmsg.length);
+            verbl_msg = vampmsg[vampindex];
+        }
+        break;
+    }
+    case MS_WERE:
+        if (game.flags?.moonphase === 2 /* FULL_MOON */
+            && (night() ^ !rn2(13))) {
+            const howl = (ptr === mons[PM_HUMAN_WERERAT])
+                ? 'shriek' : 'howl';
+            game.display.putstr_message(
+                `${monDisplayName(mtmp)} throws back its head`
+                + ` and lets out a blood curdling ${howl}!`
+            );
+            wake_nearto(mtmp.x, mtmp.y, 11 * 11, game.map);
+        } else {
+            pline_msg = 'whispers inaudibly.  All you can make out is "moon".';
+        }
+        break;
 
-// cf. sounds.c:1778 — activate_chosen_soundlib(): activate the configured sound library
-// N/A: sounds.c:1778 — activate_chosen_soundlib()
+    case MS_BARK:
+        if (game.flags?.moonphase === 2 && night()) {
+            pline_msg = 'howls.';
+        } else if (mtmp.peaceful) {
+            if (mtmp.tame
+                && (mtmp.confused || mtmp.flee || mtmp.trapped
+                    || (mtmp.edog && game.turnCount > mtmp.edog.hungrytime)
+                    || (mtmp.tame < 5)))
+                pline_msg = 'whines.';
+            else if (mtmp.tame && mtmp.edog
+                     && mtmp.edog.hungrytime > game.turnCount + 1000)
+                pline_msg = 'yips.';
+            else {
+                if (ptr !== mons[PM_DINGO])
+                    pline_msg = 'barks.';
+            }
+        } else {
+            pline_msg = 'growls.';
+        }
+        break;
 
-// cf. sounds.c:1797 — assign_soundlib(idx): assign sound library by index
-// N/A: sounds.c:1797 — assign_soundlib()
+    case MS_MEW:
+        if (mtmp.tame) {
+            if (mtmp.confused || mtmp.flee || mtmp.trapped
+                || (mtmp.tame < 5))
+                pline_msg = 'yowls.';
+            else if (mtmp.edog && game.turnCount > mtmp.edog.hungrytime)
+                pline_msg = 'meows.';
+            else if (mtmp.edog
+                     && mtmp.edog.hungrytime > game.turnCount + 1000)
+                pline_msg = 'purrs.';
+            else
+                pline_msg = 'mews.';
+            break;
+        }
+        // FALLTHRU
+    case MS_GROWL: // eslint-disable-line no-fallthrough
+        pline_msg = mtmp.peaceful ? 'snarls.' : 'growls!';
+        break;
 
-// cf. sounds.c:1808 [static] — choose_soundlib(s): parse soundlib name option
-// N/A: sounds.c:1808 — choose_soundlib()
+    case MS_ROAR:
+        pline_msg = mtmp.peaceful ? 'snarls.' : 'roars!';
+        break;
 
-// cf. sounds.c:1863 — get_soundlib_name(dest, maxlen): copy active soundlib name
-// N/A: sounds.c:1863 — get_soundlib_name()
+    case MS_SQEEK:
+        pline_msg = 'squeaks.';
+        break;
 
-// cf. sounds.c:1882 — soundlib_id_from_opt(op): parse soundlib option string to id
-// N/A: sounds.c:1882 — soundlib_id_from_opt()
+    case MS_SQAWK:
+        if (ptr === mons[PM_RAVEN] && !mtmp.peaceful)
+            verbl_msg = 'Nevermore!';
+        else
+            pline_msg = 'squawks.';
+        break;
 
-// cf. sounds.c:1916..1952 [static] — nosound_*(): no-op stubs for null sound backend
-// nosound_init_nhsound, nosound_exit_nhsound, nosound_achievement,
-// nosound_soundeffect, nosound_hero_playnotes, nosound_play_usersound,
-// nosound_ambience, nosound_verbal — all no-ops forming the default soundlib.
-// N/A: browser port uses no audio backend.
-// N/A: sounds.c:1916 — nosound_* stubs
+    case MS_HISS:
+        if (!mtmp.peaceful)
+            pline_msg = 'hisses!';
+        else
+            return 0; // no sound
+        break;
 
-// cf. sounds.c:1980 [static] — initialize_semap_basenames(): init sound-effect base names
-// Fills semap[] table mapping sound effect enum to base filename.
-// N/A: sounds.c:1980 — initialize_semap_basenames()
+    case MS_BUZZ:
+        pline_msg = mtmp.peaceful ? 'drones.' : 'buzzes angrily.';
+        break;
 
-// cf. sounds.c:1994 — get_sound_effect_filename(seidint, buf, bufsz, ...): sound file path
-// Looks up sound effect id in semap[], applies user mapping overrides, builds path.
-// N/A: sounds.c:1994 — get_sound_effect_filename()
+    case MS_GRUNT:
+        pline_msg = 'grunts.';
+        break;
 
-// cf. sounds.c:2083 — base_soundname_to_filename(basename, buf, bufsz, approach): convert name to path
-// Searches sound directories for basename with known audio extensions.
-// N/A: sounds.c:2083 — base_soundname_to_filename()
+    case MS_NEIGH:
+        if ((mtmp.tame || 0) < 5)
+            pline_msg = 'neighs.';
+        else if (mtmp.edog && game.turnCount > mtmp.edog.hungrytime)
+            pline_msg = 'whinnies.';
+        else
+            pline_msg = 'whickers.';
+        break;
 
-// cf. sounds.c:2160 — set_voice(mtmp, tone, volume, moreinfo): configure voice for verbalize
-// Sets voice parameters for the next verbalize()/verbalize1() call.
-// In C: calls soundlib->verbal() with the voice parameters.
-// Referenced in outrumor() (BY_ORACLE path uses SetVoice macro) and beg().
-// N/A: browser port has no audio/TTS system.
-// N/A: sounds.c:2160 — set_voice()
+    case MS_MOO:
+        pline_msg = 'moos.';
+        break;
 
-// cf. sounds.c:2184 — sound_speak(text): speak text with current voice settings
-// Invokes soundlib verbal() with the text and stored voice parameters.
-// N/A: sounds.c:2184 — sound_speak()
+    case MS_BELLOW:
+        pline_msg = 'bellows!';
+        break;
+
+    case MS_CHIRP:
+        pline_msg = 'chirps.';
+        break;
+
+    case MS_WAIL:
+        pline_msg = 'wails mournfully.';
+        break;
+
+    case MS_GROAN:
+        if (!rn2(3))
+            pline_msg = 'groans.';
+        break;
+
+    case MS_GURGLE:
+        pline_msg = 'gurgles.';
+        break;
+
+    case MS_BURBLE:
+        pline_msg = 'burbles.';
+        break;
+
+    case MS_TRUMPET:
+        pline_msg = 'trumpets!';
+        wake_nearto(mtmp.x, mtmp.y, 11 * 11, game.map);
+        break;
+
+    case MS_SHRIEK:
+        pline_msg = 'shrieks.';
+        // C: aggravate() — not ported, would wake all monsters
+        break;
+
+    case MS_IMITATE:
+        pline_msg = 'imitates you.';
+        break;
+
+    case MS_BONES:
+        game.display.putstr_message(`${monDisplayName(mtmp)} rattles noisily.`);
+        game.display.putstr_message('You freeze for a moment.');
+        // C: nomul(-2) — movement penalty, simplified
+        break;
+
+    case MS_LAUGH: {
+        const laugh_msg = ['giggles.', 'chuckles.', 'snickers.', 'laughs.'];
+        pline_msg = laugh_msg[rn2(4)];
+        break;
+    }
+    case MS_MUMBLE:
+        pline_msg = 'mumbles incomprehensibly.';
+        break;
+
+    case MS_ORC:
+        pline_msg = 'grunts.';
+        break;
+
+    case MS_DJINNI:
+        if (mtmp.tame)
+            verbl_msg = "Sorry, I'm all out of wishes.";
+        else if (mtmp.peaceful) {
+            if (ptr === mons[PM_WATER_DEMON])
+                pline_msg = 'gurgles.';
+            else
+                verbl_msg = "I'm free!";
+        } else {
+            if (ptr !== mons[PM_PRISONER])
+                verbl_msg = 'This will teach you not to disturb me!';
+            else
+                verbl_msg = 'Get me out of here.';
+        }
+        break;
+
+    case MS_BOAST:
+        if (!mtmp.peaceful) {
+            switch (rn2(4)) {
+            case 0:
+                game.display.putstr_message(
+                    `${monDisplayName(mtmp)} boasts about its gem collection.`
+                );
+                break;
+            case 1:
+                pline_msg = 'complains about a diet of mutton.';
+                break;
+            default:
+                pline_msg = 'shouts "Fee Fie Foe Foo!" and guffaws.';
+                wake_nearto(mtmp.x, mtmp.y, 7 * 7, game.map);
+                break;
+            }
+            break;
+        }
+        // FALLTHRU to MS_HUMANOID
+    case MS_HUMANOID: // eslint-disable-line no-fallthrough
+        if (!mtmp.peaceful) {
+            pline_msg = 'threatens you.';
+            break;
+        }
+        // Generic peaceful humanoid behavior
+        if (mtmp.flee)
+            pline_msg = 'wants nothing to do with you.';
+        else if (mtmp.hp < (mtmp.hpmax || 1) / 4)
+            pline_msg = 'moans.';
+        else if (mtmp.confused || mtmp.stunned)
+            verbl_msg = !rn2(3) ? 'Huh?' : rn2(2) ? 'What?' : 'Eh?';
+        else if (mtmp.blinded)
+            verbl_msg = "I can't see!";
+        else if (mtmp.trapped)
+            verbl_msg = "I'm trapped!";
+        else if (mtmp.hp < (mtmp.hpmax || 1) / 2)
+            pline_msg = 'asks for a potion of healing.';
+        else if (mtmp.tame && !mtmp.isminion
+                 && mtmp.edog && game.turnCount > mtmp.edog.hungrytime)
+            verbl_msg = "I'm hungry.";
+        else if (is_elf(ptr))
+            pline_msg = 'curses orcs.';
+        else if (is_dwarf(ptr))
+            pline_msg = 'talks about mining.';
+        else if (likes_magic(ptr))
+            pline_msg = 'talks about spellcraft.';
+        else if (ptr.symbol === S_CENTAUR)
+            pline_msg = 'discusses hunting.';
+        else if (is_gnome(ptr)) {
+            let gnomeplan = 0;
+            if (game.player?.hallucinating
+                && (gnomeplan = rn2(4)) % 2) {
+                // Gnome underpants joke from South Park
+                verbl_msg = (gnomeplan === 1)
+                    ? 'Phase one, collect underpants.'
+                    : 'Phase three, profit!';
+            } else {
+                verbl_msg = 'Many enter the dungeon,'
+                    + ' and few return to the sunlit lands.';
+            }
+        } else {
+            // Specific monster types
+            const pmidx = mons.indexOf(ptr);
+            switch (pmidx) {
+            case PM_HOBBIT:
+                pline_msg = (mtmp.hp < (mtmp.hpmax || 1)
+                             && ((mtmp.hpmax || 1) <= 10
+                                 || mtmp.hp <= (mtmp.hpmax || 1) - 10))
+                    ? 'complains about unpleasant dungeon conditions.'
+                    : 'asks you about the One Ring.';
+                break;
+            case PM_ARCHEOLOGIST:
+                pline_msg = 'describes a recent article in'
+                    + ' "Spelunker Today" magazine.';
+                break;
+            case PM_TOURIST:
+                verbl_msg = 'Aloha.';
+                break;
+            default:
+                pline_msg = 'discusses dungeon exploration.';
+                break;
+            }
+        }
+        break;
+
+    case MS_SEDUCE: {
+        // C: SYSOPT_SEDUCE check, could_seduce, doseduce
+        // Simplified: just consume rn2(3) and produce message
+        const swval = rn2(3);
+        switch (swval) {
+        case 2:
+            verbl_msg = 'Hello, sailor.';
+            break;
+        case 1:
+            pline_msg = 'comes on to you.';
+            break;
+        default:
+            pline_msg = 'cajoles you.';
+        }
+        break;
+    }
+    case MS_ARREST:
+        if (mtmp.peaceful) {
+            const title = game.player?.female ? "Ma'am" : 'Sir';
+            game.display.putstr_message(`"Just the facts, ${title}."`);
+        } else {
+            const arrest_msg = [
+                'Anything you say can be used against you.',
+                "You're under arrest!",
+                'Stop in the name of the Law!',
+            ];
+            verbl_msg = arrest_msg[rn2(3)];
+        }
+        break;
+
+    case MS_BRIBE:
+        if (mtmp.peaceful && !mtmp.tame) {
+            // C: demon_talk(mtmp) — not ported
+            game.display.putstr_message(`${monDisplayName(mtmp)} makes a deal.`);
+            break;
+        }
+        // FALLTHRU
+    case MS_CUSS: // eslint-disable-line no-fallthrough
+        if (!mtmp.peaceful) {
+            // C: cuss(mtmp) — not ported
+            game.display.putstr_message(`${monDisplayName(mtmp)} curses at you!`);
+        } else {
+            verbl_msg = "We're all doomed.";
+        }
+        break;
+
+    case MS_SPELL:
+        pline_msg = 'seems to mutter a cantrip.';
+        break;
+
+    case MS_NURSE:
+        if (mtmp.cancelled)
+            verbl_msg = 'I hate this job!';
+        else
+            verbl_msg = "Relax, this won't hurt a bit.";
+        break;
+
+    case MS_GUARD:
+        verbl_msg = 'Please follow me.';
+        break;
+
+    case MS_SOLDIER: {
+        const soldier_foe = [
+            'Resistance is useless!', "You're dog meat!", 'Surrender!',
+        ];
+        const soldier_pax = [
+            "What lousy pay we're getting here!",
+            "The food's not fit for Orcs!",
+            "My feet hurt, I've been on them all day!",
+        ];
+        verbl_msg = mtmp.peaceful ? soldier_pax[rn2(3)]
+            : soldier_foe[rn2(3)];
+        break;
+    }
+    case MS_RIDER: {
+        const ms_Death = (ptr === mons[PM_DEATH]);
+        // C: first checks tribute/novel (no RNG); we skip that.
+        // Then: rn2(3) && Death_quote(); else rn2(10).
+        if (ms_Death && rn2(3)) {
+            // C: Death_quote(verbuf) — not ported; use placeholder.
+            // Death_quote itself does not consume RNG.
+            verbl_msg = 'THERE IS NO JUSTICE. THERE IS JUST ME.';
+        } else if (ms_Death && !rn2(10)) {
+            // rn2(3) returned 0, so we reach here and consume rn2(10)
+            pline_msg = 'is busy reading a copy of Sandman #8.';
+        } else {
+            // Either not Death, or rn2(3)==0 && rn2(10)!=0
+            verbl_msg = 'Who do you think you are, War?';
+        }
+        break;
+    }
+    } // switch
+
+    if (pline_msg) {
+        game.display.putstr_message(`${monDisplayName(mtmp)} ${pline_msg}`);
+    } else if (verbl_msg) {
+        if (ptr === mons[PM_DEATH]) {
+            game.display.putstr_message(verbl_msg.toUpperCase());
+        } else {
+            game.display.putstr_message(`"${verbl_msg}"`);
+        }
+    }
+    return 1;
+}
+
+// ============================================================================
+// dotalk / dochat (cf. sounds.c:1247-1409)
+// ============================================================================
+
+// cf. sounds.c:1247 — dotalk(): #chat command handler
+// Stub: the #chat command is not yet fully ported.
+export function dotalk(game) {
+    game.display.putstr_message('Talking to yourself is a bad habit for a dungeoneer.');
+    return 0;
+}
+
+// cf. sounds.c:1412 — responsive_mon_at(x, y): find monster at pos for chat
+export function responsive_mon_at(x, y, map) {
+    // Simplified stub
+    return null;
+}
+
+// cf. sounds.c:1426 — tiphat(): hat-tip when nothing to chat with
+export function tiphat(game) {
+    // Stub
+    return 0;
+}
+
+// ============================================================================
+// Sound library stubs (N/A for browser port)
+// ============================================================================
+
+// cf. sounds.c:2160 — set_voice(): configure voice for verbalize (N/A)
+export function set_voice() {}
+
+// cf. sounds.c:2184 — sound_speak(): speak text with voice settings (N/A)
+export function sound_speak() {}

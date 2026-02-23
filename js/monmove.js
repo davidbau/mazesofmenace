@@ -1454,7 +1454,7 @@ function m_move_aggress(mon, map, player, nx, ny, display = null, fov = null) {
 // ========================================================================
 // set_apparxy — C ref: monmove.c:2200
 // ========================================================================
-function set_apparxy(mon, map, player) {
+export function set_apparxy(mon, map, player) {
     let mx = Number.isInteger(mon.mux) ? mon.mux : 0;
     let my = Number.isInteger(mon.muy) ? mon.muy : 0;
 

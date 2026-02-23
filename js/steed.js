@@ -1,80 +1,462 @@
 // steed.js -- Riding steeds (saddle, mount, dismount)
-// cf. steed.c — saddle application, mounting/dismounting, steed movement and kicks
+// cf. steed.c -- saddle application, mounting/dismounting, steed movement and kicks
 
-// cf. steed.c:17 — rider_cant_reach(): print message when rider can't reach something
-// TODO: steed.c:17 — rider_cant_reach(): "You aren't skilled enough to reach from <steed>."
+import { rn2, rnd, rn1 } from './rng.js';
+import { isok, A_WIS, A_DEX, A_CHA } from './config.js';
+import { pline, You, Your, You_feel, You_cant, pline_The } from './pline.js';
+import { exercise } from './attrib_exercise.js';
+import { Monnam, mon_nam } from './do_name.js';
+import { is_humanoid, slithy, amorphous, noncorporeal, is_whirly,
+         unsolid, is_swimmer, is_floater, is_flyer,
+         grounded } from './mondata.js';
+import { MZ_MEDIUM, MZ_SMALL, MZ_LARGE } from './monsters.js';
+import { S_QUADRUPED, S_UNICORN, S_ANGEL, S_CENTAUR, S_DRAGON,
+         S_JABBERWOCK } from './symbols.js';
+import { W_SADDLE, which_armor } from './worn.js';
+import { SADDLE } from './objects.js';
 
-// cf. steed.c:26 — can_saddle(mtmp): can this monster wear a saddle?
-// Requires: mlet in steeds[] (QUADRUPED/UNICORN/ANGEL/CENTAUR/DRAGON/JABBERWOCK),
-//   MZ_MEDIUM+, not humanoid (unless centaur), not amorphous/noncorporeal/whirly/unsolid.
-// TODO: steed.c:26 — can_saddle(): saddleability check for monster
+// C ref: verysmall(ptr) = msize < MZ_SMALL
+function verysmall(ptr) { return (ptr.msize || 0) < MZ_SMALL; }
+// C ref: bigmonst(ptr) = msize >= MZ_LARGE
+function bigmonst(ptr) { return (ptr.msize || 0) >= MZ_LARGE; }
 
-// cf. steed.c:36 — use_saddle(otmp): apply a saddle to an adjacent monster
-// Checks: can_saddle, petrification, special monsters (minion/shk/priest/guard/wiz),
-//   skill-based chance (DEX + CHA/2 + 2*tameness + ulevel*modifier ± adjustments),
-//   cursed saddle -50, calls maybewakesteed().
-// TODO: steed.c:36 — use_saddle(): saddle application command handler
+// Monsters that might be ridden
+const STEEDS = [S_QUADRUPED, S_UNICORN, S_ANGEL, S_CENTAUR, S_DRAGON, S_JABBERWOCK];
 
-// cf. steed.c:142 — put_saddle_on_mon(saddle, mtmp): put a saddle on a monster
-// Creates saddle if null, calls mpickobj(), sets misc_worn_check |= W_SADDLE,
-//   saddle->owornmask = W_SADDLE, saddle->leashmon = m_id.
-// Partially implemented inline in u_init.js:289 (pony starting saddle).
-// TODO: steed.c:142 — put_saddle_on_mon(): full saddle-equip function
+// Dismount reasons (matching C constants)
+export const DISMOUNT_BYCHOICE = 0;
+export const DISMOUNT_THROWN   = 1;
+export const DISMOUNT_KNOCKED  = 2;
+export const DISMOUNT_FELL     = 3;
+export const DISMOUNT_POLY     = 4;
+export const DISMOUNT_ENGULFED = 5;
+export const DISMOUNT_BONES    = 6;
+export const DISMOUNT_GENERIC  = 7;
 
-// cf. steed.c:169 — can_ride(mtmp): can hero ride this monster?
-// Requires: tame, humanoid hero, not verysmall/bigmonst, swimmer if Underwater.
-// TODO: steed.c:169 — can_ride(): ridability check
+// MAXULEV for steed taming checks
+const MAXULEV = 30;
 
-// cf. steed.c:178 — doride(): #ride command — mount or dismount current steed
-// TODO: steed.c:178 — doride(): #ride command handler
+// cf. steed.c:17 -- rider_cant_reach(): print message when rider can't reach something
+export function rider_cant_reach(player) {
+    if (player.usteed) {
+        You("aren't skilled enough to reach from %s.", mon_nam(player.usteed));
+    }
+}
 
-// cf. steed.c:197 — mount_steed(mtmp, force): start riding a monster
-// Checks: already mounted, Hallucination, Wounded_legs, body shape, encumbrance,
-//   visibility, saddle, tame, trapped, tame decrement (non-knight), Underwater,
-//   can_saddle/can_ride, Levitation, rusty/corroded armor, slip chance.
-// On success: calls maybewakesteed(), sets u.usteed, teleds() hero to steed position,
-//   steed_vs_stealth().
-// TODO: steed.c:197 — mount_steed(): full mount logic with all checks
+// cf. steed.c:26 -- can_saddle(mtmp): can this monster wear a saddle?
+export function can_saddle(mtmp) {
+    const ptr = mtmp.data || mtmp.type;
+    if (!ptr) return false;
+    return STEEDS.includes(ptr.symbol)
+        && (ptr.msize >= MZ_MEDIUM)
+        && (!is_humanoid(ptr) || ptr.symbol === S_CENTAUR)
+        && !amorphous(ptr)
+        && !noncorporeal(ptr)
+        && !is_whirly(ptr)
+        && !unsolid(ptr);
+}
 
-// cf. steed.c:387 — exercise_steed(): called each move while riding to gain riding XP
-// Increments u.urideturns; every 100 turns calls use_skill(P_RIDING, 1).
-// TODO: steed.c:387 — exercise_steed(): riding-skill exercise counter
+// cf. steed.c:169 -- can_ride(mtmp): can hero ride this monster?
+export function can_ride(mtmp, player) {
+    const playerType = player.type || {};
+    return !!(mtmp.mtame
+        && is_humanoid(playerType)
+        && !verysmall(playerType)
+        && !bigmonst(playerType)
+        && (!player.underwater || is_swimmer(mtmp.data || mtmp.type || {})));
+}
 
-// cf. steed.c:402 — kick_steed(): hero kicks or whips the steed
-// Sleeping steed: rn2(2) chance to wake or reduce mfrozen.
-// Awake steed: decrements mtame; if tameness too low → dismount_steed(DISMOUNT_THROWN);
-//   otherwise gallop: u.ugallop += rn1(20, 30).
-// TODO: steed.c:402 — kick_steed(): kick/whip steed with tameness and wake effects
+// cf. steed.c:142 -- put_saddle_on_mon(saddle, mtmp): put a saddle on a monster
+export function put_saddle_on_mon(saddle, mtmp) {
+    if (!can_saddle(mtmp) || which_armor(mtmp, W_SADDLE)) {
+        return;
+    }
+    // If no saddle object provided, create one
+    // (In practice, the caller usually provides one)
+    if (!saddle) return;
 
-// cf. steed.c:459 [static] — landing_spot(spot, reason, forceit): find dismount landing spot
-// Tries adjacent squares in priority order based on dismount reason (KNOCKED prefers
-//   direction of knock; voluntary avoids known traps and boulders in 3-pass loop).
-// Falls back to enexto() if forceit and nothing found.
-// TODO: steed.c:459 — landing_spot(): adjacent square finder for dismounting
+    // Add saddle to monster's inventory
+    if (!mtmp.minvent) mtmp.minvent = [];
+    mtmp.minvent.push(saddle);
+    mtmp.misc_worn_check = (mtmp.misc_worn_check || 0) | W_SADDLE;
+    saddle.owornmask = W_SADDLE;
+    saddle.leashmon = mtmp.m_id;
+}
 
-// cf. steed.c:576 — dismount_steed(reason): stop riding; place hero and steed
-// Reasons: BYCHOICE, THROWN, KNOCKED, FELL, POLY, ENGULFED, BONES, GENERIC.
-// Heals Wounded_legs (steed's while mounted → hero's after), calls landing_spot(),
-//   places steed on map, teleds() hero to landing spot, steed_vs_stealth(),
-//   float_down() to return to surface.
-// TODO: steed.c:576 — dismount_steed(): full dismount with all reason cases
+// cf. steed.c:827 -- maybewakesteed(steed): wake sleeping/paralyzed steed
+function maybewakesteed(steed) {
+    const wasimmobile = !!(steed.msleeping || (steed.mfrozen && !steed.mcanmove));
 
-// cf. steed.c:827 [static] — maybewakesteed(steed): wake sleeping/paralyzed steed
-// Clears msleeping; halves mfrozen with rn2(frozen) chance to fully wake;
-//   calls finish_meating().
-// TODO: steed.c:827 — maybewakesteed(): wake steed when saddling or mounting
+    steed.msleeping = 0;
+    let frozen = steed.mfrozen || 0;
+    if (frozen) {
+        frozen = Math.floor((frozen + 1) / 2); // half
+        if (!rn2(frozen)) {
+            steed.mfrozen = 0;
+            steed.mcanmove = 1;
+        } else {
+            steed.mfrozen = frozen;
+        }
+    }
+    const isNowImmobile = !!(steed.msleeping || (steed.mfrozen && !steed.mcanmove));
+    if (wasimmobile && !isNowImmobile)
+        pline("%s wakes up.", Monnam(steed));
+    // regardless of waking, terminate any meal in progress
+    if (steed.meating) steed.meating = 0;
+}
 
-// cf. steed.c:852 — poly_steed(steed, oldshape): handle steed polymorphing
-// If can no longer saddle/ride: dismount_steed(DISMOUNT_FELL).
-// Otherwise: print adjustment message, call steed_vs_stealth().
-// TODO: steed.c:852 — poly_steed(): steed polymorph handling
+// cf. steed.c:178 -- doride(): #ride command
+export function doride(player, map, display) {
+    if (player.usteed) {
+        dismount_steed(player, map, display, DISMOUNT_BYCHOICE);
+        return 1; // ECMD_TIME
+    }
+    // TODO: getdir() to pick adjacent monster to mount
+    // For now, simplified — look for adjacent tame saddled monster
+    pline("You don't see anything to ride here.");
+    return 0; // ECMD_OK
+}
 
-// cf. steed.c:878 — stucksteed(checkfeeding): check if steed can move
-// Returns TRUE if helpless or (if checkfeeding) meating.
-// TODO: steed.c:878 — stucksteed(): steed mobility check
+// cf. steed.c:197 -- mount_steed(mtmp, force): start riding a monster
+export function mount_steed(mtmp, force, player, map, display) {
+    // Sanity checks
+    if (player.usteed) {
+        You("are already riding %s.", mon_nam(player.usteed));
+        return false;
+    }
 
-// cf. steed.c:898 — place_monster(mon, x, y): place a monster at map coordinates
-// Validates coordinates, checks for steed conflict and dead monster,
-//   sets mon->mx/my and level.monsters[x][y] = mon; sets mstate = MON_FLOOR.
-// Referenced (but not implemented) in comments: commands.js:947, dogmove.js:1527.
-// TODO: steed.c:898 — place_monster(): canonical monster placement on map grid
+    if (!mtmp) {
+        pline("I see nobody there.");
+        return false;
+    }
+
+    // Is the player in the right form?
+    if (player.hallucinating && !force) {
+        pline("Maybe you should find a designated driver.");
+        return false;
+    }
+
+    if (player.wounded_legs && !force) {
+        pline("Your legs are in no shape for riding.");
+        return false;
+    }
+
+    const playerType = player.type || {};
+    if (player.polymorphed && (!is_humanoid(playerType)
+                   || verysmall(playerType)
+                   || bigmonst(playerType)
+                   || slithy(playerType))) {
+        You("won't fit on a saddle.");
+        return false;
+    }
+
+    // Encumbrance check
+    if (!force && (player.encumbrance || 0) > 1) { // > SLT_ENCUMBER
+        You_cant("do that while carrying so much stuff.");
+        return false;
+    }
+
+    // Visibility check
+    if (!force && (player.blind && !player.telepathy)) {
+        pline("I see nobody there.");
+        return false;
+    }
+
+    // Valid monster checks
+    const otmp = which_armor(mtmp, W_SADDLE);
+    if (!otmp) {
+        pline("%s is not saddled.", Monnam(mtmp));
+        return false;
+    }
+
+    const ptr = mtmp.data || mtmp.type;
+
+    // Touch petrification check
+    // TODO: touch_petrifies check
+
+    if (!mtmp.mtame || mtmp.isminion) {
+        pline("I think %s would mind.", mon_nam(mtmp));
+        return false;
+    }
+
+    if (mtmp.mtrapped) {
+        You_cant("mount %s while it's trapped.", mon_nam(mtmp));
+        return false;
+    }
+
+    // Tameness decrement for non-knight
+    if (!force && player.roleIndex !== 4 /* PM_KNIGHT in config */ && mtmp.mtame) {
+        mtmp.mtame--;
+        if (!mtmp.mtame) {
+            pline("%s resists!", Monnam(mtmp));
+            return false;
+        }
+    }
+
+    if (!force && player.underwater && !is_swimmer(ptr || {})) {
+        You_cant("ride that creature while under water.");
+        return false;
+    }
+
+    if (!can_saddle(mtmp) || !can_ride(mtmp, player)) {
+        You_cant("ride such a creature.");
+        return false;
+    }
+
+    // Impairment: Levitation check
+    if (!force && !is_floater(ptr || {}) && !is_flyer(ptr || {})
+        && player.levitating && !player.lev_at_will) {
+        You("cannot reach %s.", mon_nam(mtmp));
+        return false;
+    }
+
+    // Rusty/corroded armor check
+    // TODO: is_metallic(uarm) && greatest_erosion(uarm) check
+
+    // Slip check
+    if (!force
+        && (player.confused || player.fumbling || player.glib
+            || player.wounded_legs || otmp.cursed || otmp.greased
+            || ((player.level || 1) + mtmp.mtame < rnd(Math.floor(MAXULEV / 2) + 5)))) {
+        if (player.levitating) {
+            pline("%s slips away from you.", Monnam(mtmp));
+            return false;
+        }
+        You("slip while trying to get on %s.", mon_nam(mtmp));
+        // RNG parity: rn1(5, 10) for damage
+        const dmg = rn1(5, 10);
+        // TODO: losehp(Maybe_Half_Phys(dmg), buf, NO_KILLER_PREFIX)
+        return false;
+    }
+
+    // Success
+    maybewakesteed(mtmp);
+    if (!force) {
+        if (player.levitating && !is_floater(ptr || {}) && !is_flyer(ptr || {}))
+            pline("%s magically floats up!", Monnam(mtmp));
+        You("mount %s.", mon_nam(mtmp));
+        if (player.flying)
+            You("and %s take flight together.", mon_nam(mtmp));
+    }
+
+    // Set up steed
+    player.usteed = mtmp;
+
+    // Remove steed from map monster grid (it's now "on" the hero)
+    map.removeMonster(mtmp);
+
+    // Move hero to steed's former position
+    // TODO: teleds(mtmp.mx, mtmp.my, TELEDS_ALLOW_DRAG)
+    player.x = mtmp.mx;
+    player.y = mtmp.my;
+
+    return true;
+}
+
+// cf. steed.c:387 -- exercise_steed(): called each move while riding
+export function exercise_steed(player) {
+    if (!player.usteed)
+        return;
+
+    if (player.urideturns === undefined)
+        player.urideturns = 0;
+
+    if (++player.urideturns >= 100) {
+        player.urideturns = 0;
+        // TODO: use_skill(P_RIDING, 1)
+    }
+}
+
+// cf. steed.c:402 -- kick_steed(): hero kicks or whips the steed
+export function kick_steed(player, map, display) {
+    if (!player.usteed)
+        return;
+
+    const steed = player.usteed;
+
+    // Sleeping/paralyzed steed
+    if (steed.msleeping || (steed.mfrozen && !steed.mcanmove)) {
+        if ((steed.mcanmove || steed.mfrozen) && !rn2(2)) {
+            if (steed.mcanmove) {
+                steed.msleeping = 0;
+            } else if (steed.mfrozen > 2) {
+                steed.mfrozen -= 2;
+            } else {
+                steed.mfrozen = 0;
+                steed.mcanmove = 1;
+            }
+            const stillHelpless = steed.msleeping || (steed.mfrozen && !steed.mcanmove);
+            if (stillHelpless)
+                pline("It stirs.");
+            else
+                pline("It rouses itself!");
+        } else {
+            pline("It does not respond.");
+        }
+        return;
+    }
+
+    // Make the steed less tame
+    if (steed.mtame)
+        steed.mtame--;
+
+    if (!steed.mtame
+        || ((player.level || 1) + steed.mtame < rnd(Math.floor(MAXULEV / 2) + 5))) {
+        dismount_steed(player, map, display, DISMOUNT_THROWN);
+        return;
+    }
+
+    pline("%s gallops!", Monnam(steed));
+    player.ugallop = (player.ugallop || 0) + rn1(20, 30);
+}
+
+// cf. steed.c:459 -- landing_spot(): find dismount landing spot
+function landing_spot(player, map, reason) {
+    // Try adjacent squares for a valid landing position
+    const dirs = [
+        [-1, 0], [0, -1], [1, 0], [0, 1],
+        [-1, -1], [1, -1], [-1, 1], [1, 1]
+    ];
+
+    for (const [dx, dy] of dirs) {
+        const nx = player.x + dx;
+        const ny = player.y + dy;
+        if (!isok(nx, ny)) continue;
+        const loc = map.at(nx, ny);
+        if (!loc) continue;
+        // Check accessible and not occupied by monster
+        // Simplified: check that it's a walkable tile
+        const typ = loc.typ;
+        if (typ >= 25 /* ROOM */ || typ === 7 /* CORR */) {
+            if (!map.monsterAt(nx, ny)) {
+                return { x: nx, y: ny };
+            }
+        }
+    }
+    return null;
+}
+
+// cf. steed.c:576 -- dismount_steed(reason): stop riding
+export function dismount_steed(player, map, display, reason) {
+    const mtmp = player.usteed;
+    if (!mtmp) return;
+
+    const repair_leg_damage = !!player.wounded_legs;
+    const have_spot = landing_spot(player, map, reason);
+
+    // Check the reason for dismounting
+    const otmp = which_armor(mtmp, W_SADDLE);
+    switch (reason) {
+    case DISMOUNT_THROWN:
+        You("are thrown off of %s!", mon_nam(mtmp));
+        {
+            const dmg = rn1(10, 10);
+            // TODO: losehp(Maybe_Half_Phys(dmg), "riding accident", KILLED_BY_AN)
+            // TODO: set_wounded_legs(BOTH_SIDES, HWounded_legs + rn1(5, 5))
+            rn1(5, 5); // RNG parity for wounded legs
+        }
+        break;
+    case DISMOUNT_KNOCKED:
+    case DISMOUNT_FELL:
+        You("fall off of %s!", mon_nam(mtmp));
+        if (!player.levitating && !player.flying) {
+            const dmg = rn1(10, 10);
+            // TODO: losehp(Maybe_Half_Phys(dmg), "riding accident", KILLED_BY_AN)
+            rn1(5, 5); // RNG parity for wounded legs
+        }
+        break;
+    case DISMOUNT_POLY:
+        You("can no longer ride %s.", mon_nam(mtmp));
+        break;
+    case DISMOUNT_ENGULFED:
+        // caller displays message
+        break;
+    case DISMOUNT_BONES:
+        // hero has just died
+        break;
+    case DISMOUNT_GENERIC:
+        // no messages
+        break;
+    case DISMOUNT_BYCHOICE:
+    default:
+        if (otmp && otmp.cursed) {
+            You_cant("The saddle seems to be cursed.");
+            return;
+        }
+        if (!have_spot) {
+            You_cant("There isn't anywhere for you to stand.");
+            return;
+        }
+        You("dismount %s.", mon_nam(mtmp));
+        break;
+    }
+
+    // Heal steed's wounded legs on dismount
+    if (repair_leg_damage) {
+        player.wounded_legs = 0;
+    }
+
+    // Release the steed
+    player.usteed = null;
+    player.ugallop = 0;
+
+    // Place the steed back on the map at hero's position
+    if (mtmp.mhp > 0) {
+        place_monster(mtmp, player.x, player.y, map);
+
+        // Move hero to landing spot if available
+        if (have_spot && reason !== DISMOUNT_ENGULFED
+            && reason !== DISMOUNT_BONES) {
+            player.x = have_spot.x;
+            player.y = have_spot.y;
+        }
+    }
+}
+
+// cf. steed.c:852 -- poly_steed(steed, oldshape): handle steed polymorphing
+export function poly_steed(steed, oldshape, player, map, display) {
+    if (!can_saddle(steed) || !can_ride(steed, player)) {
+        dismount_steed(player, map, display, DISMOUNT_FELL);
+    } else {
+        You("adjust yourself in the saddle on %s.", mon_nam(steed));
+    }
+}
+
+// cf. steed.c:878 -- stucksteed(checkfeeding): check if steed can move
+export function stucksteed(player, checkfeeding) {
+    const steed = player.usteed;
+    if (steed) {
+        // check whether steed can move
+        if (steed.msleeping || (steed.mfrozen && !steed.mcanmove)) {
+            pline("%s won't move!", Monnam(steed));
+            return true;
+        }
+        // optionally check whether steed is in the midst of a meal
+        if (checkfeeding && steed.meating) {
+            pline("%s is still eating.", Monnam(steed));
+            return true;
+        }
+    }
+    return false;
+}
+
+// cf. steed.c:898 -- place_monster(mon, x, y): place a monster at map coordinates
+export function place_monster(mon, x, y, map) {
+    if (!isok(x, y) && (x !== 0 || y !== 0)) {
+        // Invalid coordinates — try (0,0) as fallback for vault guards
+        x = 0;
+        y = 0;
+    }
+
+    // Set monster position
+    mon.mx = x;
+    mon.my = y;
+
+    // Add to map if not already present
+    if (map && map.monsters) {
+        // Check if monster is already in the list
+        if (!map.monsters.includes(mon)) {
+            map.addMonster(mon);
+        }
+    }
+}

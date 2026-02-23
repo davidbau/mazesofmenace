@@ -29,6 +29,7 @@ import {
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL, DBWALL, ROOM, CORR,
     DOOR, SDOOR, IRONBARS, TREE, FOUNTAIN, POOL, MOAT, WATER,
     DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, LAVAPOOL, LAVAWALL, ICE, CLOUD, AIR,
+    DB_NORTH, DB_SOUTH, DB_EAST, DB_WEST, DB_LAVA,
     STAIRS, LADDER, ALTAR, GRAVE, THRONE, SINK,
     SCORR, MAX_TYPE,
     PIT, SPIKED_PIT, HOLE, TRAPDOOR, ARROW_TRAP, DART_TRAP, ROCKTRAP,
@@ -7792,15 +7793,21 @@ export function drawbridge(opts) {
     const dirName = String(dir || 'north').toLowerCase();
     let dx = 0;
     let dy = 0;
-    if (dirName === 'north') dy = -1;
-    else if (dirName === 'south') dy = 1;
-    else if (dirName === 'east') dx = 1;
-    else if (dirName === 'west') dx = -1;
+    let dbDir;
+    if (dirName === 'north') { dy = -1; dbDir = DB_NORTH; }
+    else if (dirName === 'south') { dy = 1; dbDir = DB_SOUTH; }
+    else if (dirName === 'east') { dx = 1; dbDir = DB_EAST; }
+    else { dx = -1; dbDir = DB_WEST; }
 
     const isOpen = String(state || 'closed').toLowerCase() === 'open';
     const bridgeLoc = levelState.map.locations[bx][by];
     bridgeLoc.typ = isOpen ? DRAWBRIDGE_DOWN : DRAWBRIDGE_UP;
     bridgeLoc.flags = 0;
+    // C ref: create_drawbridge() sets drawbridgemask = dir, plus DB_LAVA if over lava
+    const lava = bridgeLoc.drawbridgemask ? (bridgeLoc.drawbridgemask & DB_LAVA) : 0;
+    bridgeLoc.drawbridgemask = dbDir | (bridgeLoc.typ === LAVAPOOL ? DB_LAVA : lava);
+    const horiz = (dbDir === DB_NORTH || dbDir === DB_SOUTH);
+    bridgeLoc.horizontal = !horiz;
     markSpLevMap(bx, by);
     markSpLevTouched(bx, by);
 
@@ -7809,8 +7816,10 @@ export function drawbridge(opts) {
     const wy = by + dy;
     if (wx >= 0 && wx < COLNO && wy >= 0 && wy < ROWNO) {
         const wallLoc = levelState.map.locations[wx][wy];
-        wallLoc.typ = DBWALL;
-        wallLoc.flags = 0;
+        wallLoc.typ = isOpen ? DOOR : DBWALL;
+        if (isOpen) wallLoc.flags = D_NODOOR;
+        else { wallLoc.flags = 0; wallLoc.nondiggable = true; }
+        wallLoc.horizontal = horiz;
         markSpLevMap(wx, wy);
         markSpLevTouched(wx, wy);
     }

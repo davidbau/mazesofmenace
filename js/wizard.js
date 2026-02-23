@@ -2,141 +2,987 @@
 // cf. wizard.c — amulet, mon_has_amulet, mon_has_special, tactics, strategy,
 //                choose_stairs, nasty, pick_nasty, clonewiz, resurrect,
 //                intervene, wizdeadorgone, cuss, aggravate, has_aggravatables
-//
-// This module encodes the Wizard of Yendor's AI: artifact covetousness,
-// multi-stage strategy (flee to heal, harass, pursuit), monster summoning
-// (nasty[]), disguise forms (wizapp[]), cloning, immortal resurrection,
-// and thematic dialog (cuss()).
-//
-// Covetous monster system covers Wizard + other M3_COVETOUS monsters
-// (Riders, Vlad, quest nemeses) that pursue specific artifacts.
-//
-// JS implementations: none. All functions are runtime gameplay AI.
-// is_nasty() predicate → makemon.js:108 (M2_NASTY flag check only).
 
-// cf. wizard.c:30 [data] — nasties[]: array of 44 powerful summoned monsters
-// Used by nasty() and pick_nasty() to select creatures to summon.
-// Includes demon lords, liches, master liches, arch-liches, dragons, etc.
-// Grouped as neutral_nasties, chaotic_nasties, lawful_nasties (all merged).
-// TODO: wizard.c:30 — nasties[]: nasty monster type roster
+import { rn2, rnd, rn1 } from './rng.js';
+import { pline, You, You_feel, verbalize } from './pline.js';
+import { makemon, NO_MM_FLAGS } from './makemon.js';
+import { mksobj, doname } from './mkobj.js';
+import {
+    AMULET_OF_YENDOR, FAKE_AMULET_OF_YENDOR,
+    BELL_OF_OPENING, CANDELABRUM_OF_INVOCATION,
+    SPE_BOOK_OF_THE_DEAD,
+} from './objects.js';
+import {
+    mons, S_ANGEL, S_DEMON, AT_MAGC,
+    PM_WIZARD_OF_YENDOR,
+    PM_COCKATRICE, PM_ETTIN, PM_STALKER, PM_MINOTAUR,
+    PM_OWLBEAR, PM_PURPLE_WORM, PM_XAN, PM_UMBER_HULK,
+    PM_XORN, PM_ZRUTY, PM_LEOCROTTA, PM_BALUCHITHERIUM,
+    PM_CARNIVOROUS_APE, PM_FIRE_ELEMENTAL, PM_JABBERWOCK,
+    PM_IRON_GOLEM, PM_OCHRE_JELLY, PM_GREEN_SLIME,
+    PM_DISPLACER_BEAST, PM_GENETIC_ENGINEER,
+    PM_BLACK_DRAGON, PM_RED_DRAGON, PM_ARCH_LICH, PM_VAMPIRE_LEADER,
+    PM_MASTER_MIND_FLAYER, PM_DISENCHANTER, PM_WINGED_GARGOYLE,
+    PM_STORM_GIANT, PM_OLOG_HAI, PM_ELF_NOBLE, PM_ELVEN_MONARCH,
+    PM_OGRE_TYRANT, PM_CAPTAIN, PM_GREMLIN,
+    PM_SILVER_DRAGON, PM_ORANGE_DRAGON, PM_GREEN_DRAGON,
+    PM_YELLOW_DRAGON, PM_GUARDIAN_NAGA, PM_FIRE_GIANT,
+    PM_ALEAX, PM_COUATL, PM_HORNED_DEVIL, PM_BARBED_DEVIL,
+    PM_HUMAN, PM_WATER_DEMON, PM_VAMPIRE, PM_TROLL,
+    PM_FLOATING_EYE, PM_TRAPPER, PM_ARCHON,
+    M3_WANTSAMUL, M3_WANTSBELL, M3_WANTSBOOK, M3_WANTSCAND,
+    M3_WANTSARTI,
+    G_HELL, G_NOHELL,
+} from './monsters.js';
+import { is_covetous, is_minion, attacktype, big_to_little } from './mondata.js';
+import { Monnam } from './do_name.js';
+import { hcolor } from './do_name.js';
+import { newsym, mpickobj, add_to_minv, BOLT_LIM } from './monutil.js';
+import { enexto, rloc, rloc_to, RLOC_MSG } from './teleport.js';
+import { healmon, wake_nearto } from './mon.js';
+import { monster_census, msummon } from './minion.js';
+import { sgn, dist2 } from './hacklib.js';
+import { is_quest_artifact } from './objdata.js';
+import { rndcurse } from './sit.js';
 
-// cf. wizard.c:51 [data] — wizapp[]: 12 disguise forms for the Wizard
-// Monster types the Wizard can polymorph into via M_AP_MONSTER.
-// Used by amulet() to suppress Wizard alerts when disguised.
-// TODO: wizard.c:51 — wizapp[]: Wizard disguise form list
+// ============================================================================
+// Strategy constants (cf. monst.h)
+// ============================================================================
 
-// cf. wizard.c:59 — amulet(): detect Amulet; alert Wizard; show portal heat
-// If player wears or wields real Amulet of Yendor: awakens nearby Wizard
-//   (within 10 tiles) if he doesn't already have the Amulet.
-// Gives proximity hints: "you feel ... close to a magical portal" based on
-//   dungeon depth relative to portal level.
-// TODO: wizard.c:59 — amulet(): Amulet detection and Wizard alerting
+const STRAT_APPEARMSG = 0x80000000;
+const STRAT_WAITFORU  = 0x20000000;
+const STRAT_CLOSE     = 0x10000000;
+const STRAT_WAITMASK  = (STRAT_CLOSE | STRAT_WAITFORU);
+const STRAT_HEAL      = 0x08000000;
+const STRAT_GROUND    = 0x04000000;
+const STRAT_MONSTR    = 0x02000000;
+const STRAT_PLAYER    = 0x01000000;
+const STRAT_NONE      = 0x00000000;
+const STRAT_STRATMASK = 0x0f000000;
+const STRAT_GOAL      = 0x000000ff;
 
-// cf. wizard.c:104 — mon_has_amulet(mon): does monster carry Amulet of Yendor?
-// Searches mon's inventory for AMULET_OF_YENDOR object.
-// TODO: wizard.c:104 — mon_has_amulet(): monster Amulet check
+const MAXNASTIES = 10;
+const MM_NOWAIT = 0x00000002;
+const MM_NOMSG  = 0x00020000;
 
-// cf. wizard.c:115 — mon_has_special(mon): does monster carry a quest artifact?
-// Returns TRUE if mon has Amulet, Bell of Opening, Candelabrum, Book of Dead,
-//   or the role-specific quest artifact.
-// TODO: wizard.c:115 — mon_has_special(): monster quest-artifact check
+// ============================================================================
+// Data tables
+// ============================================================================
 
-// cf. wizard.c:138 [macro] — M_Wants(mask): does monster want this artifact?
-// Checks mon->data->mflags3 & mask (M3_WANTSAMUL, M3_WANTSBELL, etc.).
-// TODO: wizard.c:138 — M_Wants(): covetous artifact desire predicate
+// cf. wizard.c:31 — nasties[]: array of powerful summoned monsters
+// Grouped as neutral, chaotic, lawful (44 entries)
+const nasties = [
+    /* neutral */
+    PM_COCKATRICE, PM_ETTIN, PM_STALKER, PM_MINOTAUR,
+    PM_OWLBEAR, PM_PURPLE_WORM, PM_XAN, PM_UMBER_HULK,
+    PM_XORN, PM_ZRUTY, PM_LEOCROTTA, PM_BALUCHITHERIUM,
+    PM_CARNIVOROUS_APE, PM_FIRE_ELEMENTAL, PM_JABBERWOCK,
+    PM_IRON_GOLEM, PM_OCHRE_JELLY, PM_GREEN_SLIME,
+    PM_DISPLACER_BEAST, PM_GENETIC_ENGINEER,
+    /* chaotic */
+    PM_BLACK_DRAGON, PM_RED_DRAGON, PM_ARCH_LICH, PM_VAMPIRE_LEADER,
+    PM_MASTER_MIND_FLAYER, PM_DISENCHANTER, PM_WINGED_GARGOYLE,
+    PM_STORM_GIANT, PM_OLOG_HAI, PM_ELF_NOBLE, PM_ELVEN_MONARCH,
+    PM_OGRE_TYRANT, PM_CAPTAIN, PM_GREMLIN,
+    /* lawful */
+    PM_SILVER_DRAGON, PM_ORANGE_DRAGON, PM_GREEN_DRAGON,
+    PM_YELLOW_DRAGON, PM_GUARDIAN_NAGA, PM_FIRE_GIANT,
+    PM_ALEAX, PM_COUATL, PM_HORNED_DEVIL, PM_BARBED_DEVIL,
+];
 
-// cf. wizard.c:140 [static] — which_arti(mask): convert M3_WANTS* to object type
-// Maps M3_WANTSAMUL → AMULET_OF_YENDOR, M3_WANTSBELL → BELL_OF_OPENING, etc.
-// Returns 0 for unrecognized masks.
-// TODO: wizard.c:140 — which_arti(): M3_WANTS flag to object type
+// cf. wizard.c:52 — wizapp[]: 12 disguise forms for the Wizard
+const wizapp = [
+    PM_HUMAN, PM_WATER_DEMON, PM_VAMPIRE, PM_RED_DRAGON,
+    PM_TROLL, PM_UMBER_HULK, PM_XORN, PM_XAN,
+    PM_COCKATRICE, PM_FLOATING_EYE, PM_GUARDIAN_NAGA, PM_TRAPPER,
+];
 
-// cf. wizard.c:163 [static] — mon_has_arti(mon, otyp): monster carries artifact?
-// If otyp=0: checks all M3_WANTS artifacts. Else: checks specific artifact.
-// TODO: wizard.c:163 — mon_has_arti(): monster artifact possession check
+// cf. wizard.c:818 — random_insult[]
+const random_insult = [
+    "antic",      "blackguard",   "caitiff",    "chucklehead",
+    "coistrel",   "craven",       "cretin",     "cur",
+    "dastard",    "demon fodder", "dimwit",     "dolt",
+    "fool",       "footpad",      "imbecile",   "knave",
+    "maledict",   "miscreant",    "niddering",  "poltroon",
+    "rattlepate", "reprobate",    "scapegrace", "varlet",
+    "villein",    /* (sic.) */
+    "wittol",     "worm",         "wretch",
+];
 
-// cf. wizard.c:182 [static] — other_mon_has_arti(mon, mask): another monster has artifact?
-// Finds a monster OTHER than mon that carries the artifact specified by mask.
-// Returns that monster or NULL.
-// TODO: wizard.c:182 — other_mon_has_arti(): find rival monster with artifact
+// cf. wizard.c:829 — random_malediction[]
+const random_malediction = [
+    "Hell shall soon claim thy remains,",
+    "I chortle at thee, thou pathetic",
+    "Prepare to die, thou",
+    "Resistance is useless,",
+    "Surrender or die, thou",
+    "There shall be no mercy, thou",
+    "Thou shalt repent of thy cunning,",
+    "Thou art as a flea to me,",
+    "Thou art doomed,",
+    "Thy fate is sealed,",
+    "Verily, thou shalt be one dead",
+];
 
-// cf. wizard.c:200 [static] — on_ground(mask): artifact on the ground?
-// Returns the object matching M3_WANTS* mask if found on any floor tile.
-// TODO: wizard.c:200 — on_ground(): artifact floor search
+// ============================================================================
+// Utility helpers
+// ============================================================================
 
-// cf. wizard.c:214 [static] — you_have(mask): does player possess this artifact?
-// Checks player inventory and equipped items for artifact matching mask.
-// TODO: wizard.c:214 — you_have(): player artifact possession check
+// ROLL_FROM(arr) — C macro: arr[rn2(SIZE(arr))]
+function ROLL_FROM(arr) {
+    return arr[rn2(arr.length)];
+}
 
-// cf. wizard.c:234 [static] — target_on(mask): find goal position for covetous monster
-// Prioritizes: player has it → target player; another monster has it → target that monster;
-//   on floor → target that location; else player's position.
-// Sets dest for monster pathfinding.
-// TODO: wizard.c:234 — target_on(): covetous monster goal selection
+// distu(player, x, y) — squared distance from player to (x,y)
+function distu(player, x, y) {
+    return dist2(player.x, player.y, x, y);
+}
 
-// cf. wizard.c:268 [static] — strategy(mon): decide monster's high-level strategy
-// Considers: HP level (flee to heal if below threshold), artifact inventory
-//   (whether mon wants to heal/harass/pursue), level difference to target.
-// Sets mon->mstrategy to STRAT_HEAL, STRAT_HARASS, or STRAT_PURSUE.
-// TODO: wizard.c:268 — strategy(): covetous monster AI strategy selection
+// m_next2u(mtmp, player) — is monster adjacent to player?
+function m_next2u(mtmp, player) {
+    return Math.abs(mtmp.mx - player.x) <= 1
+        && Math.abs(mtmp.my - player.y) <= 1;
+}
 
-// cf. wizard.c:330 — choose_stairs(mon, up): find stairs for fleeing covetous monster
-// Finds nearest up or down stairs; returns position for monster movement.
-// Used by tactics() when strategy is STRAT_HEAL (flee to another level).
-// TODO: wizard.c:330 — choose_stairs(): stair selection for fleeing
+// In_W_tower — stub: Wizard's Tower not tracked yet
+function In_W_tower(/*x, y*/) { return false; }
 
-// cf. wizard.c:367 — tactics(mon): execute monster's strategy
-// Dispatches on mstrategy: STRAT_HEAL → move toward stairs then level-change;
-//   STRAT_HARASS → aggravate + nasty summon + cuss;
-//   STRAT_PURSUE → target_on + pathfind toward artifact.
-// Called from monmove() for covetous monsters.
-// TODO: wizard.c:367 — tactics(): covetous monster action execution
+// builds_up — stub: standard dungeons build downward
+function builds_up() { return false; }
 
-// cf. wizard.c:466 — has_aggravatables(mon): any monsters to wake nearby?
-// Returns TRUE if there's a sleeping or passive monster within range that can
-//   be aggravated (used to decide if STRAT_HARASS is worthwhile).
-// TODO: wizard.c:466 — has_aggravatables(): check for wakeable monsters
+// Inhell — stub
+function Inhell() { return false; }
 
-// cf. wizard.c:486 — aggravate(mon): wake all nearby monsters
-// Sets mflee=0, mwait=0 for all monsters within aggravation radius.
-// Removes meditation status.
-// TODO: wizard.c:486 — aggravate(): wake nearby monsters
+// In_endgame — stub
+function In_endgame() { return false; }
 
-// cf. wizard.c:510 — clonewiz(): create a Wizard of Yendor clone
-// Spawns a duplicate Wizard near the original; optionally gives fake Amulet;
-//   prints "Double Trouble!" message.
-// TODO: wizard.c:510 — clonewiz(): Wizard cloning ("Double Trouble")
+// Is_astralevel — stub
+function Is_astralevel() { return false; }
 
-// cf. wizard.c:531 — pick_nasty(): select a random nasty monster type
-// Validates from nasties[]: not genocided, not too weak (level filter),
-//   not in Astral Plane unless deity-appropriate.
-// Returns chosen permonst* or NULL.
-// TODO: wizard.c:531 — pick_nasty(): random nasty monster selection
+// Is_rogue_level — stub
+function Is_rogue_level() { return false; }
 
-// cf. wizard.c:584 — nasty(mon): summon 1-MAXNASTIES (10) powerful monsters
-// For each summoning slot: calls pick_nasty(); places via enexto/makemon.
-// Respects caster alignment: filters chaotic/neutral/lawful nasties appropriately.
-// Anti-summoning chain filter: spellcasters only summon from restricted subset.
-// Used by tactics() STRAT_HARASS and by monster spell SG_NASTY.
-// TODO: wizard.c:584 — nasty(): summon wave of powerful monsters
+// inhistemple — stub (temple/epri tracking not available)
+function inhistemple(/*mtmp*/) { return false; }
 
-// cf. wizard.c:708 — resurrect(): bring back the Wizard of Yendor
-// Checks migrating_mons for the Wizard; if found, returns him to level.
-// Else spawns fresh Wizard with threats ("I'm baack!"); picks a new wizapp disguise.
-// Adjusts mhp; calls cuss().
-// TODO: wizard.c:708 — resurrect(): Wizard immortal respawn
+// inhishop — simplified check
+function inhishop(mtmp) { return !!(mtmp.isshk && mtmp.shoproom); }
 
-// cf. wizard.c:778 — intervene(): retaliate after Wizard is killed
-// Called on Wizard death: randomly curses items / aggravates monsters /
-//   calls nasty() / calls resurrect(); intensity scales with kill count.
-// TODO: wizard.c:778 — intervene(): Wizard death retaliation
+// helpless — is monster unable to act?
+function helpless(mtmp) { return !!(mtmp.sleeping || mtmp.mfrozen); }
 
-// cf. wizard.c:808 — wizdeadorgone(wiz): bookkeeping when Wizard leaves play
-// Clears wizard-tracking state; may trigger demigod status if player has Amulet.
-// Called when Wizard is killed or banished.
-// TODO: wizard.c:808 — wizdeadorgone(): Wizard removal bookkeeping
+// ptr accessor for monster data
+function mptr(mtmp) { return mtmp.type || mtmp.data || {}; }
 
-// cf. wizard.c:839 — cuss(mon): Wizard/minion taunts and threats
-// Random selection from themed insult tables based on situation:
-//   Wizard has Amulet / player has Amulet / Wizard is hurt / generic threats.
-// Uses verbalize() to output lines.
-// TODO: wizard.c:839 — cuss(): Wizard taunt dialog generation
+// cansee_pos — can hero see location? (approximate)
+function cansee_pos(map, player, fov, x, y) {
+    if (player.blind) return false;
+    if (fov && fov[y] && fov[y][x]) return true;
+    return false;
+}
+
+// is_lminion — lawful minion check
+function is_lminion(mon) {
+    if (!mon) return false;
+    const ptr = mptr(mon);
+    if (ptr.symbol !== S_ANGEL) return false;
+    if (mon.isminion && mon.emin) return (mon.emin.min_align || 0) > 0;
+    return (ptr.align || 0) > 0;
+}
+
+// ============================================================================
+// M_Wants — does monster want this artifact?
+// cf. wizard.c:139
+// ============================================================================
+
+function M_Wants(mtmp, mask) {
+    return !!(mptr(mtmp).flags3 & mask);
+}
+
+// ============================================================================
+// which_arti — convert M3_WANTS* mask to object type
+// cf. wizard.c:141
+// ============================================================================
+
+function which_arti(mask) {
+    switch (mask) {
+    case M3_WANTSAMUL: return AMULET_OF_YENDOR;
+    case M3_WANTSBELL: return BELL_OF_OPENING;
+    case M3_WANTSCAND: return CANDELABRUM_OF_INVOCATION;
+    case M3_WANTSBOOK: return SPE_BOOK_OF_THE_DEAD;
+    default: return 0; // 0 signifies quest artifact
+    }
+}
+
+// ============================================================================
+// mon_has_arti — does monster carry specific artifact?
+// cf. wizard.c:164
+// If otyp=0, checks for quest artifact. Else checks specific otyp.
+// ============================================================================
+
+function mon_has_arti(mtmp, otyp) {
+    for (const otmp of mtmp.minvent || []) {
+        if (otyp) {
+            if (otmp.otyp === otyp) return true;
+        } else if (is_quest_artifact(otmp)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// ============================================================================
+// other_mon_has_arti — find another monster carrying artifact
+// cf. wizard.c:183
+// ============================================================================
+
+function other_mon_has_arti(mtmp, otyp, map) {
+    for (const mtmp2 of map.monsters || []) {
+        // no need for dead check — dead monsters have no inventory
+        if (mtmp2 !== mtmp && mon_has_arti(mtmp2, otyp))
+            return mtmp2;
+    }
+    return null;
+}
+
+// ============================================================================
+// on_ground — find object of type on the ground
+// cf. wizard.c:201
+// ============================================================================
+
+function on_ground(otyp, map) {
+    for (const otmp of map.objects || []) {
+        if (otyp) {
+            if (otmp.otyp === otyp) return otmp;
+        } else if (is_quest_artifact(otmp)) {
+            return otmp;
+        }
+    }
+    return null;
+}
+
+// ============================================================================
+// you_have — does player possess artifact matching mask?
+// cf. wizard.c:215
+// ============================================================================
+
+function you_have(mask, player) {
+    const inv = player.inventory || [];
+    switch (mask) {
+    case M3_WANTSAMUL: return inv.some(o => o && o.otyp === AMULET_OF_YENDOR);
+    case M3_WANTSBELL: return inv.some(o => o && o.otyp === BELL_OF_OPENING);
+    case M3_WANTSCAND: return inv.some(o => o && o.otyp === CANDELABRUM_OF_INVOCATION);
+    case M3_WANTSBOOK: return inv.some(o => o && o.otyp === SPE_BOOK_OF_THE_DEAD);
+    case M3_WANTSARTI: return false; // TODO: quest artifact tracking
+    default: return false;
+    }
+}
+
+// ============================================================================
+// target_on — find goal position for covetous monster
+// cf. wizard.c:235
+// ============================================================================
+
+function target_on(mask, mtmp, map, player) {
+    if (!M_Wants(mtmp, mask)) return STRAT_NONE;
+
+    const otyp = which_arti(mask);
+    if (!mon_has_arti(mtmp, otyp)) {
+        if (you_have(mask, player)) {
+            if (!mtmp.mgoal) mtmp.mgoal = {};
+            mtmp.mgoal.x = player.x;
+            mtmp.mgoal.y = player.y;
+            return (STRAT_PLAYER | mask);
+        }
+        const otmp = on_ground(otyp, map);
+        if (otmp) {
+            if (!mtmp.mgoal) mtmp.mgoal = {};
+            mtmp.mgoal.x = otmp.ox;
+            mtmp.mgoal.y = otmp.oy;
+            return (STRAT_GROUND | mask);
+        }
+        const mtmp2 = other_mon_has_arti(mtmp, otyp, map);
+        if (mtmp2
+            // when seeking the Amulet, avoid targeting the Wizard
+            // or temple priests (to protect Moloch's high priest)
+            && (otyp !== AMULET_OF_YENDOR
+                || (!mtmp2.iswiz && !inhistemple(mtmp2)))) {
+            if (!mtmp.mgoal) mtmp.mgoal = {};
+            mtmp.mgoal.x = mtmp2.mx;
+            mtmp.mgoal.y = mtmp2.my;
+            return (STRAT_MONSTR | mask);
+        }
+    }
+    if (!mtmp.mgoal) mtmp.mgoal = {};
+    mtmp.mgoal.x = 0;
+    mtmp.mgoal.y = 0;
+    return STRAT_NONE;
+}
+
+// ============================================================================
+// strategy — covetous monster AI strategy selection
+// cf. wizard.c:268
+// ============================================================================
+
+function strategy(mtmp, map, player) {
+    const ptr = mptr(mtmp);
+
+    if (!is_covetous(ptr)
+        || (mtmp.isshk && inhishop(mtmp))
+        || (mtmp.ispriest && inhistemple(mtmp)))
+        return STRAT_NONE;
+
+    let dstrat;
+    const hpRatio = Math.floor((mtmp.mhp * 3) / mtmp.mhpmax); // 0-3
+    switch (hpRatio) {
+    default:
+    case 0: // panic time — almost snuffed
+        return STRAT_HEAL;
+    case 1: // the wiz is less cautious
+        if (ptr !== mons[PM_WIZARD_OF_YENDOR])
+            return STRAT_HEAL;
+        // fall through
+    case 2:
+        dstrat = STRAT_HEAL;
+        break;
+    case 3:
+        dstrat = STRAT_NONE;
+        break;
+    }
+
+    // C: if (svc.context.made_amulet)
+    // Approximate: check if player has amulet
+    if (you_have(M3_WANTSAMUL, player)) {
+        const strat = target_on(M3_WANTSAMUL, mtmp, map, player);
+        if (strat !== STRAT_NONE) return strat;
+    }
+
+    // C: if (u.uevent.invoked) — invocation not tracked; use default order
+    let strat;
+    if ((strat = target_on(M3_WANTSBOOK, mtmp, map, player)) !== STRAT_NONE) return strat;
+    if ((strat = target_on(M3_WANTSBELL, mtmp, map, player)) !== STRAT_NONE) return strat;
+    if ((strat = target_on(M3_WANTSCAND, mtmp, map, player)) !== STRAT_NONE) return strat;
+    if ((strat = target_on(M3_WANTSARTI, mtmp, map, player)) !== STRAT_NONE) return strat;
+
+    return dstrat;
+}
+
+// ============================================================================
+// choose_stairs — find stairs for fleeing covetous monster
+// cf. wizard.c:330
+// sx_out, sy_out are output objects: {x:} and {y:}
+// dir: true = forward, false = backtrack (usually up)
+// ============================================================================
+
+export function choose_stairs(sx_out, sy_out, dir, map) {
+    const stdir = builds_up() ? dir : !dir;
+
+    // Look for stairs in preferred direction, then fallback
+    let stway = null;
+    if (stdir && map.upstair) stway = map.upstair;
+    else if (!stdir && map.dnstair) stway = map.dnstair;
+
+    if (!stway) {
+        // Try other direction
+        if (!stdir && map.upstair) stway = map.upstair;
+        else if (stdir && map.dnstair) stway = map.dnstair;
+    }
+
+    if (stway) {
+        sx_out.x = stway.x;
+        sy_out.y = stway.y;
+    }
+}
+
+// ============================================================================
+// amulet — If you have the Amulet, alert the Wizard; show portal heat
+// cf. wizard.c:59
+// ============================================================================
+
+export function amulet(map, player, display) {
+    // C: check if wearing or wielding the real Amulet of Yendor
+    const amu = (player.amulet && player.amulet.otyp === AMULET_OF_YENDOR)
+             ? player.amulet
+             : (player.weapon && player.weapon.otyp === AMULET_OF_YENDOR)
+             ? player.weapon
+             : null;
+
+    if (amu && !rn2(15)) {
+        // Search for magic portal traps and give proximity hints
+        for (const ttmp of map.traps || []) {
+            // MAGIC_PORTAL = 28 (from config.js)
+            if (ttmp.ttyp === 28) {
+                const tx = ttmp.tx !== undefined ? ttmp.tx : ttmp.x;
+                const ty = ttmp.ty !== undefined ? ttmp.ty : ttmp.y;
+                const du = distu(player, tx, ty);
+                if (du <= 9)
+                    pline("The Amulet of Yendor feels hot!");
+                else if (du <= 64)
+                    pline("The Amulet of Yendor feels very warm.");
+                else if (du <= 144)
+                    pline("The Amulet of Yendor feels warm.");
+                // else, the amulet feels normal
+                break;
+            }
+        }
+    }
+
+    // C: if (!svc.context.no_of_wizards) return;
+    // Count wizards on level
+    let wizCount = 0;
+    for (const mtmp of map.monsters || []) {
+        if (mtmp.dead) continue;
+        if (mtmp.iswiz) wizCount++;
+    }
+    if (!wizCount) return;
+
+    // Find Wizard and wake him if necessary
+    for (const mtmp of map.monsters || []) {
+        if (mtmp.dead) continue;
+        if (mtmp.iswiz && mtmp.sleeping && !rn2(40)) {
+            mtmp.sleeping = false;
+            mtmp.msleeping = 0;
+            if (!m_next2u(mtmp, player))
+                You("get the creepy feeling that somebody noticed your taking the Amulet.");
+            return;
+        }
+    }
+}
+
+// ============================================================================
+// mon_has_amulet — does this monster carry the Amulet of Yendor?
+// cf. wizard.c:104
+// ============================================================================
+
+export function mon_has_amulet(mtmp) {
+    for (const otmp of mtmp.minvent || []) {
+        if (otmp.otyp === AMULET_OF_YENDOR) return true;
+    }
+    return false;
+}
+
+// ============================================================================
+// mon_has_special — does monster carry a quest-relevant item?
+// cf. wizard.c:115
+// ============================================================================
+
+export function mon_has_special(mtmp) {
+    for (const otmp of mtmp.minvent || []) {
+        if (otmp.otyp === AMULET_OF_YENDOR
+            || is_quest_artifact(otmp)
+            || otmp.otyp === BELL_OF_OPENING
+            || otmp.otyp === CANDELABRUM_OF_INVOCATION
+            || otmp.otyp === SPE_BOOK_OF_THE_DEAD)
+            return true;
+    }
+    return false;
+}
+
+// ============================================================================
+// tactics — execute covetous monster's strategy
+// cf. wizard.c:367
+// ============================================================================
+
+export function tactics(mtmp, map, player, display, fov) {
+    const strat = strategy(mtmp, map, player);
+    const sx_out = { x: 0 };
+    const sy_out = { y: 0 };
+
+    // Update mstrategy, preserving wait/appear flags
+    mtmp.mstrategy =
+        ((mtmp.mstrategy || 0) & (STRAT_WAITMASK | STRAT_APPEARMSG)) | strat;
+
+    switch (strat) {
+    case STRAT_HEAL: { // hide and recover
+        let mx = mtmp.mx, my = mtmp.my;
+
+        // C: if (u.uswallow && u.ustuck == mtmp) expels()
+        // TODO: expels not ported
+
+        // If wounded, hole up on or near the stairs (to block them)
+        choose_stairs(sx_out, sy_out, !!(mtmp.m_id % 2), map);
+        mtmp.mavenge = 1; // covetous monsters attack while fleeing
+        const sx = sx_out.x, sy = sy_out.y;
+
+        if (In_W_tower(mx, my)
+            || (mtmp.iswiz && !sx && !mon_has_amulet(mtmp))) {
+            if (!rn2(3 + Math.floor(mtmp.mhp / 10)))
+                rloc(mtmp, RLOC_MSG, map, player, display, fov);
+        } else if (sx && (mx !== sx || my !== sy)) {
+            // mnearto: teleport near stairs
+            const cc = {};
+            if (!enexto(cc, sx, sy, mptr(mtmp), map, player)
+                || (rloc_to(mtmp, cc.x, cc.y, map, player, display, fov), false)) {
+                // couldn't move to target; stay put
+                rloc_to(mtmp, mx, my, map, player, display, fov);
+                return 0;
+            }
+            rloc_to(mtmp, cc.x, cc.y, map, player, display, fov);
+            mx = mtmp.mx;
+            my = mtmp.my;
+        }
+        // if you're not around, cast healing spells
+        if (distu(player, mx, my) > (BOLT_LIM * BOLT_LIM)) {
+            if (mtmp.mhp <= mtmp.mhpmax - 8) {
+                healmon(mtmp, rnd(8), 0);
+                return 1;
+            }
+        }
+    }
+    // FALLTHROUGH to STRAT_NONE
+    // eslint-disable-next-line no-fallthrough
+    case STRAT_NONE: { // harass
+        if (!rn2(!mtmp.flee ? 5 : 33)) {
+            // mnexto: teleport near current position
+            const cc = {};
+            if (enexto(cc, mtmp.mx, mtmp.my, mptr(mtmp), map, player))
+                rloc_to(mtmp, cc.x, cc.y, map, player, display, fov);
+        }
+        return 0;
+    }
+
+    default: { // kill, maim, pillage!
+        const where = (strat & STRAT_STRATMASK);
+        const tx = mtmp.mgoal ? mtmp.mgoal.x : 0;
+        const ty = mtmp.mgoal ? mtmp.mgoal.y : 0;
+        const targ = (strat & STRAT_GOAL);
+
+        if (!targ) return 0; // simply wants you to close
+
+        if ((player.x === tx && player.y === ty) || where === STRAT_PLAYER) {
+            // player is standing on it (or has it) — teleport near
+            const mx = mtmp.mx, my = mtmp.my;
+            const cc = {};
+            if (enexto(cc, tx, ty, mptr(mtmp), map, player))
+                rloc_to(mtmp, cc.x, cc.y, map, player, display, fov);
+            else
+                rloc_to(mtmp, mx, my, map, player, display, fov);
+            return 0;
+        }
+
+        if (where === STRAT_GROUND) {
+            if (!map.monsterAt(tx, ty) || (mtmp.mx === tx && mtmp.my === ty)) {
+                // teleport to it and pick it up
+                rloc_to(mtmp, tx, ty, map, player, display, fov);
+
+                const otmp = on_ground(which_arti(targ), map);
+                if (otmp) {
+                    if (cansee_pos(map, player, fov, mtmp.mx, mtmp.my))
+                        pline("%s picks up %s.", Monnam(mtmp), doname(otmp, player));
+                    // obj_extract_self — remove from map objects
+                    const idx = (map.objects || []).indexOf(otmp);
+                    if (idx >= 0) map.objects.splice(idx, 1);
+                    mpickobj(mtmp, otmp);
+                    return 1;
+                }
+                return 0;
+            } else {
+                // a monster is standing on it — cause some trouble
+                if (!rn2(5)) {
+                    const cc = {};
+                    if (enexto(cc, mtmp.mx, mtmp.my, mptr(mtmp), map, player))
+                        rloc_to(mtmp, cc.x, cc.y, map, player, display, fov);
+                }
+                return 0;
+            }
+        } else {
+            // a monster has it — port beside it
+            const mx = mtmp.mx, my = mtmp.my;
+            const cc = {};
+            if (enexto(cc, tx, ty, mptr(mtmp), map, player))
+                rloc_to(mtmp, cc.x, cc.y, map, player, display, fov);
+            else
+                rloc_to(mtmp, mx, my, map, player, display, fov);
+            return 0;
+        }
+    } // default case
+    } // switch
+}
+
+// ============================================================================
+// has_aggravatables — are there any monsters mon could aggravate?
+// cf. wizard.c:466
+// ============================================================================
+
+export function has_aggravatables(mon, map, player) {
+    const in_w_tower = In_W_tower(mon.mx, mon.my);
+
+    if (in_w_tower !== In_W_tower(player.x, player.y))
+        return false;
+
+    for (const mtmp of map.monsters || []) {
+        if (mtmp.dead) continue;
+        if (in_w_tower !== In_W_tower(mtmp.mx, mtmp.my))
+            continue;
+        if (((mtmp.mstrategy || 0) & STRAT_WAITFORU) !== 0 || helpless(mtmp))
+            return true;
+    }
+    return false;
+}
+
+// ============================================================================
+// aggravate — wake all monsters on level
+// cf. wizard.c:486
+// ============================================================================
+
+export function aggravate(map, player) {
+    const in_w_tower = In_W_tower(player ? player.x : 0, player ? player.y : 0);
+
+    for (const mtmp of map.monsters || []) {
+        if (mtmp.dead) continue;
+        if (in_w_tower !== In_W_tower(mtmp.mx, mtmp.my))
+            continue;
+        mtmp.mstrategy = (mtmp.mstrategy || 0) & ~(STRAT_WAITFORU | STRAT_APPEARMSG);
+        mtmp.sleeping = false;
+        mtmp.msleeping = 0;
+        if (mtmp.mcanmove === false && !rn2(5)) {
+            mtmp.mfrozen = 0;
+            mtmp.mcanmove = true;
+        }
+    }
+}
+
+// ============================================================================
+// clonewiz — Wizard cloning ("Double Trouble")
+// cf. wizard.c:510
+// ============================================================================
+
+export function clonewiz(map, player, display) {
+    const depth = player?.dungeonLevel || 1;
+    const mtmp2 = makemon(mons[PM_WIZARD_OF_YENDOR], player.x, player.y,
+                          MM_NOWAIT, depth, map);
+    if (mtmp2) {
+        mtmp2.sleeping = false;
+        mtmp2.msleeping = 0;
+        mtmp2.tame = false;
+        mtmp2.mtame = 0;
+        mtmp2.peaceful = false;
+        mtmp2.mpeaceful = false;
+
+        // Give clone a fake amulet sometimes
+        const playerHasAmulet = (player.inventory || []).some(
+            o => o && o.otyp === AMULET_OF_YENDOR
+        );
+        if (!playerHasAmulet && rn2(2)) {
+            const fake = mksobj(FAKE_AMULET_OF_YENDOR, true, false);
+            if (fake) add_to_minv(mtmp2, fake);
+        }
+
+        // C: if (!Protection_from_shape_changers)
+        // Protection not tracked; apply disguise unconditionally
+        mtmp2.m_ap_type = 'monster'; // M_AP_MONSTER
+        mtmp2.mappearance = ROLL_FROM(wizapp);
+
+        if (map) newsym(map, mtmp2.mx, mtmp2.my);
+    }
+}
+
+// ============================================================================
+// pick_nasty — select a random nasty monster type
+// cf. wizard.c:531
+// Also used by newcham().
+// ============================================================================
+
+export function pick_nasty(difcap) {
+    // C: res = ROLL_FROM(nasties) — consumes rn2(SIZE(nasties))
+    let res = ROLL_FROM(nasties);
+
+    // C: Is_rogue_level check — re-roll for uppercase monster
+    // Is_rogue_level not tracked; skip the check but if it were rogue level
+    // we'd consume another rn2(nasties.length)
+    // TODO: if (Is_rogue_level()) res = ROLL_FROM(nasties);
+
+    // Check for genocided, too difficult, or out of place
+    let alt = res;
+    // mvitals not tracked (genocide/extinction)
+    if ((difcap > 0 && (mons[res].difficulty || 0) >= difcap)
+        // C: (mons[res].geno & (Inhell ? G_NOHELL : G_HELL)) != 0
+        || ((mons[res].geno || 0) & (Inhell() ? G_NOHELL : G_HELL)) !== 0) {
+        alt = big_to_little(res);
+    }
+    if (alt !== res /* && not genocided */) {
+        const mnam = mons[alt].name || '';
+        // only non-juveniles can become alternate choice
+        if (!mnam.startsWith('baby ')
+            && !mnam.endsWith(' hatchling')
+            && !mnam.endsWith(' pup')
+            && !mnam.endsWith(' cub')) {
+            res = alt;
+        }
+    }
+
+    return res;
+}
+
+// ============================================================================
+// nasty — summon wave of powerful monsters
+// cf. wizard.c:584
+// Returns number of monsters created.
+// ============================================================================
+
+export function nasty(summoner, map, player, display, fov) {
+    const depth = player?.dungeonLevel || 1;
+    // when a monster casts "summon nasties", suppress appear message;
+    // when random harassment casts, show messages
+    const mmflags = summoner ? MM_NOMSG : NO_MM_FLAGS;
+
+    const census = monster_census(false, map, player, fov);
+
+    if (!rn2(10) && Inhell()) {
+        // summon demon prince/lord (like WoY)
+        const count = msummon(null, map, player, display);
+        return count > 0 ? monster_census(false, map, player, fov) - census : 0;
+    }
+
+    let count = 0;
+    const s_cls = summoner ? mptr(summoner).symbol : 0;
+    let difcap = summoner ? (mptr(summoner).difficulty || 0) : 0;
+    const castalign = summoner ? sgn(mptr(summoner).align || 0) : 0;
+    let tmp = ((player.level || 1) > 3)
+        ? Math.floor((player.level || 1) / 3) : 1;
+
+    const bypos = { x: player.x, y: player.y };
+
+    for (let i = rnd(tmp); i > 0 && count < MAXNASTIES; --i) {
+        for (let j = 0; j < 20; j++) {
+            // Pick a nasty, avoiding chain summoners
+            let trylimit = 10 + 1; // 10 tries
+            let makeindex;
+            let m_cls;
+            let gotoNextJ = false;
+            do {
+                if (!--trylimit) { gotoNextJ = true; break; }
+                makeindex = pick_nasty(difcap);
+                m_cls = mons[makeindex].symbol;
+            } while ((difcap > 0 && (mons[makeindex].difficulty || 0) >= difcap
+                      && attacktype(mons[makeindex], AT_MAGC))
+                     || (s_cls === S_DEMON && m_cls === S_ANGEL)
+                     || (s_cls === S_ANGEL && m_cls === S_DEMON));
+            if (gotoNextJ) continue;
+
+            // do this after picking the monster to place
+            if (summoner) {
+                const pos = {};
+                // C: enexto(&bypos, summoner->mux, summoner->muy, ...)
+                const mux = summoner.mux || summoner.mx || player.x;
+                const muy = summoner.muy || summoner.my || player.y;
+                if (!enexto(pos, mux, muy, mons[makeindex], map, player))
+                    continue;
+                bypos.x = pos.x;
+                bypos.y = pos.y;
+            }
+
+            // Try to create the chosen nasty
+            let mtmp = makemon(mons[makeindex], bypos.x, bypos.y,
+                               mmflags, depth, map);
+            if (mtmp) {
+                mtmp.sleeping = false;
+                mtmp.msleeping = 0;
+                mtmp.mpeaceful = false;
+                mtmp.peaceful = false;
+                mtmp.tame = false;
+                mtmp.mtame = 0;
+                // set_malign(mtmp) — alignment penalty not set (deferred)
+            } else {
+                // random monster substitute for genocided selection
+                mtmp = makemon(null, bypos.x, bypos.y, mmflags, depth, map);
+                if (mtmp) {
+                    m_cls = mptr(mtmp).symbol;
+                    if ((difcap > 0 && (mptr(mtmp).difficulty || 0) >= difcap
+                         // in endgame, rn2(3); otherwise rn2(7)
+                         && rn2(In_endgame() ? 3 : 7) // usually cap
+                         && attacktype(mptr(mtmp), AT_MAGC))
+                        || (s_cls === S_DEMON && m_cls === S_ANGEL)
+                        || (s_cls === S_ANGEL && m_cls === S_DEMON)) {
+                        // unmakemon — remove unsuitable substitute
+                        if (map && map.removeMonster) map.removeMonster(mtmp);
+                        mtmp.dead = true;
+                        mtmp = null;
+                    }
+                }
+            }
+
+            if (mtmp) {
+                // cap difficulty after creating arch-lich or archon
+                if (mtmp.mndx === PM_ARCH_LICH || mtmp.mndx === PM_ARCHON) {
+                    const cap = Math.min(
+                        mons[PM_ARCHON].difficulty || 26,
+                        mons[PM_ARCH_LICH].difficulty || 31
+                    );
+                    if (!difcap || difcap > cap) difcap = cap;
+                }
+                // delay first use of spell or breath attack
+                mtmp.mspec_used = rnd(4);
+
+                if (++count >= MAXNASTIES
+                    || (mptr(mtmp).align || 0) === 0
+                    || sgn(mptr(mtmp).align || 0) === castalign)
+                    break;
+            }
+            // nextj: continue
+        } // for j
+    } // for i
+
+    if (count) count = monster_census(false, map, player, fov) - census;
+    return count;
+}
+
+// ============================================================================
+// resurrect — bring back the Wizard of Yendor
+// cf. wizard.c:708
+// ============================================================================
+
+export function resurrect(map, player, display) {
+    const depth = player?.dungeonLevel || 1;
+    let mtmp;
+    let verb;
+
+    // Count existing wizards on level
+    let wizCount = 0;
+    for (const m of map.monsters || []) {
+        if (!m.dead && m.iswiz) wizCount++;
+    }
+
+    if (!wizCount) {
+        // make a new Wizard
+        verb = "kill";
+        mtmp = makemon(mons[PM_WIZARD_OF_YENDOR], player.x, player.y,
+                       MM_NOWAIT, depth, map);
+        // affects experience; he's not coming back from a corpse
+        // but is subject to repeated killing like a revived corpse
+        if (mtmp) mtmp.mrevived = true;
+    } else {
+        // C: look for migrating Wizard
+        // Migration system not fully ported. Try to find and wake existing wizard.
+        verb = "elude";
+        for (const m of map.monsters || []) {
+            if (m.dead) continue;
+            if (m.iswiz && !mon_has_amulet(m)) {
+                mtmp = m;
+                if (mtmp.sleeping) { mtmp.sleeping = false; mtmp.msleeping = 0; }
+                if (mtmp.mfrozen === 1) { mtmp.mfrozen = 0; mtmp.mcanmove = true; }
+                break;
+            }
+        }
+    }
+
+    if (mtmp) {
+        mtmp.mstrategy = (mtmp.mstrategy || 0) & ~STRAT_WAITMASK;
+        mtmp.tame = false;
+        mtmp.mtame = 0;
+        mtmp.mpeaceful = false;
+        mtmp.peaceful = false;
+        // set_malign(mtmp) — deferred
+
+        // C: if (!Deaf)
+        if (!player.deaf) {
+            pline("A voice booms out...");
+            verbalize("So thou thought thou couldst %s me, fool.", verb);
+        }
+    }
+}
+
+// ============================================================================
+// intervene — retaliate after Wizard is killed
+// cf. wizard.c:778
+// ============================================================================
+
+export function intervene(map, player, display, fov) {
+    // C: int which = Is_astralevel(&u.uz) ? rnd(4) : rn2(6);
+    const which = Is_astralevel() ? rnd(4) : rn2(6);
+
+    switch (which) {
+    case 0:
+    case 1:
+        You_feel("vaguely nervous.");
+        break;
+    case 2:
+        if (!player.blind)
+            You("notice a %s glow surrounding you.", hcolor("black"));
+        rndcurse(player, map, display);
+        break;
+    case 3:
+        aggravate(map, player);
+        break;
+    case 4:
+        nasty(null, map, player, display, fov);
+        break;
+    case 5:
+        resurrect(map, player, display);
+        break;
+    }
+}
+
+// ============================================================================
+// wizdeadorgone — Wizard removal bookkeeping
+// cf. wizard.c:808
+// ============================================================================
+
+export function wizdeadorgone(player) {
+    // C: svc.context.no_of_wizards--;
+    // Wizard count is derived from map.monsters at runtime;
+    // no global counter to decrement.
+
+    if (!player.udemigod) {
+        player.udemigod = true;
+        player.udg_cnt = rn1(250, 50);
+    }
+}
+
+// ============================================================================
+// cuss — Wizard/minion taunts and threats
+// cf. wizard.c:839
+// ============================================================================
+
+export function cuss(mtmp, map, player) {
+    // C: if (Deaf) return;
+    if (player.deaf) return;
+
+    if (mtmp.iswiz) {
+        if (!rn2(5)) { // typical bad guy action
+            pline("%s laughs fiendishly.", Monnam(mtmp));
+        } else if (you_have(M3_WANTSAMUL, player) && !rn2(random_insult.length)) {
+            // C: SetVoice(mtmp, 0, 80, 0);
+            verbalize("Relinquish the amulet, %s!", ROLL_FROM(random_insult));
+        } else if ((player.hp || player.uhp || 0) < 5 && !rn2(2)) { // Panic
+            // C: SetVoice(mtmp, 0, 80, 0);
+            verbalize(rn2(2) ? "Even now thy life force ebbs, %s!"
+                             : "Savor thy breath, %s, it be thy last!",
+                      ROLL_FROM(random_insult));
+        } else if (mtmp.mhp < 5 && !rn2(2)) { // Parthian shot
+            // C: SetVoice(mtmp, 0, 80, 0);
+            verbalize(rn2(2) ? "I shall return." : "I'll be back.");
+        } else {
+            // C: SetVoice(mtmp, 0, 80, 0);
+            verbalize("%s %s!",
+                      ROLL_FROM(random_malediction),
+                      ROLL_FROM(random_insult));
+        }
+    } else if (is_lminion(mtmp)
+               && !(mtmp.isminion && mtmp.emin && mtmp.emin.renegade)) {
+        // C: com_pager("angel_cuss") — quest text system not ported
+        pline("%s casts aspersions on your ancestry.", Monnam(mtmp));
+    } else {
+        if (!rn2(is_minion(mptr(mtmp)) ? 100 : 5))
+            pline("%s casts aspersions on your ancestry.", Monnam(mtmp));
+        else {
+            // C: com_pager("demon_cuss") — quest text system not ported
+            pline("%s casts aspersions on your ancestry.", Monnam(mtmp));
+        }
+    }
+
+    wake_nearto(mtmp.mx, mtmp.my, 5 * 5, map);
+}
+
+// ============================================================================
+// Exports of constants and internal functions for use by other modules
+// ============================================================================
+
+export {
+    STRAT_APPEARMSG, STRAT_WAITFORU, STRAT_CLOSE,
+    STRAT_WAITMASK, STRAT_HEAL, STRAT_GROUND, STRAT_MONSTR,
+    STRAT_PLAYER, STRAT_NONE, STRAT_STRATMASK, STRAT_GOAL,
+    nasties, wizapp,
+    which_arti, mon_has_arti,
+    strategy,
+};

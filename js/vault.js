@@ -2,136 +2,1483 @@
 // cf. vault.c — gold guard placement, corridor management, guard behavior
 //
 // Data model: Each vault guard has an `egd` (extra-guard-data) struct attached
-// via mon->mextra (cast to egd_s). Key fields:
-//   fakecorr[FCSIZ]  — array of temporary corridor segments {fx,fy,ftyp}
+// via mon.egd. Key fields:
+//   fakecorr[FCSIZ]  — array of temporary corridor segments {fx,fy,ftyp,flags}
 //   fcbeg, fcend     — range of active fakecorr entries
 //   vroom            — room index of the vault being guarded
 //   gdlevel          — dlevel where the vault is
 //   warncnt          — how many times guard has warned hero
 //   gddone           — flag: guard is done (gold retrieved or hero left)
 //   ogx, ogy         — guard's original position (for parking)
-// Vault corridors (fakecorr) are dynamically carved and restored.
-// Partial JS support: vault room creation in dungeon.js; vault sound in
-//   nethack.js:1790 and headless_runtime.js:1016; hidden_gold referenced
-//   in u_init.js:1558,1622. No vault guard logic exists in JS yet.
+//   gdx, gdy         — guard's destination coordinates
+//   witness          — guard saw hero eat/destroy gold
+//   dropgoldcnt      — times guard asked hero to drop gold
 
-// cf. vault.c:66 [static] — clear_fcorr(grd, forceall): restore fakecorr terrain
-// Restores each fake corridor cell back to its original terrain type.
-// forceall=TRUE restores all; otherwise only cells not occupied by hero/monster.
-// TODO: vault.c:66 — clear_fcorr(): restore temporary vault corridor terrain
+import { rn2 } from './rng.js';
+import {
+    COLNO, ROWNO, ROOMOFFSET, VAULT, isok,
+    CORR, DOOR, STONE, HWALL, VWALL, ROOM, SCORR,
+    TLCORNER, TRCORNER, BLCORNER, BRCORNER,
+    IS_WALL, IS_STWALL, IS_POOL, IS_ROOM, ACCESSIBLE, IS_OBSTRUCTED,
+    D_NODOOR,
+} from './config.js';
+import { PM_GUARD, PM_CROESUS } from './monsters.js';
+import { COIN_CLASS, ROCK, BOULDER, TIN_WHISTLE, GOLD_PIECE } from './objects.js';
+import { pline, pline_The, You, You_hear, You_see, verbalize } from './pline.js';
+import { newsym, map_invisible } from './monutil.js';
+import { place_monster } from './steed.js';
+import { mongone, mpickgold } from './mon.js';
+import { relobj } from './steal.js';
+import { rloc } from './teleport.js';
+import { Monnam, noit_Monnam, noit_mon_nam, Some_Monnam, x_monnam,
+         Mgender, pmname, mon_nam } from './do_name.js';
+import { m_carrying } from './weapon.js';
+import { upstart, dist2 } from './hacklib.js';
+import { currency } from './invent.js';
+import { placeFloorObject } from './floor_objects.js';
+import { deltrap } from './dungeon.js';
+import { mpickobj, add_to_minv } from './monutil.js';
+import { makemon } from './makemon.js';
+import { cansee, couldsee, block_point, unblock_point, recalc_block_point } from './vision.js';
 
-// cf. vault.c:103 [static] — blackout(x, y): remove any seen corridor from memory
-// Sets display memory at (x,y) back to floor if it currently shows a corridor.
-// TODO: vault.c:103 — blackout(): clear corridor visibility memory
+// ---------- Constants ----------
+const FCSIZ = ROWNO + COLNO;
+export const VAULT_GUARD_TIME = 30;
+export const GD_EATGOLD = 0x01;
+export const GD_DESTROYGOLD = 0x02;
 
-// cf. vault.c:117 [static] — restfakecorr(grd): clear fake corridors that are now empty
-// Calls clear_fcorr on empty corridor sections; blackouts remaining cells.
-// TODO: vault.c:117 — restfakecorr(): peel back fake corridor from tail end
+// RLOC flags (matching teleport.js)
+const RLOC_NOMSG = 0x0001;
+const RLOC_MSG   = 0x0002;
+const RLOC_ERR   = 0x0100;
 
-// cf. vault.c:153 [static] — parkguard(grd): move guard to "parked" position (0,0)
-// Guard temporarily parks at <0,0> while corridor is being cleaned up.
-// Calls remove_monster() and sets guard mx/my=0; rejoins fmon list later.
-// TODO: vault.c:153 — parkguard(): move guard off map temporarily
+// Article constants from do_name.js
+const ARTICLE_A = 2;
 
-// cf. vault.c:172 — newegd(): allocate a new egd_s struct (extra guard data)
-// Zeroes the struct; does not attach it to any monster.
-// TODO: vault.c:172 — newegd(): allocate egd (extra guard data)
+// ---------- Local helpers ----------
 
-// cf. vault.c:180 — free_egd(mtmp): free egd_s struct attached to a monster
-// Frees mtmp->mextra->egd; sets it to null.
-// TODO: vault.c:180 — free_egd(): free extra guard data
+// C ref: g_at(x, y) — find gold object at location
+function g_at(x, y, map) {
+    if (!map) return null;
+    const objects = map.objectsAt ? map.objectsAt(x, y) : [];
+    for (const obj of objects) {
+        if (!obj || obj.buried) continue;
+        if (obj.oclass === COIN_CLASS) return obj;
+    }
+    return null;
+}
 
-// cf. vault.c:188 — grddead(mtmp): called when a vault guard dies
-// Restores all fake corridors (clear_fcorr forceall=TRUE), re-closes vault,
-//   marks vault room as no longer guarded, frees egd via free_egd().
-// TODO: vault.c:188 — grddead(): vault guard death cleanup
+// C ref: sobj_at(otyp, x, y) — find object of given type at location
+function sobj_at(otyp, x, y, map) {
+    if (!map) return null;
+    const objects = map.objectsAt ? map.objectsAt(x, y) : [];
+    for (const obj of objects) {
+        if (!obj || obj.buried) continue;
+        if (obj.otyp === otyp) return obj;
+    }
+    return null;
+}
 
-// cf. vault.c:221 — findgd(): find the first live vault guard on the level
-// Scans fmon list for isgd monster. Returns pointer (or null if none).
-// TODO: vault.c:221 — findgd(): find active vault guard
+// C ref: t_at(x, y) — find trap at location
+function t_at(x, y, map) {
+    if (!map || !map.traps) return null;
+    for (const trap of map.traps) {
+        const tx = Number.isInteger(trap.tx) ? trap.tx : trap.x;
+        const ty = Number.isInteger(trap.ty) ? trap.ty : trap.y;
+        if (tx === x && ty === y) return trap;
+    }
+    return null;
+}
 
-// cf. vault.c:234 [static] — in_fcorridor(grd, x, y): is (x,y) inside guard's fake corridor?
-// Checks the fakecorr[fcbeg..fcend] range for matching coordinates.
-// TODO: vault.c:234 — in_fcorridor(): test if coord is in fake corridor
+// C ref: del_engr_at(x, y) — delete engravings at location (stub)
+function del_engr_at(x, y, map) {
+    // Engravings not fully tracked in JS yet
+}
 
-// cf. vault.c:247 [static] — find_guard_dest(grd, x, y): set guard destination to enter vault
-// Chooses entry point adjacent to vault room; sets guard's target mx/my.
-// TODO: vault.c:247 — find_guard_dest(): pick vault approach destination
+// C ref: money_cnt(invent) — count gold coins in inventory
+function money_cnt(inventory) {
+    if (!inventory || !Array.isArray(inventory)) return 0;
+    let total = 0;
+    for (const obj of inventory) {
+        if (obj && obj.oclass === COIN_CLASS) {
+            total += (obj.quan || 1);
+        }
+    }
+    return total;
+}
 
-// cf. vault.c:271 [static] — move_gold(grd, vroom): move vault gold to guard's feet
-// Collects all gold objects from vault floor, gives them to guard,
-//   or drops them at guard position if returning gold.
-// TODO: vault.c:271 — move_gold(): transfer gold between vault and guard
+// C ref: um_dist(x, y, n) — is hero within n steps of (x,y)?
+function um_dist(x, y, n, player) {
+    return (Math.abs(player.x - x) <= n && Math.abs(player.y - y) <= n);
+}
 
-// cf. vault.c:296 [static] — wallify_vault(grd): close vault behind guard
-// Restores wall terrain on vault opening after guard enters/exits.
-// TODO: vault.c:296 — wallify_vault(): re-wall vault entrance
+// C ref: distu(x, y) — squared distance from hero
+function distu(x, y, player) {
+    return dist2(player.x, player.y, x, y);
+}
 
-// cf. vault.c:312 — vault_summon_gd(x, y, typ): create a vault guard at position
-// Creates a Kops (vault guard) via makemon; attaches egd; sets vroom, gdlevel.
-// Sets guard's starting position and sets isgd flag.
-// TODO: vault.c:312 — vault_summon_gd(): spawn vault guard monster
+// C ref: in_rooms(x, y, typewanted) — check if (x,y) is in a room of given type
+// Returns a string of room chars (like urooms), or '' if none.
+function in_rooms(x, y, rtype, map) {
+    if (!map || !map.rooms) return '';
+    let result = '';
+    for (let i = 0; i < map.rooms.length; i++) {
+        const room = map.rooms[i];
+        if (!room) continue;
+        if (rtype !== undefined && room.rtype !== rtype) continue;
+        if (x >= room.lx && x <= room.hx && y >= room.ly && y <= room.hy) {
+            result += String.fromCharCode(i + ROOMOFFSET);
+        }
+    }
+    return result;
+}
 
-// cf. vault.c:354 — vault_occupied(room): is hero currently inside this vault room?
-// Returns TRUE if hero's current room index matches room.
-// TODO: vault.c:354 — vault_occupied(): check if hero is in vault
+// C ref: canspotmon(mon) — hero can see or sense the monster
+function canspotmon(grd, map, player, fov) {
+    if (!grd || !map || !player) return false;
+    if (grd.mx === 0 && grd.my === 0) return false;
+    // Simplified: check cansee and not invisible
+    if (cansee(map, player, fov, grd.mx, grd.my)) {
+        if (!player.blind && !grd.mundetected) {
+            if (!grd.minvis || player.seeInvisible) return true;
+        }
+    }
+    // Telepathy/detection would go here
+    return false;
+}
 
-// cf. vault.c:363 — uleftvault(room): hero just left the vault room
-// If hero had been in vault: trigger guard response (paygd if guard alive, etc.).
-// TODO: vault.c:363 — uleftvault(): handle hero departing vault
+// C ref: mon_visible(mon) — is monster actually visible (not invis/hiding)?
+function mon_visible(grd, player) {
+    if (!grd) return false;
+    if (grd.minvis && !player?.seeInvisible) return false;
+    if (grd.mundetected) return false;
+    return true;
+}
 
-// cf. vault.c:385 [static] — gd_mv_monaway(grd, mx, my): push non-guard monster out of corridor
-// If another monster is blocking the corridor, tries to move it away.
-// TODO: vault.c:385 — gd_mv_monaway(): clear corridor of blocking monsters
+// C ref: m_canseeu(mon) — can monster see hero?
+function m_canseeu(grd, player) {
+    if (!grd || !player) return false;
+    if (!grd.mcansee) return false;
+    // Simplified: adjacent or line-of-sight
+    return true;
+}
 
-// cf. vault.c:413 [static] — gd_pick_corridor_gold(grd): guard picks up gold in corridor
-// Guard collects any gold objects in its fake corridor cells.
-// TODO: vault.c:413 — gd_pick_corridor_gold(): corridor gold collection
+// C ref: is_fainted() — is hero fainted?
+function is_fainted(player) {
+    return !!(player && player.fainted);
+}
 
-// cf. vault.c:430 [static] — gd_move_cleanup(grd, move_done): final guard move bookkeeping
-// After guard movement: restore corridors, update hero/guard visibility,
-//   possibly park guard if mission complete.
-// TODO: vault.c:430 — gd_move_cleanup(): post-move corridor and state cleanup
+// ========================================================================
+// cf. vault.c:172 — newegd(mtmp)
+// Allocates and initializes extra guard data for a monster.
+// ========================================================================
+export function newegd(mtmp) {
+    if (!mtmp.egd) {
+        mtmp.egd = {
+            fcbeg: 0,
+            fcend: 0,
+            vroom: 0,
+            gdlevel: null,   // { dnum, dlevel } matching u.uz format
+            warncnt: 0,
+            gddone: 0,
+            ogx: 0,
+            ogy: 0,
+            gdx: 0,
+            gdy: 0,
+            witness: 0,
+            dropgoldcnt: 0,
+            fakecorr: new Array(FCSIZ).fill(null).map(() => ({
+                fx: 0, fy: 0, ftyp: 0, flags: 0,
+            })),
+            parentmid: mtmp.m_id || 0,
+        };
+    }
+}
 
-// cf. vault.c:458 [static] — gd_letknow(grd): guard issues warning to hero
-// Prints one of the guard's warning messages based on warncnt.
-//   First warning: "I work for the dungeon national bank..."
-//   Subsequent: escalating threats.
-// TODO: vault.c:458 — gd_letknow(): vault guard warning message
+// ========================================================================
+// cf. vault.c:180 — free_egd(mtmp)
+// Frees extra guard data attached to a monster.
+// ========================================================================
+export function free_egd(mtmp) {
+    if (mtmp.egd) {
+        mtmp.egd = null;
+    }
+    mtmp.isgd = 0;
+}
 
-// cf. vault.c:482 — invault(): is hero currently in a vault room?
-// Checks hero's current room against vault room flags.
-// Returns room index if in vault, -1 otherwise.
-// TODO: vault.c:482 — invault(): check hero is in a vault room
+// ========================================================================
+// cf. vault.c:234 [static] — in_fcorridor(grd, x, y)
+// Returns true if (x,y) is inside guard's fake corridor.
+// ========================================================================
+function in_fcorridor(grd, x, y) {
+    const egrd = grd.egd;
+    if (!egrd) return false;
+    for (let fci = egrd.fcbeg; fci < egrd.fcend; fci++) {
+        if (x === egrd.fakecorr[fci].fx && y === egrd.fakecorr[fci].fy)
+            return true;
+    }
+    return false;
+}
 
-// cf. vault.c:492 — gd_move(grd): main vault guard AI movement function
-// Called each turn; manages guard state machine:
-//   - carves fake corridor toward hero
-//   - warns hero (gd_letknow) with warncnt
-//   - escorts hero to vault exit
-//   - retrieves gold if hero left gold behind
-//   - returns gold to vault and closes up
-// TODO: vault.c:492 — gd_move(): vault guard AI (main movement/behavior)
+// ========================================================================
+// cf. vault.c:103 [static] — blackout(x, y)
+// Sets stone locations around (x,y) to unlit.
+// ========================================================================
+function blackout(map, x, y) {
+    for (let i = x - 1; i <= x + 1; ++i) {
+        for (let j = y - 1; j <= y + 1; ++j) {
+            if (!isok(i, j)) continue;
+            const loc = map.at(i, j);
+            if (!loc) continue;
+            if (loc.typ === STONE) {
+                loc.lit = false;
+                loc.waslit = false;
+            }
+            // C: unset_seenv(lev, x, y, i, j) — not yet ported
+        }
+    }
+}
 
-// cf. vault.c:827 — paygd(): process hero's gold payment to vault guard
-// If hero has enough gold (matches gold_paid from gd_move interaction),
-//   guard takes gold and leaves. Otherwise guard attacks or ejects hero.
-// TODO: vault.c:827 — paygd(): hero pays vault guard toll
+// ========================================================================
+// cf. vault.c:66 [static] — clear_fcorr(grd, forceshow)
+// Restores fake corridor cells back to original terrain type.
+// Returns true if corridor fully cleared, false if blocked.
+// ========================================================================
+function clear_fcorr(grd, forceshow, map, player, fov) {
+    const egrd = grd.egd;
+    if (!egrd) return true;
 
-// cf. vault.c:900 — hidden_gold(guess): count gold in vaults or off-map
-// Returns total gold value hidden in vault rooms or buried.
-// guess=TRUE: use approximation. Called from financial_status in u_init.js.
-// Referenced in u_init.js:1558 and u_init.js:1622.
-// TODO: vault.c:900 — hidden_gold(): count vault and buried gold
+    // Check level match
+    if (egrd.gdlevel && player && player.uz) {
+        if (egrd.gdlevel.dnum !== player.uz.dnum
+            || egrd.gdlevel.dlevel !== player.uz.dlevel)
+            return true;
+    }
 
-// cf. vault.c:921 — gd_sound(): make ambient vault sounds
-// Called periodically when has_vault is set; rn2(200) chance per turn.
-// Prints "You hear the chinkling of coins." or similar.
-// Partially implemented: the rn2(200) trigger exists in nethack.js:1790
-//   and headless_runtime.js:1016, but sound message not printed there.
-// TODO: vault.c:921 — gd_sound(): vault ambient sound message
+    let sawcorridor = false;
+    const semi_dead = !!(grd.dead || grd.mhp <= 0);
 
-// cf. vault.c:942 — vault_gd_watching(which): check if guard is watching hero
-// Returns TRUE if a vault guard has line-of-sight to hero.
-// which=0: any guard; which=1: specific guard.
-// TODO: vault.c:942 — vault_gd_watching(): guard line-of-sight check
+    while (egrd.fcbeg < egrd.fcend) {
+        const fcbeg = egrd.fcbeg;
+        const fcx = egrd.fakecorr[fcbeg].fx;
+        const fcy = egrd.fakecorr[fcbeg].fy;
+
+        if ((semi_dead || !in_fcorridor(grd, player.x, player.y))
+            && egrd.gddone) {
+            forceshow = true;
+        }
+        if ((player.x === fcx && player.y === fcy && !semi_dead)
+            || (!forceshow && couldsee(map, player, fcx, fcy))) {
+            // C: also checks Punished && !carried(uball) — simplified
+            return false;
+        }
+
+        const mtmp = map.monsterAt ? map.monsterAt(fcx, fcy) : null;
+        if (mtmp) {
+            if (mtmp.isgd) {
+                return false;
+            } else {
+                if (mtmp.tame || mtmp.mtame) {
+                    // yelp(mtmp) — simplified
+                }
+                if (!rloc(mtmp, RLOC_MSG, map, player)) {
+                    // m_into_limbo: just move off-map
+                    mtmp.mx = 0;
+                    mtmp.my = 0;
+                }
+            }
+        }
+
+        const loc = map.at(fcx, fcy);
+        if (loc) {
+            if (loc.typ === CORR && cansee(map, player, fov, fcx, fcy))
+                sawcorridor = true;
+            loc.typ = egrd.fakecorr[fcbeg].ftyp;
+            loc.flags = egrd.fakecorr[fcbeg].flags;
+            if (IS_STWALL(loc.typ)) {
+                // Destroy any trap here
+                const trap = t_at(fcx, fcy, map);
+                if (trap) deltrap(map, trap);
+                // Undo light
+                if (loc.typ === STONE) blackout(map, fcx, fcy);
+            }
+            del_engr_at(fcx, fcy, map);
+            // C: map_location(fcx, fcy, 1) — bypass vision
+            newsym(map, fcx, fcy);
+            recalc_block_point(fcx, fcy);
+        }
+        egrd.fcbeg++;
+    }
+    if (sawcorridor) {
+        pline_The("corridor disappears.");
+    }
+    // C: check IS_OBSTRUCTED at hero position
+    if (map && player) {
+        const heroLoc = map.at(player.x, player.y);
+        if (heroLoc && IS_OBSTRUCTED(heroLoc.typ)) {
+            const hp = player.Upolyd ? player.mh : player.uhp;
+            if (hp > 0) {
+                You("are encased in rock.");
+            }
+        }
+    }
+    return true;
+}
+
+// ========================================================================
+// cf. vault.c:117 [static] — restfakecorr(grd)
+// Attempts to clear the fake corridor; if successful, removes the guard.
+// ========================================================================
+function restfakecorr(grd, map, player, fov) {
+    if (clear_fcorr(grd, false, map, player, fov)) {
+        grd.isgd = 0;
+        mongone(grd, map, player);
+    }
+}
+
+// ========================================================================
+// cf. vault.c:153 [static] — parkguard(grd)
+// Moves guard to <0,0> (off-map parking).
+// ========================================================================
+function parkguard(grd, map) {
+    // Either guard is dead or will now be treated as if so;
+    // monster traversal loops should skip it
+    if (grd.mx) {
+        if (map && map.removeMonster) {
+            // Only remove from spatial index, not from monster list
+        }
+        newsym(map, grd.mx, grd.my);
+    }
+    if (!(map && map.monsterAt && map.monsterAt(0, 0) === grd)) {
+        place_monster(grd, 0, 0, map);
+    }
+    if (grd.egd) {
+        grd.egd.ogx = grd.mx;
+        grd.egd.ogy = grd.my;
+    }
+}
+
+// ========================================================================
+// cf. vault.c:188 — grddead(grd)
+// Called when a vault guard dies. Cleans up fake corridors.
+// ========================================================================
+export function grddead(grd, map, player, fov) {
+    let dispose = clear_fcorr(grd, true, map, player, fov);
+    if (!dispose) {
+        // Destroy guard's gold; drop any other inventory
+        relobj(grd, map, false, false);
+        grd.mhp = 0;
+        parkguard(grd, map);
+        dispose = clear_fcorr(grd, true, map, player, fov);
+    }
+    if (dispose) {
+        grd.isgd = 0;
+    }
+    return dispose;
+}
+
+// ========================================================================
+// cf. vault.c:221 — findgd()
+// Finds the first active vault guard on the current level.
+// ========================================================================
+export function findgd(map, player) {
+    if (!map || !map.monsters) return null;
+    for (const mtmp of map.monsters) {
+        if (mtmp.isgd && mtmp.egd) {
+            const egrd = mtmp.egd;
+            if (egrd.gdlevel && player && player.uz
+                && egrd.gdlevel.dnum === player.uz.dnum
+                && egrd.gdlevel.dlevel === player.uz.dlevel) {
+                if (!mtmp.mx && !egrd.gddone) {
+                    mtmp.mhp = mtmp.mhpmax;
+                }
+                return mtmp;
+            }
+        }
+    }
+    // C: also checks migrating_mons — not yet ported
+    return null;
+}
+
+// ========================================================================
+// cf. vault.c:237 — vault_summon_gd()
+// Summons a vault guard if hero is in a vault and there isn't one already.
+// ========================================================================
+export function vault_summon_gd(map, player) {
+    if (vault_occupied(player.urooms || '', map) && !findgd(map, player)) {
+        player.uinvault = (VAULT_GUARD_TIME - 1);
+    }
+}
+
+// ========================================================================
+// cf. vault.c:244 — vault_occupied(array, map)
+// Checks if any room in the given room-string is a VAULT.
+// Returns the room character if so, '\0' otherwise.
+// ========================================================================
+export function vault_occupied(array, map) {
+    if (!array || !map || !map.rooms) return '\0';
+    for (let i = 0; i < array.length; i++) {
+        const ch = array.charCodeAt(i);
+        const roomIdx = ch - ROOMOFFSET;
+        if (roomIdx >= 0 && roomIdx < map.rooms.length) {
+            if (map.rooms[roomIdx].rtype === VAULT)
+                return String.fromCharCode(ch);
+        }
+    }
+    return '\0';
+}
+
+// ========================================================================
+// cf. vault.c:254 — uleftvault(grd)
+// Hero has teleported out of vault while a guard is active.
+// ========================================================================
+export function uleftvault(grd, map, player, fov) {
+    if (!grd || !grd.isgd || grd.dead || (grd.mhp <= 0)) return;
+
+    // If carrying gold and arriving anywhere other than next to the guard,
+    // set the guard loose
+    if ((money_cnt(player.inventory || player.invent) || hidden_gold(true, player))
+        && !um_dist(grd.mx, grd.my, 1, player)) {
+        if (grd.mpeaceful) {
+            if (canspotmon(grd, map, player, fov)) {
+                pline("%s becomes irate.", Monnam(grd));
+            }
+            grd.mpeaceful = 0; // bypass setmangry()
+        }
+        // If arriving outside guard's temporary corridor, give guard an extra move
+        if (!in_fcorridor(grd, player.x, player.y)) {
+            gd_move(grd, map, player, fov);
+        }
+    }
+}
+
+// ========================================================================
+// cf. vault.c:280 [static] — find_guard_dest(guard, rx, ry)
+// Finds corridor destination for guard to approach hero.
+// Returns {x, y} or null on failure.
+// ========================================================================
+function find_guard_dest(guard, map, player) {
+    for (let dd = 2; dd < ROWNO || dd < COLNO; dd++) {
+        let incr_radius = false;
+        for (let y = player.y - dd; y <= player.y + dd; y++) {
+            if (y < 0 || y > ROWNO - 1) continue;
+            for (let x = player.x - dd; x <= player.x + dd; x++) {
+                if (y !== player.y - dd && y !== player.y + dd
+                    && x !== player.x - dd)
+                    x = player.x + dd;
+                if (x < 1 || x > COLNO - 1) continue;
+                if (guard && ((x === guard.mx && y === guard.my)
+                    || (guard.isgd && in_fcorridor(guard, x, y))))
+                    continue;
+                const loc = map.at(x, y);
+                if (loc && loc.typ === CORR) {
+                    const lx = (x < player.x) ? x + 1 : (x > player.x) ? x - 1 : x;
+                    const ly = (y < player.y) ? y + 1 : (y > player.y) ? y - 1 : y;
+                    const lLoc = map.at(lx, ly);
+                    if (lLoc && lLoc.typ !== STONE && lLoc.typ !== CORR) {
+                        incr_radius = true;
+                        break;
+                    }
+                    return { x, y };
+                }
+            }
+            if (incr_radius) break;
+        }
+    }
+    // impossible("Not a single corridor on this level?");
+    // C: tele(); — not called here, caller handles
+    return null;
+}
+
+// ========================================================================
+// cf. vault.c:631 [static] — move_gold(gold, vroom)
+// Moves gold from its current position to inside the vault.
+// Consumes rn2(2) twice for placement coordinates.
+// ========================================================================
+function move_gold(gold, vroom, map) {
+    if (!gold || !map || !map.rooms) return;
+    const room = map.rooms[vroom];
+    if (!room) return;
+
+    // Remove from current position
+    if (map.removeObject) map.removeObject(gold);
+    newsym(map, gold.ox, gold.oy);
+    const nx = room.lx + rn2(2);
+    const ny = room.ly + rn2(2);
+    gold.ox = nx;
+    gold.oy = ny;
+    placeFloorObject(map, gold);
+    newsym(map, nx, ny);
+}
+
+// ========================================================================
+// cf. vault.c:296 [static] — wallify_vault(grd)
+// Closes vault walls behind guard.
+// ========================================================================
+function wallify_vault(grd, map, player, fov) {
+    const egrd = grd.egd;
+    if (!egrd || !map || !map.rooms) return;
+
+    const vlt = egrd.vroom;
+    const room = map.rooms[vlt];
+    if (!room) return;
+
+    const lox = room.lx - 1, hix = room.hx + 1;
+    const loy = room.ly - 1, hiy = room.hy + 1;
+    let fixed = false;
+    let movedgold = false;
+
+    for (let x = lox; x <= hix; x++) {
+        for (let y = loy; y <= hiy; y++) {
+            // Only boundary cells
+            if (x !== lox && x !== hix && y !== loy && y !== hiy)
+                continue;
+
+            const loc = map.at(x, y);
+            if (!loc) continue;
+
+            const hasGold = !!g_at(x, y, map);
+            const hasRock = !!sobj_at(ROCK, x, y, map) || !!sobj_at(BOULDER, x, y, map);
+
+            if ((!IS_WALL(loc.typ) || hasGold || hasRock)
+                && !in_fcorridor(grd, x, y)) {
+
+                // Relocate any non-guard monster
+                const mon = map.monsterAt ? map.monsterAt(x, y) : null;
+                if (mon && mon !== grd) {
+                    if (mon.tame || mon.mtame) {
+                        // yelp(mon) — simplified
+                    }
+                    if (!rloc(mon, RLOC_MSG, map, player)) {
+                        mon.mx = 0;
+                        mon.my = 0;
+                    }
+                }
+
+                // Move gold at wall locations into the vault
+                const gold = g_at(x, y, map);
+                if (gold) {
+                    move_gold(gold, egrd.vroom, map);
+                    movedgold = true;
+                }
+
+                // Destroy rocks and boulders
+                let rocks;
+                while ((rocks = sobj_at(ROCK, x, y, map)) != null) {
+                    if (map.removeObject) map.removeObject(rocks);
+                }
+                while ((rocks = sobj_at(BOULDER, x, y, map)) != null) {
+                    if (map.removeObject) map.removeObject(rocks);
+                }
+
+                // Destroy traps
+                const trap = t_at(x, y, map);
+                if (trap) deltrap(map, trap);
+
+                let typ;
+                if (x === lox) {
+                    typ = (y === loy) ? TLCORNER
+                        : (y === hiy) ? BLCORNER
+                        : VWALL;
+                } else if (x === hix) {
+                    typ = (y === loy) ? TRCORNER
+                        : (y === hiy) ? BRCORNER
+                        : VWALL;
+                } else {
+                    typ = HWALL;
+                }
+
+                loc.typ = typ;
+                loc.wall_info = 0;
+                // C: xy_set_wall_state(x, y) — set WA_MASK bits
+                del_engr_at(x, y, map);
+                // Hack: show wall restoration to player
+                newsym(map, x, y);
+                block_point(x, y);
+                fixed = true;
+            }
+        }
+    }
+
+    if (movedgold || fixed) {
+        if (in_fcorridor(grd, grd.mx, grd.my)
+            || cansee(map, player, fov, grd.mx, grd.my)) {
+            pline("%s whispers an incantation.", noit_Monnam(grd));
+        } else {
+            You_hear("a distant chant.");
+        }
+        if (movedgold)
+            pline("A mysterious force moves the gold into the vault.");
+        if (fixed)
+            pline_The("damaged vault's walls are magically restored!");
+    }
+}
+
+// ========================================================================
+// cf. vault.c:733 [static] — gd_mv_monaway(grd, nx, ny)
+// Move any monster out of guard's way.
+// ========================================================================
+function gd_mv_monaway(grd, nx, ny, map, player, fov) {
+    const mtmp = map.monsterAt ? map.monsterAt(nx, ny) : null;
+    if (mtmp && mtmp !== grd) {
+        if (!player?.deaf) {
+            verbalize("Out of my way, scum!");
+        }
+        if (!rloc(mtmp, RLOC_ERR | RLOC_MSG, map, player)
+            || (map.monsterAt && map.monsterAt(nx, ny))) {
+            // m_into_limbo
+            mtmp.mx = 0;
+            mtmp.my = 0;
+        }
+        recalc_block_point(nx, ny);
+    }
+}
+
+// ========================================================================
+// cf. vault.c:751 [static] — gd_pick_corridor_gold(grd, goldx, goldy)
+// Have guard pick gold off the floor.
+// ========================================================================
+function gd_pick_corridor_gold(grd, goldx, goldy, map, player, fov) {
+    const under_u = (player.x === goldx && player.y === goldy);
+    const see_it = cansee(map, player, fov, goldx, goldy);
+    const egrd = grd.egd;
+
+    if (under_u) {
+        // Grab gold from between hero's feet
+        const gold = g_at(goldx, goldy, map);
+        if (!gold) return;
+        const guardx = grd.mx, guardy = grd.my;
+        const gdelta = distu(guardx, guardy, player);
+
+        if (gdelta > 2 && see_it) {
+            // Try to move guard closer
+            // C: enexto loop — simplified: just pick up without moving
+        }
+
+        // Pick up gold
+        if (map.removeObject) map.removeObject(gold);
+        add_to_minv(grd, gold);
+        newsym(map, goldx, goldy);
+
+    } else if (goldx === grd.mx && goldy === grd.my) {
+        mpickgold(grd, map);
+
+    } else {
+        // Gold at third spot
+        gd_mv_monaway(grd, goldx, goldy, map, player, fov);
+        if (see_it) {
+            newsym(map, grd.mx, grd.my);
+            place_monster(grd, goldx, goldy, map);
+        }
+        mpickgold(grd, map);
+    }
+
+    if (see_it) {
+        pline("%s%s picks up the gold%s.", Some_Monnam(grd),
+            (grd.mpeaceful && egrd.warncnt > 5)
+                ? " calms down and" : "",
+            under_u ? " from beneath you" : "");
+    }
+
+    // If guard was moved, move back
+    const guardx = grd.mx, guardy = grd.my;
+    if (grd.mx !== guardx || grd.my !== guardy) {
+        newsym(map, grd.mx, grd.my);
+        place_monster(grd, guardx, guardy, map);
+        newsym(map, guardx, guardy);
+    }
+}
+
+// ========================================================================
+// cf. vault.c:458 [static] — gd_letknow(grd)
+// Guard issues warning to hero.
+// ========================================================================
+function gd_letknow(grd, map, player, fov) {
+    if (!cansee(map, player, fov, grd.mx, grd.my) || !mon_visible(grd, player)) {
+        You_hear("%s.",
+            m_carrying(grd, TIN_WHISTLE)
+                ? "the shrill sound of a guard's whistle"
+                : "angry shouting");
+    } else {
+        You(!um_dist(grd.mx, grd.my, 2, player)
+            ? "are confronted by %s."
+            : "see %s approaching.",
+            x_monnam(grd, ARTICLE_A, "angry", 0, false));
+    }
+}
+
+// ========================================================================
+// cf. vault.c:430 [static] — gd_move_cleanup(grd, semi_dead, disappear_msg_seen)
+// Post-move guard cleanup.
+// Returns: 1=guard moved, -2=died
+// ========================================================================
+function gd_move_cleanup(grd, semi_dead, disappear_msg_seen, map, player, fov) {
+    const x = grd.mx, y = grd.my;
+    const see_guard = canspotmon(grd, map, player, fov);
+    parkguard(grd, map);
+    wallify_vault(grd, map, player, fov);
+    restfakecorr(grd, map, player, fov);
+    if (!semi_dead && (in_fcorridor(grd, player.x, player.y)
+        || cansee(map, player, fov, x, y))) {
+        if (!disappear_msg_seen && see_guard) {
+            pline("Suddenly, %s disappears.", noit_mon_nam(grd));
+        }
+        return 1;
+    }
+    return -2;
+}
+
+// ========================================================================
+// cf. vault.c:482 — invault()
+// Called each turn when hero is in a vault. Manages guard summoning
+// and interaction.
+// ========================================================================
+export function invault(map, player, fov) {
+    const vaultroom = vault_occupied(player.urooms || '', map);
+    if (!vaultroom) {
+        player.uinvault = 0;
+        return;
+    }
+
+    // cf. vault.c:332 — guard reluctance based on deaths
+    const vgdeathcount = map.mvitals?.[PM_GUARD]?.died || 0;
+    if (vgdeathcount < 2
+        || (vgdeathcount < 50 && !rn2(vgdeathcount * vgdeathcount))) {
+        player.uinvault = (player.uinvault || 0) + 1;
+    }
+    if (player.uinvault < VAULT_GUARD_TIME
+        || (player.uinvault % Math.floor(VAULT_GUARD_TIME / 2)) !== 0)
+        return;
+
+    let guard = findgd(map, player);
+    if (guard) return; // guard already exists
+
+    // cf. vault.c:348 — find guard destination
+    const dest = find_guard_dest(null, map, player);
+    if (!dest) return;
+
+    const gdx = dest.x, gdy = dest.y;
+    const vaultRoomIdx = vaultroom.charCodeAt(0) - ROOMOFFSET;
+
+    // Find good door location in vault wall
+    let x = player.x, y = player.y;
+    let locAt = map.at(x, y);
+
+    // If player is in a dug doorway (not ROOM), step into the room
+    if (locAt && locAt.typ !== ROOM) {
+        const dirs = [[1,0],[0,1],[-1,0],[0,-1],[1,1],[-1,-1],[1,-1],[-1,1]];
+        for (const [dx, dy] of dirs) {
+            const adj = map.at(x + dx, y + dy);
+            if (adj && adj.typ === ROOM) {
+                x += dx;
+                y += dy;
+                break;
+            }
+        }
+    }
+
+    // Walk from hero toward guard destination until hitting a wall
+    while (true) {
+        const loc = map.at(x, y);
+        if (!loc || loc.typ !== ROOM) break;
+        const dx = (gdx > x) ? 1 : (gdx < x) ? -1 : 0;
+        const dy = (gdy > y) ? 1 : (gdy < y) ? -1 : 0;
+        if (Math.abs(gdx - x) >= Math.abs(gdy - y))
+            x += dx;
+        else
+            y += dy;
+    }
+
+    // If guard would appear at hero position, adjust
+    if (player.x === x && player.y === y) {
+        locAt = map.at(x, y);
+        const locR = map.at(x + 1, y);
+        const locL = map.at(x - 1, y);
+        const locD = map.at(x, y + 1);
+        const locU = map.at(x, y - 1);
+        if (locR && (locR.typ === HWALL || locR.typ === DOOR))
+            x = x + 1;
+        else if (locL && (locL.typ === HWALL || locL.typ === DOOR))
+            x = x - 1;
+        else if (locD && (locD.typ === VWALL || locD.typ === DOOR))
+            y = y + 1;
+        else if (locU && (locU.typ === VWALL || locU.typ === DOOR))
+            y = y - 1;
+        else
+            return;
+    }
+
+    // Create the guard
+    guard = makemon(PM_GUARD, x, y, 0x0200 /* MM_EGD */ | 0x0800 /* MM_NOMSG */,
+        player.depth || 1, map);
+    if (!guard) return;
+
+    guard.isgd = 1;
+    guard.mpeaceful = 1;
+    // set_malign(guard) — simplified
+    newegd(guard);
+    const egrd = guard.egd;
+    egrd.gddone = 0;
+    egrd.ogx = x;
+    egrd.ogy = y;
+    egrd.gdlevel = player.uz ? { dnum: player.uz.dnum, dlevel: player.uz.dlevel } : null;
+    egrd.vroom = vaultRoomIdx;
+    egrd.warncnt = 0;
+
+    // Ensure guard doesn't respawn next turn if killed immediately
+    player.uinvault = (player.uinvault || 0) + 1;
+
+    // C: reset_faint(), boulder handling — simplified
+
+    const spotted = canspotmon(guard, map, player, fov);
+    if (spotted) {
+        pline("Suddenly one of the Vault's %s enters!",
+            pmname(guard.type || guard.data, Mgender(guard)) + 's');
+        newsym(map, guard.mx, guard.my);
+    } else {
+        pline("Someone else has entered the Vault.");
+        map_invisible(map, guard.mx, guard.my, player);
+    }
+
+    // If hero is engulfed, guard can't interrogate
+    if (player.uswallow) {
+        if (!player.deaf) {
+            verbalize("What's going on here?");
+        }
+        if (!spotted) pline_The("other presence vanishes.");
+        mongone(guard, map, player);
+        return;
+    }
+
+    // If hero is mimicking an object or undetected
+    if (player.uundetected) {
+        pline("Puzzled, the guard turns around and leaves.");
+        mongone(guard, map, player);
+        return;
+    }
+
+    // If hero can't speak (strangled, silent, paralyzed)
+    if (player.strangled || (player.multi && player.multi < 0)) {
+        if (player.deaf) {
+            pline("%s huffs and turns to leave.", noit_Monnam(guard));
+        } else {
+            verbalize("I'll be back when you're ready to speak to me!");
+        }
+        mongone(guard, map, player);
+        return;
+    }
+
+    // C: stop_occupation(), nomul(0), unmul — simplified
+    // C: getlin("Hello stranger, who are you?") — simplified
+    // In JS, the guard dialog would need async UI; for now, proceed to
+    // "I don't know you" path (no name given)
+
+    if (player.deaf) {
+        pline("%s doesn't %srecognize you.", noit_Monnam(guard),
+            player.blind ? "" : "appear to ");
+    } else {
+        verbalize("I don't know you.");
+    }
+
+    const umoney = money_cnt(player.inventory || player.invent);
+    const hgold = hidden_gold(true, player);
+    if (!umoney && !hgold) {
+        if (player.deaf) {
+            pline("%s stomps%s.", noit_Monnam(guard),
+                player.blind ? "" : " and beckons");
+        } else {
+            verbalize("Please follow me.");
+        }
+    } else {
+        if (!umoney) {
+            if (player.deaf) {
+                if (!player.blind) {
+                    pline("%s glares at you%s.", noit_Monnam(guard),
+                        (player.inventory || player.invent)?.length ? "r stuff" : "");
+                }
+            } else {
+                verbalize("You have hidden gold.");
+            }
+        }
+        if (player.deaf) {
+            if (!player.blind) {
+                pline("%s holds out %s palm and beckons with %s other hand.",
+                    noit_Monnam(guard), "a", "the");
+            }
+        } else {
+            verbalize("Most likely all your gold was stolen from this vault.");
+            verbalize("Please drop that gold and follow me.");
+        }
+        egrd.dropgoldcnt++;
+    }
+
+    egrd.gdx = gdx;
+    egrd.gdy = gdy;
+    egrd.fcbeg = 0;
+    egrd.fakecorr[0].fx = x;
+    egrd.fakecorr[0].fy = y;
+
+    const loc = map.at(x, y);
+    let typ = loc ? loc.typ : STONE;
+
+    if (!IS_WALL(typ)) {
+        // Guard arriving at non-wall implies a door; vault wall was dug
+        const lowx = map.rooms[vaultRoomIdx]?.lx || 0;
+        const hix = map.rooms[vaultRoomIdx]?.hx || 0;
+        const lowy = map.rooms[vaultRoomIdx]?.ly || 0;
+        const hiy_val = map.rooms[vaultRoomIdx]?.hy || 0;
+
+        if (x === lowx - 1 && y === lowy - 1)
+            typ = TLCORNER;
+        else if (x === hix + 1 && y === lowy - 1)
+            typ = TRCORNER;
+        else if (x === lowx - 1 && y === hiy_val + 1)
+            typ = BLCORNER;
+        else if (x === hix + 1 && y === hiy_val + 1)
+            typ = BRCORNER;
+        else if (y === lowy - 1 || y === hiy_val + 1)
+            typ = HWALL;
+        else if (x === lowx - 1 || x === hix + 1)
+            typ = VWALL;
+
+        if (loc) {
+            loc.typ = typ; // will be changed to door below
+            loc.wall_info = 0;
+            // C: xy_set_wall_state(x, y) — set WA_MASK bits
+        }
+    }
+
+    egrd.fakecorr[0].ftyp = typ;
+    egrd.fakecorr[0].flags = loc ? loc.flags : 0;
+
+    // C: spot_stop_timers(x, y, MELT_ICE_AWAY) — simplified
+    if (loc) {
+        loc.typ = DOOR;
+        loc.doormask = D_NODOOR;
+    }
+    unblock_point(x, y);
+    egrd.fcend = 1;
+    egrd.warncnt = 1;
+}
+
+// ========================================================================
+// cf. vault.c:492 — gd_move(grd)
+// Main vault guard AI movement function.
+// Returns: 1=moved, 0=didn't move, -1=let m_move handle it, -2=died.
+// ========================================================================
+export function gd_move(grd, map, player, fov) {
+    if (!grd || !grd.egd) return -1;
+    const egrd = grd.egd;
+
+    // Check level
+    if (egrd.gdlevel && player && player.uz) {
+        if (egrd.gdlevel.dnum !== player.uz.dnum
+            || egrd.gdlevel.dlevel !== player.uz.dlevel)
+            return -1;
+    }
+
+    const semi_dead = !!(grd.dead || grd.mhp <= 0);
+
+    if (semi_dead || !grd.mx || egrd.gddone) {
+        egrd.gddone = 1;
+        return gd_move_cleanup(grd, semi_dead, false, map, player, fov);
+    }
+
+    const u_in_vault = !!vault_occupied(player.urooms || '', map);
+    const grd_in_vault = !!in_rooms(grd.mx, grd.my, VAULT, map);
+
+    if (!u_in_vault && !grd_in_vault) {
+        wallify_vault(grd, map, player, fov);
+    }
+
+    // Hostile guard
+    if (!grd.mpeaceful) {
+        if (!u_in_vault
+            && (grd_in_vault || (in_fcorridor(grd, grd.mx, grd.my)
+                && !in_fcorridor(grd, player.x, player.y)))) {
+            rloc(grd, RLOC_MSG, map, player);
+            wallify_vault(grd, map, player, fov);
+            if (!in_fcorridor(grd, grd.mx, grd.my))
+                clear_fcorr(grd, true, map, player, fov);
+            gd_letknow(grd, map, player, fov);
+            return -1;
+        }
+        if (!in_fcorridor(grd, grd.mx, grd.my))
+            clear_fcorr(grd, true, map, player, fov);
+        return -1;
+    }
+
+    // Teleported guard — treat as regular monster
+    if (Math.abs(egrd.ogx - grd.mx) > 1 || Math.abs(egrd.ogy - grd.my) > 1)
+        return -1;
+
+    // Guard witnessed gold destruction
+    if (egrd.witness) {
+        if (!player.deaf) {
+            verbalize("How dare you %s that gold, scoundrel!",
+                (egrd.witness & GD_EATGOLD) ? "consume" : "destroy");
+        }
+        egrd.witness = 0;
+        grd.mpeaceful = 0;
+        return -1;
+    }
+
+    const umoney = money_cnt(player.inventory || player.invent);
+    const u_carry_gold = (umoney > 0 || hidden_gold(true, player) > 0);
+
+    // Phase 1: guard at entry point (fcend === 1)
+    if (egrd.fcend === 1) {
+        if (u_in_vault && (u_carry_gold || !um_dist(grd.mx, grd.my, 1, player))) {
+            if (egrd.warncnt === 3 && !player.deaf) {
+                let buf = '';
+                if (u_carry_gold) {
+                    buf = (!umoney ? "drop that hidden gold and " : "drop that gold and ");
+                }
+                buf += "follow me!";
+                if (egrd.dropgoldcnt || !u_carry_gold)
+                    verbalize("I repeat, %s", buf);
+                else
+                    verbalize("%s", upstart(buf));
+                if (u_carry_gold)
+                    egrd.dropgoldcnt++;
+            }
+            if (egrd.warncnt === 7) {
+                const m = grd.mx, n = grd.my;
+                if (!player.deaf) {
+                    verbalize("You've been warned, knave!");
+                }
+                grd.mpeaceful = 0;
+                // C: mnexto(grd, RLOC_NOMSG) — simplified: rloc
+                rloc(grd, RLOC_NOMSG, map, player);
+                // Restore entry point
+                const loc = map.at(m, n);
+                if (loc) {
+                    loc.typ = egrd.fakecorr[0].ftyp;
+                    loc.flags = egrd.fakecorr[0].flags;
+                }
+                recalc_block_point(m, n);
+                del_engr_at(m, n, map);
+                newsym(map, m, n);
+                return -1;
+            }
+            // Not fair to get mad when (s)he's fainted or paralyzed
+            if (!is_fainted(player) && (player.multi || 0) >= 0)
+                egrd.warncnt++;
+            return 0;
+        }
+
+        if (!u_in_vault) {
+            if (u_carry_gold) {
+                // Player teleported out with gold
+                const m = grd.mx, n = grd.my;
+                rloc(grd, RLOC_MSG, map, player);
+                const loc = map.at(m, n);
+                if (loc) {
+                    loc.typ = egrd.fakecorr[0].ftyp;
+                    loc.flags = egrd.fakecorr[0].flags;
+                }
+                recalc_block_point(m, n);
+                del_engr_at(m, n, map);
+                newsym(map, m, n);
+                grd.mpeaceful = 0;
+                gd_letknow(grd, map, player, fov);
+                return -1;
+            } else {
+                if (!player.deaf) {
+                    verbalize("Well, begone.");
+                }
+                egrd.gddone = 1;
+                return gd_move_cleanup(grd, semi_dead, false, map, player, fov);
+            }
+        }
+    }
+
+    // Phase 2: guard escorting hero (fcend > 1)
+    if (egrd.fcend > 1) {
+        if (egrd.fcend > 2 && in_fcorridor(grd, grd.mx, grd.my)
+            && !egrd.gddone && !in_fcorridor(grd, player.x, player.y)
+            && map.at(egrd.fakecorr[0].fx, egrd.fakecorr[0].fy)?.typ
+                === egrd.fakecorr[0].ftyp) {
+            pline("%s, confused, disappears.", noit_Monnam(grd));
+            return gd_move_cleanup(grd, semi_dead, true, map, player, fov);
+        }
+        if (u_carry_gold && (in_fcorridor(grd, player.x, player.y)
+            || (egrd.fcend > 1 && u_in_vault))) {
+            if (!grd.mx) {
+                restfakecorr(grd, map, player, fov);
+                return -2;
+            }
+            if (egrd.warncnt < 6) {
+                egrd.warncnt = 6;
+                if (player.deaf) {
+                    if (!player.blind) {
+                        pline("%s holds out %s palm demandingly!",
+                            noit_Monnam(grd), "a");
+                    }
+                } else {
+                    verbalize("Drop all your gold, scoundrel!");
+                }
+                return 0;
+            } else {
+                if (player.deaf) {
+                    if (!player.blind) {
+                        pline("%s rubs %s hands with enraged delight!",
+                            noit_Monnam(grd), "the");
+                    }
+                } else {
+                    verbalize("So be it, rogue!");
+                }
+                grd.mpeaceful = 0;
+                return -1;
+            }
+        }
+    }
+
+    // Check for gold in fake corridor
+    let m = 0, n = 0;
+    let goldincorridor = false;
+    for (let fci = egrd.fcbeg; fci < egrd.fcend; fci++) {
+        if (g_at(egrd.fakecorr[fci].fx, egrd.fakecorr[fci].fy, map)) {
+            m = egrd.fakecorr[fci].fx;
+            n = egrd.fakecorr[fci].fy;
+            goldincorridor = true;
+            break;
+        }
+    }
+
+    // New gold can appear if it was embedded in stone and hero kicked it
+    if (goldincorridor && !egrd.gddone) {
+        gd_pick_corridor_gold(grd, m, n, map, player, fov);
+        if (!grd.mpeaceful)
+            return -1;
+        egrd.warncnt = 5;
+        return 0;
+    }
+
+    if (!um_dist(grd.mx, grd.my, 1, player) || egrd.gddone) {
+        if (!egrd.gddone && !rn2(10) && !player.deaf
+            && !player.uswallow
+            && !(player.ustuck /* && !sticks(youmonst.data) */)) {
+            verbalize("Move along!");
+        }
+        restfakecorr(grd, map, player, fov);
+        return 0; // didn't move
+    }
+
+    let x = grd.mx;
+    let y = grd.my;
+
+    if (u_in_vault) {
+        // goto nextpos — skip corridor exit search
+    } else {
+        // Look around (hor & vert only) for accessible places
+        let found_exit = false;
+        for (let nx = x - 1; nx <= x + 1 && !found_exit; nx++) {
+            for (let ny = y - 1; ny <= y + 1; ny++) {
+                if ((nx === x || ny === y) && (nx !== x || ny !== y)
+                    && isok(nx, ny)) {
+                    const crm = map.at(nx, ny);
+                    if (!crm) continue;
+                    const typ = crm.typ;
+                    if (!IS_STWALL(typ) && !IS_POOL(typ)) {
+                        if (in_fcorridor(grd, nx, ny))
+                            continue; // nextnxy
+
+                        if (in_rooms(nx, ny, VAULT, map))
+                            continue;
+
+                        // Found good place to leave guard
+                        egrd.gddone = 1;
+                        if (ACCESSIBLE(typ)) {
+                            // goto newpos
+                            gd_mv_monaway(grd, nx, ny, map, player, fov);
+                            if (egrd.gddone)
+                                return gd_move_cleanup(grd, semi_dead, false, map, player, fov);
+                            egrd.ogx = grd.mx;
+                            egrd.ogy = grd.my;
+                            newsym(map, grd.mx, grd.my);
+                            place_monster(grd, nx, ny, map);
+                            newsym(map, grd.mx, grd.my);
+                            restfakecorr(grd, map, player, fov);
+                            return 1;
+                        }
+                        crm.typ = (typ === SCORR) ? CORR : DOOR;
+                        if (crm.typ === DOOR)
+                            crm.doormask = D_NODOOR;
+                        else
+                            crm.flags = 0;
+                        del_engr_at(nx, ny, map);
+                        // goto proceed — fall through to newspot logic below
+                        // We handle this inline:
+                        unblock_point(nx, ny);
+                        if (cansee(map, player, fov, nx, ny))
+                            newsym(map, nx, ny);
+
+                        // Add to fakecorr
+                        if ((nx !== egrd.gdx || ny !== egrd.gdy)
+                            || (grd.mx !== egrd.gdx || grd.my !== egrd.gdy)) {
+                            const fcp = egrd.fakecorr[egrd.fcend];
+                            if (egrd.fcend++ === FCSIZ)
+                                throw new Error("fakecorr overflow");
+                            fcp.fx = nx;
+                            fcp.fy = ny;
+                            fcp.ftyp = typ;
+                            fcp.flags = crm.flags;
+                        }
+
+                        // newpos
+                        gd_mv_monaway(grd, nx, ny, map, player, fov);
+                        if (egrd.gddone)
+                            return gd_move_cleanup(grd, semi_dead, false, map, player, fov);
+                        egrd.ogx = grd.mx;
+                        egrd.ogy = grd.my;
+                        newsym(map, grd.mx, grd.my);
+                        place_monster(grd, nx, ny, map);
+                        if (g_at(nx, ny, map)) {
+                            mpickgold(grd, map);
+                            if (canspotmon(grd, map, player, fov))
+                                pline("%s picks up some gold.", Monnam(grd));
+                        } else {
+                            newsym(map, grd.mx, grd.my);
+                        }
+                        restfakecorr(grd, map, player, fov);
+                        return 1;
+                    }
+                }
+            }
+        }
+    }
+
+    // nextpos: Move toward gdx/gdy
+    let nx = x;
+    let ny = y;
+    const ggx = egrd.gdx;
+    const ggy = egrd.gdy;
+    const dx = (ggx > x) ? 1 : (ggx < x) ? -1 : 0;
+    const dy = (ggy > y) ? 1 : (ggy < y) ? -1 : 0;
+    if (Math.abs(ggx - x) >= Math.abs(ggy - y))
+        nx += dx;
+    else
+        ny += dy;
+
+    let crm = map.at(nx, ny);
+    let typ = crm ? crm.typ : STONE;
+    let newspot = false;
+
+    while (typ !== STONE) {
+        const ex = nx + nx - x;
+        const ey = ny + ny - y;
+        // Must be a wall here
+        if (isok(ex, ey) && IS_ROOM(map.at(ex, ey)?.typ || 0)) {
+            crm = map.at(nx, ny);
+            if (crm) {
+                crm.typ = DOOR;
+                crm.doormask = D_NODOOR;
+            }
+            del_engr_at(ex, ey, map);
+            break; // goto proceed
+        }
+        if (dy && nx !== x) {
+            nx = x;
+            ny = y + dy;
+            crm = map.at(nx, ny);
+            typ = crm ? crm.typ : STONE;
+            continue;
+        }
+        if (dx && ny !== y) {
+            ny = y;
+            nx = x + dx;
+            crm = map.at(nx, ny);
+            typ = crm ? crm.typ : STONE;
+            // C: dy = 0 — prevent further diagonal attempts
+            continue;
+        }
+        // I don't like this, but ...
+        if (IS_ROOM(typ)) {
+            if (crm) {
+                crm.typ = DOOR;
+                crm.doormask = D_NODOOR;
+            }
+            del_engr_at(ex, ey, map);
+            break; // goto proceed
+        }
+        break;
+    }
+
+    // If we fell through the while loop without breaking (typ === STONE)
+    if (typ === STONE) {
+        crm = map.at(nx, ny);
+        if (crm) {
+            crm.typ = CORR;
+            crm.flags = 0;
+        }
+    }
+
+    // proceed:
+    newspot = true;
+    unblock_point(nx, ny);
+    if (cansee(map, player, fov, nx, ny))
+        newsym(map, nx, ny);
+
+    if ((nx !== ggx || ny !== ggy) || (grd.mx !== ggx || grd.my !== ggy)) {
+        const fcp = egrd.fakecorr[egrd.fcend];
+        if (egrd.fcend++ === FCSIZ)
+            throw new Error("fakecorr overflow");
+        fcp.fx = nx;
+        fcp.fy = ny;
+        fcp.ftyp = typ;
+        fcp.flags = crm ? crm.flags : 0;
+    } else if (!egrd.gddone) {
+        // We're stuck, so try to find a new destination
+        const newDest = find_guard_dest(grd, map, player);
+        if (!newDest || (newDest.x === ggx && newDest.y === ggy)) {
+            pline("%s, confused, disappears.", Monnam(grd));
+            return gd_move_cleanup(grd, semi_dead, true, map, player, fov);
+        } else {
+            egrd.gdx = newDest.x;
+            egrd.gdy = newDest.y;
+            // Retry movement — recursive would match C's goto nextpos
+            // but to avoid stack overflow, just return 0 and let next turn try
+            return 0;
+        }
+    }
+
+    // newpos:
+    gd_mv_monaway(grd, nx, ny, map, player, fov);
+    if (egrd.gddone)
+        return gd_move_cleanup(grd, semi_dead, false, map, player, fov);
+    egrd.ogx = grd.mx;
+    egrd.ogy = grd.my;
+    newsym(map, grd.mx, grd.my);
+    place_monster(grd, nx, ny, map);
+    if (newspot && g_at(nx, ny, map)) {
+        // Pick up pre-existing gold so guard doesn't blame hero later
+        mpickgold(grd, map);
+        if (canspotmon(grd, map, player, fov))
+            pline("%s picks up some gold.", Monnam(grd));
+    } else {
+        newsym(map, grd.mx, grd.my);
+    }
+    restfakecorr(grd, map, player, fov);
+    return 1;
+}
+
+// ========================================================================
+// cf. vault.c:827 — paygd(silently)
+// Routine when dying or quitting with a vault guard around.
+// Consumes rn2(2) twice for gold placement if guard remits gold.
+// ========================================================================
+export function paygd(silently, map, player) {
+    const grd = findgd(map, player);
+    const umoney = money_cnt(player.inventory || player.invent);
+
+    if (!umoney || !grd)
+        return;
+
+    let gdx, gdy;
+
+    if (player.uinvault) {
+        if (!silently) {
+            pline("Your %ld %s goes into the Magic Memory Vault.",
+                umoney, currency(umoney));
+        }
+        gdx = player.x;
+        gdy = player.y;
+    } else {
+        if (grd.mpeaceful) {
+            // peaceful guard has no "right" to your gold
+            mongone(grd, map, player);
+            return;
+        }
+
+        // C: mnexto(grd, RLOC_NOMSG) — simplified: rloc
+        rloc(grd, RLOC_NOMSG, map, player);
+        if (!silently)
+            pline("%s remits your gold to the vault.", Monnam(grd));
+
+        const room = map.rooms?.[grd.egd?.vroom];
+        if (room) {
+            gdx = room.lx + rn2(2);
+            gdy = room.ly + rn2(2);
+        } else {
+            gdx = player.x;
+            gdy = player.y;
+        }
+        // C: make_grave(gdx, gdy, buf) — simplified
+    }
+
+    // Move all gold coins from inventory to vault location
+    const inventory = player.inventory || player.invent || [];
+    const toRemove = [];
+    for (const coins of inventory) {
+        if (coins && coins.oclass === COIN_CLASS) {
+            toRemove.push(coins);
+        }
+    }
+    for (const coins of toRemove) {
+        // freeinv(coins)
+        const idx = inventory.indexOf(coins);
+        if (idx >= 0) inventory.splice(idx, 1);
+        coins.ox = gdx;
+        coins.oy = gdy;
+        placeFloorObject(map, coins);
+    }
+
+    mongone(grd, map, player);
+}
+
+// ========================================================================
+// cf. vault.c:900 — hidden_gold(even_if_unknown)
+// Returns total gold value in carried containers.
+// ========================================================================
+export function hidden_gold(even_if_unknown, player) {
+    let value = 0;
+    const inventory = player?.inventory || player?.invent || [];
+    for (const obj of inventory) {
+        if (!obj) continue;
+        // C: Has_contents(obj) && (obj.cknown || even_if_unknown)
+        if (obj.contents && Array.isArray(obj.contents)
+            && (obj.cknown || even_if_unknown)) {
+            value += contained_gold(obj, even_if_unknown);
+        }
+    }
+    return value;
+}
+
+// C ref: contained_gold() — recursive gold count in containers
+function contained_gold(container, even_if_unknown) {
+    let value = 0;
+    const contents = container?.contents || [];
+    for (const obj of contents) {
+        if (!obj) continue;
+        if (obj.oclass === COIN_CLASS) {
+            value += (obj.quan || 1);
+        }
+        if (obj.contents && Array.isArray(obj.contents)
+            && (obj.cknown || even_if_unknown)) {
+            value += contained_gold(obj, even_if_unknown);
+        }
+    }
+    return value;
+}
+
+// ========================================================================
+// cf. vault.c:921 — gd_sound()
+// Returns false if hero is in vault or guard is present (suppress footsteps).
+// ========================================================================
+export function gd_sound(map, player) {
+    return !(vault_occupied(player?.urooms || '', map) || findgd(map, player));
+}
+
+// ========================================================================
+// cf. vault.c:942 — vault_gd_watching(activity)
+// Checks if guard is watching hero eat/destroy gold.
+// ========================================================================
+export function vault_gd_watching(activity, map, player) {
+    const guard = findgd(map, player);
+    if (guard && guard.mx && guard.mcansee && m_canseeu(guard, player)) {
+        if (activity === GD_EATGOLD || activity === GD_DESTROYGOLD) {
+            if (guard.egd) guard.egd.witness = activity;
+        }
+    }
+}

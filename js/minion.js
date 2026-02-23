@@ -3,80 +3,460 @@
 //                summon_minion, demon_talk, bribe,
 //                dprince, dlord, llord, lminion, ndemon,
 //                lose_guardian_angel, gain_guardian_angel
-//
-// minion.c handles:
-//   - Minion extra data (newemin/free_emin): per-monster alignment tracking
-//   - Monster summoning: msummon() for hostile summoners; summon_minion()
-//     for deity-granted allies after prayer or sacrifice
-//   - Demon negotiation: demon_talk() for dialog with demon lords/princes;
-//     bribe() for gold-based bribery
-//   - Monster type selection: dprince/dlord/llord/lminion/ndemon pick
-//     appropriate demon/angel types by alignment
-//   - Guardian angel management: gain/lose guardian angels
-//
-// JS implementations: none — all minion summoning is runtime gameplay.
 
-// cf. minion.c:17 — newemin(mtmp): initialize emin (minion) extra data
-// Allocates EMIN struct on monster for alignment and shrine level tracking.
-// TODO: minion.c:17 — newemin(): minion extra data initialization
+import { rn2, rnd, rn1 } from './rng.js';
+import { pline, You_feel, verbalize } from './pline.js';
+import { makemon, mkclass, NO_MM_FLAGS } from './makemon.js';
+import { AMULET_OF_YENDOR } from './objects.js';
+import {
+    mons, S_ANGEL, S_DEMON, NON_PM,
+    PM_WIZARD_OF_YENDOR, PM_ANGEL, PM_ARCHON,
+    PM_BONE_DEVIL, PM_SKELETON,
+    PM_JUIBLEX, PM_YEENOGHU, PM_ORCUS, PM_DEMOGORGON,
+    PM_AIR_ELEMENTAL, PM_FIRE_ELEMENTAL,
+    PM_EARTH_ELEMENTAL, PM_WATER_ELEMENTAL,
+    PM_SHOPKEEPER, PM_ALIGNED_CLERIC, PM_HIGH_CLERIC,
+    G_UNIQ,
+} from './monsters.js';
+import { A_NONE, A_CHAOTIC, A_NEUTRAL, A_LAWFUL } from './config.js';
+import {
+    is_ndemon, is_dlord, is_dprince,
+    is_lord, canseemon,
+} from './mondata.js';
+import { Monnam, Amonnam } from './do_name.js';
+import { newsym } from './monutil.js';
+import { enexto, RLOC_MSG } from './teleport.js';
 
-// cf. minion.c:28 — free_emin(mtmp): free emin extra data
-// Frees EMIN struct from monster.
-// TODO: minion.c:28 — free_emin(): minion extra data cleanup
+// cf. minion.c:11 — elementals[] for neutral minion summoning
+const elementals = [
+    PM_AIR_ELEMENTAL, PM_FIRE_ELEMENTAL,
+    PM_EARTH_ELEMENTAL, PM_WATER_ELEMENTAL,
+];
 
-// cf. minion.c:39 — monster_census(spotted): count monsters on level
-// Returns count of monsters (spotted=TRUE for visible only, FALSE for all).
-// Used by summoning logic to determine if level is overpopulated.
-// TODO: minion.c:39 — monster_census(): level monster count
+// MM_EMIN flag — add emin structure
+const MM_EMIN = 0x00000400;
+// MM_NOMSG flag — suppress appear message
+const MM_NOMSG = 0x00020000;
 
-// cf. minion.c:58 — msummon(mtmp): monster summons allies
-// Called for monsters with the MS_SUMMON sound or M_SUMMON flag.
-// Selects and places 1-6 allies near mtmp based on monster type.
-// Returns number of monsters created.
-// TODO: minion.c:58 — msummon(): hostile monster summoning
+// ============================================================================
+// newemin / free_emin — minion extra data
+// cf. minion.c:17, minion.c:28
+// ============================================================================
 
-// cf. minion.c:197 — summon_minion(alignment, peaceful): summon aligned minion for player
-// Creates an aligned cleric or angel (llord/lminion/dprince/dlord/ndemon)
-//   near the player. peaceful=TRUE: arrives as friendly.
-// Called by pleased() after prayer/sacrifice reward.
-// TODO: minion.c:197 — summon_minion(): player-ally minion summoning
+export function newemin(mtmp) {
+    if (!mtmp.emin) {
+        mtmp.emin = { min_align: A_NONE, renegade: false };
+    }
+}
 
-// cf. minion.c:262 — demon_talk(mtmp): handle demon negotiation/bribery
-// Prints demon dialog; offers bribe option; accepts gold or attacks.
+export function free_emin(mtmp) {
+    mtmp.emin = null;
+    mtmp.isminion = false;
+}
+
+// ============================================================================
+// monster_census — count monsters on level
+// cf. minion.c:39
+// ============================================================================
+
+export function monster_census(spotted, map, player, fov) {
+    let count = 0;
+    for (const mtmp of map.monsters || []) {
+        if (mtmp.dead) continue;
+        // C: if (mtmp->isgd && mtmp->mx == 0) continue;
+        if (mtmp.isgd && mtmp.mx === 0) continue;
+        if (spotted && !canseemon(mtmp, player, fov)) continue;
+        ++count;
+    }
+    return count;
+}
+
+// ============================================================================
+// is_lminion — lawful minion check (runtime version)
+// cf. mondata.h is_lminion macro
+// ============================================================================
+
+function is_lminion(mon) {
+    if (!mon) return false;
+    const ptr = mon.type || mon.data || {};
+    if (ptr.symbol !== S_ANGEL) return false;
+    // If it has emin data, check alignment
+    if (mon.isminion && mon.emin) {
+        return mon.emin.min_align === A_LAWFUL;
+    }
+    // Fallback: check base monster alignment
+    return (ptr.align || 0) > 0;
+}
+
+// ============================================================================
+// dprince — select demon prince by alignment
+// cf. minion.c:389
+// ============================================================================
+
+export function dprince(atyp) {
+    // C: for (tryct = !In_endgame(&u.uz) ? 20 : 0; tryct > 0; --tryct)
+    // We don't have In_endgame at runtime yet; assume not in endgame (tryct=20)
+    const tryct_max = 20;
+    for (let tryct = tryct_max; tryct > 0; --tryct) {
+        // C: pm = rn1(PM_DEMOGORGON + 1 - PM_ORCUS, PM_ORCUS)
+        const pm = rn1(PM_DEMOGORGON + 1 - PM_ORCUS, PM_ORCUS);
+        // C: !(mvitals[pm].mvflags & G_GONE) — genocide not tracked yet
+        // C: (atyp == A_NONE || sgn(mons[pm].maligntyp) == sgn(atyp))
+        if (atyp === A_NONE || Math.sign(mons[pm].align) === Math.sign(atyp))
+            return pm;
+    }
+    return dlord(atyp); // approximate
+}
+
+// ============================================================================
+// dlord — select demon lord by alignment
+// cf. minion.c:403
+// ============================================================================
+
+export function dlord(atyp) {
+    const tryct_max = 20;
+    for (let tryct = tryct_max; tryct > 0; --tryct) {
+        // C: pm = rn1(PM_YEENOGHU + 1 - PM_JUIBLEX, PM_JUIBLEX)
+        const pm = rn1(PM_YEENOGHU + 1 - PM_JUIBLEX, PM_JUIBLEX);
+        if (atyp === A_NONE || Math.sign(mons[pm].align) === Math.sign(atyp))
+            return pm;
+    }
+    return ndemon(atyp); // approximate
+}
+
+// ============================================================================
+// llord — select lawful lord (Archon)
+// cf. minion.c:418
+// ============================================================================
+
+export function llord() {
+    // C: if (!(mvitals[PM_ARCHON].mvflags & G_GONE)) return PM_ARCHON
+    // genocide not tracked yet; always return Archon
+    return PM_ARCHON;
+}
+
+// ============================================================================
+// lminion — select lawful minion (random angel class)
+// cf. minion.c:427
+// ============================================================================
+
+export function lminion(depth) {
+    for (let tryct = 0; tryct < 20; tryct++) {
+        // C: ptr = mkclass(S_ANGEL, 0); if (ptr && !is_lord(ptr)) return monsndx(ptr)
+        const mndx = mkclass(S_ANGEL, 0, depth || 1);
+        if (mndx >= 0 && !is_lord(mons[mndx]))
+            return mndx;
+    }
+    return NON_PM;
+}
+
+// ============================================================================
+// ndemon — select random non-lord/non-prince demon by alignment
+// cf. minion.c:442
+// ============================================================================
+
+export function ndemon(atyp, depth) {
+    // C: ptr = mkclass_aligned(S_DEMON, 0, atyp)
+    // Our mkclass already supports alignment filtering via atyp parameter
+    const mndx = mkclass(S_DEMON, 0, depth || 1, atyp);
+    return (mndx >= 0 && is_ndemon(mons[mndx])) ? mndx : NON_PM;
+}
+
+// ============================================================================
+// msummon — monster summons allies
+// cf. minion.c:58
+// ============================================================================
+
+export function msummon(mon, map, player, display) {
+    let dtype = NON_PM, cnt = 0, result = 0;
+    let atyp;
+    const depth = player?.dungeonLevel || 1;
+
+    let ptr;
+    if (mon) {
+        ptr = mon.type || mon.data || {};
+
+        // C: if (u_wield_art(ART_DEMONBANE) && is_demon(ptr))
+        // TODO: Demonbane wielding check — skip for now
+
+        // Determine alignment
+        if (mon.ispriest && mon.epri) {
+            atyp = mon.epri.shralign;
+        } else if (mon.isminion && mon.emin) {
+            atyp = mon.emin.min_align;
+        } else {
+            atyp = (ptr.align === A_NONE) ? A_NONE : Math.sign(ptr.align);
+        }
+    } else {
+        // Null summoner = Wizard of Yendor
+        ptr = mons[PM_WIZARD_OF_YENDOR];
+        atyp = (ptr.align === A_NONE) ? A_NONE : Math.sign(ptr.align);
+    }
+
+    if (is_dprince(ptr) || (mon === null || (mon && mon.mndx === PM_WIZARD_OF_YENDOR))) {
+        dtype = (!rn2(20)) ? dprince(atyp)
+              : (!rn2(4)) ? dlord(atyp)
+              : ndemon(atyp, depth);
+        cnt = ((dtype !== NON_PM) && !rn2(4) && is_ndemon(mons[dtype])) ? 2 : 1;
+    } else if (is_dlord(ptr)) {
+        dtype = (!rn2(50)) ? dprince(atyp)
+              : (!rn2(20)) ? dlord(atyp)
+              : ndemon(atyp, depth);
+        cnt = ((dtype !== NON_PM) && !rn2(4) && is_ndemon(mons[dtype])) ? 2 : 1;
+    } else if (mon && mon.mndx === PM_BONE_DEVIL) {
+        dtype = PM_SKELETON;
+        cnt = 1;
+    } else if (is_ndemon(ptr)) {
+        dtype = (!rn2(20)) ? dlord(atyp)
+              : (!rn2(6)) ? ndemon(atyp, depth)
+              : (mon ? mon.mndx : NON_PM);
+        cnt = 1;
+    } else if (is_lminion(mon)) {
+        dtype = (is_lord(ptr) && !rn2(20))
+                    ? llord()
+                    : (is_lord(ptr) || !rn2(6)) ? lminion(depth) : (mon ? mon.mndx : NON_PM);
+        cnt = ((dtype !== NON_PM) && !rn2(4) && !is_lord(mons[dtype])) ? 2 : 1;
+    } else if (mon && mon.mndx === PM_ANGEL) {
+        // non-lawful angels can also summon
+        if (!rn2(6)) {
+            switch (atyp) {
+            case A_NEUTRAL:
+                dtype = elementals[rn2(elementals.length)];
+                break;
+            case A_CHAOTIC:
+            case A_NONE:
+                dtype = ndemon(atyp, depth);
+                break;
+            default:
+                dtype = PM_ANGEL;
+                break;
+            }
+        } else {
+            dtype = PM_ANGEL;
+        }
+        cnt = ((dtype !== NON_PM) && !rn2(4) && !is_lord(mons[dtype])) ? 2 : 1;
+    }
+
+    if (dtype === NON_PM) return 0;
+
+    // Sanity checks
+    if (cnt > 1 && (mons[dtype].geno & G_UNIQ) !== 0) cnt = 1;
+
+    // C: if mvitals[dtype].mvflags & G_GONE — genocide not tracked yet; skip
+
+    // Census for group-counting
+    const census = monster_census(false, map, player);
+
+    while (cnt > 0) {
+        const mtmp = makemon(mons[dtype], player.x, player.y, MM_EMIN | MM_NOMSG, depth, map);
+        if (mtmp) {
+            result++;
+            // Angel alignment matching
+            if (dtype === PM_ANGEL) {
+                mtmp.isminion = true;
+                newemin(mtmp);
+                mtmp.emin.min_align = atyp;
+                // renegade if same alignment but not peaceful, or peaceful but different alignment
+                mtmp.emin.renegade = (atyp !== (player.alignment || 0)) !== !mtmp.peaceful;
+            }
+
+            // C: appearance message for last in batch
+            if (cnt === 1 && canseemon(mtmp, player)) {
+                if (display) {
+                    display.putstr_message(`${Amonnam(mtmp)} appears!`);
+                } else {
+                    pline("%s appears!", Amonnam(mtmp));
+                }
+            }
+        }
+        cnt--;
+    }
+
+    // Actual census difference
+    if (result) result = monster_census(false, map, player) - census;
+    return result;
+}
+
+// ============================================================================
+// summon_minion — summon aligned minion for player
+// cf. minion.c:197
+// ============================================================================
+
+export function summon_minion(alignment, talk, map, player, display) {
+    const depth = player?.dungeonLevel || 1;
+    let mnum;
+
+    switch (alignment) {
+    case A_LAWFUL:
+        mnum = lminion(depth);
+        break;
+    case A_NEUTRAL:
+        mnum = elementals[rn2(elementals.length)];
+        break;
+    case A_CHAOTIC:
+    case A_NONE:
+        mnum = ndemon(alignment, depth);
+        break;
+    default:
+        // impossible("unaligned player?");
+        mnum = ndemon(A_NONE, depth);
+        break;
+    }
+
+    let mon;
+    if (mnum === NON_PM) {
+        mon = null;
+    } else if (mnum === PM_ANGEL) {
+        mon = makemon(mons[mnum], player.x, player.y, MM_EMIN | MM_NOMSG, depth, map);
+        if (mon) {
+            mon.isminion = true;
+            newemin(mon);
+            mon.emin.min_align = alignment;
+            mon.emin.renegade = false;
+        }
+    } else if (mnum !== PM_SHOPKEEPER && mnum !== PM_GUARD
+               && mnum !== PM_ALIGNED_CLERIC && mnum !== PM_HIGH_CLERIC) {
+        mon = makemon(mons[mnum], player.x, player.y, MM_EMIN | MM_NOMSG, depth, map);
+        if (mon) {
+            mon.isminion = true;
+            newemin(mon);
+            mon.emin.min_align = alignment;
+            mon.emin.renegade = false;
+        }
+    } else {
+        mon = makemon(mons[mnum], player.x, player.y, MM_NOMSG, depth, map);
+    }
+
+    if (mon) {
+        if (talk) {
+            // C: pline_The("voice of %s booms:", align_gname(alignment))
+            // align_gname not readily available here; use generic message
+            pline("A divine voice booms!");
+            verbalize("Thou shalt pay for thine indiscretion!");
+            if (canseemon(mon, player)) {
+                pline("%s appears before you.", Amonnam(mon));
+            }
+        }
+        mon.peaceful = false;
+        // don't call set_malign(); player was naughty
+    }
+}
+
+// ============================================================================
+// demon_talk — handle demon negotiation/bribery
+// cf. minion.c:262
 // Returns 1 if demon accepts bribe and won't attack, 0 otherwise.
-// TODO: minion.c:262 — demon_talk(): demon negotiation dialog
+// ============================================================================
 
-// cf. minion.c:359 — bribe(mtmp): get gold amount offered to demon
-// Prompts player for gold amount to offer the demon.
-// Returns amount given (may be 0 if declined).
-// TODO: minion.c:359 — bribe(): demon bribery gold prompt
+export function demon_talk(mtmp, map, player, display) {
+    // C: if (u_wield_art(ART_EXCALIBUR) || u_wield_art(ART_DEMONBANE))
+    // TODO: artifact wielding check — approximate with weapon name check
+    const weapon = player?.weapon;
+    if (weapon && (weapon.artifactName === 'Excalibur' || weapon.artifactName === 'Demonbane')) {
+        if (canseemon(mtmp, player)) {
+            pline("%s looks very angry.", Amonnam(mtmp));
+        } else {
+            You_feel("tension building.");
+        }
+        mtmp.peaceful = false;
+        mtmp.tame = false;
+        if (map && display) newsym(map, mtmp.mx, mtmp.my);
+        return 0;
+    }
 
-// cf. minion.c:389 — dprince(alignment): select demon prince by alignment
-// Returns permonst* for a demon prince matching given alignment.
-// TODO: minion.c:389 — dprince(): demon prince selection
+    // C: Slight advantage — demon prince becomes visible
+    if (is_dprince(mtmp.type || mtmp.data || {}) && mtmp.invisible) {
+        mtmp.invisible = false;
+        mtmp.perminvis = false;
+        if (map && display) newsym(map, mtmp.mx, mtmp.my);
+    }
 
-// cf. minion.c:403 — dlord(alignment): select demon lord by alignment
-// Returns permonst* for a demon lord matching given alignment.
-// TODO: minion.c:403 — dlord(): demon lord selection
+    const ptr = mtmp.type || mtmp.data || {};
+    // C: if (youmonst.data->mlet == S_DEMON) — player polymorphed into demon
+    // TODO: player polymorph check
 
-// cf. minion.c:418 — llord(): select lawful lord (Archon or lminion)
-// Returns permonst* for a lawful-aligned lord (Archon preferred).
-// TODO: minion.c:418 — llord(): lawful lord selection
+    // C: cash = money_cnt(invent)
+    const cash = player?.gold || 0;
+    // C: Athome = Inhell && (mtmp->cham == NON_PM)
+    const Athome = false; // TODO: Inhell check not available
 
-// cf. minion.c:427 — lminion(): select lawful minion (random angel class)
-// Returns permonst* for a random lawful minion (non-lord angel).
-// TODO: minion.c:427 — lminion(): lawful minion selection
+    let demand = Math.floor((cash * (rnd(80) + 20 * (Athome ? 1 : 0)))
+        / (100 * (1 + (Math.sign(player?.alignment || 0) === Math.sign(ptr.align || 0) ? 1 : 0))));
 
-// cf. minion.c:442 — ndemon(alignment): select neutral or any-alignment demon
-// Returns permonst* for a demon of given alignment for summoning.
-// TODO: minion.c:442 — ndemon(): neutral/chaotic demon selection
+    if (!demand) {
+        mtmp.peaceful = false;
+        return 0;
+    }
 
-// cf. minion.c:466 — lose_guardian_angel(mtmp): remove guardian angel
-// Called when guardian angel becomes hostile (alignment conflict, attack on peacefuls).
-// Removes tame status; spawns hostile replacement angels.
-// TODO: minion.c:466 — lose_guardian_angel(): guardian angel removal
+    // C: if mon_has_amulet or Deaf, make demand unmeetable
+    // TODO: Deaf check
+    // Inline mon_has_amulet check to avoid circular dependency with wizard.js
+    const hasAmulet = (mtmp.inventory || []).some(o => o && o.otyp === AMULET_OF_YENDOR);
+    if (hasAmulet) {
+        demand = cash + rn1(1000, 125);
+    }
 
-// cf. minion.c:496 — gain_guardian_angel(): summon tame guardian angel
-// On Astral Plane when player is worthy (alignment record ≥ threshold):
-//   creates tame angel with blessed silver saber and amulet of reflection.
-// TODO: minion.c:496 — gain_guardian_angel(): guardian angel summoning
+    pline("%s demands %d zorkmids for safe passage.", Amonnam(mtmp), demand);
+
+    // C: offer = bribe(mtmp) — prompts player for gold
+    // TODO: bribe() requires getlin() which needs UI integration
+    // For now, stub: demon always gets angry
+    pline("%s gets angry...", Amonnam(mtmp));
+    mtmp.peaceful = false;
+    return 0;
+}
+
+// ============================================================================
+// bribe — get gold amount offered to demon
+// cf. minion.c:359
+// TODO: Requires getlin() for user input — stub for now
+// ============================================================================
+
+export function bribe(mtmp, map, player, display) {
+    // TODO: minion.c:359 — bribe() needs getlin() UI integration
+    return 0;
+}
+
+// ============================================================================
+// lose_guardian_angel — remove guardian angel
+// cf. minion.c:466
+// ============================================================================
+
+export function lose_guardian_angel(mon, map, player, display) {
+    const depth = player?.dungeonLevel || 1;
+
+    if (mon) {
+        if (canseemon(mon, player)) {
+            pline("%s rebukes you, saying:", Monnam(mon));
+            verbalize("Since you desire conflict, have some more!");
+        }
+        // C: mongone(mon) — remove from play
+        if (mon.dead !== undefined) mon.dead = true;
+    }
+
+    // Create 2 to 4 hostile angels to replace the lost guardian
+    for (let i = rn1(3, 2); i > 0; --i) {
+        const mm = { x: player.x, y: player.y };
+        if (enexto(mm, mm.x, mm.y, mons[PM_ANGEL], map, player)) {
+            const angel = makemon(mons[PM_ANGEL], mm.x, mm.y, NO_MM_FLAGS, depth, map);
+            if (angel) {
+                angel.peaceful = false;
+            }
+        }
+    }
+}
+
+// ============================================================================
+// gain_guardian_angel — summon tame guardian angel on Astral Plane
+// cf. minion.c:496
+// TODO: Requires Astral Plane detection, Conflict check, full equipment logic
+// ============================================================================
+
+export function gain_guardian_angel(map, player, display) {
+    // TODO: minion.c:496 — gain_guardian_angel() needs Astral Plane + full implementation
+    // This is called on entering the Astral Plane and requires:
+    // - Conflict check
+    // - u.ualign.record > 8 (fervent)
+    // - Creating a powerful tame angel with silver saber + amulet of reflection
+    // Stub for now — will be implemented when endgame is ported
+}

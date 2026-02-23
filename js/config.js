@@ -240,6 +240,26 @@ export function IS_OBSTRUCTED(typ) {
     // C ref: rm.h — IS_OBSTRUCTED(typ) ((typ) < POOL)
     return typ < POOL;
 }
+export function IS_DRAWBRIDGE(typ) {
+    // C ref: rm.h — IS_DRAWBRIDGE(typ) ((typ) == DRAWBRIDGE_UP || (typ) == DRAWBRIDGE_DOWN)
+    return typ === DRAWBRIDGE_UP || typ === DRAWBRIDGE_DOWN;
+}
+export function IS_WATERWALL(typ) {
+    // C ref: rm.h — IS_WATERWALL(typ) ((typ) == WATER)
+    return typ === WATER;
+}
+
+// Drawbridge mask bits (rm.h:269-282)
+export const DB_NORTH = 0;
+export const DB_SOUTH = 1;
+export const DB_EAST = 2;
+export const DB_WEST = 3;
+export const DB_DIR = 3;    // mask for direction
+export const DB_MOAT = 0;
+export const DB_LAVA = 4;
+export const DB_ICE = 8;
+export const DB_FLOOR = 16;
+export const DB_UNDER = 28; // mask for underneath
 
 // Trap types (trap.h)
 export const NO_TRAP = 0;

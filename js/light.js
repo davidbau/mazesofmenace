@@ -18,123 +18,508 @@
 //   candle_light_range(): calculate candle illumination radius.
 //   snuff_light_source(): extinguish light at a location.
 //   save/restore_light_sources: persistence (N/A in JS, uses storage.js).
-//
-// JS implementations:
-//   (none yet — light source management not yet ported)
 
-// cf. light.c:62 — new_light_source(x, y, range, type, id): create light source
-// Creates a new light source by calling new_light_core.
-// TODO: light.c:62 — new_light_source(): light source creation
+import { COLNO, ROWNO, isok } from './config.js';
+import {
+    CANDELABRUM_OF_INVOCATION, TALLOW_CANDLE, WAX_CANDLE,
+    BRASS_LANTERN, OIL_LAMP, MAGIC_LAMP, POT_OIL,
+    GOLD_DRAGON_SCALE_MAIL,
+} from './objects.js';
+import { artifact_light } from './artifact.js';
+import { end_burn } from './timeout.js';
+import { clear_path } from './vision.js';
 
-// cf. light.c:68 [static] — new_light_core(x, y, range, type, id): allocate light source
-// Allocates and initializes a new light source structure and adds it to light_base.
-// TODO: light.c:68 — new_light_core(): light source allocation
+// ---------- Constants ----------
+// cf. light.c:41-43
+const LSF_SHOW = 0x1;
+const LSF_NEEDS_FIXUP = 0x2;
 
-// cf. light.c:99 — del_light_source(type, id): delete light source
-// Finds and deletes a light source by type and ID from the light_base list.
-// TODO: light.c:99 — del_light_source(): light source deletion
+// Light source types
+export const LS_OBJECT  = 0;
+export const LS_MONSTER = 1;
 
-// cf. light.c:141 [static] — delete_ls(ls): remove light source from list
-// Removes a light source from the light_base linked list and frees its memory.
-// TODO: light.c:141 — delete_ls(): light source list removal
+const MAX_RADIUS = 16;
 
-// cf. light.c:169 — do_light_sources(cs_rows): mark lit locations
-// Marks locations temporarily lit by mobile light sources in the vision system's array.
-// TODO: light.c:169 — do_light_sources(): vision light source application
+// TEMP_LIT / COULD_SEE must match vision.js values
+const COULD_SEE = 0x1;
+const TEMP_LIT  = 0x4;  // C ref: vision.h — TEMP_LIT marks temporarily-lit cells
 
-// cf. light.c:257 — show_transient_light(obj, x, y): transient light display
-// Shows light from a thrown/kicked lit object or camera flash at a location.
-// TODO: light.c:257 — show_transient_light(): transient object light display
+// ---------- Module State ----------
+// Linked list head for all light sources.  In JS we use a simple array.
+let light_base = [];
+let vision_full_recalc_flag = 0;
 
-// cf. light.c:330 — transient_light_cleanup(void): clean up transient light
-// Cleans up camera flashes and redraws monsters visible during transient light movement.
-// TODO: light.c:330 — transient_light_cleanup(): transient light cleanup
+// ---------- Internal helpers ----------
 
-// cf. light.c:360 [static] — discard_flashes(void): remove camera flashes
-// Removes all camera flash light sources (those with NULL object pointers).
-// TODO: light.c:360 — discard_flashes(): camera flash removal
+// cf. obj.h:382 — Is_candle
+function Is_candle(obj) {
+    return obj.otyp === TALLOW_CANDLE || obj.otyp === WAX_CANDLE;
+}
 
-// cf. light.c:376 — find_mid(nid, fmflags): find monster by ID
-// Finds a monster by its ID number across various monster chains.
-// TODO: light.c:376 — find_mid(): monster ID lookup
+// cf. obj.h:397 — ignitable
+function ignitable(obj) {
+    return obj.otyp === BRASS_LANTERN
+        || obj.otyp === OIL_LAMP
+        || (obj.otyp === MAGIC_LAMP && (obj.spe || 0) > 0)
+        || obj.otyp === CANDELABRUM_OF_INVOCATION
+        || obj.otyp === TALLOW_CANDLE
+        || obj.otyp === WAX_CANDLE
+        || obj.otyp === POT_OIL;
+}
 
-// cf. light.c:397 [static] — whereis_mon(mon, fmflags): locate monster in chains
-// Returns a flag indicating which monster chain contains the given monster.
-// TODO: light.c:397 — whereis_mon(): monster chain location
+// ========================================================================
+// cf. light.c:62 — new_light_source(x, y, range, type, id)
+// Creates a new light source.
+// ========================================================================
+export function new_light_source(x, y, range, type, id) {
+    return new_light_core(x, y, range, type, id);
+}
 
-// cf. light.c:421 — save_light_sources(nhfp, range): save light sources
-// Saves all light sources of a given range to disk.
-// N/A: light.c:421 — save_light_sources() (JS uses storage.js)
+// cf. light.c:68 [static] — new_light_core
+function new_light_core(x, y, range, type, id) {
+    if (range > MAX_RADIUS || range < 0
+        || (range === 0 && (type !== LS_OBJECT || id != null))) {
+        // impossible("new_light_source: illegal range %d", range);
+        return null;
+    }
+    const ls = {
+        x, y,
+        range,
+        type,
+        id,       // object or monster reference
+        flags: 0,
+    };
+    light_base.push(ls);
+    vision_full_recalc_flag = 1;
+    return ls;
+}
 
-// cf. light.c:479 — restore_light_sources(nhfp): restore light sources
-// Restores light source structures from disk without recalculating object pointers.
-// N/A: light.c:479 — restore_light_sources() (JS uses storage.js)
+// ========================================================================
+// cf. light.c:99 — del_light_source(type, id)
+// Finds and deletes a light source by type and ID.
+// ========================================================================
+export function del_light_source(type, id) {
+    const idx = light_base.findIndex(ls => {
+        if (ls.type !== type) return false;
+        return ls.id === id;
+    });
+    if (idx >= 0) {
+        delete_ls(idx);
+    } else {
+        // impossible("del_light_source: not found type=%d", type);
+    }
+}
 
-// cf. light.c:501 — light_stats(hdrfmt, hdrbuf, count, size): light source statistics
-// Provides statistics on light sources for the #stats wizard-mode command.
-// TODO: light.c:501 — light_stats(): light source stats
+// cf. light.c:141 [static] — delete_ls
+function delete_ls(idx) {
+    if (idx >= 0 && idx < light_base.length) {
+        light_base.splice(idx, 1);
+        vision_full_recalc_flag = 1;
+    }
+}
 
-// cf. light.c:517 — relink_light_sources(ghostly): relink light sources after restore
-// Relinks all light sources marked as needing fixup after restore,
-// remapping object/monster IDs.
-// TODO: light.c:517 — relink_light_sources(): post-restore light source relink
+// ========================================================================
+// cf. light.c:169 — do_light_sources(cs_rows)
+// Marks locations temporarily lit via mobile light sources.
+// cs_rows is a 2D array [y][x] of visibility flags (Uint8Array per row).
+// ========================================================================
+export function do_light_sources(cs_rows, map, player) {
+    let at_hero_range = 0;
 
-// cf. light.c:570 [static] — maybe_write_ls(nhfp, range, write_it): count or write light sources
-// Counts or writes light sources matching the specified range.
-// N/A: light.c:570 — maybe_write_ls() (JS uses storage.js)
+    for (const ls of light_base) {
+        ls.flags &= ~LSF_SHOW;
 
-// cf. light.c:606 — light_sources_sanity_check(void): validate light sources
-// Verifies that all light source object and monster pointers are still valid.
-// TODO: light.c:606 — light_sources_sanity_check(): light source validation
+        // Update position from object/monster location
+        if (ls.type === LS_OBJECT) {
+            if (ls.range === 0) {
+                // Camera flash — caller has already set ls.x, ls.y
+                ls.flags |= LSF_SHOW;
+            } else if (ls.id) {
+                // Try to get object location
+                const obj = ls.id;
+                const loc = get_obj_light_location(obj, map);
+                if (loc) {
+                    ls.x = loc.x;
+                    ls.y = loc.y;
+                    ls.flags |= LSF_SHOW;
+                }
+            }
+        } else if (ls.type === LS_MONSTER) {
+            const mon = ls.id;
+            if (mon && mon.mx > 0) {
+                ls.x = mon.mx;
+                ls.y = mon.my;
+                ls.flags |= LSF_SHOW;
+            }
+        }
 
-// cf. light.c:634 [static] — write_ls(nhfp, ls): write single light source
-// Writes a single light source structure to disk, converting pointers to IDs.
-// N/A: light.c:634 — write_ls() (JS uses storage.js)
+        // Optimization: skip duplicate hero-position light sources
+        if (player && ls.x === player.x && ls.y === player.y) {
+            if (at_hero_range >= ls.range) {
+                ls.flags &= ~LSF_SHOW;
+            } else {
+                at_hero_range = ls.range;
+            }
+        }
 
-// cf. light.c:706 — obj_move_light_source(src, dest): move light source between objects
+        if (ls.flags & LSF_SHOW) {
+            // Walk points in circle and mark TEMP_LIT if visible from center
+            const limits = get_circle_limits(ls.range);
+            const max_y = Math.min(ls.y + ls.range, ROWNO - 1);
+            let y = Math.max(ls.y - ls.range, 0);
+
+            for (; y <= max_y; y++) {
+                const row = cs_rows[y];
+                if (!row) continue;
+                const offset = limits[Math.abs(y - ls.y)] || 0;
+                const min_x = Math.max(ls.x - offset, 1);
+                const max_x = Math.min(ls.x + offset, COLNO - 1);
+
+                if (player && ls.x === player.x && ls.y === player.y) {
+                    // At hero: use COULD_SEE bits already calculated
+                    for (let x = min_x; x <= max_x; x++) {
+                        if (row[x] & COULD_SEE)
+                            row[x] |= TEMP_LIT;
+                    }
+                } else {
+                    for (let x = min_x; x <= max_x; x++) {
+                        if ((ls.x === x && ls.y === y)
+                            || clear_path(ls.x, ls.y, x, y))
+                            row[x] |= TEMP_LIT;
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Helper: get object location for light source tracking
+function get_obj_light_location(obj, map) {
+    if (!obj) return null;
+    // Object on floor
+    if (typeof obj.ox === 'number' && typeof obj.oy === 'number'
+        && obj.ox > 0) {
+        return { x: obj.ox, y: obj.oy };
+    }
+    // Object in inventory — use player position (handled by caller)
+    // Object in monster inventory — use monster position
+    // TODO: full get_obj_location port for all obj.where cases
+    return null;
+}
+
+// Circle data for range-limited scans (matches vision.js CIRCLE_DATA/CIRCLE_START)
+const CIRCLE_DATA = [
+    0,
+    1, 1,
+    2, 2, 1,
+    3, 3, 2, 1,
+    4, 4, 4, 3, 2,
+    5, 5, 5, 4, 3, 2,
+    6, 6, 6, 5, 5, 4, 2,
+    7, 7, 7, 6, 6, 5, 4, 2,
+    8, 8, 8, 7, 7, 6, 6, 4, 2,
+    9, 9, 9, 9, 8, 8, 7, 6, 5, 3,
+    10, 10, 10, 10, 9, 9, 8, 7, 6, 5, 3,
+    11, 11, 11, 11, 10, 10, 9, 9, 8, 7, 5, 3,
+    12, 12, 12, 12, 11, 11, 10, 10, 9, 8, 7, 5, 3,
+    13, 13, 13, 13, 12, 12, 12, 11, 10, 10, 9, 7, 6, 3,
+    14, 14, 14, 14, 13, 13, 13, 12, 12, 11, 10, 9, 8, 6, 3,
+    15, 15, 15, 15, 14, 14, 14, 13, 13, 12, 11, 10, 9, 8, 6, 3,
+    16,
+];
+const CIRCLE_START = [0, 1, 3, 6, 10, 15, 21, 28, 36, 45, 55, 66, 78, 91, 105, 120];
+
+function get_circle_limits(range) {
+    if (range < 1 || range > 15) return [0];
+    const base = CIRCLE_START[range];
+    // Return a subarray view: limits[offset] = CIRCLE_DATA[base + offset]
+    return {
+        // Access via limits[abs(dy)]
+        __proto__: null,
+        ...Array.from({ length: range + 1 }, (_, i) => CIRCLE_DATA[base + i]),
+    };
+}
+
+// ========================================================================
+// cf. light.c:257 — show_transient_light(obj, x, y)
+// Shows light from a thrown/kicked lit object or camera flash.
+// TODO: vision_recalc and monster mtemplit flagging
+// ========================================================================
+export function show_transient_light(_obj, _x, _y) {
+    // TODO: light.c:257 — show_transient_light(): transient object light display
+    // Requires vision_recalc() integration and monster mtemplit tracking
+}
+
+// ========================================================================
+// cf. light.c:330 — transient_light_cleanup()
+// Cleans up camera flashes and redraws monsters.
+// ========================================================================
+export function transient_light_cleanup() {
+    discard_flashes();
+    // TODO: monster mtemplit cleanup and map_invisible
+}
+
+// cf. light.c:360 [static] — discard_flashes()
+function discard_flashes() {
+    for (let i = light_base.length - 1; i >= 0; i--) {
+        if (light_base[i].type === LS_OBJECT && !light_base[i].id) {
+            light_base.splice(i, 1);
+            vision_full_recalc_flag = 1;
+        }
+    }
+}
+
+// ========================================================================
+// cf. light.c:376 — find_mid(nid, fmflags)
+// Finds a monster by its ID number.
+// ========================================================================
+export function find_mid(nid, fmflags, map, player) {
+    const FM_YOU     = 0x01;
+    const FM_FMON    = 0x02;
+    // const FM_MIGRATE = 0x04;
+    // const FM_MYDOGS  = 0x08;
+
+    if ((fmflags & FM_YOU) && nid === 1 && player) {
+        return player; // youmonst equivalent
+    }
+    if ((fmflags & FM_FMON) && map && map.monsters) {
+        for (const mtmp of map.monsters) {
+            if (!mtmp.dead && mtmp.m_id === nid) return mtmp;
+        }
+    }
+    // TODO: FM_MIGRATE, FM_MYDOGS chains
+    return null;
+}
+
+// ========================================================================
+// cf. light.c:706 — obj_move_light_source(src, dest)
 // Changes a light source's object ID from src to dest.
-// TODO: light.c:706 — obj_move_light_source(): light source object transfer
+// ========================================================================
+export function obj_move_light_source(src, dest) {
+    for (const ls of light_base) {
+        if (ls.type === LS_OBJECT && ls.id === src) {
+            ls.id = dest;
+        }
+    }
+    src.lamplit = false;
+    dest.lamplit = true;
+}
 
-// cf. light.c:719 — any_light_source(void): check for active light sources
+// ========================================================================
+// cf. light.c:719 — any_light_source()
 // Returns true if there are any active light sources.
-// TODO: light.c:719 — any_light_source(): active light source check
+// ========================================================================
+export function any_light_source() {
+    return light_base.length > 0;
+}
 
-// cf. light.c:729 — snuff_light_source(x, y): extinguish light at location
-// Snuffs out light sources at a location if they are burnable objects.
-// TODO: light.c:729 — snuff_light_source(): light source extinguishment
+// ========================================================================
+// cf. light.c:729 — snuff_light_source(x, y)
+// Snuffs out burning light sources at a location.
+// ========================================================================
+export function snuff_light_source(x, y) {
+    for (let i = 0; i < light_base.length; i++) {
+        const ls = light_base[i];
+        if (ls.type === LS_OBJECT && ls.x === x && ls.y === y) {
+            const obj = ls.id;
+            if (obj && obj_is_burning(obj)) {
+                // Sunsword (artifact light) cannot be snuffed by darkness
+                if (artifact_light(obj)) continue;
+                end_burn(obj, obj.otyp !== MAGIC_LAMP);
+                // ls was just removed by end_burn -> del_light_source;
+                // only one light source per object, so return
+                return;
+            }
+        }
+    }
+}
 
-// cf. light.c:763 — obj_sheds_light(obj): check if object emits light
-// Returns true if an object emits any light.
-// TODO: light.c:763 — obj_sheds_light(): object light emission check
+// ========================================================================
+// cf. light.c:763 — obj_sheds_light(obj)
+// Returns true if object emits any light.
+// ========================================================================
+export function obj_sheds_light(obj) {
+    return obj_is_burning(obj);
+}
 
-// cf. light.c:771 — obj_is_burning(obj): check if object is burning
-// Returns true if an object is lit and will be snuffed by end_burn().
-// TODO: light.c:771 — obj_is_burning(): object burning check
+// ========================================================================
+// cf. light.c:771 — obj_is_burning(obj)
+// Returns true if object is lit and will be snuffed by end_burn().
+// ========================================================================
+export function obj_is_burning(obj) {
+    return !!(obj && obj.lamplit && (ignitable(obj) || artifact_light(obj)));
+}
 
-// cf. light.c:779 — obj_split_light_source(src, dest): copy light source to split object
-// Copies a light source from src object and attaches it to dest object.
-// TODO: light.c:779 — obj_split_light_source(): light source split copy
+// ========================================================================
+// cf. light.c:779 — obj_split_light_source(src, dest)
+// Copies light source from src and attaches it to dest (for object splitting).
+// ========================================================================
+export function obj_split_light_source(src, dest) {
+    for (const ls of light_base) {
+        if (ls.type === LS_OBJECT && ls.id === src) {
+            const new_ls = {
+                x: ls.x,
+                y: ls.y,
+                range: ls.range,
+                type: ls.type,
+                id: dest,
+                flags: ls.flags,
+            };
+            if (Is_candle(src)) {
+                // Split candles may emit less light than original group
+                ls.range = candle_light_range(src);
+                new_ls.range = candle_light_range(dest);
+                vision_full_recalc_flag = 1;
+            }
+            light_base.push(new_ls);
+            dest.lamplit = true;
+            break; // only one light source per object
+        }
+    }
+}
 
-// cf. light.c:808 — obj_merge_light_sources(src, dest): merge light sources
-// Merges light sources when objects are combined.
-// TODO: light.c:808 — obj_merge_light_sources(): light source merging
+// ========================================================================
+// cf. light.c:808 — obj_merge_light_sources(src, dest)
+// Merges light sources when objects are combined (candles into candelabrum).
+// ========================================================================
+export function obj_merge_light_sources(src, dest) {
+    // src === dest implies adding candles to candelabrum
+    if (src !== dest) {
+        end_burn(src, true); // extinguish candles
+    }
+    for (const ls of light_base) {
+        if (ls.type === LS_OBJECT && ls.id === dest) {
+            ls.range = candle_light_range(dest);
+            vision_full_recalc_flag = 1;
+            break;
+        }
+    }
+}
 
-// cf. light.c:826 — obj_adjust_light_radius(obj, new_radius): change light radius
+// ========================================================================
+// cf. light.c:826 — obj_adjust_light_radius(obj, new_radius)
 // Changes a light source's radius for an object.
-// TODO: light.c:826 — obj_adjust_light_radius(): light radius adjustment
+// ========================================================================
+export function obj_adjust_light_radius(obj, new_radius) {
+    for (const ls of light_base) {
+        if (ls.type === LS_OBJECT && ls.id === obj) {
+            if (new_radius !== ls.range) {
+                vision_full_recalc_flag = 1;
+            }
+            ls.range = new_radius;
+            return;
+        }
+    }
+    // impossible("obj_adjust_light_radius: can't find obj");
+}
 
-// cf. light.c:843 — candle_light_range(obj): calculate candle light range
+// ========================================================================
+// cf. light.c:843 — candle_light_range(obj)
 // Calculates the light range for a candle or candelabrum based on quantity.
-// TODO: light.c:843 — candle_light_range(): candle illumination radius
+// ========================================================================
+export function candle_light_range(obj) {
+    let radius;
 
-// cf. light.c:881 — arti_light_radius(obj): artifact light radius
-// Returns the light radius for a light-emitting artifact based on curse/bless state.
-// TODO: light.c:881 — arti_light_radius(): artifact light radius
+    if (obj.otyp === CANDELABRUM_OF_INVOCATION) {
+        // 1..3 candles → range 2; 4..6 → range 3; 7 → range 4
+        radius = (obj.spe < 4) ? 2 : (obj.spe < 7) ? 3 : 4;
+    } else if (Is_candle(obj)) {
+        // Range incremented quadratically
+        // 1..3 → range 2; 4..8 → range 3; 9..15 → range 4; etc.
+        const n = obj.quan || 1;
+        radius = 1;
+        while (radius * radius <= n && radius < MAX_RADIUS) {
+            radius++;
+        }
+    } else {
+        radius = 3; // lamp's value
+    }
+    return radius;
+}
 
-// cf. light.c:916 — arti_light_description(obj): artifact light description
+// ========================================================================
+// cf. light.c:881 — arti_light_radius(obj)
+// Returns the light radius for a light-emitting artifact.
+// ========================================================================
+export function arti_light_radius(obj) {
+    if (!obj.lamplit || !artifact_light(obj)) return 0;
+
+    // cursed=1, uncursed=2, blessed=3
+    let res = obj.blessed ? 3 : !obj.cursed ? 2 : 1;
+
+    // TODO: if poly'd into gold dragon with embedded scales (uskin), res = 1
+    if (obj.otyp === GOLD_DRAGON_SCALE_MAIL) {
+        ++res; // DSM but not scales gives more light
+    }
+
+    return res;
+}
+
+// ========================================================================
+// cf. light.c:916 — arti_light_description(obj)
 // Returns an adverb describing a lit artifact's light intensity.
-// TODO: light.c:916 — arti_light_description(): artifact light description
+// ========================================================================
+export function arti_light_description(obj) {
+    switch (arti_light_radius(obj)) {
+    case 4: return "radiantly";     // blessed gold dragon scale mail
+    case 3: return "brilliantly";   // blessed artifact, uncursed gold DSM
+    case 2: return "brightly";      // uncursed artifact, cursed gold DSM
+    case 1: return "dimly";         // cursed artifact, embedded scales
+    default: break;
+    }
+    return "strangely";
+}
 
-// cf. light.c:935 — wiz_light_sources(void): wizard mode light source display
-// Displays information about all active light sources for the #lightsources wizard command.
-// TODO: light.c:935 — wiz_light_sources(): wizard light source display
+// ========================================================================
+// cf. light.c:935 — wiz_light_sources()
+// Wizard mode: display all active light sources (debug).
+// ========================================================================
+export function wiz_light_sources() {
+    // TODO: wizard mode display
+    return light_base.map(ls => ({
+        x: ls.x, y: ls.y,
+        range: ls.range,
+        type: ls.type === LS_OBJECT ? 'obj' : ls.type === LS_MONSTER ? 'mon' : '???',
+        flags: ls.flags,
+    }));
+}
+
+// ========================================================================
+// Utility: reset light sources (for level changes / new games)
+// ========================================================================
+export function reset_light_sources() {
+    light_base = [];
+    vision_full_recalc_flag = 0;
+}
+
+// ========================================================================
+// cf. light.c:606 — light_sources_sanity_check()
+// Validates all light source object/monster pointers.
+// ========================================================================
+export function light_sources_sanity_check() {
+    for (const ls of light_base) {
+        if (!ls.id && ls.range > 0) {
+            // panic("insane light source: no id!");
+        }
+    }
+}
+
+// ========================================================================
+// Accessors for vision_full_recalc integration
+// ========================================================================
+export function get_vision_full_recalc() {
+    return vision_full_recalc_flag;
+}
+export function set_vision_full_recalc(v) {
+    vision_full_recalc_flag = v;
+}
+
+// ========================================================================
+// Export the light_base for save/restore and sanity checks
+// ========================================================================
+export function get_light_base() {
+    return light_base;
+}
+export function set_light_base(base) {
+    light_base = base || [];
+}

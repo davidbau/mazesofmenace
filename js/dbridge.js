@@ -13,117 +13,579 @@
 //   open_drawbridge/close_drawbridge: open or close; handle entities on bridge.
 //   destroy_drawbridge(): demolish the drawbridge completely.
 //   is_pool/is_lava/is_ice/is_moat: terrain type predicates.
-//
-// JS implementations: none — all drawbridge logic is runtime gameplay.
 
-// cf. dbridge.c:38 — is_waterwall(x, y): water wall check
-// Returns TRUE if location contains a water wall (submerged wall).
-// TODO: dbridge.c:38 — is_waterwall(): water wall terrain check
+import {
+    isok, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ICE, STONE,
+    DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, DBWALL, DOOR, ROOM,
+    IS_DRAWBRIDGE, IS_WATERWALL, IS_WALL,
+    DB_NORTH, DB_SOUTH, DB_EAST, DB_WEST, DB_DIR,
+    DB_MOAT, DB_LAVA, DB_ICE, DB_UNDER,
+    D_NODOOR,
+} from './config.js';
+import { rnd, rn2 } from './rng.js';
+import { block_point, unblock_point } from './vision.js';
+import { passes_walls, noncorporeal, is_flyer, is_floater,
+         is_swimmer, likes_lava, monDisplayName, monNam,
+         canseemon } from './mondata.js';
+import { mondead, newsym } from './monutil.js';
 
-// cf. dbridge.c:45 — is_pool(x, y): pool/moat/water terrain check
-// Returns TRUE if location is a pool, moat, or other water terrain.
-// TODO: dbridge.c:45 — is_pool(): pool terrain check
+// ============================================================================
+// Terrain predicates (cf. dbridge.c:38-128)
+// These take (x, y, map) — map is the GameMap object.
+// ============================================================================
 
-// cf. dbridge.c:61 — is_lava(x, y): lava terrain check
-// Returns TRUE if location contains lava terrain.
-// TODO: dbridge.c:61 — is_lava(): lava terrain check
+// cf. dbridge.c:38 — is_waterwall(x, y)
+export function is_waterwall(x, y, map) {
+    if (!isok(x, y)) return false;
+    const loc = map.at(x, y);
+    return loc && IS_WATERWALL(loc.typ);
+}
 
-// cf. dbridge.c:76 — is_pool_or_lava(x, y): pool or lava check
-// Returns TRUE if location is either water or lava.
-// TODO: dbridge.c:76 — is_pool_or_lava(): water or lava check
+// cf. dbridge.c:45 — is_pool(x, y)
+export function is_pool(x, y, map) {
+    if (!isok(x, y)) return false;
+    const loc = map.at(x, y);
+    if (!loc) return false;
+    const ltyp = loc.typ;
+    if (ltyp === POOL || ltyp === MOAT || ltyp === WATER || is_moat(x, y, map))
+        return true;
+    return false;
+}
 
-// cf. dbridge.c:85 — is_ice(x, y): ice terrain check
-// Returns TRUE if location is ice terrain.
-// TODO: dbridge.c:85 — is_ice(): ice terrain check
+// cf. dbridge.c:61 — is_lava(x, y)
+export function is_lava(x, y, map) {
+    if (!isok(x, y)) return false;
+    const loc = map.at(x, y);
+    if (!loc) return false;
+    const ltyp = loc.typ;
+    if (ltyp === LAVAPOOL || ltyp === LAVAWALL
+        || (ltyp === DRAWBRIDGE_UP
+            && (loc.drawbridgemask & DB_UNDER) === DB_LAVA))
+        return true;
+    return false;
+}
 
-// cf. dbridge.c:99 — is_moat(x, y): moat terrain check
-// Returns TRUE if location is specifically moat terrain.
-// TODO: dbridge.c:99 — is_moat(): moat terrain check
+// cf. dbridge.c:76 — is_pool_or_lava(x, y)
+export function is_pool_or_lava(x, y, map) {
+    return is_pool(x, y, map) || is_lava(x, y, map);
+}
 
-// cf. dbridge.c:115 — db_under_typ(mask): terrain under drawbridge
-// Returns terrain type underneath a drawbridge based on bit mask.
-// TODO: dbridge.c:115 — db_under_typ(): drawbridge underterrain type
+// cf. dbridge.c:85 — is_ice(x, y)
+export function is_ice(x, y, map) {
+    if (!isok(x, y)) return false;
+    const loc = map.at(x, y);
+    if (!loc) return false;
+    const ltyp = loc.typ;
+    if (ltyp === ICE || (ltyp === DRAWBRIDGE_UP
+            && (loc.drawbridgemask & DB_UNDER) === DB_ICE))
+        return true;
+    return false;
+}
 
-// cf. dbridge.c:136 — is_drawbridge_wall(x, y): drawbridge portcullis check
-// Returns direction if wall at (x,y) is a drawbridge portcullis; 0 otherwise.
-// TODO: dbridge.c:136 — is_drawbridge_wall(): portcullis check
+// cf. dbridge.c:99 — is_moat(x, y)
+// On Juiblex's level, MOAT tiles are not treated as moats.
+// We check map.flags.is_juiblex_level if set.
+export function is_moat(x, y, map) {
+    if (!isok(x, y)) return false;
+    const loc = map.at(x, y);
+    if (!loc) return false;
+    const ltyp = loc.typ;
+    if (map.flags && map.flags.is_juiblex_level) return false;
+    if (ltyp === MOAT
+        || (ltyp === DRAWBRIDGE_UP
+            && (loc.drawbridgemask & DB_UNDER) === DB_MOAT))
+        return true;
+    return false;
+}
 
-// cf. dbridge.c:169 — is_db_wall(x, y): raised drawbridge wall check
-// Returns TRUE if location is a raised (closed) drawbridge wall.
-// TODO: dbridge.c:169 — is_db_wall(): raised drawbridge check
+// cf. dbridge.c:115 — db_under_typ(mask)
+export function db_under_typ(mask) {
+    switch (mask & DB_UNDER) {
+    case DB_ICE: return ICE;
+    case DB_LAVA: return LAVAPOOL;
+    case DB_MOAT: return MOAT;
+    default: return STONE;
+    }
+}
 
-// cf. dbridge.c:179 — find_drawbridge(x, y): locate drawbridge
-// Given a drawbridge or wall location, finds the actual drawbridge coordinates.
-// TODO: dbridge.c:179 — find_drawbridge(): drawbridge location
+// ============================================================================
+// Drawbridge structure queries (cf. dbridge.c:136-283)
+// ============================================================================
 
-// cf. dbridge.c:210 [static] — get_wall_for_db(x, y): find wall for drawbridge
-// Given a drawbridge, finds the corresponding wall location.
-// TODO: dbridge.c:210 — get_wall_for_db(): drawbridge wall location
+// cf. dbridge.c:136 — is_drawbridge_wall(x, y)
+// Returns direction if wall at (x,y) is a drawbridge portcullis; -1 otherwise.
+export function is_drawbridge_wall(x, y, map) {
+    if (!isok(x, y)) return -1;
+    const loc = map.at(x, y);
+    if (!loc) return -1;
+    if (loc.typ !== DOOR && loc.typ !== DBWALL) return -1;
 
-// cf. dbridge.c:234 — create_drawbridge(x, y, dir, flag): create drawbridge
+    if (isok(x + 1, y)) {
+        const adj = map.at(x + 1, y);
+        if (adj && IS_DRAWBRIDGE(adj.typ)
+            && (adj.drawbridgemask & DB_DIR) === DB_WEST)
+            return DB_WEST;
+    }
+    if (isok(x - 1, y)) {
+        const adj = map.at(x - 1, y);
+        if (adj && IS_DRAWBRIDGE(adj.typ)
+            && (adj.drawbridgemask & DB_DIR) === DB_EAST)
+            return DB_EAST;
+    }
+    if (isok(x, y - 1)) {
+        const adj = map.at(x, y - 1);
+        if (adj && IS_DRAWBRIDGE(adj.typ)
+            && (adj.drawbridgemask & DB_DIR) === DB_SOUTH)
+            return DB_SOUTH;
+    }
+    if (isok(x, y + 1)) {
+        const adj = map.at(x, y + 1);
+        if (adj && IS_DRAWBRIDGE(adj.typ)
+            && (adj.drawbridgemask & DB_DIR) === DB_NORTH)
+            return DB_NORTH;
+    }
+    return -1;
+}
+
+// cf. dbridge.c:169 — is_db_wall(x, y)
+export function is_db_wall(x, y, map) {
+    const loc = map.at(x, y);
+    return loc ? loc.typ === DBWALL : false;
+}
+
+// cf. dbridge.c:179 — find_drawbridge(x, y)
+// Returns { x, y, found } — modifies coordinates to point to drawbridge.
+export function find_drawbridge(x, y, map) {
+    const loc = map.at(x, y);
+    if (loc && IS_DRAWBRIDGE(loc.typ)) return { x, y, found: true };
+    const dir = is_drawbridge_wall(x, y, map);
+    if (dir >= 0) {
+        switch (dir) {
+        case DB_NORTH: y++; break;
+        case DB_SOUTH: y--; break;
+        case DB_EAST: x--; break;
+        case DB_WEST: x++; break;
+        }
+        return { x, y, found: true };
+    }
+    return { x, y, found: false };
+}
+
+// cf. dbridge.c:210 — get_wall_for_db(x, y, map)
+// Returns { x, y } pointing to the wall for a drawbridge at (x, y).
+export function get_wall_for_db(x, y, map) {
+    const loc = map.at(x, y);
+    if (!loc) return { x, y };
+    switch (loc.drawbridgemask & DB_DIR) {
+    case DB_NORTH: y--; break;
+    case DB_SOUTH: y++; break;
+    case DB_EAST: x++; break;
+    case DB_WEST: x--; break;
+    }
+    return { x, y };
+}
+
+// cf. dbridge.c:234 — create_drawbridge(x, y, dir, flag, map)
 // Creates a drawbridge at (x,y) facing direction dir.
-// TODO: dbridge.c:234 — create_drawbridge(): drawbridge creation
+// flag=true means open; flag=false means closed.
+export function create_drawbridge(x, y, dir, flag, map) {
+    let x2 = x, y2 = y;
+    let horiz;
+    const loc = map.at(x, y);
+    const lava = loc && loc.typ === LAVAPOOL;
 
-// cf. dbridge.c:285 [static] — e_at(x, y): entity at location
-// Returns the entity (player or monster) at given location.
-// TODO: dbridge.c:285 — e_at(): entity location check
+    switch (dir) {
+    case DB_NORTH: horiz = true; y2--; break;
+    case DB_SOUTH: horiz = true; y2++; break;
+    case DB_EAST: horiz = false; x2++; break;
+    case DB_WEST: horiz = false; x2--; break;
+    default: horiz = false; x2--; break; // bad direction fallback
+    }
 
-// cf. dbridge.c:303 [static] — m_to_e(mtmp, x, y, etmp): monster to entity
-// Converts a monster to an entity struct for drawbridge processing.
-// TODO: dbridge.c:303 — m_to_e(): monster-to-entity conversion
+    const wallLoc = map.at(x2, y2);
+    if (!wallLoc || !IS_WALL(wallLoc.typ)) return false;
 
-// cf. dbridge.c:320 [static] — u_to_e(etmp): player to entity
-// Converts the player character to an entity struct.
-// TODO: dbridge.c:320 — u_to_e(): player-to-entity conversion
+    if (flag) { // open
+        loc.typ = DRAWBRIDGE_DOWN;
+        wallLoc.typ = DOOR;
+        wallLoc.flags = D_NODOOR;
+    } else {
+        loc.typ = DRAWBRIDGE_UP;
+        wallLoc.typ = DBWALL;
+        wallLoc.nondiggable = true;
+    }
+    loc.horizontal = !horiz;
+    wallLoc.horizontal = horiz;
+    loc.drawbridgemask = dir;
+    if (lava) loc.drawbridgemask |= DB_LAVA;
+    return true;
+}
 
-// cf. dbridge.c:329 [static] — set_entity(x, y, etmp): set entity at location
-// Sets up an entity struct for the creature at given location.
-// TODO: dbridge.c:329 — set_entity(): entity setup
+// ============================================================================
+// Entity handling for drawbridge mechanics (cf. dbridge.c:285-747)
+// Entities represent creatures on or near the drawbridge during state changes.
+// ============================================================================
 
-// cf. dbridge.c:350 [static] — e_nam(etmp): entity name
-// Returns the name of a drawbridge-processing entity.
-// TODO: dbridge.c:350 — e_nam(): entity name
+const ENTITIES = 2;
 
-// cf. dbridge.c:360 [static] — E_phrase(etmp, verb): entity phrase
-// Generates a capitalized phrase with entity name and verb.
-// TODO: dbridge.c:360 — E_phrase(): entity phrase construction
+// cf. dbridge.c:285 — e_at(x, y): find entity at position
+function e_at(x, y, occupants) {
+    for (let i = 0; i < ENTITIES; i++) {
+        if (occupants[i].edata && occupants[i].ex === x && occupants[i].ey === y)
+            return occupants[i];
+    }
+    return null;
+}
 
-// cf. dbridge.c:379 [static] — e_survives_at(etmp, x, y): entity survival check
-// Returns TRUE if entity can survive at the given terrain location.
-// TODO: dbridge.c:379 — e_survives_at(): entity survival check
+// cf. dbridge.c:303 — m_to_e: populate entity from monster
+function m_to_e(mtmp, x, y, etmp) {
+    etmp.emon = mtmp;
+    if (mtmp) {
+        etmp.ex = x;
+        etmp.ey = y;
+        etmp.edata = mtmp.data || mtmp.mdat || true;
+    } else {
+        etmp.edata = null;
+        etmp.ex = etmp.ey = 0;
+    }
+}
 
-// cf. dbridge.c:401 [static] — e_died(etmp, xkill_flags, how): handle entity death
-// Processes death of an entity caught by drawbridge.
-// TODO: dbridge.c:401 — e_died(): drawbridge entity death
+// cf. dbridge.c:320 — u_to_e: populate entity from hero
+function u_to_e(etmp, player) {
+    etmp.emon = player;
+    etmp.ex = player.x;
+    etmp.ey = player.y;
+    etmp.edata = player.data || true;
+    etmp.isPlayer = true;
+}
 
-// cf. dbridge.c:463 [static] — automiss(etmp): entity automatically avoids?
-// Returns TRUE if entity automatically avoids drawbridge damage.
-// TODO: dbridge.c:463 — automiss(): drawbridge auto-avoid check
+// cf. dbridge.c:330 — set_entity: populate entity from whatever's at (x,y)
+function set_entity(x, y, etmp, map, player) {
+    if (player && player.x === x && player.y === y) {
+        u_to_e(etmp, player);
+    } else {
+        const mon = map.monsterAt(x, y);
+        m_to_e(mon, x, y, etmp);
+        etmp.isPlayer = false;
+    }
+}
 
-// cf. dbridge.c:473 [static] — e_missed(etmp, chunks): drawbridge misses entity?
-// Returns TRUE if entity successfully avoids being caught by drawbridge.
-// TODO: dbridge.c:473 — e_missed(): drawbridge miss check
+function is_u(etmp) { return etmp.isPlayer === true; }
+function e_canseemon_fn(etmp) { return is_u(etmp) || canseemon(etmp.emon); }
 
-// cf. dbridge.c:508 [static] — e_jumps(etmp): entity jumps from drawbridge?
-// Returns TRUE if entity successfully jumps to safety from drawbridge.
-// TODO: dbridge.c:508 — e_jumps(): drawbridge jump check
+function e_nam(etmp) { return is_u(etmp) ? "you" : monNam(etmp.emon); }
 
-// cf. dbridge.c:531 [static] — do_entity(etmp): process entity on drawbridge
-// Handles what happens to an entity when drawbridge state changes.
-// TODO: dbridge.c:531 — do_entity(): entity-drawbridge interaction
+function E_phrase(etmp, verb) {
+    const who = is_u(etmp) ? "You" : monDisplayName(etmp.emon);
+    if (!verb) return who;
+    // Simple 2nd->3rd person: add 's' for non-player
+    const v = is_u(etmp) ? verb : (verb + (verb.endsWith('s') ? 'es' : 's'));
+    return `${who} ${v}`;
+}
 
-// cf. dbridge.c:740 [static] — nokiller(void): clear killer data
-// Clears killer reason and resets entity data after drawbridge processing.
-// TODO: dbridge.c:740 — nokiller(): killer data reset
+// cf. dbridge.c:379 — e_survives_at: can entity survive at (x,y)?
+function e_survives_at(etmp, x, y, map) {
+    if (noncorporeal(etmp.edata)) return true;
+    if (is_pool(x, y, map))
+        return is_u(etmp) || is_swimmer(etmp.edata)
+               || is_flyer(etmp.edata) || is_floater(etmp.edata);
+    if (is_lava(x, y, map))
+        return (is_u(etmp)) || likes_lava(etmp.edata) || is_flyer(etmp.edata);
+    if (is_db_wall(x, y, map))
+        return is_u(etmp) ? false : passes_walls(etmp.edata);
+    return true;
+}
+
+// cf. dbridge.c:463 — automiss: entity is never hit by drawbridge
+function automiss(etmp) {
+    return (is_u(etmp) ? false : passes_walls(etmp.edata))
+           || noncorporeal(etmp.edata);
+}
+
+// cf. dbridge.c:473 — e_missed: does falling drawbridge/portcullis miss?
+// RNG: calls rnd(8)
+function e_missed(etmp, chunks, map) {
+    if (automiss(etmp)) return true;
+
+    let misses;
+    if (is_flyer(etmp.edata))
+        misses = 5;
+    else if (is_floater(etmp.edata) || (is_u(etmp) /* && Levitation */))
+        misses = 3;
+    else if (chunks && is_pool(etmp.ex, etmp.ey, map))
+        misses = 2;
+    else
+        misses = 0;
+
+    if (is_db_wall(etmp.ex, etmp.ey, map))
+        misses -= 3;
+
+    return misses >= rnd(8);
+}
+
+// cf. dbridge.c:508 — e_jumps: can entity jump from death?
+// RNG: calls rnd(10)
+function e_jumps(etmp) {
+    let tmp = 4;
+
+    if (is_u(etmp)) {
+        // Player fumbling/unaware can't jump
+        return false; // simplified: hero can't jump
+    }
+
+    if (!etmp.edata || !etmp.emon) return false;
+    const mon = etmp.emon;
+    if (mon.mhp <= 0 || mon.wormno) return false;
+
+    if (mon.mconf) tmp -= 2;
+    if (mon.mstun) tmp -= 3;
+
+    return tmp >= rnd(10);
+}
+
+// cf. dbridge.c:401 — e_died: entity dies from drawbridge
+function e_died(etmp, xkill_flags, how, map) {
+    if (is_u(etmp)) {
+        // Hero death from drawbridge — simplified
+        // Full implementation would call done(how)
+        return;
+    }
+    // Monster death
+    if (etmp.emon && etmp.emon.mhp > 0) {
+        mondead(etmp.emon, map);
+        etmp.edata = null;
+    }
+}
+
+// cf. dbridge.c:531 — do_entity: handle entity during drawbridge state change
+// RNG: calls e_missed (rnd(8)) and e_jumps (rnd(10))
+function do_entity(etmp, occupants, map, player) {
+    if (!etmp.edata) return;
+
+    const oldx = etmp.ex;
+    const oldy = etmp.ey;
+    const at_portcullis = is_db_wall(oldx, oldy, map);
+    const loc = map.at(oldx, oldy);
+
+    if (automiss(etmp) && e_survives_at(etmp, oldx, oldy, map)) {
+        return;
+    }
+
+    let must_jump = false;
+    let relocates = false;
+
+    if (e_missed(etmp, false, map)) {
+        if (e_survives_at(etmp, oldx, oldy, map)) {
+            return;
+        } else {
+            if (at_portcullis) must_jump = true;
+            else relocates = true;
+        }
+    } else {
+        if (loc && loc.typ === DRAWBRIDGE_DOWN) {
+            // Crushed underneath — no jump possible
+            e_died(etmp, 0x03, 0 /* CRUSHING */, map);
+            return;
+        }
+        must_jump = true;
+    }
+
+    if (must_jump) {
+        if (at_portcullis) {
+            if (e_jumps(etmp)) {
+                relocates = true;
+            } else {
+                e_died(etmp, 0x03, 0 /* CRUSHING */, map);
+                return;
+            }
+        } else {
+            relocates = !e_jumps(etmp);
+        }
+    }
+
+    // Try relocation
+    let newx = oldx, newy = oldy;
+    const db = find_drawbridge(newx, newy, map);
+    if (db.found) { newx = db.x; newy = db.y; }
+    if (newx === oldx && newy === oldy) {
+        const w = get_wall_for_db(newx, newy, map);
+        newx = w.x; newy = w.y;
+    }
+
+    if (relocates && e_at(newx, newy, occupants)) {
+        const other = e_at(newx, newy, occupants);
+        if (e_survives_at(other, newx, newy, map) && automiss(other)) {
+            relocates = false;
+        } else {
+            do_entity(other, occupants, map, player);
+            if (e_at(oldx, oldy, occupants) !== etmp) return;
+        }
+    }
+
+    if (relocates && !e_at(newx, newy, occupants)) {
+        if (!is_u(etmp)) {
+            // Move monster
+            const mon = etmp.emon;
+            if (mon) { mon.mx = newx; mon.my = newy; }
+        } else {
+            player.x = newx;
+            player.y = newy;
+        }
+        etmp.ex = newx;
+        etmp.ey = newy;
+    }
+
+    // Check survival at final position
+    if (!e_survives_at(etmp, etmp.ex, etmp.ey, map)) {
+        e_died(etmp, 0x03,
+               is_pool(etmp.ex, etmp.ey, map) ? 1 /* DROWNING */
+               : is_lava(etmp.ex, etmp.ey, map) ? 2 /* BURNING */
+               : 0 /* CRUSHING */, map);
+    }
+}
+
+// cf. dbridge.c:740 — nokiller: clear entity state after drawbridge ops
+function nokiller(occupants) {
+    m_to_e(null, 0, 0, occupants[0]);
+    m_to_e(null, 0, 0, occupants[1]);
+}
+
+// ============================================================================
+// Drawbridge open/close/destroy with full entity handling
+// ============================================================================
 
 // cf. dbridge.c:752 — close_drawbridge(x, y): close drawbridge
-// Raises the drawbridge; handles entities on bridge (crushing, jumping, drowning).
-// TODO: dbridge.c:752 — close_drawbridge(): drawbridge closing
+export function close_drawbridge(x, y, map, player) {
+    const loc = map.at(x, y);
+    if (!loc || loc.typ !== DRAWBRIDGE_DOWN) return;
+    const wall = get_wall_for_db(x, y, map);
+    const wallLoc = map.at(wall.x, wall.y);
+
+    loc.typ = DRAWBRIDGE_UP;
+    if (wallLoc) {
+        wallLoc.typ = DBWALL;
+        switch (loc.drawbridgemask & DB_DIR) {
+        case DB_NORTH: case DB_SOUTH:
+            wallLoc.horizontal = true; break;
+        case DB_WEST: case DB_EAST:
+            wallLoc.horizontal = false; break;
+        }
+        wallLoc.nondiggable = true;
+    }
+
+    // Entity handling (cf. dbridge.c:789-793)
+    const occupants = [{}, {}];
+    set_entity(x, y, occupants[0], map, player);
+    set_entity(wall.x, wall.y, occupants[1], map, player);
+    do_entity(occupants[0], occupants, map, player);
+    set_entity(wall.x, wall.y, occupants[1], map, player);
+    do_entity(occupants[1], occupants, map, player);
+
+    // Clean up traps and objects on bridge/wall squares
+    const t1 = map.trapAt(x, y);
+    const t2 = map.trapAt(wall.x, wall.y);
+    if (t1) { const idx = map.traps.indexOf(t1); if (idx >= 0) map.traps.splice(idx, 1); }
+    if (t2) { const idx = map.traps.indexOf(t2); if (idx >= 0) map.traps.splice(idx, 1); }
+
+    newsym(map, x, y);
+    newsym(map, wall.x, wall.y);
+    block_point(wall.x, wall.y);
+    nokiller(occupants);
+}
 
 // cf. dbridge.c:817 — open_drawbridge(x, y): open drawbridge
-// Lowers the drawbridge; handles entities in moat and on bridge.
-// TODO: dbridge.c:817 — open_drawbridge(): drawbridge opening
+export function open_drawbridge(x, y, map, player) {
+    const loc = map.at(x, y);
+    if (!loc || loc.typ !== DRAWBRIDGE_UP) return;
+    const wall = get_wall_for_db(x, y, map);
+    const wallLoc = map.at(wall.x, wall.y);
+
+    loc.typ = DRAWBRIDGE_DOWN;
+    if (wallLoc) {
+        wallLoc.typ = DOOR;
+        wallLoc.flags = D_NODOOR;
+    }
+
+    // Entity handling (cf. dbridge.c:841-845)
+    const occupants = [{}, {}];
+    set_entity(x, y, occupants[0], map, player);
+    set_entity(wall.x, wall.y, occupants[1], map, player);
+    do_entity(occupants[0], occupants, map, player);
+    set_entity(wall.x, wall.y, occupants[1], map, player);
+    do_entity(occupants[1], occupants, map, player);
+
+    // Clean up traps
+    const t1 = map.trapAt(x, y);
+    const t2 = map.trapAt(wall.x, wall.y);
+    if (t1) { const idx = map.traps.indexOf(t1); if (idx >= 0) map.traps.splice(idx, 1); }
+    if (t2) { const idx = map.traps.indexOf(t2); if (idx >= 0) map.traps.splice(idx, 1); }
+
+    newsym(map, x, y);
+    newsym(map, wall.x, wall.y);
+    unblock_point(wall.x, wall.y);
+    nokiller(occupants);
+}
 
 // cf. dbridge.c:865 — destroy_drawbridge(x, y): demolish drawbridge
-// Destroys a drawbridge completely, replacing with appropriate terrain.
-// TODO: dbridge.c:865 — destroy_drawbridge(): drawbridge demolition
+// RNG: rn2(6) for debris count, rn2(2) for debris x/y placement
+export function destroy_drawbridge(x, y, map, player) {
+    const loc = map.at(x, y);
+    if (!loc || !IS_DRAWBRIDGE(loc.typ)) return;
+    const wall = get_wall_for_db(x, y, map);
+    const wallLoc = map.at(wall.x, wall.y);
+
+    if ((loc.drawbridgemask & DB_UNDER) === DB_MOAT
+        || (loc.drawbridgemask & DB_UNDER) === DB_LAVA) {
+        const lava = (loc.drawbridgemask & DB_UNDER) === DB_LAVA;
+        loc.typ = lava ? LAVAPOOL : MOAT;
+    } else {
+        loc.typ = ((loc.drawbridgemask & DB_ICE) ? ICE : ROOM);
+    }
+    loc.drawbridgemask = 0;
+    if (wallLoc) {
+        wallLoc.typ = DOOR;
+        wallLoc.flags = D_NODOOR;
+    }
+
+    // Clean up traps
+    const t1 = map.trapAt(x, y);
+    const t2 = map.trapAt(wall.x, wall.y);
+    if (t1) { const idx = map.traps.indexOf(t1); if (idx >= 0) map.traps.splice(idx, 1); }
+    if (t2) { const idx = map.traps.indexOf(t2); if (idx >= 0) map.traps.splice(idx, 1); }
+
+    // cf. dbridge.c:927 — scatter debris (RNG consuming)
+    for (let i = rn2(6); i > 0; --i) {
+        // Consume RNG for debris placement matching C
+        rn2(2); // x choice
+        rn2(2); // y choice
+        // scatter() would consume more RNG but we skip the physical object creation
+    }
+
+    newsym(map, x, y);
+    if (wallLoc) {
+        newsym(map, wall.x, wall.y);
+        unblock_point(wall.x, wall.y);
+    }
+
+    // Entity handling (cf. dbridge.c:945-993)
+    const occupants = [{}, {}];
+    set_entity(wall.x, wall.y, occupants[1], map, player);
+    if (occupants[1].edata) {
+        if (!automiss(occupants[1])) {
+            e_died(occupants[1], 0x03, 0 /* CRUSHING */, map);
+        }
+    }
+    set_entity(x, y, occupants[0], map, player);
+    if (occupants[0].edata) {
+        if (e_missed(occupants[0], true, map)) {
+            // Spared — but may fall into liquid
+        } else {
+            e_died(occupants[0], 0x03, 0 /* CRUSHING */, map);
+            if (map.at(occupants[0].ex, occupants[0].ey) &&
+                map.at(occupants[0].ex, occupants[0].ey).typ === MOAT) {
+                do_entity(occupants[0], occupants, map, player);
+            }
+        }
+    }
+    nokiller(occupants);
+}

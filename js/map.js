@@ -31,6 +31,7 @@ export function makeLocation() {
         mem_obj_color: 0,  // remembered object color
         mem_invis: false,  // remembered invisible monster
         nondiggable: false, // W_NONDIGGABLE flag (set by bound_digging)
+        drawbridgemask: 0,  // drawbridge direction and terrain-under bits
     };
 }
 

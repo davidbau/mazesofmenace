@@ -3,207 +3,886 @@
 //                  dotele, level_tele, domagicportal, tele_trap, rloc,
 //                  rloco, random_teleport_level, u_teleport_mon, and helpers
 //
-// Covers all teleportation in NetHack: hero teleport (within-level and
-// level-teleport), monster relocation (rloc/rloc_to), object scatter (rloco),
-// position validation (goodpos/teleok), nearest-position search (enexto/
-// collect_coords), and trap/portal/scroll handlers.
-//
-// JS implementations (level-generation subset only):
-//   collect_coords() → dungeon.js:2253 (PARTIAL — no scary check, no struct)
-//   sp_goodpos() ↔ goodpos() → dungeon.js:2293 (PARTIAL — SPACE_POS + no-mon only)
-//   enexto() → dungeon.js:2307 (PARTIAL — calls collect_coords, level-gen scope)
-//   group_collect_coords/group_sp_goodpos/group_enexto → makemon.js:1589
-//     (PARTIAL — variations used for group monster placement during mklev)
-//   makemon_rnd_goodpos() → makemon.js:1556 (PARTIAL — goodpos subset for makemon)
-// All other runtime teleport functions → not implemented in JS.
+// Runtime teleport functions for monster relocation (rloc/rloc_to),
+// position validation (goodpos), and hero teleport helpers.
 
-// cf. teleport.c:20 [static] — m_blocks_teleporting(mtmp): demon lords/princes block tele
-// Returns TRUE if mtmp is a demon lord (is_dlord) or demon prince (is_dprince).
-// Used by noteleport_level() via get_iter_mons().
-// TODO: teleport.c:20 — m_blocks_teleporting(): demon blocking check
+import {
+    COLNO, ROWNO, isok, ACCESSIBLE,
+    POOL, MOAT, WATER, LAVAPOOL, ICE,
+    DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, DBWALL, DOOR,
+    IS_POOL, IS_LAVA, IS_DRAWBRIDGE,
+    D_CLOSED, D_LOCKED,
+    NO_TRAP, TELEP_TRAP, LEVEL_TELEP, VIBRATING_SQUARE,
+    is_pit, is_hole,
+} from './config.js';
+import { BOULDER } from './objects.js';
+import { rn2, rnd, rn1 } from './rng.js';
+import { is_pool, is_lava, is_waterwall } from './dbridge.js';
+import { passes_walls, is_swimmer, is_flyer, is_floater,
+         likes_lava, canseemon, monNam, monDisplayName,
+         is_rider, is_dlord, is_dprince, control_teleport,
+         } from './mondata.js';
+import { newsym, mondead } from './monutil.js';
+import { set_apparxy, mon_track_clear } from './monmove.js';
+import { onscary } from './mon.js';
+import { pline } from './pline.js';
+import { deltrap } from './dungeon.js';
 
-// cf. teleport.c:29 — noteleport_level(mon): is teleporting prevented for mon?
-// Returns TRUE if In_hell + a blocking demon lord/prince exists, or
-//   svl.level.flags.noteleport is set.
-// JS equiv: level.flags.noteleport is not tracked at level-gen time;
-//   check omitted in makemon.js:957.
-// TODO: teleport.c:29 — noteleport_level(): level-wide teleport prevention
+// ============================================================================
+// Flags (cf. hack.h)
+// ============================================================================
 
-// cf. teleport.c:47 [static] — goodpos_onscary(x, y, mptr): scary-position check
-// Approximation of onscary() for new monster creation / tele destination.
-// Checks: mlet (HUMAN/ANGEL/rider/unique corpse → FALSE), altar+vampire,
-//   scare scroll at (x,y), Elbereth engraving (not in Gehennom/endgame).
-// N/A: scare checks not needed during level generation.
-// N/A: teleport.c:47 — goodpos_onscary()
+// MM flags (shared with makemon.js)
+export const NO_MM_FLAGS = 0;
+export const MM_IGNOREWATER = 0x00000008;
+export const MM_IGNORELAVA = 0x00080000;
 
-// cf. teleport.c:80 — goodpos(x, y, mtmp, gpflags): is (x,y) valid for mtmp or object?
-// gpflags: MM_IGNOREWATER, MM_IGNORELAVA, GP_CHECKSCARY, GP_ALLOW_U, GP_AVOID_MONPOS.
-// Checks: isok(x,y); terrain passability by monster type (SPACE_POS vs water/lava/air);
-//   not occupied by player (unless GP_ALLOW_U) or another monster (unless GP_AVOID_MONPOS);
-//   scary check (GP_CHECKSCARY); no bad terrain for specific monster types (eel→water, etc.).
-// JS equiv (level-gen subset): sp_goodpos() in dungeon.js:2293 — SPACE_POS + no-monster.
-//   Full goodpos with terrain awareness: makemon.js:1512 (goodpos_sp function).
-// PARTIAL: teleport.c:80 — goodpos() ↔ sp_goodpos() (dungeon.js:2293) and goodpos_sp (makemon.js:1512)
+// GP flags for goodpos
+export const GP_CHECKSCARY = 0x00000100;
+export const GP_ALLOW_U = 0x00000200;
+export const GP_AVOID_MONPOS = 0x00000400;
+export const GP_ALLOW_XY = 0x00000800;
 
-// cf. teleport.c:190 — enexto(cc, x, y, mdat): find good pos near (x,y) for mdat
-// Calls enexto_core first with GP_CHECKSCARY, then without if needed.
-// cc is filled with found position; returns TRUE on success.
-// JS equiv: enexto(cx, cy, map) in dungeon.js:2307 — no scary check (level-gen only).
-// PARTIAL: teleport.c:190 — enexto() ↔ enexto() (dungeon.js:2307)
+// RLOC flags
+export const RLOC_NONE = 0x0000;
+export const RLOC_NOMSG = 0x0001;
+export const RLOC_MSG = 0x0002;
+export const RLOC_TELE = 0x0004;
+export const RLOC_ERR = 0x0100;
 
-// cf. teleport.c:200 — enexto_gpflags(cc, x, y, mdat, gpflags): enexto with custom flags
-// Direct call to enexto_core() with caller-supplied gpflags.
-// TODO: teleport.c:200 — enexto_gpflags(): enexto with caller-specified flags
+// CC flags for collect_coords
+const CC_NO_FLAGS = 0;
+const CC_INCL_CENTER = 0x01;
+const CC_UNSHUFFLED = 0x02;
+const CC_RING_PAIRS = 0x04;
+const CC_SKIP_MONS = 0x08;
+const CC_SKIP_INACCS = 0x10;
 
-// cf. teleport.c:213 — enexto_core(cc, x, y, mdat, gpflags): core nearest-position search
-// Collects candidate positions via collect_coords() in expanding rings; filters with
-//   goodpos(x, y, &fakemon, gpflags). Returns closest accepted position.
-// JS equiv: enexto() in dungeon.js:2307 wraps collect_coords + sp_goodpos.
-// PARTIAL: teleport.c:213 — enexto_core() ↔ enexto() (dungeon.js:2307)
+// TELEDS flags
+export const TELEDS_NO_FLAGS = 0;
+export const TELEDS_ALLOW_DRAG = 1;
+export const TELEDS_TELEPORT = 2;
 
-// cf. teleport.c:380 [static] — tele_jump_ok(ox, oy, nx, ny): restricted-area tele check
-// Checks if teleporting from (ox,oy) to (nx,ny) is allowed on special levels
-//   with svl.level.flags.nommap.
-// TODO: teleport.c:380 — tele_jump_ok(): restricted-area teleport destination check
+// ============================================================================
+// noteleport_level — cf. teleport.c:29
+// ============================================================================
 
-// cf. teleport.c:414 [static] — teleok(x, y, thru): is (x,y) valid tele destination?
-// Calls goodpos(); if thru=FALSE also rejects teleport traps and level teleporters.
-// TODO: teleport.c:414 — teleok(): teleport destination validation
+export function noteleport_level(mon, map) {
+    // demon court in Gehennom prevents others from teleporting
+    // Simplified: check map.flags.noteleport
+    if (map && map.flags && map.flags.noteleport) return true;
+    return false;
+}
 
-// cf. teleport.c:442 — teleds(nx, ny, ws): teleport player to (nx,ny)
-// Handles ball & chain drag, sets u.ux/uy, calls newsym/pbusy, vision update,
-//   terrain effects (lava/water/air/pit), u_on_newpos/vision/pline messages.
-// TODO: teleport.c:442 — teleds(): hero teleport to specific location
+// ============================================================================
+// goodpos — cf. teleport.c:80
+// Full runtime version: checks terrain, monsters, scary locations.
+// ============================================================================
 
-// cf. teleport.c:572 — collect_coords(cc, cx, cy, maxradius): expand rings of coords
-// Builds array of positions in rings 1..maxradius from (cx,cy).
-// Shuffles each ring independently using Fisher-Yates (front-to-back, rn2-consuming).
-// JS equiv: collect_coords() in dungeon.js:2253 — identical algorithm.
-// ALIGNED: teleport.c:572 — collect_coords() ↔ collect_coords() (dungeon.js:2253)
+export function goodpos(x, y, mtmp, gpflags, map, player) {
+    if (!isok(x, y)) return false;
+    const loc = map.at(x, y);
+    if (!loc) return false;
 
-// cf. teleport.c:712 — safe_teleds(trap_src): teleport player to a safe spot
-// Tries random locations (up to 2×COLNO×ROWNO), then systematic scan; calls teleds().
-// trap_src=TRUE: player on trap, get some distance.
-// TODO: teleport.c:712 — safe_teleds(): random safe hero teleport
+    const ignorewater = (gpflags & MM_IGNOREWATER) !== 0;
+    const ignorelava = (gpflags & MM_IGNORELAVA) !== 0;
+    const checkscary = (gpflags & GP_CHECKSCARY) !== 0;
+    const allow_u = (gpflags & GP_ALLOW_U) !== 0;
+    const avoid_monpos = (gpflags & GP_AVOID_MONPOS) !== 0;
 
-// cf. teleport.c:768 [static] — vault_tele(): teleport player to/near vault
-// Finds a random vault position; falls back to tele() if no vault.
-// TODO: teleport.c:768 — vault_tele(): hero vault teleport
+    // Check player location
+    if (!allow_u && player) {
+        if (x === player.x && y === player.y && mtmp !== player)
+            return false;
+    }
 
-// cf. teleport.c:781 — teleport_pet(petx, pety, force): check if pet can be teleported
-// Checks leash constraints; force=TRUE ignores them.
-// Returns TRUE if pet is free to teleport with hero.
-// TODO: teleport.c:781 — teleport_pet(): pet teleport feasibility check
+    // Check monster at location
+    if (avoid_monpos) {
+        const mtmp2 = map.monsterAt(x, y);
+        if (mtmp2) return false;
+    }
 
-// cf. teleport.c:809 — tele_to_rnd_pet(): teleport hero next to a random pet
-// Finds a tamed monster; locates adjacent valid spot; calls teleds().
-// Used by ring of teleport control / scroll of teleportation mechanics.
-// TODO: teleport.c:809 — tele_to_rnd_pet(): teleport hero to pet
+    if (mtmp && mtmp !== player) {
+        const mtmp2 = map.monsterAt(x, y);
+        if (mtmp2 && (mtmp2 !== mtmp || mtmp.wormno))
+            return false;
 
-// cf. teleport.c:837 — tele(): teleport hero (non-scroll method)
-// Checks: On_stairs, noteleport_level; adjusts luck; calls scrolltele(0).
-// TODO: teleport.c:837 — tele(): hero teleport wrapper
+        const mdat = mtmp.data || mtmp.type || {};
+        const f1 = mdat.flags1 || 0;
 
-// cf. teleport.c:844 — scrolltele(is_scroll): hero teleport via scroll or other means
-// Wizard mode: ask for destination; controlled tele (ring): choose destination;
-//   normal tele: random location via safe_teleds().
-// TODO: teleport.c:844 — scrolltele(): scroll/controlled teleport handler
+        if (is_pool(x, y, map) && !ignorewater) {
+            // Check swimming/flying/amphibious
+            const M1_SWIM = 0x00002000;
+            const M1_AMPHIBIOUS = 0x00100000;
+            const M1_FLY = 0x00004000;
+            return !!(f1 & (M1_SWIM | M1_AMPHIBIOUS | M1_FLY));
+        } else if (mdat.symbol === 59 /* S_EEL */ && rn2(13) && !ignorewater) {
+            return false;
+        } else if (is_lava(x, y, map) && !ignorelava) {
+            const M1_FLY = 0x00004000;
+            if (likes_lava(mdat) || (f1 & M1_FLY)) return true;
+            return false;
+        }
 
-// cf. teleport.c:914 — dotelecmd(): #teleport wizard-mode command
-// Provides menu: random/safe/level/to-pet options; or directly calls tele().
-// Returns ECMD_TIME or ECMD_OK.
-// TODO: teleport.c:914 — dotelecmd(): wizard teleport command
+        const M1_WALLWALK = 0x00400000;
+        const M1_AMORPHOUS = 0x00800000;
+        if ((f1 & M1_WALLWALK) && loc.typ < DOOR) return true;
+        if ((f1 & M1_AMORPHOUS) && loc.typ === DOOR
+            && (loc.flags & (D_CLOSED | D_LOCKED))) return true;
 
-// cf. teleport.c:1029 — dotele(is_trap): core teleportation logic
-// Handles energy cost, anti-magic, confusion effects; calls tele() or safe_teleds().
-// Also handles teleport trap arrival.
-// TODO: teleport.c:1029 — dotele(): core teleport logic
+        // Scary check
+        if (checkscary) {
+            if (mtmp.m_id && typeof onscary === 'function' && onscary(x, y, mtmp, map))
+                return false;
+        }
+    }
 
+    // Check accessible terrain
+    if (!ACCESSIBLE(loc.typ)) {
+        if (!(is_pool(x, y, map) && ignorewater)
+            && !(is_lava(x, y, map) && ignorelava))
+            return false;
+    }
+
+    // Skip boulder locations for most creatures
+    if (map.objects) {
+        const hasBoulder = map.objects.some(o => o && o.otyp === BOULDER
+            && o.ox === x && o.oy === y);
+        if (hasBoulder) {
+            if (!mtmp) return false;
+            const mdat = mtmp.data || mtmp.type || {};
+            const M2_ROCKTHROW = 0x00002000;
+            if (!((mdat.flags2 || 0) & M2_ROCKTHROW)) return false;
+        }
+    }
+
+    return true;
+}
+
+// ============================================================================
+// collect_coords — cf. teleport.c:572
+// Runtime version with full cc_flags support.
+// ============================================================================
+
+export function collect_coords(cx, cy, maxradius, cc_flags, map) {
+    const include_cxcy = (cc_flags & CC_INCL_CENTER) !== 0;
+    const scramble = (cc_flags & CC_UNSHUFFLED) === 0;
+    const ring_pairs = scramble && (cc_flags & CC_RING_PAIRS) !== 0;
+    const skip_mons = (cc_flags & CC_SKIP_MONS) !== 0;
+    const skip_inaccessible = (cc_flags & CC_SKIP_INACCS) !== 0;
+
+    const rowrange = (cy < Math.floor(ROWNO / 2)) ? (ROWNO - 1 - cy) : cy;
+    const colrange = (cx < Math.floor(COLNO / 2)) ? (COLNO - 1 - cx) : cx;
+    const k = Math.max(rowrange, colrange);
+    if (!maxradius) maxradius = k;
+    else maxradius = Math.min(maxradius, k);
+
+    const result = [];
+    let passIdx = 0;
+    let n = 0;
+
+    for (let radius = include_cxcy ? 0 : 1; radius <= maxradius; radius++) {
+        let newpass, passend;
+        if (!ring_pairs) {
+            newpass = passend = true;
+        } else {
+            newpass = ((radius % 2) !== 0 || radius === 0);
+            passend = ((radius % 2) === 0 || radius === maxradius);
+        }
+        if (newpass) {
+            passIdx = result.length;
+            n = 0;
+        }
+
+        const lox = cx - radius, hix = cx + radius;
+        const loy = cy - radius, hiy = cy + radius;
+        for (let y = Math.max(loy, 0); y <= hiy; y++) {
+            if (y > ROWNO - 1) break;
+            for (let x = Math.max(lox, 1); x <= hix; x++) {
+                if (x > COLNO - 1) break;
+                if (x !== lox && x !== hix && y !== loy && y !== hiy) continue;
+
+                // Quick filters
+                if (skip_mons && map && map.monsterAt(x, y)) continue;
+                if (skip_inaccessible) {
+                    const loc = map && map.at(x, y);
+                    if (!loc || !ACCESSIBLE(loc.typ)) {
+                        // ZAP_POS allows pools and lava but not walls
+                        if (!IS_POOL(loc.typ) && !IS_LAVA(loc.typ)) continue;
+                    }
+                }
+
+                result.push({ x, y });
+                n++;
+            }
+        }
+
+        if (scramble && passend) {
+            let shuffleIdx = passIdx;
+            let shuffleN = n;
+            while (shuffleN > 1) {
+                const swap = rn2(shuffleN);
+                if (swap) {
+                    const tmp = result[shuffleIdx];
+                    result[shuffleIdx] = result[shuffleIdx + swap];
+                    result[shuffleIdx + swap] = tmp;
+                }
+                shuffleIdx++;
+                shuffleN--;
+            }
+        }
+    }
+
+    return result;
+}
+
+// ============================================================================
+// enexto — cf. teleport.c:190 (runtime version)
+// ============================================================================
+
+export function enexto(cc_out, xx, yy, mdat, map, player) {
+    return enexto_core(cc_out, xx, yy, mdat, GP_CHECKSCARY, map, player)
+        || enexto_core(cc_out, xx, yy, mdat, NO_MM_FLAGS, map, player);
+}
+
+export function enexto_core(cc_out, xx, yy, mdat, entflags, map, player) {
+    const fakemon = { data: mdat || {}, type: mdat || {}, wormno: 0 };
+
+    // First pass: radius 3
+    const nearCoords = collect_coords(xx, yy, 3, CC_NO_FLAGS, map);
+    for (const cc of nearCoords) {
+        if (goodpos(cc.x, cc.y, fakemon, entflags, map, player)) {
+            cc_out.x = cc.x;
+            cc_out.y = cc.y;
+            return true;
+        }
+    }
+
+    // Second pass: full map
+    const allCoords = collect_coords(xx, yy, 0, CC_NO_FLAGS, map);
+    for (let i = nearCoords.length; i < allCoords.length; i++) {
+        const cc = allCoords[i];
+        if (goodpos(cc.x, cc.y, fakemon, entflags, map, player)) {
+            cc_out.x = cc.x;
+            cc_out.y = cc.y;
+            return true;
+        }
+    }
+
+    // Try (xx,yy) itself if GP_ALLOW_XY
+    cc_out.x = xx;
+    cc_out.y = yy;
+    if ((entflags & GP_ALLOW_XY) && goodpos(xx, yy, fakemon, entflags, map, player))
+        return true;
+
+    return false;
+}
+
+// ============================================================================
+// rloc_pos_ok — cf. teleport.c:1570
+// ============================================================================
+
+function rloc_pos_ok(x, y, mtmp, map, player) {
+    if (!goodpos(x, y, mtmp, GP_CHECKSCARY, map, player))
+        return false;
+
+    const xx = mtmp.mx;
+    const yy = mtmp.my;
+
+    if (!xx) {
+        // Migrating monster arrival — simplified, skip restricted area checks
+        return true;
+    }
+
+    // Shopkeeper stays in shop
+    if (mtmp.isshk) {
+        const loc = map.at(x, y);
+        if (loc && mtmp.shoproom && loc.roomno !== mtmp.shoproom)
+            return false;
+    }
+    // Priest stays in temple
+    if (mtmp.ispriest) {
+        const loc = map.at(x, y);
+        if (loc && mtmp.shroom && loc.roomno !== mtmp.shroom)
+            return false;
+    }
+
+    return true;
+}
+
+// ============================================================================
+// rloc_to_core — cf. teleport.c:1640
+// Core monster relocation.
+// ============================================================================
+
+function rloc_to_core(mtmp, x, y, rlocflags, map, player, display, fov) {
+    const oldx = mtmp.mx;
+    const oldy = mtmp.my;
+    const preventmsg = (rlocflags & RLOC_NOMSG) !== 0;
+
+    if (x === mtmp.mx && y === mtmp.my && map.monsterAt(x, y) === mtmp)
+        return; // already there
+
+    // "pick up" monster from old location
+    if (oldx) {
+        // Remove from old position (update grid)
+        newsym(map, oldx, oldy);
+    }
+
+    // Clear track
+    mon_track_clear(mtmp);
+
+    // Place monster at new position
+    mtmp.mx = x;
+    mtmp.my = y;
+
+    // Update display
+    newsym(map, x, y);
+
+    // Orient monster toward player
+    if (player) {
+        set_apparxy(mtmp, map, player);
+    }
+
+    // Trapped monster teleported away — clear trap state
+    if (mtmp.mtrapped && !mtmp.wormno) {
+        mtmp.mtrapped = 0;
+    }
+}
+
+// cf. teleport.c:1766 — rloc_to(mon, x, y)
+export function rloc_to(mtmp, x, y, map, player, display, fov) {
+    rloc_to_core(mtmp, x, y, RLOC_NOMSG, map, player, display, fov);
+}
+
+// cf. teleport.c:1772 — rloc_to_flag(mon, x, y, rflags)
+export function rloc_to_flag(mtmp, x, y, rlocflags, map, player, display, fov) {
+    rloc_to_core(mtmp, x, y, rlocflags, map, player, display, fov);
+}
+
+// ============================================================================
+// rloc — cf. teleport.c:1794
+// Relocate monster to random location. Returns true if successful.
+// ============================================================================
+
+export function rloc(mtmp, rlocflags, map, player, display, fov) {
+    let x, y;
+
+    // Try random positions (up to 50 times)
+    for (let trycount = 0; trycount < 50; trycount++) {
+        x = rnd(COLNO - 1); // 1..COLNO-1
+        y = rn2(ROWNO);     // 0..ROWNO-1
+        if (rloc_pos_ok(x, y, mtmp, map, player)) {
+            rloc_to_core(mtmp, x, y, rlocflags, map, player, display, fov);
+            return true;
+        }
+    }
+
+    // Exhaustive search with shuffled order
+    const cc_flags = CC_INCL_CENTER | CC_UNSHUFFLED | CC_SKIP_MONS;
+    const mdat = mtmp.data || mtmp.type || {};
+    const M1_WALLWALK = 0x00400000;
+    if (!((mdat.flags1 || 0) & M1_WALLWALK))
+        // Note: CC_SKIP_INACCS is OR'd in below
+        ;
+    const candy = collect_coords(
+        Math.floor(COLNO / 2), Math.floor(ROWNO / 2), 0,
+        cc_flags | (((mdat.flags1 || 0) & M1_WALLWALK) ? 0 : CC_SKIP_INACCS),
+        map
+    );
+    let backupX = 0, backupY = 0;
+    const candycount = candy.length;
+
+    for (let i = 0; i < candycount; i++) {
+        // Fisher-Yates in-place
+        const j = rn2(candycount - i);
+        if (j > 0) {
+            const tmp = candy[i];
+            candy[i] = candy[i + j];
+            candy[i + j] = tmp;
+        }
+        x = candy[i].x;
+        y = candy[i].y;
+        if (rloc_pos_ok(x, y, mtmp, map, player)) {
+            rloc_to_core(mtmp, x, y, rlocflags, map, player, display, fov);
+            return true;
+        }
+        if (!backupX && goodpos(x, y, mtmp, NO_MM_FLAGS, map, player)) {
+            backupX = x;
+            backupY = y;
+        }
+    }
+
+    // Use backup position
+    if (!backupX) {
+        return false;
+    }
+    rloc_to_core(mtmp, backupX, backupY, rlocflags, map, player, display, fov);
+    return true;
+}
+
+// ============================================================================
+// tele_restrict — cf. teleport.c:1945
+// ============================================================================
+
+export function tele_restrict(mon, map) {
+    if (noteleport_level(mon, map)) {
+        return true;
+    }
+    return false;
+}
+
+// ============================================================================
+// u_teleport_mon — cf. teleport.c:2254
+// Player teleports a monster (via wand/spell). Returns false if fails.
+// ============================================================================
+
+export function u_teleport_mon(mtmp, give_feedback, map, player, display, fov) {
+    const cc = {};
+
+    if (mtmp.ispriest) {
+        const loc = map.at(mtmp.mx, mtmp.my);
+        // If priest is in temple, resist
+        if (loc && mtmp.shroom && loc.roomno === mtmp.shroom) {
+            if (give_feedback) {
+                // "resists your magic!"
+            }
+            return false;
+        }
+    }
+
+    const mdat = mtmp.data || mtmp.type || {};
+    if ((is_rider(mdat) || control_teleport(mdat))
+        && rn2(13)
+        && enexto(cc, player ? player.x : mtmp.mx, player ? player.y : mtmp.my,
+                  mdat, map, player)) {
+        rloc_to(mtmp, cc.x, cc.y, map, player, display, fov);
+    } else {
+        if (!rloc(mtmp, RLOC_MSG, map, player, display, fov))
+            return false;
+    }
+    return true;
+}
+
+// ============================================================================
+// mtele_trap — cf. teleport.c:1957
+// Monster steps on teleport trap.
+// ============================================================================
+
+export function mtele_trap(mtmp, trap, in_sight, map, player, display, fov) {
+    if (tele_restrict(mtmp, map)) return;
+
+    // Relocate monster
+    rloc(mtmp, RLOC_NONE, map, player, display, fov);
+}
+
+// ============================================================================
+// mlevel_tele_trap — cf. teleport.c:1998
+// Monster level teleport trap. Returns 0 if still on level, 1 if moved.
+// ============================================================================
+
+export function mlevel_tele_trap(mtmp, trap, force_it, in_sight, map, player) {
+    // Simplified: monsters don't actually leave the level in JS yet
+    // Just return 0 (still on level)
+    return 0;
+}
+
+// ============================================================================
+// rloco — cf. teleport.c:2094
+// Scatter object randomly on level.
+// ============================================================================
+
+export function rloco(obj, map, player) {
+    let tx, ty;
+    let try_limit = 4000;
+
+    if (!obj) return true;
+
+    const otx = obj.ox;
+    const oty = obj.oy;
+
+    do {
+        tx = rn1(COLNO - 3, 2);
+        ty = rn2(ROWNO);
+        if (!--try_limit) break;
+    } while (!goodpos(tx, ty, null, 0, map, player));
+
+    // Move object
+    obj.ox = tx;
+    obj.oy = ty;
+    newsym(map, otx, oty);
+    newsym(map, tx, ty);
+    return true;
+}
+
+// ============================================================================
+// random_teleport_level — cf. teleport.c:2182
+// Returns absolute depth for random level teleport.
+// ============================================================================
+
+// cf. teleport.c:2182 — random_teleport_level()
+// Returns absolute depth for random level teleport.
+export function random_teleport_level(cur_depth, game) {
+    // cf. teleport.c:2187 — 1/5 chance of staying on same level
+    if (!rn2(5)) return cur_depth;
+
+    if (!game || !game.dungeon) return cur_depth;
+
+    const dng = game.dungeon;
+    const min_depth = dng.depth_start || 1;
+    const max_depth_raw = (dng.num_dunlevs || 1) + min_depth - 1;
+    let max_depth = max_depth_raw;
+    let min_d = min_depth;
+
+    // cf. teleport.c:2230 — range is 1 to current+3, current not counting
+    let nlev = rn2(cur_depth + 3 - min_d) + min_d;
+    if (nlev >= cur_depth) nlev++;
+
+    if (nlev > max_depth) {
+        nlev = max_depth;
+        // teleport up if already on bottom
+        if (cur_depth >= max_depth)
+            nlev -= rnd(3);
+    }
+    if (nlev < min_d) {
+        nlev = min_d;
+        if (nlev === cur_depth) {
+            nlev += rnd(3);
+            if (nlev > max_depth) nlev = max_depth;
+        }
+    }
+    return nlev;
+}
+
+// ============================================================================
+// Hero teleport helper: teleok — cf. teleport.c:414
+// ============================================================================
+
+// cf. teleport.c:380 — tele_jump_ok: check teleport region restrictions
+function tele_jump_ok(x1, y1, x2, y2, map) {
+    if (!isok(x2, y2)) return false;
+    // Simplified: no restricted region tracking in JS yet
+    // Full implementation would check dndest/updest bounded areas
+    return true;
+}
+
+// cf. teleport.c:414 — teleok: is (x,y) a valid hero teleport destination?
+function teleok(x, y, trapok, game) {
+    const map = game.map;
+    const player = game.player;
+
+    if (!trapok) {
+        const trap = map.trapAt(x, y);
+        if (!trap) {
+            trapok = true;
+        } else if (trap.ttyp === VIBRATING_SQUARE) {
+            trapok = true;
+        } else if ((is_pit(trap.ttyp) || is_hole(trap.ttyp))
+                   && (player.levitating || player.flying)) {
+            trapok = true;
+        }
+        if (!trapok) return false;
+    }
+    if (!goodpos(x, y, player, 0, map, player)) return false;
+    if (!tele_jump_ok(player.x, player.y, x, y, map)) return false;
+    return true;
+}
+
+// ============================================================================
+// cf. teleport.c:442 — teleds(nx, ny, flags): move hero to new position
+// ============================================================================
+
+export function teleds(nx, ny, flags, game) {
+    const player = game.player;
+    const map = game.map;
+    const is_teleport = (flags & TELEDS_TELEPORT) !== 0;
+
+    const ux0 = player.x;
+    const uy0 = player.y;
+
+    // Clear trap state
+    if (player.utrap) player.utrap = 0;
+
+    // Move hero
+    player.x = nx;
+    player.y = ny;
+    if (player.ux0 !== undefined) { player.ux0 = ux0; player.uy0 = uy0; }
+
+    // Update display
+    newsym(map, ux0, uy0);
+    newsym(map, nx, ny);
+
+    if (is_teleport) {
+        const same = (nx === ux0 && ny === uy0);
+        pline(`You materialize in ${same ? "the same" : "a different"} location!`);
+    }
+}
+
+// ============================================================================
+// cf. teleport.c:712 — safe_teleds(flags): find safe spot and teleport hero
+// ============================================================================
+
+export function safe_teleds(flags, game) {
+    const map = game.map;
+    const player = game.player;
+
+    // cf. teleport.c:731 — try 40 random spots first (RNG must match C)
+    for (let tcnt = 0; tcnt < 40; tcnt++) {
+        const nux = rnd(COLNO - 1);
+        const nuy = rn2(ROWNO);
+        if (teleok(nux, nuy, false, game)) {
+            teleds(nux, nuy, flags, game);
+            return true;
+        }
+    }
+
+    // cf. teleport.c:742 — exhaustive search via collect_coords
+    // Use the same ring-pair shuffled search as C
+    const cc_flags = CC_RING_PAIRS | CC_SKIP_MONS
+        | (player.passesWalls ? 0 : CC_SKIP_INACCS);
+    const candy = collect_coords(player.x, player.y, 0, cc_flags, map, player);
+    let backupX = 0, backupY = 0;
+
+    for (let tcnt = 0; tcnt < candy.length; tcnt++) {
+        const nux = candy[tcnt].x;
+        const nuy = candy[tcnt].y;
+        if (teleok(nux, nuy, false, game)) {
+            teleds(nux, nuy, flags, game);
+            return true;
+        }
+        if (!backupX) {
+            const trap = map.trapAt(nux, nuy);
+            if (trap && teleok(nux, nuy, true, game)) {
+                backupX = nux;
+                backupY = nuy;
+            }
+        }
+    }
+
+    // Fall back to trap spot
+    if (backupX) {
+        teleds(backupX, backupY, flags, game);
+        return true;
+    }
+    return false;
+}
+
+// ============================================================================
+// cf. teleport.c:837 — tele(): hero teleport via non-scroll method
+// ============================================================================
+
+export function tele(game) {
+    scrolltele(null, game);
+}
+
+// ============================================================================
+// cf. teleport.c:844 — scrolltele(scroll): hero teleport, possibly controlled
+// ============================================================================
+
+export function scrolltele(scroll, game) {
+    const player = game.player;
+    const map = game.map;
+
+    // cf. teleport.c:849 — check no-teleport level
+    if (noteleport_level(player, map)) {
+        pline("A mysterious force prevents you from teleporting!");
+        return;
+    }
+
+    // cf. teleport.c:860 — Amulet of Yendor interference
+    if (player.hasAmulet && !rn2(3)) {
+        pline("You feel disoriented for a moment.");
+        return;
+    }
+
+    // cf. teleport.c:867 — controlled teleport (player chooses destination)
+    // In JS automated play, we can't prompt; fall through to random
+    // TODO: implement controlled teleport with UI
+
+    // cf. teleport.c:909 — random teleport
+    safe_teleds(TELEDS_TELEPORT, game);
+}
+
+// ============================================================================
+// cf. teleport.c:1029 — dotele(break_the_rules): #teleport command
+// ============================================================================
+
+export function dotele(break_the_rules, game) {
+    const player = game.player;
+    const map = game.map;
+
+    // cf. teleport.c:1036-1064 — check for teleport trap at current position
+    let trap = map.trapAt(player.x, player.y);
+    if (trap && !trap.tseen) trap = null;
+
+    if (trap) {
+        if (trap.ttyp === LEVEL_TELEP && trap.tseen) {
+            // level teleport trap — trigger it
+            level_tele_trap(trap, 0x02 /* FORCETRAP */, game);
+            return 1;
+        } else if (trap.ttyp === TELEP_TRAP) {
+            if (trap.once) {
+                deltrap(map, trap);
+                newsym(map, player.x, player.y);
+            }
+        } else {
+            trap = null;
+        }
+    }
+
+    if (!trap && !break_the_rules) {
+        // cf. teleport.c:1069 — check Teleportation intrinsic
+        if (!player.teleportation) {
+            pline("You don't know that spell.");
+            return 0;
+        }
+    }
+
+    // cf. teleport.c:1140-1157 — perform the teleport
+    tele(game);
+    return 1;
+}
+
+// ============================================================================
 // cf. teleport.c:1160 — level_tele(): level teleportation
-// Controlled: pick destination level interactively; restricted to dungeon bounds
-//   and special level constraints.
-// Uncontrolled: random_teleport_level(); avoids current level.
-// Calls goto_level() with teleport flag; handles scroll of teleportation.
-// TODO: teleport.c:1160 — level_tele(): level teleportation handler
+// ============================================================================
 
-// cf. teleport.c:1439 — domagicportal(ttmp): step on magic portal
-// Determines destination level (portal.destination); calls goto_level().
-// Handles bones-file interactions and branch stair transitions.
-// TODO: teleport.c:1439 — domagicportal(): magic portal handler
+export function level_tele(game) {
+    const player = game.player;
 
-// cf. teleport.c:1487 — tele_trap(trap): hero steps on teleport trap
-// Relocates nearby monsters to make room; activates dotele(TRUE).
-// Removes disarmed traps; handles sleeping/paralyzed states.
-// TODO: teleport.c:1487 — tele_trap(): hero teleport trap activation
+    // cf. teleport.c:1180 — Amulet/endgame prevention
+    if (player.hasAmulet) {
+        pline("You feel very disoriented for a moment.");
+        return;
+    }
 
-// cf. teleport.c:1533 — level_tele_trap(trap, trflags): hero on level-teleport trap
-// Shows "You are whisked away!" message; applies confusion/stun effects.
-// Calls level_tele(); removes trap if appropriate.
-// TODO: teleport.c:1533 — level_tele_trap(): level teleport trap handler
+    // cf. teleport.c:2182 — get random level
+    const cur_depth = player.depth || 1;
+    const nlev = random_teleport_level(cur_depth, game);
 
-// cf. teleport.c:1570 [static] — rloc_pos_ok(x, y, mon): can monster arrive here via tele?
-// Checks: restricted areas (svl.level.flags nommap/noteleport), shopkeeper
-//   constraint (no rloc into a shop if shopkeeper present), goodpos with RLOC flags.
-// TODO: teleport.c:1570 — rloc_pos_ok(): monster tele arrival validation
+    if (nlev === cur_depth) {
+        pline("You shudder for a moment.");
+        return;
+    }
 
-// cf. teleport.c:1640 [static] — rloc_to_core(mon, x, y, rflags): place monster at (x,y)
-// Removes from old location; handles worm/tail; sets mx/my; updates player if stuck;
-//   newsym; messages if visible; calls set_apparxy; shop tracking via mintrap.
-// rflags: RLOC_NOMSG, RLOC_TELE, RLOC_MIGR.
-// TODO: teleport.c:1640 — rloc_to_core(): core monster relocation
+    // Schedule level change
+    // TODO: implement schedule_goto for actual level changes
+    pline(`You are teleported to level ${nlev}!`);
+}
 
-// cf. teleport.c:1766 — rloc_to(mon, x, y): relocate monster to (x,y), no messages
-// Wrapper for rloc_to_core(mon, x, y, 0).
-// TODO: teleport.c:1766 — rloc_to(): monster relocation (no message)
+// ============================================================================
+// cf. teleport.c:1439 — domagicportal(trap): magic portal handler
+// ============================================================================
 
-// cf. teleport.c:1772 — rloc_to_flag(mon, x, y, rflags): relocate with flags
-// Wrapper for rloc_to_core(mon, x, y, rflags).
-// TODO: teleport.c:1772 — rloc_to_flag(): monster relocation with flags
+export function domagicportal(trap, game) {
+    // cf. teleport.c:1458
+    pline("You activated a magic portal!");
 
-// cf. teleport.c:1781 [static] — stairway_find_forwiz(up, ladder): find stair for wiz tele
-// Searches current level's stairway list for a stair matching up/isladder.
-// Used by rloc() in wizard mode.
-// TODO: teleport.c:1781 — stairway_find_forwiz(): wizard stair search
+    // cf. teleport.c:1464 — endgame without amulet
+    if (game && game.player && game.player.inEndgame && !game.player.hasAmulet) {
+        pline("You feel dizzy for a moment, but nothing happens...");
+        return;
+    }
 
-// cf. teleport.c:1794 — rloc(mon, rflags): relocate monster to random location
-// Wizard handling: if player is wizard monster, try stairs then map corner.
-// Finds random valid position (rloc_pos_ok, up to 50 tries + fallback scan).
-// Calls rloc_to_core(); may fail if no position found.
-// TODO: teleport.c:1794 — rloc(): random monster relocation
+    // TODO: implement schedule_goto for portal destination
+}
 
-// cf. teleport.c:1894 — control_mon_tele(mon): wizard picks monster's tele destination
-// Interactive getpos() for wizard-mode; validates with teleok(); calls rloc_to().
-// TODO: teleport.c:1894 — control_mon_tele(): wizard monster tele control
+// ============================================================================
+// cf. teleport.c:1487 — tele_trap(trap): hero teleport trap activation
+// ============================================================================
 
-// cf. teleport.c:1932 [static] — mvault_tele(mon): teleport monster to/near vault
-// Finds vault room; calls rloc_to() for a valid vault spot; falls back to rloc().
-// TODO: teleport.c:1932 — mvault_tele(): monster vault teleport
+let in_tele_trap = false;
 
-// cf. teleport.c:1945 — tele_restrict(mon): is teleportation restricted for monster?
-// Checks: noteleport_level(mon); also Riders and Vlad are unrestricted.
-// TODO: teleport.c:1945 — tele_restrict(): per-monster teleport restriction
+export function tele_trap(trap, game) {
+    const player = game.player;
+    const map = game.map;
 
-// cf. teleport.c:1957 — mtele_trap(mon, trap, vis): monster steps on teleport trap
-// Relocates monster via tele_restrict + rloc(); prints messages if visible.
-// TODO: teleport.c:1957 — mtele_trap(): monster teleport trap
+    // cf. teleport.c:1493 — prevent recursive activation
+    if (in_tele_trap) return;
+    in_tele_trap = true;
 
-// cf. teleport.c:1998 — mlevel_tele_trap(mon, trap, vis, dx, dy): monster level-tele trap
-// Checks tele_restrict(); migrates monster off level if allowed.
-// Returns TRUE if monster left level (MIGR_RANDOM or Gehennom fallback).
-// TODO: teleport.c:1998 — mlevel_tele_trap(): monster level teleport trap
+    try {
+        // cf. teleport.c:1497 — endgame or antimagic resistance
+        if (player.antimagic) {
+            pline("You feel a wrenching sensation.");
+            return;
+        }
 
-// cf. teleport.c:2094 — rloco(obj): scatter object randomly on level
-// Handles shop billing, restricted fall areas; places object at random valid position.
-// Used by disintegration and other wide-area effects.
-// TODO: teleport.c:2094 — rloco(): random object scatter
+        // cf. teleport.c:1503 — vault teleport (one-use trap)
+        if (trap.once) {
+            deltrap(map, trap);
+            newsym(map, player.x, player.y);
+            // vault_tele — falls through to tele()
+            tele(game);
+            return;
+        }
 
-// cf. teleport.c:2182 — random_teleport_level(): compute random level-tele destination
-// Constrained to dungeon branch structure; avoids current level.
-// Considers Sokoban, Mines, Gehennom bounds; returns d_level struct.
-// TODO: teleport.c:2182 — random_teleport_level(): random destination level
+        // cf. teleport.c:1507 — fixed-destination teleport
+        if (isok(trap.teledest_x, trap.teledest_y)) {
+            const mtmp = map.monsterAt(trap.teledest_x, trap.teledest_y);
+            if (mtmp) {
+                const dest = enexto(mtmp.mx, mtmp.my, mtmp.data, map, player);
+                if (dest.found) {
+                    rloc_to(mtmp, dest.x, dest.y, map, player);
+                }
+            }
+            if (!map.monsterAt(trap.teledest_x, trap.teledest_y)) {
+                teleds(trap.teledest_x, trap.teledest_y, TELEDS_TELEPORT, game);
+            }
+            return;
+        }
 
-// cf. teleport.c:2254 — u_teleport_mon(mon, give_tele_control): player tele a monster
-// Called by wand of teleportation and spell targeting.
-// Priests and Riders may resist; tries controlled then random relocation.
-// give_tele_control: whether wizard teleport control applies.
-// TODO: teleport.c:2254 — u_teleport_mon(): player-induced monster teleport
+        // cf. teleport.c:1527 — random teleport
+        tele(game);
+    } finally {
+        in_tele_trap = false;
+    }
+}
+
+// ============================================================================
+// cf. teleport.c:1533 — level_tele_trap(trap, trflags): level teleport trap
+// ============================================================================
+
+export function level_tele_trap(trap, trflags, game) {
+    const player = game.player;
+    const map = game.map;
+    const intentional = (trflags & 0x02) !== 0; // FORCETRAP or VIASITTING
+
+    pline("You step onto a level teleport trap!");
+
+    // cf. teleport.c:1545 — antimagic resistance
+    if (player.antimagic && !intentional) {
+        pline("You feel a wrenching sensation.");
+        return;
+    }
+
+    // cf. teleport.c:1552 — remove trap and perform level teleport
+    deltrap(map, trap);
+    newsym(map, player.x, player.y);
+    level_tele(game);
+}
+
+// ============================================================================
+// cf. teleport.c:914 — dotelecmd(): the #teleport command (wizard mode)
+// ============================================================================
+
+export function dotelecmd(game) {
+    return dotele(false, game) ? 1 : 0;
+}
+
+// ============================================================================
+// cf. teleport.c:781 — teleport_pet(mtmp, force): check if pet can teleport
+// ============================================================================
+
+export function teleport_pet(mtmp, force) {
+    // cf. teleport.c:788 — can't teleport steed
+    if (mtmp.isSteed) return false;
+
+    // cf. teleport.c:788 — leashed pet
+    if (mtmp.mleashed) {
+        if (!force) return false;
+        mtmp.mleashed = false;
+        return true;
+    }
+    return true;
+}

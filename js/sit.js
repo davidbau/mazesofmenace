@@ -1,39 +1,614 @@
 // sit.js -- Sitting effects and related hero intrinsic/inventory curses
-// cf. sit.c — #sit command, throne effects, rndcurse, attrcurse
+// cf. sit.c -- #sit command, throne effects, rndcurse, attrcurse
 
-// cf. sit.c:14 — take_gold(): remove all gold coins from hero inventory
-// TODO: sit.c:14 — take_gold(): delete all COIN_CLASS items, print "no gold" or "notice"
+import { rn2, rnd, rn1, d } from './rng.js';
+import { ROOM, THRONE, SINK, ALTAR, GRAVE, STAIRS, LADDER,
+         FOUNTAIN, ICE, DRAWBRIDGE_DOWN,
+         A_STR, A_DEX, A_CON, A_WIS, A_INT, A_CHA,
+         INTRINSIC, FROMOUTSIDE, TIMEOUT,
+         FIRE_RES, COLD_RES, POISON_RES, SHOCK_RES,
+         SEE_INVIS, INVIS, TELEPORT, TELEPAT,
+         FAST, STEALTH, PROTECTION, AGGRAVATE_MONSTER,
+         isok } from './config.js';
+import { COIN_CLASS, SADDLE } from './objects.js';
+import { pline, You, Your, You_feel, You_cant, pline_The,
+         verbalize } from './pline.js';
+import { exercise } from './attrib_exercise.js';
+import { is_pool, is_lava, is_ice } from './dbridge.js';
+import { is_prince, slithy, is_hider, lays_eggs, likes_lava,
+         amorphous, is_humanoid, eggs_in_water, sticks } from './mondata.js';
+import { W_SADDLE, which_armor } from './worn.js';
+import { Monnam, mon_nam } from './do_name.js';
+import { spec_ability } from './artifact.js';
+import { ART_MAGICBANE, SPFX_INTEL } from './artifacts.js';
+import { make_confused, make_blinded } from './potion.js';
+import { makemon } from './makemon.js';
+import { unbless, curse as curseObj } from './mkobj.js';
 
-// cf. sit.c:39 [static] — throne_sit_effect(): 13 random effects when hero sits on a throne
-// (1=stat drain+hp loss, 2=stat gain, 3=electric shock, 4=full heal,
-//  5=take_gold, 6=wish or luck change, 7=summon court monsters,
-//  8=do_genocide, 9=blind+curse luck, 10=magic mapping or see_invis,
-//  11=teleport or aggravate, 12=identify pack, 13=confusion)
-// Throne may also vanish with 1/3 chance after effect rolls.
-// TODO: sit.c:39 — throne_sit_effect(): full 13-effect throne sit roll
+// cf. sit.c:14 -- take_gold(): remove all gold coins from hero inventory
+export function take_gold(player, display) {
+    let lost_money = false;
+    player.inventory = player.inventory.filter(otmp => {
+        if (otmp.oclass === COIN_CLASS) {
+            lost_money = true;
+            return false; // remove
+        }
+        return true;
+    });
+    if (!lost_money) {
+        You_feel("a strange sensation.");
+    } else {
+        You("notice you have no gold!");
+        // botl update handled by caller
+    }
+}
 
-// cf. sit.c:238 [static] — special_throne_effect(): Vlad's tower throne effects (1–13)
-// (1-4=wish+destroy throne, 5=level drain, 6=grease inventory,
-//  7=attrcurse, 8=goto Vibrating Square level, 9=summon 3x demons,
-//  10=confused blessed remove curse, 11=polyself, 12=acid damage,
-//  13=scramble all abilities)
-// TODO: sit.c:238 — special_throne_effect(): Vlad's tower special sit effects
+// cf. sit.c:238 -- special_throne_effect(): Vlad's tower throne effects
+function special_throne_effect(effect, player, map, display) {
+    const tx = player.x, ty = player.y;
 
-// cf. sit.c:354 [static] — lay_an_egg(): female polymorph lays an egg on the floor
-// TODO: sit.c:354 — lay_an_egg(): create egg object, drop at hero's feet, cost nutrition
+    switch (effect) {
+    case 1:
+    case 2:
+    case 3:
+    case 4:
+        // 4 chances of a wish, then throne disappears
+        // TODO: makewish() — wish granting not yet ported
+        pline("A voice echoes: \"You may wish for an object.\"");
+        {
+            const loc = map.at(tx, ty);
+            if (loc) {
+                loc.typ = ROOM;
+                loc.flags = 0;
+            }
+        }
+        pline_The("throne disintegrates, having spent its power.");
+        break;
+    case 5:
+        // permanent level drain
+        pline("Sitting on the throne was a terrible experience.");
+        // TODO: losexp("a bad experience sitting on a throne") — level drain
+        // TODO: Drain_resistance check
+        break;
+    case 6:
+    {
+        // grease hands and inventory
+        pline("A greasy liquid sprays all over you!");
+        for (const otmp of player.inventory) {
+            if (otmp.oclass !== COIN_CLASS)
+                otmp.greased = 1;
+        }
+        // TODO: make_glib(rn1(101, 100))
+        rn2(101); // RNG parity: rn1(101, 100) = rn2(101) + 100
+        break;
+    }
+    case 7:
+        // lose an intrinsic
+        attrcurse(player, display);
+        pline_The("throne somehow seems to be amused.");
+        break;
+    case 8:
+    {
+        // level teleport to Vibrating Square level
+        // TODO: schedule_goto to VS level
+        if (player.amulet) {
+            You_feel("extremely disoriented for a moment.");
+        } else {
+            You_feel("extremely out of place.");
+        }
+        break;
+    }
+    case 9:
+    {
+        // summon demons (3x msummon(NULL))
+        pline_The("throne seeems to be calling for help!");
+        // TODO: msummon(NULL) x3 — demon summoning
+        break;
+    }
+    case 10:
+    {
+        // confused blessed remove curse effect
+        // TODO: seffects() with fake blessed remove curse spellbook
+        pline("You feel as if someone is helping you.");
+        break;
+    }
+    case 11:
+        // polymorph effect
+        pline("This throne was not meant for those such as you!");
+        You_feel("a change coming over you.");
+        // TODO: polyself(POLY_NOFLAGS)
+        break;
+    case 12:
+        // acid damage
+        pline("The throne is covered in acid!");
+        {
+            // RNG parity: rnd(16) or rnd(80) for damage
+            const dmg = player.acid_resistance ? rnd(16) : rnd(80);
+            // TODO: losehp(dmg, "acidic chair", KILLED_BY_AN)
+        }
+        exercise(player, A_CON, false);
+        break;
+    case 13:
+    {
+        // ability shuffle
+        pline("As you sit on the throne, your body and mind start to warp.");
+        for (let ability = 0; ability < 6; ++ability) { // A_MAX = 6
+            // RNG parity: rn2(5) - 2 for each attribute
+            const adj = rn2(5) - 2;
+            // TODO: adjattrib(ability, adj, -1)
+        }
+        break;
+    }
+    }
+}
 
-// cf. sit.c:396 — dosit(): #sit command — sit on current tile, trigger context effects
-// Handles: object piles (corpse/box/towel/cream pie), traps, water/fountain,
-// sink, altar, grave, stairs, ladder, lava, ice, drawbridge, throne, egg-layer,
-// generic floor message.
-// TODO: sit.c:396 — dosit(): full #sit command handler
+// cf. sit.c:39 -- throne_sit_effect(): maybe do something when hero sits on a throne
+function throne_sit_effect(player, map, display) {
+    const tx = player.x, ty = player.y;
 
-// cf. sit.c:565 — rndcurse(): curse rnd(6) random inventory items; skip COIN_CLASS
-// Magicbane wielder and Antimagic may reduce/block; also curses steed's saddle rn2(4).
-// TODO: sit.c:565 — rndcurse(): random inventory curse (needed for throne effect 9 + others)
+    // C: In_V_tower(&u.uz) — Vlad's tower check
+    const special_throne = !!(map.flags && map.flags.in_v_tower);
 
-// cf. sit.c:640 — attrcurse(): remove one random intrinsic from hero (rnd(11) cascade)
-// Intrinsics checked in cascade: FIRE_RES, TELEPORTATION, POISON_RES, TELEPATHY,
-// COLD_RES, INVIS, SEE_INVIS, FAST, STEALTH, PROTECTION, AGGRAVATE_MONSTER.
-// Returns the property removed, or 0 if nothing removed.
-// TODO: sit.c:640 — attrcurse(): intrinsic-removal cascade (needed for special throne effect 7)
+    // C: rnd(6) > 4  is same as !rn2(3) — 1/3 chance of effect
+    if (rnd(6) > 4) {
+        const effect = rnd(13);
+
+        if (special_throne) {
+            special_throne_effect(effect, player, map, display);
+            return;
+        }
+
+        switch (effect) {
+        case 1:
+            // stat drain + hp loss
+            {
+                const attr = rn2(6); // rn2(A_MAX)
+                const loss = rn1(4, 3); // rn2(4) + 3
+                // TODO: adjattrib(attr, -loss, FALSE)
+                const dmg = rnd(10);
+                // TODO: losehp(dmg, "cursed throne", KILLED_BY_AN)
+            }
+            break;
+        case 2:
+            // stat gain
+            {
+                const attr = rn2(6); // rn2(A_MAX)
+                // TODO: adjattrib(attr, 1, FALSE)
+            }
+            break;
+        case 3:
+            // electric shock
+            pline("A%s electric shock shoots through your body!",
+                  player.shock_resistance ? "n" : " massive");
+            {
+                const dmg = player.shock_resistance ? rnd(6) : rnd(30);
+                // TODO: losehp(dmg, "electric chair", KILLED_BY_AN)
+            }
+            exercise(player, A_CON, false);
+            break;
+        case 4:
+            // full heal
+            You_feel("much, much better!");
+            if (player.mh !== undefined && player.mhmax !== undefined) {
+                // Upolyd path
+                if (player.mh >= (player.mhmax - 5))
+                    player.mhmax += 4;
+                player.mh = player.mhmax;
+            }
+            if (player.hp >= (player.maxhp - 5)) {
+                player.maxhp += 4;
+                if (player.maxhp > (player.hppeak || player.maxhp))
+                    player.hppeak = player.maxhp;
+            }
+            player.hp = player.maxhp;
+            player.ucreamed = 0;
+            // TODO: make_blinded(0, TRUE) — cure blindness
+            // TODO: make_sick(0, null, FALSE, SICK_ALL) — cure sickness
+            // TODO: heal_legs(0) — cure wounded legs
+            break;
+        case 5:
+            // take gold
+            take_gold(player, display);
+            break;
+        case 6:
+            // wish or luck change
+            {
+                const luckcheck = (player.luck || 0) + rn2(5);
+                if (luckcheck < 0) {
+                    You_feel("your luck is changing.");
+                    // TODO: change_luck(1)
+                    if (player.luck !== undefined) player.luck += 1;
+                } else {
+                    // TODO: makewish()
+                    pline("A voice echoes: \"You may wish for an object.\"");
+                }
+            }
+            break;
+        case 7:
+            // summon court monsters
+            {
+                const cnt = rnd(10);
+                pline("A voice echoes:");
+                verbalize("Thine audience hath been summoned, %s!",
+                          player.gender === 1 ? "Dame" : "Sire");
+                for (let i = 0; i < cnt; i++) {
+                    // TODO: courtmon() — select appropriate court monster
+                    // RNG consumed by makemon for each monster
+                    makemon(null, tx, ty, 0, 0, map);
+                }
+            }
+            break;
+        case 8:
+            // genocide
+            pline("A voice echoes:");
+            verbalize("By thine Imperious order, %s...",
+                      player.gender === 1 ? "Dame" : "Sire");
+            // TODO: do_genocide(5) — REALLY|ONTHRONE
+            break;
+        case 9:
+            // curse luck or rndcurse
+            pline("A voice echoes:");
+            verbalize(
+                 "A curse upon thee for sitting upon this most holy throne!");
+            if ((player.luck || 0) > 0) {
+                // RNG parity: rn1(100, 250) = rn2(100) + 250 for blind duration
+                const blindDur = rn1(100, 250);
+                // TODO: make_blinded(BlindedTimeout + blindDur, TRUE)
+                if ((player.luck || 0) > 1) {
+                    const lossamt = rnd(2);
+                    // TODO: change_luck(-lossamt)
+                } else {
+                    // TODO: change_luck(-1)
+                }
+            } else {
+                rndcurse(player, map, display);
+            }
+            break;
+        case 10:
+            // magic mapping or see_invis
+            if ((player.luck || 0) < 0 || player.see_invisible_intrinsic) {
+                if (map.flags && map.flags.nommap) {
+                    pline("A terrible drone fills your head!");
+                    // RNG parity: rnd(30) for confusion
+                    const confDur = rnd(30);
+                    // TODO: make_confused(HConfusion + confDur, FALSE)
+                } else {
+                    pline("An image forms in your mind.");
+                    // TODO: do_mapping()
+                }
+            } else {
+                if (!player.blind) {
+                    Your("vision becomes clear.");
+                } else {
+                    // Simplified: blind case with eye tingle
+                    Your("eyes tingle...");
+                }
+                // HSee_invisible |= FROMOUTSIDE
+                player.see_invisible_intrinsic = true;
+            }
+            break;
+        case 11:
+            // teleport or aggravate
+            if ((player.luck || 0) < 0) {
+                You_feel("threatened.");
+                // TODO: aggravate()
+            } else {
+                You_feel("a wrenching sensation.");
+                // TODO: tele() — teleport hero
+            }
+            break;
+        case 12:
+            // identify pack
+            You("are granted an insight!");
+            if (player.inventory && player.inventory.length > 0) {
+                const identCount = rn2(5); // RNG parity: rn2(5) agrees w/seffects()
+                // TODO: identify_pack(identCount, FALSE)
+            }
+            break;
+        case 13:
+            // confusion
+            Your("mind turns into a pretzel!");
+            {
+                const confDur = rn1(7, 16); // rn2(7) + 16
+                // TODO: make_confused(HConfusion + confDur, FALSE)
+            }
+            break;
+        default:
+            break;
+        }
+    } else {
+        // No effect — flavor text
+        const playerType = player.type || {};
+        if (is_prince(playerType) || player.uhand_of_elbereth)
+            You_feel("very comfortable here.");
+        else
+            You_feel("somehow out of place...");
+    }
+
+    // Throne removal: 1/3 chance (non-special thrones only)
+    if (!special_throne && !rn2(3)) {
+        const loc = map.at(tx, ty);
+        if (loc) {
+            loc.typ = ROOM;
+            loc.flags = 0;
+        }
+        pline_The("throne vanishes in a puff of logic.");
+    }
+}
+
+// cf. sit.c:354 -- lay_an_egg(): female polymorph lays an egg on the floor
+function lay_an_egg(player, map, display) {
+    if (player.gender !== 1) { // !flags.female
+        pline("Males can't lay eggs!");
+        return 0; // ECMD_OK
+    }
+    // TODO: hunger check, eggs_in_water check, egg creation
+    You("lay an egg.");
+    return 1; // ECMD_TIME
+}
+
+// cf. sit.c:396 -- dosit(): #sit command
+export function dosit(player, map, display) {
+    const sit_message = "sit on the %s.";
+    const px = player.x, py = player.y;
+    const trap = map.trapAt ? map.trapAt(px, py) : null;
+    const loc = map.at(px, py);
+    const typ = loc ? loc.typ : 0;
+
+    if (player.usteed) {
+        You("are already sitting on %s.", mon_nam(player.usteed));
+        return 0; // ECMD_OK
+    }
+
+    // Un-hide from ceiling
+    const playerType = player.type || {};
+    if (player.uundetected && is_hider(playerType)
+        && (player.umonnum || 0) !== 291 /* PM_TRAPPER */) {
+        player.uundetected = false;
+    }
+
+    if (player.levitating || player.uswallow) {
+        // can't reach floor
+        if (player.uswallow)
+            pline("There are no seats in here!");
+        else if (player.levitating)
+            You("tumble in place.");
+        else
+            You("are sitting on air.");
+        return 0; // ECMD_OK
+    } else if (player.ustuck && !sticks(playerType)) {
+        if (is_humanoid(player.ustuck.data || {}))
+            pline("%s won't offer a lap.", Monnam(player.ustuck));
+        else
+            pline("%s has no lap.", Monnam(player.ustuck));
+        return 0; // ECMD_OK
+    } else if (is_pool(px, py, map) && !player.underwater) {
+        // water sitting — fall through to in_water
+        You("sit in the water.");
+        if (!rn2(10) && player.armor)
+            ; // TODO: water_damage(uarm, "armor", TRUE)
+        if (!rn2(10) && player.boots)
+            ; // TODO: water_damage(uarmf, "armor", TRUE)
+        return 1; // ECMD_TIME
+    }
+
+    // Check for objects on the tile
+    const objs = map.objectsAt ? map.objectsAt(px, py) : [];
+    if (objs.length > 0 && !(trap && (trap.ttyp === 7 || trap.ttyp === 8))) {
+        // Not teetering at a pit — sit on objects
+        const obj = objs[0]; // top object
+        if (playerType.symbol === 30 /* S_DRAGON */ && obj.oclass === COIN_CLASS) {
+            You("coil up around your hoard.");
+        } else {
+            if (slithy(playerType))
+                You("coil up around %s.", obj.name || "it");
+            else
+                You("sit on %s.", obj.name || "it");
+            if (!obj.otyp) {
+                // generic
+            } else {
+                pline("It's not very comfortable...");
+            }
+        }
+    } else if (trap || (player.utrap && (player.utraptype || 0) >= 4 /* TT_LAVA */)) {
+        if (player.utrap) {
+            exercise(player, A_WIS, false);
+            if (player.utraptype === 0) { // TT_BEARTRAP
+                You_cant("sit down with your foot in the bear trap.");
+                player.utrap++;
+            } else if (player.utraptype === 1) { // TT_PIT
+                if (trap && trap.ttyp === 8) { // SPIKED_PIT
+                    You("sit down on a spike.  Ouch!");
+                    // RNG parity: rn2(2) for half phys damage
+                    const dmg = player.half_physical_damage ? rn2(2) : 1;
+                    // TODO: losehp(dmg, "sitting on an iron spike", KILLED_BY)
+                    exercise(player, A_STR, false);
+                } else {
+                    You("sit down in the pit.");
+                }
+                player.utrap += rn2(5);
+            } else if (player.utraptype === 3) { // TT_WEB
+                You("sit in the spider web and get entangled further!");
+                player.utrap += rn1(10, 5);
+            } else if (player.utraptype === 4) { // TT_LAVA
+                You("sit in the lava!");
+                player.utrap += rnd(4);
+                const dmg = d(2, 10);
+                // TODO: losehp(dmg, "sitting in lava", KILLED_BY)
+            } else if (player.utraptype === 5 || player.utraptype === 6) {
+                // TT_INFLOOR or TT_BURIEDBALL
+                You_cant("maneuver to sit!");
+                player.utrap++;
+            }
+        } else {
+            You(player.flying ? "land." : "sit down.");
+            // TODO: dotrap(trap, VIASITTING)
+        }
+    } else if (player.underwater) {
+        You("sit down on the muddy bottom.");
+    } else if (typ === SINK) {
+        You(sit_message, "sink");
+        Your("rump gets wet.");
+    } else if (typ === ALTAR) {
+        You(sit_message, "altar");
+        // TODO: altar_wrath(px, py)
+    } else if (typ === GRAVE) {
+        You(sit_message, "grave");
+    } else if (typ === STAIRS) {
+        You(sit_message, "stairs");
+    } else if (typ === LADDER) {
+        You(sit_message, "ladder");
+    } else if (is_lava(px, py, map)) {
+        You(sit_message, "lava");
+        // TODO: burn_away_slime()
+        if (likes_lava(playerType)) {
+            pline_The("lava feels warm.");
+            return 1; // ECMD_TIME
+        }
+        pline_The("lava burns you!");
+        {
+            const dmg = d(player.fire_resistance ? 2 : 10, 10);
+            // TODO: losehp(dmg, "sitting on lava", KILLED_BY)
+        }
+    } else if (is_ice(px, py, map)) {
+        You(sit_message, "ice");
+        if (!player.cold_resistance)
+            pline_The("ice feels cold.");
+    } else if (typ === DRAWBRIDGE_DOWN) {
+        You(sit_message, "drawbridge");
+    } else if (typ === THRONE) {
+        You(sit_message, "throne");
+        throne_sit_effect(player, map, display);
+    } else if (lays_eggs(playerType)) {
+        return lay_an_egg(player, map, display);
+    } else {
+        pline("Having fun sitting on the floor?");
+    }
+    return 1; // ECMD_TIME
+}
+
+// cf. sit.c:565 -- rndcurse(): curse a few inventory items at random!
+export function rndcurse(player, map, display) {
+    const mal_aura = "feel a malignant aura surround %s.";
+
+    // Magicbane check
+    if (player.weapon && player.weapon.oartifact === ART_MAGICBANE && rn2(20)) {
+        You(mal_aura, "the magic-absorbing blade");
+        return;
+    }
+
+    if (player.antimagic) {
+        // TODO: shieldeff(player.x, player.y)
+    }
+
+    You(mal_aura, "you");
+
+    // Count non-gold inventory items
+    let nobj = 0;
+    for (const otmp of player.inventory) {
+        if (otmp.oclass === COIN_CLASS) continue;
+        nobj++;
+    }
+
+    // RNG parity: divisor is ((!!Antimagic) + (!!Half_spell_damage) + 1)
+    const divisor = (player.antimagic ? 1 : 0)
+                  + (player.half_spell_damage ? 1 : 0) + 1;
+    let cnt = rnd(Math.floor(6 / divisor) || 1);
+
+    if (nobj) {
+        for (; cnt > 0; cnt--) {
+            const onum_target = rnd(nobj);
+            let onum = onum_target;
+            let otmp = null;
+            for (const item of player.inventory) {
+                if (item.oclass === COIN_CLASS) continue;
+                if (--onum === 0) {
+                    otmp = item;
+                    break;
+                }
+            }
+            if (!otmp || otmp.cursed)
+                continue;
+
+            // Intelligent artifact resistance
+            if (otmp.oartifact && spec_ability(otmp, SPFX_INTEL)
+                && rn2(10) < 8) {
+                pline("%s resists!", otmp.name || "An item");
+                continue;
+            }
+
+            if (otmp.blessed)
+                unbless(otmp);
+            else
+                curseObj(otmp);
+        }
+        // TODO: update_inventory()
+    }
+
+    // Steed's saddle
+    if (player.usteed && !rn2(4)) {
+        const saddle = which_armor(player.usteed, W_SADDLE);
+        if (saddle && !saddle.cursed) {
+            if (saddle.blessed)
+                unbless(saddle);
+            else
+                curseObj(saddle);
+            if (!player.blind) {
+                pline("%s glows %s.", saddle.name || "The saddle",
+                      saddle.cursed ? "black" : "brown");
+            }
+        }
+    }
+}
+
+// cf. sit.c:640 -- attrcurse(): remove a random INTRINSIC ability from hero
+// Returns the intrinsic property which was removed, or 0 if nothing removed.
+export function attrcurse(player, display) {
+    let ret = 0;
+
+    // C uses a fall-through switch on rnd(11)
+    // We replicate the cascade: if the rolled case's intrinsic is not present,
+    // fall through to the next case.
+    const roll = rnd(11);
+
+    // Build cascade array: [case_num, property_key, message, ret_value]
+    const cascade = [
+        [1,  'fire_resistance_intrinsic',   "warmer.",              FIRE_RES],
+        [2,  'teleportation_intrinsic',     "less jumpy.",          TELEPORT],
+        [3,  'poison_resistance_intrinsic', "a little sick!",       POISON_RES],
+        [4,  'telepathy_intrinsic',         null,                   TELEPAT],
+        [5,  'cold_resistance_intrinsic',   "cooler.",              COLD_RES],
+        [6,  'invisibility_intrinsic',      "paranoid.",            INVIS],
+        [7,  'see_invisible_intrinsic',     null,                   SEE_INVIS],
+        [8,  'fast_intrinsic',              "slower.",              FAST],
+        [9,  'stealth_intrinsic',           "clumsy.",              STEALTH],
+        [10, 'protection_intrinsic',        "vulnerable.",          PROTECTION],
+        [11, 'aggravate_intrinsic',         "less attractive.",     AGGRAVATE_MONSTER],
+    ];
+
+    // Find start index based on roll
+    let startIdx = cascade.findIndex(c => c[0] === roll);
+    if (startIdx < 0) startIdx = cascade.length; // default: no match
+
+    for (let i = startIdx; i < cascade.length; i++) {
+        const [, prop, msg, propId] = cascade[i];
+        if (player[prop]) {
+            player[prop] = false;
+            if (propId === TELEPAT) {
+                // Special message for telepathy
+                Your("senses fail!");
+            } else if (propId === SEE_INVIS) {
+                // Special message for see invisible
+                You(player.hallucinating
+                    ? "tawt you taw a puttie tat"
+                    : "thought you saw something");
+            } else if (msg) {
+                You_feel(msg);
+            }
+            ret = propId;
+            break;
+        }
+    }
+
+    return ret;
+}

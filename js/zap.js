@@ -23,6 +23,7 @@ import { nhgetch } from './input.js';
 import { nonliving, monDisplayName } from './mondata.js';
 import { mondead } from './monutil.js';
 import { placeFloorObject } from './floor_objects.js';
+import { zap_dig as zap_dig_impl } from './dig.js';
 
 // Direction vectors matching commands.js DIRECTION_KEYS
 const DIRECTION_KEYS = {
@@ -449,8 +450,9 @@ export function weffects(obj, player, map) {
 }
 
 // cf. zap.c zap_dig() — digging beam
+// Delegates to dig.js which has the full implementation.
 export function zap_dig(map, player) {
-  // Stub — dig through walls/floor
+  return zap_dig_impl(map, player);
 }
 
 // cf. zap.c bhitpile() — beam hits pile of objects
