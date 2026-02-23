@@ -27,7 +27,6 @@ function makeDisplay() {
         putstrCalls,
         clearScreen() {},
         clearRow() {},
-        setCell() {},
         putstr(col, row, str) { putstrCalls.push({ col, row, str }); },
         putstr_message() {},
         renderMap() {},
@@ -65,8 +64,7 @@ describe('NetHackGame showGameOver tombstone flow', () => {
         seedPlayer(game);
 
         input.pushInput(' '.charCodeAt(0)); // dismiss tombstone
-        input.pushInput('n'.charCodeAt(0)); // do not restart
-        input.pushInput(' '.charCodeAt(0)); // exit promo attract screen
+        input.pushInput('n'.charCodeAt(0)); // do not restart (no promo: lifecycle={} has no handler)
 
         await game.showGameOver();
 
@@ -86,8 +84,7 @@ describe('NetHackGame showGameOver tombstone flow', () => {
         game.flags = { tombstone: false };
         seedPlayer(game);
 
-        input.pushInput('n'.charCodeAt(0)); // play again? no
-        input.pushInput(' '.charCodeAt(0)); // exit promo attract screen
+        input.pushInput('n'.charCodeAt(0)); // play again? no (no promo: lifecycle={} has no handler)
 
         await game.showGameOver();
 

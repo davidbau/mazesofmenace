@@ -7,11 +7,16 @@ import { clearGameUrlParams, getUrlParams, saveGame, deleteSave } from './storag
 import { NetHackGame } from './allmain.js';
 import { getKeylog, saveKeylog, startReplay } from './keylog.js';
 import { VERSION_STRING } from './config.js';
+import { nhgetch } from './input.js';
+import { Promo } from './promo.js';
 window.MENACE_VERSION = VERSION_STRING;
 
-function createBrowserLifecycle() {
+function createBrowserLifecycle(display) {
+    const restart = () => window.location.reload();
+    const promo = new Promo();
     return {
-        restart: () => window.location.reload(),
+        restart,
+        promo: () => promo.run(display, nhgetch, restart),
         replaceUrlParams: (params) => {
             const url = new URL(window.location.href);
             for (const [key, value] of Object.entries(params || {})) {
@@ -61,10 +66,11 @@ window.addEventListener('DOMContentLoaded', async () => {
         getDisplay: () => currentDisplay,
     });
 
+    const display = new Display('game');
     const game = new NetHackGame({
-        display: new Display('game'),
+        display,
         input,
-        lifecycle: createBrowserLifecycle(),
+        lifecycle: createBrowserLifecycle(display),
         hooks: {
             onRuntimeBindings: ({ game: runningGame, flags, display }) => {
                 currentFlags = flags;
