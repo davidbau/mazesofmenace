@@ -723,9 +723,6 @@ export function movemon(map, player, display, fov, game = null, { dochug, handle
                 // TODO: fightm() — Conflict not implemented
                 dochug(mon, map, player, display, fov, game);
                 if (game && game.occupation && !mon.dead) {
-                    if (game.occupation.occtxt === 'waiting' || game.occupation.occtxt === 'searching') {
-                        continue;
-                    }
                     const attacks = mon.type?.attacks || [];
                     const noAttacks = !attacks.some((a) => a && a.type !== AT_NONE);
                     const threatRangeSq = (BOLT_LIM + 1) * (BOLT_LIM + 1);
