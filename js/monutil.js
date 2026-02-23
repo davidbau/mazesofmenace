@@ -337,3 +337,19 @@ export function mdrop_obj(mon, obj, map) {
         update_mon_extrinsics(mon, obj, false, true);
     }
 }
+
+// C ref: mkobj.c add_to_minv() — add object to monster inventory with merging
+// Wrapper around addToMonsterInventory with C-compatible name.
+export function add_to_minv(mon, obj) {
+    return addToMonsterInventory(mon, obj);
+}
+
+// C ref: mkobj.c discard_minvent() — discard all monster inventory
+export function discard_minvent(mon) {
+    if (!mon || !Array.isArray(mon.minvent)) return;
+    while (mon.minvent.length > 0) {
+        const obj = mon.minvent[0];
+        extract_from_minvent(mon, obj, true, true);
+        // C: obfree(otmp) — in JS, just let it be GC'd
+    }
+}

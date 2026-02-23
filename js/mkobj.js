@@ -181,23 +181,23 @@ function is_poisonable(obj) {
 }
 
 // Helper: material checks for erosion
-function is_flammable(obj) {
+export function is_flammable(obj) {
     const mat = objectData[obj.otyp].material;
     if (mat === LIQUID) return false;
     return (mat <= WOOD) || mat === PLASTIC;
 }
-function is_rustprone(obj) {
+export function is_rustprone(obj) {
     return objectData[obj.otyp].material === IRON;
 }
-function is_crackable(obj) {
+export function is_crackable(obj) {
     return objectData[obj.otyp].material === GLASS && obj.oclass === ARMOR_CLASS;
 }
-function is_rottable(obj) {
+export function is_rottable(obj) {
     const mat = objectData[obj.otyp].material;
     if (mat === LIQUID) return false;
     return mat <= WOOD || mat === DRAGON_HIDE;
 }
-function is_corrodeable(obj) {
+export function is_corrodeable(obj) {
     const mat = objectData[obj.otyp].material;
     return mat === COPPER || mat === IRON;
 }
@@ -242,7 +242,7 @@ export function weight(obj) {
 }
 
 // C ref: objnam.c erosion_matters() — class-based check for whether erosion is relevant
-function erosion_matters(obj) {
+export function erosion_matters(obj) {
     switch (obj.oclass) {
     case WEAPON_CLASS:
     case ARMOR_CLASS:
@@ -275,26 +275,77 @@ function may_generate_eroded(obj) {
 }
 
 // C ref: mkobj.c blessorcurse()
-function blessorcurse(obj, chance) {
+export function blessorcurse(obj, chance) {
     if (obj.blessed || obj.cursed) return;
     if (!rn2(chance)) {
         if (!rn2(2)) {
-            obj.cursed = true;
+            curse(obj);
         } else {
-            obj.blessed = true;
+            bless(obj);
         }
     }
 }
 
+// C ref: mkobj.c bless()
+export function bless(obj) {
+    if (obj.oclass === COIN_CLASS) return;
+    obj.cursed = false;
+    obj.blessed = true;
+    if (obj.otyp === BAG_OF_HOLDING)
+        obj.owt = weight(obj);
+}
+
+// C ref: mkobj.c unbless()
+export function unbless(obj) {
+    obj.blessed = false;
+    if (obj.otyp === BAG_OF_HOLDING)
+        obj.owt = weight(obj);
+}
+
 // C ref: mkobj.c curse()
-function curse(obj) {
+export function curse(obj) {
+    if (obj.oclass === COIN_CLASS) return;
     obj.blessed = false;
     obj.cursed = true;
+    if (obj.otyp === BAG_OF_HOLDING)
+        obj.owt = weight(obj);
+}
+
+// C ref: mkobj.c uncurse()
+export function uncurse(obj) {
+    obj.cursed = false;
+    if (obj.otyp === BAG_OF_HOLDING)
+        obj.owt = weight(obj);
+}
+
+// C ref: mkobj.c set_bknown()
+export function set_bknown(obj, onoff) {
+    obj.bknown = !!onoff;
 }
 
 // C ref: mkobj.c bcsign()
-function bcsign(obj) {
+export function bcsign(obj) {
     return obj.cursed ? -1 : obj.blessed ? 1 : 0;
+}
+
+// C ref: mkobj.c container_weight() — set owt recursively up container chain
+export function container_weight(obj) {
+    obj.owt = weight(obj);
+    // If contained, propagate up (JS doesn't track ocontainer yet)
+}
+
+// C ref: mkobj.c splitobj() — split a stack, return the new portion
+export function splitobj(obj, num) {
+    if (obj.cobj || num <= 0 || obj.quan <= num) return null;
+    const otmp = { ...obj };
+    otmp.o_id = next_ident();
+    otmp.lamplit = false;
+    otmp.owornmask = 0;
+    obj.quan -= num;
+    obj.owt = weight(obj);
+    otmp.quan = num;
+    otmp.owt = weight(otmp);
+    return otmp;
 }
 
 // Create a blank object

@@ -23,14 +23,17 @@ import { cansee } from './vision.js';
 import {
     monNam, monDisplayName, touch_petrifies, unsolid, resists_fire, resists_cold,
     resists_elec, resists_acid, resists_sleep, resists_ston,
-    nonliving, sticks, attacktype,
+    nonliving, sticks, attacktype, dmgtype, is_whirly,
 } from './mondata.js';
+import { erode_obj, ERODE_RUST, ERODE_CORRODE, ERODE_BURN,
+         EF_GREASE, EF_VERBOSE } from './trap.js';
 import {
     AT_NONE, AT_CLAW, AT_KICK, AT_BITE, AT_TUCH, AT_BUTT, AT_STNG,
     AT_HUGS, AT_TENT, AT_WEAP, AT_GAZE, AT_ENGL, AT_EXPL, AT_BREA,
     AT_SPIT, AT_BOOM, G_NOCORPSE,
     AD_PHYS, AD_ACID, AD_BLND, AD_STUN, AD_PLYS, AD_COLD, AD_FIRE,
-    AD_ELEC, AD_WRAP, AD_STCK, AD_DGST,
+    AD_ELEC, AD_WRAP, AD_STCK, AD_DGST, AD_RUST, AD_CORR,
+    MZ_HUGE,
 } from './monsters.js';
 import { corpse_chance } from './mon.js';
 import { mkcorpstat, xname } from './mkobj.js';
@@ -183,8 +186,24 @@ export function slept_monst(mon) {
 }
 
 // cf. mhitm.c:1259 — rustm(mdef, obj)
+// C ref: mhitm.c:1260 rustm() — erode attacker's weapon from defender's body
 export function rustm(mdef, obj) {
-    // TODO: implement weapon erosion
+    if (!mdef || !obj) return;
+    const mdat = mdef.type || {};
+    let dmgtyp = -1, chance = 1;
+
+    // AD_ACID and AD_ENCH handled elsewhere (passivemm/passiveum)
+    if (dmgtype(mdat, AD_CORR)) {
+        dmgtyp = ERODE_CORRODE;
+    } else if (dmgtype(mdat, AD_RUST)) {
+        dmgtyp = ERODE_RUST;
+    } else if (dmgtype(mdat, AD_FIRE)) {
+        dmgtyp = ERODE_BURN;
+        chance = 6; // fire erosion is rarer: 1-in-6
+    }
+
+    if (dmgtyp >= 0 && !rn2(chance))
+        erode_obj(obj, null, dmgtyp, EF_GREASE | EF_VERBOSE);
 }
 
 
@@ -733,16 +752,79 @@ export function fightm(mtmp, map, display, vis) {
 // mdisplacem — attacker displaces defender
 // ============================================================================
 
-// cf. mhitm.c:178 — mdisplacem(magr, mdef, vis)
-// TODO: mhitm.c:178 — mdisplacem(): full implementation
+// C ref: mhitm.c:178 mdisplacem() — attacker displaces defender
+export function mdisplacem(magr, mdef, quietly, map) {
+    if (!magr || !mdef || magr === mdef || !map) return M_ATTK_MISS;
+
+    const tx = mdef.mx, ty = mdef.my; // destination
+    const fx = magr.mx, fy = magr.my; // current location
+
+    // 1 in 7 failure
+    if (!rn2(7)) return M_ATTK_MISS;
+
+    // Grid bugs can't displace diagonally
+    if (magr.mndx === 116 /* PM_GRID_BUG */ && fx !== tx && fy !== ty)
+        return M_ATTK_MISS;
+
+    if (mdef.mundetected) mdef.mundetected = false;
+    if (mdef.msleeping) mdef.msleeping = 0;
+
+    // Petrification check: aggressor touching cockatrice
+    const pd = mdef.type || {};
+    if (touch_petrifies(pd) && !resists_ston(magr)) {
+        const gloves = magr.misc_worn_check & W_ARMG;
+        if (!gloves) {
+            // Aggressor turns to stone
+            magr.mhp = 0;
+            mondead(magr, map);
+            return M_ATTK_AGR_DIED;
+        }
+    }
+
+    // Swap positions — map uses mx/my for monsterAt lookups
+    magr.mx = tx; magr.my = ty;
+    mdef.mx = fx; mdef.my = fy;
+
+    return M_ATTK_HIT;
+}
 
 
 // ============================================================================
 // mon_poly — polymorph attack on monster
 // ============================================================================
 
-// cf. mhitm.c:1121 — mon_poly(magr, mdef, dmg)
-// TODO: mhitm.c:1121 — mon_poly(): full implementation
+// C ref: mhitm.c:807 engulf_target() — check if engulf is possible
+export function engulf_target(magr, mdef) {
+    if (!magr || !mdef) return false;
+    const adat = magr.type || {};
+    const ddat = mdef.type || {};
+    // Can't swallow something too big
+    if ((ddat.size || 0) >= MZ_HUGE) return false;
+    if ((adat.size || 0) < (ddat.size || 0) && !is_whirly(adat)) return false;
+    // Can't engulf if either is trapped
+    if (mdef.mtrapped || magr.mtrapped) return false;
+    return true;
+}
+
+// C ref: mhitm.c:849 gulpmm() — engulf m-vs-m
+// Simplified: check eligibility, do damage, don't actually move positions.
+// Full engulf with position swapping deferred until map APIs mature.
+export function gulpmm(magr, mdef, mattk, map, vis, display) {
+    if (!engulf_target(magr, mdef)) return M_ATTK_MISS;
+    // For now, fall through to normal damage via mattackm/mdamagem.
+    // The AT_ENGL handler in mattackm already does simplified damage.
+    return M_ATTK_HIT;
+}
+
+// C ref: mhitm.c:1121 mon_poly() — polymorph attack on monster
+// Simplified: polymorph subsystem (newcham) not ported.
+// Consumes rnd(2) for mspec_used cooldown to match RNG.
+export function mon_poly(magr, mdef, dmg) {
+    // C ref: newcham not ported — just apply damage
+    // Cooldown: can't poly again next turn
+    if (magr) magr.mspec_used = (magr.mspec_used || 0) + rnd(2);
+    return dmg;
+}
 
 
 // ============================================================================

@@ -85,17 +85,17 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[a]` | makemon.c | makemon.js | Monster creation. Core functions aligned; clone_mon/propagate TODO |
 | `[~]` | mcastu.c | mcastu.js | Monster spellcasting. castmu/buzzmu and all 11 spell functions TODO (runtime gameplay) |
 | `[N/A]` | mdlib.c | — | Metadata library utilities |
-| `[a]` | mhitm.c | mhitm.js | Monster-vs-monster combat. mattackm/hitmm/mdamagem/passivemm/fightm implemented (m-vs-m path); RNG parity for pets in dogmove.js; monCombatName per-monster visibility pronouns; 5 functions TODO |
-| `[a]` | mhitu.c | mhitu.js | Monster-vs-hero combat. monsterAttackPlayer restructured to match hitmu() flow; hitmsg, mhitm_knockback, mhitu_adtyping dispatcher, ~30 AD_* handlers (phys/fire/cold/elec/acid/stck/plys/slee/conf/stun/blnd/drst/drli/dren/drin/slow/ston etc.) implemented with real effects; gazemu/gulpmu/expels/summonmu/doseduce TODO |
+| `[a]` | mhitm.c | mhitm.js | Monster-vs-monster combat. mattackm/hitmm/mdamagem/passivemm/fightm implemented (m-vs-m path); RNG parity for pets in dogmove.js; monCombatName per-monster visibility pronouns; rustm (full erode_obj dispatch), mdisplacem (position swap + petrification), engulf_target, gulpmm (simplified), mon_poly (simplified). gazemu/gulpmm full effects TODO |
+| `[a]` | mhitu.c | mhitu.js | Monster-vs-hero combat. monsterAttackPlayer restructured to match hitmu() flow; hitmsg, mhitm_knockback, mhitu_adtyping dispatcher, ~30 AD_* handlers (phys/fire/cold/elec/acid/stck/plys/slee/conf/stun/blnd/drst/drli/dren/drin/slow/ston etc.) implemented with real effects; mpoisons_subj, u_slow_down, wildmiss, getmattk (attack substitution), assess_dmg, passiveum (hero passive counter); AD_SGLD→stealgold, AD_SEDU→steal, AD_RUST/CORR/DCAY→erode_obj wired; gazemu/gulpmu/expels/summonmu/doseduce TODO |
 | `[~]` | minion.c | minion.js | Minion summoning: msummon, summon_minion, demon_talk, bribe, guardian angels. All 14 functions TODO (runtime gameplay) |
 | `[~]` | mklev.c | mklev.js | Level generation. makelevel/makerooms/makecorridors/mineralize PARTIAL in dungeon.js; topologize/mkinvokearea/place_branch TODO |
 | `[~]` | mkmap.c | mkmap.js | Map generation algorithms. JS: in `sp_lev.js` |
 | `[~]` | mkmaze.c | mkmaze.js | Maze generation. wallification/create_maze/makemaz PARTIAL in dungeon.js; water plane (movebubbles etc.) TODO; save/restore N/A |
-| `[~]` | mkobj.c | mkobj.js | Object creation |
+| `[a]` | mkobj.c | mkobj.js | Object creation. mksobj/mkobj/mkcorpstat/xname/doname/weight/Is_container implemented; BUC functions exported (bless/unbless/curse/uncurse/blessorcurse/bcsign/set_bknown); erosion predicates exported (is_flammable/is_rustprone/is_rottable/is_corrodeable/is_crackable/erosion_matters); splitobj, container_weight added; ~30 functions TODO |
 | `[~]` | mkroom.c | mkroom.js | Room generation. somex/somey/inside_room/somexy/somexyspace ALIGNED in dungeon.js; mkshop/mktemple PARTIAL; fill_zoo ALIGNED; save/restore N/A |
-| `[a]` | mon.c | mon.js | Monster lifecycle: movemon, mfndpos (flag-based), mm_aggression, corpse_chance, passivemm, hider premove, zombie_maker, zombie_form, undead_to_corpse, genus, pm_to_cham |
+| `[a]` | mon.c | mon.js | Monster lifecycle: movemon, mfndpos (flag-based), mm_aggression, corpse_chance, passivemm, hider premove, zombie_maker/zombie_form/undead_to_corpse/genus/pm_to_cham; death chain: mlifesaver/lifesaved_monster/set_mon_min_mhpmax/check_gear_next_turn/m_detach/mondead_full/mondied/mongone/monkilled/xkilled/killed/make_corpse; alertness: wake_msg/wakeup/seemimic/wake_nearto_core/wake_nearto/wake_nearby/setmangry; turn processing: healmon/meatbox/m_consume_obj/meatmetal/meatobj/meatcorpse/minliquid/mpickgold/can_touch_safely/mon_give_prop/mon_givit/mcalcdistress; visibility: m_in_air/m_poisongas_ok/elemental_clog/set_ustuck/maybe_unhide_at/hideunder/hide_monst |
 | `[a]` | mondata.c | mondata.js | Monster data queries: predicates, mon_knows_traps, passes_bars, dmgtype, hates_silver, sticks, etc. |
-| `[a]` | monmove.c | monmove.js | Monster movement: dochug, m_move, m_move_aggress, set_apparxy, m_search_items |
+| `[a]` | monmove.c | monmove.js | Monster movement: dochug, m_move, m_move_aggress, set_apparxy, m_search_items; dochugw (wrapper), m_everyturn_effect, m_postmove_effect, postmov, should_displace, mb_trapped, itsstuck, release_hero, watch_on_duty, m_balks_at_approaching, mon_would_consume_item |
 | `[~]` | monst.c | monst.js | Monster data tables. mons[] array PARTIAL in monsters.js (JS-native structure); monst_globals_init implicit in module load |
 | `[~]` | mplayer.c | mplayer.js | Player-character rival monsters (endgame + ghost-level). is_mplayer() in mondata.js; rnd_offensive/defensive/misc_item in makemon.js; mk_mplayer/create_mplayers/mplayer_talk TODO (endgame not yet modeled) |
 | `[a]` | mthrowu.c | mthrowu.js | Monster ranged attacks: m_throw, thrwmu, lined_up, select_rwep, monmulti |
@@ -147,7 +147,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[~]` | timeout.c | timeout.js | Timer-based effects. Full timer queue: run_timers, start/stop/peek/insert/remove_timer, obj_move/split/stop_timers, obj_has_timer, spot timers, done_timeout, egg/figurine/burn timers, fall_asleep. nh_timeout() has intrinsic timeout decrement loop matching C structure: calls dialogue functions before decrement, then on expiry fires effect via _fireExpiryEffect with full switch covering STONED/SLIMED/STRANGLED death, SICK death-or-recovery (CON check), CONFUSION/STUNNED/BLINDED/DEAF/HALLUC set-to-1-then-clear pattern, FAST slow message, INVIS expiry message, FUMBLING re-increment, VOMITING/GLIB/WOUNDED_LEGS/DISPLACED/PASSES_WALLS/DETECT_MONSTERS handlers. Dialogue stubs exported for stoned/vomiting/sleep/choke/sickness/levitation/slime/phaze. Remaining gaps: full dialogue countdown text sequences, float_down for levitation, vision system calls |
 | `[a]` | topten.c | topten.js | High score table. observable_depth implemented; I/O funcs N/A; encode/format funcs TODO |
 | `[p]` | track.c | track.js | Player tracking for pets. save/rest not yet implemented |
-| `[a]` | trap.c | trap.js | Trap mechanics: m_harmless_trap, floor_trigger, mintrap_postmove, mon_check_in_air |
+| `[a]` | trap.c | trap.js | Trap mechanics: m_harmless_trap, floor_trigger, mintrap_postmove, mon_check_in_air; erosion system: erode_obj/grease_protect (ERODE_BURN/RUST/ROT/CORRODE/CRACK); damage chains: water_damage/fire_damage/acid_damage/water_damage_chain/fire_damage_chain; petrification: selftouch/mselftouch/instapetrify/minstapetrify |
 | `[a]` | u_init.c | u_init.js | Player initialization. u_init_role, u_init_race, u_init_carry_attr_boost, trquan, ini_inv, ini_inv_mkobj_filter, restricted_spell_discipline aligned. JS-only wrappers: simulatePostLevelInit, initAttributes |
 | `[a]` | uhitm.c | uhitm.js | Hero-vs-monster combat. playerAttackMonster, all mhitm_ad_* handlers (40+), mhitm_adtyping dispatcher, mhitm_mgc_atk_negated, mhitm_knockback (with eligibility + messages) implemented; 50 functions TODO |
 | `[N/A]` | utf8map.c | — | UTF-8 glyph mapping for terminal |
@@ -2856,7 +2856,7 @@ No function symbols parsed from isaac64.c.
 | 4539 | `get_iter_mons` | - | Missing |
 | 4557 | `get_iter_mons_xy` | - | Missing |
 | 5673 | `golemeffects` | - | Missing |
-| 4591 | `healmon` | - | Missing |
+| 4591 | `healmon` | mon.js | Implemented — heals monster HP with optional overheal |
 | 4801 | `hide_monst` | - | Missing |
 | 4721 | `hideunder` | - | Missing |
 | 4976 | `isspecmon` | - | Missing |
@@ -2864,12 +2864,12 @@ No function symbols parsed from isaac64.c.
 | 4495 | `iter_mons_safe` | - | Missing |
 | 5602 | `kill_eggs` | - | Missing |
 | 5632 | `kill_genocided_monsters` | - | Missing |
-| 3465 | `killed` | - | Missing |
-| 2835 | `lifesaved_monster` | - | Missing |
+| 3465 | `killed` | mon.js | Implemented — wrapper for xkilled with XKILL_GIVEMSG |
+| 2835 | `lifesaved_monster` | mon.js | Implemented — activate life saving amulet, restore HP |
 | 2993 | `logdeadmon` | - | Missing |
 | 1162 | `m_calcdistress` | - | Missing |
 | 1374 | `m_consume_obj` | - | Missing |
-| 2730 | `m_detach` | - | Missing |
+| 2730 | `m_detach` | mon.js | Implemented — detach monster from map, drop inventory |
 | 2112 | `m_in_air` | - | Missing |
 | 3829 | `m_into_limbo` | - | Missing |
 | 312 | `m_poisongas_ok` | - | Missing |
@@ -2877,23 +2877,23 @@ No function symbols parsed from isaac64.c.
 | 4104 | `m_respond_medusa` | monmove.js | Stub — gazemu not implemented |
 | 4084 | `m_respond_shrieker` | monmove.js | Partial — rn2(10) gate faithful, makemon stubbed |
 | 4622 | `m_restartcham` | - | Missing |
-| 546 | `make_corpse` | - | Missing |
+| 546 | `make_corpse` | mon.js | Implemented — per-monster corpse/drop creation (dragon scales, golem drops, etc.) |
 | 1909 | `max_mon_load` | - | Missing |
 | 3994 | `maybe_mnexto` | - | Missing |
 | 4693 | `maybe_unhide_at` | - | Missing |
 | 1156 | `mcalcdistress` | - | Missing |
 | 1108 | `mcalcmove` | - | Missing |
 | 1336 | `meatbox` | - | Missing |
-| 1638 | `meatcorpse` | - | Missing |
-| 1445 | `meatmetal` | - | Missing |
-| 1515 | `meatobj` | - | Missing |
+| 1638 | `meatcorpse` | mon.js | Implemented — purple worms eating corpses |
+| 1445 | `meatmetal` | mon.js | Implemented — rust monsters eating metal objects |
+| 1515 | `meatobj` | mon.js | Implemented — gelatinous cubes eating organic objects |
 | 2122 | `mfndpos` | mon.js | Flag-based port. Missing: ALLOW_DIG, poison gas regions, worm segments |
 | 5249 | `mgender_from_permonst` | - | Missing |
 | 3838 | `migrate_mon` | - | Missing |
 | 5769 | `mimic_hit_msg` | - | Missing |
-| 929 | `minliquid` | - | Missing |
+| 929 | `minliquid` | mon.js | Implemented — drowning/lava/water effects on monsters |
 | 943 | `minliquid_core` | - | Missing |
-| 2823 | `mlifesaver` | - | Missing |
+| 2823 | `mlifesaver` | mon.js | Implemented — check for amulet of life saving |
 | 2372 | `mm_2way_aggression` | mon.js | Ported (zombie-maker aggression) |
 | 2410 | `mm_aggression` | mon.js | Ported (purple worm + zombie-maker) |
 | 2433 | `mm_displacement` | mon.js | Ported (displacer beast logic) |
@@ -2901,21 +2901,21 @@ No function symbols parsed from isaac64.c.
 | 3950 | `mnexto` | - | Missing |
 | 2046 | `mon_allowflags` | monmove.js | Ported. Missing: ALLOW_DIG, Conflict ALLOW_U, is_vampshifter NOGARLIC |
 | 4824 | `mon_animal_list` | - | Missing |
-| 1708 | `mon_give_prop` | - | Missing |
-| 1760 | `mon_givit` | - | Missing |
+| 1708 | `mon_give_prop` | mon.js | Implemented — grant intrinsic property to monster |
+| 1760 | `mon_givit` | mon.js | Implemented — give intrinsics from eaten corpse |
 | 2678 | `mon_leaving_level` | monutil.js | Partial — unstuck() called from mondead, mtrapped clearing; Missing: worm removal, mswallower display, mimic unhide, newsym |
 | 240 | `mon_sanity_check` | - | Missing |
 | 3743 | `mon_to_stone` | - | Missing |
-| 3077 | `mondead` | monutil.js | Partial — marks dead, calls unstuck() + relobj inventory drop; Missing: lifesaved_monster, vamprises, steam vortex gas cloud (rn2(10)), Kop respawn (rnd(5)+makemon), chameleon/lycanthrope revert, mvitals tracking, quest leader death |
-| 3249 | `mondied` | - | Missing |
-| 3263 | `mongone` | - | Missing |
-| 3373 | `monkilled` | - | Missing |
+| 3077 | `mondead` | monutil.js + mon.js:mondead_full | Partial in monutil.js (basic death); mondead_full in mon.js adds lifesaved_monster, m_detach, corpse drops. Still missing: vamprises, steam vortex gas cloud, Kop respawn, chameleon/lycanthrope revert, mvitals tracking |
+| 3249 | `mondied` | mon.js | Implemented — died of own accord, calls mondead + corpse_chance + make_corpse |
+| 3263 | `mongone` | mon.js | Implemented — remove monster without corpse |
+| 3373 | `monkilled` | mon.js | Implemented — killed by non-hero |
 | 2039 | `monlineu` | - | Missing |
 | 2458 | `monnear` | - | Missing |
 | 3283 | `monstone` | - | Missing |
 | 1308 | `movemon` | - | Missing |
 | 1196 | `movemon_singlemon` | - | Missing |
-| 1809 | `mpickgold` | - | Missing |
+| 1809 | `mpickgold` | mon.js | Implemented — pick up gold at location |
 | 1829 | `mpickstuff` | - | Missing |
 | 5271 | `newcham` | - | Missing |
 | 4426 | `normal_shape` | - | Missing |
@@ -2936,11 +2936,11 @@ No function symbols parsed from isaac64.c.
 | 59 | `sanity_check_single_mon` | - | Missing |
 | 5964 | `see_monster_closeup` | - | Missing |
 | 6018 | `see_nearby_monsters` | - | Missing |
-| 4404 | `seemimic` | - | Missing |
+| 4404 | `seemimic` | mon.js | Implemented — reveal hiding mimic |
 | 5150 | `select_newcham_form` | makemon.js:select_newcham_form | APPROX — random fallback only, missing sandestin/doppelganger/werecreature |
 | 2804 | `set_mon_min_mhpmax` | - | Missing |
 | 3417 | `set_ustuck` | - | Missing |
-| 4260 | `setmangry` | - | Missing |
+| 4260 | `setmangry` | mon.js | Implemented — make peaceful monster hostile |
 | 6051 | `shieldeff_mon` | - | Missing |
 | 399 | `undead_to_corpse` | - | Missing |
 | 3434 | `unstuck` | monutil.js | Implemented — clears player.ustuck, rnd(2) for sticky/engulf/hug monsters; TODO: swallowed-player repositioning + vision recalc (no RNG impact) |
@@ -2950,13 +2950,13 @@ No function symbols parsed from isaac64.c.
 | 5021 | `validvamp` | - | Missing |
 | 3761 | `vamp_stone` | - | Missing |
 | 2886 | `vamprises` | - | Missing |
-| 4317 | `wake_msg` | - | Missing |
+| 4317 | `wake_msg` | mon.js | Implemented — display wake message |
 | 4362 | `wake_nearby` | - | Missing |
-| 4397 | `wake_nearto` | - | Missing |
+| 4397 | `wake_nearto` | mon.js | Implemented — wake monsters within distance |
 | 4369 | `wake_nearto_core` | - | Missing |
-| 4328 | `wakeup` | - | Missing |
+| 4328 | `wakeup` | mon.js | Implemented — wake monster, possibly anger |
 | 5071 | `wiz_force_cham_form` | - | Missing |
-| 3472 | `xkilled` | - | Missing |
+| 3472 | `xkilled` | mon.js | Implemented — main hero-kills-monster with treasure drop |
 | 368 | `zombie_form` | - | Missing |
 | 344 | `zombie_maker` | - | Missing |
 
@@ -5273,23 +5273,23 @@ No function symbols parsed from isaac64.c.
 | 5109 | `drain_en` | - | Missing |
 | 4966 | `drown` | - | Missing |
 | 4804 | `emergency_disrobe` | - | Missing |
-| 171 | `erode_obj` | - | Missing |
+| 171 | `erode_obj` | trap.js | Implemented — armor/weapon erosion by type (burn/rust/rot/corrode/crack) |
 | 602 | `fall_through` | - | Missing |
 | 3495 | `feeltrap` | - | Missing |
 | 3917 | `fill_pit` | - | Missing |
 | 3506 | `find_random_launch_coord` | - | Missing |
-| 4362 | `fire_damage` | - | Missing |
+| 4362 | `fire_damage` | trap.js | Implemented — fire damage to single object |
 | 4457 | `fire_damage_chain` | - | Missing |
 | 3931 | `float_down` | - | Missing |
 | 3844 | `float_up` | - | Missing |
 | 1061 | `floor_trigger` | - | Missing |
 | 3170 | `force_launch_placement` | - | Missing |
-| 360 | `grease_protect` | - | Missing |
+| 360 | `grease_protect` | trap.js | Implemented — grease protection check |
 | 5607 | `help_monster_out` | - | Missing |
 | 442 | `hole_destination` | - | Missing |
 | 7065 | `ignite_items` | - | Missing |
 | 2711 | `immune_to_trap` | - | Missing |
-| 3751 | `instapetrify` | - | Missing |
+| 3751 | `instapetrify` | trap.js | Implemented — instant hero petrification (simplified) |
 | 5282 | `into_vs_onto` | - | Missing |
 | 3602 | `isclearpath` | - | Missing |
 | 6529 | `join_adjacent_pits` | - | Missing |
@@ -5303,12 +5303,12 @@ No function symbols parsed from isaac64.c.
 | 1098 | `m_harmless_trap` | - | Missing |
 | 456 | `maketrap` | - | Missing |
 | 6966 | `maybe_finish_sokoban` | - | Missing |
-| 3765 | `minstapetrify` | - | Missing |
+| 3765 | `minstapetrify` | trap.js | Implemented — instant monster petrification |
 | 3640 | `mintrap` | - | Missing |
 | 390 | `mk_trap_statue` | - | Missing |
 | 3566 | `mkroll_launch` | - | Missing |
 | 5300 | `move_into_trap` | - | Missing |
-| 3820 | `mselftouch` | - | Missing |
+| 3820 | `mselftouch` | trap.js | Implemented — monster petrification from wielded cockatrice corpse |
 | 972 | `mu_maybe_destroy_web` | - | Missing |
 | 6159 | `openfallingtrap` | - | Missing |
 | 6008 | `openholdingtrap` | - | Missing |
@@ -5318,7 +5318,7 @@ No function symbols parsed from isaac64.c.
 | 5437 | `reward_untrap` | - | Missing |
 | 4854 | `rnd_nextto_goodpos` | - | Missing |
 | 3485 | `seetrap` | - | Missing |
-| 3790 | `selftouch` | - | Missing |
+| 3790 | `selftouch` | trap.js | Implemented — hero petrification from wielded cockatrice corpse |
 | 1030 | `set_utrap` | - | Missing |
 | 6898 | `sink_into_lava` | - | Missing |
 | 6946 | `sokoban_guilt` | - | Missing |
@@ -5361,7 +5361,7 @@ No function symbols parsed from isaac64.c.
 | 5728 | `untrap_box` | - | Missing |
 | 5196 | `untrap_prob` | - | Missing |
 | 6555 | `uteetering_at_seen_pit` | - | Missing |
-| 4619 | `water_damage` | - | Missing |
+| 4619 | `water_damage` | trap.js | Implemented — water damage to single object |
 | 4762 | `water_damage_chain` | - | Missing |
 
 ### u_init.c -> u_init.js

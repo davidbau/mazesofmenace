@@ -38,6 +38,10 @@ import { thrwmu } from './mthrowu.js';
 import { exercise } from './attrib_exercise.js';
 import { make_confused, make_stunned, make_blinded } from './potion.js';
 import { losexp } from './exper.js';
+import { stealgold, steal } from './steal.js';
+import { erode_obj, ERODE_RUST, ERODE_CORRODE, ERODE_ROT,
+         EF_GREASE, EF_VERBOSE } from './trap.js';
+import { xkilled, XKILL_NOMSG } from './mon.js';
 
 const PIERCE = 1;
 
@@ -620,8 +624,10 @@ function mhitu_ad_tlpt(monster, attack, player, mhm, ctx) {
 // cf. uhitm.c:2793 mhitm_ad_sgld — mhitu branch (steal gold)
 function mhitu_ad_sgld(monster, attack, player, mhm, ctx) {
     hitmsg(monster, attack, ctx.display, ctx.suppressHitMsg);
-    // C: stealgold(magr) — not implemented
-    // damage is kept as physical
+    if (player && ctx.display) {
+        stealgold(monster, player, ctx.display);
+    }
+    mhm.damage = 0;
 }
 
 // cf. uhitm.c:3015 mhitm_ad_curs — mhitu branch
@@ -717,7 +723,10 @@ function mhitu_ad_dise(monster, attack, player, mhm, ctx) {
 // cf. uhitm.c:4611 mhitm_ad_sedu — mhitu branch (seduction/theft)
 function mhitu_ad_sedu(monster, attack, player, mhm, ctx) {
     hitmsg(monster, attack, ctx.display, ctx.suppressHitMsg);
-    // Seduction — not implemented
+    // C ref: doseduce()/steal() — call steal for item theft
+    if (player && ctx.display) {
+        steal(monster, player, ctx.display);
+    }
     mhm.damage = 0;
 }
 
@@ -780,17 +789,31 @@ function mhitu_ad_halu(monster, attack, player, mhm, ctx) {
     mhm.damage = 0;
 }
 
-// Stub handlers for equipment erosion — hitmsg + zero damage
+// Equipment erosion handlers — hitmsg + erode armor + zero damage
 function mhitu_ad_rust(monster, attack, player, mhm, ctx) {
     hitmsg(monster, attack, ctx.display, ctx.suppressHitMsg);
+    // C ref: hurtarmor(mdef, AD_RUST) — erode hero's armor
+    if (player) {
+        // Erode a random worn armor piece
+        const armor = player.armor || player.suit;
+        if (armor) erode_obj(armor, null, ERODE_RUST, EF_GREASE | EF_VERBOSE);
+    }
     mhm.damage = 0;
 }
 function mhitu_ad_corr(monster, attack, player, mhm, ctx) {
     hitmsg(monster, attack, ctx.display, ctx.suppressHitMsg);
+    if (player) {
+        const armor = player.armor || player.suit;
+        if (armor) erode_obj(armor, null, ERODE_CORRODE, EF_GREASE | EF_VERBOSE);
+    }
     mhm.damage = 0;
 }
 function mhitu_ad_dcay(monster, attack, player, mhm, ctx) {
     hitmsg(monster, attack, ctx.display, ctx.suppressHitMsg);
+    if (player) {
+        const armor = player.armor || player.suit;
+        if (armor) erode_obj(armor, null, ERODE_ROT, EF_GREASE | EF_VERBOSE);
+    }
     mhm.damage = 0;
 }
 
@@ -1004,16 +1027,92 @@ export function monsterAttackPlayer(monster, player, display, game = null, opts 
 // ============================================================================
 
 // --- Group 2: Poison/slow/wildmiss (mhitu.c:146-262) ---
-// TODO: cf. mhitu.c mpoisons_subj() — poison subject message
-// TODO: cf. mhitu.c u_slow_down() — hero slowdown from attack
-// TODO: cf. mhitu.c wildmiss() — invisible/displaced miss message
+
+// C ref: mhitu.c:146 mpoisons_subj() — poison delivery subject name
+export function mpoisons_subj(monster, attack) {
+    if (attack.type === AT_WEAP) {
+        const mwep = monster.weapon;
+        return (!mwep || !mwep.opoisoned) ? 'attack' : 'weapon';
+    }
+    if (attack.type === AT_TUCH) return 'contact';
+    if (attack.type === AT_BITE) return 'bite';
+    return 'sting';
+}
+
+// C ref: mhitu.c:162 u_slow_down() — hero slowdown from attack
+export function u_slow_down(player, display) {
+    if (!player) return;
+    // C ref: HFast = 0L — clear intrinsic speed
+    player.fast = false;
+    if (display) {
+        if (!player.fast_from_extrinsic)
+            display.putstr_message('You slow down.');
+        else
+            display.putstr_message('Your quickness feels less natural.');
+    }
+    exercise(player, A_DEX, false);
+}
+
+// C ref: mhitu.c:175 wildmiss() — displaced/invisible miss message
+function wildmiss(monster, attack, player, display) {
+    if (!display) return;
+    // Simplified: just consume rn2(3) and show a message
+    const name = monDisplayName(monster);
+    switch (rn2(3)) {
+    case 0:
+        display.putstr_message(`The ${name} swings wildly and misses!`);
+        break;
+    case 1:
+        display.putstr_message(`The ${name} attacks a spot beside you.`);
+        break;
+    case 2:
+        display.putstr_message(`The ${name} strikes at thin air!`);
+        break;
+    }
+}
 
 // --- Group 3: Engulf expulsion (mhitu.c:263-308) ---
 // TODO: cf. mhitu.c expels() — expel hero from engulfer
 
 // --- Group 4: Attack dispatch (mhitu.c:309-953) ---
-// TODO: cf. mhitu.c getmattk() — get monster attack for index
-// TODO: cf. mhitu.c calc_mattacku_vars() — calculate attack variables
+
+// C ref: mhitu.c:309 getmattk() — get (possibly modified) attack for index
+// Simplified: handles mspec_used holdback, consecutive disease→stun.
+// Missing: SEDUCE=0 substitution, energy scaling, elemental home doubling.
+export function getmattk(monster, mdef, indx, prev_result) {
+    const mptr = monster.type || {};
+    const attacks = mptr.attacks || [];
+    if (indx >= attacks.length) return null;
+    const attk = { ...attacks[indx] };
+
+    // Consecutive disease/pest/famn → stun
+    if (indx > 0 && prev_result && prev_result[indx - 1] > M_ATTK_MISS) {
+        const prevAttk = attacks[indx - 1];
+        if ((attk.damage === AD_DISE || attk.damage === AD_PEST || attk.damage === AD_FAMN)
+            && prevAttk && attk.damage === prevAttk.damage) {
+            attk.damage = AD_STUN;
+        }
+    }
+
+    // mspec_used holders/engulfers get fallback attack
+    if (monster.mspec_used && (attk.type === AT_ENGL || attk.type === AT_HUGS
+        || attk.damage === AD_STCK || attk.damage === AD_POLY)) {
+        if (attk.damage === AD_ACID || attk.damage === AD_ELEC
+            || attk.damage === AD_COLD || attk.damage === AD_FIRE) {
+            attk.type = AT_TUCH;
+        } else {
+            attk.type = AT_CLAW;
+            attk.damage = AD_PHYS;
+        }
+        attk.dice = 1;
+        attk.sides = 6;
+    }
+
+    return attk;
+}
+
+// C ref: mhitu.c calc_mattacku_vars() — stub (attack variable calculations)
+// TODO: full implementation when mattacku flow is restructured
 
 // --- Group 5: Summoning/disease/slip (mhitu.c:954-1084) ---
 // TODO: cf. mhitu.c summonmu() — summon minions during attack
@@ -1031,7 +1130,61 @@ export function monsterAttackPlayer(monster, player, display, game = null, opts 
 // TODO: cf. mhitu.c doseduce() — seduction attack
 
 // --- Group 9: Assessment/avoidance (mhitu.c:2349-2424) ---
-// TODO: cf. mhitu.c assess_dmg() — assess damage for fleeing
+
+// C ref: mhitu.c:2349 assess_dmg() — deduct damage from monster, kill if needed
+export function assess_dmg(mtmp, tmp, map, player) {
+    if (!mtmp) return M_ATTK_HIT;
+    mtmp.mhp = (mtmp.mhp || 0) - tmp;
+    if (mtmp.mhp <= 0) {
+        xkilled(mtmp, XKILL_NOMSG, map, player);
+        if (mtmp.dead || mtmp.mhp <= 0)
+            return M_ATTK_AGR_DIED;
+        return M_ATTK_HIT;
+    }
+    return M_ATTK_HIT;
+}
 
 // --- Group 10: Passive/clone (mhitu.c:2425-2640) ---
-// TODO: cf. mhitu.c passiveum() — passive counterattack damage
+
+// C ref: mhitu.c:2425 passiveum() — hero's passive counterattack when polymorphed
+// Simplified: only handles AD_ACID (the most common case).
+// Missing: AD_STON, AD_ENCH, AD_PLYS, AD_COLD/FIRE/ELEC mold effects.
+export function passiveum(olduasmon, mtmp, mattk, map, player) {
+    if (!olduasmon || !mtmp) return M_ATTK_HIT;
+    // Find the passive attack slot (AT_NONE or AT_BOOM)
+    const attacks = olduasmon.attacks || [];
+    let oldu_mattk = null;
+    for (const a of attacks) {
+        if (!a) continue;
+        if (a.type === AT_NONE || a.type === AT_BOOM) {
+            oldu_mattk = a;
+            break;
+        }
+    }
+    if (!oldu_mattk) return M_ATTK_HIT;
+
+    let tmp = 0;
+    if (oldu_mattk.dice)
+        tmp = c_d(oldu_mattk.dice, oldu_mattk.sides || 1);
+    else if (oldu_mattk.sides)
+        tmp = c_d((olduasmon.mlevel || 0) + 1, oldu_mattk.sides);
+
+    switch (oldu_mattk.damage) {
+    case AD_ACID:
+        if (!rn2(2)) {
+            if (resists_acid(mtmp)) tmp = 0;
+        } else {
+            tmp = 0;
+        }
+        if (!rn2(30)) {
+            // C ref: erode_armor(mtmp, ERODE_CORRODE) — simplified
+        }
+        if (!rn2(6)) {
+            // C ref: acid_damage(MON_WEP(mtmp)) — simplified
+        }
+        return assess_dmg(mtmp, tmp, map, player);
+    default:
+        tmp = 0;
+        return assess_dmg(mtmp, tmp, map, player);
+    }
+}

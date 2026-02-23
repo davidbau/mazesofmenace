@@ -1514,3 +1514,157 @@ function set_apparxy(mon, map, player) {
     mon.mux = mx;
     mon.muy = my;
 }
+
+
+// ========================================================================
+// Monster Movement Behaviors — Phase H
+// ========================================================================
+
+// C ref: monmove.c:203 dochugw() — move a monster, check if hero should stop
+// In JS, this logic is already inline in mon.js movemon(). This is a
+// named export for external callers that need the same behavior.
+export function dochugw(mon, map, player, display, fov, game) {
+    dochug(mon, map, player, display, fov, game);
+}
+
+// C ref: monmove.c:648 m_everyturn_effect() — per-turn effects (fog cloud)
+// Simplified: fog cloud vapor creation not ported (NhRegion system).
+export function m_everyturn_effect(mon) {
+    // PM_FOG_CLOUD creates harmless vapor — region system not ported
+}
+
+// C ref: monmove.c:666 m_postmove_effect() — post-move effects (hezrou stench)
+// Simplified: gas cloud creation not ported.
+export function m_postmove_effect(mon) {
+    // PM_HEZROU stench, PM_STEAM_VORTEX vapor — region system not ported
+}
+
+// C ref: monmove.c:1458 postmov() — post-movement processing
+// Simplified: handles trap trigger, item eating/pickup.
+// Missing: door handling (open/unlock/bust), iron bars, tunneling, engulf.
+export function postmov(mon, map, player, mmoved) {
+    if (!mon || !map) return mmoved;
+    if (mon.dead) return mmoved;
+
+    // Trap trigger after movement
+    if (mmoved === 1 /* MMOVE_MOVED */) {
+        const trapResult = mintrap_postmove(mon, map, player);
+        if (trapResult === 2 /* Trap_Killed_Mon */ || trapResult === 3 /* Trap_Moved_Mon */) {
+            return -1; // MMOVE_DIED
+        }
+    }
+
+    // Item eating and pickup after move
+    if (mmoved >= 1) {
+        const objects = map.objectsAt ? map.objectsAt(mon.mx, mon.my) : [];
+        if (objects.length > 0 && !mon.dead) {
+            // Hiding under objects
+            const mdat = mon.type || {};
+            if (hides_under(mdat) || mdat.symbol === 57 /* S_EEL */) {
+                if (mon.mundetected || rn2(5)) {
+                    // hideunder logic — simplified
+                }
+            }
+        }
+    }
+    return mmoved;
+}
+
+// C ref: monmove.c:1066 should_displace() — evaluate if displacement is worthwhile
+// Simplified: returns true if displacing gets closer to goal than non-displacing.
+export function should_displace(mon, positions, goalx, goaly) {
+    if (!positions || !Array.isArray(positions)) return false;
+    let shortestWith = -1;
+    let shortestWithout = -1;
+    let countWithout = 0;
+
+    for (const pos of positions) {
+        if (!pos) continue;
+        const ndist = dist2(pos.x, pos.y, goalx, goaly);
+        if (pos.hasMonster && pos.allowDisplace) {
+            if (shortestWith === -1 || ndist < shortestWith)
+                shortestWith = ndist;
+        } else {
+            if (shortestWithout === -1 || ndist < shortestWithout)
+                shortestWithout = ndist;
+            countWithout++;
+        }
+    }
+    return shortestWith > -1
+        && (shortestWith < shortestWithout || !countWithout);
+}
+
+// C ref: monmove.c:54 mb_trapped() — door trap explosion
+// Returns true if monster dies.
+export function mb_trapped(mon, map, player) {
+    if (!mon || !map) return false;
+    mon.stunned = true;
+    mon.mhp = (mon.mhp || 0) - rnd(15);
+    if ((mon.mhp || 0) <= 0) {
+        mondead(mon, map, player);
+        if (mon.dead || (mon.mhp || 0) <= 0) return true;
+    }
+    return false;
+}
+
+// C ref: monmove.c:1056 itsstuck() — check if monster is stuck to hero
+export function itsstuck(mon, player) {
+    if (!mon || !player) return false;
+    // C ref: sticks(youmonst.data) && mtmp == u.ustuck && !u.uswallow
+    if (player.ustuck === mon && !player.uswallow) {
+        // Hero's form sticks — simplified check
+        return true;
+    }
+    return false;
+}
+
+// C ref: monmove.c:361 release_hero() — ungrab/expel held/swallowed hero
+export function release_hero(mon, player) {
+    if (!mon || !player) return;
+    if (player.ustuck === mon) {
+        if (player.uswallow) {
+            // C ref: expels(mon, ...) — not fully ported
+            player.uswallow = false;
+            player.ustuck = null;
+        } else {
+            unstuck(mon, player);
+        }
+    }
+}
+
+// C ref: monmove.c:176 watch_on_duty() — guard behavior
+// Simplified: town/watch system not ported.
+export function watch_on_duty(mon) {
+    // Watch system not ported — no-op
+}
+
+// C ref: monmove.c:1184 m_balks_at_approaching() — monster avoids hero
+// Simplified: ranged weapon/polearm/launcher checks not fully ported.
+export function m_balks_at_approaching(oldappr, mon, player) {
+    if (!mon || !player) return oldappr;
+    const mdat = mon.type || {};
+    if (mon.peaceful || mon.tame) return oldappr;
+
+    const edist = dist2(mon.mx, mon.my, player.x, player.y);
+    if (edist >= 25) return oldappr; // too far to care
+
+    // Has ranged attack capability and is low on HP — avoid
+    const hasRanged = (mdat.attacks || []).some(a =>
+        a && (a.type === 11 /* AT_BREA */ || a.type === 12 /* AT_SPIT */));
+    if (hasRanged && ((mon.mhp || 0) < ((mon.mhpmax || 1) + 1) / 3 || !mon.mspec_used))
+        return -1; // retreat
+
+    return oldappr;
+}
+
+// C ref: mon_would_consume_item — eat criteria for items
+// Simplified stub: metallivorous eats metal, gelatinous cube eats organic.
+export function mon_would_consume_item(mon, obj) {
+    if (!mon || !obj) return false;
+    const mdat = mon.type || {};
+    // Rust monsters / rock moles eat metal
+    if (mdat.metallivorous) return true;
+    // Gelatinous cubes eat organic
+    if (mon.mndx === 8 /* PM_GELATINOUS_CUBE */) return true;
+    return false;
+}
