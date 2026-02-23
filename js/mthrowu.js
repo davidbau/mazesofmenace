@@ -3,11 +3,9 @@
 // Also includes weapon wield helpers used before ranged/melee attacks.
 //
 // INCOMPLETE / MISSING vs C mthrowu.c:
-// - select_rwep: simplified priority (C has cockatrice eggs, pies, boulders, launchers)
 // - m_throw: no ohitmon() full damage calculation (erosion, material bonuses)
 // - m_throw: corpse creation uses corpse_chance + mkcorpstat (faithful to C mondied)
 // - thrwmu: polearm attack path not implemented (C:1169)
-// - thrwmu: mon_wield_item not called before select_rwep (C:1157)
 // - monmulti: prince/lord/mplayer multishot bonuses not modeled
 // - No spitmu (acid/venom spit) implementation
 // - No breamu (breath weapon) implementation
@@ -26,6 +24,8 @@ import { mons, AT_WEAP, G_NOCORPSE } from './monsters.js';
 import { distmin, mondead, BOLT_LIM } from './monutil.js';
 import { placeFloorObject } from './floor_objects.js';
 import { corpse_chance } from './mon.js';
+import { select_rwep as weapon_select_rwep, select_hwep,
+         mon_wield_item, NEED_WEAPON, NEED_HTH_WEAPON, NEED_RANGED_WEAPON } from './weapon.js';
 
 // C ref: mthrowu.c blocking_terrain() subset used by lined_up().
 function blockingTerrainForLinedup(map, x, y) {
@@ -78,18 +78,11 @@ export function linedUpToPlayer(mon, map, player, fov = null) {
     return rn2(denom) < 2;
 }
 
-// C ref: weapon.c select_rwep() — select best ranged weapon from monster inventory.
-// Deterministic (no RNG). Returns the weapon object or null.
+// C ref: weapon.c select_rwep() — full implementation in weapon.js
+// Returns { weapon, propellor } or null. Extract .weapon for the missile.
 function select_rwep(mon) {
-    const inv = mon.minvent || [];
-    if (inv.length === 0) return null;
-    for (const obj of inv) {
-        if (!obj) continue;
-        const od = objectData[obj.otyp];
-        if (!od) continue;
-        if (od.oc_class === WEAPON_CLASS) return obj;
-    }
-    return null;
+    const result = weapon_select_rwep(mon);
+    return result ? result.weapon : null;
 }
 
 function monsterUseup(mon, obj) {
@@ -276,6 +269,12 @@ export function m_throw(mon, startX, startY, dx, dy, range, weapon, map, player,
 // C ref: mthrowu.c thrwmu() — monster throws at player.
 // Returns true if the monster acted (threw something).
 export function thrwmu(mon, map, player, display, game) {
+    // C ref: mthrowu.c:1157-1159 — wield ranged weapon before selecting
+    if (mon.weapon_check === NEED_WEAPON || !mon.weapon) {
+        mon.weapon_check = NEED_RANGED_WEAPON;
+        if (mon_wield_item(mon) !== 0)
+            return true; // wielding consumed the turn
+    }
     const otmp = select_rwep(mon);
     if (!otmp) return false;
 
@@ -332,26 +331,25 @@ export function hasWeaponAttack(mon) {
     return attacks.some(a => a && a.type === AT_WEAP);
 }
 
-function chooseMonsterWieldWeapon(mon) {
-    if (!Array.isArray(mon?.minvent)) return null;
-    for (const obj of mon.minvent) {
-        if (!obj || obj.oclass !== WEAPON_CLASS) continue;
-        return obj;
-    }
-    return null;
-}
-
+// C ref: monmove.c:853-860 — dochug weapon wielding gate
+// Called from monmove.js before melee attacks. Uses mon_wield_item for
+// proper weapon AI (select_hwep priority list) instead of first-item scan.
 export function maybeMonsterWieldBeforeAttack(mon, player, display, fov) {
     if (!hasWeaponAttack(mon)) return false;
-    if (mon.weapon) return false;
-    const wieldObj = chooseMonsterWieldWeapon(mon);
-    if (!wieldObj) return false;
-    mon.weapon = wieldObj;
-    // C ref: weapon.c:888 — wield message gated by canseemon(mon)
-    const visible = !fov?.canSee || (fov.canSee(mon.mx, mon.my)
-        && !player?.blind && !mon.minvis);
-    if (display && visible) {
-        display.putstr_message(`The ${monDisplayName(mon)} wields ${thrownObjectName(wieldObj, player)}!`);
+    // C ref: weapon_check == NEED_WEAPON || !MON_WEP(mtmp)
+    if (mon.weapon_check !== NEED_WEAPON && mon.weapon) return false;
+    const oldWeapon = mon.weapon;
+    mon.weapon_check = NEED_HTH_WEAPON;
+    if (mon_wield_item(mon) !== 0) {
+        // Wielding took monster's turn — show message if visible
+        if (mon.weapon && mon.weapon !== oldWeapon) {
+            const visible = !fov?.canSee || (fov.canSee(mon.mx, mon.my)
+                && !player?.blind && !mon.minvis);
+            if (display && visible) {
+                display.putstr_message(`The ${monDisplayName(mon)} wields ${thrownObjectName(mon.weapon, player)}!`);
+            }
+        }
+        return true;
     }
-    return true;
+    return false;
 }

@@ -1,63 +1,258 @@
 // steal.js -- Monster stealing mechanics
 // cf. steal.c — leprechaun gold theft, nymph/monkey item theft, monster pickup/drop
 
-// cf. steal.c:14 — somegold(): return proportional subset of gold quantity
-// TODO: steal.c:14 — somegold(): not yet called in JS (needed for stealgold)
+import { rn1, rn2, rnd } from './rng.js';
+import { GOLD_PIECE, COIN_CLASS, objectData } from './objects.js';
+import { newsym, mdrop_obj } from './monutil.js';
 
-// cf. steal.c:45 — findgold(): find first gold object in inventory chain
-// JS equivalent: findgold() in makemon.js:1030 (returns boolean, not pointer;
-//   sufficient for current JS call sites but differs from C which returns the object)
+// ============================================================================
+// somegold — cf. steal.c:14
+// ============================================================================
+// Proportional subset of gold quantity. Uses rn1 for randomization.
+export function somegold(lmoney) {
+    let igold = Math.min(lmoney, 0x7FFFFFFF); // LARGEST_INT
 
-// cf. steal.c:58 — stealgold(): leprechaun steals gold coins from hero
-// Partially referenced in monmove.js:1822 (leprechaun flee-without-attack logic);
-// the actual gold transfer is not yet implemented in JS.
-// TODO: steal.c:58 — stealgold(): full leprechaun gold theft from hero inventory
+    if (igold < 50)
+        ; // all gold
+    else if (igold < 100)
+        igold = rn1(igold - 25 + 1, 25);
+    else if (igold < 500)
+        igold = rn1(igold - 50 + 1, 50);
+    else if (igold < 1000)
+        igold = rn1(igold - 100 + 1, 100);
+    else if (igold < 5000)
+        igold = rn1(igold - 500 + 1, 500);
+    else if (igold < 10000)
+        igold = rn1(igold - 1000 + 1, 1000);
+    else
+        igold = rn1(igold - 5000 + 1, 5000);
 
-// cf. steal.c:120 — thiefdead(): handle thief death during multi-turn armor steal
-// TODO: steal.c:120 — thiefdead(): clear stealoid/stealmid, reset afternmv to unstolenarm
+    return igold;
+}
 
-// cf. steal.c:133 — unresponsive(): check if hero is unresponsive to seduction
-// TODO: steal.c:133 — unresponsive(): needed before steal() armor-seduction path
+// ============================================================================
+// findgold — cf. steal.c:45
+// ============================================================================
+// Find first gold object in an inventory array. Returns the object or null.
+// (Differs from makemon.js findgold which returns boolean.)
+export function findgold(chain) {
+    if (!Array.isArray(chain)) return null;
+    for (const obj of chain) {
+        if (obj && obj.otyp === GOLD_PIECE) return obj;
+    }
+    return null;
+}
 
-// cf. steal.c:147 [static] — unstolenarm(): afternmv when thief dies mid-armor-steal
-// TODO: steal.c:147 — unstolenarm(): print "finish taking off" message when thief died
+// ============================================================================
+// stealgold — cf. steal.c:58
+// ============================================================================
+// Leprechaun steals gold coins from hero. Simplified: no floor gold pickup,
+// no steed, no teleportation (rloc). Handles hero inventory gold only.
+export function stealgold(mon, player, display) {
+    if (!mon || !player) return;
+    const inv = Array.isArray(player.inventory) ? player.inventory : [];
 
-// cf. steal.c:165 [static] — stealarm(): afternmv to complete multi-turn armor theft
-// TODO: steal.c:165 — stealarm(): multi-turn armor removal occupation callback
+    const ygold = findgold(inv);
+    if (!ygold) {
+        if (display) display.putstr_message('Your purse feels lighter.');
+        return;
+    }
 
-// cf. steal.c:213 — remove_worn_item(): remove a worn item from hero inventory
-// TODO: steal.c:213 — remove_worn_item(): unequip worn item (armor/ring/amulet/weapon)
+    const goldAmt = Number(ygold.quan || 0);
+    if (goldAmt <= 0) return;
 
-// cf. steal.c:294 [static] — worn_item_removal(): remove worn item with theft message
-// TODO: steal.c:294 — worn_item_removal(): print "takes off/disarms/removes" then remove_worn_item
+    const stolen = Math.min(somegold(goldAmt), goldAmt);
+    if (stolen <= 0) return;
 
-// cf. steal.c:343 — steal(): main monster steal function (nymph/monkey vs hero)
-// TODO: steal.c:343 — steal(): pick item from hero inventory, handle armor delays, seduction
+    if (stolen < goldAmt) {
+        // Partial steal: reduce hero's gold
+        ygold.quan = goldAmt - stolen;
+    } else {
+        // Steal all gold: remove from inventory
+        const idx = inv.indexOf(ygold);
+        if (idx >= 0) inv.splice(idx, 1);
+    }
 
-// cf. steal.c:618 — mpickobj(): monster picks up / acquires an object
-// Partially referenced: add_to_minv() in makemon.js handles the inventory addition.
-// The full mpickobj() also handles thrownobj/kickedobj tracking, unpaid shop items,
-// light source handling, and carry_obj_effects().
-// TODO: steal.c:618 — mpickobj(): full monster object acquisition with side effects
+    // Add gold to monster inventory
+    const monGold = findgold(mon.minvent || []);
+    if (monGold) {
+        monGold.quan = (monGold.quan || 0) + stolen;
+    } else {
+        if (!Array.isArray(mon.minvent)) mon.minvent = [];
+        mon.minvent.push({
+            otyp: GOLD_PIECE,
+            oclass: COIN_CLASS,
+            quan: stolen,
+            ox: mon.mx,
+            oy: mon.my,
+        });
+    }
 
-// cf. steal.c:689 — stealamulet(): wizard/nemesis steals quest artifact from hero
-// TODO: steal.c:689 — stealamulet(): find and steal Amulet/invocation items/quest artifact
+    if (display) display.putstr_message('Your purse feels lighter.');
 
-// cf. steal.c:772 — maybe_absorb_item(): mimic absorbs item poked at it
-// TODO: steal.c:772 — maybe_absorb_item(): chance-based mimic item absorption
+    // C ref: steal.c:111-113 — leprechaun flees after theft
+    mon.flee = true;
+    mon.fleetim = 0;
+}
 
-// cf. steal.c:814 — mdrop_obj(): drop one object from monster inventory to floor
-// Partially implemented inline in monmove.js:2481 (monster death drops) and
-// monmove.js:1477 (dog_invent droppables loop). Neither handles all mdrop_obj() cases
-// (saddle no_charge, update_mon_extrinsics, flooreffects, verbose message).
-// TODO: steal.c:814 — mdrop_obj(): full monster object drop with all side effects
+// ============================================================================
+// thiefdead — cf. steal.c:120
+// ============================================================================
+// Monster who was stealing from hero has just died. Clear multi-turn state.
+export function thiefdead(_player) {
+    // Multi-turn armor theft callbacks not fully ported; stub.
+}
 
-// cf. steal.c:852 — mdrop_special_objs(): force-drop Amulet/invocation/quest items
-//   from monster that is leaving the level
-// TODO: steal.c:852 — mdrop_special_objs(): prevent special items from leaving level
+// ============================================================================
+// unresponsive — cf. steal.c:133
+// ============================================================================
+// Check if hero is unresponsive to seduction attempts.
+export function unresponsive(player) {
+    if (!player) return false;
+    if (player.unconscious || player.fainted) return true;
+    if (player.frozen || player.paralyzed) return true;
+    return false;
+}
 
-// cf. steal.c:875 — relobj(): release all objects from monster inventory
-// Partially implemented inline in monmove.js:2481 (monster death drops minvent in
-// reverse order). The full relobj() also handles pet-only drop via droppables(),
-// vault guard gold vanishing (findgold), and newsym() after drops.
-// TODO: steal.c:875 — relobj(): full monster inventory release (pets, guard gold, newsym)
+// ============================================================================
+// remove_worn_item — cf. steal.c:213
+// ============================================================================
+// Remove a worn item from hero. Simplified: clears the appropriate equipment
+// slot and owornmask. Full C version handles armor off effects, ring effects,
+// amulet effects, ball/chain, etc.
+export function remove_worn_item(player, obj) {
+    if (!obj || !obj.owornmask) return;
+
+    // Clear equipment slots
+    if (obj === player.armor) player.armor = null;
+    else if (obj === player.cloak) player.cloak = null;
+    else if (obj === player.helmet) player.helmet = null;
+    else if (obj === player.gloves) player.gloves = null;
+    else if (obj === player.boots) player.boots = null;
+    else if (obj === player.shield) player.shield = null;
+    else if (obj === player.shirt) player.shirt = null;
+    else if (obj === player.amulet) player.amulet = null;
+    else if (obj === player.weapon) player.weapon = null;
+    else if (obj === player.swapWeapon) player.swapWeapon = null;
+    else if (obj === player.quiver) player.quiver = null;
+
+    obj.owornmask = 0;
+}
+
+// ============================================================================
+// steal — cf. steal.c:343
+// ============================================================================
+// Main monster steal function (nymph/monkey vs hero).
+// Simplified: picks a random non-gold item from hero inventory.
+// Full C version has armor layering, seduction, multi-turn delays.
+// Returns 1 if stolen (monster should flee), 0 if nothing stolen,
+// -1 if monster died in attempt.
+export function steal(mon, player, display) {
+    if (!mon || !player) return 0;
+    const inv = Array.isArray(player.inventory) ? player.inventory : [];
+
+    // Filter eligible items (skip gold — nymphs/monkeys don't steal gold)
+    const eligible = inv.filter((obj) => obj && obj.oclass !== COIN_CLASS);
+    if (eligible.length === 0) {
+        if (display) {
+            display.putstr_message(
+                `${mon.type?.name || 'Something'} tries to rob you, but there is nothing to steal!`);
+        }
+        return 1; // let her flee
+    }
+
+    // C ref: steal.c:414-428 — weighted random selection (worn items 5x weight)
+    let total = 0;
+    for (const obj of eligible) {
+        total += (obj.owornmask & 0x007F) ? 5 : 1; // W_ARMOR | W_ACCESSORY
+    }
+    let pick = rn2(total);
+    let otmp = null;
+    for (const obj of eligible) {
+        pick -= (obj.owornmask & 0x007F) ? 5 : 1;
+        if (pick < 0) { otmp = obj; break; }
+    }
+    if (!otmp) return 0;
+
+    // Can't steal worn items easily if they're covered
+    // Simplified: just redirect to outermost layer
+    if (otmp === player.armor && player.cloak) otmp = player.cloak;
+    if (otmp === player.shirt && player.cloak) otmp = player.cloak;
+    else if (otmp === player.shirt && player.armor) otmp = player.armor;
+
+    // Remove from worn slots if worn
+    if (otmp.owornmask) {
+        remove_worn_item(player, otmp);
+    }
+
+    // Remove from hero inventory
+    const idx = inv.indexOf(otmp);
+    if (idx >= 0) inv.splice(idx, 1);
+
+    // Add to monster inventory
+    if (!Array.isArray(mon.minvent)) mon.minvent = [];
+    mon.minvent.push(otmp);
+
+    if (display) {
+        const monName = mon.type?.name || 'Something';
+        const objName = objectData[otmp.otyp]?.name || 'something';
+        display.putstr_message(`${monName} stole ${objName}!`);
+    }
+
+    // Set mavenge flag
+    mon.mavenge = true;
+
+    // Monster flees after theft
+    mon.flee = true;
+    mon.fleetim = 0;
+
+    return 1;
+}
+
+// ============================================================================
+// stealamulet — cf. steal.c:689
+// ============================================================================
+// Wizard/nemesis steals quest artifact or Amulet from hero.
+// Stub: quest artifacts and invocation items not yet implemented.
+export function stealamulet(_mon, _player, _display) {
+    // Not implemented: requires quest artifact tracking, freeinv, etc.
+}
+
+// ============================================================================
+// maybe_absorb_item — cf. steal.c:772
+// ============================================================================
+// Mimic absorbs item poked at it. Stub.
+export function maybe_absorb_item(_mon, _obj, _ochance, _achance) {
+    // Not implemented: requires full object handling
+}
+
+// ============================================================================
+// mdrop_special_objs — cf. steal.c:852
+// ============================================================================
+// Prevent special items (Amulet, invocation, quest artifacts) from leaving level.
+// Stub: quest artifacts and invocation items not yet tracked.
+export function mdrop_special_objs(_mon) {
+    // Not implemented: requires obj_resists, is_quest_artifact
+}
+
+// ============================================================================
+// relobj — cf. steal.c:875
+// ============================================================================
+// Release all objects from monster inventory to floor.
+// Used by mondead via m_detach. Replaces inline loop in monutil.js.
+export function relobj(mon, map, show, _is_pet) {
+    if (!mon || !map) return;
+
+    // C ref: steal.c:894 — drop all inventory via mdrop_obj
+    // Pets would use droppables() to keep worn items; simplified: drop all.
+    while (mon.minvent && mon.minvent.length > 0) {
+        // Drop from end to match C's linked-list order
+        const obj = mon.minvent[mon.minvent.length - 1];
+        if (!obj) { mon.minvent.pop(); continue; }
+        mdrop_obj(mon, obj, map);
+    }
+
+    if (show) {
+        newsym(map, mon.mx, mon.my);
+    }
+}

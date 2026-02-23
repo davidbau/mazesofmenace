@@ -42,6 +42,7 @@ import {
 } from './uhitm.js';
 import { monsterWeaponSwingVerb, monsterPossessive } from './mhitu.js';
 import { find_mac, W_ARMG, W_ARMF, W_ARMH } from './worn.js';
+import { mon_wield_item, possibly_unwield, NEED_WEAPON, NEED_HTH_WEAPON } from './weapon.js';
 
 // Re-export M_ATTK_* for convenience
 export { M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE };
@@ -584,18 +585,14 @@ export function mattackm(magr, mdef, display, vis, map, ctx) {
                 attk = 0;
                 break;
             }
-            // C ref: mhitm.c:406-416 — find wielded weapon
-            // In C, mon_wield_item(magr) selects best weapon from inventory.
-            // Simplified: find first weapon-class item in minvent.
-            if (!magr.mw && Array.isArray(magr.minvent)) {
-                for (const obj of magr.minvent) {
-                    if (obj.oclass === WEAPON_CLASS) {
-                        magr.mw = obj;
-                        break;
-                    }
-                }
+            // C ref: mhitm.c:406-410 — wield best melee weapon
+            if (magr.weapon_check === NEED_WEAPON || !magr.weapon) {
+                magr.weapon_check = NEED_HTH_WEAPON;
+                if (mon_wield_item(magr) !== 0)
+                    return M_ATTK_MISS;
             }
-            mwep = magr.mw || null;
+            possibly_unwield(magr, false);
+            mwep = magr.weapon || null;
             if (mwep) {
                 mswingsm(magr, mdef, mwep, display, vis, ctx);
             }

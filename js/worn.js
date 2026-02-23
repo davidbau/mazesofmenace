@@ -1,190 +1,48 @@
 // worn.js -- Equipment slot management and monster armor mechanics
 // cf. worn.c — setworn/setnotworn, monster armor AI, bypass bits, extrinsics
-//
-// Data model: The `worn[]` table maps wornmask bits to hero slot pointers
-// (uarm, uarmc, uarmh, uarms, uarmg, uarmf, uarmu, uleft, uright, uwep,
-//  uswapwep, uquiver, uamul, ublindf, uball, uchain). Each item has an
-// `owornmask` field recording which slots it occupies. Monsters use
-// `misc_worn_check` (bitmask) + `obj.owornmask` on minvent items instead.
-// Wornmask constants: W_ARM=suit, W_ARMC=cloak, W_ARMH=helm, W_ARMS=shield,
-//   W_ARMG=gloves, W_ARMF=boots, W_ARMU=shirt, W_AMUL=amulet,
-//   W_RINGL/W_RINGR=rings, W_WEP=weapon, W_SWAPWEP=alt-weapon,
-//   W_QUIVER=quiver, W_TOOL=blindfold/towel/lenses, W_SADDLE=saddle,
-//   W_BALL=ball, W_CHAIN=chain.
-// Partial JS implementation: owornmask/misc_worn_check used in u_init.js:299,339
-//   for Knight's pony saddle. No worn.c functions exist in JS yet.
-// bypass bits (obj.bypass + context.bypasses): used for object iteration
-//   control during multiple-drop and polymorph. Not implemented in JS.
 
-// cf. worn.c:50 — recalc_telepat_range(): recompute hero's unblind telepathy radius
-// Counts worn items with oc_oprop==TELEPAT; sets u.unblind_telepat_range.
-// range = (BOLT_LIM^2) * count; -1 if no telepathy items worn.
-// TODO: worn.c:50 — recalc_telepat_range(): telepathy range from worn items
-
-// cf. worn.c:73 — setworn(obj, mask): equip obj into slot(s) indicated by mask
-// Unequips previous item in each slot (clears extrinsics, artifact intrinsics,
-//   cancel_doff); sets new item (sets owornmask, grants extrinsics/artifact bonuses).
-// Special case: W_ARM|I_SPECIAL = embedded dragon scales (uskin).
-// Calls update_inventory() and recalc_telepat_range() at end.
-// Also clears nudist roleplay flag and updates tux_penalty.
-// TODO: worn.c:73 — setworn(): equip item into hero's slot
-
-// cf. worn.c:147 — setnotworn(obj): force-remove obj from being worn
-// Clears owornmask bits, updates u.uprops extrinsics, artifact intrinsics,
-//   blocked properties. Calls cancel_doff, update_inventory, recalc_telepat_range.
-// Used when object is destroyed while worn.
-// TODO: worn.c:147 — setnotworn(): force-unwear item (e.g. item destroyed)
-
-// cf. worn.c:180 — allunworn(): clear all hero worn-slot pointers
-// Clears uarm/uarmc/... etc. without updating extrinsics (called after
-//   inventory is freed during game save). Sets u.twoweap=0.
-// TODO: worn.c:180 — allunworn(): clear all worn pointers (save cleanup)
-
-// cf. worn.c:198 — wearmask_to_obj(wornmask): return item worn in given slot
-// Scans worn[] table for matching mask, returns *wp->w_obj (may be null).
-// Used by poly_obj() to find items being worn.
-// TODO: worn.c:198 — wearmask_to_obj(): look up hero's worn item by mask
-
-// cf. worn.c:210 — wornmask_to_armcat(mask): convert wornmask bit to ARM_* category
-// Returns one of ARM_SUIT, ARM_CLOAK, ARM_HELM, ARM_SHIELD, ARM_GLOVES,
-//   ARM_BOOTS, ARM_SHIRT; returns 0 if not an armor slot.
-// TODO: worn.c:210 — wornmask_to_armcat(): wornmask → armor category
-
-// cf. worn.c:242 — armcat_to_wornmask(cat): convert ARM_* category to wornmask bit
-// Inverse of wornmask_to_armcat(). Returns the W_ARM* constant for the category.
-// TODO: worn.c:242 — armcat_to_wornmask(): armor category → wornmask
-
-// cf. worn.c:274 — wearslot(obj): return bitmask of slots this item can occupy
-// Handles AMULET_CLASS, RING_CLASS, ARMOR_CLASS (by armcat), WEAPON_CLASS,
-//   TOOL_CLASS (blindfold/towel/lenses → W_TOOL; weptools → W_WEP|W_SWAPWEP;
-//   saddle → W_SADDLE), FOOD_CLASS (meat_ring → ring slots),
-//   GEM_CLASS (quiver), BALL_CLASS, CHAIN_CLASS.
-// TODO: worn.c:274 — wearslot(): determine valid wear slots for an object
-
-// cf. worn.c:347 — check_wornmask_slots(): sanity check hero's worn slots
-// Verifies each worn slot: item in inventory, owornmask bit set correctly,
-//   no other inventory item claims same slot. EXTRA_SANITY_CHECKS adds
-//   uskin/dragon-scales and u.twoweap consistency checks.
-// Not needed for JS gameplay; debug only.
-// TODO: worn.c:347 — check_wornmask_slots(): worn slot sanity check (debug)
-
-// cf. worn.c:466 — mon_set_minvis(mon): set monster to permanently invisible
-// Sets mon->perminvis=1 and mon->minvis=1 (if not invis_blkd);
-//   calls newsym() and see_wsegs() for worms.
-// TODO: worn.c:466 — mon_set_minvis(): make monster permanently invisible
-
-// cf. worn.c:478 — mon_adjust_speed(mon, adjust, obj): change monster's speed
-// adjust: +2=set MFAST (silent), +1=increase, 0=recheck boots, -1=decrease,
-//   -2=set MSLOW (silent), -3=petrify (reduce fast), -4=green slime (reduce fast, silent).
-// Checks minvent for speed boots to override permspeed; prints message if visible.
-// Referenced in mon.js comments (line 8).
-// TODO: worn.c:478 — mon_adjust_speed(): monster speed adjustment
-
-// cf. worn.c:569 — update_mon_extrinsics(mon, obj, on, silently): update monster's
-// resistances/properties when armor is worn or removed.
-// Handles INVIS (minvis), FAST (calls mon_adjust_speed), ANTIMAGIC/REFLECTING/
-//   PROTECTION (handled elsewhere), others via mextrinsics bitmask.
-// On removal: checks remaining worn gear for redundant property sources.
-// Also handles w_blocks() for INVIS-blocking (mummy wrapping).
-// Referenced in steal.js for put_saddle_on_mon context.
-// TODO: worn.c:569 — update_mon_extrinsics(): monster property update on equip
-
-// cf. worn.c:707 — find_mac(mon): calculate monster's effective armor class
-// Starts from mon->data->ac; subtracts ARM_BONUS for each worn item
-//   (including amulet of guarding at -2 fixed); caps at ±AC_MAX.
-// Referenced in combat.js:267 as needed for hit calculations.
-// TODO: worn.c:707 — find_mac(): monster armor class calculation
-
-// cf. worn.c:747 — m_dowear(mon, creation): monster equips best available armor
-// Skips verysmall/nohands/animal/mindless monsters (with mummy/skeleton exception).
-// Calls m_dowear_type() for each slot in order: amulet, shirt, cloak, helm,
-//   shield, gloves, boots, suit. Skips shield if wielding two-handed weapon.
-// TODO: worn.c:747 — m_dowear(): monster armor-equipping AI
-
-// cf. worn.c:789 [static] — m_dowear_type(mon, flag, creation, racialexception):
-// Find and equip the best item for one armor slot.
-// Compares ARM_BONUS + extra_pref for all candidates; handles autocurse
-//   (dunce cap/opposite alignment helm), delays, cloak-under-suit timing.
-// Calls update_mon_extrinsics() for old and new item.
-// TODO: worn.c:789 — m_dowear_type(): monster equips one armor slot
-
-// cf. worn.c:996 — which_armor(mon, flag): return item in a monster's armor slot
-// For hero (&youmonst): returns uarm/uarmc/etc. by switch.
-// For monsters: scans minvent for obj->owornmask & flag.
-// TODO: worn.c:996 — which_armor(): get worn item for given slot/monster
-
-// cf. worn.c:1029 [static] — m_lose_armor(mon, obj, polyspot): drop monster's armor
-// Calls extract_from_minvent(), place_object(), optionally bypass_obj(),
-//   and newsym().
-// TODO: worn.c:1029 — m_lose_armor(): remove armor from monster and drop on floor
-
-// cf. worn.c:1044 [static] — clear_bypass(objchn): recursively clear bypass bits
-// Clears obj->bypass=0 on entire chain; recurses into container contents.
-// TODO: worn.c:1044 — clear_bypass(): recursive bypass-bit clear on object chain
-
-// cf. worn.c:1060 — clear_bypasses(): clear bypass bits on all object chains
-// Clears fobj, invent, migrating_objs, buriedobjlist, billobjs, objs_deleted,
-//   all monster minvents (and resets MCORPSENM for polymorph-worm tracking),
-//   migrating_mons, mydogs, uball, uchain. Also called for worm polymorph bypass.
-// TODO: worn.c:1060 — clear_bypasses(): global bypass-bit reset
-
-// cf. worn.c:1109 — bypass_obj(obj): set bypass bit on one object
-// Sets obj->bypass=1 and context.bypasses=TRUE.
-// TODO: worn.c:1109 — bypass_obj(): mark single object as bypassed
-
-// cf. worn.c:1117 — bypass_objlist(objchain, on): set/clear bypass bits on chain
-// Sets or clears bypass bit for every object in the chain.
-// TODO: worn.c:1117 — bypass_objlist(): bulk bypass-bit operation on chain
-
-// cf. worn.c:1132 — nxt_unbypassed_obj(objchain): iterate objects skipping bypassed ones
-// Returns first non-bypassed object; sets its bypass bit before returning
-//   so successive calls advance through the list.
-// TODO: worn.c:1132 — nxt_unbypassed_obj(): bypass-aware object iteration
-
-// cf. worn.c:1149 — nxt_unbypassed_loot(lootarray, listhead): same for sortloot arrays
-// Like nxt_unbypassed_obj() but for Loot arrays (which may have stale pointers).
-// Validates that obj still exists in listhead before returning it.
-// TODO: worn.c:1149 — nxt_unbypassed_loot(): bypass-aware loot array iteration
-
-// cf. worn.c:1167 — mon_break_armor(mon, polyspot): remove/destroy armor on polymorph
-// If breakarm (too big): destroys suit, cloak, shirt with cracking/ripping sounds.
-// If sliparm (too small/whirly): drops suit, cloak, shirt.
-// If handless_or_tiny: drops gloves, shield.
-// If has_horns: drops non-flimsy helm.
-// If slithy/centaur/tiny: drops boots.
-// If can_saddle fails: drops saddle; may call dismount_steed(DISMOUNT_FELL).
-// TODO: worn.c:1167 — mon_break_armor(): armor removal/destruction on polymorph
-
-// cf. worn.c:1328 [static] — extra_pref(mon, obj): monster's preference bonus for armor
-// Currently only: SPEED_BOOTS when mon->permspeed != MFAST → return 20.
-// Used by m_dowear_type() to bias monster selection toward special armor.
-// TODO: worn.c:1328 — extra_pref(): armor preference bonus for monster AI
-
-// cf. worn.c:1350 — racial_exception(mon, obj): race-based armor exceptions
-// Returns 1 (acceptable) if hobbit + elven armor (LoTR exception).
-// Returns -1 (unacceptable) for future race+object bans; 0 for no exception.
-// TODO: worn.c:1350 — racial_exception(): race-specific armor compatibility
-
-// cf. worn.c:1367 — extract_from_minvent(mon, obj, do_extrinsics, silently):
-// Remove an object from monster's inventory with full cleanup.
-// Handles artifact_light (end_burn if W_ARM lit item), obj_extract_self(),
-//   update_mon_extrinsics (if worn and do_extrinsics), misc_worn_check update,
-//   check_gear_next_turn(), obj_no_longer_held(), mwepgone() if weapon.
-// TODO: worn.c:1367 — extract_from_minvent(): remove object from monster inventory
+import { objectData, ARMOR_CLASS, AMULET_CLASS, RING_CLASS, WEAPON_CLASS,
+         TOOL_CLASS, FOOD_CLASS, GEM_CLASS, BALL_CLASS, CHAIN_CLASS,
+         BLINDFOLD, TOWEL, LENSES, SADDLE, MEAT_RING, SPEED_BOOTS,
+         MUMMY_WRAPPING, AMULET_OF_GUARDING,
+       } from './objects.js';
+import { nohands, is_animal, is_mindless, cantweararm, slithy, has_horns,
+         is_humanoid, breakarm, sliparm, is_whirly, noncorporeal,
+         attacktype,
+       } from './mondata.js';
+import { S_MUMMY, S_CENTAUR } from './symbols.js';
+import { PM_SKELETON, PM_HOBBIT, MZ_TINY, MZ_SMALL, MZ_HUMAN, MZ_HUGE,
+         AT_WEAP,
+       } from './monsters.js';
+import { mons } from './monsters.js';
+import { newsym } from './monutil.js';
+import { placeFloorObject } from './floor_objects.js';
+import { pushRngLogEntry } from './rng.js';
 
 // ============================================================================
 // Wornmask constants — cf. prop.h
 // ============================================================================
-export const W_ARM  = 0x00000001;  // Body armor (suit)
-export const W_ARMC = 0x00000002;  // Cloak
-export const W_ARMH = 0x00000004;  // Helmet/hat
-export const W_ARMS = 0x00000008;  // Shield
-export const W_ARMG = 0x00000010;  // Gloves/gauntlets
-export const W_ARMF = 0x00000020;  // Footwear (boots)
-export const W_ARMU = 0x00000040;  // Undershirt
-export const W_WEP  = 0x00000100;  // Wielded weapon
-export const W_AMUL = 0x00010000;  // Amulet
-export const W_SADDLE = 0x00100000; // Saddle (riding)
+export const W_ARM    = 0x00000001;  // Body armor (suit)
+export const W_ARMC   = 0x00000002;  // Cloak
+export const W_ARMH   = 0x00000004;  // Helmet/hat
+export const W_ARMS   = 0x00000008;  // Shield
+export const W_ARMG   = 0x00000010;  // Gloves/gauntlets
+export const W_ARMF   = 0x00000020;  // Footwear (boots)
+export const W_ARMU   = 0x00000040;  // Undershirt
+export const W_ARMOR  = W_ARM | W_ARMC | W_ARMH | W_ARMS | W_ARMG | W_ARMF | W_ARMU;
+export const W_WEP    = 0x00000100;  // Wielded weapon
+export const W_QUIVER = 0x00000200;  // Quiver for (f)iring ammo
+export const W_SWAPWEP = 0x00000400; // Secondary weapon
+export const W_WEAPONS = W_WEP | W_SWAPWEP | W_QUIVER;
+export const W_AMUL   = 0x00010000;  // Amulet
+export const W_RINGL  = 0x00020000;  // Left ring
+export const W_RINGR  = 0x00040000;  // Right ring
+export const W_RING   = W_RINGL | W_RINGR;
+export const W_TOOL   = 0x00080000;  // Eyewear (blindfold/towel/lenses)
+export const W_ACCESSORY = W_RING | W_AMUL | W_TOOL;
+export const W_SADDLE = 0x00100000;  // Saddle (riding)
+export const W_BALL   = 0x00200000;  // Punishment ball
+export const W_CHAIN  = 0x00400000;  // Punishment chain
 
 // Armor category constants — cf. objclass.h
 const ARM_SUIT   = 0;
@@ -206,10 +64,68 @@ const ARMCAT_TO_MASK = {
     [ARM_SHIRT]:  W_ARMU,
 };
 
-import { objectData, ARMOR_CLASS, AMULET_CLASS } from './objects.js';
-import { nohands, is_animal, is_mindless, cantweararm, slithy, has_horns, is_humanoid } from './mondata.js';
-import { S_MUMMY, S_CENTAUR } from './symbols.js';
-import { PM_SKELETON, MZ_SMALL, MZ_HUMAN } from './monsters.js';
+// Speed constants — cf. monflag.h
+const MSLOW = 1;
+const MFAST = 2;
+
+// Property constants — cf. prop.h (subset needed for update_mon_extrinsics)
+const FIRE_RES    = 1;
+const COLD_RES    = 2;
+const SLEEP_RES   = 3;
+const DISINT_RES  = 4;
+const SHOCK_RES   = 5;
+const POISON_RES  = 6;
+const ACID_RES    = 7;
+const STONE_RES   = 8;
+const INVIS       = 40;
+const FAST        = 64;
+const ANTIMAGIC   = 12;
+const REFLECTING  = 65;
+const PROTECTION  = 59;
+const CLAIRVOYANT = 35;
+const STEALTH     = 42;
+const TELEPAT     = 30;
+const LEVITATION  = 48;
+const FLYING      = 49;
+const WWALKING    = 50;
+const DISPLACED   = 41;
+const FUMBLING    = 25;
+const JUMPING     = 45;
+
+// cf. prop.h res_to_mr macro
+function res_to_mr(r) {
+    return (r >= FIRE_RES && r <= STONE_RES) ? (1 << (r - 1)) : 0;
+}
+
+// cf. worn.c w_blocks macro — mummy wrapping blocks INVIS
+function w_blocks(obj, mask) {
+    if (obj.otyp === MUMMY_WRAPPING && (mask & W_ARMC))
+        return INVIS;
+    return 0;
+}
+
+// ============================================================================
+// worn[] table — maps wornmask to player property name
+// cf. worn.c:14 — the worn[] table
+// ============================================================================
+const WORN_TABLE = [
+    { mask: W_ARM,     prop: 'armor',     what: 'suit' },
+    { mask: W_ARMC,    prop: 'cloak',     what: 'cloak' },
+    { mask: W_ARMH,    prop: 'helmet',    what: 'helmet' },
+    { mask: W_ARMS,    prop: 'shield',    what: 'shield' },
+    { mask: W_ARMG,    prop: 'gloves',    what: 'gloves' },
+    { mask: W_ARMF,    prop: 'boots',     what: 'boots' },
+    { mask: W_ARMU,    prop: 'shirt',     what: 'shirt' },
+    { mask: W_RINGL,   prop: 'leftRing',  what: 'left ring' },
+    { mask: W_RINGR,   prop: 'rightRing', what: 'right ring' },
+    { mask: W_WEP,     prop: 'weapon',    what: 'weapon' },
+    { mask: W_SWAPWEP, prop: 'swapWeapon', what: 'alternate weapon' },
+    { mask: W_QUIVER,  prop: 'quiver',    what: 'quiver' },
+    { mask: W_AMUL,    prop: 'amulet',    what: 'amulet' },
+    { mask: W_TOOL,    prop: 'blindfold', what: 'facewear' },
+    { mask: W_BALL,    prop: 'ball',      what: 'chained ball' },
+    { mask: W_CHAIN,   prop: 'chain',     what: 'attached chain' },
+];
 
 // ============================================================================
 // ARM_BONUS — cf. hack.h:1531
@@ -222,6 +138,286 @@ function arm_bonus(obj) {
     const spe = Number(obj.spe || 0);
     const erosion = Math.max(Number(obj.oeroded || 0), Number(obj.oeroded2 || 0));
     return baseAc + spe - Math.min(erosion, baseAc);
+}
+
+// ============================================================================
+// setworn — cf. worn.c:73
+// ============================================================================
+// Equip obj into hero slot(s) indicated by mask.
+// Simplified: no extrinsic/artifact property tracking (hero properties not
+// yet modeled in JS), but handles owornmask and slot pointers.
+export function setworn(player, obj, mask) {
+    for (const wp of WORN_TABLE) {
+        if (wp.mask & mask) {
+            const oobj = player[wp.prop];
+            if (oobj) {
+                oobj.owornmask = (oobj.owornmask || 0) & ~wp.mask;
+            }
+            player[wp.prop] = obj;
+            if (obj) {
+                obj.owornmask = (obj.owornmask || 0) | wp.mask;
+            }
+        }
+    }
+}
+
+// ============================================================================
+// setnotworn — cf. worn.c:147
+// ============================================================================
+// Force-remove obj from being worn (e.g. item destroyed while worn).
+export function setnotworn(player, obj) {
+    if (!obj) return;
+    for (const wp of WORN_TABLE) {
+        if (player[wp.prop] === obj) {
+            player[wp.prop] = null;
+            obj.owornmask = (obj.owornmask || 0) & ~wp.mask;
+        }
+    }
+}
+
+// ============================================================================
+// allunworn — cf. worn.c:180
+// ============================================================================
+// Clear all hero worn-slot pointers (save cleanup).
+export function allunworn(player) {
+    if (player.twoweap) player.twoweap = false;
+    for (const wp of WORN_TABLE) {
+        player[wp.prop] = null;
+    }
+}
+
+// ============================================================================
+// wearmask_to_obj — cf. worn.c:198
+// ============================================================================
+// Return item worn in slot indicated by wornmask.
+export function wearmask_to_obj(player, wornmask) {
+    for (const wp of WORN_TABLE) {
+        if (wp.mask & wornmask) return player[wp.prop] || null;
+    }
+    return null;
+}
+
+// ============================================================================
+// wornmask_to_armcat — cf. worn.c:210
+// ============================================================================
+// Convert an armor wornmask to corresponding ARM_* category.
+export function wornmask_to_armcat(mask) {
+    switch (mask & W_ARMOR) {
+    case W_ARM:  return ARM_SUIT;
+    case W_ARMC: return ARM_CLOAK;
+    case W_ARMH: return ARM_HELM;
+    case W_ARMS: return ARM_SHIELD;
+    case W_ARMG: return ARM_GLOVES;
+    case W_ARMF: return ARM_BOOTS;
+    case W_ARMU: return ARM_SHIRT;
+    default: return 0;
+    }
+}
+
+// ============================================================================
+// armcat_to_wornmask — cf. worn.c:242
+// ============================================================================
+// Convert an ARM_* category to corresponding wornmask bit.
+export function armcat_to_wornmask(cat) {
+    return ARMCAT_TO_MASK[cat] || 0;
+}
+
+// ============================================================================
+// wearslot — cf. worn.c:274
+// ============================================================================
+// Return bitmask of equipment slot(s) a given item might be worn in.
+export function wearslot(obj) {
+    const od = objectData[obj.otyp];
+    if (!od) return 0;
+    const oc_class = od.oc_class;
+
+    switch (oc_class) {
+    case AMULET_CLASS:
+        return W_AMUL;
+    case RING_CLASS:
+        return W_RINGL | W_RINGR;
+    case ARMOR_CLASS: {
+        const armcat = od.sub;
+        return ARMCAT_TO_MASK[armcat] || 0;
+    }
+    case WEAPON_CLASS: {
+        let res = W_WEP | W_SWAPWEP;
+        if (od.merge) res |= W_QUIVER;
+        return res;
+    }
+    case TOOL_CLASS:
+        if (obj.otyp === BLINDFOLD || obj.otyp === TOWEL || obj.otyp === LENSES)
+            return W_TOOL;
+        if (od.weptool || obj.otyp === 185 /* TIN_OPENER */)
+            return W_WEP | W_SWAPWEP;
+        if (obj.otyp === SADDLE)
+            return W_SADDLE;
+        return 0;
+    case FOOD_CLASS:
+        if (obj.otyp === MEAT_RING)
+            return W_RINGL | W_RINGR;
+        return 0;
+    case GEM_CLASS:
+        return W_QUIVER;
+    case BALL_CLASS:
+        return W_BALL;
+    case CHAIN_CLASS:
+        return W_CHAIN;
+    default:
+        return 0;
+    }
+}
+
+// ============================================================================
+// mon_set_minvis — cf. worn.c:466
+// ============================================================================
+// Set monster to permanently invisible.
+export function mon_set_minvis(mon, map) {
+    mon.perminvis = true;
+    if (!mon.invis_blkd) {
+        mon.minvis = true;
+        if (map) newsym(map, mon.mx, mon.my);
+    }
+}
+
+// ============================================================================
+// mon_adjust_speed — cf. worn.c:478
+// ============================================================================
+// Change monster's speed based on adjust parameter.
+export function mon_adjust_speed(mon, adjust, _obj) {
+    const oldspeed = mon.mspeed || 0;
+
+    switch (adjust) {
+    case 2:
+        mon.permspeed = MFAST;
+        break;
+    case 1:
+        if (mon.permspeed === MSLOW)
+            mon.permspeed = 0;
+        else
+            mon.permspeed = MFAST;
+        break;
+    case 0: // just check for worn speed boots
+        break;
+    case -1:
+        if (mon.permspeed === MFAST)
+            mon.permspeed = 0;
+        else
+            mon.permspeed = MSLOW;
+        break;
+    case -2:
+        mon.permspeed = MSLOW;
+        break;
+    case -3: // petrification
+        if (mon.permspeed === MFAST)
+            mon.permspeed = 0;
+        break;
+    case -4: // green slime
+        if (mon.permspeed === MFAST)
+            mon.permspeed = 0;
+        break;
+    }
+
+    // Check for speed boots in inventory
+    let hasSpeedBoots = false;
+    for (const otmp of (mon.minvent || [])) {
+        if (otmp.owornmask) {
+            const od = objectData[otmp.otyp];
+            if (od && od.oc_oprop === FAST) {
+                hasSpeedBoots = true;
+                break;
+            }
+        }
+    }
+    if (hasSpeedBoots)
+        mon.mspeed = MFAST;
+    else
+        mon.mspeed = mon.permspeed || 0;
+}
+
+// ============================================================================
+// update_mon_extrinsics — cf. worn.c:569
+// ============================================================================
+// Update monster's resistances/properties when armor is worn or removed.
+export function update_mon_extrinsics(mon, obj, on, silently) {
+    const od = objectData[obj.otyp];
+    if (!od) return;
+
+    let which = od.oc_oprop || 0;
+    // altprop for alchemy smock: confers both poison and acid resistance
+    let altwhich = 0;
+    if (od.name === 'alchemy smock') {
+        altwhich = POISON_RES + ACID_RES - which;
+    }
+
+    if (!which && !altwhich) {
+        // fall through to maybe_blocks
+    } else {
+        _apply_extrinsic(mon, obj, which, on, silently);
+        if (altwhich && altwhich !== which) {
+            _apply_extrinsic(mon, obj, altwhich, on, silently);
+        }
+    }
+
+    // maybe_blocks: mummy wrapping blocks INVIS
+    const blocked = w_blocks(obj, ~0);
+    if (blocked === INVIS) {
+        mon.invis_blkd = on ? true : false;
+        mon.minvis = on ? false : !!mon.perminvis;
+    }
+}
+
+function _apply_extrinsic(mon, obj, which, on, silently) {
+    if (!mon.mextrinsics) mon.mextrinsics = 0;
+
+    if (on) {
+        switch (which) {
+        case INVIS:
+            mon.minvis = !mon.invis_blkd;
+            break;
+        case FAST:
+            mon_adjust_speed(mon, 0, obj);
+            break;
+        case ANTIMAGIC: case REFLECTING: case PROTECTION:
+        case CLAIRVOYANT: case STEALTH: case TELEPAT:
+        case LEVITATION: case FLYING: case WWALKING:
+        case DISPLACED: case FUMBLING: case JUMPING:
+            break;
+        default:
+            mon.mextrinsics |= res_to_mr(which);
+            break;
+        }
+    } else {
+        switch (which) {
+        case INVIS:
+            mon.minvis = !!mon.perminvis;
+            break;
+        case FAST:
+            mon_adjust_speed(mon, 0, obj);
+            break;
+        case FIRE_RES: case COLD_RES: case SLEEP_RES: case DISINT_RES:
+        case SHOCK_RES: case POISON_RES: case ACID_RES: case STONE_RES: {
+            // Check if another worn item provides this resistance
+            const mask = res_to_mr(which);
+            let found = false;
+            for (const otmp of (mon.minvent || [])) {
+                if (otmp === obj || !otmp.owornmask) continue;
+                const otd = objectData[otmp.otyp];
+                if (!otd) continue;
+                if (otd.oc_oprop === which) { found = true; break; }
+                // check altprop (alchemy smock)
+                if (otd.name === 'alchemy smock' &&
+                    (POISON_RES + ACID_RES - otd.oc_oprop) === which) {
+                    found = true; break;
+                }
+            }
+            if (!found) mon.mextrinsics &= ~mask;
+            break;
+        }
+        default:
+            break;
+        }
+    }
 }
 
 // ============================================================================
@@ -239,7 +435,9 @@ export function find_mac(mon) {
                 if (obj.otyp !== undefined) {
                     const od = objectData[obj.otyp];
                     // AMULET_OF_GUARDING gives fixed -2
-                    if (od && od.name === 'amulet of guarding') {
+                    if (od && od.otyp === AMULET_OF_GUARDING) {
+                        base -= 2;
+                    } else if (od && od.name === 'amulet of guarding') {
                         base -= 2;
                     } else {
                         base -= arm_bonus(obj);
@@ -268,8 +466,7 @@ export function which_armor(mon, flag) {
 // ============================================================================
 // m_dowear — cf. worn.c:747
 // ============================================================================
-// Monster equips best available armor. During creation (creation=TRUE),
-// this is instant with no messages or delays.
+// Monster equips best available armor.
 export function m_dowear(mon, creation) {
     const ptr = mon.type || {};
     // Guards: verysmall, nohands, animal skip entirely
@@ -281,33 +478,40 @@ export function m_dowear(mon, creation) {
                           && mon.mndx !== PM_SKELETON)))
         return;
 
-    m_dowear_type(mon, W_AMUL, creation);
+    m_dowear_type(mon, W_AMUL, creation, false);
     const can_wear_armor = !cantweararm(ptr);
     // Can't put on shirt if already wearing suit
     if (can_wear_armor && !(mon.misc_worn_check & W_ARM))
-        m_dowear_type(mon, W_ARMU, creation);
+        m_dowear_type(mon, W_ARMU, creation, false);
     // C ref: can_wear_armor || WrappingAllowed(mon->data)
-    // WrappingAllowed: humanoid, MZ_SMALL..MZ_HUGE, not centaur, corporeal
     if (can_wear_armor || is_humanoid(ptr))
-        m_dowear_type(mon, W_ARMC, creation);
-    m_dowear_type(mon, W_ARMH, creation);
-    // Skip shield if wielding two-handed weapon (simplified: always allow)
-    m_dowear_type(mon, W_ARMS, creation);
-    m_dowear_type(mon, W_ARMG, creation);
+        m_dowear_type(mon, W_ARMC, creation, false);
+    m_dowear_type(mon, W_ARMH, creation, false);
+    // Skip shield if wielding two-handed weapon
+    const mwep = mon.weapon;
+    if (!mwep || !(objectData[mwep.otyp]?.big))
+        m_dowear_type(mon, W_ARMS, creation, false);
+    m_dowear_type(mon, W_ARMG, creation, false);
     if (!slithy(ptr) && ptr.symbol !== S_CENTAUR)
-        m_dowear_type(mon, W_ARMF, creation);
+        m_dowear_type(mon, W_ARMF, creation, false);
     if (can_wear_armor)
-        m_dowear_type(mon, W_ARM, creation);
+        m_dowear_type(mon, W_ARM, creation, false);
+    else
+        m_dowear_type(mon, W_ARM, creation, true); // RACE_EXCEPTION
 }
 
 // ============================================================================
-// m_dowear_type — cf. worn.c:789 (simplified for creation=TRUE)
+// m_dowear_type — cf. worn.c:789
 // ============================================================================
-function m_dowear_type(mon, flag, creation) {
+function m_dowear_type(mon, flag, creation, racialexception) {
     if (mon.mfrozen) return;
 
     const old = which_armor(mon, flag);
     if (old && old.cursed) return;
+    if (old && flag === W_AMUL) {
+        const odn = objectData[old.otyp]?.name;
+        if (odn !== 'amulet of guarding') return; // already have life-saving/reflection
+    }
     let best = old;
 
     for (const obj of (mon.minvent || [])) {
@@ -317,7 +521,6 @@ function m_dowear_type(mon, flag, creation) {
         // Check if this item fits the slot
         if (flag === W_AMUL) {
             if (od.oc_class !== AMULET_CLASS) continue;
-            // Only life-saving, reflection, and guarding
             if (od.name !== 'amulet of life saving'
                 && od.name !== 'amulet of reflection'
                 && od.name !== 'amulet of guarding') continue;
@@ -333,23 +536,34 @@ function m_dowear_type(mon, flag, creation) {
 
         switch (flag) {
         case W_ARMU: if (armcat !== ARM_SHIRT) continue; break;
-        case W_ARMC: if (armcat !== ARM_CLOAK) continue; break;
+        case W_ARMC:
+            if (armcat !== ARM_CLOAK) continue;
+            // mummy wrapping is only cloak for monsters bigger than human
+            if ((mon.type?.size || 0) > MZ_HUMAN && obj.otyp !== MUMMY_WRAPPING)
+                continue;
+            break;
         case W_ARMH:
             if (armcat !== ARM_HELM) continue;
-            // Horned monsters can only wear flimsy helms (material <= LEATHER=7)
-            if (has_horns(mon.type) && (od.material || 0) > 7)
+            // Horned monsters can only wear flimsy helms
+            if (has_horns(mon.type) && (od.material || 0) > 7) // LEATHER=7
                 continue;
             break;
         case W_ARMS: if (armcat !== ARM_SHIELD) continue; break;
         case W_ARMG: if (armcat !== ARM_GLOVES) continue; break;
         case W_ARMF: if (armcat !== ARM_BOOTS) continue; break;
-        case W_ARM:  if (armcat !== ARM_SUIT) continue; break;
+        case W_ARM:
+            if (armcat !== ARM_SUIT) continue;
+            if (racialexception && racial_exception(mon, obj) < 1)
+                continue;
+            break;
         default: continue;
         }
 
         if (obj.owornmask) continue; // already worn in another slot
 
-        if (best && arm_bonus(best) >= arm_bonus(obj)) continue;
+        if (best && (arm_bonus(best) + extra_pref(mon, best)
+                     >= arm_bonus(obj) + extra_pref(mon, obj)))
+            continue;
         best = obj;
     }
 
@@ -357,9 +571,180 @@ function m_dowear_type(mon, flag, creation) {
 
     // Equip the item
     if (old) {
-        old.owornmask &= ~flag;
+        update_mon_extrinsics(mon, old, false, creation);
+        old.owornmask = (old.owornmask || 0) & ~flag;
         mon.misc_worn_check &= ~flag;
     }
     mon.misc_worn_check |= flag;
     best.owornmask = (best.owornmask || 0) | flag;
+    // autocurse: dunce cap / helm of opposite alignment
+    // (simplified: C checks oc_oprop for autocurse but we skip that)
+    update_mon_extrinsics(mon, best, true, creation);
+}
+
+// ============================================================================
+// extra_pref — cf. worn.c:1328
+// ============================================================================
+// Monster's preference bonus for armor with special benefits.
+export function extra_pref(mon, obj) {
+    if (obj) {
+        if (obj.otyp === SPEED_BOOTS && mon.permspeed !== MFAST)
+            return 20;
+    }
+    return 0;
+}
+
+// ============================================================================
+// racial_exception — cf. worn.c:1350
+// ============================================================================
+// Race-based armor exceptions.
+export function racial_exception(mon, obj) {
+    const ptr = mon.type || {};
+    // Allow hobbits to wear elven armor - LoTR
+    if (ptr === mons[PM_HOBBIT]) {
+        const od = objectData[obj.otyp];
+        if (od && /^elven /i.test(od.name || ''))
+            return 1;
+    }
+    return 0;
+}
+
+// ============================================================================
+// extract_from_minvent — cf. worn.c:1367
+// ============================================================================
+// Remove an object from monster's inventory with full cleanup.
+export function extract_from_minvent(mon, obj, do_extrinsics, silently) {
+    const unwornmask = obj.owornmask || 0;
+
+    // Remove from inventory
+    const idx = Array.isArray(mon.minvent) ? mon.minvent.indexOf(obj) : -1;
+    if (idx >= 0) mon.minvent.splice(idx, 1);
+
+    obj.owornmask = 0;
+
+    if (unwornmask) {
+        if (!mon.dead && do_extrinsics) {
+            update_mon_extrinsics(mon, obj, false, silently);
+        }
+        mon.misc_worn_check = (mon.misc_worn_check || 0) & ~unwornmask;
+    }
+
+    // If this was the wielded weapon, clear weapon reference
+    if (unwornmask & W_WEP) {
+        if (mon.weapon === obj) mon.weapon = null;
+        mon.weapon_check = 1; // NEED_WEAPON
+    }
+}
+
+// ============================================================================
+// m_lose_armor — cf. worn.c:1029
+// ============================================================================
+// Remove armor from monster and drop on floor.
+export function m_lose_armor(mon, obj, polyspot, map) {
+    extract_from_minvent(mon, obj, true, false);
+    obj.ox = mon.mx;
+    obj.oy = mon.my;
+    placeFloorObject(map, obj);
+    pushRngLogEntry(`^drop[${mon.mndx}@${mon.mx},${mon.my},${obj.otyp}]`);
+    if (polyspot) bypass_obj(obj);
+    if (map) newsym(map, mon.mx, mon.my);
+}
+
+// ============================================================================
+// mon_break_armor — cf. worn.c:1167
+// ============================================================================
+// Remove/destroy armor when monster polymorphs.
+export function mon_break_armor(mon, polyspot, map) {
+    const mdat = mon.type || {};
+    const handless_or_tiny = nohands(mdat) || (mdat.size || 0) < MZ_SMALL;
+    let otmp;
+
+    if (breakarm(mdat)) {
+        // Body armor breaks
+        if ((otmp = which_armor(mon, W_ARM)) != null) {
+            // Destroy it (m_useup equivalent: remove from inventory)
+            extract_from_minvent(mon, otmp, true, false);
+        }
+        // Cloak tears apart (unless mummy wrapping)
+        if ((otmp = which_armor(mon, W_ARMC)) != null
+            && otmp.otyp !== MUMMY_WRAPPING) {
+            extract_from_minvent(mon, otmp, true, false);
+        }
+        // Shirt rips
+        if ((otmp = which_armor(mon, W_ARMU)) != null) {
+            extract_from_minvent(mon, otmp, true, false);
+        }
+    } else if (sliparm(mdat)) {
+        // Armor falls off
+        if ((otmp = which_armor(mon, W_ARM)) != null) {
+            m_lose_armor(mon, otmp, polyspot, map);
+        }
+        if ((otmp = which_armor(mon, W_ARMC)) != null
+            && otmp.otyp !== MUMMY_WRAPPING) {
+            m_lose_armor(mon, otmp, polyspot, map);
+        }
+        if ((otmp = which_armor(mon, W_ARMU)) != null) {
+            m_lose_armor(mon, otmp, polyspot, map);
+        }
+    }
+
+    if (handless_or_tiny) {
+        if ((otmp = which_armor(mon, W_ARMG)) != null) {
+            m_lose_armor(mon, otmp, polyspot, map);
+        }
+        if ((otmp = which_armor(mon, W_ARMS)) != null) {
+            m_lose_armor(mon, otmp, polyspot, map);
+        }
+    }
+
+    if (handless_or_tiny || has_horns(mdat)) {
+        if ((otmp = which_armor(mon, W_ARMH)) != null
+            && (handless_or_tiny || (objectData[otmp.otyp]?.material || 0) > 7)) {
+            m_lose_armor(mon, otmp, polyspot, map);
+        }
+    }
+
+    if (handless_or_tiny || slithy(mdat) || mdat.symbol === S_CENTAUR) {
+        if ((otmp = which_armor(mon, W_ARMF)) != null) {
+            m_lose_armor(mon, otmp, polyspot, map);
+        }
+    }
+
+    // Saddle: simplified — just drop it if monster can no longer be saddled
+    if ((otmp = which_armor(mon, W_SADDLE)) != null) {
+        // can_saddle: check humanoid or animal + right size
+        const canSaddle = !nohands(mdat) || (is_animal(mdat) && (mdat.size || 0) >= MZ_SMALL);
+        if (!canSaddle) {
+            m_lose_armor(mon, otmp, polyspot, map);
+        }
+    }
+}
+
+// ============================================================================
+// Bypass system — stubs cf. worn.c:1109-1163
+// ============================================================================
+export function bypass_obj(obj) {
+    if (obj) obj.bypass = true;
+}
+
+export function bypass_objlist(objchain, on) {
+    if (!Array.isArray(objchain)) return;
+    for (const obj of objchain) {
+        obj.bypass = on ? true : false;
+    }
+}
+
+export function clear_bypasses() {
+    // No-op stub: bypass tracking not needed for current JS gameplay
+}
+
+export function nxt_unbypassed_obj(objchain) {
+    if (!Array.isArray(objchain)) return null;
+    for (const obj of objchain) {
+        if (!obj.bypass) {
+            bypass_obj(obj);
+            return obj;
+        }
+    }
+    return null;
 }

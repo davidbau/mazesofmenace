@@ -13,6 +13,7 @@ import { weight } from './mkobj.js';
 import { pushRngLogEntry, rnd } from './rng.js';
 import { placeFloorObject } from './floor_objects.js';
 import { SCR_SCARE_MONSTER } from './objects.js';
+import { extract_from_minvent, update_mon_extrinsics } from './worn.js';
 
 // ========================================================================
 // Constants — C ref: hack.h / monst.h / dogmove.c
@@ -320,19 +321,19 @@ export function mpickobj(mon, obj) {
 
 // C ref: steal.c:814 mdrop_obj()
 // Removes object from monster inventory and places on floor with event logging.
+// Uses extract_from_minvent for proper worn-item cleanup.
 export function mdrop_obj(mon, obj, map) {
-    const idx = Array.isArray(mon.minvent) ? mon.minvent.indexOf(obj) : -1;
-    if (idx >= 0) mon.minvent.splice(idx, 1);
-    if (mon.weapon === obj) mon.weapon = null;
-    // C ref: extract_from_minvent → update_mon_extrinsics clears worn status.
-    // Must clear owornmask so dropped items aren't treated as worn by new owners.
-    if (obj.owornmask) {
-        mon.misc_worn_check &= ~obj.owornmask;
-        obj.owornmask = 0;
-    }
+    // C ref: extract_from_minvent with do_extrinsics=FALSE, silently=TRUE
+    // (extrinsics updated after placement, matching C's mdrop_obj)
+    const unwornmask = obj.owornmask || 0;
+    extract_from_minvent(mon, obj, false, true);
     obj.ox = mon.mx;
     obj.oy = mon.my;
     // C ref: steal.c:838-841 — place_object first (^place), then event_log (^drop)
     placeFloorObject(map, obj);
     pushRngLogEntry(`^drop[${mon.mndx}@${mon.mx},${mon.my},${obj.otyp}]`);
+    // C ref: steal.c:846-847 — update extrinsics after placement
+    if (!mon.dead && unwornmask) {
+        update_mon_extrinsics(mon, obj, false, true);
+    }
 }

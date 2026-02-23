@@ -2,8 +2,12 @@
 // cf. wield.c — setuwep, dowield, doswapweapon, chwepon, welded, twoweapon
 
 import { nhgetch } from './input.js';
-import { objectData, WEAPON_CLASS, TOOL_CLASS, GEM_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS } from './objects.js';
-import { doname } from './mkobj.js';
+import { objectData, WEAPON_CLASS, TOOL_CLASS, GEM_CLASS, ARMOR_CLASS,
+         RING_CLASS, AMULET_CLASS, HEAVY_IRON_BALL, IRON_CHAIN, TIN_OPENER,
+         WORM_TOOTH, CRYSKNIFE } from './objects.js';
+import { doname, weight } from './mkobj.js';
+import { rn2, rnd } from './rng.js';
+import { W_WEP } from './worn.js';
 
 // ============================================================
 // 1. Slot setters
@@ -43,10 +47,26 @@ function uqwepgone(player) {
 // 2. Validation helpers
 // ============================================================
 
+// cf. wield.c:63 — erodeable_wep(optr)
+function erodeable_wep(obj) {
+    if (!obj) return false;
+    const od = objectData[obj.otyp];
+    if (!od) return false;
+    if (od.oc_class === WEAPON_CLASS) return true;
+    if (od.weptool) return true;
+    if (obj.otyp === HEAVY_IRON_BALL || obj.otyp === IRON_CHAIN) return true;
+    return false;
+}
+
+// cf. wield.c:68 — will_weld(optr): cursed erodeable weapon or tin opener
+function will_weld(obj) {
+    if (!obj || !obj.cursed) return false;
+    return erodeable_wep(obj) || obj.otyp === TIN_OPENER;
+}
+
 // cf. wield.c:1042 — welded(obj): test if hero's main weapon is welded to hand
-// Returns true if weapon is cursed (simplified; C checks erodeable_wep/tin_opener).
 function welded(player) {
-    if (player.weapon && player.weapon.cursed) {
+    if (player.weapon && will_weld(player.weapon)) {
         player.weapon.bknown = true;
         return true;
     }
@@ -60,9 +80,221 @@ function weldmsg(player, display) {
     display.putstr_message(`${doname(player.weapon, player)} welded to your hand!`);
 }
 
-// cf. wield.c:756 — can_twoweapon(): stub — always false
-function can_twoweapon() {
+// cf. wield.c:1068 — mwelded(obj): monster version of welded
+// Caller is responsible for ensuring this is a monster's item
+function mwelded(obj) {
+    if (obj && (obj.owornmask & W_WEP) && will_weld(obj))
+        return true;
     return false;
+}
+
+// cf. wield.c:150 — empty_handed(): description when not wielding anything
+function empty_handed(player) {
+    if (player && player.gloves) return 'empty handed';
+    return 'bare handed';
+}
+
+// cf. wield.c:132 — cant_wield_corpse(obj): cockatrice petrification check
+// Returns true if wielding would petrify (hero doesn't have gloves/resistance)
+function cant_wield_corpse(player, _obj) {
+    // Simplified: full cockatrice handling requires instapetrify, touch_petrifies
+    // which would kill the hero. For now return false (safety handled elsewhere).
+    return false;
+}
+
+// ============================================================
+// 2b. Two-weapon combat helpers
+// ============================================================
+
+// cf. wield.c:829 — set_twoweap(on_off)
+function set_twoweap(player, on) {
+    player.twoweap = !!on;
+}
+
+// cf. wield.c:897 — untwoweapon(): disable two-weapon mode
+function untwoweapon(player, display) {
+    if (player.twoweap) {
+        if (display) display.putstr_message('You can no longer wield two weapons at once.');
+        set_twoweap(player, false);
+    }
+}
+
+// cf. wield.c:756 — can_twoweapon(): check if hero can dual-wield
+// Simplified: role check not implemented (would need urole.roledata)
+function can_twoweapon(player, display) {
+    if (!player) return false;
+    if (!player.weapon || !player.swapWeapon) {
+        if (display) display.putstr_message('Your hands are empty.');
+        return false;
+    }
+    // TWOWEAPOK: must be weapon-class (not launcher/ammo/missile) or weptool
+    const twoweapok = (obj) => {
+        const od = objectData[obj.otyp];
+        if (!od) return false;
+        if (od.oc_class === WEAPON_CLASS) {
+            // Exclude launchers, ammo, missiles
+            const sub = od.sub || 0;
+            if (sub < 0) return false; // launcher (negative skill = ammo_for_launcher)
+            if (od.missile) return false;
+            return true;
+        }
+        return !!od.weptool;
+    };
+    if (!twoweapok(player.weapon) || !twoweapok(player.swapWeapon)) {
+        if (display) display.putstr_message('That is not a suitable weapon.');
+        return false;
+    }
+    if (objectData[player.weapon.otyp]?.big || objectData[player.swapWeapon.otyp]?.big) {
+        if (display) display.putstr_message("That isn't one-handed.");
+        return false;
+    }
+    if (player.shield) {
+        if (display) display.putstr_message("You can't use two weapons while wearing a shield.");
+        return false;
+    }
+    if (player.swapWeapon.cursed) {
+        player.swapWeapon.bknown = true;
+        // Drop secondary weapon
+        drop_uswapwep(player, display);
+        return false;
+    }
+    return true;
+}
+
+// cf. wield.c:803 — drop_uswapwep(): drop secondary weapon
+function drop_uswapwep(player, display) {
+    const obj = player.swapWeapon;
+    if (!obj) return;
+    if (display) {
+        if (!obj.cursed) {
+            display.putstr_message(`${doname(obj, player)} slips from your left hand!`);
+        } else {
+            display.putstr_message(`${doname(obj, player)} drops from your left hand!`);
+        }
+    }
+    setuswapwep(player, null);
+    // In C, dropx() places object on ground. Simplified: just clear the slot.
+    // Full drop handling would need floor placement.
+}
+
+// cf. wield.c:836 — dotwoweapon(): #twoweapon command
+function handleTwoWeapon(player, display) {
+    // Can always toggle off
+    if (player.twoweap) {
+        display.putstr_message('You switch to your primary weapon.');
+        set_twoweap(player, false);
+        return { moved: false, tookTime: false };
+    }
+    if (can_twoweapon(player, display)) {
+        display.putstr_message('You begin two-weapon combat.');
+        set_twoweap(player, true);
+        // C ref: wield.c:852 — rnd(20) > ACURR(A_DEX) → takes time
+        const dex = player.dexterity || player.attributes?.[4] || 10;
+        const tookTime = rnd(20) > dex;
+        return { moved: false, tookTime };
+    }
+    return { moved: false, tookTime: false };
+}
+
+// ============================================================
+// 2c. Weapon enchantment
+// ============================================================
+
+// cf. wield.c:908 — chwepon(otmp, amount): enchant/corrode wielded weapon
+// Called from scroll of enchant weapon. Returns 1 if something happened.
+function chwepon(player, display, otmp, amount) {
+    const uwep = player.weapon;
+    const od = uwep ? objectData[uwep.otyp] : null;
+
+    if (!uwep || (od?.oc_class !== WEAPON_CLASS && !od?.weptool)) {
+        // No weapon or not a real weapon
+        if (amount >= 0 && uwep && will_weld(uwep)) {
+            // Uncurse welded tin opener
+            if (display) display.putstr_message(`${doname(uwep, player)} glows with an amber aura.`);
+            uwep.cursed = false;
+        } else {
+            if (display) {
+                const msg = amount >= 0 ? 'Your hands twitch.' : 'Your hands itch.';
+                display.putstr_message(msg);
+            }
+        }
+        return 0;
+    }
+
+    // Worm tooth → crysknife
+    if (uwep.otyp === WORM_TOOTH && amount >= 0) {
+        if (display) display.putstr_message('Your weapon is much sharper now.');
+        uwep.otyp = CRYSKNIFE;
+        uwep.oerodeproof = false;
+        if (uwep.quan > 1) {
+            uwep.quan = 1;
+            uwep.owt = weight(uwep);
+        }
+        if (uwep.cursed) uwep.cursed = false;
+        return 1;
+    }
+    // Crysknife → worm tooth
+    if (uwep.otyp === CRYSKNIFE && amount < 0) {
+        if (display) display.putstr_message('Your weapon is much duller now.');
+        uwep.otyp = WORM_TOOTH;
+        uwep.oerodeproof = false;
+        if (uwep.quan > 1) {
+            uwep.quan = 1;
+            uwep.owt = weight(uwep);
+        }
+        return 1;
+    }
+
+    // Soft limits at +5/-5
+    if (((uwep.spe > 5 && amount >= 0) || (uwep.spe < -5 && amount < 0))
+        && rn2(3)) {
+        if (display) display.putstr_message(`${doname(uwep, player)} violently glows and evaporates.`);
+        // Destroy weapon
+        player.weapon = null;
+        return 1;
+    }
+
+    // Normal enchant/disenchant
+    if (display) {
+        const xtime = (amount * amount === 1) ? 'a moment' : 'a while';
+        const color = amount < 0 ? 'black' : 'blue';
+        display.putstr_message(`${doname(uwep, player)} glows ${color} for ${xtime}.`);
+    }
+    uwep.spe = (uwep.spe || 0) + amount;
+    if (amount > 0 && uwep.cursed) uwep.cursed = false;
+
+    // Vibration warning at high enchant
+    if ((uwep.spe > 5) && !rn2(7)) {
+        if (display) display.putstr_message(`${doname(uwep, player)} suddenly vibrates unexpectedly.`);
+    }
+
+    return 1;
+}
+
+// ============================================================
+// 2d. Wield tool helper
+// ============================================================
+
+// cf. wield.c:677 — wield_tool(obj, verb): wield a tool during #apply
+function wield_tool(player, display, obj, _verb) {
+    if (player.weapon && obj === player.weapon) return true;
+    if (obj.owornmask & (0x0001 | 0x0002 | 0x0004 | 0x0008 | 0x0010 | 0x0020 | 0x0040)) {
+        // W_ARMOR | W_ACCESSORY bits — can't wield worn item
+        if (display) display.putstr_message("You can't wield that while wearing it.");
+        return false;
+    }
+    if (welded(player)) {
+        weldmsg(player, display);
+        return false;
+    }
+    if (objectData[obj.otyp]?.big && player.shield) {
+        if (display) display.putstr_message('You cannot wield a two-handed tool while wearing a shield.');
+        return false;
+    }
+    if (display) display.putstr_message(`You now wield ${doname(obj, player)}.`);
+    setuwep(player, obj);
+    if (player.twoweap) untwoweapon(player, display);
+    return true;
 }
 
 // ============================================================
@@ -74,10 +306,10 @@ function ready_weapon(player, display, wep) {
     if (wep === null) {
         if (player.weapon) {
             setuwep(player, null);
-            display.putstr_message('You are bare handed.');
+            display.putstr_message(`You are ${empty_handed(player)}.`);
             return { tookTime: true };
         }
-        display.putstr_message('You are already bare handed.');
+        display.putstr_message(`You are already ${empty_handed(player)}.`);
         return { tookTime: false };
     }
 
@@ -97,6 +329,10 @@ function ready_weapon(player, display, wep) {
 
     setuwep(player, wep);
     display.putstr_message(`${wep.invlet} - ${doname(wep, player)}.`);
+    // Disable two-weapon if new weapon is incompatible
+    if (player.twoweap && !can_twoweapon(player, null)) {
+        untwoweapon(player, display);
+    }
     return { tookTime: true };
 }
 
@@ -191,7 +427,7 @@ async function handleSwapWeapon(player, display) {
     const oldwep = player.weapon || null;
     if (!player.swapWeapon) {
         if (!player.weapon) {
-            display.putstr_message('You are already bare handed.');
+            display.putstr_message(`You are already ${empty_handed(player)}.`);
             return { moved: false, tookTime: false };
         }
         display.putstr_message('You have no secondary weapon readied.');
@@ -204,6 +440,10 @@ async function handleSwapWeapon(player, display) {
         display.putstr_message(`${player.swapWeapon.invlet} - ${doname(player.swapWeapon, player)}.`);
     } else {
         display.putstr_message('You have no secondary weapon readied.');
+    }
+    // C ref: wield.c:492 — disable two-weapon if incompatible after swap
+    if (player.twoweap && !can_twoweapon(player, null)) {
+        untwoweapon(player, display);
     }
     return { moved: false, tookTime: true };
 }
@@ -259,7 +499,10 @@ async function handleQuiver(player, display) {
 export {
     setuwep, setuswapwep, setuqwep,
     uwepgone, uswapwepgone, uqwepgone,
-    welded, weldmsg, can_twoweapon,
+    welded, weldmsg, mwelded, will_weld, erodeable_wep,
+    can_twoweapon, set_twoweap, untwoweapon, drop_uswapwep,
+    empty_handed, cant_wield_corpse,
+    wield_tool, chwepon,
     ready_weapon,
-    handleWield, handleSwapWeapon, handleQuiver,
+    handleWield, handleSwapWeapon, handleQuiver, handleTwoWeapon,
 };
