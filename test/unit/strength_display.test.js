@@ -23,32 +23,30 @@ test('strength display: normal values 3-18 show as plain numbers', () => {
 test('strength display: exceptional strength uses 18/xx format', () => {
     const player = new Player();
 
-    // 18/01 through 18/75 (values 19-21)
+    // Internal values 19-117 map to 18/01 through 18/99
+    // C encoding: STR18(x) = 18 + x, so internal 19 = 18/01, 25 = 18/07
     player.attributes[A_STR] = 19;
-    assert.strictEqual(player.strDisplay, '18/25', 'Strength 19 should display as "18/25"');
+    assert.strictEqual(player.strDisplay, '18/01', 'Strength 19 (18/01) should display as "18/01"');
 
     player.attributes[A_STR] = 20;
-    assert.strictEqual(player.strDisplay, '18/50', 'Strength 20 should display as "18/50"');
+    assert.strictEqual(player.strDisplay, '18/02', 'Strength 20 (18/02) should display as "18/02"');
 
     player.attributes[A_STR] = 21;
-    assert.strictEqual(player.strDisplay, '18/75', 'Strength 21 should display as "18/75"');
+    assert.strictEqual(player.strDisplay, '18/03', 'Strength 21 (18/03) should display as "18/03"');
+
+    player.attributes[A_STR] = 25;
+    assert.strictEqual(player.strDisplay, '18/07', 'Strength 25 (18/07) should display as "18/07"');
+
+    player.attributes[A_STR] = 117;
+    assert.strictEqual(player.strDisplay, '18/99', 'Strength 117 (18/99) should display as "18/99"');
 });
 
 test('strength display: maximum exceptional strength uses 18/**', () => {
     const player = new Player();
 
-    player.attributes[A_STR] = 22;
-    assert.strictEqual(player.strDisplay, '18/**', 'Strength 22 should display as "18/**"');
-
-    player.attributes[A_STR] = 24;
-    assert.strictEqual(player.strDisplay, '18/**', 'Strength 24 should display as "18/**"');
-});
-
-test('strength display: superhuman strength (25+) shows as plain number', () => {
-    const player = new Player();
-
-    player.attributes[A_STR] = 25;
-    assert.strictEqual(player.strDisplay, '25', 'Strength 25 should display as "25"');
+    // Internal value 118 = STR18(100) = "18/**"
+    player.attributes[A_STR] = 118;
+    assert.strictEqual(player.strDisplay, '18/**', 'Strength 118 (STR18(100)) should display as "18/**"');
 });
 
 }); // describe

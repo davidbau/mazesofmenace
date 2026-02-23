@@ -1,9 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { NetHackGame } from '../../js/nethack.js';
+import { NetHackGame } from '../../js/chargen.js';
 import { createInputQueue } from '../../js/input.js';
-import { createHeadlessGame, HeadlessDisplay } from '../../js/headless_runtime.js';
+import { createHeadlessGame, HeadlessDisplay } from '../../js/headless.js';
 import { COLNO, ROWNO, STONE } from '../../js/config.js';
 
 function queueLine(input, text) {

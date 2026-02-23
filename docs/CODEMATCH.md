@@ -35,7 +35,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 
 | Status | C File | JS File | Notes |
 |--------|--------|---------|-------|
-| `[~]` | allmain.c | allmain.js | Main game loop, newgame, moveloop. JS: split across `nethack.js`, `menace.js` |
+| `[~]` | allmain.c | allmain.js | Main game loop, newgame, moveloop. JS: chargen UI split into `chargen.js`; browser entry point in `nethack.js` |
 | `[N/A]` | alloc.c | — | Memory allocation (nhalloc, nhfree). JS uses GC |
 | `[a]` | apply.c | apply.js | Applying items. handleApply (doapply) with isApplyCandidate/isApplyChopWeapon/isApplyPolearm/isApplyDownplay helpers; ~70 functions TODO |
 | `[~]` | artifact.c | artifact.js | Artifact creation and effects |
@@ -125,7 +125,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[~]` | restore.c | restore.js | Game state restoration. All functions N/A (JS uses storage.js/IndexedDB with different format) |
 | `[a]` | rip.c | display.js | RIP screen. genl_outrip as Display.renderTombstone (method); center() inlined |
 | `[x]` | rnd.c | rng.js | Random number generation |
-| `[~]` | role.c | role.js | Role/race/gender/alignment selection. roles[] data in player.js; ok_role/ok_race/ok_align PARTIAL in nethack.js; role_init PARTIAL in nethack.js+u_init.js; Hello() in player.js; all others TODO |
+| `[~]` | role.c | role.js | Role/race/gender/alignment selection. roles[] data in player.js; ok_role/ok_race/ok_align PARTIAL in chargen.js; role_init PARTIAL in chargen.js+u_init.js; Hello() in player.js; all others TODO |
 | `[~]` | rumors.c | rumors.js | Rumor/oracle/CapitalMon system. JS: `rumor_data.js` (data); unpadline/init_rumors/get_rnd_line in `hacklib.js`; getrumor inlined in `dungeon.js`; outoracle/doconsult/CapitalMon TODO |
 | `[~]` | save.c | save.js | Game state serialization. N/A (JS uses storage.js/IndexedDB); handleSave in storage.js |
 | `[a]` | selvar.c | — | Selection geometry. JS: `selection` object in `sp_lev.js`. All major geometry functions aligned including ellipse/gradient/is_irregular/size_description |
@@ -134,7 +134,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[a]` | shk.c | shk.js | Shopkeeper behavior. describeGroundObjectForPlayer (xname-based), maybeHandleShopEntryMessage, getprice/getCost/getShopQuoteForFloorObject (pricing approximations); shknam.js has naming. ~90 functions TODO |
 | `[a]` | shknam.c | shknam.js | Shop naming and stocking. All C functions aligned; hallucination in shkname/is_izchak and in_town() in is_izchak deferred |
 | `[~]` | sit.c | sit.js | Sitting effects. All 7 functions (dosit, rndcurse, attrcurse, take_gold, throne_sit_effect, special_throne_effect, lay_an_egg) are TODO stubs |
-| `[~]` | sounds.c | sounds.js | Monster sounds, ambient room sounds, chat. dosounds() partial in nethack.js/headless_runtime.js; domonnoise/growl/yelp/whimper/beg/dotalk TODO; sound library N/A |
+| `[~]` | sounds.c | sounds.js | Monster sounds, ambient room sounds, chat. dosounds() partial in chargen.js/headless.js; domonnoise/growl/yelp/whimper/beg/dotalk TODO; sound library N/A |
 | `[~]` | sp_lev.c | sp_lev.js | Special level interpreter |
 | `[a]` | spell.c | spell.js | Spell casting. ageSpells (age_spells), handleKnownSpells (dovspell/dospellmenu), estimateSpellFailPercent (percent_success approximation), spellRetentionText (spellretention). Spell category/skill tables from C. ~40 functions TODO |
 | `[~]` | stairs.c | stairs.js | Stairway management. JS uses map.upstair/dnstair objects; u_on_upstairs/dnstairs → getArrivalPosition in do.js; stairway_find_*, On_stairs_*, stairs_description TODO |
@@ -194,15 +194,15 @@ These JS files don't directly correspond to a single C file:
 | engrave_data.js | Engraving text data | engrave.c |
 | epitaph_data.js | Epitaph text data | engrave.c |
 | floor_objects.js | Floor object display | pickup.c, invent.c |
-| headless_runtime.js | Headless test runtime | None (JS-only) |
+| chargen.js | Interactive chargen menus (role/race/align selection, game-over, tutorial, save-restore) | role.c, end.c (partial) |
+| headless.js | Headless test/selfplay runtime: HeadlessDisplay, createHeadlessInput, createHeadlessGame, generateMapsWithCoreReplay, generateStartupWithCoreReplay | None (JS-only) |
 | input.js | Input handling/replay | None (JS-only) |
 | keylog.js | Keystroke logging | None (JS-only) |
 | hack.js | Core movement/running/travel | hack.c |
 | kick.js | Kick command | dokick.c |
 | map.js | Map data structure | hack.c, mklev.c |
-| menace.js | Main game entry point | allmain.c |
 | monsters.js | Monster data tables | monst.c |
-| nethack.js | Game orchestration | allmain.c |
+| nethack.js | Browser entry point: reads URL params, wires Display+input to NetHackGame, registers window APIs | sys/unix/nethack.c (platform main) |
 | objdata.js | Object property queries | objnam.c, mkobj.c |
 | options_menu.js | Options UI and handleSet | options.c |
 | player.js | Player state and roles | role.c, decl.c |
@@ -213,6 +213,83 @@ These JS files don't directly correspond to a single C file:
 | spell.js | Spell system | spell.c |
 | storage.js | Save/load/config, handleSave | save.c, restore.c, files.c |
 | xoshiro256.js | Xoshiro256 PRNG | None (JS-only, display RNG) |
+
+---
+
+## JS-Only Files: Function Details
+
+These files have no direct C counterpart. Functions are documented with the closest C analogue where one exists.
+
+### chargen.js (was nethack.js)
+
+Interactive character generation menus and game lifecycle screens.  Re-exports `NetHackGame` from `allmain.js`.
+
+| JS Function | C Analogue | Notes |
+|-------------|------------|-------|
+| `playerSelection(game)` | role.c `plselect()` | Top-level dispatcher: auto-picks or launches manual menus depending on options |
+| `promptPlayerName(game)` | role.c player-name prompt | Asks for character name; validates and stores on `game.player` |
+| `showRoleMenu(game, raceIdx, gender, align, isFirstMenu)` | role.c `plsel_role()` | Draws role selection overlay; returns chosen role index |
+| `showRaceMenu(game, roleIdx, gender, align, isFirstMenu)` | role.c `plsel_race()` | Draws race selection overlay; returns chosen race index |
+| `showGenderMenu(game, roleIdx, raceIdx, align, isFirstMenu)` | role.c `plsel_gend()` | Draws gender selection overlay; returns chosen gender |
+| `showAlignMenu(game, roleIdx, raceIdx, gender, isFirstMenu)` | role.c `plsel_align()` | Draws alignment selection overlay; returns chosen alignment |
+| `showConfirmation(game, roleIdx, raceIdx, gender, align)` | role.c confirmation step | Shows "Is this ok?" summary; returns true to accept, false to restart |
+| `showLoreAndWelcome(game, roleIdx, raceIdx, gender, align)` | role.c `plsel_lore` / `welcome()` | Shows role lore text then welcome message before gameplay starts |
+| `showFilterMenu(game)` | None (JS-only) | Overlay for narrowing role/race/align options; sets `game.rfilter` |
+| `autoPickAll(game, showConfirm)` | role.c `pick_all()` | Randomly selects all chargen choices matching active filters |
+| `manualSelection(game)` | role.c `manual_pick()` | Drives full interactive menu sequence until confirmation accepted |
+| `showGameOver(game)` | end.c `you_died()` display | Renders tombstone/death reason screen and waits for acknowledge |
+| `maybeDoTutorial(game)` | None (JS-only) | Checks first-run flag; launches tutorial if appropriate |
+| `enterTutorial(game)` | None (JS-only) | Initialises tutorial level and sets tutorial state flags |
+| `handleReset(game)` | None (JS-only) | Clears save data and reloads for a fresh game |
+| `restoreFromSave(game, saveData, urlOpts)` | restore.c `dorecover()` | Deserialises a saved game state into a running `NetHackGame` |
+| `buildHeaderLine(game, roleIdx, raceIdx, gender, align)` | None (JS-only) | Formats the "Role / Race / Align / Gender" header shown in chargen menus |
+
+---
+
+### headless.js (was headless_runtime.js)
+
+Headless runtime for session tests and selfplay.  No C counterpart.  Re-exports `NetHackGame as HeadlessGame` from `allmain.js`.
+
+#### HeadlessDisplay class
+
+In-memory 80×24 character grid implementing every method the game engine calls on the display.  Used wherever `Display` (browser canvas) would be used in interactive play.
+
+| Method | Notes |
+|--------|-------|
+| `putstr_message(msg)` | Appends msg to `messages[]`; writes to row 0 of grid; handles concatenation like C tty `update_topl()` |
+| `renderMessageWindow()` | Clears row 0; re-renders current `topMessage` only (C ref: `docrt()` after menu close) |
+| `renderMap(gameMap, player, fov, flags)` | Renders dungeon tiles, monsters, objects onto rows 1–22 of grid |
+| `renderStatus(player)` | Renders two status rows at bottom of grid |
+| `renderOverlayMenu(lines)` | Renders an inventory/selection overlay using `putstr` (no `putstr_message`) |
+| `getScreenLines()` | Returns current grid as array of strings for test comparison |
+| `setScreenLines(lines)` | Overwrites entire grid from array of strings (used by `applyStepScreen` in replay) |
+| `setScreenAnsiLines(lines)` | Overwrites grid from ANSI-escaped strings, parsing color/attribute codes |
+
+#### Factory and replay functions
+
+| JS Function | C Analogue | Notes |
+|-------------|------------|-------|
+| `createHeadlessInput(opts)` | None (JS-only) | Returns a queue-based input runtime; `pushKey(code)` enqueues a keypress for `nhgetch()` to consume |
+| `headlessFromSeed(seed, roleIndex, opts)` | None (JS-only) | Internal: creates a `NetHackGame` with `HeadlessDisplay` + `createHeadlessInput` and calls `game.init()` |
+| `headlessStart(seed, options)` | None (JS-only) | Thin wrapper around `headlessFromSeed`; used by `generateMapsWithCoreReplay` |
+| `createHeadlessGame(seed, roleIndex, opts)` | None (JS-only) | Public factory exported for unit tests; returns a fully initialised headless game |
+| `generateMapsWithCoreReplay(seed, maxDepth, options)` | None (JS-only) | Generates levels 1…maxDepth by descending stairs headlessly; returns map snapshots |
+| `generateStartupWithCoreReplay(seed, session, options)` | None (JS-only) | Replays the chargen/startup phase of a recorded session; captures RNG log and screen for comparison |
+| `buildInventoryLines(player)` | None (JS-only) | Formats inventory as array of strings for headless test assertions |
+| `extractCharacterFromSession(session)` | None (JS-only) | Pulls role/race/gender/align from a session record into a `character` options object |
+
+---
+
+### nethack.js (was menace.js)
+
+Browser entry point only.  Reads URL params, constructs `Display` and browser input, calls `game.init()`.  No exports — loaded as `<script type="module">` directly from `index.html`.  Closest C analogue: `sys/unix/nethack.c` (platform-specific `main()`).
+
+| JS Function / block | C Analogue | Notes |
+|---------------------|------------|-------|
+| `createBrowserLifecycle()` | None (JS-only) | Returns `{ restart, replaceUrlParams }` hooks used by the game for page reload and URL state |
+| `registerMenuApis()` | None (JS-only) | Attaches `window._saveAndQuit`, `window._resetGame` etc. so UI buttons can call into the game |
+| `registerKeylogApis()` | None (JS-only) | Attaches `window._getKeylog`, `window._startReplay` for developer keylog tools |
+| Top-level init block | `sys/unix/nethack.c main()` | Reads `?seed=`, `?wizard=`, `?role=` etc. from URL; creates `Display` + browser input; constructs `NetHackGame`; calls `game.init(urlOpts)` |
 
 ---
 
@@ -1684,7 +1761,7 @@ This section is generated from source symbol tables and includes function rows f
 | 251 | `sengr_at` | - | Missing |
 | 481 | `stylus_ok` | - | Missing |
 | 503 | `u_can_engrave` | - | Missing |
-| 264 | `u_wipe_engr` | headless_runtime.js, nethack.js | Aligned — calls wipe_engr_at at player pos |
+| 264 | `u_wipe_engr` | headless.js, chargen.js | Aligned — calls wipe_engr_at at player pos |
 | 271 | `wipe_engr_at` | engrave.js:wipe_engr_at | Aligned — RNG-faithful wipe with rubout table |
 | 120 | `wipeout_text` | engrave.js:wipeoutEngravingText | Aligned — C-faithful rubout with rn2(4) per char |
 

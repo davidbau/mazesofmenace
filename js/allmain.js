@@ -658,7 +658,7 @@ export class NetHackGame {
         init_nhwindows(this.display, nhgetch, () => this._rerenderGame());
 
         // Dynamically import chargen functions from nethack.js to avoid circular deps
-        const nethackChargen = await import('./nethack.js');
+        const nethackChargen = await import('./chargen.js');
         const {
             handleReset: _handleReset, restoreFromSave: _restoreFromSave,
             playerSelection: _playerSelection, maybeDoTutorial: _maybeDoTutorial,
@@ -1060,7 +1060,7 @@ export class NetHackGame {
     // Show game-over screen (tombstone + score). Delegates to nethack.js showGameOver.
     // Also available as a standalone instance method for tests and external callers.
     async showGameOver() {
-        const { showGameOver } = await import('./nethack.js');
+        const { showGameOver } = await import('./chargen.js');
         await showGameOver(this);
         this._emitGameOver();
     }

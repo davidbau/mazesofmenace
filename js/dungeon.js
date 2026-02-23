@@ -4905,12 +4905,14 @@ export function initDungeon(roleIndex, wizard = true) {
     // C ref: exper.c newpw() — rnd(enadv) if role has non-zero energy advance
     const role = roleIndex !== undefined ? roles[roleIndex] : null;
     const enadv = role ? (role.enadv || 0) : 0;
-    if (enadv > 0) rnd(enadv);
+    const enadv_roll = enadv > 0 ? rnd(enadv) : 0;
     // C ref: u_init.c u_init_misc() — rn2(10)
     rn2(10);
 
     // 5. nhlua pre_themerooms shuffle (loaded when themerms.lua is first used)
     rn2(3); rn2(2);
+
+    return { enadv_roll };
 }
 
 // Simulate C's place_level() recursive backtracking for one dungeon.
@@ -5538,12 +5540,13 @@ export function initLevelGeneration(roleIndex, wizard = true, opts = {}) {
     setMakemonRoleContext(roleIndex, opts);
     _branchTopology = [];  // reset before recalculating from init_dungeons RNG
     _dungeonLevelCounts = new Map();
-    initDungeon(roleIndex, wizard);
+    const dungeonResult = initDungeon(roleIndex, wizard);
     _themeroomsLoaded = false;
     _specialThemesLoaded = false;
     setMtInitialized(false); // Reset MT RNG state for new game
 
     // NOTE: xoshiro256** seeding happens in test harness before calling this
+    return dungeonResult;
 }
 
 // C ref: mklev.c makelevel()

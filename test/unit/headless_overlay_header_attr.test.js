@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { HeadlessDisplay } from '../../js/headless_runtime.js';
+import { HeadlessDisplay } from '../../js/headless.js';
 
 describe('headless overlay header attr', () => {
 

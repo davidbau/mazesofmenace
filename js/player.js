@@ -525,9 +525,8 @@ export class Player {
     get strDisplay() {
         const s = this.attributes[A_STR];
         if (s <= 18) return String(s);
-        if (s <= 21) return `18/${String((s - 18) * 25).padStart(2, '0')}`;
-        if (s < 25) return '18/**';
-        return String(s);
+        if (s === 118) return '18/**';  // STR18(100) — C ref: attrib.c str_string()
+        return `18/${String(s - 18).padStart(2, '0')}`;
     }
 
     // Get to-hit bonus from strength

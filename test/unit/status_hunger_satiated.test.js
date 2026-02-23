@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createHeadlessGame } from '../../js/headless_runtime.js';
+import { createHeadlessGame } from '../../js/headless.js';
 
 describe('status hunger satiated', () => {
 

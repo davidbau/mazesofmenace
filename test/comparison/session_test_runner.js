@@ -15,7 +15,7 @@ import {
     HeadlessDisplay,
     generateMapsWithCoreReplay,
     generateStartupWithCoreReplay,
-} from '../../js/headless_runtime.js';
+} from '../../js/headless.js';
 import {
     enableRngLog,
     getRngLog,

@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { NetHackGame } from '../../js/nethack.js';
+import { NetHackGame } from '../../js/chargen.js';
 import { createInputQueue, setInputRuntime } from '../../js/input.js';
 import { RACE_HUMAN, FEMALE, A_NEUTRAL } from '../../js/config.js';
 

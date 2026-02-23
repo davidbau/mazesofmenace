@@ -42,4 +42,4 @@ export {
 export {
     generateMapsWithCoreReplay as generateMapsWithRng,
     generateStartupWithCoreReplay as generateStartupWithRng,
-} from '../../js/headless_runtime.js';
+} from '../../js/headless.js';

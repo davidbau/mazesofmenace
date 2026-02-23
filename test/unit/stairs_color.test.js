@@ -2,7 +2,7 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { STAIRS } from '../../js/config.js';
-import { HeadlessDisplay } from '../../js/headless_runtime.js';
+import { HeadlessDisplay } from '../../js/headless.js';
 import { GameMap } from '../../js/map.js';
 
 describe('stairs color', () => {

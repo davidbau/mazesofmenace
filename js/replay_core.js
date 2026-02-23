@@ -29,7 +29,7 @@ import { FOOD_CLASS } from './objects.js';
 import { pushInput } from './input.js';
 import { initrack } from './monmove.js';
 import { moveloop_core, NetHackGame } from './allmain.js';
-import { HeadlessDisplay, createHeadlessInput } from './headless_runtime.js';
+import { HeadlessDisplay, createHeadlessInput } from './headless.js';
 
 export { HeadlessDisplay };
 
@@ -770,8 +770,7 @@ export async function replaySession(seed, session, opts = {}) {
             // Preserve startup topline so first-step count-prefix digits keep the
             // same C-visible message state without forcing startup map rows.
             const startupTopline = startupScreen[0] || '';
-            if (startupTopline.trim() !== ''
-                && typeof game.display?.putstr_message === 'function') {
+            if (typeof game.display?.putstr_message === 'function') {
                 game.display.putstr_message(startupTopline);
             }
         }
@@ -877,7 +876,12 @@ export async function replaySession(seed, session, opts = {}) {
                 const attrm = line.match(/St:([0-9/*]+)\s+Dx:(\d+)\s+Co:(\d+)\s+In:(\d+)\s+Wi:(\d+)\s+Ch:(\d+)/);
                 if (attrm) {
                     game.player._screenStrength = attrm[1];
-                    game.player.attributes[0] = attrm[1].includes('/') ? 18 : parseInt(attrm[1]); // A_STR
+                    // Convert display str back to internal value: "18/07" → 25, "18/**" → 118
+                    const strStr = attrm[1];
+                    const subMatch = strStr.match(/^18\/(\d+)$/);
+                    game.player.attributes[0] = subMatch ? 18 + parseInt(subMatch[1], 10)
+                        : strStr === '18/**' ? 118
+                        : parseInt(strStr, 10); // A_STR
                     game.player.attributes[1] = parseInt(attrm[4]); // A_INT (In)
                     game.player.attributes[2] = parseInt(attrm[5]); // A_WIS (Wi)
                     game.player.attributes[3] = parseInt(attrm[2]); // A_DEX (Dx)
