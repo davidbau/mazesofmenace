@@ -6,7 +6,7 @@ import { isok } from './config.js';
 import { PM_GRID_BUG,
          AT_BITE, AT_CLAW, AT_KICK, AT_BUTT, AT_TUCH, AT_STNG, AT_WEAP,
          AT_ENGL, AT_HUGS, AD_STCK } from './monsters.js';
-import { couldsee } from './vision.js';
+import { cansee, couldsee } from './vision.js';
 import { monNam } from './mondata.js';
 import { is_hider, noattacks, dmgtype, attacktype } from './mondata.js';
 import { weight } from './mkobj.js';
@@ -97,9 +97,13 @@ export function monAttackName(mon) {
 }
 
 // ========================================================================
-// Visibility helpers — canSpotMonsterForMap, rememberInvisibleAt
+// Visibility helpers — map_invisible, newsym, canSpotMonsterForMap
 // ========================================================================
-export function rememberInvisibleAt(map, x, y, player) {
+
+// C ref: display.c:378 map_invisible() — mark location as containing an
+// invisible monster.  Sets mem_invis (JS equivalent of levl glyph =
+// GLYPH_INVISIBLE) for rendering by the display layer.
+export function map_invisible(map, x, y, player) {
     if (!map || !isok(x, y)) return;
     if (player && x === player.x && y === player.y) return;
     const loc = map.at(x, y);
@@ -107,10 +111,27 @@ export function rememberInvisibleAt(map, x, y, player) {
     loc.mem_invis = true;
 }
 
+// C ref: display.c:918 newsym() — update the display at a location.
+// Full C newsym is the display workhorse (handles monsters, objects, traps,
+// lighting, memory).  This minimal JS version covers the cases currently
+// needed: clearing invisible markers and updating remembered terrain.
+// Expand as more display logic is ported.
+export function newsym(map, x, y) {
+    if (!map || !isok(x, y)) return;
+    const loc = map.at(x, y);
+    if (!loc) return;
+    // C ref: display.c:981-983 — when cansee and no visible monster present,
+    // glyph_is_invisible → map_invisible; otherwise _map_location replaces
+    // the invisible glyph.  The common case we need: clear stale I markers.
+    loc.mem_invis = false;
+}
+
+// C ref: display.h canseemon(mon) — hero can see the monster
+// Checks cansee(location) AND mon_visible (not invisible, not hiding).
+// Note: C's canspotmon adds sensemon (telepathy/detection) — not yet ported.
 export function canSpotMonsterForMap(mon, map, player, fov) {
     if (!mon || !map || !player) return false;
-    const visible = fov?.canSee ? fov.canSee(mon.mx, mon.my) : couldsee(map, player, mon.mx, mon.my);
-    if (!visible) return false;
+    if (!cansee(map, player, fov, mon.mx, mon.my)) return false;
     if (player.blind) return false;
     if (mon.mundetected) return false;
     if (mon.minvis && !player.seeInvisible) return false;
@@ -271,11 +292,8 @@ export function unstuck(mon, player) {
 export function mondead(mon, map, player) {
     mon.dead = true;
     pushRngLogEntry(`^die[${mon.mndx || 0}@${mon.mx},${mon.my}]`);
-    // C ref: mon.c mondead → newsym clears invisible marker at death location
-    if (map && isok(mon.mx, mon.my)) {
-        const loc = map.at(mon.mx, mon.my);
-        if (loc) loc.mem_invis = false;
-    }
+    // C ref: mon.c mondead → m_detach → newsym clears invisible marker
+    newsym(map, mon.mx, mon.my);
     // C ref: mon.c:2685 mon_leaving_level → unstuck
     if (player) unstuck(mon, player);
     // C ref: m_detach -> relobj: drop all inventory to floor via mdrop_obj

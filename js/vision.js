@@ -1010,6 +1010,17 @@ export function m_cansee(mon, map, x2, y2) {
     return clear_path_map(map, mon.mx, mon.my, x2, y2);
 }
 
+// Is this position currently in the player's sight?
+// C ref: vision.h #define cansee(x, y) ((gv.viz_array[y][x] & IN_SIGHT) != 0)
+// In C, cansee checks IN_SIGHT (accounts for lighting); couldsee checks
+// COULD_SEE (line-of-sight only).  JS's FOV.canSee already models IN_SIGHT,
+// so cansee() delegates to the FOV object when available, falling back to
+// couldsee (LOS-only) when no FOV is present.
+export function cansee(map, player, fov, x, y) {
+    if (fov?.canSee) return fov.canSee(x, y);
+    return couldsee(map, player, x, y);
+}
+
 // Could the player see this position (LOS only, ignoring lighting)
 // C ref: vision.h #define couldsee(x, y) ((gv.viz_array[y][x] & COULD_SEE) != 0)
 export function couldsee(map, player, x, y) {

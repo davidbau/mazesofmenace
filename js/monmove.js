@@ -66,14 +66,14 @@ import { pointInShop, monsterInShop } from './shknam.js';
 import { dist2, distmin, monnear,
          monmoveTrace, monmovePhase3Trace, monmoveStepLabel,
          attackVerb, monAttackName,
-         canSpotMonsterForMap, rememberInvisibleAt,
+         canSpotMonsterForMap, map_invisible,
          addToMonsterInventory, canMergeMonsterInventoryObj,
          mondead, mpickobj, mdrop_obj, unstuck,
          MTSZ, SQSRCHRADIUS, FARAWAY, BOLT_LIM } from './monutil.js';
 export { dist2, distmin, monnear,
          monmoveTrace, monmovePhase3Trace, monmoveStepLabel,
          attackVerb, monAttackName,
-         canSpotMonsterForMap, rememberInvisibleAt,
+         canSpotMonsterForMap, map_invisible,
          addToMonsterInventory, canMergeMonsterInventoryObj,
          mondead, mpickobj, mdrop_obj,
          MTSZ, SQSRCHRADIUS, FARAWAY, BOLT_LIM };
@@ -1392,7 +1392,7 @@ function m_move_aggress(mon, map, player, nx, ny, display = null, fov = null) {
         `vis=${vis ? 1 : 0}`);
 
     // C ref: monmove.c:2100 — mattackm(mtmp, mtmp2)
-    const ctx = { player, turnCount: (player.turns || 0) + 1,
+    const ctx = { player, fov, turnCount: (player.turns || 0) + 1,
                   agrVisible: attackerVisible, defVisible: defenderVisible };
     const mstatus = mattackm(mon, target, display, vis, map, ctx);
 

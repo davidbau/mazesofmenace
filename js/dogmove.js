@@ -46,7 +46,7 @@ import { dist2, distmin, monnear, mfndpos, mon_allowflags,
          m_avoid_kicked_loc, m_avoid_soko_push_loc,
          m_harmless_trap,
          monmoveTrace, monmoveStepLabel,
-         canSpotMonsterForMap, rememberInvisibleAt,
+         canSpotMonsterForMap, map_invisible,
          mondead, mpickobj, mdrop_obj,
          MTSZ, SQSRCHRADIUS, FARAWAY,
          mon_track_add,
@@ -826,7 +826,7 @@ export function pet_ranged_attk(mon, map, player, display, fov = null, game = nu
     const turnCount = (player.turns || 0) + 1;
     const agrSpot = canSpotMonsterForMap(mon, map, player, fov);
     const defSpot = canSpotMonsterForMap(mtarg, map, player, fov);
-    const ctx = { player, turnCount, agrVisible: agrSpot, defVisible: defSpot };
+    const ctx = { player, fov, turnCount, agrVisible: agrSpot, defVisible: defSpot };
     const mstatus = mattackm(mon, mtarg, display, vis, map, ctx);
     if (mstatus & M_ATTK_AGR_DIED) return 1;
     // C ref: dogmove.c:928-944 — retaliation for ranged attack
@@ -1209,17 +1209,17 @@ export function dog_move(mon, map, player, display, fov, after = false, game = n
                 const mmVisible = monVisible || targetVisible;
                 if (mmVisible) {
                     if (!canSpotMonsterForMap(mon, map, player, fov)) {
-                        rememberInvisibleAt(map, mon.mx, mon.my, player);
+                        map_invisible(map, mon.mx, mon.my, player);
                     }
                     if (!canSpotMonsterForMap(target, map, player, fov)) {
-                        rememberInvisibleAt(map, target.mx, target.my, player);
+                        map_invisible(map, target.mx, target.my, player);
                     }
                 }
 
                 // C ref: dogmove.c:1146 — mattackm(mtmp, mtmp2)
                 const monSpot = canSpotMonsterForMap(mon, map, player, fov);
                 const targetSpot = canSpotMonsterForMap(target, map, player, fov);
-                const ctx = { player, turnCount, agrVisible: monSpot, defVisible: targetSpot };
+                const ctx = { player, fov, turnCount, agrVisible: monSpot, defVisible: targetSpot };
                 const mstatus = mattackm(mon, target, display, mmVisible, map, ctx);
 
                 // C ref: dogmove.c:1148-1150 — pet died

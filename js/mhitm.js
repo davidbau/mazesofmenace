@@ -18,7 +18,8 @@
 
 import { rn2, rnd, d, c_d } from './rng.js';
 import { distmin } from './hacklib.js';
-import { monnear, mondead, monAttackName, rememberInvisibleAt } from './monutil.js';
+import { monnear, mondead, monAttackName, map_invisible } from './monutil.js';
+import { cansee } from './vision.js';
 import {
     monNam, monDisplayName, touch_petrifies, unsolid, resists_fire, resists_cold,
     resists_elec, resists_acid, resists_sleep, resists_ston,
@@ -88,10 +89,10 @@ function pre_mm_attack(magr, mdef, vis, map, ctx) {
     // C ref: mhitm.c:62-71 — mark invisible monsters on map
     if (vis && map) {
         if (!ctx?.agrVisible) {
-            rememberInvisibleAt(map, magr.mx, magr.my, ctx?.player);
+            map_invisible(map, magr.mx, magr.my, ctx?.player);
         }
         if (!ctx?.defVisible) {
-            rememberInvisibleAt(map, mdef.mx, mdef.my, ctx?.player);
+            map_invisible(map, mdef.mx, mdef.my, ctx?.player);
         }
     }
 }
@@ -486,9 +487,11 @@ function mdamagem(magr, mdef, mattk, mwep, dieroll, display, vis, map, ctx) {
     // Apply damage
     mdef.mhp -= mhm.damage;
     if (mdef.mhp <= 0) {
-        // C ref: mon.c:3384-3388 monkilled() — only show kill message
-        // when the defender's location is visible (cansee), not just vis.
-        if (ctx?.defVisible && display) {
+        // C ref: mon.c:3384-3388 monkilled() — kill message gated on
+        // cansee(mdef->mx, mdef->my), i.e. location in FOV, not monster
+        // visibility.  An invisible monster dying at a visible location
+        // still produces "It is killed!".
+        if (cansee(map, ctx?.player, ctx?.fov, mdef.mx, mdef.my) && display) {
             const killVerb = nonliving(pd) ? 'destroyed' : 'killed';
             display.putstr_message(
                 `${monCombatName(mdef, ctx?.defVisible, { article: 'the', capitalize: true })} is ${killVerb}!`
