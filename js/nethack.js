@@ -11,9 +11,7 @@ import { nhgetch } from './input.js';
 import { Promo } from './promo.js';
 window.MENACE_VERSION = VERSION_STRING;
 
-function createBrowserLifecycle(display) {
-    const restart = () => window.location.reload();
-    const promo = new Promo();
+function createBrowserLifecycle(display, promo, restart) {
     return {
         restart,
         promo: () => promo.run(display, nhgetch, restart),
@@ -31,14 +29,14 @@ function createBrowserLifecycle(display) {
     };
 }
 
-function registerMenuApis() {
+function registerMenuApis(display, promo, restart) {
     window._saveAndQuit = async function() {
         if (window.gameInstance) await saveGame(window.gameInstance);
-        window.location.reload();
+        await promo.run(display, nhgetch, restart);
     };
     window._newGame = function() {
         deleteSave();
-        window.location.reload();
+        restart();
     };
 }
 
@@ -56,7 +54,6 @@ function registerKeylogApis() {
 }
 
 window.addEventListener('DOMContentLoaded', async () => {
-    registerMenuApis();
     registerKeylogApis();
     const opts = getUrlParams();
     let currentFlags = null;
@@ -67,10 +64,14 @@ window.addEventListener('DOMContentLoaded', async () => {
     });
 
     const display = new Display('game');
+    const restart = () => window.location.reload();
+    const promo = new Promo();
+    registerMenuApis(display, promo, restart);
+
     const game = new NetHackGame({
         display,
         input,
-        lifecycle: createBrowserLifecycle(display),
+        lifecycle: createBrowserLifecycle(display, promo, restart),
         hooks: {
             onRuntimeBindings: ({ game: runningGame, flags, display }) => {
                 currentFlags = flags;

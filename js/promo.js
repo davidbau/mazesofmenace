@@ -2,7 +2,7 @@
 // Shown when the user declines to play again after game over.
 // Cycles through scenes and a high-score table until any key is pressed.
 
-import { CLR_RED, CLR_YELLOW, CLR_BRIGHT_GREEN, CLR_WHITE, CLR_GRAY } from './display.js';
+import { CLR_RED, CLR_YELLOW, CLR_BRIGHT_GREEN, CLR_WHITE, CLR_GRAY, CLR_ORANGE } from './display.js';
 import { loadScores, formatTopTenHeader, formatTopTenEntry } from './topten.js';
 import { VERSION_MAJOR, VERSION_MINOR, PATCHLEVEL } from './config.js';
 
@@ -37,58 +37,84 @@ function drawLogo(display, startRow, color) {
     }
 }
 
-// Scene 1: red dragon guarding a gold pile in a dungeon room.
+// Scene 1: red dragon in fire-breathing stance with outstretched wings.
+//
+// Wings are drawn as two diagonal bands sweeping down from the upper corners
+// toward the body. At row 17 both bands meet a horizontal body floor.
+// Rows 18-21 form the neck and head: open jaws, two glowing eyes, and a
+// column of fire breathing to the right.
+//
+// Layout (display rows 10-21, cols 0-79):
+//
+//   row 10  \________\                        /________/
+//   row 11   \________\                      /________/
+//   ...         (wings narrow toward center)
+//   row 17          \________\____________/________/   <- body floor
+//   row 18                    \            /
+//   row 19                    \ (o)    (o)/   ~~~~~~~~~~>
+//   row 20                     \vvvvvvvvv/    ~~~~~~~~~>
+//   row 21                      \_______/     ~~~~~~~~>
+//
 function drawDragonScene(display) {
-    const left = 15, right = 64;
-    const top = 11, bottom = 21;
+    const R = CLR_RED, Y = CLR_YELLOW, O = CLR_ORANGE, W = CLR_WHITE;
 
-    // Room walls
-    for (let col = left; col <= right; col++) {
-        display.setCell(col, top,    '-', CLR_GRAY);
-        display.setCell(col, bottom, '-', CLR_GRAY);
-    }
-    for (let row = top; row <= bottom; row++) {
-        display.setCell(left,  row, '|', CLR_GRAY);
-        display.setCell(right, row, '|', CLR_GRAY);
-    }
-    display.setCell(left,  top,    '+', CLR_GRAY);
-    display.setCell(right, top,    '+', CLR_GRAY);
-    display.setCell(left,  bottom, '+', CLR_GRAY);
-    display.setCell(right, bottom, '+', CLR_GRAY);
+    // ── Wings (rows 10-17) ───────────────────────────────────────────────
+    // Each wing is a 10-char-wide diagonal band: \________\ and /________/
+    // The band shifts one column right per row as it descends.
+    for (let i = 0; i <= 7; i++) {
+        const row = 10 + i;
+        const lo = i,      li = 10 + i;   // left outer / inner col
+        const ri = 69 - i, ro = 79 - i;   // right inner / outer col
 
-    // Scattered floor tiles
-    const floor = [
-        [18,13],[23,13],[31,13],[39,13],[46,13],[54,13],[61,13],
-        [17,14],[25,14],[34,14],[42,14],[51,14],[62,14],
-        [19,15],[29,15],[37,15],[56,15],[62,15],
-        [17,16],[23,16],[57,16],[63,16],
-        [18,17],[26,17],[35,17],[53,17],[61,17],
-        [21,18],[29,18],[39,18],[48,18],[59,18],
-        [17,19],[25,19],[33,19],[44,19],[57,19],[62,19],
-        [20,20],[30,20],[43,20],[52,20],[61,20],
-    ];
-    for (const [col, row] of floor) {
-        display.setCell(col, row, '.', CLR_GRAY);
+        display.setCell(lo, row, '\\', R);
+        for (let c = lo + 1; c < li; c++) display.setCell(c, row, '_', R);
+        display.setCell(li, row, '\\', R);
+
+        display.setCell(ri, row, '/', R);
+        for (let c = ri + 1; c < ro; c++) display.setCell(c, row, '_', R);
+        display.setCell(ro, row, '/', R);
     }
 
-    // Bones near the dragon
-    display.setCell(28, 17, '%', CLR_GRAY);
-    display.setCell(30, 18, '%', CLR_GRAY);
+    // ── Body floor (row 17) ──────────────────────────────────────────────
+    // Underscores bridge the gap between the two inner wing edges,
+    // completing the silhouette of the torso.
+    for (let c = 18; c <= 61; c++) display.setCell(c, 17, '_', R);
 
-    // The dragon
-    display.setCell(27, 16, 'D', CLR_RED);
+    // ── Neck (row 18) ────────────────────────────────────────────────────
+    display.setCell(17, 18, '\\', R);
+    display.setCell(62, 18, '/', R);
 
-    // Gold pile (cluster)
-    const gold = [
-                    [47,14],[48,14],
-        [45,15],[46,15],[47,15],[48,15],[49,15],[50,15],
-        [44,16],[45,16],[46,16],[47,16],[48,16],[49,16],[50,16],[51,16],
-        [45,17],[46,17],[47,17],[48,17],[49,17],[50,17],
-                    [47,18],[48,18],
-    ];
-    for (const [col, row] of gold) {
-        display.setCell(col, row, '$', CLR_YELLOW);
-    }
+    // ── Head: upper jaw with eyes (row 19) ───────────────────────────────
+    display.setCell(18, 19, '\\', R);
+    // left eye
+    display.setCell(22, 19, '(', R);
+    display.setCell(23, 19, 'o', W);
+    display.setCell(24, 19, ')', R);
+    // right eye
+    display.setCell(55, 19, '(', R);
+    display.setCell(56, 19, 'o', W);
+    display.setCell(57, 19, ')', R);
+    display.setCell(61, 19, '/', R);
+
+    // ── Head: open jaws / teeth (row 20) ─────────────────────────────────
+    display.setCell(20, 20, '\\', R);
+    for (let c = 21; c <= 58; c++) display.setCell(c, 20, 'v', R);
+    display.setCell(59, 20, '/', R);
+
+    // ── Head: lower jaw / chin (row 21) ──────────────────────────────────
+    display.setCell(22, 21, '\\', R);
+    for (let c = 23; c <= 56; c++) display.setCell(c, 21, '_', R);
+    display.setCell(57, 21, '/', R);
+
+    // ── Fire (rows 19-21) ────────────────────────────────────────────────
+    for (let c = 63; c <= 73; c++) display.setCell(c, 19, '~', Y);
+    display.setCell(74, 19, '>', Y);
+
+    for (let c = 61; c <= 70; c++) display.setCell(c, 20, '~', O);
+    display.setCell(71, 20, '>', O);
+
+    for (let c = 59; c <= 67; c++) display.setCell(c, 21, '~', Y);
+    display.setCell(68, 21, '>', Y);
 }
 
 // Scene 2: large green potion bottle.

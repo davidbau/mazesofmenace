@@ -62,7 +62,7 @@ export async function playerSelection(game) {
     const pickC = String.fromCharCode(pickCh);
 
     if (pickC === 'q') {
-        game._runLifecycle('restart');
+        await game._runLifecycle('promo');
         return;
     }
 
@@ -657,7 +657,7 @@ export async function showConfirmation(game, roleIdx, raceIdx, gender, align) {
     const ch = await nhgetch();
     const c = String.fromCharCode(ch);
 
-    if (c === 'q') { game._runLifecycle('restart'); return false; }
+    if (c === 'q') { await game._runLifecycle('promo'); return false; }
     // Both 'y' and '*' accept (as shown in menu: "y * Yes")
     return c === 'y' || c === '*';
 }
@@ -980,7 +980,7 @@ async function manualSelection(game) {
         if (roleIdx < 0) {
             const result = await showRoleMenu(game, raceIdx, gender, align, isFirstMenu);
             isFirstMenu = false;
-            if (result.action === 'quit') { game._runLifecycle('restart'); return; }
+            if (result.action === 'quit') { await game._runLifecycle('promo'); return; }
             if (result.action === 'pick-race') { raceIdx = -1; roleIdx = -1; continue; }
             if (result.action === 'pick-gender') { gender = -1; roleIdx = -1; continue; }
             if (result.action === 'pick-align') { align = -128; roleIdx = -1; continue; }
@@ -1011,7 +1011,7 @@ async function manualSelection(game) {
             } else {
                 const result = await showRaceMenu(game, roleIdx, gender, align, isFirstMenu);
                 isFirstMenu = false;
-                if (result.action === 'quit') { game._runLifecycle('restart'); return; }
+                if (result.action === 'quit') { await game._runLifecycle('promo'); return; }
                 if (result.action === 'pick-role') { roleIdx = -1; raceIdx = -1; gender = -1; align = -128; continue; }
                 if (result.action === 'pick-gender') { gender = -1; continue; }
                 if (result.action === 'pick-align') { align = -128; continue; }
@@ -1035,7 +1035,7 @@ async function manualSelection(game) {
             } else {
                 const result = await showGenderMenu(game, roleIdx, raceIdx, align, isFirstMenu);
                 isFirstMenu = false;
-                if (result.action === 'quit') { game._runLifecycle('restart'); return; }
+                if (result.action === 'quit') { await game._runLifecycle('promo'); return; }
                 if (result.action === 'pick-role') { roleIdx = -1; raceIdx = -1; gender = -1; align = -128; continue; }
                 if (result.action === 'pick-race') { raceIdx = -1; gender = -1; continue; }
                 if (result.action === 'pick-align') { align = -128; continue; }
@@ -1060,7 +1060,7 @@ async function manualSelection(game) {
             } else {
                 const result = await showAlignMenu(game, roleIdx, raceIdx, gender, isFirstMenu);
                 isFirstMenu = false;
-                if (result.action === 'quit') { game._runLifecycle('restart'); return; }
+                if (result.action === 'quit') { await game._runLifecycle('promo'); return; }
                 if (result.action === 'pick-role') { roleIdx = -1; raceIdx = -1; gender = -1; align = -128; continue; }
                 if (result.action === 'pick-race') { raceIdx = -1; align = -128; continue; }
                 if (result.action === 'pick-gender') { gender = -1; align = -128; continue; }
