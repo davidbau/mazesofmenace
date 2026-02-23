@@ -20,20 +20,15 @@ import { makelevel, setGameSeed, isBranchLevelToDnum } from './dungeon.js';
 import { simulatePostLevelInit, initFirstLevel } from './u_init.js';
 import { Player, rankOf, roles } from './player.js';
 import { rhack } from './cmd.js';
-import { makemon, setMakemonPlayerContext, runtimeDecideToShapeshift } from './makemon.js';
-import { M2_WERE } from './monsters.js';
-import { movemon, initrack, settrack } from './monmove.js';
-import { allocateMonsterMovement } from './mon.js';
-import { were_change } from './were.js';
+import { initrack } from './monmove.js';
 import { FOV } from './vision.js';
 import { monsterNearby } from './monutil.js';
 import { getArrivalPosition, changeLevel as changeLevelCore } from './do.js';
-import { nh_timeout, setCurrentTurn } from './timeout.js';
 import { doname, setObjectMoves } from './mkobj.js';
 import { monsterMapGlyph, objectMapGlyph } from './display_rng.js';
 import { defsyms, trap_to_defsym } from './symbols.js';
 import { setOutputContext } from './pline.js';
-import { moveloop_turnend, moveloop_dosounds } from './allmain.js';
+import { moveloop_core } from './allmain.js';
 import {
     COLNO, ROWNO, NORMAL_SPEED,
     A_STR, A_DEX, A_CON,
@@ -600,14 +595,12 @@ export class HeadlessGame {
         }
 
         const result = await rhack(ch, this);
+        const coreOpts = {
+            computeFov: true,
+            skipMonsterMove: options.skipMonsterMove,
+        };
         if (result && result.tookTime && !options.skipTurnEnd) {
-            // C ref: vision.c vision_recalc() runs during domove(), so FOV
-            // is up-to-date before movemon().  Recompute here to match.
-            this.fov.compute(this.map, this.player.x, this.player.y);
-            if (!options.skipMonsterMove) {
-                movemon(this.map, this.player, this.display, this.fov, this);
-            }
-            this.simulateTurnEnd();
+            moveloop_core(this, coreOpts);
 
             while (this.occupation) {
                 const occ = this.occupation;
@@ -629,11 +622,7 @@ export class HeadlessGame {
                     this.occupation = null;
                 }
                 if (interruptedOcc) continue;
-                this.fov.compute(this.map, this.player.x, this.player.y);
-                if (!options.skipMonsterMove) {
-                    movemon(this.map, this.player, this.display, this.fov, this);
-                }
-                this.simulateTurnEnd();
+                moveloop_core(this, coreOpts);
                 if (finishedOcc && typeof finishedOcc.onFinishAfterTurn === 'function') {
                     finishedOcc.onFinishAfterTurn(this);
                 }
@@ -650,11 +639,7 @@ export class HeadlessGame {
                 this.multi--;
                 const repeated = await rhack(this.cmdKey, this);
                 if (!repeated || !repeated.tookTime) break;
-                this.fov.compute(this.map, this.player.x, this.player.y);
-                if (!options.skipMonsterMove) {
-                    movemon(this.map, this.player, this.display, this.fov, this);
-                }
-                this.simulateTurnEnd();
+                moveloop_core(this, coreOpts);
                 while (this.occupation) {
                     const occ = this.occupation;
                     let interruptedOcc = false;
@@ -675,11 +660,7 @@ export class HeadlessGame {
                         this.occupation = null;
                     }
                     if (interruptedOcc) continue;
-                    this.fov.compute(this.map, this.player.x, this.player.y);
-                    if (!options.skipMonsterMove) {
-                        movemon(this.map, this.player, this.display, this.fov, this);
-                    }
-                    this.simulateTurnEnd();
+                    moveloop_core(this, coreOpts);
                     if (finishedOcc && typeof finishedOcc.onFinishAfterTurn === 'function') {
                         finishedOcc.onFinishAfterTurn(this);
                     }
@@ -688,10 +669,6 @@ export class HeadlessGame {
         }
 
         this.renderCurrentScreen();
-        if (this.player.hp <= 0) {
-            this.gameOver = true;
-            this.gameOverReason = 'died';
-        }
 
         return {
             tookTime: result?.tookTime || false,
@@ -794,20 +771,7 @@ export class HeadlessGame {
     runPendingDeferredTimedTurn() {
         if (!this.pendingDeferredTimedTurn) return;
         this.pendingDeferredTimedTurn = false;
-        this.fov.compute(this.map, this.player.x, this.player.y);
-        movemon(this.map, this.player, this.display, this.fov, this);
-        this.simulateTurnEnd();
-    }
-
-    // C ref: allmain.c moveloop_core() — per-turn effects
-    // C ref: allmain.c moveloop_core() turn-end block — delegates to allmain.js
-    simulateTurnEnd() {
-        moveloop_turnend(this);
-    }
-
-    // C ref: sounds.c:202-339 dosounds() — delegates to allmain.js
-    dosounds() {
-        moveloop_dosounds(this);
+        moveloop_core(this, { computeFov: true });
     }
 
     changeLevel(depth, transitionDir = null, opts = {}) {
@@ -898,10 +862,7 @@ HeadlessGame.prototype.executeCommand = async function executeCommand(ch) {
     }
 
     if (result && result.tookTime) {
-        // C ref: vision_recalc() runs during domove(), update FOV before monsters act
-        this.fov.compute(this.map, this.player.x, this.player.y);
-        movemon(this.map, this.player, this.display, this.fov, this);
-        this.simulateTurnEnd();
+        moveloop_core(this, { computeFov: true });
         if (typeof this.hooks.onTurnAdvanced === 'function') {
             this.hooks.onTurnAdvanced({ game: this, keyCode: code, result });
         }

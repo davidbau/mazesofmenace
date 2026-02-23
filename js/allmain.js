@@ -15,7 +15,8 @@
 //   newgame(): full new-game setup (role selection, dungeon gen, startup).
 //   welcome(): display character description at game start or restore.
 
-import { settrack } from './monmove.js';
+import { movemon, settrack } from './monmove.js';
+import { savebones } from './bones.js';
 import { setCurrentTurn, nh_timeout } from './timeout.js';
 import { setOutputContext } from './pline.js';
 import { setObjectMoves } from './mkobj.js';
@@ -29,6 +30,32 @@ import { ageSpells } from './spell.js';
 import { wipe_engr_at } from './engrave.js';
 import { dosearch0 } from './detect.js';
 import { exercise, exerchk } from './attrib_exercise.js';
+
+// cf. allmain.c:169 — moveloop_core() monster movement + turn-end processing.
+// Called after the hero's action took time.  Runs movemon() for monster turns,
+// then moveloop_turnend() for once-per-turn effects.
+// opts.skipMonsterMove: skip movemon (used by some test harnesses)
+// opts.computeFov: recompute FOV before movemon (C ref: vision_recalc runs in domove)
+export function moveloop_core(game, opts = {}) {
+    if (opts.computeFov) {
+        game.fov.compute(game.map, game.player.x, game.player.y);
+    }
+    if (!opts.skipMonsterMove) {
+        movemon(game.map, game.player, game.display, game.fov, game);
+    }
+    moveloop_turnend(game);
+    // C ref: allmain.c end of moveloop_core — check for player death
+    if (game.player.isDead || game.player.hp <= 0) {
+        if (!game.player.deathCause) {
+            game.player.deathCause = 'died';
+        }
+        game.gameOver = true;
+        game.gameOverReason = 'killed';
+        if (typeof savebones === 'function') {
+            savebones(game);
+        }
+    }
+}
 
 // cf. allmain.c:169 — moveloop_core() turn-end block
 // Unified from processTurnEnd (nethack.js) and simulateTurnEnd (headless_runtime.js).

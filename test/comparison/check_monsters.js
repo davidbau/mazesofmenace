@@ -4,7 +4,7 @@ import { initLevelGeneration, makelevel, wallification } from '../../js/dungeon.
 import { simulatePostLevelInit } from '../../js/u_init.js';
 import { Player } from '../../js/player.js';
 import { rhack } from '../../js/cmd.js';
-import { movemon } from '../../js/monmove.js';
+import { moveloop_core } from '../../js/allmain.js';
 import { FOV } from '../../js/vision.js';
 import { NORMAL_SPEED, A_DEX, A_CON } from '../../js/config.js';
 import { getSessionStartup } from './session_helpers.js';
@@ -112,8 +112,7 @@ for (let step = 0; step <= 17; step++) {
 
     const result = await rhack(ch, game);
     if (result && result.tookTime) {
-        movemon(game.map, game.player, game.display, game.fov);
-        game.simulateTurnEnd();
+        moveloop_core(game, { computeFov: true });
     }
 
     const livingAfter = map.monsters.filter(m => !m.dead);

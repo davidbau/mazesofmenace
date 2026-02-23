@@ -29,7 +29,8 @@ import { rhack } from './cmd.js';
 import { makemon } from './makemon.js';
 import { FOOD_CLASS } from './objects.js';
 import { pushInput } from './input.js';
-import { movemon, initrack } from './monmove.js';
+import { initrack } from './monmove.js';
+import { moveloop_core } from './allmain.js';
 import { FOV } from './vision.js';
 import { getArrivalPosition } from './do.js';
 import { HeadlessGame, HeadlessDisplay } from './headless_runtime.js';
@@ -1286,9 +1287,7 @@ export async function replaySession(seed, session, opts = {}) {
             deferredSparseMoveKey = null;
             const deferredResult = await rhack(moveCh, game);
             if (deferredResult && deferredResult.tookTime) {
-                game.fov.compute(game.map, game.player.x, game.player.y);
-                movemon(game.map, game.player, game.display, game.fov, game);
-                game.simulateTurnEnd();
+                moveloop_core(game, { computeFov: true });
             }
             game.renderCurrentScreen();
             if ((stepScreen[0] || '').trim() === '') {
@@ -1313,9 +1312,7 @@ export async function replaySession(seed, session, opts = {}) {
             const key = step.key || '';
             const isAcknowledge = key === ' ' || key === '\n' || key === '\r';
             if (isAcknowledge) {
-                game.fov.compute(game.map, game.player.x, game.player.y);
-                movemon(game.map, game.player, game.display, game.fov, game);
-                game.simulateTurnEnd();
+                moveloop_core(game, { computeFov: true });
                 pendingTransitionTurn = false;
                 game.renderCurrentScreen();
                 if (typeof opts.onStep === 'function') {
@@ -1725,9 +1722,7 @@ export async function replaySession(seed, session, opts = {}) {
                         const occ = game.occupation;
                         const cont = occ.fn(game);
                         if (!cont) game.occupation = null;
-                        game.fov.compute(game.map, game.player.x, game.player.y);
-                        movemon(game.map, game.player, game.display, game.fov, game);
-                        game.simulateTurnEnd();
+                        moveloop_core(game, { computeFov: true });
                     } else {
                         // Occupation ended; look at next buffered step for a
                         // new command to start (only 0-comp buffer frames).
@@ -1747,17 +1742,13 @@ export async function replaySession(seed, session, opts = {}) {
                         }
                         game.cmdKey = nextCh;
                         game.advanceRunTurn = async () => {
-                            game.fov.compute(game.map, game.player.x, game.player.y);
-                            movemon(game.map, game.player, game.display, game.fov, game);
-                            game.simulateTurnEnd();
+                            moveloop_core(game, { computeFov: true });
                         };
                         await rhack(nextCh, game);
                         game.advanceRunTurn = null;
                         // Run one game turn (movemon + turnEnd) after the new command.
                         // In C, moveloop_core runs movemon after every rhack.
-                        game.fov.compute(game.map, game.player.x, game.player.y);
-                        movemon(game.map, game.player, game.display, game.fov, game);
-                        game.simulateTurnEnd();
+                        moveloop_core(game, { computeFov: true });
                         // Record consumed buffer step (pass-throughs pushed after main result).
                         consumedBufSteps.push({ bufStep: nextBufStep, bufIdx: nextBufIdx });
                     }
@@ -1841,9 +1832,7 @@ export async function replaySession(seed, session, opts = {}) {
                 game.cmdKey = nextCh;
                 pendingCount = 0;
                 game.advanceRunTurn = async () => {
-                    game.fov.compute(game.map, game.player.x, game.player.y);
-                    movemon(game.map, game.player, game.display, game.fov, game);
-                    game.simulateTurnEnd();
+                    moveloop_core(game, { computeFov: true });
                 };
                 const eagerResult = await rhack(nextCh, game);
                 game.advanceRunTurn = null;
@@ -1853,9 +1842,7 @@ export async function replaySession(seed, session, opts = {}) {
                     // enough comparable entries to cover this digit step's window.
                     // C ref: moveloop_core — between two runmode_delay_output yields,
                     // multiple occupation iterations may complete in one step.
-                    game.fov.compute(game.map, game.player.x, game.player.y);
-                    movemon(game.map, game.player, game.display, game.fov, game);
-                    game.simulateTurnEnd();
+                    moveloop_core(game, { computeFov: true });
                     const targetNewComp = digitStepExpected - digitDeferredCount;
                     while (game.occupation) {
                         const ownComp = comparableCallParts(getRngLog().slice(prevCount).map(toCompactRng)).length;
@@ -1863,9 +1850,7 @@ export async function replaySession(seed, session, opts = {}) {
                         const occ = game.occupation;
                         const cont = occ.fn(game);
                         if (!cont) { game.occupation = null; }
-                        game.fov.compute(game.map, game.player.x, game.player.y);
-                        movemon(game.map, game.player, game.display, game.fov, game);
-                        game.simulateTurnEnd();
+                        moveloop_core(game, { computeFov: true });
                     }
                 }
                 const eagerStepLogRaw = getRngLog().slice(prevCount);
@@ -2046,9 +2031,7 @@ export async function replaySession(seed, session, opts = {}) {
             // monster movement occurs before once-per-turn bookkeeping;
             // settrack() happens during turn setup before moves++ work.
             // C ref: vision_recalc() runs during domove(), update FOV before monsters act
-            game.fov.compute(game.map, game.player.x, game.player.y);
-            movemon(game.map, game.player, game.display, game.fov, game);
-            game.simulateTurnEnd();
+            moveloop_core(game, { computeFov: true });
             if (restorePutstr) restorePutstr();
         };
         const stopTimedOccupationIfInterrupted = (occ) => {

@@ -15,32 +15,24 @@ import { Player, roles, races, validRacesForRole, validAlignsForRoleRace,
 import { GameMap } from './map.js';
 import { initLevelGeneration, makelevel, setGameSeed, isBranchLevelToDnum } from './dungeon.js';
 import { TUTORIAL } from './special_levels.js';
-import { makemon, setMakemonPlayerContext, runtimeDecideToShapeshift } from './makemon.js';
-import { M2_WERE } from './monsters.js';
+import { setMakemonPlayerContext } from './makemon.js';
 import { FOOD_CLASS } from './objects.js';
 import { setObjectMoves } from './mkobj.js';
-import { were_change } from './were.js';
 import { rhack } from './cmd.js';
-import { ageSpells } from './spell.js';
-import { wipe_engr_at } from './engrave.js';
-import { movemon, settrack } from './monmove.js';
-import { allocateMonsterMovement } from './mon.js';
 import { monsterNearby } from './monutil.js';
 import { simulatePostLevelInit, initFirstLevel } from './u_init.js';
 import { getArrivalPosition, changeLevel as changeLevelCore } from './do.js';
-import { nh_timeout, setCurrentTurn } from './timeout.js';
 import { loadSave, deleteSave, hasSave, saveGame,
          loadFlags, saveFlags, deserializeRng,
          restGameState, restLev,
          listSavedData, clearAllData } from './storage.js';
-import { savebones } from './bones.js';
 import { buildEntry, saveScore, loadScores, formatTopTenEntry, formatTopTenHeader } from './topten.js';
 import { startRecording } from './keylog.js';
 import { setOutputContext } from './pline.js';
 import { init_nhwindows, create_nhwindow, destroy_nhwindow,
          start_menu, add_menu, end_menu, select_menu,
          NHW_MENU, MENU_BEHAVE_STANDARD, PICK_ONE, ATR_NONE } from './windows.js';
-import { moveloop_turnend, moveloop_dosounds } from './allmain.js';
+import { moveloop_core } from './allmain.js';
 
 // --- Game State ---
 // C ref: decl.h -- globals are accessed via NH object (see DECISIONS.md #7)
@@ -1312,13 +1304,7 @@ export class NetHackGame {
                     continue;
                 }
                 // Occupation turn takes time: run full turn effects
-                movemon(this.map, this.player, this.display, this.fov, this);
-                this.processTurnEnd();
-                if (this.player.isDead) {
-                    this.gameOver = true;
-                    this.gameOverReason = 'killed';
-                    savebones(this);
-                }
+                moveloop_core(this);
                 this.fov.compute(this.map, this.player.x, this.player.y);
                 this.display.renderMap(this.map, this.player, this.fov, this.flags);
                 this.display.renderStatus(this.player);
@@ -1339,14 +1325,7 @@ export class NetHackGame {
                 const result = await executeTravelStep(this);
 
                 if (result.tookTime) {
-                    // Run turn effects
-                    movemon(this.map, this.player, this.display, this.fov, this);
-                    this.processTurnEnd();
-                    if (this.player.isDead) {
-                        this.gameOver = true;
-                        this.gameOverReason = 'killed';
-                        savebones(this);
-                    }
+                    moveloop_core(this);
                 }
 
                 this.fov.compute(this.map, this.player.x, this.player.y);
@@ -1424,17 +1403,7 @@ export class NetHackGame {
             // C-faithful running: allow run commands to advance one timed turn
             // per movement step instead of batching all movement first.
             this.advanceRunTurn = async () => {
-                movemon(this.map, this.player, this.display, this.fov, this);
-                this.processTurnEnd();
-
-                if (this.player.isDead) {
-                    if (!this.player.deathCause) {
-                        this.player.deathCause = 'died';
-                    }
-                    this.gameOver = true;
-                    this.gameOverReason = 'killed';
-                    savebones(this);
-                }
+                moveloop_core(this);
             };
             const result = await rhack(ch, this);
             this.advanceRunTurn = null;
@@ -1464,22 +1433,7 @@ export class NetHackGame {
             // If time passed, process turn effects
             // C ref: allmain.c moveloop_core() -- context.move handling
             if (result.tookTime) {
-                // Move monsters
-                // C ref: allmain.c moveloop_core() -> movemon()
-                movemon(this.map, this.player, this.display, this.fov, this);
-
-                // C ref: allmain.c — new turn setup (after both hero and monsters done)
-                this.processTurnEnd();
-
-                // Check for death
-                if (this.player.isDead) {
-                    if (!this.player.deathCause) {
-                        this.player.deathCause = 'died';
-                    }
-                    this.gameOver = true;
-                    this.gameOverReason = 'killed';
-                    savebones(this);
-                }
+                moveloop_core(this);
             }
 
             // Recompute FOV
@@ -1527,15 +1481,6 @@ export class NetHackGame {
         return monsterNearby(this.map, this.player, this.fov);
     }
 
-    // C ref: allmain.c moveloop_core() — per-turn effects after monster movement
-    // Called once per turn after movemon() is done.
-    // Order matches C: mcalcmove → rn2(70) → dosounds → gethungry → engrave wipe → seer_turn
-    // C ref: allmain.c moveloop_core() turn-end block.
-    // Order matches C: mcalcmove → rn2(70) → dosounds → gethungry → engrave wipe → seer_turn
-    processTurnEnd() {
-        moveloop_turnend(this);
-    }
-
     // Run the deferred timed turn (monster cycle + turn end) that was
     // postponed from a stop_occupation frame.  Called by the replay after
     // the player's command so monster decisions (e.g. dog_goal On_stairs)
@@ -1545,19 +1490,7 @@ export class NetHackGame {
     runPendingDeferredTimedTurn() {
         if (!this.pendingDeferredTimedTurn) return;
         this.pendingDeferredTimedTurn = false;
-        this.fov.compute(this.map, this.player.x, this.player.y);
-        movemon(this.map, this.player, this.display, this.fov, this);
-        this.processTurnEnd();
-    }
-
-    // Backward-compatible alias kept for older harness/test utilities.
-    simulateTurnEnd() {
-        return this.processTurnEnd();
-    }
-
-    // C ref: sounds.c:202-339 dosounds() — delegates to allmain.js
-    dosounds() {
-        moveloop_dosounds(this);
+        moveloop_core(this, { computeFov: true });
     }
 
     // Display game over screen
