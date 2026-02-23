@@ -604,7 +604,9 @@ const C_DEFAULTS = {
     msg_window: false, DECgraphics: false,
 
     // JS-specific UI options
-    minimap: '',   // compact minimap position: e.g. "r17b10s47" (see index.html mmParse)
+    minimap: '',      // compact minimap position: e.g. "r17b10s47" (see index.html mmParse)
+    darkmode: false,  // dark color theme
+    helppanel: true,  // show side panels when viewport is wide enough
 };
 
 // JS-specific overrides from C defaults
