@@ -1550,7 +1550,7 @@
             docsFrame.src = src;
 
             if (animate) {
-                // Phase 1: freeze page at its current natural position (scale 1)
+                // Phase 1: freeze page at its current natural position, scale 1
                 var naturalRect = page.getBoundingClientRect();
                 document.body.classList.add('docs-fixed');
                 page.style.transition      = 'none';
@@ -1560,18 +1560,38 @@
                 page.style.bottom          = 'auto';
                 page.style.transformOrigin = 'top left';
                 page.style.transform       = 'scale(1)';
-                page.offsetHeight;          // commit scale(1) with transition:none
+                page.offsetHeight;          // commit with transition:none
 
-                // Phase 2: next two frames — add docs-mode, then animate to minimap.
-                // Transition is re-enabled only after docs-mode (and its width:fit-content)
-                // has been applied, so the browser sees scale(1) → scale(target) as the
-                // animated transition.  mmRestore() after docs-mode gives correct scrollWidth.
+                // Phase 2: animate position + scale together via translate()+scale()
+                // so both move simultaneously through the single CSS transition.
+                // left/top stay at naturalRect; only transform changes (no jump).
+                // After transition ends, swap to explicit left/top for drag support.
                 requestAnimationFrame(function() {
                     requestAnimationFrame(function() {
                         document.body.classList.add('docs-mode');
-                        page.offsetHeight;   // commit docs-mode layout before enabling transition
+                        page.offsetHeight;    // commit docs-mode (width:fit-content)
+
+                        var target = mmRestore();  // correct scrollWidth now available
+                        var dx = target.left - naturalRect.left;
+                        var dy = target.top  - naturalRect.top;
+
                         page.style.transition = '';  // re-enable CSS transition
-                        mmApply(mmRestore(), false);
+                        page.style.transform =
+                            'translate(' + dx + 'px,' + dy + 'px) scale(' + target.scale + ')';
+
+                        function onEnd() {
+                            page.removeEventListener('transitionend', onEnd);
+                            clearTimeout(fallback);
+                            // Switch from translate+scale to explicit left/top+scale
+                            page.style.transition = 'none';
+                            page.style.left  = target.left + 'px';
+                            page.style.top   = target.top  + 'px';
+                            page.style.transform = 'scale(' + target.scale + ')';
+                            page.offsetHeight;
+                            page.style.transition = '';
+                        }
+                        var fallback = setTimeout(onEnd, 500);
+                        page.addEventListener('transitionend', onEnd);
                     });
                 });
             } else {
