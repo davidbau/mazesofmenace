@@ -48,7 +48,7 @@ import {
 } from './mkobj.js';
 import { makemon, mkclass, rndmonnum_adj, NO_MM_FLAGS, MM_NOGRP, setMakemonRoleContext, setMakemonLevelContext, getMakemonRoleIndex, setMakemonInMklevContext } from './makemon.js';
 import {
-    mons, S_HUMAN, S_UNICORN, S_DRAGON, S_GIANT, S_TROLL, S_CENTAUR, S_ORC, S_GNOME, S_KOBOLD,
+    mons, S_UNICORN, S_DRAGON, S_GIANT, S_TROLL, S_CENTAUR, S_ORC, S_GNOME, S_KOBOLD,
     S_VAMPIRE, S_ZOMBIE, S_DEMON, S_FUNGUS,
     PM_ELF, PM_HUMAN, PM_GNOME, PM_DWARF, PM_ORC, PM_ARCHEOLOGIST, PM_WIZARD, PM_MINOTAUR, PM_GIANT_SPIDER,
     PM_SOLDIER, PM_SERGEANT, PM_LIEUTENANT, PM_CAPTAIN,
@@ -72,7 +72,6 @@ import {
     ARMOR_CLASS, SCROLL_CLASS, POTION_CLASS, RING_CLASS, SPBOOK_CLASS,
     POT_HEALING, POT_EXTRA_HEALING, POT_SPEED, POT_GAIN_ENERGY,
     SCR_ENCHANT_WEAPON, SCR_ENCHANT_ARMOR, SCR_CONFUSE_MONSTER, SCR_SCARE_MONSTER,
-    SCR_TELEPORTATION,
     WAN_DIGGING, SPE_HEALING, SPE_BLANK_PAPER, SPE_NOVEL,
     objectData, bases, GLASS,
 } from './objects.js';
@@ -85,6 +84,64 @@ import {
     post_level_generate as themeroomsPostLevelGenerate,
     reset_state as resetThemermsState
 } from './levels/themerms.js';
+import {
+    isbig,
+    has_dnstairs_room,
+    has_upstairs_room,
+    nexttodoor,
+    shrine_pos,
+} from './mkroom.js';
+import {
+    mkroom_cmp,
+    bydoor,
+    okdoor,
+    good_rm_wall_doorpos,
+    finddpos_shift,
+    finddpos,
+    maybe_sdoor,
+    mkstairs,
+    generate_stairs_room_good,
+    generate_stairs_find_room,
+    generate_stairs,
+    cardinal_nextto_room,
+    place_niche,
+    occupied,
+    find_okay_roompos,
+    mkfount,
+    mksink,
+    mkaltar,
+    mkgrave,
+    makeniche,
+    make_niches,
+    makevtele,
+} from './mklev.js';
+import { XL_DOWN, XL_RIGHT, miniwalk, rogue_corr, roguejoin } from './extralev.js';
+export { isbig, has_dnstairs_room, has_upstairs_room, nexttodoor, shrine_pos } from './mkroom.js';
+export {
+    mkroom_cmp,
+    bydoor,
+    okdoor,
+    good_rm_wall_doorpos,
+    finddpos_shift,
+    finddpos,
+    maybe_sdoor,
+    mkstairs,
+    generate_stairs_room_good,
+    generate_stairs_find_room,
+    generate_stairs,
+    cardinal_nextto_room,
+    place_niche,
+    occupied,
+    find_okay_roompos,
+    mkfount,
+    mksink,
+    mkaltar,
+    mkgrave,
+    makeniche,
+    make_niches,
+    makevtele,
+} from './mklev.js';
+export { XL_UP, XL_DOWN, XL_LEFT, XL_RIGHT, miniwalk, rogue_corr, roguejoin } from './extralev.js';
 
 /**
  * Bridge function: Call themed room generation with des.* API bridge
@@ -590,7 +647,7 @@ function do_room_or_subroom(map, croom, lowx, lowy, hix, hiy,
 }
 
 // C ref: mklev.c add_room()
-function add_room_to_map(map, lowx, lowy, hix, hiy, lit, rtype, special) {
+export function add_room_to_map(map, lowx, lowy, hix, hiy, lit, rtype, special) {
     const croom = makeRoom();
     // needfill defaults to FILL_NONE; caller sets FILL_NORMAL as needed
     const roomIdx = map.nroom || 0;
@@ -604,7 +661,7 @@ function add_room_to_map(map, lowx, lowy, hix, hiy, lit, rtype, special) {
 }
 
 // C ref: mklev.c add_subroom()
-function add_subroom_to_map(map, proom, lowx, lowy, hix, hiy, lit, rtype, special) {
+export function add_subroom_to_map(map, proom, lowx, lowy, hix, hiy, lit, rtype, special) {
     const croom = makeRoom();
     croom.needjoining = false;
     // Keep subroom room numbers outside the main-room range so sort_rooms()
@@ -725,13 +782,6 @@ export function sp_create_door(map, dd, broom) {
     add_door(map, x, y, broom);
 }
 
-// C ref: mklev.c mkroom_cmp() — sort rooms by lx only
-function mkroom_cmp(a, b) {
-    if (a.lx < b.lx) return -1;
-    if (a.lx > b.lx) return 1;
-    return 0;
-}
-
 // BSD-compatible qsort (Bentley-McIlroy fat partition).
 // JS Array.sort is stable (TimSort) while C's qsort is not.
 // We must match C's exact sort behavior for deterministic level gen.
@@ -793,7 +843,7 @@ function bsdQsort(arr, cmpFn) {
 }
 
 // C ref: mklev.c sort_rooms()
-function sort_rooms(map) {
+export function sort_rooms(map) {
     const n = map.nroom;
 
     // C ref: qsort(svr.rooms, svn.nroom, ...) sorts only main rooms.
@@ -1070,7 +1120,7 @@ export function setMtInitialized(val) {
 
 // C ref: mkmaze.c makemaz()
 // Generate a maze level (used in Gehennom and deep dungeon past Medusa)
-function makemaz(map, protofile, dnum, dlevel, depth) {
+export function makemaz(map, protofile, dnum, dlevel, depth) {
     // C ref: mkmaze.c:1127-1204
     // If protofile specified, try to load special level
     // For now, we only handle the procedural case (protofile === "")
@@ -1188,7 +1238,7 @@ function pick_vibrasquare_location(map) {
 }
 
 // C ref: mkmaze.c populate_maze()
-function populate_maze(map, depth) {
+export function populate_maze(map, depth) {
     const placeObjAt = (obj, x, y) => {
         if (!obj) return;
         obj.ox = x;
@@ -1230,7 +1280,7 @@ function populate_maze(map, depth) {
 }
 
 // Helper function to create the actual maze
-function create_maze(map, corrwid, wallthick, rmdeadends) {
+export function create_maze(map, corrwid, wallthick, rmdeadends) {
     // C ref: mkmaze.c create_maze()
     const defaultMaxX = (COLNO - 1);
     const defaultMaxY = (ROWNO - 1);
@@ -1411,7 +1461,7 @@ function create_maze(map, corrwid, wallthick, rmdeadends) {
 }
 
 // Helper function to find a random location in the maze
-function mazexy(map) {
+export function mazexy(map) {
     // C ref: mkmaze.c:1317-1348 mazexy()
     // Find a random CORR/ROOM location in the maze
     const xMax = Number.isInteger(map._mazeMaxX) ? map._mazeMaxX : (COLNO - 1);
@@ -1438,23 +1488,6 @@ function mazexy(map) {
         }
     }
     return null;
-}
-
-// Helper function to place stairs
-function mkstairs(map, x, y, isUp, isBranch = false) {
-    // C ref: mkroom.c:891-920 mkstairs()
-    const loc = map.at(x, y);
-    if (!loc) return;
-
-    loc.typ = STAIRS;
-    loc.stairdir = isUp ? 1 : 0; // 1 = up, 0 = down
-    loc.flags = isUp ? 1 : 0;
-    loc.branchStair = !!isBranch;
-    if (isUp) {
-        map.upstair = { x, y };
-    } else {
-        map.dnstair = { x, y };
-    }
 }
 
 // C ref: mklev.c makerooms()
@@ -1550,138 +1583,8 @@ function makerooms(map, depth) {
 // Corridor generation -- join(), makecorridors(), dig_corridor()
 // ========================================================================
 
-// C ref: mklev.c bydoor() -- is there a door adjacent to (x,y)?
-function bydoor(map, x, y) {
-    const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-    for (const [dx, dy] of dirs) {
-        if (isok(x + dx, y + dy)) {
-            const typ = map.at(x + dx, y + dy).typ;
-            if (IS_DOOR(typ) || typ === SDOOR) return true;
-        }
-    }
-    return false;
-}
-
-// C ref: mklev.c okdoor() -- is (x,y) a valid door position?
-function okdoor(map, x, y) {
-    const loc = map.at(x, y);
-    if (!loc) return false;
-    if (loc.typ !== HWALL && loc.typ !== VWALL) return false;
-    if (bydoor(map, x, y)) return false;
-    // Must have at least one non-obstructed neighbor
-    return ((isok(x - 1, y) && !IS_OBSTRUCTED(map.at(x - 1, y).typ))
-         || (isok(x + 1, y) && !IS_OBSTRUCTED(map.at(x + 1, y).typ))
-         || (isok(x, y - 1) && !IS_OBSTRUCTED(map.at(x, y - 1).typ))
-         || (isok(x, y + 1) && !IS_OBSTRUCTED(map.at(x, y + 1).typ)));
-}
-
-// C ref: mklev.c good_rm_wall_doorpos()
-function good_rm_wall_doorpos(map, x, y, dir, room) {
-    if (!isok(x, y) || !room.needjoining) return false;
-    const loc = map.at(x, y);
-    if (!(loc.typ === HWALL || loc.typ === VWALL
-        || IS_DOOR(loc.typ) || loc.typ === SDOOR))
-        return false;
-    if (bydoor(map, x, y)) return false;
-
-    const tx = x + xdir[dir];
-    const ty = y + ydir[dir];
-    if (!isok(tx, ty) || IS_OBSTRUCTED(map.at(tx, ty).typ))
-        return false;
-
-    const rmno = map.rooms.indexOf(room) + ROOMOFFSET;
-    if (rmno !== map.at(tx, ty).roomno)
-        return false;
-
-    return true;
-}
-
-// C ref: mklev.c finddpos_shift()
-function finddpos_shift(map, x, y, dir, aroom) {
-    dir = DIR_180(dir);
-    const dx = xdir[dir];
-    const dy = ydir[dir];
-
-    if (good_rm_wall_doorpos(map, x, y, dir, aroom))
-        return { x, y };
-
-    // C ref: mklev.c:118-139 — irregular rooms may have their wall away from
-    // the bounding box edge; walk inward through STONE/CORR to find the wall.
-    if (aroom.irregular) {
-        let rx = x, ry = y;
-        let fail = false;
-        while (!fail && isok(rx, ry)
-               && (map.at(rx, ry).typ === STONE || map.at(rx, ry).typ === CORR)) {
-            rx += dx;
-            ry += dy;
-            if (good_rm_wall_doorpos(map, rx, ry, dir, aroom))
-                return { x: rx, y: ry };
-            if (!(map.at(rx, ry).typ === STONE || map.at(rx, ry).typ === CORR))
-                fail = true;
-            if (rx < aroom.lx || rx > aroom.hx
-                || ry < aroom.ly || ry > aroom.hy)
-                fail = true;
-        }
-    }
-    return null;
-}
-
-// C ref: mklev.c finddpos() -- find door position on room wall
-function finddpos(map, dir, aroom) {
-    let x1, y1, x2, y2;
-
-    switch (dir) {
-    case DIR_N:
-        x1 = aroom.lx; x2 = aroom.hx;
-        y1 = y2 = aroom.ly - 1;
-        break;
-    case DIR_S:
-        x1 = aroom.lx; x2 = aroom.hx;
-        y1 = y2 = aroom.hy + 1;
-        break;
-    case DIR_W:
-        x1 = x2 = aroom.lx - 1;
-        y1 = aroom.ly; y2 = aroom.hy;
-        break;
-    case DIR_E:
-        x1 = x2 = aroom.hx + 1;
-        y1 = aroom.ly; y2 = aroom.hy;
-        break;
-    default:
-        return null;
-    }
-
-    // Try random points (up to 20 attempts)
-    if (typeof process !== 'undefined' && process.env.DEBUG_FINDDPOS === '1') {
-        console.log(`[FDP] call=${getRngCallCount()} dir=${dir} room=(${aroom.lx},${aroom.ly})-(${aroom.hx},${aroom.hy}) rangeX=${x2 - x1 + 1} rangeY=${y2 - y1 + 1}`);
-    }
-    let tryct = 0;
-    do {
-        const x = (x2 - x1) ? rn1(x2 - x1 + 1, x1) : x1;
-        const y = (y2 - y1) ? rn1(y2 - y1 + 1, y1) : y1;
-        const result = finddpos_shift(map, x, y, dir, aroom);
-        if (result) return result;
-    } while (++tryct < 20);
-
-    // Try all points exhaustively
-    for (let x = x1; x <= x2; x++) {
-        for (let y = y1; y <= y2; y++) {
-            const result = finddpos_shift(map, x, y, dir, aroom);
-            if (result) return result;
-        }
-    }
-
-    // C ref: mklev.c finddpos() returns FALSE when no valid door position.
-    return null;
-}
-
-// C ref: mklev.c maybe_sdoor()
-function maybe_sdoor(depth, chance) {
-    return (depth > 2) && !rn2(Math.max(2, chance));
-}
-
 // C ref: mklev.c dosdoor() -- set door type and add to room's door list
-function dosdoor(map, x, y, aroom, type, depth) {
+export function dosdoor(map, x, y, aroom, type, depth) {
     const loc = map.at(x, y);
     if (!IS_WALL(loc.typ)) type = DOOR; // avoid secret doors on existing doors
 
@@ -1724,7 +1627,7 @@ function dosdoor(map, x, y, aroom, type, depth) {
 }
 
 // C ref: mklev.c dodoor()
-function dodoor(map, x, y, aroom, depth) {
+export function dodoor(map, x, y, aroom, depth) {
     dosdoor(map, x, y, aroom, maybe_sdoor(depth, 8) ? SDOOR : DOOR, depth);
 }
 
@@ -2345,119 +2248,6 @@ export function enexto(cx, cy, map) {
     return null;
 }
 
-// C ref: mklev.c generate_stairs_room_good()
-function generate_stairs_room_good(map, croom, phase) {
-    const has_upstairs = Number.isInteger(map.upstair?.x)
-        && Number.isInteger(map.upstair?.y)
-        && inside_room(croom, map.upstair.x, map.upstair.y, map);
-    const has_dnstairs = Number.isInteger(map.dnstair?.x)
-        && Number.isInteger(map.dnstair?.y)
-        && inside_room(croom, map.dnstair.x, map.dnstair.y, map);
-    // C ref: mklev.c:2199-2203
-    return (croom.needjoining || phase < 0)
-        && ((!has_dnstairs && !has_upstairs) || phase < 1)
-        && (croom.rtype === OROOM
-            || (phase < 2 && croom.rtype === THEMEROOM));
-}
-
-// C ref: mklev.c generate_stairs_find_room()
-function generate_stairs_find_room(map) {
-    if (!map.nroom) return null;
-
-    for (let phase = 2; phase > -1; phase--) {
-        const candidates = [];
-        for (let i = 0; i < map.nroom; i++) {
-            if (generate_stairs_room_good(map, map.rooms[i], phase))
-                candidates.push(i);
-        }
-        if (candidates.length > 0) {
-            return map.rooms[candidates[rn2(candidates.length)]];
-        }
-    }
-    return map.rooms[rn2(map.nroom)];
-}
-
-// C ref: mklev.c generate_stairs()
-function generate_stairs(map, depth) {
-    // Place downstairs (unless bottom level -- we don't track that yet)
-    let croom = generate_stairs_find_room(map);
-    if (croom) {
-        const pos = somexyspace(map, croom);
-        let x, y;
-        if (pos) {
-            x = pos.x; y = pos.y;
-        } else {
-            x = somex(croom); y = somey(croom);
-        }
-        const loc = map.at(x, y);
-        if (loc) {
-            loc.typ = STAIRS;
-            loc.flags = 0; // down
-            map.dnstair = { x, y };
-        }
-    }
-
-    // Place upstairs (unless level 1)
-    if (depth > 1) {
-        croom = generate_stairs_find_room(map);
-        if (croom) {
-            const pos = somexyspace(map, croom);
-            let x, y;
-            if (pos) {
-                x = pos.x; y = pos.y;
-            } else {
-                x = somex(croom); y = somey(croom);
-            }
-            const loc = map.at(x, y);
-            if (loc) {
-                loc.typ = STAIRS;
-                loc.flags = 1; // up
-                map.upstair = { x, y };
-            }
-        }
-    }
-}
-
-// C ref: mklev.c cardinal_nextto_room()
-function cardinal_nextto_room(map, aroom, x, y) {
-    const rmno = map.rooms.indexOf(aroom) + ROOMOFFSET;
-    const dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]];
-    for (const [dx, dy] of dirs) {
-        if (isok(x + dx, y + dy)) {
-            const loc = map.at(x + dx, y + dy);
-            if (!loc.edge && loc.roomno === rmno) return true;
-        }
-    }
-    return false;
-}
-
-// C ref: mklev.c place_niche()
-function place_niche(map, aroom) {
-    let dy;
-    if (rn2(2)) {
-        dy = 1;
-        const dd = finddpos(map, DIR_S, aroom);
-        if (!dd) return null;
-        const xx = dd.x, yy = dd.y;
-        if (isok(xx, yy + dy) && map.at(xx, yy + dy).typ === STONE
-            && isok(xx, yy - dy) && !IS_POOL(map.at(xx, yy - dy).typ)
-            && !IS_FURNITURE(map.at(xx, yy - dy).typ)
-            && cardinal_nextto_room(map, aroom, xx, yy))
-            return { xx, yy, dy };
-    } else {
-        dy = -1;
-        const dd = finddpos(map, DIR_N, aroom);
-        if (!dd) return null;
-        const xx = dd.x, yy = dd.y;
-        if (isok(xx, yy + dy) && map.at(xx, yy + dy).typ === STONE
-            && isok(xx, yy - dy) && !IS_POOL(map.at(xx, yy - dy).typ)
-            && !IS_FURNITURE(map.at(xx, yy - dy).typ)
-            && cardinal_nextto_room(map, aroom, xx, yy))
-            return { xx, yy, dy };
-    }
-    return null;
-}
-
 // ========================================================================
 // Engraving / wipeout_text — C ref: engrave.c
 // Used to consume RNG for trap engravings and graffiti.
@@ -2536,114 +2326,10 @@ function random_engraving_rng() {
     return wipeout_text(text, Math.floor(text.length / 4));
 }
 
-// C ref: mklev.c trap_engravings[] — engraving text for trap niches
-const TRAP_ENGRAVINGS = [];
-TRAP_ENGRAVINGS[TRAPDOOR] = "Vlad was here";
-TRAP_ENGRAVINGS[TELEP_TRAP] = "ad aerarium";
-TRAP_ENGRAVINGS[LEVEL_TELEP] = "ad aerarium";
-
-// C ref: mklev.c makeniche()
-function makeniche(map, depth, trap_type) {
-    let vct = 8;
-    while (vct--) {
-        const aroom = map.rooms[rn2(map.nroom)];
-        if (aroom.rtype !== OROOM) continue;
-        if (aroom.doorct === 1 && rn2(5)) continue;
-        const niche = place_niche(map, aroom);
-        if (!niche) continue;
-        const { xx, yy, dy } = niche;
-        const rm = map.at(xx, yy + dy);
-
-        if (trap_type || !rn2(4)) {
-            rm.typ = SCORR;
-            // C ref: maketrap + trap engraving (maketrap itself doesn't use RNG)
-            if (trap_type) {
-                // C ref: mklev.c:751-753 — is_hole replacement for Can_fall_thru
-                let actual_trap = trap_type;
-                if (is_hole(actual_trap) && depth <= 1) {
-                    // Can't fall through top level; use ROCKTRAP instead
-                    actual_trap = ROCKTRAP;
-                }
-                // C ref: mklev.c makeniche() places trap in niche cell (xx, yy + dy).
-                maketrap(map, xx, yy + dy, actual_trap, depth);
-                // C ref: mklev.c:764-769 — trap engraving + wipe
-                const engrText = TRAP_ENGRAVINGS[actual_trap];
-                if (engrText) {
-                    // C ref: make_engr_at(xx, yy-dy, trap_engravings[trap_type], ..., DUST)
-                    make_engr_at(map, xx, yy - dy, engrText, 'dust');
-                    // C ref: wipe_engr_at(xx, yy-dy, 5, FALSE) — age it
-                    wipe_engr_at(map, xx, yy - dy, 5, false);
-                }
-            }
-            dosdoor(map, xx, yy, aroom, SDOOR, depth);
-        } else {
-            rm.typ = CORR;
-            if (rn2(7)) {
-                dosdoor(map, xx, yy, aroom, rn2(5) ? SDOOR : DOOR, depth);
-            } else {
-                if (!rn2(5) && IS_WALL(map.at(xx, yy).typ)) {
-                    map.at(xx, yy).typ = IRONBARS;
-                    if (rn2(3)) {
-                        // C ref: mkcorpstat(CORPSE, 0, mkclass(S_HUMAN, 0), xx, yy+dy, TRUE)
-                        const mndx = mkclass(S_HUMAN, 0, depth);
-                        const corpse = mksobj(CORPSE, true, false);
-                        if (corpse && mndx >= 0) {
-                            corpse.corpsenm = mndx;
-                        }
-                    }
-                }
-                // C ref: mklev.c:780-782 — scroll of teleportation in niche
-                if (!map.flags.noteleport)
-                    mksobj(SCR_TELEPORTATION, true, false);
-                if (!rn2(3)) {
-                    // C ref: mklev.c:783-784 — random object in niche
-                    mkobj(0, true); // RANDOM_CLASS = 0
-                }
-            }
-        }
-        return;
-    }
-}
-
-// C ref: mklev.c make_niches()
-function make_niches(map, depth) {
-    let ct = rnd(Math.floor(map.nroom / 2) + 1);
-    // C ref: mklev.c:795-796 — ltptr and vamp are boolean flags, used once
-    let ltptr = (!map.flags.noteleport && depth > 15);
-    let vamp = (depth > 5 && depth < 25);
-
-    while (ct--) {
-        if (ltptr && !rn2(6)) {
-            ltptr = false;
-            makeniche(map, depth, LEVEL_TELEP);
-        } else if (vamp && !rn2(6)) {
-            vamp = false;
-            makeniche(map, depth, TRAPDOOR);
-        } else {
-            makeniche(map, depth, NO_TRAP);
-        }
-    }
-}
-
 // ========================================================================
 // Trap creation -- mktrap, maketrap, traptype_rnd
 // C ref: mklev.c, trap.c
 // ========================================================================
-
-// C ref: mklev.c:1795 occupied() -- check if position has trap/furniture/pool
-function occupied(map, x, y) {
-    if (map.trapAt(x, y)) return true;
-    const loc = map.at(x, y);
-    if (!loc) return true;
-    if (IS_FURNITURE(loc.typ)) return true;
-    if (IS_LAVA(loc.typ) || IS_POOL(loc.typ)) return true;
-    // C ref: hack.c invocation_pos() used by mklev.c occupied().
-    if (map._isInvocationLevel && map._invPos
-        && x === map._invPos.x && y === map._invPos.y) {
-        return true;
-    }
-    return false;
-}
 
 // C ref: obj.h sobj_at(BOULDER, x, y) checks for boulder object at location.
 function hasBoulderAt(map, x, y) {
@@ -2768,7 +2454,7 @@ function mk_trap_statue(map, x, y, depth = 1) {
 }
 
 // C ref: trap.c:455 maketrap() -- create a trap at (x,y)
-function maketrap(map, x, y, typ, depth = 1) {
+export function maketrap(map, x, y, typ, depth = 1) {
     if (typ === TRAPPED_DOOR || typ === TRAPPED_CHEST) return null;
 
     // Check if trap already exists at this position
@@ -2867,7 +2553,7 @@ function hole_destination_rng(map) {
 }
 
 // C ref: mklev.c:1926 traptype_rnd() — pick random trap type
-function traptype_rnd(depth, mktrapflags = MKTRAP_NOFLAGS) {
+export function traptype_rnd(depth, mktrapflags = MKTRAP_NOFLAGS) {
     const lvl = depth; // level_difficulty() = depth for normal dungeon
     const kind = rnd(TRAPNUM - 1); // rnd(25) → 1..25
 
@@ -3002,7 +2688,7 @@ export function mktrap(map, num, mktrapflags, croom, tm, depth) {
 }
 
 // C ref: mklev.c mktrap_victim() — creates corpse + items on trap
-function mktrap_victim(map, trap, depth) {
+export function mktrap_victim(map, trap, depth) {
     const x = trap.tx, y = trap.ty;
 
     // Helper: place object on map at trap position
@@ -3114,90 +2800,6 @@ function mktrap_victim(map, trap, depth) {
     // C ref: mklev.c:1922 — age corpse so it's too old to safely eat
     // TAINT_AGE=50; subtracting 51 makes (age + 50 <= moves) true at game start
     otmp.age -= (TAINT_AGE + 1);
-}
-
-// C ref: mkroom.c find_okay_roompos() -- find non-occupied, non-bydoor pos
-function find_okay_roompos(map, croom) {
-    let tryct = 0;
-    do {
-        if (++tryct > 200) return null;
-        const pos = somexyspace(map, croom);
-        if (!pos) return null;
-        if (!bydoor(map, pos.x, pos.y))
-            return pos;
-    } while (true);
-}
-
-// C ref: mkroom.c mkfount()
-function mkfount(map, croom) {
-    const pos = find_okay_roompos(map, croom);
-    if (!pos) return;
-    const loc = map.at(pos.x, pos.y);
-    if (!loc) return;
-    loc.typ = FOUNTAIN;
-    // C ref: blessed fountain check
-    if (!rn2(7)) {
-        // blessedftn flag -- not tracked in JS yet, just consume RNG
-    }
-    map.flags.nfountains++;
-}
-
-// C ref: mkroom.c mksink()
-function mksink(map, croom) {
-    const pos = find_okay_roompos(map, croom);
-    if (!pos) return;
-    const loc = map.at(pos.x, pos.y);
-    if (!loc) return;
-    loc.typ = SINK;
-    map.flags.nsinks++;
-}
-
-// C ref: mkroom.c mkaltar()
-function mkaltar(map, croom) {
-    if (croom.rtype !== OROOM) return;
-    const pos = find_okay_roompos(map, croom);
-    if (!pos) return;
-    const loc = map.at(pos.x, pos.y);
-    if (!loc) return;
-    loc.typ = ALTAR;
-    // C ref: alignment = rn2(A_LAWFUL+2) - 1
-    // Store alignment: A_CHAOTIC (-1), A_NEUTRAL (0), or A_LAWFUL (1)
-    loc.altarAlign = rn2(3) - 1;
-}
-
-// C ref: mkroom.c mkgrave()
-function mkgrave(map, croom, depth) {
-    if (croom.rtype !== OROOM) return;
-    const dobell = !rn2(10);
-    const pos = find_okay_roompos(map, croom);
-    if (!pos) return;
-    const loc = map.at(pos.x, pos.y);
-    if (!loc) return;
-    loc.typ = GRAVE;
-    // C ref: make_grave() → get_rnd_text(EPITAPHFILE, ...) when str=NULL
-    // get_rnd_line calls rn2(filechunksize) to pick a random epitaph offset.
-    // This only happens when dobell is false (str=NULL); when dobell is true,
-    // a fixed "Saved by the bell!" string is used (no RNG).
-    if (!dobell) {
-        // TODO: use epitaph text for grave rendering
-        void random_epitaph_text();
-    }
-    // C ref: possibly fill with gold
-    if (!rn2(3)) {
-        mksobj(GOLD_PIECE, true, false);
-        // gold->quan = rnd(20) + level_difficulty() * rnd(5)
-        rnd(20);
-        rnd(5);
-    }
-    // C ref: bury random objects
-    let tryct = rn2(5);
-    while (tryct--) {
-        mkobj(0, true); // RANDOM_CLASS = 0
-    }
-    // C ref: leave a bell if dobell
-    if (dobell) {
-        mksobj(BELL, true, false);
-    }
 }
 
 // C ref: objnam.c rnd_class() -- pick random object in index range by probability
@@ -3458,7 +3060,7 @@ export function fill_ordinary_room(map, croom, depth, bonusItems) {
 // ========================================================================
 
 // C ref: mkmaze.c wall_cleanup() — remove walls totally surrounded by stone
-function wall_cleanup(map, x1, y1, x2, y2) {
+export function wall_cleanup(map, x1, y1, x2, y2) {
     const inarea = getWallifyProtectedArea(map);
     for (let x = x1; x <= x2; x++) {
         for (let y = y1; y <= y2; y++) {
@@ -3522,19 +3124,19 @@ function iswall_check(map, x, y) {
 }
 
 // C ref: mkmaze.c iswall_or_stone()
-function iswall_or_stone(map, x, y) {
+export function iswall_or_stone(map, x, y) {
     if (!isok(x, y)) return 1; // out of bounds = stone
     const typ = map.at(x, y).typ;
     return (typ === STONE || iswall_check(map, x, y)) ? 1 : 0;
 }
 
 // C ref: mkmaze.c is_solid()
-function is_solid(map, x, y) {
+export function is_solid(map, x, y) {
     return !isok(x, y) || IS_STWALL(map.at(x, y).typ);
 }
 
 // C ref: mkmaze.c extend_spine() — determine if wall spine extends in (dx,dy)
-function extend_spine(locale, wall_there, dx, dy) {
+export function extend_spine(locale, wall_there, dx, dy) {
     const nx = 1 + dx, ny = 1 + dy;
     if (wall_there) {
         if (dx) {
@@ -3800,9 +3402,9 @@ function do_fill_vault(map, vaultCheck, depth) {
         }
     }
 
-    // C ref: mklev.c:1321-1322 — !rn2(3) → makevtele() → makeniche(TELEP_TRAP)
+    // C ref: mklev.c:1321-1322 — !rn2(3) → makevtele()
     if (!rn2(3)) {
-        makeniche(map, depth, TELEP_TRAP);
+        makevtele(map, depth);
     }
 
     // Re-run wallification around the vault region to fix wall types
@@ -3842,7 +3444,7 @@ function mkgold(map, amount, x, y) {
 }
 
 // C ref: mkroom.c squadmon() — return soldier type for BARRACKS.
-function squadmon(depth) {
+export function squadmon(depth) {
     const difficulty = Math.max(Math.trunc(depth), 1);
     const squadprob = [
         { pm: PM_SOLDIER, prob: 80 },
@@ -3863,7 +3465,7 @@ function squadmon(depth) {
 }
 
 // C ref: mkroom.c courtmon() — return monster for COURT rooms.
-function courtmon(depth) {
+export function courtmon(depth) {
     const difficulty = Math.max(Math.trunc(depth), 1);
     const i = rn2(60) + rn2(3 * difficulty);
     if (i > 100) return mkclass(S_DRAGON, 0, depth);
@@ -3878,7 +3480,7 @@ function courtmon(depth) {
 }
 
 // C ref: mkroom.c morguemon() — return undead for MORGUE rooms.
-function morguemon(depth) {
+export function morguemon(depth) {
     const difficulty = Math.max(Math.trunc(depth), 1);
     const i = rn2(100);
     const hd = rn2(difficulty);
@@ -3901,7 +3503,7 @@ function morguemon(depth) {
 
 // C ref: mkroom.c:502-528 antholemon() — return ant type for ANTHOLE rooms.
 // Deterministic (no RNG). Retries up to 3 times if chosen type is genocided.
-function antholemon(depth) {
+export function antholemon(depth) {
     const difficulty = Math.max(Math.trunc(depth), 1);
     const indx = Math.trunc(_gameUbirthday % 3) + difficulty;
     let mtyp, trycnt = 0;
@@ -3918,7 +3520,7 @@ function antholemon(depth) {
 }
 
 // C ref: mkroom.c:257 mk_zoo_thronemon() — place throne ruler for COURT rooms.
-function mk_zoo_thronemon(map, x, y, depth) {
+export function mk_zoo_thronemon(map, x, y, depth) {
     const difficulty = Math.max(Math.trunc(depth), 1);
     const i = rnd(difficulty);
     const pm = (i > 9) ? PM_OGRE_TYRANT
@@ -4306,44 +3908,7 @@ export function fill_special_room(map, croom, depth) {
     }
 }
 
-const XL_UP = 1;
-const XL_DOWN = 2;
-const XL_LEFT = 4;
-const XL_RIGHT = 8;
-
-function rogue_corr(map, x, y) {
-    const loc = map.at(x, y);
-    if (!loc) return;
-    loc.typ = rn2(50) ? CORR : SCORR;
-}
-
-function roguejoin(map, x1, y1, x2, y2, horiz) {
-    if (horiz) {
-        const middle = x1 + rn2(x2 - x1 + 1);
-        for (let x = Math.min(x1, middle); x <= Math.max(x1, middle); x++) {
-            rogue_corr(map, x, y1);
-        }
-        for (let y = Math.min(y1, y2); y <= Math.max(y1, y2); y++) {
-            rogue_corr(map, middle, y);
-        }
-        for (let x = Math.min(middle, x2); x <= Math.max(middle, x2); x++) {
-            rogue_corr(map, x, y2);
-        }
-    } else {
-        const middle = y1 + rn2(y2 - y1 + 1);
-        for (let y = Math.min(y1, middle); y <= Math.max(y1, middle); y++) {
-            rogue_corr(map, x1, y);
-        }
-        for (let x = Math.min(x1, x2); x <= Math.max(x1, x2); x++) {
-            rogue_corr(map, x, middle);
-        }
-        for (let y = Math.min(middle, y2); y <= Math.max(middle, y2); y++) {
-            rogue_corr(map, x2, y);
-        }
-    }
-}
-
-function roguecorr(map, rooms, x0, y0, dir, depth) {
+export function roguecorr(map, rooms, x0, y0, dir, depth) {
     let x = x0;
     let y = y0;
     let fromx, fromy, tox, toy;
@@ -4407,48 +3972,7 @@ function roguecorr(map, rooms, x0, y0, dir, depth) {
     roguejoin(map, fromx, fromy, tox, toy, true);
 }
 
-function miniwalk(rooms, x, y) {
-    while (true) {
-        const dirs = [];
-        const doorhere = rooms[x][y].doortable;
-        if (x > 0 && !(doorhere & XL_LEFT)
-            && (!rooms[x - 1][y].doortable || !rn2(10))) dirs.push(0);
-        if (x < 2 && !(doorhere & XL_RIGHT)
-            && (!rooms[x + 1][y].doortable || !rn2(10))) dirs.push(1);
-        if (y > 0 && !(doorhere & XL_UP)
-            && (!rooms[x][y - 1].doortable || !rn2(10))) dirs.push(2);
-        if (y < 2 && !(doorhere & XL_DOWN)
-            && (!rooms[x][y + 1].doortable || !rn2(10))) dirs.push(3);
-        if (!dirs.length) return;
-
-        const dir = dirs[rn2(dirs.length)];
-        switch (dir) {
-        case 0:
-            rooms[x][y].doortable |= XL_LEFT;
-            x--;
-            rooms[x][y].doortable |= XL_RIGHT;
-            break;
-        case 1:
-            rooms[x][y].doortable |= XL_RIGHT;
-            x++;
-            rooms[x][y].doortable |= XL_LEFT;
-            break;
-        case 2:
-            rooms[x][y].doortable |= XL_UP;
-            y--;
-            rooms[x][y].doortable |= XL_DOWN;
-            break;
-        default:
-            rooms[x][y].doortable |= XL_DOWN;
-            y++;
-            rooms[x][y].doortable |= XL_UP;
-            break;
-        }
-        miniwalk(rooms, x, y);
-    }
-}
-
-function makerogueghost(map, _depth) {
+export function makerogueghost(map, _depth) {
     if (!map.nroom) return;
 
     const croom = map.rooms[rn2(map.nroom)];
@@ -5001,7 +4525,7 @@ function placeLevelSim(rawLevels, numLevels, levelActive) {
 // C ref: mkmaze.c:1353-1455
 // ========================================================================
 
-function get_level_extends(map) {
+export function get_level_extends(map) {
     // C ref: mkmaze.c:1353-1427
     // Scan from each edge to find the first column/row with non-STONE content.
     // The is_maze_lev flag affects the boundary offset; normal levels use -2/+2.
@@ -5229,55 +4753,8 @@ export function mineralize(map, depth, opts = null) {
 // C ref: mkroom.c:94-216
 // ========================================================================
 
-// C ref: mkroom.c:41-48
-function isbig(sroom) {
-    return (sroom.hx - sroom.lx + 1) * (sroom.hy - sroom.ly + 1) > 20;
-}
-
-// C ref: mkroom.c:640-663
-function has_dnstairs_room(croom, map) {
-    if (!Number.isInteger(map?.dnstair?.x) || !Number.isInteger(map?.dnstair?.y)) {
-        return false;
-    }
-    return map.dnstair.x >= croom.lx && map.dnstair.x <= croom.hx
-        && map.dnstair.y >= croom.ly && map.dnstair.y <= croom.hy;
-}
-function has_upstairs_room(croom, map) {
-    if (!Number.isInteger(map?.upstair?.x) || !Number.isInteger(map?.upstair?.y)) {
-        return false;
-    }
-    return map.upstair.x >= croom.lx && map.upstair.x <= croom.hx
-        && map.upstair.y >= croom.ly && map.upstair.y <= croom.hy;
-}
-
-// C ref: mkroom.c:623-638 nexttodoor() — is (sx,sy) adjacent to a door?
-// C checks all 8 neighbors; returns TRUE if any is IS_DOOR or SDOOR.
-function nexttodoor(sx, sy, map) {
-    for (let dx = -1; dx <= 1; dx++) {
-        for (let dy = -1; dy <= 1; dy++) {
-            if (!isok(sx + dx, sy + dy)) continue;
-            const loc = map.at(sx + dx, sy + dy);
-            if (loc && (IS_DOOR(loc.typ) || loc.typ === SDOOR)) return true;
-        }
-    }
-    return false;
-}
-
-// C ref: mkroom.c:577-596 shrine_pos() — find altar position in temple room.
-// Center of room, with rn2(2) jitter when even dimension.
-function shrine_pos(roomno, map) {
-    const troom = map.rooms[roomno - ROOMOFFSET];
-    let delta = troom.hx - troom.lx;
-    let x = troom.lx + Math.trunc(delta / 2);
-    if ((delta % 2) && rn2(2)) x++;
-    delta = troom.hy - troom.ly;
-    let y = troom.ly + Math.trunc(delta / 2);
-    if ((delta % 2) && rn2(2)) y++;
-    return { x, y };
-}
-
 // C ref: mkroom.c:219-241 pick_room()
-function pick_room(map, strict) {
+export function pick_room(map, strict) {
     if (!map.nroom) return null;
     let idx = rn2(map.nroom);
     for (let i = map.nroom; i > 0; i--, idx++) {
@@ -5299,7 +4776,7 @@ function pick_room(map, strict) {
 }
 
 // C ref: mkroom.c:244-253 mkzoo()
-function mkzoo(map, type) {
+export function mkzoo(map, type) {
     const sroom = pick_room(map, false);
     if (!sroom) return;
     sroom.rtype = type;
@@ -5354,7 +4831,7 @@ function priestini(sroom, sx, sy, sanctum, depth, map) {
 }
 
 // C ref: mkroom.c:598-621 mktemple() — create temple with altar and priest.
-function mktemple(map, depth) {
+export function mktemple(map, depth) {
     const sroom = pick_room(map, true);
     if (!sroom) return;
 
@@ -5383,7 +4860,7 @@ function mktemple(map, depth) {
 
 // C ref: mkroom.c:530-575 mkswamp() — turn up to 5 rooms into swamps.
 // Converts floor to POOL on odd (x+y) cells, places eels in water, fungi on land.
-function mkswamp(map, depth) {
+export function mkswamp(map, depth) {
     let eelct = 0;
     for (let i = 0; i < 5; i++) {
         const sroom = map.rooms[rn2(map.nroom)];
@@ -5429,7 +4906,7 @@ function mkswamp(map, depth) {
 }
 
 // C ref: mkroom.c:52-92 do_mkroom()
-function do_mkroom(map, roomtype, depth) {
+export function do_mkroom(map, roomtype, depth) {
     if (roomtype >= SHOPBASE) {
         mkshop(map);
         return;
@@ -5457,7 +4934,7 @@ function do_mkroom(map, roomtype, depth) {
 }
 
 // C ref: mkroom.c:1049-1096 — check if room shape traps shopkeeper
-function invalid_shop_shape(sroom, map) {
+export function invalid_shop_shape(sroom, map) {
     const doorx = map.doors[sroom.fdoor].x;
     const doory = map.doors[sroom.fdoor].y;
     let insidex = 0, insidey = 0, insidect = 0;
@@ -5489,7 +4966,7 @@ function invalid_shop_shape(sroom, map) {
     return false;
 }
 
-function mkshop(map) {
+export function mkshop(map) {
     // C ref: mkroom.c:158-179 — find eligible room
     for (const sroom of map.rooms) {
         if (sroom.hx < 0) return;
@@ -5905,7 +5382,7 @@ function within_bounded_area(x, y, lx, ly, hx, hy) {
 
 // C ref: mkmaze.c:317-332 — is_exclusion_zone
 // Check if position is in an exclusion zone for this region type
-function is_exclusion_zone(map, rtype, x, y) {
+export function is_exclusion_zone(map, rtype, x, y) {
     const zones = Array.isArray(map?.exclusionZones) ? map.exclusionZones : null;
     if (!zones || zones.length === 0) return false;
 
@@ -5958,7 +5435,7 @@ function is_exclusion_zone(map, rtype, x, y) {
 // - occupied by monster/object/trap/stairs/altar/etc.
 // - inside restricted region (nlx,nly,nhx,nhy)
 // - NOT (corridor on maze level OR room OR air)
-function bad_location(map, x, y, nlx, nly, nhx, nhy) {
+export function bad_location(map, x, y, nlx, nly, nhx, nhy) {
     // Check if occupied
     if (occupied(map, x, y)) {
         return true;
@@ -5983,7 +5460,7 @@ function bad_location(map, x, y, nlx, nly, nhx, nhy) {
 
 // C ref: mkmaze.c:413-469 — put_lregion_here
 // Try to place region at (x,y). Returns true on success.
-function put_lregion_here(map, x, y, nlx, nly, nhx, nhy, rtype, oneshot) {
+export function put_lregion_here(map, x, y, nlx, nly, nhx, nhy, rtype, oneshot) {
     // Check if location is bad.
     let invalid = bad_location(map, x, y, nlx, nly, nhx, nhy)
         || is_exclusion_zone(map, rtype, x, y);

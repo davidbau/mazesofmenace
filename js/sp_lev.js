@@ -394,7 +394,7 @@ function captureCheckpoint(phase) {
     });
 }
 
-function mkmapInitMap(map, bgTyp) {
+export function mkmapInitMap(map, bgTyp) {
     for (let x = 1; x < COLNO; x++) {
         for (let y = 0; y < ROWNO; y++) {
             const loc = map.locations[x][y];
@@ -405,7 +405,7 @@ function mkmapInitMap(map, bgTyp) {
     }
 }
 
-function mkmapInitFill(map, bgTyp, fgTyp) {
+export function mkmapInitFill(map, bgTyp, fgTyp) {
     const limit = Math.floor((MKMAP_WIDTH * MKMAP_HEIGHT * 2) / 5);
     let count = 0;
     while (count < limit) {
@@ -418,14 +418,14 @@ function mkmapInitFill(map, bgTyp, fgTyp) {
     }
 }
 
-function mkmapGet(map, x, y, bgTyp) {
+export function mkmapGet(map, x, y, bgTyp) {
     if (x <= 0 || y < 0 || x > MKMAP_WIDTH || y >= MKMAP_HEIGHT) {
         return bgTyp;
     }
     return map.locations[x][y].typ;
 }
 
-function mkmapPassOne(map, bgTyp, fgTyp) {
+export function mkmapPassOne(map, bgTyp, fgTyp) {
     const dirs = [
         [-1, -1], [-1, 0], [-1, 1], [0, -1],
         [0, 1], [1, -1], [1, 0], [1, 1]
@@ -442,7 +442,7 @@ function mkmapPassOne(map, bgTyp, fgTyp) {
     }
 }
 
-function mkmapPassTwo(map, bgTyp, fgTyp) {
+export function mkmapPassTwo(map, bgTyp, fgTyp) {
     const dirs = [
         [-1, -1], [-1, 0], [-1, 1], [0, -1],
         [0, 1], [1, -1], [1, 0], [1, 1]
@@ -464,7 +464,7 @@ function mkmapPassTwo(map, bgTyp, fgTyp) {
     }
 }
 
-function mkmapPassThree(map, bgTyp, fgTyp) {
+export function mkmapPassThree(map, bgTyp, fgTyp) {
     const dirs = [
         [-1, -1], [-1, 0], [-1, 1], [0, -1],
         [0, 1], [1, -1], [1, 0], [1, 1]
@@ -486,7 +486,7 @@ function mkmapPassThree(map, bgTyp, fgTyp) {
     }
 }
 
-function mkmapFloodRegions(map, bgTyp, fgTyp) {
+export function mkmapFloodRegions(map, bgTyp, fgTyp) {
     const seen = new Set();
     const key = (x, y) => `${x},${y}`;
     const regions = [];
@@ -650,7 +650,7 @@ function mkmapDigCorridor(map, org, dest, fgTyp, bgTyp) {
     return true;
 }
 
-function mkmapJoin(map, bgTyp, fgTyp, regions) {
+export function mkmapJoin(map, bgTyp, fgTyp, regions) {
     let cur = 0;
     for (let next = 1; next < regions.length; next++) {
         const croom = regions[cur];
@@ -668,7 +668,7 @@ function mkmapJoin(map, bgTyp, fgTyp, regions) {
     }
 }
 
-function mkmapWallifyMap(map, x1, y1, x2, y2) {
+export function mkmapWallifyMap(map, x1, y1, x2, y2) {
     let xx;
     let yy;
     let loXx;
@@ -707,7 +707,7 @@ function mkmapWallifyMap(map, x1, y1, x2, y2) {
     }
 }
 
-function mkmapFinish(map, fgTyp, bgTyp, lit, walled) {
+export function mkmapFinish(map, fgTyp, bgTyp, lit, walled) {
     if (walled) {
         mkmapWallifyMap(map, 1, 0, COLNO - 1, ROWNO - 1);
     }
@@ -725,6 +725,43 @@ function mkmapFinish(map, fgTyp, bgTyp, lit, walled) {
             }
         }
     }
+}
+
+// C ref: mkmap.c mkmap(init_lev): orchestrate full cellular map generation.
+// JS equivalent used by special levels and external wrappers.
+export function mkmap(initLev = {}) {
+    const map = initLev.map || levelState.map;
+    if (!map) return null;
+
+    const bgTyp = Number.isInteger(initLev.bg) ? initLev.bg
+        : Number.isInteger(levelState.init.bg) ? levelState.init.bg
+            : STONE;
+    const fgTyp = Number.isInteger(initLev.fg) ? initLev.fg
+        : Number.isInteger(levelState.init.fg) ? levelState.init.fg
+            : ROOM;
+    const lit = Number.isInteger(initLev.lit)
+        ? initLev.lit
+        : (levelState.init.lit < 0 ? rn2(2) : levelState.init.lit);
+    const smoothed = initLev.smoothed ?? levelState.init.smoothed;
+    const joined = initLev.joined ?? levelState.init.joined;
+    const walled = initLev.walled ?? levelState.init.walled;
+
+    mkmapInitMap(map, bgTyp);
+    mkmapInitFill(map, bgTyp, fgTyp);
+    mkmapPassOne(map, bgTyp, fgTyp);
+    mkmapPassTwo(map, bgTyp, fgTyp);
+    if (smoothed) {
+        mkmapPassThree(map, bgTyp, fgTyp);
+        mkmapPassThree(map, bgTyp, fgTyp);
+    }
+    if (joined) {
+        const regions = mkmapFloodRegions(map, bgTyp, fgTyp);
+        if (regions.length > 1) {
+            mkmapJoin(map, bgTyp, fgTyp, regions);
+        }
+    }
+    mkmapFinish(map, fgTyp, bgTyp, lit, !!walled);
+    return map;
 }
 
 // ========================================================================

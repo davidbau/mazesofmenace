@@ -18,12 +18,16 @@ const mockDisplay = {
 
 // Create a simple test monster matching makemon.js format
 function makeMonster(opts = {}) {
+    const ac = opts.ac !== undefined ? opts.ac : 8;
     return {
         name: opts.name || 'test monster',
         displayChar: opts.displayChar || 'x',
         mhp: opts.mhp || 10,
         mhpmax: opts.mhpmax || 10,
-        mac: opts.ac !== undefined ? opts.ac : 8,
+        // Combat to-hit uses worn.find_mac(mon) -> mon.type.ac.
+        // Keep mac too for any legacy callers in tests.
+        mac: ac,
+        type: { ac },
         mx: opts.mx || 5,
         my: opts.my || 5,
         mlevel: opts.level || 1,

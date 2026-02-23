@@ -68,7 +68,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[a]` | engrave.c | engrave.js | Engraving mechanics. handleEngrave (doengrave) approximation, maybeSmudgeEngraving (wipe_engr_at); engrave_data.js has text data; ~30 functions TODO |
 | `[a]` | exper.c | exper.js | Experience and leveling. newuexp, newexplevel, pluslvl, losexp, newpw, newhp, enermod implemented; experience, more_experienced, rndexp TODO. Role/race hpadv/enadv_full/xlev data in player.js. |
 | `[p]` | explode.c | explode.js | Explosion effects. All 9 functions present: adtyp_to_expltype, explosionmask (stub), engulfer_explosion_msg (stub), explode (3x3 area with resistance checks), scatter (stub), splatter_burning_oil, explode_oil, mon_explodes, ugolemeffects (stub) |
-| `[~]` | extralev.c | extralev.js | Special level generation helpers |
+| `[~]` | extralev.c | extralev.js | Special level generation helpers. `roguejoin`, `miniwalk`, and corridor primitive (`rogue_corr` for `corr`) now live in `extralev.js`; `roguecorr`/`makeroguerooms`/`makerogueghost` still in `dungeon.js` |
 | `[N/A]` | files.c | — | File I/O operations. JS: `storage.js` |
 | `[a]` | fountain.c | fountain.js | Fountain effects. drinkfountain/dryup implemented (RNG-parity); ~12 functions TODO |
 | `[~]` | getpos.c | getpos.js | Position selection UI |
@@ -88,11 +88,11 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[a]` | mhitm.c | mhitm.js | Monster-vs-monster combat. mattackm/hitmm/mdamagem/passivemm/fightm implemented (m-vs-m path); RNG parity for pets in dogmove.js; monCombatName per-monster visibility pronouns; rustm (full erode_obj dispatch), mdisplacem (position swap + petrification), engulf_target, gulpmm (simplified), mon_poly (simplified); artifact spec_dbon wired into mdamagem. gazemu/gulpmm full effects TODO |
 | `[a]` | mhitu.c | mhitu.js | Monster-vs-hero combat. monsterAttackPlayer restructured to match hitmu() flow; hitmsg, mhitm_knockback, mhitu_adtyping dispatcher, ~30 AD_* handlers (phys/fire/cold/elec/acid/stck/plys/slee/conf/stun/blnd/drst/drli/dren/drin/slow/ston etc.) implemented with real effects; mpoisons_subj, u_slow_down, wildmiss, getmattk (attack substitution), assess_dmg, passiveum (hero passive counter); AD_SGLD→stealgold, AD_SEDU→steal, AD_RUST/CORR/DCAY→erode_obj wired; artifact spec_dbon wired into mhitu_ad_phys; gazemu/gulpmu/expels/summonmu/doseduce TODO |
 | `[~]` | minion.c | minion.js | Minion summoning: msummon, summon_minion, demon_talk, bribe, guardian angels. All 14 functions TODO (runtime gameplay) |
-| `[~]` | mklev.c | mklev.js | Level generation. makelevel/makerooms/makecorridors/mineralize PARTIAL in dungeon.js; topologize/mkinvokearea/place_branch TODO |
+| `[~]` | mklev.c | mklev.js | Level generation. Helpers moved to `mklev.js`: door/door-position (`mkroom_cmp`, `bydoor`, `okdoor`, `good_rm_wall_doorpos`, `finddpos_shift`, `finddpos`, `maybe_sdoor`), stairs/feature placement (`mkstairs`, `generate_stairs*`, `cardinal_nextto_room`, `place_niche`, `occupied`, `find_okay_roompos`, `mkfount`, `mksink`, `mkaltar`, `mkgrave`), and niche pipeline (`makeniche`, `make_niches`, `makevtele`); remaining generation pipeline still in `dungeon.js` |
 | `[~]` | mkmap.c | mkmap.js | Map generation algorithms. JS: in `sp_lev.js` |
-| `[~]` | mkmaze.c | mkmaze.js | Maze generation. wallification/create_maze/makemaz PARTIAL in dungeon.js; water plane (movebubbles etc.) TODO; save/restore N/A |
+| `[~]` | mkmaze.c | mkmaze.js | Maze generation. Core helpers (`iswall*`, `is_solid`, `set_levltyp*`, `extend_spine`, `wall_cleanup`, `okay`, `maze0xy`, `maze_inbounds`) live in `mkmaze.js`; major generation path (`makemaz`/`create_maze`/`populate_maze`/`place_lregion`) currently delegated to `dungeon.js`; water plane still stubbed |
 | `[a]` | mkobj.c | mkobj.js | Object creation. mksobj/mkobj/mkcorpstat/xname/doname/weight/Is_container implemented; BUC functions exported (bless/unbless/curse/uncurse/blessorcurse/bcsign/set_bknown); erosion predicates exported (is_flammable/is_rustprone/is_rottable/is_corrodeable/is_crackable/erosion_matters); splitobj, container_weight added; ~30 functions TODO |
-| `[~]` | mkroom.c | mkroom.js | Room generation. somex/somey/inside_room/somexy/somexyspace ALIGNED in dungeon.js; mkshop/mktemple PARTIAL; fill_zoo ALIGNED; save/restore N/A |
+| `[~]` | mkroom.c | mkroom.js | Room generation. Room predicates/helpers (`isbig`, `has_dnstairs`, `has_upstairs`, `nexttodoor`, `shrine_pos`) moved to `mkroom.js`; remaining room-generation pipeline stays in `dungeon.js` |
 | `[a]` | mon.c | mon.js | Monster lifecycle: movemon, mfndpos (flag-based), mm_aggression, corpse_chance, passivemm, hider premove, zombie_maker/zombie_form/undead_to_corpse/genus/pm_to_cham; death chain: mlifesaver/lifesaved_monster/set_mon_min_mhpmax/check_gear_next_turn/m_detach/mondead_full/mondied/mongone/monkilled/xkilled/killed/make_corpse; alertness: wake_msg/wakeup/seemimic/wake_nearto_core/wake_nearto/wake_nearby/setmangry; turn processing: healmon/meatbox/m_consume_obj/meatmetal/meatobj/meatcorpse/minliquid/mpickgold/can_touch_safely/mon_give_prop/mon_givit/mcalcdistress; visibility: m_in_air/m_poisongas_ok/elemental_clog/set_ustuck/maybe_unhide_at/hideunder/hide_monst |
 | `[a]` | mondata.c | mondata.js | Monster data queries: predicates, mon_knows_traps, passes_bars, dmgtype, hates_silver, sticks, etc. |
 | `[a]` | monmove.c | monmove.js | Monster movement: dochug, m_move, m_move_aggress, set_apparxy, m_search_items; dochugw (wrapper), m_everyturn_effect, m_postmove_effect, postmov, should_displace, mb_trapped, itsstuck, release_hero, watch_on_duty, m_balks_at_approaching, mon_would_consume_item |
@@ -1793,12 +1793,12 @@ This section is generated from source symbol tables and includes function rows f
 ### extralev.c -> extralev.js
 | C Line | C Function | JS Line | Alignment |
 |--------|------------|---------|-----------|
-| 278 | `corr` | - | Missing |
+| 278 | `corr` | extralev.js `rogue_corr()` | Partial (name mismatch; behavior aligned) |
 | 288 | `makerogueghost` | - | Missing |
 | 193 | `makeroguerooms` | - | Missing |
-| 139 | `miniwalk` | - | Missing |
+| 139 | `miniwalk` | extralev.js:46 | Aligned |
 | 45 | `roguecorr` | - | Missing |
-| 21 | `roguejoin` | - | Missing |
+| 21 | `roguejoin` | extralev.js:19 | Aligned |
 
 ### files.c -> —
 | C Line | C Function | JS Line | Alignment |
@@ -2571,8 +2571,8 @@ No function symbols parsed from isaac64.c.
 | 305 | `add_room` | - | Missing |
 | 319 | `add_subroom` | - | Missing |
 | 553 | `alloc_doors` | - | Missing |
-| 1746 | `bydoor` | - | Missing |
-| 678 | `cardinal_nextto_room` | - | Missing |
+| 1746 | `bydoor` | mklev.js:20 | Aligned |
+| 678 | `cardinal_nextto_room` | mklev.js:242 | Aligned |
 | 1194 | `chk_okdoor` | - | Missing |
 | 847 | `clear_level_structures` | - | Missing |
 | 825 | `count_level_features` | - | Missing |
@@ -2581,41 +2581,41 @@ No function symbols parsed from isaac64.c.
 | 612 | `dosdoor` | - | Missing |
 | 935 | `fill_ordinary_room` | - | Missing |
 | 1656 | `find_branch_room` | - | Missing |
-| 2299 | `find_okay_roompos` | - | Missing |
-| 148 | `finddpos` | - | Missing |
-| 107 | `finddpos_shift` | - | Missing |
+| 2299 | `find_okay_roompos` | mklev.js:298 | Aligned |
+| 148 | `finddpos` | mklev.js:86 | Aligned |
+| 107 | `finddpos_shift` | mklev.js:62 | Aligned |
 | 336 | `free_luathemes` | - | Missing |
-| 2246 | `generate_stairs` | - | Missing |
-| 2215 | `generate_stairs_find_room` | - | Missing |
-| 2197 | `generate_stairs_room_good` | - | Missing |
-| 74 | `good_rm_wall_doorpos` | - | Missing |
+| 2246 | `generate_stairs` | mklev.js:212 | Aligned |
+| 2215 | `generate_stairs_find_room` | mklev.js:197 | Aligned |
+| 2197 | `generate_stairs_room_good` | mklev.js:183 | Aligned |
+| 74 | `good_rm_wall_doorpos` | mklev.js:44 | Aligned |
 | 430 | `join` | - | Missing |
 | 1540 | `level_finalize_topology` | - | Missing |
-| 799 | `make_niches` | - | Missing |
+| 799 | `make_niches` | mklev.js:415 | Aligned |
 | 519 | `makecorridors` | - | Missing |
 | 1247 | `makelevel` | - | Missing |
-| 737 | `makeniche` | - | Missing |
+| 737 | `makeniche` | mklev.js:369 | Aligned |
 | 358 | `makerooms` | - | Missing |
-| 818 | `makevtele` | - | Missing |
-| 1789 | `maybe_sdoor` | - | Missing |
+| 818 | `makevtele` | mklev.js:434 | Aligned |
+| 1789 | `maybe_sdoor` | mklev.js:127 | Aligned |
 | 1445 | `mineralize` | - | Missing |
 | 2620 | `mk_knox_portal` | - | Missing |
-| 2328 | `mkaltar` | - | Missing |
-| 2281 | `mkfount` | - | Missing |
-| 2349 | `mkgrave` | - | Missing |
+| 2328 | `mkaltar` | mklev.js:330 | Aligned |
+| 2281 | `mkfount` | mklev.js:309 | Aligned |
+| 2349 | `mkgrave` | mklev.js:341 | Aligned |
 | 2599 | `mkinvk_check_wall` | - | Missing |
 | 2406 | `mkinvokearea` | - | Missing |
 | 2499 | `mkinvpos` | - | Missing |
 | 1573 | `mklev` | - | Missing |
 | 1219 | `mklev_sanity_check` | - | Missing |
-| 2313 | `mksink` | - | Missing |
-| 2155 | `mkstairs` | - | Missing |
+| 2313 | `mksink` | mklev.js:320 | Aligned |
+| 2155 | `mkstairs` | mklev.js:142 | Aligned |
 | 2032 | `mktrap` | - | Missing |
 | 1811 | `mktrap_victim` | - | Missing |
-| 1802 | `occupied` | - | Missing |
-| 1775 | `okdoor` | - | Missing |
+| 1802 | `occupied` | mklev.js:284 | Aligned |
+| 1775 | `okdoor` | mklev.js:32 | Aligned |
 | 1687 | `place_branch` | - | Missing |
-| 698 | `place_niche` | - | Missing |
+| 698 | `place_niche` | mklev.js:255 | Aligned |
 | 1673 | `pos_to_room` | - | Missing |
 | 211 | `sort_rooms` | - | Missing |
 | 1170 | `themerooms_post_level_generate` | - | Missing |
@@ -2645,51 +2645,51 @@ No function symbols parsed from isaac64.c.
 ### mkmaze.c -> mkmaze.js
 | C Line | C Function | JS Line | Alignment |
 |--------|------------|---------|-----------|
-| 475 | `baalz_fixup` | - | Missing |
-| 341 | `bad_location` | - | Missing |
-| 1441 | `bound_digging` | - | Missing |
-| 708 | `check_ransacked` | - | Missing |
-| 951 | `create_maze` | - | Missing |
-| 166 | `extend_spine` | - | Missing |
-| 229 | `fix_wall_spines` | - | Missing |
-| 570 | `fixup_special` | - | Missing |
-| 1479 | `fumaroles` | - | Missing |
-| 1354 | `get_level_extends` | - | Missing |
-| 317 | `is_exclusion_zone` | - | Missing |
-| 70 | `is_solid` | - | Missing |
-| 45 | `iswall` | - | Missing |
-| 59 | `iswall_or_stone` | - | Missing |
-| 1128 | `makemaz` | - | Missing |
+| 475 | `baalz_fixup` | mkmaze.js:168 | Stub (intentional) |
+| 341 | `bad_location` | mkmaze.js:126 | Aligned (delegates to dungeon implementation) |
+| 1441 | `bound_digging` | dungeon.js `bound_digging()` | Aligned |
+| 708 | `check_ransacked` | mkmaze.js:170 | Stub (intentional) |
+| 951 | `create_maze` | mkmaze.js:136 | Aligned (delegates to dungeon implementation) |
+| 166 | `extend_spine` | mkmaze.js:69 | Aligned |
+| 229 | `fix_wall_spines` | mkmaze.js `fix_wall_spines` | Aligned (re-export) |
+| 570 | `fixup_special` | mkmaze.js:169 | Stub (intentional) |
+| 1479 | `fumaroles` | mkmaze.js:187 | Stub (intentional) |
+| 1354 | `get_level_extends` | dungeon.js `get_level_extends()` | Aligned |
+| 317 | `is_exclusion_zone` | mkmaze.js:121 | Aligned (delegates to dungeon implementation) |
+| 70 | `is_solid` | mkmaze.js:48 | Aligned |
+| 45 | `iswall` | mkmaze.js:29 | Aligned |
+| 59 | `iswall_or_stone` | mkmaze.js:41 | Aligned |
+| 1128 | `makemaz` | mkmaze.js:131 | Aligned (delegates to dungeon implementation) |
 | 1924 | `maybe_adjust_hero_bubble` | - | Missing |
-| 309 | `maze0xy` | - | Missing |
-| 895 | `maze_inbounds` | - | Missing |
-| 905 | `maze_remove_deadends` | - | Missing |
-| 1317 | `mazexy` | dungeon.js:mazexy | Aligned — rnd(xMax/yMax), corrmaze flag, exhaustive fallback |
+| 309 | `maze0xy` | mkmaze.js:116 | Aligned |
+| 895 | `maze_inbounds` | mkmaze.js:177 | Aligned |
+| 905 | `maze_remove_deadends` | mkmaze.js:146 | Partial (uses create_maze deadend-removal path) |
+| 1317 | `mazexy` | mkmaze.js:151 | Aligned (delegates to dungeon implementation) |
 | 781 | `migr_booty_item` | - | Missing |
 | 718 | `migrate_orc` | - | Missing |
-| 1868 | `mk_bubble` | - | Missing |
-| 1459 | `mkportal` | - | Missing |
-| 1534 | `movebubbles` | - | Missing |
+| 1868 | `mk_bubble` | mkmaze.js:202 | Stub scaffold |
+| 1459 | `mkportal` | mkmaze.js:182 | Partial |
+| 1534 | `movebubbles` | mkmaze.js:188 | Stub (intentional) |
 | 1947 | `mv_bubble` | - | Missing |
-| 297 | `okay` | - | Missing |
-| 1043 | `pick_vibrasquare_location` | - | Missing |
-| 356 | `place_lregion` | - | Missing |
-| 1098 | `populate_maze` | - | Missing |
-| 413 | `put_lregion_here` | - | Missing |
-| 1745 | `restore_waterlevel` | - | Missing |
-| 1718 | `save_waterlevel` | - | Missing |
-| 77 | `set_levltyp` | - | Missing |
-| 125 | `set_levltyp_lit` | - | Missing |
-| 1797 | `set_wportal` | - | Missing |
-| 1807 | `setup_waterlevel` | - | Missing |
+| 297 | `okay` | mkmaze.js:102 | Aligned |
+| 1043 | `pick_vibrasquare_location` | mkmaze.js:156 | Partial |
+| 356 | `place_lregion` | mkmaze.js `place_lregion` | Aligned (re-export from dungeon) |
+| 1098 | `populate_maze` | mkmaze.js:141 | Aligned (delegates to dungeon implementation) |
+| 413 | `put_lregion_here` | mkmaze.js `put_lregion_here` | Aligned (re-export from dungeon) |
+| 1745 | `restore_waterlevel` | mkmaze.js:191 | Stub (intentional) |
+| 1718 | `save_waterlevel` | mkmaze.js:190 | Stub (intentional) |
+| 77 | `set_levltyp` | mkmaze.js:53 | Aligned |
+| 125 | `set_levltyp_lit` | mkmaze.js:61 | Aligned |
+| 1797 | `set_wportal` | mkmaze.js:192 | Stub (intentional) |
+| 1807 | `setup_waterlevel` | mkmaze.js:193 | Stub scaffold |
 | 749 | `shiny_orc_stuff` | - | Missing |
 | 800 | `stolen_booty` | - | Missing |
-| 1855 | `unsetup_waterlevel` | - | Missing |
+| 1855 | `unsetup_waterlevel` | mkmaze.js:198 | Stub scaffold |
 | 1233 | `walkfrom` | - | Missing |
 | 1280 | `walkfrom` | - | Missing |
-| 198 | `wall_cleanup` | - | Missing |
-| 290 | `wallification` | - | Missing |
-| 1684 | `water_friction` | - | Missing |
+| 198 | `wall_cleanup` | mkmaze.js:84 | Aligned |
+| 290 | `wallification` | mkmaze.js `wallification` | Aligned (re-export) |
+| 1684 | `water_friction` | mkmaze.js:189 | Stub (intentional) |
 
 ### mkobj.c -> mkobj.js
 | C Line | C Function | JS Line | Alignment |
@@ -2802,11 +2802,11 @@ No function symbols parsed from isaac64.c.
 | 784 | `courtmon` | - | Missing |
 | 53 | `do_mkroom` | - | Missing |
 | 277 | `fill_zoo` | sp_lev.js `fill_zoo()` | Aligned — all room types, ndemon, mkgold merge, mongets/set_malign, mk_tt_object |
-| 641 | `has_dnstairs` | - | Missing |
-| 654 | `has_upstairs` | - | Missing |
+| 641 | `has_dnstairs` | mkroom.js:12 | Aligned |
+| 654 | `has_upstairs` | mkroom.js:21 | Aligned |
 | 679 | `inside_room` | - | Missing |
 | 1051 | `invalid_shop_shape` | - | Missing |
-| 43 | `isbig` | - | Missing |
+| 43 | `isbig` | mkroom.js:7 | Aligned |
 | 258 | `mk_zoo_thronemon` | - | Missing |
 | 96 | `mkshop` | - | Missing |
 | 531 | `mkswamp` | - | Missing |
@@ -2814,14 +2814,14 @@ No function symbols parsed from isaac64.c.
 | 457 | `mkundead` | - | Missing |
 | 245 | `mkzoo` | - | Missing |
 | 479 | `morguemon` | - | Missing |
-| 624 | `nexttodoor` | - | Missing |
+| 624 | `nexttodoor` | mkroom.js:30 | Aligned |
 | 221 | `pick_room` | - | Missing |
 | 876 | `rest_room` | - | Missing |
 | 894 | `rest_rooms` | - | Missing |
 | 845 | `save_room` | - | Missing |
 | 864 | `save_rooms` | - | Missing |
 | 766 | `search_special` | - | Missing |
-| 578 | `shrine_pos` | - | Missing |
+| 578 | `shrine_pos` | mkroom.js:42 | Aligned |
 | 667 | `somex` | - | Missing |
 | 695 | `somexy` | - | Missing |
 | 745 | `somexyspace` | - | Missing |
@@ -5976,4 +5976,3 @@ No function symbols parsed from isaac64.c.
 | 4224 | `zhitm` | zap.js:125 | Implemented (beam hits monster with damage/resistance) |
 | 4387 | `zhitu` | - | Missing |
 | 861 | `zombie_can_dig` | - | Missing |
-

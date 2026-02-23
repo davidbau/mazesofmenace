@@ -1,297 +1,436 @@
-// mklev.js -- Level generation: rooms, corridors, doors, traps, stairs, features
-// cf. mklev.c — makelevel, mklev, makerooms, makecorridors, join, topologize,
-//               add_room, add_subroom, do_room_or_subroom, sort_rooms,
-//               finddpos, finddpos_shift, good_rm_wall_doorpos,
-//               fill_ordinary_room, themerooms_post_level_generate,
-//               alloc_doors, add_door, dosdoor, dodoor, okdoor, bydoor,
-//               maybe_sdoor, chk_okdoor, cardinal_nextto_room,
-//               place_niche, makeniche, make_niches, makevtele,
-//               mktrap, mktrap_victim, traptype_rnd, traptype_roguelvl,
-//               mkstairs, generate_stairs, generate_stairs_find_room,
-//               generate_stairs_room_good, mkfount, mksink, mkaltar, mkgrave,
-//               mkinvokearea, mkinvpos, mkinvk_check_wall,
-//               mineralize, water_has_kelp, level_finalize_topology,
-//               count_level_features, clear_level_structures,
-//               find_okay_roompos, occupied, pos_to_room, find_branch_room,
-//               place_branch, mk_knox_portal, mklev_sanity_check,
-//               mkroom_cmp, free_luathemes, mkfount, mksink, mkaltar
-//
-// mklev.c is the main level generation orchestrator. makelevel() dispatches to
-// either makemaz() (for maze/special levels) or the room-based generator
-// (makerooms → makecorridors → fill_ordinary_room → mineralize).
-//
-// JS implementations: most level-generation functions are implemented in dungeon.js.
-//   makelevel()          → dungeon.js:5009 (PARTIAL — main entry point)
-//   makerooms()          → dungeon.js:1435 (PARTIAL — room placement)
-//   makecorridors()      → dungeon.js:2016 (PARTIAL — corridor generation)
-//   join()               → dungeon.js:1948 (PARTIAL — join two rooms with corridor)
-//   sort_rooms()         → dungeon.js:777 (ALIGNED)
-//   add_room()           → dungeon.js:574 as add_room_to_map (PARTIAL)
-//   add_door()           → dungeon.js:1706 (PARTIAL)
-//   dodoor()             → dungeon.js:1701 (PARTIAL)
-//   somexy/somexyspace   → dungeon.js:2184,2234 (ALIGNED — in mkroom.js)
-//   mkstairs()           → dungeon.js:1418 (PARTIAL)
-//   mktrap()             → dungeon.js (PARTIAL via traptype_rnd)
-//   traptype_rnd()       → dungeon.js:2837 (PARTIAL)
-//   mktrap_victim()      → dungeon.js:2972 (PARTIAL)
-//   mkfount()            → dungeon.js:3100 (PARTIAL)
-//   mksink()             → dungeon.js:3114 (PARTIAL)
-//   mkaltar()            → dungeon.js:3124 (PARTIAL)
-//   mkgrave()            → dungeon.js:3137 (PARTIAL)
-//   mineralize()         → dungeon.js:4706 (ALIGNED — full implementation)
-//   fill_ordinary_room() → dungeon.js:3206 (PARTIAL)
-//   wallification()      → dungeon.js:3467 (ALIGNED — from mkmaze.c)
-//   find_okay_roompos()  → dungeon.js:3087 (PARTIAL)
-// Remaining functions (topologize, level_finalize_topology, mkinvokearea,
-//   place_branch, mklev_sanity_check) → not implemented in JS.
+// mklev.c helper functions moved out of dungeon.js to mirror C file layout.
 
-// cf. mklev.c:60 [static] — mkroom_cmp(vx, vy): qsort comparator for mkroom structs
-// Sorts rooms left-to-right for door placement; used by sort_rooms().
-// TODO: mklev.c:60 — mkroom_cmp(): room sort comparator
+import {
+    STONE, CORR, SCORR, ROOM, ICE, HWALL, VWALL, SDOOR, ROOMOFFSET,
+    STAIRS, FOUNTAIN, SINK, ALTAR, GRAVE, OROOM, THEMEROOM,
+    DOOR, IRONBARS,
+    DIR_N, DIR_S, DIR_E, DIR_W, DIR_180,
+    xdir, ydir,
+    IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_LAVA, IS_POOL, IS_WALL,
+    NO_TRAP, TELEP_TRAP, LEVEL_TELEP, TRAPDOOR, ROCKTRAP, is_hole, isok,
+} from './config.js';
+import { rn1, rn2, rnd, getRngCallCount } from './rng.js';
+import { mksobj, mkobj } from './mkobj.js';
+import { GOLD_PIECE, BELL, CORPSE, SCR_TELEPORTATION } from './objects.js';
+import { S_HUMAN } from './monsters.js';
+import { mkclass } from './makemon.js';
+import { make_engr_at, wipe_engr_at } from './engrave.js';
+import { random_epitaph_text } from './rumors.js';
+import { has_dnstairs_room, has_upstairs_room } from './mkroom.js';
+import { dosdoor, maketrap, somexy } from './dungeon.js';
 
-// cf. mklev.c:73 [static] — good_rm_wall_doorpos(x, y, dir, room): valid door wall pos?
-// Checks that position on room wall is valid for door placement.
-// TODO: mklev.c:73 — good_rm_wall_doorpos(): door wall position check
+// C ref: mklev.c mkroom_cmp() — sort rooms by lx only
+export function mkroom_cmp(a, b) {
+    if (a.lx < b.lx) return -1;
+    if (a.lx > b.lx) return 1;
+    return 0;
+}
 
-// cf. mklev.c:106 [static] — finddpos_shift(x, y, dir, aroom): find shifted door pos
-// Scans along room edge from (x,y) in direction dir for a valid door site.
-// TODO: mklev.c:106 — finddpos_shift(): door position search
+// C ref: mklev.c bydoor()
+export function bydoor(map, x, y) {
+    const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    for (const [dx, dy] of dirs) {
+        if (isok(x + dx, y + dy)) {
+            const typ = map.at(x + dx, y + dy).typ;
+            if (IS_DOOR(typ) || typ === SDOOR) return true;
+        }
+    }
+    return false;
+}
 
-// cf. mklev.c:147 [static] — finddpos(cc, dir, aroom): find door position on room edge
-// Picks valid door location on specified edge (N/S/E/W) of room.
-// TODO: mklev.c:147 — finddpos(): room edge door finder
+// C ref: mklev.c okdoor()
+export function okdoor(map, x, y) {
+    const loc = map.at(x, y);
+    if (!loc) return false;
+    if (loc.typ !== HWALL && loc.typ !== VWALL) return false;
+    if (bydoor(map, x, y)) return false;
+    return ((isok(x - 1, y) && !IS_OBSTRUCTED(map.at(x - 1, y).typ))
+        || (isok(x + 1, y) && !IS_OBSTRUCTED(map.at(x + 1, y).typ))
+        || (isok(x, y - 1) && !IS_OBSTRUCTED(map.at(x, y - 1).typ))
+        || (isok(x, y + 1) && !IS_OBSTRUCTED(map.at(x, y + 1).typ)));
+}
 
-// cf. mklev.c:210 — sort_rooms(): sort rooms left-to-right and update room numbers
-// Called after room placement; updates roomno in levl[][] for corridor generation.
-// JS equiv: dungeon.js:777 — sort_rooms().
-// ALIGNED: mklev.c:210 — sort_rooms() ↔ sort_rooms (dungeon.js:777)
+// C ref: mklev.c good_rm_wall_doorpos()
+export function good_rm_wall_doorpos(map, x, y, dir, room) {
+    if (!isok(x, y) || !room.needjoining) return false;
+    const loc = map.at(x, y);
+    if (!(loc.typ === HWALL || loc.typ === VWALL
+        || IS_DOOR(loc.typ) || loc.typ === SDOOR)) {
+        return false;
+    }
+    if (bydoor(map, x, y)) return false;
 
-// cf. mklev.c:231 [static] — do_room_or_subroom(croom, lowx, lowy, hix, hiy, lit, rtype, special, is_room)
-// Helper that fills in mkroom struct fields; initializes door list.
-// JS equiv: dungeon.js:574 as add_room_to_map (combined with add_room).
-// PARTIAL: mklev.c:231 — do_room_or_subroom() ↔ add_room_to_map (dungeon.js:574)
+    const tx = x + xdir[dir];
+    const ty = y + ydir[dir];
+    if (!isok(tx, ty) || IS_OBSTRUCTED(map.at(tx, ty).typ)) return false;
 
-// cf. mklev.c:304 — add_room(lowx, lowy, hix, hiy, lit, rtype, special): add room
-// Allocates new mkroom slot; calls do_room_or_subroom(); sets levl[][] cell types.
-// JS equiv: dungeon.js:574 as add_room_to_map.
-// PARTIAL: mklev.c:304 — add_room() ↔ add_room_to_map (dungeon.js:574)
+    const rmno = map.rooms.indexOf(room) + ROOMOFFSET;
+    return rmno === map.at(tx, ty).roomno;
+}
 
-// cf. mklev.c:318 — add_subroom(proom, lowx, lowy, hix, hiy, lit, rtype, special): add subroom
-// Links subroom into parent room's subroom list.
-// TODO: mklev.c:318 — add_subroom(): subroom creation
+// C ref: mklev.c finddpos_shift()
+export function finddpos_shift(map, x, y, dir, aroom) {
+    dir = DIR_180(dir);
+    const dx = xdir[dir];
+    const dy = ydir[dir];
 
-// cf. mklev.c:335 — free_luathemes(theme_group): release Lua theme resources
-// Frees theme strings loaded from Lua theme system for given group.
-// N/A: mklev.c:335 — free_luathemes() (Lua interpreter not available)
+    if (good_rm_wall_doorpos(map, x, y, dir, aroom)) return { x, y };
 
-// cf. mklev.c:357 — makerooms(): create rooms using Lua themes or random generation
-// Main room placement loop: tries Lua themes first, falls back to random.
-// JS equiv: dungeon.js:1435 — makerooms().
-// PARTIAL: mklev.c:357 — makerooms() ↔ makerooms (dungeon.js:1435)
+    if (aroom.irregular) {
+        let rx = x;
+        let ry = y;
+        let fail = false;
+        while (!fail && isok(rx, ry)
+            && (map.at(rx, ry).typ === STONE || map.at(rx, ry).typ === CORR)) {
+            rx += dx;
+            ry += dy;
+            if (good_rm_wall_doorpos(map, rx, ry, dir, aroom)) return { x: rx, y: ry };
+            if (!(map.at(rx, ry).typ === STONE || map.at(rx, ry).typ === CORR)) fail = true;
+            if (rx < aroom.lx || rx > aroom.hx || ry < aroom.ly || ry > aroom.hy) fail = true;
+        }
+    }
+    return null;
+}
 
-// cf. mklev.c:429 [static] — join(a, b, nxcor): join two rooms with a corridor
-// Digs corridor between rooms a and b; nxcor=TRUE for extra corridors.
-// JS equiv: dungeon.js:1948 — join().
-// PARTIAL: mklev.c:429 — join() ↔ join (dungeon.js:1948)
+// C ref: mklev.c finddpos()
+export function finddpos(map, dir, aroom) {
+    let x1; let y1; let x2; let y2;
 
-// cf. mklev.c:518 — makecorridors(): create corridors between rooms
-// Calls join() for each adjacent room pair; creates tree of corridors.
-// JS equiv: dungeon.js:2016 — makecorridors().
-// PARTIAL: mklev.c:518 — makecorridors() ↔ makecorridors (dungeon.js:2016)
+    switch (dir) {
+    case DIR_N:
+        x1 = aroom.lx; x2 = aroom.hx; y1 = y2 = aroom.ly - 1;
+        break;
+    case DIR_S:
+        x1 = aroom.lx; x2 = aroom.hx; y1 = y2 = aroom.hy + 1;
+        break;
+    case DIR_W:
+        x1 = x2 = aroom.lx - 1; y1 = aroom.ly; y2 = aroom.hy;
+        break;
+    case DIR_E:
+        x1 = x2 = aroom.hx + 1; y1 = aroom.ly; y2 = aroom.hy;
+        break;
+    default:
+        return null;
+    }
 
-// cf. mklev.c:552 [static] — alloc_doors(): allocate/reallocate door coordinate array
-// Grows the global door position array as needed.
-// TODO: mklev.c:552 — alloc_doors(): door array allocation
+    if (typeof process !== 'undefined' && process.env.DEBUG_FINDDPOS === '1') {
+        console.log(`[FDP] call=${getRngCallCount()} dir=${dir} room=(${aroom.lx},${aroom.ly})-(${aroom.hx},${aroom.hy}) rangeX=${x2 - x1 + 1} rangeY=${y2 - y1 + 1}`);
+    }
+    let tryct = 0;
+    do {
+        const x = (x2 - x1) ? rn1(x2 - x1 + 1, x1) : x1;
+        const y = (y2 - y1) ? rn1(y2 - y1 + 1, y1) : y1;
+        const result = finddpos_shift(map, x, y, dir, aroom);
+        if (result) return result;
+    } while (++tryct < 20);
 
-// cf. mklev.c:570 — add_door(x, y, aroom): add door position to room's list
-// Records door location in room struct for later placement.
-// JS equiv: dungeon.js:1706 — add_door().
-// PARTIAL: mklev.c:570 — add_door() ↔ add_door (dungeon.js:1706)
+    for (let x = x1; x <= x2; x++) {
+        for (let y = y1; y <= y2; y++) {
+            const result = finddpos_shift(map, x, y, dir, aroom);
+            if (result) return result;
+        }
+    }
+    return null;
+}
 
-// cf. mklev.c:611 [static] — dosdoor(x, y, aroom, type): create door at location
-// Places DOOR or SDOOR (secret door) at (x,y); updates levl[][] and room door list.
-// TODO: mklev.c:611 — dosdoor(): door/secret-door placement
+// C ref: mklev.c maybe_sdoor()
+export function maybe_sdoor(depth, chance) {
+    return (depth > 2) && !rn2(Math.max(2, chance));
+}
 
-// cf. mklev.c:677 [static] — cardinal_nextto_room(aroom, x, y): adjacent to room?
-// Returns TRUE if any cardinal neighbor of (x,y) is inside room aroom.
-// TODO: mklev.c:677 — cardinal_nextto_room(): room adjacency check
+// C ref: mkroom.c mkstairs()
+export function mkstairs(map, x, y, isUp, isBranch = false) {
+    const loc = map.at(x, y);
+    if (!loc) return;
 
-// cf. mklev.c:697 [static] — place_niche(aroom, dy, xx, yy): find niche position
-// Finds location adjacent to room for a niche/alcove.
-// TODO: mklev.c:697 — place_niche(): niche placement search
+    loc.typ = STAIRS;
+    loc.stairdir = isUp ? 1 : 0;
+    loc.flags = isUp ? 1 : 0;
+    loc.branchStair = !!isBranch;
+    if (isUp) map.upstair = { x, y };
+    else map.dnstair = { x, y };
+}
 
-// cf. mklev.c:736 [static] — makeniche(trap_type): create niche with optional trap
-// Creates alcove off main room; optionally places a trap inside.
-// TODO: mklev.c:736 — makeniche(): niche creation
+function somex(croom) { return rn1(croom.hx - croom.lx + 1, croom.lx); }
+function somey(croom) { return rn1(croom.hy - croom.ly + 1, croom.ly); }
 
-// cf. mklev.c:798 — make_niches(): generate multiple niches on level
-// Creates up to several niches scattered around the level.
-// TODO: mklev.c:798 — make_niches(): bulk niche generation
+function inside_room(croom, x, y, map) {
+    if (croom.irregular) {
+        const loc = map?.at?.(x, y);
+        const i = croom.roomnoidx + ROOMOFFSET;
+        return !!loc && !loc.edge && loc.roomno === i;
+    }
+    return x >= croom.lx - 1 && x <= croom.hx + 1
+        && y >= croom.ly - 1 && y <= croom.hy + 1;
+}
 
-// cf. mklev.c:817 — makevtele(): create niche with teleport trap
-// Shorthand for makeniche(TELEP_TRAP).
-// TODO: mklev.c:817 — makevtele(): vault teleport niche
+function somexyspace(map, croom) {
+    let trycnt = 0;
+    let okay;
+    do {
+        const pos = somexy(croom, map);
+        okay = pos && isok(pos.x, pos.y) && !occupied(map, pos.x, pos.y);
+        if (okay) {
+            const loc = map.at(pos.x, pos.y);
+            okay = loc && (loc.typ === ROOM || loc.typ === CORR || loc.typ === ICE);
+        }
+        if (okay) return pos;
+    } while (trycnt++ < 100);
+    return null;
+}
 
-// cf. mklev.c:824 — count_level_features(): count fountains and sinks on level
-// Returns counts for use in feature placement decisions.
-// TODO: mklev.c:824 — count_level_features(): feature count
+// C ref: mklev.c generate_stairs_room_good()
+export function generate_stairs_room_good(map, croom, phase) {
+    const has_upstairs = Number.isInteger(map.upstair?.x)
+        && Number.isInteger(map.upstair?.y)
+        && inside_room(croom, map.upstair.x, map.upstair.y, map);
+    const has_dnstairs = Number.isInteger(map.dnstair?.x)
+        && Number.isInteger(map.dnstair?.y)
+        && inside_room(croom, map.dnstair.x, map.dnstair.y, map);
+    return (croom.needjoining || phase < 0)
+        && ((!has_dnstairs && !has_upstairs) || phase < 1)
+        && (croom.rtype === OROOM
+            || (phase < 2 && croom.rtype === THEMEROOM));
+}
 
-// cf. mklev.c:846 — clear_level_structures(): initialize level structures
-// Zeros all level-gen data structures before new level generation.
-// TODO: mklev.c:846 — clear_level_structures(): level-gen reset
+// C ref: mklev.c generate_stairs_find_room()
+export function generate_stairs_find_room(map) {
+    if (!map.nroom) return null;
+    for (let phase = 2; phase > -1; phase--) {
+        const candidates = [];
+        for (let i = 0; i < map.nroom; i++) {
+            if (generate_stairs_room_good(map, map.rooms[i], phase)) {
+                candidates.push(i);
+            }
+        }
+        if (candidates.length > 0) return map.rooms[candidates[rn2(candidates.length)]];
+    }
+    return map.rooms[rn2(map.nroom)];
+}
 
-// cf. mklev.c:934 — fill_ordinary_room(croom, bonus_items): populate room
-// Adds monsters, objects, and features to a regular room based on rtype and depth.
-// JS equiv: dungeon.js:3206 — fill_ordinary_room().
-// PARTIAL: mklev.c:934 — fill_ordinary_room() ↔ fill_ordinary_room (dungeon.js:3206)
+// C ref: mklev.c generate_stairs()
+export function generate_stairs(map, depth) {
+    let croom = generate_stairs_find_room(map);
+    if (croom) {
+        const pos = somexyspace(map, croom);
+        let x; let y;
+        if (pos) { x = pos.x; y = pos.y; } else { x = somex(croom); y = somey(croom); }
+        const loc = map.at(x, y);
+        if (loc) {
+            loc.typ = STAIRS;
+            loc.flags = 0;
+            map.dnstair = { x, y };
+        }
+    }
+    if (depth > 1) {
+        croom = generate_stairs_find_room(map);
+        if (croom) {
+            const pos = somexyspace(map, croom);
+            let x; let y;
+            if (pos) { x = pos.x; y = pos.y; } else { x = somex(croom); y = somey(croom); }
+            const loc = map.at(x, y);
+            if (loc) {
+                loc.typ = STAIRS;
+                loc.flags = 1;
+                map.upstair = { x, y };
+            }
+        }
+    }
+}
 
-// cf. mklev.c:1169 — themerooms_post_level_generate(): post-gen theme room processing
-// Finalizes theme rooms after main level generation pass.
-// JS equiv: themerms.js handles theme room generation.
-// PARTIAL: mklev.c:1169 — themerooms_post_level_generate() ↔ themerms.js
+// C ref: mklev.c cardinal_nextto_room()
+export function cardinal_nextto_room(map, aroom, x, y) {
+    const rmno = map.rooms.indexOf(aroom) + ROOMOFFSET;
+    const dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+    for (const [dx, dy] of dirs) {
+        if (isok(x + dx, y + dy)) {
+            const loc = map.at(x + dx, y + dy);
+            if (!loc.edge && loc.roomno === rmno) return true;
+        }
+    }
+    return false;
+}
 
-// cf. mklev.c:1193 [static] — chk_okdoor(x, y): door opens into solid terrain?
-// Returns TRUE if a door at (x,y) has solid terrain on both sides.
-// TODO: mklev.c:1193 — chk_okdoor(): door terrain validity
+// C ref: mklev.c place_niche()
+export function place_niche(map, aroom) {
+    let dy;
+    if (rn2(2)) {
+        dy = 1;
+        const dd = finddpos(map, DIR_S, aroom);
+        if (!dd) return null;
+        const xx = dd.x; const yy = dd.y;
+        if (isok(xx, yy + dy) && map.at(xx, yy + dy).typ === STONE
+            && isok(xx, yy - dy) && !IS_POOL(map.at(xx, yy - dy).typ)
+            && !IS_FURNITURE(map.at(xx, yy - dy).typ)
+            && cardinal_nextto_room(map, aroom, xx, yy)) {
+            return { xx, yy, dy };
+        }
+    } else {
+        dy = -1;
+        const dd = finddpos(map, DIR_N, aroom);
+        if (!dd) return null;
+        const xx = dd.x; const yy = dd.y;
+        if (isok(xx, yy + dy) && map.at(xx, yy + dy).typ === STONE
+            && isok(xx, yy - dy) && !IS_POOL(map.at(xx, yy - dy).typ)
+            && !IS_FURNITURE(map.at(xx, yy - dy).typ)
+            && cardinal_nextto_room(map, aroom, xx, yy)) {
+            return { xx, yy, dy };
+        }
+    }
+    return null;
+}
 
-// cf. mklev.c:1218 — mklev_sanity_check(): validate level structure integrity
-// Checks room bounds, door lists, and corridor connectivity.
-// TODO: mklev.c:1218 — mklev_sanity_check(): level integrity validation
+// C ref: mklev.c occupied()
+export function occupied(map, x, y) {
+    if (map.trapAt(x, y)) return true;
+    const loc = map.at(x, y);
+    if (!loc) return true;
+    if (IS_FURNITURE(loc.typ)) return true;
+    if (IS_LAVA(loc.typ) || IS_POOL(loc.typ)) return true;
+    if (map._isInvocationLevel && map._invPos
+        && x === map._invPos.x && y === map._invPos.y) {
+        return true;
+    }
+    return false;
+}
 
-// cf. mklev.c:1246 — makelevel(): main level generation dispatcher
-// Routes to makemaz() or room-based generator; calls mineralize, place_branch.
-// JS equiv: dungeon.js:5009 — makelevel().
-// PARTIAL: mklev.c:1246 — makelevel() ↔ makelevel (dungeon.js:5009)
+// C ref: mkroom.c find_okay_roompos()
+export function find_okay_roompos(map, croom) {
+    let tryct = 0;
+    do {
+        if (++tryct > 200) return null;
+        const pos = somexyspace(map, croom);
+        if (!pos) return null;
+        if (!bydoor(map, pos.x, pos.y)) return pos;
+    } while (true);
+}
 
-// cf. mklev.c:1427 [static] — water_has_kelp(x, y, kelp_pool, kelp_moat): kelp check
-// Determines if a water tile should receive kelp based on room type.
-// TODO: mklev.c:1427 — water_has_kelp(): kelp placement predicate
+// C ref: mkroom.c mkfount()
+export function mkfount(map, croom) {
+    const pos = find_okay_roompos(map, croom);
+    if (!pos) return;
+    const loc = map.at(pos.x, pos.y);
+    if (!loc) return;
+    loc.typ = FOUNTAIN;
+    if (!rn2(7)) { /* blessed fountain parity roll */ }
+    map.flags.nfountains++;
+}
 
-// cf. mklev.c:1444 — mineralize(kelp_pool, kelp_moat, goldprob, gemprob, kelp_only)
-// Deposits gold and gems in stone walls; places kelp in water.
-// JS equiv: dungeon.js:4706 — mineralize().
-// ALIGNED: mklev.c:1444 — mineralize() ↔ mineralize (dungeon.js:4706)
+// C ref: mkroom.c mksink()
+export function mksink(map, croom) {
+    const pos = find_okay_roompos(map, croom);
+    if (!pos) return;
+    const loc = map.at(pos.x, pos.y);
+    if (!loc) return;
+    loc.typ = SINK;
+    map.flags.nsinks++;
+}
 
-// cf. mklev.c:1539 — level_finalize_topology(): finalize level topology
-// Post-processing after main generation: sets non-diggable walls, room numbers.
-// TODO: mklev.c:1539 — level_finalize_topology(): topology finalization
+// C ref: mkroom.c mkaltar()
+export function mkaltar(map, croom) {
+    if (croom.rtype !== OROOM) return;
+    const pos = find_okay_roompos(map, croom);
+    if (!pos) return;
+    const loc = map.at(pos.x, pos.y);
+    if (!loc) return;
+    loc.typ = ALTAR;
+    loc.altarAlign = rn2(3) - 1;
+}
 
-// cf. mklev.c:1572 — mklev(): public entry point for level generation
-// Called from goto_level; calls makelevel() then level_finalize_topology().
-// JS equiv: dungeon.js:5009 — makelevel() (JS entry point).
-// PARTIAL: mklev.c:1572 — mklev() ↔ makelevel (dungeon.js:5009)
+// C ref: mkroom.c mkgrave()
+export function mkgrave(map, croom, depth) {
+    if (croom.rtype !== OROOM) return;
+    const dobell = !rn2(10);
+    const pos = find_okay_roompos(map, croom);
+    if (!pos) return;
+    const loc = map.at(pos.x, pos.y);
+    if (!loc) return;
+    loc.typ = GRAVE;
+    if (!dobell) {
+        void random_epitaph_text();
+    }
+    if (!rn2(3)) {
+        mksobj(GOLD_PIECE, true, false);
+        rnd(20);
+        rnd(5);
+    }
+    let tryct = rn2(5);
+    while (tryct--) mkobj(0, true);
+    if (dobell) mksobj(BELL, true, false);
+}
 
-// cf. mklev.c:1591 — topologize(croom, do_ordinary): set room numbers in levl[][]
-// Fills levl[x][y].roomno with croom index for all cells in room (including walls).
-// TODO: mklev.c:1591 — topologize(): room number assignment
+// C ref: mklev.c trap_engravings[].
+const TRAP_ENGRAVINGS = [];
+TRAP_ENGRAVINGS[TRAPDOOR] = "Vlad was here";
+TRAP_ENGRAVINGS[TELEP_TRAP] = "ad aerarium";
+TRAP_ENGRAVINGS[LEVEL_TELEP] = "ad aerarium";
 
-// cf. mklev.c:1655 — find_branch_room(mp): find unused room for branch placement
-// Returns a random non-special room suitable for branch stairs/portal.
-// TODO: mklev.c:1655 — find_branch_room(): branch room selection
+// C ref: mklev.c makeniche().
+export function makeniche(map, depth, trap_type) {
+    let vct = 8;
+    while (vct--) {
+        const aroom = map.rooms[rn2(map.nroom)];
+        if (aroom.rtype !== OROOM) continue;
+        if (aroom.doorct === 1 && rn2(5)) continue;
+        const niche = place_niche(map, aroom);
+        if (!niche) continue;
+        const { xx, yy, dy } = niche;
+        const rm = map.at(xx, yy + dy);
 
-// cf. mklev.c:1672 — pos_to_room(x, y): find room containing position
-// Returns pointer to mkroom containing (x,y), or NULL.
-// TODO: mklev.c:1672 — pos_to_room(): position to room lookup
+        if (trap_type || !rn2(4)) {
+            rm.typ = SCORR;
+            if (trap_type) {
+                let actual_trap = trap_type;
+                if (is_hole(actual_trap) && depth <= 1) actual_trap = ROCKTRAP;
+                maketrap(map, xx, yy + dy, actual_trap, depth);
+                const engrText = TRAP_ENGRAVINGS[actual_trap];
+                if (engrText) {
+                    make_engr_at(map, xx, yy - dy, engrText, 'dust');
+                    wipe_engr_at(map, xx, yy - dy, 5, false);
+                }
+            }
+            dosdoor(map, xx, yy, aroom, SDOOR, depth);
+        } else {
+            rm.typ = CORR;
+            if (rn2(7)) {
+                dosdoor(map, xx, yy, aroom, rn2(5) ? SDOOR : DOOR, depth);
+            } else {
+                if (!rn2(5) && IS_WALL(map.at(xx, yy).typ)) {
+                    map.at(xx, yy).typ = IRONBARS;
+                    if (rn2(3)) {
+                        const mndx = mkclass(S_HUMAN, 0, depth);
+                        const corpse = mksobj(CORPSE, true, false);
+                        if (corpse && mndx >= 0) corpse.corpsenm = mndx;
+                    }
+                }
+                if (!map.flags.noteleport) mksobj(SCR_TELEPORTATION, true, false);
+                if (!rn2(3)) mkobj(0, true);
+            }
+        }
+        return;
+    }
+}
 
-// cf. mklev.c:1686 — place_branch(br, x, y): place branch stairs or portal
-// Places branch portal/stairs at (x,y); if (0,0) picks random location.
-// JS equiv: dungeon.js:1002 (inlined in makelevel).
-// PARTIAL: mklev.c:1686 — place_branch() ↔ dungeon.js:1002
+// C ref: mklev.c make_niches().
+export function make_niches(map, depth) {
+    let ct = rnd(Math.floor(map.nroom / 2) + 1);
+    let ltptr = (!map.flags.noteleport && depth > 15);
+    let vamp = (depth > 5 && depth < 25);
 
-// cf. mklev.c:1745 — bydoor(x, y): is position adjacent to a door?
-// Returns TRUE if any neighbor of (x,y) is a DOOR or SDOOR.
-// TODO: mklev.c:1745 — bydoor(): door adjacency check
+    while (ct--) {
+        if (ltptr && !rn2(6)) {
+            ltptr = false;
+            makeniche(map, depth, LEVEL_TELEP);
+        } else if (vamp && !rn2(6)) {
+            vamp = false;
+            makeniche(map, depth, TRAPDOOR);
+        } else {
+            makeniche(map, depth, NO_TRAP);
+        }
+    }
+}
 
-// cf. mklev.c:1774 — okdoor(x, y): valid location for a door?
-// Checks terrain and adjacency; returns TRUE if door placement is valid.
-// TODO: mklev.c:1774 — okdoor(): door placement validity
-
-// cf. mklev.c:1788 [static] — maybe_sdoor(chance): should this be a secret door?
-// Returns TRUE with probability 1/chance (rn2-based).
-// TODO: mklev.c:1788 — maybe_sdoor(): secret door probability
-
-// cf. mklev.c:1795 — dodoor(x, y, aroom): create door at location in room
-// Combines okdoor check + add_door + dosdoor.
-// JS equiv: dungeon.js:1701 — dodoor().
-// PARTIAL: mklev.c:1795 — dodoor() ↔ dodoor (dungeon.js:1701)
-
-// cf. mklev.c:1801 — occupied(x, y): position occupied by trap/furniture/lava/pool?
-// Returns TRUE if position has a trap, sink, fountain, altar, or lava.
-// TODO: mklev.c:1801 — occupied(): position occupation check
-
-// cf. mklev.c:1810 — mktrap_victim(ttmp): generate corpse/items on trap
-// Places appropriate loot/corpses near or on the trap.
-// JS equiv: dungeon.js:2972 — mktrap_victim().
-// PARTIAL: mklev.c:1810 — mktrap_victim() ↔ mktrap_victim (dungeon.js:2972)
-
-// cf. mklev.c:1933 — traptype_rnd(mktrapflags): select random trap type
-// Returns random trap type respecting flags (avoid magic traps, prefer simple, etc.).
-// JS equiv: dungeon.js:2837 — traptype_rnd().
-// PARTIAL: mklev.c:1933 — traptype_rnd() ↔ traptype_rnd (dungeon.js:2837)
-
-// cf. mklev.c:1997 — traptype_roguelvl(): select trap type for Rogue level
-// Returns trap type appropriate for the special Rogue level.
-// TODO: mklev.c:1997 — traptype_roguelvl(): Rogue level trap type
-
-// cf. mklev.c:2031 — mktrap(num, mktrapflags, croom, tm): create trap
-// Places a trap of type num (or random) at location tm or random in croom.
-// JS equiv: dungeon.js (PARTIAL — via traptype_rnd and mktrap_victim).
-// PARTIAL: mklev.c:2031 — mktrap() ↔ dungeon.js trap placement
-
-// cf. mklev.c:2154 — mkstairs(x, y, up, croom, force): create stairs at location
-// Sets UPSTAIR or DNSTAIR terrain; records in level stairway list.
-// JS equiv: dungeon.js:1418 — mkstairs().
-// PARTIAL: mklev.c:2154 — mkstairs() ↔ mkstairs (dungeon.js:1418)
-
-// cf. mklev.c:2196 [static] — generate_stairs_room_good(croom, phase): validate stair room
-// Returns TRUE if room is suitable for stair placement in given generation phase.
-// TODO: mklev.c:2196 — generate_stairs_room_good(): stair room validation
-
-// cf. mklev.c:2214 [static] — generate_stairs_find_room(): find room for stairs
-// Picks a suitable room for stair generation.
-// TODO: mklev.c:2214 — generate_stairs_find_room(): stair room selection
-
-// cf. mklev.c:2245 — generate_stairs(): generate up and down stairs
-// Calls mkstairs() for both directions in appropriate rooms.
-// TODO: mklev.c:2245 — generate_stairs(): stair generation
-
-// cf. mklev.c:2280 — mkfount(croom): create fountain in room
-// Places FOUNTAIN terrain in a valid room position.
-// JS equiv: dungeon.js:3100 — mkfount().
-// PARTIAL: mklev.c:2280 — mkfount() ↔ mkfount (dungeon.js:3100)
-
-// cf. mklev.c:2298 — find_okay_roompos(croom, crd): find acceptable room position
-// Finds position in room that is not occupied or adjacent to door.
-// JS equiv: dungeon.js:3087 — find_okay_roompos().
-// PARTIAL: mklev.c:2298 — find_okay_roompos() ↔ find_okay_roompos (dungeon.js:3087)
-
-// cf. mklev.c:2312 — mksink(croom): create sink in room
-// Places SINK terrain at a valid room position.
-// JS equiv: dungeon.js:3114 — mksink().
-// PARTIAL: mklev.c:2312 — mksink() ↔ mksink (dungeon.js:3114)
-
-// cf. mklev.c:2327 — mkaltar(croom): create altar in room
-// Places ALTAR terrain; sets alignment; optionally generates priest (mktemple).
-// JS equiv: dungeon.js:3124 — mkaltar().
-// PARTIAL: mklev.c:2327 — mkaltar() ↔ mkaltar (dungeon.js:3124)
-
-// cf. mklev.c:2348 — mkgrave(croom): create grave in room
-// Places GRAVE terrain; writes inscription; optionally places ghost.
-// JS equiv: dungeon.js:3137 — mkgrave().
-// PARTIAL: mklev.c:2348 — mkgrave() ↔ mkgrave (dungeon.js:3137)
-
-// cf. mklev.c:2405 — mkinvokearea(): create Invocation level pentagram area
-// Creates the pentagram geometry around the vibrating square on level 1 of Gehennom.
-// TODO: mklev.c:2405 — mkinvokearea(): invocation pentagram layout
-
-// cf. mklev.c:2498 [static] — mkinvpos(x, y, dist): transform invocation area position
-// Adjusts terrain around the invocation area.
-// TODO: mklev.c:2498 — mkinvpos(): invocation position setup
-
-// cf. mklev.c:2598 [static] — mkinvk_check_wall(x, y): invocation area wall check
-// Checks if position contains a wall for invocation area generation.
-// TODO: mklev.c:2598 — mkinvk_check_wall(): invocation wall check
-
-// cf. mklev.c:2619 — mk_knox_portal(x, y): create Fort Ludios portal
-// Places the magic portal to Fort Ludios at (x,y).
-// TODO: mklev.c:2619 — mk_knox_portal(): Fort Ludios portal
+// C ref: mklev.c makevtele().
+export function makevtele(map, depth) {
+    makeniche(map, depth, TELEP_TRAP);
+}
