@@ -596,6 +596,12 @@
             background: #1a1a1a;
         }
 
+        /* docs-standalone: game is dismissed, iframe fills page like a real docs page */
+        body.docs-standalone #page,
+        body.docs-standalone #docs-close {
+            display: none;
+        }
+
         /* ============================================================
            Fullscreen Mode
            Game terminal fills the screen; all chrome hidden
@@ -1868,16 +1874,47 @@
             }
         });
 
-        // Close button
-        docsClose.addEventListener('click', function() {
-            closeDocs(true);
+        // Close button — plain click returns to game; Cmd/Ctrl+click dismisses game, shows docs full-screen
+        docsClose.addEventListener('click', function(e) {
+            if (e.metaKey || e.ctrlKey) {
+                var iframeHref = docsFrame.contentWindow.location.href;
+                document.body.classList.add('docs-standalone');
+                history.pushState(null, '', iframeHref);
+            } else {
+                closeDocs(true);
+            }
             this.blur();
         });
 
-        // Escape key to close docs
+        // Update close button tooltip when modifier keys are held
+        docsClose.addEventListener('mouseenter', function(e) {
+            docsClose.title = (e.metaKey || e.ctrlKey) ? 'Leave to docs page' : 'Return to game';
+        });
         document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape' && document.body.classList.contains('docs-mode')) {
+            if ((e.metaKey || e.ctrlKey) && docsClose.matches(':hover')) {
+                docsClose.title = 'Leave to docs page';
+            }
+        });
+        document.addEventListener('keyup', function(e) {
+            if (!e.metaKey && !e.ctrlKey && docsClose.matches(':hover')) {
+                docsClose.title = 'Return to game';
+            }
+        });
+
+        // Escape key to close docs (not in standalone mode — user navigated away from game)
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' && document.body.classList.contains('docs-mode')
+                    && !document.body.classList.contains('docs-standalone')) {
                 closeDocs(true);
+            }
+        });
+
+        // Handle browser back from docs-standalone: remove standalone, close docs, return to /
+        window.addEventListener('popstate', function() {
+            if (document.body.classList.contains('docs-standalone')) {
+                ignoreHashChange = true;
+                document.body.classList.remove('docs-standalone');
+                closeDocs(false);   // closeDocs clears the hash via replaceState
             }
         });
 
