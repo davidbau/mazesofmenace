@@ -271,8 +271,9 @@ export function renderOptionsMenu(page, showHelp, flags) {
 
     // Footer - page indicator on current row (exactly 20 chars)
     const totalPages = getTotalPages(showHelp);
-    screen[row] = ' (' + normalizedPage + ' of ' + totalPages + ')           ';
-    attrs[row] = '0'.repeat(20);
+    const navHint = totalPages > 1 ? '  (use > < to page)' : '';
+    screen[row] = ' (' + normalizedPage + ' of ' + totalPages + ')' + navHint;
+    attrs[row] = '0'.repeat(screen[row].length);
     row += 1;
 
     // Fill remaining rows with blank lines (20 chars each)
@@ -822,12 +823,13 @@ export async function handleSet(game) {
         }
 
         // Check for navigation - C ref: MENU_NEXT_PAGE, MENU_PREVIOUS_PAGE, MENU_FIRST_PAGE
-        if (c === '>') {
+        // Also accept J/K (PageDown/PageUp from browser_input.js arrow key mapping)
+        if (c === '>' || c === 'J') {
             const maxPage = getTotalPages(showHelp);
             if (currentPage < maxPage) currentPage += 1;
             continue;
         }
-        if (c === '<') {
+        if (c === '<' || c === 'K') {
             if (currentPage > 1) currentPage -= 1;
             continue;
         }
