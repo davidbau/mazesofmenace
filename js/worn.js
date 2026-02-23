@@ -171,3 +171,195 @@
 //   update_mon_extrinsics (if worn and do_extrinsics), misc_worn_check update,
 //   check_gear_next_turn(), obj_no_longer_held(), mwepgone() if weapon.
 // TODO: worn.c:1367 — extract_from_minvent(): remove object from monster inventory
+
+// ============================================================================
+// Wornmask constants — cf. prop.h
+// ============================================================================
+export const W_ARM  = 0x00000001;  // Body armor (suit)
+export const W_ARMC = 0x00000002;  // Cloak
+export const W_ARMH = 0x00000004;  // Helmet/hat
+export const W_ARMS = 0x00000008;  // Shield
+export const W_ARMG = 0x00000010;  // Gloves/gauntlets
+export const W_ARMF = 0x00000020;  // Footwear (boots)
+export const W_ARMU = 0x00000040;  // Undershirt
+export const W_WEP  = 0x00000100;  // Wielded weapon
+export const W_AMUL = 0x00010000;  // Amulet
+export const W_SADDLE = 0x00100000; // Saddle (riding)
+
+// Armor category constants — cf. objclass.h
+const ARM_SUIT   = 0;
+const ARM_SHIELD = 1;
+const ARM_HELM   = 2;
+const ARM_GLOVES = 3;
+const ARM_BOOTS  = 4;
+const ARM_CLOAK  = 5;
+const ARM_SHIRT  = 6;
+
+// armcat → wornmask mapping
+const ARMCAT_TO_MASK = {
+    [ARM_SUIT]:   W_ARM,
+    [ARM_SHIELD]: W_ARMS,
+    [ARM_HELM]:   W_ARMH,
+    [ARM_GLOVES]: W_ARMG,
+    [ARM_BOOTS]:  W_ARMF,
+    [ARM_CLOAK]:  W_ARMC,
+    [ARM_SHIRT]:  W_ARMU,
+};
+
+import { objectData, ARMOR_CLASS, AMULET_CLASS } from './objects.js';
+import { nohands, is_animal, is_mindless, cantweararm, slithy, has_horns, is_humanoid } from './mondata.js';
+import { S_MUMMY, S_CENTAUR } from './symbols.js';
+import { PM_SKELETON, MZ_SMALL, MZ_HUMAN } from './monsters.js';
+
+// ============================================================================
+// ARM_BONUS — cf. hack.h:1531
+// ============================================================================
+function arm_bonus(obj) {
+    if (!obj) return 0;
+    const od = objectData[obj.otyp];
+    if (!od) return 0;
+    const baseAc = Number(od.oc1 || 0);  // a_ac
+    const spe = Number(obj.spe || 0);
+    const erosion = Math.max(Number(obj.oeroded || 0), Number(obj.oeroded2 || 0));
+    return baseAc + spe - Math.min(erosion, baseAc);
+}
+
+// ============================================================================
+// find_mac — cf. worn.c:707
+// ============================================================================
+// Calculate monster's effective armor class accounting for worn armor.
+export function find_mac(mon) {
+    const ptr = mon.type || {};
+    let base = ptr.ac ?? 10;
+    const mwflags = mon.misc_worn_check || 0;
+
+    if (mwflags) {
+        for (const obj of (mon.minvent || [])) {
+            if ((obj.owornmask || 0) & mwflags) {
+                if (obj.otyp !== undefined) {
+                    const od = objectData[obj.otyp];
+                    // AMULET_OF_GUARDING gives fixed -2
+                    if (od && od.name === 'amulet of guarding') {
+                        base -= 2;
+                    } else {
+                        base -= arm_bonus(obj);
+                    }
+                }
+            }
+        }
+    }
+
+    // Cap at ±AC_MAX (same as hero, AC_MAX = 127 in C)
+    if (Math.abs(base) > 127) base = Math.sign(base) * 127;
+    return base;
+}
+
+// ============================================================================
+// which_armor — cf. worn.c:996
+// ============================================================================
+// Return the item a monster is wearing in a given slot (wornmask flag).
+export function which_armor(mon, flag) {
+    for (const obj of (mon.minvent || [])) {
+        if ((obj.owornmask || 0) & flag) return obj;
+    }
+    return null;
+}
+
+// ============================================================================
+// m_dowear — cf. worn.c:747
+// ============================================================================
+// Monster equips best available armor. During creation (creation=TRUE),
+// this is instant with no messages or delays.
+export function m_dowear(mon, creation) {
+    const ptr = mon.type || {};
+    // Guards: verysmall, nohands, animal skip entirely
+    if ((ptr.size || 0) < MZ_SMALL || nohands(ptr) || is_animal(ptr))
+        return;
+    // Mindless skip unless mummy or skeleton at creation
+    if (is_mindless(ptr)
+        && (!creation || (ptr.symbol !== S_MUMMY
+                          && mon.mndx !== PM_SKELETON)))
+        return;
+
+    m_dowear_type(mon, W_AMUL, creation);
+    const can_wear_armor = !cantweararm(ptr);
+    // Can't put on shirt if already wearing suit
+    if (can_wear_armor && !(mon.misc_worn_check & W_ARM))
+        m_dowear_type(mon, W_ARMU, creation);
+    // C ref: can_wear_armor || WrappingAllowed(mon->data)
+    // WrappingAllowed: humanoid, MZ_SMALL..MZ_HUGE, not centaur, corporeal
+    if (can_wear_armor || is_humanoid(ptr))
+        m_dowear_type(mon, W_ARMC, creation);
+    m_dowear_type(mon, W_ARMH, creation);
+    // Skip shield if wielding two-handed weapon (simplified: always allow)
+    m_dowear_type(mon, W_ARMS, creation);
+    m_dowear_type(mon, W_ARMG, creation);
+    if (!slithy(ptr) && ptr.symbol !== S_CENTAUR)
+        m_dowear_type(mon, W_ARMF, creation);
+    if (can_wear_armor)
+        m_dowear_type(mon, W_ARM, creation);
+}
+
+// ============================================================================
+// m_dowear_type — cf. worn.c:789 (simplified for creation=TRUE)
+// ============================================================================
+function m_dowear_type(mon, flag, creation) {
+    if (mon.mfrozen) return;
+
+    const old = which_armor(mon, flag);
+    if (old && old.cursed) return;
+    let best = old;
+
+    for (const obj of (mon.minvent || [])) {
+        const od = objectData[obj.otyp];
+        if (!od) continue;
+
+        // Check if this item fits the slot
+        if (flag === W_AMUL) {
+            if (od.oc_class !== AMULET_CLASS) continue;
+            // Only life-saving, reflection, and guarding
+            if (od.name !== 'amulet of life saving'
+                && od.name !== 'amulet of reflection'
+                && od.name !== 'amulet of guarding') continue;
+            if (!best || od.name !== 'amulet of guarding') {
+                best = obj;
+                if (od.name !== 'amulet of guarding') break; // life-saving/reflection: use immediately
+            }
+            continue;
+        }
+
+        if (od.oc_class !== ARMOR_CLASS) continue;
+        const armcat = od.sub;
+
+        switch (flag) {
+        case W_ARMU: if (armcat !== ARM_SHIRT) continue; break;
+        case W_ARMC: if (armcat !== ARM_CLOAK) continue; break;
+        case W_ARMH:
+            if (armcat !== ARM_HELM) continue;
+            // Horned monsters can only wear flimsy helms (material <= LEATHER=7)
+            if (has_horns(mon.type) && (od.material || 0) > 7)
+                continue;
+            break;
+        case W_ARMS: if (armcat !== ARM_SHIELD) continue; break;
+        case W_ARMG: if (armcat !== ARM_GLOVES) continue; break;
+        case W_ARMF: if (armcat !== ARM_BOOTS) continue; break;
+        case W_ARM:  if (armcat !== ARM_SUIT) continue; break;
+        default: continue;
+        }
+
+        if (obj.owornmask) continue; // already worn in another slot
+
+        if (best && arm_bonus(best) >= arm_bonus(obj)) continue;
+        best = obj;
+    }
+
+    if (!best || best === old) return;
+
+    // Equip the item
+    if (old) {
+        old.owornmask &= ~flag;
+        mon.misc_worn_check &= ~flag;
+    }
+    mon.misc_worn_check |= flag;
+    best.owornmask = (best.owornmask || 0) | flag;
+}

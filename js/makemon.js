@@ -5,6 +5,7 @@
 import { rn2, rnd, rn1, d, c_d, getRngLog, getRngCallCount, pushRngLogEntry } from './rng.js';
 import { mksobj, mkobj, next_ident, weight } from './mkobj.js';
 import { def_monsyms } from './symbols.js';
+import { m_dowear } from './worn.js';
 import {
     SHOPBASE, ROOMOFFSET, IS_POOL, IS_LAVA, IS_STWALL, IS_DOOR, ACCESSIBLE,
     D_LOCKED, D_CLOSED, isok, COLNO, ROWNO
@@ -1988,6 +1989,7 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
         if (is_armed(ptr))
             m_initweap(mon, mndx, depth || 1);
         m_initinv(mon, mndx, depth || 1, m_lev);
+        m_dowear(mon, true);
 
         // C evaluates !rn2(100) first (always consumed), then is_domestic
         if (!rn2(100) && is_domestic(ptr)) {

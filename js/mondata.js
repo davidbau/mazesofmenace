@@ -379,6 +379,8 @@ export function monsdat(mon) {
 // ========================================================================
 
 // C ref: include/worn.h — W_SADDLE = 0x100000
+// Note: canonical constant also exported from worn.js, but imported here
+// to avoid circular dependency (worn.js imports from mondata.js).
 const W_SADDLE = 0x100000;
 
 // C ref: do_name.c x_monnam() — check for worn saddle

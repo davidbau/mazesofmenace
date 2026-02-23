@@ -41,6 +41,7 @@ import {
     mhitm_adtyping,
 } from './uhitm.js';
 import { monsterWeaponSwingVerb, monsterPossessive } from './mhitu.js';
+import { find_mac, W_ARMG, W_ARMF, W_ARMH } from './worn.js';
 
 // Re-export M_ATTK_* for convenience
 export { M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE };
@@ -63,13 +64,7 @@ function helpless(mon) {
     return false;
 }
 
-// cf. mhitm.c:707 — find_mac(mon): monster armor class
-// Simplified: just returns mon.mac (which is pre-computed from permonst ac)
-function find_mac(mon) {
-    if (mon.mac !== undefined) return mon.mac;
-    const ptr = mon.type || {};
-    return ptr.ac ?? 10;
-}
+// cf. worn.c:707 — find_mac(mon): accounts for worn armor via m_dowear.
 
 
 // ============================================================================
@@ -142,11 +137,11 @@ export function attk_protection(aatyp) {
     case AT_GAZE: case AT_BREA:
         return ~0; // no defense needed
     case AT_CLAW: case AT_TUCH: case AT_WEAP:
-        return 0x0020; // W_ARMG — gloves
+        return W_ARMG; // gloves
     case AT_KICK:
-        return 0x0040; // W_ARMF — boots
+        return W_ARMF; // boots
     case AT_BUTT:
-        return 0x0008; // W_ARMH — helm
+        return W_ARMH; // helm
     case AT_BITE: case AT_STNG: case AT_HUGS: case AT_ENGL:
     default:
         return 0;

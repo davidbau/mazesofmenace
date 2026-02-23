@@ -278,6 +278,10 @@ export function dog_eat(mon, obj, map, turnCount, ctx = null) {
         if (edog.apport <= 0) edog.apport = 1;
     }
 
+    // C ref: m_consume_obj → delobj → delobj_core calls obj_resists(obj, 0, 0)
+    // to check if the object is indestructible (Amulet, invocation tools, Rider
+    // corpses). This consumes rn2(100) for non-artifact objects. We must match
+    // this RNG consumption even though JS doesn't implement the protection logic.
     obj_resists(obj, 0, 0);
     if (removeFromMap) {
         map.removeObject(obj);
@@ -1024,13 +1028,10 @@ export function dog_move(mon, map, player, display, fov, after = false, game = n
                 appr = 1;
             } else {
                 // C ref: scan player inventory for DOGFOOD items
-                // Each dogfood() call consumes rn2(100) via obj_resists
-                const invItems = [...player.inventory].sort((a, b) => {
-                    const ra = ((a?.invlet || '\x7f').charCodeAt(0) ^ 32);
-                    const rb = ((b?.invlet || '\x7f').charCodeAt(0) ^ 32);
-                    return ra - rb;
-                });
-                for (const invObj of invItems) {
+                // C iterates gi.invent in linked-list order (sortpacked by class).
+                // Each dogfood() call consumes rn2(100) via obj_resists.
+                // Must iterate in same order as C to keep RNG aligned.
+                for (const invObj of player.inventory) {
                     const invFood = dogfood(mon, invObj, turnCount);
                     if (invFood === DOGFOOD) {
                         appr = 1;
