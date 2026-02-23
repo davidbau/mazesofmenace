@@ -625,6 +625,30 @@
             min-height: 0;
         }
 
+        /* In fullscreen, hide docs overlay (iframe stays loaded so scroll is preserved)
+           and reset the minimap inline styles so the game shows normally */
+        body.fullscreen-mode #docs-overlay,
+        body.fullscreen-mode #docs-close {
+            display: none !important;
+        }
+
+        body.fullscreen-mode.docs-mode #page,
+        body.fullscreen-mode.docs-fixed #page {
+            position: static !important;
+            transform: none !important;
+            left: auto !important;
+            top: auto !important;
+            cursor: auto !important;
+            box-shadow: none !important;
+            border-radius: 0 !important;
+            outline: none !important;
+            width: auto !important;
+        }
+
+        body.fullscreen-mode.docs-mode #main {
+            width: auto !important;
+        }
+
         /* ============================================================
            Responsive Design - Tablet & Below (< 1100px)
            Stack panels vertically, hide panel toggle, adjust controls
