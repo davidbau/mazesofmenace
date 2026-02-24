@@ -7,8 +7,8 @@ import { mksobj, mkobj, next_ident, weight } from './mkobj.js';
 import { def_monsyms } from './symbols.js';
 import { m_dowear } from './worn.js';
 import {
-    SHOPBASE, ROOMOFFSET, IS_POOL, IS_LAVA, IS_STWALL, IS_DOOR, ACCESSIBLE,
-    D_LOCKED, D_CLOSED, isok, COLNO, ROWNO
+    SHOPBASE, ROOMOFFSET, IS_POOL, IS_LAVA, IS_STWALL, IS_DOOR, IS_WALL, ACCESSIBLE,
+    D_LOCKED, D_CLOSED, SDOOR, SCORR, isok, COLNO, ROWNO
 } from './config.js';
 import { A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC } from './config.js';
 import { couldsee } from './vision.js';
@@ -1447,10 +1447,23 @@ export function runtimeDecideToShapeshift(mon, depth = 1) {
 
 function set_mimic_sym(mndx, x, y, map, depth) {
     // C ref: makemon.c:2386-2540 — determine mimic appearance
+    const loc = map?.at?.(x, y);
+    const typ = loc?.typ;
+    // C ref: makemon.c set_mimic_sym() early branches:
+    // - mimic existing floor object (OBJ_AT)
+    // - mimic door/wall/secret-corridor as furniture
+    // Neither branch consumes RNG.
+    if (typeof map?.floorObjectAt === 'function' && map.floorObjectAt(x, y)) {
+        return 'object';
+    }
+    if (Number.isInteger(typ)
+        && (IS_DOOR(typ) || IS_WALL(typ) || typ === SDOOR || typ === SCORR)) {
+        return 'furniture';
+    }
+
     // Look up room type at (x, y) from map
     let rt = 0;
     if (map && map.at) {
-        const loc = map.at(x, y);
         if (loc && loc.roomno >= ROOMOFFSET) {
             const roomIdx = loc.roomno - ROOMOFFSET;
             if (roomIdx >= 0 && roomIdx < map.rooms.length) {
