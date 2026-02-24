@@ -2567,18 +2567,18 @@ No function symbols parsed from isaac64.c.
 ### mklev.c -> mklev.js
 | C Line | C Function | JS Line | Alignment |
 |--------|------------|---------|-----------|
-| 571 | `add_door` | - | Missing |
+| 571 | `add_door` | mklev.js:444 | Aligned |
 | 305 | `add_room` | - | Missing |
 | 319 | `add_subroom` | - | Missing |
-| 553 | `alloc_doors` | - | Missing |
+| 553 | `alloc_doors` | mklev.js:440 | Aligned |
 | 1746 | `bydoor` | mklev.js:20 | Aligned |
 | 678 | `cardinal_nextto_room` | mklev.js:242 | Aligned |
-| 1194 | `chk_okdoor` | - | Missing |
+| 1194 | `chk_okdoor` | mklev.js:525 | Aligned |
 | 847 | `clear_level_structures` | - | Missing |
 | 825 | `count_level_features` | - | Missing |
 | 232 | `do_room_or_subroom` | - | Missing |
-| 1796 | `dodoor` | - | Missing |
-| 612 | `dosdoor` | - | Missing |
+| 1796 | `dodoor` | mklev.js:520 | Aligned |
+| 612 | `dosdoor` | mklev.js:487 | Aligned |
 | 935 | `fill_ordinary_room` | - | Missing |
 | 1656 | `find_branch_room` | - | Missing |
 | 2299 | `find_okay_roompos` | mklev.js:298 | Aligned |
@@ -2607,7 +2607,7 @@ No function symbols parsed from isaac64.c.
 | 2406 | `mkinvokearea` | - | Missing |
 | 2499 | `mkinvpos` | - | Missing |
 | 1573 | `mklev` | - | Missing |
-| 1219 | `mklev_sanity_check` | - | Missing |
+| 1219 | `mklev_sanity_check` | mklev.js:543 | Aligned |
 | 2313 | `mksink` | mklev.js:320 | Aligned |
 | 2155 | `mkstairs` | mklev.js:142 | Aligned |
 | 2032 | `mktrap` | - | Missing |

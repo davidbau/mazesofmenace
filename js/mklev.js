@@ -2,8 +2,10 @@
 
 import {
     STONE, CORR, SCORR, ROOM, ICE, HWALL, VWALL, SDOOR, ROOMOFFSET,
-    STAIRS, FOUNTAIN, SINK, ALTAR, GRAVE, OROOM, THEMEROOM,
+    STAIRS, FOUNTAIN, SINK, ALTAR, GRAVE, OROOM, THEMEROOM, SHOPBASE,
     DOOR, IRONBARS,
+    D_NODOOR, D_CLOSED, D_ISOPEN, D_LOCKED, D_TRAPPED,
+    TREE,
     DIR_N, DIR_S, DIR_E, DIR_W, DIR_180,
     xdir, ydir,
     IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_LAVA, IS_POOL, IS_WALL,
@@ -12,11 +14,11 @@ import {
 import { rn1, rn2, rnd, getRngCallCount } from './rng.js';
 import { mksobj, mkobj } from './mkobj.js';
 import { GOLD_PIECE, BELL, CORPSE, SCR_TELEPORTATION } from './objects.js';
-import { S_HUMAN } from './monsters.js';
-import { mkclass } from './makemon.js';
+import { S_HUMAN, S_MIMIC } from './monsters.js';
+import { mkclass, makemon } from './makemon.js';
 import { make_engr_at, wipe_engr_at } from './engrave.js';
 import { random_epitaph_text } from './rumors.js';
-import { dosdoor, maketrap, somexy } from './dungeon.js';
+import { maketrap, somexy } from './dungeon.js';
 
 // C ref: mklev.c mkroom_cmp() — sort rooms by lx only
 export function mkroom_cmp(a, b) {
@@ -432,4 +434,124 @@ export function make_niches(map, depth) {
 // C ref: mklev.c makevtele().
 export function makevtele(map, depth) {
     makeniche(map, depth, TELEP_TRAP);
+}
+
+// C ref: mklev.c alloc_doors()
+export function alloc_doors(map) {
+    if (!Array.isArray(map.doors)) map.doors = [];
+}
+
+// C ref: mklev.c add_door()
+export function add_door(map, x, y, aroom) {
+    alloc_doors(map);
+
+    for (let i = 0; i < aroom.doorct; i++) {
+        const tmp = aroom.fdoor + i;
+        if (map.doors[tmp] && map.doors[tmp].x === x && map.doors[tmp].y === y) return;
+    }
+    if (aroom.doorct === 0) aroom.fdoor = map.doorindex;
+    aroom.doorct++;
+    for (let tmp = map.doorindex; tmp > aroom.fdoor; tmp--) {
+        map.doors[tmp] = map.doors[tmp - 1];
+    }
+    for (const broom of map.rooms) {
+        if (broom && broom !== aroom && broom.doorct && broom.fdoor >= aroom.fdoor) broom.fdoor++;
+    }
+    map.doorindex++;
+    map.doors[aroom.fdoor] = { x, y };
+}
+
+function is_shop_door(map, x, y) {
+    const roomnos = new Set();
+    const pushRoomno = (tx, ty) => {
+        if (!isok(tx, ty)) return;
+        const rn = map.at(tx, ty)?.roomno;
+        if (Number.isInteger(rn) && rn >= ROOMOFFSET) roomnos.add(rn - ROOMOFFSET);
+    };
+
+    pushRoomno(x, y);
+    pushRoomno(x - 1, y);
+    pushRoomno(x + 1, y);
+    pushRoomno(x, y - 1);
+    pushRoomno(x, y + 1);
+    for (const idx of roomnos) {
+        if (idx >= 0 && idx < map.nroom) {
+            const room = map.rooms[idx];
+            if (room && room.rtype >= SHOPBASE) return true;
+        }
+    }
+    return false;
+}
+
+// C ref: mklev.c dosdoor()
+export function dosdoor(map, x, y, aroom, type, depth) {
+    const loc = map.at(x, y);
+    const shdoor = is_shop_door(map, x, y);
+
+    if (!IS_WALL(loc.typ)) type = DOOR;
+
+    loc.typ = type;
+    if (type === DOOR) {
+        if (!rn2(3)) {
+            if (!rn2(5)) loc.flags = D_ISOPEN;
+            else if (!rn2(6)) loc.flags = D_LOCKED;
+            else loc.flags = D_CLOSED;
+
+            if (loc.flags !== D_ISOPEN && !shdoor && depth >= 5 && !rn2(25)) loc.flags |= D_TRAPPED;
+        } else {
+            loc.flags = shdoor ? D_ISOPEN : D_NODOOR;
+        }
+        if (loc.flags & D_TRAPPED) {
+            if (depth >= 9 && !rn2(5)) {
+                loc.flags = D_NODOOR;
+                const mimicType = mkclass(S_MIMIC, 0, depth);
+                if (mimicType) makemon(mimicType, x, y, 0, depth, map);
+            }
+        }
+    } else {
+        if (shdoor || !rn2(5)) loc.flags = D_LOCKED;
+        else loc.flags = D_CLOSED;
+        if (!shdoor && depth >= 4 && !rn2(20)) loc.flags |= D_TRAPPED;
+    }
+    add_door(map, x, y, aroom);
+}
+
+// C ref: mklev.c dodoor()
+export function dodoor(map, x, y, aroom, depth) {
+    dosdoor(map, x, y, aroom, maybe_sdoor(depth, 8) ? SDOOR : DOOR, depth);
+}
+
+// C ref: mklev.c chk_okdoor() — if x,y is door, does it open into solid terrain.
+export function chk_okdoor(map, x, y) {
+    const loc = map.at(x, y);
+    if (!loc || !IS_DOOR(loc.typ)) return true;
+    if (loc.horizontal) {
+        if (isok(x, y - 1) && isok(x, y + 1)) {
+            const up = map.at(x, y - 1).typ;
+            const dn = map.at(x, y + 1).typ;
+            if ((up > TREE && dn <= TREE) || (up <= TREE && dn > TREE)) return false;
+        }
+    } else if (isok(x - 1, y) && isok(x + 1, y)) {
+        const lf = map.at(x - 1, y).typ;
+        const rt = map.at(x + 1, y).typ;
+        if ((lf > TREE && rt <= TREE) || (lf <= TREE && rt > TREE)) return false;
+    }
+    return true;
+}
+
+// C ref: mklev.c mklev_sanity_check().
+export function mklev_sanity_check(map) {
+    for (let y = 0; y < map.locations[0].length; y++) {
+        for (let x = 1; x < map.locations.length; x++) {
+            if (!chk_okdoor(map, x, y)) return false;
+        }
+    }
+    let rmno = -1;
+    for (let i = 0; i < map.nroom; i++) {
+        const room = map.rooms[i];
+        if (!room?.needjoining) continue;
+        if (rmno === -1) rmno = map.smeq[i];
+        if (rmno !== -1 && map.smeq[i] !== rmno) return false;
+    }
+    return true;
 }

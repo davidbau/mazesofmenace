@@ -99,6 +99,9 @@ import {
     finddpos_shift,
     finddpos,
     maybe_sdoor,
+    add_door,
+    dosdoor,
+    dodoor,
     mkstairs,
     generate_stairs_room_good,
     generate_stairs_find_room,
@@ -114,6 +117,7 @@ import {
     makeniche,
     make_niches,
     makevtele,
+    mklev_sanity_check,
 } from './mklev.js';
 import { makeroguerooms } from './extralev.js';
 
@@ -1556,81 +1560,6 @@ function makerooms(map, depth) {
 // ========================================================================
 // Corridor generation -- join(), makecorridors(), dig_corridor()
 // ========================================================================
-
-// C ref: mklev.c dosdoor() -- set door type and add to room's door list
-export function dosdoor(map, x, y, aroom, type, depth) {
-    const loc = map.at(x, y);
-    if (!IS_WALL(loc.typ)) type = DOOR; // avoid secret doors on existing doors
-
-    loc.typ = type;
-    if (type === DOOR) {
-        if (!rn2(3)) {
-            // 1/3 chance: actual door (closed, open, or locked)
-            if (!rn2(5))
-                loc.flags = D_ISOPEN;
-            else if (!rn2(6))
-                loc.flags = D_LOCKED;
-            else
-                loc.flags = D_CLOSED;
-
-            if (loc.flags !== D_ISOPEN && depth >= 5 && !rn2(25))
-                loc.flags |= D_TRAPPED;
-        } else {
-            // 2/3 chance: doorway (no door)
-            loc.flags = D_NODOOR;
-        }
-
-        if (loc.flags & D_TRAPPED) {
-            if (depth >= 9 && !rn2(5)) {
-                // Would make a mimic -- skip for now, just make doorway
-                loc.flags = D_NODOOR;
-            }
-        }
-    } else {
-        // Secret door
-        if (!rn2(5))
-            loc.flags = D_LOCKED;
-        else
-            loc.flags = D_CLOSED;
-
-        if (depth >= 4 && !rn2(20))
-            loc.flags |= D_TRAPPED;
-    }
-
-    add_door(map, x, y, aroom);
-}
-
-// C ref: mklev.c dodoor()
-export function dodoor(map, x, y, aroom, depth) {
-    dosdoor(map, x, y, aroom, maybe_sdoor(depth, 8) ? SDOOR : DOOR, depth);
-}
-
-// C ref: mklev.c add_door()
-function add_door(map, x, y, aroom) {
-    // Check for duplicate
-    for (let i = 0; i < aroom.doorct; i++) {
-        const tmp = aroom.fdoor + i;
-        if (map.doors[tmp] && map.doors[tmp].x === x && map.doors[tmp].y === y)
-            return;
-    }
-
-    if (aroom.doorct === 0)
-        aroom.fdoor = map.doorindex;
-
-    aroom.doorct++;
-
-    // Shift doors for other rooms (simplified vs C's full insertion logic)
-    for (let tmp = map.doorindex; tmp > aroom.fdoor; tmp--) {
-        map.doors[tmp] = map.doors[tmp - 1];
-    }
-    for (const broom of map.rooms) {
-        if (broom !== aroom && broom.doorct && broom.fdoor >= aroom.fdoor)
-            broom.fdoor++;
-    }
-
-    map.doorindex++;
-    map.doors[aroom.fdoor] = { x, y };
-}
 
 // C ref: sp_lev.c add_doors_to_room()
 // Link any doors within/bordering the room to the room
@@ -4951,6 +4880,9 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
     // Add niches
     // C ref: mklev.c:1300 make_niches()
     make_niches(map, depth);
+
+    // C ref: mklev.c:1305 mklev_sanity_check()
+    mklev_sanity_check(map);
 
     // Fix wall types after corridors are dug (needed for structural consistency)
     wallification(map);
