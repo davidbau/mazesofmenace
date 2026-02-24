@@ -45,7 +45,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[~]` | botl.c | botl.js | Bottom status line |
 | `[x]` | calendar.c | calendar.js | Time, moon phase, Friday 13th, night/midnight. Affects gameplay |
 | `[N/A]` | cfgfiles.c | — | Config file parsing. JS: `storage.js` handles config differently |
-| `[a]` | cmd.c | cmd.js | Command dispatch. rhack() dispatches all key/command input; handleExtendedCommand (doextcmd); prefix commands (m/F/G/g). `input.js` handles low-level input and cmdq primitives (`cmdq_add_*`, `cmdq_pop/peek/copy/clear`, `cmdq_shift/reverse`). ~140 C functions remain N/A (mostly key binding/mouse) |
+| `[a]` | cmd.c | cmd.js | Command dispatch. rhack() dispatches all key/command input; handleExtendedCommand (doextcmd); prefix commands (m/F/G/g). `input.js` handles low-level input and cmdq primitives (`cmdq_add_*`, `cmdq_pop/peek/copy/clear`, `cmdq_shift/reverse`) with `allmain.execute_repeat_command()` wired for `CQ_REPEAT` replay (`Ctrl+A`/`#repeat`). ~140 C functions remain N/A (mostly key binding/mouse) |
 | `[N/A]` | coloratt.c | — | Terminal color attribute mapping |
 | `[N/A]` | date.c | — | Build date/version stamps |
 | `[~]` | dbridge.c | dbridge.js | Drawbridge mechanics |
@@ -804,7 +804,7 @@ This section is generated from source symbol tables and includes function rows f
 | 1691 | `do_move_southeast` | - | Missing |
 | 1705 | `do_move_southwest` | - | Missing |
 | 1656 | `do_move_west` | - | Missing |
-| 1890 | `do_repeat` | - | Missing |
+| 1890 | `do_repeat` | allmain.js:549, cmd.js:612 | APPROX |
 | 1827 | `do_reqmenu` | cmd.js:rhack (m prefix) | Aligned |
 | 1858 | `do_run` | hack.js:handleRun | APPROX |
 | 1798 | `do_run_east` | - | Missing |

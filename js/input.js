@@ -61,6 +61,8 @@ export function createInputQueue() {
 
 const defaultInputRuntime = createInputQueue();
 let activeInputRuntime = defaultInputRuntime;
+let cmdqInputModeDoAgain = false;
+let cmdqRepeatRecordMode = false;
 
 export function setInputRuntime(runtime) {
     activeInputRuntime = runtime || defaultInputRuntime;
@@ -68,6 +70,14 @@ export function setInputRuntime(runtime) {
 
 export function getInputRuntime() {
     return activeInputRuntime;
+}
+
+export function setCmdqInputMode(inDoAgain) {
+    cmdqInputModeDoAgain = !!inDoAgain;
+}
+
+export function setCmdqRepeatRecordMode(enabled) {
+    cmdqRepeatRecordMode = !!enabled;
 }
 
 export function pushInput(ch) {
@@ -117,6 +127,10 @@ function cmdq_makeNode(typ) {
         ec_entry: null,
         next: null,
     };
+}
+
+function cmdq_queue_kind(inDoAgain) {
+    return inDoAgain ? CQ_REPEAT : CQ_CANNED;
 }
 
 // C ref: cmd.c cmdq_add_ec()
@@ -202,7 +216,7 @@ export function cmdq_copy(queueKind) {
 
 // C ref: cmd.c cmdq_pop() -- queue chosen by in_doagain flag.
 export function cmdq_pop(inDoAgain = false) {
-    const queueKind = inDoAgain ? CQ_REPEAT : CQ_CANNED;
+    const queueKind = cmdq_queue_kind(inDoAgain);
     const node = _cmdQueues[queueKind];
     if (node) {
         _cmdQueues[queueKind] = node.next;
@@ -221,6 +235,104 @@ export function cmdq_clear(queueKind) {
     _cmdQueues[queueKind] = null;
 }
 
+function cmdq_clone_chain(head) {
+    let tmp = null;
+    let cq = head;
+    while (cq) {
+        const copy = {
+            typ: cq.typ,
+            key: cq.key,
+            dirx: cq.dirx,
+            diry: cq.diry,
+            dirz: cq.dirz,
+            intval: cq.intval,
+            ec_entry: cq.ec_entry,
+            next: tmp,
+        };
+        tmp = copy;
+        cq = cq.next;
+    }
+    return cmdq_reverse(tmp);
+}
+
+export function cmdq_restore(queueKind, head) {
+    _cmdQueues[queueKind] = cmdq_clone_chain(head || null);
+}
+
+function dirNodeToKey(node) {
+    if (!node) return 0;
+    if (node.dirz > 0) return '>'.charCodeAt(0);
+    if (node.dirz < 0) return '<'.charCodeAt(0);
+    const dx = node.dirx | 0;
+    const dy = node.diry | 0;
+    if (dx === 0 && dy === 0) return '.'.charCodeAt(0);
+    if (dx === -1 && dy === 0) return 'h'.charCodeAt(0);
+    if (dx === 1 && dy === 0) return 'l'.charCodeAt(0);
+    if (dx === 0 && dy === -1) return 'k'.charCodeAt(0);
+    if (dx === 0 && dy === 1) return 'j'.charCodeAt(0);
+    if (dx === -1 && dy === -1) return 'y'.charCodeAt(0);
+    if (dx === 1 && dy === -1) return 'u'.charCodeAt(0);
+    if (dx === -1 && dy === 1) return 'b'.charCodeAt(0);
+    if (dx === 1 && dy === 1) return 'n'.charCodeAt(0);
+    return 0;
+}
+
+// Pop and decode one top-level queued command.
+// Returns null or { key, countPrefix, extcmd }.
+export function cmdq_pop_command(inDoAgain = false) {
+    const queueKind = cmdq_queue_kind(inDoAgain);
+    let countPrefix = 0;
+    let head = _cmdQueues[queueKind];
+    if (!head) return null;
+
+    if (head.typ === CMDQ_INT) {
+        countPrefix = Number.isFinite(head.intval) ? Math.max(0, head.intval | 0) : 0;
+        _cmdQueues[queueKind] = head.next || null;
+        head = _cmdQueues[queueKind];
+    }
+    if (!head) return null;
+
+    _cmdQueues[queueKind] = head.next || null;
+    head.next = null;
+
+    if (head.typ === CMDQ_KEY) {
+        return { key: head.key | 0, countPrefix };
+    }
+    if (head.typ === CMDQ_DIR) {
+        return { key: dirNodeToKey(head), countPrefix };
+    }
+    if (head.typ === CMDQ_EXTCMD) {
+        return { key: 0, countPrefix, extcmd: head.ec_entry || null };
+    }
+    if (head.typ === CMDQ_USER_INPUT) {
+        return null;
+    }
+    return null;
+}
+
+function popQueuedInputKey(inDoAgain = false) {
+    const queueKind = cmdq_queue_kind(inDoAgain);
+    const head = _cmdQueues[queueKind];
+    if (!head) return null;
+    if (head.typ === CMDQ_EXTCMD) return null;
+
+    _cmdQueues[queueKind] = head.next || null;
+    head.next = null;
+
+    if (head.typ === CMDQ_KEY) return head.key | 0;
+    if (head.typ === CMDQ_DIR) return dirNodeToKey(head);
+    if (head.typ === CMDQ_USER_INPUT) return null;
+    if (head.typ === CMDQ_INT) {
+        const digits = String(Math.max(0, head.intval | 0));
+        if (!digits.length) return '0'.charCodeAt(0);
+        for (let i = 1; i < digits.length; i++) {
+            activeInputRuntime.pushInput(digits.charCodeAt(i));
+        }
+        return digits.charCodeAt(0);
+    }
+    return null;
+}
+
 // Get a character of input (async)
 // This is the JS equivalent of C's nhgetch().
 // C ref: winprocs.h win_nhgetch
@@ -231,6 +343,13 @@ export function nhgetch() {
     // C ref: win/tty/topl.c - toplin gets set to TOPLINE_EMPTY after keypress
     if (display) {
         display.messageNeedsMore = false;
+    }
+
+    // C ref: readchar() drains cmdq when replaying doagain/canned arguments.
+    const queuedKey = popQueuedInputKey(cmdqInputModeDoAgain);
+    if (Number.isFinite(queuedKey)) {
+        recordKey(queuedKey);
+        return Promise.resolve(queuedKey);
     }
 
     // Replay mode: pull from replay buffer
@@ -245,6 +364,9 @@ export function nhgetch() {
 
     return Promise.resolve(activeInputRuntime.nhgetch()).then((ch) => {
         recordKey(ch);
+        if (cmdqRepeatRecordMode && Number.isFinite(ch)) {
+            cmdq_add_key(CQ_REPEAT, ch);
+        }
         return ch;
     });
 }

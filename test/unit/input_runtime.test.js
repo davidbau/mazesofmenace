@@ -24,8 +24,11 @@ import {
     cmdq_reverse,
     cmdq_copy,
     cmdq_pop,
+    cmdq_pop_command,
     cmdq_peek,
     cmdq_clear,
+    setCmdqInputMode,
+    setCmdqRepeatRecordMode,
 } from '../../js/input.js';
 import { mapBrowserKeyToNhCode } from '../../js/browser_input.js';
 
@@ -149,6 +152,38 @@ describe('cmdq primitives', () => {
         assert.equal(rev.next.key, 2);
         assert.equal(rev.next.next.key, 1);
         assert.equal(rev.next.next.next, null);
+    });
+
+    it('cmdq_pop_command decodes leading int+key payload', () => {
+        cmdq_add_int(CQ_REPEAT, 17);
+        cmdq_add_key(CQ_REPEAT, 's'.charCodeAt(0));
+        const cmd = cmdq_pop_command(true);
+        assert.deepEqual(cmd, {
+            key: 's'.charCodeAt(0),
+            countPrefix: 17,
+        });
+        assert.equal(cmdq_pop(true), null);
+    });
+
+    it('nhgetch consumes queued direction in doagain input mode', async () => {
+        cmdq_add_dir(CQ_REPEAT, 1, 0, 0);
+        setCmdqInputMode(true);
+        const ch = await nhgetch();
+        setCmdqInputMode(false);
+        assert.equal(ch, 'l'.charCodeAt(0));
+    });
+
+    it('nhgetch records prompt input into repeat queue when enabled', async () => {
+        const runtime = createInputQueue();
+        setInputRuntime(runtime);
+        setCmdqRepeatRecordMode(true);
+        pushInput('y'.charCodeAt(0));
+        const ch = await nhgetch();
+        setCmdqRepeatRecordMode(false);
+        assert.equal(ch, 'y'.charCodeAt(0));
+        const queued = cmdq_pop(true);
+        assert.equal(queued.key, 'y'.charCodeAt(0));
+        assert.equal(cmdq_pop(true), null);
     });
 });
 

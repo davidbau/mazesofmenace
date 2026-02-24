@@ -47,7 +47,9 @@ import { loadSave, deleteSave, loadFlags, saveFlags, deserializeRng,
 import { buildEntry, saveScore, loadScores, formatTopTenEntry, formatTopTenHeader } from './topten.js';
 import { startRecording } from './keylog.js';
 import { nhgetch, getCount, setInputRuntime, cmdq_clear, cmdq_add_int, cmdq_add_key,
-         cmdq_copy, CQ_CANNED, CQ_REPEAT, CMDQ_INT, CMDQ_KEY } from './input.js';
+         cmdq_copy, cmdq_peek, cmdq_pop_command, cmdq_restore, setCmdqInputMode,
+         setCmdqRepeatRecordMode,
+         CQ_CANNED, CQ_REPEAT, CMDQ_INT, CMDQ_KEY } from './input.js';
 import { init_nhwindows, NHW_MENU, MENU_BEHAVE_STANDARD, PICK_ONE, ATR_NONE,
          create_nhwindow, destroy_nhwindow, start_menu, add_menu, end_menu, select_menu } from './windows.js';
 import { CLR_GRAY } from './display.js';
@@ -401,16 +403,6 @@ export async function run_command(game, ch, opts = {}) {
     const chCode = typeof ch === 'number' ? ch
         : (typeof ch === 'string' && ch.length > 0) ? ch.charCodeAt(0) : 0;
 
-    if (!skipRepeatRecord && chCode !== 1) {
-        cmdq_clear(CQ_REPEAT);
-        if (countPrefix > 0) {
-            cmdq_add_int(CQ_REPEAT, countPrefix);
-        }
-        if (chCode > 0) {
-            cmdq_add_key(CQ_REPEAT, chCode);
-        }
-    }
-
     // Prompt handlers (e.g., eat.c "Continue eating? [yn]") consume input
     // without advancing time until a terminating answer is provided.
     if (game.pendingPrompt && typeof game.pendingPrompt.onKey === 'function') {
@@ -424,14 +416,39 @@ export async function run_command(game, ch, opts = {}) {
         }
     }
 
+    let commandCountPrefix = countPrefix;
+    let commandKey = chCode;
+    let queuedExtcmd = null;
+
+    if (commandKey === 0) {
+        const queued = cmdq_pop_command(!!game.inDoAgain);
+        if (!queued) {
+            return { moved: false, tookTime: false };
+        }
+        commandCountPrefix = queued.countPrefix || 0;
+        commandKey = queued.key || 0;
+        queuedExtcmd = queued.extcmd || null;
+    }
+
+    if (!skipRepeatRecord && !game.inDoAgain
+        && commandKey !== 0
+        && commandKey !== 1
+        && commandKey !== '#'.charCodeAt(0)) {
+        cmdq_clear(CQ_REPEAT);
+        if (commandCountPrefix > 0) {
+            cmdq_add_int(CQ_REPEAT, commandCountPrefix);
+        }
+        cmdq_add_key(CQ_REPEAT, commandKey);
+    }
+
     // Set multi from countPrefix, set cmdKey
-    game.commandCount = countPrefix;
-    if (countPrefix > 0) {
-        game.multi = countPrefix - 1; // first execution is now
+    game.commandCount = commandCountPrefix;
+    if (commandCountPrefix > 0) {
+        game.multi = commandCountPrefix - 1; // first execution is now
     } else {
         game.multi = 0;
     }
-    game.cmdKey = chCode;
+    game.cmdKey = commandKey;
 
     const coreOpts = {};
     if (computeFov) coreOpts.computeFov = true;
@@ -452,7 +469,27 @@ export async function run_command(game, ch, opts = {}) {
     };
 
     // Execute command
-    const result = await rhack(chCode, game);
+    const enableRepeatCapture = !skipRepeatRecord && !game.inDoAgain;
+    setCmdqInputMode(!!game.inDoAgain);
+    setCmdqRepeatRecordMode(enableRepeatCapture);
+    let result;
+    try {
+        if (queuedExtcmd && typeof queuedExtcmd === 'function') {
+            result = await queuedExtcmd(game);
+        } else if (queuedExtcmd && typeof queuedExtcmd.ef_funct === 'function') {
+            result = await queuedExtcmd.ef_funct(game);
+        } else {
+            result = await rhack(commandKey, game);
+        }
+    } finally {
+        setCmdqInputMode(false);
+        setCmdqRepeatRecordMode(false);
+    }
+
+    if (result && result.repeatRequest) {
+        game.advanceRunTurn = null;
+        return await execute_repeat_command(game, opts);
+    }
     maybe_deferred_goto_after_rhack(game, result, { skipTurnEnd });
 
     // Clear advanceRunTurn
@@ -506,6 +543,24 @@ export function get_repeat_command_snapshot() {
         return null;
     }
     return { key: cursor.key | 0, countPrefix };
+}
+
+// C ref: cmd.c do_repeat() -- replay CQ_REPEAT command stream.
+export async function execute_repeat_command(game, opts = {}) {
+    if (game?.inDoAgain) return { moved: false, tookTime: false };
+    if (!cmdq_peek(CQ_REPEAT)) {
+        game?.display?.putstr_message?.('There is no command available to repeat.');
+        return { moved: false, tookTime: false };
+    }
+
+    const repeatCopy = cmdq_copy(CQ_REPEAT);
+    game.inDoAgain = true;
+    try {
+        return await run_command(game, 0, { ...opts, skipRepeatRecord: true });
+    } finally {
+        game.inDoAgain = false;
+        cmdq_restore(CQ_REPEAT, repeatCopy);
+    }
 }
 
 // C ref: allmain.c deferred_goto() immediately follows rhack() whenever
@@ -676,6 +731,7 @@ export class NetHackGame {
         this.pendingDeferredTimedTurn = false;
         this.seed = 0;
         this.multi = 0;
+        this.inDoAgain = false;
         this.commandCount = 0;
         this.cmdKey = 0;
         this.lastCommand = null;
@@ -1217,14 +1273,26 @@ export class NetHackGame {
 
             // C ref: cmd.c:1687 do_repeat() — Ctrl+A repeats last command
             if (firstCh === 1) { // Ctrl+A
-                const repeatSnapshot = get_repeat_command_snapshot();
-                if (repeatSnapshot) {
-                    countPrefix = repeatSnapshot.countPrefix;
-                    ch = repeatSnapshot.key;
-                } else {
-                    this.display.putstr_message('There is no command available to repeat.');
-                    continue;
-                }
+                await execute_repeat_command(this, {
+                    computeFov: true,
+                    onTimedTurn: async () => {
+                        this.fov.compute(this.map, this.player.x, this.player.y);
+                        this.display.renderMap(this.map, this.player, this.fov, this.flags);
+                        this.display.renderStatus(this.player);
+                        await new Promise(r => setTimeout(r, 0));
+                    },
+                    onBeforeRepeat: async () => {
+                        if (this.shouldInterruptMulti()) {
+                            this.multi = 0;
+                            this.display.putstr_message('--More--');
+                            await nhgetch();
+                        }
+                    },
+                });
+                this.fov.compute(this.map, this.player.x, this.player.y);
+                this.display.renderMap(this.map, this.player, this.fov, this.flags);
+                this.display.renderStatus(this.player);
+                continue;
             } else if (firstCh >= 48 && firstCh <= 57) { // '0'-'9'
                 const result = await getCount(firstCh, 32767, this.display);
                 countPrefix = result.count;

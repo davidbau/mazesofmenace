@@ -1452,3 +1452,14 @@ hard-won wisdom:
 - Browser `gameLoop()` `Ctrl+A` resolution now reads repeat data from `CQ_REPEAT` (via `get_repeat_command_snapshot()`) instead of relying only on `lastCommand` state.
 - Added deterministic unit coverage in `test/unit/command_repeat_queue.test.js` for repeat snapshot recording and `Ctrl+A` non-overwrite behavior.
 - Gate impact stayed baseline-stable (`npm test`: unit pass; existing 19 gameplay parity failures unchanged).
+
+### CQ_REPEAT doagain execution wiring (2026-02-24)
+
+- Added runtime doagain execution path via `allmain.execute_repeat_command()`:
+  - used by `Ctrl+A` in browser game loop;
+  - used by `#repeat`/`#again` extended command route.
+- `run_command()` now decodes queued command payloads via `cmdq_pop_command(inDoAgain)` when invoked with key `0`, matching C-style queue-driven command replay entry.
+- `input.nhgetch()` gained command-queue input playback mode (`setCmdqInputMode`) so queued `CMDQ_KEY`/`CMDQ_DIR`/`CMDQ_INT` nodes can satisfy follow-up prompts during doagain replay.
+- `input.nhgetch()` also gained repeat-capture mode (`setCmdqRepeatRecordMode`) so follow-up prompt answers entered during normal command execution are appended to `CQ_REPEAT` as `CMDQ_KEY` entries.
+- Added cmdq restore helper (`cmdq_restore`) and tests covering queued command decode, queued direction consumption, repeat-input capture, and `#repeat` command sentinel flow.
+- Full test gate remains baseline-stable: all unit tests pass, gameplay parity retains existing 19 known divergences.

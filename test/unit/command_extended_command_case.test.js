@@ -75,4 +75,15 @@ test('#name object-type path rejects non-callable inventory item with C wording'
     assert.equal(game.display.topMessage, 'That is a silly thing to call.');
 });
 
+test('#repeat returns repeat request sentinel', async () => {
+    clearInputQueue();
+    const game = makeGame();
+    for (const ch of 'repeat') pushInput(ch.charCodeAt(0));
+    pushInput('\n'.charCodeAt(0));
+
+    const result = await rhack('#'.charCodeAt(0), game);
+    assert.equal(result.repeatRequest, true);
+    assert.equal(result.tookTime, false);
+});
+
 }); // describe
