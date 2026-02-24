@@ -28,13 +28,13 @@ import { random_epitaph_text } from './rumors.js';
 import { litstate_rnd } from './mkmap.js';
 import {
     maketrap,
-    somexy,
     bound_digging,
     mineralize,
     set_wall_state,
     wallify_region,
 } from './dungeon.js';
 import { mazexy } from './mkmaze.js';
+import { somex, somey, somexy, somexyspace, inside_room } from './mkroom.js';
 
 const DOORINC = 20;
 const DUNGEONS_OF_DOOM = 0;
@@ -348,34 +348,6 @@ export function mkstairs(map, x, y, isUp, isBranch = false) {
     loc.branchStair = !!isBranch;
     if (isUp) map.upstair = { x, y };
     else map.dnstair = { x, y };
-}
-
-export function somex(croom) { return rn1(croom.hx - croom.lx + 1, croom.lx); }
-export function somey(croom) { return rn1(croom.hy - croom.ly + 1, croom.ly); }
-
-function inside_room(croom, x, y, map) {
-    if (croom.irregular) {
-        const loc = map?.at?.(x, y);
-        const i = croom.roomnoidx + ROOMOFFSET;
-        return !!loc && !loc.edge && loc.roomno === i;
-    }
-    return x >= croom.lx - 1 && x <= croom.hx + 1
-        && y >= croom.ly - 1 && y <= croom.hy + 1;
-}
-
-export function somexyspace(map, croom) {
-    let trycnt = 0;
-    let okay;
-    do {
-        const pos = somexy(croom, map);
-        okay = pos && isok(pos.x, pos.y) && !occupied(map, pos.x, pos.y);
-        if (okay) {
-            const loc = map.at(pos.x, pos.y);
-            okay = loc && (loc.typ === ROOM || loc.typ === CORR || loc.typ === ICE);
-        }
-        if (okay) return pos;
-    } while (trycnt++ < 100);
-    return null;
 }
 
 // C ref: mklev.c generate_stairs_room_good()

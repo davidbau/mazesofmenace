@@ -89,6 +89,10 @@ import {
     isbig,
     has_dnstairs,
     has_upstairs,
+    somex,
+    somey,
+    somexy,
+    somexyspace,
     nexttodoor,
     shrine_pos,
 } from './mkroom.js';
@@ -1459,86 +1463,6 @@ export function create_corridor(map, spec, depth) {
 // ========================================================================
 // Stairs, room filling, niches
 // ========================================================================
-
-// C ref: mkroom.c somex() / somey()
-function somex(croom) { return rn1(croom.hx - croom.lx + 1, croom.lx); }
-function somey(croom) { return rn1(croom.hy - croom.ly + 1, croom.ly); }
-
-// C ref: mkroom.c inside_room() -- check if (x,y) is inside room bounds (including walls)
-function inside_room(croom, x, y, map) {
-    if (croom.irregular) {
-        const loc = map?.at?.(x, y);
-        const i = croom.roomnoidx + ROOMOFFSET;
-        return !!loc && !loc.edge && loc.roomno === i;
-    }
-    return x >= croom.lx - 1 && x <= croom.hx + 1
-        && y >= croom.ly - 1 && y <= croom.hy + 1;
-}
-
-// C ref: mkroom.c somexy() -- pick random position in room, avoiding subrooms
-export function somexy(croom, map) {
-    let try_cnt = 0;
-
-    // C ref: mkroom.c somexy() irregular path — !edge && roomno == i
-    if (croom.irregular) {
-        const i = croom.roomnoidx + ROOMOFFSET;
-        while (try_cnt++ < 100) {
-            const x = somex(croom);
-            const y = somey(croom);
-            const loc = map.at(x, y);
-            if (loc && !loc.edge && loc.roomno === i)
-                return { x, y };
-        }
-        // Exhaustive search fallback
-        for (let x = croom.lx; x <= croom.hx; x++) {
-            for (let y = croom.ly; y <= croom.hy; y++) {
-                const loc = map.at(x, y);
-                if (loc && !loc.edge && loc.roomno === i)
-                    return { x, y };
-            }
-        }
-        return null;
-    }
-
-    if (!croom.nsubrooms) {
-        return { x: somex(croom), y: somey(croom) };
-    }
-
-    // Check that coords don't fall into a subroom or into a wall
-    while (try_cnt++ < 100) {
-        const x = somex(croom);
-        const y = somey(croom);
-        const loc = map.at(x, y);
-        if (loc && IS_WALL(loc.typ))
-            continue;
-        let inSubroom = false;
-        for (let i = 0; i < croom.nsubrooms; i++) {
-            if (inside_room(croom.sbrooms[i], x, y, map)) {
-                inSubroom = true;
-                break;
-            }
-        }
-        if (!inSubroom)
-            return { x, y };
-    }
-    return null;
-}
-
-// C ref: mkroom.c somexyspace() -- find accessible space in room
-function somexyspace(map, croom) {
-    let trycnt = 0;
-    let okay;
-    do {
-        const pos = somexy(croom, map);
-        okay = pos && isok(pos.x, pos.y) && !occupied(map, pos.x, pos.y);
-        if (okay) {
-            const loc = map.at(pos.x, pos.y);
-            okay = loc && (loc.typ === ROOM || loc.typ === CORR || loc.typ === ICE);
-        }
-        if (okay) return pos;
-    } while (trycnt++ < 100);
-    return null;
-}
 
 // C ref: teleport.c collect_coords() — gather coordinates in expanding
 // distance rings from (cx,cy), shuffling each ring independently.

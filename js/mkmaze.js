@@ -28,10 +28,8 @@ import {
     mkstairs,
     generate_stairs_find_room,
     place_branch,
-    somex,
-    somey,
-    somexyspace,
 } from './mklev.js';
+import { somex, somey, somexyspace } from './mkroom.js';
 
 function at(map, x, y) {
     return map && map.at ? map.at(x, y) : null;
