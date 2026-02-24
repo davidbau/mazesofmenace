@@ -1,3 +1,4 @@
 
-# Use bd merge for beads JSONL files
-.beads/issues.jsonl merge=beads
+# Keep monotonically increasing version counters on merge/rebase.
+_data/version.yml merge=keepnewest
+js/version.js merge=keepnewest

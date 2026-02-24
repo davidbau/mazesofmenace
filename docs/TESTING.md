@@ -88,6 +88,10 @@ git config core.hooksPath .githooks
 
 # Auto-push notes with commits (like a wand of teleportation for your data)
 git config --add remote.origin.push '+refs/notes/test-results:refs/notes/test-results'
+
+# Auto-resolve version counter conflicts by keeping the higher counter
+git config merge.keepnewest.name "keep higher version counter"
+git config merge.keepnewest.driver "bash scripts/git-merge-keepnewest.sh %O %A %B"
 ```
 
 *You feel your repository becoming more disciplined.*

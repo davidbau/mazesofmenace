@@ -37,6 +37,11 @@ echo "✅ Notes auto-push via pre-push hook"
 git config --local notes.rewriteRef 'refs/notes/*'
 echo "✅ Notes rewriting configured"
 
+# Configure merge driver for monotonic version counters.
+git config --local merge.keepnewest.name 'keep higher version counter'
+git config --local merge.keepnewest.driver 'bash scripts/git-merge-keepnewest.sh %O %A %B'
+echo "✅ keepnewest merge driver configured"
+
 # Make sure all scripts are executable
 echo "Ensuring all hook scripts are executable..."
 chmod +x .githooks/*.sh .githooks/pre-* 2>/dev/null || true
