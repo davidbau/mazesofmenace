@@ -105,6 +105,7 @@ import {
     generate_stairs_room_good,
     generate_stairs_find_room,
     generate_stairs,
+    find_branch_room,
     cardinal_nextto_room,
     place_niche,
     occupied,
@@ -117,6 +118,7 @@ import {
     make_niches,
     makevtele,
     mklev_sanity_check,
+    level_finalize_topology,
     sort_rooms,
 } from './mklev.js';
 import { makeroguerooms } from './extralev.js';
@@ -4908,24 +4910,15 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
     // C ref: mklev.c:1367-1376 — place_branch()
     // At depth 1: branch exists (entry from surface), place branch stairs
     if (depth === 1) {
-        // C ref: find_branch_room → somexyspace
-        // NOTE: Despite C having rn2(5) after find_branch_room, analysis shows
-        // C actually has 5 rooms total, same as JS should have after 5 build_room successes.
-        // The rn2(5) is for the bonus item room selection, not room count.
-        // So DON'T create an extra branch room - just call somexyspace for RNG alignment.
-        const candidateRoom = generate_stairs_find_room(map);
-        if (candidateRoom) {
-            // Call somexyspace to match C's RNG consumption
-            const pos = somexyspace(map, candidateRoom);
-            if (pos) {
-                const loc = map.at(pos.x, pos.y);
-                if (loc) {
-                    loc.typ = STAIRS;
-                    loc.flags = 1; // up (branch goes up to surface)
-                    loc.stairdir = 1;
-                    loc.branchStair = true;
-                    map.upstair = { x: pos.x, y: pos.y };
-                }
+        const { pos } = find_branch_room(map);
+        if (pos) {
+            const loc = map.at(pos.x, pos.y);
+            if (loc) {
+                loc.typ = STAIRS;
+                loc.flags = 1; // up (branch goes up to surface)
+                loc.stairdir = 1;
+                loc.branchStair = true;
+                map.upstair = { x: pos.x, y: pos.y };
             }
         }
     }
@@ -4937,18 +4930,15 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
         const branchDlevel = Number.isInteger(dlevel) ? dlevel : depth;
         const branchPlacement = resolveBranchPlacementForLevel(branchDnum, branchDlevel).placement;
         if (_branchTopology.length && branchPlacement && branchPlacement !== 'none') {
-            const candidateRoom = generate_stairs_find_room(map);
-            if (candidateRoom) {
-                const pos = somexyspace(map, candidateRoom);
-                if (pos) {
-                    const prev = map._branchPlacementHint;
-                    map._branchPlacementHint = branchPlacement;
-                    try {
-                        placeBranchFeature(map, pos.x, pos.y);
-                    } finally {
-                        if (prev === undefined) delete map._branchPlacementHint;
-                        else map._branchPlacementHint = prev;
-                    }
+            const { pos } = find_branch_room(map);
+            if (pos) {
+                const prev = map._branchPlacementHint;
+                map._branchPlacementHint = branchPlacement;
+                try {
+                    placeBranchFeature(map, pos.x, pos.y);
+                } finally {
+                    if (prev === undefined) delete map._branchPlacementHint;
+                    else map._branchPlacementHint = prev;
                 }
             }
         }
@@ -4999,17 +4989,8 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
         clearLevelContext();
     }
 
-    // C ref: mklev.c:1533-1539 — level_finalize_topology()
-    // bound_digging marks boundary stone as non-diggable before mineralize
-    bound_digging(map);
-    mineralize(map, depth);
-    // C ref: mklev.c:1558 — level_finalize_topology() calls set_wall_state().
-    // This computes wall_info mode bits (stored in rm.flags low bits).
-    set_wall_state(map);
-    // C ref: mklev.c:1561-1562 — persist original room type snapshot.
-    for (let i = 0; i < map.rooms.length; i++) {
-        map.rooms[i].orig_rtype = map.rooms[i].rtype;
-    }
+    // C ref: mklev.c:1533-1539,1558,1561-1562 — level_finalize_topology().
+    level_finalize_topology(map, depth);
 
     // Branch stair placement must be gated by actual chosen branch depth.
     // Unconditional placement on depths 2..4 over-consumes RNG and is incorrect.

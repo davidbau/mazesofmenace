@@ -19,7 +19,7 @@ import { S_HUMAN, S_MIMIC } from './monsters.js';
 import { mkclass, makemon } from './makemon.js';
 import { make_engr_at, wipe_engr_at } from './engrave.js';
 import { random_epitaph_text } from './rumors.js';
-import { maketrap, somexy } from './dungeon.js';
+import { maketrap, somexy, mazexy, bound_digging, mineralize, set_wall_state } from './dungeon.js';
 
 const DOORINC = 20;
 
@@ -232,6 +232,23 @@ export function generate_stairs_find_room(map) {
         if (candidates.length > 0) return map.rooms[candidates[rn2(candidates.length)]];
     }
     return map.rooms[rn2(map.nroom)];
+}
+
+// C ref: mklev.c find_branch_room()
+export function find_branch_room(map) {
+    if (!map.nroom) return { croom: null, pos: mazexy(map) };
+    const croom = generate_stairs_find_room(map);
+    if (!croom) return { croom: null, pos: null };
+    return { croom, pos: somexyspace(map, croom) };
+}
+
+// C ref: mklev.c pos_to_room()
+export function pos_to_room(map, x, y) {
+    for (let i = 0; i < map.nroom; i++) {
+        const curr = map.rooms[i];
+        if (curr && inside_room(curr, x, y, map)) return curr;
+    }
+    return null;
 }
 
 // C ref: mklev.c generate_stairs()
@@ -583,4 +600,14 @@ export function mklev_sanity_check(map) {
         if (rmno !== -1 && map.smeq[i] !== rmno) return false;
     }
     return true;
+}
+
+// C ref: mklev.c level_finalize_topology()
+export function level_finalize_topology(map, depth) {
+    bound_digging(map);
+    mineralize(map, depth);
+    set_wall_state(map);
+    for (let i = 0; i < map.rooms.length; i++) {
+        map.rooms[i].orig_rtype = map.rooms[i].rtype;
+    }
 }
