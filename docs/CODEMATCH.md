@@ -2579,7 +2579,7 @@ No function symbols parsed from isaac64.c.
 | 232 | `do_room_or_subroom` | mklev.js:58 | Aligned |
 | 1796 | `dodoor` | mklev.js:698 | Aligned |
 | 612 | `dosdoor` | mklev.js:665 | Aligned |
-| 935 | `fill_ordinary_room` | - | Missing |
+| 935 | `fill_ordinary_room` | dungeon.js:2504 | Aligned |
 | 1656 | `find_branch_room` | mklev.js:370 | Aligned |
 | 2299 | `find_okay_roompos` | mklev.js:473 | Aligned |
 | 148 | `finddpos` | mklev.js:86 | Aligned |
@@ -2610,8 +2610,8 @@ No function symbols parsed from isaac64.c.
 | 1219 | `mklev_sanity_check` | mklev.js:721 | Aligned |
 | 2313 | `mksink` | mklev.js:320 | Aligned |
 | 2155 | `mkstairs` | mklev.js:142 | Aligned |
-| 2032 | `mktrap` | - | Missing |
-| 1811 | `mktrap_victim` | - | Missing |
+| 2032 | `mktrap` | dungeon.js:2270 | Aligned |
+| 1811 | `mktrap_victim` | dungeon.js:2355 | Aligned |
 | 1802 | `occupied` | mklev.js:310 | Aligned |
 | 1775 | `okdoor` | mklev.js:68 | Aligned |
 | 1687 | `place_branch` | mklev.js:811 | Aligned |

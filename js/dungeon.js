@@ -25,7 +25,7 @@ import {
     MAGIC_PORTAL, WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, POLY_TRAP,
     VIBRATING_SQUARE, TRAPPED_DOOR, TRAPPED_CHEST, TRAPNUM,
     is_pit, is_hole,
-    MKTRAP_NOFLAGS, MKTRAP_MAZEFLAG, MKTRAP_NOSPIDERONWEB, MKTRAP_NOVICTIM,
+    MKTRAP_NOFLAGS, MKTRAP_SEEN, MKTRAP_MAZEFLAG, MKTRAP_NOSPIDERONWEB, MKTRAP_NOVICTIM,
     PM_ARCHEOLOGIST as ROLE_ARCHEOLOGIST, PM_WIZARD as ROLE_WIZARD,
     PM_PRIEST as ROLE_PRIEST,
     A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC,
@@ -2312,8 +2312,15 @@ export function mktrap(map, num, mktrapflags, croom, tm, depth) {
     if (!t) return;
     kind = t.ttyp;
 
-    // WEB: create giant spider (needs makemon — skip for now)
-    // At depth < 7, WEB can't generate anyway
+    // C ref: mklev.c mktrap() — WEB creates a giant spider unless suppressed.
+    if (kind === WEB && !(mktrapflags & MKTRAP_NOSPIDERONWEB)) {
+        makemon(PM_GIANT_SPIDER, mx, my, NO_MM_FLAGS, depth, map);
+    }
+    // C ref: mklev.c mktrap() — MKTRAP_SEEN marks generated trap as seen.
+    if (mktrapflags & MKTRAP_SEEN) {
+        t.tseen = true;
+    }
+
     // C ref: mklev.c mktrap() assigns MAGIC_PORTAL destination from
     // u.ucamefrom when present. In JS, honor map-level portal destination
     // context when provided by level-generation callers.
