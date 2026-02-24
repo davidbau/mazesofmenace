@@ -196,6 +196,11 @@ function lesshungry(player, num) {
     newuhs(player, false);
 }
 
+// cf. eat.c canchoke() — whether current hunger is in choking-warning range
+function canchoke(player) {
+    return (player.hunger || 0) >= 1500;
+}
+
 // cf. eat.c newuhs() — update hunger state and messages
 function newuhs(player, incr) {
     const h = player.hunger;
@@ -1314,10 +1319,10 @@ async function handleEat(player, display, game) {
         // cf. eat.c bite() — apply incremental nutrition (partial)
         function doBite() {
             if (nmod < 0) {
-                player.hunger += (-nmod);
+                lesshungry(player, -nmod);
                 player.nutrition += (-nmod);
             } else if (nmod > 0 && (usedtime % nmod)) {
-                player.hunger += 1;
+                lesshungry(player, 1);
                 player.nutrition += 1;
             }
         }
@@ -1392,6 +1397,7 @@ async function handleEat(player, display, game) {
                 }
             };
             // cf. eat.c eatfood() / start_eating() — set_occupation
+            let fullwarn = false;
             game.occupation = {
                 fn: () => {
                     usedtime++;
@@ -1401,6 +1407,33 @@ async function handleEat(player, display, game) {
                         return 0; // done
                     }
                     doBite();
+                    const bitesLeft = reqtime - usedtime;
+                    // C ref: eat.c lesshungry()/eatfood() — fullwarn path.
+                    if (!fullwarn && bitesLeft > 1 && canchoke(player)) {
+                        fullwarn = true;
+                        display.putstr_message('Continue eating? [yn] (n)');
+                        game.pendingPrompt = {
+                            type: 'eat_continue',
+                            onKey: (chCode, gameCtx) => {
+                                if (chCode === 121 || chCode === 89) { // y/Y
+                                    gameCtx.pendingPrompt = null;
+                                    return { handled: true, continueEating: true };
+                                }
+                                // default answer is "n" on Enter/Esc/Space or explicit n/N
+                                if (chCode === 110 || chCode === 78
+                                    || chCode === 13 || chCode === 10
+                                    || chCode === 27 || chCode === 32) {
+                                    gameCtx.pendingPrompt = null;
+                                    gameCtx.occupation = null;
+                                    display.putstr_message(`You stop eating the ${eatenItem.name}.`);
+                                    return { handled: true, continueEating: false };
+                                }
+                                // Ignore unrelated keys while prompt is active.
+                                return { handled: true, continueEating: null };
+                            },
+                        };
+                        return 'prompt';
+                    }
                     return 1; // continue
                 },
                 txt: `eating ${eatenItem.name}`,
@@ -1477,7 +1510,7 @@ export {
     maybe_finished_meal, cant_finish_meal,
     Popeye, Finish_digestion, eat_brains,
     // Constants
-    nonrotting_corpse, nonrotting_food, CANNIBAL_ALLOWED,
+    nonrotting_corpse, nonrotting_food, CANNIBAL_ALLOWED, canchoke,
     SPINACH_TIN, ROTTEN_TIN, HOMEMADE_TIN,
     tintxts, TTSZ,
 };

@@ -26,14 +26,14 @@ import { were_change } from './were.js';
 import { allocateMonsterMovement } from './mon.js';
 import { rn2, rnd, rn1, initRng, getRngState, setRngState, getRngCallCount, setRngCallCount,
          enableRngLog, getRngLog as readRngLog } from './rng.js';
-import { NORMAL_SPEED, A_STR, A_DEX, A_CON, ROOMOFFSET, SHOPBASE,
+import { NORMAL_SPEED, A_DEX, A_CON, ROOMOFFSET, SHOPBASE,
          COLNO, ROWNO, A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC,
          FEMALE, MALE, TERMINAL_COLS,
          RACE_HUMAN, RACE_ELF, RACE_DWARF, RACE_GNOME, RACE_ORC } from './config.js';
 import { ageSpells } from './spell.js';
 import { wipe_engr_at } from './engrave.js';
 import { dosearch0 } from './detect.js';
-import { exercise, exerchk } from './attrib_exercise.js';
+import { exerper, exerchk } from './attrib_exercise.js';
 import { rhack } from './cmd.js';
 import { FOV } from './vision.js';
 import { monsterNearby } from './monutil.js';
@@ -203,27 +203,7 @@ export function moveloop_turnend(game) {
     // C ref: attrib.c exerper() — periodic exercise updates.
     // C's svm.moves starts at 1 and increments before exerper/exerchk.
     const moves = game.turnCount + 1;
-    if (moves % 10 === 0) {
-        // C ref: attrib.c exerper() hunger switch
-        if (game.player.hunger > 1000) {
-            exercise(game.player, A_DEX, false);
-        } else if (game.player.hunger > 150) {
-            exercise(game.player, A_CON, true);
-        } else if (game.player.hunger > 50) { // HUNGRY
-            // no exercise
-        } else if (game.player.hunger > 0) {
-            exercise(game.player, A_STR, false);
-        } else {
-            exercise(game.player, A_CON, false);
-        }
-        // C ref: attrib.c exerper() role/behavioral hooks.
-        if (game.player.restingTurn) {
-            exercise(game.player, A_STR, true);
-        }
-    }
-    if (moves % 5 === 0 && (game.player.woundedLegsTimeout || 0) > 0) {
-        exercise(game.player, A_DEX, false);
-    }
+    exerper(game.player, moves);
 
     // C ref: attrib.c exerchk()
     exerchk(game.player, moves);
@@ -350,6 +330,19 @@ export async function run_command(game, ch, opts = {}) {
     const chCode = typeof ch === 'number' ? ch
         : (typeof ch === 'string' && ch.length > 0) ? ch.charCodeAt(0) : 0;
 
+    // Prompt handlers (e.g., eat.c "Continue eating? [yn]") consume input
+    // without advancing time until a terminating answer is provided.
+    if (game.pendingPrompt && typeof game.pendingPrompt.onKey === 'function') {
+        const promptResult = game.pendingPrompt.onKey(chCode, game);
+        if (promptResult && promptResult.handled) {
+            return {
+                tookTime: false,
+                moved: false,
+                prompt: true,
+            };
+        }
+    }
+
     // Set multi from countPrefix, set cmdKey
     game.commandCount = countPrefix;
     if (countPrefix > 0) {
@@ -427,14 +420,19 @@ async function _drainOccupation(game, coreOpts, onTimedTurn) {
                 game.display?.putstr_message(`You stop ${occ.occtxt}.`);
             }
             game.occupation = null;
+            game.pendingPrompt = null;
             break; // interrupted — no turn processing for this step
         }
 
-        if (!cont) {
+        if (cont === 'prompt') {
+            // Occupation has paused on an in-band prompt and will resume or
+            // abort when that prompt consumes subsequent input.
+        } else if (!cont) {
             if (occ?.occtxt === 'waiting') {
                 game.display?.putstr_message(`You stop ${occ.occtxt}.`);
             }
             game.occupation = null;
+            game.pendingPrompt = null;
         }
 
         // Occupation step took time — process monster moves + turn-end
@@ -444,6 +442,7 @@ async function _drainOccupation(game, coreOpts, onTimedTurn) {
         if (finishedOcc && typeof finishedOcc.onFinishAfterTurn === 'function') {
             finishedOcc.onFinishAfterTurn(game);
         }
+        if (cont === 'prompt') break;
     }
 }
 
@@ -578,6 +577,7 @@ export class NetHackGame {
         this.wizard = false;
         this.seerTurn = 0;
         this.occupation = null;
+        this.pendingPrompt = null;
         this.pendingDeferredTimedTurn = false;
         this.seed = 0;
         this.multi = 0;

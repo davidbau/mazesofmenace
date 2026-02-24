@@ -2,7 +2,8 @@
 // Mirrors relevant parts of attrib.c (exercise(), exerper(), exerchk()).
 
 import { rn2, rn1 } from './rng.js';
-import { A_STR, A_INT, A_CHA } from './config.js';
+import { A_STR, A_INT, A_CHA, A_DEX, A_CON, A_WIS,
+    MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER } from './config.js';
 
 const EXERCISE_LIMIT = 50;
 const DEFAULT_NEXT_CHECK = 600;
@@ -59,6 +60,57 @@ export function exerchk(player, moves) {
 
     // C ref: next_check += rn1(200, 800)
     player.nextAttrCheck += rn1(200, 800);
+}
+
+// C ref: attrib.c exerper() — periodic exercise accumulation
+export function exerper(player, moves) {
+    if (!player || !Number.isInteger(moves)) return;
+
+    if (moves % 10 === 0) {
+        // Hunger state switch
+        if (player.hunger > 1000) {
+            exercise(player, A_DEX, false);
+        } else if (player.hunger > 150) {
+            exercise(player, A_CON, true);
+        } else if (player.hunger > 50) {
+            // HUNGRY: no exercise
+        } else if (player.hunger > 0) {
+            exercise(player, A_STR, false);
+        } else {
+            exercise(player, A_CON, false);
+        }
+
+        // Encumbrance checks
+        const wtcap = (typeof player.near_capacity === 'function')
+            ? player.near_capacity()
+            : (player.encumbrance || 0);
+        if (wtcap === MOD_ENCUMBER) {
+            exercise(player, A_STR, true);
+        } else if (wtcap === HVY_ENCUMBER) {
+            exercise(player, A_STR, true);
+            exercise(player, A_DEX, false);
+        } else if (wtcap === EXT_ENCUMBER) {
+            exercise(player, A_DEX, false);
+            exercise(player, A_CON, false);
+        }
+    }
+
+    if (moves % 5 === 0) {
+        if (player.regeneration) {
+            exercise(player, A_STR, true);
+        }
+        if (player.sick || player.vomiting) {
+            exercise(player, A_CON, false);
+        }
+        if (player.confused || player.hallucinating) {
+            exercise(player, A_WIS, false);
+        }
+        const woundedLegs = !!player.woundedLegs
+            || (player.woundedLegsTimeout || 0) > 0;
+        if (woundedLegs || player.fumbling || player.stunned) {
+            exercise(player, A_DEX, false);
+        }
+    }
 }
 
 export function initExerciseState(player) {

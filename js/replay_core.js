@@ -153,6 +153,7 @@ export function getSessionStartup(session) {
 export function getSessionCharacter(session) {
     if (!session?.options) return {};
     let startupName = null;
+    let startupRank = null;
     const startup = getSessionStartup(session);
     const startupLines = getSessionScreenLines(startup || {});
     for (const line of startupLines) {
@@ -163,14 +164,28 @@ export function getSessionCharacter(session) {
         const theIdx = statusPrefix.indexOf(' the ');
         if (theIdx > 0) {
             startupName = statusPrefix.slice(0, theIdx).trim();
+            startupRank = statusPrefix.slice(theIdx + 5).trim();
         } else if (statusPrefix.length > 0) {
             startupName = statusPrefix;
         }
         if (startupName) break;
     }
+    // Some recorded sessions have stale options.role metadata.
+    // Prefer the startup statusline rank title when it uniquely maps to a role.
+    let roleFromStartup = null;
+    if (startupRank) {
+        const matches = [];
+        for (const role of roles) {
+            if (!role?.ranks) continue;
+            if (role.ranks.some((r) => r?.m === startupRank || r?.f === startupRank)) {
+                matches.push(role.name);
+            }
+        }
+        if (matches.length === 1) roleFromStartup = matches[0];
+    }
     return {
         name: startupName || session.options.name,
-        role: session.options.role,
+        role: roleFromStartup || session.options.role,
         race: session.options.race,
         gender: session.options.gender,
         align: session.options.align,
@@ -1334,6 +1349,7 @@ export async function replaySession(seed, session, opts = {}) {
                 game.display.putstr_message(`You stop ${occ.occtxt}.`);
             }
             game.occupation = null;
+            game.pendingPrompt = null;
             game.multi = 0;
             return true;
         };
@@ -1573,6 +1589,19 @@ export async function replaySession(seed, session, opts = {}) {
                 }
             }
         } else {
+            if (game.pendingPrompt && typeof game.pendingPrompt.onKey === 'function') {
+                const promptResult = game.pendingPrompt.onKey(ch, game);
+                if (promptResult && promptResult.handled) {
+                    result = { moved: false, tookTime: false, prompt: true };
+                    game.advanceRunTurn = null;
+                    // Prompt handlers consume this key; no command execution.
+                } else {
+                    game.pendingPrompt = null;
+                }
+            }
+            if (result) {
+                // Prompt consumed input above.
+            } else {
             let effectiveCh = ch;
             if (ch === 1) { // Ctrl+A
                 if (lastCommand) {
@@ -1716,6 +1745,7 @@ export async function replaySession(seed, session, opts = {}) {
                 game.advanceRunTurn = null;
                 result = settled.value;
             }
+            }
         }
 
         // C ref: cmd.c prefix commands (F=fight, G=run, g=rush) return without
@@ -1769,10 +1799,14 @@ export async function replaySession(seed, session, opts = {}) {
                     // just clears go.occupation silently. "You stop X." is
                     // only printed by stop_occupation() on external interrupt.
                     game.occupation = null;
+                    game.pendingPrompt = null;
                 }
                 applyTimedTurn();
                 if (finishedOcc && typeof finishedOcc.onFinishAfterTurn === 'function') {
                     finishedOcc.onFinishAfterTurn(game);
+                }
+                if (cont === 'prompt') {
+                    break;
                 }
 
                 // Keep replay HP aligned to captured turn-state during multi-turn actions.
@@ -1824,11 +1858,15 @@ export async function replaySession(seed, session, opts = {}) {
                     if (!interruptedOcc && !cont) {
                         // C ref: natural completion — no message (see above)
                         game.occupation = null;
+                        game.pendingPrompt = null;
                     }
                     applyTimedTurn(true);
                     syncHpFromStepScreen();
                     if (finishedOcc && typeof finishedOcc.onFinishAfterTurn === 'function') {
                         finishedOcc.onFinishAfterTurn(game);
+                    }
+                    if (cont === 'prompt') {
+                        break;
                     }
                     if (game.player.justHealedLegs
                         && (game.cmdKey === 46 || game.cmdKey === 115)
