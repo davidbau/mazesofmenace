@@ -13,8 +13,9 @@ import {
     SCR_IDENTIFY, SCR_CHARGING, SCR_MAGIC_MAPPING, SCR_AMNESIA,
     SCR_FIRE, SCR_EARTH, SCR_PUNISHMENT, SCR_STINKING_CLOUD,
     SCR_BLANK_PAPER,
+    CANDY_BAR,
 } from './objects.js';
-import { A_STR, A_INT, A_WIS, A_CON } from './config.js';
+import { A_STR, A_INT, A_WIS, A_CON, SDOOR, COLNO, ROWNO } from './config.js';
 import { doname } from './mkobj.js';
 import { exercise } from './attrib_exercise.js';
 import { discoverObject, isObjectNameKnown } from './discovery.js';
@@ -23,6 +24,12 @@ import { makemon, MM_EDOG, NO_MINVENT, MM_ADJACENTOK } from './makemon.js';
 import { mons, PM_ACID_BLOB, PM_YELLOW_LIGHT, PM_BLACK_LIGHT, S_HUMAN } from './monsters.js';
 import { resist } from './zap.js';
 import { monflee } from './monmove.js';
+import { Yobjnam2, Yname2, makeplural, an } from './objnam.js';
+import { hcolor } from './do_name.js';
+import { scrolltele, level_tele } from './teleport.js';
+import { gold_detect, food_detect, trap_detect, do_mapping, cvt_sdoor_to_door } from './detect.js';
+import { explode } from './explode.js';
+import { EXPL_FIERY } from './explode.js';
 
 const SPELL_KEEN = 20000; // cf. spell.c KEEN
 const MAX_SPELL_STUDY = 3; // cf. spell.h MAX_SPELL_STUDY
@@ -32,47 +39,231 @@ const MAX_SPELL_STUDY = 3; // cf. spell.h MAX_SPELL_STUDY
 // 1. Scroll learning
 // ============================================================
 
-// TODO: cf. read.c learnscrolltyp() — learn scroll type after reading
-// TODO: cf. read.c learnscroll() — wrapper for scroll type learning
+// cf. read.c learnscrolltyp() — implemented below (line ~learnscrolltyp)
+// cf. read.c learnscroll() — wrapper; in JS, learnscrolltyp is called directly
 
 // ============================================================
 // 2. Enchantment helpers
 // ============================================================
 
-// TODO: cf. read.c cap_spe() — cap enchantment at +127
-// TODO: cf. read.c stripspe() — strip enchantment from charged item
+// cf. read.c stripspe() — strip enchantment from charged item
+function stripspe(obj, player, display) {
+    if (obj.blessed || (obj.spe || 0) <= 0) {
+        display.putstr_message('Nothing happens.');
+    } else {
+        display.putstr_message(`${Yobjnam2(obj, player.blind ? 'vibrate' : 'glow')} briefly.`);
+        obj.spe = 0;
+    }
+}
 
 // ============================================================
 // 3. Read validation
 // ============================================================
 
-// TODO: cf. read.c read_ok() — validate object is readable
+// cf. read.c read_ok() — validate object is readable
+function read_ok(obj) {
+    if (!obj) return false;
+    if (obj.oclass === SCROLL_CLASS || obj.oclass === SPBOOK_CLASS) return true;
+    return false;
+}
 
 // ============================================================
 // 4. Glow messages
 // ============================================================
 
-// TODO: cf. read.c p_glow1() — "Your <item> glows <color>" message
-// TODO: cf. read.c p_glow2() — "Your <item> glows <color> for a moment" message
-// TODO: cf. read.c p_glow3() — "Your <item> briefly glows <color>" (alternate wording)
+// cf. read.c p_glow1() — "Your <item> glows briefly" / "vibrates briefly"
+function p_glow1(otmp, player, display) {
+    display.putstr_message(
+        `${Yobjnam2(otmp, player.blind ? 'vibrate' : 'glow')} briefly.`);
+}
+
+// cf. read.c p_glow2() — "Your <item> glows <color> for a moment"
+function p_glow2(otmp, color, player, display) {
+    display.putstr_message(
+        `${Yobjnam2(otmp, player.blind ? 'vibrate' : 'glow')}${player.blind ? '' : ' '}${player.blind ? '' : hcolor(color)} for a moment.`);
+}
+
+// cf. read.c p_glow3() — "Your <item> glows feebly <color> for a moment"
+function p_glow3(otmp, color, player, display) {
+    display.putstr_message(
+        `${Yobjnam2(otmp, player.blind ? 'vibrate' : 'glow')} feebly${player.blind ? '' : ' '}${player.blind ? '' : hcolor(color)} for a moment.`);
+}
 
 // ============================================================
 // 5. Text display
 // ============================================================
 
-// TODO: cf. read.c erode_obj_text() — check if engraved/written text is eroded
-// TODO: cf. read.c tshirt_text() — random T-shirt text messages
-// TODO: cf. read.c hawaiian_motif() — random Hawaiian shirt motif
-// TODO: cf. read.c hawaiian_design() — random Hawaiian shirt design
-// TODO: cf. read.c apron_text() — random apron text messages
-// TODO: cf. read.c candy_wrapper_text() — candy bar wrapper text
-// TODO: cf. read.c assign_candy_wrapper() — assign wrapper text to candy bar
+// cf. read.c erode_obj_text() — erode text based on object erosion
+// Simplified: returns text as-is since wipeout_text with seed is not exported
+function erode_obj_text(otmp, buf) {
+    const erosion = Math.max(otmp.oeroded || 0, otmp.oeroded2 || 0);
+    if (erosion) {
+        // Approximate: replace some chars with '?' based on erosion level
+        const maxErode = 3;
+        const numWipe = Math.floor(buf.length * erosion / (2 * maxErode));
+        const chars = buf.split('');
+        // Deterministic wipeout based on o_id to avoid RNG consumption
+        for (let i = 0; i < numWipe && i < chars.length; i++) {
+            const idx = ((otmp.o_id || 0) * 31 + i * 17) % chars.length;
+            if (chars[idx] !== ' ') chars[idx] = '?';
+        }
+        return chars.join('');
+    }
+    return buf;
+}
+
+// cf. read.c tshirt_text() — random T-shirt text messages
+const shirt_msgs = [
+    "I explored the Dungeons of Doom and all I got was this lousy T-shirt!",
+    "Is that Mjollnir in your pocket or are you just happy to see me?",
+    "It's not the size of your sword, it's how #enhance'd you are with it.",
+    "Madame Elvira's House O' Succubi Lifetime Customer",
+    "Madame Elvira's House O' Succubi Employee of the Month",
+    "Ludios Vault Guards Do It In Small, Dark Rooms",
+    "Yendor Military Soldiers Do It In Large Groups",
+    "I survived Yendor Military Boot Camp",
+    "Ludios Accounting School Intra-Mural Lacrosse Team",
+    "Oracle(TM) Fountains 10th Annual Wet T-Shirt Contest",
+    "Hey, black dragon!  Disintegrate THIS!",
+    "I'm With Stupid -->",
+    "Don't blame me, I voted for Izchak!",
+    "Don't Panic",
+    "Furinkan High School Athletic Dept.",
+    "Hel-LOOO, Nurse!",
+    "=^.^=",
+    "100% goblin hair - do not wash",
+    "Aberzombie and Fitch",
+    "cK -- Cockatrice touches the Kop",
+    "Don't ask me, I only adventure here",
+    "Down with pants!",
+    "d, your dog or a killer?",
+    "FREE PUG AND NEWT!",
+    "Go team ant!",
+    "Got newt?",
+    "Hello, my darlings!",
+    "Hey!  Nymphs!  Steal This T-Shirt!",
+    "I <3 Dungeon of Doom",
+    "I <3 Maud",
+    "I am a Valkyrie.  If you see me running, try to keep up.",
+    "I am not a pack rat - I am a collector",
+    "I bounced off a rubber tree",
+    "Plunder Island Brimstone Beach Club",
+    "If you can read this, I can hit you with my polearm",
+    "I'm confused!",
+    "I scored with the princess",
+    "I want to live forever or die in the attempt.",
+    "Lichen Park",
+    "LOST IN THOUGHT - please send search party",
+    "Meat is Mordor",
+    "Minetown Better Business Bureau",
+    "Minetown Watch",
+    "Ms. Palm's House of Negotiable Affection--A Very Reputable House Of Disrepute",
+    "Protection Racketeer",
+    "Real men love Crom",
+    "Somebody stole my Mojo!",
+    "The Hellhound Gang",
+    "The Werewolves",
+    "They Might Be Storm Giants",
+    "Weapons don't kill people, I kill people",
+    "White Zombie",
+    "You're killing me!",
+    "Anhur State University - Home of the Fighting Fire Ants!",
+    "FREE HUGS",
+    "Serial Ascender",
+    "Real men are valkyries",
+    "Young Men's Cavedigging Association",
+    "Occupy Fort Ludios",
+    "I couldn't afford this T-shirt so I stole it!",
+    "Mind flayers suck",
+    "I'm not wearing any pants",
+    "Down with the living!",
+    "Pudding farmer",
+    "Vegetarian",
+    "Hello, I'm War!",
+    "It is better to light a candle than to curse the darkness",
+    "It is easier to curse the darkness than to light a candle",
+    "rock--paper--scissors--lizard--Spock!",
+    "/Valar morghulis/ -- /Valar dohaeris/",
+];
+
+function tshirt_text(tshirt) {
+    const buf = shirt_msgs[(tshirt.o_id || 0) % shirt_msgs.length];
+    return erode_obj_text(tshirt, buf);
+}
+
+// cf. read.c hawaiian_motif() — random Hawaiian shirt motif
+const hawaiian_motifs = [
+    "flamingo", "parrot", "toucan", "bird of paradise",
+    "sea turtle", "tropical fish", "jellyfish", "giant eel", "water nymph",
+    "plumeria", "orchid", "hibiscus flower", "palm tree",
+    "hula dancer", "sailboat", "ukulele",
+];
+
+function hawaiian_motif(shirt) {
+    // C: motif = shirt->o_id ^ (unsigned) ubirthday
+    // Simplified: use o_id directly (ubirthday not easily accessible)
+    const motif = (shirt.o_id || 0);
+    return hawaiian_motifs[motif % hawaiian_motifs.length];
+}
+
+// cf. read.c hawaiian_design() — random Hawaiian shirt design
+const hawaiian_bgs = [
+    "purple", "yellow", "red", "blue", "orange", "black", "green",
+    "abstract", "geometric", "patterned", "naturalistic",
+];
+
+function hawaiian_design(shirt) {
+    // C: bg = shirt->o_id ^ (unsigned) ~ubirthday
+    const bg = ((shirt.o_id || 0) * 37 + 7);
+    const motif = hawaiian_motif(shirt);
+    return `${makeplural(motif)} on ${an(hawaiian_bgs[bg % hawaiian_bgs.length])} background`;
+}
+
+// cf. read.c apron_text() — random apron text messages
+const apron_msgs = [
+    "Kiss the cook",
+    "I'm making SCIENCE!",
+    "Don't mess with the chef",
+    "Don't make me poison you",
+    "Gehennom's Kitchen",
+    "Rat: The other white meat",
+    "If you can't stand the heat, get out of Gehennom!",
+    "If we weren't meant to eat animals, why are they made out of meat?",
+    "If you don't like the food, I'll stab you",
+    "I am an alchemist; if you see me running, try to catch up...",
+];
+
+function apron_text(apron) {
+    const buf = apron_msgs[(apron.o_id || 0) % apron_msgs.length];
+    return erode_obj_text(apron, buf);
+}
+
+// cf. read.c candy_wrapper_text() — candy bar wrapper text
+const candy_wrappers = [
+    "",
+    "Apollo",
+    "Moon Crunchy",
+    "Snacky Cake", "Chocolate Nuggie", "The Small Bar",
+    "Crispy Yum Yum", "Nilla Crunchie", "Berry Bar",
+    "Choco Nummer", "Om-nom",
+    "Fruity Oaty",
+    "Wonka Bar",
+];
+
+function candy_wrapper_text(obj) {
+    return candy_wrappers[(obj.spe || 0) % candy_wrappers.length];
+}
+
+// cf. read.c assign_candy_wrapper() — assign wrapper text to candy bar
+function assign_candy_wrapper(obj) {
+    if (obj.otyp === CANDY_BAR) {
+        obj.spe = 1 + rn2(candy_wrappers.length - 1);
+    }
+}
 
 // ============================================================
 // 6. Main entry
 // ============================================================
-
-// TODO: cf. read.c doread() — main read command entry point (full implementation)
 
 // cf. read.c doread() — read a scroll or spellbook (partial)
 // Implemented: inventory selection, spellbook study (cf. spell.c study_book).
@@ -414,11 +605,13 @@ function seffect_charging(sobj, player, display, game) {
         learnscrolltyp(SCR_CHARGING);
     }
     // Use up scroll before prompting
+    const charge_bless = scursed ? -1 : sblessed ? 1 : 0;
     useup_scroll(sobj, player);
 
-    // TODO: implement getobj + recharge for non-confused charging
-    // For now, the scroll is consumed but no item is charged
-    display.putstr_message('You feel as if something is missing.');
+    // cf. getobj("charge", charge_ok, ...) + recharge(otmp, curse_bless)
+    // In automated play, no item prompt is possible; the scroll is consumed
+    // but no item is charged. A full UI implementation would prompt here.
+    display.putstr_message('You have a feeling of loss.');
     return true; // consumed
 }
 
@@ -438,7 +631,7 @@ function seffect_light(sobj, player, display, game) {
                 display.putstr_message('Darkness surrounds you.');
             }
         }
-        // TODO: implement litroom() for actual map lighting changes
+        // cf. litroom() — map lighting changes not yet ported
         return false;
     }
 
@@ -870,12 +1063,10 @@ function seffect_teleportation(sobj, player, display, game) {
 
     if (confused || scursed) {
         // cf. level_tele() — level teleport
-        // TODO: implement level teleportation
-        display.putstr_message('You feel very disoriented for a moment.');
+        level_tele(game);
     } else {
         // cf. scrolltele(sobj) — normal teleport
-        // TODO: implement scrolltele
-        display.putstr_message('You feel very disoriented for a moment.');
+        scrolltele(sobj, game);
     }
     return false;
 }
@@ -884,24 +1075,35 @@ function seffect_teleportation(sobj, player, display, game) {
 function seffect_gold_detection(sobj, player, display, game) {
     const scursed = sobj.cursed;
     const confused = !!player.confused;
+    const map = game?.map;
 
     if (confused || scursed) {
-        // cf. trap_detect(sobj) — detect traps
-        // TODO: implement trap_detect
-        display.putstr_message('You feel very greedy.');
+        // cf. trap_detect(sobj)
+        if (trap_detect(sobj, player, map, display, game)) {
+            // failure: strange_feeling -> useup
+            useup_scroll(sobj, player);
+            return true;
+        }
     } else {
         // cf. gold_detect(sobj)
-        // TODO: implement gold_detect
-        display.putstr_message('You feel very greedy.');
+        if (gold_detect(sobj, player, map, display, game)) {
+            // failure: strange_feeling -> useup
+            useup_scroll(sobj, player);
+            return true;
+        }
     }
     return false;
 }
 
 // cf. read.c seffect_food_detection()
 function seffect_food_detection(sobj, player, display, game) {
+    const map = game?.map;
     // cf. food_detect(sobj)
-    // TODO: implement food_detect
-    display.putstr_message('You feel hungry.');
+    if (food_detect(sobj, player, map, display, game)) {
+        // nothing detected: strange_feeling -> useup
+        useup_scroll(sobj, player);
+        return true;
+    }
     return false;
 }
 
@@ -910,23 +1112,36 @@ function seffect_magic_mapping(sobj, player, display, game) {
     const sblessed = sobj.blessed;
     const scursed = sobj.cursed;
     const confused = !!player.confused;
+    const map = game?.map;
 
-    // TODO: implement nommap level check
+    // cf. C: nommap level check — not yet tracked in JS levels
+    // if (level.flags.nommap) { ... make_confused ... return; }
 
-    if (sblessed) {
+    if (sblessed && map) {
         // Blessed: also reveals secret doors (before do_mapping)
-        // TODO: cvt_sdoor_to_door for all SDOOR tiles
+        for (let x = 1; x < COLNO; x++) {
+            for (let y = 0; y < ROWNO; y++) {
+                const loc = map.at(x, y);
+                if (loc && loc.typ === SDOOR) {
+                    cvt_sdoor_to_door(loc);
+                }
+            }
+        }
     }
 
     display.putstr_message('A map coalesces in your mind!');
     const cval = scursed && !confused;
     if (cval) {
         // Temporarily confuse to screw up map
-        // C: HConfusion = 1
+        player.confused = (player.confused || 0) || 1;
     }
     // cf. do_mapping()
-    // TODO: implement do_mapping to reveal level map
+    if (map) {
+        do_mapping(player, map, display);
+    }
     if (cval) {
+        // Restore confusion
+        if (player.confused === 1) player.confused = 0;
         display.putstr_message("Unfortunately, you can't grasp the details.");
     }
     return false;
@@ -956,27 +1171,52 @@ function seffect_amnesia(sobj, player, display) {
     return false;
 }
 
+// cf. read.c maybe_tame() — taming effect on a monster
+function maybe_tame(mtmp, sobj) {
+    const was_tame = !!mtmp.tame;
+    const was_peaceful = !!mtmp.mpeaceful;
+
+    if (sobj.cursed) {
+        // Cursed: anger the monster
+        if (mtmp.mpeaceful) {
+            mtmp.mpeaceful = false;
+        }
+        if (was_peaceful && !mtmp.mpeaceful) return -1;
+    } else {
+        // cf. C: if (!resist(mtmp, sobj->oclass, 0, NOTELL) || mtmp->isshk)
+        //     tamedog(mtmp, sobj, FALSE)
+        if (!resist(mtmp, SCROLL_CLASS) || mtmp.isshk) {
+            // Simplified tamedog: tame the monster
+            if (!mtmp.tame) {
+                mtmp.tame = true;
+                mtmp.mpeaceful = true;
+            }
+        }
+        if ((!was_peaceful && mtmp.mpeaceful) || was_tame !== !!mtmp.tame) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 // cf. read.c seffect_taming()
 function seffect_taming(sobj, player, display, game) {
     const confused = !!player.confused;
     const map = game?.map;
     const bd = confused ? 5 : 1;
-    let candidates = 0, results = 0;
+    let candidates = 0, results = 0, vis_results = 0;
 
     if (map) {
-        for (const mtmp of (map.monsters || [])) {
-            if (mtmp.dead || (mtmp.mhp != null && mtmp.mhp <= 0)) continue;
-            const dx = Math.abs(mtmp.mx - player.x);
-            const dy = Math.abs(mtmp.my - player.y);
-            if (dx <= bd && dy <= bd) {
+        for (let i = -bd; i <= bd; i++) {
+            for (let j = -bd; j <= bd; j++) {
+                const mx = player.x + i;
+                const my = player.y + j;
+                const mtmp = map.monsterAt ? map.monsterAt(mx, my) : null;
+                if (!mtmp || mtmp.dead || (mtmp.mhp != null && mtmp.mhp <= 0)) continue;
                 candidates++;
-                // cf. maybe_tame(mtmp, sobj)
-                // Simplified: tame if not resistant
-                if (!mtmp.tame) {
-                    mtmp.tame = true;
-                    mtmp.mpeaceful = true;
-                    results++;
-                }
+                const res = maybe_tame(mtmp, sobj);
+                results += res;
+                vis_results += res; // simplified: assume all visible
             }
         }
     }
@@ -984,7 +1224,8 @@ function seffect_taming(sobj, player, display, game) {
         display.putstr_message(
             `Nothing interesting ${!candidates ? 'happens' : 'seems to happen'}.`);
     } else {
-        display.putstr_message(`The neighborhood is ${results > 0 ? '' : 'un'}friendlier.`);
+        display.putstr_message(
+            `The neighborhood ${vis_results ? 'is' : 'seems'} ${results < 0 ? 'un' : ''}friendlier.`);
     }
     return false;
 }
@@ -993,12 +1234,15 @@ function seffect_taming(sobj, player, display, game) {
 function seffect_genocide(sobj, player, display) {
     const sblessed = sobj.blessed;
     const scursed = sobj.cursed;
+    const confused = !!player.confused;
     const already_known = isObjectNameKnown(sobj.otyp);
 
     if (!already_known) {
         display.putstr_message('You have found a scroll of genocide!');
     }
-    // TODO: implement do_genocide / do_class_genocide prompts
+    // cf. C: if (sblessed) do_class_genocide(); else do_genocide((!scursed) | (2 * !!Confusion))
+    // do_genocide and do_class_genocide require interactive prompts (monster class/type selection)
+    // which are not yet available in automated play. The scroll is identified but has no effect.
     display.putstr_message('A sad feeling comes over you.');
     return false;
 }
@@ -1009,7 +1253,9 @@ function seffect_fire(sobj, player, display, game) {
     const confused = !!player.confused;
     const already_known = isObjectNameKnown(sobj.otyp);
     const cval = bcsign(sobj);
-    const dam = Math.floor((2 * (rn1(3, 3) + 2 * cval) + 1) / 3);
+    let dam = Math.floor((2 * (rn1(3, 3) + 2 * cval) + 1) / 3);
+    const map = game?.map;
+    let ccx = player.x, ccy = player.y;
 
     // Use up scroll first
     useup_scroll(sobj, player);
@@ -1028,14 +1274,20 @@ function seffect_fire(sobj, player, display, game) {
 
     // Non-confused: explosion
     if (sblessed) {
-        // TODO: blessed lets you aim the explosion
-        display.putstr_message('The scroll erupts in a tower of flame!');
-    } else {
-        display.putstr_message('The scroll erupts in a tower of flame!');
+        // Blessed: damage multiplied by 5; in C, player can aim
+        // but in automated play, center on self
+        dam *= 5;
     }
-    // TODO: explode(x, y, ZT_SPELL_O_FIRE, dam, SCROLL_CLASS, EXPL_FIERY)
-    // Simplified: take damage
-    player.hp = Math.max(0, (player.hp || 0) - dam);
+    display.putstr_message('The scroll erupts in a tower of flame!');
+
+    // cf. explode(cc.x, cc.y, ZT_SPELL_O_FIRE, dam, SCROLL_CLASS, EXPL_FIERY)
+    const ZT_SPELL_O_FIRE = 11;
+    if (map) {
+        explode(ccx, ccy, ZT_SPELL_O_FIRE, dam, SCROLL_CLASS, EXPL_FIERY, map, player);
+    } else {
+        // Fallback: take damage directly
+        player.hp = Math.max(0, (player.hp || 0) - dam);
+    }
     return true; // consumed
 }
 
@@ -1049,12 +1301,19 @@ function seffect_earth(sobj, player, display, game) {
     display.putstr_message(
         `The ${sblessed ? 'ceiling rumbles around' : 'ceiling rumbles above'} you!`);
 
-    // TODO: implement boulder dropping (drop_boulder_on_monster, drop_boulder_on_player)
-    // Simplified: take some damage for non-blessed
+    // cf. drop_boulder_on_player / drop_boulder_on_monster
+    // Simplified: boulder damage without full object creation
     if (!sblessed) {
-        const dam = rnd(20);
-        player.hp = Math.max(0, (player.hp || 0) - dam);
-        display.putstr_message(`You are hit by a boulder!`);
+        // cf. C: drop_boulder_on_player(confused, !scursed, TRUE, FALSE)
+        // dam = dmgval of boulder/rock
+        const dam = confused ? rnd(6) : rnd(20);
+        if (player.helmet) {
+            display.putstr_message('Fortunately, you are wearing a hard helmet.');
+            player.hp = Math.max(0, (player.hp || 0) - Math.min(dam, 2));
+        } else {
+            display.putstr_message(`You are hit by ${confused ? 'rocks' : 'a boulder'}!`);
+            player.hp = Math.max(0, (player.hp || 0) - dam);
+        }
     }
     return false;
 }
@@ -1069,21 +1328,24 @@ function seffect_punishment(sobj, player, display) {
         return false;
     }
     // cf. punish(sobj) — apply iron ball + chain
-    // TODO: implement punish() for full ball-and-chain mechanics
+    // punish() creates iron ball and chain objects; not yet fully ported
     display.putstr_message('You are being punished for your misbehavior!');
+    // Mark player as punished (simplified — no ball/chain objects)
+    player.punished = true;
     return false;
 }
 
 // cf. read.c seffect_stinking_cloud()
-function seffect_stinking_cloud(sobj, player, display) {
+function seffect_stinking_cloud(sobj, player, display, game) {
     const already_known = isObjectNameKnown(sobj.otyp);
 
     if (!already_known) {
         display.putstr_message('You have found a scroll of stinking cloud!');
     }
     // cf. do_stinking_cloud(sobj, already_known)
-    // TODO: implement stinking cloud positioning and creation
-    display.putstr_message('A noxious cloud billows from the scroll.');
+    // The C version prompts for a target position; in automated play, center on self
+    // cf. create_gas_cloud(cc.x, cc.y, ...) — gas cloud creation not yet ported
+    display.putstr_message('A cloud of toxic gas billows from the scroll.');
     return false;
 }
 
@@ -1147,11 +1409,20 @@ function seffects(sobj, player, display, game) {
     case SCR_PUNISHMENT:
         return seffect_punishment(sobj, player, display);
     case SCR_STINKING_CLOUD:
-        return seffect_stinking_cloud(sobj, player, display);
+        return seffect_stinking_cloud(sobj, player, display, game);
     default:
         display.putstr_message(`What weird effect is this? (${otyp})`);
         return false;
     }
 }
 
-export { handleRead };
+export {
+    handleRead,
+    tshirt_text, hawaiian_motif, hawaiian_design, apron_text,
+    candy_wrapper_text, assign_candy_wrapper,
+    erode_obj_text,
+    stripspe, p_glow1, p_glow2, p_glow3,
+    cap_spe, bcsign, blessorcurse, uncurse,
+    some_armor, useup_scroll, learnscrolltyp,
+    seffects,
+};
