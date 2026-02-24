@@ -4264,31 +4264,6 @@ function get_table_region(opts = {}, name, optional = false) {
     };
 }
 
-function regionObjectToCoords(region) {
-    if (!region || typeof region !== 'object') return null;
-    if (!Number.isFinite(region.x1) || !Number.isFinite(region.y1)
-        || !Number.isFinite(region.x2) || !Number.isFinite(region.y2)) {
-        return null;
-    }
-    return {
-        x1: Math.trunc(region.x1),
-        y1: Math.trunc(region.y1),
-        x2: Math.trunc(region.x2),
-        y2: Math.trunc(region.y2)
-    };
-}
-
-function get_table_region_or_object(opts = {}, name, optional = false) {
-    try {
-        return get_table_region(opts, name, optional);
-    } catch (_err) {
-        const fallback = regionObjectToCoords(opts?.[name]);
-        if (fallback) return fallback;
-        if (optional) return null;
-        throw new Error('Not a region');
-    }
-}
-
 function get_table_coords_or_region(opts = {}) {
     const hasCoords = Number.isFinite(opts.x1) && Number.isFinite(opts.y1)
         && Number.isFinite(opts.x2) && Number.isFinite(opts.y2);
@@ -4300,7 +4275,7 @@ function get_table_coords_or_region(opts = {}) {
             y2: Math.trunc(opts.y2)
         };
     }
-    const region = get_table_region_or_object(opts, 'region', false);
+    const region = get_table_region(opts, 'region', false);
     return { x1: region.x1, y1: region.y1, x2: region.x2, y2: region.y2 };
 }
 
@@ -4847,8 +4822,8 @@ export function non_passwall(selection) {
 }
 
 function l_get_lregion(opts = {}) {
-    const inRegion = get_table_region_or_object(opts, 'region', false);
-    const delRegionRaw = get_table_region_or_object(opts, 'exclude', true);
+    const inRegion = get_table_region(opts, 'region', false);
+    const delRegionRaw = get_table_region(opts, 'exclude', true);
     const delRegion = delRegionRaw || { x1: -1, y1: -1, x2: -1, y2: -1 };
     let delIslev = !!opts.exclude_islev;
     if (!delRegionRaw) {
