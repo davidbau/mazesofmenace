@@ -140,6 +140,28 @@ describe('mkmaze waterlevel state helpers', () => {
         assert.equal(hero.y, 10);
     });
 
+    it('movebubbles displaces monster occupying hero bubble destination', () => {
+        const map = new GameMap();
+        setup_waterlevel(map, { isWaterLevel: true });
+        map._water.bubbles = [];
+        const bubble = mk_bubble(map, 40, 10, 0);
+        assert.ok(bubble);
+
+        const hero = { x: 40, y: 10 };
+        const mon = { mx: 41, my: 10, mhp: 5 };
+        map.monsters.push(mon);
+        map._water.heroPos = { x: hero.x, y: hero.y, dx: 1, dy: 0 };
+        map._water.onHeroMoved = (x, y) => {
+            hero.x = x;
+            hero.y = y;
+        };
+
+        movebubbles(map, 1, 0);
+        assert.equal(hero.x, 41);
+        assert.equal(hero.y, 10);
+        assert.equal(mon.mx === 41 && mon.my === 10, false);
+    });
+
     it('maybe_adjust_hero_bubble steers bubble heading', () => {
         const map = new GameMap();
         setup_waterlevel(map, { isWaterLevel: true });

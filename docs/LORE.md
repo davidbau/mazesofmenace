@@ -1382,3 +1382,4 @@ hard-won wisdom:
 
 - Bubble transport in `mkmaze.movebubbles()` can move the hero deterministically if callers provide `map._water.heroPos` plus `map._water.onHeroMoved(x,y)`; this avoids cross-module imports while keeping movement ownership in `mkmaze`.
 - `hack.water_turbulence()` should call `maybe_adjust_hero_bubble()` on Water level so hero directional intent can steer the current bubble with C-style 50% gating.
+- When hero transport lands onto an occupied square, displace that monster with `enexto()` before finalizing hero position to match C `mv_bubble` collision handling intent.

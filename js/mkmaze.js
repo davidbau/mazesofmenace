@@ -950,7 +950,7 @@ function for_each_bubble_cell(map, bubble, fn) {
     }
 }
 
-function pickup_bubble_contents(map, bubble, heroPos = null) {
+function pickup_bubble_contents(map, bubble, heroPos = null, water = null) {
     if (!map || !bubble) return;
     bubble.cons = [];
     for_each_bubble_cell(map, bubble, (x, y) => {
@@ -967,6 +967,7 @@ function pickup_bubble_contents(map, bubble, heroPos = null) {
             bubble.cons.push({ what: 'mon', x, y, list: mon });
         }
         if (heroPos && heroPos.x === x && heroPos.y === y) {
+            if (water) water.heroBubble = bubble;
             bubble.cons.push({ what: 'hero', x, y, list: null });
         }
         const trap = map.trapAt(x, y);
@@ -1011,6 +1012,14 @@ function replace_bubble_contents(map, bubble, dx, dy, water = null) {
         }
         case 'hero':
             if (heroPos && Number.isInteger(heroPos.x) && Number.isInteger(heroPos.y)) {
+                const mtmp = map.monsterAt(nx, ny);
+                if (mtmp) {
+                    const pos = enexto(nx, ny, map);
+                    if (pos) {
+                        mtmp.mx = pos.x;
+                        mtmp.my = pos.y;
+                    }
+                }
                 heroPos.x = nx;
                 heroPos.y = ny;
                 if (typeof water?.onHeroMoved === 'function') {
@@ -1068,12 +1077,13 @@ export function movebubbles(map, dx = 0, dy = 0) {
     water._moveUp = moveUp;
     const bubbles = Array.isArray(water.bubbles) ? water.bubbles : [];
     const ordered = moveUp ? bubbles : bubbles.slice().reverse();
+    water.heroBubble = null;
     if (map.flags?.is_waterlevel && ordered.length) {
         const heroPos = (water.heroPos && Number.isInteger(water.heroPos.x) && Number.isInteger(water.heroPos.y))
             ? water.heroPos
             : null;
         for (const b of ordered) {
-            pickup_bubble_contents(map, b, heroPos);
+            pickup_bubble_contents(map, b, heroPos, water);
             for_each_bubble_cell(map, b, (x, y) => {
                 const loc = at(map, x, y);
                 if (!loc) return;

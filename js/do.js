@@ -1194,6 +1194,9 @@ export function changeLevel(game, depth, transitionDir = null, opts = {}) {
             game.map._water.onHeroMoved = (x, y) => {
                 game.player.x = x;
                 game.player.y = y;
+                if (game.fov?.compute) {
+                    game.fov.compute(game.map, game.player.x, game.player.y);
+                }
             };
         }
         movebubbles(game.map);
