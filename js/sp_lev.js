@@ -1441,6 +1441,97 @@ export function getLevelCheckpoints() {
  * @param {number} opts.lit - Lighting (default: 0)
  * @param {boolean} opts.walled - Add walls (default: false)
  */
+// C ref: sp_lev.c lvlfill_solid()
+export function lvlfill_solid(map, init = levelState.init, finalizeCtx = levelState.finalizeContext || {}) {
+    levelState.mazeMaxX = (COLNO - 1) & ~1;
+    levelState.mazeMaxY = (ROWNO - 1) & ~1;
+    const specialName = (typeof finalizeCtx.specialName === 'string')
+        ? finalizeCtx.specialName.toLowerCase() : '';
+    const tutLevelInitEnv = (typeof process !== 'undefined' && process.env) ? process.env : null;
+    const tutLevelInitRawShim = (!tutLevelInitEnv || tutLevelInitEnv.WEBHACK_TUT_SHIM_LEVEL_INIT !== '0');
+    if (specialName.startsWith('tut-') && init.lit < 0 && tutLevelInitRawShim) {
+        advanceRngRaw(1);
+    }
+    const lit = init.lit < 0 ? rn2(2) : init.lit;
+    const fillChar = init.filling;
+    for (let x = 2; x <= levelState.mazeMaxX; x++) {
+        for (let y = 0; y <= levelState.mazeMaxY; y++) {
+            const loc = map.locations[x][y];
+            loc.typ = fillChar;
+            loc.lit = lit ? 1 : 0;
+            loc.flags = 0;
+            loc.horizontal = 0;
+            loc.roomno = 0;
+            loc.edge = 0;
+        }
+    }
+}
+
+// C ref: sp_lev.c lvlfill_maze_grid()
+export function lvlfill_maze_grid(map, init = levelState.init, flags = levelState.flags) {
+    const fillChar = init.bg !== -1 ? init.bg : STONE;
+    const xMazeMax = (COLNO - 1) & ~1;
+    const yMazeMax = (ROWNO - 1) & ~1;
+    levelState.mazeMaxX = xMazeMax;
+    levelState.mazeMaxY = yMazeMax;
+    const corrmaze = !!flags.corrmaze;
+    for (let x = 2; x <= xMazeMax; x++) {
+        for (let y = 0; y <= yMazeMax; y++) {
+            const loc = map.locations[x][y];
+            if (corrmaze) {
+                loc.typ = STONE;
+            } else {
+                loc.typ = (y < 2 || ((x % 2) && (y % 2))) ? STONE : fillChar;
+            }
+        }
+    }
+}
+
+// C ref: sp_lev.c lvlfill_swamp()
+export function lvlfill_swamp(map, init = levelState.init) {
+    levelState.mazeMaxX = (COLNO - 1) & ~1;
+    levelState.mazeMaxY = (ROWNO - 1) & ~1;
+    const fgTyp = init.fg;
+    const bgTyp = init.bg !== -1 ? init.bg : MOAT;
+    const lit = init.lit < 0 ? rn2(2) : init.lit;
+    const xMazeMax = levelState.mazeMaxX;
+    const yMazeMax = levelState.mazeMaxY;
+    for (let x = 2; x <= xMazeMax; x++) {
+        for (let y = 0; y <= yMazeMax; y++) {
+            const loc = map.locations[x][y];
+            loc.typ = bgTyp;
+            loc.lit = lit ? 1 : 0;
+            loc.flags = 0;
+        }
+    }
+    for (let x = 2; x <= Math.min(xMazeMax, COLNO - 2); x += 2) {
+        for (let y = 0; y <= Math.min(yMazeMax, ROWNO - 2); y += 2) {
+            map.locations[x][y].typ = fgTyp;
+            map.locations[x][y].lit = lit ? 1 : 0;
+            let c = 0;
+            if (map.locations[x + 1][y].typ === bgTyp) c++;
+            if (map.locations[x][y + 1].typ === bgTyp) c++;
+            if (map.locations[x + 1][y + 1].typ === bgTyp) c++;
+            if (c === 3) {
+                switch (rn2(3)) {
+                case 0:
+                    map.locations[x + 1][y].typ = fgTyp;
+                    map.locations[x + 1][y].lit = lit ? 1 : 0;
+                    break;
+                case 1:
+                    map.locations[x][y + 1].typ = fgTyp;
+                    map.locations[x][y + 1].lit = lit ? 1 : 0;
+                    break;
+                default:
+                    map.locations[x + 1][y + 1].typ = fgTyp;
+                    map.locations[x + 1][y + 1].lit = lit ? 1 : 0;
+                    break;
+                }
+            }
+        }
+    }
+}
+
 export function level_init(opts = {}) {
     // C parity: special level scripts run under mklev context between
     // lspo_level_init() and lspo_finalize_level().
@@ -1489,52 +1580,9 @@ export function level_init(opts = {}) {
     levelState.traps = [];
 
     if (style === 'solidfill') {
-        levelState.mazeMaxX = (COLNO - 1) & ~1;
-        levelState.mazeMaxY = (ROWNO - 1) & ~1;
-        const specialName = (typeof ctx.specialName === 'string') ? ctx.specialName.toLowerCase() : '';
-        const tutLevelInitEnv = (typeof process !== 'undefined' && process.env) ? process.env : null;
-        const tutLevelInitRawShim = (!tutLevelInitEnv
-            || tutLevelInitEnv.WEBHACK_TUT_SHIM_LEVEL_INIT !== '0');
-        if (specialName.startsWith('tut-') && levelState.init.lit < 0 && tutLevelInitRawShim) {
-            // C tutorial path consumes one raw PRNG value between nhlua init
-            // shuffle and splev_initlev lit randomization.
-            advanceRngRaw(1);
-        }
-        const lit = levelState.init.lit < 0 ? rn2(2) : levelState.init.lit;
-        // C ref: sp_lev.c lvlfill_solid(): fill x=2..x_maze_max, y=0..y_maze_max
-        const fillChar = levelState.init.filling;
-        for (let x = 2; x <= levelState.mazeMaxX; x++) {
-            for (let y = 0; y <= levelState.mazeMaxY; y++) {
-                const loc = levelState.map.locations[x][y];
-                loc.typ = fillChar;
-                loc.lit = lit ? 1 : 0;
-                loc.flags = 0;
-                loc.horizontal = 0;
-                loc.roomno = 0;
-                loc.edge = 0;
-            }
-        }
+        lvlfill_solid(levelState.map, levelState.init, ctx);
     } else if (style === 'mazegrid') {
-        // C ref: sp_lev.c splev_initlev() LVLINIT_MAZEGRID -> lvlfill_maze_grid()
-        // Fill a checker/grid pattern in the interior while preserving stone
-        // boundaries. This significantly affects subsequent map overlays.
-        const fillChar = levelState.init.bg !== -1 ? levelState.init.bg : STONE;
-        const xMazeMax = (COLNO - 1) & ~1;
-        const yMazeMax = (ROWNO - 1) & ~1;
-        levelState.mazeMaxX = xMazeMax;
-        levelState.mazeMaxY = yMazeMax;
-        const corrmaze = !!levelState.flags.corrmaze;
-
-        for (let x = 2; x <= xMazeMax; x++) {
-            for (let y = 0; y <= yMazeMax; y++) {
-                const loc = levelState.map.locations[x][y];
-                if (corrmaze) {
-                    loc.typ = STONE;
-                } else {
-                    loc.typ = (y < 2 || ((x % 2) && (y % 2))) ? STONE : fillChar;
-                }
-            }
-        }
+        lvlfill_maze_grid(levelState.map, levelState.init, levelState.flags);
     } else if (style === 'maze') {
         levelState.mazeMaxX = (COLNO - 1) & ~1;
         levelState.mazeMaxY = (ROWNO - 1) & ~1;
@@ -1545,52 +1593,7 @@ export function level_init(opts = {}) {
             }
         }
     } else if (style === 'swamp') {
-        levelState.mazeMaxX = (COLNO - 1) & ~1;
-        levelState.mazeMaxY = (ROWNO - 1) & ~1;
-        // C ref: sp_lev.c lvlfill_swamp()
-        const fgTyp = levelState.init.fg;
-        const bgTyp = levelState.init.bg !== -1 ? levelState.init.bg : MOAT;
-        const lit = levelState.init.lit < 0 ? rn2(2) : levelState.init.lit;
-        const xMazeMax = levelState.mazeMaxX;
-        const yMazeMax = levelState.mazeMaxY;
-
-        for (let x = 2; x <= xMazeMax; x++) {
-            for (let y = 0; y <= yMazeMax; y++) {
-                const loc = levelState.map.locations[x][y];
-                loc.typ = bgTyp;
-                loc.lit = lit ? 1 : 0;
-                loc.flags = 0;
-            }
-        }
-
-        for (let x = 2; x <= Math.min(xMazeMax, COLNO - 2); x += 2) {
-            for (let y = 0; y <= Math.min(yMazeMax, ROWNO - 2); y += 2) {
-                levelState.map.locations[x][y].typ = fgTyp;
-                levelState.map.locations[x][y].lit = lit ? 1 : 0;
-
-                let c = 0;
-                if (levelState.map.locations[x + 1][y].typ === bgTyp) c++;
-                if (levelState.map.locations[x][y + 1].typ === bgTyp) c++;
-                if (levelState.map.locations[x + 1][y + 1].typ === bgTyp) c++;
-
-                if (c === 3) {
-                    switch (rn2(3)) {
-                    case 0:
-                        levelState.map.locations[x + 1][y].typ = fgTyp;
-                        levelState.map.locations[x + 1][y].lit = lit ? 1 : 0;
-                        break;
-                    case 1:
-                        levelState.map.locations[x][y + 1].typ = fgTyp;
-                        levelState.map.locations[x][y + 1].lit = lit ? 1 : 0;
-                        break;
-                    default:
-                        levelState.map.locations[x + 1][y + 1].typ = fgTyp;
-                        levelState.map.locations[x + 1][y + 1].lit = lit ? 1 : 0;
-                        break;
-                    }
-                }
-            }
-        }
+        lvlfill_swamp(levelState.map, levelState.init);
     } else if (style === 'mines' || style === 'rogue') {
         levelState.mazeMaxX = (COLNO - 1) & ~1;
         levelState.mazeMaxY = (ROWNO - 1) & ~1;
@@ -6022,7 +6025,7 @@ export function wallify(opts) {
 }
 
 // C ref: sp_lev.c map_cleanup() — post-gen cleanup of liquid squares.
-function map_cleanup(map) {
+export function map_cleanup(map) {
     if (!map) return;
 
     const undestroyableTrap = (ttyp) =>
@@ -6068,7 +6071,7 @@ function map_cleanup(map) {
 }
 
 // C ref: sp_lev.c solidify_map()
-function solidify_map(map) {
+export function solidify_map(map) {
     if (!map) return;
     initSpLevMap();
     const spLevMap = levelState.spLevMap;
@@ -6086,7 +6089,7 @@ function solidify_map(map) {
 }
 
 // C ref: sp_lev.c remove_boundary_syms()
-function remove_boundary_syms(map) {
+export function remove_boundary_syms(map) {
     if (!map) return;
     let hasBounds = false;
     for (let x = 0; x < COLNO - 1 && !hasBounds; x++) {

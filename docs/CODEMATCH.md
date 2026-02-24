@@ -92,7 +92,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[~]` | mkmap.c | mkmap.js | Map generation algorithms now implemented in `mkmap.js` (`init_map`, `init_fill`, `get_map`, `pass_*`, `flood_fill_rm`, `join_map`, `finish_map`, `mkmap`, room cleanup/removal); `sp_lev.js` now calls `mkmap.js` directly |
 | `[~]` | mkmaze.c | mkmaze.js | Maze generation. Core helpers plus region-placement path (`is_exclusion_zone`, `bad_location`, `put_lregion_here`, `place_lregion`) and maze generation path (`makemaz`, `create_maze`, `populate_maze`, `maze0xy`, `maze_remove_deadends`, `mazexy`, `pick_vibrasquare_location`) now live in `mkmaze.js`; water plane still stubbed |
 | `[a]` | mkobj.c | mkobj.js | Object creation. mksobj/mkobj/mkcorpstat/xname/doname/weight/Is_container implemented; BUC functions exported (bless/unbless/curse/uncurse/blessorcurse/bcsign/set_bknown); erosion predicates exported (is_flammable/is_rustprone/is_rottable/is_corrodeable/is_crackable/erosion_matters); splitobj, container_weight added; ~30 functions TODO |
-| `[~]` | mkroom.c | mkroom.js | Room generation. `mkroom.js` now owns `do_mkroom`, `pick_room`, `mkzoo`, `mkswamp`, `invalid_shop_shape`, `mkshop` plus room predicates/helpers (`isbig`, `has_dnstairs`, `has_upstairs`, `nexttodoor`, `shrine_pos`) and room-coordinate helpers (`somex`, `somey`, `inside_room`, `somexy`, `somexyspace`); remaining fill/population pipeline still in `dungeon.js` |
+| `[~]` | mkroom.c | mkroom.js | Room generation. `mkroom.js` now owns `do_mkroom`, `pick_room`, `mkzoo`, `mkswamp`, `invalid_shop_shape`, `mkshop`, and zoo/room population selectors (`squadmon`, `courtmon`, `morguemon`, `antholemon`, `mk_zoo_thronemon`) plus room predicates/helpers (`isbig`, `has_dnstairs`, `has_upstairs`, `nexttodoor`, `shrine_pos`) and room-coordinate helpers (`somex`, `somey`, `inside_room`, `somexy`, `somexyspace`); remaining fill/population pipeline still in `dungeon.js` |
 | `[a]` | mon.c | mon.js | Monster lifecycle: movemon, mfndpos (flag-based), mm_aggression, corpse_chance, passivemm, hider premove, zombie_maker/zombie_form/undead_to_corpse/genus/pm_to_cham; death chain: mlifesaver/lifesaved_monster/set_mon_min_mhpmax/check_gear_next_turn/m_detach/mondead_full/mondied/mongone/monkilled/xkilled/killed/make_corpse; alertness: wake_msg/wakeup/seemimic/wake_nearto_core/wake_nearto/wake_nearby/setmangry; turn processing: healmon/meatbox/m_consume_obj/meatmetal/meatobj/meatcorpse/minliquid/mpickgold/can_touch_safely/mon_give_prop/mon_givit/mcalcdistress; visibility: m_in_air/m_poisongas_ok/elemental_clog/set_ustuck/maybe_unhide_at/hideunder/hide_monst |
 | `[a]` | mondata.c | mondata.js | Monster data queries: predicates, mon_knows_traps, passes_bars, dmgtype, hates_silver, sticks, etc. |
 | `[a]` | monmove.c | monmove.js | Monster movement: dochug, m_move, m_move_aggress, set_apparxy, m_search_items; dochugw (wrapper), m_everyturn_effect, m_postmove_effect, postmov, should_displace, mb_trapped, itsstuck, release_hero, watch_on_duty, m_balks_at_approaching, mon_would_consume_item |
@@ -2665,8 +2665,8 @@ No function symbols parsed from isaac64.c.
 | 895 | `maze_inbounds` | mkmaze.js:177 | Aligned |
 | 905 | `maze_remove_deadends` | mkmaze.js:502 | Partial (uses create_maze deadend-removal path) |
 | 1317 | `mazexy` | mkmaze.js:507 | Aligned |
-| 781 | `migr_booty_item` | - | Missing |
-| 718 | `migrate_orc` | - | Missing |
+| 781 | `migr_booty_item` | mkmaze.js:734 | Aligned |
+| 718 | `migrate_orc` | mkmaze.js:761 | Aligned |
 | 1868 | `mk_bubble` | mkmaze.js:775 | Partial (stateful scaffold) |
 | 1459 | `mkportal` | mkmaze.js:181 | Aligned |
 | 1534 | `movebubbles` | mkmaze.js:726 | Partial (stateful scaffold) |
@@ -2682,8 +2682,8 @@ No function symbols parsed from isaac64.c.
 | 125 | `set_levltyp_lit` | mkmaze.js:61 | Aligned |
 | 1797 | `set_wportal` | mkmaze.js:750 | Partial (portal-state scaffold) |
 | 1807 | `setup_waterlevel` | mkmaze.js:756 | Partial (stateful scaffold) |
-| 749 | `shiny_orc_stuff` | - | Missing |
-| 800 | `stolen_booty` | - | Missing |
+| 749 | `shiny_orc_stuff` | mkmaze.js:721 | Aligned |
+| 800 | `stolen_booty` | mkmaze.js:749 | Aligned |
 | 1855 | `unsetup_waterlevel` | mkmaze.js:767 | Partial (stateful scaffold) |
 | 1233 | `walkfrom` | mkmaze.js:232 | Partial |
 | 1280 | `walkfrom` | mkmaze.js:232 | Partial |
@@ -2797,9 +2797,9 @@ No function symbols parsed from isaac64.c.
 ### mkroom.c -> mkroom.js
 | C Line | C Function | JS Line | Alignment |
 |--------|------------|---------|-----------|
-| 503 | `antholemon` | - | Missing |
+| 503 | `antholemon` | mkroom.js:392 | Aligned |
 | 913 | `cmap_to_type` | - | Missing |
-| 784 | `courtmon` | - | Missing |
+| 784 | `courtmon` | mkroom.js:361 | Aligned |
 | 53 | `do_mkroom` | mkroom.js:299 | Aligned |
 | 277 | `fill_zoo` | sp_lev.js `fill_zoo()` | Aligned — all room types, ndemon, mkgold merge, mongets/set_malign, mk_tt_object |
 | 641 | `has_dnstairs` | mkroom.js:12 | Aligned |
@@ -2807,13 +2807,13 @@ No function symbols parsed from isaac64.c.
 | 679 | `inside_room` | mkroom.js:61 | Aligned |
 | 1051 | `invalid_shop_shape` | mkroom.js:237 | Aligned |
 | 43 | `isbig` | mkroom.js:7 | Aligned |
-| 258 | `mk_zoo_thronemon` | - | Missing |
+| 258 | `mk_zoo_thronemon` | mkroom.js:429 | Aligned |
 | 96 | `mkshop` | mkroom.js:267 | Aligned |
 | 531 | `mkswamp` | mkroom.js:194 | Aligned |
 | 599 | `mktemple` | - | Missing |
 | 457 | `mkundead` | - | Missing |
 | 245 | `mkzoo` | mkroom.js:186 | Aligned |
-| 479 | `morguemon` | - | Missing |
+| 479 | `morguemon` | mkroom.js:376 | Aligned |
 | 624 | `nexttodoor` | mkroom.js:30 | Aligned |
 | 221 | `pick_room` | mkroom.js:164 | Aligned |
 | 876 | `rest_room` | - | Missing |
@@ -2826,7 +2826,7 @@ No function symbols parsed from isaac64.c.
 | 695 | `somexy` | mkroom.js:72 | Aligned |
 | 745 | `somexyspace` | mkroom.js:135 | Aligned |
 | 673 | `somey` | mkroom.js:58 | Aligned |
-| 818 | `squadmon` | - | Missing |
+| 818 | `squadmon` | mkroom.js:343 | Aligned |
 
 ### mon.c -> mon.js
 | C Line | C Function | JS Line | Alignment |
@@ -4892,11 +4892,11 @@ No function symbols parsed from isaac64.c.
 | 4394 | `lspo_trap` | - | Missing |
 | 5873 | `lspo_wall_property` | - | Missing |
 | 5962 | `lspo_wallify` | - | Missing |
-| 360 | `lvlfill_maze_grid` | - | Missing |
-| 375 | `lvlfill_solid` | - | Missing |
-| 392 | `lvlfill_swamp` | - | Missing |
+| 360 | `lvlfill_maze_grid` | sp_lev.js:1471 | Aligned |
+| 375 | `lvlfill_solid` | sp_lev.js:1445 | Aligned |
+| 392 | `lvlfill_swamp` | sp_lev.js:1491 | Aligned |
 | 1865 | `m_bad_boulder_spot` | - | Missing |
-| 329 | `map_cleanup` | - | Missing |
+| 329 | `map_cleanup` | sp_lev.js:6028 | Aligned |
 | 276 | `mapfrag_canmatch` | - | Missing |
 | 282 | `mapfrag_error` | - | Missing |
 | 257 | `mapfrag_free` | - | Missing |
@@ -4911,7 +4911,7 @@ No function symbols parsed from isaac64.c.
 | 1312 | `pm_good_location` | - | Missing |
 | 1885 | `pm_to_humidity` | - | Missing |
 | 4575 | `random_wdir` | - | Missing |
-| 1017 | `remove_boundary_syms` | - | Missing |
+| 1017 | `remove_boundary_syms` | sp_lev.js:6092 | Aligned |
 | 1149 | `rnddoor` | - | Missing |
 | 1160 | `rndtrap` | - | Missing |
 | 2485 | `search_door` | - | Missing |
@@ -4927,7 +4927,7 @@ No function symbols parsed from isaac64.c.
 | 1002 | `set_wall_property` | - | Missing |
 | 5908 | `set_wallprop_in_selection` | - | Missing |
 | 1090 | `shared_with_room` | - | Missing |
-| 316 | `solidify_map` | - | Missing |
+| 316 | `solidify_map` | sp_lev.js:6074 | Aligned |
 | 1909 | `sp_amask_to_amask` | - | Missing |
 | 3020 | `sp_code_jmpaddr` | - | Missing |
 | 6336 | `sp_level_coder_init` | - | Missing |

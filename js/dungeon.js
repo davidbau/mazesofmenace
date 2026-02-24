@@ -96,11 +96,17 @@ import {
     nexttodoor,
     shrine_pos,
     set_mkroom_wizard_mode,
+    set_mkroom_ubirthday,
     pick_room,
     mkzoo,
     mkswamp,
     mkshop,
     do_mkroom,
+    squadmon,
+    courtmon,
+    morguemon,
+    antholemon,
+    mk_zoo_thronemon,
 } from './mkroom.js';
 import {
     add_room,
@@ -2787,100 +2793,6 @@ function mkgold(map, amount, x, y) {
     return gold;
 }
 
-// C ref: mkroom.c squadmon() — return soldier type for BARRACKS.
-export function squadmon(depth) {
-    const difficulty = Math.max(Math.trunc(depth), 1);
-    const squadprob = [
-        { pm: PM_SOLDIER, prob: 80 },
-        { pm: PM_SERGEANT, prob: 15 },
-        { pm: PM_LIEUTENANT, prob: 4 },
-        { pm: PM_CAPTAIN, prob: 1 },
-    ];
-    const sel_prob = rnd(80 + difficulty);
-    let cpro = 0;
-    for (let i = 0; i < squadprob.length; i++) {
-        cpro += squadprob[i].prob;
-        if (cpro > sel_prob) {
-            return mons[squadprob[i].pm];
-        }
-    }
-    // Fallback: last entry (C: ROLL_FROM)
-    return mons[squadprob[squadprob.length - 1].pm];
-}
-
-// C ref: mkroom.c courtmon() — return monster for COURT rooms.
-export function courtmon(depth) {
-    const difficulty = Math.max(Math.trunc(depth), 1);
-    const i = rn2(60) + rn2(3 * difficulty);
-    if (i > 100) return mkclass(S_DRAGON, 0, depth);
-    else if (i > 95) return mkclass(S_GIANT, 0, depth);
-    else if (i > 85) return mkclass(S_TROLL, 0, depth);
-    else if (i > 75) return mkclass(S_CENTAUR, 0, depth);
-    else if (i > 60) return mkclass(S_ORC, 0, depth);
-    else if (i > 45) return mons[PM_BUGBEAR];
-    else if (i > 30) return mons[PM_HOBGOBLIN];
-    else if (i > 15) return mkclass(S_GNOME, 0, depth);
-    else return mkclass(S_KOBOLD, 0, depth);
-}
-
-// C ref: mkroom.c morguemon() — return undead for MORGUE rooms.
-export function morguemon(depth) {
-    const difficulty = Math.max(Math.trunc(depth), 1);
-    const i = rn2(100);
-    const hd = rn2(difficulty);
-
-    if (hd > 10 && i < 10) {
-        // C: Inhell || In_endgame → mkclass(S_DEMON, 0)
-        // During level gen we're never in Gehennom/endgame, so use ndemon path.
-        // C: ndemon(A_NONE) → mkclass_aligned(S_DEMON, 0, A_NONE) + is_ndemon filter
-        const ndemon_res = ndemon(A_NONE, depth);
-        if (ndemon_res >= 0) return mons[ndemon_res];
-        // C: if ndemon_res == NON_PM, fall through to ghost/wraith/zombie below
-    }
-
-    if (hd > 8 && i > 85) return mkclass(S_VAMPIRE, 0, depth);
-
-    if (i < 20) return mons[PM_GHOST];
-    else if (i < 40) return mons[PM_WRAITH];
-    else return mkclass(S_ZOMBIE, 0, depth);
-}
-
-// C ref: mkroom.c:502-528 antholemon() — return ant type for ANTHOLE rooms.
-// Deterministic (no RNG). Retries up to 3 times if chosen type is genocided.
-export function antholemon(depth) {
-    const difficulty = Math.max(Math.trunc(depth), 1);
-    const indx = Math.trunc(_gameUbirthday % 3) + difficulty;
-    let mtyp, trycnt = 0;
-    do {
-        switch ((indx + trycnt) % 3) {
-        case 0: mtyp = PM_SOLDIER_ANT; break;
-        case 1: mtyp = PM_FIRE_ANT; break;
-        default: mtyp = PM_GIANT_ANT; break;
-        }
-        // C: check mvitals[mtyp].mvflags & G_GONE — genocide not tracked yet
-    } while (++trycnt < 3 && false /* (mvitals[mtyp] & G_GONE) */);
-    // C: return NULL if all 3 are genocided
-    return mons[mtyp];
-}
-
-// C ref: mkroom.c:257 mk_zoo_thronemon() — place throne ruler for COURT rooms.
-export function mk_zoo_thronemon(map, x, y, depth) {
-    const difficulty = Math.max(Math.trunc(depth), 1);
-    const i = rnd(difficulty);
-    const pm = (i > 9) ? PM_OGRE_TYRANT
-        : (i > 5) ? PM_ELVEN_MONARCH
-        : (i > 2) ? PM_DWARF_RULER
-        : PM_GNOME_RULER;
-    const mon = makemon(mons[pm], x, y, NO_MM_FLAGS, depth, map);
-    if (mon) {
-        mon.sleeping = true;
-        mon.mpeaceful = false;
-        set_malign(mon);
-        // Give him a sceptre to pound in judgment
-        mongets(mon, MACE);
-    }
-}
-
 // C ref: makemon.c:2316 set_malign() — set monster alignment value.
 // No RNG calls. Determines alignment penalty for killing.
 function set_malign(mtmp) {
@@ -2905,54 +2817,6 @@ function set_malign(mtmp) {
     } else {
         mtmp.malign = mtmp.mpeaceful ? 0 : Math.max(5, Math.abs(mal));
     }
-}
-
-// C ref: makemon.c:2176 mongets() — give monster an object.
-function mongets(mon, otyp) {
-    if (!otyp) return null;
-    const otmp = mksobj(otyp, true, false);
-    if (otmp) {
-        // C: demons never get blessed objects
-        if (mon.data && mon.data.mlet === S_DEMON) {
-            if (otmp.blessed) {
-                otmp.blessed = false;
-                otmp.cursed = true;
-            }
-        }
-        // C: is_mplayer check for sword spe — skipped (no mplayers in zoo context)
-        // C: leaders don't tolerate inferior quality battle gear
-        if (mon.data && is_prince(mon.data)) {
-            if (otmp.oclass === WEAPON_CLASS && (otmp.spe || 0) < 1)
-                otmp.spe = 1;
-            else if (otmp.oclass === ARMOR_CLASS && (otmp.spe || 0) < 0)
-                otmp.spe = 0;
-        }
-        mpickobj(mon, otmp);
-    }
-    return otmp;
-}
-
-// C ref: monst.h is_prince macro — checks M2_PRINCE flag
-function is_prince(data) {
-    return !!(data && data.mflags2 & M2_PRINCE);
-}
-
-// C ref: mondata.h is_demon macro — checks M2_DEMON flag
-function is_demon(data) {
-    return !!(data && data.mflags2 & M2_DEMON);
-}
-
-// C ref: mondata.h is_ndemon macro — demon but not lord or prince
-function is_ndemon(data) {
-    return is_demon(data) && !(data.mflags2 & (M2_LORD | M2_PRINCE));
-}
-
-// C ref: minion.c ndemon() — pick a random non-lord, non-prince demon
-// Calls mkclass_aligned(S_DEMON, 0, atyp), then filters with is_ndemon.
-// Returns mndx or -1 (NON_PM), matching C's return type.
-function ndemon(atyp, depth) {
-    const mndx = mkclass(S_DEMON, 0, depth, atyp);
-    return (mndx >= 0 && is_ndemon(mons[mndx])) ? mndx : -1;
 }
 
 // C ref: mkobj.c mksobj_at() — make specific object at location.
@@ -3374,6 +3238,7 @@ function buildBranchTopology(dungeonLayouts, parentRolls) {
 export function initDungeon(roleIndex, wizard = true) {
     _wizardMode = !!wizard;
     set_mkroom_wizard_mode(_wizardMode);
+    set_mkroom_ubirthday(_gameUbirthday);
     // 0. role_init: quest nemesis gender — rn2(100) for roles whose
     // nemesis lacks M2_MALE/M2_FEMALE/M2_NEUTER flags.
     // C ref: role.c:2060 — only Archeologist (Minion of Huhetotl) and
@@ -3979,6 +3844,7 @@ export function mktemple(map, depth) {
 export function initLevelGeneration(roleIndex, wizard = true, opts = {}) {
     _wizardMode = !!wizard;
     set_mkroom_wizard_mode(_wizardMode);
+    set_mkroom_ubirthday(_gameUbirthday);
     init_objects();
     setMakemonRoleContext(roleIndex, opts);
     _branchTopology = [];  // reset before recalculating from init_dungeons RNG

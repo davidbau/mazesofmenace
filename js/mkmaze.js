@@ -716,10 +716,59 @@ export function mark_ransacked(map, roomId) {
     if (roomId !== null && roomId !== undefined) map._specialFixups.ransacked.add(roomId);
     return true;
 }
-export function migrate_orc() { return false; }
-export function shiny_orc_stuff() { return null; }
-export function migr_booty_item() { return null; }
-export function stolen_booty() { return null; }
+
+// C ref: mkmaze.c shiny_orc_stuff() — choose one loot item for a migrated orc.
+export function shiny_orc_stuff(depth = 1) {
+    const roll = rn2(10);
+    if (roll < 5) return mkobj(GEM_CLASS, false);
+    if (roll < 8) return mkobj(RANDOM_CLASS, false);
+    const gold = mksobj(GOLD_PIECE, true, false);
+    if (gold) {
+        gold.quan = rn1(Math.max(10, Math.abs(depth) * 10), 5);
+        gold.owt = weight(gold);
+    }
+    return gold;
+}
+
+// C ref: mkmaze.c migr_booty_item() — place generated loot near a migrated monster.
+export function migr_booty_item(map, item, x = null, y = null) {
+    if (!map || !item) return null;
+    if (!Number.isInteger(x) || !Number.isInteger(y) || !isok(x, y)) {
+        const pos = enexto(Math.trunc(COLNO / 2), Math.trunc(ROWNO / 2), map);
+        if (!pos) return null;
+        x = pos.x;
+        y = pos.y;
+    }
+    item.ox = x;
+    item.oy = y;
+    placeFloorObject(map, item);
+    return item;
+}
+
+// C ref: mkmaze.c stolen_booty() — generate a small pile of stolen loot.
+export function stolen_booty(map, x = null, y = null, depth = 1) {
+    const booty = [];
+    const n = rn1(3, 1);
+    for (let i = 0; i < n; i++) {
+        const item = shiny_orc_stuff(depth);
+        if (!item) continue;
+        booty.push(migr_booty_item(map, item, x, y) || item);
+    }
+    return booty;
+}
+
+// C ref: mkmaze.c migrate_orc() — migrate an orc and optionally drop stolen loot.
+export function migrate_orc(map, mon = null, depth = 1, x = null, y = null) {
+    if (!map) return false;
+    if (!mon && Number.isInteger(x) && Number.isInteger(y) && isok(x, y)) {
+        mon = makemon(null, x, y, NO_MM_FLAGS, depth, map);
+    }
+    if (!mon) return false;
+    if (!rn2(3)) {
+        stolen_booty(map, mon.mx, mon.my, depth);
+    }
+    return true;
+}
 
 // C ref: mkmaze.c maze_inbounds
 export function maze_inbounds(x, y) {

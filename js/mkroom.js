@@ -5,13 +5,25 @@ import {
     IS_WALL, IS_FURNITURE, IS_LAVA, IS_POOL, IS_ROOM,
     OROOM, SWAMP, POOL, SHOPBASE,
     COURT, ZOO, BEEHIVE, MORGUE, BARRACKS, LEPREHALL, COCKNEST, ANTHOLE, TEMPLE,
+    A_NONE,
     isok,
 } from './config.js';
 import { rn1, rn2, rnd } from './rng.js';
 import { FILL_NORMAL } from './map.js';
 import { mkclass, makemon, NO_MM_FLAGS } from './makemon.js';
-import { mons, S_FUNGUS, PM_GIANT_EEL, PM_PIRANHA, PM_ELECTRIC_EEL } from './monsters.js';
-import { WAND_CLASS, SPBOOK_CLASS } from './objects.js';
+import { ndemon } from './minion.js';
+import { mksobj } from './mkobj.js';
+import { mpickobj } from './monutil.js';
+import {
+    mons, S_FUNGUS, S_DRAGON, S_GIANT, S_TROLL, S_CENTAUR, S_ORC, S_GNOME, S_KOBOLD, S_VAMPIRE, S_ZOMBIE,
+    PM_GIANT_EEL, PM_PIRANHA, PM_ELECTRIC_EEL,
+    PM_SOLDIER, PM_SERGEANT, PM_LIEUTENANT, PM_CAPTAIN,
+    PM_BUGBEAR, PM_HOBGOBLIN, PM_GHOST, PM_WRAITH,
+    PM_SOLDIER_ANT, PM_FIRE_ANT, PM_GIANT_ANT,
+    PM_OGRE_TYRANT, PM_ELVEN_MONARCH, PM_DWARF_RULER, PM_GNOME_RULER,
+    M2_PEACEFUL, M2_HOSTILE, MS_LEADER,
+} from './monsters.js';
+import { WAND_CLASS, SPBOOK_CLASS, MACE } from './objects.js';
 import { shtypes } from './shknam.js';
 
 // C ref: mkroom.c:41-48
@@ -156,8 +168,12 @@ export function somexyspace(map, croom) {
 }
 
 let _mkroomWizardMode = true;
+let _mkroomUbirthday = 0;
 export function set_mkroom_wizard_mode(enabled) {
     _mkroomWizardMode = !!enabled;
+}
+export function set_mkroom_ubirthday(ubirthday) {
+    _mkroomUbirthday = Number.isInteger(ubirthday) ? ubirthday : 0;
 }
 
 // C ref: mkroom.c:219-241 pick_room()
@@ -321,4 +337,107 @@ export function do_mkroom(map, roomtype, depth, mktemple_fn = null) {
     default:
         return;
     }
+}
+
+// C ref: mkroom.c squadmon() — return soldier type for BARRACKS.
+export function squadmon(depth) {
+    const difficulty = Math.max(Math.trunc(depth), 1);
+    const squadprob = [
+        { pm: PM_SOLDIER, prob: 80 },
+        { pm: PM_SERGEANT, prob: 15 },
+        { pm: PM_LIEUTENANT, prob: 4 },
+        { pm: PM_CAPTAIN, prob: 1 },
+    ];
+    const sel_prob = rnd(80 + difficulty);
+    let cpro = 0;
+    for (let i = 0; i < squadprob.length; i++) {
+        cpro += squadprob[i].prob;
+        if (cpro > sel_prob) return mons[squadprob[i].pm];
+    }
+    return mons[squadprob[squadprob.length - 1].pm];
+}
+
+// C ref: mkroom.c courtmon() — return monster for COURT rooms.
+export function courtmon(depth) {
+    const difficulty = Math.max(Math.trunc(depth), 1);
+    const i = rn2(60) + rn2(3 * difficulty);
+    if (i > 100) return mkclass(S_DRAGON, 0, depth);
+    else if (i > 95) return mkclass(S_GIANT, 0, depth);
+    else if (i > 85) return mkclass(S_TROLL, 0, depth);
+    else if (i > 75) return mkclass(S_CENTAUR, 0, depth);
+    else if (i > 60) return mkclass(S_ORC, 0, depth);
+    else if (i > 45) return mons[PM_BUGBEAR];
+    else if (i > 30) return mons[PM_HOBGOBLIN];
+    else if (i > 15) return mkclass(S_GNOME, 0, depth);
+    else return mkclass(S_KOBOLD, 0, depth);
+}
+
+// C ref: mkroom.c morguemon() — return undead for MORGUE rooms.
+export function morguemon(depth) {
+    const difficulty = Math.max(Math.trunc(depth), 1);
+    const i = rn2(100);
+    const hd = rn2(difficulty);
+
+    if (hd > 10 && i < 10) {
+        const ndemon_res = ndemon(A_NONE, depth);
+        if (ndemon_res >= 0) return mons[ndemon_res];
+    }
+    if (hd > 8 && i > 85) return mkclass(S_VAMPIRE, 0, depth);
+    if (i < 20) return mons[PM_GHOST];
+    else if (i < 40) return mons[PM_WRAITH];
+    else return mkclass(S_ZOMBIE, 0, depth);
+}
+
+// C ref: mkroom.c:502-528 antholemon() — return ant type for ANTHOLE rooms.
+export function antholemon(depth) {
+    const difficulty = Math.max(Math.trunc(depth), 1);
+    const indx = Math.trunc(_mkroomUbirthday % 3) + difficulty;
+    let mtyp, trycnt = 0;
+    do {
+        switch ((indx + trycnt) % 3) {
+        case 0: mtyp = PM_SOLDIER_ANT; break;
+        case 1: mtyp = PM_FIRE_ANT; break;
+        default: mtyp = PM_GIANT_ANT; break;
+        }
+    } while (++trycnt < 3 && false);
+    return mons[mtyp];
+}
+
+function set_malign(mtmp) {
+    if (!mtmp || !mtmp.data) return;
+    let mal = mtmp.data.maligntyp || 0;
+    const coaligned = (Math.sign(mal) === 0);
+    if (mtmp.data.msound === MS_LEADER) {
+        mtmp.malign = -20;
+    } else if (mal === A_NONE) {
+        mtmp.malign = mtmp.mpeaceful ? 0 : 20;
+    } else if (mtmp.data.mflags2 & M2_PEACEFUL) {
+        const absmal = Math.abs(mal);
+        mtmp.malign = mtmp.mpeaceful ? -3 * Math.max(5, absmal) : 3 * Math.max(5, absmal);
+    } else if (mtmp.data.mflags2 & M2_HOSTILE) {
+        const absmal = Math.abs(mal);
+        mtmp.malign = coaligned ? 0 : Math.max(5, absmal);
+    } else if (coaligned) {
+        const absmal = Math.abs(mal);
+        mtmp.malign = mtmp.mpeaceful ? -3 * Math.max(5, absmal) : 3 * Math.max(5, absmal);
+    } else {
+        mtmp.malign = mtmp.mpeaceful ? 0 : Math.max(5, Math.abs(mal));
+    }
+}
+
+// C ref: mkroom.c:257 mk_zoo_thronemon() — place throne ruler for COURT rooms.
+export function mk_zoo_thronemon(map, x, y, depth) {
+    const difficulty = Math.max(Math.trunc(depth), 1);
+    const i = rnd(difficulty);
+    const pm = (i > 9) ? PM_OGRE_TYRANT
+        : (i > 5) ? PM_ELVEN_MONARCH
+            : (i > 2) ? PM_DWARF_RULER
+                : PM_GNOME_RULER;
+    const mon = makemon(mons[pm], x, y, NO_MM_FLAGS, depth, map);
+    if (!mon) return;
+    mon.sleeping = true;
+    mon.mpeaceful = false;
+    set_malign(mon);
+    const mace = mksobj(MACE, true, false);
+    if (mace) mpickobj(mon, mace);
 }
