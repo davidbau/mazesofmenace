@@ -211,6 +211,9 @@ let _branchTopology = [];
 // Used by mklev.c fill_ordinary_room() bonus supply chest gating.
 // Keep default dnum literal (0 = DUNGEONS_OF_DOOM) to avoid circular-import TDZ.
 let _oracleLevel = { dnum: 0, dlevel: 5 };
+// Runtime mapping from actual placed special-level locations to canonical
+// special-level registry coordinates used by getSpecialLevel().
+let _runtimeSpecialLevelMap = new Map();
 // C ref: dungeon.c svd.dungeons[*].num_dunlevs/ledger_start bookkeeping.
 let _dungeonLevelCounts = new Map();
 // C ref: decl.h gi.in_mklev — true only while makelevel() runs.
@@ -255,6 +258,7 @@ export function induced_align(pct, specialAlign = A_NONE, dungeonAlign = A_NONE)
 export function clearBranchTopology() {
     _branchTopology = [];
     _oracleLevel = { dnum: DUNGEONS_OF_DOOM, dlevel: 5 };
+    _runtimeSpecialLevelMap = new Map();
     _dungeonLedgerStartByDnum = new Map([[DUNGEONS_OF_DOOM, 0]]);
     _dungeonLevelCounts = new Map();
 }
@@ -282,6 +286,50 @@ const _dungeonEntryLevelByDnum = new Map([
     [TUTORIAL, 1],
 ]);
 let _specialLevelChain = [];
+const RUNTIME_SPECIAL_LEVEL_CANON = new Map([
+    [DUNGEONS_OF_DOOM, [
+        { index: 0, canonDlevel: 15 }, // rogue
+        { index: 1, canonDlevel: 5 },  // oracle
+        { index: 2, canonDlevel: 10 }, // bigrm
+        { index: 3, canonDlevel: 20 }, // medusa
+        { index: 4, canonDlevel: 17 }, // castle
+    ]],
+    [GEHENNOM, [
+        { index: 0, canonDlevel: 1 },  // valley
+        { index: 1, canonDlevel: 10 }, // sanctum
+        { index: 2, canonDlevel: 5 },  // juiblex
+        { index: 3, canonDlevel: 4 },  // baalz
+        { index: 4, canonDlevel: 3 },  // asmodeus
+        { index: 5, canonDlevel: 11 }, // wizard1
+        { index: 6, canonDlevel: 12 }, // wizard2
+        { index: 7, canonDlevel: 13 }, // wizard3
+        { index: 8, canonDlevel: 6 },  // orcus
+    ]],
+    [GNOMISH_MINES, [
+        { index: 0, canonDlevel: 5 }, // minetn
+        { index: 1, canonDlevel: 8 }, // minend
+    ]],
+    [SOKOBAN, [
+        { index: 0, canonDlevel: 1 }, // soko1
+        { index: 1, canonDlevel: 2 }, // soko2
+        { index: 2, canonDlevel: 3 }, // soko3
+        { index: 3, canonDlevel: 4 }, // soko4
+    ]],
+    [VLADS_TOWER, [
+        { index: 0, canonDlevel: 1 }, // tower1
+        { index: 1, canonDlevel: 2 }, // tower2
+        { index: 2, canonDlevel: 3 }, // tower3
+    ]],
+    [TUTORIAL, [
+        { index: 0, canonDlevel: 1 }, // tut-1
+        { index: 1, canonDlevel: 2 }, // tut-2
+    ]],
+]);
+
+function runtimeSpecialLevelFor(dnum, dlevel) {
+    const key = `${dnum}:${dlevel}`;
+    return _runtimeSpecialLevelMap.get(key) || null;
+}
 
 function resolveUbirthday(seed) {
     const parsed = getnow();
@@ -355,9 +403,7 @@ export function on_level(a, b) {
         && a.dnum === b.dnum && a.dlevel === b.dlevel;
 }
 export function Is_special(dnum, dlevel) {
-    if (getSpecialLevel(dnum, dlevel)) return true;
-    const oracle = getOracleLevel();
-    return dnum === oracle.dnum && dlevel === oracle.dlevel;
+    return !!runtimeSpecialLevelFor(dnum, dlevel);
 }
 export function Is_branchlev(dnum, dlevel) {
     return isBranchLevel(dnum, dlevel);
@@ -536,7 +582,10 @@ export function find_branch(name, branches = _branchTopology) {
 export function find_level(dnum, dlevel) {
     const sdnum = Number.isInteger(dnum) ? dnum : DUNGEONS_OF_DOOM;
     const sdlevel = Number.isInteger(dlevel) ? dlevel : 1;
-    const lvl = getSpecialLevel(sdnum, sdlevel);
+    const mapped = runtimeSpecialLevelFor(sdnum, sdlevel);
+    const lvl = mapped
+        ? getSpecialLevel(mapped.dnum, mapped.dlevel)
+        : null;
     if (lvl) return { dnum: sdnum, dlevel: sdlevel, name: lvl.name };
     return null;
 }
@@ -3711,6 +3760,7 @@ export function initDungeon(roleIndex, wizard = true) {
         TUTORIAL,         // 8: Tutorial
     ];
     _dungeonLedgerStartByDnum = new Map();
+    _runtimeSpecialLevelMap = new Map();
     let ledgerCursor = 0;
 
     // Process each dungeon
@@ -3753,6 +3803,17 @@ export function initDungeon(roleIndex, wizard = true) {
             if (jsDnum === DUNGEONS_OF_DOOM) {
                 const oracleDlevel = Number.isInteger(placed[1]) && placed[1] > 0 ? placed[1] : 5;
                 _oracleLevel = { dnum: DUNGEONS_OF_DOOM, dlevel: oracleDlevel };
+            }
+            const canonList = RUNTIME_SPECIAL_LEVEL_CANON.get(jsDnum);
+            if (canonList) {
+                for (const { index, canonDlevel } of canonList) {
+                    const actualDlevel = placed[index];
+                    if (!Number.isInteger(actualDlevel) || actualDlevel < 1) continue;
+                    _runtimeSpecialLevelMap.set(`${jsDnum}:${actualDlevel}`, {
+                        dnum: jsDnum,
+                        dlevel: canonDlevel,
+                    });
+                }
             }
         }
     }
@@ -4158,20 +4219,19 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
     let special = null;
     let specialDnum = dnum;
     let specialDlevel = dlevel;
-    const depthOnlyOracleSpecial = (dnum === undefined || dlevel === undefined);
-    if (dnum !== undefined && dlevel !== undefined) {
-        special = getSpecialLevel(dnum, dlevel);
-    } else {
-        const oracleLevel = getOracleLevel();
-        if (oracleLevel?.dnum === DUNGEONS_OF_DOOM
-            && Number.isInteger(oracleLevel?.dlevel)
-            && depth === oracleLevel.dlevel) {
-            special = getSpecialLevel(DUNGEONS_OF_DOOM, 5); // oracle descriptor
+    const depthOnlySpecialLookup = (dnum === undefined || dlevel === undefined);
+    const runtimeSpecial = depthOnlySpecialLookup
+        ? runtimeSpecialLevelFor(DUNGEONS_OF_DOOM, depth)
+        : runtimeSpecialLevelFor(dnum, dlevel);
+    if (runtimeSpecial) {
+        special = getSpecialLevel(runtimeSpecial.dnum, runtimeSpecial.dlevel);
+        if (depthOnlySpecialLookup) {
             specialDnum = DUNGEONS_OF_DOOM;
-            specialDlevel = oracleLevel.dlevel;
+            specialDlevel = depth;
         }
     }
-    if (special) {
+    const isRogueLevel = !!special && special.name === 'rogue';
+    if (special && !isRogueLevel) {
             const useDnum = Number.isInteger(specialDnum) ? specialDnum : dnum;
             const useDlevel = Number.isInteger(specialDlevel) ? specialDlevel : dlevel;
             // C ref: align_shift() uses current special-level alignment when present.
@@ -4202,7 +4262,7 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
             // In C, loading oracle.lua triggers themerms.lua load, which does rn2(3), rn2(2).
             // Tutorial entry can hit this path after startup without prior themed-room
             // Lua load, so preserve that shuffle for tut-* special levels as well.
-            if (!get_special_themes_loaded() || depthOnlyOracleSpecial) {
+            if (!get_special_themes_loaded() || depthOnlySpecialLookup) {
                 set_special_themes_loaded(true);
                 rn2(3);
                 rn2(2);
@@ -4243,6 +4303,16 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
         // C ref: mklev.c:1278 makemaz("")
         makemaz(map, "", dnum, dlevel, depth);
     } else {
+        if (isRogueLevel) {
+            // C ref: mklev.c:1290-1292 — Is_rogue_level() uses makeroguerooms path.
+            const rogueMap = makeroguerooms(depth);
+            rogueMap._genDnum = Number.isInteger(dnum) ? dnum : DUNGEONS_OF_DOOM;
+            rogueMap._genDlevel = Number.isInteger(dlevel) ? dlevel : depth;
+            if (!rogueMap.flags) rogueMap.flags = {};
+            rogueMap.flags.is_rogue_lev = true;
+            rogueMap.flags.roguelike = true;
+            return rogueMap;
+        }
         // C ref: mklev.c:1287 makerooms()
         // Initialize rectangle pool for BSP room placement
         init_rect();

@@ -5,7 +5,7 @@
  * C ref: sp_lev.c, dungeon.c
  */
 
-import { rn2 } from './rng.js';
+import { rnd } from './rng.js';
 
 // Import special level generators
 import { generate as generateKnox } from './levels/knox.js';
@@ -250,7 +250,8 @@ export function getSpecialLevel(dnum, dlevel) {
 
         // If not cached, pick a variant using RNG
         if (variantIndex === undefined) {
-            variantIndex = rn2(entry.generator.length);
+            // C ref: mkmaze.c makemaz() uses rnd(sp->rndlevs) for proto variants.
+            variantIndex = rnd(entry.generator.length) - 1;
             variantCache.set(key, variantIndex);
         }
 
@@ -327,6 +328,37 @@ registerSpecialLevel(TUTORIAL, 2, generateTut2, 'tut-2');
 
 // Oracle level (typically depth 5-7 in Dungeons of Doom)
 registerSpecialLevel(DUNGEONS_OF_DOOM, 5, generateOracle, 'oracle');
+
+// Big room level (13 variants; depth varies by dungeon generation)
+registerSpecialLevel(DUNGEONS_OF_DOOM, 10, [
+    generateBigroom1,
+    generateBigroom2,
+    generateBigroom3,
+    generateBigroom4,
+    generateBigroom5,
+    generateBigroom6,
+    generateBigroom7,
+    generateBigroom8,
+    generateBigroom9,
+    generateBigroom10,
+    generateBigroom11,
+    generateBigroom12,
+    generateBigroom13
+], [
+    'bigrm-1',
+    'bigrm-2',
+    'bigrm-3',
+    'bigrm-4',
+    'bigrm-5',
+    'bigrm-6',
+    'bigrm-7',
+    'bigrm-8',
+    'bigrm-9',
+    'bigrm-10',
+    'bigrm-11',
+    'bigrm-12',
+    'bigrm-13'
+]);
 
 // Castle (Stronghold) level (typically depth 17 in Dungeons of Doom)
 registerSpecialLevel(DUNGEONS_OF_DOOM, 17, generateCastle, 'castle');

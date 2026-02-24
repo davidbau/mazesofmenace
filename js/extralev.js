@@ -1,12 +1,16 @@
 // extralev.c helper functions moved out of dungeon.js to mirror C file layout.
 
-import { d, rn1, rn2, rnd } from './rng.js';
+import { rn1, rn2, rnd } from './rng.js';
 import { GameMap } from './map.js';
-import { mksobj, next_ident, weight } from './mkobj.js';
+import { curse, mksobj, weight } from './mkobj.js';
 import {
     ARROW, BOW, FAKE_AMULET_OF_YENDOR, FOOD_RATION, MACE, PLATE_MAIL, RING_MAIL, TWO_HANDED_SWORD,
 } from './objects.js';
 import { CORR, D_NODOOR, OROOM, SCORR } from './config.js';
+import { PM_GHOST } from './monsters.js';
+import { makemon, NO_MM_FLAGS } from './makemon.js';
+import { christen_monst, roguename } from './do_name.js';
+import { placeFloorObject } from './floor_objects.js';
 import {
     fill_ordinary_room,
 } from './dungeon.js';
@@ -163,58 +167,62 @@ export function makerogueghost(map, _depth) {
     if (!map.nroom) return;
 
     const croom = map.rooms[rn2(map.nroom)];
-    rn1(croom.hx - croom.lx + 1, croom.lx);
-    rn1(croom.hy - croom.ly + 1, croom.ly);
+    const x = rn1(croom.hx - croom.lx + 1, croom.lx);
+    const y = rn1(croom.hy - croom.ly + 1, croom.ly);
 
-    next_ident();
-    d(11, 8);
-    rn2(2);
-    if (rn2(7)) rn2(34);
-    rn2(100);
+    const ghost = makemon(PM_GHOST, x, y, NO_MM_FLAGS, _depth, map);
+    if (!ghost) return;
+    ghost.msleeping = true;
+    christen_monst(ghost, roguename());
 
-    rn2(3);
-    rn2(2);
+    const mksobj_at = (otyp, init = false, artif = false) => {
+        const otmp = mksobj(otyp, init, artif);
+        otmp.ox = x;
+        otmp.oy = y;
+        placeFloorObject(map, otmp);
+        return otmp;
+    };
 
     if (rn2(4)) {
-        const ration = mksobj(FOOD_RATION, false, false);
+        const ration = mksobj_at(FOOD_RATION, false, false);
         ration.quan = rnd(7);
         ration.owt = weight(ration);
     }
 
     if (rn2(2)) {
-        const mace = mksobj(MACE, false, false);
+        const mace = mksobj_at(MACE, false, false);
         mace.spe = rnd(3);
-        if (rn2(4)) { /* curse() no RNG side effects */ }
+        if (rn2(4)) curse(mace);
     } else {
-        const sword = mksobj(TWO_HANDED_SWORD, false, false);
+        const sword = mksobj_at(TWO_HANDED_SWORD, false, false);
         sword.spe = rnd(5) - 2;
-        if (rn2(4)) { /* curse() no RNG side effects */ }
+        if (rn2(4)) curse(sword);
     }
 
-    const bow = mksobj(BOW, false, false);
+    const bow = mksobj_at(BOW, false, false);
     bow.spe = 1;
-    if (rn2(4)) { /* curse() no RNG side effects */ }
+    if (rn2(4)) curse(bow);
 
-    const arrows = mksobj(ARROW, false, false);
+    const arrows = mksobj_at(ARROW, false, false);
     arrows.spe = 0;
     arrows.quan = rn1(10, 25);
     arrows.owt = weight(arrows);
-    if (rn2(4)) { /* curse() no RNG side effects */ }
+    if (rn2(4)) curse(arrows);
 
     if (rn2(2)) {
-        const ringMail = mksobj(RING_MAIL, false, false);
+        const ringMail = mksobj_at(RING_MAIL, false, false);
         ringMail.spe = rn2(3);
         if (!rn2(3)) ringMail.oerodeproof = true;
-        if (rn2(4)) { /* curse() no RNG side effects */ }
+        if (rn2(4)) curse(ringMail);
     } else {
-        const plateMail = mksobj(PLATE_MAIL, false, false);
+        const plateMail = mksobj_at(PLATE_MAIL, false, false);
         plateMail.spe = rnd(5) - 2;
         if (!rn2(3)) plateMail.oerodeproof = true;
-        if (rn2(4)) { /* curse() no RNG side effects */ }
+        if (rn2(4)) curse(plateMail);
     }
 
     if (rn2(2)) {
-        const fakeAmulet = mksobj(FAKE_AMULET_OF_YENDOR, true, false);
+        const fakeAmulet = mksobj_at(FAKE_AMULET_OF_YENDOR, true, false);
         fakeAmulet.known = true;
     }
 }
@@ -223,10 +231,9 @@ export function makerogueghost(map, _depth) {
 export function makeroguerooms(depth = 15) {
     const map = new GameMap();
     map.clear();
-
-    // C ref: mklev.c makelevel() pre-rogue RNG calls.
-    rn2(3);
-    rn2(5);
+    if (!map.flags) map.flags = {};
+    map.flags.is_rogue_lev = true;
+    map.flags.roguelike = true;
 
     const rooms = Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => ({})));
     let nroom = 0;

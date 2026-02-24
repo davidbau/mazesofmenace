@@ -1133,6 +1133,12 @@ export function resolveArrivalCollision(game) {
 // opts.map: pre-generated map (e.g., wizloaddes)
 // opts.makeLevel(depth): custom level generator (default: makelevel(depth))
 export function changeLevel(game, depth, transitionDir = null, opts = {}) {
+    const currentDnum = Number.isInteger(game.dnum)
+        ? game.dnum
+        : (Number.isInteger(game.map?._genDnum) ? game.map._genDnum : 0);
+    const levelKey = (dnum, dlev) => `${dnum}:${dlev}`;
+    if (!game.levelsByBranch) game.levelsByBranch = {};
+
     const previousDepth = game.player?.dungeonLevel;
     const fromX = game.player?.x;
     const fromY = game.player?.y;
@@ -1140,18 +1146,29 @@ export function changeLevel(game, depth, transitionDir = null, opts = {}) {
     // Cache current level
     if (game.map) {
         game.levels[game.player.dungeonLevel] = game.map;
+        game.levelsByBranch[levelKey(currentDnum, game.player.dungeonLevel)] = game.map;
     }
     const previousMap = game.levels[game.player.dungeonLevel];
+    const targetDnum = Number.isInteger(game.dnum) ? game.dnum : currentDnum;
+    const branchCacheKey = levelKey(targetDnum, depth);
 
     // Use pre-generated map if provided, otherwise check cache or generate new.
     if (opts.map) {
         game.map = opts.map;
         game.levels[depth] = opts.map;
+        game.levelsByBranch[branchCacheKey] = opts.map;
+    } else if (game.levelsByBranch[branchCacheKey]) {
+        game.map = game.levelsByBranch[branchCacheKey];
     } else if (game.levels[depth]) {
         game.map = game.levels[depth];
     } else {
         game.map = opts.makeLevel ? opts.makeLevel(depth) : makelevel(depth);
         game.levels[depth] = game.map;
+        game.levelsByBranch[branchCacheKey] = game.map;
+    }
+
+    if (Number.isInteger(game.map?._genDnum)) {
+        game.dnum = game.map._genDnum;
     }
 
     game.player.dungeonLevel = depth;

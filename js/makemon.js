@@ -1118,8 +1118,12 @@ function mkmonmoney(mon, amount) {
     }
 }
 
-function m_initinv(mon, mndx, depth, m_lev) {
+function m_initinv(mon, mndx, depth, m_lev, map) {
     const ptr = mons[mndx];
+    // C ref: makemon.c:597-599 — no initial inventory logic on rogue levels.
+    if (map?.flags?.is_rogue_lev || map?.flags?.roguelike || map?.flags?.is_rogue) {
+        return;
+    }
     const mm = ptr.symbol;
     switch (mm) {
     case S_HUMAN:
@@ -1988,7 +1992,7 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
     if (allowMinvent) {
         if (is_armed(ptr))
             m_initweap(mon, mndx, depth || 1);
-        m_initinv(mon, mndx, depth || 1, m_lev);
+        m_initinv(mon, mndx, depth || 1, m_lev, map);
         m_dowear(mon, true);
 
         // C evaluates !rn2(100) first (always consumed), then is_domestic
