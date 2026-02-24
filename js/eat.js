@@ -1087,8 +1087,17 @@ function consume_oeaten(obj, amt) {
 
 // cf. eat.c maybe_finished_meal() — check if meal is done
 function maybe_finished_meal(game, stopping) {
-    // Stub: would check if eatfood occupation should finish
-    return false;
+    const occ = game?.occupation;
+    if (!occ || typeof occ.fn !== 'function' || !occ.isEating) return false;
+    const reqtime = Number.isInteger(occ?.eatState?.reqtime) ? occ.eatState.reqtime : (occ.xtime | 0);
+    const usedtime = Number.isInteger(occ?.eatState?.usedtime) ? occ.eatState.usedtime : 0;
+    if (usedtime < reqtime) return false;
+    if (stopping) {
+        game.occupation = null;
+    }
+    // C ref: maybe_finished_meal() calls eatfood() to finish the meal.
+    occ.fn(game);
+    return true;
 }
 
 // cf. eat.c cant_finish_meal() — interrupt meal completion
@@ -1174,7 +1183,7 @@ async function handleEat(player, display, game) {
                 const reqtime = rottenTriggered
                     ? Math.max(1, Math.floor((baseReqtime + 2) / 4))
                     : baseReqtime;
-                let usedtime = 1; // first bite happens immediately
+                const eatState = { usedtime: 1, reqtime }; // first bite already happened
                 let consumedFloorItem = false;
                 const consumeFloorItem = () => {
                     if (consumedFloorItem) return;
@@ -1197,14 +1206,17 @@ async function handleEat(player, display, game) {
                     // cf. eat.c eatfood() / start_eating() — set_occupation
                     game.occupation = {
                         fn: () => {
-                            usedtime++;
+                            eatState.usedtime++;
                             // cf. eat.c eatfood(): done when ++usedtime > reqtime.
-                            if (usedtime > reqtime) {
+                            if (eatState.usedtime > reqtime) {
                                 finishFloorEating();
                                 return 0;
                             }
                             return 1;
                         },
+                        isEating: true,
+                        eatState,
+                        occtxt: `eating ${floorName}`,
                         txt: `eating ${floorName}`,
                         xtime: reqtime,
                     };
@@ -1314,21 +1326,21 @@ async function handleEat(player, display, game) {
         const nmod = (reqtime === 0 || baseNutr === 0) ? 0
             : (baseNutr >= reqtime) ? -Math.floor(baseNutr / reqtime)
             : reqtime % baseNutr;
-        let usedtime = 0;
+        const eatState = { usedtime: 0, reqtime };
 
         // cf. eat.c bite() — apply incremental nutrition (partial)
         function doBite() {
             if (nmod < 0) {
                 lesshungry(player, -nmod);
                 player.nutrition += (-nmod);
-            } else if (nmod > 0 && (usedtime % nmod)) {
+            } else if (nmod > 0 && (eatState.usedtime % nmod)) {
                 lesshungry(player, 1);
                 player.nutrition += 1;
             }
         }
 
         // First bite (turn 1) — mirrors C start_eating() + bite()
-        usedtime++;
+        eatState.usedtime++;
         doBite();
         // cf. eat.c start_eating() — fprefx() is called for fresh
         // (not already partly eaten) non-corpse food, producing flavor
@@ -1400,14 +1412,14 @@ async function handleEat(player, display, game) {
             let fullwarn = false;
             game.occupation = {
                 fn: () => {
-                    usedtime++;
+                    eatState.usedtime++;
                     // cf. eat.c eatfood(): done when ++usedtime > reqtime.
-                    if (usedtime > reqtime) {
+                    if (eatState.usedtime > reqtime) {
                         finishEating(game);
                         return 0; // done
                     }
                     doBite();
-                    const bitesLeft = reqtime - usedtime;
+                    const bitesLeft = reqtime - eatState.usedtime;
                     // C ref: eat.c lesshungry()/eatfood() — fullwarn path.
                     if (!fullwarn && bitesLeft > 1 && canchoke(player)) {
                         fullwarn = true;
@@ -1436,6 +1448,9 @@ async function handleEat(player, display, game) {
                     }
                     return 1; // continue
                 },
+                isEating: true,
+                eatState,
+                occtxt: `eating ${eatenItem.name}`,
                 txt: `eating ${eatenItem.name}`,
                 xtime: reqtime,
             };

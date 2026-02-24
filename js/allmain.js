@@ -33,10 +33,12 @@ import { NORMAL_SPEED, A_DEX, A_CON, ROOMOFFSET, SHOPBASE,
 import { ageSpells } from './spell.js';
 import { wipe_engr_at } from './engrave.js';
 import { dosearch0 } from './detect.js';
+import { maybe_finished_meal } from './eat.js';
 import { exerper, exerchk } from './attrib_exercise.js';
 import { rhack } from './cmd.js';
 import { FOV } from './vision.js';
 import { monsterNearby } from './monutil.js';
+import { nomul } from './hack.js';
 import { Player, roles, races } from './player.js';
 import { makelevel, setGameSeed, isBranchLevelToDnum } from './dungeon.js';
 import { getArrivalPosition, changeLevel as changeLevelCore, deferred_goto } from './do.js';
@@ -44,7 +46,7 @@ import { loadSave, deleteSave, loadFlags, saveFlags, deserializeRng,
          restGameState, restLev, listSavedData, clearAllData } from './storage.js';
 import { buildEntry, saveScore, loadScores, formatTopTenEntry, formatTopTenHeader } from './topten.js';
 import { startRecording } from './keylog.js';
-import { nhgetch, getCount, setInputRuntime } from './input.js';
+import { nhgetch, getCount, setInputRuntime, cmdq_clear, CQ_CANNED } from './input.js';
 import { init_nhwindows, NHW_MENU, MENU_BEHAVE_STANDARD, PICK_ONE, ATR_NONE,
          create_nhwindow, destroy_nhwindow, start_menu, add_menu, end_menu, select_menu } from './windows.js';
 import { CLR_GRAY } from './display.js';
@@ -254,6 +256,30 @@ export function moveloop_turnend(game) {
     // After turn-end completes, subsequent command processing observes
     // the incremented move counter.
     setObjectMoves(game.turnCount + 1);
+}
+
+// C ref: allmain.c:680 stop_occupation()
+export function stop_occupation(game) {
+    if (!game) return;
+    const occ = game.occupation;
+    if (occ && typeof occ.fn === 'function') {
+        const finishedMeal = !!maybe_finished_meal(game, true);
+        if (!finishedMeal) {
+            const occtxt = occ.occtxt || occ.txt;
+            if (typeof occtxt === 'string' && occtxt.length > 0) {
+                game.display?.putstr_message?.(`You stop ${occtxt}.`);
+            }
+        }
+        game.occupation = null;
+        game.pendingPrompt = null;
+        nomul(0, game);
+    } else if (Number.isInteger(game.multi) && game.multi >= 0) {
+        nomul(0, game);
+    }
+    // C ref: cmdq_clear(CQ_CANNED) — clear queued synthetic/user-ahead
+    // keystrokes in the active input runtime, then reset count prefix.
+    cmdq_clear(CQ_CANNED);
+    game.commandCount = 0;
 }
 
 // C ref: allmain.c:116 [static] — u_calc_moveamt(wtcap): hero movement amount.
@@ -471,25 +497,11 @@ async function _drainOccupation(game, coreOpts, onTimedTurn) {
         const cont = occ.fn(game);
         const finishedOcc = !cont ? occ : null;
 
-        // C ref: do.c cmd_safety_prevention() — interrupt if hostile nearby
-        if (typeof game.shouldInterruptOccupation === 'function'
-            && game.shouldInterruptOccupation()) {
-            game.multi = 0;
-            if (occ?.occtxt === 'waiting') {
-                game.display?.putstr_message(`You stop ${occ.occtxt}.`);
-            }
-            game.occupation = null;
-            game.pendingPrompt = null;
-            break; // interrupted — no turn processing for this step
-        }
-
         if (cont === 'prompt') {
             // Occupation has paused on an in-band prompt and will resume or
             // abort when that prompt consumes subsequent input.
         } else if (!cont) {
-            if (occ?.occtxt === 'waiting') {
-                game.display?.putstr_message(`You stop ${occ.occtxt}.`);
-            }
+            // C ref: natural occupation completion clears silently.
             game.occupation = null;
             game.pendingPrompt = null;
         }
@@ -569,9 +581,6 @@ function regen_hp(game) {
         }
     }
 }
-
-// cf. allmain.c:680 — stop_occupation(void): halt multi-turn action
-// TODO: allmain.c:680 — stop_occupation(): occupation halt
 
 // cf. allmain.c:697 — init_sound_disp_gamewindows(void): init display/sound
 // TODO: allmain.c:697 — init_sound_disp_gamewindows(): display initialization
@@ -922,6 +931,10 @@ export class NetHackGame {
         if (!this.pendingDeferredTimedTurn) return;
         this.pendingDeferredTimedTurn = false;
         moveloop_core(this, { computeFov: true });
+    }
+
+    stopOccupation() {
+        stop_occupation(this);
     }
 
     // Render current screen state

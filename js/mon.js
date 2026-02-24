@@ -1530,9 +1530,11 @@ export function movemon(map, player, display, fov, game = null, { dochug, handle
                     && canSeeNow
                     && mon.mcanmove !== false
                     && !onscary(map, player.x, player.y)) {
-                    game.display.putstr_message(`You stop ${game.occupation.occtxt}.`);
-                    game.occupation = null;
-                    game.multi = 0;
+                    if (typeof game.stopOccupation === 'function') game.stopOccupation();
+                    else {
+                        game.occupation = null;
+                        game.multi = 0;
+                    }
                 }
             }
         }

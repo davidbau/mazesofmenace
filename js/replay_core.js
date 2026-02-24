@@ -1177,18 +1177,6 @@ export async function replaySession(seed, session, opts = {}) {
             moveloop_core(game, { computeFov: true });
             if (restorePutstr) restorePutstr();
         };
-        const stopTimedOccupationIfInterrupted = (occ) => {
-            if (!occ || typeof game.shouldInterruptMulti !== 'function') return false;
-            if (!game.shouldInterruptMulti()) return false;
-            if (occ.occtxt === 'waiting' || occ.occtxt === 'searching') {
-                game.display.putstr_message(`You stop ${occ.occtxt}.`);
-            }
-            game.occupation = null;
-            game.pendingPrompt = null;
-            game.multi = 0;
-            return true;
-        };
-
         if (pendingCommand) {
             const priorPendingKind = pendingKind;
             replayPendingTrace(
@@ -1622,9 +1610,8 @@ export async function replaySession(seed, session, opts = {}) {
                 game.display.clearRow(0);
                 game.display.topMessage = null;
                 const cont = occ.fn(game);
-                const interruptedOcc = stopTimedOccupationIfInterrupted(occ);
-                const finishedOcc = (!interruptedOcc && !cont) ? occ : null;
-                if (!interruptedOcc && !cont) {
+                const finishedOcc = !cont ? occ : null;
+                if (!cont) {
                     // C ref: allmain.c:497 — natural occupation completion
                     // just clears go.occupation silently. "You stop X." is
                     // only printed by stop_occupation() on external interrupt.
@@ -1683,9 +1670,8 @@ export async function replaySession(seed, session, opts = {}) {
                 while (game.occupation) {
                     const occ = game.occupation;
                     const cont = occ.fn(game);
-                    const interruptedOcc = stopTimedOccupationIfInterrupted(occ);
-                    const finishedOcc = (!interruptedOcc && !cont) ? occ : null;
-                    if (!interruptedOcc && !cont) {
+                    const finishedOcc = !cont ? occ : null;
+                    if (!cont) {
                         // C ref: natural completion — no message (see above)
                         game.occupation = null;
                         game.pendingPrompt = null;

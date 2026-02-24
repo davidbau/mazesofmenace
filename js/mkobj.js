@@ -9,6 +9,7 @@ import {
     objectData, bases, oclass_prob_totals, mkobjprobs, NUM_OBJECTS,
     ILLOBJ_CLASS, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
     TOOL_CLASS, FOOD_CLASS, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS,
+    SPBOOK_no_NOVEL,
     WAND_CLASS, COIN_CLASS, GEM_CLASS, ROCK_CLASS, BALL_CLASS,
     CHAIN_CLASS, VENOM_CLASS,
     IRON, COPPER, WOOD, PLASTIC, GLASS, DRAGON_HIDE, LIQUID,
@@ -661,7 +662,12 @@ function mksobj_init(obj, artif, skipErosion) {
             if (obj.corpsenm >= 0 && obj.corpsenm < mons.length
                 && mons[obj.corpsenm].size >= MZ_SMALL
                 && rn2(Math.floor(_levelDepth / 2 + 10)) > 10) {
-                // would add spellbook to container -- skip
+                // C ref: mkobj.c:1152-1154 — statue may contain a non-novel spellbook.
+                const inside = mkobj(SPBOOK_no_NOVEL, false);
+                if (inside) {
+                    if (!Array.isArray(obj.cobj)) obj.cobj = [];
+                    obj.cobj.push(inside);
+                }
             }
         }
         break;
@@ -918,7 +924,7 @@ export function mkcorpstat(objtype, ptr_mndx, init, x = 0, y = 0, map = null) {
 export function mkobj(oclass, artif, skipErosion) {
     ensureObjectClassTablesInitialized();
     const inputClass = oclass;
-    const spellbookNoNovel = (oclass === -SPBOOK_CLASS);
+    const spellbookNoNovel = (oclass === SPBOOK_no_NOVEL);
     if (spellbookNoNovel) {
         oclass = SPBOOK_CLASS;
     }

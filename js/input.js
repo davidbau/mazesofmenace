@@ -80,6 +80,17 @@ export function clearInputQueue() {
     }
 }
 
+// C ref: cmdq_clear(CQ_CANNED) analogue for JS runtime input queue.
+export const CQ_CANNED = 1;
+const _cmdQueues = {
+    [CQ_CANNED]: [],
+};
+export function cmdq_clear(queueKind) {
+    if (queueKind === CQ_CANNED) {
+        _cmdQueues[CQ_CANNED].length = 0;
+    }
+}
+
 // Get a character of input (async)
 // This is the JS equivalent of C's nhgetch().
 // C ref: winprocs.h win_nhgetch

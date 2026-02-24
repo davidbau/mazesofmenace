@@ -217,11 +217,11 @@ export function m_throw(mon, startX, startY, dx, dy, range, weapon, map, player,
             const hitv = 3 - distmin(player.x, player.y, mon.mx, mon.my) + 8 + (weapon.spe || 0);
             const dieRoll = rnd(20);
             if (game && game.occupation) {
-                if (game.occupation.occtxt === 'waiting' || game.occupation.occtxt === 'searching') {
-                    if (display) display.putstr_message(`You stop ${game.occupation.occtxt}.`);
+                if (typeof game.stopOccupation === 'function') game.stopOccupation();
+                else {
+                    game.occupation = null;
+                    game.multi = 0;
                 }
-                game.occupation = null;
-                game.multi = 0;
             }
             if (player.ac + hitv <= dieRoll) {
                 if (display) {

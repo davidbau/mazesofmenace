@@ -1002,11 +1002,11 @@ export function monsterAttackPlayer(monster, player, display, game = null, opts 
 
             // cf. allmain.c stop_occupation() via mhitu.c attack flow.
             if (game && game.occupation) {
-                if (game.occupation.occtxt === 'waiting' || game.occupation.occtxt === 'searching') {
-                    display.putstr_message(`You stop ${game.occupation.occtxt}.`);
+                if (typeof game.stopOccupation === 'function') game.stopOccupation();
+                else {
+                    game.occupation = null;
+                    game.multi = 0;
                 }
-                game.occupation = null;
-                game.multi = 0;
             }
 
             if (died) {

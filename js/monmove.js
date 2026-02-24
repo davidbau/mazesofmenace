@@ -29,6 +29,7 @@ import { COLNO, ROWNO, IS_WALL, IS_DOOR, IS_ROOM,
 import { rn2, rnd } from './rng.js';
 import { wipe_engr_at } from './engrave.js';
 import { monsterAttackPlayer } from './mhitu.js';
+import { makemon } from './makemon.js';
 import { FOOD_CLASS, COIN_CLASS, BOULDER, ROCK, ROCK_CLASS,
          WEAPON_CLASS, ARMOR_CLASS, GEM_CLASS,
          AMULET_CLASS, POTION_CLASS, SCROLL_CLASS, WAND_CLASS, RING_CLASS, SPBOOK_CLASS,
@@ -113,6 +114,12 @@ export function movemon(map, player, display, fov, game = null) {
 // C direction tables (C ref: monmove.c)
 const xdir = [0, 1, 1, 1, 0, -1, -1, -1];
 const ydir = [-1, -1, 0, 1, 1, 1, 0, -1];
+
+function mon_is_peaceful(mon) {
+    if (!mon) return false;
+    if (mon.mpeaceful !== undefined) return !!mon.mpeaceful;
+    return !!mon.peaceful;
+}
 
 // ========================================================================
 // onscary — C ref: monmove.c:241 (also in mon.c; we delegate to mon.js)
@@ -587,16 +594,23 @@ function m_search_items_goal(mon, map, player, fov, ggx, ggy, appr) {
 // ========================================================================
 
 // C ref: mon.c:4084 — m_respond_shrieker(mtmp)
-// 1/10 chance to create a purple worm (or random monster) when adjacent to hero.
-function m_respond_shrieker(mon, map, player) {
+function m_respond_shrieker(mon, map, player, display = null, game = null) {
     if (distmin(mon.mx, mon.my, player.x, player.y) > 1) return;
-    if (rn2(10)) return;
-    // TODO: makemon(PM_PURPLE_WORM) or random monster near shrieker
-    // TODO: message "a]shrieking noise" if canseemon || distu <= 4*4
-    monmoveTrace('m_respond_shrieker',
-        `step=${monmoveStepLabel(map)}`,
-        `id=${mon.m_id ?? '?'}`,
-        `triggered`);
+    if (!player?.deaf) {
+        if (display) {
+            display.putstr_message(`${monNam(mon, { article: 'the', capitalize: true })} shrieks.`);
+        }
+        if (game && typeof game.stopOccupation === 'function') {
+            game.stopOccupation();
+        }
+    }
+    if (!rn2(10)) {
+        // C ref: 1/13 chance to attempt a purple worm, random monster otherwise.
+        // Keep the RNG path faithful even though difficulty gating is simplified.
+        const purpleWorm = !rn2(13);
+        makemon(purpleWorm ? PM_PURPLE_WORM : null, 0, 0, 0, player?.dungeonLevel, map);
+    }
+    aggravate(map);
 }
 
 // C ref: mon.c:4068 — m_respond_medusa(mtmp)
@@ -623,11 +637,11 @@ function aggravate(map) {
 }
 
 // C ref: mon.c:4117 — m_respond(mtmp)
-function m_respond(mon, map, player) {
+function m_respond(mon, map, player, display = null, game = null) {
     if (mon.mndx === PM_MEDUSA) {
         m_respond_medusa(mon, map, player);
     } else if (mon.type?.sound === MS_SHRIEK) {
-        m_respond_shrieker(mon, map, player);
+        m_respond_shrieker(mon, map, player, display, game);
     } else if (mon.mndx === PM_ERINYS) {
         // C ref: mon.c:4126 — aggravate()
         aggravate(map);
@@ -801,7 +815,7 @@ function dochug(mon, map, player, display, fov, game = null) {
     }
 
     // C ref: monmove.c:754 — m_respond() for special monsters
-    m_respond(mon, map, player);
+    m_respond(mon, map, player, display, game);
 
     // C ref: monmove.c:759 — courage regain
     if (mon.flee && !(mon.fleetim > 0)
@@ -1234,7 +1248,7 @@ function m_move(mon, map, player, display = null, fov = null) {
 
     let getitems = false;
     const isRogueLevel = !!(map?.flags?.is_rogue || map?.flags?.roguelike || map?.flags?.is_rogue_lev);
-    if ((!mon.peaceful || !rn2(10)) && !isRogueLevel) {
+    if ((!mon_is_peaceful(mon) || !rn2(10)) && !isRogueLevel) {
         const heroStr = Number(player?.str) || Number(player?.acurrstr) || 10;
         const inLine = linedUpToPlayer(mon, map, player, fov)
             && (distmin(mon.mx, mon.my, mon.mux ?? player.x, mon.muy ?? player.y)

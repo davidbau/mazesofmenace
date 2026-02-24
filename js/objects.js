@@ -15,6 +15,8 @@ export const FOOD_CLASS = 6;
 export const POTION_CLASS = 7;
 export const SCROLL_CLASS = 8;
 export const SPBOOK_CLASS = 9;
+// C ref: objclass.h -- mkobj-only pseudo-class for spellbooks excluding SPE_NOVEL.
+export const SPBOOK_no_NOVEL = -SPBOOK_CLASS;
 export const WAND_CLASS = 10;
 export const COIN_CLASS = 11;
 export const GEM_CLASS = 12;
@@ -9231,4 +9233,3 @@ export const mkobjprobs = [
     { iprob: 3, iclass: RING_CLASS },
     { iprob: 1, iclass: AMULET_CLASS },
 ];
-
