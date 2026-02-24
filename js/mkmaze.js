@@ -1,24 +1,28 @@
-// mkmaze.c compatibility layer.
-// C-parity implementations live in dungeon.js/sp_lev.js; this module keeps
-// file/function naming aligned with NetHack C source structure.
+// mkmaze.c core helpers and maze generation paths.
 
 import {
     COLNO, ROWNO, STONE, HWALL, DOOR, CROSSWALL, LAVAWALL, IRONBARS, WATER, SDOOR,
-    CORR, ROOM, AIR, MAGIC_PORTAL, VIBRATING_SQUARE,
+    CORR, ROOM, AIR, MAGIC_PORTAL, VIBRATING_SQUARE, MKTRAP_MAZEFLAG,
     IS_WALL, isok,
 } from './config.js';
 import { rn1, rn2, rnd } from './rng.js';
 import {
-    makemaz as dungeonMakemaz,
-    populate_maze as dungeonPopulateMaze,
     maketrap,
+    mktrap,
+    wallify_region,
     wallification,
     fix_wall_spines,
     deltrap,
     enexto,
+    resolveBranchPlacementForLevel,
     bound_digging,
     repair_irregular_room_boundaries,
 } from './dungeon.js';
+import { placeFloorObject } from './floor_objects.js';
+import { mkobj, mksobj, weight, RANDOM_CLASS } from './mkobj.js';
+import { GEM_CLASS, BOULDER, GOLD_PIECE } from './objects.js';
+import { makemon, NO_MM_FLAGS } from './makemon.js';
+import { PM_MINOTAUR } from './monsters.js';
 import {
     occupied,
     mkstairs,
@@ -200,7 +204,77 @@ export function bad_location(map, x, y, nlx, nly, nhx, nhy) {
 
 // C ref: mkmaze.c makemaz
 export function makemaz(map, protofile, dnum, dlevel, depth) {
-    return dungeonMakemaz(map, protofile, dnum, dlevel, depth);
+    // C ref: mkmaze.c:1127-1204
+    // If protofile specified, try to load special level
+    // For now, we only handle the procedural case (protofile === "")
+    if (protofile && protofile !== "") {
+        // TODO: Load special maze level file
+        console.warn(`makemaz: special level "${protofile}" not implemented, using procedural maze`);
+    }
+
+    // C ref: Invocation_lev(&u.uz) in mkmaze.c.
+    // In current branch topology, Sanctum is Gehennom level 10, so invocation
+    // level is the level above it (9). Allow explicit override via makelevel opts.
+    const isInvocationLevel = !!map._isInvocationLevel;
+
+    // C ref: mkmaze.c:1189-1191
+    // Set maze flags
+    map.flags = map.flags || {};
+    map.flags.is_maze_lev = true;
+    map.flags.corrmaze = !rn2(3); // 2/3 chance of corridor maze
+
+    // C ref: mkmaze.c:1193-1197
+    // Determine maze creation parameters
+    // create_maze has different params based on Invocation level check
+    const useInvocationParams = !isInvocationLevel && !!rn2(2);
+    if (useInvocationParams) {
+        // create_maze(-1, -1, !rn2(5))
+        create_maze(map, -1, -1, !rn2(5));
+    } else {
+        // create_maze(1, 1, FALSE)
+        create_maze(map, 1, 1, false);
+    }
+
+    // C ref: mkmaze.c:1199-1200
+    // Wallification for non-corridor mazes
+    if (!map.flags.corrmaze) {
+        // C ref: mkmaze.c wallification(2, 2, gx.x_maze_max, gy.y_maze_max)
+        const maxX = Number.isInteger(map._mazeMaxX) ? map._mazeMaxX : (COLNO - 1);
+        const maxY = Number.isInteger(map._mazeMaxY) ? map._mazeMaxY : (ROWNO - 1);
+        wallify_region(map, 2, 2, maxX, maxY);
+    }
+
+    // C ref: mkmaze.c:1202-1208
+    // Place stairs
+    const upstair = mazexy(map);
+    mkstairs(map, upstair.x, upstair.y, true); // up stairs
+
+    if (!isInvocationLevel) {
+        const downstair = mazexy(map);
+        mkstairs(map, downstair.x, downstair.y, false); // down stairs
+    } else {
+        const invPos = pick_vibrasquare_location(map);
+        if (invPos) {
+            maketrap(map, invPos.x, invPos.y, VIBRATING_SQUARE);
+        }
+    }
+
+    // C ref: mkmaze.c:1211 — place_branch(Is_branchlev(&u.uz), 0, 0)
+    // Only invoke placement when this exact level is a branch endpoint.
+    const branchPlacement = resolveBranchPlacementForLevel(dnum, dlevel).placement;
+    if (branchPlacement && branchPlacement !== 'none') {
+        const prev = map._branchPlacementHint;
+        map._branchPlacementHint = branchPlacement;
+        try {
+            place_lregion(map, 0, 0, 0, 0, 0, 0, 0, 0, LR_BRANCH);
+        } finally {
+            if (prev === undefined) delete map._branchPlacementHint;
+            else map._branchPlacementHint = prev;
+        }
+    }
+
+    // C ref: mkmaze.c:1213 — populate_maze()
+    populate_maze(map, depth);
 }
 
 // C ref: mkmaze.c create_maze
@@ -384,12 +458,49 @@ export function create_maze(map, corrwid, wallthick, rmdeadends) {
 
 // C ref: mkmaze.c populate_maze
 export function populate_maze(map, depth) {
-    return dungeonPopulateMaze(map, depth);
+    const placeObjAt = (obj, x, y) => {
+        if (!obj) return;
+        obj.ox = x;
+        obj.oy = y;
+        placeFloorObject(map, obj);
+    };
+
+    for (let i = rn1(8, 11); i > 0; i--) {
+        const pos = mazexy(map);
+        const oclass = rn2(2) ? GEM_CLASS : RANDOM_CLASS;
+        placeObjAt(mkobj(oclass, true), pos.x, pos.y);
+    }
+    for (let i = rn1(10, 2); i > 0; i--) {
+        const pos = mazexy(map);
+        placeObjAt(mksobj(BOULDER, true, false), pos.x, pos.y);
+    }
+    for (let i = rn2(3); i > 0; i--) {
+        const pos = mazexy(map);
+        makemon(PM_MINOTAUR, pos.x, pos.y, NO_MM_FLAGS, depth, map);
+    }
+    for (let i = rn1(5, 7); i > 0; i--) {
+        const pos = mazexy(map);
+        makemon(null, pos.x, pos.y, NO_MM_FLAGS, depth, map);
+    }
+    for (let i = rn1(6, 7); i > 0; i--) {
+        const pos = mazexy(map);
+        const mul = rnd(Math.max(Math.floor(30 / Math.max(12 - depth, 2)), 1));
+        const amount = 1 + rnd(depth + 2) * mul;
+        const gold = mksobj(GOLD_PIECE, true, false);
+        if (gold) {
+            gold.quan = amount;
+            gold.owt = weight(gold);
+        }
+        placeObjAt(gold, pos.x, pos.y);
+    }
+    for (let i = rn1(6, 7); i > 0; i--) {
+        mktrap(map, 0, MKTRAP_MAZEFLAG, null, null, depth);
+    }
 }
 
 // C ref: mkmaze.c maze_remove_deadends
 export function maze_remove_deadends(map, typ) {
-    return dungeonCreateMaze(map, 1, 1, !!typ);
+    return create_maze(map, 1, 1, !!typ);
 }
 
 // C ref: mkmaze.c mazexy
