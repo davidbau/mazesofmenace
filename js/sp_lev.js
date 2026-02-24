@@ -3378,9 +3378,6 @@ export function build_room(opts = {}) {
                 levelState.roomStack.push(parentRoom);
                 levelState.roomDepth++;
 
-                // Add width/height for compatibility
-                room.width = roomW;
-                room.height = roomH;
                 levelState.currentRoom = room;
 
                 if (DEBUG) {
@@ -3456,9 +3453,6 @@ export function build_room(opts = {}) {
                 levelState.roomStack.push(parentRoom);
                 levelState.roomDepth++;
 
-                // Add width/height for compatibility
-                roomCalc.width = roomCalc.hx - roomCalc.lx + 1;
-                roomCalc.height = roomCalc.hy - roomCalc.ly + 1;
                 levelState.currentRoom = roomCalc;
 
                 try {
@@ -3588,10 +3582,7 @@ export function build_room(opts = {}) {
         levelState.roomStack.push(parentRoom);
         levelState.roomDepth++;
 
-        // Set current room - use the actual room object just created
-        // Add width/height for themerms compatibility
-        room.width = roomW;
-        room.height = roomH;
+        // Set current room - use the actual room object just created.
         levelState.currentRoom = room;
 
         try {
