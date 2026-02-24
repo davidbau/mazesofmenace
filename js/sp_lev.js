@@ -1883,17 +1883,16 @@ function flipLevelRandom(extras = false) {
 
     for (const mon of map.monsters || []) {
         if (!mon) continue;
-        const mx = Number.isInteger(mon.mx) ? mon.mx : mon.x;
-        const my = Number.isInteger(mon.my) ? mon.my : mon.y;
+        const mx = mon.mx;
+        const my = mon.my;
+        if (!Number.isInteger(mx) || !Number.isInteger(my)) continue;
         if (!inFlipArea(mx, my)) continue;
         let fx = mx;
         let fy = my;
         if (flipBits & 1) fy = flipY(fy);
         if (flipBits & 2) fx = flipX(fx);
-        if (Number.isInteger(mon.mx)) mon.mx = fx;
-        if (Number.isInteger(mon.my)) mon.my = fy;
-        if (Number.isInteger(mon.x)) mon.x = fx;
-        if (Number.isInteger(mon.y)) mon.y = fy;
+        mon.mx = fx;
+        mon.my = fy;
     }
 
     // C ref: sp_lev.c flip_level(): when extras && flp, set_wall_state().
@@ -5974,11 +5973,6 @@ function createScriptMonster(deferred) {
             if (resolvedFemale !== undefined) {
                 mtmp.female = !!resolvedFemale;
             }
-            // Keep legacy level tests and tooling stable: expose common aliases
-            // used by older test helpers (id,x,y) alongside C-style fields.
-            if (typeof monsterId === "string") mtmp.id = monsterId;
-            mtmp.x = mtmp.mx;
-            mtmp.y = mtmp.my;
             markSpLevTouched(mtmp.mx, mtmp.my);
         }
         return mtmp;
