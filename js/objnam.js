@@ -14,7 +14,7 @@ import {
     GEMSTONE, MINERAL,
     CORPSE, SLIME_MOLD, STRANGE_OBJECT,
     AMULET_OF_YENDOR, FAKE_AMULET_OF_YENDOR, GOLD_PIECE, BELL_OF_OPENING,
-    SPE_NOVEL, SPE_BOOK_OF_THE_DEAD, POT_WATER,
+    SPE_NOVEL, SPE_BOOK_OF_THE_DEAD, POT_WATER, SCR_MAGIC_MAPPING,
     SHORT_SWORD, BROADSWORD, FLAIL, GLAIVE, LOCK_PICK, WOODEN_HARP,
     MAGIC_HARP, KNIFE, PLATE_MAIL, HELMET, LEATHER_GLOVES,
     FOOD_RATION, POT_BOOZE,
@@ -32,7 +32,7 @@ import { type_is_pname } from './mondata.js';
 import {
     xname, doname, erosion_matters,
     is_rustprone, is_corrodeable, is_flammable, is_crackable, is_rottable,
-    Is_container, mksobj, bless, curse, uncurse, weight,
+    Is_container, mksobj, mkobj, bless, curse, uncurse, weight,
 } from './mkobj.js';
 import { isObjectNameKnown } from './discovery.js';
 import { discoverObject } from './discovery.js';
@@ -44,10 +44,6 @@ import {
 } from './hacklib.js';
 import { shk_your } from './shk.js';
 import { rn2, rnd, rn1 } from './rng.js';
-import {
-    ELVEN_MITHRIL_COAT, SPEED_BOOTS, BAG_OF_HOLDING,
-    WAN_TELEPORTATION, RIN_TELEPORT_CONTROL, SCR_MAGIC_MAPPING, POT_GAIN_LEVEL,
-} from './objects.js';
 
 // Re-export existing implementations from mkobj.js
 export { xname, doname, erosion_matters };
@@ -1328,7 +1324,14 @@ export function makesingular(oldstr) {
 export function rnd_otyp_by_wpnskill(skill) {
     let n = 0;
     let otyp = STRANGE_OBJECT;
-    const base = bases[WEAPON_CLASS] || 0;
+    let base = -1;
+    for (let i = 0; i < NUM_OBJECTS; i++) {
+        if (objectData[i]?.oc_class === WEAPON_CLASS) {
+            base = i;
+            break;
+        }
+    }
+    if (base < 0) return otyp;
     for (let i = base; i < NUM_OBJECTS && objectData[i].oc_class === WEAPON_CLASS; i++) {
         if (objectData[i].sub === skill) {
             n++;
@@ -1346,11 +1349,119 @@ export function rnd_otyp_by_wpnskill(skill) {
     return otyp;
 }
 
+function classBounds(oclass) {
+    let lo = -1;
+    let hi = -1;
+    for (let i = 0; i < NUM_OBJECTS; i++) {
+        if (objectData[i]?.oc_class === oclass) {
+            if (lo < 0) lo = i;
+            hi = i;
+        }
+    }
+    return [lo, hi];
+}
+
+// cf. objnam.c:3233 — compare user string against object name/description
+function wishymatch(u_str, o_str, retry_inverted) {
+    if (!u_str || !o_str) return false;
+    if (fuzzymatch(u_str, o_str, ' -', true)) return true;
+
+    if (retry_inverted) {
+        const uOf = strstri(u_str, ' of ');
+        const oOf = strstri(o_str, ' of ');
+        if (uOf && !oOf) {
+            const cut = u_str.toLowerCase().indexOf(' of ');
+            const inverted = `${u_str.slice(cut + 4)} ${u_str.slice(0, cut)}`.trim();
+            if (fuzzymatch(inverted, o_str, ' -', true)) return true;
+        } else if (oOf && !uOf) {
+            const cut = o_str.toLowerCase().indexOf(' of ');
+            const inverted = `${o_str.slice(cut + 4)} ${o_str.slice(0, cut)}`.trim();
+            if (fuzzymatch(u_str, inverted, ' -', true)) return true;
+        }
+    }
+
+    if (o_str.startsWith('dwarvish ')) {
+        if (u_str.toLowerCase().startsWith('dwarven ')) {
+            return fuzzymatch(u_str.slice(8), o_str.slice(9), ' -', true);
+        }
+    } else if (o_str.startsWith('elven ')) {
+        const lu = u_str.toLowerCase();
+        if (lu.startsWith('elvish ')) {
+            return fuzzymatch(u_str.slice(7), o_str.slice(6), ' -', true);
+        }
+        if (lu.startsWith('elfin ')) {
+            return fuzzymatch(u_str.slice(6), o_str.slice(6), ' -', true);
+        }
+    } else if (strstri(o_str, 'helm') && strstri(u_str, 'helmet')) {
+        return wishymatch(u_str.replace(/helmet/gi, 'helm'), o_str, true);
+    } else if (strstri(o_str, 'gauntlets') && strstri(u_str, 'gloves')) {
+        return wishymatch(u_str.replace(/gloves/gi, 'gauntlets'), o_str, true);
+    }
+
+    return false;
+}
+
+// cf. objnam.c:3445 — choose random matching object by name/description
+function rnd_otyp_by_namedesc(name, oclass, xtra_prob) {
+    if (!name || !name.trim()) return STRANGE_OBJECT;
+    const q = name.trim();
+    const check_of = !strstri(q, ' of ');
+    const validobjs = [];
+    let maxprob = 0;
+
+    let lo;
+    let hi;
+    if (oclass) {
+        [lo, hi] = classBounds(oclass);
+    } else {
+        lo = 1;
+        hi = NUM_OBJECTS - 1;
+    }
+    if (lo < 0 || hi < lo) return STRANGE_OBJECT;
+
+    for (let i = lo; i <= hi; i++) {
+        const od = objectData[i];
+        if (!od || !od.name) continue;
+        if (oclass && od.oc_class !== oclass) continue;
+
+        const zn = od.name;
+        const desc = od.desc || null;
+        const uname = od.uname || null;
+        const ofInName = check_of ? strstri(zn, ' of ') : null;
+        const ofInDesc = (check_of && desc) ? strstri(desc, ' of ') : null;
+
+        let matched = wishymatch(q, zn, true);
+        if (!matched && ofInName) {
+            const cut = zn.toLowerCase().indexOf(' of ');
+            if (cut >= 0) matched = wishymatch(q, zn.slice(cut + 4), false);
+        }
+        if (!matched && desc) matched = wishymatch(q, desc, false);
+        if (!matched && ofInDesc) {
+            const cut = desc.toLowerCase().indexOf(' of ');
+            if (cut >= 0) matched = wishymatch(q, desc.slice(cut + 4), false);
+        }
+        if (!matched && uname) matched = wishymatch(q, uname, false);
+
+        if (matched) {
+            validobjs.push(i);
+            maxprob += (od.prob || 0) + xtra_prob;
+        }
+    }
+
+    if (validobjs.length > 0 && maxprob > 0) {
+        let prob = rn2(maxprob);
+        for (let i = 0; i < validobjs.length - 1; i++) {
+            prob -= (objectData[validobjs[i]].prob || 0) + xtra_prob;
+            if (prob < 0) return validobjs[i];
+        }
+        return validobjs[validobjs.length - 1];
+    }
+    return STRANGE_OBJECT;
+}
+
 // cf. objnam.c:3522 — shiny_obj(oclass): random shiny object of class
 export function shiny_obj(oclass) {
-    // Simplified: rnd_otyp_by_namedesc not fully ported
-    // Return STRANGE_OBJECT as fallback
-    return STRANGE_OBJECT;
+    return rnd_otyp_by_namedesc('shiny', oclass, 0);
 }
 
 // cf. objnam.c:5393 — rnd_class(first, last): random type in range
@@ -1375,7 +1486,6 @@ export function rnd_class(first, last) {
 // ============================================================================
 
 // cf. objnam.c:4900 — readobjnam(bp, no_wish): parse wish string into object
-// This is a very large function (~500 lines in C); stubbed for now.
 export function readobjnam(bp, no_wish) {
     if (typeof bp !== 'string') return null;
     let text = bp.trim().toLowerCase();
@@ -1409,46 +1519,100 @@ export function readobjnam(bp, no_wish) {
         text = text.slice(speMatch[0].length).trim();
     }
 
-    // C-like subset for current wizard-session wishes:
-    // resolve noun phrase then let mksobj() do core initialization RNG.
-    let otyp = STRANGE_OBJECT;
-    if (text.includes('potion') && text.includes('gain level')) {
-        rn2(21);
-        otyp = POT_GAIN_LEVEL;
-    } else if (text.includes('elven mithril-coat')) {
-        rn2(16);
-        otyp = ELVEN_MITHRIL_COAT;
-    } else if (text.includes('speed boots')) {
-        rn2(13);
-        otyp = SPEED_BOOTS;
-    } else if (text.includes('bag of holding')) {
-        rn2(21);
-        otyp = BAG_OF_HOLDING;
-    } else if (text.includes('wand') && text.includes('teleportation')) {
-        rn2(46);
-        otyp = WAN_TELEPORTATION;
-    } else if (text.includes('ring') && text.includes('teleport control')) {
-        rn2(2);
-        otyp = RIN_TELEPORT_CONTROL;
-    } else if (text.includes('scroll') && text.includes('magic mapping')) {
-        rn2(46);
-        otyp = SCR_MAGIC_MAPPING;
-    } else {
-        // Minimal fallback: direct exact-name match.
-        for (let i = 0; i < NUM_OBJECTS; i++) {
-            const nm = (objectData[i]?.name || '').toLowerCase();
-            if (nm && (text === nm || text === `a ${nm}` || text === `an ${nm}`)) {
-                otyp = i;
+    if (text.startsWith('a ')) text = text.slice(2).trim();
+    else if (text.startsWith('an ')) text = text.slice(3).trim();
+    else if (text.startsWith('the ')) text = text.slice(4).trim();
+
+    let oclass = 0;
+    let actualn = text;
+    let forcedTyp = 0;
+    const classPrefixes = [
+        ['potions of ', POTION_CLASS],
+        ['potion of ', POTION_CLASS],
+        ['scrolls of ', SCROLL_CLASS],
+        ['scroll of ', SCROLL_CLASS],
+        ['wands of ', WAND_CLASS],
+        ['wand of ', WAND_CLASS],
+        ['rings of ', RING_CLASS],
+        ['ring of ', RING_CLASS],
+        ['spellbooks of ', SPBOOK_CLASS],
+        ['spellbook of ', SPBOOK_CLASS],
+        ['amulets of ', AMULET_CLASS],
+        ['amulet of ', AMULET_CLASS],
+    ];
+    for (const [prefix, cls] of classPrefixes) {
+        if (actualn.startsWith(prefix)) {
+            oclass = cls;
+            actualn = actualn.slice(prefix.length).trim();
+            break;
+        }
+    }
+
+    if (!oclass) {
+        const classSuffixes = [
+            [' potions', POTION_CLASS],
+            [' potion', POTION_CLASS],
+            [' scrolls', SCROLL_CLASS],
+            [' scroll', SCROLL_CLASS],
+            [' wands', WAND_CLASS],
+            [' wand', WAND_CLASS],
+            [' rings', RING_CLASS],
+            [' ring', RING_CLASS],
+            [' amulets', AMULET_CLASS],
+            [' amulet', AMULET_CLASS],
+            [' spellbooks', SPBOOK_CLASS],
+            [' spellbook', SPBOOK_CLASS],
+        ];
+        for (const [suffix, cls] of classSuffixes) {
+            if (actualn.endsWith(suffix)) {
+                oclass = cls;
+                actualn = actualn.slice(0, -suffix.length).trim();
                 break;
             }
         }
     }
+    if (actualn.endsWith(' dragon scale mail')) {
+        oclass = ARMOR_CLASS;
+        for (let i = 0; i < NUM_OBJECTS; i++) {
+            if ((objectData[i]?.name || '').toLowerCase() === actualn) {
+                forcedTyp = i;
+                break;
+            }
+        }
+        actualn = 'scale mail';
+    }
+    if (!oclass) {
+        if (actualn === 'potion' || actualn === 'potions') oclass = POTION_CLASS;
+        else if (actualn === 'scroll' || actualn === 'scrolls') oclass = SCROLL_CLASS;
+        else if (actualn === 'wand' || actualn === 'wands') oclass = WAND_CLASS;
+        else if (actualn === 'ring' || actualn === 'rings') oclass = RING_CLASS;
+        else if (actualn === 'amulet' || actualn === 'amulets') oclass = AMULET_CLASS;
+        else if (actualn === 'spellbook' || actualn === 'spellbooks') oclass = SPBOOK_CLASS;
+    }
 
-    if (otyp <= STRANGE_OBJECT || otyp >= NUM_OBJECTS) return null;
-    if (no_wish && objectData[otyp]?.no_wish) return null;
+    let otyp = rnd_otyp_by_namedesc(actualn, oclass, 1);
+    if ((otyp <= STRANGE_OBJECT || otyp >= NUM_OBJECTS) && actualn !== text) {
+        otyp = rnd_otyp_by_namedesc(text, oclass, 1);
+    }
+    if (otyp <= STRANGE_OBJECT || otyp >= NUM_OBJECTS) {
+        otyp = rnd_otyp_by_namedesc(actualn, 0, 1);
+    }
+    if ((otyp <= STRANGE_OBJECT || otyp >= NUM_OBJECTS) && actualn !== text) {
+        otyp = rnd_otyp_by_namedesc(text, 0, 1);
+    }
+    if (forcedTyp > STRANGE_OBJECT && forcedTyp < NUM_OBJECTS) {
+        otyp = forcedTyp;
+    }
 
-    const otmp = mksobj(otyp, true, false);
+    let otmp = null;
+    if (otyp > STRANGE_OBJECT && otyp < NUM_OBJECTS) {
+        if (no_wish && objectData[otyp]?.no_wish) return null;
+        otmp = mksobj(otyp, true, false);
+    } else if (oclass) {
+        otmp = mkobj(oclass, false);
+    }
     if (!otmp) return null;
+    otyp = otmp.otyp;
 
     if (quan > 1) {
         otmp.quan = quan;
@@ -1463,9 +1627,7 @@ export function readobjnam(bp, no_wish) {
     }
     // C wish parser returns an object as if its appearance has just been seen.
     otmp.dknown = true;
-    if (otyp === SCR_MAGIC_MAPPING) {
-        discoverObject(otyp, true, true);
-    }
+    if (otyp === SCR_MAGIC_MAPPING) discoverObject(otyp, true, true);
 
     return otmp;
 }
