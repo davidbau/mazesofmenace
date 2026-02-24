@@ -2567,18 +2567,18 @@ No function symbols parsed from isaac64.c.
 ### mklev.c -> mklev.js
 | C Line | C Function | JS Line | Alignment |
 |--------|------------|---------|-----------|
-| 571 | `add_door` | mklev.js:444 | Aligned |
+| 571 | `add_door` | mklev.js:474 | Aligned |
 | 305 | `add_room` | - | Missing |
 | 319 | `add_subroom` | - | Missing |
-| 553 | `alloc_doors` | mklev.js:440 | Aligned |
-| 1746 | `bydoor` | mklev.js:20 | Aligned |
+| 553 | `alloc_doors` | mklev.js:465 | Aligned |
+| 1746 | `bydoor` | mklev.js:56 | Aligned |
 | 678 | `cardinal_nextto_room` | mklev.js:242 | Aligned |
-| 1194 | `chk_okdoor` | mklev.js:525 | Aligned |
+| 1194 | `chk_okdoor` | mklev.js:554 | Aligned |
 | 847 | `clear_level_structures` | - | Missing |
 | 825 | `count_level_features` | - | Missing |
 | 232 | `do_room_or_subroom` | - | Missing |
-| 1796 | `dodoor` | mklev.js:520 | Aligned |
-| 612 | `dosdoor` | mklev.js:487 | Aligned |
+| 1796 | `dodoor` | mklev.js:549 | Aligned |
+| 612 | `dosdoor` | mklev.js:516 | Aligned |
 | 935 | `fill_ordinary_room` | - | Missing |
 | 1656 | `find_branch_room` | - | Missing |
 | 2299 | `find_okay_roompos` | mklev.js:298 | Aligned |
@@ -2596,8 +2596,8 @@ No function symbols parsed from isaac64.c.
 | 1247 | `makelevel` | - | Missing |
 | 737 | `makeniche` | mklev.js:369 | Aligned |
 | 358 | `makerooms` | - | Missing |
-| 818 | `makevtele` | mklev.js:434 | Aligned |
-| 1789 | `maybe_sdoor` | mklev.js:127 | Aligned |
+| 818 | `makevtele` | mklev.js:460 | Aligned |
+| 1789 | `maybe_sdoor` | mklev.js:154 | Aligned |
 | 1445 | `mineralize` | - | Missing |
 | 2620 | `mk_knox_portal` | - | Missing |
 | 2328 | `mkaltar` | mklev.js:330 | Aligned |
@@ -2607,17 +2607,17 @@ No function symbols parsed from isaac64.c.
 | 2406 | `mkinvokearea` | - | Missing |
 | 2499 | `mkinvpos` | - | Missing |
 | 1573 | `mklev` | - | Missing |
-| 1219 | `mklev_sanity_check` | mklev.js:543 | Aligned |
+| 1219 | `mklev_sanity_check` | mklev.js:572 | Aligned |
 | 2313 | `mksink` | mklev.js:320 | Aligned |
 | 2155 | `mkstairs` | mklev.js:142 | Aligned |
 | 2032 | `mktrap` | - | Missing |
 | 1811 | `mktrap_victim` | - | Missing |
-| 1802 | `occupied` | mklev.js:284 | Aligned |
-| 1775 | `okdoor` | mklev.js:32 | Aligned |
+| 1802 | `occupied` | mklev.js:310 | Aligned |
+| 1775 | `okdoor` | mklev.js:68 | Aligned |
 | 1687 | `place_branch` | - | Missing |
 | 698 | `place_niche` | mklev.js:255 | Aligned |
 | 1673 | `pos_to_room` | - | Missing |
-| 211 | `sort_rooms` | mklev.js:32 | Aligned |
+| 211 | `sort_rooms` | mklev.js:34 | Aligned |
 | 1170 | `themerooms_post_level_generate` | - | Missing |
 | 1593 | `topologize` | - | Missing |
 | 1934 | `traptype_rnd` | - | Missing |
