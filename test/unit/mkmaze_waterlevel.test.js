@@ -69,12 +69,18 @@ describe('mkmaze waterlevel state helpers', () => {
         setup_waterlevel(map, { isWaterLevel: true });
         set_wportal(map, 10, 10, null);
         fumaroles(map, [{ x: 11, y: 10 }]);
+        map._water.heroPos = { x: 10, y: 10, dx: 0, dy: 0 };
+        map._water.onHeroMoved = () => {};
+        map._water.onVisionRecalc = () => {};
 
         unsetup_waterlevel(map);
         assert.equal(map._water.active, false);
         assert.equal(map._water.bubbles.length, 0);
         assert.equal(map._water.portal, null);
         assert.equal(map._water.fumaroles.length, 0);
+        assert.equal(map._water.heroPos, null);
+        assert.equal(map._water.onHeroMoved, null);
+        assert.equal(map._water.onVisionRecalc, null);
     });
 
     it('movebubbles shifts fumaroles in deterministic move mode', () => {

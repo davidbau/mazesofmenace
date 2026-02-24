@@ -677,6 +677,17 @@ export { wallification, fix_wall_spines };
 // C ref: mkmaze.c baalz_fixup/fixup_special/check_ransacked/etc.
 export function baalz_fixup(map, state = {}) {
     if (!map) return false;
+    const relocate_or_remove = (mx, my) => {
+        const m = map.monsterAt?.(mx, my);
+        if (!m) return;
+        const pos = enexto(mx, my, map);
+        if (pos) {
+            m.mx = pos.x;
+            m.my = pos.y;
+        } else if (map.removeMonster) {
+            map.removeMonster(m);
+        }
+    };
     const midY = Math.trunc(ROWNO / 2);
     let lastX = 0;
     let inX1 = COLNO;
@@ -745,16 +756,7 @@ export function baalz_fixup(map, state = {}) {
         if (loc && (loc.typ === TLWALL || loc.typ === TRWALL) && down && down.typ === TUWALL) {
             loc.typ = (loc.typ === TLWALL) ? BRCORNER : BLCORNER;
             down.typ = HWALL;
-            const m = map.monsterAt?.(x, y);
-            if (m) {
-                const pos = enexto(x, y, map);
-                if (pos) {
-                    m.mx = pos.x;
-                    m.my = pos.y;
-                } else if (map.removeMonster) {
-                    map.removeMonster(m);
-                }
-            }
+            relocate_or_remove(x, y);
         }
     }
     x = delX2;
@@ -765,16 +767,7 @@ export function baalz_fixup(map, state = {}) {
         if (loc && (loc.typ === TLWALL || loc.typ === TRWALL) && up && up.typ === TDWALL) {
             loc.typ = (loc.typ === TLWALL) ? TRCORNER : TLCORNER;
             up.typ = HWALL;
-            const m = map.monsterAt?.(x, y);
-            if (m) {
-                const pos = enexto(x, y, map);
-                if (pos) {
-                    m.mx = pos.x;
-                    m.my = pos.y;
-                } else if (map.removeMonster) {
-                    map.removeMonster(m);
-                }
-            }
+            relocate_or_remove(x, y);
         }
     }
     map._specialFixups = map._specialFixups || {};
@@ -1320,6 +1313,9 @@ export function unsetup_waterlevel(map) {
         map._water.active = false;
         map._water.bubbles = [];
         map._water.heroBubble = null;
+        map._water.heroPos = null;
+        map._water.onHeroMoved = null;
+        map._water.onVisionRecalc = null;
         map._water.fumaroles = [];
         map._water.portal = null;
     }

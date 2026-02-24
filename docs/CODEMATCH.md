@@ -2660,36 +2660,36 @@ No function symbols parsed from isaac64.c.
 | 45 | `iswall` | mkmaze.js:29 | Aligned |
 | 59 | `iswall_or_stone` | mkmaze.js:41 | Aligned |
 | 1128 | `makemaz` | mkmaze.js:209 | Aligned |
-| 1924 | `maybe_adjust_hero_bubble` | mkmaze.js:1370 | Partial — now applies C-style 50% hero-direction steering for current bubble |
+| 1924 | `maybe_adjust_hero_bubble` | mkmaze.js:1366 | Partial — now applies C-style 50% hero-direction steering for current bubble |
 | 309 | `maze0xy` | mkmaze.js:116 | Aligned |
 | 895 | `maze_inbounds` | mkmaze.js:177 | Aligned |
 | 905 | `maze_remove_deadends` | mkmaze.js:422 | Aligned |
 | 1317 | `mazexy` | mkmaze.js:507 | Aligned |
 | 781 | `migr_booty_item` | mkmaze.js:851 | Aligned |
 | 718 | `migrate_orc` | mkmaze.js:878 | Aligned |
-| 1868 | `mk_bubble` | mkmaze.js:1328 | Partial — C bubble mask catalog + bounded seed placement ported |
+| 1868 | `mk_bubble` | mkmaze.js:1324 | Partial — C bubble mask catalog + bounded seed placement ported |
 | 1459 | `mkportal` | mkmaze.js:181 | Aligned |
-| 1534 | `movebubbles` | mkmaze.js:1061 | Partial — now re-establishes water/air base terrain each tick, auto-discovers water portal, carries objects/monsters/traps, supports hero transport hooks, and triggers optional vision recalc callback; full C display side-effects remain |
-| 1947 | `mv_bubble` | mkmaze.js:1391 | Partial — bounded movement/collision bounce, bubble drawing, and stochastic heading updates ported; full C display side-effects remain |
+| 1534 | `movebubbles` | mkmaze.js:1054 | Partial — now re-establishes water/air base terrain each tick, auto-discovers water portal, carries objects/monsters/traps, supports hero transport hooks, and triggers optional vision recalc callback; full C display side-effects remain |
+| 1947 | `mv_bubble` | mkmaze.js:1387 | Partial — bounded movement/collision bounce, bubble drawing, and stochastic heading updates ported; full C display side-effects remain |
 | 297 | `okay` | mkmaze.js:102 | Aligned |
 | 1043 | `pick_vibrasquare_location` | mkmaze.js:537 | Aligned |
 | 356 | `place_lregion` | mkmaze.js:300 | Aligned |
 | 1098 | `populate_maze` | mkmaze.js:460 | Aligned |
 | 413 | `put_lregion_here` | mkmaze.js:238 | Aligned |
-| 1745 | `restore_waterlevel` | mkmaze.js:1207 | Partial — structured water-state restore ported with bubble rehydrate/redraw |
-| 1718 | `save_waterlevel` | mkmaze.js:1191 | Partial — structured water-state snapshot ported (serializes bubble runtime state) |
+| 1745 | `restore_waterlevel` | mkmaze.js:1200 | Partial — structured water-state restore ported with bubble rehydrate/redraw |
+| 1718 | `save_waterlevel` | mkmaze.js:1184 | Partial — structured water-state snapshot ported (serializes bubble runtime state) |
 | 77 | `set_levltyp` | mkmaze.js:53 | Aligned |
 | 125 | `set_levltyp_lit` | mkmaze.js:61 | Aligned |
-| 1797 | `set_wportal` | mkmaze.js:1235 | Partial — now supports C-style portal discovery from on-map MAGIC_PORTAL trap |
-| 1807 | `setup_waterlevel` | mkmaze.js:1250 | Partial — water/air conversion + C-style mk_bubble seeding + map level-type flags ported |
+| 1797 | `set_wportal` | mkmaze.js:1228 | Partial — now supports C-style portal discovery from on-map MAGIC_PORTAL trap |
+| 1807 | `setup_waterlevel` | mkmaze.js:1243 | Partial — water/air conversion + C-style mk_bubble seeding + map level-type flags ported |
 | 749 | `shiny_orc_stuff` | mkmaze.js:838 | Aligned |
 | 800 | `stolen_booty` | mkmaze.js:866 | Aligned |
-| 1855 | `unsetup_waterlevel` | mkmaze.js:1318 | Partial |
+| 1855 | `unsetup_waterlevel` | mkmaze.js:1311 | Partial |
 | 1233 | `walkfrom` | mkmaze.js:1524 | Aligned |
 | 1280 | `walkfrom` | mkmaze.js:1524 | Aligned |
 | 198 | `wall_cleanup` | mkmaze.js:84 | Aligned |
 | 290 | `wallification` | mkmaze.js `wallification` | Aligned (re-export) |
-| 1684 | `water_friction` | mkmaze.js:1158 | Partial — C-style direction perturbation for underwater movement |
+| 1684 | `water_friction` | mkmaze.js:1151 | Partial — C-style direction perturbation for underwater movement |
 
 ### mkobj.c -> mkobj.js
 | C Line | C Function | JS Line | Alignment |
