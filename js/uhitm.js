@@ -35,7 +35,7 @@ import {
 import { mkobj, mkcorpstat, RANDOM_CLASS, next_ident, xname } from './mkobj.js';
 import { hitval as weapon_hitval, dmgval, abon, dbon, weapon_hit_bonus, weapon_dam_bonus } from './weapon.js';
 import {
-    nonliving, monDisplayName, is_undead, is_demon,
+    nonliving, monDisplayName, monNam, is_undead, is_demon,
     magic_negation,
     resists_fire, resists_cold, resists_elec, resists_acid,
     resists_poison, resists_sleep, resists_ston,
@@ -1666,6 +1666,23 @@ function passive(mon, mhit, malive) {
 
 // cf. uhitm.c do_attack() / hitum() / known_hitum() — hero attacks monster
 export function playerAttackMonster(player, monster, display, map) {
+    // C ref: uhitm.c:538-549 — first attack while wielding a non-weapon
+    // emits "You begin bashing monsters with <item>."
+    const wielded = player.weapon;
+    const wieldedOd = wielded ? objectData[wielded.otyp] : null;
+    let bashPrefix = null;
+    const improvisedWield = !!wielded
+        && wieldedOd?.oc_class !== WEAPON_CLASS
+        && !wieldedOd?.weptool;
+    if (improvisedWield) {
+        if (player._bashmsgWepObj !== wielded) {
+            bashPrefix = `You begin bashing monsters with your ${xname(wielded)}.`;
+        }
+        player._bashmsgWepObj = wielded;
+    } else {
+        player._bashmsgWepObj = null;
+    }
+
     // cf. uhitm.c:777 — find_roll_to_hit, mon_maybe_unparalyze, rnd(20)
     const toHit = find_roll_to_hit(player, monster, AT_WEAP, player.weapon);
     mon_maybe_unparalyze(monster);
@@ -1677,10 +1694,18 @@ export function playerAttackMonster(player, monster, display, map) {
 
     if (!mhit) {
         // cf. uhitm.c:608 — known_hitum miss path → missum()
-        display.putstr_message(`You miss the ${monDisplayName(monster)}.`);
+        if (bashPrefix) {
+            display.putstr_message(`${bashPrefix}  You miss ${monNam(monster)}.`);
+        } else {
+            display.putstr_message(`You miss ${monNam(monster)}.`);
+        }
         // cf. uhitm.c:788 passive() after miss
         passive(monster, false, true);
         return false;
+    }
+
+    if (bashPrefix) {
+        display.putstr_message(bashPrefix);
     }
 
     if (player.weapon && player.weapon.oclass === POTION_CLASS) {
