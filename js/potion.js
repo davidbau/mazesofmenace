@@ -9,17 +9,25 @@ import { POTION_CLASS, POT_WATER,
          POT_HEALING, POT_EXTRA_HEALING, POT_FULL_HEALING,
          POT_GAIN_ENERGY, POT_ACID, POT_INVISIBILITY,
          POT_SEE_INVISIBLE, POT_RESTORE_ABILITY, POT_GAIN_ABILITY,
-         POT_GAIN_LEVEL, POT_BOOZE } from './objects.js';
+         POT_GAIN_LEVEL, POT_BOOZE,
+         POT_OIL, POT_POLYMORPH, POT_LEVITATION,
+         POT_ENLIGHTENMENT, POT_FRUIT_JUICE,
+         POT_MONSTER_DETECTION, POT_OBJECT_DETECTION,
+         STRANGE_OBJECT, UNICORN_HORN, AMETHYST,
+         COIN_CLASS, WEAPON_CLASS } from './objects.js';
 import { FOUNTAIN, A_CON, A_STR, A_WIS, A_INT, A_DEX, A_CHA,
          TIMEOUT, CONFUSION, STUNNED, BLINDED, HALLUC, HALLUC_RES,
          SICK, SICK_RES, DEAF,
          VOMITING, GLIB, FAST, STONED, SLIMED,
-         FREE_ACTION, ACID_RES,
+         FREE_ACTION, ACID_RES, SLEEP_RES, POISON_RES,
          SICK_VOMITABLE, SICK_NONVOMITABLE,
          FROMOUTSIDE, INVIS, SEE_INVIS } from './config.js';
+
+const A_MAX = 6; // number of attributes (STR, INT, WIS, DEX, CON, CHA)
+const SICK_ALL = (SICK_VOMITABLE | SICK_NONVOMITABLE);
 import { exercise } from './attrib_exercise.js';
 import { drinkfountain } from './fountain.js';
-import { pline, You, You_feel, You_cant } from './pline.js';
+import { pline, You, Your, You_feel, You_cant } from './pline.js';
 import { registerMakeStatusFns } from './timeout.js';
 
 
@@ -307,15 +315,54 @@ function make_glib(player, xtime, talk) {
     set_itimeout(player, GLIB, xtime);
 }
 
-// TODO: cf. potion.c speed_up() — increase hero movement speed (full version)
+// cf. potion.c speed_up() — character becomes very fast temporarily
+function speed_up(player, duration) {
+    // C ref: potion.c:2904-2914
+    const veryFast = player.getPropTimeout(FAST) > 0;
+    if (!veryFast)
+        You("are suddenly moving %sfaster.", player.fast ? "" : "much ");
+    else
+        Your("legs get new energy.");
+    exercise(player, A_DEX, true);
+    incr_itimeout(player, FAST, duration);
+}
 
 // ============================================================
 // 3. Quaff mechanics
 // ============================================================
 
-// TODO: cf. potion.c self_invis_message() — "you can't see yourself" message
-// TODO: cf. potion.c ghost_from_bottle() — release ghost from smoky potion
-// TODO: cf. potion.c drink_ok() — validate object is drinkable
+// cf. potion.c self_invis_message() — "you can't see yourself" message
+function self_invis_message(player) {
+    // C ref: potion.c:470-478
+    pline("%s %s.",
+          player.hallucinating ? "Far out, man!  You"
+                               : "Gee!  All of a sudden, you",
+          player.seeInvisible ? "can see right through yourself"
+                              : "can't see yourself");
+}
+
+// cf. potion.c ghost_from_bottle() — release ghost from smoky potion
+function ghost_from_bottle(player, map) {
+    // C ref: potion.c:480-500
+    // makemon(&mons[PM_GHOST], ...) — ghost creation not yet fully ported
+    if (player.blind) {
+        pline("As you open the bottle, something emerges.");
+    } else {
+        pline("As you open the bottle, an enormous ghost emerges!");
+    }
+    You("are frightened to death, and unable to move.");
+    // nomul(-3) — immobilization
+    player.sleeping = true;
+    player.sleepTimeout = 3;
+    player.sleepWakeupMessage = "You regain your composure.";
+}
+
+// cf. potion.c drink_ok() — validate object is drinkable
+function drink_ok(obj) {
+    // C ref: potion.c:504-521
+    if (!obj) return false;
+    return obj.oclass === POTION_CLASS;
+}
 
 // cf. potion.c dodrink() — quaff a potion (partial)
 // Implemented: fountain check, inventory selection, healing effects.
@@ -731,60 +778,676 @@ function peffects(player, otmp, display) {
 // 6. Healing / support
 // ============================================================
 
-// TODO: cf. potion.c strange_feeling() — "strange feeling" for unIDed potions
-// TODO: cf. potion.c bottlename() — return potion container name
+// cf. potion.c strange_feeling() — "strange feeling" for unIDed potions
+function strange_feeling(player, obj, txt) {
+    // C ref: potion.c:1456-1472
+    if (!txt) {
+        You("have a %s feeling for a moment, then it passes.",
+            player.hallucinating ? "normal" : "strange");
+    } else {
+        pline("%s", txt);
+    }
+    // C ref: if (obj) trycall(obj); useup(obj); — ID and useup deferred to caller
+}
+
+// cf. potion.c bottlename() — return potion container name
+const _bottlenames = ["bottle", "phial", "flagon", "carafe", "flask", "jar", "vial"];
+const _hbottlenames = [
+    "jug", "pitcher", "barrel", "tin", "bag", "box", "glass", "beaker",
+    "tumbler", "vase", "flowerpot", "pan", "thingy", "mug", "teacup",
+    "teapot", "keg", "bucket", "thermos", "amphora", "wineskin", "parcel",
+    "bowl", "ampoule"
+];
+function bottlename(player) {
+    // C ref: potion.c:1483-1490
+    if (player && player.hallucinating)
+        return _hbottlenames[rn2(_hbottlenames.length)];
+    else
+        return _bottlenames[rn2(_bottlenames.length)];
+}
 
 // ============================================================
 // 7. Dipping (water)
 // ============================================================
 
-// TODO: cf. potion.c H2Opotion_dip() — dip item into water (bless/curse/dilute)
+// cf. potion.c H2Opotion_dip() — dip item into water (bless/curse/dilute)
+function H2Opotion_dip(potion, targobj, useeit, objphrase) {
+    // C ref: potion.c:1493-1585
+    if (!potion || potion.otyp !== POT_WATER)
+        return false;
+
+    let func = null;
+    let glowcolor = null;
+    let altfmt = false;
+    let res = false;
+
+    if (potion.blessed) {
+        if (targobj.cursed) {
+            func = 'uncurse';
+            glowcolor = 'amber';
+        } else if (!targobj.blessed) {
+            func = 'bless';
+            glowcolor = 'light blue';
+            altfmt = true;
+        }
+    } else if (potion.cursed) {
+        if (targobj.blessed) {
+            func = 'unbless';
+            glowcolor = 'brown';
+        } else if (!targobj.cursed) {
+            func = 'curse';
+            glowcolor = 'black';
+            altfmt = true;
+        }
+    }
+    // uncursed water: water_damage not yet ported, skip
+
+    if (func) {
+        if (useeit) {
+            if (altfmt)
+                pline("%s with %s aura.", objphrase, glowcolor === 'amber' ? 'an amber' : `a ${glowcolor}`);
+            else
+                pline("%s %s.", objphrase, glowcolor);
+        }
+        // apply BUC change
+        switch (func) {
+        case 'uncurse':
+            targobj.cursed = false;
+            break;
+        case 'bless':
+            targobj.blessed = true;
+            targobj.cursed = false;
+            break;
+        case 'unbless':
+            targobj.blessed = false;
+            break;
+        case 'curse':
+            targobj.cursed = true;
+            targobj.blessed = false;
+            break;
+        }
+        res = true;
+    }
+    return res;
+}
 
 // ============================================================
 // 8. Throwing / projectile
 // ============================================================
 
-// TODO: cf. potion.c impact_arti_light() — artifact light on potion impact
-// TODO: cf. potion.c potionhit() — potion hits a monster or hero
+// cf. potion.c impact_arti_light() — artifact light on potion impact
+function impact_arti_light(obj, worsen, seeit) {
+    // C ref: potion.c:1590-1617
+    // Simplified: artifact light interaction requires mksobj infrastructure
+    // not yet available. Stub for now.
+    if ((worsen ? obj.cursed : obj.blessed)) return;
+    // obj_resists check omitted — would need full artifact system
+}
+
+// cf. potion.c potionhit() — potion hits a monster or hero
+// C ref: potion.c:1619-1914
+function potionhit(mon, obj, how, player, map) {
+    const isyou = (mon === player);
+    const botlnam = bottlename(player);
+    const your_fault = (how <= 1); // POTHIT_HERO_THROW = 1
+
+    if (isyou) {
+        pline("The %s crashes on your head and breaks into shards.", botlnam);
+        // losehp(rnd(2)) — damage from bottle
+        const bottleDmg = rnd(2);
+        player.hp -= bottleDmg;
+        if (player.hp < 1) player.hp = 1;
+    } else {
+        // hit a monster
+        if (rn2(5) && mon.mhp > 1)
+            mon.mhp--;
+    }
+
+    if (isyou) {
+        // hero potion effects from being hit
+        switch (obj.otyp) {
+        case POT_ACID:
+            if (!(player.uprops[ACID_RES] &&
+                  (player.uprops[ACID_RES].intrinsic || player.uprops[ACID_RES].extrinsic))) {
+                pline("This burns%s!",
+                      obj.blessed ? " a little" : obj.cursed ? " a lot" : "");
+                const dmg = c_d(obj.cursed ? 2 : 1, obj.blessed ? 4 : 8);
+                player.hp -= dmg;
+                if (player.hp < 1) player.hp = 1;
+            }
+            break;
+        case POT_POLYMORPH:
+            You_feel("a little %s.", player.hallucinating ? "normal" : "strange");
+            break;
+        // other potion types: oil lamp explosion, etc. omitted
+        }
+    } else {
+        // monster potion effects
+        let angermon = your_fault;
+        let cureblind = false;
+
+        switch (obj.otyp) {
+        case POT_FULL_HEALING:
+            cureblind = true;
+            // fallthrough
+        case POT_EXTRA_HEALING:
+            if (obj.otyp === POT_EXTRA_HEALING || obj.otyp === POT_FULL_HEALING) {
+                if (!obj.cursed) cureblind = true;
+            }
+            // fallthrough
+        case POT_HEALING:
+            if (obj.otyp === POT_HEALING && obj.blessed) cureblind = true;
+            // fallthrough
+        case POT_RESTORE_ABILITY:
+        case POT_GAIN_ABILITY:
+            angermon = false;
+            if (mon.mhp < (mon.mhpmax || mon.mhp)) {
+                mon.mhp = mon.mhpmax || mon.mhp;
+            }
+            break;
+        case POT_SICKNESS:
+            if (mon.mhp > 2) {
+                mon.mhp = Math.floor(mon.mhp / 2);
+            }
+            break;
+        case POT_CONFUSION:
+        case POT_BOOZE:
+            mon.mconf = true;
+            break;
+        case POT_INVISIBILITY:
+            angermon = false;
+            // mon_set_minvis not called here to avoid import complexity
+            break;
+        case POT_SLEEPING:
+            // sleep_monst(mon, rnd(12), POTION_CLASS)
+            break;
+        case POT_PARALYSIS:
+            if (mon.mcanmove !== false) {
+                mon.mcanmove = false;
+                mon.mfrozen = rnd(25);
+            }
+            break;
+        case POT_SPEED:
+            angermon = false;
+            // mon_adjust_speed(mon, 1, obj) — speed adjustment not called here
+            break;
+        case POT_BLINDNESS:
+            if (mon.mcansee !== false) {
+                const btmp = Math.min(64 + rn2(32) + rn2(32) + (mon.mblinded || 0), 127);
+                mon.mblinded = btmp;
+                mon.mcansee = false;
+            }
+            break;
+        case POT_ACID: {
+            const acidDmg = c_d(obj.cursed ? 2 : 1, obj.blessed ? 4 : 8);
+            mon.mhp -= acidDmg;
+            break;
+        }
+        case POT_WATER:
+            // holy/unholy water vs undead — simplified
+            break;
+        }
+
+        // wake monster if angered
+        if (mon.mhp > 0) {
+            if (angermon) {
+                mon.msleeping = false;
+                mon.mpeaceful = false;
+            } else {
+                mon.msleeping = false;
+            }
+        }
+    }
+
+    // potionbreathe for nearby hero
+    // C ref: distance check omitted for simplicity
+}
 
 // ============================================================
 // 9. Vapor / gas
 // ============================================================
 
-// TODO: cf. potion.c potionbreathe() — breathe potion vapors
+// cf. potion.c potionbreathe() — breathe potion vapors
+// C ref: potion.c:1917-2104
+function potionbreathe(player, obj) {
+    let cureblind = false;
+
+    switch (obj.otyp) {
+    case POT_RESTORE_ABILITY:
+    case POT_GAIN_ABILITY:
+        if (obj.cursed) {
+            pline("Ulch!  That potion smells terrible!");
+        } else {
+            // restore one random attribute toward max
+            let i = rn2(A_MAX);
+            for (let ii = 0; ii < A_MAX; ii++) {
+                if (player.attributes && player.attrmax &&
+                    player.attributes[i] < player.attrmax[i]) {
+                    player.attributes[i]++;
+                    player._botl = true;
+                    if (!obj.blessed) break;
+                }
+                i = (i + 1) % A_MAX;
+            }
+        }
+        break;
+    case POT_FULL_HEALING:
+        if (player.hp < player.hpmax) {
+            player.hp++;
+            player._botl = true;
+        }
+        cureblind = true;
+        // fallthrough
+    case POT_EXTRA_HEALING:
+        if (player.hp < player.hpmax) {
+            player.hp++;
+            player._botl = true;
+        }
+        if (!obj.cursed) cureblind = true;
+        // fallthrough
+    case POT_HEALING:
+        if (player.hp < player.hpmax) {
+            player.hp++;
+            player._botl = true;
+        }
+        if (obj.blessed) cureblind = true;
+        if (cureblind) {
+            make_blinded(player, 0, true);
+            make_deaf(player, 0, true);
+        }
+        exercise(player, A_CON, true);
+        break;
+    case POT_SICKNESS:
+        if (player.hp <= 5)
+            player.hp = 1;
+        else
+            player.hp -= 5;
+        player._botl = true;
+        exercise(player, A_CON, false);
+        break;
+    case POT_HALLUCINATION:
+        You("have a momentary vision.");
+        break;
+    case POT_CONFUSION:
+    case POT_BOOZE:
+        if (!player.getPropTimeout(CONFUSION))
+            You_feel("somewhat dizzy.");
+        make_confused(player, itimeout_incr(player.getPropTimeout(CONFUSION), rnd(5)), false);
+        break;
+    case POT_INVISIBILITY:
+        if (!player.blind && !player.invisible) {
+            pline("For an instant you %s!",
+                  player.seeInvisible ? "could see right through yourself"
+                                      : "couldn't see yourself");
+        }
+        break;
+    case POT_PARALYSIS:
+        if (!(player.uprops[FREE_ACTION] &&
+              (player.uprops[FREE_ACTION].intrinsic || player.uprops[FREE_ACTION].extrinsic))) {
+            pline("Something seems to be holding you.");
+            player.sleeping = true;
+            player.sleepTimeout = rnd(5);
+            player.sleepWakeupMessage = "You can move again.";
+            exercise(player, A_DEX, false);
+        } else {
+            You("stiffen momentarily.");
+        }
+        break;
+    case POT_SLEEPING:
+        if (!(player.uprops[FREE_ACTION] &&
+              (player.uprops[FREE_ACTION].intrinsic || player.uprops[FREE_ACTION].extrinsic)) &&
+            !(player.uprops[SLEEP_RES] &&
+              (player.uprops[SLEEP_RES].intrinsic || player.uprops[SLEEP_RES].extrinsic))) {
+            You_feel("rather tired.");
+            player.sleeping = true;
+            player.sleepTimeout = rnd(5);
+            player.sleepWakeupMessage = "You can move again.";
+            exercise(player, A_DEX, false);
+        } else {
+            You("yawn.");
+        }
+        break;
+    case POT_SPEED:
+        if (!player.getPropTimeout(FAST))
+            Your("knees seem more flexible now.");
+        incr_itimeout(player, FAST, rnd(5));
+        exercise(player, A_DEX, true);
+        break;
+    case POT_BLINDNESS:
+        if (!player.blind) {
+            pline("It suddenly gets dark.");
+        }
+        make_blinded(player,
+                     itimeout_incr(player.getPropTimeout(BLINDED), rnd(5)), false);
+        break;
+    case POT_ACID:
+    case POT_POLYMORPH:
+        exercise(player, A_CON, false);
+        break;
+    // POT_GAIN_LEVEL, POT_GAIN_ENERGY, POT_LEVITATION, POT_FRUIT_JUICE,
+    // POT_MONSTER_DETECTION, POT_OBJECT_DETECTION, POT_OIL: no vapor effect
+    }
+}
 
 // ============================================================
 // 10. Mixing
 // ============================================================
 
-// TODO: cf. potion.c mixtype() — determine result of mixing two potions
+// cf. potion.c mixtype() — determine result of mixing two potions
+// C ref: potion.c:2107-2195
+function mixtype(o1, o2) {
+    let o1typ = o1.otyp, o2typ = o2.otyp;
+
+    // cut down on cases: swap if o1 is potion and o2 is special
+    if (o1.oclass === POTION_CLASS
+        && (o2typ === POT_GAIN_LEVEL || o2typ === POT_GAIN_ENERGY
+            || o2typ === POT_HEALING || o2typ === POT_EXTRA_HEALING
+            || o2typ === POT_FULL_HEALING || o2typ === POT_ENLIGHTENMENT
+            || o2typ === POT_FRUIT_JUICE)) {
+        o1typ = o2.otyp;
+        o2typ = o1.otyp;
+    }
+
+    switch (o1typ) {
+    case POT_HEALING:
+        if (o2typ === POT_SPEED)
+            return POT_EXTRA_HEALING;
+        // fallthrough
+    case POT_EXTRA_HEALING:
+    case POT_FULL_HEALING:
+        if (o2typ === POT_GAIN_LEVEL || o2typ === POT_GAIN_ENERGY)
+            return (o1typ === POT_HEALING) ? POT_EXTRA_HEALING
+                   : (o1typ === POT_EXTRA_HEALING) ? POT_FULL_HEALING
+                     : POT_GAIN_ABILITY;
+        // fallthrough
+    case UNICORN_HORN:
+        switch (o2typ) {
+        case POT_SICKNESS:
+            return POT_FRUIT_JUICE;
+        case POT_HALLUCINATION:
+        case POT_BLINDNESS:
+        case POT_CONFUSION:
+            return POT_WATER;
+        }
+        break;
+    case AMETHYST:
+        if (o2typ === POT_BOOZE)
+            return POT_FRUIT_JUICE;
+        break;
+    case POT_GAIN_LEVEL:
+    case POT_GAIN_ENERGY:
+        switch (o2typ) {
+        case POT_CONFUSION:
+            return (rn2(3) ? POT_BOOZE : POT_ENLIGHTENMENT);
+        case POT_HEALING:
+            return POT_EXTRA_HEALING;
+        case POT_EXTRA_HEALING:
+            return POT_FULL_HEALING;
+        case POT_FULL_HEALING:
+            return POT_GAIN_ABILITY;
+        case POT_FRUIT_JUICE:
+            return POT_SEE_INVISIBLE;
+        case POT_BOOZE:
+            return POT_HALLUCINATION;
+        }
+        break;
+    case POT_FRUIT_JUICE:
+        switch (o2typ) {
+        case POT_SICKNESS:
+            return POT_SICKNESS;
+        case POT_ENLIGHTENMENT:
+        case POT_SPEED:
+            return POT_BOOZE;
+        case POT_GAIN_LEVEL:
+        case POT_GAIN_ENERGY:
+            return POT_SEE_INVISIBLE;
+        }
+        break;
+    case POT_ENLIGHTENMENT:
+        switch (o2typ) {
+        case POT_LEVITATION:
+            if (rn2(3))
+                return POT_GAIN_LEVEL;
+            break;
+        case POT_FRUIT_JUICE:
+            return POT_BOOZE;
+        case POT_BOOZE:
+            return POT_CONFUSION;
+        }
+        break;
+    }
+
+    return STRANGE_OBJECT;
+}
 
 // ============================================================
 // 11. Dipping mechanics
 // ============================================================
 
-// TODO: cf. potion.c dip_ok() — validate dip target
-// TODO: cf. potion.c dip_hands_ok() — check if hands are free for dipping
-// TODO: cf. potion.c hold_potion() — handle holding the potion during dip
-// TODO: cf. potion.c dodip() — dip command entry point
-// TODO: cf. potion.c dip_into() — dip object into potion
-// TODO: cf. potion.c poof() — potion disappears in a poof
-// TODO: cf. potion.c dip_potion_explosion() — potion explodes on dip
-// TODO: cf. potion.c potion_dip() — dip potion into another potion (mix)
+// cf. potion.c dip_ok() — validate dip target
+function dip_ok(obj) {
+    // C ref: potion.c:2199-2213
+    if (!obj) return false;
+    if (obj.oclass === COIN_CLASS) return false;
+    return true;
+}
+
+// cf. potion.c dip_hands_ok() — check if hands are free for dipping
+function dip_hands_ok(obj) {
+    // C ref: potion.c:2216-2223
+    if (!obj) return true; // hands are valid target when slippery
+    return dip_ok(obj);
+}
+
+// cf. potion.c hold_potion() — handle holding the potion during dip
+function hold_potion(player, potobj) {
+    // C ref: potion.c:2228-2248
+    // Simplified: re-add potion to inventory after transformation
+    // In C this handles near_capacity and merging; here just add back
+    if (potobj && player && player.addToInventory) {
+        player.addToInventory(potobj);
+    }
+}
+
+// cf. potion.c dodip() — dip command entry point
+// Not yet fully interactive (needs getobj infrastructure). Stub for caller.
+async function dodip(player, map, display) {
+    // C ref: potion.c:2252-2358
+    // Full interactive dip flow requires getobj/y_n prompting not yet ported.
+    // Minimal stub: "You have nothing to dip." or direct to potion_dip.
+    pline("That command is not yet available.");
+    return { moved: false, tookTime: false };
+}
+
+// cf. potion.c dip_into() — alternate dip entry (potion selected first)
+async function dip_into(player, map, display) {
+    // C ref: potion.c:2364-2391
+    // Requires cmdq infrastructure. Stub.
+    pline("That command is not yet available.");
+    return { moved: false, tookTime: false };
+}
+
+// cf. potion.c poof() — potion disappears in a poof (trycall + useup)
+function poof(player, potion) {
+    // C ref: potion.c:2393-2399
+    // trycall(potion) — ID attempt; useup(potion) — consume it
+    if (player && player.removeFromInventory) {
+        player.removeFromInventory(potion);
+    }
+}
+
+// cf. potion.c dip_potion_explosion() — do dipped potions explode?
+function dip_potion_explosion(player, obj, dmg) {
+    // C ref: potion.c:2401-2424
+    if (obj.cursed || obj.otyp === POT_ACID
+        || (obj.otyp === POT_OIL && obj.lamplit)
+        || !rn2(10)) {
+        pline("%sThey explode!", player.deaf ? "" : "BOOM!  ");
+        exercise(player, A_STR, false);
+        potionbreathe(player, obj);
+        // useupall(obj) — remove entire stack
+        if (player.removeFromInventory) player.removeFromInventory(obj);
+        player.hp -= dmg;
+        if (player.hp < 1) player.hp = 1;
+        return true;
+    }
+    return false;
+}
+
+// cf. potion.c potion_dip() — dip object into potion (core mixing logic)
+function potion_dip(player, obj, potion) {
+    // C ref: potion.c:2427-2778
+    if (potion === obj && (potion.quan || 1) === 1) {
+        pline("That is a potion bottle, not a Klein bottle!");
+        return false;
+    }
+
+    if (potion.otyp === POT_WATER) {
+        const obj_glows = `Your ${obj.name || 'object'} glows`;
+        if (H2Opotion_dip(potion, obj, !player.blind, obj_glows)) {
+            poof(player, potion);
+            return true;
+        }
+    }
+
+    // mixing two different potions
+    if (obj.oclass === POTION_CLASS && obj.otyp !== potion.otyp) {
+        const mixture = mixtype(obj, potion);
+        poof(player, potion); // use up dip potion
+
+        // explosion check
+        const amt = obj.quan || 1;
+        if (dip_potion_explosion(player, obj, amt + rnd(9)))
+            return true;
+
+        obj.blessed = false;
+        obj.cursed = false;
+
+        if (mixture !== STRANGE_OBJECT) {
+            obj.otyp = mixture;
+        } else {
+            // random result
+            switch (obj.odiluted ? 1 : rnd(8)) {
+            case 1:
+                obj.otyp = POT_WATER;
+                break;
+            case 2: case 3:
+                obj.otyp = POT_SICKNESS;
+                break;
+            case 4:
+                // random potion type — simplified
+                obj.otyp = POT_WATER;
+                break;
+            default:
+                // evaporates — remove obj
+                if (player.removeFromInventory) player.removeFromInventory(obj);
+                pline("The mixture glows brightly and evaporates.");
+                return true;
+            }
+        }
+        obj.odiluted = (obj.otyp !== POT_WATER);
+
+        if (obj.otyp === POT_WATER) {
+            pline("The mixture bubbles, then clears.");
+        }
+        // hold_potion to re-merge in inventory
+        return true;
+    }
+
+    // dipping unicorn horn or amethyst
+    if ((obj.otyp === UNICORN_HORN || obj.otyp === AMETHYST)) {
+        const mixture = mixtype(obj, potion);
+        if (mixture !== STRANGE_OBJECT) {
+            potion.otyp = mixture;
+            potion.blessed = false;
+            if (mixture === POT_WATER)
+                potion.cursed = false;
+            else
+                potion.cursed = obj.cursed;
+            return true;
+        }
+    }
+
+    pline("Interesting...");
+    return true;
+}
 
 // ============================================================
 // 12. Djinni / split
 // ============================================================
 
-// TODO: cf. potion.c mongrantswish() — monster grants a wish
-// TODO: cf. potion.c djinni_from_bottle() — release djinni from smoky potion
-// TODO: cf. potion.c split_mon() — split a monster (eg. pudding)
+// cf. potion.c mongrantswish() — monster grants a wish
+function mongrantswish(mon, player, map) {
+    // C ref: potion.c:2780-2798
+    // Full wish system not yet ported. Stub: remove monster.
+    if (mon && map) {
+        // mongone(mon) — remove monster from map
+        const idx = map.monsters.indexOf(mon);
+        if (idx >= 0) map.monsters.splice(idx, 1);
+    }
+    // makewish() — wish granting not yet ported
+    pline("You may wish for an object. (Not yet implemented.)");
+}
 
-// ============================================================
-// 13. Speed
-// ============================================================
+// cf. potion.c djinni_from_bottle() — release djinni from smoky potion
+function djinni_from_bottle(player, obj, map) {
+    // C ref: potion.c:2800-2854
+    if (!player.blind) {
+        pline("In a cloud of smoke, a djinni emerges!");
+        pline("The djinni speaks.");
+    } else {
+        You("smell acrid fumes.");
+        pline("Something speaks.");
+    }
 
-// TODO: cf. potion.c speed_up() — increase hero movement speed
+    let chance = rn2(5);
+    if (obj.blessed)
+        chance = (chance === 4) ? rnd(4) : 0;
+    else if (obj.cursed)
+        chance = (chance === 0) ? rn2(4) : 4;
+
+    switch (chance) {
+    case 0:
+        pline("\"I am in your debt.  I will grant one wish!\"");
+        // mongrantswish — wish not yet implemented
+        break;
+    case 1:
+        pline("\"Thank you for freeing me!\"");
+        // tamedog — taming not yet ported for djinni
+        break;
+    case 2:
+        pline("\"You freed me!\"");
+        // peaceful djinni
+        break;
+    case 3:
+        pline("\"It is about time!\"");
+        // djinni vanishes
+        break;
+    default:
+        pline("\"You disturbed me, fool!\"");
+        // hostile djinni
+        break;
+    }
+}
+
+// cf. potion.c split_mon() — clone a gremlin or mold
+function split_mon(mon, mtmp, map, player) {
+    // C ref: potion.c:2856-2901
+    // clone_mon / cloneu not yet ported. Minimal stub.
+    const isyou = (mon === player);
+
+    if (isyou) {
+        // player splitting (polymorphed gremlin)
+        You("multiply!");
+        return null; // cloneu() not available
+    } else {
+        // monster splitting
+        if (mon.mhp <= 1) return null;
+        // clone_mon not available — stub
+        pline("%s multiplies!", mon.name || "It");
+        return null;
+    }
+}
 
 // ============================================================
 // Register make_* functions with timeout.js for expiry callbacks
@@ -808,4 +1471,11 @@ export {
     make_hallucinated, make_vomiting, make_deaf, make_glib,
     make_slimed, make_stoned,
     itimeout, itimeout_incr, set_itimeout, incr_itimeout,
+    speed_up, self_invis_message, ghost_from_bottle, drink_ok,
+    strange_feeling, bottlename,
+    H2Opotion_dip, impact_arti_light, potionhit, potionbreathe,
+    mixtype,
+    dip_ok, dip_hands_ok, hold_potion, dodip, dip_into,
+    poof, dip_potion_explosion, potion_dip,
+    mongrantswish, djinni_from_bottle, split_mon,
 };
