@@ -87,6 +87,7 @@ import { is_pool, is_lava, is_ice, find_drawbridge, destroy_drawbridge,
          is_drawbridge_wall } from './dbridge.js';
 import { trycall } from './do.js';
 import { pushRngLogEntry } from './rng.js';
+import { Can_dig_down, Can_fall_thru, Can_rise_up } from './dungeon.js';
 
 // ========================================================================
 // Module-level state — C ref: gm.m struct (defense/offense/misc selections)
@@ -285,9 +286,6 @@ function Is_rogue_level(map) { return !!(map && map.flags && map.flags.is_rogue)
 function Is_earthlevel(map) { return false; }
 function On_W_tower_level(map) { return false; }
 function In_V_tower(map) { return false; }
-function Can_fall_thru(map) { return !(Is_botlevel(map)); }
-function Can_dig_down(map) { return Can_fall_thru(map); }
-function Can_rise_up(x, y, map) { return true; } // simplified
 
 // C ref: is_Vlad(mtmp) — is this monster Vlad?
 function is_Vlad(mtmp) { return !!(mtmp.type && mtmp.type.name === 'Vlad the Impaler'); }

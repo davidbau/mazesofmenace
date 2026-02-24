@@ -44,6 +44,7 @@ import { monster_census, msummon } from './minion.js';
 import { sgn, dist2 } from './hacklib.js';
 import { is_quest_artifact } from './objdata.js';
 import { rndcurse } from './sit.js';
+import { builds_up } from './dungeon.js';
 
 // ============================================================================
 // Strategy constants (cf. monst.h)
@@ -146,9 +147,6 @@ function m_next2u(mtmp, player) {
 
 // In_W_tower — stub: Wizard's Tower not tracked yet
 function In_W_tower(/*x, y*/) { return false; }
-
-// builds_up — stub: standard dungeons build downward
-function builds_up() { return false; }
 
 // Inhell — stub
 function Inhell() { return false; }

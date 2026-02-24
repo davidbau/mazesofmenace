@@ -1216,3 +1216,9 @@ hard-won wisdom:
 
 *You close the book. The lessons are many, and the dungeon is deep.*
 *But forewarned is forearmed, and a ported function is a function that works.*
+
+### sp_lev table-parser + dungeon predicate naming parity (2026-02-24)
+
+- Porting `sp_lev.c` helper names into JS (`get_table_*`, `find_montype`, `find_objtype`, `sp_level_coder_init`, `create_des_coder`, `l_register_des`) is safe when behavior is kept behind existing call paths first, then adopted incrementally.
+- `levregion`/`teleport_region` validation must stay C-strict for region shape (`{1,2,3,4}` array form); relaxing to object-shaped regions causes unit regressions.
+- Moving `Can_dig_down`/`Can_fall_thru`/`Can_rise_up` and `builds_up` ownership into `dungeon.js` avoids cross-module stubs and keeps map/topology predicates co-located with dungeon branch state.

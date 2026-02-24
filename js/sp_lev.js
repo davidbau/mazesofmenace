@@ -104,15 +104,68 @@ const ROOM_TYPE_MAP = {
     'candle shop': 25
 };
 
-function parseRoomType(type, defval = 0) {
-    if (typeof type === 'number' && Number.isFinite(type)) {
-        return Math.trunc(type);
+const NON_PM = -1;
+const MALE = 0;
+const FEMALE = 1;
+const NEUTRAL = -1;
+
+const ALIGN_TYPE_MAP = {
+    noalign: A_NONE,
+    law: A_LAWFUL,
+    lawful: A_LAWFUL,
+    neutral: A_NEUTRAL,
+    chaos: A_CHAOTIC,
+    chaotic: A_CHAOTIC,
+    coaligned: 'coaligned',
+    noncoaligned: 'noncoaligned',
+    random: 'random'
+};
+
+function get_table_align(opts = {}, name = 'align', defval = 'random') {
+    let value = opts?.[name];
+    if (value === undefined) value = defval;
+    if (typeof value === 'number' && Number.isFinite(value)) return Math.trunc(value);
+    if (typeof value !== 'string') return ALIGN_TYPE_MAP.random;
+    const mapped = ALIGN_TYPE_MAP[value.toLowerCase()];
+    return (mapped !== undefined) ? mapped : ALIGN_TYPE_MAP.random;
+}
+
+function get_table_int_or_random(opts = {}, name, rndval) {
+    const value = opts?.[name];
+    if (value === undefined || value === null) return rndval;
+    if (typeof value === 'string' && value.toLowerCase() === 'random') return rndval;
+    if (!Number.isFinite(value)) {
+        throw new Error(`Expected integer or "random" for "${name}"`);
     }
-    if (typeof type !== 'string') {
-        return defval;
+    return Math.trunc(value);
+}
+
+function get_table_buc(opts = {}) {
+    const value = String(opts?.buc ?? 'random').toLowerCase();
+    const bucs = {
+        random: 0,
+        blessed: 1,
+        uncursed: 2,
+        cursed: 3,
+        'not-cursed': 4,
+        'not-uncursed': 5,
+        'not-blessed': 6
+    };
+    return (bucs[value] !== undefined) ? bucs[value] : 0;
+}
+
+function get_table_roomtype_opt(opts = {}, name, defval) {
+    const value = opts?.[name];
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        return Math.trunc(value);
     }
-    const mapped = ROOM_TYPE_MAP[type.toLowerCase()];
+    if (typeof value !== 'string') return defval;
+    const mapped = ROOM_TYPE_MAP[value.toLowerCase()];
     return (mapped !== undefined) ? mapped : defval;
+}
+
+function parseRoomType(type, defval = 0) {
+    return get_table_roomtype_opt({ type }, 'type', defval);
 }
 
 function canOverwriteTerrain(oldTyp) {
@@ -175,6 +228,22 @@ function installTypWatch(map) {
     });
 }
 
+export function sp_level_coder_init() {
+    return {
+        premapped: false,
+        solidify: false,
+        allow_flips: 3,
+        check_inaccessibles: false,
+    };
+}
+
+export function create_des_coder() {
+    if (!levelState?.coder) {
+        levelState.coder = sp_level_coder_init();
+    }
+    return levelState.coder;
+}
+
 // Level generation state (equivalent to C's sp_level sp)
 export let levelState = {
     map: null,              // GameMap instance being built
@@ -195,12 +264,7 @@ export let levelState = {
         fumaroles: false,
         stormy: false,
     },
-    coder: {
-        premapped: false,
-        solidify: false,
-        allow_flips: 3,     // bit 0=vertical flip, bit 1=horizontal flip
-        check_inaccessibles: false,
-    },
+    coder: sp_level_coder_init(),
     init: {
         style: 'solidfill', // solidfill, mazegrid, maze, rogue, mines, swamp
         fg: ROOM,           // foreground fill character
@@ -846,12 +910,7 @@ export function resetLevelState() {
             fumaroles: false,
             stormy: false,
         },
-        coder: {
-            premapped: false,
-            solidify: false,
-            allow_flips: 3,
-            check_inaccessibles: false,
-        },
+        coder: sp_level_coder_init(),
         init: {
             style: 'solidfill',
             fg: ROOM,
@@ -3575,6 +3634,12 @@ function monsterNameToIndex(name) {
     return index >= 0 ? index : -1;
 }
 
+function get_table_monclass(opts = {}) {
+    const value = opts?.class;
+    if (typeof value === 'string' && value.length === 1) return value.charCodeAt(0);
+    return -1;
+}
+
 function resolveNamedMonsterLikeC(monsterId) {
     if (!monsterId) {
         return { mndx: -1, female: undefined };
@@ -3614,7 +3679,21 @@ function resolveNamedMonsterLikeC(monsterId) {
     return { mndx, female: (namedGender !== undefined) ? namedGender : !!rn2(2) };
 }
 
-function objectNameToType(name) {
+function find_montype(_ctx, name, mgenderRef) {
+    const resolved = resolveNamedMonsterLikeC(name);
+    const mgender = (resolved.female === true) ? FEMALE
+        : (resolved.female === false) ? MALE
+            : NEUTRAL;
+    if (mgenderRef && typeof mgenderRef === 'object') mgenderRef.value = mgender;
+    return (resolved.mndx >= 0) ? resolved.mndx : NON_PM;
+}
+
+function get_table_montype(opts = {}, mgenderRef) {
+    if (typeof opts?.id !== 'string' || !opts.id.length) return NON_PM;
+    return find_montype(null, opts.id, mgenderRef);
+}
+
+function objectNameToType(name, classFilter = null) {
     const lowerName = name.toLowerCase().trim();
 
     // Quick checks for common objects
@@ -3623,6 +3702,8 @@ function objectNameToType(name) {
 
     const candidates = new Set([lowerName]);
     let classHint = null;
+    if (typeof classFilter === 'number' && classFilter >= 0) classHint = classFilter;
+    else if (typeof classFilter === 'string' && classFilter.length === 1) classHint = objectClassToType(classFilter);
     const stripPrefixes = [
         { p: 'ring of ', cls: RING_CLASS },
         { p: 'spellbook of ', cls: SPBOOK_CLASS },
@@ -3695,6 +3776,24 @@ function objectClassToType(classChar) {
         case '`': return ROCK_CLASS;
     default: return -1;
     }
+}
+
+function get_table_objclass(opts = {}) {
+    const value = opts?.class;
+    if (typeof value === 'string' && value.length === 1) return value;
+    return -1;
+}
+
+function find_objtype(_ctx, name, oclass = -1) {
+    if (typeof name !== 'string' || !name.length) return -1;
+    const filter = (oclass === -1 || oclass === undefined) ? null : oclass;
+    return objectNameToType(name, filter);
+}
+
+function get_table_objtype(opts = {}) {
+    const id = opts?.id;
+    const oclass = get_table_objclass(opts);
+    return find_objtype(null, id, oclass);
 }
 
 function installObjectTimerShims(obj) {
@@ -3991,6 +4090,78 @@ function trapNameToType(name) {
     }
 }
 
+function get_table_traptype_opt(opts = {}, name = 'type', defval = -1) {
+    const value = opts?.[name];
+    if (value === undefined || value === null) return defval;
+    if (typeof value === 'number' && Number.isFinite(value)) return Math.trunc(value);
+    const trap = trapNameToType(String(value));
+    return (trap === null) ? defval : trap;
+}
+
+function get_table_intarray_entry(arr, entrynum) {
+    const idx = Math.trunc(entrynum) - 1;
+    const value = arr?.[idx];
+    if (!Number.isFinite(value)) {
+        throw new Error(`Array entry #${entrynum} is not a number`);
+    }
+    return Math.trunc(value);
+}
+
+function get_table_region(opts = {}, name, optional = false) {
+    const region = opts?.[name];
+    if (region === undefined || region === null) {
+        if (optional) return null;
+        throw new Error('Not a region');
+    }
+    if (!Array.isArray(region) || region.length !== 4) throw new Error('Not a region');
+    return {
+        x1: get_table_intarray_entry(region, 1),
+        y1: get_table_intarray_entry(region, 2),
+        x2: get_table_intarray_entry(region, 3),
+        y2: get_table_intarray_entry(region, 4)
+    };
+}
+
+function regionObjectToCoords(region) {
+    if (!region || typeof region !== 'object') return null;
+    if (!Number.isFinite(region.x1) || !Number.isFinite(region.y1)
+        || !Number.isFinite(region.x2) || !Number.isFinite(region.y2)) {
+        return null;
+    }
+    return {
+        x1: Math.trunc(region.x1),
+        y1: Math.trunc(region.y1),
+        x2: Math.trunc(region.x2),
+        y2: Math.trunc(region.y2)
+    };
+}
+
+function get_table_region_or_object(opts = {}, name, optional = false) {
+    try {
+        return get_table_region(opts, name, optional);
+    } catch (_err) {
+        const fallback = regionObjectToCoords(opts?.[name]);
+        if (fallback) return fallback;
+        if (optional) return null;
+        throw new Error('Not a region');
+    }
+}
+
+function get_table_coords_or_region(opts = {}) {
+    const hasCoords = Number.isFinite(opts.x1) && Number.isFinite(opts.y1)
+        && Number.isFinite(opts.x2) && Number.isFinite(opts.y2);
+    if (hasCoords) {
+        return {
+            x1: Math.trunc(opts.x1),
+            y1: Math.trunc(opts.y1),
+            x2: Math.trunc(opts.x2),
+            y2: Math.trunc(opts.y2)
+        };
+    }
+    const region = get_table_region_or_object(opts, 'region', false);
+    return { x1: region.x1, y1: region.y1, x2: region.x2, y2: region.y2 };
+}
+
 /**
  * des.trap(type, x, y)
  *
@@ -4203,26 +4374,16 @@ export function region(opts_or_selection, type) {
     }
 
     const opts = opts_or_selection || {};
-    if (opts.region) {
-        if (Array.isArray(opts.region)) {
-            [x1, y1, x2, y2] = opts.region;
-        } else {
-            x1 = opts.region.x1;
-            y1 = opts.region.y1;
-            x2 = opts.region.x2;
-            y2 = opts.region.y2;
-        }
-    } else if (
-        Number.isFinite(opts.x1) && Number.isFinite(opts.y1)
-        && Number.isFinite(opts.x2) && Number.isFinite(opts.y2)
-    ) {
-        x1 = opts.x1;
-        y1 = opts.y1;
-        x2 = opts.x2;
-        y2 = opts.y2;
-    } else {
+    let regionCoords;
+    try {
+        regionCoords = get_table_coords_or_region(opts);
+    } catch (_err) {
         return;
     }
+    x1 = regionCoords.x1;
+    y1 = regionCoords.y1;
+    x2 = regionCoords.x2;
+    y2 = regionCoords.y2;
 
     const regionIsLevelCoords = !!opts.region_islev;
     if (levelState.mapCoordMode && !regionIsLevelCoords) {
@@ -4234,7 +4395,7 @@ export function region(opts_or_selection, type) {
         y2 = c2.y;
     }
 
-    const rtype = parseRoomType(opts.type, 0);
+    const rtype = get_table_roomtype_opt(opts, 'type', 0);
     const needfill = Number.isFinite(opts.filled) ? Math.trunc(opts.filled) : 0;
     const joined = (opts.joined !== undefined) ? !!opts.joined : true;
     const irregular = !!opts.irregular;
@@ -4488,15 +4649,13 @@ export function levregion(opts) {
     const LR_UPSTAIR = 5;
     const LR_DOWNSTAIR = 6;
 
-    if (!Array.isArray(opts.region) || opts.region.length !== 4) {
-        throw new Error('wrong parameters');
-    }
+    const inRegion = get_table_region(opts, 'region', false);
     const inIslev = !!opts.region_islev;
 
-    let delArea = opts.exclude;
+    let delArea = get_table_region(opts, 'exclude', true);
     let delIslev = !!opts.exclude_islev;
-    if (!Array.isArray(delArea) || delArea.length < 4) {
-        delArea = [-1, -1, -1, -1];
+    if (!delArea) {
+        delArea = { x1: -1, y1: -1, x2: -1, y2: -1 };
         // C forces exclude_islev=true when no exclude was supplied.
         delIslev = true;
     }
@@ -4517,17 +4676,17 @@ export function levregion(opts) {
     }
 
     const in1 = inIslev
-        ? { x: opts.region[0], y: opts.region[1] }
-        : getLocation(opts.region[0], opts.region[1], GETLOC_ANY_LOC, null, false);
+        ? { x: inRegion.x1, y: inRegion.y1 }
+        : getLocation(inRegion.x1, inRegion.y1, GETLOC_ANY_LOC, null, false);
     const in2 = inIslev
-        ? { x: opts.region[2], y: opts.region[3] }
-        : getLocation(opts.region[2], opts.region[3], GETLOC_ANY_LOC, null, false);
+        ? { x: inRegion.x2, y: inRegion.y2 }
+        : getLocation(inRegion.x2, inRegion.y2, GETLOC_ANY_LOC, null, false);
     const del1 = delIslev
-        ? { x: delArea[0], y: delArea[1] }
-        : getLocation(delArea[0], delArea[1], GETLOC_ANY_LOC, null, false);
+        ? { x: delArea.x1, y: delArea.y1 }
+        : getLocation(delArea.x1, delArea.y1, GETLOC_ANY_LOC, null, false);
     const del2 = delIslev
-        ? { x: delArea[2], y: delArea[3] }
-        : getLocation(delArea[2], delArea[3], GETLOC_ANY_LOC, null, false);
+        ? { x: delArea.x2, y: delArea.y2 }
+        : getLocation(delArea.x2, delArea.y2, GETLOC_ANY_LOC, null, false);
 
     levelState.levRegions.push({
         inarea: { x1: in1.x, y1: in1.y, x2: in2.x, y2: in2.y },
@@ -4570,14 +4729,11 @@ export function exclusion(opts) {
         throw new Error('wrong parameters');
     }
 
-    let x1;
-    let y1;
-    let x2;
-    let y2;
-    if (!Array.isArray(opts.region) || opts.region.length !== 4) {
-        throw new Error('wrong parameters');
-    }
-    [x1, y1, x2, y2] = opts.region;
+    const region = get_table_region(opts, 'region', false);
+    const x1 = region.x1;
+    const y1 = region.y1;
+    const x2 = region.x2;
+    const y2 = region.y2;
 
     const p1 = getLocationCoord(x1, y1, GETLOC_ANY_LOC, levelState.currentRoom || null);
     const p2 = getLocationCoord(x2, y2, GETLOC_ANY_LOC, levelState.currentRoom || null);
@@ -6043,7 +6199,7 @@ function createScriptTrap(deferred) {
         markSpLevTouched(trapX, trapY);
         return;
     } else {
-        ttyp = trapNameToType(trapType);
+        ttyp = get_table_traptype_opt({ type: trapType }, 'type', null);
     }
 
     if (ttyp === null) {
@@ -7956,6 +8112,14 @@ export function mazewalk(xOrOpts, y, direction) {
     }
 
     if (stocked) fillEmptyMaze();
+}
+
+export function l_register_des(target = globalThis) {
+    const table = des;
+    if (target && typeof target === 'object') {
+        target.des = table;
+    }
+    return table;
 }
 
 // Export the des.* API

@@ -270,6 +270,18 @@ import { getnow } from './calendar.js';
 // C ref: shknam.c uses ubirthday (seconds since epoch) rather than game seed.
 let _gameUbirthday = 0;
 let _dungeonLedgerStartByDnum = new Map([[DUNGEONS_OF_DOOM, 0]]);
+const _dungeonEntryLevelByDnum = new Map([
+    [DUNGEONS_OF_DOOM, 1],
+    [GNOMISH_MINES, 1],
+    [SOKOBAN, 4],
+    [QUEST, 1],
+    [KNOX, 1],
+    [GEHENNOM, 1],
+    [VLADS_TOWER, 1],
+    [ELEMENTAL_PLANES, 1],
+    [TUTORIAL, 1],
+]);
+let _specialLevelChain = [];
 
 function resolveUbirthday(seed) {
     const parsed = getnow();
@@ -370,6 +382,217 @@ export function In_W_tower(lev) {
 }
 export function On_W_tower_level(lev) {
     return In_W_tower(lev);
+}
+
+function _coerceLevelArg(levOrMap) {
+    if (Number.isInteger(levOrMap?.dnum) && Number.isInteger(levOrMap?.dlevel)) {
+        return { dnum: levOrMap.dnum, dlevel: levOrMap.dlevel };
+    }
+    if (Number.isInteger(levOrMap?._genDnum) && Number.isInteger(levOrMap?._genDlevel)) {
+        return { dnum: levOrMap._genDnum, dlevel: levOrMap._genDlevel };
+    }
+    return { dnum: DUNGEONS_OF_DOOM, dlevel: 1 };
+}
+
+function Is_wiz1_level(lev) {
+    const { dnum, dlevel } = _coerceLevelArg(lev);
+    return dnum === GEHENNOM && dlevel === 1;
+}
+
+function In_endgame(lev) {
+    const { dnum } = _coerceLevelArg(lev);
+    return dnum === ELEMENTAL_PLANES;
+}
+
+function In_sokoban(lev) {
+    const { dnum } = _coerceLevelArg(lev);
+    return dnum === SOKOBAN;
+}
+
+function Is_earthlevel(lev) {
+    const { dnum, dlevel } = _coerceLevelArg(lev);
+    return dnum === ELEMENTAL_PLANES && dlevel === 1;
+}
+
+function Is_waterlevel(lev) {
+    const { dnum, dlevel } = _coerceLevelArg(lev);
+    return dnum === ELEMENTAL_PLANES && dlevel === 2;
+}
+
+function Is_firelevel(lev) {
+    const { dnum, dlevel } = _coerceLevelArg(lev);
+    return dnum === ELEMENTAL_PLANES && dlevel === 4;
+}
+
+function isInvocationLevel(lev) {
+    const { dnum, dlevel } = _coerceLevelArg(lev);
+    return dnum === GEHENNOM && dlevel === (dunlevs_in_dungeon(dnum) - 1);
+}
+
+function branch_val(bp) {
+    const a = ((bp.end1.dnum * (255 + 1)) + bp.end1.dlevel);
+    const b = ((bp.end2.dnum * (255 + 1)) + bp.end2.dlevel);
+    return (a * (16 + 1) * (255 + 1)) + b;
+}
+
+export function add_branch(dgn, child_entry_level, pd = {}, branches = _branchTopology) {
+    const branch = {
+        id: Number.isInteger(pd.id) ? pd.id : branches.length,
+        type: Number.isInteger(pd.type) ? pd.type : BR_STAIR,
+        end1: {
+            dnum: Number.isInteger(pd.parent_dnum) ? pd.parent_dnum : DUNGEONS_OF_DOOM,
+            dlevel: Number.isInteger(pd.parent_dlevel) ? pd.parent_dlevel : 1
+        },
+        end2: {
+            dnum: Number.isInteger(dgn) ? dgn : DUNGEONS_OF_DOOM,
+            dlevel: Number.isInteger(child_entry_level) ? child_entry_level : 1
+        },
+        end1_up: !!pd.end1_up
+    };
+    const nv = branch_val(branch);
+    let idx = 0;
+    while (idx < branches.length && branch_val(branches[idx]) < nv) idx++;
+    branches.splice(idx, 0, branch);
+    return branch;
+}
+
+export function add_level(new_lev, chain = _specialLevelChain) {
+    if (!new_lev || !new_lev.dlevel) return;
+    let idx = 0;
+    while (idx < chain.length) {
+        const cur = chain[idx];
+        if (cur.dlevel.dnum === new_lev.dlevel.dnum
+            && cur.dlevel.dlevel > new_lev.dlevel.dlevel) {
+            break;
+        }
+        idx++;
+    }
+    chain.splice(idx, 0, new_lev);
+}
+
+export function assign_level(dest, src) {
+    if (!dest || !src) return;
+    dest.dnum = src.dnum;
+    dest.dlevel = src.dlevel;
+}
+
+export function assign_rnd_level(dest, src, range) {
+    if (!dest || !src) return;
+    dest.dnum = src.dnum;
+    dest.dlevel = src.dlevel + ((range > 0) ? rnd(range) : -rnd(-range));
+    const maxLev = dunlevs_in_dungeon(dest.dnum);
+    if (dest.dlevel > maxLev) dest.dlevel = maxLev;
+    else if (dest.dlevel < 1) dest.dlevel = 1;
+}
+
+export function builds_up(lev) {
+    const clev = _coerceLevelArg(lev);
+    const dnum = clev.dnum;
+    const num = dunlevs_in_dungeon(dnum);
+    const entry = _dungeonEntryLevelByDnum.get(dnum) || 1;
+    if (num > 1) return entry === num;
+    for (const br of _branchTopology) {
+        if (br.end2.dnum === clev.dnum && br.end2.dlevel === clev.dlevel) {
+            return !!br.end1_up;
+        }
+    }
+    return false;
+}
+
+function dname_to_dnum(name) {
+    const key = String(name || '').toLowerCase();
+    const map = {
+        'dungeons of doom': DUNGEONS_OF_DOOM,
+        'gnomish mines': GNOMISH_MINES,
+        'sokoban': SOKOBAN,
+        'the quest': QUEST,
+        'fort ludios': KNOX,
+        'gehennom': GEHENNOM,
+        "vlad's tower": VLADS_TOWER,
+        'elemental planes': ELEMENTAL_PLANES,
+        'tutorial': TUTORIAL
+    };
+    return map[key];
+}
+
+function dungeon_branch(name) {
+    const dnum = dname_to_dnum(name);
+    if (!Number.isInteger(dnum)) return null;
+    for (const br of _branchTopology) {
+        if (br.end2.dnum === dnum) return br;
+    }
+    return null;
+}
+
+export function at_dgn_entrance(name, lev) {
+    const br = dungeon_branch(name);
+    if (!br) return false;
+    const clev = _coerceLevelArg(lev);
+    return clev.dnum === br.end1.dnum && clev.dlevel === br.end1.dlevel;
+}
+
+export function Can_dig_down(levOrMap) {
+    const lev = _coerceLevelArg(levOrMap);
+    const hardfloor = !!levOrMap?.flags?.hardfloor;
+    return !hardfloor && !Is_botlevel(lev.dnum, lev.dlevel) && !isInvocationLevel(lev);
+}
+
+export function Can_fall_thru(levOrMap) {
+    const lev = _coerceLevelArg(levOrMap);
+    const stronghold = (lev.dnum === DUNGEONS_OF_DOOM && lev.dlevel === 27);
+    return Can_dig_down(levOrMap) || stronghold;
+}
+
+export function Can_rise_up(x, y, levOrMap) {
+    const lev = _coerceLevelArg(levOrMap);
+    if (In_endgame(lev) || In_sokoban(lev)
+        || (Is_wiz1_level(lev) && In_W_tower({ dnum: lev.dnum }, x, y))) {
+        return false;
+    }
+    if (lev.dlevel > 1) return true;
+    const entry = _dungeonEntryLevelByDnum.get(lev.dnum) || 1;
+    if (entry !== 1 || ledger_no(lev) === 1) return false;
+    const placement = resolveBranchPlacementForLevel(lev.dnum, lev.dlevel).placement;
+    return placement === 'stair-up';
+}
+
+export function has_ceiling(levOrMap) {
+    const lev = _coerceLevelArg(levOrMap);
+    if (In_endgame(lev) && !Is_earthlevel(lev)) return false;
+    return true;
+}
+
+export function avoid_ceiling(levOrMap) {
+    const lev = _coerceLevelArg(levOrMap);
+    return In_quest(lev) || !has_ceiling(lev);
+}
+
+function room_type_at(map, x, y) {
+    if (!map || !Number.isInteger(x) || !Number.isInteger(y)) return OROOM;
+    const loc = map.at ? map.at(x, y) : map?.locations?.[x]?.[y];
+    if (!loc || !Number.isInteger(loc.roomno) || loc.roomno < ROOMOFFSET) return OROOM;
+    const idx = loc.roomno - ROOMOFFSET;
+    const room = map.rooms?.[idx];
+    return Number.isInteger(room?.rtype) ? room.rtype : OROOM;
+}
+
+export function ceiling(x, y, map, levOrMap) {
+    const loc = map?.at ? map.at(x, y) : map?.locations?.[x]?.[y];
+    const lev = _coerceLevelArg(levOrMap || map);
+    const rtype = room_type_at(map, x, y);
+    if (rtype === VAULT) return "vault's ceiling";
+    if (rtype === TEMPLE) return "temple's ceiling";
+    if (rtype >= SHOPBASE) return "shop's ceiling";
+    if (Is_waterlevel(lev)) return 'water above';
+    if (loc && loc.typ === AIR) return 'sky';
+    if (Is_firelevel(lev)) return 'flames above';
+    if (In_quest(lev)) return 'expanse above';
+    if (map?.flags?.underwater) return "water's surface";
+    if (loc && (IS_ROOM(loc.typ) || IS_WALL(loc.typ) || IS_DOOR(loc.typ) || loc.typ === SDOOR)
+        && !Is_earthlevel(lev)) {
+        return 'ceiling';
+    }
+    return 'rock cavern';
 }
 
 // Rectangle allocation — imported from rect.js (C ref: rect.c)

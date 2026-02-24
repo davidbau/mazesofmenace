@@ -1496,9 +1496,9 @@ This section is generated from source symbol tables and includes function rows f
 ### dungeon.c -> dungeon.js
 | C Line | C Function | JS Line | Alignment |
 |--------|------------|---------|-----------|
-| 1643 | `Can_dig_down` | - | Missing |
-| 1656 | `Can_fall_thru` | - | Missing |
-| 1668 | `Can_rise_up` | - | Missing |
+| 1643 | `Can_dig_down` | dungeon.js:534 | Aligned |
+| 1656 | `Can_fall_thru` | dungeon.js:540 | Aligned |
+| 1668 | `Can_rise_up` | dungeon.js:546 | Aligned |
 | 268 | `Fread` | - | Missing |
 | 1901 | `In_V_tower` | dungeon.js:365 | Aligned |
 | 1917 | `In_W_tower` | dungeon.js:368 | Aligned |
@@ -1510,16 +1510,16 @@ This section is generated from source symbol tables and includes function rows f
 | 1464 | `Is_branchlev` | dungeon.js:350 | Aligned |
 | 1448 | `Is_special` | dungeon.js:345 | Aligned |
 | 1908 | `On_W_tower_level` | dungeon.js:371 | Aligned |
-| 514 | `add_branch` | - | Missing |
-| 545 | `add_level` | - | Missing |
-| 1972 | `assign_level` | - | Missing |
-| 1980 | `assign_rnd_level` | - | Missing |
-| 1891 | `at_dgn_entrance` | - | Missing |
-| 1695 | `avoid_ceiling` | - | Missing |
+| 514 | `add_branch` | dungeon.js:438 | Aligned |
+| 545 | `add_level` | dungeon.js:459 | Aligned |
+| 1972 | `assign_level` | dungeon.js:473 | Aligned |
+| 1980 | `assign_rnd_level` | dungeon.js:479 | Aligned |
+| 1891 | `at_dgn_entrance` | dungeon.js:527 | Aligned |
+| 1695 | `avoid_ceiling` | dungeon.js:565 | Aligned |
 | 2234 | `br_string` | - | Missing |
 | 3380 | `br_string2` | - | Missing |
-| 1477 | `builds_up` | - | Missing |
-| 1708 | `ceiling` | - | Missing |
+| 1477 | `builds_up` | dungeon.js:488 | Aligned |
+| 1708 | `ceiling` | dungeon.js:579 | Aligned |
 | 2250 | `chr_u_on_lvl` | - | Missing |
 | 440 | `correct_branch_type` | - | Missing |
 | 2943 | `count_feat_lastseentyp` | - | Missing |
@@ -1546,7 +1546,7 @@ This section is generated from source symbol tables and includes function rows f
 | 744 | `get_dgn_flags` | - | Missing |
 | 1796 | `get_level` | - | Missing |
 | 1951 | `goto_hell` | - | Missing |
-| 1684 | `has_ceiling` | - | Missing |
+| 1684 | `has_ceiling` | dungeon.js:559 | Aligned |
 | 651 | `indent` | - | Missing |
 | 1993 | `induced_align` | - | Missing |
 | 1111 | `init_castle_tune` | - | Missing |
@@ -4799,7 +4799,7 @@ No function symbols parsed from isaac64.c.
 | 1408 | `check_room` | dungeon.js:286 | Aligned |
 | 2439 | `create_altar` | sp_lev.js:4950 | Aligned |
 | 2669 | `create_corridor` | dungeon.js:1786 | Aligned |
-| 6444 | `create_des_coder` | - | Missing |
+| 6444 | `create_des_coder` | sp_lev.js:240 | Aligned |
 | 1715 | `create_door` | sp_lev.js:4607 | Aligned |
 | 1926 | `create_monster` | sp_lev.js:4531 | Aligned |
 | 2186 | `create_object` | sp_lev.js `object()` | Aligned — executes in script order (deferral removed) |
@@ -4812,8 +4812,8 @@ No function symbols parsed from isaac64.c.
 | 5214 | `ensure_way_out` | sp_lev.js:2005 | Aligned |
 | 2924 | `fill_empty_maze` | sp_lev.js:7673 | Aligned |
 | 2729 | `fill_special_room` | sp_lev.js `fill_special_room()` | Aligned — called from finalize_level |
-| 3141 | `find_montype` | - | Missing |
-| 3464 | `find_objtype` | - | Missing |
+| 3141 | `find_montype` | sp_lev.js:3682 | Aligned |
+| 3464 | `find_objtype` | sp_lev.js:3787 | Aligned |
 | 429 | `flip_dbridge_horizontal` | sp_lev.js:1997 | Aligned |
 | 443 | `flip_dbridge_vertical` | sp_lev.js:2003 | Aligned |
 | 500 | `flip_encoded_dir_bits` | sp_lev.js:1992 | Aligned |
@@ -4830,18 +4830,18 @@ No function symbols parsed from isaac64.c.
 | 1338 | `get_location_coord` | sp_lev.js:2498 | Aligned |
 | 3988 | `get_mkroom_name` | sp_lev.js:7652 | Aligned |
 | 1361 | `get_room_loc` | sp_lev.js:2515 | Aligned |
-| 3112 | `get_table_align` | - | Missing |
-| 3438 | `get_table_buc` | - | Missing |
-| 5558 | `get_table_coords_or_region` | - | Missing |
-| 3403 | `get_table_int_or_random` | - | Missing |
-| 5257 | `get_table_intarray_entry` | - | Missing |
-| 3129 | `get_table_monclass` | - | Missing |
-| 3165 | `get_table_montype` | - | Missing |
-| 3451 | `get_table_objclass` | - | Missing |
-| 3535 | `get_table_objtype` | - | Missing |
-| 5279 | `get_table_region` | - | Missing |
-| 4001 | `get_table_roomtype_opt` | - | Missing |
-| 4347 | `get_table_traptype_opt` | - | Missing |
+| 3112 | `get_table_align` | sp_lev.js:124 | Aligned |
+| 3438 | `get_table_buc` | sp_lev.js:143 | Aligned |
+| 5558 | `get_table_coords_or_region` | sp_lev.js:4150 | Aligned |
+| 3403 | `get_table_int_or_random` | sp_lev.js:133 | Aligned |
+| 5257 | `get_table_intarray_entry` | sp_lev.js:4101 | Aligned |
+| 3129 | `get_table_monclass` | sp_lev.js:3637 | Aligned |
+| 3165 | `get_table_montype` | sp_lev.js:3691 | Aligned |
+| 3451 | `get_table_objclass` | sp_lev.js:3781 | Aligned |
+| 3535 | `get_table_objtype` | sp_lev.js:3793 | Aligned |
+| 5279 | `get_table_region` | sp_lev.js:4110 | Aligned |
+| 4001 | `get_table_roomtype_opt` | sp_lev.js:157 | Aligned |
+| 4347 | `get_table_traptype_opt` | sp_lev.js:4093 | Aligned |
 | 3186 | `get_table_xy_or_coord` | - | Missing |
 | 4364 | `get_trapname_bytype` | - | Missing |
 | 4376 | `get_traptype_byname` | - | Missing |
@@ -4852,7 +4852,7 @@ No function symbols parsed from isaac64.c.
 | 5407 | `l_get_lregion` | - | Missing |
 | 3057 | `l_push_mkroom_table` | - | Missing |
 | 3048 | `l_push_wid_hei_table` | - | Missing |
-| 6435 | `l_register_des` | - | Missing |
+| 6435 | `l_register_des` | sp_lev.js:8117 | Aligned |
 | 4736 | `l_table_getset_feature_flag` | - | Missing |
 | 5368 | `levregion_add` | - | Missing |
 | 2837 | `light_region` | - | Missing |
@@ -4930,7 +4930,7 @@ No function symbols parsed from isaac64.c.
 | 316 | `solidify_map` | sp_lev.js:6074 | Aligned |
 | 1909 | `sp_amask_to_amask` | - | Missing |
 | 3020 | `sp_code_jmpaddr` | - | Missing |
-| 6336 | `sp_level_coder_init` | - | Missing |
+| 6336 | `sp_level_coder_init` | sp_lev.js:231 | Aligned |
 | 2980 | `splev_initlev` | - | Missing |
 | 3029 | `spo_end_moninvent` | - | Missing |
 | 4116 | `spo_endroom` | - | Missing |
