@@ -4916,9 +4916,9 @@ No function symbols parsed from isaac64.c.
 | 1160 | `rndtrap` | sp_lev.js:7819 | Aligned |
 | 2485 | `search_door` | - | Missing |
 | 4644 | `sel_set_door` | sp_lev.js:5101 | Aligned |
-| 4630 | `sel_set_feature` | - | Missing |
-| 5532 | `sel_set_lit` | - | Missing |
-| 4606 | `sel_set_ter` | - | Missing |
+| 4630 | `sel_set_feature` | sp_lev.js:2933 | Aligned |
+| 5532 | `sel_set_lit` | sp_lev.js:2893 | Aligned |
+| 4606 | `sel_set_ter` | sp_lev.js:2900 | Aligned |
 | 987 | `sel_set_wall_property` | sp_lev.js:4590 | Aligned |
 | 5952 | `sel_set_wallify` | - | Missing |
 | 1043 | `set_door_orientation` | sp_lev.js:5094 | Aligned |

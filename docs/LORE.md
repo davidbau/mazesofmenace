@@ -1240,3 +1240,9 @@ hard-won wisdom:
 - Converting existing door/wall-location logic to C helper names in-place (`rnddoor`, `set_door_orientation`, `sel_set_door`, `sel_set_wall_property`, `set_wallprop_in_selection`, `set_wall_property`, `set_ok_location_func`) keeps behavior stable while improving CODEMATCH coverage.
 - `rndtrap` can be shared by both maze fill and trap-selection paths when it receives explicit context (`canDigDown`, `inEndgame`) instead of reaching into unrelated generation state.
 - Exporting these C-named helpers in `sp_lev.js` preserves direct dependency wiring and avoids extra forwarding modules or alias layers.
+
+### sel_set_ter call-site parity (2026-02-24)
+
+- Keep `sel_set_ter` as a C-named primitive, but make metadata-reset behavior explicit via options so call sites can match C context (`lspo_map` clears tile metadata; other writes may not).
+- `lspo_map` now routes through `sel_set_ter` while preserving prior semantics and test baseline.
+- `sel_set_lit` is now used by region-lighting loops, with lava handling kept at call sites so behavior remains unchanged.

@@ -244,6 +244,12 @@ export function create_des_coder() {
     return levelState.coder;
 }
 
+// C ref: sp_lev.c sp_code_jmpaddr()
+export function sp_code_jmpaddr(coder = levelState.coder) {
+    if (!coder || typeof coder !== 'object') return 0;
+    return Number.isFinite(coder.jmpaddr) ? Math.trunc(coder.jmpaddr) : 0;
+}
+
 // Level generation state (equivalent to C's sp_level sp)
 export let levelState = {
     map: null,              // GameMap instance being built
@@ -305,6 +311,28 @@ export let levelState = {
     tutorialFirstTrapParityDone: false,
     tutorialFirstPercentParityDone: false,
 };
+
+// C ref: sp_lev.c update_croom()
+export function update_croom(room) {
+    levelState.currentRoom = room || null;
+    return levelState.currentRoom;
+}
+
+// C ref: sp_lev.c spo_endroom()
+export function spo_endroom() {
+    update_croom(levelState.roomStack.pop() || null);
+    if (levelState.roomDepth > 0) levelState.roomDepth--;
+}
+
+// C ref: sp_lev.c spo_pop_container()
+export function spo_pop_container() {
+    return levelState.containerStack.pop() || null;
+}
+
+// C ref: sp_lev.c spo_end_moninvent()
+export function spo_end_moninvent() {
+    return levelState.monsterInventoryStack.pop() || null;
+}
 
 const WALL_INFO_MASK = 0x07;
 let checkpointCaptureEnabled = false;
@@ -1694,6 +1722,11 @@ export function level_init(opts = {}) {
     captureCheckpoint('after_level_init');
 }
 
+// C ref: sp_lev.c splev_initlev()
+export function splev_initlev(opts = {}) {
+    return level_init(opts);
+}
+
 /**
  * des.level_flags("noteleport", "hardfloor", ...)
  *
@@ -2201,6 +2234,80 @@ function getLevelExtentsForFlip(map) {
     return { minX: xmin, minY: ymin, maxX: xmax, maxY: ymax };
 }
 
+// C ref: sp_lev.c match_maptyps()
+export function match_maptyps(mapTyp, fragTyp) {
+    return mapTyp === fragTyp;
+}
+
+// C ref: sp_lev.c mapfrag_fromstr()
+export function mapfrag_fromstr(src, preserveExactBlankLines = false) {
+    let mapStr = String(src ?? '').replace(/[0-9]/g, '');
+    if (!preserveExactBlankLines) {
+        if (mapStr.startsWith('\r\n')) mapStr = mapStr.slice(2);
+        else if (mapStr.startsWith('\n')) mapStr = mapStr.slice(1);
+    }
+    const lines = mapStr.split('\n');
+    if (!preserveExactBlankLines
+        && lines.length > 0
+        && lines[lines.length - 1] === ''
+        && mapStr.endsWith('\n')) {
+        lines.pop();
+    }
+    const width = lines.length ? Math.max(...lines.map(line => line.length)) : 0;
+    const height = lines.length;
+    return { lines, width, height };
+}
+
+// C ref: sp_lev.c mapfrag_get()
+export function mapfrag_get(mapfrag, x, y) {
+    if (!mapfrag || !Array.isArray(mapfrag.lines)) return '\0';
+    if (y < 0 || y >= mapfrag.lines.length) return '\0';
+    const row = mapfrag.lines[y] || '';
+    if (x < 0 || x >= row.length) return '\0';
+    return row[x];
+}
+
+// C ref: sp_lev.c mapfrag_free()
+export function mapfrag_free(_mapfrag) {
+    // GC-managed in JS.
+}
+
+// C ref: sp_lev.c mapfrag_error()
+export function mapfrag_error(message = 'map fragment error') {
+    throw new Error(String(message));
+}
+
+// C ref: sp_lev.c mapfrag_canmatch()
+export function mapfrag_canmatch(map, mapfrag, x, y) {
+    if (!map || !mapfrag) return false;
+    for (let ly = 0; ly < mapfrag.height; ly++) {
+        for (let lx = 0; lx < mapfrag.width; lx++) {
+            const gx = x + lx;
+            const gy = y + ly;
+            if (gx < 0 || gx >= COLNO || gy < 0 || gy >= ROWNO) return false;
+            const ch = mapfrag_get(mapfrag, lx, ly);
+            const fragTyp = mapchrToTerrain(ch);
+            if (fragTyp === -1) continue;
+            const mapTyp = map.locations[gx][gy].typ;
+            if (!match_maptyps(mapTyp, fragTyp)) return false;
+        }
+    }
+    return true;
+}
+
+// C ref: sp_lev.c mapfrag_match()
+export function mapfrag_match(map, mapfrag) {
+    if (!map || !mapfrag) return null;
+    for (let y = 0; y <= ROWNO - mapfrag.height; y++) {
+        for (let x = 0; x <= COLNO - mapfrag.width; x++) {
+            if (mapfrag_canmatch(map, mapfrag, x, y)) {
+                return { x, y };
+            }
+        }
+    }
+    return null;
+}
+
 /**
  * des.map([[...]])
  *
@@ -2240,32 +2347,12 @@ export function map(data) {
         contents = data.contents;
     }
 
-    // C ref: sp_lev.c mapfrag_fromstr() calls stripdigits() before computing
-    // dimensions or applying map cells.
-    mapStr = String(mapStr).replace(/[0-9]/g, '');
     const preserveExactBlankLines = !!(data && typeof data === 'object'
         && (data.coord !== undefined || data.x !== undefined || data.y !== undefined));
-    // Lua long bracket strings drop one initial newline after [[.
-    // Keep that behavior for regular map placement, but preserve exact explicit
-    // coordinate map fragments (used by tests and direct C-style call forms).
-    if (!preserveExactBlankLines) {
-        if (mapStr.startsWith('\r\n')) mapStr = mapStr.slice(2);
-        else if (mapStr.startsWith('\n')) mapStr = mapStr.slice(1);
-    }
-    // Parse map string into lines.
-    // C ref: sp_lev.c mapfrag_fromstr() counts newline-separated rows from the
-    // normalized Lua string; intentional blank rows remain.
-    // C preserves intentional trailing blank rows and only ignores the final
-    // synthetic empty segment introduced by a terminal '\n'.
-    let lines = mapStr.split('\n');
-    if (!preserveExactBlankLines) {
-        if (lines.length > 0 && lines[lines.length - 1] === '' && mapStr.endsWith('\n')) {
-            lines.pop();
-        }
-    }
-
-    const height = lines.length;
-    const width = Math.max(...lines.map(line => line.length));
+    const mapfrag = mapfrag_fromstr(mapStr, preserveExactBlankLines);
+    const lines = mapfrag.lines;
+    const height = mapfrag.height;
+    const width = mapfrag.width;
 
     levelState.xsize = width;
     levelState.ysize = height;
@@ -2395,33 +2482,7 @@ export function map(data) {
             if (gx >= 0 && gx < 80 && gy >= 0 && gy < 21) {
                 const terrain = mapchrToTerrain(ch);
                 if (terrain !== -1) {
-                    // C ref: sp_lev.c lspo_map() clears per-tile metadata for
-                    // valid mapped cells before applying terrain.
-                    const loc = levelState.map.locations[gx][gy];
-                    loc.flags = 0;
-                    loc.horizontal = 0;
-                    loc.roomno = 0;
-                    loc.edge = 0;
-                    loc.typ = terrain;
-                    // C ref: sp_lev.c sel_set_ter() post-terrain adjustments.
-                    if (loc.typ === SDOOR || loc.typ === DOOR) {
-                        if (loc.typ === SDOOR) {
-                            loc.doormask = D_CLOSED;
-                        }
-                        if (gx > 0) {
-                            const left = levelState.map.locations[gx - 1][gy];
-                            if (IS_WALL(left.typ) || left.horizontal) {
-                                loc.horizontal = 1;
-                            }
-                        }
-                    } else if (loc.typ === HWALL || loc.typ === IRONBARS) {
-                        loc.horizontal = 1;
-                    }
-                    markSpLevMap(gx, gy);
-                    markSpLevTouched(gx, gy);
-                    if (lit) {
-                        loc.lit = 1;
-                    }
+                    sel_set_ter(gx, gy, terrain, { clear: true, lit: lit ? 1 : null });
                 }
             }
         }
@@ -2605,6 +2666,13 @@ export function get_location_coord(rawX, rawY, humidity, croom) {
     return { x: rawX, y: rawY };
 }
 const getLocationCoord = get_location_coord;
+
+// C ref: sp_lev.c nhl_abs_coord()
+export function nhl_abs_coord(coord) {
+    const unpacked = get_unpacked_coord(coord);
+    if (unpacked.x < 0 || unpacked.y < 0) return { x: -1, y: -1 };
+    return get_location_coord(unpacked.x, unpacked.y, GETLOC_ANY_LOC, levelState.currentRoom || null);
+}
 
 export function get_room_loc(rawX, rawY, croom) {
     if (!croom) {
@@ -2819,6 +2887,53 @@ export function replace_terrain(opts) {
             }
         }
     }
+}
+
+// C ref: sp_lev.c sel_set_lit()
+export function sel_set_lit(x, y, lit) {
+    const loc = levelState.map?.locations?.[x]?.[y];
+    if (!loc) return;
+    loc.lit = lit ? 1 : 0;
+}
+
+// C ref: sp_lev.c sel_set_ter()
+export function sel_set_ter(x, y, terrain, opts = {}) {
+    const loc = levelState.map?.locations?.[x]?.[y];
+    if (!loc) return;
+    const clearMeta = (opts.clear !== undefined) ? !!opts.clear : true;
+    const lit = (opts.lit !== undefined) ? opts.lit : null;
+
+    if (clearMeta) {
+        // C ref: sp_lev.c lspo_map() clears tile metadata before sel_set_ter().
+        loc.flags = 0;
+        loc.horizontal = 0;
+        loc.roomno = 0;
+        loc.edge = 0;
+    }
+    loc.typ = terrain;
+    if (loc.typ === SDOOR || loc.typ === DOOR) {
+        if (loc.typ === SDOOR) {
+            loc.doormask = D_CLOSED;
+        }
+        if (x > 0) {
+            const left = levelState.map.locations[x - 1][y];
+            if (IS_WALL(left.typ) || left.horizontal) {
+                loc.horizontal = 1;
+            }
+        }
+    } else if (loc.typ === HWALL || loc.typ === IRONBARS) {
+        loc.horizontal = 1;
+    }
+    if (lit !== null) sel_set_lit(x, y, lit);
+    markSpLevMap(x, y);
+    markSpLevTouched(x, y);
+}
+
+// C ref: sp_lev.c sel_set_feature()
+export function sel_set_feature(x, y, terrain) {
+    if (!setLevlTypAt(levelState.map, x, y, terrain)) return false;
+    markSpLevTouched(x, y);
+    return true;
 }
 
 /**
@@ -3130,8 +3245,7 @@ export function build_room(opts = {}) {
             try {
                 contents(subroom);
             } finally {
-                levelState.currentRoom = levelState.roomStack.pop();
-                levelState.roomDepth--;
+                spo_endroom();
             }
         }
 
@@ -3213,8 +3327,7 @@ export function build_room(opts = {}) {
                 try {
                     contents(room);
                 } finally {
-                    levelState.currentRoom = levelState.roomStack.pop();
-                    levelState.roomDepth--;
+                    spo_endroom();
                 }
             }
 
@@ -3334,8 +3447,7 @@ export function build_room(opts = {}) {
                 try {
                     contents(room);
                 } finally {
-                    levelState.currentRoom = levelState.roomStack.pop();
-                    levelState.roomDepth--;
+                    spo_endroom();
                 }
             }
 
@@ -3409,8 +3521,7 @@ export function build_room(opts = {}) {
                 try {
                     contents(roomCalc);
                 } finally {
-                    levelState.currentRoom = levelState.roomStack.pop();
-                    levelState.roomDepth--;
+                    spo_endroom();
                 }
             }
 
@@ -3548,8 +3659,7 @@ export function build_room(opts = {}) {
             }
         } finally {
             // Restore parent room state
-            levelState.currentRoom = levelState.roomStack.pop();
-            levelState.roomDepth--;
+            spo_endroom();
         }
     }
 
@@ -4053,7 +4163,7 @@ export function object(name_or_opts, x, y) {
             try {
                 name_or_opts.contents(obj);
             } finally {
-                levelState.containerStack.pop();
+                spo_pop_container();
             }
         }
     }
@@ -4380,7 +4490,7 @@ function light_region(x1, y1, x2, y2, litVal) {
         for (let y = ly1; y <= ly2; y++) {
             if (x >= 0 && x < COLNO && y >= 0 && y < ROWNO) {
                 const loc = levelState.map.locations[x][y];
-                loc.lit = (IS_LAVA(loc.typ) || litVal) ? 1 : 0;
+                sel_set_lit(x, y, (IS_LAVA(loc.typ) || litVal) ? 1 : 0);
             }
         }
     }
@@ -4456,8 +4566,8 @@ export function region(opts_or_selection, type) {
             }
             for (const c of sel.coords) {
                 if (c.x < 0 || c.x >= COLNO || c.y < 0 || c.y >= ROWNO) continue;
-                const loc = levelState.map.locations[c.x][c.y];
-                loc.lit = (IS_LAVA(loc.typ) || targetLit) ? 1 : 0;
+                const typ = levelState.map.locations[c.x][c.y].typ;
+                sel_set_lit(c.x, c.y, (IS_LAVA(typ) || targetLit) ? 1 : 0);
             }
         } else {
             x1 = sourceSel.x1;
@@ -4579,8 +4689,7 @@ export function region(opts_or_selection, type) {
         try {
             opts.contents(createdRoom);
         } finally {
-            levelState.currentRoom = levelState.roomStack.pop();
-            levelState.roomDepth--;
+            spo_endroom();
         }
     }
     add_doors_to_room(levelState.map, createdRoom);
@@ -4651,6 +4760,46 @@ export function set_wallprop_in_selection(selection, propKind) {
 // C ref: sp_lev.c set_wall_property()
 export function set_wall_property(x1, y1, x2, y2, propKind) {
     set_wallprop_in_selection({ x1, y1, x2, y2 }, propKind);
+}
+
+// C ref: sp_lev.c shared_with_room()
+export function shared_with_room(map, tx, ty, room, rmno) {
+    if (!isok(tx, ty) || !room || !map) return false;
+    const here = map.at ? map.at(tx, ty) : map.locations?.[tx]?.[ty];
+    if (here && here.roomno === rmno && !here.edge) return false;
+    const neighbors = [
+        { x: tx - 1, y: ty, ok: tx - 1 <= room.hx },
+        { x: tx + 1, y: ty, ok: tx + 1 >= room.lx },
+        { x: tx, y: ty - 1, ok: ty - 1 <= room.hy },
+        { x: tx, y: ty + 1, ok: ty + 1 >= room.ly },
+    ];
+    for (const n of neighbors) {
+        if (!n.ok || !isok(n.x, n.y)) continue;
+        const loc = map.at ? map.at(n.x, n.y) : map.locations?.[n.x]?.[n.y];
+        if (loc && loc.roomno === rmno) return true;
+    }
+    return false;
+}
+
+// C ref: sp_lev.c search_door()
+export function search_door(map, x, y, room) {
+    if (!map || !room || room.hx < 0) return null;
+    const rmno = ((room.roomnoidx ?? map.rooms?.indexOf(room) ?? 0) + ROOMOFFSET);
+    const inside = (x >= room.lx && x <= room.hx && y >= room.ly && y <= room.hy);
+    const loc = map.at ? map.at(x, y) : map.locations?.[x]?.[y];
+    const roomMatch = loc && loc.roomno === rmno;
+    if ((!room.irregular && inside) || roomMatch || shared_with_room(map, x, y, room, rmno)) {
+        return room;
+    }
+    return null;
+}
+
+// C ref: sp_lev.c maybe_add_door()
+export function maybe_add_door(map, x, y, room) {
+    if (!map || !room) return false;
+    if (!search_door(map, x, y, room)) return false;
+    // sp_lev ownership helper; concrete door linking is done by mklev/dungeon path.
+    return true;
 }
 
 /**
@@ -5496,7 +5645,7 @@ export function feature(type, x, y) {
         levelState.currentRoom || null
     );
     if (pos.x < 0 || pos.x >= COLNO || pos.y < 0 || pos.y >= ROWNO) return;
-    if (!setLevlTypAt(levelState.map, pos.x, pos.y, terrain)) return;
+    if (!sel_set_feature(pos.x, pos.y, terrain)) return;
 
     if (terrain === ALTAR) {
         levelState.map.locations[pos.x][pos.y].altarAlign = A_NEUTRAL;
@@ -5741,6 +5890,57 @@ export function mineralize(opts = {}) {
     dungeonMineralize(levelState.map, depth, params);
 }
 
+// C ref: sp_lev.c pm_to_humidity()
+export function pm_to_humidity(_pm) {
+    // Conservative parity default: script placements primarily use dry squares.
+    return GETLOC_DRY;
+}
+
+// C ref: sp_lev.c pm_good_location()
+export function pm_good_location(pm, x, y) {
+    return is_ok_location(x, y, pm_to_humidity(pm));
+}
+
+// C ref: sp_lev.c m_bad_boulder_spot()
+export function m_bad_boulder_spot(x, y) {
+    if (!hasBoulderAt(x, y)) return false;
+    const trap = levelState.map?.trapAt?.(x, y) || null;
+    return !!(trap && (is_pit(trap.ttyp) || is_hole(trap.ttyp)));
+}
+
+// C ref: sp_lev.c noncoalignment()
+export function noncoalignment(baseAlign = A_NEUTRAL) {
+    if (baseAlign === A_LAWFUL) return A_CHAOTIC;
+    if (baseAlign === A_CHAOTIC) return A_LAWFUL;
+    return rn2(2) ? A_LAWFUL : A_CHAOTIC;
+}
+
+// C ref: sp_lev.c sp_amask_to_amask()
+export function sp_amask_to_amask(amask = 'random') {
+    const raw = (typeof amask === 'string') ? amask.toLowerCase() : amask;
+    if (raw === A_LAWFUL || raw === 'law' || raw === 'lawful') return A_LAWFUL;
+    if (raw === A_NEUTRAL || raw === 'neutral') return A_NEUTRAL;
+    if (raw === A_CHAOTIC || raw === 'chaos' || raw === 'chaotic') return A_CHAOTIC;
+    if (raw === 'coaligned') return A_NEUTRAL;
+    if (raw === 'noncoaligned') return noncoalignment(A_NEUTRAL);
+    const ctx = levelState.finalizeContext || {};
+    const specialName = typeof ctx.specialName === 'string' ? ctx.specialName : '';
+    const tutorialLike = !!levelState.map?.flags?.is_tutorial || specialName.startsWith('tut-');
+    const oracleLike = specialName.startsWith('oracle');
+    if (!tutorialLike && !oracleLike) {
+        // Keep existing RNG timing behavior in normal levels.
+        const rawAlign = rn2(3);
+        return [A_CHAOTIC, A_NEUTRAL, A_LAWFUL][rawAlign] ?? A_NEUTRAL;
+    }
+    const dnum = Number.isFinite(ctx.dnum) ? ctx.dnum : undefined;
+    const dungeonAlign = (dnum !== undefined) ? (DUNGEON_ALIGN_BY_DNUM[dnum] ?? A_NONE) : A_NONE;
+    let specialAlign = A_NONE;
+    if (oracleLike) specialAlign = A_NEUTRAL;
+    if (specialName.startsWith('medusa')) specialAlign = A_CHAOTIC;
+    else if (specialName.startsWith('tut-')) specialAlign = A_LAWFUL;
+    return induced_align(80, specialAlign, dungeonAlign);
+}
+
 /**
  * Create a monster from script options, resolving coordinates and applying
  * all C-parity logic (class resolution, inventory, alignment, etc.)
@@ -5805,21 +6005,7 @@ function createScriptMonster(deferred) {
 
     // C ref: sp_lev.c sp_amask_to_amask(AM_SPLEV_RANDOM) -> induced_align(80)
     function consumeInducedAlignRng() {
-        const ctx = levelState.finalizeContext || {};
-        const specialName = typeof ctx.specialName === 'string' ? ctx.specialName : '';
-        const tutorialLike = !!levelState.map?.flags?.is_tutorial || specialName.startsWith('tut-');
-        const oracleLike = specialName.startsWith('oracle');
-        if (!tutorialLike && !oracleLike) {
-            rn2(3);
-            return;
-        }
-        const dnum = Number.isFinite(ctx.dnum) ? ctx.dnum : undefined;
-        const dungeonAlign = (dnum !== undefined) ? (DUNGEON_ALIGN_BY_DNUM[dnum] ?? A_NONE) : A_NONE;
-        let specialAlign = A_NONE;
-        if (oracleLike) specialAlign = A_NEUTRAL;
-        if (specialName.startsWith('medusa')) specialAlign = A_CHAOTIC;
-        else if (specialName.startsWith('tut-')) specialAlign = A_LAWFUL;
-        induced_align(80, specialAlign, dungeonAlign);
+        sp_amask_to_amask('random');
     }
 
     const parseAppearAsLikeC = (appearAsSpec) => {
@@ -6038,7 +6224,7 @@ function createScriptMonster(deferred) {
                 try {
                     opts.inventory(mtmp);
                 } finally {
-                    levelState.monsterInventoryStack.pop();
+                    spo_end_moninvent();
                 }
             }
             mtmp.has_invent_flags = hasInvent;
@@ -6281,7 +6467,13 @@ export function wallify(opts) {
     if (x2 < 0) x2 = levelState.xstart + levelState.xsize + 1;
     if (y2 < 0) y2 = levelState.ystart + levelState.ysize + 1;
 
-    dungeonWallifyRegion(levelState.map, x1, y1, x2, y2);
+    wallify_map(levelState.map, x1, y1, x2, y2);
+}
+
+// C ref: sp_lev.c wallify_map()
+export function wallify_map(map, x1, y1, x2, y2) {
+    // Use sp_lev/dungeon bounded wallification semantics for parity.
+    return dungeonWallifyRegion(map, x1, y1, x2, y2);
 }
 
 // C ref: sp_lev.c map_cleanup() — post-gen cleanup of liquid squares.
