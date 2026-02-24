@@ -6,7 +6,8 @@ import { describe, it, before } from 'node:test';
 import assert from 'node:assert/strict';
 import {
     des, resetLevelState, getLevelState, setFinalizeContext,
-    mapfrag_fromstr, mapfrag_canmatch, mapfrag_error, mapfrag_match
+    mapfrag_fromstr, mapfrag_canmatch, mapfrag_error, mapfrag_match,
+    check_mapchr, get_table_mapchr_opt, get_table_mapchr, l_selection_filter_mapchar
 } from '../../js/sp_lev.js';
 import { place_lregion } from '../../js/mkmaze.js';
 import {
@@ -298,6 +299,32 @@ describe('sp_lev.js - des.* API', () => {
         const map = getLevelState().map;
         assert.equal(map.locations[10][5].typ, ROOM, 'wall match should be replaced');
         assert.equal(map.locations[11][5].typ, ROOM, 'non-wall floor stays floor');
+    });
+
+    it('mapchar helpers validate and parse map characters like nhlua', () => {
+        assert.equal(check_mapchr('.'), true);
+        assert.equal(check_mapchr('w'), true);
+        assert.equal(check_mapchr('x'), true);
+        assert.equal(check_mapchr('!'), false);
+        assert.equal(get_table_mapchr_opt({ typ: '.' }, 'typ', null), '.');
+        assert.equal(get_table_mapchr_opt({ typ: '!' }, 'typ', '?'), '?');
+        assert.equal(get_table_mapchr({ typ: 'w' }, 'typ'), 'w');
+        assert.throws(() => get_table_mapchr({}, 'typ'));
+    });
+
+    it('l_selection_filter_mapchar supports wall wildcard and transparent selector', () => {
+        resetLevelState();
+        des.level_init({ style: 'solidfill', fg: ' ' });
+        des.terrain(10, 5, '-');
+        des.terrain(11, 5, '.');
+
+        const walls = l_selection_filter_mapchar(null, 'w');
+        assert.equal(walls.coords.some(c => c.x === 10 && c.y === 5), true);
+        assert.equal(walls.coords.some(c => c.x === 11 && c.y === 5), false);
+
+        const all = l_selection_filter_mapchar({ x1: 10, y1: 5, x2: 11, y2: 5 }, 'x');
+        assert.equal(all.coords.some(c => c.x === 10 && c.y === 5), true);
+        assert.equal(all.coords.some(c => c.x === 11 && c.y === 5), true);
     });
 
     it('des.altar does not overwrite stairs/ladder tiles', () => {

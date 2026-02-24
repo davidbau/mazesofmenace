@@ -1252,3 +1252,9 @@ hard-won wisdom:
 - `sp_lev` mapfragment helpers (`mapfrag_fromstr`, `mapfrag_canmatch`, `mapfrag_error`, `mapfrag_match`) can be enabled in runtime safely when `replace_terrain` only enters that path when `mapfragment` is explicitly present.
 - Keeping non-mapfragment `fromterrain` behavior unchanged avoids broad RNG churn while letting `hellfill`/themeroom mapfragment calls execute real C-analog matching.
 - `mapfrag_match` must compare `match_maptyps(mapTyp, fragTyp)` (not reversed) so the `'w'` wildcard and non-terrain sentinels behave like C pattern semantics.
+
+### mkmaze waterlevel + nhlua/nhlsel mapchar bridge (2026-02-24)
+
+- `mkmaze` waterlevel helpers (`setup_waterlevel`, `mk_bubble`, `movebubbles`, `mv_bubble`, `save_waterlevel`, `restore_waterlevel`, `set_wportal`) should carry real structured state (bounds, bubble descriptors, active flags) rather than opaque placeholders so later movement parity work has deterministic hooks.
+- `nhlua`/`nhlsel` mapchar glue belongs in `sp_lev` where mapchar parsing already lives; adding `check_mapchr`, `get_table_mapchr[_opt]`, and `l_selection_filter_mapchar` enables direct C-name call sites with no forwarder indirection.
+- `selection.filter_mapchar` should route to `l_selection_filter_mapchar` so wildcard wall (`'w'`) and transparent selector (`'x'`) behavior is centralized and parity-debuggable.

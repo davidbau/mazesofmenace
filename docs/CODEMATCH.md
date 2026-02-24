@@ -2645,51 +2645,51 @@ No function symbols parsed from isaac64.c.
 ### mkmaze.c -> mkmaze.js
 | C Line | C Function | JS Line | Alignment |
 |--------|------------|---------|-----------|
-| 475 | `baalz_fixup` | mkmaze.js:691 | Partial (stateful scaffold) |
+| 475 | `baalz_fixup` | mkmaze.js:691 | Partial — bounded nondiggable wallification region ported; remaining special-case side effects pending |
 | 341 | `bad_location` | mkmaze.js:194 | Aligned |
 | 1441 | `bound_digging` | dungeon.js `bound_digging()` | Aligned |
-| 708 | `check_ransacked` | mkmaze.js:704 | Partial (stateful scaffold) |
+| 708 | `check_ransacked` | mkmaze.js:704 | Partial |
 | 951 | `create_maze` | mkmaze.js:281 | Aligned |
 | 166 | `extend_spine` | mkmaze.js:69 | Aligned |
 | 229 | `fix_wall_spines` | mkmaze.js `fix_wall_spines` | Aligned (re-export) |
-| 570 | `fixup_special` | mkmaze.js:697 | Partial (stateful scaffold) |
-| 1479 | `fumaroles` | mkmaze.js:743 | Partial (stateful scaffold) |
+| 570 | `fixup_special` | mkmaze.js:722 | Partial — water/air setup and portal hook path ported; full C matrix pending |
+| 1479 | `fumaroles` | mkmaze.js:824 | Partial |
 | 1354 | `get_level_extends` | dungeon.js `get_level_extends()` | Aligned |
 | 317 | `is_exclusion_zone` | mkmaze.js:149 | Aligned |
 | 70 | `is_solid` | mkmaze.js:48 | Aligned |
 | 45 | `iswall` | mkmaze.js:29 | Aligned |
 | 59 | `iswall_or_stone` | mkmaze.js:41 | Aligned |
 | 1128 | `makemaz` | mkmaze.js:206 | Aligned |
-| 1924 | `maybe_adjust_hero_bubble` | mkmaze.js:217 | Partial |
+| 1924 | `maybe_adjust_hero_bubble` | mkmaze.js:921 | Partial |
 | 309 | `maze0xy` | mkmaze.js:116 | Aligned |
 | 895 | `maze_inbounds` | mkmaze.js:177 | Aligned |
 | 905 | `maze_remove_deadends` | mkmaze.js:502 | Partial (uses create_maze deadend-removal path) |
 | 1317 | `mazexy` | mkmaze.js:507 | Aligned |
 | 781 | `migr_booty_item` | mkmaze.js:734 | Aligned |
 | 718 | `migrate_orc` | mkmaze.js:761 | Aligned |
-| 1868 | `mk_bubble` | mkmaze.js:775 | Partial (stateful scaffold) |
+| 1868 | `mk_bubble` | mkmaze.js:913 | Partial |
 | 1459 | `mkportal` | mkmaze.js:181 | Aligned |
-| 1534 | `movebubbles` | mkmaze.js:726 | Partial (stateful scaffold) |
-| 1947 | `mv_bubble` | mkmaze.js:795 | Partial (stateful scaffold) |
+| 1534 | `movebubbles` | mkmaze.js:832 | Partial — bounded bubble-move loop ported |
+| 1947 | `mv_bubble` | mkmaze.js:936 | Partial — bounded movement/bounce semantics ported |
 | 297 | `okay` | mkmaze.js:102 | Aligned |
 | 1043 | `pick_vibrasquare_location` | mkmaze.js:537 | Aligned |
 | 356 | `place_lregion` | mkmaze.js:300 | Aligned |
 | 1098 | `populate_maze` | mkmaze.js:460 | Aligned |
 | 413 | `put_lregion_here` | mkmaze.js:238 | Aligned |
-| 1745 | `restore_waterlevel` | mkmaze.js:745 | Partial (state save/restore scaffold) |
-| 1718 | `save_waterlevel` | mkmaze.js:741 | Partial (state save/restore scaffold) |
+| 1745 | `restore_waterlevel` | mkmaze.js:853 | Partial — structured water-state restore ported |
+| 1718 | `save_waterlevel` | mkmaze.js:849 | Partial — structured water-state snapshot ported |
 | 77 | `set_levltyp` | mkmaze.js:53 | Aligned |
 | 125 | `set_levltyp_lit` | mkmaze.js:61 | Aligned |
-| 1797 | `set_wportal` | mkmaze.js:750 | Partial (portal-state scaffold) |
-| 1807 | `setup_waterlevel` | mkmaze.js:756 | Partial (stateful scaffold) |
+| 1797 | `set_wportal` | mkmaze.js:858 | Partial — portal state now recorded with destination payload |
+| 1807 | `setup_waterlevel` | mkmaze.js:864 | Partial — water/air conversion + bubble seed scaffold ported |
 | 749 | `shiny_orc_stuff` | mkmaze.js:721 | Aligned |
 | 800 | `stolen_booty` | mkmaze.js:749 | Aligned |
-| 1855 | `unsetup_waterlevel` | mkmaze.js:767 | Partial (stateful scaffold) |
+| 1855 | `unsetup_waterlevel` | mkmaze.js:905 | Partial |
 | 1233 | `walkfrom` | mkmaze.js:232 | Partial |
 | 1280 | `walkfrom` | mkmaze.js:232 | Partial |
 | 198 | `wall_cleanup` | mkmaze.js:84 | Aligned |
 | 290 | `wallification` | mkmaze.js `wallification` | Aligned (re-export) |
-| 1684 | `water_friction` | mkmaze.js:737 | Partial (hero-bubble check scaffold) |
+| 1684 | `water_friction` | mkmaze.js:844 | Partial |
 
 ### mkobj.c -> mkobj.js
 | C Line | C Function | JS Line | Alignment |
@@ -3223,7 +3223,7 @@ No function symbols parsed from isaac64.c.
 | 136 | `l_selection_clone` | - | Missing |
 | 810 | `l_selection_ellipse` | - | Missing |
 | 559 | `l_selection_fillrect` | - | Missing |
-| 657 | `l_selection_filter_mapchar` | - | Missing |
+| 657 | `l_selection_filter_mapchar` | sp_lev.js:3074 | Aligned |
 | 389 | `l_selection_filter_percent` | - | Missing |
 | 726 | `l_selection_flood` | - | Missing |
 | 70 | `l_selection_gc` | - | Missing |
@@ -3255,7 +3255,7 @@ No function symbols parsed from isaac64.c.
 ### nhlua.c -> —
 | C Line | C Function | JS Line | Alignment |
 |--------|------------|---------|-----------|
-| 395 | `check_mapchr` | - | Missing |
+| 395 | `check_mapchr` | sp_lev.js:3047 | Aligned |
 | 2831 | `end_luapat` | - | Missing |
 | 1960 | `free_tutorial` | - | Missing |
 | 2567 | `get_lua_version` | - | Missing |
@@ -3264,8 +3264,8 @@ No function symbols parsed from isaac64.c.
 | 1258 | `get_table_boolean_opt` | - | Missing |
 | 1168 | `get_table_int` | - | Missing |
 | 1180 | `get_table_int_opt` | - | Missing |
-| 243 | `get_table_mapchr` | - | Missing |
-| 258 | `get_table_mapchr_opt` | - | Missing |
+| 243 | `get_table_mapchr` | sp_lev.js:3065 | Aligned |
+| 258 | `get_table_mapchr_opt` | sp_lev.js:3055 | Aligned |
 | 1273 | `get_table_option` | - | Missing |
 | 1193 | `get_table_str` | - | Missing |
 | 1206 | `get_table_str_opt` | - | Missing |

@@ -3043,6 +3043,72 @@ function mapchrToTerrain(ch) {
     }
 }
 
+// C ref: nhlua.c check_mapchr()
+export function check_mapchr(ch) {
+    if (typeof ch !== 'string' || ch.length === 0) return false;
+    const c = ch[0];
+    if (c === 'w' || c === 'x') return true;
+    return mapchrToTerrain(c) !== -1;
+}
+
+// C ref: nhlua.c get_table_mapchr_opt()
+export function get_table_mapchr_opt(opts = {}, name = 'typ', defval = -1) {
+    const raw = opts?.[name];
+    if (raw === undefined || raw === null) return defval;
+    if (typeof raw !== 'string' || raw.length === 0) return defval;
+    const c = raw[0];
+    if (!check_mapchr(c)) return defval;
+    return c;
+}
+
+// C ref: nhlua.c get_table_mapchr()
+export function get_table_mapchr(opts = {}, name = 'typ') {
+    const c = get_table_mapchr_opt(opts, name, null);
+    if (c === null) {
+        throw new Error(`Expected map character for "${name}"`);
+    }
+    return c;
+}
+
+// C ref: nhlsel.c l_selection_filter_mapchar()
+export function l_selection_filter_mapchar(sel = null, ch = '.') {
+    if (!levelState.map || !check_mapchr(ch)) return selection.new();
+
+    let checkCoords = [];
+    if (!sel) {
+        for (let y = 0; y < ROWNO; y++) {
+            for (let x = 1; x < COLNO; x++) {
+                checkCoords.push({ x, y });
+            }
+        }
+    } else if (Array.isArray(sel.coords)) {
+        checkCoords = sel.coords;
+    } else if (sel.x1 !== undefined) {
+        for (let y = sel.y1; y <= sel.y2; y++) {
+            for (let x = sel.x1; x <= sel.x2; x++) {
+                checkCoords.push({ x, y });
+            }
+        }
+    }
+
+    const result = selection.new();
+    const t = mapchrToTerrain(ch);
+    for (const c of checkCoords) {
+        const loc = levelState.map.locations?.[c.x]?.[c.y];
+        if (!loc) continue;
+        let match = false;
+        if (ch === 'w') {
+            match = IS_WALL(loc.typ) || loc.typ === IRONBARS;
+        } else if (ch === 'x') {
+            match = true;
+        } else {
+            match = (t !== -1 && loc.typ === t);
+        }
+        if (match) result.set(c.x, c.y, true);
+    }
+    return result;
+}
+
 /**
  * Check if a terrain type is any kind of wall.
  */
@@ -7970,48 +8036,7 @@ export const selection = {
      * @returns {Object} Filtered selection with coords array
      */
     filter_mapchar: (sel, ch) => {
-        if (!levelState.map) return { coords: [] };
-
-        // Map character to terrain type
-        const charToType = {
-            '.': ROOM,
-            '#': CORR,
-            '-': HWALL,
-            '|': VWALL,
-            '+': DOOR,
-        };
-        const targetType = charToType[ch];
-
-        // Get coords to check
-        let checkCoords = [];
-        if (!sel) {
-            // No selection = check all tiles
-            for (let y = 0; y < ROWNO; y++) {
-                for (let x = 1; x < COLNO; x++) {
-                    checkCoords.push({ x, y });
-                }
-            }
-        } else if (sel.coords) {
-            checkCoords = sel.coords;
-        } else if (sel.x1 !== undefined) {
-            // Rectangle format
-            for (let y = sel.y1; y <= sel.y2; y++) {
-                for (let x = sel.x1; x <= sel.x2; x++) {
-                    checkCoords.push({ x, y });
-                }
-            }
-        }
-
-        // Filter to matching tiles
-        const coords = checkCoords.filter(c => {
-            const loc = levelState.map.locations[c.x]?.[c.y];
-            return loc && loc.typ === targetType;
-        });
-
-        // Return a proper selection object with methods
-        const result = selection.new();
-        coords.forEach(c => result.set(c.x, c.y, true));
-        return result;
+        return l_selection_filter_mapchar(sel, ch);
     },
 };
 

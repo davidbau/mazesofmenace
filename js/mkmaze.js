@@ -690,15 +690,47 @@ export { wallification, fix_wall_spines };
 // C ref: mkmaze.c baalz_fixup/fixup_special/check_ransacked/etc.
 export function baalz_fixup(map, state = {}) {
     if (!map) return false;
+    const midY = Math.trunc(ROWNO / 2);
+    let lastX = 0;
+    let inX1 = COLNO;
+    for (let x = 0; x < COLNO; x++) {
+        const loc = at(map, x, midY);
+        if (loc && loc.nondiggable) {
+            if (!lastX) inX1 = x + 1;
+            lastX = x;
+        }
+    }
+    const inX2 = ((lastX > inX1) ? lastX : COLNO) - 1;
+    let lastY = 0;
+    let inY1 = ROWNO;
+    const probeX = Math.min(Math.max(inX1, 0), COLNO - 1);
+    for (let y = 0; y < ROWNO; y++) {
+        const loc = at(map, probeX, y);
+        if (loc && loc.nondiggable) {
+            if (!lastY) inY1 = y + 1;
+            lastY = y;
+        }
+    }
+    const inY2 = ((lastY > inY1) ? lastY : ROWNO) - 1;
+    if (inX1 <= inX2 && inY1 <= inY2) {
+        wallify_region(map, inX1, inY1, inX2, inY2);
+    }
     map._specialFixups = map._specialFixups || {};
-    map._specialFixups.baalz = { done: true, ...state };
+    map._specialFixups.baalz = { inX1, inX2, inY1, inY2, ...state };
     return true;
 }
 export function fixup_special(map, opts = {}) {
     if (!map) return false;
+    const specialName = String(opts.specialName || '').toLowerCase();
+    if (specialName === 'water' || specialName === 'air') {
+        setup_waterlevel(map, { isWaterLevel: specialName === 'water' });
+    }
+    if (opts?.baalz || specialName === 'baalz') baalz_fixup(map, opts.baalz || {});
+    if (opts?.portal && Number.isInteger(opts.portal.x) && Number.isInteger(opts.portal.y)) {
+        set_wportal(map, opts.portal.x, opts.portal.y, opts.portal.dst || null);
+    }
     map._specialFixups = map._specialFixups || {};
     map._specialFixups.applied = true;
-    if (opts?.baalz) baalz_fixup(map, opts.baalz);
     return true;
 }
 export function check_ransacked(map, roomId = null) {
@@ -799,18 +831,20 @@ export function fumaroles(map, list = []) {
 }
 export function movebubbles(map, dx = 0, dy = 0) {
     const water = map?._water;
-    if (!water?.active || !Array.isArray(water.bubbles)) return false;
-    if (!Number.isInteger(dx) || !Number.isInteger(dy)) return false;
+    if (!water?.active || !Array.isArray(water.bubbles) || !water.bubbles.length) return false;
+    const useRand = !Number.isInteger(dx) || !Number.isInteger(dy);
     for (const b of water.bubbles) {
         if (!b || !Number.isInteger(b.x) || !Number.isInteger(b.y)) continue;
-        b.x += dx;
-        b.y += dy;
+        const stepX = useRand ? (rn2(3) - 1) : dx;
+        const stepY = useRand ? (rn2(3) - 1) : dy;
+        mv_bubble(map, b, stepX, stepY);
     }
     return true;
 }
 export function water_friction(map, pos = null) {
     if (!pos || !map?._water?.active) return 0;
-    return maybe_adjust_hero_bubble(map, pos) ? 1 : 0;
+    if (maybe_adjust_hero_bubble(map, pos)) return 1;
+    return rn2(3) ? 0 : 1;
 }
 export function save_waterlevel(map) {
     if (!map?._water) return null;
@@ -829,11 +863,41 @@ export function set_wportal(map, x = null, y = null, dst = null) {
 }
 export function setup_waterlevel(map, args = {}) {
     if (!map) return false;
+    const isWaterLevel = !!args.isWaterLevel;
+    map.flags = map.flags || {};
+    map.flags.hero_memory = false;
+    const baseTyp = isWaterLevel ? WATER : AIR;
+    for (let x = 1; x < COLNO; x++) {
+        for (let y = 0; y < ROWNO; y++) {
+            const loc = at(map, x, y);
+            if (loc && loc.typ === STONE) loc.typ = baseTyp;
+        }
+    }
+    const xmin = 3;
+    const ymin = 1;
+    const xmax = Math.min(78, (COLNO - 1) - 1);
+    const ymax = Math.min(20, (ROWNO - 1));
+    const xskip = isWaterLevel ? (10 + rn2(10)) : (6 + rn2(4));
+    const yskip = isWaterLevel ? (4 + rn2(4)) : (3 + rn2(3));
+    const bubbles = [];
+    for (let x = xmin; x <= xmax; x += xskip) {
+        for (let y = ymin; y <= ymax; y += yskip) {
+            const n = rn2(7);
+            if (x < xmax && y < ymax) bubbles.push({ x, y, n, dx: 0, dy: 0 });
+        }
+    }
     map._water = {
-        bubbles: [],
+        bubbles,
         active: true,
         heroBubble: null,
         portal: null,
+        isWaterLevel,
+        xmin,
+        ymin,
+        xmax,
+        ymax,
+        xskip,
+        yskip,
         ...args,
     };
     return true;
@@ -848,7 +912,7 @@ export function unsetup_waterlevel(map) {
 }
 export function mk_bubble(map, x, y, n) {
     if (!map) return null;
-    const bubble = { x, y, n, active: true };
+    const bubble = { x, y, n, active: true, dx: 0, dy: 0 };
     map._water = map._water || { bubbles: [] };
     map._water.bubbles.push(bubble);
     return bubble;
@@ -862,15 +926,36 @@ export function maybe_adjust_hero_bubble(map, heroPos = null) {
         && heroPos.x >= b.x && heroPos.x < (b.x + b.n)
         && heroPos.y >= b.y && heroPos.y < (b.y + b.n)
     ));
-    if (!bubble) return false;
+    if (!bubble) {
+        map._water.heroBubble = null;
+        return false;
+    }
     map._water.heroBubble = bubble;
     return true;
 }
 export function mv_bubble(map, bubble, dx = 0, dy = 0) {
     if (!map || !bubble || !Number.isInteger(dx) || !Number.isInteger(dy)) return false;
     if (!Number.isInteger(bubble.x) || !Number.isInteger(bubble.y)) return false;
-    bubble.x += dx;
-    bubble.y += dy;
+    const water = map._water || {};
+    const minX = Number.isInteger(water.xmin) ? water.xmin : 1;
+    const minY = Number.isInteger(water.ymin) ? water.ymin : 0;
+    const maxX = Number.isInteger(water.xmax) ? water.xmax : (COLNO - 1);
+    const maxY = Number.isInteger(water.ymax) ? water.ymax : (ROWNO - 1);
+    let nx = bubble.x + dx;
+    let ny = bubble.y + dy;
+    const span = Math.max(0, Number.isInteger(bubble.n) ? bubble.n : 0);
+    if (nx < minX || (nx + span) > maxX) {
+        dx = -dx;
+        nx = bubble.x + dx;
+    }
+    if (ny < minY || (ny + span) > maxY) {
+        dy = -dy;
+        ny = bubble.y + dy;
+    }
+    bubble.dx = dx;
+    bubble.dy = dy;
+    bubble.x = Math.min(Math.max(minX, nx), maxX);
+    bubble.y = Math.min(Math.max(minY, ny), maxY);
     return true;
 }
 
