@@ -1354,3 +1354,9 @@ hard-won wisdom:
 - `set_wportal()` should support C-style discovery from existing `MAGIC_PORTAL` traps when no explicit coordinates are supplied.
 - `movebubbles()` should re-establish water/air base terrain before moving bubbles; this keeps bubble rendering behavior closer to C even before full object/monster/trap bubble transport is ported.
 - Bubble transport can be ported incrementally by lifting map contents into per-bubble containers before movement, then replacing at shifted coordinates afterward; this closes object/monster/trap drift without requiring full hero-transport wiring in the same batch.
+
+### mkgrave headstone parity + seed100 recapture (2026-02-24)
+
+- `mklev.mkgrave()` must create the grave through `engrave.make_grave()` (or equivalent) so headstone engravings are emitted as `^engr[6,x,y]`, matching C event logs.
+- Setting `loc.typ = GRAVE` alone is insufficient for event parity because it misses the engraving-side event stream even when RNG/screens remain aligned.
+- Older session captures can under-report modern movement/event instrumentation; when core behavior is already aligned, re-record those sessions with current `run_session.py` to restore event-schema parity.

@@ -24,7 +24,7 @@ import { placeFloorObject } from './floor_objects.js';
 import { GOLD_PIECE, BELL, CORPSE, SCR_TELEPORTATION } from './objects.js';
 import { S_HUMAN, S_MIMIC } from './monsters.js';
 import { mkclass, makemon } from './makemon.js';
-import { make_engr_at, wipe_engr_at } from './engrave.js';
+import { make_engr_at, wipe_engr_at, make_grave } from './engrave.js';
 import { random_epitaph_text } from './rumors.js';
 import { litstate_rnd } from './mkmap.js';
 import {
@@ -595,10 +595,11 @@ export function mkgrave(map, croom, depth) {
     if (!pos) return;
     const loc = map.at(pos.x, pos.y);
     if (!loc) return;
-    loc.typ = GRAVE;
+    let epitaph = '';
     if (!dobell) {
-        void random_epitaph_text();
+        epitaph = random_epitaph_text();
     }
+    make_grave(map, pos.x, pos.y, epitaph);
     if (!rn2(3)) {
         mksobj(GOLD_PIECE, true, false);
         rnd(20);
@@ -633,7 +634,10 @@ export function makeniche(map, depth, trap_type) {
                 let actual_trap = trap_type;
                 if (is_hole(actual_trap) && depth <= 1) actual_trap = ROCKTRAP;
                 maketrap(map, xx, yy + dy, actual_trap, depth);
-                const engrText = TRAP_ENGRAVINGS[actual_trap];
+                // C ref: mklev.c uses trap_type (pre-adjustment), so level-1
+                // TRAPDOOR niches still get the trap engraving even when the
+                // actual trap becomes ROCKTRAP.
+                const engrText = TRAP_ENGRAVINGS[trap_type];
                 if (engrText) {
                     make_engr_at(map, xx, yy - dy, engrText, 'dust');
                     wipe_engr_at(map, xx, yy - dy, 5, false);
