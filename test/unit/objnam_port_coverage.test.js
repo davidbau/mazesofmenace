@@ -14,6 +14,7 @@ import {
     readobjnam_postparse1,
     readobjnam_postparse2,
     readobjnam,
+    hands_obj,
     mshot_xname,
     doname_with_price,
     doname_vague_quan,
@@ -139,5 +140,22 @@ describe('objnam port coverage', () => {
         assert.equal(trapWish?.applied, true);
         assert.ok(map.trapAt(10, 10));
         assert.equal(map.trapAt(10, 10).ttyp, FIRE_TRAP);
+    });
+
+    it('routes terrain wishes through readobjnam in wizard mode', () => {
+        const map = new GameMap();
+        const player = { x: 12, y: 12, map, wizard: true };
+        map.at(12, 12).typ = ROOM;
+
+        const res = readobjnam('locked door', false, { wizard: true, player, map });
+        assert.equal(res, hands_obj);
+        assert.equal(map.at(12, 12).typ, DOOR);
+        assert.equal((map.at(12, 12).flags & D_LOCKED) !== 0, true);
+
+        map.at(12, 12).typ = ROOM;
+        map.at(12, 12).flags = 0;
+        const nonwiz = readobjnam('locked door', false, { wizard: false, player, map });
+        assert.equal(nonwiz, null);
+        assert.equal(map.at(12, 12).typ, ROOM);
     });
 });

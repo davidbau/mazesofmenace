@@ -56,7 +56,7 @@ import { enexto } from './teleport.js';
 import { splitobj } from './mkobj.js';
 import { delobj } from './invent.js';
 import { monflee } from './monmove.js';
-import { readobjnam, wizterrainwish } from './objnam.js';
+import { readobjnam, hands_obj } from './objnam.js';
 import { hold_another_object, prinv } from './invent.js';
 
 // Direction vectors matching commands.js DIRECTION_KEYS
@@ -1090,24 +1090,24 @@ export function do_osshock(obj, map, player) {
 
 // C ref: zap.c makewish() — grant an object wish and hand it to hero.
 export function makewish(wishText, player, display) {
-    let otmp = readobjnam(wishText, false);
+    let otmp = readobjnam(wishText, false, {
+        wizard: !!player?.wizard,
+        wizkit_wishing: !!player?.program_state?.wizkit_wishing,
+        player,
+        map: player?.map || null,
+    });
+    if (otmp === hands_obj) {
+        return otmp;
+    }
     if (!otmp) {
-        const terrain = wizterrainwish({
-            text: wishText,
-            player,
-            map: player?.map || null,
-        });
-        if (terrain && terrain.applied) {
-            return terrain;
-        }
         if (display) display.putstr_message('Nothing fitting that description exists.');
         return null;
     }
     const got = hold_another_object(otmp, player, null, null, null);
     prinv(null, got || otmp, 0, player);
-    // C ref: zap.c makewish() has no special attribute exercise for
-    // wished magic-mapping scrolls.
-    rn2(100);
+    if (player) {
+        player.ublesscnt = (player.ublesscnt || 0) + rn1(100, 50);
+    }
     return got || otmp;
 }
 

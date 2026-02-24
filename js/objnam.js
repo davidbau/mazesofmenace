@@ -79,6 +79,7 @@ export function erosion_matters(obj) {
 // ============================================================================
 
 const vowels = 'aeiou';
+export const hands_obj = Object.freeze({ _hands_obj: true });
 
 // cf. objnam.c GemStone macro
 function GemStone(typ) {
@@ -2067,7 +2068,7 @@ export function readobjnam_postparse3(state) {
 }
 
 // cf. objnam.c:4900 — readobjnam(bp, no_wish): parse wish string into object
-export function readobjnam(bp, no_wish) {
+export function readobjnam(bp, no_wish, opts = {}) {
     if (typeof bp !== 'string') return null;
     const state = readobjnam_init();
     if (!readobjnam_preparse(state, bp)) return null;
@@ -2117,7 +2118,23 @@ export function readobjnam(bp, no_wish) {
     } else if (oclass) {
         otmp = mkobj(oclass, false);
     }
-    if (!otmp) return null;
+    if (!otmp) {
+        // C flow parity: terrain/trap wishing is part of readobjnam, gated to
+        // wizard mode and disabled for wizkit startup wishing.
+        const wizard = !!opts.wizard;
+        const wizkit_wishing = !!opts.wizkit_wishing;
+        if (wizard && !wizkit_wishing && !oclass) {
+            const terrain = wizterrainwish({
+                text: bp,
+                player: opts.player || null,
+                map: opts.map || opts.player?.map || null,
+                x: opts.x,
+                y: opts.y,
+            });
+            if (terrain) return hands_obj;
+        }
+        return null;
+    }
     otyp = otmp.otyp;
 
     if (state.quan > 1) {
