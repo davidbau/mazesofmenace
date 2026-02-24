@@ -37,7 +37,7 @@ import {
 import { is_covetous, is_minion, attacktype, big_to_little } from './mondata.js';
 import { Monnam } from './do_name.js';
 import { hcolor } from './do_name.js';
-import { newsym, mpickobj, add_to_minv, BOLT_LIM } from './monutil.js';
+import { newsym, mpickobj, add_to_minv, BOLT_LIM, helpless as monHelpless } from './monutil.js';
 import { enexto, rloc, rloc_to, RLOC_MSG } from './teleport.js';
 import { healmon, wake_nearto } from './mon.js';
 import { monster_census, msummon } from './minion.js';
@@ -169,7 +169,7 @@ function inhistemple(/*mtmp*/) { return false; }
 function inhishop(mtmp) { return !!(mtmp.isshk && mtmp.shoproom); }
 
 // helpless — is monster unable to act?
-function helpless(mtmp) { return !!(mtmp.sleeping || mtmp.mfrozen); }
+function helpless(mtmp) { return monHelpless(mtmp); }
 
 // ptr accessor for monster data
 function mptr(mtmp) { return mtmp.type || mtmp.data || {}; }

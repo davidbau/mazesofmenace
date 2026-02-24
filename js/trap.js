@@ -13,7 +13,7 @@ import { is_mindless, touch_petrifies, resists_ston,
          extra_nasty, flaming, acidic, completelyrusts
        } from './mondata.js';
 import { mon_knows_traps, mon_learns_traps } from './mondata.js';
-import { mondead, newsym } from './monutil.js';
+import { mondead, newsym, helpless as monHelpless } from './monutil.js';
 import { monkilled, m_in_air, setmangry } from './mon.js';
 import { sleep_monst } from './mhitm.js';
 import { find_mac, which_armor,
@@ -86,7 +86,7 @@ function DEADMONSTER(mon) { return mon && mon.mhp <= 0; }
 // C ref: helpless(mon) — mon is asleep/paralyzed/etc
 function helpless(mon) {
     if (!mon) return false;
-    return !!mon.msleeping || !!mon.mfrozen;
+    return monHelpless(mon);
 }
 
 // C ref: is_pit() helper

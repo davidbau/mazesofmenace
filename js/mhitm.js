@@ -18,7 +18,7 @@
 
 import { rn2, rnd, d, c_d } from './rng.js';
 import { distmin } from './hacklib.js';
-import { monnear, mondead, monAttackName, map_invisible } from './monutil.js';
+import { monnear, mondead, monAttackName, map_invisible, helpless } from './monutil.js';
 import { cansee } from './vision.js';
 import {
     monNam, monDisplayName, touch_petrifies, unsolid, resists_fire, resists_cold,
@@ -45,7 +45,7 @@ import {
 } from './uhitm.js';
 import { monsterWeaponSwingVerb, monsterPossessive } from './mhitu.js';
 import { find_mac, W_ARMG, W_ARMF, W_ARMH } from './worn.js';
-import { mon_wield_item, possibly_unwield, NEED_WEAPON, NEED_HTH_WEAPON } from './weapon.js';
+import { mon_wield_item, possibly_unwield, NEED_WEAPON, NEED_HTH_WEAPON, hitval } from './weapon.js';
 import { spec_dbon } from './artifact.js';
 
 // Re-export M_ATTK_* for convenience
@@ -60,13 +60,6 @@ const NATTK = 6; // C ref: monattk.h — max number of monster attacks
 
 function DEADMONSTER(mon) {
     return !mon || mon.dead || (mon.mhp != null && mon.mhp <= 0);
-}
-
-function helpless(mon) {
-    if (!mon) return true;
-    if (mon.mcanmove === false) return true;
-    if (mon.msleeping) return true;
-    return false;
 }
 
 // cf. worn.c:707 — find_mac(mon): accounts for worn armor via m_dowear.
@@ -621,6 +614,8 @@ export function mattackm(magr, mdef, display, vis, map, ctx) {
             mwep = magr.weapon || null;
             if (mwep) {
                 mswingsm(magr, mdef, mwep, display, vis, ctx);
+                // C ref: mhitm.c mattackm() — temporary weapon to-hit bonus.
+                tmp += hitval(mwep, mdef);
             }
             // Fall through to melee
             // FALLTHROUGH
@@ -642,6 +637,8 @@ export function mattackm(magr, mdef, display, vis, map, ctx) {
 
             dieroll = rnd(20 + i);
             strike = (tmp > dieroll) ? 1 : 0;
+            // C ref: mhitm.c mattackm() — remove temporary hitval bonus.
+            if (mwep) tmp -= hitval(mwep, mdef);
             if (strike) {
                 // Check for grab failure on unsolid targets
                 if (unsolid(pd) && failed_grab(magr, mdef, mattk)) {

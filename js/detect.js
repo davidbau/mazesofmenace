@@ -11,7 +11,7 @@ import { PM_GOLD_GOLEM, PM_LONG_WORM, S_EEL, S_WORM_TAIL } from './monsters.js';
 import { is_hider, hides_under } from './mondata.js';
 import { pline, You, Your, You_feel, You_see, pline_The,
          Norep, There, set_msg_xy } from './pline.js';
-import { BOLT_LIM, map_invisible, newsym } from './monutil.js';
+import { BOLT_LIM, map_invisible, newsym, helpless as monHelpless } from './monutil.js';
 import { findgold } from './steal.js';
 import { observeObject } from './discovery.js';
 import { unblock_point, recalc_block_point, do_clear_area } from './vision.js';
@@ -48,7 +48,7 @@ function DEADMONSTER(mon) {
     return !!(mon && (mon.dead || (mon.mhp != null && mon.mhp <= 0)));
 }
 function helpless(mon) {
-    return !!(mon && (mon.msleeping || mon.mfrozen));
+    return !!mon && monHelpless(mon);
 }
 function u_at(player, x, y) {
     return player.x === x && player.y === y;

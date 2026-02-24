@@ -32,7 +32,7 @@ import { pline, You, Your, You_hear, You_feel, You_cant, pline_The, There,
          verbalize, Norep, impossible, livelog_printf } from './pline.js';
 import { s_suffix, upstart, highc } from './hacklib.js';
 import { findgold } from './steal.js';
-import { add_to_minv } from './monutil.js';
+import { add_to_minv, helpless as monHelpless } from './monutil.js';
 import { canseemon } from './mondata.js';
 
 // ============================================================
@@ -172,8 +172,7 @@ function mhim(shkp) {
 
 // C ref: helpless(shkp) -- check if monster is helpless (sleeping/paralyzed)
 function helpless(shkp) {
-    if (!shkp) return true;
-    return !!(shkp.msleeping || shkp.mfrozen || !shkp.mcanmove);
+    return monHelpless(shkp);
 }
 
 // C ref: muteshk(shkp) -- check if shk is unable to speak

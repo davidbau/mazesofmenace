@@ -74,6 +74,16 @@ export function monnear(mon, x, y) {
     return distance < 3;
 }
 
+// C ref: monst.h helpless(mon) — sleeping or unable to move.
+// Be tolerant of replay/state encodings that use numeric flags.
+export function helpless(mon) {
+    if (!mon) return true;
+    if (mon.msleeping || mon.sleeping) return true;
+    if (mon.mcanmove === false || mon.mcanmove === 0) return true;
+    if (Number(mon.mfrozen || 0) > 0) return true;
+    return false;
+}
+
 // ========================================================================
 // Display helpers — attack verbs, monster names
 // ========================================================================
