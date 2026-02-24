@@ -31,7 +31,7 @@ import { dosearch0 } from './detect.js';
 import { monsterNearby, monnear } from './monutil.js';
 import { monflee } from './monmove.js';
 import { ynFunction } from './input.js';
-import { water_friction } from './mkmaze.js';
+import { water_friction, maybe_adjust_hero_bubble } from './mkmaze.js';
 // pline available from './pline.js' if needed for direct message output
 
 // Run direction keys (shift = run)
@@ -1347,6 +1347,14 @@ export function air_turbulence(player, map, display) {
 export function water_turbulence(player, map, display, target = null) {
     if (!player?.uinwater) return false;
 
+    if (map?.flags?.is_waterlevel) {
+        maybe_adjust_hero_bubble(map, {
+            x: player.x,
+            y: player.y,
+            dx: player.dx,
+            dy: player.dy,
+        });
+    }
     water_friction(map, player, display);
     if (!player.dx && !player.dy) {
         return true;

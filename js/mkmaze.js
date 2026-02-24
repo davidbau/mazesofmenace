@@ -1327,7 +1327,8 @@ export function mk_bubble(map, x, y, n) {
 }
 // C ref: mkmaze.c maybe_adjust_hero_bubble
 export function maybe_adjust_hero_bubble(map, heroPos = null) {
-    if (!map?._water?.bubbles || !heroPos) return false;
+    if (!map?.flags?.is_waterlevel || !map?._water?.bubbles || !heroPos) return false;
+    if (!heroPos.dx && !heroPos.dy) return false;
     const bubble = map._water.bubbles.find((b) => (
         Number.isInteger(b?.x) && Number.isInteger(b?.y)
         && Array.isArray(b?.bm) && b.bm.length >= 2
@@ -1339,7 +1340,12 @@ export function maybe_adjust_hero_bubble(map, heroPos = null) {
         return false;
     }
     map._water.heroBubble = bubble;
-    return true;
+    if (!rn2(2)) {
+        bubble.dx = heroPos.dx;
+        bubble.dy = heroPos.dy;
+        return true;
+    }
+    return false;
 }
 export function mv_bubble(map, bubble, dx = 0, dy = 0, ini = false) {
     if (!map || !bubble || !Number.isInteger(dx) || !Number.isInteger(dy)) return false;

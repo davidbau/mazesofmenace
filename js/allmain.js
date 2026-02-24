@@ -186,6 +186,18 @@ export function moveloop_turnend(game) {
 
     // C ref: allmain.c:374 — water/air planes update moving bubbles/clouds each turn.
     if (game.map?.flags?.is_waterlevel || game.map?.flags?.is_airlevel) {
+        if (game.map?._water && game.player) {
+            game.map._water.heroPos = {
+                x: game.player.x,
+                y: game.player.y,
+                dx: game.player.dx || 0,
+                dy: game.player.dy || 0,
+            };
+            game.map._water.onHeroMoved = (x, y) => {
+                game.player.x = x;
+                game.player.y = y;
+            };
+        }
         movebubbles(game.map);
     }
 

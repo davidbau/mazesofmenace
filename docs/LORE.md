@@ -1371,3 +1371,8 @@ hard-won wisdom:
 ### Medusa statue reroll parity helper reuse (2026-02-24)
 
 - `sp_lev` Medusa fixup should use shared `mondata.poly_when_stoned(ptr)` rather than local TODO logic when rerolling statue corpsenm.
+
+### Water-plane hero coupling hook (2026-02-24)
+
+- Bubble transport in `mkmaze.movebubbles()` can move the hero deterministically if callers provide `map._water.heroPos` plus `map._water.onHeroMoved(x,y)`; this avoids cross-module imports while keeping movement ownership in `mkmaze`.
+- `hack.water_turbulence()` should call `maybe_adjust_hero_bubble()` on Water level so hero directional intent can steer the current bubble with C-style 50% gating.

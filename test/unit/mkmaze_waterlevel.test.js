@@ -13,6 +13,7 @@ import {
     movebubbles,
     mv_bubble,
     mk_bubble,
+    maybe_adjust_hero_bubble,
     water_friction,
     makemaz,
     fixup_special,
@@ -118,6 +119,46 @@ describe('mkmaze waterlevel state helpers', () => {
         assert.equal(portal.tx, 11);
         assert.equal(portal.ty, 10);
         assert.equal(map._water.portal.x, 11);
+    });
+
+    it('movebubbles carries hero via water callback', () => {
+        const map = new GameMap();
+        setup_waterlevel(map, { isWaterLevel: true });
+        map._water.bubbles = [];
+        const bubble = mk_bubble(map, 20, 10, 0);
+        assert.ok(bubble);
+
+        const hero = { x: 20, y: 10 };
+        map._water.heroPos = { x: hero.x, y: hero.y, dx: 1, dy: 0 };
+        map._water.onHeroMoved = (x, y) => {
+            hero.x = x;
+            hero.y = y;
+        };
+
+        movebubbles(map, 1, 0);
+        assert.equal(hero.x, 21);
+        assert.equal(hero.y, 10);
+    });
+
+    it('maybe_adjust_hero_bubble steers bubble heading', () => {
+        const map = new GameMap();
+        setup_waterlevel(map, { isWaterLevel: true });
+        map._water.bubbles = [];
+        const bubble = mk_bubble(map, 30, 12, 0);
+        assert.ok(bubble);
+        bubble.dx = 0;
+        bubble.dy = 0;
+
+        let changed = false;
+        for (let i = 0; i < 20; i++) {
+            if (maybe_adjust_hero_bubble(map, { x: 30, y: 12, dx: -1, dy: 1 })) {
+                changed = true;
+                break;
+            }
+        }
+        assert.equal(changed, true);
+        assert.equal(bubble.dx, -1);
+        assert.equal(bubble.dy, 1);
     });
 
     it('water_friction applies C-style directional drift', () => {

@@ -1184,6 +1184,18 @@ export function changeLevel(game, depth, transitionDir = null, opts = {}) {
 
     // C ref: do.c goto_level() — initial bubble/cloud move before vision refresh.
     if (game.map?.flags?.is_waterlevel || game.map?.flags?.is_airlevel) {
+        if (game.map?._water && game.player) {
+            game.map._water.heroPos = {
+                x: game.player.x,
+                y: game.player.y,
+                dx: game.player.dx || 0,
+                dy: game.player.dy || 0,
+            };
+            game.map._water.onHeroMoved = (x, y) => {
+                game.player.x = x;
+                game.player.y = y;
+            };
+        }
         movebubbles(game.map);
     }
 
