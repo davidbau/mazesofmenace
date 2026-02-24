@@ -5,7 +5,7 @@
 import { A_STR, A_DEX, A_CON, A_WIS, STATUS_ROW_1,
          PM_CAVEMAN, PM_ROGUE, RACE_ORC } from './config.js';
 import { rn2 } from './rng.js';
-import { handleWizLoadDes, wizLevelChange, wizMap, wizTeleport, wizGenesis } from './wizcmds.js';
+import { handleWizLoadDes, wizLevelChange, wizMap, wizTeleport, wizGenesis, wizWish } from './wizcmds.js';
 import { DIRECTION_KEYS, handleThrow, handleFire } from './dothrow.js';
 import { handleKnownSpells } from './spell.js';
 import { handleEngrave } from './engrave.js';
@@ -446,8 +446,7 @@ export async function rhack(ch, game) {
     // Wizard mode: Ctrl+W = wish
     // C ref: cmd.c wiz_wish()
     if (ch === 23 && game.wizard) {
-        display.putstr_message('Wishing not yet implemented.');
-        return { moved: false, tookTime: false };
+        return await wizWish(game);
     }
 
     // Wizard mode: Ctrl+I = identify all

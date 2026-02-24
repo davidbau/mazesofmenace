@@ -203,6 +203,22 @@ import { getlin } from './input.js';
 import { COLNO, ROWNO, ACCESSIBLE, MAXLEVEL, isok } from './config.js';
 import { makemon, setMakemonPlayerContext } from './makemon.js';
 import { mons } from './monsters.js';
+import { makewish } from './zap.js';
+
+// cf. wizcmds.c:32 — wiz_wish(): prompt then call makewish()
+export async function wizWish(game) {
+    const { player, display } = game;
+    if (!game.wizard) {
+        display.putstr_message('Unavailable command.');
+        return { moved: false, tookTime: false };
+    }
+    const wishText = await getlin('For what do you wish? ', display);
+    if (wishText === null || wishText.trim() === '') {
+        return { moved: false, tookTime: false };
+    }
+    makewish(wishText, player, display);
+    return { moved: false, tookTime: false };
+}
 
 // cf. wizcmds.c:376 wiz_load_splua()
 // JS version loads a special level generator by name instead of a Lua file.

@@ -1071,9 +1071,13 @@ function xname_for_doname(obj, dknown = true, known = true, bknown = false) {
     case TOOL_CLASS:
         // C ref: objnam.c xname() — lenses get "pair of ".
         if (obj.otyp === LENSES) {
-            base = `pair of ${dknown ? od.name : (od.desc || od.name)}`;
+            base = `pair of ${dknown
+                ? (nameKnown ? od.name : (od.desc || od.name))
+                : (od.desc || od.name)}`;
         } else {
-            base = dknown ? od.name : (od.desc || od.name);
+            base = dknown
+                ? (nameKnown ? od.name : (od.desc || od.name))
+                : (od.desc || od.name);
         }
         break;
     case ARMOR_CLASS:
@@ -1081,7 +1085,9 @@ function xname_for_doname(obj, dknown = true, known = true, bknown = false) {
         if (obj.otyp >= GRAY_DRAGON_SCALES && obj.otyp <= YELLOW_DRAGON_SCALES) {
             base = `set of ${od.name}`;
         } else if (od.sub === ARM_BOOTS || od.sub === ARM_GLOVES) {
-            base = `pair of ${dknown ? od.name : (od.desc || od.name)}`;
+            base = `pair of ${dknown
+                ? (nameKnown ? od.name : (od.desc || od.name))
+                : (od.desc || od.name)}`;
         } else if (!dknown && od.sub === ARM_SHIELD) {
             // C ref: objnam.c xname() unknown shield special-cases.
             if (obj.otyp >= ELVEN_SHIELD && obj.otyp <= ORCISH_SHIELD) {
@@ -1092,7 +1098,9 @@ function xname_for_doname(obj, dknown = true, known = true, bknown = false) {
                 base = od.desc || od.name;
             }
         } else {
-            base = dknown ? od.name : (od.desc || od.name);
+            base = dknown
+                ? (nameKnown ? od.name : (od.desc || od.name))
+                : (od.desc || od.name);
         }
         break;
     case WEAPON_CLASS:

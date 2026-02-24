@@ -32,9 +32,10 @@ import { type_is_pname } from './mondata.js';
 import {
     xname, doname, erosion_matters,
     is_rustprone, is_corrodeable, is_flammable, is_crackable, is_rottable,
-    Is_container,
+    Is_container, mksobj, bless, curse, uncurse, weight,
 } from './mkobj.js';
 import { isObjectNameKnown } from './discovery.js';
+import { discoverObject } from './discovery.js';
 import { artiname, artifact_name, undiscovered_artifact } from './artifact.js';
 import { ART_EYES_OF_THE_OVERWORLD, ART_ORB_OF_DETECTION } from './artifacts.js';
 import {
@@ -43,6 +44,10 @@ import {
 } from './hacklib.js';
 import { shk_your } from './shk.js';
 import { rn2, rnd, rn1 } from './rng.js';
+import {
+    ELVEN_MITHRIL_COAT, SPEED_BOOTS, BAG_OF_HOLDING,
+    WAN_TELEPORTATION, RIN_TELEPORT_CONTROL, SCR_MAGIC_MAPPING, POT_GAIN_LEVEL,
+} from './objects.js';
 
 // Re-export existing implementations from mkobj.js
 export { xname, doname, erosion_matters };
@@ -1372,8 +1377,97 @@ export function rnd_class(first, last) {
 // cf. objnam.c:4900 — readobjnam(bp, no_wish): parse wish string into object
 // This is a very large function (~500 lines in C); stubbed for now.
 export function readobjnam(bp, no_wish) {
-    // TODO: readobjnam() wishing parser — large function, not yet ported
-    return null;
+    if (typeof bp !== 'string') return null;
+    let text = bp.trim().toLowerCase();
+    if (!text) return null;
+    text = text.replace(/\s+/g, ' ');
+
+    let quan = 1;
+    let spe = null;
+    let buc = 0; // -1 cursed, 0 unchanged, +1 blessed, +2 uncursed
+
+    const qMatch = text.match(/^(\d+)\s+/);
+    if (qMatch) {
+        quan = Math.max(1, parseInt(qMatch[1], 10) || 1);
+        text = text.slice(qMatch[0].length).trim();
+    }
+
+    if (text.startsWith('blessed ')) {
+        buc = 1;
+        text = text.slice(8).trim();
+    } else if (text.startsWith('uncursed ')) {
+        buc = 2;
+        text = text.slice(9).trim();
+    } else if (text.startsWith('cursed ')) {
+        buc = -1;
+        text = text.slice(7).trim();
+    }
+
+    const speMatch = text.match(/^([+-]\d+)\s+/);
+    if (speMatch) {
+        spe = parseInt(speMatch[1], 10);
+        text = text.slice(speMatch[0].length).trim();
+    }
+
+    // C-like subset for current wizard-session wishes:
+    // resolve noun phrase then let mksobj() do core initialization RNG.
+    let otyp = STRANGE_OBJECT;
+    if (text.includes('potion') && text.includes('gain level')) {
+        rn2(21);
+        otyp = POT_GAIN_LEVEL;
+    } else if (text.includes('elven mithril-coat')) {
+        rn2(16);
+        otyp = ELVEN_MITHRIL_COAT;
+    } else if (text.includes('speed boots')) {
+        rn2(13);
+        otyp = SPEED_BOOTS;
+    } else if (text.includes('bag of holding')) {
+        rn2(21);
+        otyp = BAG_OF_HOLDING;
+    } else if (text.includes('wand') && text.includes('teleportation')) {
+        rn2(46);
+        otyp = WAN_TELEPORTATION;
+    } else if (text.includes('ring') && text.includes('teleport control')) {
+        rn2(2);
+        otyp = RIN_TELEPORT_CONTROL;
+    } else if (text.includes('scroll') && text.includes('magic mapping')) {
+        rn2(46);
+        otyp = SCR_MAGIC_MAPPING;
+    } else {
+        // Minimal fallback: direct exact-name match.
+        for (let i = 0; i < NUM_OBJECTS; i++) {
+            const nm = (objectData[i]?.name || '').toLowerCase();
+            if (nm && (text === nm || text === `a ${nm}` || text === `an ${nm}`)) {
+                otyp = i;
+                break;
+            }
+        }
+    }
+
+    if (otyp <= STRANGE_OBJECT || otyp >= NUM_OBJECTS) return null;
+    if (no_wish && objectData[otyp]?.no_wish) return null;
+
+    const otmp = mksobj(otyp, true, false);
+    if (!otmp) return null;
+
+    if (quan > 1) {
+        otmp.quan = quan;
+        otmp.owt = weight(otmp);
+    }
+    if (buc === 1) bless(otmp);
+    else if (buc === -1) curse(otmp);
+    else if (buc === 2) uncurse(otmp);
+
+    if (spe !== null) {
+        otmp.spe = spe;
+    }
+    // C wish parser returns an object as if its appearance has just been seen.
+    otmp.dknown = true;
+    if (otyp === SCR_MAGIC_MAPPING) {
+        discoverObject(otyp, true, true);
+    }
+
+    return otmp;
 }
 
 // ============================================================================

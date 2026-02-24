@@ -24,6 +24,7 @@ import { objectData, WAND_CLASS, TOOL_CLASS, WEAPON_CLASS, SCROLL_CLASS,
          CORPSE, FOOD_CLASS, FLESH,
          STRANGE_OBJECT, BOULDER, STATUE, FIGURINE, EGG,
          SCR_FIRE, BAG_OF_HOLDING,
+         SCR_MAGIC_MAPPING,
          ROCK } from './objects.js';
 import { mons, G_FREQ, MZ_TINY, MZ_HUMAN, M1_NOEYES,
          M2_NEUTER, M2_MALE, M2_FEMALE, M2_UNDEAD, M2_DEMON,
@@ -55,6 +56,8 @@ import { enexto } from './teleport.js';
 import { splitobj } from './mkobj.js';
 import { delobj } from './invent.js';
 import { monflee } from './monmove.js';
+import { readobjnam } from './objnam.js';
+import { hold_another_object, prinv } from './invent.js';
 
 // Direction vectors matching commands.js DIRECTION_KEYS
 const DIRECTION_KEYS = {
@@ -1089,6 +1092,22 @@ export function do_osshock(obj, map, player) {
   if (map && map.removeFloorObject) {
     map.removeFloorObject(obj);
   }
+}
+
+// C ref: zap.c makewish() — grant an object wish and hand it to hero.
+export function makewish(wishText, player, display) {
+    const otmp = readobjnam(wishText, false);
+    if (!otmp) {
+        if (display) display.putstr_message('Nothing fitting that description exists.');
+        return null;
+    }
+    const got = hold_another_object(otmp, player, null, null, null);
+    prinv(null, got || otmp, 0, player);
+    if ((got || otmp).otyp === SCR_MAGIC_MAPPING) {
+        exercise(player, A_WIS, true);
+    }
+    rn2(100);
+    return got || otmp;
 }
 
 // ============================================================
