@@ -1417,3 +1417,13 @@ hard-won wisdom:
 - `wizterrainwish()` no longer hard-noops; it now parses wizard terrain wish intent into a structured descriptor (`terrain`, `wallprops`) as a bounded first step before full map-mutation wiring.
 - Expanded deterministic coverage in `test/unit/objnam_port_coverage.test.js` for multishot naming, vague quantity naming, price suffix formatting, and terrain-wish parsing.
 - Audited and refreshed `docs/CODEMATCH.md` `objnam.c -> objnam.js` entries against live symbols and implementations; current status is `86 Aligned / 1 Stub / 0 Missing` (remaining stub: `wizterrainwish`, map mutation path still pending).
+
+### objnam wizterrainwish in-map mutation path (2026-02-24)
+
+- `wizterrainwish()` now supports live map mutation when called with `{ text, player, map }` context:
+  - terrain mutations for door/wall/room/fountain/sink/throne/altar/grave/tree/iron bars/cloud/water/lava/ice/secret corridor;
+  - trap creation for named trap wishes via `dungeon.maketrap()`;
+  - side effects for engravings (`del_engr_at`), floor object damage chains on water/lava (`water_damage_chain`/`fire_damage_chain`), trap removal on room-floor replacement (`deltrap`), and vision blocking refresh (`recalc_block_point`).
+- `zap.makewish()` now falls back to `wizterrainwish()` when `readobjnam()` fails, enabling wizard terrain wishes to mutate the level instead of failing as unknown object wishes.
+- Added deterministic unit coverage for live map mutation (`locked door` mask application and trap creation at hero position) in `test/unit/objnam_port_coverage.test.js`.
+- Post-implementation codematch audit now reports `objnam.c -> objnam.js` as `87 Aligned / 0 Stub / 0 Missing`.

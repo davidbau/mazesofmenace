@@ -46,7 +46,20 @@ import { shk_your } from './shk.js';
 import { get_cost_of_shop_item } from './shk.js';
 import { currency } from './invent.js';
 import { rn2, rnd, rn1 } from './rng.js';
-import { STONE, POOL, LAVAPOOL, WATER, AIR, CLOUD, ROOM, CORR, VWALL, HWALL, DOOR } from './config.js';
+import {
+    STONE, POOL, LAVAPOOL, WATER, AIR, CLOUD, ROOM, CORR, VWALL, HWALL, DOOR,
+    FOUNTAIN, THRONE, SINK, ALTAR, GRAVE, TREE, IRONBARS, ICE, SDOOR, SCORR,
+    D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED, D_TRAPPED, D_SECRET,
+    A_NONE, A_CHAOTIC, A_NEUTRAL, A_LAWFUL, Align2amask,
+    ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD, BEAR_TRAP, LANDMINE,
+    ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, PIT, SPIKED_PIT,
+    HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, MAGIC_PORTAL, WEB, STATUE_TRAP,
+    MAGIC_TRAP, ANTI_MAGIC, POLY_TRAP, VIBRATING_SQUARE,
+} from './config.js';
+import { maketrap, deltrap } from './dungeon.js';
+import { make_grave, del_engr_at } from './engrave.js';
+import { water_damage_chain, fire_damage_chain } from './trap.js';
+import { recalc_block_point } from './vision.js';
 
 // Wrappers around mkobj naming primitives so objnam owns the C-facing names.
 export function xname(obj, opts = {}) {
@@ -410,7 +423,154 @@ export function wizterrainwish(ctx) {
     else if (endsWith('secret corridor')) result.terrain = 'secret corridor';
     else if (endsWith('room') || endsWith('floor') || endsWith('ground')) result.terrain = 'room';
 
-    if (!result.terrain) return null;
+    const trapWishes = [
+        ['arrow trap', ARROW_TRAP],
+        ['dart trap', DART_TRAP],
+        ['rock trap', ROCKTRAP],
+        ['squeaky board', SQKY_BOARD],
+        ['squeakyboard', SQKY_BOARD],
+        ['bear trap', BEAR_TRAP],
+        ['land mine', LANDMINE],
+        ['landmine', LANDMINE],
+        ['rolling boulder trap', ROLLING_BOULDER_TRAP],
+        ['sleep gas trap', SLP_GAS_TRAP],
+        ['rust trap', RUST_TRAP],
+        ['fire trap', FIRE_TRAP],
+        ['pit', PIT],
+        ['spiked pit', SPIKED_PIT],
+        ['hole', HOLE],
+        ['trap door', TRAPDOOR],
+        ['trapdoor', TRAPDOOR],
+        ['teleport trap', TELEP_TRAP],
+        ['level teleport trap', LEVEL_TELEP],
+        ['magic portal', MAGIC_PORTAL],
+        ['web', WEB],
+        ['statue trap', STATUE_TRAP],
+        ['magic trap', MAGIC_TRAP],
+        ['anti magic trap', ANTI_MAGIC],
+        ['anti-magic trap', ANTI_MAGIC],
+        ['polymorph trap', POLY_TRAP],
+        ['vibrating square', VIBRATING_SQUARE],
+    ];
+    for (const [name, ttyp] of trapWishes) {
+        if (text === name || text.startsWith(`${name} `) || text.endsWith(` ${name}`)) {
+            result.trap = ttyp;
+            break;
+        }
+    }
+
+    if (!result.terrain && !result.trap) return null;
+
+    const map = ctx?.map || ctx?.player?.map || null;
+    const player = ctx?.player || null;
+    const x = Number.isInteger(ctx?.x) ? ctx.x : (player?.x ?? player?.ux);
+    const y = Number.isInteger(ctx?.y) ? ctx.y : (player?.y ?? player?.uy);
+    if (!map || !Number.isInteger(x) || !Number.isInteger(y) || !map.at) {
+        return result;
+    }
+    const loc = map.at(x, y);
+    if (!loc) return result;
+
+    const oldtyp = loc.typ;
+    const hadFountain = oldtyp === FOUNTAIN;
+    const hadSink = oldtyp === SINK;
+
+    const setWallProps = () => {
+        if (result.wallprops.includes('nondiggable')) {
+            loc.nondiggable = true;
+            loc.wall_info = (loc.wall_info || 0) | 0x01;
+        }
+        if (result.wallprops.includes('nonpasswall')) {
+            loc.wall_info = (loc.wall_info || 0) | 0x02;
+        }
+    };
+
+    if (result.trap) {
+        const t = maketrap(map, x, y, result.trap);
+        result.applied = !!t;
+        result.kind = 'trapwish';
+        return result;
+    }
+
+    if (result.terrain === 'fountain') {
+        loc.typ = FOUNTAIN;
+    } else if (result.terrain === 'throne') {
+        loc.typ = THRONE;
+    } else if (result.terrain === 'sink') {
+        loc.typ = SINK;
+    } else if (result.terrain === 'water') {
+        loc.typ = POOL;
+        del_engr_at(map, x, y);
+        if (typeof map.objectsAt === 'function') water_damage_chain(map.objectsAt(x, y), true);
+    } else if (result.terrain === 'lava') {
+        loc.typ = LAVAPOOL;
+        del_engr_at(map, x, y);
+        if (typeof map.objectsAt === 'function') fire_damage_chain(map.objectsAt(x, y), true, true, x, y);
+    } else if (result.terrain === 'ice') {
+        loc.typ = ICE;
+        del_engr_at(map, x, y);
+    } else if (result.terrain === 'altar') {
+        loc.typ = ALTAR;
+        let al = A_NEUTRAL;
+        if (text.includes('chaotic')) al = A_CHAOTIC;
+        else if (text.includes('lawful')) al = A_LAWFUL;
+        else if (text.includes('unaligned')) al = A_NONE;
+        loc.flags = Align2amask(al);
+    } else if (result.terrain === 'grave') {
+        make_grave(map, x, y, '');
+        loc.disturbed = text.includes('disturbed') || text.includes('looted');
+    } else if (result.terrain === 'tree') {
+        loc.typ = TREE;
+        setWallProps();
+    } else if (result.terrain === 'iron bars') {
+        loc.typ = IRONBARS;
+        setWallProps();
+    } else if (result.terrain === 'cloud') {
+        loc.typ = CLOUD;
+        del_engr_at(map, x, y);
+    } else if (result.terrain === 'door') {
+        const secret = text.includes('secret door');
+        let mask = D_CLOSED;
+        if (text.includes('doorless') || text.includes('doorway')) mask = D_NODOOR;
+        else if (text.includes('broken')) mask = D_BROKEN;
+        else if (text.includes('open')) mask = D_ISOPEN;
+        else if (text.includes('locked')) mask = D_LOCKED;
+        else if (text.includes('closed')) mask = D_CLOSED;
+        if (text.includes('trapped') && !text.includes('untrapped')
+            && (mask === D_LOCKED || mask === D_CLOSED || secret)) {
+            mask |= D_TRAPPED;
+        }
+        loc.typ = secret ? SDOOR : DOOR;
+        loc.flags = mask;
+        loc.doormask = mask;
+        if (secret) loc.flags |= D_SECRET;
+    } else if (result.terrain === 'wall') {
+        loc.typ = HWALL;
+        setWallProps();
+    } else if (result.terrain === 'secret corridor') {
+        loc.typ = SCORR;
+    } else if (result.terrain === 'room') {
+        loc.typ = ROOM;
+        const t = typeof map.trapAt === 'function' ? map.trapAt(x, y) : null;
+        if (t && t.ttyp !== MAGIC_PORTAL) deltrap(map, t);
+    }
+
+    // Keep fountain/sink counters approximately in sync.
+    if (map.flags) {
+        if (hadFountain && loc.typ !== FOUNTAIN) {
+            map.flags.nfountains = Math.max(0, (map.flags.nfountains || 0) - 1);
+        } else if (!hadFountain && loc.typ === FOUNTAIN) {
+            map.flags.nfountains = (map.flags.nfountains || 0) + 1;
+        }
+        if (hadSink && loc.typ !== SINK) {
+            map.flags.nsinks = Math.max(0, (map.flags.nsinks || 0) - 1);
+        } else if (!hadSink && loc.typ === SINK) {
+            map.flags.nsinks = (map.flags.nsinks || 0) + 1;
+        }
+    }
+
+    recalc_block_point(x, y);
+    result.applied = true;
     return result;
 }
 

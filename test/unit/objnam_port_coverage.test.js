@@ -25,7 +25,8 @@ import {
 } from '../../js/objnam.js';
 import { mksobj } from '../../js/mkobj.js';
 import { LONG_SWORD } from '../../js/objects.js';
-import { STONE, ROOM, WATER } from '../../js/config.js';
+import { STONE, ROOM, WATER, DOOR, D_LOCKED, FIRE_TRAP } from '../../js/config.js';
+import { GameMap } from '../../js/map.js';
 import { initRng } from '../../js/rng.js';
 
 describe('objnam port coverage', () => {
@@ -122,5 +123,21 @@ describe('objnam port coverage', () => {
         assert.deepEqual(wall?.wallprops, ['nondiggable']);
         assert.equal(wizterrainwish({ text: 'fountain' })?.terrain, 'fountain');
         assert.equal(wizterrainwish({ text: 'mysterious orb' }), null);
+    });
+
+    it('mutates live map for wizard terrain wishes', () => {
+        const map = new GameMap();
+        const player = { x: 10, y: 10, map };
+        map.at(10, 10).typ = ROOM;
+
+        const doorWish = wizterrainwish({ text: 'locked door', player, map });
+        assert.equal(doorWish?.applied, true);
+        assert.equal(map.at(10, 10).typ, DOOR);
+        assert.equal((map.at(10, 10).flags & D_LOCKED) !== 0, true);
+
+        const trapWish = wizterrainwish({ text: 'fire trap', player, map });
+        assert.equal(trapWish?.applied, true);
+        assert.ok(map.trapAt(10, 10));
+        assert.equal(map.trapAt(10, 10).ttyp, FIRE_TRAP);
     });
 });
