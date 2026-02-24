@@ -979,33 +979,9 @@ function m_initweap(mon, mndx, depth) {
     // C ref: makemon.c:571 — offensive item check, OUTSIDE the switch,
     // always called for ALL monsters. rn2(75) is always consumed.
     if (mon.mlevel > rn2(75)) {
-        // C ref: muse.c rnd_offensive_item()
-        // Skip for animals, exploders, mindless, ghosts, kops
-        const difficulty = ptr.difficulty || ptr.level;
-        let otyp = 0;
-        if (ptr.symbol !== S_GHOST && ptr.symbol !== S_KOP) {
-            if (difficulty > 7 && !rn2(35)) {
-                otyp = WAN_DEATH;
-            } else {
-                const range = 9 - (difficulty < 4 ? 1 : 0) + 4 * (difficulty > 6 ? 1 : 0);
-                const pick = rn2(range);
-                switch (pick) {
-                case 0: otyp = SCR_EARTH; break; // may fall through to case 1 in C, but RNG same
-                case 1: otyp = WAN_STRIKING; break;
-                case 2: otyp = POT_ACID; break;
-                case 3: otyp = POT_CONFUSION; break;
-                case 4: otyp = POT_BLINDNESS; break;
-                case 5: otyp = POT_SLEEPING; break;
-                case 6: otyp = POT_PARALYSIS; break;
-                case 7: case 8: otyp = WAN_MAGIC_MISSILE; break;
-                case 9: otyp = WAN_SLEEP; break;
-                case 10: otyp = WAN_FIRE; break;
-                case 11: otyp = WAN_COLD; break;
-                case 12: otyp = WAN_LIGHTNING; break;
-                }
-            }
-        }
-        if (otyp) mongets(mon,otyp);
+        // C ref: makemon.c -> muse.c rnd_offensive_item()
+        const otyp = rnd_offensive_item(mon);
+        if (otyp) mongets(mon, otyp);
     }
 }
 
@@ -1017,7 +993,6 @@ function m_initweap(mon, mndx, depth) {
 function rnd_defensive_item(mndx) {
     const ptr = mons[mndx];
     const difficulty = ptr.difficulty || 0;
-    let trycnt = 0;
 
     // Animals, exploders, mindless, ghosts, Kops don't get defensive items
     if (is_animal(ptr) || attacktype(ptr, AT_EXPL) || mindless(ptr)
@@ -1032,10 +1007,7 @@ function rnd_defensive_item(mndx) {
         switch (roll) {
         case 6:
         case 9:
-            // Note: noteleport_level check omitted (always false at level gen)
-            if (++trycnt < 2) {
-                continue; // try_again
-            }
+            // C retries only on noteleport_level(); levelgen path does not.
             if (!rn2(3)) return WAN_TELEPORTATION;
             // Fall through
         case 0:
@@ -1105,6 +1077,58 @@ function rnd_misc_item(mon) {
         return POT_GAIN_LEVEL;
     }
     return 0;
+}
+
+// ========================================================================
+// rnd_offensive_item -- select random offensive item for monster
+// C ref: muse.c:2014-2060
+// ========================================================================
+function rnd_offensive_item(mon) {
+    const mndx = mon?.mndx;
+    if (!Number.isInteger(mndx) || mndx < 0 || mndx >= mons.length) return 0;
+    const ptr = mons[mndx];
+    const difficulty = ptr.difficulty || 0;
+
+    // Animals, exploders, mindless, ghosts, Kops don't get offensive items.
+    if (is_animal(ptr) || attacktype(ptr, AT_EXPL) || mindless(ptr)
+        || ptr.symbol === S_GHOST || ptr.symbol === S_KOP) {
+        return 0;
+    }
+
+    if (difficulty > 7 && !rn2(35)) return WAN_DEATH;
+
+    const range = 9 - (difficulty < 4 ? 1 : 0) + 4 * (difficulty > 6 ? 1 : 0);
+    switch (rn2(range)) {
+    case 0:
+        // C's case 0 can fall through to case 1 for many monsters; in
+        // levelgen this branch must produce WAN_STRIKING in the common path.
+        return WAN_STRIKING;
+    case 1:
+        return WAN_STRIKING;
+    case 2:
+        return POT_ACID;
+    case 3:
+        return POT_CONFUSION;
+    case 4:
+        return POT_BLINDNESS;
+    case 5:
+        return POT_SLEEPING;
+    case 6:
+        return POT_PARALYSIS;
+    case 7:
+    case 8:
+        return WAN_MAGIC_MISSILE;
+    case 9:
+        return WAN_SLEEP;
+    case 10:
+        return WAN_FIRE;
+    case 11:
+        return WAN_COLD;
+    case 12:
+        return WAN_LIGHTNING;
+    default:
+        return 0;
+    }
 }
 
 // ========================================================================
