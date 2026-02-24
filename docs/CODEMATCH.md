@@ -4794,21 +4794,21 @@ No function symbols parsed from isaac64.c.
 ### sp_lev.c -> sp_lev.js
 | C Line | C Function | JS Line | Alignment |
 |--------|------------|---------|-----------|
-| 5541 | `add_doors_to_room` | - | Missing |
+| 5541 | `add_doors_to_room` | dungeon.js:1377 | Aligned |
 | 2805 | `build_room` | - | Missing |
-| 1408 | `check_room` | - | Missing |
+| 1408 | `check_room` | dungeon.js:286 | Aligned |
 | 2439 | `create_altar` | - | Missing |
-| 2669 | `create_corridor` | - | Missing |
+| 2669 | `create_corridor` | dungeon.js:1786 | Aligned |
 | 6444 | `create_des_coder` | - | Missing |
 | 1715 | `create_door` | - | Missing |
 | 1926 | `create_monster` | - | Missing |
 | 2186 | `create_object` | sp_lev.js `object()` | Aligned — executes in script order (deferral removed) |
-| 1487 | `create_room` | - | Missing |
-| 1669 | `create_subroom` | - | Missing |
+| 1487 | `create_room` | dungeon.js:362 | Aligned |
+| 1669 | `create_subroom` | mklev.js:193 | Aligned |
 | 1813 | `create_trap` | - | Missing |
 | 4769 | `cvt_to_abscoord` | - | Missing |
 | 4790 | `cvt_to_relcoord` | - | Missing |
-| 2542 | `dig_corridor` | - | Missing |
+| 2542 | `dig_corridor` | dungeon.js:1462 | Aligned |
 | 5214 | `ensure_way_out` | - | Missing |
 | 2924 | `fill_empty_maze` | - | Missing |
 | 2729 | `fill_special_room` | sp_lev.js `fill_special_room()` | Aligned — called from finalize_level |
@@ -4856,7 +4856,7 @@ No function symbols parsed from isaac64.c.
 | 4736 | `l_table_getset_feature_flag` | - | Missing |
 | 5368 | `levregion_add` | - | Missing |
 | 2837 | `light_region` | - | Missing |
-| 1123 | `link_doors_rooms` | - | Missing |
+| 1123 | `link_doors_rooms` | dungeon.js:1435 | Aligned |
 | 6454 | `load_special` | - | Missing |
 | 4280 | `lspo_altar` | - | Missing |
 | 4526 | `lspo_corridor` | - | Missing |

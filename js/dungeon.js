@@ -1431,10 +1431,35 @@ function maybe_add_door(map, x, y, droom) {
     }
 }
 
+// C ref: sp_lev.c link_doors_rooms()
+export function link_doors_rooms(map) {
+    if (!map || !Array.isArray(map.rooms)) return;
+    const roomCount = Number.isInteger(map.nroom)
+        ? Math.min(map.nroom, map.rooms.length)
+        : map.rooms.length;
+    for (let y = 0; y < ROWNO; y++) {
+        for (let x = 0; x < COLNO; x++) {
+            const loc = map.at(x, y);
+            if (!loc || !(IS_DOOR(loc.typ) || loc.typ === SDOOR)) continue;
+            for (let i = 0; i < roomCount; i++) {
+                const room = map.rooms[i];
+                if (!room || room.hx < 0) continue;
+                maybe_add_door(map, x, y, room);
+                if (!Array.isArray(room.sbrooms)) continue;
+                for (let m = 0; m < room.sbrooms.length; m++) {
+                    const subroom = room.sbrooms[m];
+                    if (!subroom || subroom.hx < 0) continue;
+                    maybe_add_door(map, x, y, subroom);
+                }
+            }
+        }
+    }
+}
+
 // C ref: sp_lev.c dig_corridor()
 // Digs a corridor from org to dest through stone.
 // Returns { success, npoints }.
-function dig_corridor(map, org, dest, nxcor, depth) {
+export function dig_corridor(map, org, dest, nxcor, depth) {
     let dx = 0, dy = 0;
     let cct;
     let npoints = 0;
