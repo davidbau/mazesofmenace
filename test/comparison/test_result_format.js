@@ -51,6 +51,7 @@ export function createSessionResult(session) {
             grids: { matched: 0, total: 0 },
             screens: { matched: 0, total: 0 },
             colors: { matched: 0, total: 0 },
+            events: { matched: 0, total: 0 },
         },
     };
 
@@ -143,6 +144,16 @@ export function recordColors(result, matched, total) {
 }
 
 /**
+ * Record event log comparison.
+ * This is tracked as a parallel parity metric and does not
+ * currently change overall session pass/fail.
+ */
+export function recordEvents(result, matched, total) {
+    result.metrics.events.matched += matched;
+    result.metrics.events.total += total;
+}
+
+/**
  * Mark session as failed with optional error
  */
 export function markFailed(result, error = null) {
@@ -164,6 +175,7 @@ export function finalizeResult(result) {
         if (m.grids?.total === 0) delete m.grids;
         if (m.screens?.total === 0) delete m.screens;
         if (m.colors?.total === 0) delete m.colors;
+        if (m.events?.total === 0) delete m.events;
 
         // Remove empty metrics object
         if (Object.keys(m).length === 0) delete result.metrics;
@@ -196,6 +208,41 @@ export function createResultsBundle(results, options = {}) {
         failed: results.filter(r => !r.passed).length,
     };
 
+    const gameplayResults = results.filter((r) => r.type === 'gameplay');
+    if (gameplayResults.length > 0) {
+        const rngComparable = gameplayResults.filter((r) => r.metrics?.rngCalls?.total > 0);
+        const eventsComparable = gameplayResults.filter((r) => r.metrics?.events?.total > 0);
+        const rngFull = gameplayResults.filter((r) =>
+            r.metrics?.rngCalls?.total > 0
+            && r.metrics.rngCalls.matched === r.metrics.rngCalls.total
+        );
+        const eventsFull = gameplayResults.filter((r) =>
+            r.metrics?.events?.total > 0
+            && r.metrics.events.matched === r.metrics.events.total
+        );
+        const rngFullButEventsNot = gameplayResults.filter((r) =>
+            r.metrics?.rngCalls?.total > 0
+            && r.metrics.rngCalls.matched === r.metrics.rngCalls.total
+            && r.metrics?.events?.total > 0
+            && r.metrics.events.matched !== r.metrics.events.total
+        );
+        const eventsFullButRngNot = gameplayResults.filter((r) =>
+            r.metrics?.events?.total > 0
+            && r.metrics.events.matched === r.metrics.events.total
+            && r.metrics?.rngCalls?.total > 0
+            && r.metrics.rngCalls.matched !== r.metrics.rngCalls.total
+        );
+        bundle.summary.gameplayParity = {
+            sessions: gameplayResults.length,
+            rngComparable: rngComparable.length,
+            eventsComparable: eventsComparable.length,
+            rngFull: rngFull.length,
+            eventsFull: eventsFull.length,
+            rngFullButEventsNot: rngFullButEventsNot.length,
+            eventsFullButRngNot: eventsFullButRngNot.length,
+        };
+    }
+
     return bundle;
 }
 
@@ -222,7 +269,7 @@ export function formatResult(result) {
     if (m.grids) parts.push(`grids=${m.grids.matched}/${m.grids.total}`);
     if (m.screens) parts.push(`screens=${m.screens.matched}/${m.screens.total}`);
     if (m.colors) parts.push(`colors=${m.colors.matched}/${m.colors.total}`);
-    if (result.events) parts.push(`events=${result.events.matched}/${result.events.total}`);
+    if (m.events) parts.push(`events=${m.events.matched}/${m.events.total}`);
     if (result.error) parts.push(`error: ${result.error}`);
 
     return parts.join(' ');
@@ -239,6 +286,15 @@ export function formatBundleSummary(bundle) {
     ];
     if (bundle.goldenBranch) {
         lines.splice(1, 0, `Golden: ${bundle.goldenBranch}`);
+    }
+    if (bundle.summary?.gameplayParity) {
+        const g = bundle.summary.gameplayParity;
+        lines.push(
+            `Gameplay parity: rngFull=${g.rngFull}/${g.rngComparable}, `
+            + `eventsFull=${g.eventsFull}/${g.eventsComparable}, `
+            + `rngFull&&eventsNot=${g.rngFullButEventsNot}, `
+            + `eventsFull&&rngNot=${g.eventsFullButRngNot}`
+        );
     }
     return lines.join('\n');
 }

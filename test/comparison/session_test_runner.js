@@ -39,6 +39,7 @@ import {
     recordGrids,
     recordScreens,
     recordColors,
+    recordEvents,
     markFailed,
     setDuration,
     createResultsBundle,
@@ -487,9 +488,11 @@ async function runGameplayResult(session) {
         // Event log comparison (^place, ^die, etc.)
         const eventCmp = compareEvents(allJsRng, allSessionRng);
         if (eventCmp.total > 0) {
+            recordEvents(result, eventCmp.matched, eventCmp.total);
+            // Keep top-level mirror for backward-compatible tooling.
             result.events = {
-                matched: eventCmp.matched,
-                total: eventCmp.total,
+                matched: result.metrics.events.matched,
+                total: result.metrics.events.total,
             };
             if (eventCmp.firstDivergence) {
                 setFirstDivergence(result, 'event', eventCmp.firstDivergence);
