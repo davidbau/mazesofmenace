@@ -1347,3 +1347,9 @@ hard-won wisdom:
 - `mklev.makeniche()` must place generated niche objects at the niche square (`yy + dy`) via `mksobj_at`/`mkobj_at` semantics; creating objects without map placement consumes RNG but drops `^place` events.
 - `fill_ordinary_room` statue generation should use `mkcorpstat(STATUE, -1, ...)` rather than raw `mksobj(STATUE)` so C-style `^corpse[...]` event emission and ordering are preserved.
 - With these three core-code fixes, `seed1_gameplay` reached full event parity (`663/663`) while keeping RNG/screens/colors at `100%`.
+
+### mkmaze water runtime scaffold tightening (2026-02-24)
+
+- `setup_waterlevel()` should seed bubbles through `mk_bubble()` (not raw descriptors) so per-bubble shape and initial drift RNG match C call order.
+- `set_wportal()` should support C-style discovery from existing `MAGIC_PORTAL` traps when no explicit coordinates are supplied.
+- `movebubbles()` should re-establish water/air base terrain before moving bubbles; this keeps bubble rendering behavior closer to C even before full object/monster/trap bubble transport is ported.

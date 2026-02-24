@@ -398,6 +398,14 @@ export function ledger_to_dlev(ledgerno) {
     const start = _dungeonLedgerStartByDnum.get(dnum) || 0;
     return Math.max(1, (Number.isInteger(ledgerno) ? ledgerno : 1) - start);
 }
+// C ref: dungeon.c get_level()
+export function get_level(lev, levnum) {
+    const ledger = Number.isInteger(levnum) ? levnum : 1;
+    const out = (lev && typeof lev === 'object') ? lev : {};
+    out.dnum = ledger_to_dnum(ledger);
+    out.dlevel = ledger_to_dlev(ledger);
+    return out;
+}
 export function on_level(a, b) {
     return Number.isInteger(a?.dnum) && Number.isInteger(a?.dlevel)
         && Number.isInteger(b?.dnum) && Number.isInteger(b?.dlevel)

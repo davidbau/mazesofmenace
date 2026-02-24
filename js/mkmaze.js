@@ -938,6 +938,30 @@ export function fumaroles(map, list = []) {
 export function movebubbles(map, dx = 0, dy = 0) {
     const water = map?._water;
     if (!water?.active) return false;
+    if (map.flags?.is_waterlevel && !water.portal) {
+        set_wportal(map);
+    }
+
+    if (map.flags?.is_waterlevel) {
+        for (let x = 1; x < COLNO; x++) {
+            for (let y = 0; y < ROWNO; y++) {
+                const loc = at(map, x, y);
+                if (!loc) continue;
+                loc.typ = WATER;
+                loc.lit = 0;
+            }
+        }
+    } else if (map.flags?.is_airlevel) {
+        for (let x = 1; x < COLNO; x++) {
+            for (let y = 0; y < ROWNO; y++) {
+                const loc = at(map, x, y);
+                if (!loc) continue;
+                loc.typ = AIR;
+                loc.lit = 1;
+            }
+        }
+    }
+
     const useRand = !Number.isInteger(dx) || !Number.isInteger(dy);
     const moveUp = !water._moveUp;
     water._moveUp = moveUp;
@@ -1028,8 +1052,17 @@ export function restore_waterlevel(map, saved = null) {
     return true;
 }
 export function set_wportal(map, x = null, y = null, dst = null) {
-    if (!map || !isok(x, y)) return false;
+    if (!map) return false;
     map._water = map._water || { bubbles: [], active: true };
+    if (!isok(x, y)) {
+        const trap = (Array.isArray(map?.traps) ? map.traps : [])
+            .find((t) => t?.ttyp === MAGIC_PORTAL && isok(t.tx, t.ty));
+        if (!trap) return false;
+        x = trap.tx;
+        y = trap.ty;
+        dst = dst || trap.dst || null;
+    }
+    if (!isok(x, y)) return false;
     map._water.portal = { x, y, dst: dst || null };
     return true;
 }
@@ -1054,14 +1087,8 @@ export function setup_waterlevel(map, args = {}) {
     const xskip = isWaterLevel ? (10 + rn2(10)) : (6 + rn2(4));
     const yskip = isWaterLevel ? (4 + rn2(4)) : (3 + rn2(3));
     const bubbles = [];
-    for (let x = xmin; x <= xmax; x += xskip) {
-        for (let y = ymin; y <= ymax; y += yskip) {
-            const n = rn2(7);
-            if (x < xmax && y < ymax) bubbles.push({ x, y, n, dx: 0, dy: 0 });
-        }
-    }
     map._water = {
-        bubbles,
+        bubbles: [],
         active: true,
         heroBubble: null,
         portal: null,
@@ -1074,6 +1101,27 @@ export function setup_waterlevel(map, args = {}) {
         yskip,
         ...args,
     };
+    for (let x = xmin; x <= xmax; x += xskip) {
+        for (let y = ymin; y <= ymax; y += yskip) {
+            if (x >= xmax || y >= ymax) continue;
+            const n = rn2(7);
+            const bubble = mk_bubble(map, x, y, n);
+            if (bubble) bubbles.push({ x: bubble.x, y: bubble.y, n: bubble.n });
+        }
+    }
+    const runtimeWater = map._water || {};
+    runtimeWater.bubbles = Array.isArray(runtimeWater.bubbles) ? runtimeWater.bubbles : [];
+    runtimeWater.active = true;
+    runtimeWater.heroBubble = null;
+    runtimeWater.portal = null;
+    runtimeWater.isWaterLevel = isWaterLevel;
+    runtimeWater.xmin = xmin;
+    runtimeWater.ymin = ymin;
+    runtimeWater.xmax = xmax;
+    runtimeWater.ymax = ymax;
+    runtimeWater.xskip = xskip;
+    runtimeWater.yskip = yskip;
+    map._water = runtimeWater;
     map._waterLevelSetup = {
         xmin,
         ymin,
@@ -1081,7 +1129,7 @@ export function setup_waterlevel(map, args = {}) {
         ymax,
         xskip,
         yskip,
-        bubbles: bubbles.map((b) => ({ x: b.x, y: b.y, n: b.n })),
+        bubbles,
         isWaterLevel,
     };
     return true;
@@ -1108,10 +1156,10 @@ export function mk_bubble(map, x, y, n) {
         [8, 4, 0x7e, 0xff, 0xff, 0x7e],
     ];
     const water = map._water || {};
-    const minX = Number.isInteger(water.xmin) ? water.xmin + 1 : 2;
-    const minY = Number.isInteger(water.ymin) ? water.ymin + 1 : 1;
-    const maxX = Number.isInteger(water.xmax) ? water.xmax - 1 : (COLNO - 2);
-    const maxY = Number.isInteger(water.ymax) ? water.ymax - 1 : (ROWNO - 2);
+    const minX = Number.isInteger(water.xmin) ? water.xmin : 3;
+    const minY = Number.isInteger(water.ymin) ? water.ymin : 1;
+    const maxX = Number.isInteger(water.xmax) ? water.xmax : (COLNO - 2);
+    const maxY = Number.isInteger(water.ymax) ? water.ymax : (ROWNO - 1);
     if (!Number.isInteger(x) || !Number.isInteger(y) || x >= maxX || y >= maxY) return null;
     const mi = Math.max(0, Math.min(masks.length - 1, Number.isInteger(n) ? n : 0));
     const bm = masks[mi];
