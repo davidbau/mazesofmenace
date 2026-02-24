@@ -1398,3 +1398,12 @@ hard-won wisdom:
 - `objnam.js` now owns explicit symbol wrappers for C-facing naming APIs (`xname`, `doname`, `erosion_matters`, `xname_flags`, `doname_base`) rather than relying on implicit re-exports from `mkobj.js`.
 - Added missing helper surfaces used by C mapping and wishing workflows: fruit lookup helpers (`fruit_from_name`, `fruitname`, `fruit_from_indx`), safe prompt builder (`safe_qbuf`), terrain/wallprop adapters (`dbterrainmesg`, `set_wallprop_from_str`), and staged readobjnam hooks (`readobjnam_init/preparse/parse_charges/postparse*`).
 - Kept behavior stable for current parity sessions by making helper additions non-invasive: readobjnam retains existing parser flow while exposing C-structured stages for future deeper parity work.
+
+### objnam readobjnam staged parser parity pass (2026-02-24)
+
+- `readobjnam_postparse1/2/3` now carry real parser work instead of no-op placeholders:
+  - phase 1 splits `"named"/"called"/"labeled|labelled"` segments and handles `"pair(s)/set(s) of"` normalization;
+  - phase 1 also centralizes object-class inference (`scroll of`, `foo wand`, bare class nouns) plus dragon-scale-mail forced type handling;
+  - phase 2 adds C-style generic `"<color> gem/stone"` coercion into `GEM_CLASS`.
+- `readobjnam` lookup order is now C-shaped: try `actualn`, then `dn` (label/description token), then `un` (called-name), then original text (`origbp`) before classless fallback attempts.
+- Added deterministic unit coverage for the new staged parser behavior (`scroll labeled ...`, `pair of ...`, `blue gem` normalization) in `test/unit/objnam_port_coverage.test.js`.

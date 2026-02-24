@@ -11,6 +11,8 @@ import {
     readobjnam_init,
     readobjnam_preparse,
     readobjnam_parse_charges,
+    readobjnam_postparse1,
+    readobjnam_postparse2,
     readobjnam,
     xname_flags,
     doname_base,
@@ -54,6 +56,26 @@ describe('objnam port coverage', () => {
         const s2 = readobjnam_init();
         assert.equal(readobjnam_parse_charges(s2, '-1 dagger'), 'dagger');
         assert.equal(s2.spe, -1);
+    });
+
+    it('postparses called/labeled and class hints', () => {
+        const state = readobjnam_init();
+        readobjnam_preparse(state, 'scroll labeled qwerty');
+        readobjnam_postparse1(state);
+        assert.equal(state.oclass > 0, true);
+        assert.equal(state.actualn, 'scroll');
+        assert.equal(state.dn, 'qwerty');
+
+        const s2 = readobjnam_init();
+        readobjnam_preparse(s2, 'pair of speed boots');
+        readobjnam_postparse1(s2);
+        assert.equal(s2.actualn, 'speed boots');
+
+        const s3 = readobjnam_init();
+        readobjnam_preparse(s3, 'blue gem');
+        readobjnam_postparse1(s3);
+        readobjnam_postparse2(s3);
+        assert.equal(s3.actualn, 'blue');
     });
 
     it('keeps readobjnam wish path operational', () => {

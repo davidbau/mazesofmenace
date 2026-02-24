@@ -1613,6 +1613,10 @@ export function readobjnam_init() {
         spe: null,
         buc: 0,
         text: '',
+        origbp: '',
+        dn: '',
+        un: '',
+        name: '',
         oclass: 0,
         actualn: '',
         forcedTyp: 0,
@@ -1634,6 +1638,7 @@ export function readobjnam_preparse(state, bp) {
     let text = bp.trim().toLowerCase();
     if (!text) return '';
     text = text.replace(/\s+/g, ' ');
+    state.origbp = text;
 
     const qMatch = text.match(/^(\d+)\s+/);
     if (qMatch) {
@@ -1660,97 +1665,210 @@ export function readobjnam_preparse(state, bp) {
 
     state.text = text;
     state.actualn = text;
+    state.dn = text;
+    state.un = '';
+    state.name = '';
+    state.oclass = 0;
+    state.forcedTyp = 0;
     return text;
 }
 
-// cf. objnam.c postparse phases (JS currently keeps these thin)
-export function readobjnam_postparse1(state) { return state; }
-export function readobjnam_postparse2(state) { return state; }
-export function readobjnam_postparse3(state) { return state; }
+const readobjnam_class_prefixes = [
+    ['potions of ', POTION_CLASS],
+    ['potion of ', POTION_CLASS],
+    ['scrolls of ', SCROLL_CLASS],
+    ['scroll of ', SCROLL_CLASS],
+    ['wands of ', WAND_CLASS],
+    ['wand of ', WAND_CLASS],
+    ['rings of ', RING_CLASS],
+    ['ring of ', RING_CLASS],
+    ['spellbooks of ', SPBOOK_CLASS],
+    ['spellbook of ', SPBOOK_CLASS],
+    ['amulets of ', AMULET_CLASS],
+    ['amulet of ', AMULET_CLASS],
+];
+
+const readobjnam_class_suffixes = [
+    [' potions', POTION_CLASS],
+    [' potion', POTION_CLASS],
+    [' scrolls', SCROLL_CLASS],
+    [' scroll', SCROLL_CLASS],
+    [' wands', WAND_CLASS],
+    [' wand', WAND_CLASS],
+    [' rings', RING_CLASS],
+    [' ring', RING_CLASS],
+    [' amulets', AMULET_CLASS],
+    [' amulet', AMULET_CLASS],
+    [' spellbooks', SPBOOK_CLASS],
+    [' spellbook', SPBOOK_CLASS],
+];
+
+function readobjnam_classify(state, rawText) {
+    let text = (rawText || '').trim();
+    let oclass = state.oclass || 0;
+    let forcedTyp = state.forcedTyp || 0;
+
+    if (!oclass) {
+        for (const [prefix, cls] of readobjnam_class_prefixes) {
+            if (text.startsWith(prefix)) {
+                oclass = cls;
+                text = text.slice(prefix.length).trim();
+                break;
+            }
+        }
+    }
+
+    if (!oclass) {
+        for (const [suffix, cls] of readobjnam_class_suffixes) {
+            if (text.endsWith(suffix)) {
+                oclass = cls;
+                text = text.slice(0, -suffix.length).trim();
+                break;
+            }
+        }
+    }
+
+    if (text.endsWith(' dragon scale mail')) {
+        oclass = ARMOR_CLASS;
+        for (let i = 0; i < NUM_OBJECTS; i++) {
+            if ((objectData[i]?.name || '').toLowerCase() === text) {
+                forcedTyp = i;
+                break;
+            }
+        }
+        text = 'scale mail';
+    }
+
+    if (!oclass) {
+        if (text === 'potion' || text === 'potions') oclass = POTION_CLASS;
+        else if (text === 'scroll' || text === 'scrolls') oclass = SCROLL_CLASS;
+        else if (text === 'wand' || text === 'wands') oclass = WAND_CLASS;
+        else if (text === 'ring' || text === 'rings') oclass = RING_CLASS;
+        else if (text === 'amulet' || text === 'amulets') oclass = AMULET_CLASS;
+        else if (text === 'spellbook' || text === 'spellbooks') oclass = SPBOOK_CLASS;
+    }
+
+    state.oclass = oclass;
+    state.forcedTyp = forcedTyp;
+    return text;
+}
+
+// cf. objnam.c postparse phases
+export function readobjnam_postparse1(state) {
+    if (!state) return state;
+    let text = (state.text || '').trim();
+    if (!text) return state;
+
+    // "foo named bar", "foo called bar", "foo labeled bar".
+    const named = strstri(text, ' named ');
+    if (named) {
+        const cut = text.toLowerCase().indexOf(' named ');
+        if (cut >= 0) {
+            state.name = text.slice(cut + 7).trim();
+            text = text.slice(0, cut).trim();
+        }
+    }
+    const called = strstri(text, ' called ');
+    if (called) {
+        const cut = text.toLowerCase().indexOf(' called ');
+        if (cut >= 0) {
+            state.un = text.slice(cut + 8).trim();
+            text = text.slice(0, cut).trim();
+        }
+    }
+    const labeled = strstri(text, ' labeled ') || strstri(text, ' labelled ');
+    if (labeled) {
+        let marker = ' labeled ';
+        let cut = text.toLowerCase().indexOf(marker);
+        if (cut < 0) {
+            marker = ' labelled ';
+            cut = text.toLowerCase().indexOf(marker);
+        }
+        if (cut >= 0) {
+            state.dn = text.slice(cut + marker.length).trim();
+            text = text.slice(0, cut).trim();
+        }
+    }
+
+    if (text.startsWith('pair of ')) {
+        text = text.slice(8).trim();
+    } else if (text.startsWith('pairs of ')) {
+        text = text.slice(9).trim();
+    } else if (text.startsWith('set of ')) {
+        text = text.slice(7).trim();
+    } else if (text.startsWith('sets of ')) {
+        text = text.slice(8).trim();
+    }
+
+    state.actualn = readobjnam_classify(state, text);
+    if (!state.dn) state.dn = state.actualn;
+    state.text = text;
+    return state;
+}
+
+export function readobjnam_postparse2(state) {
+    if (!state) return state;
+    let actualn = (state.actualn || '').trim();
+    if (!actualn) return state;
+
+    // C-like generic gem/stone class coercion for "<color> gem"/"<color> stone".
+    if (actualn.endsWith(' stone')) {
+        actualn = actualn.slice(0, -6).trim();
+        state.oclass = GEM_CLASS;
+        state.actualn = actualn;
+        state.dn = actualn;
+    } else if (actualn.endsWith(' gem')) {
+        actualn = actualn.slice(0, -4).trim();
+        state.oclass = GEM_CLASS;
+        state.actualn = actualn;
+        state.dn = actualn;
+    }
+    return state;
+}
+
+export function readobjnam_postparse3(state) {
+    return state;
+}
 
 // cf. objnam.c:4900 — readobjnam(bp, no_wish): parse wish string into object
 export function readobjnam(bp, no_wish) {
     if (typeof bp !== 'string') return null;
     const state = readobjnam_init();
-    let text = readobjnam_preparse(state, bp);
-    if (!text) return null;
+    if (!readobjnam_preparse(state, bp)) return null;
 
-    let oclass = 0;
-    let actualn = text;
-    let forcedTyp = 0;
-    const classPrefixes = [
-        ['potions of ', POTION_CLASS],
-        ['potion of ', POTION_CLASS],
-        ['scrolls of ', SCROLL_CLASS],
-        ['scroll of ', SCROLL_CLASS],
-        ['wands of ', WAND_CLASS],
-        ['wand of ', WAND_CLASS],
-        ['rings of ', RING_CLASS],
-        ['ring of ', RING_CLASS],
-        ['spellbooks of ', SPBOOK_CLASS],
-        ['spellbook of ', SPBOOK_CLASS],
-        ['amulets of ', AMULET_CLASS],
-        ['amulet of ', AMULET_CLASS],
-    ];
-    for (const [prefix, cls] of classPrefixes) {
-        if (actualn.startsWith(prefix)) {
-            oclass = cls;
-            actualn = actualn.slice(prefix.length).trim();
-            break;
-        }
-    }
+    readobjnam_postparse1(state);
+    readobjnam_postparse2(state);
+    readobjnam_postparse3(state);
 
-    if (!oclass) {
-        const classSuffixes = [
-            [' potions', POTION_CLASS],
-            [' potion', POTION_CLASS],
-            [' scrolls', SCROLL_CLASS],
-            [' scroll', SCROLL_CLASS],
-            [' wands', WAND_CLASS],
-            [' wand', WAND_CLASS],
-            [' rings', RING_CLASS],
-            [' ring', RING_CLASS],
-            [' amulets', AMULET_CLASS],
-            [' amulet', AMULET_CLASS],
-            [' spellbooks', SPBOOK_CLASS],
-            [' spellbook', SPBOOK_CLASS],
-        ];
-        for (const [suffix, cls] of classSuffixes) {
-            if (actualn.endsWith(suffix)) {
-                oclass = cls;
-                actualn = actualn.slice(0, -suffix.length).trim();
-                break;
-            }
-        }
-    }
-    if (actualn.endsWith(' dragon scale mail')) {
-        oclass = ARMOR_CLASS;
-        for (let i = 0; i < NUM_OBJECTS; i++) {
-            if ((objectData[i]?.name || '').toLowerCase() === actualn) {
-                forcedTyp = i;
-                break;
-            }
-        }
-        actualn = 'scale mail';
-    }
-    if (!oclass) {
-        if (actualn === 'potion' || actualn === 'potions') oclass = POTION_CLASS;
-        else if (actualn === 'scroll' || actualn === 'scrolls') oclass = SCROLL_CLASS;
-        else if (actualn === 'wand' || actualn === 'wands') oclass = WAND_CLASS;
-        else if (actualn === 'ring' || actualn === 'rings') oclass = RING_CLASS;
-        else if (actualn === 'amulet' || actualn === 'amulets') oclass = AMULET_CLASS;
-        else if (actualn === 'spellbook' || actualn === 'spellbooks') oclass = SPBOOK_CLASS;
-    }
+    const actualn = state.actualn || '';
+    const dn = state.dn || actualn;
+    const un = state.un || '';
+    const origbp = state.origbp || '';
+    const oclass = state.oclass || 0;
+    const forcedTyp = state.forcedTyp || 0;
 
     let otyp = rnd_otyp_by_namedesc(actualn, oclass, 1);
-    if ((otyp <= STRANGE_OBJECT || otyp >= NUM_OBJECTS) && actualn !== text) {
-        otyp = rnd_otyp_by_namedesc(text, oclass, 1);
+    if ((otyp <= STRANGE_OBJECT || otyp >= NUM_OBJECTS) && dn && dn !== actualn) {
+        otyp = rnd_otyp_by_namedesc(dn, oclass, 1);
     }
+    if ((otyp <= STRANGE_OBJECT || otyp >= NUM_OBJECTS) && un) {
+        otyp = rnd_otyp_by_namedesc(un, oclass, 1);
+    }
+    if ((otyp <= STRANGE_OBJECT || otyp >= NUM_OBJECTS) && origbp && origbp !== actualn) {
+        otyp = rnd_otyp_by_namedesc(origbp, oclass, 1);
+    }
+
     if (otyp <= STRANGE_OBJECT || otyp >= NUM_OBJECTS) {
         otyp = rnd_otyp_by_namedesc(actualn, 0, 1);
     }
-    if ((otyp <= STRANGE_OBJECT || otyp >= NUM_OBJECTS) && actualn !== text) {
-        otyp = rnd_otyp_by_namedesc(text, 0, 1);
+    if ((otyp <= STRANGE_OBJECT || otyp >= NUM_OBJECTS) && dn && dn !== actualn) {
+        otyp = rnd_otyp_by_namedesc(dn, 0, 1);
+    }
+    if ((otyp <= STRANGE_OBJECT || otyp >= NUM_OBJECTS) && un) {
+        otyp = rnd_otyp_by_namedesc(un, 0, 1);
+    }
+    if ((otyp <= STRANGE_OBJECT || otyp >= NUM_OBJECTS) && origbp && origbp !== actualn) {
+        otyp = rnd_otyp_by_namedesc(origbp, 0, 1);
     }
     if (forcedTyp > STRANGE_OBJECT && forcedTyp < NUM_OBJECTS) {
         otyp = forcedTyp;
@@ -1781,9 +1899,6 @@ export function readobjnam(bp, no_wish) {
     // but does not auto-discover the true object type.
     otmp.dknown = true;
 
-    readobjnam_postparse1(state);
-    readobjnam_postparse2(state);
-    readobjnam_postparse3(state);
     return otmp;
 }
 
