@@ -1270,3 +1270,9 @@ hard-won wisdom:
 - `sp_lev` special-fixup should call `mkmaze` ownership functions for water setup and Baalz wall-geometry (`setup_waterlevel`, `baalz_fixup`) instead of maintaining duplicate logic in two files.
 - Keep thin local wrappers in `sp_lev` only where needed for existing call structure, but route implementation to `mkmaze` to avoid drift.
 - Preserve existing parity-visible state fields (`_waterLevelSetup`) when moving logic, so targeted map/special replay checks stay stable while ownership is cleaned up.
+
+### mkmaze water-state save/restore hardening (2026-02-24)
+
+- `save_waterlevel`/`restore_waterlevel` should snapshot and restore all parity-relevant water scaffolding (`_water`, `_waterLevelSetup`, and `flags.hero_memory`), not just the bubble array.
+- Keep backward compatibility for earlier save format (raw `_water` object) so ongoing replay/debug workflows do not break when the saved payload schema evolves.
+- `unsetup_waterlevel` should clear active runtime movers (bubbles, hero bubble, fumaroles, portal) while keeping deterministic state handling explicit.

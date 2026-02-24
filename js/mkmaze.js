@@ -924,6 +924,12 @@ export function movebubbles(map, dx = 0, dy = 0) {
         const stepY = useRand ? (rn2(3) - 1) : dy;
         mv_bubble(map, b, stepX, stepY);
     }
+    if (map._water.heroBubble) {
+        maybe_adjust_hero_bubble(map, {
+            x: map._water.heroBubble.x,
+            y: map._water.heroBubble.y,
+        });
+    }
     return true;
 }
 export function water_friction(map, pos = null) {
@@ -932,11 +938,25 @@ export function water_friction(map, pos = null) {
     return rn2(3) ? 0 : 1;
 }
 export function save_waterlevel(map) {
-    if (!map?._water) return null;
-    return JSON.parse(JSON.stringify(map._water));
+    if (!map) return null;
+    return {
+        water: map._water ? JSON.parse(JSON.stringify(map._water)) : null,
+        waterLevelSetup: map._waterLevelSetup ? JSON.parse(JSON.stringify(map._waterLevelSetup)) : null,
+        hero_memory: map.flags?.hero_memory ?? null,
+    };
 }
 export function restore_waterlevel(map, saved = null) {
     if (!map || !saved || typeof saved !== 'object') return false;
+    if ('water' in saved) {
+        map._water = saved.water ? JSON.parse(JSON.stringify(saved.water)) : null;
+        map._waterLevelSetup = saved.waterLevelSetup ? JSON.parse(JSON.stringify(saved.waterLevelSetup)) : null;
+        if (saved.hero_memory !== null && saved.hero_memory !== undefined) {
+            map.flags = map.flags || {};
+            map.flags.hero_memory = !!saved.hero_memory;
+        }
+        return true;
+    }
+    // Backward-compat with earlier save format (raw _water object).
     map._water = JSON.parse(JSON.stringify(saved));
     return true;
 }
@@ -1002,6 +1022,8 @@ export function unsetup_waterlevel(map) {
         map._water.active = false;
         map._water.bubbles = [];
         map._water.heroBubble = null;
+        map._water.fumaroles = [];
+        map._water.portal = null;
     }
     return true;
 }
