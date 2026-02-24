@@ -68,6 +68,7 @@ import {
     SCR_EARTH, objectData, GOLD_PIECE, STATUE
 } from './objects.js';
 import { mons, M2_FEMALE, M2_MALE, G_NOGEN, G_IGNORE, PM_MINOTAUR, MR_STONE, S_EEL } from './monsters.js';
+import { poly_when_stoned } from './mondata.js';
 import { getSpecialLevel, findSpecialLevelByName, GEHENNOM } from './special_levels.js';
 import { placeFloorObject } from './floor_objects.js';
 import { premap_detect } from './detect.js';
@@ -1257,13 +1258,12 @@ function medusa_fixup(map) {
         const loc = map.at(x, y);
         return !!loc && loc.typ > DOOR && !map.monsterAt(x, y);
     };
-    const polyWhenStoned = (_mnum) => false; // TODO: port full polymorph-on-stone table
     const statueNeedsReroll = (obj) => {
         if (!obj || !Number.isInteger(obj.corpsenm)) return false;
         if (obj.corpsenm < 0 || obj.corpsenm >= mons.length) return false;
         const m = mons[obj.corpsenm];
         if (!m) return false;
-        return !!(m.mr1 & MR_STONE) || polyWhenStoned(obj.corpsenm);
+        return !!(m.mr1 & MR_STONE) || poly_when_stoned(m);
     };
     const mk_tt_statue = (x, y) => {
         const otmp = mksobj(STATUE, true, false);

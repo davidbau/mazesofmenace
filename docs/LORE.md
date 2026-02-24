@@ -1367,3 +1367,7 @@ hard-won wisdom:
 - Practical workflow: first classify event drift into (a) stale capture schema vs (b) real core logic mismatch, then only re-record when (a) is confirmed.
 - Concrete example: in pet split-stack pickup, JS created a detached split object and went straight to `mpickobj`, skipping the C-style on-floor extraction event. Event parity highlighted the missing `^remove` before `^pickup`, leading to a core fix in `dogmove` split handling.
 - Treat event parity as production-path validation, not test-harness cosmetics: fixes should land in game logic and improve replay/debug observability for future divergence work.
+
+### Medusa statue reroll parity helper reuse (2026-02-24)
+
+- `sp_lev` Medusa fixup should use shared `mondata.poly_when_stoned(ptr)` rather than local TODO logic when rerolling statue corpsenm.
