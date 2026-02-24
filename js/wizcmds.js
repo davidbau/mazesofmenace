@@ -282,6 +282,7 @@ export async function wizLevelChange(game) {
         return { moved: false, tookTime: false };
     }
     game.changeLevel(level, 'teleport');
+    display.putstr_message('You materialize on a different level!');
     return { moved: false, tookTime: true };
 }
 

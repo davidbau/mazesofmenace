@@ -342,7 +342,7 @@ def build_wizard_moves(char_class):
 
     # Wish for potions of gain level (varying count)
     num_potions = config['potions']
-    moves.append('#wish\n')
+    moves.append('\x17')  # Ctrl+W wizard wish
     moves.append(f'{num_potions} blessed potions of gain level\n')
 
     # Quaff all potions (they stack as item 'a')
@@ -355,7 +355,7 @@ def build_wizard_moves(char_class):
 
     for category, idx in config['wishes']:
         item = WISH_ITEMS[category][idx]
-        moves.append('#wish\n')
+        moves.append('\x17')  # Ctrl+W wizard wish
         moves.append(f'{item}\n')
         wish_letters[category] = chr(item_letter)
         item_letter += 1

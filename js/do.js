@@ -1178,6 +1178,7 @@ export function changeLevel(game, depth, transitionDir = null, opts = {}) {
         });
         resolveArrivalCollision(game);
     }
+
 }
 
 

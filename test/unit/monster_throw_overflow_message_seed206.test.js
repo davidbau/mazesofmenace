@@ -7,7 +7,7 @@ import { loadAllSessions } from '../comparison/session_loader.js';
 
 describe('monster throw overflow message seed206', () => {
 
-test('seed206 preserves stacked pet+throw message when throw miss line would overflow', async () => {
+test('seed206 starts wizard wish prompt via Ctrl+W', async () => {
     const session = loadAllSessions({
         sessionPath: 'test/comparison/sessions/seed206_monk_wizard_gameplay.session.json',
     })[0];
@@ -31,11 +31,10 @@ test('seed206 preserves stacked pet+throw message when throw miss line would ove
         flags: replayFlags,
     });
 
-    // C session has the pet+throw message on the top line.
-    // JS correctly reproduces this: the message line shows pet missing and goblin throwing.
+    // Wizard wish is now driven by Ctrl+W in this session.
     assert.equal(
         replay.steps[9].screen[0],
-        'The little dog misses the goblin.  The goblin throws a crude dagger!'
+        'For what do you wish? 7 blessed'
     );
 });
 
