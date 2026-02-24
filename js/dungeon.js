@@ -92,7 +92,6 @@ import {
     shrine_pos,
 } from './mkroom.js';
 import {
-    mkroom_cmp,
     bydoor,
     okdoor,
     good_rm_wall_doorpos,
@@ -118,6 +117,7 @@ import {
     make_niches,
     makevtele,
     mklev_sanity_check,
+    sort_rooms,
 } from './mklev.js';
 import { makeroguerooms } from './extralev.js';
 
@@ -818,43 +818,6 @@ function bsdQsort(arr, cmpFn) {
         if (s > 1) qsort(hi - s, s);
     }
     qsort(0, arr.length);
-}
-
-// C ref: mklev.c sort_rooms()
-export function sort_rooms(map) {
-    const n = map.nroom;
-
-    // C ref: qsort(svr.rooms, svn.nroom, ...) sorts only main rooms.
-    // Subrooms live beyond nroom and must not participate.
-    const mainRooms = map.rooms.slice(0, n);
-    // C uses libc qsort(); Array.sort() is currently the closest practical
-    // runtime match for equal-key ordering behavior in this environment.
-    mainRooms.sort(mkroom_cmp);
-    for (let i = 0; i < n; i++) {
-        map.rooms[i] = mainRooms[i];
-    }
-
-    // Build reverse index: ri[old_roomnoidx] = new_index
-    const ri = new Array(MAXNROFROOMS + 1).fill(0);
-    for (let i = 0; i < n; i++) {
-        ri[map.rooms[i].roomnoidx] = i;
-    }
-
-    // Update roomno on the map cells
-    for (let x = 1; x < COLNO; x++) {
-        for (let y = 0; y < ROWNO; y++) {
-            const loc = map.at(x, y);
-            const rno = loc.roomno;
-            if (rno >= ROOMOFFSET && rno < MAXNROFROOMS + 1) {
-                loc.roomno = ri[rno - ROOMOFFSET] + ROOMOFFSET;
-            }
-        }
-    }
-
-    // Update roomnoidx on rooms
-    for (let i = 0; i < n; i++) {
-        map.rooms[i].roomnoidx = i;
-    }
 }
 
 // C-parity repair: irregular rooms in JS can leave boundary STONE where C map

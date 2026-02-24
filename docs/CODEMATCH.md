@@ -2617,7 +2617,7 @@ No function symbols parsed from isaac64.c.
 | 1687 | `place_branch` | - | Missing |
 | 698 | `place_niche` | mklev.js:255 | Aligned |
 | 1673 | `pos_to_room` | - | Missing |
-| 211 | `sort_rooms` | - | Missing |
+| 211 | `sort_rooms` | mklev.js:32 | Aligned |
 | 1170 | `themerooms_post_level_generate` | - | Missing |
 | 1593 | `topologize` | - | Missing |
 | 1934 | `traptype_rnd` | - | Missing |

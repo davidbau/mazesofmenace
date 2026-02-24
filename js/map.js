@@ -82,6 +82,7 @@ export class GameMap {
         // C ref: svd.doors[] (decl.h)
         this.doors = [];
         this.doorindex = 0;
+        this.doors_alloc = 0;
 
         // Stairs
         this.upstair = { x: 0, y: 0 };
@@ -167,6 +168,7 @@ export class GameMap {
         this.nroom = 0;
         this.doors = [];
         this.doorindex = 0;
+        this.doors_alloc = 0;
         this.monsters = [];
         this.objects = [];
         this.traps = [];

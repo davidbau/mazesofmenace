@@ -1,6 +1,7 @@
 // mklev.c helper functions moved out of dungeon.js to mirror C file layout.
 
 import {
+    COLNO, ROWNO, MAXNROFROOMS,
     STONE, CORR, SCORR, ROOM, ICE, HWALL, VWALL, SDOOR, ROOMOFFSET,
     STAIRS, FOUNTAIN, SINK, ALTAR, GRAVE, OROOM, THEMEROOM, SHOPBASE,
     DOOR, IRONBARS,
@@ -20,11 +21,35 @@ import { make_engr_at, wipe_engr_at } from './engrave.js';
 import { random_epitaph_text } from './rumors.js';
 import { maketrap, somexy } from './dungeon.js';
 
+const DOORINC = 20;
+
 // C ref: mklev.c mkroom_cmp() — sort rooms by lx only
 export function mkroom_cmp(a, b) {
     if (a.lx < b.lx) return -1;
     if (a.lx > b.lx) return 1;
     return 0;
+}
+
+// C ref: mklev.c sort_rooms()
+export function sort_rooms(map) {
+    const n = map.nroom;
+    const mainRooms = map.rooms.slice(0, n);
+    mainRooms.sort(mkroom_cmp);
+    for (let i = 0; i < n; i++) map.rooms[i] = mainRooms[i];
+
+    const ri = new Array(MAXNROFROOMS + 1).fill(0);
+    for (let i = 0; i < n; i++) ri[map.rooms[i].roomnoidx] = i;
+
+    for (let x = 1; x < COLNO; x++) {
+        for (let y = 0; y < ROWNO; y++) {
+            const loc = map.at(x, y);
+            const rno = loc.roomno;
+            if (rno >= ROOMOFFSET && rno < MAXNROFROOMS + 1) {
+                loc.roomno = ri[rno - ROOMOFFSET] + ROOMOFFSET;
+            }
+        }
+    }
+    for (let i = 0; i < n; i++) map.rooms[i].roomnoidx = i;
 }
 
 // C ref: mklev.c bydoor()
@@ -439,6 +464,10 @@ export function makevtele(map, depth) {
 // C ref: mklev.c alloc_doors()
 export function alloc_doors(map) {
     if (!Array.isArray(map.doors)) map.doors = [];
+    if (!Number.isInteger(map.doors_alloc)) map.doors_alloc = map.doors.length;
+    if (map.doorindex >= map.doors_alloc) {
+        map.doors_alloc += DOORINC;
+    }
 }
 
 // C ref: mklev.c add_door()
