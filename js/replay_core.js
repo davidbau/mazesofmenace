@@ -882,6 +882,20 @@ export async function replaySession(seed, session, opts = {}) {
             }
         }
     };
+    const applyPostRhack = (rhackResult) => {
+        maybe_deferred_goto_after_rhack(game, rhackResult);
+        return rhackResult;
+    };
+    const beginTimedRhack = (commandKey, onTimedTurn) => {
+        game.advanceRunTurn = async () => {
+            onTimedTurn(true);
+        };
+        return rhack(commandKey, game);
+    };
+    const clearTimedRhack = () => {
+        game.advanceRunTurn = null;
+    };
+
     for (let stepIndex = 0; stepIndex < maxSteps; stepIndex++) {
         const step = allSteps[stepIndex];
         game.map._replayStepIndex = stepIndex;
@@ -1338,8 +1352,7 @@ export async function replaySession(seed, session, opts = {}) {
 
                 result = { moved: false, tookTime: false };
             } else {
-                result = settled.value;
-                maybe_deferred_goto_after_rhack(game, result);
+                result = applyPostRhack(settled.value);
                 replayPendingTrace(
                     `step=${stepIndex + 1}`,
                     `key=${JSON.stringify(step.key || '')}`,
@@ -1404,8 +1417,7 @@ export async function replaySession(seed, session, opts = {}) {
                                 : (['i', 'I'].includes(String.fromCharCode(passthroughCh)) ? 'inventory-menu' : null);
                             result = { moved: false, tookTime: false };
                         } else {
-                            result = settledPassthrough.value;
-                            maybe_deferred_goto_after_rhack(game, result);
+                            result = applyPostRhack(settledPassthrough.value);
                         }
                         game.advanceRunTurn = null;
                     }
@@ -1481,10 +1493,7 @@ export async function replaySession(seed, session, opts = {}) {
             }
             // Keep the active command key aligned with moveloop-style repeat logic.
             game.cmdKey = execCh;
-            game.advanceRunTurn = async () => {
-                applyTimedTurn(true);
-            };
-            const commandPromise = rhack(execCh, game);
+            const commandPromise = beginTimedRhack(execCh, applyTimedTurn);
             const settled = await Promise.race([
                 commandPromise.then(v => ({ done: true, value: v })),
                 new Promise(resolve => setTimeout(() => resolve({ done: false }), 1)),
@@ -1551,7 +1560,7 @@ export async function replaySession(seed, session, opts = {}) {
                             : null;
                     }
                 }
-                game.advanceRunTurn = null;
+                clearTimedRhack();
                 pendingCommand = commandPromise;
                 pendingKind = (ch === 35)
                     ? 'extended-command'
@@ -1563,9 +1572,8 @@ export async function replaySession(seed, session, opts = {}) {
                 );
                 result = { moved: false, tookTime: false };
             } else {
-                game.advanceRunTurn = null;
-                result = settled.value;
-                maybe_deferred_goto_after_rhack(game, result);
+                clearTimedRhack();
+                result = applyPostRhack(settled.value);
             }
             }
         }
@@ -1581,8 +1589,7 @@ export async function replaySession(seed, session, opts = {}) {
         if (result && !result.tookTime && step.key.length > 1
             && PREFIX_CMDS.has(String.fromCharCode(ch))) {
             const nextCh = step.key.charCodeAt(1);
-            result = await rhack(nextCh, game);
-            maybe_deferred_goto_after_rhack(game, result);
+            result = applyPostRhack(await rhack(nextCh, game));
         }
 
         // Run any monster turn deferred from a preceding stop_occupation frame,
@@ -1656,8 +1663,7 @@ export async function replaySession(seed, session, opts = {}) {
                     break;
                 }
                 game.multi--;
-                const repeated = await rhack(game.cmdKey, game);
-                maybe_deferred_goto_after_rhack(game, repeated);
+                const repeated = applyPostRhack(await rhack(game.cmdKey, game));
                 if (!repeated || !repeated.tookTime) break;
                 applyTimedTurn();
 
