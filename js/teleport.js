@@ -132,7 +132,8 @@ export function goodpos(x, y, mtmp, gpflags, map, player) {
 
         // Scary check
         if (checkscary) {
-            if (mtmp.m_id && typeof onscary === 'function' && onscary(x, y, mtmp, map))
+            // C signature/order: onscary(x, y, mon) with level context; JS helper takes (map, x, y, mon).
+            if (mtmp.m_id && typeof onscary === 'function' && onscary(map, x, y, mtmp))
                 return false;
         }
     }

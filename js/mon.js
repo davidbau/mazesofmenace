@@ -164,7 +164,7 @@ export function onscary(map, x, y, mon = null) {
         // C: blind, minotaur, Gehennom plane checks — skip for now
     }
 
-    for (const obj of map.objects) {
+    for (const obj of map.objects || []) {
         if (obj.buried) continue;
         if (obj.ox === x && obj.oy === y
             && obj.otyp === SCR_SCARE_MONSTER
