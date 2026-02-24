@@ -4416,9 +4416,16 @@ export function create_trap(type_or_opts, x, y) {
     }
 
     if (levelState.finalizeContext) {
-        // C ref: sp_lev.c lspo_trap() creates traps immediately in script order.
-        // In parity mode, defer coordinate resolution to execution time to keep
-        // get_location_coord() timing aligned with C.
+        // C ref: sp_lev.c lspo_trap() executes in script order. Keep random
+        // coordinate resolution in createScriptTrap(), but resolve explicit
+        // coordinates now (no RNG) to avoid accidental random-location fallback.
+        const hasExplicitCoord = Number.isFinite(srcX) && Number.isFinite(srcY)
+            && Math.trunc(srcX) >= 0 && Math.trunc(srcY) >= 0;
+        if (hasExplicitCoord) {
+            const pos = getLocationCoord(srcX, srcY, GETLOC_DRY, levelState.currentRoom || null);
+            createScriptTrap({ type_or_opts, x: pos.x, y: pos.y });
+            return;
+        }
         createScriptTrap({
             type_or_opts,
             deferCoord: true,
@@ -6311,7 +6318,8 @@ function createScriptTrap(deferred) {
     }
 
     if (deferCoord) {
-        randomRequested = (rawX === undefined || rawY === undefined);
+        randomRequested = (rawX === undefined || rawY === undefined
+            || rawX < 0 || rawY < 0);
         const pos = getLocationCoord(rawX, rawY, GETLOC_DRY, room || null);
         trapX = pos.x;
         trapY = pos.y;

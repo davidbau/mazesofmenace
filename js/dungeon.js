@@ -2534,9 +2534,10 @@ export function fill_ordinary_room(map, croom, depth, bonusItems) {
 
     if (croom.needfill !== FILL_NORMAL) return;
 
-    // Put a sleeping monster inside (1/3 chance)
+    // Put a sleeping monster inside.
     // C ref: (u.uhave.amulet || !rn2(3)) && somexyspace(croom, &pos)
-    if (!rn2(3)) {
+    const heroHasAmulet = !!map?._heroHasAmulet;
+    if (heroHasAmulet || !rn2(3)) {
         const pos = somexyspace(map, croom);
         if (pos) {
             const tmonst = makemon(null, pos.x, pos.y, MM_NOGRP, depth, map);

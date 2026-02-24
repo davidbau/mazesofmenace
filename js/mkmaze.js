@@ -922,8 +922,16 @@ export function movebubbles(map, dx = 0, dy = 0) {
     if (Array.isArray(water.bubbles) && water.bubbles.length) {
         for (const b of water.bubbles) {
             if (!b || !Number.isInteger(b.x) || !Number.isInteger(b.y)) continue;
-            const stepX = useRand ? (rn2(3) - 1) : dx;
-            const stepY = useRand ? (rn2(3) - 1) : dy;
+            if (useRand) {
+                if (!Number.isInteger(b.dx) || !Number.isInteger(b.dy)
+                    || (b.dx === 0 && b.dy === 0) || !rn2(5)) {
+                    b.dx = rn2(3) - 1;
+                    b.dy = rn2(3) - 1;
+                    if (b.dx === 0 && b.dy === 0) b.dx = 1;
+                }
+            }
+            const stepX = useRand ? b.dx : dx;
+            const stepY = useRand ? b.dy : dy;
             mv_bubble(map, b, stepX, stepY);
         }
     }
@@ -1049,7 +1057,14 @@ export function unsetup_waterlevel(map) {
 }
 export function mk_bubble(map, x, y, n) {
     if (!map) return null;
-    const bubble = { x, y, n, active: true, dx: 0, dy: 0 };
+    const bubble = {
+        x,
+        y,
+        n: Number.isInteger(n) ? n : 1,
+        active: true,
+        dx: 0,
+        dy: 0
+    };
     map._water = map._water || { bubbles: [] };
     map._water.bubbles.push(bubble);
     return bubble;

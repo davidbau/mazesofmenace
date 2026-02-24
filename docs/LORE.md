@@ -1304,3 +1304,14 @@ hard-won wisdom:
 - `makemaz(protofile, ...)` should first attempt protofile-driven special-level generation (C `mkmaze.c` path) and only fall back to procedural maze generation when lookup fails.
 - Protofile lookup needs base-name variant support (`medusa` -> `medusa-1..4`, `tower` -> `tower1..3`) and should prefer the current `(dnum,dlevel)` endpoint when provided.
 - Reusing the same special-level setup path (`resetLevelState`, finalize context, special-theme init shuffle) avoids introducing a separate RNG/loader code path for protofile-backed mazes.
+
+### sp_lev trap coordinate resolution tightening (2026-02-24)
+
+- In parity finalize context, explicit `des.trap` coordinates should be resolved immediately (no RNG) and passed straight to trap creation.
+- Only random/negative coordinates should defer through `get_location_coord` so random-location probing does not run for explicit coordinates.
+- Deferred trap random detection should treat negative coordinates as random requests, matching C call-shape expectations.
+
+### mklev ordinary-room amulet gate parity (2026-02-24)
+
+- `fill_ordinary_room` monster seed path should follow C condition `(u.uhave.amulet || !rn2(3))`; this is now represented with a map-level `_heroHasAmulet` parity hook.
+- Default behavior remains unchanged when that hook is unset, keeping existing replay baseline stable.
