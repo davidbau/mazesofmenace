@@ -4385,6 +4385,14 @@ export function create_trap(type_or_opts, x, y) {
         levelState.map = new GameMap();
     }
 
+    const unpackCoordArg = (coord) => {
+        if (coord === undefined || coord === null) return { x: undefined, y: undefined };
+        if (Array.isArray(coord)) return { x: coord[0], y: coord[1] };
+        if (typeof coord === 'object') return { x: coord.x, y: coord.y };
+        const unpacked = get_unpacked_coord(coord);
+        return { x: unpacked.x, y: unpacked.y };
+    };
+
     // Normalize coordinates from object-style calls:
     // des.trap({ coord: [x, y] }) / des.trap({ coord: {x, y} }) / des.trap({ x, y }).
     let srcX = x;
@@ -4402,13 +4410,9 @@ export function create_trap(type_or_opts, x, y) {
     }
     if (type_or_opts && typeof type_or_opts === 'object' && srcX === undefined && srcY === undefined) {
         if (type_or_opts.coord) {
-            if (Array.isArray(type_or_opts.coord)) {
-                srcX = type_or_opts.coord[0];
-                srcY = type_or_opts.coord[1];
-            } else {
-                srcX = type_or_opts.coord.x;
-                srcY = type_or_opts.coord.y;
-            }
+            const unpacked = unpackCoordArg(type_or_opts.coord);
+            srcX = unpacked.x;
+            srcY = unpacked.y;
         } else {
             srcX = type_or_opts.x;
             srcY = type_or_opts.y;
@@ -4416,23 +4420,25 @@ export function create_trap(type_or_opts, x, y) {
     }
 
     if (levelState.finalizeContext) {
-        // C ref: sp_lev.c lspo_trap() executes in script order. Keep random
-        // coordinate resolution in createScriptTrap(), but resolve explicit
-        // coordinates now (no RNG) to avoid accidental random-location fallback.
-        const hasExplicitCoord = Number.isFinite(srcX) && Number.isFinite(srcY)
-            && Math.trunc(srcX) >= 0 && Math.trunc(srcY) >= 0;
-        if (hasExplicitCoord) {
-            const pos = getLocationCoord(srcX, srcY, GETLOC_DRY, levelState.currentRoom || null);
-            createScriptTrap({ type_or_opts, x: pos.x, y: pos.y });
-            return;
+        // C ref: sp_lev.c lspo_trap() creates traps immediately in script order.
+        // Resolve coordinates at call-time (same as non-finalize path).
+        const randomRequested = (srcX === undefined || srcY === undefined);
+        const pos = getLocationCoord(srcX, srcY, GETLOC_DRY, levelState.currentRoom || null);
+        let absX = pos.x;
+        let absY = pos.y;
+        if (randomRequested && !levelState.currentRoom
+            && absX !== undefined && absY !== undefined) {
+            let trycnt = 0;
+            while (trycnt++ <= 100) {
+                const typ = levelState.map.locations[absX][absY]?.typ;
+                if (typ !== STAIRS && typ !== LADDER) break;
+                const randomPos = getLocationCoord(undefined, undefined, GETLOC_DRY, null);
+                if (randomPos.x < 0 || randomPos.y < 0) break;
+                absX = randomPos.x;
+                absY = randomPos.y;
+            }
         }
-        createScriptTrap({
-            type_or_opts,
-            deferCoord: true,
-            rawX: srcX,
-            rawY: srcY,
-            room: levelState.currentRoom || null
-        });
+        createScriptTrap({ type_or_opts, x: absX, y: absY });
         return;
     }
 
@@ -4441,6 +4447,8 @@ export function create_trap(type_or_opts, x, y) {
     let absX = pos.x;
     let absY = pos.y;
 
+    // C ref: create_trap() re-rolls random coordinates when they land on
+    // stairs/ladder before calling mktrap().
     // C ref: create_trap() re-rolls random coordinates when they land on
     // stairs/ladder before calling mktrap().
     if (randomRequested && !levelState.currentRoom
@@ -6307,9 +6315,13 @@ function createScriptTrap(deferred) {
             if (Array.isArray(type_or_opts.coord)) {
                 trapX = type_or_opts.coord[0];
                 trapY = type_or_opts.coord[1];
-            } else {
+            } else if (typeof type_or_opts.coord === 'object') {
                 trapX = type_or_opts.coord.x;
                 trapY = type_or_opts.coord.y;
+            } else {
+                const unpacked = get_unpacked_coord(type_or_opts.coord);
+                trapX = unpacked.x;
+                trapY = unpacked.y;
             }
         } else if (type_or_opts.x !== undefined && type_or_opts.y !== undefined) {
             trapX = type_or_opts.x;

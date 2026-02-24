@@ -1315,3 +1315,9 @@ hard-won wisdom:
 
 - `fill_ordinary_room` monster seed path should follow C condition `(u.uhave.amulet || !rn2(3))`; this is now represented with a map-level `_heroHasAmulet` parity hook.
 - Default behavior remains unchanged when that hook is unset, keeping existing replay baseline stable.
+
+### sp_lev trap coord normalization parity (2026-02-24)
+
+- `des.trap` coordinate normalization should treat packed `SP_COORD_PACK` values the same as array/object coords; missing this silently falls back to random placement and can consume unrelated RNG.
+- In `finalizeContext`, trap creation should still execute immediately in script order and resolve coordinates at call time, mirroring C `lspo_trap` behavior.
+- Added unit coverage for packed-coord trap table form to keep this path stable (`des.trap({ type: 'pit', coord: packed })`).

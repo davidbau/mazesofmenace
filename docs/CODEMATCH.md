@@ -4805,7 +4805,7 @@ No function symbols parsed from isaac64.c.
 | 2186 | `create_object` | sp_lev.js `object()` | Aligned — executes in script order (deferral removed) |
 | 1487 | `create_room` | dungeon.js:362 | Aligned |
 | 1669 | `create_subroom` | mklev.js:193 | Aligned |
-| 1813 | `create_trap` | sp_lev.js:3924 | Aligned |
+| 1813 | `create_trap` | sp_lev.js:4383 | Aligned |
 | 4769 | `cvt_to_abscoord` | sp_lev.js:1996 | Aligned |
 | 4790 | `cvt_to_relcoord` | sp_lev.js:1987 | Aligned |
 | 2542 | `dig_corridor` | dungeon.js:1462 | Aligned |

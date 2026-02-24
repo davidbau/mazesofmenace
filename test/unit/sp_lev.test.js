@@ -857,4 +857,13 @@ describe('sp_lev.js - des.* API', () => {
         assert.equal(map.at(10, 5).waslit, true, 'premapped should mark terrain as lit/known');
         assert.equal(map.trapAt(10, 5)?.tseen, 1, 'premapped should reveal trap visibility');
     });
+
+    it('des.trap accepts packed SP_COORD coords in table form', () => {
+        resetLevelState();
+        des.level_init({ style: 'solidfill', fg: '.' });
+        const packed = (12 << 8) | 7;
+        des.trap({ type: 'pit', coord: packed });
+        const map = getLevelState().map;
+        assert.ok(map.trapAt(12, 7), 'packed coordinate trap should be placed at decoded x/y');
+    });
 });
