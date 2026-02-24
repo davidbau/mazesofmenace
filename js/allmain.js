@@ -39,7 +39,7 @@ import { FOV } from './vision.js';
 import { monsterNearby } from './monutil.js';
 import { Player, roles, races } from './player.js';
 import { makelevel, setGameSeed, isBranchLevelToDnum } from './dungeon.js';
-import { getArrivalPosition, changeLevel as changeLevelCore } from './do.js';
+import { getArrivalPosition, changeLevel as changeLevelCore, deferred_goto } from './do.js';
 import { loadSave, deleteSave, loadFlags, saveFlags, deserializeRng,
          restGameState, restLev, listSavedData, clearAllData } from './storage.js';
 import { buildEntry, saveScore, loadScores, formatTopTenEntry, formatTopTenHeader } from './topten.js';
@@ -61,6 +61,10 @@ export function moveloop_core(game, opts = {}) {
     }
     if (!opts.skipMonsterMove) {
         movemon(game.map, game.player, game.display, game.fov, game);
+    }
+    // C ref: allmain.c — apply deferred level changes after timed turn work.
+    if (game.player?.utotype) {
+        deferred_goto(game.player, game);
     }
     moveloop_turnend(game);
     // C ref: allmain.c end of moveloop_core — check for player death
@@ -356,11 +360,18 @@ export async function run_command(game, ch, opts = {}) {
     if (computeFov) coreOpts.computeFov = true;
     if (skipMonsterMove) coreOpts.skipMonsterMove = true;
 
+    // Process one timed turn of world updates after a command consumed time.
+    const advanceTimedTurn = async () => {
+        moveloop_core(game, coreOpts);
+        if (onTimedTurn) {
+            await onTimedTurn();
+        }
+    };
+
     // Set advanceRunTurn for running mode (G/g commands process monster
     // turns between each movement step rather than batching all movement).
     game.advanceRunTurn = async () => {
-        moveloop_core(game, coreOpts);
-        if (onTimedTurn) await onTimedTurn();
+        await advanceTimedTurn();
     };
 
     // Execute command
@@ -371,8 +382,7 @@ export async function run_command(game, ch, opts = {}) {
 
     // Post-rhack processing: moveloop_core, occupation, multi-repeat
     if (result && result.tookTime && !skipTurnEnd) {
-        moveloop_core(game, coreOpts);
-        if (onTimedTurn) await onTimedTurn();
+        await advanceTimedTurn();
 
         // Drain any occupation created by the command
         await _drainOccupation(game, coreOpts, onTimedTurn);
@@ -386,15 +396,13 @@ export async function run_command(game, ch, opts = {}) {
 
             game.multi--;
             game.advanceRunTurn = async () => {
-                moveloop_core(game, coreOpts);
-                if (onTimedTurn) await onTimedTurn();
+                await advanceTimedTurn();
             };
             const repeated = await rhack(game.cmdKey, game);
             game.advanceRunTurn = null;
 
             if (!repeated || !repeated.tookTime) break;
-            moveloop_core(game, coreOpts);
-            if (onTimedTurn) await onTimedTurn();
+            await advanceTimedTurn();
 
             // Drain occupation from repeated command
             await _drainOccupation(game, coreOpts, onTimedTurn);

@@ -204,6 +204,7 @@ import { COLNO, ROWNO, ACCESSIBLE, MAXLEVEL, isok } from './config.js';
 import { makemon, setMakemonPlayerContext } from './makemon.js';
 import { mons } from './monsters.js';
 import { makewish } from './zap.js';
+import { schedule_goto } from './do.js';
 
 // cf. wizcmds.c:32 — wiz_wish(): prompt then call makewish()
 export async function wizWish(game) {
@@ -281,8 +282,7 @@ export async function wizLevelChange(game) {
         display.putstr_message('You are already on that level.');
         return { moved: false, tookTime: false };
     }
-    game.changeLevel(level, 'teleport');
-    display.putstr_message('You materialize on a different level!');
+    schedule_goto(player, level, 0, null, 'You materialize on a different level!');
     return { moved: false, tookTime: true };
 }
 
