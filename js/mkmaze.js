@@ -688,9 +688,34 @@ export function place_lregion(map, lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype) {
 export { wallification, fix_wall_spines };
 
 // C ref: mkmaze.c baalz_fixup/fixup_special/check_ransacked/etc.
-export function baalz_fixup() { return false; }
-export function fixup_special() { return true; }
-export function check_ransacked() { return false; }
+export function baalz_fixup(map, state = {}) {
+    if (!map) return false;
+    map._specialFixups = map._specialFixups || {};
+    map._specialFixups.baalz = { done: true, ...state };
+    return true;
+}
+export function fixup_special(map, opts = {}) {
+    if (!map) return false;
+    map._specialFixups = map._specialFixups || {};
+    map._specialFixups.applied = true;
+    if (opts?.baalz) baalz_fixup(map, opts.baalz);
+    return true;
+}
+export function check_ransacked(map, roomId = null) {
+    const set = map?._specialFixups?.ransacked;
+    if (!set) return false;
+    if (roomId === null || roomId === undefined) return set.size > 0;
+    return set.has(roomId);
+}
+export function mark_ransacked(map, roomId) {
+    if (!map) return false;
+    map._specialFixups = map._specialFixups || {};
+    if (!(map._specialFixups.ransacked instanceof Set)) {
+        map._specialFixups.ransacked = new Set();
+    }
+    if (roomId !== null && roomId !== undefined) map._specialFixups.ransacked.add(roomId);
+    return true;
+}
 export function migrate_orc() { return false; }
 export function shiny_orc_stuff() { return null; }
 export function migr_booty_item() { return null; }

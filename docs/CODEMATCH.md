@@ -2645,15 +2645,15 @@ No function symbols parsed from isaac64.c.
 ### mkmaze.c -> mkmaze.js
 | C Line | C Function | JS Line | Alignment |
 |--------|------------|---------|-----------|
-| 475 | `baalz_fixup` | mkmaze.js:168 | Stub (intentional) |
+| 475 | `baalz_fixup` | mkmaze.js:691 | Partial (stateful scaffold) |
 | 341 | `bad_location` | mkmaze.js:194 | Aligned |
 | 1441 | `bound_digging` | dungeon.js `bound_digging()` | Aligned |
-| 708 | `check_ransacked` | mkmaze.js:170 | Stub (intentional) |
+| 708 | `check_ransacked` | mkmaze.js:704 | Partial (stateful scaffold) |
 | 951 | `create_maze` | mkmaze.js:281 | Aligned |
 | 166 | `extend_spine` | mkmaze.js:69 | Aligned |
 | 229 | `fix_wall_spines` | mkmaze.js `fix_wall_spines` | Aligned (re-export) |
-| 570 | `fixup_special` | mkmaze.js:169 | Stub (intentional) |
-| 1479 | `fumaroles` | mkmaze.js:187 | Stub (intentional) |
+| 570 | `fixup_special` | mkmaze.js:697 | Partial (stateful scaffold) |
+| 1479 | `fumaroles` | mkmaze.js:743 | Partial (stateful scaffold) |
 | 1354 | `get_level_extends` | dungeon.js `get_level_extends()` | Aligned |
 | 317 | `is_exclusion_zone` | mkmaze.js:149 | Aligned |
 | 70 | `is_solid` | mkmaze.js:48 | Aligned |
