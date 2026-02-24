@@ -54,7 +54,16 @@ import { mons, M2_FEMALE, M2_MALE, G_NOGEN, G_IGNORE, PM_MINOTAUR, MR_STONE } fr
 import { findSpecialLevelByName, GEHENNOM } from './special_levels.js';
 import { placeFloorObject } from './floor_objects.js';
 import { start_timer, stop_timer, obj_move_timers as moveObjectTimers, obj_split_timers as splitObjectTimers, obj_has_timer as hasObjectTimer } from './timeout.js';
-import * as mkmap_c from './mkmap.js';
+import {
+    init_map,
+    init_fill,
+    pass_one,
+    pass_two,
+    pass_three,
+    flood_fill_rm,
+    join_map,
+    finish_map,
+} from './mkmap.js';
 
 // Aliases for compatibility with C naming
 const STAIRS_UP = STAIRS;
@@ -1590,21 +1599,21 @@ export function level_init(opts = {}) {
         // consume additional RNG.
         const lit = levelState.init.lit < 0 ? rn2(2) : levelState.init.lit;
 
-        mkmap_c.init_map(map, bgTyp);
-        mkmap_c.init_fill(map, bgTyp, fgTyp);
-        mkmap_c.pass_one(map, bgTyp, fgTyp);
-        mkmap_c.pass_two(map, bgTyp, fgTyp);
+        init_map(map, bgTyp);
+        init_fill(map, bgTyp, fgTyp);
+        pass_one(map, bgTyp, fgTyp);
+        pass_two(map, bgTyp, fgTyp);
         if (levelState.init.smoothed) {
-            mkmap_c.pass_three(map, bgTyp, fgTyp);
-            mkmap_c.pass_three(map, bgTyp, fgTyp);
+            pass_three(map, bgTyp, fgTyp);
+            pass_three(map, bgTyp, fgTyp);
         }
         if (levelState.init.joined) {
-            const regions = mkmap_c.flood_fill_rm(map, bgTyp, fgTyp);
+            const regions = flood_fill_rm(map, bgTyp, fgTyp);
             if (regions.length > 1) {
-                mkmap_c.join_map(map, bgTyp, fgTyp, regions);
+                join_map(map, bgTyp, fgTyp, regions);
             }
         }
-        mkmap_c.finish_map(map, fgTyp, bgTyp, lit, !!levelState.init.walled);
+        finish_map(map, fgTyp, bgTyp, lit, !!levelState.init.walled);
     } else {
         // Unknown style - default to solidfill behavior
         console.warn(`Level init style "${style}" using default solidfill behavior`);
