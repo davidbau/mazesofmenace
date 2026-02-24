@@ -3036,6 +3036,106 @@ export function mk_knox_portal(map, x, y, depth) {
     return false;
 }
 
+// C ref: mklev.c mkinvk_check_wall()
+export function mkinvk_check_wall(map, x, y) {
+    if (!map || !isok(x, y)) return 0;
+    const loc = map.at(x, y);
+    if (!loc) return 0;
+    return (IS_STWALL(loc.typ) || loc.typ === IRONBARS) ? 1 : 0;
+}
+
+// C ref: mklev.c mkinvpos()
+export function mkinvpos(map, x, y, dist, depth = 1) {
+    if (!map || !isok(x, y)) return false;
+
+    // Invocation area is clipped by maze-like bounds on both axes.
+    const xMin = 2, yMin = 2;
+    const xMax = Number.isInteger(map._mazeMaxX) ? map._mazeMaxX : (COLNO - 1);
+    const yMax = Number.isInteger(map._mazeMaxY) ? map._mazeMaxY : (ROWNO - 1);
+    if (!within_bounded_area(x, y, xMin, yMin, xMax, yMax)) return false;
+
+    const trap = map.trapAt(x, y);
+    if (trap) deltrap(map, trap);
+
+    // C: clear boulders and optionally fracture one into rocks.
+    const makeRocks = (dist !== 1 && dist !== 4 && dist !== 5);
+    const boulders = map.objectsAt(x, y).filter(o => o.otyp === BOULDER);
+    let fractured = false;
+    for (const b of boulders) {
+        map.removeObject(b);
+        if (makeRocks && !fractured) {
+            fractured = true;
+            const rock = mksobj(ROCK, true, false);
+            if (rock) {
+                rock.ox = x;
+                rock.oy = y;
+                placeFloorObject(map, rock);
+            }
+        }
+    }
+
+    const loc = map.at(x, y);
+    loc.seenv = 0;
+    loc.flags = 0;
+    if (dist < 6) loc.lit = true;
+    loc.waslit = true;
+    loc.horizontal = false;
+
+    switch (dist) {
+    case 1:
+        if (!IS_POOL(loc.typ) && !IS_LAVA(loc.typ)) {
+            loc.typ = ROOM;
+            const fire = maketrap(map, x, y, FIRE_TRAP, depth);
+            if (fire) fire.tseen = true;
+        }
+        break;
+    case 0:
+    case 2:
+    case 3:
+    case 6:
+        loc.typ = ROOM;
+        break;
+    case 4:
+    case 5:
+        loc.typ = MOAT;
+        break;
+    default:
+        return false;
+    }
+    return true;
+}
+
+// C ref: mklev.c mkinvokearea()
+export function mkinvokearea(map, invPos, depth = 1) {
+    if (!map) return false;
+    const center = invPos || map._invPos || map.upstair;
+    if (!center || !isok(center.x, center.y)) return false;
+
+    let xmin = center.x, xmax = center.x;
+    let ymin = center.y, ymax = center.y;
+    mkinvpos(map, xmin, ymin, 0, depth);
+
+    for (let dist = 1; dist < 7; dist++) {
+        xmin--;
+        xmax++;
+        if (dist !== 3) {
+            ymin--;
+            ymax++;
+            for (let i = xmin + 1; i < xmax; i++) {
+                mkinvpos(map, i, ymin, dist, depth);
+                mkinvpos(map, i, ymax, dist, depth);
+            }
+        }
+        for (let i = ymin; i <= ymax; i++) {
+            mkinvpos(map, xmin, i, dist, depth);
+            mkinvpos(map, xmax, i, dist, depth);
+        }
+    }
+
+    mkstairs(map, center.x, center.y, false, null, false);
+    return true;
+}
+
 // C ref: mklev.c:1312-1322 — vault creation and fill
 // Called when check_room succeeds for vault position.
 // Creates the vault room structure, fills with gold (simulated RNG),
@@ -4802,6 +4902,11 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
     } finally {
         leaveMklevContext();
     }
+}
+
+// C ref: mklev.c mklev()
+export function mklev(depth, dnum, dlevel, opts = {}) {
+    return makelevel(depth, dnum, dlevel, opts);
 }
 
 // =============================================================================

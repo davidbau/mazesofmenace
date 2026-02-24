@@ -2603,10 +2603,10 @@ No function symbols parsed from isaac64.c.
 | 2328 | `mkaltar` | mklev.js:330 | Aligned |
 | 2281 | `mkfount` | mklev.js:309 | Aligned |
 | 2349 | `mkgrave` | mklev.js:341 | Aligned |
-| 2599 | `mkinvk_check_wall` | - | Missing |
-| 2406 | `mkinvokearea` | - | Missing |
-| 2499 | `mkinvpos` | - | Missing |
-| 1573 | `mklev` | - | Missing |
+| 2599 | `mkinvk_check_wall` | dungeon.js:3040 | Aligned |
+| 2406 | `mkinvokearea` | dungeon.js:3109 | Aligned |
+| 2499 | `mkinvpos` | dungeon.js:3048 | Aligned |
+| 1573 | `mklev` | dungeon.js:4908 | Aligned |
 | 1219 | `mklev_sanity_check` | mklev.js:721 | Aligned |
 | 2313 | `mksink` | mklev.js:320 | Aligned |
 | 2155 | `mkstairs` | mklev.js:142 | Aligned |
