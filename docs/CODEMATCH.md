@@ -92,7 +92,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[~]` | mkmap.c | mkmap.js | Map generation algorithms now implemented in `mkmap.js` (`init_map`, `init_fill`, `get_map`, `pass_*`, `flood_fill_rm`, `join_map`, `finish_map`, `mkmap`, room cleanup/removal); `sp_lev.js` now calls `mkmap.js` directly |
 | `[~]` | mkmaze.c | mkmaze.js | Maze generation. Core helpers plus region-placement path (`is_exclusion_zone`, `bad_location`, `put_lregion_here`, `place_lregion`) and maze generation path (`makemaz`, `create_maze`, `populate_maze`, `maze0xy`, `maze_remove_deadends`, `mazexy`, `pick_vibrasquare_location`) now live in `mkmaze.js`; water plane still stubbed |
 | `[a]` | mkobj.c | mkobj.js | Object creation. mksobj/mkobj/mkcorpstat/xname/doname/weight/Is_container implemented; BUC functions exported (bless/unbless/curse/uncurse/blessorcurse/bcsign/set_bknown); erosion predicates exported (is_flammable/is_rustprone/is_rottable/is_corrodeable/is_crackable/erosion_matters); splitobj, container_weight added; ~30 functions TODO |
-| `[~]` | mkroom.c | mkroom.js | Room generation. `mkroom.js` now owns `do_mkroom`, `pick_room`, `mkzoo`, `mkswamp`, `invalid_shop_shape`, `mkshop`, and zoo/room population selectors (`squadmon`, `courtmon`, `morguemon`, `antholemon`, `mk_zoo_thronemon`) plus room predicates/helpers (`isbig`, `has_dnstairs`, `has_upstairs`, `nexttodoor`, `shrine_pos`) and room-coordinate helpers (`somex`, `somey`, `inside_room`, `somexy`, `somexyspace`); remaining fill/population pipeline still in `dungeon.js` |
+| `[~]` | mkroom.c | mkroom.js | Room generation. `mkroom.js` now owns `do_mkroom`, `pick_room`, `mkzoo`, `mkswamp`, `invalid_shop_shape`, `mkshop`, `mktemple`, `mkundead`, search/type/save/restore helpers (`search_special`, `cmap_to_type`, `save_room(s)`, `rest_room(s)`), and zoo/room population selectors (`squadmon`, `courtmon`, `morguemon`, `antholemon`, `mk_zoo_thronemon`) plus room predicates/helpers (`isbig`, `has_dnstairs`, `has_upstairs`, `nexttodoor`, `shrine_pos`) and room-coordinate helpers (`somex`, `somey`, `inside_room`, `somexy`, `somexyspace`) |
 | `[a]` | mon.c | mon.js | Monster lifecycle: movemon, mfndpos (flag-based), mm_aggression, corpse_chance, passivemm, hider premove, zombie_maker/zombie_form/undead_to_corpse/genus/pm_to_cham; death chain: mlifesaver/lifesaved_monster/set_mon_min_mhpmax/check_gear_next_turn/m_detach/mondead_full/mondied/mongone/monkilled/xkilled/killed/make_corpse; alertness: wake_msg/wakeup/seemimic/wake_nearto_core/wake_nearto/wake_nearby/setmangry; turn processing: healmon/meatbox/m_consume_obj/meatmetal/meatobj/meatcorpse/minliquid/mpickgold/can_touch_safely/mon_give_prop/mon_givit/mcalcdistress; visibility: m_in_air/m_poisongas_ok/elemental_clog/set_ustuck/maybe_unhide_at/hideunder/hide_monst |
 | `[a]` | mondata.c | mondata.js | Monster data queries: predicates, mon_knows_traps, passes_bars, dmgtype, hates_silver, sticks, etc. |
 | `[a]` | monmove.c | monmove.js | Monster movement: dochug, m_move, m_move_aggress, set_apparxy, m_search_items; dochugw (wrapper), m_everyturn_effect, m_postmove_effect, postmov, should_displace, mb_trapped, itsstuck, release_hero, watch_on_duty, m_balks_at_approaching, mon_would_consume_item |
@@ -2798,7 +2798,7 @@ No function symbols parsed from isaac64.c.
 | C Line | C Function | JS Line | Alignment |
 |--------|------------|---------|-----------|
 | 503 | `antholemon` | mkroom.js:392 | Aligned |
-| 913 | `cmap_to_type` | - | Missing |
+| 913 | `cmap_to_type` | mkroom.js:432 | Aligned |
 | 784 | `courtmon` | mkroom.js:361 | Aligned |
 | 53 | `do_mkroom` | mkroom.js:299 | Aligned |
 | 277 | `fill_zoo` | sp_lev.js `fill_zoo()` | Aligned — all room types, ndemon, mkgold merge, mongets/set_malign, mk_tt_object |
@@ -2810,17 +2810,17 @@ No function symbols parsed from isaac64.c.
 | 258 | `mk_zoo_thronemon` | mkroom.js:429 | Aligned |
 | 96 | `mkshop` | mkroom.js:267 | Aligned |
 | 531 | `mkswamp` | mkroom.js:194 | Aligned |
-| 599 | `mktemple` | - | Missing |
-| 457 | `mkundead` | - | Missing |
+| 599 | `mktemple` | mkroom.js:388 | Aligned |
+| 457 | `mkundead` | mkroom.js:466 | Aligned |
 | 245 | `mkzoo` | mkroom.js:186 | Aligned |
 | 479 | `morguemon` | mkroom.js:376 | Aligned |
 | 624 | `nexttodoor` | mkroom.js:30 | Aligned |
 | 221 | `pick_room` | mkroom.js:164 | Aligned |
-| 876 | `rest_room` | - | Missing |
-| 894 | `rest_rooms` | - | Missing |
-| 845 | `save_room` | - | Missing |
-| 864 | `save_rooms` | - | Missing |
-| 766 | `search_special` | - | Missing |
+| 876 | `rest_room` | mkroom.js:453 | Aligned |
+| 894 | `rest_rooms` | mkroom.js:458 | Aligned |
+| 845 | `save_room` | mkroom.js:445 | Aligned |
+| 864 | `save_rooms` | mkroom.js:449 | Aligned |
+| 766 | `search_special` | mkroom.js:418 | Aligned |
 | 578 | `shrine_pos` | mkroom.js:42 | Aligned |
 | 667 | `somex` | mkroom.js:57 | Aligned |
 | 695 | `somexy` | mkroom.js:72 | Aligned |
@@ -4795,21 +4795,21 @@ No function symbols parsed from isaac64.c.
 | C Line | C Function | JS Line | Alignment |
 |--------|------------|---------|-----------|
 | 5541 | `add_doors_to_room` | dungeon.js:1377 | Aligned |
-| 2805 | `build_room` | - | Missing |
+| 2805 | `build_room` | sp_lev.js:2750 | Aligned |
 | 1408 | `check_room` | dungeon.js:286 | Aligned |
-| 2439 | `create_altar` | - | Missing |
+| 2439 | `create_altar` | sp_lev.js:4950 | Aligned |
 | 2669 | `create_corridor` | dungeon.js:1786 | Aligned |
 | 6444 | `create_des_coder` | - | Missing |
-| 1715 | `create_door` | - | Missing |
-| 1926 | `create_monster` | - | Missing |
+| 1715 | `create_door` | sp_lev.js:4607 | Aligned |
+| 1926 | `create_monster` | sp_lev.js:4531 | Aligned |
 | 2186 | `create_object` | sp_lev.js `object()` | Aligned — executes in script order (deferral removed) |
 | 1487 | `create_room` | dungeon.js:362 | Aligned |
 | 1669 | `create_subroom` | mklev.js:193 | Aligned |
-| 1813 | `create_trap` | - | Missing |
-| 4769 | `cvt_to_abscoord` | - | Missing |
-| 4790 | `cvt_to_relcoord` | - | Missing |
+| 1813 | `create_trap` | sp_lev.js:3924 | Aligned |
+| 4769 | `cvt_to_abscoord` | sp_lev.js:1996 | Aligned |
+| 4790 | `cvt_to_relcoord` | sp_lev.js:1987 | Aligned |
 | 2542 | `dig_corridor` | dungeon.js:1462 | Aligned |
-| 5214 | `ensure_way_out` | - | Missing |
+| 5214 | `ensure_way_out` | sp_lev.js:2005 | Aligned |
 | 2924 | `fill_empty_maze` | - | Missing |
 | 2729 | `fill_special_room` | sp_lev.js `fill_special_room()` | Aligned — called from finalize_level |
 | 3141 | `find_montype` | - | Missing |
@@ -4817,8 +4817,8 @@ No function symbols parsed from isaac64.c.
 | 429 | `flip_dbridge_horizontal` | - | Missing |
 | 443 | `flip_dbridge_vertical` | - | Missing |
 | 500 | `flip_encoded_dir_bits` | - | Missing |
-| 534 | `flip_level` | - | Missing |
-| 968 | `flip_level_rnd` | - | Missing |
+| 534 | `flip_level` | sp_lev.js:1982 | Aligned |
+| 968 | `flip_level_rnd` | sp_lev.js:1976 | Aligned |
 | 927 | `flip_vault_guard` | - | Missing |
 | 459 | `flip_visuals` | - | Missing |
 | 4597 | `floodfillchk_match_accessible` | - | Missing |

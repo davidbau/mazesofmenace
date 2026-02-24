@@ -1972,6 +1972,49 @@ function flipLevelRandom(extras = false) {
     return true;
 }
 
+// C ref: sp_lev.c flip_level_rnd()
+export function flip_level_rnd(extras = false) {
+    return flipLevelRandom(extras);
+}
+
+// C ref: sp_lev.c flip_level()
+// JS keeps the full coordinate-flip pipeline shared with flip_level_rnd().
+export function flip_level(extras = false) {
+    return flipLevelRandom(extras);
+}
+
+// C ref: sp_lev.c cvt_to_relcoord()
+export function cvt_to_relcoord(coord, room = levelState.currentRoom || null) {
+    if (!coord) return null;
+    const x = Number.isInteger(coord.x) ? coord.x : coord[0];
+    const y = Number.isInteger(coord.y) ? coord.y : coord[1];
+    if (!Number.isInteger(x) || !Number.isInteger(y) || !room) return { x, y };
+    return { x: x - room.lx, y: y - room.ly };
+}
+
+// C ref: sp_lev.c cvt_to_abscoord()
+export function cvt_to_abscoord(coord, room = levelState.currentRoom || null) {
+    if (!coord) return null;
+    const x = Number.isInteger(coord.x) ? coord.x : coord[0];
+    const y = Number.isInteger(coord.y) ? coord.y : coord[1];
+    if (!Number.isInteger(x) || !Number.isInteger(y) || !room) return { x, y };
+    return { x: x + room.lx, y: y + room.ly };
+}
+
+// C ref: sp_lev.c ensure_way_out()
+export function ensure_way_out(map = levelState.map) {
+    if (!map) return false;
+    const hasUp = Number.isInteger(map.upstair?.x) && Number.isInteger(map.upstair?.y);
+    const hasDown = Number.isInteger(map.dnstair?.x) && Number.isInteger(map.dnstair?.y);
+    const hasLadder = Number.isInteger(map.upladder?.x) || Number.isInteger(map.dnladder?.x);
+    if (hasUp || hasDown || hasLadder) return true;
+    const pos = getLocationCoord(undefined, undefined, GETLOC_DRY, null);
+    if (!isok(pos.x, pos.y)) return false;
+    map.locations[pos.x][pos.y].typ = STAIRS;
+    map.dnstair = { x: pos.x, y: pos.y };
+    return true;
+}
+
 function getLevelExtentsForFlip(map) {
     const isMazeLevel = !!levelState.flags.is_maze_lev;
     let found = false;
@@ -2747,7 +2790,7 @@ function wallification(map) {
  * @param {Object} opts - Room options
  * @returns {boolean} - True if room was created successfully
  */
-export function room(opts = {}) {
+export function build_room(opts = {}) {
     if (!levelState.map) {
         levelState.map = new GameMap();
     }
@@ -3367,6 +3410,10 @@ export function room(opts = {}) {
     return true;
 }
 
+export function room(opts = {}) {
+    return build_room(opts);
+}
+
 /**
  * des.stair(direction, x, y)
  *
@@ -3917,7 +3964,7 @@ function trapNameToType(name) {
  * @param {number} [x] - X coordinate (if type_or_opts is string)
  * @param {number} [y] - Y coordinate (if type_or_opts is string)
  */
-export function trap(type_or_opts, x, y) {
+export function create_trap(type_or_opts, x, y) {
     if (!levelState.map) {
         levelState.map = new GameMap();
     }
@@ -3989,6 +4036,10 @@ export function trap(type_or_opts, x, y) {
     // C ref: sp_lev.c lspo_trap()/create_trap() applies trap RNG side effects
     // inline in script order. Execute immediately for parity.
     createScriptTrap({ type_or_opts, x: absX, y: absY });
+}
+
+export function trap(type_or_opts, x, y) {
+    return create_trap(type_or_opts, x, y);
 }
 
 /**
@@ -4520,7 +4571,7 @@ export function exclusion(opts) {
  * @param {number} [x] - X coordinate (if opts_or_class is string)
  * @param {number} [y] - Y coordinate (if opts_or_class is string)
  */
-export function monster(opts_or_class, x, y) {
+export function create_monster(opts_or_class, x, y) {
     if (!levelState.map) {
         levelState.map = new GameMap();
     }
@@ -4570,6 +4621,10 @@ export function monster(opts_or_class, x, y) {
     });
 }
 
+export function monster(opts_or_class, x, y) {
+    return create_monster(opts_or_class, x, y);
+}
+
 /**
  * des.door(state, x, y)
  * Place a door at a location.
@@ -4592,7 +4647,7 @@ export function monster(opts_or_class, x, y) {
  * @param {number} x - X coordinate (if first param is string)
  * @param {number} y - Y coordinate (if first param is string)
  */
-export function door(state_or_opts, x, y) {
+export function create_door(state_or_opts, x, y) {
     if (!levelState.map) {
         levelState.map = new GameMap();
     }
@@ -4715,6 +4770,10 @@ export function door(state_or_opts, x, y) {
     loc.flags = doorMask;
     markSpLevMap(doorX, doorY);
     markSpLevTouched(doorX, doorY);
+}
+
+export function door(state_or_opts, x, y) {
+    return create_door(state_or_opts, x, y);
 }
 
 /**
@@ -4931,7 +4990,7 @@ export function grave(x_or_opts, y, text) {
  *
  * @param {Object} opts - Altar options (x, y, align, type)
  */
-export function altar(opts) {
+export function create_altar(opts) {
     if (!levelState.map) {
         levelState.map = new GameMap();
     }
@@ -5008,6 +5067,10 @@ export function altar(opts) {
     loc.altarAlign = altarAlign;
     loc.flags = altarAlign;
     markSpLevTouched(pos.x, pos.y);
+}
+
+export function altar(opts) {
+    return create_altar(opts);
 }
 
 /**
@@ -6203,7 +6266,7 @@ export function finalize_level() {
     captureCheckpoint('after_wallification');
 
     // Apply random flipping
-    const flipped = flipLevelRandom();
+    const flipped = flip_level_rnd();
 
     // C ref: flip_level() invokes fix_wall_spines() after transpose,
     // not full wallification().

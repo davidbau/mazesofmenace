@@ -5,14 +5,14 @@ import {
     IS_WALL, IS_FURNITURE, IS_LAVA, IS_POOL, IS_ROOM,
     OROOM, SWAMP, POOL, SHOPBASE,
     COURT, ZOO, BEEHIVE, MORGUE, BARRACKS, LEPREHALL, COCKNEST, ANTHOLE, TEMPLE,
-    A_NONE,
+    A_NONE, ALTAR, AM_MASK, AM_SHRINE, Align2amask, Amask2align, xdir, ydir, N_DIRS,
     isok,
 } from './config.js';
 import { rn1, rn2, rnd } from './rng.js';
 import { FILL_NORMAL } from './map.js';
 import { mkclass, makemon, NO_MM_FLAGS } from './makemon.js';
 import { ndemon } from './minion.js';
-import { mksobj } from './mkobj.js';
+import { mkobj, mksobj } from './mkobj.js';
 import { mpickobj } from './monutil.js';
 import {
     mons, S_FUNGUS, S_DRAGON, S_GIANT, S_TROLL, S_CENTAUR, S_ORC, S_GNOME, S_KOBOLD, S_VAMPIRE, S_ZOMBIE,
@@ -21,6 +21,7 @@ import {
     PM_BUGBEAR, PM_HOBGOBLIN, PM_GHOST, PM_WRAITH,
     PM_SOLDIER_ANT, PM_FIRE_ANT, PM_GIANT_ANT,
     PM_OGRE_TYRANT, PM_ELVEN_MONARCH, PM_DWARF_RULER, PM_GNOME_RULER,
+    PM_ALIGNED_CLERIC, PM_HIGH_CLERIC,
     M2_PEACEFUL, M2_HOSTILE, MS_LEADER,
 } from './monsters.js';
 import { WAND_CLASS, SPBOOK_CLASS, MACE } from './objects.js';
@@ -312,7 +313,7 @@ export function mkshop(map) {
 }
 
 // C ref: mkroom.c:52-92 do_mkroom()
-export function do_mkroom(map, roomtype, depth, mktemple_fn = null) {
+export function do_mkroom(map, roomtype, depth, mktemple_opts = null) {
     if (roomtype >= SHOPBASE) {
         mkshop(map);
         return;
@@ -329,7 +330,7 @@ export function do_mkroom(map, roomtype, depth, mktemple_fn = null) {
         mkzoo(map, roomtype);
         return;
     case TEMPLE:
-        if (typeof mktemple_fn === 'function') mktemple_fn(map, depth);
+        mktemple(map, depth, mktemple_opts || {});
         return;
     case SWAMP:
         mkswamp(map, depth);
@@ -337,6 +338,142 @@ export function do_mkroom(map, roomtype, depth, mktemple_fn = null) {
     default:
         return;
     }
+}
+
+function priestini(sroom, sx, sy, sanctum, depth, map) {
+    const si = rn2(N_DIRS);
+    const prim = sanctum ? mons[PM_HIGH_CLERIC] : mons[PM_ALIGNED_CLERIC];
+
+    let px = 0;
+    let py = 0;
+    let i;
+    for (i = 0; i < N_DIRS; i++) {
+        px = sx + xdir[(i + si) % N_DIRS];
+        py = sy + ydir[(i + si) % N_DIRS];
+        const loc = map.at(px, py);
+        if (loc && IS_ROOM(loc.typ) && !map.monsterAt(px, py)) break;
+    }
+    if (i === N_DIRS) {
+        px = sx;
+        py = sy;
+    }
+
+    const priest = makemon(prim, px, py, NO_MM_FLAGS, depth, map);
+    if (!priest) return;
+    priest.ispriest = true;
+    priest.isminion = false;
+    priest.mpeaceful = true;
+    priest.msleeping = false;
+    priest.epri = {
+        shroom: (map.rooms.indexOf(sroom)) + ROOMOFFSET,
+        shralign: Amask2align(map.at(sx, sy).flags & AM_MASK),
+        shrpos: { x: sx, y: sy },
+        shrlevel: depth || 0,
+        intone_time: 0,
+        enter_time: 0,
+        peaceful_time: 0,
+        hostile_time: 0,
+    };
+    set_malign(priest);
+
+    const cnt = rn1(3, 2);
+    for (let s = 0; s < cnt; s++) {
+        const book = mkobj(SPBOOK_CLASS, false);
+        if (book) mpickobj(priest, book);
+    }
+    rn2(2);
+}
+
+// C ref: mkroom.c mktemple()
+export function mktemple(map, depth, opts = {}) {
+    const sroom = pick_room(map, true);
+    if (!sroom) return;
+
+    sroom.rtype = TEMPLE;
+    const roomno = (map.rooms.indexOf(sroom)) + ROOMOFFSET;
+    const shrine = shrine_pos(roomno, map);
+    const loc = map.at(shrine.x, shrine.y);
+    if (!loc) return;
+
+    loc.typ = ALTAR;
+    const induced_align_fn = (typeof opts.induced_align_fn === 'function')
+        ? opts.induced_align_fn : ((pct, specialAlign, dungeonAlign) => {
+            if (!rn2(100) || specialAlign === A_NONE) return dungeonAlign;
+            return specialAlign;
+        });
+    const alignByDnum = opts.dungeon_align_by_dnum || null;
+    const defaultDnum = Number.isInteger(opts.default_dnum) ? opts.default_dnum : 0;
+    const dnum = Number.isInteger(map?._genDnum) ? map._genDnum : defaultDnum;
+    const dungeonAlign = alignByDnum ? (alignByDnum[dnum] ?? A_NONE) : A_NONE;
+    const altarAlignTyp = induced_align_fn(80, A_NONE, dungeonAlign);
+    loc.flags = Align2amask(altarAlignTyp);
+    loc.altarAlign = altarAlignTyp;
+
+    priestini(sroom, shrine.x, shrine.y, false, depth, map);
+    loc.flags |= AM_SHRINE;
+    map.flags.has_temple = true;
+}
+
+// C ref: mkroom.c search_special()
+export function search_special(map, roomtype) {
+    if (!map || !Array.isArray(map.rooms)) return null;
+    for (const room of map.rooms) {
+        if (!room || room.hx < 0) continue;
+        if (roomtype >= SHOPBASE) {
+            if (room.rtype >= SHOPBASE) return room;
+        } else if (room.rtype === roomtype) {
+            return room;
+        }
+    }
+    return null;
+}
+
+// C ref: mkroom.c cmap_to_type()
+export function cmap_to_type(cmap) {
+    if (typeof cmap !== 'string' || cmap.length === 0) return OROOM;
+    const c = cmap[0];
+    if (c === 'z') return ZOO;
+    if (c === 'm') return MORGUE;
+    if (c === 'b') return BEEHIVE;
+    if (c === 'c') return COURT;
+    if (c === 't') return TEMPLE;
+    if (c === 's') return SWAMP;
+    return OROOM;
+}
+
+// C ref: mkroom.c save_room()/save_rooms()/rest_room()/rest_rooms()
+export function save_room(sroom) {
+    if (!sroom || typeof sroom !== 'object') return null;
+    return JSON.parse(JSON.stringify(sroom));
+}
+export function save_rooms(map) {
+    if (!map || !Array.isArray(map.rooms)) return [];
+    return map.rooms.map((room) => save_room(room));
+}
+export function rest_room(dest, saved) {
+    if (!dest || !saved) return dest;
+    Object.assign(dest, JSON.parse(JSON.stringify(saved)));
+    return dest;
+}
+export function rest_rooms(map, savedRooms) {
+    if (!map || !Array.isArray(savedRooms)) return false;
+    map.rooms = savedRooms.map((saved) => save_room(saved));
+    map.nroom = map.rooms.length;
+    return true;
+}
+
+// C ref: mkroom.c mkundead() — select/place undead in a room.
+export function mkundead(map, croom, mflags, depth) {
+    if (!map || !croom) return 0;
+    const n = rn2(5) + 1;
+    let placed = 0;
+    for (let i = 0; i < n; i++) {
+        const pos = somexyspace(map, croom);
+        if (!pos) continue;
+        const mon = makemon(morguemon(depth), pos.x, pos.y, mflags || NO_MM_FLAGS, depth, map);
+        if (mon) placed++;
+    }
+    return placed;
 }
 
 // C ref: mkroom.c squadmon() — return soldier type for BARRACKS.
