@@ -3,14 +3,13 @@
 // file/function naming aligned with NetHack C source structure.
 
 import {
-    COLNO, ROWNO, STONE, CROSSWALL, LAVAWALL, IRONBARS, WATER, SDOOR,
+    COLNO, ROWNO, STONE, HWALL, DOOR, CROSSWALL, LAVAWALL, IRONBARS, WATER, SDOOR,
     CORR, ROOM, AIR, MAGIC_PORTAL, VIBRATING_SQUARE,
     IS_WALL, isok,
 } from './config.js';
 import { rn1, rn2, rnd } from './rng.js';
 import {
     makemaz as dungeonMakemaz,
-    create_maze as dungeonCreateMaze,
     populate_maze as dungeonPopulateMaze,
     maketrap,
     wallification,
@@ -206,7 +205,181 @@ export function makemaz(map, protofile, dnum, dlevel, depth) {
 
 // C ref: mkmaze.c create_maze
 export function create_maze(map, corrwid, wallthick, rmdeadends) {
-    return dungeonCreateMaze(map, corrwid, wallthick, rmdeadends);
+    const defaultMaxX = (COLNO - 1);
+    const defaultMaxY = (ROWNO - 1);
+    // C ref: save/restore gx.x_maze_max/gy.y_maze_max around temporary small-maze bounds.
+    const tmpMaxX = Number.isInteger(map?._mazeMaxX) ? map._mazeMaxX : defaultMaxX;
+    const tmpMaxY = Number.isInteger(map?._mazeMaxY) ? map._mazeMaxY : defaultMaxY;
+
+    if (corrwid === -1) corrwid = rnd(4);
+    if (wallthick === -1) wallthick = rnd(4) - corrwid;
+    if (wallthick < 1) wallthick = 1;
+    else if (wallthick > 5) wallthick = 5;
+    if (corrwid < 1) corrwid = 1;
+    else if (corrwid > 5) corrwid = 5;
+
+    const scale = corrwid + wallthick;
+    const rdx = Math.trunc(tmpMaxX / scale);
+    const rdy = Math.trunc(tmpMaxY / scale);
+    const smallMaxX = rdx * 2;
+    const smallMaxY = rdy * 2;
+    const carveType = map.flags?.corrmaze ? CORR : ROOM;
+
+    if (map.flags?.corrmaze) {
+        for (let x = 2; x < smallMaxX; x++) {
+            for (let y = 2; y < smallMaxY; y++) {
+                const loc = map.at(x, y);
+                if (loc) loc.typ = STONE;
+            }
+        }
+    } else {
+        for (let x = 2; x <= smallMaxX; x++) {
+            for (let y = 2; y <= smallMaxY; y++) {
+                const loc = map.at(x, y);
+                if (loc) loc.typ = ((x % 2) && (y % 2)) ? STONE : HWALL;
+            }
+        }
+    }
+
+    const startRangeX = Math.max(1, (smallMaxX >> 1) - 1);
+    const startRangeY = Math.max(1, (smallMaxY >> 1) - 1);
+    const startX = 3 + 2 * rn2(startRangeX);
+    const startY = 3 + 2 * rn2(startRangeY);
+    const stack = [{ x: Math.min(startX, smallMaxX - 1), y: Math.min(startY, smallMaxY - 1) }];
+    const dirs = [{ dx: 0, dy: -1 }, { dx: 1, dy: 0 }, { dx: 0, dy: 1 }, { dx: -1, dy: 0 }];
+    const inSmall = (x, y) => x >= 3 && y >= 3 && x <= smallMaxX && y <= smallMaxY;
+    const isSolid = (x, y) => {
+        const loc = map.at(x, y);
+        return !!loc && loc.typ === STONE;
+    };
+    while (stack.length) {
+        const cur = stack[stack.length - 1];
+        const here = map.at(cur.x, cur.y);
+        if (here && here.typ !== DOOR && here.typ !== SDOOR) {
+            here.typ = carveType;
+            here.flags = 0;
+        }
+        const choices = [];
+        for (const d of dirs) {
+            const nx = cur.x + d.dx * 2;
+            const ny = cur.y + d.dy * 2;
+            if (!inSmall(nx, ny) || !isSolid(nx, ny)) continue;
+            choices.push(d);
+        }
+        if (!choices.length) {
+            stack.pop();
+            continue;
+        }
+        const d = choices[rn2(choices.length)];
+        const mx = cur.x + d.dx;
+        const my = cur.y + d.dy;
+        const nx = cur.x + d.dx * 2;
+        const ny = cur.y + d.dy * 2;
+        const mid = map.at(mx, my);
+        const next = map.at(nx, ny);
+        if (mid && mid.typ !== DOOR && mid.typ !== SDOOR) {
+            mid.typ = carveType;
+            mid.flags = 0;
+        }
+        if (next && next.typ !== DOOR && next.typ !== SDOOR) {
+            next.typ = carveType;
+            next.flags = 0;
+        }
+        stack.push({ x: nx, y: ny });
+    }
+
+    if (rmdeadends) {
+        // C ref: mkmaze.c maze_remove_deadends()
+        const mazeInbounds = (x, y) => (
+            x >= 2 && y >= 2 && x < smallMaxX && y < smallMaxY && isok(x, y)
+        );
+        const accessible = (x, y) => {
+            const loc = map.at(x, y);
+            return !!loc && loc.typ >= DOOR; // C ACCESSIBLE(typ)
+        };
+        const mzMove = (x, y, dir) => {
+            switch (dir) {
+            case 0: return { x, y: y - 1 };
+            case 1: return { x: x + 1, y };
+            case 2: return { x, y: y + 1 };
+            case 3: return { x: x - 1, y };
+            default: return { x, y };
+            }
+        };
+        for (let x = 2; x < smallMaxX; x++) {
+            for (let y = 2; y < smallMaxY; y++) {
+                if (!(x % 2) || !(y % 2)) continue;
+                if (!accessible(x, y)) continue;
+                const dirok = [];
+                let idx2 = 0;
+                for (let dir = 0; dir < 4; dir++) {
+                    let p1 = mzMove(x, y, dir);
+                    if (!mazeInbounds(p1.x, p1.y)) {
+                        idx2++;
+                        continue;
+                    }
+                    let p2 = mzMove(x, y, dir);
+                    p2 = mzMove(p2.x, p2.y, dir);
+                    if (!mazeInbounds(p2.x, p2.y)) {
+                        idx2++;
+                        continue;
+                    }
+                    if (!accessible(p1.x, p1.y) && accessible(p2.x, p2.y)) {
+                        dirok.push(dir);
+                        idx2++;
+                    }
+                }
+                if (idx2 >= 3 && dirok.length > 0) {
+                    const dir = dirok[rn2(dirok.length)];
+                    // C ref: mkmaze.c maze_remove_deadends():
+                    // carve the immediate neighboring wall, not the far room node.
+                    const dest = mzMove(x, y, dir);
+                    const loc = map.at(dest.x, dest.y);
+                    if (loc) loc.typ = carveType;
+                }
+            }
+        }
+    }
+
+    // C scales the reduced maze up when scale > 2.
+    if (scale > 2) {
+        // Copy only the C-backed source rectangle. Any source outside this
+        // coverage must not influence writes during scaling.
+        const tmp = Array.from({ length: COLNO }, () => Array(ROWNO));
+        for (let x = 1; x < tmpMaxX; x++) {
+            for (let y = 1; y < tmpMaxY; y++) {
+                tmp[x][y] = map.at(x, y)?.typ ?? STONE;
+            }
+        }
+        let rx = 2;
+        let x = 2;
+        while (rx < tmpMaxX) {
+            const mx = (x % 2) ? corrwid : (x === 2 || x === rdx * 2) ? 1 : wallthick;
+            let ry = 2;
+            let y = 2;
+            while (ry < tmpMaxY) {
+                const my = (y % 2) ? corrwid : (y === 2 || y === rdy * 2) ? 1 : wallthick;
+                for (let dx = 0; dx < mx; dx++) {
+                    for (let dy = 0; dy < my; dy++) {
+                        if (rx + dx >= tmpMaxX || ry + dy >= tmpMaxY) break;
+                        if (!(x >= 1 && x < tmpMaxX && y >= 1 && y < tmpMaxY)) continue;
+                        const srcTyp = tmp[x][y];
+                        if (srcTyp === undefined) continue;
+                        const loc = map.at(rx + dx, ry + dy);
+                        if (loc) loc.typ = srcTyp;
+                    }
+                }
+                ry += my;
+                y++;
+            }
+            rx += mx;
+            x++;
+        }
+    }
+
+    // C restores gx/gy bounds after create_maze().
+    map._mazeMaxX = tmpMaxX;
+    map._mazeMaxY = tmpMaxY;
 }
 
 // C ref: mkmaze.c populate_maze
