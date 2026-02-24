@@ -29,12 +29,12 @@ import { litstate_rnd } from './mkmap.js';
 import {
     maketrap,
     somexy,
-    mazexy,
     bound_digging,
     mineralize,
     set_wall_state,
     wallify_region,
 } from './dungeon.js';
+import { mazexy } from './mkmaze.js';
 
 const DOORINC = 20;
 const DUNGEONS_OF_DOOM = 0;

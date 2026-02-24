@@ -130,7 +130,7 @@ import {
     get_special_themes_loaded,
     set_special_themes_loaded,
 } from './mklev.js';
-import { place_lregion } from './mkmaze.js';
+import { place_lregion, mazexy, pick_vibrasquare_location } from './mkmaze.js';
 import { makeroguerooms } from './extralev.js';
 
 /**
@@ -977,48 +977,6 @@ export function makemaz(map, protofile, dnum, dlevel, depth) {
     populate_maze(map, depth);
 }
 
-// C ref: mkmaze.c pick_vibrasquare_location()
-export function pick_vibrasquare_location(map) {
-    const x_maze_min = 2;
-    const y_maze_min = 2;
-    const INVPOS_X_MARGIN = 4;
-    const INVPOS_Y_MARGIN = 3;
-    const INVPOS_DISTANCE = 11;
-
-    const xMazeMax = Number.isInteger(map._mazeMaxX) ? map._mazeMaxX : (COLNO - 1);
-    const yMazeMax = Number.isInteger(map._mazeMaxY) ? map._mazeMaxY : (ROWNO - 1);
-    const xRange = xMazeMax - x_maze_min - 2 * INVPOS_X_MARGIN - 1;
-    const yRange = yMazeMax - y_maze_min - 2 * INVPOS_Y_MARGIN - 1;
-    if (xRange <= 0 || yRange <= 0) {
-        const fallback = mazexy(map);
-        map._invPos = fallback ? { x: fallback.x, y: fallback.y } : null;
-        return fallback;
-    }
-
-    const up = map.upstair;
-    const distmin = (x1, y1, x2, y2) => Math.max(Math.abs(x1 - x2), Math.abs(y1 - y2));
-    const SPACE_POS = (typ) => typ > DOOR;
-    let x = 0, y = 0;
-    let tryct = 0;
-    do {
-        x = rn1(xRange, x_maze_min + INVPOS_X_MARGIN + 1);
-        y = rn1(yRange, y_maze_min + INVPOS_Y_MARGIN + 1);
-        if (++tryct > 1000) break;
-        const loc = map.at(x, y);
-        if (!up) break;
-        const tooNearUp = (x === up.x || y === up.y
-            || Math.abs(x - up.x) === Math.abs(y - up.y)
-            || distmin(x, y, up.x, up.y) <= INVPOS_DISTANCE);
-        if (tooNearUp) continue;
-        if (!loc || !SPACE_POS(loc.typ) || occupied(map, x, y)) continue;
-        break;
-    } while (true);
-
-    const pos = { x, y };
-    map._invPos = pos;
-    return pos;
-}
-
 // C ref: mkmaze.c populate_maze()
 export function populate_maze(map, depth) {
     const placeObjAt = (obj, x, y) => {
@@ -1240,36 +1198,6 @@ export function create_maze(map, corrwid, wallthick, rmdeadends) {
     // C restores gx/gy bounds after create_maze().
     map._mazeMaxX = tmpMaxX;
     map._mazeMaxY = tmpMaxY;
-}
-
-// Helper function to find a random location in the maze
-export function mazexy(map) {
-    // C ref: mkmaze.c:1317-1348 mazexy()
-    // Find a random CORR/ROOM location in the maze
-    const xMax = Number.isInteger(map._mazeMaxX) ? map._mazeMaxX : (COLNO - 1);
-    const yMax = Number.isInteger(map._mazeMaxY) ? map._mazeMaxY : (ROWNO - 1);
-    const allowedtyp = map.flags.corrmaze ? CORR : ROOM;
-    let cpt = 0;
-
-    do {
-        // C ref: rnd(x_maze_max) is 1+rn2(x_maze_max), i.e., range [1..x_maze_max]
-        const x = rnd(xMax);
-        const y = rnd(yMax);
-        const loc = map.at(x, y);
-        if (loc && loc.typ === allowedtyp) {
-            return { x, y };
-        }
-    } while (++cpt < 100);
-    // C ref: 100 random attempts failed; systematically try every possibility
-    for (let x = 1; x <= xMax; x++) {
-        for (let y = 1; y <= yMax; y++) {
-            const loc = map.at(x, y);
-            if (loc && loc.typ === allowedtyp) {
-                return { x, y };
-            }
-        }
-    }
-    return null;
 }
 
 // C ref: mklev.c makerooms()

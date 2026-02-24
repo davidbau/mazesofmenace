@@ -90,7 +90,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[~]` | minion.c | minion.js | Minion summoning: msummon, summon_minion, demon_talk, bribe, guardian angels. All 14 functions TODO (runtime gameplay) |
 | `[~]` | mklev.c | mklev.js | Level generation. Helpers moved to `mklev.js`: door/door-position (`mkroom_cmp`, `bydoor`, `okdoor`, `good_rm_wall_doorpos`, `finddpos_shift`, `finddpos`, `maybe_sdoor`), stairs/feature placement (`mkstairs`, `generate_stairs*`, `cardinal_nextto_room`, `place_niche`, `occupied`, `find_okay_roompos`, `mkfount`, `mksink`, `mkaltar`, `mkgrave`), and niche pipeline (`makeniche`, `make_niches`, `makevtele`); remaining generation pipeline still in `dungeon.js` |
 | `[~]` | mkmap.c | mkmap.js | Map generation algorithms now implemented in `mkmap.js` (`init_map`, `init_fill`, `get_map`, `pass_*`, `flood_fill_rm`, `join_map`, `finish_map`, `mkmap`, room cleanup/removal); `sp_lev.js` now calls `mkmap.js` directly |
-| `[~]` | mkmaze.c | mkmaze.js | Maze generation. Core helpers plus region-placement path (`is_exclusion_zone`, `bad_location`, `put_lregion_here`, `place_lregion`) now live in `mkmaze.js`; major generation path (`makemaz`/`create_maze`/`populate_maze`) still delegated to `dungeon.js`; water plane still stubbed |
+| `[~]` | mkmaze.c | mkmaze.js | Maze generation. Core helpers plus region-placement path (`is_exclusion_zone`, `bad_location`, `put_lregion_here`, `place_lregion`) and maze coordinate helpers (`maze0xy`, `mazexy`, `pick_vibrasquare_location`) now live in `mkmaze.js`; major generation path (`makemaz`/`create_maze`/`populate_maze`) still delegated to `dungeon.js`; water plane still stubbed |
 | `[a]` | mkobj.c | mkobj.js | Object creation. mksobj/mkobj/mkcorpstat/xname/doname/weight/Is_container implemented; BUC functions exported (bless/unbless/curse/uncurse/blessorcurse/bcsign/set_bknown); erosion predicates exported (is_flammable/is_rustprone/is_rottable/is_corrodeable/is_crackable/erosion_matters); splitobj, container_weight added; ~30 functions TODO |
 | `[~]` | mkroom.c | mkroom.js | Room generation. Room predicates/helpers (`isbig`, `has_dnstairs`, `has_upstairs`, `nexttodoor`, `shrine_pos`) moved to `mkroom.js`; remaining room-generation pipeline stays in `dungeon.js` |
 | `[a]` | mon.c | mon.js | Monster lifecycle: movemon, mfndpos (flag-based), mm_aggression, corpse_chance, passivemm, hider premove, zombie_maker/zombie_form/undead_to_corpse/genus/pm_to_cham; death chain: mlifesaver/lifesaved_monster/set_mon_min_mhpmax/check_gear_next_turn/m_detach/mondead_full/mondied/mongone/monkilled/xkilled/killed/make_corpse; alertness: wake_msg/wakeup/seemimic/wake_nearto_core/wake_nearto/wake_nearby/setmangry; turn processing: healmon/meatbox/m_consume_obj/meatmetal/meatobj/meatcorpse/minliquid/mpickgold/can_touch_safely/mon_give_prop/mon_givit/mcalcdistress; visibility: m_in_air/m_poisongas_ok/elemental_clog/set_ustuck/maybe_unhide_at/hideunder/hide_monst |
@@ -2649,7 +2649,7 @@ No function symbols parsed from isaac64.c.
 | 341 | `bad_location` | mkmaze.js:194 | Aligned |
 | 1441 | `bound_digging` | dungeon.js `bound_digging()` | Aligned |
 | 708 | `check_ransacked` | mkmaze.js:170 | Stub (intentional) |
-| 951 | `create_maze` | mkmaze.js:136 | Aligned (delegates to dungeon implementation) |
+| 951 | `create_maze` | mkmaze.js:208 | Aligned (delegates to dungeon implementation) |
 | 166 | `extend_spine` | mkmaze.js:69 | Aligned |
 | 229 | `fix_wall_spines` | mkmaze.js `fix_wall_spines` | Aligned (re-export) |
 | 570 | `fixup_special` | mkmaze.js:169 | Stub (intentional) |
@@ -2659,12 +2659,12 @@ No function symbols parsed from isaac64.c.
 | 70 | `is_solid` | mkmaze.js:48 | Aligned |
 | 45 | `iswall` | mkmaze.js:29 | Aligned |
 | 59 | `iswall_or_stone` | mkmaze.js:41 | Aligned |
-| 1128 | `makemaz` | mkmaze.js:131 | Aligned (delegates to dungeon implementation) |
+| 1128 | `makemaz` | mkmaze.js:203 | Aligned (delegates to dungeon implementation) |
 | 1924 | `maybe_adjust_hero_bubble` | mkmaze.js:217 | Partial |
 | 309 | `maze0xy` | mkmaze.js:116 | Aligned |
 | 895 | `maze_inbounds` | mkmaze.js:177 | Aligned |
-| 905 | `maze_remove_deadends` | mkmaze.js:146 | Partial (uses create_maze deadend-removal path) |
-| 1317 | `mazexy` | mkmaze.js:151 | Aligned (delegates to dungeon implementation) |
+| 905 | `maze_remove_deadends` | mkmaze.js:218 | Partial (uses create_maze deadend-removal path) |
+| 1317 | `mazexy` | mkmaze.js:223 | Aligned |
 | 781 | `migr_booty_item` | - | Missing |
 | 718 | `migrate_orc` | - | Missing |
 | 1868 | `mk_bubble` | mkmaze.js:202 | Stub scaffold |
@@ -2672,9 +2672,9 @@ No function symbols parsed from isaac64.c.
 | 1534 | `movebubbles` | mkmaze.js:188 | Stub (intentional) |
 | 1947 | `mv_bubble` | - | Missing |
 | 297 | `okay` | mkmaze.js:102 | Aligned |
-| 1043 | `pick_vibrasquare_location` | mkmaze.js:160 | Aligned |
+| 1043 | `pick_vibrasquare_location` | mkmaze.js:253 | Aligned |
 | 356 | `place_lregion` | mkmaze.js:300 | Aligned |
-| 1098 | `populate_maze` | mkmaze.js:141 | Aligned (delegates to dungeon implementation) |
+| 1098 | `populate_maze` | mkmaze.js:213 | Aligned (delegates to dungeon implementation) |
 | 413 | `put_lregion_here` | mkmaze.js:238 | Aligned |
 | 1745 | `restore_waterlevel` | mkmaze.js:191 | Stub (intentional) |
 | 1718 | `save_waterlevel` | mkmaze.js:190 | Stub (intentional) |
