@@ -2579,7 +2579,7 @@ No function symbols parsed from isaac64.c.
 | 232 | `do_room_or_subroom` | mklev.js:58 | Aligned |
 | 1796 | `dodoor` | mklev.js:698 | Aligned |
 | 612 | `dosdoor` | mklev.js:665 | Aligned |
-| 935 | `fill_ordinary_room` | dungeon.js:2504 | Aligned |
+| 935 | `fill_ordinary_room` | dungeon.js:2530 | Aligned |
 | 1656 | `find_branch_room` | mklev.js:370 | Aligned |
 | 2299 | `find_okay_roompos` | mklev.js:473 | Aligned |
 | 148 | `finddpos` | mklev.js:86 | Aligned |
@@ -2589,29 +2589,29 @@ No function symbols parsed from isaac64.c.
 | 2215 | `generate_stairs_find_room` | mklev.js:197 | Aligned |
 | 2197 | `generate_stairs_room_good` | mklev.js:183 | Aligned |
 | 74 | `good_rm_wall_doorpos` | mklev.js:44 | Aligned |
-| 430 | `join` | dungeon.js:1592 | Aligned |
+| 430 | `join` | dungeon.js:1617 | Aligned |
 | 1540 | `level_finalize_topology` | mklev.js:798 | Aligned |
 | 799 | `make_niches` | mklev.js:415 | Aligned |
-| 519 | `makecorridors` | dungeon.js:1660 | Aligned |
-| 1247 | `makelevel` | dungeon.js:4492 | Aligned |
+| 519 | `makecorridors` | dungeon.js:1685 | Aligned |
+| 1247 | `makelevel` | dungeon.js:4617 | Aligned |
 | 737 | `makeniche` | mklev.js:369 | Aligned |
 | 358 | `makerooms` | dungeon.js:1283 | Aligned |
 | 818 | `makevtele` | mklev.js:460 | Aligned |
 | 1789 | `maybe_sdoor` | mklev.js:154 | Aligned |
-| 1445 | `mineralize` | dungeon.js:4087 | Aligned |
-| 2620 | `mk_knox_portal` | dungeon.js:3029 | Aligned |
+| 1445 | `mineralize` | dungeon.js:4212 | Aligned |
+| 2620 | `mk_knox_portal` | dungeon.js:3054 | Aligned |
 | 2328 | `mkaltar` | mklev.js:330 | Aligned |
 | 2281 | `mkfount` | mklev.js:309 | Aligned |
 | 2349 | `mkgrave` | mklev.js:341 | Aligned |
-| 2599 | `mkinvk_check_wall` | dungeon.js:3040 | Aligned |
-| 2406 | `mkinvokearea` | dungeon.js:3109 | Aligned |
-| 2499 | `mkinvpos` | dungeon.js:3048 | Aligned |
-| 1573 | `mklev` | dungeon.js:4908 | Aligned |
+| 2599 | `mkinvk_check_wall` | dungeon.js:3065 | Aligned |
+| 2406 | `mkinvokearea` | dungeon.js:3134 | Aligned |
+| 2499 | `mkinvpos` | dungeon.js:3073 | Aligned |
+| 1573 | `mklev` | dungeon.js:4933 | Aligned |
 | 1219 | `mklev_sanity_check` | mklev.js:721 | Aligned |
 | 2313 | `mksink` | mklev.js:320 | Aligned |
 | 2155 | `mkstairs` | mklev.js:142 | Aligned |
-| 2032 | `mktrap` | dungeon.js:2270 | Aligned |
-| 1811 | `mktrap_victim` | dungeon.js:2355 | Aligned |
+| 2032 | `mktrap` | dungeon.js:2296 | Aligned |
+| 1811 | `mktrap_victim` | dungeon.js:2381 | Aligned |
 | 1802 | `occupied` | mklev.js:310 | Aligned |
 | 1775 | `okdoor` | mklev.js:68 | Aligned |
 | 1687 | `place_branch` | mklev.js:811 | Aligned |
@@ -2622,7 +2622,7 @@ No function symbols parsed from isaac64.c.
 | 1593 | `topologize` | mklev.js:410 | Aligned |
 | 1934 | `traptype_rnd` | mklev.js:858 | Aligned |
 | 1998 | `traptype_roguelvl` | mklev.js:903 | Aligned |
-| 1428 | `water_has_kelp` | dungeon.js:4072 | Aligned |
+| 1428 | `water_has_kelp` | dungeon.js:4197 | Aligned |
 
 ### mkmap.c -> mkmap.js
 | C Line | C Function | JS Line | Alignment |
