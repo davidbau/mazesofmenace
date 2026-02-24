@@ -819,10 +819,10 @@ function dochug(mon, map, player, display, fov, game = null) {
     // C ref: monmove.c:795-803 — find_defensive / find_misc
     // Monsters check inventory for defensive or misc items to use.
     // Stubs return false for now (no RNG consumed when returning false).
-    if (find_defensive(mon, false)) {
-        if (use_defensive(mon) !== 0) return;
-    } else if (find_misc(mon)) {
-        if (use_misc(mon) !== 0) return;
+    if (find_defensive(mon, false, map, player)) {
+        if (use_defensive(mon, map, player) !== 0) return;
+    } else if (find_misc(mon, map, player)) {
+        if (use_misc(mon, map, player) !== 0) return;
     }
 
     // INCOMPLETE: C:803 — demonic blackmail (rare demon interaction)
@@ -1025,7 +1025,7 @@ function onlineu(mon, player) {
 }
 
 // C ref: priest.c move_special()
-function move_special(mon, map, player, inHisShop, appr, uondoor, avoid, ggx, ggy) {
+export function move_special(mon, map, player, inHisShop, appr, uondoor, avoid, ggx, ggy) {
     const omx = mon.mx;
     const omy = mon.my;
     if (omx === ggx && omy === ggy) return 0;

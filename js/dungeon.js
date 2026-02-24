@@ -4392,10 +4392,17 @@ function priestini(sroom, sx, sy, sanctum, depth, map) {
         priest.isminion = false;
         priest.mpeaceful = true;
         priest.msleeping = false;
-        // Store shrine info for runtime priest behavior
-        priest._shroom = (map.rooms.indexOf(sroom)) + ROOMOFFSET;
-        priest._shralign = Amask2align(map.at(sx, sy).flags & AM_MASK);
-        priest._shrpos = { x: sx, y: sy };
+        // Store shrine info for runtime priest behavior (EPRI equivalent)
+        priest.epri = {
+            shroom: (map.rooms.indexOf(sroom)) + ROOMOFFSET,
+            shralign: Amask2align(map.at(sx, sy).flags & AM_MASK),
+            shrpos: { x: sx, y: sy },
+            shrlevel: depth || 0,
+            intone_time: 0,
+            enter_time: 0,
+            peaceful_time: 0,
+            hostile_time: 0,
+        };
         set_malign(priest); // recalc after mpeaceful change
 
         // C: 2 to 4 spellbooks — rn1(3,2) = rn2(3)+2

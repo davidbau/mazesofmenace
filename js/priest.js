@@ -5,120 +5,844 @@
 //                findpriest, intemple, forget_temple_entry, priest_talk,
 //                mk_roamer, reset_hostility, in_your_sanctuary,
 //                ghod_hitsu, angry_priest, clearpriests, restpriest
-//
-// Priest behavior covers:
-//   - Template initialization (priestini) and per-turn movement (pri_move)
-//   - Temple entry detection (intemple) and conversation (priest_talk)
-//   - Shrine ownership/alignment checks (has_shrine, histemple_at)
-//   - Minion roamers: mk_roamer creates aligned clerics/angels; reset_hostility
-//   - God's wrath in temple (ghod_hitsu)
-//   - Bones file cleanup (clearpriests/restpriest)
-//   - move_special (shared with shopkeeper movement): priest/shk boundary logic
-//
-// JS implementations:
-//   move_special() → monmove.js:679 — priest/shopkeeper boundary movement
-// All other functions → not implemented in JS.
 
-// cf. priest.c:16 — newepri(mtmp): initialize priest extra data
+import { A_NONE, A_LAWFUL, A_CHAOTIC, A_NEUTRAL,
+         AM_MASK, AM_SHRINE, ROOMOFFSET, TEMPLE,
+         Amask2align, A_WIS,
+         isok } from './config.js';
+import { IS_ALTAR, IS_DOOR, IS_ROOM } from './symbols.js';
+import { rn2, rnd, rn1, d } from './rng.js';
+import { pline, pline_The, verbalize, You, Your, You_feel,
+         livelog_printf } from './pline.js';
+import { mons, PM_ALIGNED_CLERIC, PM_HIGH_CLERIC, PM_ANGEL,
+         PM_GHOST } from './monsters.js';
+import { mon_nam, Monnam, mon_pmname, rndmonnam, hcolor } from './do_name.js';
+import { is_minion, is_rider, canseemon, mon_learns_traps } from './mondata.js';
+import { monnear, newsym, dist2, mondead } from './monutil.js';
+import { move_special } from './monmove.js';
+import { newemin, bribe } from './minion.js';
+import { makemon } from './makemon.js';
+import { wakeup, setmangry, mongone } from './mon.js';
+import { exercise } from './attrib_exercise.js';
+import { s_suffix, sgn } from './hacklib.js';
+import { body_part, SPINE } from './polyself.js';
+import { a_gname_at, halu_gname } from './pray.js';
+import { adjalign } from './attrib.js';
+import { rloc, RLOC_NOMSG } from './teleport.js';
+import { buzz } from './zap.js';
+
+// cf. priest.c:9-10 — alignment thresholds
+const ALGN_SINNED = -4;
+const ALGN_DEVOUT = 14;
+
+// Article constants (cf. decl.h)
+const ARTICLE_NONE = 0;
+const ARTICLE_THE = 1;
+const ARTICLE_A = 2;
+const ARTICLE_YOUR = 3;
+
+// BZ constants for buzz() (cf. zap.h)
+// AD_ELEC = 5 in C; BZ_OFS_AD(AD_ELEC) = AD_ELEC-1 = 4;
+// BZ_M_SPELL(x) = x + 20
+const BZ_M_SPELL_ELEC = 24;
+
+// MM_EMIN flag (cf. makemon.h)
+const MM_EMIN = 0x00000400;
+const MM_ADJACENTOK = 0x00000200;
+const MM_NOMSG = 0x00000800;
+const NO_MM_FLAGS = 0;
+const ALL_TRAPS = -1; // sentinel for mon_learns_traps
+
+// ============================================================================
+// newepri — cf. priest.c:16
 // Allocates EPRI struct on mtmp for temple/alignment/room tracking.
-// TODO: priest.c:16 — newepri(): priest extra data initialization
+// ============================================================================
+export function newepri(mtmp) {
+    if (!mtmp.epri) {
+        mtmp.epri = {
+            shroom: 0,
+            shralign: A_NONE,
+            shrpos: { x: 0, y: 0 },
+            shrlevel: null,
+            intone_time: 0,
+            enter_time: 0,
+            peaceful_time: 0,
+            hostile_time: 0,
+        };
+    }
+}
 
-// cf. priest.c:28 — free_epri(mtmp): free priest extra data
+// ============================================================================
+// free_epri — cf. priest.c:28
 // Frees EPRI struct; clears ispriest flag.
-// TODO: priest.c:28 — free_epri(): priest extra data cleanup
+// ============================================================================
+export function free_epri(mtmp) {
+    if (mtmp.epri) {
+        mtmp.epri = null;
+    }
+    mtmp.ispriest = false;
+}
 
-// cf. priest.c:41 — move_special(mtmp, in_his_shop, appr, uondoor, avoid, omx, omy, ggx, ggy)
-// Moves priests and shopkeepers with special logic for shop/temple boundaries;
-//   uses approach value to decide flee or advance; respects door constraints.
-// JS equiv: monmove.js:679 — move_special() for priest/shopkeeper boundary movement.
-// PARTIAL: priest.c:41 — move_special() ↔ move_special (monmove.js:679)
+// ============================================================================
+// temple_occupied — cf. priest.c:142
+// Returns temple room char if any room in rooms_str is occupied by its priest.
+// rooms_str is a string of room characters (like player.urooms).
+// ============================================================================
+export function temple_occupied(rooms_str, map) {
+    if (!rooms_str || !map || !map.rooms) return 0;
+    for (let i = 0; i < rooms_str.length; i++) {
+        const ch = rooms_str.charCodeAt(i);
+        const idx = ch - ROOMOFFSET;
+        if (idx >= 0 && idx < map.rooms.length) {
+            if (map.rooms[idx] && map.rooms[idx].rtype === TEMPLE) {
+                return ch;
+            }
+        }
+    }
+    return 0;
+}
 
-// cf. priest.c:142 — temple_occupied(array): find occupied temple room
-// Returns temple room number if any room in array is occupied by its priest.
-// TODO: priest.c:142 — temple_occupied(): occupied temple check
+// ============================================================================
+// histemple_at — cf. priest.c:153 (static in C)
+// Returns true if (x,y) is inside the priest's temple room.
+// ============================================================================
+function histemple_at(priest, x, y, map) {
+    if (!priest || !priest.ispriest || !priest.epri) return false;
+    const roomsAtXY = in_rooms(x, y, TEMPLE, map);
+    if (!roomsAtXY) return false;
+    // Check if priest's shroom matches any temple room at (x,y)
+    for (let i = 0; i < roomsAtXY.length; i++) {
+        if (roomsAtXY.charCodeAt(i) === priest.epri.shroom) return true;
+    }
+    return false;
+    // C also checks on_level(&(EPRI(priest)->shrlevel), &u.uz) — in JS,
+    // priests are always on the current level when we're processing them.
+}
 
-// cf. priest.c:153 — histemple_at(priest, x, y): is location in priest's temple?
-// Returns TRUE if (x,y) is inside the priest's temple room.
-// TODO: priest.c:153 — histemple_at(): location in priest's temple
-
-// cf. priest.c:161 — inhistemple(priest): is priest in his home temple?
+// ============================================================================
+// inhistemple — cf. priest.c:161
 // Checks that priest is in his temple room and shrine is properly aligned.
-// TODO: priest.c:161 — inhistemple(): priest at home shrine check
+// ============================================================================
+export function inhistemple(priest, map) {
+    if (!priest || !priest.ispriest) return false;
+    if (!histemple_at(priest, priest.mx, priest.my, map)) return false;
+    return has_shrine(priest, map);
+}
 
-// cf. priest.c:177 — pri_move(priest): priest per-turn movement
-// Handles priest patrol around altar; pursues if hostile.
-// Uses move_special() for boundary-aware movement.
-// TODO: priest.c:177 — pri_move(): priest movement logic
-
-// cf. priest.c:220 — priestini(lvl, sroom, sx, sy, sanctum): initialize temple
-// Creates priest monster and sets up temple furnishings (altar, candelabra) during
-//   level generation. sanctum=TRUE: place high priest at endgame altar.
-// TODO: priest.c:220 — priestini(): temple level-gen initialization
-
-// cf. priest.c:280 — mon_aligntyp(mon): get monster alignment type
-// Returns priest/minion/normal alignment type for the monster.
-// Used to determine if monster is a priest or aligned minion.
-// TODO: priest.c:280 — mon_aligntyp(): monster alignment type
-
-// cf. priest.c:302 — priestname(mon, article, reveal_high_priest, pname): format name
-// Generates "the Priest of <deity>" with proper article; optionally reveals
-//   "the High Priest" title. Writes to pname buffer.
-// TODO: priest.c:302 — priestname(): formatted priest name string
-
-// cf. priest.c:370 — p_coaligned(priest): same alignment as player?
-// Returns TRUE if player and priest share the same alignment.
-// TODO: priest.c:370 — p_coaligned(): alignment match check
-
-// cf. priest.c:376 — has_shrine(pri): priest's temple has valid shrine?
+// ============================================================================
+// has_shrine — cf. priest.c:376 (static in C)
 // Checks that an altar of the proper alignment exists in the temple room.
-// Returns FALSE if shrine was desecrated or converted.
-// TODO: priest.c:376 — has_shrine(): shrine validity check
+// ============================================================================
+function has_shrine(pri, map) {
+    if (!pri || !pri.ispriest || !pri.epri) return false;
+    const epri_p = pri.epri;
+    const loc = map.at(epri_p.shrpos.x, epri_p.shrpos.y);
+    if (!loc) return false;
+    if (!IS_ALTAR(loc.typ) || !(loc.flags & AM_SHRINE)) return false;
+    return epri_p.shralign === Amask2align(loc.flags & ~AM_SHRINE);
+}
 
-// cf. priest.c:392 — findpriest(roomno): find priest in temple room
-// Scans fmon for a priest monster assigned to the given temple room number.
-// TODO: priest.c:392 — findpriest(): temple priest lookup
+// ============================================================================
+// findpriest — cf. priest.c:392
+// Scans monsters for a priest assigned to the given temple room number.
+// ============================================================================
+export function findpriest(roomno, map) {
+    if (!map || !map.monsters) return null;
+    for (const mtmp of map.monsters) {
+        if (mtmp.dead) continue;
+        if (mtmp.ispriest && mtmp.epri
+            && mtmp.epri.shroom === roomno
+            && histemple_at(mtmp, mtmp.mx, mtmp.my, map)) {
+            return mtmp;
+        }
+    }
+    return null;
+}
 
-// cf. priest.c:410 — intemple(roomno): player enters temple room
-// Called when player steps into a temple room; handles initial encounter
-//   messages, coalignment checks, and tithe demands.
-// TODO: priest.c:410 — intemple(): temple entry encounter
+// ============================================================================
+// p_coaligned — cf. priest.c:370
+// Returns true if player and priest share the same alignment.
+// ============================================================================
+export function p_coaligned(priest, player) {
+    return (player.alignment || 0) === mon_aligntyp(priest);
+}
 
-// cf. priest.c:545 — forget_temple_entry(priest): reset temple entry feedback timers
-// Resets the priest's feedback timers so entry messages can repeat.
-// TODO: priest.c:545 — forget_temple_entry(): entry timer reset
+// ============================================================================
+// mon_aligntyp — cf. priest.c:280
+// Returns priest/minion/normal alignment type for the monster.
+// ============================================================================
+export function mon_aligntyp(mon) {
+    let algn;
+    if (mon.ispriest && mon.epri) {
+        algn = mon.epri.shralign;
+    } else if (mon.isminion && mon.emin) {
+        algn = mon.emin.min_align;
+    } else {
+        algn = (mon.type || mon.data || {}).maligntyp || 0;
+    }
+    if (algn === A_NONE) return A_NONE;
+    return algn > 0 ? A_LAWFUL : algn < 0 ? A_CHAOTIC : A_NEUTRAL;
+}
 
-// cf. priest.c:558 — priest_talk(priest): conversation with priest
-// Handles donation/blessing interaction; checks alignment, purity;
-//   applies tithe for services; outputs priest dialog.
-// TODO: priest.c:558 — priest_talk(): priest NPC conversation
+// ============================================================================
+// priestname — cf. priest.c:302
+// Generates "the Priest of <deity>" with proper article.
+// ============================================================================
+export function priestname(mon, article, reveal_high_priest, player) {
+    const do_hallu = player && player.hallucinating;
+    const aligned_priest = (mon.mndx === PM_ALIGNED_CLERIC)
+        || (mon.type === mons[PM_ALIGNED_CLERIC]);
+    const high_priest = (mon.mndx === PM_HIGH_CLERIC)
+        || (mon.type === mons[PM_HIGH_CLERIC]);
+    let what = do_hallu ? rndmonnam() : mon_pmname(mon);
 
-// cf. priest.c:688 — mk_roamer(ptr, alignment, x, y, peaceful): create aligned roamer
+    if (!mon.ispriest && !mon.isminion) {
+        return what; // caller must be confused
+    }
+
+    // For high priest(ess), set what appropriately
+    if (mon.ispriest || aligned_priest || high_priest) {
+        what = do_hallu ? "poohbah" : mon.female ? "priestess" : "priest";
+    }
+
+    let pname = '';
+    if (article !== ARTICLE_NONE) {
+        if (article === ARTICLE_YOUR || (article === ARTICLE_A && high_priest)) {
+            article = ARTICLE_THE;
+        }
+        if (article === ARTICLE_THE) {
+            pname = "the ";
+        } else if (what === "Angel") {
+            pname = "an ";
+        } else {
+            // just_an equivalent
+            pname = (/^[aeiouAEIOU]/.test(what)) ? "an " : "a ";
+        }
+    }
+
+    if (mon.minvis) {
+        if (pname === "a ") pname = "an ";
+        pname += "invisible ";
+    }
+    if (mon.isminion && mon.emin && mon.emin.renegade) {
+        if (pname === "an " && !mon.minvis) pname = "a ";
+        pname += "renegade ";
+    }
+
+    if (mon.ispriest || aligned_priest) {
+        if (high_priest) {
+            pname += do_hallu ? "grand " : "high ";
+        }
+    } else {
+        if (mon.mtame && what.toLowerCase() === "angel") {
+            pname += "guardian ";
+        }
+    }
+
+    pname += what;
+
+    // "of <deity>"
+    if (do_hallu || !high_priest || reveal_high_priest
+        || !Is_astralevel()
+        || m_next2u(mon, player) || false /* program_state.gameover */) {
+        pname += " of ";
+        pname += halu_gname(mon_aligntyp(mon), player);
+    }
+    return pname;
+}
+
+// Stubs for functions not yet available in the JS port
+function Is_astralevel() { return false; }
+function Is_sanctum() { return false; }
+function In_endgame() { return false; }
+
+// set_malign — cf. makemon.c:2316
+// Not exported from any module; define locally.
+function set_malign(mtmp) {
+    if (!mtmp) return;
+    const data = mtmp.type || mtmp.data || {};
+    let mal = data.maligntyp || 0;
+    if (data.msound === 12 /* MS_LEADER */) {
+        mtmp.malign = -20;
+    } else if (mal === A_NONE) {
+        mtmp.malign = mtmp.mpeaceful ? 0 : 20;
+    } else if (mtmp.mpeaceful) {
+        mtmp.malign = -3 * Math.max(5, Math.abs(mal));
+    } else {
+        mtmp.malign = Math.max(5, Math.abs(mal));
+    }
+}
+function m_next2u(mon, player) {
+    if (!player) return false;
+    return dist2(mon.mx, mon.my, player.x, player.y) <= 2;
+}
+function m_canseeu(mon, player) {
+    if (!mon || !player) return false;
+    return mon.mcansee !== false && !mon.blind;
+}
+function helpless(mon) {
+    return !!(mon.mfrozen || mon.msleeping || !mon.mcanmove);
+}
+function resist_conflict(mon) {
+    // C: resist(mon, RING_CLASS, 0, 0)
+    return false;
+}
+function record_achievement(/*achidx, player*/) { /* stub */ }
+function mapseen_temple(/*priest*/) { /* stub */ }
+function nomul(player, turns) {
+    // Simplified stub: set multi-turn counter
+    if (player) player.multi = turns;
+}
+function money_cnt(inventory) {
+    if (!inventory) return 0;
+    if (Array.isArray(inventory)) {
+        let total = 0;
+        for (const obj of inventory) {
+            if (obj && (obj.oclass === 'COIN_CLASS' || obj.oclass === 1 || obj.otyp === 'GOLD_PIECE')) {
+                total += obj.quan || 1;
+            }
+        }
+        return total;
+    }
+    return 0;
+}
+
+// in_rooms helper (also in vault.js — local copy for self-containment)
+function in_rooms(x, y, rtype, map) {
+    if (!map || !map.rooms) return '';
+    let result = '';
+    for (let i = 0; i < map.rooms.length; i++) {
+        const room = map.rooms[i];
+        if (!room) continue;
+        if (rtype !== undefined && room.rtype !== rtype) continue;
+        if (x >= room.lx && x <= room.hx && y >= room.ly && y <= room.hy) {
+            result += String.fromCharCode(i + ROOMOFFSET);
+        }
+    }
+    return result;
+}
+
+// linedup: check if (ax,ay) and (bx,by) are on a line (horiz/vert/diag)
+function linedup(ax, ay, bx, by /*, boteflag*/) {
+    const tbx = ax - bx;
+    const tby = ay - by;
+    if (tbx === 0 || tby === 0 || Math.abs(tbx) === Math.abs(tby)) {
+        return true;
+    }
+    return false;
+}
+
+// ============================================================================
+// pri_move — cf. priest.c:177
+// Priest per-turn movement. Returns 1: moved, 0: didn't, -1: let m_move do it
+// ============================================================================
+export function pri_move(priest, map, player, display, fov) {
+    const omx = priest.mx;
+    const omy = priest.my;
+
+    if (!histemple_at(priest, omx, omy, map)) return -1;
+
+    const temple = priest.epri.shroom;
+
+    let ggx = priest.epri.shrpos.x;
+    let ggy = priest.epri.shrpos.y;
+
+    // C: rn1(3, -1) = rn2(3) + (-1) = rn2(3) - 1
+    ggx += rn1(3, -1);
+    ggy += rn1(3, -1);
+
+    let avoid = true;
+
+    if (!priest.mpeaceful
+        || (player.conflict && !resist_conflict(priest))) {
+        if (monnear(priest, player.x, player.y)) {
+            if (player.displaced) {
+                Your("displaced image doesn't fool %s!", mon_nam(priest));
+            }
+            // C: mattacku(priest) — not yet ported; stub
+            // (void) mattacku(priest);
+            return 0;
+        } else if ((player.urooms || '').indexOf(String.fromCharCode(temple)) >= 0) {
+            // chase player if inside temple & can see him
+            if (priest.mcansee !== false && m_canseeu(priest, player)) {
+                ggx = player.x;
+                ggy = player.y;
+            }
+            avoid = false;
+        }
+    } else if (player.invisible) {
+        avoid = false;
+    }
+
+    return move_special(priest, map, player, false, true, false, avoid, ggx, ggy);
+}
+
+// ============================================================================
+// intemple — cf. priest.c:410
+// Called from check_special_room() when the player enters the temple room.
+// ============================================================================
+export function intemple(roomno, map, player, display, fov) {
+    // don't do anything if hero is already in the room
+    if (temple_occupied(player.urooms0 || '', map)) return;
+
+    const priest = findpriest(roomno, map);
+    if (priest) {
+        // tended temple
+        record_achievement(/* ACH_TMPL */ null, player);
+
+        const epri_p = priest.epri;
+        const shrined = has_shrine(priest, map);
+        const sanctum = (priest.mndx === PM_HIGH_CLERIC || priest.type === mons[PM_HIGH_CLERIC])
+            && (Is_sanctum() || In_endgame());
+        const can_speak = !helpless(priest);
+        const moves = player.turns || 0;
+
+        if (can_speak && !player.deaf && moves >= (epri_p.intone_time || 0)) {
+            const save_priest = priest.ispriest;
+            // don't reveal altar owner upon entry in endgame
+            if (sanctum && !player.hallucinating) {
+                priest.ispriest = false;
+            }
+            const seer = (canseemon(priest, player, fov)) ? Monnam(priest) : "A nearby voice";
+            pline("%s intones:", seer);
+            priest.ispriest = save_priest;
+            epri_p.intone_time = moves + d(10, 500);
+            // make sure entry message not suppressed
+            epri_p.enter_time = 0;
+        }
+
+        let msg1 = null, msg2 = null;
+        if (sanctum && Is_sanctum()) {
+            if (priest.mpeaceful) {
+                msg1 = "Infidel, you have entered Moloch's Sanctum!";
+                msg2 = "Be gone!";
+                priest.mpeaceful = false;
+                set_malign(priest);
+            } else {
+                msg1 = "You desecrate this place by your presence!";
+            }
+        } else if (moves >= (epri_p.enter_time || 0)) {
+            msg1 = `Pilgrim, you enter a ${!shrined ? "desecrated" : "sacred"} place!`;
+        }
+
+        if (msg1 && can_speak && !player.deaf) {
+            // C: SetVoice(priest, 0, 80, 0) — cosmetic, skip
+            verbalize(msg1);
+            if (msg2) verbalize(msg2);
+            epri_p.enter_time = moves + d(10, 100);
+        }
+
+        if (!sanctum) {
+            let feedback_msg, feedback_arg;
+            let this_time_key, other_time_key;
+            if (!shrined || !p_coaligned(priest, player)
+                || (player.alignmentRecord || 0) <= ALGN_SINNED) {
+                feedback_msg = "have a%s forbidding feeling...";
+                feedback_arg = (!shrined || !p_coaligned(priest, player)) ? "" : " strange";
+                this_time_key = 'hostile_time';
+                other_time_key = 'peaceful_time';
+            } else {
+                feedback_msg = "experience %s sense of peace.";
+                feedback_arg = ((player.alignmentRecord || 0) >= ALGN_DEVOUT) ? "a" : "an unusual";
+                this_time_key = 'peaceful_time';
+                other_time_key = 'hostile_time';
+            }
+            const this_time = epri_p[this_time_key] || 0;
+            const other_time = epri_p[other_time_key] || 0;
+            if (moves >= this_time || other_time >= this_time) {
+                You(feedback_msg, feedback_arg);
+                epri_p[this_time_key] = moves + d(10, 20);
+                if (epri_p[this_time_key] <= epri_p[other_time_key]) {
+                    epri_p[other_time_key] = epri_p[this_time_key] - 1;
+                }
+            }
+        }
+        mapseen_temple(priest);
+    } else {
+        // untended temple
+        switch (rn2(4)) {
+        case 0:
+            You("have an eerie feeling...");
+            break;
+        case 1:
+            You_feel("like you are being watched.");
+            break;
+        case 2:
+            pline("A shiver runs down your %s.", body_part(SPINE));
+            break;
+        default:
+            break; // no message
+        }
+        if (!rn2(5)) {
+            const depth = map.depth || 1;
+            const mtmp = makemon(mons[PM_GHOST], player.x, player.y, MM_NOMSG, depth, map);
+            if (mtmp) {
+                // C: ngen = mvitals[PM_GHOST].born — we approximate
+                const ngen = (map.mvitals && map.mvitals[PM_GHOST])
+                    ? (map.mvitals[PM_GHOST].born || 0) : 0;
+                const canspot = canseemon(mtmp, player, fov);
+                if (canspot) {
+                    pline("A%s ghost appears next to you%c",
+                          ngen < 5 ? "n enormous" : "",
+                          ngen < 10 ? '!' : '.');
+                } else {
+                    You("sense a presence close by!");
+                }
+                mtmp.mpeaceful = false;
+                set_malign(mtmp);
+                if (player.verbose !== false) {
+                    You("are frightened to death, and unable to move.");
+                }
+                nomul(player, -3);
+                // C: multi_reason = "being terrified of a ghost"
+                // C: nomovemsg = "You regain your composure."
+            }
+        }
+    }
+}
+
+// ============================================================================
+// forget_temple_entry — cf. priest.c:545
+// Reset the move counters used to limit temple entry feedback.
+// ============================================================================
+export function forget_temple_entry(priest) {
+    if (!priest || !priest.ispriest || !priest.epri) {
+        // impossible("attempting to manipulate shrine data for non-priest?");
+        return;
+    }
+    const epri_p = priest.epri;
+    epri_p.intone_time = 0;
+    epri_p.enter_time = 0;
+    epri_p.peaceful_time = 0;
+    epri_p.hostile_time = 0;
+}
+
+// ============================================================================
+// priest_talk — cf. priest.c:558
+// Handles donation/blessing interaction with a priest.
+// ============================================================================
+export function priest_talk(priest, map, player, display) {
+    const coaligned = p_coaligned(priest, player);
+    const strayed = (player.alignmentRecord || 0) < 0;
+
+    // KMH, conduct
+    if (!player.uconduct) player.uconduct = {};
+    if (!player.uconduct.gnostic) player.uconduct.gnostic = 0;
+    if (!player.uconduct.gnostic++) {
+        livelog_printf("rejected atheism by consulting with %s", mon_nam(priest));
+    }
+
+    if (priest.mflee || (!priest.ispriest && coaligned && strayed)) {
+        pline("%s doesn't want anything to do with you!", Monnam(priest));
+        priest.mpeaceful = false;
+        return;
+    }
+
+    // priests don't chat unless peaceful and in their own temple
+    if (!inhistemple(priest, map) || !priest.mpeaceful || helpless(priest)) {
+        const cranky_msg = [
+            "Thou wouldst have words, eh?  I'll give thee a word or two!",
+            "Talk?  Here is what I have to say!",
+            "Pilgrim, I would speak no longer with thee.",
+        ];
+
+        if (helpless(priest)) {
+            pline("%s breaks out of %s reverie!", Monnam(priest),
+                  priest.female ? "her" : "his");
+            priest.mfrozen = 0;
+            priest.msleeping = false;
+            priest.mcanmove = true;
+        }
+        priest.mpeaceful = false;
+        verbalize(cranky_msg[rn2(3)]);
+        return;
+    }
+
+    // desecrated temple
+    if (priest.mpeaceful
+        && in_rooms(priest.mx, priest.my, TEMPLE, map)
+        && !has_shrine(priest, map)) {
+        verbalize("Begone!  Thou desecratest this holy place with thy presence.");
+        priest.mpeaceful = false;
+        return;
+    }
+
+    const playerMoney = money_cnt(player.inventory || player.invent);
+    if (!playerMoney) {
+        if (coaligned && !strayed) {
+            const pmoney = money_cnt(priest.minvent || priest.inventory);
+            if (pmoney > 0) {
+                const bits = player.hallucinating ? "zorkmids"
+                    : (pmoney === 1) ? "bit" : "bits";
+                pline("%s gives you %s%s for an ale.", Monnam(priest),
+                      (pmoney === 1) ? "one " : "two ", bits);
+                // C: money2u(priest, pmoney > 1 ? 2 : 1) — simplified
+            } else {
+                pline("%s preaches the virtues of poverty.", Monnam(priest));
+            }
+            exercise(player, A_WIS, true);
+        } else {
+            pline("%s is not interested.", Monnam(priest));
+        }
+        return;
+    } else {
+        pline("%s asks you for a contribution for the temple.",
+              Monnam(priest));
+        const offer = bribe(priest, map, player, display);
+        if (offer === 0) {
+            verbalize("Thou shalt regret thine action!");
+            if (coaligned) adjalign(player, -1);
+        } else if (offer < ((player.level || 1) * 200)) {
+            if (playerMoney > (offer * 2)) {
+                verbalize("Cheapskate.");
+            } else {
+                verbalize("I thank thee for thy contribution.");
+                exercise(player, A_WIS, true);
+            }
+        } else if (offer < ((player.level || 1) * 400)) {
+            verbalize("Thou art indeed a pious individual.");
+            if (playerMoney < (offer * 2)) {
+                if (coaligned && (player.alignmentRecord || 0) <= ALGN_SINNED) {
+                    adjalign(player, 1);
+                }
+                verbalize("I bestow upon thee a blessing.");
+                // C: incr_itimeout(&HClairvoyant, rn1(500, 500))
+                // Simplified: player.clairvoyant timeout
+                if (!player.clairvoyantTimeout) player.clairvoyantTimeout = 0;
+                player.clairvoyantTimeout += rn1(500, 500);
+            }
+        } else if (offer < ((player.level || 1) * 600)
+                   && (!(player.protectionIntrinsic)
+                       || ((player.ublessed || 0) < 20
+                           && ((player.ublessed || 0) < 9 || !rn2(player.ublessed || 1))))) {
+            verbalize("Thou hast been rewarded for thy devotion.");
+            if (!player.protectionIntrinsic) {
+                player.protectionIntrinsic = true;
+                if (!player.ublessed) player.ublessed = rn1(3, 2);
+            } else {
+                player.ublessed = (player.ublessed || 0) + 1;
+            }
+        } else {
+            verbalize("Thy selfless generosity is deeply appreciated.");
+            if (playerMoney < (offer * 2) && coaligned) {
+                const moves = player.turns || 0;
+                if (strayed && (moves - (player.ucleansed || 0)) > 5000) {
+                    player.alignmentRecord = 0;
+                    player.ucleansed = moves;
+                } else {
+                    adjalign(player, 2);
+                }
+            }
+        }
+    }
+}
+
+// ============================================================================
+// mk_roamer — cf. priest.c:688
 // Creates an aligned cleric or angel minion at (x,y) with given alignment.
-// peaceful=TRUE: created as non-hostile (called after prayer).
-// TODO: priest.c:688 — mk_roamer(): aligned minion creation
+// ============================================================================
+export function mk_roamer(ptr, alignment, x, y, peaceful, depth, map, player) {
+    const coaligned = ((player ? player.alignment : 0) || 0) === alignment;
 
-// cf. priest.c:719 — reset_hostility(roamer): reset minion hostility
+    if (map && map.monsterAt && map.monsterAt(x, y)) {
+        const existing = map.monsterAt(x, y);
+        if (existing) rloc(existing, RLOC_NOMSG, map, player);
+    }
+
+    const roamer = makemon(ptr, x, y, MM_ADJACENTOK | MM_EMIN | MM_NOMSG, depth, map);
+    if (!roamer) return null;
+
+    newemin(roamer);
+    roamer.emin.min_align = alignment;
+    roamer.emin.renegade = coaligned && !peaceful;
+    roamer.ispriest = false;
+    roamer.isminion = true;
+    if (mon_learns_traps) mon_learns_traps(roamer, ALL_TRAPS);
+    roamer.mpeaceful = peaceful;
+    roamer.msleeping = false;
+    set_malign(roamer);
+
+    return roamer;
+}
+
+// ============================================================================
+// reset_hostility — cf. priest.c:719
 // Re-evaluates roamer's hostility based on alignment mismatch with player.
-// Called after player's alignment changes.
-// TODO: priest.c:719 — reset_hostility(): minion hostility reset
+// ============================================================================
+export function reset_hostility(roamer, map, player) {
+    if (!roamer.isminion) return;
+    if (!roamer.emin) return;
+    const mndx = roamer.mndx !== undefined ? roamer.mndx
+        : (roamer.type ? mons.indexOf(roamer.type) : -1);
+    if (mndx !== PM_ALIGNED_CLERIC && mndx !== PM_ANGEL) return;
 
-// cf. priest.c:735 — in_your_sanctuary(mon, x, y): is location player's sanctuary?
-// Returns TRUE if (x,y) is in a temple where player is welcome (co-aligned).
-// TODO: priest.c:735 — in_your_sanctuary(): player sanctuary check
+    if (roamer.emin.min_align !== (player.alignment || 0)) {
+        roamer.mpeaceful = false;
+        roamer.mtame = 0;
+        set_malign(roamer);
+    }
+    newsym(map, roamer.mx, roamer.my);
+}
 
-// cf. priest.c:760 — ghod_hitsu(priest): execute god's wrath for temple attack
-// Delivers divine punishment when player attacks a coaligned priest in temple:
-//   curses items, smites with lightning, calls down monsters.
-// TODO: priest.c:760 — ghod_hitsu(): divine punishment in temple
+// ============================================================================
+// in_your_sanctuary — cf. priest.c:735
+// Returns true if (x,y) is in a temple where player is welcome (co-aligned).
+// ============================================================================
+export function in_your_sanctuary(mon, x, y, map, player) {
+    if (mon) {
+        const ptr = mon.type || mon.data || {};
+        if (is_minion(ptr) || is_rider(ptr)) return false;
+        x = mon.mx;
+        y = mon.my;
+    }
+    if ((player.alignmentRecord || 0) <= ALGN_SINNED) return false;
 
-// cf. priest.c:841 — angry_priest(): make temple priest angry; convert to roamer
+    const roomno = temple_occupied(player.urooms || '', map);
+    if (!roomno) return false;
+    const roomsAtXY = in_rooms(x, y, TEMPLE, map);
+    if (!roomsAtXY) return false;
+    let found = false;
+    for (let i = 0; i < roomsAtXY.length; i++) {
+        if (roomsAtXY.charCodeAt(i) === roomno) { found = true; break; }
+    }
+    if (!found) return false;
+
+    const priest = findpriest(roomno, map);
+    if (!priest) return false;
+    return has_shrine(priest, map) && p_coaligned(priest, player) && priest.mpeaceful;
+}
+
+// ============================================================================
+// ghod_hitsu — cf. priest.c:760
+// Delivers divine punishment when player attacks a coaligned priest in temple.
+// ============================================================================
+export function ghod_hitsu(priest, map, player) {
+    const roomno = temple_occupied(player.urooms || '', map);
+    if (!roomno || !has_shrine(priest, map)) return;
+
+    const ax = priest.epri.shrpos.x;
+    const ay = priest.epri.shrpos.y;
+    let x = ax, y = ay;
+    const troom = map.rooms[roomno - ROOMOFFSET];
+    if (!troom) return;
+
+    if ((player.x === x && player.y === y) || !linedup(player.x, player.y, x, y)) {
+        const loc = map.at(player.x, player.y);
+        if (loc && IS_DOOR(loc.typ)) {
+            if (player.x === troom.lx - 1) {
+                x = troom.hx;
+                y = player.y;
+            } else if (player.x === troom.hx + 1) {
+                x = troom.lx;
+                y = player.y;
+            } else if (player.y === troom.ly - 1) {
+                x = player.x;
+                y = troom.hy;
+            } else if (player.y === troom.hy + 1) {
+                x = player.x;
+                y = troom.ly;
+            }
+        } else {
+            switch (rn2(4)) {
+            case 0:
+                x = player.x;
+                y = troom.ly;
+                break;
+            case 1:
+                x = player.x;
+                y = troom.hy;
+                break;
+            case 2:
+                x = troom.lx;
+                y = player.y;
+                break;
+            default:
+                x = troom.hx;
+                y = player.y;
+                break;
+            }
+        }
+        if (!linedup(player.x, player.y, x, y)) return;
+    }
+
+    // Compute tbx, tby for buzz direction
+    const tbx = player.x - x;
+    const tby = player.y - y;
+
+    switch (rn2(3)) {
+    case 0:
+        pline("%s roars in anger:  \"Thou shalt suffer!\"",
+              a_gname_at(ax, ay, player, map));
+        break;
+    case 1:
+        pline("%s voice booms:  \"How darest thou harm my servant!\"",
+              s_suffix(a_gname_at(ax, ay, player, map)));
+        break;
+    default:
+        pline("%s roars:  \"Thou dost profane my shrine!\"",
+              a_gname_at(ax, ay, player, map));
+        break;
+    }
+
+    // bolt of lightning cast by unspecified monster
+    buzz(BZ_M_SPELL_ELEC, 6, x, y, sgn(tbx), sgn(tby), map, player);
+    exercise(player, A_WIS, false);
+}
+
+// ============================================================================
+// angry_priest — cf. priest.c:841
 // Called when player desecrates shrine; priest becomes hostile roaming minion.
-// TODO: priest.c:841 — angry_priest(): priest anger on desecration
+// ============================================================================
+export function angry_priest(map, player) {
+    const roomno = temple_occupied(player.urooms || '', map);
+    const priest = roomno ? findpriest(roomno, map) : null;
+    if (priest) {
+        const eprip = priest.epri;
+        wakeup(priest, false, map, player);
+        setmangry(priest, false, map, player);
 
-// cf. priest.c:883 — clearpriests(): remove priests not on their home shrine level
-// Called when saving bones files to clean up displaced priests.
-// TODO: priest.c:883 — clearpriests(): bones file priest cleanup
+        // Check if altar has been destroyed or converted
+        const loc = map.at(eprip.shrpos.x, eprip.shrpos.y);
+        if (!loc || !IS_ALTAR(loc.typ)
+            || (Amask2align(loc.flags & AM_MASK) !== eprip.shralign)) {
+            // Convert priest to roaming minion
+            newemin(priest);
+            const oldAlign = eprip.shralign;
+            priest.ispriest = false;
+            priest.isminion = true;
+            priest.emin.min_align = oldAlign;
+            priest.emin.renegade = false;
+            free_epri(priest);
+        }
+    }
+}
 
-// cf. priest.c:897 — restpriest(mtmp, ghostly): restore priest shrine level info
+// ============================================================================
+// clearpriests — cf. priest.c:883
+// Remove priests not on their home shrine level (bones file cleanup).
+// ============================================================================
+export function clearpriests(map) {
+    if (!map || !map.monsters) return;
+    for (const mtmp of [...map.monsters]) {
+        if (mtmp.dead) continue;
+        if (mtmp.ispriest && mtmp.epri && mtmp.epri.shrlevel) {
+            // C: !on_level(&(EPRI(mtmp)->shrlevel), &u.uz)
+            // In JS, if shrlevel doesn't match current map depth, remove
+            if (mtmp.epri.shrlevel !== (map.depth || 0)) {
+                mongone(mtmp, map, null);
+            }
+        }
+    }
+}
+
+// ============================================================================
+// restpriest — cf. priest.c:897
 // Reconnects priest's shrine level reference when loading a bones file.
-// TODO: priest.c:897 — restpriest(): bones priest restoration
+// ============================================================================
+export function restpriest(mtmp, ghostly, map) {
+    if ((map.depth || 0) !== 0) {
+        if (ghostly && mtmp.epri) {
+            mtmp.epri.shrlevel = map.depth || 0;
+        }
+    }
+}

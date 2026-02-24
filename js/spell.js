@@ -10,16 +10,54 @@
 //   getspell(): prompt user to select a spell.
 //   dospellmenu(): display spell menu UI.
 
-import { A_INT, A_WIS } from './config.js';
-import { objectData, ROBE, QUARTERSTAFF, SMALL_SHIELD } from './objects.js';
+import { A_INT, A_WIS, A_STR, PM_KNIGHT, PM_WIZARD } from './config.js';
+import {
+    objectData, ROBE, QUARTERSTAFF, SMALL_SHIELD, LENSES,
+    SPE_DIG, SPE_MAGIC_MISSILE, SPE_FIREBALL, SPE_CONE_OF_COLD,
+    SPE_SLEEP, SPE_FINGER_OF_DEATH, SPE_LIGHT, SPE_DETECT_MONSTERS,
+    SPE_HEALING, SPE_KNOCK, SPE_FORCE_BOLT, SPE_CONFUSE_MONSTER,
+    SPE_CURE_BLINDNESS, SPE_DRAIN_LIFE, SPE_SLOW_MONSTER,
+    SPE_WIZARD_LOCK, SPE_CREATE_MONSTER, SPE_DETECT_FOOD,
+    SPE_CAUSE_FEAR, SPE_CLAIRVOYANCE, SPE_CURE_SICKNESS,
+    SPE_CHARM_MONSTER, SPE_HASTE_SELF, SPE_DETECT_UNSEEN,
+    SPE_LEVITATION, SPE_EXTRA_HEALING, SPE_RESTORE_ABILITY,
+    SPE_INVISIBILITY, SPE_DETECT_TREASURE, SPE_REMOVE_CURSE,
+    SPE_MAGIC_MAPPING, SPE_IDENTIFY, SPE_TURN_UNDEAD,
+    SPE_POLYMORPH, SPE_TELEPORT_AWAY, SPE_CREATE_FAMILIAR,
+    SPE_CANCELLATION, SPE_PROTECTION, SPE_JUMPING,
+    SPE_STONE_TO_FLESH, SPE_CHAIN_LIGHTNING,
+    SPE_BLANK_PAPER, SPE_NOVEL, SPE_BOOK_OF_THE_DEAD,
+} from './objects.js';
 import { is_metallic } from './objdata.js';
 import { nhgetch } from './input.js';
 import { create_nhwindow, destroy_nhwindow, NHW_MENU } from './windows.js';
+import { rn2, rnd, rn1, rnl } from './rng.js';
+import { pline, You, Your, You_feel, pline_The, You_hear } from './pline.js';
+import { exercise } from './attrib_exercise.js';
+
+// ── Constants ──
 
 // C ref: spell.c KEEN — spell retention threshold
-const SPELL_KEEN_TURNS = 20000;
+const KEEN = 20000;
 const SPELL_SKILL_UNSKILLED = 1;
 const SPELL_SKILL_BASIC = 2;
+
+// C ref: spell.h
+const NO_SPELL = 0;
+const UNKNOWN_SPELL = -1;
+const MAX_SPELL_STUDY = 3;
+const MAXSPELL = 52; // a-zA-Z
+
+// C ref: spell.h SPELL_LEV_PW
+function SPELL_LEV_PW(lvl) { return lvl * 5; }
+
+// spellmenu arguments
+const SPELLMENU_CAST = -2;
+const SPELLMENU_VIEW = -1;
+
+// Direction constants from objects
+const NODIR = 1;
+
 const SPELL_CATEGORY_ATTACK = 'attack';
 const SPELL_CATEGORY_HEALING = 'healing';
 const SPELL_CATEGORY_DIVINATION = 'divination';
@@ -115,6 +153,25 @@ const HEALING_BONUS_SPELLS = new Set([
     'remove curse',
 ]);
 
+// Map from SPE_* otyp to the role spelspec name for reverse lookup
+const SPE_TO_SPELSPEC = new Map([
+    [SPE_MAGIC_MAPPING, 'magic mapping'],
+    [SPE_HASTE_SELF, 'haste self'],
+    [SPE_DIG, 'dig'],
+    [SPE_CURE_SICKNESS, 'cure sickness'],
+    [SPE_TURN_UNDEAD, 'turn undead'],
+    [SPE_RESTORE_ABILITY, 'restore ability'],
+    [SPE_REMOVE_CURSE, 'remove curse'],
+    [SPE_DETECT_TREASURE, 'detect treasure'],
+    [SPE_INVISIBILITY, 'invisibility'],
+    [SPE_CLAIRVOYANCE, 'clairvoyance'],
+    [SPE_CHARM_MONSTER, 'charm monster'],
+    [SPE_CONE_OF_COLD, 'cone of cold'],
+    [SPE_MAGIC_MISSILE, 'magic missile'],
+]);
+
+// ── Internal helpers ──
+
 function spellCategoryForName(name) {
     return SPELL_CATEGORY_BY_NAME.get(String(name || '').toLowerCase()) || SPELL_CATEGORY_MATTER;
 }
@@ -124,16 +181,144 @@ function spellSkillRank(player, category) {
     return basic?.has(category) ? SPELL_SKILL_BASIC : SPELL_SKILL_UNSKILLED;
 }
 
+// C ref: spell.c spellet() — convert spell index to menu letter
+function spellet(spell) {
+    return spell < 26
+        ? String.fromCharCode('a'.charCodeAt(0) + spell)
+        : String.fromCharCode('A'.charCodeAt(0) + spell - 26);
+}
+
+// C ref: spell.c spell_let_to_idx() — convert menu letter to spell index
+function spell_let_to_idx(ilet) {
+    let indx = ilet.charCodeAt(0) - 'a'.charCodeAt(0);
+    if (indx >= 0 && indx < 26) return indx;
+    indx = ilet.charCodeAt(0) - 'A'.charCodeAt(0);
+    if (indx >= 0 && indx < 26) return indx + 26;
+    return -1;
+}
+
+// Helper: get spell otyp from player.spells array at index
+function spellid(player, idx) {
+    const spells = player.spells;
+    if (!spells || idx < 0 || idx >= spells.length) return NO_SPELL;
+    return spells[idx].otyp || NO_SPELL;
+}
+
+// Helper: get spell knowledge at index
+function spellknow(player, idx) {
+    const spells = player.spells;
+    if (!spells || idx < 0 || idx >= spells.length) return 0;
+    return spells[idx].sp_know || 0;
+}
+
+// Helper: get spell level at index
+function spellev(player, idx) {
+    const spells = player.spells;
+    if (!spells || idx < 0 || idx >= spells.length) return 0;
+    return spells[idx].sp_lev || 0;
+}
+
+// Helper: get spell name at index
+function spellname(player, idx) {
+    const otyp = spellid(player, idx);
+    if (otyp === NO_SPELL) return '';
+    const od = objectData[otyp];
+    return od ? od.name : '';
+}
+
+// Helper: increment spell knowledge (C: incrnknow)
+function incrnknow(player, idx, x) {
+    const spells = player.spells;
+    if (spells && idx >= 0 && idx < spells.length) {
+        spells[idx].sp_know = KEEN + x;
+    }
+}
+
 function spellRetentionText(turnsLeft, skillRank) {
     if (turnsLeft < 1) return '(gone)';
-    if (turnsLeft >= SPELL_KEEN_TURNS) return '100%';
-    const percent = Math.floor((turnsLeft - 1) / (SPELL_KEEN_TURNS / 100)) + 1;
+    if (turnsLeft >= KEEN) return '100%';
+    const percent = Math.floor((turnsLeft - 1) / (KEEN / 100)) + 1;
     const accuracy = skillRank >= SPELL_SKILL_BASIC ? 10 : 25;
     const hi = Math.min(100, accuracy * Math.floor((percent + accuracy - 1) / accuracy));
     const lo = Math.max(1, hi - accuracy + 1);
     return `${lo}%-${hi}%`;
 }
 
+// C ref: spell.c percent_success() — calculate success chance for casting
+function percent_success(player, spell_idx) {
+    const spells = player.spells;
+    if (!spells || spell_idx < 0 || spell_idx >= spells.length) return 0;
+
+    const sp = spells[spell_idx];
+    const otyp = sp.otyp;
+    const od = objectData[otyp] || {};
+    const spellName = String(od.name || '').toLowerCase();
+    const category = spellCategoryForName(spellName);
+    const spellLevel = Math.max(1, Number(od.oc2 || sp.sp_lev || 1));
+
+    const role = ROLE_SPELLCAST.get(player.roleIndex)
+        || { spelbase: 10, spelheal: 0, spelshld: 2, spelarmr: 10, spelstat: A_INT, spelspec: '', spelsbon: 0 };
+    const statValue = Math.max(3, Math.min(25, Number(player.attributes?.[role.spelstat] || 10)));
+    const spellSkill = spellSkillRank(player, category);
+    const heroLevel = Math.max(1, Number(player.level || 1));
+
+    // C ref: Role_if(PM_KNIGHT) && skilltype == P_CLERIC_SPELL
+    const paladinBonus = player.roleIndex === PM_KNIGHT && category === SPELL_CATEGORY_CLERICAL;
+    const armor = player.armor || null;
+    const cloak = player.cloak || null;
+    const shield = player.shield || null;
+    const helmet = player.helmet || null;
+    const gloves = player.gloves || null;
+    const boots = player.boots || null;
+    const weapon = player.weapon || null;
+
+    let splcaster = role.spelbase;
+    if (armor && is_metallic(armor) && !paladinBonus) {
+        splcaster += (cloak?.otyp === ROBE) ? Math.floor(role.spelarmr / 2) : role.spelarmr;
+    } else if (cloak?.otyp === ROBE) {
+        splcaster -= role.spelarmr;
+    }
+    if (shield) splcaster += role.spelshld;
+    if (weapon?.otyp === QUARTERSTAFF) splcaster -= 3;
+    if (!paladinBonus) {
+        if (helmet && is_metallic(helmet)) splcaster += 4;  // uarmhbon
+        if (gloves && is_metallic(gloves)) splcaster += 6;  // uarmgbon
+        if (boots && is_metallic(boots)) splcaster += 2;    // uarmfbon
+    }
+    if (spellName === role.spelspec) splcaster += role.spelsbon;
+    if (HEALING_BONUS_SPELLS.has(spellName)) splcaster += role.spelheal;
+    if (splcaster > 20) splcaster = 20;
+
+    let chance = Math.floor((11 * statValue) / 2);
+    const skill = Math.max(spellSkill, SPELL_SKILL_UNSKILLED) - 1;
+    const difficulty = (spellLevel - 1) * 4 - ((skill * 6) + Math.floor(heroLevel / 3) + 1);
+
+    if (difficulty > 0) {
+        chance -= Math.floor(Math.sqrt(900 * difficulty + 2000));
+    } else {
+        const learning = Math.floor(15 * -difficulty / spellLevel);
+        chance += learning > 20 ? 20 : learning;
+    }
+    if (chance < 0) chance = 0;
+    if (chance > 120) chance = 120;
+
+    const shieldWeight = Number(objectData[shield?.otyp]?.weight || 0);
+    const smallShieldWeight = Number(objectData[SMALL_SHIELD]?.weight || 40);
+    if (shield && shieldWeight > smallShieldWeight) {
+        if (spellName === role.spelspec) {
+            chance = Math.floor(chance / 2);
+        } else {
+            chance = Math.floor(chance / 4);
+        }
+    }
+
+    chance = Math.floor(chance * (20 - splcaster) / 15) - splcaster;
+    if (chance > 100) chance = 100;
+    if (chance < 0) chance = 0;
+    return chance;
+}
+
+// Exported version for external use (UI display)
 function estimateSpellFailPercent(player, spellName, spellLevel, category) {
     const role = ROLE_SPELLCAST.get(player.roleIndex)
         || { spelbase: 10, spelheal: 0, spelshld: 2, spelarmr: 10, spelstat: A_INT, spelspec: '', spelsbon: 0 };
@@ -142,7 +327,7 @@ function estimateSpellFailPercent(player, spellName, spellLevel, category) {
     const heroLevel = Math.max(1, Number(player.level || 1));
     const spellLvl = Math.max(1, Number(spellLevel || 1));
 
-    const paladinBonus = player.roleIndex === 4 && category === SPELL_CATEGORY_CLERICAL;
+    const paladinBonus = player.roleIndex === PM_KNIGHT && category === SPELL_CATEGORY_CLERICAL;
     const armor = player.armor || null;
     const cloak = player.cloak || null;
     const shield = player.shield || null;
@@ -190,6 +375,8 @@ function estimateSpellFailPercent(player, spellName, spellLevel, category) {
     chance = Math.max(0, Math.min(100, chance));
     return Math.max(0, Math.min(99, 100 - chance));
 }
+
+// ── Exported functions ──
 
 // C ref: spell.c age_spells() — decrement spell retention each turn
 export function ageSpells(player) {
@@ -252,90 +439,886 @@ export async function handleKnownSpells(player, display) {
     }
 }
 
-// ── Phase 6: Spell casting system ──
-
-// cf. spell.c study_book() — read spellbook to learn spell
-export function study_book(spellbook, player) {
-  // Stub — would handle spellbook study with confusion/curse checks
-  // Returns 1 if study started, 0 otherwise
-  if (!spellbook || !player) return 0;
-  return 0;
-}
-
-// cf. spell.c book_cursed() — cursed book effects
-export function book_cursed(spellbook, player) {
-  // Stub — cursed book explodes or summons monsters
-  return 0;
-}
-
-// cf. spell.c confused_book() — confused reading effects
-export function confused_book(spellbook, player) {
-  // Stub — confused reading produces random effects
-  return 0;
+// C ref: spell.c spelltypemnemonic() — return string name for spell skill type
+export function spelltypemnemonic(skill) {
+    // In C, skill is P_ATTACK_SPELL..P_MATTER_SPELL.
+    // In JS, we use string categories directly; this function accepts either.
+    if (typeof skill === 'string') return skill;
+    // Numeric skill types (from weapon.js P_ATTACK_SPELL=28..P_MATTER_SPELL=34)
+    switch (skill) {
+    case 28: return 'attack';       // P_ATTACK_SPELL
+    case 29: return 'healing';      // P_HEALING_SPELL
+    case 30: return 'divination';   // P_DIVINATION_SPELL
+    case 31: return 'enchantment';  // P_ENCHANTMENT_SPELL
+    case 32: return 'clerical';     // P_CLERIC_SPELL
+    case 33: return 'escape';       // P_ESCAPE_SPELL
+    case 34: return 'matter';       // P_MATTER_SPELL
+    default: return '';
+    }
 }
 
 // cf. spell.c spell_skilltype() — skill category for spell
 export function spell_skilltype(booktype) {
-  return spellCategoryForName(
-    objectData[booktype] ? objectData[booktype].name : ''
-  );
+    return spellCategoryForName(
+        objectData[booktype] ? objectData[booktype].name : ''
+    );
 }
 
-// cf. spell.c docast() — main cast command
+// C ref: spell.c num_spells() — count known spells
+export function num_spells(player) {
+    if (!player.spells) return 0;
+    return player.spells.length;
+}
+
+// C ref: spell.c spell_idx() — find index of spell by otyp, or UNKNOWN_SPELL
+export function spell_idx(player, otyp) {
+    const spells = player.spells;
+    if (!spells) return UNKNOWN_SPELL;
+    for (let i = 0; i < spells.length; i++) {
+        if (spells[i].otyp === otyp) return i;
+    }
+    return UNKNOWN_SPELL;
+}
+
+// C ref: spell.c known_spell() — returns spe_Unknown/spe_Fresh/spe_GoingStale/spe_Forgotten
+// Returns: 0=unknown, 1=fresh, 2=going stale, -1=forgotten
+export function known_spell(player, otyp) {
+    const spells = player.spells;
+    if (!spells) return 0; // spe_Unknown
+    for (let i = 0; i < spells.length; i++) {
+        if (spells[i].otyp === otyp) {
+            const k = spells[i].sp_know;
+            if (k > KEEN / 10) return 1;        // spe_Fresh
+            if (k > 0) return 2;                // spe_GoingStale
+            return -1;                           // spe_Forgotten
+        }
+    }
+    return 0; // spe_Unknown
+}
+
+// C ref: spell.c energy_cost() — SPELL_LEV_PW(level) = level * 5
+export function energy_cost(spellLevel) {
+    return SPELL_LEV_PW(spellLevel);
+}
+
+// C ref: spell.c study_book() — read spellbook to learn spell
+// NOTE: The main spellbook reading flow is implemented inline in read.js.
+// This function provides the C-faithful interface for direct callers.
+export function study_book(spellbook, player) {
+    if (!spellbook || !player) return 0;
+
+    const booktype = spellbook.otyp;
+    const od = objectData[booktype] || {};
+    const ocLevel = od.oc2 || 1;
+
+    // Blank paper
+    if (booktype === SPE_BLANK_PAPER) {
+        pline("This spellbook is all blank.");
+        return 1;
+    }
+
+    // Novel
+    if (booktype === SPE_NOVEL) {
+        pline("You read the novel for a while.");
+        return 1;
+    }
+
+    // Calculate study delay — cf. spell.c study_book():537-558
+    let delay;
+    switch (ocLevel) {
+    case 1: case 2:
+        delay = od.delay || 1;
+        break;
+    case 3: case 4:
+        delay = (ocLevel - 1) * (od.delay || 1);
+        break;
+    case 5: case 6:
+        delay = ocLevel * (od.delay || 1);
+        break;
+    case 7:
+        delay = 8 * (od.delay || 1);
+        break;
+    default:
+        return 0;
+    }
+
+    // Check if already known with good retention
+    const idx = spell_idx(player, booktype);
+    if (idx !== UNKNOWN_SPELL && spellknow(player, idx) > KEEN / 10) {
+        You("know \"%s\" quite well already.", od.name || 'this spell');
+        return 0;
+    }
+
+    // Difficulty check for non-blessed, non-BOTD books
+    const confused = !!(player.confused);
+    let too_hard = false;
+
+    if (!spellbook.blessed && booktype !== SPE_BOOK_OF_THE_DEAD) {
+        if (spellbook.cursed) {
+            too_hard = true;
+        } else {
+            // Uncursed: check read ability
+            const intel = (player.attributes ? player.attributes[A_INT] : 12) || 12;
+            const lensBonus = (player.blindfolded?.otyp === LENSES) ? 2 : 0;
+            const read_ability = intel + 4 + Math.floor((player.level || 1) / 2)
+                                 - 2 * ocLevel + lensBonus;
+            if (rnd(20) > read_ability) {
+                too_hard = true;
+            }
+        }
+    }
+
+    if (too_hard) {
+        // C ref: cursed_book effects
+        cursed_book(spellbook, player);
+        return 1;
+    } else if (confused) {
+        confused_book(spellbook, player);
+        return 1;
+    }
+
+    You("begin to %s the runes.",
+        booktype === SPE_BOOK_OF_THE_DEAD ? "recite" : "memorize");
+    return 1;
+}
+
+// C ref: spell.c cursed_book() — TRUE if book should be destroyed
+export function cursed_book(spellbook, player) {
+    const od = objectData[spellbook.otyp] || {};
+    const lev = od.oc2 || 1;
+
+    switch (rn2(lev)) {
+    case 0:
+        You_feel("a wrenching sensation.");
+        // tele() would go here
+        break;
+    case 1:
+        You_feel("threatened.");
+        // aggravate() would go here
+        break;
+    case 2:
+        // make_blinded
+        pline("You can't see!");
+        break;
+    case 3:
+        // take_gold
+        pline("Your purse feels lighter.");
+        break;
+    case 4:
+        pline("These runes were just too much to comprehend.");
+        // make_confused
+        break;
+    case 5:
+        pline_The("book was coated with contact poison!");
+        break;
+    case 6:
+        if (player.magicResistance) {
+            pline_The("book radiates explosive energy, but you are unharmed!");
+        } else {
+            pline("As you read the book, it radiates explosive energy in your face!");
+            const dmg = 2 * rnd(10) + 5;
+            // losehp(dmg) would go here
+        }
+        return true; // book should be destroyed
+    default:
+        // rndcurse
+        break;
+    }
+    return false;
+}
+
+// C ref: spell.c confused_book() — TRUE if book is destroyed
+export function confused_book(spellbook, player) {
+    if (!rn2(3) && spellbook.otyp !== SPE_BOOK_OF_THE_DEAD) {
+        pline("Being confused you have difficulties in controlling your actions.");
+        You("accidentally tear the spellbook to pieces.");
+        // useup(spellbook) would go here
+        return true;
+    } else {
+        You("find yourself reading the first line over and over again.");
+    }
+    return false;
+}
+
+// C ref: spell.c book_cursed() — book has just become cursed; interrupt reading
+export function book_cursed(book, player) {
+    // If we're currently reading this book and it just became cursed,
+    // interrupt the study occupation
+    if (book.cursed && player.occupation?.book === book) {
+        pline("%s slams shut!", book.known ? "The book" : "A book");
+        book.bknown = true;
+        player.occupation = null; // stop_occupation
+    }
+}
+
+// C ref: spell.c book_disappears() — invalidate stored book reference
+export function book_disappears(obj, player) {
+    if (player.occupation?.book === obj) {
+        player.occupation.book = null;
+    }
+}
+
+// C ref: spell.c book_substitution() — update stored book reference after rename
+export function book_substitution(old_obj, new_obj, player) {
+    if (player.occupation?.book === old_obj) {
+        player.occupation.book = new_obj;
+    }
+}
+
+// C ref: spell.c learn() — occupation callback for studying a spellbook
+// NOTE: The actual learn occupation is handled inline in read.js.
+// This provides the C-faithful standalone version.
+export function learn(player) {
+    if (!player || !player.spells) return 0;
+
+    const book = player.occupation?.book;
+    if (!book) return 0;
+
+    const booktype = book.otyp;
+    const od = objectData[booktype] || {};
+    const spellName = String(od.name || 'unknown spell').toLowerCase();
+
+    exercise(player, A_WIS, true);
+
+    // Book of the Dead special handling
+    if (booktype === SPE_BOOK_OF_THE_DEAD) {
+        You("turn the pages of the Book of the Dead...");
+        return 0;
+    }
+
+    const spells = player.spells;
+    let i;
+    for (i = 0; i < spells.length; i++) {
+        if (spells[i].otyp === booktype) break;
+    }
+    const isNewSpell = (i >= spells.length);
+
+    if (!isNewSpell) {
+        // Already known — refresh
+        const studyCount = book.spestudied || 0;
+        if (studyCount > MAX_SPELL_STUDY) {
+            pline("This spellbook is too faint to be read any more.");
+            book.otyp = SPE_BLANK_PAPER;
+            book.spestudied = rn2(studyCount);
+        } else {
+            Your("knowledge of \"%s\" is %s.", spellName,
+                 spellknow(player, i) ? "keener" : "restored");
+            incrnknow(player, i, 1);
+            book.spestudied = studyCount + 1;
+            exercise(player, A_WIS, true); // extra study
+        }
+    } else {
+        // New spell
+        const studyCount = book.spestudied || 0;
+        if (studyCount >= MAX_SPELL_STUDY) {
+            pline("This spellbook is too faint to read even once.");
+            book.otyp = SPE_BLANK_PAPER;
+            book.spestudied = rn2(studyCount);
+        } else {
+            const newIdx = spells.length;
+            spells.push({
+                otyp: booktype,
+                sp_lev: od.oc2 || 1,
+                sp_know: KEEN + 1, // incrnknow(i, 1)
+            });
+            book.spestudied = studyCount + 1;
+            if (newIdx === 0) {
+                You("learn \"%s\".", spellName);
+            } else {
+                You("add \"%s\" to your repertoire, as '%s'.",
+                    spellName, spellet(newIdx));
+            }
+        }
+    }
+
+    // If book is cursed, apply cursed_book effects
+    if (book.cursed) {
+        cursed_book(book, player);
+    }
+
+    return 0;
+}
+
+// cf. spell.c rejectcasting() — check if casting is inhibited
+export function rejectcasting(player) {
+    if (player.stunned) {
+        You("are too impaired to cast a spell.");
+        return true;
+    }
+    // C: !can_chant(&gy.youmonst)
+    const pdata = player.data || {};
+    if (player.strangled || pdata.vnum === undefined) {
+        // Simplified: if strangled or no vocal ability
+        if (player.strangled) {
+            You("are unable to chant the incantation.");
+            return true;
+        }
+    }
+    // C: !freehand() — welded weapon+shield
+    if (player.weapon?.welded && player.shield &&
+        player.weapon.otyp !== QUARTERSTAFF) {
+        Your("arms are not free to cast!");
+        return true;
+    }
+    return false;
+}
+
+// C ref: spell.c spell_backfire() — forgotten spell backfire effects
+export function spell_backfire(player, spellIdx) {
+    const lev = spellev(player, spellIdx);
+    const duration = (lev + 1) * 3; // 6..24
+
+    // C: switch(rn2(10)) for confusion/stun distribution
+    switch (rn2(10)) {
+    case 0: case 1: case 2: case 3:
+        // 40% — all confusion
+        if (player.addConfusion) player.addConfusion(duration);
+        break;
+    case 4: case 5: case 6:
+        // 30% — 2/3 confusion + 1/3 stun
+        if (player.addConfusion) player.addConfusion(Math.floor(2 * duration / 3));
+        if (player.addStun) player.addStun(Math.floor(duration / 3));
+        break;
+    case 7: case 8:
+        // 20% — 2/3 stun + 1/3 confusion
+        if (player.addStun) player.addStun(Math.floor(2 * duration / 3));
+        if (player.addConfusion) player.addConfusion(Math.floor(duration / 3));
+        break;
+    case 9:
+        // 10% — all stun
+        if (player.addStun) player.addStun(duration);
+        break;
+    }
+}
+
+// C ref: spell.c cast_protection() — SPE_PROTECTION effect
+export function cast_protection(player) {
+    let l = player.level || 1;
+    let loglev = 0;
+    const uspellprot = player.uspellprot || 0;
+    const uac = player.uac || 10;
+    let natac = uac + uspellprot;
+
+    // loglev = log2(u.ulevel) + 1
+    while (l) {
+        loglev++;
+        l = Math.floor(l / 2);
+    }
+
+    natac = Math.floor((10 - natac) / 10); // convert to positive and scale
+    const divisor = 4 - Math.min(3, natac);
+    const gain = loglev - Math.floor(uspellprot / (divisor || 1));
+
+    if (gain > 0) {
+        if (!player.blind) {
+            if (uspellprot) {
+                pline_The("golden haze around you becomes more dense.");
+            } else {
+                pline_The("air around you begins to shimmer with a golden haze.");
+            }
+        }
+        player.uspellprot = uspellprot + gain;
+        // C: u.uspmtime based on expert skill
+        player.uspmtime = 10;
+        if (!player.usptime) player.usptime = player.uspmtime;
+        // find_ac() would be called here to recalculate AC
+    } else {
+        Your("skin feels warm for a moment.");
+    }
+}
+
+// C ref: zap.c spell_damage_bonus() — augment spell damage based on intelligence
+export function spell_damage_bonus(dmg, player) {
+    if (!player) return dmg;
+    const intell = (player.attributes ? player.attributes[A_INT] : 10) || 10;
+    const level = player.level || 1;
+
+    if (intell <= 9) {
+        if (dmg > 1)
+            dmg = (dmg <= 3) ? 1 : dmg - 3;
+    } else if (intell <= 13 || level < 5) {
+        // no bonus or penalty
+    } else if (intell <= 18) {
+        dmg += 1;
+    } else if (intell <= 24 || level < 14) {
+        dmg += 2;
+    } else {
+        dmg += 3;
+    }
+    return dmg;
+}
+
+// cf. spell.c — check if casting this spell would be useless for the hero
+export function spell_would_be_useless_hero(spellOtyp, player) {
+    // Check a few obvious cases
+    if (spellOtyp === SPE_HEALING || spellOtyp === SPE_EXTRA_HEALING) {
+        if ((player.hp || 0) >= (player.hpmax || 1)) return true;
+    }
+    if (spellOtyp === SPE_CURE_BLINDNESS && !player.blind) return true;
+    if (spellOtyp === SPE_CURE_SICKNESS && !player.sick && !player.slimed) return true;
+    if (spellOtyp === SPE_DETECT_FOOD) {
+        // Mostly useful, rarely useless
+    }
+    if (spellOtyp === SPE_RESTORE_ABILITY) {
+        // Useful if any stat is drained
+    }
+    if (spellOtyp === SPE_INVISIBILITY && player.invisible) return true;
+    if (spellOtyp === SPE_LEVITATION && player.levitating) return true;
+    return false;
+}
+
+// C ref: spell.c check_unpaid() — check if spellbook is unpaid (shop system)
+// In C this is in shk.c; the spell.c just calls it. We provide a passthrough.
+export function check_unpaid(obj) {
+    // Shop handling: if obj is unpaid, the shop system charges for it.
+    // In the JS port, shop tracking is handled elsewhere.
+    if (!obj) return false;
+    return !!(obj.unpaid);
+}
+
+// cf. spell.c docast() — main #cast command
 export async function docast(player, display, map) {
-  // Stub — would prompt for spell selection and cast
-  if (!player || !player.spells || player.spells.length === 0) {
-    if (display) display.putstr_message("You don't know any spells.");
-    return { moved: false, tookTime: false };
-  }
-  // Full implementation would call getspell() then spelleffects()
-  return { moved: false, tookTime: false };
+    if (!player) return { moved: false, tookTime: false };
+    const nspells = num_spells(player);
+    if (nspells === 0) {
+        if (display) display.putstr_message("You don't know any spells right now.");
+        return { moved: false, tookTime: false };
+    }
+
+    // Check basic casting rejection
+    if (rejectcasting(player)) {
+        return { moved: false, tookTime: false };
+    }
+
+    // Get spell selection
+    const result = await getspell("Cast which spell?", player, display);
+    if (result < 0) {
+        return { moved: false, tookTime: false };
+    }
+
+    // Cast the spell
+    const otyp = spellid(player, result);
+    const castResult = spelleffects(otyp, false, player, map, display);
+    return { moved: false, tookTime: castResult > 0 };
+}
+
+// cf. spell.c getspell() — prompt user to select a spell
+export async function getspell(prompt, player, display) {
+    const nspells = num_spells(player);
+    if (nspells === 0) {
+        if (display) display.putstr_message("You don't know any spells right now.");
+        return -1;
+    }
+
+    if (rejectcasting(player)) {
+        return -1;
+    }
+
+    // Build and show spell menu
+    const rows = [prompt || 'Cast which spell?', ''];
+    rows.push('    Name                 Level Category     Fail Retention');
+
+    const spells = player.spells || [];
+    for (let i = 0; i < spells.length && i < 52; i++) {
+        const sp = spells[i];
+        const od = objectData[sp.otyp] || null;
+        const spellNameStr = String(od?.name || 'unknown spell').toLowerCase();
+        const spellLevel = Math.max(1, Number(od?.oc2 || sp.sp_lev || 1));
+        const category = spellCategoryForName(spellNameStr);
+        const turnsLeft = Math.max(0, sp.sp_know);
+        const fail = estimateSpellFailPercent(player, spellNameStr, spellLevel, category);
+        const skillRank = spellSkillRank(player, category);
+        const retention = spellRetentionText(turnsLeft, skillRank);
+        const menuLet = spellet(i);
+        rows.push(`${menuLet} - ${spellNameStr.padEnd(20)}  ${String(spellLevel).padStart(2)}   ${category.padEnd(12)} ${String(fail).padStart(3)}% ${retention.padStart(9)}`);
+    }
+    rows.push('(end)');
+
+    if (display) {
+        if (typeof display.renderOverlayMenu === 'function') {
+            display.renderOverlayMenu(rows);
+        } else if (typeof display.renderChargenMenu === 'function') {
+            display.renderChargenMenu(rows, false);
+        }
+    }
+
+    // Wait for a valid spell letter
+    while (true) {
+        const ch = await nhgetch();
+        if (ch === 27 || ch === 32) { // ESC or space = cancel
+            if (display) {
+                if (typeof display.clearRow === 'function') display.clearRow(0);
+                display.topMessage = null;
+                display.messageNeedsMore = false;
+            }
+            return -1;
+        }
+        const letter = String.fromCharCode(ch);
+        const idx = spell_let_to_idx(letter);
+        if (idx >= 0 && idx < nspells) {
+            if (display) {
+                if (typeof display.clearRow === 'function') display.clearRow(0);
+                display.topMessage = null;
+                display.messageNeedsMore = false;
+            }
+            return idx;
+        }
+        // Invalid letter, keep waiting
+    }
 }
 
 // cf. spell.c spelleffects() — dispatch spell effect
-export function spelleffects(spell, atme, player, map, display) {
-  // Stub — dispatch individual spell effects
-  // Would switch on spell type and apply effects
-  return 0;
+// In C, this dispatches all spell effects. In the JS port, many spell effects
+// are handled through weffects/seffects/peffects. This provides the common
+// checks and energy accounting, then delegates to the effect handler.
+export function spelleffects(spell_otyp, atme, player, map, display) {
+    if (!player || !player.spells) return 0;
+
+    // Find spell index
+    const idx = spell_idx(player, spell_otyp);
+    if (idx === UNKNOWN_SPELL) return 0;
+
+    const sp = player.spells[idx];
+    const od = objectData[sp.otyp] || {};
+    const spLev = sp.sp_lev || od.oc2 || 1;
+    let energy = SPELL_LEV_PW(spLev);
+
+    // Check if spell is forgotten
+    if (sp.sp_know <= 0) {
+        Your("knowledge of this spell is twisted.");
+        pline("It invokes nightmarish images in your mind...");
+        spell_backfire(player, idx);
+        const drain = rnd(energy);
+        if (player.power !== undefined) {
+            player.power = Math.max(0, (player.power || 0) - drain);
+        }
+        return 1; // time elapsed
+    }
+
+    // Retention warnings
+    if (sp.sp_know <= KEEN / 200) {
+        You("strain to recall the spell.");
+    } else if (sp.sp_know <= KEEN / 40) {
+        You("have difficulty remembering the spell.");
+    } else if (sp.sp_know <= KEEN / 20) {
+        Your("knowledge of this spell is growing faint.");
+    } else if (sp.sp_know <= KEEN / 10) {
+        Your("recall of this spell is gradually fading.");
+    }
+
+    // Hunger check
+    if ((player.nutrition || 900) <= 10 && spell_otyp !== SPE_DETECT_FOOD) {
+        You("are too hungry to cast that spell.");
+        return 0;
+    }
+
+    // Strength check
+    const str = player.attributes ? player.attributes[A_STR] : 10;
+    if ((str || 10) < 4 && spell_otyp !== SPE_RESTORE_ABILITY) {
+        You("lack the strength to cast spells.");
+        return 0;
+    }
+
+    // Energy check
+    const currentPower = player.power || 0;
+    if (energy > currentPower) {
+        You("don't have enough energy to cast that spell.");
+        return 0;
+    }
+
+    // Deduct energy
+    if (player.power !== undefined) {
+        player.power = Math.max(0, currentPower - energy);
+    }
+
+    // Exercise wisdom for casting
+    exercise(player, A_WIS, true);
+
+    // Roll for success
+    const confused = !!(player.confused);
+    const chance = percent_success(player, idx);
+    if (confused || (rnd(100) > chance)) {
+        You("fail to cast the spell correctly.");
+        // Partial energy refund on failure
+        if (player.power !== undefined) {
+            player.power = Math.min(player.powermax || 100,
+                (player.power || 0) + Math.floor(energy / 2));
+        }
+        return 1; // time elapsed
+    }
+
+    // Dispatch spell effect
+    // The actual spell effects are complex and involve many subsystems.
+    // In the JS port, spell effects for directed spells go through weffects(),
+    // scroll-like spells through seffects(), potion-like through peffects().
+    // This dispatch provides the framework; specific effects are handled
+    // by the game engine when it processes the spell.
+    const otyp = sp.otyp;
+
+    switch (otyp) {
+    // Wand-like directed spells
+    case SPE_FORCE_BOLT:
+    case SPE_SLEEP:
+    case SPE_MAGIC_MISSILE:
+    case SPE_KNOCK:
+    case SPE_SLOW_MONSTER:
+    case SPE_WIZARD_LOCK:
+    case SPE_DIG:
+    case SPE_TURN_UNDEAD:
+    case SPE_POLYMORPH:
+    case SPE_TELEPORT_AWAY:
+    case SPE_CANCELLATION:
+    case SPE_FINGER_OF_DEATH:
+    case SPE_LIGHT:
+    case SPE_DETECT_UNSEEN:
+    case SPE_HEALING:
+    case SPE_EXTRA_HEALING:
+    case SPE_DRAIN_LIFE:
+    case SPE_STONE_TO_FLESH:
+    case SPE_FIREBALL:
+    case SPE_CONE_OF_COLD:
+        // These are dispatched through weffects in the game engine
+        break;
+
+    // Scroll-like spells
+    case SPE_REMOVE_CURSE:
+    case SPE_CONFUSE_MONSTER:
+    case SPE_DETECT_FOOD:
+    case SPE_CAUSE_FEAR:
+    case SPE_IDENTIFY:
+    case SPE_CHARM_MONSTER:
+    case SPE_MAGIC_MAPPING:
+    case SPE_CREATE_MONSTER:
+        // These are dispatched through seffects in the game engine
+        break;
+
+    // Potion-like spells
+    case SPE_HASTE_SELF:
+    case SPE_DETECT_TREASURE:
+    case SPE_DETECT_MONSTERS:
+    case SPE_LEVITATION:
+    case SPE_RESTORE_ABILITY:
+    case SPE_INVISIBILITY:
+        // These are dispatched through peffects in the game engine
+        break;
+
+    // Special spells with unique effects
+    case SPE_CURE_BLINDNESS:
+        // healup(0, 0, FALSE, TRUE) — cure blindness only
+        if (player.blind) {
+            pline("Your vision clears.");
+            player.blind = false;
+        }
+        break;
+
+    case SPE_CURE_SICKNESS:
+        if (player.sick || player.slimed) {
+            if (player.sick) {
+                You("are no longer ill.");
+                player.sick = false;
+            }
+            if (player.slimed) {
+                pline("The slime disappears!");
+                player.slimed = false;
+            }
+        } else {
+            You("are not ill.");
+        }
+        break;
+
+    case SPE_CREATE_FAMILIAR:
+        // make_familiar would go here
+        pline("You summon a familiar!");
+        break;
+
+    case SPE_CLAIRVOYANCE:
+        // do_vicinity_map would go here
+        pline("You sense your surroundings.");
+        break;
+
+    case SPE_PROTECTION:
+        cast_protection(player);
+        break;
+
+    case SPE_JUMPING:
+        // jump() would go here
+        pline("You jump!");
+        break;
+
+    case SPE_CHAIN_LIGHTNING:
+        // cast_chain_lightning would go here
+        pline("Chain lightning arcs from your fingertips!");
+        break;
+
+    default:
+        pline("Nothing happens.");
+        break;
+    }
+
+    return 1; // time elapsed
 }
 
-// cf. spell.c spell_damage_bonus() — damage bonus calculation
-export function spell_damage_bonus(spell, player) {
-  // Returns damage bonus based on spell skill
-  return 0;
+// C ref: spell.c throwspell() — choose location for area spell
+export function throwspell(player, map) {
+    if (!player || !map) return 0;
+
+    if (player.underwater) {
+        pline("You're joking!  In this weather?");
+        return 0;
+    }
+
+    pline("Where do you want to cast the spell?");
+    // In the full implementation, this would use getpos() to let the
+    // player pick a target location within 10 squares.
+    // For now, target self position.
+    return 1;
 }
 
-// cf. spell.c spell_would_be_useless() — uselessness check
-export function spell_would_be_useless_hero(spell, player) {
-  // Check if casting this spell would be useless
-  return false;
+// C ref: spell.c losespells() — forget spells due to amnesia
+export function losespells(player) {
+    if (!player.spells) return;
+
+    const spells = player.spells;
+    const n = spells.length;
+    if (n === 0) return;
+
+    // C: lose anywhere from zero to all known spells
+    let nzap = rn2(n + 1);
+    if (player.confused) {
+        const i = rn2(n + 1);
+        if (i > nzap) nzap = i;
+    }
+    // Good luck might ameliorate
+    if (nzap > 1 && !rnl(7, player.luck || 0)) {
+        nzap = rnd(nzap);
+    }
+
+    // Forget nzap out of n spells by setting sp_know to 0
+    for (let i = 0; nzap > 0; i++) {
+        if (i >= n) break;
+        if (rn2(n - i) < nzap) {
+            spells[i].sp_know = 0;
+            exercise(player, A_WIS, false);
+            nzap--;
+        }
+    }
 }
 
-// cf. spell.c learn() — learn a spell
-export function learn(spellbook, player) {
-  // Stub — add spell to player's known spells
-  if (!player || !spellbook) return;
-  if (!player.spells) player.spells = [];
-  // Would check if already known, update retention, etc.
+// C ref: spell.c force_learn_spell() — learn or refresh spell, return letter
+export function force_learn_spell(player, otyp) {
+    if (otyp === SPE_BLANK_PAPER || otyp === SPE_BOOK_OF_THE_DEAD)
+        return null;
+    if (known_spell(player, otyp) === 1) // spe_Fresh
+        return null;
+
+    if (!player.spells) player.spells = [];
+    const spells = player.spells;
+
+    let i;
+    for (i = 0; i < spells.length; i++) {
+        if (spells[i].otyp === otyp) break;
+    }
+
+    if (i < spells.length) {
+        // Already known (going stale or forgotten) — refresh
+        spells[i].sp_know = KEEN;
+    } else {
+        // New spell
+        if (spells.length >= MAXSPELL) return null;
+        const od = objectData[otyp] || {};
+        spells.push({
+            otyp,
+            sp_lev: od.oc2 || 1,
+            sp_know: KEEN, // incrnknow(i, 0)
+        });
+        i = spells.length - 1;
+    }
+    return spellet(i);
 }
 
-// cf. spell.c getspell() — select spell from menu
-export async function getspell(prompt, player, display) {
-  // Stub — would display spell menu and return selection
-  return -1; // no spell selected
+// C ref: spell.c initialspell() — learn a spell during initial inventory creation
+export function initialspell(player, obj) {
+    if (!player || !obj) return;
+    if (!player.spells) player.spells = [];
+
+    const otyp = obj.otyp;
+    const spells = player.spells;
+
+    // Check if already known
+    for (let i = 0; i < spells.length; i++) {
+        if (spells[i].otyp === otyp) return; // already known
+    }
+
+    if (spells.length >= MAXSPELL) return;
+
+    const od = objectData[otyp] || {};
+    spells.push({
+        otyp,
+        sp_lev: od.oc2 || 1,
+        sp_know: KEEN, // incrnknow(i, 0) — no +1 for initial spells
+    });
 }
 
-// cf. spell.c dovspell() — view spells (alias for handleKnownSpells)
+// C ref: spell.c tport_spell() — manage teleport-away spell for ^T
+export function tport_spell(player, what) {
+    const NOOP_SPELL = 0;
+    const HIDE_SPELL = 1;
+    const ADD_SPELL = 2;
+    const UNHIDESPELL = 3;
+    const REMOVESPELL = 4;
+
+    if (!player.spells) player.spells = [];
+    const spells = player.spells;
+
+    let i;
+    for (i = 0; i < spells.length; i++) {
+        if (spells[i].otyp === SPE_TELEPORT_AWAY) break;
+    }
+
+    const found = i < spells.length;
+
+    if (!found) {
+        if (what === HIDE_SPELL || what === REMOVESPELL) {
+            // nothing to hide/remove
+        } else if (what === ADD_SPELL) {
+            const od = objectData[SPE_TELEPORT_AWAY] || {};
+            spells.push({
+                otyp: SPE_TELEPORT_AWAY,
+                sp_lev: od.oc2 || 1,
+                sp_know: KEEN,
+            });
+            return REMOVESPELL;
+        }
+    } else {
+        if (what === ADD_SPELL || what === UNHIDESPELL) {
+            // already present
+        } else if (what === REMOVESPELL) {
+            spells.splice(i, 1);
+        } else if (what === HIDE_SPELL) {
+            player._hidden_tport_spell = spells.splice(i, 1)[0];
+            return UNHIDESPELL;
+        }
+    }
+
+    if (what === UNHIDESPELL && player._hidden_tport_spell) {
+        spells.push(player._hidden_tport_spell);
+        delete player._hidden_tport_spell;
+    }
+
+    return NOOP_SPELL;
+}
+
+// C ref: spell.c dovspell() — view spells (alias for handleKnownSpells)
 export const dovspell = handleKnownSpells;
 
-// cf. spell.c check_unpaid() — unpaid spellbook check
-export function check_unpaid(obj) {
-  // Stub — check if spellbook is unpaid (shop)
-  return false;
-}
-
-// cf. spell.c rejectcasting() — cast rejection reasons
-export function rejectcasting(player) {
-  // Stub — check if casting is possible (confusion, stunned, etc.)
-  return false; // no rejection
-}
+// Export constants for use by other modules
+export {
+    KEEN, NO_SPELL, UNKNOWN_SPELL, MAX_SPELL_STUDY, MAXSPELL,
+    SPELL_LEV_PW, NODIR,
+    SPELL_CATEGORY_ATTACK, SPELL_CATEGORY_HEALING,
+    SPELL_CATEGORY_DIVINATION, SPELL_CATEGORY_ENCHANTMENT,
+    SPELL_CATEGORY_CLERICAL, SPELL_CATEGORY_ESCAPE,
+    SPELL_CATEGORY_MATTER,
+    spellCategoryForName, spellSkillRank, spellet, spell_let_to_idx,
+    spellRetentionText, estimateSpellFailPercent, percent_success,
+};

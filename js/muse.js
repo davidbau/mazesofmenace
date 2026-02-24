@@ -5,165 +5,2468 @@
 //              linedup_chk_corpse, m_use_undead_turning, hero_behind_chokepoint,
 //              mon_has_friends, mon_likes_objpile_at, find_offensive,
 //              mbhitm, fhito_loc, mbhit, use_offensive, rnd_offensive_item,
-//              find_misc, muse_newcham_mon, mloot_container, use_misc
-//
-// muse.c handles monster AI for using items in combat:
-//   find_defensive(): search monster inventory for defensive items or escape routes.
-//   use_defensive(): execute selected defensive action (potions, wands, etc.).
-//   find_offensive(): search for offensive items to attack the hero.
-//   use_offensive(): execute offensive action (zap wand, throw, etc.).
-//   find_misc(): search for miscellaneous items (invisibility, speed, polymorph).
-//   use_misc(): execute miscellaneous actions.
-//
-// JS implementations:
-//   (none yet — monster item AI not yet ported)
+//              find_misc, muse_newcham_mon, mloot_container, use_misc,
+//              you_aggravate, mon_consume_unstone, cures_stoning,
+//              mcould_eat_tin, muse_unslime, cures_sliming, green_mon,
+//              searches_for_item, mon_reflects, ureflects,
+//              mcureblindness, munstone, munslime, rnd_misc_item
 
-// cf. muse.c:57 [static] — precheck(mon, obj): monster item use precondition
-// Checks if a monster can use an item; handles special potions and cursed wand backfire.
-// TODO: muse.c:57 — precheck(): monster item use precondition
-
-// cf. muse.c:163 [static] — mzapwand(mtmp, otmp, self): monster zap wand message
-// Messages monster zapping a wand; deducts charge and clears charge memory if unseen.
-// TODO: muse.c:163 — mzapwand(): monster wand zap message
-
-// cf. muse.c:193 [static] — mplayhorn(mtmp, otmp, self): monster play horn message
-// Messages monster playing a magical horn and deducts its charge.
-// TODO: muse.c:193 — mplayhorn(): monster horn play message
-
-// cf. muse.c:236 [static] — mreadmsg(mtmp, otmp): monster read scroll message
-// Displays message for unseen or seen monster reading a scroll and reveals its label.
-// TODO: muse.c:236 — mreadmsg(): monster scroll read message
-
-// cf. muse.c:291 [static] — mquaffmsg(mtmp, otmp): monster drink potion message
-// Shows message when a monster drinks a potion.
-// TODO: muse.c:291 — mquaffmsg(): monster potion drink message
-
-// cf. muse.c:335 [static] — m_use_healing(mtmp): check monster has healing potions
-// Checks if a monster has healing potions and sets defensive item priority.
-// TODO: muse.c:335 — m_use_healing(): monster healing potion check
-
-// cf. muse.c:359 [static] — m_sees_sleepy_soldier(mtmp): check for sleeping soldiers
-// Returns true if a monster can see a nearby sleeping soldier within 3 squares.
-// TODO: muse.c:359 — m_sees_sleepy_soldier(): sleeping soldier detection
-
-// cf. muse.c:382 [static] — m_tele(mtmp, vismon, oseen, how): monster teleport
-// Teleports a monster or restricts teleportation based on level restrictions and amulet.
-// TODO: muse.c:382 — m_tele(): monster teleportation
-
-// cf. muse.c:418 [static] — m_next2m(mtmp): check monster adjacent to another
-// Returns true if another monster is adjacent to the given monster.
-// TODO: muse.c:418 — m_next2m(): adjacent monster check
-
-// cf. muse.c:439 — find_defensive(mtmp, tryescape): find monster defensive item
-// Searches monster inventory and surroundings for defensive items or escape routes.
-// TODO: muse.c:439 — find_defensive(): monster defensive item search
-
-// cf. muse.c:778 [static] — mon_escape(mtmp, vismon): monster escape check
-// Checks if a monster can escape the dungeon via upstairs, removing it if possible.
-// TODO: muse.c:778 — mon_escape(): monster dungeon escape
-
-// cf. muse.c:794 — use_defensive(mtmp): execute monster defensive action
-// Executes the defensive action selected by find_defensive.
-// TODO: muse.c:794 — use_defensive(): monster defensive action execution
-
-// cf. muse.c:1220 — rnd_defensive_item(mtmp): random defensive item selection
-// Randomly selects a defensive item type appropriate for the monster's difficulty.
-// TODO: muse.c:1220 — rnd_defensive_item(): random monster defensive item
-
-// cf. muse.c:1292 [static] — linedup_chk_corpse(x, y): corpse at location callback
-// Callback checking if there's a corpse at the specified location.
-// TODO: muse.c:1292 — linedup_chk_corpse(): corpse location callback
-
-// cf. muse.c:1298 [static] — m_use_undead_turning(mtmp, obj): monster use undead wand
-// Sets offensive action if monster has wand of undead turning and hero carries corpse nearby.
-// TODO: muse.c:1298 — m_use_undead_turning(): monster undead turning wand use
-
-// cf. muse.c:1341 [static] — hero_behind_chokepoint(mtmp): check hero at chokepoint
-// Returns true if the hero is behind a terrain chokepoint from the monster's perspective.
-// TODO: muse.c:1341 — hero_behind_chokepoint(): hero chokepoint check
-
-// cf. muse.c:1368 [static] — mon_has_friends(mtmp): check monster has allies
-// Returns true if a hostile monster has other hostile monsters adjacent to it.
-// TODO: muse.c:1368 — mon_has_friends(): monster ally check
-
-// cf. muse.c:1392 [static] — mon_likes_objpile_at(mtmp, x, y): check monster wants objects
-// Returns true if a monster wants any items in an object pile at a location.
-// TODO: muse.c:1392 — mon_likes_objpile_at(): monster object desire check
-
-// cf. muse.c:1419 — find_offensive(mtmp): find monster offensive item
-// Searches for offensive items in monster inventory suitable for attacking the hero.
-// TODO: muse.c:1419 — find_offensive(): monster offensive item search
-
-// cf. muse.c:1595 [static] — mbhitm(mtmp, otmp): monster hit by wand/scroll/potion
-// Handles a monster being hit by an offensive wand, scroll, or potion effect.
-// TODO: muse.c:1595 — mbhitm(): monster item hit handling
-
-// cf. muse.c:1704 [static] — fhito_loc(obj, tx, ty, fhito): apply function to location objects
-// Applies a function to all objects at the target location for wand effects.
-// TODO: muse.c:1704 — fhito_loc(): location object wand effect application
-
-// cf. muse.c:1731 [static] — mbhit(mon, range, fhitm, fhito, obj): monster wand beam
-// Modified bhit for monsters zapping wands along a path.
-// TODO: muse.c:1731 — mbhit(): monster wand beam projection
-
-// cf. muse.c:1815 — use_offensive(mtmp): execute monster offensive action
-// Executes the offensive action selected by find_offensive.
-// TODO: muse.c:1815 — use_offensive(): monster offensive action execution
-
-// cf. muse.c:2014 — rnd_offensive_item(mtmp): random offensive item selection
-// Randomly selects an appropriate offensive item based on monster difficulty.
-// TODO: muse.c:2014 — rnd_offensive_item(): random monster offensive item
-
-// cf. muse.c:2074 — find_misc(mtmp): find monster miscellaneous item
-// Searches for miscellaneous items like invisibility, speed, or polymorph potions.
-// TODO: muse.c:2074 — find_misc(): monster misc item search
-
-// cf. muse.c:2227 [static] — muse_newcham_mon(mon): polymorph target selection
-// Selects appropriate monster type for polymorph based on worn armor.
-// TODO: muse.c:2227 — muse_newcham_mon(): polymorph target selection
-
-// cf. muse.c:2241 [static] — mloot_container(mon, container, vismon): monster loot container
-// Monster removes and takes items from a container in inventory.
-// TODO: muse.c:2241 — mloot_container(): monster container looting
-
-// cf. muse.c:2360 — use_misc(mtmp): execute monster miscellaneous action
-// Executes miscellaneous actions like becoming invisible, polymorphing, or looting containers.
-// TODO: muse.c:2360 — use_misc(): monster misc action execution
+import { isok, STAIRS, LADDER, SCORR, CORR, ACCESSIBLE,
+         TELEP_TRAP, TRAPDOOR, HOLE, PIT, SPIKED_PIT, BEAR_TRAP, WEB,
+         POLY_TRAP, FIRE_TRAP,
+         is_pit, is_hole,
+         IS_FURNITURE, IS_DRAWBRIDGE } from './config.js';
+import { rn2, rnd, rn1, d } from './rng.js';
+import { pline, pline_mon, You_hear, verbalize } from './pline.js';
+import { dist2, distmin, BOLT_LIM, mondead, mpickobj, mdrop_obj,
+         newsym, map_invisible, monnear } from './monutil.js';
+import { is_animal, is_mindless, nohands, is_mercenary, is_unicorn,
+         is_floater, is_flyer, throws_rocks, passes_walls,
+         haseyes, is_undead, poly_when_stoned,
+         resists_ston, touch_petrifies, amorphous, noncorporeal,
+         unsolid, resists_fire, resists_acid, dmgtype, attacktype,
+         can_blow, monDisplayName, canseemon,
+         dmgtype_fromattack, is_bat, nonliving } from './mondata.js';
+import { mons, PM_GHOST, PM_DJINNI, PM_GUARD, PM_PESTILENCE,
+         PM_KI_RIN, PM_LIZARD, PM_GIANT_EEL, PM_CROCODILE,
+         PM_ACID_BLOB, PM_SILVER_DRAGON, PM_CHROMATIC_DRAGON,
+         PM_STALKER, PM_GRID_BUG,
+         AT_EXPL, AT_GAZE, AT_NONE, AT_BREA, G_UNIQ, G_NOCORPSE,
+         S_GHOST, S_KOP, S_EYE, S_LIGHT, S_VAMPIRE,
+         NON_PM, MZ_SMALL } from './monsters.js';
+import { CORPSE, TIN, EGG, BOULDER,
+         POTION_CLASS, WAND_CLASS, SCROLL_CLASS, FOOD_CLASS,
+         AMULET_CLASS, TOOL_CLASS, WEAPON_CLASS,
+         POT_HEALING, POT_EXTRA_HEALING, POT_FULL_HEALING,
+         POT_SICKNESS, POT_ACID, POT_OIL,
+         POT_CONFUSION, POT_BLINDNESS, POT_PARALYSIS,
+         POT_SPEED, POT_INVISIBILITY, POT_SLEEPING,
+         POT_GAIN_LEVEL, POT_POLYMORPH,
+         WAN_TELEPORTATION, WAN_DIGGING, WAN_CREATE_MONSTER,
+         WAN_UNDEAD_TURNING, WAN_DEATH, WAN_SLEEP,
+         WAN_FIRE, WAN_COLD, WAN_LIGHTNING,
+         WAN_MAGIC_MISSILE, WAN_STRIKING,
+         WAN_MAKE_INVISIBLE, WAN_SPEED_MONSTER, WAN_POLYMORPH,
+         SCR_TELEPORTATION, SCR_CREATE_MONSTER, SCR_EARTH, SCR_FIRE,
+         FROST_HORN, FIRE_HORN, BUGLE, UNICORN_HORN,
+         BULLWHIP, EXPENSIVE_CAMERA, STRANGE_OBJECT,
+         HEAVY_IRON_BALL,
+         SHIELD_OF_REFLECTION, AMULET_OF_REFLECTION,
+         AMULET_OF_LIFE_SAVING, AMULET_OF_GUARDING,
+         SILVER_DRAGON_SCALES, SILVER_DRAGON_SCALE_MAIL,
+         PICK_AXE, TIN_OPENER, ICE_BOX,
+         GLOB_OF_GREEN_SLIME,
+         objectData } from './objects.js';
+import { bcsign, doname, splitobj, Is_container } from './mkobj.js';
+import { m_carrying } from './weapon.js';
+import { cansee, couldsee } from './vision.js';
+import { which_armor, extract_from_minvent,
+         W_ARM, W_ARMH, W_ARMS, W_AMUL, W_WEP, W_ARMG,
+         mon_set_minvis, mon_adjust_speed } from './worn.js';
+import { find_mac } from './worn.js';
+import { noteleport_level, tele_restrict, rloc, enexto } from './teleport.js';
+import { mon_knows_traps, mon_learns_traps } from './mondata.js';
+import { mon_has_amulet, mon_has_special } from './wizard.js';
+import { onscary, healmon, mongone, monkilled, xkilled,
+         XKILL_NOMSG, XKILL_NOCONDUCT,
+         wakeup, seemimic } from './mon.js';
+import { monflee } from './monmove.js';
+import { paralyze_monst } from './mhitm.js';
+import { makemon } from './makemon.js';
+import { placeFloorObject } from './floor_objects.js';
+import { linedUpToPlayer } from './mthrowu.js';
+import { m_throw } from './mthrowu.js';
+import { buzz } from './zap.js';
+import { resist, cancel_monst } from './zap.js';
+import { monverbself } from './do_name.js';
+import { arti_reflects } from './artifact.js';
+import { can_carry } from './dogmove.js';
+import { sobj_at, carrying } from './invent.js';
+import { ZAP_POS } from './symbols.js';
+import { is_pool, is_lava, is_ice, find_drawbridge, destroy_drawbridge,
+         is_drawbridge_wall } from './dbridge.js';
+import { trycall } from './do.js';
+import { pushRngLogEntry } from './rng.js';
 
 // ========================================================================
-// Stub exports — called from dochug (monmove.js)
-// These return false/0 for now, matching C behavior for monsters without
-// specific defensive items. No RNG consumed when returning false.
+// Module-level state — C ref: gm.m struct (defense/offense/misc selections)
+// ========================================================================
+const m = {
+    defensive: null,
+    has_defense: 0,
+    offensive: null,
+    has_offense: 0,
+    misc: null,
+    has_misc: 0,
+};
+
+// C ref: gm.m_using — flag to suppress certain messages during monster item use
+let m_using = false;
+
+// C ref: gz.zap_oseen — was the zap seen by the hero?
+let zap_oseen = false;
+
+// C ref: gt.trapx, gt.trapy — trap coordinates for defensive/misc use
+let trapx = 0, trapy = 0;
+
+// C ref: gb.bhitpos — beam hit position tracking
+const bhitpos = { x: 0, y: 0 };
+
+// ========================================================================
+// Defensive item MUSE constants — C ref: muse.c:307-326
+// ========================================================================
+const MUSE_SCR_TELEPORTATION = 1;
+const MUSE_WAN_TELEPORTATION_SELF = 2;
+const MUSE_POT_HEALING = 3;
+const MUSE_POT_EXTRA_HEALING = 4;
+const MUSE_WAN_DIGGING = 5;
+const MUSE_TRAPDOOR = 6;
+const MUSE_TELEPORT_TRAP = 7;
+const MUSE_UPSTAIRS = 8;
+const MUSE_DOWNSTAIRS = 9;
+const MUSE_WAN_CREATE_MONSTER = 10;
+const MUSE_SCR_CREATE_MONSTER = 11;
+const MUSE_UP_LADDER = 12;
+const MUSE_DN_LADDER = 13;
+const MUSE_SSTAIRS = 14;
+const MUSE_WAN_TELEPORTATION = 15;
+const MUSE_BUGLE = 16;
+const MUSE_UNICORN_HORN = 17;
+const MUSE_POT_FULL_HEALING = 18;
+const MUSE_LIZARD_CORPSE = 19;
+const MUSE_DEF_WAN_UNDEAD_TURNING = 20;
+
+// ========================================================================
+// Offensive item MUSE constants — C ref: muse.c:1271-1290
+// ========================================================================
+const MUSE_OFF_WAN_DEATH = 1;
+const MUSE_OFF_WAN_SLEEP = 2;
+const MUSE_OFF_WAN_FIRE = 3;
+const MUSE_OFF_WAN_COLD = 4;
+const MUSE_OFF_WAN_LIGHTNING = 5;
+const MUSE_OFF_WAN_MAGIC_MISSILE = 6;
+const MUSE_OFF_WAN_STRIKING = 7;
+const MUSE_OFF_SCR_FIRE = 8;
+const MUSE_OFF_POT_PARALYSIS = 9;
+const MUSE_OFF_POT_BLINDNESS = 10;
+const MUSE_OFF_POT_CONFUSION = 11;
+const MUSE_OFF_FROST_HORN = 12;
+const MUSE_OFF_FIRE_HORN = 13;
+const MUSE_OFF_POT_ACID = 14;
+const MUSE_OFF_WAN_TELEPORTATION = 15;
+const MUSE_OFF_POT_SLEEPING = 16;
+const MUSE_OFF_SCR_EARTH = 17;
+const MUSE_OFF_CAMERA = 18;
+const MUSE_OFF_WAN_UNDEAD_TURNING = 20;
+
+// ========================================================================
+// Misc item MUSE constants — C ref: muse.c:2063-2072
+// ========================================================================
+const MUSE_MISC_POT_GAIN_LEVEL = 1;
+const MUSE_MISC_WAN_MAKE_INVISIBLE = 2;
+const MUSE_MISC_POT_INVISIBILITY = 3;
+const MUSE_MISC_POLY_TRAP = 4;
+const MUSE_MISC_WAN_POLYMORPH = 5;
+const MUSE_MISC_POT_SPEED = 6;
+const MUSE_MISC_WAN_SPEED_MONSTER = 7;
+const MUSE_MISC_BULLWHIP = 8;
+const MUSE_MISC_POT_POLYMORPH = 9;
+const MUSE_MISC_BAG = 10;
+
+// ========================================================================
+// Local helpers — small utility functions used by multiple muse functions
 // ========================================================================
 
-// C ref: muse.c:439 — find_defensive(mtmp, tryescape)
-// Searches monster inventory for defensive items or escape routes.
-// Returns true if a defensive action was found.
-export function find_defensive(mon, tryescape) {
-    // TODO: Full inventory search for healing potions, escape items, etc.
-    return false;
+// C ref: #define DEADMONSTER(mon) ((mon)->mhp <= 0)
+function DEADMONSTER(mon) { return mon && mon.mhp <= 0; }
+
+// C ref: helpless(mon) — asleep, frozen, paralyzed
+function helpless(mon) { return !!(mon.sleeping || mon.msleeping || mon.mfrozen); }
+
+// C ref: mindless(ptr) — M1_MINDLESS
+function mindless(ptr) { return is_mindless(ptr); }
+
+// C ref: verysmall(ptr)
+function verysmall(ptr) { return (ptr.msize || ptr.size || 0) < MZ_SMALL; }
+
+// C ref: NODIAG(mndx) — only grid bugs
+function NODIAG(mndx) { return mndx === PM_GRID_BUG; }
+
+// C ref: mon.h is_vampshifter() — true if mon's cham form is a vampire type
+// Not exported from mondata.js; defined locally (also local in end.js, makemon.js).
+function is_vampshifter(mtmp) {
+    if (mtmp.cham == null || mtmp.cham < 0) return false;
+    const chamData = mons[mtmp.cham];
+    return chamData && chamData.symbol === S_VAMPIRE;
 }
 
-// C ref: muse.c:794 — use_defensive(mtmp)
-// Executes the defensive action selected by find_defensive.
-// Returns nonzero if the monster's turn was consumed.
-export function use_defensive(mon) {
-    // TODO: Execute defensive item use (quaff potion, zap wand, etc.)
+// C ref: monsndx(ptr) — get monster index from permonst pointer
+function monsndx(ptr) {
+    if (typeof ptr.mndx === 'number') return ptr.mndx;
+    // Search mons array as last resort
+    for (let i = 0; i < mons.length; i++) {
+        if (mons[i] === ptr) return i;
+    }
     return 0;
 }
 
-// C ref: muse.c:2074 — find_misc(mtmp)
-// Searches for miscellaneous items (invisibility, speed, polymorph potions).
-// Returns true if a misc action was found.
-export function find_misc(mon) {
-    // TODO: Full inventory search for misc items
+// C ref: m_next2u(mtmp) — is monster adjacent to hero?
+function m_next2u(mtmp, player) {
+    return dist2(mtmp.mx, mtmp.my, player.x, player.y) <= 2;
+}
+
+// MFAST speed constant
+const MFAST = 2;
+
+// C ref: mdistu(mon) — squared distance from hero to monster
+function mdistu(mon, player) {
+    return dist2(player.x, player.y, mon.mx, mon.my);
+}
+
+// C ref: u_at(x, y) — is hero at (x, y)?
+function u_at(x, y, player) {
+    return x === player.x && y === player.y;
+}
+
+// C ref: canspotmon(mon) — can hero see or sense the monster?
+function canspotmon(mon, player, map, fov) {
+    return canseemon(mon, player, fov);
+}
+
+// C ref: m_at(x, y) — monster at position
+function m_at(x, y, map) {
+    return map.monsterAt ? map.monsterAt(x, y) : null;
+}
+
+// C ref: t_at(x, y) — trap at position
+function t_at(x, y, map) {
+    return map.trapAt ? map.trapAt(x, y) : null;
+}
+
+// C ref: accessible(x, y) — can walk there
+function accessible(x, y, map) {
+    if (!isok(x, y)) return false;
+    const loc = map.at(x, y);
+    if (!loc) return false;
+    return ACCESSIBLE(loc.typ);
+}
+
+// C ref: stairway_at(x, y) — find stairway at position
+// JS: map.upstair / map.dnstair are simple {x, y, isladder} objects
+function stairway_at(x, y, map) {
+    if (map.upstair && map.upstair.x === x && map.upstair.y === y) {
+        return { sx: x, sy: y, up: true, isladder: !!map.upstair.isladder,
+                 tolev: map.upstair.tolev || { dnum: 0, dlevel: 0 } };
+    }
+    if (map.dnstair && map.dnstair.x === x && map.dnstair.y === y) {
+        return { sx: x, sy: y, up: false, isladder: !!map.dnstair.isladder,
+                 tolev: map.dnstair.tolev || { dnum: 0, dlevel: 0 } };
+    }
+    return null;
+}
+
+// Stub for m_seenres — monster memory of hero resistances
+// Not yet tracked in JS; always returns 0 (monster has not seen)
+function m_seenres(_mon, _flag) { return 0; }
+
+// Stub for monstseesu — monster notes hero has resistance
+function monstseesu(_flag) { }
+
+// Stub for monstunseesu — monster notes hero lacks resistance
+function monstunseesu(_flag) { }
+
+// Stub level/dungeon predicates — JS levels are single-dungeon currently
+function Is_knox(map) { return !!(map && map.flags && map.flags.is_knox); }
+function Inhell(map) { return !!(map && map.flags && map.flags.inhell); }
+function In_endgame(map) { return !!(map && map.flags && map.flags.endgame); }
+function Is_botlevel(map) { return !!(map && map.flags && map.flags.is_botlevel); }
+function Sokoban(map) { return !!(map && map.flags && map.flags.sokoban); }
+function Is_rogue_level(map) { return !!(map && map.flags && map.flags.is_rogue); }
+function Is_earthlevel(map) { return false; }
+function On_W_tower_level(map) { return false; }
+function In_V_tower(map) { return false; }
+function Can_fall_thru(map) { return !(Is_botlevel(map)); }
+function Can_dig_down(map) { return Can_fall_thru(map); }
+function Can_rise_up(x, y, map) { return true; } // simplified
+
+// C ref: is_Vlad(mtmp) — is this monster Vlad?
+function is_Vlad(mtmp) { return !!(mtmp.type && mtmp.type.name === 'Vlad the Impaler'); }
+
+// C ref: mon_offmap(mon)
+function mon_offmap(mon) { return !isok(mon.mx, mon.my); }
+
+// C ref: hard_helmet(obj) — is helmet hard (not cloth)?
+function hard_helmet(obj) {
+    if (!obj) return false;
+    const od = objectData[obj.otyp];
+    if (!od) return false;
+    // C: is_hard(obj) checks material; simplified: non-cloth helmets are hard
+    return od.oc_material !== 1; // 1 = CLOTH
+}
+
+// C ref: MON_WEP(mon) — wielded weapon
+function MON_WEP(mon) {
+    if (mon.weapon) return mon.weapon;
+    if (!mon.minvent) return null;
+    for (const obj of mon.minvent) {
+        if (obj.owornmask && (obj.owornmask & W_WEP)) return obj;
+    }
+    return null;
+}
+
+// C ref: mwelded(obj) — is weapon welded to monster?
+function mwelded(obj) { return !!(obj && obj.cursed && (obj.owornmask & W_WEP)); }
+
+// C ref: canletgo(obj, str) — can hero release weapon? (cursed = no)
+function canletgo(obj, _str) {
+    if (!obj) return false;
+    return !obj.cursed;
+}
+
+// C ref: welded(obj) — is weapon welded to hero?
+function welded(obj) { return !!(obj && obj.cursed && (obj.owornmask & W_WEP)); }
+
+// C ref: is_plural(obj)
+function is_plural(obj) { return (obj.quan || 1) > 1; }
+
+// Container helpers
+function Is_mbag(obj) {
+    if (!obj) return false;
+    const od = objectData[obj.otyp];
+    return od && od.oc_name && /bag of holding/i.test(od.oc_name);
+}
+function Has_contents(obj) {
+    return obj && Array.isArray(obj.cobj) && obj.cobj.length > 0;
+}
+function SchroedingersBox(obj) {
+    return !!(obj && obj.spe === 1 && obj.otyp === 214); // LARGE_BOX
+}
+
+// C ref: WAND_BACKFIRE_CHANCE (100)
+const WAND_BACKFIRE_CHANCE = 100;
+
+// C ref: POTION_OCCUPANT_CHANCE(n)
+function POTION_OCCUPANT_CHANCE(n) { return ((n) >= 5 ? 1 : (n) >= 4 ? 2 : 4); }
+
+// C ref: makeknown(otyp) — mark object type as discovered
+// Stub: discoveries tracked elsewhere (not yet fully implemented)
+function makeknown(_otyp) { }
+
+// C ref: unknow_object(otmp) — hero loses knowledge of object
+function unknow_object(_otmp) { }
+
+// C ref: observe_object(otmp) — hero observes object being used
+function observe_object(_otmp) { }
+
+// m_useup — monster uses up an item from inventory
+function m_useup(mon, obj) {
+    if (!mon || !obj) return;
+    const inv = mon.minvent || [];
+    const idx = inv.indexOf(obj);
+    if (idx < 0) return;
+    const qty = Number.isInteger(obj.quan) ? obj.quan : 1;
+    if (qty > 1) {
+        obj.quan = qty - 1;
+        return;
+    }
+    inv.splice(idx, 1);
+    if (mon.weapon === obj) mon.weapon = null;
+}
+
+// C ref: migrate_to_level — monster leaves the level
+// Simplified: just remove monster (single-level game)
+function migrate_to_level(mtmp, _ledger, _migr, _coord, map) {
+    // Remove monster from level
+    mtmp.mhp = 0;
+    mtmp.dead = true;
+    if (map) newsym(map, mtmp.mx, mtmp.my);
+}
+
+// C ref: ledger_no(&u.uz) — ledger number of current level
+function ledger_no(_dlev) { return 1; }
+
+// C ref: depth(&u.uz) — depth of current level
+function depth_uz(map) { return map?.flags?.depth || 1; }
+
+// C ref: inhishop(shk)
+function inhishop(_shk) { return false; }
+
+// C ref: newcham — polymorph monster
+// Stub: polymorph not yet fully ported
+function newcham(mtmp, _pm, _flags) { return true; }
+
+// C ref: grow_up — monster gains a level
+function grow_up(mtmp, _killer) { return true; }
+
+// C ref: rndmonst() — random monster type
+function rndmonst() { return null; }
+
+// C ref: awaken_soldiers — wake soldiers
+function awaken_soldiers(_bugler) { }
+
+// C ref: mon_consume_unstone — eat lizard/acid to cure stone
+function mon_consume_unstone(mon, obj, by_you, stoning, map, player) {
+    const vis = canseemon(mon, player);
+    const tinned = obj.otyp === TIN;
+    const food = obj.otyp === CORPSE || tinned;
+    const acid = obj.otyp === POT_ACID
+        || (food && obj.corpsenm >= 0 && mons[obj.corpsenm]
+            && !!(mons[obj.corpsenm].mr1 & 0x08)); // MR_ACID
+    const lizard = food && obj.corpsenm === PM_LIZARD;
+
+    if (stoning)
+        mon_adjust_speed(mon, -3, null);
+
+    if (vis) {
+        const name = monDisplayName(mon, { article: 'the', capitalize: true });
+        const action = (obj.oclass === POTION_CLASS) ? 'quaffs'
+            : (obj.otyp === TIN) ? 'opens and eats the contents of'
+            : 'eats';
+        pline_mon(mon, `${name} ${action} something.`);
+    } else {
+        You_hear((obj.oclass === POTION_CLASS) ? 'drinking.' : 'chewing.');
+    }
+
+    m_useup(mon, obj);
+
+    if (acid && !tinned && !resists_acid(mon)) {
+        mon.mhp -= rnd(15);
+        if (vis) {
+            const name = monDisplayName(mon, { article: 'the', capitalize: true });
+            pline_mon(mon, `${name} has a very bad case of stomach acid.`);
+        }
+        if (DEADMONSTER(mon)) {
+            const name = monDisplayName(mon, { article: 'the', capitalize: true });
+            pline_mon(mon, `${name} dies!`);
+            if (by_you)
+                xkilled(mon, XKILL_NOMSG | XKILL_NOCONDUCT, map, player);
+            else
+                mondead(mon, map, player);
+            return;
+        }
+    }
+    if (stoning && vis) {
+        const name = monDisplayName(mon, { article: 'the', capitalize: true });
+        pline_mon(mon, `${name} seems limber!`);
+    }
+    if (lizard && (mon.mconf || mon.mstun)) {
+        mon.mconf = 0;
+        mon.mstun = 0;
+    }
+}
+
+// C ref: cures_stoning — does object cure petrification?
+function cures_stoning(mon, obj, tinok) {
+    if (obj.otyp === POT_ACID) return true;
+    if (obj.otyp === GLOB_OF_GREEN_SLIME) return false; // simplified
+    if (obj.otyp !== CORPSE && (obj.otyp !== TIN || !tinok)) return false;
+    if ((obj.corpsenm ?? NON_PM) === NON_PM) return false;
+    return (obj.corpsenm === PM_LIZARD
+        || (mons[obj.corpsenm] && !!(mons[obj.corpsenm].mr1 & 0x08))); // MR_ACID => acidic
+}
+
+// C ref: mcould_eat_tin — can monster open a tin?
+function mcould_eat_tin(mon) {
+    const mdat = mon.type || {};
+    if (is_animal(mdat)) return false;
+    const mwep = MON_WEP(mon);
+    const welded_wep = mwep && mwelded(mwep);
+    for (const obj of (mon.minvent || [])) {
+        if (welded_wep && obj !== mwep) continue;
+        if (obj.otyp === TIN_OPENER) return true;
+        const od = objectData[obj.otyp];
+        if (od && od.oc_class === WEAPON_CLASS) {
+            // P_DAGGER = 1, P_KNIFE = 2 in C; check by skill
+            if (od.oc_skill === 1 || od.oc_skill === 2) return true;
+        }
+    }
     return false;
 }
 
-// C ref: muse.c:2360 — use_misc(mtmp)
-// Executes miscellaneous actions like becoming invisible or polymorphing.
-// Returns nonzero if the monster's turn was consumed.
-export function use_misc(mon) {
-    // TODO: Execute misc item use
+// C ref: mcureblindness(mon, verbos)
+export function mcureblindness(mon, verbos, player) {
+    if (!mon.mcansee) {
+        mon.mcansee = 1;
+        mon.mblinded = 0;
+        if (verbos && haseyes(mon.type || {})) {
+            const name = monDisplayName(mon, { article: 'the', capitalize: true });
+            pline_mon(mon, `${name} can see again.`);
+        }
+    }
+}
+
+// C ref: mon_would_take_item — simplified: would monster want this item?
+function mon_would_take_item(mon, obj) {
+    // Simplified: monsters want weapons, armor, food, potions, wands, scrolls
+    if (!obj) return false;
+    const oc = objectData[obj.otyp];
+    if (!oc) return false;
+    const cls = oc.oc_class;
+    return cls === WEAPON_CLASS || cls === POTION_CLASS || cls === SCROLL_CLASS
+        || cls === WAND_CLASS || cls === FOOD_CLASS || cls === AMULET_CLASS
+        || cls === TOOL_CLASS;
+}
+
+// C ref: linedup_callback — check positions along a line for a condition
+function linedup_callback(ax, ay, bx, by, callback, map) {
+    const dx = Math.sign(bx - ax);
+    const dy = Math.sign(by - ay);
+    if (!dx && !dy) return callback(ax, ay, map);
+    let x = ax, y = ay;
+    while (x !== bx || y !== by) {
+        if (callback(x, y, map)) return true;
+        x += dx;
+        y += dy;
+        if (!isok(x, y)) break;
+    }
+    return callback(bx, by, map);
+}
+
+// ========================================================================
+// precheck — C ref: muse.c:57
+// ========================================================================
+function precheck(mon, obj, map, player) {
+    if (!obj) return 0;
+    const vis = cansee(map, player, null, mon.mx, mon.my);
+
+    if (obj.oclass === POTION_CLASS) {
+        // C: milky potion ghost / smoky potion djinni checks
+        // These are rare (rn2 with POTION_OCCUPANT_CHANCE).
+        // Simplified: skip ghost/djinni spawning for now — the RNG calls
+        // only happen with specific potion descriptions we don't track.
+    }
+
+    if (obj.oclass === WAND_CLASS && obj.cursed && !rn2(WAND_BACKFIRE_CHANCE)) {
+        const dam = d(obj.spe + 2, 6);
+        if (vis) {
+            const name = monDisplayName(mon, { article: 'the', capitalize: true });
+            pline_mon(mon, `${name} zaps something, which suddenly explodes!`);
+        } else {
+            const range = couldsee(map, player, mon.mx, mon.my)
+                ? (BOLT_LIM + 1) : (BOLT_LIM - 3);
+            You_hear(`a zap and an explosion ${
+                (mdistu(mon, player) <= range * range) ? 'nearby' : 'in the distance'}.`);
+        }
+        m_useup(mon, obj);
+        mon.mhp -= dam;
+        if (DEADMONSTER(mon)) {
+            monkilled(mon, '', 0, map, player);
+            return 1;
+        }
+        m.has_defense = m.has_offense = m.has_misc = 0;
+    }
     return 0;
+}
+
+// ========================================================================
+// mzapwand — C ref: muse.c:163
+// ========================================================================
+function mzapwand(mtmp, otmp, self, map, player) {
+    if (otmp.spe < 1) return;
+    const vismon = canseemon(mtmp, player);
+    if (!vismon) {
+        const range = couldsee(map, player, mtmp.mx, mtmp.my)
+            ? (BOLT_LIM + 1) : (BOLT_LIM - 3);
+        You_hear(`a ${(mdistu(mtmp, player) <= range * range) ? 'nearby' : 'distant'} zap.`);
+        unknow_object(otmp);
+    } else if (self) {
+        const name = monDisplayName(mtmp, { article: 'the', capitalize: true });
+        pline_mon(mtmp, `${name} zaps a wand at itself!`);
+    } else {
+        const name = monDisplayName(mtmp, { article: 'the', capitalize: true });
+        pline_mon(mtmp, `${name} zaps a wand!`);
+    }
+    otmp.spe -= 1;
+}
+
+// ========================================================================
+// mplayhorn — C ref: muse.c:193
+// ========================================================================
+function mplayhorn(mtmp, otmp, self, map, player) {
+    const vismon = canseemon(mtmp, player);
+    if (!vismon) {
+        const range = couldsee(map, player, mtmp.mx, mtmp.my)
+            ? (BOLT_LIM + 1) : (BOLT_LIM - 3);
+        You_hear(`a horn being played ${
+            (mdistu(mtmp, player) <= range * range) ? 'nearby' : 'in the distance'}.`);
+        unknow_object(otmp);
+    } else if (self) {
+        const name = monDisplayName(mtmp, { article: 'the', capitalize: true });
+        pline_mon(mtmp, `${name} plays a horn directed at itself!`);
+        makeknown(otmp.otyp);
+    } else {
+        const name = monDisplayName(mtmp, { article: 'the', capitalize: true });
+        pline_mon(mtmp, `${name} plays a horn directed at you!`);
+        makeknown(otmp.otyp);
+    }
+    otmp.spe -= 1;
+}
+
+// ========================================================================
+// mreadmsg — C ref: muse.c:236
+// ========================================================================
+function mreadmsg(mtmp, otmp, player) {
+    const vismon = canseemon(mtmp, player);
+    if (vismon) {
+        const name = monDisplayName(mtmp, { article: 'the', capitalize: true });
+        pline_mon(mtmp, `${name} reads a scroll!`);
+    } else {
+        You_hear('someone reading a scroll.');
+    }
+    if (mtmp.mconf) {
+        const name2 = monDisplayName(mtmp, { article: 'none' });
+        pline(`Being confused, ${name2} mispronounces the magic words...`);
+    }
+}
+
+// ========================================================================
+// mquaffmsg — C ref: muse.c:291
+// ========================================================================
+function mquaffmsg(mtmp, otmp, player) {
+    const vismon = canseemon(mtmp, player);
+    if (vismon) {
+        const name = monDisplayName(mtmp, { article: 'the', capitalize: true });
+        pline_mon(mtmp, `${name} drinks a potion!`);
+    } else {
+        You_hear('a chugging sound.');
+    }
+}
+
+// ========================================================================
+// m_use_healing — C ref: muse.c:335
+// ========================================================================
+function m_use_healing(mtmp) {
+    let obj;
+    if ((obj = m_carrying(mtmp, POT_FULL_HEALING)) != null) {
+        m.defensive = obj;
+        m.has_defense = MUSE_POT_FULL_HEALING;
+        return true;
+    }
+    if ((obj = m_carrying(mtmp, POT_EXTRA_HEALING)) != null) {
+        m.defensive = obj;
+        m.has_defense = MUSE_POT_EXTRA_HEALING;
+        return true;
+    }
+    if ((obj = m_carrying(mtmp, POT_HEALING)) != null) {
+        m.defensive = obj;
+        m.has_defense = MUSE_POT_HEALING;
+        return true;
+    }
+    return false;
+}
+
+// ========================================================================
+// m_sees_sleepy_soldier — C ref: muse.c:359
+// ========================================================================
+function m_sees_sleepy_soldier(mtmp, map) {
+    const x = mtmp.mx, y = mtmp.my;
+    for (let xx = x - 3; xx <= x + 3; xx++) {
+        for (let yy = y - 3; yy <= y + 3; yy++) {
+            if (!isok(xx, yy) || (xx === x && yy === y)) continue;
+            const mon2 = m_at(xx, yy, map);
+            if (mon2 && is_mercenary(mon2.type || {})
+                && mon2.mndx !== PM_GUARD
+                && helpless(mon2)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+// ========================================================================
+// m_tele — C ref: muse.c:382
+// ========================================================================
+function m_tele(mtmp, vismon, oseen, how, map, player) {
+    if (tele_restrict(mtmp, map)) {
+        if (vismon && how) makeknown(how);
+        if (noteleport_level(mtmp, map))
+            mon_learns_traps(mtmp, TELEP_TRAP);
+    } else if ((mon_has_amulet(mtmp) || On_W_tower_level(map)) && !rn2(3)) {
+        if (vismon) {
+            const name = monDisplayName(mtmp, { article: 'the', capitalize: true });
+            pline_mon(mtmp, `${name} seems disoriented for a moment.`);
+        }
+    } else {
+        if (how) {
+            if (oseen) makeknown(how);
+            rloc(mtmp, 0, map, player);
+        } else {
+            // Trap-based teleportation; simplified: just rloc
+            rloc(mtmp, 0, map, player);
+        }
+    }
+}
+
+// ========================================================================
+// m_next2m — C ref: muse.c:418
+// ========================================================================
+function m_next2m(mtmp, map) {
+    if (DEADMONSTER(mtmp) || mon_offmap(mtmp)) return false;
+    for (let x = mtmp.mx - 1; x <= mtmp.mx + 1; x++) {
+        for (let y = mtmp.my - 1; y <= mtmp.my + 1; y++) {
+            if (!isok(x, y)) continue;
+            const m2 = m_at(x, y, map);
+            if (m2 && m2 !== mtmp) return true;
+        }
+    }
+    return false;
+}
+
+// ========================================================================
+// find_defensive — C ref: muse.c:439
+// ========================================================================
+export function find_defensive(mon, tryescape, map, player) {
+    let obj;
+    let t;
+    const x = mon.mx, y = mon.my;
+    const mdat = mon.type || {};
+    const stuck = (mon === player.ustuck);
+    const immobile = (mdat.mmove === 0 || mdat.speed === 0);
+
+    m.defensive = null;
+    m.has_defense = 0;
+
+    if (is_animal(mdat) || mindless(mdat)) return false;
+    if (!tryescape && dist2(x, y, mon.mux ?? player.x, mon.muy ?? player.y) > 25)
+        return false;
+    if (tryescape && Is_knox(map) && !m_next2u(mon, player) && m_next2m(mon, map))
+        return false;
+    if (player.uswallow && stuck) return false;
+
+    // Unicorn horn for confusion/stun/blindness
+    if (mon.mconf || mon.mstun || !mon.mcansee) {
+        obj = null;
+        if (!nohands(mdat)) {
+            for (const o of (mon.minvent || [])) {
+                if (o.otyp === UNICORN_HORN && !o.cursed) { obj = o; break; }
+            }
+        }
+        if (obj || is_unicorn(mdat) || (mdat.mndx === PM_KI_RIN)) {
+            m.defensive = obj;
+            m.has_defense = MUSE_UNICORN_HORN;
+            return true;
+        }
+    }
+
+    // Lizard corpse/tin for confusion/stun
+    if (mon.mconf || mon.mstun) {
+        let liztin = null;
+        for (const o of (mon.minvent || [])) {
+            if (o.otyp === CORPSE && o.corpsenm === PM_LIZARD) {
+                m.defensive = o;
+                m.has_defense = MUSE_LIZARD_CORPSE;
+                return true;
+            } else if (o.otyp === TIN && o.corpsenm === PM_LIZARD) {
+                liztin = o;
+            }
+        }
+        if (liztin && mcould_eat_tin(mon) && rn2(3)) {
+            m.defensive = liztin;
+            m.has_defense = MUSE_LIZARD_CORPSE;
+            return true;
+        }
+    }
+
+    // Healing for blind (non-Pestilence)
+    if (!mon.mcansee && !nohands(mdat) && mdat.mndx !== PM_PESTILENCE) {
+        if (m_use_healing(mon)) return true;
+    }
+
+    // Wand of undead turning against cockatrice-corpse-wielding hero
+    const uwep = player.weapon;
+    if (!mon.mpeaceful && !nohands(mdat)
+        && uwep && uwep.otyp === CORPSE
+        && touch_petrifies(mons[uwep.corpsenm] || {})
+        && !poly_when_stoned(mdat) && !resists_ston(mon)
+        && linedUpToPlayer(mon, map, player)) {
+        for (const o of (mon.minvent || [])) {
+            if (o.otyp === WAN_UNDEAD_TURNING && o.spe > 0) {
+                m.defensive = o;
+                m.has_defense = MUSE_DEF_WAN_UNDEAD_TURNING;
+                return true;
+            }
+        }
+    }
+
+    if (!tryescape) {
+        // Health fraction check
+        const fraction = player.ulevel < 10 ? 5 : player.ulevel < 14 ? 4 : 3;
+        if (mon.mhp >= mon.mhpmax
+            || (mon.mhp >= 10 && mon.mhp * fraction >= mon.mhpmax))
+            return false;
+
+        if (mon.mpeaceful) {
+            if (!nohands(mdat)) {
+                if (m_use_healing(mon)) return true;
+            }
+            return false;
+        }
+    }
+
+    // Stairs/traps for escape
+    if (stuck || immobile || mon.mtrapped) {
+        // can't flee by stairs or traps
+    } else {
+        const loc = map.at(x, y);
+        if (loc && loc.typ === STAIRS) {
+            const stway = stairway_at(x, y, map);
+            if (stway && !stway.up && !is_floater(mdat)) {
+                m.has_defense = MUSE_DOWNSTAIRS;
+            } else if (stway && stway.up) {
+                m.has_defense = MUSE_UPSTAIRS;
+            }
+        } else if (loc && loc.typ === LADDER) {
+            const stway = stairway_at(x, y, map);
+            if (stway && stway.up) {
+                m.has_defense = MUSE_UP_LADDER;
+            } else if (stway && !stway.up && !is_floater(mdat)) {
+                m.has_defense = MUSE_DN_LADDER;
+            }
+        } else {
+            // Check nearby traps (trap doors, teleport traps)
+            const locs = [];
+            locs.push([x, y]);
+            for (let xx = x - 1; xx <= x + 1; xx++) {
+                for (let yy = y - 1; yy <= y + 1; yy++) {
+                    if (isok(xx, yy) && (xx !== x || yy !== y)) {
+                        locs.push([xx, yy]);
+                    }
+                }
+            }
+
+            const ignore_boulders = verysmall(mdat) || throws_rocks(mdat) || passes_walls(mdat);
+            const diag_ok = !NODIAG(monsndx(mdat));
+
+            for (const [xx, yy] of locs) {
+                if (u_at(xx, yy, player)) continue;
+                if (xx !== x && yy !== y && !diag_ok) continue;
+                if (m_at(xx, yy, map) && !(xx === x && yy === y)) continue;
+
+                t = t_at(xx, yy, map);
+                if (!t) continue;
+                if (!ignore_boulders && sobj_at(BOULDER, xx, yy, map)) continue;
+                if (onscary(map, xx, yy, mon)) continue;
+
+                if (is_hole(t.ttyp) && !is_floater(mdat)
+                    && !mon.isshk && !mon.isgd && !mon.ispriest
+                    && Can_fall_thru(map)) {
+                    trapx = xx;
+                    trapy = yy;
+                    m.has_defense = MUSE_TRAPDOOR;
+                    break;
+                } else if (t.ttyp === TELEP_TRAP) {
+                    trapx = xx;
+                    trapy = yy;
+                    m.has_defense = MUSE_TELEPORT_TRAP;
+                }
+            }
+        }
+    }
+
+    if (nohands(mdat)) {
+        return !!m.has_defense;
+    }
+
+    // Bugle for soldiers
+    if (is_mercenary(mdat)) {
+        const bugle = m_carrying(mon, BUGLE);
+        if (bugle && m_sees_sleepy_soldier(mon, map)) {
+            m.defensive = bugle;
+            m.has_defense = MUSE_BUGLE;
+        }
+    }
+
+    // Use immediate physical escape prior to magic
+    if (m.has_defense) return true;
+
+    // Kludge to cut trap destruction
+    t = t_at(x, y, map);
+    if (t && (is_pit(t.ttyp) || t.ttyp === WEB || t.ttyp === BEAR_TRAP))
+        t = null;
+
+    // Inventory scan for defensive items
+    for (const obj2 of (mon.minvent || [])) {
+        // Don't always use same selection pattern
+        if (m.has_defense && !rn2(3)) break;
+
+        // Wand of digging
+        if (m.has_defense === MUSE_WAN_DIGGING) break;
+        if (obj2.otyp === WAN_DIGGING && obj2.spe > 0 && !stuck && !t
+            && !mon.isshk && !mon.isgd && !mon.ispriest
+            && !is_floater(mdat) && !Sokoban(map)
+            && !Is_botlevel(map) && !In_endgame(map)
+            && !(is_Vlad(mon) && In_V_tower(map))) {
+            const loc2 = map.at(x, y);
+            if (loc2 && !(is_ice(x, y, map) || is_pool(x, y, map) || is_lava(x, y, map))) {
+                m.defensive = obj2;
+                m.has_defense = MUSE_WAN_DIGGING;
+            }
+        }
+        if (m.has_defense === MUSE_WAN_TELEPORTATION_SELF) continue;
+        if (m.has_defense === MUSE_WAN_TELEPORTATION) continue;
+        if (obj2.otyp === WAN_TELEPORTATION && obj2.spe > 0) {
+            if (!noteleport_level(mon, map) || !mon_knows_traps(mon, TELEP_TRAP)) {
+                m.defensive = obj2;
+                m.has_defense = mon_has_amulet(mon)
+                    ? MUSE_WAN_TELEPORTATION : MUSE_WAN_TELEPORTATION_SELF;
+            }
+        }
+        if (m.has_defense === MUSE_SCR_TELEPORTATION) continue;
+        if (obj2.otyp === SCR_TELEPORTATION && mon.mcansee && haseyes(mdat)
+            && (!obj2.cursed || (!(mon.isshk && inhishop(mon))
+                && !mon.isgd && !mon.ispriest))) {
+            if (!noteleport_level(mon, map) || !mon_knows_traps(mon, TELEP_TRAP)) {
+                m.defensive = obj2;
+                m.has_defense = MUSE_SCR_TELEPORTATION;
+            }
+        }
+
+        if (mdat.mndx !== PM_PESTILENCE) {
+            if (m.has_defense === MUSE_POT_FULL_HEALING) continue;
+            if (obj2.otyp === POT_FULL_HEALING) {
+                m.defensive = obj2;
+                m.has_defense = MUSE_POT_FULL_HEALING;
+            }
+            if (m.has_defense === MUSE_POT_EXTRA_HEALING) continue;
+            if (obj2.otyp === POT_EXTRA_HEALING) {
+                m.defensive = obj2;
+                m.has_defense = MUSE_POT_EXTRA_HEALING;
+            }
+            if (m.has_defense === MUSE_WAN_CREATE_MONSTER) continue;
+            if (obj2.otyp === WAN_CREATE_MONSTER && obj2.spe > 0) {
+                m.defensive = obj2;
+                m.has_defense = MUSE_WAN_CREATE_MONSTER;
+            }
+            if (m.has_defense === MUSE_POT_HEALING) continue;
+            if (obj2.otyp === POT_HEALING) {
+                m.defensive = obj2;
+                m.has_defense = MUSE_POT_HEALING;
+            }
+        } else {
+            // Pestilence uses sickness as full healing
+            if (m.has_defense === MUSE_POT_FULL_HEALING) continue;
+            if (obj2.otyp === POT_SICKNESS) {
+                m.defensive = obj2;
+                m.has_defense = MUSE_POT_FULL_HEALING;
+            }
+            if (m.has_defense === MUSE_WAN_CREATE_MONSTER) continue;
+            if (obj2.otyp === WAN_CREATE_MONSTER && obj2.spe > 0) {
+                m.defensive = obj2;
+                m.has_defense = MUSE_WAN_CREATE_MONSTER;
+            }
+        }
+        if (m.has_defense === MUSE_SCR_CREATE_MONSTER) continue;
+        if (obj2.otyp === SCR_CREATE_MONSTER) {
+            m.defensive = obj2;
+            m.has_defense = MUSE_SCR_CREATE_MONSTER;
+        }
+    }
+
+    return !!m.has_defense;
+}
+
+// ========================================================================
+// mon_escape — C ref: muse.c:778
+// ========================================================================
+function mon_escape(mtmp, vismon, map, player) {
+    if (mon_has_special(mtmp)
+        || (mtmp.iswiz && (player.no_of_wizards || 0) < 2))
+        return 0;
+    if (vismon) {
+        const name = monDisplayName(mtmp, { article: 'the', capitalize: true });
+        pline_mon(mtmp, `${name} escapes the dungeon!`);
+    }
+    mongone(mtmp, map, player);
+    return 2;
+}
+
+// ========================================================================
+// use_defensive — C ref: muse.c:794
+// ========================================================================
+export function use_defensive(mon, map, player) {
+    let i;
+    const otmp = m.defensive;
+    const mdat = mon.type || {};
+
+    if ((i = precheck(mon, otmp, map, player)) !== 0) return i;
+
+    const vis = cansee(map, player, null, mon.mx, mon.my);
+    const vismon = canseemon(mon, player);
+    const oseen = otmp && vismon;
+
+    // Flee timer
+    const fleetim = !mon.mflee ? (33 - Math.floor(30 * mon.mhp / (mon.mhpmax || 1))) : 0;
+    function m_flee(mt) {
+        if (fleetim && !mt.iswiz) {
+            monflee(mt, fleetim, false, false, player);
+        }
+    }
+
+    const name = monDisplayName(mon, { article: 'the', capitalize: true });
+
+    switch (m.has_defense) {
+    case MUSE_UNICORN_HORN:
+        if (vismon) {
+            if (otmp)
+                pline_mon(mon, `${name} uses a unicorn horn!`);
+            else {
+                const name2 = monDisplayName(mon, { article: 'none' });
+                pline(`The tip of ${name2}'s horn glows!`);
+            }
+        }
+        if (!mon.mcansee) {
+            mcureblindness(mon, vismon, player);
+        } else if (mon.mconf || mon.mstun) {
+            mon.mconf = 0;
+            mon.mstun = 0;
+            if (vismon)
+                pline_mon(mon, `${name} seems steadier now.`);
+        }
+        return 2;
+
+    case MUSE_BUGLE:
+        if (!otmp) return 0;
+        if (vismon) {
+            pline_mon(mon, `${name} plays a bugle!`);
+        } else {
+            You_hear('a bugle playing reveille!');
+        }
+        awaken_soldiers(mon);
+        return 2;
+
+    case MUSE_WAN_TELEPORTATION_SELF:
+        if (!otmp) return 0;
+        if ((mon.isshk && inhishop(mon)) || mon.isgd || mon.ispriest) return 2;
+        m_flee(mon);
+        mzapwand(mon, otmp, true, map, player);
+        m_tele(mon, vismon, oseen, WAN_TELEPORTATION, map, player);
+        return 2;
+
+    case MUSE_WAN_TELEPORTATION:
+        if (!otmp) return 0;
+        zap_oseen = oseen;
+        mzapwand(mon, otmp, false, map, player);
+        m_using = true;
+        mbhit(mon, rn1(8, 6), mbhitm, null, otmp, map, player);
+        if (noteleport_level(mon, map))
+            mon_learns_traps(mon, TELEP_TRAP);
+        m_using = false;
+        return 2;
+
+    case MUSE_SCR_TELEPORTATION: {
+        if (!otmp) return 0;
+        const obj_is_cursed = otmp.cursed;
+        if (mon.isshk || mon.isgd || mon.ispriest) return 2;
+        m_flee(mon);
+        // Extract scroll from inventory before teleport
+        let scroll = otmp;
+        if ((scroll.quan || 1) > 1) scroll = splitobj(scroll, 1);
+        extract_from_minvent(mon, scroll, false, false);
+        mreadmsg(mon, scroll, player);
+        if (obj_is_cursed || mon.mconf) {
+            if (vismon) {
+                pline_mon(mon, `${name} seems very disoriented for a moment.`);
+            }
+        } else {
+            m_tele(mon, vismon, oseen, SCR_TELEPORTATION, map, player);
+        }
+        // scroll used up (already extracted)
+        return 2;
+    }
+
+    case MUSE_WAN_DIGGING: {
+        if (!otmp) return 0;
+        m_flee(mon);
+        mzapwand(mon, otmp, false, map, player);
+        if (oseen) makeknown(WAN_DIGGING);
+        const loc = map.at(mon.mx, mon.my);
+        if (loc && (IS_FURNITURE(loc.typ) || IS_DRAWBRIDGE(loc.typ)
+            || stairway_at(mon.mx, mon.my, map))) {
+            pline('The digging ray is ineffective.');
+            return 2;
+        }
+        if (!Can_dig_down(map)) {
+            if (vismon) {
+                pline('The floor here is too hard to dig in.');
+            }
+            return 2;
+        }
+        // Monster digs hole and falls through
+        if (vis) {
+            pline_mon(mon, `${name} has made a hole in the floor.`);
+            pline_mon(mon, `${name} ${is_flyer(mdat) ? 'dives' : 'falls'} through...`);
+        } else {
+            You_hear('something crash through the floor.');
+        }
+        migrate_to_level(mon, ledger_no(null) + 1, 0, null, map);
+        return 2;
+    }
+
+    case MUSE_DEF_WAN_UNDEAD_TURNING:
+        if (!otmp) return 0;
+        zap_oseen = oseen;
+        mzapwand(mon, otmp, false, map, player);
+        m_using = true;
+        mbhit(mon, rn1(8, 6), mbhitm, null, otmp, map, player);
+        m_using = false;
+        return 2;
+
+    case MUSE_WAN_CREATE_MONSTER: {
+        if (!otmp) return 0;
+        const cc = {};
+        if (!enexto(cc, mon.mx, mon.my, null, map, player)) return 0;
+        mzapwand(mon, otmp, false, map, player);
+        const newmon = makemon(null, cc.x, cc.y, 0, 0, map);
+        if (newmon && canspotmon(newmon, player, map) && oseen)
+            makeknown(WAN_CREATE_MONSTER);
+        return 2;
+    }
+
+    case MUSE_SCR_CREATE_MONSTER: {
+        if (!otmp) return 0;
+        let cnt = 1;
+        if (!rn2(73)) cnt += rnd(4);
+        if (mon.mconf || otmp.cursed) cnt += 12;
+        let pm = null;
+        if (mon.mconf) pm = mons[PM_ACID_BLOB];
+        mreadmsg(mon, otmp, player);
+        let known = false;
+        while (cnt-- > 0) {
+            const cc = {};
+            if (!enexto(cc, mon.mx, mon.my, pm, map, player)) break;
+            const newmon = makemon(pm, cc.x, cc.y, 0, 0, map);
+            if (newmon && canspotmon(newmon, player, map)) known = true;
+        }
+        if (known) makeknown(SCR_CREATE_MONSTER);
+        m_useup(mon, otmp);
+        return 2;
+    }
+
+    case MUSE_TRAPDOOR: {
+        if (Is_botlevel(map)) return 0;
+        m_flee(mon);
+        const t2 = t_at(trapx, trapy, map);
+        if (vis && t2) {
+            pline_mon(mon, `${name} jumps into a trap!`);
+        }
+        // Move monster to trap and migrate
+        migrate_to_level(mon, ledger_no(null) + 1, 0, null, map);
+        return 2;
+    }
+
+    case MUSE_UPSTAIRS: {
+        m_flee(mon);
+        const stway = stairway_at(mon.mx, mon.my, map);
+        if (!stway) return 0;
+        if (vismon)
+            pline_mon(mon, `${name} escapes upstairs!`);
+        migrate_to_level(mon, 0, 0, null, map);
+        return 2;
+    }
+
+    case MUSE_DOWNSTAIRS: {
+        m_flee(mon);
+        const stway = stairway_at(mon.mx, mon.my, map);
+        if (!stway) return 0;
+        if (vismon)
+            pline_mon(mon, `${name} escapes downstairs!`);
+        migrate_to_level(mon, 0, 0, null, map);
+        return 2;
+    }
+
+    case MUSE_UP_LADDER: {
+        m_flee(mon);
+        const stway = stairway_at(mon.mx, mon.my, map);
+        if (!stway) return 0;
+        if (vismon)
+            pline_mon(mon, `${name} escapes up the ladder!`);
+        migrate_to_level(mon, 0, 0, null, map);
+        return 2;
+    }
+
+    case MUSE_DN_LADDER: {
+        m_flee(mon);
+        const stway = stairway_at(mon.mx, mon.my, map);
+        if (!stway) return 0;
+        if (vismon)
+            pline_mon(mon, `${name} escapes down the ladder!`);
+        migrate_to_level(mon, 0, 0, null, map);
+        return 2;
+    }
+
+    case MUSE_SSTAIRS: {
+        m_flee(mon);
+        const stway = stairway_at(mon.mx, mon.my, map);
+        if (!stway) return 0;
+        if (vismon)
+            pline_mon(mon, `${name} escapes ${stway.up ? 'up' : 'down'}stairs!`);
+        migrate_to_level(mon, 0, 0, null, map);
+        return 2;
+    }
+
+    case MUSE_TELEPORT_TRAP: {
+        m_flee(mon);
+        const t2 = t_at(trapx, trapy, map);
+        if (vis && t2) {
+            pline_mon(mon, `${name} jumps onto a teleport trap!`);
+        }
+        m_tele(mon, vismon, false, 0, map, player);
+        return 2;
+    }
+
+    case MUSE_POT_HEALING:
+        if (!otmp) return 0;
+        mquaffmsg(mon, otmp, player);
+        i = d(6 + 2 * bcsign(otmp), 4);
+        healmon(mon, i, 1);
+        if (!otmp.cursed && !mon.mcansee)
+            mcureblindness(mon, vismon, player);
+        if (vismon)
+            pline_mon(mon, `${name} looks better.`);
+        if (oseen) makeknown(POT_HEALING);
+        m_useup(mon, otmp);
+        return 2;
+
+    case MUSE_POT_EXTRA_HEALING:
+        if (!otmp) return 0;
+        mquaffmsg(mon, otmp, player);
+        i = d(6 + 2 * bcsign(otmp), 8);
+        healmon(mon, i, otmp.blessed ? 5 : 2);
+        if (!mon.mcansee)
+            mcureblindness(mon, vismon, player);
+        if (vismon)
+            pline_mon(mon, `${name} looks much better.`);
+        if (oseen) makeknown(POT_EXTRA_HEALING);
+        m_useup(mon, otmp);
+        return 2;
+
+    case MUSE_POT_FULL_HEALING:
+        if (!otmp) return 0;
+        mquaffmsg(mon, otmp, player);
+        if (otmp.otyp === POT_SICKNESS) {
+            // Pestilence — unbless
+            otmp.blessed = false;
+        }
+        healmon(mon, mon.mhpmax || 1, otmp.blessed ? 8 : 4);
+        if (!mon.mcansee && otmp.otyp !== POT_SICKNESS)
+            mcureblindness(mon, vismon, player);
+        if (vismon)
+            pline_mon(mon, `${name} looks completely healed.`);
+        if (oseen) makeknown(otmp.otyp);
+        m_useup(mon, otmp);
+        return 2;
+
+    case MUSE_LIZARD_CORPSE:
+        if (!otmp) return 0;
+        mon_consume_unstone(mon, otmp, false, false, map, player);
+        return 2;
+
+    case 0:
+        return 0; // exploded wand
+
+    default:
+        break;
+    }
+    return 0;
+}
+
+// ========================================================================
+// rnd_defensive_item — C ref: muse.c:1220
+// Note: also implemented in makemon.js for level generation.
+// This version is for runtime use.
+// ========================================================================
+export function rnd_defensive_item(mtmp, map) {
+    const pm = mtmp.type || {};
+    const difficulty = pm.difficulty || pm.level || 0;
+    let trycnt = 0;
+
+    if (is_animal(pm) || attacktype(pm, AT_EXPL) || mindless(pm)
+        || pm.symbol === S_GHOST || pm.symbol === S_KOP)
+        return 0;
+
+    while (true) {
+        const roll = rn2(8 + (difficulty > 3 ? 1 : 0)
+            + (difficulty > 6 ? 1 : 0) + (difficulty > 8 ? 1 : 0));
+        switch (roll) {
+        case 6:
+        case 9:
+            if (noteleport_level(mtmp, map) && ++trycnt < 2) continue;
+            if (!rn2(3)) return WAN_TELEPORTATION;
+            // fall through
+        case 0:
+        case 1:
+            return SCR_TELEPORTATION;
+        case 8:
+        case 10:
+            if (!rn2(3)) return WAN_CREATE_MONSTER;
+            // fall through
+        case 2:
+            return SCR_CREATE_MONSTER;
+        case 3:
+            return POT_HEALING;
+        case 4:
+            return POT_EXTRA_HEALING;
+        case 5:
+            return (pm.mndx !== PM_PESTILENCE) ? POT_FULL_HEALING : POT_SICKNESS;
+        case 7:
+            if (Sokoban(map) && rn2(4)) continue;
+            if (is_floater(pm) || mtmp.isshk || mtmp.isgd || mtmp.ispriest) return 0;
+            return WAN_DIGGING;
+        }
+        return 0;
+    }
+}
+
+// ========================================================================
+// linedup_chk_corpse — C ref: muse.c:1292
+// ========================================================================
+function linedup_chk_corpse(x, y, map) {
+    return sobj_at(CORPSE, x, y, map) != null;
+}
+
+// ========================================================================
+// m_use_undead_turning — C ref: muse.c:1298
+// ========================================================================
+function m_use_undead_turning(mtmp, obj, map, player) {
+    const ax = player.x + Math.sign((mtmp.mux ?? player.x) - mtmp.mx) * 3;
+    const ay = player.y + Math.sign((mtmp.muy ?? player.y) - mtmp.my) * 3;
+    const bx = mtmp.mx, by = mtmp.my;
+
+    if (!(obj.otyp === WAN_UNDEAD_TURNING && obj.spe > 0)) return;
+
+    if (carrying(CORPSE, player)
+        || linedup_callback(ax, ay, bx, by, (x2, y2) => linedup_chk_corpse(x2, y2, map), map)) {
+        m.offensive = obj;
+        m.has_offense = MUSE_OFF_WAN_UNDEAD_TURNING;
+    }
+}
+
+// ========================================================================
+// hero_behind_chokepoint — C ref: muse.c:1341
+// ========================================================================
+function hero_behind_chokepoint(mtmp, map, player) {
+    const mux = mtmp.mux ?? player.x;
+    const muy = mtmp.muy ?? player.y;
+    const dx = Math.sign(mtmp.mx - mux);
+    const dy = Math.sign(mtmp.my - muy);
+
+    const x = mux + dx;
+    const y = muy + dy;
+
+    // Simplified direction computation: check two orthogonal spots
+    // C uses xytod/dtoxy/DIR_LEFT2/DIR_RIGHT2 — simplified to direct check
+    const c1x = x - dy, c1y = y + dx;
+    const c2x = x + dy, c2y = y - dx;
+
+    if ((!isok(c1x, c1y) || !accessible(c1x, c1y, map))
+        && (!isok(c2x, c2y) || !accessible(c2x, c2y, map)))
+        return true;
+    return false;
+}
+
+// ========================================================================
+// mon_has_friends — C ref: muse.c:1368
+// ========================================================================
+function mon_has_friends(mtmp, map) {
+    if (mtmp.tame || mtmp.mpeaceful) return false;
+    for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+            const x = mtmp.mx + dx, y = mtmp.my + dy;
+            if (!isok(x, y)) continue;
+            const mon2 = m_at(x, y, map);
+            if (mon2 && mon2 !== mtmp && !mon2.tame && !mon2.mpeaceful)
+                return true;
+        }
+    }
+    return false;
+}
+
+// ========================================================================
+// mon_likes_objpile_at — C ref: muse.c:1392
+// ========================================================================
+function mon_likes_objpile_at(mtmp, x, y, map) {
+    if (!isok(x, y)) return false;
+    const objects = map.objectsAt ? map.objectsAt(x, y) : [];
+    if (!objects || objects.length === 0) return false;
+
+    let i = 0;
+    for (const otmp of objects) {
+        if (i >= 3) break;
+        if (mon_would_take_item(mtmp, otmp)) return true;
+        i++;
+    }
+    if (i >= 3) return true;
+    return false;
+}
+
+// ========================================================================
+// find_offensive — C ref: muse.c:1419
+// ========================================================================
+export function find_offensive(mtmp, map, player) {
+    const mdat = mtmp.type || {};
+
+    m.offensive = null;
+    m.has_offense = 0;
+
+    if (mtmp.mpeaceful || is_animal(mdat) || mindless(mdat) || nohands(mdat))
+        return false;
+    if (player.uswallow) return false;
+    if (onscary(map, mtmp.mx, mtmp.my, mtmp)) return false;
+    // C: dmgtype(mdat, AD_HEAL) check — skip if hero completely naked
+    // Simplified: skip this check
+
+    if (!linedUpToPlayer(mtmp, map, player)) return false;
+
+    const reflection_skip = (m_seenres(mtmp, 0) !== 0
+        || monnear(mtmp, mtmp.mux ?? player.x, mtmp.muy ?? player.y));
+    const mtmp_helmet = which_armor(mtmp, W_ARMH);
+
+    for (const obj of (mtmp.minvent || [])) {
+        if (!reflection_skip) {
+            if (m.has_offense === MUSE_OFF_WAN_DEATH) continue;
+            if (obj.otyp === WAN_DEATH && obj.spe > 0) {
+                m.offensive = obj;
+                m.has_offense = MUSE_OFF_WAN_DEATH;
+            }
+            if (m.has_offense === MUSE_OFF_WAN_SLEEP) continue;
+            if (obj.otyp === WAN_SLEEP && obj.spe > 0 && !(player.multi < 0)) {
+                m.offensive = obj;
+                m.has_offense = MUSE_OFF_WAN_SLEEP;
+            }
+            if (m.has_offense === MUSE_OFF_WAN_FIRE) continue;
+            if (obj.otyp === WAN_FIRE && obj.spe > 0) {
+                m.offensive = obj;
+                m.has_offense = MUSE_OFF_WAN_FIRE;
+            }
+            if (m.has_offense === MUSE_OFF_FIRE_HORN) continue;
+            if (obj.otyp === FIRE_HORN && obj.spe > 0 && can_blow(mdat)) {
+                m.offensive = obj;
+                m.has_offense = MUSE_OFF_FIRE_HORN;
+            }
+            if (m.has_offense === MUSE_OFF_WAN_COLD) continue;
+            if (obj.otyp === WAN_COLD && obj.spe > 0) {
+                m.offensive = obj;
+                m.has_offense = MUSE_OFF_WAN_COLD;
+            }
+            if (m.has_offense === MUSE_OFF_FROST_HORN) continue;
+            if (obj.otyp === FROST_HORN && obj.spe > 0 && can_blow(mdat)) {
+                m.offensive = obj;
+                m.has_offense = MUSE_OFF_FROST_HORN;
+            }
+            if (m.has_offense === MUSE_OFF_WAN_LIGHTNING) continue;
+            if (obj.otyp === WAN_LIGHTNING && obj.spe > 0) {
+                m.offensive = obj;
+                m.has_offense = MUSE_OFF_WAN_LIGHTNING;
+            }
+            if (m.has_offense === MUSE_OFF_WAN_MAGIC_MISSILE) continue;
+            if (obj.otyp === WAN_MAGIC_MISSILE && obj.spe > 0) {
+                m.offensive = obj;
+                m.has_offense = MUSE_OFF_WAN_MAGIC_MISSILE;
+            }
+        }
+        if (m.has_offense === MUSE_OFF_WAN_UNDEAD_TURNING) continue;
+        m_use_undead_turning(mtmp, obj, map, player);
+
+        if (m.has_offense === MUSE_OFF_WAN_STRIKING) continue;
+        if (obj.otyp === WAN_STRIKING && obj.spe > 0) {
+            m.offensive = obj;
+            m.has_offense = MUSE_OFF_WAN_STRIKING;
+        }
+
+        if (m.has_offense === MUSE_OFF_WAN_TELEPORTATION) continue;
+        if (obj.otyp === WAN_TELEPORTATION && obj.spe > 0
+            && !player.teleport_control
+            && (!noteleport_level(mtmp, map) || !mon_knows_traps(mtmp, TELEP_TRAP))
+            && (onscary(map, player.x, player.y, mtmp)
+                || (hero_behind_chokepoint(mtmp, map, player) && mon_has_friends(mtmp, map))
+                || mon_likes_objpile_at(mtmp, player.x, player.y, map)
+                || stairway_at(player.x, player.y, map))) {
+            m.offensive = obj;
+            m.has_offense = MUSE_OFF_WAN_TELEPORTATION;
+        }
+
+        if (m.has_offense === MUSE_OFF_POT_PARALYSIS) continue;
+        if (obj.otyp === POT_PARALYSIS && !(player.multi < 0)) {
+            m.offensive = obj;
+            m.has_offense = MUSE_OFF_POT_PARALYSIS;
+        }
+        if (m.has_offense === MUSE_OFF_POT_BLINDNESS) continue;
+        if (obj.otyp === POT_BLINDNESS && !attacktype(mdat, AT_GAZE)) {
+            m.offensive = obj;
+            m.has_offense = MUSE_OFF_POT_BLINDNESS;
+        }
+        if (m.has_offense === MUSE_OFF_POT_CONFUSION) continue;
+        if (obj.otyp === POT_CONFUSION) {
+            m.offensive = obj;
+            m.has_offense = MUSE_OFF_POT_CONFUSION;
+        }
+        if (m.has_offense === MUSE_OFF_POT_SLEEPING) continue;
+        if (obj.otyp === POT_SLEEPING) {
+            m.offensive = obj;
+            m.has_offense = MUSE_OFF_POT_SLEEPING;
+        }
+        if (m.has_offense === MUSE_OFF_POT_ACID) continue;
+        if (obj.otyp === POT_ACID) {
+            m.offensive = obj;
+            m.has_offense = MUSE_OFF_POT_ACID;
+        }
+
+        if (m.has_offense === MUSE_OFF_SCR_EARTH) continue;
+        if (obj.otyp === SCR_EARTH
+            && (hard_helmet(mtmp_helmet) || mtmp.mconf
+                || amorphous(mdat) || passes_walls(mdat)
+                || noncorporeal(mdat) || unsolid(mdat)
+                || !rn2(10))
+            && dist2(mtmp.mx, mtmp.my, mtmp.mux ?? player.x, mtmp.muy ?? player.y) <= 2
+            && mtmp.mcansee && haseyes(mdat)
+            && !Is_rogue_level(map)
+            && (!In_endgame(map) || Is_earthlevel(map))) {
+            m.offensive = obj;
+            m.has_offense = MUSE_OFF_SCR_EARTH;
+        }
+
+        if (m.has_offense === MUSE_OFF_CAMERA) continue;
+        if (obj.otyp === EXPENSIVE_CAMERA
+            && !player.blind
+            && dist2(mtmp.mx, mtmp.my, mtmp.mux ?? player.x, mtmp.muy ?? player.y) <= 2
+            && obj.spe > 0 && !rn2(6)) {
+            m.offensive = obj;
+            m.has_offense = MUSE_OFF_CAMERA;
+        }
+    }
+    return !!m.has_offense;
+}
+
+// ========================================================================
+// mbhitm — C ref: muse.c:1595
+// ========================================================================
+function mbhitm(mtmp, otmp, map, player) {
+    let tmp;
+    let reveal_invis = false;
+    let learnit = false;
+    const hits_you = (mtmp === player);
+
+    if (!hits_you && otmp.otyp !== WAN_UNDEAD_TURNING) {
+        mtmp.msleeping = 0;
+        if (mtmp.m_ap_type) seemimic(mtmp, map);
+    }
+
+    switch (otmp.otyp) {
+    case WAN_STRIKING:
+        reveal_invis = true;
+        if (hits_you) {
+            // Hero hit by striking wand
+            if (player.antimagic) {
+                pline('Boing!');
+                learnit = true;
+            } else if (rnd(20) < 10 + (player.uac || 10)) {
+                pline('The wand hits you!');
+                tmp = d(2, 12);
+                if (player.halfSpellDamage) tmp = Math.floor((tmp + 1) / 2);
+                player.hp = Math.max(0, (player.hp || 0) - tmp);
+                learnit = true;
+            } else {
+                pline('The wand misses you.');
+            }
+        } else {
+            // Monster hit by striking wand
+            if (rnd(20) < 10 + find_mac(mtmp)) {
+                tmp = d(2, 12);
+                mtmp.mhp -= tmp;
+                resist(mtmp, WAND_CLASS);
+                learnit = true;
+            }
+        }
+        if (learnit && zap_oseen) makeknown(WAN_STRIKING);
+        break;
+
+    case WAN_TELEPORTATION:
+        if (hits_you) {
+            // C: tele() — simplified
+            if (zap_oseen) makeknown(WAN_TELEPORTATION);
+        } else {
+            if (!tele_restrict(mtmp, map))
+                rloc(mtmp, 0, map, player);
+        }
+        break;
+
+    case WAN_UNDEAD_TURNING:
+        if (hits_you) {
+            // C: unturn_you() — not ported; simplified
+            learnit = zap_oseen;
+        } else {
+            let wake = false;
+            // C: unturn_dead(mtmp) — affects mtmp's invent; simplified skip
+            if (is_undead(mtmp.type || {}) || is_vampshifter(mtmp)) {
+                wake = reveal_invis = true;
+                resist(mtmp, WAND_CLASS);
+            }
+            if (wake) {
+                if (!DEADMONSTER(mtmp))
+                    wakeup(mtmp, false, map, player);
+                learnit = zap_oseen;
+            }
+        }
+        if (learnit) makeknown(WAN_UNDEAD_TURNING);
+        break;
+
+    default:
+        break;
+    }
+
+    if (reveal_invis && !DEADMONSTER(mtmp)
+        && cansee(map, player, null, bhitpos.x, bhitpos.y)
+        && !canspotmon(mtmp, player, map))
+        map_invisible(map, bhitpos.x, bhitpos.y, player);
+
+    return 0;
+}
+
+// ========================================================================
+// fhito_loc — C ref: muse.c:1704
+// ========================================================================
+function fhito_loc(obj, tx, ty, fhito, map) {
+    if (!fhito) return false;
+    const objects = map.objectsAt ? map.objectsAt(tx, ty) : [];
+    if (!objects || objects.length === 0) return false;
+
+    let hitanything = 0;
+    for (const otmp of [...objects]) {
+        hitanything += fhito(otmp, obj);
+    }
+    return hitanything > 0;
+}
+
+// ========================================================================
+// mbhit — C ref: muse.c:1731
+// ========================================================================
+function mbhit(mon, range, fhitm, fhito, obj, map, player) {
+    bhitpos.x = mon.mx;
+    bhitpos.y = mon.my;
+    const ddx = Math.sign((mon.mux ?? player.x) - mon.mx);
+    const ddy = Math.sign((mon.muy ?? player.y) - mon.my);
+
+    while (range-- > 0) {
+        bhitpos.x += ddx;
+        bhitpos.y += ddy;
+        const x = bhitpos.x;
+        const y = bhitpos.y;
+
+        if (!isok(x, y)) {
+            bhitpos.x -= ddx;
+            bhitpos.y -= ddy;
+            break;
+        }
+
+        if (u_at(bhitpos.x, bhitpos.y, player)) {
+            if (fhitm) fhitm(player, obj, map, player);
+            range -= 3;
+        } else {
+            const mtmp = m_at(bhitpos.x, bhitpos.y, map);
+            if (mtmp) {
+                if (cansee(map, player, null, bhitpos.x, bhitpos.y)
+                    && !canspotmon(mtmp, player, map))
+                    map_invisible(map, bhitpos.x, bhitpos.y, player);
+                if (fhitm) fhitm(mtmp, obj, map, player);
+                range -= 3;
+            }
+        }
+
+        if (fhito && fhito_loc(obj, bhitpos.x, bhitpos.y, fhito, map))
+            range--;
+
+        const loc = map.at(bhitpos.x, bhitpos.y);
+        const ltyp = loc ? loc.typ : 0;
+
+        if (!ZAP_POS(ltyp)
+            || (loc && (loc.flags & 0x03) /* D_LOCKED | D_CLOSED */)) {
+            bhitpos.x -= ddx;
+            bhitpos.y -= ddy;
+            break;
+        }
+    }
+}
+
+// ========================================================================
+// use_offensive — C ref: muse.c:1815
+// ========================================================================
+export function use_offensive(mtmp, map, player) {
+    let i;
+    const otmp = m.offensive;
+    const mdat = mtmp.type || {};
+
+    // Offensive potions are thrown, not drunk — skip precheck for them
+    if (otmp.oclass !== POTION_CLASS && (i = precheck(mtmp, otmp, map, player)) !== 0)
+        return i;
+    const oseen = canseemon(mtmp, player);
+    const name = monDisplayName(mtmp, { article: 'the', capitalize: true });
+
+    switch (m.has_offense) {
+    case MUSE_OFF_WAN_DEATH:
+    case MUSE_OFF_WAN_SLEEP:
+    case MUSE_OFF_WAN_FIRE:
+    case MUSE_OFF_WAN_COLD:
+    case MUSE_OFF_WAN_LIGHTNING:
+    case MUSE_OFF_WAN_MAGIC_MISSILE:
+        mzapwand(mtmp, otmp, false, map, player);
+        if (oseen) makeknown(otmp.otyp);
+        m_using = true;
+        // C: buzz(BZ_M_WAND(...), nd, mx, my, dx, dy)
+        // Simplified: call buzz with appropriate parameters
+        {
+            const nd = (otmp.otyp === WAN_MAGIC_MISSILE) ? 2 : 6;
+            buzz(0, nd, mtmp.mx, mtmp.my,
+                Math.sign((mtmp.mux ?? player.x) - mtmp.mx),
+                Math.sign((mtmp.muy ?? player.y) - mtmp.my),
+                map, player);
+        }
+        m_using = false;
+        return DEADMONSTER(mtmp) ? 1 : 2;
+
+    case MUSE_OFF_FIRE_HORN:
+    case MUSE_OFF_FROST_HORN:
+        mplayhorn(mtmp, otmp, false, map, player);
+        m_using = true;
+        buzz(0, rn1(6, 6), mtmp.mx, mtmp.my,
+            Math.sign((mtmp.mux ?? player.x) - mtmp.mx),
+            Math.sign((mtmp.muy ?? player.y) - mtmp.my),
+            map, player);
+        m_using = false;
+        return DEADMONSTER(mtmp) ? 1 : 2;
+
+    case MUSE_OFF_WAN_TELEPORTATION:
+    case MUSE_OFF_WAN_UNDEAD_TURNING:
+    case MUSE_OFF_WAN_STRIKING:
+        zap_oseen = oseen;
+        mzapwand(mtmp, otmp, false, map, player);
+        m_using = true;
+        mbhit(mtmp, rn1(8, 6), mbhitm, null, otmp, map, player);
+        m_using = false;
+        return 2;
+
+    case MUSE_OFF_SCR_EARTH: {
+        const confused = !!mtmp.mconf;
+        const mmx = mtmp.mx, mmy = mtmp.my;
+        mreadmsg(mtmp, otmp, player);
+        if (canspotmon(mtmp, player, map)) {
+            pline('The ceiling rumbles!');
+            if (oseen) makeknown(otmp.otyp);
+        }
+        m_useup(mtmp, otmp);
+        // Simplified: drop_boulder_on_monster/player not fully ported
+        // The scroll is consumed; damage effects simplified
+        return DEADMONSTER(mtmp) ? 1 : 2;
+    }
+
+    case MUSE_OFF_CAMERA:
+        if (!player.blind) {
+            const cname = monDisplayName(mtmp, { article: 'the', capitalize: true });
+            pline(`${cname} takes a picture of you!`);
+        }
+        m_using = true;
+        if (!player.blind) {
+            pline('You are blinded by the flash of light!');
+            // C: make_blinded() — simplified
+            player.blind = true;
+            player.blindTimeout = (player.blindTimeout || 0) + rnd(1 + 50);
+        }
+        m_using = false;
+        otmp.spe--;
+        return 1;
+
+    case MUSE_OFF_POT_PARALYSIS:
+    case MUSE_OFF_POT_BLINDNESS:
+    case MUSE_OFF_POT_CONFUSION:
+    case MUSE_OFF_POT_SLEEPING:
+    case MUSE_OFF_POT_ACID:
+        if (cansee(map, player, null, mtmp.mx, mtmp.my)) {
+            pline_mon(mtmp, `${name} hurls a potion!`);
+        }
+        m_throw(mtmp, mtmp.mx, mtmp.my,
+            Math.sign((mtmp.mux ?? player.x) - mtmp.mx),
+            Math.sign((mtmp.muy ?? player.y) - mtmp.my),
+            distmin(mtmp.mx, mtmp.my, mtmp.mux ?? player.x, mtmp.muy ?? player.y),
+            otmp, map, player);
+        return 2;
+
+    case 0:
+        return 0; // exploded wand
+
+    default:
+        break;
+    }
+    return 0;
+}
+
+// ========================================================================
+// rnd_offensive_item — C ref: muse.c:2014
+// ========================================================================
+export function rnd_offensive_item(mtmp) {
+    const pm = mtmp.type || {};
+    const difficulty = pm.difficulty || pm.level || 0;
+
+    if (is_animal(pm) || attacktype(pm, AT_EXPL) || mindless(pm)
+        || pm.symbol === S_GHOST || pm.symbol === S_KOP)
+        return 0;
+
+    if (difficulty > 7 && !rn2(35)) return WAN_DEATH;
+
+    const range = 9 - (difficulty < 4 ? 1 : 0) + 4 * (difficulty > 6 ? 1 : 0);
+    switch (rn2(range)) {
+    case 0: {
+        const mtmp_helmet = which_armor(mtmp, W_ARMH);
+        if (hard_helmet(mtmp_helmet) || amorphous(pm)
+            || passes_walls(pm) || noncorporeal(pm) || unsolid(pm))
+            return SCR_EARTH;
+    }
+    // fall through
+    case 1:
+        return WAN_STRIKING;
+    case 2:
+        return POT_ACID;
+    case 3:
+        return POT_CONFUSION;
+    case 4:
+        return POT_BLINDNESS;
+    case 5:
+        return POT_SLEEPING;
+    case 6:
+        return POT_PARALYSIS;
+    case 7:
+    case 8:
+        return WAN_MAGIC_MISSILE;
+    case 9:
+        return WAN_SLEEP;
+    case 10:
+        return WAN_FIRE;
+    case 11:
+        return WAN_COLD;
+    case 12:
+        return WAN_LIGHTNING;
+    }
+    return 0;
+}
+
+// ========================================================================
+// find_misc — C ref: muse.c:2074
+// ========================================================================
+export function find_misc(mon, map, player) {
+    const mdat = mon.type || {};
+    const x = mon.mx, y = mon.my;
+    const immobile = (mdat.mmove === 0 || mdat.speed === 0);
+    const stuck = (mon === player.ustuck);
+
+    m.misc = null;
+    m.has_misc = 0;
+    if (is_animal(mdat) || mindless(mdat)) return false;
+    if (player.uswallow && stuck) return false;
+
+    if (dist2(x, y, mon.mux ?? player.x, mon.muy ?? player.y) > 36)
+        return false;
+
+    // Poly trap check for weak monsters
+    const pmidx = monsndx(mdat);
+    if (!stuck && !immobile && !mon.mtrapped && (mon.cham === undefined || mon.cham === NON_PM)
+        && (mdat.difficulty || mdat.level || 0) < 6) {
+        const ignore_boulders = verysmall(mdat) || throws_rocks(mdat) || passes_walls(mdat);
+        const diag_ok = !NODIAG(pmidx);
+
+        for (let xx = x - 1; xx <= x + 1; xx++) {
+            for (let yy = y - 1; yy <= y + 1; yy++) {
+                if (!isok(xx, yy) || u_at(xx, yy, player)) continue;
+                if (!diag_ok && xx !== x && yy !== y) continue;
+                if ((xx !== x || yy !== y) && m_at(xx, yy, map)) continue;
+                const t = t_at(xx, yy, map);
+                if (!t) continue;
+                if (!ignore_boulders && sobj_at(BOULDER, xx, yy, map)) continue;
+                if (onscary(map, xx, yy, mon)) continue;
+                if (t.ttyp === POLY_TRAP) {
+                    trapx = xx;
+                    trapy = yy;
+                    m.has_misc = MUSE_MISC_POLY_TRAP;
+                    return true;
+                }
+            }
+        }
+    }
+
+    if (nohands(mdat)) return false;
+
+    // Inventory scan for misc items
+    for (const obj of (mon.minvent || [])) {
+        if (obj.otyp === POT_GAIN_LEVEL
+            && (!obj.cursed || (!mon.isgd && !mon.isshk && !mon.ispriest))) {
+            m.misc = obj;
+            m.has_misc = MUSE_MISC_POT_GAIN_LEVEL;
+        }
+
+        if (m.has_misc === MUSE_MISC_BULLWHIP) continue;
+        if (obj.otyp === BULLWHIP && !mon.mpeaceful
+            && player.weapon && !rn2(5) && obj === MON_WEP(mon)
+            && u_at(mon.mux ?? player.x, mon.muy ?? player.y, player)
+            && m_next2u(mon, player)
+            && !player.uswallow
+            && canletgo(player.weapon, '')) {
+            m.misc = obj;
+            m.has_misc = MUSE_MISC_BULLWHIP;
+        }
+
+        if (m.has_misc === MUSE_MISC_WAN_MAKE_INVISIBLE) continue;
+        if (obj.otyp === WAN_MAKE_INVISIBLE && obj.spe > 0 && !mon.minvis
+            && !mon.invis_blkd && (!mon.mpeaceful || player.seeInvisible)
+            && (!attacktype(mdat, AT_GAZE) || mon.mcan)) {
+            m.misc = obj;
+            m.has_misc = MUSE_MISC_WAN_MAKE_INVISIBLE;
+        }
+
+        if (m.has_misc === MUSE_MISC_POT_INVISIBILITY) continue;
+        if (obj.otyp === POT_INVISIBILITY && !mon.minvis
+            && !mon.invis_blkd && (!mon.mpeaceful || player.seeInvisible)
+            && (!attacktype(mdat, AT_GAZE) || mon.mcan)) {
+            m.misc = obj;
+            m.has_misc = MUSE_MISC_POT_INVISIBILITY;
+        }
+
+        if (m.has_misc === MUSE_MISC_WAN_SPEED_MONSTER) continue;
+        if (obj.otyp === WAN_SPEED_MONSTER && obj.spe > 0
+            && mon.mspeed !== MFAST && !mon.isgd) {
+            m.misc = obj;
+            m.has_misc = MUSE_MISC_WAN_SPEED_MONSTER;
+        }
+
+        if (m.has_misc === MUSE_MISC_POT_SPEED) continue;
+        if (obj.otyp === POT_SPEED && mon.mspeed !== MFAST && !mon.isgd) {
+            m.misc = obj;
+            m.has_misc = MUSE_MISC_POT_SPEED;
+        }
+
+        if (m.has_misc === MUSE_MISC_WAN_POLYMORPH) continue;
+        if (obj.otyp === WAN_POLYMORPH && obj.spe > 0
+            && (mon.cham === undefined || mon.cham === NON_PM)
+            && (mdat.difficulty || mdat.level || 0) < 6) {
+            m.misc = obj;
+            m.has_misc = MUSE_MISC_WAN_POLYMORPH;
+        }
+
+        if (m.has_misc === MUSE_MISC_POT_POLYMORPH) continue;
+        if (obj.otyp === POT_POLYMORPH
+            && (mon.cham === undefined || mon.cham === NON_PM)
+            && (mdat.difficulty || mdat.level || 0) < 6) {
+            m.misc = obj;
+            m.has_misc = MUSE_MISC_POT_POLYMORPH;
+        }
+
+        if (m.has_misc === MUSE_MISC_BAG) continue;
+        if (Is_container(obj) && obj.otyp !== 218 /* BAG_OF_TRICKS -- not in objects.js as constant */
+            && !rn2(5)
+            && !m.has_misc && Has_contents(obj)
+            && !obj.olocked && !obj.otrapped) {
+            m.misc = obj;
+            m.has_misc = MUSE_MISC_BAG;
+        }
+    }
+
+    return !!m.has_misc;
+}
+
+// ========================================================================
+// muse_newcham_mon — C ref: muse.c:2227
+// ========================================================================
+function muse_newcham_mon(mon) {
+    const m_armr = which_armor(mon, W_ARM);
+    // C: Dragon_scales_to_pm / Dragon_mail_to_pm — simplified
+    // Just use rndmonst() for any polymorph
+    return rndmonst();
+}
+
+// ========================================================================
+// mloot_container — C ref: muse.c:2241
+// ========================================================================
+function mloot_container(mon, container, vismon, map, player) {
+    if (!container || !Has_contents(container) || container.olocked)
+        return 0;
+    if (Is_mbag(container) && container.cursed) return 0;
+    if (SchroedingersBox(container)) return 0;
+
+    let takeout_count;
+    const roll = rn2(10);
+    if (roll <= 3) takeout_count = 1;
+    else if (roll <= 6) takeout_count = 2;
+    else if (roll <= 8) takeout_count = 3;
+    else takeout_count = 4;
+
+    let res = 0;
+    for (let takeout_indx = 0; takeout_indx < takeout_count; ++takeout_indx) {
+        if (!Has_contents(container)) break;
+
+        let nitems = container.cobj.length;
+        if (!rn2(nitems + 1)) break;
+        const idx = rn2(nitems);
+        const xobj = container.cobj[idx];
+        if (!xobj) break;
+
+        // Remove from container
+        container.cobj.splice(idx, 1);
+
+        if (can_carry(mon, xobj)) {
+            if (vismon) {
+                const name = monDisplayName(mon, { article: 'the', capitalize: true });
+                pline_mon(mon, `${name} rummages through a container.`);
+            }
+            mpickobj(mon, xobj);
+            res = 2;
+        } else {
+            // Put back
+            container.cobj.push(xobj);
+            break;
+        }
+    }
+    return res;
+}
+
+// ========================================================================
+// you_aggravate — C ref: muse.c:2595
+// ========================================================================
+function you_aggravate(mtmp) {
+    // Simplified: just message
+    pline(`For some reason, a monster's presence is known to you.`);
+}
+
+// ========================================================================
+// use_misc — C ref: muse.c:2360
+// ========================================================================
+export function use_misc(mon, map, player) {
+    let i;
+    const otmp = m.misc;
+    const mdat = mon.type || {};
+
+    if ((i = precheck(mon, otmp, map, player)) !== 0) return i;
+
+    const vis = cansee(map, player, null, mon.mx, mon.my);
+    const vismon = canseemon(mon, player);
+    const oseen = otmp && vismon;
+    const name = monDisplayName(mon, { article: 'the', capitalize: true });
+
+    switch (m.has_misc) {
+    case MUSE_MISC_POT_GAIN_LEVEL:
+        if (!otmp) return 0;
+        mquaffmsg(mon, otmp, player);
+        if (otmp.cursed) {
+            if (vismon) {
+                pline_mon(mon, `${name} looks uneasy.`);
+            }
+            m_useup(mon, otmp);
+            return 2;
+        }
+        if (vismon)
+            pline_mon(mon, `${name} seems more experienced.`);
+        if (oseen) makeknown(POT_GAIN_LEVEL);
+        m_useup(mon, otmp);
+        if (!grow_up(mon, null)) return 1;
+        return 2;
+
+    case MUSE_MISC_WAN_MAKE_INVISIBLE:
+    case MUSE_MISC_POT_INVISIBILITY:
+        if (!otmp) return 0;
+        if (otmp.otyp === WAN_MAKE_INVISIBLE) {
+            mzapwand(mon, otmp, true, map, player);
+        } else {
+            mquaffmsg(mon, otmp, player);
+        }
+        mon_set_minvis(mon, map);
+        if (vismon && mon.minvis) {
+            if (canspotmon(mon, player, map)) {
+                pline(`${name}'s body takes on a strange transparency.`);
+            } else {
+                const name2 = monDisplayName(mon, { article: 'none' });
+                pline(`Suddenly you cannot see ${name2}.`);
+                if (vis) map_invisible(map, mon.mx, mon.my, player);
+            }
+            if (oseen) makeknown(otmp.otyp);
+        }
+        if (otmp.otyp === POT_INVISIBILITY) {
+            if (otmp.cursed) you_aggravate(mon);
+            m_useup(mon, otmp);
+        }
+        return 2;
+
+    case MUSE_MISC_WAN_SPEED_MONSTER:
+        if (!otmp) return 0;
+        mzapwand(mon, otmp, true, map, player);
+        mon_adjust_speed(mon, 1, otmp);
+        return 2;
+
+    case MUSE_MISC_POT_SPEED:
+        if (!otmp) return 0;
+        mquaffmsg(mon, otmp, player);
+        mon_adjust_speed(mon, 1, otmp);
+        m_useup(mon, otmp);
+        return 2;
+
+    case MUSE_MISC_WAN_POLYMORPH:
+        if (!otmp) return 0;
+        mzapwand(mon, otmp, true, map, player);
+        newcham(mon, muse_newcham_mon(mon), 0);
+        if (oseen) makeknown(WAN_POLYMORPH);
+        return 2;
+
+    case MUSE_MISC_POT_POLYMORPH:
+        if (!otmp) return 0;
+        mquaffmsg(mon, otmp, player);
+        m_useup(mon, otmp);
+        if (vismon)
+            pline_mon(mon, `${name} suddenly mutates!`);
+        newcham(mon, muse_newcham_mon(mon), 0);
+        if (oseen) makeknown(POT_POLYMORPH);
+        return 2;
+
+    case MUSE_MISC_POLY_TRAP: {
+        const t = t_at(trapx, trapy, map);
+        if (vismon || (t && vis)) {
+            pline_mon(mon, `${name} deliberately jumps onto a trap!`);
+        }
+        // C: relocate monster, then newcham
+        newcham(mon, null, 0);
+        return 2;
+    }
+
+    case MUSE_MISC_BAG:
+        if (!otmp) return 0;
+        return mloot_container(mon, otmp, vismon, map, player);
+
+    case MUSE_MISC_BULLWHIP: {
+        // Attempt to disarm hero
+        const The_whip = vismon ? 'The bullwhip' : 'A whip';
+        let where_to = rn2(4);
+        let obj = player.weapon;
+        if (!obj) break;
+
+        if (vismon)
+            pline_mon(mon, `${name} flicks a bullwhip towards your hand!`);
+        if (obj.otyp === HEAVY_IRON_BALL) {
+            pline(`${The_whip} fails to wrap around the ball.`);
+            return 1;
+        }
+        pline(`${The_whip} wraps around what you're wielding!`);
+        if (welded(obj)) {
+            pline('It is welded to your hand!');
+            where_to = 0;
+        }
+        if (!where_to) {
+            pline('The whip slips free.');
+            return 1;
+        }
+        // Simplified: disarm drops weapon at hero's feet
+        pline_mon(mon, `${name} yanks your weapon away!`);
+        // C: remove_worn_item, freeinv, place/dropy/mpickobj
+        // Simplified: just log the event but don't fully implement inventory transfer
+        return 1;
+    }
+
+    case 0:
+        return 0; // exploded wand
+
+    default:
+        break;
+    }
+    return 0;
+}
+
+// ========================================================================
+// rnd_misc_item — C ref: muse.c:2619
+// Note: also implemented in makemon.js for level generation.
+// ========================================================================
+export function rnd_misc_item(mtmp) {
+    const pm = mtmp.type || {};
+    const difficulty = pm.difficulty || pm.level || 0;
+
+    if (is_animal(pm) || attacktype(pm, AT_EXPL) || mindless(pm)
+        || pm.symbol === S_GHOST || pm.symbol === S_KOP)
+        return 0;
+
+    if (difficulty < 6 && !rn2(30))
+        return rn2(6) ? POT_POLYMORPH : WAN_POLYMORPH;
+
+    if (!rn2(40) && !nonliving(pm) && !is_vampshifter(mtmp))
+        return AMULET_OF_LIFE_SAVING;
+
+    switch (rn2(3)) {
+    case 0:
+        if (mtmp.isgd) return 0;
+        return rn2(6) ? POT_SPEED : WAN_SPEED_MONSTER;
+    case 1:
+        if (mtmp.mpeaceful) return 0;
+        return rn2(6) ? POT_INVISIBILITY : WAN_MAKE_INVISIBLE;
+    case 2:
+        return POT_GAIN_LEVEL;
+    }
+    return 0;
+}
+
+// ========================================================================
+// searches_for_item — C ref: muse.c:2670
+// ========================================================================
+export function searches_for_item(mon, obj) {
+    const typ = obj.otyp;
+    const mdat = mon.type || {};
+
+    // Don't interact with protected items on scary squares
+    if (obj.where === 'floor' && obj.ox === mon.mx && obj.oy === mon.my
+        && onscary(null, obj.ox, obj.oy, mon))
+        return false;
+
+    if (is_animal(mdat) || mindless(mdat) || mdat.mndx === PM_GHOST)
+        return false;
+
+    if (typ === WAN_MAKE_INVISIBLE || typ === POT_INVISIBILITY)
+        return !mon.minvis && !mon.invis_blkd && !attacktype(mdat, AT_GAZE);
+    if (typ === WAN_SPEED_MONSTER || typ === POT_SPEED)
+        return mon.mspeed !== MFAST;
+
+    const od = objectData[typ];
+    if (!od) return false;
+    const oclass = od.oc_class;
+
+    switch (oclass) {
+    case WAND_CLASS:
+        if (obj.spe <= 0) return false;
+        if (typ === WAN_DIGGING) return !is_floater(mdat);
+        if (typ === WAN_POLYMORPH) return (mdat.difficulty || mdat.level || 0) < 6;
+        if (typ === WAN_STRIKING || typ === WAN_UNDEAD_TURNING
+            || typ === WAN_TELEPORTATION || typ === WAN_CREATE_MONSTER)
+            return true;
+        // Ray wands
+        if (typ === WAN_DEATH || typ === WAN_SLEEP || typ === WAN_FIRE
+            || typ === WAN_COLD || typ === WAN_LIGHTNING || typ === WAN_MAGIC_MISSILE)
+            return true;
+        break;
+    case POTION_CLASS:
+        if (typ === POT_HEALING || typ === POT_EXTRA_HEALING
+            || typ === POT_FULL_HEALING || typ === POT_POLYMORPH
+            || typ === POT_GAIN_LEVEL || typ === POT_PARALYSIS
+            || typ === POT_SLEEPING || typ === POT_ACID || typ === POT_CONFUSION)
+            return true;
+        if (typ === POT_BLINDNESS && !attacktype(mdat, AT_GAZE))
+            return true;
+        break;
+    case SCROLL_CLASS:
+        if (typ === SCR_TELEPORTATION || typ === SCR_CREATE_MONSTER
+            || typ === SCR_EARTH || typ === SCR_FIRE)
+            return true;
+        break;
+    case AMULET_CLASS:
+        if (typ === AMULET_OF_LIFE_SAVING)
+            return !(mdat.flags3 & 0x00000040); // !nonliving
+        if (typ === AMULET_OF_REFLECTION || typ === AMULET_OF_GUARDING)
+            return true;
+        break;
+    case TOOL_CLASS:
+        if (typ === PICK_AXE) return false; // needspick not ported
+        if (typ === UNICORN_HORN)
+            return !obj.cursed && !is_unicorn(mdat) && mdat.mndx !== PM_KI_RIN;
+        if (typ === FROST_HORN || typ === FIRE_HORN)
+            return obj.spe > 0 && can_blow(mdat);
+        if (Is_container(obj) && !(Is_mbag(obj) && obj.cursed) && !obj.olocked)
+            return true;
+        if (typ === EXPENSIVE_CAMERA)
+            return obj.spe > 0;
+        break;
+    case FOOD_CLASS:
+        if (typ === CORPSE)
+            return ((mon.misc_worn_check & W_ARMG)
+                && touch_petrifies(mons[obj.corpsenm] || {}))
+                || (!resists_ston(mon)
+                    && cures_stoning(mon, obj, false));
+        if (typ === TIN)
+            return mcould_eat_tin(mon)
+                && !resists_ston(mon)
+                && cures_stoning(mon, obj, true);
+        if (typ === EGG && (obj.corpsenm ?? NON_PM) !== NON_PM)
+            return touch_petrifies(mons[obj.corpsenm] || {});
+        break;
+    default:
+        break;
+    }
+    return false;
+}
+
+// ========================================================================
+// mon_reflects — C ref: muse.c:2761
+// ========================================================================
+export function mon_reflects(mon, str) {
+    const mdat = mon.type || {};
+    let orefl = which_armor(mon, W_ARMS);
+    if (orefl && orefl.otyp === SHIELD_OF_REFLECTION) {
+        if (str) {
+            const name = monDisplayName(mon, { article: 'none' });
+            pline(`It is reflected by ${name}'s shield.`);
+            makeknown(SHIELD_OF_REFLECTION);
+        }
+        return true;
+    }
+    if (arti_reflects(MON_WEP(mon))) {
+        if (str) {
+            const name = monDisplayName(mon, { article: 'none' });
+            pline(`It is reflected by ${name}'s weapon.`);
+        }
+        return true;
+    }
+    orefl = which_armor(mon, W_AMUL);
+    if (orefl && orefl.otyp === AMULET_OF_REFLECTION) {
+        if (str) {
+            const name = monDisplayName(mon, { article: 'none' });
+            pline(`It is reflected by ${name}'s amulet.`);
+            makeknown(AMULET_OF_REFLECTION);
+        }
+        return true;
+    }
+    orefl = which_armor(mon, W_ARM);
+    if (orefl && (orefl.otyp === SILVER_DRAGON_SCALES
+        || orefl.otyp === SILVER_DRAGON_SCALE_MAIL)) {
+        if (str) {
+            const name = monDisplayName(mon, { article: 'none' });
+            pline(`It is reflected by ${name}'s armor.`);
+        }
+        return true;
+    }
+    if (mdat.mndx === PM_SILVER_DRAGON || mdat.mndx === PM_CHROMATIC_DRAGON) {
+        if (str) {
+            const name = monDisplayName(mon, { article: 'none' });
+            pline(`It is reflected by ${name}'s scales.`);
+        }
+        return true;
+    }
+    return false;
+}
+
+// ========================================================================
+// ureflects — C ref: muse.c:2800
+// ========================================================================
+export function ureflects(fmt, str, player) {
+    if (!player) return false;
+    const erefl = player.extrinsic_reflecting || 0;
+    if (erefl & W_ARMS) {
+        if (fmt && str) {
+            pline(`${str} is reflected by your shield.`);
+            makeknown(SHIELD_OF_REFLECTION);
+        }
+        return true;
+    }
+    if (erefl & W_WEP) {
+        if (fmt && str) pline(`${str} is reflected by your weapon.`);
+        return true;
+    }
+    if (erefl & W_AMUL) {
+        if (fmt && str) {
+            pline(`${str} is reflected by your medallion.`);
+            makeknown(AMULET_OF_REFLECTION);
+        }
+        return true;
+    }
+    if (erefl & W_ARM) {
+        if (fmt && str) pline(`${str} is reflected by your armor.`);
+        return true;
+    }
+    return false;
+}
+
+// ========================================================================
+// munstone — C ref: muse.c:2848
+// ========================================================================
+export function munstone(mon, by_you, map, player) {
+    if (resists_ston(mon)) return false;
+    if (mon.meating || helpless(mon)) return false;
+    mon.mstrategy = (mon.mstrategy || 0) & ~0x08000000; // ~STRAT_WAITFORU
+
+    const tinok = mcould_eat_tin(mon);
+    for (const obj of (mon.minvent || [])) {
+        if (cures_stoning(mon, obj, tinok)) {
+            mon_consume_unstone(mon, obj, by_you, true, map, player);
+            return true;
+        }
+    }
+    return false;
+}
+
+// ========================================================================
+// munslime — C ref: muse.c:2995
+// ========================================================================
+export function munslime(mon, by_you, map, player) {
+    const mptr = mon.type || {};
+
+    // slimeproof check
+    if (mptr.flags3 && (mptr.flags3 & 0x00002000)) return false; // MH_SLIME
+    if (mon.meating || helpless(mon)) return false;
+    mon.mstrategy = (mon.mstrategy || 0) & ~0x08000000;
+
+    // Fire breath on self
+    if (!mon.mcan && !mon.mspec_used
+        && dmgtype_fromattack(mptr, 1, AT_BREA)) { // AD_FIRE = 1
+        // Monster breathes fire on itself
+        const vis = canseemon(mon, player);
+        if (vis)
+            pline_mon(mon, `${monDisplayName(mon, { article: 'the', capitalize: true })} starts turning green.`);
+        mon_adjust_speed(mon, -4, null);
+        if (vis)
+            pline_mon(mon, `${monDisplayName(mon, { article: 'the', capitalize: true })} breathes fire on itself.`);
+        if (!rn2(3)) mon.mspec_used = rn1(10, 5);
+        return true;
+    }
+
+    // Check inventory for fire items
+    if (!is_animal(mptr) && !mindless(mptr)) {
+        for (const obj of (mon.minvent || [])) {
+            if (cures_sliming(mon, obj)) {
+                return muse_unslime(mon, obj, null, by_you, map, player);
+            }
+        }
+    }
+
+    return false;
+}
+
+// C ref: cures_sliming(mon, obj) — can this object cure green slime?
+function cures_sliming(mon, obj) {
+    if (obj.otyp === SCR_FIRE)
+        return haseyes(mon.type || {}) && mon.mcansee && !nohands(mon.type || {});
+    if (obj.otyp === POT_OIL)
+        return !nohands(mon.type || {});
+    return ((obj.otyp === WAN_FIRE || (obj.otyp === FIRE_HORN && can_blow(mon.type || {})))
+        && obj.spe > 0);
+}
+
+// C ref: muse_unslime — use fire item to cure slime
+function muse_unslime(mon, obj, trap, by_you, map, player) {
+    const vis = canseemon(mon, player);
+    if (vis) {
+        const name = monDisplayName(mon, { article: 'the', capitalize: true });
+        pline_mon(mon, `${name} starts turning green.`);
+    }
+    mon_adjust_speed(mon, -4, null);
+
+    if (obj.otyp === WAN_FIRE || obj.otyp === FIRE_HORN) {
+        if (obj.otyp === FIRE_HORN)
+            mplayhorn(mon, obj, true, map, player);
+        else
+            mzapwand(mon, obj, true, map, player);
+    } else if (obj.otyp === SCR_FIRE) {
+        mreadmsg(mon, obj, player);
+        m_useup(mon, obj);
+    } else if (obj.otyp === POT_OIL) {
+        m_useup(mon, obj);
+    }
+
+    if (vis) {
+        const name = monDisplayName(mon, { article: 'the', capitalize: true });
+        if (!DEADMONSTER(mon))
+            pline_mon(mon, `${name}'s slime is burned away!`);
+    }
+    return true;
+}
+
+// C ref: green_mon — is monster green?
+function green_mon(mon) {
+    const ptr = mon.type || {};
+    return (ptr.mcolor === 2 || ptr.mcolor === 10); // CLR_GREEN or CLR_BRIGHT_GREEN
 }
