@@ -1283,6 +1283,7 @@ hard-won wisdom:
 - `maze_remove_deadends` should operate in-place on an already carved maze; re-entering `create_maze()` from `maze_remove_deadends()` is structurally wrong and changes behavior.
 - In `sp_lev`, `fixupSpecialLevel` should call `mkmaze` ownership functions (`setup_waterlevel`, `baalz_fixup`) directly rather than going through local forwarding wrappers.
 - `sp_lev` `level_init(style=\"maze\")` should invoke `mkmaze.create_maze()` directly (with `corrwid`/`wallthick`/`deadends`) instead of leaving a STONE-filled placeholder grid.
+- `sp_lev` finalize should honor the C `premapped` coder flag by calling `premap_detect()` so terrain/traps are revealed through the standard detect path.
 
 ### safepet force-fight parity in domove attack path (2026-02-24)
 

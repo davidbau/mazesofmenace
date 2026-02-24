@@ -840,4 +840,21 @@ describe('sp_lev.js - des.* API', () => {
         assert.ok(Array.isArray(setup.bubbles), 'bubble scaffold should be an array');
         assert.ok(setup.bubbles.length > 0, 'bubble scaffold should include seeded entries');
     });
+
+    it('finalize_level applies premapped reveal when level flag is set', () => {
+        resetLevelState();
+        des.level_init({ style: 'solidfill', fg: '.' });
+        des.level_flags('premapped');
+        des.trap('pit', 10, 5);
+        getLevelState().coder.allow_flips = 0;
+
+        const map = getLevelState().map;
+        assert.notEqual(map.at(10, 5).seenv, 0xFF, 'square should not be pre-revealed before finalize');
+
+        des.finalize_level();
+
+        assert.equal(map.at(10, 5).seenv, 0xFF, 'premapped should reveal terrain visibility bits');
+        assert.equal(map.at(10, 5).waslit, true, 'premapped should mark terrain as lit/known');
+        assert.equal(map.trapAt(10, 5)?.tseen, 1, 'premapped should reveal trap visibility');
+    });
 });

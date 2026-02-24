@@ -70,6 +70,7 @@ import {
 import { mons, M2_FEMALE, M2_MALE, G_NOGEN, G_IGNORE, PM_MINOTAUR, MR_STONE, S_EEL } from './monsters.js';
 import { getSpecialLevel, findSpecialLevelByName, GEHENNOM } from './special_levels.js';
 import { placeFloorObject } from './floor_objects.js';
+import { premap_detect } from './detect.js';
 import { start_timer, stop_timer, obj_move_timers as moveObjectTimers, obj_split_timers as splitObjectTimers, obj_has_timer as hasObjectTimer } from './timeout.js';
 import {
     init_map,
@@ -6720,7 +6721,10 @@ export function finalize_level() {
         }
     }
 
-    // TODO: Add other finalization steps (solidify_map, premapping, etc.)
+    // C ref: sp_lev.c lspo_finalize_level() applies premap reveal when set.
+    if (levelState.map && levelState.coder?.premapped) {
+        premap_detect(levelState.map);
+    }
 
     captureCheckpoint('after_finalize');
     if (levelState._mklevContextEntered) {
