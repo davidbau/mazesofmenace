@@ -14,7 +14,7 @@ import {
     GEMSTONE, MINERAL,
     CORPSE, SLIME_MOLD, STRANGE_OBJECT,
     AMULET_OF_YENDOR, FAKE_AMULET_OF_YENDOR, GOLD_PIECE, BELL_OF_OPENING,
-    SPE_NOVEL, SPE_BOOK_OF_THE_DEAD, POT_WATER, SCR_MAGIC_MAPPING,
+    SPE_NOVEL, SPE_BOOK_OF_THE_DEAD, POT_WATER,
     SHORT_SWORD, BROADSWORD, FLAIL, GLAIVE, LOCK_PICK, WOODEN_HARP,
     MAGIC_HARP, KNIFE, PLATE_MAIL, HELMET, LEATHER_GLOVES,
     FOOD_RATION, POT_BOOZE,
@@ -1625,9 +1625,9 @@ export function readobjnam(bp, no_wish) {
     if (spe !== null) {
         otmp.spe = spe;
     }
-    // C wish parser returns an object as if its appearance has just been seen.
+    // C readobjnam returns an object with dknown set (appearance seen),
+    // but does not auto-discover the true object type.
     otmp.dknown = true;
-    if (otyp === SCR_MAGIC_MAPPING) discoverObject(otyp, true, true);
 
     return otmp;
 }

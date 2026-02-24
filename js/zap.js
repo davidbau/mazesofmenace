@@ -1097,9 +1097,8 @@ export function makewish(wishText, player, display) {
     }
     const got = hold_another_object(otmp, player, null, null, null);
     prinv(null, got || otmp, 0, player);
-    if ((got || otmp).otyp === SCR_MAGIC_MAPPING) {
-        exercise(player, A_WIS, true);
-    }
+    // C ref: zap.c makewish() has no special attribute exercise for
+    // wished magic-mapping scrolls.
     rn2(100);
     return got || otmp;
 }
