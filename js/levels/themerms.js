@@ -1281,7 +1281,7 @@ function make_a_trap(data) {
 }
 
 // called once after the whole level has been generated
-export function post_level_generate() {
+export function themerooms_post_level_generate() {
    for (const v of postprocess) {
       v.handler(v.data);
    }

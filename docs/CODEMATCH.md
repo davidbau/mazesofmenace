@@ -2618,7 +2618,7 @@ No function symbols parsed from isaac64.c.
 | 698 | `place_niche` | mklev.js:255 | Aligned |
 | 1673 | `pos_to_room` | mklev.js:246 | Aligned |
 | 211 | `sort_rooms` | mklev.js:34 | Aligned |
-| 1170 | `themerooms_post_level_generate` | mklev.js:834 | Aligned |
+| 1170 | `themerooms_post_level_generate` | levels/themerms.js:1284 | Aligned |
 | 1593 | `topologize` | mklev.js:410 | Aligned |
 | 1934 | `traptype_rnd` | mklev.js:858 | Aligned |
 | 1998 | `traptype_roguelvl` | mklev.js:903 | Aligned |

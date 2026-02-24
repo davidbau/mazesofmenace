@@ -81,7 +81,7 @@ import {
 import { setLevelContext, clearLevelContext, initLuaMT, setSpecialLevelDepth, setFinalizeContext, resetLevelState } from './sp_lev.js';
 import {
     themerooms_generate as themermsGenerate,
-    post_level_generate as themeroomsPostLevelGenerate,
+    themerooms_post_level_generate,
     reset_state as resetThemermsState
 } from './levels/themerms.js';
 import {
@@ -123,6 +123,11 @@ import {
     mklev_sanity_check,
     level_finalize_topology,
     sort_rooms,
+    free_luathemes,
+    get_luathemes_loaded,
+    set_luathemes_loaded,
+    get_special_themes_loaded,
+    set_special_themes_loaded,
 } from './mklev.js';
 import { makeroguerooms } from './extralev.js';
 
@@ -812,23 +817,6 @@ export function floodFillAndRegister(map, sx, sy, rtype, lit) {
     // C sets lit on interior/edge during flood fill edge marking.
 }
 
-// C ref: mklev.c:363 — gl.luathemes[] tracks whether Lua theme state is loaded.
-// Keep separate caches for ordinary themed-room setup vs special-level Lua loads:
-// they are initialized through different entry points in C and can occur independently.
-let _themeroomsLoaded = false;
-let _specialThemesLoaded = false;
-
-// C ref: mklev.c free_luathemes()
-export function free_luathemes() {
-    _themeroomsLoaded = false;
-    _specialThemesLoaded = false;
-}
-
-// C ref: mklev.c themerooms_post_level_generate()
-export function themerooms_post_level_generate() {
-    return themeroomsPostLevelGenerate();
-}
-
 function branchPlacementForEnd(branch, onEnd1) {
     if (branch.type === BR_PORTAL) {
         return { placement: 'portal' };
@@ -1297,8 +1285,8 @@ export function makerooms(map, depth) {
 
     // C ref: mklev.c:365-380 — load Lua themes on first call only
     // These rn2() calls simulate Lua theme loading
-    if (!_themeroomsLoaded) {
-        _themeroomsLoaded = true;
+    if (!get_luathemes_loaded()) {
+        set_luathemes_loaded(true);
         rn2(3); rn2(2);
     }
 
@@ -4709,8 +4697,8 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
                 && (useDlevel === 1 || useDlevel === 2)
                 && typeof special.name === 'string'
                 && special.name.startsWith('tut-');
-            if (!_specialThemesLoaded || depthOnlyOracleSpecial) {
-                _specialThemesLoaded = true;
+            if (!get_special_themes_loaded() || depthOnlyOracleSpecial) {
+                set_special_themes_loaded(true);
                 rn2(3);
                 // Tutorial level entry has one non-logged PRNG draw between
                 // nhlua shuffle calls in C startup path.

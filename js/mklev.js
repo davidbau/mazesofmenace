@@ -34,14 +34,16 @@ import {
     set_wall_state,
     litstate_rnd,
     wallify_region,
-    free_luathemes as dungeon_free_luathemes,
-    themerooms_post_level_generate as dungeon_themerooms_post_level_generate,
 } from './dungeon.js';
 
 const DOORINC = 20;
 const DUNGEONS_OF_DOOM = 0;
 const KNOX = 4;
 const GEHENNOM = 5;
+
+// C ref: mklev.c luathemes lifecycle globals.
+let _luathemesLoaded = false;
+let _specialThemesLoaded = false;
 
 // C ref: mklev.c mkroom_cmp() — sort rooms by lx only
 export function mkroom_cmp(a, b) {
@@ -825,14 +827,26 @@ export function level_finalize_topology(map, depth) {
     }
 }
 
-// C ref: mklev.c free_luathemes()
-export function free_luathemes() {
-    return dungeon_free_luathemes();
+export function get_luathemes_loaded() {
+    return _luathemesLoaded;
 }
 
-// C ref: mklev.c themerooms_post_level_generate()
-export function themerooms_post_level_generate() {
-    return dungeon_themerooms_post_level_generate();
+export function set_luathemes_loaded(loaded) {
+    _luathemesLoaded = !!loaded;
+}
+
+export function get_special_themes_loaded() {
+    return _specialThemesLoaded;
+}
+
+export function set_special_themes_loaded(loaded) {
+    _specialThemesLoaded = !!loaded;
+}
+
+// C ref: mklev.c free_luathemes()
+export function free_luathemes() {
+    _luathemesLoaded = false;
+    _specialThemesLoaded = false;
 }
 
 // C ref: mklev.c place_branch()
