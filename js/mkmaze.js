@@ -47,6 +47,15 @@ function vision_call(fn, x, y) {
     }
 }
 
+function bubble_trace_enabled() {
+    return typeof process !== 'undefined' && process.env?.DEBUG_BUBBLES_TRACE === '1';
+}
+
+function bubble_trace(msg) {
+    if (!bubble_trace_enabled()) return;
+    console.log(`[BUBBLE_TRACE] ${msg}`);
+}
+
 // C ref: mkmaze.c iswall
 export function iswall(map, x, y) {
     const loc = at(map, x, y);
@@ -982,6 +991,7 @@ function pickup_bubble_contents(map, bubble, heroPos = null, water = null) {
             bubble.cons.push({ what: 'trap', x, y, list: trap });
         }
     });
+    bubble_trace(`pickup bubble@(${bubble.x},${bubble.y}) count=${bubble.cons.length}`);
 }
 
 function replace_bubble_contents(map, bubble, dx, dy, water = null) {
@@ -1048,6 +1058,7 @@ function replace_bubble_contents(map, bubble, dx, dy, water = null) {
             break;
         }
     }
+    bubble_trace(`replace bubble@(${bubble.x},${bubble.y}) shift=(${dx},${dy})`);
     bubble.cons = [];
 }
 
@@ -1097,6 +1108,7 @@ export function movebubbles(map, dx = 0, dy = 0) {
     water._moveUp = moveUp;
     const bubbles = Array.isArray(water.bubbles) ? water.bubbles : [];
     const ordered = moveUp ? bubbles : bubbles.slice().reverse();
+    bubble_trace(`tick mode=${useRand ? 'random' : 'fixed'} bubbles=${ordered.length} up=${moveUp ? 1 : 0}`);
     water.heroBubble = null;
     if (map.flags?.is_waterlevel && ordered.length) {
         const heroPos = (water.heroPos && Number.isInteger(water.heroPos.x) && Number.isInteger(water.heroPos.y))
