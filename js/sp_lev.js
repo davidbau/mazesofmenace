@@ -309,6 +309,7 @@ export let levelState = {
 const WALL_INFO_MASK = 0x07;
 let checkpointCaptureEnabled = false;
 let levelCheckpoints = [];
+let floodfillchk_match_under_override = null;
 
 // Special level flags
 let icedpools = false;
@@ -2109,6 +2110,9 @@ export function ensure_way_out(map = levelState.map) {
 
 // C ref: sp_lev.c floodfillchk_match_under()/floodfillchk_match_accessible()
 export function floodfillchk_match_under(x, y, map = levelState.map) {
+    if (typeof floodfillchk_match_under_override === 'function') {
+        return !!floodfillchk_match_under_override(x, y, map);
+    }
     const loc = map?.locations?.[x]?.[y];
     if (!loc) return false;
     return !IS_WALL(loc.typ) && !IS_POOL(loc.typ);
@@ -2117,6 +2121,11 @@ export function floodfillchk_match_accessible(x, y, map = levelState.map) {
     const loc = map?.locations?.[x]?.[y];
     if (!loc) return false;
     return !IS_WALL(loc.typ) && !IS_POOL(loc.typ) && !IS_LAVA(loc.typ);
+}
+
+// C ref: sp_lev.c set_floodfillchk_match_under()
+export function set_floodfillchk_match_under(fn) {
+    floodfillchk_match_under_override = (typeof fn === 'function') ? fn : null;
 }
 
 // C ref: sp_lev.c generate_way_out_method()
@@ -2526,7 +2535,7 @@ function good_stair_loc(x, y) {
     return typ === ROOM || typ === CORR || typ === ICE;
 }
 
-function setOkLocationFunc(func) {
+export function set_ok_location_func(func) {
     okLocationOverride = func || null;
 }
 
@@ -3574,10 +3583,10 @@ function l_create_stairway(directionOrOpts, x, y, is_ladder = false) {
 
     const isRandom = sx === undefined || sy === undefined || sx < 0 || sy < 0;
     if (isRandom) {
-        setOkLocationFunc(good_stair_loc);
+        set_ok_location_func(good_stair_loc);
     }
     const pos = getLocationCoord(sx, sy, GETLOC_DRY, levelState.currentRoom || null);
-    setOkLocationFunc(null);
+    set_ok_location_func(null);
     const absx = pos.x;
     const absy = pos.y;
     if (absx < 0 || absy < 0 || absx >= COLNO || absy >= ROWNO) return;
@@ -4577,24 +4586,26 @@ export function region(opts_or_selection, type) {
     add_doors_to_room(levelState.map, createdRoom);
 }
 
-function setWallPropertyInSelection(selection, propKind) {
-    if (!levelState.map) return;
+// C ref: sp_lev.c sel_set_wall_property()
+export function sel_set_wall_property(x, y, propKind) {
+    if (x < 0 || x >= COLNO || y < 0 || y >= ROWNO) return;
+    const loc = levelState.map?.locations?.[x]?.[y];
+    if (!loc) return;
+    // C ref: sel_set_wall_property() only applies to walls, trees, and iron bars.
+    if (!(IS_WALL(loc.typ) || loc.typ === TREE || loc.typ === IRONBARS)) return;
+    if (propKind === 'nondiggable') loc.nondiggable = true;
+    else if (propKind === 'nonpasswall') loc.nonpasswall = true;
+}
 
-    const applyAt = (x, y) => {
-        if (x < 0 || x >= COLNO || y < 0 || y >= ROWNO) return;
-        const loc = levelState.map.locations[x][y];
-        if (!loc) return;
-        // C ref: sel_set_wall_property() only applies to walls, trees, and iron bars.
-        if (!(IS_WALL(loc.typ) || loc.typ === TREE || loc.typ === IRONBARS)) return;
-        if (propKind === 'nondiggable') loc.nondiggable = true;
-        else if (propKind === 'nonpasswall') loc.nonpasswall = true;
-    };
+// C ref: sp_lev.c set_wallprop_in_selection()
+export function set_wallprop_in_selection(selection, propKind) {
+    if (!levelState.map) return;
 
     if (!selection) {
         // C ref: set_wallprop_in_selection() with no args creates a full-map selection.
         for (let x = 0; x < COLNO; x++) {
             for (let y = 0; y < ROWNO; y++) {
-                applyAt(x, y);
+                sel_set_wall_property(x, y, propKind);
             }
         }
         return;
@@ -4609,7 +4620,7 @@ function setWallPropertyInSelection(selection, propKind) {
                 x = abs.x;
                 y = abs.y;
             }
-            applyAt(x, y);
+            sel_set_wall_property(x, y, propKind);
         }
         return;
     }
@@ -4632,9 +4643,14 @@ function setWallPropertyInSelection(selection, propKind) {
     }
     for (let x = Math.min(x1, x2); x <= Math.max(x1, x2); x++) {
         for (let y = Math.min(y1, y2); y <= Math.max(y1, y2); y++) {
-            applyAt(x, y);
+            sel_set_wall_property(x, y, propKind);
         }
     }
+}
+
+// C ref: sp_lev.c set_wall_property()
+export function set_wall_property(x1, y1, x2, y2, propKind) {
+    set_wallprop_in_selection({ x1, y1, x2, y2 }, propKind);
 }
 
 /**
@@ -4671,7 +4687,7 @@ export function wall_property(opts) {
     if (y2 === -1) y2 = (Number.isFinite(levelState.ystart) && Number.isFinite(levelState.ysize))
         ? levelState.ystart + levelState.ysize + 1 : ROWNO - 1;
 
-    setWallPropertyInSelection({ x1, y1, x2, y2 }, propKind);
+    set_wall_property(x1, y1, x2, y2, propKind);
 }
 
 /**
@@ -4686,7 +4702,7 @@ export function non_diggable(selection) {
     if (!levelState.map) {
         return;
     }
-    setWallPropertyInSelection(selection, 'nondiggable');
+    set_wallprop_in_selection(selection, 'nondiggable');
 }
 
 /**
@@ -4720,7 +4736,7 @@ export function non_passwall(selection) {
         return;
     }
     // C ref: lspo_non_passwall() reuses set_wallprop_in_selection().
-    setWallPropertyInSelection(selection, 'nonpasswall');
+    set_wallprop_in_selection(selection, 'nonpasswall');
 }
 
 function l_get_lregion(opts = {}) {
@@ -5028,9 +5044,7 @@ export function create_door(state_or_opts, x, y) {
             msk = D_CLOSED;
             break;
     }
-    const doorMask = (msk === -1)
-        ? [D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED][rn2(5)]
-        : msk;
+    const doorMask = (msk === -1) ? rnddoor() : msk;
 
     // x/y omitted => create random wall door within current room.
     if (doorX === -1 && doorY === -1) {
@@ -5064,34 +5078,41 @@ export function create_door(state_or_opts, x, y) {
         return;
     }
 
-    const loc = levelState.map.locations[doorX][doorY];
-    if (!loc) return;
+    if (!levelState.map.locations[doorX][doorY]) return;
 
-    // C ref: sel_set_door()
-    // Secret doors force SDOOR even if a door terrain is already present.
-    if (doorMask & D_SECRET) {
-        loc.typ = SDOOR;
-    } else if (loc.typ !== DOOR && loc.typ !== SDOOR) {
-        loc.typ = DOOR;
-    }
-    if (doorMask & D_SECRET) {
-        doorMask &= ~D_SECRET;
-        if (doorMask < D_CLOSED) {
-            doorMask = D_CLOSED;
-        }
-    }
-    // Doors are horizontal if they adjoin a wall on left.
-    if (doorX > 0) {
-        const left = levelState.map.locations[doorX - 1][doorY];
-        if (left && (IS_WALL(left.typ) || !!left.horizontal)) {
-            loc.horizontal = true;
-        } else {
-            loc.horizontal = false;
-        }
-    }
-    loc.flags = doorMask;
+    sel_set_door(doorX, doorY, doorMask);
     markSpLevMap(doorX, doorY);
     markSpLevTouched(doorX, doorY);
+}
+
+// C ref: sp_lev.c rnddoor()
+export function rnddoor() {
+    return [D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED][rn2(5)];
+}
+
+// C ref: sp_lev.c set_door_orientation()
+export function set_door_orientation(x, y) {
+    if (x <= 0 || x >= COLNO || y < 0 || y >= ROWNO) return false;
+    const left = levelState.map?.locations?.[x - 1]?.[y];
+    return !!(left && (IS_WALL(left.typ) || !!left.horizontal));
+}
+
+// C ref: sp_lev.c sel_set_door()
+export function sel_set_door(x, y, rawDoorMask) {
+    const loc = levelState.map?.locations?.[x]?.[y];
+    if (!loc) return;
+    let doorMask = rawDoorMask;
+
+    // Secret doors force SDOOR even if a door terrain is already present.
+    if (doorMask & D_SECRET) loc.typ = SDOOR;
+    else if (loc.typ !== DOOR && loc.typ !== SDOOR) loc.typ = DOOR;
+
+    if (doorMask & D_SECRET) {
+        doorMask &= ~D_SECRET;
+        if (doorMask < D_CLOSED) doorMask = D_CLOSED;
+    }
+    loc.horizontal = set_door_orientation(x, y);
+    loc.flags = doorMask;
 }
 
 export function door(state_or_opts, x, y) {
@@ -7789,8 +7810,41 @@ function placeObjectAt(obj, x, y) {
     placeFloorObject(levelState.map, obj);
 }
 
+// C ref: sp_lev.c random_wdir()
+export function random_wdir() {
+    return rn2(4);
+}
+
+// C ref: sp_lev.c rndtrap()
+export function rndtrap(canDigDown = true, inEndgame = false) {
+    while (true) {
+        let rtrap = rnd(TRAPNUM - 1);
+        switch (rtrap) {
+        case HOLE:
+        case VIBRATING_SQUARE:
+        case MAGIC_PORTAL:
+            rtrap = NO_TRAP;
+            break;
+        case TRAPDOOR:
+            if (!canDigDown) rtrap = NO_TRAP;
+            break;
+        case LEVEL_TELEP:
+        case TELEP_TRAP:
+            if (levelState.flags.noteleport) rtrap = NO_TRAP;
+            break;
+        case ROLLING_BOULDER_TRAP:
+        case ROCKTRAP:
+            if (inEndgame) rtrap = NO_TRAP;
+            break;
+        default:
+            break;
+        }
+        if (rtrap !== NO_TRAP) return rtrap;
+    }
+}
+
 // C ref: sp_lev.c maze1xy()
-function maze1xy(humidity) {
+export function maze1xy(humidity) {
     const maxX = levelState.mazeMaxX || ((COLNO - 1) & ~1);
     const maxY = levelState.mazeMaxY || ((ROWNO - 1) & ~1);
     let x = 3;
@@ -7906,40 +7960,13 @@ export function fill_empty_maze() {
         const ctx = levelState.finalizeContext || {};
         return Number.isFinite(ctx.dlevel) && ctx.dlevel < 0;
     };
-    const rndtrapC = () => {
-        while (true) {
-            let rtrap = rnd(TRAPNUM - 1);
-            switch (rtrap) {
-            case HOLE:
-            case VIBRATING_SQUARE:
-            case MAGIC_PORTAL:
-                rtrap = NO_TRAP;
-                break;
-            case TRAPDOOR:
-                if (!canDigDownHere()) rtrap = NO_TRAP;
-                break;
-            case LEVEL_TELEP:
-            case TELEP_TRAP:
-                if (levelState.flags.noteleport) rtrap = NO_TRAP;
-                break;
-            case ROLLING_BOULDER_TRAP:
-            case ROCKTRAP:
-                if (inEndgame()) rtrap = NO_TRAP;
-                break;
-            default:
-                break;
-            }
-            if (rtrap !== NO_TRAP) return rtrap;
-        }
-    };
-
     stats.trapCount = rn2(Math.floor((15 * mapfact) / 100));
     for (let i = stats.trapCount; i > 0; i--) {
         const pos = maze1xy(GETLOC_DRY);
-        let trytrap = rndtrapC();
+        let trytrap = rndtrap(canDigDownHere(), inEndgame());
         if (hasBoulderAt(pos.x, pos.y)) {
             while (is_pit(trytrap) || is_hole(trytrap)) {
-                trytrap = rndtrapC();
+                trytrap = rndtrap(canDigDownHere(), inEndgame());
             }
         }
         // C ref: fill_empty_maze() uses maketrap() directly, without victim logic.
@@ -8007,7 +8034,7 @@ export function mazewalk(xOrOpts, y, direction) {
         { name: 'east', dx: 1, dy: 0 },
         { name: 'west', dx: -1, dy: 0 }
     ];
-    const pickDir = () => dirs[rn2(4)];
+    const pickDir = () => dirs[random_wdir()];
     let dir = dirs.find(d => d.name === dirName) || pickDir();
 
     // C ref: lspo_mazewalk() takes one step in the requested direction first.

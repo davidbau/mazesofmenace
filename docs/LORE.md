@@ -1234,3 +1234,9 @@ hard-won wisdom:
 - Keeping C entrypoint names (`lspo_*`) exported in `sp_lev.js` while retaining existing `des.*` names lets CODEMATCH track true structural parity without changing script-call surface.
 - For feature flags, centralizing bit parse/set logic in one helper (`l_table_getset_feature_flag`) reduces drift and keeps random-flag semantics consistent across fountain/sink/throne/tree paths.
 - Map-facing dungeon helpers (`find_branch`, `find_level`, `find_hell`, `br_string*`) are low-risk parity wins when implemented as pure topology lookups over already-initialized branch state.
+
+### sp_lev helper-name parity batch (2026-02-24)
+
+- Converting existing door/wall-location logic to C helper names in-place (`rnddoor`, `set_door_orientation`, `sel_set_door`, `sel_set_wall_property`, `set_wallprop_in_selection`, `set_wall_property`, `set_ok_location_func`) keeps behavior stable while improving CODEMATCH coverage.
+- `rndtrap` can be shared by both maze fill and trap-selection paths when it receives explicit context (`canDigDown`, `inEndgame`) instead of reaching into unrelated generation state.
+- Exporting these C-named helpers in `sp_lev.js` preserves direct dependency wiring and avoids extra forwarding modules or alias layers.
