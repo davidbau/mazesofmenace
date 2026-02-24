@@ -751,45 +751,20 @@ export async function replaySession(seed, session, opts = {}) {
     const startupLog = getRngLog();
     const startupRng = startupLog.map(toCompactRng);
 
-    // Set display from session startup screen (for comparison baseline)
+    // Keep replay harness deterministic and input-driven: do not inject
+    // captured startup screens into display state.
     const sessionStartup = getSessionStartup(session);
     const startupScreen = getSessionScreenLines(sessionStartup || {});
-    const startupScreenAnsi = getSessionScreenAnsiLines(sessionStartup || {});
-    const hasLegacyStartupScreen = !!session?.startup
-        && !hasStartupBurstInFirstStep(session);
+    const startupTopline = startupScreen[0] || '';
+    if (typeof game.display?.putstr_message === 'function') {
+        game.display.putstr_message(startupTopline);
+    }
     const firstStepScreen = getSessionScreenLines(session.steps?.[0] || {});
-    const firstStepScreenAnsi = getSessionScreenAnsiLines(session.steps?.[0] || {});
     const tutorialPromptStartup = isTutorialPromptScreen(firstStepScreen)
         && (session?.type === 'interface' || opts.replayMode === 'interface');
 
     let inTutorialPrompt = tutorialPromptStartup;
     let pendingTutorialStart = false;
-    if (inTutorialPrompt && firstStepScreen.length > 0) {
-        if (firstStepScreenAnsi.length > 0
-            && typeof game.display?.setScreenAnsiLines === 'function') {
-            game.display.setScreenAnsiLines(firstStepScreenAnsi);
-        } else {
-            game.display.setScreenLines(firstStepScreen);
-        }
-    } else if (startupScreen.length > 0) {
-        if (hasLegacyStartupScreen) {
-            // Legacy keylog sessions expect startup map rows to persist into the
-            // first post-startup command (including no-op/unknown-key steps).
-            if (startupScreenAnsi.length > 0
-                && typeof game.display?.setScreenAnsiLines === 'function') {
-                game.display.setScreenAnsiLines(startupScreenAnsi);
-            } else {
-                game.display.setScreenLines(startupScreen);
-            }
-        } else {
-            // Preserve startup topline so first-step count-prefix digits keep the
-            // same C-visible message state without forcing startup map rows.
-            const startupTopline = startupScreen[0] || '';
-            if (typeof game.display?.putstr_message === 'function') {
-                game.display.putstr_message(startupTopline);
-            }
-        }
-    }
 
     // Replay each step
     // C ref: allmain.c moveloop_core() step boundary analysis:
@@ -989,118 +964,8 @@ export async function replaySession(seed, session, opts = {}) {
             continue;
         }
 
-        // Some captures contain intermediate "--More--" frames with zero RNG,
-        // where the key is consumed by message pagination and no command runs.
-        if (!pendingCommand
-            && (stepMsg.includes('--More--'))
-            && ((step.rng && step.rng.length) || 0) === 0) {
-            applyStepScreen();
-            pushStepResult(
-                [],
-                opts.captureScreens ? game.display.getScreenLines() : undefined,
-                stepScreenAnsi,
-                step,
-                stepScreen,
-                stepIndex
-            );
-            continue;
-        }
-        // (Deferred boundary ack block removed — flat RNG comparison.)
-        // Some captures store post-"--More--" continuation as a key-space frame
-        // with authoritative non-empty topline plus RNG. Treat it as
-        // continuation/ack, not a literal "unknown space command".
-        if (!pendingCommand
-            && (step.action ? step.action.startsWith('key-') : !stepIsNavKey(step))
-            && step.key === ' '
-            && ((step.rng && step.rng.length) || 0) > 0
-            && (stepMsg.trim().length > 0)
-            && stepMsg.trim() !== "Unknown command ' '.") {
-            applyStepScreen();
-            pushStepResult(
-                [],
-                opts.captureScreens ? game.display.getScreenLines() : undefined,
-                stepScreenAnsi,
-                step,
-                stepScreen,
-                stepIndex
-            );
-            continue;
-        }
-        if (!pendingCommand
-            && (step.key === '\u001b' || step.key === '\x1b')
-            && ((step.rng && step.rng.length) || 0) === 0
-            && stepMsg.trim() === '') {
-            applyStepScreen();
-            pushStepResult(
-                [],
-                opts.captureScreens ? game.display.getScreenLines() : undefined,
-                stepScreenAnsi,
-                step,
-                stepScreen,
-                stepIndex
-            );
-            continue;
-        }
-        // Keylog captures can store the "# loot" completion line on the Enter
-        // step as display-only text with zero RNG/time.
-        if (!pendingCommand
-            && (step.key === '\n' || step.key === '\r')
-            && ((step.rng && step.rng.length) || 0) === 0
-            && stepMsg === "You don't find anything here to loot.") {
-            applyStepScreen();
-            pushStepResult(
-                [],
-                opts.captureScreens ? game.display.getScreenLines() : undefined,
-                stepScreenAnsi,
-                step,
-                stepScreen,
-                stepIndex
-            );
-            continue;
-        }
-        // Sparse captures can include keyless display-only frames while the
-        // "# " getlin prompt is active. Preserve typed key frames (`#`,`l`,`o`)
-        // so extended-command input is actually delivered to getlin.
-        if (!pendingCommand
-            && ((step.rng && step.rng.length) || 0) === 0
-            && stepMsg.trimStart().startsWith('#')
-            && (!step.key || step.key.length === 0)) {
-            applyStepScreen();
-            pushStepResult(
-                [],
-                opts.captureScreens ? game.display.getScreenLines() : undefined,
-                stepScreenAnsi,
-                step,
-                stepScreen,
-                stepIndex
-            );
-            continue;
-        }
-        // (Sparse keylog intermediary frame handling removed — flat RNG comparison.)
-        // C runmode-delay boundary: a sparse frame can carry only the
-        // runmode_delay_output close marker while consuming no command turn.
-        // Keep this frame display-only when it closes a prior open marker.
-        if (!pendingCommand
-            && hasRunmodeDelayCloseOnlyBoundary(step.rng || [])
-            && hasRunmodeDelayOpen(prevStep?.rng || [])
-            && (step.action?.startsWith('move-') || stepIsNavKey(step))
-            && typeof step.key === 'string'
-            && step.key.length === 1
-            && nextStep
-            && nextStep.key === step.key
-            && (!nextStep.action || nextStep.action === step.action || stepIsNavKey(nextStep))
-            && comparableCallParts(nextStep.rng || []).length > 0) {
-            applyStepScreen();
-            pushStepResult(
-                [],
-                opts.captureScreens ? game.display.getScreenLines() : undefined,
-                stepScreenAnsi.length > 0 ? stepScreenAnsi : null,
-                step,
-                stepScreen,
-                stepIndex
-            );
-            continue;
-        }
+        // Keep replay harness simple: execute captured keys directly.
+        // Comparator logic handles sparse/legacy log flexibility.
 
         const isCountPrefixDigit = !!(
             !pendingCommand
@@ -1234,52 +1099,7 @@ export async function replaySession(seed, session, opts = {}) {
             continue;
         }
 
-        // Some captured sessions include raw Ctrl-D bytes that were not accepted
-        // as a command by tty input (no prompt, no RNG, no time).
-        // Keep a narrow guard so we don't swallow real kick-prefix commands
-        // whose direction and effects are captured in the following step.
-        const nextLooksLikeKickFollowup = !!(nextStep
-            && typeof nextStep.key === 'string'
-            && nextStep.key.length === 1
-            && 'hjklyubn'.includes(nextStep.key)
-            && (
-                (nextStep.rng || []).some((e) => typeof e === 'string' && e.includes('kick_door('))
-                || /Whammm|Thwack|As you kick|You kick|Ouch/.test((nextStep.screen?.[0] || ''))
-            ));
-        if (!pendingCommand && step.key === '\u0004'
-            && ((step.rng && step.rng.length) || 0) === 0
-            && stepMsg === ''
-            && ((stepScreen[0] || '').trim() === '')
-            && !nextLooksLikeKickFollowup) {
-            pushStepResult(
-                [],
-                opts.captureScreens ? game.display.getScreenLines() : undefined,
-                step,
-                stepScreen,
-                stepIndex
-            );
-            continue;
-        }
-
-        // Some keylog-derived gameplay traces omit both RNG and screen capture
-        // for intermittent movement-key bytes. Treat those as pass-through
-        // non-command acknowledgements to keep replay aligned with sparse logs.
-        if (!pendingCommand
-            && ((step.rng && step.rng.length) || 0) === 0
-            && stepScreen.length === 0
-            && (step.action?.startsWith('move-') || stepIsNavKey(step))
-            && step.key.length === 1) {
-            pushStepResult(
-                [],
-                opts.captureScreens ? game.display.getScreenLines() : undefined,
-                step,
-                stepScreen,
-                stepIndex
-            );
-            continue;
-        }
-        // (Sparse "Things that are here:" move deferral removed — flat RNG
-        // comparison doesn't require per-step RNG attribution.)
+        // (Sparse keylog pass-through handling removed.)
 
         const ch = step.key.charCodeAt(0);
         let result = null;
