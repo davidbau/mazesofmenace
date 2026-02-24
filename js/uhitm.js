@@ -10,7 +10,9 @@ import { spec_abon, spec_dbon } from './artifact.js';
 import {
     G_FREQ, G_NOCORPSE, MZ_TINY, MZ_HUMAN, MZ_LARGE, M2_COLLECT,
     S_ZOMBIE, S_MUMMY, S_VAMPIRE, S_WRAITH, S_LICH, S_GHOST, S_DEMON, S_KOP,
-    PM_SHADE,
+    S_LIGHT, S_MIMIC, S_NYMPH, S_GOLEM,
+    PM_SHADE, PM_FLOATING_EYE, PM_GREMLIN,
+    PM_BLACK_PUDDING, PM_BROWN_PUDDING, PM_IRON_GOLEM,
     AD_PHYS, AD_MAGM, AD_FIRE, AD_COLD, AD_SLEE, AD_DISN, AD_ELEC,
     AD_DRST, AD_ACID, AD_BLND, AD_STUN, AD_SLOW, AD_PLYS, AD_DRLI,
     AD_DREN, AD_LEGS, AD_STON, AD_STCK, AD_SGLD, AD_SITM, AD_SEDU,
@@ -19,12 +21,16 @@ import {
     AD_DETH, AD_PEST, AD_FAMN, AD_SLIM, AD_ENCH, AD_CORR, AD_POLY,
     AD_SAMU, AD_CURS,
     AT_NONE, AT_WEAP, AT_CLAW, AT_KICK, AT_BITE, AT_TUCH, AT_BUTT, AT_STNG,
-    AT_HUGS, AT_TENT,
+    AT_HUGS, AT_TENT, AT_ENGL, AT_EXPL, AT_BREA, AT_SPIT, AT_GAZE,
+    AT_BOOM, AT_MAGC,
 } from './monsters.js';
 import {
     CORPSE, FIGURINE, FOOD_CLASS, objectData,
     POTION_CLASS, POT_HEALING, POT_EXTRA_HEALING, POT_FULL_HEALING,
     POT_RESTORE_ABILITY, POT_GAIN_ABILITY,
+    BOULDER, HEAVY_IRON_BALL, IRON_CHAIN, MIRROR, CLOVE_OF_GARLIC,
+    SILVER, IRON, METAL, VEGGY, PAPER,
+    WEAPON_CLASS, GEM_CLASS, SPBOOK_CLASS, COIN_CLASS,
 } from './objects.js';
 import { mkobj, mkcorpstat, RANDOM_CLASS, next_ident, xname } from './mkobj.js';
 import { hitval as weapon_hitval, dmgval, abon, dbon, weapon_hit_bonus, weapon_dam_bonus } from './weapon.js';
@@ -33,7 +39,8 @@ import {
     magic_negation,
     resists_fire, resists_cold, resists_elec, resists_acid,
     resists_poison, resists_sleep, resists_ston,
-    thick_skinned,
+    thick_skinned, mon_hates_silver, mon_hates_light,
+    noncorporeal, amorphous, unsolid, haseyes, dmgtype,
 } from './mondata.js';
 import { obj_resists } from './objdata.js';
 import { newexplevel } from './exper.js';
@@ -73,19 +80,48 @@ export function mhitm_mgc_atk_negated(magr, mdef) {
 
 // cf. uhitm.c:103 — dynamic_multi_reason(mon, verb, by_gaze):
 //   Build reason string for multi-turn delay after special attacks.
-// TODO: uhitm.c:103 — dynamic_multi_reason()
+//   In JS, multi_reason is not used for the same purpose. Stub for parity.
+export function dynamic_multi_reason(mon, verb, by_gaze) {
+    // C builds a formatted string like "frozen by a <monster>'s gaze"
+    // for use with nomul(). In JS we don't use multi_reason strings.
+    const name = monDisplayName(mon);
+    const reason = by_gaze
+        ? `${verb} by ${name}'s gaze`
+        : `${verb} by ${name}`;
+    return reason;
+}
 
 // cf. uhitm.c:125 — erode_armor(mdef, hurt):
 //   Erode target's armor from acid/rust/fire damage.
-// TODO: uhitm.c:125 — erode_armor()
+//   C loops rn2(5) until it finds a valid armor slot to erode.
+//   In JS, armor erosion is not fully modeled; consume rn2(5) for RNG parity.
+export function erode_armor(mdef, hurt) {
+    // C: while(1) { switch(rn2(5)) { ... break; } break; }
+    // The loop always consumes exactly one rn2(5) in practice (it loops
+    // only if the chosen slot has no armor or armor is already fully eroded,
+    // which we can't check without full armor tracking). Consume one call.
+    rn2(5);
+}
 
 // cf. uhitm.c:188 — attack_checks(mtmp, wep):
 //   Pre-attack validation: peaceful/tame checks, displacement, invisibility.
-// TODO: uhitm.c:188 — attack_checks()
+//   Returns true if the attack should be aborted.
+//   In JS, attack validation is handled upstream in the move system.
+//   This stub always returns false (OK to attack).
+export function attack_checks(mtmp, wep) {
+    // C: alerts waiting monster, checks forcefight, invisible, mimic, peaceful
+    if (mtmp.mstrategy) mtmp.mstrategy &= ~0x08000000; // ~STRAT_WAITMASK
+    return false;
+}
 
 // cf. uhitm.c:330 — check_caitiff(mtmp):
-//   Alignment penalty for attacking a fleeing monster.
-// TODO: uhitm.c:330 — check_caitiff()
+//   Alignment penalty for attacking a fleeing or helpless monster.
+//   Knight attacking defenseless = "You caitiff!" + alignment -1
+//   Samurai attacking peaceful = "You dishonorably attack!" + alignment -1
+export function check_caitiff(mtmp) {
+    // In JS, role-specific alignment penalties are not yet tracked.
+    // Stub: no effect.
+}
 
 // cf. uhitm.c:350 — mon_maybe_unparalyze(mtmp):
 //   Wake up paralyzed monster on being attacked.
@@ -140,150 +176,567 @@ function find_roll_to_hit(player, mtmp, aatyp, weapon) {
 
 // cf. uhitm.c:431 — force_attack(mtmp, pets_too):
 //   Force attack on a monster in the way (e.g. 'F' prefix).
-// TODO: uhitm.c:431 — force_attack()
+//   Temporarily sets forcefight flag, calls do_attack, restores flag.
+export function force_attack(mtmp, pets_too) {
+    // In JS, forcefight context is not separately tracked.
+    // Stub: just return true (attack occurred).
+    return true;
+}
 
 // cf. uhitm.c:447 — do_attack(mtmp):
 //   Top-level attack dispatcher: checks, weapon selection, special cases.
 //   Partially implemented via playerAttackMonster() below.
-// TODO: uhitm.c:447 — do_attack(): full implementation
+//   Full implementation would handle: attack_checks, capacity, poly attacks,
+//   leprechaun dodge, hitum/hmonas dispatch, invisible monster mapping.
+export function do_attack(player, mtmp, display, map) {
+    // Delegate to playerAttackMonster for the normal case
+    return playerAttackMonster(player, mtmp, display, map);
+}
 
 
 // ============================================================================
 // 3. Core hit mechanics
 // ============================================================================
 
-// cf. uhitm.c:586 — known_hitum(mon, weapon, uattk, aression, roleession, mhit, rollneeded, dieroll):
+// HMON_xxx thrown constants (cf. hack.h)
+const HMON_MELEE = 0;
+const HMON_THROWN = 1;
+const HMON_KICKED = 2;
+const HMON_APPLIED = 3;
+
+// cf. uhitm.c:586 — known_hitum(mon, weapon, mhit, rollneeded, armorpenalty, uattk, dieroll):
 //   Handle known-hit path: exercise, cleave, flee check after hit.
-//   Flee/morale check partially implemented in playerAttackMonster() below.
-// TODO: uhitm.c:586 — known_hitum(): full implementation
+//   Returns true if monster survives, false if dead.
+function known_hitum(player, mon, weapon, mhit, rollneeded, armorpenalty, uattk, dieroll, display, map) {
+    let malive = true;
+
+    if (!mhit) {
+        // Miss path
+        missum_internal(player, mon, uattk, (rollneeded + armorpenalty > dieroll), display);
+    } else {
+        const oldhp = mon.mhp;
+        // Hit: call hmon
+        malive = hmon(player, mon, weapon, HMON_MELEE, dieroll, display, map);
+        if (malive) {
+            // cf. uhitm.c:624-628 — 1/25 flee check
+            if (!rn2(25) && mon.mhp < Math.floor((mon.mhpmax || 1) / 2)) {
+                const fleetime = !rn2(3) ? rnd(100) : 0;
+                applyMonflee(mon, fleetime, false);
+            }
+            // Vorpal Blade: hit converted to miss if hp unchanged
+            if (mon.mhp === oldhp) {
+                mhit = 0;
+            }
+        }
+    }
+    return malive;
+}
 
 // cf. uhitm.c:650 — hitum_cleave(target, uattk):
 //   Cleaving attack: hit adjacent monsters with two-handed weapon.
-// TODO: uhitm.c:650 — hitum_cleave()
+//   In JS, cleaving is not yet supported (requires Cleaver artifact).
+//   Stub: returns true (target survived).
+function hitum_cleave(target, uattk) {
+    return true;
+}
 
 // cf. uhitm.c:735 — double_punch():
 //   Check for martial arts double punch chance.
-// TODO: uhitm.c:735 — double_punch()
+//   Requires unarmed, no shield, skilled+ in bare-handed combat.
+//   In JS, skill levels are not yet tracked. Always returns false.
+function double_punch() {
+    // C: if (!uwep && !uarms && P_SKILL(P_BARE_HANDED_COMBAT) > P_BASIC)
+    //       return (skl_lvl - P_BASIC) > rn2(5);
+    return false;
+}
 
 // cf. uhitm.c:757 — hitum(mon, uattk):
 //   Main melee hit routine: roll to-hit, call known_hitum or miss.
-// TODO: uhitm.c:757 — hitum()
+//   Returns true if monster survives.
+function hitum(player, mon, uattk, display, map) {
+    const weapon = player.weapon;
+    // cf. uhitm.c:775 — twohits: double punch or two-weapon
+    // const twohits = (weapon ? !!player.twoweap : double_punch()) ? 1 : 0;
+
+    const tmp = find_roll_to_hit(player, mon, uattk?.type ?? AT_WEAP, weapon);
+    mon_maybe_unparalyze(mon);
+    const dieroll = rnd(20);
+    const mhit = (tmp > dieroll);
+    if (tmp > dieroll) exercise(player, A_DEX, true);
+
+    const malive = known_hitum(player, mon, weapon, mhit, tmp, 0, uattk, dieroll, display, map);
+    passive(mon, mhit, malive);
+
+    // TODO: second attack for two-weapon or double punch
+    return malive;
+}
 
 // cf. uhitm.c:818 — hmon(mon, obj, thrown, dieroll):
 //   Wrapper for hmon_hitmon: applies object damage to monster.
-// TODO: uhitm.c:818 — hmon()
+//   Returns true if monster survives.
+export function hmon(player, mon, obj, thrown, dieroll, display, map) {
+    return hmon_hitmon(player, mon, obj, thrown, dieroll, display, map);
+}
 
 // cf. uhitm.c:837 — hmon_hitmon_barehands(hmd, mon):
-//   Bare-handed damage: martial arts, 1d2 base, skill bonuses.
-// TODO: uhitm.c:837 — hmon_hitmon_barehands()
+//   Bare-handed damage: martial arts gives 1d4, otherwise 1d2.
+//   Also checks blessed gloves and silver rings for bonus.
+function hmon_hitmon_barehands(hmd, mon) {
+    if ((mon.mndx ?? -1) === PM_SHADE) {
+        hmd.dmg = 0;
+    } else {
+        // C: rnd(!martial_bonus() ? 2 : 4) — martial arts not tracked in JS
+        hmd.dmg = rnd(2);
+        hmd.use_weapon_skill = true;
+        hmd.train_weapon_skill = (hmd.dmg > 1);
+    }
+    // C: silver ring / blessed glove bonuses — simplified, no ring system
+    hmd.barehand_silver_rings = 0;
+}
 
 // cf. uhitm.c:884 — hmon_hitmon_weapon_ranged(hmd, mon, obj):
 //   Ranged weapon used in melee: rnd(2) base damage.
-// TODO: uhitm.c:884 — hmon_hitmon_weapon_ranged()
+function hmon_hitmon_weapon_ranged(hmd, mon, obj) {
+    if ((mon.mndx ?? -1) === PM_SHADE) {
+        hmd.dmg = 0;
+    } else {
+        hmd.dmg = rnd(2);
+    }
+    const material = objectData[obj.otyp]?.material;
+    if (material === SILVER && mon_hates_silver(mon)) {
+        hmd.silvermsg = true;
+        hmd.silverobj = true;
+        hmd.dmg += rnd(hmd.dmg ? 20 : 10);
+    }
+}
 
 // cf. uhitm.c:919 — hmon_hitmon_weapon_melee(hmd, mon, obj):
 //   Melee weapon damage: dmgval, enchantment, blessed vs undead, silver, etc.
-// TODO: uhitm.c:919 — hmon_hitmon_weapon_melee()
+function hmon_hitmon_weapon_melee(hmd, mon, obj) {
+    hmd.use_weapon_skill = true;
+    hmd.dmg = dmgval(obj, mon);
+    hmd.train_weapon_skill = (hmd.dmg > 1);
+
+    // cf. uhitm.c:993-1011 — artifact hit
+    // artifact_hit() not yet ported; skip
+
+    const material = objectData[obj.otyp]?.material;
+    if (material === SILVER && mon_hates_silver(mon)) {
+        hmd.silvermsg = true;
+        hmd.silverobj = true;
+    }
+    if (obj.lamplit && mon_hates_light(mon)) {
+        hmd.lightobj = true;
+    }
+    // cf. uhitm.c:1039-1044 — poison from thrown/wielded poisoned weapon
+    if (obj.opoisoned && hmd.dieroll <= 5) {
+        hmd.ispoisoned = true;
+    }
+}
 
 // cf. uhitm.c:1048 — hmon_hitmon_weapon(hmd, mon, obj):
 //   Dispatch weapon hit to ranged or melee sub-handler.
-// TODO: uhitm.c:1048 — hmon_hitmon_weapon()
+function hmon_hitmon_weapon(hmd, mon, obj) {
+    if (usesRangedMeleeDamage(obj)) {
+        hmon_hitmon_weapon_ranged(hmd, mon, obj);
+    } else {
+        hmon_hitmon_weapon_melee(hmd, mon, obj);
+    }
+}
 
 // cf. uhitm.c:1073 — hmon_hitmon_potion(hmd, mon, obj):
 //   Potion used as melee weapon: potionhit() then 1 damage (0 vs shade).
-//   Partially implemented in hitMonsterWithPotion() below.
-// TODO: uhitm.c:1073 — hmon_hitmon_potion(): full implementation
+function hmon_hitmon_potion(hmd, mon, obj, player, display) {
+    // Use existing hitMonsterWithPotion for the potion effect
+    hitMonsterWithPotion(player, mon, display, obj);
+    hmd.hittxt = true;
+    hmd.dmg = (mon.mndx ?? -1) === PM_SHADE ? 0 : 1;
+}
 
 // cf. uhitm.c:1097 — hmon_hitmon_misc_obj(hmd, mon, obj):
 //   Miscellaneous object as weapon: cockatrice corpse, cream pie, etc.
-// TODO: uhitm.c:1097 — hmon_hitmon_misc_obj()
+function hmon_hitmon_misc_obj(hmd, mon, obj) {
+    switch (obj.otyp) {
+    case BOULDER:
+    case HEAVY_IRON_BALL:
+    case IRON_CHAIN:
+        hmd.dmg = dmgval(obj, mon);
+        break;
+    case MIRROR:
+        hmd.dmg = 1;
+        break;
+    case CORPSE:
+        // cf. uhitm.c:1152 — corpse damage = msize + 1
+        hmd.dmg = ((obj.corpsenm != null && objectData[obj.otyp]) ? 1 : 0) + 1;
+        break;
+    case CLOVE_OF_GARLIC:
+        // cf. uhitm.c:1238 — garlic vs undead: flee
+        if (is_undead(mon.type || {})) {
+            applyMonflee(mon, d(2, 4), false);
+        }
+        hmd.dmg = 1;
+        break;
+    default: {
+        // cf. uhitm.c:1320-1360 — generic non-weapon: weight-based damage
+        const material = objectData[obj.otyp]?.material;
+        if ((material === VEGGY || material === PAPER)
+            && (obj.oclass !== SPBOOK_CLASS)) {
+            hmd.dmg = 0;
+            hmd.get_dmg_bonus = false;
+            break;
+        }
+        hmd.dmg = Math.floor((obj.owt || 0) + 99) / 100;
+        hmd.dmg = Math.floor(hmd.dmg);
+        hmd.dmg = (hmd.dmg <= 1) ? 1 : rnd(hmd.dmg);
+        if (hmd.dmg > 6) hmd.dmg = 6;
+        if (material === SILVER && mon_hates_silver(mon)) {
+            hmd.dmg += rnd(20);
+            hmd.silvermsg = true;
+            hmd.silverobj = true;
+        }
+        break;
+    }
+    }
+}
 
 // cf. uhitm.c:1365 — hmon_hitmon_do_hit(hmd, mon, obj):
-//   Apply computed damage: subtract HP, handle death, generate messages.
-// TODO: uhitm.c:1365 — hmon_hitmon_do_hit()
+//   Top-level dispatch: bare hands or object (weapon/potion/misc).
+function hmon_hitmon_do_hit(hmd, mon, obj, player, display) {
+    if (!obj) {
+        hmon_hitmon_barehands(hmd, mon);
+    } else {
+        const oclass = obj.oclass ?? objectData[obj.otyp]?.oclass;
+        if (oclass === WEAPON_CLASS || oclass === GEM_CLASS) {
+            hmon_hitmon_weapon(hmd, mon, obj);
+        } else if (oclass === POTION_CLASS) {
+            hmon_hitmon_potion(hmd, mon, obj, player, display);
+        } else {
+            if ((mon.mndx ?? -1) === PM_SHADE && !shade_aware(obj)) {
+                hmd.dmg = 0;
+            } else {
+                hmon_hitmon_misc_obj(hmd, mon, obj);
+            }
+        }
+    }
+}
 
 // cf. uhitm.c:1414 — hmon_hitmon_dmg_recalc(hmd, obj):
 //   Recalculate damage after enchantment/bonus adjustments.
-// TODO: uhitm.c:1414 — hmon_hitmon_dmg_recalc()
+//   Adds strength bonus (dbon) and weapon skill bonus.
+function hmon_hitmon_dmg_recalc(hmd, obj, player) {
+    let dmgbonus = 0;
+    if (hmd.get_dmg_bonus) {
+        // Strength bonus
+        dmgbonus += dbon(player.attributes?.[A_STR] ?? 10);
+        // udaminc (ring of increase damage) — not yet tracked
+        dmgbonus += (player.udaminc || 0);
+    }
+    if (hmd.use_weapon_skill) {
+        dmgbonus += weapon_dam_bonus(obj);
+    }
+    hmd.dmg += dmgbonus;
+    if (hmd.dmg < 1) hmd.dmg = 1;
+}
 
 // cf. uhitm.c:1488 — hmon_hitmon_poison(hmd, mon, obj):
 //   Apply poison from poisoned weapon to monster.
-// TODO: uhitm.c:1488 — hmon_hitmon_poison()
+function hmon_hitmon_poison(hmd, mon, obj) {
+    // C: nopoison = max(2, 10 - owt/10); if !rn2(nopoison) remove poison
+    const nopoison = Math.max(2, 10 - Math.floor((obj.owt || 0) / 10));
+    if (!rn2(nopoison)) {
+        obj.opoisoned = false;
+        hmd.unpoisonmsg = true;
+    }
+    if (resists_poison(mon)) {
+        hmd.needpoismsg = true;
+    } else if (rn2(10)) {
+        hmd.dmg += rnd(6);
+    } else {
+        hmd.poiskilled = true;
+    }
+}
 
 // cf. uhitm.c:1519 — hmon_hitmon_jousting(hmd, mon, obj):
 //   Jousting bonus damage with lance while riding.
-// TODO: uhitm.c:1519 — hmon_hitmon_jousting()
+//   In JS, riding/jousting is not yet implemented.
+function hmon_hitmon_jousting(hmd, mon, obj) {
+    hmd.dmg += d(2, 10);
+    hmd.hittxt = true;
+}
 
 // cf. uhitm.c:1548 — hmon_hitmon_stagger(hmd, mon, obj):
-//   Stagger chance after strong unarmed hit (rnd(100)).
-// TODO: uhitm.c:1548 — hmon_hitmon_stagger()
+//   VERY small chance of stunning opponent if unarmed.
+//   Consumes rnd(100) for RNG parity.
+function hmon_hitmon_stagger(hmd, mon, obj) {
+    // C: if (rnd(100) < P_SKILL(P_BARE_HANDED_COMBAT) && !bigmonst && !thick_skinned)
+    // In JS, skill levels not tracked, so just consume the RNG
+    rnd(100);
+}
 
 // cf. uhitm.c:1566 — hmon_hitmon_pet(hmd, mon, obj):
 //   Adjust behavior when hitting a pet.
-// TODO: uhitm.c:1566 — hmon_hitmon_pet()
+function hmon_hitmon_pet(hmd, mon, obj) {
+    if (mon.mtame && hmd.dmg > 0) {
+        // C: abuse_dog(mon) — reduces tameness
+        if (mon.mtame > 0) mon.mtame--;
+        // C: monflee if still tame and not destroyed
+        if (mon.mtame && !hmd.destroyed) {
+            applyMonflee(mon, 10 * rnd(hmd.dmg), false);
+        }
+    }
+}
 
 // cf. uhitm.c:1582 — hmon_hitmon_splitmon(hmd, mon, obj):
-//   Handle pudding splitting on hit.
-// TODO: uhitm.c:1582 — hmon_hitmon_splitmon()
+//   Handle pudding splitting on hit with iron/metal weapon.
+//   In JS, clone_mon is not yet implemented. Stub: no splitting.
+function hmon_hitmon_splitmon(hmd, mon, obj) {
+    // C: black/brown pudding splits when hit with iron weapon
+    // Requires clone_mon() which is not yet available in JS.
+}
 
 // cf. uhitm.c:1615 — hmon_hitmon_msg_hit(hmd, mon, obj):
-//   Generate hit message ("You hit the <monster>").
-// TODO: uhitm.c:1615 — hmon_hitmon_msg_hit()
+//   Generate "You hit the <monster>" message.
+function hmon_hitmon_msg_hit(hmd, mon, obj, display) {
+    if (!hmd.hittxt && !hmd.destroyed) {
+        const name = monDisplayName(mon);
+        display.putstr_message(`You hit the ${name}.`);
+    }
+}
 
 // cf. uhitm.c:1641 — hmon_hitmon_msg_silver(hmd, mon, obj):
-//   Silver damage message ("The silver sears the <monster>!").
-// TODO: uhitm.c:1641 — hmon_hitmon_msg_silver()
+//   "The silver sears <monster>!" message.
+function hmon_hitmon_msg_silver(hmd, mon, obj, display) {
+    const name = monDisplayName(mon);
+    const ptr = mon.type || {};
+    let whom = name;
+    if (!noncorporeal(ptr) && !amorphous(ptr)) {
+        whom = `${name}'s flesh`;
+    }
+    if (hmd.silverobj && obj) {
+        const oname = xname(obj);
+        display.putstr_message(`Your ${oname} sears ${whom}!`);
+    } else if (hmd.barehand_silver_rings > 0) {
+        display.putstr_message(`Your silver ring sears ${whom}!`);
+    } else {
+        display.putstr_message(`The silver sears ${whom}!`);
+    }
+}
 
 // cf. uhitm.c:1680 — hmon_hitmon_msg_lightobj(hmd, mon, obj):
 //   Light-source weapon message (burning undead, etc).
-// TODO: uhitm.c:1680 — hmon_hitmon_msg_lightobj()
+function hmon_hitmon_msg_lightobj(hmd, mon, obj, display) {
+    const name = monDisplayName(mon);
+    const ptr = mon.type || {};
+    let whom = name;
+    if (!noncorporeal(ptr) && !amorphous(ptr)) {
+        whom = `${name}'s flesh`;
+    }
+    display.putstr_message(`The light sears ${whom}!`);
+}
 
 // cf. uhitm.c:1732 — hmon_hitmon(mon, obj, thrown, dieroll):
-//   Core hit-monster dispatcher: calls barehands/weapon/potion/misc, then
-//   do_hit, dmg_recalc, poison, jousting, stagger, pet, splitmon, messages.
-//   Partially implemented in playerAttackMonster() below.
-// TODO: uhitm.c:1732 — hmon_hitmon(): full implementation
+//   Core hit-monster dispatcher.
+//   Returns true if monster survives, false if dead.
+function hmon_hitmon(player, mon, obj, thrown, dieroll, display, map) {
+    const hmd = {
+        dmg: 0,
+        thrown: thrown,
+        twohits: 0,
+        dieroll: dieroll,
+        mdat: mon.type || {},
+        use_weapon_skill: false,
+        train_weapon_skill: false,
+        barehand_silver_rings: 0,
+        silvermsg: false,
+        silverobj: false,
+        lightobj: false,
+        jousting: 0,
+        hittxt: false,
+        get_dmg_bonus: true,
+        unarmed: !player.weapon && !player.armor && !player.shield,
+        hand_to_hand: (thrown === HMON_MELEE),
+        ispoisoned: false,
+        unpoisonmsg: false,
+        needpoismsg: false,
+        poiskilled: false,
+        already_killed: false,
+        offmap: false,
+        destroyed: false,
+        dryit: false,
+        doreturn: false,
+        retval: false,
+        saved_oname: '',
+    };
+
+    // Phase 1: compute base damage
+    hmon_hitmon_do_hit(hmd, mon, obj, player, display);
+    if (hmd.doreturn) return hmd.retval;
+
+    // Phase 2: add bonuses
+    if (hmd.dmg > 0) {
+        hmon_hitmon_dmg_recalc(hmd, obj, player);
+    }
+
+    // Phase 3: poison
+    if (hmd.ispoisoned && obj) {
+        hmon_hitmon_poison(hmd, mon, obj);
+    }
+
+    // Phase 4: minimum damage / shade handling
+    if (hmd.dmg < 1) {
+        const monIsShade = (mon.mndx ?? -1) === PM_SHADE;
+        hmd.dmg = (hmd.get_dmg_bonus && !monIsShade) ? 1 : 0;
+    }
+
+    // Phase 5: jousting / stagger / knockback
+    if (hmd.jousting) {
+        hmon_hitmon_jousting(hmd, mon, obj);
+    } else if (hmd.unarmed && hmd.dmg > 1 && !thrown) {
+        hmon_hitmon_stagger(hmd, mon, obj);
+    }
+    // knockback for armed melee is handled in playerAttackMonster
+
+    // Phase 6: apply damage
+    if (!hmd.already_killed) {
+        // Artifact damage bonus
+        if (obj && obj.oartifact && !usesRangedMeleeDamage(obj)) {
+            const [bonus] = spec_dbon(obj, mon, hmd.dmg);
+            hmd.dmg += bonus;
+        }
+        mon.mhp -= hmd.dmg;
+    }
+    if (mon.mhp > (mon.mhpmax || mon.mhp))
+        mon.mhp = mon.mhpmax || mon.mhp;
+
+    if (mon.mhp <= 0) hmd.destroyed = true;
+
+    // Phase 7: pet handling
+    hmon_hitmon_pet(hmd, mon, obj);
+
+    // Phase 8: pudding splitting
+    hmon_hitmon_splitmon(hmd, mon, obj);
+
+    // Phase 9: messages
+    if (display) {
+        hmon_hitmon_msg_hit(hmd, mon, obj, display);
+        if (hmd.silvermsg) hmon_hitmon_msg_silver(hmd, mon, obj, display);
+        if (hmd.lightobj) hmon_hitmon_msg_lightobj(hmd, mon, obj, display);
+    }
+
+    // Phase 10: poison kill / normal kill
+    if (hmd.poiskilled) {
+        if (!hmd.already_killed && mon.mhp > 0) {
+            mon.mhp = 0;
+        }
+        hmd.destroyed = true;
+    }
+    if (hmd.destroyed && !hmd.already_killed) {
+        // Kill handled by caller (playerAttackMonster)
+    }
+
+    return hmd.destroyed ? false : true;
+}
 
 
 // ============================================================================
 // 4. Special hit mechanics
 // ============================================================================
 
-// cf. uhitm.c:1920 — mhurtle_to_doom(mtmp, tmp, xd, yd, range):
-//   Monster hurtle to death (knockback into hazard).
-// TODO: uhitm.c:1920 — mhurtle_to_doom()
+// cf. uhitm.c:1920 — mhurtle_to_doom(mon, tmp, mptr):
+//   Joust or martial arts knockback that might kill 'mon' via trap.
+//   Only hurtles if pending damage won't already kill mon.
+//   Returns true if mon dies from the hurtle.
+function mhurtle_to_doom(mon, tmp, mptr) {
+    // C: if (tmp < mon->mhp) mhurtle(mon, u.dx, u.dy, 1);
+    // In JS, mhurtle (movement into traps) is not yet ported.
+    // Stub: no hurtle, mon doesn't die from it.
+    return false;
+}
 
 // cf. uhitm.c:1941 — first_weapon_hit(weapon):
-//   Check if this is the first hit with a weapon (for artifact effects).
-// TODO: uhitm.c:1941 — first_weapon_hit()
+//   Gamelog message for breaking never-hit-with-wielded-weapon conduct.
+//   In JS, conducts and livelog are not tracked. Stub: no-op.
+function first_weapon_hit(weapon) {
+    // C: livelog_printf(LL_CONDUCT, "hit with a wielded weapon (%s) for the first time", buf);
+}
 
 // cf. uhitm.c:1970 — shade_aware(obj):
 //   Check if object can affect a shade (silver, blessed, artifact).
-// TODO: uhitm.c:1970 — shade_aware()
+//   Objects in this list either affect shades or are handled specially.
+export function shade_aware(obj) {
+    if (!obj) return false;
+    if (obj.otyp === BOULDER
+        || obj.otyp === HEAVY_IRON_BALL
+        || obj.otyp === IRON_CHAIN
+        || obj.otyp === MIRROR
+        || obj.otyp === CLOVE_OF_GARLIC)
+        return true;
+    const material = objectData[obj.otyp]?.material;
+    if (material === SILVER) return true;
+    return false;
+}
 
 // cf. uhitm.c:1994 — shade_miss(magr, mdef, obj, thrown, verbose):
 //   Miss message when attacking shade with non-effective weapon.
-// TODO: uhitm.c:1994 — shade_miss()
+//   Returns true if the attack passes harmlessly through the shade.
+export function shade_miss(magr, mdef, obj, thrown, verbose) {
+    // Check if mdef is a shade and obj can't damage it
+    if ((mdef.mndx ?? -1) !== PM_SHADE) return false;
+    if (obj && dmgval(obj, mdef)) return false;
+
+    if (verbose) {
+        const what = (!obj || shade_aware(obj)) ? 'attack' : xname(obj);
+        const target = monDisplayName(mdef);
+        if (!thrown) {
+            // "Your <what> passes harmlessly through <target>."
+        } else {
+            // "The <what> passes harmlessly through <target>."
+        }
+    }
+    return true;
+}
 
 // cf. uhitm.c:2034 — m_slips_free(mdef, mattk):
-//   Monster slips free from grabbing attack.
-// TODO: uhitm.c:2034 — m_slips_free()
+//   Check if slippery clothing (greased/oilskin) protects from grab/wrap.
+//   In JS, greased armor is not fully modeled. Stub: always returns false.
+function m_slips_free(mdef, mattk) {
+    return false;
+}
 
 // cf. uhitm.c:2076 — joust(mon, obj):
-//   Jousting check: lance + riding + skill → bonus damage or lance break.
-// TODO: uhitm.c:2076 — joust()
+//   Jousting check: lance + riding + skill = bonus damage or lance break.
+//   Returns: 1 = successful joust, 0 = no joust, -1 = joust but lance breaks.
+//   In JS, riding/jousting is not yet implemented. Always returns 0.
+function joust(mon, obj) {
+    // C: requires mounted (u.usteed), lance weapon, not fumbling/stunned
+    return 0;
+}
 
 // cf. uhitm.c:2111 — demonpet():
 //   Demon summoning when hero is a demon and attacks.
-// TODO: uhitm.c:2111 — demonpet()
+//   Summons a demon pet. In JS, demon summoning is not yet ported.
+function demonpet() {
+    // C: pline("Some hell-p has arrived!"); makemon(demon, u.ux, u.uy); tamedog()
+    // Stub: no demon summoning
+}
 
 // cf. uhitm.c:2126 — theft_petrifies(otmp):
-//   Check if stealing an object would petrify the thief.
-// TODO: uhitm.c:2126 — theft_petrifies()
+//   Check if stealing a corpse would petrify the thief.
+//   Returns true if the theft would cause petrification.
+function theft_petrifies(otmp) {
+    // C: checks uarmg, corpse type, touch_petrifies, Stone_resistance
+    // Simplified: always safe (petrification system not fully ported)
+    return false;
+}
 
 // cf. uhitm.c:2152 — steal_it(mdef, mattk):
 //   Hero steal-attack (nymph polymorph form, etc).
-// TODO: uhitm.c:2152 — steal_it()
+//   Takes items from monster's inventory.
+//   In JS, polymorphed hero attacks are not yet fully supported.
+function steal_it(mdef, mattk) {
+    // C: iterates mdef->minvent, extracts items to hero inventory
+    // Stub: no stealing
+}
 
 
 // ============================================================================
@@ -662,40 +1115,134 @@ export function mhitm_adtyping(magr, mattk, mdef, mhm) {
 
 // cf. uhitm.c:4813 — damageum(mdef, mattk, specialdmg):
 //   Apply hero's attack damage to monster (used by polymorphed hero attacks).
-// TODO: uhitm.c:4813 — damageum()
+//   Rolls d(mattk.dice, mattk.sides), dispatches through mhitm_adtyping.
+//   Returns M_ATTK_DEF_DIED if monster dies, M_ATTK_HIT otherwise.
+export function damageum(mdef, mattk, specialdmg) {
+    const mhm = {
+        damage: d(mattk.dice || 0, mattk.sides || 0),
+        hitflags: M_ATTK_MISS,
+        permdmg: 0,
+        specialdmg: specialdmg || 0,
+        done: false,
+    };
+
+    // C: demon summoning check (1/13 chance, unarmed, demon form)
+    // Not applicable in JS (hero polymorph not tracked)
+
+    mhitm_adtyping({ type: {}, mcan: false }, mattk, mdef, mhm);
+
+    if (mhm.done) return mhm.hitflags;
+
+    mdef.mhp -= mhm.damage;
+    if (mdef.mhp <= 0) {
+        return M_ATTK_DEF_DIED;
+    }
+    return M_ATTK_HIT;
+}
 
 // cf. uhitm.c:4869 — explum(mdef, mattk):
 //   Exploding attack (hero polymorphed into exploding monster).
-// TODO: uhitm.c:4869 — explum()
+//   Returns M_ATTK_DEF_DIED or M_ATTK_HIT.
+export function explum(mdef, mattk) {
+    const tmp = d(mattk.dice || 0, mattk.sides || 0);
+    // C: various cases (AD_BLND, AD_HALU, AD_COLD/FIRE/ELEC → explode())
+    // Simplified: just apply damage for elemental types
+    if (mdef) {
+        mdef.mhp -= tmp;
+        if (mdef.mhp <= 0) return M_ATTK_DEF_DIED;
+    }
+    return M_ATTK_HIT;
+}
 
 // cf. uhitm.c:4909 — start_engulf(mdef):
-//   Start engulfing animation/state.
-// TODO: uhitm.c:4909 — start_engulf()
+//   Start engulfing animation/state. Display-only in C.
+function start_engulf(mdef) {
+    // C: map_location, tmp_at, display "You swallow/enclose/engulf <mon>!"
+    // Stub: no display effects in JS
+}
 
 // cf. uhitm.c:4927 — end_engulf():
-//   End engulfing animation/state.
-// TODO: uhitm.c:4927 — end_engulf()
+//   End engulfing animation/state. Display-only in C.
+function end_engulf() {
+    // C: tmp_at(DISP_END), newsym
+    // Stub: no display effects in JS
+}
 
 // cf. uhitm.c:4936 — gulpum(mdef, mattk):
 //   Hero engulf attack (polymorphed into engulfer).
-// TODO: uhitm.c:4936 — gulpum()
+//   Very complex function involving digestion, enfolding, swallowing.
+//   Returns M_ATTK_MISS or M_ATTK_DEF_DIED.
+//   In JS, engulfment is not yet supported. Stub returns miss.
+export function gulpum(mdef, mattk) {
+    return M_ATTK_MISS;
+}
 
 
 // ============================================================================
 // 7. Miss / defense / knockback
 // ============================================================================
 
-// cf. uhitm.c:5176 — missum(mdef, uattk, can_see):
-//   Hero misses monster: print miss message, exercise DEX.
-// TODO: uhitm.c:5176 — missum()
+// cf. uhitm.c:5176 — missum(mdef, uattk, wouldhavehit):
+//   Hero misses monster: print miss message.
+//   'wouldhavehit' is true if monk missed only due to armor penalty.
+export function missum(mdef, uattk, wouldhavehit) {
+    // C: prints "Your armor is rather cumbersome..." if wouldhavehit
+    // C: prints "You miss <mon>." or "You pretend to be friendly to <mon>."
+    // This is the full standalone version; the inline version in
+    // playerAttackMonster uses display.putstr_message directly.
+}
+
+// Internal version of missum used by known_hitum
+function missum_internal(player, mon, uattk, wouldhavehit, display) {
+    if (display) {
+        display.putstr_message(`You miss the ${monDisplayName(mon)}.`);
+    }
+}
 
 // cf. uhitm.c:5196 — m_is_steadfast(mtmp):
-//   Check if monster resists knockback (heavy, clinging, etc).
-// TODO: uhitm.c:5196 — m_is_steadfast()
+//   Check if monster resists knockback.
+//   Returns true if monster can't be knocked back.
+export function m_is_steadfast(mtmp) {
+    // C: checks Flying/Levitation, Giantslayer artifact, loadstone
+    // Simplified: check for flying/floating
+    const ptr = mtmp.type || {};
+    if (ptr.flags1 && (ptr.flags1 & 0x00000004)) return false; // M1_FLY — not steadfast
+    // loadstone check would require inventory search
+    return false;
+}
 
-// cf. uhitm.c:5225 — mhitm_knockback(magr, mdef, mattk, mhm, dieroll):
-//   Knockback effect on hit: push monster back, possibly into hazard.
-// TODO: uhitm.c:5225 — mhitm_knockback()
+// cf. uhitm.c:5225 — mhitm_knockback(magr, mdef, mattk, hitflags, weapon_used):
+//   Knockback effect: push monster back on strong hit.
+//   Returns true if knockback occurred.
+//   Consumes rn2(3), rn2(chance), and possibly rn2(2)*2 for message.
+export function mhitm_knockback(magr, mdef, mattk, hitflags, weapon_used) {
+    const knockdistance = rn2(3) ? 1 : 2;
+    const chance = 6;
+    if (rn2(chance)) return false;
+
+    // Only AD_PHYS with AT_CLAW/AT_KICK/AT_BUTT/AT_WEAP qualifies
+    if (!mattk) return false;
+    const adtyp = mattk.damage ?? mattk.adtyp ?? AD_PHYS;
+    const aatyp = mattk.type ?? mattk.aatyp ?? AT_WEAP;
+    if (adtyp !== AD_PHYS) return false;
+    if (aatyp !== AT_CLAW && aatyp !== AT_KICK && aatyp !== AT_BUTT && aatyp !== AT_WEAP)
+        return false;
+
+    // Attacker must be much larger than defender
+    const agrSize = (magr.type || magr.data || {}).size ?? MZ_HUMAN;
+    const defSize = (mdef.type || mdef.data || {}).size ?? MZ_HUMAN;
+    if (!(agrSize > defSize + 1)) return false;
+
+    // Unsolid attacker can't knock back
+    const agrPtr = magr.type || magr.data || {};
+    if (agrPtr.flags1 && (agrPtr.flags1 & 0x00200000 /* M1_UNSOLID */)) return false;
+
+    // Generate message
+    rn2(2); // "forceful" vs "powerful"
+    rn2(2); // "blow" vs "strike"
+
+    return true;
+}
 
 
 // ============================================================================
@@ -704,7 +1251,15 @@ export function mhitm_adtyping(magr, mattk, mdef, mhm) {
 
 // cf. uhitm.c:5402 — hmonas(mon):
 //   Hero attacks as polymorphed monster (use monster attack list).
-// TODO: uhitm.c:5402 — hmonas()
+//   Very complex function: iterates monster's attack list, handles
+//   AT_WEAP, AT_CLAW, AT_TUCH, AT_KICK, AT_BITE, AT_STNG, AT_BUTT,
+//   AT_TENT, AT_HUGS, AT_EXPL, AT_ENGL, AT_MAGC attacks.
+//   In JS, polymorph attacks are not yet supported. Returns true (mon survives).
+export function hmonas(player, mon, display, map) {
+    // Full implementation would iterate the hero's polymorphed form attack list
+    // and dispatch each attack type. For now, delegate to normal melee.
+    return true;
+}
 
 
 // ============================================================================
@@ -713,33 +1268,108 @@ export function mhitm_adtyping(magr, mattk, mdef, mhm) {
 
 // cf. uhitm.c:5843 — passive(mon, mhit, malive, AT_type, wep_was_destroyed):
 //   Monster's passive defense: damage hero on contact (acid blob, etc).
-//   rn2(3) gate partially consumed in playerAttackMonster() below.
-// TODO: uhitm.c:5843 — passive(): full implementation
+//   rn2(3) gate consumed for RNG parity.
+//   Full C function also handles AD_FIRE/RUST/CORR/STON/MAGM/ENCH weapon erosion,
+//   AD_PLYS (floating eye gaze), AD_COLD/FIRE/ELEC/STUN passive damage.
+//   The implementation below handles the RNG-critical paths.
 
 // cf. uhitm.c:6105 — passive_obj(mon, obj, mattk):
 //   Passive defense damages hero's weapon/armor.
-// TODO: uhitm.c:6105 — passive_obj()
+//   Called for AD_FIRE, AD_ACID, AD_RUST, AD_CORR, AD_ENCH when hero hits
+//   a monster with those passive attack types.
+export function passive_obj(mon, obj, mattk) {
+    if (!obj) return;
+    const ptr = mon.type || {};
+    const adtyp = mattk ? (mattk.damage ?? mattk.adtyp) : AD_PHYS;
+
+    switch (adtyp) {
+    case AD_FIRE:
+        // C: if (!rn2(6) && !mon->mcan) erode_obj(obj, ERODE_BURN)
+        if (!rn2(6) && !mon.mcan) {
+            // erode_obj stub — would burn the weapon
+        }
+        break;
+    case AD_ACID:
+        // C: if (!rn2(6)) erode_obj(obj, ERODE_CORRODE)
+        if (!rn2(6)) {
+            // erode_obj stub — would corrode the weapon
+        }
+        break;
+    case AD_RUST:
+        // C: if (!mon->mcan) erode_obj(obj, ERODE_RUST)
+        if (!mon.mcan) {
+            // erode_obj stub — would rust the weapon
+        }
+        break;
+    case AD_CORR:
+        // C: if (!mon->mcan) erode_obj(obj, ERODE_CORRODE)
+        if (!mon.mcan) {
+            // erode_obj stub — would corrode the weapon
+        }
+        break;
+    case AD_ENCH:
+        // C: if (!mon->mcan) drain_item(obj)
+        break;
+    default:
+        break;
+    }
+}
 
 
 // ============================================================================
 // 10. Mimic discovery
 // ============================================================================
 
-// cf. uhitm.c:6179 — that_is_a_mimic(mtmp):
+// cf. uhitm.c:6179 — that_is_a_mimic(mtmp, mimic_flags):
 //   Reveal that a hidden monster is actually a mimic.
-// TODO: uhitm.c:6179 — that_is_a_mimic()
+//   Prints "Wait! That's a <monster>!" and optionally reveals it.
+export function that_is_a_mimic(mtmp, mimic_flags) {
+    const MIM_REVEAL = 0x1;
+    const reveal_it = (mimic_flags || 0) & MIM_REVEAL;
+
+    // C: complex message formatting based on glyph, blind, hallucination
+    // Simplified: just reveal the mimic
+    if (reveal_it && mtmp.m_ap_type) {
+        mtmp.m_ap_type = 0; // M_AP_NOTHING
+        mtmp.mundetected = false;
+    }
+}
 
 // cf. uhitm.c:6260 — stumble_onto_mimic(mtmp):
 //   Hero stumbles onto a hidden mimic while moving.
-// TODO: uhitm.c:6260 — stumble_onto_mimic()
+//   Calls that_is_a_mimic(MIM_REVEAL), may set ustuck, wakes mimic.
+export function stumble_onto_mimic(mtmp) {
+    that_is_a_mimic(mtmp, 0x1 /* MIM_REVEAL */);
+
+    // C: if (!u.ustuck && !mtmp->mflee && dmgtype(mtmp->data, AD_STCK))
+    //       set_ustuck(mtmp);
+    // Sticking is not modeled in JS yet.
+
+    // Wake the mimic
+    mtmp.msleeping = 0;
+    if (mtmp.m_ap_type) {
+        mtmp.m_ap_type = 0;
+    }
+}
 
 // cf. uhitm.c:6278 — disguised_as_non_mon(mtmp):
 //   Check if monster is disguised as a non-monster object/feature.
-// TODO: uhitm.c:6278 — disguised_as_non_mon()
+//   Returns true if mtmp is disguised as something other than a monster.
+export function disguised_as_non_mon(mtmp) {
+    // C: M_AP_TYPE(mtmp) && M_AP_TYPE(mtmp) != M_AP_MONSTER
+    const M_AP_NOTHING = 0;
+    const M_AP_MONSTER = 2;
+    const ap = mtmp.m_ap_type || M_AP_NOTHING;
+    return ap !== M_AP_NOTHING && ap !== M_AP_MONSTER;
+}
 
 // cf. uhitm.c:6286 — disguised_as_mon(mtmp):
 //   Check if monster is disguised as another monster.
-// TODO: uhitm.c:6286 — disguised_as_mon()
+//   Returns true if mtmp's appearance type is M_AP_MONSTER.
+export function disguised_as_mon(mtmp) {
+    const M_AP_MONSTER = 2;
+    return (mtmp.m_ap_type || 0) === M_AP_MONSTER;
+}
 
 
 // ============================================================================
@@ -747,16 +1377,62 @@ export function mhitm_adtyping(magr, mattk, mdef, mhm) {
 // ============================================================================
 
 // cf. uhitm.c:6293 — nohandglow(mon):
-//   Suppress hand-glow message when inappropriate (e.g., not wielding light source).
-// TODO: uhitm.c:6293 — nohandglow()
+//   Reduce hero's umconf counter (hand-glow for confusion touch).
+//   Called after a hand-to-hand hit when umconf > 0 and mon is not confused.
+function nohandglow(mon) {
+    // C: if (!u.umconf || mon->mconf) return;
+    //    decrements u.umconf, prints message about hands stopping glowing.
+    // In JS, u.umconf is not tracked. Stub: no-op.
+}
 
 // cf. uhitm.c:6319 — flash_hits_mon(mtmp, otmp):
 //   Flash of light hits a monster (camera, wand of light, etc).
-// TODO: uhitm.c:6319 — flash_hits_mon()
+//   Returns 1 if flash had a noticeable effect, 0 otherwise.
+//   Wakes sleeping monsters, blinds non-resistant ones, damages gremlins.
+export function flash_hits_mon(mtmp, otmp) {
+    const ptr = mtmp.type || {};
+    let res = 0;
+
+    // Wake mimics — simplified, no M_AP_TYPE tracking
+    if (mtmp.msleeping && haseyes(ptr)) {
+        mtmp.msleeping = 0;
+        res = 1;
+    } else if (ptr.symbol !== S_LIGHT) {
+        // Blind non-resistant monsters
+        // C: if (!resists_blnd(mtmp)) — simplified check
+        const isBlindRes = ptr.symbol === S_LIGHT; // already checked above
+        if (!isBlindRes) {
+            // C: distance-based blinding
+            if ((mtmp.mndx ?? -1) === PM_GREMLIN) {
+                // Rule #1: Keep them out of the light
+                const amt = otmp ? rnd(4) : rnd(Math.min(mtmp.mhp || 4, 4));
+                light_hits_gremlin(mtmp, amt);
+            }
+            if (mtmp.mhp > 0) {
+                mtmp.mcansee = 0;
+                mtmp.mblinded = rnd(50);
+                // C: monflee chance
+                if (rn2(4)) {
+                    const fleetime = rn2(4) ? rnd(100) : 0;
+                    applyMonflee(mtmp, fleetime, false);
+                }
+            }
+            res = 1;
+        }
+    }
+    return res;
+}
 
 // cf. uhitm.c:6403 — light_hits_gremlin(mon, dmg):
 //   Light damage specifically to gremlins.
-// TODO: uhitm.c:6403 — light_hits_gremlin()
+//   Deals damage and wakes nearby monsters.
+export function light_hits_gremlin(mon, dmg) {
+    // C: pline message based on distance and severity
+    mon.mhp -= dmg;
+    if (mon.mhp <= 0) {
+        // Gremlin killed by light — handled by caller
+    }
+}
 
 
 // ============================================================================
