@@ -84,12 +84,6 @@ import {
     litstate_rnd,
 } from './mkmap.js';
 
-// Aliases for compatibility with C naming
-const STAIRS_UP = STAIRS;
-const STAIRS_DOWN = STAIRS;
-const LADDER_UP = LADDER;
-const LADDER_DOWN = LADDER;
-
 const ROOM_TYPE_MAP = {
     'ordinary': 0,
     'themed': 1,
@@ -2842,8 +2836,8 @@ function mapchrToTerrain(ch) {
         case '.': return ROOM;
         case '#': return CORR;
         case '+': return DOOR;
-        case '<': return STAIRS_UP;
-        case '>': return STAIRS_DOWN;
+        case '<': return STAIRS;
+        case '>': return STAIRS;
         case '{': return FOUNTAIN;
         case '\\': return THRONE;
         case 'K': return SINK;
@@ -3660,7 +3654,7 @@ function l_create_stairway(directionOrOpts, x, y, is_ladder = false) {
 
     const up = (dir === 'up') ? 1 : 0;
     const loc = levelState.map.locations[absx][absy];
-    loc.typ = is_ladder ? LADDER : (up ? STAIRS_UP : STAIRS_DOWN);
+    loc.typ = is_ladder ? LADDER : STAIRS;
     loc.stairdir = up;
     loc.flags = up;
     loc.branchStair = false;
