@@ -8,7 +8,6 @@ import {
     COLNO, ROWNO, STONE, ROOM, TREE, CROSSWALL, HWALL, VWALL,
     IS_OBSTRUCTED, IS_WALL,
 } from './config.js';
-import { litstate_rnd as dungeonLitstateRnd } from './dungeon.js';
 
 const MKMAP_HEIGHT = ROWNO - 1;
 const MKMAP_WIDTH = COLNO - 2;
@@ -404,7 +403,10 @@ function remove_room_impl(map, roomObjOrNull, roomIndex) {
 
 // C ref: mkmap.c:442
 export function litstate_rnd(litstate, depth) {
-    return dungeonLitstateRnd(litstate, depth);
+    if (litstate < 0) {
+        return (rnd(1 + Math.abs(depth)) < 11 && rn2(77)) ? true : false;
+    }
+    return !!litstate;
 }
 
 // C ref: mkmap.c:450

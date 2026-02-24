@@ -43,7 +43,7 @@ import { nonliving, is_undead, is_demon, is_rider,
          resists_poison, resists_acid, resists_disint } from './mondata.js';
 import { mondead } from './monutil.js';
 import { placeFloorObject } from './floor_objects.js';
-import { zap_dig as zap_dig_impl } from './dig.js';
+import { zap_dig as zap_dig_core } from './dig.js';
 import { pline } from './pline.js';
 import { mon_nam, Monnam } from './do_name.js';
 import { find_mac } from './worn.js';
@@ -937,7 +937,7 @@ export function weffects(obj, player, map) {
   } else {
     // RAY wand or spell
     if (otyp === WAN_DIGGING || otyp === 364 /* SPE_DIG */) {
-      zap_dig(map, player);
+      zap_dig_core(map, player);
     } else if (otyp >= WAN_MAGIC_MISSILE && otyp <= WAN_LIGHTNING) {
       const beamType = wandToBeamType(otyp);
       if (beamType >= 0 && player) {
@@ -947,12 +947,6 @@ export function weffects(obj, player, map) {
       }
     }
   }
-}
-
-// cf. zap.c zap_dig() — digging beam
-// Delegates to dig.js which has the full implementation.
-export function zap_dig(map, player) {
-  return zap_dig_impl(map, player);
 }
 
 // ============================================================

@@ -5,8 +5,8 @@
  * The special-level harness expects this as a callable generator.
  */
 
-import { generate_rogue_level } from '../dungeon.js';
+import { makeroguerooms } from '../extralev.js';
 
 export function generate() {
-    return generate_rogue_level(15);
+    return makeroguerooms(15);
 }

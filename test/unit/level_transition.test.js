@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { initRng } from '../../js/rng.js';
 import { initLevelGeneration, makelevel, wallification } from '../../js/dungeon.js';
-import { getArrivalPosition } from '../../js/level_transition.js';
+import { getArrivalPosition } from '../../js/do.js';
 
 describe('Level transition arrival placement', () => {
     it('returns to downstairs when going back up after descending', () => {

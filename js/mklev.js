@@ -25,6 +25,7 @@ import { S_HUMAN, S_MIMIC } from './monsters.js';
 import { mkclass, makemon } from './makemon.js';
 import { make_engr_at, wipe_engr_at } from './engrave.js';
 import { random_epitaph_text } from './rumors.js';
+import { litstate_rnd } from './mkmap.js';
 import {
     maketrap,
     somexy,
@@ -32,7 +33,6 @@ import {
     bound_digging,
     mineralize,
     set_wall_state,
-    litstate_rnd,
     wallify_region,
 } from './dungeon.js';
 

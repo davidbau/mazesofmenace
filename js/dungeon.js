@@ -78,6 +78,7 @@ import {
 import {
     getSpecialLevel
 } from './special_levels.js';
+import { litstate_rnd } from './mkmap.js';
 import { setLevelContext, clearLevelContext, initLuaMT, setSpecialLevelDepth, setFinalizeContext, resetLevelState } from './sp_lev.js';
 import {
     themerooms_generate as themermsGenerate,
@@ -353,14 +354,6 @@ export function check_room(map, lowx, ddx, lowy, ddy, vault, inThemerooms) {
 
     return { lowx, ddx: outDdx, lowy, ddy: outDdy };
 }
-
-// C ref: mkmap.c litstate_rnd() -- determine if room is lit
-export function litstate_rnd(litstate, depth) {
-    if (litstate < 0)
-        return (rnd(1 + Math.abs(depth)) < 11 && rn2(77)) ? true : false;
-    return !!litstate;
-}
-
 
 // C ref: sp_lev.c create_room() -- create a random room using rect BSP
 // Returns true if room was created, false if failed.
@@ -3694,10 +3687,6 @@ export function fill_special_room(map, croom, depth) {
     default:
         break;
     }
-}
-
-export function generate_rogue_level(depth = 15) {
-    return makeroguerooms(depth);
 }
 
 // ========================================================================
