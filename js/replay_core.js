@@ -154,21 +154,37 @@ export function getSessionCharacter(session) {
     if (!session?.options) return {};
     let startupName = null;
     let startupRank = null;
+    let startupAlign = null;
+    const captureStatusInfo = (lines) => {
+        for (const line of lines) {
+            if (!line || !line.includes('St:')) continue;
+            const m = line.match(/^\s*(.*?)\s+St:/);
+            if (!m) continue;
+            const statusPrefix = m[1].trim();
+            const theIdx = statusPrefix.indexOf(' the ');
+            if (theIdx > 0) {
+                startupName = statusPrefix.slice(0, theIdx).trim();
+                startupRank = statusPrefix.slice(theIdx + 5).trim();
+            } else if (statusPrefix.length > 0) {
+                startupName = statusPrefix;
+            }
+            const am = line.match(/\b(Lawful|Neutral|Chaotic)\b/);
+            if (am) startupAlign = am[1].toLowerCase();
+            return true;
+        }
+        return false;
+    };
     const startup = getSessionStartup(session);
     const startupLines = getSessionScreenLines(startup || {});
-    for (const line of startupLines) {
-        if (!line || !line.includes('St:')) continue;
-        const m = line.match(/^\s*(.*?)\s+St:/);
-        if (!m) continue;
-        const statusPrefix = m[1].trim();
-        const theIdx = statusPrefix.indexOf(' the ');
-        if (theIdx > 0) {
-            startupName = statusPrefix.slice(0, theIdx).trim();
-            startupRank = statusPrefix.slice(theIdx + 5).trim();
-        } else if (statusPrefix.length > 0) {
-            startupName = statusPrefix;
+    const foundStartupStatus = captureStatusInfo(startupLines);
+    if (!foundStartupStatus) {
+        // Some rerecorded gameplay sessions omit startup screen capture but do
+        // include statuslines on early gameplay steps; use those as fallback.
+        const steps = getSessionGameplaySteps(session);
+        for (let i = 0; i < Math.min(64, steps.length); i++) {
+            const lines = getSessionScreenLines(steps[i] || {});
+            if (captureStatusInfo(lines)) break;
         }
-        if (startupName) break;
     }
     // Some recorded sessions have stale options.role metadata.
     // Prefer the startup statusline rank title when it uniquely maps to a role.
@@ -188,7 +204,7 @@ export function getSessionCharacter(session) {
         role: roleFromStartup || session.options.role,
         race: session.options.race,
         gender: session.options.gender,
-        align: session.options.align,
+        align: startupAlign || session.options.align,
     };
 }
 
