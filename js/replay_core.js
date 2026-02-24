@@ -713,6 +713,7 @@ export async function replaySession(seed, session, opts = {}) {
     }
 
     const sessionChar = getSessionCharacter(session);
+    const tutorialEnabled = !!(session?.options?.tutorial ?? session?.meta?.options?.tutorial);
     const startDnum = Number.isInteger(opts.startDnum) ? opts.startDnum : undefined;
     const startDlevel = Number.isInteger(opts.startDlevel) ? opts.startDlevel : 1;
     const startDungeonAlign = Number.isInteger(opts.startDungeonAlign) ? opts.startDungeonAlign : undefined;
@@ -732,7 +733,7 @@ export async function replaySession(seed, session, opts = {}) {
             startDnum,
             startDlevel,
             dungeonAlignOverride: startDungeonAlign,
-            flags: { tutorial: false },
+            flags: { tutorial: tutorialEnabled },
         };
 
     await game.init(initOpts);
@@ -1468,9 +1469,7 @@ export async function replaySession(seed, session, opts = {}) {
                 const firstRng = (step.rng || []).find((e) =>
                     typeof e === 'string' && !e.startsWith('>') && !e.startsWith('<')
                 );
-                const isTimedSpaceStep = (step.action ? step.action.startsWith('key-') : !stepIsNavKey(step))
-                    && ((step.rng || []).length > 0);
-                if ((firstRng && firstRng.includes('distfleeck(')) || isTimedSpaceStep) {
+                if (firstRng && firstRng.includes('distfleeck(')) {
                     execCh = '.'.charCodeAt(0);
                 }
             }

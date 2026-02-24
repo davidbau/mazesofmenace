@@ -3855,19 +3855,9 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
             // In C, loading oracle.lua triggers themerms.lua load, which does rn2(3), rn2(2).
             // Tutorial entry can hit this path after startup without prior themed-room
             // Lua load, so preserve that shuffle for tut-* special levels as well.
-            const isTutorialSpecial = useDnum === TUTORIAL
-                && (useDlevel === 1 || useDlevel === 2)
-                && typeof special.name === 'string'
-                && special.name.startsWith('tut-');
             if (!get_special_themes_loaded() || depthOnlyOracleSpecial) {
                 set_special_themes_loaded(true);
                 rn2(3);
-                // Tutorial level entry has one non-logged PRNG draw between
-                // nhlua shuffle calls in C startup path.
-                const tutShimEnv = (typeof process !== 'undefined' && process.env) ? process.env : null;
-                const tutShuffleRawShim = (!tutShimEnv
-                    || tutShimEnv.WEBHACK_TUT_SHIM_MAKELEVEL !== '0');
-                if (isTutorialSpecial && tutShuffleRawShim) advanceRngRaw(1);
                 rn2(2);
             }
 

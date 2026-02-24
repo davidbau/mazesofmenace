@@ -223,9 +223,12 @@ export async function maybeDoTutorial(game) {
     }
 }
 
-export async function enterTutorial(game) {
-    game.display.putstr_message('Entering the tutorial.');
-    await game.display.morePrompt(nhgetch);
+export async function enterTutorial(game, opts = {}) {
+    const { direct = false } = opts;
+    if (!direct) {
+        game.display.putstr_message('Entering the tutorial.');
+        await game.display.morePrompt(nhgetch);
+    }
 
     // C tutorial startup uses a dedicated branch and starts without
     // carried comestibles; tutorial places food explicitly in-map.
@@ -238,12 +241,12 @@ export async function enterTutorial(game) {
     game.player.inTutorial = true;
     game.player.showExp = true;
     if (game.map?.flags?.lit_corridor) game.flags.lit_corridor = true;
-    game.placePlayerOnLevel('down');
+    game.placePlayerOnLevel('teleport');
 
     game.fov.compute(game.map, game.player.x, game.player.y);
     game.display.renderMap(game.map, game.player, game.fov, game.flags);
     game.display.renderStatus(game.player);
-    game.maybeShowQuestLocateHint(depth);
+    game.maybeShowQuestLocateHint(game.player.dungeonLevel);
 }
 
 // Handle ?reset=1 — list saved data and prompt for deletion

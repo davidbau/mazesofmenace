@@ -683,6 +683,7 @@ export class NetHackGame {
         const {
             handleReset: _handleReset, restoreFromSave: _restoreFromSave,
             playerSelection: _playerSelection, maybeDoTutorial: _maybeDoTutorial,
+            enterTutorial: _enterTutorial,
         } = nethackChargen;
 
         // Handle ?reset=1 — prompt to delete all saved data
@@ -787,7 +788,10 @@ export class NetHackGame {
         this.display.renderMap(this.map, this.player, this.fov, this.flags);
         this.display.renderStatus(this.player);
 
-        if (this.flags.tutorial) {
+        if (this.flags.tutorial && urlOpts.character) {
+            // Option-driven direct tutorial startup for deterministic replay/headless.
+            await _enterTutorial(this, { direct: true });
+        } else if (this.flags.tutorial) {
             await _maybeDoTutorial(this);
         }
 

@@ -5958,20 +5958,6 @@ function createScriptTrap(deferred) {
         if (trapContextEnv?.WEBHACK_LOG_TRAP_CONTEXT !== '1') return;
         pushRngLogEntry(`~create_trap type=${ttyp} flags=${flags} at=${x},${y} depth=${depth}`);
     };
-    const maybeTutorialFirstTrapParityAdvance = () => {
-        if (levelState.tutorialFirstTrapParityDone) return;
-        const ctx = levelState.finalizeContext || {};
-        const specialName = (typeof ctx.specialName === 'string') ? ctx.specialName.toLowerCase() : '';
-        if (!specialName.startsWith('tut-')) return;
-        const tutTrapEnv = (typeof process !== 'undefined' && process.env) ? process.env : null;
-        const tutTrapRawShim = (!tutTrapEnv
-            || tutTrapEnv.WEBHACK_TUT_SHIM_TRAP !== '0');
-        if (tutTrapRawShim) {
-            advanceRngRaw(1);
-        }
-        levelState.tutorialFirstTrapParityDone = true;
-    };
-
     let ttyp;
     if (!trapType) {
         // C ref: create_trap() -> mktrap(NO_TRAP, MKTRAP_MAZEFLAG, tm)
@@ -5993,7 +5979,6 @@ function createScriptTrap(deferred) {
         const depth = (levelState.finalizeContext && Number.isFinite(levelState.finalizeContext.dunlev))
             ? levelState.finalizeContext.dunlev
             : (levelState.levelDepth || 1);
-        maybeTutorialFirstTrapParityAdvance();
         maybeTrapContextLog(0, MKTRAP_MAZEFLAG | mktrapFlags, tm.x, tm.y, depth);
         withTrapMidlog(() => {
             mktrap(levelState.map, 0, MKTRAP_MAZEFLAG | mktrapFlags, null, tm, depth);
@@ -6015,7 +6000,6 @@ function createScriptTrap(deferred) {
     const depth = (levelState.finalizeContext && Number.isFinite(levelState.finalizeContext.dunlev))
         ? levelState.finalizeContext.dunlev
         : (levelState.levelDepth || 1);
-    maybeTutorialFirstTrapParityAdvance();
     maybeTrapContextLog(ttyp, MKTRAP_MAZEFLAG | mktrapFlags, tm.x, tm.y, depth);
     // C ref: sp_lev.c create_trap() initializes flags with MKTRAP_MAZEFLAG
     // for both random and explicit trap types.
@@ -6346,17 +6330,6 @@ export function finalize_level() {
  * @returns {boolean} True if rn2(100) < n
  */
 export function percent(n) {
-    const ctx = levelState.finalizeContext || {};
-    const specialName = (typeof ctx.specialName === 'string') ? ctx.specialName.toLowerCase() : '';
-    if (!levelState.tutorialFirstPercentParityDone && specialName.startsWith('tut-')) {
-        const tutPercentEnv = (typeof process !== 'undefined' && process.env) ? process.env : null;
-        const rawExtraValue = tutPercentEnv?.WEBHACK_TUT_EXTRA_RAW_BEFORE_PERCENT ?? '2';
-        const rawExtra = Number.parseInt(rawExtraValue, 10);
-        if (Number.isInteger(rawExtra) && rawExtra > 0) {
-            advanceRngRaw(rawExtra);
-        }
-        levelState.tutorialFirstPercentParityDone = true;
-    }
     return nh.random(0, 100) < n;
 }
 
