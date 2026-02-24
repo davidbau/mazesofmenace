@@ -4883,7 +4883,7 @@ No function symbols parsed from isaac64.c.
 | 3553 | `lspo_object` | sp_lev.js:6540 | Aligned |
 | 4555 | `lspo_random_corridors` | sp_lev.js:6556 | Aligned |
 | 5581 | `lspo_region` | sp_lev.js:6561 | Aligned |
-| 5048 | `lspo_replace_terrain` | sp_lev.js:6553 | Aligned |
+| 5048 | `lspo_replace_terrain` | sp_lev.js:6553 | Partial — fromterrain/toterrain parity path aligned; mapfragment replacement helpers are ported but not yet runtime-enabled |
 | 5990 | `lspo_reset_level` | sp_lev.js:6569 | Aligned |
 | 4025 | `lspo_room` | sp_lev.js:6554 | Aligned |
 | 4220 | `lspo_stair` | sp_lev.js:6546 | Aligned |
@@ -4895,48 +4895,48 @@ No function symbols parsed from isaac64.c.
 | 360 | `lvlfill_maze_grid` | sp_lev.js:1471 | Aligned |
 | 375 | `lvlfill_solid` | sp_lev.js:1445 | Aligned |
 | 392 | `lvlfill_swamp` | sp_lev.js:1491 | Aligned |
-| 1865 | `m_bad_boulder_spot` | - | Missing |
+| 1865 | `m_bad_boulder_spot` | sp_lev.js:5980| Aligned |
 | 329 | `map_cleanup` | sp_lev.js:6028 | Aligned |
-| 276 | `mapfrag_canmatch` | - | Missing |
-| 282 | `mapfrag_error` | - | Missing |
-| 257 | `mapfrag_free` | - | Missing |
-| 228 | `mapfrag_fromstr` | - | Missing |
-| 267 | `mapfrag_get` | - | Missing |
-| 299 | `mapfrag_match` | - | Missing |
-| 218 | `match_maptyps` | - | Missing |
-| 1111 | `maybe_add_door` | - | Missing |
+| 276 | `mapfrag_canmatch` | sp_lev.js:2296| Aligned |
+| 282 | `mapfrag_error` | sp_lev.js:2291| Aligned |
+| 257 | `mapfrag_free` | sp_lev.js:2286| Aligned |
+| 228 | `mapfrag_fromstr` | sp_lev.js:2255| Aligned |
+| 267 | `mapfrag_get` | sp_lev.js:2273| Aligned |
+| 299 | `mapfrag_match` | sp_lev.js:2317| Aligned |
+| 218 | `match_maptyps` | sp_lev.js:2248| Aligned |
+| 1111 | `maybe_add_door` | sp_lev.js:4859| Aligned |
 | 2898 | `maze1xy` | sp_lev.js:7847 | Aligned |
-| 4808 | `nhl_abs_coord` | - | Missing |
-| 1853 | `noncoalignment` | - | Missing |
-| 1312 | `pm_good_location` | - | Missing |
-| 1885 | `pm_to_humidity` | - | Missing |
+| 4808 | `nhl_abs_coord` | sp_lev.js:2724| Aligned |
+| 1853 | `noncoalignment` | sp_lev.js:5991| Aligned |
+| 1312 | `pm_good_location` | sp_lev.js:5975| Aligned |
+| 1885 | `pm_to_humidity` | sp_lev.js:5955| Aligned |
 | 4575 | `random_wdir` | sp_lev.js:7814 | Aligned |
 | 1017 | `remove_boundary_syms` | sp_lev.js:6092 | Aligned |
 | 1149 | `rnddoor` | sp_lev.js:5089 | Aligned |
 | 1160 | `rndtrap` | sp_lev.js:7819 | Aligned |
-| 2485 | `search_door` | - | Missing |
+| 2485 | `search_door` | sp_lev.js:4846| Aligned |
 | 4644 | `sel_set_door` | sp_lev.js:5101 | Aligned |
-| 4630 | `sel_set_feature` | sp_lev.js:2933 | Aligned |
-| 5532 | `sel_set_lit` | sp_lev.js:2893 | Aligned |
-| 4606 | `sel_set_ter` | sp_lev.js:2900 | Aligned |
+| 4630 | `sel_set_feature` | sp_lev.js:2994| Aligned|
+| 5532 | `sel_set_lit` | sp_lev.js:2954| Aligned|
+| 4606 | `sel_set_ter` | sp_lev.js:2539| Aligned|
 | 987 | `sel_set_wall_property` | sp_lev.js:4590 | Aligned |
-| 5952 | `sel_set_wallify` | - | Missing |
+| 5952 | `sel_set_wallify` | sp_lev.js:6562| Aligned |
 | 1043 | `set_door_orientation` | sp_lev.js:5094 | Aligned |
 | 4590 | `set_floodfillchk_match_under` | sp_lev.js:2127 | Aligned |
 | 1275 | `set_ok_location_func` | sp_lev.js:2538 | Aligned |
 | 1002 | `set_wall_property` | sp_lev.js:4652 | Aligned |
 | 5908 | `set_wallprop_in_selection` | sp_lev.js:4601 | Aligned |
-| 1090 | `shared_with_room` | - | Missing |
+| 1090 | `shared_with_room` | sp_lev.js:4827| Aligned |
 | 316 | `solidify_map` | sp_lev.js:6074 | Aligned |
-| 1909 | `sp_amask_to_amask` | - | Missing |
-| 3020 | `sp_code_jmpaddr` | - | Missing |
+| 1909 | `sp_amask_to_amask` | sp_lev.js:5998| Aligned |
+| 3020 | `sp_code_jmpaddr` | sp_lev.js:256| Aligned |
 | 6336 | `sp_level_coder_init` | sp_lev.js:231 | Aligned |
-| 2980 | `splev_initlev` | - | Missing |
-| 3029 | `spo_end_moninvent` | - | Missing |
-| 4116 | `spo_endroom` | - | Missing |
-| 3038 | `spo_pop_container` | - | Missing |
-| 6324 | `update_croom` | - | Missing |
-| 2863 | `wallify_map` | - | Missing |
+| 2980 | `splev_initlev` | sp_lev.js:1703| Aligned |
+| 3029 | `spo_end_moninvent` | sp_lev.js:341| Aligned |
+| 4116 | `spo_endroom` | sp_lev.js:330| Aligned |
+| 3038 | `spo_pop_container` | sp_lev.js:336| Aligned |
+| 6324 | `update_croom` | sp_lev.js:324| Aligned |
+| 2863 | `wallify_map` | sp_lev.js:6553| Aligned |
 
 ### spell.c -> spell.js
 | C Line | C Function | JS Line | Alignment |

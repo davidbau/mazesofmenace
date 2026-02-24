@@ -24,6 +24,15 @@ import { make_engr_at, del_engr } from './engrave.js';
 import { random_epitaph_text } from './rumors.js';
 import { seedFromMT } from './xoshiro256.js';
 import {
+    amphibious,
+    is_swimmer,
+    is_flyer,
+    is_floater,
+    passes_walls,
+    noncorporeal,
+    likes_fire,
+} from './mondata.js';
+import {
     makemon, mkclass, def_char_to_monclass, NO_MM_FLAGS,
     MM_NOGRP, MM_ADJACENTOK, MM_IGNOREWATER, rndmonnum, getMakemonRoleIndex
 } from './makemon.js';
@@ -42,7 +51,7 @@ import {
     VIBRATING_SQUARE, NO_TRAP, TRAPNUM, is_pit, is_hole,
     D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED, D_BROKEN, D_SECRET,
     COLNO, ROWNO, IS_OBSTRUCTED, IS_WALL, IS_STWALL, IS_POOL, IS_LAVA,
-    A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC,
+    A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC, Align2amask,
     MKTRAP_SEEN, MKTRAP_MAZEFLAG, MKTRAP_NOSPIDERONWEB, MKTRAP_NOVICTIM,
     MAXNROFROOMS, ROOMOFFSET,
     PM_PRIEST as ROLE_PRIEST
@@ -53,7 +62,7 @@ import {
     GEM_CLASS, SPBOOK_CLASS, ROCK_CLASS, BALL_CLASS, CHAIN_CLASS, VENOM_CLASS,
     SCR_EARTH, objectData, GOLD_PIECE, STATUE
 } from './objects.js';
-import { mons, M2_FEMALE, M2_MALE, G_NOGEN, G_IGNORE, PM_MINOTAUR, MR_STONE } from './monsters.js';
+import { mons, M2_FEMALE, M2_MALE, G_NOGEN, G_IGNORE, PM_MINOTAUR, MR_STONE, S_EEL } from './monsters.js';
 import { getSpecialLevel, findSpecialLevelByName, GEHENNOM } from './special_levels.js';
 import { placeFloorObject } from './floor_objects.js';
 import { start_timer, stop_timer, obj_move_timers as moveObjectTimers, obj_split_timers as splitObjectTimers, obj_has_timer as hasObjectTimer } from './timeout.js';
@@ -335,6 +344,8 @@ export function spo_end_moninvent() {
 }
 
 const WALL_INFO_MASK = 0x07;
+const MATCH_WALL = 38;
+const INVALID_TYPE = 127;
 let checkpointCaptureEnabled = false;
 let levelCheckpoints = [];
 let floodfillchk_match_under_override = null;
@@ -2236,7 +2247,9 @@ function getLevelExtentsForFlip(map) {
 
 // C ref: sp_lev.c match_maptyps()
 export function match_maptyps(mapTyp, fragTyp) {
-    return mapTyp === fragTyp;
+    if (fragTyp === MATCH_WALL && !IS_STWALL(mapTyp)) return false;
+    if (fragTyp < MAX_TYPE && fragTyp !== mapTyp) return false;
+    return true;
 }
 
 // C ref: sp_lev.c mapfrag_fromstr()
@@ -2246,25 +2259,28 @@ export function mapfrag_fromstr(src, preserveExactBlankLines = false) {
         if (mapStr.startsWith('\r\n')) mapStr = mapStr.slice(2);
         else if (mapStr.startsWith('\n')) mapStr = mapStr.slice(1);
     }
+    if (mapStr.length === 0) return { data: '', lines: [], width: 0, height: 0 };
     const lines = mapStr.split('\n');
-    if (!preserveExactBlankLines
-        && lines.length > 0
-        && lines[lines.length - 1] === ''
-        && mapStr.endsWith('\n')) {
+    if (!preserveExactBlankLines && lines.length > 0 && lines[lines.length - 1] === '' && mapStr.endsWith('\n')) {
         lines.pop();
     }
     const width = lines.length ? Math.max(...lines.map(line => line.length)) : 0;
     const height = lines.length;
-    return { lines, width, height };
+    if (height > ROWNO) return null;
+    return { data: mapStr, lines, width, height };
 }
 
 // C ref: sp_lev.c mapfrag_get()
 export function mapfrag_get(mapfrag, x, y) {
-    if (!mapfrag || !Array.isArray(mapfrag.lines)) return '\0';
-    if (y < 0 || y >= mapfrag.lines.length) return '\0';
+    if (!mapfrag || !Array.isArray(mapfrag.lines)) {
+        throw new Error('outside mapfrag');
+    }
+    if (y < 0 || x < 0 || y > mapfrag.height - 1 || x > mapfrag.width - 1) {
+        throw new Error(`outside mapfrag (${mapfrag.width},${mapfrag.height}), wanted (${x},${y})`);
+    }
     const row = mapfrag.lines[y] || '';
-    if (x < 0 || x >= row.length) return '\0';
-    return row[x];
+    const ch = (x < row.length) ? row[x] : '\0';
+    return mapchrToTerrainFragment(ch);
 }
 
 // C ref: sp_lev.c mapfrag_free()
@@ -2272,35 +2288,68 @@ export function mapfrag_free(_mapfrag) {
     // GC-managed in JS.
 }
 
-// C ref: sp_lev.c mapfrag_error()
-export function mapfrag_error(message = 'map fragment error') {
-    throw new Error(String(message));
-}
-
 // C ref: sp_lev.c mapfrag_canmatch()
 export function mapfrag_canmatch(map, mapfrag, x, y) {
+    if (!mapfrag) return false;
+    return ((mapfrag.width % 2) === 1) && ((mapfrag.height % 2) === 1);
+}
+
+// C ref: sp_lev.c mapfrag_error()
+export function mapfrag_error(mapfrag) {
+    if (!mapfrag) return 'mapfragment error';
+    if (!mapfrag_canmatch(null, mapfrag)) return 'mapfragment needs to have odd height and width';
+    try {
+        const center = mapfrag_get(mapfrag, Math.trunc(mapfrag.width / 2), Math.trunc(mapfrag.height / 2));
+        if (center === MAX_TYPE || center === INVALID_TYPE) {
+            return 'mapfragment center must be valid terrain';
+        }
+    } catch (_err) {
+        return 'mapfragment error';
+    }
+    return null;
+}
+
+// C ref: sp_lev.c mapfrag_match()
+export function mapfrag_match(map, mapfrag) {
     if (!map || !mapfrag) return false;
-    for (let ly = 0; ly < mapfrag.height; ly++) {
-        for (let lx = 0; lx < mapfrag.width; lx++) {
-            const gx = x + lx;
-            const gy = y + ly;
-            if (gx < 0 || gx >= COLNO || gy < 0 || gy >= ROWNO) return false;
-            const ch = mapfrag_get(mapfrag, lx, ly);
-            const fragTyp = mapchrToTerrain(ch);
-            if (fragTyp === -1) continue;
-            const mapTyp = map.locations[gx][gy].typ;
-            if (!match_maptyps(mapTyp, fragTyp)) return false;
+    // x,y are fragment center coordinates (C behavior)
+    const x = arguments[2];
+    const y = arguments[3];
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+    const cx = Math.trunc(x);
+    const cy = Math.trunc(y);
+    const hx = Math.trunc(mapfrag.width / 2);
+    const hy = Math.trunc(mapfrag.height / 2);
+    for (let rx = -hx; rx <= hx; rx++) {
+        for (let ry = -hy; ry <= hy; ry++) {
+            const fragTyp = mapfrag_get(mapfrag, rx + hx, ry + hy);
+            const gx = cx + rx;
+            const gy = cy + ry;
+            const mapTyp = (gx >= 0 && gx < COLNO && gy >= 0 && gy < ROWNO)
+                ? map.locations[gx][gy].typ
+                : STONE;
+            if (!match_maptyps(fragTyp, mapTyp)) return false;
         }
     }
     return true;
 }
 
-// C ref: sp_lev.c mapfrag_match()
-export function mapfrag_match(map, mapfrag) {
+function mapchrToTerrainFragment(ch) {
+    if (ch === 'w') return MATCH_WALL;
+    const t = mapchrToTerrain(ch);
+    if (t === -1) {
+        return INVALID_TYPE;
+    }
+    return t;
+}
+
+function mapfrag_match_scan(map, mapfrag) {
     if (!map || !mapfrag) return null;
-    for (let y = 0; y <= ROWNO - mapfrag.height; y++) {
-        for (let x = 0; x <= COLNO - mapfrag.width; x++) {
-            if (mapfrag_canmatch(map, mapfrag, x, y)) {
+    const hx = Math.trunc(mapfrag.width / 2);
+    const hy = Math.trunc(mapfrag.height / 2);
+    for (let y = hy; y < ROWNO - hy; y++) {
+        for (let x = hx; x < COLNO - hx; x++) {
+            if (mapfrag_match(map, mapfrag, x, y)) {
                 return { x, y };
             }
         }
@@ -2821,7 +2870,6 @@ export function replace_terrain(opts) {
         : null;
     const fromType = mapchrToTerrain(opts.fromterrain);
     const toType = mapchrToTerrain(opts.toterrain);
-
     if ((fromToken !== 'w' && fromType === -1) || toType === -1) return;
 
     const chance = opts.chance !== undefined ? opts.chance : 100;
@@ -5892,8 +5940,22 @@ export function mineralize(opts = {}) {
 
 // C ref: sp_lev.c pm_to_humidity()
 export function pm_to_humidity(_pm) {
-    // Conservative parity default: script placements primarily use dry squares.
-    return GETLOC_DRY;
+    const pm = _pm || null;
+    let loc = GETLOC_DRY;
+    if (!pm) return loc;
+    if ((pm.symbol === S_EEL) || amphibious(pm) || is_swimmer(pm)) {
+        loc = GETLOC_WET;
+    }
+    if (is_flyer(pm) || is_floater(pm)) {
+        loc |= (GETLOC_HOT | GETLOC_WET);
+    }
+    if (passes_walls(pm) || noncorporeal(pm)) {
+        loc |= GETLOC_SOLID;
+    }
+    if (likes_fire(pm)) {
+        loc |= GETLOC_HOT;
+    }
+    return loc;
 }
 
 // C ref: sp_lev.c pm_good_location()
@@ -5903,34 +5965,41 @@ export function pm_good_location(pm, x, y) {
 
 // C ref: sp_lev.c m_bad_boulder_spot()
 export function m_bad_boulder_spot(x, y) {
-    if (!hasBoulderAt(x, y)) return false;
-    const trap = levelState.map?.trapAt?.(x, y) || null;
-    return !!(trap && (is_pit(trap.ttyp) || is_hole(trap.ttyp)));
+    if (levelState.map?.trapAt?.(x, y)) return true;
+    if (hasBoulderAt(x, y)) return true;
+    const lev = levelState.map?.locations?.[x]?.[y];
+    if (lev && lev.typ === DOOR && ((lev.doormask || lev.flags || 0) & (D_CLOSED | D_LOCKED))) {
+        return true;
+    }
+    return false;
 }
 
 // C ref: sp_lev.c noncoalignment()
 export function noncoalignment(baseAlign = A_NEUTRAL) {
-    if (baseAlign === A_LAWFUL) return A_CHAOTIC;
-    if (baseAlign === A_CHAOTIC) return A_LAWFUL;
-    return rn2(2) ? A_LAWFUL : A_CHAOTIC;
+    const k = rn2(2);
+    if (!baseAlign) return k ? A_CHAOTIC : A_LAWFUL;
+    return k ? -baseAlign : A_NEUTRAL;
 }
 
 // C ref: sp_lev.c sp_amask_to_amask()
 export function sp_amask_to_amask(amask = 'random') {
     const raw = (typeof amask === 'string') ? amask.toLowerCase() : amask;
-    if (raw === A_LAWFUL || raw === 'law' || raw === 'lawful') return A_LAWFUL;
-    if (raw === A_NEUTRAL || raw === 'neutral') return A_NEUTRAL;
-    if (raw === A_CHAOTIC || raw === 'chaos' || raw === 'chaotic') return A_CHAOTIC;
-    if (raw === 'coaligned') return A_NEUTRAL;
-    if (raw === 'noncoaligned') return noncoalignment(A_NEUTRAL);
+    const originalAlign = Number.isFinite(u.alignment)
+        ? u.alignment
+        : A_NEUTRAL;
+    if (raw === A_LAWFUL || raw === 'law' || raw === 'lawful') return Align2amask(A_LAWFUL);
+    if (raw === A_NEUTRAL || raw === 'neutral') return Align2amask(A_NEUTRAL);
+    if (raw === A_CHAOTIC || raw === 'chaos' || raw === 'chaotic') return Align2amask(A_CHAOTIC);
+    if (raw === 'coaligned') return Align2amask(originalAlign);
+    if (raw === 'noncoaligned') return Align2amask(noncoalignment(originalAlign));
     const ctx = levelState.finalizeContext || {};
     const specialName = typeof ctx.specialName === 'string' ? ctx.specialName : '';
     const tutorialLike = !!levelState.map?.flags?.is_tutorial || specialName.startsWith('tut-');
     const oracleLike = specialName.startsWith('oracle');
     if (!tutorialLike && !oracleLike) {
         // Keep existing RNG timing behavior in normal levels.
-        const rawAlign = rn2(3);
-        return [A_CHAOTIC, A_NEUTRAL, A_LAWFUL][rawAlign] ?? A_NEUTRAL;
+        const rawAlign = rn2(3) - 1;
+        return Align2amask(rawAlign);
     }
     const dnum = Number.isFinite(ctx.dnum) ? ctx.dnum : undefined;
     const dungeonAlign = (dnum !== undefined) ? (DUNGEON_ALIGN_BY_DNUM[dnum] ?? A_NONE) : A_NONE;
@@ -5938,7 +6007,7 @@ export function sp_amask_to_amask(amask = 'random') {
     if (oracleLike) specialAlign = A_NEUTRAL;
     if (specialName.startsWith('medusa')) specialAlign = A_CHAOTIC;
     else if (specialName.startsWith('tut-')) specialAlign = A_LAWFUL;
-    return induced_align(80, specialAlign, dungeonAlign);
+    return Align2amask(induced_align(80, specialAlign, dungeonAlign));
 }
 
 /**
@@ -6474,6 +6543,12 @@ export function wallify(opts) {
 export function wallify_map(map, x1, y1, x2, y2) {
     // Use sp_lev/dungeon bounded wallification semantics for parity.
     return dungeonWallifyRegion(map, x1, y1, x2, y2);
+}
+
+// C ref: sp_lev.c sel_set_wallify()
+export function sel_set_wallify(x, y) {
+    if (!levelState.map) return;
+    wallify_map(levelState.map, x, y, x, y);
 }
 
 // C ref: sp_lev.c map_cleanup() — post-gen cleanup of liquid squares.
