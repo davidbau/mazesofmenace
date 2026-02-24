@@ -97,6 +97,14 @@ consumption pattern), use `rn2(1)`, which always returns 0 and consumes
 exactly one call. Do not use `rn2(100)` or any other value — the modulus
 affects the internal state.
 
+### mattacku non-physical hits consume negation RNG
+
+In monster-vs-hero combat, successful non-physical attacks consume
+`mhitm_mgc_atk_negated()` RNG (`rn2(10)`) even when no special effect is
+ultimately applied. Electric attacks then also consume their own follow-up
+RNG (`rn2(20)`). Missing that `rn2(10)` call causes immediate replay drift
+in early sticky/paralysis encounters.
+
 ---
 
 ## Special Levels
