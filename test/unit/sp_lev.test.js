@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import {
     des, resetLevelState, getLevelState, setFinalizeContext
 } from '../../js/sp_lev.js';
-import { place_lregion } from '../../js/dungeon.js';
+import { place_lregion } from '../../js/mkmaze.js';
 import {
     STONE, ROOM, CORR, DOOR, HWALL, VWALL, STAIRS, LAVAPOOL, PIT, MAGIC_PORTAL, CROSSWALL, GRAVE,
     WATER, AIR,

@@ -4,10 +4,10 @@
 
 import {
     COLNO, ROWNO, STONE, CROSSWALL, LAVAWALL, IRONBARS, WATER, SDOOR,
-    MAGIC_PORTAL,
+    CORR, ROOM, AIR, MAGIC_PORTAL, VIBRATING_SQUARE,
     IS_WALL, isok,
 } from './config.js';
-import { rn2 } from './rng.js';
+import { rn1, rn2 } from './rng.js';
 import {
     makemaz as dungeonMakemaz,
     create_maze as dungeonCreateMaze,
@@ -17,13 +17,20 @@ import {
     maketrap,
     wallification,
     fix_wall_spines,
-    is_exclusion_zone as dungeonIsExclusionZone,
-    bad_location as dungeonBadLocation,
-    place_lregion,
-    put_lregion_here,
+    deltrap,
+    enexto,
     bound_digging,
     repair_irregular_room_boundaries,
 } from './dungeon.js';
+import {
+    occupied,
+    mkstairs,
+    generate_stairs_find_room,
+    place_branch,
+    somex,
+    somey,
+    somexyspace,
+} from './mklev.js';
 
 function at(map, x, y) {
     return map && map.at ? map.at(x, y) : null;
@@ -121,14 +128,77 @@ export function maze0xy(map) {
     return dungeonMazexy(map);
 }
 
+// Region type constants (C ref: mkmaze.h)
+const LR_TELE = 0;
+const LR_DOWNTELE = 1;
+const LR_UPTELE = 2;
+const LR_PORTAL = 3;
+const LR_BRANCH = 4;
+const LR_UPSTAIR = 5;
+const LR_DOWNSTAIR = 6;
+
+// C ref: mkmaze.c within_bounded_area()
+function within_bounded_area(x, y, lx, ly, hx, hy) {
+    return x >= lx && x <= hx && y >= ly && y <= hy;
+}
+
 // C ref: mkmaze.c is_exclusion_zone
 export function is_exclusion_zone(map, type, x, y) {
-    return dungeonIsExclusionZone(map, type, x, y);
+    const zones = Array.isArray(map?.exclusionZones) ? map.exclusionZones : null;
+    if (!zones || zones.length === 0) return false;
+
+    const normalizeZoneType = (zoneType) => {
+        if (typeof zoneType === 'string') {
+            switch (zoneType) {
+            case 'teleport':
+                return LR_TELE;
+            case 'teleport-down':
+                return LR_DOWNTELE;
+            case 'teleport-up':
+                return LR_UPTELE;
+            case 'monster-generation':
+                return 7;
+            default:
+                return undefined;
+            }
+        }
+        if (typeof zoneType === 'number') {
+            if (zoneType === LR_TELE || zoneType === 4) return LR_TELE;
+            if (zoneType === LR_UPTELE || zoneType === 5) return LR_UPTELE;
+            if (zoneType === LR_DOWNTELE || zoneType === 6) return LR_DOWNTELE;
+            if (zoneType === 7) return 7;
+        }
+        return undefined;
+    };
+
+    for (const zone of zones) {
+        const zoneType = normalizeZoneType(zone?.type ?? zone?.zonetype);
+        if (zoneType === undefined) continue;
+
+        const typeMatches = (
+            (type === LR_DOWNTELE && (zoneType === LR_DOWNTELE || zoneType === LR_TELE))
+            || (type === LR_UPTELE && (zoneType === LR_UPTELE || zoneType === LR_TELE))
+            || (type === zoneType)
+        );
+        if (!typeMatches) continue;
+
+        if (within_bounded_area(x, y, zone.lx, zone.ly, zone.hx, zone.hy)) return true;
+    }
+    return false;
 }
 
 // C ref: mkmaze.c bad_location
 export function bad_location(map, x, y, nlx, nly, nhx, nhy) {
-    return dungeonBadLocation(map, x, y, nlx, nly, nhx, nhy);
+    if (occupied(map, x, y)) return true;
+    if (within_bounded_area(x, y, nlx, nly, nhx, nhy)) return true;
+
+    const loc = at(map, x, y);
+    if (!loc) return true;
+
+    const typ = loc.typ;
+    const isMaze = !!map.flags?.is_maze_lev;
+    const isValid = (typ === CORR && isMaze) || typ === ROOM || typ === AIR;
+    return !isValid;
 }
 
 // C ref: mkmaze.c makemaz
@@ -161,7 +231,119 @@ export function pick_vibrasquare_location(map) {
     return dungeonPickVibrasquareLocation(map);
 }
 
-export { wallification, fix_wall_spines, place_lregion, put_lregion_here };
+// C ref: mkmaze.c put_lregion_here()
+export function put_lregion_here(map, x, y, nlx, nly, nhx, nhy, rtype, oneshot) {
+    let invalid = bad_location(map, x, y, nlx, nly, nhx, nhy)
+        || is_exclusion_zone(map, rtype, x, y);
+    if (invalid) {
+        if (!oneshot) return false;
+
+        const trap = map.trapAt(x, y);
+        const undestroyable = (trap?.ttyp === MAGIC_PORTAL || trap?.ttyp === VIBRATING_SQUARE);
+        if (trap && !undestroyable) {
+            const mon = map.monsterAt(x, y);
+            if (mon && mon.mtrapped) mon.mtrapped = 0;
+            deltrap(map, trap);
+        }
+        invalid = bad_location(map, x, y, nlx, nly, nhx, nhy)
+            || is_exclusion_zone(map, rtype, x, y);
+        if (invalid) return false;
+    }
+
+    const loc = at(map, x, y);
+    if (!loc) return false;
+
+    switch (rtype) {
+    case LR_TELE:
+    case LR_UPTELE:
+    case LR_DOWNTELE: {
+        const mon = map.monsterAt(x, y);
+        if (mon) {
+            if (!oneshot) return false;
+            const pos = enexto(x, y, map);
+            if (pos) {
+                mon.mx = pos.x;
+                mon.my = pos.y;
+            } else {
+                map.removeMonster(mon);
+            }
+        }
+        break;
+    }
+    case LR_PORTAL:
+        {
+            const trap = maketrap(map, x, y, MAGIC_PORTAL);
+            if (trap && map?._portalDestOverride) {
+                trap.dst = {
+                    dnum: map._portalDestOverride.dnum,
+                    dlevel: map._portalDestOverride.dlevel
+                };
+            }
+        }
+        break;
+    case LR_DOWNSTAIR:
+        mkstairs(map, x, y, false);
+        break;
+    case LR_UPSTAIR:
+        mkstairs(map, x, y, true);
+        break;
+    case LR_BRANCH:
+        place_branch(map, x, y);
+        break;
+    default:
+        break;
+    }
+    return true;
+}
+
+// C ref: mkmaze.c place_lregion()
+export function place_lregion(map, lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype) {
+    if (!lx) {
+        if (rtype === LR_BRANCH) {
+            if (map.nroom) {
+                const croom = generate_stairs_find_room(map);
+                if (!croom) {
+                    console.warn(`Couldn't place lregion type ${rtype}!`);
+                    return;
+                }
+
+                let pos = somexyspace(map, croom);
+                if (!pos) pos = { x: somex(croom), y: somey(croom) };
+                if (!at(map, pos.x, pos.y)) {
+                    console.warn(`Couldn't place lregion type ${rtype}!`);
+                    return;
+                }
+                place_branch(map, pos.x, pos.y);
+                return;
+            }
+        }
+        lx = 1;
+        hx = COLNO - 1;
+        ly = 0;
+        hy = ROWNO - 1;
+    }
+
+    if (lx < 1) lx = 1;
+    if (hx > COLNO - 1) hx = COLNO - 1;
+    if (ly < 0) ly = 0;
+    if (hy > ROWNO - 1) hy = ROWNO - 1;
+
+    const oneshot = (lx === hx && ly === hy);
+    for (let trycnt = 0; trycnt < 200; trycnt++) {
+        const x = rn1((hx - lx) + 1, lx);
+        const y = rn1((hy - ly) + 1, ly);
+        if (put_lregion_here(map, x, y, nlx, nly, nhx, nhy, rtype, oneshot)) return;
+    }
+
+    for (let x = lx; x <= hx; x++) {
+        for (let y = ly; y <= hy; y++) {
+            if (put_lregion_here(map, x, y, nlx, nly, nhx, nhy, rtype, true)) return;
+        }
+    }
+    console.warn(`Couldn't place lregion type ${rtype}!`);
+}
+
+export { wallification, fix_wall_spines };
 
 // C ref: mkmaze.c baalz_fixup/fixup_special/check_ransacked/etc.
 export function baalz_fixup() { return false; }

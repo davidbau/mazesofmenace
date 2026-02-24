@@ -350,8 +350,8 @@ export function mkstairs(map, x, y, isUp, isBranch = false) {
     else map.dnstair = { x, y };
 }
 
-function somex(croom) { return rn1(croom.hx - croom.lx + 1, croom.lx); }
-function somey(croom) { return rn1(croom.hy - croom.ly + 1, croom.ly); }
+export function somex(croom) { return rn1(croom.hx - croom.lx + 1, croom.lx); }
+export function somey(croom) { return rn1(croom.hy - croom.ly + 1, croom.ly); }
 
 function inside_room(croom, x, y, map) {
     if (croom.irregular) {
@@ -363,7 +363,7 @@ function inside_room(croom, x, y, map) {
         && y >= croom.ly - 1 && y <= croom.hy + 1;
 }
 
-function somexyspace(map, croom) {
+export function somexyspace(map, croom) {
     let trycnt = 0;
     let okay;
     do {
