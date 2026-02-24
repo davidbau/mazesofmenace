@@ -19,6 +19,7 @@ import { mksobj, mkobj, mkcorpstat, set_corpsenm, setLevelDepth, weight } from '
 import { create_room, makecorridors, create_corridor, init_rect, rnd_rect, get_rect, split_rects, check_room, add_doors_to_room, link_doors_rooms, update_rect_pool_for_room, bound_digging, mineralize as dungeonMineralize, fill_ordinary_room, fill_special_room, isMtInitialized, setMtInitialized, wallification as dungeonWallification, wallify_region as dungeonWallifyRegion, fix_wall_spines, set_wall_state, mktrap, deltrap, enexto, sp_create_door, floodFillAndRegister, repair_irregular_room_boundaries, resolveBranchPlacementForLevel, induced_align, DUNGEON_ALIGN_BY_DNUM, enterMklevContext, leaveMklevContext } from './dungeon.js';
 import {
     place_lregion,
+    create_maze,
     setup_waterlevel,
     baalz_fixup,
 } from './mkmaze.js';
@@ -1537,12 +1538,14 @@ export function level_init(opts = {}) {
     } else if (style === 'maze') {
         levelState.mazeMaxX = (COLNO - 1) & ~1;
         levelState.mazeMaxY = (ROWNO - 1) & ~1;
-        // TODO: C create_maze() parity path
-        for (let x = 0; x < 80; x++) {
-            for (let y = 0; y < 21; y++) {
-                levelState.map.locations[x][y].typ = STONE;
-            }
-        }
+        levelState.map._mazeMaxX = levelState.mazeMaxX;
+        levelState.map._mazeMaxY = levelState.mazeMaxY;
+        create_maze(
+            levelState.map,
+            levelState.init.corrwid,
+            levelState.init.wallthick,
+            !!levelState.init.rm_deadends
+        );
     } else if (style === 'swamp') {
         lvlfill_swamp(levelState.map, levelState.init);
     } else if (style === 'mines' || style === 'rogue') {

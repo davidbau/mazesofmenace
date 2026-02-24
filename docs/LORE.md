@@ -1282,3 +1282,4 @@ hard-won wisdom:
 - `create_maze` should use `walkfrom()` as the actual carve engine and rely on `okay()` with current maze bounds, instead of a separate iterative DFS path with different RNG shape.
 - `maze_remove_deadends` should operate in-place on an already carved maze; re-entering `create_maze()` from `maze_remove_deadends()` is structurally wrong and changes behavior.
 - In `sp_lev`, `fixupSpecialLevel` should call `mkmaze` ownership functions (`setup_waterlevel`, `baalz_fixup`) directly rather than going through local forwarding wrappers.
+- `sp_lev` `level_init(style=\"maze\")` should invoke `mkmaze.create_maze()` directly (with `corrwid`/`wallthick`/`deadends`) instead of leaving a STONE-filled placeholder grid.
