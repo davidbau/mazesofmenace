@@ -43,6 +43,8 @@ import {
     strstri, fuzzymatch, ordin,
 } from './hacklib.js';
 import { shk_your } from './shk.js';
+import { get_cost_of_shop_item } from './shk.js';
+import { currency } from './invent.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { STONE, POOL, LAVAPOOL, WATER, AIR, CLOUD, ROOM, CORR, VWALL, HWALL, DOOR } from './config.js';
 
@@ -377,9 +379,39 @@ export function set_wallprop_from_str(str) {
 }
 
 // cf. objnam.c:3544 — wizterrainwish(): wizard terrain wish parser
-export function wizterrainwish(_ctx) {
-    // Full topology wishing is not yet wired in JS; keep explicit no-op.
-    return null;
+export function wizterrainwish(ctx) {
+    const text = String(ctx?.text || '').trim().toLowerCase();
+    if (!text) return null;
+
+    // Parse wizard terrain wish intent. Full map mutation wiring remains
+    // outside this helper, but this no longer hard-noops.
+    const result = { kind: 'terrainwish', text, terrain: null, wallprops: [] };
+    if (text.includes('nondiggable') || text.includes('non-diggable')) {
+        result.wallprops.push('nondiggable');
+    }
+    if (text.includes('nonpasswall') || text.includes('non-passwall') || text.includes('non passwall')) {
+        result.wallprops.push('nonpasswall');
+    }
+
+    const endsWith = (s) => text.endsWith(s);
+    if (endsWith('fountain')) result.terrain = 'fountain';
+    else if (endsWith('throne')) result.terrain = 'throne';
+    else if (endsWith('sink')) result.terrain = 'sink';
+    else if (endsWith('pool') || endsWith('moat') || endsWith('wall of water')) result.terrain = 'water';
+    else if (endsWith('lava') || endsWith('wall of lava')) result.terrain = 'lava';
+    else if (endsWith('ice')) result.terrain = 'ice';
+    else if (endsWith('altar')) result.terrain = 'altar';
+    else if (endsWith('grave') || endsWith('headstone')) result.terrain = 'grave';
+    else if (endsWith('tree')) result.terrain = 'tree';
+    else if (endsWith('bars')) result.terrain = 'iron bars';
+    else if (endsWith('cloud')) result.terrain = 'cloud';
+    else if (endsWith('door') || endsWith('doorway') || endsWith('secret door')) result.terrain = 'door';
+    else if (endsWith('wall')) result.terrain = 'wall';
+    else if (endsWith('secret corridor')) result.terrain = 'secret corridor';
+    else if (endsWith('room') || endsWith('floor') || endsWith('ground')) result.terrain = 'room';
+
+    if (!result.terrain) return null;
+    return result;
 }
 
 // cf. objnam.c:575/581 — xname_flags wrapper
@@ -437,8 +469,13 @@ export function the_unique_pm(ptr) {
 
 // cf. objnam.c:1090 — mshot_xname(obj): object name with multishot info
 export function mshot_xname(obj) {
-    // m_shot state not fully ported; just return xname
-    return xname(obj);
+    if (!obj) return '';
+    const onm = xname(obj);
+    const shot = obj._m_shot || obj.m_shot || null;
+    if (shot && shot.n > 1 && shot.o === obj.otyp && shot.i > 0) {
+        return strprepend(onm, `the ${shot.i}${ordin(shot.i)} `);
+    }
+    return onm;
 }
 
 // ============================================================================
@@ -498,14 +535,53 @@ export function is_plural(obj) {
 
 // cf. objnam.c:1752 — doname_with_price(obj): name with shop price appended
 export function doname_with_price(obj, player) {
-    // Shop pricing not fully ported; just return doname
-    return doname(obj, player);
+    if (!obj) return '';
+    const base = doname(obj, player);
+
+    let label = '';
+    let cost = 0;
+    if (obj.unpaid) {
+        const explicit = Number(obj.unpaidCost || 0);
+        if (explicit > 0) {
+            cost = explicit;
+            label = 'unpaid';
+        } else {
+            const unit = Number(obj.price || 0);
+            if (unit > 0) {
+                cost = unit * (obj.quan || 1);
+                label = 'unpaid';
+            }
+        }
+    }
+
+    if (!(cost > 0)) {
+        const map = player?.map || null;
+        if (player && map) {
+            const quote = get_cost_of_shop_item(obj, map, player);
+            if (quote && quote.cost > 0) {
+                cost = quote.cost;
+                label = quote.nochrg ? 'contents' : 'for sale';
+            }
+        }
+    }
+
+    if (!(cost > 0) || !label) return base;
+    return `${base} (${label}, ${cost} ${currency(cost)})`;
 }
 
 // cf. objnam.c:1759 — doname_vague_quan(obj): "some" for unknown quantity
 export function doname_vague_quan(obj, player) {
-    // Vague quantity not fully ported; just return doname
-    return doname(obj, player);
+    if (!obj) return '';
+    const quan = obj.quan || 1;
+    if (quan <= 1 || obj.dknown) return doname(obj, player);
+
+    // Farlook-style behavior: if quantity isn't known, use "some".
+    const pluralName = xname({ ...obj, quan: Math.max(2, quan) }, {
+        known: !!obj.known,
+        dknown: !!obj.dknown || !!obj.known,
+        bknown: !!obj.bknown,
+    });
+    return `some ${pluralName}`;
 }
 
 // cf. objnam.c:2293 — Doname2(obj): capitalized doname

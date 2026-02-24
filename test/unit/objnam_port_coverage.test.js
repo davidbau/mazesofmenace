@@ -14,6 +14,10 @@ import {
     readobjnam_postparse1,
     readobjnam_postparse2,
     readobjnam,
+    mshot_xname,
+    doname_with_price,
+    doname_vague_quan,
+    wizterrainwish,
     xname_flags,
     doname_base,
     distant_name,
@@ -93,5 +97,30 @@ describe('objnam port coverage', () => {
         assert.equal(dbterrainmesg(STONE), 'stone');
         assert.equal(dbterrainmesg(ROOM), 'room');
         assert.equal(dbterrainmesg(WATER), 'water');
+    });
+
+    it('formats multishot and vague/price naming helpers', () => {
+        const obj = mksobj(LONG_SWORD, true, false);
+        obj._m_shot = { n: 3, i: 2, o: obj.otyp };
+        const shotName = mshot_xname(obj);
+        assert.match(shotName, /^the 2nd /);
+
+        obj.quan = 5;
+        obj.dknown = false;
+        const vague = doname_vague_quan(obj, null);
+        assert.match(vague, /^some /);
+
+        obj.unpaid = true;
+        obj.unpaidCost = 42;
+        const priced = doname_with_price(obj, null);
+        assert.match(priced, /\(unpaid, 42 zorkmids?\)$/);
+    });
+
+    it('parses wizard terrain wish intents', () => {
+        const wall = wizterrainwish({ text: 'nondiggable wall' });
+        assert.equal(wall?.terrain, 'wall');
+        assert.deepEqual(wall?.wallprops, ['nondiggable']);
+        assert.equal(wizterrainwish({ text: 'fountain' })?.terrain, 'fountain');
+        assert.equal(wizterrainwish({ text: 'mysterious orb' }), null);
     });
 });

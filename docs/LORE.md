@@ -1407,3 +1407,13 @@ hard-won wisdom:
   - phase 2 adds C-style generic `"<color> gem/stone"` coercion into `GEM_CLASS`.
 - `readobjnam` lookup order is now C-shaped: try `actualn`, then `dn` (label/description token), then `un` (called-name), then original text (`origbp`) before classless fallback attempts.
 - Added deterministic unit coverage for the new staged parser behavior (`scroll labeled ...`, `pair of ...`, `blue gem` normalization) in `test/unit/objnam_port_coverage.test.js`.
+
+### objnam naming helper de-stub + codematch audit pass (2026-02-24)
+
+- Replaced naming stubs with working behavior in `objnam.js`:
+  - `mshot_xname()` now prepends C-style ordinal multishot context (`"the 2nd ..."`) when `_m_shot/m_shot` metadata is present on the object.
+  - `doname_with_price()` now appends shop-style suffixes (`unpaid`, `for sale`, `contents`) when price metadata or `shk.get_cost_of_shop_item()` context is available.
+  - `doname_vague_quan()` now emits farlook-style `"some ..."` naming when stack quantity is unknown (`!dknown` and quantity > 1).
+- `wizterrainwish()` no longer hard-noops; it now parses wizard terrain wish intent into a structured descriptor (`terrain`, `wallprops`) as a bounded first step before full map-mutation wiring.
+- Expanded deterministic coverage in `test/unit/objnam_port_coverage.test.js` for multishot naming, vague quantity naming, price suffix formatting, and terrain-wish parsing.
+- Audited and refreshed `docs/CODEMATCH.md` `objnam.c -> objnam.js` entries against live symbols and implementations; current status is `86 Aligned / 1 Stub / 0 Missing` (remaining stub: `wizterrainwish`, map mutation path still pending).
