@@ -402,6 +402,10 @@ export async function run_command(game, ch, opts = {}) {
 
     const chCode = typeof ch === 'number' ? ch
         : (typeof ch === 'string' && ch.length > 0) ? ch.charCodeAt(0) : 0;
+    const isPrefixKey = chCode === 'm'.charCodeAt(0)
+        || chCode === 'F'.charCodeAt(0)
+        || chCode === 'G'.charCodeAt(0)
+        || chCode === 'g'.charCodeAt(0);
 
     // Prompt handlers (e.g., eat.c "Continue eating? [yn]") consume input
     // without advancing time until a terminating answer is provided.
@@ -420,7 +424,9 @@ export async function run_command(game, ch, opts = {}) {
         && chCode !== 0
         && chCode !== 1
         && chCode !== '#'.charCodeAt(0)) {
-        cmdq_clear(CQ_REPEAT);
+        if (!game._repeatPrefixChainActive) {
+            cmdq_clear(CQ_REPEAT);
+        }
         if (countPrefix > 0) {
             cmdq_add_int(CQ_REPEAT, countPrefix);
         }
@@ -469,6 +475,9 @@ export async function run_command(game, ch, opts = {}) {
     if (result && result.repeatRequest) {
         game.advanceRunTurn = null;
         return await execute_repeat_command(game, opts);
+    }
+    if (!skipRepeatRecord && !game.inDoAgain) {
+        game._repeatPrefixChainActive = !!(result && !result.tookTime && isPrefixKey);
     }
     maybe_deferred_goto_after_rhack(game, result, { skipTurnEnd });
 
@@ -715,6 +724,7 @@ export class NetHackGame {
         this.commandCount = 0;
         this.cmdKey = 0;
         this.lastCommand = null;
+        this._repeatPrefixChainActive = false;
         this._namePromptEcho = '';
         this.menuRequested = false;
         this.forceFight = false;

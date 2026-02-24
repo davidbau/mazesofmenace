@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { run_command, get_repeat_command_snapshot, execute_repeat_command } from '../../js/allmain.js';
 import { GameMap } from '../../js/map.js';
 import { Player } from '../../js/player.js';
-import { cmdq_clear, CQ_REPEAT } from '../../js/input.js';
+import { cmdq_clear, cmdq_copy, CQ_REPEAT } from '../../js/input.js';
 
 function makeGame() {
     const map = new GameMap();
@@ -66,5 +66,16 @@ describe('CQ_REPEAT wiring', () => {
             key: '~'.charCodeAt(0),
             countPrefix: 5,
         });
+    });
+
+    test('prefix command chain is preserved in CQ_REPEAT (F then h)', async () => {
+        const game = makeGame();
+        await run_command(game, 'F'.charCodeAt(0));
+        await run_command(game, 'h'.charCodeAt(0));
+        const q = cmdq_copy(CQ_REPEAT);
+        assert.ok(q);
+        assert.equal(q.key, 'F'.charCodeAt(0));
+        assert.ok(q.next);
+        assert.equal(q.next.key, 'h'.charCodeAt(0));
     });
 });
