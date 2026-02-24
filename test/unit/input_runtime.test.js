@@ -9,6 +9,23 @@ import {
     nhgetch,
     clearInputQueue,
     ynFunction,
+    CMDQ_KEY,
+    CMDQ_INT,
+    CMDQ_DIR,
+    CMDQ_USER_INPUT,
+    CQ_CANNED,
+    CQ_REPEAT,
+    cmdq_add_key,
+    cmdq_add_int,
+    cmdq_add_dir,
+    cmdq_add_userinput,
+    cmdq_add_ec,
+    cmdq_shift,
+    cmdq_reverse,
+    cmdq_copy,
+    cmdq_pop,
+    cmdq_peek,
+    cmdq_clear,
 } from '../../js/input.js';
 import { mapBrowserKeyToNhCode } from '../../js/browser_input.js';
 
@@ -65,6 +82,73 @@ describe('input runtime primitives', () => {
         assert.equal(result, 'y'.charCodeAt(0));
         assert.equal(prompts.length, 1);
         assert.match(prompts[0], /Proceed\?/);
+    });
+});
+
+describe('cmdq primitives', () => {
+    beforeEach(() => {
+        cmdq_clear(CQ_CANNED);
+        cmdq_clear(CQ_REPEAT);
+    });
+
+    it('queues and pops canned keys in FIFO order', () => {
+        cmdq_add_key(CQ_CANNED, 'a'.charCodeAt(0));
+        cmdq_add_key(CQ_CANNED, 'b'.charCodeAt(0));
+        assert.equal(cmdq_pop(false).key, 'a'.charCodeAt(0));
+        assert.equal(cmdq_pop(false).key, 'b'.charCodeAt(0));
+        assert.equal(cmdq_pop(false), null);
+    });
+
+    it('cmdq_pop uses repeat queue when inDoAgain is true', () => {
+        cmdq_add_key(CQ_CANNED, 'c'.charCodeAt(0));
+        cmdq_add_key(CQ_REPEAT, 'r'.charCodeAt(0));
+        assert.equal(cmdq_pop(true).key, 'r'.charCodeAt(0));
+        assert.equal(cmdq_pop(false).key, 'c'.charCodeAt(0));
+    });
+
+    it('cmdq_shift moves tail entry to the head', () => {
+        cmdq_add_key(CQ_CANNED, 1);
+        cmdq_add_key(CQ_CANNED, 2);
+        cmdq_add_key(CQ_CANNED, 3);
+        cmdq_shift(CQ_CANNED);
+        assert.equal(cmdq_pop(false).key, 3);
+        assert.equal(cmdq_pop(false).key, 1);
+        assert.equal(cmdq_pop(false).key, 2);
+    });
+
+    it('cmdq_copy creates independent node chain', () => {
+        cmdq_add_key(CQ_CANNED, 1);
+        cmdq_add_int(CQ_CANNED, 42);
+        cmdq_add_dir(CQ_CANNED, -1, 0, 1);
+        cmdq_add_userinput(CQ_CANNED);
+        const extcmd = { ef_txt: 'test' };
+        cmdq_add_ec(CQ_CANNED, extcmd);
+
+        const copy = cmdq_copy(CQ_CANNED);
+        assert.equal(copy.typ, CMDQ_KEY);
+        assert.equal(copy.next.typ, CMDQ_INT);
+        assert.equal(copy.next.next.typ, CMDQ_DIR);
+        assert.equal(copy.next.next.dirx, -1);
+        assert.equal(copy.next.next.next.typ, CMDQ_USER_INPUT);
+        assert.equal(copy.next.next.next.next.ec_entry, extcmd);
+
+        // Mutate original and verify copy doesn't change.
+        const head = cmdq_peek(CQ_CANNED);
+        head.key = 99;
+        assert.equal(copy.key, 1);
+    });
+
+    it('cmdq_reverse reverses linked nodes in-place', () => {
+        const n1 = { typ: CMDQ_KEY, key: 1, next: null };
+        const n2 = { typ: CMDQ_KEY, key: 2, next: null };
+        const n3 = { typ: CMDQ_KEY, key: 3, next: null };
+        n1.next = n2;
+        n2.next = n3;
+        const rev = cmdq_reverse(n1);
+        assert.equal(rev.key, 3);
+        assert.equal(rev.next.key, 2);
+        assert.equal(rev.next.next.key, 1);
+        assert.equal(rev.next.next.next, null);
     });
 });
 

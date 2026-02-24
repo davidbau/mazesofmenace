@@ -80,15 +80,145 @@ export function clearInputQueue() {
     }
 }
 
-// C ref: cmdq_clear(CQ_CANNED) analogue for JS runtime input queue.
-export const CQ_CANNED = 1;
+// C ref: hack.h enum cmdq_cmdtypes / struct _cmd_queue.
+export const CMDQ_KEY = 0;
+export const CMDQ_EXTCMD = 1;
+export const CMDQ_DIR = 2;
+export const CMDQ_USER_INPUT = 3;
+export const CMDQ_INT = 4;
+
+// C ref: hack.h enum { CQ_CANNED, CQ_REPEAT, NUM_CQS }.
+export const CQ_CANNED = 0;
+export const CQ_REPEAT = 1;
+
 const _cmdQueues = {
-    [CQ_CANNED]: [],
+    [CQ_CANNED]: null,
+    [CQ_REPEAT]: null,
 };
-export function cmdq_clear(queueKind) {
-    if (queueKind === CQ_CANNED) {
-        _cmdQueues[CQ_CANNED].length = 0;
+
+function cmdq_appendNode(queueKind, node) {
+    let cq = _cmdQueues[queueKind];
+    if (!cq) {
+        _cmdQueues[queueKind] = node;
+        return;
     }
+    while (cq.next) cq = cq.next;
+    cq.next = node;
+}
+
+function cmdq_makeNode(typ) {
+    return {
+        typ,
+        key: null,
+        dirx: 0,
+        diry: 0,
+        dirz: 0,
+        intval: 0,
+        ec_entry: null,
+        next: null,
+    };
+}
+
+// C ref: cmd.c cmdq_add_ec()
+export function cmdq_add_ec(queueKind, extcmdEntry) {
+    const node = cmdq_makeNode(CMDQ_EXTCMD);
+    node.ec_entry = extcmdEntry || null;
+    cmdq_appendNode(queueKind, node);
+}
+
+// C ref: cmd.c cmdq_add_key()
+export function cmdq_add_key(queueKind, key) {
+    const node = cmdq_makeNode(CMDQ_KEY);
+    node.key = key;
+    cmdq_appendNode(queueKind, node);
+}
+
+// C ref: cmd.c cmdq_add_dir()
+export function cmdq_add_dir(queueKind, dx, dy, dz) {
+    const node = cmdq_makeNode(CMDQ_DIR);
+    node.dirx = dx | 0;
+    node.diry = dy | 0;
+    node.dirz = dz | 0;
+    cmdq_appendNode(queueKind, node);
+}
+
+// C ref: cmd.c cmdq_add_userinput()
+export function cmdq_add_userinput(queueKind) {
+    cmdq_appendNode(queueKind, cmdq_makeNode(CMDQ_USER_INPUT));
+}
+
+// C ref: cmd.c cmdq_add_int()
+export function cmdq_add_int(queueKind, val) {
+    const node = cmdq_makeNode(CMDQ_INT);
+    node.intval = val | 0;
+    cmdq_appendNode(queueKind, node);
+}
+
+// C ref: cmd.c cmdq_shift() -- shift last entry to first.
+export function cmdq_shift(queueKind) {
+    let cq = _cmdQueues[queueKind];
+    if (!cq || !cq.next) return;
+    while (cq.next && cq.next.next) cq = cq.next;
+    const tail = cq.next;
+    if (!tail) return;
+    tail.next = _cmdQueues[queueKind];
+    _cmdQueues[queueKind] = tail;
+    cq.next = null;
+}
+
+// C ref: cmd.c cmdq_reverse()
+export function cmdq_reverse(head) {
+    let prev = null;
+    let curr = head || null;
+    while (curr) {
+        const next = curr.next;
+        curr.next = prev;
+        prev = curr;
+        curr = next;
+    }
+    return prev;
+}
+
+// C ref: cmd.c cmdq_copy()
+export function cmdq_copy(queueKind) {
+    let tmp = null;
+    let cq = _cmdQueues[queueKind];
+    while (cq) {
+        const copy = {
+            typ: cq.typ,
+            key: cq.key,
+            dirx: cq.dirx,
+            diry: cq.diry,
+            dirz: cq.dirz,
+            intval: cq.intval,
+            ec_entry: cq.ec_entry,
+            next: tmp,
+        };
+        tmp = copy;
+        cq = cq.next;
+    }
+    return cmdq_reverse(tmp);
+}
+
+// C ref: cmd.c cmdq_pop() -- queue chosen by in_doagain flag.
+export function cmdq_pop(inDoAgain = false) {
+    const queueKind = inDoAgain ? CQ_REPEAT : CQ_CANNED;
+    const node = _cmdQueues[queueKind];
+    if (node) {
+        _cmdQueues[queueKind] = node.next;
+        node.next = null;
+    }
+    return node;
+}
+
+// C ref: cmd.c cmdq_peek()
+export function cmdq_peek(queueKind) {
+    return _cmdQueues[queueKind] || null;
+}
+
+// C ref: cmd.c cmdq_clear()
+export function cmdq_clear(queueKind) {
+    _cmdQueues[queueKind] = null;
 }
 
 // Get a character of input (async)

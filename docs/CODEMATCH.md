@@ -45,7 +45,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[~]` | botl.c | botl.js | Bottom status line |
 | `[x]` | calendar.c | calendar.js | Time, moon phase, Friday 13th, night/midnight. Affects gameplay |
 | `[N/A]` | cfgfiles.c | — | Config file parsing. JS: `storage.js` handles config differently |
-| `[a]` | cmd.c | cmd.js | Command dispatch. rhack() dispatches all key/command input; handleExtendedCommand (doextcmd); prefix commands (m/F/G/g). input.js handles low-level input. ~140 C functions are N/A (key binding, mouse, cmdq infrastructure) |
+| `[a]` | cmd.c | cmd.js | Command dispatch. rhack() dispatches all key/command input; handleExtendedCommand (doextcmd); prefix commands (m/F/G/g). `input.js` handles low-level input and cmdq primitives (`cmdq_add_*`, `cmdq_pop/peek/copy/clear`, `cmdq_shift/reverse`). ~140 C functions remain N/A (mostly key binding/mouse) |
 | `[N/A]` | coloratt.c | — | Terminal color attribute mapping |
 | `[N/A]` | date.c | — | Build date/version stamps |
 | `[~]` | dbridge.c | dbridge.js | Drawbridge mechanics |
@@ -779,17 +779,17 @@ This section is generated from source symbol tables and includes function rows f
 | 3119 | `cmd_from_ecname` | - | Missing |
 | 3086 | `cmd_from_func` | - | Missing |
 | 3154 | `cmdname_from_func` | - | Missing |
-| 478 | `cmdq_add_dir` | - | Missing |
-| 438 | `cmdq_add_ec` | - | Missing |
-| 519 | `cmdq_add_int` | - | Missing |
-| 458 | `cmdq_add_key` | - | Missing |
-| 500 | `cmdq_add_userinput` | - | Missing |
-| 615 | `cmdq_clear` | - | Missing |
-| 571 | `cmdq_copy` | - | Missing |
-| 608 | `cmdq_peek` | - | Missing |
-| 594 | `cmdq_pop` | - | Missing |
-| 557 | `cmdq_reverse` | - | Missing |
-| 539 | `cmdq_shift` | - | Missing |
+| 478 | `cmdq_add_dir` | input.js:137 | Aligned |
+| 438 | `cmdq_add_ec` | input.js:123 | Aligned |
+| 519 | `cmdq_add_int` | input.js:151 | Aligned |
+| 458 | `cmdq_add_key` | input.js:130 | Aligned |
+| 500 | `cmdq_add_userinput` | input.js:146 | Aligned |
+| 615 | `cmdq_clear` | input.js:220 | Aligned |
+| 571 | `cmdq_copy` | input.js:183 | Aligned |
+| 608 | `cmdq_peek` | input.js:215 | Aligned |
+| 594 | `cmdq_pop` | input.js:204 | Aligned |
+| 557 | `cmdq_reverse` | input.js:170 | Aligned |
+| 539 | `cmdq_shift` | input.js:158 | Aligned |
 | 2808 | `commands_init` | - | Missing |
 | 4346 | `confdir` | - | Missing |
 | 3360 | `count_autocompletions` | - | Missing |

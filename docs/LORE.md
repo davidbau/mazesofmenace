@@ -1435,3 +1435,13 @@ hard-won wisdom:
 - `apply` trap setup now has real `use_trap`/`set_trap` occupation wiring for land mines and bear traps, including placement checks and inventory consumption, replacing prior stubs.
 - `dokick` now routes monster trap resolution through `trap.mintrap_postmove()` rather than a no-op local stub.
 - Session impact from this batch stayed stable in current coverage: `seed42_inventory_wizard_pickup_gameplay` remains full parity, while known first divergences in `seed8_tutorial_manual_gameplay` and `seed206_monk_wizard_gameplay` remain unchanged and still point to broader special-level RNG/call-order gaps.
+
+### cmdq infrastructure port (2026-02-24)
+
+- Ported C-style command queue primitives into `input.js` with matching queue/type enums and node fields:
+  - queue kinds: `CQ_CANNED`, `CQ_REPEAT`
+  - node types: `CMDQ_KEY`, `CMDQ_EXTCMD`, `CMDQ_DIR`, `CMDQ_USER_INPUT`, `CMDQ_INT`
+  - APIs: `cmdq_add_ec/key/dir/userinput/int`, `cmdq_shift`, `cmdq_reverse`, `cmdq_copy`, `cmdq_pop`, `cmdq_peek`, `cmdq_clear`.
+- `cmdq_pop()` now matches C selection semantics by choosing queue based on `in_doagain`-style flag (`cmdq_pop(true)` reads `CQ_REPEAT`, otherwise `CQ_CANNED`).
+- Added deterministic unit coverage in `test/unit/input_runtime.test.js` for FIFO pop behavior, repeat-vs-canned selection, `cmdq_shift` tail-to-head movement, structural copy behavior (`cmdq_copy`), and linked-list reversal (`cmdq_reverse`).
+- Full gate remained stable relative to baseline (`unit` green; existing 19 gameplay parity divergences unchanged).
