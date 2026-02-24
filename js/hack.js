@@ -23,7 +23,7 @@ import { nhgetch } from './input.js';
 import { playerAttackMonster } from './uhitm.js';
 import { formatGoldPickupMessage, formatInventoryPickupMessage } from './do.js';
 import { monDisplayName, monNam } from './mondata.js';
-import { maybeSmudgeEngraving } from './engrave.js';
+import { maybeSmudgeEngraving, u_wipe_engr } from './engrave.js';
 import { describeGroundObjectForPlayer, maybeHandleShopEntryMessage } from './shk.js';
 import { observeObject } from './discovery.js';
 import { DIRECTION_KEYS } from './dothrow.js';
@@ -290,6 +290,8 @@ export async function handleMovement(dir, player, map, display, game) {
         rn2(20); // overexertion/gethungry before attack
         // C ref: uhitm.c:550 exercise(A_STR, TRUE) before hitum()
         exercise(player, A_STR, true);
+        // C ref: uhitm.c:552 u_wipe_engr(3) before hitum()
+        u_wipe_engr(player, map, 3);
         const killed = playerAttackMonster(player, mon, display, map);
         if (killed) {
             map.removeMonster(mon);
