@@ -10,6 +10,11 @@ import {
     unsetup_waterlevel,
     set_wportal,
     fumaroles,
+    movebubbles,
+    water_friction,
+    fixup_special,
+    check_ransacked,
+    mark_ransacked,
 } from '../../js/mkmaze.js';
 
 describe('mkmaze waterlevel state helpers', () => {
@@ -67,5 +72,40 @@ describe('mkmaze waterlevel state helpers', () => {
         assert.equal(map._water.portal, null);
         assert.equal(map._water.fumaroles.length, 0);
     });
-});
 
+    it('movebubbles shifts fumaroles in deterministic move mode', () => {
+        const map = new GameMap();
+        setup_waterlevel(map, { isWaterLevel: true });
+        map._water.bubbles = [];
+        fumaroles(map, [{ x: 11, y: 10 }]);
+        movebubbles(map, 1, -1);
+
+        assert.equal(map._water.fumaroles[0].x, 12);
+        assert.equal(map._water.fumaroles[0].y, 9);
+    });
+
+    it('water_friction returns sticky behavior on fumarole squares', () => {
+        const map = new GameMap();
+        setup_waterlevel(map, { isWaterLevel: true });
+        fumaroles(map, [{ x: 20, y: 10 }]);
+
+        assert.equal(water_friction(map, { x: 20, y: 10 }), 1);
+    });
+
+    it('fixup_special applies castle/minetown flag side effects', () => {
+        const castle = new GameMap();
+        fixup_special(castle, { specialName: 'castle' });
+        assert.equal(castle.flags.graveyard, true);
+
+        const minetown = new GameMap();
+        fixup_special(minetown, { specialName: 'minetn-1' });
+        assert.equal(minetown.flags.has_town, true);
+    });
+
+    it('check_ransacked supports lookup by room name', () => {
+        const map = new GameMap();
+        map.rooms = [{ name: 'Armory', ransacked: false }];
+        mark_ransacked(map, 0);
+        assert.equal(check_ransacked(map, 'armory'), true);
+    });
+});

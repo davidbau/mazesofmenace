@@ -779,6 +779,15 @@ export function fixup_special(map, opts = {}) {
     if (opts?.portal && Number.isInteger(opts.portal.x) && Number.isInteger(opts.portal.y)) {
         set_wportal(map, opts.portal.x, opts.portal.y, opts.portal.dst || null);
     }
+    // C ref: mkmaze.c fixup_special() room/branch flag side effects.
+    if (specialName === 'castle') {
+        map.flags = map.flags || {};
+        map.flags.graveyard = true;
+    }
+    if (specialName.startsWith('minetn')) {
+        map.flags = map.flags || {};
+        map.flags.has_town = true;
+    }
     map._specialFixups = map._specialFixups || {};
     map._specialFixups.applied = true;
     return true;
@@ -794,6 +803,16 @@ export function check_ransacked(map, roomId = null) {
         if (set?.size) return true;
         if (Array.isArray(map?.rooms)) return map.rooms.some(r => !!r?.ransacked);
         return false;
+    }
+    if (typeof roomId === 'string') {
+        const target = roomId.trim().toLowerCase();
+        if (!target) return false;
+        const roomByName = (map?.rooms || []).find((r) => {
+            const nm = (typeof r?.name === 'string') ? r.name : (typeof r?.rname === 'string' ? r.rname : '');
+            return nm.toLowerCase() === target;
+        });
+        if (!roomByName) return false;
+        return !!roomByName.ransacked;
     }
     return !!set?.has(roomId) || roomMarked(roomId);
 }
@@ -894,13 +913,15 @@ export function fumaroles(map, list = []) {
 }
 export function movebubbles(map, dx = 0, dy = 0) {
     const water = map?._water;
-    if (!water?.active || !Array.isArray(water.bubbles) || !water.bubbles.length) return false;
+    if (!water?.active) return false;
     const useRand = !Number.isInteger(dx) || !Number.isInteger(dy);
-    for (const b of water.bubbles) {
-        if (!b || !Number.isInteger(b.x) || !Number.isInteger(b.y)) continue;
-        const stepX = useRand ? (rn2(3) - 1) : dx;
-        const stepY = useRand ? (rn2(3) - 1) : dy;
-        mv_bubble(map, b, stepX, stepY);
+    if (Array.isArray(water.bubbles) && water.bubbles.length) {
+        for (const b of water.bubbles) {
+            if (!b || !Number.isInteger(b.x) || !Number.isInteger(b.y)) continue;
+            const stepX = useRand ? (rn2(3) - 1) : dx;
+            const stepY = useRand ? (rn2(3) - 1) : dy;
+            mv_bubble(map, b, stepX, stepY);
+        }
     }
     if (map._water.heroBubble) {
         maybe_adjust_hero_bubble(map, {
@@ -908,11 +929,23 @@ export function movebubbles(map, dx = 0, dy = 0) {
             y: map._water.heroBubble.y,
         });
     }
+    if (Array.isArray(water.fumaroles) && water.fumaroles.length && !useRand) {
+        water.fumaroles = water.fumaroles.map((f) => {
+            if (!f || !Number.isInteger(f.x) || !Number.isInteger(f.y)) return f;
+            const nx = Math.min(Math.max(water.xmin ?? 1, f.x + dx), water.xmax ?? (COLNO - 1));
+            const ny = Math.min(Math.max(water.ymin ?? 0, f.y + dy), water.ymax ?? (ROWNO - 1));
+            return { x: nx, y: ny };
+        });
+    }
     return true;
 }
 export function water_friction(map, pos = null) {
     if (!pos || !map?._water?.active) return 0;
     if (maybe_adjust_hero_bubble(map, pos)) return 1;
+    if (Array.isArray(map._water.fumaroles)
+        && map._water.fumaroles.some((f) => f && f.x === pos.x && f.y === pos.y)) {
+        return 1;
+    }
     return rn2(3) ? 0 : 1;
 }
 export function save_waterlevel(map) {
@@ -928,6 +961,11 @@ export function restore_waterlevel(map, saved = null) {
     if ('water' in saved) {
         map._water = saved.water ? JSON.parse(JSON.stringify(saved.water)) : null;
         map._waterLevelSetup = saved.waterLevelSetup ? JSON.parse(JSON.stringify(saved.waterLevelSetup)) : null;
+        if (map._water) {
+            if (!Array.isArray(map._water.bubbles)) map._water.bubbles = [];
+            if (!Array.isArray(map._water.fumaroles)) map._water.fumaroles = [];
+            if (!('active' in map._water)) map._water.active = true;
+        }
         if (saved.hero_memory !== null && saved.hero_memory !== undefined) {
             map.flags = map.flags || {};
             map.flags.hero_memory = !!saved.hero_memory;
