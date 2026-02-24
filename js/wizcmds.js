@@ -283,7 +283,7 @@ export async function wizLevelChange(game) {
         return { moved: false, tookTime: false };
     }
     schedule_goto(player, level, 0, null, 'You materialize on a different level!');
-    return { moved: false, tookTime: true };
+    return { moved: false, tookTime: false };
 }
 
 // cf. wizcmds.c:412 — wiz_flip_level(): transpose current level

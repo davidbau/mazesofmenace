@@ -28,7 +28,7 @@ import { makemon } from './makemon.js';
 import { FOOD_CLASS } from './objects.js';
 import { pushInput } from './input.js';
 import { initrack } from './monmove.js';
-import { moveloop_core, NetHackGame } from './allmain.js';
+import { moveloop_core, NetHackGame, maybe_deferred_goto_after_rhack } from './allmain.js';
 import { HeadlessDisplay, createHeadlessInput } from './headless.js';
 
 export { HeadlessDisplay };
@@ -1339,6 +1339,7 @@ export async function replaySession(seed, session, opts = {}) {
                 result = { moved: false, tookTime: false };
             } else {
                 result = settled.value;
+                maybe_deferred_goto_after_rhack(game, result);
                 replayPendingTrace(
                     `step=${stepIndex + 1}`,
                     `key=${JSON.stringify(step.key || '')}`,
@@ -1404,6 +1405,7 @@ export async function replaySession(seed, session, opts = {}) {
                             result = { moved: false, tookTime: false };
                         } else {
                             result = settledPassthrough.value;
+                            maybe_deferred_goto_after_rhack(game, result);
                         }
                         game.advanceRunTurn = null;
                     }
@@ -1563,6 +1565,7 @@ export async function replaySession(seed, session, opts = {}) {
             } else {
                 game.advanceRunTurn = null;
                 result = settled.value;
+                maybe_deferred_goto_after_rhack(game, result);
             }
             }
         }
@@ -1579,6 +1582,7 @@ export async function replaySession(seed, session, opts = {}) {
             && PREFIX_CMDS.has(String.fromCharCode(ch))) {
             const nextCh = step.key.charCodeAt(1);
             result = await rhack(nextCh, game);
+            maybe_deferred_goto_after_rhack(game, result);
         }
 
         // Run any monster turn deferred from a preceding stop_occupation frame,
@@ -1653,6 +1657,7 @@ export async function replaySession(seed, session, opts = {}) {
                 }
                 game.multi--;
                 const repeated = await rhack(game.cmdKey, game);
+                maybe_deferred_goto_after_rhack(game, repeated);
                 if (!repeated || !repeated.tookTime) break;
                 applyTimedTurn();
 

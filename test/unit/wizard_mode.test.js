@@ -37,7 +37,7 @@ describe('wizard mode init and commands', () => {
         for (let depth = 2; depth <= 5; depth++) {
             queueLine(game.input, String(depth));
             const result = await game.executeCommand(22); // Ctrl+V
-            assert.equal(result.tookTime, true);
+            assert.equal(result.tookTime, false);
             assert.equal(game.player.dungeonLevel, depth);
             assert.ok(game.levels[depth], `Expected cached level ${depth}`);
         }
