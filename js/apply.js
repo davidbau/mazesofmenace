@@ -86,6 +86,7 @@ import { dist2, s_suffix, upstart, isqrt, sgn } from './hacklib.js';
 import { setnotworn } from './worn.js';
 import { begin_burn, end_burn, obj_has_timer,
          kill_egg, attach_egg_hatch_timeout } from './timeout.js';
+import { maketrap } from './dungeon.js';
 
 // -- Inline helpers --
 
@@ -502,11 +503,75 @@ export function reset_trapset(game) {
     }
 }
 
-// cf. apply.c:2817 -- STUB: use_trap
-function use_trap() { You_cant("set a trap here!"); }
+// cf. apply.c:2817 -- use_trap
+function use_trap(obj, player, map, display, game) {
+    if (!obj || !player || !map || !game) {
+        You_cant("set a trap here!");
+        return { moved: false, tookTime: false };
+    }
+    if (map.trapAt?.(player.x, player.y)) {
+        You_cant("set a trap here!");
+        return { moved: false, tookTime: false };
+    }
+    const loc = map.at?.(player.x, player.y);
+    if (!loc || loc.typ === STAIRS || loc.typ === LADDER) {
+        You_cant("set a trap here!");
+        return { moved: false, tookTime: false };
+    }
+    if (IS_DOOR(loc.typ) || IS_FURNITURE(loc.typ)) {
+        You_cant("set a trap here!");
+        return { moved: false, tookTime: false };
+    }
 
-// cf. apply.c:2912 -- STUB: set_trap occupation callback
-function set_trap() { return 0; }
+    if (!game.trapinfo) game.trapinfo = {};
+    game.trapinfo.tobj = obj;
+    game.trapinfo.tx = player.x;
+    game.trapinfo.ty = player.y;
+    game.trapinfo.turns = 0;
+    game.trapinfo.force_bungle = 0;
+
+    game.occupation = {
+        occtxt: `setting a ${obj.otyp === LAND_MINE ? 'land mine' : 'bear trap'}`,
+        fn() {
+            return set_trap(game, player, map, display);
+        },
+    };
+    return { moved: false, tookTime: true };
+}
+
+// cf. apply.c:2912 -- set_trap occupation callback
+function set_trap(game, player, map, display) {
+    const info = game?.trapinfo;
+    const obj = info?.tobj;
+    if (!info || !obj || !player || !map) return false;
+    if (player.x !== info.tx || player.y !== info.ty) {
+        display?.putstr_message?.('You stop setting the trap.');
+        reset_trapset(game);
+        return false;
+    }
+    if (++info.turns < 2) return true;
+
+    const trapType = (obj.otyp === LAND_MINE) ? LANDMINE : BEAR_TRAP;
+    const depth = Number.isInteger(map?._genDlevel)
+        ? map._genDlevel
+        : (Number.isInteger(player?.dungeonLevel) ? player.dungeonLevel : 1);
+    const placed = maketrap(map, player.x, player.y, trapType, depth);
+    if (!placed) {
+        display?.putstr_message?.('You fail to set the trap here.');
+        reset_trapset(game);
+        return false;
+    }
+
+    if (obj.quan > 1) {
+        obj.quan--;
+    } else if (Array.isArray(player.inventory)) {
+        const idx = player.inventory.indexOf(obj);
+        if (idx >= 0) player.inventory.splice(idx, 1);
+    }
+    display?.putstr_message?.('You finish setting your trap.');
+    reset_trapset(game);
+    return false;
+}
 
 // cf. apply.c:2951 -- STUB: use_whip
 function use_whip() { pline("Snap!"); }
@@ -754,6 +819,10 @@ export async function handleApply(player, map, display, game) {
             display.putstr_message(
                 `The${magical ? ' magical' : ''} ink in this spellbook is ${fades[studied]}.`);
             return { moved: false, tookTime: true };
+        }
+
+        if (selected.otyp === LAND_MINE || selected.otyp === BEARTRAP) {
+            return use_trap(selected, player, map, display, game);
         }
 
         display.putstr_message("Sorry, I don't know how to use that.");

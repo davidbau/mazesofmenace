@@ -147,7 +147,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[~]` | timeout.c | timeout.js | Timer-based effects. Full timer queue: run_timers, start/stop/peek/insert/remove_timer, obj_move/split/stop_timers, obj_has_timer, spot timers, done_timeout, egg/figurine/burn timers, fall_asleep. nh_timeout() has intrinsic timeout decrement loop matching C structure: calls dialogue functions before decrement, then on expiry fires effect via _fireExpiryEffect with full switch covering STONED/SLIMED/STRANGLED death, SICK death-or-recovery (CON check), CONFUSION/STUNNED/BLINDED/DEAF/HALLUC set-to-1-then-clear pattern, FAST slow message, INVIS expiry message, FUMBLING re-increment, VOMITING/GLIB/WOUNDED_LEGS/DISPLACED/PASSES_WALLS/DETECT_MONSTERS handlers. Dialogue stubs exported for stoned/vomiting/sleep/choke/sickness/levitation/slime/phaze. Remaining gaps: full dialogue countdown text sequences, float_down for levitation, vision system calls |
 | `[a]` | topten.c | topten.js | High score table. observable_depth implemented; I/O funcs N/A; encode/format funcs TODO |
 | `[p]` | track.c | track.js | Player tracking for pets. save/rest not yet implemented |
-| `[a]` | trap.c | trap.js | Trap mechanics: m_harmless_trap, floor_trigger, mintrap_postmove, mon_check_in_air; erosion system: erode_obj/grease_protect (ERODE_BURN/RUST/ROT/CORRODE/CRACK); damage chains: water_damage/fire_damage/acid_damage/water_damage_chain/fire_damage_chain; petrification: selftouch/mselftouch/instapetrify/minstapetrify |
+| `[p]` | trap.c | trap.js | Trap mechanics: monster-side flow is largely ported (m_harmless_trap, floor_trigger, mintrap_postmove, mon_check_in_air, trap effect dispatcher, erosion/water/fire/acid chains, petrification helpers). Remaining parity gaps are mainly player-side `dotrap`/interaction flow plus some complex trap side-effects (landmine/rolling-boulder full launch+scatter behavior). |
 | `[a]` | u_init.c | u_init.js | Player initialization. u_init_role, u_init_race, u_init_carry_attr_boost, trquan, ini_inv, ini_inv_mkobj_filter, restricted_spell_discipline aligned. JS-only wrappers: simulatePostLevelInit, initAttributes |
 | `[a]` | uhitm.c | uhitm.js | Hero-vs-monster combat. playerAttackMonster, all mhitm_ad_* handlers (40+), mhitm_adtyping dispatcher, mhitm_mgc_atk_negated, mhitm_knockback (with eligibility + messages) implemented; artifact spec_abon wired into find_roll_to_hit, spec_dbon wired into damage calc; 50 functions TODO |
 | `[N/A]` | utf8map.c | — | UTF-8 glyph mapping for terminal |
@@ -380,9 +380,9 @@ This section is generated from source symbol tables and includes function rows f
 | 915 | `next_to_u` | - | Missing |
 | 694 | `number_leashed` | - | Missing |
 | 707 | `o_unleash` | - | Missing |
-| 2809 | `reset_trapset` | - | Missing |
+| 2809 | `reset_trapset` | apply.js:498 | Implemented |
 | 1766 | `rub_ok` | - | Missing |
-| 2912 | `set_trap` | - | Missing |
+| 2912 | `set_trap` | apply.js:545 | Partial — occupation callback wired for land mine/bear trap setup |
 | 3412 | `snickersnee_used_dist_attk` | - | Missing |
 | 1468 | `snuff_candle` | - | Missing |
 | 1493 | `snuff_lit` | - | Missing |
@@ -411,7 +411,7 @@ This section is generated from source symbol tables and includes function rows f
 | 2676 | `use_stone` | - | Missing |
 | 2173 | `use_tinning_kit` | - | Missing |
 | 112 | `use_towel` | - | Missing |
-| 2817 | `use_trap` | - | Missing |
+| 2817 | `use_trap` | apply.js:506 | Partial — trap setup checks + occupation wiring for land mine/bear trap |
 | 2255 | `use_unicorn_horn` | - | Missing |
 | 2951 | `use_whip` | - | Missing |
 | 476 | `use_whistle` | - | Missing |
@@ -5239,7 +5239,7 @@ No function symbols parsed from isaac64.c.
 ### trap.c -> trap.js
 | C Line | C Function | JS Line | Alignment |
 |--------|------------|---------|-----------|
-| 4525 | `acid_damage` | - | Missing |
+| 4525 | `acid_damage` | trap.js:975 | Implemented — acid corrosion for objects |
 | 908 | `activate_statue_trap` | - | Missing |
 | 6511 | `adj_nonconjoined_pit` | - | Missing |
 | 726 | `animate_statue` | - | Missing |
@@ -5247,9 +5247,9 @@ No function symbols parsed from isaac64.c.
 | 4883 | `back_on_ground` | - | Missing |
 | 3098 | `blow_up_landmine` | - | Missing |
 | 88 | `burnarmor` | - | Missing |
-| 1086 | `check_in_air` | - | Missing |
+| 1086 | `check_in_air` | trap.js:209 | Partial — `mon_check_in_air` subset for monster trap logic |
 | 6201 | `chest_trap` | - | Missing |
-| 3009 | `choose_trapnote` | - | Missing |
+| 3009 | `choose_trapnote` | dungeon.js:2079 | Implemented |
 | 593 | `clamp_hole_destination` | - | Missing |
 | 6487 | `clear_conjoined_pits` | - | Missing |
 | 4090 | `climb_pit` | - | Missing |
@@ -5259,13 +5259,13 @@ No function symbols parsed from isaac64.c.
 | 5165 | `could_untrap` | - | Missing |
 | 6423 | `count_traps` | - | Missing |
 | 6575 | `delfloortrap` | - | Missing |
-| 6438 | `deltrap` | - | Missing |
+| 6438 | `deltrap` | dungeon.js:2268 | Implemented |
 | 5701 | `disarm_box` | - | Missing |
 | 5460 | `disarm_holdingtrap` | - | Missing |
 | 5501 | `disarm_landmine` | - | Missing |
 | 5571 | `disarm_shooting_trap` | - | Missing |
 | 5537 | `disarm_squeaky_board` | - | Missing |
-| 418 | `dng_bottom` | - | Missing |
+| 418 | `dng_bottom` | dungeon.js:2276 | Partial — dungeon bottom computation for trapdoor/hole depth rules |
 | 4140 | `dofiretrap` | - | Missing |
 | 4224 | `domagictrap` | - | Missing |
 | 2922 | `dotrap` | - | Missing |
@@ -5277,16 +5277,16 @@ No function symbols parsed from isaac64.c.
 | 602 | `fall_through` | - | Missing |
 | 3495 | `feeltrap` | - | Missing |
 | 3917 | `fill_pit` | - | Missing |
-| 3506 | `find_random_launch_coord` | - | Missing |
+| 3506 | `find_random_launch_coord` | dungeon.js:2116 | Implemented |
 | 4362 | `fire_damage` | trap.js | Implemented — fire damage to single object |
-| 4457 | `fire_damage_chain` | - | Missing |
+| 4457 | `fire_damage_chain` | trap.js:995 | Implemented — chain helper for fire damage |
 | 3931 | `float_down` | - | Missing |
 | 3844 | `float_up` | - | Missing |
-| 1061 | `floor_trigger` | - | Missing |
+| 1061 | `floor_trigger` | trap.js:186 | Implemented |
 | 3170 | `force_launch_placement` | - | Missing |
 | 360 | `grease_protect` | trap.js | Implemented — grease protection check |
 | 5607 | `help_monster_out` | - | Missing |
-| 442 | `hole_destination` | - | Missing |
+| 442 | `hole_destination` | dungeon.js:2294 | Partial — RNG depth selection for generated holes/trapdoors |
 | 7065 | `ignite_items` | - | Missing |
 | 2711 | `immune_to_trap` | - | Missing |
 | 3751 | `instapetrify` | trap.js | Implemented — instant hero petrification (simplified) |
@@ -5299,17 +5299,17 @@ No function symbols parsed from isaac64.c.
 | 3186 | `launch_obj` | - | Missing |
 | 4483 | `lava_damage` | - | Missing |
 | 6701 | `lava_effects` | - | Missing |
-| 3633 | `m_easy_escape_pit` | - | Missing |
-| 1098 | `m_harmless_trap` | - | Missing |
-| 456 | `maketrap` | - | Missing |
+| 3633 | `m_easy_escape_pit` | trap.js:178 | Implemented |
+| 1098 | `m_harmless_trap` | trap.js:217 | Implemented — monster harmless-trap checks |
+| 456 | `maketrap` | dungeon.js:2191 | Implemented |
 | 6966 | `maybe_finish_sokoban` | - | Missing |
 | 3765 | `minstapetrify` | trap.js | Implemented — instant monster petrification |
-| 3640 | `mintrap` | - | Missing |
-| 390 | `mk_trap_statue` | - | Missing |
+| 3640 | `mintrap` | trap.js:769 | Partial — monster post-move branch (`mintrap_postmove`) |
+| 390 | `mk_trap_statue` | dungeon.js:2151 | Implemented |
 | 3566 | `mkroll_launch` | - | Missing |
 | 5300 | `move_into_trap` | - | Missing |
 | 3820 | `mselftouch` | trap.js | Implemented — monster petrification from wielded cockatrice corpse |
-| 972 | `mu_maybe_destroy_web` | - | Missing |
+| 972 | `mu_maybe_destroy_web` | trap.js:538 | Partial — integrated within web trapeffect for monster branch |
 | 6159 | `openfallingtrap` | - | Missing |
 | 6008 | `openholdingtrap` | - | Missing |
 | 4564 | `pot_acid_damage` | - | Missing |
@@ -5317,39 +5317,39 @@ No function symbols parsed from isaac64.c.
 | 1045 | `reset_utrap` | - | Missing |
 | 5437 | `reward_untrap` | - | Missing |
 | 4854 | `rnd_nextto_goodpos` | - | Missing |
-| 3485 | `seetrap` | - | Missing |
+| 3485 | `seetrap` | trap.js:111 | Implemented |
 | 3790 | `selftouch` | trap.js | Implemented — hero petrification from wielded cockatrice corpse |
 | 1030 | `set_utrap` | - | Missing |
 | 6898 | `sink_into_lava` | - | Missing |
 | 6946 | `sokoban_guilt` | - | Missing |
 | 3028 | `steedintrap` | - | Missing |
 | 6409 | `t_at` | - | Missing |
-| 1018 | `t_missile` | - | Missing |
-| 6618 | `thitm` | - | Missing |
+| 1018 | `t_missile` | trap.js:123 | Implemented (internal helper) |
+| 6618 | `thitm` | trap.js:139 | Implemented (monster trap-hit helper) |
 | 7079 | `trap_ice_effects` | - | Missing |
 | 7102 | `trap_sanity_check` | - | Missing |
-| 2301 | `trapeffect_anti_magic` | - | Missing |
-| 1182 | `trapeffect_arrow_trap` | - | Missing |
-| 1468 | `trapeffect_bear_trap` | - | Missing |
-| 1241 | `trapeffect_dart_trap` | - | Missing |
-| 1715 | `trapeffect_fire_trap` | - | Missing |
-| 1991 | `trapeffect_hole` | - | Missing |
-| 2464 | `trapeffect_landmine` | - | Missing |
-| 2066 | `trapeffect_level_telep` | - | Missing |
-| 2638 | `trapeffect_magic_portal` | - | Missing |
-| 2271 | `trapeffect_magic_trap` | - | Missing |
-| 1810 | `trapeffect_pit` | - | Missing |
-| 2413 | `trapeffect_poly_trap` | - | Missing |
-| 1313 | `trapeffect_rocktrap` | - | Missing |
-| 2590 | `trapeffect_rolling_boulder_trap` | - | Missing |
-| 1580 | `trapeffect_rust_trap` | - | Missing |
-| 2863 | `trapeffect_selector` | - | Missing |
-| 1548 | `trapeffect_slp_gas_trap` | - | Missing |
-| 1392 | `trapeffect_sqky_board` | - | Missing |
-| 2257 | `trapeffect_statue_trap` | - | Missing |
-| 2048 | `trapeffect_telep_trap` | - | Missing |
-| 2653 | `trapeffect_vibrating_square` | - | Missing |
-| 2084 | `trapeffect_web` | - | Missing |
+| 2301 | `trapeffect_anti_magic` | trap.js:605 | Partial — monster branch |
+| 1182 | `trapeffect_arrow_trap` | trap.js:289 | Partial — monster branch |
+| 1468 | `trapeffect_bear_trap` | trap.js:353 | Partial — monster branch |
+| 1241 | `trapeffect_dart_trap` | trap.js:307 | Partial — monster branch |
+| 1715 | `trapeffect_fire_trap` | trap.js:434 | Partial — monster branch |
+| 1991 | `trapeffect_hole` | trap.js:516 | Partial — monster branch |
+| 2464 | `trapeffect_landmine` | trap.js:646 | Partial — monster branch with simplified explosion/scatter |
+| 2066 | `trapeffect_level_telep` | trap.js:532 | Partial — monster branch |
+| 2638 | `trapeffect_magic_portal` | trap.js:700 | Partial — monster branch |
+| 2271 | `trapeffect_magic_trap` | trap.js:598 | Partial — monster branch |
+| 1810 | `trapeffect_pit` | trap.js:493 | Partial — monster branch |
+| 2413 | `trapeffect_poly_trap` | trap.js:635 | Partial — monster branch |
+| 1313 | `trapeffect_rocktrap` | trap.js:327 | Partial — monster branch |
+| 2590 | `trapeffect_rolling_boulder_trap` | trap.js:691 | Partial — monster branch; launch path not yet fully ported |
+| 1580 | `trapeffect_rust_trap` | trap.js:378 | Partial — monster branch |
+| 2863 | `trapeffect_selector` | trap.js:714 | Partial — monster selector branch |
+| 1548 | `trapeffect_slp_gas_trap` | trap.js:369 | Partial — monster branch |
+| 1392 | `trapeffect_sqky_board` | trap.js:345 | Partial — monster branch |
+| 2257 | `trapeffect_statue_trap` | trap.js:593 | Partial — monster branch |
+| 2048 | `trapeffect_telep_trap` | trap.js:526 | Partial — monster branch |
+| 2653 | `trapeffect_vibrating_square` | trap.js:705 | Partial — monster branch |
+| 2084 | `trapeffect_web` | trap.js:538 | Partial — monster branch |
 | 7007 | `trapname` | - | Missing |
 | 2989 | `trapnote` | - | Missing |
 | 5348 | `try_disarm` | - | Missing |
@@ -5362,7 +5362,7 @@ No function symbols parsed from isaac64.c.
 | 5196 | `untrap_prob` | - | Missing |
 | 6555 | `uteetering_at_seen_pit` | - | Missing |
 | 4619 | `water_damage` | trap.js | Implemented — water damage to single object |
-| 4762 | `water_damage_chain` | - | Missing |
+| 4762 | `water_damage_chain` | trap.js:985 | Implemented — chain helper for water damage |
 
 ### u_init.c -> u_init.js
 | C Line | C Function | JS Line | Alignment |

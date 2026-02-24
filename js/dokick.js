@@ -111,7 +111,7 @@ import { maybe_unhide_at } from './mon.js';
 import { finish_meating } from './dogmove.js';
 import { is_watch } from './mondata.js';
 import { map_invisible } from './monutil.js';
-import { water_damage } from './trap.js';
+import { water_damage, mintrap_postmove } from './trap.js';
 
 // ============================================================================
 // Constants
@@ -384,11 +384,10 @@ function remove_monster(x, y, map) {
 }
 
 // ============================================================================
-// mintrap stub (from monmove.js)
+// mintrap wrapper (from trap.js mintrap_postmove)
 // ============================================================================
 function mintrap(mon, flags, map, player) {
-    // TODO: call real mintrap when available
-    return 0;
+    return mintrap_postmove(mon, map, player, null, null);
 }
 
 // ============================================================================

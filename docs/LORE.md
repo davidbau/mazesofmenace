@@ -1427,3 +1427,11 @@ hard-won wisdom:
 - C-flow parity follow-up: terrain/trap wish handling now lives in `readobjnam()` (wizard-only, disabled for wizkit wishes), and `zap.makewish()` handles the returned `hands_obj` sentinel instead of doing a separate terrain fallback.
 - Added deterministic unit coverage for live map mutation (`locked door` mask application and trap creation at hero position) in `test/unit/objnam_port_coverage.test.js`.
 - Post-implementation codematch audit now reports `objnam.c -> objnam.js` as `87 Aligned / 0 Stub / 0 Missing`.
+
+### Trap generation + setup port tightening (2026-02-24)
+
+- `dungeon.maketrap()` now records C-style fall destinations for generated holes/trapdoors via a dedicated `hole_destination()` helper instead of consuming RNG without storing destination.
+- Hole/trapdoor depth gating in `mktrap()` should use dungeon-bottom logic (`dng_bottom`) rather than a fixed hardcoded depth cutoff; this keeps branch behavior closer to C across dungeons.
+- `apply` trap setup now has real `use_trap`/`set_trap` occupation wiring for land mines and bear traps, including placement checks and inventory consumption, replacing prior stubs.
+- `dokick` now routes monster trap resolution through `trap.mintrap_postmove()` rather than a no-op local stub.
+- Session impact from this batch stayed stable in current coverage: `seed42_inventory_wizard_pickup_gameplay` remains full parity, while known first divergences in `seed8_tutorial_manual_gameplay` and `seed206_monk_wizard_gameplay` remain unchanged and still point to broader special-level RNG/call-order gaps.

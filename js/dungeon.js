@@ -2251,9 +2251,8 @@ export function maketrap(map, x, y, typ, depth = 1) {
     case HOLE:
     case TRAPDOOR:
         if (is_hole(typ)) {
-            // C ref: hole_destination — determine fall depth
-            // Simulate RNG: while (dlevel < bottom) { dlevel++; if (rn2(4)) break; }
-            hole_destination_rng(map);
+            // C ref: trap.c hole_destination() — RNG-driven destination depth.
+            trap.dst = hole_destination(map);
         }
         // For pits/holes in rooms, terrain stays ROOM (IS_ROOM check in C)
         break;
@@ -2274,16 +2273,33 @@ export function deltrap(map, trap) {
     map.traps = (map.traps || []).filter(t => t !== trap);
 }
 
+function dng_bottom(map) {
+    const dnum = Number.isInteger(map?._genDnum) ? map._genDnum : DUNGEONS_OF_DOOM;
+    let bottom = dunlevs_in_dungeon(dnum);
+    // C ref: trap.c dng_bottom() — before invocation, Sanctum is not reachable.
+    if (dnum === GEHENNOM && !map?._invoked) {
+        bottom = Math.max(1, bottom - 1);
+    }
+    // Optional quest cut-off hook for parity contexts that track quest locate.
+    if (dnum === QUEST
+        && Number.isInteger(map?._questLocateDlevel)
+        && Number.isInteger(map?._dunlevReached)
+        && map._dunlevReached < map._questLocateDlevel) {
+        bottom = Math.min(bottom, map._questLocateDlevel);
+    }
+    return Math.max(bottom, 1);
+}
+
 // C ref: trap.c:441 hole_destination() — consume RNG for fall depth
-function hole_destination_rng(map) {
-    // At depth 1 in main dungeon, bottom is ~29, dlevel starts at 1
-    // Loop runs until rn2(4) returns nonzero
-    let dlevel = 1;
-    const bottom = 29; // approximate dungeon depth
+function hole_destination(map) {
+    const dnum = Number.isInteger(map?._genDnum) ? map._genDnum : DUNGEONS_OF_DOOM;
+    let dlevel = Number.isInteger(map?._genDlevel) ? map._genDlevel : 1;
+    const bottom = dng_bottom(map);
     while (dlevel < bottom) {
         dlevel++;
         if (rn2(4)) break;
     }
+    return { dnum, dlevel };
 }
 
 // C ref: mklev.c:2021 mktrap() — select trap type, find location, create trap
@@ -2298,10 +2314,10 @@ export function mktrap(map, num, mktrapflags, croom, tm, depth) {
     const lvl = depth;
     let kind = mktrap_pick_kind(map, num, depth, mktrapflags);
 
-    // Convert hole/trapdoor to rocktrap if can't fall through
-    // At depth 1 in main dungeon, can fall through — keep as-is
-    // At bottom level, would convert. Simplified: depth >= 29 converts.
-    if (is_hole(kind) && depth >= 29) kind = ROCKTRAP;
+    // C ref: mklev.c mktrap() — holes/trapdoors become ROCKTRAP when
+    // falling through isn't possible at current dungeon depth.
+    const currentDlevel = Number.isInteger(map?._genDlevel) ? map._genDlevel : depth;
+    if (is_hole(kind) && currentDlevel >= dng_bottom(map)) kind = ROCKTRAP;
 
     let mx, my;
     if (tm) {
