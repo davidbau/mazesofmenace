@@ -45,6 +45,7 @@ import { can_teleport, noeyes, perceives, nohands,
          mon_knows_traps, is_rider, is_mind_flayer,
          is_mindless, telepathic,
          is_giant, is_undead, is_unicorn, is_minion, throws_rocks,
+         passes_walls,
          passes_bars, is_human, canseemon } from './mondata.js';
 import { PM_GRID_BUG, PM_SHOPKEEPER, PM_MINOTAUR, mons,
          PM_LEPRECHAUN,
@@ -54,7 +55,7 @@ import { PM_GRID_BUG, PM_SHOPKEEPER, PM_MINOTAUR, mons,
          AT_WEAP,
          S_MIMIC, S_GHOST,
          S_DOG, S_NYMPH, S_LEPRECHAUN, S_HUMAN,
-         M1_WALLWALK,
+         M1_WALLWALK, M1_AMORPHOUS, M1_UNSOLID,
          M2_COLLECT, M2_STRONG, M2_ROCKTHROW, M2_GREEDY, M2_JEWELS, M2_MAGIC,
          MZ_TINY, MZ_HUMAN, WT_HUMAN,
          M2_WANDER,
@@ -1486,6 +1487,8 @@ export function set_apparxy(mon, map, player) {
     }
 
     const mdat = mons[mon.mndx] || mon.type || {};
+    const canOoze = !!(mdat.flags1 & M1_AMORPHOUS);
+    const canFog = canOoze || !!(mdat.flags1 & M1_UNSOLID);
     const monCanSee = mon.mcansee !== false;
     const notseen = (!monCanSee || (player.invisible && !perceives(mdat)));
     const playerDisplaced = !!(player.cloak && player.cloak.otyp === CLOAK_OF_DISPLACEMENT);
@@ -1519,10 +1522,16 @@ export function set_apparxy(mon, map, player) {
             my = player.y - displ + rn2(2 * displ + 1);
             const loc = map.at(mx, my);
             const closedDoor = !!loc && IS_DOOR(loc.typ) && (loc.flags & (D_CLOSED | D_LOCKED));
-            const blocked = !loc || !(ACCESSIBLE(loc.typ) && !closedDoor);
+            // C ref: monmove.c set_apparxy() acceptance gate:
+            // if monster doesn't pass walls, require either accessible square
+            // or closed door pass-through for ooze/fog forms.
+            const blocked = !loc
+                || (!((ACCESSIBLE(loc.typ) && !closedDoor)
+                      || (closedDoor && (canOoze || canFog))));
             if (!isok(mx, my)) continue;
             if (displ !== 2 && mx === mon.mx && my === mon.my) continue;
-            if ((mx !== player.x || my !== player.y) && blocked) continue;
+            if ((mx !== player.x || my !== player.y)
+                && !passes_walls(mdat) && blocked) continue;
             if (!couldsee(map, player, mx, my)) continue;
             break;
         } while (true);
