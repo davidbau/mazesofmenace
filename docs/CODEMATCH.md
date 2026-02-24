@@ -2593,13 +2593,13 @@ No function symbols parsed from isaac64.c.
 | 1540 | `level_finalize_topology` | mklev.js:798 | Aligned |
 | 799 | `make_niches` | mklev.js:415 | Aligned |
 | 519 | `makecorridors` | dungeon.js:1660 | Aligned |
-| 1247 | `makelevel` | - | Missing |
+| 1247 | `makelevel` | dungeon.js:4492 | Aligned |
 | 737 | `makeniche` | mklev.js:369 | Aligned |
 | 358 | `makerooms` | dungeon.js:1283 | Aligned |
 | 818 | `makevtele` | mklev.js:460 | Aligned |
 | 1789 | `maybe_sdoor` | mklev.js:154 | Aligned |
-| 1445 | `mineralize` | - | Missing |
-| 2620 | `mk_knox_portal` | - | Missing |
+| 1445 | `mineralize` | dungeon.js:4087 | Aligned |
+| 2620 | `mk_knox_portal` | dungeon.js:3029 | Aligned |
 | 2328 | `mkaltar` | mklev.js:330 | Aligned |
 | 2281 | `mkfount` | mklev.js:309 | Aligned |
 | 2349 | `mkgrave` | mklev.js:341 | Aligned |
@@ -2622,7 +2622,7 @@ No function symbols parsed from isaac64.c.
 | 1593 | `topologize` | mklev.js:410 | Aligned |
 | 1934 | `traptype_rnd` | mklev.js:858 | Aligned |
 | 1998 | `traptype_roguelvl` | mklev.js:903 | Aligned |
-| 1428 | `water_has_kelp` | - | Missing |
+| 1428 | `water_has_kelp` | dungeon.js:4072 | Aligned |
 
 ### mkmap.c -> mkmap.js
 | C Line | C Function | JS Line | Alignment |

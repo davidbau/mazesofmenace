@@ -3025,6 +3025,17 @@ function getWallifyProtectedArea(map) {
     return area;
 }
 
+// C ref: mklev.c mk_knox_portal()
+export function mk_knox_portal(map, x, y, depth) {
+    // Current parity scope keeps the RNG-visible deferral check.
+    if (depth <= 1) return false;
+    const dnum = Number.isInteger(map?._genDnum) ? map._genDnum : DUNGEONS_OF_DOOM;
+    const dlevel = Number.isInteger(map?._genDlevel) ? map._genDlevel : depth;
+    if (isBranchLevel(dnum, dlevel)) return false;
+    rn2(3);
+    return false;
+}
+
 // C ref: mklev.c:1312-1322 — vault creation and fill
 // Called when check_room succeeds for vault position.
 // Creates the vault room structure, fills with gold (simulated RNG),
@@ -3053,19 +3064,7 @@ function do_fill_vault(map, vaultCheck, depth) {
     }
 
     // C ref: mk_knox_portal(vault_x + w, vault_y + h)
-    // At depth 1: Is_branchlev(&u.uz) is TRUE (level 1 is a branch level),
-    // so mk_knox_portal returns early WITHOUT consuming any RNG.
-    // At depths > 10: source->dnum < n_dgns is FALSE, then rn2(3) consumed.
-    // At depths 2-10 that aren't branch levels: rn2(3) consumed, then
-    //   u_depth > 10 check fails, returns.
-    if (depth > 1) {
-        const dnum = Number.isInteger(map?._genDnum) ? map._genDnum : DUNGEONS_OF_DOOM;
-        const dlevel = Number.isInteger(map?._genDlevel) ? map._genDlevel : depth;
-        // C parity: mk_knox_portal() does not consume rn2(3) on branch levels.
-        if (!isBranchLevel(dnum, dlevel)) {
-            rn2(3);
-        }
-    }
+    mk_knox_portal(map, hix, hiy, depth);
 
     // C ref: mklev.c:1321-1322 — !rn2(3) → makevtele()
     if (!rn2(3)) {
@@ -4070,7 +4069,7 @@ export function bound_digging(map) {
 // ========================================================================
 
 // C ref: mklev.c:1421-1429 — check if water tile should have kelp
-function water_has_kelp(map, x, y, kelp_pool, kelp_moat) {
+export function water_has_kelp(map, x, y, kelp_pool, kelp_moat) {
     const loc = map.at(x, y);
     if (!loc) return false;
 
