@@ -200,6 +200,11 @@ export function moveloop_turnend(game) {
                     game.fov.compute(game.map, game.player.x, game.player.y);
                 }
             };
+            game.map._water.onVisionRecalc = () => {
+                if (game.fov?.compute) {
+                    game.fov.compute(game.map, game.player.x, game.player.y);
+                }
+            };
         }
         movebubbles(game.map);
     }

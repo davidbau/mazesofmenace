@@ -140,6 +140,18 @@ describe('mkmaze waterlevel state helpers', () => {
         assert.equal(hero.y, 10);
     });
 
+    it('movebubbles invokes vision recalc callback when provided', () => {
+        const map = new GameMap();
+        setup_waterlevel(map, { isWaterLevel: true });
+        map._water.bubbles = [];
+        mk_bubble(map, 25, 10, 0);
+        let called = 0;
+        map._water.onVisionRecalc = () => { called++; };
+
+        movebubbles(map, 1, 0);
+        assert.equal(called, 1);
+    });
+
     it('movebubbles displaces monster occupying hero bubble destination', () => {
         const map = new GameMap();
         setup_waterlevel(map, { isWaterLevel: true });

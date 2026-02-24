@@ -742,6 +742,8 @@ export function baalz_fixup(map, state = {}) {
                 if (pos) {
                     m.mx = pos.x;
                     m.my = pos.y;
+                } else if (map.removeMonster) {
+                    map.removeMonster(m);
                 }
             }
         }
@@ -760,6 +762,8 @@ export function baalz_fixup(map, state = {}) {
                 if (pos) {
                     m.mx = pos.x;
                     m.my = pos.y;
+                } else if (map.removeMonster) {
+                    map.removeMonster(m);
                 }
             }
         }
@@ -1121,6 +1125,9 @@ export function movebubbles(map, dx = 0, dy = 0) {
             const ny = Math.min(Math.max(water.ymin ?? 0, f.y + dy), water.ymax ?? (ROWNO - 1));
             return { x: nx, y: ny };
         });
+    }
+    if (typeof water.onVisionRecalc === 'function') {
+        water.onVisionRecalc();
     }
     return true;
 }

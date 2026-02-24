@@ -1381,5 +1381,6 @@ hard-won wisdom:
 ### Water-plane hero coupling hook (2026-02-24)
 
 - Bubble transport in `mkmaze.movebubbles()` can move the hero deterministically if callers provide `map._water.heroPos` plus `map._water.onHeroMoved(x,y)`; this avoids cross-module imports while keeping movement ownership in `mkmaze`.
+- For parity-friendly vision updates, callers can provide `map._water.onVisionRecalc()` and let `movebubbles()` invoke it after terrain/bubble updates.
 - `hack.water_turbulence()` should call `maybe_adjust_hero_bubble()` on Water level so hero directional intent can steer the current bubble with C-style 50% gating.
 - When hero transport lands onto an occupied square, displace that monster with `enexto()` before finalizing hero position to match C `mv_bubble` collision handling intent.
