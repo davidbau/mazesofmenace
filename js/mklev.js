@@ -54,6 +54,27 @@ export function sort_rooms(map) {
     for (let i = 0; i < n; i++) map.rooms[i].roomnoidx = i;
 }
 
+// C ref: mklev.c count_level_features()
+export function count_level_features(map) {
+    map.flags.nfountains = 0;
+    map.flags.nsinks = 0;
+    for (let y = 0; y < ROWNO; y++) {
+        for (let x = 1; x < COLNO; x++) {
+            const typ = map.at(x, y).typ;
+            if (typ === FOUNTAIN) map.flags.nfountains++;
+            else if (typ === SINK) map.flags.nsinks++;
+        }
+    }
+}
+
+// C ref: mklev.c clear_level_structures()
+export function clear_level_structures(map) {
+    map.clear();
+    map.flags.hero_memory = true;
+    map.flags.rndmongen = true;
+    map.flags.deathdrops = true;
+}
+
 // C ref: mklev.c do_room_or_subroom()
 export function do_room_or_subroom(map, croom, lowx, lowy, hix, hiy, lit, rtype, special, is_room, roomIdx) {
     if (!lowx) lowx++;

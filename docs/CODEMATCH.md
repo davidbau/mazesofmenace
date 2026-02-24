@@ -2574,8 +2574,8 @@ No function symbols parsed from isaac64.c.
 | 1746 | `bydoor` | mklev.js:188 | Aligned |
 | 678 | `cardinal_nextto_room` | mklev.js:417 | Aligned |
 | 1194 | `chk_okdoor` | mklev.js:703 | Aligned |
-| 847 | `clear_level_structures` | - | Missing |
-| 825 | `count_level_features` | - | Missing |
+| 847 | `clear_level_structures` | mklev.js:71 | Aligned |
+| 825 | `count_level_features` | mklev.js:58 | Aligned |
 | 232 | `do_room_or_subroom` | mklev.js:58 | Aligned |
 | 1796 | `dodoor` | mklev.js:698 | Aligned |
 | 612 | `dosdoor` | mklev.js:665 | Aligned |
