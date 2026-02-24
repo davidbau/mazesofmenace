@@ -3,7 +3,7 @@
 
 import { rn2, rn1 } from './rng.js';
 import { A_STR, A_INT, A_CHA, A_DEX, A_CON, A_WIS,
-    MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER } from './config.js';
+    MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, PM_MONK } from './config.js';
 
 const EXERCISE_LIMIT = 50;
 const DEFAULT_NEXT_CHECK = 600;
@@ -70,12 +70,20 @@ export function exerper(player, moves) {
         // Hunger state switch
         if (player.hunger > 1000) {
             exercise(player, A_DEX, false);
+            // C ref: attrib.c exerper() — monks meditate poorly when satiated.
+            if (player.roleIndex === PM_MONK) {
+                exercise(player, A_WIS, false);
+            }
         } else if (player.hunger > 150) {
             exercise(player, A_CON, true);
         } else if (player.hunger > 50) {
             // HUNGRY: no exercise
         } else if (player.hunger > 0) {
             exercise(player, A_STR, false);
+            // C ref: attrib.c exerper() — hungry monks gain wisdom discipline.
+            if (player.roleIndex === PM_MONK) {
+                exercise(player, A_WIS, true);
+            }
         } else {
             exercise(player, A_CON, false);
         }
