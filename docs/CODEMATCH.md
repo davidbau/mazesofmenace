@@ -4883,7 +4883,7 @@ No function symbols parsed from isaac64.c.
 | 3553 | `lspo_object` | sp_lev.js:6540 | Aligned |
 | 4555 | `lspo_random_corridors` | sp_lev.js:6556 | Aligned |
 | 5581 | `lspo_region` | sp_lev.js:6561 | Aligned |
-| 5048 | `lspo_replace_terrain` | sp_lev.js:6553 | Partial — fromterrain/toterrain parity path aligned; mapfragment replacement helpers are ported but not yet runtime-enabled |
+| 5048 | `lspo_replace_terrain` | sp_lev.js:6553 | Aligned |
 | 5990 | `lspo_reset_level` | sp_lev.js:6569 | Aligned |
 | 4025 | `lspo_room` | sp_lev.js:6554 | Aligned |
 | 4220 | `lspo_stair` | sp_lev.js:6546 | Aligned |

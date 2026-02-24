@@ -5,7 +5,8 @@
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-    des, resetLevelState, getLevelState, setFinalizeContext
+    des, resetLevelState, getLevelState, setFinalizeContext,
+    mapfrag_fromstr, mapfrag_canmatch, mapfrag_error, mapfrag_match
 } from '../../js/sp_lev.js';
 import { place_lregion } from '../../js/mkmaze.js';
 import {
@@ -261,6 +262,42 @@ describe('sp_lev.js - des.* API', () => {
 
         const map = getLevelState().map;
         assert.equal(map.locations[10][5].typ, THRONE);
+    });
+
+    it('mapfrag_match treats "w" as wall wildcard and uses center coordinates', () => {
+        resetLevelState();
+        des.level_init({ style: 'solidfill', fg: ' ' });
+        des.terrain(10, 5, '-');
+        des.terrain(11, 5, '.');
+
+        const wallFrag = mapfrag_fromstr('w');
+        assert.equal(mapfrag_error(wallFrag), null);
+        assert.equal(mapfrag_match(getLevelState().map, wallFrag, 10, 5), true);
+        assert.equal(mapfrag_match(getLevelState().map, wallFrag, 11, 5), false);
+    });
+
+    it('mapfrag_canmatch/mapfrag_error reject even-sized fragments', () => {
+        const frag = mapfrag_fromstr('..\n..');
+        assert.equal(mapfrag_canmatch(null, frag), false);
+        assert.equal(mapfrag_error(frag), 'mapfragment needs to have odd height and width');
+    });
+
+    it('des.replace_terrain supports mapfragment matching at runtime', () => {
+        resetLevelState();
+        des.level_init({ style: 'solidfill', fg: ' ' });
+        des.terrain(10, 5, '-');
+        des.terrain(11, 5, '.');
+
+        des.replace_terrain({
+            mapfragment: 'w',
+            toterrain: '.',
+            chance: 100,
+            region: [9, 5, 11, 5]
+        });
+
+        const map = getLevelState().map;
+        assert.equal(map.locations[10][5].typ, ROOM, 'wall match should be replaced');
+        assert.equal(map.locations[11][5].typ, ROOM, 'non-wall floor stays floor');
     });
 
     it('des.altar does not overwrite stairs/ladder tiles', () => {

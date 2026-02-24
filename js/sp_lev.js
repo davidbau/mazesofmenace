@@ -2310,11 +2310,8 @@ export function mapfrag_error(mapfrag) {
 }
 
 // C ref: sp_lev.c mapfrag_match()
-export function mapfrag_match(map, mapfrag) {
+export function mapfrag_match(map, mapfrag, x, y) {
     if (!map || !mapfrag) return false;
-    // x,y are fragment center coordinates (C behavior)
-    const x = arguments[2];
-    const y = arguments[3];
     if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
     const cx = Math.trunc(x);
     const cy = Math.trunc(y);
@@ -2328,7 +2325,7 @@ export function mapfrag_match(map, mapfrag) {
             const mapTyp = (gx >= 0 && gx < COLNO && gy >= 0 && gy < ROWNO)
                 ? map.locations[gx][gy].typ
                 : STONE;
-            if (!match_maptyps(fragTyp, mapTyp)) return false;
+            if (!match_maptyps(mapTyp, fragTyp)) return false;
         }
     }
     return true;
@@ -2870,7 +2867,16 @@ export function replace_terrain(opts) {
         : null;
     const fromType = mapchrToTerrain(opts.fromterrain);
     const toType = mapchrToTerrain(opts.toterrain);
-    if ((fromToken !== 'w' && fromType === -1) || toType === -1) return;
+    const hasMapfragment = (typeof opts.mapfragment === 'string' && opts.mapfragment.length > 0);
+    let mapfrag = null;
+    if (toType === -1) return;
+    if (hasMapfragment) {
+        mapfrag = mapfrag_fromstr(opts.mapfragment);
+        const err = mapfrag_error(mapfrag);
+        if (err) throw new Error(err);
+    } else if ((fromToken !== 'w' && fromType === -1)) {
+        return;
+    }
 
     const chance = opts.chance !== undefined ? opts.chance : 100;
 
@@ -2920,9 +2926,11 @@ export function replace_terrain(opts) {
         for (let y = minY; y <= maxY; y++) {
             if (selSet && !selSet.has(`${x},${y}`)) continue;
             const loc = levelState.map.locations[x][y];
-            const matchesFrom = (fromToken === 'w')
-                ? (IS_WALL(loc.typ) || loc.typ === IRONBARS)
-                : (loc.typ === fromType);
+            const matchesFrom = mapfrag
+                ? mapfrag_match(levelState.map, mapfrag, x, y)
+                : ((fromToken === 'w')
+                    ? (IS_WALL(loc.typ) || loc.typ === IRONBARS)
+                    : (loc.typ === fromType));
             if (!matchesFrom) continue;
             if (rn2(100) < chance) {
                 // C ref: arboral garden fixup path uses replace_terrain(S -> A) to
@@ -2935,6 +2943,7 @@ export function replace_terrain(opts) {
             }
         }
     }
+    if (mapfrag) mapfrag_free(mapfrag);
 }
 
 // C ref: sp_lev.c sel_set_lit()

@@ -1246,3 +1246,9 @@ hard-won wisdom:
 - Keep `sel_set_ter` as a C-named primitive, but make metadata-reset behavior explicit via options so call sites can match C context (`lspo_map` clears tile metadata; other writes may not).
 - `lspo_map` now routes through `sel_set_ter` while preserving prior semantics and test baseline.
 - `sel_set_lit` is now used by region-lighting loops, with lava handling kept at call sites so behavior remains unchanged.
+
+### mapfragment runtime-enable for replace_terrain (2026-02-24)
+
+- `sp_lev` mapfragment helpers (`mapfrag_fromstr`, `mapfrag_canmatch`, `mapfrag_error`, `mapfrag_match`) can be enabled in runtime safely when `replace_terrain` only enters that path when `mapfragment` is explicitly present.
+- Keeping non-mapfragment `fromterrain` behavior unchanged avoids broad RNG churn while letting `hellfill`/themeroom mapfragment calls execute real C-analog matching.
+- `mapfrag_match` must compare `match_maptyps(mapTyp, fragTyp)` (not reversed) so the `'w'` wildcard and non-terrain sentinels behave like C pattern semantics.
