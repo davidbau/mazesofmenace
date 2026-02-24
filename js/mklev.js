@@ -25,7 +25,18 @@ import { S_HUMAN, S_MIMIC } from './monsters.js';
 import { mkclass, makemon } from './makemon.js';
 import { make_engr_at, wipe_engr_at } from './engrave.js';
 import { random_epitaph_text } from './rumors.js';
-import { maketrap, somexy, mazexy, bound_digging, mineralize, set_wall_state, litstate_rnd, wallify_region } from './dungeon.js';
+import {
+    maketrap,
+    somexy,
+    mazexy,
+    bound_digging,
+    mineralize,
+    set_wall_state,
+    litstate_rnd,
+    wallify_region,
+    free_luathemes as dungeon_free_luathemes,
+    themerooms_post_level_generate as dungeon_themerooms_post_level_generate,
+} from './dungeon.js';
 
 const DOORINC = 20;
 const DUNGEONS_OF_DOOM = 0;
@@ -812,6 +823,16 @@ export function level_finalize_topology(map, depth) {
     for (let i = 0; i < map.rooms.length; i++) {
         map.rooms[i].orig_rtype = map.rooms[i].rtype;
     }
+}
+
+// C ref: mklev.c free_luathemes()
+export function free_luathemes() {
+    return dungeon_free_luathemes();
+}
+
+// C ref: mklev.c themerooms_post_level_generate()
+export function themerooms_post_level_generate() {
+    return dungeon_themerooms_post_level_generate();
 }
 
 // C ref: mklev.c place_branch()

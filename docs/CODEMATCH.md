@@ -2584,7 +2584,7 @@ No function symbols parsed from isaac64.c.
 | 2299 | `find_okay_roompos` | mklev.js:473 | Aligned |
 | 148 | `finddpos` | mklev.js:86 | Aligned |
 | 107 | `finddpos_shift` | mklev.js:62 | Aligned |
-| 336 | `free_luathemes` | - | Missing |
+| 336 | `free_luathemes` | mklev.js:829 | Aligned |
 | 2246 | `generate_stairs` | mklev.js:212 | Aligned |
 | 2215 | `generate_stairs_find_room` | mklev.js:197 | Aligned |
 | 2197 | `generate_stairs_room_good` | mklev.js:183 | Aligned |
@@ -2618,7 +2618,7 @@ No function symbols parsed from isaac64.c.
 | 698 | `place_niche` | mklev.js:255 | Aligned |
 | 1673 | `pos_to_room` | mklev.js:246 | Aligned |
 | 211 | `sort_rooms` | mklev.js:34 | Aligned |
-| 1170 | `themerooms_post_level_generate` | - | Missing |
+| 1170 | `themerooms_post_level_generate` | mklev.js:834 | Aligned |
 | 1593 | `topologize` | mklev.js:410 | Aligned |
 | 1934 | `traptype_rnd` | mklev.js:858 | Aligned |
 | 1998 | `traptype_roguelvl` | mklev.js:903 | Aligned |

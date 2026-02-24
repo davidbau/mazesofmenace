@@ -818,6 +818,17 @@ export function floodFillAndRegister(map, sx, sy, rtype, lit) {
 let _themeroomsLoaded = false;
 let _specialThemesLoaded = false;
 
+// C ref: mklev.c free_luathemes()
+export function free_luathemes() {
+    _themeroomsLoaded = false;
+    _specialThemesLoaded = false;
+}
+
+// C ref: mklev.c themerooms_post_level_generate()
+export function themerooms_post_level_generate() {
+    return themeroomsPostLevelGenerate();
+}
+
 function branchPlacementForEnd(branch, onEnd1) {
     if (branch.type === BR_PORTAL) {
         return { placement: 'portal' };
@@ -4605,8 +4616,7 @@ export function initLevelGeneration(roleIndex, wizard = true, opts = {}) {
     _branchTopology = [];  // reset before recalculating from init_dungeons RNG
     _dungeonLevelCounts = new Map();
     const dungeonResult = initDungeon(roleIndex, wizard);
-    _themeroomsLoaded = false;
-    _specialThemesLoaded = false;
+    free_luathemes();
     setMtInitialized(false); // Reset MT RNG state for new game
 
     // NOTE: xoshiro256** seeding happens in test harness before calling this
@@ -4918,7 +4928,7 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
     // These callbacks operate on the active level map through sp_lev levelState.
     setLevelContext(map, depth);
     try {
-        themeroomsPostLevelGenerate();
+        themerooms_post_level_generate();
     } finally {
         clearLevelContext();
     }
