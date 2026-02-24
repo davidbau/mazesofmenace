@@ -252,7 +252,7 @@ export async function handleMovement(dir, player, map, display, game) {
 
         // Safety checks before attacking
         // C ref: flag.h flags.safe_pet - prevent attacking pets
-        if (mon.tame && game.flags?.safe_pet) {
+        if (mon.tame && game.flags?.safe_pet && !game.forceFight) {
             display.putstr_message("You cannot attack your pet!");
             game.forceFight = false;
             return { moved: false, tookTime: false };

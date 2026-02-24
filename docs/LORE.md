@@ -1283,3 +1283,9 @@ hard-won wisdom:
 - `maze_remove_deadends` should operate in-place on an already carved maze; re-entering `create_maze()` from `maze_remove_deadends()` is structurally wrong and changes behavior.
 - In `sp_lev`, `fixupSpecialLevel` should call `mkmaze` ownership functions (`setup_waterlevel`, `baalz_fixup`) directly rather than going through local forwarding wrappers.
 - `sp_lev` `level_init(style=\"maze\")` should invoke `mkmaze.create_maze()` directly (with `corrwid`/`wallthick`/`deadends`) instead of leaving a STONE-filled placeholder grid.
+
+### safepet force-fight parity in domove attack path (2026-02-24)
+
+- In `hack.js` attack resolution, `flags.safe_pet` must not block an intentional force-fight (`F`) attack on a tame monster.
+- Gating safe-pet rejection behind `!game.forceFight` aligns with C behavior where forced attacks bypass safemon displacement/protection and proceed into normal attack logic.
+- This change preserved suite baseline while improving gameplay parity: seed202 no longer diverges on RNG at step 272 (moved to message-only divergence).
