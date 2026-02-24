@@ -92,6 +92,7 @@ import {
     shrine_pos,
 } from './mkroom.js';
 import {
+    add_room,
     bydoor,
     okdoor,
     good_rm_wall_doorpos,
@@ -518,8 +519,8 @@ export function create_room(map, x, y, w, h, xal, yal, rtype, rlit, depth, inThe
         }
 
         // Actually create the room
-        add_room_to_map(map, xabs, yabs, xabs + wtmp - 1, yabs + htmp - 1,
-                        lit, rtype, false);
+        add_room(map, xabs, yabs, xabs + wtmp - 1, yabs + htmp - 1,
+                 lit, rtype, false);
         if (DEBUG_THEME) console.log(`  create_room: SUCCESS, rtype=${rtype}, VAULT=${rtype===VAULT}, nroom=${nroom_before}->${map.nroom}`);
         return true;
 
@@ -532,163 +533,6 @@ export function create_room(map, x, y, w, h, xal, yal, rtype, rlit, depth, inThe
 // ========================================================================
 // mklev.c -- Core level generation
 // ========================================================================
-
-// C ref: mklev.c do_room_or_subroom()
-// roomIdx: optional override for roomno computation (used for subrooms)
-function do_room_or_subroom(map, croom, lowx, lowy, hix, hiy,
-                            lit, rtype, special, is_room, roomIdx) {
-    // Clamp coordinates
-    if (!lowx) lowx++;
-    if (!lowy) lowy++;
-    if (hix >= COLNO - 1) hix = COLNO - 2;
-    if (hiy >= ROWNO - 1) hiy = ROWNO - 2;
-
-    if (lit) {
-        for (let x = lowx - 1; x <= hix + 1; x++) {
-            for (let y = Math.max(lowy - 1, 0); y <= hiy + 1; y++) {
-                const loc = map.at(x, y);
-                if (loc) loc.lit = true;
-            }
-        }
-        croom.rlit = true;
-    } else {
-        croom.rlit = false;
-    }
-
-    const roomno = (roomIdx !== undefined) ? roomIdx : map.rooms.indexOf(croom);
-    croom.roomnoidx = roomno;
-    croom.lx = lowx;
-    croom.hx = hix;
-    croom.ly = lowy;
-    croom.hy = hiy;
-    croom.rtype = rtype;
-    croom.doorct = 0;
-    croom.fdoor = map.doorindex;
-    croom.irregular = false;
-    croom.needjoining = true;
-
-    if (!special) {
-        // Top and bottom walls (horizontal)
-        for (let x = lowx - 1; x <= hix + 1; x++) {
-            for (let y = lowy - 1; y <= hiy + 1; y += (hiy - lowy + 2)) {
-                const loc = map.at(x, y);
-                if (loc) {
-                    loc.typ = HWALL;
-                    loc.horizontal = true;
-                }
-            }
-        }
-        // Left and right walls (vertical)
-        for (let x = lowx - 1; x <= hix + 1; x += (hix - lowx + 2)) {
-            for (let y = lowy; y <= hiy; y++) {
-                const loc = map.at(x, y);
-                if (loc) {
-                    loc.typ = VWALL;
-                    loc.horizontal = false;
-                }
-            }
-        }
-        // Fill interior with ROOM
-        const DEBUG = typeof process !== 'undefined' && process.env.DEBUG_ROOM_FILL === '1';
-        if (DEBUG) {
-            const area = (hix - lowx + 1) * (hiy - lowy + 1);
-            console.log(`Filling room (${lowx},${lowy})-(${hix},${hiy}) area=${area}`);
-        }
-        for (let x = lowx; x <= hix; x++) {
-            for (let y = lowy; y <= hiy; y++) {
-                const loc = map.at(x, y);
-                if (loc) loc.typ = ROOM;
-            }
-        }
-        if (is_room) {
-            // Set corners
-            const tl = map.at(lowx - 1, lowy - 1);
-            const tr = map.at(hix + 1, lowy - 1);
-            const bl = map.at(lowx - 1, hiy + 1);
-            const br = map.at(hix + 1, hiy + 1);
-            if (tl) tl.typ = TLCORNER;
-            if (tr) tr.typ = TRCORNER;
-            if (bl) bl.typ = BLCORNER;
-            if (br) br.typ = BRCORNER;
-        } else {
-            // Subroom: use wallification for corners
-            wallify(map, lowx - 1, lowy - 1, hix + 1, hiy + 1);
-        }
-    }
-
-    // Set roomno on all cells in the room
-    const rno = roomno + ROOMOFFSET;
-    for (let x = lowx; x <= hix; x++) {
-        for (let y = lowy; y <= hiy; y++) {
-            const loc = map.at(x, y);
-            if (loc) loc.roomno = rno;
-        }
-    }
-}
-
-// C ref: mklev.c add_room()
-export function add_room_to_map(map, lowx, lowy, hix, hiy, lit, rtype, special) {
-    const croom = makeRoom();
-    // needfill defaults to FILL_NONE; caller sets FILL_NORMAL as needed
-    const roomIdx = map.nroom || 0;
-    // C stores main rooms at rooms[nroom], independent of any subroom slots
-    // that may exist at higher indices.
-    map.rooms[roomIdx] = croom;
-    // Track nroom separately (don't use rooms.length once subrooms are added)
-    map.nroom = roomIdx + 1;
-    do_room_or_subroom(map, croom, lowx, lowy, hix, hiy, lit, rtype,
-                       special, true);
-}
-
-// C ref: mklev.c add_subroom()
-export function add_subroom_to_map(map, proom, lowx, lowy, hix, hiy, lit, rtype, special) {
-    const croom = makeRoom();
-    croom.needjoining = false;
-    // Keep subroom room numbers outside the main-room range so sort_rooms()
-    // remapping does not rewrite them.
-    const nsubroom = map.nsubroom || 0;
-    const roomStoreIdx = map.nroom + nsubroom;
-    const roomnoIdx = MAXNROFROOMS + 1 + nsubroom;
-    map.nsubroom = nsubroom + 1;
-    // Add subroom to map.rooms array at index roomIdx (beyond main rooms)
-    // In C, subrooms occupy indices [nroom..nroom+nsubroom) in the rooms array
-    map.rooms[roomStoreIdx] = croom;
-    do_room_or_subroom(map, croom, lowx, lowy, hix, hiy, lit, rtype,
-                       special, false, roomnoIdx);
-    // Some special-level room construction paths build room-like objects
-    // without full mkroom fields. Normalize here before attaching subrooms.
-    if (!proom.sbrooms) proom.sbrooms = [];
-    if (!Number.isInteger(proom.nsubrooms)) proom.nsubrooms = 0;
-    proom.sbrooms[proom.nsubrooms] = croom;
-    proom.nsubrooms++;
-    return croom;
-}
-
-// C ref: sp_lev.c create_subroom()
-// x, y are relative to parent room. w, h are sub-room dimensions.
-// Returns the created subroom, or null if parent too small.
-export function create_subroom(map, proom, x, y, w, h, rtype, rlit, depth) {
-    const width = proom.hx - proom.lx + 1;
-    const height = proom.hy - proom.ly + 1;
-
-    if (width < 4 || height < 4) return null;
-
-    if (w === -1) w = rnd(width - 3);
-    if (h === -1) h = rnd(height - 3);
-    if (x === -1) x = rnd(width - w);
-    if (y === -1) y = rnd(height - h);
-    if (x === 1) x = 0;
-    if (y === 1) y = 0;
-    if ((x + w + 1) === width) x++;
-    if ((y + h + 1) === height) y++;
-    if (rtype === -1) rtype = OROOM;
-    const lit = litstate_rnd(rlit, depth);
-
-    return add_subroom_to_map(map, proom,
-        proom.lx + x, proom.ly + y,
-        proom.lx + x + w - 1, proom.ly + y + h - 1,
-        lit, rtype, false);
-}
 
 // Wall direction constants for sp_create_door (sp_lev.h)
 const W_NORTH = 1, W_SOUTH = 2, W_EAST = 4, W_WEST = 8;
@@ -3238,7 +3082,7 @@ function do_fill_vault(map, vaultCheck, depth) {
     const hix = lowx + vaultCheck.ddx;
     const hiy = lowy + vaultCheck.ddy;
 
-    add_room_to_map(map, lowx, lowy, hix, hiy, true, VAULT, false);
+    add_room(map, lowx, lowy, hix, hiy, true, VAULT, false);
     map.flags.has_vault = true;
     // C ref: mklev.c:1318 — vault room gets needfill=FILL_NORMAL
     map.rooms[map.nroom - 1].needfill = FILL_NORMAL;
@@ -4824,7 +4668,7 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
     if (map.nroom === 0) {
         // Fallback: should never happen, but safety
         if (DEBUG) console.warn(`⚠️ makerooms() created 0 rooms! Using fallback single room. This is a bug!`);
-        add_room_to_map(map, 10, 5, 20, 10, true, OROOM, false);
+        add_room(map, 10, 5, 20, 10, true, OROOM, false);
     } else if (DEBUG) {
         console.log(`✓ makerooms() created ${map.nroom} rooms`);
     }

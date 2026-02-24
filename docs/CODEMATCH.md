@@ -2568,15 +2568,15 @@ No function symbols parsed from isaac64.c.
 | C Line | C Function | JS Line | Alignment |
 |--------|------------|---------|-----------|
 | 571 | `add_door` | mklev.js:474 | Aligned |
-| 305 | `add_room` | - | Missing |
-| 319 | `add_subroom` | - | Missing |
+| 305 | `add_room` | mklev.js:139 | Aligned |
+| 319 | `add_subroom` | mklev.js:148 | Aligned |
 | 553 | `alloc_doors` | mklev.js:465 | Aligned |
 | 1746 | `bydoor` | mklev.js:56 | Aligned |
 | 678 | `cardinal_nextto_room` | mklev.js:242 | Aligned |
 | 1194 | `chk_okdoor` | mklev.js:554 | Aligned |
 | 847 | `clear_level_structures` | - | Missing |
 | 825 | `count_level_features` | - | Missing |
-| 232 | `do_room_or_subroom` | - | Missing |
+| 232 | `do_room_or_subroom` | mklev.js:58 | Aligned |
 | 1796 | `dodoor` | mklev.js:549 | Aligned |
 | 612 | `dosdoor` | mklev.js:516 | Aligned |
 | 935 | `fill_ordinary_room` | - | Missing |

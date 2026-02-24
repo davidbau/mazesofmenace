@@ -8,9 +8,9 @@ import {
 } from './objects.js';
 import { CORR, D_NODOOR, OROOM, SCORR } from './config.js';
 import {
-    add_room_to_map, fill_ordinary_room,
+    fill_ordinary_room,
 } from './dungeon.js';
-import { dodoor, generate_stairs, sort_rooms } from './mklev.js';
+import { add_room, dodoor, generate_stairs, sort_rooms } from './mklev.js';
 
 export const XL_UP = 1;
 export const XL_DOWN = 2;
@@ -263,7 +263,7 @@ export function makeroguerooms(depth = 15) {
             const lowy = 7 * y + rooms[x][y].rly;
             const hix = lowx + rooms[x][y].dx - 1;
             const hiy = lowy + rooms[x][y].dy - 1;
-            add_room_to_map(map, lowx, lowy, hix, hiy, !rn2(7), OROOM, false);
+            add_room(map, lowx, lowy, hix, hiy, !rn2(7), OROOM, false);
         }
     }
 

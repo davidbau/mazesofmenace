@@ -3,6 +3,7 @@
 import {
     COLNO, ROWNO, MAXNROFROOMS,
     STONE, CORR, SCORR, ROOM, ICE, HWALL, VWALL, SDOOR, ROOMOFFSET,
+    TLCORNER, TRCORNER, BLCORNER, BRCORNER,
     STAIRS, FOUNTAIN, SINK, ALTAR, GRAVE, OROOM, THEMEROOM, SHOPBASE,
     DOOR, IRONBARS,
     D_NODOOR, D_CLOSED, D_ISOPEN, D_LOCKED, D_TRAPPED,
@@ -13,13 +14,14 @@ import {
     NO_TRAP, TELEP_TRAP, LEVEL_TELEP, TRAPDOOR, ROCKTRAP, is_hole, isok,
 } from './config.js';
 import { rn1, rn2, rnd, getRngCallCount } from './rng.js';
+import { makeRoom } from './map.js';
 import { mksobj, mkobj } from './mkobj.js';
 import { GOLD_PIECE, BELL, CORPSE, SCR_TELEPORTATION } from './objects.js';
 import { S_HUMAN, S_MIMIC } from './monsters.js';
 import { mkclass, makemon } from './makemon.js';
 import { make_engr_at, wipe_engr_at } from './engrave.js';
 import { random_epitaph_text } from './rumors.js';
-import { maketrap, somexy, mazexy, bound_digging, mineralize, set_wall_state } from './dungeon.js';
+import { maketrap, somexy, mazexy, bound_digging, mineralize, set_wall_state, litstate_rnd, wallify_region } from './dungeon.js';
 
 const DOORINC = 20;
 
@@ -50,6 +52,136 @@ export function sort_rooms(map) {
         }
     }
     for (let i = 0; i < n; i++) map.rooms[i].roomnoidx = i;
+}
+
+// C ref: mklev.c do_room_or_subroom()
+export function do_room_or_subroom(map, croom, lowx, lowy, hix, hiy, lit, rtype, special, is_room, roomIdx) {
+    if (!lowx) lowx++;
+    if (!lowy) lowy++;
+    if (hix >= COLNO - 1) hix = COLNO - 2;
+    if (hiy >= ROWNO - 1) hiy = ROWNO - 2;
+
+    if (lit) {
+        for (let x = lowx - 1; x <= hix + 1; x++) {
+            for (let y = Math.max(lowy - 1, 0); y <= hiy + 1; y++) {
+                const loc = map.at(x, y);
+                if (loc) loc.lit = true;
+            }
+        }
+        croom.rlit = true;
+    } else {
+        croom.rlit = false;
+    }
+
+    const roomno = (roomIdx !== undefined) ? roomIdx : map.rooms.indexOf(croom);
+    croom.roomnoidx = roomno;
+    croom.lx = lowx;
+    croom.hx = hix;
+    croom.ly = lowy;
+    croom.hy = hiy;
+    croom.rtype = rtype;
+    croom.doorct = 0;
+    croom.fdoor = map.doorindex;
+    croom.irregular = false;
+    croom.nsubrooms = 0;
+    croom.sbrooms = [];
+    croom.needjoining = !special;
+
+    if (!special) {
+        for (let x = lowx - 1; x <= hix + 1; x++) {
+            for (let y = lowy - 1; y <= hiy + 1; y += (hiy - lowy + 2)) {
+                const loc = map.at(x, y);
+                if (loc) {
+                    loc.typ = HWALL;
+                    loc.horizontal = true;
+                }
+            }
+        }
+        for (let x = lowx - 1; x <= hix + 1; x += (hix - lowx + 2)) {
+            for (let y = lowy; y <= hiy; y++) {
+                const loc = map.at(x, y);
+                if (loc) {
+                    loc.typ = VWALL;
+                    loc.horizontal = false;
+                }
+            }
+        }
+        for (let x = lowx; x <= hix; x++) {
+            for (let y = lowy; y <= hiy; y++) {
+                const loc = map.at(x, y);
+                if (loc) loc.typ = ROOM;
+            }
+        }
+        if (is_room) {
+            const tl = map.at(lowx - 1, lowy - 1);
+            const tr = map.at(hix + 1, lowy - 1);
+            const bl = map.at(lowx - 1, hiy + 1);
+            const br = map.at(hix + 1, hiy + 1);
+            if (tl) tl.typ = TLCORNER;
+            if (tr) tr.typ = TRCORNER;
+            if (bl) bl.typ = BLCORNER;
+            if (br) br.typ = BRCORNER;
+        } else {
+            wallify_region(map, lowx - 1, lowy - 1, hix + 1, hiy + 1);
+        }
+    }
+
+    const rno = roomno + ROOMOFFSET;
+    for (let x = lowx; x <= hix; x++) {
+        for (let y = lowy; y <= hiy; y++) {
+            const loc = map.at(x, y);
+            if (loc) loc.roomno = rno;
+        }
+    }
+}
+
+// C ref: mklev.c add_room()
+export function add_room(map, lowx, lowy, hix, hiy, lit, rtype, special) {
+    const croom = makeRoom();
+    const roomIdx = map.nroom || 0;
+    map.rooms[roomIdx] = croom;
+    map.nroom = roomIdx + 1;
+    do_room_or_subroom(map, croom, lowx, lowy, hix, hiy, lit, rtype, special, true);
+}
+
+// C ref: mklev.c add_subroom()
+export function add_subroom(map, proom, lowx, lowy, hix, hiy, lit, rtype, special) {
+    const croom = makeRoom();
+    croom.needjoining = false;
+    const nsubroom = map.nsubroom || 0;
+    const roomStoreIdx = map.nroom + nsubroom;
+    const roomnoIdx = MAXNROFROOMS + 1 + nsubroom;
+    map.nsubroom = nsubroom + 1;
+    map.rooms[roomStoreIdx] = croom;
+    do_room_or_subroom(map, croom, lowx, lowy, hix, hiy, lit, rtype, special, false, roomnoIdx);
+    if (!proom.sbrooms) proom.sbrooms = [];
+    if (!Number.isInteger(proom.nsubrooms)) proom.nsubrooms = 0;
+    proom.sbrooms[proom.nsubrooms] = croom;
+    proom.nsubrooms++;
+    return croom;
+}
+
+// C ref: sp_lev.c create_subroom()
+export function create_subroom(map, proom, x, y, w, h, rtype, rlit, depth) {
+    const width = proom.hx - proom.lx + 1;
+    const height = proom.hy - proom.ly + 1;
+
+    if (width < 4 || height < 4) return null;
+    if (w === -1) w = rnd(width - 3);
+    if (h === -1) h = rnd(height - 3);
+    if (x === -1) x = rnd(width - w);
+    if (y === -1) y = rnd(height - h);
+    if (x === 1) x = 0;
+    if (y === 1) y = 0;
+    if ((x + w + 1) === width) x++;
+    if ((y + h + 1) === height) y++;
+    if (rtype === -1) rtype = OROOM;
+    const lit = litstate_rnd(rlit, depth);
+
+    return add_subroom(map, proom,
+        proom.lx + x, proom.ly + y,
+        proom.lx + x + w - 1, proom.ly + y + h - 1,
+        lit, rtype, false);
 }
 
 // C ref: mklev.c bydoor()
