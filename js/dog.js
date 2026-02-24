@@ -39,6 +39,7 @@ import { SADDLE } from './objects.js';
 import { roles } from './player.js';
 import { makemon, NO_MINVENT, MM_EDOG } from './makemon.js';
 import { mksobj } from './mkobj.js';
+import { mpickobj } from './monutil.js';
 
 // Re-export dogmove.c functions that were previously defined here
 export { can_carry, dog_eat } from './dogmove.js';
@@ -296,7 +297,7 @@ export function makedog(map, player, depth) {
         const saddleObj = mksobj(SADDLE, true, false);
         if (saddleObj) {
             saddleObj.owornmask = 0x100000; // W_SADDLE
-            pet.minvent.push(saddleObj);
+            mpickobj(pet, saddleObj);
             pet.misc_worn_check = 0x100000;
         }
     }

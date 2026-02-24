@@ -1368,6 +1368,12 @@ hard-won wisdom:
 - Concrete example: in pet split-stack pickup, JS created a detached split object and went straight to `mpickobj`, skipping the C-style on-floor extraction event. Event parity highlighted the missing `^remove` before `^pickup`, leading to a core fix in `dogmove` split handling.
 - Treat event parity as production-path validation, not test-harness cosmetics: fixes should land in game logic and improve replay/debug observability for future divergence work.
 
+### Knight pony start-inventory parity (2026-02-24)
+
+- In `makedog()`, the knight pony saddle path must route through `mpickobj()` rather than directly mutating `pet.minvent`.
+- Direct inventory mutation preserves state but drops the `^pickup` event, causing early event-order drift before the first monster movement phase.
+- Event parity around startup can reveal these "state-correct but instrumentation-wrong" paths; fixing them in core helpers keeps replay diagnostics trustworthy.
+
 ### Medusa statue reroll parity helper reuse (2026-02-24)
 
 - `sp_lev` Medusa fixup should use shared `mondata.poly_when_stoned(ptr)` rather than local TODO logic when rerolling statue corpsenm.
