@@ -1,0 +1,59 @@
+import { describe, test, beforeEach } from 'node:test';
+import assert from 'node:assert/strict';
+
+import { run_command, get_repeat_command_snapshot } from '../../js/allmain.js';
+import { GameMap } from '../../js/map.js';
+import { Player } from '../../js/player.js';
+import { cmdq_clear, CQ_REPEAT } from '../../js/input.js';
+
+function makeGame() {
+    const map = new GameMap();
+    const player = new Player();
+    player.initRole(11);
+    player.x = 10;
+    player.y = 10;
+    return {
+        player,
+        map,
+        display: {
+            clearRow() {},
+            putstr() {},
+            putstr_message() {},
+            renderMap() {},
+            renderStatus() {},
+        },
+        fov: { compute() {} },
+        flags: { verbose: false },
+        pendingPrompt: null,
+        multi: 0,
+        commandCount: 0,
+        cmdKey: 0,
+    };
+}
+
+describe('CQ_REPEAT wiring', () => {
+    beforeEach(() => {
+        cmdq_clear(CQ_REPEAT);
+    });
+
+    test('run_command stores count+key snapshot into repeat queue', async () => {
+        const game = makeGame();
+        await run_command(game, '~'.charCodeAt(0), { countPrefix: 23 });
+        const snapshot = get_repeat_command_snapshot();
+        assert.deepEqual(snapshot, {
+            key: '~'.charCodeAt(0),
+            countPrefix: 23,
+        });
+    });
+
+    test('Ctrl+A execution does not overwrite existing repeat snapshot', async () => {
+        const game = makeGame();
+        await run_command(game, '~'.charCodeAt(0), { countPrefix: 7 });
+        await run_command(game, 1); // Ctrl+A key itself shouldn't replace CQ_REPEAT
+        const snapshot = get_repeat_command_snapshot();
+        assert.deepEqual(snapshot, {
+            key: '~'.charCodeAt(0),
+            countPrefix: 7,
+        });
+    });
+});

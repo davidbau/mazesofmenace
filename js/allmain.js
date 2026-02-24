@@ -46,7 +46,8 @@ import { loadSave, deleteSave, loadFlags, saveFlags, deserializeRng,
          restGameState, restLev, listSavedData, clearAllData } from './storage.js';
 import { buildEntry, saveScore, loadScores, formatTopTenEntry, formatTopTenHeader } from './topten.js';
 import { startRecording } from './keylog.js';
-import { nhgetch, getCount, setInputRuntime, cmdq_clear, CQ_CANNED } from './input.js';
+import { nhgetch, getCount, setInputRuntime, cmdq_clear, cmdq_add_int, cmdq_add_key,
+         cmdq_copy, CQ_CANNED, CQ_REPEAT, CMDQ_INT, CMDQ_KEY } from './input.js';
 import { init_nhwindows, NHW_MENU, MENU_BEHAVE_STANDARD, PICK_ONE, ATR_NONE,
          create_nhwindow, destroy_nhwindow, start_menu, add_menu, end_menu, select_menu } from './windows.js';
 import { CLR_GRAY } from './display.js';
@@ -394,10 +395,21 @@ export async function run_command(game, ch, opts = {}) {
         skipMonsterMove,
         computeFov = false,
         skipTurnEnd = false,
+        skipRepeatRecord = false,
     } = opts;
 
     const chCode = typeof ch === 'number' ? ch
         : (typeof ch === 'string' && ch.length > 0) ? ch.charCodeAt(0) : 0;
+
+    if (!skipRepeatRecord && chCode !== 1) {
+        cmdq_clear(CQ_REPEAT);
+        if (countPrefix > 0) {
+            cmdq_add_int(CQ_REPEAT, countPrefix);
+        }
+        if (chCode > 0) {
+            cmdq_add_key(CQ_REPEAT, chCode);
+        }
+    }
 
     // Prompt handlers (e.g., eat.c "Continue eating? [yn]") consume input
     // without advancing time until a terminating answer is provided.
@@ -476,6 +488,24 @@ export async function run_command(game, ch, opts = {}) {
     }
 
     return result;
+}
+
+// C ref: cmd.c do_repeat() queue payload decode.
+// Returns last repeatable command snapshot from CQ_REPEAT, or null.
+export function get_repeat_command_snapshot() {
+    const copy = cmdq_copy(CQ_REPEAT);
+    if (!copy) return null;
+    let cursor = copy;
+    let countPrefix = 0;
+
+    if (cursor.typ === CMDQ_INT) {
+        countPrefix = Number.isFinite(cursor.intval) ? Math.max(0, cursor.intval | 0) : 0;
+        cursor = cursor.next;
+    }
+    if (!cursor || cursor.typ !== CMDQ_KEY || !Number.isFinite(cursor.key)) {
+        return null;
+    }
+    return { key: cursor.key | 0, countPrefix };
 }
 
 // C ref: allmain.c deferred_goto() immediately follows rhack() whenever
@@ -1187,9 +1217,10 @@ export class NetHackGame {
 
             // C ref: cmd.c:1687 do_repeat() — Ctrl+A repeats last command
             if (firstCh === 1) { // Ctrl+A
-                if (this.lastCommand) {
-                    countPrefix = this.lastCommand.count;
-                    ch = this.lastCommand.key;
+                const repeatSnapshot = get_repeat_command_snapshot();
+                if (repeatSnapshot) {
+                    countPrefix = repeatSnapshot.countPrefix;
+                    ch = repeatSnapshot.key;
                 } else {
                     this.display.putstr_message('There is no command available to repeat.');
                     continue;

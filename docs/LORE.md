@@ -1445,3 +1445,10 @@ hard-won wisdom:
 - `cmdq_pop()` now matches C selection semantics by choosing queue based on `in_doagain`-style flag (`cmdq_pop(true)` reads `CQ_REPEAT`, otherwise `CQ_CANNED`).
 - Added deterministic unit coverage in `test/unit/input_runtime.test.js` for FIFO pop behavior, repeat-vs-canned selection, `cmdq_shift` tail-to-head movement, structural copy behavior (`cmdq_copy`), and linked-list reversal (`cmdq_reverse`).
 - Full gate remained stable relative to baseline (`unit` green; existing 19 gameplay parity divergences unchanged).
+
+### CQ_REPEAT wiring in runtime command flow (2026-02-24)
+
+- `run_command()` now records a repeat snapshot into `CQ_REPEAT` for non-`Ctrl+A` commands using C-shaped cmdq payload (`CMDQ_INT` count prefix when present + `CMDQ_KEY` command key).
+- Browser `gameLoop()` `Ctrl+A` resolution now reads repeat data from `CQ_REPEAT` (via `get_repeat_command_snapshot()`) instead of relying only on `lastCommand` state.
+- Added deterministic unit coverage in `test/unit/command_repeat_queue.test.js` for repeat snapshot recording and `Ctrl+A` non-overwrite behavior.
+- Gate impact stayed baseline-stable (`npm test`: unit pass; existing 19 gameplay parity failures unchanged).
