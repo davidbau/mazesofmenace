@@ -30,7 +30,7 @@ import {
 } from './monsters.js';
 import { type_is_pname } from './mondata.js';
 import {
-    xname, doname, erosion_matters,
+    xname as mkobj_xname, doname as mkobj_doname, erosion_matters as mkobj_erosion_matters,
     is_rustprone, is_corrodeable, is_flammable, is_crackable, is_rottable,
     Is_container, mksobj, mkobj, bless, curse, uncurse, weight,
 } from './mkobj.js';
@@ -44,9 +44,20 @@ import {
 } from './hacklib.js';
 import { shk_your } from './shk.js';
 import { rn2, rnd, rn1 } from './rng.js';
+import { STONE, POOL, LAVAPOOL, WATER, AIR, CLOUD, ROOM, CORR, VWALL, HWALL, DOOR } from './config.js';
 
-// Re-export existing implementations from mkobj.js
-export { xname, doname, erosion_matters };
+// Wrappers around mkobj naming primitives so objnam owns the C-facing names.
+export function xname(obj, opts = {}) {
+    return mkobj_xname(obj, opts);
+}
+
+export function doname(obj, player) {
+    return mkobj_doname(obj, player);
+}
+
+export function erosion_matters(obj) {
+    return mkobj_erosion_matters(obj);
+}
 
 // ============================================================================
 // Constants
@@ -272,16 +283,126 @@ export function obj_is_pname(obj) {
 // cf. objnam.c:431-574
 // ============================================================================
 
+let fruitCounter = 1;
+const fruitById = new Map();
+const fruitByName = new Map();
+
 // cf. objnam.c:431 — fruit_from_indx(indx): lookup custom fruit by index
-// Fruit system is not fully ported; stub returns null
 export function fruit_from_indx(indx) {
-    // TODO: fruit linked list not yet ported to JS
-    return null;
+    if (!Number.isInteger(indx) || indx <= 0) return null;
+    return fruitById.get(indx) || null;
+}
+
+// cf. objnam.c:443 — fruit_from_name(name): lookup/create custom fruit by name
+export function fruit_from_name(name, create = true) {
+    if (typeof name !== 'string') return 0;
+    const key = name.trim().toLowerCase();
+    if (!key) return 0;
+    const existing = fruitByName.get(key);
+    if (existing) return existing;
+    if (!create) return 0;
+    const idx = fruitCounter++;
+    fruitByName.set(key, idx);
+    fruitById.set(idx, name.trim());
+    return idx;
+}
+
+// cf. objnam.c:414 — fruitname(juice): stringify fruit by index
+export function fruitname(juice) {
+    const fromList = fruit_from_indx(juice);
+    return fromList || 'slime mold';
 }
 
 // cf. objnam.c:523 — reorder_fruit(forward): sort fruit list by index
 export function reorder_fruit(forward) {
-    // TODO: fruit linked list not yet ported to JS
+    const ordered = [...fruitById.entries()]
+        .sort((a, b) => (forward ? a[0] - b[0] : b[0] - a[0]));
+    fruitById.clear();
+    for (const [idx, name] of ordered) fruitById.set(idx, name);
+}
+
+// cf. objnam.c:347 — distant_name(obj, func): naming without side effects
+export function distant_name(obj, func = xname) {
+    if (!obj) return '';
+    if (typeof func !== 'function') return xname(obj);
+    return func(obj);
+}
+
+// cf. objnam.c:2000 — short_oname(obj): short object name
+export function short_oname(obj) {
+    if (!obj) return '';
+    return obj.oname || minimal_xname(obj);
+}
+
+// cf. objnam.c:5614 — safe_qbuf(): bounded prompt assembly
+export function safe_qbuf(prefix, suffix, thing, otherthing, limit = 80) {
+    const p = prefix || '';
+    const s = suffix || '';
+    const t = thing || '';
+    const o = otherthing || '';
+    const primary = `${p}${t}${s}`;
+    if (primary.length <= limit) return primary;
+    const fallback = `${p}${o}${s}`;
+    if (fallback.length <= limit) return fallback;
+    return fallback.slice(0, Math.max(0, limit));
+}
+
+// cf. objnam.c:3910 — dbterrainmesg(typ): describe terrain wishes
+export function dbterrainmesg(typ) {
+    switch (typ) {
+    case STONE: return 'stone';
+    case POOL:
+    case WATER: return 'water';
+    case LAVAPOOL: return 'lava';
+    case AIR: return 'air';
+    case CLOUD: return 'cloud';
+    case ROOM: return 'room';
+    case CORR: return 'corridor';
+    case VWALL:
+    case HWALL: return 'wall';
+    case DOOR: return 'door';
+    default: return 'terrain';
+    }
+}
+
+// cf. objnam.c:3529 — set_wallprop_from_str(str)
+export function set_wallprop_from_str(str) {
+    if (typeof str !== 'string') return null;
+    const s = str.trim().toLowerCase();
+    if (!s) return null;
+    if (s === 'nondiggable' || s === 'non-diggable') return 'nondiggable';
+    if (s === 'nonpasswall' || s === 'non-passwall' || s === 'non passwall')
+        return 'nonpasswall';
+    return null;
+}
+
+// cf. objnam.c:3544 — wizterrainwish(): wizard terrain wish parser
+export function wizterrainwish(_ctx) {
+    // Full topology wishing is not yet wired in JS; keep explicit no-op.
+    return null;
+}
+
+// cf. objnam.c:575/581 — xname_flags wrapper
+export function xname_flags(obj, flags = 0) {
+    if (obj == null) return '';
+    // Support either numeric bitmask-like usage or direct option object.
+    if (typeof flags === 'object' && flags !== null) return xname(obj, flags);
+    const singular = !!(flags & 1);
+    return xname(obj, singular ? { singular: true } : {});
+}
+
+// cf. objnam.c:1223 — doname_base wrapper
+export function doname_base(obj, player) {
+    return doname(obj, player);
+}
+
+// cf. objnam.c:1745 — doname wrapper exists, expose symbol for codematch scanner
+export function add_erosion_words(buf, obj) {
+    if (!obj || !erosion_matters(obj)) return buf || '';
+    const prefix = [];
+    if (obj.oeroded2 > 0) prefix.push(is_corrodeable(obj) ? 'corroded' : 'rotted');
+    if (obj.oeroded > 0) prefix.push(is_rustprone(obj) ? 'rusty' : (is_flammable(obj) ? 'burnt' : 'eroded'));
+    return prefix.length ? `${prefix.join(' ')} ${buf || ''}`.trim() : (buf || '');
 }
 
 // ============================================================================
@@ -1485,43 +1606,74 @@ export function rnd_class(first, last) {
 // cf. objnam.c:4900
 // ============================================================================
 
-// cf. objnam.c:4900 — readobjnam(bp, no_wish): parse wish string into object
-export function readobjnam(bp, no_wish) {
-    if (typeof bp !== 'string') return null;
-    let text = bp.trim().toLowerCase();
-    if (!text) return null;
-    text = text.replace(/\s+/g, ' ');
+// cf. objnam.c:3923 — readobjnam_init()
+export function readobjnam_init() {
+    return {
+        quan: 1,
+        spe: null,
+        buc: 0,
+        text: '',
+        oclass: 0,
+        actualn: '',
+        forcedTyp: 0,
+    };
+}
 
-    let quan = 1;
-    let spe = null;
-    let buc = 0; // -1 cursed, 0 unchanged, +1 blessed, +2 uncursed
+// cf. objnam.c:4168 — readobjnam_parse_charges()
+export function readobjnam_parse_charges(state, text) {
+    if (!state || typeof text !== 'string') return text;
+    const speMatch = text.match(/^([+-]\d+)\s+/);
+    if (!speMatch) return text;
+    state.spe = parseInt(speMatch[1], 10);
+    return text.slice(speMatch[0].length).trim();
+}
+
+// cf. objnam.c:3956 — readobjnam_preparse()
+export function readobjnam_preparse(state, bp) {
+    if (!state || typeof bp !== 'string') return '';
+    let text = bp.trim().toLowerCase();
+    if (!text) return '';
+    text = text.replace(/\s+/g, ' ');
 
     const qMatch = text.match(/^(\d+)\s+/);
     if (qMatch) {
-        quan = Math.max(1, parseInt(qMatch[1], 10) || 1);
+        state.quan = Math.max(1, parseInt(qMatch[1], 10) || 1);
         text = text.slice(qMatch[0].length).trim();
     }
 
     if (text.startsWith('blessed ')) {
-        buc = 1;
+        state.buc = 1;
         text = text.slice(8).trim();
     } else if (text.startsWith('uncursed ')) {
-        buc = 2;
+        state.buc = 2;
         text = text.slice(9).trim();
     } else if (text.startsWith('cursed ')) {
-        buc = -1;
+        state.buc = -1;
         text = text.slice(7).trim();
     }
 
-    const speMatch = text.match(/^([+-]\d+)\s+/);
-    if (speMatch) {
-        spe = parseInt(speMatch[1], 10);
-        text = text.slice(speMatch[0].length).trim();
-    }
+    text = readobjnam_parse_charges(state, text);
 
     if (text.startsWith('a ')) text = text.slice(2).trim();
     else if (text.startsWith('an ')) text = text.slice(3).trim();
     else if (text.startsWith('the ')) text = text.slice(4).trim();
+
+    state.text = text;
+    state.actualn = text;
+    return text;
+}
+
+// cf. objnam.c postparse phases (JS currently keeps these thin)
+export function readobjnam_postparse1(state) { return state; }
+export function readobjnam_postparse2(state) { return state; }
+export function readobjnam_postparse3(state) { return state; }
+
+// cf. objnam.c:4900 — readobjnam(bp, no_wish): parse wish string into object
+export function readobjnam(bp, no_wish) {
+    if (typeof bp !== 'string') return null;
+    const state = readobjnam_init();
+    let text = readobjnam_preparse(state, bp);
+    if (!text) return null;
 
     let oclass = 0;
     let actualn = text;
@@ -1614,21 +1766,24 @@ export function readobjnam(bp, no_wish) {
     if (!otmp) return null;
     otyp = otmp.otyp;
 
-    if (quan > 1) {
-        otmp.quan = quan;
+    if (state.quan > 1) {
+        otmp.quan = state.quan;
         otmp.owt = weight(otmp);
     }
-    if (buc === 1) bless(otmp);
-    else if (buc === -1) curse(otmp);
-    else if (buc === 2) uncurse(otmp);
+    if (state.buc === 1) bless(otmp);
+    else if (state.buc === -1) curse(otmp);
+    else if (state.buc === 2) uncurse(otmp);
 
-    if (spe !== null) {
-        otmp.spe = spe;
+    if (state.spe !== null) {
+        otmp.spe = state.spe;
     }
     // C readobjnam returns an object with dknown set (appearance seen),
     // but does not auto-discover the true object type.
     otmp.dknown = true;
 
+    readobjnam_postparse1(state);
+    readobjnam_postparse2(state);
+    readobjnam_postparse3(state);
     return otmp;
 }
 

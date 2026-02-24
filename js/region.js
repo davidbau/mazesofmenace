@@ -57,7 +57,7 @@ function heros_fault(r) { return !(r.player_flags & REG_NOT_HEROS); }
 function set_hero_inside(r) { r.player_flags |= REG_HERO_INSIDE; }
 function clear_hero_inside(r) { r.player_flags &= ~REG_HERO_INSIDE; }
 function set_heros_fault(r) { r.player_flags &= ~REG_NOT_HEROS; }
-function clear_heros_fault(r) { r.player_flags |= REG_NOT_HEROS; }
+export function clear_heros_fault(r) { r.player_flags |= REG_NOT_HEROS; }
 
 // FM_FMON flag for find_mid
 const FM_FMON = 0x02;

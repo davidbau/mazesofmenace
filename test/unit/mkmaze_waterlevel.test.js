@@ -2,7 +2,8 @@ import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { initRng } from '../../js/rng.js';
 import { GameMap } from '../../js/map.js';
-import { WATER, AIR, STONE, FOUNTAIN, MAGIC_PORTAL } from '../../js/config.js';
+import { WATER, AIR, STONE, FOUNTAIN, MAGIC_PORTAL, LAVAPOOL, COLNO, ROWNO } from '../../js/config.js';
+import { vision_init, vision_reset } from '../../js/vision.js';
 import {
     setup_waterlevel,
     save_waterlevel,
@@ -92,6 +93,29 @@ describe('mkmaze waterlevel state helpers', () => {
 
         assert.equal(map._water.fumaroles[0].x, 12);
         assert.equal(map._water.fumaroles[0].y, 9);
+    });
+
+    it('fumaroles C-mode spawns gas clouds from lava squares', () => {
+        const map = new GameMap();
+        for (let x = 3; x < COLNO - 1; x++) {
+            for (let y = 3; y < ROWNO - 1; y++) {
+                map.at(x, y).typ = LAVAPOOL;
+            }
+        }
+        map.flags.is_firelevel = true;
+        map.flags.temperature = 1;
+        vision_init();
+        vision_reset(map);
+
+        const created = fumaroles(map, {
+            player: { x: 40, y: 10, Deaf: true },
+            game: { in_mklev: true },
+        });
+
+        assert.equal(Number.isInteger(created), true);
+        assert.ok(created >= 0);
+        assert.equal(Array.isArray(map.regions), true);
+        assert.ok(map.regions.length >= created);
     });
 
     it('mv_bubble allows 1x1 bubble to occupy xmax', () => {

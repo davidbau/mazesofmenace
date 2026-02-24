@@ -1386,3 +1386,15 @@ hard-won wisdom:
 - When hero transport lands onto an occupied square, displace that monster with `enexto()` before finalizing hero position to match C `mv_bubble` collision handling intent.
 - Direct `vision.block_point/unblock_point/recalc_block_point` calls can throw in map-only unit contexts; wrap those as best-effort hooks in map generators so tests without full FOV state remain deterministic.
 - `unsetup_waterlevel()` should clear runtime callback hooks (`heroPos`, `onHeroMoved`, `onVisionRecalc`) to avoid stale cross-level closures after level transitions.
+
+### mkmaze fumaroles C-path scaffold (2026-02-24)
+
+- `mkmaze.fumaroles()` should own a C-style runtime path (nmax sizing, fire/temperature adjustments, random lava-cell probes, gas-cloud size/damage rolls) rather than only accepting precomputed coordinates.
+- Keep backward-compatible list-input behavior for existing waterlevel deterministic tests while introducing the C-path as default runtime behavior.
+- `create_gas_cloud()` can throw in vision-lite generator/test contexts; `fumaroles()` should treat cloud placement as best-effort there so deterministic map/unit flows do not crash.
+
+### objnam helper-surface closure for codematch (2026-02-24)
+
+- `objnam.js` now owns explicit symbol wrappers for C-facing naming APIs (`xname`, `doname`, `erosion_matters`, `xname_flags`, `doname_base`) rather than relying on implicit re-exports from `mkobj.js`.
+- Added missing helper surfaces used by C mapping and wishing workflows: fruit lookup helpers (`fruit_from_name`, `fruitname`, `fruit_from_indx`), safe prompt builder (`safe_qbuf`), terrain/wallprop adapters (`dbterrainmesg`, `set_wallprop_from_str`), and staged readobjnam hooks (`readobjnam_init/preparse/parse_charges/postparse*`).
+- Kept behavior stable for current parity sessions by making helper additions non-invasive: readobjnam retains existing parser flow while exposing C-structured stages for future deeper parity work.

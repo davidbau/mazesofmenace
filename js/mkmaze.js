@@ -1,7 +1,7 @@
 // mkmaze.c core helpers and maze generation paths.
 
 import {
-    COLNO, ROWNO, STONE, HWALL, DOOR, CROSSWALL, LAVAWALL, IRONBARS, WATER, SDOOR,
+    COLNO, ROWNO, STONE, HWALL, DOOR, CROSSWALL, LAVAWALL, LAVAPOOL, IRONBARS, WATER, SDOOR,
     CORR, ROOM, AIR, CLOUD, MAGIC_PORTAL, VIBRATING_SQUARE, MKTRAP_MAZEFLAG,
     POOL, TLWALL, TRWALL, TUWALL, TDWALL, BRCORNER, BLCORNER, TRCORNER, TLCORNER,
     IS_WALL, IS_POOL, isok, PM_PRIEST as ROLE_PRIEST,
@@ -34,6 +34,9 @@ import {
 import { somex, somey, somexyspace } from './mkroom.js';
 import { QUEST, GNOMISH_MINES } from './special_levels.js';
 import { block_point, unblock_point, recalc_block_point } from './vision.js';
+import { create_gas_cloud, clear_heros_fault } from './region.js';
+import { Norep } from './pline.js';
+import { dist2 } from './hacklib.js';
 
 function at(map, x, y) {
     return map && map.at ? map.at(x, y) : null;
@@ -942,13 +945,72 @@ export function mkportal(map, x, y, _todnum, _todlevel) {
     return trap;
 }
 
-export function fumaroles(map, list = []) {
-    if (!map || !Array.isArray(list) || list.length === 0) return false;
-    const valid = list.filter((p) => isok(p?.x, p?.y) && map.at(p.x, p.y));
-    if (!valid.length) return false;
-    map._water = map._water || { bubbles: [], active: true };
-    map._water.fumaroles = valid.map((p) => ({ x: p.x, y: p.y }));
-    return true;
+export function fumaroles(map, arg = null) {
+    if (!map) return 0;
+
+    // Backward-compatible deterministic list mode used by existing water-level tests.
+    if (Array.isArray(arg)) {
+        if (!arg.length) return 0;
+        const valid = arg.filter((p) => isok(p?.x, p?.y) && map.at(p.x, p.y));
+        if (!valid.length) return 0;
+        map._water = map._water || { bubbles: [], active: true };
+        map._water.fumaroles = valid.map((p) => ({ x: p.x, y: p.y }));
+        return valid.length;
+    }
+
+    // C ref: mkmaze.c fumaroles() — spawn gas clouds from random lava squares.
+    const opts = (arg && typeof arg === 'object') ? arg : {};
+    const player = opts.player || null;
+    const game = opts.game || null;
+    const isFireLevel = (opts.isFireLevel !== undefined)
+        ? !!opts.isFireLevel
+        : !!map.flags?.is_firelevel;
+    const temperature = Number(map.flags?.temperature || 0);
+
+    let nmax = rn2(3);
+    let sizemin = 5;
+    if (isFireLevel) {
+        nmax++;
+        sizemin += 5;
+    }
+    if (temperature > 0) {
+        nmax++;
+        sizemin += 5;
+    }
+
+    let snd = false;
+    let loud = false;
+    let created = 0;
+    for (let n = nmax; n > 0; n--) {
+        const x = rn1(COLNO - 4, 3);
+        const y = rn1(ROWNO - 4, 3);
+        if (at(map, x, y)?.typ !== LAVAPOOL) continue;
+
+        let region = null;
+        try {
+            region = create_gas_cloud(x, y, rn1(10, sizemin), rn1(10, 5),
+                map, player, game);
+        } catch (err) {
+            // Allow only known vision-lite generator contexts to proceed.
+            const stack = String(err?.stack || '');
+            const visionTypeError = err instanceof TypeError && stack.includes('vision.js');
+            if (!visionTypeError) throw err;
+            region = null;
+        }
+        if (!region) continue;
+        clear_heros_fault(region);
+        snd = true;
+        created++;
+        if (player && Number.isInteger(player.x) && Number.isInteger(player.y)
+            && dist2(player.x, player.y, x, y) < 15) {
+            loud = true;
+        }
+    }
+
+    if (snd && !(player?.Deaf || player?.deaf)) {
+        Norep(`You hear a ${loud ? 'loud ' : ''}whoosh!`);
+    }
+    return created;
 }
 
 function for_each_bubble_cell(map, bubble, fn) {

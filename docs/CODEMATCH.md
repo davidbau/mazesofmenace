@@ -107,7 +107,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[N/A]` | nhmd4.c | — | MD4 hash implementation |
 | `[a]` | o_init.c | o_init.js | Object class initialization. Core shuffle functions aligned; setgemprobs, obj_shuffle_range, objdescr_is added; discovery functions in `discovery.js` |
 | `[a]` | objects.c | objects.js | Object data tables. objects.js is auto-generated from objects.h (same source as C); objects_globals_init implicit in module load |
-| `[~]` | objnam.c | objnam.js | Object naming (xname, doname, makeplural, readobjnam/wishing). All functions TODO; no JS object naming yet |
+| `[p]` | objnam.c | objnam.js | Object naming/wishing now covers xname/doname/makeplural/makesingular/readobjnam plus helper symbol set (fruit lookup, safe_qbuf, wallprop/terrain hooks, readobjnam pre/postparse wrappers). Remaining parity gaps: full wiz terrain wish behavior and precise C fruit-chain semantics |
 | `[~]` | options.c | options.js | Game options. JS: options.js (data), options_menu.js (handleSet UI) |
 | `[a]` | pager.c | pager.js | Text pager and look/describe commands. handleHelp/handleWhatis/handleWhatdoes/handleHistory/handlePrevMessages/handleViewMapPrompt/handleLook (dohelp/dowhatis/dowhatdoes/dohistory/doprev_message/doterrain). Game look functions (do_look, lookat, waterbody_name) TODO |
 | `[a]` | pickup.c | pickup.js | Picking up items. handlePickup/handleLoot/handlePay/handleTogglePickup (dopickup/doloot/dopay/dotogglepickup); pay is a stub; ~50 functions TODO |
@@ -2653,7 +2653,7 @@ No function symbols parsed from isaac64.c.
 | 166 | `extend_spine` | mkmaze.js:69 | Aligned |
 | 229 | `fix_wall_spines` | mkmaze.js `fix_wall_spines` | Aligned (re-export) |
 | 570 | `fixup_special` | mkmaze.js:771 | Partial — water/air setup, portal hook, medusa statue pass, cleric-quest/castle graveyard, Minetown ransacked booty, and town flag side effects ported; levregion driver remains in `sp_lev.js` |
-| 1479 | `fumaroles` | mkmaze.js:909 | Partial |
+| 1479 | `fumaroles` | mkmaze.js:948 | Partial — C-style nmax/size rolls, lava-square gas cloud spawning, and Deaf-aware whoosh message ported; vision-lite unit contexts still guard cloud creation |
 | 1354 | `get_level_extends` | dungeon.js `get_level_extends()` | Aligned |
 | 317 | `is_exclusion_zone` | mkmaze.js:149 | Aligned |
 | 70 | `is_solid` | mkmaze.js:48 | Aligned |
