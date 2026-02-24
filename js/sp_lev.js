@@ -1796,12 +1796,6 @@ function flipLevelRandom(extras = false) {
             room.lx = Math.min(lx, hx);
             room.hx = Math.max(lx, hx);
         }
-        if (room.region) {
-            room.region.x1 = room.lx;
-            room.region.y1 = room.ly;
-            room.region.x2 = room.hx;
-            room.region.y2 = room.hy;
-        }
     };
 
     const seenRooms = new Set();
@@ -3527,8 +3521,6 @@ export function build_room(opts = {}) {
         // Otherwise: default 1 (FILL_NORMAL)
         // Explicit filled=1 overrides to FILL_NORMAL in either case.
         needfill: (filled !== undefined ? filled : (levelState.inThemerooms ? 0 : FILL_NORMAL)),
-        // Lua compatibility: region property for accessing room bounds
-        region: { x1: roomX, y1: roomY, x2: roomX + roomW - 1, y2: roomY + roomH - 1 }
     };
 
     // Mark floor tiles for the room
