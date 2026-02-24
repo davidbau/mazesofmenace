@@ -2667,29 +2667,29 @@ No function symbols parsed from isaac64.c.
 | 1317 | `mazexy` | mkmaze.js:507 | Aligned |
 | 781 | `migr_booty_item` | - | Missing |
 | 718 | `migrate_orc` | - | Missing |
-| 1868 | `mk_bubble` | mkmaze.js:202 | Stub scaffold |
+| 1868 | `mk_bubble` | mkmaze.js:775 | Partial (stateful scaffold) |
 | 1459 | `mkportal` | mkmaze.js:181 | Aligned |
-| 1534 | `movebubbles` | mkmaze.js:188 | Stub (intentional) |
-| 1947 | `mv_bubble` | - | Missing |
+| 1534 | `movebubbles` | mkmaze.js:726 | Partial (stateful scaffold) |
+| 1947 | `mv_bubble` | mkmaze.js:795 | Partial (stateful scaffold) |
 | 297 | `okay` | mkmaze.js:102 | Aligned |
 | 1043 | `pick_vibrasquare_location` | mkmaze.js:537 | Aligned |
 | 356 | `place_lregion` | mkmaze.js:300 | Aligned |
 | 1098 | `populate_maze` | mkmaze.js:460 | Aligned |
 | 413 | `put_lregion_here` | mkmaze.js:238 | Aligned |
-| 1745 | `restore_waterlevel` | mkmaze.js:191 | Stub (intentional) |
-| 1718 | `save_waterlevel` | mkmaze.js:190 | Stub (intentional) |
+| 1745 | `restore_waterlevel` | mkmaze.js:745 | Partial (state save/restore scaffold) |
+| 1718 | `save_waterlevel` | mkmaze.js:741 | Partial (state save/restore scaffold) |
 | 77 | `set_levltyp` | mkmaze.js:53 | Aligned |
 | 125 | `set_levltyp_lit` | mkmaze.js:61 | Aligned |
-| 1797 | `set_wportal` | mkmaze.js:192 | Stub (intentional) |
-| 1807 | `setup_waterlevel` | mkmaze.js:193 | Stub scaffold |
+| 1797 | `set_wportal` | mkmaze.js:750 | Partial (portal-state scaffold) |
+| 1807 | `setup_waterlevel` | mkmaze.js:756 | Partial (stateful scaffold) |
 | 749 | `shiny_orc_stuff` | - | Missing |
 | 800 | `stolen_booty` | - | Missing |
-| 1855 | `unsetup_waterlevel` | mkmaze.js:198 | Stub scaffold |
+| 1855 | `unsetup_waterlevel` | mkmaze.js:767 | Partial (stateful scaffold) |
 | 1233 | `walkfrom` | mkmaze.js:232 | Partial |
 | 1280 | `walkfrom` | mkmaze.js:232 | Partial |
 | 198 | `wall_cleanup` | mkmaze.js:84 | Aligned |
 | 290 | `wallification` | mkmaze.js `wallification` | Aligned (re-export) |
-| 1684 | `water_friction` | mkmaze.js:189 | Stub (intentional) |
+| 1684 | `water_friction` | mkmaze.js:737 | Partial (hero-bubble check scaffold) |
 
 ### mkobj.c -> mkobj.js
 | C Line | C Function | JS Line | Alignment |

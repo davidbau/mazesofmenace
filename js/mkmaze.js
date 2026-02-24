@@ -715,19 +715,61 @@ export function mkportal(map, x, y, _todnum, _todlevel) {
     return trap;
 }
 
-export function fumaroles() { return false; }
-export function movebubbles() { return false; }
-export function water_friction() { return 0; }
-export function save_waterlevel() { return null; }
-export function restore_waterlevel() { return false; }
-export function set_wportal() { return false; }
+export function fumaroles(map, list = []) {
+    if (!map || !Array.isArray(list) || list.length === 0) return false;
+    const valid = list.filter((p) => isok(p?.x, p?.y) && map.at(p.x, p.y));
+    if (!valid.length) return false;
+    map._water = map._water || { bubbles: [], active: true };
+    map._water.fumaroles = valid.map((p) => ({ x: p.x, y: p.y }));
+    return true;
+}
+export function movebubbles(map, dx = 0, dy = 0) {
+    const water = map?._water;
+    if (!water?.active || !Array.isArray(water.bubbles)) return false;
+    if (!Number.isInteger(dx) || !Number.isInteger(dy)) return false;
+    for (const b of water.bubbles) {
+        if (!b || !Number.isInteger(b.x) || !Number.isInteger(b.y)) continue;
+        b.x += dx;
+        b.y += dy;
+    }
+    return true;
+}
+export function water_friction(map, pos = null) {
+    if (!pos || !map?._water?.active) return 0;
+    return maybe_adjust_hero_bubble(map, pos) ? 1 : 0;
+}
+export function save_waterlevel(map) {
+    if (!map?._water) return null;
+    return JSON.parse(JSON.stringify(map._water));
+}
+export function restore_waterlevel(map, saved = null) {
+    if (!map || !saved || typeof saved !== 'object') return false;
+    map._water = JSON.parse(JSON.stringify(saved));
+    return true;
+}
+export function set_wportal(map, x = null, y = null, dst = null) {
+    if (!map || !isok(x, y)) return false;
+    map._water = map._water || { bubbles: [], active: true };
+    map._water.portal = { x, y, dst: dst || null };
+    return true;
+}
 export function setup_waterlevel(map, args = {}) {
     if (!map) return false;
-    map._water = map._water || { bubbles: [], active: true, ...args };
+    map._water = {
+        bubbles: [],
+        active: true,
+        heroBubble: null,
+        portal: null,
+        ...args,
+    };
     return true;
 }
 export function unsetup_waterlevel(map) {
-    if (map && map._water) map._water = null;
+    if (map && map._water) {
+        map._water.active = false;
+        map._water.bubbles = [];
+        map._water.heroBubble = null;
+    }
     return true;
 }
 export function mk_bubble(map, x, y, n) {
@@ -750,7 +792,13 @@ export function maybe_adjust_hero_bubble(map, heroPos = null) {
     map._water.heroBubble = bubble;
     return true;
 }
-export function mv_bubble() { return false; }
+export function mv_bubble(map, bubble, dx = 0, dy = 0) {
+    if (!map || !bubble || !Number.isInteger(dx) || !Number.isInteger(dy)) return false;
+    if (!Number.isInteger(bubble.x) || !Number.isInteger(bubble.y)) return false;
+    bubble.x += dx;
+    bubble.y += dy;
+    return true;
+}
 
 // C ref: mkmaze.c walkfrom()
 export function walkfrom(map, x, y, ftyp = CROSSWALL, btyp = STONE) {
