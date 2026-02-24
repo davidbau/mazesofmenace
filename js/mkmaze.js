@@ -3,6 +3,7 @@
 import {
     COLNO, ROWNO, STONE, HWALL, DOOR, CROSSWALL, LAVAWALL, IRONBARS, WATER, SDOOR,
     CORR, ROOM, AIR, MAGIC_PORTAL, VIBRATING_SQUARE, MKTRAP_MAZEFLAG,
+    POOL, TLWALL, TRWALL, TUWALL, TDWALL, BRCORNER, BLCORNER, TRCORNER, TLCORNER,
     IS_WALL, isok,
 } from './config.js';
 import { rn1, rn2, rnd } from './rng.js';
@@ -712,11 +713,82 @@ export function baalz_fixup(map, state = {}) {
         }
     }
     const inY2 = ((lastY > inY1) ? lastY : ROWNO) - 1;
-    if (inX1 <= inX2 && inY1 <= inY2) {
-        wallify_region(map, inX1, inY1, inX2, inY2);
+    let delX1 = COLNO, delY1 = ROWNO, delX2 = 0, delY2 = 0;
+    for (let x = inX1; x <= inX2; x++) {
+        for (let y = inY1; y <= inY2; y++) {
+            const loc = at(map, x, y);
+            if (!loc) continue;
+            if (loc.typ === POOL) {
+                loc.typ = HWALL;
+                if (delX1 === COLNO) {
+                    delX1 = x;
+                    delY1 = y;
+                } else {
+                    delX2 = x;
+                    delY2 = y;
+                }
+            } else if (loc.typ === IRONBARS) {
+                const left = at(map, x - 1, y);
+                const right = at(map, x + 1, y);
+                if (left && left.nondiggable) {
+                    left.nondiggable = false;
+                    const left2 = at(map, x - 2, y);
+                    if (left2) left2.nondiggable = false;
+                } else if (right && right.nondiggable) {
+                    right.nondiggable = false;
+                    const right2 = at(map, x + 2, y);
+                    if (right2) right2.nondiggable = false;
+                }
+            }
+        }
+    }
+    const wx1 = Math.max(inX1 - 2, 1);
+    const wy1 = Math.max(inY1 - 2, 0);
+    const wx2 = Math.min(inX2 + 2, COLNO - 1);
+    const wy2 = Math.min(inY2 + 2, ROWNO - 1);
+    map._wallifyProtectedArea = { x1: inX1, y1: inY1, x2: inX2, y2: inY2 };
+    try {
+        wallify_region(map, wx1, wy1, wx2, wy2);
+    } finally {
+        delete map._wallifyProtectedArea;
+    }
+    let x = delX1, y = delY1;
+    if (x >= 0 && x < COLNO && y >= 0 && y < ROWNO) {
+        const loc = at(map, x, y);
+        const down = at(map, x, y + 1);
+        if (loc && (loc.typ === TLWALL || loc.typ === TRWALL) && down && down.typ === TUWALL) {
+            loc.typ = (loc.typ === TLWALL) ? BRCORNER : BLCORNER;
+            down.typ = HWALL;
+            const m = map.monsterAt?.(x, y);
+            if (m) {
+                const pos = enexto(x, y, map);
+                if (pos) {
+                    m.mx = pos.x;
+                    m.my = pos.y;
+                }
+            }
+        }
+    }
+    x = delX2;
+    y = delY2;
+    if (x >= 0 && x < COLNO && y >= 0 && y < ROWNO) {
+        const loc = at(map, x, y);
+        const up = at(map, x, y - 1);
+        if (loc && (loc.typ === TLWALL || loc.typ === TRWALL) && up && up.typ === TDWALL) {
+            loc.typ = (loc.typ === TLWALL) ? TRCORNER : TLCORNER;
+            up.typ = HWALL;
+            const m = map.monsterAt?.(x, y);
+            if (m) {
+                const pos = enexto(x, y, map);
+                if (pos) {
+                    m.mx = pos.x;
+                    m.my = pos.y;
+                }
+            }
+        }
     }
     map._specialFixups = map._specialFixups || {};
-    map._specialFixups.baalz = { inX1, inX2, inY1, inY2, ...state };
+    map._specialFixups.baalz = { inX1, inX2, inY1, inY2, delX1, delY1, delX2, delY2, ...state };
     return true;
 }
 export function fixup_special(map, opts = {}) {
@@ -912,6 +984,16 @@ export function setup_waterlevel(map, args = {}) {
         xskip,
         yskip,
         ...args,
+    };
+    map._waterLevelSetup = {
+        xmin,
+        ymin,
+        xmax,
+        ymax,
+        xskip,
+        yskip,
+        bubbles: bubbles.map((b) => ({ x: b.x, y: b.y, n: b.n })),
+        isWaterLevel,
     };
     return true;
 }

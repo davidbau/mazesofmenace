@@ -17,7 +17,11 @@ import { GameMap, FILL_NORMAL } from './map.js';
 import { rn2, rnd, rn1, getRngCallCount, advanceRngRaw, pushRngLogEntry } from './rng.js';
 import { mksobj, mkobj, mkcorpstat, set_corpsenm, setLevelDepth, weight } from './mkobj.js';
 import { create_room, makecorridors, create_corridor, init_rect, rnd_rect, get_rect, split_rects, check_room, add_doors_to_room, link_doors_rooms, update_rect_pool_for_room, bound_digging, mineralize as dungeonMineralize, fill_ordinary_room, fill_special_room, isMtInitialized, setMtInitialized, wallification as dungeonWallification, wallify_region as dungeonWallifyRegion, fix_wall_spines, set_wall_state, mktrap, deltrap, enexto, sp_create_door, floodFillAndRegister, repair_irregular_room_boundaries, resolveBranchPlacementForLevel, induced_align, DUNGEON_ALIGN_BY_DNUM, enterMklevContext, leaveMklevContext } from './dungeon.js';
-import { place_lregion } from './mkmaze.js';
+import {
+    place_lregion,
+    setup_waterlevel as mkmaze_setup_waterlevel,
+    baalz_fixup as mkmaze_baalz_fixup,
+} from './mkmaze.js';
 import { create_subroom } from './mklev.js';
 import { somexy } from './mkroom.js';
 import { make_engr_at, del_engr } from './engrave.js';
@@ -1072,38 +1076,7 @@ function canPlaceStair(direction) {
 // We mirror base terrain conversion plus RNG-visible bubble seeding scaffold.
 function setup_waterlevel_parity(map, isWaterLevel) {
     if (!map) return;
-    map.flags.hero_memory = false;
-
-    const baseTyp = isWaterLevel ? WATER : AIR;
-    for (let x = 1; x < COLNO; x++) {
-        for (let y = 0; y < ROWNO; y++) {
-            const loc = map.at(x, y);
-            if (loc && loc.typ === STONE) {
-                loc.typ = baseTyp;
-            }
-        }
-    }
-
-    // C hardcoded bounds from setup_waterlevel().
-    const xmin = 3;
-    const ymin = 1;
-    const xmax = Math.min(78, (COLNO - 1) - 1);
-    const ymax = Math.min(20, (ROWNO - 1));
-
-    const xskip = isWaterLevel ? (10 + rn2(10)) : (6 + rn2(4));
-    const yskip = isWaterLevel ? (4 + rn2(4)) : (3 + rn2(3));
-
-    // Keep seeded bubble descriptors for later movement parity work.
-    const bubbles = [];
-    for (let x = xmin; x <= xmax; x += xskip) {
-        for (let y = ymin; y <= ymax; y += yskip) {
-            const n = rn2(7); // C mk_bubble(..., rn2(7))
-            if (x < xmax && y < ymax) {
-                bubbles.push({ x, y, n });
-            }
-        }
-    }
-    map._waterLevelSetup = { xmin, ymin, xmax, ymax, xskip, yskip, bubbles, isWaterLevel };
+    mkmaze_setup_waterlevel(map, { isWaterLevel });
 }
 
 function fixupSpecialLevel() {
@@ -1371,114 +1344,7 @@ function medusa_fixup(map) {
 // Preserve the beetle-leg wall geometry by wallifying with an inarea guard.
 function baalz_fixup(map) {
     if (!map) return;
-
-    const midY = Math.trunc(ROWNO / 2);
-    let lastX = 0;
-    let inX1 = COLNO;
-    for (let x = 0; x < COLNO; x++) {
-        const loc = map.at(x, midY);
-        if (loc && loc.nondiggable) {
-            if (!lastX) inX1 = x + 1;
-            lastX = x;
-        }
-    }
-    const inX2 = ((lastX > inX1) ? lastX : COLNO) - 1;
-
-    let lastY = 0;
-    let inY1 = ROWNO;
-    const probeX = Math.min(Math.max(inX1, 0), COLNO - 1);
-    for (let y = 0; y < ROWNO; y++) {
-        const loc = map.at(probeX, y);
-        if (loc && loc.nondiggable) {
-            if (!lastY) inY1 = y + 1;
-            lastY = y;
-        }
-    }
-    const inY2 = ((lastY > inY1) ? lastY : ROWNO) - 1;
-
-    let delX1 = COLNO, delY1 = ROWNO, delX2 = 0, delY2 = 0;
-
-    for (let x = inX1; x <= inX2; x++) {
-        for (let y = inY1; y <= inY2; y++) {
-            const loc = map.at(x, y);
-            if (!loc) continue;
-            if (loc.typ === POOL) {
-                loc.typ = HWALL;
-                if (delX1 === COLNO) {
-                    delX1 = x;
-                    delY1 = y;
-                } else {
-                    delX2 = x;
-                    delY2 = y;
-                }
-            } else if (loc.typ === IRONBARS) {
-                const left = map.at(x - 1, y);
-                const right = map.at(x + 1, y);
-                if (left && left.nondiggable) {
-                    left.nondiggable = false;
-                    const left2 = map.at(x - 2, y);
-                    if (left2) left2.nondiggable = false;
-                } else if (right && right.nondiggable) {
-                    right.nondiggable = false;
-                    const right2 = map.at(x + 2, y);
-                    if (right2) right2.nondiggable = false;
-                }
-            }
-        }
-    }
-
-    const wx1 = Math.max(inX1 - 2, 1);
-    const wy1 = Math.max(inY1 - 2, 0);
-    const wx2 = Math.min(inX2 + 2, COLNO - 1);
-    const wy2 = Math.min(inY2 + 2, ROWNO - 1);
-
-    // Temporarily enable bughack inarea semantics for wall_cleanup/fix_wall_spines.
-    map._wallifyProtectedArea = { x1: inX1, y1: inY1, x2: inX2, y2: inY2 };
-    try {
-        dungeonWallifyRegion(map, wx1, wy1, wx2, wy2);
-    } finally {
-        delete map._wallifyProtectedArea;
-    }
-
-    // Rear-leg corrective tweak after wallification.
-    let x = delX1, y = delY1;
-    if (x >= 0 && x < COLNO && y >= 0 && y < ROWNO) {
-        const loc = map.at(x, y);
-        const down = map.at(x, y + 1);
-        if (loc && (loc.typ === TLWALL || loc.typ === TRWALL)
-            && down && down.typ === TUWALL) {
-            loc.typ = (loc.typ === TLWALL) ? BRCORNER : BLCORNER;
-            down.typ = HWALL;
-            const m = map.monsterAt(x, y);
-            if (m) {
-                const pos = enexto(x, y, map);
-                if (pos) {
-                    m.mx = pos.x;
-                    m.my = pos.y;
-                }
-            }
-        }
-    }
-
-    x = delX2;
-    y = delY2;
-    if (x >= 0 && x < COLNO && y >= 0 && y < ROWNO) {
-        const loc = map.at(x, y);
-        const up = map.at(x, y - 1);
-        if (loc && (loc.typ === TLWALL || loc.typ === TRWALL)
-            && up && up.typ === TDWALL) {
-            loc.typ = (loc.typ === TLWALL) ? TRCORNER : TLCORNER;
-            up.typ = HWALL;
-            const m = map.monsterAt(x, y);
-            if (m) {
-                const pos = enexto(x, y, map);
-                if (pos) {
-                    m.mx = pos.x;
-                    m.my = pos.y;
-                }
-            }
-        }
-    }
+    mkmaze_baalz_fixup(map);
 }
 
 /**

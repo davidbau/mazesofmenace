@@ -1264,3 +1264,9 @@ hard-won wisdom:
 - For selection semantics already implemented in `selection.*`, exposing C-name entrypoints (`l_selection_*`, `params_sel_2coords`) in `sp_lev.js` is a low-risk way to collapse CODEMATCH "missing" rows without adding cross-file forwarders.
 - Keep C-name wrappers thin and route all behavior through the same underlying selection operations (`intersect/union/xor/sub`, `grow`, `floodfill`, `match`) to avoid split logic paths.
 - `nhlua` table helpers (`get_table_boolean/int/str/option` and *_opt variants) should be centralized with explicit coercion/default behavior so des parser callsites share consistent semantics.
+
+### mkmaze ownership consolidation for water/baalz helpers (2026-02-24)
+
+- `sp_lev` special-fixup should call `mkmaze` ownership functions for water setup and Baalz wall-geometry (`setup_waterlevel`, `baalz_fixup`) instead of maintaining duplicate logic in two files.
+- Keep thin local wrappers in `sp_lev` only where needed for existing call structure, but route implementation to `mkmaze` to avoid drift.
+- Preserve existing parity-visible state fields (`_waterLevelSetup`) when moving logic, so targeted map/special replay checks stay stable while ownership is cleaned up.
