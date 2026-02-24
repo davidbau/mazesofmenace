@@ -118,6 +118,9 @@ export function okay(x, y, dir, map = null) {
         : [0, -1];
     const tx = x + 2 * dx;
     const ty = y + 2 * dy;
+    const xMax = Number.isInteger(map._mazeMaxX) ? map._mazeMaxX : (COLNO - 1);
+    const yMax = Number.isInteger(map._mazeMaxY) ? map._mazeMaxY : (ROWNO - 1);
+    if (tx < 3 || ty < 3 || tx > xMax || ty > yMax) return false;
     if (!isok(tx, ty)) return false;
     return at(map, x + dx, y + dy)?.typ === STONE
         && at(map, tx, ty)?.typ === STONE;
@@ -281,8 +284,8 @@ export function create_maze(map, corrwid, wallthick, rmdeadends) {
     const defaultMaxX = (COLNO - 1);
     const defaultMaxY = (ROWNO - 1);
     // C ref: save/restore gx.x_maze_max/gy.y_maze_max around temporary small-maze bounds.
-    const tmpMaxX = Number.isInteger(map?._mazeMaxX) ? map._mazeMaxX : defaultMaxX;
-    const tmpMaxY = Number.isInteger(map?._mazeMaxY) ? map._mazeMaxY : defaultMaxY;
+    const savedMaxX = Number.isInteger(map?._mazeMaxX) ? map._mazeMaxX : defaultMaxX;
+    const savedMaxY = Number.isInteger(map?._mazeMaxY) ? map._mazeMaxY : defaultMaxY;
 
     if (corrwid === -1) corrwid = rnd(4);
     if (wallthick === -1) wallthick = rnd(4) - corrwid;
@@ -292,11 +295,13 @@ export function create_maze(map, corrwid, wallthick, rmdeadends) {
     else if (corrwid > 5) corrwid = 5;
 
     const scale = corrwid + wallthick;
-    const rdx = Math.trunc(tmpMaxX / scale);
-    const rdy = Math.trunc(tmpMaxY / scale);
+    const rdx = Math.trunc(savedMaxX / scale);
+    const rdy = Math.trunc(savedMaxY / scale);
     const smallMaxX = rdx * 2;
     const smallMaxY = rdy * 2;
     const carveType = map.flags?.corrmaze ? CORR : ROOM;
+    map._mazeMaxX = smallMaxX;
+    map._mazeMaxY = smallMaxY;
 
     if (map.flags?.corrmaze) {
         for (let x = 2; x < smallMaxX; x++) {
@@ -314,104 +319,20 @@ export function create_maze(map, corrwid, wallthick, rmdeadends) {
         }
     }
 
-    const startRangeX = Math.max(1, (smallMaxX >> 1) - 1);
-    const startRangeY = Math.max(1, (smallMaxY >> 1) - 1);
+    const startRangeX = Math.max(1, Math.trunc((smallMaxX - 3) / 2) + 1);
+    const startRangeY = Math.max(1, Math.trunc((smallMaxY - 3) / 2) + 1);
     const startX = 3 + 2 * rn2(startRangeX);
     const startY = 3 + 2 * rn2(startRangeY);
-    const stack = [{ x: Math.min(startX, smallMaxX - 1), y: Math.min(startY, smallMaxY - 1) }];
-    const dirs = [{ dx: 0, dy: -1 }, { dx: 1, dy: 0 }, { dx: 0, dy: 1 }, { dx: -1, dy: 0 }];
-    const inSmall = (x, y) => x >= 3 && y >= 3 && x <= smallMaxX && y <= smallMaxY;
-    const isSolid = (x, y) => {
-        const loc = map.at(x, y);
-        return !!loc && loc.typ === STONE;
-    };
-    while (stack.length) {
-        const cur = stack[stack.length - 1];
-        const here = map.at(cur.x, cur.y);
-        if (here && here.typ !== DOOR && here.typ !== SDOOR) {
-            here.typ = carveType;
-            here.flags = 0;
-        }
-        const choices = [];
-        for (const d of dirs) {
-            const nx = cur.x + d.dx * 2;
-            const ny = cur.y + d.dy * 2;
-            if (!inSmall(nx, ny) || !isSolid(nx, ny)) continue;
-            choices.push(d);
-        }
-        if (!choices.length) {
-            stack.pop();
-            continue;
-        }
-        const d = choices[rn2(choices.length)];
-        const mx = cur.x + d.dx;
-        const my = cur.y + d.dy;
-        const nx = cur.x + d.dx * 2;
-        const ny = cur.y + d.dy * 2;
-        const mid = map.at(mx, my);
-        const next = map.at(nx, ny);
-        if (mid && mid.typ !== DOOR && mid.typ !== SDOOR) {
-            mid.typ = carveType;
-            mid.flags = 0;
-        }
-        if (next && next.typ !== DOOR && next.typ !== SDOOR) {
-            next.typ = carveType;
-            next.flags = 0;
-        }
-        stack.push({ x: nx, y: ny });
-    }
+    walkfrom(
+        map,
+        Math.min(startX, smallMaxX - 1),
+        Math.min(startY, smallMaxY - 1),
+        carveType,
+        STONE
+    );
 
     if (rmdeadends) {
-        // C ref: mkmaze.c maze_remove_deadends()
-        const mazeInbounds = (x, y) => (
-            x >= 2 && y >= 2 && x < smallMaxX && y < smallMaxY && isok(x, y)
-        );
-        const accessible = (x, y) => {
-            const loc = map.at(x, y);
-            return !!loc && loc.typ >= DOOR; // C ACCESSIBLE(typ)
-        };
-        const mzMove = (x, y, dir) => {
-            switch (dir) {
-            case 0: return { x, y: y - 1 };
-            case 1: return { x: x + 1, y };
-            case 2: return { x, y: y + 1 };
-            case 3: return { x: x - 1, y };
-            default: return { x, y };
-            }
-        };
-        for (let x = 2; x < smallMaxX; x++) {
-            for (let y = 2; y < smallMaxY; y++) {
-                if (!(x % 2) || !(y % 2)) continue;
-                if (!accessible(x, y)) continue;
-                const dirok = [];
-                let idx2 = 0;
-                for (let dir = 0; dir < 4; dir++) {
-                    let p1 = mzMove(x, y, dir);
-                    if (!mazeInbounds(p1.x, p1.y)) {
-                        idx2++;
-                        continue;
-                    }
-                    let p2 = mzMove(x, y, dir);
-                    p2 = mzMove(p2.x, p2.y, dir);
-                    if (!mazeInbounds(p2.x, p2.y)) {
-                        idx2++;
-                        continue;
-                    }
-                    if (!accessible(p1.x, p1.y) && accessible(p2.x, p2.y)) {
-                        dirok.push(dir);
-                        idx2++;
-                    }
-                }
-                if (idx2 >= 3 && dirok.length > 0) {
-                    const dir = dirok[rn2(dirok.length)];
-                    // C ref: mkmaze.c maze_remove_deadends():
-                    // carve the immediate neighboring wall, not the far room node.
-                    const dest = mzMove(x, y, dir);
-                    const loc = map.at(dest.x, dest.y);
-                    if (loc) loc.typ = carveType;
-                }
-            }
-        }
+        maze_remove_deadends(map, carveType);
     }
 
     // C scales the reduced maze up when scale > 2.
@@ -419,23 +340,23 @@ export function create_maze(map, corrwid, wallthick, rmdeadends) {
         // Copy only the C-backed source rectangle. Any source outside this
         // coverage must not influence writes during scaling.
         const tmp = Array.from({ length: COLNO }, () => Array(ROWNO));
-        for (let x = 1; x < tmpMaxX; x++) {
-            for (let y = 1; y < tmpMaxY; y++) {
+        for (let x = 1; x < savedMaxX; x++) {
+            for (let y = 1; y < savedMaxY; y++) {
                 tmp[x][y] = map.at(x, y)?.typ ?? STONE;
             }
         }
         let rx = 2;
         let x = 2;
-        while (rx < tmpMaxX) {
+        while (rx < savedMaxX) {
             const mx = (x % 2) ? corrwid : (x === 2 || x === rdx * 2) ? 1 : wallthick;
             let ry = 2;
             let y = 2;
-            while (ry < tmpMaxY) {
+            while (ry < savedMaxY) {
                 const my = (y % 2) ? corrwid : (y === 2 || y === rdy * 2) ? 1 : wallthick;
                 for (let dx = 0; dx < mx; dx++) {
                     for (let dy = 0; dy < my; dy++) {
-                        if (rx + dx >= tmpMaxX || ry + dy >= tmpMaxY) break;
-                        if (!(x >= 1 && x < tmpMaxX && y >= 1 && y < tmpMaxY)) continue;
+                        if (rx + dx >= savedMaxX || ry + dy >= savedMaxY) break;
+                        if (!(x >= 1 && x < savedMaxX && y >= 1 && y < savedMaxY)) continue;
                         const srcTyp = tmp[x][y];
                         if (srcTyp === undefined) continue;
                         const loc = map.at(rx + dx, ry + dy);
@@ -451,8 +372,8 @@ export function create_maze(map, corrwid, wallthick, rmdeadends) {
     }
 
     // C restores gx/gy bounds after create_maze().
-    map._mazeMaxX = tmpMaxX;
-    map._mazeMaxY = tmpMaxY;
+    map._mazeMaxX = savedMaxX;
+    map._mazeMaxY = savedMaxY;
 }
 
 // C ref: mkmaze.c populate_maze
@@ -466,23 +387,28 @@ export function populate_maze(map, depth) {
 
     for (let i = rn1(8, 11); i > 0; i--) {
         const pos = mazexy(map);
+        if (!pos) continue;
         const oclass = rn2(2) ? GEM_CLASS : RANDOM_CLASS;
         placeObjAt(mkobj(oclass, true), pos.x, pos.y);
     }
     for (let i = rn1(10, 2); i > 0; i--) {
         const pos = mazexy(map);
+        if (!pos) continue;
         placeObjAt(mksobj(BOULDER, true, false), pos.x, pos.y);
     }
     for (let i = rn2(3); i > 0; i--) {
         const pos = mazexy(map);
+        if (!pos) continue;
         makemon(PM_MINOTAUR, pos.x, pos.y, NO_MM_FLAGS, depth, map);
     }
     for (let i = rn1(5, 7); i > 0; i--) {
         const pos = mazexy(map);
+        if (!pos) continue;
         makemon(null, pos.x, pos.y, NO_MM_FLAGS, depth, map);
     }
     for (let i = rn1(6, 7); i > 0; i--) {
         const pos = mazexy(map);
+        if (!pos) continue;
         const mul = rnd(Math.max(Math.floor(30 / Math.max(12 - depth, 2)), 1));
         const amount = 1 + rnd(depth + 2) * mul;
         const gold = mksobj(GOLD_PIECE, true, false);
@@ -499,7 +425,59 @@ export function populate_maze(map, depth) {
 
 // C ref: mkmaze.c maze_remove_deadends
 export function maze_remove_deadends(map, typ) {
-    return create_maze(map, 1, 1, !!typ);
+    if (!map || !map.at) return false;
+    const ftyp = Number.isInteger(typ) ? typ : (map.flags?.corrmaze ? CORR : ROOM);
+    const xMax = Number.isInteger(map._mazeMaxX) ? map._mazeMaxX : (COLNO - 1);
+    const yMax = Number.isInteger(map._mazeMaxY) ? map._mazeMaxY : (ROWNO - 1);
+    const accessible = (x, y) => {
+        const loc = map.at(x, y);
+        return !!loc && loc.typ >= DOOR; // C ACCESSIBLE(typ)
+    };
+    const mzMove = (x, y, dir) => {
+        switch (dir) {
+        case 0: return { x, y: y - 1 };
+        case 1: return { x: x + 1, y };
+        case 2: return { x, y: y + 1 };
+        case 3: return { x: x - 1, y };
+        default: return { x, y };
+        }
+    };
+    const mazeInbounds = (x, y) => (
+        x >= 2 && y >= 2 && x < xMax && y < yMax && isok(x, y)
+    );
+
+    for (let x = 2; x < xMax; x++) {
+        for (let y = 2; y < yMax; y++) {
+            if (!(x % 2) || !(y % 2)) continue;
+            if (!accessible(x, y)) continue;
+            const dirok = [];
+            let idx2 = 0;
+            for (let dir = 0; dir < 4; dir++) {
+                let p1 = mzMove(x, y, dir);
+                if (!mazeInbounds(p1.x, p1.y)) {
+                    idx2++;
+                    continue;
+                }
+                let p2 = mzMove(x, y, dir);
+                p2 = mzMove(p2.x, p2.y, dir);
+                if (!mazeInbounds(p2.x, p2.y)) {
+                    idx2++;
+                    continue;
+                }
+                if (!accessible(p1.x, p1.y) && accessible(p2.x, p2.y)) {
+                    dirok.push(dir);
+                    idx2++;
+                }
+            }
+            if (idx2 >= 3 && dirok.length > 0) {
+                const dir = dirok[rn2(dirok.length)];
+                const dest = mzMove(x, y, dir);
+                const loc = map.at(dest.x, dest.y);
+                if (loc) loc.typ = ftyp;
+            }
+        }
+    }
+    return true;
 }
 
 // C ref: mkmaze.c mazexy
@@ -1079,19 +1057,16 @@ export function mv_bubble(map, bubble, dx = 0, dy = 0) {
 // C ref: mkmaze.c walkfrom()
 export function walkfrom(map, x, y, ftyp = CROSSWALL, btyp = STONE) {
     if (!map || !isok(x, y)) return;
+    if (btyp !== STONE) {
+        const loc = at(map, x, y);
+        if (!loc || loc.typ !== btyp) return;
+    }
     const dirs = [
-        { dx: 0, dy: -1 },
-        { dx: 1, dy: 0 },
-        { dx: 0, dy: 1 },
-        { dx: -1, dy: 0 },
+        { dx: 0, dy: -1, dir: 6 }, // N
+        { dx: 1, dy: 0, dir: 0 },  // E
+        { dx: 0, dy: 1, dir: 2 },  // S
+        { dx: -1, dy: 0, dir: 4 }, // W
     ];
-    const maxX = COLNO - 2;
-    const maxY = ROWNO - 2;
-    const inBounds = (tx, ty) => tx >= 3 && ty >= 3 && tx <= maxX && ty <= maxY;
-    const isBlocked = (tx, ty) => {
-        const loc = at(map, tx, ty);
-        return !loc || loc.typ !== btyp;
-    };
     const carve = (tx, ty) => {
         const loc = at(map, tx, ty);
         if (loc) loc.typ = ftyp;
@@ -1100,12 +1075,9 @@ export function walkfrom(map, x, y, ftyp = CROSSWALL, btyp = STONE) {
     carve(x, y);
     while (true) {
         const avail = [];
-        for (let i = 0; i < 4; i++) {
+        for (let i = 0; i < dirs.length; i++) {
             const d = dirs[i];
-            const nx = x + d.dx * 2;
-            const ny = y + d.dy * 2;
-            if (!inBounds(nx, ny)) continue;
-            if (isBlocked(nx, ny)) continue;
+            if (!okay(x, y, d.dir, map)) continue;
             avail.push(i);
         }
         if (!avail.length) return;

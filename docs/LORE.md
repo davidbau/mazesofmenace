@@ -1276,3 +1276,9 @@ hard-won wisdom:
 - `save_waterlevel`/`restore_waterlevel` should snapshot and restore all parity-relevant water scaffolding (`_water`, `_waterLevelSetup`, and `flags.hero_memory`), not just the bubble array.
 - Keep backward compatibility for earlier save format (raw `_water` object) so ongoing replay/debug workflows do not break when the saved payload schema evolves.
 - `unsetup_waterlevel` should clear active runtime movers (bubbles, hero bubble, fumaroles, portal) while keeping deterministic state handling explicit.
+
+### mkmaze walkfrom/deadend ownership tightening (2026-02-24)
+
+- `create_maze` should use `walkfrom()` as the actual carve engine and rely on `okay()` with current maze bounds, instead of a separate iterative DFS path with different RNG shape.
+- `maze_remove_deadends` should operate in-place on an already carved maze; re-entering `create_maze()` from `maze_remove_deadends()` is structurally wrong and changes behavior.
+- In `sp_lev`, `fixupSpecialLevel` should call `mkmaze` ownership functions (`setup_waterlevel`, `baalz_fixup`) directly rather than going through local forwarding wrappers.

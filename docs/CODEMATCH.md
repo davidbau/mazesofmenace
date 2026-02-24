@@ -2649,7 +2649,7 @@ No function symbols parsed from isaac64.c.
 | 341 | `bad_location` | mkmaze.js:194 | Aligned |
 | 1441 | `bound_digging` | dungeon.js `bound_digging()` | Aligned |
 | 708 | `check_ransacked` | mkmaze.js:808 | Partial |
-| 951 | `create_maze` | mkmaze.js:281 | Aligned |
+| 951 | `create_maze` | mkmaze.js:283 | Aligned |
 | 166 | `extend_spine` | mkmaze.js:69 | Aligned |
 | 229 | `fix_wall_spines` | mkmaze.js `fix_wall_spines` | Aligned (re-export) |
 | 570 | `fixup_special` | mkmaze.js:794 | Partial — water/air setup and portal hook path ported; full C matrix pending |
@@ -2663,7 +2663,7 @@ No function symbols parsed from isaac64.c.
 | 1924 | `maybe_adjust_hero_bubble` | mkmaze.js:1038 | Partial |
 | 309 | `maze0xy` | mkmaze.js:116 | Aligned |
 | 895 | `maze_inbounds` | mkmaze.js:177 | Aligned |
-| 905 | `maze_remove_deadends` | mkmaze.js:502 | Partial (uses create_maze deadend-removal path) |
+| 905 | `maze_remove_deadends` | mkmaze.js:422 | Aligned |
 | 1317 | `mazexy` | mkmaze.js:507 | Aligned |
 | 781 | `migr_booty_item` | mkmaze.js:851 | Aligned |
 | 718 | `migrate_orc` | mkmaze.js:878 | Aligned |
@@ -2685,8 +2685,8 @@ No function symbols parsed from isaac64.c.
 | 749 | `shiny_orc_stuff` | mkmaze.js:838 | Aligned |
 | 800 | `stolen_booty` | mkmaze.js:866 | Aligned |
 | 1855 | `unsetup_waterlevel` | mkmaze.js:1020 | Partial |
-| 1233 | `walkfrom` | mkmaze.js:232 | Partial |
-| 1280 | `walkfrom` | mkmaze.js:232 | Partial |
+| 1233 | `walkfrom` | mkmaze.js:1053 | Aligned |
+| 1280 | `walkfrom` | mkmaze.js:1053 | Aligned |
 | 198 | `wall_cleanup` | mkmaze.js:84 | Aligned |
 | 290 | `wallification` | mkmaze.js `wallification` | Aligned (re-export) |
 | 1684 | `water_friction` | mkmaze.js:935 | Partial |

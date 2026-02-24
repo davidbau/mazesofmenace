@@ -19,8 +19,8 @@ import { mksobj, mkobj, mkcorpstat, set_corpsenm, setLevelDepth, weight } from '
 import { create_room, makecorridors, create_corridor, init_rect, rnd_rect, get_rect, split_rects, check_room, add_doors_to_room, link_doors_rooms, update_rect_pool_for_room, bound_digging, mineralize as dungeonMineralize, fill_ordinary_room, fill_special_room, isMtInitialized, setMtInitialized, wallification as dungeonWallification, wallify_region as dungeonWallifyRegion, fix_wall_spines, set_wall_state, mktrap, deltrap, enexto, sp_create_door, floodFillAndRegister, repair_irregular_room_boundaries, resolveBranchPlacementForLevel, induced_align, DUNGEON_ALIGN_BY_DNUM, enterMklevContext, leaveMklevContext } from './dungeon.js';
 import {
     place_lregion,
-    setup_waterlevel as mkmaze_setup_waterlevel,
-    baalz_fixup as mkmaze_baalz_fixup,
+    setup_waterlevel,
+    baalz_fixup,
 } from './mkmaze.js';
 import { create_subroom } from './mklev.js';
 import { somexy } from './mkroom.js';
@@ -1072,13 +1072,6 @@ function canPlaceStair(direction) {
     return true;
 }
 
-// C ref: mkmaze.c setup_waterlevel()
-// We mirror base terrain conversion plus RNG-visible bubble seeding scaffold.
-function setup_waterlevel_parity(map, isWaterLevel) {
-    if (!map) return;
-    mkmaze_setup_waterlevel(map, { isWaterLevel });
-}
-
 function fixupSpecialLevel() {
     if (!levelState.map || levelState.branchPlaced) return;
     // C ref: mkmaze.c fixup_special()
@@ -1096,7 +1089,7 @@ function fixupSpecialLevel() {
     // Is_waterlevel/Is_airlevel forces hero_memory off and runs setup_waterlevel()
     // before processing levregions.
     if (specialName === 'water' || specialName === 'air') {
-        setup_waterlevel_parity(levelState.map, specialName === 'water');
+        setup_waterlevel(levelState.map, { isWaterLevel: specialName === 'water' });
     }
 
     let addedBranch = false;
@@ -1338,13 +1331,6 @@ function medusa_fixup(map) {
             set_corpsenm(otmp, rndmonnum(levelState.levelDepth || 1));
         }
     }
-}
-
-// C ref: mkmaze.c baalz_fixup()
-// Preserve the beetle-leg wall geometry by wallifying with an inarea guard.
-function baalz_fixup(map) {
-    if (!map) return;
-    mkmaze_baalz_fixup(map);
 }
 
 /**
