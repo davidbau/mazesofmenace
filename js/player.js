@@ -526,6 +526,7 @@ export class Player {
         this.turns = 0;
         this.wizard = false;
         this.displacedPetThisTurn = false;
+        this._bashmsgWepObj = null;
         this.kickedloc = null;
         this.questLocateHintShown = false;
 
