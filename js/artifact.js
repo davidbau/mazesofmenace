@@ -4,6 +4,8 @@
 import {
   artilist, NROFARTIFACTS, AFTER_LAST_ARTIFACT, ART_NONARTIFACT,
   ART_EXCALIBUR, ART_GRIMTOOTH, ART_SUNSWORD, ART_MASTER_KEY_OF_THIEVERY,
+  ART_STING, ART_ORCRIST, ART_STORMBRINGER, ART_VORPAL_BLADE,
+  ART_TSURUGI_OF_MURAMASA, ART_MAGICBANE,
   SPFX_NONE, SPFX_NOGEN, SPFX_RESTR, SPFX_INTEL, SPFX_SPEAK, SPFX_SEEK,
   SPFX_WARN, SPFX_ATTK, SPFX_DEFN, SPFX_DRLI, SPFX_SEARCH, SPFX_BEHEAD,
   SPFX_HALRES, SPFX_ESP, SPFX_STLTH, SPFX_REGEN, SPFX_EREGEN,
@@ -15,21 +17,28 @@ import {
   BANISH, FLING_POISON, FIRESTORM, SNOWSTORM, BLINDING_RAY,
 } from './artifacts.js';
 
-import { rn2, rnd, d } from './rng.js';
+import { rn2, rnd, d, rnz } from './rng.js';
 import { objectData, LUCKSTONE, WEAPON_CLASS, STRANGE_OBJECT } from './objects.js';
 import {
   NON_PM, AD_PHYS, AD_MAGM, AD_FIRE, AD_COLD, AD_ELEC, AD_DRST, AD_DRLI,
   AD_STUN, AD_BLND, AD_WERE, AD_DISN, AD_STON,
+  PM_WATER_ELEMENTAL, PM_JABBERWOCK, PM_ROGUE, PM_CLAY_GOLEM,
   M2_UNDEAD, M2_WERE, M2_ELF, M2_ORC, M2_DEMON, M2_GIANT,
+  MZ_LARGE, AT_MAGC,
   mons,
 } from './monsters.js';
-import { A_NONE, A_CHAOTIC, A_NEUTRAL, A_LAWFUL, LAST_PROP } from './config.js';
+import { A_NONE, A_CHAOTIC, A_NEUTRAL, A_LAWFUL, LAST_PROP,
+         CONFLICT, LEVITATION, INVIS,
+       } from './config.js';
 import { SILVER } from './objects.js';
+import { pline, pline_The, You, You_feel, You_cant } from './pline.js';
 
 // Re-export key constants for consumers
 export {
   artilist, NROFARTIFACTS, AFTER_LAST_ARTIFACT, ART_NONARTIFACT,
   ART_EXCALIBUR, ART_GRIMTOOTH, ART_SUNSWORD, ART_MASTER_KEY_OF_THIEVERY,
+  ART_STING, ART_ORCRIST, ART_STORMBRINGER, ART_VORPAL_BLADE,
+  ART_TSURUGI_OF_MURAMASA, ART_MAGICBANE,
   SPFX_NONE, SPFX_NOGEN, SPFX_RESTR, SPFX_INTEL, SPFX_SPEAK, SPFX_SEEK,
   SPFX_WARN, SPFX_ATTK, SPFX_DEFN, SPFX_DRLI, SPFX_SEARCH, SPFX_BEHEAD,
   SPFX_HALRES, SPFX_ESP, SPFX_STLTH, SPFX_REGEN, SPFX_EREGEN,
@@ -459,15 +468,48 @@ export function undiscovered_artifact(m) {
   return !artidisco.includes(m);
 }
 
-// cf. artifact.c:1147 — disp_artifact_discoveries(display)
-export function disp_artifact_discoveries(display) {
-  // Stub — artifact discovery display
-  // TODO: wire to display system
+// cf. artifact.c:1147 — disp_artifact_discoveries(putstr_fn)
+// Returns count of discovered artifacts. If putstr_fn is provided,
+// calls it for each line of output.
+export function disp_artifact_discoveries(putstr_fn) {
+  let count = 0;
+  for (let i = 0; i < artidisco.length; i++) {
+    const m = artidisco[i];
+    if (!m) break;
+    count++;
+    if (putstr_fn) {
+      if (i === 0) putstr_fn('Artifacts');
+      const otyp = artilist[m].otyp;
+      const align = artilist[m].alignment;
+      const algnstr = align === A_LAWFUL ? 'lawful' :
+                      align === A_NEUTRAL ? 'neutral' :
+                      align === A_CHAOTIC ? 'chaotic' : 'non-aligned';
+      const typname = objectData[otyp] ? objectData[otyp].name : 'unknown';
+      putstr_fn(`  ${artiname(m)} [${algnstr} ${typname}]`);
+    }
+  }
+  return count;
 }
 
-// cf. artifact.c:1177 — dump_artifact_info(display)
-export function dump_artifact_info(display) {
-  // Stub — wizard mode artifact dump
+// cf. artifact.c:1177 — dump_artifact_info(putstr_fn)
+// Wizard mode: show all artifacts and their flags.
+export function dump_artifact_info(putstr_fn) {
+  if (!putstr_fn) return;
+  putstr_fn('Artifacts');
+  for (let m = 1; m <= NROFARTIFACTS; m++) {
+    const a = artiexist[m];
+    const flags = [];
+    if (a.exists) flags.push('exists');
+    if (a.found) flags.push('hero knows');
+    if (a.gift) flags.push('gift');
+    if (a.wish) flags.push('wish');
+    if (a.named) flags.push('named');
+    if (a.viadip) flags.push('viadip');
+    if (a.lvldef) flags.push('lvldef');
+    if (a.bones) flags.push('bones');
+    if (a.rndm) flags.push('random');
+    putstr_fn(`  ${artiname(m).padEnd(36)}[${flags.join('; ')}]`);
+  }
 }
 
 // ── Glow/warning ──
@@ -498,10 +540,41 @@ export function glow_verb(count, ingsfx = false) {
   return verb;
 }
 
-// cf. artifact.c:2466 — Sting_effects(orc_count)
-export function Sting_effects(orc_count) {
-  // Stub — will be wired when monster warning system is integrated
-  // Handles Sting/Orcrist/Grimtooth warning glow
+// Module-level tracking for Sting warning
+let warn_obj_cnt = 0;
+export function get_warn_obj_cnt() { return warn_obj_cnt; }
+export function set_warn_obj_cnt(n) { warn_obj_cnt = n; }
+
+// cf. artifact.c:2466 — Sting_effects(orc_count, player)
+export function Sting_effects(orc_count, player) {
+  if (!player || !player.weapon) return;
+  const uwep = player.weapon;
+  if (!(is_art(uwep, ART_STING)
+      || is_art(uwep, ART_ORCRIST)
+      || is_art(uwep, ART_GRIMTOOTH)))
+    return;
+
+  const oldstr = glow_strength(warn_obj_cnt);
+  const newstr = glow_strength(orc_count);
+
+  if (orc_count === -1 && warn_obj_cnt > 0) {
+    // Blindness toggled
+    pline("%s is %s.", uwep.oname || artiname(uwep.oartifact),
+          glow_verb(0, true)); // blind case: "quivering"
+  } else if (newstr > 0 && newstr !== oldstr) {
+    // Start or intensify glow
+    pline("%s %s %s%s",
+      uwep.oname || artiname(uwep.oartifact),
+      glow_verb(orc_count, false) + 's',
+      glow_color(uwep.oartifact),
+      (newstr > oldstr) ? '!' : '.');
+  } else if (orc_count === 0 && warn_obj_cnt > 0) {
+    // Stop glow
+    pline("%s stops %s.",
+      uwep.oname || artiname(uwep.oartifact),
+      glow_verb(warn_obj_cnt, true));
+  }
+  warn_obj_cnt = orc_count === -1 ? warn_obj_cnt : orc_count;
 }
 
 // ── Touch and equipment ──
@@ -524,25 +597,211 @@ export function touch_artifact(obj, mon) {
   return 1;
 }
 
-// cf. artifact.c:2508 — retouch_object(objp, loseit)
-export function retouch_object(obj, loseit) {
-  // Stub — artifact touchability after form/alignment change
-  // TODO: full implementation with worn item removal
-  return 1; // can touch
+// cf. artifact.c:2508 — retouch_object(obj, loseit, player)
+// Returns 1 if hero can still handle the object, 0 if not.
+export function retouch_object(obj, loseit, player) {
+  if (!obj) return 1;
+
+  // Allow hero to use the Bell of Opening at the invocation spot
+  // (full check omitted; simplified)
+
+  if (touch_artifact(obj, player || { data: null })) {
+    // Check silver bane
+    const oart = get_artifact(obj);
+    const bane = (oart !== artilist[ART_NONARTIFACT]) && bane_applies(oart, player || { data: null });
+    const ag = objectData[obj.otyp] && objectData[obj.otyp].material === SILVER;
+    if (!ag && !bane) return 1;
+    // Hero can't handle it
+    You_cant("handle %s%s!", obj.oname || 'the object',
+             obj.owornmask ? ' anymore' : '');
+    if (ag) {
+      const tmp = rnd(10);
+      // losehp would go here
+    }
+    if (bane) {
+      rnd(10); // consume RNG for bane damage
+    }
+  }
+
+  // Remove worn item
+  if (obj.owornmask) {
+    obj.owornmask = 0;
+  }
+
+  return 0;
 }
 
-// cf. artifact.c:2640 — retouch_equipment(dropflag)
-export function retouch_equipment(dropflag) {
-  // Stub — re-check all equipped items for touchability
-  // TODO: full implementation
+// cf. artifact.c:2640 — retouch_equipment(dropflag, player)
+export function retouch_equipment(dropflag, player) {
+  if (!player) return;
+  // Re-check all equipped items for touchability.
+  // In the full C implementation this iterates over inventory with
+  // bypass tracking and calls untouchable() for each worn item.
+  // Simplified: check weapon and armor slots.
+  const slots = ['weapon', 'armor', 'shield', 'helmet', 'gloves', 'boots', 'cloak', 'shirt', 'amulet', 'leftRing', 'rightRing'];
+  for (const slot of slots) {
+    const obj = player[slot];
+    if (obj && obj.oartifact) {
+      if (!touch_artifact(obj, player)) {
+        // Remove the item
+        player[slot] = null;
+        if (obj.owornmask) obj.owornmask = 0;
+      }
+    }
+  }
 }
 
 // ── Artifact intrinsics ──
 
-// cf. artifact.c:716 — set_artifact_intrinsic(otmp, on, wp_mask)
-export function set_artifact_intrinsic(otmp, on, wp_mask) {
-  // Stub — apply/remove artifact intrinsic properties
-  // TODO: full implementation (needs player intrinsic bitfield system)
+// cf. artifact.c:716 — set_artifact_intrinsic(otmp, on, wp_mask, player)
+// W_ART is the "carried artifact" mask used in the C source;
+// it is not defined in worn.js because it is artifact-specific.
+const W_ART  = 0x01000000;
+const W_ARTI = 0x02000000;
+export { W_ART, W_ARTI };
+
+export function set_artifact_intrinsic(otmp, on, wp_mask, player) {
+  const oart = get_artifact(otmp);
+  if (oart === artilist[ART_NONARTIFACT]) return;
+
+  // In the JS port the player uprops system is keyed by property index.
+  // Many of the C extrinsic bitfields (EFire_resistance etc.) map to
+  // player.uprops[propIdx].extrinsic.  Since the full uprops system is
+  // not always wired, we guard against missing entries.
+  function ensureProp(propIdx) {
+    if (!player || !player.uprops) return null;
+    if (!player.uprops[propIdx])
+      player.uprops[propIdx] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
+    return player.uprops[propIdx];
+  }
+
+  // --- defn / cary resistance ---
+  const dtyp = (wp_mask !== W_ART) ? oart.defn.ad : oart.cary.ad;
+  // Map AD_ to property index
+  const adtypToProp = {
+    [AD_FIRE]: 0,   // FIRE_RES
+    [AD_COLD]: 1,   // COLD_RES
+    [AD_ELEC]: 4,   // SHOCK_RES
+    [AD_MAGM]: 11,  // ANTIMAGIC
+    [AD_DISN]: 3,   // DISINT_RES
+    [AD_DRST]: 5,   // POISON_RES
+    [AD_DRLI]: 8,   // DRAIN_RES
+  };
+
+  let propIdx = adtypToProp[dtyp];
+  if (propIdx !== undefined) {
+    let dominated = false;
+    // When removing W_ART carry effect, check if another carried artifact
+    // also confers this; if so, leave the mask alone.
+    if (wp_mask === W_ART && !on && player) {
+      const inv = player.inventory || [];
+      for (const o of inv) {
+        if (o !== otmp && o.oartifact) {
+          const art2 = get_artifact(o);
+          if (art2 !== artilist[ART_NONARTIFACT] && art2.cary.ad === dtyp) {
+            dominated = true;
+            break;
+          }
+        }
+      }
+    }
+    if (!dominated) {
+      const p = ensureProp(propIdx);
+      if (p) {
+        if (on) p.extrinsic |= wp_mask;
+        else p.extrinsic &= ~wp_mask;
+      }
+    }
+  }
+
+  // --- spfx intrinsics ---
+  let spfx = (wp_mask !== W_ART) ? oart.spfx : oart.cspfx;
+  if (spfx && wp_mask === W_ART && !on && player) {
+    // don't remove spfx also conferred by other carried artifacts
+    const inv = player.inventory || [];
+    for (const o of inv) {
+      if (o !== otmp && o.oartifact) {
+        const art2 = get_artifact(o);
+        if (art2 !== artilist[ART_NONARTIFACT])
+          spfx &= ~art2.cspfx;
+      }
+    }
+  }
+
+  // Map SPFX_ bits to property indices
+  const spfxMap = [
+    [SPFX_SEARCH, 31],  // SEARCHING
+    [SPFX_ESP,    49],  // TELEPAT
+    [SPFX_STLTH,  39],  // STEALTH
+    [SPFX_REGEN,  48],  // REGENERATION
+    [SPFX_TCTRL,  35],  // TELEPORT_CONTROL
+    [SPFX_EREGEN, 45],  // ENERGY_REGENERATION
+    [SPFX_HSPDAM, 46],  // HALF_SPDAM
+    [SPFX_HPHDAM, 47],  // HALF_PHDAM
+    [SPFX_PROTECT,42],  // PROTECTION
+    [SPFX_REFLECT,60],  // REFLECTING (only for W_WEP)
+  ];
+
+  for (const [bit, prop] of spfxMap) {
+    if (!(spfx & bit)) continue;
+    // SPFX_REFLECT from artifact only applies when wielded
+    if (bit === SPFX_REFLECT && !(wp_mask & 0x00000100 /* W_WEP */)) continue;
+    const p = ensureProp(prop);
+    if (p) {
+      if (on) p.extrinsic |= wp_mask;
+      else p.extrinsic &= ~wp_mask;
+    }
+  }
+
+  // SPFX_WARN: warn_of_mon vs generic warning
+  if (spfx & SPFX_WARN) {
+    if (spec_m2(otmp)) {
+      const p = ensureProp(29); // WARN_OF_MON
+      if (p) {
+        if (on) p.extrinsic |= wp_mask;
+        else p.extrinsic &= ~wp_mask;
+      }
+    } else {
+      const p = ensureProp(30); // WARNING
+      if (p) {
+        if (on) p.extrinsic |= wp_mask;
+        else p.extrinsic &= ~wp_mask;
+      }
+    }
+  }
+
+  // SPFX_HALRES: hallucination resistance
+  if (spfx & SPFX_HALRES) {
+    const p = ensureProp(23); // HALLUC_RES
+    if (p) {
+      if (on) p.extrinsic |= wp_mask;
+      else p.extrinsic &= ~wp_mask;
+    }
+  }
+
+  // SPFX_XRAY
+  if (spfx & SPFX_XRAY) {
+    if (player) {
+      player.xray_range = on ? 3 : -1;
+    }
+  }
+
+  // Sunsword blindness resistance when wielded
+  if (wp_mask === 0x00000100 /* W_WEP */ && is_art(otmp, ART_SUNSWORD)) {
+    // BLINDED property doesn't map directly; skip for now
+    // In C this sets EBlnd_resist
+  }
+
+  // If dropping (W_ART removal) and artifact has inv_prop <= LAST_PROP that
+  // is currently invoked, turn it off
+  if (wp_mask === W_ART && !on && oart.inv_prop) {
+    if (oart.inv_prop <= LAST_PROP && player && player.uprops) {
+      const ip = player.uprops[oart.inv_prop];
+      if (ip && (ip.extrinsic & W_ARTI)) {
+        arti_invoke(otmp, player);
+      }
+    }
+  }
 }
 
 // ── Artifact creation ──
@@ -604,48 +863,568 @@ export function mk_artifact(otmp, alignment, max_giftvalue = 99, adjust_spe = tr
   return otmp;
 }
 
-// ── Invocation stubs (Phase 3/8) ──
+// ── Magicbane and artifact combat ──
+
+const FATAL_DAMAGE_MODIFIER = 200;
+const MB_MAX_DIEROLL = 8;
+const MB_INDEX_PROBE = 0;
+const MB_INDEX_STUN = 1;
+const MB_INDEX_SCARE = 2;
+const MB_INDEX_CANCEL = 3;
+
+const mb_verb = [
+  ['probe', 'stun', 'scare', 'cancel'],
+  ['prod', 'amaze', 'tickle', 'purge'],
+];
 
 // cf. artifact.c:1249 — Mb_hit(magr, mdef, mb, dmgptr, dieroll, vis, hittee)
-export function Mb_hit(magr, mdef, mb, dmgptr, dieroll, vis, hittee) {
-  // TODO: Magicbane special hit processing
+// dmgptr is { value: N }; caller reads dmgptr.value after call.
+// spec_dbon_applies_flag is the second return value from spec_dbon.
+export function Mb_hit(magr, mdef, mb, dmgptr, dieroll, vis, hittee, spec_dbon_applies_flag) {
+  const youattack = !!(magr && magr.isPlayer);
+  const youdefend = !!(mdef && mdef.isPlayer);
+  let resisted = false, do_stun, do_confuse, result;
+  let attack_indx;
+  let scare_dieroll = MB_MAX_DIEROLL / 2;
+
+  result = false;
+  if (mb.spe >= 3)
+    scare_dieroll = (scare_dieroll / (1 << Math.floor(mb.spe / 3))) | 0;
+  if (!spec_dbon_applies_flag)
+    dieroll += 1;
+
+  do_stun = (Math.max(mb.spe, 0) < rn2(spec_dbon_applies_flag ? 11 : 7));
+
+  attack_indx = MB_INDEX_PROBE;
+  dmgptr.value += rnd(4);
+  if (do_stun) {
+    attack_indx = MB_INDEX_STUN;
+    dmgptr.value += rnd(4);
+  }
+  if (dieroll <= scare_dieroll) {
+    attack_indx = MB_INDEX_SCARE;
+    dmgptr.value += rnd(4);
+  }
+  if (dieroll <= (scare_dieroll / 2)) {
+    attack_indx = MB_INDEX_CANCEL;
+    dmgptr.value += rnd(4);
+  }
+
+  // Give hit message
+  const verb = mb_verb[0][attack_indx]; // no Hallucination check for simplicity
+  if (youattack || youdefend || vis) {
+    result = true;
+    pline_The("magic-absorbing blade %ss %s!", verb, hittee);
+  }
+
+  // Perform special effects
+  switch (attack_indx) {
+    case MB_INDEX_CANCEL:
+      // cancel_monst not always available; try it if the target is a monster
+      if (!youdefend && mdef) {
+        // Simplified: just set mcan
+        if (rn2(2)) {
+          resisted = true;
+        } else {
+          mdef.mcan = 1;
+          do_stun = false;
+        }
+      } else if (youdefend) {
+        // Simplified: player cancel reduces energy
+        resisted = true; // player resists full cancel in simplified port
+      }
+      break;
+
+    case MB_INDEX_SCARE:
+      if (youdefend) {
+        resisted = true; // simplified: player resists scare
+      } else if (mdef) {
+        if (rn2(2)) {
+          resisted = true;
+        } else {
+          // monflee would go here
+          if (mdef.mflee === undefined) mdef.mflee = 0;
+          mdef.mflee = 1;
+          mdef.mfleetim = 3;
+          do_stun = false;
+        }
+      }
+      if (!resisted) do_stun = false;
+      break;
+
+    case MB_INDEX_STUN:
+      do_stun = true;
+      break;
+
+    case MB_INDEX_PROBE:
+      // probe_monster would go here; skip for now
+      break;
+  }
+
+  // Apply stun
+  if (do_stun) {
+    if (youdefend) {
+      // make_stunned would go here
+    } else if (mdef) {
+      mdef.mstun = 1;
+    }
+    if (attack_indx === MB_INDEX_STUN)
+      do_stun = false;
+  }
+
+  // Confusion
+  do_confuse = !rn2(12);
+  if (do_confuse) {
+    if (youdefend) {
+      // make_confused would go here
+    } else if (mdef) {
+      mdef.mconf = 1;
+    }
+  }
+
+  // Side-effect messages
+  if (youattack || youdefend || vis) {
+    if (resisted) {
+      pline("%s resists!", hittee.charAt(0).toUpperCase() + hittee.slice(1));
+    }
+    if (do_stun || do_confuse) {
+      let buf = '';
+      if (do_stun) buf += 'stunned';
+      if (do_stun && do_confuse) buf += ' and ';
+      if (do_confuse) buf += 'confused';
+      pline("%s is %s%s",
+        hittee.charAt(0).toUpperCase() + hittee.slice(1),
+        buf,
+        (do_stun && do_confuse) ? '!' : '.');
+    }
+  }
+
+  return result;
+}
+
+// cf. artifact.c:1446 — artifact_hit(magr, mdef, otmp, dmgptr, dieroll)
+// dmgptr is { value: N }; caller reads dmgptr.value after call.
+// Returns true if a special message was given.
+export function artifact_hit(magr, mdef, otmp, dmgptr, dieroll) {
+  const youattack = !!(magr && magr.isPlayer);
+  const youdefend = !!(mdef && mdef.isPlayer);
+  const vis = (!youattack && magr && magr.mx !== undefined)
+              || (!youdefend && mdef && mdef.mx !== undefined)
+              || youattack;
+  let realizes_damage;
+
+  const hittee = youdefend ? 'you' : (mdef && mdef.name ? mdef.name : 'it');
+
+  // spec_dbon handles most damage; returns [bonus, applies]
+  const [bonus, spec_dbon_applies_val] = spec_dbon(otmp, mdef, dmgptr.value);
+  dmgptr.value += bonus;
+
+  if (youattack && youdefend) return false;
+
+  realizes_damage = youdefend || vis || (youattack && mdef);
+
+  // Fire
+  if (attacks(AD_FIRE, otmp)) {
+    if (realizes_damage) {
+      const mdat = mdef.data || (mdef.mnum != null ? mons[mdef.mnum] : null);
+      const action = !spec_dbon_applies_val ? 'hits'
+        : (mdat && mdat.mnum === PM_WATER_ELEMENTAL) ? 'vaporizes part of'
+        : 'burns';
+      pline_The("fiery blade %s %s%s", action, hittee, !spec_dbon_applies_val ? '.' : '!');
+    }
+    if (!rn2(4)) {
+      // destroy_items / ignite_items not yet ported; consume RNG
+    }
+    return realizes_damage;
+  }
+  // Cold
+  if (attacks(AD_COLD, otmp)) {
+    if (realizes_damage) {
+      pline_The("ice-cold blade %s %s%s",
+        !spec_dbon_applies_val ? 'hits' : 'freezes', hittee,
+        !spec_dbon_applies_val ? '.' : '!');
+    }
+    if (!rn2(4)) {
+      // destroy_items not yet ported
+    }
+    return realizes_damage;
+  }
+  // Elec
+  if (attacks(AD_ELEC, otmp)) {
+    if (realizes_damage) {
+      pline_The("massive hammer hits%s %s%s",
+        !spec_dbon_applies_val ? '' : '!  Lightning strikes', hittee,
+        !spec_dbon_applies_val ? '.' : '!');
+    }
+    if (!rn2(5)) {
+      // destroy_items not yet ported
+    }
+    return realizes_damage;
+  }
+  // Magic missiles
+  if (attacks(AD_MAGM, otmp)) {
+    if (realizes_damage) {
+      pline_The("imaginary widget hits%s %s%s",
+        !spec_dbon_applies_val ? '' : '!  A hail of magic missiles strikes',
+        hittee, !spec_dbon_applies_val ? '.' : '!');
+    }
+    return realizes_damage;
+  }
+
+  // Magicbane special
+  if (attacks(AD_STUN, otmp) && dieroll <= MB_MAX_DIEROLL) {
+    return Mb_hit(magr, mdef, otmp, dmgptr, dieroll, vis, hittee, spec_dbon_applies_val);
+  }
+
+  if (!spec_dbon_applies_val) return false;
+
+  // Vorpal / Tsurugi beheading
+  if (spec_ability(otmp, SPFX_BEHEAD)) {
+    if (is_art(otmp, ART_TSURUGI_OF_MURAMASA) && dieroll === 1) {
+      const wepdesc = 'The razor-sharp blade';
+      if (!youdefend) {
+        const mdat = mdef.data || (mdef.mnum != null ? mons[mdef.mnum] : null);
+        if (mdat && (mdat.msize || mdat.size || 0) >= MZ_LARGE) {
+          if (youattack) You("slice deeply into %s!", hittee);
+          else if (vis) pline("%s cuts deeply into %s!", magr.name || 'It', hittee);
+          dmgptr.value *= 2;
+          return true;
+        }
+        dmgptr.value = 2 * mdef.mhp + FATAL_DAMAGE_MODIFIER;
+        pline("%s cuts %s in half!", wepdesc, hittee);
+        return true;
+      } else {
+        // player is defender
+        dmgptr.value *= 2;
+        pline("%s cuts deeply into you!", magr ? (magr.name || wepdesc) : wepdesc);
+        return true;
+      }
+    } else if (is_art(otmp, ART_VORPAL_BLADE)
+               && (dieroll === 1 || (mdef.data && mdef.data.mnum === PM_JABBERWOCK)
+                   || (mdef.mnum === PM_JABBERWOCK))) {
+      const wepdesc = artilist[ART_VORPAL_BLADE].name;
+      if (!youdefend) {
+        const mdat = mdef.data || (mdef.mnum != null ? mons[mdef.mnum] : null);
+        if (!mdat || !has_head_simple(mdat)) {
+          if (youattack) pline("Somehow, you miss %s wildly.", hittee);
+          else if (vis) pline("Somehow, %s misses wildly.", magr.name || 'it');
+          dmgptr.value = 0;
+          return !!(youattack || vis);
+        }
+        if (noncorporeal_simple(mdat) || amorphous_simple(mdat)) {
+          pline("%s slices through %s's neck.", wepdesc, hittee);
+          return true;
+        }
+        dmgptr.value = 2 * mdef.mhp + FATAL_DAMAGE_MODIFIER;
+        pline("%s beheads %s!", wepdesc, hittee);
+        return true;
+      } else {
+        // player is defender — very lethal
+        dmgptr.value = 2 * (mdef.mhp || mdef.hp || 0) + FATAL_DAMAGE_MODIFIER;
+        pline("%s beheads you!", wepdesc);
+        return true;
+      }
+    }
+  }
+
+  // Drain life
+  if (spec_ability(otmp, SPFX_DRLI)) {
+    const mdat = mdef.data || (mdef.mnum != null ? mons[mdef.mnum] : null);
+    const life = (mdat && nonliving_simple(mdat)) ? 'animating force' : 'life';
+    if (!youdefend) {
+      const m_lev = mdef.m_lev || 0;
+      let drain = rnd(8); // monhp_per_lvl is usually 1d8
+      if (mdef.mhpmax - drain <= m_lev)
+        drain = (mdef.mhpmax > m_lev) ? (mdef.mhpmax - (m_lev + 1)) : 0;
+
+      if (vis) {
+        if (is_art(otmp, ART_STORMBRINGER))
+          pline_The("black blade draws the %s from %s!", life, hittee);
+        else
+          pline("%s draws the %s from %s!", otmp.oname || 'The weapon', life, hittee);
+      }
+      if (m_lev === 0) {
+        dmgptr.value = 2 * mdef.mhp + FATAL_DAMAGE_MODIFIER;
+      } else {
+        dmgptr.value += drain;
+        mdef.mhpmax -= drain;
+        mdef.m_lev--;
+      }
+      // Heal attacker
+      if (drain > 0) {
+        const healamt = ((drain + 1) / 2) | 0;
+        if (youattack && magr) {
+          if (magr.hp !== undefined) {
+            magr.hp = Math.min(magr.hp + healamt, magr.hpmax || magr.hp + healamt);
+          }
+        } else if (magr) {
+          magr.mhp = Math.min((magr.mhp || 0) + healamt, magr.mhpmax || magr.mhp + healamt);
+        }
+      }
+      return vis;
+    } else {
+      // Player is the defender
+      if (vis || youdefend) {
+        if (is_art(otmp, ART_STORMBRINGER))
+          pline_The("black blade drains your %s!", life);
+        else
+          pline("%s drains your %s!", otmp.oname || 'The weapon', life);
+      }
+      // losexp would go here for full implementation
+      return true;
+    }
+  }
+
   return false;
 }
 
+// Simple helpers for mondata checks used above, avoiding circular imports
+function has_head_simple(ptr) { return !(ptr.mflags1 & 0x00000020); /* M1_NOHEAD */ }
+function noncorporeal_simple(ptr) { return ptr.mlet === 'W' || ptr.symbol === ' '; /* S_GHOST */ }
+function amorphous_simple(ptr) { return !!(ptr.mflags1 & 0x00000004); /* M1_AMORPHOUS */ }
+function nonliving_simple(ptr) { return !!(ptr.mflags1 & 0x00004000); /* M1_NONLIVING - approximation */ }
+
+// cf. artifact.c:1727 — invoke_ok(obj)
+export function invoke_ok(obj) {
+  if (!obj) return 0; // GETOBJ_EXCLUDE
+  if (obj.oartifact) return 1; // GETOBJ_SUGGEST
+  return 0;
+}
+
 // cf. artifact.c:1749 — doinvoke()
-export function doinvoke() {
-  // TODO: #invoke command handler
+export function doinvoke(player) {
+  // #invoke command handler — requires UI interaction (getobj).
+  // In the JS port this is triggered by the command system;
+  // for now, return 0 (no action) since UI prompts are not wired here.
   return 0;
 }
 
-// cf. artifact.c:2131 — arti_invoke(obj)
-export function arti_invoke(obj) {
-  // TODO: invocation dispatcher
-  return 0;
+// cf. artifact.c:1762 — nothing_special(obj)
+export function nothing_special(obj) {
+  You_feel("a surge of power, but nothing seems to happen.");
 }
 
-// Invocation sub-stubs
-export function invoke_ok(obj) { return 0; }
-export function nothing_special(obj) { }
-export function invoke_taming(obj) { return 0; }
-export function invoke_healing(obj) { return 0; }
-export function invoke_energy_boost(obj) { return 0; }
-export function invoke_untrap(obj) { return 0; }
-export function invoke_charge_obj(obj) { return 0; }
-export function invoke_create_portal(obj) { return 0; }
-export function invoke_create_ammo(obj) { return 0; }
-export function invoke_banish(obj) { return 0; }
-export function invoke_fling_poison(obj) { return 0; }
-export function invoke_storm_spell(obj) { return 0; }
-export function invoke_blinding_ray(obj) { return 0; }
-export function arti_invoke_cost_pw(obj) { return 0; }
-export function arti_invoke_cost(obj) { return false; }
-export function finesse_ahriman(obj) { return false; }
+// cf. artifact.c:1769 — invoke_taming(obj)
+export function invoke_taming(obj) {
+  // seffects(SCR_TAMING) — not yet ported; stub returns time
+  pline("A wave of calm sweeps over you."); // placeholder
+  return 1;
+}
+
+// cf. artifact.c:1780 — invoke_healing(obj, player)
+export function invoke_healing(obj, player) {
+  if (!player) { nothing_special(obj); return 1; }
+  let healamt = ((player.hpmax + 1 - player.hp) / 2) | 0;
+  if (healamt > 0) {
+    You_feel("better.");
+    player.hp += healamt;
+  } else {
+    nothing_special(obj);
+  }
+  return 1;
+}
+
+// cf. artifact.c:1818 — invoke_energy_boost(obj, player)
+export function invoke_energy_boost(obj, player) {
+  if (!player) { nothing_special(obj); return 1; }
+  let epboost = ((player.enmax + 1 - (player.en || 0)) / 2) | 0;
+  if (epboost > 120) epboost = 120;
+  else if (epboost < 12) epboost = (player.enmax || 0) - (player.en || 0);
+  if (epboost > 0) {
+    player.en = (player.en || 0) + epboost;
+    You_feel("re-energized.");
+  } else {
+    nothing_special(obj);
+  }
+  return 1;
+}
+
+// cf. artifact.c:1838 — invoke_untrap(obj)
+export function invoke_untrap(obj) {
+  // untrap() not yet ported; stub
+  nothing_special(obj);
+  return 1;
+}
+
+// cf. artifact.c:1848 — invoke_charge_obj(obj)
+export function invoke_charge_obj(obj) {
+  // recharge() not yet ported; stub
+  nothing_special(obj);
+  return 1;
+}
+
+// cf. artifact.c:1867 — invoke_create_portal(obj)
+export function invoke_create_portal(obj) {
+  // Portal creation requires dungeon/level system; stub
+  You_feel("very disoriented for a moment.");
+  return 1;
+}
+
+// cf. artifact.c:1934 — invoke_create_ammo(obj)
+export function invoke_create_ammo(obj) {
+  // mksobj(ARROW) not wired to invocation; stub
+  nothing_special(obj);
+  return 1;
+}
+
+// cf. artifact.c:1963 — invoke_banish(obj)
+export function invoke_banish(obj) {
+  // Demon banishment requires monster iteration; stub
+  nothing_special(obj);
+  return 1;
+}
+
+// cf. artifact.c:2022 — invoke_fling_poison(obj)
+export function invoke_fling_poison(obj) {
+  // Requires getdir/throwit; stub
+  nothing_special(obj);
+  return 1;
+}
+
+// cf. artifact.c:2040 — invoke_storm_spell(obj)
+export function invoke_storm_spell(obj) {
+  // Requires spelleffects; stub
+  nothing_special(obj);
+  return 1;
+}
+
+// cf. artifact.c:2054 — invoke_blinding_ray(obj)
+export function invoke_blinding_ray(obj) {
+  // Requires getdir; stub
+  nothing_special(obj);
+  return 1;
+}
+
+// cf. artifact.c:2091 — arti_invoke_cost_pw(obj)
+export function arti_invoke_cost_pw(obj) {
+  const oart = get_artifact(obj);
+  if (oart.inv_prop === FLING_POISON || oart.inv_prop === BLINDING_RAY) {
+    // SPELL_LEV_PW(5) = 5 * 5 = 25 in C
+    return 25;
+  }
+  return -1;
+}
+
+// cf. artifact.c:2105 — arti_invoke_cost(obj, player, game)
+export function arti_invoke_cost(obj, player, game) {
+  const moves = (game && game.moves) || 0;
+  if (obj.age > moves) {
+    const pw_cost = arti_invoke_cost_pw(obj);
+    if (pw_cost < 0 || (player && (player.en || 0) < pw_cost)) {
+      You_feel("that %s is ignoring you.", obj.oname || 'the artifact');
+      obj.age += d(3, 10);
+      return false;
+    } else if (player) {
+      You_feel("drained...");
+      player.en -= pw_cost;
+    }
+  } else {
+    obj.age = moves + rnz(100);
+  }
+  return true;
+}
+
+// cf. artifact.c:2131 — arti_invoke(obj, player, game)
+export function arti_invoke(obj, player, game) {
+  if (!obj) return 0;
+  const oart = get_artifact(obj);
+  if (oart === artilist[ART_NONARTIFACT] || !oart.inv_prop) {
+    pline("Nothing happens.");
+    return 1;
+  }
+
+  // Special powers (inv_prop > LAST_PROP)
+  if (oart.inv_prop > LAST_PROP) {
+    if (!arti_invoke_cost(obj, player, game)) return 1;
+
+    switch (oart.inv_prop) {
+      case TAMING: return invoke_taming(obj);
+      case HEALING: return invoke_healing(obj, player);
+      case ENERGY_BOOST: return invoke_energy_boost(obj, player);
+      case UNTRAP: return invoke_untrap(obj);
+      case CHARGE_OBJ: return invoke_charge_obj(obj);
+      case LEV_TELE: /* level_tele(); */ return 1;
+      case CREATE_PORTAL: return invoke_create_portal(obj);
+      case ENLIGHTENING: /* enlightenment(); */ return 1;
+      case CREATE_AMMO: return invoke_create_ammo(obj);
+      case BANISH: return invoke_banish(obj);
+      case FLING_POISON: return invoke_fling_poison(obj);
+      case SNOWSTORM: /* FALLTHRU */
+      case FIRESTORM: return invoke_storm_spell(obj);
+      case BLINDING_RAY: return invoke_blinding_ray(obj);
+      default: break;
+    }
+    return 0;
+  }
+
+  // Toggle a property (inv_prop <= LAST_PROP)
+  if (player && player.uprops) {
+    if (!player.uprops[oart.inv_prop])
+      player.uprops[oart.inv_prop] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
+    const prop = player.uprops[oart.inv_prop];
+    prop.extrinsic ^= W_ARTI;
+    const on = !!(prop.extrinsic & W_ARTI);
+    const moves = (game && game.moves) || 0;
+
+    if (on && obj.age > moves) {
+      prop.extrinsic ^= W_ARTI; // undo
+      You_feel("that %s is ignoring you.", obj.oname || 'the artifact');
+      obj.age += d(3, 10);
+      return 1;
+    } else if (!on) {
+      obj.age = moves + rnz(100);
+    }
+
+    if ((prop.extrinsic & ~W_ARTI) || prop.intrinsic) {
+      nothing_special(obj);
+      return 1;
+    }
+
+    switch (oart.inv_prop) {
+      case CONFLICT:
+        You_feel(on ? "like a rabble-rouser." : "the tension decrease around you.");
+        break;
+      case LEVITATION:
+        if (on) pline("You float up!");
+        else pline("You float gently to the ground.");
+        break;
+      case INVIS:
+        if (on) pline("Your body takes on a strange transparency...");
+        else pline("Your body seems to unfade...");
+        break;
+    }
+  }
+  return 1;
+}
+
+// cf. artifact.c:2236 — finesse_ahriman(obj, player)
+export function finesse_ahriman(obj, player) {
+  const oart = get_artifact(obj);
+  if (oart === artilist[ART_NONARTIFACT]
+      || oart.inv_prop !== LEVITATION)
+    return false;
+  if (!player || !player.uprops) return false;
+  const lev = player.uprops[LEVITATION];
+  if (!lev || !(lev.extrinsic & W_ARTI)) return false;
+  // Check if removing W_ARTI would end levitation
+  const saveLev = { ...lev };
+  lev.intrinsic &= ~0x80000000; // I_SPECIAL | TIMEOUT approximation
+  lev.extrinsic &= ~W_ARTI;
+  const result = !(lev.intrinsic || lev.extrinsic);
+  Object.assign(lev, saveLev);
+  return result;
+}
 
 // cf. artifact.c:2279 — arti_speak(obj)
 export function arti_speak(obj) {
-  // TODO: artifact speech
-  return 0;
+  const oart = get_artifact(obj);
+  if (oart === artilist[ART_NONARTIFACT] || !(oart.spfx & SPFX_SPEAK))
+    return 0;
+  // getrumor() not ported; use a placeholder line
+  const line = "NetHack rumors file closed for renovation.";
+  pline("%s whispers:", obj.oname || 'The artifact');
+  pline('"%s"', line);
+  return 1;
 }
 
 // ── Mapping helpers ──
@@ -685,23 +1464,74 @@ export function abil_to_spfx(abil) {
   return map[abil] || 0;
 }
 
-// cf. artifact.c:2376 — what_gives(abil)
-export function what_gives(abil) {
-  // TODO: find worn/wielded item granting intrinsic
+// cf. artifact.c:2376 — what_gives(abil, player)
+// In the JS port, abil is a property name string matching abil_to_adtyp/abil_to_spfx keys.
+// Returns the first inventory item that confers the given ability, or null.
+export function what_gives(abil, player) {
+  if (!player) return null;
+  const dtyp = abil_to_adtyp(abil);
+  const spfx = abil_to_spfx(abil);
+  const inv = player.inventory || [];
+
+  for (const obj of inv) {
+    if (obj.oartifact) {
+      const art = get_artifact(obj);
+      if (art !== artilist[ART_NONARTIFACT]) {
+        if (dtyp) {
+          if (art.cary.ad === dtyp) return obj;
+          if (art.defn.ad === dtyp && obj.owornmask) return obj;
+        }
+        if (spfx) {
+          if ((art.cspfx & spfx) === spfx) return obj;
+          if ((art.spfx & spfx) === spfx && obj.owornmask) return obj;
+        }
+      }
+    }
+  }
   return null;
 }
 
 // ── Master Key and misc ──
 
-// cf. artifact.c:2708 — count_surround_traps(x, y)
-export function count_surround_traps(x, y) {
-  // TODO: count adjacent traps
-  return 0;
+// cf. artifact.c:2708 — count_surround_traps(x, y, map)
+export function count_surround_traps(x, y, map) {
+  if (!map) return 0;
+  let ret = 0;
+  for (let dx = x - 1; dx <= x + 1; dx++) {
+    for (let dy = y - 1; dy <= y + 1; dy++) {
+      const cell = map.at(dx, dy);
+      if (!cell) continue;
+      // Check for traps at this location
+      if (cell.trap) ret++;
+    }
+  }
+  return ret;
 }
 
-// cf. artifact.c:2753 — mkot_trap_warn()
-export function mkot_trap_warn() {
-  // TODO: Master Key trap sensing
+// Module-level tracking for MKoT trap warnings
+let mkot_trap_warn_count = 0;
+export function get_mkot_trap_warn_count() { return mkot_trap_warn_count; }
+
+const heat_descriptions = [
+  'cool', 'slightly warm', 'warm', 'very warm',
+  'hot', 'very hot', 'like fire'
+];
+
+// cf. artifact.c:2753 — mkot_trap_warn(player, map)
+export function mkot_trap_warn(player, map) {
+  if (!player) return;
+  const uwep = player.weapon;
+  const uarmg = player.gloves;
+  if (!uarmg && uwep && is_art(uwep, ART_MASTER_KEY_OF_THIEVERY)) {
+    const ntraps = count_surround_traps(player.x, player.y, map);
+    if (ntraps !== mkot_trap_warn_count) {
+      const idx = Math.min(ntraps, heat_descriptions.length - 1);
+      pline_The("Key feels %s%s", heat_descriptions[idx], ntraps > 3 ? '!' : '.');
+    }
+    mkot_trap_warn_count = ntraps;
+  } else {
+    mkot_trap_warn_count = 0;
+  }
 }
 
 // cf. artifact.c:2775 — is_magic_key(mon, obj)
