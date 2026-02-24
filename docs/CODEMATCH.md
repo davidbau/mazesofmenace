@@ -2620,8 +2620,8 @@ No function symbols parsed from isaac64.c.
 | 211 | `sort_rooms` | mklev.js:34 | Aligned |
 | 1170 | `themerooms_post_level_generate` | - | Missing |
 | 1593 | `topologize` | mklev.js:410 | Aligned |
-| 1934 | `traptype_rnd` | - | Missing |
-| 1998 | `traptype_roguelvl` | - | Missing |
+| 1934 | `traptype_rnd` | mklev.js:858 | Aligned |
+| 1998 | `traptype_roguelvl` | mklev.js:903 | Aligned |
 | 1428 | `water_has_kelp` | - | Missing |
 
 ### mkmap.c -> mkmap.js

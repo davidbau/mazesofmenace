@@ -119,6 +119,7 @@ import {
     makeniche,
     make_niches,
     makevtele,
+    mktrap_pick_kind,
     mklev_sanity_check,
     level_finalize_topology,
     sort_rooms,
@@ -2265,54 +2266,6 @@ function hole_destination_rng(map) {
     }
 }
 
-// C ref: mklev.c:1926 traptype_rnd() — pick random trap type
-export function traptype_rnd(depth, mktrapflags = MKTRAP_NOFLAGS) {
-    const lvl = depth; // level_difficulty() = depth for normal dungeon
-    const kind = rnd(TRAPNUM - 1); // rnd(25) → 1..25
-
-    switch (kind) {
-    case TRAPPED_DOOR:
-    case TRAPPED_CHEST:
-        return NO_TRAP;
-    case MAGIC_PORTAL:
-    case VIBRATING_SQUARE:
-        return NO_TRAP;
-    case ROLLING_BOULDER_TRAP:
-    case SLP_GAS_TRAP:
-        if (lvl < 2) return NO_TRAP;
-        break;
-    case LEVEL_TELEP:
-        if (lvl < 5) return NO_TRAP;
-        break;
-    case SPIKED_PIT:
-        if (lvl < 5) return NO_TRAP;
-        break;
-    case LANDMINE:
-        if (lvl < 6) return NO_TRAP;
-        break;
-    case WEB:
-        // C ref: mklev.c traptype_rnd() — WEB is allowed below depth 7
-        // when MKTRAP_NOSPIDERONWEB is set.
-        if (lvl < 7 && !(mktrapflags & MKTRAP_NOSPIDERONWEB)) return NO_TRAP;
-        break;
-    case STATUE_TRAP:
-    case POLY_TRAP:
-        if (lvl < 8) return NO_TRAP;
-        break;
-    case FIRE_TRAP:
-        // Only in Gehennom (Inhell) — never on normal levels
-        return NO_TRAP;
-    case TELEP_TRAP:
-        // noteleport check — simplified: allow on normal levels
-        break;
-    case HOLE:
-        // Make holes much less frequent
-        if (rn2(7)) return NO_TRAP;
-        break;
-    }
-    return kind;
-}
-
 // C ref: mklev.c:2021 mktrap() — select trap type, find location, create trap
 export function mktrap(map, num, mktrapflags, croom, tm, depth) {
     if (!tm && !croom && !(mktrapflags & MKTRAP_MAZEFLAG)) return;
@@ -2322,17 +2275,8 @@ export function mktrap(map, num, mktrapflags, croom, tm, depth) {
         if (!loc || IS_POOL(loc.typ) || IS_LAVA(loc.typ)) return;
     }
 
-    let kind;
     const lvl = depth;
-
-    if (num > NO_TRAP && num < TRAPNUM) {
-        kind = num;
-    } else {
-        // Normal level: loop until we get a valid trap type
-        do {
-            kind = traptype_rnd(depth, mktrapflags);
-        } while (kind === NO_TRAP);
-    }
+    let kind = mktrap_pick_kind(map, num, depth, mktrapflags);
 
     // Convert hole/trapdoor to rocktrap if can't fall through
     // At depth 1 in main dungeon, can fall through — keep as-is
@@ -4632,6 +4576,12 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
             if (specialMap) {
                 if (!specialMap.flags) specialMap.flags = {};
                 specialMap.flags.is_tutorial = (useDnum === TUTORIAL);
+                if (specialName === 'rogue') {
+                    // C parity anchor: Is_rogue_level(&u.uz) checks topology's
+                    // rogue level slot; mark the generated map for JS checks.
+                    specialMap.flags.is_rogue_lev = true;
+                    specialMap.flags.roguelike = true;
+                }
                 return specialMap;
             }
             // If special level generation fails, fall through to procedural

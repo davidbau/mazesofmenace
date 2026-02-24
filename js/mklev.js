@@ -11,7 +11,11 @@ import {
     DIR_N, DIR_S, DIR_E, DIR_W, DIR_180,
     xdir, ydir,
     IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_LAVA, IS_POOL, IS_WALL,
-    NO_TRAP, TELEP_TRAP, LEVEL_TELEP, TRAPDOOR, ROCKTRAP, MAGIC_PORTAL, is_hole, isok,
+    NO_TRAP, ARROW_TRAP, DART_TRAP, ROCKTRAP, SLP_GAS_TRAP, BEAR_TRAP,
+    LANDMINE, ROLLING_BOULDER_TRAP, RUST_TRAP, FIRE_TRAP, PIT, SPIKED_PIT,
+    HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, MAGIC_PORTAL, WEB,
+    STATUE_TRAP, POLY_TRAP, VIBRATING_SQUARE, TRAPPED_DOOR, TRAPPED_CHEST, TRAPNUM,
+    MKTRAP_NOFLAGS, MKTRAP_NOSPIDERONWEB, is_hole, isok,
 } from './config.js';
 import { rn1, rn2, rnd, getRngCallCount } from './rng.js';
 import { makeRoom } from './map.js';
@@ -24,6 +28,9 @@ import { random_epitaph_text } from './rumors.js';
 import { maketrap, somexy, mazexy, bound_digging, mineralize, set_wall_state, litstate_rnd, wallify_region } from './dungeon.js';
 
 const DOORINC = 20;
+const DUNGEONS_OF_DOOM = 0;
+const KNOX = 4;
+const GEHENNOM = 5;
 
 // C ref: mklev.c mkroom_cmp() — sort rooms by lx only
 export function mkroom_cmp(a, b) {
@@ -829,4 +836,91 @@ export function place_branch(map, x = 0, y = 0, placementHint = map?._branchPlac
         return false;
     }
     return true;
+}
+
+function is_rogue_level_for_traps(map) {
+    // C: Is_rogue_level(&u.uz). Prefer explicit rogue-level marker and
+    // keep the legacy depth-15 DoD fallback for old session fixtures.
+    return !!(map?.flags?.is_rogue_lev || map?.flags?.roguelike || map?.flags?.is_rogue)
+        || (map?._genDnum === DUNGEONS_OF_DOOM && map?._genDlevel === 15);
+}
+
+function is_in_hell_for_traps(map) {
+    return map?._genDnum === GEHENNOM;
+}
+
+function is_single_level_branch_for_traps(map) {
+    // C: single_level_branch(&u.uz) == Is_knox(&u.uz).
+    return map?._genDnum === KNOX;
+}
+
+// C ref: mklev.c traptype_rnd()
+export function traptype_rnd(map, depth, mktrapflags = MKTRAP_NOFLAGS) {
+    const lvl = depth;
+    let kind = rnd(TRAPNUM - 1);
+
+    switch (kind) {
+    case TRAPPED_DOOR:
+    case TRAPPED_CHEST:
+    case MAGIC_PORTAL:
+    case VIBRATING_SQUARE:
+        kind = NO_TRAP;
+        break;
+    case ROLLING_BOULDER_TRAP:
+    case SLP_GAS_TRAP:
+        if (lvl < 2) kind = NO_TRAP;
+        break;
+    case LEVEL_TELEP:
+        if (lvl < 5 || map?.flags?.noteleport || is_single_level_branch_for_traps(map)) kind = NO_TRAP;
+        break;
+    case SPIKED_PIT:
+        if (lvl < 5) kind = NO_TRAP;
+        break;
+    case LANDMINE:
+        if (lvl < 6) kind = NO_TRAP;
+        break;
+    case WEB:
+        if (lvl < 7 && !(mktrapflags & MKTRAP_NOSPIDERONWEB)) kind = NO_TRAP;
+        break;
+    case STATUE_TRAP:
+    case POLY_TRAP:
+        if (lvl < 8) kind = NO_TRAP;
+        break;
+    case FIRE_TRAP:
+        if (!is_in_hell_for_traps(map)) kind = NO_TRAP;
+        break;
+    case TELEP_TRAP:
+        if (map?.flags?.noteleport) kind = NO_TRAP;
+        break;
+    case HOLE:
+        if (rn2(7)) kind = NO_TRAP;
+        break;
+    }
+    return kind;
+}
+
+// C ref: mklev.c traptype_roguelvl()
+export function traptype_roguelvl() {
+    switch (rn2(7)) {
+    default: return BEAR_TRAP;
+    case 1: return ARROW_TRAP;
+    case 2: return DART_TRAP;
+    case 3: return TRAPDOOR;
+    case 4: return PIT;
+    case 5: return SLP_GAS_TRAP;
+    case 6: return RUST_TRAP;
+    }
+}
+
+// C ref: mklev.c mktrap() trap type select path.
+export function mktrap_pick_kind(map, num, depth, mktrapflags = MKTRAP_NOFLAGS) {
+    if (num > NO_TRAP && num < TRAPNUM) return num;
+    if (is_rogue_level_for_traps(map)) return traptype_roguelvl();
+    if (is_in_hell_for_traps(map) && !rn2(5)) return FIRE_TRAP;
+
+    let kind;
+    do {
+        kind = traptype_rnd(map, depth, mktrapflags);
+    } while (kind === NO_TRAP);
+    return kind;
 }
