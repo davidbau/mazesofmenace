@@ -424,7 +424,7 @@ function Is_firelevel(lev) {
     return dnum === ELEMENTAL_PLANES && dlevel === 4;
 }
 
-function isInvocationLevel(lev) {
+export function Invocation_lev(lev) {
     const { dnum, dlevel } = _coerceLevelArg(lev);
     return dnum === GEHENNOM && dlevel === (dunlevs_in_dungeon(dnum) - 1);
 }
@@ -499,7 +499,7 @@ export function builds_up(lev) {
     return false;
 }
 
-function dname_to_dnum(name) {
+export function dname_to_dnum(name) {
     const key = String(name || '').toLowerCase();
     const map = {
         'dungeons of doom': DUNGEONS_OF_DOOM,
@@ -515,7 +515,7 @@ function dname_to_dnum(name) {
     return map[key];
 }
 
-function dungeon_branch(name) {
+export function dungeon_branch(name) {
     const dnum = dname_to_dnum(name);
     if (!Number.isInteger(dnum)) return null;
     for (const br of _branchTopology) {
@@ -534,7 +534,7 @@ export function at_dgn_entrance(name, lev) {
 export function Can_dig_down(levOrMap) {
     const lev = _coerceLevelArg(levOrMap);
     const hardfloor = !!levOrMap?.flags?.hardfloor;
-    return !hardfloor && !Is_botlevel(lev.dnum, lev.dlevel) && !isInvocationLevel(lev);
+    return !hardfloor && !Is_botlevel(lev.dnum, lev.dlevel) && !Invocation_lev(lev);
 }
 
 export function Can_fall_thru(levOrMap) {

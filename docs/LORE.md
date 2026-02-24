@@ -1222,3 +1222,9 @@ hard-won wisdom:
 - Porting `sp_lev.c` helper names into JS (`get_table_*`, `find_montype`, `find_objtype`, `sp_level_coder_init`, `create_des_coder`, `l_register_des`) is safe when behavior is kept behind existing call paths first, then adopted incrementally.
 - `levregion`/`teleport_region` validation must stay C-strict for region shape (`{1,2,3,4}` array form); relaxing to object-shaped regions causes unit regressions.
 - Moving `Can_dig_down`/`Can_fall_thru`/`Can_rise_up` and `builds_up` ownership into `dungeon.js` avoids cross-module stubs and keeps map/topology predicates co-located with dungeon branch state.
+
+### Coordinate/levregion stair helpers (2026-02-24)
+
+- Keep C helper ownership explicit in `sp_lev.js` (`get_table_xy_or_coord`, `l_create_stairway`, `l_get_lregion`, `levregion_add`, `light_region`) and route existing des entrypoints through those helpers so behavior stays centralized.
+- `levregion`/`teleport_region` remain strict on region-array validation while still accepting object form where existing JS port paths already depend on it.
+- Exporting `dungeon.c` topology names directly (`Invocation_lev`, `dname_to_dnum`, `dungeon_branch`) removes hidden duplicates and makes branch logic reusable from map-generation call sites.
