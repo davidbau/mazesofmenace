@@ -846,10 +846,9 @@ export function place_branch(map, x = 0, y = 0, placementHint = map?._branchPlac
 }
 
 function is_rogue_level_for_traps(map) {
-    // C: Is_rogue_level(&u.uz). Prefer explicit rogue-level marker and
-    // keep the legacy depth-15 DoD fallback for old session fixtures.
-    return !!(map?.flags?.is_rogue_lev || map?.flags?.roguelike || map?.flags?.is_rogue)
-        || (map?._genDnum === DUNGEONS_OF_DOOM && map?._genDlevel === 15);
+    // C: Is_rogue_level(&u.uz) is a topology/special-level property, not
+    // a raw depth check.
+    return !!(map?.flags?.is_rogue_lev || map?.flags?.roguelike || map?.flags?.is_rogue);
 }
 
 function is_in_hell_for_traps(map) {

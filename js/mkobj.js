@@ -20,7 +20,7 @@ import {
     GRAY_DRAGON_SCALES, YELLOW_DRAGON_SCALES, LENSES,
     ELVEN_SHIELD, ORCISH_SHIELD, SHIELD_OF_REFLECTION,
     WORM_TOOTH, UNICORN_HORN, POT_WATER,
-    SPE_BOOK_OF_THE_DEAD, SPE_NOVEL,
+    SPE_BOOK_OF_THE_DEAD, SPE_NOVEL, SPE_BLANK_PAPER,
     ARM_SHIELD, ARM_GLOVES, ARM_BOOTS,
     CLASS_SYMBOLS,
     initObjectData,
@@ -918,6 +918,10 @@ export function mkcorpstat(objtype, ptr_mndx, init, x = 0, y = 0, map = null) {
 export function mkobj(oclass, artif, skipErosion) {
     ensureObjectClassTablesInitialized();
     const inputClass = oclass;
+    const spellbookNoNovel = (oclass === -SPBOOK_CLASS);
+    if (spellbookNoNovel) {
+        oclass = SPBOOK_CLASS;
+    }
 
     // RANDOM_CLASS selection
     if (oclass === 0) { // RANDOM_CLASS = 0 in C, but our ILLOBJ_CLASS = 0
@@ -930,6 +934,14 @@ export function mkobj(oclass, artif, skipErosion) {
     }
 
     // Select specific object type within class
+    if (spellbookNoNovel) {
+        // C ref: SPBOOK_no_NOVEL selection path uses rnd_class() with
+        // upper bound SPE_BLANK_PAPER, excluding SPE_NOVEL.
+        const otyp = rnd_class(bases[SPBOOK_CLASS], SPE_BLANK_PAPER);
+        mkobjTrace(`mkobj call=${getRngCallCount()} in_class=${inputClass} class=${oclass} picked=${otyp} artif=${artif ? 1 : 0} noNovel=1`);
+        return mksobj(otyp, true, artif, skipErosion);
+    }
+
     const probTotal = oclass_prob_totals[oclass];
     let prob, i;
     if (probTotal > 0) {

@@ -49,7 +49,7 @@ import {
     PM_OGRE_LEADER, PM_OGRE_TYRANT, PM_GHOST, PM_ERINYS,
     PM_VAMPIRE, PM_VAMPIRE_LEADER, PM_VLAD_THE_IMPALER,
     PM_CHAMELEON,
-    MS_LEADER, MS_NEMESIS, MS_GUARDIAN,
+    MS_LEADER, MS_NEMESIS, MS_GUARDIAN, MS_PRIEST,
     PM_CROESUS,
     PM_ARCHEOLOGIST, PM_WIZARD,
 } from './monsters.js';
@@ -781,10 +781,15 @@ function m_initweap(mon, mndx, depth) {
         } else {
             // Generic human — check specific types
             // Ninja, priest, cleric, etc. — simplified
-            if (ptr.name && (ptr.name === 'priest' || ptr.name === 'priestess')) {
-                const otmp = mongets(mon,MACE);
-                otmp.spe = rnd(3);
-                if (!rn2(2)) otmp.cursed = true;
+            if (ptr.sound === MS_PRIEST) {
+                // C ref: makemon.c m_initweap() priest branch uses mksobj()
+                // directly (not mongets), so no WEAPON_CLASS init RNG here.
+                const otmp = mksobj(MACE, false, false);
+                if (otmp) {
+                    otmp.spe = rnd(3);
+                    if (!rn2(2)) otmp.cursed = true;
+                    mpickobj(mon, otmp);
+                }
             } else if (ptr.name && ptr.name === 'ninja') {
                 if (rn2(4)) m_initthrow(mon, SHURIKEN, 8);
                 else m_initthrow(mon, DART, 8);
@@ -1194,7 +1199,7 @@ function m_initinv(mon, mndx, depth, m_lev, map) {
                 if (!rn2(2)) mongets(mon,C_RATION);
                 if (mndx !== PM_SOLDIER && !rn2(3)) mongets(mon,BUGLE);
             }
-        } else if (ptr.name && (ptr.name === 'priest' || ptr.name === 'priestess')) {
+        } else if (ptr.sound === MS_PRIEST) {
             mongets(mon,rn2(7) ? ROBE : (rn2(3) ? CLOAK_OF_PROTECTION : CLOAK_OF_MAGIC_RESISTANCE));
             mongets(mon,SMALL_SHIELD);
             mkmonmoney(mon, rn1(10, 20));

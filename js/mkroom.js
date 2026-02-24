@@ -378,7 +378,8 @@ function priestini(sroom, sx, sy, sanctum, depth, map) {
 
     const cnt = rn1(3, 2);
     for (let s = 0; s < cnt; s++) {
-        const book = mkobj(SPBOOK_CLASS, false);
+        // C ref: priest.c priestini() uses mkobj(SPBOOK_no_NOVEL, FALSE).
+        const book = mkobj(-SPBOOK_CLASS, false);
         if (book) mpickobj(priest, book);
     }
     rn2(2);
