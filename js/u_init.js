@@ -1233,9 +1233,15 @@ export function initFirstLevel(player, roleIndex, wizard, opts = {}) {
     });
     const map = (opts.startDnum != null)
         ? makelevel(startDlevel, opts.startDnum, startDlevel,
-            { dungeonAlignOverride: opts.dungeonAlignOverride })
+            {
+                dungeonAlignOverride: opts.dungeonAlignOverride,
+                heroHasAmulet: !!player?.uhave?.amulet,
+            })
         : makelevel(startDlevel, undefined, undefined,
-            { dungeonAlignOverride: opts.dungeonAlignOverride });
+            {
+                dungeonAlignOverride: opts.dungeonAlignOverride,
+                heroHasAmulet: !!player?.uhave?.amulet,
+            });
     const pos = getArrivalPosition(map, startDlevel, null);
     player.x = pos.x;
     player.y = pos.y;

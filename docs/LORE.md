@@ -1321,3 +1321,9 @@ hard-won wisdom:
 - `des.trap` coordinate normalization should treat packed `SP_COORD_PACK` values the same as array/object coords; missing this silently falls back to random placement and can consume unrelated RNG.
 - In `finalizeContext`, trap creation should still execute immediately in script order and resolve coordinates at call time, mirroring C `lspo_trap` behavior.
 - Added unit coverage for packed-coord trap table form to keep this path stable (`des.trap({ type: 'pit', coord: packed })`).
+
+### makelevel amulet flag propagation + bubble bound fix (2026-02-24)
+
+- `fill_ordinary_room`'s amulet gate only helps parity when makelevel callers propagate hero state; `changeLevel`/newgame generation now pass `heroHasAmulet` into `makelevel`, and generated maps retain `_heroHasAmulet`.
+- Water bubble bounds should treat size `n` as span `n-1` in movement edge checks so a `1x1` bubble can legally occupy `xmax`/`ymax`.
+- Added unit coverage for the `1x1` bubble right-edge case to prevent reintroducing off-by-one clamping.

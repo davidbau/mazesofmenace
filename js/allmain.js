@@ -822,8 +822,12 @@ export class NetHackGame {
     // C ref: dungeon.c -- level management
     changeLevel(depth, transitionDir = null, opts = {}) {
         setMakemonPlayerContext(this.player);
+        const heroHasAmulet = !!(this.player?.uhave?.amulet);
         const makeLevel = Number.isInteger(this.dnum)
-            ? (d) => makelevel(d, this.dnum, d, { dungeonAlignOverride: this.dungeonAlignOverride })
+            ? (d) => makelevel(d, this.dnum, d, {
+                dungeonAlignOverride: this.dungeonAlignOverride,
+                heroHasAmulet,
+            })
             : undefined;
         changeLevelCore(this, depth, transitionDir, { ...opts, makeLevel });
 

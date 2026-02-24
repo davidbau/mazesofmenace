@@ -1095,7 +1095,7 @@ export function mv_bubble(map, bubble, dx = 0, dy = 0) {
     const maxY = Number.isInteger(water.ymax) ? water.ymax : (ROWNO - 1);
     let nx = bubble.x + dx;
     let ny = bubble.y + dy;
-    const span = Math.max(0, Number.isInteger(bubble.n) ? bubble.n : 0);
+    const span = Math.max(0, Number.isInteger(bubble.n) ? bubble.n - 1 : 0);
     if (nx < minX || (nx + span) > maxX) {
         dx = -dx;
         nx = bubble.x + dx;

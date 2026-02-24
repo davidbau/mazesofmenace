@@ -4231,6 +4231,7 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
     const forcedAlign = Number.isInteger(opts?.dungeonAlignOverride)
         ? opts.dungeonAlignOverride
         : undefined;
+    const heroHasAmulet = !!opts?.heroHasAmulet;
     setMakemonLevelContext({
         dungeonAlign: forcedAlign ?? (DUNGEON_ALIGN_BY_DNUM[dnum] ?? A_NONE),
     });
@@ -4309,6 +4310,7 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
             const specialMap = special.generator();
             if (specialMap) {
                 if (!specialMap.flags) specialMap.flags = {};
+                specialMap._heroHasAmulet = heroHasAmulet;
                 specialMap.flags.is_tutorial = (useDnum === TUTORIAL);
                 if (specialName === 'rogue') {
                     // C parity anchor: Is_rogue_level(&u.uz) checks topology's
@@ -4324,6 +4326,7 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
 
     const map = new GameMap();
     map.clear();
+    map._heroHasAmulet = heroHasAmulet;
     map._genDnum = Number.isInteger(dnum) ? dnum : DUNGEONS_OF_DOOM;
     map._genDlevel = Number.isInteger(dlevel) ? dlevel : depth;
     map._isInvocationLevel = !!opts.invocationLevel

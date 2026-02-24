@@ -11,6 +11,7 @@ import {
     set_wportal,
     fumaroles,
     movebubbles,
+    mv_bubble,
     water_friction,
     makemaz,
     fixup_special,
@@ -83,6 +84,14 @@ describe('mkmaze waterlevel state helpers', () => {
 
         assert.equal(map._water.fumaroles[0].x, 12);
         assert.equal(map._water.fumaroles[0].y, 9);
+    });
+
+    it('mv_bubble allows 1x1 bubble to occupy xmax', () => {
+        const map = new GameMap();
+        setup_waterlevel(map, { isWaterLevel: true });
+        const bubble = { x: map._water.xmax - 1, y: 10, n: 1, dx: 0, dy: 0 };
+        mv_bubble(map, bubble, 1, 0);
+        assert.equal(bubble.x, map._water.xmax);
     });
 
     it('water_friction returns sticky behavior on fumarole squares', () => {
