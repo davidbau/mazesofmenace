@@ -48,7 +48,7 @@ import {
     PM_SHOPKEEPER, AT_WEAP, AT_EXPL, PM_PESTILENCE,
     PM_GOBLIN, PM_ORC_CAPTAIN, PM_MORDOR_ORC, PM_URUK_HAI, PM_ORC_SHAMAN,
     PM_OGRE_LEADER, PM_OGRE_TYRANT, PM_GHOST, PM_ERINYS,
-    PM_VAMPIRE, PM_VAMPIRE_LEADER, PM_VLAD_THE_IMPALER,
+    PM_VAMPIRE, PM_VAMPIRE_LEADER, PM_VLAD_THE_IMPALER, PM_WOLF, PM_FOG_CLOUD, PM_VAMPIRE_BAT,
     PM_CHAMELEON,
     MS_LEADER, MS_NEMESIS, MS_GUARDIAN, MS_PRIEST,
     PM_CROESUS,
@@ -1396,11 +1396,16 @@ function pick_animal_newcham() {
     return _animalList[rn2(_animalList.length)];
 }
 
-function select_newcham_form(chamMndx) {
+function select_newcham_form(mon, chamMndx, map = null) {
     let mndx = -1;
     switch (chamMndx) {
     case PM_CHAMELEON:
         if (!rn2(3)) mndx = pick_animal_newcham();
+        break;
+    case PM_VLAD_THE_IMPALER:
+    case PM_VAMPIRE_LEADER:
+    case PM_VAMPIRE:
+        mndx = pickvampshape(mon, chamMndx, map);
         break;
     default:
         break;
@@ -1416,11 +1421,47 @@ function is_vampshifter_mndx(mndx) {
     return mndx === PM_VAMPIRE || mndx === PM_VAMPIRE_LEADER || mndx === PM_VLAD_THE_IMPALER;
 }
 
-function apply_newcham_from_base(mon, baseMndx, depth) {
+function is_pool_or_lava_for_mon(mon, map) {
+    if (!mon || !map || typeof map.at !== 'function') return false;
+    const loc = map.at(mon.mx, mon.my);
+    if (!loc) return false;
+    return !!(IS_POOL(loc.typ) || IS_LAVA(loc.typ));
+}
+
+// C ref: mon.c pickvampshape()
+function pickvampshape(mon, chamMndx, map) {
+    let mndx = chamMndx;
+    let wolfchance = 10;
+    const uppercase_only = !!(map?.flags?.is_rogue_lev || map?.flags?.is_rogue || map?.flags?.roguelike);
+    switch (chamMndx) {
+    case PM_VLAD_THE_IMPALER:
+        // C keeps Vlad in base form if mon_has_special(mon). Not modeled in JS.
+        wolfchance = 3;
+        // fall through
+    case PM_VAMPIRE_LEADER:
+        if (!rn2(wolfchance) && !uppercase_only && !is_pool_or_lava_for_mon(mon, map)) {
+            mndx = PM_WOLF;
+            break;
+        }
+        // fall through
+    case PM_VAMPIRE:
+        mndx = (!rn2(4) && !uppercase_only) ? PM_FOG_CLOUD : PM_VAMPIRE_BAT;
+        break;
+    default:
+        break;
+    }
+    // C also checks genocide and may revert with rn2(4) when in alternate form.
+    if (mon && mon.mndx !== chamMndx && !rn2(4)) {
+        return chamMndx;
+    }
+    return mndx;
+}
+
+function apply_newcham_from_base(mon, baseMndx, depth, map = null) {
     let target = null;
     let tryct = 20;
     do {
-        const picked = select_newcham_form(baseMndx);
+        const picked = select_newcham_form(mon, baseMndx, map);
         target = accept_newcham_form(baseMndx, picked);
         if (target) break;
     } while (--tryct > 0);
@@ -1453,12 +1494,12 @@ function apply_newcham_from_base(mon, baseMndx, depth) {
     return true;
 }
 
-function maybe_apply_newcham(mon, baseMndx, depth) {
+function maybe_apply_newcham(mon, baseMndx, depth, map = null) {
     const basePtr = mons[baseMndx];
     if (!(basePtr.flags2 & M2_SHAPESHIFTER)) return false;
     if (baseMndx === PM_VLAD_THE_IMPALER) return false;
     mon.cham = baseMndx;
-    return apply_newcham_from_base(mon, baseMndx, depth);
+    return apply_newcham_from_base(mon, baseMndx, depth, map);
 }
 
 // C ref: mon.c m_calcdistress() decide_to_shapeshift() regular branch.
@@ -1468,12 +1509,12 @@ export function runtimeDecideToShapeshift(mon, depth = 1) {
     const chamMndx = Number.isInteger(mon.cham) ? mon.cham : -1;
     if (chamMndx < LOW_PM || chamMndx >= SPECIAL_PM) return false;
     if (is_vampshifter_mndx(chamMndx)) {
-        // Keep RNG parity until vampire shapechanger logic is ported.
-        rn2(6);
+        // C ref: mon.c m_calcdistress()/pickvampshape path for vampshifters.
+        // Do not consume generic chameleon rn2(6) here.
         return false;
     }
     if (rn2(6) !== 0) return false;
-    return apply_newcham_from_base(mon, chamMndx, depth);
+    return apply_newcham_from_base(mon, chamMndx, depth, null);
 }
 
 function set_mimic_sym(mndx, x, y, map, depth) {
@@ -1997,7 +2038,7 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
     }
 
     // C ref: makemon.c shapechanger path (pm_to_cham/newcham).
-    const allowMinvent = allow_minvent && !maybe_apply_newcham(mon, mndx, depth || 1);
+    const allowMinvent = allow_minvent && !maybe_apply_newcham(mon, mndx, depth || 1, map || null);
 
     // Group formation
     // C ref: makemon.c:1427-1435 — only for anymon (random monster)

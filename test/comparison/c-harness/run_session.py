@@ -153,8 +153,9 @@ def setup_home(character=None):
         f.write('OPTIONS=suppress_alert:3.4.3\n')
         f.write('OPTIONS=symset:DECgraphics\n')
 
-    # Clean up stale game state to avoid prompts from previous crashed runs.
-    # Remove: save files, level/lock files (e.g. 501wizard.0), and bones files.
+    # Clean up stale game state to avoid prompts and non-determinism from prior runs.
+    # Remove: save files, level/lock files (e.g. 501wizard.0), bones files,
+    # and score logs that influence mk_tt_object() via get_rnd_toptenentry().
     import glob
     save_dir = os.path.join(INSTALL_DIR, 'save')
     if os.path.isdir(save_dir):
@@ -178,6 +179,11 @@ def setup_home(character=None):
     for f in glob.glob(os.path.join(INSTALL_DIR, 'bon*')):
         try:
             os.unlink(f)
+        except FileNotFoundError:
+            pass
+    for score_file in ('record', 'xlogfile', 'logfile'):
+        try:
+            os.unlink(os.path.join(INSTALL_DIR, score_file))
         except FileNotFoundError:
             pass
 
