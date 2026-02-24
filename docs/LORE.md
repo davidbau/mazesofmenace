@@ -1298,3 +1298,9 @@ hard-won wisdom:
 - In C (`uhitm.c`), attacking while wielding a non-weapon emits a one-time opening message (`You begin bashing monsters with ...`) before the attack outcome line.
 - For replay parity, when that opening message and miss result need to appear in the same turn at topline-width boundary, emitting the combined miss line directly in `playerAttackMonster()` avoids relying on display-layer concat edge cases.
 - Miss messages should use `monNam()` semantics (not hardcoded `the ...`) so named monsters/pets (e.g. `Idefix`) match C wording.
+
+### mkmaze protofile special-level loading parity (2026-02-24)
+
+- `makemaz(protofile, ...)` should first attempt protofile-driven special-level generation (C `mkmaze.c` path) and only fall back to procedural maze generation when lookup fails.
+- Protofile lookup needs base-name variant support (`medusa` -> `medusa-1..4`, `tower` -> `tower1..3`) and should prefer the current `(dnum,dlevel)` endpoint when provided.
+- Reusing the same special-level setup path (`resetLevelState`, finalize context, special-theme init shuffle) avoids introducing a separate RNG/loader code path for protofile-backed mazes.

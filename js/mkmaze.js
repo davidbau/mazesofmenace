@@ -16,6 +16,7 @@ import {
     deltrap,
     enexto,
     resolveBranchPlacementForLevel,
+    load_special_by_protofile,
     bound_digging,
     repair_irregular_room_boundaries,
 } from './dungeon.js';
@@ -207,11 +208,14 @@ export function bad_location(map, x, y, nlx, nly, nhx, nhy) {
 // C ref: mkmaze.c makemaz
 export function makemaz(map, protofile, dnum, dlevel, depth) {
     // C ref: mkmaze.c:1127-1204
-    // If protofile specified, try to load special level
-    // For now, we only handle the procedural case (protofile === "")
+    // If protofile specified, load the matching special level.
     if (protofile && protofile !== "") {
-        // TODO: Load special maze level file
-        console.warn(`makemaz: special level "${protofile}" not implemented, using procedural maze`);
+        const specialMap = load_special_by_protofile(protofile, dnum, dlevel, depth);
+        if (specialMap) {
+            Object.assign(map, specialMap);
+            return;
+        }
+        console.warn(`makemaz: special level "${protofile}" not found, using procedural maze`);
     }
 
     // C ref: Invocation_lev(&u.uz) in mkmaze.c.

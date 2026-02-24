@@ -74,7 +74,8 @@ import {
     objectData, bases, GLASS,
 } from './objects.js';
 import {
-    getSpecialLevel
+    getSpecialLevel,
+    findSpecialLevelByProto,
 } from './special_levels.js';
 import { litstate_rnd } from './mkmap.js';
 import { setLevelContext, clearLevelContext, initLuaMT, setSpecialLevelDepth, setFinalizeContext, resetLevelState } from './sp_lev.js';
@@ -1312,6 +1313,42 @@ export function isMtInitialized() {
 }
 export function setMtInitialized(val) {
     _mtInitialized = val;
+}
+
+// C ref: mkmaze.c makemaz(protofile): load named special level, including
+// protofile base-name variants (for example "medusa" -> "medusa-1..4").
+export function load_special_by_protofile(protofile, dnum, dlevel, depth) {
+    const where = findSpecialLevelByProto(protofile, dnum, dlevel);
+    if (!where) return null;
+
+    const special = getSpecialLevel(where.dnum, where.dlevel);
+    if (!special || typeof special.generator !== 'function') return null;
+
+    resetLevelState();
+    setSpecialLevelDepth(Number.isInteger(depth) ? depth : where.dlevel);
+    const specialName = typeof special.name === 'string' ? special.name : String(protofile || '');
+    setFinalizeContext({
+        dnum: where.dnum,
+        dlevel: where.dlevel,
+        specialName,
+        isBranchLevel: isBranchLevel(where.dnum, where.dlevel),
+    });
+
+    if (!get_special_themes_loaded()) {
+        set_special_themes_loaded(true);
+        rn2(3);
+        rn2(2);
+    }
+
+    const specialMap = special.generator();
+    if (!specialMap) return null;
+    if (!specialMap.flags) specialMap.flags = {};
+    specialMap.flags.is_tutorial = (where.dnum === TUTORIAL);
+    if (specialName === 'rogue') {
+        specialMap.flags.is_rogue_lev = true;
+        specialMap.flags.roguelike = true;
+    }
+    return specialMap;
 }
 
 // C ref: mklev.c makerooms()
@@ -4497,10 +4534,6 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
 
     // C ref: mklev.c:1533-1539,1558,1561-1562 — level_finalize_topology().
     level_finalize_topology(map, depth);
-
-    // Branch stair placement must be gated by actual chosen branch depth.
-    // Unconditional placement on depths 2..4 over-consumes RNG and is incorrect.
-    // TODO: wire this to real dungeon branch state from init_dungeons().
 
     return map;
     } finally {

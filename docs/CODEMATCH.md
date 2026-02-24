@@ -90,7 +90,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[~]` | minion.c | minion.js | Minion summoning: msummon, summon_minion, demon_talk, bribe, guardian angels. All 14 functions TODO (runtime gameplay) |
 | `[~]` | mklev.c | mklev.js | Level generation. Helpers moved to `mklev.js`: door/door-position (`mkroom_cmp`, `bydoor`, `okdoor`, `good_rm_wall_doorpos`, `finddpos_shift`, `finddpos`, `maybe_sdoor`), stairs/feature placement (`mkstairs`, `generate_stairs*`, `cardinal_nextto_room`, `place_niche`, `occupied`, `find_okay_roompos`, `mkfount`, `mksink`, `mkaltar`, `mkgrave`), and niche pipeline (`makeniche`, `make_niches`, `makevtele`); remaining generation pipeline still in `dungeon.js` |
 | `[~]` | mkmap.c | mkmap.js | Map generation algorithms now implemented in `mkmap.js` (`init_map`, `init_fill`, `get_map`, `pass_*`, `flood_fill_rm`, `join_map`, `finish_map`, `mkmap`, room cleanup/removal); `sp_lev.js` now calls `mkmap.js` directly |
-| `[~]` | mkmaze.c | mkmaze.js | Maze generation. Core helpers plus region-placement path (`is_exclusion_zone`, `bad_location`, `put_lregion_here`, `place_lregion`) and maze generation path (`makemaz`, `create_maze`, `populate_maze`, `maze0xy`, `maze_remove_deadends`, `mazexy`, `pick_vibrasquare_location`) now live in `mkmaze.js`; water plane still stubbed |
+| `[~]` | mkmaze.c | mkmaze.js | Maze generation. Core helpers plus region-placement path (`is_exclusion_zone`, `bad_location`, `put_lregion_here`, `place_lregion`) and maze generation path (`makemaz`, `create_maze`, `populate_maze`, `maze0xy`, `maze_remove_deadends`, `mazexy`, `pick_vibrasquare_location`) now live in `mkmaze.js`; protofile special-level load path and water-plane runtime scaffold are implemented (remaining C matrix details still pending) |
 | `[a]` | mkobj.c | mkobj.js | Object creation. mksobj/mkobj/mkcorpstat/xname/doname/weight/Is_container implemented; BUC functions exported (bless/unbless/curse/uncurse/blessorcurse/bcsign/set_bknown); erosion predicates exported (is_flammable/is_rustprone/is_rottable/is_corrodeable/is_crackable/erosion_matters); splitobj, container_weight added; ~30 functions TODO |
 | `[~]` | mkroom.c | mkroom.js | Room generation. `mkroom.js` now owns `do_mkroom`, `pick_room`, `mkzoo`, `mkswamp`, `invalid_shop_shape`, `mkshop`, `mktemple`, `mkundead`, search/type/save/restore helpers (`search_special`, `cmap_to_type`, `save_room(s)`, `rest_room(s)`), and zoo/room population selectors (`squadmon`, `courtmon`, `morguemon`, `antholemon`, `mk_zoo_thronemon`) plus room predicates/helpers (`isbig`, `has_dnstairs`, `has_upstairs`, `nexttodoor`, `shrine_pos`) and room-coordinate helpers (`somex`, `somey`, `inside_room`, `somexy`, `somexyspace`) |
 | `[a]` | mon.c | mon.js | Monster lifecycle: movemon, mfndpos (flag-based), mm_aggression, corpse_chance, passivemm, hider premove, zombie_maker/zombie_form/undead_to_corpse/genus/pm_to_cham; death chain: mlifesaver/lifesaved_monster/set_mon_min_mhpmax/check_gear_next_turn/m_detach/mondead_full/mondied/mongone/monkilled/xkilled/killed/make_corpse; alertness: wake_msg/wakeup/seemimic/wake_nearto_core/wake_nearto/wake_nearby/setmangry; turn processing: healmon/meatbox/m_consume_obj/meatmetal/meatobj/meatcorpse/minliquid/mpickgold/can_touch_safely/mon_give_prop/mon_givit/mcalcdistress; visibility: m_in_air/m_poisongas_ok/elemental_clog/set_ustuck/maybe_unhide_at/hideunder/hide_monst |
@@ -2648,18 +2648,18 @@ No function symbols parsed from isaac64.c.
 | 475 | `baalz_fixup` | mkmaze.js:670 | Partial — bounded nondiggable wallification region ported; remaining special-case side effects pending |
 | 341 | `bad_location` | mkmaze.js:194 | Aligned |
 | 1441 | `bound_digging` | dungeon.js `bound_digging()` | Aligned |
-| 708 | `check_ransacked` | mkmaze.js:795 | Partial — supports room-id and room-name checks |
+| 708 | `check_ransacked` | mkmaze.js:799 | Partial — supports room-id and room-name checks |
 | 951 | `create_maze` | mkmaze.js:283 | Aligned |
 | 166 | `extend_spine` | mkmaze.js:69 | Aligned |
 | 229 | `fix_wall_spines` | mkmaze.js `fix_wall_spines` | Aligned (re-export) |
-| 570 | `fixup_special` | mkmaze.js:772 | Partial — water/air setup, portal hook, and castle/minetown flag side effects ported; full C matrix pending |
+| 570 | `fixup_special` | mkmaze.js:776 | Partial — water/air setup, portal hook, and castle/minetown flag side effects ported; full C matrix pending |
 | 1479 | `fumaroles` | mkmaze.js:909 | Partial |
 | 1354 | `get_level_extends` | dungeon.js `get_level_extends()` | Aligned |
 | 317 | `is_exclusion_zone` | mkmaze.js:149 | Aligned |
 | 70 | `is_solid` | mkmaze.js:48 | Aligned |
 | 45 | `iswall` | mkmaze.js:29 | Aligned |
 | 59 | `iswall_or_stone` | mkmaze.js:41 | Aligned |
-| 1128 | `makemaz` | mkmaze.js:206 | Aligned |
+| 1128 | `makemaz` | mkmaze.js:209 | Aligned |
 | 1924 | `maybe_adjust_hero_bubble` | mkmaze.js:1038 | Partial |
 | 309 | `maze0xy` | mkmaze.js:116 | Aligned |
 | 895 | `maze_inbounds` | mkmaze.js:177 | Aligned |
@@ -2676,15 +2676,15 @@ No function symbols parsed from isaac64.c.
 | 356 | `place_lregion` | mkmaze.js:300 | Aligned |
 | 1098 | `populate_maze` | mkmaze.js:460 | Aligned |
 | 413 | `put_lregion_here` | mkmaze.js:238 | Aligned |
-| 1745 | `restore_waterlevel` | mkmaze.js:959 | Partial — structured water-state restore ported |
-| 1718 | `save_waterlevel` | mkmaze.js:951 | Partial — structured water-state snapshot ported |
+| 1745 | `restore_waterlevel` | mkmaze.js:963 | Partial — structured water-state restore ported |
+| 1718 | `save_waterlevel` | mkmaze.js:955 | Partial — structured water-state snapshot ported |
 | 77 | `set_levltyp` | mkmaze.js:53 | Aligned |
 | 125 | `set_levltyp_lit` | mkmaze.js:61 | Aligned |
 | 1797 | `set_wportal` | mkmaze.js:979 | Partial — portal state now recorded with destination payload |
-| 1807 | `setup_waterlevel` | mkmaze.js:985 | Partial — water/air conversion + bubble seed scaffold ported |
+| 1807 | `setup_waterlevel` | mkmaze.js:989 | Partial — water/air conversion + bubble seed scaffold ported |
 | 749 | `shiny_orc_stuff` | mkmaze.js:838 | Aligned |
 | 800 | `stolen_booty` | mkmaze.js:866 | Aligned |
-| 1855 | `unsetup_waterlevel` | mkmaze.js:1036 | Partial |
+| 1855 | `unsetup_waterlevel` | mkmaze.js:1040 | Partial |
 | 1233 | `walkfrom` | mkmaze.js:1053 | Aligned |
 | 1280 | `walkfrom` | mkmaze.js:1053 | Aligned |
 | 198 | `wall_cleanup` | mkmaze.js:84 | Aligned |

@@ -624,3 +624,47 @@ export function findSpecialLevelByName(levelName) {
     }
     return null;
 }
+
+function normalizeProtoName(name) {
+    if (typeof name !== 'string') return '';
+    return name.trim().toLowerCase().replace(/\.(des|lua)$/i, '');
+}
+
+function nameMatchesProto(levelName, protoName) {
+    const normalizedLevel = normalizeProtoName(levelName);
+    const normalizedProto = normalizeProtoName(protoName);
+    if (!normalizedLevel || !normalizedProto) return false;
+    if (normalizedLevel === normalizedProto) return true;
+    if (normalizedLevel.startsWith(`${normalizedProto}-`)) {
+        return /^\d+$/.test(normalizedLevel.slice(normalizedProto.length + 1));
+    }
+    if (!normalizedLevel.startsWith(normalizedProto)) return false;
+    const suffix = normalizedLevel.slice(normalizedProto.length);
+    return /^\d+$/.test(suffix);
+}
+
+/**
+ * Resolve a protofile-style special level name (for mkmaze makemaz()).
+ * Supports exact names and numeric variants like "medusa-3" / "medusa3"
+ * addressed by base name "medusa".
+ */
+export function findSpecialLevelByProto(protoName, dnum = null, dlevel = null) {
+    const normalizedProto = normalizeProtoName(protoName);
+    if (!normalizedProto) return null;
+
+    const candidates = [];
+    for (const entry of specialLevels.values()) {
+        const names = Array.isArray(entry.name) ? entry.name : [entry.name];
+        if (names.some((name) => nameMatchesProto(name, normalizedProto))) {
+            candidates.push({ dnum: entry.dnum, dlevel: entry.dlevel });
+        }
+    }
+    if (!candidates.length) return null;
+
+    if (Number.isInteger(dnum) && Number.isInteger(dlevel)) {
+        const exact = candidates.find((cand) => cand.dnum === dnum && cand.dlevel === dlevel);
+        if (exact) return exact;
+    }
+
+    return candidates[0];
+}

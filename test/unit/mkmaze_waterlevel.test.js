@@ -2,7 +2,7 @@ import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { initRng } from '../../js/rng.js';
 import { GameMap } from '../../js/map.js';
-import { WATER, AIR, STONE } from '../../js/config.js';
+import { WATER, AIR, STONE, FOUNTAIN } from '../../js/config.js';
 import {
     setup_waterlevel,
     save_waterlevel,
@@ -12,6 +12,7 @@ import {
     fumaroles,
     movebubbles,
     water_friction,
+    makemaz,
     fixup_special,
     check_ransacked,
     mark_ransacked,
@@ -107,5 +108,18 @@ describe('mkmaze waterlevel state helpers', () => {
         map.rooms = [{ name: 'Armory', ransacked: false }];
         mark_ransacked(map, 0);
         assert.equal(check_ransacked(map, 'armory'), true);
+    });
+
+    it('makemaz loads protofile special levels when provided', () => {
+        const map = new GameMap();
+        makemaz(map, 'oracle', null, null, 5);
+        assert.equal(map.flags.is_maze_lev, false);
+        let fountains = 0;
+        for (let x = 0; x < map.locations.length; x++) {
+            for (let y = 0; y < map.locations[x].length; y++) {
+                if (map.locations[x][y].typ === FOUNTAIN) fountains++;
+            }
+        }
+        assert.ok(fountains >= 2);
     });
 });

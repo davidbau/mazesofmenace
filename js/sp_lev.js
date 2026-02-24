@@ -3130,9 +3130,8 @@ export function build_room(opts = {}) {
         }
     }
 
-    // Calculate actual room position and size
-    // If x, y are specified, use them directly (special level fixed position)
-    // If -1, would need random placement (not implemented yet)
+    // Calculate actual room position and size.
+    // x/y fixed rooms use direct placement; x/y=-1 uses create_room random paths.
     let roomX, roomY, roomW, roomH;
     let splitDone = false; // Set true when create_room_splev already called split_rects
 
