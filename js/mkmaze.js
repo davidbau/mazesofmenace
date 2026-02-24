@@ -4,13 +4,17 @@
 
 import {
     COLNO, ROWNO, STONE, CROSSWALL, LAVAWALL, IRONBARS, WATER, SDOOR,
+    MAGIC_PORTAL,
     IS_WALL, isok,
 } from './config.js';
+import { rn2 } from './rng.js';
 import {
     makemaz as dungeonMakemaz,
     create_maze as dungeonCreateMaze,
     populate_maze as dungeonPopulateMaze,
     mazexy as dungeonMazexy,
+    pick_vibrasquare_location as dungeonPickVibrasquareLocation,
+    maketrap,
     wallification,
     fix_wall_spines,
     is_exclusion_zone as dungeonIsExclusionZone,
@@ -154,12 +158,7 @@ export function mazexy(map) {
 
 // C ref: mkmaze.c pick_vibrasquare_location
 export function pick_vibrasquare_location(map) {
-    for (let tries = 0; tries < 200; tries++) {
-        const pos = dungeonMazexy(map);
-        if (!pos) return null;
-        if (map.at(pos.x, pos.y)?.typ !== STONE) return pos;
-    }
-    return dungeonMazexy(map);
+    return dungeonPickVibrasquareLocation(map);
 }
 
 export { wallification, fix_wall_spines, place_lregion, put_lregion_here };
@@ -181,7 +180,15 @@ export function maze_inbounds(x, y) {
 // C ref: mkmaze.c mkportal
 export function mkportal(map, x, y, _todnum, _todlevel) {
     if (!map || !map.at) return null;
-    return place_lregion(map, x, y, x, y, y, y, y, y, 3);
+    const trap = maketrap(map, x, y, MAGIC_PORTAL);
+    if (!trap) return null;
+    if (Number.isInteger(_todnum) || Number.isInteger(_todlevel)) {
+        trap.dst = {
+            dnum: Number.isInteger(_todnum) ? _todnum : 0,
+            dlevel: Number.isInteger(_todlevel) ? _todlevel : 0,
+        };
+    }
+    return trap;
 }
 
 export function fumaroles() { return false; }
@@ -206,7 +213,62 @@ export function mk_bubble(map, x, y, n) {
     map._water.bubbles.push(bubble);
     return bubble;
 }
-export function maybe_adjust_hero_bubble() { return false; }
+// C ref: mkmaze.c maybe_adjust_hero_bubble
+export function maybe_adjust_hero_bubble(map, heroPos = null) {
+    if (!map?._water?.bubbles || !heroPos) return false;
+    const bubble = map._water.bubbles.find((b) => (
+        Number.isInteger(b?.x) && Number.isInteger(b?.y)
+        && Number.isInteger(b?.n)
+        && heroPos.x >= b.x && heroPos.x < (b.x + b.n)
+        && heroPos.y >= b.y && heroPos.y < (b.y + b.n)
+    ));
+    if (!bubble) return false;
+    map._water.heroBubble = bubble;
+    return true;
+}
 export function mv_bubble() { return false; }
+
+// C ref: mkmaze.c walkfrom()
+export function walkfrom(map, x, y, ftyp = CROSSWALL, btyp = STONE) {
+    if (!map || !isok(x, y)) return;
+    const dirs = [
+        { dx: 0, dy: -1 },
+        { dx: 1, dy: 0 },
+        { dx: 0, dy: 1 },
+        { dx: -1, dy: 0 },
+    ];
+    const maxX = COLNO - 2;
+    const maxY = ROWNO - 2;
+    const inBounds = (tx, ty) => tx >= 3 && ty >= 3 && tx <= maxX && ty <= maxY;
+    const isBlocked = (tx, ty) => {
+        const loc = at(map, tx, ty);
+        return !loc || loc.typ !== btyp;
+    };
+    const carve = (tx, ty) => {
+        const loc = at(map, tx, ty);
+        if (loc) loc.typ = ftyp;
+    };
+
+    carve(x, y);
+    while (true) {
+        const avail = [];
+        for (let i = 0; i < 4; i++) {
+            const d = dirs[i];
+            const nx = x + d.dx * 2;
+            const ny = y + d.dy * 2;
+            if (!inBounds(nx, ny)) continue;
+            if (isBlocked(nx, ny)) continue;
+            avail.push(i);
+        }
+        if (!avail.length) return;
+        const dir = dirs[avail[rn2(avail.length)]];
+        x += dir.dx;
+        y += dir.dy;
+        carve(x, y);
+        x += dir.dx;
+        y += dir.dy;
+        walkfrom(map, x, y, ftyp, btyp);
+    }
+}
 
 export { bound_digging, repair_irregular_room_boundaries };

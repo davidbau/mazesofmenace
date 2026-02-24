@@ -2660,7 +2660,7 @@ No function symbols parsed from isaac64.c.
 | 45 | `iswall` | mkmaze.js:29 | Aligned |
 | 59 | `iswall_or_stone` | mkmaze.js:41 | Aligned |
 | 1128 | `makemaz` | mkmaze.js:131 | Aligned (delegates to dungeon implementation) |
-| 1924 | `maybe_adjust_hero_bubble` | - | Missing |
+| 1924 | `maybe_adjust_hero_bubble` | mkmaze.js:217 | Partial |
 | 309 | `maze0xy` | mkmaze.js:116 | Aligned |
 | 895 | `maze_inbounds` | mkmaze.js:177 | Aligned |
 | 905 | `maze_remove_deadends` | mkmaze.js:146 | Partial (uses create_maze deadend-removal path) |
@@ -2668,11 +2668,11 @@ No function symbols parsed from isaac64.c.
 | 781 | `migr_booty_item` | - | Missing |
 | 718 | `migrate_orc` | - | Missing |
 | 1868 | `mk_bubble` | mkmaze.js:202 | Stub scaffold |
-| 1459 | `mkportal` | mkmaze.js:182 | Partial |
+| 1459 | `mkportal` | mkmaze.js:181 | Aligned |
 | 1534 | `movebubbles` | mkmaze.js:188 | Stub (intentional) |
 | 1947 | `mv_bubble` | - | Missing |
 | 297 | `okay` | mkmaze.js:102 | Aligned |
-| 1043 | `pick_vibrasquare_location` | mkmaze.js:156 | Partial |
+| 1043 | `pick_vibrasquare_location` | mkmaze.js:160 | Aligned |
 | 356 | `place_lregion` | mkmaze.js `place_lregion` | Aligned (re-export from dungeon) |
 | 1098 | `populate_maze` | mkmaze.js:141 | Aligned (delegates to dungeon implementation) |
 | 413 | `put_lregion_here` | mkmaze.js `put_lregion_here` | Aligned (re-export from dungeon) |
@@ -2685,8 +2685,8 @@ No function symbols parsed from isaac64.c.
 | 749 | `shiny_orc_stuff` | - | Missing |
 | 800 | `stolen_booty` | - | Missing |
 | 1855 | `unsetup_waterlevel` | mkmaze.js:198 | Stub scaffold |
-| 1233 | `walkfrom` | - | Missing |
-| 1280 | `walkfrom` | - | Missing |
+| 1233 | `walkfrom` | mkmaze.js:232 | Partial |
+| 1280 | `walkfrom` | mkmaze.js:232 | Partial |
 | 198 | `wall_cleanup` | mkmaze.js:84 | Aligned |
 | 290 | `wallification` | mkmaze.js `wallification` | Aligned (re-export) |
 | 1684 | `water_friction` | mkmaze.js:189 | Stub (intentional) |

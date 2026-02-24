@@ -985,7 +985,7 @@ export function makemaz(map, protofile, dnum, dlevel, depth) {
 }
 
 // C ref: mkmaze.c pick_vibrasquare_location()
-function pick_vibrasquare_location(map) {
+export function pick_vibrasquare_location(map) {
     const x_maze_min = 2;
     const y_maze_min = 2;
     const INVPOS_X_MARGIN = 4;
