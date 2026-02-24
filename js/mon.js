@@ -1476,7 +1476,8 @@ export function movemon(map, player, display, fov, game = null, { dochug, handle
     for (const mon of map.monsters) {
         if (mon.dead) continue;
         if (mon.movement >= NORMAL_SPEED) {
-            pushRngLogEntry(`^movemon_turn[${mon.mndx}@${mon.mx},${mon.my} mv=${mon.movement}->${mon.movement - NORMAL_SPEED}]`);
+            // C event format uses pre-decrement movement only.
+            pushRngLogEntry(`^movemon_turn[${mon.mndx}@${mon.mx},${mon.my} mv=${mon.movement}]`);
             const oldx = mon.mx;
             const oldy = mon.my;
             const alreadySawMon = !!(game && game.occupation
