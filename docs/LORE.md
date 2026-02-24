@@ -1228,3 +1228,9 @@ hard-won wisdom:
 - Keep C helper ownership explicit in `sp_lev.js` (`get_table_xy_or_coord`, `l_create_stairway`, `l_get_lregion`, `levregion_add`, `light_region`) and route existing des entrypoints through those helpers so behavior stays centralized.
 - `levregion`/`teleport_region` remain strict on region-array validation while still accepting object form where existing JS port paths already depend on it.
 - Exporting `dungeon.c` topology names directly (`Invocation_lev`, `dname_to_dnum`, `dungeon_branch`) removes hidden duplicates and makes branch logic reusable from map-generation call sites.
+
+### lspo entrypoint-name parity pass (2026-02-24)
+
+- Keeping C entrypoint names (`lspo_*`) exported in `sp_lev.js` while retaining existing `des.*` names lets CODEMATCH track true structural parity without changing script-call surface.
+- For feature flags, centralizing bit parse/set logic in one helper (`l_table_getset_feature_flag`) reduces drift and keeps random-flag semantics consistent across fountain/sink/throne/tree paths.
+- Map-facing dungeon helpers (`find_branch`, `find_level`, `find_hell`, `br_string*`) are low-risk parity wins when implemented as pure topology lookups over already-initialized branch state.

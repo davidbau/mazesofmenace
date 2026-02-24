@@ -524,6 +524,51 @@ export function dungeon_branch(name) {
     return null;
 }
 
+export function find_branch(name, branches = _branchTopology) {
+    const dnum = dname_to_dnum(name);
+    if (!Number.isInteger(dnum)) return -1;
+    for (let i = 0; i < branches.length; i++) {
+        if (branches[i]?.end2?.dnum === dnum) return i;
+    }
+    return -1;
+}
+
+export function find_level(dnum, dlevel) {
+    const sdnum = Number.isInteger(dnum) ? dnum : DUNGEONS_OF_DOOM;
+    const sdlevel = Number.isInteger(dlevel) ? dlevel : 1;
+    const lvl = getSpecialLevel(sdnum, sdlevel);
+    if (lvl) return { dnum: sdnum, dlevel: sdlevel, name: lvl.name };
+    return null;
+}
+
+export function find_hell(dest = { dnum: DUNGEONS_OF_DOOM, dlevel: 1 }) {
+    dest.dnum = GEHENNOM;
+    dest.dlevel = 1;
+    return dest;
+}
+
+export function deepest_lev_reached() {
+    return maxledgerno();
+}
+
+export function br_string(branch) {
+    if (!branch) return 'none';
+    switch (branch.type) {
+    case BR_STAIR: return 'stair';
+    case BR_NO_END1: return 'no_end1';
+    case BR_NO_END2: return 'no_end2';
+    case BR_PORTAL: return 'portal';
+    default: return 'unknown';
+    }
+}
+
+export function br_string2(branch) {
+    if (!branch) return 'none';
+    if (branch.type === BR_PORTAL) return 'portal';
+    const up = !!branch.end1_up;
+    return up ? 'stair up' : 'stair down';
+}
+
 export function at_dgn_entrance(name, lev) {
     const br = dungeon_branch(name);
     if (!br) return false;

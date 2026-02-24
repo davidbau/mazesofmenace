@@ -4056,6 +4056,46 @@ export function object(name_or_opts, x, y) {
     return obj;
 }
 
+function l_push_wid_hei_table(room) {
+    if (!room) return { w: 0, h: 0 };
+    const w = (Number.isFinite(room.hx) && Number.isFinite(room.lx))
+        ? (room.hx - room.lx + 1)
+        : Number.isFinite(room.width) ? room.width : 0;
+    const h = (Number.isFinite(room.hy) && Number.isFinite(room.ly))
+        ? (room.hy - room.ly + 1)
+        : Number.isFinite(room.height) ? room.height : 0;
+    return { w, h };
+}
+
+function l_push_mkroom_table(room) {
+    if (!room) return { x1: 0, y1: 0, x2: 0, y2: 0, w: 0, h: 0 };
+    const wh = l_push_wid_hei_table(room);
+    return {
+        x1: Number.isFinite(room.lx) ? room.lx : 0,
+        y1: Number.isFinite(room.ly) ? room.ly : 0,
+        x2: Number.isFinite(room.hx) ? room.hx : 0,
+        y2: Number.isFinite(room.hy) ? room.hy : 0,
+        w: wh.w,
+        h: wh.h,
+        rtype: Number.isFinite(room.rtype) ? room.rtype : 0,
+        rlit: Number.isFinite(room.rlit) ? room.rlit : 0,
+        irregular: !!room.irregular
+    };
+}
+
+function l_table_getset_feature_flag(loc, opts, key, bit) {
+    if (!loc || !opts) return;
+    const value = opts[key];
+    if (value === undefined) return;
+    const parsed = (typeof value === 'string' && value.toLowerCase() === 'random')
+        ? (rn2(2) !== 0)
+        : !!value;
+    if (!loc.featureFlags) loc.featureFlags = {};
+    loc.featureFlags[key] = parsed;
+    if (parsed) loc.flags |= bit;
+    else loc.flags &= ~bit;
+}
+
 /**
  * Map trap name to trap type constant.
  * C ref: sp_lev.c get_trap_type()
@@ -5448,78 +5488,18 @@ export function feature(type, x, y) {
         // sink: S_LPUDDING=1, S_LDWASHER=2, S_LRING=4
         // throne: T_LOOTED=1
         // tree: TREE_LOOTED=1, TREE_SWARM=2
-        const setFlagBit = (enabled, bit) => {
-            if (enabled) loc.flags |= bit;
-            else loc.flags &= ~bit;
-        };
-        const parseFeatureFlag = (value) => {
-            if (value === undefined) return null;
-            if (typeof value === 'string' && value.toLowerCase() === 'random') {
-                return rn2(2) !== 0;
-            }
-            return !!value;
-        };
-        if (!loc.featureFlags) loc.featureFlags = {};
         if (terrain === FOUNTAIN) {
-            {
-                const v = parseFeatureFlag(opts.looted);
-                if (v !== null) {
-                loc.featureFlags.looted = v;
-                setFlagBit(v, 1);
-                }
-            }
-            {
-                const v = parseFeatureFlag(opts.warned);
-                if (v !== null) {
-                loc.featureFlags.warned = v;
-                setFlagBit(v, 2);
-                }
-            }
+            l_table_getset_feature_flag(loc, opts, 'looted', 1);
+            l_table_getset_feature_flag(loc, opts, 'warned', 2);
         } else if (terrain === SINK) {
-            {
-                const v = parseFeatureFlag(opts.pudding);
-                if (v !== null) {
-                loc.featureFlags.pudding = v;
-                setFlagBit(v, 1);
-                }
-            }
-            {
-                const v = parseFeatureFlag(opts.dishwasher);
-                if (v !== null) {
-                loc.featureFlags.dishwasher = v;
-                setFlagBit(v, 2);
-                }
-            }
-            {
-                const v = parseFeatureFlag(opts.ring);
-                if (v !== null) {
-                loc.featureFlags.ring = v;
-                setFlagBit(v, 4);
-                }
-            }
+            l_table_getset_feature_flag(loc, opts, 'pudding', 1);
+            l_table_getset_feature_flag(loc, opts, 'dishwasher', 2);
+            l_table_getset_feature_flag(loc, opts, 'ring', 4);
         } else if (terrain === THRONE) {
-            {
-                const v = parseFeatureFlag(opts.looted);
-                if (v !== null) {
-                loc.featureFlags.looted = v;
-                setFlagBit(v, 1);
-                }
-            }
+            l_table_getset_feature_flag(loc, opts, 'looted', 1);
         } else if (terrain === TREE) {
-            {
-                const v = parseFeatureFlag(opts.looted);
-                if (v !== null) {
-                loc.featureFlags.looted = v;
-                setFlagBit(v, 1);
-                }
-            }
-            {
-                const v = parseFeatureFlag(opts.swarm);
-                if (v !== null) {
-                loc.featureFlags.swarm = v;
-                setFlagBit(v, 2);
-                }
-            }
+            l_table_getset_feature_flag(loc, opts, 'looted', 1);
+            l_table_getset_feature_flag(loc, opts, 'swarm', 2);
         }
     }
     markSpLevTouched(pos.x, pos.y);
@@ -6554,6 +6534,41 @@ export function load_special(name) {
     levelState.map = map;
     return true;
 }
+
+export function lspo_message(...args) { return message(...args); }
+export function lspo_monster(...args) { return monster(...args); }
+export function lspo_object(...args) { return object(...args); }
+export function lspo_level_flags(...args) { return level_flags(...args); }
+export function lspo_level_init(...args) { return level_init(...args); }
+export function lspo_engraving(...args) { return engraving(...args); }
+export function lspo_mineralize(...args) { return mineralize(...args); }
+export function lspo_door(...args) { return door(...args); }
+export function lspo_stair(...args) { return stair(...args); }
+export function lspo_ladder(...args) { return ladder(...args); }
+export function lspo_grave(...args) { return grave(...args); }
+export function lspo_altar(...args) { return altar(...args); }
+export function lspo_map(...args) { return map(...args); }
+export function lspo_feature(...args) { return feature(...args); }
+export function lspo_terrain(...args) { return terrain(...args); }
+export function lspo_replace_terrain(...args) { return replace_terrain(...args); }
+export function lspo_room(...args) { return room(...args); }
+export function lspo_corridor(...args) { return corridor(...args); }
+export function lspo_random_corridors(...args) { return random_corridors(...args); }
+export function lspo_gold(...args) { return gold(...args); }
+export function lspo_trap(...args) { return trap(...args); }
+export function lspo_mazewalk(...args) { return mazewalk(...args); }
+export function lspo_drawbridge(...args) { return drawbridge(...args); }
+export function lspo_region(...args) { return region(...args); }
+export function lspo_levregion(...args) { return levregion(...args); }
+export function lspo_exclusion(...args) { return exclusion(...args); }
+export function lspo_wallify(...args) { return wallify(...args); }
+export function lspo_wall_property(...args) { return wall_property(...args); }
+export function lspo_non_diggable(...args) { return non_diggable(...args); }
+export function lspo_non_passwall(...args) { return non_passwall(...args); }
+export function lspo_teleport_region(...args) { return teleport_region(...args); }
+export function lspo_reset_level(...args) { return reset_level(...args); }
+export function lspo_finalize_level(...args) { return finalize_level(...args); }
+export function lspo_gas_cloud(...args) { return gas_cloud(...args); }
 
 /**
  * percent(n)
