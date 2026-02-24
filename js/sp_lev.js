@@ -1983,6 +1983,39 @@ export function flip_level(extras = false) {
     return flipLevelRandom(extras);
 }
 
+// C ref: sp_lev.c flip_visuals()
+export function flip_visuals(extras = false) {
+    return flip_level(extras);
+}
+
+// C ref: sp_lev.c flip_encoded_dir_bits()
+export function flip_encoded_dir_bits(dirBits, flipY = false, flipX = false) {
+    return Number.isInteger(dirBits) ? dirBits : 0;
+}
+
+// C ref: sp_lev.c flip_dbridge_horizontal()/flip_dbridge_vertical()
+export function flip_dbridge_horizontal(mask) {
+    if (!Number.isInteger(mask)) return mask;
+    if (mask & DB_EAST) return (mask & ~DB_EAST) | DB_WEST;
+    if (mask & DB_WEST) return (mask & ~DB_WEST) | DB_EAST;
+    return mask;
+}
+export function flip_dbridge_vertical(mask) {
+    if (!Number.isInteger(mask)) return mask;
+    if (mask & DB_NORTH) return (mask & ~DB_NORTH) | DB_SOUTH;
+    if (mask & DB_SOUTH) return (mask & ~DB_SOUTH) | DB_NORTH;
+    return mask;
+}
+
+// C ref: sp_lev.c flip_vault_guard()
+export function flip_vault_guard(guardPos, minX = 0, minY = 0, maxX = COLNO - 1, maxY = ROWNO - 1, flipY = false, flipX = false) {
+    if (!guardPos || !Number.isInteger(guardPos.x) || !Number.isInteger(guardPos.y)) return guardPos;
+    const out = { x: guardPos.x, y: guardPos.y };
+    if (flipY) out.y = (maxY - out.y) + minY;
+    if (flipX) out.x = (maxX - out.x) + minX;
+    return out;
+}
+
 // C ref: sp_lev.c cvt_to_relcoord()
 export function cvt_to_relcoord(coord, room = levelState.currentRoom || null) {
     if (!coord) return null;
@@ -2013,6 +2046,26 @@ export function ensure_way_out(map = levelState.map) {
     map.locations[pos.x][pos.y].typ = STAIRS;
     map.dnstair = { x: pos.x, y: pos.y };
     return true;
+}
+
+// C ref: sp_lev.c floodfillchk_match_under()/floodfillchk_match_accessible()
+export function floodfillchk_match_under(x, y, map = levelState.map) {
+    const loc = map?.locations?.[x]?.[y];
+    if (!loc) return false;
+    return !IS_WALL(loc.typ) && !IS_POOL(loc.typ);
+}
+export function floodfillchk_match_accessible(x, y, map = levelState.map) {
+    const loc = map?.locations?.[x]?.[y];
+    if (!loc) return false;
+    return !IS_WALL(loc.typ) && !IS_POOL(loc.typ) && !IS_LAVA(loc.typ);
+}
+
+// C ref: sp_lev.c generate_way_out_method()
+export function generate_way_out_method(map = levelState.map) {
+    if (!map) return 'none';
+    if (Number.isInteger(map.upstair?.x) || Number.isInteger(map.dnstair?.x)) return 'stairs';
+    if (Number.isInteger(map.upladder?.x) || Number.isInteger(map.dnladder?.x)) return 'ladder';
+    return 'teleport';
 }
 
 function getLevelExtentsForFlip(map) {
@@ -2392,7 +2445,7 @@ function setOkLocationFunc(func) {
     okLocationOverride = func || null;
 }
 
-function getLocation(rawX, rawY, humidity, croom, noLocWarn = false) {
+export function get_location(rawX, rawY, humidity, croom, noLocWarn = false) {
     let cpt = 0;
     const mx = croom ? croom.lx : (levelState.xsize > 0 ? levelState.xstart : 1);
     const my = croom ? croom.ly : (levelState.ysize > 0 ? levelState.ystart : 0);
@@ -2440,8 +2493,9 @@ function getLocation(rawX, rawY, humidity, croom, noLocWarn = false) {
 
     return { x, y };
 }
+const getLocation = get_location;
 
-function getLocationCoord(rawX, rawY, humidity, croom) {
+export function get_location_coord(rawX, rawY, humidity, croom) {
     const isRandom = rawX === undefined || rawY === undefined || rawX < 0 || rawY < 0;
     if (isRandom) {
         // C ref: get_location_coord() first tries NO_LOC_WARN for random packed coords.
@@ -2456,8 +2510,9 @@ function getLocationCoord(rawX, rawY, humidity, croom) {
     if (levelState.mapCoordMode) return toAbsoluteCoords(rawX, rawY);
     return { x: rawX, y: rawY };
 }
+const getLocationCoord = get_location_coord;
 
-function getRoomLoc(rawX, rawY, croom) {
+export function get_room_loc(rawX, rawY, croom) {
     if (!croom) {
         return getLocationCoord(rawX, rawY, GETLOC_DRY, null);
     }
@@ -2476,8 +2531,9 @@ function getRoomLoc(rawX, rawY, croom) {
     y += croom.ly;
     return { x, y };
 }
+const getRoomLoc = get_room_loc;
 
-function getFreeRoomLoc(rawX, rawY, croom) {
+export function get_free_room_loc(rawX, rawY, croom) {
     let { x, y } = getLocationCoord(rawX, rawY, GETLOC_DRY, croom);
     if (x < 0 || y < 0 || x >= COLNO || y >= ROWNO) return { x, y };
 
@@ -2495,6 +2551,7 @@ function getFreeRoomLoc(rawX, rawY, croom) {
     }
     return { x, y };
 }
+const getFreeRoomLoc = get_free_room_loc;
 
 /**
  * des.terrain(x, y, type)
@@ -7559,8 +7616,34 @@ function maze1xy(humidity) {
     return { x, y };
 }
 
+// C ref: sp_lev.c get_coord()
+export function get_coord(x, y, humidity = GETLOC_ANY_LOC, croom = levelState.currentRoom || null) {
+    return get_location_coord(x, y, humidity, croom);
+}
+
+// C ref: sp_lev.c get_mkroom_name()
+export function get_mkroom_name(roomType) {
+    const names = {
+        ordinary: ROOM_TYPE_MAP.ordinary,
+        court: ROOM_TYPE_MAP.throne,
+        swamp: ROOM_TYPE_MAP.swamp,
+        beehive: ROOM_TYPE_MAP.beehive,
+        morgue: ROOM_TYPE_MAP.morgue,
+        barracks: ROOM_TYPE_MAP.barracks,
+        zoo: ROOM_TYPE_MAP.zoo,
+        temple: ROOM_TYPE_MAP.temple,
+        leprechaunhall: ROOM_TYPE_MAP.leprehall,
+        cocknest: ROOM_TYPE_MAP.cocknest,
+        anthole: ROOM_TYPE_MAP.anthole,
+    };
+    if (typeof roomType === 'number') return roomType;
+    if (typeof roomType !== 'string') return ROOM_TYPE_MAP.ordinary;
+    const key = roomType.toLowerCase().replace(/\s+/g, '');
+    return names[key] ?? ROOM_TYPE_MAP.ordinary;
+}
+
 // C ref: sp_lev.c fill_empty_maze()
-function fillEmptyMaze() {
+export function fill_empty_maze() {
     if (!levelState.map) return;
     const maxX = levelState.mazeMaxX || ((COLNO - 1) & ~1);
     const maxY = levelState.mazeMaxY || ((ROWNO - 1) & ~1);
@@ -7675,6 +7758,7 @@ function fillEmptyMaze() {
         console.log(`[MAZEFILL] mapcount=${stats.mapcount}/${stats.mapcountmax} mapfact=${stats.mapfact} counts={obj:${stats.objCount},boulder:${stats.boulderCount},minotaur:${stats.minotaurCount},mon:${stats.monCount},gold:${stats.goldCount},trap:${stats.trapCount}}`);
     }
 }
+const fillEmptyMaze = fill_empty_maze;
 
 /**
  * des.mazewalk(x, y, direction)

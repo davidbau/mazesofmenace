@@ -293,6 +293,85 @@ function getLedgerNoForLevel(dnum, dlevel) {
     return clev;
 }
 
+// C ref: dungeon.c dunlev()/dunlevs_in_dungeon()/depth() and ledger helpers.
+export function dunlev(lev) {
+    if (Number.isInteger(lev?.dlevel)) return lev.dlevel;
+    if (Number.isInteger(lev)) return lev;
+    return 1;
+}
+export function dunlevs_in_dungeon(dnum) {
+    const cdnum = Number.isInteger(dnum) ? dnum : DUNGEONS_OF_DOOM;
+    return _dungeonLevelCounts.get(cdnum) || 1;
+}
+export function depth(lev) {
+    const dnum = Number.isInteger(lev?.dnum) ? lev.dnum : DUNGEONS_OF_DOOM;
+    const dlevel = dunlev(lev);
+    return getLedgerNoForLevel(dnum, dlevel);
+}
+export function ledger_no(lev) {
+    return depth(lev);
+}
+export function maxledgerno() {
+    let max = 0;
+    for (const [dnum, cnt] of _dungeonLevelCounts.entries()) {
+        const start = _dungeonLedgerStartByDnum.get(dnum) || 0;
+        max = Math.max(max, start + (cnt || 0));
+    }
+    return Math.max(max, 1);
+}
+export function ledger_to_dnum(ledgerno) {
+    const led = Number.isInteger(ledgerno) ? ledgerno : 1;
+    let bestDnum = DUNGEONS_OF_DOOM;
+    let bestStart = -Infinity;
+    for (const [dnum, start] of _dungeonLedgerStartByDnum.entries()) {
+        if (!Number.isInteger(start)) continue;
+        if (start <= led && start > bestStart) {
+            bestStart = start;
+            bestDnum = dnum;
+        }
+    }
+    return bestDnum;
+}
+export function ledger_to_dlev(ledgerno) {
+    const dnum = ledger_to_dnum(ledgerno);
+    const start = _dungeonLedgerStartByDnum.get(dnum) || 0;
+    return Math.max(1, (Number.isInteger(ledgerno) ? ledgerno : 1) - start);
+}
+export function on_level(a, b) {
+    return Number.isInteger(a?.dnum) && Number.isInteger(a?.dlevel)
+        && Number.isInteger(b?.dnum) && Number.isInteger(b?.dlevel)
+        && a.dnum === b.dnum && a.dlevel === b.dlevel;
+}
+export function Is_special(dnum, dlevel) {
+    if (getSpecialLevel(dnum, dlevel)) return true;
+    const oracle = getOracleLevel();
+    return dnum === oracle.dnum && dlevel === oracle.dlevel;
+}
+export function Is_branchlev(dnum, dlevel) {
+    return isBranchLevel(dnum, dlevel);
+}
+export function Is_botlevel(dnum, dlevel) {
+    return Number.isInteger(dlevel) && dlevel >= dunlevs_in_dungeon(dnum);
+}
+export function In_mines(lev) {
+    return (lev?.dnum ?? lev) === GNOMISH_MINES;
+}
+export function In_quest(lev) {
+    return (lev?.dnum ?? lev) === QUEST;
+}
+export function In_hell(lev) {
+    return (lev?.dnum ?? lev) === GEHENNOM;
+}
+export function In_V_tower(lev) {
+    return (lev?.dnum ?? lev) === VLADS_TOWER;
+}
+export function In_W_tower(lev) {
+    return In_hell(lev) || In_V_tower(lev);
+}
+export function On_W_tower_level(lev) {
+    return In_W_tower(lev);
+}
+
 // Rectangle allocation — imported from rect.js (C ref: rect.c)
 import {
     XLIM, YLIM, init_rect, get_rect_count, get_rects, rnd_rect, get_rect,
