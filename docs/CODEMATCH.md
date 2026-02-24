@@ -1550,12 +1550,12 @@ This section is generated from source symbol tables and includes function rows f
 | 651 | `indent` | - | Missing |
 | 1993 | `induced_align` | - | Missing |
 | 1111 | `init_castle_tune` | - | Missing |
-| 867 | `init_dungeon_branches` | - | Missing |
-| 997 | `init_dungeon_dungeons` | - | Missing |
-| 797 | `init_dungeon_levels` | - | Missing |
-| 960 | `init_dungeon_set_depth` | - | Missing |
-| 933 | `init_dungeon_set_entry` | - | Missing |
-| 1205 | `init_dungeons` | - | Missing |
+| 867 | `init_dungeon_branches` | dungeon.js:3665 | Aligned (uses branch-topology builder) |
+| 997 | `init_dungeon_dungeons` | dungeon.js:3675 | Aligned (drives dungeon placement/ledger setup loop) |
+| 797 | `init_dungeon_levels` | dungeon.js:3670 | Aligned (uses recursive place_level simulation) |
+| 960 | `init_dungeon_set_depth` | dungeon.js:3597 | Aligned |
+| 933 | `init_dungeon_set_entry` | dungeon.js:3570 | Aligned |
+| 1205 | `init_dungeons` | dungeon.js:3735 | Aligned |
 | 566 | `init_level` | - | Missing |
 | 2827 | `init_mapseen` | - | Missing |
 | 463 | `insert_branch` | - | Missing |

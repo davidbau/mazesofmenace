@@ -1181,7 +1181,7 @@ export function simulatePostLevelInit(player, map, depth, opts = {}) {
     // Set HP/PW from role + race via newhp()/newpw()
     // C ref: u_init.c:993-995 — u.ulevel=0, then newhp(), then newpw()
     // Note: the RNG calls from newhp/newpw during init are consumed by the
-    // dungeon.js initDungeon() stub (which calls rnd(enadv) to keep the
+    // dungeon.js init_dungeons() stub (which calls rnd(enadv) to keep the
     // flat startup RNG stream aligned). We call the functions here for the
     // correct HP/PW VALUES but their RNG has already been consumed.
     const raceHP = RACE_HP[player.race] ?? 2;

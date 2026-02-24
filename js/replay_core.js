@@ -281,7 +281,7 @@ export function generateMapsSequential(seed, maxDepth) {
     initRng(seed);
     setGameSeed(seed);
 
-    // initLevelGeneration handles init_objects() and initDungeon() internally
+    // initLevelGeneration handles init_objects() and init_dungeons() internally
     // Pass roleIndex=11 for Valkyrie (matches C map test harness)
     initLevelGeneration(11);
     const grids = {};
@@ -496,7 +496,7 @@ export function generateMapsWithRng(seed, maxDepth) {
     setGameSeed(seed);
     enableRngLog(); // Start logging RNG calls
 
-    // initLevelGeneration handles init_objects() and initDungeon() internally
+    // initLevelGeneration handles init_objects() and init_dungeons() internally
     // Pass roleIndex=11 for Valkyrie (matches C map test harness)
     initLevelGeneration(11);
     const grids = {};

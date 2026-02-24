@@ -205,7 +205,7 @@ const VLADS_TOWER = 6;
 const ELEMENTAL_PLANES = 7;
 const TUTORIAL = 8;
 
-// Snapshot of branch topology chosen during initDungeon().
+// Snapshot of branch topology chosen during init_dungeons().
 // Each entry: { type, end1:{dnum,dlevel}, end2:{dnum,dlevel}, end1_up }.
 let _branchTopology = [];
 // C ref: dungeon.c global oracle_level; populated during init_dungeons().
@@ -3566,6 +3566,11 @@ function parentDepthFromSelector(selector, dungeonLayouts) {
     return { base: 1, count: 1 };
 }
 
+// C ref: dungeon.c init_dungeon_set_entry()
+export function init_dungeon_set_entry(selector, dungeonLayouts) {
+    return parentDepthFromSelector(selector, dungeonLayouts);
+}
+
 function pickParentDepth(base, count, roll, parentDnum, occupiedByParent) {
     // C ref: dungeon.c parent_dlevel():
     // i = j = rn2(num); do { ++i (wrap); test base+i } while (occupied && i != j)
@@ -3586,6 +3591,11 @@ function pickParentDepth(base, count, roll, parentDnum, occupiedByParent) {
     used.add(candidate);
     occupiedByParent.set(parentDnum, used);
     return candidate;
+}
+
+// C ref: dungeon.c init_dungeon_set_depth()
+export function init_dungeon_set_depth(base, count, roll, parentDnum, occupiedByParent) {
+    return pickParentDepth(base, count, roll, parentDnum, occupiedByParent);
 }
 
 function buildBranchTopology(dungeonLayouts, parentRolls) {
@@ -3651,7 +3661,78 @@ function buildBranchTopology(dungeonLayouts, parentRolls) {
     return branches;
 }
 
-export function initDungeon(roleIndex, wizard = true) {
+// C ref: dungeon.c init_dungeon_branches()
+export function init_dungeon_branches(dungeonLayouts, parentRolls) {
+    return buildBranchTopology(dungeonLayouts, parentRolls);
+}
+
+// C ref: dungeon.c init_dungeon_levels()
+export function init_dungeon_levels(rawLevels, numLevels, levelActive) {
+    return placeLevelSim(rawLevels, numLevels, levelActive);
+}
+
+// C ref: dungeon.c init_dungeon_dungeons()
+export function init_dungeon_dungeons({
+    wizard,
+    dungeonDefs,
+    dnumMap,
+    parentRolls,
+    dungeonLayouts,
+}) {
+    let ledgerCursor = 0;
+    for (let dgnIndex = 0; dgnIndex < dungeonDefs.length; dgnIndex++) {
+        const dgn = dungeonDefs[dgnIndex];
+
+        // C ref: dungeon.c:1022 — non-wizard dungeon chance check
+        if (!wizard && dgn.chance && dgn.chance <= rn2(100)) {
+            continue;
+        }
+
+        const numLevels = dgn.range > 0
+            ? rn2(dgn.range) + dgn.base
+            : dgn.base;
+        const ledgerStart = ledgerCursor;
+        ledgerCursor += numLevels;
+
+        let parentRoll = 0;
+        if (dgn.hasParent) {
+            parentRoll = rn2(dgn.parentBranchNum);
+        }
+
+        const levelActive = dgn.levels.map(lvl => {
+            const chance = lvl[3] ?? 100;
+            if (!wizard && chance <= rn2(100)) return false;
+            return true;
+        });
+
+        const placed = init_dungeon_levels(dgn.levels, numLevels, levelActive);
+        const jsDnum = dnumMap[dgnIndex];
+        if (jsDnum >= 0) {
+            parentRolls.set(jsDnum, parentRoll);
+            dungeonLayouts.set(jsDnum, { numLevels, parentRoll, placed });
+            _dungeonLedgerStartByDnum.set(jsDnum, ledgerStart);
+            if (jsDnum === DUNGEONS_OF_DOOM) {
+                const oracleDlevel = Number.isInteger(placed[1]) && placed[1] > 0 ? placed[1] : 5;
+                _oracleLevel = { dnum: DUNGEONS_OF_DOOM, dlevel: oracleDlevel };
+            }
+            const canonList = RUNTIME_SPECIAL_LEVEL_CANON.get(jsDnum);
+            if (canonList) {
+                for (const { index, canonDlevel } of canonList) {
+                    const actualDlevel = placed[index];
+                    if (!Number.isInteger(actualDlevel) || actualDlevel < 1) continue;
+                    _runtimeSpecialLevelMap.set(`${jsDnum}:${actualDlevel}`, {
+                        dnum: jsDnum,
+                        dlevel: canonDlevel,
+                    });
+                }
+            }
+        }
+    }
+    return { ledgerCursor };
+}
+
+// C ref: dungeon.c init_dungeons()
+export function init_dungeons(roleIndex, wizard = true) {
     _wizardMode = !!wizard;
     set_mkroom_wizard_mode(_wizardMode);
     set_mkroom_ubirthday(_gameUbirthday);
@@ -3783,64 +3864,15 @@ export function initDungeon(roleIndex, wizard = true) {
     ];
     _dungeonLedgerStartByDnum = new Map();
     _runtimeSpecialLevelMap = new Map();
-    let ledgerCursor = 0;
+    init_dungeon_dungeons({
+        wizard,
+        dungeonDefs: DUNGEON_DEFS,
+        dnumMap: C_DGN_TO_JS_DNUM,
+        parentRolls,
+        dungeonLayouts,
+    });
 
-    // Process each dungeon
-    for (let dgnIndex = 0; dgnIndex < DUNGEON_DEFS.length; dgnIndex++) {
-        const dgn = DUNGEON_DEFS[dgnIndex];
-
-        // C ref: dungeon.c:1022 — non-wizard dungeon chance check
-        // if (!wizard && dgn_chance && (dgn_chance <= rn2(100)))
-        if (!wizard && dgn.chance && dgn.chance <= rn2(100)) {
-            continue; // skip entire dungeon
-        }
-
-        // 2a. rn1(range, base) for level count
-        const numLevels = dgn.range > 0
-            ? rn2(dgn.range) + dgn.base
-            : dgn.base;
-        const ledgerStart = ledgerCursor;
-        ledgerCursor += numLevels;
-
-        // 2b. parent_dlevel → rn2(num)
-        let parentRoll = 0;
-        if (dgn.hasParent) {
-            parentRoll = rn2(dgn.parentBranchNum);
-        }
-
-        // C ref: dungeon.c:572 — non-wizard per-level chance check
-        const levelActive = dgn.levels.map(lvl => {
-            const chance = lvl[3] ?? 100;
-            if (!wizard && chance <= rn2(100)) return false;
-            return true;
-        });
-
-        // 2c. place_level — recursive backtracking (skip inactive levels)
-        const placed = placeLevelSim(dgn.levels, numLevels, levelActive);
-        const jsDnum = C_DGN_TO_JS_DNUM[dgnIndex];
-        if (jsDnum >= 0) {
-            parentRolls.set(jsDnum, parentRoll);
-            dungeonLayouts.set(jsDnum, { numLevels, parentRoll, placed });
-            _dungeonLedgerStartByDnum.set(jsDnum, ledgerStart);
-            if (jsDnum === DUNGEONS_OF_DOOM) {
-                const oracleDlevel = Number.isInteger(placed[1]) && placed[1] > 0 ? placed[1] : 5;
-                _oracleLevel = { dnum: DUNGEONS_OF_DOOM, dlevel: oracleDlevel };
-            }
-            const canonList = RUNTIME_SPECIAL_LEVEL_CANON.get(jsDnum);
-            if (canonList) {
-                for (const { index, canonDlevel } of canonList) {
-                    const actualDlevel = placed[index];
-                    if (!Number.isInteger(actualDlevel) || actualDlevel < 1) continue;
-                    _runtimeSpecialLevelMap.set(`${jsDnum}:${actualDlevel}`, {
-                        dnum: jsDnum,
-                        dlevel: canonDlevel,
-                    });
-                }
-            }
-        }
-    }
-
-    _branchTopology = buildBranchTopology(dungeonLayouts, parentRolls);
+    _branchTopology = init_dungeon_branches(dungeonLayouts, parentRolls);
     _dungeonLevelCounts = new Map();
     for (const [jsDnum, layout] of dungeonLayouts.entries()) {
         if (!layout || !Number.isInteger(layout.numLevels)) continue;
@@ -4195,7 +4227,7 @@ export function initLevelGeneration(roleIndex, wizard = true, opts = {}) {
     setMakemonRoleContext(roleIndex, opts);
     _branchTopology = [];  // reset before recalculating from init_dungeons RNG
     _dungeonLevelCounts = new Map();
-    const dungeonResult = initDungeon(roleIndex, wizard);
+    const dungeonResult = init_dungeons(roleIndex, wizard);
     free_luathemes();
     setMtInitialized(false); // Reset MT RNG state for new game
 
