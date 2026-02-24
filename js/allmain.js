@@ -49,6 +49,7 @@ import { init_nhwindows, NHW_MENU, MENU_BEHAVE_STANDARD, PICK_ONE, ATR_NONE,
          create_nhwindow, destroy_nhwindow, start_menu, add_menu, end_menu, select_menu } from './windows.js';
 import { CLR_GRAY } from './display.js';
 import { initFirstLevel } from './u_init.js';
+import { movebubbles } from './mkmaze.js';
 
 // cf. allmain.c:169 — moveloop_core() monster movement + turn-end processing.
 // Called after the hero's action took time.  Runs movemon() for monster turns,
@@ -181,6 +182,11 @@ export function moveloop_turnend(game) {
 
     // C ref: allmain.c:351 dosounds() — ambient sounds
     moveloop_dosounds(game);
+
+    // C ref: allmain.c:374 — water/air planes update moving bubbles/clouds each turn.
+    if (game.map?.flags?.is_waterlevel || game.map?.flags?.is_airlevel) {
+        movebubbles(game.map);
+    }
 
     // C ref: allmain.c:353 gethungry()
     // eat.c:3186 — rn2(20) for accessory hunger timing

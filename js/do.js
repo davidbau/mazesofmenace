@@ -2,7 +2,7 @@
 // cf. do.c — dodrop, dodown, doup, flooreffects, goto_level, donull, dowipe
 
 import { nhgetch, ynFunction } from './input.js';
-import { ACCESSIBLE, COLNO, ROWNO, STAIRS,
+import { COLNO, ROWNO, STAIRS,
          CORR, ROOM, AIR, A_DEX,
          IS_FURNITURE, IS_LAVA, IS_POOL, MAGIC_PORTAL, VIBRATING_SQUARE } from './config.js';
 import { rn1, rn2, rnd, d } from './rng.js';
@@ -43,6 +43,7 @@ import { W_ARMOR, W_ACCESSORY, W_SADDLE } from './worn.js';
 import { revive } from './zap.js';
 import { cansee } from './vision.js';
 import { canseemon } from './mondata.js';
+import { movebubbles } from './mkmaze.js';
 
 
 // ============================================================
@@ -1043,7 +1044,7 @@ function getTeleportArrivalPosition(map, opts = {}) {
 //   'down' -> arriving from above, place on upstair
 //   'up'   -> arriving from below, place on downstairs
 //   'teleport' -> random placement via place_lregion
-//   null   -> default startup/legacy behavior
+//   null   -> normal non-teleport arrival behavior
 export function getArrivalPosition(map, dungeonLevel, transitionDir = null) {
     if (transitionDir === 'teleport') {
         return getTeleportArrivalPosition(map, { up: false, wasInWTower: false });
@@ -1068,29 +1069,14 @@ export function getArrivalPosition(map, dungeonLevel, transitionDir = null) {
         return { x: map.dnstair.x, y: map.dnstair.y };
     }
 
-    // Backward-compatible default.
+    // C-like default for normal arrival: upstairs when available.
     if (hasUpstair) {
         return { x: map.upstair.x, y: map.upstair.y };
     }
-
-    if (map.rooms.length > 0) {
-        const room = map.rooms[0];
-        return {
-            x: Math.floor((room.lx + room.hx) / 2),
-            y: Math.floor((room.ly + room.hy) / 2),
-        };
+    if (hasDownstair) {
+        return { x: map.dnstair.x, y: map.dnstair.y };
     }
-
-    for (let x = 1; x < COLNO - 1; x++) {
-        for (let y = 1; y < ROWNO - 1; y++) {
-            const loc = map.at(x, y);
-            if (loc && ACCESSIBLE(loc.typ)) {
-                return { x, y };
-            }
-        }
-    }
-
-    return { x: 1, y: 1 };
+    return getTeleportArrivalPosition(map, { up: false, wasInWTower: false });
 }
 
 // --- u_collide_m (C ref: do.c u_collide_m) ---
@@ -1194,6 +1180,11 @@ export function changeLevel(game, depth, transitionDir = null, opts = {}) {
             heroY: game.player.y,
         });
         resolveArrivalCollision(game);
+    }
+
+    // C ref: do.c goto_level() — initial bubble/cloud move before vision refresh.
+    if (game.map?.flags?.is_waterlevel || game.map?.flags?.is_airlevel) {
+        movebubbles(game.map);
     }
 
 }

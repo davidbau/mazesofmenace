@@ -31,6 +31,7 @@ import { dosearch0 } from './detect.js';
 import { monsterNearby, monnear } from './monutil.js';
 import { monflee } from './monmove.js';
 import { ynFunction } from './input.js';
+import { water_friction } from './mkmaze.js';
 // pline available from './pline.js' if needed for direct message output
 
 // Run direction keys (shift = run)
@@ -69,12 +70,21 @@ export async function handleMovement(dir, player, map, display, game) {
     // Preserve pre-move coordinates for C-style URETREATING checks.
     game.ux0 = oldX;
     game.uy0 = oldY;
-    const nx = player.x + dir[0];
-    const ny = player.y + dir[1];
+    let nx = player.x + dir[0];
+    let ny = player.y + dir[1];
+    player.dx = dir[0];
+    player.dy = dir[1];
     // C ref: cmd.c move-prefix handling is consumed by the attempted move
     // path, even when that move is blocked.
     const nopick = game.menuRequested;
     game.menuRequested = false;
+
+    const tDest = { x: nx, y: ny };
+    if (water_turbulence(player, map, display, tDest)) {
+        return { moved: false, tookTime: false };
+    }
+    nx = tDest.x;
+    ny = tDest.y;
 
     if (!isok(nx, ny)) {
         display.putstr_message("You can't move there.");
@@ -1311,7 +1321,7 @@ export function move_out_of_bounds(x, y, display, flags) {
 
 // C ref: hack.c air_turbulence() — plane of air movement disruption
 export function air_turbulence(player, map, display) {
-    if (map.flags && map.flags.is_air_level && rn2(4)
+    if (map.flags && map.flags.is_airlevel && rn2(4)
         && !player.levitating && !player.flying) {
         switch (rn2(3)) {
         case 0:
@@ -1332,10 +1342,27 @@ export function air_turbulence(player, map, display) {
 }
 
 // C ref: hack.c water_turbulence() — underwater movement disruption
-export function water_turbulence(player, _map, _display) {
-    if (player.uinwater) {
-        // Simplified: no water_friction() randomization yet
-        return false;
+export function water_turbulence(player, map, display, target = null) {
+    if (!player?.uinwater) return false;
+
+    water_friction(map, player, display);
+    if (!player.dx && !player.dy) {
+        return true;
+    }
+
+    const x = player.x + player.dx;
+    const y = player.y + player.dy;
+    if (target) {
+        target.x = x;
+        target.y = y;
+    }
+
+    if (isok(x, y) && !IS_POOL(map?.at(x, y)?.typ)
+        && !(map?.flags?.is_waterlevel) && near_capacity(player) > (player.swimming ? MOD_ENCUMBER : SLT_ENCUMBER)) {
+        if (display) display.putstr_message('You are carrying too much to climb out of the water.');
+        player.dx = 0;
+        player.dy = 0;
+        return true;
     }
     return false;
 }

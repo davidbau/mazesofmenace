@@ -1095,38 +1095,6 @@ function fixupSpecialLevel() {
     }
 
     let addedBranch = false;
-    const withBranchHint = (placement, fn) => {
-        const map = levelState.map;
-        const prev = map._branchPlacementHint;
-        map._branchPlacementHint = placement;
-        try {
-            fn();
-        } finally {
-            if (prev === undefined) {
-                delete map._branchPlacementHint;
-            } else {
-                map._branchPlacementHint = prev;
-            }
-        }
-    };
-    const withPortalDest = (dest, fn) => {
-        const map = levelState.map;
-        const prev = map._portalDestOverride;
-        if (dest) {
-            map._portalDestOverride = { dnum: dest.dnum, dlevel: dest.dlevel };
-        } else {
-            delete map._portalDestOverride;
-        }
-        try {
-            fn();
-        } finally {
-            if (prev === undefined) {
-                delete map._portalDestOverride;
-            } else {
-                map._portalDestOverride = prev;
-            }
-        }
-    };
     const resolvePortalDest = (region, ctx) => {
         if (region?.rtype !== LR_PORTAL) return null;
         const rname = (typeof region.rname === 'string') ? region.rname.trim() : '';
@@ -1145,13 +1113,17 @@ function fixupSpecialLevel() {
         // Named portal destination: resolve by registered special-level name.
         return findSpecialLevelByName(rname);
     };
-    const placeRegion = (region, explicitType = region.rtype) => {
+    const placeRegion = (region, explicitType = region.rtype, opts = {}) => {
         const ctx = levelState.finalizeContext || {};
         const portalDest = resolvePortalDest(region, ctx);
-        withPortalDest(portalDest, () => place_lregion(levelState.map,
+        place_lregion(levelState.map,
             region.inarea.x1, region.inarea.y1, region.inarea.x2, region.inarea.y2,
             region.delarea.x1, region.delarea.y1, region.delarea.x2, region.delarea.y2,
-            explicitType));
+            explicitType,
+            {
+                portalDest,
+                branchPlacement: opts.branchPlacement || 'none',
+            });
     };
     for (const region of levelState.levRegions || []) {
         switch (region.rtype) {
@@ -1164,15 +1136,15 @@ function fixupSpecialLevel() {
                     break;
                 }
                 if (explicit === 'portal') {
-                    withBranchHint('portal', () => placeRegion(region, LR_BRANCH));
+                    placeRegion(region, LR_BRANCH, { branchPlacement: 'portal' });
                     break;
                 }
                 if (explicit === 'stairs' || explicit === 'stair-down') {
-                    withBranchHint('stair-down', () => placeRegion(region, LR_BRANCH));
+                    placeRegion(region, LR_BRANCH, { branchPlacement: 'stair-down' });
                     break;
                 }
                 if (explicit === 'stair-up') {
-                    withBranchHint('stair-up', () => placeRegion(region, LR_BRANCH));
+                    placeRegion(region, LR_BRANCH, { branchPlacement: 'stair-up' });
                     break;
                 }
 
@@ -1181,15 +1153,15 @@ function fixupSpecialLevel() {
                     break;
                 }
                 if (branch.placement === 'portal') {
-                    withBranchHint('portal', () => placeRegion(region, LR_BRANCH));
+                    placeRegion(region, LR_BRANCH, { branchPlacement: 'portal' });
                     break;
                 }
                 if (branch.placement === 'stair-up') {
-                    withBranchHint('stair-up', () => placeRegion(region, LR_BRANCH));
+                    placeRegion(region, LR_BRANCH, { branchPlacement: 'stair-up' });
                     break;
                 }
                 if (branch.placement === 'stair-down') {
-                    withBranchHint('stair-down', () => placeRegion(region, LR_BRANCH));
+                    placeRegion(region, LR_BRANCH, { branchPlacement: 'stair-down' });
                     break;
                 }
                 // Fallback for unknown resolver states.
@@ -1229,23 +1201,23 @@ function fixupSpecialLevel() {
         // even for BR_NO_END1 branches where no stairs are actually placed.
         const explicit = levelState.finalizeContext?.branchPlacement;
         if (explicit === 'portal') {
-            withBranchHint('portal', () => place_lregion(levelState.map, 0, 0, 0, 0, 0, 0, 0, 0, LR_BRANCH));
+            place_lregion(levelState.map, 0, 0, 0, 0, 0, 0, 0, 0, LR_BRANCH, { branchPlacement: 'portal' });
         } else if (explicit === 'stair-up') {
-            withBranchHint('stair-up', () => place_lregion(levelState.map, 0, 0, 0, 0, 0, 0, 0, 0, LR_BRANCH));
+            place_lregion(levelState.map, 0, 0, 0, 0, 0, 0, 0, 0, LR_BRANCH, { branchPlacement: 'stair-up' });
         } else if (explicit === 'stair-down' || explicit === 'stairs') {
-            withBranchHint('stair-down', () => place_lregion(levelState.map, 0, 0, 0, 0, 0, 0, 0, 0, LR_BRANCH));
+            place_lregion(levelState.map, 0, 0, 0, 0, 0, 0, 0, 0, LR_BRANCH, { branchPlacement: 'stair-down' });
         } else if (explicit !== 'none') {
             const branch = resolveBranchPlacementForLevel(ctx.dnum, ctx.dlevel);
             if (branch.placement === 'portal') {
-                withBranchHint('portal', () => place_lregion(levelState.map, 0, 0, 0, 0, 0, 0, 0, 0, LR_BRANCH));
+                place_lregion(levelState.map, 0, 0, 0, 0, 0, 0, 0, 0, LR_BRANCH, { branchPlacement: 'portal' });
             } else if (branch.placement === 'stair-up') {
-                withBranchHint('stair-up', () => place_lregion(levelState.map, 0, 0, 0, 0, 0, 0, 0, 0, LR_BRANCH));
+                place_lregion(levelState.map, 0, 0, 0, 0, 0, 0, 0, 0, LR_BRANCH, { branchPlacement: 'stair-up' });
             } else if (branch.placement === 'stair-down') {
-                withBranchHint('stair-down', () => place_lregion(levelState.map, 0, 0, 0, 0, 0, 0, 0, 0, LR_BRANCH));
+                place_lregion(levelState.map, 0, 0, 0, 0, 0, 0, 0, 0, LR_BRANCH, { branchPlacement: 'stair-down' });
             } else {
                 // BR_NO_END1 or similar: C still consumes RNG via find_branch_room
                 // even though no stairs are placed. Call place_lregion for RNG parity.
-                place_lregion(levelState.map, 0, 0, 0, 0, 0, 0, 0, 0, LR_BRANCH);
+                place_lregion(levelState.map, 0, 0, 0, 0, 0, 0, 0, 0, LR_BRANCH, { branchPlacement: 'none' });
             }
         }
     }
@@ -5588,9 +5560,6 @@ export function feature(type, x, y) {
         pool: POOL,
         throne: THRONE,
         tree: TREE,
-        // Non-C compatibility aliases currently used by some scripts.
-        altar: ALTAR,
-        grave: GRAVE
     };
 
     const argc = arguments.length;
@@ -8275,7 +8244,6 @@ export function fill_empty_maze() {
         console.log(`[MAZEFILL] mapcount=${stats.mapcount}/${stats.mapcountmax} mapfact=${stats.mapfact} counts={obj:${stats.objCount},boulder:${stats.boulderCount},minotaur:${stats.minotaurCount},mon:${stats.monCount},gold:${stats.goldCount},trap:${stats.trapCount}}`);
     }
 }
-const fillEmptyMaze = fill_empty_maze;
 
 /**
  * des.mazewalk(x, y, direction)
@@ -8322,8 +8290,6 @@ export function mazewalk(xOrOpts, y, direction) {
     if (sx < 0 || sx >= COLNO || sy < 0 || sy >= ROWNO) return;
 
     const dirName = direction || 'random';
-    const mode = getProcessEnv('WEBHACK_MAZEWALK_MODE') || 'c';
-    const useStateBounds = (typeof process !== 'undefined' && process.env.WEBHACK_MAZEWALK_BOUNDS === 'legacy') ? false : true;
     const trace = (typeof process !== 'undefined' && process.env.WEBHACK_MAZEWALK_TRACE === '1');
     const traceStartRng = trace ? getRngCallCount() : 0;
     const dirs = [
@@ -8379,100 +8345,64 @@ export function mazewalk(xOrOpts, y, direction) {
         if (xx < 0 || xx >= COLNO || yy < 0 || yy >= ROWNO) return false;
         return map.locations[xx][yy].typ === STONE;
     };
-    const maxX = useStateBounds ? Math.min(COLNO - 1, levelState.mazeMaxX || ((COLNO - 1) & ~1)) : (COLNO - 2);
-    const maxY = useStateBounds ? Math.min(ROWNO - 1, levelState.mazeMaxY || ((ROWNO - 1) & ~1)) : (ROWNO - 2);
+    const maxX = Math.min(COLNO - 1, levelState.mazeMaxX || ((COLNO - 1) & ~1));
+    const maxY = Math.min(ROWNO - 1, levelState.mazeMaxY || ((ROWNO - 1) & ~1));
     const inWalkBounds = (xx, yy) => xx >= 3 && yy >= 3 && xx <= maxX && yy <= maxY;
 
-    const stack = [{ x: sx, y: sy }];
     setFloorIfNotDoor(sx, sy, ftyp);
     const stats = trace ? { steps: 0, carves: 0, deadends: 0, q: [0, 0, 0, 0, 0] } : null;
-    if (mode === 'c') {
-        // Direct recursive port of C mkmaze.c walkfrom() non-MICRO path.
-        // Direction indices mirror C's maze_dir enum: N,E,S,W => 0,1,2,3.
-        const cDirs = [
-            { dx: 0, dy: -1 },
-            { dx: 1, dy: 0 },
-            { dx: 0, dy: 1 },
-            { dx: -1, dy: 0 }
-        ];
-        const okayC = (xx, yy, d) => {
-            const dd = cDirs[d];
-            const nx = xx + dd.dx * 2;
-            const ny = yy + dd.dy * 2;
-            if (!inWalkBounds(nx, ny)) return false;
-            return isStone(nx, ny);
-        };
-        const walkfromC = (wx, wy) => {
-            let cx = wx;
-            let cy = wy;
-            if (stats) stats.steps++;
-            setFloorIfNotDoor(cx, cy, ftyp);
-            while (true) {
-                const dirsAvail = [];
-                for (let a = 0; a < 4; a++) {
-                    if (okayC(cx, cy, a)) dirsAvail.push(a);
-                }
-                if (stats) {
-                    const q = dirsAvail.length;
-                    if (q >= 0 && q < stats.q.length) stats.q[q]++;
-                }
-                if (!dirsAvail.length) {
-                    if (stats) stats.deadends++;
-                    return;
-                }
-                const dirIdx = dirsAvail[rn2(dirsAvail.length)];
-                const dd = cDirs[dirIdx];
-                cx += dd.dx;
-                cy += dd.dy;
-                // C walkfrom() sets typ only here (does not clear flags).
-                setFloorTypOnly(cx, cy, ftyp);
-                cx += dd.dx;
-                cy += dd.dy;
-                if (stats) stats.carves++;
-                walkfromC(cx, cy);
+    // Direct recursive port of C mkmaze.c walkfrom() non-MICRO path.
+    // Direction indices mirror C's maze_dir enum: N,E,S,W => 0,1,2,3.
+    const cDirs = [
+        { dx: 0, dy: -1 },
+        { dx: 1, dy: 0 },
+        { dx: 0, dy: 1 },
+        { dx: -1, dy: 0 }
+    ];
+    const okayC = (xx, yy, d) => {
+        const dd = cDirs[d];
+        const nx = xx + dd.dx * 2;
+        const ny = yy + dd.dy * 2;
+        if (!inWalkBounds(nx, ny)) return false;
+        return isStone(nx, ny);
+    };
+    const walkfromC = (wx, wy) => {
+        let cx = wx;
+        let cy = wy;
+        if (stats) stats.steps++;
+        setFloorIfNotDoor(cx, cy, ftyp);
+        while (true) {
+            const dirsAvail = [];
+            for (let a = 0; a < 4; a++) {
+                if (okayC(cx, cy, a)) dirsAvail.push(a);
             }
-        };
-        walkfromC(sx, sy);
-    } else {
-        while (stack.length > 0) {
-            if (stats) stats.steps++;
-            const cur = stack[stack.length - 1];
-            const order = [0, 1, 2, 3];
-            for (let i = order.length - 1; i > 0; i--) {
-                const j = rn2(i + 1);
-                [order[i], order[j]] = [order[j], order[i]];
+            if (stats) {
+                const q = dirsAvail.length;
+                if (q >= 0 && q < stats.q.length) stats.q[q]++;
             }
-
-            let choices = 0;
-            let carved = false;
-            for (const oi of order) {
-                const d = dirs[oi];
-                const nx = cur.x + d.dx * 2;
-                const ny = cur.y + d.dy * 2;
-                if (!inWalkBounds(nx, ny) || !isStone(nx, ny)) continue;
-                choices++;
-
-                setFloorIfNotDoor(cur.x, cur.y, ftyp);
-                setFloorForced(cur.x + d.dx, cur.y + d.dy, ftyp);
-                setFloorIfNotDoor(nx, ny, ftyp);
-                if (stats) stats.carves++;
-                stack.push({ x: nx, y: ny });
-                carved = true;
-                break;
-            }
-            if (stats && choices >= 0 && choices < stats.q.length) stats.q[choices]++;
-            if (!carved) {
+            if (!dirsAvail.length) {
                 if (stats) stats.deadends++;
-                stack.pop();
+                return;
             }
+            const dirIdx = dirsAvail[rn2(dirsAvail.length)];
+            const dd = cDirs[dirIdx];
+            cx += dd.dx;
+            cy += dd.dy;
+            // C walkfrom() sets typ only here (does not clear flags).
+            setFloorTypOnly(cx, cy, ftyp);
+            cx += dd.dx;
+            cy += dd.dy;
+            if (stats) stats.carves++;
+            walkfromC(cx, cy);
         }
-    }
+    };
+    walkfromC(sx, sy);
     if (stats) {
         const traceEndRng = getRngCallCount();
-        console.log(`[MAZEWALK] mode=${mode} bounds=${useStateBounds ? 'state' : 'legacy'} max=(${maxX},${maxY}) start=(${sx},${sy}) dir=${dirName} steps=${stats.steps} carves=${stats.carves} dead=${stats.deadends} q=[${stats.q.join(',')}] rng=${traceStartRng + 1}-${traceEndRng} delta=${traceEndRng - traceStartRng}`);
+        console.log(`[MAZEWALK] mode=c bounds=state max=(${maxX},${maxY}) start=(${sx},${sy}) dir=${dirName} steps=${stats.steps} carves=${stats.carves} dead=${stats.deadends} q=[${stats.q.join(',')}] rng=${traceStartRng + 1}-${traceEndRng} delta=${traceEndRng - traceStartRng}`);
     }
 
-    if (stocked) fillEmptyMaze();
+    if (stocked) fill_empty_maze();
 }
 
 export function l_register_des(target = globalThis) {

@@ -1276,12 +1276,6 @@ export function resolveBranchPlacementForLevel(dnum, dlevel) {
         return { placement: 'none' };
     }
 
-    // In isolated generator contexts (tests that don't run init_dungeons),
-    // preserve historical behavior: LR_BRANCH acts like down stair.
-    if (!_branchTopology.length) {
-        return { placement: 'stair-down' };
-    }
-
     // Exact topology if available (normal gameplay path).
     const info = getBranchAtLevel(cdnum, dlevel);
     if (info) {
@@ -2337,16 +2331,6 @@ export function mktrap(map, num, mktrapflags, croom, tm, depth) {
     // C ref: mklev.c mktrap() — MKTRAP_SEEN marks generated trap as seen.
     if (mktrapflags & MKTRAP_SEEN) {
         t.tseen = true;
-    }
-
-    // C ref: mklev.c mktrap() assigns MAGIC_PORTAL destination from
-    // u.ucamefrom when present. In JS, honor map-level portal destination
-    // context when provided by level-generation callers.
-    if (kind === MAGIC_PORTAL && map?._portalDestOverride) {
-        t.dst = {
-            dnum: map._portalDestOverride.dnum,
-            dlevel: map._portalDestOverride.dlevel,
-        };
     }
 
     // C ref: mklev.c:2124-2140 mktrap predecessor victim block.
@@ -4479,14 +4463,7 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
         if (_branchTopology.length && branchPlacement && branchPlacement !== 'none') {
             const { pos } = find_branch_room(map);
             if (pos) {
-                const prev = map._branchPlacementHint;
-                map._branchPlacementHint = branchPlacement;
-                try {
-                    place_branch(map, pos.x, pos.y);
-                } finally {
-                    if (prev === undefined) delete map._branchPlacementHint;
-                    else map._branchPlacementHint = prev;
-                }
+                place_branch(map, pos.x, pos.y, branchPlacement);
             }
         }
     }

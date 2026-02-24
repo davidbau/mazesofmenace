@@ -4,7 +4,7 @@ import {
     COLNO, ROWNO, STONE, HWALL, DOOR, CROSSWALL, LAVAWALL, IRONBARS, WATER, SDOOR,
     CORR, ROOM, AIR, MAGIC_PORTAL, VIBRATING_SQUARE, MKTRAP_MAZEFLAG,
     POOL, TLWALL, TRWALL, TUWALL, TDWALL, BRCORNER, BLCORNER, TRCORNER, TLCORNER,
-    IS_WALL, isok,
+    IS_WALL, IS_POOL, isok,
 } from './config.js';
 import { rn1, rn2, rnd } from './rng.js';
 import {
@@ -269,14 +269,7 @@ export function makemaz(map, protofile, dnum, dlevel, depth) {
     // Only invoke placement when this exact level is a branch endpoint.
     const branchPlacement = resolveBranchPlacementForLevel(dnum, dlevel).placement;
     if (branchPlacement && branchPlacement !== 'none') {
-        const prev = map._branchPlacementHint;
-        map._branchPlacementHint = branchPlacement;
-        try {
-            place_lregion(map, 0, 0, 0, 0, 0, 0, 0, 0, LR_BRANCH);
-        } finally {
-            if (prev === undefined) delete map._branchPlacementHint;
-            else map._branchPlacementHint = prev;
-        }
+        place_lregion(map, 0, 0, 0, 0, 0, 0, 0, 0, LR_BRANCH, { branchPlacement });
     }
 
     // C ref: mkmaze.c:1213 — populate_maze()
@@ -526,10 +519,11 @@ export function pick_vibrasquare_location(map) {
     const yMazeMax = Number.isInteger(map._mazeMaxY) ? map._mazeMaxY : (ROWNO - 1);
     const xRange = xMazeMax - x_maze_min - 2 * INVPOS_X_MARGIN - 1;
     const yRange = yMazeMax - y_maze_min - 2 * INVPOS_Y_MARGIN - 1;
-    if (xRange <= 0 || yRange <= 0) {
-        const fallback = mazexy(map);
-        map._invPos = fallback ? { x: fallback.x, y: fallback.y } : null;
-        return fallback;
+    if (xRange <= INVPOS_X_MARGIN || yRange <= INVPOS_Y_MARGIN
+        || (xRange * yRange) <= (INVPOS_DISTANCE * INVPOS_DISTANCE)) {
+        // C ref: mkmaze.c pick_vibrasquare_location() logs that maze is too small
+        // and still continues attempting placement.
+        console.warn(`svi.inv_pos: maze is too small! (${xMazeMax} x ${yMazeMax})`);
     }
 
     const up = map.upstair;
@@ -557,7 +551,7 @@ export function pick_vibrasquare_location(map) {
 }
 
 // C ref: mkmaze.c put_lregion_here()
-export function put_lregion_here(map, x, y, nlx, nly, nhx, nhy, rtype, oneshot) {
+export function put_lregion_here(map, x, y, nlx, nly, nhx, nhy, rtype, oneshot, opts = {}) {
     let invalid = bad_location(map, x, y, nlx, nly, nhx, nhy)
         || is_exclusion_zone(map, rtype, x, y);
     if (invalid) {
@@ -598,10 +592,10 @@ export function put_lregion_here(map, x, y, nlx, nly, nhx, nhy, rtype, oneshot) 
     case LR_PORTAL:
         {
             const trap = maketrap(map, x, y, MAGIC_PORTAL);
-            if (trap && map?._portalDestOverride) {
+            if (trap && opts?.portalDest) {
                 trap.dst = {
-                    dnum: map._portalDestOverride.dnum,
-                    dlevel: map._portalDestOverride.dlevel
+                    dnum: opts.portalDest.dnum,
+                    dlevel: opts.portalDest.dlevel
                 };
             }
         }
@@ -613,7 +607,7 @@ export function put_lregion_here(map, x, y, nlx, nly, nhx, nhy, rtype, oneshot) 
         mkstairs(map, x, y, true);
         break;
     case LR_BRANCH:
-        place_branch(map, x, y);
+        place_branch(map, x, y, opts.branchPlacement || 'none');
         break;
     default:
         break;
@@ -622,7 +616,7 @@ export function put_lregion_here(map, x, y, nlx, nly, nhx, nhy, rtype, oneshot) 
 }
 
 // C ref: mkmaze.c place_lregion()
-export function place_lregion(map, lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype) {
+export function place_lregion(map, lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype, opts = {}) {
     if (!lx) {
         if (rtype === LR_BRANCH) {
             if (map.nroom) {
@@ -638,7 +632,7 @@ export function place_lregion(map, lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype) {
                     console.warn(`Couldn't place lregion type ${rtype}!`);
                     return;
                 }
-                place_branch(map, pos.x, pos.y);
+                place_branch(map, pos.x, pos.y, opts.branchPlacement || 'none');
                 return;
             }
         }
@@ -657,12 +651,12 @@ export function place_lregion(map, lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype) {
     for (let trycnt = 0; trycnt < 200; trycnt++) {
         const x = rn1((hx - lx) + 1, lx);
         const y = rn1((hy - ly) + 1, ly);
-        if (put_lregion_here(map, x, y, nlx, nly, nhx, nhy, rtype, oneshot)) return;
+        if (put_lregion_here(map, x, y, nlx, nly, nhx, nhy, rtype, oneshot, opts)) return;
     }
 
     for (let x = lx; x <= hx; x++) {
         for (let y = ly; y <= hy; y++) {
-            if (put_lregion_here(map, x, y, nlx, nly, nhx, nhy, rtype, true)) return;
+            if (put_lregion_here(map, x, y, nlx, nly, nhx, nhy, rtype, true, opts)) return;
         }
     }
     console.warn(`Couldn't place lregion type ${rtype}!`);
@@ -951,14 +945,38 @@ export function movebubbles(map, dx = 0, dy = 0) {
     }
     return true;
 }
-export function water_friction(map, pos = null) {
-    if (!pos || !map?._water?.active) return 0;
-    if (maybe_adjust_hero_bubble(map, pos)) return 1;
-    if (Array.isArray(map._water.fumaroles)
-        && map._water.fumaroles.some((f) => f && f.x === pos.x && f.y === pos.y)) {
-        return 1;
+export function water_friction(map, player = null, display = null) {
+    if (!map?._water?.active || !player) return 0;
+    if (player.swimming && rn2(4)) return 0; // C ref: natural swimmers get advantage
+
+    let eff = false;
+    const ux = player.x;
+    const uy = player.y;
+    if (player.dx && !rn2(!player.dy ? 3 : 6)) {
+        let dy = 0;
+        let y = uy;
+        do {
+            dy = rn2(3) - 1;
+            y = uy + dy;
+        } while (dy && (!isok(ux, y) || !IS_POOL(map.at(ux, y)?.typ)));
+        player.dx = 0;
+        player.dy = dy;
+        eff = true;
+    } else if (player.dy && !rn2(!player.dx ? 3 : 5)) {
+        let dx = 0;
+        let x = ux;
+        do {
+            dx = rn2(3) - 1;
+            x = ux + dx;
+        } while (dx && (!isok(x, uy) || !IS_POOL(map.at(x, uy)?.typ)));
+        player.dy = 0;
+        player.dx = dx;
+        eff = true;
     }
-    return rn2(3) ? 0 : 1;
+    if (eff && display?.putstr_message) {
+        display.putstr_message('Water turbulence affects your movements.');
+    }
+    return eff ? 1 : 0;
 }
 export function save_waterlevel(map) {
     if (!map) return null;
@@ -970,22 +988,18 @@ export function save_waterlevel(map) {
 }
 export function restore_waterlevel(map, saved = null) {
     if (!map || !saved || typeof saved !== 'object') return false;
-    if ('water' in saved) {
-        map._water = saved.water ? JSON.parse(JSON.stringify(saved.water)) : null;
-        map._waterLevelSetup = saved.waterLevelSetup ? JSON.parse(JSON.stringify(saved.waterLevelSetup)) : null;
-        if (map._water) {
-            if (!Array.isArray(map._water.bubbles)) map._water.bubbles = [];
-            if (!Array.isArray(map._water.fumaroles)) map._water.fumaroles = [];
-            if (!('active' in map._water)) map._water.active = true;
-        }
-        if (saved.hero_memory !== null && saved.hero_memory !== undefined) {
-            map.flags = map.flags || {};
-            map.flags.hero_memory = !!saved.hero_memory;
-        }
-        return true;
+    if (!('water' in saved)) return false;
+    map._water = saved.water ? JSON.parse(JSON.stringify(saved.water)) : null;
+    map._waterLevelSetup = saved.waterLevelSetup ? JSON.parse(JSON.stringify(saved.waterLevelSetup)) : null;
+    if (map._water) {
+        if (!Array.isArray(map._water.bubbles)) map._water.bubbles = [];
+        if (!Array.isArray(map._water.fumaroles)) map._water.fumaroles = [];
+        if (!('active' in map._water)) map._water.active = true;
     }
-    // Backward-compat with earlier save format (raw _water object).
-    map._water = JSON.parse(JSON.stringify(saved));
+    if (saved.hero_memory !== null && saved.hero_memory !== undefined) {
+        map.flags = map.flags || {};
+        map.flags.hero_memory = !!saved.hero_memory;
+    }
     return true;
 }
 export function set_wportal(map, x = null, y = null, dst = null) {

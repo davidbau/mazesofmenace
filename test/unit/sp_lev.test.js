@@ -206,14 +206,13 @@ describe('sp_lev.js - des.* API', () => {
         assert.equal(map.locations[11][6].altarAlign, A_NEUTRAL);
     });
 
-    it('des.feature(\"altar\") places ALTAR terrain', () => {
+    it('des.feature places C feature terrain types', () => {
         resetLevelState();
         des.level_init({ style: 'solidfill', fg: '.' });
-        des.feature('altar', 20, 8);
+        des.feature('throne', 20, 8);
 
         const map = getLevelState().map;
-        assert.equal(map.locations[20][8].typ, ALTAR);
-        assert.equal(map.locations[20][8].altarAlign, A_NEUTRAL);
+        assert.equal(map.locations[20][8].typ, THRONE);
     });
 
     it('des.feature supports C-style "random" boolean flags', () => {

@@ -822,7 +822,7 @@ export function free_luathemes() {
 }
 
 // C ref: mklev.c place_branch()
-export function place_branch(map, x = 0, y = 0, placementHint = map?._branchPlacementHint) {
+export function place_branch(map, x = 0, y = 0, placementHint = 'none') {
     if (!placementHint || placementHint === 'none') return false;
     if (!x) {
         const found = find_branch_room(map).pos;

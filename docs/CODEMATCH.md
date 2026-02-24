@@ -2050,7 +2050,7 @@ This section is generated from source symbol tables and includes function rows f
 | 1675 | `u_rooted` | - | Missing |
 | 1814 | `u_simple_floortyp` | - | Missing |
 | 4052 | `unmul` | - | Missing |
-| 2346 | `water_turbulence` | - | Missing |
+| 2346 | `water_turbulence` | hack.js:1341 | Partial — C flow integrated (calls `water_friction`, adjusts destination, blocks climbing out while encumbered) |
 | 4225 | `weight_cap` | - | Missing |
 
 ### hacklib.c -> hacklib.js
@@ -2689,7 +2689,7 @@ No function symbols parsed from isaac64.c.
 | 1280 | `walkfrom` | mkmaze.js:1115 | Aligned |
 | 198 | `wall_cleanup` | mkmaze.js:84 | Aligned |
 | 290 | `wallification` | mkmaze.js `wallification` | Aligned (re-export) |
-| 1684 | `water_friction` | mkmaze.js:954 | Partial — fumarole squares treated as sticky |
+| 1684 | `water_friction` | mkmaze.js:954 | Partial — C-style direction perturbation for underwater movement |
 
 ### mkobj.c -> mkobj.js
 | C Line | C Function | JS Line | Alignment |

@@ -94,12 +94,23 @@ describe('mkmaze waterlevel state helpers', () => {
         assert.equal(bubble.x, map._water.xmax);
     });
 
-    it('water_friction returns sticky behavior on fumarole squares', () => {
+    it('water_friction applies C-style directional drift', () => {
         const map = new GameMap();
         setup_waterlevel(map, { isWaterLevel: true });
-        fumaroles(map, [{ x: 20, y: 10 }]);
-
-        assert.equal(water_friction(map, { x: 20, y: 10 }), 1);
+        const player = { x: 20, y: 10, dx: 1, dy: 0, swimming: false };
+        let changed = false;
+        for (let i = 0; i < 32; i++) {
+            const beforeDx = player.dx;
+            const beforeDy = player.dy;
+            water_friction(map, player);
+            if (player.dx !== beforeDx || player.dy !== beforeDy) {
+                changed = true;
+                break;
+            }
+            player.dx = 1;
+            player.dy = 0;
+        }
+        assert.equal(changed, true);
     });
 
     it('fixup_special applies castle/minetown flag side effects', () => {
