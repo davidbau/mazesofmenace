@@ -149,7 +149,17 @@ diff --git a/src/trap.c b/src/trap.c
 @@ -6438,6 +6439,7 @@ deltrap(struct trap *trap)
  {
      struct trap *ttmp;
-
+ 
 +    event_log("dtrap[%d,%d,%d]", trap->ttyp, trap->tx, trap->ty);
      clear_conjoined_pits(trap);
      if (trap == gf.ftrap) {
+diff --git a/src/restore.c b/src/restore.c
+--- a/src/restore.c
++++ b/src/restore.c
+@@ -1029,6 +1029,7 @@ void
+ trickery(char *reason)
+ {
++    event_log("trick[%s]", reason ? reason : "");
+     pline("Strange, this map is not as I remember it.");
+     pline("Somebody is trying some trickery here...");
+     pline("This game is void.");

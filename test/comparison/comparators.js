@@ -539,6 +539,10 @@ function isEventEntry(entry) {
     return typeof entry === 'string' && entry.length > 0 && entry[0] === '^';
 }
 
+function isIgnorableEventEntry(entry) {
+    return typeof entry === 'string' && entry.startsWith('^trick[');
+}
+
 // Strip JS caller context (` @ caller <= parent`) appended by pushRngLogEntry.
 function stripEventContext(entry) {
     if (typeof entry !== 'string') return entry;
@@ -547,8 +551,12 @@ function stripEventContext(entry) {
 }
 
 export function compareEvents(jsRng = [], sessionRng = []) {
-    const js = (Array.isArray(jsRng) ? jsRng : []).filter(isEventEntry);
-    const session = (Array.isArray(sessionRng) ? sessionRng : []).filter(isEventEntry);
+    const js = (Array.isArray(jsRng) ? jsRng : [])
+        .filter(isEventEntry)
+        .filter((entry) => !isIgnorableEventEntry(entry));
+    const session = (Array.isArray(sessionRng) ? sessionRng : [])
+        .filter(isEventEntry)
+        .filter((entry) => !isIgnorableEventEntry(entry));
     const total = Math.max(js.length, session.length);
 
     let matched = 0;

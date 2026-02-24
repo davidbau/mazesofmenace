@@ -573,6 +573,8 @@ async function handleExtendedCommand(game) {
             return await handleLoot(game);
         case 'levelchange':
             return await wizLevelChange(game);
+        case 'wish':
+            return await wizWish(game);
         case 'map':
             return wizMap(game);
         case 'teleport':
