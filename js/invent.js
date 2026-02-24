@@ -3,7 +3,7 @@
 
 import { nhgetch, getlin } from './input.js';
 import { create_nhwindow, destroy_nhwindow, NHW_MENU } from './windows.js';
-import { COLNO, STATUS_ROW_1 } from './config.js';
+import { COLNO, STATUS_ROW_1, PM_ARCHEOLOGIST, A_WIS } from './config.js';
 import { objectData, WEAPON_CLASS, FOOD_CLASS, WAND_CLASS, SPBOOK_CLASS,
          FLINT, ROCK, SLING, MAGIC_MARKER, COIN_CLASS, ARMOR_CLASS,
          RING_CLASS, AMULET_CLASS, TOOL_CLASS, POTION_CLASS, SCROLL_CLASS,
@@ -11,7 +11,7 @@ import { objectData, WEAPON_CLASS, FOOD_CLASS, WAND_CLASS, SPBOOK_CLASS,
          ILLOBJ_CLASS,
          AMULET_OF_YENDOR, CANDELABRUM_OF_INVOCATION, BELL_OF_OPENING,
          SPE_BOOK_OF_THE_DEAD, LOADSTONE, FIGURINE, SCR_SCARE_MONSTER,
-         CORPSE, EGG, TIN, POT_OIL, SPE_NOVEL, LEASH, STATUE,
+         CORPSE, EGG, TIN, POT_OIL, SPE_NOVEL, LEASH, STATUE, SCR_BLANK_PAPER,
          GLASS, GEMSTONE, MINERAL,
          ARM_SUIT, ARM_SHIELD, ARM_HELM, ARM_GLOVES, ARM_BOOTS, ARM_CLOAK, ARM_SHIRT,
          CLASS_SYMBOLS } from './objects.js';
@@ -21,6 +21,8 @@ import { pline, You, Your } from './pline.js';
 import { rn2 } from './rng.js';
 import { touch_petrifies } from './mondata.js';
 import { newsym } from './monutil.js';
+import { observeObject, discoverObject, isObjectNameKnown } from './discovery.js';
+import { exercise } from './attrib_exercise.js';
 
 
 // ============================================================
@@ -901,7 +903,19 @@ export function addinv_core1(obj, player) {
 // C ref: invent.c addinv_core2() — side effects after adding to inventory
 export function addinv_core2(obj, player) {
     // confers_luck check would go here
-    // archeologist scroll identification would go here
+    // C ref: invent.c addinv_core2() — archeologists can decipher scroll labels.
+    if (player
+        && player.roleIndex === PM_ARCHEOLOGIST
+        && obj?.oclass === SCROLL_CLASS
+        && obj?.otyp !== SCR_BLANK_PAPER
+        && !player.blind
+        && !isObjectNameKnown(obj.otyp)) {
+        observeObject(obj);
+        discoverObject(obj.otyp, true, true);
+        exercise(player, A_WIS, true);
+        if (!player.uconduct) player.uconduct = {};
+        player.uconduct.literate = (player.uconduct.literate || 0) + 1;
+    }
 }
 
 // C ref: invent.c carry_obj_effects() — side effects of carrying an object
@@ -912,21 +926,26 @@ export function carry_obj_effects(obj) {
 // C ref: invent.c addinv() — add object to hero inventory
 // This is now a standalone function wrapping player.addToInventory
 export function addinv(obj, player) {
-    return player.addToInventory(obj);
+    if (!obj || !player) return obj;
+    addinv_core1(obj, player);
+    const result = player.addToInventory(obj) || obj;
+    addinv_core2(result, player);
+    carry_obj_effects(result);
+    return result;
 }
 
 // C ref: invent.c addinv_nomerge() — add without merging
 export function addinv_nomerge(obj, player) {
     const save = obj.nomerge;
     obj.nomerge = true;
-    const result = player.addToInventory(obj);
+    const result = addinv(obj, player);
     obj.nomerge = save;
     return result;
 }
 
 // C ref: invent.c hold_another_object() — add object or drop if can't hold
 export function hold_another_object(obj, player, drop_fmt, drop_arg, hold_msg) {
-    const result = player.addToInventory(obj);
+    const result = addinv(obj, player);
     if (hold_msg) {
         pline('%s%s%s', hold_msg, hold_msg ? ' ' : '', xprname_simple(result));
     }
