@@ -6958,7 +6958,8 @@ export const selection = {
             }
         }
 
-        const orderedCoords = () => [...coords].sort((a, b) => (a.x - b.x) || (a.y - b.y));
+        const orderedCoordsForRndcoord = () => [...coords].sort((a, b) => (a.x - b.x) || (a.y - b.y));
+        const orderedCoordsForIterate = () => [...coords].sort((a, b) => (a.y - b.y) || (a.x - b.x));
         return {
             coords,
             x1: minX, y1: minY, x2: maxX, y2: maxY, // Absolute bounds for region/non_diggable
@@ -6979,7 +6980,7 @@ export const selection = {
             },
             rndcoord: (filterValue) => {
                 if (coords.length === 0) return undefined;
-                const ordered = orderedCoords();
+                const ordered = orderedCoordsForRndcoord();
                 const idx = rn2(ordered.length);
                 const coord = ordered[idx];
                 if (filterValue) {
@@ -6998,7 +6999,8 @@ export const selection = {
                 return { x: rx, y: ry };
             },
             iterate: (func) => {
-                for (const coord of orderedCoords()) {
+                // C ref: nhlsel.c l_selection_iterate() loops y-major, then x.
+                for (const coord of orderedCoordsForIterate()) {
                     // C ref: nhlsel.c l_selection_iterate() calls cvt_to_relcoord()
                     let rx = coord.x, ry = coord.y;
                     if (levelState.currentRoom) {
@@ -7159,7 +7161,8 @@ export const selection = {
     new: () => {
         const coords = [];
         const coordSet = new Set();
-        const orderedCoords = () => [...coords].sort((a, b) => (a.x - b.x) || (a.y - b.y));
+        const orderedCoordsForRndcoord = () => [...coords].sort((a, b) => (a.x - b.x) || (a.y - b.y));
+        const orderedCoordsForIterate = () => [...coords].sort((a, b) => (a.y - b.y) || (a.x - b.x));
         const toRelative = (coord) => {
             let rx = coord.x;
             let ry = coord.y;
@@ -7208,7 +7211,7 @@ export const selection = {
             // Add rndcoord as a method for Lua compatibility
             rndcoord: (filterValue) => {
                 if (coords.length === 0) return undefined;
-                const ordered = orderedCoords();
+                const ordered = orderedCoordsForRndcoord();
                 const idx = rn2(ordered.length);
                 const coord = ordered[idx];
                 if (filterValue) {
@@ -7225,7 +7228,8 @@ export const selection = {
              * C ref: nhlsel.c l_selection_iterate() calls cvt_to_relcoord()
              */
             iterate: (func) => {
-                for (const coord of orderedCoords()) {
+                // C ref: nhlsel.c l_selection_iterate() loops y-major, then x.
+                for (const coord of orderedCoordsForIterate()) {
                     const { x: rx, y: ry } = toRelative(coord);
                     func(rx, ry);
                 }

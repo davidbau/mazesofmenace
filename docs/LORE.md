@@ -1340,3 +1340,10 @@ hard-won wisdom:
 - The failure mode was structural: JS had monster re-looping inside `movemon` plus `_bonusMovement` gating, but C splits responsibilities (`movemon()` single pass returning `somebody_can_move`; outer `moveloop_core` loops based on `u.umovement` and `monscanmove`).
 - The stable fix is atomic and paired: port both pieces together so control flow matches C end-to-end. Partial ports of either side alone are misleading and can appear to "fix" one seed while regressing broad ordering and RNG alignment.
 - Practical rule for future parity work: when a C function's return contract controls outer-loop scheduling, port caller and callee together in one change; otherwise A-vs-B oscillation is likely.
+
+### seed1 event-order parity: iterate order + niche/statue object paths (2026-02-24)
+
+- `sp_lev` selection `iterate()` must follow C `l_selection_iterate()` ordering (y-major then x); x-major iteration preserves set membership but drifts deterministic event order during themed-room generation.
+- `mklev.makeniche()` must place generated niche objects at the niche square (`yy + dy`) via `mksobj_at`/`mkobj_at` semantics; creating objects without map placement consumes RNG but drops `^place` events.
+- `fill_ordinary_room` statue generation should use `mkcorpstat(STATUE, -1, ...)` rather than raw `mksobj(STATUE)` so C-style `^corpse[...]` event emission and ordering are preserved.
+- With these three core-code fixes, `seed1_gameplay` reached full event parity (`663/663`) while keeping RNG/screens/colors at `100%`.

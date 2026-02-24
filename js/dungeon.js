@@ -2584,11 +2584,7 @@ export function fill_ordinary_room(map, croom, depth, bonusItems) {
     if (!rn2(20)) {
         const pos = somexyspace(map, croom);
         if (pos) {
-            const statue = mksobj(STATUE, true, false);
-            if (statue) {
-                statue.ox = pos.x; statue.oy = pos.y;
-                placeFloorObject(map, statue);
-            }
+            mkcorpstat(STATUE, -1, true, pos.x, pos.y, map);
         }
     }
 
