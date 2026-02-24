@@ -19,115 +19,585 @@
 //   Qstat(x): svq.quest_status.x — quest status flag accessor
 //   MIN_QUEST_LEVEL: minimum XL to get the quest (role-dependent, from quest.h)
 //   MIN_QUEST_ALIGN: minimum alignment record required
-//
-// JS implementations: none. All functions are runtime gameplay quest state.
 
-// cf. quest.c:26 [static] — on_start(): first-arrival message on start level
-// If first_start: qt_pager("firsttime").
-// Else if returning or going deeper: qt_pager("nexttime") or "othertime".
-// TODO: quest.c:26 — on_start(): quest start-level arrival message
+import { rn2 } from './rng.js';
+import { pline, verbalize } from './pline.js';
+import { exercise } from './attrib.js';
+import { adjalign } from './attrib.js';
+import { schedule_goto } from './do.js';
+import { nomul } from './hack.js';
+import { carrying, fully_identify_obj, update_inventory } from './invent.js';
+import { setmangry } from './mon.js';
+import { monnear, helpless } from './monutil.js';
+import { Monnam, mon_nam } from './do_name.js';
+import { canseemon } from './mondata.js';
+import { is_quest_artifact } from './objdata.js';
+import { deltrap } from './dungeon.js';
+import { create_gas_cloud } from './region.js';
+import { AMULET_OF_YENDOR, FAKE_AMULET_OF_YENDOR, BELL_OF_OPENING } from './objects.js';
+import {
+    MS_NEMESIS, MS_GUARDIAN, MS_DJINNI,
+    PM_PRISONER, mons,
+} from './monsters.js';
+import { MAGIC_PORTAL } from './config.js';
+import { A_WIS } from './config.js';
+import { the, xname } from './objnam.js';
 
-// cf. quest.c:40 [static] — on_locate(): first-arrival message on locate level
-// Skips if killed_nemesis. First visit from above: qt_pager("locate_first");
-//   subsequent visits from above: qt_pager("locate_next").
-// TODO: quest.c:40 — on_locate(): quest locate-level arrival message
+// C: #define MIN_QUEST_LEVEL 14
+const MIN_QUEST_LEVEL = 14;
+// C: #define MIN_QUEST_ALIGN 20
+const MIN_QUEST_ALIGN = 20;
 
-// cf. quest.c:62 [static] — on_goal(): message on goal/nemesis level
-// Skips if killed_nemesis. First arrival: qt_pager("goal_first"); else
-//   "goal_next" or "goal_alt" depending on quest artifact presence.
-// TODO: quest.c:62 — on_goal(): quest goal-level arrival message
+// STRAT_WAITMASK constant (matches wizard.js)
+const STRAT_WAITMASK = 0x28000000; // STRAT_CLOSE | STRAT_WAITFORU
+
+// Helper: Qstat accessor — ensures game.quest_status exists
+function Qstat(game) {
+    if (!game.quest_status) game.quest_status = {};
+    return game.quest_status;
+}
+
+// Helper: Not_firsttime — on_level(&u.uz0, &u.uz) in C
+// True if player is on the same level as previous (not first arrival)
+function Not_firsttime(player) {
+    // In JS, player.prevDungeonLevel tracks the previous level (u.uz0)
+    // and player.dungeonLevel is current (u.uz)
+    return player.prevDungeonLevel === player.dungeonLevel
+        && player.prevDnum === player.dnum;
+}
+
+// ======================================================================
+// Quest text stubs — qt_pager / com_pager
+// The Lua-based quest text system (questpgr.c) is not ported to JS.
+// These stubs produce minimal pline output for quest flow.
+// ======================================================================
+
+function qt_pager(msgid, game) {
+    // Quest text system not ported; emit minimal placeholder message
+    // In full C, this loads quest.lua and delivers role-specific text.
+    // For now, just log the message id so quest flow still functions.
+    if (msgid) {
+        pline("[Quest: %s]", msgid);
+    }
+}
+
+function com_pager(msgid, game) {
+    // Common (non-role-specific) quest text — same stub as qt_pager
+    if (msgid) {
+        pline("[Quest: %s]", msgid);
+    }
+}
+
+// ======================================================================
+// Static helpers
+// ======================================================================
+
+// cf. quest.c:26 [static] — on_start(): quest start-level arrival message
+function on_start(game) {
+    const qs = Qstat(game);
+    const player = game.player;
+    if (!qs.first_start) {
+        qt_pager("firsttime", game);
+        qs.first_start = true;
+    } else if ((player.prevDnum !== player.dnum)
+               || ((player.prevDungeonLevel || 0) < player.dungeonLevel)) {
+        if ((qs.not_ready || 0) <= 2)
+            qt_pager("nexttime", game);
+        else
+            qt_pager("othertime", game);
+    }
+}
+
+// cf. quest.c:40 [static] — on_locate(): quest locate-level arrival message
+function on_locate(game) {
+    const qs = Qstat(game);
+    const player = game.player;
+    // the locate messages only make sense when arriving from above
+    const from_above = (player.prevDungeonLevel || 0) < player.dungeonLevel;
+
+    if (qs.killed_nemesis) {
+        return;
+    } else if (!qs.first_locate) {
+        if (from_above)
+            qt_pager("locate_first", game);
+        // mark as seen even if arrived from below
+        qs.first_locate = true;
+    } else {
+        if (from_above)
+            qt_pager("locate_next", game);
+    }
+}
+
+// cf. quest.c:62 [static] — on_goal(): quest goal-level arrival message
+function on_goal(game) {
+    const qs = Qstat(game);
+    const map = game.map;
+
+    if (qs.killed_nemesis) {
+        return;
+    } else if (!qs.made_goal) {
+        qt_pager("goal_first", game);
+        qs.made_goal = 1;
+    } else {
+        // Check if quest artifact is present on the level (floor, minvent, buried)
+        // In C this uses find_quest_artifact() with OBJ_FLOOR|OBJ_MINVENT|OBJ_BURIED
+        let qarti = find_quest_artifact_on_level(map);
+        qt_pager(qarti ? "goal_next" : "goal_alt", game);
+        if (qs.made_goal < 7)
+            qs.made_goal++;
+    }
+}
+
+// Simplified find_quest_artifact on current level
+// Searches floor objects and monster inventories
+function find_quest_artifact_on_level(map) {
+    if (!map) return null;
+    // Check floor objects
+    if (map.objects) {
+        for (const objList of Object.values(map.objects)) {
+            if (Array.isArray(objList)) {
+                for (const obj of objList) {
+                    if (obj && is_quest_artifact(obj)) return obj;
+                }
+            }
+        }
+    }
+    // Check monster inventories
+    if (map.monsters) {
+        for (const mon of map.monsters) {
+            if (mon && !mon.dead && mon.minvent) {
+                for (const obj of mon.minvent) {
+                    if (obj && is_quest_artifact(obj)) return obj;
+                }
+            }
+        }
+    }
+    return null;
+}
+
+// cf. quest.c:147 [static] — not_capable(): minimum XL check
+function not_capable(player) {
+    return (player.level || player.ulevel || 1) < MIN_QUEST_LEVEL;
+}
+
+// cf. quest.c:153 [static] — is_pure(talk): alignment purity check
+// Returns: 1=pure, 0=impure (record too low), -1=converted
+function is_pure(talk, game) {
+    const player = game.player;
+    const original_alignment = player.ualignbase_original != null
+        ? player.ualignbase_original : player.alignment;
+    const current_base = player.ualignbase_current != null
+        ? player.ualignbase_current : player.alignment;
+    const alignRecord = player.alignmentRecord || 0;
+
+    // In C, wizard mode shows debug info and offers alignment adjustment.
+    // We skip wizard-mode dialog in JS.
+
+    const purity = (alignRecord >= MIN_QUEST_ALIGN
+                    && player.alignment === original_alignment
+                    && current_base === original_alignment)
+                       ? 1
+                       : (current_base !== original_alignment) ? -1 : 0;
+    return purity;
+}
+
+// cf. quest.c:186 [static] — expulsion(seal): force-return from quest branch
+function expulsion(seal, game) {
+    const player = game.player;
+    const map = game.map;
+    const qs = Qstat(game);
+
+    // In C, this finds the quest branch and schedules a goto to the parent dungeon.
+    // In JS, the quest branch structure may differ. We use schedule_goto with
+    // the quest start level or parent dungeon level.
+    const portal_flag = (player.uevent && player.uevent.qexpelled) ? 0 : 0x40; // UTOTYPE_PORTAL
+
+    // Find the destination — in C this is the parent side of "The Quest" branch.
+    // In JS, we go back to the level the player entered from, or quest start depth.
+    const dest = player.quest_entry_level || player.prevDungeonLevel || 1;
+
+    if (seal) {
+        // UTOTYPE_RMPORTAL flag
+    }
+
+    nomul(0, game); // stop running
+    schedule_goto(player, dest, portal_flag, null, null);
+
+    if (seal) {
+        const reexpelled = (player.uevent && player.uevent.qexpelled) ? 1 : 0;
+        if (!player.uevent) player.uevent = {};
+        player.uevent.qexpelled = 1;
+
+        // Remove quest from dungeon overview
+        // C: remdun_mapseen(quest_dnum) — not ported to JS
+        // TODO: remdun_mapseen when dungeon overview is ported
+
+        // Delete the magic portal on this level
+        if (map && map.traps) {
+            for (let i = 0; i < map.traps.length; i++) {
+                const t = map.traps[i];
+                if (t && t.ttyp === MAGIC_PORTAL) {
+                    deltrap(map, t);
+                    break;
+                }
+            }
+        }
+    }
+}
+
+// ======================================================================
+// Exported functions
+// ======================================================================
 
 // cf. quest.c:89 — onquest(): dispatch arrival messages for quest levels
 // Called on level change; does nothing if qcompleted or Not_firsttime.
-// Routes to on_start/on_locate/on_goal based on Is_qstart/Is_qlocate/Is_nemesis.
-// TODO: quest.c:89 — onquest(): quest level arrival dispatcher
+export function onquest(game) {
+    const player = game.player;
+    const qs = Qstat(game);
+
+    if ((player.uevent && player.uevent.qcompleted) || Not_firsttime(player))
+        return;
+
+    // In C, these check dungeon topology:
+    //   Is_special, Is_qstart, Is_qlocate, Is_nemesis
+    // In JS, we check map.quest_level_type if set by level generation.
+    const map = game.map;
+    if (!map || !map.quest_level_type)
+        return;
+
+    switch (map.quest_level_type) {
+    case 'start':
+        on_start(game);
+        break;
+    case 'locate':
+        on_locate(game);
+        break;
+    case 'goal':
+    case 'nemesis':
+        on_goal(game);
+        break;
+    }
+}
 
 // cf. quest.c:107 — nemdead(): nemesis was killed
-// Sets Qstat(killed_nemesis)=TRUE; calls qt_pager("killed_nemesis").
-// TODO: quest.c:107 — nemdead(): nemesis death handler
+export function nemdead(game) {
+    const qs = Qstat(game);
+    if (!qs.killed_nemesis) {
+        qs.killed_nemesis = true;
+        qt_pager("killed_nemesis", game);
+    }
+}
 
 // cf. quest.c:116 — leaddead(): quest leader was killed
-// Sets Qstat(killed_leader)=TRUE.
-// TODO: quest.c:116 — leaddead(): leader death bookkeeping
+export function leaddead(game) {
+    const qs = Qstat(game);
+    if (!qs.killed_leader) {
+        qs.killed_leader = true;
+    }
+}
 
 // cf. quest.c:125 — artitouch(obj): player first touches quest artifact
-// Sets Qstat(touched_artifact); calls qt_pager("gotit"); awards WIS exercise.
-// Also calls observe_object() so blind player gets it named.
-// TODO: quest.c:125 — artitouch(): quest artifact first-touch event
+export function artitouch(obj, game) {
+    const qs = Qstat(game);
+    const player = game.player;
+    if (!qs.touched_artifact) {
+        // In C: observe_object(obj) so blind player gets it named
+        // observe_object not yet ported globally; stub
+        // Only give this message once
+        qs.touched_artifact = true;
+        qt_pager("gotit", game);
+        exercise(player, A_WIS, true);
+    }
+}
 
-// cf. quest.c:140 — ok_to_quest(): is player allowed to enter quest dungeon?
-// Returns TRUE if (got_quest || got_thanks) && is_pure>0, or killed_leader.
-// Called from do.c on level-change to allow/block quest portal use.
-// TODO: quest.c:140 — ok_to_quest(): quest dungeon entry eligibility
-
-// cf. quest.c:147 [static] — not_capable(): is player too low level?
-// Returns u.ulevel < MIN_QUEST_LEVEL.
-// TODO: quest.c:147 — not_capable(): minimum XL check
-
-// cf. quest.c:153 [static] — is_pure(talk): alignment purity check
-// Returns: 1=pure (alignment record ≥ MIN_QUEST_ALIGN, not converted);
-//   0=impure (record too low but not converted); -1=converted.
-// talk=TRUE: prints wizard-mode info and offers alignment adjustment.
-// TODO: quest.c:153 — is_pure(): quest alignment purity evaluation
-
-// cf. quest.c:186 [static] — expulsion(seal): expel player from quest dungeon
-// Finds quest branch; schedule_goto() to parent dungeon.
-// seal=TRUE: removes the magic portal permanently, sets qexpelled.
-// TODO: quest.c:186 — expulsion(): force-return from quest branch
+// cf. quest.c:140 — ok_to_quest(): quest dungeon entry eligibility
+// Returns true if player is allowed to enter quest dungeon.
+export function ok_to_quest(game) {
+    const qs = Qstat(game);
+    return ((qs.got_quest || qs.got_thanks)
+            && is_pure(false, game) > 0)
+        || !!qs.killed_leader;
+}
 
 // cf. quest.c:225 — finish_quest(obj): handle quest artifact return to leader
-// obj=NULL: player has Amulet — calls qt_pager("hasamulet").
-// obj=quest artifact: qt_pager("offeredit" / "offeredit2"), sets qcompleted.
-// obj=other item: verbalize item recognition (fakes, invocation items).
-// TODO: quest.c:225 — finish_quest(): quest completion with leader
+// obj=null: player has Amulet; obj=quest artifact: completion;
+// obj=other item: leader identifies it.
+export function finish_quest(obj, game) {
+    const player = game.player;
+    const qs = Qstat(game);
+
+    if (obj && !is_quest_artifact(obj)) {
+        // Tossed an invocation item (or [fake] AoY) at the quest leader
+        if (player.deaf) return;
+        fully_identify_obj(obj);
+        if (obj.otyp === AMULET_OF_YENDOR) {
+            qt_pager("hasamulet", game);
+        } else if (obj.otyp === FAKE_AMULET_OF_YENDOR) {
+            verbalize(
+                "Sorry to say, this is a mere imitation of the true Amulet of Yendor.");
+        } else {
+            verbalize("Ah, I see you've found %s.", the(xname(obj)));
+        }
+        return;
+    }
+
+    if (player.uhave && player.uhave.amulet) {
+        // Has the amulet in inventory
+        qt_pager("hasamulet", game);
+        // Leader IDs the real amulet but ignores fakes
+        const otmp = carrying(AMULET_OF_YENDOR, player);
+        if (otmp) {
+            fully_identify_obj(otmp);
+            update_inventory(player);
+        }
+    } else {
+        // Normal quest completion
+        qt_pager(!qs.got_thanks ? "offeredit" : "offeredit2", game);
+        // Should have obtained bell during quest
+        if (!carrying(BELL_OF_OPENING, player))
+            com_pager("quest_complete_no_bell", game);
+    }
+    qs.got_thanks = true;
+
+    if (obj) {
+        if (!player.uevent) player.uevent = {};
+        player.uevent.qcompleted = 1; // you did it!
+        fully_identify_obj(obj);
+        update_inventory(player);
+    }
+}
 
 // cf. quest.c:282 [static] — chat_with_leader(mtmp): leader conversation logic
-// Rule 0: cheater check (has artifact without meeting nemesis).
-// Rule 1-4: got_thanks / has artifact / got_quest / not yet worthy.
-// Checks not_capable, is_pure; expels if not eligible; assigns quest.
-// TODO: quest.c:282 — chat_with_leader(): quest leader dialog tree
+function chat_with_leader(mtmp, game) {
+    const player = game.player;
+    const map = game.map;
+    const qs = Qstat(game);
 
-// cf. quest.c:357 — leader_speaks(mtmp): leader is chatted with or becomes hostile
-// If hostile: qt_pager("leader_last"); sets pissed_off; activates monster.
-// If not on qstart level: return. Else calls chat_with_leader().
-// TODO: quest.c:357 — leader_speaks(): leader NPC response to chat
+    if (!mtmp.peaceful || qs.pissed_off)
+        return;
 
-// cf. quest.c:380 [static] — chat_with_nemesis(): nemesis conversation
-// qt_pager("discourage"); increments met_nemesis counter.
-// TODO: quest.c:380 — chat_with_nemesis(): nemesis taunt dialog
+    // Rule 0: Cheater checks
+    if (player.uhave && player.uhave.questart && !qs.met_nemesis)
+        qs.cheater = true;
+
+    // Rule 1: You've gone back with/without the amulet (got_thanks already set)
+    if (qs.got_thanks) {
+        if (player.uhave && player.uhave.amulet)
+            finish_quest(null, game);
+        else
+            qt_pager("posthanks", game);
+
+    // Rule 3: You've got the artifact and are back to return it
+    } else if (player.uhave && player.uhave.questart) {
+        // Find the quest artifact in inventory
+        let qarti_obj = null;
+        const inv = player.inventory || [];
+        for (const otmp of inv) {
+            if (otmp && is_quest_artifact(otmp)) {
+                qarti_obj = otmp;
+                break;
+            }
+        }
+        finish_quest(qarti_obj, game);
+
+    // Rule 4: You haven't got the artifact yet but have the quest
+    } else if (qs.got_quest) {
+        qt_pager("encourage", game);
+
+    // Rule 5: You aren't yet acceptable - or are you?
+    } else {
+        let purity = 0;
+
+        if (!qs.met_leader) {
+            qt_pager("leader_first", game);
+            qs.met_leader = true;
+            qs.not_ready = 0;
+        } else {
+            qt_pager("leader_next", game);
+        }
+
+        // The quest leader might have passed through the portal into
+        // the regular dungeon; remaining checks don't apply there.
+        // In C: if (!on_level(&u.uz, &qstart_level)) return;
+        // In JS: check if current level is the quest start level
+        if (map && map.quest_level_type !== 'start')
+            return;
+
+        if (not_capable(player)) {
+            qt_pager("badlevel", game);
+            exercise(player, A_WIS, true);
+            expulsion(false, game);
+        } else if ((purity = is_pure(true, game)) < 0) {
+            if (!qs.pissed_off) {
+                com_pager("banished", game);
+                qs.pissed_off = true;
+                expulsion(false, game);
+            }
+        } else if (purity === 0) {
+            qt_pager("badalign", game);
+            qs.not_ready = 1;
+            exercise(player, A_WIS, true);
+            expulsion(false, game);
+        } else {
+            // You are worthy!
+            qt_pager("assignquest", game);
+            exercise(player, A_WIS, true);
+            qs.got_quest = true;
+        }
+    }
+}
+
+// cf. quest.c:357 — leader_speaks(mtmp): leader NPC response to chat
+export function leader_speaks(mtmp, game) {
+    const qs = Qstat(game);
+    const map = game.map;
+
+    // Maybe you attacked leader?
+    if (!mtmp.peaceful) {
+        if (!qs.pissed_off) {
+            qt_pager("leader_last", game);
+        }
+        qs.pissed_off = true;
+        mtmp.mstrategy = (mtmp.mstrategy || 0) & ~STRAT_WAITMASK;
+    }
+    // The quest leader might have passed through the portal
+    // into the regular dungeon; if so, don't do "backwards expulsion"
+    if (!map || map.quest_level_type !== 'start')
+        return;
+
+    if (!qs.pissed_off)
+        chat_with_leader(mtmp, game);
+}
+
+// cf. quest.c:380 [static] — chat_with_nemesis(): nemesis taunt dialog
+function chat_with_nemesis(game) {
+    const qs = Qstat(game);
+    qt_pager("discourage", game);
+    if (!qs.met_nemesis)
+        qs.met_nemesis = true;
+}
 
 // cf. quest.c:388 — nemesis_speaks(): nemesis NPC response to chat
-// Selects message based on in_battle, made_goal counter, has questart flag.
-// Messages: nemesis_wantsit / nemesis_first / nemesis_next / nemesis_other / discourage.
-// TODO: quest.c:388 — nemesis_speaks(): nemesis taunts and threats
+export function nemesis_speaks(game) {
+    const qs = Qstat(game);
+
+    if (!qs.in_battle) {
+        const player = game.player;
+        if (player.uhave && player.uhave.questart)
+            qt_pager("nemesis_wantsit", game);
+        else if (qs.made_goal === 1 || !qs.met_nemesis)
+            qt_pager("nemesis_first", game);
+        else if ((qs.made_goal || 0) < 4)
+            qt_pager("nemesis_next", game);
+        else if ((qs.made_goal || 0) < 7)
+            qt_pager("nemesis_other", game);
+        else if (!rn2(5))
+            qt_pager("discourage", game);
+
+        if ((qs.made_goal || 0) < 7)
+            qs.made_goal = (qs.made_goal || 0) + 1;
+        qs.met_nemesis = true;
+    } else {
+        // He will spit out random maledictions
+        if (!rn2(5))
+            qt_pager("discourage", game);
+    }
+}
 
 // cf. quest.c:411 — nemesis_stinks(mx, my): gas cloud on nemesis death
-// Creates a gas cloud at (mx,my) with radius=5, damage=8.
-// Uses mon_moving context so hero is not attributed with the cloud.
-// TODO: quest.c:411 — nemesis_stinks(): nemesis death gas cloud
+export function nemesis_stinks(mx, my, map, player, game) {
+    // In C, this temporarily sets context.mon_moving = TRUE
+    // so the hero is not attributed with the cloud.
+    const save_mon_moving = game.context ? game.context.mon_moving : false;
+    if (!game.context) game.context = {};
+    game.context.mon_moving = true;
+    create_gas_cloud(mx, my, 5, 8, map, player, game);
+    game.context.mon_moving = save_mon_moving;
+}
 
 // cf. quest.c:427 [static] — chat_with_guardian(): guardian NPC dialog
-// qt_pager("guardtalk_after") if quest done; else qt_pager("guardtalk_before").
-// TODO: quest.c:427 — chat_with_guardian(): guardian NPC dialog
+function chat_with_guardian(game) {
+    const qs = Qstat(game);
+    const player = game.player;
+    if (player.uhave && player.uhave.questart && qs.killed_nemesis)
+        qt_pager("guardtalk_after", game);
+    else
+        qt_pager("guardtalk_before", game);
+}
 
 // cf. quest.c:437 [static] — prisoner_speaks(mtmp): prisoner awakening
-// If mtmp is a PRISONER monster in waiting strategy: awakens it, says
-//   "I'm finally free!", sets mpeaceful; adjusts alignment +3; angers guards.
-// TODO: quest.c:437 — prisoner_speaks(): prisoner NPC activation
+function prisoner_speaks(mtmp, game) {
+    const player = game.player;
+    const map = game.map;
+
+    if (mtmp.type === mons[PM_PRISONER]
+        && ((mtmp.mstrategy || 0) & STRAT_WAITMASK)) {
+        // Awaken the prisoner
+        if (canseemon(mtmp, player))
+            pline("%s speaks:", Monnam(mtmp));
+        // C: SetVoice(mtmp, 0, 80, 0) — voice system not ported
+        verbalize("I'm finally free!");
+        mtmp.mstrategy = (mtmp.mstrategy || 0) & ~STRAT_WAITMASK;
+        mtmp.peaceful = true;
+
+        // Your god is happy...
+        adjalign(player, 3);
+
+        // ...But the guards are not
+        // C: angry_guards(FALSE) — not yet ported
+        // TODO: angry_guards when guard system is ported
+    }
+}
 
 // cf. quest.c:459 — quest_chat(mtmp): dispatch chat to quest NPC
-// Routes to chat_with_leader / chat_with_nemesis / chat_with_guardian
-//   based on mtmp->m_id (leader) or msound (MS_NEMESIS/MS_GUARDIAN).
-// Called from domonnoise() (sounds.c) for quest NPCs.
-// TODO: quest.c:459 — quest_chat(): quest NPC chat dispatcher
+export function quest_chat(mtmp, game) {
+    const qs = Qstat(game);
+
+    if (mtmp.m_id === qs.leader_m_id) {
+        chat_with_leader(mtmp, game);
+        // Leader might have become pissed during the chat
+        if (qs.pissed_off)
+            setmangry(mtmp, false, game.map, game.player);
+        return;
+    }
+    switch (mtmp.type ? mtmp.type.sound : 0) {
+    case MS_NEMESIS:
+        chat_with_nemesis(game);
+        break;
+    case MS_GUARDIAN:
+        chat_with_guardian(game);
+        break;
+    default:
+        // impossible("quest_chat: Unknown quest character %s.", mon_nam(mtmp));
+        break;
+    }
+}
 
 // cf. quest.c:481 — quest_talk(mtmp): dispatch proactive NPC talk
-// Routes to leader_speaks / nemesis_speaks / prisoner_speaks
-//   based on m_id or msound.
-// Called from monmove() and other combat events.
-// TODO: quest.c:481 — quest_talk(): quest NPC proactive speech
+export function quest_talk(mtmp, game) {
+    const qs = Qstat(game);
+
+    if (mtmp.m_id === qs.leader_m_id) {
+        leader_speaks(mtmp, game);
+        return;
+    }
+    switch (mtmp.type ? mtmp.type.sound : 0) {
+    case MS_NEMESIS:
+        nemesis_speaks(game);
+        break;
+    case MS_DJINNI:
+        prisoner_speaks(mtmp, game);
+        break;
+    default:
+        break;
+    }
+}
 
 // cf. quest.c:499 — quest_stat_check(mtmp): update nemesis battle status
-// Sets Qstat(in_battle)=TRUE if nemesis is not helpless and adjacent to player.
-// Called each turn to update nemesis battle state for speech selection.
-// TODO: quest.c:499 — quest_stat_check(): nemesis proximity tracking
+export function quest_stat_check(mtmp, game) {
+    const qs = Qstat(game);
+    const player = game.player;
+
+    if (mtmp.type && mtmp.type.sound === MS_NEMESIS)
+        qs.in_battle = (!helpless(mtmp) && monnear(mtmp, player.x, player.y));
+}
