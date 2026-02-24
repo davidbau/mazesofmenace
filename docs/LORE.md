@@ -1463,3 +1463,9 @@ hard-won wisdom:
 - `input.nhgetch()` also gained repeat-capture mode (`setCmdqRepeatRecordMode`) so follow-up prompt answers entered during normal command execution are appended to `CQ_REPEAT` as `CMDQ_KEY` entries.
 - Added cmdq restore helper (`cmdq_restore`) and tests covering queued command decode, queued direction consumption, repeat-input capture, and `#repeat` command sentinel flow.
 - Full test gate remains baseline-stable: all unit tests pass, gameplay parity retains existing 19 known divergences.
+
+### cmdq ownership moved into rhack (2026-02-24)
+
+- Tightened parity shape so command-queue dispatch occurs in `cmd.js:rhack()` (via `cmdq_pop_command`) rather than `run_command()` orchestration.
+- `run_command()` now focuses on turn orchestration and repeat-capture toggles, while `rhack()` owns decoding queued `CMDQ_INT` count + `CMDQ_KEY`/`CMDQ_EXTCMD` command nodes.
+- Added repeat-queue restore regression check in `test/unit/command_repeat_queue.test.js` (`execute_repeat_command` preserves CQ_REPEAT payload after replay).

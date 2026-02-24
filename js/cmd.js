@@ -11,7 +11,8 @@ import { handleKnownSpells } from './spell.js';
 import { handleEngrave } from './engrave.js';
 import { handleApply } from './apply.js';
 import { COIN_CLASS } from './objects.js';
-import { nhgetch, ynFunction, getlin } from './input.js';
+import { nhgetch, ynFunction, getlin, cmdq_pop_command, cmdq_clear, cmdq_add_ec,
+         CQ_REPEAT } from './input.js';
 import { handleEat } from './eat.js';
 import { handleQuaff } from './potion.js';
 import { handleRead } from './read.js';
@@ -36,6 +37,25 @@ import { handleMovement, handleRun, findPath, handleTravel, executeTravelStep,
 // Returns: { moved: boolean, tookTime: boolean }
 export async function rhack(ch, game) {
     const { player, map, display, fov } = game;
+    if (ch === 0) {
+        const queued = cmdq_pop_command(!!game?.inDoAgain);
+        if (!queued) return { moved: false, tookTime: false };
+        if (queued.countPrefix > 0) {
+            game.commandCount = queued.countPrefix;
+            game.multi = Math.max(0, queued.countPrefix - 1);
+        }
+        if (queued.extcmd) {
+            if (typeof queued.extcmd === 'function') {
+                return await queued.extcmd(game);
+            }
+            if (typeof queued.extcmd?.ef_funct === 'function') {
+                return await queued.extcmd.ef_funct(game);
+            }
+            return { moved: false, tookTime: false };
+        }
+        if (!queued.key) return { moved: false, tookTime: false };
+        ch = queued.key;
+    }
     const c = String.fromCharCode(ch);
     const isMetaKey = ch >= 128 && ch <= 255;
     const metaBaseChar = isMetaKey ? String.fromCharCode(ch & 0x7f).toLowerCase() : '';
@@ -541,47 +561,45 @@ async function handleExtendedCommand(game) {
     }
     const rawCmd = input.trim();
     const cmd = rawCmd.toLowerCase();
+    const queueRepeatExtcmd = (fn) => {
+        if (game?.inDoAgain || typeof fn !== 'function') return;
+        cmdq_clear(CQ_REPEAT);
+        cmdq_add_ec(CQ_REPEAT, fn);
+    };
     switch (cmd) {
         case 'o':
         case 'options':
         case 'optionsfull':
+            queueRepeatExtcmd((g) => handleSet(g));
             return await handleSet(game);
         case 'n':
         case 'name': {
-            // C ref: do_name.c docallcmd() menu routes.
-            while (true) {
-                display.putstr_message('                                What do you want to name?');
-                const sel = await nhgetch();
-                const c = String.fromCharCode(sel).toLowerCase();
-                if (sel === 27 || c === ' ') {
-                    display.putstr_message('Never mind.');
-                    return { moved: false, tookTime: false };
-                }
-                if (c === 'a') {
-                    await getlin('What do you want to call this dungeon level?', display);
-                    return { moved: false, tookTime: false };
-                }
-                if (c === 'o' || c === 'n') {
-                    return await handleCallObjectTypePrompt(player, display);
-                }
-                // Keep waiting for a supported selection.
-            }
+            queueRepeatExtcmd(async (g) => handleExtendedCommandName(g));
+            return await handleExtendedCommandName(game);
         }
         case 'force':
+            queueRepeatExtcmd((g) => handleForce(g));
             return await handleForce(game);
         case 'loot':
+            queueRepeatExtcmd((g) => handleLoot(g));
             return await handleLoot(game);
         case 'levelchange':
+            queueRepeatExtcmd((g) => wizLevelChange(g));
             return await wizLevelChange(game);
         case 'wish':
+            queueRepeatExtcmd((g) => wizWish(g));
             return await wizWish(game);
         case 'map':
+            queueRepeatExtcmd((g) => wizMap(g));
             return wizMap(game);
         case 'teleport':
+            queueRepeatExtcmd((g) => wizTeleport(g));
             return await wizTeleport(game);
         case 'genesis':
+            queueRepeatExtcmd((g) => wizGenesis(g));
             return await wizGenesis(game);
         case 'wizloaddes':
+            queueRepeatExtcmd((g) => handleWizLoadDes(g));
             return await handleWizLoadDes(game);
         case 'quit': {
             const ans = await ynFunction('Really quit?', 'yn', 'n'.charCodeAt(0), display);
@@ -598,14 +616,18 @@ async function handleExtendedCommand(game) {
         // when players type #<cmd> instead of the single-key shortcut.
         case 'w':
         case 'wield':
+            queueRepeatExtcmd((g) => handleWield(g.player, g.display));
             return await handleWield(player, display);
         case 'wear':
+            queueRepeatExtcmd((g) => handleWear(g.player, g.display));
             return await handleWear(player, display);
         case 'e':
         case 'eat':
+            queueRepeatExtcmd((g) => handleEat(g.player, g.display, g));
             return await handleEat(player, display, game);
         case 'r':
         case 'read':
+            queueRepeatExtcmd((g) => handleRead(g.player, g.display, g));
             return await handleRead(player, display, game);
         case 'a':
         case 'again':
@@ -615,5 +637,26 @@ async function handleExtendedCommand(game) {
             // C-style unknown extended command feedback
             display.putstr_message(`#${rawCmd}: unknown extended command.`);
             return { moved: false, tookTime: false };
+    }
+}
+
+async function handleExtendedCommandName(game) {
+    const { player, display } = game;
+    while (true) {
+        display.putstr_message('                                What do you want to name?');
+        const sel = await nhgetch();
+        const c = String.fromCharCode(sel).toLowerCase();
+        if (sel === 27 || c === ' ') {
+            display.putstr_message('Never mind.');
+            return { moved: false, tookTime: false };
+        }
+        if (c === 'a') {
+            await getlin('What do you want to call this dungeon level?', display);
+            return { moved: false, tookTime: false };
+        }
+        if (c === 'o' || c === 'n') {
+            return await handleCallObjectTypePrompt(player, display);
+        }
+        // Keep waiting for a supported selection.
     }
 }

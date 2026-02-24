@@ -47,7 +47,7 @@ import { loadSave, deleteSave, loadFlags, saveFlags, deserializeRng,
 import { buildEntry, saveScore, loadScores, formatTopTenEntry, formatTopTenHeader } from './topten.js';
 import { startRecording } from './keylog.js';
 import { nhgetch, getCount, setInputRuntime, cmdq_clear, cmdq_add_int, cmdq_add_key,
-         cmdq_copy, cmdq_peek, cmdq_pop_command, cmdq_restore, setCmdqInputMode,
+         cmdq_copy, cmdq_peek, cmdq_restore, setCmdqInputMode,
          setCmdqRepeatRecordMode,
          CQ_CANNED, CQ_REPEAT, CMDQ_INT, CMDQ_KEY } from './input.js';
 import { init_nhwindows, NHW_MENU, MENU_BEHAVE_STANDARD, PICK_ONE, ATR_NONE,
@@ -416,39 +416,25 @@ export async function run_command(game, ch, opts = {}) {
         }
     }
 
-    let commandCountPrefix = countPrefix;
-    let commandKey = chCode;
-    let queuedExtcmd = null;
-
-    if (commandKey === 0) {
-        const queued = cmdq_pop_command(!!game.inDoAgain);
-        if (!queued) {
-            return { moved: false, tookTime: false };
-        }
-        commandCountPrefix = queued.countPrefix || 0;
-        commandKey = queued.key || 0;
-        queuedExtcmd = queued.extcmd || null;
-    }
-
     if (!skipRepeatRecord && !game.inDoAgain
-        && commandKey !== 0
-        && commandKey !== 1
-        && commandKey !== '#'.charCodeAt(0)) {
+        && chCode !== 0
+        && chCode !== 1
+        && chCode !== '#'.charCodeAt(0)) {
         cmdq_clear(CQ_REPEAT);
-        if (commandCountPrefix > 0) {
-            cmdq_add_int(CQ_REPEAT, commandCountPrefix);
+        if (countPrefix > 0) {
+            cmdq_add_int(CQ_REPEAT, countPrefix);
         }
-        cmdq_add_key(CQ_REPEAT, commandKey);
+        cmdq_add_key(CQ_REPEAT, chCode);
     }
 
     // Set multi from countPrefix, set cmdKey
-    game.commandCount = commandCountPrefix;
-    if (commandCountPrefix > 0) {
-        game.multi = commandCountPrefix - 1; // first execution is now
+    game.commandCount = countPrefix;
+    if (countPrefix > 0) {
+        game.multi = countPrefix - 1; // first execution is now
     } else {
         game.multi = 0;
     }
-    game.cmdKey = commandKey;
+    game.cmdKey = chCode;
 
     const coreOpts = {};
     if (computeFov) coreOpts.computeFov = true;
@@ -469,18 +455,12 @@ export async function run_command(game, ch, opts = {}) {
     };
 
     // Execute command
-    const enableRepeatCapture = !skipRepeatRecord && !game.inDoAgain;
+    const enableRepeatCapture = !skipRepeatRecord && !game.inDoAgain && chCode !== '#'.charCodeAt(0);
     setCmdqInputMode(!!game.inDoAgain);
     setCmdqRepeatRecordMode(enableRepeatCapture);
     let result;
     try {
-        if (queuedExtcmd && typeof queuedExtcmd === 'function') {
-            result = await queuedExtcmd(game);
-        } else if (queuedExtcmd && typeof queuedExtcmd.ef_funct === 'function') {
-            result = await queuedExtcmd.ef_funct(game);
-        } else {
-            result = await rhack(commandKey, game);
-        }
+        result = await rhack(chCode, game);
     } finally {
         setCmdqInputMode(false);
         setCmdqRepeatRecordMode(false);
