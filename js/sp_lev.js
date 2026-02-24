@@ -8040,6 +8040,125 @@ export const selection = {
     },
 };
 
+function sel_has_coord(sel, x, y) {
+    if (!sel || !Array.isArray(sel.coords)) return false;
+    return sel.coords.some(c => c.x === x && c.y === y);
+}
+
+function sel_clone(sel) {
+    const out = selection.new();
+    if (!sel || !Array.isArray(sel.coords)) return out;
+    for (const c of sel.coords) out.set(c.x, c.y, true);
+    return out;
+}
+
+// C ref: nhlua.c get_table_boolean_opt()/get_table_boolean()
+export function get_table_boolean_opt(opts = {}, name, defval = false) {
+    const v = opts?.[name];
+    if (v === undefined || v === null) return !!defval;
+    if (typeof v === 'boolean') return v;
+    if (typeof v === 'number') return v !== 0;
+    if (typeof v === 'string') {
+        const s = v.toLowerCase();
+        if (s === 'true' || s === 'yes' || s === 'on' || s === '1') return true;
+        if (s === 'false' || s === 'no' || s === 'off' || s === '0') return false;
+    }
+    return !!defval;
+}
+
+export function get_table_boolean(opts = {}, name) {
+    if (!(name in opts)) throw new Error(`Missing boolean field "${name}"`);
+    return get_table_boolean_opt(opts, name, false);
+}
+
+// C ref: nhlua.c get_table_int_opt()/get_table_int()
+export function get_table_int_opt(opts = {}, name, defval = 0) {
+    const v = opts?.[name];
+    if (v === undefined || v === null) return Math.trunc(defval);
+    if (!Number.isFinite(v)) return Math.trunc(defval);
+    return Math.trunc(v);
+}
+
+export function get_table_int(opts = {}, name) {
+    if (!(name in opts)) throw new Error(`Missing integer field "${name}"`);
+    const v = opts?.[name];
+    if (!Number.isFinite(v)) throw new Error(`Expected integer field "${name}"`);
+    return Math.trunc(v);
+}
+
+// C ref: nhlua.c get_table_str_opt()/get_table_str()
+export function get_table_str_opt(opts = {}, name, defval = null) {
+    const v = opts?.[name];
+    if (v === undefined || v === null) return defval;
+    return String(v);
+}
+
+export function get_table_str(opts = {}, name) {
+    if (!(name in opts)) throw new Error(`Missing string field "${name}"`);
+    return String(opts[name]);
+}
+
+// C ref: nhlua.c get_table_option()
+export function get_table_option(opts = {}, name, valid = [], defval = null) {
+    const v = get_table_str_opt(opts, name, defval);
+    if (v === null || v === undefined) return defval;
+    if (!Array.isArray(valid) || valid.length === 0) return v;
+    return valid.includes(v) ? v : defval;
+}
+
+// C ref: nhlsel.c params_sel_2coords()
+export function params_sel_2coords(sel, x1, y1, x2, y2) {
+    const p1 = selection._toAbsoluteCoord(x1, y1);
+    const p2 = selection._toAbsoluteCoord(x2, y2);
+    return [sel || selection.new(), p1.x, p1.y, p2.x, p2.y];
+}
+
+// C ref: nhlsel.c l_selection_* wrappers
+export function l_selection_new() { return selection.new(); }
+export function l_selection_push_new() { return selection.new(); }
+export function l_selection_push_copy(sel) { return sel_clone(sel); }
+export function l_selection_clone(sel) { return sel_clone(sel); }
+export function l_selection_to(sel) { return sel_clone(sel); }
+export function l_selection_gc(_sel) { return true; }
+export function l_selection_register() { return true; }
+export function l_selection_numpoints(sel) { return sel?.numpoints ? sel.numpoints() : 0; }
+export function l_selection_getpoint(sel, x, y) {
+    const abs = selection._toAbsoluteCoord(x, y);
+    return sel_has_coord(sel, abs.x, abs.y);
+}
+export function l_selection_check(sel, x, y) { return l_selection_getpoint(sel, x, y); }
+export function l_selection_setpoint(sel, x, y, val = true) {
+    const out = sel || selection.new();
+    if (!val) return out;
+    const abs = selection._toAbsoluteCoord(x, y);
+    out.set(abs.x, abs.y, true);
+    return out;
+}
+export function l_selection_getbounds(sel) { return sel?.bounds ? sel.bounds() : { lx: 0, ly: 0, hx: 0, hy: 0 }; }
+export function l_selection_size_description(sel) { return sel?.size_description ? sel.size_description() : 'empty'; }
+export function l_selection_iterate(sel, fn) { if (sel?.iterate) sel.iterate(fn); return sel; }
+export function l_selection_rndcoord(sel, rm = false) { return selection.rndcoord(sel, rm); }
+export function l_selection_room() { return selection.room(); }
+export function l_selection_area(x1, y1, x2, y2) { return selection.area(x1, y1, x2, y2); }
+export function l_selection_line(x1, y1, x2, y2) { return selection.line(x1, y1, x2, y2); }
+export function l_selection_randline(...args) { return selection.randline(...args); }
+export function l_selection_rect(x1, y1, x2, y2) { return selection.rect(x1, y1, x2, y2); }
+export function l_selection_fillrect(x1, y1, x2, y2) { return selection.fillrect(x1, y1, x2, y2); }
+export function l_selection_circle(x, y, r, filled = false) { return selection.circle(x, y, r, filled); }
+export function l_selection_ellipse(x, y, a, b, filled = false) { return selection.ellipse(x, y, a, b, filled); }
+export function l_selection_gradient(x1, y1, x2, y2, gtyp = 0, mind = 0, maxd = 0) {
+    return selection.gradient(x1, y1, x2, y2, gtyp, mind, maxd);
+}
+export function l_selection_flood(x, y, fn = null) { return selection.floodfill(x, y, fn); }
+export function l_selection_match(pattern) { return selection.match(pattern); }
+export function l_selection_filter_percent(sel, pct = 100) { return selection.percentage(sel, pct); }
+export function l_selection_grow(sel, n = 1) { return selection.grow(sel, n); }
+export function l_selection_not(sel) { return selection.negate(sel); }
+export function l_selection_and(a, b) { return sel_clone(a).intersect(b); }
+export function l_selection_or(a, b) { return sel_clone(a).union(b); }
+export function l_selection_xor(a, b) { return sel_clone(a).xor(b); }
+export function l_selection_sub(a, b) { return sel_clone(a).sub(b); }
+
 /**
  * des.drawbridge(opts)
  *

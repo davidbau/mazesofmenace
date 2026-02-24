@@ -7,7 +7,11 @@ import assert from 'node:assert/strict';
 import {
     des, resetLevelState, getLevelState, setFinalizeContext,
     mapfrag_fromstr, mapfrag_canmatch, mapfrag_error, mapfrag_match,
-    check_mapchr, get_table_mapchr_opt, get_table_mapchr, l_selection_filter_mapchar
+    check_mapchr, get_table_mapchr_opt, get_table_mapchr, l_selection_filter_mapchar,
+    get_table_boolean, get_table_boolean_opt, get_table_int, get_table_int_opt,
+    get_table_str, get_table_str_opt, get_table_option,
+    l_selection_new, l_selection_setpoint, l_selection_getpoint,
+    l_selection_and, l_selection_or, l_selection_xor, l_selection_sub, l_selection_numpoints
 } from '../../js/sp_lev.js';
 import { place_lregion } from '../../js/mkmaze.js';
 import {
@@ -325,6 +329,31 @@ describe('sp_lev.js - des.* API', () => {
         const all = l_selection_filter_mapchar({ x1: 10, y1: 5, x2: 11, y2: 5 }, 'x');
         assert.equal(all.coords.some(c => c.x === 10 && c.y === 5), true);
         assert.equal(all.coords.some(c => c.x === 11 && c.y === 5), true);
+    });
+
+    it('nhlua table helpers parse booleans/ints/strings/options', () => {
+        assert.equal(get_table_boolean({ b: true }, 'b'), true);
+        assert.equal(get_table_boolean_opt({}, 'b', true), true);
+        assert.equal(get_table_int({ n: 7 }, 'n'), 7);
+        assert.equal(get_table_int_opt({}, 'n', 9), 9);
+        assert.equal(get_table_str({ s: 42 }, 's'), '42');
+        assert.equal(get_table_str_opt({}, 's', 'd'), 'd');
+        assert.equal(get_table_option({ o: 'a' }, 'o', ['a', 'b'], 'b'), 'a');
+        assert.equal(get_table_option({ o: 'x' }, 'o', ['a', 'b'], 'b'), 'b');
+    });
+
+    it('nhlsel wrappers compose selections with C-name helpers', () => {
+        const a = l_selection_new();
+        const b = l_selection_new();
+        l_selection_setpoint(a, 10, 5, true);
+        l_selection_setpoint(a, 11, 5, true);
+        l_selection_setpoint(b, 11, 5, true);
+
+        assert.equal(l_selection_getpoint(a, 10, 5), true);
+        assert.equal(l_selection_numpoints(l_selection_and(a, b)), 1);
+        assert.equal(l_selection_numpoints(l_selection_or(a, b)), 2);
+        assert.equal(l_selection_numpoints(l_selection_xor(a, b)), 1);
+        assert.equal(l_selection_numpoints(l_selection_sub(a, b)), 1);
     });
 
     it('des.altar does not overwrite stairs/ladder tiles', () => {

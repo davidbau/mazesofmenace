@@ -735,9 +735,17 @@ export function fixup_special(map, opts = {}) {
 }
 export function check_ransacked(map, roomId = null) {
     const set = map?._specialFixups?.ransacked;
-    if (!set) return false;
-    if (roomId === null || roomId === undefined) return set.size > 0;
-    return set.has(roomId);
+    const roomMarked = (id) => {
+        if (!Number.isInteger(id)) return false;
+        const room = map?.rooms?.[id];
+        return !!room?.ransacked;
+    };
+    if (roomId === null || roomId === undefined) {
+        if (set?.size) return true;
+        if (Array.isArray(map?.rooms)) return map.rooms.some(r => !!r?.ransacked);
+        return false;
+    }
+    return !!set?.has(roomId) || roomMarked(roomId);
 }
 export function mark_ransacked(map, roomId) {
     if (!map) return false;
@@ -745,7 +753,12 @@ export function mark_ransacked(map, roomId) {
     if (!(map._specialFixups.ransacked instanceof Set)) {
         map._specialFixups.ransacked = new Set();
     }
-    if (roomId !== null && roomId !== undefined) map._specialFixups.ransacked.add(roomId);
+    if (roomId !== null && roomId !== undefined) {
+        map._specialFixups.ransacked.add(roomId);
+        if (Number.isInteger(roomId) && map.rooms?.[roomId]) {
+            map.rooms[roomId].ransacked = true;
+        }
+    }
     return true;
 }
 

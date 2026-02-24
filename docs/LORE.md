@@ -1258,3 +1258,9 @@ hard-won wisdom:
 - `mkmaze` waterlevel helpers (`setup_waterlevel`, `mk_bubble`, `movebubbles`, `mv_bubble`, `save_waterlevel`, `restore_waterlevel`, `set_wportal`) should carry real structured state (bounds, bubble descriptors, active flags) rather than opaque placeholders so later movement parity work has deterministic hooks.
 - `nhlua`/`nhlsel` mapchar glue belongs in `sp_lev` where mapchar parsing already lives; adding `check_mapchr`, `get_table_mapchr[_opt]`, and `l_selection_filter_mapchar` enables direct C-name call sites with no forwarder indirection.
 - `selection.filter_mapchar` should route to `l_selection_filter_mapchar` so wildcard wall (`'w'`) and transparent selector (`'x'`) behavior is centralized and parity-debuggable.
+
+### nhlsel/nhlua C-name wrapper parity pass (2026-02-24)
+
+- For selection semantics already implemented in `selection.*`, exposing C-name entrypoints (`l_selection_*`, `params_sel_2coords`) in `sp_lev.js` is a low-risk way to collapse CODEMATCH "missing" rows without adding cross-file forwarders.
+- Keep C-name wrappers thin and route all behavior through the same underlying selection operations (`intersect/union/xor/sub`, `grow`, `floodfill`, `match`) to avoid split logic paths.
+- `nhlua` table helpers (`get_table_boolean/int/str/option` and *_opt variants) should be centralized with explicit coercion/default behavior so des parser callsites share consistent semantics.
