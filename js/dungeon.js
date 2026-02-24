@@ -95,6 +95,12 @@ import {
     somexyspace,
     nexttodoor,
     shrine_pos,
+    set_mkroom_wizard_mode,
+    pick_room,
+    mkzoo,
+    mkswamp,
+    mkshop,
+    do_mkroom,
 } from './mkroom.js';
 import {
     add_room,
@@ -249,7 +255,7 @@ export function clearBranchTopology() {
     _dungeonLevelCounts = new Map();
 }
 import { ENGRAVE_FILE_TEXT } from './engrave_data.js';
-import { shtypes, stock_room } from './shknam.js';
+import { stock_room } from './shknam.js';
 import { obj_resists } from './objdata.js';
 import { placeFloorObject } from './floor_objects.js';
 import { mpickobj } from './monutil.js';
@@ -3367,6 +3373,7 @@ function buildBranchTopology(dungeonLayouts, parentRolls) {
 
 export function initDungeon(roleIndex, wizard = true) {
     _wizardMode = !!wizard;
+    set_mkroom_wizard_mode(_wizardMode);
     // 0. role_init: quest nemesis gender — rn2(100) for roles whose
     // nemesis lacks M2_MALE/M2_FEMALE/M2_NEUTER flags.
     // C ref: role.c:2060 — only Archeologist (Minion of Huhetotl) and
@@ -3878,36 +3885,6 @@ export function mineralize(map, depth, opts = null) {
 // C ref: mkroom.c:94-216
 // ========================================================================
 
-// C ref: mkroom.c:219-241 pick_room()
-export function pick_room(map, strict) {
-    if (!map.nroom) return null;
-    let idx = rn2(map.nroom);
-    for (let i = map.nroom; i > 0; i--, idx++) {
-        if (idx >= map.nroom) idx = 0;
-        const sroom = map.rooms[idx];
-        if (!sroom || sroom.hx < 0) return null;
-        if (sroom.rtype !== OROOM) continue;
-        if (!strict) {
-            if (has_upstairs(sroom, map)
-                || (has_dnstairs(sroom, map) && rn2(3))) {
-                continue;
-            }
-        } else if (has_upstairs(sroom, map) || has_dnstairs(sroom, map)) {
-            continue;
-        }
-        if (sroom.doorct === 1 || !rn2(5) || _wizardMode) return sroom;
-    }
-    return null;
-}
-
-// C ref: mkroom.c:244-253 mkzoo()
-export function mkzoo(map, type) {
-    const sroom = pick_room(map, false);
-    if (!sroom) return;
-    sroom.rtype = type;
-    sroom.needfill = FILL_NORMAL;
-}
-
 // C ref: priest.c:220-276 priestini() — create temple priest near altar.
 // Called exclusively from mktemple(). sanctum=true for high priest.
 function priestini(sroom, sx, sy, sanctum, depth, map) {
@@ -3990,150 +3967,6 @@ export function mktemple(map, depth) {
     map.flags.has_temple = true;
 }
 
-// C ref: mkroom.c:530-575 mkswamp() — turn up to 5 rooms into swamps.
-// Converts floor to POOL on odd (x+y) cells, places eels in water, fungi on land.
-export function mkswamp(map, depth) {
-    let eelct = 0;
-    for (let i = 0; i < 5; i++) {
-        const sroom = map.rooms[rn2(map.nroom)];
-        if (!sroom || sroom.hx < 0 || sroom.rtype !== OROOM
-            || has_upstairs(sroom, map) || has_dnstairs(sroom, map))
-            continue;
-
-        const rmno = (map.rooms.indexOf(sroom)) + ROOMOFFSET;
-
-        sroom.rtype = SWAMP;
-        for (let sx = sroom.lx; sx <= sroom.hx; sx++) {
-            for (let sy = sroom.ly; sy <= sroom.hy; sy++) {
-                const loc = map.at(sx, sy);
-                if (!loc || !IS_ROOM(loc.typ)) continue;
-                if (loc.roomno !== rmno) continue;
-                if (map.objectsAt(sx, sy).length > 0) continue;
-                if (map.monsterAt(sx, sy)) continue;
-                if (map.trapAt(sx, sy)) continue;
-                if (nexttodoor(sx, sy, map)) continue;
-
-                if ((sx + sy) % 2) {
-                    // C: del_engr_at(sx, sy) — no engravings during mklev
-                    loc.typ = POOL;
-                    if (!eelct || !rn2(4)) {
-                        // C: mkclass() won't do, as we might get kraken
-                        const eelmon = rn2(5)
-                            ? mons[PM_GIANT_EEL]
-                            : rn2(2)
-                                ? mons[PM_PIRANHA]
-                                : mons[PM_ELECTRIC_EEL];
-                        makemon(eelmon, sx, sy, NO_MM_FLAGS, depth, map);
-                        eelct++;
-                    }
-                } else if (!rn2(4)) {
-                    // swamps tend to be moldy
-                    const fungusMndx = mkclass(S_FUNGUS, 0, depth);
-                    makemon(fungusMndx >= 0 ? mons[fungusMndx] : null, sx, sy, NO_MM_FLAGS, depth, map);
-                }
-            }
-        }
-        map.flags.has_swamp = true;
-    }
-}
-
-// C ref: mkroom.c:52-92 do_mkroom()
-export function do_mkroom(map, roomtype, depth) {
-    if (roomtype >= SHOPBASE) {
-        mkshop(map);
-        return;
-    }
-    switch (roomtype) {
-    case COURT:
-    case ZOO:
-    case BEEHIVE:
-    case MORGUE:
-    case BARRACKS:
-    case LEPREHALL:
-    case COCKNEST:
-    case ANTHOLE:
-        mkzoo(map, roomtype);
-        return;
-    case TEMPLE:
-        mktemple(map, depth);
-        return;
-    case SWAMP:
-        mkswamp(map, depth);
-        return;
-    default:
-        return;
-    }
-}
-
-// C ref: mkroom.c:1049-1096 — check if room shape traps shopkeeper
-export function invalid_shop_shape(sroom, map) {
-    const doorx = map.doors[sroom.fdoor].x;
-    const doory = map.doors[sroom.fdoor].y;
-    let insidex = 0, insidey = 0, insidect = 0;
-
-    // Find ROOM squares inside room and adjacent to door
-    for (let x = Math.max(doorx - 1, sroom.lx); x <= Math.min(doorx + 1, sroom.hx); x++) {
-        for (let y = Math.max(doory - 1, sroom.ly); y <= Math.min(doory + 1, sroom.hy); y++) {
-            const loc = map.at(x, y);
-            if (loc && loc.typ === ROOM) {
-                insidex = x;
-                insidey = y;
-                insidect++;
-            }
-        }
-    }
-    if (insidect < 1) return true;
-    if (insidect === 1) {
-        // Only 1 square next to door — check if shopkeeper can move elsewhere
-        insidect = 0;
-        for (let x = Math.max(insidex - 1, sroom.lx); x <= Math.min(insidex + 1, sroom.hx); x++) {
-            for (let y = Math.max(insidey - 1, sroom.ly); y <= Math.min(insidey + 1, sroom.hy); y++) {
-                if (x === insidex && y === insidey) continue;
-                const loc = map.at(x, y);
-                if (loc && loc.typ === ROOM) insidect++;
-            }
-        }
-        if (insidect === 1) return true; // shopkeeper trapped
-    }
-    return false;
-}
-
-export function mkshop(map) {
-    // C ref: mkroom.c:158-179 — find eligible room
-    for (const sroom of map.rooms) {
-        if (sroom.hx < 0) return;
-        if (sroom.rtype !== OROOM) continue;
-        if (has_dnstairs(sroom, map) || has_upstairs(sroom, map)) continue;
-        if (sroom.doorct !== 1) continue;
-        if (invalid_shop_shape(sroom, map)) continue;
-
-        // Found eligible room — light it
-        // C ref: mkroom.c:180-187
-        if (!sroom.rlit) {
-            for (let x = sroom.lx - 1; x <= sroom.hx + 1; x++) {
-                for (let y = sroom.ly - 1; y <= sroom.hy + 1; y++) {
-                    const loc = map.at(x, y);
-                    if (loc) loc.lit = true;
-                }
-            }
-            sroom.rlit = true;
-        }
-
-        // C ref: mkroom.c:189-201 — pick shop type by probability
-        let j = rnd(100);
-        let i = 0;
-        while ((j -= shtypes[i].prob) > 0) i++;
-
-        // Big rooms can't be wand or book shops → general store
-        if (isbig(sroom) && (shtypes[i].symb === WAND_CLASS || shtypes[i].symb === SPBOOK_CLASS))
-            i = 0;
-
-        sroom.rtype = SHOPBASE + i;
-        sroom.needfill = FILL_NORMAL;
-        return;
-    }
-}
-
 // ========================================================================
 // Main entry point
 // ========================================================================
@@ -4145,6 +3978,7 @@ export function mkshop(map) {
 //        u_init.c u_init(), nhlua pre_themerooms
 export function initLevelGeneration(roleIndex, wizard = true, opts = {}) {
     _wizardMode = !!wizard;
+    set_mkroom_wizard_mode(_wizardMode);
     init_objects();
     setMakemonRoleContext(roleIndex, opts);
     _branchTopology = [];  // reset before recalculating from init_dungeons RNG
@@ -4363,25 +4197,25 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
         if (depth > 1 && map.nroom >= room_threshold && rn2(depth) < 3) {
             mkshop(map);
         } else if (depth > 4 && !rn2(6)) {
-            do_mkroom(map, COURT, depth);
+            do_mkroom(map, COURT, depth, mktemple);
         } else if (depth > 5 && !rn2(8)) {
-            do_mkroom(map, LEPREHALL, depth);
+            do_mkroom(map, LEPREHALL, depth, mktemple);
         } else if (depth > 6 && !rn2(7)) {
-            do_mkroom(map, ZOO, depth);
+            do_mkroom(map, ZOO, depth, mktemple);
         } else if (depth > 8 && !rn2(5)) {
-            do_mkroom(map, TEMPLE, depth);
+            do_mkroom(map, TEMPLE, depth, mktemple);
         } else if (depth > 9 && !rn2(5)) {
-            do_mkroom(map, BEEHIVE, depth);
+            do_mkroom(map, BEEHIVE, depth, mktemple);
         } else if (depth > 11 && !rn2(6)) {
-            do_mkroom(map, MORGUE, depth);
+            do_mkroom(map, MORGUE, depth, mktemple);
         } else if (depth > 12 && !rn2(8)) {
-            do_mkroom(map, ANTHOLE, depth);
+            do_mkroom(map, ANTHOLE, depth, mktemple);
         } else if (depth > 14 && !rn2(4)) {
-            do_mkroom(map, BARRACKS, depth);
+            do_mkroom(map, BARRACKS, depth, mktemple);
         } else if (depth > 15 && !rn2(6)) {
-            do_mkroom(map, SWAMP, depth);
+            do_mkroom(map, SWAMP, depth, mktemple);
         } else if (depth > 16 && !rn2(8)) {
-            do_mkroom(map, COCKNEST, depth);
+            do_mkroom(map, COCKNEST, depth, mktemple);
         }
     }
 

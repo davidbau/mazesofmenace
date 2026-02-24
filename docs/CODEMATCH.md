@@ -92,7 +92,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[~]` | mkmap.c | mkmap.js | Map generation algorithms now implemented in `mkmap.js` (`init_map`, `init_fill`, `get_map`, `pass_*`, `flood_fill_rm`, `join_map`, `finish_map`, `mkmap`, room cleanup/removal); `sp_lev.js` now calls `mkmap.js` directly |
 | `[~]` | mkmaze.c | mkmaze.js | Maze generation. Core helpers plus region-placement path (`is_exclusion_zone`, `bad_location`, `put_lregion_here`, `place_lregion`) and maze generation path (`makemaz`, `create_maze`, `populate_maze`, `maze0xy`, `maze_remove_deadends`, `mazexy`, `pick_vibrasquare_location`) now live in `mkmaze.js`; water plane still stubbed |
 | `[a]` | mkobj.c | mkobj.js | Object creation. mksobj/mkobj/mkcorpstat/xname/doname/weight/Is_container implemented; BUC functions exported (bless/unbless/curse/uncurse/blessorcurse/bcsign/set_bknown); erosion predicates exported (is_flammable/is_rustprone/is_rottable/is_corrodeable/is_crackable/erosion_matters); splitobj, container_weight added; ~30 functions TODO |
-| `[~]` | mkroom.c | mkroom.js | Room generation. Room predicates/helpers (`isbig`, `has_dnstairs`, `has_upstairs`, `nexttodoor`, `shrine_pos`) plus room-coordinate helpers (`somex`, `somey`, `inside_room`, `somexy`, `somexyspace`) now live in `mkroom.js`; remaining room-generation pipeline stays in `dungeon.js` |
+| `[~]` | mkroom.c | mkroom.js | Room generation. `mkroom.js` now owns `do_mkroom`, `pick_room`, `mkzoo`, `mkswamp`, `invalid_shop_shape`, `mkshop` plus room predicates/helpers (`isbig`, `has_dnstairs`, `has_upstairs`, `nexttodoor`, `shrine_pos`) and room-coordinate helpers (`somex`, `somey`, `inside_room`, `somexy`, `somexyspace`); remaining fill/population pipeline still in `dungeon.js` |
 | `[a]` | mon.c | mon.js | Monster lifecycle: movemon, mfndpos (flag-based), mm_aggression, corpse_chance, passivemm, hider premove, zombie_maker/zombie_form/undead_to_corpse/genus/pm_to_cham; death chain: mlifesaver/lifesaved_monster/set_mon_min_mhpmax/check_gear_next_turn/m_detach/mondead_full/mondied/mongone/monkilled/xkilled/killed/make_corpse; alertness: wake_msg/wakeup/seemimic/wake_nearto_core/wake_nearto/wake_nearby/setmangry; turn processing: healmon/meatbox/m_consume_obj/meatmetal/meatobj/meatcorpse/minliquid/mpickgold/can_touch_safely/mon_give_prop/mon_givit/mcalcdistress; visibility: m_in_air/m_poisongas_ok/elemental_clog/set_ustuck/maybe_unhide_at/hideunder/hide_monst |
 | `[a]` | mondata.c | mondata.js | Monster data queries: predicates, mon_knows_traps, passes_bars, dmgtype, hates_silver, sticks, etc. |
 | `[a]` | monmove.c | monmove.js | Monster movement: dochug, m_move, m_move_aggress, set_apparxy, m_search_items; dochugw (wrapper), m_everyturn_effect, m_postmove_effect, postmov, should_displace, mb_trapped, itsstuck, release_hero, watch_on_duty, m_balks_at_approaching, mon_would_consume_item |
@@ -2800,22 +2800,22 @@ No function symbols parsed from isaac64.c.
 | 503 | `antholemon` | - | Missing |
 | 913 | `cmap_to_type` | - | Missing |
 | 784 | `courtmon` | - | Missing |
-| 53 | `do_mkroom` | - | Missing |
+| 53 | `do_mkroom` | mkroom.js:299 | Aligned |
 | 277 | `fill_zoo` | sp_lev.js `fill_zoo()` | Aligned — all room types, ndemon, mkgold merge, mongets/set_malign, mk_tt_object |
 | 641 | `has_dnstairs` | mkroom.js:12 | Aligned |
 | 654 | `has_upstairs` | mkroom.js:21 | Aligned |
 | 679 | `inside_room` | mkroom.js:61 | Aligned |
-| 1051 | `invalid_shop_shape` | - | Missing |
+| 1051 | `invalid_shop_shape` | mkroom.js:237 | Aligned |
 | 43 | `isbig` | mkroom.js:7 | Aligned |
 | 258 | `mk_zoo_thronemon` | - | Missing |
-| 96 | `mkshop` | - | Missing |
-| 531 | `mkswamp` | - | Missing |
+| 96 | `mkshop` | mkroom.js:267 | Aligned |
+| 531 | `mkswamp` | mkroom.js:194 | Aligned |
 | 599 | `mktemple` | - | Missing |
 | 457 | `mkundead` | - | Missing |
-| 245 | `mkzoo` | - | Missing |
+| 245 | `mkzoo` | mkroom.js:186 | Aligned |
 | 479 | `morguemon` | - | Missing |
 | 624 | `nexttodoor` | mkroom.js:30 | Aligned |
-| 221 | `pick_room` | - | Missing |
+| 221 | `pick_room` | mkroom.js:164 | Aligned |
 | 876 | `rest_room` | - | Missing |
 | 894 | `rest_rooms` | - | Missing |
 | 845 | `save_room` | - | Missing |
