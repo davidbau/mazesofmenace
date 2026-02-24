@@ -32,10 +32,11 @@ import {
     S_HUMAN, S_GHOST, S_GOLEM, S_DEMON, S_EEL, S_LIZARD, S_MIMIC_DEF,
     M2_MERC, M2_LORD, M2_PRINCE, M2_NASTY, M2_FEMALE, M2_MALE, M2_STRONG, M2_ROCKTHROW,
     M2_HOSTILE, M2_PEACEFUL, M2_DOMESTIC, M2_NEUTER, M2_GREEDY,
-    M2_SHAPESHIFTER, M2_WERE, M2_PNAME, M2_HUMAN,
+    M2_SHAPESHIFTER, M2_WERE, M2_PNAME, M2_HUMAN, M2_ELF, M2_DWARF,
     M2_MINION, M2_DEMON,
     M1_FLY, M1_NOHANDS, M1_SWIM, M1_AMPHIBIOUS, M1_WALLWALK, M1_AMORPHOUS,
     PM_ORC, PM_GIANT, PM_ELF, PM_HUMAN, PM_ETTIN, PM_MINOTAUR, PM_NAZGUL,
+    PM_ELVEN_MONARCH,
     PM_MASTER_LICH, PM_ARCH_LICH,
     PM_GRAY_DRAGON,
     PM_STRAW_GOLEM, PM_PAPER_GOLEM, PM_ROPE_GOLEM, PM_GOLD_GOLEM,
@@ -67,7 +68,7 @@ import {
     ORCISH_DAGGER, ORCISH_SHORT_SWORD, ORCISH_SPEAR, ORCISH_HELM,
     ORCISH_SHIELD, ORCISH_RING_MAIL, ORCISH_CHAIN_MAIL,
     ORCISH_BOW, ORCISH_ARROW, ORCISH_CLOAK, URUK_HAI_SHIELD,
-    ELVEN_DAGGER, ELVEN_SHORT_SWORD, ELVEN_BOW, ELVEN_ARROW,
+    ELVEN_DAGGER, ELVEN_SHORT_SWORD, ELVEN_BROADSWORD, ELVEN_SPEAR, ELVEN_BOW, ELVEN_ARROW,
     ELVEN_LEATHER_HELM, ELVEN_MITHRIL_COAT, ELVEN_CLOAK,
     ELVEN_SHIELD, ELVEN_BOOTS,
     DWARVISH_MATTOCK, DWARVISH_SHORT_SWORD, DWARVISH_SPEAR,
@@ -115,8 +116,8 @@ function is_male(ptr) { return !!(ptr.flags2 & M2_MALE); }
 function strongmonst(ptr) { return !!(ptr.flags2 & M2_STRONG); }
 function is_neuter(ptr) { return !!(ptr.flags2 & M2_NEUTER); }
 function is_domestic(ptr) { return !!(ptr.flags2 & M2_DOMESTIC); }
-function is_elf(ptr) { return ptr.symbol === S_HUMANOID && ptr.name && ptr.name.includes('elf'); }
-function is_dwarf(ptr) { return ptr.symbol === S_HUMANOID && ptr.name && ptr.name.includes('dwarf'); }
+function is_elf(ptr) { return !!(ptr.flags2 & M2_ELF); }
+function is_dwarf(ptr) { return !!(ptr.flags2 & M2_DWARF); }
 function is_hobbit(ptr) { return ptr.symbol === S_HUMANOID && ptr.name && ptr.name.includes('hobbit'); }
 function is_giant_species(ptr) { return ptr.symbol === S_GIANT && ptr.name && ptr.name.includes('giant'); }
 // C ref: mondata.h:87 — #define is_armed(ptr) attacktype(ptr, AT_WEAP)
@@ -758,25 +759,31 @@ function m_initweap(mon, mndx, depth) {
             if (!w2 && w1 !== DAGGER && !rn2(4)) w2 = KNIFE;
             if (w2) mongets(mon,w2);
         } else if (is_elf(ptr)) {
-            // Elf equipment
+            // C ref: makemon.c elf equipment branch.
             if (rn2(2)) {
                 mongets(mon,rn2(2) ? ELVEN_MITHRIL_COAT : ELVEN_CLOAK);
             }
             if (rn2(2)) mongets(mon,ELVEN_LEATHER_HELM);
-            if (!rn2(4)) mongets(mon,ELVEN_BOOTS);
-            if (!rn2(2)) mongets(mon,ELVEN_DAGGER);
+            else if (!rn2(4)) mongets(mon,ELVEN_BOOTS);
+            if (rn2(2)) mongets(mon,ELVEN_DAGGER);
             const w = rn2(3);
             if (w === 0) {
                 if (!rn2(4)) mongets(mon,ELVEN_SHIELD);
-                if (!rn2(3)) mongets(mon,ELVEN_SHORT_SWORD);
+                if (rn2(3)) mongets(mon,ELVEN_SHORT_SWORD);
                 mongets(mon,ELVEN_BOW);
                 m_initthrow(mon, ELVEN_ARROW, 12);
             } else if (w === 1) {
-                if (!rn2(2)) mongets(mon,ELVEN_SHIELD);
-                mongets(mon,ELVEN_SHORT_SWORD);
+                mongets(mon,ELVEN_BROADSWORD);
+                if (rn2(2)) mongets(mon,ELVEN_SHIELD);
             } else {
-                if (!rn2(2)) mongets(mon,ELVEN_SPEAR);
-                mongets(mon,ELVEN_SHORT_SWORD);
+                if (rn2(2)) {
+                    mongets(mon,ELVEN_SPEAR);
+                    mongets(mon,ELVEN_SHIELD);
+                }
+            }
+            if (mndx === PM_ELVEN_MONARCH) {
+                if (rn2(3)) mongets(mon, PICK_AXE);
+                if (!rn2(50)) mongets(mon, CRYSTAL_BALL);
             }
         } else {
             // Generic human — check specific types
