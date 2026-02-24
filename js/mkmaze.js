@@ -33,9 +33,18 @@ import {
 } from './mklev.js';
 import { somex, somey, somexyspace } from './mkroom.js';
 import { QUEST, GNOMISH_MINES } from './special_levels.js';
+import { block_point, unblock_point, recalc_block_point } from './vision.js';
 
 function at(map, x, y) {
     return map && map.at ? map.at(x, y) : null;
+}
+
+function vision_call(fn, x, y) {
+    try {
+        fn(x, y);
+    } catch (_err) {
+        // Some unit paths call map generators without a full vision context.
+    }
 }
 
 // C ref: mkmaze.c iswall
@@ -1063,15 +1072,29 @@ export function movebubbles(map, dx = 0, dy = 0) {
                 if (!loc) continue;
                 loc.typ = WATER;
                 loc.lit = 0;
+                vision_call(block_point, x, y);
             }
         }
     } else if (map.flags?.is_airlevel) {
+        const xmin = Number.isInteger(water.xmin) ? water.xmin : 3;
+        const ymin = Number.isInteger(water.ymin) ? water.ymin : 1;
+        const xmax = Number.isInteger(water.xmax) ? water.xmax : (COLNO - 2);
+        const ymax = Number.isInteger(water.ymax) ? water.ymax : (ROWNO - 1);
         for (let x = 1; x < COLNO; x++) {
             for (let y = 0; y < ROWNO; y++) {
                 const loc = at(map, x, y);
                 if (!loc) continue;
                 loc.typ = AIR;
                 loc.lit = 1;
+                vision_call(recalc_block_point, x, y);
+                const xedge = (x < xmin || x > xmax);
+                const yedge = (y < ymin || y > ymax);
+                if (xedge || yedge) {
+                    if (!rn2(xedge ? 3 : 5)) {
+                        loc.typ = CLOUD;
+                        vision_call(block_point, x, y);
+                    }
+                }
             }
         }
     }
@@ -1093,6 +1116,7 @@ export function movebubbles(map, dx = 0, dy = 0) {
                 if (!loc) return;
                 loc.typ = WATER;
                 loc.lit = 0;
+                vision_call(block_point, x, y);
             });
         }
     }
@@ -1410,9 +1434,11 @@ export function mv_bubble(map, bubble, dx = 0, dy = 0, ini = false) {
         if (map.flags?.is_waterlevel) {
             loc.typ = AIR;
             loc.lit = 1;
+            vision_call(unblock_point, x, y);
         } else if (map.flags?.is_airlevel) {
             loc.typ = CLOUD;
             loc.lit = 1;
+            vision_call(block_point, x, y);
         }
     });
 

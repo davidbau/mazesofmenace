@@ -1384,3 +1384,4 @@ hard-won wisdom:
 - For parity-friendly vision updates, callers can provide `map._water.onVisionRecalc()` and let `movebubbles()` invoke it after terrain/bubble updates.
 - `hack.water_turbulence()` should call `maybe_adjust_hero_bubble()` on Water level so hero directional intent can steer the current bubble with C-style 50% gating.
 - When hero transport lands onto an occupied square, displace that monster with `enexto()` before finalizing hero position to match C `mv_bubble` collision handling intent.
+- Direct `vision.block_point/unblock_point/recalc_block_point` calls can throw in map-only unit contexts; wrap those as best-effort hooks in map generators so tests without full FOV state remain deterministic.
