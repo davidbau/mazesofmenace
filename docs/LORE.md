@@ -1360,3 +1360,10 @@ hard-won wisdom:
 - `mklev.mkgrave()` must create the grave through `engrave.make_grave()` (or equivalent) so headstone engravings are emitted as `^engr[6,x,y]`, matching C event logs.
 - Setting `loc.typ = GRAVE` alone is insufficient for event parity because it misses the engraving-side event stream even when RNG/screens remain aligned.
 - Older session captures can under-report modern movement/event instrumentation; when core behavior is already aligned, re-record those sessions with current `run_session.py` to restore event-schema parity.
+
+### Meta-lesson: event parity is a high-value bug finder (2026-02-24)
+
+- Full RNG parity can still hide real behavioral gaps; event-stream mismatches often expose missing state transitions that RNG alone does not make obvious.
+- Practical workflow: first classify event drift into (a) stale capture schema vs (b) real core logic mismatch, then only re-record when (a) is confirmed.
+- Concrete example: in pet split-stack pickup, JS created a detached split object and went straight to `mpickobj`, skipping the C-style on-floor extraction event. Event parity highlighted the missing `^remove` before `^pickup`, leading to a core fix in `dogmove` split handling.
+- Treat event parity as production-path validation, not test-harness cosmetics: fixes should land in game logic and improve replay/debug observability for future divergence work.

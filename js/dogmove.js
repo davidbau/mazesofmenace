@@ -613,6 +613,11 @@ function dog_invent(mon, edog, udist, map, turnCount, display, player, fov = nul
                             // next_ident() via newobj().
                             picked = { ...obj, quan: carryamt, o_id: next_ident() };
                             picked.owt = weight(picked);
+                            // C ref: splitobj() leaves the split object on the
+                            // floor list; mpickobj path then extracts it,
+                            // emitting ^remove before ^pickup.
+                            map.objects.splice(map.objects.length, 0, picked);
+                            map.removeObject(picked);
                         } else {
                             map.removeObject(obj);
                         }
