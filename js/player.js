@@ -482,6 +482,7 @@ export class Player {
 
         // Movement
         this.movement = NORMAL_SPEED;
+        this.umovement = NORMAL_SPEED;
         this.speed = NORMAL_SPEED;
         this.moved = false;
 

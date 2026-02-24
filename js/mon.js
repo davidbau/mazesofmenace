@@ -1472,76 +1472,73 @@ function m_calcdistress(mon, map, player) {
 export function movemon(map, player, display, fov, game = null, { dochug, handleHiderPremove: hhp } = {}) {
     if (game) game._suppressMonsterHitMessagesThisTurn = false;
     if (map) map._heardDistantNoiseThisTurn = false;
-    const turnCount = (player.turns || 0) + 1;
-    const replayStep = Number.isInteger(map?._replayStepIndex) ? map._replayStepIndex + 1 : '?';
-    let anyMoved;
-    do {
-        anyMoved = false;
-        for (const mon of map.monsters) {
-            if (mon.dead) continue;
+    let somebodyCanMove = false;
+    for (const mon of map.monsters) {
+        if (mon.dead) continue;
+        if (mon.movement >= NORMAL_SPEED) {
+            pushRngLogEntry(`^movemon_turn[${mon.mndx}@${mon.mx},${mon.my} mv=${mon.movement}->${mon.movement - NORMAL_SPEED}]`);
+            const oldx = mon.mx;
+            const oldy = mon.my;
+            const alreadySawMon = !!(game && game.occupation
+                && ((fov?.canSee ? fov.canSee(oldx, oldy) : couldsee(map, player, oldx, oldy))));
+            mon.movement -= NORMAL_SPEED;
             if (mon.movement >= NORMAL_SPEED) {
-                pushRngLogEntry(`^movemon_turn[${mon.mndx}@${mon.mx},${mon.my} mv=${mon.movement}->${mon.movement - NORMAL_SPEED}]`);
-                const oldx = mon.mx;
-                const oldy = mon.my;
-                const alreadySawMon = !!(game && game.occupation
-                    && ((fov?.canSee ? fov.canSee(oldx, oldy) : couldsee(map, player, oldx, oldy))));
-                mon.movement -= NORMAL_SPEED;
-                anyMoved = true;
-                monmoveTrace('turn-start',
-                    `step=${monmoveStepLabel(map)}`,
-                    `id=${mon.m_id ?? '?'}`,
-                    `mndx=${mon.mndx ?? '?'}`,
-                    `name=${mon.type?.name || mon.name || '?'}`,
-                    `pos=(${oldx},${oldy})`,
-                    `mv=${mon.movement + NORMAL_SPEED}->${mon.movement}`,
-                    `flee=${mon.flee ? 1 : 0}`,
-                    `peace=${mon.peaceful ? 1 : 0}`,
-                    `conf=${mon.confused ? 1 : 0}`);
-                if ((hhp || handleHiderPremove)(mon, map, player, fov)) {
+                somebodyCanMove = true;
+            }
+            monmoveTrace('turn-start',
+                `step=${monmoveStepLabel(map)}`,
+                `id=${mon.m_id ?? '?'}`,
+                `mndx=${mon.mndx ?? '?'}`,
+                `name=${mon.type?.name || mon.name || '?'}`,
+                `pos=(${oldx},${oldy})`,
+                `mv=${mon.movement + NORMAL_SPEED}->${mon.movement}`,
+                `flee=${mon.flee ? 1 : 0}`,
+                `peace=${mon.peaceful ? 1 : 0}`,
+                `conf=${mon.confused ? 1 : 0}`);
+            if ((hhp || handleHiderPremove)(mon, map, player, fov)) {
+                continue;
+            }
+            // TODO: minliquid(mon) — drowning/sinking not yet ported
+            // TODO: m_dowear(mon, FALSE) — monster armor equipping not yet ported
+            // C ref: mon.c:1277-1284 — eel hiding
+            if (mon.type?.symbol === S_EEL && !mon.mundetected
+                && (mon.flee || distmin(mon.mx, mon.my, player.x, player.y) > 1)
+                && !(fov?.canSee ? fov.canSee(mon.mx, mon.my) : couldsee(map, player, mon.mx, mon.my))
+                && !rn2(4)) {
+                // C ref: hideunder() — set mundetected if on water terrain
+                if (IS_POOL(map.at(mon.mx, mon.my)?.typ)) {
+                    mon.mundetected = true;
                     continue;
                 }
-                // TODO: minliquid(mon) — drowning/sinking not yet ported
-                // TODO: m_dowear(mon, FALSE) — monster armor equipping not yet ported
-                // C ref: mon.c:1277-1284 — eel hiding
-                if (mon.type?.symbol === S_EEL && !mon.mundetected
-                    && (mon.flee || distmin(mon.mx, mon.my, player.x, player.y) > 1)
-                    && !(fov?.canSee ? fov.canSee(mon.mx, mon.my) : couldsee(map, player, mon.mx, mon.my))
-                    && !rn2(4)) {
-                    // C ref: hideunder() — set mundetected if on water terrain
-                    if (IS_POOL(map.at(mon.mx, mon.my)?.typ)) {
-                        mon.mundetected = true;
-                        continue;
-                    }
-                }
-                // TODO: fightm() — Conflict not implemented
-                dochug(mon, map, player, display, fov, game);
-                if (game && game.occupation && !mon.dead) {
-                    const attacks = mon.type?.attacks || [];
-                    const noAttacks = !attacks.some((a) => a && a.type !== AT_NONE);
-                    const threatRangeSq = (BOLT_LIM + 1) * (BOLT_LIM + 1);
-                    const oldDist = dist2(oldx, oldy, player.x, player.y);
-                    const newDist = dist2(mon.mx, mon.my, player.x, player.y);
-                    const canSeeNow = fov?.canSee ? fov.canSee(mon.mx, mon.my)
-                        : couldsee(map, player, mon.mx, mon.my);
-                    const couldSeeOld = fov?.canSee ? fov.canSee(oldx, oldy)
-                        : couldsee(map, player, oldx, oldy);
-                    if (!mon.peaceful
-                        && !noAttacks
-                        && newDist <= threatRangeSq
-                        && (!alreadySawMon || !couldSeeOld || oldDist > threatRangeSq)
-                        && canSeeNow
-                        && mon.mcanmove !== false
-                        && !onscary(map, player.x, player.y)) {
-                        game.display.putstr_message(`You stop ${game.occupation.occtxt}.`);
-                        game.occupation = null;
-                        game.multi = 0;
-                    }
+            }
+            // TODO: fightm() — Conflict not implemented
+            dochug(mon, map, player, display, fov, game);
+            if (game && game.occupation && !mon.dead) {
+                const attacks = mon.type?.attacks || [];
+                const noAttacks = !attacks.some((a) => a && a.type !== AT_NONE);
+                const threatRangeSq = (BOLT_LIM + 1) * (BOLT_LIM + 1);
+                const oldDist = dist2(oldx, oldy, player.x, player.y);
+                const newDist = dist2(mon.mx, mon.my, player.x, player.y);
+                const canSeeNow = fov?.canSee ? fov.canSee(mon.mx, mon.my)
+                    : couldsee(map, player, mon.mx, mon.my);
+                const couldSeeOld = fov?.canSee ? fov.canSee(oldx, oldy)
+                    : couldsee(map, player, oldx, oldy);
+                if (!mon.peaceful
+                    && !noAttacks
+                    && newDist <= threatRangeSq
+                    && (!alreadySawMon || !couldSeeOld || oldDist > threatRangeSq)
+                    && canSeeNow
+                    && mon.mcanmove !== false
+                    && !onscary(map, player.x, player.y)) {
+                    game.display.putstr_message(`You stop ${game.occupation.occtxt}.`);
+                    game.occupation = null;
+                    game.multi = 0;
                 }
             }
         }
-        if (game && game._bonusMovement > 0) break;
-    } while (anyMoved);
+    }
 
     map.monsters = map.monsters.filter(m => !m.dead);
     player.displacedPetThisTurn = false;
+    return somebodyCanMove;
 }

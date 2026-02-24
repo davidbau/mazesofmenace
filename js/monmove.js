@@ -107,7 +107,7 @@ import { find_defensive, use_defensive, find_misc, use_misc } from './muse.js';
 // movemon — wrapper that binds dochug into mon.js movemon
 // ========================================================================
 export function movemon(map, player, display, fov, game = null) {
-    _movemon(map, player, display, fov, game, { dochug, handleHiderPremove });
+    return _movemon(map, player, display, fov, game, { dochug, handleHiderPremove });
 }
 
 // C direction tables (C ref: monmove.c)

@@ -1327,3 +1327,10 @@ hard-won wisdom:
 - `fill_ordinary_room`'s amulet gate only helps parity when makelevel callers propagate hero state; `changeLevel`/newgame generation now pass `heroHasAmulet` into `makelevel`, and generated maps retain `_heroHasAmulet`.
 - Water bubble bounds should treat size `n` as span `n-1` in movement edge checks so a `1x1` bubble can legally occupy `xmax`/`ymax`.
 - Added unit coverage for the `1x1` bubble right-edge case to prevent reintroducing off-by-one clamping.
+
+### coupled A/B parity fix pattern: movemon pass shape + moveloop sequencing (2026-02-24)
+
+- We hit a hard coupling where fixing only one side regressed parity: making `movemon` single-pass (C-like) without also porting `moveloop_core` scheduling caused early divergences, while keeping legacy `movemon` internal looping forced non-C turn ordering drift.
+- The failure mode was structural: JS had monster re-looping inside `movemon` plus `_bonusMovement` gating, but C splits responsibilities (`movemon()` single pass returning `somebody_can_move`; outer `moveloop_core` loops based on `u.umovement` and `monscanmove`).
+- The stable fix is atomic and paired: port both pieces together so control flow matches C end-to-end. Partial ports of either side alone are misleading and can appear to "fix" one seed while regressing broad ordering and RNG alignment.
+- Practical rule for future parity work: when a C function's return contract controls outer-loop scheduling, port caller and callee together in one change; otherwise A-vs-B oscillation is likely.

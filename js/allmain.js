@@ -57,21 +57,40 @@ import { movebubbles } from './mkmaze.js';
 // opts.skipMonsterMove: skip movemon (used by some test harnesses)
 // opts.computeFov: recompute FOV before movemon (C ref: vision_recalc runs in domove)
 export function moveloop_core(game, opts = {}) {
+    const player = game.player;
     if (opts.computeFov) {
-        game.fov.compute(game.map, game.player.x, game.player.y);
+        game.fov.compute(game.map, player.x, player.y);
     }
-    if (!opts.skipMonsterMove) {
-        movemon(game.map, game.player, game.display, game.fov, game);
+    if (!Number.isFinite(player.umovement)) {
+        player.umovement = NORMAL_SPEED;
     }
-    // C ref: allmain.c — apply deferred level changes after timed turn work.
-    if (game.player?.utotype) {
-        deferred_goto(game.player, game);
-    }
-    moveloop_turnend(game);
+    // C ref: allmain.c:197 — actual time passed.
+    player.umovement -= NORMAL_SPEED;
+
+    do {
+        let monscanmove = false;
+        if (!opts.skipMonsterMove) {
+            do {
+                monscanmove = movemon(game.map, player, game.display, game.fov, game);
+                if (player.umovement >= NORMAL_SPEED)
+                    break; /* it's now your turn */
+            } while (monscanmove);
+        }
+        // C ref: mon.c movemon() does deferred_goto() on u.utotype.
+        // JS keeps it here until mon.c-level transition plumbing is fully ported.
+        if (player.utotype) {
+            deferred_goto(player, game);
+            monscanmove = false;
+        }
+        if (!monscanmove && player.umovement < NORMAL_SPEED) {
+            moveloop_turnend(game);
+        }
+    } while (player.umovement < NORMAL_SPEED);
+
     // C ref: allmain.c end of moveloop_core — check for player death
-    if (game.player.isDead || game.player.hp <= 0) {
-        if (!game.player.deathCause) {
-            game.player.deathCause = 'died';
+    if (player.isDead || player.hp <= 0) {
+        if (!player.deathCause) {
+            player.deathCause = 'died';
         }
         game.gameOver = true;
         game.gameOverReason = 'killed';
@@ -85,16 +104,8 @@ export function moveloop_core(game, opts = {}) {
 // Unified from processTurnEnd (nethack.js) and simulateTurnEnd (headless_runtime.js).
 // Called once per real turn, after hero and monsters have moved.
 // game must provide: player, map, display, fov, multi, turnCount, seerTurn,
-//                    _bonusMovement, flags, travelPath, runMode
+//                    flags, travelPath, runMode
 export function moveloop_turnend(game) {
-    // C ref: allmain.c moveloop_core() — the turn-end block only runs when both
-    // hero and monsters are out of movement.  When Fast/Very Fast grants
-    // extra movement, the hero acts again WITHOUT a new turn-end.
-    if (game._bonusMovement > 0) {
-        game._bonusMovement--;
-        return;
-    }
-
     // C ref: allmain.c:239 — settrack() called after movemon, before moves++
     settrack(game.player);
     game.turnCount++;
@@ -158,18 +169,8 @@ export function moveloop_turnend(game) {
         makemon(null, 0, 0, 0, game.player.dungeonLevel, game.map);
     }
 
-    // C ref: allmain.c:238 u_calc_moveamt(wtcap) — player movement allocation.
-    // Fast intrinsic (monks, samurai): gain extra turn 1/3 of the time via rn2(3).
-    // Very Fast (speed boots + intrinsic): gain extra turn 2/3 of the time.
-    if (game.player.veryFast) {
-        if (rn2(3) !== 0) {
-            game._bonusMovement = (game._bonusMovement || 0) + 1;
-        }
-    } else if (game.player.fast) {
-        if (rn2(3) === 0) {
-            game._bonusMovement = (game._bonusMovement || 0) + 1;
-        }
-    }
+    // C ref: allmain.c:238 u_calc_moveamt(wtcap)
+    u_calc_moveamt(game.player);
 
     // C ref: allmain.c:295-301 — regen_hp(mvl_wtcap)
     regen_hp(game);
@@ -233,6 +234,18 @@ export function moveloop_turnend(game) {
     // After turn-end completes, subsequent command processing observes
     // the incremented move counter.
     setObjectMoves(game.turnCount + 1);
+}
+
+// C ref: allmain.c:116 [static] — u_calc_moveamt(wtcap): hero movement amount.
+// JS approximation: no steed movement or encumbrance penalties yet.
+function u_calc_moveamt(player) {
+    let moveamt = player.speed || NORMAL_SPEED;
+    if (player.veryFast) {
+        if (rn2(3) !== 0) moveamt += NORMAL_SPEED;
+    } else if (player.fast) {
+        if (rn2(3) === 0) moveamt += NORMAL_SPEED;
+    }
+    player.umovement = Math.max(0, (player.umovement || 0) + moveamt);
 }
 
 // C ref: sounds.c:202-339 dosounds() — ambient level sounds
@@ -485,9 +498,6 @@ async function _drainOccupation(game, coreOpts, onTimedTurn) {
 
 // cf. allmain.c:50 [static] — moveloop_preamble(resuming): pre-loop setup
 // TODO: allmain.c:50 — moveloop_preamble(): pre-loop setup
-
-// cf. allmain.c:116 [static] — u_calc_moveamt(wtcap): hero movement amount
-// TODO: allmain.c:116 — u_calc_moveamt(): movement speed calculation
 
 // cf. allmain.c:566 [static] — maybe_do_tutorial(void): tutorial prompt
 // TODO: allmain.c:566 — maybe_do_tutorial(): tutorial entry prompt
