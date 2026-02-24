@@ -107,6 +107,7 @@ import {
     generate_stairs_find_room,
     generate_stairs,
     find_branch_room,
+    place_branch,
     cardinal_nextto_room,
     place_niche,
     occupied,
@@ -4779,7 +4780,7 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
                 const prev = map._branchPlacementHint;
                 map._branchPlacementHint = branchPlacement;
                 try {
-                    placeBranchFeature(map, pos.x, pos.y);
+                    place_branch(map, pos.x, pos.y);
                 } finally {
                     if (prev === undefined) delete map._branchPlacementHint;
                     else map._branchPlacementHint = prev;
@@ -5021,28 +5022,11 @@ export function put_lregion_here(map, x, y, nlx, nly, nhx, nhy, rtype, oneshot) 
             break;
 
         case LR_BRANCH:
-            placeBranchFeature(map, x, y);
+            place_branch(map, x, y);
             break;
     }
 
     return true;
-}
-
-function placeBranchFeature(map, x, y) {
-    const hint = map?._branchPlacementHint;
-    // C ref: place_branch() with no branch on this level is a no-op.
-    if (!hint || hint === 'none') return;
-    if (hint === 'portal') {
-        maketrap(map, x, y, MAGIC_PORTAL);
-        return;
-    }
-    if (hint === 'stair-up') {
-        mkstairs(map, x, y, true, true);
-        return;
-    }
-    if (hint === 'stair-down') {
-        mkstairs(map, x, y, false, true);
-    }
 }
 
 // C ref: mkmaze.c:356-410 — place_lregion
@@ -5074,7 +5058,7 @@ export function place_lregion(map, lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype) {
                     console.warn(`Couldn't place lregion type ${rtype}!`);
                     return;
                 }
-                placeBranchFeature(map, pos.x, pos.y);
+                place_branch(map, pos.x, pos.y);
                 return;
             }
 

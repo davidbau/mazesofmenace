@@ -11,7 +11,7 @@ import {
     DIR_N, DIR_S, DIR_E, DIR_W, DIR_180,
     xdir, ydir,
     IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_LAVA, IS_POOL, IS_WALL,
-    NO_TRAP, TELEP_TRAP, LEVEL_TELEP, TRAPDOOR, ROCKTRAP, is_hole, isok,
+    NO_TRAP, TELEP_TRAP, LEVEL_TELEP, TRAPDOOR, ROCKTRAP, MAGIC_PORTAL, is_hole, isok,
 } from './config.js';
 import { rn1, rn2, rnd, getRngCallCount } from './rng.js';
 import { makeRoom } from './map.js';
@@ -404,6 +404,45 @@ export function pos_to_room(map, x, y) {
     return null;
 }
 
+const SHARED = 1; // C ref: rm.h SHARED room marker
+
+// C ref: mklev.c topologize()
+export function topologize(map, croom, do_ordinary = false) {
+    if (!croom) return;
+    const roomno = croom.roomnoidx + ROOMOFFSET;
+    const lowx = croom.lx, lowy = croom.ly;
+    const hix = croom.hx, hiy = croom.hy;
+    if (map.at(lowx, lowy)?.roomno === roomno || croom.irregular) return;
+
+    // Non-SPECIALIZATION C build always applies this block.
+    for (let x = lowx; x <= hix; x++) {
+        for (let y = lowy; y <= hiy; y++) {
+            const loc = map.at(x, y);
+            if (loc) loc.roomno = roomno;
+        }
+    }
+    for (let x = lowx - 1; x <= hix + 1; x++) {
+        for (const y of [lowy - 1, hiy + 1]) {
+            const loc = map.at(x, y);
+            if (!loc) continue;
+            loc.edge = true;
+            loc.roomno = loc.roomno ? SHARED : roomno;
+        }
+    }
+    for (const x of [lowx - 1, hix + 1]) {
+        for (let y = lowy; y <= hiy; y++) {
+            const loc = map.at(x, y);
+            if (!loc) continue;
+            loc.edge = true;
+            loc.roomno = loc.roomno ? SHARED : roomno;
+        }
+    }
+    const nsubrooms = Number.isInteger(croom.nsubrooms) ? croom.nsubrooms : 0;
+    for (let i = 0; i < nsubrooms; i++) {
+        topologize(map, croom.sbrooms?.[i], croom.rtype !== OROOM);
+    }
+}
+
 // C ref: mklev.c generate_stairs()
 export function generate_stairs(map, depth) {
     let croom = generate_stairs_find_room(map);
@@ -759,8 +798,35 @@ export function mklev_sanity_check(map) {
 export function level_finalize_topology(map, depth) {
     bound_digging(map);
     mineralize(map, depth);
+    if (!map.flags.is_maze_lev) {
+        for (let i = 0; i < map.nroom; i++) topologize(map, map.rooms[i]);
+    }
     set_wall_state(map);
     for (let i = 0; i < map.rooms.length; i++) {
         map.rooms[i].orig_rtype = map.rooms[i].rtype;
     }
+}
+
+// C ref: mklev.c place_branch()
+export function place_branch(map, x = 0, y = 0, placementHint = map?._branchPlacementHint) {
+    if (!placementHint || placementHint === 'none') return false;
+    if (!x) {
+        const found = find_branch_room(map).pos;
+        if (!found) return false;
+        x = found.x;
+        y = found.y;
+    } else {
+        pos_to_room(map, x, y);
+    }
+
+    if (placementHint === 'portal') {
+        maketrap(map, x, y, MAGIC_PORTAL);
+    } else if (placementHint === 'stair-up') {
+        mkstairs(map, x, y, true, true);
+    } else if (placementHint === 'stair-down') {
+        mkstairs(map, x, y, false, true);
+    } else {
+        return false;
+    }
+    return true;
 }

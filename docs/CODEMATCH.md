@@ -2590,7 +2590,7 @@ No function symbols parsed from isaac64.c.
 | 2197 | `generate_stairs_room_good` | mklev.js:183 | Aligned |
 | 74 | `good_rm_wall_doorpos` | mklev.js:44 | Aligned |
 | 430 | `join` | - | Missing |
-| 1540 | `level_finalize_topology` | mklev.js:606 | Aligned |
+| 1540 | `level_finalize_topology` | mklev.js:798 | Aligned |
 | 799 | `make_niches` | mklev.js:415 | Aligned |
 | 519 | `makecorridors` | - | Missing |
 | 1247 | `makelevel` | - | Missing |
@@ -2614,12 +2614,12 @@ No function symbols parsed from isaac64.c.
 | 1811 | `mktrap_victim` | - | Missing |
 | 1802 | `occupied` | mklev.js:310 | Aligned |
 | 1775 | `okdoor` | mklev.js:68 | Aligned |
-| 1687 | `place_branch` | - | Missing |
+| 1687 | `place_branch` | mklev.js:811 | Aligned |
 | 698 | `place_niche` | mklev.js:255 | Aligned |
 | 1673 | `pos_to_room` | mklev.js:246 | Aligned |
 | 211 | `sort_rooms` | mklev.js:34 | Aligned |
 | 1170 | `themerooms_post_level_generate` | - | Missing |
-| 1593 | `topologize` | - | Missing |
+| 1593 | `topologize` | mklev.js:410 | Aligned |
 | 1934 | `traptype_rnd` | - | Missing |
 | 1998 | `traptype_roguelvl` | - | Missing |
 | 1428 | `water_has_kelp` | - | Missing |
