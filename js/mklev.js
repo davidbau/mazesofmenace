@@ -607,7 +607,7 @@ export function mkgrave(map, croom, depth) {
     }
     let tryct = rn2(5);
     while (tryct--) mkobj(0, true);
-    if (dobell) mksobj(BELL, true, false);
+    if (dobell) mksobj_at(map, BELL, pos.x, pos.y, true, false);
 }
 
 // C ref: mklev.c trap_engravings[].

@@ -3038,8 +3038,8 @@ export function mk_knox_portal(map, x, y, depth) {
     const dnum = Number.isInteger(map?._genDnum) ? map._genDnum : DUNGEONS_OF_DOOM;
     const dlevel = Number.isInteger(map?._genDlevel) ? map._genDlevel : depth;
     if (isBranchLevel(dnum, dlevel)) return false;
-    rn2(3);
-    return false;
+    if (rn2(3) !== 0) return false;
+    return !!maketrap(map, x, y, MAGIC_PORTAL, depth);
 }
 
 // C ref: mklev.c mkinvk_check_wall()
@@ -4258,7 +4258,12 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
 
     setLevelDepth(depth);
     // C ref: mklev.c:1260, sp_lev.c:6004 — oinit() calls setgemprobs(&u.uz)
-    setgemprobs(getLedgerNoForLevel(dnum, dlevel));
+    // Depth-only callers (no branch coordinates) should still use the
+    // requested level depth rather than falling back to level 1.
+    const gemLedgerNo = (Number.isInteger(dnum) && Number.isInteger(dlevel))
+        ? getLedgerNoForLevel(dnum, dlevel)
+        : (Number.isInteger(depth) && depth > 0 ? depth : 1);
+    setgemprobs(gemLedgerNo);
     resetThemermsState(); // Reset themed room state for new level
     setMtInitialized(false); // Reset MT RNG state - init happens per level, not per session
 

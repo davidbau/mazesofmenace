@@ -3938,6 +3938,10 @@ export function object(name_or_opts, x, y) {
     const specCorpsenm = (typeof name_or_opts === 'object' && name_or_opts && name_or_opts.montype)
         ? String(name_or_opts.montype)
         : '';
+    const isCorpseSpec = ((typeof name_or_opts === 'string' && name_or_opts.toLowerCase() === 'corpse')
+        || (typeof name_or_opts === 'object'
+            && typeof name_or_opts?.id === 'string'
+            && name_or_opts.id.toLowerCase() === 'corpse'));
     spObjTrace(`[SPLEV_OBJ_JS] ev=${ev} phase=begin call=${getRngCallCount()} class_raw=${JSON.stringify(specClass)} id_raw=${JSON.stringify(specId)} named=${named ? 1 : 0} corpsenm_raw=${JSON.stringify(specCorpsenm)} x=${absX} y=${absY}`);
 
     // Create the object now (triggers next_ident and other creation RNG)
@@ -4075,7 +4079,12 @@ export function object(name_or_opts, x, y) {
         if (isBuried) {
             obj.buried = true;
         } else if (absX >= 0 && absX < COLNO && absY >= 0 && absY < ROWNO) {
-            placeFloorObject(levelState.map, obj);
+            const placed = placeFloorObject(levelState.map, obj);
+            // C parity quirk: stacked scripted corpses emit a follow-up ^remove
+            // for the merged-away object.
+            if (isCorpseSpec && placed !== obj) {
+                pushRngLogEntry(`^remove[${obj.otyp},${obj.ox},${obj.oy}]`);
+            }
         }
 
         // C ref: lspo_object() executes contents callback with this object as

@@ -921,7 +921,7 @@ function dochug(mon, map, player, display, fov, game = null) {
         && dist2(mon.mx, mon.my, targetX, targetY) <= 8
         && hasWeaponAttack(mon)
         && !scaredNow) {
-        if (maybeMonsterWieldBeforeAttack(mon, player, display, fov)) {
+        if (maybeMonsterWieldBeforeAttack(mon, player, display, fov, nearby)) {
             return;
         }
     }
@@ -1000,7 +1000,7 @@ function dochug(mon, map, player, display, fov, game = null) {
                 // !phase3Cond: monster never entered movement (was already adjacent).
                 // !mmoved: monster entered movement but didn't actually move.
                 if (!phase3Cond || !mmoved) {
-                    if (maybeMonsterWieldBeforeAttack(mon, player, display, fov)) {
+                    if (maybeMonsterWieldBeforeAttack(mon, player, display, fov, true)) {
                         return;
                     }
                     monsterAttackPlayer(mon, player, display, game);
@@ -1305,7 +1305,13 @@ function m_move(mon, map, player, display = null, fov = null) {
         }
         return false;
     };
-    if (cnt === 0) return tryUnicornFallbackTeleport();
+    if (cnt === 0) {
+        if (tryUnicornFallbackTeleport()) return true;
+        // C m_move() returns MMOVE_DONE when no legal moves exist.
+        // Preserve that status so dochug() does not grant a Phase 4 attack.
+        mon._mMoveDone = true;
+        return false;
+    }
 
     let nix = omx, niy = omy;
     let nidist = dist2(omx, omy, ggx, ggy);

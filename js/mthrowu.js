@@ -334,10 +334,15 @@ export function hasWeaponAttack(mon) {
 // C ref: monmove.c:853-860 — dochug weapon wielding gate
 // Called from monmove.js before melee attacks. Uses mon_wield_item for
 // proper weapon AI (select_hwep priority list) instead of first-item scan.
-export function maybeMonsterWieldBeforeAttack(mon, player, display, fov) {
+export function maybeMonsterWieldBeforeAttack(mon, player, display, fov, nearby = true) {
     if (!hasWeaponAttack(mon)) return false;
-    // C ref: weapon_check == NEED_WEAPON || !MON_WEP(mtmp)
+    // Keep legacy behavior for monsters that start unarmed in JS fixtures.
+    // C equivalent checks weapon_check state; JS tests also rely on
+    // !MON_WEP-style entry here.
     if (mon.weapon_check !== NEED_WEAPON && mon.weapon) return false;
+    // C ref: monmove.c wield gate — trapped monsters with a ranged option
+    // should keep that option rather than spend a turn switching to HTH.
+    if (mon.mtrapped && !nearby && select_rwep(mon)) return false;
     const oldWeapon = mon.weapon;
     mon.weapon_check = NEED_HTH_WEAPON;
     if (mon_wield_item(mon) !== 0) {
