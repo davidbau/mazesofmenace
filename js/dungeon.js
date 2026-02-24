@@ -1280,7 +1280,7 @@ export function mazexy(map) {
 }
 
 // C ref: mklev.c makerooms()
-function makerooms(map, depth) {
+export function makerooms(map, depth) {
     let tried_vault = false;
     let themeroom_tries = 0;
 
@@ -1440,7 +1440,8 @@ function dig_corridor(map, org, dest, nxcor, depth) {
     let npoints = 0;
     let xx = org.x, yy = org.y;
     const tx = dest.x, ty = dest.y;
-    const ftyp = CORR;
+    // C ref: mklev.c join() passes ROOM for arboreal levels, CORR otherwise.
+    const ftyp = map.flags.arboreal ? ROOM : CORR;
     const btyp = STONE;
 
     const DEBUG = typeof process !== 'undefined' && process.env.DEBUG_CORRIDORS === '1';
@@ -1588,7 +1589,7 @@ function dig_corridor(map, org, dest, nxcor, depth) {
 }
 
 // C ref: mklev.c join() -- connect two rooms with a corridor
-function join(map, a, b, nxcor, depth) {
+export function join(map, a, b, nxcor, depth) {
     const croom = map.rooms[a];
     const troom = map.rooms[b];
 

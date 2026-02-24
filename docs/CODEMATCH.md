@@ -2589,13 +2589,13 @@ No function symbols parsed from isaac64.c.
 | 2215 | `generate_stairs_find_room` | mklev.js:197 | Aligned |
 | 2197 | `generate_stairs_room_good` | mklev.js:183 | Aligned |
 | 74 | `good_rm_wall_doorpos` | mklev.js:44 | Aligned |
-| 430 | `join` | - | Missing |
+| 430 | `join` | dungeon.js:1592 | Aligned |
 | 1540 | `level_finalize_topology` | mklev.js:798 | Aligned |
 | 799 | `make_niches` | mklev.js:415 | Aligned |
-| 519 | `makecorridors` | - | Missing |
+| 519 | `makecorridors` | dungeon.js:1660 | Aligned |
 | 1247 | `makelevel` | - | Missing |
 | 737 | `makeniche` | mklev.js:369 | Aligned |
-| 358 | `makerooms` | - | Missing |
+| 358 | `makerooms` | dungeon.js:1283 | Aligned |
 | 818 | `makevtele` | mklev.js:460 | Aligned |
 | 1789 | `maybe_sdoor` | mklev.js:154 | Aligned |
 | 1445 | `mineralize` | - | Missing |
