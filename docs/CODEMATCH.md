@@ -2648,11 +2648,11 @@ No function symbols parsed from isaac64.c.
 | 475 | `baalz_fixup` | mkmaze.js:670 | Partial — bounded nondiggable wallification region ported; remaining special-case side effects pending |
 | 341 | `bad_location` | mkmaze.js:194 | Aligned |
 | 1441 | `bound_digging` | dungeon.js `bound_digging()` | Aligned |
-| 708 | `check_ransacked` | mkmaze.js:799 | Partial — supports room-id and room-name checks |
+| 708 | `check_ransacked` | mkmaze.js:810 | Partial — supports Minetown ransacked marker plus room-id/room-name lookups |
 | 951 | `create_maze` | mkmaze.js:283 | Aligned |
 | 166 | `extend_spine` | mkmaze.js:69 | Aligned |
 | 229 | `fix_wall_spines` | mkmaze.js `fix_wall_spines` | Aligned (re-export) |
-| 570 | `fixup_special` | mkmaze.js:776 | Partial — water/air setup, portal hook, and castle/minetown flag side effects ported; full C matrix pending |
+| 570 | `fixup_special` | mkmaze.js:771 | Partial — water/air setup, portal hook, medusa statue pass, cleric-quest/castle graveyard, Minetown ransacked booty, and town flag side effects ported; levregion driver remains in `sp_lev.js` |
 | 1479 | `fumaroles` | mkmaze.js:909 | Partial |
 | 1354 | `get_level_extends` | dungeon.js `get_level_extends()` | Aligned |
 | 317 | `is_exclusion_zone` | mkmaze.js:149 | Aligned |
@@ -2667,10 +2667,10 @@ No function symbols parsed from isaac64.c.
 | 1317 | `mazexy` | mkmaze.js:507 | Aligned |
 | 781 | `migr_booty_item` | mkmaze.js:851 | Aligned |
 | 718 | `migrate_orc` | mkmaze.js:878 | Aligned |
-| 1868 | `mk_bubble` | mkmaze.js:1058 | Partial |
+| 1868 | `mk_bubble` | mkmaze.js:1098 | Partial — C bubble mask catalog + bounded seed placement ported |
 | 1459 | `mkportal` | mkmaze.js:181 | Aligned |
-| 1534 | `movebubbles` | mkmaze.js:918 | Partial — bounded bubble-move loop ported; deterministic fumarole drift added |
-| 1947 | `mv_bubble` | mkmaze.js:1088 | Partial — bounded movement/bounce semantics ported |
+| 1534 | `movebubbles` | mkmaze.js:939 | Partial — alternating traversal + C-style drift-step update ported; full object/monster/trap bubble carrying not yet ported |
+| 1947 | `mv_bubble` | mkmaze.js:1155 | Partial — bounded movement/collision bounce and stochastic heading updates ported; full in-bubble content transport not yet ported |
 | 297 | `okay` | mkmaze.js:102 | Aligned |
 | 1043 | `pick_vibrasquare_location` | mkmaze.js:537 | Aligned |
 | 356 | `place_lregion` | mkmaze.js:300 | Aligned |
@@ -2681,7 +2681,7 @@ No function symbols parsed from isaac64.c.
 | 77 | `set_levltyp` | mkmaze.js:53 | Aligned |
 | 125 | `set_levltyp_lit` | mkmaze.js:61 | Aligned |
 | 1797 | `set_wportal` | mkmaze.js:991 | Partial — portal state now recorded with destination payload |
-| 1807 | `setup_waterlevel` | mkmaze.js:997 | Partial — water/air conversion + bubble seed scaffold ported |
+| 1807 | `setup_waterlevel` | mkmaze.js:1036 | Partial — water/air conversion + bubble seed scaffold + map level-type flags ported |
 | 749 | `shiny_orc_stuff` | mkmaze.js:838 | Aligned |
 | 800 | `stolen_booty` | mkmaze.js:866 | Aligned |
 | 1855 | `unsetup_waterlevel` | mkmaze.js:1048 | Partial |

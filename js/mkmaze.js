@@ -2,9 +2,9 @@
 
 import {
     COLNO, ROWNO, STONE, HWALL, DOOR, CROSSWALL, LAVAWALL, IRONBARS, WATER, SDOOR,
-    CORR, ROOM, AIR, MAGIC_PORTAL, VIBRATING_SQUARE, MKTRAP_MAZEFLAG,
+    CORR, ROOM, AIR, CLOUD, MAGIC_PORTAL, VIBRATING_SQUARE, MKTRAP_MAZEFLAG,
     POOL, TLWALL, TRWALL, TUWALL, TDWALL, BRCORNER, BLCORNER, TRCORNER, TLCORNER,
-    IS_WALL, IS_POOL, isok,
+    IS_WALL, IS_POOL, isok, PM_PRIEST as ROLE_PRIEST,
 } from './config.js';
 import { rn1, rn2, rnd } from './rng.js';
 import {
@@ -21,10 +21,10 @@ import {
     repair_irregular_room_boundaries,
 } from './dungeon.js';
 import { placeFloorObject } from './floor_objects.js';
-import { mkobj, mksobj, weight, RANDOM_CLASS } from './mkobj.js';
-import { GEM_CLASS, BOULDER, GOLD_PIECE } from './objects.js';
-import { makemon, NO_MM_FLAGS } from './makemon.js';
-import { PM_MINOTAUR } from './monsters.js';
+import { mkobj, mksobj, mkcorpstat, set_corpsenm, weight, RANDOM_CLASS } from './mkobj.js';
+import { GEM_CLASS, BOULDER, GOLD_PIECE, STATUE } from './objects.js';
+import { makemon, NO_MM_FLAGS, rndmonnum, getMakemonRoleIndex } from './makemon.js';
+import { mons, PM_MINOTAUR, MR_STONE } from './monsters.js';
 import {
     occupied,
     mkstairs,
@@ -32,6 +32,7 @@ import {
     place_branch,
 } from './mklev.js';
 import { somex, somey, somexyspace } from './mkroom.js';
+import { QUEST, GNOMISH_MINES } from './special_levels.js';
 
 function at(map, x, y) {
     return map && map.at ? map.at(x, y) : null;
@@ -770,6 +771,8 @@ export function baalz_fixup(map, state = {}) {
 export function fixup_special(map, opts = {}) {
     if (!map) return false;
     const specialName = String(opts.specialName || '').toLowerCase();
+    const dnum = Number.isInteger(opts.dnum) ? opts.dnum : null;
+    const roleIndex = Number.isInteger(opts.roleIndex) ? opts.roleIndex : getMakemonRoleIndex();
     if (specialName === 'water' || specialName === 'air') {
         setup_waterlevel(map, { isWaterLevel: specialName === 'water' });
     }
@@ -777,11 +780,25 @@ export function fixup_special(map, opts = {}) {
     if (opts?.portal && Number.isInteger(opts.portal.x) && Number.isInteger(opts.portal.y)) {
         set_wportal(map, opts.portal.x, opts.portal.y, opts.portal.dst || null);
     }
-    // C ref: mkmaze.c fixup_special() room/branch flag side effects.
-    if (specialName === 'castle') {
+    if (opts.ransacked) {
+        map._specialFixups = map._specialFixups || {};
+        map._specialFixups.ransacked = true;
+    }
+    if (specialName.startsWith('medusa')) {
+        medusa_fixup(map, Number.isFinite(opts.depth) ? opts.depth : 1);
+    } else if (roleIndex === ROLE_PRIEST && dnum === QUEST) {
         map.flags = map.flags || {};
         map.flags.graveyard = true;
+    } else if (specialName === 'castle') {
+        map.flags = map.flags || {};
+        map.flags.graveyard = true;
+    } else if (dnum === GNOMISH_MINES && check_ransacked(map, specialName)) {
+        stolen_booty(map, null, null, Number.isFinite(opts.depth) ? opts.depth : 1);
+        map._specialFixups = map._specialFixups || {};
+        map._specialFixups.ransacked = false;
     }
+
+    // C ref: mkmaze.c fixup_special() room/branch flag side effects.
     if (specialName.startsWith('minetn')) {
         map.flags = map.flags || {};
         map.flags.has_town = true;
@@ -791,6 +808,15 @@ export function fixup_special(map, opts = {}) {
     return true;
 }
 export function check_ransacked(map, roomId = null) {
+    if (!map) return false;
+    if (typeof roomId === 'string') {
+        const tag = roomId.trim().toLowerCase();
+        if (tag === 'minetn-1') {
+            map._specialFixups = map._specialFixups || {};
+            map._specialFixups.ransacked = true;
+            return true;
+        }
+    }
     const set = map?._specialFixups?.ransacked;
     const roomMarked = (id) => {
         if (!Number.isInteger(id)) return false;
@@ -913,28 +939,27 @@ export function movebubbles(map, dx = 0, dy = 0) {
     const water = map?._water;
     if (!water?.active) return false;
     const useRand = !Number.isInteger(dx) || !Number.isInteger(dy);
-    if (Array.isArray(water.bubbles) && water.bubbles.length) {
-        for (const b of water.bubbles) {
+    const moveUp = !water._moveUp;
+    water._moveUp = moveUp;
+    const bubbles = Array.isArray(water.bubbles) ? water.bubbles : [];
+    const ordered = moveUp ? bubbles : bubbles.slice().reverse();
+    if (ordered.length) {
+        for (const b of ordered) {
             if (!b || !Number.isInteger(b.x) || !Number.isInteger(b.y)) continue;
             if (useRand) {
-                if (!Number.isInteger(b.dx) || !Number.isInteger(b.dy)
-                    || (b.dx === 0 && b.dy === 0) || !rn2(5)) {
-                    b.dx = rn2(3) - 1;
-                    b.dy = rn2(3) - 1;
-                    if (b.dx === 0 && b.dy === 0) b.dx = 1;
-                }
+                const curDx = Number.isInteger(b.dx) ? b.dx : 0;
+                const curDy = Number.isInteger(b.dy) ? b.dy : 0;
+                const rx = rn2(3);
+                const ry = rn2(3);
+                const stepX = curDx + 1 - (!curDx ? rx : (rx ? 1 : 0));
+                const stepY = curDy + 1 - (!curDy ? ry : (ry ? 1 : 0));
+                mv_bubble(map, b, stepX, stepY, false);
+            } else {
+                mv_bubble(map, b, dx, dy, false);
             }
-            const stepX = useRand ? b.dx : dx;
-            const stepY = useRand ? b.dy : dy;
-            mv_bubble(map, b, stepX, stepY);
         }
     }
-    if (map._water.heroBubble) {
-        maybe_adjust_hero_bubble(map, {
-            x: map._water.heroBubble.x,
-            y: map._water.heroBubble.y,
-        });
-    }
+
     if (Array.isArray(water.fumaroles) && water.fumaroles.length && !useRand) {
         water.fumaroles = water.fumaroles.map((f) => {
             if (!f || !Number.isInteger(f.x) || !Number.isInteger(f.y)) return f;
@@ -1013,6 +1038,8 @@ export function setup_waterlevel(map, args = {}) {
     const isWaterLevel = !!args.isWaterLevel;
     map.flags = map.flags || {};
     map.flags.hero_memory = false;
+    map.flags.is_waterlevel = isWaterLevel;
+    map.flags.is_airlevel = !isWaterLevel;
     const baseTyp = isWaterLevel ? WATER : AIR;
     for (let x = 1; x < COLNO; x++) {
         for (let y = 0; y < ROWNO; y++) {
@@ -1071,16 +1098,41 @@ export function unsetup_waterlevel(map) {
 }
 export function mk_bubble(map, x, y, n) {
     if (!map) return null;
+    const masks = [
+        [2, 1, 0x3],
+        [3, 2, 0x7, 0x7],
+        [4, 3, 0x6, 0xf, 0x6],
+        [5, 3, 0xe, 0x1f, 0xe],
+        [6, 4, 0x1e, 0x3f, 0x3f, 0x1e],
+        [7, 4, 0x3e, 0x7f, 0x7f, 0x3e],
+        [8, 4, 0x7e, 0xff, 0xff, 0x7e],
+    ];
+    const water = map._water || {};
+    const minX = Number.isInteger(water.xmin) ? water.xmin + 1 : 2;
+    const minY = Number.isInteger(water.ymin) ? water.ymin + 1 : 1;
+    const maxX = Number.isInteger(water.xmax) ? water.xmax - 1 : (COLNO - 2);
+    const maxY = Number.isInteger(water.ymax) ? water.ymax - 1 : (ROWNO - 2);
+    if (!Number.isInteger(x) || !Number.isInteger(y) || x >= maxX || y >= maxY) return null;
+    const mi = Math.max(0, Math.min(masks.length - 1, Number.isInteger(n) ? n : 0));
+    const bm = masks[mi];
+    const w = bm[0];
+    const h = bm[1];
+    if (x + w - 1 > maxX) x = maxX - w + 1;
+    if (y + h - 1 > maxY) y = maxY - h + 1;
+    if (x < minX) x = minX;
+    if (y < minY) y = minY;
     const bubble = {
         x,
         y,
         n: Number.isInteger(n) ? n : 1,
+        bm,
         active: true,
-        dx: 0,
-        dy: 0
+        dx: 1 - rn2(3),
+        dy: 1 - rn2(3)
     };
     map._water = map._water || { bubbles: [] };
     map._water.bubbles.push(bubble);
+    mv_bubble(map, bubble, 0, 0, true);
     return bubble;
 }
 // C ref: mkmaze.c maybe_adjust_hero_bubble
@@ -1099,7 +1151,7 @@ export function maybe_adjust_hero_bubble(map, heroPos = null) {
     map._water.heroBubble = bubble;
     return true;
 }
-export function mv_bubble(map, bubble, dx = 0, dy = 0) {
+export function mv_bubble(map, bubble, dx = 0, dy = 0, ini = false) {
     if (!map || !bubble || !Number.isInteger(dx) || !Number.isInteger(dy)) return false;
     if (!Number.isInteger(bubble.x) || !Number.isInteger(bubble.y)) return false;
     const water = map._water || {};
@@ -1107,21 +1159,109 @@ export function mv_bubble(map, bubble, dx = 0, dy = 0) {
     const minY = Number.isInteger(water.ymin) ? water.ymin : 0;
     const maxX = Number.isInteger(water.xmax) ? water.xmax : (COLNO - 1);
     const maxY = Number.isInteger(water.ymax) ? water.ymax : (ROWNO - 1);
-    let nx = bubble.x + dx;
-    let ny = bubble.y + dy;
-    const span = Math.max(0, Number.isInteger(bubble.n) ? bubble.n - 1 : 0);
-    if (nx < minX || (nx + span) > maxX) {
-        dx = -dx;
-        nx = bubble.x + dx;
+    const bm = Array.isArray(bubble.bm) ? bubble.bm : [Math.max(1, bubble.n || 1), Math.max(1, bubble.n || 1), 0xff];
+    const spanX = bm[0] - 1;
+    const spanY = bm[1] - 1;
+    let colli = 0;
+
+    if (dx < -1 || dx > 1 || dy < -1 || dy > 1) {
+        dx = Math.sign(dx);
+        dy = Math.sign(dy);
     }
-    if (ny < minY || (ny + span) > maxY) {
-        dy = -dy;
-        ny = bubble.y + dy;
-    }
+    if (bubble.x <= minX || bubble.x + spanX >= maxX) colli |= 2;
+    if (bubble.y <= minY || bubble.y + spanY >= maxY) colli |= 1;
+    if (bubble.x < minX) bubble.x = minX;
+    if (bubble.y < minY) bubble.y = minY;
+    if (bubble.x + spanX > maxX) bubble.x = maxX - spanX;
+    if (bubble.y + spanY > maxY) bubble.y = maxY - spanY;
+
+    if (bubble.x === minX && dx < 0) dx = -dx;
+    if (bubble.x + spanX === maxX && dx > 0) dx = -dx;
+    if (bubble.y === minY && dy < 0) dy = -dy;
+    if (bubble.y + spanY === maxY && dy > 0) dy = -dy;
+
+    const nx = bubble.x + dx;
+    const ny = bubble.y + dy;
     bubble.dx = dx;
     bubble.dy = dy;
-    bubble.x = Math.min(Math.max(minX, nx), maxX);
-    bubble.y = Math.min(Math.max(minY, ny), maxY);
+    bubble.x = Math.min(Math.max(minX, nx), maxX - spanX);
+    bubble.y = Math.min(Math.max(minY, ny), maxY - spanY);
+
+    if (colli === 1) {
+        bubble.dy = -bubble.dy;
+    } else if (colli === 2) {
+        bubble.dx = -bubble.dx;
+    } else if (colli === 3) {
+        bubble.dy = -bubble.dy;
+        bubble.dx = -bubble.dx;
+    } else if (!ini && ((bubble.dx || bubble.dy) ? !rn2(20) : !rn2(5))) {
+        bubble.dx = 1 - rn2(3);
+        bubble.dy = 1 - rn2(3);
+    }
+    return true;
+}
+
+function medusa_fixup(map, depth = 1) {
+    if (!map || !Array.isArray(map.rooms) || map.rooms.length === 0) return false;
+    const croom = map.rooms[0];
+    if (!croom) return false;
+    if (!Number.isInteger(croom.lx) || !Number.isInteger(croom.hx)
+        || !Number.isInteger(croom.ly) || !Number.isInteger(croom.hy)
+        || croom.hx < croom.lx || croom.hy < croom.ly) {
+        return false;
+    }
+
+    const randRoomPos = () => ({
+        x: rn1(croom.hx - croom.lx + 1, croom.lx),
+        y: rn1(croom.hy - croom.ly + 1, croom.ly),
+    });
+    const medusaGoodpos = (x, y) => {
+        const loc = at(map, x, y);
+        return !!loc && loc.typ > DOOR && !map.monsterAt(x, y);
+    };
+    const statueNeedsReroll = (obj) => {
+        if (!obj || !Number.isInteger(obj.corpsenm)) return false;
+        if (obj.corpsenm < 0 || obj.corpsenm >= mons.length) return false;
+        const m = mons[obj.corpsenm];
+        if (!m) return false;
+        return !!(m.mr1 & MR_STONE);
+    };
+    const placeObjectAt = (obj, x, y) => {
+        if (!obj || !isok(x, y)) return null;
+        obj.ox = x;
+        obj.oy = y;
+        placeFloorObject(map, obj);
+        return obj;
+    };
+    const mk_tt_statue = (x, y) => {
+        const otmp = mksobj(STATUE, true, false);
+        if (!otmp) return null;
+        return placeObjectAt(otmp, x, y);
+    };
+
+    for (let tryct = rnd(4); tryct > 0; tryct--) {
+        const { x, y } = randRoomPos();
+        if (!medusaGoodpos(x, y)) continue;
+        let tryct2 = 0;
+        const otmp = mk_tt_statue(x, y);
+        while (++tryct2 < 100 && otmp && statueNeedsReroll(otmp)) {
+            set_corpsenm(otmp, rndmonnum(depth));
+        }
+    }
+
+    const { x, y } = randRoomPos();
+    let finalStatue = null;
+    if (rn2(2)) {
+        finalStatue = mk_tt_statue(x, y);
+    } else {
+        finalStatue = isok(x, y) ? mkcorpstat(STATUE, -1, false, x, y, map) : null;
+    }
+    if (finalStatue) {
+        let i = 0;
+        while (++i < 100 && statueNeedsReroll(finalStatue)) {
+            set_corpsenm(finalStatue, rndmonnum(depth));
+        }
+    }
     return true;
 }
 

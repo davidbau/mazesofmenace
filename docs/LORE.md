@@ -1324,6 +1324,12 @@ hard-won wisdom:
 
 ### makelevel amulet flag propagation + bubble bound fix (2026-02-24)
 
+### mkmaze fixup/water matrix tightening (2026-02-24)
+
+- `mkmaze.fixup_special` can safely own more of C's post-levregion matrix (Medusa statue pass, cleric-quest/castle graveyard flags, Minetown ransacked booty gate) while `sp_lev` continues to own levregion iteration itself.
+- `check_ransacked` should track the `minetn-1` marker path in addition to ad-hoc room-id/name lookup helpers used by existing JS tests.
+- For water runtime parity, `movebubbles` and `mv_bubble` can adopt C-style traversal and heading updates without forcing full object/monster/trap transport in the same batch; keep those as explicit remaining TODOs.
+
 - `fill_ordinary_room`'s amulet gate only helps parity when makelevel callers propagate hero state; `changeLevel`/newgame generation now pass `heroHasAmulet` into `makelevel`, and generated maps retain `_heroHasAmulet`.
 - Water bubble bounds should treat size `n` as span `n-1` in movement edge checks so a `1x1` bubble can legally occupy `xmax`/`ymax`.
 - Added unit coverage for the `1x1` bubble right-edge case to prevent reintroducing off-by-one clamping.
