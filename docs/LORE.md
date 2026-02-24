@@ -1353,3 +1353,4 @@ hard-won wisdom:
 - `setup_waterlevel()` should seed bubbles through `mk_bubble()` (not raw descriptors) so per-bubble shape and initial drift RNG match C call order.
 - `set_wportal()` should support C-style discovery from existing `MAGIC_PORTAL` traps when no explicit coordinates are supplied.
 - `movebubbles()` should re-establish water/air base terrain before moving bubbles; this keeps bubble rendering behavior closer to C even before full object/monster/trap bubble transport is ported.
+- Bubble transport can be ported incrementally by lifting map contents into per-bubble containers before movement, then replacing at shifted coordinates afterward; this closes object/monster/trap drift without requiring full hero-transport wiring in the same batch.

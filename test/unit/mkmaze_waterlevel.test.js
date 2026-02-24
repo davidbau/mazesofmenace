@@ -2,7 +2,7 @@ import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { initRng } from '../../js/rng.js';
 import { GameMap } from '../../js/map.js';
-import { WATER, AIR, STONE, FOUNTAIN } from '../../js/config.js';
+import { WATER, AIR, STONE, FOUNTAIN, MAGIC_PORTAL } from '../../js/config.js';
 import {
     setup_waterlevel,
     save_waterlevel,
@@ -12,6 +12,7 @@ import {
     fumaroles,
     movebubbles,
     mv_bubble,
+    mk_bubble,
     water_friction,
     makemaz,
     fixup_special,
@@ -92,6 +93,31 @@ describe('mkmaze waterlevel state helpers', () => {
         const bubble = { x: map._water.xmax - 1, y: 10, n: 1, dx: 0, dy: 0 };
         mv_bubble(map, bubble, 1, 0);
         assert.equal(bubble.x, map._water.xmax);
+    });
+
+    it('movebubbles carries bubble contents for water levels', () => {
+        const map = new GameMap();
+        setup_waterlevel(map, { isWaterLevel: true });
+        map._water.bubbles = [];
+        const bubble = mk_bubble(map, 10, 10, 0);
+        assert.ok(bubble);
+
+        const obj = { otyp: 1, ox: 10, oy: 10, quan: 1 };
+        map.objects.push(obj);
+        const mon = { mx: 10, my: 10, mhp: 5 };
+        map.monsters.push(mon);
+        const portal = { tx: 10, ty: 10, ttyp: MAGIC_PORTAL, dst: { dnum: 1, dlevel: 2 } };
+        map.traps.push(portal);
+
+        movebubbles(map, 1, 0);
+
+        assert.equal(obj.ox, 11);
+        assert.equal(obj.oy, 10);
+        assert.equal(mon.mx, 11);
+        assert.equal(mon.my, 10);
+        assert.equal(portal.tx, 11);
+        assert.equal(portal.ty, 10);
+        assert.equal(map._water.portal.x, 11);
     });
 
     it('water_friction applies C-style directional drift', () => {

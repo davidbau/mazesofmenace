@@ -935,6 +935,107 @@ export function fumaroles(map, list = []) {
     map._water.fumaroles = valid.map((p) => ({ x: p.x, y: p.y }));
     return true;
 }
+
+function for_each_bubble_cell(map, bubble, fn) {
+    if (!map || !bubble || typeof fn !== 'function') return;
+    const bm = Array.isArray(bubble.bm) ? bubble.bm : null;
+    if (!bm || bm.length < 3) return;
+    const w = bm[0] | 0;
+    const h = bm[1] | 0;
+    for (let i = 0, x = bubble.x; i < w; i++, x++) {
+        for (let j = 0, y = bubble.y; j < h; j++, y++) {
+            if (!isok(x, y)) continue;
+            if (bm[j + 2] & (1 << i)) fn(x, y);
+        }
+    }
+}
+
+function pickup_bubble_contents(map, bubble, heroPos = null) {
+    if (!map || !bubble) return;
+    bubble.cons = [];
+    for_each_bubble_cell(map, bubble, (x, y) => {
+        const objs = map.objectsAt(x, y);
+        if (objs.length) {
+            for (const obj of objs) {
+                map.removeObject(obj);
+            }
+            bubble.cons.push({ what: 'obj', x, y, list: objs });
+        }
+        const mon = map.monsterAt(x, y);
+        if (mon) {
+            map.removeMonster(mon);
+            bubble.cons.push({ what: 'mon', x, y, list: mon });
+        }
+        if (heroPos && heroPos.x === x && heroPos.y === y) {
+            bubble.cons.push({ what: 'hero', x, y, list: null });
+        }
+        const trap = map.trapAt(x, y);
+        if (trap) {
+            deltrap(map, trap);
+            bubble.cons.push({ what: 'trap', x, y, list: trap });
+        }
+    });
+}
+
+function replace_bubble_contents(map, bubble, dx, dy, water = null) {
+    if (!map || !bubble || !Array.isArray(bubble.cons)) return;
+    const heroPos = water?.heroPos;
+    for (const cons of bubble.cons) {
+        if (!cons) continue;
+        const nx = (cons.x | 0) + (dx | 0);
+        const ny = (cons.y | 0) + (dy | 0);
+        if (!isok(nx, ny)) continue;
+        switch (cons.what) {
+        case 'obj':
+            for (const obj of (Array.isArray(cons.list) ? cons.list : [])) {
+                obj.ox = nx;
+                obj.oy = ny;
+                placeFloorObject(map, obj);
+            }
+            break;
+        case 'mon': {
+            const mon = cons.list;
+            if (!mon) break;
+            let tx = nx, ty = ny;
+            if (map.monsterAt(tx, ty)) {
+                const pos = enexto(tx, ty, map);
+                if (pos) {
+                    tx = pos.x;
+                    ty = pos.y;
+                }
+            }
+            mon.mx = tx;
+            mon.my = ty;
+            map.addMonster(mon);
+            break;
+        }
+        case 'hero':
+            if (heroPos && Number.isInteger(heroPos.x) && Number.isInteger(heroPos.y)) {
+                heroPos.x = nx;
+                heroPos.y = ny;
+                if (typeof water?.onHeroMoved === 'function') {
+                    water.onHeroMoved(nx, ny);
+                }
+            }
+            break;
+        case 'trap': {
+            const trap = cons.list;
+            if (!trap) break;
+            trap.tx = nx;
+            trap.ty = ny;
+            map.traps.push(trap);
+            if (trap.ttyp === MAGIC_PORTAL && water) {
+                water.portal = { x: nx, y: ny, dst: trap.dst || null };
+            }
+            break;
+        }
+        default:
+            break;
+        }
+    }
+    bubble.cons = [];
+}
+
 export function movebubbles(map, dx = 0, dy = 0) {
     const water = map?._water;
     if (!water?.active) return false;
@@ -967,9 +1068,25 @@ export function movebubbles(map, dx = 0, dy = 0) {
     water._moveUp = moveUp;
     const bubbles = Array.isArray(water.bubbles) ? water.bubbles : [];
     const ordered = moveUp ? bubbles : bubbles.slice().reverse();
+    if (map.flags?.is_waterlevel && ordered.length) {
+        const heroPos = (water.heroPos && Number.isInteger(water.heroPos.x) && Number.isInteger(water.heroPos.y))
+            ? water.heroPos
+            : null;
+        for (const b of ordered) {
+            pickup_bubble_contents(map, b, heroPos);
+            for_each_bubble_cell(map, b, (x, y) => {
+                const loc = at(map, x, y);
+                if (!loc) return;
+                loc.typ = WATER;
+                loc.lit = 0;
+            });
+        }
+    }
     if (ordered.length) {
         for (const b of ordered) {
             if (!b || !Number.isInteger(b.x) || !Number.isInteger(b.y)) continue;
+            const ox = b.x;
+            const oy = b.y;
             if (useRand) {
                 const curDx = Number.isInteger(b.dx) ? b.dx : 0;
                 const curDy = Number.isInteger(b.dy) ? b.dy : 0;
@@ -980,6 +1097,9 @@ export function movebubbles(map, dx = 0, dy = 0) {
                 mv_bubble(map, b, stepX, stepY, false);
             } else {
                 mv_bubble(map, b, dx, dy, false);
+            }
+            if (map.flags?.is_waterlevel && Array.isArray(b.cons) && b.cons.length) {
+                replace_bubble_contents(map, b, b.x - ox, b.y - oy, water);
             }
         }
     }
@@ -1029,8 +1149,16 @@ export function water_friction(map, player = null, display = null) {
 }
 export function save_waterlevel(map) {
     if (!map) return null;
+    const water = map._water || null;
+    const packedWater = !water ? null : {
+        ...water,
+        bubbles: (Array.isArray(water.bubbles) ? water.bubbles : []).map((b) => ({
+            x: b?.x, y: b?.y, dx: b?.dx, dy: b?.dy, n: b?.n,
+            bm: Array.isArray(b?.bm) ? [...b.bm] : null
+        })),
+    };
     return {
-        water: map._water ? JSON.parse(JSON.stringify(map._water)) : null,
+        water: packedWater ? JSON.parse(JSON.stringify(packedWater)) : null,
         waterLevelSetup: map._waterLevelSetup ? JSON.parse(JSON.stringify(map._waterLevelSetup)) : null,
         hero_memory: map.flags?.hero_memory ?? null,
     };
@@ -1044,6 +1172,18 @@ export function restore_waterlevel(map, saved = null) {
         if (!Array.isArray(map._water.bubbles)) map._water.bubbles = [];
         if (!Array.isArray(map._water.fumaroles)) map._water.fumaroles = [];
         if (!('active' in map._water)) map._water.active = true;
+        for (const bubble of map._water.bubbles) {
+            if (!Array.isArray(bubble?.bm) || bubble.bm.length < 3) {
+                const n = Number.isInteger(bubble?.n) ? bubble.n : 1;
+                bubble.bm = [Math.max(1, n), Math.max(1, n), 0xff];
+            }
+            bubble.cons = [];
+        }
+        if (map._water.active) {
+            for (const bubble of map._water.bubbles) {
+                mv_bubble(map, bubble, 0, 0, true);
+            }
+        }
     }
     if (saved.hero_memory !== null && saved.hero_memory !== undefined) {
         map.flags = map.flags || {};
@@ -1180,7 +1320,9 @@ export function mk_bubble(map, x, y, n) {
     };
     map._water = map._water || { bubbles: [] };
     map._water.bubbles.push(bubble);
-    mv_bubble(map, bubble, 0, 0, true);
+    if (map.flags?.is_waterlevel) {
+        mv_bubble(map, bubble, 0, 0, true);
+    }
     return bubble;
 }
 // C ref: mkmaze.c maybe_adjust_hero_bubble
@@ -1188,9 +1330,9 @@ export function maybe_adjust_hero_bubble(map, heroPos = null) {
     if (!map?._water?.bubbles || !heroPos) return false;
     const bubble = map._water.bubbles.find((b) => (
         Number.isInteger(b?.x) && Number.isInteger(b?.y)
-        && Number.isInteger(b?.n)
-        && heroPos.x >= b.x && heroPos.x < (b.x + b.n)
-        && heroPos.y >= b.y && heroPos.y < (b.y + b.n)
+        && Array.isArray(b?.bm) && b.bm.length >= 2
+        && heroPos.x >= b.x && heroPos.x < (b.x + b.bm[0])
+        && heroPos.y >= b.y && heroPos.y < (b.y + b.bm[1])
     ));
     if (!bubble) {
         map._water.heroBubble = null;
@@ -1212,28 +1354,44 @@ export function mv_bubble(map, bubble, dx = 0, dy = 0, ini = false) {
     const spanY = bm[1] - 1;
     let colli = 0;
 
-    if (dx < -1 || dx > 1 || dy < -1 || dy > 1) {
-        dx = Math.sign(dx);
-        dy = Math.sign(dy);
+    const isAir = !!map.flags?.is_airlevel;
+    const canMove = !isAir || !rn2(6);
+    if (canMove) {
+        if (dx < -1 || dx > 1 || dy < -1 || dy > 1) {
+            dx = Math.sign(dx);
+            dy = Math.sign(dy);
+        }
+        if (bubble.x <= minX || bubble.x + spanX >= maxX) colli |= 2;
+        if (bubble.y <= minY || bubble.y + spanY >= maxY) colli |= 1;
+        if (bubble.x < minX) bubble.x = minX;
+        if (bubble.y < minY) bubble.y = minY;
+        if (bubble.x + spanX > maxX) bubble.x = maxX - spanX;
+        if (bubble.y + spanY > maxY) bubble.y = maxY - spanY;
+
+        if (bubble.x === minX && dx < 0) dx = -dx;
+        if (bubble.x + spanX === maxX && dx > 0) dx = -dx;
+        if (bubble.y === minY && dy < 0) dy = -dy;
+        if (bubble.y + spanY === maxY && dy > 0) dy = -dy;
+
+        const nx = bubble.x + dx;
+        const ny = bubble.y + dy;
+        bubble.dx = dx;
+        bubble.dy = dy;
+        bubble.x = Math.min(Math.max(minX, nx), maxX - spanX);
+        bubble.y = Math.min(Math.max(minY, ny), maxY - spanY);
     }
-    if (bubble.x <= minX || bubble.x + spanX >= maxX) colli |= 2;
-    if (bubble.y <= minY || bubble.y + spanY >= maxY) colli |= 1;
-    if (bubble.x < minX) bubble.x = minX;
-    if (bubble.y < minY) bubble.y = minY;
-    if (bubble.x + spanX > maxX) bubble.x = maxX - spanX;
-    if (bubble.y + spanY > maxY) bubble.y = maxY - spanY;
 
-    if (bubble.x === minX && dx < 0) dx = -dx;
-    if (bubble.x + spanX === maxX && dx > 0) dx = -dx;
-    if (bubble.y === minY && dy < 0) dy = -dy;
-    if (bubble.y + spanY === maxY && dy > 0) dy = -dy;
-
-    const nx = bubble.x + dx;
-    const ny = bubble.y + dy;
-    bubble.dx = dx;
-    bubble.dy = dy;
-    bubble.x = Math.min(Math.max(minX, nx), maxX - spanX);
-    bubble.y = Math.min(Math.max(minY, ny), maxY - spanY);
+    for_each_bubble_cell(map, bubble, (x, y) => {
+        const loc = at(map, x, y);
+        if (!loc) return;
+        if (map.flags?.is_waterlevel) {
+            loc.typ = AIR;
+            loc.lit = 1;
+        } else if (map.flags?.is_airlevel) {
+            loc.typ = CLOUD;
+            loc.lit = 1;
+        }
+    });
 
     if (colli === 1) {
         bubble.dy = -bubble.dy;
