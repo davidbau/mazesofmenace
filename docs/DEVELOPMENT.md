@@ -7,6 +7,7 @@
 [DESIGN.md](DESIGN.md) (architecture) |
 [DECISIONS.md](DECISIONS.md) (trade-offs) |
 [PARITY_TEST_MATRIX.md](PARITY_TEST_MATRIX.md) (test suites & gates) |
+[COMPARISON_PIPELINE.md](COMPARISON_PIPELINE.md) (recorder/comparator flow) |
 [LORE.md](LORE.md) (porting lessons) |
 [TESTING.md](TESTING.md) (test dashboard & workflows)
 
@@ -60,6 +61,12 @@ npm run test:e2e
 # Session comparison — replay C reference sessions
 npm run test:session
 
+# Dump raw JS replay trace from a C gameplay session
+npm run replay:dump -- test/comparison/sessions/<file>.session.json --out /tmp/<file>.js-replay.json
+
+# Compare C gameplay session vs JS replay (generated or --js file)
+npm run session:compare -- test/comparison/sessions/<file>.session.json
+
 # Everything at once
 npm run test:all
 ```
@@ -102,6 +109,13 @@ C's behavior). Each level is checked for:
 - RNG call count match (when `rngCalls` present)
 - Per-call RNG trace match (when `rng` present)
 - Wall completeness, corridor connectivity, stairs placement
+
+Gameplay parity uses an explicit two-phase architecture:
+
+1. **Recorder**: run JS from C-captured input keys and capture raw JS trace.
+2. **Comparator**: compare recorded JS trace to C session using comparator policy.
+
+See [COMPARISON_PIPELINE.md](COMPARISON_PIPELINE.md) for module-level details.
 
 ### C Comparison (optional, slower)
 

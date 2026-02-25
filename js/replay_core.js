@@ -1841,6 +1841,7 @@ export async function replaySession(seed, session, opts = {}) {
     disableRngLog();
 
     return {
+        source: 'js-replay',
         startup: normalizedStartup,
         steps: stepResults,
     };

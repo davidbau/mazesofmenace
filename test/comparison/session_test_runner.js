@@ -29,10 +29,11 @@ import {
     compareScreenAnsi,
     ansiLineToCells,
     findFirstGridDiff,
-    compareEvents,
 } from './comparators.js';
 import { loadAllSessions, stripAnsiSequences, getSessionScreenAnsiLines } from './session_loader.js';
 import { decodeDecSpecialChar } from './symset_normalization.js';
+import { recordGameplaySessionFromInputs } from './session_recorder.js';
+import { compareRecordedGameplaySession } from './session_comparator.js';
 import {
     createSessionResult,
     recordRng,
@@ -85,31 +86,6 @@ function recordRngComparison(result, actual, expected, context = {}) {
         : null;
     setFirstDivergence(result, 'rng', divergence);
     recordRng(result, cmp.matched, cmp.total, divergence);
-}
-
-// Map a normalized RNG index back to an approximate C session step number.
-// The index is in the normalized space (midlog/composite entries removed),
-// so we count comparable entries per step to find the right boundary.
-function approximateStepForRngIndex(session, normalizedIndex) {
-    let cumulative = 0;
-    const count = (entries) => {
-        let n = 0;
-        for (const e of entries) {
-            if (typeof e !== 'string' || !e.length) continue;
-            const c = e[0];
-            if (c === '>' || c === '<' || c === '^') continue;
-            const stripped = e.replace(/^\d+\s+/, '').replace(/ @ .*/, '');
-            if (stripped.startsWith('rne(') || stripped.startsWith('rnz(') || stripped.startsWith('d(')) continue;
-            n++;
-        }
-        return n;
-    };
-    cumulative += count(session.startup?.rng || []);
-    for (let i = 0; i < session.steps.length; i++) {
-        cumulative += count(session.steps[i].rng || []);
-        if (normalizedIndex < cumulative) return i + 1;
-    }
-    return 'n/a';
 }
 
 function getExpectedScreenLines(stepLike) {
@@ -400,103 +376,33 @@ async function runGameplayResult(session) {
     const start = Date.now();
 
     try {
-        const replayFlags = { ...DEFAULT_FLAGS };
-        replayFlags.color = sessionColorEnabled(session);
-        // C harness gameplay captures default to concise messaging unless
-        // verbose is explicitly set in session options.
-        replayFlags.verbose = (session.meta.options?.verbose === true);
-        if (session.meta.options?.autopickup === false) replayFlags.pickup = false;
-        if (session.meta.options?.rest_on_space) replayFlags.rest_on_space = true;
-        replayFlags.DECgraphics = session.meta.options?.symset === 'DECgraphics';
-        replayFlags.bgcolors = true;
-        replayFlags.customcolors = true;
-        replayFlags.customsymbols = true;
-        if (replayFlags.DECgraphics) {
-            replayFlags.symset = 'DECgraphics, active, handler=DEC';
-        }
-        const replay = await replaySession(session.meta.seed, session.raw, {
-            captureScreens: true,
-            startupBurstInFirstStep: false,
-            flags: replayFlags,
-        });
+        const replay = await recordGameplaySessionFromInputs(session);
         if (!replay || replay.error) {
             markFailed(result, replay?.error || 'Replay failed');
             setDuration(result, Date.now() - start);
             return result;
         }
+        const cmp = compareRecordedGameplaySession(session, replay);
 
-        // Flat RNG comparison — flatten both C and JS per-step RNG into
-        // one stream each, compare post-hoc rather than per-step.
-        const allJsRng = [
-            ...(replay.startup?.rng || []),
-            ...(replay.steps || []).flatMap(s => s.rng || []),
-        ];
-        const allSessionRng = [
-            ...(session.startup?.rng || []),
-            ...session.steps.flatMap(s => s.rng || []),
-        ];
-        const rngCmp = compareRng(allJsRng, allSessionRng);
-        if (rngCmp.total > 0) {
-            if (rngCmp.firstDivergence) {
-                rngCmp.firstDivergence.step = approximateStepForRngIndex(
-                    session, rngCmp.firstDivergence.index, allSessionRng
-                );
-            }
-            recordRng(result, rngCmp.matched, rngCmp.total, rngCmp.firstDivergence);
-            setFirstDivergence(result, 'rng', rngCmp.firstDivergence);
+        if (cmp.rng.total > 0) {
+            recordRng(result, cmp.rng.matched, cmp.rng.total, cmp.rng.firstDivergence);
+            setFirstDivergence(result, 'rng', cmp.rng.firstDivergence);
         }
-
-        // Per-step screen/color comparison (screens are meaningful at
-        // step boundaries, so these stay per-step).
-        const count = Math.min(session.steps.length, (replay.steps || []).length);
-        let screensMatched = 0;
-        let screensTotal = 0;
-
-        for (let i = 0; i < count; i++) {
-            const expected = session.steps[i];
-            const actual = replay.steps[i] || {};
-            const expectedAnsi = getExpectedScreenAnsiLines(expected);
-
-            if (expected.screen.length > 0) {
-                screensTotal++;
-                const screenCmp = compareGameplayScreens(actual.screen || [], expected.screen, session, {
-                    actualAnsi: actual.screenAnsi,
-                    expectedAnsi,
-                });
-                if (screenCmp.match) screensMatched++;
-                if (!screenCmp.match && screenCmp.firstDiff) {
-                    setFirstDivergence(result, 'screen', { step: i + 1, ...screenCmp.firstDiff });
-                }
-            }
-            if (expectedAnsi.length > 0 && Array.isArray(actual.screenAnsi)) {
-                const colorCmp = compareScreenAnsi(actual.screenAnsi, expectedAnsi);
-                if (!result._colorStats) result._colorStats = { matched: 0, total: 0 };
-                result._colorStats.matched += colorCmp.matched;
-                result._colorStats.total += colorCmp.total;
-                if (!colorCmp.match && colorCmp.firstDiff) {
-                    setFirstDivergence(result, 'color', { step: i + 1, ...colorCmp.firstDiff });
-                }
-            }
+        if (cmp.screen.total > 0) {
+            recordScreens(result, cmp.screen.matched, cmp.screen.total);
+            setFirstDivergence(result, 'screen', cmp.screen.firstDivergence);
         }
-
-        if (screensTotal > 0) recordScreens(result, screensMatched, screensTotal);
-        if (result._colorStats?.total > 0) {
-            recordColors(result, result._colorStats.matched, result._colorStats.total);
-            delete result._colorStats;
+        if (cmp.color.total > 0) {
+            recordColors(result, cmp.color.matched, cmp.color.total);
+            setFirstDivergence(result, 'color', cmp.color.firstDivergence);
         }
-
-        // Event log comparison (^place, ^die, etc.)
-        const eventCmp = compareEvents(allJsRng, allSessionRng);
-        if (eventCmp.total > 0) {
-            recordEvents(result, eventCmp.matched, eventCmp.total);
-            // Keep top-level mirror for backward-compatible tooling.
+        if (cmp.event.total > 0) {
+            recordEvents(result, cmp.event.matched, cmp.event.total);
             result.events = {
                 matched: result.metrics.events.matched,
                 total: result.metrics.events.total,
             };
-            if (eventCmp.firstDivergence) {
-                setFirstDivergence(result, 'event', eventCmp.firstDivergence);
-            }
+            setFirstDivergence(result, 'event', cmp.event.firstDivergence);
         }
     } catch (error) {
         markFailed(result, error);
