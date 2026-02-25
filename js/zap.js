@@ -4,7 +4,10 @@
 // C ref: mon.c — xkilled(), corpse_chance()
 
 import { rn2, rnd, d, c_d, rn1, rne, rnz } from './rng.js';
-import { isok, ACCESSIBLE, IS_WALL, IS_DOOR, COLNO, ROWNO, A_STR, A_WIS, A_CON } from './config.js';
+import {
+    isok, ACCESSIBLE, IS_WALL, IS_DOOR, COLNO, ROWNO, A_STR, A_WIS, A_CON,
+    DRAWBRIDGE_UP, DRAWBRIDGE_DOWN,
+} from './config.js';
 import { exercise } from './attrib_exercise.js';
 import { objectData, WAND_CLASS, TOOL_CLASS, WEAPON_CLASS, SCROLL_CLASS,
          POTION_CLASS, RING_CLASS, SPBOOK_CLASS, GEM_CLASS, ROCK_CLASS,
@@ -61,6 +64,8 @@ import { monflee } from './monmove.js';
 import { readobjnam, hands_obj } from './objnam.js';
 import { hold_another_object, prinv } from './invent.js';
 import { findit } from './detect.js';
+import { is_db_wall, find_drawbridge, open_drawbridge, close_drawbridge, destroy_drawbridge } from './dbridge.js';
+import { HOLE, TRAPDOOR } from './symbols.js';
 import {
     tmp_at, nh_delay_output, nh_delay_output_nowait,
     DISP_BEAM, DISP_END,
@@ -1399,6 +1404,22 @@ export function zap_updown(obj, player, map) {
   let disclose = false;
   const x = player.x || 0;
   const y = player.y || 0;
+  const loc = map?.at ? map.at(x, y) : null;
+
+  const openOrDestroyBridge = (destroy = false) => {
+    if (!map) return false;
+    let bx = x;
+    let by = y;
+    if (!is_db_wall(bx, by, map) && (!loc || (loc.typ !== DRAWBRIDGE_UP
+        && loc.typ !== DRAWBRIDGE_DOWN))) {
+      return false;
+    }
+    const db = find_drawbridge(bx, by, map);
+    if (!db?.found) return false;
+    if (destroy) destroy_drawbridge(db.x, db.y, map, player);
+    else open_drawbridge(db.x, db.y, map, player);
+    return true;
+  };
 
   switch (obj.otyp) {
   case WAN_PROBING:
@@ -1414,20 +1435,56 @@ export function zap_updown(obj, player, map) {
   case WAN_OPENING:
   case SPE_KNOCK:
     // C ref: zap.c:3251-3277 — open drawbridge, release traps
+    if (openOrDestroyBridge(false)) {
+      disclose = true;
+    }
+    if (player.dz && player.dz > 0 && player.utrap) {
+      player.utrap = 0;
+      player.utraptype = 0;
+      disclose = true;
+    }
     break;
 
   case WAN_STRIKING:
   case SPE_FORCE_BOLT:
     // C ref: zap.c:3278-3341 — striking up: dislodge rock
+    if (openOrDestroyBridge(true)) {
+      disclose = true;
+      break;
+    }
     if (player.dz && player.dz < 0 && rn2(3)) {
       pline("A rock is dislodged from the ceiling and falls on your head.");
       const dmg = rnd(6);
       if (player.hp) player.hp -= dmg;
     }
+    if (player.dz && player.dz > 0 && map?.trapAt) {
+      const ttmp = map.trapAt(x, y);
+      if (ttmp && ttmp.ttyp === TRAPDOOR) {
+        ttmp.ttyp = HOLE;
+        ttmp.tseen = 1;
+        disclose = true;
+      }
+    }
     break;
 
   case WAN_LOCKING:
   case SPE_WIZARD_LOCK:
+    if (map) {
+      const db = find_drawbridge(x, y, map);
+      if (db?.found) {
+        close_drawbridge(db.x, db.y, map, player);
+        disclose = true;
+        break;
+      }
+    }
+    if (player.dz && player.dz > 0 && map?.trapAt) {
+      const ttmp = map.trapAt(x, y);
+      if (ttmp && ttmp.ttyp === HOLE) {
+        ttmp.ttyp = TRAPDOOR;
+        ttmp.tseen = 1;
+        disclose = true;
+      }
+    }
     break;
 
   default:
