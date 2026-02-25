@@ -75,7 +75,10 @@ import { paralyze_monst } from './mhitm.js';
 import { makemon } from './makemon.js';
 import { placeFloorObject } from './floor_objects.js';
 import { linedUpToPlayer, m_throw_timed } from './mthrowu.js';
-import { buzz } from './zap.js';
+import {
+    buzz, ZT_WAND, ZT_BREATH,
+    ZT_MAGIC_MISSILE, ZT_FIRE, ZT_COLD, ZT_SLEEP, ZT_DEATH, ZT_LIGHTNING,
+} from './zap.js';
 import { resist, cancel_monst } from './zap.js';
 import { monverbself } from './do_name.js';
 import { arti_reflects } from './artifact.js';
@@ -111,6 +114,18 @@ let trapx = 0, trapy = 0;
 
 // C ref: gb.bhitpos — beam hit position tracking
 const bhitpos = { x: 0, y: 0 };
+
+function museWandZapType(otyp) {
+    switch (otyp) {
+    case WAN_MAGIC_MISSILE: return ZT_WAND(ZT_MAGIC_MISSILE);
+    case WAN_FIRE: return ZT_WAND(ZT_FIRE);
+    case WAN_COLD: return ZT_WAND(ZT_COLD);
+    case WAN_SLEEP: return ZT_WAND(ZT_SLEEP);
+    case WAN_DEATH: return ZT_WAND(ZT_DEATH);
+    case WAN_LIGHTNING: return ZT_WAND(ZT_LIGHTNING);
+    default: return ZT_WAND(ZT_MAGIC_MISSILE);
+    }
+}
 
 // ========================================================================
 // Defensive item MUSE constants — C ref: muse.c:307-326
@@ -1710,10 +1725,10 @@ export async function use_offensive(mtmp, map, player) {
         if (oseen) makeknown(otmp.otyp);
         m_using = true;
         // C: buzz(BZ_M_WAND(...), nd, mx, my, dx, dy)
-        // Simplified: call buzz with appropriate parameters
         {
             const nd = (otmp.otyp === WAN_MAGIC_MISSILE) ? 2 : 6;
-            await buzz(0, nd, mtmp.mx, mtmp.my,
+            const ztyp = museWandZapType(otmp.otyp);
+            await buzz(ztyp, nd, mtmp.mx, mtmp.my,
                 Math.sign((mtmp.mux ?? player.x) - mtmp.mx),
                 Math.sign((mtmp.muy ?? player.y) - mtmp.my),
                 map, player);
@@ -1725,10 +1740,13 @@ export async function use_offensive(mtmp, map, player) {
     case MUSE_OFF_FROST_HORN:
         mplayhorn(mtmp, otmp, false, map, player);
         m_using = true;
-        await buzz(0, rn1(6, 6), mtmp.mx, mtmp.my,
+        await buzz(
+            ZT_BREATH(otmp.otyp === FIRE_HORN ? ZT_FIRE : ZT_COLD),
+            rn1(6, 6), mtmp.mx, mtmp.my,
             Math.sign((mtmp.mux ?? player.x) - mtmp.mx),
             Math.sign((mtmp.muy ?? player.y) - mtmp.my),
-            map, player);
+            map, player
+        );
         m_using = false;
         return DEADMONSTER(mtmp) ? 1 : 2;
 

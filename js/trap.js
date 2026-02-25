@@ -747,6 +747,14 @@ async function trapeffect_rolling_boulder_trap_mon(mon, trap, map, player) {
         }
     }
     let steps = 0;
+    const removeBoulder = (obj) => {
+        if (!obj || !map) return;
+        if (typeof map.removeObject === 'function') {
+            map.removeObject(obj);
+        } else if (typeof map.removeFloorObject === 'function') {
+            map.removeFloorObject(obj);
+        }
+    };
 
     tmp_at(DISP_FLASH, { ch: '0', color: 7 });
     try {
@@ -767,11 +775,12 @@ async function trapeffect_rolling_boulder_trap_mon(mon, trap, map, player) {
             if (hitTrap && hitTrap !== trap && boulder?.otyp === BOULDER) {
                 switch (hitTrap.ttyp) {
                 case LANDMINE:
-                    // C ref: launch_obj() landmine detonation can consume rolling boulder.
-                    deltrap(hitTrap, map);
-                    if (typeof map.removeObject === 'function') {
-                        map.removeObject(boulder);
-                    }
+                    // C ref: blow_up_landmine side effects; keep trap-state parity
+                    // shape used by trap.js landmine handling.
+                    hitTrap.ttyp = PIT;
+                    hitTrap.madeby_u = false;
+                    seetrap(hitTrap);
+                    removeBoulder(boulder);
                     return Trap_Effect_Finished;
                 case TELEP_TRAP:
                     // C ref: launch_obj() tele trap relocates the boulder on level.
@@ -781,9 +790,7 @@ async function trapeffect_rolling_boulder_trap_mon(mon, trap, map, player) {
                 case LEVEL_TELEP:
                     // Approximation: remove from current level when level migration
                     // plumbing isn't available in this path.
-                    if (typeof map.removeObject === 'function') {
-                        map.removeObject(boulder);
-                    }
+                    removeBoulder(boulder);
                     seetrap(hitTrap);
                     return Trap_Effect_Finished;
                 case PIT:
