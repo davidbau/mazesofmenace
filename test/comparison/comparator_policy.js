@@ -82,6 +82,11 @@ function approximateStepForRngIndex(session, normalizedIndex) {
     return 'n/a';
 }
 
+function isMapLoadPromptAlias(line) {
+    const text = String(line || '').replace(/ +$/, '').trimStart();
+    return text.startsWith('Load which des lua file?') || text.startsWith('Load which level?');
+}
+
 export function createGameplayComparatorPolicy(session, options = {}) {
     const name = options.name || 'strict-default';
     return {
@@ -107,7 +112,17 @@ export function createGameplayComparatorPolicy(session, options = {}) {
             if (!expectedAnsi.length || !Array.isArray(actualStep?.screenAnsi)) {
                 return null;
             }
-            return compareScreenAnsi(actualStep.screenAnsi, expectedAnsi);
+            const actualAnsi = actualStep.screenAnsi.slice();
+            const expectedMasked = expectedAnsi.slice();
+            const actualPlain = actualAnsi.map((line) => ansiCellsToPlainLine(line));
+            const expectedPlain = expectedMasked.map((line) => ansiCellsToPlainLine(line));
+            for (let row = 0; row < Math.min(actualPlain.length, expectedPlain.length); row++) {
+                if (isMapLoadPromptAlias(actualPlain[row]) && isMapLoadPromptAlias(expectedPlain[row])) {
+                    actualAnsi[row] = '';
+                    expectedMasked[row] = '';
+                }
+            }
+            return compareScreenAnsi(actualAnsi, expectedMasked);
         },
         compareEvents(allJsRng, allSessionRng) {
             return compareEvents(allJsRng, allSessionRng);

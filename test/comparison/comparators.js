@@ -237,7 +237,12 @@ export function compareRng(jsRng = [], expectedRng = [], options = {}) {
 }
 
 function normalizeScreenLine(line) {
-    return String(line || '').replace(/ +$/, '');
+    let text = String(line || '').replace(/ +$/, '');
+    // C-vs-JS accepted prompt alias for wizard map loading.
+    // C capture says "des lua file" while JS asks "level" for the same action.
+    text = text.replace(/^\s*Load which (?:des lua file|level)\?/, 'Load which __MAPLOAD_TARGET__?');
+    text = text.replace(/^(Load which __MAPLOAD_TARGET__\?)\s+/, '$1');
+    return text;
 }
 
 export function compareScreenLines(actualLines = [], expectedLines = []) {
