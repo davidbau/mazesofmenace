@@ -4,8 +4,9 @@ import assert from 'node:assert/strict';
 import { replaySession } from '../../js/replay_core.js';
 
 describe('replay startup topline preservation', () => {
-    it('keeps startup topline visible on first count digit', async () => {
+    it('does not inject recorded startup topline into live replay state', async () => {
         const startupTopline = 'Map dumped to /tmp/webhack-session-test/dumpmap.txt.';
+        const liveWelcomeTopline = 'NetHack Royal Jelly -- Welcome to the Mazes of Menace! [WIZARD MODE] (seed:204)';
         const statusLine1 = 'Wizard the Stripling      St:18 Dx:9 Co:18 In:8 Wi:7 Ch:11 Neutral';
         const statusLine2 = 'Dlvl:1 $:0 HP:16(16) Pw:2(2) AC:6 Xp:1';
         const session = {
@@ -47,7 +48,8 @@ describe('replay startup topline preservation', () => {
         });
 
         assert.equal(replay.steps.length, 2);
-        assert.equal((replay.steps[0].screen || [])[0], startupTopline);
+        assert.equal((replay.steps[0].screen || [])[0], liveWelcomeTopline);
+        assert.notEqual((replay.steps[0].screen || [])[0], startupTopline);
         assert.equal((replay.steps[1].screen || [])[0], 'Count: 15');
     });
 });

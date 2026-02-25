@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { replaySession } from '../../js/replay_core.js';
 
 describe('replay tutorial prompt handling', () => {
-    it('accepting tutorial transitions out of the prompt flow', async () => {
+    it('does not treat recorded tutorial text as replay control flow', async () => {
         const session = {
             version: 3,
             seed: 1,
@@ -45,10 +45,10 @@ describe('replay tutorial prompt handling', () => {
         assert.equal(replay.steps.length, 2);
         const joined = (replay.steps[1].screen || []).join('\n');
         assert.ok(!joined.includes('Do you want a tutorial?'));
-        assert.ok((replay.steps[1].screen || []).some((line) => line.includes('@')));
+        assert.equal((replay.steps[1].rng || []).length, 0);
     });
 
-    it('defers tutorial map generation to the follow-up space step', async () => {
+    it('replays follow-up tutorial keys as plain key input', async () => {
         const session = {
             version: 3,
             seed: 1,
@@ -78,12 +78,6 @@ describe('replay tutorial prompt handling', () => {
                     rng: [],
                     screen: [],
                 },
-                {
-                    key: ' ',
-                    action: 'more-prompt',
-                    rng: [],
-                    screen: ['--More--'],
-                },
             ],
         };
 
@@ -92,12 +86,9 @@ describe('replay tutorial prompt handling', () => {
             startupBurstInFirstStep: false,
         });
 
-        assert.equal(replay.steps.length, 3);
+        assert.equal(replay.steps.length, 2);
         assert.equal((replay.steps[0].rng || []).length, 0);
-        const joined = (replay.steps[1].screen || []).join('\n');
-        assert.ok(joined.includes('@'));
-        assert.ok(!joined.includes('Unknown command'));
-        assert.equal((replay.steps[2].rng || []).length, 0);
-        assert.equal((replay.steps[2].screen || [])[0], '--More--');
+        assert.equal((replay.steps[1].rng || []).length, 0);
+        assert.ok(!((replay.steps[1].screen || []).join('\n')).includes('Do you want a tutorial?'));
     });
 });

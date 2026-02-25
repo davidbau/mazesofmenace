@@ -719,7 +719,7 @@ export class HeadlessDisplay {
         const menuRows = Math.min(lines.length, STATUS_ROW_1);
         // C tty parity: clear only rows occupied by the menu itself.
         for (let r = 0; r < menuRows; r++) {
-            for (let c = offx; c < this.cols; c++) {
+            for (let c = Math.max(0, offx - 1); c < this.cols; c++) {
                 this.grid[r][c] = ' ';
                 this.colors[r][c] = CLR_GRAY;
                 this.attrs[r][c] = 0;
@@ -1225,6 +1225,11 @@ export class HeadlessDisplay {
         else if (player.hunger <= 50) line2Parts.push('Fainting');
         else if (player.hunger <= 150) line2Parts.push('Weak');
         else if (player.hunger <= 300) line2Parts.push('Hungry');
+        if ((player.encumbrance || 0) > 0) {
+            const encNames = ['Burdened', 'Stressed', 'Strained', 'Overtaxed', 'Overloaded'];
+            const idx = Math.max(0, Math.min(encNames.length - 1, (player.encumbrance || 1) - 1));
+            line2Parts.push(encNames[idx]);
+        }
         if (player.blind) line2Parts.push('Blind');
         if (player.confused) line2Parts.push('Conf');
         if (player.stunned) line2Parts.push('Stun');

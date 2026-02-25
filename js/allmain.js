@@ -38,7 +38,7 @@ import { exerper, exerchk } from './attrib_exercise.js';
 import { rhack } from './cmd.js';
 import { FOV } from './vision.js';
 import { monsterNearby } from './monutil.js';
-import { nomul } from './hack.js';
+import { nomul, unmul } from './hack.js';
 import { Player, roles, races } from './player.js';
 import { makelevel, setGameSeed, isBranchLevelToDnum } from './dungeon.js';
 import { getArrivalPosition, changeLevel as changeLevelCore, deferred_goto } from './do.js';
@@ -137,6 +137,15 @@ export function moveloop_turnend(game) {
             game.player.attributes[A_DEX] = Math.min(25, game.player.attributes[A_DEX] + 1);
             game.player.justHealedLegs = true;
         }
+    }
+    // C ref: allmain.c repeat loop behavior for repeated searching.
+    // When wounded legs heal during repeated search, interrupt the repeat.
+    if (game.player.justHealedLegs
+        && game.multi > 0
+        && game.cmdKey === 's'.charCodeAt(0)) {
+        game.player.justHealedLegs = false;
+        game.multi = 0;
+        game.display.putstr_message('Your leg feels better.');
     }
 
     // C ref: mon.c m_calcdistress() — temporary flee timeout handling.
@@ -256,6 +265,15 @@ export function moveloop_turnend(game) {
     // C's svm.moves is +1 ahead of turnCount (same offset as exerchk)
     if (moves >= game.seerTurn) {
         game.seerTurn = moves + rn1(31, 15);
+    }
+    // C ref: allmain.c:385-393 — immobile turn countdown and unmul().
+    if (game.multi < 0) {
+        if (++game.multi === 0) {
+            unmul(null, game.player, game.display, game);
+            if (game.player?.utotype) {
+                deferred_goto(game.player, game);
+            }
+        }
     }
     // After turn-end completes, subsequent command processing observes
     // the incremented move counter.
@@ -1361,12 +1379,6 @@ export class NetHackGame {
                         this.multi = 0;
                         this.display.putstr_message('--More--');
                         await nhgetch();
-                    }
-                    if (this.multi > 0 && this.player.justHealedLegs
-                        && (this.cmdKey === '.'.charCodeAt(0) || this.cmdKey === 's'.charCodeAt(0))) {
-                        this.player.justHealedLegs = false;
-                        this.multi = 0;
-                        this.display.putstr_message('Your leg feels better.  You stop searching.');
                     }
                 },
             });

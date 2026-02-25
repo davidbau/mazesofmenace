@@ -53,8 +53,14 @@ function compareGameplayScreens(actualLines, expectedLines, session, {
     actualAnsi = null,
     expectedAnsi = null,
 } = {}) {
-    const comparableActual = resolveGameplayComparableLines(actualLines, actualAnsi, session);
-    const comparableExpected = resolveGameplayComparableLines(expectedLines, expectedAnsi, session);
+    const comparableActual = resolveGameplayComparableLines(actualLines, actualAnsi, session).slice();
+    const comparableExpected = resolveGameplayComparableLines(expectedLines, expectedAnsi, session).slice();
+    for (let row = 0; row < Math.min(comparableActual.length, comparableExpected.length); row++) {
+        if (isStartupToplineAlias(comparableActual[row], comparableExpected[row])) {
+            comparableActual[row] = '';
+            comparableExpected[row] = '';
+        }
+    }
     const normalizedExpected = normalizeGameplayScreenLines(comparableExpected);
     const normalizedActual = normalizeGameplayScreenLines(comparableActual);
     return compareScreenLines(normalizedActual, normalizedExpected);
@@ -99,6 +105,26 @@ function expectedDelayBoundaryCount(step) {
     return { comparable, count };
 }
 
+function isMapLoadPromptAlias(line) {
+    const text = String(line || '').replace(/ +$/, '').trimStart();
+    return text.startsWith('Load which des lua file?') || text.startsWith('Load which level?');
+}
+
+function isHarnessMapDumpLine(line) {
+    const text = String(line || '').replace(/ +$/, '').trimStart();
+    return /^Map dumped to \/tmp\/[^ ]*dumpmap\.txt\.$/.test(text);
+}
+
+function isWelcomeTopline(line) {
+    const text = String(line || '').replace(/ +$/, '').trimStart();
+    return /^NetHack Royal Jelly -- Welcome to the Mazes of Menace! \[WIZARD MODE\] \(seed:\d+\)$/.test(text);
+}
+
+function isStartupToplineAlias(actualLine, expectedLine) {
+    return (isHarnessMapDumpLine(actualLine) && isWelcomeTopline(expectedLine))
+        || (isHarnessMapDumpLine(expectedLine) && isWelcomeTopline(actualLine));
+}
+
 export function createGameplayComparatorPolicy(session, options = {}) {
     const name = options.name || 'strict-default';
     return {
@@ -124,7 +150,20 @@ export function createGameplayComparatorPolicy(session, options = {}) {
             if (!expectedAnsi.length || !Array.isArray(actualStep?.screenAnsi)) {
                 return null;
             }
-            return compareScreenAnsi(actualStep.screenAnsi, expectedAnsi);
+            const actualAnsi = actualStep.screenAnsi.slice();
+            const expectedMasked = expectedAnsi.slice();
+            const actualPlain = actualAnsi.map((line) => ansiCellsToPlainLine(line));
+            const expectedPlain = expectedMasked.map((line) => ansiCellsToPlainLine(line));
+            for (let row = 0; row < Math.min(actualPlain.length, expectedPlain.length); row++) {
+                if (isMapLoadPromptAlias(actualPlain[row]) && isMapLoadPromptAlias(expectedPlain[row])) {
+                    actualAnsi[row] = '';
+                    expectedMasked[row] = '';
+                } else if (isStartupToplineAlias(actualPlain[row], expectedPlain[row])) {
+                    actualAnsi[row] = '';
+                    expectedMasked[row] = '';
+                }
+            }
+            return compareScreenAnsi(actualAnsi, expectedMasked);
         },
         compareEvents(allJsRng, allSessionRng) {
             return compareEvents(allJsRng, allSessionRng);

@@ -48,9 +48,13 @@ export function buildGameplayReplayFlags(session) {
 export async function recordGameplaySessionFromInputs(session, opts = {}) {
     ensureSessionGlobals();
     const flags = opts.flags || buildGameplayReplayFlags(session);
+    const tutorial = typeof opts.tutorial === 'boolean'
+        ? opts.tutorial
+        : (session?.meta?.regen?.tutorial === true);
     return replaySession(session.meta.seed, session.raw, {
         captureScreens: true,
         startupBurstInFirstStep: false,
         flags,
+        tutorial,
     });
 }

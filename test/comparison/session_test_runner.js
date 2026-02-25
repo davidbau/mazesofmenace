@@ -101,8 +101,23 @@ function getExpectedScreenAnsiLines(stepLike) {
     return getSessionScreenAnsiLines(stepLike);
 }
 
-function normalizeInterfaceLineForComparison(line) {
-    const text = String(line || '')
+function decodeLegacyDecgraphicsLine(line) {
+    const source = String(line || '');
+    // Legacy captures can lose SO/SI while keeping DEC glyph bytes.
+    // Only decode lines that are overwhelmingly DEC-graphics glyph runs
+    // (plus spaces/color punctuation) to avoid touching ordinary prose.
+    const stripped = source.replace(/[^\x20-\x7e]/g, '');
+    if (!/^[ `a-fjkmnq-tvx|{}~+.,'-]*$/.test(stripped)) return source;
+    return [...source].map((ch) => decodeDecSpecialChar(ch)).join('');
+}
+
+function normalizeInterfaceLineForComparison(line, { decgraphics = false } = {}) {
+    let normalized = String(line || '');
+    if (decgraphics) {
+        normalized = decodeSOSILine(normalized);
+        normalized = decodeLegacyDecgraphicsLine(normalized);
+    }
+    const text = normalized
         .replace(/[\x0e\x0f]/g, '')
         .replace(/[┌┐└┘┬┴┼├┤─]/g, '-')
         .replace(/[│]/g, '|')
@@ -115,8 +130,9 @@ function normalizeInterfaceLineForComparison(line) {
     return text;
 }
 
-function normalizeInterfaceScreenLines(lines) {
-    return (Array.isArray(lines) ? lines : []).map((line) => normalizeInterfaceLineForComparison(line));
+function normalizeInterfaceScreenLines(lines, { decgraphics = false } = {}) {
+    return (Array.isArray(lines) ? lines : [])
+        .map((line) => normalizeInterfaceLineForComparison(line, { decgraphics }));
 }
 
 function compareInterfaceScreens(actualLines, expectedLines) {
@@ -272,6 +288,7 @@ async function replayInterfaceSession(session) {
             captureScreens: true,
             startupBurstInFirstStep: false,
             flags: replayFlags,
+            tutorial: subtype === 'tutorial' || session.meta.regen?.tutorial === true,
             inferStatusFlagsFromStartup: false,
         });
     }
@@ -463,6 +480,7 @@ async function runInterfaceResult(session) {
         const expectedSteps = Array.isArray(session.raw?.steps) ? session.raw.steps.slice(1) : [];
         const actualSteps = replay.steps || [];
         const count = Math.min(expectedSteps.length, actualSteps.length);
+        const decgraphics = session.meta.options?.symset === 'DECgraphics';
         let screensMatched = 0;
         let screensTotal = 0;
         let rngMatched = 0;
@@ -475,8 +493,8 @@ async function runInterfaceResult(session) {
             const expectedScreen = getExpectedScreenLines(expected);
             if (expectedScreen.length > 0) {
                 screensTotal++;
-                let normalizedActual = normalizeInterfaceScreenLines(actual.screen || []);
-                let normalizedExpected = normalizeInterfaceScreenLines(expectedScreen);
+                let normalizedActual = normalizeInterfaceScreenLines(actual.screen || [], { decgraphics });
+                let normalizedExpected = normalizeInterfaceScreenLines(expectedScreen, { decgraphics });
                 // C DECgraphics map fragments during getlin prompts don't round-trip
                 // through JS headless glyph rendering identically; compare prompt line.
                 if (session.meta.regen?.subtype === 'options'
@@ -503,7 +521,10 @@ async function runInterfaceResult(session) {
             if (expectedAnsi.length > 0 && Array.isArray(actual.screenAnsi)) {
                 let actualAnsiForCmp = actual.screenAnsi;
                 let expectedAnsiForCmp = expectedAnsi;
-                const expectedPlain = normalizeInterfaceScreenLines(getExpectedScreenLines(expected));
+                const expectedPlain = normalizeInterfaceScreenLines(
+                    getExpectedScreenLines(expected),
+                    { decgraphics },
+                );
 
                 // Keep ANSI color comparison scoped to the same prompt-only slices used
                 // by interface text comparison where C/JS map fragments are non-round-trippable.

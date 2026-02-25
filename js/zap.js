@@ -1183,8 +1183,7 @@ export function makewish(wishText, player, display) {
         if (display) display.putstr_message('Nothing fitting that description exists.');
         return null;
     }
-    const got = hold_another_object(otmp, player, null, null, null);
-    prinv(null, got || otmp, 0, player);
+    const got = hold_another_object(otmp, player, 'Oops!  %s to the floor!', null, null);
     if (player) {
         player.ublesscnt = (player.ublesscnt || 0) + rn1(100, 50);
     }

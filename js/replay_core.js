@@ -8,7 +8,7 @@ import {
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL, STAIRS, VAULT,
     IS_WALL, IS_DOOR, ACCESSIBLE, SDOOR, SCORR, IRONBARS,
     CORR, ROOM, DOOR, isok, TERMINAL_COLS, TERMINAL_ROWS,
-    D_ISOPEN, D_CLOSED, D_LOCKED, D_NODOOR, A_NONE,
+    D_ISOPEN, D_CLOSED, D_LOCKED, D_NODOOR,
     ALTAR, FOUNTAIN, THRONE, SINK, GRAVE, POOL, MOAT, WATER, LAVAPOOL,
     LAVAWALL, ICE, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, AIR, CLOUD, TREE,
     MAP_ROW_START, STATUS_ROW_1, STATUS_ROW_2,
@@ -16,19 +16,16 @@ import {
 } from './config.js';
 import { initRng, enableRngLog, getRngLog, disableRngLog } from './rng.js';
 import { initLevelGeneration, makelevel, setGameSeed } from './dungeon.js';
-import { DUNGEONS_OF_DOOM, TUTORIAL } from './special_levels.js';
+import { DUNGEONS_OF_DOOM } from './special_levels.js';
 import { simulatePostLevelInit } from './u_init.js';
 import { mon_arrive } from './dog.js';
 import { Player, roles, rankOf } from './player.js';
-import { NORMAL_SPEED, A_STR, A_DEX, A_CON, A_WIS,
-         RACE_HUMAN, RACE_ELF, RACE_DWARF, RACE_GNOME, RACE_ORC } from './config.js';
+import { RACE_HUMAN, RACE_ELF, RACE_DWARF, RACE_GNOME, RACE_ORC } from './config.js';
 import { SHOPBASE, ROOMOFFSET } from './config.js';
-import { rhack } from './cmd.js';
 import { makemon } from './makemon.js';
-import { FOOD_CLASS } from './objects.js';
 import { pushInput } from './input.js';
 import { initrack } from './monmove.js';
-import { moveloop_core, NetHackGame, maybe_deferred_goto_after_rhack } from './allmain.js';
+import { NetHackGame, maybe_deferred_goto_after_rhack, run_command } from './allmain.js';
 import { HeadlessDisplay, createHeadlessInput } from './headless.js';
 
 export { HeadlessDisplay };
@@ -45,18 +42,6 @@ export const TYP_NAMES = [
 
 export function typName(t) {
     return TYP_NAMES[t] || `UNKNOWN(${t})`;
-}
-
-// Navigation/direction key characters (vi-keys hjklyubn).
-// Action labels in session files are derived heuristically from the key pressed
-// and can be wrong when direction keys are used as command arguments (e.g. 'n'
-// labeled 'move-se' when thrown north in a throw command).  Use the key character
-// directly as the authoritative signal for movement steps; treat action labels as
-// backward-compat hints only.
-const MOVE_KEY_CHARS = new Set(['h', 'j', 'k', 'l', 'y', 'u', 'b', 'n']);
-function stepIsNavKey(step) {
-    return typeof step.key === 'string' && step.key.length === 1
-        && MOVE_KEY_CHARS.has(step.key);
 }
 
 // Strip ANSI escape/control sequences from a terminal line.
@@ -117,12 +102,12 @@ export function getSessionScreenAnsiLines(screenHolder) {
 // ---------------------------------------------------------------------------
 
 // Get startup data from a v3 session.
-// V3 format: startup is the first step with key === null and action === 'startup'
+// V3 format: startup is the first step with key === null.
 // Returns the startup object or null if not found.
 export function getSessionStartup(session) {
     if (session?.steps?.length) {
         const firstStep = session.steps[0];
-        if (firstStep.key === null && firstStep.action === 'startup') {
+        if (firstStep.key === null) {
             return {
                 rng: firstStep.rng || [],
                 rngCalls: (firstStep.rng || []).length,
@@ -399,85 +384,6 @@ function firstComparableEntry(entries) {
     return null;
 }
 
-function comparableCallParts(entries) {
-    const out = [];
-    for (const e of entries || []) {
-        if (isMidlogEntry(e)) continue;
-        const call = rngCallPart(e);
-        if (isCompositeEntry(call)) continue;
-        out.push(call);
-    }
-    return out;
-}
-
-function hasNoComparableRngEntries(entries) {
-    for (const e of entries || []) {
-        if (isMidlogEntry(e)) continue;
-        const call = rngCallPart(e);
-        if (isCompositeEntry(call)) continue;
-        return false;
-    }
-    return true;
-}
-
-function hasRunmodeDelayOpen(entries) {
-    for (const e of entries || []) {
-        if (typeof e !== 'string') continue;
-        if (e.startsWith('>runmode_delay_output')) return true;
-    }
-    return false;
-}
-
-function hasRunmodeDelayClose(entries) {
-    for (const e of entries || []) {
-        if (typeof e !== 'string') continue;
-        if (e.startsWith('<runmode_delay_output')) return true;
-    }
-    return false;
-}
-
-function hasRunmodeDelayCloseOnlyBoundary(entries) {
-    if (!Array.isArray(entries) || entries.length === 0) return false;
-    if (!hasRunmodeDelayClose(entries)) return false;
-    if (hasRunmodeDelayOpen(entries)) return false;
-    return hasNoComparableRngEntries(entries);
-}
-
-function hasTurnBoundaryRng(entries) {
-    for (const e of entries || []) {
-        if (typeof e !== 'string') continue;
-        if (e.includes('distfleeck(')
-            || e.includes('mcalcmove(')
-            || e.includes('moveloop_core(')
-            || e.includes('regen_hp(')
-            || e.includes('dosounds(')
-            || e.includes('gethungry(')
-            || e.includes('u_calc_moveamt(')
-            || e.includes('dosearch0(')) {
-            return true;
-        }
-    }
-    return false;
-}
-
-function hasStopOccupationBoundary(entries) {
-    for (const e of entries || []) {
-        if (typeof e !== 'string') continue;
-        if (e.includes('stop_occupation(')) return true;
-    }
-    return false;
-}
-
-function replayBoundaryTraceEnabled() {
-    const env = (typeof process !== 'undefined' && process.env) ? process.env : {};
-    return env.WEBHACK_REPLAY_BOUNDARY_TRACE === '1';
-}
-
-function replayBoundaryTrace(...args) {
-    if (!replayBoundaryTraceEnabled()) return;
-    console.log('[REPLAY_BOUNDARY_TRACE]', ...args);
-}
-
 function replayPendingTraceEnabled() {
     const env = (typeof process !== 'undefined' && process.env) ? process.env : {};
     return env.WEBHACK_REPLAY_PENDING_TRACE === '1';
@@ -574,7 +480,7 @@ function getChargenKeys(session) {
     if (session.type !== 'chargen') return [];
     const keys = [];
     for (const step of (session.steps || [])) {
-        if (step.action === 'game-ready') break; // end of init phase
+        if (step.key === null) break; // end of init phase
         if (typeof step.key === 'string' && step.key.length > 0) {
             keys.push(step.key);
         }
@@ -589,13 +495,8 @@ function getChargenKeys(session) {
 // In either case, replay output should be normalized for strict per-step comparison.
 export function hasStartupBurstInFirstStep(session) {
     if (!session) return false;
-    // V3 format: startup is the first step with key === null
-    return session.steps?.[0]?.key === null && session.steps[0].action === 'startup';
-}
-
-function isTutorialPromptScreen(screen) {
-    if (!Array.isArray(screen) || screen.length === 0) return false;
-    return screen.some(line => typeof line === 'string' && line.includes('Do you want a tutorial?'));
+    // V3 format: startup is the first step with key === null.
+    return session.steps?.[0]?.key === null;
 }
 
 // Generate full startup (map gen + post-level init) with RNG trace capture.
@@ -729,7 +630,7 @@ export async function replaySession(seed, session, opts = {}) {
     }
 
     const sessionChar = getSessionCharacter(session);
-    const tutorialEnabled = !!(session?.options?.tutorial ?? session?.meta?.options?.tutorial);
+    const tutorialEnabled = (opts.tutorial === true);
     const startDnum = Number.isInteger(opts.startDnum) ? opts.startDnum : undefined;
     const startDlevel = Number.isInteger(opts.startDlevel) ? opts.startDlevel : 1;
     const startDungeonAlign = Number.isInteger(opts.startDungeonAlign) ? opts.startDungeonAlign : undefined;
@@ -768,21 +669,6 @@ export async function replaySession(seed, session, opts = {}) {
     const startupLog = getRngLog();
     const startupRng = startupLog.map(toCompactRng);
 
-    // Keep replay harness deterministic and input-driven: do not inject
-    // captured startup screens into display state.
-    const sessionStartup = getSessionStartup(session);
-    const startupScreen = getSessionScreenLines(sessionStartup || {});
-    const startupTopline = startupScreen[0] || '';
-    if (typeof game.display?.putstr_message === 'function') {
-        game.display.putstr_message(startupTopline);
-    }
-    const firstStepScreen = getSessionScreenLines(session.steps?.[0] || {});
-    const tutorialPromptStartup = isTutorialPromptScreen(firstStepScreen)
-        && (session?.type === 'interface' || opts.replayMode === 'interface');
-
-    let inTutorialPrompt = tutorialPromptStartup;
-    let pendingTutorialStart = false;
-
     // Replay each step
     // C ref: allmain.c moveloop_core() step boundary analysis:
     //   Each step captures: rhack(player action) + context.move block (movemon + turnEnd)
@@ -798,48 +684,21 @@ export async function replaySession(seed, session, opts = {}) {
         : allSteps.length;
     const stepResults = [];
     let pendingCommand = null;
-    let pendingKind = null;
     let pendingCount = 0;
     let lastCommand = null; // C ref: do_repeat() remembered command for Ctrl+A
-    let pendingTransitionTurn = false;
     // game.pendingDeferredTimedTurn is used instead (game-level flag)
-    // (Deferred boundary machinery removed — RNG comparison is now flat/post-hoc.)
-    const startTutorialLevel = () => {
-        const tutorialAlign = Number.isInteger(opts.tutorialDungeonAlign)
-            ? opts.tutorialDungeonAlign
-            : A_NONE;
-        // C tutorial branch uses a separate gamestate and starts without
-        // carried comestibles; tutorial teaches eating via placed ration.
-        game.player.inventory = game.player.inventory.filter(o => o.oclass !== FOOD_CLASS);
-        game.map = makelevel(1, TUTORIAL, 1, {
-            dungeonAlignOverride: tutorialAlign,
-        });
-        game.levels[1] = game.map;
-        game.player.dungeonLevel = 1;
-        game.player.inTutorial = true;
-        game.player.showExp = true;
-        if (game.map?.flags?.lit_corridor) game.flags.lit_corridor = true;
-        game.placePlayerOnLevel('down');
-        game.renderCurrentScreen();
-    };
 
     const pushStepResult = (stepLogRaw, screen, arg3, arg4, arg5, arg6) => {
         let screenAnsiOverride;
-        let step;
-        let stepScreen;
         let stepIndex;
         // Backward-compatible arity:
-        // old: (stepLogRaw, screen, step, stepScreen, stepIndex)
-        // new: (stepLogRaw, screen, screenAnsiOverride, step, stepScreen, stepIndex)
+        // old: (stepLogRaw, screen, step, _, stepIndex)
+        // new: (stepLogRaw, screen, screenAnsiOverride, _, _, stepIndex)
         if (arg3 && typeof arg3 === 'object' && !Array.isArray(arg3) && Object.hasOwn(arg3, 'key')) {
             screenAnsiOverride = null;
-            step = arg3;
-            stepScreen = arg4;
             stepIndex = arg5;
         } else {
             screenAnsiOverride = arg3;
-            step = arg4;
-            stepScreen = arg5;
             stepIndex = arg6;
         }
         const raw = stepLogRaw;
@@ -864,138 +723,27 @@ export async function replaySession(seed, session, opts = {}) {
             screenAnsi: normalizedScreenAnsi,
             animationBoundaries: stepAnimationBoundaries.slice(),
         });
-        // Sync player stats from session screen data to keep game state
-        // aligned with the C trace during replay.
-        if (stepScreen && stepScreen.length > 0) {
-            for (const line of stepScreen) {
-                const hpm = line.match(/HP:(\d+)\((\d+)\)/);
-                if (hpm) {
-                    game.player.hp = parseInt(hpm[1]);
-                    game.player.hpmax = parseInt(hpm[2]);
-                }
-                const hpmPw = line.match(/HP:(\d+)\((\d+)\)\s+Pw:(\d+)\((\d+)\)\s+AC:([-]?\d+)/);
-                if (hpmPw) {
-                    game.player.hp = parseInt(hpmPw[1]);
-                    game.player.hpmax = parseInt(hpmPw[2]);
-                    game.player.pw = parseInt(hpmPw[3]);
-                    game.player.pwmax = parseInt(hpmPw[4]);
-                    game.player.ac = parseInt(hpmPw[5]);
-                }
-                const attrm = line.match(/St:([0-9/*]+)\s+Dx:(\d+)\s+Co:(\d+)\s+In:(\d+)\s+Wi:(\d+)\s+Ch:(\d+)/);
-                if (attrm) {
-                    game.player._screenStrength = attrm[1];
-                    // Convert display str back to internal value: "18/07" → 25, "18/**" → 118
-                    const strStr = attrm[1];
-                    const subMatch = strStr.match(/^18\/(\d+)$/);
-                    game.player.attributes[0] = subMatch ? 18 + parseInt(subMatch[1], 10)
-                        : strStr === '18/**' ? 118
-                        : parseInt(strStr, 10); // A_STR
-                    game.player.attributes[1] = parseInt(attrm[4]); // A_INT (In)
-                    game.player.attributes[2] = parseInt(attrm[5]); // A_WIS (Wi)
-                    game.player.attributes[3] = parseInt(attrm[2]); // A_DEX (Dx)
-                    game.player.attributes[4] = parseInt(attrm[3]); // A_CON (Co)
-                    game.player.attributes[5] = parseInt(attrm[6]); // A_CHA (Ch)
-                }
-            }
-        }
     };
     const applyPostRhack = (rhackResult) => {
         maybe_deferred_goto_after_rhack(game, rhackResult);
         return rhackResult;
     };
-    const beginTimedRhack = (commandKey, onTimedTurn) => {
-        game.advanceRunTurn = async () => {
-            await onTimedTurn(true);
-        };
-        return rhack(commandKey, game);
-    };
-    const clearTimedRhack = () => {
-        game.advanceRunTurn = null;
-    };
+    const beginTimedCommand = (commandKey, countPrefix = 0) => (
+        run_command(game, commandKey, {
+            countPrefix: (Number.isInteger(countPrefix) && countPrefix > 0) ? countPrefix : 0,
+            computeFov: true,
+        })
+    );
 
     for (let stepIndex = 0; stepIndex < maxSteps; stepIndex++) {
         stepAnimationBoundaries = [];
         const step = allSteps[stepIndex];
         game.map._replayStepIndex = stepIndex;
         const prevCount = getRngLog().length;
-        const stepScreen = getSessionScreenLines(step);
-        const stepScreenAnsi = getSessionScreenAnsiLines(step);
-        const applyStepScreen = () => {
-            if (stepScreenAnsi.length > 0
-                && typeof game.display?.setScreenAnsiLines === 'function') {
-                game.display.setScreenAnsiLines(stepScreenAnsi);
-                return;
-            }
-            if (stepScreen.length > 0) {
-                game.display.setScreenLines(stepScreen);
-            }
-        };
-        if (isTutorialPromptScreen(stepScreen)) {
-            inTutorialPrompt = true;
-        }
-        const stepMsg = stepScreen[0] || '';
-        const stepMsgPlain = stripAnsiSequences(stepMsg).trim();
-        const stepFirstRng = ((step.rng || []).find((e) =>
-            typeof e === 'string' && !e.startsWith('>') && !e.startsWith('<')
-        ) || '');
-        const prevStep = stepIndex > 0 ? allSteps[stepIndex - 1] : null;
-        const nextStep = stepIndex + 1 < allSteps.length ? allSteps[stepIndex + 1] : null;
-        const prevStepScreen = prevStep ? getSessionScreenLines(prevStep) : [];
-        const prevStepSparseMove = !!(prevStep
-            && (prevStep.action?.startsWith('move-') || stepIsNavKey(prevStep))
-            && ((prevStep.rng && prevStep.rng.length) || 0) === 0
-            && String(prevStepScreen[0] || '').trim() === ''
-            && typeof prevStep.key === 'string'
-            && prevStep.key.length === 1);
-        const forceReplayEnterRun = !pendingCommand
-            && (step.key === '\n' || step.key === '\r')
-            && stepFirstRng.includes('distfleeck(')
-            && prevStepSparseMove;
-        game._replayForceEnterRun = forceReplayEnterRun;
-
-        // (Deferred sparse move handling removed — flat RNG comparison
-        // doesn't require per-step RNG attribution.)
-        if (pendingTransitionTurn) {
-            const key = step.key || '';
-            const isAcknowledge = key === ' ' || key === '\n' || key === '\r';
-            if (isAcknowledge) {
-                await moveloop_core(game, { computeFov: true });
-                pendingTransitionTurn = false;
-                game.renderCurrentScreen();
-                if (typeof opts.onStep === 'function') {
-                    opts.onStep({ stepIndex, step, game });
-                }
-                const fullLog = getRngLog();
-                const stepLog = fullLog.slice(prevCount);
-                pushStepResult(
-                    stepLog,
-                    opts.captureScreens ? game.display.getScreenLines() : undefined,
-                    step,
-                    stepScreen,
-                    stepIndex
-                );
-                continue;
-            }
-            pendingTransitionTurn = false;
-        }
+        game._replayForceEnterRun = false;
         // pendingDeferredTimedTurn is consumed later (after the player's command)
         // so that the player's post-move position is in effect for monster
         // decisions like dog_goal's On_stairs check. See below.
-        const isCapturedDipPrompt = stepMsg.startsWith('What do you want to dip into one of the potions of water?')
-            && ((step.rng && step.rng.length) || 0) === 0;
-
-        if (isCapturedDipPrompt && !pendingCommand) {
-            applyStepScreen();
-            pushStepResult(
-                [],
-                opts.captureScreens ? game.display.getScreenLines() : undefined,
-                stepScreenAnsi.length > 0 ? stepScreenAnsi : null,
-                step,
-                stepScreen,
-                stepIndex
-            );
-            continue;
-        }
 
         // Keep replay harness simple: execute captured keys directly.
         // Comparator logic handles sparse/legacy log flexibility.
@@ -1013,99 +761,21 @@ export async function replaySession(seed, session, opts = {}) {
             game.display.clearRow(0);
             game.display.topMessage = null;
         }
-        if (!pendingCommand && game.pendingToplineMessage && step.key === ' ') {
-            game.display.putstr_message(game.pendingToplineMessage);
-            game.pendingToplineMessage = null;
-        }
-
-        // C ref: startup tutorial yes/no prompt blocks normal gameplay input.
-        // Invalid keys are ignored (no RNG/time). 'y' accepts tutorial and
-        // generates tut-1 as a DoD special level.
-        if (inTutorialPrompt) {
-            const key = (step.key || '').toLowerCase();
-            if (key === 'y') {
-                // C traces can materialize tutorial either on 'y' step
-                // or on following prompt-advance depending on capture path.
-                if (((step.rng && step.rng.length) || 0) > 0) {
-                    startTutorialLevel();
-                    pendingTutorialStart = false;
-                } else {
-                    pendingTutorialStart = true;
-                }
-                inTutorialPrompt = false;
-                applyStepScreen();
-            } else if (key === 'n') {
-                pendingTutorialStart = false;
-                inTutorialPrompt = false;
-                applyStepScreen();
-            } else if (stepScreen.length > 0 || stepScreenAnsi.length > 0) {
-                // Keep the yes/no prompt UI visible across ignored keys.
-                applyStepScreen();
-            }
-
-            const fullLog = getRngLog();
-            const stepLog = fullLog.slice(prevCount);
-            pushStepResult(
-                stepLog,
-                opts.captureScreens ? game.display.getScreenLines() : undefined,
-                step,
-                stepScreen,
-                stepIndex
-            );
-            continue;
-        }
-
-        if (pendingTutorialStart && step.key === ' ') {
-            startTutorialLevel();
-            pendingTutorialStart = false;
-
-            const fullLog = getRngLog();
-            const stepLog = fullLog.slice(prevCount);
-            pushStepResult(
-                stepLog,
-                opts.captureScreens ? (stepScreen.length > 0 ? stepScreen : game.display.getScreenLines()) : undefined,
-                step,
-                stepScreen,
-                stepIndex
-            );
-            continue;
-        }
-
         if (!pendingCommand
-            && step.key === ' '
-            && (step.action === 'more-prompt'
-                || ((stepScreen[0] || '').includes('--More--')))) {
-            applyStepScreen();
-            const fullLog = getRngLog();
-            const stepLog = fullLog.slice(prevCount);
-            pushStepResult(
-                stepLog,
-                opts.captureScreens ? game.display.getScreenLines() : undefined,
-                stepScreenAnsi,
-                step,
-                stepScreen,
-                stepIndex
-            );
-            continue;
-        }
-
-        // (Counted-command occupation pass-through removed — flat RNG comparison.)
-
-        // When occupation is active between steps, it was already drained by
-        // the prior command's execution. This step is a C-artifact boundary
-        // marker (runmode_delay_output). Record screen only.
-        if (!pendingCommand && game.occupation) {
-            applyStepScreen();
+            && (game.player?.deathCause || game.player?.dead || (game.player?.hp || 0) <= 0)) {
+            game.renderCurrentScreen();
             pushStepResult(
                 [],
                 opts.captureScreens ? game.display.getScreenLines() : undefined,
+                (typeof game.display?.getScreenAnsiLines === 'function')
+                    ? game.display.getScreenAnsiLines()
+                    : null,
                 step,
-                stepScreen,
+                null,
                 stepIndex
             );
             continue;
         }
-
         // C ref: cmd.c:4958 — digit keys start count prefix accumulation.
         // First digit keeps prior topline; continued count (or leading zero)
         // updates topline to "Count: N". No time/RNG is consumed.
@@ -1126,7 +796,7 @@ export async function replaySession(seed, session, opts = {}) {
                 [],
                 opts.captureScreens ? game.display.getScreenLines() : undefined,
                 step,
-                stepScreen,
+                null,
                 stepIndex
             );
             continue;
@@ -1140,134 +810,15 @@ export async function replaySession(seed, session, opts = {}) {
         let capturedScreenAnsiOverride = null;
         // (reachedFinalRecordedStepTarget removed — flat RNG comparison
         // doesn't need per-step RNG count matching.)
-        const syncHpFromStepScreen = () => {
-            if (stepScreen.length <= 0) return;
-            for (const line of stepScreen) {
-                const hpmPw = line.match(/HP:(\d+)\((\d+)\)\s+Pw:(\d+)\((\d+)\)\s+AC:([-]?\d+)/);
-                if (hpmPw) {
-                    game.player.hp = parseInt(hpmPw[1]);
-                    game.player.hpmax = parseInt(hpmPw[2]);
-                    game.player.pw = parseInt(hpmPw[3]);
-                    game.player.pwmax = parseInt(hpmPw[4]);
-                    game.player.ac = parseInt(hpmPw[5]);
-                    continue;
-                }
-                const hpm = line.match(/HP:(\d+)\((\d+)\)/);
-                if (hpm) {
-                    game.player.hp = parseInt(hpm[1]);
-                    game.player.hpmax = parseInt(hpm[2]);
-                }
-            }
-        };
-        const applyTimedTurn = async (replaceTurnMessages = false) => {
-            let restorePutstr = null;
-            if (replaceTurnMessages && game?.display && typeof game.display.putstr_message === 'function') {
-                const originalPutstr = game.display.putstr_message.bind(game.display);
-                game.display.putstr_message = (msg) => {
-                    game.display.clearRow(0);
-                    game.display.topMessage = null;
-                    return originalPutstr(msg);
-                };
-                restorePutstr = () => {
-                    game.display.putstr_message = originalPutstr;
-                };
-            }
-            // C trace behavior: stair transitions consume time but do not run
-            // immediate end-of-turn effects in steps where no turn-end RNG is
-            // captured for that transition command.
-            const isLevelTransition = step.action === 'descend' || step.action === 'ascend'
-                || step.key === '>' || step.key === '<';
-            const expectedStepRng = step.rng || [];
-            const expectsTransitionTurnEnd = expectedStepRng.some((entry) =>
-                typeof entry === 'string'
-                && (entry.includes('mcalcmove(')
-                    || entry.includes('moveloop_core(')
-                    || entry.includes('gethungry('))
-            );
-            if (isLevelTransition && !expectsTransitionTurnEnd) {
-                if (restorePutstr) restorePutstr();
-                return;
-            }
-            // C ref: allmain.c moveloop_core():
-            // monster movement occurs before once-per-turn bookkeeping;
-            // settrack() happens during turn setup before moves++ work.
-            // C ref: vision_recalc() runs during domove(), update FOV before monsters act
-            await moveloop_core(game, { computeFov: true });
-            if (restorePutstr) restorePutstr();
-        };
         if (pendingCommand) {
-            const priorPendingKind = pendingKind;
             replayPendingTrace(
                 `step=${stepIndex + 1}`,
                 `key=${JSON.stringify(step.key || '')}`,
-                `pendingKind=${String(priorPendingKind || '') || 'none'}`,
                 'pending-start'
             );
-            const pendingScreenBeforeInput = (opts.captureScreens && game?.display?.getScreenLines)
-                ? game.display.getScreenLines()
-                : null;
-            const applyInventoryLookPromptScreen = () => {
-                if (stepScreenAnsi.length > 0
-                    && typeof game.display?.setScreenAnsiLines === 'function') {
-                    game.display.setScreenAnsiLines(stepScreenAnsi);
-                    if (opts.captureScreens) capturedScreenOverride = stepScreen;
-                    capturedScreenAnsiOverride = stepScreenAnsi;
-                    return;
-                }
-                if (Array.isArray(stepScreen) && stepScreen.length > 0 && game.display?.setScreenLines) {
-                    game.display.setScreenLines(stepScreen);
-                    if (opts.captureScreens) capturedScreenOverride = stepScreen;
-                    capturedScreenAnsiOverride = Array.isArray(capturedScreenOverride)
-                        ? capturedScreenOverride.map((line) => String(line || ''))
-                        : null;
-                    return;
-                }
-                if (Array.isArray(pendingScreenBeforeInput) && game.display?.setScreenLines) {
-                    const merged = pendingScreenBeforeInput.slice();
-                    merged[0] = 'Search for:';
-                    game.display.setScreenLines(merged);
-                    if (opts.captureScreens) capturedScreenOverride = merged;
-                    capturedScreenAnsiOverride = Array.isArray(capturedScreenOverride)
-                        ? capturedScreenOverride.map((line) => String(line || ''))
-                        : null;
-                    return;
-                }
-                if (game.display?.clearRow) game.display.clearRow(0);
-                if (game.display?.putstr) game.display.putstr(0, 0, 'Search for:');
-            };
             // A previous command is blocked on nhgetch(); this step's key feeds it.
             for (let i = 0; i < step.key.length; i++) {
                 pushInput(step.key.charCodeAt(i));
-            }
-            // Legacy traces sometimes omit Enter after a one-key "#<cmd>"
-            // shorthand. Only synthesize Enter when the next captured key
-            // does not look like continued typing for a multi-char command.
-            const maybeShorthandExtendedKey = /^[A-Za-z]$/.test(step.key);
-            if (pendingKind === 'extended-command' && maybeShorthandExtendedKey) {
-                const nextKey = allSteps[stepIndex + 1]?.key;
-                const continuesWord = typeof nextKey === 'string'
-                    && nextKey.length === 1
-                    && /[A-Za-z]/.test(nextKey);
-                const explicitEnterNext = nextKey === '\n' || nextKey === '\r';
-                const firstExpected = String(stepScreen[0] || '').replace(/[\x00-\x1f\x7f]/g, '').trimStart();
-                const stillTypingExtended = firstExpected.startsWith('#');
-                // C auto-completes extended commands: if the captured screen
-                // no longer shows a '#' prompt, C has already resolved the
-                // command (e.g. #w → #wield → dowield prompt). Inject Enter
-                // so JS resolves it too, even if the next key is a letter
-                // (which would be consumed by the resolved command's prompt,
-                // not by the extended command getlin).
-                if (!stillTypingExtended && stepScreen.length > 0) {
-                    if (!explicitEnterNext) {
-                        pushInput(13);
-                    }
-                    pendingKind = null;
-                } else if (!continuesWord && !explicitEnterNext && !stillTypingExtended) {
-                    pushInput(13);
-                    // Only inject shorthand Enter once; extended commands can
-                    // continue into nested prompts (getlin/menus) afterward.
-                    pendingKind = null;
-                }
             }
             // Prompt-driven commands (read/drop/throw/etc.) usually resolve
             // immediately after input, but can take a few ticks. Poll briefly
@@ -1285,71 +836,10 @@ export async function replaySession(seed, session, opts = {}) {
             replayPendingTrace(
                 `step=${stepIndex + 1}`,
                 `key=${JSON.stringify(step.key || '')}`,
-                `pendingKind=${String(priorPendingKind || '') || 'none'}`,
                 `settled=${settled.done ? 1 : 0}`
             );
             if (!settled.done) {
-                const capturedNeverMind = stepMsgPlain === 'Never mind.'
-                    && ((step.rng && step.rng.length) || 0) === 0;
-                if (capturedNeverMind) {
-                    // C prompt flows can cancel on this keystroke while JS stays
-                    // blocked in nhgetch(); force-cancel so the next command key
-                    // is not stolen by a stale prompt wait.
-                    pushInput(27);
-                    let forcedSettled = await Promise.race([
-                        pendingCommand.then(v => ({ done: true, value: v })),
-                        new Promise(resolve => setTimeout(() => resolve({ done: false }), 5)),
-                    ]);
-                    if (!forcedSettled.done) {
-                        pushInput(13);
-                        forcedSettled = await Promise.race([
-                            pendingCommand.then(v => ({ done: true, value: v })),
-                            new Promise(resolve => setTimeout(() => resolve({ done: false }), 5)),
-                        ]);
-                    }
-                    if (forcedSettled.done) {
-                        pendingCommand = null;
-                        pendingKind = null;
-                    }
-                }
-                const isCapturedSearchPrompt = ((stepScreen[0] || '').startsWith('Search for:'));
-                const hasCapturedPromptFrame = (stepScreen.length > 0 || stepScreenAnsi.length > 0)
-                    && ((step.rng && step.rng.length) || 0) === 0;
-                if (hasCapturedPromptFrame) {
-                    applyStepScreen();
-                    if (opts.captureScreens) capturedScreenOverride = stepScreen;
-                    capturedScreenAnsiOverride = stepScreenAnsi.length > 0
-                        ? stepScreenAnsi
-                        : (Array.isArray(capturedScreenOverride)
-                            ? capturedScreenOverride.map((line) => String(line || ''))
-                            : null);
-                } else if (isCapturedSearchPrompt
-                    && (stepScreen.length > 0 || stepScreenAnsi.length > 0)) {
-                    // Keylog-derived look prompts can stay pending across
-                    // multiple keys while still capturing the evolving prompt
-                    // buffer ("Search for: k", "Search for: ky", ...).
-                    applyStepScreen();
-                    if (opts.captureScreens) capturedScreenOverride = stepScreen;
-                    capturedScreenAnsiOverride = stepScreenAnsi.length > 0
-                        ? stepScreenAnsi
-                        : (Array.isArray(capturedScreenOverride)
-                            ? capturedScreenOverride.map((line) => String(line || ''))
-                            : null);
-                } else if (priorPendingKind === 'extended-command'
-                    && (stepScreen.length > 0 || stepScreenAnsi.length > 0)) {
-                    applyStepScreen();
-                    if (opts.captureScreens) capturedScreenOverride = stepScreen;
-                    capturedScreenAnsiOverride = stepScreenAnsi.length > 0
-                        ? stepScreenAnsi
-                        : (Array.isArray(capturedScreenOverride)
-                            ? capturedScreenOverride.map((line) => String(line || ''))
-                            : null);
-                } else if (priorPendingKind === 'inventory-menu' && step.key === ':') {
-                    applyInventoryLookPromptScreen();
-                    // ':' transitions inventory dismissal into look prompt; avoid
-                    // applying inventory-only passthrough behavior on next key.
-                    pendingKind = null;
-                } else if (opts.captureScreens) {
+                if (opts.captureScreens) {
                     capturedScreenOverride = game.display.getScreenLines();
                     capturedScreenAnsiOverride = (typeof game.display?.getScreenAnsiLines === 'function')
                         ? game.display.getScreenAnsiLines()
@@ -1362,79 +852,16 @@ export async function replaySession(seed, session, opts = {}) {
                 replayPendingTrace(
                     `step=${stepIndex + 1}`,
                     `key=${JSON.stringify(step.key || '')}`,
-                    `pendingKind=${String(priorPendingKind || '') || 'none'}`,
                     `resolvedMoved=${result?.moved ? 1 : 0}`,
                     `resolvedTime=${result?.tookTime ? 1 : 0}`
                 );
                 pendingCommand = null;
-                pendingKind = null;
-                const isAckStep = step.key === ' ' || step.key === '\n' || step.key === '\r';
-                // C tty: single-char answers to [yn] prompts (like 'n' declining
-                // "Refresh your memory?") are recorded while the prompt is still
-                // visible on screen. Apply the captured session frame so JS screen
-                // matches C's pre-keypress display state.
-                const isPromptAnswerStep = !isAckStep
-                    && step.key.length === 1
-                    && priorPendingKind === null;
-                if ((isAckStep || isPromptAnswerStep)
-                    && stepScreen.length > 0
-                    && ((step.rng || []).length === 0)
-                    && result
-                    && !result.tookTime) {
-                    // Keep display-only modal-dismiss capture authoritative.
-                    applyStepScreen();
-                    if (opts.captureScreens) capturedScreenOverride = stepScreen;
-                    capturedScreenAnsiOverride = stepScreenAnsi.length > 0
-                        ? stepScreenAnsi
-                        : stepScreen.map((line) => String(line || ''));
-                }
-                // C tty behavior: a key used to dismiss inventory can also become
-                // the next command. Replay this for menu-driven traces.
-                if (priorPendingKind === 'inventory-menu'
-                    && step.key.length === 1
-                    && step.key !== ' '
-                    && step.key !== '\n'
-                    && step.key !== '\r') {
-                    if (step.key === ':') {
-                        applyInventoryLookPromptScreen();
-                        result = { moved: false, tookTime: false };
-                    } else {
-                        const passthroughCh = step.key.charCodeAt(0);
-                        game.commandCount = 0;
-                        game.multi = 0;
-                        game.advanceRunTurn = async () => {
-                            await applyTimedTurn(true);
-                        };
-                        const passthroughPromise = rhack(passthroughCh, game);
-                        const settledPassthrough = await Promise.race([
-                            passthroughPromise.then(v => ({ done: true, value: v })),
-                            new Promise(resolve => setTimeout(() => resolve({ done: false }), 1)),
-                        ]);
-                        if (!settledPassthrough.done) {
-                            if (opts.captureScreens) {
-                                capturedScreenOverride = game.display.getScreenLines();
-                                capturedScreenAnsiOverride = (typeof game.display?.getScreenAnsiLines === 'function')
-                                    ? game.display.getScreenAnsiLines()
-                                    : null;
-                            }
-                            pendingCommand = passthroughPromise;
-                            pendingKind = (passthroughCh === 35)
-                                ? 'extended-command'
-                                : (['i', 'I'].includes(String.fromCharCode(passthroughCh)) ? 'inventory-menu' : null);
-                            result = { moved: false, tookTime: false };
-                        } else {
-                            result = applyPostRhack(settledPassthrough.value);
-                        }
-                        game.advanceRunTurn = null;
-                    }
-                }
             }
         } else {
             if (game.pendingPrompt && typeof game.pendingPrompt.onKey === 'function') {
                 const promptResult = game.pendingPrompt.onKey(ch, game);
                 if (promptResult && promptResult.handled) {
                     result = { moved: false, tookTime: false, prompt: true };
-                    game.advanceRunTurn = null;
                     // Prompt handlers consume this key; no command execution.
                 } else {
                     game.pendingPrompt = null;
@@ -1444,34 +871,24 @@ export async function replaySession(seed, session, opts = {}) {
                 // Prompt consumed input above.
             } else {
             let effectiveCh = ch;
+            let countPrefixForRun = pendingCount > 0 ? pendingCount : 0;
             if (ch === 1) { // Ctrl+A
                 if (lastCommand) {
                     effectiveCh = lastCommand.key;
-                    game.commandCount = lastCommand.count || 0;
-                    game.multi = game.commandCount;
-                    if (game.multi > 0) game.multi--;
-                    game.cmdKey = effectiveCh;
+                    countPrefixForRun = lastCommand.count || 0;
                 } else {
                     // No command to repeat yet: no-op, matching tty behavior.
                     pushStepResult(
                         [],
                         opts.captureScreens ? game.display.getScreenLines() : undefined,
                         step,
-                        stepScreen,
+                        null,
                         stepIndex
                     );
                     continue;
                 }
-            } else if (pendingCount > 0) {
-                game.commandCount = pendingCount;
-                game.multi = pendingCount;
-                if (game.multi > 0) game.multi--;
-                game.cmdKey = ch;
-                pendingCount = 0;
-            } else {
-                game.commandCount = 0;
-                game.multi = 0;
             }
+            pendingCount = 0;
             // Feed the key to the game engine
             // For multi-char keys (e.g. "wb" = wield item b), push trailing chars
             // into input queue so nhgetch() returns them immediately
@@ -1482,326 +899,44 @@ export async function replaySession(seed, session, opts = {}) {
             }
 
             // Execute the command once (one turn per keystroke)
-            // Some traces use space to acknowledge "--More--" then immediately
-            // rest; detect that by expected RNG and map to wait command.
-            let execCh = effectiveCh;
-            if (step.key === ' ') {
-                const firstRng = (step.rng || []).find((e) =>
-                    typeof e === 'string' && !e.startsWith('>') && !e.startsWith('<')
-                );
-                if (firstRng && firstRng.includes('distfleeck(')) {
-                    execCh = '.'.charCodeAt(0);
-                }
-            }
             // Save replayable command (C: stores repeat command before execute).
-            if (ch !== 1 && game.multi === 0) {
-                lastCommand = { key: ch, count: game.commandCount || 0 };
+            if (ch !== 1 && countPrefixForRun === 0) {
+                lastCommand = { key: ch, count: countPrefixForRun };
             }
-            // Keep the active command key aligned with moveloop-style repeat logic.
-            game.cmdKey = execCh;
-            const commandPromise = beginTimedRhack(execCh, applyTimedTurn);
+            const commandPromise = beginTimedCommand(effectiveCh, countPrefixForRun);
             const settled = await Promise.race([
                 commandPromise.then(v => ({ done: true, value: v })),
                 new Promise(resolve => setTimeout(() => resolve({ done: false }), 1)),
             ]);
             if (!settled.done) {
-                // Inventory display: keep menu pending so the next real key
-                // dismisses it (and may become a passthrough command), matching
-                // C tty interactions.
-                const needsDismissal = ['i', 'I'].includes(String.fromCharCode(ch));
-                const hasRunmodeDelayMarker = Array.isArray(step.rng)
-                    && step.rng.some((entry) =>
-                        typeof entry === 'string' && entry.includes('runmode_delay_output')
-                    );
-                const hasDirectionPrompt = stepMsg === 'In what direction?'
-                    || stepMsg === 'In which direction?';
-                const hasCapturedPromptFrame = ((step.rng && step.rng.length) || 0) === 0
-                    && (stepScreen.length > 0 || stepScreenAnsi.length > 0)
-                    && stepMsg.trim().length > 0
-                    && (step.action ? step.action.startsWith('key-') : !stepIsNavKey(step));
                 // Command is waiting for additional input (direction/item/etc.).
                 // Defer resolution to subsequent captured step(s).
-                // Preserve the prompt/menu frame shown before we redraw map.
                 if (opts.captureScreens) {
-                    if (hasRunmodeDelayMarker
-                        && hasDirectionPrompt
-                        && (stepScreen.length > 0 || stepScreenAnsi.length > 0)) {
-                        // Runmode-delay captures can leave a command pending
-                        // while still recording the post-delay map frame.
-                        // Keep that captured frame authoritative.
-                        applyStepScreen();
-                        capturedScreenOverride = stepScreen.length > 0 ? stepScreen : null;
-                        capturedScreenAnsiOverride = stepScreenAnsi.length > 0
-                            ? stepScreenAnsi
-                            : (Array.isArray(capturedScreenOverride)
-                                ? capturedScreenOverride.map((line) => String(line || ''))
-                                : null);
-                    } else if (hasCapturedPromptFrame) {
-                        // Prompt-start frames are frequently captured before JS
-                        // has rendered pending-input UI; preserve the recorded
-                        // prompt so follow-up key routing stays aligned.
-                        applyStepScreen();
-                        capturedScreenOverride = stepScreen.length > 0 ? stepScreen : null;
-                        capturedScreenAnsiOverride = stepScreenAnsi.length > 0
-                            ? stepScreenAnsi
-                            : (Array.isArray(capturedScreenOverride)
-                                ? capturedScreenOverride.map((line) => String(line || ''))
-                                : null);
-                    } else if (needsDismissal && (stepScreen.length > 0 || stepScreenAnsi.length > 0)) {
-                        // Inventory overlays are modal display-only frames.
-                        // Use captured C frame as authoritative for this step
-                        // so menu text/column placement parity doesn't depend on
-                        // JS inventory-detail rendering completeness.
-                        applyStepScreen();
-                        capturedScreenOverride = stepScreen.length > 0 ? stepScreen : null;
-                        capturedScreenAnsiOverride = stepScreenAnsi.length > 0
-                            ? stepScreenAnsi
-                            : (Array.isArray(capturedScreenOverride)
-                                ? capturedScreenOverride.map((line) => String(line || ''))
-                                : null);
-                    } else {
-                        capturedScreenOverride = game.display.getScreenLines();
-                        capturedScreenAnsiOverride = (typeof game.display?.getScreenAnsiLines === 'function')
-                            ? game.display.getScreenAnsiLines()
-                            : null;
-                    }
+                    capturedScreenOverride = game.display.getScreenLines();
+                    capturedScreenAnsiOverride = (typeof game.display?.getScreenAnsiLines === 'function')
+                        ? game.display.getScreenAnsiLines()
+                        : null;
                 }
-                clearTimedRhack();
                 pendingCommand = commandPromise;
-                pendingKind = (ch === 35)
-                    ? 'extended-command'
-                    : (needsDismissal ? 'inventory-menu' : null);
                 replayPendingTrace(
                     `step=${stepIndex + 1}`,
                     `key=${JSON.stringify(step.key || '')}`,
-                    `setPendingKind=${String(pendingKind || '') || 'none'}`
+                    'setPending=1'
                 );
                 result = { moved: false, tookTime: false };
             } else {
-                clearTimedRhack();
                 result = applyPostRhack(settled.value);
             }
             }
         }
 
-        // C ref: cmd.c prefix commands (F=fight, G=run, g=rush) return without
-        // consuming time or reading further input. For multi-char keys like "Fh",
-        // the prefix is processed first, then we need to send the remaining char
-        // as a separate command to actually perform the action.
-        // Note: only actual prefix commands need this — other multi-char commands
-        // like "oj" (open-south) or "wb" (wield-b) consume trailing chars via
-        // nhgetch() internally.
-        const PREFIX_CMDS = new Set(['F', 'G', 'g']);
-        if (result && !result.tookTime && step.key.length > 1
-            && PREFIX_CMDS.has(String.fromCharCode(ch))) {
-            const nextCh = step.key.charCodeAt(1);
-            result = applyPostRhack(await rhack(nextCh, game));
-        }
-
-        // Run any monster turn deferred from a preceding stop_occupation frame,
-        // now that the player's command has updated hero position.
-        // C ref: dogmove.c:583 — On_stairs(u.ux, u.uy) needs hero's post-move pos.
-        await game.runPendingDeferredTimedTurn();
-
-        // If the command took time, run monster movement and turn effects.
-        // Running/rushing can pack multiple movement steps into one command.
-        if (result && result.tookTime) {
-            const timedSteps = Math.max(1, Number.isInteger(result.runSteps) ? result.runSteps : 1);
-            for (let i = 0; i < timedSteps; i++) {
-                if (i > 0 && (game.multi > 0 || game.occupation) && game?.display) {
-                    game.display.clearRow(0);
-                    game.display.topMessage = null;
-                    game.display.messageNeedsMore = false;
-                }
-                await applyTimedTurn();
-
-            }
-            if (game.multi > 0 && typeof game.shouldInterruptMulti === 'function'
-                && game.shouldInterruptMulti()) {
-                game.multi = 0;
-            }
-            // Run occupation continuation turns (multi-turn eating, etc.)
-            // C ref: allmain.c moveloop_core() — occupation runs before next input
-            while (game.occupation) {
-
-                const occ = game.occupation;
-                game.display.clearRow(0);
-                game.display.topMessage = null;
-                const cont = occ.fn(game);
-                const finishedOcc = !cont ? occ : null;
-                if (!cont) {
-                    // C ref: allmain.c:497 — natural occupation completion
-                    // just clears go.occupation silently. "You stop X." is
-                    // only printed by stop_occupation() on external interrupt.
-                    game.occupation = null;
-                    game.pendingPrompt = null;
-                }
-                await applyTimedTurn();
-                if (finishedOcc && typeof finishedOcc.onFinishAfterTurn === 'function') {
-                    finishedOcc.onFinishAfterTurn(game);
-                }
-                if (cont === 'prompt') {
-                    break;
-                }
-
-                // Keep replay HP aligned to captured turn-state during multi-turn actions.
-                syncHpFromStepScreen();
-            }
-
-            // C ref: allmain.c moveloop() — multi-count repeats execute before
-            // accepting the next keyboard input.
-            const cmdKeyChar = String.fromCharCode(game.cmdKey || 0);
-            const repeatedMoveCmd = game.cmdKey === 10
-                || game.cmdKey === 13
-                || 'hjklyubn'.includes(cmdKeyChar);
-            if (repeatedMoveCmd && result.moved === false) {
-                game.multi = 0;
-            }
-            while (game.multi > 0) {
-
-                // C ref: allmain.c:519-526 lookaround() can clear multi before
-                // the next repeated command executes; this should not consume
-                // an additional turn when it interrupts.
-                if (typeof game.shouldInterruptMulti === 'function'
-                    && game.shouldInterruptMulti()) {
-                    game.multi = 0;
-                    break;
-                }
-                game.multi--;
-                const repeated = applyPostRhack(await rhack(game.cmdKey, game));
-                if (!repeated || !repeated.tookTime) break;
-                await applyTimedTurn();
-
-                syncHpFromStepScreen();
-                if (repeatedMoveCmd && repeated.moved === false) {
-                    game.multi = 0;
-                    break;
-                }
-                if (game.player.justHealedLegs
-                    && (game.cmdKey === 46 || game.cmdKey === 115)
-                    && (stepScreen[0] || '').includes('Your leg feels better.  You stop searching.')) {
-                    game.player.justHealedLegs = false;
-                    game.display.putstr_message('Your leg feels better.  You stop searching.');
-                    game.multi = 0;
-                    break;
-                }
-                while (game.occupation) {
-                    const occ = game.occupation;
-                    const cont = occ.fn(game);
-                    const finishedOcc = !cont ? occ : null;
-                    if (!cont) {
-                        // C ref: natural completion — no message (see above)
-                        game.occupation = null;
-                        game.pendingPrompt = null;
-                    }
-                    await applyTimedTurn(true);
-                    syncHpFromStepScreen();
-                    if (finishedOcc && typeof finishedOcc.onFinishAfterTurn === 'function') {
-                        finishedOcc.onFinishAfterTurn(game);
-                    }
-                    if (cont === 'prompt') {
-                        break;
-                    }
-                    if (game.player.justHealedLegs
-                        && (game.cmdKey === 46 || game.cmdKey === 115)
-                        && (stepScreen[0] || '').includes('Your leg feels better.  You stop searching.')) {
-                        game.player.justHealedLegs = false;
-                        game.display.putstr_message('Your leg feels better.  You stop searching.');
-                        game.multi = 0;
-                        break;
-                    }
-                }
-            }
-        }
+        // run_command() owns turn advancement, occupation continuation, and
+        // counted-repeat execution. Replay only provides captured keys.
 
         // Keep prompt/menu frames visible while a command is still awaiting
         // follow-up input (inventory, directions, item selectors, etc.).
         if (!pendingCommand) {
-            const hasRunmodeDelayMarker = Array.isArray(step.rng)
-                && step.rng.some((entry) =>
-                    typeof entry === 'string' && entry.includes('runmode_delay_output')
-                );
-            const preserveCapturedRunmodeFrame = hasRunmodeDelayMarker
-                && (stepScreen.length > 0 || stepScreenAnsi.length > 0);
-            if (preserveCapturedRunmodeFrame) {
-                // C keylog timing: some runmode-delay boundary steps capture the
-                // pre-refresh tty frame even though internal state has advanced.
-                applyStepScreen();
-                capturedScreenOverride = stepScreen.length > 0 ? stepScreen : capturedScreenOverride;
-                capturedScreenAnsiOverride = stepScreenAnsi.length > 0 ? stepScreenAnsi : capturedScreenAnsiOverride;
-            } else {
-                game.renderCurrentScreen();
-                if (typeof step.action === 'string'
-                    && step.action.startsWith('tutorial-')
-                    && (stepScreen.length > 0 || stepScreenAnsi.length > 0)) {
-                    // Tutorial capture parity: after command execution, keep the
-                    // recorded frame authoritative so RNG-diverged map rendering
-                    // does not shift interface replay screen/color comparisons.
-                    applyStepScreen();
-                    capturedScreenOverride = stepScreen.length > 0 ? stepScreen : capturedScreenOverride;
-                    capturedScreenAnsiOverride = stepScreenAnsi.length > 0 ? stepScreenAnsi : capturedScreenAnsiOverride;
-                }
-            }
-        }
-        if (!capturedScreenOverride && stepScreen.length > 0) {
-            const capturedMsg = (stepScreen[0] || '').trimEnd();
-            const currentMsg = ((game.display.getScreenLines?.() || [])[0] || '').trimEnd();
-            const capturedNoMore = capturedMsg.replace(/--More--\s*$/, '').trimEnd();
-            const capturedPromptLike = /^What do you want to .*\\?$/.test(capturedMsg);
-            const recentMsgs = Array.isArray(game.display?.messages)
-                ? game.display.messages.map((m) => String(m || '').trimEnd())
-                : [];
-            let sawConcatOverflow = false;
-            for (let i = 0; i + 1 < recentMsgs.length; i++) {
-                if (`${recentMsgs[i]}  ${recentMsgs[i + 1]}` === capturedNoMore) {
-                    sawConcatOverflow = true;
-                    break;
-                }
-            }
-            if (capturedMsg.includes('--More--')
-                && !currentMsg.includes('--More--')
-                && (`${currentMsg}--More--` === capturedMsg || sawConcatOverflow)) {
-                capturedScreenOverride = stepScreen;
-                capturedScreenAnsiOverride = stepScreenAnsi.length > 0
-                    ? stepScreenAnsi
-                    : (Array.isArray(capturedScreenOverride)
-                        ? capturedScreenOverride.map((line) => String(line || ''))
-                        : null);
-            }
-            if ((step.key === '\u001b' || step.key === '\x1b') && capturedMsg === '') {
-                capturedScreenOverride = stepScreen;
-                capturedScreenAnsiOverride = stepScreenAnsi.length > 0
-                    ? stepScreenAnsi
-                    : (Array.isArray(capturedScreenOverride)
-                        ? capturedScreenOverride.map((line) => String(line || ''))
-                        : null);
-            }
-            if (capturedPromptLike
-                && currentMsg === ''
-                && ((step.rng && step.rng.length) || 0) === 0
-                && (step.action ? step.action.startsWith('key-') : !stepIsNavKey(step))) {
-                capturedScreenOverride = stepScreen;
-                capturedScreenAnsiOverride = stepScreenAnsi.length > 0
-                    ? stepScreenAnsi
-                    : (Array.isArray(capturedScreenOverride)
-                        ? capturedScreenOverride.map((line) => String(line || ''))
-                        : null);
-            }
-        }
-        if ((step.action === 'descend' || step.action === 'ascend'
-            || step.key === '>' || step.key === '<') && stepScreen.length > 0) {
-            const capturedMsg = (stepScreen[0] || '').trimEnd();
-            const currentMsg = ((game.display.getScreenLines?.() || [])[0] || '').trimEnd();
-            if (capturedMsg.includes('--More--') && currentMsg === '') {
-                // C captures this stair-transition step before destination-map redraw.
-                // Preserve captured full frame for strict screen parity, while keeping
-                // JS internal state (already moved to destination level).
-                capturedScreenOverride = stepScreen;
-                capturedScreenAnsiOverride = Array.isArray(capturedScreenOverride)
-                    ? capturedScreenOverride.map((line) => String(line || ''))
-                    : null;
-                pendingTransitionTurn = true;
-            }
+            game.renderCurrentScreen();
         }
 
         if (typeof opts.onStep === 'function') {
@@ -1815,7 +950,7 @@ export async function replaySession(seed, session, opts = {}) {
             opts.captureScreens ? (capturedScreenOverride || game.display.getScreenLines()) : undefined,
             capturedScreenAnsiOverride,
             step,
-            stepScreen,
+            null,
             stepIndex
         );
     }
@@ -1841,8 +976,7 @@ export async function replaySession(seed, session, opts = {}) {
     // Legacy keylog fixtures sometimes stored startup RNG in step 0. New v3
     // session flow keeps startup as a distinct channel, so preserve it by
     // default unless explicitly requested for backward compatibility.
-    const foldStartupIntoStep0 = opts.startupBurstInFirstStep === true
-        || (opts.startupBurstInFirstStep !== false && hasStartupBurstInFirstStep(session));
+    const foldStartupIntoStep0 = opts.startupBurstInFirstStep === true;
     let normalizedStartup = { rngCalls: startupRng.length, rng: startupRng };
     if (foldStartupIntoStep0) {
         normalizedStartup = { rngCalls: 0, rng: [] };
