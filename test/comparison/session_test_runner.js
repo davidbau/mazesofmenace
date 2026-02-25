@@ -1,8 +1,8 @@
 // test/comparison/session_test_runner.js -- Unified session runner orchestrator.
 
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { statSync } from 'node:fs';
+import { statSync, readFileSync } from 'node:fs';
 import { availableParallelism } from 'node:os';
 import { Worker } from 'node:worker_threads';
 
@@ -815,6 +815,9 @@ export async function runSessionBundle({
     goldenBranch = 'golden',
     typeFilter = null,
     sessionPath = null,
+    sessionListPath = null,
+    sessionNames = null,
+    failedFromPath = null,
     failFast = false,
     parallel = availableParallelism(),
     onProgress = null,
@@ -829,22 +832,55 @@ export async function runSessionBundle({
         sessionPath,
     }).filter((session) => !SKIP_SESSIONS.has(session.file));
 
+    const requested = new Set();
+    if (sessionListPath) {
+        const text = readFileSync(sessionListPath, 'utf8');
+        for (const raw of text.split(/\r?\n/)) {
+            const name = raw.trim();
+            if (!name || name.startsWith('#')) continue;
+            requested.add(name);
+        }
+    }
+    if (Array.isArray(sessionNames)) {
+        for (const name of sessionNames) {
+            const trimmed = String(name || '').trim();
+            if (trimmed) requested.add(trimmed);
+        }
+    }
+    if (failedFromPath) {
+        const text = readFileSync(failedFromPath, 'utf8');
+        const parsed = JSON.parse(text);
+        const failing = Array.isArray(parsed?.results)
+            ? parsed.results.filter((r) => r && r.passed === false)
+            : [];
+        for (const row of failing) {
+            const name = String(row?.session || '').trim();
+            if (name) requested.add(name);
+        }
+    }
+    const filteredSessions = requested.size > 0
+        ? sessions.filter((session) => requested.has(session.file))
+        : sessions;
+
     if (verbose) {
         console.log('=== Session Test Runner ===');
         if (typeFilter) console.log(`Type filter: ${String(typeFilter)}`);
         if (sessionPath) console.log(`Single session: ${sessionPath}`);
+        if (sessionListPath) console.log(`Session list: ${sessionListPath}`);
+        if (failedFromPath) console.log(`Failed sessions source: ${failedFromPath}`);
+        if (requested.size > 0) console.log(`Requested session names: ${requested.size}`);
         if (useGolden) console.log(`Using golden branch: ${goldenBranch}`);
         if (parallel > 0) console.log(`Parallel workers: ${parallel}`);
         if (Number.isInteger(sessionTimeoutMs) && sessionTimeoutMs > 0) {
             console.log(`Per-session timeout: ${sessionTimeoutMs}ms`);
         }
-        console.log(`Loaded sessions: ${sessions.length}`);
+        console.log(`Loaded sessions: ${filteredSessions.length}`);
     }
 
     let results;
-    if (parallel > 0 && !failFast && sessions.length > 1) {
+    if (parallel > 0 && !failFast && filteredSessions.length > 1) {
         // Run in parallel using worker threads
-        results = await runSessionsParallel(sessions, {
+        results = await runSessionsParallel(filteredSessions, {
             numWorkers: parallel,
             verbose,
             onProgress,
@@ -855,7 +891,7 @@ export async function runSessionBundle({
         results = [];
         const useSessionTimeout = Number.isInteger(sessionTimeoutMs)
             && sessionTimeoutMs > 0;
-        for (const session of sessions) {
+        for (const session of filteredSessions) {
             const result = useSessionTimeout
                 ? await runSingleSessionWithTimeout(session, sessionTimeoutMs)
                 : await runSessionResult(session);
@@ -888,6 +924,9 @@ export async function runSessionCli() {
         useGolden: false,
         typeFilter: null,
         sessionPath: null,
+        sessionListPath: null,
+        sessionNames: null,
+        failedFromPath: null,
         failFast: false,
         parallel: availableParallelism(),
         sessionTimeoutMs: 20000,
@@ -912,6 +951,24 @@ export async function runSessionCli() {
         }
         else if (arg === '--type' && argv[i + 1]) args.typeFilter = argv[++i];
         else if (arg.startsWith('--type=')) args.typeFilter = arg.slice('--type='.length);
+        else if (arg === '--session-list' && argv[i + 1]) args.sessionListPath = argv[++i];
+        else if (arg.startsWith('--session-list=')) args.sessionListPath = arg.slice('--session-list='.length);
+        else if (arg === '--sessions' && argv[i + 1]) {
+            args.sessionNames = argv[++i].split(',').map((s) => s.trim()).filter(Boolean);
+        } else if (arg.startsWith('--sessions=')) {
+            args.sessionNames = arg.slice('--sessions='.length).split(',').map((s) => s.trim()).filter(Boolean);
+        } else if (arg === '--failed') {
+            if (argv[i + 1] && !argv[i + 1].startsWith('--')) {
+                args.failedFromPath = resolve(process.cwd(), argv[++i]);
+            } else {
+                args.failedFromPath = resolve(process.cwd(), 'oracle/pending.jsonl');
+            }
+        } else if (arg.startsWith('--failed=')) {
+            const value = arg.slice('--failed='.length).trim();
+            args.failedFromPath = value.length > 0
+                ? resolve(process.cwd(), value)
+                : resolve(process.cwd(), 'oracle/pending.jsonl');
+        }
         else if (arg === '--help' || arg === '-h') {
             console.log('Usage: node session_test_runner.js [options] [session-file]');
             console.log('Options:');
@@ -919,6 +976,9 @@ export async function runSessionCli() {
             console.log('  --parallel[=N]    Run with N workers (default: auto-detect CPU count)');
             console.log('  --fail-fast       Stop on first failure');
             console.log('  --type=TYPE       Filter by session type (chargen,gameplay,etc)');
+            console.log('  --session-list=FILE  Run only session files listed in FILE (one per line)');
+            console.log('  --sessions=a,b,c  Run only these session files (comma-separated)');
+            console.log('  --failed[=FILE]   Run sessions marked failed in FILE (default: oracle/pending.jsonl)');
             console.log('  --session-timeout-ms=N  Timeout for single-session runs (default: 20000)');
             console.log('  --golden          Compare against golden branch');
             process.exit(0);
@@ -936,6 +996,9 @@ export async function runSessionCli() {
         goldenBranch,
         typeFilter: args.typeFilter,
         sessionPath: args.sessionPath,
+        sessionListPath: args.sessionListPath,
+        sessionNames: args.sessionNames,
+        failedFromPath: args.failedFromPath,
         failFast: args.failFast,
         parallel: args.parallel,
         sessionTimeoutMs: args.sessionTimeoutMs,
