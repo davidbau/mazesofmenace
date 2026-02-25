@@ -83,7 +83,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[a]` | lock.c | lock.js | Lock picking and door opening. handleForce/handleOpen/handleClose (doforce/doopen/doclose) approximations; ~15 functions TODO |
 | `[N/A]` | mail.c | — | In-game mail system (uses real mail on Unix) |
 | `[a]` | makemon.c | makemon.js | Monster creation. Core functions aligned; clone_mon/propagate TODO |
-| `[p]` | mcastu.c | mcastu.js | Monster spellcasting. All 14 functions present: castmu (full spell selection pipeline with fumble check), buzzmu (stub), choose_magic_spell, choose_clerical_spell, cast_wizard_spell, cast_cleric_spell, m_cure_self, touch_of_death, death_inflicted_by, cursetxt (stub), is_undirected_spell, spell_would_be_useless, aggravation (stub), curse_objects (stub) |
+| `[p]` | mcastu.c | mcastu.js | Monster spellcasting. All 14 functions present: castmu (full spell selection pipeline with fumble check), buzzmu (beam path via zap.buzz), choose_magic_spell, choose_clerical_spell, cast_wizard_spell, cast_cleric_spell, m_cure_self, touch_of_death, death_inflicted_by, cursetxt (stub), is_undirected_spell, spell_would_be_useless, aggravation (stub), curse_objects (stub) |
 | `[N/A]` | mdlib.c | — | Metadata library utilities |
 | `[a]` | mhitm.c | mhitm.js | Monster-vs-monster combat. mattackm/hitmm/mdamagem/passivemm/fightm implemented (m-vs-m path); RNG parity for pets in dogmove.js; monCombatName per-monster visibility pronouns; rustm (full erode_obj dispatch), mdisplacem (position swap + petrification), engulf_target, gulpmm (simplified), mon_poly (simplified); artifact spec_dbon wired into mdamagem. gazemu/gulpmm full effects TODO |
 | `[a]` | mhitu.c | mhitu.js | Monster-vs-hero combat. monsterAttackPlayer restructured to match hitmu() flow; hitmsg, mhitm_knockback, mhitu_adtyping dispatcher, ~30 AD_* handlers (phys/fire/cold/elec/acid/stck/plys/slee/conf/stun/blnd/drst/drli/dren/drin/slow/ston etc.) implemented with real effects; mpoisons_subj, u_slow_down, wildmiss, getmattk (attack substitution), assess_dmg, passiveum (hero passive counter); AD_SGLD→stealgold, AD_SEDU→steal, AD_RUST/CORR/DCAY→erode_obj wired; artifact spec_dbon wired into mhitu_ad_phys; gazemu/gulpmu/expels/summonmu/doseduce TODO |
@@ -2415,7 +2415,7 @@ No function symbols parsed from isaac64.c.
 ### mcastu.c -> mcastu.js
 | C Line | C Function | JS Line | Alignment |
 |--------|------------|---------|-----------|
-| 981 | `buzzmu` | mcastu.js:309 | Stub (beam type determined, no traversal) |
+| 981 | `buzzmu` | mcastu.js:309 | Partial — maps AD_* to beam type and fires zap.buzz toward hero |
 | 632 | `cast_cleric_spell` | mcastu.js:163 | Implemented (all CLC_* spell dispatch) |
 | 449 | `cast_wizard_spell` | mcastu.js:110 | Implemented (all MGC_* spell dispatch) |
 | 177 | `castmu` | mcastu.js:223 | Implemented (full pipeline: fumble check, spell selection, dispatch) |
@@ -3097,8 +3097,8 @@ No function symbols parsed from isaac64.c.
 | C Line | C Function | JS Line | Alignment |
 |--------|------------|---------|-----------|
 | 1255 | `blocking_terrain` | mthrowu.js:48 | Implemented |
-| 1067 | `breamm` | mthrowu.js:472 | Partial — entrypoint present; full breath effects still TODO |
-| 1248 | `breamu` | mthrowu.js:479 | Partial — wrapper to breamm |
+| 1067 | `breamm` | mthrowu.js:472 | Partial — lined-up/cooldown checks, breath message, and zap.buzz beam dispatch implemented; remaining gaps in full C breath edge-cases |
+| 1248 | `breamu` | mthrowu.js:479 | Implemented — wrapper to breamm |
 | 1057 | `breathwep_name` | mthrowu.js:464 | Implemented |
 | 162 | `drop_throw` | mthrowu.js:227 | Partial — break/drop core behavior implemented |
 | 1390 | `hit_bars` | mthrowu.js:262 | Partial — break/drop-on-bars path now wired via dothrow break logic |

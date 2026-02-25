@@ -5,7 +5,13 @@
 //                is_undirected_spell, spell_would_be_useless
 
 import { rn2, rnd, d } from './rng.js';
-import { AD_FIRE, AD_COLD, AD_ELEC, AD_MAGM, AT_MAGC } from './monsters.js';
+import {
+  AD_FIRE, AD_COLD, AD_ELEC, AD_MAGM, AD_SLEE, AD_DISN, AD_DRST, AD_ACID, AT_MAGC,
+} from './monsters.js';
+import {
+  buzz, ZT_BREATH, ZT_MAGIC_MISSILE, ZT_FIRE, ZT_COLD, ZT_SLEEP,
+  ZT_DEATH, ZT_LIGHTNING, ZT_POISON_GAS, ZT_ACID,
+} from './zap.js';
 
 // Wizard spell constants (C ref: mcastu.c)
 export const MGC_PSI_BOLT = 0;
@@ -224,7 +230,7 @@ export function castmu(mtmp, mattk, vis, thrown, player, map) {
   if (!mtmp || !mattk) return 0;
 
   const ml = mtmp.m_lev || mtmp.mlevel || 1;
-  const aatyp = mattk.aatyp || mattk.at || 0;
+  const aatyp = mattk.aatyp || mattk.at || mattk.type || 0;
 
   // Spell fumble check
   if (rn2(ml * 10) < (mtmp.mconf ? 100 : 20)) {
@@ -307,13 +313,30 @@ export function spell_would_be_useless(mtmp, aatyp, spellid) {
 // cf. mcastu.c:980 — buzzmu(mtmp, mattk)
 // Monster fires a directed beam at hero
 export function buzzmu(mtmp, mattk, player, map) {
-  if (!mtmp || !mattk || !player) return 0;
+  if (!mtmp || !mattk || !player || !map) return 0;
 
-  // Determine beam type from mattk
-  const adtyp = mattk.adtyp || mattk.ad || AD_MAGM;
-  // Would call dobuzz() with appropriate parameters
-  // Stub — full implementation needs beam traversal integration
+  const adtyp = mattk.adtyp || mattk.ad || mattk.damage || AD_MAGM;
+  const nd = Math.max(1, mattk.dice || mattk.damn || 6);
+  const dx = Math.sign((player.x || 0) - (mtmp.mx || 0));
+  const dy = Math.sign((player.y || 0) - (mtmp.my || 0));
+  if (dx === 0 && dy === 0) return 0;
 
+  let ztyp = ZT_MAGIC_MISSILE;
+  switch (adtyp) {
+  case AD_FIRE: ztyp = ZT_FIRE; break;
+  case AD_COLD: ztyp = ZT_COLD; break;
+  case AD_SLEE: ztyp = ZT_SLEEP; break;
+  case AD_DISN: ztyp = ZT_DEATH; break;
+  case AD_ELEC: ztyp = ZT_LIGHTNING; break;
+  case AD_DRST: ztyp = ZT_POISON_GAS; break;
+  case AD_ACID: ztyp = ZT_ACID; break;
+  case AD_MAGM:
+  default:
+    ztyp = ZT_MAGIC_MISSILE;
+    break;
+  }
+
+  buzz(ZT_BREATH(ztyp), nd, mtmp.mx, mtmp.my, dx, dy, map, player);
   return 1;
 }
 

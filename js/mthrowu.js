@@ -7,8 +7,6 @@
 // - m_throw: corpse creation uses corpse_chance + mkcorpstat (faithful to C mondied)
 // - thrwmu: polearm attack path not implemented (C:1169)
 // - monmulti: prince/lord/mplayer multishot bonuses not modeled
-// - No spitmu (acid/venom spit) implementation
-// - No breamu (breath weapon) implementation
 // - No buzzmu (spell ray) implementation
 
 import { ACCESSIBLE, IS_OBSTRUCTED, IS_DOOR,
@@ -45,6 +43,10 @@ import { select_rwep as weapon_select_rwep,
     mon_wield_item, NEED_WEAPON, NEED_HTH_WEAPON, NEED_RANGED_WEAPON } from './weapon.js';
 import { ammo_and_launcher, multishot_class_bonus } from './dothrow.js';
 import { breaks, harmless_missile } from './dothrow.js';
+import {
+    buzz, ZT_BREATH, ZT_MAGIC_MISSILE, ZT_FIRE, ZT_COLD, ZT_SLEEP,
+    ZT_DEATH, ZT_LIGHTNING, ZT_POISON_GAS, ZT_ACID,
+} from './zap.js';
 
 const hallublasts = [
     'bubbles', 'butterflies', 'dust specks', 'flowers', 'glitter',
@@ -673,6 +675,21 @@ export function breathwep_name(typ, hallucinating = false) {
     return 'strange breath';
 }
 
+function breath_zap_type(adtyp) {
+    switch (adtyp) {
+    case AD_FIRE: return ZT_FIRE;
+    case AD_COLD: return ZT_COLD;
+    case AD_SLEE: return ZT_SLEEP;
+    case AD_DISN: return ZT_DEATH;
+    case AD_ELEC: return ZT_LIGHTNING;
+    case AD_DRST: return ZT_POISON_GAS;
+    case AD_ACID: return ZT_ACID;
+    case AD_MAGM:
+    default:
+        return ZT_MAGIC_MISSILE;
+    }
+}
+
 // monster breathes at monster (ranged) -- placeholder fidelity surface.
 // C ref: mthrowu.c breamm().
 export function breamm(mtmp, mattk, mtarg, map, player, display, game) {
@@ -682,16 +699,18 @@ export function breamm(mtmp, mattk, mtarg, map, player, display, game) {
         return 0;
     }
     if (mtmp.mspec_used) return 0;
-    if (rn2(3)) {
-        const adtyp = mattk?.adtyp ?? mattk?.damage ?? AD_FIRE;
-        if (display) {
-            display.putstr_message(`The ${monDisplayName(mtmp)} breathes ${breathwep_name(adtyp, !!player?.hallucinating)}!`);
-        }
-        // Full beam path (dobuzz) still TODO in mthrowu parity.
-        mtmp.mspec_used = 8 + rn2(18);
-    } else {
-        return 0;
+    if (rn2(3)) return 0;
+    const adtyp = mattk?.adtyp ?? mattk?.damage ?? AD_FIRE;
+    if (display) {
+        display.putstr_message(`The ${monDisplayName(mtmp)} breathes ${breathwep_name(adtyp, !!player?.hallucinating)}!`);
     }
+    const nd = Math.max(1, mattk?.dice || mattk?.damn || 6);
+    const dx = Math.sign((mtarg?.x ?? mtarg?.mx ?? 0) - (mtmp.mx ?? 0));
+    const dy = Math.sign((mtarg?.y ?? mtarg?.my ?? 0) - (mtmp.my ?? 0));
+    if (map && (dx !== 0 || dy !== 0)) {
+        buzz(ZT_BREATH(breath_zap_type(adtyp)), nd, mtmp.mx, mtmp.my, dx, dy, map, player);
+    }
+    mtmp.mspec_used = 10 + rn2(20);
     return 1;
 }
 

@@ -14,7 +14,7 @@ import {
     G_UNIQ, M2_NEUTER, M2_MALE, M2_FEMALE, M2_PNAME,
     MZ_HUMAN, MZ_HUGE,
     AT_CLAW, AT_BITE, AT_KICK, AT_BUTT, AT_TUCH, AT_STNG, AT_HUGS,
-    AT_TENT, AT_WEAP, AT_ENGL, AT_NONE, AT_BOOM, AT_EXPL, AT_GAZE,
+    AT_TENT, AT_WEAP, AT_ENGL, AT_NONE, AT_BOOM, AT_EXPL, AT_GAZE, AT_SPIT, AT_BREA, AT_MAGC,
     S_NYMPH, PM_AMOROUS_DEMON, PM_MEDUSA, PM_BALROG,
     AD_PHYS, AD_FIRE, AD_COLD, AD_SLEE, AD_ELEC, AD_DRST, AD_SLOW,
     AD_PLYS, AD_DRLI, AD_DREN, AD_STON, AD_STCK, AD_TLPT, AD_CONF,
@@ -39,7 +39,8 @@ import {
     mhitm_mgc_atk_negated,
     M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED,
 } from './uhitm.js';
-import { thrwmu } from './mthrowu.js';
+import { thrwmu, spitmu, breamu } from './mthrowu.js';
+import { castmu } from './mcastu.js';
 import { exercise } from './attrib_exercise.js';
 import { make_confused, make_stunned, make_blinded, make_hallucinated } from './potion.js';
 import { losexp } from './exper.js';
@@ -918,11 +919,24 @@ export function monsterAttackPlayer(monster, player, display, game = null, opts 
         // cf. mhitu.c mattacku() attack dispatch:
         // Melee attacks (AT_CLAW, AT_BITE, etc.) only fire when !range2.
         // AT_WEAP: melee when !range2, thrwmu when range2.
-        // AT_BREA, AT_SPIT, AT_MAGC: only when range2 (not implemented yet).
+        // AT_BREA, AT_SPIT, AT_MAGC: ranged-only handlers.
         if (range2) {
             if (attack.type === AT_WEAP) {
                 // cf. mhitu.c:882-885 — AT_WEAP at range calls thrwmu
                 if (map) thrwmu(monster, map, player, display, game);
+                continue;
+            }
+            if (attack.type === AT_SPIT) {
+                if (map) spitmu(monster, attack, map, player, display, game);
+                continue;
+            }
+            if (attack.type === AT_BREA) {
+                if (map) breamu(monster, attack, map, player, display, game);
+                continue;
+            }
+            if (attack.type === AT_MAGC) {
+                const vis = !player?.blind && !(monster.minvis && !player?.seeInvisible);
+                castmu(monster, attack, vis, true, player, map);
                 continue;
             }
             // Skip melee-only attack types when at range
