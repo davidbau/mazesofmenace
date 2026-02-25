@@ -5,7 +5,13 @@
 import { mons } from './monsters.js';
 import { CORPSE, objectData } from './objects.js';
 import {
+    CLR_BLUE,
+    CLR_BROWN,
+    CLR_GREEN,
     CLR_GRAY,
+    CLR_MAGENTA,
+    CLR_ORANGE,
+    CLR_RED,
     CLR_WHITE,
     def_monsyms,
     def_warnsyms,
@@ -283,7 +289,24 @@ function decodeCGlyph(glyph) {
         return fromDefsym(S_sw_tl + ((glyph - G.GLYPH_SWALLOW_OFF) % SWALLOW_COUNT));
     }
     if (inRange(glyph, G.GLYPH_EXPLODE_OFF, MAXEXPCHARS * 7)) {
-        return fromDefsym(S_expl_tl + ((glyph - G.GLYPH_EXPLODE_OFF) % MAXEXPCHARS));
+        const phase = Math.floor((glyph - G.GLYPH_EXPLODE_OFF) / MAXEXPCHARS);
+        const cell = fromDefsym(S_expl_tl + ((glyph - G.GLYPH_EXPLODE_OFF) % MAXEXPCHARS));
+        if (!cell) return null;
+        // C ref: explosion glyph blocks are grouped by explosion type; give each
+        // group its canonical palette color instead of a single shared fallback.
+        const phaseColor = [
+            CLR_GRAY,    // dark
+            CLR_GREEN,   // noxious
+            CLR_BROWN,   // muddy
+            CLR_BLUE,    // wet
+            CLR_MAGENTA, // magical
+            CLR_RED,     // fiery
+            CLR_WHITE,   // frosty
+        ][phase];
+        return {
+            ...cell,
+            color: Number.isInteger(phaseColor) ? phaseColor : CLR_ORANGE,
+        };
     }
     if (glyph === G.GLYPH_UNEXPLORED_OFF || glyph === G.GLYPH_NOTHING_OFF) {
         return { ch: ' ', color: CLR_GRAY, attr: 0 };

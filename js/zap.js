@@ -70,6 +70,7 @@ import { engr_at, del_engr_at, wipe_engr_at, rloc_engr, make_engr_at } from './e
 import { random_engraving_rng } from './dungeon.js';
 import { discoverObject } from './discovery.js';
 import { u_teleport_mon, rloco } from './teleport.js';
+import { boxlock } from './lock.js';
 import {
     tmp_at, nh_delay_output,
     DISP_BEAM, DISP_END,
@@ -1580,8 +1581,13 @@ export function bhito(obj, otmp, map) {
   case SPE_KNOCK:
   case WAN_LOCKING:
   case SPE_WIZARD_LOCK:
-    // boxlock — simplified
-    res = 0;
+    // C ref: zap.c bhito() boxlock() path for box-like containers.
+    if (obj.oclass === TOOL_CLASS) {
+      const shimGame = { player: { roleIndex: -1 } };
+      res = boxlock(shimGame, obj, otmp) ? 1 : 0;
+    } else {
+      res = 0;
+    }
     break;
 
   case WAN_SLOW_MONSTER:

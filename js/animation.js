@@ -195,6 +195,28 @@ class AnimationCore {
         this.currentAnim = anim.prev;
     }
 
+    async tmp_at_end_async(flags) {
+        const anim = this.currentAnim;
+        if (!anim) return;
+        if (!(flags === BACKTRACK && anim.style === DISP_TETHER && anim.saved.length > 1)) {
+            this._endAnimation(flags);
+            return;
+        }
+
+        for (let i = anim.saved.length - 1; i > 0; i--) {
+            this._redraw(anim.saved[i].x, anim.saved[i].y);
+            this._showGlyph(anim.saved[i - 1].x, anim.saved[i - 1].y, anim.glyph);
+            this._flush();
+            await this.nh_delay_output();
+        }
+        anim.saved = [anim.saved[0]];
+        for (const pos of anim.saved) {
+            this._redraw(pos.x, pos.y);
+        }
+        this._trace('tmp_at_end', { flags, mode: anim.style });
+        this.currentAnim = anim.prev;
+    }
+
     _freeAll() {
         while (this.currentAnim) {
             this.currentAnim = this.currentAnim.prev;
@@ -260,6 +282,10 @@ export function tmp_at(x, y) {
     animationCore.tmp_at(x, y);
 }
 
+export async function tmp_at_end_async(flags = 0) {
+    await animationCore.tmp_at_end_async(flags);
+}
+
 export async function nh_delay_output(ms = undefined) {
     await animationCore.nh_delay_output(ms);
 }
@@ -297,6 +323,7 @@ export default {
     initAnimations,
     configureAnimation,
     tmp_at,
+    tmp_at_end_async,
     nh_delay_output,
     nh_delay_output_nowait,
     skipAnimationDelays,

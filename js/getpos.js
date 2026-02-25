@@ -217,6 +217,32 @@ function gather_locs_interesting(map, x, y, gloc) {
     }
 }
 
+function isSeenCell(map, x, y) {
+    const loc = map?.at ? map.at(x, y) : null;
+    return !!loc?.seenv;
+}
+
+function getFilterMode(flags) {
+    const f = flags?.getloc_filter;
+    if (f === 1 || f === 'view') return 'view';
+    if (f === 2 || f === 'area') return 'area';
+    return 'none';
+}
+
+function gloc_filter_allows(map, x, y) {
+    const mode = getFilterMode(getposContext.flags);
+    if (mode === 'none') return true;
+    if (!isSeenCell(map, x, y)) return false;
+    if (mode === 'view') return true;
+    const player = getposContext.player;
+    if (!player || !Number.isInteger(player.x) || !Number.isInteger(player.y)) return true;
+    const here = map?.at ? map.at(x, y) : null;
+    const base = map?.at ? map.at(player.x, player.y) : null;
+    if (!here || !base) return true;
+    if (!Number.isInteger(here.roomno) || !Number.isInteger(base.roomno)) return true;
+    return here.roomno === base.roomno;
+}
+
 export function getpos_getvalids_selection(validf = mapxy_valid) {
     const out = [];
     if (typeof validf !== 'function') return out;
@@ -270,12 +296,13 @@ function collectTargets(map, filter) {
 
 function collectTargetsForGloc(map, gloc) {
     if (gloc === GLOC_VALID) {
-        return getpos_getvalids_selection(mapxy_valid);
+        return getpos_getvalids_selection((x, y) => mapxy_valid(x, y) && gloc_filter_allows(map, x, y));
     }
     const targets = [];
     if (!map) return targets;
     for (let y = 0; y < ROWNO; y++) {
         for (let x = 1; x < COLNO; x++) {
+            if (!gloc_filter_allows(map, x, y)) continue;
             if (gather_locs_interesting(map, x, y, gloc)) targets.push({ x, y });
         }
     }

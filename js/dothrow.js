@@ -56,7 +56,7 @@ import { mpickobj } from './monutil.js';
 import { makemon } from './makemon.js';
 import { exercise } from './attrib_exercise.js';
 import {
-    tmp_at, nh_delay_output,
+    tmp_at, tmp_at_end_async, nh_delay_output,
     DISP_FLASH, DISP_TETHER, DISP_END, BACKTRACK,
 } from './animation.js';
 import { objectMapGlyph } from './display_rng.js';
@@ -1070,7 +1070,7 @@ export async function throwit(obj, wep_mask, twoweap, oldslot, player, map, game
         const madeItBack = !!rn2(100);
         if (madeItBack) {
             animationClosed = true;
-            tmp_at(DISP_END, BACKTRACK);
+            await tmp_at_end_async(BACKTRACK);
             if (!impaired && rn2(100)) {
                 return_throw_to_inv(obj, wep_mask, twoweap, oldslot, player);
                 throwit_return(true, game);

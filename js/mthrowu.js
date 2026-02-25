@@ -51,7 +51,7 @@ import {
     ZT_DEATH, ZT_LIGHTNING, ZT_POISON_GAS, ZT_ACID,
 } from './zap.js';
 import {
-    tmp_at, nh_delay_output,
+    tmp_at, tmp_at_end_async, nh_delay_output,
     DISP_FLASH, DISP_TETHER, DISP_END, BACKTRACK,
 } from './animation.js';
 import { objectMapGlyph } from './display_rng.js';
@@ -579,7 +579,7 @@ export async function m_throw_timed(
     tmp_at(x, y);
     await nh_delay_output();
     if (tethered_weapon) {
-        tmp_at(DISP_END, BACKTRACK);
+        await tmp_at_end_async(BACKTRACK);
         return { drop: false, returnFlight: true, x: mon.mx, y: mon.my };
     }
     return { drop: true, x: dropX, y: dropY };
