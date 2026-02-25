@@ -201,6 +201,25 @@ function selectTargetFromMenu(display, targets, filter) {
     return 'pending';
 }
 
+function findNextMatchingMapChar(display, cx, cy, needle) {
+    if (!display || !needle) return null;
+    for (let pass = 0; pass <= 1; pass++) {
+        const yStart = pass === 0 ? cy : 0;
+        const yEnd = pass === 0 ? (ROWNO - 1) : cy;
+        for (let y = yStart; y <= yEnd; y++) {
+            const xStart = (pass === 0 && y === yStart) ? (cx + 1) : 1;
+            const xEnd = (pass === 1 && y === yEnd) ? cx : (COLNO - 1);
+            for (let x = xStart; x <= xEnd; x++) {
+                if (!isok(x, y)) continue;
+                const { col, row } = screenPosForMap(display, x, y);
+                const cell = getCell(display, col, row);
+                if (cell.ch === needle) return { x, y };
+            }
+        }
+    }
+    return null;
+}
+
 export function set_getpos_context(ctx = {}) {
     getposContext = {
         ...getposContext,
@@ -344,6 +363,21 @@ export async function getpos_async(ccp, force = true, goal = '') {
                     if (desc && typeof display?.putstr_message === 'function') {
                         display.putstr_message(desc);
                     }
+                }
+                continue;
+            }
+
+            if (ch >= 32 && ch <= 126) {
+                const found = findNextMatchingMapChar(display, cx, cy, c);
+                if (found) {
+                    restoreCursor(display, cursorState);
+                    cx = found.x;
+                    cy = found.y;
+                    cursorState = putCursor(display, cx, cy);
+                    continue;
+                }
+                if (typeof display?.putstr_message === 'function') {
+                    display.putstr_message(`Can't find dungeon feature '${c}'.`);
                 }
                 continue;
             }

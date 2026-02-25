@@ -34,7 +34,7 @@ import { create_nhwindow, destroy_nhwindow, NHW_MENU } from './windows.js';
 import { rn2, rnd, rn1, rnl } from './rng.js';
 import { pline, You, Your, You_feel, pline_The, You_hear } from './pline.js';
 import { exercise } from './attrib_exercise.js';
-import { tmp_at, nh_delay_output_nowait, DISP_BEAM, DISP_CHANGE, DISP_END } from './animation.js';
+import { tmp_at, nh_delay_output, DISP_BEAM, DISP_CHANGE, DISP_END } from './animation.js';
 import { getpos_sethilite, getpos_async, set_getpos_context } from './getpos.js';
 
 // ── Constants ──
@@ -875,7 +875,7 @@ function can_chain_lightning_pos(map, x, y) {
     return !IS_OBSTRUCTED(loc.typ);
 }
 
-function cast_chain_lightning(player, map) {
+async function cast_chain_lightning(player, map) {
     if (!player || !map) return;
     const displayed = new Set();
     const queue = [];
@@ -897,7 +897,7 @@ function cast_chain_lightning(player, map) {
 
         tmp_at(DISP_CHANGE, chainLightBeamGlyph(dx, dy));
         tmp_at(nx, ny);
-        nh_delay_output_nowait();
+        await nh_delay_output();
 
         const nextStrength = zap.strength - 1;
         if (nextStrength < 0) continue;
@@ -907,8 +907,8 @@ function cast_chain_lightning(player, map) {
             queue.push({ x: nx, y: ny, dir: (zap.dir + 1) % 8, strength: 0 });
         }
     }
-    nh_delay_output_nowait();
-    nh_delay_output_nowait();
+    await nh_delay_output();
+    await nh_delay_output();
     tmp_at(DISP_END, 0);
 }
 
@@ -1231,7 +1231,7 @@ export async function spelleffects(spell_otyp, atme, player, map, display) {
         break;
 
     case SPE_CHAIN_LIGHTNING:
-        cast_chain_lightning(player, map);
+        await cast_chain_lightning(player, map);
         pline("Chain lightning arcs from your fingertips!");
         break;
 

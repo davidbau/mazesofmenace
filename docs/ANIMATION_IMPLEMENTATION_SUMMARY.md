@@ -14,14 +14,14 @@ Animation infrastructure is in place (`tmp_at`, delay boundaries, overlay lifecy
 
 ### Not Yet Fully Parity-Complete
 1. Real timed delay usage is still mixed.
-- Some gameplay paths now await `nh_delay_output()`, but many still rely on `nh_delay_output_nowait()` boundaries.
+- More gameplay paths now await `nh_delay_output()` (beam zap, non-beam immediate wand traversal, chain-lightning spell), but many paths still rely on `nh_delay_output_nowait()` boundaries.
 - Result: structural replay boundaries are often correct before full visible timing parity is reached.
 
 2. `zap.c` coverage is incomplete.
-- Major beam behavior is present, but several C zap call surfaces remain simplified/stubbed.
+- Major beam behavior is present and IMMEDIATE wand traversal is now animated; several C zap call surfaces remain simplified/stubbed.
 
 3. Rolling boulder / complex trap-motion animation is partial.
-- Trap flash lifecycle hooks are present, but full per-cell rolling-object lifecycle (C-style chain behavior) is not complete.
+- Trap flash lifecycle and basic per-cell travel + impact damage hook are present, but full C launch-object chain behavior (object swaps, scatter/fall-through interactions, bars/doors/tree edge behavior) is not complete.
 
 4. `getpos` advanced targeting features are partial.
 - Core cursor interaction and hilite lifecycle are implemented.

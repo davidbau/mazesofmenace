@@ -717,8 +717,10 @@ function trapeffect_rolling_boulder_trap_mon(mon, trap, map, player) {
             tmp_at(x, y);
             nh_delay_output_nowait();
             if (x === mon.mx && y === mon.my) {
-                // Visual parity only (no combat/RNG side-effects yet).
-                break;
+                // C ref: launch_obj() ultimately resolves impact via ohitmon/thitm paths.
+                // Keep existing trap.js damage pipeline for monster-side trap effects.
+                const killed = thitm(0, mon, null, rnd(20), false, map, player);
+                return killed ? Trap_Killed_Mon : Trap_Effect_Finished;
             }
             if (x === launch2.x && y === launch2.y) break;
             x += dx;

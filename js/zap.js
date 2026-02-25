@@ -58,7 +58,10 @@ import { delobj } from './invent.js';
 import { monflee } from './monmove.js';
 import { readobjnam, hands_obj } from './objnam.js';
 import { hold_another_object, prinv } from './invent.js';
-import { tmp_at, nh_delay_output, nh_delay_output_nowait, DISP_BEAM, DISP_END } from './animation.js';
+import {
+    tmp_at, nh_delay_output, nh_delay_output_nowait,
+    DISP_BEAM, DISP_END,
+} from './animation.js';
 
 // Direction vectors matching commands.js DIRECTION_KEYS
 const DIRECTION_KEYS = {
@@ -465,11 +468,7 @@ export async function handleZap(player, map, display, game) {
 
     // Determine beam type
     const beamType = wandToBeamType(wand.otyp);
-    if (beamType < 0) {
-        // Non-beam wand (digging, polymorph, etc.) — stub
-        display.putstr_message('Nothing happens.');
-        return { moved: false, tookTime: true };
-    }
+    const isBeamWand = beamType >= 0;
 
     // C ref: attrib.c:506 — exercise(A_STR, TRUE) before zapping
     exercise(player, A_STR, true);
@@ -477,11 +476,20 @@ export async function handleZap(player, map, display, game) {
     // Decrease charges
     if (wand.spe > 0) wand.spe--;
 
-    // C ref: zap.c — nd (number of dice) = 6 for wand beams
-    const nd = 6;
+    player.dx = dir[0];
+    player.dy = dir[1];
+    player.dz = 0;
 
-    // Fire the beam
-    await dobuzz_legacy(player, map, display, beamType, nd, dir[0], dir[1], player.x, player.y);
+    if (!isBeamWand) {
+        // Route non-beam wands through weffects() so non-ray zap behavior
+        // can evolve toward zap.c parity instead of hardcoded no-op.
+        await weffects(wand, player, map);
+    } else {
+        // C ref: zap.c — nd (number of dice) = 6 for wand beams
+        const nd = 6;
+        // Fire the beam
+        await dobuzz_legacy(player, map, display, beamType, nd, dir[0], dir[1], player.x, player.y);
+    }
 
     return { moved: false, tookTime: true };
 }
@@ -814,6 +822,62 @@ export function buzz(type, nd, sx, sy, dx, dy, map, player) {
   dobuzz(type, nd, sx, sy, dx, dy, true, false, map, player);
 }
 
+async function bhit_zapped_wand(obj, player, map) {
+  if (!obj || !player || !map) return null;
+  const ddx = player.dx || 0;
+  const ddy = player.dy || 0;
+  if (!ddx && !ddy) return null;
+
+  // C ref: zap.c bhit() uses flashbeam glyph for zapped wand traversal.
+  const flashbeam = { ch: '*', color: 11 };
+  let range = 8;
+  let result = null;
+  let x = player.x;
+  let y = player.y;
+
+  tmp_at(DISP_BEAM, flashbeam);
+  try {
+    while (range-- > 0) {
+      x += ddx;
+      y += ddy;
+
+      if (!isok(x, y)) {
+        x -= ddx;
+        y -= ddy;
+        break;
+      }
+      const loc = map.at(x, y);
+      if (!loc) break;
+
+      tmp_at(x, y);
+      await nh_delay_output();
+
+      const mon = map.monsterAt ? map.monsterAt(x, y) : null;
+      if (mon && !mon.dead) {
+        if (bhitm(mon, obj, map, player)) {
+          result = mon;
+          break;
+        }
+        range -= 3;
+      }
+
+      if (bhitpile(obj, bhito, x, y, 0, map)) {
+        range--;
+      }
+
+      if (IS_WALL(loc.typ) || (IS_DOOR(loc.typ) && loc.doormask)) {
+        x -= ddx;
+        y -= ddy;
+        break;
+      }
+    }
+  } finally {
+    tmp_at(DISP_END, 0);
+  }
+
+  return result;
+}
+
 function beamTempGlyph(type, dx, dy) {
   const fltyp = zaptype(type);
   const damgtype = fltyp % 10;
@@ -944,7 +1008,7 @@ function dobuzz(type, nd, sx, sy, dx, dy, sayhit, saymiss, map, player) {
 // ============================================================
 // cf. zap.c weffects() — wand zap dispatch
 // ============================================================
-export function weffects(obj, player, map) {
+export async function weffects(obj, player, map) {
   if (!obj) return;
   const otyp = obj.otyp;
 
@@ -953,12 +1017,15 @@ export function weffects(obj, player, map) {
 
   const od = objectData[otyp];
   const dir_type = od ? od.dir : 0;
-  // NODIR=1, IMMEDIATE=2, RAY=0 (for beam wands)
+  // NODIR=1, IMMEDIATE=2, RAY=3 in objectData.
 
   if (dir_type === 2) {
-    // IMMEDIATE wand/spell
-    // C ref: zap.c:3436 — bhit for lateral, zap_updown for up/down
-    // Simplified: handled by caller
+    // C ref: zap.c:3436 — bhit for lateral, zap_updown for up/down.
+    if (player && player.dz) {
+      zap_updown(obj, player, map);
+    } else {
+      await bhit_zapped_wand(obj, player, map);
+    }
   } else if (dir_type === 1) {
     // NODIR wand
     // zapnodir — simplified
