@@ -1141,12 +1141,14 @@ export class HeadlessDisplay {
     }
 
     _applyTempOverlay() {
-        for (const [key, cell] of this._tempOverlay.entries()) {
+        for (const [key, stack] of this._tempOverlay.entries()) {
+            if (!Array.isArray(stack) || stack.length === 0) continue;
+            const cell = stack[stack.length - 1];
             const parts = key.split(',');
             const col = Number.parseInt(parts[0], 10);
             const row = Number.parseInt(parts[1], 10);
             if (!Number.isInteger(col) || !Number.isInteger(row)) continue;
-            this.setCell(col, row, cell.ch, cell.color, 0);
+            this.setCell(col, row, cell.ch, cell.color, cell.attr || 0);
         }
     }
 
@@ -1154,13 +1156,27 @@ export class HeadlessDisplay {
         const { col, row } = this._mapCoordToScreen(x, y);
         if (col < 0 || col >= COLNO - 1 || row < 0 || row >= this.rows) return;
         const cell = this._tempGlyphToCell(glyph);
-        this._tempOverlay.set(this._overlayKey(col, row), cell);
-        this.setCell(col, row, cell.ch, cell.color);
+        const key = this._overlayKey(col, row);
+        const stack = this._tempOverlay.get(key) || [];
+        stack.push(cell);
+        this._tempOverlay.set(key, stack);
+        this.setCell(col, row, cell.ch, cell.color, cell.attr || 0);
     }
 
     redraw(x, y) {
         const { col, row } = this._mapCoordToScreen(x, y);
-        this._tempOverlay.delete(this._overlayKey(col, row));
+        const key = this._overlayKey(col, row);
+        const stack = this._tempOverlay.get(key);
+        if (Array.isArray(stack) && stack.length > 0) {
+            stack.pop();
+            if (stack.length > 0) {
+                const top = stack[stack.length - 1];
+                this._tempOverlay.set(key, stack);
+                this.setCell(col, row, top.ch, top.color, top.attr || 0);
+                return;
+            }
+        }
+        this._tempOverlay.delete(key);
         this._restoreBaseCell(col, row);
     }
 
