@@ -52,7 +52,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[~]` | decl.c | decl.js | Global variable declarations. JS: spread across modules |
 | `[a]` | detect.c | detect.js | Detection spells and scrolls. dosearch0 implemented (RNG-parity); ~40 functions TODO |
 | `[~]` | dig.c | dig.js | Digging mechanics. `zap_dig()` wand traversal now uses awaited `nh_delay_output()` boundaries in interactive mode (headless still skips delays) |
-| `[~]` | display.c | display.js | Display/rendering. `tmp_at()`/`nh_delay_output` lifecycle now follows C `display.c` semantics more closely (DISP_FLASH vs DISP_ALWAYS visibility, per-step flush, BACKTRACK cleanup timing, map-overlay restore path). Remaining divergence is full C glyph-id decoding (`mapglyph`) and some windowport-specific edge behavior |
+| `[~]` | display.c | display.js | Display/rendering. `tmp_at()`/`nh_delay_output` lifecycle now follows C `display.c` semantics more closely (DISP_FLASH vs DISP_ALWAYS visibility, per-step flush, BACKTRACK cleanup timing, map-overlay restore path). Transient numeric glyph decoding now follows C `display.h` glyph ranges (monster/object/cmap/zap/swallow/explosion/warning) via `temp_glyph.js`. Remaining divergence is full mapglyph/windowport detail (pet/infravision/status overlays and tty/windowport edge behavior) |
 | `[N/A]` | dlb.c | — | Data librarian (file bundling). Not needed in JS |
 | `[a]` | do.c | do.js | Miscellaneous actions. handleDrop/handleDownstairs/handleUpstairs (dodrop/dodown/doup); ~45 functions TODO |
 | `[~]` | do_name.c | do_name.js | Naming things (docallcmd, do_mgivenname) |
