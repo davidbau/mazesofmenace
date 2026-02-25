@@ -35,7 +35,7 @@ import { rn2, rnd, rn1, rnl } from './rng.js';
 import { pline, You, Your, You_feel, pline_The, You_hear } from './pline.js';
 import { exercise } from './attrib_exercise.js';
 import { tmp_at, nh_delay_output_nowait, DISP_BEAM, DISP_CHANGE, DISP_END } from './animation.js';
-import { getpos_sethilite, getpos, getpos_clear_hilite } from './getpos.js';
+import { getpos_sethilite, getpos_async, set_getpos_context } from './getpos.js';
 
 // ── Constants ──
 
@@ -983,7 +983,7 @@ export async function docast(player, display, map) {
 
     // Cast the spell
     const otyp = spellid(player, result);
-    const castResult = spelleffects(otyp, false, player, map, display);
+    const castResult = await spelleffects(otyp, false, player, map, display);
     return { moved: false, tookTime: castResult > 0 };
 }
 
@@ -1056,7 +1056,7 @@ export async function getspell(prompt, player, display) {
 // In C, this dispatches all spell effects. In the JS port, many spell effects
 // are handled through weffects/seffects/peffects. This provides the common
 // checks and energy accounting, then delegates to the effect handler.
-export function spelleffects(spell_otyp, atme, player, map, display) {
+export async function spelleffects(spell_otyp, atme, player, map, display) {
     if (!player || !player.spells) return 0;
 
     // Find spell index
@@ -1244,7 +1244,7 @@ export function spelleffects(spell_otyp, atme, player, map, display) {
 }
 
 // C ref: spell.c throwspell() — choose location for area spell
-export function throwspell(player, map) {
+export async function throwspell(player, map, display = null, flags = null) {
     if (!player || !map) return 0;
 
     if (player.underwater) {
@@ -1254,12 +1254,13 @@ export function throwspell(player, map) {
 
     pline("Where do you want to cast the spell?");
     const cc = { x: player.x, y: player.y };
+    set_getpos_context({ map, display, flags, goalPrompt: 'the desired position' });
     getpos_sethilite(
         (on) => display_spell_target_positions(player, map, on),
         (x, y) => can_center_spell_location(player, map, x, y)
     );
-    getpos(cc, true, 'the desired position');
-    getpos_clear_hilite();
+    const rc = await getpos_async(cc, true, 'the desired position');
+    if (rc < 0) return 0;
     return 1;
 }
 

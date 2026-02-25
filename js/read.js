@@ -31,7 +31,7 @@ import { gold_detect, food_detect, trap_detect, do_mapping, cvt_sdoor_to_door } 
 import { explode } from './explode.js';
 import { EXPL_FIERY } from './explode.js';
 import { tmp_at, DISP_BEAM, DISP_END } from './animation.js';
-import { getpos_sethilite, getpos, getpos_clear_hilite } from './getpos.js';
+import { getpos_sethilite, getpos_async, set_getpos_context } from './getpos.js';
 
 const SPELL_KEEN = 20000; // cf. spell.c KEEN
 const MAX_SPELL_STUDY = 3; // cf. spell.h MAX_SPELL_STUDY
@@ -427,7 +427,7 @@ async function handleRead(player, display, game) {
             if (anyItem.oclass === SCROLL_CLASS) {
                 replacePromptMessage();
                 // cf. read.c doread() — scroll reading
-                const consumed = seffects(anyItem, player, display, game);
+                const consumed = await seffects(anyItem, player, display, game);
                 if (consumed) {
                     // Scroll was used up inside seffects
                 } else {
@@ -1339,7 +1339,7 @@ function seffect_punishment(sobj, player, display) {
 }
 
 // cf. read.c seffect_stinking_cloud()
-function seffect_stinking_cloud(sobj, player, display, game) {
+async function seffect_stinking_cloud(sobj, player, display, game) {
     const already_known = isObjectNameKnown(sobj.otyp);
 
     if (!already_known) {
@@ -1371,9 +1371,12 @@ function seffect_stinking_cloud(sobj, player, display, game) {
             return Math.max(Math.abs(x - player.x), Math.abs(y - player.y)) <= STINKING_CLOUD_TARGET_DIST;
         };
         const cc = { x: player.x, y: player.y };
+        set_getpos_context({ map, display, flags: game?.flags, goalPrompt: 'the desired position' });
         getpos_sethilite(display_stinking_cloud_positions, can_center_cloud);
-        getpos(cc, true, 'the desired position');
-        getpos_clear_hilite();
+        const rc = await getpos_async(cc, true, 'the desired position');
+        if (rc < 0) {
+            return false;
+        }
     }
     // The C version prompts for a target position; automated play still self-targets.
     // cf. create_gas_cloud(cc.x, cc.y, ...) — gas cloud creation not yet ported
@@ -1388,7 +1391,7 @@ function seffect_stinking_cloud(sobj, player, display, game) {
 
 // cf. read.c seffects() — dispatch scroll effects by scroll type
 // Returns true if scroll was consumed (useup'd) inside the handler
-function seffects(sobj, player, display, game) {
+async function seffects(sobj, player, display, game) {
     const otyp = sobj.otyp;
     const od = objectData[otyp] || {};
 
@@ -1441,7 +1444,7 @@ function seffects(sobj, player, display, game) {
     case SCR_PUNISHMENT:
         return seffect_punishment(sobj, player, display);
     case SCR_STINKING_CLOUD:
-        return seffect_stinking_cloud(sobj, player, display, game);
+        return await seffect_stinking_cloud(sobj, player, display, game);
     default:
         display.putstr_message(`What weird effect is this? (${otyp})`);
         return false;

@@ -2562,10 +2562,10 @@ function maybe_turn_mon_iter(mtmp, player, map) {
 // ================================================================
 // cf. pray.c:2414 -- doturn(player, map)
 // ================================================================
-export function doturn(player, map) {
+export async function doturn(player, map) {
     if (!Role_if(player, PM_CLERIC) && !Role_if(player, PM_KNIGHT)) {
         if (known_spell(player, SPE_TURN_UNDEAD) >= 0)
-            return spelleffects(SPE_TURN_UNDEAD, false, player, map);
+            return await spelleffects(SPE_TURN_UNDEAD, false, player, map);
         You("don't know how to turn undead!");
         return 0;
     }

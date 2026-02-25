@@ -1902,21 +1902,21 @@ This section is generated from source symbol tables and includes function rows f
 | 557 | `dxdy_to_dist_descr` | - | Missing |
 | 513 | `gather_locs` | - | Missing |
 | 438 | `gather_locs_interesting` | - | Missing |
-| 771 | `getpos` | - | Missing |
+| 771 | `getpos` | getpos.js:getpos_async | Partial — interactive cursor loop implemented; advanced target cycling/filter/menu behavior remains TODO |
 | 102 | `getpos_getvalids_selection` | - | Missing |
 | 167 | `getpos_help` | - | Missing |
 | 137 | `getpos_help_keyxhelp` | - | Missing |
 | 665 | `getpos_menu` | - | Missing |
-| 753 | `getpos_refresh` | - | Missing |
-| 41 | `getpos_sethilite` | - | Missing |
-| 72 | `getpos_toggle_hilite_state` | - | Missing |
+| 753 | `getpos_refresh` | getpos.js:getpos_refresh | Implemented |
+| 41 | `getpos_sethilite` | getpos.js:getpos_sethilite | Implemented |
+| 72 | `getpos_toggle_hilite_state` | getpos.js:getpos_toggle_hilite_state | Implemented |
 | 341 | `gloc_filter_classify_glyph` | - | Missing |
 | 412 | `gloc_filter_done` | - | Missing |
 | 382 | `gloc_filter_floodfill` | - | Missing |
 | 364 | `gloc_filter_floodfill_matcharea` | - | Missing |
 | 391 | `gloc_filter_init` | - | Missing |
 | 422 | `known_vibrating_square_at` | - | Missing |
-| 94 | `mapxy_valid` | - | Missing |
+| 94 | `mapxy_valid` | getpos.js:isValidTarget | Implemented (helper parity) |
 | 729 | `truncate_to_map` | - | Missing |
 
 ### glyphs.c -> glyphs.js
