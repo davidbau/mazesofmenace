@@ -60,6 +60,7 @@ import { obj_resists } from './objdata.js';
 import { enexto } from './teleport.js';
 import { splitobj } from './mkobj.js';
 import { delobj } from './invent.js';
+import { useupall } from './invent.js';
 import { monflee } from './monmove.js';
 import { readobjnam, hands_obj } from './objnam.js';
 import { hold_another_object, prinv } from './invent.js';
@@ -418,12 +419,19 @@ export async function handleZap(player, map, display, game) {
     // C ref: attrib.c:506 — exercise(A_STR, TRUE) before zapping
     exercise(player, A_STR, true);
 
-    // Decrease charges
-    if (wand.spe > 0) wand.spe--;
-
     player.dx = dir[0];
     player.dy = dir[1];
     player.dz = 0;
+
+    // C ref: zap.c dozap() cursed-wand backfire chance.
+    if (maybe_explode_wand(wand, player.dx, player.dy)) {
+        await break_wand(wand, player, map);
+        useupall(wand, player);
+        return { moved: false, tookTime: true };
+    }
+
+    // Decrease charges
+    if (wand.spe > 0) wand.spe--;
 
     // Route all wand effects through weffects() so player zaps share the
     // same C-structured animation/effect path as other wand callsites.
@@ -1235,8 +1243,11 @@ export function maybe_explode_wand(obj, dx, dy) {
 // cf. zap.c break_wand — wand breaking with explosion
 // Called when a wand is broken (applied '#a' or force-breaking)
 // ============================================================
-export function break_wand(obj, player, map) {
+export async function break_wand(obj, player, map) {
   if (!obj || !player) return;
+  const {
+    explode, EXPL_DARK, EXPL_MAGICAL, EXPL_FIERY, EXPL_FROSTY,
+  } = await import('./explode.js');
 
   // C ref: do_break_wand in zap.c (dozap.c in older versions)
   // Determine explosion type and damage
@@ -1248,18 +1259,41 @@ export function break_wand(obj, player, map) {
     // RAY wand — explodes with beam damage
     // C ref: damage is d(spe+2, 6) for the wand explosion
     dmg = d(spe + 2, 6);
-
-    // The explosion would call explode() which does AoE damage
-    // For RNG parity, consume the same calls explode() would:
-    // explode() rolls d(12, 6) for fireball type, etc.
-    // Simplified: just apply direct damage
   } else {
     // Non-beam wand — less dramatic
     dmg = d(spe + 2, 6);
   }
 
   pline("The wand explodes!");
-  if (player.hp) player.hp -= dmg;
+  if (beamType < 0 || !map) {
+    if (player.hp) player.hp -= dmg;
+    return;
+  }
+
+  let adtyp = 0;
+  let expltype = EXPL_DARK;
+  switch (beamType) {
+  case ZT_MAGIC_MISSILE:
+    adtyp = 1; // AD_MAGM
+    expltype = EXPL_MAGICAL;
+    break;
+  case ZT_FIRE:
+    adtyp = 2; // AD_FIRE
+    expltype = EXPL_FIERY;
+    break;
+  case ZT_COLD:
+    adtyp = 3; // AD_COLD
+    expltype = EXPL_FROSTY;
+    break;
+  case ZT_SLEEP:
+  case ZT_DEATH:
+  case ZT_LIGHTNING:
+  default:
+    adtyp = 0; // AD_PHYS-ish fallback in current explode.js
+    expltype = EXPL_MAGICAL;
+    break;
+  }
+  await explode(player.x, player.y, adtyp, dmg, WAND_CLASS, expltype, map, player);
 }
 
 // ============================================================

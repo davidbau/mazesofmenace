@@ -14,7 +14,7 @@ Animation infrastructure is in place (`tmp_at`, delay boundaries, overlay lifecy
 
 ### Not Yet Fully Parity-Complete
 1. Real timed delay usage is still mixed.
-- More gameplay paths now await `nh_delay_output()` (beam zap via unified async `buzz()`, non-beam immediate wand traversal, chain-lightning spell, wand-of-digging `zap_dig` traversal, player throw-command projectile frame plus `throwit` per-step timing, C-structured boomerang `boomhit`-style curved display frames with `DISP_CHANGE`, monster ranged projectile flow via async `mthrowu` path, rolling-boulder monster trap traversal via async `mintrap_postmove` path, explosion frame phases, and fire-scroll explosion dispatch). Remaining `nh_delay_output_nowait()` usage is now largely internal/back-compat (`animation.js` backtrack and debug helpers), not active gameplay callsites.
+- More gameplay paths now await `nh_delay_output()` (beam zap via unified async `buzz()`, non-beam immediate wand traversal, chain-lightning spell, wand-of-digging `zap_dig` traversal, player throw-command projectile frame plus `throwit` per-step timing, C-structured boomerang `boomhit`-style curved display frames with `DISP_CHANGE`, monster ranged projectile flow via async `mthrowu` path, rolling-boulder monster trap traversal via async `mintrap_postmove` path, explosion frame phases, fire-scroll explosion dispatch, and `#apply` wand-break flow through async `break_wand`/`explode`). Remaining `nh_delay_output_nowait()` usage is now largely internal/back-compat (`animation.js` backtrack and debug helpers), not active gameplay callsites.
 - Result: structural replay boundaries are often correct before full visible timing parity is reached.
 
 2. `zap.c` coverage is incomplete.

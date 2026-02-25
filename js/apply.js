@@ -88,6 +88,8 @@ import { begin_burn, end_burn, obj_has_timer,
          kill_egg, attach_egg_hatch_timeout } from './timeout.js';
 import { maketrap } from './dungeon.js';
 import { tmp_at, nh_delay_output, DISP_BEAM, DISP_END } from './animation.js';
+import { break_wand } from './zap.js';
+import { useupall } from './invent.js';
 
 // -- Inline helpers --
 
@@ -685,10 +687,11 @@ function broken_wand_explode() {}
 export function maybe_dunk_boulders() {}
 
 // cf. apply.c:3905 -- STUB: do_break_wand
-function do_break_wand(obj) {
+async function do_break_wand(obj, player, map) {
     pline("Raising %s high above your head, you break it in two!", xname(obj));
     if (!obj.spe) obj.spe = rnd(3);
-    pline("But nothing else happens...");
+    await break_wand(obj, player, map);
+    useupall(obj, player);
 }
 
 // ====================================================================
@@ -875,6 +878,11 @@ export async function handleApply(player, map, display, game) {
 
         if (selected.otyp === LAND_MINE || selected.otyp === BEARTRAP) {
             return use_trap(selected, player, map, display, game);
+        }
+
+        if (selected.oclass === WAND_CLASS) {
+            await do_break_wand(selected, player, map);
+            return { moved: false, tookTime: true };
         }
 
         display.putstr_message("Sorry, I don't know how to use that.");
