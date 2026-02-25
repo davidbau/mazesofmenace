@@ -1756,8 +1756,11 @@ def run_session(seed, output_json, move_str, raw_moves=False, character=None, wi
             'steps': [startup_step],
         }
         key_delay_s = float(os.environ.get('NETHACK_KEY_DELAY_S', '0.02'))
+        final_capture_delay_s = float(os.environ.get('NETHACK_FINAL_CAPTURE_DELAY_S', '0.0'))
         if abs(key_delay_s - 0.02) > 1e-9:
             session_data['regen']['key_delay_s'] = key_delay_s
+        if final_capture_delay_s > 0.0:
+            session_data['regen']['final_capture_delay_s'] = final_capture_delay_s
 
         # Execute moves - send each character individually (no grouping)
         prev_rng_count = startup_rng_count
@@ -1791,6 +1794,10 @@ def run_session(seed, output_json, move_str, raw_moves=False, character=None, wi
             # Only clear --More-- if not raw_moves (raw moves include space keys)
             if not raw_moves:
                 clear_more_prompts(session_name)
+
+            # Optional final-frame settle for the very last captured step.
+            if idx == len(move_str) - 1 and final_capture_delay_s > 0.0:
+                time.sleep(final_capture_delay_s)
 
             # Capture state after this step
             screen_lines = capture_screen_lines(session_name)

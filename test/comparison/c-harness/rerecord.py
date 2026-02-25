@@ -130,9 +130,18 @@ def _build_gameplay(seed, output, regen, options):
     key_delay_s = regen.get('key_delay_s')
     if key_delay_s is None:
         key_delay_s = regen.get('keyDelayS')
+    final_capture_delay_s = regen.get('final_capture_delay_s')
+    if final_capture_delay_s is None:
+        final_capture_delay_s = regen.get('finalCaptureDelayS')
+    env_prefix = []
     if key_delay_s is not None:
         # run_session.py consumes this env var to tune per-key send timing.
-        cmd = ['env', f'NETHACK_KEY_DELAY_S={key_delay_s}'] + cmd
+        env_prefix.append(f'NETHACK_KEY_DELAY_S={key_delay_s}')
+    if final_capture_delay_s is not None:
+        # Optional final-step settle before capturing the last screen.
+        env_prefix.append(f'NETHACK_FINAL_CAPTURE_DELAY_S={final_capture_delay_s}')
+    if env_prefix:
+        cmd = ['env', *env_prefix] + cmd
 
     return cmd, f'gameplay seed={seed}'
 

@@ -1475,3 +1475,11 @@ hard-won wisdom:
 - For `seed113_wizard_selfplay200_gameplay`, driving event sequence parity exposed the real semantic mismatches and led directly to full RNG parity.
 - Concretely, fixing C-faithful event-producing paths (`mklev` niche corpse creation via `mkcorpstat`, and combat growth/kill flow in `mhitm`) moved both metrics together to `event 3321/3321` and `rng 13421/13421`.
 - Practical strategy: when a seed is close on RNG but diverges in event ordering/content, prioritize event-faithful core logic first; event alignment is often the shortest path to recovering RNG alignment.
+
+### Meta-lesson: avoid fixture-overfit when capture timing is suspect (2026-02-25)
+
+- `seed204_multidigit_wait_gameplay` showed a topline mismatch at step 3 (`""` vs `"You stop waiting."`) while RNG/events were already fully matched.
+- A JS-side suppression of `stop_occupation` messaging for counted wait/search was introduced to force the blank topline; this was not C-faithful and was an overfit workaround.
+- Capture experiment showed the fixture itself was timing-sensitive: re-recording with a small final settle (`NETHACK_FINAL_CAPTURE_DELAY_S=0.10`) changed C's captured final topline to `"You stop waiting."` without changing RNG counts.
+- Correct resolution was to remove the suppression and keep C-like `stop_occupation` behavior (`You stop ...`), then re-record only the targeted session with final settle delay.
+- Operational rule: when mismatch is screen-only and RNG/events are stable, treat fixture capture timing as a first-class suspect; do not change core gameplay semantics to satisfy a possibly stale/under-settled frame.
