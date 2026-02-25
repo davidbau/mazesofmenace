@@ -5481,7 +5481,7 @@ No function symbols parsed from isaac64.c.
 | 350 | `mon_maybe_unparalyze` | uhitm.js | Implemented — rn2(10) wake paralyzed monster before dieroll |
 | 6293 | `nohandglow` | uhitm.js | Stub — function present; `umconf` state not yet modeled |
 | 5843 | `passive` | uhitm.js | Partial — C-style AT_NONE search, damage dice, AD_ACID/AD_ENCH first-pass handling, `passive_obj` integration for weapon erosion, rn2(3) alive gate, and AD_PLYS/COLD/FIRE/ELEC/STUN alive effects with hero resistance/status hooks. Remaining gaps: exact damage/death messaging parity and full property-system fidelity |
-| 6105 | `passive_obj` | uhitm.js | Partial — erosion paths wired through `erode_obj` for FIRE/ACID/RUST/CORR/DCAY; enchant-drain path still TODO |
+| 6105 | `passive_obj` | uhitm.js | Partial — erosion paths wired through `erode_obj` for FIRE/ACID/RUST/CORR/DCAY and AD_ENCH enchant-drain path now wired; remaining gaps are full C `drain_item` edge semantics |
 | 1970 | `shade_aware` | uhitm.js | Implemented |
 | 1994 | `shade_miss` | uhitm.js | Implemented |
 | 4909 | `start_engulf` | uhitm.js | Stub — function surface present; display/animation path not modeled |

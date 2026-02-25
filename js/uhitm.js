@@ -1373,6 +1373,10 @@ export function passive_obj(mon, obj, mattk) {
         break;
     case AD_ENCH:
         // C: if (!mon->mcan) drain_item(obj)
+        if (!mon.mcan) {
+            if (obj.enchantment !== undefined) obj.enchantment = Math.max(-7, (obj.enchantment || 0) - 1);
+            else if (obj.spe !== undefined) obj.spe = Math.max(-7, (obj.spe || 0) - 1);
+        }
         break;
     default:
         break;
