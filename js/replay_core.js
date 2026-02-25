@@ -20,14 +20,12 @@ import { DUNGEONS_OF_DOOM } from './special_levels.js';
 import { simulatePostLevelInit } from './u_init.js';
 import { mon_arrive } from './dog.js';
 import { Player, roles, rankOf } from './player.js';
-import { NORMAL_SPEED, A_STR, A_DEX, A_CON, A_WIS,
-         RACE_HUMAN, RACE_ELF, RACE_DWARF, RACE_GNOME, RACE_ORC } from './config.js';
+import { RACE_HUMAN, RACE_ELF, RACE_DWARF, RACE_GNOME, RACE_ORC } from './config.js';
 import { SHOPBASE, ROOMOFFSET } from './config.js';
-import { rhack } from './cmd.js';
 import { makemon } from './makemon.js';
 import { pushInput } from './input.js';
 import { initrack } from './monmove.js';
-import { moveloop_core, NetHackGame, maybe_deferred_goto_after_rhack } from './allmain.js';
+import { NetHackGame, maybe_deferred_goto_after_rhack, run_command } from './allmain.js';
 import { HeadlessDisplay, createHeadlessInput } from './headless.js';
 
 export { HeadlessDisplay };
@@ -386,85 +384,6 @@ function firstComparableEntry(entries) {
     return null;
 }
 
-function comparableCallParts(entries) {
-    const out = [];
-    for (const e of entries || []) {
-        if (isMidlogEntry(e)) continue;
-        const call = rngCallPart(e);
-        if (isCompositeEntry(call)) continue;
-        out.push(call);
-    }
-    return out;
-}
-
-function hasNoComparableRngEntries(entries) {
-    for (const e of entries || []) {
-        if (isMidlogEntry(e)) continue;
-        const call = rngCallPart(e);
-        if (isCompositeEntry(call)) continue;
-        return false;
-    }
-    return true;
-}
-
-function hasRunmodeDelayOpen(entries) {
-    for (const e of entries || []) {
-        if (typeof e !== 'string') continue;
-        if (e.startsWith('>runmode_delay_output')) return true;
-    }
-    return false;
-}
-
-function hasRunmodeDelayClose(entries) {
-    for (const e of entries || []) {
-        if (typeof e !== 'string') continue;
-        if (e.startsWith('<runmode_delay_output')) return true;
-    }
-    return false;
-}
-
-function hasRunmodeDelayCloseOnlyBoundary(entries) {
-    if (!Array.isArray(entries) || entries.length === 0) return false;
-    if (!hasRunmodeDelayClose(entries)) return false;
-    if (hasRunmodeDelayOpen(entries)) return false;
-    return hasNoComparableRngEntries(entries);
-}
-
-function hasTurnBoundaryRng(entries) {
-    for (const e of entries || []) {
-        if (typeof e !== 'string') continue;
-        if (e.includes('distfleeck(')
-            || e.includes('mcalcmove(')
-            || e.includes('moveloop_core(')
-            || e.includes('regen_hp(')
-            || e.includes('dosounds(')
-            || e.includes('gethungry(')
-            || e.includes('u_calc_moveamt(')
-            || e.includes('dosearch0(')) {
-            return true;
-        }
-    }
-    return false;
-}
-
-function hasStopOccupationBoundary(entries) {
-    for (const e of entries || []) {
-        if (typeof e !== 'string') continue;
-        if (e.includes('stop_occupation(')) return true;
-    }
-    return false;
-}
-
-function replayBoundaryTraceEnabled() {
-    const env = (typeof process !== 'undefined' && process.env) ? process.env : {};
-    return env.WEBHACK_REPLAY_BOUNDARY_TRACE === '1';
-}
-
-function replayBoundaryTrace(...args) {
-    if (!replayBoundaryTraceEnabled()) return;
-    console.log('[REPLAY_BOUNDARY_TRACE]', ...args);
-}
-
 function replayPendingTraceEnabled() {
     const env = (typeof process !== 'undefined' && process.env) ? process.env : {};
     return env.WEBHACK_REPLAY_PENDING_TRACE === '1';
@@ -750,14 +669,6 @@ export async function replaySession(seed, session, opts = {}) {
     const startupLog = getRngLog();
     const startupRng = startupLog.map(toCompactRng);
 
-    // Keep replay harness deterministic and input-driven: do not inject
-    // captured startup screens into display state.
-    const sessionStartup = getSessionStartup(session);
-    const startupScreen = getSessionScreenLines(sessionStartup || {});
-    const startupTopline = startupScreen[0] || '';
-    if (typeof game.display?.putstr_message === 'function') {
-        game.display.putstr_message(startupTopline);
-    }
     // Replay each step
     // C ref: allmain.c moveloop_core() step boundary analysis:
     //   Each step captures: rhack(player action) + context.move block (movemon + turnEnd)
@@ -773,28 +684,21 @@ export async function replaySession(seed, session, opts = {}) {
         : allSteps.length;
     const stepResults = [];
     let pendingCommand = null;
-    let pendingKind = null;
     let pendingCount = 0;
     let lastCommand = null; // C ref: do_repeat() remembered command for Ctrl+A
     // game.pendingDeferredTimedTurn is used instead (game-level flag)
 
     const pushStepResult = (stepLogRaw, screen, arg3, arg4, arg5, arg6) => {
         let screenAnsiOverride;
-        let step;
-        let stepScreen;
         let stepIndex;
         // Backward-compatible arity:
-        // old: (stepLogRaw, screen, step, stepScreen, stepIndex)
-        // new: (stepLogRaw, screen, screenAnsiOverride, step, stepScreen, stepIndex)
+        // old: (stepLogRaw, screen, step, _, stepIndex)
+        // new: (stepLogRaw, screen, screenAnsiOverride, _, _, stepIndex)
         if (arg3 && typeof arg3 === 'object' && !Array.isArray(arg3) && Object.hasOwn(arg3, 'key')) {
             screenAnsiOverride = null;
-            step = arg3;
-            stepScreen = arg4;
             stepIndex = arg5;
         } else {
             screenAnsiOverride = arg3;
-            step = arg4;
-            stepScreen = arg5;
             stepIndex = arg6;
         }
         const raw = stepLogRaw;
@@ -819,54 +723,17 @@ export async function replaySession(seed, session, opts = {}) {
             screenAnsi: normalizedScreenAnsi,
             animationBoundaries: stepAnimationBoundaries.slice(),
         });
-        // Sync player stats from session screen data to keep game state
-        // aligned with the C trace during replay.
-        if (stepScreen && stepScreen.length > 0) {
-            for (const line of stepScreen) {
-                const hpm = line.match(/HP:(\d+)\((\d+)\)/);
-                if (hpm) {
-                    game.player.hp = parseInt(hpm[1]);
-                    game.player.hpmax = parseInt(hpm[2]);
-                }
-                const hpmPw = line.match(/HP:(\d+)\((\d+)\)\s+Pw:(\d+)\((\d+)\)\s+AC:([-]?\d+)/);
-                if (hpmPw) {
-                    game.player.hp = parseInt(hpmPw[1]);
-                    game.player.hpmax = parseInt(hpmPw[2]);
-                    game.player.pw = parseInt(hpmPw[3]);
-                    game.player.pwmax = parseInt(hpmPw[4]);
-                    game.player.ac = parseInt(hpmPw[5]);
-                }
-                const attrm = line.match(/St:([0-9/*]+)\s+Dx:(\d+)\s+Co:(\d+)\s+In:(\d+)\s+Wi:(\d+)\s+Ch:(\d+)/);
-                if (attrm) {
-                    game.player._screenStrength = attrm[1];
-                    // Convert display str back to internal value: "18/07" → 25, "18/**" → 118
-                    const strStr = attrm[1];
-                    const subMatch = strStr.match(/^18\/(\d+)$/);
-                    game.player.attributes[0] = subMatch ? 18 + parseInt(subMatch[1], 10)
-                        : strStr === '18/**' ? 118
-                        : parseInt(strStr, 10); // A_STR
-                    game.player.attributes[1] = parseInt(attrm[4]); // A_INT (In)
-                    game.player.attributes[2] = parseInt(attrm[5]); // A_WIS (Wi)
-                    game.player.attributes[3] = parseInt(attrm[2]); // A_DEX (Dx)
-                    game.player.attributes[4] = parseInt(attrm[3]); // A_CON (Co)
-                    game.player.attributes[5] = parseInt(attrm[6]); // A_CHA (Ch)
-                }
-            }
-        }
     };
     const applyPostRhack = (rhackResult) => {
         maybe_deferred_goto_after_rhack(game, rhackResult);
         return rhackResult;
     };
-    const beginTimedRhack = (commandKey, onTimedTurn) => {
-        game.advanceRunTurn = async () => {
-            onTimedTurn(true);
-        };
-        return rhack(commandKey, game);
-    };
-    const clearTimedRhack = () => {
-        game.advanceRunTurn = null;
-    };
+    const beginTimedCommand = (commandKey, countPrefix = 0) => (
+        run_command(game, commandKey, {
+            countPrefix: (Number.isInteger(countPrefix) && countPrefix > 0) ? countPrefix : 0,
+            computeFov: true,
+        })
+    );
 
     for (let stepIndex = 0; stepIndex < maxSteps; stepIndex++) {
         stepAnimationBoundaries = [];
@@ -909,28 +776,6 @@ export async function replaySession(seed, session, opts = {}) {
             );
             continue;
         }
-        if (!pendingCommand && game.pendingToplineMessage && step.key === ' ') {
-            game.display.putstr_message(game.pendingToplineMessage);
-            game.pendingToplineMessage = null;
-        }
-
-        // (Counted-command occupation pass-through removed — flat RNG comparison.)
-
-        // When occupation is active between steps, it was already drained by
-        // the prior command's execution. This step is a C-artifact boundary
-        // marker (runmode_delay_output). Record screen only.
-        if (!pendingCommand && game.occupation) {
-            applyStepScreen();
-            pushStepResult(
-                [],
-                opts.captureScreens ? game.display.getScreenLines() : undefined,
-                step,
-                null,
-                stepIndex
-            );
-            continue;
-        }
-
         // C ref: cmd.c:4958 — digit keys start count prefix accumulation.
         // First digit keeps prior topline; continued count (or leading zero)
         // updates topline to "Count: N". No time/RNG is consumed.
@@ -965,86 +810,15 @@ export async function replaySession(seed, session, opts = {}) {
         let capturedScreenAnsiOverride = null;
         // (reachedFinalRecordedStepTarget removed — flat RNG comparison
         // doesn't need per-step RNG count matching.)
-        const applyTimedTurn = (replaceTurnMessages = false) => {
-            if (game.player?.deathCause || game.player?.dead || (game.player?.hp || 0) <= 0) {
-                return;
-            }
-            let restorePutstr = null;
-            if (replaceTurnMessages && game?.display && typeof game.display.putstr_message === 'function') {
-                const originalPutstr = game.display.putstr_message.bind(game.display);
-                game.display.putstr_message = (msg) => {
-                    game.display.clearRow(0);
-                    game.display.topMessage = null;
-                    return originalPutstr(msg);
-                };
-                restorePutstr = () => {
-                    game.display.putstr_message = originalPutstr;
-                };
-            }
-            // C trace behavior: stair transitions consume time but do not run
-            // immediate end-of-turn effects in steps where no turn-end RNG is
-            // captured for that transition command.
-            const isLevelTransition = step.key === '>' || step.key === '<';
-            const expectedStepRng = step.rng || [];
-            const expectsTransitionTurnEnd = expectedStepRng.some((entry) =>
-                typeof entry === 'string'
-                && (entry.includes('mcalcmove(')
-                    || entry.includes('moveloop_core(')
-                    || entry.includes('gethungry('))
-            );
-            if (isLevelTransition && !expectsTransitionTurnEnd) {
-                if (restorePutstr) restorePutstr();
-                return;
-            }
-            // C ref: allmain.c moveloop_core():
-            // monster movement occurs before once-per-turn bookkeeping;
-            // settrack() happens during turn setup before moves++ work.
-            // C ref: vision_recalc() runs during domove(), update FOV before monsters act
-            moveloop_core(game, { computeFov: true });
-            if (restorePutstr) restorePutstr();
-        };
         if (pendingCommand) {
-            const priorPendingKind = pendingKind;
             replayPendingTrace(
                 `step=${stepIndex + 1}`,
                 `key=${JSON.stringify(step.key || '')}`,
-                `pendingKind=${String(priorPendingKind || '') || 'none'}`,
                 'pending-start'
             );
             // A previous command is blocked on nhgetch(); this step's key feeds it.
             for (let i = 0; i < step.key.length; i++) {
                 pushInput(step.key.charCodeAt(i));
-            }
-            // Legacy traces sometimes omit Enter after a one-key "#<cmd>"
-            // shorthand. Only synthesize Enter when the next captured key
-            // does not look like continued typing for a multi-char command.
-            const maybeShorthandExtendedKey = /^[A-Za-z]$/.test(step.key);
-            if (pendingKind === 'extended-command' && maybeShorthandExtendedKey) {
-                const nextKey = allSteps[stepIndex + 1]?.key;
-                const continuesWord = typeof nextKey === 'string'
-                    && nextKey.length === 1
-                    && /[A-Za-z]/.test(nextKey);
-                const explicitEnterNext = nextKey === '\n' || nextKey === '\r';
-                const firstExpected = String((game.display.getScreenLines?.() || [])[0] || '')
-                    .replace(/[\x00-\x1f\x7f]/g, '').trimStart();
-                const stillTypingExtended = firstExpected.startsWith('#');
-                // C auto-completes extended commands: if the captured screen
-                // no longer shows a '#' prompt, C has already resolved the
-                // command (e.g. #w → #wield → dowield prompt). Inject Enter
-                // so JS resolves it too, even if the next key is a letter
-                // (which would be consumed by the resolved command's prompt,
-                // not by the extended command getlin).
-                if (!stillTypingExtended && firstExpected.length > 0) {
-                    if (!explicitEnterNext) {
-                        pushInput(13);
-                    }
-                    pendingKind = null;
-                } else if (!continuesWord && !explicitEnterNext && !stillTypingExtended) {
-                    pushInput(13);
-                    // Only inject shorthand Enter once; extended commands can
-                    // continue into nested prompts (getlin/menus) afterward.
-                    pendingKind = null;
-                }
             }
             // Prompt-driven commands (read/drop/throw/etc.) usually resolve
             // immediately after input, but can take a few ticks. Poll briefly
@@ -1062,7 +836,6 @@ export async function replaySession(seed, session, opts = {}) {
             replayPendingTrace(
                 `step=${stepIndex + 1}`,
                 `key=${JSON.stringify(step.key || '')}`,
-                `pendingKind=${String(priorPendingKind || '') || 'none'}`,
                 `settled=${settled.done ? 1 : 0}`
             );
             if (!settled.done) {
@@ -1079,58 +852,16 @@ export async function replaySession(seed, session, opts = {}) {
                 replayPendingTrace(
                     `step=${stepIndex + 1}`,
                     `key=${JSON.stringify(step.key || '')}`,
-                    `pendingKind=${String(priorPendingKind || '') || 'none'}`,
                     `resolvedMoved=${result?.moved ? 1 : 0}`,
                     `resolvedTime=${result?.tookTime ? 1 : 0}`
                 );
                 pendingCommand = null;
-                pendingKind = null;
-                // C tty behavior: a key used to dismiss inventory can also become
-                // the next command. Replay this for menu-driven traces.
-                if (priorPendingKind === 'inventory-menu'
-                    && step.key.length === 1
-                    && step.key !== ' '
-                    && step.key !== '\n'
-                    && step.key !== '\r') {
-                    if (step.key === ':') {
-                        result = { moved: false, tookTime: false };
-                    } else {
-                        const passthroughCh = step.key.charCodeAt(0);
-                        game.commandCount = 0;
-                        game.multi = 0;
-                        game.advanceRunTurn = async () => {
-                            applyTimedTurn(true);
-                        };
-                        const passthroughPromise = rhack(passthroughCh, game);
-                        const settledPassthrough = await Promise.race([
-                            passthroughPromise.then(v => ({ done: true, value: v })),
-                            new Promise(resolve => setTimeout(() => resolve({ done: false }), 1)),
-                        ]);
-                        if (!settledPassthrough.done) {
-                            if (opts.captureScreens) {
-                                capturedScreenOverride = game.display.getScreenLines();
-                                capturedScreenAnsiOverride = (typeof game.display?.getScreenAnsiLines === 'function')
-                                    ? game.display.getScreenAnsiLines()
-                                    : null;
-                            }
-                            pendingCommand = passthroughPromise;
-                            pendingKind = (passthroughCh === 35)
-                                ? 'extended-command'
-                                : (['i', 'I'].includes(String.fromCharCode(passthroughCh)) ? 'inventory-menu' : null);
-                            result = { moved: false, tookTime: false };
-                        } else {
-                            result = applyPostRhack(settledPassthrough.value);
-                        }
-                        game.advanceRunTurn = null;
-                    }
-                }
             }
         } else {
             if (game.pendingPrompt && typeof game.pendingPrompt.onKey === 'function') {
                 const promptResult = game.pendingPrompt.onKey(ch, game);
                 if (promptResult && promptResult.handled) {
                     result = { moved: false, tookTime: false, prompt: true };
-                    game.advanceRunTurn = null;
                     // Prompt handlers consume this key; no command execution.
                 } else {
                     game.pendingPrompt = null;
@@ -1140,34 +871,24 @@ export async function replaySession(seed, session, opts = {}) {
                 // Prompt consumed input above.
             } else {
             let effectiveCh = ch;
+            let countPrefixForRun = pendingCount > 0 ? pendingCount : 0;
             if (ch === 1) { // Ctrl+A
                 if (lastCommand) {
                     effectiveCh = lastCommand.key;
-                    game.commandCount = lastCommand.count || 0;
-                    game.multi = game.commandCount;
-                    if (game.multi > 0) game.multi--;
-                    game.cmdKey = effectiveCh;
+                    countPrefixForRun = lastCommand.count || 0;
                 } else {
                     // No command to repeat yet: no-op, matching tty behavior.
                     pushStepResult(
                         [],
                         opts.captureScreens ? game.display.getScreenLines() : undefined,
                         step,
-                        stepScreen,
+                        null,
                         stepIndex
                     );
                     continue;
                 }
-            } else if (pendingCount > 0) {
-                game.commandCount = pendingCount;
-                game.multi = pendingCount;
-                if (game.multi > 0) game.multi--;
-                game.cmdKey = ch;
-                pendingCount = 0;
-            } else {
-                game.commandCount = 0;
-                game.multi = 0;
             }
+            pendingCount = 0;
             // Feed the key to the game engine
             // For multi-char keys (e.g. "wb" = wield item b), push trailing chars
             // into input queue so nhgetch() returns them immediately
@@ -1178,37 +899,16 @@ export async function replaySession(seed, session, opts = {}) {
             }
 
             // Execute the command once (one turn per keystroke)
-            // Some traces use space to acknowledge "--More--" then immediately
-            // rest; detect that by expected RNG and map to wait command.
-            let execCh = effectiveCh;
-            if (step.key === ' ') {
-                const firstRng = (step.rng || []).find((e) =>
-                    typeof e === 'string' && !e.startsWith('>') && !e.startsWith('<')
-                );
-                if (firstRng && firstRng.includes('distfleeck(')) {
-                    execCh = '.'.charCodeAt(0);
-                }
-            }
             // Save replayable command (C: stores repeat command before execute).
-            if (ch !== 1 && game.multi === 0) {
-                lastCommand = { key: ch, count: game.commandCount || 0 };
+            if (ch !== 1 && countPrefixForRun === 0) {
+                lastCommand = { key: ch, count: countPrefixForRun };
             }
-            // Keep the active command key aligned with moveloop-style repeat logic.
-            game.cmdKey = execCh;
-            const commandPromise = beginTimedRhack(execCh, applyTimedTurn);
+            const commandPromise = beginTimedCommand(effectiveCh, countPrefixForRun);
             const settled = await Promise.race([
                 commandPromise.then(v => ({ done: true, value: v })),
                 new Promise(resolve => setTimeout(() => resolve({ done: false }), 1)),
             ]);
             if (!settled.done) {
-                // Inventory display: keep menu pending so the next real key
-                // dismisses it (and may become a passthrough command), matching
-                // C tty interactions.
-                const needsDismissal = ['i', 'I'].includes(String.fromCharCode(ch));
-                const hasRunmodeDelayMarker = Array.isArray(step.rng)
-                    && step.rng.some((entry) =>
-                        typeof entry === 'string' && entry.includes('runmode_delay_output')
-                    );
                 // Command is waiting for additional input (direction/item/etc.).
                 // Defer resolution to subsequent captured step(s).
                 if (opts.captureScreens) {
@@ -1217,132 +917,21 @@ export async function replaySession(seed, session, opts = {}) {
                         ? game.display.getScreenAnsiLines()
                         : null;
                 }
-                clearTimedRhack();
                 pendingCommand = commandPromise;
-                pendingKind = (ch === 35)
-                    ? 'extended-command'
-                    : (needsDismissal ? 'inventory-menu' : null);
                 replayPendingTrace(
                     `step=${stepIndex + 1}`,
                     `key=${JSON.stringify(step.key || '')}`,
-                    `setPendingKind=${String(pendingKind || '') || 'none'}`
+                    'setPending=1'
                 );
                 result = { moved: false, tookTime: false };
             } else {
-                clearTimedRhack();
                 result = applyPostRhack(settled.value);
             }
             }
         }
 
-        // C ref: cmd.c prefix commands (F=fight, G=run, g=rush) return without
-        // consuming time or reading further input. For multi-char keys like "Fh",
-        // the prefix is processed first, then we need to send the remaining char
-        // as a separate command to actually perform the action.
-        // Note: only actual prefix commands need this — other multi-char commands
-        // like "oj" (open-south) or "wb" (wield-b) consume trailing chars via
-        // nhgetch() internally.
-        const PREFIX_CMDS = new Set(['F', 'G', 'g']);
-        if (result && !result.tookTime && step.key.length > 1
-            && PREFIX_CMDS.has(String.fromCharCode(ch))) {
-            const nextCh = step.key.charCodeAt(1);
-            result = applyPostRhack(await rhack(nextCh, game));
-        }
-
-        // Run any monster turn deferred from a preceding stop_occupation frame,
-        // now that the player's command has updated hero position.
-        // C ref: dogmove.c:583 — On_stairs(u.ux, u.uy) needs hero's post-move pos.
-        game.runPendingDeferredTimedTurn();
-
-        // If the command took time, run monster movement and turn effects.
-        // Running/rushing can pack multiple movement steps into one command.
-        if (result && result.tookTime) {
-            const timedSteps = Math.max(1, Number.isInteger(result.runSteps) ? result.runSteps : 1);
-            for (let i = 0; i < timedSteps; i++) {
-                if (i > 0 && (game.multi > 0 || game.occupation) && game?.display) {
-                    game.display.clearRow(0);
-                    game.display.topMessage = null;
-                    game.display.messageNeedsMore = false;
-                }
-                applyTimedTurn();
-
-            }
-            if (game.multi > 0 && typeof game.shouldInterruptMulti === 'function'
-                && game.shouldInterruptMulti()) {
-                game.multi = 0;
-            }
-            // Run occupation continuation turns (multi-turn eating, etc.)
-            // C ref: allmain.c moveloop_core() — occupation runs before next input
-            while (game.occupation) {
-
-                const occ = game.occupation;
-                const cont = occ.fn(game);
-                const finishedOcc = !cont ? occ : null;
-                if (!cont) {
-                    // C ref: allmain.c:497 — natural occupation completion
-                    // just clears go.occupation silently. "You stop X." is
-                    // only printed by stop_occupation() on external interrupt.
-                    game.occupation = null;
-                    game.pendingPrompt = null;
-                }
-                applyTimedTurn();
-                if (finishedOcc && typeof finishedOcc.onFinishAfterTurn === 'function') {
-                    finishedOcc.onFinishAfterTurn(game);
-                }
-                if (cont === 'prompt') {
-                    break;
-                }
-
-                // Keep replay HP aligned to captured turn-state during multi-turn actions.
-            }
-
-            // C ref: allmain.c moveloop() — multi-count repeats execute before
-            // accepting the next keyboard input.
-            const cmdKeyChar = String.fromCharCode(game.cmdKey || 0);
-            const repeatedMoveCmd = game.cmdKey === 10
-                || game.cmdKey === 13
-                || 'hjklyubn'.includes(cmdKeyChar);
-            if (repeatedMoveCmd && result.moved === false) {
-                game.multi = 0;
-            }
-            while (game.multi > 0) {
-
-                // C ref: allmain.c:519-526 lookaround() can clear multi before
-                // the next repeated command executes; this should not consume
-                // an additional turn when it interrupts.
-                if (typeof game.shouldInterruptMulti === 'function'
-                    && game.shouldInterruptMulti()) {
-                    game.multi = 0;
-                    break;
-                }
-                game.multi--;
-                const repeated = applyPostRhack(await rhack(game.cmdKey, game));
-                if (!repeated || !repeated.tookTime) break;
-                applyTimedTurn();
-
-                if (repeatedMoveCmd && repeated.moved === false) {
-                    game.multi = 0;
-                    break;
-                }
-                while (game.occupation) {
-                    const occ = game.occupation;
-                    const cont = occ.fn(game);
-                    const finishedOcc = !cont ? occ : null;
-                    if (!cont) {
-                        // C ref: natural completion — no message (see above)
-                        game.occupation = null;
-                        game.pendingPrompt = null;
-                    }
-                    applyTimedTurn();
-                    if (finishedOcc && typeof finishedOcc.onFinishAfterTurn === 'function') {
-                        finishedOcc.onFinishAfterTurn(game);
-                    }
-                    if (cont === 'prompt') {
-                        break;
-                    }
-                }
-            }
-        }
+        // run_command() owns turn advancement, occupation continuation, and
+        // counted-repeat execution. Replay only provides captured keys.
 
         // Keep prompt/menu frames visible while a command is still awaiting
         // follow-up input (inventory, directions, item selectors, etc.).
