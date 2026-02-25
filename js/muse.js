@@ -90,6 +90,7 @@ import { is_pool, is_lava, is_ice, find_drawbridge, destroy_drawbridge,
 import { trycall } from './do.js';
 import { pushRngLogEntry } from './rng.js';
 import { Can_dig_down, Can_fall_thru, Can_rise_up } from './dungeon.js';
+import { tmp_at, nh_delay_output, DISP_BEAM, DISP_END } from './animation.js';
 
 // ========================================================================
 // Module-level state — C ref: gm.m struct (defense/offense/misc selections)
@@ -996,7 +997,7 @@ function mon_escape(mtmp, vismon, map, player) {
 // ========================================================================
 // use_defensive — C ref: muse.c:794
 // ========================================================================
-export function use_defensive(mon, map, player) {
+export async function use_defensive(mon, map, player) {
     let i;
     const otmp = m.defensive;
     const mdat = mon.type || {};
@@ -1060,7 +1061,7 @@ export function use_defensive(mon, map, player) {
         zap_oseen = oseen;
         mzapwand(mon, otmp, false, map, player);
         m_using = true;
-        mbhit(mon, rn1(8, 6), mbhitm, null, otmp, map, player);
+        await mbhit(mon, rn1(8, 6), mbhitm, null, otmp, map, player);
         if (noteleport_level(mon, map))
             mon_learns_traps(mon, TELEP_TRAP);
         m_using = false;
@@ -1120,7 +1121,7 @@ export function use_defensive(mon, map, player) {
         zap_oseen = oseen;
         mzapwand(mon, otmp, false, map, player);
         m_using = true;
-        mbhit(mon, rn1(8, 6), mbhitm, null, otmp, map, player);
+        await mbhit(mon, rn1(8, 6), mbhitm, null, otmp, map, player);
         m_using = false;
         return 2;
 
@@ -1653,50 +1654,59 @@ function fhito_loc(obj, tx, ty, fhito, map) {
 // ========================================================================
 // mbhit — C ref: muse.c:1731
 // ========================================================================
-function mbhit(mon, range, fhitm, fhito, obj, map, player) {
+async function mbhit(mon, range, fhitm, fhito, obj, map, player) {
     bhitpos.x = mon.mx;
     bhitpos.y = mon.my;
     const ddx = Math.sign((mon.mux ?? player.x) - mon.mx);
     const ddy = Math.sign((mon.muy ?? player.y) - mon.my);
 
-    while (range-- > 0) {
-        bhitpos.x += ddx;
-        bhitpos.y += ddy;
-        const x = bhitpos.x;
-        const y = bhitpos.y;
+    // C ref: muse.c mbhit() path uses bhit traversal that displays flashbeam.
+    tmp_at(DISP_BEAM, { ch: '*', color: 11 });
+    try {
+        while (range-- > 0) {
+            bhitpos.x += ddx;
+            bhitpos.y += ddy;
+            const x = bhitpos.x;
+            const y = bhitpos.y;
 
-        if (!isok(x, y)) {
-            bhitpos.x -= ddx;
-            bhitpos.y -= ddy;
-            break;
-        }
+            if (!isok(x, y)) {
+                bhitpos.x -= ddx;
+                bhitpos.y -= ddy;
+                break;
+            }
 
-        if (u_at(bhitpos.x, bhitpos.y, player)) {
-            if (fhitm) fhitm(player, obj, map, player);
-            range -= 3;
-        } else {
-            const mtmp = m_at(bhitpos.x, bhitpos.y, map);
-            if (mtmp) {
-                if (cansee(map, player, null, bhitpos.x, bhitpos.y)
-                    && !canspotmon(mtmp, player, map))
-                    map_invisible(map, bhitpos.x, bhitpos.y, player);
-                if (fhitm) fhitm(mtmp, obj, map, player);
+            tmp_at(x, y);
+            await nh_delay_output();
+
+            if (u_at(bhitpos.x, bhitpos.y, player)) {
+                if (fhitm) fhitm(player, obj, map, player);
                 range -= 3;
+            } else {
+                const mtmp = m_at(bhitpos.x, bhitpos.y, map);
+                if (mtmp) {
+                    if (cansee(map, player, null, bhitpos.x, bhitpos.y)
+                        && !canspotmon(mtmp, player, map))
+                        map_invisible(map, bhitpos.x, bhitpos.y, player);
+                    if (fhitm) fhitm(mtmp, obj, map, player);
+                    range -= 3;
+                }
+            }
+
+            if (fhito && fhito_loc(obj, bhitpos.x, bhitpos.y, fhito, map))
+                range--;
+
+            const loc = map.at(bhitpos.x, bhitpos.y);
+            const ltyp = loc ? loc.typ : 0;
+
+            if (!ZAP_POS(ltyp)
+                || (loc && (loc.flags & 0x03) /* D_LOCKED | D_CLOSED */)) {
+                bhitpos.x -= ddx;
+                bhitpos.y -= ddy;
+                break;
             }
         }
-
-        if (fhito && fhito_loc(obj, bhitpos.x, bhitpos.y, fhito, map))
-            range--;
-
-        const loc = map.at(bhitpos.x, bhitpos.y);
-        const ltyp = loc ? loc.typ : 0;
-
-        if (!ZAP_POS(ltyp)
-            || (loc && (loc.flags & 0x03) /* D_LOCKED | D_CLOSED */)) {
-            bhitpos.x -= ddx;
-            bhitpos.y -= ddy;
-            break;
-        }
+    } finally {
+        tmp_at(DISP_END, 0);
     }
 }
 
@@ -1756,7 +1766,7 @@ export async function use_offensive(mtmp, map, player) {
         zap_oseen = oseen;
         mzapwand(mtmp, otmp, false, map, player);
         m_using = true;
-        mbhit(mtmp, rn1(8, 6), mbhitm, null, otmp, map, player);
+        await mbhit(mtmp, rn1(8, 6), mbhitm, null, otmp, map, player);
         m_using = false;
         return 2;
 

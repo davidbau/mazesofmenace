@@ -835,7 +835,7 @@ async function dochug(mon, map, player, display, fov, game = null) {
     // Monsters check inventory for defensive or misc items to use.
     // Stubs return false for now (no RNG consumed when returning false).
     if (find_defensive(mon, false, map, player)) {
-        if (use_defensive(mon, map, player) !== 0) return;
+        if (await use_defensive(mon, map, player) !== 0) return;
     } else if (find_misc(mon, map, player)) {
         if (use_misc(mon, map, player) !== 0) return;
     }
