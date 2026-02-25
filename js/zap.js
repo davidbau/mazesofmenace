@@ -66,6 +66,7 @@ import { hold_another_object, prinv } from './invent.js';
 import { findit } from './detect.js';
 import { is_db_wall, find_drawbridge, open_drawbridge, close_drawbridge, destroy_drawbridge } from './dbridge.js';
 import { HOLE, TRAPDOOR } from './symbols.js';
+import { engr_at, del_engr_at, wipe_engr_at, rloc_engr } from './engrave.js';
 import {
     tmp_at, nh_delay_output, nh_delay_output_nowait,
     DISP_BEAM, DISP_END,
@@ -1421,11 +1422,42 @@ export function zap_updown(obj, player, map) {
     return true;
   };
 
+  const zap_map_downward = () => {
+    if (!map) return;
+    const engr = engr_at(map, x, y);
+    if (!engr || engr.type === 'headstone') return;
+    switch (obj.otyp) {
+    case WAN_CANCELLATION:
+    case SPE_CANCELLATION:
+    case WAN_MAKE_INVISIBLE:
+      del_engr_at(map, x, y);
+      break;
+    case WAN_TELEPORTATION:
+    case SPE_TELEPORT_AWAY:
+      rloc_engr(map, engr);
+      break;
+    case SPE_STONE_TO_FLESH:
+      if (engr.type === 'engrave') {
+        pline("The edges on the floor get smoother.");
+        wipe_engr_at(map, x, y, d(2, 4), true);
+      }
+      break;
+    case WAN_STRIKING:
+    case SPE_FORCE_BOLT:
+      wipe_engr_at(map, x, y, d(2, 4), true);
+      break;
+    default:
+      break;
+    }
+  };
+
   switch (obj.otyp) {
   case WAN_PROBING:
     if (player.dz && player.dz < 0) {
       pline("You probe towards the ceiling.");
     } else {
+      // C ref: zap.c zap_map() handles down-zap engraving effects.
+      zap_map_downward();
       pline("You probe beneath the floor.");
       // C ref: zap.c:3232 — bhitpile for floor objects
       if (map) bhitpile(obj, bhito, x, y, player.dz || 1, map);
@@ -1494,6 +1526,8 @@ export function zap_updown(obj, player, map) {
   // C ref: zap.c:3370-3396 — bhitpile for down zaps
   if (player.dz && player.dz > 0 && map) {
     bhitpile(obj, bhito, x, y, player.dz, map);
+    // C ref: zap.c zap_map() — down-zap engraving handling.
+    zap_map_downward();
   }
 
   return disclose;
