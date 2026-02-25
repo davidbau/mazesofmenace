@@ -111,6 +111,12 @@ export const NEED_PICK_OR_AXE = 6;
 const BOLT_LIM = 8;
 const AKLYS_LIM = BOLT_LIM / 2;
 
+// Hero skill state (C: P_SKILL/P_MAX_SKILL/P_ADVANCE).
+let skillSystemActive = false;
+const heroSkill = new Array(P_NUM_SKILLS).fill(P_ISRESTRICTED);
+const heroMaxSkill = new Array(P_NUM_SKILLS).fill(P_ISRESTRICTED);
+const heroSkillAdvance = new Array(P_NUM_SKILLS).fill(0);
+
 // ============================================================================
 // hitval — cf. weapon.c:149
 // ============================================================================
@@ -217,6 +223,23 @@ export function dmgval(otmp, mon) {
     return Math.max(tmp, 0);
 }
 
+// C ref: weapon.c special_dmgval() — unarmed blessed/silver damage.
+export function special_dmgval(mon, obj = null) {
+    let bonus = 0;
+    if (obj && obj.blessed && mon_hates_blessings(mon)) bonus += rnd(4);
+    const mat = obj ? objectData[obj.otyp]?.material : null;
+    if (mat === 14 /* SILVER */ && mon_hates_silver(mon)) bonus += rnd(20);
+    return bonus;
+}
+
+// C ref: weapon.c silver_sears() — message/effect helper.
+export function silver_sears(mon, display) {
+    if (!mon || !display) return false;
+    if (!mon_hates_silver(mon)) return false;
+    display.putstr_message(`The silver sears ${monDisplayName(mon)}!`);
+    return true;
+}
+
 // ============================================================================
 // abon — cf. weapon.c:950
 // ============================================================================
@@ -255,10 +278,34 @@ export function dbon(str) {
 // ============================================================================
 // These return 0 (P_BASIC equivalent) until Phase 5 activates them.
 export function weapon_hit_bonus(weapon) {
+    if (!skillSystemActive) return 0;
+    const skill = weapon_type(weapon);
+    const level = heroSkill[skill] || P_UNSKILLED;
+    switch (level) {
+    case P_UNSKILLED: return -4;
+    case P_BASIC: return 0;
+    case P_SKILLED: return 2;
+    case P_EXPERT: return 3;
+    case P_MASTER: return 3;
+    case P_GRAND_MASTER: return 3;
+    default: return 0;
+    }
     return 0;
 }
 
 export function weapon_dam_bonus(weapon) {
+    if (!skillSystemActive) return 0;
+    const skill = weapon_type(weapon);
+    const level = heroSkill[skill] || P_UNSKILLED;
+    switch (level) {
+    case P_UNSKILLED: return -2;
+    case P_BASIC: return 0;
+    case P_SKILLED: return 1;
+    case P_EXPERT: return 2;
+    case P_MASTER: return 3;
+    case P_GRAND_MASTER: return 4;
+    default: return 0;
+    }
     return 0;
 }
 
@@ -628,7 +675,7 @@ export function mon_wield_item(mon) {
 // ============================================================================
 // Towel functions — cf. weapon.c:1014-1083
 // ============================================================================
-function finish_towel_change(obj, newspe) {
+export function finish_towel_change(obj, newspe) {
     newspe = Math.min(newspe, 7);
     obj.spe = Math.max(newspe, 0);
 }
@@ -660,6 +707,54 @@ export function skill_level_name(level) {
     }
 }
 
+// C ref: weapon.c weapon_descr()/skill_name() helper.
+export function weapon_descr(skill) {
+    return skill_name(skill);
+}
+
+export function skill_name(skill) {
+    switch (skill) {
+    case P_DAGGER: return 'dagger';
+    case P_KNIFE: return 'knife';
+    case P_AXE: return 'axe';
+    case P_PICK_AXE: return 'pick-axe';
+    case P_SHORT_SWORD: return 'short sword';
+    case P_BROAD_SWORD: return 'broadsword';
+    case P_LONG_SWORD: return 'long sword';
+    case P_TWO_HANDED_SWORD: return 'two-handed sword';
+    case P_SABER: return 'saber';
+    case P_CLUB: return 'club';
+    case P_MACE: return 'mace';
+    case P_MORNING_STAR: return 'morning star';
+    case P_FLAIL: return 'flail';
+    case P_HAMMER: return 'hammer';
+    case P_QUARTERSTAFF: return 'quarterstaff';
+    case P_POLEARMS: return 'polearms';
+    case P_SPEAR: return 'spear';
+    case P_TRIDENT: return 'trident';
+    case P_LANCE: return 'lance';
+    case P_BOW: return 'bow';
+    case P_SLING: return 'sling';
+    case P_CROSSBOW: return 'crossbow';
+    case P_DART: return 'dart';
+    case P_SHURIKEN: return 'shuriken';
+    case P_BOOMERANG: return 'boomerang';
+    case P_WHIP: return 'whip';
+    case P_UNICORN_HORN: return 'unicorn horn';
+    case P_ATTACK_SPELL: return 'attack spells';
+    case P_HEALING_SPELL: return 'healing spells';
+    case P_DIVINATION_SPELL: return 'divination spells';
+    case P_ENCHANTMENT_SPELL: return 'enchantment spells';
+    case P_CLERIC_SPELL: return 'clerical spells';
+    case P_ESCAPE_SPELL: return 'escape spells';
+    case P_MATTER_SPELL: return 'matter spells';
+    case P_BARE_HANDED_COMBAT: return 'bare-handed combat';
+    case P_TWO_WEAPON_COMBAT: return 'two weapon combat';
+    case P_RIDING: return 'riding';
+    default: return 'unknown';
+    }
+}
+
 // ============================================================================
 // Skill system stubs — data structures present, activation gated
 // ============================================================================
@@ -667,30 +762,137 @@ export function skill_level_name(level) {
 // but don't yet affect gameplay. Phase 5 will activate them.
 
 export function skill_init(_class_skill) {
-    // TODO: full implementation requires role skill tables from u_init.js
+    for (let i = 0; i < P_NUM_SKILLS; i++) {
+        heroSkill[i] = P_ISRESTRICTED;
+        heroMaxSkill[i] = P_ISRESTRICTED;
+        heroSkillAdvance[i] = 0;
+    }
+    if (!_class_skill) {
+        skillSystemActive = false;
+        return;
+    }
+    for (let i = 0; i < P_NUM_SKILLS; i++) {
+        const maxSkill = _class_skill[i] ?? P_BASIC;
+        heroMaxSkill[i] = maxSkill;
+        heroSkill[i] = Math.min(P_BASIC, maxSkill);
+    }
+    skillSystemActive = true;
 }
 
-export function use_skill(_skill, _degree) {
-    // No-op until skill system activated
+export function use_skill(skill, degree = 1) {
+    if (!skillSystemActive) return;
+    if (!Number.isInteger(skill) || skill < 0 || skill >= P_NUM_SKILLS) return;
+    heroSkillAdvance[skill] += Math.max(0, degree | 0);
 }
 
-export function unrestrict_weapon_skill(_skill) {
-    // No-op until skill system activated
+export function unrestrict_weapon_skill(skill) {
+    if (!Number.isInteger(skill) || skill < 0 || skill >= P_NUM_SKILLS) return;
+    if (heroMaxSkill[skill] === P_ISRESTRICTED) heroMaxSkill[skill] = P_BASIC;
+    if (heroSkill[skill] === P_ISRESTRICTED) heroSkill[skill] = P_UNSKILLED;
 }
 
-export function add_weapon_skill(_n) {
-    // No-op until skill system activated
+export function add_weapon_skill(n) {
+    if (!skillSystemActive) return;
+    heroSkillAdvance[P_NONE] = (heroSkillAdvance[P_NONE] || 0) + Math.max(0, n | 0);
 }
 
-export function lose_weapon_skill(_n) {
-    // No-op until skill system activated
+export function lose_weapon_skill(n) {
+    if (!skillSystemActive) return;
+    heroSkillAdvance[P_NONE] = Math.max(0, (heroSkillAdvance[P_NONE] || 0) - Math.max(0, n | 0));
 }
 
-export function drain_weapon_skill(_n) {
-    // No-op until skill system activated
+export function drain_weapon_skill(n = 1) {
+    if (!skillSystemActive) return;
+    let tries = Math.max(1, n | 0);
+    while (tries-- > 0) {
+        const candidates = [];
+        for (let i = 0; i < P_NUM_SKILLS; i++) {
+            if (heroSkill[i] > P_UNSKILLED) candidates.push(i);
+        }
+        if (!candidates.length) return;
+        const pick = candidates[rn2(candidates.length)];
+        heroSkill[pick] = Math.max(P_UNSKILLED, heroSkill[pick] - 1);
+    }
 }
 
 export function enhance_weapon_skill() {
-    // No-op until skill system activated
+    if (!skillSystemActive) return 0;
+    for (let i = 0; i < P_NUM_SKILLS; i++) {
+        if (can_advance(i)) {
+            skill_advance(i);
+            return 1;
+        }
+    }
     return 0;
+}
+
+// C ref: weapon.c slots_required().
+export function slots_required(skill) {
+    if (!Number.isInteger(skill) || skill < 0 || skill >= P_NUM_SKILLS) return 1;
+    return Math.max(1, heroSkill[skill]);
+}
+
+// C ref: weapon.c could_advance().
+export function could_advance(skill) {
+    if (!skillSystemActive) return false;
+    if (!Number.isInteger(skill) || skill < 0 || skill >= P_NUM_SKILLS) return false;
+    if (heroSkill[skill] <= P_ISRESTRICTED) return false;
+    if (heroSkill[skill] >= heroMaxSkill[skill]) return false;
+    return heroSkillAdvance[skill] >= slots_required(skill);
+}
+
+// C ref: weapon.c can_advance().
+export function can_advance(skill) {
+    if (!could_advance(skill)) return false;
+    const pool = heroSkillAdvance[P_NONE] || 0;
+    return pool >= slots_required(skill);
+}
+
+// C ref: weapon.c peaked_skill().
+export function peaked_skill(skill) {
+    if (!Number.isInteger(skill) || skill < 0 || skill >= P_NUM_SKILLS) return true;
+    return heroSkill[skill] >= heroMaxSkill[skill];
+}
+
+// C ref: weapon.c skill_advance().
+export function skill_advance(skill) {
+    if (!can_advance(skill)) return false;
+    const cost = slots_required(skill);
+    heroSkillAdvance[P_NONE] = Math.max(0, (heroSkillAdvance[P_NONE] || 0) - cost);
+    heroSkill[skill] = Math.min(heroMaxSkill[skill], heroSkill[skill] + 1);
+    return true;
+}
+
+// C ref: weapon.c add_skills_to_menu()/show_skills().
+export function add_skills_to_menu() {
+    const rows = [];
+    for (let i = 0; i < P_NUM_SKILLS; i++) {
+        if (heroSkill[i] <= P_ISRESTRICTED) continue;
+        rows.push({
+            skill: i,
+            name: skill_name(i),
+            level: heroSkill[i],
+            levelName: skill_level_name(heroSkill[i]),
+            canAdvance: can_advance(i),
+        });
+    }
+    return rows;
+}
+
+export function show_skills() {
+    return add_skills_to_menu();
+}
+
+// C ref: weapon.c give_may_advance_msg().
+export function give_may_advance_msg(display = null) {
+    const any = add_skills_to_menu().some((row) => row.canAdvance);
+    if (any && display) {
+        display.putstr_message('You feel more confident in your weapon skills.');
+    }
+    return any;
+}
+
+// C ref: weapon.c uwep_skill_type().
+export function uwep_skill_type(uwep = null) {
+    return weapon_type(uwep);
 }

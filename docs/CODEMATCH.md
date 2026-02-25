@@ -5580,12 +5580,12 @@ No function symbols parsed from isaac64.c.
 ### weapon.c -> weapon.js
 | C Line | C Function | JS Line | Alignment |
 |--------|------------|---------|-----------|
-| 76 | `give_may_advance_msg` | - | Missing — skill advance message |
-| 90 | `weapon_descr` | - | Missing — generic weapon skill name |
+| 76 | `give_may_advance_msg` | weapon.js | Implemented (message hook + availability check) |
+| 90 | `weapon_descr` | weapon.js | Implemented (delegates to skill_name) |
 | 149 | `hitval` | weapon.js | Implemented — spe, oc_hitbon, blessed vs undead/demon, spear vs kebabable, trident vs swimmer, pick vs earthen. spec_abon now wired in uhitm.js find_roll_to_hit |
 | 216 | `dmgval` | weapon.js | Partial — base roll, weapon-type bonus dice, spe, thick_skinned, blessed +d4, silver +d20, axe vs wood +d4. spec_dbon now wired in uhitm/mhitm/mhitu. Missing: shade, heavy iron ball, erosion, artifact light |
-| 361 | `special_dmgval` | - | Missing — blessed/silver damage for unarmed |
-| 436 | `silver_sears` | - | Missing — silver ring hit message |
+| 361 | `special_dmgval` | weapon.js | Implemented (blessed/silver unarmed bonus helper) |
+| 436 | `silver_sears` | weapon.js | Implemented (silver-sear messaging helper) |
 | 476 | `oselect` | weapon.js | Implemented — find typed item in monster inventory |
 | 520 | `autoreturn_weapon` | weapon.js | Implemented — check for aklys |
 | 533 | `select_rwep` | weapon.js | Implemented — full ranged weapon selection (cockatrice eggs, pies, boulders, polearms, rwep[] list, propellor matching) |
@@ -5596,29 +5596,29 @@ No function symbols parsed from isaac64.c.
 | 938 | `mwepgone` | weapon.js | Implemented — setmnotwielded + weapon_check = NEED_WEAPON |
 | 950 | `abon` | weapon.js | Implemented — STR/DEX/level hit bonus |
 | 988 | `dbon` | weapon.js | Implemented — STR damage bonus |
-| 1015 | `finish_towel_change` | - | Missing — towel wetness helper |
+| 1015 | `finish_towel_change` | weapon.js | Implemented |
 | 1033 | `wet_a_towel` | weapon.js | Implemented — towel wetness |
 | 1062 | `dry_a_towel` | weapon.js | Implemented — towel drying |
 | 1087 | `skill_level_name` | weapon.js | Implemented — skill level display name |
 | 1120 | `skill_name` | weapon.js | Implemented — skill name lookup |
-| 1127 | `slots_required` | - | Missing — skill slot requirements |
-| 1151 | `can_advance` | - | Missing — skill advance check |
-| 1168 | `could_advance` | - | Missing — skill could-advance check |
-| 1182 | `peaked_skill` | - | Missing — skill peaked check |
-| 1193 | `skill_advance` | - | Missing — advance a skill |
-| 1224 | `add_skills_to_menu` | - | Missing — skill menu UI |
-| 1301 | `show_skills` | - | Missing — skill display UI |
-| 1324 | `enhance_weapon_skill` | - | Missing — #enhance command |
-| 1409 | `unrestrict_weapon_skill` | - | Missing — unrestrict skill |
-| 1419 | `use_skill` | - | Missing — record skill practice |
-| 1432 | `add_weapon_skill` | - | Missing — add skill points |
-| 1448 | `lose_weapon_skill` | - | Missing — lose skill points |
-| 1471 | `drain_weapon_skill` | - | Missing — drain skill (has rn2) |
+| 1127 | `slots_required` | weapon.js | Implemented |
+| 1151 | `can_advance` | weapon.js | Implemented |
+| 1168 | `could_advance` | weapon.js | Implemented |
+| 1182 | `peaked_skill` | weapon.js | Implemented |
+| 1193 | `skill_advance` | weapon.js | Implemented |
+| 1224 | `add_skills_to_menu` | weapon.js | Implemented (data rows for UI) |
+| 1301 | `show_skills` | weapon.js | Implemented (menu data wrapper) |
+| 1324 | `enhance_weapon_skill` | weapon.js | Implemented (non-UI auto-advance path) |
+| 1409 | `unrestrict_weapon_skill` | weapon.js | Implemented |
+| 1419 | `use_skill` | weapon.js | Implemented |
+| 1432 | `add_weapon_skill` | weapon.js | Implemented |
+| 1448 | `lose_weapon_skill` | weapon.js | Implemented |
+| 1471 | `drain_weapon_skill` | weapon.js | Implemented |
 | 1512 | `weapon_type` | weapon.js | Implemented — skill category lookup |
-| 1527 | `uwep_skill_type` | - | Missing — hero weapon skill type |
+| 1527 | `uwep_skill_type` | weapon.js | Implemented |
 | 1540 | `weapon_hit_bonus` | weapon.js | Gated — returns 0 until skill_init wired |
 | 1639 | `weapon_dam_bonus` | weapon.js | Gated — returns 0 until skill_init wired |
-| 1733 | `skill_init` | - | Missing — initialize skills from role tables |
+| 1733 | `skill_init` | weapon.js | Partial — initializes JS skill state; role-table fidelity still pending |
 | 1809 | `setmnotwielded` | weapon.js | Implemented — clear W_WEP from owornmask |
 
 ### were.c -> were.js
