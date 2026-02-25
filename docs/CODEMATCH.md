@@ -3122,7 +3122,7 @@ No function symbols parsed from isaac64.c.
 | 75 | `thitu` | mthrowu.js:197 | Implemented |
 | 943 | `thrwmm` | mthrowu.js:428 | Implemented |
 | 1147 | `thrwmu` | mthrowu.js:400 | Partial — ranged throw/shoot + polearm thrust path implemented |
-| 506 | `ucatchgem` | mthrowu.js:491 | Stub — unicorn catch behavior pending |
+| 506 | `ucatchgem` | mthrowu.js:491 | Partial — unicorn glass-gem catch/reject path implemented |
 
 ### muse.c -> muse.js
 | C Line | C Function | JS Line | Alignment |

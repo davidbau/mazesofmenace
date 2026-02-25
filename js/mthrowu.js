@@ -21,12 +21,18 @@ import {
     BLINDING_VENOM, ACID_VENOM, ELVEN_ARROW, ELVEN_BOW, ORCISH_ARROW, ORCISH_BOW,
     CROSSBOW_BOLT, CROSSBOW, CREAM_PIE, EGG, WAN_STRIKING,
     PARTISAN, RANSEUR, SPETUM, GLAIVE, HALBERD, BARDICHE, VOULGE,
-    FAUCHARD, GUISARME, BILL_GUISARME,
+    FAUCHARD, GUISARME, BILL_GUISARME, GEM_CLASS, FIRST_GLASS_GEM, LAST_GLASS_GEM,
 } from './objects.js';
 import { doname, mkcorpstat, mksobj } from './mkobj.js';
 import { couldsee, m_cansee } from './vision.js';
-import { monDisplayName, is_prince, is_lord, is_mplayer, is_elf, is_orc, is_gnome, throws_rocks } from './mondata.js';
-import { mons, AT_WEAP, G_NOCORPSE, AD_ACID, AD_BLND, AD_DRST } from './monsters.js';
+import {
+    monDisplayName, is_prince, is_lord, is_mplayer, is_elf, is_orc, is_gnome,
+    throws_rocks, is_unicorn,
+} from './mondata.js';
+import {
+    mons, AT_WEAP, G_NOCORPSE, AD_ACID, AD_BLND, AD_DRST,
+    AD_MAGM, AD_FIRE, AD_COLD, AD_SLEE, AD_DISN, AD_ELEC,
+} from './monsters.js';
 import { distmin, dist2, mondead, BOLT_LIM } from './monutil.js';
 import { placeFloorObject } from './floor_objects.js';
 import { corpse_chance } from './mon.js';
@@ -137,6 +143,7 @@ export function m_lined_up(mtarg, mtmp, map, player, fov = null) {
     const tx = utarget ? (Number.isInteger(mtmp?.mux) ? mtmp.mux : player.x) : mtarg?.mx;
     const ty = utarget ? (Number.isInteger(mtmp?.muy) ? mtmp.muy : player.y) : mtarg?.my;
     if (!Number.isInteger(tx) || !Number.isInteger(ty)) return 0;
+    if (utarget && (player?.uundetected || player?.disguised)) return 0;
     const ignoreBoulders = utarget && !!(m_carrying(mtmp, WAN_STRIKING)
         || throws_rocks(mtmp?.type || {}));
     return linedup(tx, ty, mtmp.mx, mtmp.my, utarget ? (ignoreBoulders ? 1 : 2) : 0, map, player, fov) ? 1 : 0;
@@ -445,6 +452,9 @@ export function m_throw(mon, startX, startY, dx, dy, range, weapon, map, player,
 
         // Check for player at this position
         if (x === player.x && y === player.y) {
+            if (weapon?.oclass === GEM_CLASS && ucatchgem(weapon, mon, player, map, display)) {
+                break;
+            }
             const sdam = od ? (od.sdam || 0) : 0;
             let dam = sdam > 0 ? rnd(sdam) : 0;
             dam += (weapon.spe || 0);
@@ -540,12 +550,20 @@ export function thrwmm(mtmp, mtarg, map, player, display, game) {
 // C ref: mthrowu.c spitmm().
 export function spitmm(mtmp, mattk, mtarg, map, player, display, game) {
     if (!mtmp || !mattk || !mtarg) return 0;
+    if (mtmp.mcan) {
+        if (display) display.putstr_message(`A dry rattle comes from the ${monDisplayName(mtmp)}'s throat.`);
+        return 0;
+    }
     if (!m_lined_up(mtarg, mtmp, map, player)) return 0;
     const adtyp = mattk.adtyp;
     const venomType = (adtyp === AD_BLND || adtyp === AD_DRST) ? BLINDING_VENOM : ACID_VENOM;
     const otmp = mksobj(venomType, true, false);
     if (!otmp) return 0;
     otmp.quan = 1;
+    const tx = mtarg === player ? (Number.isInteger(mtmp.mux) ? mtmp.mux : player.x) : mtarg.mx;
+    const ty = mtarg === player ? (Number.isInteger(mtmp.muy) ? mtmp.muy : player.y) : mtarg.my;
+    const denom = Math.max(1, BOLT_LIM - distmin(mtmp.mx, mtmp.my, tx, ty));
+    if (rn2(denom)) return 0;
     if (display) {
         display.putstr_message(`The ${monDisplayName(mtmp)} spits venom!`);
     }
@@ -560,16 +578,47 @@ export function spitmu(mtmp, mattk, map, player, display, game) {
 
 // hero catches gem thrown by mon iff unicorn.
 // C ref: mthrowu.c ucatchgem().
-export function ucatchgem(gem, mon, player) {
+export function ucatchgem(gem, mon, player, map, display) {
     if (!gem || !player) return false;
-    // Full unicorn-form catch/drop behavior needs polymorph subsystem parity.
-    return false;
+    if (gem.oclass !== GEM_CLASS) return false;
+    if (!is_unicorn(player?.data || {})) return false;
+    const name = thrownObjectName(gem, player);
+    const isGlass = gem.otyp >= FIRST_GLASS_GEM && gem.otyp <= LAST_GLASS_GEM;
+    if (display) {
+        display.putstr_message(`You catch the ${name}.`);
+        if (isGlass) {
+            display.putstr_message(`You are not interested in ${monDisplayName(mon)}'s junk.`);
+        } else {
+            display.putstr_message(`You accept ${monDisplayName(mon)}'s gift.`);
+        }
+    }
+    if (isGlass) {
+        if (map && isok(player.x, player.y)) {
+            gem.ox = player.x;
+            gem.oy = player.y;
+            placeFloorObject(map, gem);
+        }
+    } else if (typeof player.addToInventory === 'function') {
+        player.addToInventory(gem);
+    } else if (map && isok(player.x, player.y)) {
+        gem.ox = player.x;
+        gem.oy = player.y;
+        placeFloorObject(map, gem);
+    }
+    return true;
 }
 
 // Return the name of a breath weapon.
 // C ref: mthrowu.c breathwep_name().
 export function breathwep_name(typ, hallucinating = false) {
     if (hallucinating) return rnd_hallublast();
+    if (typ === AD_MAGM) return 'fragments';
+    if (typ === AD_FIRE) return 'fire';
+    if (typ === AD_COLD) return 'frost';
+    if (typ === AD_SLEE) return 'sleep gas';
+    if (typ === AD_DISN) return 'a disintegration blast';
+    if (typ === AD_ELEC) return 'lightning';
+    if (typ === AD_DRST) return 'poison gas';
     if (typ === AD_ACID) return 'acid';
     return 'strange breath';
 }
@@ -578,6 +627,21 @@ export function breathwep_name(typ, hallucinating = false) {
 // C ref: mthrowu.c breamm().
 export function breamm(mtmp, mattk, mtarg, map, player, display, game) {
     if (!m_lined_up(mtarg, mtmp, map, player)) return 0;
+    if (mtmp.mcan) {
+        if (display) display.putstr_message(`The ${monDisplayName(mtmp)} coughs.`);
+        return 0;
+    }
+    if (mtmp.mspec_used) return 0;
+    if (rn2(3)) {
+        const adtyp = mattk?.adtyp ?? mattk?.damage ?? AD_FIRE;
+        if (display) {
+            display.putstr_message(`The ${monDisplayName(mtmp)} breathes ${breathwep_name(adtyp, !!player?.hallucinating)}!`);
+        }
+        // Full beam path (dobuzz) still TODO in mthrowu parity.
+        mtmp.mspec_used = 8 + rn2(18);
+    } else {
+        return 0;
+    }
     return 1;
 }
 
