@@ -20,7 +20,7 @@ import {
     LARGE_BOX, CHEST, ICE_BOX, CORPSE, STATUE, FIGURINE, EGG,
     GRAY_DRAGON_SCALES, YELLOW_DRAGON_SCALES, LENSES,
     ELVEN_SHIELD, ORCISH_SHIELD, SHIELD_OF_REFLECTION,
-    WORM_TOOTH, UNICORN_HORN, POT_WATER,
+    WORM_TOOTH, CRYSKNIFE, UNICORN_HORN, POT_WATER,
     SPE_BOOK_OF_THE_DEAD, SPE_NOVEL, SPE_BLANK_PAPER,
     ARM_SHIELD, ARM_GLOVES, ARM_BOOTS,
     CLASS_SYMBOLS,
@@ -1165,6 +1165,25 @@ export function xname(obj, opts = {}) {
     return xname_for_doname(obj, dknown, known, bknown);
 }
 
+// C ref: objnam.c add_erosion_words()
+function erosion_words(obj) {
+    if (!obj || !is_damageable(obj) || obj.otyp === CRYSKNIFE) return '';
+    let words = '';
+    if (obj.oeroded > 0) {
+        if (obj.oeroded === 2) words += 'very ';
+        else if (obj.oeroded >= 3) words += 'thoroughly ';
+        words += is_rustprone(obj) ? 'rusty '
+            : is_crackable(obj) ? 'cracked '
+                : 'burnt ';
+    }
+    if (obj.oeroded2 > 0) {
+        if (obj.oeroded2 === 2) words += 'very ';
+        else if (obj.oeroded2 >= 3) words += 'thoroughly ';
+        words += is_corrodeable(obj) ? 'corroded ' : 'rotted ';
+    }
+    return words;
+}
+
 // C ref: objnam.c doname() — format an object name for display
 // Produces strings like "a blessed +1 quarterstaff (weapon in hands)"
 export function doname(obj, player) {
@@ -1227,7 +1246,8 @@ export function doname(obj, player) {
     }
 
     const baseName = xname_for_doname(obj, dknown, known, bknown);
-    let result = `${prefix}${baseName}`.trimStart();
+    const erosionPrefix = erosion_words(obj);
+    let result = `${prefix}${erosionPrefix}${baseName}`.trimStart();
     if (quan === 1 && !result.startsWith('the ')) {
         result = `${just_an(result)} ${result}`;
     }

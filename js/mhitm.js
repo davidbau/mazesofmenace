@@ -52,6 +52,8 @@ import { spec_dbon } from './artifact.js';
 export { M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE };
 
 const NATTK = 6; // C ref: monattk.h — max number of monster attacks
+let farNoise = false;
+let noiseTime = -999999;
 
 
 // ============================================================================
@@ -70,9 +72,22 @@ function DEADMONSTER(mon) {
 // ============================================================================
 
 // cf. mhitm.c:26 — noises(magr, mattk): combat noise output
-// Simplified: we don't have the distant sound system yet
-function noises(magr, mattk) {
-    // TODO: implement distant combat noises
+function noises(magr, mattk, display, ctx) {
+    if (!display) return;
+    const player = ctx?.player || null;
+    const deaf = Number(player?.deafness || 0) > 0 || !!player?.deaf;
+    if (deaf) return;
+    const px = Number.isInteger(player?.x) ? player.x : 0;
+    const py = Number.isInteger(player?.y) ? player.y : 0;
+    const dx = (magr?.mx ?? 0) - px;
+    const dy = (magr?.my ?? 0) - py;
+    const isFar = ((dx * dx) + (dy * dy)) > 15;
+    const turn = Number.isInteger(ctx?.turnCount) ? ctx.turnCount : 0;
+    if (isFar === farNoise && (turn - noiseTime) <= 10) return;
+    farNoise = isFar;
+    noiseTime = turn;
+    const base = (mattk?.type === AT_EXPL) ? 'an explosion' : 'some noises';
+    display.putstr_message(`You hear ${base}${isFar ? ' in the distance' : ''}.`);
 }
 
 // cf. mhitm.c:40-72 — pre_mm_attack(): unhide/unmimic, newsym/map_invisible
@@ -104,6 +119,8 @@ function missmm(magr, mdef, mattk, display, vis, map, ctx) {
         display.putstr_message(
             `${monCombatName(magr, ctx?.agrVisible, { capitalize: true })} misses ${monCombatName(mdef, ctx?.defVisible)}.`
         );
+    } else {
+        noises(magr, mattk, display, ctx);
     }
 }
 
@@ -356,6 +373,8 @@ function hitmm(magr, mdef, mattk, mwep, dieroll, display, vis, map, ctx) {
         display.putstr_message(
             `${monCombatName(magr, ctx?.agrVisible, { capitalize: true })} ${verb} ${monCombatName(mdef, ctx?.defVisible)}.`
         );
+    } else {
+        noises(magr, mattk, display, ctx);
     }
 
     return mdamagem(magr, mdef, mattk, mwep, dieroll, display, vis, map, ctx);

@@ -127,6 +127,13 @@ def _build_gameplay(seed, output, regen, options):
     if options.get('wizard') is False:
         cmd.append('--no-wizard')
 
+    key_delay_s = regen.get('key_delay_s')
+    if key_delay_s is None:
+        key_delay_s = regen.get('keyDelayS')
+    if key_delay_s is not None:
+        # run_session.py consumes this env var to tune per-key send timing.
+        cmd = ['env', f'NETHACK_KEY_DELAY_S={key_delay_s}'] + cmd
+
     return cmd, f'gameplay seed={seed}'
 
 

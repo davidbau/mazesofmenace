@@ -242,7 +242,7 @@ export async function handleMovement(dir, player, map, display, game) {
             // includes "saddled" when the monster has a saddle worn.
             display.putstr_message(`You swap places with ${monNam(mon)}.`);
             const landedObjs = map.objectsAt(nx, ny);
-            if (landedObjs.length > 0) {
+            if (landedObjs.length === 1) {
                 const seen = landedObjs[0];
                 if (seen.oclass === COIN_CLASS) {
                     const count = seen.quan || 1;
@@ -255,6 +255,11 @@ export async function handleMovement(dir, player, map, display, game) {
                     observeObject(seen);
                     display.putstr_message(`You see here ${describeGroundObjectForPlayer(seen, player, map)}.`);
                 }
+            } else if (landedObjs.length > 1) {
+                // C ref: invent.c look_here() uses NHW_MENU for piles and
+                // display_nhwindow(WIN_MESSAGE, FALSE) before listing items.
+                // That clears any prior topline text (e.g. swap message).
+                clearTopline(display);
             }
             game.forceFight = false; // Clear prefix (shouldn't reach here but be safe)
             return { moved: true, tookTime: true };

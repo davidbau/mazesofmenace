@@ -339,8 +339,13 @@ export function mdrop_obj(mon, obj, map) {
     extract_from_minvent(mon, obj, false, true);
     obj.ox = mon.mx;
     obj.oy = mon.my;
-    // C ref: steal.c:838-841 — place_object first (^place), then event_log (^drop)
-    placeFloorObject(map, obj);
+    // C ref: steal.c:838-841 — place_object first (^place), then event_log (^drop).
+    // When stack merge absorbs the dropped object, C midlog also records ^remove
+    // for the merged-away instance.
+    const placed = placeFloorObject(map, obj);
+    if (placed !== obj) {
+        pushRngLogEntry(`^remove[${obj.otyp},${obj.ox},${obj.oy}]`);
+    }
     pushRngLogEntry(`^drop[${mon.mndx}@${mon.mx},${mon.my},${obj.otyp}]`);
     // C ref: steal.c:846-847 — update extrinsics after placement
     if (!mon.dead && unwornmask) {

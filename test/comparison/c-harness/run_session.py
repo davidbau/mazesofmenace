@@ -1755,6 +1755,9 @@ def run_session(seed, output_json, move_str, raw_moves=False, character=None, wi
             },
             'steps': [startup_step],
         }
+        key_delay_s = float(os.environ.get('NETHACK_KEY_DELAY_S', '0.02'))
+        if abs(key_delay_s - 0.02) > 1e-9:
+            session_data['regen']['key_delay_s'] = key_delay_s
 
         # Execute moves - send each character individually (no grouping)
         prev_rng_count = startup_rng_count
@@ -1775,14 +1778,15 @@ def run_session(seed, output_json, move_str, raw_moves=False, character=None, wi
             else:
                 tmux_send(session_name, ch)
 
-        print(f'\n=== MOVES ({len(move_str)} steps) ===')
+        print(f'\n=== MOVES ({len(move_str)} steps, key_delay={key_delay_s:.3f}s) ===')
         for idx, ch in enumerate(move_str):
             key = ch
             description = describe_key(ch)
 
             # Send the character
             send_char(ch)
-            time.sleep(0.02)  # 20ms delay for game to process input
+            # Tunable for capture-timing experiments.
+            time.sleep(max(0.0, key_delay_s))
 
             # Only clear --More-- if not raw_moves (raw moves include space keys)
             if not raw_moves:

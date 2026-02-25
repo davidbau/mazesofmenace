@@ -240,6 +240,13 @@ function thrownObjectName(obj, player) {
     return doname(oneShot, player);
 }
 
+// C ref: zap.c exclam(force)
+function exclam(force) {
+    if (force < 0) return '?';
+    if (force <= 4) return '.';
+    return '!';
+}
+
 // hero is hit by a thrown object.
 // C ref: mthrowu.c thitu().
 export function thitu(tlev, dam, objp, name, player, display, game, mon = null) {
@@ -263,7 +270,8 @@ export function thitu(tlev, dam, objp, name, player, display, game, mon = null) 
 
     if (display) {
         const text = name || thrownObjectName(obj, player);
-        display.putstr_message(`You are hit by ${text}!`);
+        const punct = exclam(Number.isFinite(dam) ? dam : 0);
+        display.putstr_message(`You are hit by ${text}${punct}`);
     }
     if (player.takeDamage) player.takeDamage(dam, mon ? monDisplayName(mon) : 'an object');
     else player.hp -= dam;
@@ -541,9 +549,9 @@ export function m_throw(mon, startX, startY, dx, dy, range, weapon, map, player,
             }
             }
             const hitu = thitu(hitv, dam, weapon, null, player, display, game, mon);
-            if (game && game.occupation) {
+            if (game) {
                 if (typeof game.stopOccupation === 'function') game.stopOccupation();
-                else {
+                else if (game.occupation || Number.isInteger(game.multi)) {
                     game.occupation = null;
                     game.multi = 0;
                 }
@@ -594,9 +602,10 @@ export function thrwmu(mon, map, player, display, game) {
             if (hitv < -4) hitv = -4;
             hitv += 8 + (otmp.spe || 0);
             thitu(hitv, dam, otmp, null, player, display, game, mon);
-            if (game && game.occupation) {
+            // C ref: mthrowu.c m_throw() stop_occupation() ordering.
+            if (game) {
                 if (typeof game.stopOccupation === 'function') game.stopOccupation();
-                else {
+                else if (game.occupation || Number.isInteger(game.multi)) {
                     game.occupation = null;
                     game.multi = 0;
                 }
