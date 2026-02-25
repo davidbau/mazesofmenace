@@ -5,7 +5,7 @@
 import { rn2, rnd, d, c_d } from './rng.js';
 import { exercise } from './attrib_exercise.js';
 import { corpse_chance } from './mon.js';
-import { A_STR, A_DEX } from './config.js';
+import { A_STR, A_DEX, PM_MONK } from './config.js';
 import { spec_abon, spec_dbon } from './artifact.js';
 import {
     G_FREQ, G_NOCORPSE, MZ_TINY, MZ_HUMAN, MZ_LARGE, M2_COLLECT,
@@ -40,7 +40,7 @@ import {
     resists_fire, resists_cold, resists_elec, resists_acid,
     resists_poison, resists_sleep, resists_ston,
     thick_skinned, mon_hates_silver, mon_hates_light,
-    noncorporeal, amorphous, unsolid, haseyes, dmgtype,
+    noncorporeal, amorphous, unsolid, haseyes, dmgtype, is_orc,
 } from './mondata.js';
 import { obj_resists } from './objdata.js';
 import { newexplevel } from './exper.js';
@@ -156,11 +156,21 @@ function find_roll_to_hit(player, mtmp, aatyp, weapon) {
     if (mtmp.mcanmove === false) tmp += 4;
 
     // cf. uhitm.c:396-404 — role/race adjustments
-    // TODO: Monk bonus (unarmed +ulevel/3+2, armor penalty)
-    // TODO: Elf vs orc bonus
+    // Monk: bonus when unarmed; heavy penalty if armored.
+    if ((player.roleIndex === PM_MONK) && !weapon) {
+        tmp += Math.floor((player.level || 1) / 3) + 2;
+        const armored = !!(player.armor || player.suit || player.cloak
+            || player.helmet || player.gloves || player.boots || player.shield);
+        if (armored) tmp -= 20;
+    }
+    // Elf hero bonus vs orcs.
+    const isElfHero = player.race === 'elf' || player.raceName === 'elf' || player.raceIndex === 1;
+    if (isElfHero && is_orc(mtmp?.type || {})) tmp += 1;
 
     // cf. uhitm.c:407-410 — encumbrance and trap penalties
-    // TODO: near_capacity() penalty, u.utrap penalty
+    // In JS, current encumbrance level is tracked in player.wc (0..5).
+    if (Number.isInteger(player.wc) && player.wc > 0) tmp -= player.wc;
+    if (player.utrap) tmp -= 3;
 
     // cf. uhitm.c:417-423 — weapon bonuses
     if (aatyp === AT_WEAP || aatyp === AT_CLAW) {

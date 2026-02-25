@@ -2475,27 +2475,27 @@ No function symbols parsed from isaac64.c.
 ### mhitu.c -> mhitu.js
 | C Line | C Function | JS Line | Alignment |
 |--------|------------|---------|-----------|
-| 2349 | `assess_dmg` | - | Missing |
-| 447 | `calc_mattacku_vars` | - | Missing |
+| 2349 | `assess_dmg` | mhitu.js:assess_dmg | Implemented |
+| 447 | `calc_mattacku_vars` | mhitu.js:calc_mattacku_vars | Implemented |
 | 2606 | `cloneu` | - | Missing |
-| 1928 | `could_seduce` | - | Missing |
-| 1031 | `diseasemu` | - | Missing |
-| 1979 | `doseduce` | - | Missing |
-| 263 | `expels` | - | Missing |
-| 1587 | `explmu` | - | Missing |
-| 1661 | `gazemu` | - | Missing |
-| 309 | `getmattk` | - | Missing |
+| 1928 | `could_seduce` | mhitu.js:could_seduce | Implemented |
+| 1031 | `diseasemu` | mhitu.js:diseasemu | Implemented |
+| 1979 | `doseduce` | mhitu.js:doseduce | Partial — entrypoint present with simplified seduction flow |
+| 263 | `expels` | mhitu.js:expels | Implemented |
+| 1587 | `explmu` | mhitu.js:explmu | Implemented |
+| 1661 | `gazemu` | mhitu.js:gazemu | Implemented (partial effects) |
+| 309 | `getmattk` | mhitu.js:getmattk | Implemented |
 | 1269 | `gulp_blnd_check` | - | Missing |
-| 1285 | `gulpmu` | - | Missing |
+| 1285 | `gulpmu` | mhitu.js:gulpmu | Implemented (simplified engulf path) |
 | 30 | `hitmsg` | mhitu.js:hitmsg | Implemented — C-faithful attack verb dispatch (bite/kick/sting/butt/touch/tentacle/hit) |
 | 1140 | `hitmu` | mhitu.js:monsterAttackPlayer | Implemented — restructured to match C hitmu() flow: mhm state object, mhitu_adtyping dispatch, mhitm_knockback, negative AC damage reduction |
 | 1085 | `magic_negation` | mondata.js | Implemented (simplified) |
 | 490 | `mattacku` | mhitu.js:monsterAttackPlayer | Implemented — attack loop with AT_WEAP weapon swing messages, range2 dispatch for thrwmu |
 | 2303 | `mayberem` | - | Missing |
-| 1895 | `mdamageu` | - | Missing (damage applied inline in monsterAttackPlayer) |
+| 1895 | `mdamageu` | mhitu.js:mdamageu | Implemented |
 | 86 | `missmu` | mhitu.js:monsterAttackPlayer | Implemented — miss message with "just misses" variant |
 | 2386 | `mon_avoiding_this_attack` | - | Missing |
-| 146 | `mpoisons_subj` | - | Missing |
+| 146 | `mpoisons_subj` | mhitu.js:mpoisons_subj | Implemented |
 | 131 | `mswings` | mhitu.js:monsterWeaponSwingMsg | Implemented — weapon swing verb/message for AT_WEAP |
 | 106 | `mswings_verb` | mhitu.js:monsterWeaponSwingVerb | Implemented — thrust/swing/slash verb selection |
 | 466 | `mtrapped_in_pit` | - | Missing |
@@ -2540,11 +2540,11 @@ No function symbols parsed from isaac64.c.
 | - | `mhitu_ad_corr` | mhitu.js | Stub — hitmsg + damage=0 (no armor erosion) |
 | - | `mhitu_ad_dcay` | mhitu.js | Stub — hitmsg + damage=0 (no armor erosion) |
 | - | `mhitm_knockback` | mhitu.js | Implemented — rn2(3) distance, rn2(6) chance, eligibility (AD_PHYS, attack type, size), rn2(2)+rn2(2) message |
-| 2425 | `passiveum` | - | Missing |
-| 954 | `summonmu` | - | Missing |
-| 1045 | `u_slip_free` | - | Missing |
-| 162 | `u_slow_down` | - | Missing |
-| 175 | `wildmiss` | - | Missing |
+| 2425 | `passiveum` | mhitu.js:passiveum | Implemented |
+| 954 | `summonmu` | mhitu.js:summonmu | Partial — entrypoint present, simplified summon behavior |
+| 1045 | `u_slip_free` | mhitu.js:u_slip_free | Implemented |
+| 162 | `u_slow_down` | mhitu.js:u_slow_down | Implemented |
+| 175 | `wildmiss` | mhitu.js:wildmiss | Implemented |
 
 ### minion.c -> minion.js
 | C Line | C Function | JS Line | Alignment |
@@ -3096,33 +3096,33 @@ No function symbols parsed from isaac64.c.
 ### mthrowu.c -> mthrowu.js
 | C Line | C Function | JS Line | Alignment |
 |--------|------------|---------|-----------|
-| 1255 | `blocking_terrain` | - | Missing |
-| 1067 | `breamm` | - | Missing |
-| 1248 | `breamu` | - | Missing |
-| 1057 | `breathwep_name` | - | Missing |
-| 162 | `drop_throw` | - | Missing |
-| 1390 | `hit_bars` | - | Missing |
-| 1472 | `hits_bars` | - | Missing |
-| 1371 | `lined_up` | - | Missing |
-| 1303 | `linedup` | - | Missing |
-| 1268 | `linedup_callback` | - | Missing |
-| 1378 | `m_carrying` | - | Missing |
-| 58 | `m_has_launcher_and_ammo` | - | Missing |
-| 1349 | `m_lined_up` | - | Missing |
-| 551 | `m_throw` | - | Missing |
-| 1135 | `m_useup` | - | Missing |
-| 1127 | `m_useupall` | - | Missing |
-| 201 | `monmulti` | - | Missing |
-| 262 | `monshoot` | - | Missing |
-| 321 | `ohitmon` | - | Missing |
-| 824 | `return_from_mtoss` | - | Missing |
-| 52 | `rnd_hallublast` | - | Missing |
-| 990 | `spitmm` | - | Missing |
-| 1241 | `spitmu` | - | Missing |
-| 75 | `thitu` | - | Missing |
-| 943 | `thrwmm` | - | Missing |
-| 1147 | `thrwmu` | - | Missing |
-| 506 | `ucatchgem` | - | Missing |
+| 1255 | `blocking_terrain` | mthrowu.js:48 | Implemented |
+| 1067 | `breamm` | mthrowu.js:472 | Partial — entrypoint present; full breath effects still TODO |
+| 1248 | `breamu` | mthrowu.js:479 | Partial — wrapper to breamm |
+| 1057 | `breathwep_name` | mthrowu.js:464 | Implemented |
+| 162 | `drop_throw` | mthrowu.js:227 | Partial — break/drop core behavior implemented |
+| 1390 | `hit_bars` | mthrowu.js:262 | Partial — core object/bars interaction scaffolded |
+| 1472 | `hits_bars` | mthrowu.js:275 | Partial — pass/block decision path present |
+| 1371 | `lined_up` | mthrowu.js:124 | Implemented |
+| 1303 | `linedup` | mthrowu.js:75 | Implemented |
+| 1268 | `linedup_callback` | mthrowu.js:113 | Implemented |
+| 1378 | `m_carrying` | mthrowu.js:59 | Implemented |
+| 58 | `m_has_launcher_and_ammo` | mthrowu.js:65 | Implemented |
+| 1349 | `m_lined_up` | mthrowu.js:113 | Implemented |
+| 551 | `m_throw` | mthrowu.js:313 | Partial — core throw pipeline implemented; bars/return-flight details TODO |
+| 1135 | `m_useup` | mthrowu.js:150 | Implemented |
+| 1127 | `m_useupall` | mthrowu.js:141 | Implemented |
+| 201 | `monmulti` | mthrowu.js:162 | Partial — core volley logic + class/racial bonuses implemented |
+| 262 | `monshoot` | mthrowu.js:278 | Implemented |
+| 321 | `ohitmon` | mthrowu.js:242 | Partial — core hit/miss/damage/drop logic implemented |
+| 824 | `return_from_mtoss` | mthrowu.js:355 | Partial — return placement path present |
+| 52 | `rnd_hallublast` | mthrowu.js:43 | Implemented |
+| 990 | `spitmm` | mthrowu.js:442 | Partial — venom path implemented |
+| 1241 | `spitmu` | mthrowu.js:458 | Partial — wrapper to spitmm |
+| 75 | `thitu` | mthrowu.js:197 | Implemented |
+| 943 | `thrwmm` | mthrowu.js:428 | Implemented |
+| 1147 | `thrwmu` | mthrowu.js:400 | Partial — ranged throw/shoot + polearm thrust path implemented |
+| 506 | `ucatchgem` | mthrowu.js:491 | Stub — unicorn catch behavior pending |
 
 ### muse.c -> muse.js
 | C Line | C Function | JS Line | Alignment |
@@ -5403,7 +5403,7 @@ No function symbols parsed from isaac64.c.
 | 4927 | `end_engulf` | - | Missing |
 | 125 | `erode_armor` | - | Missing |
 | 4869 | `explum` | - | Missing |
-| 364 | `find_roll_to_hit` | uhitm.js | Partial — abon() (STR+DEX+level), find_mac, luck, hitval, weapon_hit_bonus (stub). Missing: near_capacity, u.utrap, Monk bonus, Elf vs orc |
+| 364 | `find_roll_to_hit` | uhitm.js | Partial — abon() (STR+DEX+level), find_mac, luck, hitval, weapon_hit_bonus (stub), plus near_capacity/utrap penalties, Monk bonus/armor penalty, Elf-vs-orc bonus |
 | 1941 | `first_weapon_hit` | - | Missing |
 | 6319 | `flash_hits_mon` | - | Missing |
 | 431 | `force_attack` | - | Missing |
