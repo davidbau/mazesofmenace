@@ -2531,11 +2531,11 @@ No function symbols parsed from isaac64.c.
 | - | `mhitu_ad_legs` | mhitu.js | Implemented — delegates to AD_PHYS |
 | - | `mhitu_ad_dgst` | mhitu.js | Stub — hitmsg + damage=0 (no engulfing) |
 | - | `mhitu_ad_samu` | mhitu.js | Stub — hitmsg + damage=0 (no artifact theft) |
-| - | `mhitu_ad_dise` | mhitu.js | Stub — hitmsg + damage=0 (no disease) |
+| - | `mhitu_ad_dise` | mhitu.js | Implemented — calls diseasemu(); zero-damage when disease resisted |
 | - | `mhitu_ad_deth` | mhitu.js | Implemented — redirects to drli |
 | - | `mhitu_ad_pest` | mhitu.js | Stub — physical damage only |
 | - | `mhitu_ad_famn` | mhitu.js | Stub — physical damage only |
-| - | `mhitu_ad_halu` | mhitu.js | Stub — hitmsg + damage=0 (no hallucination) |
+| - | `mhitu_ad_halu` | mhitu.js | Implemented — applies hallucination timeout and zeroes damage |
 | - | `mhitu_ad_rust` | mhitu.js | Stub — hitmsg + damage=0 (no armor erosion) |
 | - | `mhitu_ad_corr` | mhitu.js | Stub — hitmsg + damage=0 (no armor erosion) |
 | - | `mhitu_ad_dcay` | mhitu.js | Stub — hitmsg + damage=0 (no armor erosion) |

@@ -5,7 +5,7 @@
 import { rn2, rnd, rn1, c_d, d } from './rng.js';
 import {
     A_STR, A_DEX, A_CON, A_WIS, A_INT,
-    CONFUSION, STUNNED, BLINDED, TIMEOUT,
+    CONFUSION, STUNNED, BLINDED, HALLUC, TIMEOUT,
     FIRE_RES, COLD_RES, SHOCK_RES, SLEEP_RES, POISON_RES, DRAIN_RES,
     ACID_RES, FREE_ACTION, FAST, SICK_RES, STONE_RES, REFLECTING,
     MALE, FEMALE,
@@ -41,7 +41,7 @@ import {
 } from './uhitm.js';
 import { thrwmu } from './mthrowu.js';
 import { exercise } from './attrib_exercise.js';
-import { make_confused, make_stunned, make_blinded } from './potion.js';
+import { make_confused, make_stunned, make_blinded, make_hallucinated } from './potion.js';
 import { losexp } from './exper.js';
 import { stealgold, steal } from './steal.js';
 import { erode_obj, ERODE_RUST, ERODE_CORRODE, ERODE_ROT,
@@ -733,7 +733,9 @@ function mhitu_ad_samu(monster, attack, player, mhm, ctx) {
 function mhitu_ad_dise(monster, attack, player, mhm, ctx) {
     hitmsg(monster, attack, ctx.display, ctx.suppressHitMsg);
     // C: if (!diseasemu(pa)) damage = 0
-    // Disease — not implemented, keep damage
+    if (!diseasemu(monster.type || monster.data || {}, player, ctx.display)) {
+        mhm.damage = 0;
+    }
 }
 
 // cf. uhitm.c:4611 mhitm_ad_sedu — mhitu branch (seduction/theft)
@@ -801,6 +803,8 @@ function mhitu_ad_famn(monster, attack, player, mhm, ctx) {
 
 // cf. uhitm.c:3885 mhitm_ad_halu — mhitu branch
 function mhitu_ad_halu(monster, attack, player, mhm, ctx) {
+    const oldTimeout = player.getPropTimeout ? player.getPropTimeout(HALLUC) : (player.hallucinated || 0);
+    make_hallucinated(player, oldTimeout + Math.max(1, mhm.damage || 0), false, 0);
     // C: damage = 0 for mhitu
     mhm.damage = 0;
 }
