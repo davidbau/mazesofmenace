@@ -795,9 +795,17 @@ async function trapeffect_rolling_boulder_trap_mon(mon, trap, map, player) {
                     return Trap_Effect_Finished;
                 case PIT:
                 case SPIKED_PIT:
+                    // C ref: fill_pit() consumes boulder and neutralizes pit-family trap.
+                    deltrap(hitTrap, map);
+                    removeBoulder(boulder);
+                    if (typeof newsym === 'function') newsym(map, x, y);
+                    return Trap_Effect_Finished;
                 case HOLE:
                 case TRAPDOOR:
-                    // C ref: boulder stops rolling on pit/hole family interactions.
+                    // C ref: boulder falls into hole/trapdoor and is removed.
+                    deltrap(hitTrap, map);
+                    removeBoulder(boulder);
+                    if (typeof newsym === 'function') newsym(map, x, y);
                     return Trap_Effect_Finished;
                 default:
                     break;
