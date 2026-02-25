@@ -38,7 +38,7 @@ import { exerper, exerchk } from './attrib_exercise.js';
 import { rhack } from './cmd.js';
 import { FOV } from './vision.js';
 import { monsterNearby } from './monutil.js';
-import { nomul } from './hack.js';
+import { nomul, unmul } from './hack.js';
 import { Player, roles, races } from './player.js';
 import { makelevel, setGameSeed, isBranchLevelToDnum } from './dungeon.js';
 import { getArrivalPosition, changeLevel as changeLevelCore, deferred_goto } from './do.js';
@@ -265,6 +265,15 @@ export function moveloop_turnend(game) {
     // C's svm.moves is +1 ahead of turnCount (same offset as exerchk)
     if (moves >= game.seerTurn) {
         game.seerTurn = moves + rn1(31, 15);
+    }
+    // C ref: allmain.c:385-393 — immobile turn countdown and unmul().
+    if (game.multi < 0) {
+        if (++game.multi === 0) {
+            unmul(null, game.player, game.display, game);
+            if (game.player?.utotype) {
+                deferred_goto(game.player, game);
+            }
+        }
     }
     // After turn-end completes, subsequent command processing observes
     // the incremented move counter.

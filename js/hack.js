@@ -1499,10 +1499,16 @@ export function nomul(nval, game) {
 export function unmul(msg_override, player, display, game) {
     if (!game) return;
     game.multi = 0;
-    const msg = msg_override || 'You can move again.';
+    if (msg_override !== undefined && msg_override !== null) {
+        game.nomovemsg = msg_override;
+    } else if (!game.nomovemsg) {
+        game.nomovemsg = 'You can move again.';
+    }
+    const msg = game.nomovemsg || '';
     if (msg && display) {
         display.putstr_message(msg);
     }
+    game.nomovemsg = null;
     if (player) player.usleep = 0;
     game.multi_reason = null;
 }

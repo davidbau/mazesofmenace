@@ -1475,9 +1475,12 @@ async function handleWear(player, display) {
     }
 
     {
-        const wearChoices = armor.map(a => a.invlet).join('');
+        const wearChoices = armor
+            .filter((obj) => canwearobj(player, obj, display, true))
+            .map((a) => a.invlet)
+            .join('');
         display.putstr_message(
-            wearChoices.length > 1
+            wearChoices.length > 0
                 ? `What do you want to wear? [${wearChoices} or ?*]`
                 : 'What do you want to wear? [*]'
         );
@@ -1485,13 +1488,25 @@ async function handleWear(player, display) {
     const ch = await nhgetch();
     const c = String.fromCharCode(ch);
 
-    const item = armor.find(a => a.invlet === c);
-    if (!item) {
+    const selected = (player.inventory || []).find((o) => o.invlet === c);
+    if (!selected) {
+        if (typeof display.clearRow === 'function') display.clearRow(0);
+        display.topMessage = null;
         display.putstr_message('Never mind.');
         return { moved: false, tookTime: false };
     }
+    if (selected.oclass !== ARMOR_CLASS) {
+        if (typeof display.clearRow === 'function') display.clearRow(0);
+        display.topMessage = null;
+        display.putstr_message('That is a silly thing to wear.');
+        return { moved: false, tookTime: false };
+    }
+
+    const item = selected;
 
     // Validate that we can wear this item in its slot
+    if (typeof display.clearRow === 'function') display.clearRow(0);
+    display.topMessage = null;
     if (!canwearobj(player, item, display)) {
         return { moved: false, tookTime: false };
     }
@@ -1521,18 +1536,28 @@ async function handlePutOn(player, display) {
     {
         const choices = eligible.map(r => r.invlet).join('');
         display.putstr_message(
-            choices.length > 1
+            choices.length > 0
                 ? `What do you want to put on? [${choices} or ?*]`
                 : 'What do you want to put on? [*]'
         );
     }
     const ch = await nhgetch();
     const c = String.fromCharCode(ch);
-    const item = eligible.find(r => r.invlet === c);
-    if (!item) {
+
+    const selected = (player.inventory || []).find((o) => o.invlet === c);
+    if (!selected) {
+        if (typeof display.clearRow === 'function') display.clearRow(0);
+        display.topMessage = null;
         display.putstr_message('Never mind.');
         return { moved: false, tookTime: false };
     }
+    if (!eligible.includes(selected)) {
+        if (typeof display.clearRow === 'function') display.clearRow(0);
+        display.topMessage = null;
+        display.putstr_message('That is a silly thing to put on.');
+        return { moved: false, tookTime: false };
+    }
+    const item = selected;
 
     if (item.oclass === RING_CLASS) {
         if (player.leftRing && player.rightRing) {

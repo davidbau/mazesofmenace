@@ -1276,8 +1276,6 @@ export async function replaySession(seed, session, opts = {}) {
             while (game.occupation) {
 
                 const occ = game.occupation;
-                game.display.clearRow(0);
-                game.display.topMessage = null;
                 const cont = occ.fn(game);
                 const finishedOcc = !cont ? occ : null;
                 if (!cont) {
@@ -1335,7 +1333,7 @@ export async function replaySession(seed, session, opts = {}) {
                         game.occupation = null;
                         game.pendingPrompt = null;
                     }
-                    applyTimedTurn(true);
+                    applyTimedTurn();
                     if (finishedOcc && typeof finishedOcc.onFinishAfterTurn === 'function') {
                         finishedOcc.onFinishAfterTurn(game);
                     }
@@ -1349,19 +1347,7 @@ export async function replaySession(seed, session, opts = {}) {
         // Keep prompt/menu frames visible while a command is still awaiting
         // follow-up input (inventory, directions, item selectors, etc.).
         if (!pendingCommand) {
-            const hasRunmodeDelayMarker = Array.isArray(step.rng)
-                && step.rng.some((entry) =>
-                    typeof entry === 'string' && entry.includes('runmode_delay_output')
-                );
-            const preserveCapturedRunmodeFrame = hasRunmodeDelayMarker;
-            if (preserveCapturedRunmodeFrame) {
-                capturedScreenOverride = game.display.getScreenLines();
-                capturedScreenAnsiOverride = (typeof game.display?.getScreenAnsiLines === 'function')
-                    ? game.display.getScreenAnsiLines()
-                    : null;
-            } else {
-                game.renderCurrentScreen();
-            }
+            game.renderCurrentScreen();
         }
 
         if (typeof opts.onStep === 'function') {

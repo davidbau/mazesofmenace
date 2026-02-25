@@ -1480,7 +1480,7 @@ export function movemon(map, player, display, fov, game = null, { dochug, handle
             const oldx = mon.mx;
             const oldy = mon.my;
             const alreadySawMon = !!(game && game.occupation
-                && ((fov?.canSee ? fov.canSee(oldx, oldy) : couldsee(map, player, oldx, oldy))));
+                && canSpotMonsterForMap(mon, map, player, fov));
             mon.movement -= NORMAL_SPEED;
             if (mon.movement >= NORMAL_SPEED) {
                 somebodyCanMove = true;
@@ -1512,8 +1512,8 @@ export function movemon(map, player, display, fov, game = null, { dochug, handle
                 }
             }
             // TODO: fightm() — Conflict not implemented
-            dochug(mon, map, player, display, fov, game);
-            if (game && game.occupation && !mon.dead) {
+            const rd = dochug(mon, map, player, display, fov, game);
+            if (game && game.occupation && !mon.dead && !rd) {
                 const attacks = mon.type?.attacks || [];
                 const noAttacks = !attacks.some((a) => a && a.type !== AT_NONE);
                 const threatRangeSq = (BOLT_LIM + 1) * (BOLT_LIM + 1);
@@ -1523,10 +1523,10 @@ export function movemon(map, player, display, fov, game = null, { dochug, handle
                     : couldsee(map, player, mon.mx, mon.my);
                 const couldSeeOld = fov?.canSee ? fov.canSee(oldx, oldy)
                     : couldsee(map, player, oldx, oldy);
-                if (!mon.peaceful
-                    && !noAttacks
+                if ((player?.hallucinating || (!mon.peaceful && !noAttacks))
                     && newDist <= threatRangeSq
                     && (!alreadySawMon || !couldSeeOld || oldDist > threatRangeSq)
+                    && canSpotMonsterForMap(mon, map, player, fov)
                     && canSeeNow
                     && mon.mcanmove !== false
                     && !onscary(map, player.x, player.y)) {

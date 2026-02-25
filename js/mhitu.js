@@ -1035,14 +1035,18 @@ export function monsterAttackPlayer(monster, player, display, game = null, opts 
                         : 10;
                     const givehp = 50 + 10 * Math.floor(con / 2);
                     player.hp = Math.min(player.hpmax || givehp, givehp);
-                    const hadPriorMsg = !!(display.topMessage && display.messageNeedsMore);
-                    if (hadPriorMsg) {
+                    if (display) {
                         if (typeof display.clearRow === 'function') display.clearRow(0);
                         display.topMessage = null;
                         display.messageNeedsMore = false;
+                        display.putstr_message('OK, so you don\'t die.');
                     }
-                    display.putstr_message('OK, so you don\'t die.  You survived that attempt on your life.');
-                    if (game) game._suppressMonsterHitMessagesThisTurn = true;
+                    if (game) {
+                        game.nomovemsg = 'You survived that attempt on your life.';
+                        game.multi = -1;
+                        game.multi_reason = 'attempting to cheat Death';
+                        game._suppressMonsterHitMessagesThisTurn = true;
+                    }
                 } else {
                     player.deathCause = `killed by a ${monDisplayName(monster)}`;
                     display.putstr_message('You die...');
@@ -1658,7 +1662,17 @@ export function mdamageu(mtmp, n, player, display) {
                 const con = (player.attributes && player.attributes[A_CON]) || 10;
                 const givehp = 50 + 10 * Math.floor(con / 2);
                 player.hp = Math.min(player.hpmax || givehp, givehp);
-                if (display) display.putstr_message('OK, so you don\'t die.  You survived that attempt on your life.');
+                if (display) {
+                    if (typeof display.clearRow === 'function') display.clearRow(0);
+                    display.topMessage = null;
+                    display.messageNeedsMore = false;
+                    display.putstr_message('OK, so you don\'t die.');
+                }
+                if (game) {
+                    game.nomovemsg = 'You survived that attempt on your life.';
+                    game.multi = -1;
+                    game.multi_reason = 'attempting to cheat Death';
+                }
             } else {
                 player.deathCause = `killed by a ${monDisplayName(mtmp)}`;
                 if (display) display.putstr_message('You die...');
