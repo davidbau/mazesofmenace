@@ -87,7 +87,7 @@ import { setnotworn } from './worn.js';
 import { begin_burn, end_burn, obj_has_timer,
          kill_egg, attach_egg_hatch_timeout } from './timeout.js';
 import { maketrap } from './dungeon.js';
-import { tmp_at, nh_delay_output_nowait, DISP_BEAM, DISP_END } from './animation.js';
+import { tmp_at, nh_delay_output, DISP_BEAM, DISP_END } from './animation.js';
 
 // -- Inline helpers --
 
@@ -117,7 +117,7 @@ function _ignitable(obj) {
 // ====================================================================
 
 // cf. apply.c:61 -- STUB: depends on bhit, flash_hits_mon
-export function do_blinding_ray(_obj, player = null, map = null) {
+export async function do_blinding_ray(_obj, player = null, map = null) {
     if (!player || !map) {
         pline(_nothing_happens());
         return;
@@ -137,7 +137,7 @@ export function do_blinding_ray(_obj, player = null, map = null) {
             y += dy;
             if (!isok(x, y)) break;
             tmp_at(x, y);
-            nh_delay_output_nowait();
+            await nh_delay_output();
             const loc = map.at(x, y);
             if (!loc || IS_OBSTRUCTED(loc.typ)) break;
         }

@@ -57,7 +57,7 @@ import {
     erode_obj, ERODE_BURN, ERODE_RUST, ERODE_ROT, ERODE_CORRODE,
     EF_GREASE, EF_VERBOSE,
 } from './trap.js';
-import { tmp_at, nh_delay_output_nowait, DISP_ALWAYS, DISP_END } from './animation.js';
+import { tmp_at, nh_delay_output, DISP_ALWAYS, DISP_END } from './animation.js';
 
 
 // ============================================================================
@@ -1216,13 +1216,13 @@ export function explum(mdef, mattk) {
 
 // cf. uhitm.c:4909 — start_engulf(mdef):
 //   Start engulfing animation/state. Display-only in C.
-function start_engulf(mdef) {
+async function start_engulf(mdef) {
     if (!mdef || !Number.isInteger(mdef.mx) || !Number.isInteger(mdef.my)) return;
     // C uses mon_to_glyph(&youmonst); JS keeps a stable hero marker here.
     tmp_at(DISP_ALWAYS, { ch: '@', color: 15 });
     tmp_at(mdef.mx, mdef.my);
-    nh_delay_output_nowait();
-    nh_delay_output_nowait();
+    await nh_delay_output();
+    await nh_delay_output();
 }
 
 // cf. uhitm.c:4927 — end_engulf():
@@ -1236,9 +1236,9 @@ function end_engulf() {
 //   Very complex function involving digestion, enfolding, swallowing.
 //   Returns M_ATTK_MISS or M_ATTK_DEF_DIED.
 //   In JS, engulfment is not yet supported. Stub returns miss.
-export function gulpum(mdef, mattk) {
+export async function gulpum(mdef, mattk) {
     if (mdef) {
-        start_engulf(mdef);
+        await start_engulf(mdef);
         end_engulf();
     }
     return M_ATTK_MISS;

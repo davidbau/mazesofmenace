@@ -37,7 +37,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 |--------|--------|---------|-------|
 | `[~]` | allmain.c | allmain.js | Main game loop, newgame, moveloop. JS: chargen UI split into `chargen.js`; browser entry point in `nethack.js`. `moveloop_core()` and deferred-turn execution are now async to support awaited animation timing in monster-turn paths |
 | `[N/A]` | alloc.c | — | Memory allocation (nhalloc, nhfree). JS uses GC |
-| `[a]` | apply.c | apply.js | Applying items. handleApply (doapply) with isApplyCandidate/isApplyChopWeapon/isApplyPolearm/isApplyDownplay helpers; `tmp_at` overlays now wired for blinding-ray and polearm/grapple target highlighting callsites |
+| `[a]` | apply.c | apply.js | Applying items. handleApply (doapply) with isApplyCandidate/isApplyChopWeapon/isApplyPolearm/isApplyDownplay helpers; `tmp_at` overlays now wired for blinding-ray and polearm/grapple target highlighting callsites, with blinding-ray frames now using awaited `nh_delay_output()` |
 | `[p]` | artifact.c | artifact.js | Artifact system. Generated data table (artifacts.js) with artilist[], SPFX_*, ART_* constants. ~70 functions implemented: existence tracking (init/exist/found/find/mk_artifact), pure predicates (spec_ability, confers_luck, arti_reflects, shade_glare, restrict_name, attacks, defends, protects, arti_immune, artifact_has_invprop, arti_cost, is_art, permapoisoned, spec_m2), combat (spec_applies, bane_applies, spec_abon, spec_dbon — wired into uhitm/mhitm/mhitu), discovery, glow/Sting. Stubs: set_artifact_intrinsic, Mb_hit, doinvoke, arti_invoke, all invoke_* functions, retouch_object/equipment |
 | `[~]` | attrib.c | attrib.js | Attribute system. JS: partially in `attrib_exercise.js` |
 | `[~]` | ball.c | ball.js | Ball & chain handling |
@@ -67,7 +67,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[~]` | end.c | end.js | Game over, death, scoring |
 | `[a]` | engrave.c | engrave.js | Engraving mechanics. handleEngrave (doengrave) approximation, maybeSmudgeEngraving (wipe_engr_at); engrave_data.js has text data; ~30 functions TODO |
 | `[a]` | exper.c | exper.js | Experience and leveling. newuexp, newexplevel, pluslvl, losexp, newpw, newhp, enermod implemented; experience, more_experienced, rndexp TODO. Role/race hpadv/enadv_full/xlev data in player.js. |
-| `[p]` | explode.c | explode.js | Explosion effects. All 9 functions present: adtyp_to_expltype, explosionmask (stub), engulfer_explosion_msg (stub), explode (3x3 area with resistance checks and C-style `tmp_at(DISP_BEAM/DISP_CHANGE)` frame animation), scatter (stub), splatter_burning_oil, explode_oil, mon_explodes, ugolemeffects (stub) |
+| `[p]` | explode.c | explode.js | Explosion effects. All 9 functions present: adtyp_to_expltype, explosionmask (stub), engulfer_explosion_msg (stub), explode (3x3 area with resistance checks and C-style `tmp_at(DISP_BEAM/DISP_CHANGE)` frame animation with awaited per-phase `nh_delay_output()`), scatter (stub), splatter_burning_oil, explode_oil, mon_explodes, ugolemeffects (stub) |
 | `[~]` | extralev.c | extralev.js | Special level generation helpers now in `extralev.js`: `corr`, `roguejoin`, `miniwalk`, `roguecorr`, `makerogueghost`, and `makeroguerooms`; rogue special-level generator now calls `makeroguerooms` directly |
 | `[N/A]` | files.c | — | File I/O operations. JS: `storage.js` |
 | `[a]` | fountain.c | fountain.js | Fountain effects. drinkfountain/dryup implemented (RNG-parity); ~12 functions TODO |
@@ -118,7 +118,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[~]` | priest.c | priest.js | Priest behavior, temple management, shrine, minion roamers. move_special() PARTIAL in monmove.js:679; all other functions TODO |
 | `[~]` | quest.c | quest.js | Quest mechanics. All 22 functions are runtime gameplay (NPC dialog, eligibility, expulsion); none in JS |
 | `[~]` | questpgr.c | questpgr.js | Quest text pager. com_pager_core N/A (Lua interpreter); is_quest_artifact PARTIAL in objdata.js:54; all other functions TODO |
-| `[a]` | read.c | read.js | Reading scrolls/spellbooks. handleRead (doread) with spellbook study + seffects dispatcher + all 22 scroll effects implemented; some effects approximate (teleportation, mapping, detection need infrastructure). Stinking-cloud prompt path now includes `tmp_at` highlight setup/cleanup parity hook |
+| `[a]` | read.c | read.js | Reading scrolls/spellbooks. handleRead (doread) with spellbook study + seffects dispatcher + all 22 scroll effects implemented; some effects approximate (teleportation, mapping, detection need infrastructure). Stinking-cloud prompt path now includes `tmp_at` highlight setup/cleanup parity hook; fire-scroll explosion path now awaits async `explode()` timing |
 | `[x]` | rect.c | rect.js | Rectangle allocation for room placement |
 | `[~]` | region.c | region.js | Region effects (gas clouds, etc.). No runtime regions in JS; all functions TODO |
 | `[N/A]` | report.c | — | Bug reporting, panic trace |
@@ -149,7 +149,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[p]` | track.c | track.js | Player tracking for pets. save/rest not yet implemented |
 | `[p]` | trap.c | trap.js | Trap mechanics: monster-side flow is largely ported (m_harmless_trap, floor_trigger, mintrap_postmove, mon_check_in_air, trap effect dispatcher, erosion/water/fire/acid chains, petrification helpers). Rolling-boulder monster trap path now includes `tmp_at` flash lifecycle with awaited per-cell `nh_delay_output()` timing, launch-point/other-side boulder selection, per-cell boulder-coordinate updates, closed-door break handling, boulder-to-boulder handoff, bars/wall/tree stop rules, and basic trap-tile interactions while rolling (landmine consume, tele trap relocate, level-tele consume, pit/hole-family stop), plus impact damage via `thitm`; full `launch_obj` parity (scatter/fall-through chain detail and richer object interactions) is still TODO. Remaining parity gaps are mainly player-side `dotrap`/interaction flow plus complex trap side-effects. |
 | `[a]` | u_init.c | u_init.js | Player initialization. u_init_role, u_init_race, u_init_carry_attr_boost, trquan, ini_inv, ini_inv_mkobj_filter, restricted_spell_discipline aligned. JS-only wrappers: simulatePostLevelInit, initAttributes |
-| `[a]` | uhitm.c | uhitm.js | Hero-vs-monster combat. playerAttackMonster, all mhitm_ad_* handlers (40+), mhitm_adtyping dispatcher, mhitm_mgc_atk_negated, mhitm_knockback (with eligibility + messages) implemented; artifact spec_abon wired into find_roll_to_hit, spec_dbon wired into damage calc; 50 functions TODO |
+| `[a]` | uhitm.c | uhitm.js | Hero-vs-monster combat. playerAttackMonster, all mhitm_ad_* handlers (40+), mhitm_adtyping dispatcher, mhitm_mgc_atk_negated, mhitm_knockback (with eligibility + messages) implemented; artifact spec_abon wired into find_roll_to_hit, spec_dbon wired into damage calc; engulf start-frame helper now uses awaited delay boundaries (`start_engulf`/`gulpum` async). 50 functions TODO |
 | `[N/A]` | utf8map.c | — | UTF-8 glyph mapping for terminal |
 | `[~]` | vault.c | `vault.js` | Vault guard behavior |
 | `[N/A]` | version.c | — | Version info |

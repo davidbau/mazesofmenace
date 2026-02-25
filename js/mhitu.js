@@ -1455,7 +1455,7 @@ export function gulpmu(mtmp, mattk, player, map, display) {
 }
 
 // cf. mhitu.c:1586 explmu() — monster explodes in hero's face
-export function explmu(mtmp, mattk, ufound, player, map, display) {
+export async function explmu(mtmp, mattk, ufound, player, map, display) {
     if (!mtmp) return M_ATTK_MISS;
     if (mtmp.mcan) return M_ATTK_MISS;
 
@@ -1481,7 +1481,7 @@ export function explmu(mtmp, mattk, ufound, player, map, display) {
     case AD_ELEC:
         if (adtyp === AD_ELEC) not_affected = playerHasProp(player, SHOCK_RES);
         // C: mon_explodes(mtmp, mattk) — kills the monster via explosion
-        mon_explodes(mtmp, {
+        await mon_explodes(mtmp, {
             damn: mattk.dice || mattk.damn || 0,
             damd: mattk.sides || mattk.damd || 0,
             adtyp: adtyp,

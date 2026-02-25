@@ -11,7 +11,7 @@ import { AD_PHYS, AD_MAGM, AD_FIRE, AD_COLD, AD_ELEC, AD_DRST, AD_ACID,
 import { WAND_CLASS } from './objects.js';
 import { resist } from './zap.js';
 import {
-  tmp_at, nh_delay_output_nowait,
+  tmp_at, nh_delay_output,
   DISP_BEAM, DISP_CHANGE, DISP_END,
 } from './animation.js';
 
@@ -71,7 +71,7 @@ export function engulfer_explosion_msg(adtyp, olet) {
 // type: negative means breath weapon, positive means spell/wand
 // dam: base damage amount
 // olet: object class triggering explosion (WAND_CLASS, MON_EXPLODE, etc.)
-export function explode(x, y, type, dam, olet, expltype, map, player) {
+export async function explode(x, y, type, dam, olet, expltype, map, player) {
   // Determine damage type from type parameter
   let adtyp;
   if (type >= 0) {
@@ -138,7 +138,7 @@ export function explode(x, y, type, dam, olet, expltype, map, player) {
           }
         }
       }
-      nh_delay_output_nowait();
+      await nh_delay_output();
     }
   } finally {
     tmp_at(DISP_END, 0);
@@ -156,22 +156,22 @@ export function scatter(sx, sy, blastforce, scflags, obj, map) {
 }
 
 // cf. explode.c:959 — splatter_burning_oil(x, y, diluted_oil)
-export function splatter_burning_oil(x, y, diluted_oil, map, player) {
+export async function splatter_burning_oil(x, y, diluted_oil, map, player) {
   const dmg = d(diluted_oil ? 3 : 4, 4);
-  explode(x, y, AD_FIRE, dmg, BURNING_OIL, EXPL_FIERY, map, player);
+  await explode(x, y, AD_FIRE, dmg, BURNING_OIL, EXPL_FIERY, map, player);
 }
 
 // cf. explode.c:971 — explode_oil(obj, x, y)
-export function explode_oil(obj, x, y, map, player) {
+export async function explode_oil(obj, x, y, map, player) {
   if (obj && obj.lamplit) {
     obj.lamplit = false;
-    splatter_burning_oil(x, y, obj.odiluted || false, map, player);
+    await splatter_burning_oil(x, y, obj.odiluted || false, map, player);
   }
 }
 
 // cf. explode.c:1016 — mon_explodes(mon, mattk)
 // Monster self-destruct explosion (e.g., gas spore, yellow light)
-export function mon_explodes(mon, mattk, map, player) {
+export async function mon_explodes(mon, mattk, map, player) {
   if (!mon || !mattk) return;
 
   let dmg;
@@ -196,7 +196,7 @@ export function mon_explodes(mon, mattk, map, player) {
     type = -((adtyp - 1) + 20); // breath weapon formula
   }
 
-  explode(mon.mx, mon.my, type, dmg, MON_EXPLODE, expltype, map, player);
+  await explode(mon.mx, mon.my, type, dmg, MON_EXPLODE, expltype, map, player);
 
   // Monster always dies from self-destruct
   mon.mhp = 0;

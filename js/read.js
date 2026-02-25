@@ -1251,7 +1251,7 @@ function seffect_genocide(sobj, player, display) {
 }
 
 // cf. read.c seffect_fire()
-function seffect_fire(sobj, player, display, game) {
+async function seffect_fire(sobj, player, display, game) {
     const sblessed = sobj.blessed;
     const confused = !!player.confused;
     const already_known = isObjectNameKnown(sobj.otyp);
@@ -1286,7 +1286,7 @@ function seffect_fire(sobj, player, display, game) {
     // cf. explode(cc.x, cc.y, ZT_SPELL_O_FIRE, dam, SCROLL_CLASS, EXPL_FIERY)
     const ZT_SPELL_O_FIRE = 11;
     if (map) {
-        explode(ccx, ccy, ZT_SPELL_O_FIRE, dam, SCROLL_CLASS, EXPL_FIERY, map, player);
+        await explode(ccx, ccy, ZT_SPELL_O_FIRE, dam, SCROLL_CLASS, EXPL_FIERY, map, player);
     } else {
         // Fallback: take damage directly
         player.hp = Math.max(0, (player.hp || 0) - dam);
@@ -1438,7 +1438,7 @@ async function seffects(sobj, player, display, game) {
     case SCR_AMNESIA:
         return seffect_amnesia(sobj, player, display);
     case SCR_FIRE:
-        return seffect_fire(sobj, player, display, game);
+        return await seffect_fire(sobj, player, display, game);
     case SCR_EARTH:
         return seffect_earth(sobj, player, display, game);
     case SCR_PUNISHMENT:
