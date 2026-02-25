@@ -18,8 +18,8 @@
 //   hurtle(): move hero through air after kick or impact.
 //   breakobj()/breaktest(): object breakage mechanics.
 
-import { ACCESSIBLE, isok } from './config.js';
-import { IS_SOFT, ZAP_POS } from './symbols.js';
+import { ACCESSIBLE, isok, xdir, ydir } from './config.js';
+import { IS_SOFT, ZAP_POS, S_boomleft, S_boomright, defsyms } from './symbols.js';
 import { rn2, rnd } from './rng.js';
 import { nhgetch } from './input.js';
 import { objectData, WEAPON_CLASS, COIN_CLASS, GEM_CLASS, TOOL_CLASS,
@@ -887,28 +887,78 @@ export function throwing_weapon(obj) {
         || obj.otyp === WAR_HAMMER || obj.otyp === AKLYS;
 }
 
-// cf. dothrow.c:1441 [static] -- sho_obj_return_to_u(obj)
-async function sho_obj_return_to_u(obj, player, game) {
-    if (!obj || !player || !game?.bhitpos) return;
-    const dx = Number.isInteger(player.dx) ? player.dx : 0;
-    const dy = Number.isInteger(player.dy) ? player.dy : 0;
-    if ((!dx && !dy) || (game.bhitpos.x === player.x && game.bhitpos.y === player.y)) return;
-    let x = game.bhitpos.x - dx;
-    let y = game.bhitpos.y - dy;
-    const projGlyph = objectMapGlyph(obj, false, {
-        player,
-        x: player.x,
-        y: player.y,
-        observe: false,
-    });
-    tmp_at(DISP_FLASH, projGlyph);
-    while (isok(x, y) && (x !== player.x || y !== player.y)) {
+// C ref: zap.c boomhit() direction helpers.
+function dirClamp8(i) {
+    if (!Number.isInteger(i)) return 0;
+    return ((i % 8) + 8) % 8;
+}
+
+function dirLeft8(i) {
+    return dirClamp8(i + 1);
+}
+
+function dirRight8(i) {
+    return dirClamp8(i - 1);
+}
+
+function xytod8(dx, dy) {
+    for (let i = 0; i < 8; i++) {
+        if (xdir[i] === dx && ydir[i] === dy) return i;
+    }
+    return -1;
+}
+
+function boomerangCmapGlyph(symIdx) {
+    const sym = defsyms[symIdx];
+    if (!sym || typeof sym.ch !== 'string' || sym.ch.length === 0) {
+        return { ch: ')', color: 3 };
+    }
+    return {
+        ch: sym.ch[0],
+        color: Number.isInteger(sym.color) ? sym.color : 3,
+    };
+}
+
+// C ref: zap.c boomhit() visual path.
+async function boomhit_visual(obj, dx, dy, player, map, game) {
+    const counterclockwise = true; // C default for right-handed hero.
+    let x = player.x;
+    let y = player.y;
+    let i = xytod8(dx, dy);
+    if (i < 0) {
+        if (game?.bhitpos) {
+            game.bhitpos = { x: game.bhitpos.x, y: game.bhitpos.y };
+        }
+        return;
+    }
+
+    let boom = counterclockwise ? S_boomleft : S_boomright;
+    tmp_at(DISP_FLASH, boomerangCmapGlyph(boom));
+    for (let ct = 0; ct < 10; ct++) {
+        i = dirClamp8(i);
+        boom = (S_boomleft + S_boomright - boom);
+        tmp_at(DISP_CHANGE, boomerangCmapGlyph(boom));
+
+        const stepDx = xdir[i];
+        const stepDy = ydir[i];
+        const nx = x + stepDx;
+        const ny = y + stepDy;
+
+        if (!isok(nx, ny)) break;
+        const loc = map?.at?.(nx, ny);
+        if (!loc || !ZAP_POS(loc.typ)) break;
+
+        x = nx;
+        y = ny;
         tmp_at(x, y);
         await nh_delay_output();
-        x -= dx;
-        y -= dy;
+
+        if (ct % 5 !== 0) {
+            i = counterclockwise ? dirLeft8(i) : dirRight8(i);
+        }
     }
     tmp_at(DISP_END, 0);
+    if (game) game.bhitpos = { x, y };
 }
 
 // cf. dothrow.c:1459 [static] -- throwit_return(clear_thrownobj, game)
@@ -1031,8 +1081,8 @@ export async function throwit(obj, wep_mask, twoweap, oldslot, player, map, game
             return;
         }
     } else if (obj.otyp === BOOMERANG) {
-        // Display-only return path for boomerangs, matching C visual behavior.
-        await sho_obj_return_to_u(obj, player, game);
+        // C ref: zap.c boomhit() — curving boomerang visual sequence.
+        await boomhit_visual(obj, dx, dy, player, map, game);
     }
 
     const landLoc = typeof map.at === 'function' ? map.at(bx, by) : null;

@@ -60,7 +60,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[a]` | dog.c | dog.js | Pet behavior. dogfood/makedog/mon_arrive in dog.js; losedogs/keepdogs/migrate TODO |
 | `[a]` | dogmove.c | dogmove.js | Pet movement AI. All functions except `quickmimic` |
 | `[a]` | dokick.c | kick.js | Kicking mechanics. handleKick (dokick) approximation; full kick effects TODO |
-| `[a]` | dothrow.c | dothrow.js | Throwing mechanics. handleThrow/handleFire (dothrow/dofire), promptDirectionAndThrowItem (throwit), ammoAndLauncher, DIRECTION_KEYS; throw flight now uses `tmp_at(DISP_FLASH)` + `nh_delay_output`-boundary frames, including awaited projectile-frame timing in the active throw command path and awaited per-step timing in `throwit`/boomerang-return animation flow (legacy `nowait` path removed there); ~30 functions TODO |
+| `[a]` | dothrow.c | dothrow.js | Throwing mechanics. handleThrow/handleFire (dothrow/dofire), promptDirectionAndThrowItem (throwit), ammoAndLauncher, DIRECTION_KEYS; throw flight now uses `tmp_at(DISP_FLASH)` + `nh_delay_output`-boundary frames, including awaited projectile-frame timing in the active throw command path and awaited per-step timing in `throwit` paths (legacy `nowait` path removed there). Boomerang visuals now follow C `boomhit` structure with `DISP_FLASH` + per-step `DISP_CHANGE` toggling (`S_boomleft/right`) and awaited frame boundaries; ~30 functions TODO |
 | `[a]` | drawing.c | symbols.js | Symbol/glyph drawing tables and lookup functions. Data tables in symbols.js; 3 lookup functions implemented |
 | `[~]` | dungeon.c | dungeon.js | Dungeon structure and level management |
 | `[a]` | eat.c | eat.js | Eating mechanics. handleEat (doeat) implemented; ~50 functions TODO |
