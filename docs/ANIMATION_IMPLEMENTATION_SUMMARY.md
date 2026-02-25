@@ -18,7 +18,7 @@ Animation infrastructure is in place (`tmp_at`, delay boundaries, overlay lifecy
 - Result: structural replay boundaries are often correct before full visible timing parity is reached.
 
 2. `zap.c` coverage is incomplete.
-- Major beam behavior is present and IMMEDIATE wand traversal is now animated; monster-item beam callsites in `muse.js` now feed typed zap IDs into async `buzz()` (rather than placeholder type `0`), but several C zap call surfaces remain simplified/stubbed.
+- Major beam behavior is present and IMMEDIATE wand traversal is now animated; monster-item beam callsites in `muse.js` now feed typed zap IDs into async `buzz()` (rather than placeholder type `0`). Recent parity upgrades also include teleport-hit wiring (`bhitm` -> `u_teleport_mon`, `bhito` teleport relocation via `rloco`) and NODIR observable-effect wand discovery marking. Several C zap call surfaces still remain simplified/stubbed.
 
 3. Rolling boulder / complex trap-motion animation is partial.
 - Trap flash lifecycle and basic per-cell travel + impact damage hook are present, with additional C-like launch behavior now wired (other-side boulder lookup, closed-door break, boulder handoff, bars/walls/trees blocking, and landmine/teleport/pit-family trap-tile reactions including pit fill and hole/trapdoor fall-through removal). Full `launch_obj` parity (scatter/fall-through chain details and richer object interactions) is still not complete.

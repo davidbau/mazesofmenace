@@ -57,7 +57,6 @@ import { sleep_monst, slept_monst } from './mhitm.js';
 import { mstatusline } from './insight.js';
 import { display_minventory } from './invent.js';
 import { obj_resists } from './objdata.js';
-import { enexto } from './teleport.js';
 import { splitobj } from './mkobj.js';
 import { delobj } from './invent.js';
 import { useupall } from './invent.js';
@@ -69,6 +68,8 @@ import { is_db_wall, find_drawbridge, open_drawbridge, close_drawbridge, destroy
 import { HOLE, TRAPDOOR } from './symbols.js';
 import { engr_at, del_engr_at, wipe_engr_at, rloc_engr, make_engr_at } from './engrave.js';
 import { random_engraving_rng } from './dungeon.js';
+import { discoverObject } from './discovery.js';
+import { u_teleport_mon, rloco } from './teleport.js';
 import {
     tmp_at, nh_delay_output,
     DISP_BEAM, DISP_END,
@@ -661,7 +662,9 @@ export function bhitm(mon, otmp, map, player) {
     break;
   case WAN_TELEPORTATION:
   case SPE_TELEPORT_AWAY:
-    // Would call u_teleport_mon — simplified
+    if (!resist(mon, otmp.oclass)) {
+      u_teleport_mon(mon, true, map, player, null, null);
+    }
     break;
   case WAN_MAKE_INVISIBLE:
     // Would call mon_set_minvis — simplified
@@ -770,22 +773,28 @@ export async function buzz(type, nd, sx, sy, dx, dy, map, player) {
 
 async function zapnodir(obj, player, map, display, game) {
   if (!obj) return;
+  let known = false;
 
   switch (obj.otyp) {
   case WAN_LIGHT:
   case SPE_LIGHT:
     pline("A lit field surrounds you.");
+    known = !!obj.dknown;
     break;
   case WAN_SECRET_DOOR_DETECTION:
   case SPE_DETECT_UNSEEN:
     findit(player, map, display, game);
+    known = !!obj.dknown;
     break;
   case WAN_CREATE_MONSTER: {
     // C ref: zap.c zapnodir() create_critters(rn2(23)?1:rn1(7,2), ...).
     const count = rn2(23) ? 1 : rn1(7, 2);
+    let created = 0;
     for (let i = 0; i < count; i++) {
-      makemon(null, player?.x || 0, player?.y || 0, 0, player?.dungeonLevel || 1, map);
+      const mon = makemon(null, player?.x || 0, player?.y || 0, 0, player?.dungeonLevel || 1, map);
+      if (mon) created++;
     }
+    if (created > 0) known = !!obj.dknown;
     break;
   }
   case WAN_WISHING:
@@ -794,15 +803,20 @@ async function zapnodir(obj, player, map, display, game) {
       pline("Unfortunately, nothing happens.");
     } else {
       pline("You feel that a wish is possible.");
+      known = !!obj.dknown;
     }
     break;
   case WAN_ENLIGHTENMENT:
     // Full enlightenment UI is not wired through this path yet.
     pline("You feel self-knowledgeable...");
+    known = !!obj.dknown;
     break;
   default:
     break;
   }
+
+  // C ref: zap.c zapnodir() -> learnwand() when effect is observable.
+  if (known) discoverObject(obj.otyp, true, true);
 }
 
 async function bhit_zapped_wand(obj, player, map) {
@@ -1548,7 +1562,7 @@ export function bhito(obj, otmp, map) {
 
   case WAN_TELEPORTATION:
   case SPE_TELEPORT_AWAY:
-    // rloco — teleport object to random location; simplified
+    if (map) rloco(obj, map, null);
     break;
 
   case WAN_MAKE_INVISIBLE:
