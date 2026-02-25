@@ -7,7 +7,7 @@ import { COLNO, ROWNO, STONE, DOOR, CORR, SDOOR, SCORR, STAIRS, LADDER, FOUNTAIN
          D_ISOPEN, D_NODOOR, D_BROKEN, ACCESSIBLE, IS_OBSTRUCTED, IS_WALL, ICE,
          IS_STWALL, IS_ROCK, IS_ROOM, IS_FURNITURE, IS_POOL, IS_LAVA, IS_WATERWALL,
          WATER, LAVAWALL, AIR, MOAT, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN,
-         isok, A_STR, A_DEX, A_CON, A_WIS, A_INT, A_CHA, MAP_ROW_START,
+         isok, A_STR, A_DEX, A_CON, A_WIS, A_INT, A_CHA,
          ROOMOFFSET, SHOPBASE, OROOM, COURT, SWAMP, VAULT, BEEHIVE, MORGUE,
          BARRACKS, ZOO, DELPHI, TEMPLE, LEPREHALL, COCKNEST, ANTHOLE,
          UNENCUMBERED, SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, OVERLOADED,
@@ -33,6 +33,7 @@ import { monflee } from './monmove.js';
 import { ynFunction } from './input.js';
 import { water_friction, maybe_adjust_hero_bubble } from './mkmaze.js';
 import { tmp_at, nh_delay_output_nowait, DISP_ALL, DISP_END } from './animation.js';
+import { set_getpos_context, getpos_async } from './getpos.js';
 // pline available from './pline.js' if needed for direct message output
 
 // Run direction keys (shift = run)
@@ -819,46 +820,16 @@ export function findPath(map, startX, startY, endX, endY) {
 export async function handleTravel(game) {
     const { player, map, display } = game;
 
-    display.putstr_message('Where do you want to travel to? (use arrow keys, then .)');
-
-    // Simple cursor-based destination selection
-    let cursorX = player.x;
-    let cursorY = player.y;
-
-    while (true) {
-        // Render map with cursor
-        display.renderMap(map, player, game.fov, game.flags);
-        // Show cursor at target location (we'll just use a simple marker)
-        const mapOffset = game.flags.msg_window ? 3 : MAP_ROW_START;
-        const row = cursorY + mapOffset;
-        const cursorCol = cursorX - 1;
-        const oldCell = display.grid[row]?.[cursorCol] || { ch: ' ', color: 7 };
-        display.setCell(cursorCol, row, 'X', 14); // White X for cursor
-        display.render();
-
-        const ch = await nhgetch();
-        const c = String.fromCharCode(ch);
-
-        // Restore cell
-        display.setCell(cursorCol, row, oldCell.ch, oldCell.color);
-
-        // Handle cursor movement
-        if (c === 'h' && cursorX > 1) cursorX--;
-        else if (c === 'l' && cursorX < COLNO - 1) cursorX++;
-        else if (c === 'k' && cursorY > 0) cursorY--;
-        else if (c === 'j' && cursorY < ROWNO - 1) cursorY++;
-        else if (c === 'y' && cursorX > 1 && cursorY > 0) { cursorX--; cursorY--; }
-        else if (c === 'u' && cursorX < COLNO - 1 && cursorY > 0) { cursorX++; cursorY--; }
-        else if (c === 'b' && cursorX > 1 && cursorY < ROWNO - 1) { cursorX--; cursorY++; }
-        else if (c === 'n' && cursorX < COLNO - 1 && cursorY < ROWNO - 1) { cursorX++; cursorY++; }
-        else if (c === '.' || ch === 13) { // period or enter
-            // Confirm destination
-            break;
-        } else if (ch === 27) { // ESC
-            display.putstr_message('Travel cancelled.');
-            return { moved: false, tookTime: false };
-        }
+    display.putstr_message('Where do you want to travel to?');
+    set_getpos_context({ map, display, flags: game.flags, goalPrompt: 'travel to' });
+    const cc = { x: player.x, y: player.y };
+    const result = await getpos_async(cc, true, 'travel to');
+    if (result < 0) {
+        display.putstr_message('Travel cancelled.');
+        return { moved: false, tookTime: false };
     }
+    const cursorX = cc.x;
+    const cursorY = cc.y;
 
     // Store travel destination
     game.travelX = cursorX;
