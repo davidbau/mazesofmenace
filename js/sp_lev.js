@@ -4079,12 +4079,7 @@ export function object(name_or_opts, x, y) {
         if (isBuried) {
             obj.buried = true;
         } else if (absX >= 0 && absX < COLNO && absY >= 0 && absY < ROWNO) {
-            const placed = placeFloorObject(levelState.map, obj);
-            // C parity quirk: stacked scripted corpses emit a follow-up ^remove
-            // for the merged-away object.
-            if (isCorpseSpec && placed !== obj) {
-                pushRngLogEntry(`^remove[${obj.otyp},${obj.ox},${obj.oy}]`);
-            }
+            placeFloorObject(levelState.map, obj);
         }
 
         // C ref: lspo_object() executes contents callback with this object as

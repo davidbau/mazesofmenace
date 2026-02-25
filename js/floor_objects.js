@@ -46,6 +46,8 @@ export function placeFloorObject(map, obj) {
         if (existing.buried || obj.buried) continue;
         if (!canStackFloorObject(existing, obj)) continue;
         existing.quan = (existing.quan || 1) + (obj.quan || 1);
+        // C stackobj() extracts the merged-away object from the floor chain.
+        pushRngLogEntry(`^remove[${obj.otyp},${obj.ox},${obj.oy}]`);
         return existing;
     }
     map.objects.push(obj);
