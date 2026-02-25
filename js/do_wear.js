@@ -1518,7 +1518,14 @@ async function handlePutOn(player, display) {
         return { moved: false, tookTime: false };
     }
 
-    display.putstr_message(`What do you want to put on? [${eligible.map(r => r.invlet).join('')}]`);
+    {
+        const choices = eligible.map(r => r.invlet).join('');
+        display.putstr_message(
+            choices.length > 1
+                ? `What do you want to put on? [${choices} or ?*]`
+                : 'What do you want to put on? [*]'
+        );
+    }
     const ch = await nhgetch();
     const c = String.fromCharCode(ch);
     const item = eligible.find(r => r.invlet === c);
@@ -1561,7 +1568,14 @@ async function handleTakeOff(player, display) {
     if (worn.length === 1) {
         item = worn[0];
     } else {
-        display.putstr_message(`What do you want to take off? [${worn.map(a => a.invlet).join('')}]`);
+        {
+            const choices = worn.map(a => a.invlet).join('');
+            display.putstr_message(
+                choices.length > 1
+                    ? `What do you want to take off? [${choices} or ?*]`
+                    : 'What do you want to take off? [*]'
+            );
+        }
         const ch = await nhgetch();
         const c = String.fromCharCode(ch);
         item = worn.find(a => a.invlet === c);
@@ -1616,7 +1630,14 @@ async function handleRemove(player, display) {
     if (accessories.length === 1) {
         item = accessories[0];
     } else {
-        display.putstr_message(`What do you want to remove? [${accessories.map(a => a.invlet).join('')}]`);
+        {
+            const choices = accessories.map(a => a.invlet).join('');
+            display.putstr_message(
+                choices.length > 1
+                    ? `What do you want to remove? [${choices} or ?*]`
+                    : 'What do you want to remove? [*]'
+            );
+        }
         const ch = await nhgetch();
         const c = String.fromCharCode(ch);
         item = accessories.find(a => a.invlet === c);
