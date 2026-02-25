@@ -954,7 +954,7 @@ async function dochug(mon, map, player, display, fov, game = null) {
             const omx = mon.mx, omy = mon.my;
             await dog_move(mon, map, player, display, fov, false, game);
             if (!mon.dead && (mon.mx !== omx || mon.my !== omy)) {
-                const trapResult = mintrap_postmove(mon, map, player);
+                const trapResult = await mintrap_postmove(mon, map, player);
                 if (trapResult === 2 || trapResult === 3) {
                     return;
                 }
@@ -966,7 +966,7 @@ async function dochug(mon, map, player, display, fov, game = null) {
             moveDone = !!mon._mMoveDone;
             let trapDied = false;
             if (!mon.dead && (mon.mx !== omx || mon.my !== omy)) {
-                const trapResult = mintrap_postmove(mon, map, player);
+                const trapResult = await mintrap_postmove(mon, map, player);
                 if (trapResult === 2 || trapResult === 3) {
                     trapDied = true;
                 } else {
@@ -1571,13 +1571,13 @@ export function m_postmove_effect(mon) {
 // C ref: monmove.c:1458 postmov() — post-movement processing
 // Simplified: handles trap trigger, item eating/pickup.
 // Missing: door handling (open/unlock/bust), iron bars, tunneling, engulf.
-export function postmov(mon, map, player, mmoved) {
+export async function postmov(mon, map, player, mmoved) {
     if (!mon || !map) return mmoved;
     if (mon.dead) return mmoved;
 
     // Trap trigger after movement
     if (mmoved === 1 /* MMOVE_MOVED */) {
-        const trapResult = mintrap_postmove(mon, map, player);
+        const trapResult = await mintrap_postmove(mon, map, player);
         if (trapResult === 2 /* Trap_Killed_Mon */ || trapResult === 3 /* Trap_Moved_Mon */) {
             return -1; // MMOVE_DIED
         }

@@ -386,8 +386,8 @@ function remove_monster(x, y, map) {
 // ============================================================================
 // mintrap wrapper (from trap.js mintrap_postmove)
 // ============================================================================
-function mintrap(mon, flags, map, player) {
-    return mintrap_postmove(mon, map, player, null, null);
+async function mintrap(mon, flags, map, player) {
+    return await mintrap_postmove(mon, map, player, null, null);
 }
 
 // ============================================================================
@@ -713,7 +713,7 @@ function kickdmg(mon, clumsy, player, map) {
                 place_monster(mon, mdx, mdy, map);
                 newsym(mon.mx, mon.my, map);
                 set_apparxy(mon, map, player);
-                if (mintrap(mon, NO_TRAP_FLAGS, map, player) === Trap_Killed_Mon)
+                if (await mintrap(mon, NO_TRAP_FLAGS, map, player) === Trap_Killed_Mon)
                     trapkilled = true;
             }
         }
@@ -757,7 +757,7 @@ function maybe_kick_monster(mon, x, y, player, map, game) {
 // cf. dokick.c:145
 // ============================================================================
 
-function kick_monster(mon, x, y, player, map, game) {
+async function kick_monster(mon, x, y, player, map, game) {
     let clumsy = false;
     const uarmf = player.boots;
     const monData = mon.type || mon.data;
@@ -1873,7 +1873,7 @@ export async function dokick(player, map, display, game) {
     // The next five tests: monsters, pools, objects, non-doors, doors.
     if (mtmp) {
         const mdat = mtmp.type || mtmp.data;
-        kick_monster(mtmp, x, y, player, map, game);
+        await kick_monster(mtmp, x, y, player, map, game);
 
         if (mtmp.mhp <= 0) {
             // dead monster handling

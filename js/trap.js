@@ -57,7 +57,7 @@ import { is_flammable, is_rustprone, is_rottable, is_corrodeable,
          is_crackable, erosion_matters, mksobj } from './mkobj.js';
 import { CORPSE, WEAPON_CLASS, ARMOR_CLASS,
          ARROW, DART, ROCK, BOULDER, WAND_CLASS } from './objects.js';
-import { tmp_at, nh_delay_output_nowait, DISP_FLASH, DISP_END } from './animation.js';
+import { tmp_at, nh_delay_output, DISP_FLASH, DISP_END } from './animation.js';
 
 // Trap result constants
 const Trap_Effect_Finished = 0;
@@ -694,7 +694,7 @@ function trapeffect_landmine_mon(mon, trap, trflags, map, player) {
         : mon.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished;
 }
 
-function trapeffect_rolling_boulder_trap_mon(mon, trap, map, player) {
+async function trapeffect_rolling_boulder_trap_mon(mon, trap, map, player) {
     // C ref: trap.c launch_obj() rolling-boulder flow.
     // JS port approximates per-cell boulder travel from trap.launch towards
     // the mirrored launch2 endpoint, including hit resolution against mon.
@@ -756,7 +756,7 @@ function trapeffect_rolling_boulder_trap_mon(mon, trap, map, player) {
             boulder.ox = x;
             boulder.oy = y;
             tmp_at(x, y);
-            nh_delay_output_nowait();
+            await nh_delay_output();
             if (x === mon.mx && y === mon.my) {
                 // C ref: launch_obj() ultimately resolves impact via ohitmon/thitm paths.
                 // Keep existing trap.js damage pipeline for monster-side trap effects.
@@ -835,7 +835,7 @@ function trapeffect_vibrating_square_mon(/* mon, trap */) {
 // trapeffect_selector_mon — C ref: trap.c trapeffect_selector()
 // Dispatches to appropriate trap handler for monsters
 // ========================================================================
-function trapeffect_selector_mon(mon, trap, trflags, map, player, display, fov) {
+async function trapeffect_selector_mon(mon, trap, trflags, map, player, display, fov) {
     switch (trap.ttyp) {
     case ARROW_TRAP:
         return trapeffect_arrow_trap_mon(mon, trap, map, player);
@@ -878,7 +878,7 @@ function trapeffect_selector_mon(mon, trap, trflags, map, player, display, fov) 
     case LANDMINE:
         return trapeffect_landmine_mon(mon, trap, 0, map, player);
     case ROLLING_BOULDER_TRAP:
-        return trapeffect_rolling_boulder_trap_mon(mon, trap, map, player);
+        return await trapeffect_rolling_boulder_trap_mon(mon, trap, map, player);
     case VIBRATING_SQUARE:
         return trapeffect_vibrating_square_mon();
     default:
@@ -890,7 +890,7 @@ function trapeffect_selector_mon(mon, trap, trflags, map, player, display, fov) 
 // mintrap_postmove — C ref: trap.c mintrap()
 // Main entry point for monster-trap interaction after movement
 // ========================================================================
-export function mintrap_postmove(mon, map, player, display, fov) {
+export async function mintrap_postmove(mon, map, player, display, fov) {
     const trap = map.trapAt(mon.mx, mon.my);
     let trap_result = Trap_Effect_Finished;
 
@@ -952,7 +952,7 @@ export function mintrap_postmove(mon, map, player, display, fov) {
             return Trap_Effect_Finished;
         }
 
-        trap_result = trapeffect_selector_mon(
+        trap_result = await trapeffect_selector_mon(
             mon, trap, 0, map, player, display, fov);
     }
     return trap_result;
