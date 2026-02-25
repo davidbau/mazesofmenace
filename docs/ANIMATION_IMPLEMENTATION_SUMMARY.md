@@ -21,7 +21,7 @@ Animation infrastructure is in place (`tmp_at`, delay boundaries, overlay lifecy
 - Major beam behavior is present and IMMEDIATE wand traversal is now animated; several C zap call surfaces remain simplified/stubbed.
 
 3. Rolling boulder / complex trap-motion animation is partial.
-- Trap flash lifecycle and basic per-cell travel + impact damage hook are present, with additional C-like launch behavior now wired (other-side boulder lookup, closed-door break, boulder handoff, bars/walls/trees blocking). Full `launch_obj` parity (landmine/teleport/fall-through/scatter chains and richer object interactions) is still not complete.
+- Trap flash lifecycle and basic per-cell travel + impact damage hook are present, with additional C-like launch behavior now wired (other-side boulder lookup, closed-door break, boulder handoff, bars/walls/trees blocking, and basic landmine/teleport/pit-family trap-tile reactions). Full `launch_obj` parity (scatter/fall-through chain details and richer object interactions) is still not complete.
 
 4. `getpos` advanced targeting features are partial.
 - Core cursor interaction and hilite lifecycle are implemented.

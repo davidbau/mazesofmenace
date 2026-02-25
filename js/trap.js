@@ -24,6 +24,7 @@ import { find_mac, which_armor,
          W_ARMH, W_ARMC, W_ARM, W_ARMU, W_ARMS, W_ARMG, W_ARMF
        } from './worn.js';
 import { mtele_trap, mlevel_tele_trap } from './teleport.js';
+import { rloco } from './teleport.js';
 import { resist } from './zap.js';
 import { dmgval } from './weapon.js';
 import { deltrap } from './dungeon.js';
@@ -761,6 +762,39 @@ function trapeffect_rolling_boulder_trap_mon(mon, trap, map, player) {
                 // Keep existing trap.js damage pipeline for monster-side trap effects.
                 const killed = thitm(0, mon, null, rnd(20), false, map, player);
                 return killed ? Trap_Killed_Mon : Trap_Effect_Finished;
+            }
+            const hitTrap = map.trapAt ? map.trapAt(x, y) : null;
+            if (hitTrap && hitTrap !== trap && boulder?.otyp === BOULDER) {
+                switch (hitTrap.ttyp) {
+                case LANDMINE:
+                    // C ref: launch_obj() landmine detonation can consume rolling boulder.
+                    deltrap(hitTrap, map);
+                    if (typeof map.removeObject === 'function') {
+                        map.removeObject(boulder);
+                    }
+                    return Trap_Effect_Finished;
+                case TELEP_TRAP:
+                    // C ref: launch_obj() tele trap relocates the boulder on level.
+                    rloco(boulder, map, player);
+                    seetrap(hitTrap);
+                    return Trap_Effect_Finished;
+                case LEVEL_TELEP:
+                    // Approximation: remove from current level when level migration
+                    // plumbing isn't available in this path.
+                    if (typeof map.removeObject === 'function') {
+                        map.removeObject(boulder);
+                    }
+                    seetrap(hitTrap);
+                    return Trap_Effect_Finished;
+                case PIT:
+                case SPIKED_PIT:
+                case HOLE:
+                case TRAPDOOR:
+                    // C ref: boulder stops rolling on pit/hole family interactions.
+                    return Trap_Effect_Finished;
+                default:
+                    break;
+                }
             }
             if (doorIsClosed(loc)) {
                 breakDoor(loc);
