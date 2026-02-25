@@ -128,6 +128,33 @@ function museWandZapType(otyp) {
     }
 }
 
+function museFlashbeamGlyph(otyp) {
+    let color = 11;
+    switch (otyp) {
+    case WAN_FIRE:
+    case FIRE_HORN:
+        color = 1;
+        break;
+    case WAN_COLD:
+    case FROST_HORN:
+        color = 6;
+        break;
+    case WAN_SLEEP:
+        color = 2;
+        break;
+    case WAN_DEATH:
+        color = 15;
+        break;
+    case WAN_LIGHTNING:
+        color = 11;
+        break;
+    default:
+        color = 12;
+        break;
+    }
+    return { ch: '*', color };
+}
+
 // ========================================================================
 // Defensive item MUSE constants — C ref: muse.c:307-326
 // ========================================================================
@@ -1659,9 +1686,10 @@ async function mbhit(mon, range, fhitm, fhito, obj, map, player) {
     bhitpos.y = mon.my;
     const ddx = Math.sign((mon.mux ?? player.x) - mon.mx);
     const ddy = Math.sign((mon.muy ?? player.y) - mon.my);
+    if (!ddx && !ddy) return;
 
     // C ref: muse.c mbhit() path uses bhit traversal that displays flashbeam.
-    tmp_at(DISP_BEAM, { ch: '*', color: 11 });
+    tmp_at(DISP_BEAM, museFlashbeamGlyph(obj?.otyp));
     try {
         while (range-- > 0) {
             bhitpos.x += ddx;
