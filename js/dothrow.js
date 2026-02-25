@@ -56,7 +56,7 @@ import { mpickobj } from './monutil.js';
 import { makemon } from './makemon.js';
 import { exercise } from './attrib_exercise.js';
 import {
-    tmp_at, nh_delay_output_nowait,
+    tmp_at, nh_delay_output, nh_delay_output_nowait,
     DISP_FLASH, DISP_TETHER, DISP_END, BACKTRACK,
 } from './animation.js';
 import { objectMapGlyph } from './display_rng.js';
@@ -253,6 +253,22 @@ export async function promptDirectionAndThrowItem(player, map, display, item, { 
     }
     if (!targetMonster && fromFire) {
         obj_resists(thrownItem, 0, 0);
+    }
+    // C-style visual parity hook: show transient projectile flight frame.
+    if (isok(targetX, targetY)) {
+        const projGlyph = objectMapGlyph(thrownItem, false, {
+            player,
+            x: player.x,
+            y: player.y,
+            observe: false,
+        });
+        tmp_at(DISP_FLASH, projGlyph);
+        try {
+            tmp_at(targetX, targetY);
+            await nh_delay_output();
+        } finally {
+            tmp_at(DISP_END, 0);
+        }
     }
     const landingLoc = (typeof map.at === 'function')
         ? map.at(landingX, landingY)
