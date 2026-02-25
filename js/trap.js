@@ -4,7 +4,11 @@
 //
 // Monster trap handling is fully ported. Player (dotrap) path is not yet ported.
 
-import { COLNO, ROWNO, ACCESSIBLE, isok } from './config.js';
+import {
+    COLNO, ROWNO, ACCESSIBLE, isok,
+    IS_DOOR, IS_STWALL, IRONBARS, TREE,
+    D_BROKEN, D_CLOSED, D_LOCKED
+} from './config.js';
 import { rn2, rnd, rnl, d, rn1 } from './rng.js';
 import { is_mindless, touch_petrifies, resists_ston,
          amorphous, is_whirly, unsolid, is_clinger, passes_walls,
@@ -705,8 +709,42 @@ function trapeffect_rolling_boulder_trap_mon(mon, trap, map, player) {
     const dy = Math.sign((launch2.y || trap.ty) - (launch.y || trap.ty));
     if (!dx && !dy) return Trap_Effect_Finished;
 
+    // C ref: launch_obj() first looks for a boulder at launch, then launch2.
+    // Keep this trap tied to a real floor boulder and remove trap if none exist.
+    const findBoulderAt = (bx, by, exclude = null) => {
+        const objs = map.objectsAt ? map.objectsAt(bx, by) : [];
+        return Array.isArray(objs)
+            ? (objs.find((o) => o && o !== exclude && o.otyp === BOULDER && !o.buried) || null)
+            : null;
+    };
+    const doorIsClosed = (loc) => {
+        if (!loc || !IS_DOOR(loc.typ)) return false;
+        const mask = Number.isInteger(loc.flags) ? loc.flags : (loc.doormask || 0);
+        return !!(mask & (D_CLOSED | D_LOCKED));
+    };
+    const breakDoor = (loc) => {
+        if (!loc || !IS_DOOR(loc.typ)) return;
+        if (Number.isInteger(loc.flags)) {
+            loc.flags = D_BROKEN;
+        }
+        if (loc.doormask !== undefined) {
+            loc.doormask = D_BROKEN;
+        }
+    };
+    let boulder = findBoulderAt(launch.x, launch.y);
     let x = launch.x;
     let y = launch.y;
+    if (!boulder) {
+        boulder = findBoulderAt(launch2.x, launch2.y);
+        if (boulder) {
+            x = launch2.x;
+            y = launch2.y;
+        } else {
+            deltrap(trap, map);
+            if (typeof newsym === 'function') newsym(map, trap.tx, trap.ty);
+            return Trap_Effect_Finished;
+        }
+    }
     let steps = 0;
 
     tmp_at(DISP_FLASH, { ch: '0', color: 7 });
@@ -714,6 +752,8 @@ function trapeffect_rolling_boulder_trap_mon(mon, trap, map, player) {
         while (isok(x, y) && steps < 8) {
             const loc = map.at ? map.at(x, y) : null;
             if (!loc || !ACCESSIBLE(loc.typ)) break;
+            boulder.ox = x;
+            boulder.oy = y;
             tmp_at(x, y);
             nh_delay_output_nowait();
             if (x === mon.mx && y === mon.my) {
@@ -722,9 +762,23 @@ function trapeffect_rolling_boulder_trap_mon(mon, trap, map, player) {
                 const killed = thitm(0, mon, null, rnd(20), false, map, player);
                 return killed ? Trap_Killed_Mon : Trap_Effect_Finished;
             }
+            if (doorIsClosed(loc)) {
+                breakDoor(loc);
+                if (typeof newsym === 'function') newsym(map, x, y);
+            }
+            const otherBoulder = findBoulderAt(x, y, boulder);
+            if (otherBoulder) {
+                boulder = otherBoulder;
+            }
             if (x === launch2.x && y === launch2.y) break;
-            x += dx;
-            y += dy;
+            const nx = x + dx;
+            const ny = y + dy;
+            if (!isok(nx, ny)) break;
+            const nloc = map.at ? map.at(nx, ny) : null;
+            if (!nloc || !ACCESSIBLE(nloc.typ)) break;
+            if (nloc.typ === IRONBARS || nloc.typ === TREE || IS_STWALL(nloc.typ)) break;
+            x = nx;
+            y = ny;
             steps++;
         }
     } finally {
