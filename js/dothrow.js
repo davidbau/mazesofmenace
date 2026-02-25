@@ -57,6 +57,7 @@ import { makemon } from './makemon.js';
 import { exercise } from './attrib_exercise.js';
 import { tmp_at, nh_delay_output_nowait, DISP_FLASH, DISP_END } from './animation.js';
 import { objectMapGlyph } from './display_rng.js';
+import { u_wipe_engr } from './engrave.js';
 
 // ============================================================================
 // C macro equivalents -- weapon classification helpers
@@ -203,6 +204,8 @@ export async function promptDirectionAndThrowItem(player, map, display, item, { 
         replacePromptMessage();
         return { moved: false, tookTime: false };
     }
+    // C ref: throw/firing direction commands smudge floor engravings before resolve.
+    u_wipe_engr(player, map, 2);
     const targetX = player.x + dir[0];
     const targetY = player.y + dir[1];
     const targetMonster = map.monsterAt(targetX, targetY);

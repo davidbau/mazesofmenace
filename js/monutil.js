@@ -11,7 +11,7 @@ import { monNam } from './mondata.js';
 import { is_hider, noattacks, dmgtype, attacktype } from './mondata.js';
 import { weight } from './mkobj.js';
 import { pushRngLogEntry, rnd } from './rng.js';
-import { placeFloorObject } from './floor_objects.js';
+import { place_object, stackobj } from './floor_objects.js';
 import { SCR_SCARE_MONSTER } from './objects.js';
 import { extract_from_minvent, update_mon_extrinsics } from './worn.js';
 
@@ -339,13 +339,9 @@ export function mdrop_obj(mon, obj, map) {
     extract_from_minvent(mon, obj, false, true);
     obj.ox = mon.mx;
     obj.oy = mon.my;
-    // C ref: steal.c:838-841 — place_object first (^place), then event_log (^drop).
-    // When stack merge absorbs the dropped object, C midlog also records ^remove
-    // for the merged-away instance.
-    const placed = placeFloorObject(map, obj);
-    if (placed !== obj) {
-        pushRngLogEntry(`^remove[${obj.otyp},${obj.ox},${obj.oy}]`);
-    }
+    // C ref: steal.c:838-841 — place_object(); stackobj(); then event_log(EV_DROP)
+    place_object(obj, obj.ox, obj.oy, map);
+    stackobj(obj, map);
     pushRngLogEntry(`^drop[${mon.mndx}@${mon.mx},${mon.my},${obj.otyp}]`);
     // C ref: steal.c:846-847 — update extrinsics after placement
     if (!mon.dead && unwornmask) {

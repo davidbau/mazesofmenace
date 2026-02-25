@@ -3051,7 +3051,8 @@ export function mk_knox_portal(map, x, y, depth) {
     const dnum = Number.isInteger(map?._genDnum) ? map._genDnum : DUNGEONS_OF_DOOM;
     const dlevel = Number.isInteger(map?._genDlevel) ? map._genDlevel : depth;
     if (isBranchLevel(dnum, dlevel)) return false;
-    if (rn2(3) !== 0) return false;
+    // C parity: mk_knox_portal skips only on 0, places portal otherwise.
+    if (rn2(3) === 0) return false;
     return !!maketrap(map, x, y, MAGIC_PORTAL, depth);
 }
 

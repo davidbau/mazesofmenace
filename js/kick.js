@@ -10,6 +10,7 @@ import { monDisplayName } from './mondata.js';
 import { mondead } from './monutil.js';
 import { nhgetch } from './input.js';
 import { DIRECTION_KEYS } from './dothrow.js';
+import { u_wipe_engr } from './engrave.js';
 
 // Handle kicking
 // C ref: dokick.c dokick()
@@ -26,6 +27,8 @@ export async function handleKick(player, map, display, game) {
         }
         return { moved: false, tookTime: false };
     }
+    // C ref: dokick.c dokick() — successful kick direction smudges engraving.
+    u_wipe_engr(player, map, 2);
 
     const nx = player.x + dir[0];
     const ny = player.y + dir[1];

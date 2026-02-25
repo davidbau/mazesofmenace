@@ -905,7 +905,7 @@ function m_initweap(mon, mndx, depth) {
 
     case S_CENTAUR:
         if (rn2(2)) {
-            mongets(mon,BOW);
+            mongets(mon,CROSSBOW);
             m_initthrow(mon, CROSSBOW_BOLT, 12);
         }
         break;
