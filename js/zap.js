@@ -830,7 +830,8 @@ async function bhit_zapped_wand(obj, player, map) {
 
   // C ref: zap.c bhit() uses flashbeam glyph for zapped wand traversal.
   const flashbeam = { ch: '*', color: 11 };
-  let range = 8;
+  // C ref: zap.c weffects()->bhit(..., rn1(8,6), ...)
+  let range = rn1(8, 6);
   let result = null;
   let x = player.x;
   let y = player.y;
@@ -1021,7 +1022,9 @@ export async function weffects(obj, player, map) {
 
   if (dir_type === 2) {
     // C ref: zap.c:3436 — bhit for lateral, zap_updown for up/down.
-    if (player && player.dz) {
+    if (player?.ustuck) {
+      bhitm(player.ustuck, obj, map, player);
+    } else if (player && player.dz) {
       zap_updown(obj, player, map);
     } else {
       await bhit_zapped_wand(obj, player, map);
