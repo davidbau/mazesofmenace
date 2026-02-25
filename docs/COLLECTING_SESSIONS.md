@@ -70,6 +70,16 @@ This reads `seeds.json` and regenerates every session in
 python3 test/comparison/c-harness/run_session.py <seed> <output.json> '<moves>'
 ```
 
+Optional capture timing controls:
+
+```bash
+# Delay after every sent key before screen capture (default 0.02s)
+NETHACK_KEY_DELAY_S=0.05 \
+# Extra delay only before the final captured step (default 0.0s)
+NETHACK_FINAL_CAPTURE_DELAY_S=0.10 \
+python3 test/comparison/c-harness/run_session.py <seed> <output.json> '<moves>'
+```
+
 Example:
 
 ```bash
