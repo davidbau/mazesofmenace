@@ -2,7 +2,7 @@
 // cf. getpos.c -- getpos_sethilite(), getpos_toggle_hilite_state(),
 // getpos_refresh(), getpos() lifecycle.
 
-import { MAP_ROW_START, COLNO, ROWNO, isok } from './config.js';
+import { MAP_ROW_START, COLNO, ROWNO, DOOR, ROOM, CORR, isok } from './config.js';
 import { nhgetch } from './input.js';
 
 const HiliteNormalMap = 0;
@@ -130,6 +130,13 @@ function cursorDesc(display, x, y) {
 }
 
 const TARGET_FILTERS = ['all', 'monster', 'object', 'valid'];
+const GLOC_ALL = 'all';
+const GLOC_MONS = 'monster';
+const GLOC_OBJS = 'object';
+const GLOC_DOOR = 'door';
+const GLOC_EXPLORE = 'explore';
+const GLOC_INTERESTING = 'interesting';
+const GLOC_VALID = 'valid';
 
 function targetFilterLabel(filter) {
     switch (filter) {
@@ -138,6 +145,75 @@ function targetFilterLabel(filter) {
     case 'valid': return 'valid squares';
     default: return 'all map squares';
     }
+}
+
+function glocLabel(gloc) {
+    switch (gloc) {
+    case GLOC_MONS: return 'monsters';
+    case GLOC_OBJS: return 'objects';
+    case GLOC_DOOR: return 'doors';
+    case GLOC_EXPLORE: return 'unexplored locations';
+    case GLOC_VALID: return 'valid locations';
+    case GLOC_INTERESTING: return 'interesting locations';
+    default: return 'locations';
+    }
+}
+
+function hasUnexploredNeighbor(map, x, y) {
+    const steps = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    for (const [dx, dy] of steps) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (!isok(nx, ny)) continue;
+        const nloc = map?.at ? map.at(nx, ny) : null;
+        if (!nloc) continue;
+        if (!nloc.seenv) return true;
+    }
+    return false;
+}
+
+function gather_locs_interesting(map, x, y, gloc) {
+    if (!map || !isok(x, y)) return false;
+    const loc = map.at ? map.at(x, y) : null;
+    if (!loc) return false;
+    switch (gloc) {
+    case GLOC_MONS:
+        return !!(map.monsterAt && map.monsterAt(x, y));
+    case GLOC_OBJS: {
+        const objs = map.objectsAt ? map.objectsAt(x, y) : [];
+        return Array.isArray(objs) && objs.length > 0;
+    }
+    case GLOC_DOOR:
+        return loc.typ === DOOR;
+    case GLOC_EXPLORE:
+        return (loc.typ === DOOR || loc.typ === ROOM || loc.typ === CORR) && hasUnexploredNeighbor(map, x, y);
+    case GLOC_VALID:
+        return mapxy_valid(x, y);
+    case GLOC_INTERESTING: {
+        const trap = map.trapAt ? map.trapAt(x, y) : null;
+        if (trap && trap.tseen) return true;
+        if (gather_locs_interesting(map, x, y, GLOC_MONS)) return true;
+        if (gather_locs_interesting(map, x, y, GLOC_OBJS)) return true;
+        if (gather_locs_interesting(map, x, y, GLOC_DOOR)) return true;
+        if (gather_locs_interesting(map, x, y, GLOC_EXPLORE)) return true;
+        // Plain room/corridor is generally not "interesting".
+        return loc.typ !== ROOM && loc.typ !== CORR;
+    }
+    case GLOC_ALL:
+    default:
+        return true;
+    }
+}
+
+export function getpos_getvalids_selection(validf = mapxy_valid) {
+    const out = [];
+    if (typeof validf !== 'function') return out;
+    for (let x = 1; x < COLNO; x++) {
+        for (let y = 0; y < ROWNO; y++) {
+            if (validf(x, y)) out.push({ x, y });
+        }
+    }
+    return out;
 }
 
 function collectTargets(map, filter) {
@@ -180,6 +256,21 @@ function collectTargets(map, filter) {
     return targets;
 }
 
+function collectTargetsForGloc(map, gloc) {
+    if (gloc === GLOC_VALID) {
+        return getpos_getvalids_selection(mapxy_valid);
+    }
+    const targets = [];
+    if (!map) return targets;
+    for (let y = 0; y < ROWNO; y++) {
+        for (let x = 1; x < COLNO; x++) {
+            if (gather_locs_interesting(map, x, y, gloc)) targets.push({ x, y });
+        }
+    }
+    targets.sort((a, b) => (a.y - b.y) || (a.x - b.x));
+    return targets;
+}
+
 function findTargetIndex(targets, cx, cy) {
     if (!targets.length) return -1;
     let idx = targets.findIndex(t => t.x === cx && t.y === cy);
@@ -199,6 +290,36 @@ function selectTargetFromMenu(display, targets, filter) {
         display.putstr_message(`Targets (${targetFilterLabel(filter)}): ${opts.join(' ')} (1-9)`);
     }
     return 'pending';
+}
+
+function getpos_help(force, goal, display) {
+    if (typeof display?.putstr_message !== 'function') return;
+    const g = goal || 'desired location';
+    display.putstr_message(
+        `Move to ${g}: hjklyubn move, . select, ESC cancel, m/M o/O d/D x/X v/V cycle, = menu.`
+    );
+    if (!force) {
+        display.putstr_message('Space can also finish selection.');
+    }
+}
+
+function getpos_menu(display, map, gloc) {
+    const targets = collectTargetsForGloc(map, gloc);
+    if (!targets.length) {
+        if (typeof display?.putstr_message === 'function') {
+            display.putstr_message(`No ${glocLabel(gloc)}.`);
+        }
+        return null;
+    }
+    if (typeof display?.putstr_message === 'function') {
+        const count = Math.min(targets.length, 9);
+        const opts = [];
+        for (let i = 0; i < count; i++) {
+            opts.push(`${i + 1}:${targets[i].x},${targets[i].y}`);
+        }
+        display.putstr_message(`Pick ${glocLabel(gloc)}: ${opts.join(' ')} (1-9)`);
+    }
+    return targets.slice(0, 9);
 }
 
 function findNextMatchingMapChar(display, cx, cy, needle) {
@@ -285,12 +406,10 @@ export async function getpos_async(ccp, force = true, goal = '') {
                 return 0;
             }
             if (c === '?') {
-                if (typeof display?.putstr_message === 'function') {
-                    display.putstr_message("Use hjklyubn/arrow keys to move, . to pick, ESC to cancel.");
-                }
+                getpos_help(force, goal || getposContext.goalPrompt, display);
                 continue;
             }
-            if (c === '^' || c === 'm') {
+            if (c === '^') {
                 restoreCursor(display, cursorState);
                 getpos_toggle_hilite_state();
                 cursorState = putCursor(display, cx, cy);
@@ -303,6 +422,38 @@ export async function getpos_async(ccp, force = true, goal = '') {
                 cursorState = putCursor(display, cx, cy);
                 continue;
             }
+            const glocKeys = {
+                m: [GLOC_MONS, 1],
+                M: [GLOC_MONS, -1],
+                o: [GLOC_OBJS, 1],
+                O: [GLOC_OBJS, -1],
+                d: [GLOC_DOOR, 1],
+                D: [GLOC_DOOR, -1],
+                x: [GLOC_EXPLORE, 1],
+                X: [GLOC_EXPLORE, -1],
+                i: [GLOC_INTERESTING, 1],
+                I: [GLOC_INTERESTING, -1],
+                v: [GLOC_VALID, 1],
+                V: [GLOC_VALID, -1],
+            };
+            if (glocKeys[c]) {
+                const [gloc, dir] = glocKeys[c];
+                const targets = collectTargetsForGloc(getposContext.map, gloc);
+                if (!targets.length) {
+                    if (typeof display?.putstr_message === 'function') {
+                        display.putstr_message(`Cannot detect ${glocLabel(gloc)}.`);
+                    }
+                    continue;
+                }
+                const idx = findTargetIndex(targets, cx, cy);
+                const next = targets[(idx + dir + targets.length) % targets.length];
+                restoreCursor(display, cursorState);
+                cx = next.x;
+                cy = next.y;
+                cursorState = putCursor(display, cx, cy);
+                continue;
+            }
+
             if (c === 'f') {
                 const cur = TARGET_FILTERS.indexOf(targetFilter);
                 targetFilter = TARGET_FILTERS[(cur + 1) % TARGET_FILTERS.length];
@@ -329,11 +480,8 @@ export async function getpos_async(ccp, force = true, goal = '') {
                 continue;
             }
             if (c === '=') {
-                const targets = collectTargets(getposContext.map, targetFilter);
-                const pick = selectTargetFromMenu(display, targets, targetFilter);
-                if (pick === 'pending') {
-                    menuTargets = targets.slice(0, 9);
-                }
+                const currentGloc = (targetFilter === GLOC_ALL) ? GLOC_INTERESTING : targetFilter;
+                menuTargets = getpos_menu(display, getposContext.map, currentGloc);
                 continue;
             }
             if (ch === 18) { // ^R

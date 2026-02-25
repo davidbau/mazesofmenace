@@ -71,7 +71,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[~]` | extralev.c | extralev.js | Special level generation helpers now in `extralev.js`: `corr`, `roguejoin`, `miniwalk`, `roguecorr`, `makerogueghost`, and `makeroguerooms`; rogue special-level generator now calls `makeroguerooms` directly |
 | `[N/A]` | files.c | — | File I/O operations. JS: `storage.js` |
 | `[a]` | fountain.c | fountain.js | Fountain effects. drinkfountain/dryup implemented (RNG-parity); ~12 functions TODO |
-| `[~]` | getpos.c | getpos.js | Position selection UI. Core highlight callback lifecycle wired (`getpos_sethilite`, toggle, refresh, cleanup) and interactive cursor loop implemented (`getpos_async`: vi/arrow movement, pick/cancel, redraw/help, filter cycle, target cycle next/prev, basic target menu, typed map-symbol cycling to next matching feature). Full C parity for keybindings/target classes/help text remains partial |
+| `[~]` | getpos.c | getpos.js | Position selection UI. Core highlight callback lifecycle wired (`getpos_sethilite`, toggle, refresh, cleanup) and interactive cursor loop implemented (`getpos_async`: vi/arrow movement, pick/cancel, redraw/help, filter cycle, C-style target-class next/prev keys `m/M o/O d/D x/X i/I v/V`, basic target menu, typed map-symbol cycling to next matching feature). Helper surfaces `getpos_getvalids_selection`, `getpos_help`, and `getpos_menu` now exist in partial form. Full C parity for keybindings/target classes/help text/menu plumbing remains partial |
 | `[~]` | glyphs.c | glyphs.js | Glyph system. JS: partially in `display.js`, `symbols.js` |
 | `[a]` | hack.c | hack.js | Core movement and actions. handleMovement (domove_core) with door/trap/autopickup handling, handleRun (lookaround/context.run), checkRunStop, pickRunContinuationDir, findPath (findtravelpath), handleTravel (dotravel), executeTravelStep, performWaitSearch. All are approximations with partial RNG parity; ~70 C functions TODO |
 | `[a]` | hacklib.c | hacklib.js | String/char utilities. All C functions implemented; in-place string ops return new strings in JS |
@@ -1903,10 +1903,10 @@ This section is generated from source symbol tables and includes function rows f
 | 513 | `gather_locs` | - | Missing |
 | 438 | `gather_locs_interesting` | - | Missing |
 | 771 | `getpos` | getpos.js:getpos_async | Partial — interactive cursor loop plus filter/target cycling and basic target menu implemented; full C keybinding/help/target-class parity remains TODO |
-| 102 | `getpos_getvalids_selection` | - | Missing |
-| 167 | `getpos_help` | - | Missing |
+| 102 | `getpos_getvalids_selection` | getpos.js:getpos_getvalids_selection | Partial — valid-location scan helper wired for current map bounds; C selectionvar-backed area map plumbing remains TODO |
+| 167 | `getpos_help` | getpos.js:getpos_help | Partial — condensed interactive key help text; full C verbose/help-option variants remain TODO |
 | 137 | `getpos_help_keyxhelp` | - | Missing |
-| 665 | `getpos_menu` | - | Missing |
+| 665 | `getpos_menu` | getpos.js:getpos_menu | Partial — menu-style target list prompt with numeric selection (1-9); full NHW_MENU parity remains TODO |
 | 753 | `getpos_refresh` | getpos.js:getpos_refresh | Implemented |
 | 41 | `getpos_sethilite` | getpos.js:getpos_sethilite | Implemented |
 | 72 | `getpos_toggle_hilite_state` | getpos.js:getpos_toggle_hilite_state | Implemented |
