@@ -138,14 +138,14 @@ export function moveloop_turnend(game) {
             game.player.justHealedLegs = true;
         }
     }
-    // C ref: allmain.c repeat loop behavior for resting/searching.
-    // When wounded legs heal, repeated search/rest is interrupted with a message.
+    // C ref: allmain.c repeat loop behavior for repeated searching.
+    // When wounded legs heal during repeated search, interrupt the repeat.
     if (game.player.justHealedLegs
         && game.multi > 0
-        && (game.cmdKey === '.'.charCodeAt(0) || game.cmdKey === 's'.charCodeAt(0))) {
+        && game.cmdKey === 's'.charCodeAt(0)) {
         game.player.justHealedLegs = false;
         game.multi = 0;
-        game.display.putstr_message('Your leg feels better.  You stop searching.');
+        game.display.putstr_message('Your leg feels better.');
     }
 
     // C ref: mon.c m_calcdistress() — temporary flee timeout handling.

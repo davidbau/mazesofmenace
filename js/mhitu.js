@@ -1040,10 +1040,8 @@ export function monsterAttackPlayer(monster, player, display, game = null, opts 
                         if (typeof display.clearRow === 'function') display.clearRow(0);
                         display.topMessage = null;
                         display.messageNeedsMore = false;
-                    } else {
-                        display.putstr_message('OK, so you don\'t die.');
                     }
-                    display.putstr_message('You survived that attempt on your life.');
+                    display.putstr_message('OK, so you don\'t die.  You survived that attempt on your life.');
                     if (game) game._suppressMonsterHitMessagesThisTurn = true;
                 } else {
                     player.deathCause = `killed by a ${monDisplayName(monster)}`;
@@ -1660,9 +1658,7 @@ export function mdamageu(mtmp, n, player, display) {
                 const con = (player.attributes && player.attributes[A_CON]) || 10;
                 const givehp = 50 + 10 * Math.floor(con / 2);
                 player.hp = Math.min(player.hpmax || givehp, givehp);
-                if (display) {
-                    display.putstr_message('You survived that attempt on your life.');
-                }
+                if (display) display.putstr_message('OK, so you don\'t die.  You survived that attempt on your life.');
             } else {
                 player.deathCause = `killed by a ${monDisplayName(mtmp)}`;
                 if (display) display.putstr_message('You die...');
