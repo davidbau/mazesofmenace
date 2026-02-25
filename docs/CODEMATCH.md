@@ -52,7 +52,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[~]` | decl.c | decl.js | Global variable declarations. JS: spread across modules |
 | `[a]` | detect.c | detect.js | Detection spells and scrolls. dosearch0 implemented (RNG-parity); ~40 functions TODO |
 | `[~]` | dig.c | dig.js | Digging mechanics |
-| `[~]` | display.c | display.js | Display/rendering. JS file exists but may diverge |
+| `[~]` | display.c | display.js | Display/rendering. `tmp_at()`/`nh_delay_output` lifecycle now follows C `display.c` semantics more closely (DISP_FLASH vs DISP_ALWAYS visibility, per-step flush, BACKTRACK cleanup timing, map-overlay restore path). Remaining divergence is full C glyph-id decoding (`mapglyph`) and some windowport-specific edge behavior |
 | `[N/A]` | dlb.c | — | Data librarian (file bundling). Not needed in JS |
 | `[a]` | do.c | do.js | Miscellaneous actions. handleDrop/handleDownstairs/handleUpstairs (dodrop/dodown/doup); ~45 functions TODO |
 | `[~]` | do_name.c | do_name.js | Naming things (docallcmd, do_mgivenname) |
@@ -60,7 +60,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[a]` | dog.c | dog.js | Pet behavior. dogfood/makedog/mon_arrive in dog.js; losedogs/keepdogs/migrate TODO |
 | `[a]` | dogmove.c | dogmove.js | Pet movement AI. All functions except `quickmimic` |
 | `[a]` | dokick.c | kick.js | Kicking mechanics. handleKick (dokick) approximation; full kick effects TODO |
-| `[a]` | dothrow.c | dothrow.js | Throwing mechanics. handleThrow/handleFire (dothrow/dofire), promptDirectionAndThrowItem (throwit), ammoAndLauncher, DIRECTION_KEYS; ~30 functions TODO |
+| `[a]` | dothrow.c | dothrow.js | Throwing mechanics. handleThrow/handleFire (dothrow/dofire), promptDirectionAndThrowItem (throwit), ammoAndLauncher, DIRECTION_KEYS; throw flight now uses `tmp_at(DISP_FLASH)` + `nh_delay_output`-boundary frames; ~30 functions TODO |
 | `[a]` | drawing.c | symbols.js | Symbol/glyph drawing tables and lookup functions. Data tables in symbols.js; 3 lookup functions implemented |
 | `[~]` | dungeon.c | dungeon.js | Dungeon structure and level management |
 | `[a]` | eat.c | eat.js | Eating mechanics. handleEat (doeat) implemented; ~50 functions TODO |
@@ -98,7 +98,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[a]` | monmove.c | monmove.js | Monster movement: dochug, m_move, m_move_aggress, set_apparxy, m_search_items; dochugw (wrapper), m_everyturn_effect, m_postmove_effect, postmov, should_displace, mb_trapped, itsstuck, release_hero, watch_on_duty, m_balks_at_approaching, mon_would_consume_item |
 | `[~]` | monst.c | monst.js | Monster data tables. mons[] array PARTIAL in monsters.js (JS-native structure); monst_globals_init implicit in module load |
 | `[~]` | mplayer.c | mplayer.js | Player-character rival monsters (endgame + ghost-level). is_mplayer() in mondata.js; rnd_offensive/defensive/misc_item in makemon.js; mk_mplayer/create_mplayers/mplayer_talk TODO (endgame not yet modeled) |
-| `[a]` | mthrowu.c | mthrowu.js | Monster ranged attacks: m_throw, thrwmu, lined_up, select_rwep, monmulti |
+| `[a]` | mthrowu.c | mthrowu.js | Monster ranged attacks: m_throw, thrwmu, lined_up, select_rwep, monmulti. `m_throw()` now drives transient projectile path via `tmp_at(DISP_FLASH)` with per-cell delay boundaries |
 | `[~]` | muse.c | muse.js | Monster item usage AI |
 | `[~]` | music.c | music.js | Musical instruments |
 | `[N/A]` | nhlobj.c | — | Lua object bindings (l_obj_*). All 21 functions are Lua C API wrappers; JS port uses direct function calls (object(), monster() in sp_lev.js) with no Lua interpreter |
@@ -163,7 +163,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[~]` | worm.c | worm.js | Long worm mechanics. save/rest_worm are N/A (no save file). All 24 other functions are TODO stubs |
 | `[a]` | worn.c | worn.js | Equipment slot management. setworn, setnotworn, allunworn, wearmask_to_obj, wearslot, wornmask_to_armcat, armcat_to_wornmask, update_mon_extrinsics, mon_set_minvis, mon_adjust_speed, extract_from_minvent, m_lose_armor, mon_break_armor, extra_pref, racial_exception, m_dowear, m_dowear_type, find_mac, bypass stubs (bypass_obj, clear_bypasses, nxt_unbypassed_obj/loot) implemented. check_wornmask_slots/which_armor/recalc_telepat_range TODO |
 | `[a]` | write.c | write.js | Writing on scrolls. cost, write_ok, new_book_description implemented; dowrite TODO |
-| `[a]` | zap.c | zap.js | Wand beam effects. zhitm, zap_hit, resist (faithful alev/dlev), burnarmor, xkilled, corpse_chance, dobuzz implemented. New: destroy_item, destroy_mitem, destroyable_by, resists_blnd, resists_stun. Stubs: revive, cancel_monst, bhitm, burn_floor_objects, buzz, weffects, zap_dig, bhitpile, backfire, poly_obj, obj_zapped, obj_shudders, do_osshock, probe_monster, skiprange, maybe_explode_wand, break_wand, zap_over_floor, zap_updown. ~40 functions TODO |
+| `[a]` | zap.c | zap.js | Wand beam effects. zhitm, zap_hit, resist (faithful alev/dlev), burnarmor, xkilled, corpse_chance, dobuzz implemented. Beam traversal now uses `tmp_at(DISP_BEAM)` + per-cell delay boundaries. New: destroy_item, destroy_mitem, destroyable_by, resists_blnd, resists_stun. Stubs: revive, cancel_monst, bhitm, burn_floor_objects, buzz, weffects, zap_dig, bhitpile, backfire, poly_obj, obj_zapped, obj_shudders, do_osshock, probe_monster, skiprange, maybe_explode_wand, break_wand, zap_over_floor, zap_updown. ~40 functions TODO |
 
 ### Summary
 
@@ -206,7 +206,7 @@ These JS files don't directly correspond to a single C file:
 | objdata.js | Object property queries | objnam.c, mkobj.c |
 | options_menu.js | Options UI and handleSet | options.c |
 | player.js | Player state and roles | role.c, decl.c |
-| replay_core.js | Session replay/comparison | None (JS-only, test infra) |
+| replay_core.js | Session replay/comparison | None (JS-only, test infra). Records per-step animation delay-boundary snapshots (`animationBoundaries`) in parallel with RNG/screen/event metrics |
 | rumor_data.js | Rumor text data | rumors.c |
 | special_levels.js | Special level registry | sp_lev.c, extralev.c |
 | shk.js | Shopkeeper pricing/messages | shk.c |

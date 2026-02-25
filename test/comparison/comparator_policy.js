@@ -82,6 +82,23 @@ function approximateStepForRngIndex(session, normalizedIndex) {
     return 'n/a';
 }
 
+function expectedDelayBoundaryCount(step) {
+    const entries = Array.isArray(step?.rng) ? step.rng : [];
+    let comparable = false;
+    let count = 0;
+    for (const entry of entries) {
+        if (typeof entry !== 'string') continue;
+        if (entry.startsWith('^delay_output[')
+            || entry.includes('animation(tmp_at)')) {
+            comparable = true;
+        }
+        if (entry.startsWith('>runmode_delay_output') && entry.includes('animation(tmp_at)')) {
+            count++;
+        }
+    }
+    return { comparable, count };
+}
+
 export function createGameplayComparatorPolicy(session, options = {}) {
     const name = options.name || 'strict-default';
     return {
@@ -111,6 +128,24 @@ export function createGameplayComparatorPolicy(session, options = {}) {
         },
         compareEvents(allJsRng, allSessionRng) {
             return compareEvents(allJsRng, allSessionRng);
+        },
+        compareAnimationBoundariesStep(actualStep, expectedStep) {
+            const expected = expectedDelayBoundaryCount(expectedStep);
+            if (!expected.comparable) return null;
+            const expectedCount = expected.count;
+            const actualCount = Array.isArray(actualStep?.animationBoundaries)
+                ? actualStep.animationBoundaries.length
+                : 0;
+            const match = expectedCount === actualCount;
+            return {
+                matched: match ? 1 : 0,
+                total: 1,
+                match,
+                firstDiff: match ? null : {
+                    expectedCount,
+                    actualCount,
+                },
+            };
         },
     };
 }

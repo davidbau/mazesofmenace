@@ -24,6 +24,7 @@ import { getArrivalPosition, changeLevel as changeLevelCore } from './do.js';
 import { doname, setObjectMoves } from './mkobj.js';
 import { monsterMapGlyph, objectMapGlyph } from './display_rng.js';
 import { defsyms, trap_to_defsym } from './symbols.js';
+import { tempGlyphToCell } from './temp_glyph.js';
 import { setOutputContext } from './pline.js';
 import { NetHackGame } from './allmain.js';
 import {
@@ -1111,18 +1112,7 @@ export class HeadlessDisplay {
     }
 
     _tempGlyphToCell(glyph) {
-        if (glyph && typeof glyph === 'object') {
-            const ch = typeof glyph.ch === 'string' && glyph.ch.length > 0 ? glyph.ch[0] : '*';
-            const color = Number.isInteger(glyph.color) ? glyph.color : CLR_WHITE;
-            return { ch, color };
-        }
-        if (typeof glyph === 'string' && glyph.length > 0) {
-            return { ch: glyph[0], color: CLR_WHITE };
-        }
-        if (Number.isInteger(glyph)) {
-            return { ch: '*', color: CLR_WHITE };
-        }
-        return { ch: '*', color: CLR_WHITE };
+        return tempGlyphToCell(glyph);
     }
 
     _overlayKey(col, row) {

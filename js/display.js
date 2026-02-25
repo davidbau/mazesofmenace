@@ -18,6 +18,7 @@ import {
 import { def_monsyms, def_oc_syms, defsyms, trap_to_defsym } from './symbols.js';
 import { monDisplayName } from './mondata.js';
 import { monsterMapGlyph, objectMapGlyph } from './display_rng.js';
+import { tempGlyphToCell } from './temp_glyph.js';
 import { isObjectNameKnown, isObjectEncountered, discoveryTypeName } from './discovery.js';
 
 // Color constants (color.h)
@@ -698,19 +699,7 @@ export class Display {
     }
 
     _tempGlyphToCell(glyph) {
-        if (glyph && typeof glyph === 'object') {
-            const ch = typeof glyph.ch === 'string' && glyph.ch.length > 0 ? glyph.ch[0] : '*';
-            const color = Number.isInteger(glyph.color) ? glyph.color : CLR_WHITE;
-            return { ch, color };
-        }
-        if (typeof glyph === 'string' && glyph.length > 0) {
-            return { ch: glyph[0], color: CLR_WHITE };
-        }
-        // Numeric glyph ids are C internals; map to a visible generic marker.
-        if (Number.isInteger(glyph)) {
-            return { ch: '*', color: CLR_WHITE };
-        }
-        return { ch: '*', color: CLR_WHITE };
+        return tempGlyphToCell(glyph);
     }
 
     _overlayKey(col, row) {

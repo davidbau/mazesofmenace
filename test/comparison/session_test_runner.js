@@ -41,6 +41,7 @@ import {
     recordScreens,
     recordColors,
     recordEvents,
+    recordAnimationBoundaries,
     markFailed,
     setDuration,
     createResultsBundle,
@@ -403,6 +404,18 @@ async function runGameplayResult(session) {
                 total: result.metrics.events.total,
             };
             setFirstDivergence(result, 'event', cmp.event.firstDivergence);
+        }
+        if (cmp.animationBoundaries.total > 0) {
+            recordAnimationBoundaries(
+                result,
+                cmp.animationBoundaries.matched,
+                cmp.animationBoundaries.total
+            );
+            setFirstDivergence(
+                result,
+                'animationBoundaries',
+                cmp.animationBoundaries.firstDivergence
+            );
         }
     } catch (error) {
         markFailed(result, error);

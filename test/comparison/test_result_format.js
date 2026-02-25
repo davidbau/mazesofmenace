@@ -52,6 +52,7 @@ export function createSessionResult(session) {
             screens: { matched: 0, total: 0 },
             colors: { matched: 0, total: 0 },
             events: { matched: 0, total: 0 },
+            animationBoundaries: { matched: 0, total: 0 },
         },
     };
 
@@ -154,6 +155,15 @@ export function recordEvents(result, matched, total) {
 }
 
 /**
+ * Record animation delay-boundary comparison.
+ * This is a parallel metric and does not currently change pass/fail.
+ */
+export function recordAnimationBoundaries(result, matched, total) {
+    result.metrics.animationBoundaries.matched += matched;
+    result.metrics.animationBoundaries.total += total;
+}
+
+/**
  * Mark session as failed with optional error
  */
 export function markFailed(result, error = null) {
@@ -176,6 +186,7 @@ export function finalizeResult(result) {
         if (m.screens?.total === 0) delete m.screens;
         if (m.colors?.total === 0) delete m.colors;
         if (m.events?.total === 0) delete m.events;
+        if (m.animationBoundaries?.total === 0) delete m.animationBoundaries;
 
         // Remove empty metrics object
         if (Object.keys(m).length === 0) delete result.metrics;
@@ -212,6 +223,7 @@ export function createResultsBundle(results, options = {}) {
     if (gameplayResults.length > 0) {
         const rngComparable = gameplayResults.filter((r) => r.metrics?.rngCalls?.total > 0);
         const eventsComparable = gameplayResults.filter((r) => r.metrics?.events?.total > 0);
+        const animationComparable = gameplayResults.filter((r) => r.metrics?.animationBoundaries?.total > 0);
         const rngFull = gameplayResults.filter((r) =>
             r.metrics?.rngCalls?.total > 0
             && r.metrics.rngCalls.matched === r.metrics.rngCalls.total
@@ -219,6 +231,10 @@ export function createResultsBundle(results, options = {}) {
         const eventsFull = gameplayResults.filter((r) =>
             r.metrics?.events?.total > 0
             && r.metrics.events.matched === r.metrics.events.total
+        );
+        const animationFull = gameplayResults.filter((r) =>
+            r.metrics?.animationBoundaries?.total > 0
+            && r.metrics.animationBoundaries.matched === r.metrics.animationBoundaries.total
         );
         const rngFullButEventsNot = gameplayResults.filter((r) =>
             r.metrics?.rngCalls?.total > 0
@@ -236,8 +252,10 @@ export function createResultsBundle(results, options = {}) {
             sessions: gameplayResults.length,
             rngComparable: rngComparable.length,
             eventsComparable: eventsComparable.length,
+            animationComparable: animationComparable.length,
             rngFull: rngFull.length,
             eventsFull: eventsFull.length,
+            animationFull: animationFull.length,
             rngFullButEventsNot: rngFullButEventsNot.length,
             eventsFullButRngNot: eventsFullButRngNot.length,
         };
@@ -270,6 +288,7 @@ export function formatResult(result) {
     if (m.screens) parts.push(`screens=${m.screens.matched}/${m.screens.total}`);
     if (m.colors) parts.push(`colors=${m.colors.matched}/${m.colors.total}`);
     if (m.events) parts.push(`events=${m.events.matched}/${m.events.total}`);
+    if (m.animationBoundaries) parts.push(`anim=${m.animationBoundaries.matched}/${m.animationBoundaries.total}`);
     if (result.error) parts.push(`error: ${result.error}`);
 
     return parts.join(' ');
@@ -292,6 +311,7 @@ export function formatBundleSummary(bundle) {
         lines.push(
             `Gameplay parity: rngFull=${g.rngFull}/${g.rngComparable}, `
             + `eventsFull=${g.eventsFull}/${g.eventsComparable}, `
+            + `animFull=${g.animationFull}/${g.animationComparable}, `
             + `rngFull&&eventsNot=${g.rngFullButEventsNot}, `
             + `eventsFull&&rngNot=${g.eventsFullButRngNot}`
         );

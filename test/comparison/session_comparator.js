@@ -24,6 +24,9 @@ export function compareRecordedGameplaySession(session, replay, options = {}) {
     let colorsMatched = 0;
     let colorsTotal = 0;
     let firstColorDivergence = null;
+    let animationBoundariesMatched = 0;
+    let animationBoundariesTotal = 0;
+    let firstAnimationBoundaryDivergence = null;
 
     for (let i = 0; i < count; i++) {
         const expected = session.steps[i];
@@ -45,6 +48,15 @@ export function compareRecordedGameplaySession(session, replay, options = {}) {
             colorsTotal += colorCmp.total;
             if (!firstColorDivergence && !colorCmp.match && colorCmp.firstDiff) {
                 firstColorDivergence = { step: i + 1, ...colorCmp.firstDiff };
+            }
+        }
+
+        const animationBoundaryCmp = policy.compareAnimationBoundariesStep(actual, expected, i);
+        if (animationBoundaryCmp) {
+            animationBoundariesMatched += animationBoundaryCmp.matched;
+            animationBoundariesTotal += animationBoundaryCmp.total;
+            if (!firstAnimationBoundaryDivergence && !animationBoundaryCmp.match && animationBoundaryCmp.firstDiff) {
+                firstAnimationBoundaryDivergence = { step: i + 1, ...animationBoundaryCmp.firstDiff };
             }
         }
     }
@@ -71,6 +83,11 @@ export function compareRecordedGameplaySession(session, replay, options = {}) {
             matched: eventCmp.matched,
             total: eventCmp.total,
             firstDivergence: eventCmp.firstDivergence || null,
+        },
+        animationBoundaries: {
+            matched: animationBoundariesMatched,
+            total: animationBoundariesTotal,
+            firstDivergence: firstAnimationBoundaryDivergence,
         },
     };
 }

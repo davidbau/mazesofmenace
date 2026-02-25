@@ -5,6 +5,7 @@
  * C ref: display.c tmp_at(), include/display.h DISP_* constants,
  *        and nh_delay_output() timing boundaries.
  */
+import { COLNO } from './config.js';
 
 export const DISP_BEAM = -1;
 export const DISP_ALL = -2;
@@ -17,7 +18,8 @@ export const DISP_FREEMEM = -8;
 
 export const BACKTRACK = -1;
 
-const TMP_AT_MAX_GLYPHS = 32;
+// C ref: display.c TMP_AT_MAX_GLYPHS (COLNO * 2)
+const TMP_AT_MAX_GLYPHS = COLNO * 2;
 const DEFAULT_DELAY_MS = 50;
 
 class TmpGlyph {
@@ -99,11 +101,12 @@ class AnimationCore {
         const anim = this.currentAnim;
         if (!anim) return;
 
+        let shouldShow = false;
         if (anim.style === DISP_BEAM || anim.style === DISP_ALL) {
             if (anim.style === DISP_ALL || this._canSee(x, y)) {
                 if (anim.saved.length < TMP_AT_MAX_GLYPHS) {
                     anim.saved.push({ x, y });
-                    this._showGlyph(x, y, anim.glyph);
+                    shouldShow = true;
                 }
             }
         } else if (anim.style === DISP_TETHER) {
@@ -113,17 +116,25 @@ class AnimationCore {
                     this._showGlyph(prev.x, prev.y, this._getTetherGlyph(prev.x, prev.y, x, y));
                 }
                 anim.saved.push({ x, y });
-                this._showGlyph(x, y, anim.glyph);
+                shouldShow = true;
             }
         } else {
+            // C ref: display.c tmp_at() does newsym(previous) before cansee check
+            // for DISP_FLASH/DISP_ALWAYS.
             if (anim.saved.length > 0) {
                 const prev = anim.saved[0];
                 this._redraw(prev.x, prev.y);
+                anim.saved = [];
             }
-            anim.saved = [{ x, y }];
-            this._showGlyph(x, y, anim.glyph);
+            if (anim.style === DISP_ALWAYS || this._canSee(x, y)) {
+                anim.saved = [{ x, y }];
+                shouldShow = true;
+            }
         }
 
+        if (!shouldShow) return;
+        this._showGlyph(x, y, anim.glyph);
+        this._flush();
         this._trace('tmp_at_step', { x, y, glyph: anim.glyph, mode: anim.style });
     }
 
@@ -164,7 +175,12 @@ class AnimationCore {
                     this._redraw(anim.saved[i].x, anim.saved[i].y);
                     this._showGlyph(anim.saved[i - 1].x, anim.saved[i - 1].y, anim.glyph);
                     this._flush();
+                    // C ref: display.c tmp_at(DISP_END, BACKTRACK) calls
+                    // nh_delay_output() on each backtrack frame.
+                    this.nh_delay_output_nowait();
                 }
+                // C ref: after backtrack, leave only origin for final erase pass.
+                anim.saved = [anim.saved[0]];
             }
             for (const pos of anim.saved) {
                 this._redraw(pos.x, pos.y);
