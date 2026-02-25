@@ -58,7 +58,7 @@ import { delobj } from './invent.js';
 import { monflee } from './monmove.js';
 import { readobjnam, hands_obj } from './objnam.js';
 import { hold_another_object, prinv } from './invent.js';
-import { tmp_at, nh_delay_output_nowait, DISP_BEAM, DISP_END } from './animation.js';
+import { tmp_at, nh_delay_output, nh_delay_output_nowait, DISP_BEAM, DISP_END } from './animation.js';
 
 // Direction vectors matching commands.js DIRECTION_KEYS
 const DIRECTION_KEYS = {
@@ -371,55 +371,62 @@ function xkilled_local(mon, map, player, display) {
 
 // C ref: zap.c:4763 dobuzz() — fire a beam across the map
 // sx, sy: starting position; dx, dy: direction
-function dobuzz_legacy(player, map, display, type, nd, dx, dy, sx, sy) {
+async function dobuzz_legacy(player, map, display, type, nd, dx, dy, sx, sy) {
     const range = 7 + (player.level >> 1); // C ref: zap.c rnd(7+mcastu) typical
     let x = sx;
     let y = sy;
 
     // C ref: zap.c:4763 — beam wander check at start
     rn2(7);
+    tmp_at(DISP_BEAM, beamTempGlyph(type, dx, dy));
+    try {
+        for (let i = 0; i < range; i++) {
+            x += dx;
+            y += dy;
 
-    for (let i = 0; i < range; i++) {
-        x += dx;
-        y += dy;
+            if (!isok(x, y)) break;
+            const loc = map.at(x, y);
+            if (!loc) break;
 
-        if (!isok(x, y)) break;
-        const loc = map.at(x, y);
-        if (!loc) break;
+            tmp_at(x, y);
+            await nh_delay_output();
 
-        // Check for monster hit
-        const mon = map.monsterAt(x, y);
-        if (mon && !mon.dead) {
-            // C ref: zap.c:4812 — zap_hit with monster AC
-            const mac = mon.mac || 10;
-            zap_hit(mac, 0);
+            // Check for monster hit
+            const mon = map.monsterAt(x, y);
+            if (mon && !mon.dead) {
+                // C ref: zap.c:4812 — zap_hit with monster AC
+                const mac = mon.mac || 10;
+                zap_hit(mac, 0);
 
-            // C ref: zap.c:4825 — zhitm
-            const damage = zhitm(mon, type, nd, map);
+                // C ref: zap.c:4825 — zhitm
+                zhitm(mon, type, nd, map);
 
-            // Apply damage (zhitm already applied to mon.mhp)
-            if (mon.mhp <= 0) {
-                mondead(mon, map, player);
-                // C ref: nonliving monsters (undead, golems) are "destroyed" not "killed"
-                const mdat = mon.type || {};
-                const killVerb = nonliving(mdat) ? 'destroy' : 'kill';
-                display.putstr_message(`You ${killVerb} the ${monDisplayName(mon)}!`);
-                map.removeMonster(mon);
-                xkilled_local(mon, map, player, display);
+                // Apply damage (zhitm already applied to mon.mhp)
+                if (mon.mhp <= 0) {
+                    mondead(mon, map, player);
+                    // C ref: nonliving monsters (undead, golems) are "destroyed" not "killed"
+                    const mdat = mon.type || {};
+                    const killVerb = nonliving(mdat) ? 'destroy' : 'kill';
+                    display.putstr_message(`You ${killVerb} the ${monDisplayName(mon)}!`);
+                    map.removeMonster(mon);
+                    xkilled_local(mon, map, player, display);
+                }
+                // Beam continues through dead monsters
+                continue;
             }
-            // Beam continues through dead monsters
-            continue;
-        }
 
-        // Check for wall/boundary — beam stops or bounces
-        if (IS_WALL(loc.typ) || loc.typ === 0) {
-            // C ref: zap.c:4963 — beam bounce
-            // rn2(75) for each direction component to determine bounce
-            if (dx) rn2(75);
-            if (dy) rn2(75);
-            display.putstr_message('The bolt of fire bounces!');
-            break;
+            // Check for wall/boundary — beam stops or bounces
+            if (IS_WALL(loc.typ) || loc.typ === 0) {
+                // C ref: zap.c:4963 — beam bounce
+                // rn2(75) for each direction component to determine bounce
+                if (dx) rn2(75);
+                if (dy) rn2(75);
+                display.putstr_message('The bolt of fire bounces!');
+                break;
+            }
         }
+    } finally {
+        tmp_at(DISP_END, 0);
     }
 }
 
@@ -474,7 +481,7 @@ export async function handleZap(player, map, display, game) {
     const nd = 6;
 
     // Fire the beam
-    dobuzz_legacy(player, map, display, beamType, nd, dir[0], dir[1], player.x, player.y);
+    await dobuzz_legacy(player, map, display, beamType, nd, dir[0], dir[1], player.x, player.y);
 
     return { moved: false, tookTime: true };
 }
