@@ -35,6 +35,7 @@ import { rn2, rnd, rn1, rnl } from './rng.js';
 import { pline, You, Your, You_feel, pline_The, You_hear } from './pline.js';
 import { exercise } from './attrib_exercise.js';
 import { tmp_at, nh_delay_output_nowait, DISP_BEAM, DISP_CHANGE, DISP_END } from './animation.js';
+import { getpos_sethilite, getpos, getpos_clear_hilite } from './getpos.js';
 
 // ── Constants ──
 
@@ -1252,10 +1253,13 @@ export function throwspell(player, map) {
     }
 
     pline("Where do you want to cast the spell?");
-    // C parity: getpos() hilite callback is display_spell_target_positions().
-    // JS currently uses self-target fallback, but still shows/cleans highlights.
-    display_spell_target_positions(player, map, true);
-    display_spell_target_positions(player, map, false);
+    const cc = { x: player.x, y: player.y };
+    getpos_sethilite(
+        (on) => display_spell_target_positions(player, map, on),
+        (x, y) => can_center_spell_location(player, map, x, y)
+    );
+    getpos(cc, true, 'the desired position');
+    getpos_clear_hilite();
     return 1;
 }
 

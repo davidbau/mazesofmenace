@@ -31,6 +31,7 @@ import { gold_detect, food_detect, trap_detect, do_mapping, cvt_sdoor_to_door } 
 import { explode } from './explode.js';
 import { EXPL_FIERY } from './explode.js';
 import { tmp_at, DISP_BEAM, DISP_END } from './animation.js';
+import { getpos_sethilite, getpos, getpos_clear_hilite } from './getpos.js';
 
 const SPELL_KEEN = 20000; // cf. spell.c KEEN
 const MAX_SPELL_STUDY = 3; // cf. spell.h MAX_SPELL_STUDY
@@ -1347,20 +1348,32 @@ function seffect_stinking_cloud(sobj, player, display, game) {
     // cf. do_stinking_cloud(sobj, already_known) + display_stinking_cloud_positions()
     const map = game?.map;
     if (map && player) {
-        tmp_at(DISP_BEAM, { ch: '*', color: 10 });
-        for (let dx = -STINKING_CLOUD_TARGET_DIST; dx <= STINKING_CLOUD_TARGET_DIST; dx++) {
-            for (let dy = -STINKING_CLOUD_TARGET_DIST; dy <= STINKING_CLOUD_TARGET_DIST; dy++) {
-                const x = player.x + dx;
-                const y = player.y + dy;
-                if (x === player.x && y === player.y) continue;
-                const loc = map.at ? map.at(x, y) : null;
-                if (!loc) continue;
-                const inRange = Math.max(Math.abs(dx), Math.abs(dy)) <= STINKING_CLOUD_TARGET_DIST;
-                if (!inRange) continue;
-                tmp_at(x, y);
+        const display_stinking_cloud_positions = (on) => {
+            if (on) {
+                tmp_at(DISP_BEAM, { ch: '*', color: 10 });
+                for (let dx = -STINKING_CLOUD_TARGET_DIST; dx <= STINKING_CLOUD_TARGET_DIST; dx++) {
+                    for (let dy = -STINKING_CLOUD_TARGET_DIST; dy <= STINKING_CLOUD_TARGET_DIST; dy++) {
+                        const x = player.x + dx;
+                        const y = player.y + dy;
+                        if (x === player.x && y === player.y) continue;
+                        const loc = map.at ? map.at(x, y) : null;
+                        if (!loc) continue;
+                        tmp_at(x, y);
+                    }
+                }
+            } else {
+                tmp_at(DISP_END, 0);
             }
-        }
-        tmp_at(DISP_END, 0);
+        };
+        const can_center_cloud = (x, y) => {
+            const loc = map.at ? map.at(x, y) : null;
+            if (!loc) return false;
+            return Math.max(Math.abs(x - player.x), Math.abs(y - player.y)) <= STINKING_CLOUD_TARGET_DIST;
+        };
+        const cc = { x: player.x, y: player.y };
+        getpos_sethilite(display_stinking_cloud_positions, can_center_cloud);
+        getpos(cc, true, 'the desired position');
+        getpos_clear_hilite();
     }
     // The C version prompts for a target position; automated play still self-targets.
     // cf. create_gas_cloud(cc.x, cc.y, ...) — gas cloud creation not yet ported
