@@ -382,67 +382,6 @@ function xkilled_local(mon, map, player, display) {
     }
 }
 
-// C ref: zap.c:4763 dobuzz() — fire a beam across the map
-// sx, sy: starting position; dx, dy: direction
-async function dobuzz_legacy(player, map, display, type, nd, dx, dy, sx, sy) {
-    const range = 7 + (player.level >> 1); // C ref: zap.c rnd(7+mcastu) typical
-    let x = sx;
-    let y = sy;
-
-    // C ref: zap.c:4763 — beam wander check at start
-    rn2(7);
-    tmp_at(DISP_BEAM, beamTempGlyph(type, dx, dy));
-    try {
-        for (let i = 0; i < range; i++) {
-            x += dx;
-            y += dy;
-
-            if (!isok(x, y)) break;
-            const loc = map.at(x, y);
-            if (!loc) break;
-
-            tmp_at(x, y);
-            await nh_delay_output();
-
-            // Check for monster hit
-            const mon = map.monsterAt(x, y);
-            if (mon && !mon.dead) {
-                // C ref: zap.c:4812 — zap_hit with monster AC
-                const mac = mon.mac || 10;
-                zap_hit(mac, 0);
-
-                // C ref: zap.c:4825 — zhitm
-                zhitm(mon, type, nd, map);
-
-                // Apply damage (zhitm already applied to mon.mhp)
-                if (mon.mhp <= 0) {
-                    mondead(mon, map, player);
-                    // C ref: nonliving monsters (undead, golems) are "destroyed" not "killed"
-                    const mdat = mon.type || {};
-                    const killVerb = nonliving(mdat) ? 'destroy' : 'kill';
-                    display.putstr_message(`You ${killVerb} the ${monDisplayName(mon)}!`);
-                    map.removeMonster(mon);
-                    xkilled_local(mon, map, player, display);
-                }
-                // Beam continues through dead monsters
-                continue;
-            }
-
-            // Check for wall/boundary — beam stops or bounces
-            if (IS_WALL(loc.typ) || loc.typ === 0) {
-                // C ref: zap.c:4963 — beam bounce
-                // rn2(75) for each direction component to determine bounce
-                if (dx) rn2(75);
-                if (dy) rn2(75);
-                display.putstr_message('The bolt of fire bounces!');
-                break;
-            }
-        }
-    } finally {
-        tmp_at(DISP_END, 0);
-    }
-}
-
 // Main zap handler — called from commands.js
 // C ref: zap.c dozap()
 export async function handleZap(player, map, display, game) {
@@ -476,10 +415,6 @@ export async function handleZap(player, map, display, game) {
         return { moved: false, tookTime: false };
     }
 
-    // Determine beam type
-    const beamType = wandToBeamType(wand.otyp);
-    const isBeamWand = beamType >= 0;
-
     // C ref: attrib.c:506 — exercise(A_STR, TRUE) before zapping
     exercise(player, A_STR, true);
 
@@ -490,16 +425,9 @@ export async function handleZap(player, map, display, game) {
     player.dy = dir[1];
     player.dz = 0;
 
-    if (!isBeamWand) {
-        // Route non-beam wands through weffects() so non-ray zap behavior
-        // can evolve toward zap.c parity instead of hardcoded no-op.
-        await weffects(wand, player, map, display, game);
-    } else {
-        // C ref: zap.c — nd (number of dice) = 6 for wand beams
-        const nd = 6;
-        // Fire the beam
-        await dobuzz_legacy(player, map, display, beamType, nd, dir[0], dir[1], player.x, player.y);
-    }
+    // Route all wand effects through weffects() so player zaps share the
+    // same C-structured animation/effect path as other wand callsites.
+    await weffects(wand, player, map, display, game);
 
     return { moved: false, tookTime: true };
 }
