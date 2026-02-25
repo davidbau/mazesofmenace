@@ -108,9 +108,35 @@ export function erode_armor(mdef, hurt) {
 //   Returns true if the attack should be aborted.
 //   In JS, attack validation is handled upstream in the move system.
 //   This stub always returns false (OK to attack).
-export function attack_checks(mtmp, wep) {
+export function attack_checks(mtmp, wep, opts = {}) {
+    const player = opts.player || null;
+    const display = opts.display || null;
+    const context = opts.context || null;
+    const pets_too = !!opts.pets_too;
+    const forcefight = !!(context && context.forcefight);
     // C: alerts waiting monster, checks forcefight, invisible, mimic, peaceful
     if (mtmp.mstrategy) mtmp.mstrategy &= ~0x08000000; // ~STRAT_WAITMASK
+    if (!mtmp) return true;
+    if (mtmp.msleeping) mtmp.msleeping = 0;
+
+    // C-style safety gates: don't auto-attack tame/peaceful unless forced.
+    if (!forcefight) {
+        if (mtmp.tame && !pets_too) {
+            if (display) display.putstr_message('You stop. Your pet is in the way!');
+            return true;
+        }
+        if (mtmp.peaceful && !pets_too) {
+            if (display) display.putstr_message(`Really attack ${monDisplayName(mtmp)}?`);
+            return true;
+        }
+    }
+
+    // Mimic/undetected reveal side effect.
+    if (mtmp.mundetected) mtmp.mundetected = false;
+    if (player && mtmp.mx === player.x && mtmp.my === player.y) {
+        // Displaced/invisible confusion guard: don't attack own square.
+        return true;
+    }
     return false;
 }
 
@@ -187,10 +213,14 @@ function find_roll_to_hit(player, mtmp, aatyp, weapon) {
 // cf. uhitm.c:431 — force_attack(mtmp, pets_too):
 //   Force attack on a monster in the way (e.g. 'F' prefix).
 //   Temporarily sets forcefight flag, calls do_attack, restores flag.
-export function force_attack(mtmp, pets_too) {
-    // In JS, forcefight context is not separately tracked.
-    // Stub: just return true (attack occurred).
-    return true;
+export function force_attack(mtmp, pets_too, player = null, display = null, map = null, context = null) {
+    if (!mtmp || !player) return false;
+    const ctx = context || {};
+    const save = !!ctx.forcefight;
+    ctx.forcefight = true;
+    const attacked = !!do_attack(player, mtmp, display, map, { context: ctx, pets_too });
+    ctx.forcefight = save;
+    return attacked;
 }
 
 // cf. uhitm.c:447 — do_attack(mtmp):
@@ -198,7 +228,15 @@ export function force_attack(mtmp, pets_too) {
 //   Partially implemented via playerAttackMonster() below.
 //   Full implementation would handle: attack_checks, capacity, poly attacks,
 //   leprechaun dodge, hitum/hmonas dispatch, invisible monster mapping.
-export function do_attack(player, mtmp, display, map) {
+export function do_attack(player, mtmp, display, map, opts = {}) {
+    if (!player || !mtmp) return false;
+    const context = opts.context || null;
+    const pets_too = !!opts.pets_too;
+    if (attack_checks(mtmp, player.weapon || null, {
+        player, display, map, context, pets_too,
+    })) {
+        return false;
+    }
     // Delegate to playerAttackMonster for the normal case
     return playerAttackMonster(player, mtmp, display, map);
 }
