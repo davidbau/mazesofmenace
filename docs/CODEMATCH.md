@@ -3100,7 +3100,7 @@ No function symbols parsed from isaac64.c.
 | 1067 | `breamm` | mthrowu.js:472 | Partial — lined-up/cooldown checks, breath message, and zap.buzz beam dispatch implemented; remaining gaps in full C breath edge-cases |
 | 1248 | `breamu` | mthrowu.js:479 | Implemented — wrapper to breamm |
 | 1057 | `breathwep_name` | mthrowu.js:464 | Implemented |
-| 162 | `drop_throw` | mthrowu.js:227 | Partial — break/drop core behavior implemented |
+| 162 | `drop_throw` | mthrowu.js:227 | Partial — C-style break gate (`cream/venom/egg-on-hit/should_mulch_missile`) and drop placement path implemented |
 | 1390 | `hit_bars` | mthrowu.js:262 | Partial — break/drop-on-bars path now wired via dothrow break logic |
 | 1472 | `hits_bars` | mthrowu.js:275 | Partial — C-style class/type pass-through rules implemented |
 | 1371 | `lined_up` | mthrowu.js:124 | Implemented |
@@ -3109,7 +3109,7 @@ No function symbols parsed from isaac64.c.
 | 1378 | `m_carrying` | mthrowu.js:59 | Implemented |
 | 58 | `m_has_launcher_and_ammo` | mthrowu.js:65 | Implemented |
 | 1349 | `m_lined_up` | mthrowu.js:113 | Implemented |
-| 551 | `m_throw` | mthrowu.js:313 | Partial — core throw pipeline implemented; bars/return-flight details TODO |
+| 551 | `m_throw` | mthrowu.js:313 | Partial — core throw pipeline with C-style flight checks, player-hit special cases (egg/pie/venom hitv=8), and dmgval-based ranged damage; remaining bars/return-flight/display edge details TODO |
 | 1135 | `m_useup` | mthrowu.js:150 | Implemented |
 | 1127 | `m_useupall` | mthrowu.js:141 | Implemented |
 | 201 | `monmulti` | mthrowu.js:162 | Partial — core volley logic + class/racial bonuses implemented |

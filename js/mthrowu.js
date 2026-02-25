@@ -33,16 +33,17 @@ import {
 } from './mondata.js';
 import {
     mons, AT_WEAP, G_NOCORPSE, AD_ACID, AD_BLND, AD_DRST,
-    AD_MAGM, AD_FIRE, AD_COLD, AD_SLEE, AD_DISN, AD_ELEC, MZ_TINY,
+    AD_MAGM, AD_FIRE, AD_COLD, AD_SLEE, AD_DISN, AD_ELEC, MZ_TINY, MZ_HUMAN, MZ_LARGE,
 } from './monsters.js';
 import { distmin, dist2, mondead, BOLT_LIM } from './monutil.js';
 import { add_to_minv } from './monutil.js';
 import { placeFloorObject } from './floor_objects.js';
 import { corpse_chance } from './mon.js';
 import { select_rwep as weapon_select_rwep,
-    mon_wield_item, NEED_WEAPON, NEED_HTH_WEAPON, NEED_RANGED_WEAPON, dmgval } from './weapon.js';
+    mon_wield_item, NEED_WEAPON, NEED_HTH_WEAPON, NEED_RANGED_WEAPON, dmgval, P_BOW } from './weapon.js';
 import { ammo_and_launcher, multishot_class_bonus } from './dothrow.js';
 import { breaks, harmless_missile } from './dothrow.js';
+import { should_mulch_missile } from './dothrow.js';
 import { find_mac } from './worn.js';
 import {
     buzz, ZT_BREATH, ZT_MAGIC_MISSILE, ZT_FIRE, ZT_COLD, ZT_SLEEP,
@@ -273,8 +274,13 @@ export function thitu(tlev, dam, objp, name, player, display, game, mon = null) 
 // C ref: mthrowu.c drop_throw().
 export function drop_throw(obj, ohit, x, y, map) {
     if (!obj || !map) return true;
-    const broken = obj.otyp === CREAM_PIE || obj.oclass === VENOM_CLASS
-        || (ohit && obj.otyp === EGG);
+    let broken;
+    if (obj.otyp === CREAM_PIE || obj.oclass === VENOM_CLASS
+        || (ohit && obj.otyp === EGG)) {
+        broken = true;
+    } else {
+        broken = !!(ohit && should_mulch_missile(obj));
+    }
     if (broken) return true;
     if (!isok(x, y)) return true;
     const spot = map.at(x, y);
@@ -507,11 +513,34 @@ export function m_throw(mon, startX, startY, dx, dy, range, weapon, map, player,
             if (weapon?.oclass === GEM_CLASS && ucatchgem(weapon, mon, player, map, display)) {
                 break;
             }
-            const sdam = od ? (od.sdam || 0) : 0;
-            let dam = sdam > 0 ? rnd(sdam) : 0;
-            dam += (weapon.spe || 0);
-            if (dam < 1) dam = 1;
-            const hitv = 3 - distmin(player.x, player.y, mon.mx, mon.my) + 8 + (weapon.spe || 0);
+            let hitv;
+            let dam;
+            switch (weapon?.otyp) {
+            case EGG:
+            case CREAM_PIE:
+            case BLINDING_VENOM:
+                hitv = 8;
+                dam = 0;
+                break;
+            default: {
+                dam = dmgval(weapon, { type: player?.data || {} });
+                hitv = 3 - distmin(player.x, player.y, mon.mx, mon.my);
+                if (hitv < -4) hitv = -4;
+                // C ref: m_throw elf bow/arrow ranged bonus.
+                if (is_elf(mon?.type || {})
+                    && (objectData[weapon.otyp]?.sub === -P_BOW)) {
+                    hitv += 1;
+                    if (mon.weapon?.otyp === ELVEN_BOW) hitv += 1;
+                    if (weapon.otyp === ELVEN_ARROW) dam += 1;
+                }
+                const heroSize = player?.data?.size ?? MZ_HUMAN;
+                if (heroSize >= MZ_LARGE) hitv += 1;
+                hitv += 8 + (weapon.spe || 0);
+                if (dam < 1) dam = 1;
+                break;
+            }
+            }
+            const hitu = thitu(hitv, dam, weapon, null, player, display, game, mon);
             if (game && game.occupation) {
                 if (typeof game.stopOccupation === 'function') game.stopOccupation();
                 else {
@@ -519,7 +548,7 @@ export function m_throw(mon, startX, startY, dx, dy, range, weapon, map, player,
                     game.multi = 0;
                 }
             }
-            if (thitu(hitv, dam, weapon, null, player, display, game, mon)) {
+            if (hitu) {
                 break;
             }
         }
