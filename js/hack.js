@@ -292,7 +292,7 @@ export async function handleMovement(dir, player, map, display, game) {
         exercise(player, A_STR, true);
         // C ref: uhitm.c:552 u_wipe_engr(3) before hitum()
         u_wipe_engr(player, map, 3);
-        const killed = playerAttackMonster(player, mon, display, map);
+        const killed = playerAttackMonster(player, mon, display, map, game);
         if (killed) {
             map.removeMonster(mon);
         }

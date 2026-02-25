@@ -5480,10 +5480,10 @@ No function symbols parsed from isaac64.c.
 | 5176 | `missum` | - | Missing |
 | 350 | `mon_maybe_unparalyze` | uhitm.js | Implemented — rn2(10) wake paralyzed monster before dieroll |
 | 6293 | `nohandglow` | - | Missing |
-| 5843 | `passive` | uhitm.js | Partial — AT_NONE search, damage dice, AD_ACID first switch, rn2(3) alive gate. Missing: full damage effects, weapon erosion, exercise(A_STR) |
+| 5843 | `passive` | uhitm.js | Partial — C-style AT_NONE search, damage dice, AD_ACID/AD_ENCH first-pass handling, rn2(3) alive gate, and AD_PLYS/COLD/FIRE/ELEC/STUN alive effects with hero resistance/status hooks. Remaining gaps: full object-side passive effects (`passive_obj`), exact damage/death messaging parity, and full property-system fidelity |
 | 6105 | `passive_obj` | - | Missing |
-| 1970 | `shade_aware` | - | Missing |
-| 1994 | `shade_miss` | - | Missing |
+| 1970 | `shade_aware` | uhitm.js | Implemented |
+| 1994 | `shade_miss` | uhitm.js | Implemented |
 | 4909 | `start_engulf` | - | Missing |
 | 2152 | `steal_it` | - | Missing |
 | 6260 | `stumble_onto_mimic` | - | Missing |

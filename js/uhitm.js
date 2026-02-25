@@ -5,7 +5,10 @@
 import { rn2, rnd, d, c_d } from './rng.js';
 import { exercise } from './attrib_exercise.js';
 import { corpse_chance } from './mon.js';
-import { A_STR, A_DEX, PM_MONK } from './config.js';
+import {
+    A_STR, A_DEX, PM_MONK,
+    FIRE_RES, COLD_RES, SHOCK_RES, ACID_RES, FREE_ACTION,
+} from './config.js';
 import { spec_abon, spec_dbon } from './artifact.js';
 import {
     G_FREQ, G_NOCORPSE, MZ_TINY, MZ_HUMAN, MZ_LARGE, M2_COLLECT,
@@ -49,6 +52,7 @@ import { mondead } from './monutil.js';
 import { placeFloorObject } from './floor_objects.js';
 import { uwepgone, uswapwepgone, uqwepgone } from './wield.js';
 import { find_mac } from './worn.js';
+import { make_stunned } from './potion.js';
 
 
 // ============================================================================
@@ -232,13 +236,14 @@ export function do_attack(player, mtmp, display, map, opts = {}) {
     if (!player || !mtmp) return false;
     const context = opts.context || null;
     const pets_too = !!opts.pets_too;
+    const game = opts.game || null;
     if (attack_checks(mtmp, player.weapon || null, {
         player, display, map, context, pets_too,
     })) {
         return false;
     }
     // Delegate to playerAttackMonster for the normal case
-    return playerAttackMonster(player, mtmp, display, map);
+    return playerAttackMonster(player, mtmp, display, map, game);
 }
 
 
@@ -301,7 +306,7 @@ function double_punch() {
 // cf. uhitm.c:757 — hitum(mon, uattk):
 //   Main melee hit routine: roll to-hit, call known_hitum or miss.
 //   Returns true if monster survives.
-function hitum(player, mon, uattk, display, map) {
+function hitum(player, mon, uattk, display, map, game = null) {
     const weapon = player.weapon;
     // cf. uhitm.c:775 — twohits: double punch or two-weapon
     // const twohits = (weapon ? !!player.twoweap : double_punch()) ? 1 : 0;
@@ -313,7 +318,9 @@ function hitum(player, mon, uattk, display, map) {
     if (tmp > dieroll) exercise(player, A_DEX, true);
 
     const malive = known_hitum(player, mon, weapon, mhit, tmp, 0, uattk, dieroll, display, map);
-    passive(mon, mhit, malive);
+    passive(mon, weapon, mhit, malive, uattk?.type ?? AT_WEAP, false, {
+        player, display, map, game,
+    });
 
     // TODO: second attack for two-weapon or double punch
     return malive;
@@ -1639,7 +1646,14 @@ function handleMonsterKilled(player, monster, display, map) {
 //   Only consumes RNG if the monster has an AT_NONE attack slot.
 const NATTK = 6;
 
-function passive(mon, mhit, malive) {
+function playerHasProp(player, prop) {
+    return !!(player && typeof player.hasProp === 'function' && player.hasProp(prop));
+}
+
+function passive(mon, weapon, mhit, malive, aatyp = AT_WEAP, wep_was_destroyed = false, ctx = {}) {
+    const player = ctx.player || null;
+    const display = ctx.display || null;
+    const game = ctx.game || null;
     const ptr = mon.type || {};
     const attacks = ptr.attacks || [];
 
@@ -1663,57 +1677,96 @@ function passive(mon, mhit, malive) {
     const adtyp = passiveAttk.damage;
 
     // C ref: uhitm.c:5862-5868 — calculate tmp (damage dice)
-    // We don't apply damage effects, just ensure RNG parity.
     // tmp = d(damn, damd) or d(mlev+1, damd) or 0
+    let tmp = 0;
     if (passiveAttk.dice) {
-        d(passiveAttk.dice, passiveAttk.sides || 0);
+        tmp = d(passiveAttk.dice, passiveAttk.sides || 0);
     } else if (passiveAttk.sides) {
         const mlev = mon.m_lev ?? mon.mlevel ?? (ptr.level || 0);
-        d(mlev + 1, passiveAttk.sides);
+        tmp = d(mlev + 1, passiveAttk.sides);
     }
 
     // C ref: uhitm.c:5872-5993 — first switch: effects that work even if dead
-    // Most cases only consume RNG under specific conditions we don't model yet
-    // (weapon erosion, acid splash). AD_ACID is the main RNG consumer here.
     switch (adtyp) {
     case AD_ACID:
-        // C ref: uhitm.c:5885 — if (mhitb && rn2(2))
-        if (mhit && rn2(2)) {
-            // Splash effects — simplified, no actual damage
-            // C ref: uhitm.c:5898 — if (!rn2(30)) erode_armor
-            if (!rn2(30)) {
-                // erode_armor stub
+        if (mhit && !rn2(2)) {
+            if (playerHasProp(player, ACID_RES)) {
+                tmp = 0;
             }
+            rn2(30); // erosion check path
+            rn2(6);  // acid item-damage check path
+            if (player) exercise(player, A_STR, false);
+        } else {
+            tmp = 0;
         }
-        // C ref: uhitm.c:5910 — exercise(A_STR, FALSE)
-        // TODO: exercise(player, A_STR, false) — skipped to avoid RNG regression
+        break;
+    case AD_ENCH:
+        if (!weapon || wep_was_destroyed || aatyp !== AT_WEAP) {
+            tmp = 0;
+            break;
+        }
+        if ((weapon.enchantment ?? weapon.spe ?? 0) > -7) {
+            if (weapon.enchantment !== undefined) weapon.enchantment -= 1;
+            else if (weapon.spe !== undefined) weapon.spe -= 1;
+        }
+        tmp = 0;
         break;
     default:
         break;
     }
 
-    // C ref: uhitm.c:5997 — if (malive && !mon->mcan && rn2(3))
-    // Effects that only work if monster still alive
-    if (malive && !mon.mcan && rn2(3)) {
-        // Various effects: AD_PLYS (floating eye), AD_COLD, AD_FIRE, etc.
-        // Simplified: no actual effects applied, RNG consumed for parity
-        switch (adtyp) {
-        case AD_PLYS:
-        case AD_COLD:
-        case AD_FIRE:
-        case AD_ELEC:
-        case AD_STUN:
-            // These would apply effects we don't fully model
-            break;
-        default:
-            break;
+    if (tmp > 0 && player) {
+        player.hp = Math.max(0, (player.hp || 0) - tmp);
+    }
+
+    // C ref: uhitm.c:5997 — if (malive && !mon->mcan && rn2(3)) return;
+    if (!malive || mon.mcan || rn2(3)) {
+        return;
+    }
+
+    // Effects that only work if monster still alive.
+    switch (adtyp) {
+    case AD_PLYS:
+        if ((mon.mndx ?? -1) === PM_FLOATING_EYE) {
+            if (tmp > 127) tmp = 127;
+            if (!rn2(4)) tmp = 127;
+            if (!playerHasProp(player, FREE_ACTION) && tmp > 0) {
+                if (game) game.multi = Math.max(game.multi || 0, tmp);
+                if (display) display.putstr_message(`You are frozen by ${monNam(mon)}!`);
+            }
+        } else {
+            tmp = 0;
         }
+        break;
+    case AD_COLD:
+        if (playerHasProp(player, COLD_RES)) tmp = 0;
+        break;
+    case AD_FIRE:
+        if (playerHasProp(player, FIRE_RES)) tmp = 0;
+        break;
+    case AD_ELEC:
+        if (playerHasProp(player, SHOCK_RES)) tmp = 0;
+        break;
+    case AD_STUN:
+        if (player) {
+            const oldTimeout = player.getPropTimeout ? (player.getPropTimeout('stunned') || 0) : 0;
+            make_stunned(player, oldTimeout + Math.max(1, tmp), true);
+        }
+        tmp = 0;
+        break;
+    default:
+        tmp = 0;
+        break;
+    }
+
+    if (tmp > 0 && player) {
+        player.hp = Math.max(0, (player.hp || 0) - tmp);
     }
 }
 
 
 // cf. uhitm.c do_attack() / hitum() / known_hitum() — hero attacks monster
-export function playerAttackMonster(player, monster, display, map) {
+export function playerAttackMonster(player, monster, display, map, game = null) {
     // C ref: uhitm.c:538-549 — first attack while wielding a non-weapon
     // emits "You begin bashing monsters with <item>."
     const wielded = player.weapon;
@@ -1748,7 +1801,9 @@ export function playerAttackMonster(player, monster, display, map) {
             display.putstr_message(`You miss ${monNam(monster)}.`);
         }
         // cf. uhitm.c:788 passive() after miss
-        passive(monster, false, true);
+        passive(monster, player.weapon || null, false, true, AT_WEAP, false, {
+            player, display, map, game,
+        });
         return false;
     }
 
@@ -1773,7 +1828,9 @@ export function playerAttackMonster(player, monster, display, map) {
             applyMonflee(monster, fleetime, false);
         }
         // cf. uhitm.c:788 passive() after potion hit
-        passive(monster, true, true);
+        passive(monster, player.weapon || null, true, true, AT_WEAP, false, {
+            player, display, map, game,
+        });
         return false;
     }
 
@@ -1815,7 +1872,9 @@ export function playerAttackMonster(player, monster, display, map) {
         // cf. uhitm.c:788 passive() called even when monster dies (malive=false)
         // The "alive-only" effects (rn2(3) gate) are skipped.
         const killed = handleMonsterKilled(player, monster, display, map);
-        passive(monster, true, false);
+        passive(monster, player.weapon || null, true, false, AT_WEAP, false, {
+            player, display, map, game,
+        });
         return killed;
     } else {
         // cf. uhitm.c -- various hit messages
@@ -1856,7 +1915,9 @@ export function playerAttackMonster(player, monster, display, map) {
             applyMonflee(monster, fleetime, false);
         }
         // cf. uhitm.c:788 passive() after surviving hit
-        passive(monster, true, true);
+        passive(monster, player.weapon || null, true, true, AT_WEAP, false, {
+            player, display, map, game,
+        });
         return false;
     }
 }
