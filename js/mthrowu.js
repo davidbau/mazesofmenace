@@ -51,7 +51,7 @@ import {
     ZT_DEATH, ZT_LIGHTNING, ZT_POISON_GAS, ZT_ACID,
 } from './zap.js';
 import {
-    tmp_at, nh_delay_output_nowait,
+    tmp_at, nh_delay_output, nh_delay_output_nowait,
     DISP_FLASH, DISP_TETHER, DISP_END, BACKTRACK,
 } from './animation.js';
 import { objectMapGlyph } from './display_rng.js';
@@ -411,7 +411,7 @@ export function ohitmon(mtmp, otmp, range, verbose, map, player, display, game) 
 }
 
 // C ref: mthrowu.c monshoot() — common multishot throw/shoot logic.
-export function monshoot(mon, otmp, mwep, map, player, display, game, mtarg = null) {
+export async function monshoot(mon, otmp, mwep, map, player, display, game, mtarg = null) {
     if (!mon || !otmp) return false;
     const tx = mtarg ? mtarg.mx : (Number.isInteger(mon.mux) ? mon.mux : player.x);
     const ty = mtarg ? mtarg.my : (Number.isInteger(mon.muy) ? mon.muy : player.y);
@@ -431,7 +431,7 @@ export function monshoot(mon, otmp, mwep, map, player, display, game, mtarg = nu
     for (let i = 0; i < shots; i++) {
         const projectile = { ...otmp, quan: 1, ox: mon.mx, oy: mon.my, invlet: null };
         m_useup(mon, otmp);
-        const result = m_throw(
+        const result = await m_throw_timed(
             mon, mon.mx, mon.my, ddx, ddy, dm, projectile, map, player, display, game,
             { tethered_weapon }
         );
@@ -451,6 +451,138 @@ export function monshoot(mon, otmp, mwep, map, player, display, game, mtarg = nu
         if (mon.dead) break;
     }
     return true;
+}
+
+export async function m_throw_timed(
+    mon, startX, startY, dx, dy, range, weapon, map, player, display, game,
+    options = {}
+) {
+    const tethered_weapon = !!options.tethered_weapon;
+    let x = startX;
+    let y = startY;
+    let dropX = startX;
+    let dropY = startY;
+
+    if ((weapon.cursed || weapon.greased) && (dx || dy) && !rn2(7)) {
+        dx = rn2(3) - 1;
+        dy = rn2(3) - 1;
+        if (!dx && !dy) {
+            return { drop: true, x: startX, y: startY };
+        }
+    }
+
+    function flightBlocked(bx, by, pre, forcehit) {
+        const nx = bx + dx, ny = by + dy;
+        if (!isok(nx, ny)) return true;
+        const nloc = map.at(nx, ny);
+        if (!nloc) return true;
+        if (IS_OBSTRUCTED(nloc.typ)) return true;
+        if (IS_DOOR(nloc.typ) && (nloc.flags & (D_CLOSED | D_LOCKED))) return true;
+        if (nloc.typ === IRONBARS && forcehit) return true;
+        if (!pre) {
+            const cloc = map.at(bx, by);
+            if (cloc && cloc.typ === SINK) return true;
+        }
+        return false;
+    }
+
+    if (flightBlocked(startX, startY, true, 0)) {
+        return { drop: true, x: startX, y: startY };
+    }
+
+    const projGlyph = objectMapGlyph(weapon, false, {
+        player,
+        x: startX,
+        y: startY,
+        observe: false,
+    });
+    tmp_at(tethered_weapon ? DISP_TETHER : DISP_FLASH, projGlyph);
+    try {
+        while (range-- > 0) {
+            x += dx;
+            y += dy;
+            if (!isok(x, y)) break;
+            const loc = map.at(x, y);
+            if (!loc) break;
+            if (ACCESSIBLE(loc.typ)) {
+                dropX = x;
+                dropY = y;
+            }
+            tmp_at(x, y);
+            await nh_delay_output();
+
+            const mtmp = map.monsterAt(x, y);
+            if (mtmp && !mtmp.dead) {
+                if (ohitmon(mtmp, weapon, range, true, map, player, display, game)) {
+                    break;
+                }
+            }
+
+            if (x === player.x && y === player.y) {
+                if (weapon?.oclass === GEM_CLASS && ucatchgem(weapon, mon, player, map, display)) {
+                    break;
+                }
+                let hitv;
+                let dam;
+                switch (weapon?.otyp) {
+                case EGG:
+                case CREAM_PIE:
+                case BLINDING_VENOM:
+                    hitv = 8;
+                    dam = 0;
+                    break;
+                default: {
+                    dam = dmgval(weapon, { type: player?.data || {} });
+                    hitv = 3 - distmin(player.x, player.y, mon.mx, mon.my);
+                    if (hitv < -4) hitv = -4;
+                    if (is_elf(mon?.type || {})
+                        && (objectData[weapon.otyp]?.sub === -P_BOW)) {
+                        hitv += 1;
+                        if (mon.weapon?.otyp === ELVEN_BOW) hitv += 1;
+                        if (weapon.otyp === ELVEN_ARROW) dam += 1;
+                    }
+                    const heroSize = player?.data?.size ?? MZ_HUMAN;
+                    if (heroSize >= MZ_LARGE) hitv += 1;
+                    hitv += 8 + (weapon.spe || 0);
+                    if (dam < 1) dam = 1;
+                    break;
+                }
+                }
+                const hitu = thitu(hitv, dam, weapon, null, player, display, game, mon);
+                if (game) {
+                    if (typeof game.stop_occupation === 'function') game.stop_occupation();
+                    else if (typeof game.stopOccupation === 'function') game.stopOccupation();
+                    else if (game.occupation || Number.isInteger(game.multi)) {
+                        game.occupation = null;
+                        game.multi = 0;
+                    }
+                }
+                if (hitu) {
+                    break;
+                }
+            }
+
+            const forcehit = !rn2(5);
+            const nx = x + dx;
+            const ny = y + dy;
+            const nextLoc = isok(nx, ny) ? map.at(nx, ny) : null;
+            if (nextLoc && nextLoc.typ === IRONBARS && hits_bars(weapon, x, y, nx, ny, forcehit ? 1 : 0, 0, map)) {
+                break;
+            }
+            if (!range || flightBlocked(x, y, false, forcehit)) break;
+        }
+    } finally {
+        if (!tethered_weapon) {
+            tmp_at(DISP_END, 0);
+        }
+    }
+    tmp_at(x, y);
+    await nh_delay_output();
+    if (tethered_weapon) {
+        tmp_at(DISP_END, BACKTRACK);
+        return { drop: false, returnFlight: true, x: mon.mx, y: mon.my };
+    }
+    return { drop: true, x: dropX, y: dropY };
 }
 
 // C ref: mthrowu.c return_from_mtoss().
@@ -618,7 +750,7 @@ export function m_throw(
 
 // C ref: mthrowu.c thrwmu() — monster throws at player.
 // Returns true if the monster acted (threw something).
-export function thrwmu(mon, map, player, display, game) {
+export async function thrwmu(mon, map, player, display, game) {
     // C ref: mthrowu.c:1157-1159 — wield ranged weapon before selecting
     if (mon.weapon_check === NEED_WEAPON || !mon.weapon) {
         mon.weapon_check = NEED_RANGED_WEAPON;
@@ -668,12 +800,12 @@ export function thrwmu(mon, map, player, display, game) {
 
     mon.mux = targetX;
     mon.muy = targetY;
-    return monshoot(mon, otmp, mon.weapon, map, player, display, game, null);
+    return await monshoot(mon, otmp, mon.weapon, map, player, display, game, null);
 }
 
 // Monster throws item at another monster.
 // C ref: mthrowu.c thrwmm().
-export function thrwmm(mtmp, mtarg, map, player, display, game) {
+export async function thrwmm(mtmp, mtarg, map, player, display, game) {
     if (!mtmp || !mtarg) return 0;
     if (mtmp.weapon_check === NEED_WEAPON || !mtmp.weapon) {
         mtmp.weapon_check = NEED_RANGED_WEAPON;
@@ -682,12 +814,12 @@ export function thrwmm(mtmp, mtarg, map, player, display, game) {
     const otmp = select_rwep(mtmp);
     if (!otmp) return 0;
     if (!m_lined_up(mtarg, mtmp, map, player)) return 0;
-    return monshoot(mtmp, otmp, mtmp.weapon, map, player, display, game, mtarg) ? 1 : 0;
+    return (await monshoot(mtmp, otmp, mtmp.weapon, map, player, display, game, mtarg)) ? 1 : 0;
 }
 
 // monster spits substance at monster.
 // C ref: mthrowu.c spitmm().
-export function spitmm(mtmp, mattk, mtarg, map, player, display, game) {
+export async function spitmm(mtmp, mattk, mtarg, map, player, display, game) {
     if (!mtmp || !mattk || !mtarg) return 0;
     if (mtmp.mcan) {
         if (display) display.putstr_message(`A dry rattle comes from the ${monDisplayName(mtmp)}'s throat.`);
@@ -706,13 +838,13 @@ export function spitmm(mtmp, mattk, mtarg, map, player, display, game) {
     if (display) {
         display.putstr_message(`The ${monDisplayName(mtmp)} spits venom!`);
     }
-    return monshoot(mtmp, otmp, null, map, player, display, game, mtarg) ? 1 : 0;
+    return (await monshoot(mtmp, otmp, null, map, player, display, game, mtarg)) ? 1 : 0;
 }
 
 // monster spits substance at hero.
 // C ref: mthrowu.c spitmu().
-export function spitmu(mtmp, mattk, map, player, display, game) {
-    return spitmm(mtmp, mattk, player, map, player, display, game);
+export async function spitmu(mtmp, mattk, map, player, display, game) {
+    return await spitmm(mtmp, mattk, player, map, player, display, game);
 }
 
 // hero catches gem thrown by mon iff unicorn.

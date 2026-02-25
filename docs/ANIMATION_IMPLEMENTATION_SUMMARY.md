@@ -14,7 +14,7 @@ Animation infrastructure is in place (`tmp_at`, delay boundaries, overlay lifecy
 
 ### Not Yet Fully Parity-Complete
 1. Real timed delay usage is still mixed.
-- More gameplay paths now await `nh_delay_output()` (beam zap, non-beam immediate wand traversal, chain-lightning spell, wand-of-digging `zap_dig` traversal, player throw-command projectile frame), but many paths still rely on `nh_delay_output_nowait()` boundaries.
+- More gameplay paths now await `nh_delay_output()` (beam zap, non-beam immediate wand traversal, chain-lightning spell, wand-of-digging `zap_dig` traversal, player throw-command projectile frame, monster ranged projectile flow via async `mthrowu` path), but many paths still rely on `nh_delay_output_nowait()` boundaries.
 - Result: structural replay boundaries are often correct before full visible timing parity is reached.
 
 2. `zap.c` coverage is incomplete.

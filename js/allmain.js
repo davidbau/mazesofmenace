@@ -62,7 +62,7 @@ import { initAnimation, configureAnimation, setAnimationMode } from './animation
 // then moveloop_turnend() for once-per-turn effects.
 // opts.skipMonsterMove: skip movemon (used by some test harnesses)
 // opts.computeFov: recompute FOV before movemon (C ref: vision_recalc runs in domove)
-export function moveloop_core(game, opts = {}) {
+export async function moveloop_core(game, opts = {}) {
     const player = game.player;
     if (opts.computeFov) {
         game.fov.compute(game.map, player.x, player.y);
@@ -77,7 +77,7 @@ export function moveloop_core(game, opts = {}) {
         let monscanmove = false;
         if (!opts.skipMonsterMove) {
             do {
-                monscanmove = movemon(game.map, player, game.display, game.fov, game);
+                monscanmove = await movemon(game.map, player, game.display, game.fov, game);
                 if (player.umovement >= NORMAL_SPEED)
                     break; /* it's now your turn */
             } while (monscanmove);
@@ -449,7 +449,7 @@ export async function run_command(game, ch, opts = {}) {
 
     // Process one timed turn of world updates after a command consumed time.
     const advanceTimedTurn = async () => {
-        moveloop_core(game, coreOpts);
+        await moveloop_core(game, coreOpts);
         if (onTimedTurn) {
             await onTimedTurn();
         }
@@ -582,7 +582,7 @@ async function _drainOccupation(game, coreOpts, onTimedTurn) {
         }
 
         // Occupation step took time — process monster moves + turn-end
-        moveloop_core(game, coreOpts);
+        await moveloop_core(game, coreOpts);
         if (onTimedTurn) await onTimedTurn();
 
         if (finishedOcc && typeof finishedOcc.onFinishAfterTurn === 'function') {
@@ -1042,10 +1042,10 @@ export class NetHackGame {
     }
 
     // Run the deferred timed turn postponed from a stop_occupation frame.
-    runPendingDeferredTimedTurn() {
+    async runPendingDeferredTimedTurn() {
         if (!this.pendingDeferredTimedTurn) return;
         this.pendingDeferredTimedTurn = false;
-        moveloop_core(this, { computeFov: true });
+        await moveloop_core(this, { computeFov: true });
     }
 
     // C-parity naming for internal callers.
@@ -1293,7 +1293,7 @@ export class NetHackGame {
                 const { executeTravelStep } = await import('./hack.js');
                 const result = await executeTravelStep(this);
                 if (result.tookTime) {
-                    moveloop_core(this);
+                    await moveloop_core(this);
                 }
                 this.fov.compute(this.map, this.player.x, this.player.y);
                 this.display.renderMap(this.map, this.player, this.fov, this.flags);
@@ -1346,7 +1346,7 @@ export class NetHackGame {
                 this.lastCommand = { key: ch, count: countPrefix };
             }
 
-            this.runPendingDeferredTimedTurn();
+            await this.runPendingDeferredTimedTurn();
 
             await run_command(this, ch, {
                 countPrefix,

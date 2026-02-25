@@ -74,8 +74,7 @@ import { monflee } from './monmove.js';
 import { paralyze_monst } from './mhitm.js';
 import { makemon } from './makemon.js';
 import { placeFloorObject } from './floor_objects.js';
-import { linedUpToPlayer } from './mthrowu.js';
-import { m_throw } from './mthrowu.js';
+import { linedUpToPlayer, m_throw_timed } from './mthrowu.js';
 import { buzz } from './zap.js';
 import { resist, cancel_monst } from './zap.js';
 import { monverbself } from './do_name.js';
@@ -1689,7 +1688,7 @@ function mbhit(mon, range, fhitm, fhito, obj, map, player) {
 // ========================================================================
 // use_offensive — C ref: muse.c:1815
 // ========================================================================
-export function use_offensive(mtmp, map, player) {
+export async function use_offensive(mtmp, map, player) {
     let i;
     const otmp = m.offensive;
     const mdat = mtmp.type || {};
@@ -1781,7 +1780,7 @@ export function use_offensive(mtmp, map, player) {
         if (cansee(map, player, null, mtmp.mx, mtmp.my)) {
             pline_mon(mtmp, `${name} hurls a potion!`);
         }
-        m_throw(mtmp, mtmp.mx, mtmp.my,
+        await m_throw_timed(mtmp, mtmp.mx, mtmp.my,
             Math.sign((mtmp.mux ?? player.x) - mtmp.mx),
             Math.sign((mtmp.muy ?? player.y) - mtmp.my),
             distmin(mtmp.mx, mtmp.my, mtmp.mux ?? player.x, mtmp.muy ?? player.y),

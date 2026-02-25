@@ -818,14 +818,14 @@ function best_target(mon, forced, map, player) {
 // For early game pets (dogs/cats), they have no ranged attacks,
 // but best_target still evaluates targets (consuming RNG via score_targ).
 // The actual attack path (mattackm) is not reached for melee-only pets.
-export function pet_ranged_attk(mon, map, player, display, fov = null, game = null, hungry = false) {
+export async function pet_ranged_attk(mon, map, player, display, fov = null, game = null, hungry = false) {
     const mtarg = best_target(mon, false, map, player);
     // C ref: dogmove.c:912-970 — if target exists, pet may attempt attack.
     if (!mtarg) return 0;
     // C ref: dogmove.c:897 — hungry pets only attack 1 in 5
     if (hungry && rn2(5)) return 0;
     if (mtarg.isPlayer) {
-        monsterAttackPlayer(mon, player, display, game);
+        await monsterAttackPlayer(mon, player, display, game);
         return 1; // acted (MMOVE_DONE)
     }
     // C ref: dogmove.c:918 — mattackm(mtmp, mtarg)
@@ -857,7 +857,7 @@ export function pet_ranged_attk(mon, map, player, display, fov = null, game = nu
 
 // C ref: dogmove.c dog_move() — full pet movement logic
 // Returns: -2 (skip), 0 (stay), 1 (moved), 2 (moved+ate)
-export function dog_move(mon, map, player, display, fov, after = false, game = null) {
+export async function dog_move(mon, map, player, display, fov, after = false, game = null) {
     const omx = mon.mx, omy = mon.my;
     // C ref: hack.h #define distu(xx,yy) dist2(xx,yy,u.ux,u.uy)
     const udist = dist2(omx, omy, player.x, player.y);
@@ -1356,7 +1356,7 @@ export function dog_move(mon, map, player, display, fov, after = false, game = n
     if (!do_eat) {
         // C ref: dogmove.c:897-901 — hungry flag for pet_ranged_attk
         const hungry = edogRaw && (turnCount > edog.hungrytime + DOG_HUNGRY);
-        const ranged = pet_ranged_attk(mon, map, player, display, fov, null, hungry);
+        const ranged = await pet_ranged_attk(mon, map, player, display, fov, null, hungry);
         if (ranged) return 0;
     }
 
@@ -1385,7 +1385,7 @@ export function dog_move(mon, map, player, display, fov, after = false, game = n
                 }
                 mon.mleashed = false;
             }
-            monsterAttackPlayer(mon, player, display, game);
+            await monsterAttackPlayer(mon, player, display, game);
             return 0; // MMOVE_DONE
         }
 

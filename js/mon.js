@@ -1469,7 +1469,7 @@ function m_calcdistress(mon, map, player) {
 // ========================================================================
 // movemon — C ref: mon.c movemon()
 // ========================================================================
-export function movemon(map, player, display, fov, game = null, { dochug, handleHiderPremove: hhp } = {}) {
+export async function movemon(map, player, display, fov, game = null, { dochug, handleHiderPremove: hhp } = {}) {
     if (game) game._suppressMonsterHitMessagesThisTurn = false;
     if (map) map._heardDistantNoiseThisTurn = false;
     let somebodyCanMove = false;
@@ -1512,7 +1512,7 @@ export function movemon(map, player, display, fov, game = null, { dochug, handle
                 }
             }
             // TODO: fightm() — Conflict not implemented
-            dochug(mon, map, player, display, fov, game);
+            await dochug(mon, map, player, display, fov, game);
             if (game && game.occupation && !mon.dead) {
                 const attacks = mon.type?.attacks || [];
                 const noAttacks = !attacks.some((a) => a && a.type !== AT_NONE);

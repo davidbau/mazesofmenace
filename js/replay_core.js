@@ -905,7 +905,7 @@ export async function replaySession(seed, session, opts = {}) {
     };
     const beginTimedRhack = (commandKey, onTimedTurn) => {
         game.advanceRunTurn = async () => {
-            onTimedTurn(true);
+            await onTimedTurn(true);
         };
         return rhack(commandKey, game);
     };
@@ -959,7 +959,7 @@ export async function replaySession(seed, session, opts = {}) {
             const key = step.key || '';
             const isAcknowledge = key === ' ' || key === '\n' || key === '\r';
             if (isAcknowledge) {
-                moveloop_core(game, { computeFov: true });
+                await moveloop_core(game, { computeFov: true });
                 pendingTransitionTurn = false;
                 game.renderCurrentScreen();
                 if (typeof opts.onStep === 'function') {
@@ -1159,7 +1159,7 @@ export async function replaySession(seed, session, opts = {}) {
                 }
             }
         };
-        const applyTimedTurn = (replaceTurnMessages = false) => {
+        const applyTimedTurn = async (replaceTurnMessages = false) => {
             let restorePutstr = null;
             if (replaceTurnMessages && game?.display && typeof game.display.putstr_message === 'function') {
                 const originalPutstr = game.display.putstr_message.bind(game.display);
@@ -1192,7 +1192,7 @@ export async function replaySession(seed, session, opts = {}) {
             // monster movement occurs before once-per-turn bookkeeping;
             // settrack() happens during turn setup before moves++ work.
             // C ref: vision_recalc() runs during domove(), update FOV before monsters act
-            moveloop_core(game, { computeFov: true });
+            await moveloop_core(game, { computeFov: true });
             if (restorePutstr) restorePutstr();
         };
         if (pendingCommand) {
@@ -1403,7 +1403,7 @@ export async function replaySession(seed, session, opts = {}) {
                         game.commandCount = 0;
                         game.multi = 0;
                         game.advanceRunTurn = async () => {
-                            applyTimedTurn(true);
+                            await applyTimedTurn(true);
                         };
                         const passthroughPromise = rhack(passthroughCh, game);
                         const settledPassthrough = await Promise.race([
@@ -1601,7 +1601,7 @@ export async function replaySession(seed, session, opts = {}) {
         // Run any monster turn deferred from a preceding stop_occupation frame,
         // now that the player's command has updated hero position.
         // C ref: dogmove.c:583 — On_stairs(u.ux, u.uy) needs hero's post-move pos.
-        game.runPendingDeferredTimedTurn();
+        await game.runPendingDeferredTimedTurn();
 
         // If the command took time, run monster movement and turn effects.
         // Running/rushing can pack multiple movement steps into one command.
@@ -1613,7 +1613,7 @@ export async function replaySession(seed, session, opts = {}) {
                     game.display.topMessage = null;
                     game.display.messageNeedsMore = false;
                 }
-                applyTimedTurn();
+                await applyTimedTurn();
 
             }
             if (game.multi > 0 && typeof game.shouldInterruptMulti === 'function'
@@ -1636,7 +1636,7 @@ export async function replaySession(seed, session, opts = {}) {
                     game.occupation = null;
                     game.pendingPrompt = null;
                 }
-                applyTimedTurn();
+                await applyTimedTurn();
                 if (finishedOcc && typeof finishedOcc.onFinishAfterTurn === 'function') {
                     finishedOcc.onFinishAfterTurn(game);
                 }
@@ -1670,7 +1670,7 @@ export async function replaySession(seed, session, opts = {}) {
                 game.multi--;
                 const repeated = applyPostRhack(await rhack(game.cmdKey, game));
                 if (!repeated || !repeated.tookTime) break;
-                applyTimedTurn();
+                await applyTimedTurn();
 
                 syncHpFromStepScreen();
                 if (repeatedMoveCmd && repeated.moved === false) {
@@ -1694,7 +1694,7 @@ export async function replaySession(seed, session, opts = {}) {
                         game.occupation = null;
                         game.pendingPrompt = null;
                     }
-                    applyTimedTurn(true);
+                    await applyTimedTurn(true);
                     syncHpFromStepScreen();
                     if (finishedOcc && typeof finishedOcc.onFinishAfterTurn === 'function') {
                         finishedOcc.onFinishAfterTurn(game);

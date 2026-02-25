@@ -108,8 +108,8 @@ import { find_defensive, use_defensive, find_misc, use_misc } from './muse.js';
 // ========================================================================
 // movemon — wrapper that binds dochug into mon.js movemon
 // ========================================================================
-export function movemon(map, player, display, fov, game = null) {
-    return _movemon(map, player, display, fov, game, { dochug, handleHiderPremove });
+export async function movemon(map, player, display, fov, game = null) {
+    return await _movemon(map, player, display, fov, game, { dochug, handleHiderPremove });
 }
 
 // C direction tables (C ref: monmove.c)
@@ -754,7 +754,7 @@ function mind_blast(mon, map, player, display = null, fov = null) {
 // ========================================================================
 
 
-function dochug(mon, map, player, display, fov, game = null) {
+async function dochug(mon, map, player, display, fov, game = null) {
     if (mon.waiting && map?.flags?.is_tutorial) return;
 
     if (mon.type && mon.type.symbol === S_MIMIC) {
@@ -952,7 +952,7 @@ function dochug(mon, map, player, display, fov, game = null) {
             moveDone = true; // eating uses up the action (MMOVE_DONE)
         } else if (mon.tame) {
             const omx = mon.mx, omy = mon.my;
-            dog_move(mon, map, player, display, fov, false, game);
+            await dog_move(mon, map, player, display, fov, false, game);
             if (!mon.dead && (mon.mx !== omx || mon.my !== omy)) {
                 const trapResult = mintrap_postmove(mon, map, player);
                 if (trapResult === 2 || trapResult === 3) {
@@ -1018,12 +1018,12 @@ function dochug(mon, map, player, display, fov, game = null) {
                     if (maybeMonsterWieldBeforeAttack(mon, player, display, fov, true)) {
                         return;
                     }
-                    monsterAttackPlayer(mon, player, display, game);
+                    await monsterAttackPlayer(mon, player, display, game);
                 }
             } else {
                 // At range: route through monsterAttackPlayer with range2=true
                 // so it iterates the attack table and calls thrwmu for AT_WEAP.
-                monsterAttackPlayer(mon, player, display, game, { range2: true, map });
+                await monsterAttackPlayer(mon, player, display, game, { range2: true, map });
             }
         }
     }
@@ -1552,8 +1552,8 @@ export function set_apparxy(mon, map, player) {
 // C ref: monmove.c:203 dochugw() — move a monster, check if hero should stop
 // In JS, this logic is already inline in mon.js movemon(). This is a
 // named export for external callers that need the same behavior.
-export function dochugw(mon, map, player, display, fov, game) {
-    dochug(mon, map, player, display, fov, game);
+export async function dochugw(mon, map, player, display, fov, game) {
+    await dochug(mon, map, player, display, fov, game);
 }
 
 // C ref: monmove.c:648 m_everyturn_effect() — per-turn effects (fog cloud)

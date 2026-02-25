@@ -906,7 +906,7 @@ function mhitu_adtyping(monster, attack, player, mhm, ctx) {
 // cf. mhitu.c mattacku() / hitmu() — restructured to match C's flow.
 // opts.range2: true if monster is not adjacent (ranged attacks only)
 // opts.map: map object (needed for thrwmu ranged throwing)
-export function monsterAttackPlayer(monster, player, display, game = null, opts = {}) {
+export async function monsterAttackPlayer(monster, player, display, game = null, opts = {}) {
     if (!monster.attacks || monster.attacks.length === 0) return;
     if (monster.passive) return; // passive monsters don't initiate attacks
 
@@ -923,11 +923,11 @@ export function monsterAttackPlayer(monster, player, display, game = null, opts 
         if (range2) {
             if (attack.type === AT_WEAP) {
                 // cf. mhitu.c:882-885 — AT_WEAP at range calls thrwmu
-                if (map) thrwmu(monster, map, player, display, game);
+                if (map) await thrwmu(monster, map, player, display, game);
                 continue;
             }
             if (attack.type === AT_SPIT) {
-                if (map) spitmu(monster, attack, map, player, display, game);
+                if (map) await spitmu(monster, attack, map, player, display, game);
                 continue;
             }
             if (attack.type === AT_BREA) {
