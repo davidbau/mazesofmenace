@@ -2,11 +2,295 @@
 // C ref: display.c show_glyph()/mapglyph pipeline; JS passes either
 // { ch, color } cells or numeric values from various call sites.
 
-import { objectData } from './objects.js';
-import { def_monsyms, defsyms } from './symbols.js';
+import { mons } from './monsters.js';
+import { CORPSE, objectData } from './objects.js';
+import {
+    CLR_GRAY,
+    CLR_WHITE,
+    def_monsyms,
+    def_warnsyms,
+    defsyms,
+    MAXTCHARS,
+    S_altar,
+    S_arrow_trap,
+    S_brdnladder,
+    S_digbeam,
+    S_expl_br,
+    S_expl_tl,
+    S_goodpos,
+    S_grave,
+    S_ndoor,
+    S_stone,
+    S_sw_tl,
+    S_trwall,
+    S_vbeam,
+    S_vwall,
+    S_invisible,
+    WARNCOUNT,
+} from './symbols.js';
 
-const CLR_GRAY = 7;
-const CLR_WHITE = 15;
+const NUM_ZAP = 8;
+const MAXEXPCHARS = (S_expl_br - S_expl_tl) + 1;
+const WALL_VARIANT_COUNT = (S_trwall - S_vwall) + 1;
+const CMAP_A_COUNT = (S_brdnladder - S_ndoor) + 1;
+const CMAP_B_COUNT = S_arrow_trap + MAXTCHARS - S_grave;
+const CMAP_C_COUNT = (S_goodpos - S_digbeam) + 1;
+const SWALLOW_COUNT = 8;
+
+function glyphLayout() {
+    const NUMMONS = Array.isArray(mons) ? mons.length : 0;
+    const NUM_OBJECTS = Array.isArray(objectData) ? objectData.length : 0;
+
+    const GLYPH_MON_OFF = 0;
+    const GLYPH_MON_MALE_OFF = GLYPH_MON_OFF;
+    const GLYPH_MON_FEM_OFF = NUMMONS + GLYPH_MON_MALE_OFF;
+    const GLYPH_PET_OFF = NUMMONS + GLYPH_MON_FEM_OFF;
+    const GLYPH_PET_MALE_OFF = GLYPH_PET_OFF;
+    const GLYPH_PET_FEM_OFF = NUMMONS + GLYPH_PET_MALE_OFF;
+    const GLYPH_INVIS_OFF = NUMMONS + GLYPH_PET_FEM_OFF;
+    const GLYPH_DETECT_OFF = 1 + GLYPH_INVIS_OFF;
+    const GLYPH_DETECT_MALE_OFF = GLYPH_DETECT_OFF;
+    const GLYPH_DETECT_FEM_OFF = NUMMONS + GLYPH_DETECT_MALE_OFF;
+    const GLYPH_BODY_OFF = NUMMONS + GLYPH_DETECT_FEM_OFF;
+    const GLYPH_RIDDEN_OFF = NUMMONS + GLYPH_BODY_OFF;
+    const GLYPH_RIDDEN_MALE_OFF = GLYPH_RIDDEN_OFF;
+    const GLYPH_RIDDEN_FEM_OFF = NUMMONS + GLYPH_RIDDEN_MALE_OFF;
+    const GLYPH_OBJ_OFF = NUMMONS + GLYPH_RIDDEN_FEM_OFF;
+    const GLYPH_CMAP_OFF = NUM_OBJECTS + GLYPH_OBJ_OFF;
+    const GLYPH_CMAP_STONE_OFF = GLYPH_CMAP_OFF;
+    const GLYPH_CMAP_MAIN_OFF = 1 + GLYPH_CMAP_STONE_OFF;
+    const GLYPH_CMAP_MINES_OFF = WALL_VARIANT_COUNT + GLYPH_CMAP_MAIN_OFF;
+    const GLYPH_CMAP_GEH_OFF = WALL_VARIANT_COUNT + GLYPH_CMAP_MINES_OFF;
+    const GLYPH_CMAP_KNOX_OFF = WALL_VARIANT_COUNT + GLYPH_CMAP_GEH_OFF;
+    const GLYPH_CMAP_SOKO_OFF = WALL_VARIANT_COUNT + GLYPH_CMAP_KNOX_OFF;
+    const GLYPH_CMAP_A_OFF = WALL_VARIANT_COUNT + GLYPH_CMAP_SOKO_OFF;
+    const GLYPH_ALTAR_OFF = CMAP_A_COUNT + GLYPH_CMAP_A_OFF;
+    const GLYPH_CMAP_B_OFF = 5 + GLYPH_ALTAR_OFF;
+    const GLYPH_ZAP_OFF = CMAP_B_COUNT + GLYPH_CMAP_B_OFF;
+    const GLYPH_CMAP_C_OFF = (NUM_ZAP << 2) + GLYPH_ZAP_OFF;
+    const GLYPH_SWALLOW_OFF = CMAP_C_COUNT + GLYPH_CMAP_C_OFF;
+    const GLYPH_EXPLODE_OFF = (NUMMONS << 3) + GLYPH_SWALLOW_OFF;
+    const GLYPH_EXPLODE_DARK_OFF = GLYPH_EXPLODE_OFF;
+    const GLYPH_EXPLODE_NOXIOUS_OFF = MAXEXPCHARS + GLYPH_EXPLODE_DARK_OFF;
+    const GLYPH_EXPLODE_MUDDY_OFF = MAXEXPCHARS + GLYPH_EXPLODE_NOXIOUS_OFF;
+    const GLYPH_EXPLODE_WET_OFF = MAXEXPCHARS + GLYPH_EXPLODE_MUDDY_OFF;
+    const GLYPH_EXPLODE_MAGICAL_OFF = MAXEXPCHARS + GLYPH_EXPLODE_WET_OFF;
+    const GLYPH_EXPLODE_FIERY_OFF = MAXEXPCHARS + GLYPH_EXPLODE_MAGICAL_OFF;
+    const GLYPH_EXPLODE_FROSTY_OFF = MAXEXPCHARS + GLYPH_EXPLODE_FIERY_OFF;
+    const GLYPH_WARNING_OFF = MAXEXPCHARS + GLYPH_EXPLODE_FROSTY_OFF;
+    const GLYPH_STATUE_OFF = WARNCOUNT + GLYPH_WARNING_OFF;
+    const GLYPH_STATUE_MALE_OFF = GLYPH_STATUE_OFF;
+    const GLYPH_STATUE_FEM_OFF = NUMMONS + GLYPH_STATUE_MALE_OFF;
+    const GLYPH_PILETOP_OFF = NUMMONS + GLYPH_STATUE_FEM_OFF;
+    const GLYPH_OBJ_PILETOP_OFF = GLYPH_PILETOP_OFF;
+    const GLYPH_BODY_PILETOP_OFF = NUM_OBJECTS + GLYPH_OBJ_PILETOP_OFF;
+    const GLYPH_STATUE_MALE_PILETOP_OFF = NUMMONS + GLYPH_BODY_PILETOP_OFF;
+    const GLYPH_STATUE_FEM_PILETOP_OFF = NUMMONS + GLYPH_STATUE_MALE_PILETOP_OFF;
+    const GLYPH_UNEXPLORED_OFF = NUMMONS + GLYPH_STATUE_FEM_PILETOP_OFF;
+    const GLYPH_NOTHING_OFF = GLYPH_UNEXPLORED_OFF + 1;
+
+    return {
+        NUMMONS,
+        NUM_OBJECTS,
+        GLYPH_MON_MALE_OFF,
+        GLYPH_MON_FEM_OFF,
+        GLYPH_PET_MALE_OFF,
+        GLYPH_PET_FEM_OFF,
+        GLYPH_INVIS_OFF,
+        GLYPH_DETECT_MALE_OFF,
+        GLYPH_DETECT_FEM_OFF,
+        GLYPH_BODY_OFF,
+        GLYPH_RIDDEN_MALE_OFF,
+        GLYPH_RIDDEN_FEM_OFF,
+        GLYPH_OBJ_OFF,
+        GLYPH_CMAP_OFF,
+        GLYPH_CMAP_STONE_OFF,
+        GLYPH_CMAP_MAIN_OFF,
+        GLYPH_CMAP_MINES_OFF,
+        GLYPH_CMAP_GEH_OFF,
+        GLYPH_CMAP_KNOX_OFF,
+        GLYPH_CMAP_SOKO_OFF,
+        GLYPH_CMAP_A_OFF,
+        GLYPH_ALTAR_OFF,
+        GLYPH_CMAP_B_OFF,
+        GLYPH_ZAP_OFF,
+        GLYPH_CMAP_C_OFF,
+        GLYPH_SWALLOW_OFF,
+        GLYPH_EXPLODE_OFF,
+        GLYPH_WARNING_OFF,
+        GLYPH_STATUE_MALE_OFF,
+        GLYPH_STATUE_FEM_OFF,
+        GLYPH_OBJ_PILETOP_OFF,
+        GLYPH_BODY_PILETOP_OFF,
+        GLYPH_STATUE_MALE_PILETOP_OFF,
+        GLYPH_STATUE_FEM_PILETOP_OFF,
+        GLYPH_UNEXPLORED_OFF,
+        GLYPH_NOTHING_OFF,
+    };
+}
+
+function fromDefsym(idx) {
+    if (!Number.isInteger(idx) || idx < 0 || idx >= defsyms.length) return null;
+    const sym = defsyms[idx];
+    if (!sym || typeof sym.ch !== 'string' || sym.ch.length === 0) return null;
+    return {
+        ch: sym.ch[0],
+        color: Number.isInteger(sym.color) ? sym.color : CLR_GRAY,
+        attr: 0,
+    };
+}
+
+function fromMonsterIndex(mndx) {
+    if (!Number.isInteger(mndx) || mndx < 0 || mndx >= mons.length) return null;
+    const mon = mons[mndx] || {};
+    const mlet = Number.isInteger(mon.symbol) ? mon.symbol : 0;
+    const sym = def_monsyms[mlet];
+    if (!sym || typeof sym.sym !== 'string' || sym.sym.length === 0) return null;
+    return {
+        ch: sym.sym[0],
+        color: Number.isInteger(mon.color) ? mon.color : CLR_WHITE,
+        attr: 0,
+    };
+}
+
+function fromObjectIndex(otyp) {
+    if (!Number.isInteger(otyp) || otyp < 0 || otyp >= objectData.length) return null;
+    const obj = objectData[otyp] || {};
+    if (typeof obj.symbol !== 'string' || obj.symbol.length === 0) return null;
+    return {
+        ch: obj.symbol[0],
+        color: Number.isInteger(obj.color) ? obj.color : CLR_WHITE,
+        attr: 0,
+    };
+}
+
+function inRange(v, start, len) {
+    return v >= start && v < (start + len);
+}
+
+function decodeCMapGlyph(glyph, G) {
+    if (glyph === G.GLYPH_CMAP_STONE_OFF) {
+        return fromDefsym(S_stone);
+    }
+    if (inRange(glyph, G.GLYPH_CMAP_MAIN_OFF, WALL_VARIANT_COUNT)) {
+        return fromDefsym(S_vwall + (glyph - G.GLYPH_CMAP_MAIN_OFF));
+    }
+    if (inRange(glyph, G.GLYPH_CMAP_MINES_OFF, WALL_VARIANT_COUNT)) {
+        return fromDefsym(S_vwall + (glyph - G.GLYPH_CMAP_MINES_OFF));
+    }
+    if (inRange(glyph, G.GLYPH_CMAP_GEH_OFF, WALL_VARIANT_COUNT)) {
+        return fromDefsym(S_vwall + (glyph - G.GLYPH_CMAP_GEH_OFF));
+    }
+    if (inRange(glyph, G.GLYPH_CMAP_KNOX_OFF, WALL_VARIANT_COUNT)) {
+        return fromDefsym(S_vwall + (glyph - G.GLYPH_CMAP_KNOX_OFF));
+    }
+    if (inRange(glyph, G.GLYPH_CMAP_SOKO_OFF, WALL_VARIANT_COUNT)) {
+        return fromDefsym(S_vwall + (glyph - G.GLYPH_CMAP_SOKO_OFF));
+    }
+    if (inRange(glyph, G.GLYPH_CMAP_A_OFF, CMAP_A_COUNT)) {
+        return fromDefsym(S_ndoor + (glyph - G.GLYPH_CMAP_A_OFF));
+    }
+    if (inRange(glyph, G.GLYPH_ALTAR_OFF, 5)) {
+        return fromDefsym(S_altar);
+    }
+    if (inRange(glyph, G.GLYPH_CMAP_B_OFF, CMAP_B_COUNT)) {
+        return fromDefsym(S_grave + (glyph - G.GLYPH_CMAP_B_OFF));
+    }
+    if (inRange(glyph, G.GLYPH_ZAP_OFF, NUM_ZAP << 2)) {
+        return fromDefsym(S_vbeam + ((glyph - G.GLYPH_ZAP_OFF) % 4));
+    }
+    if (inRange(glyph, G.GLYPH_CMAP_C_OFF, CMAP_C_COUNT)) {
+        return fromDefsym(S_digbeam + (glyph - G.GLYPH_CMAP_C_OFF));
+    }
+    return null;
+}
+
+function decodeCGlyph(glyph) {
+    if (!Number.isInteger(glyph) || glyph < 0) return null;
+    const G = glyphLayout();
+
+    if (inRange(glyph, G.GLYPH_OBJ_OFF, G.NUM_OBJECTS)) {
+        return fromObjectIndex(glyph - G.GLYPH_OBJ_OFF);
+    }
+    if (inRange(glyph, G.GLYPH_OBJ_PILETOP_OFF, G.NUM_OBJECTS)) {
+        return fromObjectIndex(glyph - G.GLYPH_OBJ_PILETOP_OFF);
+    }
+    if (inRange(glyph, G.GLYPH_BODY_OFF, G.NUMMONS)) {
+        return fromObjectIndex(CORPSE);
+    }
+    if (inRange(glyph, G.GLYPH_BODY_PILETOP_OFF, G.NUMMONS)) {
+        return fromObjectIndex(CORPSE);
+    }
+
+    if (inRange(glyph, G.GLYPH_MON_MALE_OFF, G.NUMMONS)) {
+        return fromMonsterIndex(glyph - G.GLYPH_MON_MALE_OFF);
+    }
+    if (inRange(glyph, G.GLYPH_MON_FEM_OFF, G.NUMMONS)) {
+        return fromMonsterIndex(glyph - G.GLYPH_MON_FEM_OFF);
+    }
+    if (inRange(glyph, G.GLYPH_PET_MALE_OFF, G.NUMMONS)) {
+        return fromMonsterIndex(glyph - G.GLYPH_PET_MALE_OFF);
+    }
+    if (inRange(glyph, G.GLYPH_PET_FEM_OFF, G.NUMMONS)) {
+        return fromMonsterIndex(glyph - G.GLYPH_PET_FEM_OFF);
+    }
+    if (inRange(glyph, G.GLYPH_DETECT_MALE_OFF, G.NUMMONS)) {
+        return fromMonsterIndex(glyph - G.GLYPH_DETECT_MALE_OFF);
+    }
+    if (inRange(glyph, G.GLYPH_DETECT_FEM_OFF, G.NUMMONS)) {
+        return fromMonsterIndex(glyph - G.GLYPH_DETECT_FEM_OFF);
+    }
+    if (inRange(glyph, G.GLYPH_RIDDEN_MALE_OFF, G.NUMMONS)) {
+        return fromMonsterIndex(glyph - G.GLYPH_RIDDEN_MALE_OFF);
+    }
+    if (inRange(glyph, G.GLYPH_RIDDEN_FEM_OFF, G.NUMMONS)) {
+        return fromMonsterIndex(glyph - G.GLYPH_RIDDEN_FEM_OFF);
+    }
+    if (inRange(glyph, G.GLYPH_STATUE_MALE_OFF, G.NUMMONS)) {
+        return fromMonsterIndex(glyph - G.GLYPH_STATUE_MALE_OFF);
+    }
+    if (inRange(glyph, G.GLYPH_STATUE_FEM_OFF, G.NUMMONS)) {
+        return fromMonsterIndex(glyph - G.GLYPH_STATUE_FEM_OFF);
+    }
+    if (inRange(glyph, G.GLYPH_STATUE_MALE_PILETOP_OFF, G.NUMMONS)) {
+        return fromMonsterIndex(glyph - G.GLYPH_STATUE_MALE_PILETOP_OFF);
+    }
+    if (inRange(glyph, G.GLYPH_STATUE_FEM_PILETOP_OFF, G.NUMMONS)) {
+        return fromMonsterIndex(glyph - G.GLYPH_STATUE_FEM_PILETOP_OFF);
+    }
+    if (glyph === G.GLYPH_INVIS_OFF) {
+        const invis = def_monsyms[S_invisible];
+        if (invis && typeof invis.sym === 'string' && invis.sym.length > 0) {
+            return { ch: invis.sym[0], color: CLR_GRAY, attr: 0 };
+        }
+    }
+
+    if (inRange(glyph, G.GLYPH_WARNING_OFF, WARNCOUNT)) {
+        const warn = def_warnsyms[glyph - G.GLYPH_WARNING_OFF];
+        if (warn && typeof warn.ch === 'string' && warn.ch.length > 0) {
+            return {
+                ch: warn.ch[0],
+                color: Number.isInteger(warn.color) ? warn.color : CLR_WHITE,
+                attr: 0,
+            };
+        }
+    }
+
+    const cmap = decodeCMapGlyph(glyph, G);
+    if (cmap) return cmap;
+
+    if (inRange(glyph, G.GLYPH_SWALLOW_OFF, G.NUMMONS * SWALLOW_COUNT)) {
+        return fromDefsym(S_sw_tl + ((glyph - G.GLYPH_SWALLOW_OFF) % SWALLOW_COUNT));
+    }
+    if (inRange(glyph, G.GLYPH_EXPLODE_OFF, MAXEXPCHARS * 7)) {
+        return fromDefsym(S_expl_tl + ((glyph - G.GLYPH_EXPLODE_OFF) % MAXEXPCHARS));
+    }
+    if (glyph === G.GLYPH_UNEXPLORED_OFF || glyph === G.GLYPH_NOTHING_OFF) {
+        return { ch: ' ', color: CLR_GRAY, attr: 0 };
+    }
+
+    return null;
+}
 
 export function tempGlyphToCell(glyph) {
     if (glyph && typeof glyph === 'object') {
@@ -21,34 +305,8 @@ export function tempGlyphToCell(glyph) {
     }
 
     if (Number.isInteger(glyph)) {
-        // Some call sites pass raw printable codepoints.
-        if (glyph >= 32 && glyph <= 126) {
-            return { ch: String.fromCharCode(glyph), color: CLR_WHITE, attr: 0 };
-        }
-        // Some call sites use object index-like values.
-        if (glyph >= 0 && glyph < objectData.length) {
-            const obj = objectData[glyph] || {};
-            if (typeof obj.symbol === 'string' && obj.symbol.length > 0) {
-                return {
-                    ch: obj.symbol[0],
-                    color: Number.isInteger(obj.color) ? obj.color : CLR_WHITE,
-                    attr: 0,
-                };
-            }
-        }
-        // Symbol-table fallback for terrain/monster-style indices.
-        if (glyph >= 0 && glyph < defsyms.length) {
-            const sym = defsyms[glyph];
-            if (sym && typeof sym.sym === 'string' && sym.sym.length > 0) {
-                return { ch: sym.sym[0], color: CLR_GRAY, attr: 0 };
-            }
-        }
-        if (glyph >= 0 && glyph < def_monsyms.length) {
-            const sym = def_monsyms[glyph];
-            if (sym && typeof sym.sym === 'string' && sym.sym.length > 0) {
-                return { ch: sym.sym[0], color: CLR_WHITE, attr: 0 };
-            }
-        }
+        const decoded = decodeCGlyph(glyph);
+        if (decoded) return decoded;
     }
 
     return { ch: '*', color: CLR_WHITE, attr: 0 };

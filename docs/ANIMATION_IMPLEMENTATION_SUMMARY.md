@@ -29,6 +29,7 @@ Animation infrastructure is in place (`tmp_at`, delay boundaries, overlay lifecy
 
 5. Display-layer glyph parity remains approximate.
 - `tmp_at` lifecycle is close.
+- Numeric transient glyph decoding now maps through C glyph-id domains (monster/object/cmap/zap/swallow/explosion/warning) instead of heuristic buckets.
 - Full C mapglyph/windowport equivalence remains open.
 
 ## Practical Meaning
