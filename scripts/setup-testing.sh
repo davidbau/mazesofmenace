@@ -4,6 +4,11 @@
 
 set -e
 
+REBUILD_DASHBOARD=0
+if [ "${1:-}" = "--rebuild-dashboard" ] || [ "${SETUP_REBUILD_DASHBOARD:-0}" = "1" ]; then
+  REBUILD_DASHBOARD=1
+fi
+
 echo "========================================"
 echo "Mazes of Menace - Testing Setup"
 echo "========================================"
@@ -52,11 +57,13 @@ echo "Fetching notes from remote..."
 if git fetch origin 2>/dev/null; then
   echo "✅ Notes fetched"
 
-  # Rebuild dashboard from notes
-  if [ -x .githooks/sync-notes-to-jsonl.sh ]; then
+  # Keep setup fast/idempotent by default; dashboard rebuild is optional.
+  if [ "$REBUILD_DASHBOARD" = "1" ] && [ -x .githooks/sync-notes-to-jsonl.sh ]; then
     echo "Rebuilding dashboard from test notes..."
     .githooks/sync-notes-to-jsonl.sh
     echo "✅ Dashboard rebuilt"
+  else
+    echo "ℹ️  Skipping dashboard rebuild (use --rebuild-dashboard or SETUP_REBUILD_DASHBOARD=1)"
   fi
 else
   echo "ℹ️  Could not fetch from remote"
