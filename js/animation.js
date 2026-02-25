@@ -40,6 +40,7 @@ class AnimationCore {
             trace: false,
             onTrace: null,
             onDelayBoundary: null,
+            canSee: null,
         };
     }
 
@@ -109,7 +110,7 @@ class AnimationCore {
             if (anim.saved.length < TMP_AT_MAX_GLYPHS) {
                 if (anim.saved.length > 0) {
                     const prev = anim.saved[anim.saved.length - 1];
-                    this._showGlyph(prev.x, prev.y, this._getTetherGlyph(prev.x, prev.y));
+                    this._showGlyph(prev.x, prev.y, this._getTetherGlyph(prev.x, prev.y, x, y));
                 }
                 anim.saved.push({ x, y });
                 this._showGlyph(x, y, anim.glyph);
@@ -185,6 +186,13 @@ class AnimationCore {
     }
 
     _canSee(_x, _y) {
+        if (typeof this.policy.canSee === 'function') {
+            try {
+                return !!this.policy.canSee(_x, _y);
+            } catch (_) {
+                return true;
+            }
+        }
         return true;
     }
 
@@ -200,8 +208,19 @@ class AnimationCore {
         }
     }
 
-    _getTetherGlyph(_x, _y) {
-        return this.currentAnim ? this.currentAnim.glyph : null;
+    _getTetherGlyph(_x0, _y0, _x1, _y1) {
+        const anim = this.currentAnim;
+        if (!anim) return null;
+        if (!Number.isFinite(_x0) || !Number.isFinite(_y0)
+            || !Number.isFinite(_x1) || !Number.isFinite(_y1)) {
+            return anim.glyph;
+        }
+        const dx = Math.sign(_x1 - _x0);
+        const dy = Math.sign(_y1 - _y0);
+        if (dx !== 0 && dy === 0) return { ch: '-', color: 7 };
+        if (dx === 0 && dy !== 0) return { ch: '|', color: 7 };
+        if (dx === dy) return { ch: '\\', color: 7 };
+        return { ch: '/', color: 7 };
     }
 
     _flush() {

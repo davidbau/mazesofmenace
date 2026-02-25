@@ -25,7 +25,7 @@ import { M2_WERE } from './monsters.js';
 import { were_change } from './were.js';
 import { allocateMonsterMovement } from './mon.js';
 import { rn2, rnd, rn1, initRng, getRngState, setRngState, getRngCallCount, setRngCallCount,
-         enableRngLog, getRngLog as readRngLog } from './rng.js';
+         enableRngLog, getRngLog as readRngLog, pushRngLogEntry } from './rng.js';
 import { NORMAL_SPEED, A_DEX, A_CON, ROOMOFFSET, SHOPBASE,
          COLNO, ROWNO, A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC,
          FEMALE, MALE, TERMINAL_COLS,
@@ -813,9 +813,32 @@ export class NetHackGame {
         setAnimationMode(interactiveMode ? 'interactive' : 'headless');
         configureAnimation({
             skipDelays: !interactiveMode,
+            canSee: (x, y) => {
+                if (!this.fov || typeof this.fov.canSee !== 'function') return true;
+                return !!this.fov.canSee(x, y);
+            },
             onDelayBoundary: (payload) => {
+                // Keep replay boundary semantics aligned with existing session logs.
+                pushRngLogEntry('>runmode_delay_output @ animation(tmp_at)');
+                pushRngLogEntry('<runmode_delay_output #0-0 @ animation(tmp_at)');
                 if (typeof this.hooks.onAnimationDelayBoundary === 'function') {
                     this.hooks.onAnimationDelayBoundary({ game: this, ...payload });
+                }
+            },
+            onTrace: (trace) => {
+                if (!trace || typeof trace.type !== 'string') return;
+                const p = trace;
+                if (trace.type === 'tmp_at_start') {
+                    pushRngLogEntry(`^tmp_at_start[mode=${p.mode},glyph=${String(p.glyph)}]`);
+                } else if (trace.type === 'tmp_at_step') {
+                    pushRngLogEntry(`^tmp_at_step[${p.x},${p.y},${String(p.glyph)}]`);
+                } else if (trace.type === 'tmp_at_end') {
+                    pushRngLogEntry(`^tmp_at_end[flags=${String(p.flags)}]`);
+                } else if (trace.type === 'delay_output') {
+                    pushRngLogEntry(`^delay_output[ms=${String(p.ms || 0)}]`);
+                }
+                if (typeof this.hooks.onAnimationTrace === 'function') {
+                    this.hooks.onAnimationTrace({ game: this, trace });
                 }
             },
         });

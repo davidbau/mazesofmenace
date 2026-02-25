@@ -49,6 +49,8 @@ import {
     buzz, ZT_BREATH, ZT_MAGIC_MISSILE, ZT_FIRE, ZT_COLD, ZT_SLEEP,
     ZT_DEATH, ZT_LIGHTNING, ZT_POISON_GAS, ZT_ACID,
 } from './zap.js';
+import { tmp_at, nh_delay_output_nowait, DISP_FLASH, DISP_END } from './animation.js';
+import { objectMapGlyph } from './display_rng.js';
 
 const hallublasts = [
     'bubbles', 'butterflies', 'dust specks', 'flowers', 'glitter',
@@ -497,30 +499,40 @@ export function m_throw(mon, startX, startY, dx, dy, range, weapon, map, player,
     }
 
     // C ref: mthrowu.c:652 — main flight loop
-    while (range-- > 0) {
-        x += dx;
-        y += dy;
-        if (!isok(x, y)) break;
-        const loc = map.at(x, y);
-        if (!loc) break;
-        if (ACCESSIBLE(loc.typ)) {
-            dropX = x;
-            dropY = y;
-        }
-
-        // Check for monster at this position
-        const mtmp = map.monsterAt(x, y);
-        if (mtmp && !mtmp.dead) {
-            if (ohitmon(mtmp, weapon, range, true, map, player, display, game)) {
-                break;
+    const projGlyph = objectMapGlyph(weapon, false, {
+        player,
+        x: startX,
+        y: startY,
+        observe: false,
+    });
+    tmp_at(DISP_FLASH, projGlyph);
+    try {
+        while (range-- > 0) {
+            x += dx;
+            y += dy;
+            if (!isok(x, y)) break;
+            const loc = map.at(x, y);
+            if (!loc) break;
+            if (ACCESSIBLE(loc.typ)) {
+                dropX = x;
+                dropY = y;
             }
-        }
+            tmp_at(x, y);
+            nh_delay_output_nowait();
 
-        // Check for player at this position
-        if (x === player.x && y === player.y) {
-            if (weapon?.oclass === GEM_CLASS && ucatchgem(weapon, mon, player, map, display)) {
-                break;
+            // Check for monster at this position
+            const mtmp = map.monsterAt(x, y);
+            if (mtmp && !mtmp.dead) {
+                if (ohitmon(mtmp, weapon, range, true, map, player, display, game)) {
+                    break;
+                }
             }
+
+            // Check for player at this position
+            if (x === player.x && y === player.y) {
+                if (weapon?.oclass === GEM_CLASS && ucatchgem(weapon, mon, player, map, display)) {
+                    break;
+                }
             let hitv;
             let dam;
             switch (weapon?.otyp) {
@@ -550,7 +562,8 @@ export function m_throw(mon, startX, startY, dx, dy, range, weapon, map, player,
             }
             const hitu = thitu(hitv, dam, weapon, null, player, display, game, mon);
             if (game) {
-                if (typeof game.stopOccupation === 'function') game.stopOccupation();
+                if (typeof game.stop_occupation === 'function') game.stop_occupation();
+                else if (typeof game.stopOccupation === 'function') game.stopOccupation();
                 else if (game.occupation || Number.isInteger(game.multi)) {
                     game.occupation = null;
                     game.multi = 0;
@@ -559,17 +572,20 @@ export function m_throw(mon, startX, startY, dx, dy, range, weapon, map, player,
             if (hitu) {
                 break;
             }
-        }
+            }
 
-        // C ref: mthrowu.c:772-773 — forcehit + MT_FLIGHTCHECK(FALSE, forcehit)
-        const forcehit = !rn2(5);
-        const nx = x + dx;
-        const ny = y + dy;
-        const nextLoc = isok(nx, ny) ? map.at(nx, ny) : null;
-        if (nextLoc && nextLoc.typ === IRONBARS && hits_bars(weapon, x, y, nx, ny, forcehit ? 1 : 0, 0, map)) {
-            break;
+            // C ref: mthrowu.c:772-773 — forcehit + MT_FLIGHTCHECK(FALSE, forcehit)
+            const forcehit = !rn2(5);
+            const nx = x + dx;
+            const ny = y + dy;
+            const nextLoc = isok(nx, ny) ? map.at(nx, ny) : null;
+            if (nextLoc && nextLoc.typ === IRONBARS && hits_bars(weapon, x, y, nx, ny, forcehit ? 1 : 0, 0, map)) {
+                break;
+            }
+            if (!range || flightBlocked(x, y, false, forcehit)) break;
         }
-        if (!range || flightBlocked(x, y, false, forcehit)) break;
+    } finally {
+        tmp_at(DISP_END, 0);
     }
     return { drop: true, x: dropX, y: dropY };
 }
@@ -604,7 +620,8 @@ export function thrwmu(mon, map, player, display, game) {
             thitu(hitv, dam, otmp, null, player, display, game, mon);
             // C ref: mthrowu.c m_throw() stop_occupation() ordering.
             if (game) {
-                if (typeof game.stopOccupation === 'function') game.stopOccupation();
+                if (typeof game.stop_occupation === 'function') game.stop_occupation();
+                else if (typeof game.stopOccupation === 'function') game.stopOccupation();
                 else if (game.occupation || Number.isInteger(game.multi)) {
                     game.occupation = null;
                     game.multi = 0;

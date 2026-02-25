@@ -58,6 +58,7 @@ import { delobj } from './invent.js';
 import { monflee } from './monmove.js';
 import { readobjnam, hands_obj } from './objnam.js';
 import { hold_another_object, prinv } from './invent.js';
+import { tmp_at, nh_delay_output_nowait, DISP_BEAM, DISP_END } from './animation.js';
 
 // Direction vectors matching commands.js DIRECTION_KEYS
 const DIRECTION_KEYS = {
@@ -806,6 +807,19 @@ export function buzz(type, nd, sx, sy, dx, dy, map, player) {
   dobuzz(type, nd, sx, sy, dx, dy, true, false, map, player);
 }
 
+function beamTempGlyph(type, dx, dy) {
+  const fltyp = zaptype(type);
+  const damgtype = fltyp % 10;
+  const ch = (dx !== 0 && dy !== 0) ? '/' : (dx !== 0 ? '-' : '|');
+  let color = 12;
+  if (damgtype === ZT_FIRE) color = 1;
+  else if (damgtype === ZT_COLD) color = 6;
+  else if (damgtype === ZT_LIGHTNING) color = 11;
+  else if (damgtype === ZT_POISON_GAS) color = 2;
+  else if (damgtype === ZT_ACID) color = 10;
+  return { ch, color };
+}
+
 // cf. zap.c:4720 dobuzz() — full beam propagation with bounce logic
 function dobuzz(type, nd, sx, sy, dx, dy, sayhit, saymiss, map, player) {
   const fltyp = zaptype(type);
@@ -816,92 +830,99 @@ function dobuzz(type, nd, sx, sy, dx, dy, sayhit, saymiss, map, player) {
   let lsx, lsy;
   let shopdamage = false;
 
-  while (range-- > 0) {
-    lsx = sx;
-    sx += dx;
-    lsy = sy;
-    sy += dy;
+  tmp_at(DISP_BEAM, beamTempGlyph(type, dx, dy));
+  try {
+    while (range-- > 0) {
+      lsx = sx;
+      sx += dx;
+      lsy = sy;
+      sy += dy;
 
-    if (!isok(sx, sy)) { sx = lsx; sy = lsy; break; }
-    const loc = map ? map.at(sx, sy) : null;
-    if (!loc) { sx = lsx; sy = lsy; break; }
-    if (loc.typ === 0) goto_bounce(); // STONE
+      if (!isok(sx, sy)) { sx = lsx; sy = lsy; break; }
+      const loc = map ? map.at(sx, sy) : null;
+      if (!loc) { sx = lsx; sy = lsy; break; }
+      tmp_at(sx, sy);
+      nh_delay_output_nowait();
+      if (loc.typ === 0) goto_bounce(); // STONE
 
-    // C ref: zap.c:4797-4802 — zap_over_floor for non-fireball, non-gas
-    if (damgtype !== ZT_POISON_GAS) {
-      range += zap_over_floor(sx, sy, type, { value: shopdamage }, true, 0, map);
-    }
+      // C ref: zap.c:4797-4802 — zap_over_floor for non-fireball, non-gas
+      if (damgtype !== ZT_POISON_GAS) {
+        range += zap_over_floor(sx, sy, type, { value: shopdamage }, true, 0, map);
+      }
 
-    // Check for monster
-    const mon = map ? map.monsterAt(sx, sy) : null;
-    if (mon && !mon.dead) {
-      const mac = find_mac ? find_mac(mon) : (mon.mac || 10);
-      if (zap_hit(mac, 0)) {
-        // C ref: zap.c:4825 — zhitm
-        const tmp = zhitm(mon, type, nd, map);
+      // Check for monster
+      const mon = map ? map.monsterAt(sx, sy) : null;
+      if (mon && !mon.dead) {
+        const mac = find_mac ? find_mac(mon) : (mon.mac || 10);
+        if (zap_hit(mac, 0)) {
+          // C ref: zap.c:4825 — zhitm
+          const tmp = zhitm(mon, type, nd, map);
 
-        if (tmp === MAGIC_COOKIE) {
-          // disintegration
-          mon.mhp = 0;
-        }
-        if (mon.mhp <= 0) {
-          // monster killed
-          if (type >= 0) {
-            // killed by hero
-            if (map.removeMonster) map.removeMonster(mon);
-            mondead(mon, map, player);
+          if (tmp === MAGIC_COOKIE) {
+            // disintegration
+            mon.mhp = 0;
+          }
+          if (mon.mhp <= 0) {
+            // monster killed
+            if (type >= 0) {
+              // killed by hero
+              if (map.removeMonster) map.removeMonster(mon);
+              mondead(mon, map, player);
+            } else {
+              // killed by other monster
+              if (map.removeMonster) map.removeMonster(mon);
+              mondead(mon, map, player);
+            }
           } else {
-            // killed by other monster
-            if (map.removeMonster) map.removeMonster(mon);
-            mondead(mon, map, player);
+            if (damgtype === ZT_SLEEP && mon.msleeping) {
+              slept_monst(mon);
+            }
           }
+          range -= 2;
+        }
+      }
+
+      // Check for player hit
+      if (player && sx === player.x && sy === player.y && range >= 0) {
+        if (zap_hit(player.uac || 10, 0)) {
+          range -= 2;
+          // C ref: zap.c:4920 — zhitu (damage to player)
+          // Simplified: just apply damage
+          const dam = d(nd, 6);
+          if (player.hp) player.hp -= dam;
+        }
+      }
+
+      // C ref: zap.c:4938-4993 — beam bounce off walls
+      if (loc && (IS_WALL(loc.typ) || IS_DOOR(loc.typ))) {
+        // Bounce logic
+        const bchance = IS_WALL(loc.typ) ? 75 : 75;
+        if (!dx || !dy || !rn2(bchance)) {
+          dx = -dx;
+          dy = -dy;
         } else {
-          if (damgtype === ZT_SLEEP && mon.msleeping) {
-            slept_monst(mon);
+          // Check diagonal bounce directions
+          const loc1 = map.at(sx, lsy);
+          const loc2 = map.at(lsx, sy);
+          let bounce = 0;
+          if (loc1 && !IS_WALL(loc1.typ) && !IS_DOOR(loc1.typ))
+            bounce = 1;
+          if (loc2 && !IS_WALL(loc2.typ) && !IS_DOOR(loc2.typ)) {
+            if (!bounce || rn2(2)) bounce = 2;
+          }
+          switch (bounce) {
+          case 0: dx = -dx; // fallthrough
+          case 1: dy = -dy; break;
+          case 2: dx = -dx; break;
           }
         }
-        range -= 2;
+        // Back up to before wall
+        sx = lsx;
+        sy = lsy;
       }
     }
-
-    // Check for player hit
-    if (player && sx === player.x && sy === player.y && range >= 0) {
-      if (zap_hit(player.uac || 10, 0)) {
-        range -= 2;
-        // C ref: zap.c:4920 — zhitu (damage to player)
-        // Simplified: just apply damage
-        const dam = d(nd, 6);
-        if (player.hp) player.hp -= dam;
-      }
-    }
-
-    // C ref: zap.c:4938-4993 — beam bounce off walls
-    if (loc && (IS_WALL(loc.typ) || IS_DOOR(loc.typ))) {
-      // Bounce logic
-      const bchance = IS_WALL(loc.typ) ? 75 : 75;
-      if (!dx || !dy || !rn2(bchance)) {
-        dx = -dx;
-        dy = -dy;
-      } else {
-        // Check diagonal bounce directions
-        const loc1 = map.at(sx, lsy);
-        const loc2 = map.at(lsx, sy);
-        let bounce = 0;
-        if (loc1 && !IS_WALL(loc1.typ) && !IS_DOOR(loc1.typ))
-          bounce = 1;
-        if (loc2 && !IS_WALL(loc2.typ) && !IS_DOOR(loc2.typ)) {
-          if (!bounce || rn2(2)) bounce = 2;
-        }
-        switch (bounce) {
-        case 0: dx = -dx; // fallthrough
-        case 1: dy = -dy; break;
-        case 2: dx = -dx; break;
-        }
-      }
-      // Back up to before wall
-      sx = lsx;
-      sy = lsy;
-    }
+  } finally {
+    tmp_at(DISP_END, 0);
   }
 
   function goto_bounce() {

@@ -55,6 +55,8 @@ import { goodpos } from './teleport.js';
 import { mpickobj } from './monutil.js';
 import { makemon } from './makemon.js';
 import { exercise } from './attrib_exercise.js';
+import { tmp_at, nh_delay_output_nowait, DISP_FLASH, DISP_END } from './animation.js';
+import { objectMapGlyph } from './display_rng.js';
 
 // ============================================================================
 // C macro equivalents -- weapon classification helpers
@@ -942,14 +944,22 @@ export function throwit(obj, wep_mask, twoweap, oldslot, player, map, game) {
     let hitMon = null;
     const dx = player.dx || 0, dy = player.dy || 0;
     let bx = player.x, by = player.y;
-    for (let i = 0; i < range; i++) {
-        const nx = bx + dx, ny = by + dy;
-        if (!isok(nx, ny)) break;
-        const loc = typeof map.at === 'function' ? map.at(nx, ny) : null;
-        if (!loc || !ZAP_POS(loc.typ)) break;
-        bx = nx; by = ny;
-        const mon = map.monsterAt ? map.monsterAt(bx, by) : null;
-        if (mon) { hitMon = mon; break; }
+    const projGlyph = objectMapGlyph(obj, false, { player, x: player.x, y: player.y, observe: false });
+    tmp_at(DISP_FLASH, projGlyph);
+    try {
+        for (let i = 0; i < range; i++) {
+            const nx = bx + dx, ny = by + dy;
+            if (!isok(nx, ny)) break;
+            const loc = typeof map.at === 'function' ? map.at(nx, ny) : null;
+            if (!loc || !ZAP_POS(loc.typ)) break;
+            bx = nx; by = ny;
+            tmp_at(bx, by);
+            nh_delay_output_nowait();
+            const mon = map.monsterAt ? map.monsterAt(bx, by) : null;
+            if (mon) { hitMon = mon; break; }
+        }
+    } finally {
+        tmp_at(DISP_END, 0);
     }
     if (game) game.bhitpos = { x: bx, y: by };
 

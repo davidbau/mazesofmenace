@@ -574,6 +574,8 @@ export class HeadlessDisplay {
         // behavior (used during session replay comparison).
         this.noConcatenateMessages = false;
         this._lastMapState = null;
+        this._mapBaseCells = new Map();
+        this._tempOverlay = new Map();
     }
 
     setCell(col, row, ch, color = CLR_GRAY, attr = 0) {
@@ -1096,6 +1098,8 @@ export class HeadlessDisplay {
                 this.setCell(col, row, sym.ch, sym.color);
             }
         }
+        this._captureMapBase();
+        this._applyTempOverlay();
     }
 
     _mapCoordToScreen(x, y) {
@@ -1115,20 +1119,59 @@ export class HeadlessDisplay {
         if (typeof glyph === 'string' && glyph.length > 0) {
             return { ch: glyph[0], color: CLR_WHITE };
         }
+        if (Number.isInteger(glyph)) {
+            return { ch: '*', color: CLR_WHITE };
+        }
         return { ch: '*', color: CLR_WHITE };
+    }
+
+    _overlayKey(col, row) {
+        return `${col},${row}`;
+    }
+
+    _captureMapBase() {
+        this._mapBaseCells.clear();
+        const mapOffset = this.flags?.msg_window ? 3 : MAP_ROW_START;
+        for (let y = 0; y < ROWNO; y++) {
+            const row = y + mapOffset;
+            for (let col = 0; col < COLNO - 1; col++) {
+                const ch = this.grid[row]?.[col];
+                if (typeof ch !== 'string') continue;
+                const color = Number.isInteger(this.colors[row]?.[col]) ? this.colors[row][col] : CLR_GRAY;
+                const attr = Number.isInteger(this.attrs[row]?.[col]) ? this.attrs[row][col] : 0;
+                this._mapBaseCells.set(this._overlayKey(col, row), { ch, color, attr });
+            }
+        }
+    }
+
+    _restoreBaseCell(col, row) {
+        const base = this._mapBaseCells.get(this._overlayKey(col, row));
+        if (!base) return;
+        this.setCell(col, row, base.ch, base.color, base.attr || 0);
+    }
+
+    _applyTempOverlay() {
+        for (const [key, cell] of this._tempOverlay.entries()) {
+            const parts = key.split(',');
+            const col = Number.parseInt(parts[0], 10);
+            const row = Number.parseInt(parts[1], 10);
+            if (!Number.isInteger(col) || !Number.isInteger(row)) continue;
+            this.setCell(col, row, cell.ch, cell.color, 0);
+        }
     }
 
     showTempGlyph(x, y, glyph) {
         const { col, row } = this._mapCoordToScreen(x, y);
         if (col < 0 || col >= COLNO - 1 || row < 0 || row >= this.rows) return;
         const cell = this._tempGlyphToCell(glyph);
+        this._tempOverlay.set(this._overlayKey(col, row), cell);
         this.setCell(col, row, cell.ch, cell.color);
     }
 
     redraw(x, y) {
-        if (!this._lastMapState) return;
-        const { gameMap, player, fov, flags } = this._lastMapState;
-        this.renderMap(gameMap, player, fov, flags);
+        const { col, row } = this._mapCoordToScreen(x, y);
+        this._tempOverlay.delete(this._overlayKey(col, row));
+        this._restoreBaseCell(col, row);
     }
 
     flush() {

@@ -700,9 +700,25 @@ export async function replaySession(seed, session, opts = {}) {
     initrack(); // clear hero track buffer between sessions
     enableRngLog();
 
+    let stepAnimationBoundaries = [];
     const display = new HeadlessDisplay();
     const input = createHeadlessInput();
-    const game = new NetHackGame({ display, input });
+    const game = new NetHackGame({
+        display,
+        input,
+        hooks: {
+            onAnimationDelayBoundary: () => {
+                if (!opts.captureScreens) return;
+                const snap = {
+                    screen: display.getScreenLines(),
+                    screenAnsi: (typeof display.getScreenAnsiLines === 'function')
+                        ? display.getScreenAnsiLines()
+                        : null,
+                };
+                stepAnimationBoundaries.push(snap);
+            },
+        },
+    });
 
     // Determine chargen keys for interactive chargen sessions
     const chargenKeys = getChargenKeys(session);
@@ -846,6 +862,7 @@ export async function replaySession(seed, session, opts = {}) {
             rng: compact,
             screen: normalizedScreen,
             screenAnsi: normalizedScreenAnsi,
+            animationBoundaries: stepAnimationBoundaries.slice(),
         });
         // Sync player stats from session screen data to keep game state
         // aligned with the C trace during replay.
@@ -897,6 +914,7 @@ export async function replaySession(seed, session, opts = {}) {
     };
 
     for (let stepIndex = 0; stepIndex < maxSteps; stepIndex++) {
+        stepAnimationBoundaries = [];
         const step = allSteps[stepIndex];
         game.map._replayStepIndex = stepIndex;
         const prevCount = getRngLog().length;
