@@ -261,7 +261,7 @@ describe('Monster movement', () => {
         assert.ok(messages.some((msg) => /wields/.test(msg)));
     });
 
-    it('AT_WEAP throws consume inventory and leave a floor projectile', () => {
+    it('AT_WEAP throws consume inventory and leave a floor projectile', async () => {
         initRng(42);
         const map = makeSimpleMap();
         const player = new Player();
@@ -282,7 +282,7 @@ describe('Monster movement', () => {
 
         const messages = [];
         const hpBefore = player.hp;
-        movemon(map, player, {
+        await movemon(map, player, {
             putstr_message(msg) {
                 messages.push(msg);
             },
