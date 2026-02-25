@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { readFileSync } from 'fs';
-import { tmp_at, DISP_FLASH, DISP_END } from '../../js/animations.js';
+import { tmp_at, DISP_FLASH, DISP_END } from '../../js/animation.js';
 import { delay_output, skipAnimationDelays } from '../../js/delay.js';
 import { captureAnimation, compareAnimations } from './helpers.js';
 

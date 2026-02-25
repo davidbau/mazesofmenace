@@ -5,7 +5,7 @@
  * into throw and zap commands, matching C NetHack behavior.
  */
 
-import { tmp_at, DISP_BEAM, DISP_FLASH, DISP_TETHER, DISP_END, BACKTRACK } from './animations.js';
+import { tmp_at, DISP_BEAM, DISP_FLASH, DISP_TETHER, DISP_END, BACKTRACK } from './animation.js';
 import { delay_output } from './delay.js';
 
 /**

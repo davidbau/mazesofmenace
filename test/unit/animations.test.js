@@ -1,5 +1,5 @@
 /**
- * Unit tests for animations.js (tmp_at system)
+ * Unit tests for animation.js (tmp_at system)
  */
 
 import { describe, it, beforeEach } from 'node:test';
@@ -7,7 +7,7 @@ import assert from 'node:assert';
 import { 
     DISP_BEAM, DISP_FLASH, DISP_END, DISP_TETHER, BACKTRACK,
     initAnimations, tmp_at 
-} from '../../js/animations.js';
+} from '../../js/animation.js';
 
 // Mock display for testing
 class MockDisplay {
@@ -45,7 +45,7 @@ class MockDisplay {
     }
 }
 
-describe('animations.js', () => {
+describe('animation.js', () => {
     let display;
 
     beforeEach(() => {

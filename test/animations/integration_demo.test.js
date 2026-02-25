@@ -5,7 +5,7 @@
 
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
-import { initAnimations, tmp_at, DISP_FLASH, DISP_BEAM, DISP_END } from '../../js/animations.js';
+import { initAnimations, tmp_at, DISP_FLASH, DISP_BEAM, DISP_END } from '../../js/animation.js';
 import { delay_output, skipAnimationDelays } from '../../js/delay.js';
 
 // Mock display

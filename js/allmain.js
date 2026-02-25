@@ -55,6 +55,7 @@ import { init_nhwindows, NHW_MENU, MENU_BEHAVE_STANDARD, PICK_ONE, ATR_NONE,
 import { CLR_GRAY } from './display.js';
 import { initFirstLevel } from './u_init.js';
 import { movebubbles } from './mkmaze.js';
+import { initAnimation, configureAnimation, setAnimationMode } from './animation.js';
 
 // cf. allmain.c:169 — moveloop_core() monster movement + turn-end processing.
 // Called after the hero's action took time.  Runs movemon() for monster turns,
@@ -747,6 +748,9 @@ export class NetHackGame {
         setOutputContext(this.display);
         this.flags = null; // set in init()
         this.input = deps.input || null;
+        if (this.display) {
+            initAnimation(this.display, { mode: 'headless', skipDelays: true });
+        }
     }
 
     // Emit lifecycle event
@@ -804,6 +808,18 @@ export class NetHackGame {
         if (!this.display) {
             throw new Error('NetHackGame requires deps.display');
         }
+
+        const interactiveMode = typeof window !== 'undefined' && typeof document !== 'undefined';
+        setAnimationMode(interactiveMode ? 'interactive' : 'headless');
+        configureAnimation({
+            skipDelays: !interactiveMode,
+            onDelayBoundary: (payload) => {
+                if (typeof this.hooks.onAnimationDelayBoundary === 'function') {
+                    this.hooks.onAnimationDelayBoundary({ game: this, ...payload });
+                }
+            },
+        });
+        initAnimation(this.display, {});
 
         if (this.deps.input) {
             setInputRuntime(this.deps.input);
@@ -1009,8 +1025,14 @@ export class NetHackGame {
         moveloop_core(this, { computeFov: true });
     }
 
-    stopOccupation() {
+    // C-parity naming for internal callers.
+    stop_occupation() {
         stop_occupation(this);
+    }
+
+    // Compatibility alias for existing JS call sites.
+    stopOccupation() {
+        this.stop_occupation();
     }
 
     // Render current screen state

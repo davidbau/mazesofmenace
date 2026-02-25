@@ -183,7 +183,7 @@ These JS files don't directly correspond to a single C file:
 | JS File | Purpose | C Counterparts |
 |---------|---------|----------------|
 | animation_examples.js | Animation demo data | None (JS-only) |
-| animations.js | Visual animations | None (JS-only) |
+| animation.js | Visual animations (`tmp_at`, `nh_delay_output`) | None (JS-only) |
 | attrib_exercise.js | Attribute exercise tracking | attrib.c |
 | browser_input.js | Browser keyboard/mouse input | None (JS-only) |
 | cmd.js | Command dispatch | cmd.c |

@@ -2,7 +2,7 @@
  * Test helpers for capturing and comparing animations
  */
 
-import { tmp_at, initAnimations } from '../../js/animations.js';
+import { tmp_at, initAnimations } from '../../js/animation.js';
 
 /**
  * Capture display for recording animation events

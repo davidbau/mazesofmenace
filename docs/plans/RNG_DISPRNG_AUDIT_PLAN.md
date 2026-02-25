@@ -59,7 +59,7 @@ Interpretation: most DISP RNG usage is in hallucination glyph/random-display pat
    - C DISP callsites:
      - `rg -n "rn2_on_display_rng|newsym_rn2" nethack-c/src nethack-c/include -g'*.c' -g'*.h'`
    - JS display-adjacent RNG callsites:
-     - `rg -n "rn2\\(|rnd\\(" js/display.js js/animations.js js/nethack.js js/headless_runtime.js js/pager.js -g'*.js'`
+    - `rg -n "rn2\\(|rnd\\(" js/display.js js/animation.js js/nethack.js js/headless_runtime.js js/pager.js -g'*.js'`
 5. Port C behavior first, then re-run session tests and confirm no regressions.
 
 ## Decision Criteria: Do We Need DISP-Specific Logging Infrastructure?

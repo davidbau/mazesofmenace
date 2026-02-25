@@ -573,6 +573,7 @@ export class HeadlessDisplay {
         // the previous one.  Set noConcatenateMessages=true to match this
         // behavior (used during session replay comparison).
         this.noConcatenateMessages = false;
+        this._lastMapState = null;
     }
 
     setCell(col, row, ch, color = CLR_GRAY, attr = 0) {
@@ -961,6 +962,7 @@ export class HeadlessDisplay {
 
     renderMap(gameMap, player, fov, flags = {}) {
         this.flags = { ...this.flags, ...flags };
+        this._lastMapState = { gameMap, player, fov, flags: { ...this.flags } };
         const mapOffset = this.flags.msg_window ? 3 : MAP_ROW_START;
 
         for (let y = 0; y < ROWNO; y++) {
@@ -1094,6 +1096,43 @@ export class HeadlessDisplay {
                 this.setCell(col, row, sym.ch, sym.color);
             }
         }
+    }
+
+    _mapCoordToScreen(x, y) {
+        const mapOffset = this.flags?.msg_window ? 3 : MAP_ROW_START;
+        return {
+            col: x - 1,
+            row: y + mapOffset,
+        };
+    }
+
+    _tempGlyphToCell(glyph) {
+        if (glyph && typeof glyph === 'object') {
+            const ch = typeof glyph.ch === 'string' && glyph.ch.length > 0 ? glyph.ch[0] : '*';
+            const color = Number.isInteger(glyph.color) ? glyph.color : CLR_WHITE;
+            return { ch, color };
+        }
+        if (typeof glyph === 'string' && glyph.length > 0) {
+            return { ch: glyph[0], color: CLR_WHITE };
+        }
+        return { ch: '*', color: CLR_WHITE };
+    }
+
+    showTempGlyph(x, y, glyph) {
+        const { col, row } = this._mapCoordToScreen(x, y);
+        if (col < 0 || col >= COLNO - 1 || row < 0 || row >= this.rows) return;
+        const cell = this._tempGlyphToCell(glyph);
+        this.setCell(col, row, cell.ch, cell.color);
+    }
+
+    redraw(x, y) {
+        if (!this._lastMapState) return;
+        const { gameMap, player, fov, flags } = this._lastMapState;
+        this.renderMap(gameMap, player, fov, flags);
+    }
+
+    flush() {
+        // Headless display writes are immediate.
     }
 
     renderStatus(player) {

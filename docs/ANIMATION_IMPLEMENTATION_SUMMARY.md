@@ -32,7 +32,7 @@
 
 #### ✅ Phase 4: Core Implementation
 - **interface-mte**: Implement tmp_at() animation system
-  - js/animations.js: Full tmp_at() API
+  - js/animation.js: Full tmp_at() API
   - All display modes supported
   - Nested animations via stack
   - 10/10 unit tests passing
@@ -60,7 +60,7 @@
 ## Statistics
 
 ### Code Created
-- **JavaScript**: 4 new modules (animations.js, delay.js, animation_examples.js, helpers.js)
+- **JavaScript**: 4 new modules (animation.js, delay.js, animation_examples.js, helpers.js)
 - **Tests**: 3 test files (animations.test.js, delay.test.js, integration_demo.test.js, animation_comparison.test.js)
 - **Documentation**: 2 comprehensive docs (ANIMATION_SYSTEM.md, ANIMATION_TESTING_STRATEGY.md)
 - **Tools**: 2 Python scripts + instrumentation patches
@@ -71,7 +71,7 @@
 - **Total**: 26/26 tests passing ✅
 
 ### Lines of Code
-- js/animations.js: ~260 lines
+- js/animation.js: ~260 lines
 - js/delay.js: ~110 lines
 - js/animation_examples.js: ~250 lines
 - test/animations/helpers.js: ~100 lines
@@ -111,7 +111,7 @@
 ## Files Created/Modified
 
 ### Production Code
-- js/animations.js
+- js/animation.js
 - js/delay.js
 - js/animation_examples.js
 

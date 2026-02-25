@@ -291,6 +291,7 @@ export class Display {
 
         // Game flags (updated by game, used for display options)
         this.flags = {};
+        this._lastMapState = null;
 
         this._createDOM();
     }
@@ -499,6 +500,7 @@ export class Display {
     renderMap(gameMap, player, fov, flags = {}) {
         // Store flags for use by other methods (e.g., putstr_message, terrainSymbol)
         this.flags = flags;
+        this._lastMapState = { gameMap, player, fov, flags };
 
         // When msg_window is enabled, map starts at row 3 (after 3-line message window)
         // Otherwise map starts at row 1 (after single message line)
@@ -681,6 +683,45 @@ export class Display {
                 this.cellInfo[row][col] = { name: desc, desc: '', color: sym.color };
             }
         }
+    }
+
+    _mapCoordToScreen(x, y) {
+        const mapOffset = this.flags?.msg_window ? 3 : MAP_ROW_START;
+        return {
+            col: x - 1,
+            row: y + mapOffset,
+        };
+    }
+
+    _tempGlyphToCell(glyph) {
+        if (glyph && typeof glyph === 'object') {
+            const ch = typeof glyph.ch === 'string' && glyph.ch.length > 0 ? glyph.ch[0] : '*';
+            const color = Number.isInteger(glyph.color) ? glyph.color : CLR_WHITE;
+            return { ch, color };
+        }
+        if (typeof glyph === 'string' && glyph.length > 0) {
+            return { ch: glyph[0], color: CLR_WHITE };
+        }
+        // Placeholder for numeric glyph ids until full glyph-id decode is wired.
+        return { ch: '*', color: CLR_WHITE };
+    }
+
+    showTempGlyph(x, y, glyph) {
+        const { col, row } = this._mapCoordToScreen(x, y);
+        if (col < 0 || col >= COLNO - 1 || row < 0 || row >= this.rows) return;
+        const cell = this._tempGlyphToCell(glyph);
+        this.setCell(col, row, cell.ch, cell.color);
+    }
+
+    redraw(x, y) {
+        if (!this._lastMapState) return;
+        const { gameMap, player, fov, flags } = this._lastMapState;
+        // Use existing map rendering logic to faithfully restore base state.
+        this.renderMap(gameMap, player, fov, flags);
+    }
+
+    flush() {
+        // Browser display is immediate through setCell/DOM writes.
     }
 
     // Get the display symbol for a terrain type

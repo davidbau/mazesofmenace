@@ -54,6 +54,7 @@ import {
     is_drawbridge_wall, find_drawbridge, destroy_drawbridge,
 } from './dbridge.js';
 import { deltrap } from './dungeon.js';
+import { tmp_at, nh_delay_output_nowait, DISP_BEAM, DISP_END } from './animation.js';
 
 // ============================================================================
 // Constants (cf. dig.c:19-27)
@@ -666,79 +667,84 @@ export function zap_dig(map, player) {
     // C: pitdig handling when in a pit — simplified/skipped for now
     let digdepth = rn1(18, 8); // C: digdepth = rn1(18, 8)
 
-    // C: tmp_at(DISP_BEAM, ...) — beam display
-    while (--digdepth >= 0) {
-        if (!isok(zx, zy)) break;
-        const room = map.at(zx, zy);
-        if (!room) break;
+    // C: tmp_at(DISP_BEAM, ...), tmp_at(x,y), nh_delay_output(), tmp_at(DISP_END,0).
+    tmp_at(DISP_BEAM, { ch: '*', color: 12 });
+    try {
+        while (--digdepth >= 0) {
+            if (!isok(zx, zy)) break;
+            const room = map.at(zx, zy);
+            if (!room) break;
 
-        // C: tmp_at(zx, zy); nh_delay_output(); — display beam
+            tmp_at(zx, zy);
+            nh_delay_output_nowait();
 
-        if (closed_door(zx, zy, map) || room.typ === SDOOR) {
-            // C: shop damage
-            if (room.typ === SDOOR) {
-                room.typ = DOOR;
-            }
-            watch_dig(null, zx, zy, true, map);
-            room.flags = D_NODOOR;
-            recalc_block_point(zx, zy);
-            digdepth -= 2;
-            if (maze_dig) break;
-        } else if (maze_dig) {
-            if (IS_WALL(room.typ)) {
-                if (!room.nondiggable) {
-                    room.typ = ROOM;
-                    room.flags = 0;
-                    unblock_point(zx, zy);
-                }
-                break;
-            } else if (IS_TREE(room.typ)) {
-                if (!room.nondiggable) {
-                    room.typ = ROOM;
-                    room.flags = 0;
-                    unblock_point(zx, zy);
-                }
-                break;
-            } else if (room.typ === STONE || room.typ === SCORR) {
-                if (!room.nondiggable) {
-                    room.typ = CORR;
-                    room.flags = 0;
-                    unblock_point(zx, zy);
-                }
-                break;
-            }
-        } else if (IS_OBSTRUCTED(room.typ)) {
-            if (!may_dig(zx, zy, map)) break;
-
-            if (IS_WALL(room.typ) || room.typ === SDOOR) {
-                watch_dig(null, zx, zy, true, map);
-                if (map.flags && map.flags.is_cavernous_lev && !in_town(zx, zy, map)) {
-                    room.typ = CORR;
-                    room.flags = 0;
-                } else {
+            if (closed_door(zx, zy, map) || room.typ === SDOOR) {
+                // C: shop damage
+                if (room.typ === SDOOR) {
                     room.typ = DOOR;
-                    room.flags = D_NODOOR;
                 }
+                watch_dig(null, zx, zy, true, map);
+                room.flags = D_NODOOR;
+                recalc_block_point(zx, zy);
                 digdepth -= 2;
-            } else if (IS_TREE(room.typ)) {
-                room.typ = ROOM;
-                room.flags = 0;
-                digdepth -= 2;
-            } else {
-                // IS_OBSTRUCTED but not wall/sdoor/tree — stone
-                room.typ = CORR;
-                room.flags = 0;
-                digdepth--;
-            }
-            unblock_point(zx, zy);
-        }
+                if (maze_dig) break;
+            } else if (maze_dig) {
+                if (IS_WALL(room.typ)) {
+                    if (!room.nondiggable) {
+                        room.typ = ROOM;
+                        room.flags = 0;
+                        unblock_point(zx, zy);
+                    }
+                    break;
+                } else if (IS_TREE(room.typ)) {
+                    if (!room.nondiggable) {
+                        room.typ = ROOM;
+                        room.flags = 0;
+                        unblock_point(zx, zy);
+                    }
+                    break;
+                } else if (room.typ === STONE || room.typ === SCORR) {
+                    if (!room.nondiggable) {
+                        room.typ = CORR;
+                        room.flags = 0;
+                        unblock_point(zx, zy);
+                    }
+                    break;
+                }
+            } else if (IS_OBSTRUCTED(room.typ)) {
+                if (!may_dig(zx, zy, map)) break;
 
-        newsym(map, zx, zy);
-        zx += (u.dx || 0);
-        zy += (u.dy || 0);
+                if (IS_WALL(room.typ) || room.typ === SDOOR) {
+                    watch_dig(null, zx, zy, true, map);
+                    if (map.flags && map.flags.is_cavernous_lev && !in_town(zx, zy, map)) {
+                        room.typ = CORR;
+                        room.flags = 0;
+                    } else {
+                        room.typ = DOOR;
+                        room.flags = D_NODOOR;
+                    }
+                    digdepth -= 2;
+                } else if (IS_TREE(room.typ)) {
+                    room.typ = ROOM;
+                    room.flags = 0;
+                    digdepth -= 2;
+                } else {
+                    // IS_OBSTRUCTED but not wall/sdoor/tree — stone
+                    room.typ = CORR;
+                    room.flags = 0;
+                    digdepth--;
+                }
+                unblock_point(zx, zy);
+            }
+
+            newsym(map, zx, zy);
+            zx += (u.dx || 0);
+            zy += (u.dy || 0);
+        }
+    } finally {
+        tmp_at(DISP_END, 0);
     }
 
-    // C: tmp_at(DISP_END, 0) — close beam display
     // C: shopdoor/shopwall pay_for_damage — not yet wired
 }
 
