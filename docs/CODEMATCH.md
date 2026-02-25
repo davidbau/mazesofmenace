@@ -71,7 +71,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[~]` | extralev.c | extralev.js | Special level generation helpers now in `extralev.js`: `corr`, `roguejoin`, `miniwalk`, `roguecorr`, `makerogueghost`, and `makeroguerooms`; rogue special-level generator now calls `makeroguerooms` directly |
 | `[N/A]` | files.c | — | File I/O operations. JS: `storage.js` |
 | `[a]` | fountain.c | fountain.js | Fountain effects. drinkfountain/dryup implemented (RNG-parity); ~12 functions TODO |
-| `[~]` | getpos.c | getpos.js | Position selection UI. Core highlight callback lifecycle wired (`getpos_sethilite`, toggle, refresh, cleanup) and interactive cursor loop now implemented (`getpos_async`: vi/arrow movement, pick/cancel, redraw/help). Advanced C target cycling/filter/menu behavior remains TODO |
+| `[~]` | getpos.c | getpos.js | Position selection UI. Core highlight callback lifecycle wired (`getpos_sethilite`, toggle, refresh, cleanup) and interactive cursor loop implemented (`getpos_async`: vi/arrow movement, pick/cancel, redraw/help, filter cycle, target cycle next/prev, basic target menu). Full C parity for keybindings/target classes/help text remains partial |
 | `[~]` | glyphs.c | glyphs.js | Glyph system. JS: partially in `display.js`, `symbols.js` |
 | `[a]` | hack.c | hack.js | Core movement and actions. handleMovement (domove_core) with door/trap/autopickup handling, handleRun (lookaround/context.run), checkRunStop, pickRunContinuationDir, findPath (findtravelpath), handleTravel (dotravel), executeTravelStep, performWaitSearch. All are approximations with partial RNG parity; ~70 C functions TODO |
 | `[a]` | hacklib.c | hacklib.js | String/char utilities. All C functions implemented; in-place string ops return new strings in JS |
@@ -1902,7 +1902,7 @@ This section is generated from source symbol tables and includes function rows f
 | 557 | `dxdy_to_dist_descr` | - | Missing |
 | 513 | `gather_locs` | - | Missing |
 | 438 | `gather_locs_interesting` | - | Missing |
-| 771 | `getpos` | getpos.js:getpos_async | Partial — interactive cursor loop implemented; advanced target cycling/filter/menu behavior remains TODO |
+| 771 | `getpos` | getpos.js:getpos_async | Partial — interactive cursor loop plus filter/target cycling and basic target menu implemented; full C keybinding/help/target-class parity remains TODO |
 | 102 | `getpos_getvalids_selection` | - | Missing |
 | 167 | `getpos_help` | - | Missing |
 | 137 | `getpos_help_keyxhelp` | - | Missing |

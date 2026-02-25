@@ -735,7 +735,7 @@ export class Display {
             const col = Number.parseInt(parts[0], 10);
             const row = Number.parseInt(parts[1], 10);
             if (!Number.isInteger(col) || !Number.isInteger(row)) continue;
-            this.setCell(col, row, cell.ch, cell.color, 0);
+            this.setCell(col, row, cell.ch, cell.color, cell.attr || 0);
         }
     }
 
@@ -744,7 +744,7 @@ export class Display {
         if (col < 0 || col >= COLNO - 1 || row < 0 || row >= this.rows) return;
         const cell = this._tempGlyphToCell(glyph);
         this._tempOverlay.set(this._overlayKey(col, row), cell);
-        this.setCell(col, row, cell.ch, cell.color);
+        this.setCell(col, row, cell.ch, cell.color, cell.attr || 0);
     }
 
     redraw(x, y) {

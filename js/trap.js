@@ -689,13 +689,43 @@ function trapeffect_landmine_mon(mon, trap, trflags, map, player) {
         : mon.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished;
 }
 
-function trapeffect_rolling_boulder_trap_mon(mon, trap) {
-    // C ref: requires launch_obj() which is not ported
-    // Approximate tmp_at projectile flash so display parity is closer.
-    if (!m_in_air(mon)) {
-        tmp_at(DISP_FLASH, { ch: '0', color: 7 });
-        tmp_at(mon.mx, mon.my);
-        nh_delay_output_nowait();
+function trapeffect_rolling_boulder_trap_mon(mon, trap, map, player) {
+    // C ref: trap.c launch_obj() rolling-boulder flow.
+    // JS port approximates per-cell boulder travel from trap.launch towards
+    // the mirrored launch2 endpoint, including hit resolution against mon.
+    if (m_in_air(mon)) return Trap_Effect_Finished;
+    if (!map || !trap) return Trap_Effect_Finished;
+
+    const launch = trap.launch || { x: trap.tx, y: trap.ty };
+    const launch2 = trap.launch2 || {
+        x: trap.tx - (launch.x - trap.tx),
+        y: trap.ty - (launch.y - trap.ty),
+    };
+    const dx = Math.sign((launch2.x || trap.tx) - (launch.x || trap.tx));
+    const dy = Math.sign((launch2.y || trap.ty) - (launch.y || trap.ty));
+    if (!dx && !dy) return Trap_Effect_Finished;
+
+    let x = launch.x;
+    let y = launch.y;
+    let steps = 0;
+
+    tmp_at(DISP_FLASH, { ch: '0', color: 7 });
+    try {
+        while (isok(x, y) && steps < 8) {
+            const loc = map.at ? map.at(x, y) : null;
+            if (!loc || !ACCESSIBLE(loc.typ)) break;
+            tmp_at(x, y);
+            nh_delay_output_nowait();
+            if (x === mon.mx && y === mon.my) {
+                // Visual parity only (no combat/RNG side-effects yet).
+                break;
+            }
+            if (x === launch2.x && y === launch2.y) break;
+            x += dx;
+            y += dy;
+            steps++;
+        }
+    } finally {
         tmp_at(DISP_END, 0);
     }
     return Trap_Effect_Finished;
@@ -758,7 +788,7 @@ function trapeffect_selector_mon(mon, trap, trflags, map, player, display, fov) 
     case LANDMINE:
         return trapeffect_landmine_mon(mon, trap, 0, map, player);
     case ROLLING_BOULDER_TRAP:
-        return trapeffect_rolling_boulder_trap_mon(mon, trap);
+        return trapeffect_rolling_boulder_trap_mon(mon, trap, map, player);
     case VIBRATING_SQUARE:
         return trapeffect_vibrating_square_mon();
     default:

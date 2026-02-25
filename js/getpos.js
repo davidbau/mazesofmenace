@@ -129,6 +129,78 @@ function cursorDesc(display, x, y) {
     return info?.name || '';
 }
 
+const TARGET_FILTERS = ['all', 'monster', 'object', 'valid'];
+
+function targetFilterLabel(filter) {
+    switch (filter) {
+    case 'monster': return 'monsters';
+    case 'object': return 'objects';
+    case 'valid': return 'valid squares';
+    default: return 'all map squares';
+    }
+}
+
+function collectTargets(map, filter) {
+    if (!map) return [];
+    const targets = [];
+    const seen = new Set();
+    const add = (x, y) => {
+        if (!isok(x, y)) return;
+        const k = `${x},${y}`;
+        if (seen.has(k)) return;
+        seen.add(k);
+        targets.push({ x, y });
+    };
+
+    if (filter === 'monster' || filter === 'all') {
+        const mons = Array.isArray(map.monsters) ? map.monsters : [];
+        for (const mon of mons) {
+            if (!mon || mon.dead) continue;
+            add(mon.mx, mon.my);
+        }
+        if (filter === 'monster') {
+            targets.sort((a, b) => (a.y - b.y) || (a.x - b.x));
+            return targets;
+        }
+    }
+
+    for (let y = 0; y < ROWNO; y++) {
+        for (let x = 1; x < COLNO; x++) {
+            if (filter === 'object') {
+                const objs = map.objectsAt ? map.objectsAt(x, y) : [];
+                if (Array.isArray(objs) && objs.length > 0) add(x, y);
+            } else if (filter === 'valid') {
+                if (mapxy_valid(x, y)) add(x, y);
+            } else if (filter === 'all') {
+                add(x, y);
+            }
+        }
+    }
+    targets.sort((a, b) => (a.y - b.y) || (a.x - b.x));
+    return targets;
+}
+
+function findTargetIndex(targets, cx, cy) {
+    if (!targets.length) return -1;
+    let idx = targets.findIndex(t => t.x === cx && t.y === cy);
+    if (idx >= 0) return idx;
+    idx = targets.findIndex(t => (t.y > cy) || (t.y === cy && t.x > cx));
+    return idx >= 0 ? idx : 0;
+}
+
+function selectTargetFromMenu(display, targets, filter) {
+    if (!targets.length) return null;
+    if (typeof display?.putstr_message === 'function') {
+        const count = Math.min(targets.length, 9);
+        const opts = [];
+        for (let i = 0; i < count; i++) {
+            opts.push(`${i + 1}:${targets[i].x},${targets[i].y}`);
+        }
+        display.putstr_message(`Targets (${targetFilterLabel(filter)}): ${opts.join(' ')} (1-9)`);
+    }
+    return 'pending';
+}
+
 export function set_getpos_context(ctx = {}) {
     getposContext = {
         ...getposContext,
@@ -157,10 +229,28 @@ export async function getpos_async(ccp, force = true, goal = '') {
     }
 
     let cursorState = putCursor(display, cx, cy);
+    const homeX = cx;
+    const homeY = cy;
+    let targetFilter = 'all';
+    let menuTargets = null;
     try {
         for (;;) {
             const ch = await nhgetch();
             const c = String.fromCharCode(ch);
+
+            if (menuTargets && ch >= 49 && ch <= 57) { // '1'..'9'
+                const idx = ch - 49;
+                if (idx >= 0 && idx < menuTargets.length) {
+                    const t = menuTargets[idx];
+                    restoreCursor(display, cursorState);
+                    cx = t.x;
+                    cy = t.y;
+                    cursorState = putCursor(display, cx, cy);
+                }
+                menuTargets = null;
+                continue;
+            }
+            menuTargets = null;
 
             if (ch === 27) {
                 ccp.x = -10;
@@ -185,6 +275,46 @@ export async function getpos_async(ccp, force = true, goal = '') {
                 restoreCursor(display, cursorState);
                 getpos_toggle_hilite_state();
                 cursorState = putCursor(display, cx, cy);
+                continue;
+            }
+            if (c === '@') {
+                restoreCursor(display, cursorState);
+                cx = homeX;
+                cy = homeY;
+                cursorState = putCursor(display, cx, cy);
+                continue;
+            }
+            if (c === 'f') {
+                const cur = TARGET_FILTERS.indexOf(targetFilter);
+                targetFilter = TARGET_FILTERS[(cur + 1) % TARGET_FILTERS.length];
+                if (typeof display?.putstr_message === 'function') {
+                    display.putstr_message(`Target filter: ${targetFilterLabel(targetFilter)}.`);
+                }
+                continue;
+            }
+            if (c === '[' || c === ']') {
+                const targets = collectTargets(getposContext.map, targetFilter);
+                if (!targets.length) {
+                    if (typeof display?.putstr_message === 'function') {
+                        display.putstr_message(`No ${targetFilterLabel(targetFilter)} targets.`);
+                    }
+                    continue;
+                }
+                const idx = findTargetIndex(targets, cx, cy);
+                const delta = c === ']' ? 1 : -1;
+                const next = targets[(idx + delta + targets.length) % targets.length];
+                restoreCursor(display, cursorState);
+                cx = next.x;
+                cy = next.y;
+                cursorState = putCursor(display, cx, cy);
+                continue;
+            }
+            if (c === '=') {
+                const targets = collectTargets(getposContext.map, targetFilter);
+                const pick = selectTargetFromMenu(display, targets, targetFilter);
+                if (pick === 'pending') {
+                    menuTargets = targets.slice(0, 9);
+                }
                 continue;
             }
             if (ch === 18) { // ^R
