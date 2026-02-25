@@ -226,7 +226,7 @@ export function cast_cleric_spell(mtmp, dmg, spellid, player, map) {
 // cf. mcastu.c:176 — castmu(mtmp, mattk, vis, thrown)
 // Monster casts a spell at the hero
 // Returns 1 if spell was cast, 0 if failed
-export function castmu(mtmp, mattk, vis, thrown, player, map) {
+export async function castmu(mtmp, mattk, vis, thrown, player, map) {
   if (!mtmp || !mattk) return 0;
 
   const ml = mtmp.m_lev || mtmp.mlevel || 1;
@@ -312,7 +312,7 @@ export function spell_would_be_useless(mtmp, aatyp, spellid) {
 
 // cf. mcastu.c:980 — buzzmu(mtmp, mattk)
 // Monster fires a directed beam at hero
-export function buzzmu(mtmp, mattk, player, map) {
+export async function buzzmu(mtmp, mattk, player, map) {
   if (!mtmp || !mattk || !player || !map) return 0;
 
   const adtyp = mattk.adtyp || mattk.ad || mattk.damage || AD_MAGM;
@@ -336,7 +336,7 @@ export function buzzmu(mtmp, mattk, player, map) {
     break;
   }
 
-  buzz(ZT_BREATH(ztyp), nd, mtmp.mx, mtmp.my, dx, dy, map, player);
+  await buzz(ZT_BREATH(ztyp), nd, mtmp.mx, mtmp.my, dx, dy, map, player);
   return 1;
 }
 

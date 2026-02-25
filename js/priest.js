@@ -716,7 +716,7 @@ export function in_your_sanctuary(mon, x, y, map, player) {
 // ghod_hitsu — cf. priest.c:760
 // Delivers divine punishment when player attacks a coaligned priest in temple.
 // ============================================================================
-export function ghod_hitsu(priest, map, player) {
+export async function ghod_hitsu(priest, map, player) {
     const roomno = temple_occupied(player.urooms || '', map);
     if (!roomno || !has_shrine(priest, map)) return;
 
@@ -785,7 +785,7 @@ export function ghod_hitsu(priest, map, player) {
     }
 
     // bolt of lightning cast by unspecified monster
-    buzz(BZ_M_SPELL_ELEC, 6, x, y, sgn(tbx), sgn(tby), map, player);
+    await buzz(BZ_M_SPELL_ELEC, 6, x, y, sgn(tbx), sgn(tby), map, player);
     exercise(player, A_WIS, false);
 }
 

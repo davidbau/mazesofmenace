@@ -931,12 +931,12 @@ export async function monsterAttackPlayer(monster, player, display, game = null,
                 continue;
             }
             if (attack.type === AT_BREA) {
-                if (map) breamu(monster, attack, map, player, display, game);
+                if (map) await breamu(monster, attack, map, player, display, game);
                 continue;
             }
             if (attack.type === AT_MAGC) {
                 const vis = !player?.blind && !(monster.minvis && !player?.seeInvisible);
-                castmu(monster, attack, vis, true, player, map);
+                await castmu(monster, attack, vis, true, player, map);
                 continue;
             }
             // Skip melee-only attack types when at range

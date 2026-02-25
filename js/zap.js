@@ -69,7 +69,7 @@ import { HOLE, TRAPDOOR } from './symbols.js';
 import { engr_at, del_engr_at, wipe_engr_at, rloc_engr, make_engr_at } from './engrave.js';
 import { random_engraving_rng } from './dungeon.js';
 import {
-    tmp_at, nh_delay_output, nh_delay_output_nowait,
+    tmp_at, nh_delay_output,
     DISP_BEAM, DISP_END,
 } from './animation.js';
 
@@ -827,9 +827,9 @@ export function burn_floor_objects(x, y, give_feedback, u_caused, map) {
 // ============================================================
 // cf. zap.c buzz() — main beam propagation (C-style interface)
 // ============================================================
-export function buzz(type, nd, sx, sy, dx, dy, map, player) {
+export async function buzz(type, nd, sx, sy, dx, dy, map, player) {
   // C ref: zap.c:4706 — buzz() delegates to dobuzz()
-  dobuzz(type, nd, sx, sy, dx, dy, true, false, map, player);
+  await dobuzz(type, nd, sx, sy, dx, dy, true, false, map, player);
 }
 
 async function zapnodir(obj, player, map, display, game) {
@@ -940,7 +940,7 @@ function beamTempGlyph(type, dx, dy) {
 }
 
 // cf. zap.c:4720 dobuzz() — full beam propagation with bounce logic
-function dobuzz(type, nd, sx, sy, dx, dy, sayhit, saymiss, map, player) {
+async function dobuzz(type, nd, sx, sy, dx, dy, sayhit, saymiss, map, player) {
   const fltyp = zaptype(type);
   const damgtype = fltyp % 10;
   let range = rn1(7, 7); // C ref: zap.c:4763
@@ -961,7 +961,7 @@ function dobuzz(type, nd, sx, sy, dx, dy, sayhit, saymiss, map, player) {
       const loc = map ? map.at(sx, sy) : null;
       if (!loc) { sx = lsx; sy = lsy; break; }
       tmp_at(sx, sy);
-      nh_delay_output_nowait();
+      await nh_delay_output();
       if (loc.typ === 0) goto_bounce(); // STONE
 
       // C ref: zap.c:4797-4802 — zap_over_floor for non-fireball, non-gas
@@ -1086,8 +1086,8 @@ export async function weffects(obj, player, map, display = null, game = null) {
       const beamType = wandToBeamType(otyp);
       if (beamType >= 0 && player) {
         const nd = (otyp === WAN_MAGIC_MISSILE) ? 2 : 6;
-        buzz(ZT_WAND(beamType), nd, player.x, player.y,
-             player.dx || 0, player.dy || 0, map, player);
+        await buzz(ZT_WAND(beamType), nd, player.x, player.y,
+            player.dx || 0, player.dy || 0, map, player);
       }
     }
   }

@@ -1713,7 +1713,7 @@ export async function use_offensive(mtmp, map, player) {
         // Simplified: call buzz with appropriate parameters
         {
             const nd = (otmp.otyp === WAN_MAGIC_MISSILE) ? 2 : 6;
-            buzz(0, nd, mtmp.mx, mtmp.my,
+            await buzz(0, nd, mtmp.mx, mtmp.my,
                 Math.sign((mtmp.mux ?? player.x) - mtmp.mx),
                 Math.sign((mtmp.muy ?? player.y) - mtmp.my),
                 map, player);
@@ -1725,7 +1725,7 @@ export async function use_offensive(mtmp, map, player) {
     case MUSE_OFF_FROST_HORN:
         mplayhorn(mtmp, otmp, false, map, player);
         m_using = true;
-        buzz(0, rn1(6, 6), mtmp.mx, mtmp.my,
+        await buzz(0, rn1(6, 6), mtmp.mx, mtmp.my,
             Math.sign((mtmp.mux ?? player.x) - mtmp.mx),
             Math.sign((mtmp.muy ?? player.y) - mtmp.my),
             map, player);

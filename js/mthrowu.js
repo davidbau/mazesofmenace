@@ -911,7 +911,7 @@ function breath_zap_type(adtyp) {
 
 // monster breathes at monster (ranged) -- placeholder fidelity surface.
 // C ref: mthrowu.c breamm().
-export function breamm(mtmp, mattk, mtarg, map, player, display, game) {
+export async function breamm(mtmp, mattk, mtarg, map, player, display, game) {
     if (!m_lined_up(mtarg, mtmp, map, player)) return 0;
     if (mtmp.mcan) {
         if (display) display.putstr_message(`The ${monDisplayName(mtmp)} coughs.`);
@@ -927,7 +927,7 @@ export function breamm(mtmp, mattk, mtarg, map, player, display, game) {
     const dx = Math.sign((mtarg?.x ?? mtarg?.mx ?? 0) - (mtmp.mx ?? 0));
     const dy = Math.sign((mtarg?.y ?? mtarg?.my ?? 0) - (mtmp.my ?? 0));
     if (map && (dx !== 0 || dy !== 0)) {
-        buzz(ZT_BREATH(breath_zap_type(adtyp)), nd, mtmp.mx, mtmp.my, dx, dy, map, player);
+        await buzz(ZT_BREATH(breath_zap_type(adtyp)), nd, mtmp.mx, mtmp.my, dx, dy, map, player);
     }
     mtmp.mspec_used = 10 + rn2(20);
     return 1;
@@ -935,8 +935,8 @@ export function breamm(mtmp, mattk, mtarg, map, player, display, game) {
 
 // monster breathes at hero.
 // C ref: mthrowu.c breamu().
-export function breamu(mtmp, mattk, map, player, display, game) {
-    return breamm(mtmp, mattk, player, map, player, display, game);
+export async function breamu(mtmp, mattk, map, player, display, game) {
+    return await breamm(mtmp, mattk, player, map, player, display, game);
 }
 
 // Check if a monster has any AT_WEAP attacks (can throw weapons).
