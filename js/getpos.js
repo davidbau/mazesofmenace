@@ -232,21 +232,6 @@ export async function getpos_async(ccp, force = true, goal = '') {
     }
 }
 
-// Synchronous compatibility entry point for existing non-async call sites.
-// Preserves highlight lifecycle but does not enter interactive cursor input.
-export function getpos(ccp, _force = true, _goal = '') {
-    if (!ccp || typeof ccp !== 'object') return -1;
-    if (!Number.isInteger(ccp.x) || !Number.isInteger(ccp.y) || !isok(ccp.x, ccp.y)) {
-        ccp.x = 1;
-        ccp.y = 0;
-    }
-    if (getpos_hilitefunc && getpos_hilite_state === HiliteGoodposSymbol && !hiliteOn) {
-        callHilite(true);
-    }
-    clearHiliteIfNeeded();
-    return 0;
-}
-
 export function getpos_clear_hilite() {
     clearHiliteIfNeeded();
     getpos_sethilite(null, null);
