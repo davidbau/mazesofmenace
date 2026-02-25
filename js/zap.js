@@ -12,6 +12,7 @@ import { objectData, WAND_CLASS, TOOL_CLASS, WEAPON_CLASS, SCROLL_CLASS,
          WAN_FIRE, WAN_COLD, WAN_LIGHTNING,
          WAN_SLEEP, WAN_DEATH, WAN_MAGIC_MISSILE, WAN_STRIKING,
          WAN_DIGGING, WAN_NOTHING,
+         WAN_SECRET_DOOR_DETECTION, WAN_ENLIGHTENMENT, WAN_CREATE_MONSTER, WAN_WISHING,
          WAN_SLOW_MONSTER, WAN_SPEED_MONSTER, WAN_UNDEAD_TURNING,
          WAN_POLYMORPH, WAN_CANCELLATION, WAN_TELEPORTATION,
          WAN_MAKE_INVISIBLE, WAN_LOCKING, WAN_PROBING, WAN_OPENING,
@@ -21,6 +22,7 @@ import { objectData, WAND_CLASS, TOOL_CLASS, WEAPON_CLASS, SCROLL_CLASS,
          SPE_SLOW_MONSTER, SPE_CANCELLATION, SPE_TELEPORT_AWAY,
          SPE_POLYMORPH, SPE_TURN_UNDEAD, SPE_STONE_TO_FLESH,
          SPE_DRAIN_LIFE, SPE_MAGIC_MISSILE, SPE_FINGER_OF_DEATH,
+         SPE_LIGHT, SPE_DETECT_UNSEEN,
          CORPSE, FOOD_CLASS, FLESH,
          STRANGE_OBJECT, BOULDER, STATUE, FIGURINE, EGG,
          SCR_FIRE, BAG_OF_HOLDING,
@@ -58,6 +60,7 @@ import { delobj } from './invent.js';
 import { monflee } from './monmove.js';
 import { readobjnam, hands_obj } from './objnam.js';
 import { hold_another_object, prinv } from './invent.js';
+import { findit } from './detect.js';
 import {
     tmp_at, nh_delay_output, nh_delay_output_nowait,
     DISP_BEAM, DISP_END,
@@ -483,7 +486,7 @@ export async function handleZap(player, map, display, game) {
     if (!isBeamWand) {
         // Route non-beam wands through weffects() so non-ray zap behavior
         // can evolve toward zap.c parity instead of hardcoded no-op.
-        await weffects(wand, player, map);
+        await weffects(wand, player, map, display, game);
     } else {
         // C ref: zap.c — nd (number of dice) = 6 for wand beams
         const nd = 6;
@@ -822,6 +825,43 @@ export function buzz(type, nd, sx, sy, dx, dy, map, player) {
   dobuzz(type, nd, sx, sy, dx, dy, true, false, map, player);
 }
 
+async function zapnodir(obj, player, map, display, game) {
+  if (!obj) return;
+
+  switch (obj.otyp) {
+  case WAN_LIGHT:
+  case SPE_LIGHT:
+    pline("A lit field surrounds you.");
+    break;
+  case WAN_SECRET_DOOR_DETECTION:
+  case SPE_DETECT_UNSEEN:
+    findit(player, map, display, game);
+    break;
+  case WAN_CREATE_MONSTER: {
+    // C ref: zap.c zapnodir() create_critters(rn2(23)?1:rn1(7,2), ...).
+    const count = rn2(23) ? 1 : rn1(7, 2);
+    for (let i = 0; i < count; i++) {
+      makemon(null, player?.x || 0, player?.y || 0, 0, player?.dungeonLevel || 1, map);
+    }
+    break;
+  }
+  case WAN_WISHING:
+    // Keep non-blocking behavior for replay safety.
+    if (((player?.luck || 0) + rn2(5)) < 0) {
+      pline("Unfortunately, nothing happens.");
+    } else {
+      pline("You feel that a wish is possible.");
+    }
+    break;
+  case WAN_ENLIGHTENMENT:
+    // Full enlightenment UI is not wired through this path yet.
+    pline("You feel self-knowledgeable...");
+    break;
+  default:
+    break;
+  }
+}
+
 async function bhit_zapped_wand(obj, player, map) {
   if (!obj || !player || !map) return null;
   const ddx = player.dx || 0;
@@ -1009,7 +1049,7 @@ function dobuzz(type, nd, sx, sy, dx, dy, sayhit, saymiss, map, player) {
 // ============================================================
 // cf. zap.c weffects() — wand zap dispatch
 // ============================================================
-export async function weffects(obj, player, map) {
+export async function weffects(obj, player, map, display = null, game = null) {
   if (!obj) return;
   const otyp = obj.otyp;
 
@@ -1030,8 +1070,7 @@ export async function weffects(obj, player, map) {
       await bhit_zapped_wand(obj, player, map);
     }
   } else if (dir_type === 1) {
-    // NODIR wand
-    // zapnodir — simplified
+    await zapnodir(obj, player, map, display, game);
   } else {
     // RAY wand or spell
     if (otyp === WAN_DIGGING || otyp === 364 /* SPE_DIG */) {
