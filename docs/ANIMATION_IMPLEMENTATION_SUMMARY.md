@@ -25,7 +25,7 @@ Animation infrastructure is in place (`tmp_at`, delay boundaries, overlay lifecy
 
 4. `getpos` advanced targeting features are partial.
 - Core cursor interaction and hilite lifecycle are implemented.
-- C-style target-class cycling keys (`m/M o/O d/D x/X i/I v/V`) and basic menu/list helpers now exist, but full C filter-area/view semantics and NHW_MENU parity remain incomplete.
+- C-style target-class cycling keys (`m/M o/O d/D x/X i/I v/V`), richer help-key text hooks, backward/forward map-symbol search, and NHW_MENU-backed `=` target selection now exist, but full C filter-area/view semantics and detailed help/menu text parity remain incomplete.
 
 5. Display-layer glyph parity remains approximate.
 - `tmp_at` lifecycle is close.

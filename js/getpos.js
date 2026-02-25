@@ -4,6 +4,17 @@
 
 import { MAP_ROW_START, COLNO, ROWNO, DOOR, ROOM, CORR, isok } from './config.js';
 import { nhgetch } from './input.js';
+import {
+    NHW_MENU,
+    PICK_ONE,
+    ATR_NONE,
+    create_nhwindow,
+    start_menu,
+    add_menu,
+    end_menu,
+    select_menu,
+    destroy_nhwindow,
+} from './windows.js';
 
 const HiliteNormalMap = 0;
 const HiliteGoodposSymbol = 1;
@@ -20,6 +31,7 @@ let getposContext = {
     display: null,
     flags: null,
     goalPrompt: null,
+    player: null,
 };
 
 function callHilite(on) {
@@ -292,34 +304,84 @@ function selectTargetFromMenu(display, targets, filter) {
     return 'pending';
 }
 
+function getpos_filter_text(flags) {
+    const filter = flags?.getloc_filter;
+    if (filter === 'view' || filter === 1) return ' in view';
+    if (filter === 'area' || filter === 2) return ' in this area';
+    return '';
+}
+
+export function getpos_help_keyxhelp(display, k1, k2, gloc, moveCursorTo = 'move the cursor to ') {
+    if (typeof display?.putstr_message !== 'function') return;
+    const filtertxt = getpos_filter_text(getposContext.flags);
+    display.putstr_message(
+        `Use '${k1}'/'${k2}' to ${moveCursorTo}${glocLabel(gloc)}${filtertxt}.`
+    );
+}
+
 function getpos_help(force, goal, display) {
     if (typeof display?.putstr_message !== 'function') return;
     const g = goal || 'desired location';
     display.putstr_message(
-        `Move to ${g}: hjklyubn move, . select, ESC cancel, m/M o/O d/D x/X v/V cycle, = menu.`
+        `Use 'h', 'j', 'k', 'l' to move the cursor to ${g}.`
     );
+    display.putstr_message("Use 'H', 'J', 'K', 'L' to fast-move the cursor.");
+    display.putstr_message("Use '@' to move the cursor onto yourself.");
+    display.putstr_message("Or enter a background symbol (example '<').");
+    getpos_help_keyxhelp(display, 'm', 'M', GLOC_MONS);
+    getpos_help_keyxhelp(display, 'o', 'O', GLOC_OBJS);
+    getpos_help_keyxhelp(display, 'd', 'D', GLOC_DOOR);
+    getpos_help_keyxhelp(display, 'x', 'X', GLOC_EXPLORE, 'move the cursor next to ');
+    getpos_help_keyxhelp(display, 'i', 'I', GLOC_INTERESTING);
+    getpos_help_keyxhelp(display, 'v', 'V', GLOC_VALID);
+    display.putstr_message("Use '^' to toggle marking of valid locations.");
+    display.putstr_message("Use '=' for a menu listing of possible targets.");
     if (!force) {
         display.putstr_message('Space can also finish selection.');
     }
 }
 
-function getpos_menu(display, map, gloc) {
+function targetMenuLine(display, map, x, y) {
+    const desc = cursorDesc(display, x, y);
+    if (desc) return `${desc} [${x},${y}]`;
+    const mon = map?.monsterAt ? map.monsterAt(x, y) : null;
+    if (mon && !mon.dead) return `${mon.name || 'monster'} [${x},${y}]`;
+    const objs = map?.objectsAt ? map.objectsAt(x, y) : [];
+    if (Array.isArray(objs) && objs.length > 0) return `object [${x},${y}]`;
+    return `location [${x},${y}]`;
+}
+
+async function getpos_menu(display, map, gloc) {
     const targets = collectTargetsForGloc(map, gloc);
-    if (!targets.length) {
+    const player = getposContext.player;
+    const menuTargets = (player && Number.isInteger(player.x) && Number.isInteger(player.y))
+        ? targets.filter((t) => !(t.x === player.x && t.y === player.y))
+        : targets;
+    const candidates = menuTargets.length > 0 ? menuTargets : targets;
+
+    if (!candidates.length) {
         if (typeof display?.putstr_message === 'function') {
             display.putstr_message(`No ${glocLabel(gloc)}.`);
         }
         return null;
     }
-    if (typeof display?.putstr_message === 'function') {
-        const count = Math.min(targets.length, 9);
-        const opts = [];
-        for (let i = 0; i < count; i++) {
-            opts.push(`${i + 1}:${targets[i].x},${targets[i].y}`);
+
+    const tmpwin = create_nhwindow(NHW_MENU);
+    try {
+        start_menu(tmpwin, 0);
+        for (let i = 0; i < candidates.length; i++) {
+            add_menu(tmpwin, null, i, 0, 0, ATR_NONE, 0,
+                targetMenuLine(display, map, candidates[i].x, candidates[i].y), 0);
         }
-        display.putstr_message(`Pick ${glocLabel(gloc)}: ${opts.join(' ')} (1-9)`);
+        end_menu(tmpwin, `Pick ${glocLabel(gloc)}`);
+        const picks = await select_menu(tmpwin, PICK_ONE);
+        if (!Array.isArray(picks) || picks.length === 0) return null;
+        const idx = picks[0].identifier;
+        if (!Number.isInteger(idx) || idx < 0 || idx >= candidates.length) return null;
+        return candidates[idx];
+    } finally {
+        destroy_nhwindow(tmpwin);
     }
-    return targets.slice(0, 9);
 }
 
 function findNextMatchingMapChar(display, cx, cy, needle) {
@@ -339,6 +401,66 @@ function findNextMatchingMapChar(display, cx, cy, needle) {
         }
     }
     return null;
+}
+
+function findPrevMatchingMapChar(display, cx, cy, needle) {
+    if (!display || !needle) return null;
+    for (let pass = 0; pass <= 1; pass++) {
+        const yStart = pass === 0 ? cy : (ROWNO - 1);
+        const yEnd = pass === 0 ? 0 : cy;
+        for (let y = yStart; y >= yEnd; y--) {
+            const xStart = (pass === 0 && y === yStart) ? (cx - 1) : (COLNO - 1);
+            const xEnd = (pass === 1 && y === yEnd) ? cx : 1;
+            for (let x = xStart; x >= xEnd; x--) {
+                if (!isok(x, y)) continue;
+                const { col, row } = screenPosForMap(display, x, y);
+                const cell = getCell(display, col, row);
+                if (cell.ch === needle) return { x, y };
+            }
+        }
+    }
+    return null;
+}
+
+function findMatchingMapChar(display, cx, cy, needle, forward) {
+    return forward
+        ? findNextMatchingMapChar(display, cx, cy, needle)
+        : findPrevMatchingMapChar(display, cx, cy, needle);
+}
+
+function isPrintable(ch) {
+    return ch >= 32 && ch <= 126;
+}
+
+function isShiftedPrintable(c, ch) {
+    return isPrintable(ch) && c >= 'A' && c <= 'Z';
+}
+
+function isUnshiftedPrintable(c, ch) {
+    return isPrintable(ch) && (c < 'A' || c > 'Z');
+}
+
+export function getpos_gloc_from_filter(filter) {
+    switch (filter) {
+    case GLOC_MONS:
+    case GLOC_OBJS:
+    case GLOC_VALID:
+        return filter;
+    default:
+        return GLOC_INTERESTING;
+    }
+}
+
+function getpos_cycle_target(display, map, gloc, cx, cy, dir) {
+    const targets = collectTargetsForGloc(map, gloc);
+    if (!targets.length) {
+        if (typeof display?.putstr_message === 'function') {
+            display.putstr_message(`Cannot detect ${glocLabel(gloc)}.`);
+        }
+        return null;
+    }
+    const idx = findTargetIndex(targets, cx, cy);
+    return targets[(idx + dir + targets.length) % targets.length];
 }
 
 export function set_getpos_context(ctx = {}) {
@@ -372,25 +494,10 @@ export async function getpos_async(ccp, force = true, goal = '') {
     const homeX = cx;
     const homeY = cy;
     let targetFilter = 'all';
-    let menuTargets = null;
     try {
         for (;;) {
             const ch = await nhgetch();
             const c = String.fromCharCode(ch);
-
-            if (menuTargets && ch >= 49 && ch <= 57) { // '1'..'9'
-                const idx = ch - 49;
-                if (idx >= 0 && idx < menuTargets.length) {
-                    const t = menuTargets[idx];
-                    restoreCursor(display, cursorState);
-                    cx = t.x;
-                    cy = t.y;
-                    cursorState = putCursor(display, cx, cy);
-                }
-                menuTargets = null;
-                continue;
-            }
-            menuTargets = null;
 
             if (ch === 27) {
                 ccp.x = -10;
@@ -438,15 +545,8 @@ export async function getpos_async(ccp, force = true, goal = '') {
             };
             if (glocKeys[c]) {
                 const [gloc, dir] = glocKeys[c];
-                const targets = collectTargetsForGloc(getposContext.map, gloc);
-                if (!targets.length) {
-                    if (typeof display?.putstr_message === 'function') {
-                        display.putstr_message(`Cannot detect ${glocLabel(gloc)}.`);
-                    }
-                    continue;
-                }
-                const idx = findTargetIndex(targets, cx, cy);
-                const next = targets[(idx + dir + targets.length) % targets.length];
+                const next = getpos_cycle_target(display, getposContext.map, gloc, cx, cy, dir);
+                if (!next) continue;
                 restoreCursor(display, cursorState);
                 cx = next.x;
                 cy = next.y;
@@ -480,8 +580,13 @@ export async function getpos_async(ccp, force = true, goal = '') {
                 continue;
             }
             if (c === '=') {
-                const currentGloc = (targetFilter === GLOC_ALL) ? GLOC_INTERESTING : targetFilter;
-                menuTargets = getpos_menu(display, getposContext.map, currentGloc);
+                const currentGloc = getpos_gloc_from_filter(targetFilter);
+                const target = await getpos_menu(display, getposContext.map, currentGloc);
+                if (!target) continue;
+                restoreCursor(display, cursorState);
+                cx = target.x;
+                cy = target.y;
+                cursorState = putCursor(display, cx, cy);
                 continue;
             }
             if (ch === 18) { // ^R
@@ -515,8 +620,8 @@ export async function getpos_async(ccp, force = true, goal = '') {
                 continue;
             }
 
-            if (ch >= 32 && ch <= 126) {
-                const found = findNextMatchingMapChar(display, cx, cy, c);
+            if (isShiftedPrintable(c, ch) || isUnshiftedPrintable(c, ch)) {
+                const found = findMatchingMapChar(display, cx, cy, c, !isShiftedPrintable(c, ch));
                 if (found) {
                     restoreCursor(display, cursorState);
                     cx = found.x;

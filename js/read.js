@@ -1371,7 +1371,7 @@ async function seffect_stinking_cloud(sobj, player, display, game) {
             return Math.max(Math.abs(x - player.x), Math.abs(y - player.y)) <= STINKING_CLOUD_TARGET_DIST;
         };
         const cc = { x: player.x, y: player.y };
-        set_getpos_context({ map, display, flags: game?.flags, goalPrompt: 'the desired position' });
+        set_getpos_context({ map, display, flags: game?.flags, goalPrompt: 'the desired position', player });
         getpos_sethilite(display_stinking_cloud_positions, can_center_cloud);
         const rc = await getpos_async(cc, true, 'the desired position');
         if (rc < 0) {

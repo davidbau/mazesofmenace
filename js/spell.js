@@ -1254,7 +1254,7 @@ export async function throwspell(player, map, display = null, flags = null) {
 
     pline("Where do you want to cast the spell?");
     const cc = { x: player.x, y: player.y };
-    set_getpos_context({ map, display, flags, goalPrompt: 'the desired position' });
+    set_getpos_context({ map, display, flags, goalPrompt: 'the desired position', player });
     getpos_sethilite(
         (on) => display_spell_target_positions(player, map, on),
         (x, y) => can_center_spell_location(player, map, x, y)

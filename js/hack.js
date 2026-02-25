@@ -821,7 +821,7 @@ export async function handleTravel(game) {
     const { player, map, display } = game;
 
     display.putstr_message('Where do you want to travel to?');
-    set_getpos_context({ map, display, flags: game.flags, goalPrompt: 'travel to' });
+    set_getpos_context({ map, display, flags: game.flags, goalPrompt: 'travel to', player });
     const cc = { x: player.x, y: player.y };
     const result = await getpos_async(cc, true, 'travel to');
     if (result < 0) {
