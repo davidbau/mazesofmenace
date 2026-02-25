@@ -52,6 +52,7 @@ import { is_flammable, is_rustprone, is_rottable, is_corrodeable,
          is_crackable, erosion_matters, mksobj } from './mkobj.js';
 import { CORPSE, WEAPON_CLASS, ARMOR_CLASS,
          ARROW, DART, ROCK, BOULDER, WAND_CLASS } from './objects.js';
+import { tmp_at, nh_delay_output_nowait, DISP_FLASH, DISP_END } from './animation.js';
 
 // Trap result constants
 const Trap_Effect_Finished = 0;
@@ -690,9 +691,12 @@ function trapeffect_landmine_mon(mon, trap, trflags, map, player) {
 
 function trapeffect_rolling_boulder_trap_mon(mon, trap) {
     // C ref: requires launch_obj() which is not ported
-    // Stub: monster triggers it but nothing happens without launch_obj
+    // Approximate tmp_at projectile flash so display parity is closer.
     if (!m_in_air(mon)) {
-        // Would launch boulder — stub
+        tmp_at(DISP_FLASH, { ch: '0', color: 7 });
+        tmp_at(mon.mx, mon.my);
+        nh_delay_output_nowait();
+        tmp_at(DISP_END, 0);
     }
     return Trap_Effect_Finished;
 }

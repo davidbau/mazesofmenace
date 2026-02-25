@@ -67,7 +67,7 @@ import { doname, xname, splitobj, set_bknown } from './mkobj.js';
 import { IS_DOOR, D_CLOSED, D_LOCKED, D_ISOPEN, D_NODOOR, D_BROKEN,
          A_STR, A_DEX, A_CON, A_CHA,
          PM_ROGUE, PM_HEALER, PM_ARCHEOLOGIST,
-         isok, COLNO, ROWNO } from './config.js';
+         isok, COLNO, ROWNO, IS_OBSTRUCTED } from './config.js';
 import { rn2, rnd, rn1, d, rnl, shuffle_int_array } from './rng.js';
 import { exercise } from './attrib_exercise.js';
 import { pline, You, Your, You_feel, You_cant, You_hear, You_see,
@@ -87,6 +87,7 @@ import { setnotworn } from './worn.js';
 import { begin_burn, end_burn, obj_has_timer,
          kill_egg, attach_egg_hatch_timeout } from './timeout.js';
 import { maketrap } from './dungeon.js';
+import { tmp_at, nh_delay_output_nowait, DISP_BEAM, DISP_END } from './animation.js';
 
 // -- Inline helpers --
 
@@ -116,8 +117,33 @@ function _ignitable(obj) {
 // ====================================================================
 
 // cf. apply.c:61 -- STUB: depends on bhit, flash_hits_mon
-export function do_blinding_ray(_obj) {
-    pline(_nothing_happens());
+export function do_blinding_ray(_obj, player = null, map = null) {
+    if (!player || !map) {
+        pline(_nothing_happens());
+        return;
+    }
+    const dx = Number.isInteger(player.dx) ? player.dx : 0;
+    const dy = Number.isInteger(player.dy) ? player.dy : 0;
+    if (!dx && !dy) {
+        pline(_nothing_happens());
+        return;
+    }
+    tmp_at(DISP_BEAM, { ch: '*', color: 14 });
+    try {
+        let x = player.x;
+        let y = player.y;
+        for (let i = 0; i < 8; i++) {
+            x += dx;
+            y += dy;
+            if (!isok(x, y)) break;
+            tmp_at(x, y);
+            nh_delay_output_nowait();
+            const loc = map.at(x, y);
+            if (!loc || IS_OBSTRUCTED(loc.typ)) break;
+        }
+    } finally {
+        tmp_at(DISP_END, 0);
+    }
 }
 
 // cf. apply.c:79 -- STUB: depends on getdir, bhit, zapyourself
@@ -583,13 +609,26 @@ function find_poleable_mon() { return false; }
 function get_valid_polearm_position() { return false; }
 
 // cf. apply.c:3330 -- STUB: display_polearm_positions
-function display_polearm_positions() {}
+function display_polearm_positions(player, map) {
+    if (!player || !map) return;
+    // C ref: apply.c display_polearm_positions() => tmp_at(DISP_BEAM, S_goodpos)
+    tmp_at(DISP_BEAM, { ch: '*', color: 10 });
+    try {
+        for (let x = 1; x < COLNO; x++) {
+            for (let y = 0; y < ROWNO; y++) {
+                if (could_pole_mon(player, x, y, map)) tmp_at(x, y);
+            }
+        }
+    } finally {
+        tmp_at(DISP_END, 0);
+    }
+}
 
 // cf. apply.c:3367 -- calc_pole_range
 export function calc_pole_range() { return { min_range: 4, max_range: 4 }; }
 
 // cf. apply.c:3387 -- could_pole_mon
-export function could_pole_mon() { return false; }
+export function could_pole_mon(_player, _x, _y, _map) { return false; }
 
 // cf. apply.c:3412 -- snickersnee_used_dist_attk
 function snickersnee_used_dist_attk() { return false; }
@@ -615,10 +654,23 @@ function use_royal_jelly() { pline("You need an egg to use royal jelly on."); }
 function grapple_range() { return 4; }
 
 // cf. apply.c:3697 -- STUB: can_grapple_location
-function can_grapple_location() { return false; }
+function can_grapple_location(_player, _x, _y, _map) { return false; }
 
 // cf. apply.c:3703 -- STUB: display_grapple_positions
-function display_grapple_positions() {}
+function display_grapple_positions(player, map) {
+    if (!player || !map) return;
+    // C ref: apply.c display_grapple_positions() => tmp_at(DISP_BEAM, S_goodpos)
+    tmp_at(DISP_BEAM, { ch: '*', color: 10 });
+    try {
+        for (let x = 1; x < COLNO; x++) {
+            for (let y = 0; y < ROWNO; y++) {
+                if (can_grapple_location(player, x, y, map)) tmp_at(x, y);
+            }
+        }
+    } finally {
+        tmp_at(DISP_END, 0);
+    }
+}
 
 // cf. apply.c:3725 -- STUB: use_grapple
 function use_grapple() { pline(_nothing_happens()); }

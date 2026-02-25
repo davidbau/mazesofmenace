@@ -29,6 +29,7 @@ import { exercise } from './attrib_exercise.js';
 import { drinkfountain } from './fountain.js';
 import { pline, You, Your, You_feel, You_cant } from './pline.js';
 import { registerMakeStatusFns } from './timeout.js';
+import { tmp_at, DISP_ALWAYS, DISP_END } from './animation.js';
 
 
 // ============================================================
@@ -1379,11 +1380,22 @@ function potion_dip(player, obj, potion) {
 // cf. potion.c mongrantswish() — monster grants a wish
 function mongrantswish(mon, player, map) {
     // C ref: potion.c:2780-2798
-    // Full wish system not yet ported. Stub: remove monster.
+    // Full wish system not yet ported. Keep C-style temporary glyph overlay.
     if (mon && map) {
+        const mx = mon.mx;
+        const my = mon.my;
+        const glyph = {
+            ch: typeof mon.displayChar === 'string' && mon.displayChar.length > 0
+                ? mon.displayChar[0]
+                : '&',
+            color: Number.isInteger(mon.displayColor) ? mon.displayColor : 15,
+        };
+        tmp_at(DISP_ALWAYS, glyph);
+        tmp_at(mx, my);
         // mongone(mon) — remove monster from map
         const idx = map.monsters.indexOf(mon);
         if (idx >= 0) map.monsters.splice(idx, 1);
+        tmp_at(DISP_END, 0);
     }
     // makewish() — wish granting not yet ported
     pline("You may wish for an object. (Not yet implemented.)");

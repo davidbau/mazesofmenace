@@ -30,9 +30,11 @@ import { scrolltele, level_tele } from './teleport.js';
 import { gold_detect, food_detect, trap_detect, do_mapping, cvt_sdoor_to_door } from './detect.js';
 import { explode } from './explode.js';
 import { EXPL_FIERY } from './explode.js';
+import { tmp_at, DISP_BEAM, DISP_END } from './animation.js';
 
 const SPELL_KEEN = 20000; // cf. spell.c KEEN
 const MAX_SPELL_STUDY = 3; // cf. spell.h MAX_SPELL_STUDY
+const STINKING_CLOUD_TARGET_DIST = 6;
 
 
 // ============================================================
@@ -1342,8 +1344,25 @@ function seffect_stinking_cloud(sobj, player, display, game) {
     if (!already_known) {
         display.putstr_message('You have found a scroll of stinking cloud!');
     }
-    // cf. do_stinking_cloud(sobj, already_known)
-    // The C version prompts for a target position; in automated play, center on self
+    // cf. do_stinking_cloud(sobj, already_known) + display_stinking_cloud_positions()
+    const map = game?.map;
+    if (map && player) {
+        tmp_at(DISP_BEAM, { ch: '*', color: 10 });
+        for (let dx = -STINKING_CLOUD_TARGET_DIST; dx <= STINKING_CLOUD_TARGET_DIST; dx++) {
+            for (let dy = -STINKING_CLOUD_TARGET_DIST; dy <= STINKING_CLOUD_TARGET_DIST; dy++) {
+                const x = player.x + dx;
+                const y = player.y + dy;
+                if (x === player.x && y === player.y) continue;
+                const loc = map.at ? map.at(x, y) : null;
+                if (!loc) continue;
+                const inRange = Math.max(Math.abs(dx), Math.abs(dy)) <= STINKING_CLOUD_TARGET_DIST;
+                if (!inRange) continue;
+                tmp_at(x, y);
+            }
+        }
+        tmp_at(DISP_END, 0);
+    }
+    // The C version prompts for a target position; automated play still self-targets.
     // cf. create_gas_cloud(cc.x, cc.y, ...) — gas cloud creation not yet ported
     display.putstr_message('A cloud of toxic gas billows from the scroll.');
     return false;

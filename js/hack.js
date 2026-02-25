@@ -32,6 +32,7 @@ import { monsterNearby, monnear } from './monutil.js';
 import { monflee } from './monmove.js';
 import { ynFunction } from './input.js';
 import { water_friction, maybe_adjust_hero_bubble } from './mkmaze.js';
+import { tmp_at, nh_delay_output_nowait, DISP_ALL, DISP_END } from './animation.js';
 // pline available from './pline.js' if needed for direct message output
 
 // Run direction keys (shift = run)
@@ -59,6 +60,25 @@ function runTrace(...args) {
 function replayStepLabel(map) {
     const idx = map?._replayStepIndex;
     return Number.isInteger(idx) ? String(idx + 1) : '?';
+}
+
+function travelTmpAtDebugEnabled() {
+    const env = (typeof process !== 'undefined' && process.env) ? process.env : {};
+    return env.WEBHACK_TRAVEL_TMP_AT_DEBUG === '1';
+}
+
+function debug_travel_tmp_at(path, startX, startY) {
+    if (!travelTmpAtDebugEnabled() || !Array.isArray(path) || path.length === 0) return;
+    let x = startX;
+    let y = startY;
+    tmp_at(DISP_ALL, { ch: '1', color: 14 });
+    for (const [dx, dy] of path) {
+        x += dx;
+        y += dy;
+        tmp_at(x, y);
+    }
+    nh_delay_output_nowait();
+    tmp_at(DISP_END, 0);
 }
 
 // Handle directional movement
@@ -771,7 +791,9 @@ export function findPath(map, startX, startY, endX, endY) {
             const ny = y + dy;
 
             if (nx === endX && ny === endY) {
-                return [...path, [dx, dy]];
+                const result = [...path, [dx, dy]];
+                debug_travel_tmp_at(result, startX, startY);
+                return result;
             }
 
             const key = `${nx},${ny}`;

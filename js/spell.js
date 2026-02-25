@@ -10,7 +10,7 @@
 //   getspell(): prompt user to select a spell.
 //   dospellmenu(): display spell menu UI.
 
-import { A_INT, A_WIS, A_STR, PM_KNIGHT, PM_WIZARD } from './config.js';
+import { A_INT, A_WIS, A_STR, PM_KNIGHT, PM_WIZARD, IS_STWALL, IS_OBSTRUCTED } from './config.js';
 import {
     objectData, ROBE, QUARTERSTAFF, SMALL_SHIELD, LENSES,
     SPE_DIG, SPE_MAGIC_MISSILE, SPE_FIREBALL, SPE_CONE_OF_COLD,
@@ -34,6 +34,7 @@ import { create_nhwindow, destroy_nhwindow, NHW_MENU } from './windows.js';
 import { rn2, rnd, rn1, rnl } from './rng.js';
 import { pline, You, Your, You_feel, pline_The, You_hear } from './pline.js';
 import { exercise } from './attrib_exercise.js';
+import { tmp_at, nh_delay_output_nowait, DISP_BEAM, DISP_CHANGE, DISP_END } from './animation.js';
 
 // ── Constants ──
 
@@ -65,6 +66,11 @@ const SPELL_CATEGORY_ENCHANTMENT = 'enchantment';
 const SPELL_CATEGORY_CLERICAL = 'clerical';
 const SPELL_CATEGORY_ESCAPE = 'escape';
 const SPELL_CATEGORY_MATTER = 'matter';
+const SPELL_TARGET_DIST = 10;
+const CHAIN_LIGHTNING_DIRS = [
+    [1, 0], [1, 1], [0, 1], [-1, 1],
+    [-1, 0], [-1, -1], [0, -1], [1, -1],
+];
 
 // C refs: src/spell.c spell_skilltype()/spelltypemnemonic(), include/objects.h SPELL().
 const SPELL_CATEGORY_BY_NAME = new Map([
@@ -827,6 +833,84 @@ export function cast_protection(player) {
     }
 }
 
+function distmin(x0, y0, x1, y1) {
+    return Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+}
+
+function can_center_spell_location(player, map, x, y) {
+    if (!player || !map) return false;
+    if (distmin(player.x, player.y, x, y) > SPELL_TARGET_DIST) return false;
+    const loc = map.at ? map.at(x, y) : null;
+    if (!loc) return false;
+    return !IS_STWALL(loc.typ);
+}
+
+function display_spell_target_positions(player, map, on_off) {
+    if (!player || !map) return;
+    if (on_off) {
+        tmp_at(DISP_BEAM, { ch: '*', color: 10 });
+        for (let dx = -SPELL_TARGET_DIST; dx <= SPELL_TARGET_DIST; dx++) {
+            for (let dy = -SPELL_TARGET_DIST; dy <= SPELL_TARGET_DIST; dy++) {
+                const x = player.x + dx;
+                const y = player.y + dy;
+                if (x === player.x && y === player.y) continue;
+                if (can_center_spell_location(player, map, x, y)) tmp_at(x, y);
+            }
+        }
+    } else {
+        tmp_at(DISP_END, 0);
+    }
+}
+
+function chainLightBeamGlyph(dx, dy) {
+    if (dx !== 0 && dy !== 0) return { ch: '/', color: 11 };
+    if (dx !== 0) return { ch: '-', color: 11 };
+    return { ch: '|', color: 11 };
+}
+
+function can_chain_lightning_pos(map, x, y) {
+    const loc = map?.at ? map.at(x, y) : null;
+    if (!loc) return false;
+    return !IS_OBSTRUCTED(loc.typ);
+}
+
+function cast_chain_lightning(player, map) {
+    if (!player || !map) return;
+    const displayed = new Set();
+    const queue = [];
+
+    for (let dir = 0; dir < CHAIN_LIGHTNING_DIRS.length; dir++) {
+        queue.push({ x: player.x, y: player.y, dir, strength: 2 });
+    }
+
+    tmp_at(DISP_BEAM, chainLightBeamGlyph(0, 1));
+    while (queue.length > 0) {
+        const zap = queue.shift();
+        const [dx, dy] = CHAIN_LIGHTNING_DIRS[zap.dir];
+        const nx = zap.x + dx;
+        const ny = zap.y + dy;
+        if (!can_chain_lightning_pos(map, nx, ny)) continue;
+        const key = `${nx},${ny}`;
+        if (displayed.has(key)) continue;
+        displayed.add(key);
+
+        tmp_at(DISP_CHANGE, chainLightBeamGlyph(dx, dy));
+        tmp_at(nx, ny);
+        nh_delay_output_nowait();
+
+        const nextStrength = zap.strength - 1;
+        if (nextStrength < 0) continue;
+        queue.push({ x: nx, y: ny, dir: zap.dir, strength: nextStrength });
+        if (nextStrength > 0) {
+            queue.push({ x: nx, y: ny, dir: (zap.dir + 7) % 8, strength: 0 });
+            queue.push({ x: nx, y: ny, dir: (zap.dir + 1) % 8, strength: 0 });
+        }
+    }
+    nh_delay_output_nowait();
+    nh_delay_output_nowait();
+    tmp_at(DISP_END, 0);
+}
+
 // C ref: zap.c spell_damage_bonus() — augment spell damage based on intelligence
 export function spell_damage_bonus(dmg, player) {
     if (!player) return dmg;
@@ -1146,7 +1230,7 @@ export function spelleffects(spell_otyp, atme, player, map, display) {
         break;
 
     case SPE_CHAIN_LIGHTNING:
-        // cast_chain_lightning would go here
+        cast_chain_lightning(player, map);
         pline("Chain lightning arcs from your fingertips!");
         break;
 
@@ -1168,9 +1252,10 @@ export function throwspell(player, map) {
     }
 
     pline("Where do you want to cast the spell?");
-    // In the full implementation, this would use getpos() to let the
-    // player pick a target location within 10 squares.
-    // For now, target self position.
+    // C parity: getpos() hilite callback is display_spell_target_positions().
+    // JS currently uses self-target fallback, but still shows/cleans highlights.
+    display_spell_target_positions(player, map, true);
+    display_spell_target_positions(player, map, false);
     return 1;
 }
 

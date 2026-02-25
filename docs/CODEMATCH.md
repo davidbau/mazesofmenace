@@ -37,7 +37,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 |--------|--------|---------|-------|
 | `[~]` | allmain.c | allmain.js | Main game loop, newgame, moveloop. JS: chargen UI split into `chargen.js`; browser entry point in `nethack.js` |
 | `[N/A]` | alloc.c | — | Memory allocation (nhalloc, nhfree). JS uses GC |
-| `[a]` | apply.c | apply.js | Applying items. handleApply (doapply) with isApplyCandidate/isApplyChopWeapon/isApplyPolearm/isApplyDownplay helpers; ~70 functions TODO |
+| `[a]` | apply.c | apply.js | Applying items. handleApply (doapply) with isApplyCandidate/isApplyChopWeapon/isApplyPolearm/isApplyDownplay helpers; `tmp_at` overlays now wired for blinding-ray and polearm/grapple target highlighting callsites |
 | `[p]` | artifact.c | artifact.js | Artifact system. Generated data table (artifacts.js) with artilist[], SPFX_*, ART_* constants. ~70 functions implemented: existence tracking (init/exist/found/find/mk_artifact), pure predicates (spec_ability, confers_luck, arti_reflects, shade_glare, restrict_name, attacks, defends, protects, arti_immune, artifact_has_invprop, arti_cost, is_art, permapoisoned, spec_m2), combat (spec_applies, bane_applies, spec_abon, spec_dbon — wired into uhitm/mhitm/mhitu), discovery, glow/Sting. Stubs: set_artifact_intrinsic, Mb_hit, doinvoke, arti_invoke, all invoke_* functions, retouch_object/equipment |
 | `[~]` | attrib.c | attrib.js | Attribute system. JS: partially in `attrib_exercise.js` |
 | `[~]` | ball.c | ball.js | Ball & chain handling |
@@ -67,7 +67,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[~]` | end.c | end.js | Game over, death, scoring |
 | `[a]` | engrave.c | engrave.js | Engraving mechanics. handleEngrave (doengrave) approximation, maybeSmudgeEngraving (wipe_engr_at); engrave_data.js has text data; ~30 functions TODO |
 | `[a]` | exper.c | exper.js | Experience and leveling. newuexp, newexplevel, pluslvl, losexp, newpw, newhp, enermod implemented; experience, more_experienced, rndexp TODO. Role/race hpadv/enadv_full/xlev data in player.js. |
-| `[p]` | explode.c | explode.js | Explosion effects. All 9 functions present: adtyp_to_expltype, explosionmask (stub), engulfer_explosion_msg (stub), explode (3x3 area with resistance checks), scatter (stub), splatter_burning_oil, explode_oil, mon_explodes, ugolemeffects (stub) |
+| `[p]` | explode.c | explode.js | Explosion effects. All 9 functions present: adtyp_to_expltype, explosionmask (stub), engulfer_explosion_msg (stub), explode (3x3 area with resistance checks and C-style `tmp_at(DISP_BEAM/DISP_CHANGE)` frame animation), scatter (stub), splatter_burning_oil, explode_oil, mon_explodes, ugolemeffects (stub) |
 | `[~]` | extralev.c | extralev.js | Special level generation helpers now in `extralev.js`: `corr`, `roguejoin`, `miniwalk`, `roguecorr`, `makerogueghost`, and `makeroguerooms`; rogue special-level generator now calls `makeroguerooms` directly |
 | `[N/A]` | files.c | — | File I/O operations. JS: `storage.js` |
 | `[a]` | fountain.c | fountain.js | Fountain effects. drinkfountain/dryup implemented (RNG-parity); ~12 functions TODO |
@@ -113,12 +113,12 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[a]` | pickup.c | pickup.js | Picking up items. handlePickup/handleLoot/handlePay/handleTogglePickup (dopickup/doloot/dopay/dotogglepickup); pay is a stub; ~50 functions TODO |
 | `[a]` | pline.c | pline.js | Message output. pline, custompline, vpline, Norep, urgent_pline, raw_printf, vraw_printf, impossible, livelog_printf, gamelog_add, verbalize, You/Your/You_feel/You_cant/You_hear/You_see/pline_The/There, pline_dir/pline_xy/pline_mon, set_msg_dir/set_msg_xy, dumplogmsg/dumplogfreemessages, execplinehandler, nhassert_failed, You_buf/free_youbuf all implemented. putmesg semantics handled via setOutputContext |
 | `[~]` | polyself.c | polyself.js | Polymorphing |
-| `[~]` | potion.c | potion.js | Potion effects. handleQuaff (dodrink) with name-string matching for healing/gain level. Intrinsic timeout system: itimeout/set_itimeout/incr_itimeout. Status effect functions: make_confused/stunned/blinded/sick/hallucinated/vomiting/deaf/glib/slimed/stoned (all match C structure with Unaware check, Sick_resistance, partial cure logic, Halluc_resistance mask param). peffects dispatcher with 18 peffect_* functions for all potion types. Resistance checks for FREE_ACTION (sleeping/paralysis), ACID_RES (acid). healup with curesick/cureblind params. Remaining gaps: handleQuaff not yet using peffects dispatcher, unkn/identification tracking, speed_up(), vision system calls, vapors/throwing/dipping/mixing. |
+| `[~]` | potion.c | potion.js | Potion effects. handleQuaff (dodrink) with name-string matching for healing/gain level. Intrinsic timeout system: itimeout/set_itimeout/incr_itimeout. Status effect functions: make_confused/stunned/blinded/sick/hallucinated/vomiting/deaf/glib/slimed/stoned (all match C structure with Unaware check, Sick_resistance, partial cure logic, Halluc_resistance mask param). peffects dispatcher with 18 peffect_* functions for all potion types. Resistance checks for FREE_ACTION (sleeping/paralysis), ACID_RES (acid). healup with curesick/cureblind params. `mongrantswish` now includes the C-style `tmp_at(DISP_ALWAYS)` conceal overlay before removal. Remaining gaps: handleQuaff not yet using peffects dispatcher, unkn/identification tracking, speed_up(), vision system calls, vapors/throwing/dipping/mixing. |
 | `[~]` | pray.c | pray.js | Prayer mechanics, sacrifice, turning undead, deity interaction. All 45 functions TODO (runtime gameplay) |
 | `[~]` | priest.c | priest.js | Priest behavior, temple management, shrine, minion roamers. move_special() PARTIAL in monmove.js:679; all other functions TODO |
 | `[~]` | quest.c | quest.js | Quest mechanics. All 22 functions are runtime gameplay (NPC dialog, eligibility, expulsion); none in JS |
 | `[~]` | questpgr.c | questpgr.js | Quest text pager. com_pager_core N/A (Lua interpreter); is_quest_artifact PARTIAL in objdata.js:54; all other functions TODO |
-| `[a]` | read.c | read.js | Reading scrolls/spellbooks. handleRead (doread) with spellbook study + seffects dispatcher + all 22 scroll effects implemented; some effects approximate (teleportation, mapping, detection need infrastructure) |
+| `[a]` | read.c | read.js | Reading scrolls/spellbooks. handleRead (doread) with spellbook study + seffects dispatcher + all 22 scroll effects implemented; some effects approximate (teleportation, mapping, detection need infrastructure). Stinking-cloud prompt path now includes `tmp_at` highlight setup/cleanup parity hook |
 | `[x]` | rect.c | rect.js | Rectangle allocation for room placement |
 | `[~]` | region.c | region.js | Region effects (gas clouds, etc.). No runtime regions in JS; all functions TODO |
 | `[N/A]` | report.c | — | Bug reporting, panic trace |
@@ -127,7 +127,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[x]` | rnd.c | rng.js | Random number generation |
 | `[~]` | role.c | role.js | Role/race/gender/alignment selection. roles[] data in player.js (includes hpadv/enadv_full/xlev structs for all roles, hpadv/enadv for all races); ok_role/ok_race/ok_align PARTIAL in chargen.js; role_init PARTIAL in chargen.js+u_init.js; Hello() in player.js; all others TODO |
 | `[~]` | rumors.c | rumors.js | Rumor/oracle/CapitalMon system. JS: `rumor_data.js` (data); unpadline/init_rumors/get_rnd_line in `hacklib.js`; getrumor inlined in `dungeon.js`; outoracle/doconsult/CapitalMon TODO |
-| `[~]` | save.c | save.js | Game state serialization. N/A (JS uses storage.js/IndexedDB); handleSave in storage.js |
+| `[~]` | save.c | save.js | Game state serialization. N/A (JS uses storage.js/IndexedDB); handleSave in storage.js. `freedynamicdata()` now calls `tmp_at(DISP_FREEMEM,0)` to mirror C display cleanup hook |
 | `[a]` | selvar.c | — | Selection geometry. JS: `selection` object in `sp_lev.js`. All major geometry functions aligned including ellipse/gradient/is_irregular/size_description |
 | `[N/A]` | sfbase.c | — | Save file base I/O routines |
 | `[N/A]` | sfstruct.c | — | Save file structure definitions |
@@ -136,7 +136,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[~]` | sit.c | sit.js | Sitting effects. All 7 functions (dosit, rndcurse, attrcurse, take_gold, throne_sit_effect, special_throne_effect, lay_an_egg) are TODO stubs |
 | `[~]` | sounds.c | sounds.js | Monster sounds, ambient room sounds, chat. dosounds() partial in chargen.js/headless.js; domonnoise/growl/yelp/whimper/beg/dotalk TODO; sound library N/A |
 | `[~]` | sp_lev.c | sp_lev.js | Special level interpreter |
-| `[a]` | spell.c | spell.js | Spell casting. ageSpells (age_spells), handleKnownSpells (dovspell/dospellmenu), estimateSpellFailPercent (percent_success approximation), spellRetentionText (spellretention). Spell category/skill tables from C. New stubs: study_book, book_cursed, confused_book, spell_skilltype, spelleffects, spell_damage_bonus, spell_would_be_useless_hero, learn, check_unpaid, rejectcasting. ~30 functions TODO |
+| `[a]` | spell.c | spell.js | Spell casting. ageSpells (age_spells), handleKnownSpells (dovspell/dospellmenu), estimateSpellFailPercent (percent_success approximation), spellRetentionText (spellretention). Spell category/skill tables from C. `tmp_at` callsites now wired for chain-lightning beam propagation frames and throwspell target highlighting cleanup. New stubs: study_book, book_cursed, confused_book, spell_skilltype, spelleffects, spell_damage_bonus, spell_would_be_useless_hero, learn, check_unpaid, rejectcasting. ~30 functions TODO |
 | `[~]` | stairs.c | stairs.js | Stairway management. JS uses map.upstair/dnstair objects; u_on_upstairs/dnstairs → getArrivalPosition in do.js; stairway_find_*, On_stairs_*, stairs_description TODO |
 | `[a]` | steal.c | steal.js | Monster stealing. somegold, findgold, stealgold, thiefdead, unresponsive, remove_worn_item, steal (weighted random), relobj implemented. stealamulet/maybe_absorb_item/mdrop_special_objs stubs. stealarm/unstolenarm/worn_item_removal/mpickobj TODO |
 | `[~]` | steed.c | steed.js | Riding steeds. put_saddle_on_mon partially inline in u_init.js; all 15 functions are TODO stubs |
@@ -147,7 +147,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[~]` | timeout.c | timeout.js | Timer-based effects. Full timer queue: run_timers, start/stop/peek/insert/remove_timer, obj_move/split/stop_timers, obj_has_timer, spot timers, done_timeout, egg/figurine/burn timers, fall_asleep. nh_timeout() has intrinsic timeout decrement loop matching C structure: calls dialogue functions before decrement, then on expiry fires effect via _fireExpiryEffect with full switch covering STONED/SLIMED/STRANGLED death, SICK death-or-recovery (CON check), CONFUSION/STUNNED/BLINDED/DEAF/HALLUC set-to-1-then-clear pattern, FAST slow message, INVIS expiry message, FUMBLING re-increment, VOMITING/GLIB/WOUNDED_LEGS/DISPLACED/PASSES_WALLS/DETECT_MONSTERS handlers. Dialogue stubs exported for stoned/vomiting/sleep/choke/sickness/levitation/slime/phaze. Remaining gaps: full dialogue countdown text sequences, float_down for levitation, vision system calls |
 | `[a]` | topten.c | topten.js | High score table. observable_depth implemented; I/O funcs N/A; encode/format funcs TODO |
 | `[p]` | track.c | track.js | Player tracking for pets. save/rest not yet implemented |
-| `[p]` | trap.c | trap.js | Trap mechanics: monster-side flow is largely ported (m_harmless_trap, floor_trigger, mintrap_postmove, mon_check_in_air, trap effect dispatcher, erosion/water/fire/acid chains, petrification helpers). Remaining parity gaps are mainly player-side `dotrap`/interaction flow plus some complex trap side-effects (landmine/rolling-boulder full launch+scatter behavior). |
+| `[p]` | trap.c | trap.js | Trap mechanics: monster-side flow is largely ported (m_harmless_trap, floor_trigger, mintrap_postmove, mon_check_in_air, trap effect dispatcher, erosion/water/fire/acid chains, petrification helpers). Rolling-boulder monster trap path now includes `tmp_at` flash lifecycle parity hook; full launch/scatter behavior is still TODO. Remaining parity gaps are mainly player-side `dotrap`/interaction flow plus complex trap side-effects. |
 | `[a]` | u_init.c | u_init.js | Player initialization. u_init_role, u_init_race, u_init_carry_attr_boost, trquan, ini_inv, ini_inv_mkobj_filter, restricted_spell_discipline aligned. JS-only wrappers: simulatePostLevelInit, initAttributes |
 | `[a]` | uhitm.c | uhitm.js | Hero-vs-monster combat. playerAttackMonster, all mhitm_ad_* handlers (40+), mhitm_adtyping dispatcher, mhitm_mgc_atk_negated, mhitm_knockback (with eligibility + messages) implemented; artifact spec_abon wired into find_roll_to_hit, spec_dbon wired into damage calc; 50 functions TODO |
 | `[N/A]` | utf8map.c | — | UTF-8 glyph mapping for terminal |
@@ -1146,7 +1146,7 @@ This section is generated from source symbol tables and includes function rows f
 | 1336 | `swallowed` | - | Missing |
 | 3471 | `t_warn` | - | Missing |
 | 1131 | `tether_glyph` | - | Missing |
-| 1178 | `tmp_at` | - | Missing |
+| 1178 | `tmp_at` | 259 (`animation.js`) | Aligned |
 | 3126 | `type_to_name` | - | Missing |
 | 1449 | `under_ground` | - | Missing |
 | 1399 | `under_water` | - | Missing |

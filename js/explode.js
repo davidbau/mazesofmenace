@@ -10,6 +10,10 @@ import { AD_PHYS, AD_MAGM, AD_FIRE, AD_COLD, AD_ELEC, AD_DRST, AD_ACID,
          mons } from './monsters.js';
 import { WAND_CLASS } from './objects.js';
 import { resist } from './zap.js';
+import {
+  tmp_at, nh_delay_output_nowait,
+  DISP_BEAM, DISP_CHANGE, DISP_END,
+} from './animation.js';
 
 // Explosion display types (C ref: explode.c)
 export const EXPL_DARK = 0;
@@ -78,53 +82,66 @@ export function explode(x, y, type, dam, olet, expltype, map, player) {
     adtyp = ((-type) % 10);
   }
 
-  // Apply damage in 3x3 area around (x, y)
-  for (let dx = -1; dx <= 1; dx++) {
-    for (let dy = -1; dy <= 1; dy++) {
-      const tx = x + dx;
-      const ty = y + dy;
-      if (!isok(tx, ty)) continue;
+  const frameGlyph = (phase) => {
+    const chars = ['*', 'o', '*'];
+    const colors = [9, 11, 1];
+    const idx = Math.max(0, Math.min(2, phase));
+    const ch = chars[idx];
+    const color = colors[idx];
+    if (expltype === EXPL_FROSTY) return { ch, color: 6 };
+    if (expltype === EXPL_MAGICAL) return { ch, color: 12 };
+    if (expltype === EXPL_FIERY) return { ch, color: 1 };
+    return { ch, color };
+  };
 
-      if (!map) continue;
+  // C ref: explode.c uses tmp_at(DISP_BEAM) + tmp_at(DISP_CHANGE) frame animation.
+  try {
+    for (let phase = 0; phase < 3; phase++) {
+      tmp_at(phase === 0 ? DISP_BEAM : DISP_CHANGE, frameGlyph(phase));
+      // Apply damage in 3x3 area around (x, y) while drawing this frame.
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+          const tx = x + dx;
+          const ty = y + dy;
+          if (!isok(tx, ty)) continue;
+          tmp_at(tx, ty);
 
-      // Check for monster at this location
-      const mon = map.monsterAt ? map.monsterAt(tx, ty) : null;
-      if (mon && !mon.dead) {
-        let mdam = dam;
-        const mdat = mon.data || (mon.mndx != null ? mons[mon.mndx] : null);
+          if (!map || phase !== 2) continue;
+          // Deal damage once (final frame), preserving prior JS behavior.
+          const mon = map.monsterAt ? map.monsterAt(tx, ty) : null;
+          if (mon && !mon.dead) {
+            let mdam = dam;
+            const mdat = mon.data || (mon.mndx != null ? mons[mon.mndx] : null);
+            if (mdat) {
+              if (adtyp === AD_FIRE && (mdat.mr1 & MR_FIRE)) mdam = 0;
+              else if (adtyp === AD_COLD && (mdat.mr1 & MR_COLD)) mdam = 0;
+              else if (adtyp === AD_ELEC && (mdat.mr1 & MR_ELEC)) mdam = 0;
+            }
+            if (mdam > 0 && resist(mon, olet >= 0 ? olet : WAND_CLASS)) {
+              mdam = Math.floor((mdam + 1) / 2);
+            }
+            if (mdam > 0) {
+              mon.mhp -= mdam;
+              if (mon.mhp <= 0) {
+                mon.mhp = 0;
+                mon.dead = true;
+              }
+            }
+          }
 
-        // Resistance check
-        if (mdat) {
-          if (adtyp === AD_FIRE && (mdat.mr1 & MR_FIRE)) mdam = 0;
-          else if (adtyp === AD_COLD && (mdat.mr1 & MR_COLD)) mdam = 0;
-          else if (adtyp === AD_ELEC && (mdat.mr1 & MR_ELEC)) mdam = 0;
-        }
-
-        // Magic resistance halves damage
-        if (mdam > 0 && resist(mon, olet >= 0 ? olet : WAND_CLASS)) {
-          mdam = Math.floor((mdam + 1) / 2);
-        }
-
-        if (mdam > 0) {
-          mon.mhp -= mdam;
-          if (mon.mhp <= 0) {
-            mon.mhp = 0;
-            mon.dead = true;
+          if (player && tx === player.x && ty === player.y && phase === 2) {
+            const damu = dam;
+            if (player.hp) {
+              player.hp -= damu;
+              if (player.hp < 0) player.hp = 0;
+            }
           }
         }
       }
-
-      // Check for hero at this location
-      if (player && tx === player.x && ty === player.y) {
-        let damu = dam;
-        // Hero resistance checks would go here
-        // For now, apply raw damage
-        if (player.hp) {
-          player.hp -= damu;
-          if (player.hp < 0) player.hp = 0;
-        }
-      }
+      nh_delay_output_nowait();
     }
+  } finally {
+    tmp_at(DISP_END, 0);
   }
 }
 

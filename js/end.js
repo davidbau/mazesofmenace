@@ -38,6 +38,7 @@ import { arti_cost, artiname } from './artifact.js';
 import { currency } from './invent.js';
 import { d } from './rng.js';
 import { roles } from './player.js';
+import { freedynamicdata } from './save.js';
 
 // ============================================================================
 // Game-end type constants (cf. hack.h:482 enum game_end_types)
@@ -1011,6 +1012,7 @@ export function container_contents(list, identified, all_containers, reportempty
 
 // cf. end.c:1676 — nh_terminate(status, game): game exit
 export function nh_terminate(status, game) {
+    freedynamicdata();
     if (game) {
         game.program_state = game.program_state || {};
         game.program_state.in_moveloop = false;

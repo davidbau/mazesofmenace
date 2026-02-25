@@ -21,6 +21,7 @@
 // N/A: JS port uses storage.js (localStorage/IndexedDB) with a different
 //   format — no direct equivalents to these file-based save functions.
 //   Memory management (freedynamicdata, free_dungeons) is handled by GC.
+import { tmp_at, DISP_FREEMEM } from './animation.js';
 
 // cf. save.c:42 — dosave(): player-facing #save command
 // Prompts player to confirm; calls dosave0(); handles quit-to-save logic.
@@ -129,4 +130,7 @@
 // Comprehensive cleanup of: menu colors, inventory buffers, timers, option
 //   strings, dungeon structures, artifact list, etc.
 // Called before exit to ensure clean memory state.
-// N/A: save.c:1055 — freedynamicdata() (JS uses GC)
+export function freedynamicdata() {
+    // C parity: clear any lingering tmp_at transient display state.
+    tmp_at(DISP_FREEMEM, 0);
+}
