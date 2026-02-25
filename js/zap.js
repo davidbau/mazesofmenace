@@ -1053,7 +1053,7 @@ export function bhitpile(obj, fhito_fn, tx, ty, zz, map) {
 
   let hitanything = 0;
   for (const otmp of [...objects_at]) {
-    hitanything += fhito_fn(otmp, obj);
+    hitanything += fhito_fn(otmp, obj, map);
   }
   return hitanything;
 }
