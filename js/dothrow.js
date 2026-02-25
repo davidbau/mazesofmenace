@@ -56,7 +56,7 @@ import { mpickobj } from './monutil.js';
 import { makemon } from './makemon.js';
 import { exercise } from './attrib_exercise.js';
 import {
-    tmp_at, nh_delay_output, nh_delay_output_nowait,
+    tmp_at, nh_delay_output,
     DISP_FLASH, DISP_TETHER, DISP_END, BACKTRACK,
 } from './animation.js';
 import { objectMapGlyph } from './display_rng.js';
@@ -888,7 +888,7 @@ export function throwing_weapon(obj) {
 }
 
 // cf. dothrow.c:1441 [static] -- sho_obj_return_to_u(obj)
-function sho_obj_return_to_u(obj, player, game) {
+async function sho_obj_return_to_u(obj, player, game) {
     if (!obj || !player || !game?.bhitpos) return;
     const dx = Number.isInteger(player.dx) ? player.dx : 0;
     const dy = Number.isInteger(player.dy) ? player.dy : 0;
@@ -904,7 +904,7 @@ function sho_obj_return_to_u(obj, player, game) {
     tmp_at(DISP_FLASH, projGlyph);
     while (isok(x, y) && (x !== player.x || y !== player.y)) {
         tmp_at(x, y);
-        nh_delay_output_nowait();
+        await nh_delay_output();
         x -= dx;
         y -= dy;
     }
@@ -938,7 +938,7 @@ export function throwit_mon_hit(obj, mon, player, map, game) {
 }
 
 // cf. dothrow.c:1509 -- throwit(obj, wep_mask, twoweap, oldslot, player, map, game)
-export function throwit(obj, wep_mask, twoweap, oldslot, player, map, game) {
+export async function throwit(obj, wep_mask, twoweap, oldslot, player, map, game) {
     const uwep = player.weapon;
     const impaired = !!(player.confused || player.stunned || player.blind
         || player.hallucinating || player.fumbling);
@@ -1001,7 +1001,7 @@ export function throwit(obj, wep_mask, twoweap, oldslot, player, map, game) {
             if (!loc || !ZAP_POS(loc.typ)) break;
             bx = nx; by = ny;
             tmp_at(bx, by);
-            nh_delay_output_nowait();
+            await nh_delay_output();
             const mon = map.monsterAt ? map.monsterAt(bx, by) : null;
             if (mon) { hitMon = mon; break; }
         }
@@ -1032,7 +1032,7 @@ export function throwit(obj, wep_mask, twoweap, oldslot, player, map, game) {
         }
     } else if (obj.otyp === BOOMERANG) {
         // Display-only return path for boomerangs, matching C visual behavior.
-        sho_obj_return_to_u(obj, player, game);
+        await sho_obj_return_to_u(obj, player, game);
     }
 
     const landLoc = typeof map.at === 'function' ? map.at(bx, by) : null;

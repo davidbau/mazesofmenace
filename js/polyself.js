@@ -1680,7 +1680,7 @@ export function dobreathe(player, map) {
 }
 
 // cf. polyself.c:1434 — dospit(): spit venom attack
-export function dospit(player, map) {
+export async function dospit(player, map) {
     // Spit venom attack for polymorphed player.
     if (!player || !player.type) return 0;
 
@@ -1707,7 +1707,7 @@ export function dospit(player, map) {
         if (otmp) {
             otmp.spe = 1; // indicates it's yours
             if (player.throwit) {
-                player.throwit(otmp, 0, false, null);
+                await player.throwit(otmp, 0, false, null);
             }
         }
     }
