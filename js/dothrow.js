@@ -55,7 +55,10 @@ import { goodpos } from './teleport.js';
 import { mpickobj } from './monutil.js';
 import { makemon } from './makemon.js';
 import { exercise } from './attrib_exercise.js';
-import { tmp_at, nh_delay_output_nowait, DISP_FLASH, DISP_END } from './animation.js';
+import {
+    tmp_at, nh_delay_output_nowait,
+    DISP_FLASH, DISP_TETHER, DISP_END, BACKTRACK,
+} from './animation.js';
 import { objectMapGlyph } from './display_rng.js';
 
 // ============================================================================
@@ -869,8 +872,27 @@ export function throwing_weapon(obj) {
 }
 
 // cf. dothrow.c:1441 [static] -- sho_obj_return_to_u(obj)
-function sho_obj_return_to_u(_obj) {
-    // Display animation stub -- requires tmp_at display subsystem
+function sho_obj_return_to_u(obj, player, game) {
+    if (!obj || !player || !game?.bhitpos) return;
+    const dx = Number.isInteger(player.dx) ? player.dx : 0;
+    const dy = Number.isInteger(player.dy) ? player.dy : 0;
+    if ((!dx && !dy) || (game.bhitpos.x === player.x && game.bhitpos.y === player.y)) return;
+    let x = game.bhitpos.x - dx;
+    let y = game.bhitpos.y - dy;
+    const projGlyph = objectMapGlyph(obj, false, {
+        player,
+        x: player.x,
+        y: player.y,
+        observe: false,
+    });
+    tmp_at(DISP_FLASH, projGlyph);
+    while (isok(x, y) && (x !== player.x || y !== player.y)) {
+        tmp_at(x, y);
+        nh_delay_output_nowait();
+        x -= dx;
+        y -= dy;
+    }
+    tmp_at(DISP_END, 0);
 }
 
 // cf. dothrow.c:1459 [static] -- throwit_return(clear_thrownobj, game)
@@ -902,6 +924,9 @@ export function throwit_mon_hit(obj, mon, player, map, game) {
 // cf. dothrow.c:1509 -- throwit(obj, wep_mask, twoweap, oldslot, player, map, game)
 export function throwit(obj, wep_mask, twoweap, oldslot, player, map, game) {
     const uwep = player.weapon;
+    const impaired = !!(player.confused || player.stunned || player.blind
+        || player.hallucinating || player.fumbling);
+    const tethered_weapon = obj.otyp === AKLYS && (wep_mask & W_WEP) !== 0;
     if ((obj.cursed || obj.greased) && (player.dx || player.dy) && !rn2(7)) {
         let slipok = true;
         if (ammo_and_launcher(obj, uwep)) {
@@ -944,8 +969,14 @@ export function throwit(obj, wep_mask, twoweap, oldslot, player, map, game) {
     let hitMon = null;
     const dx = player.dx || 0, dy = player.dy || 0;
     let bx = player.x, by = player.y;
-    const projGlyph = objectMapGlyph(obj, false, { player, x: player.x, y: player.y, observe: false });
-    tmp_at(DISP_FLASH, projGlyph);
+    const projGlyph = objectMapGlyph(obj, false, {
+        player,
+        x: player.x,
+        y: player.y,
+        observe: false,
+    });
+    let animationClosed = false;
+    tmp_at(tethered_weapon ? DISP_TETHER : DISP_FLASH, projGlyph);
     try {
         for (let i = 0; i < range; i++) {
             const nx = bx + dx, ny = by + dy;
@@ -959,12 +990,34 @@ export function throwit(obj, wep_mask, twoweap, oldslot, player, map, game) {
             if (mon) { hitMon = mon; break; }
         }
     } finally {
-        tmp_at(DISP_END, 0);
+        if (!animationClosed) tmp_at(DISP_END, 0);
     }
     if (game) game.bhitpos = { x: bx, y: by };
 
     if (throwit_mon_hit(obj, hitMon, player, map, game)) { throwit_return(true, game); return; }
     if (game && !game.thrownobj) { throwit_return(false, game); return; }
+
+    if (tethered_weapon) {
+        const madeItBack = !!rn2(100);
+        if (madeItBack) {
+            animationClosed = true;
+            tmp_at(DISP_END, BACKTRACK);
+            if (!impaired && rn2(100)) {
+                return_throw_to_inv(obj, wep_mask, twoweap, oldslot, player);
+                throwit_return(true, game);
+                return;
+            }
+            obj.ox = player.x;
+            obj.oy = player.y;
+            placeFloorObject(map, obj);
+            if (game) game.thrownobj = null;
+            throwit_return(true, game);
+            return;
+        }
+    } else if (obj.otyp === BOOMERANG) {
+        // Display-only return path for boomerangs, matching C visual behavior.
+        sho_obj_return_to_u(obj, player, game);
+    }
 
     const landLoc = typeof map.at === 'function' ? map.at(bx, by) : null;
     if (landLoc && !IS_SOFT(landLoc.typ) && breaktest(obj)) {

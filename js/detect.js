@@ -16,6 +16,7 @@ import { findgold } from './steal.js';
 import { observeObject } from './discovery.js';
 import { unblock_point, recalc_block_point, do_clear_area } from './vision.js';
 import { body_part } from './polyself.js';
+import { tmp_at, nh_delay_output_nowait, DISP_FLASH, DISP_CHANGE, DISP_END } from './animation.js';
 
 // detect.js -- Detection spells, scrolls, and searching
 // cf. detect.c -- Full port of all detection routines.
@@ -111,8 +112,21 @@ function map_object() {}
 function map_trap() {}
 function display_self() {}
 function magic_map_background() {}
-function flash_glyph_at() {}
-function show_glyph() {}
+function show_glyph(x, y, glyph) {
+    if (!isok(x, y)) return;
+    tmp_at(DISP_CHANGE, glyph);
+    tmp_at(x, y);
+}
+function flash_glyph_at(x, y, glyph, repeatCount = 1) {
+    if (!isok(x, y)) return;
+    const rpt = Math.max(1, Number.isFinite(repeatCount) ? Math.floor(repeatCount) : 1) * 2;
+    tmp_at(DISP_FLASH, glyph);
+    for (let i = 0; i < rpt; i++) {
+        tmp_at(x, y);
+        nh_delay_output_nowait();
+    }
+    tmp_at(DISP_END, 0);
+}
 function feel_location() {}
 function feel_newsym() {}
 function docrt() {}

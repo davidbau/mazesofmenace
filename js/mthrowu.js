@@ -18,6 +18,7 @@ import {
     BOULDER, WEAPON_CLASS, CORPSE, objectData, POTION_CLASS, VENOM_CLASS,
     BLINDING_VENOM, ACID_VENOM, ELVEN_ARROW, ELVEN_BOW, ORCISH_ARROW, ORCISH_BOW,
     CROSSBOW_BOLT, CROSSBOW, CREAM_PIE, EGG, WAN_STRIKING,
+    AKLYS,
     PARTISAN, RANSEUR, SPETUM, GLAIVE, HALBERD, BARDICHE, VOULGE,
     FAUCHARD, GUISARME, BILL_GUISARME, GEM_CLASS, FIRST_GLASS_GEM, LAST_GLASS_GEM,
     ARMOR_CLASS, TOOL_CLASS, ROCK_CLASS, FOOD_CLASS, SPBOOK_CLASS, WAND_CLASS,
@@ -49,7 +50,10 @@ import {
     buzz, ZT_BREATH, ZT_MAGIC_MISSILE, ZT_FIRE, ZT_COLD, ZT_SLEEP,
     ZT_DEATH, ZT_LIGHTNING, ZT_POISON_GAS, ZT_ACID,
 } from './zap.js';
-import { tmp_at, nh_delay_output_nowait, DISP_FLASH, DISP_END } from './animation.js';
+import {
+    tmp_at, nh_delay_output_nowait,
+    DISP_FLASH, DISP_TETHER, DISP_END, BACKTRACK,
+} from './animation.js';
 import { objectMapGlyph } from './display_rng.js';
 
 const hallublasts = [
@@ -415,6 +419,7 @@ export function monshoot(mon, otmp, mwep, map, player, display, game, mtarg = nu
     const multishot = monmulti(mon, otmp);
     const available = Number.isInteger(otmp.quan) ? otmp.quan : 1;
     const shots = Math.max(1, Math.min(multishot, available));
+    const tethered_weapon = !!(mwep && otmp?.otyp === AKLYS && mwep.otyp === AKLYS);
 
     if (display) {
         const targetName = mtarg ? ` at the ${monDisplayName(mtarg)}` : '';
@@ -426,7 +431,15 @@ export function monshoot(mon, otmp, mwep, map, player, display, game, mtarg = nu
     for (let i = 0; i < shots; i++) {
         const projectile = { ...otmp, quan: 1, ox: mon.mx, oy: mon.my, invlet: null };
         m_useup(mon, otmp);
-        const result = m_throw(mon, mon.mx, mon.my, ddx, ddy, dm, projectile, map, player, display, game);
+        const result = m_throw(
+            mon, mon.mx, mon.my, ddx, ddy, dm, projectile, map, player, display, game,
+            { tethered_weapon }
+        );
+        if (tethered_weapon && result?.returnFlight) {
+            return_from_mtoss(mon, projectile, true, map);
+            if (mon.dead) break;
+            continue;
+        }
         if (result?.drop && isok(result.x, result.y)) {
             const spot = map.at(result.x, result.y);
             if (spot && ACCESSIBLE(spot.typ)) {
@@ -459,7 +472,11 @@ export function return_from_mtoss(magr, otmp, tethered_weapon, map) {
 
 // C ref: mthrowu.c m_throw() — simulate projectile flight.
 // Consumes rn2(5) at each step, plus hit/damage rolls on collision.
-export function m_throw(mon, startX, startY, dx, dy, range, weapon, map, player, display, game) {
+export function m_throw(
+    mon, startX, startY, dx, dy, range, weapon, map, player, display, game,
+    options = {}
+) {
+    const tethered_weapon = !!options.tethered_weapon;
     let x = startX;
     let y = startY;
     let dropX = startX;
@@ -505,7 +522,7 @@ export function m_throw(mon, startX, startY, dx, dy, range, weapon, map, player,
         y: startY,
         observe: false,
     });
-    tmp_at(DISP_FLASH, projGlyph);
+    tmp_at(tethered_weapon ? DISP_TETHER : DISP_FLASH, projGlyph);
     try {
         while (range-- > 0) {
             x += dx;
@@ -585,7 +602,16 @@ export function m_throw(mon, startX, startY, dx, dy, range, weapon, map, player,
             if (!range || flightBlocked(x, y, false, forcehit)) break;
         }
     } finally {
-        tmp_at(DISP_END, 0);
+        // Keep path active for return-flight backtrack animation.
+        if (!tethered_weapon) {
+            tmp_at(DISP_END, 0);
+        }
+    }
+    tmp_at(x, y);
+    nh_delay_output_nowait();
+    if (tethered_weapon) {
+        tmp_at(DISP_END, BACKTRACK);
+        return { drop: false, returnFlight: true, x: mon.mx, y: mon.my };
     }
     return { drop: true, x: dropX, y: dropY };
 }
