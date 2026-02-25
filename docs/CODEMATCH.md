@@ -3101,8 +3101,8 @@ No function symbols parsed from isaac64.c.
 | 1248 | `breamu` | mthrowu.js:479 | Partial — wrapper to breamm |
 | 1057 | `breathwep_name` | mthrowu.js:464 | Implemented |
 | 162 | `drop_throw` | mthrowu.js:227 | Partial — break/drop core behavior implemented |
-| 1390 | `hit_bars` | mthrowu.js:262 | Partial — core object/bars interaction scaffolded |
-| 1472 | `hits_bars` | mthrowu.js:275 | Partial — pass/block decision path present |
+| 1390 | `hit_bars` | mthrowu.js:262 | Partial — break/drop-on-bars path now wired via dothrow break logic |
+| 1472 | `hits_bars` | mthrowu.js:275 | Partial — C-style class/type pass-through rules implemented |
 | 1371 | `lined_up` | mthrowu.js:124 | Implemented |
 | 1303 | `linedup` | mthrowu.js:75 | Implemented |
 | 1268 | `linedup_callback` | mthrowu.js:113 | Implemented |
@@ -3115,7 +3115,7 @@ No function symbols parsed from isaac64.c.
 | 201 | `monmulti` | mthrowu.js:162 | Partial — core volley logic + class/racial bonuses implemented |
 | 262 | `monshoot` | mthrowu.js:278 | Implemented |
 | 321 | `ohitmon` | mthrowu.js:242 | Partial — core hit/miss/damage/drop logic implemented |
-| 824 | `return_from_mtoss` | mthrowu.js:355 | Partial — return placement path present |
+| 824 | `return_from_mtoss` | mthrowu.js:355 | Partial — thrower recatch-vs-drop behavior implemented |
 | 52 | `rnd_hallublast` | mthrowu.js:43 | Implemented |
 | 990 | `spitmm` | mthrowu.js:442 | Partial — venom path implemented |
 | 1241 | `spitmu` | mthrowu.js:458 | Partial — wrapper to spitmm |

@@ -22,6 +22,10 @@ import {
     CROSSBOW_BOLT, CROSSBOW, CREAM_PIE, EGG, WAN_STRIKING,
     PARTISAN, RANSEUR, SPETUM, GLAIVE, HALBERD, BARDICHE, VOULGE,
     FAUCHARD, GUISARME, BILL_GUISARME, GEM_CLASS, FIRST_GLASS_GEM, LAST_GLASS_GEM,
+    ARMOR_CLASS, TOOL_CLASS, ROCK_CLASS, FOOD_CLASS, SPBOOK_CLASS, WAND_CLASS,
+    BALL_CLASS, CHAIN_CLASS, COIN_CLASS, SKELETON_KEY, LOCK_PICK, CREDIT_CARD,
+    TALLOW_CANDLE, WAX_CANDLE, LENSES, TIN_WHISTLE, MAGIC_WHISTLE, STATUE,
+    MEAT_STICK, ENORMOUS_MEATBALL,
 } from './objects.js';
 import { doname, mkcorpstat, mksobj } from './mkobj.js';
 import { couldsee, m_cansee } from './vision.js';
@@ -31,14 +35,16 @@ import {
 } from './mondata.js';
 import {
     mons, AT_WEAP, G_NOCORPSE, AD_ACID, AD_BLND, AD_DRST,
-    AD_MAGM, AD_FIRE, AD_COLD, AD_SLEE, AD_DISN, AD_ELEC,
+    AD_MAGM, AD_FIRE, AD_COLD, AD_SLEE, AD_DISN, AD_ELEC, MZ_TINY,
 } from './monsters.js';
 import { distmin, dist2, mondead, BOLT_LIM } from './monutil.js';
+import { add_to_minv } from './monutil.js';
 import { placeFloorObject } from './floor_objects.js';
 import { corpse_chance } from './mon.js';
 import { select_rwep as weapon_select_rwep,
     mon_wield_item, NEED_WEAPON, NEED_HTH_WEAPON, NEED_RANGED_WEAPON } from './weapon.js';
 import { ammo_and_launcher, multishot_class_bonus } from './dothrow.js';
+import { breaks, harmless_missile } from './dothrow.js';
 
 const hallublasts = [
     'bubbles', 'butterflies', 'dust specks', 'flowers', 'glitter',
@@ -280,10 +286,10 @@ export function drop_throw(obj, ohit, x, y, map) {
 export function hit_bars(objp, objx, objy, barsx, barsy, breakflags = 0, map) {
     const obj = objp || null;
     if (!obj) return;
-    // Minimal parity behavior: breaking potions/venom when impacting bars.
-    if (obj.oclass === POTION_CLASS || obj.oclass === VENOM_CLASS || obj.otyp === CREAM_PIE) {
-        return;
-    }
+    // C-style: breakable items may shatter on bars.
+    const broken = breaks(obj, objx, objy, null, map);
+    if (broken) return;
+    // Survived impact: drop at the impact cell.
     if (map && isok(objx, objy)) {
         obj.ox = objx;
         obj.oy = objy;
@@ -297,10 +303,42 @@ export function hits_bars(objp, x, y, barsx, barsy, always_hit = 0, whodidit = -
     if (!obj) return true;
     let hits = !!always_hit;
     if (!hits) {
-        // Keep this conservative: large/heavy/rigid classes hit bars.
-        hits = obj.oclass === WEAPON_CLASS
-            || obj.oclass === POTION_CLASS
-            || obj.otyp === BOULDER;
+        switch (obj.oclass) {
+        case WEAPON_CLASS: {
+            const skill = objectData[obj.otyp]?.sub || 0;
+            // Most missiles pass through; bigger melee weapons hit.
+            hits = !(skill === -20 /* bow ammo skill */
+                || skill === -22 /* crossbow ammo skill */
+                || skill === -23 /* dart */
+                || skill === -24 /* shuriken */
+                || skill === 17 /* spear */
+                || skill === 1 /* dagger-ish */);
+            break;
+        }
+        case ARMOR_CLASS:
+            hits = (objectData[obj.otyp]?.armcat !== 3); // gloves pass through
+            break;
+        case TOOL_CLASS:
+            hits = ![SKELETON_KEY, LOCK_PICK, CREDIT_CARD, TALLOW_CANDLE,
+                WAX_CANDLE, LENSES, TIN_WHISTLE, MAGIC_WHISTLE].includes(obj.otyp);
+            break;
+        case ROCK_CLASS:
+            hits = (obj.otyp !== STATUE || ((mons[obj.corpsenm || 0]?.size || 0) > MZ_TINY));
+            break;
+        case FOOD_CLASS:
+            if (obj.otyp === CORPSE) hits = ((mons[obj.corpsenm || 0]?.size || 0) > MZ_TINY);
+            else hits = (obj.otyp === MEAT_STICK || obj.otyp === ENORMOUS_MEATBALL);
+            break;
+        case SPBOOK_CLASS:
+        case WAND_CLASS:
+        case BALL_CLASS:
+        case CHAIN_CLASS:
+            hits = true;
+            break;
+        default:
+            hits = false;
+            break;
+        }
     }
     if (hits && whodidit !== -1) {
         hit_bars(obj, x, y, barsx, barsy, 0, map);
@@ -381,10 +419,16 @@ export function monshoot(mon, otmp, mwep, map, player, display, game, mtarg = nu
 // C ref: mthrowu.c return_from_mtoss().
 export function return_from_mtoss(magr, otmp, tethered_weapon, map) {
     if (!magr || !otmp || !map) return;
-    // Simplified: place returning weapon at thrower location.
-    if (isok(magr.mx, magr.my)) {
-        otmp.ox = magr.mx;
-        otmp.oy = magr.my;
+    const impaired = !!(magr.mconf || magr.mstun || magr.mblinded);
+    const madeItBack = !!rn2(100);
+    const atx = magr.mx;
+    const aty = magr.my;
+    if (madeItBack && !impaired && rn2(100)) {
+        add_to_minv(magr, otmp);
+        if (tethered_weapon) magr.weapon = otmp;
+    } else if (isok(atx, aty)) {
+        otmp.ox = atx;
+        otmp.oy = aty;
         placeFloorObject(map, otmp);
     }
 }
@@ -474,6 +518,12 @@ export function m_throw(mon, startX, startY, dx, dy, range, weapon, map, player,
 
         // C ref: mthrowu.c:772-773 — forcehit + MT_FLIGHTCHECK(FALSE, forcehit)
         const forcehit = !rn2(5);
+        const nx = x + dx;
+        const ny = y + dy;
+        const nextLoc = isok(nx, ny) ? map.at(nx, ny) : null;
+        if (nextLoc && nextLoc.typ === IRONBARS && hits_bars(weapon, x, y, nx, ny, forcehit ? 1 : 0, 0, map)) {
+            break;
+        }
         if (!range || flightBlocked(x, y, false, forcehit)) break;
     }
     return { drop: true, x: dropX, y: dropY };
