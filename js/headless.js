@@ -718,7 +718,7 @@ export class HeadlessDisplay {
         const menuRows = Math.min(lines.length, STATUS_ROW_1);
         // C tty parity: clear only rows occupied by the menu itself.
         for (let r = 0; r < menuRows; r++) {
-            for (let c = offx; c < this.cols; c++) {
+            for (let c = Math.max(0, offx - 1); c < this.cols; c++) {
                 this.grid[r][c] = ' ';
                 this.colors[r][c] = CLR_GRAY;
                 this.attrs[r][c] = 0;

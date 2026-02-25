@@ -110,6 +110,11 @@ export function buildInventoryOverlayLines(player) {
 }
 
 function buildInventoryPages(lines, rows = STATUS_ROW_1) {
+    // C tty parity: if everything fits in the available menu rows,
+    // keep a single page ending with "(end)".
+    if (lines.length <= rows) {
+        return [lines.slice()];
+    }
     const contentRows = Math.max(1, rows - 1); // reserve one row for "--More--"
     const pages = [];
     for (let i = 0; i < lines.length; i += contentRows) {
@@ -132,7 +137,7 @@ function clearInventoryOverlayArea(display, lines = []) {
     const menuRows = Math.min(STATUS_ROW_1, display.rows);
     if (typeof display.setCell === 'function') {
         for (let r = 0; r < menuRows; r++) {
-            for (let col = menuOffx; col < display.cols; col++) {
+            for (let col = Math.max(0, menuOffx - 1); col < display.cols; col++) {
                 display.setCell(col, r, ' ', 7, 0);
             }
         }
