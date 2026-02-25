@@ -19,7 +19,7 @@ import {
 } from './config.js';
 import { rn1, rn2, rnd, getRngCallCount } from './rng.js';
 import { makeRoom } from './map.js';
-import { mksobj, mkobj } from './mkobj.js';
+import { mksobj, mkobj, mkcorpstat } from './mkobj.js';
 import { placeFloorObject } from './floor_objects.js';
 import { GOLD_PIECE, BELL, CORPSE, SCR_TELEPORTATION } from './objects.js';
 import { S_HUMAN, S_MIMIC } from './monsters.js';
@@ -653,8 +653,7 @@ export function makeniche(map, depth, trap_type) {
                     map.at(xx, yy).typ = IRONBARS;
                     if (rn2(3)) {
                         const mndx = mkclass(S_HUMAN, 0, depth);
-                        const corpse = mksobj_at(map, CORPSE, xx, yy + dy, true, false);
-                        if (corpse && mndx >= 0) corpse.corpsenm = mndx;
+                        mkcorpstat(CORPSE, mndx, true, xx, yy + dy, map);
                     }
                 }
                 if (!map.flags.noteleport) mksobj_at(map, SCR_TELEPORTATION, xx, yy + dy, true, false);

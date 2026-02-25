@@ -540,6 +540,19 @@ function mdamagem(magr, mdef, mattk, mwep, dieroll, display, vis, map, ctx) {
         const cur_increase = (max_increase > 1) ? rn2(max_increase) : 0;
         magr.mhpmax = (magr.mhpmax || 0) + max_increase;
         magr.mhp = (magr.mhp || 0) + cur_increase;
+        // C ref: makemon.c grow_up() — if hpmax crosses threshold, gain one level.
+        if ((magr.mhpmax || 0) > hp_threshold) {
+            const baseSpeciesLevel = ((magr.type || {}).level || 0);
+            let lev_limit = Math.floor((3 * baseSpeciesLevel) / 2);
+            if (lev_limit < 5) lev_limit = 5;
+            else if (lev_limit > 49) lev_limit = (baseSpeciesLevel > 49 ? 50 : 49);
+            const curLevel = magr.m_lev ?? magr.mlevel ?? baseSpeciesLevel;
+            if (curLevel < lev_limit) {
+                const nextLevel = curLevel + 1;
+                magr.m_lev = nextLevel;
+                magr.mlevel = nextLevel;
+            }
+        }
 
         return (M_ATTK_DEF_DIED | (DEADMONSTER(magr) ? M_ATTK_AGR_DIED : 0));
     }

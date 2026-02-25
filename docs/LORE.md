@@ -1469,3 +1469,9 @@ hard-won wisdom:
 - Tightened parity shape so command-queue dispatch occurs in `cmd.js:rhack()` (via `cmdq_pop_command`) rather than `run_command()` orchestration.
 - `run_command()` now focuses on turn orchestration and repeat-capture toggles, while `rhack()` owns decoding queued `CMDQ_INT` count + `CMDQ_KEY`/`CMDQ_EXTCMD` command nodes.
 - Added repeat-queue restore regression check in `test/unit/command_repeat_queue.test.js` (`execute_repeat_command` preserves CQ_REPEAT payload after replay).
+
+### Meta-lesson: event parity can unlock PRNG parity (2026-02-25)
+
+- For `seed113_wizard_selfplay200_gameplay`, driving event sequence parity exposed the real semantic mismatches and led directly to full RNG parity.
+- Concretely, fixing C-faithful event-producing paths (`mklev` niche corpse creation via `mkcorpstat`, and combat growth/kill flow in `mhitm`) moved both metrics together to `event 3321/3321` and `rng 13421/13421`.
+- Practical strategy: when a seed is close on RNG but diverges in event ordering/content, prioritize event-faithful core logic first; event alignment is often the shortest path to recovering RNG alignment.
