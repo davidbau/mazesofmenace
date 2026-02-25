@@ -1464,9 +1464,8 @@ function getWornArmorItems(player) {
 // cf. do_wear.c dowear() — W command: wear a piece of armor
 async function handleWear(player, display) {
     const wornSet = new Set(getWornArmorItems(player));
-    const allArmor = (player.inventory || []).filter((o) => o.oclass === ARMOR_CLASS);
-    const armor = allArmor.filter((o) => !wornSet.has(o) && canwearobj(player, o, display, true));
-    if (allArmor.length === 0) {
+    const armor = (player.inventory || []).filter((o) => o.oclass === ARMOR_CLASS && !wornSet.has(o));
+    if (armor.length === 0) {
         if (wornSet.size > 0) {
             display.putstr_message("You don't have anything else to wear.");
         } else {
@@ -1475,30 +1474,19 @@ async function handleWear(player, display) {
         return { moved: false, tookTime: false };
     }
 
-    const wearChoices = armor.map(a => a.invlet).join('');
-    display.putstr_message(
-        wearChoices.length > 0
-            ? `What do you want to wear? [${wearChoices} or ?*]`
-            : 'What do you want to wear? [*]'
-    );
+    {
+        const wearChoices = armor.map(a => a.invlet).join('');
+        display.putstr_message(
+            wearChoices.length > 1
+                ? `What do you want to wear? [${wearChoices} or ?*]`
+                : 'What do you want to wear? [*]'
+        );
+    }
     const ch = await nhgetch();
     const c = String.fromCharCode(ch);
 
     const item = armor.find(a => a.invlet === c);
     if (!item) {
-        if (typeof display.clearRow === 'function') display.clearRow(0);
-        display.topMessage = null;
-        // C-like behavior: selecting an ineligible armor letter reports why.
-        const selectedArmor = allArmor.find((a) => a.invlet === c);
-        if (selectedArmor) {
-            canwearobj(player, selectedArmor, display, false);
-            return { moved: false, tookTime: false };
-        }
-        const selectedAny = (player.inventory || []).find((o) => o.invlet === c);
-        if (selectedAny) {
-            display.putstr_message('That is a silly thing to wear.');
-            return { moved: false, tookTime: false };
-        }
         display.putstr_message('Never mind.');
         return { moved: false, tookTime: false };
     }
@@ -1530,14 +1518,7 @@ async function handlePutOn(player, display) {
         return { moved: false, tookTime: false };
     }
 
-    {
-        const choices = eligible.map(r => r.invlet).join('');
-        display.putstr_message(
-            choices.length > 1
-                ? `What do you want to put on? [${choices} or ?*]`
-                : 'What do you want to put on? [*]'
-        );
-    }
+    display.putstr_message(`What do you want to put on? [${eligible.map(r => r.invlet).join('')}]`);
     const ch = await nhgetch();
     const c = String.fromCharCode(ch);
     const item = eligible.find(r => r.invlet === c);
@@ -1580,14 +1561,7 @@ async function handleTakeOff(player, display) {
     if (worn.length === 1) {
         item = worn[0];
     } else {
-        {
-            const choices = worn.map(a => a.invlet).join('');
-            display.putstr_message(
-                choices.length > 1
-                    ? `What do you want to take off? [${choices} or ?*]`
-                    : 'What do you want to take off? [*]'
-            );
-        }
+        display.putstr_message(`What do you want to take off? [${worn.map(a => a.invlet).join('')}]`);
         const ch = await nhgetch();
         const c = String.fromCharCode(ch);
         item = worn.find(a => a.invlet === c);
@@ -1642,14 +1616,7 @@ async function handleRemove(player, display) {
     if (accessories.length === 1) {
         item = accessories[0];
     } else {
-        {
-            const choices = accessories.map(a => a.invlet).join('');
-            display.putstr_message(
-                choices.length > 1
-                    ? `What do you want to remove? [${choices} or ?*]`
-                    : 'What do you want to remove? [*]'
-            );
-        }
+        display.putstr_message(`What do you want to remove? [${accessories.map(a => a.invlet).join('')}]`);
         const ch = await nhgetch();
         const c = String.fromCharCode(ch);
         item = accessories.find(a => a.invlet === c);
