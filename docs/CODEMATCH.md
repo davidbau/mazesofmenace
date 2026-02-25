@@ -3114,7 +3114,7 @@ No function symbols parsed from isaac64.c.
 | 1127 | `m_useupall` | mthrowu.js:141 | Implemented |
 | 201 | `monmulti` | mthrowu.js:162 | Partial — core volley logic + class/racial bonuses implemented |
 | 262 | `monshoot` | mthrowu.js:278 | Implemented |
-| 321 | `ohitmon` | mthrowu.js:242 | Partial — core hit/miss/damage/drop logic implemented |
+| 321 | `ohitmon` | mthrowu.js:242 | Partial — hit/miss/drop pipeline with `find_mac` to-hit and `dmgval` weapon/gem damage path implemented; remaining C edge-cases (special materials/effects) TODO |
 | 824 | `return_from_mtoss` | mthrowu.js:355 | Partial — thrower recatch-vs-drop behavior implemented |
 | 52 | `rnd_hallublast` | mthrowu.js:43 | Implemented |
 | 990 | `spitmm` | mthrowu.js:442 | Partial — venom path implemented |

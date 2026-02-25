@@ -40,9 +40,10 @@ import { add_to_minv } from './monutil.js';
 import { placeFloorObject } from './floor_objects.js';
 import { corpse_chance } from './mon.js';
 import { select_rwep as weapon_select_rwep,
-    mon_wield_item, NEED_WEAPON, NEED_HTH_WEAPON, NEED_RANGED_WEAPON } from './weapon.js';
+    mon_wield_item, NEED_WEAPON, NEED_HTH_WEAPON, NEED_RANGED_WEAPON, dmgval } from './weapon.js';
 import { ammo_and_launcher, multishot_class_bonus } from './dothrow.js';
 import { breaks, harmless_missile } from './dothrow.js';
+import { find_mac } from './worn.js';
 import {
     buzz, ZT_BREATH, ZT_MAGIC_MISSILE, ZT_FIRE, ZT_COLD, ZT_SLEEP,
     ZT_DEATH, ZT_LIGHTNING, ZT_POISON_GAS, ZT_ACID,
@@ -352,10 +353,15 @@ export function hits_bars(objp, x, y, barsx, barsy, always_hit = 0, whodidit = -
 export function ohitmon(mtmp, otmp, range, verbose, map, player, display, game) {
     if (!mtmp || !otmp) return 1;
     const od = objectData[otmp.otyp] || {};
-    const hitThreshold = 5 + (mtmp.mac ?? 10);
+    const hitThreshold = 5 + find_mac(mtmp);
     const dieRoll = rnd(20);
     if (hitThreshold >= dieRoll) {
-        let damage = (od.sdam || 0) > 0 ? rnd(od.sdam || 0) : 0;
+        let damage = 0;
+        if (otmp.oclass === WEAPON_CLASS || otmp.oclass === GEM_CLASS) {
+            damage = dmgval(otmp, mtmp);
+        } else if ((od.sdam || 0) > 0) {
+            damage = rnd(od.sdam || 0);
+        }
         damage += (otmp.spe || 0);
         if (damage < 1) damage = 1;
         mtmp.mhp -= damage;
