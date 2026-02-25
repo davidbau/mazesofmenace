@@ -66,7 +66,8 @@ import { hold_another_object, prinv } from './invent.js';
 import { findit } from './detect.js';
 import { is_db_wall, find_drawbridge, open_drawbridge, close_drawbridge, destroy_drawbridge } from './dbridge.js';
 import { HOLE, TRAPDOOR } from './symbols.js';
-import { engr_at, del_engr_at, wipe_engr_at, rloc_engr } from './engrave.js';
+import { engr_at, del_engr_at, wipe_engr_at, rloc_engr, make_engr_at } from './engrave.js';
+import { random_engraving_rng } from './dungeon.js';
 import {
     tmp_at, nh_delay_output, nh_delay_output_nowait,
     DISP_BEAM, DISP_END,
@@ -1427,6 +1428,13 @@ export function zap_updown(obj, player, map) {
     const engr = engr_at(map, x, y);
     if (!engr || engr.type === 'headstone') return;
     switch (obj.otyp) {
+    case WAN_POLYMORPH:
+    case SPE_POLYMORPH: {
+      del_engr_at(map, x, y);
+      const etxt = random_engraving_rng() || '';
+      make_engr_at(map, x, y, etxt, 'mark', { degrade: true });
+      break;
+    }
     case WAN_CANCELLATION:
     case SPE_CANCELLATION:
     case WAN_MAKE_INVISIBLE:

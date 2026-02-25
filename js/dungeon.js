@@ -2039,7 +2039,7 @@ const { texts: ENGRAVE_TEXTS, lineBytes: ENGRAVE_LINE_BYTES, chunksize: ENGRAVE_
 // C: if (!rn2(4) || !(rumor = getrumor(0, buf, TRUE)) || !*rumor)
 //        get_rnd_text(ENGRAVEFILE, buf, rn2, MD_PAD_RUMORS);
 //    wipeout_text(buf, strlen(buf)/4, 0);
-function random_engraving_rng() {
+export function random_engraving_rng() {
     let text = null;
     if (!rn2(4)) {
         // Path A: use engrave file directly (short-circuit: skip getrumor)
