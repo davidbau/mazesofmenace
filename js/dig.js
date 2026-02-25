@@ -54,7 +54,7 @@ import {
     is_drawbridge_wall, find_drawbridge, destroy_drawbridge,
 } from './dbridge.js';
 import { deltrap } from './dungeon.js';
-import { tmp_at, nh_delay_output_nowait, DISP_BEAM, DISP_END } from './animation.js';
+import { tmp_at, nh_delay_output, DISP_BEAM, DISP_END } from './animation.js';
 
 // ============================================================================
 // Constants (cf. dig.c:19-27)
@@ -629,7 +629,7 @@ export function watch_dig(mtmp, x, y, zap, map) {
 //      various rn2() calls in the loop.
 // ============================================================================
 
-export function zap_dig(map, player) {
+export async function zap_dig(map, player) {
     if (!map || !player) return;
 
     const u = player;
@@ -676,7 +676,7 @@ export function zap_dig(map, player) {
             if (!room) break;
 
             tmp_at(zx, zy);
-            nh_delay_output_nowait();
+            await nh_delay_output();
 
             if (closed_door(zx, zy, map) || room.typ === SDOOR) {
                 // C: shop damage

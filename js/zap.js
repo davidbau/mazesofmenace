@@ -1081,7 +1081,7 @@ export async function weffects(obj, player, map, display = null, game = null) {
   } else {
     // RAY wand or spell
     if (otyp === WAN_DIGGING || otyp === 364 /* SPE_DIG */) {
-      zap_dig_core(map, player);
+      await zap_dig_core(map, player);
     } else if (otyp >= WAN_MAGIC_MISSILE && otyp <= WAN_LIGHTNING) {
       const beamType = wandToBeamType(otyp);
       if (beamType >= 0 && player) {
