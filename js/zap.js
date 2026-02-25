@@ -57,7 +57,7 @@ import { splitobj } from './mkobj.js';
 import { delobj } from './invent.js';
 import { monflee } from './monmove.js';
 import { readobjnam, hands_obj } from './objnam.js';
-import { hold_another_object, prinv } from './invent.js';
+import { hold_another_object } from './invent.js';
 import { tmp_at, nh_delay_output_nowait, DISP_BEAM, DISP_END } from './animation.js';
 
 // Direction vectors matching commands.js DIRECTION_KEYS
@@ -1124,8 +1124,7 @@ export function makewish(wishText, player, display) {
         if (display) display.putstr_message('Nothing fitting that description exists.');
         return null;
     }
-    const got = hold_another_object(otmp, player, null, null, null);
-    prinv(null, got || otmp, 0, player);
+    const got = hold_another_object(otmp, player, 'Oops!  %s to the floor!', null, null);
     if (player) {
         player.ublesscnt = (player.ublesscnt || 0) + rn1(100, 50);
     }

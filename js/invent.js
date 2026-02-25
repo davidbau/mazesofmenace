@@ -3,7 +3,8 @@
 
 import { nhgetch, getlin } from './input.js';
 import { create_nhwindow, destroy_nhwindow, NHW_MENU } from './windows.js';
-import { COLNO, STATUS_ROW_1, PM_ARCHEOLOGIST, A_WIS } from './config.js';
+import { COLNO, STATUS_ROW_1, PM_ARCHEOLOGIST, A_STR, A_CON, A_WIS,
+         UNENCUMBERED, OVERLOADED } from './config.js';
 import { objectData, WEAPON_CLASS, FOOD_CLASS, WAND_CLASS, SPBOOK_CLASS,
          FLINT, ROCK, SLING, MAGIC_MARKER, COIN_CLASS, ARMOR_CLASS,
          RING_CLASS, AMULET_CLASS, TOOL_CLASS, POTION_CLASS, SCROLL_CLASS,
@@ -943,12 +944,88 @@ export function addinv_nomerge(obj, player) {
     return result;
 }
 
+const WT_WEIGHTCAP_STRCON = 25;
+const WT_WEIGHTCAP_SPARE = 50;
+const MAX_CARR_CAP = 1000;
+const WT_WOUNDEDLEG_REDUCT = 100;
+
+function weight_cap_for_inventory(player) {
+    const str = player?.attributes ? player.attributes[A_STR] : 10;
+    const con = player?.attributes ? player.attributes[A_CON] : 10;
+    let carrcap = WT_WEIGHTCAP_STRCON * (str + con) + WT_WEIGHTCAP_SPARE;
+    if (player?.levitating || player?.flying) {
+        carrcap = MAX_CARR_CAP;
+    } else {
+        if (carrcap > MAX_CARR_CAP) carrcap = MAX_CARR_CAP;
+        if (!player?.flying) {
+            if (player?.woundedLegLeft) carrcap -= WT_WOUNDEDLEG_REDUCT;
+            if (player?.woundedLegRight) carrcap -= WT_WOUNDEDLEG_REDUCT;
+        }
+    }
+    return Math.max(carrcap, 1);
+}
+
+function near_capacity_for_inventory(player) {
+    let wt = 0;
+    for (const obj of (player?.inventory || [])) {
+        if (!obj) continue;
+        if (obj.oclass === COIN_CLASS) wt += Math.floor(((obj.quan || 0) + 50) / 100);
+        else wt += obj.owt || weight(obj) || 0;
+    }
+    const wc = weight_cap_for_inventory(player);
+    const over = wt - wc;
+    if (over <= 0) return UNENCUMBERED;
+    const cap = Math.floor((over * 2) / wc) + 1;
+    return Math.min(cap, OVERLOADED);
+}
+
+function encumber_msg_transition(prevCap, newCap) {
+    if (prevCap < newCap) {
+        switch (newCap) {
+        case 1:
+            Your('movements are slowed slightly because of your load.');
+            break;
+        case 2:
+            You('rebalance your load.  Movement is difficult.');
+            break;
+        case 3:
+            You('stagger under your heavy load.  Movement is very hard.');
+            break;
+        default:
+            You('%s move a handspan with this load!', newCap === 4 ? 'can barely' : "can't even");
+            break;
+        }
+    } else if (prevCap > newCap) {
+        switch (newCap) {
+        case 0:
+            Your('movements are now unencumbered.');
+            break;
+        case 1:
+            Your('movements are only slowed slightly by your load.');
+            break;
+        case 2:
+            You('rebalance your load.  Movement is still difficult.');
+            break;
+        case 3:
+            You('stagger under your load.  Movement is still very hard.');
+            break;
+        default:
+            break;
+        }
+    }
+}
+
 // C ref: invent.c hold_another_object() — add object or drop if can't hold
 export function hold_another_object(obj, player, drop_fmt, drop_arg, hold_msg) {
+    const prevCap = near_capacity_for_inventory(player);
+    const oquan = obj?.quan || 0;
     const result = addinv(obj, player);
-    if (hold_msg) {
-        pline('%s%s%s', hold_msg, hold_msg ? ' ' : '', xprname_simple(result));
+    if (result && (hold_msg || drop_fmt)) {
+        prinv(hold_msg || null, result, oquan, player);
     }
+    const newCap = near_capacity_for_inventory(player);
+    if (player) player.encumbrance = newCap;
+    encumber_msg_transition(prevCap, newCap);
     return result;
 }
 
@@ -1380,14 +1457,14 @@ export function obj_to_let(obj) {
 }
 
 // C ref: invent.c xprname() — format an inventory line
-export function xprname(obj, txt, let_char, dot, cost, quan) {
+export function xprname(obj, txt, let_char, dot, cost, quan, player = null) {
     let savequan = 0;
     if (quan && obj) {
         savequan = obj.quan;
         obj.quan = quan;
     }
     if (!txt) {
-        txt = obj ? doname(obj) : '???';
+        txt = obj ? doname(obj, player) : '???';
     }
     let suffix = '';
     if (cost) {
@@ -1414,8 +1491,7 @@ function xprname_simple(obj) {
 export function prinv(prefix, obj, quan, player) {
     if (!prefix) prefix = '';
     const let_char = obj_to_let(obj);
-    const txt = doname(obj);
-    const line = xprname(obj, null, let_char, true, 0, quan);
+    const line = xprname(obj, null, let_char, true, 0, quan, player);
     pline('%s%s%s', prefix, prefix ? ' ' : '', line);
 }
 

@@ -924,6 +924,13 @@ export class Display {
             line2Parts.push('Hungry');
         }
 
+        // Encumbrance
+        if ((player.encumbrance || 0) > 0) {
+            const encNames = ['Burdened', 'Stressed', 'Strained', 'Overtaxed', 'Overloaded'];
+            const idx = Math.max(0, Math.min(encNames.length - 1, (player.encumbrance || 1) - 1));
+            line2Parts.push(encNames[idx]);
+        }
+
         // Conditions
         if (player.blind) line2Parts.push('Blind');
         if (player.confused) line2Parts.push('Conf');

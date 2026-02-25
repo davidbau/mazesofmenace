@@ -1201,7 +1201,8 @@ export function doname(obj, player) {
         && (obj.blessed || obj.cursed)
     );
     const roleName = String(player?.roleName || '');
-    const roleIsCleric = roleName === 'Priest' || roleName === 'Priestess';
+    const roleIsCleric = roleName === 'Priest' || roleName === 'Priestess' || roleName === 'Cleric';
+    const bucKnown = bknown || roleIsCleric;
     let prefix = '';
 
     // C ref: objnam.c doname_base() quantity/article prefix
@@ -1220,7 +1221,7 @@ export function doname(obj, player) {
     }
 
     // C ref: objnam.c doname_base() BUC logic
-    if (bknown && obj.oclass !== COIN_CLASS && !suppressWaterBuc) {
+    if (bucKnown && obj.oclass !== COIN_CLASS && !suppressWaterBuc) {
         if (obj.cursed) prefix += 'cursed ';
         else if (obj.blessed) prefix += 'blessed ';
         else if (!(known && od.charged && obj.oclass !== ARMOR_CLASS

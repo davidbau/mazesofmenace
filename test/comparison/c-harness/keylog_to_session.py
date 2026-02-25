@@ -173,7 +173,7 @@ def describe_key(code):
     if 1 <= code <= 26:
         return f'key-ctrl-{chr(code + 96)}'
     if 32 <= code <= 126:
-        return _session.describe_key(chr(code))
+        return f'key-{chr(code)}'
     return f'keycode-{code}'
 
 

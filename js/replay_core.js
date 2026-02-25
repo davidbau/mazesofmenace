@@ -59,6 +59,11 @@ function stepIsNavKey(step) {
         && MOVE_KEY_CHARS.has(step.key);
 }
 
+// Session action labels are advisory metadata; key bytes are authoritative.
+function stepHasInputKey(step) {
+    return typeof step?.key === 'string' && step.key.length > 0;
+}
+
 // Strip ANSI escape/control sequences from a terminal line.
 export function stripAnsiSequences(text) {
     if (!text) return '';
@@ -1518,7 +1523,7 @@ export async function replaySession(seed, session, opts = {}) {
                 const hasCapturedPromptFrame = ((step.rng && step.rng.length) || 0) === 0
                     && (stepScreen.length > 0 || stepScreenAnsi.length > 0)
                     && stepMsg.trim().length > 0
-                    && (step.action ? step.action.startsWith('key-') : !stepIsNavKey(step));
+                    && (stepHasInputKey(step) || !stepIsNavKey(step));
                 // Command is waiting for additional input (direction/item/etc.).
                 // Defer resolution to subsequent captured step(s).
                 // Preserve the prompt/menu frame shown before we redraw map.
@@ -1779,7 +1784,7 @@ export async function replaySession(seed, session, opts = {}) {
             if (capturedPromptLike
                 && currentMsg === ''
                 && ((step.rng && step.rng.length) || 0) === 0
-                && (step.action ? step.action.startsWith('key-') : !stepIsNavKey(step))) {
+                && (stepHasInputKey(step) || !stepIsNavKey(step))) {
                 capturedScreenOverride = stepScreen;
                 capturedScreenAnsiOverride = stepScreenAnsi.length > 0
                     ? stepScreenAnsi
