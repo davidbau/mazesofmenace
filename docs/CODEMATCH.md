@@ -5477,17 +5477,17 @@ No function symbols parsed from isaac64.c.
 | 5225 | `mhitm_knockback` | mhitu.js + uhitm.js | Implemented — rn2(3) distance, rn2(6) chance, eligibility checks (AD_PHYS, attack type, size), rn2(2)+rn2(2) message; no actual monster movement |
 | 3082 | `mhitm_really_poison` | uhitm.js | Implemented |
 | 1920 | `mhurtle_to_doom` | - | Missing |
-| 5176 | `missum` | - | Missing |
+| 5176 | `missum` | uhitm.js | Implemented (message path; cumbersome-armor hint + miss message) |
 | 350 | `mon_maybe_unparalyze` | uhitm.js | Implemented — rn2(10) wake paralyzed monster before dieroll |
-| 6293 | `nohandglow` | - | Missing |
-| 5843 | `passive` | uhitm.js | Partial — C-style AT_NONE search, damage dice, AD_ACID/AD_ENCH first-pass handling, rn2(3) alive gate, and AD_PLYS/COLD/FIRE/ELEC/STUN alive effects with hero resistance/status hooks. Remaining gaps: full object-side passive effects (`passive_obj`), exact damage/death messaging parity, and full property-system fidelity |
-| 6105 | `passive_obj` | - | Missing |
+| 6293 | `nohandglow` | uhitm.js | Stub — function present; `umconf` state not yet modeled |
+| 5843 | `passive` | uhitm.js | Partial — C-style AT_NONE search, damage dice, AD_ACID/AD_ENCH first-pass handling, `passive_obj` integration for weapon erosion, rn2(3) alive gate, and AD_PLYS/COLD/FIRE/ELEC/STUN alive effects with hero resistance/status hooks. Remaining gaps: exact damage/death messaging parity and full property-system fidelity |
+| 6105 | `passive_obj` | uhitm.js | Partial — erosion paths wired through `erode_obj` for FIRE/ACID/RUST/CORR/DCAY; enchant-drain path still TODO |
 | 1970 | `shade_aware` | uhitm.js | Implemented |
 | 1994 | `shade_miss` | uhitm.js | Implemented |
-| 4909 | `start_engulf` | - | Missing |
+| 4909 | `start_engulf` | uhitm.js | Stub — function surface present; display/animation path not modeled |
 | 2152 | `steal_it` | - | Missing |
-| 6260 | `stumble_onto_mimic` | - | Missing |
-| 6179 | `that_is_a_mimic` | - | Missing |
+| 6260 | `stumble_onto_mimic` | uhitm.js | Implemented (reveal + wake path; simplified stickiness) |
+| 6179 | `that_is_a_mimic` | uhitm.js | Implemented (simplified reveal path) |
 | 2126 | `theft_petrifies` | - | Missing |
 
 ### utf8map.c -> —

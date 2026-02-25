@@ -53,6 +53,10 @@ import { placeFloorObject } from './floor_objects.js';
 import { uwepgone, uswapwepgone, uqwepgone } from './wield.js';
 import { find_mac } from './worn.js';
 import { make_stunned } from './potion.js';
+import {
+    erode_obj, ERODE_BURN, ERODE_RUST, ERODE_ROT, ERODE_CORRODE,
+    EF_GREASE, EF_VERBOSE,
+} from './trap.js';
 
 
 // ============================================================================
@@ -1241,17 +1245,17 @@ export function gulpum(mdef, mattk) {
 //   Hero misses monster: print miss message.
 //   'wouldhavehit' is true if monk missed only due to armor penalty.
 export function missum(mdef, uattk, wouldhavehit) {
-    // C: prints "Your armor is rather cumbersome..." if wouldhavehit
-    // C: prints "You miss <mon>." or "You pretend to be friendly to <mon>."
-    // This is the full standalone version; the inline version in
-    // playerAttackMonster uses display.putstr_message directly.
+    const display = arguments[3] || null;
+    if (!display) return;
+    if (wouldhavehit) {
+        display.putstr_message('Your armor is rather cumbersome...');
+    }
+    display.putstr_message(`You miss ${monNam(mdef)}.`);
 }
 
 // Internal version of missum used by known_hitum
 function missum_internal(player, mon, uattk, wouldhavehit, display) {
-    if (display) {
-        display.putstr_message(`You miss the ${monDisplayName(mon)}.`);
-    }
+    missum(mon, uattk, wouldhavehit, display);
 }
 
 // cf. uhitm.c:5196 — m_is_steadfast(mtmp):
@@ -1341,25 +1345,30 @@ export function passive_obj(mon, obj, mattk) {
     case AD_FIRE:
         // C: if (!rn2(6) && !mon->mcan) erode_obj(obj, ERODE_BURN)
         if (!rn2(6) && !mon.mcan) {
-            // erode_obj stub — would burn the weapon
+            erode_obj(obj, null, ERODE_BURN, EF_GREASE | EF_VERBOSE);
         }
         break;
     case AD_ACID:
         // C: if (!rn2(6)) erode_obj(obj, ERODE_CORRODE)
         if (!rn2(6)) {
-            // erode_obj stub — would corrode the weapon
+            erode_obj(obj, null, ERODE_CORRODE, EF_GREASE | EF_VERBOSE);
         }
         break;
     case AD_RUST:
         // C: if (!mon->mcan) erode_obj(obj, ERODE_RUST)
         if (!mon.mcan) {
-            // erode_obj stub — would rust the weapon
+            erode_obj(obj, null, ERODE_RUST, EF_GREASE | EF_VERBOSE);
         }
         break;
     case AD_CORR:
         // C: if (!mon->mcan) erode_obj(obj, ERODE_CORRODE)
         if (!mon.mcan) {
-            // erode_obj stub — would corrode the weapon
+            erode_obj(obj, null, ERODE_CORRODE, EF_GREASE | EF_VERBOSE);
+        }
+        break;
+    case AD_DCAY:
+        if (!mon.mcan) {
+            erode_obj(obj, null, ERODE_ROT, EF_GREASE | EF_VERBOSE);
         }
         break;
     case AD_ENCH:
@@ -1713,6 +1722,10 @@ function passive(mon, weapon, mhit, malive, aatyp = AT_WEAP, wep_was_destroyed =
         break;
     default:
         break;
+    }
+
+    if (mhit && weapon && !wep_was_destroyed && aatyp === AT_WEAP) {
+        passive_obj(mon, weapon, passiveAttk);
     }
 
     if (tmp > 0 && player) {
