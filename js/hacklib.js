@@ -436,10 +436,12 @@ export function fuzzymatch(s1, s2, ignore_chars, caseblind) {
 // ============================================================================
 
 // hacklib.c:689 — return the ordinal suffix of a number (1st, 2nd, 3rd, 4th...)
+// TRANSLATOR: AUTO (hacklib.c:688)
 export function ordin(n) {
-    const dd = n % 10;
-    return (dd === 0 || dd > 3 || Math.floor((n % 100) / 10) === 1)
-        ? 'th' : (dd === 1) ? 'st' : (dd === 2) ? 'nd' : 'rd';
+  let dd = n % 10;
+  return (dd === 0 || dd > 3 || Math.trunc((n % 100) / 10) === 1)
+    ? "th"
+    : (dd === 1) ? "st" : (dd === 2) ? "nd" : "rd";
 }
 
 // hacklib.c:701 — make a signed digit string from a number ("+3" or "-2")
