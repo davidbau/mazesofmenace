@@ -42,14 +42,13 @@ export function is_waterwall(x, y, map) {
 }
 
 // cf. dbridge.c:45 — is_pool(x, y)
+// TRANSLATOR: AUTO (dbridge.c:45)
 export function is_pool(x, y, map) {
-    if (!isok(x, y)) return false;
-    const loc = map.at(x, y);
-    if (!loc) return false;
-    const ltyp = loc.typ;
-    if (ltyp === POOL || ltyp === MOAT || ltyp === WATER || is_moat(x, y, map))
-        return true;
-    return false;
+  let ltyp;
+  if (!isok(x, y)) return false;
+  ltyp = map.locations[x][y].typ;
+  if (ltyp === POOL || ltyp === MOAT || ltyp === WATER || is_moat(x, y, map)) return true;
+  return false;
 }
 
 // cf. dbridge.c:61 — is_lava(x, y)
