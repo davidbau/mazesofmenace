@@ -54,6 +54,7 @@ import time
 import subprocess
 import shutil
 import tempfile
+import platform
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.normpath(os.path.join(SCRIPT_DIR, '..', '..', '..'))
@@ -61,6 +62,8 @@ RESULTS_DIR = os.path.join(SCRIPT_DIR, 'results')
 SESSIONS_DIR = os.path.join(PROJECT_ROOT, 'test', 'comparison', 'sessions')
 INSTALL_DIR = os.path.join(PROJECT_ROOT, 'nethack-c', 'install', 'games', 'lib', 'nethackdir')
 NETHACK_BINARY = os.path.join(INSTALL_DIR, 'nethack')
+UNIX_SYSCONF_SOURCE = os.path.join(PROJECT_ROOT, 'nethack-c', 'sys', 'unix', 'sysconf')
+LIBNH_SYSCONF_SOURCE = os.path.join(PROJECT_ROOT, 'nethack-c', 'sys', 'libnh', 'sysconf')
 DEFAULT_FIXED_DATETIME = '20000110090000'
 import re
 
@@ -139,8 +142,37 @@ def tmux_capture(session):
     return result.stdout
 
 
+def ensure_install_sysconf():
+    """Ensure install sysconf exists and has harness-safe defaults."""
+    target = os.path.join(INSTALL_DIR, 'sysconf')
+    if not os.path.isdir(INSTALL_DIR):
+        return
+
+    if not os.path.exists(target):
+        source = UNIX_SYSCONF_SOURCE if os.path.isfile(UNIX_SYSCONF_SOURCE) else LIBNH_SYSCONF_SOURCE
+        if os.path.isfile(source):
+            shutil.copyfile(source, target)
+
+    if not os.path.isfile(target):
+        return
+
+    with open(target, 'r', encoding='utf-8', errors='ignore') as f:
+        text = f.read()
+
+    updated = text
+    updated = re.sub(r'(?m)^WIZARDS=.*$', 'WIZARDS=*', updated)
+    updated = re.sub(r'(?m)^GDBPATH=.*$', '#GDBPATH=/usr/bin/gdb', updated)
+    if platform.system() == 'Darwin':
+        updated = re.sub(r'(?m)^GREPPATH=.*$', 'GREPPATH=/usr/bin/grep', updated)
+
+    if updated != text:
+        with open(target, 'w', encoding='utf-8') as f:
+            f.write(updated)
+
+
 def setup_home(character=None):
     char = character or CHARACTER
+    ensure_install_sysconf()
     os.makedirs(RESULTS_DIR, exist_ok=True)
     nethackrc = os.path.join(RESULTS_DIR, '.nethackrc')
     with open(nethackrc, 'w') as f:
