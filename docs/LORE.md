@@ -1483,3 +1483,8 @@ hard-won wisdom:
 - Capture experiment showed the fixture itself was timing-sensitive: re-recording with a small final settle (`NETHACK_FINAL_CAPTURE_DELAY_S=0.10`) changed C's captured final topline to `"You stop waiting."` without changing RNG counts.
 - Correct resolution was to remove the suppression and keep C-like `stop_occupation` behavior (`You stop ...`), then re-record only the targeted session with final settle delay.
 - Operational rule: when mismatch is screen-only and RNG/events are stable, treat fixture capture timing as a first-class suspect; do not change core gameplay semantics to satisfy a possibly stale/under-settled frame.
+## 2026-02-26: Iron Parity campaign operations
+
+- Keep campaign work issue-driven in three layers: tracker epic (`M0..M6`), milestone issues, and concrete child implementation issues. Milestones should not carry unscoped implementation directly.
+- For failing-session burndown, capture two artifacts per baseline run: a full pass/fail snapshot and a first-divergence taxonomy grouped by JS origin (`function(file:line)`). Use the taxonomy to open follow-up cluster issues immediately.
+- Require each campaign issue to carry dependency links (`Blocked by`, `Blocks`) and evidence fields (session/seed, first divergence, expected C vs actual JS) to keep parallel engineers aligned.

@@ -169,6 +169,47 @@ When working on C-vs-JS parity, follow this rule:
 - If a test reveals missing behavior, port the corresponding C logic path.
 - Keep changes incremental and keep tests green after each port batch.
 
+## Iron Parity Campaign Workflow
+
+For state-canonicalization and translator campaign work, use the Iron Parity
+docs as the planning authority:
+
+1. [IRON_PARITY_PLAN.md](/share/u/davidbau/git/mazesofmenace/game/docs/IRON_PARITY_PLAN.md)
+2. [C_FAITHFUL_STATE_REFACTOR_PLAN.md](/share/u/davidbau/git/mazesofmenace/game/docs/C_FAITHFUL_STATE_REFACTOR_PLAN.md)
+3. [C_TRANSLATOR_ARCHITECTURE_SPEC.md](/share/u/davidbau/git/mazesofmenace/game/docs/C_TRANSLATOR_ARCHITECTURE_SPEC.md)
+4. [C_TRANSLATOR_PARSER_IMPLEMENTATION_SPEC.md](/share/u/davidbau/git/mazesofmenace/game/docs/C_TRANSLATOR_PARSER_IMPLEMENTATION_SPEC.md)
+
+Required gating expectations for campaign changes:
+
+1. policy classification remains complete for all `js/*.js` files:
+   ```bash
+   npm run -s translator:check-policy
+   ```
+2. parity/test gates still apply (session replay evidence remains authoritative).
+3. no harness-side suppression of gameplay mismatches.
+4. campaign milestone naming should use shared `M0..M6` IDs from
+   `IRON_PARITY_PLAN.md` when documenting progress.
+
+Iron Parity GitHub workflow:
+
+1. Create or maintain these issue tiers:
+   - one campaign tracker epic (`IRON_PARITY: Campaign Tracker (M0-M6)`),
+   - one milestone issue per `M0..M6`,
+   - subsystem implementation issues linked to the milestone issue.
+2. Use labels:
+   - required: `parity`, `campaign:iron-parity`,
+   - one scope label: `state` | `translator` | `animation` | `parity-test` | `docs` | `infra`,
+   - optional active owner: `agent:<name>`.
+3. Include evidence-first parity body fields:
+   - `Session/Seed`,
+   - `First mismatch (step/index/channel)`,
+   - `Expected C`,
+   - `Actual JS`,
+   - `Suspected origin (file:function)`.
+4. Use dependency links:
+   - `Blocked by #<milestone-or-prereq>`
+   - `Blocks #<downstream>`
+
 ### Parity Backlog Intake Loop
 
 Use this workflow whenever session tests are failing and backlog intake needs
