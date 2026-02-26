@@ -2,6 +2,7 @@ import json
 import re
 from pathlib import Path
 
+from async_infer import build_async_summary
 from cfg import build_cfg_summary
 from frontend import function_ast_summary
 from nir import build_nir_snapshot
@@ -58,6 +59,9 @@ def emit_helper_scaffold(src_path, func_name, compile_profile=None):
     lower_diags = []
     required_params = set()
     rewrite_rules = _load_rewrite_rules()
+    async_info = _load_async_info(src_path, fn["name"])
+    requires_async = async_info["requires_async"]
+    awaitable_calls = async_info["awaitable_calls"]
     if compile_profile is not None:
         ast_summary = function_ast_summary(src_path, compile_profile, fn["name"])
     if ast_summary and ast_summary.get("available"):
@@ -65,6 +69,7 @@ def emit_helper_scaffold(src_path, func_name, compile_profile=None):
             ast_summary["compound"],
             1,
             rewrite_rules,
+            awaitable_calls,
         )
         if translated_lines is not None:
             params = ast_summary.get("params") or params
@@ -73,17 +78,18 @@ def emit_helper_scaffold(src_path, func_name, compile_profile=None):
                     params.append(p)
             translated = True
 
+    func_decl = "export async function" if requires_async else "export function"
     if translated:
         js_lines = [
             f"// TRANSLATOR: AUTO ({path.name}:{fn['span']['signature_line']})",
-            f"export function {fn['name']}({', '.join(params)}) {{",
+            f"{func_decl} {fn['name']}({', '.join(params)}) {{",
             *translated_lines,
             "}",
         ]
     else:
         js_lines = [
             f"// TRANSLATOR: AUTO ({path.name}:{fn['span']['signature_line']})",
-            f"export function {fn['name']}({', '.join(params)}) {{",
+            f"{func_decl} {fn['name']}({', '.join(params)}) {{",
             "  // TODO(iron-parity): translated body pending pass pipeline.",
             '  throw new Error("UNIMPLEMENTED_TRANSLATED_FUNCTION");',
             "}",
@@ -139,12 +145,14 @@ def emit_helper_scaffold(src_path, func_name, compile_profile=None):
             "assignment_count": len(fn["assignments"]),
             "cfg_tags": cfg["reducible_tags"],
             "translated": translated,
+            "requires_async": requires_async,
+            "awaitable_calls": sorted(awaitable_calls),
         },
         "diag": diags,
     }
 
 
-def _translate_ast_compound(compound_stmt, base_indent, rewrite_rules):
+def _translate_ast_compound(compound_stmt, base_indent, rewrite_rules, awaitable_calls):
     if not isinstance(compound_stmt, dict) or compound_stmt.get("kind") != "COMPOUND_STMT":
         return None, [_diag("UNSUPPORTED_TOPLEVEL", "Expected COMPOUND_STMT for function body")], set()
 
@@ -152,7 +160,12 @@ def _translate_ast_compound(compound_stmt, base_indent, rewrite_rules):
     diags = []
     required_params = set()
     for child in compound_stmt.get("children", []):
-        lines, child_diags, child_required = _translate_stmt(child, base_indent, rewrite_rules)
+        lines, child_diags, child_required = _translate_stmt(
+            child,
+            base_indent,
+            rewrite_rules,
+            awaitable_calls,
+        )
         diags.extend(child_diags)
         if lines is None:
             return None, diags, required_params
@@ -180,7 +193,7 @@ def _translate_ast_compound(compound_stmt, base_indent, rewrite_rules):
     return out, diags, required_params
 
 
-def _translate_stmt(stmt, indent, rewrite_rules):
+def _translate_stmt(stmt, indent, rewrite_rules, awaitable_calls):
     kind = stmt.get("kind")
     text = _normalize_space(stmt.get("text", ""))
     children = stmt.get("children", [])
@@ -193,14 +206,19 @@ def _translate_stmt(stmt, indent, rewrite_rules):
         return [pad + lowered], [], req
 
     if kind == "IF_STMT":
-        return _translate_if_stmt(stmt, indent, rewrite_rules)
+        return _translate_if_stmt(stmt, indent, rewrite_rules, awaitable_calls)
 
     if kind == "COMPOUND_STMT":
         out = []
         diags = []
         required_params = set()
         for child in children:
-            lines, child_diags, child_required = _translate_stmt(child, indent, rewrite_rules)
+            lines, child_diags, child_required = _translate_stmt(
+                child,
+                indent,
+                rewrite_rules,
+                awaitable_calls,
+            )
             diags.extend(child_diags)
             if lines is None:
                 return None, diags, required_params
@@ -209,7 +227,7 @@ def _translate_stmt(stmt, indent, rewrite_rules):
         return out, diags, required_params
 
     if kind in {"BINARY_OPERATOR", "UNARY_OPERATOR", "RETURN_STMT", "CALL_EXPR"}:
-        lowered, req = _lower_expr_stmt(text, rewrite_rules)
+        lowered, req = _lower_expr_stmt(text, rewrite_rules, awaitable_calls)
         if lowered is None:
             return None, [_diag("UNSUPPORTED_EXPR_STMT", text)], set()
         return [pad + lowered], [], req
@@ -220,14 +238,14 @@ def _translate_stmt(stmt, indent, rewrite_rules):
     return None, [_diag("UNSUPPORTED_STMT_KIND", kind)], set()
 
 
-def _translate_stmt_as_block(stmt, indent, rewrite_rules):
+def _translate_stmt_as_block(stmt, indent, rewrite_rules, awaitable_calls):
     kind = stmt.get("kind")
     if kind == "COMPOUND_STMT":
-        return _translate_stmt(stmt, indent, rewrite_rules)
-    return _translate_stmt(stmt, indent, rewrite_rules)
+        return _translate_stmt(stmt, indent, rewrite_rules, awaitable_calls)
+    return _translate_stmt(stmt, indent, rewrite_rules, awaitable_calls)
 
 
-def _translate_if_stmt(stmt, indent, rewrite_rules):
+def _translate_if_stmt(stmt, indent, rewrite_rules, awaitable_calls):
     children = stmt.get("children", [])
     pad = "  " * indent
     if len(children) < 2:
@@ -242,7 +260,12 @@ def _translate_if_stmt(stmt, indent, rewrite_rules):
     required_params = set(cond_req)
 
     then_stmt = children[1]
-    then_lines, then_diags, then_req = _translate_stmt_as_block(then_stmt, indent + 1, rewrite_rules)
+    then_lines, then_diags, then_req = _translate_stmt_as_block(
+        then_stmt,
+        indent + 1,
+        rewrite_rules,
+        awaitable_calls,
+    )
     if then_lines is None:
         return None, then_diags, required_params
     diags.extend(then_diags)
@@ -261,7 +284,12 @@ def _translate_if_stmt(stmt, indent, rewrite_rules):
     if len(children) >= 3:
         else_stmt = children[2]
         if else_stmt.get("kind") == "IF_STMT":
-            else_lines, else_diags, else_req = _translate_if_stmt(else_stmt, indent, rewrite_rules)
+            else_lines, else_diags, else_req = _translate_if_stmt(
+                else_stmt,
+                indent,
+                rewrite_rules,
+                awaitable_calls,
+            )
             if else_lines is None:
                 return None, else_diags, required_params
             diags.extend(else_diags)
@@ -272,7 +300,12 @@ def _translate_if_stmt(stmt, indent, rewrite_rules):
             out.append(f"{pad}else {first}")
             out.extend(else_lines[1:])
         else:
-            else_lines, else_diags, else_req = _translate_stmt_as_block(else_stmt, indent + 1, rewrite_rules)
+            else_lines, else_diags, else_req = _translate_stmt_as_block(
+                else_stmt,
+                indent + 1,
+                rewrite_rules,
+                awaitable_calls,
+            )
             if else_lines is None:
                 return None, else_diags, required_params
             diags.extend(else_diags)
@@ -377,16 +410,20 @@ def _lower_decl_stmt(text, rewrite_rules):
     return f"let {', '.join(lowered)};", req
 
 
-def _lower_expr_stmt(text, rewrite_rules):
+def _lower_expr_stmt(text, rewrite_rules, awaitable_calls):
     t = text.rstrip(";").strip()
     if not t:
         return None, set()
+    original_call = _extract_call_name(t)
     pm = PANIC_RE.match(t)
     if pm:
         return f"throw new Error('{pm.group(1)}');", set()
     lowered, req = _lower_expr(t, rewrite_rules)
     if lowered is None:
         return None, set()
+    lowered_call = _extract_call_name(lowered)
+    if (original_call in awaitable_calls or lowered_call in awaitable_calls) and not lowered.startswith("await "):
+        return f"await {lowered};", req
     return f"{lowered};", req
 
 
@@ -412,6 +449,35 @@ def _normalize_space(text):
 
 def _diag(code, message):
     return {"severity": "warning", "code": code, "message": message}
+
+
+def _load_async_info(src_path, func_name):
+    try:
+        summary = build_async_summary(src_path)
+    except Exception:
+        return {"requires_async": False, "awaitable_calls": set()}
+
+    fn = None
+    for candidate in summary.get("functions", []):
+        if candidate.get("name") == func_name:
+            fn = candidate
+            break
+    if fn is None:
+        return {"requires_async": False, "awaitable_calls": set()}
+    direct = set(fn.get("direct_awaited_boundaries", []))
+    async_callees = set(fn.get("awaited_boundary_callsites", []))
+    awaitable = direct | async_callees
+    return {
+        "requires_async": bool(fn.get("requires_async")),
+        "awaitable_calls": awaitable,
+    }
+
+
+def _extract_call_name(expr):
+    m = re.match(r"^\s*([A-Za-z_]\w*)\s*\(", expr or "")
+    if not m:
+        return None
+    return m.group(1)
 
 
 def _load_rewrite_rules():
