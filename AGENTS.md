@@ -38,6 +38,18 @@ This project uses GitHub Issues for work tracking. `PROJECT_PLAN.md` is the auth
    - unit tests: 1000ms timeout per test
    - single-session parity runs: 10000ms timeout per session
 
+## No-Fake-Implementation Rule (Strict)
+1. Do not present scaffolds, placeholders, or heuristics as completed parity or translation work.
+2. If a prerequisite from plan is missing (for example clang frontend), stop and fix the prerequisite before implementing downstream features.
+3. Never claim "translated" when output is stubbed or manually hardcoded per function name.
+4. If using fallback behavior temporarily, label it explicitly as fallback and do not count it toward milestone completion.
+
+Examples of forbidden fakes:
+1. Regex-only parsing presented as completion for a clang/libclang parser milestone.
+2. Emitter logic like `if function_name == "X": emit hardcoded string`.
+3. Output marked as translated while body still throws `UNIMPLEMENTED_TRANSLATED_FUNCTION`.
+4. Adding comparator/harness exceptions to hide gameplay divergence instead of fixing game logic.
+
 ## Development Cycle
 1. Identify a failing parity behavior from sessions/tests.
 2. Confirm expected behavior from C source.
