@@ -332,6 +332,18 @@ def _translate_stmt(stmt, indent, rewrite_rules, awaitable_calls):
     if kind == "WHILE_STMT":
         return _translate_while_stmt(stmt, indent, rewrite_rules, awaitable_calls)
 
+    if kind == "DO_STMT":
+        return _translate_do_stmt(stmt, indent, rewrite_rules, awaitable_calls)
+
+    if kind == "SWITCH_STMT":
+        return _translate_switch_stmt(stmt, indent, rewrite_rules, awaitable_calls)
+
+    if kind == "CASE_STMT":
+        return _translate_case_stmt(stmt, indent, rewrite_rules, awaitable_calls)
+
+    if kind == "DEFAULT_STMT":
+        return _translate_default_stmt(stmt, indent, rewrite_rules, awaitable_calls)
+
     if kind == "COMPOUND_STMT":
         out = []
         diags = []
@@ -351,6 +363,12 @@ def _translate_stmt(stmt, indent, rewrite_rules, awaitable_calls):
         return out, diags, required_params
 
     if kind in {"BINARY_OPERATOR", "UNARY_OPERATOR", "RETURN_STMT", "CALL_EXPR"}:
+        lowered, req = _lower_expr_stmt(text, rewrite_rules, awaitable_calls)
+        if lowered is None:
+            return None, [_diag("UNSUPPORTED_EXPR_STMT", text)], set()
+        return [pad + lowered], [], req
+
+    if kind in {"CSTYLE_CAST_EXPR", "COMPOUND_ASSIGNMENT_OPERATOR"}:
         lowered, req = _lower_expr_stmt(text, rewrite_rules, awaitable_calls)
         if lowered is None:
             return None, [_diag("UNSUPPORTED_EXPR_STMT", text)], set()
@@ -623,6 +641,106 @@ def _translate_while_stmt(stmt, indent, rewrite_rules, awaitable_calls):
     out.extend(body_lines)
     out.append(f"{pad}}}")
     return out, body_diags, req
+
+
+def _translate_do_stmt(stmt, indent, rewrite_rules, awaitable_calls):
+    children = stmt.get("children", [])
+    pad = "  " * indent
+    if len(children) < 2:
+        return None, [_diag("BAD_DO_AST", _normalize_space(stmt.get("text", "")))], set()
+
+    body_lines, body_diags, body_req = _translate_stmt_as_block(
+        children[0],
+        indent + 1,
+        rewrite_rules,
+        awaitable_calls,
+    )
+    if body_lines is None:
+        return None, body_diags, set()
+    cond, cond_req = _lower_expr(_normalize_space(children[1].get("text", "")), rewrite_rules)
+    if cond is None:
+        return None, [_diag("BAD_DO_COND", _normalize_space(children[1].get("text", "")))], set()
+
+    req = set(body_req)
+    req.update(cond_req)
+    out = [f"{pad}do {{"]
+    out.extend(body_lines)
+    out.append(f"{pad}}} while ({cond});")
+    return out, body_diags, req
+
+
+def _translate_switch_stmt(stmt, indent, rewrite_rules, awaitable_calls):
+    children = stmt.get("children", [])
+    pad = "  " * indent
+    if len(children) < 2:
+        return None, [_diag("BAD_SWITCH_AST", _normalize_space(stmt.get("text", "")))], set()
+
+    cond, cond_req = _lower_expr(_normalize_space(children[0].get("text", "")), rewrite_rules)
+    if cond is None:
+        return None, [_diag("BAD_SWITCH_COND", _normalize_space(children[0].get("text", "")))], set()
+    body_lines, body_diags, body_req = _translate_stmt_as_block(
+        children[1],
+        indent + 1,
+        rewrite_rules,
+        awaitable_calls,
+    )
+    if body_lines is None:
+        return None, body_diags, cond_req
+
+    req = set(cond_req)
+    req.update(body_req)
+    out = [f"{pad}switch ({cond}) {{"]
+    out.extend(body_lines)
+    out.append(f"{pad}}}")
+    return out, body_diags, req
+
+
+def _translate_case_stmt(stmt, indent, rewrite_rules, awaitable_calls):
+    children = stmt.get("children", [])
+    pad = "  " * indent
+    if not children:
+        return None, [_diag("BAD_CASE_AST", _normalize_space(stmt.get("text", "")))], set()
+    label, label_req = _lower_expr(_normalize_space(children[0].get("text", "")), rewrite_rules)
+    if label is None:
+        return None, [_diag("BAD_CASE_LABEL", _normalize_space(children[0].get("text", "")))], set()
+
+    out = [f"{pad}case {label}:"]
+    diags = []
+    req = set(label_req)
+    for child in children[1:]:
+        lines, child_diags, child_req = _translate_stmt(
+            child,
+            indent + 1,
+            rewrite_rules,
+            awaitable_calls,
+        )
+        diags.extend(child_diags)
+        if lines is None:
+            return None, diags, req
+        out.extend(lines)
+        req.update(child_req)
+    return out, diags, req
+
+
+def _translate_default_stmt(stmt, indent, rewrite_rules, awaitable_calls):
+    children = stmt.get("children", [])
+    pad = "  " * indent
+    out = [f"{pad}default:"]
+    diags = []
+    req = set()
+    for child in children:
+        lines, child_diags, child_req = _translate_stmt(
+            child,
+            indent + 1,
+            rewrite_rules,
+            awaitable_calls,
+        )
+        diags.extend(child_diags)
+        if lines is None:
+            return None, diags, req
+        out.extend(lines)
+        req.update(child_req)
+    return out, diags, req
 
 
 def _lower_expr_stmt(text, rewrite_rules, awaitable_calls):
