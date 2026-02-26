@@ -35,10 +35,10 @@ import { mondead, newsym } from './monutil.js';
 // ============================================================================
 
 // cf. dbridge.c:38 — is_waterwall(x, y)
+// TRANSLATOR: AUTO (dbridge.c:37)
 export function is_waterwall(x, y, map) {
-    if (!isok(x, y)) return false;
-    const loc = map.at(x, y);
-    return loc && IS_WATERWALL(loc.typ);
+  if (isok(x, y) && IS_WATERWALL(map.locations[x][y].typ)) return true;
+  return false;
 }
 
 // cf. dbridge.c:45 — is_pool(x, y)
@@ -52,16 +52,13 @@ export function is_pool(x, y, map) {
 }
 
 // cf. dbridge.c:61 — is_lava(x, y)
+// TRANSLATOR: AUTO (dbridge.c:61)
 export function is_lava(x, y, map) {
-    if (!isok(x, y)) return false;
-    const loc = map.at(x, y);
-    if (!loc) return false;
-    const ltyp = loc.typ;
-    if (ltyp === LAVAPOOL || ltyp === LAVAWALL
-        || (ltyp === DRAWBRIDGE_UP
-            && (loc.drawbridgemask & DB_UNDER) === DB_LAVA))
-        return true;
-    return false;
+  let ltyp;
+  if (!isok(x, y)) return false;
+  ltyp = map.locations[x][y].typ;
+  if (ltyp === LAVAPOOL || ltyp === LAVAWALL || (ltyp === DRAWBRIDGE_UP && (map.locations[x][y].drawbridgemask & DB_UNDER) === DB_LAVA)) return true;
+  return false;
 }
 
 // cf. dbridge.c:76 — is_pool_or_lava(x, y)
@@ -70,15 +67,13 @@ export function is_pool_or_lava(x, y, map) {
 }
 
 // cf. dbridge.c:85 — is_ice(x, y)
+// TRANSLATOR: AUTO (dbridge.c:85)
 export function is_ice(x, y, map) {
-    if (!isok(x, y)) return false;
-    const loc = map.at(x, y);
-    if (!loc) return false;
-    const ltyp = loc.typ;
-    if (ltyp === ICE || (ltyp === DRAWBRIDGE_UP
-            && (loc.drawbridgemask & DB_UNDER) === DB_ICE))
-        return true;
-    return false;
+  let ltyp;
+  if (!isok(x, y)) return false;
+  ltyp = map.locations[x][y].typ;
+  if (ltyp === ICE || (ltyp === DRAWBRIDGE_UP && (map.locations[x][y].drawbridgemask & DB_UNDER) === DB_ICE)) return true;
+  return false;
 }
 
 // cf. dbridge.c:99 — is_moat(x, y)
@@ -113,43 +108,23 @@ export function db_under_typ(mask) {
 
 // cf. dbridge.c:136 — is_drawbridge_wall(x, y)
 // Returns direction if wall at (x,y) is a drawbridge portcullis; -1 otherwise.
+// TRANSLATOR: AUTO (dbridge.c:136)
 export function is_drawbridge_wall(x, y, map) {
-    if (!isok(x, y)) return -1;
-    const loc = map.at(x, y);
-    if (!loc) return -1;
-    if (loc.typ !== DOOR && loc.typ !== DBWALL) return -1;
-
-    if (isok(x + 1, y)) {
-        const adj = map.at(x + 1, y);
-        if (adj && IS_DRAWBRIDGE(adj.typ)
-            && (adj.drawbridgemask & DB_DIR) === DB_WEST)
-            return DB_WEST;
-    }
-    if (isok(x - 1, y)) {
-        const adj = map.at(x - 1, y);
-        if (adj && IS_DRAWBRIDGE(adj.typ)
-            && (adj.drawbridgemask & DB_DIR) === DB_EAST)
-            return DB_EAST;
-    }
-    if (isok(x, y - 1)) {
-        const adj = map.at(x, y - 1);
-        if (adj && IS_DRAWBRIDGE(adj.typ)
-            && (adj.drawbridgemask & DB_DIR) === DB_SOUTH)
-            return DB_SOUTH;
-    }
-    if (isok(x, y + 1)) {
-        const adj = map.at(x, y + 1);
-        if (adj && IS_DRAWBRIDGE(adj.typ)
-            && (adj.drawbridgemask & DB_DIR) === DB_NORTH)
-            return DB_NORTH;
-    }
-    return -1;
+  let lev;
+  if (!isok(x, y)) return -1;
+  lev = map.locations[x][y];
+  if (lev.typ !== DOOR && lev.typ !== DBWALL) return -1;
+  if (isok(x + 1, y) && IS_DRAWBRIDGE(map.locations[x + 1][y].typ) && (map.locations[x + 1][y].drawbridgemask & DB_DIR) === DB_WEST) return DB_WEST;
+  if (isok(x - 1, y) && IS_DRAWBRIDGE(map.locations[x - 1][y].typ) && (map.locations[x - 1][y].drawbridgemask & DB_DIR) === DB_EAST) return DB_EAST;
+  if (isok(x, y - 1) && IS_DRAWBRIDGE(map.locations[x][y - 1].typ) && (map.locations[x][y - 1].drawbridgemask & DB_DIR) === DB_SOUTH) return DB_SOUTH;
+  if (isok(x, y + 1) && IS_DRAWBRIDGE(map.locations[x][y + 1].typ) && (map.locations[x][y + 1].drawbridgemask & DB_DIR) === DB_NORTH) return DB_NORTH;
+  return -1;
 }
 
 // cf. dbridge.c:169 — is_db_wall(x, y)
+// TRANSLATOR: AUTO (dbridge.c:169)
 export function is_db_wall(x, y, map) {
-    const loc = map.at(x, y);
-    return loc ? loc.typ === DBWALL : false;
+  return (map.locations[x][y].typ === DBWALL);
 }
 
 // cf. dbridge.c:179 — find_drawbridge(x, y)
