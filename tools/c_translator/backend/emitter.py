@@ -824,7 +824,7 @@ def _lower_expr(expr, rewrite_rules):
     out = re.sub(r"\bNULL\b", "null", out)
     out = re.sub(r"&\s*([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+)", r"\1", out)
     out = re.sub(r"\(\s*void\s*\)\s*", "", out)
-    out = re.sub(r"\(\s*(?:const\s+)?(?:struct|enum|union)\s+[A-Za-z_]\w*\s*\*+\s*\)", "", out)
+    out = re.sub(r"\(\s*(?:const\s+)?(?:struct|enum|union)\s+[A-Za-z_]\w*\s*\**\s*\)", "", out)
     # C pointer member access lowers to JS property access.
     out = out.replace("->", ".")
     # C integer long suffix (e.g., 7L) has no JS runtime equivalent.

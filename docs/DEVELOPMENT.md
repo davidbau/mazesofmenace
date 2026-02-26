@@ -72,6 +72,17 @@ conda run -n base python tools/c_translator/batch_emit.py \
   --src nethack-c/src/getpos.c \
   --out-dir /tmp/translator-batch \
   --summary-out /tmp/translator-batch-summary.json
+
+# Select stitch-ready candidates from a batch summary
+conda run -n base python tools/c_translator/select_candidates.py \
+  --summary /tmp/translator-batch-summary.json \
+  --out /tmp/translator-batch-candidates.json
+
+# Optional: allow specific diag codes (for example CFG complexity review queue)
+conda run -n base python tools/c_translator/select_candidates.py \
+  --summary /tmp/translator-batch-summary.json \
+  --allow-diag CFG_COMPLEXITY \
+  --out /tmp/translator-batch-candidates-plus-cfg.json
 ```
 
 4. Translator policy/annotation checks (Node scripts):
