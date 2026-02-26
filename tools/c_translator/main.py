@@ -3,6 +3,7 @@ import argparse
 import json
 from pathlib import Path
 
+from async_infer import build_async_summary
 from backend import emit_helper_scaffold
 from cfg import build_cfg_summary
 from frontend import load_compile_profile, parse_summary, provenance_summary
@@ -19,6 +20,11 @@ def build_parser():
         help="Compile profile JSON path",
     )
     p.add_argument(
+        "--boundary-rules",
+        default="tools/c_translator/rulesets/boundary_calls.json",
+        help="Boundary rules JSON path",
+    )
+    p.add_argument(
         "--emit",
         default="parse-summary",
         choices=[
@@ -26,6 +32,7 @@ def build_parser():
             "provenance-summary",
             "nir-snapshot",
             "cfg-summary",
+            "async-summary",
             "emit-helper",
             "scaffold",
             "patch",
@@ -51,6 +58,8 @@ def main():
         payload = build_nir_snapshot(args.src, args.func)
     elif args.emit == "cfg-summary":
         payload = build_cfg_summary(args.src, args.func)
+    elif args.emit == "async-summary":
+        payload = build_async_summary(args.src, args.func, args.boundary_rules)
     elif args.emit == "emit-helper":
         payload = emit_helper_scaffold(args.src, args.func)
     else:
