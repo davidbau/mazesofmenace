@@ -950,6 +950,9 @@ def _find_unresolved_tokens(lines):
         bad.add("->")
     if re.search(r"\(\s*(?:const\s+)?(?:struct|enum|union)\s+[A-Za-z_]\w*\s*\)", joined):
         bad.add("C-cast")
+    # Common C libc/string helpers should be rewritten before JS stitching.
+    if re.search(r"\b(strcmp|strncmp|strcpy|strcat|sprintf|snprintf|memcpy|memset|memcmp)\s*\(", joined):
+        bad.add("C-libcall")
     return bad
 
 
