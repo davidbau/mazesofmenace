@@ -544,20 +544,56 @@ def _lower_decl_stmt(text, rewrite_rules):
     decl = m.group(1)
     lowered = []
     req = set()
-    for raw in decl.split(","):
+    for raw in _split_top_level_commas(decl):
         token = raw.strip().replace("*", " ").strip()
         if not token:
             return None, set()
         if "=" in token:
             lhs, rhs = token.split("=", 1)
+            lhs = lhs.strip()
             rhs, rhs_req = _lower_expr(rhs.strip(), rewrite_rules)
             if rhs is None:
                 return None, set()
             req.update(rhs_req)
-            lowered.append(f"{lhs.strip()} = {rhs}")
+            arr_lhs = re.match(r"^([A-Za-z_]\w*)\s*\[[^\]]*\]$", lhs)
+            if arr_lhs:
+                lhs = arr_lhs.group(1)
+            if rhs.startswith("{") and rhs.endswith("}"):
+                rhs = f"[{rhs[1:-1]}]"
+            lowered.append(f"{lhs} = {rhs}")
         else:
             lowered.append(token)
     return f"let {', '.join(lowered)};", req
+
+
+def _split_top_level_commas(text):
+    parts = []
+    cur = []
+    depth_paren = 0
+    depth_brace = 0
+    depth_bracket = 0
+    for ch in text:
+        if ch == "," and depth_paren == 0 and depth_brace == 0 and depth_bracket == 0:
+            parts.append("".join(cur).strip())
+            cur = []
+            continue
+        cur.append(ch)
+        if ch == "(":
+            depth_paren += 1
+        elif ch == ")":
+            depth_paren = max(0, depth_paren - 1)
+        elif ch == "{":
+            depth_brace += 1
+        elif ch == "}":
+            depth_brace = max(0, depth_brace - 1)
+        elif ch == "[":
+            depth_bracket += 1
+        elif ch == "]":
+            depth_bracket = max(0, depth_bracket - 1)
+    tail = "".join(cur).strip()
+    if tail:
+        parts.append(tail)
+    return parts
 
 
 def _translate_for_stmt(stmt, indent, rewrite_rules, awaitable_calls):
@@ -765,6 +801,13 @@ def _lower_expr(expr, rewrite_rules):
     if not out:
         return None, set()
     out, required_params = _apply_rewrite_rules(out, rewrite_rules)
+    out = re.sub(r"\(\s*\*\s*([A-Za-z_]\w*)\s*\)\s*\(", r"\1(", out)
+    out = re.sub(r"\bTRUE\b", "true", out)
+    out = re.sub(r"\bFALSE\b", "false", out)
+    out = re.sub(r"\bNULL\b", "null", out)
+    out = re.sub(r"&\s*([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+)", r"\1", out)
+    out = re.sub(r"\(\s*void\s*\)\s*", "", out)
+    out = re.sub(r"\(\s*(?:const\s+)?(?:struct|enum|union)\s+[A-Za-z_]\w*\s*\*+\s*\)", "", out)
     # C pointer member access lowers to JS property access.
     out = out.replace("->", ".")
     # C integer long suffix (e.g., 7L) has no JS runtime equivalent.
@@ -863,22 +906,33 @@ def _find_unresolved_tokens(lines):
         bad.add("levl[]")
     if re.search(r"\bSokoban\b", joined):
         bad.add("Sokoban")
-    if re.search(r"\bW_[A-Z0-9_]+\b", joined):
-        bad.add("W_*")
-    if re.search(r"\bsvc\.", joined):
+    if re.search(r"\bigame\.", joined):
+        bad.add("igame.")
+    if re.search(r"\bgo\.", joined):
+        bad.add("go.")
+    if re.search(r"\bgy\.", joined):
+        bad.add("gy.")
+    if re.search(r"\bgt\.", joined):
+        bad.add("gt.")
+    if re.search(r"\bgv\.", joined):
+        bad.add("gv.")
+    # W_* constants are valid symbols in translated C and handled by imports/rules.
+    if re.search(r"(?<!game\.)\bsvc\.", joined):
         bad.add("svc.")
-    if re.search(r"\bgm\.", joined):
+    if re.search(r"(?<!game\.)\bgm\.", joined):
         bad.add("gm.")
-    if re.search(r"\bflags\.", joined):
+    if re.search(r"(?<!game\.)\bflags\.", joined):
         bad.add("flags.")
     if re.search(r"\bsvm\.", joined):
         bad.add("svm.")
-    if re.search(r"\bdisp\.", joined):
+    if re.search(r"(?<!game\.)\bdisp\.", joined):
         bad.add("disp.")
     if re.search(r"\b\d+L\b", joined):
         bad.add("*L")
     if "->" in joined:
         bad.add("->")
+    if re.search(r"\(\s*(?:const\s+)?(?:struct|enum|union)\s+[A-Za-z_]\w*\s*\)", joined):
+        bad.add("C-cast")
     return bad
 
 

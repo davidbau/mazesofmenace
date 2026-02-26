@@ -48,6 +48,5 @@ test('clang-backed capability-summary reports translated and blocked functions',
 
     const fnMap = new Map((payload.functions || []).map((fn) => [fn.name, fn]));
     assert.equal(fnMap.get('rounddiv')?.translated, true);
-    assert.equal(fnMap.get('may_passwall')?.translated, false);
+    assert.equal(fnMap.get('may_passwall')?.translated, true);
 });
-

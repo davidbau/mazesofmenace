@@ -111,24 +111,50 @@ function ensure_context(game) {
     return ctx;
 }
 
+const tmp_anything = {
+    a_uint: 0,
+    a_long: 0,
+    a_monst: null,
+    a_obj: null,
+};
+
+function reset_tmp_anything() {
+    tmp_anything.a_uint = 0;
+    tmp_anything.a_long = 0;
+    tmp_anything.a_monst = null;
+    tmp_anything.a_obj = null;
+}
+
 // C ref: hack.c uint_to_any()
+// TRANSLATOR: AUTO
 export function uint_to_any(ui) {
-    return { a_uint: (ui >>> 0) };
+    reset_tmp_anything();
+    tmp_anything.a_uint = (ui >>> 0);
+    return tmp_anything;
 }
 
 // C ref: hack.c long_to_any()
+// TRANSLATOR: AUTO
 export function long_to_any(lng) {
-    return { a_long: Number.isFinite(lng) ? Math.trunc(lng) : 0 };
+    reset_tmp_anything();
+    tmp_anything.a_long = Number.isFinite(lng) ? Math.trunc(lng) : 0;
+    return tmp_anything;
 }
 
 // C ref: hack.c monst_to_any()
+// TRANSLATOR: AUTO
 export function monst_to_any(mon) {
-    return { a_monst: mon || null };
+    reset_tmp_anything();
+    tmp_anything.a_monst = mon || null;
+    return tmp_anything;
 }
 
 // C ref: hack.c obj_to_any()
+// TRANSLATOR: AUTO
 export function obj_to_any(obj) {
-    return { a_obj: obj || null };
+    reset_tmp_anything();
+    tmp_anything.a_obj = obj || null;
+    return tmp_anything;
 }
 
 // C ref: hack.c maybe_smudge_engr()
