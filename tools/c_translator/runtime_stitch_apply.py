@@ -33,6 +33,11 @@ def parse_args():
         default=0,
         help="Cap number of stitched functions (>0 enables cap)",
     )
+    p.add_argument(
+        "--denylist",
+        default="",
+        help="Optional JSON path with [{\"js_module\",\"function\"}] entries to skip",
+    )
     return p.parse_args()
 
 
@@ -188,9 +193,21 @@ def main():
     repo = Path(args.repo_root)
     safety = json.loads(Path(args.safety).read_text(encoding="utf-8"))
     safe = list(safety.get("safe", []))
+    denyset = set()
+    if args.denylist:
+        dpath = Path(args.denylist)
+        if dpath.exists():
+            denied = json.loads(dpath.read_text(encoding="utf-8"))
+            for rec in denied:
+                mod = rec.get("js_module")
+                fn = rec.get("function")
+                if mod and fn:
+                    denyset.add((mod, fn))
 
     grouped = defaultdict(list)
     for rec in safe:
+        if (rec.get("js_module"), rec.get("function")) in denyset:
+            continue
         grouped[rec["js_module"]].append(rec)
 
     changes = []

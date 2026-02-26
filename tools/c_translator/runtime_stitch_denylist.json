@@ -1,0 +1,12 @@
+[
+  {
+    "js_module": "js/extralev.js",
+    "function": "corr",
+    "reason": "Current auto-translation has parameter order mismatch with runtime callsites."
+  },
+  {
+    "js_module": "js/invent.js",
+    "function": "obj_to_let",
+    "reason": "Current auto-translation expects game argument and breaks existing callsites."
+  }
+]
