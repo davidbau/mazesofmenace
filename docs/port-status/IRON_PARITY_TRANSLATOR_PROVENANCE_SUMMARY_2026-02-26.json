@@ -1,0 +1,1328 @@
+{
+  "line_count": 4505,
+  "macro_definition_count": 9,
+  "macro_definitions": [
+    {
+      "line": 6,
+      "name": "MIDLOG_IN_HACK_C"
+    },
+    {
+      "line": 56,
+      "name": "IS_SHOP"
+    },
+    {
+      "line": 60,
+      "name": "Known_wwalking"
+    },
+    {
+      "line": 64,
+      "name": "Known_lwalking"
+    },
+    {
+      "line": 69,
+      "name": "TRAVP_TRAVEL"
+    },
+    {
+      "line": 70,
+      "name": "TRAVP_GUESS"
+    },
+    {
+      "line": 71,
+      "name": "TRAVP_VALID"
+    },
+    {
+      "line": 140,
+      "name": "squeezeablylightinvent"
+    },
+    {
+      "line": 3390,
+      "name": "goodtype"
+    }
+  ],
+  "macro_invocation_count": 79,
+  "macro_invocations": [
+    {
+      "column": 37,
+      "defined_in_file": true,
+      "line": 157,
+      "name": "IS_OBSTRUCTED"
+    },
+    {
+      "column": 40,
+      "defined_in_file": true,
+      "line": 158,
+      "name": "IS_OBSTRUCTED"
+    },
+    {
+      "column": 27,
+      "defined_in_file": true,
+      "line": 239,
+      "name": "ESHK"
+    },
+    {
+      "column": 25,
+      "defined_in_file": true,
+      "line": 279,
+      "name": "P_SKILL"
+    },
+    {
+      "column": 30,
+      "defined_in_file": true,
+      "line": 433,
+      "name": "IS_OBSTRUCTED"
+    },
+    {
+      "column": 18,
+      "defined_in_file": true,
+      "line": 435,
+      "name": "IS_DOOR"
+    },
+    {
+      "column": 14,
+      "defined_in_file": true,
+      "line": 639,
+      "name": "IS_OBSTRUCTED"
+    },
+    {
+      "column": 19,
+      "defined_in_file": true,
+      "line": 645,
+      "name": "IS_TREE"
+    },
+    {
+      "column": 14,
+      "defined_in_file": true,
+      "line": 668,
+      "name": "IS_OBSTRUCTED"
+    },
+    {
+      "column": 42,
+      "defined_in_file": true,
+      "line": 668,
+      "name": "IS_TREE"
+    },
+    {
+      "column": 25,
+      "defined_in_file": true,
+      "line": 670,
+      "name": "IS_TREE"
+    },
+    {
+      "column": 19,
+      "defined_in_file": true,
+      "line": 675,
+      "name": "IS_TREE"
+    },
+    {
+      "column": 23,
+      "defined_in_file": true,
+      "line": 677,
+      "name": "IS_OBSTRUCTED"
+    },
+    {
+      "column": 23,
+      "defined_in_file": true,
+      "line": 690,
+      "name": "IS_TREE"
+    },
+    {
+      "column": 27,
+      "defined_in_file": true,
+      "line": 692,
+      "name": "IS_OBSTRUCTED"
+    },
+    {
+      "column": 26,
+      "defined_in_file": true,
+      "line": 707,
+      "name": "IS_TREE"
+    },
+    {
+      "column": 28,
+      "defined_in_file": true,
+      "line": 708,
+      "name": "IS_OBSTRUCTED"
+    },
+    {
+      "column": 13,
+      "defined_in_file": true,
+      "line": 724,
+      "name": "IS_OBSTRUCTED"
+    },
+    {
+      "column": 16,
+      "defined_in_file": true,
+      "line": 733,
+      "name": "IS_WALL"
+    },
+    {
+      "column": 16,
+      "defined_in_file": true,
+      "line": 747,
+      "name": "IS_TREE"
+    },
+    {
+      "column": 16,
+      "defined_in_file": true,
+      "line": 776,
+      "name": "IS_DOOR"
+    },
+    {
+      "column": 33,
+      "defined_in_file": true,
+      "line": 844,
+      "name": "ACURR"
+    },
+    {
+      "column": 25,
+      "defined_in_file": true,
+      "line": 908,
+      "name": "IS_STWALL"
+    },
+    {
+      "column": 48,
+      "defined_in_file": true,
+      "line": 908,
+      "name": "IS_TREE"
+    },
+    {
+      "column": 24,
+      "defined_in_file": true,
+      "line": 915,
+      "name": "IS_STWALL"
+    },
+    {
+      "column": 27,
+      "defined_in_file": true,
+      "line": 923,
+      "name": "IS_OBSTRUCTED"
+    },
+    {
+      "column": 9,
+      "defined_in_file": true,
+      "line": 992,
+      "name": "IS_OBSTRUCTED"
+    },
+    {
+      "column": 16,
+      "defined_in_file": true,
+      "line": 1055,
+      "name": "IS_DOOR"
+    },
+    {
+      "column": 49,
+      "defined_in_file": true,
+      "line": 1094,
+      "name": "ACURR"
+    },
+    {
+      "column": 18,
+      "defined_in_file": true,
+      "line": 1171,
+      "name": "IS_WATERWALL"
+    },
+    {
+      "column": 38,
+      "defined_in_file": true,
+      "line": 1189,
+      "name": "IS_DOOR"
+    },
+    {
+      "column": 30,
+      "defined_in_file": true,
+      "line": 1309,
+      "name": "NODIAG"
+    },
+    {
+      "column": 25,
+      "defined_in_file": true,
+      "line": 1695,
+      "name": "M_AP_TYPE"
+    },
+    {
+      "column": 25,
+      "defined_in_file": true,
+      "line": 1696,
+      "name": "M_AP_TYPE"
+    },
+    {
+      "column": 41,
+      "defined_in_file": true,
+      "line": 1698,
+      "name": "DEADMONSTER"
+    },
+    {
+      "column": 17,
+      "defined_in_file": true,
+      "line": 1733,
+      "name": "DEADMONSTER"
+    },
+    {
+      "column": 17,
+      "defined_in_file": true,
+      "line": 1746,
+      "name": "DEADMONSTER"
+    },
+    {
+      "column": 27,
+      "defined_in_file": true,
+      "line": 1869,
+      "name": "IS_WATERWALL"
+    },
+    {
+      "column": 40,
+      "defined_in_file": true,
+      "line": 1871,
+      "name": "IS_WATERWALL"
+    },
+    {
+      "column": 13,
+      "defined_in_file": true,
+      "line": 1918,
+      "name": "M_AP_TYPE"
+    },
+    {
+      "column": 32,
+      "defined_in_file": true,
+      "line": 1959,
+      "name": "NODIAG"
+    },
+    {
+      "column": 34,
+      "defined_in_file": true,
+      "line": 2010,
+      "name": "P_SKILL"
+    },
+    {
+      "column": 9,
+      "defined_in_file": true,
+      "line": 2093,
+      "name": "M_AP_TYPE"
+    },
+    {
+      "column": 44,
+      "defined_in_file": true,
+      "line": 2105,
+      "name": "NODIAG"
+    },
+    {
+      "column": 42,
+      "defined_in_file": true,
+      "line": 2230,
+      "name": "IS_FURNITURE"
+    },
+    {
+      "column": 37,
+      "defined_in_file": true,
+      "line": 2285,
+      "name": "IS_STWALL"
+    },
+    {
+      "column": 14,
+      "defined_in_file": true,
+      "line": 2458,
+      "name": "IS_WATERWALL"
+    },
+    {
+      "column": 39,
+      "defined_in_file": true,
+      "line": 2750,
+      "name": "M_AP_TYPE"
+    },
+    {
+      "column": 42,
+      "defined_in_file": true,
+      "line": 2751,
+      "name": "M_AP_TYPE"
+    },
+    {
+      "column": 17,
+      "defined_in_file": true,
+      "line": 2920,
+      "name": "IS_DOOR"
+    },
+    {
+      "column": 39,
+      "defined_in_file": true,
+      "line": 2920,
+      "name": "IS_OBSTRUCTED"
+    },
+    {
+      "column": 20,
+      "defined_in_file": true,
+      "line": 2921,
+      "name": "IS_FURNITURE"
+    },
+    {
+      "column": 25,
+      "defined_in_file": true,
+      "line": 3075,
+      "name": "IS_OBSTRUCTED"
+    },
+    {
+      "column": 28,
+      "defined_in_file": true,
+      "line": 3076,
+      "name": "IS_WATERWALL"
+    },
+    {
+      "column": 9,
+      "defined_in_file": true,
+      "line": 3238,
+      "name": "IS_SINK"
+    },
+    {
+      "column": 13,
+      "defined_in_file": true,
+      "line": 3356,
+      "name": "DEADMONSTER"
+    },
+    {
+      "column": 13,
+      "defined_in_file": true,
+      "line": 3494,
+      "name": "IS_SHOP"
+    },
+    {
+      "column": 25,
+      "defined_in_file": true,
+      "line": 3652,
+      "name": "DEADMONSTER"
+    },
+    {
+      "column": 10,
+      "defined_in_file": true,
+      "line": 3712,
+      "name": "OBJ_AT"
+    },
+    {
+      "column": 13,
+      "defined_in_file": true,
+      "line": 3715,
+      "name": "IS_THRONE"
+    },
+    {
+      "column": 18,
+      "defined_in_file": true,
+      "line": 3717,
+      "name": "IS_SINK"
+    },
+    {
+      "column": 18,
+      "defined_in_file": true,
+      "line": 3719,
+      "name": "IS_GRAVE"
+    },
+    {
+      "column": 18,
+      "defined_in_file": true,
+      "line": 3721,
+      "name": "IS_FOUNTAIN"
+    },
+    {
+      "column": 18,
+      "defined_in_file": true,
+      "line": 3723,
+      "name": "IS_DOOR"
+    },
+    {
+      "column": 18,
+      "defined_in_file": true,
+      "line": 3725,
+      "name": "IS_ALTAR"
+    },
+    {
+      "column": 32,
+      "defined_in_file": true,
+      "line": 3739,
+      "name": "P_SKILL"
+    },
+    {
+      "column": 9,
+      "defined_in_file": true,
+      "line": 3792,
+      "name": "NODIAG"
+    },
+    {
+      "column": 17,
+      "defined_in_file": true,
+      "line": 3808,
+      "name": "NODIAG"
+    },
+    {
+      "column": 20,
+      "defined_in_file": true,
+      "line": 3813,
+      "name": "M_AP_TYPE"
+    },
+    {
+      "column": 20,
+      "defined_in_file": true,
+      "line": 3814,
+      "name": "M_AP_TYPE"
+    },
+    {
+      "column": 17,
+      "defined_in_file": true,
+      "line": 3844,
+      "name": "IS_OBSTRUCTED"
+    },
+    {
+      "column": 20,
+      "defined_in_file": true,
+      "line": 3845,
+      "name": "IS_AIR"
+    },
+    {
+      "column": 10,
+      "defined_in_file": true,
+      "line": 3952,
+      "name": "IS_DOOR"
+    },
+    {
+      "column": 9,
+      "defined_in_file": true,
+      "line": 3975,
+      "name": "NODIAG"
+    },
+    {
+      "column": 9,
+      "defined_in_file": true,
+      "line": 3980,
+      "name": "IS_DOOR"
+    },
+    {
+      "column": 20,
+      "defined_in_file": true,
+      "line": 4002,
+      "name": "M_AP_TYPE"
+    },
+    {
+      "column": 20,
+      "defined_in_file": true,
+      "line": 4003,
+      "name": "M_AP_TYPE"
+    },
+    {
+      "column": 43,
+      "defined_in_file": true,
+      "line": 4105,
+      "name": "SIZE"
+    },
+    {
+      "column": 50,
+      "defined_in_file": true,
+      "line": 4241,
+      "name": "ACURR"
+    }
+  ],
+  "macro_name_count": 4894,
+  "pp": {
+    "available": true,
+    "crosswalk_count": 4421,
+    "crosswalk_sample": [
+      {
+        "pp_line": 367,
+        "source_line": 1
+      },
+      {
+        "pp_line": 368,
+        "source_line": 2
+      },
+      {
+        "pp_line": 369,
+        "source_line": 3
+      },
+      {
+        "pp_line": 370,
+        "source_line": 4
+      },
+      {
+        "pp_line": 371,
+        "source_line": 5
+      },
+      {
+        "pp_line": 372,
+        "source_line": 6
+      },
+      {
+        "pp_line": 29634,
+        "source_line": 9
+      },
+      {
+        "pp_line": 29635,
+        "source_line": 10
+      },
+      {
+        "pp_line": 29636,
+        "source_line": 11
+      },
+      {
+        "pp_line": 29637,
+        "source_line": 12
+      },
+      {
+        "pp_line": 29638,
+        "source_line": 13
+      },
+      {
+        "pp_line": 29639,
+        "source_line": 14
+      },
+      {
+        "pp_line": 29640,
+        "source_line": 15
+      },
+      {
+        "pp_line": 29641,
+        "source_line": 16
+      },
+      {
+        "pp_line": 29642,
+        "source_line": 17
+      },
+      {
+        "pp_line": 29643,
+        "source_line": 18
+      },
+      {
+        "pp_line": 29644,
+        "source_line": 19
+      },
+      {
+        "pp_line": 29645,
+        "source_line": 20
+      },
+      {
+        "pp_line": 29646,
+        "source_line": 21
+      },
+      {
+        "pp_line": 29647,
+        "source_line": 22
+      },
+      {
+        "pp_line": 29648,
+        "source_line": 23
+      },
+      {
+        "pp_line": 29649,
+        "source_line": 24
+      },
+      {
+        "pp_line": 29650,
+        "source_line": 25
+      },
+      {
+        "pp_line": 29651,
+        "source_line": 26
+      },
+      {
+        "pp_line": 29652,
+        "source_line": 27
+      },
+      {
+        "pp_line": 29653,
+        "source_line": 28
+      },
+      {
+        "pp_line": 29654,
+        "source_line": 29
+      },
+      {
+        "pp_line": 29655,
+        "source_line": 30
+      },
+      {
+        "pp_line": 29656,
+        "source_line": 31
+      },
+      {
+        "pp_line": 29657,
+        "source_line": 32
+      },
+      {
+        "pp_line": 29658,
+        "source_line": 33
+      },
+      {
+        "pp_line": 29659,
+        "source_line": 34
+      },
+      {
+        "pp_line": 29660,
+        "source_line": 35
+      },
+      {
+        "pp_line": 29661,
+        "source_line": 36
+      },
+      {
+        "pp_line": 29662,
+        "source_line": 37
+      },
+      {
+        "pp_line": 29663,
+        "source_line": 38
+      },
+      {
+        "pp_line": 29664,
+        "source_line": 39
+      },
+      {
+        "pp_line": 29665,
+        "source_line": 40
+      },
+      {
+        "pp_line": 29666,
+        "source_line": 41
+      },
+      {
+        "pp_line": 29667,
+        "source_line": 42
+      },
+      {
+        "pp_line": 29668,
+        "source_line": 43
+      },
+      {
+        "pp_line": 29669,
+        "source_line": 44
+      },
+      {
+        "pp_line": 29670,
+        "source_line": 45
+      },
+      {
+        "pp_line": 29671,
+        "source_line": 46
+      },
+      {
+        "pp_line": 29672,
+        "source_line": 47
+      },
+      {
+        "pp_line": 29673,
+        "source_line": 48
+      },
+      {
+        "pp_line": 29674,
+        "source_line": 49
+      },
+      {
+        "pp_line": 29675,
+        "source_line": 50
+      },
+      {
+        "pp_line": 29676,
+        "source_line": 51
+      },
+      {
+        "pp_line": 29677,
+        "source_line": 52
+      },
+      {
+        "pp_line": 29678,
+        "source_line": 53
+      },
+      {
+        "pp_line": 29679,
+        "source_line": 54
+      },
+      {
+        "pp_line": 29680,
+        "source_line": 55
+      },
+      {
+        "pp_line": 29681,
+        "source_line": 56
+      },
+      {
+        "pp_line": 29682,
+        "source_line": 57
+      },
+      {
+        "pp_line": 29683,
+        "source_line": 58
+      },
+      {
+        "pp_line": 29684,
+        "source_line": 59
+      },
+      {
+        "pp_line": 29685,
+        "source_line": 60
+      },
+      {
+        "pp_line": 29686,
+        "source_line": 61
+      },
+      {
+        "pp_line": 29687,
+        "source_line": 62
+      },
+      {
+        "pp_line": 29688,
+        "source_line": 63
+      },
+      {
+        "pp_line": 29689,
+        "source_line": 64
+      },
+      {
+        "pp_line": 29690,
+        "source_line": 65
+      },
+      {
+        "pp_line": 29691,
+        "source_line": 66
+      },
+      {
+        "pp_line": 29692,
+        "source_line": 67
+      },
+      {
+        "pp_line": 29693,
+        "source_line": 68
+      },
+      {
+        "pp_line": 29694,
+        "source_line": 69
+      },
+      {
+        "pp_line": 29695,
+        "source_line": 70
+      },
+      {
+        "pp_line": 29696,
+        "source_line": 71
+      },
+      {
+        "pp_line": 29697,
+        "source_line": 72
+      },
+      {
+        "pp_line": 29698,
+        "source_line": 73
+      },
+      {
+        "pp_line": 29699,
+        "source_line": 74
+      },
+      {
+        "pp_line": 29700,
+        "source_line": 75
+      },
+      {
+        "pp_line": 29701,
+        "source_line": 76
+      },
+      {
+        "pp_line": 29702,
+        "source_line": 77
+      },
+      {
+        "pp_line": 29703,
+        "source_line": 78
+      },
+      {
+        "pp_line": 29704,
+        "source_line": 79
+      },
+      {
+        "pp_line": 29705,
+        "source_line": 80
+      },
+      {
+        "pp_line": 29706,
+        "source_line": 81
+      },
+      {
+        "pp_line": 29707,
+        "source_line": 82
+      },
+      {
+        "pp_line": 29708,
+        "source_line": 83
+      },
+      {
+        "pp_line": 29709,
+        "source_line": 84
+      },
+      {
+        "pp_line": 29710,
+        "source_line": 85
+      },
+      {
+        "pp_line": 29711,
+        "source_line": 86
+      },
+      {
+        "pp_line": 29712,
+        "source_line": 87
+      },
+      {
+        "pp_line": 29713,
+        "source_line": 88
+      },
+      {
+        "pp_line": 29714,
+        "source_line": 89
+      },
+      {
+        "pp_line": 29715,
+        "source_line": 90
+      },
+      {
+        "pp_line": 29716,
+        "source_line": 91
+      },
+      {
+        "pp_line": 29717,
+        "source_line": 92
+      },
+      {
+        "pp_line": 29718,
+        "source_line": 93
+      },
+      {
+        "pp_line": 29719,
+        "source_line": 94
+      },
+      {
+        "pp_line": 29720,
+        "source_line": 95
+      },
+      {
+        "pp_line": 29721,
+        "source_line": 96
+      },
+      {
+        "pp_line": 29722,
+        "source_line": 97
+      },
+      {
+        "pp_line": 29723,
+        "source_line": 98
+      },
+      {
+        "pp_line": 29724,
+        "source_line": 99
+      },
+      {
+        "pp_line": 29725,
+        "source_line": 100
+      },
+      {
+        "pp_line": 29726,
+        "source_line": 101
+      },
+      {
+        "pp_line": 29727,
+        "source_line": 102
+      },
+      {
+        "pp_line": 29728,
+        "source_line": 103
+      },
+      {
+        "pp_line": 29729,
+        "source_line": 104
+      },
+      {
+        "pp_line": 29730,
+        "source_line": 105
+      },
+      {
+        "pp_line": 29731,
+        "source_line": 106
+      },
+      {
+        "pp_line": 29732,
+        "source_line": 107
+      },
+      {
+        "pp_line": 29733,
+        "source_line": 108
+      },
+      {
+        "pp_line": 29734,
+        "source_line": 109
+      },
+      {
+        "pp_line": 29735,
+        "source_line": 110
+      },
+      {
+        "pp_line": 29736,
+        "source_line": 111
+      },
+      {
+        "pp_line": 29737,
+        "source_line": 112
+      },
+      {
+        "pp_line": 29738,
+        "source_line": 113
+      },
+      {
+        "pp_line": 29739,
+        "source_line": 114
+      },
+      {
+        "pp_line": 29740,
+        "source_line": 115
+      },
+      {
+        "pp_line": 29741,
+        "source_line": 116
+      },
+      {
+        "pp_line": 29742,
+        "source_line": 117
+      },
+      {
+        "pp_line": 29743,
+        "source_line": 118
+      },
+      {
+        "pp_line": 29744,
+        "source_line": 119
+      },
+      {
+        "pp_line": 29745,
+        "source_line": 120
+      },
+      {
+        "pp_line": 29746,
+        "source_line": 121
+      },
+      {
+        "pp_line": 29747,
+        "source_line": 122
+      },
+      {
+        "pp_line": 29748,
+        "source_line": 123
+      },
+      {
+        "pp_line": 29749,
+        "source_line": 124
+      },
+      {
+        "pp_line": 29750,
+        "source_line": 125
+      },
+      {
+        "pp_line": 29751,
+        "source_line": 126
+      },
+      {
+        "pp_line": 29752,
+        "source_line": 127
+      },
+      {
+        "pp_line": 29753,
+        "source_line": 128
+      },
+      {
+        "pp_line": 29754,
+        "source_line": 129
+      },
+      {
+        "pp_line": 29755,
+        "source_line": 130
+      },
+      {
+        "pp_line": 29756,
+        "source_line": 131
+      },
+      {
+        "pp_line": 29757,
+        "source_line": 132
+      },
+      {
+        "pp_line": 29758,
+        "source_line": 133
+      },
+      {
+        "pp_line": 29759,
+        "source_line": 134
+      },
+      {
+        "pp_line": 29760,
+        "source_line": 135
+      },
+      {
+        "pp_line": 29761,
+        "source_line": 136
+      },
+      {
+        "pp_line": 29762,
+        "source_line": 137
+      },
+      {
+        "pp_line": 29763,
+        "source_line": 138
+      },
+      {
+        "pp_line": 29764,
+        "source_line": 139
+      },
+      {
+        "pp_line": 29765,
+        "source_line": 140
+      },
+      {
+        "pp_line": 29766,
+        "source_line": 141
+      },
+      {
+        "pp_line": 29767,
+        "source_line": 142
+      },
+      {
+        "pp_line": 29768,
+        "source_line": 143
+      },
+      {
+        "pp_line": 29769,
+        "source_line": 144
+      },
+      {
+        "pp_line": 29770,
+        "source_line": 145
+      },
+      {
+        "pp_line": 29771,
+        "source_line": 146
+      },
+      {
+        "pp_line": 29772,
+        "source_line": 147
+      },
+      {
+        "pp_line": 29773,
+        "source_line": 148
+      },
+      {
+        "pp_line": 29774,
+        "source_line": 149
+      },
+      {
+        "pp_line": 29775,
+        "source_line": 150
+      },
+      {
+        "pp_line": 29776,
+        "source_line": 151
+      },
+      {
+        "pp_line": 29777,
+        "source_line": 152
+      },
+      {
+        "pp_line": 29778,
+        "source_line": 153
+      },
+      {
+        "pp_line": 29779,
+        "source_line": 154
+      },
+      {
+        "pp_line": 29780,
+        "source_line": 155
+      },
+      {
+        "pp_line": 29781,
+        "source_line": 156
+      },
+      {
+        "pp_line": 29782,
+        "source_line": 157
+      },
+      {
+        "pp_line": 29783,
+        "source_line": 158
+      },
+      {
+        "pp_line": 29784,
+        "source_line": 159
+      },
+      {
+        "pp_line": 29785,
+        "source_line": 160
+      },
+      {
+        "pp_line": 29786,
+        "source_line": 161
+      },
+      {
+        "pp_line": 29787,
+        "source_line": 162
+      },
+      {
+        "pp_line": 29788,
+        "source_line": 163
+      },
+      {
+        "pp_line": 29789,
+        "source_line": 164
+      },
+      {
+        "pp_line": 29790,
+        "source_line": 165
+      },
+      {
+        "pp_line": 29791,
+        "source_line": 166
+      },
+      {
+        "pp_line": 29792,
+        "source_line": 167
+      },
+      {
+        "pp_line": 29793,
+        "source_line": 168
+      },
+      {
+        "pp_line": 29794,
+        "source_line": 169
+      },
+      {
+        "pp_line": 29795,
+        "source_line": 170
+      },
+      {
+        "pp_line": 29796,
+        "source_line": 171
+      },
+      {
+        "pp_line": 29797,
+        "source_line": 172
+      },
+      {
+        "pp_line": 29798,
+        "source_line": 173
+      },
+      {
+        "pp_line": 29799,
+        "source_line": 174
+      },
+      {
+        "pp_line": 29800,
+        "source_line": 175
+      },
+      {
+        "pp_line": 29801,
+        "source_line": 176
+      },
+      {
+        "pp_line": 29802,
+        "source_line": 177
+      },
+      {
+        "pp_line": 29803,
+        "source_line": 178
+      },
+      {
+        "pp_line": 29804,
+        "source_line": 179
+      },
+      {
+        "pp_line": 29805,
+        "source_line": 180
+      },
+      {
+        "pp_line": 29806,
+        "source_line": 181
+      },
+      {
+        "pp_line": 29807,
+        "source_line": 182
+      },
+      {
+        "pp_line": 29808,
+        "source_line": 183
+      },
+      {
+        "pp_line": 29809,
+        "source_line": 184
+      },
+      {
+        "pp_line": 29810,
+        "source_line": 185
+      },
+      {
+        "pp_line": 29811,
+        "source_line": 186
+      },
+      {
+        "pp_line": 29812,
+        "source_line": 187
+      },
+      {
+        "pp_line": 29813,
+        "source_line": 188
+      },
+      {
+        "pp_line": 29814,
+        "source_line": 189
+      },
+      {
+        "pp_line": 29815,
+        "source_line": 190
+      },
+      {
+        "pp_line": 29816,
+        "source_line": 191
+      },
+      {
+        "pp_line": 29817,
+        "source_line": 192
+      },
+      {
+        "pp_line": 29818,
+        "source_line": 193
+      },
+      {
+        "pp_line": 29819,
+        "source_line": 194
+      },
+      {
+        "pp_line": 29820,
+        "source_line": 195
+      },
+      {
+        "pp_line": 29821,
+        "source_line": 196
+      },
+      {
+        "pp_line": 29822,
+        "source_line": 197
+      },
+      {
+        "pp_line": 29823,
+        "source_line": 198
+      },
+      {
+        "pp_line": 29824,
+        "source_line": 199
+      },
+      {
+        "pp_line": 29825,
+        "source_line": 200
+      },
+      {
+        "pp_line": 29826,
+        "source_line": 201
+      },
+      {
+        "pp_line": 29827,
+        "source_line": 202
+      }
+    ]
+  },
+  "source": "nethack-c/src/hack.c",
+  "source_sha256": "ac9dd7e72d4a72366019fc5c148d29d5c08f20d25f223920cd9f56abd0b4b3df"
+}
