@@ -77,6 +77,17 @@ This section captures what exists today and what must be migrated.
 4. Combat and monster-turn logic (`uhitm.js`, `monmove.js`, `mon.js`, `dogmove.js`, `muse.js`) still rely on mixed ownership patterns and are major first-divergence sources.
 5. Generation/startup state (`u_init.js`, `dungeon.js`, `makemon.js`, `sp_lev.js`, `bones.js`) remains partially decoupled from a single canonical state spine.
 
+## Progress update (2026-02-26)
+
+Completed incremental migrations in code:
+
+1. Canonical aliases are live in engine bootstrap (`game.u`<->`game.player`, `game.lev`<->`game.map`, `game.context`<->`game.svc.context`).
+2. Core movement-prefix ownership migrated to `game.svc.context` in command/movement paths.
+3. Broad read-path preference updated across core modules to use canonical namespaces first (`game.u`, `game.lev`).
+4. Write-sites for level/player transitions now use canonical assignments (`game.u = ...`, `game.lev = ...`) in chargen and level-change flows.
+5. Trap constants were deduplicated to a single source (`config.js`), with `symbols.js` re-exporting canonical values.
+6. Terrain/door constants were likewise deduplicated to `config.js` with `symbols.js` re-export aliases to avoid value drift.
+
 ## Known active divergence clusters (from failing gameplay sessions)
 
 1. Monster action/movement stack:

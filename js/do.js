@@ -1143,15 +1143,15 @@ export function changeLevel(game, depth, transitionDir = null, opts = {}) {
 
     // Use pre-generated map if provided, otherwise check cache or generate new.
     if (opts.map) {
-        game.map = opts.map;
+        game.lev = opts.map;
         game.levels[depth] = opts.map;
         game.levelsByBranch[branchCacheKey] = opts.map;
     } else if (game.levelsByBranch[branchCacheKey]) {
-        game.map = game.levelsByBranch[branchCacheKey];
+        game.lev = game.levelsByBranch[branchCacheKey];
     } else if (game.levels[depth]) {
-        game.map = game.levels[depth];
+        game.lev = game.levels[depth];
     } else {
-        game.map = opts.makeLevel ? opts.makeLevel(depth) : makelevel(depth);
+        game.lev = opts.makeLevel ? opts.makeLevel(depth) : makelevel(depth);
         game.levels[depth] = (game.lev || game.map);
         game.levelsByBranch[branchCacheKey] = (game.lev || game.map);
     }

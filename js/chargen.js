@@ -236,7 +236,7 @@ export async function enterTutorial(game, opts = {}) {
     (game.u || game.player).inventory = (game.u || game.player).inventory.filter((obj) => obj.oclass !== FOOD_CLASS);
 
     setMakemonPlayerContext((game.u || game.player));
-    game.map = makelevel(1, TUTORIAL, 1, { dungeonAlignOverride: A_NONE });
+    game.lev = makelevel(1, TUTORIAL, 1, { dungeonAlignOverride: A_NONE });
     game.levels[1] = (game.lev || game.map);
     (game.u || game.player).dungeonLevel = 1;
     (game.u || game.player).inTutorial = true;
@@ -307,7 +307,7 @@ export async function restoreFromSave(game, saveData, urlOpts) {
 
     // Restore game state: player + inventory + equip + context
     const restored = restGameState(gs);
-    game.player = restored.player;
+    game.u = restored.player;
     (game.u || game.player).wizard = game.wizard;
     setMakemonPlayerContext((game.u || game.player));
     game.wizard = restored.wizard;
@@ -331,7 +331,7 @@ export async function restoreFromSave(game, saveData, urlOpts) {
 
     // Set current level
     (game.u || game.player).dungeonLevel = currentDepth;
-    game.map = game.levels[currentDepth];
+    game.lev = game.levels[currentDepth];
 
     // Restore messages
     if (restored.messages.length > 0) {
