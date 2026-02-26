@@ -64,6 +64,14 @@ conda run -n base python tools/c_translator/capability_matrix.py \
   --src nethack-c/src/monmove.c \
   --src nethack-c/src/zap.c \
   --out /tmp/translator.capability.matrix.json
+
+# Batch emit-helper generation (hundreds-scale sweeps)
+conda run -n base python tools/c_translator/batch_emit.py \
+  --src nethack-c/src/hack.c \
+  --src nethack-c/src/allmain.c \
+  --src nethack-c/src/getpos.c \
+  --out-dir /tmp/translator-batch \
+  --summary-out /tmp/translator-batch-summary.json
 ```
 
 4. Translator policy/annotation checks (Node scripts):

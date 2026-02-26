@@ -16,7 +16,8 @@ DECL_RE = re.compile(
 DECL_FALLBACK_RE = re.compile(
     r"^(?:(?:const|volatile|register|static|extern|signed|unsigned|short|long|"
     r"int|char|float|double|boolean|coordxy|coord|schar|uchar|xint16|xint32|xint64|"
-    r"struct\s+[A-Za-z_]\w*|enum\s+[A-Za-z_]\w*|union\s+[A-Za-z_]\w*)\s+)+(.+);$"
+    r"struct\s+[A-Za-z_]\w*|enum\s+[A-Za-z_]\w*|union\s+[A-Za-z_]\w*|"
+    r"[A-Za-z_]\w*)\s+)+(.+);$"
 )
 PANIC_RE = re.compile(r'^panic\("([^"]+)"\)$')
 
@@ -372,6 +373,22 @@ def _translate_stmt(stmt, indent, rewrite_rules, awaitable_calls):
         lowered, req = _lower_expr_stmt(text, rewrite_rules, awaitable_calls)
         if lowered is None:
             return None, [_diag("UNSUPPORTED_EXPR_STMT", text)], set()
+        return [pad + lowered], [], req
+
+    if kind == "PAREN_EXPR":
+        lowered, req = _lower_expr_stmt(text, rewrite_rules, awaitable_calls)
+        if lowered is None:
+            return None, [_diag("UNSUPPORTED_EXPR_STMT", text)], set()
+        return [pad + lowered], [], req
+
+    if kind == "UNEXPOSED_STMT":
+        if children:
+            # Clang frequently wraps recoverable statements in UNEXPOSED_STMT.
+            # Peel and translate child nodes rather than hard-failing.
+            return _translate_stmt(children[0], indent, rewrite_rules, awaitable_calls)
+        lowered, req = _lower_expr_stmt(text, rewrite_rules, awaitable_calls)
+        if lowered is None:
+            return None, [_diag("UNSUPPORTED_STMT_KIND", kind)], set()
         return [pad + lowered], [], req
 
     if kind == "CONTINUE_STMT":
