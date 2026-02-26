@@ -728,6 +728,11 @@ export class NetHackGame {
         this.lifecycle = deps.lifecycle || {};
         this.hooks = deps.hooks || {};
         this.fov = new FOV();
+        this.svc = { context: {} };
+        this.gd = {};
+        this.gm = {};
+        this.gn = {};
+        this.flags = null; // set in init()
         this.levels = {};
         this.gameOver = false;
         this.gameOverReason = '';
@@ -765,7 +770,25 @@ export class NetHackGame {
         this.map = null;
         this.display = deps.display || null;
         setOutputContext(this.display);
-        this.flags = null; // set in init()
+        // Canonical namespace aliases for state refactor campaign.
+        Object.defineProperty(this, 'context', {
+            configurable: true,
+            enumerable: true,
+            get: () => this.svc.context,
+            set: (v) => { this.svc.context = v || {}; },
+        });
+        Object.defineProperty(this, 'u', {
+            configurable: true,
+            enumerable: true,
+            get: () => this.player,
+            set: (v) => { this.player = v; },
+        });
+        Object.defineProperty(this, 'lev', {
+            configurable: true,
+            enumerable: true,
+            get: () => this.map,
+            set: (v) => { this.map = v; },
+        });
         this.input = deps.input || null;
         if (this.display) {
             initAnimation(this.display, { mode: 'headless', skipDelays: true });
