@@ -3125,51 +3125,18 @@ No function symbols parsed from isaac64.c.
 | 506 | `ucatchgem` | mthrowu.js:491 | Partial — unicorn glass-gem catch/reject path implemented |
 
 ### muse.c -> muse.js
-| C Line | C Function | JS Line | Alignment |
-|--------|------------|---------|-----------|
-| 3211 | `cures_sliming` | - | Missing |
-| 2950 | `cures_stoning` | - | Missing |
-| 1705 | `fhito_loc` | - | Missing |
-| 440 | `find_defensive` | muse.js | Stub — returns false, no RNG consumed |
-| 2075 | `find_misc` | muse.js | Stub — returns false, no RNG consumed |
-| 1420 | `find_offensive` | - | Missing |
-| 3234 | `green_mon` | - | Missing |
-| 1343 | `hero_behind_chokepoint` | - | Missing |
-| 1293 | `linedup_chk_corpse` | - | Missing |
-| 419 | `m_next2m` | - | Missing |
-| 360 | `m_sees_sleepy_soldier` | - | Missing |
-| 383 | `m_tele` | - | Missing |
-| 336 | `m_use_healing` | - | Missing |
-| 1299 | `m_use_undead_turning` | - | Missing |
-| 1732 | `mbhit` | - | Missing |
-| 1596 | `mbhitm` | - | Missing |
-| 2966 | `mcould_eat_tin` | - | Missing |
-| 2837 | `mcureblindness` | - | Missing |
-| 2242 | `mloot_container` | - | Missing |
-| 2871 | `mon_consume_unstone` | - | Missing |
-| 779 | `mon_escape` | - | Missing |
-| 1370 | `mon_has_friends` | - | Missing |
-| 1394 | `mon_likes_objpile_at` | - | Missing |
-| 2762 | `mon_reflects` | - | Missing |
-| 194 | `mplayhorn` | - | Missing |
-| 292 | `mquaffmsg` | - | Missing |
-| 237 | `mreadmsg` | - | Missing |
-| 2996 | `munslime` | - | Missing |
-| 2849 | `munstone` | - | Missing |
-| 2228 | `muse_newcham_mon` | - | Missing |
-| 3069 | `muse_unslime` | - | Missing |
-| 164 | `mzapwand` | - | Missing |
-| 2656 | `necrophiliac` | - | Missing |
-| 756 | `reveal_trap` | - | Missing |
-| 1221 | `rnd_defensive_item` | - | Missing |
-| 2619 | `rnd_misc_item` | - | Missing |
-| 2015 | `rnd_offensive_item` | - | Missing |
-| 2671 | `searches_for_item` | - | Missing |
-| 2801 | `ureflects` | - | Missing |
-| 795 | `use_defensive` | muse.js | Stub — returns 0, no RNG consumed |
-| 2361 | `use_misc` | muse.js | Stub — returns 0, no RNG consumed |
-| 1816 | `use_offensive` | - | Missing |
-| 2596 | `you_aggravate` | - | Missing |
+`muse.js` now has named surfaces for all currently mapped `muse.c` functions (including newly added `reveal_trap` and `necrophiliac`) and active implementations for defensive/offensive/misc item selection and execution paths (`find_*`, `use_*`, `mbhit*`, reflect/unstone/unslime helpers).
+
+Remaining parity gaps are mostly behavioral depth:
+
+| C Area | Remaining Gap In JS |
+|--------|----------------------|
+| `precheck` potion-occupant edge flow | Milky/smoky potion occupant behavior is only partially modeled; descriptor gating and side effects are still lighter than C. |
+| `use_offensive` (`SCR_EARTH`, camera, thrown potions) | Boulder-drop/flash/blindness side effects and messaging are approximated versus C. |
+| `use_misc` (`BULLWHIP`, cursed gain-level rise, bag rummage) | Disarm transfer/placement and migration semantics are simplified. |
+| `muse_newcham_mon` | Dragon-armor-targeted polymorph mapping is partial; full scales/mail-to-monster mapping remains incomplete. |
+| `m_tele` / migration | Several level-transition and special-level routing nuances are still simplified. |
+| `you_aggravate` | Full map/vision/UI wakeup side effects are reduced to lightweight messaging. |
 
 ### music.c -> music.js
 | C Line | C Function | JS Line | Alignment |

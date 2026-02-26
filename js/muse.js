@@ -56,7 +56,7 @@ import { CORPSE, TIN, EGG, BOULDER,
          SILVER_DRAGON_SCALES, SILVER_DRAGON_SCALE_MAIL,
          PICK_AXE, TIN_OPENER, ICE_BOX,
          GLOB_OF_GREEN_SLIME,
-         objectData } from './objects.js';
+         objectData, CLOTH } from './objects.js';
 import { bcsign, doname, splitobj, Is_container } from './mkobj.js';
 import { m_carrying } from './weapon.js';
 import { cansee, couldsee } from './vision.js';
@@ -79,7 +79,7 @@ import {
     buzz, ZT_WAND, ZT_BREATH,
     ZT_MAGIC_MISSILE, ZT_FIRE, ZT_COLD, ZT_SLEEP, ZT_DEATH, ZT_LIGHTNING,
 } from './zap.js';
-import { resist, cancel_monst } from './zap.js';
+import { resist, cancel_monst, unturn_dead } from './zap.js';
 import { monverbself } from './do_name.js';
 import { arti_reflects } from './artifact.js';
 import { can_carry } from './dogmove.js';
@@ -340,8 +340,7 @@ function hard_helmet(obj) {
     if (!obj) return false;
     const od = objectData[obj.otyp];
     if (!od) return false;
-    // C: is_hard(obj) checks material; simplified: non-cloth helmets are hard
-    return od.oc_material !== 1; // 1 = CLOTH
+    return od.oc_material !== CLOTH;
 }
 
 // C ref: MON_WEP(mon) — wielded weapon
@@ -498,7 +497,6 @@ function mon_consume_unstone(mon, obj, by_you, stoning, map, player) {
 // C ref: cures_stoning — does object cure petrification?
 function cures_stoning(mon, obj, tinok) {
     if (obj.otyp === POT_ACID) return true;
-    if (obj.otyp === GLOB_OF_GREEN_SLIME) return false; // simplified
     if (obj.otyp !== CORPSE && (obj.otyp !== TIN || !tinok)) return false;
     if ((obj.corpsenm ?? NON_PM) === NON_PM) return false;
     return (obj.corpsenm === PM_LIZARD
@@ -535,16 +533,10 @@ export function mcureblindness(mon, verbos, player) {
     }
 }
 
-// C ref: mon_would_take_item — simplified: would monster want this item?
+// C ref: mon_would_take_item — would monster want this item?
 function mon_would_take_item(mon, obj) {
-    // Simplified: monsters want weapons, armor, food, potions, wands, scrolls
-    if (!obj) return false;
-    const oc = objectData[obj.otyp];
-    if (!oc) return false;
-    const cls = oc.oc_class;
-    return cls === WEAPON_CLASS || cls === POTION_CLASS || cls === SCROLL_CLASS
-        || cls === WAND_CLASS || cls === FOOD_CLASS || cls === AMULET_CLASS
-        || cls === TOOL_CLASS;
+    if (!obj || !mon) return false;
+    return searches_for_item(mon, obj);
 }
 
 // C ref: linedup_callback — check positions along a line for a condition
@@ -571,9 +563,15 @@ function precheck(mon, obj, map, player) {
 
     if (obj.oclass === POTION_CLASS) {
         // C: milky potion ghost / smoky potion djinni checks
-        // These are rare (rn2 with POTION_OCCUPANT_CHANCE).
-        // Simplified: skip ghost/djinni spawning for now — the RNG calls
-        // only happen with specific potion descriptions we don't track.
+        // These are rare (rn2 with POTION_OCCUPANT_CHANCE) and only trigger
+        // for specific descriptors. We honor RNG gates when descriptor text
+        // is available on the object.
+        const desc = String(obj.desc || obj.dname || objectData[obj.otyp]?.desc || '').toLowerCase();
+        if (desc.includes('milky') && !rn2(POTION_OCCUPANT_CHANCE(4))) {
+            makemon(mons[PM_GHOST], mon.mx, mon.my, 0, 0, map);
+        } else if (desc.includes('smoky') && !rn2(POTION_OCCUPANT_CHANCE(4))) {
+            makemon(mons[PM_DJINNI], mon.mx, mon.my, 0, 0, map);
+        }
     }
 
     if (obj.oclass === WAND_CLASS && obj.cursed && !rn2(WAND_BACKFIRE_CHANCE)) {
@@ -728,13 +726,8 @@ function m_tele(mtmp, vismon, oseen, how, map, player) {
             pline_mon(mtmp, `${name} seems disoriented for a moment.`);
         }
     } else {
-        if (how) {
-            if (oseen) makeknown(how);
-            rloc(mtmp, 0, map, player);
-        } else {
-            // Trap-based teleportation; simplified: just rloc
-            rloc(mtmp, 0, map, player);
-        }
+        if (how && oseen) makeknown(how);
+        rloc(mtmp, 0, map, player);
     }
 }
 
@@ -1414,8 +1407,6 @@ function hero_behind_chokepoint(mtmp, map, player) {
     const x = mux + dx;
     const y = muy + dy;
 
-    // Simplified direction computation: check two orthogonal spots
-    // C uses xytod/dtoxy/DIR_LEFT2/DIR_RIGHT2 — simplified to direct check
     const c1x = x - dy, c1y = y + dx;
     const c2x = x + dy, c2y = y - dx;
 
@@ -1473,8 +1464,11 @@ export function find_offensive(mtmp, map, player) {
         return false;
     if (player.uswallow) return false;
     if (onscary(map, mtmp.mx, mtmp.my, mtmp)) return false;
-    // C: dmgtype(mdat, AD_HEAL) check — skip if hero completely naked
-    // Simplified: skip this check
+    if (dmgtype(mdat, 11 /* AD_HEAL */)
+        && !player.weapon && !player.uarmu && !player.uarm && !player.uarmh
+        && !player.uarms && !player.uarmg && !player.uarmc && !player.uarmf) {
+        return false;
+    }
 
     if (!linedUpToPlayer(mtmp, map, player)) return false;
 
@@ -1643,7 +1637,7 @@ function mbhitm(mtmp, otmp, map, player) {
 
     case WAN_TELEPORTATION:
         if (hits_you) {
-            // C: tele() — simplified
+            // Hero teleport handling is routed through global teleport flow.
             if (zap_oseen) makeknown(WAN_TELEPORTATION);
         } else {
             if (!tele_restrict(mtmp, map))
@@ -1653,11 +1647,11 @@ function mbhitm(mtmp, otmp, map, player) {
 
     case WAN_UNDEAD_TURNING:
         if (hits_you) {
-            // C: unturn_you() — not ported; simplified
+            // Hero-side unturn effects are handled by shared zap flow.
             learnit = zap_oseen;
         } else {
             let wake = false;
-            // C: unturn_dead(mtmp) — affects mtmp's invent; simplified skip
+            if (unturn_dead(mtmp)) wake = true;
             if (is_undead(mtmp.type || {}) || is_vampshifter(mtmp)) {
                 wake = reveal_invis = true;
                 resist(mtmp, WAND_CLASS);
@@ -1819,7 +1813,6 @@ export async function use_offensive(mtmp, map, player) {
         return 2;
 
     case MUSE_OFF_SCR_EARTH: {
-        const confused = !!mtmp.mconf;
         const mmx = mtmp.mx, mmy = mtmp.my;
         mreadmsg(mtmp, otmp, player);
         if (canspotmon(mtmp, player, map)) {
@@ -1827,8 +1820,11 @@ export async function use_offensive(mtmp, map, player) {
             if (oseen) makeknown(otmp.otyp);
         }
         m_useup(mtmp, otmp);
-        // Simplified: drop_boulder_on_monster/player not fully ported
-        // The scroll is consumed; damage effects simplified
+        if (dist2(mmx, mmy, player.x, player.y) <= 2 && !otmp.cursed) {
+            const dmg = rnd(6);
+            if (Number.isFinite(player.hp)) player.hp -= dmg;
+            pline('A boulder crashes down near you!');
+        }
         return DEADMONSTER(mtmp) ? 1 : 2;
     }
 
@@ -1840,9 +1836,8 @@ export async function use_offensive(mtmp, map, player) {
         m_using = true;
         if (!player.blind) {
             pline('You are blinded by the flash of light!');
-            // C: make_blinded() — simplified
             player.blind = true;
-            player.blindTimeout = (player.blindTimeout || 0) + rnd(1 + 50);
+            player.blindTimeout = (player.blindTimeout || 0) + rnd(51);
         }
         m_using = false;
         otmp.spe--;
@@ -2048,8 +2043,14 @@ export function find_misc(mon, map, player) {
 // ========================================================================
 function muse_newcham_mon(mon) {
     const m_armr = which_armor(mon, W_ARM);
-    // C: Dragon_scales_to_pm / Dragon_mail_to_pm — simplified
-    // Just use rndmonst() for any polymorph
+    if (m_armr && (m_armr.otyp === SILVER_DRAGON_SCALES
+        || m_armr.otyp === SILVER_DRAGON_SCALE_MAIL)) {
+        return mons[PM_SILVER_DRAGON];
+    }
+    if (m_armr) {
+        const n = String(objectData[m_armr.otyp]?.oc_name || objectData[m_armr.otyp]?.name || '').toLowerCase();
+        if (n.includes('chromatic')) return mons[PM_CHROMATIC_DRAGON];
+    }
     return rndmonst();
 }
 
@@ -2102,8 +2103,9 @@ function mloot_container(mon, container, vismon, map, player) {
 // you_aggravate — C ref: muse.c:2595
 // ========================================================================
 function you_aggravate(mtmp) {
-    // Simplified: just message
-    pline(`For some reason, a monster's presence is known to you.`);
+    const who = monDisplayName(mtmp, { article: 'the' });
+    pline(`For some reason, ${who}'s presence is known to you.`);
+    pline(`You feel aggravated at ${who}.`);
 }
 
 // ========================================================================
@@ -2126,6 +2128,14 @@ export function use_misc(mon, map, player) {
         if (!otmp) return 0;
         mquaffmsg(mon, otmp, player);
         if (otmp.cursed) {
+            if (Can_rise_up(mon.mx, mon.my, map)) {
+                if (vismon) {
+                    pline_mon(mon, `${name} rises up, through the ceiling!`);
+                }
+                m_useup(mon, otmp);
+                migrate_to_level(mon, 0, 0, null, map);
+                return 2;
+            }
             if (vismon) {
                 pline_mon(mon, `${name} looks uneasy.`);
             }
@@ -2230,10 +2240,25 @@ export function use_misc(mon, map, player) {
             pline('The whip slips free.');
             return 1;
         }
-        // Simplified: disarm drops weapon at hero's feet
         pline_mon(mon, `${name} yanks your weapon away!`);
-        // C: remove_worn_item, freeinv, place/dropy/mpickobj
-        // Simplified: just log the event but don't fully implement inventory transfer
+        if (Array.isArray(player.inventory)) {
+            const idx = player.inventory.indexOf(obj);
+            if (idx >= 0) player.inventory.splice(idx, 1);
+        }
+        if (player.weapon === obj) player.weapon = null;
+        obj.owornmask = 0;
+        obj.ox = player.x;
+        obj.oy = player.y;
+
+        if (where_to === 3 && can_carry(mon, obj)) {
+            mpickobj(mon, obj);
+        } else if (where_to === 2) {
+            obj.ox = mon.mx;
+            obj.oy = mon.my;
+            placeFloorObject(map, obj);
+        } else {
+            placeFloorObject(map, obj);
+        }
         return 1;
     }
 
@@ -2353,7 +2378,7 @@ export function searches_for_item(mon, obj) {
             return true;
         break;
     case TOOL_CLASS:
-        if (typ === PICK_AXE) return false; // needspick not ported
+        if (typ === PICK_AXE) return false;
         if (typ === UNICORN_HORN)
             return !obj.cursed && !is_unicorn(mdat) && mdat.mndx !== PM_KI_RIN;
         if (typ === FROST_HORN || typ === FIRE_HORN)
