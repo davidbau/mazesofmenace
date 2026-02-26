@@ -13,6 +13,11 @@ IDENT_RE = re.compile(r"[A-Za-z_]\w*$")
 DECL_RE = re.compile(
     r"^(?:unsigned\s+)?(?:int|long|short|boolean|coordxy|schar|uchar)\s+(.+);$"
 )
+DECL_FALLBACK_RE = re.compile(
+    r"^(?:(?:const|volatile|register|static|extern|signed|unsigned|short|long|"
+    r"int|char|float|double|boolean|coordxy|coord|schar|uchar|xint16|xint32|xint64|"
+    r"struct\s+[A-Za-z_]\w*|enum\s+[A-Za-z_]\w*|union\s+[A-Za-z_]\w*)\s+)+(.+);$"
+)
 PANIC_RE = re.compile(r'^panic\("([^"]+)"\)$')
 
 
@@ -152,6 +157,44 @@ def emit_helper_scaffold(src_path, func_name, compile_profile=None):
     }
 
 
+def emit_capability_summary(src_path, compile_profile=None):
+    nir = build_nir_snapshot(src_path)
+    functions = []
+    translated_count = 0
+    blocked_count = 0
+    diag_hist = {}
+
+    for fn in nir.get("functions", []):
+        name = fn.get("name")
+        payload = emit_helper_scaffold(src_path, name, compile_profile)
+        translated = bool(payload.get("meta", {}).get("translated"))
+        if translated:
+            translated_count += 1
+        else:
+            blocked_count += 1
+        diag_codes = [d.get("code") for d in (payload.get("diag") or []) if d.get("code")]
+        for code in diag_codes:
+            diag_hist[code] = diag_hist.get(code, 0) + 1
+        functions.append(
+            {
+                "name": name,
+                "signature_line": payload.get("meta", {}).get("signature_line"),
+                "translated": translated,
+                "diag_codes": diag_codes,
+            }
+        )
+
+    return {
+        "emit_mode": "capability-summary",
+        "source": str(Path(src_path)).replace("\\", "/"),
+        "function_count": len(functions),
+        "translated_count": translated_count,
+        "blocked_count": blocked_count,
+        "diag_histogram": dict(sorted(diag_hist.items(), key=lambda kv: kv[0])),
+        "functions": functions,
+    }
+
+
 def _translate_ast_compound(compound_stmt, base_indent, rewrite_rules, awaitable_calls):
     if not isinstance(compound_stmt, dict) or compound_stmt.get("kind") != "COMPOUND_STMT":
         return None, [_diag("UNSUPPORTED_TOPLEVEL", "Expected COMPOUND_STMT for function body")], set()
@@ -208,6 +251,12 @@ def _translate_stmt(stmt, indent, rewrite_rules, awaitable_calls):
     if kind == "IF_STMT":
         return _translate_if_stmt(stmt, indent, rewrite_rules, awaitable_calls)
 
+    if kind == "FOR_STMT":
+        return _translate_for_stmt(stmt, indent, rewrite_rules, awaitable_calls)
+
+    if kind == "WHILE_STMT":
+        return _translate_while_stmt(stmt, indent, rewrite_rules, awaitable_calls)
+
     if kind == "COMPOUND_STMT":
         out = []
         diags = []
@@ -231,6 +280,12 @@ def _translate_stmt(stmt, indent, rewrite_rules, awaitable_calls):
         if lowered is None:
             return None, [_diag("UNSUPPORTED_EXPR_STMT", text)], set()
         return [pad + lowered], [], req
+
+    if kind == "CONTINUE_STMT":
+        return [pad + "continue;"], [], set()
+
+    if kind == "BREAK_STMT":
+        return [pad + "break;"], [], set()
 
     if kind == "NULL_STMT":
         return [], [], set()
@@ -390,6 +445,8 @@ def _let_payload(line):
 def _lower_decl_stmt(text, rewrite_rules):
     m = DECL_RE.match(text)
     if not m:
+        m = DECL_FALLBACK_RE.match(text)
+    if not m:
         return None, set()
     decl = m.group(1)
     lowered = []
@@ -408,6 +465,89 @@ def _lower_decl_stmt(text, rewrite_rules):
         else:
             lowered.append(token)
     return f"let {', '.join(lowered)};", req
+
+
+def _translate_for_stmt(stmt, indent, rewrite_rules, awaitable_calls):
+    children = stmt.get("children", [])
+    pad = "  " * indent
+    if not children:
+        return None, [_diag("BAD_FOR_AST", _normalize_space(stmt.get("text", "")))], set()
+
+    body_stmt = children[-1]
+    parts = children[:-1]
+    init = ""
+    cond = ""
+    inc = ""
+    required_params = set()
+
+    if len(parts) >= 1:
+        init_stmt = parts[0]
+        if init_stmt.get("kind") == "DECL_STMT":
+            lowered, req = _lower_decl_stmt(_normalize_space(init_stmt.get("text", "")), rewrite_rules)
+            if lowered is None:
+                return None, [_diag("BAD_FOR_INIT", _normalize_space(init_stmt.get("text", "")))], set()
+            init = lowered[:-1] if lowered.endswith(";") else lowered
+            required_params.update(req)
+        else:
+            lowered, req = _lower_expr(_normalize_space(init_stmt.get("text", "")), rewrite_rules)
+            if lowered is None:
+                return None, [_diag("BAD_FOR_INIT", _normalize_space(init_stmt.get("text", "")))], set()
+            init = lowered
+            required_params.update(req)
+    if len(parts) >= 2:
+        lowered, req = _lower_expr(_normalize_space(parts[1].get("text", "")), rewrite_rules)
+        if lowered is None:
+            return None, [_diag("BAD_FOR_COND", _normalize_space(parts[1].get("text", "")))], set()
+        cond = lowered
+        required_params.update(req)
+    if len(parts) >= 3:
+        lowered, req = _lower_expr(_normalize_space(parts[2].get("text", "")), rewrite_rules)
+        if lowered is None:
+            return None, [_diag("BAD_FOR_INC", _normalize_space(parts[2].get("text", "")))], set()
+        inc = lowered
+        required_params.update(req)
+
+    body_lines, body_diags, body_req = _translate_stmt_as_block(
+        body_stmt,
+        indent + 1,
+        rewrite_rules,
+        awaitable_calls,
+    )
+    if body_lines is None:
+        return None, body_diags, required_params
+    required_params.update(body_req)
+
+    out = [f"{pad}for ({init}; {cond}; {inc}) {{"]
+    out.extend(body_lines)
+    out.append(f"{pad}}}")
+    return out, body_diags, required_params
+
+
+def _translate_while_stmt(stmt, indent, rewrite_rules, awaitable_calls):
+    children = stmt.get("children", [])
+    pad = "  " * indent
+    if len(children) < 2:
+        return None, [_diag("BAD_WHILE_AST", _normalize_space(stmt.get("text", "")))], set()
+
+    cond, cond_req = _lower_expr(_normalize_space(children[0].get("text", "")), rewrite_rules)
+    if cond is None:
+        return None, [_diag("BAD_WHILE_COND", _normalize_space(children[0].get("text", "")))], set()
+
+    body_lines, body_diags, body_req = _translate_stmt_as_block(
+        children[1],
+        indent + 1,
+        rewrite_rules,
+        awaitable_calls,
+    )
+    if body_lines is None:
+        return None, body_diags, cond_req
+
+    req = set(cond_req)
+    req.update(body_req)
+    out = [f"{pad}while ({cond}) {{"]
+    out.extend(body_lines)
+    out.append(f"{pad}}}")
+    return out, body_diags, req
 
 
 def _lower_expr_stmt(text, rewrite_rules, awaitable_calls):

@@ -11,35 +11,132 @@ FUNC_SIG_RE = re.compile(
 DEFINE_RE = re.compile(r"^\s*#\s*define\s+([A-Za-z_]\w*)\b")
 MACRO_CALL_RE = re.compile(r"\b([A-Z][A-Z0-9_]*)\s*\(")
 PP_LINE_RE = re.compile(r'^\s*#\s+(\d+)\s+"([^"]+)"(?:\s+\d+)*\s*$')
+FUNC_NAME_RE = re.compile(r"\b([A-Za-z_]\w*)\s*\(")
+
+_GCC_INCLUDE_CACHE = None
 
 
 def _extract_functions_regex(source_text):
     functions = []
+    seen = set()
     lines = source_text.splitlines()
-    for i, line in enumerate(lines, start=1):
+    n = len(lines)
+    i = 0
+
+    def _is_comment_or_blank(s):
+        t = s.strip()
+        return (not t or t.startswith("//") or t.startswith("/*")
+                or t.startswith("*") or t.startswith("*/"))
+
+    brace_depth = 0
+    while i < n:
+        line = lines[i]
+        stripped = line.strip()
+        if brace_depth > 0:
+            brace_depth += line.count("{") - line.count("}")
+            i += 1
+            continue
+        if _is_comment_or_blank(stripped) or stripped.startswith("#"):
+            i += 1
+            continue
+
+        # Fast path for simple single-line signatures.
         m = FUNC_SIG_RE.match(line)
-        if not m:
-            continue
-        name = m.group(1)
-        if name in {"if", "while", "for", "switch"}:
-            continue
-        if name.upper() == name:
-            continue
-        if "=" in line:
-            continue
-        # C style often puts "{" on the next line; confirm it.
+        if m:
+            name = m.group(1)
+            j = i + 1
+            opener = None
+            while j < n:
+                probe = lines[j].strip()
+                if _is_comment_or_blank(probe):
+                    j += 1
+                    continue
+                opener = probe
+                break
+            if opener == "{":
+                if name not in {"if", "while", "for", "switch"} and name.upper() != name:
+                    key = (name, i + 1)
+                    if key not in seen:
+                        seen.add(key)
+                        functions.append({"name": name, "line": i + 1})
+                brace_depth = 1
+                i = j + 1
+                continue
+
+        # Multi-line signature scan (handles split return type/name/params).
+        sig_start = i
+        sig_parts = []
+        paren_depth = 0
+        saw_open_paren = False
         j = i
-        opener = None
-        while j < len(lines):
-            probe = lines[j].strip()
-            if not probe or probe.startswith("/*") or probe.startswith("*"):
+        ended_with_brace = False
+        ended_with_proto = False
+        while j < n and (j - i) < 60:
+            cur = lines[j]
+            cur_s = cur.strip()
+            if _is_comment_or_blank(cur_s):
                 j += 1
                 continue
-            opener = probe
-            break
-        if opener != "{":
+            if cur_s.startswith("#"):
+                break
+            sig_parts.append(cur_s)
+            for ch in cur:
+                if ch == "(":
+                    paren_depth += 1
+                    saw_open_paren = True
+                elif ch == ")" and paren_depth > 0:
+                    paren_depth -= 1
+            if saw_open_paren and paren_depth == 0:
+                tail = cur_s
+                if tail.endswith(";"):
+                    ended_with_proto = True
+                elif "{" in tail:
+                    ended_with_brace = True
+                else:
+                    k = j + 1
+                    while k < n and _is_comment_or_blank(lines[k]):
+                        k += 1
+                    if k < n:
+                        nxt = lines[k].strip()
+                        if nxt.startswith("{"):
+                            ended_with_brace = True
+                            j = k
+                        elif nxt.startswith(";"):
+                            ended_with_proto = True
+                            j = k
+                break
+            j += 1
+
+        if ended_with_proto or not ended_with_brace:
+            i += 1
             continue
-        functions.append({"name": name, "line": i})
+
+        sig_text = " ".join(sig_parts)
+        first_paren = sig_text.find("(")
+        if first_paren <= 0:
+            i = j + 1
+            continue
+        prefix = sig_text[:first_paren]
+        if "=" in prefix:
+            i = j + 1
+            continue
+
+        names = FUNC_NAME_RE.findall(sig_text)
+        if not names:
+            i = j + 1
+            continue
+        name = names[-1]
+        if name in {"if", "while", "for", "switch"} or name.upper() == name:
+            i = j + 1
+            continue
+
+        key = (name, sig_start + 1)
+        if key not in seen:
+            seen.add(key)
+            functions.append({"name": name, "line": sig_start + 1})
+        brace_depth = 1
+        i = j + 1
+
     return functions
 
 
@@ -53,7 +150,7 @@ def _try_libclang(path, compile_args):
 
     try:
         index = cindex.Index.create()
-        tu = index.parse(str(path), args=compile_args)
+        tu = index.parse(str(path), args=_augment_compile_args_for_clang(compile_args))
     except Exception as err:
         return {"available": False, "reason": f"clang parse failed: {err}"}
 
@@ -73,7 +170,43 @@ def _parse_tu_with_clang(path, compile_args):
 
     _configure_libclang(cindex)
     index = cindex.Index.create()
-    return cindex, index.parse(str(path), args=compile_args)
+    args = _augment_compile_args_for_clang(compile_args)
+    return cindex, index.parse(str(path), args=args)
+
+
+def _discover_gcc_include_dir():
+    global _GCC_INCLUDE_CACHE
+    if _GCC_INCLUDE_CACHE is not None:
+        return _GCC_INCLUDE_CACHE
+    try:
+        proc = subprocess.run(
+            ["gcc", "-print-file-name=include"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except Exception:
+        _GCC_INCLUDE_CACHE = None
+        return _GCC_INCLUDE_CACHE
+    if proc.returncode != 0:
+        _GCC_INCLUDE_CACHE = None
+        return _GCC_INCLUDE_CACHE
+    candidate = (proc.stdout or "").strip()
+    if candidate and Path(candidate).exists():
+        _GCC_INCLUDE_CACHE = candidate
+        return _GCC_INCLUDE_CACHE
+    _GCC_INCLUDE_CACHE = None
+    return _GCC_INCLUDE_CACHE
+
+
+def _augment_compile_args_for_clang(compile_args):
+    args = list(compile_args or [])
+    if any(a == "-isystem" for a in args):
+        return args
+    gcc_include = _discover_gcc_include_dir()
+    if gcc_include:
+        args = [*args, "-isystem", gcc_include]
+    return args
 
 
 def _extent_text(lines, extent):
@@ -149,6 +282,9 @@ def function_ast_summary(src_path, compile_profile, func_name):
 
 
 def _configure_libclang(cindex):
+    if getattr(cindex.Config, "loaded", False):
+        return
+
     # Respect explicit override first.
     explicit = os.environ.get("LIBCLANG_PATH") or os.environ.get("C_TRANSLATOR_LIBCLANG")
     if explicit:

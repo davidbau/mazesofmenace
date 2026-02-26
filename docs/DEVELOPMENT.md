@@ -22,6 +22,60 @@ For C comparison testing (optional):
 - **ncurses-dev** (`libncurses-dev` on Linux, Xcode command line tools on macOS)
 - **tmux** (drives the C binary headlessly)
 
+## Practical Setup (This Repo Runtime)
+
+Use this as the default command setup for development and translator work in
+this repository.
+
+1. Check core tools:
+```bash
+node -v
+npm -v
+python3 -V
+conda --version
+```
+
+2. Use conda Python for translator tooling:
+```bash
+# Confirm conda base has pip + clang bindings
+conda run -n base python -m pip --version
+conda run -n base python -c "import clang, clang.cindex; print('clang ok')"
+```
+
+3. Run translator commands with conda Python:
+```bash
+conda run -n base python tools/c_translator/main.py --help
+
+# Example parse summary
+conda run -n base python tools/c_translator/main.py \
+  --src nethack-c/src/hack.c \
+  --emit parse-summary \
+  --out /tmp/hack.parse.json
+
+# File-wide translation capability summary
+conda run -n base python tools/c_translator/main.py \
+  --src nethack-c/src/hack.c \
+  --emit capability-summary \
+  --out /tmp/hack.capability.json
+```
+
+4. Translator policy/annotation checks (Node scripts):
+```bash
+npm run -s translator:check-policy
+npm run -s translator:check-annotations
+```
+
+5. Core parity test loops:
+```bash
+npm run -s test:unit
+npm run -s test:session
+```
+
+Notes:
+- On some hosts, `/usr/bin/python3` may not include `pip` or `clang` bindings.
+- Prefer `conda run -n base python ...` for `tools/c_translator/*` commands to
+  ensure `clang.cindex` is available.
+
 ## Quick Start
 
 ```bash

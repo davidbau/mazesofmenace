@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from async_infer import build_async_summary
-from backend import emit_helper_scaffold
+from backend import emit_capability_summary, emit_helper_scaffold
 from cfg import build_cfg_summary
 from frontend import load_compile_profile, parse_summary, provenance_summary
 from nir import build_nir_snapshot
@@ -34,6 +34,7 @@ def build_parser():
             "cfg-summary",
             "async-summary",
             "emit-helper",
+            "capability-summary",
             "scaffold",
             "patch",
         ],
@@ -62,6 +63,8 @@ def main():
         payload = build_async_summary(args.src, args.func, args.boundary_rules)
     elif args.emit == "emit-helper":
         payload = emit_helper_scaffold(args.src, args.func, profile)
+    elif args.emit == "capability-summary":
+        payload = emit_capability_summary(args.src, profile)
     else:
         # Scaffold placeholders for next M3 steps.
         payload = {

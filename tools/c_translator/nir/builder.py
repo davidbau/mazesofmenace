@@ -6,6 +6,7 @@ from pathlib import Path
 FUNC_SIG_RE = re.compile(
     r"^\s*(?:[A-Za-z_][\w\s\*\(\)]*?\s+)?([A-Za-z_]\w*)\s*\([^;]*\)\s*$"
 )
+FUNC_NAME_RE = re.compile(r"\b([A-Za-z_]\w*)\s*\(")
 CALL_RE = re.compile(r"\b([A-Za-z_]\w*)\s*\(")
 ASSIGN_RE = re.compile(r"\b([A-Za-z_]\w*)\s*([+\-*/%&|^]?=)")
 KEYWORDS = {
@@ -23,35 +24,105 @@ KEYWORDS = {
 def _find_function_regions(text):
     lines = text.splitlines()
     regions = []
-    for i, line in enumerate(lines, start=1):
-        m = FUNC_SIG_RE.match(line)
-        if not m:
+    n = len(lines)
+    i = 0
+    while i < n:
+        line = lines[i]
+        stripped = line.strip()
+        if (not stripped or stripped.startswith("#") or stripped.startswith("//")
+                or stripped.startswith("/*") or stripped.startswith("*")
+                or stripped.startswith("*/")):
+            i += 1
             continue
-        name = m.group(1)
-        if name in KEYWORDS or name.upper() == name or "=" in line:
-            continue
+
+        name = None
+        sig_line = i + 1
         opener_line = None
-        j = i
-        while j < len(lines):
-            probe = lines[j].strip()
-            if not probe or probe.startswith("/*") or probe.startswith("*"):
+
+        m = FUNC_SIG_RE.match(line)
+        if m:
+            name = m.group(1)
+            j = i + 1
+            while j < n:
+                probe = lines[j].strip()
+                if (not probe or probe.startswith("//") or probe.startswith("/*")
+                        or probe.startswith("*") or probe.startswith("*/")):
+                    j += 1
+                    continue
+                if probe == "{":
+                    opener_line = j + 1
+                break
+        else:
+            sig_parts = []
+            paren_depth = 0
+            saw_paren = False
+            j = i
+            ended_with_brace = False
+            ended_with_proto = False
+            while j < n and (j - i) < 60:
+                cur = lines[j].strip()
+                if (not cur or cur.startswith("//") or cur.startswith("/*")
+                        or cur.startswith("*") or cur.startswith("*/")):
+                    j += 1
+                    continue
+                if cur.startswith("#"):
+                    break
+                sig_parts.append(cur)
+                for ch in lines[j]:
+                    if ch == "(":
+                        paren_depth += 1
+                        saw_paren = True
+                    elif ch == ")" and paren_depth > 0:
+                        paren_depth -= 1
+                if saw_paren and paren_depth == 0:
+                    if cur.endswith(";"):
+                        ended_with_proto = True
+                    elif "{" in cur:
+                        ended_with_brace = True
+                        opener_line = j + 1
+                    else:
+                        k = j + 1
+                        while k < n:
+                            probe = lines[k].strip()
+                            if (not probe or probe.startswith("//") or probe.startswith("/*")
+                                    or probe.startswith("*") or probe.startswith("*/")):
+                                k += 1
+                                continue
+                            if probe.startswith("{"):
+                                ended_with_brace = True
+                                opener_line = k + 1
+                            elif probe.startswith(";"):
+                                ended_with_proto = True
+                            break
+                    break
                 j += 1
-                continue
-            opener_line = j + 1 if probe == "{" else None
-            break
-        if opener_line is None:
+            if not ended_with_proto and ended_with_brace and sig_parts:
+                sig_text = " ".join(sig_parts)
+                first_paren = sig_text.find("(")
+                if first_paren > 0 and "=" not in sig_text[:first_paren]:
+                    names = FUNC_NAME_RE.findall(sig_text)
+                    if names:
+                        name = names[-1]
+                        sig_line = i + 1
+
+        if (name is None or name in KEYWORDS or name.upper() == name
+                or opener_line is None):
+            i += 1
             continue
+
         end_line = _scan_function_end(lines, opener_line)
         if end_line is None:
+            i += 1
             continue
         regions.append(
             {
                 "name": name,
-                "signature_line": i,
+                "signature_line": sig_line,
                 "body_start_line": opener_line,
                 "body_end_line": end_line,
             }
         )
+        i = end_line
     return regions
 
 
