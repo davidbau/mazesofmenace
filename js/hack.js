@@ -389,7 +389,7 @@ export async function domove_core(dir, player, map, display, game) {
         return { moved: false, tookTime: false };
     }
 
-    const loc = map.at(nx, ny);
+    let loc = map.at(nx, ny);
 
     // C ref: hack.c crawl_destination()/test_move:
     // diagonal movement into a doorway is blocked unless the target door is
@@ -491,34 +491,10 @@ export async function domove_core(dir, player, map, display, game) {
         }
     }
 
-    // Check terrain
-    if (IS_WALL(loc.typ)) {
-        if (map?.flags?.mention_walls || map?.flags?.is_tutorial) {
-            display.putstr_message("It's a wall.");
-        }
-        return { moved: false, tookTime: false };
-    }
+    loc = map.at(nx, ny);
 
-    if (loc.typ === 0) { // STONE
-        if (map?.flags?.mention_walls || map?.flags?.is_tutorial) {
-            display.putstr_message("It's a wall.");
-        }
-        return { moved: false, tookTime: false };
-    }
-
-    // C ref: secret doors/corridors behave like walls until discovered.
-    if (loc.typ === SDOOR || loc.typ === SCORR) {
-        if (map?.flags?.mention_walls || map?.flags?.is_tutorial) {
-            display.putstr_message("It's a wall.");
-        }
-        return { moved: false, tookTime: false };
-    }
-
-    // Handle closed doors — auto-open per C ref: hack.c:1077-1090 + lock.c:904
-    // In C, doopen_indir is called within domove_core. After it, context.move
-    // remains false (player didn't move), so monsters don't get a turn.
-    // The RNG calls (rnl + exercise) happen but no per-turn processing runs.
-    if (IS_DOOR(loc.typ) && (loc.flags & D_CLOSED)) {
+    // Handle closed doors before test_move so C-like auto-open can occur.
+    if (loc && IS_DOOR(loc.typ) && (loc.flags & D_CLOSED)) {
         const str = player.attributes ? player.attributes[A_STR] : 18;
         const dex = player.attributes ? player.attributes[A_DEX] : 11;
         const con = player.attributes ? player.attributes[A_CON] : 18;
@@ -532,15 +508,10 @@ export async function domove_core(dir, player, map, display, game) {
         }
         return { moved: false, tookTime: false };
     }
-    if (IS_DOOR(loc.typ) && (loc.flags & D_LOCKED)) {
-        display.putstr_message("This door is locked.");
+    if (!test_move(player.x, player.y, dir[0], dir[1], DO_MOVE, player, map, display, game)) {
         return { moved: false, tookTime: false };
     }
-
-    if (!ACCESSIBLE(loc.typ)) {
-        display.putstr_message("You can't move there.");
-        return { moved: false, tookTime: false };
-    }
+    loc = map.at(nx, ny);
     const steppingTrap = map.trapAt(nx, ny);
     // C-style confirmation prompt for known anti-magic fields.
     if (steppingTrap && steppingTrap.ttyp === ANTI_MAGIC && steppingTrap.tseen) {
@@ -1466,7 +1437,7 @@ export const TRAVP_GUESS = 1;
 export const TRAVP_VALID = 2;
 
 // C ref: hack.c test_move() — validate a move from (ux,uy) by (dx,dy)
-export function test_move(ux, uy, dx, dy, mode, player, map, display) {
+export function test_move(ux, uy, dx, dy, mode, player, map, display, game = null) {
     const x = ux + dx;
     const y = uy + dy;
     const flags = map.flags || {};
@@ -1526,13 +1497,17 @@ export function test_move(ux, uy, dx, dy, mode, player, map, display) {
         return false;
     }
 
-    // Travel path: avoid traps and liquid
-    if (mode === TEST_TRAV || mode === TEST_TRAP) {
+    // C parity: trap/liquid travel gating is only active while running/travel.
+    const runMode = Number(game?.context?.run ?? game?.runMode ?? 0);
+    const travelMode = !!(game?.context?.travel ?? game?.traveling);
+    if ((mode === TEST_TRAV || mode === TEST_TRAP)
+        && (runMode === 8 || travelMode)) {
         const trap = map.trapAt ? map.trapAt(x, y) : null;
         if (trap && trap.tseen && trap.ttyp !== VIBRATING_SQUARE) {
             return mode === TEST_TRAP;
         }
-        if (is_pool_or_lava(x, y, map)) {
+        const seen = !!(map.at(x, y)?.seenv);
+        if (seen && is_pool_or_lava(x, y, map)) {
             return mode === TEST_TRAP;
         }
     }
