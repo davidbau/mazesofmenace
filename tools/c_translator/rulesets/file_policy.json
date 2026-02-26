@@ -1,0 +1,718 @@
+{
+  "version": 1,
+  "updated_at": "2026-02-26T09:26:20.546Z",
+  "files": [
+    {
+      "path": "js/allmain.js",
+      "policy": "mixed",
+      "reason": "Contains both translatable core logic and manual boundary code.",
+      "allow_source": "annotations"
+    },
+    {
+      "path": "js/animation.js",
+      "policy": "mixed",
+      "reason": "Contains both translatable core logic and manual boundary code.",
+      "allow_source": "annotations"
+    },
+    {
+      "path": "js/animation_examples.js",
+      "policy": "generated_data",
+      "reason": "Generated or data-table module; managed by generators/data sources."
+    },
+    {
+      "path": "js/apply.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/artifact.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/artifacts.js",
+      "policy": "generated_data",
+      "reason": "Generated or data-table module; managed by generators/data sources."
+    },
+    {
+      "path": "js/attrib.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/attrib_exercise.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/ball.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/bones.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/botl.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/browser_input.js",
+      "policy": "manual_only",
+      "reason": "Runtime/platform/infrastructure boundary; keep manual control."
+    },
+    {
+      "path": "js/calendar.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/chargen.js",
+      "policy": "mixed",
+      "reason": "Contains both translatable core logic and manual boundary code.",
+      "allow_source": "annotations"
+    },
+    {
+      "path": "js/cmd.js",
+      "policy": "mixed",
+      "reason": "Contains both translatable core logic and manual boundary code.",
+      "allow_source": "annotations"
+    },
+    {
+      "path": "js/combat.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/config.js",
+      "policy": "manual_only",
+      "reason": "Runtime/platform/infrastructure boundary; keep manual control."
+    },
+    {
+      "path": "js/dbridge.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/decl.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/delay.js",
+      "policy": "mixed",
+      "reason": "Contains both translatable core logic and manual boundary code.",
+      "allow_source": "annotations"
+    },
+    {
+      "path": "js/detect.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/dig.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/discovery.js",
+      "policy": "manual_only",
+      "reason": "Runtime/platform/infrastructure boundary; keep manual control."
+    },
+    {
+      "path": "js/display.js",
+      "policy": "mixed",
+      "reason": "Contains both translatable core logic and manual boundary code.",
+      "allow_source": "annotations"
+    },
+    {
+      "path": "js/display_rng.js",
+      "policy": "manual_only",
+      "reason": "Runtime/platform/infrastructure boundary; keep manual control."
+    },
+    {
+      "path": "js/do.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/do_name.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/do_wear.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/dog.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/dogmove.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/dokick.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/dothrow.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/dungeon.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/eat.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/end.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/engrave.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/engrave_data.js",
+      "policy": "generated_data",
+      "reason": "Generated or data-table module; managed by generators/data sources."
+    },
+    {
+      "path": "js/epitaph_data.js",
+      "policy": "generated_data",
+      "reason": "Generated or data-table module; managed by generators/data sources."
+    },
+    {
+      "path": "js/exper.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/explode.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/extralev.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/floor_objects.js",
+      "policy": "manual_only",
+      "reason": "Runtime/platform/infrastructure boundary; keep manual control."
+    },
+    {
+      "path": "js/fountain.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/getpos.js",
+      "policy": "mixed",
+      "reason": "Contains both translatable core logic and manual boundary code.",
+      "allow_source": "annotations"
+    },
+    {
+      "path": "js/glyphs.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/hack.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/hacklib.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/headless.js",
+      "policy": "manual_only",
+      "reason": "Runtime/platform/infrastructure boundary; keep manual control."
+    },
+    {
+      "path": "js/iactions.js",
+      "policy": "manual_only",
+      "reason": "Runtime/platform/infrastructure boundary; keep manual control."
+    },
+    {
+      "path": "js/input.js",
+      "policy": "manual_only",
+      "reason": "Runtime/platform/infrastructure boundary; keep manual control."
+    },
+    {
+      "path": "js/insight.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/invent.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/isaac64.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/keylog.js",
+      "policy": "manual_only",
+      "reason": "Runtime/platform/infrastructure boundary; keep manual control."
+    },
+    {
+      "path": "js/kick.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/light.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/lock.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/makemon.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/map.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/mcastu.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/mhitm.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/mhitu.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/minion.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/mklev.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/mkmap.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/mkmaze.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/mkobj.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/mkroom.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/mon.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/mondata.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/monmove.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/monst.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/monsters.js",
+      "policy": "generated_data",
+      "reason": "Generated or data-table module; managed by generators/data sources."
+    },
+    {
+      "path": "js/monutil.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/mplayer.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/mthrowu.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/muse.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/music.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/nethack.js",
+      "policy": "manual_only",
+      "reason": "Runtime/platform/infrastructure boundary; keep manual control."
+    },
+    {
+      "path": "js/o_init.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/objdata.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/objects.js",
+      "policy": "generated_data",
+      "reason": "Generated or data-table module; managed by generators/data sources."
+    },
+    {
+      "path": "js/objnam.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/options.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/options_menu.js",
+      "policy": "manual_only",
+      "reason": "Runtime/platform/infrastructure boundary; keep manual control."
+    },
+    {
+      "path": "js/pager.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/pickup.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/player.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/pline.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/polyself.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/potion.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/pray.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/priest.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/promo.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/quest.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/questpgr.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/read.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/rect.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/region.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/replay_core.js",
+      "policy": "manual_only",
+      "reason": "Runtime/platform/infrastructure boundary; keep manual control."
+    },
+    {
+      "path": "js/restore.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/rip.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/rng.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/role.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/rumor_data.js",
+      "policy": "generated_data",
+      "reason": "Generated or data-table module; managed by generators/data sources."
+    },
+    {
+      "path": "js/rumors.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/save.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/shk.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/shknam.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/sit.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/sounds.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/sp_lev.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/special_levels.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/spell.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/stairs.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/steal.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/steed.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/storage.js",
+      "policy": "manual_only",
+      "reason": "Runtime/platform/infrastructure boundary; keep manual control."
+    },
+    {
+      "path": "js/symbols.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/teleport.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/temp_glyph.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/timeout.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/topten.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/track.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/trap.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/u_init.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/uhitm.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/vault.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/version.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/vision.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/weapon.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/were.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/wield.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/windows.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/wizard.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/wizcmds.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/worm.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/worn.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/write.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/xoshiro256.js",
+      "policy": "manual_only",
+      "reason": "Runtime/platform/infrastructure boundary; keep manual control."
+    },
+    {
+      "path": "js/zap.js",
+      "policy": "auto",
+      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    }
+  ]
+}
