@@ -15,6 +15,7 @@ This document is the parser/frontend implementation spec:
 Translator program architecture and governance live in:
 
 1. [C_TRANSLATOR_ARCHITECTURE_SPEC.md](/share/u/davidbau/git/mazesofmenace/game/docs/C_TRANSLATOR_ARCHITECTURE_SPEC.md)
+2. [C_TRANSLATOR_NIR_SPEC.md](/share/u/davidbau/git/mazesofmenace/game/docs/C_TRANSLATOR_NIR_SPEC.md)
 
 ## Purpose
 Specify the concrete parser and semantic-lowering strategy for C-to-JS translation in this repository, with enough structure-awareness to:
