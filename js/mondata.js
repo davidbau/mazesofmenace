@@ -4,7 +4,7 @@
 // Monster instances have a .mnum field indexing into mons[].
 
 import {
-    mons,
+    mons, LOW_PM,
     M1_FLY, M1_SWIM, M1_AMORPHOUS, M1_WALLWALK, M1_CLING,
     M1_TUNNEL, M1_NEEDPICK, M1_CONCEAL, M1_HIDE, M1_AMPHIBIOUS,
     M1_BREATHLESS, M1_NOTAKE, M1_NOEYES, M1_NOHANDS, M1_NOLIMBS,
@@ -115,6 +115,8 @@ import {
 
 import { AMULET_OF_YENDOR, FOOD_CLASS, VEGGY, CORPSE, BANANA,
          objectData } from './objects.js';
+
+const NATTK = 6;
 
 // ========================================================================
 // Diet predicates — C ref: mondata.h
@@ -517,13 +519,19 @@ export function dmgtype(ptr, dtyp) {
 
 // C ref: mondata.c noattacks(ptr)
 // Returns true if monster has no real attacks (AT_BOOM passive ignored).
+// TRANSLATOR: AUTO (mondata.c:60)
 export function noattacks(ptr) {
-    if (!ptr.attacks) return true;
-    for (const atk of ptr.attacks) {
-        if (atk.type === AT_BOOM) continue;
-        if (atk.type !== AT_NONE && atk.type) return false;
+  let i;
+  const mattk = ptr?.mattk || ptr?.attacks || [];
+  for (i = 0; i < NATTK; i++) {
+    const atk = mattk[i] || null;
+    const aatyp = atk?.aatyp ?? atk?.type ?? 0;
+    if (aatyp === AT_BOOM) {
+      continue;
     }
-    return true;
+    if (aatyp) return false;
+  }
+  return true;
 }
 
 // C ref: mondata.c ranged_attk(ptr)
