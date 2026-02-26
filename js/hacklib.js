@@ -470,9 +470,10 @@ export function distmin(x0, y0, x1, y1) {
 }
 
 // hacklib.c:737 — square of Euclidean distance between pair of points
+// TRANSLATOR: AUTO (hacklib.c:736)
 export function dist2(x0, y0, x1, y1) {
-    const dx = x0 - x1, dy = y0 - y1;
-    return dx * dx + dy * dy;
+  let dx = x0 - x1, dy = y0 - y1;
+  return dx * dx + dy * dy;
 }
 
 // hacklib.c:746 — integer square root (floor(sqrt(val))); not in C comment block
@@ -500,9 +501,10 @@ export function online2(x0, y0, x1, y1) {
 // ============================================================================
 
 // hacklib.c:894 — swap bit at position bita with bit at position bitb in val
+// TRANSLATOR: AUTO (hacklib.c:895)
 export function swapbits(val, bita, bitb) {
-    const tmp = ((val >> bita) & 1) ^ ((val >> bitb) & 1);
-    return val ^ ((tmp << bita) | (tmp << bitb));
+  let tmp = ((val >> bita) & 1) ^ ((val >> bitb) & 1);
+  return (val ^ ((tmp << bita) | (tmp << bitb)));
 }
 
 // ============================================================================
