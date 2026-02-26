@@ -163,7 +163,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[~]` | worm.c | worm.js | Long worm mechanics. save/rest_worm are N/A (no save file). All 24 other functions are TODO stubs |
 | `[a]` | worn.c | worn.js | Equipment slot management. setworn, setnotworn, allunworn, wearmask_to_obj, wearslot, wornmask_to_armcat, armcat_to_wornmask, update_mon_extrinsics, mon_set_minvis, mon_adjust_speed, extract_from_minvent, m_lose_armor, mon_break_armor, extra_pref, racial_exception, m_dowear, m_dowear_type, find_mac, bypass stubs (bypass_obj, clear_bypasses, nxt_unbypassed_obj/loot) implemented. check_wornmask_slots/which_armor/recalc_telepat_range TODO |
 | `[a]` | write.c | write.js | Writing on scrolls. cost, write_ok, new_book_description implemented; dowrite TODO |
-| `[a]` | zap.c | zap.js | Wand beam effects. zhitm, zap_hit, resist (faithful alev/dlev), burnarmor, xkilled, corpse_chance, dobuzz implemented. Beam traversal now uses `tmp_at(DISP_BEAM)` + awaited per-cell `nh_delay_output()` in a unified async `buzz()` path (no legacy sync beam path); player `handleZap` beam wands now route through `weffects()` to share that same path. `weffects()` now dispatches IMMEDIATE wand zaps through animated `bhit`-style traversal with awaited `nh_delay_output()` and up/down dispatch via `zap_updown()`; `zap_updown` now includes drawbridge open/close/destroy routing, trapdoor↔hole conversion for striking/locking down-zaps, and C-style down-zap engraving handling for polymorph reroll/recreate, cancellation/make-invisible deletion, teleport relocation, stone-to-flesh smoothing wipes, and striking wipes. NODIR path now has concrete `zapnodir()` handling for light, detect-unseen/secret-door detection (`findit`), create-monster, non-blocking wishing/enlightenment stubs, and C-like observable-effect discovery (`learnwand`-style via discovery state). Teleport-hit parity is improved: `bhitm` routes teleport wands/spells through `u_teleport_mon`, and invisibility-hit now uses `mon_set_minvis` instead of directly flipping `minvis`. `bhito` relocates floor objects via `rloco` for teleport effects, routes lock/open wand object effects through `boxlock()` for box containers, and `bhitpile` forwards map context to object-hit callbacks so map-dependent object effects run. Cursed-wand `dozap` backfire now routes through `maybe_explode_wand` -> async `break_wand` and consumes the wand. `break_wand` is now async and drives `explode()` visuals in map contexts (with fallback direct damage when no map). `zap.js` now contains named surfaces for all mapped `zap.c` functions; many of those new surfaces are still partial/no-op wrappers pending full behavioral parity. New: destroy_item, destroy_mitem, destroyable_by, resists_blnd, resists_stun. Remaining stubs/partials include revive, cancel_monst edge cases, bhitm effects completeness, burn_floor_objects edge cases, zap_dig edge flows, backfire and break-wand edge detail parity, floor/zap-over-floor richness, and several object-effect helpers. |
+| `[~]` | zap.c | zap.js | Wand beam effects. All mapped `zap.c` function surfaces now exist in `zap.js`, and many former wrappers now have concrete C-structured behavior (`zappable`, `dozap` self-zap routing, `weffects` setup/wrapup flow, `zapsetup`/`zapwrapup`, `zapyourself`, `zap_steed`, `probe_objchain`, object/container/monster location helpers, trap cancellation explosion gating, polymorph pile bookkeeping (`do_osshock` + `bhitpile` follow-up), egg hatch timeout wiring, inventory-resistance helpers, `spell_hit_bonus`, `resists_stun`). Core beam animation path remains unified async `buzz()`/`dobuzz()` with `tmp_at` and awaited frame boundaries. Remaining parity work is now mostly edge-depth and side-effect richness: full `zap_over_floor` elemental terrain/door/liquid rules, full revive/montraits/corpse consumption semantics, `cancel_monst` hero/nonhero edge behavior, complete `bhitm`/`zapyourself`/`zap_steed` effect matrices, richer `break_wand`/`backfire` detail, and exact object-destruction/material interactions. |
 
 ### Summary
 
@@ -171,9 +171,9 @@ don't follow the same 1:1 C→JS mapping pattern.
 - **N/A (system/platform)**: 22
 - **Game logic files**: 107
 - **Complete (`[x]`)**: 4
-- **Aligned (`[a]`)**: 50
+- **Aligned (`[a]`)**: 49
 - **Present (`[p]`)**: 4
-- **Needs alignment (`[~]`)**: 50
+- **Needs alignment (`[~]`)**: 51
 - **No JS file yet (`[ ]`)**: 0
 
 ### JS Files Without C Counterparts
@@ -5893,86 +5893,16 @@ No function symbols parsed from isaac64.c.
 | 61 | `write_ok` | - | Missing |
 
 ### zap.c -> zap.js
-| C Line | C Function | JS Line | Alignment |
-|--------|------------|---------|-----------|
-| 5624 | `adtyp_to_prop` | - | Missing |
-| 2593 | `backfire` | zap.js:463 | Stub |
-| 3815 | `bhit` | - | Missing |
-| 158 | `bhitm` | zap.js:427 | Stub |
-| 2117 | `bhito` | - | Missing |
-| 2426 | `bhitpile` | zap.js:457 | Stub |
-| 1365 | `blank_novel` | - | Missing |
-| 4136 | `boomhit` | - | Missing |
-| 2675 | `boxlock_invent` | - | Missing |
-| 5552 | `break_statue` | - | Missing |
-| 4584 | `burn_floor_objects` | zap.js:433 | Stub |
-| 4706 | `buzz` | zap.js:439 | Stub |
-| 1237 | `cancel_item` | - | Missing |
-| 3138 | `cancel_monst` | zap.js:419 | Stub |
-| 1544 | `create_polymon` | - | Missing |
-| 5935 | `destroy_items` | zap.js:362 | Implemented (destroy_item — iterate inventory, RNG per item) |
-| 5583 | `destroyable` | zap.js:393 | Implemented (destroyable_by — type/damage matching) |
-| 4664 | `disintegrate_mon` | - | Missing |
-| 2523 | `do_enlightenment_effect` | - | Missing |
-| 1635 | `do_osshock` | zap.js:486 | Stub |
-| 4721 | `dobuzz` | zap.js:246 | Implemented (beam traversal with monster/hero hits) |
-| 2615 | `dozap` | - | Missing |
-| 1380 | `drain_item` | - | Missing |
-| 3535 | `exclam` | - | Missing |
-| 6303 | `flash_str` | - | Missing |
-| 3048 | `flashburn` | - | Missing |
-| 5507 | `fracture_rock` | - | Missing |
-| 839 | `get_container_location` | - | Missing |
-| 690 | `get_mon_location` | - | Missing |
-| 652 | `get_obj_location` | - | Missing |
-| 3544 | `hit` | - | Missing |
-| 5680 | `inventory_resistance_check` | - | Missing |
-| 5692 | `item_what` | - | Missing |
-| 121 | `learnwand` | - | Missing |
-| 3014 | `lightdamage` | - | Missing |
-| 6194 | `makewish` | - | Missing |
-| 5768 | `maybe_destroy_item` | zap.js:379 | Implemented (destroy_mitem — monster inventory) |
-| 3582 | `maybe_explode_trap` | - | Missing |
-| 5010 | `melt_ice` | - | Missing |
-| 5089 | `melt_ice_away` | - | Missing |
-| 3559 | `miss` | - | Missing |
-| 5471 | `mon_spell_hits_spot` | - | Missing |
-| 711 | `montraits` | - | Missing |
-| 1456 | `obj_resists` | - | Missing |
-| 1474 | `obj_shudders` | zap.js:481 | Stub |
-| 1676 | `obj_unpolyable` | - | Missing |
-| 1700 | `poly_obj` | zap.js:468 | Stub |
-| 1503 | `polyuse` | - | Missing |
-| 624 | `probe_monster` | zap.js:491 | Stub |
-| 610 | `probe_objchain` | - | Missing |
-| 576 | `release_hold` | - | Missing |
-| 6070 | `resist` | zap.js:71 | Implemented (faithful: alev per oclass, dlev capped, rn2(100+alev-dlev) < mr) |
-| 882 | `revive` | zap.js:409 | Stub |
-| 1141 | `revive_egg` | - | Missing |
-| 3567 | `skiprange` | zap.js:496 | Stub |
-| 3468 | `spell_damage_bonus` | spell.js:303 | Stub (in spell.js not zap.js) |
-| 3497 | `spell_hit_bonus` | - | Missing |
-| 5058 | `start_melt_ice_timeout` | - | Missing |
-| 1991 | `stone_to_flesh_obj` | - | Missing |
-| 5646 | `u_adtyp_resistance_obj` | - | Missing |
-| 3005 | `ubreatheu` | - | Missing |
-| 4700 | `ubuzz` | - | Missing |
-| 1154 | `unturn_dead` | - | Missing |
-| 1223 | `unturn_you` | - | Missing |
-| 3419 | `weffects` | zap.js:446 | Stub |
-| 6135 | `wishcmdassist` | - | Missing |
-| 4646 | `zap_hit` | zap.js:113 | Implemented |
-| 3616 | `zap_map` | - | Missing |
-| 2606 | `zap_ok` | - | Missing |
-| 5111 | `zap_over_floor` | zap.js:514 | Stub |
-| 3075 | `zap_steed` | - | Missing |
-| 3207 | `zap_updown` | zap.js:519 | Stub |
-| 2537 | `zapnodir` | - | Missing |
-| 2512 | `zappable` | - | Missing |
-| 3403 | `zapsetup` | - | Missing |
-| 87 | `zaptype` | - | Missing |
-| 3409 | `zapwrapup` | - | Missing |
-| 2693 | `zapyourself` | - | Missing |
-| 4224 | `zhitm` | zap.js:125 | Implemented (beam hits monster with damage/resistance) |
-| 4387 | `zhitu` | - | Missing |
-| 861 | `zombie_can_dig` | - | Missing |
+`zap.js` now has named surfaces for all mapped `zap.c` functions; this section tracks the **remaining missing logic depth** rather than missing symbols.
+
+| C Area | Remaining Gap In JS |
+|--------|----------------------|
+| `zapyourself`, `zap_steed`, `bhitm` | Large portions of per-wand/per-spell edge behavior and exact message/resistance sequencing remain partial. |
+| `cancel_monst` | Hero cancellation path and non-hero shape/cancel-kill edge cases are incomplete versus C. |
+| `revive`, `montraits`, `get_*_location` | Corpse/container/buried/migrating handling and trait restoration semantics are simplified. |
+| `zap_over_floor`, `melt_ice*`, `start_melt_ice_timeout` | Many elemental terrain transformations (web/pool/moat/lava/iron-bars/door richness and timer lifecycle) are partial. |
+| `maybe_destroy_item` + destruction side effects | Detailed item-destruction outcomes, messages, and HP side effects are still approximated. |
+| `poly_obj`, `obj_shudders`, `polyuse`, `create_polymon`, `do_osshock` | Polymorph/object-material pipelines are structurally present but still approximate in selection and side effects. |
+| `backfire`, `break_wand` | Explosion typing, damage semantics, and edge feedback differ from C in several cases. |
+| `zhitu`-equivalent hero beam damage flow | Direct hero-hit branch exists in beam loop but is not a full C-faithful `zhitu` pipeline. |
+| `spell_hit_bonus` | Uses simplified JS skill mapping rather than full C `spell_skilltype()`/`P_SKILL` integration. |
