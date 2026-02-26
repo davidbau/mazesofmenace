@@ -2000,16 +2000,16 @@ This section is generated from source symbol tables and includes function rows f
 | 4426 | `inv_cnt` | - | Missing |
 | 4281 | `inv_weight` | - | Missing |
 | 3045 | `invocation_message` | - | Missing |
-| 963 | `invocation_pos` | - | Missing |
+| 963 | `invocation_pos` | hack.js:invocation_pos | Implemented (C-faithful core predicate via `Invocation_lev` + `map.inv_pos`) |
 | 1507 | `is_valid_travelpt` | - | Missing |
 | 82 | `long_to_any` | hack.js:long_to_any | Implemented |
 | 3783 | `lookaround` | hack.js:lookaround | APPROX — run stop conditions and continuation direction |
-| 4185 | `losehp` | - | Missing |
+| 4185 | `losehp` | hack.js:losehp | Implemented (partial) — includes saving-grace hook, polymorph HP path, death/wail thresholds |
 | 4321 | `max_capacity` | - | Missing |
 | 904 | `may_dig` | - | Missing |
 | 913 | `may_passwall` | - | Missing |
 | 3001 | `maybe_smudge_engr` | hack.js:maybe_smudge_engr | Implemented wrapper; delegates to `engrave.js:maybeSmudgeEngraving` |
-| 4086 | `maybe_wail` | - | Missing |
+| 4086 | `maybe_wail` | hack.js:maybe_wail | Implemented (partial) — role/race gates and intrinsic-power warning split |
 | 4444 | `money_cnt` | - | Missing |
 | 90 | `monst_to_any` | hack.js:monst_to_any | Implemented |
 | 3991 | `monster_nearby` | monutil.js:monsterNearby | Aligned |
@@ -2026,17 +2026,17 @@ This section is generated from source symbol tables and includes function rows f
 | 1689 | `notice_mon` | - | Missing |
 | 1716 | `notice_mons_cmp` | hack.js:notice_mons_cmp | Implemented (approx comparator) |
 | 98 | `obj_to_any` | hack.js:obj_to_any | Implemented |
-| 3016 | `overexert_hp` | - | Missing |
-| 3032 | `overexertion` | - | Missing |
+| 3016 | `overexert_hp` | hack.js:overexert_hp | Implemented (partial) — polymorph HP and pass-out message |
+| 3032 | `overexertion` | hack.js:overexertion | Implemented (partial) — metabolism + encumbrance damage gate |
 | 3673 | `pickup_checks` | - | Missing |
 | 3121 | `pooleffects` | - | Missing |
 | 106 | `revive_nasty` | - | Missing |
 | 316 | `rock_disappear_msg` | hack.js:rock_disappear_msg | Implemented (approx) |
-| 4481 | `rounddiv` | - | Missing |
+| 4481 | `rounddiv` | hack.js:rounddiv | Implemented (C-faithful) |
 | 2977 | `runmode_delay_output` | hack.js:runmode_delay_output | Implemented (approx) |
-| 4123 | `saving_grace` | - | Missing |
+| 4123 | `saving_grace` | hack.js:saving_grace | Implemented (partial) — monster-turn lethal blow clamp with one-shot flag |
 | 3112 | `set_uinwater` | - | Missing |
-| 4176 | `showdamage` | - | Missing |
+| 4176 | `showdamage` | hack.js:showdamage | Implemented (partial) — iflags gate and polymorph HP display |
 | 2377 | `slippery_ice_fumbling` | - | Missing |
 | 4455 | `spot_checks` | - | Missing |
 | 3200 | `spoteffects` | - | Missing |

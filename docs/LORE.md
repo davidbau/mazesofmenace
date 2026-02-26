@@ -41,6 +41,17 @@ Wizard of Yendor while the Riders watch — dramatic, but unproductive.
 
 ## RNG Parity
 
+### `maybe_wail()` message parity depends on intrinsic power-count branch
+
+C `hack.c maybe_wail()` does not always print the same warning for
+Wizard/Elf/Valkyrie. At low HP, it counts intrinsic powers across this fixed
+set:
+`TELEPORT, SEE_INVIS, POISON_RES, COLD_RES, SHOCK_RES, FIRE_RES, SLEEP_RES,
+DISINT_RES, TELEPORT_CONTROL, STEALTH, FAST, INVIS`.
+If at least 4 are intrinsic, C prints "all your powers will be lost...",
+otherwise it prints "your life force is running out." Porting this branch
+matters for event-sequence parity.
+
 ### `runmode_delay_output()` must be an awaited boundary in movement flow
 
 C `hack.c` calls `nh_delay_output()` from `runmode_delay_output()` while

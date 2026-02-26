@@ -8,6 +8,9 @@ import { COLNO, ROWNO, STONE, DOOR, CORR, SDOOR, SCORR, STAIRS, LADDER, FOUNTAIN
          IS_STWALL, IS_ROCK, IS_ROOM, IS_FURNITURE, IS_POOL, IS_LAVA, IS_WATERWALL,
          WATER, LAVAWALL, AIR, MOAT, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN,
          isok, A_STR, A_DEX, A_CON, A_WIS, A_INT, A_CHA,
+         PM_WIZARD, PM_VALKYRIE, RACE_ELF,
+         TELEPORT, SEE_INVIS, POISON_RES, COLD_RES, SHOCK_RES, FIRE_RES,
+         SLEEP_RES, DISINT_RES, TELEPORT_CONTROL, STEALTH, FAST, INVIS, INTRINSIC,
          ROOMOFFSET, SHOPBASE, OROOM, COURT, SWAMP, VAULT, BEEHIVE, MORGUE,
          BARRACKS, ZOO, DELPHI, TEMPLE, LEPREHALL, COCKNEST, ANTHOLE,
          UNENCUMBERED, SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, OVERLOADED,
@@ -2437,20 +2440,28 @@ export function maybe_wail(player, game, display) {
     if (moves <= (game.wailmsg || 0) + 50) return;
     game.wailmsg = moves;
 
-    const role = player.role;
-    const race = player.race;
-    const isWizard = role === 'Wizard' || role === 12;
-    const isValkyrie = role === 'Valkyrie' || role === 11;
-    const isElf = race === 'Elf' || race === 1;
+    const role = player.roleIndex ?? player.role;
+    const race = player.raceIndex ?? player.race;
+    const isWizard = role === PM_WIZARD || role === 'Wizard';
+    const isValkyrie = role === PM_VALKYRIE || role === 'Valkyrie';
+    const isElf = race === RACE_ELF || race === 'Elf';
 
     if (isWizard || isElf || isValkyrie) {
-        const who = (isWizard || isValkyrie)
-            ? (player.roleName || 'Adventurer')
-            : 'Elf';
+        const who = (isWizard || isValkyrie) ? (player.roleName || player.role || 'Adventurer') : 'Elf';
         if (player.hp === 1) {
             if (display) display.putstr_message(`${who} is about to die.`);
         } else {
-            if (display) display.putstr_message(`${who}, your life force is running out.`);
+            const powers = [TELEPORT, SEE_INVIS, POISON_RES, COLD_RES, SHOCK_RES,
+                FIRE_RES, SLEEP_RES, DISINT_RES, TELEPORT_CONTROL, STEALTH, FAST, INVIS];
+            let powercnt = 0;
+            for (const prop of powers) {
+                if ((player?.uprops?.[prop]?.intrinsic & INTRINSIC) !== 0) powercnt++;
+            }
+            if (display) {
+                display.putstr_message(powercnt >= 4
+                    ? `${who}, all your powers will be lost...`
+                    : `${who}, your life force is running out.`);
+            }
         }
     } else {
         if (player.hp === 1) {
@@ -2465,13 +2476,18 @@ export function maybe_wail(player, game, display) {
 export function saving_grace(dmg, player, game) {
     if (dmg < 0) return 0;
     // Only protects from monster attacks
-    if (!game.mon_moving) return dmg;
+    const monMoving = !!(game?.context?.mon_moving || game?.mon_moving);
+    if (!monMoving) return dmg;
     if (dmg < player.hp || player.hp <= 0) return dmg;
     // Already used?
     if (game.saving_grace_turn) return player.hp - 1;
+    const hpAtStart = Number.isFinite(game?.uhp_at_start_of_monster_turn)
+        ? game.uhp_at_start_of_monster_turn
+        : player._uhp_at_start;
     if (!player.usaving_grace
-        && player._uhp_at_start >= 0
-        && (player._uhp_at_start * 100 / player.hpmax) >= 90) {
+        && Number.isFinite(hpAtStart)
+        && player.hpmax > 0
+        && (hpAtStart * 100 / player.hpmax) >= 90) {
         dmg = player.hp - 1;
         player.usaving_grace = 1;
         game.saving_grace_turn = true;
@@ -2481,16 +2497,31 @@ export function saving_grace(dmg, player, game) {
 }
 
 // C ref: hack.c showdamage() — display HP loss
-export function showdamage(dmg, player, display) {
-    if (!dmg) return;
-    const hp = player.hp || 0;
+export function showdamage(dmg, player, display, game) {
+    if (!game?.iflags?.showdamage || !dmg) return;
+    const hp = player.upolyd ? (player.mh || 0) : (player.hp || 0);
     if (display) display.putstr_message(`[HP ${-dmg}, ${hp} left]`);
 }
 
 // C ref: hack.c losehp() — hero loses hit points
 export function losehp(n, knam, k_format, player, display, game) {
     end_running(true, game);
+
+    if (player.upolyd) {
+        player.mh = (player.mh || 0) - n;
+        showdamage(n, player, display, game);
+        if ((player.mhmax || 0) < player.mh) player.mhmax = player.mh;
+        if (player.mh < 1) {
+            // rehumanize() would be called in full implementation
+        } else if (n > 0 && player.mh * 10 < (player.mhmax || 0) && player.unchanging) {
+            maybe_wail(player, game, display);
+        }
+        return;
+    }
+
+    n = saving_grace(n, player, game);
     player.hp -= n;
+    showdamage(n, player, display, game);
     if (player.hpmax < player.hp) player.hpmax = player.hp;
     if (player.hp < 1) {
         if (display) display.putstr_message('You die...');
