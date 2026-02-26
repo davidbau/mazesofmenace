@@ -38,9 +38,8 @@ import { handleMovement, handleRun, findPath, handleTravel, executeTravelStep,
 // TRANSLATOR: AUTO
 export async function rhack(ch, game) {
     const { player, map, display, fov } = game;
-    const context = (game?.svc?.context)
-        || game.context
-        || (game.context = {});
+    const svc = game.svc || (game.svc = {});
+    const context = svc.context || (svc.context = {});
     const getRunMode = () => {
         if (Number.isInteger(context.run)) return Number(context.run || 0);
         if (Number.isInteger(game.runMode)) return Number(game.runMode || 0);
@@ -53,7 +52,7 @@ export async function rhack(ch, game) {
     };
     const setMenuRequested = (value) => {
         context.nopick = value ? 1 : 0;
-        if (!game?.svc) game.menuRequested = !!value;
+        if ('menuRequested' in game) game.menuRequested = !!value;
     };
     const getForceFight = () => {
         if (Number.isInteger(context.forcefight)) return !!context.forcefight;
@@ -62,17 +61,17 @@ export async function rhack(ch, game) {
     };
     const setForceFight = (value) => {
         context.forcefight = value ? 1 : 0;
-        if (!game?.svc) game.forceFight = !!value;
+        if ('forceFight' in game) game.forceFight = !!value;
     };
     const clearRunMode = () => {
         context.run = 0;
-        if (!game?.svc) game.runMode = 0;
+        if ('runMode' in game) game.runMode = 0;
     };
     const setRunMode = (mode) => {
         const n = Number(mode) || 0;
         const canonical = (n === 2) ? 2 : (n ? 3 : 0);
         context.run = canonical;
-        if (!game?.svc) game.runMode = canonical;
+        if ('runMode' in game) game.runMode = canonical;
     };
     if (ch === 0) {
         const queued = cmdq_pop_command(!!game?.inDoAgain);
