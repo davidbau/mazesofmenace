@@ -43,6 +43,22 @@ export async function rhack(ch, game) {
         if (Number.isInteger(context.run)) return Number(context.run || 0);
         return Number(game.runMode || 0);
     };
+    const getMenuRequested = () => {
+        if (Number.isInteger(context.nopick)) return !!context.nopick;
+        return !!game.menuRequested;
+    };
+    const setMenuRequested = (value) => {
+        context.nopick = value ? 1 : 0;
+        game.menuRequested = !!value;
+    };
+    const getForceFight = () => {
+        if (Number.isInteger(context.forcefight)) return !!context.forcefight;
+        return !!game.forceFight;
+    };
+    const setForceFight = (value) => {
+        context.forcefight = value ? 1 : 0;
+        game.forceFight = !!value;
+    };
     const clearRunMode = () => {
         context.run = 0;
         game.runMode = 0;
@@ -301,7 +317,7 @@ export async function rhack(ch, game) {
     // Read scroll/spellbook
     // C ref: read.c doread()
     if (c === 'r') {
-        if (game.menuRequested) game.menuRequested = false;
+        if (getMenuRequested()) setMenuRequested(false);
         return await handleRead(player, display, game);
     }
 
@@ -492,10 +508,10 @@ export async function rhack(ch, game) {
     // Prefix commands (modifiers for next command)
     // C ref: cmd.c:1624 do_reqmenu() — 'm' prefix
     if (c === 'm') {
-        if (game.menuRequested) {
-            game.menuRequested = false;
+        if (getMenuRequested()) {
+            setMenuRequested(false);
         } else {
-            game.menuRequested = true;
+            setMenuRequested(true);
             // C ref: cmd.c do_reqmenu() — sets iflags.menu_requested
             // silently; no screen message in C's TTY implementation.
         }
@@ -504,11 +520,11 @@ export async function rhack(ch, game) {
 
     // C ref: cmd.c:1671 do_fight() — 'F' prefix
     if (c === 'F') {
-        if (game.forceFight) {
+        if (getForceFight()) {
             display.putstr_message('Double fight prefix, canceled.');
-            game.forceFight = false;
+            setForceFight(false);
         } else {
-            game.forceFight = true;
+            setForceFight(true);
             if (game.flags.verbose) {
                 display.putstr_message('Next movement will force fight even if no monster visible.');
             }
@@ -548,8 +564,8 @@ export async function rhack(ch, game) {
     // C ref: cmd.c -- ESC aborts current command
     if (ch === 27) {
         // Also clear prefix flags
-        game.menuRequested = false;
-        game.forceFight = false;
+        setMenuRequested(false);
+        setForceFight(false);
         clearRunMode();
         return { moved: false, tookTime: false };
     }
