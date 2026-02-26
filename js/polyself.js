@@ -408,37 +408,25 @@ export function poly_gender(player) {
 // Golem-specific damage absorption. Returns true if damage was absorbed.
 // ============================================================================
 
-export function ugolemeffects(player, damtype, dam) {
-    if (!player) return false;
-    const umonnum = player.umonnum;
-    if (umonnum === undefined) return false;
-
-    let heal = 0;
-
-    if (umonnum !== PM_FLESH_GOLEM && umonnum !== PM_IRON_GOLEM)
-        return false;
-
-    switch (damtype) {
+// TRANSLATOR: AUTO (polyself.c:2143)
+export function ugolemeffects(damtype, dam, game, player) {
+  let heal = 0;
+  if (player.umonnum !== PM_FLESH_GOLEM &player.umonnum !== PM_IRON_GOLEM) return;
+  switch (damtype) {
     case AD_ELEC:
-        if (umonnum === PM_FLESH_GOLEM)
-            heal = Math.floor((dam + 5) / 6); // Approx 1 per die
-        break;
+      if (player.umonnum === PM_FLESH_GOLEM) heal = (dam + 5) / 6;
+    break;
     case AD_FIRE:
-        if (umonnum === PM_IRON_GOLEM)
-            heal = dam;
-        break;
-    }
-
-    if (heal && player.mh !== undefined && player.mhmax !== undefined
-        && player.mh < player.mhmax) {
-        player.mh += heal;
-        if (player.mh > player.mhmax)
-            player.mh = player.mhmax;
-        pline("Strangely, you feel better than before.");
-        exercise('A_STR', true);
-        return true;
-    }
-    return false;
+      if (player.umonnum === PM_IRON_GOLEM) heal = dam;
+    break;
+  }
+  if (heal && (player.mh < player.mhmax)) {
+    player.mh += heal;
+    if (player.mh > player.mhmax) player.mh = player.mhmax;
+    game.disp.botl = true;
+    pline("Strangely, you feel better than before.");
+    exercise(A_STR, true);
+  }
 }
 
 // ============================================================================
@@ -638,69 +626,37 @@ export function set_uasmon(player) {
 // float_vs_flight() — cf. polyself.c:131
 // ============================================================================
 
-export function float_vs_flight(player) {
-    // cf. polyself.c:131 — float_vs_flight()
-    // Levitation overrides Flying; set or clear I_SPECIAL on Flying's blocked.
-    if (!player || !player.uprops) return;
-
-    const stuck_in_floor = (player.utrap && player.utraptype !== 0 /* TT_PIT */);
-
-    // Ensure entries exist
-    if (!player.uprops[FLYING])
-        player.uprops[FLYING] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
-    if (!player.uprops[LEVITATION])
-        player.uprops[LEVITATION] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
-
-    const HLevitation = player.uprops[LEVITATION].intrinsic;
-    const ELevitation = player.uprops[LEVITATION].extrinsic;
-    const HFlying = player.uprops[FLYING].intrinsic;
-    const EFlying = player.uprops[FLYING].extrinsic;
-
-    // floating overrides flight; so does being trapped in the floor
-    if ((HLevitation || ELevitation)
-        || ((HFlying || EFlying) && stuck_in_floor)) {
-        player.uprops[FLYING].blocked |= I_SPECIAL;
-    } else {
-        player.uprops[FLYING].blocked &= ~I_SPECIAL;
-    }
-    // being trapped on the ground overrides floating
-    if ((HLevitation || ELevitation) && stuck_in_floor) {
-        player.uprops[LEVITATION].blocked |= I_SPECIAL;
-    } else {
-        player.uprops[LEVITATION].blocked &= ~I_SPECIAL;
-    }
-
-    steed_vs_stealth(player);
+// TRANSLATOR: AUTO (polyself.c:130)
+export function float_vs_flight(game, player) {
+  let stuck_in_floor = (player.utrap &player.utraptype !== TT_PIT);
+  if ((HLevitation || ELevitation) || ((HFlying || EFlying) && stuck_in_floor)) {
+    BFlying |= I_SPECIAL;
+  }
+  else {
+    BFlying &= ~I_SPECIAL;
+  }
+  if ((HLevitation || ELevitation) && stuck_in_floor) {
+    BLevitation |= I_SPECIAL;
+  }
+  else {
+    BLevitation &= ~I_SPECIAL;
+  }
+  steed_vs_stealth();
+  game.disp.botl = true;
 }
 
 // ============================================================================
 // steed_vs_stealth() — cf. polyself.c:158
 // ============================================================================
 
+// TRANSLATOR: AUTO (polyself.c:157)
 export function steed_vs_stealth(player) {
-    // cf. polyself.c:158 — steed_vs_stealth()
-    // Riding blocks stealth unless hero+steed fly.
-    if (!player || !player.uprops) return;
-    // STEALTH property index imported from config
-    // Check if we have the STEALTH constant; if not, skip
-    // (stealth is property index 39 in config.js)
-    const STEALTH_IDX = 39; // matches config.js STEALTH
-    if (!player.uprops[STEALTH_IDX])
-        player.uprops[STEALTH_IDX] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
-
-    // In C: Flying and Levitation check all sources
-    const isFlying = player.uprops[FLYING] &&
-        (player.uprops[FLYING].intrinsic || player.uprops[FLYING].extrinsic) &&
-        !player.uprops[FLYING].blocked;
-    const isLevitating = player.uprops[LEVITATION] &&
-        (player.uprops[LEVITATION].intrinsic || player.uprops[LEVITATION].extrinsic) &&
-        !player.uprops[LEVITATION].blocked;
-
-    if (player.usteed && !isFlying && !isLevitating) {
-        player.uprops[STEALTH_IDX].blocked |= FROMOUTSIDE;
-    } else {
-        player.uprops[STEALTH_IDX].blocked &= ~FROMOUTSIDE;
-    }
+  if (player.usteed && !Flying && !Levitation) {
+    BStealth |= FROMOUTSIDE;
+  }
+  else {
+    BStealth &= ~FROMOUTSIDE;
+  }
 }
 
 // ============================================================================

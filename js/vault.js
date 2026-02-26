@@ -362,19 +362,17 @@ function parkguard(grd, map) {
 // cf. vault.c:188 — grddead(grd)
 // Called when a vault guard dies. Cleans up fake corridors.
 // ========================================================================
-export function grddead(grd, map, player, fov) {
-    let dispose = clear_fcorr(grd, true, map, player, fov);
-    if (!dispose) {
-        // Destroy guard's gold; drop any other inventory
-        relobj(grd, map, false, false);
-        grd.mhp = 0;
-        parkguard(grd, map);
-        dispose = clear_fcorr(grd, true, map, player, fov);
-    }
-    if (dispose) {
-        grd.isgd = 0;
-    }
-    return dispose;
+// TRANSLATOR: AUTO (vault.c:174)
+export function grddead(grd) {
+  let dispose = clear_fcorr(grd, true);
+  if (!dispose) {
+    relobj(grd, 0, false);
+    grd.mhp = 0;
+    parkguard(grd);
+    dispose = clear_fcorr(grd, true);
+  }
+  if (dispose) grd.isgd = 0;
+  return dispose;
 }
 
 // ========================================================================
@@ -404,10 +402,9 @@ export function findgd(map, player) {
 // cf. vault.c:237 — vault_summon_gd()
 // Summons a vault guard if hero is in a vault and there isn't one already.
 // ========================================================================
-export function vault_summon_gd(map, player) {
-    if (vault_occupied(player.urooms || '', map) && !findgd(map, player)) {
-        player.uinvault = (VAULT_GUARD_TIME - 1);
-    }
+// TRANSLATOR: AUTO (vault.c:236)
+export function vault_summon_gd(player) {
+  if (vault_occupied(player.urooms) && !findgd()) player.uinvault = (VAULT_GUARD_TIME - 1);
 }
 
 // ========================================================================
@@ -1466,8 +1463,9 @@ function contained_gold(container, even_if_unknown) {
 // cf. vault.c:921 — gd_sound()
 // Returns false if hero is in vault or guard is present (suppress footsteps).
 // ========================================================================
-export function gd_sound(map, player) {
-    return !(vault_occupied(player?.urooms || '', map) || findgd(map, player));
+// TRANSLATOR: AUTO (vault.c:1271)
+export function gd_sound(player) {
+  return !(vault_occupied(player.urooms) || findgd());
 }
 
 // ========================================================================

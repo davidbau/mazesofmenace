@@ -1992,9 +1992,10 @@ function dropped_container(obj, shkp, sale) {
 // ============================================================
 
 // C ref: shk.c tended_shop()
-export function tended_shop(sroom, map) {
-    if (!sroom || !sroom.resident) return false;
-    return inhishop(sroom.resident, map);
+// TRANSLATOR: AUTO (shk.c:1058)
+export function tended_shop(sroom) {
+  let mtmp = sroom.resident;
+  return !mtmp ? false : inhishop(mtmp);
 }
 
 // C ref: shk.c noisy_shop()

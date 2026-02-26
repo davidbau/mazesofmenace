@@ -1136,7 +1136,11 @@ export function tiphat(game) {
 // ============================================================================
 
 // cf. sounds.c:2160 — set_voice(): configure voice for verbalize (N/A)
-export function set_voice() {}
+// TRANSLATOR: AUTO (sounds.c:2160)
+export function set_voice(mtmp, tone, volume, moreinfo) {
+}
 
 // cf. sounds.c:2184 — sound_speak(): speak text with voice settings (N/A)
-export function sound_speak() {}
+// TRANSLATOR: AUTO (sounds.c:2184)
+export function sound_speak(text) {
+}

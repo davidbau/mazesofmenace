@@ -129,10 +129,10 @@ export function dlord(atyp) {
 // cf. minion.c:418
 // ============================================================================
 
-export function llord() {
-    // C: if (!(mvitals[PM_ARCHON].mvflags & G_GONE)) return PM_ARCHON
-    // genocide not tracked yet; always return Archon
-    return PM_ARCHON;
+// TRANSLATOR: AUTO (minion.c:418)
+export function llord(game) {
+  if (!(game.mvitals[PM_ARCHON].mvflags & G_GONE)) return PM_ARCHON;
+  return lminion();
 }
 
 // ============================================================================

@@ -76,11 +76,10 @@ export function del_engr(map, x, y) {
 
 // cf. engrave.c:461 — del_engr_at(x, y)
 // Deletes any engraving at location (x,y). Convenience wrapper around del_engr.
-export function del_engr_at(map, x, y) {
-    const ep = engr_at(map, x, y);
-    if (ep) {
-        del_engr(map, x, y);
-    }
+// TRANSLATOR: AUTO (engrave.c:462)
+export function del_engr_at(x, y) {
+  let ep = engr_at(x, y);
+  if (ep) del_engr(ep);
 }
 
 // C ref: engrave.c:120 — wipeout_text(engr, cnt, seed=0)
@@ -224,10 +223,9 @@ export function sengr_at(map, s, x, y, strict) {
 
 // cf. engrave.c:264 — u_wipe_engr(cnt): wipe engraving at hero's location
 // Wipes cnt characters from engraving at hero's position if reachable.
-export function u_wipe_engr(player, map, cnt) {
-    if (can_reach_floor(player, map)) {
-        wipe_engr_at(map, player.x, player.y, cnt, false);
-    }
+// TRANSLATOR: AUTO (engrave.c:263)
+export function u_wipe_engr(cnt, player) {
+  if (can_reach_floor(true)) wipe_engr_at(player.x, player.y, cnt, false);
 }
 
 // cf. engrave.c:297 — engr_can_be_felt(ep): engraving can be felt?
@@ -600,19 +598,17 @@ export function engr_stats(map) {
 
 // cf. engrave.c:1666 — rloc_engr(ep): relocate engraving randomly
 // Moves engraving to a new valid location on the level.
-export function rloc_engr(map, ep) {
-    if (!ep || !map) return;
-    let tryct = 200;
-    while (--tryct >= 0) {
-        const tx = rn1(COLNO - 3, 2);
-        const ty = rn2(ROWNO);
-        if (engr_at(map, tx, ty)) continue;
-        if (!goodpos(tx, ty, null, 0, map)) continue;
-        ep.x = tx;
-        ep.y = ty;
-        newsym(map, tx, ty);
-        return;
-    }
+// TRANSLATOR: AUTO (engrave.c:1668)
+export function rloc_engr(ep) {
+  let tx, ty, tryct = 200;
+  do {
+    if (--tryct < 0) return;
+    tx = rn1(COLNO - 3, 2);
+    ty = rn2(ROWNO);
+  } while (engr_at(tx, ty) || !goodpos(tx, ty,  0, 0));
+  ep.engr_x = tx;
+  ep.engr_y = ty;
+  newsym(tx, ty);
 }
 
 // cf. engrave.c:1686 — make_grave(x, y, str): create headstone
@@ -661,9 +657,9 @@ export function disturb_grave(map, x, y, player, depth) {
 
 // cf. engrave.c:1723 — see_engraving(ep): update engraving display
 // Updates display symbol at engraving location.
-export function see_engraving(map, ep) {
-    if (!ep || !map) return;
-    newsym(map, ep.x, ep.y);
+// TRANSLATOR: AUTO (engrave.c:1725)
+export function see_engraving(ep) {
+  newsym(ep.engr_x, ep.engr_y);
 }
 
 // cf. engrave.c:1731 — feel_engraving(ep): feel engraving (blind)

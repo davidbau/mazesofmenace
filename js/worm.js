@@ -68,37 +68,33 @@ function distu(player, x, y) {
 // ========================================================================
 // cf. worm.c:96 -- get_wormno(): find an unused worm tail slot
 // ========================================================================
+// TRANSLATOR: AUTO (worm.c:95)
 export function get_wormno() {
-    var new_wormno = 1;
-    while (new_wormno < MAX_NUM_WORMS) {
-        if (!wheads[new_wormno])
-            return new_wormno;
-        new_wormno++;
-    }
-    return 0; // level infested with worms
+  let new_wormno = 1;
+  while (new_wormno < MAX_NUM_WORMS) {
+    if (!wheads[new_wormno]) return new_wormno;
+    new_wormno++;
+  }
+  return 0;
 }
 
 // ========================================================================
 // cf. worm.c:120 -- initworm(worm, wseg_count)
 // ========================================================================
+// TRANSLATOR: AUTO (worm.c:119)
 export function initworm(worm, wseg_count) {
-    var new_tail = create_worm_tail(wseg_count);
-    var wnum = worm.wormno;
-    var seg;
-
-    if (new_tail) {
-        wtails[wnum] = new_tail;
-        for (seg = new_tail; seg.nseg; seg = seg.nseg)
-            continue;
-        wheads[wnum] = seg;
-    } else {
-        seg = newseg();
-        seg.nseg = null;
-        wtails[wnum] = wheads[wnum] = seg;
+  let seg, new_tail = create_worm_tail(wseg_count), wnum = worm.wormno;
+  if (new_tail) {
+    wtails[wnum] = new_tail;
+    for (seg = new_tail; seg.nseg; seg = seg.nseg) {
+      continue;
     }
-    seg.wx = worm.mx;
-    seg.wy = worm.my;
-    wgrowtime[wnum] = 0;
+    wheads[wnum] = seg;
+  }
+  else { wtails[wnum] = wheads[wnum] = seg = newseg(); seg.nseg =  0; }
+  seg.wx = worm.mx;
+  seg.wy = worm.my;
+  wgrowtime[wnum] = 0;
 }
 
 // ========================================================================
@@ -353,13 +349,13 @@ export function cutworm(worm, x, y, cuttier, map, player, game) {
 // ========================================================================
 // cf. worm.c:487 -- see_wsegs(worm, map)
 // ========================================================================
-export function see_wsegs(worm, map) {
-    var curr = wtails[worm.wormno];
-
-    while (curr !== wheads[worm.wormno]) {
-        newsym(map, curr.wx, curr.wy);
-        curr = curr.nseg;
-    }
+// TRANSLATOR: AUTO (worm.c:486)
+export function see_wsegs(worm) {
+  let curr = wtails[worm.wormno];
+  while (curr !== wheads[worm.wormno]) {
+    newsym(curr.wx, curr.wy);
+    curr = curr.nseg;
+  }
 }
 
 // ========================================================================
@@ -541,24 +537,23 @@ function _rnd_nextto_goodpos(map, mtmp, x, y, player) {
 // ========================================================================
 // cf. worm.c:827 -- size_wseg(worm): segment memory accounting
 // ========================================================================
+// TRANSLATOR: AUTO (worm.c:826)
 export function size_wseg(worm) {
-    // In C, returns count * sizeof(wseg). In JS, just return count.
-    return count_wsegs(worm);
+  return (int) (count_wsegs(worm) * sizeof );
 }
 
 // ========================================================================
 // cf. worm.c:836 -- count_wsegs(mtmp): count worm body segments
 // ========================================================================
+// TRANSLATOR: AUTO (worm.c:835)
 export function count_wsegs(mtmp) {
-    var i = 0;
-    if (mtmp.wormno) {
-        var curr = wtails[mtmp.wormno];
-        if (curr) {
-            for (curr = curr.nseg; curr; curr = curr.nseg)
-                i++;
-        }
+  let i = 0, curr;
+  if (mtmp.wormno) {
+    for (curr = wtails[mtmp.wormno].nseg; curr; curr = curr.nseg) {
+      i++;
     }
-    return i;
+  }
+  return i;
 }
 
 // ========================================================================
@@ -589,15 +584,14 @@ function create_worm_tail(num_segs) {
 // ========================================================================
 // cf. worm.c:883 -- worm_known(worm, map, player, fov)
 // ========================================================================
-export function worm_known(worm, map, player, fov) {
-    var curr = wtails[worm.wormno];
-
-    while (curr) {
-        if (cansee(map, player, fov, curr.wx, curr.wy))
-            return true;
-        curr = curr.nseg;
-    }
-    return false;
+// TRANSLATOR: AUTO (worm.c:882)
+export function worm_known(worm) {
+  let curr = wtails[worm.wormno];
+  while (curr) {
+    if (cansee(curr.wx, curr.wy)) return true;
+    curr = curr.nseg;
+  }
+  return false;
 }
 
 // ========================================================================
@@ -657,37 +651,37 @@ export function wseg_at(worm, x, y, map) {
 // ========================================================================
 // cf. worm.c:968 -- flip_worm_segs_vertical(worm, miny, maxy)
 // ========================================================================
+// TRANSLATOR: AUTO (worm.c:967)
 export function flip_worm_segs_vertical(worm, miny, maxy) {
-    var curr = wtails[worm.wormno];
-
-    while (curr) {
-        curr.wy = maxy - curr.wy + miny;
-        curr = curr.nseg;
-    }
+  let curr = wtails[worm.wormno];
+  while (curr) {
+    curr.wy = (maxy - curr.wy + miny);
+    curr = curr.nseg;
+  }
 }
 
 // ========================================================================
 // cf. worm.c:979 -- flip_worm_segs_horizontal(worm, minx, maxx)
 // ========================================================================
+// TRANSLATOR: AUTO (worm.c:978)
 export function flip_worm_segs_horizontal(worm, minx, maxx) {
-    var curr = wtails[worm.wormno];
-
-    while (curr) {
-        curr.wx = maxx - curr.wx + minx;
-        curr = curr.nseg;
-    }
+  let curr = wtails[worm.wormno];
+  while (curr) {
+    curr.wx = (maxx - curr.wx + minx);
+    curr = curr.nseg;
+  }
 }
 
 // ========================================================================
 // cf. worm.c:990 -- redraw_worm(worm, map)
 // ========================================================================
-export function redraw_worm(worm, map) {
-    var curr = wtails[worm.wormno];
-
-    while (curr) {
-        newsym(map, curr.wx, curr.wy);
-        curr = curr.nseg;
-    }
+// TRANSLATOR: AUTO (worm.c:989)
+export function redraw_worm(worm) {
+  let curr = wtails[worm.wormno];
+  while (curr) {
+    newsym(curr.wx, curr.wy);
+    curr = curr.nseg;
+  }
 }
 
 // ========================================================================

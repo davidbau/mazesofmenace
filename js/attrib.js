@@ -471,19 +471,17 @@ export function adjattrib(player, ndx, incr, msgflg) {
 }
 
 // cf. attrib.c:199 — gainstr(otmp, incr, givemsg)
-export function gainstr(player, otmp, incr, givemsg) {
-    let num = incr;
-
-    if (!num) {
-        if (ABASE(player, A_STR) < 18)
-            num = (rn2(4) ? 1 : rnd(6));
-        else if (ABASE(player, A_STR) < STR18(85))
-            num = rnd(10);
-        else
-            num = 1;
+// TRANSLATOR: AUTO (attrib.c:199)
+export function gainstr(otmp, incr, givemsg) {
+  let num = incr;
+  if (!num) {
+    if (ABASE(A_STR) < 18) num = (rn2(4) ? 1 : rnd(6));
+    else if (ABASE(A_STR) < STR18(85)) num = rnd(10);
+    else {
+      num = 1;
     }
-    adjattrib(player, A_STR, (otmp && otmp.cursed) ? -num : num,
-              givemsg ? -1 : 1);
+  }
+  adjattrib(A_STR, (otmp && otmp.cursed) ? -num : num, givemsg ? -1 : 1);
 }
 
 // cf. attrib.c:218 — losestr(num, knam, k_format)
@@ -523,9 +521,10 @@ export function losestr(player, num, knam, k_format) {
 }
 
 // cf. attrib.c:271 — poison_strdmg(strloss, dmg, knam, k_format)
-export function poison_strdmg(player, strloss, dmg, knam, k_format) {
-    losestr(player, strloss, knam, k_format);
-    losehp(player, dmg, knam, k_format);
+// TRANSLATOR: AUTO (attrib.c:270)
+export function poison_strdmg(strloss, dmg, knam, k_format) {
+  losestr(strloss, knam, k_format);
+  losehp(dmg, knam, k_format);
 }
 
 // cf. attrib.c:291 — poisontell(typ, exclaim)
@@ -606,12 +605,11 @@ export function poisoned(player, reason, typ, pkiller, fatal, thrown_weapon) {
 }
 
 // cf. attrib.c:408 — change_luck(n)
-export function change_luck(player, n) {
-    player.luck = (player.luck || 0) + n;
-    if (player.luck < 0 && player.luck < LUCKMIN)
-        player.luck = LUCKMIN;
-    if (player.luck > 0 && player.luck > LUCKMAX)
-        player.luck = LUCKMAX;
+// TRANSLATOR: AUTO (attrib.c:407)
+export function change_luck(n, player) {
+  player.uluck += n;
+  if (player.uluck < 0 &player.uluck < LUCKMIN) player.uluck = LUCKMIN;
+  if (player.uluck > 0 &player.uluck > LUCKMAX) player.uluck = LUCKMAX;
 }
 
 // cf. attrib.c:420 — stone_luck(include_uncursed)
@@ -867,32 +865,33 @@ export function init_attr(player, np) {
 }
 
 // cf. attrib.c:737 — redist_attr()
-export function redist_attr(player) {
-    ensureAttrArrays(player);
-
-    for (let i = 0; i < NUM_ATTRS; i++) {
-        if (i === A_INT || i === A_WIS) continue;
-        const tmp = AMAX(player, i);
-        let newmax = tmp + (rn2(5) - 2);
-        if (newmax > ATTRMAX(player, i)) newmax = ATTRMAX(player, i);
-        if (newmax < ATTRMIN(player, i)) newmax = ATTRMIN(player, i);
-        setAMAX(player, i, newmax);
-        let newbase = Math.floor(ABASE(player, i) * newmax / tmp);
-        if (newbase < ATTRMIN(player, i)) newbase = ATTRMIN(player, i);
-        setABASE(player, i, newbase);
+// TRANSLATOR: AUTO (attrib.c:736)
+export function redist_attr() {
+  let i, tmp;
+  for (i = 0; i < A_MAX; i++) {
+    if (i === A_INT || i === A_WIS) {
+      continue;
     }
+    tmp = AMAX(i);
+    AMAX(i) += (rn2(5) - 2);
+    if (AMAX(i) > ATTRMAX(i)) AMAX(i) = ATTRMAX(i);
+    if (AMAX(i) < ATTRMIN(i)) AMAX(i) = ATTRMIN(i);
+    ABASE(i) = ABASE(i) * AMAX(i) / tmp;
+    if (ABASE(i) < ATTRMIN(i)) ABASE(i) = ATTRMIN(i);
+  }
 }
 
 // cf. attrib.c:761 — vary_init_attr()
-export function vary_init_attr(player) {
-    for (let i = 0; i < NUM_ATTRS; i++) {
-        if (!rn2(20)) {
-            const xd = rn2(7) - 2;
-            adjattrib(player, i, xd, true);
-            if (ABASE(player, i) < AMAX(player, i))
-                setAMAX(player, i, ABASE(player, i));
-        }
+// TRANSLATOR: AUTO (attrib.c:760)
+export function vary_init_attr() {
+  let i;
+  for (i = 0; i < A_MAX; i++) {
+    if (!rn2(20)) {
+      let xd = rn2(7) - 2;
+      adjattrib(i, xd, true);
+      if (ABASE(i) < AMAX(i)) AMAX(i) = ABASE(i);
     }
+  }
 }
 
 // cf. attrib.c:777 — postadjabil(propid) [static]

@@ -821,8 +821,9 @@ export function xkilled(mon, xkill_flags, map, player) {
 }
 
 // C ref: mon.c killed() — wrapper for xkilled with XKILL_GIVEMSG
-export function killed(mon, map, player) {
-    xkilled(mon, XKILL_GIVEMSG, map, player);
+// TRANSLATOR: AUTO (mon.c:3468)
+export async function killed(mtmp) {
+  await xkilled(mtmp, XKILL_GIVEMSG);
 }
 
 // C ref: mon.c make_corpse() — per-monster corpse/drop creation
@@ -877,15 +878,15 @@ export function wake_nearto_core(x, y, distance, petcall, map) {
 }
 
 // C ref: mon.c wake_nearto() — wrapper
-export function wake_nearto(x, y, distance, map) {
-    wake_nearto_core(x, y, distance, false, map);
+// TRANSLATOR: AUTO (mon.c:4400)
+export function wake_nearto(x, y, distance) {
+  wake_nearto_core(x, y, distance, false);
 }
 
 // C ref: mon.c wake_nearby() — wake all near hero
-export function wake_nearby(player, map) {
-    if (!player || !map) return;
-    const ulevel = player.ulevel || player.level || 1;
-    wake_nearto_core(player.x, player.y, ulevel * 20, false, map);
+// TRANSLATOR: AUTO (mon.c:4365)
+export function wake_nearby(petcall, player) {
+  wake_nearto_core(player.x, player.y, player.ulevel * 20, petcall);
 }
 
 // C ref: mon.c setmangry() — make peaceful monster hostile

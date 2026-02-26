@@ -156,31 +156,33 @@ function reconstrain_map(player) {
 // ========================================================================
 // cf. detect.c:201 -- o_in(obj, oclass)
 // ========================================================================
+// TRANSLATOR: AUTO (detect.c:201)
 export function o_in(obj, oclass) {
-    if (!obj || !oclass) return null;
-    if (objectData[obj.otyp] && objectData[obj.otyp].oc_class === oclass) return obj;
-    if (Has_contents(obj) && !SchroedingersBox(obj)) {
-        for (const otmp of obj.cobj) {
-            if (objectData[otmp.otyp] && objectData[otmp.otyp].oc_class === oclass) return otmp;
-            if (Has_contents(otmp)) { const t = o_in(otmp, oclass); if (t) return t; }
-        }
+  let otmp, temp;
+  if (obj.oclass === oclass) return obj;
+  if (Has_contents(obj) && !SchroedingersBox(obj)) {
+    for (otmp = obj.cobj; otmp; otmp = otmp.nobj) {
+      if (otmp.oclass === oclass) return otmp;
+      else if (Has_contents(otmp) && (temp = o_in(otmp, oclass)) !== 0) return temp;
     }
-    return null;
+  }
+  return  0;
 }
 
 // ========================================================================
 // cf. detect.c:229 -- o_material(obj, material)
 // ========================================================================
+// TRANSLATOR: AUTO (detect.c:229)
 export function o_material(obj, material) {
-    if (!obj) return null;
-    if (objectData[obj.otyp] && objectData[obj.otyp].material === material) return obj;
-    if (Has_contents(obj)) {
-        for (const otmp of obj.cobj) {
-            if (objectData[otmp.otyp] && objectData[otmp.otyp].material === material) return otmp;
-            if (Has_contents(otmp)) { const t = o_material(otmp, material); if (t) return t; }
-        }
+  let otmp, temp;
+  if (objects[obj.otyp].oc_material === material) return obj;
+  if (Has_contents(obj)) {
+    for (otmp = obj.cobj; otmp; otmp = otmp.nobj) {
+      if (objects[otmp.otyp].oc_material === material) return otmp;
+      else if (Has_contents(otmp) && (temp = o_material(otmp, material)) !== 0) return temp;
     }
-    return null;
+  }
+  return  0;
 }
 
 // ========================================================================
@@ -744,13 +746,18 @@ export function do_vicinity_map(sobj, player, map, display) {
 // ========================================================================
 // cf. detect.c:1589 -- cvt_sdoor_to_door
 // ========================================================================
-export function cvt_sdoor_to_door(lev) {
-    if (!lev) return;
-    let newmask = (lev.flags || 0) & ~WM_MASK;
-    if (Is_rogue_level()) newmask = D_NODOOR;
-    else if (!(newmask & D_LOCKED)) newmask |= D_CLOSED;
-    lev.typ = DOOR;
-    lev.flags = newmask;
+// TRANSLATOR: AUTO (detect.c:1589)
+export function cvt_sdoor_to_door(lev, map) {
+  let newmask = lev.doormask & ~WM_MASK;
+  if (Is_rogue_level(map.uz)) { newmask = D_NODOOR; }
+  else {
+    if (!(newmask & D_LOCKED)) {
+      newmask |= D_CLOSED;
+    }
+  }
+  lev.typ = DOOR;
+  lev.doormask = newmask;
+  lev.arboreal_sdoor = 0;
 }
 
 // ========================================================================

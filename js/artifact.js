@@ -77,8 +77,9 @@ export { get_artifact };
 // ── Name lookup ──
 
 // cf. artifact.c:151 — artiname(artinum)
+// TRANSLATOR: AUTO (artifact.c:150)
 export function artiname(artinum) {
-  if (artinum <= 0 || artinum > NROFARTIFACTS) return '';
+  if (artinum <= 0 || artinum > NROFARTIFACTS) return "";
   return artilist[artinum].name;
 }
 
@@ -217,12 +218,13 @@ export function find_artifact(otmp) {
 }
 
 // cf. artifact.c:462 — nartifact_exist()
+// TRANSLATOR: AUTO (artifact.c:461)
 export function nartifact_exist() {
-  let count = 0;
-  for (let i = 1; i <= NROFARTIFACTS; i++) {
-    if (artiexist[i].exists) count++;
+  let i, a = 0;
+  for (i = 1; i <= NROFARTIFACTS; ++i) {
+    if (artiexist[i].exists) ++a;
   }
-  return count;
+  return a;
 }
 
 // ── Pure predicates ──
@@ -234,9 +236,10 @@ export function spec_ability(otmp, abil) {
 }
 
 // cf. artifact.c:526 — confers_luck(obj)
+// TRANSLATOR: AUTO (artifact.c:525)
 export function confers_luck(obj) {
   if (obj.otyp === LUCKSTONE) return true;
-  return !!(obj.oartifact && spec_ability(obj, SPFX_LUCK));
+  return (obj.oartifact && spec_ability(obj, SPFX_LUCK));
 }
 
 // cf. artifact.c:537 — arti_reflects(obj)
@@ -348,13 +351,16 @@ export function artifact_light(obj) {
 }
 
 // cf. artifact.c:2808 — is_art(obj, art)
+// TRANSLATOR: AUTO (artifact.c:2807)
 export function is_art(obj, art) {
-  return !!(obj && obj.oartifact === art);
+  if (obj && obj.oartifact === art) return true;
+  return false;
 }
 
 // cf. artifact.c:2837 — permapoisoned(obj)
+// TRANSLATOR: AUTO (artifact.c:2836)
 export function permapoisoned(obj) {
-  return !!(obj && is_art(obj, ART_GRIMTOOTH));
+  return (obj && is_art(obj, ART_GRIMTOOTH));
 }
 
 // cf. artifact.c:1065 — spec_m2(otmp)
@@ -464,8 +470,16 @@ export function discover_artifact(m) {
 }
 
 // cf. artifact.c:1131 — undiscovered_artifact(m)
+// TRANSLATOR: AUTO (artifact.c:1130)
 export function undiscovered_artifact(m) {
-  return !artidisco.includes(m);
+  let i;
+  for (i = 0; i < NROFARTIFACTS; i++) {
+    if (artidisco[i] === m) return false;
+    else if (artidisco[i] === 0) {
+      break;
+    }
+  }
+  return true;
 }
 
 // cf. artifact.c:1147 — disp_artifact_discoveries(putstr_fn)
@@ -1225,18 +1239,18 @@ export function invoke_healing(obj, player) {
 }
 
 // cf. artifact.c:1818 — invoke_energy_boost(obj, player)
-export function invoke_energy_boost(obj, player) {
-  if (!player) { nothing_special(obj); return 1; }
-  let epboost = ((player.enmax + 1 - (player.en || 0)) / 2) | 0;
+// TRANSLATOR: AUTO (artifact.c:1817)
+export function invoke_energy_boost(obj, game, player) {
+  let epboost = (player.uenmax + 1 - player.uen) / 2;
   if (epboost > 120) epboost = 120;
-  else if (epboost < 12) epboost = (player.enmax || 0) - (player.en || 0);
-  if (epboost > 0) {
-    player.en = (player.en || 0) + epboost;
+  else if (epboost < 12) epboost = player.uenmax - player.uen;
+  if (epboost) {
+    player.uen += epboost;
+    game.disp.botl = true;
     You_feel("re-energized.");
-  } else {
-    nothing_special(obj);
   }
-  return 1;
+  else { nothing_special(obj); return ECMD_TIME; }
+  return ECMD_TIME;
 }
 
 // cf. artifact.c:1838 — invoke_untrap(obj)

@@ -35,12 +35,13 @@ export function somegold(lmoney) {
 // ============================================================================
 // Find first gold object in an inventory array. Returns the object or null.
 // (Differs from makemon.js findgold which returns boolean.)
-export function findgold(chain) {
-    if (!Array.isArray(chain)) return null;
-    for (const obj of chain) {
-        if (obj && obj.otyp === GOLD_PIECE) return obj;
-    }
-    return null;
+// TRANSLATOR: AUTO (steal.c:44)
+export function findgold(argchain) {
+  let chain = argchain;
+  while (chain && chain.otyp !== GOLD_PIECE) {
+    chain = chain.nobj;
+  }
+  return chain;
 }
 
 // ============================================================================

@@ -93,6 +93,17 @@ conda run -n base python tools/c_translator/runtime_stitch_candidates.py \
 conda run -n base python tools/c_translator/runtime_candidate_safety.py \
   --candidates /tmp/translator-runtime-stitch-candidates.json \
   --out /tmp/translator-runtime-stitch-safety.json
+
+# Apply runtime-safe candidates into JS modules (dry run by default)
+conda run -n base python tools/c_translator/runtime_stitch_apply.py \
+  --safety /tmp/translator-runtime-stitch-safety.json \
+  --repo-root .
+
+# Write stitched updates
+conda run -n base python tools/c_translator/runtime_stitch_apply.py \
+  --safety /tmp/translator-runtime-stitch-safety.json \
+  --repo-root . \
+  --write
 ```
 
 4. Translator policy/annotation checks (Node scripts):

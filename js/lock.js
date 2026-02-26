@@ -112,14 +112,12 @@ function getXlock(game) {
 }
 
 // cf. lock.c:259 — reset_pick(void): clear lock-picking context
-export function reset_pick(game) {
-    const xlock = getXlock(game);
-    xlock.usedtime = 0;
-    xlock.chance = 0;
-    xlock.picktyp = 0;
-    xlock.magic_key = false;
-    xlock.door = null;
-    xlock.box = null;
+// TRANSLATOR: AUTO (lock.c:258)
+export function reset_pick() {
+  gx.xlock.usedtime = gx.xlock.chance = gx.xlock.picktyp = 0;
+  gx.xlock.magic_key = false;
+  gx.xlock.door =  0;
+  gx.xlock.box =  0;
 }
 
 // cf. lock.c:269 — maybe_reset_pick(container): reset pick if container gone
@@ -273,18 +271,10 @@ export function obstructed(x, y, quietly, map) {
 }
 
 // cf. lock.c:660 — u_have_forceable_weapon(void): check for force weapon
-export function u_have_forceable_weapon(player) {
-    const uwep = player.weapon;
-    if (!uwep) return false;
-    if (uwep.oclass === WEAPON_CLASS || is_weptool(uwep)) {
-        const sk = objectData[uwep.otyp]?.sub ?? 0;
-        if (sk < P_DAGGER || sk === P_FLAIL || sk > P_LANCE) {
-            return false;
-        }
-    } else if (uwep.oclass !== ROCK_CLASS) {
-        return false;
-    }
-    return true;
+// TRANSLATOR: AUTO (lock.c:659)
+export function u_have_forceable_weapon() {
+  if (!uwep /* proper type test */ || ((uwep.oclass === WEAPON_CLASS || is_weptool(uwep)) ? (objects[uwep.otyp].oc_skill < P_DAGGER || objects[uwep.otyp].oc_skill === P_FLAIL || objects[uwep.otyp].oc_skill > P_LANCE) : uwep.oclass !== ROCK_CLASS)) return false;
+  return true;
 }
 
 // cf. lock.c:759 — stumble_on_door_mimic(x, y): detect door mimic

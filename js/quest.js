@@ -280,20 +280,15 @@ export function onquest(game) {
 }
 
 // cf. quest.c:107 — nemdead(): nemesis was killed
-export function nemdead(game) {
-    const qs = Qstat(game);
-    if (!qs.killed_nemesis) {
-        qs.killed_nemesis = true;
-        qt_pager("killed_nemesis", game);
-    }
+// TRANSLATOR: AUTO (quest.c:106)
+export function nemdead() {
+  if (!Qstat(killed_nemesis)) { Qstat(killed_nemesis) = true; qt_pager("killed_nemesis"); }
 }
 
 // cf. quest.c:116 — leaddead(): quest leader was killed
-export function leaddead(game) {
-    const qs = Qstat(game);
-    if (!qs.killed_leader) {
-        qs.killed_leader = true;
-    }
+// TRANSLATOR: AUTO (quest.c:115)
+export function leaddead() {
+  if (!Qstat(killed_leader)) { Qstat(killed_leader) = true; }
 }
 
 // cf. quest.c:125 — artitouch(obj): player first touches quest artifact
@@ -312,11 +307,9 @@ export function artitouch(obj, game) {
 
 // cf. quest.c:140 — ok_to_quest(): quest dungeon entry eligibility
 // Returns true if player is allowed to enter quest dungeon.
-export function ok_to_quest(game) {
-    const qs = Qstat(game);
-    return ((qs.got_quest || qs.got_thanks)
-            && is_pure(false, game) > 0)
-        || !!qs.killed_leader;
+// TRANSLATOR: AUTO (quest.c:139)
+export async function ok_to_quest() {
+  return (((Qstat(got_quest) || Qstat(got_thanks)) && is_pure(false) > 0) || Qstat(killed_leader));
 }
 
 // cf. quest.c:225 — finish_quest(obj): handle quest artifact return to leader
@@ -478,41 +471,27 @@ function chat_with_nemesis(game) {
 }
 
 // cf. quest.c:388 — nemesis_speaks(): nemesis NPC response to chat
-export function nemesis_speaks(game) {
-    const qs = Qstat(game);
-
-    if (!qs.in_battle) {
-        const player = game.player;
-        if (player.uhave && player.uhave.questart)
-            qt_pager("nemesis_wantsit", game);
-        else if (qs.made_goal === 1 || !qs.met_nemesis)
-            qt_pager("nemesis_first", game);
-        else if ((qs.made_goal || 0) < 4)
-            qt_pager("nemesis_next", game);
-        else if ((qs.made_goal || 0) < 7)
-            qt_pager("nemesis_other", game);
-        else if (!rn2(5))
-            qt_pager("discourage", game);
-
-        if ((qs.made_goal || 0) < 7)
-            qs.made_goal = (qs.made_goal || 0) + 1;
-        qs.met_nemesis = true;
-    } else {
-        // He will spit out random maledictions
-        if (!rn2(5))
-            qt_pager("discourage", game);
-    }
+// TRANSLATOR: AUTO (quest.c:388)
+export function nemesis_speaks(player) {
+  if (!Qstat(in_battle)) {
+    if (player.uhave.questart) qt_pager("nemesis_wantsit");
+    else if (Qstat(made_goal) === 1 || !Qstat(met_nemesis)) qt_pager("nemesis_first");
+    else if (Qstat(made_goal) < 4) qt_pager("nemesis_next");
+    else if (Qstat(made_goal) < 7) qt_pager("nemesis_other");
+    else if (!rn2(5)) qt_pager("discourage");
+    if (Qstat(made_goal) < 7) Qstat(made_goal)++;
+    Qstat(met_nemesis) = true;
+  }
+  else if (!rn2(5)) qt_pager("discourage");
 }
 
 // cf. quest.c:411 — nemesis_stinks(mx, my): gas cloud on nemesis death
-export function nemesis_stinks(mx, my, map, player, game) {
-    // In C, this temporarily sets context.mon_moving = TRUE
-    // so the hero is not attributed with the cloud.
-    const save_mon_moving = game.context ? game.context.mon_moving : false;
-    if (!game.context) game.context = {};
-    game.context.mon_moving = true;
-    create_gas_cloud(mx, my, 5, 8, map, player, game);
-    game.context.mon_moving = save_mon_moving;
+// TRANSLATOR: AUTO (quest.c:411)
+export function nemesis_stinks(mx, my, game) {
+  let save_mon_moving = game.game.svc.context.mon_moving;
+  game.game.svc.context.mon_moving = true;
+  create_gas_cloud(mx, my, 5, 8);
+  game.game.svc.context.mon_moving = save_mon_moving;
 }
 
 // cf. quest.c:427 [static] — chat_with_guardian(): guardian NPC dialog
@@ -594,10 +573,7 @@ export function quest_talk(mtmp, game) {
 }
 
 // cf. quest.c:499 — quest_stat_check(mtmp): update nemesis battle status
-export function quest_stat_check(mtmp, game) {
-    const qs = Qstat(game);
-    const player = game.player;
-
-    if (mtmp.type && mtmp.type.sound === MS_NEMESIS)
-        qs.in_battle = (!helpless(mtmp) && monnear(mtmp, player.x, player.y));
+// TRANSLATOR: AUTO (quest.c:499)
+export function quest_stat_check(mtmp, player) {
+  if (mtmp.data.msound === MS_NEMESIS) Qstat(in_battle) = (!helpless(mtmp) && monnear(mtmp, player.x, player.y));
 }

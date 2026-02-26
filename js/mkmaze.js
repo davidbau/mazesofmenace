@@ -72,10 +72,10 @@ export function iswall(map, x, y) {
 }
 
 // C ref: mkmaze.c iswall_or_stone
-export function iswall_or_stone(map, x, y) {
-    const loc = at(map, x, y);
-    if (!loc) return 1;
-    return loc.typ === STONE || iswall(map, x, y);
+// TRANSLATOR: AUTO (mkmaze.c:58)
+export function iswall_or_stone(x, y, map) {
+  if (!isok(x, y)) return 1;
+  return (map.locations[x][y].typ === STONE || iswall(x, y));
 }
 
 // C ref: mkmaze.c is_solid

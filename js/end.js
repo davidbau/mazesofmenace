@@ -121,11 +121,15 @@ export function delayed_killer(id, format, killername) {
 
 // cf. end.c:1728 — find_delayed_killer(id): find delayed killer
 // Searches delayed killer list for record matching given id.
+// TRANSLATOR: AUTO (end.c:1728)
 export function find_delayed_killer(id) {
-    for (let k = killer.next; k != null; k = k.next) {
-        if (k.id === id) return k;
+  let k;
+  for (k = svk.killer.next; k !==  0; k = k.next) {
+    if (k.id === id) {
+      break;
     }
-    return null;
+  }
+  return k;
 }
 
 // cf. end.c:1740 — dealloc_killer(kptr): remove delayed killer

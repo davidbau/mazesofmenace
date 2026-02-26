@@ -169,10 +169,13 @@ export function attk_protection(aatyp) {
 // ============================================================================
 
 // cf. mhitm.c:1209 — paralyze_monst(mon, amt)
+// TRANSLATOR: AUTO (mhitm.c:1209)
 export function paralyze_monst(mon, amt) {
-    if (amt > 127) amt = 127;
-    mon.mcanmove = false;
-    mon.mfrozen = amt;
+  if (amt > 127) amt = 127;
+  mon.mcanmove = 0;
+  mon.mfrozen = amt;
+  mon.meating = 0;
+  mon.mstrategy &= ~STRAT_WAITFORU;
 }
 
 // cf. mhitm.c:1222 — sleep_monst(mon, amt, how)

@@ -1795,52 +1795,48 @@ export function godvoice(g_align, words, player) {
 }
 
 // cf. pray.c:1429 -- gods_angry(g_align): print angry god message
-export function gods_angry(g_align, player) {
-    godvoice(g_align, "Thou hast angered me.", player);
+// TRANSLATOR: AUTO (pray.c:1428)
+export function gods_angry(g_align) {
+  godvoice(g_align, "Thou hast angered me.");
 }
 
 // ================================================================
 // cf. pray.c:1436 -- gods_upset(g_align, player, map)
 // ================================================================
-export function gods_upset(g_align, player, map) {
-    if (g_align === player.alignment)
-        player.ugangr = (player.ugangr || 0) + 1;
-    else if (player.ugangr)
-        player.ugangr--;
-    angrygods(g_align, player, map);
+// TRANSLATOR: AUTO (pray.c:1435)
+export function gods_upset(g_align, player) {
+  if (g_align === player.ualign.type) player.ugangr++;
+  else if (player.ugangr) player.ugangr--;
+  angrygods(g_align);
 }
 
 // ================================================================
 // cf. pray.c:1446 -- consume_offering(otmp, player, map)
 // ================================================================
-export function consume_offering(otmp, player, map) {
-    if (player.hallucinating) {
-        switch (rn2(3)) {
-        case 0:
-            Your("sacrifice sprouts wings and a propeller and roars away!");
-            break;
-        case 1:
-            Your("sacrifice puffs up, swelling bigger and bigger, and pops!");
-            break;
-        case 2:
-            Your("sacrifice collapses into a cloud of dancing particles and fades away!");
-            break;
-        }
-    } else if (player.blind && player.alignment === A_LAWFUL) {
-        Your("sacrifice disappears!");
-    } else {
-        Your("sacrifice is consumed in a %s!",
-             (player.alignment === A_LAWFUL)
-                ? "flash of light"
-                : (player.alignment === A_NEUTRAL)
-                    ? "plume of smoke"
-                    : "burst of flame");
+// TRANSLATOR: AUTO (pray.c:1445)
+export function consume_offering(otmp, player) {
+  if (Hallucination) {
+    switch (rn2(3)) {
+      case 0:
+        Your("sacrifice sprouts wings and a propeller and roars away!");
+      break;
+      case 1:
+        Your("sacrifice puffs up, swelling bigger and bigger, and pops!");
+      break;
+      case 2:
+        Your( "sacrifice collapses into a cloud of dancing particles and fades away!");
+      break;
     }
-    if (carried(otmp, player))
-        useup(otmp, player);
-    else
-        useupf(otmp, 1, map);
-    exercise(player, A_WIS, true);
+  }
+  else if (Blind &player.ualign.type === A_LAWFUL) Your("sacrifice disappears!");
+  else {
+    Your("sacrifice is consumed in a %s!", (player.ualign.type === A_LAWFUL) ? "flash of light" : (player.ualign.type === A_NEUTRAL) ? "plume of smoke" : "burst of flame");
+  }
+  if (carried(otmp)) useup(otmp);
+  else {
+    useupf(otmp, 1);
+  }
+  exercise(A_WIS, true);
 }
 
 // ================================================================
@@ -2639,8 +2635,9 @@ function a_align(x, y, map) {
 }
 
 // cf. pray.c:2507 -- a_gname(): name of altar's deity at player position
-export function a_gname(player, map) {
-    return a_gname_at(player.x, player.y, player, map);
+// TRANSLATOR: AUTO (pray.c:2506)
+export function a_gname(player) {
+  return a_gname_at(player.x, player.y);
 }
 
 // cf. pray.c:2514 -- a_gname_at(x, y): name of altar's deity at position
@@ -2651,8 +2648,9 @@ export function a_gname_at(x, y, player, map) {
 }
 
 // cf. pray.c:2524 -- u_gname(): player's own deity name
+// TRANSLATOR: AUTO (pray.c:2523)
 export function u_gname(player) {
-    return align_gname(player.alignment, player);
+  return align_gname(player.ualign.type);
 }
 
 // cf. pray.c:2530 -- align_gname(alignment): alignment to deity name

@@ -1870,50 +1870,40 @@ export async function use_offensive(mtmp, map, player) {
 // ========================================================================
 // rnd_offensive_item — C ref: muse.c:2014
 // ========================================================================
+// TRANSLATOR: AUTO (muse.c:2014)
 export function rnd_offensive_item(mtmp) {
-    const pm = mtmp.type || {};
-    const difficulty = pm.difficulty || pm.level || 0;
-
-    if (is_animal(pm) || attacktype(pm, AT_EXPL) || mindless(pm)
-        || pm.symbol === S_GHOST || pm.symbol === S_KOP)
-        return 0;
-
-    if (difficulty > 7 && !rn2(35)) return WAN_DEATH;
-
-    const range = 9 - (difficulty < 4 ? 1 : 0) + 4 * (difficulty > 6 ? 1 : 0);
-    switch (rn2(range)) {
-    case 0: {
-        const mtmp_helmet = which_armor(mtmp, W_ARMH);
-        if (hard_helmet(mtmp_helmet) || amorphous(pm)
-            || passes_walls(pm) || noncorporeal(pm) || unsolid(pm))
-            return SCR_EARTH;
-    }
-    // fall through
+  let pm = mtmp.data, difficulty = mons[(monsndx(pm))].difficulty;
+  if (is_animal(pm) || attacktype(pm, AT_EXPL) || mindless(mtmp.data) || pm.mlet === S_GHOST || pm.mlet === S_KOP) return 0;
+  if (difficulty > 7 && !rn2(35)) return WAN_DEATH;
+  switch (rn2(9 - (difficulty < 4) + 4 * (difficulty > 6))) {
+    case 0:
+      let mtmp_helmet = which_armor(mtmp, W_ARMH);
+      if (hard_helmet(mtmp_helmet) || amorphous(pm) || passes_walls(pm) || noncorporeal(pm) || unsolid(pm)) return SCR_EARTH;
     case 1:
-        return WAN_STRIKING;
+      return WAN_STRIKING;
     case 2:
-        return POT_ACID;
+      return POT_ACID;
     case 3:
-        return POT_CONFUSION;
+      return POT_CONFUSION;
     case 4:
-        return POT_BLINDNESS;
+      return POT_BLINDNESS;
     case 5:
-        return POT_SLEEPING;
+      return POT_SLEEPING;
     case 6:
-        return POT_PARALYSIS;
+      return POT_PARALYSIS;
     case 7:
-    case 8:
+      case 8:
         return WAN_MAGIC_MISSILE;
     case 9:
-        return WAN_SLEEP;
+      return WAN_SLEEP;
     case 10:
-        return WAN_FIRE;
+      return WAN_FIRE;
     case 11:
-        return WAN_COLD;
+      return WAN_COLD;
     case 12:
-        return WAN_LIGHTNING;
-    }
-    return 0;
+      return WAN_LIGHTNING;
+  }
+  return 0;
 }
 
 // ========================================================================
@@ -2275,31 +2265,23 @@ export function use_misc(mon, map, player) {
 // rnd_misc_item — C ref: muse.c:2619
 // Note: also implemented in makemon.js for level generation.
 // ========================================================================
+// TRANSLATOR: AUTO (muse.c:2618)
 export function rnd_misc_item(mtmp) {
-    const pm = mtmp.type || {};
-    const difficulty = pm.difficulty || pm.level || 0;
-
-    if (is_animal(pm) || attacktype(pm, AT_EXPL) || mindless(pm)
-        || pm.symbol === S_GHOST || pm.symbol === S_KOP)
-        return 0;
-
-    if (difficulty < 6 && !rn2(30))
-        return rn2(6) ? POT_POLYMORPH : WAN_POLYMORPH;
-
-    if (!rn2(40) && !nonliving(pm) && !is_vampshifter(mtmp))
-        return AMULET_OF_LIFE_SAVING;
-
-    switch (rn2(3)) {
+  let pm = mtmp.data, difficulty = mons[(monsndx(pm))].difficulty;
+  if (is_animal(pm) || attacktype(pm, AT_EXPL) || mindless(mtmp.data) || pm.mlet === S_GHOST || pm.mlet === S_KOP) return 0;
+  if (difficulty < 6 && !rn2(30)) return rn2(6) ? POT_POLYMORPH : WAN_POLYMORPH;
+  if (!rn2(40) && !nonliving(pm) && !is_vampshifter(mtmp)) return AMULET_OF_LIFE_SAVING;
+  switch (rn2(3)) {
     case 0:
-        if (mtmp.isgd) return 0;
-        return rn2(6) ? POT_SPEED : WAN_SPEED_MONSTER;
+      if (mtmp.isgd) return 0;
+    return rn2(6) ? POT_SPEED : WAN_SPEED_MONSTER;
     case 1:
-        if (mtmp.mpeaceful) return 0;
-        return rn2(6) ? POT_INVISIBILITY : WAN_MAKE_INVISIBLE;
+      if (mtmp.mpeaceful && !See_invisible) return 0;
+    return rn2(6) ? POT_INVISIBILITY : WAN_MAKE_INVISIBLE;
     case 2:
-        return POT_GAIN_LEVEL;
-    }
-    return 0;
+      return POT_GAIN_LEVEL;
+  }
+  return 0;
 }
 
 // ========================================================================
@@ -2490,19 +2472,17 @@ export function ureflects(fmt, str, player) {
 // ========================================================================
 // munstone — C ref: muse.c:2848
 // ========================================================================
-export function munstone(mon, by_you, map, player) {
-    if (resists_ston(mon)) return false;
-    if (mon.meating || helpless(mon)) return false;
-    mon.mstrategy = (mon.mstrategy || 0) & ~0x08000000; // ~STRAT_WAITFORU
-
-    const tinok = mcould_eat_tin(mon);
-    for (const obj of (mon.minvent || [])) {
-        if (cures_stoning(mon, obj, tinok)) {
-            mon_consume_unstone(mon, obj, by_you, true, map, player);
-            return true;
-        }
-    }
-    return false;
+// TRANSLATOR: AUTO (muse.c:2848)
+export function munstone(mon, by_you) {
+  let obj, tinok;
+  if (resists_ston(mon)) return false;
+  if (mon.meating || helpless(mon)) return false;
+  mon.mstrategy &= ~STRAT_WAITFORU;
+  tinok = mcould_eat_tin(mon);
+  for (obj = mon.minvent; obj; obj = obj.nobj) {
+    if (cures_stoning(mon, obj, tinok)) { mon_consume_unstone(mon, obj, by_you, true); return true; }
+  }
+  return false;
 }
 
 // ========================================================================

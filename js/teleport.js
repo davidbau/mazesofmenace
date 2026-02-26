@@ -241,9 +241,9 @@ export function collect_coords(cx, cy, maxradius, cc_flags, map) {
 // enexto — cf. teleport.c:190 (runtime version)
 // ============================================================================
 
-export function enexto(cc_out, xx, yy, mdat, map, player) {
-    return enexto_core(cc_out, xx, yy, mdat, GP_CHECKSCARY, map, player)
-        || enexto_core(cc_out, xx, yy, mdat, NO_MM_FLAGS, map, player);
+// TRANSLATOR: AUTO (teleport.c:190)
+export function enexto(cc, xx, yy, mdat) {
+  return (enexto_core(cc, xx, yy, mdat, GP_CHECKSCARY) || enexto_core(cc, xx, yy, mdat, NO_MM_FLAGS));
 }
 
 export function enexto_core(cc_out, xx, yy, mdat, entflags, map, player) {
@@ -352,13 +352,15 @@ function rloc_to_core(mtmp, x, y, rlocflags, map, player, display, fov) {
 }
 
 // cf. teleport.c:1766 — rloc_to(mon, x, y)
-export function rloc_to(mtmp, x, y, map, player, display, fov) {
-    rloc_to_core(mtmp, x, y, RLOC_NOMSG, map, player, display, fov);
+// TRANSLATOR: AUTO (teleport.c:1765)
+export function rloc_to(mtmp, x, y) {
+  rloc_to_core(mtmp, x, y, RLOC_NOMSG);
 }
 
 // cf. teleport.c:1772 — rloc_to_flag(mon, x, y, rflags)
-export function rloc_to_flag(mtmp, x, y, rlocflags, map, player, display, fov) {
-    rloc_to_core(mtmp, x, y, rlocflags, map, player, display, fov);
+// TRANSLATOR: AUTO (teleport.c:1771)
+export function rloc_to_flag(mtmp, x, y, rlocflags) {
+  rloc_to_core(mtmp, x, y, rlocflags);
 }
 
 // ============================================================================

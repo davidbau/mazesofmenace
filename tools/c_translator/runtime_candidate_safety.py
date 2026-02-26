@@ -9,6 +9,8 @@ import argparse
 import json
 from pathlib import Path
 import re
+import subprocess
+import tempfile
 
 
 EXPORT_FN_RE = re.compile(r"^\s*export\s+(?:async\s+)?function\s+([A-Za-z_]\w*)\s*\(", re.MULTILINE)
@@ -70,6 +72,29 @@ def candidate_unknown_calls(emitted_js, known_syms):
     return sorted(unknown)
 
 
+def candidate_syntax_ok(emitted_js):
+    """Return (ok, detail) by validating emitted snippet with node --check."""
+    with tempfile.NamedTemporaryFile("w", suffix=".mjs", delete=False, encoding="utf-8") as tmp:
+        tmp.write(emitted_js)
+        tmp_path = Path(tmp.name)
+    try:
+        proc = subprocess.run(
+            ["node", "--check", str(tmp_path)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if proc.returncode == 0:
+            return True, ""
+        detail = (proc.stderr or proc.stdout or "").strip()
+        return False, detail.splitlines()[-1] if detail else "node --check failed"
+    finally:
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
 def main():
     args = parse_args()
     repo = Path(args.repo_root)
@@ -98,11 +123,16 @@ def main():
         payload = json.loads(Path(out_file).read_text(encoding="utf-8"))
         emitted_js = payload.get("js", "")
         unknown = candidate_unknown_calls(emitted_js, known_syms)
+        syntax_ok, syntax_error = candidate_syntax_ok(emitted_js)
         out_rec = {
             **rec,
             "unknown_calls": unknown,
+            "syntax_ok": syntax_ok,
         }
-        if unknown:
+        if not syntax_ok:
+            out_rec["syntax_error"] = syntax_error
+            unsafe.append(out_rec)
+        elif unknown:
             unsafe.append(out_rec)
         else:
             safe.append(out_rec)

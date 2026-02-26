@@ -149,10 +149,9 @@ export function losexp(player, display, drainer) {
 }
 
 // cf. exper.c:299 — newexplevel(): check if player should gain a level
-export function newexplevel(player, display) {
-    if (player.level < MAXULEV && player.exp >= newuexp(player.level)) {
-        pluslvl(player, display, true);
-    }
+// TRANSLATOR: AUTO (exper.c:299)
+export function newexplevel(player) {
+  if (player.ulevel < MAXULEV &player.uexp >= newuexp(player.ulevel)) pluslvl(true);
 }
 
 // cf. exper.c:306 — pluslvl(): gain an experience level

@@ -267,25 +267,24 @@ export function placebc(player, map) {
 }
 
 // cf. ball.c:211 — unplacebc(): remove ball and chain
-export function unplacebc(player, map) {
-    if (bcrestriction) {
-        impossible("unplacebc denied, restriction in place");
-        return;
-    }
-    unplacebc_core(player, map);
+// TRANSLATOR: AUTO (ball.c:211)
+export function unplacebc() {
+  if (bcrestriction) {
+    impossible("unplacebc denied, restriction in place");
+    return;
+  }
+  unplacebc_core();
 }
 
 // cf. ball.c:221 — unplacebc_and_covet_placebc(): remove and pin bc
-export function unplacebc_and_covet_placebc(player, map) {
-    let restriction = 0;
-
-    if (bcrestriction) {
-        impossible("unplacebc_and_covet_placebc denied, already restricted");
-    } else {
-        restriction = bcrestriction = rnd(400);
-        unplacebc_core(player, map);
-    }
-    return restriction;
+// TRANSLATOR: AUTO (ball.c:221)
+export function unplacebc_and_covet_placebc() {
+  let restriction = 0;
+  if (bcrestriction) {
+    impossible("unplacebc_and_covet_placebc denied, already restricted");
+  }
+  else { restriction = bcrestriction = rnd(400); unplacebc_core(); }
+  return restriction;
 }
 
 // cf. ball.c:235 — lift_covet_and_placebc(pin): lift restriction and replace

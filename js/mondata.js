@@ -541,10 +541,9 @@ export function ranged_attk(ptr) {
 
 // C ref: mondata.c sticks(ptr)
 // Returns true if monster can stick/grab/wrap targets it hits.
+// TRANSLATOR: AUTO (mondata.c:653)
 export function sticks(ptr) {
-    return dmgtype(ptr, AD_STCK)
-        || (dmgtype(ptr, AD_WRAP) && !attacktype(ptr, AT_ENGL))
-        || attacktype(ptr, AT_HUGS);
+  return (dmgtype(ptr, AD_STCK) || (dmgtype(ptr, AD_WRAP) && !attacktype(ptr, AT_ENGL)) || attacktype(ptr, AT_HUGS));
 }
 
 // ========================================================================

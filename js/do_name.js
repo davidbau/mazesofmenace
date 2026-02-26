@@ -100,17 +100,19 @@ export function Mgender(mtmp) {
 // Returns the creature type name. C has pmnames[] array per gender;
 // JS monsters just have a single .name field.
 // ========================================================================
-export function pmname(pm, _mgender) {
-    // JS monsters don't have gendered pmnames; just return .name
-    return pm?.name || 'monster';
+// TRANSLATOR: AUTO (do_name.c:1302)
+export function pmname(pm, mgender) {
+  if (mgender < MALE || mgender >= NUM_MGENDERS || !pm.pmnames[mgender]) mgender = NEUTRAL;
+  return pm.pmnames[mgender];
 }
 
 // ========================================================================
 // mon_pmname — cf. do_name.c:1312
 // Returns the creature type name for a specific monster instance.
 // ========================================================================
+// TRANSLATOR: AUTO (do_name.c:1312)
 export function mon_pmname(mon) {
-    return pmname(mon?.type || {}, Mgender(mon));
+  return pmname(mon.data, Mgender(mon));
 }
 
 // ========================================================================

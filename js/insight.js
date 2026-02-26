@@ -901,14 +901,14 @@ function weapon_insight(final, game) {
 // ============================================================================
 
 // cf. insight.c:2014 — doattributes(game): ^X attribute display command
-export async function doattributes(game) {
-    let mode = BASICENLIGHTENMENT;
-    // show more for wizard and explore modes
-    if (game.wizard || game.discover)
-        mode |= MAGICENLIGHTENMENT;
-
-    await enlightenment(mode, ENL_GAMEINPROGRESS, game);
-    return 0; // ECMD_OK
+// TRANSLATOR: AUTO (insight.c:2013)
+export function doattributes() {
+  let mode = BASICENLIGHTENMENT;
+  if (wizard || discover) {
+    mode |= MAGICENLIGHTENMENT;
+  }
+  enlightenment(mode, ENL_GAMEINPROGRESS);
+  return ECMD_OK;
 }
 
 // ============================================================================
@@ -1155,9 +1155,13 @@ export function remove_achievement(achidx, player) {
 // ============================================================================
 
 // cf. insight.c:2504 — count_achievements(player): count current achievements
+// TRANSLATOR: AUTO (insight.c:2503)
 export function count_achievements(player) {
-    if (!player.uachieved) return 0;
-    return player.uachieved.length;
+  let i, acnt = 0;
+  for (i = 0; player.uachieved[i]; ++i) {
+    ++acnt;
+  }
+  return acnt;
 }
 
 // ============================================================================
@@ -1167,15 +1171,13 @@ export function count_achievements(player) {
 // ============================================================================
 
 // cf. insight.c:2527 — sokoban_in_play(game): check if sokoban entered
-export function sokoban_in_play(game) {
-    const player = game.player || game;
-    if (!player.uachieved) return false;
-
-    for (let i = 0; i < player.uachieved.length; i++) {
-        if (player.uachieved[i] === ACH_SOKO)
-            return true;
-    }
-    return false;
+// TRANSLATOR: AUTO (insight.c:2526)
+export function sokoban_in_play(player) {
+  let achidx;
+  for (achidx = 0; player.uachieved[achidx]; ++achidx) {
+    if (player.uachieved[achidx] === ACH_SOKO) return true;
+  }
+  return false;
 }
 
 // ============================================================================
