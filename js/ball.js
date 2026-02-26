@@ -673,8 +673,6 @@ export function drag_ball(x, y, allow_drag, player, map, game) {
         return { ret: false, bc_control, ballx, bally, chainx, chainy, cause_delay };
     }
 
-    const uchain = player.uchain;
-
     if ((is_pool(uchain.ox, uchain.oy, map)
          // water not mere continuation of previous water
          && (map.at(uchain.ox, uchain.oy).typ === POOL

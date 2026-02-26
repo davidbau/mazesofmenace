@@ -35,6 +35,9 @@ import { ynFunction } from './input.js';
 import { water_friction, maybe_adjust_hero_bubble } from './mkmaze.js';
 import { tmp_at, nh_delay_output_nowait, DISP_ALL, DISP_END } from './animation.js';
 import { set_getpos_context, getpos_async } from './getpos.js';
+import { stucksteed } from './steed.js';
+import { in_out_region } from './region.js';
+import { drag_ball as drag_ball_core } from './ball.js';
 // pline available from './pline.js' if needed for direct message output
 
 // Run direction keys (shift = run)
@@ -400,10 +403,20 @@ export async function domove_core(dir, player, map, display, game) {
     // Preserve pre-move coordinates for C-style URETREATING checks.
     game.ux0 = oldX;
     game.uy0 = oldY;
-    let nx = player.x + dir[0];
-    let ny = player.y + dir[1];
-    player.dx = dir[0];
-    player.dy = dir[1];
+    let moveDir = dir;
+    if (ctx.travel) {
+        if (!findtravelpath(TRAVP_TRAVEL, game)) {
+            findtravelpath(TRAVP_GUESS, game);
+        }
+        ctx.travel1 = 0;
+        if (Array.isArray(game.travelPath) && game.travelPath.length > 0) {
+            moveDir = game.travelPath[0];
+        }
+    }
+    let nx = player.x + moveDir[0];
+    let ny = player.y + moveDir[1];
+    player.dx = moveDir[0];
+    player.dy = moveDir[1];
     // C ref: cmd.c move-prefix handling is consumed by the attempted move
     // path, even when that move is blocked.
     const nopick = !!ctx.nopick;
@@ -412,7 +425,7 @@ export async function domove_core(dir, player, map, display, game) {
     ctx.door_opened = 0;
     ctx.move = 0;
 
-    if (carrying_too_much(player, display)) {
+    if (carrying_too_much(player, map, display)) {
         return { moved: false, tookTime: false };
     }
     if (air_turbulence(player, map, display)) {
@@ -430,6 +443,11 @@ export async function domove_core(dir, player, map, display, game) {
     nx = tDest.x;
     ny = tDest.y;
 
+    if (!isok(nx, ny) && ctx.forcefight) {
+        if (domove_fight_empty(nx, ny, map, display, game)) {
+            return { moved: false, tookTime: true };
+        }
+    }
     if (move_out_of_bounds(nx, ny, display, flags)) {
         return { moved: false, tookTime: false };
     }
@@ -447,7 +465,7 @@ export async function domove_core(dir, player, map, display, game) {
     // C ref: hack.c crawl_destination()/test_move:
     // diagonal movement into a doorway is blocked unless the target door is
     // effectively doorless (D_NODOOR or D_BROKEN).
-    if (loc && IS_DOOR(loc.typ) && Math.abs(dir[0]) + Math.abs(dir[1]) === 2) {
+    if (loc && IS_DOOR(loc.typ) && Math.abs(moveDir[0]) + Math.abs(moveDir[1]) === 2) {
         const doorFlags = loc.flags || 0;
         const doorlessDoor = (doorFlags & ~(D_NODOOR | D_BROKEN)) === 0;
         if (!doorlessDoor) {
@@ -459,7 +477,7 @@ export async function domove_core(dir, player, map, display, game) {
     }
     // C ref: hack.c test_move() out-of-door diagonal gate:
     // moving diagonally out of an intact doorway is also blocked.
-    if (Math.abs(dir[0]) + Math.abs(dir[1]) === 2) {
+    if (Math.abs(moveDir[0]) + Math.abs(moveDir[1]) === 2) {
         const fromLoc = map.at(oldX, oldY);
         if (fromLoc && IS_DOOR(fromLoc.typ)) {
             const fromDoorFlags = fromLoc.flags || 0;
@@ -471,10 +489,6 @@ export async function domove_core(dir, player, map, display, game) {
                 return { moved: false, tookTime: false };
             }
         }
-    }
-
-    if (domove_fight_empty(nx, ny, map, display, game)) {
-        return { moved: false, tookTime: true };
     }
 
     // C ref: hack.c:2741 escape_from_sticky_mon(x, y)
@@ -523,7 +537,7 @@ export async function domove_core(dir, player, map, display, game) {
         if (bump.handled) {
             return { moved: false, tookTime: !!bump.tookTime };
         }
-        const attackResult = await domove_attackmon_at(mon, nx, ny, dir, player, map, display, game);
+        const attackResult = await domove_attackmon_at(mon, nx, ny, moveDir, player, map, display, game);
         if (attackResult.handled) {
             return { moved: !!attackResult.moved, tookTime: !!attackResult.tookTime };
         }
@@ -538,13 +552,16 @@ export async function domove_core(dir, player, map, display, game) {
 
     const sokoban = !!(map?.flags?.is_sokoban || map?.flags?.in_sokoban || game?.flags?.sokoban);
     if (sobj_at(BOULDER, nx, ny, map) && (sokoban || !player?.passesWalls)) {
-        const moved = moverock(nx, ny, dir[0], dir[1], player, map, display, game);
+        const moved = moverock(nx, ny, moveDir[0], moveDir[1], player, map, display, game);
         if (moved < 0) {
             return { moved: false, tookTime: false };
         }
     }
 
     loc = map.at(nx, ny);
+    if (domove_fight_empty(nx, ny, map, display, game)) {
+        return { moved: false, tookTime: true };
+    }
 
     // Handle closed doors before test_move so C-like auto-open can occur.
     if (loc && IS_DOOR(loc.typ) && (loc.flags & D_CLOSED)) {
@@ -561,7 +578,7 @@ export async function domove_core(dir, player, map, display, game) {
         }
         return { moved: false, tookTime: false };
     }
-    if (!test_move(player.x, player.y, dir[0], dir[1], DO_MOVE, player, map, display, game)) {
+    if (!test_move(player.x, player.y, moveDir[0], moveDir[1], DO_MOVE, player, map, display, game)) {
         return { moved: false, tookTime: false };
     }
     if (swim_move_danger(nx, ny, player, map, display)) {
@@ -594,7 +611,7 @@ export async function domove_core(dir, player, map, display, game) {
     player.y = ny;
     player.moved = true;
     ctx.move = 1;
-    game.lastMoveDir = dir;
+    game.lastMoveDir = moveDir;
     maybe_smudge_engr(map, oldX, oldY, player.x, player.y);
 
     // Clear force-fight prefix after successful movement.
@@ -1703,19 +1720,36 @@ export function test_move(ux, uy, dx, dy, mode, player, map, display, game = nul
 
     // Boulder check
     if (sobj_at(BOULDER, x, y, map)) {
+        const inSokoban = !!(map?.flags?.is_sokoban || map?.flags?.in_sokoban || game?.flags?.sokoban);
         if (mode !== TEST_TRAV && mode !== DO_MOVE) return false;
-        // For travel, allow passing through boulders optimistically
+        if (mode !== TEST_TRAV
+            && runMode >= 2
+            && !player?.blind && !player?.hallucinating
+            && !could_move_onto_boulder(x, y, player, map)) {
+            if (mode === DO_MOVE && flags.mention_walls) {
+                if (display) display.putstr_message('A boulder blocks your path.');
+            }
+            return false;
+        }
+        if (mode === TEST_TRAV) {
+            if (inSokoban) return false;
+            if (sobj_at(BOULDER, ux, uy, map)
+                && !could_move_onto_boulder(ux, uy, player, map)) {
+                return false;
+            }
+        }
     }
 
     return true;
 }
 
 // C ref: hack.c carrying_too_much() — can hero move?
-export function carrying_too_much(player, display) {
+export function carrying_too_much(player, map, display) {
     const wtcap = near_capacity(player);
     if (wtcap >= OVERLOADED
         || (wtcap > SLT_ENCUMBER
             && (player.hp < 10 && player.hp !== player.hpmax))) {
+        if (map?.flags?.is_airlevel) return false;
         if (wtcap < OVERLOADED) {
             if (display) display.putstr_message("You don't have enough stamina to move.");
             exercise(player, A_CON, false);
@@ -1921,9 +1955,18 @@ export function end_running(and_travel, game) {
 export function runmode_delay_output(game, display) {
     if (!game) return;
     const ctx = ensure_context(game);
+    const runmode = game?.flags?.runmode || 'leap';
     if (ctx.run || game.multi) {
+        if (runmode === 'tport') return;
+        if (runmode === 'leap' && ((Number(game.moves) || 0) % 7 !== 0)) return;
         if (display?.renderMessageWindow) display.renderMessageWindow();
         nh_delay_output_nowait();
+        if (runmode === 'crawl') {
+            nh_delay_output_nowait();
+            nh_delay_output_nowait();
+            nh_delay_output_nowait();
+            nh_delay_output_nowait();
+        }
     }
 }
 
