@@ -1364,7 +1364,9 @@ const WT_WOUNDEDLEG_REDUCT = 100;
 
 // C ref: hack.c rounddiv() — round-aware integer division
 export function rounddiv(x, y) {
-    if (y === 0) return 0; // avoid panic in JS
+    if (y === 0) {
+        throw new Error('division by zero in rounddiv');
+    }
     let divsgn = 1;
     if (y < 0) { divsgn = -divsgn; y = -y; }
     if (x < 0) { divsgn = -divsgn; x = -x; }
