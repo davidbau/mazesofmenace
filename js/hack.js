@@ -95,7 +95,7 @@ function ensure_context(game) {
         else if (game.runMode === 1 || game.runMode === 3) ctx.run = 3;
         else ctx.run = 0;
     }
-    if (!Number.isInteger(ctx.travel)) ctx.travel = game.traveling ? 1 : 0;
+    if (!Number.isInteger(ctx.travel)) ctx.travel = 0;
     if (!Number.isInteger(ctx.travel1)) ctx.travel1 = 0;
     if (!Number.isInteger(ctx.nopick)) ctx.nopick = game.menuRequested ? 1 : 0;
     if (!Number.isInteger(ctx.forcefight)) ctx.forcefight = game.forceFight ? 1 : 0;
@@ -1235,21 +1235,18 @@ export async function handleTravel(game) {
     // Store travel destination
     game.travelX = cursorX;
     game.travelY = cursorY;
-    game.traveling = true;
     ctx.travel = 1;
     ctx.travel1 = 1;
 
     // C-style travel setup: first strict travel mode, then guess mode.
     if (!findtravelpath(TRAVP_TRAVEL, game) && !findtravelpath(TRAVP_GUESS, game)) {
         display.putstr_message('No path to that location.');
-        game.traveling = false;
         ctx.travel = 0;
         ctx.travel1 = 0;
         return { moved: false, tookTime: false };
     }
     if (!Array.isArray(game.travelPath) || game.travelPath.length === 0) {
         display.putstr_message('You are already there.');
-        game.traveling = false;
         ctx.travel = 0;
         ctx.travel1 = 0;
         return { moved: false, tookTime: false };
@@ -1270,7 +1267,6 @@ export async function executeTravelStep(game) {
         // Travel complete
         game.travelPath = null;
         game.travelStep = 0;
-        game.traveling = false;
         ctx.travel = 0;
         ctx.travel1 = 0;
         display.putstr_message('You arrive at your destination.');
@@ -1288,7 +1284,6 @@ export async function executeTravelStep(game) {
     if (!result.moved) {
         game.travelPath = null;
         game.travelStep = 0;
-        game.traveling = false;
         ctx.travel = 0;
         ctx.travel1 = 0;
         display.putstr_message('Travel interrupted.');
@@ -1686,8 +1681,8 @@ export function test_move(ux, uy, dx, dy, mode, player, map, display, game = nul
     }
 
     // C parity: trap/liquid travel gating is only active while running/travel.
-    const runMode = Number(game?.context?.run ?? game?.runMode ?? 0);
-    const travelMode = !!(game?.context?.travel ?? game?.traveling);
+    const runMode = Number(game?.context?.run ?? 0);
+    const travelMode = !!(game?.context?.travel);
     if ((mode === TEST_TRAV || mode === TEST_TRAP)
         && (runMode === 8 || travelMode)) {
         const trap = map.trapAt ? map.trapAt(x, y) : null;
@@ -1937,7 +1932,6 @@ export function end_running(and_travel, game) {
     if (and_travel) {
         game.travelPath = null;
         game.travelStep = 0;
-        game.traveling = false;
         ctx.travel = 0;
         ctx.travel1 = 0;
     }
