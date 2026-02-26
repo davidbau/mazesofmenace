@@ -41,6 +41,19 @@ Secondary outcomes:
 2. Lower manual churn for repetitive ports.
 3. Better long-term maintainability with explicit translation policies and boundary contracts.
 
+## Scope Baseline (Operational)
+
+From `docs/CODEMATCH.md` function-level rows (snapshot 2026-02-26):
+
+1. Total function rows tracked: `5000`.
+2. Missing rows (raw): `3863`.
+3. Missing rows excluding files marked `N/A`: `3242`.
+
+Execution implication:
+
+1. The campaign must explicitly scale translation throughput from validated pilots
+   to large batches; one-function-at-a-time porting cannot close this backlog.
+
 ## Non-Negotiable Constraints
 
 1. No comparator exceptions that hide real mismatches.
@@ -160,6 +173,44 @@ Exit conditions for B:
 2. Translator regression tests in place.
 3. Pilot files translated with no parity regression.
 
+### Translation Throughput Ramp (Authoritative)
+
+Stage 0: Scrutinized pilots
+
+1. Batch size: `1-12` functions.
+2. Scope: hand-audited exemplars (sync, async, boundary, macro-heavy, control-flow variants).
+3. Promotion gate:
+   1. translator regression tests green,
+   2. policy checks green (`translator:check-policy`, `translator:check-annotations`),
+   3. no parity regression in targeted session subset.
+
+Stage 1: Dozens
+
+1. Batch size: `12-60` functions per wave.
+2. Scope: one subsystem slice with shared rewrite policy.
+3. Promotion gate:
+   1. stable idempotence/static gates across repeated runs,
+   2. unresolved-token diagnostics trend downward,
+   3. parity baseline stable/improving on campaign dashboard.
+
+Stage 2: Hundreds
+
+1. Batch size: `60-400` functions per wave.
+2. Scope: multi-file subsystem families after canonical state ownership is stable.
+3. Promotion gate:
+   1. automated triage for blocked/partial emits,
+   2. issue workflow keeps follow-ups bounded and linked,
+   3. no unreviewed growth in bridge/compatibility debt.
+
+Stage 3: Thousands
+
+1. Batch size: campaign-scale closure waves (`400+` cumulative per wave window).
+2. Scope: full backlog burn-down with mixed auto/manual policy.
+3. Gate discipline:
+   1. all prior stage gates remain active,
+   2. high-risk files remain policy-constrained (`manual_only` or strict `mixed`),
+   3. release-critical parity suites remain authoritative for accept/reject.
+
 ## Workstream C: Parity Operations and Governance
 
 Objective:
@@ -243,6 +294,7 @@ Deliver:
 Gate:
 
 1. Idempotence and static checks pass.
+2. Stage-0 throughput ramp gate passes (scrutinized pilot set complete).
 
 ### Phase 3 Hard-Part Execution Order (Authoritative)
 
@@ -283,6 +335,7 @@ Deliver:
 Gate:
 
 1. No parity regression on targeted seeds; at least one divergence cluster improves.
+2. Stage-1 throughput ramp gate passes (dozens-scale subsystem wave).
 
 ## Phase 5: Generation/Startup Canonicalization + Translator Expansion
 
@@ -294,6 +347,7 @@ Deliver:
 Gate:
 
 1. Early-step divergence class improved.
+2. Stage-2 throughput ramp gate passes (hundreds-scale wave reliability).
 
 ## Phase 6: Boundary Hardening and Legacy Path Elimination
 
@@ -306,6 +360,7 @@ Deliver:
 Gate:
 
 1. Stable campaign-level parity metrics and clean policy checks.
+2. Stage-3 throughput operation is stable for remaining backlog closure.
 
 ## Artifacts and Evidence Required Per Batch
 

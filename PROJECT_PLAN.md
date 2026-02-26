@@ -146,6 +146,13 @@ Campaign objectives:
 4. Keep parity evidence first: session replay metrics remain the acceptance
    authority for gameplay fidelity.
 
+Campaign scope baseline (from `docs/CODEMATCH.md`, snapshot 2026-02-26):
+1. Function rows tracked: `5000`.
+2. Missing function rows (raw): `3863`.
+3. Missing function rows excluding `N/A` files: `3242`.
+4. Planning implication: this is a thousands-function campaign; strategy must
+   optimize for safe throughput scaling, not one-off manual edits.
+
 Campaign phase map (shared IDs):
 1. `M0` baseline + policy guardrails
 2. `M1` canonical state spine
@@ -165,6 +172,13 @@ Campaign governance:
 5. Canonical naming is C-first: translator and refactor work must prefer
    canonical `game.*` ownership with C-like symbols, and avoid cosmetic renames
    that weaken mechanical translation generalization.
+6. Translation throughput scales only by gated stages:
+   1. scrutinized pilot set (single-digit to low dozens),
+   2. batched expansion (dozens),
+   3. subsystem waves (hundreds),
+   4. campaign-scale closure (thousands).
+7. No stage promotion without passing quality gates from the prior stage
+   (translator regression, policy checks, and parity evidence stability).
 
 ### GitHub Issue Organization (IRON_PARITY)
 
