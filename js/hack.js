@@ -1134,7 +1134,7 @@ export function findPath(map, startX, startY, endX, endY) {
 // JS keeps the same role but uses existing BFS pathing in findPath().
 // Returns true when a path (or travel viability for TRAVP_VALID) exists.
 export function findtravelpath(mode, game) {
-    if (!game || !game.player || !game.map) return false;
+    if (!game || !(game.u || game.player) || !(game.lev || game.map)) return false;
     const ctx = ensure_context(game);
     const { player, map } = game;
     const tx = game.travelX;

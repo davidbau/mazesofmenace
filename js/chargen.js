@@ -86,7 +86,7 @@ export async function promptPlayerName(game) {
     // C ref: options.c — name can be set via OPTIONS=name:playername
     if (game.flags.name && game.flags.name.trim() !== '') {
         // Use saved name (skip prompt)
-        game.player.name = game.flags.name.trim().substring(0, MAX_NAME_LENGTH);
+        (game.u || game.player).name = game.flags.name.trim().substring(0, MAX_NAME_LENGTH);
         game._namePromptEcho = '';
         return;
     }
@@ -105,7 +105,7 @@ export async function promptPlayerName(game) {
         const trimmedName = name.trim().substring(0, MAX_NAME_LENGTH);
 
         // C NetHack accepts any non-empty name
-        game.player.name = trimmedName;
+        (game.u || game.player).name = trimmedName;
         game._namePromptEcho = `Who are you? ${trimmedName}`;
 
         // Save name to options for future games (like C NetHack config)
@@ -122,7 +122,7 @@ export async function showGameOver(game) {
     // Delete save file — game is over
     deleteSave();
 
-    const p = game.player;
+    const p = (game.u || game.player);
     const deathCause = p.deathCause || game.gameOverReason || 'died';
 
     // Calculate final score (simplified C formula from end.c)
@@ -233,21 +233,21 @@ export async function enterTutorial(game, opts = {}) {
 
     // C tutorial startup uses a dedicated branch and starts without
     // carried comestibles; tutorial places food explicitly in-map.
-    game.player.inventory = game.player.inventory.filter((obj) => obj.oclass !== FOOD_CLASS);
+    (game.u || game.player).inventory = (game.u || game.player).inventory.filter((obj) => obj.oclass !== FOOD_CLASS);
 
-    setMakemonPlayerContext(game.player);
+    setMakemonPlayerContext((game.u || game.player));
     game.map = makelevel(1, TUTORIAL, 1, { dungeonAlignOverride: A_NONE });
-    game.levels[1] = game.map;
-    game.player.dungeonLevel = 1;
-    game.player.inTutorial = true;
-    game.player.showExp = true;
-    if (game.map?.flags?.lit_corridor) game.flags.lit_corridor = true;
+    game.levels[1] = (game.lev || game.map);
+    (game.u || game.player).dungeonLevel = 1;
+    (game.u || game.player).inTutorial = true;
+    (game.u || game.player).showExp = true;
+    if ((game.lev || game.map)?.flags?.lit_corridor) game.flags.lit_corridor = true;
     game.placePlayerOnLevel('teleport');
 
-    game.fov.compute(game.map, game.player.x, game.player.y);
-    game.display.renderMap(game.map, game.player, game.fov, game.flags);
-    game.display.renderStatus(game.player);
-    game.maybeShowQuestLocateHint(game.player.dungeonLevel);
+    game.fov.compute((game.lev || game.map), (game.u || game.player).x, (game.u || game.player).y);
+    game.display.renderMap((game.lev || game.map), (game.u || game.player), game.fov, game.flags);
+    game.display.renderStatus((game.u || game.player));
+    game.maybeShowQuestLocateHint((game.u || game.player).dungeonLevel);
 }
 
 // Handle ?reset=1 — list saved data and prompt for deletion
@@ -308,8 +308,8 @@ export async function restoreFromSave(game, saveData, urlOpts) {
     // Restore game state: player + inventory + equip + context
     const restored = restGameState(gs);
     game.player = restored.player;
-    game.player.wizard = game.wizard;
-    setMakemonPlayerContext(game.player);
+    (game.u || game.player).wizard = game.wizard;
+    setMakemonPlayerContext((game.u || game.player));
     game.wizard = restored.wizard;
     game.turnCount = restored.turnCount;
     setObjectMoves(game.turnCount + 1);
@@ -330,7 +330,7 @@ export async function restoreFromSave(game, saveData, urlOpts) {
     }
 
     // Set current level
-    game.player.dungeonLevel = currentDepth;
+    (game.u || game.player).dungeonLevel = currentDepth;
     game.map = game.levels[currentDepth];
 
     // Restore messages
@@ -344,14 +344,14 @@ export async function restoreFromSave(game, saveData, urlOpts) {
     // Load flags (C ref: flags struct)
     game.flags = restored.flags || loadFlags();
     game._emitRuntimeBindings();
-    game.player.showExp = game.flags.showexp;
-    game.player.showScore = game.flags.showscore;
-    game.player.showTime = game.flags.time;
+    (game.u || game.player).showExp = game.flags.showexp;
+    (game.u || game.player).showScore = game.flags.showscore;
+    (game.u || game.player).showTime = game.flags.time;
 
     // Render
-    game.fov.compute(game.map, game.player.x, game.player.y);
-    game.display.renderMap(game.map, game.player, game.fov, game.flags);
-    game.display.renderStatus(game.player);
+    game.fov.compute((game.lev || game.map), (game.u || game.player).x, (game.u || game.player).y);
+    game.display.renderMap((game.lev || game.map), (game.u || game.player), game.fov, game.flags);
+    game.display.renderStatus((game.u || game.player));
     game.display.putstr_message('Game restored.');
 
     // Notify that gameplay is starting (restored game)
@@ -645,7 +645,7 @@ export async function showConfirmation(game, roleIdx, raceIdx, gender, align) {
     const raceName = races[raceIdx].adj;
     const genderStr = female ? 'female' : 'male';
     const alignStr = alignName(align);
-    const confirmText = `${game.player.name} the ${alignStr} ${genderStr} ${raceName} ${rName}`;
+    const confirmText = `${(game.u || game.player).name} the ${alignStr} ${genderStr} ${raceName} ${rName}`;
 
     const lines = [];
     lines.push('Is this ok? [ynq]');
@@ -737,7 +737,7 @@ export async function showLoreAndWelcome(game, roleIdx, raceIdx, gender, align) 
         genderStr = female ? 'female ' : 'male ';
     }
 
-    const welcomeMsg = `${greeting} ${game.player.name}, welcome to NetHack!  You are a ${alignStr} ${genderStr}${raceAdj} ${rName}.`;
+    const welcomeMsg = `${greeting} ${(game.u || game.player).name}, welcome to NetHack!  You are a ${alignStr} ${genderStr}${raceAdj} ${rName}.`;
     game.display.putstr_message(welcomeMsg);
 
     // Show --More-- after welcome
@@ -941,10 +941,10 @@ async function autoPickAll(game, showConfirm) {
     const va = validAlignsForRoleRace(roleIdx, raceIdx);
     let align = va[rn2(va.length)];
 
-    game.player.roleIndex = roleIdx;
-    game.player.race = raceIdx;
-    game.player.gender = gender;
-    game.player.alignment = align;
+    (game.u || game.player).roleIndex = roleIdx;
+    (game.u || game.player).race = raceIdx;
+    (game.u || game.player).gender = gender;
+    (game.u || game.player).alignment = align;
 
     if (showConfirm) {
         // Show confirmation screen
@@ -957,8 +957,8 @@ async function autoPickAll(game, showConfirm) {
     }
 
     // Apply the selection
-    game.player.initRole(roleIdx);
-    game.player.alignment = align;
+    (game.u || game.player).initRole(roleIdx);
+    (game.u || game.player).alignment = align;
 
     // Show lore and welcome
     await showLoreAndWelcome(game, roleIdx, raceIdx, gender, align);
@@ -1086,12 +1086,12 @@ async function manualSelection(game) {
             const confirmed = await showConfirmation(game, roleIdx, raceIdx, gender, align);
             if (confirmed) {
                 // Apply selection
-                game.player.roleIndex = roleIdx;
-                game.player.race = raceIdx;
-                game.player.gender = gender;
-                game.player.alignment = align;
-                game.player.initRole(roleIdx);
-                game.player.alignment = align;
+                (game.u || game.player).roleIndex = roleIdx;
+                (game.u || game.player).race = raceIdx;
+                (game.u || game.player).gender = gender;
+                (game.u || game.player).alignment = align;
+                (game.u || game.player).initRole(roleIdx);
+                (game.u || game.player).alignment = align;
                 // Show lore and welcome
                 await showLoreAndWelcome(game, roleIdx, raceIdx, gender, align);
                 return;

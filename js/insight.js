@@ -193,7 +193,7 @@ const MSLOW = 1;
 
 // cf. insight.c:3295 — mstatusline(mtmp): monster probe/stethoscope status
 export function mstatusline(mtmp, game) {
-    const player = game ? game.player : null;
+    const player = game ? (game.u || game.player) : null;
     const mptr = mtmp.data || mons[mtmp.mndx] || {};
     const alignment = mptr.maligntyp != null ? Math.sign(mptr.maligntyp) : A_NONE;
 
@@ -281,7 +281,7 @@ export function mstatusline(mtmp, game) {
 
 // cf. insight.c:3422 — ustatusline(void): hero probe/stethoscope status
 export function ustatusline(game) {
-    const player = game.player;
+    const player = (game.u || game.player);
     let info = '';
 
     // C: Sick
@@ -601,7 +601,7 @@ function fmt_elapsed_time(final, game) {
 
 // cf. insight.c:445 [static] — background_enlightenment(mode, final, game)
 function background_enlightenment(mode, final, game) {
-    const player = game.player;
+    const player = (game.u || game.player);
 
     enlght_out('');
     enlght_out('Background:');
@@ -655,7 +655,7 @@ function background_enlightenment(mode, final, game) {
 
 // cf. insight.c:705 [static] — basics_enlightenment(mode, final, game)
 function basics_enlightenment(mode, final, game) {
-    const player = game.player;
+    const player = (game.u || game.player);
 
     enlght_out('');
     enlght_out('Basics:');
@@ -743,7 +743,7 @@ function attrval(attrindx, attrvalue) {
 
 // cf. insight.c:823 [static] — one_characteristic(mode, final, attrindx, game)
 function one_characteristic(mode, final, attrindx, game) {
-    const player = game.player;
+    const player = (game.u || game.player);
     const attrs = player.attributes || player.attrs || [];
     const acurrent = attrs[attrindx] || 0;
     const name = attrname[attrindx] || 'unknown';
@@ -763,8 +763,8 @@ function one_characteristic(mode, final, attrindx, game) {
 
 // cf. insight.c:917 [static] — status_enlightenment(mode, final, game)
 function status_enlightenment(mode, final, game) {
-    const player = game.player;
-    const map = game.map;
+    const player = (game.u || game.player);
+    const map = (game.lev || game.map);
 
     enlght_out('');
     enlght_out(final ? 'Final Status:' : 'Status:');
@@ -877,7 +877,7 @@ function status_enlightenment(mode, final, game) {
 
 // cf. insight.c:1247 [static] — weapon_insight(final, game)
 function weapon_insight(final, game) {
-    const player = game.player;
+    const player = (game.u || game.player);
     const uwep = player.uwep || player.weapon;
 
     if (!uwep) {
@@ -918,7 +918,7 @@ export function doattributes() {
 // ============================================================================
 
 async function enlightenment(mode, final, game) {
-    const player = game.player;
+    const player = (game.u || game.player);
     _enl_lines = [];
 
     const pname = (player.name || 'Hero');
@@ -983,7 +983,7 @@ export async function doconduct(game) {
 
 // cf. insight.c:2094 — show_conduct(final, game): display conduct list
 export async function show_conduct(final, game) {
-    const player = game.player;
+    const player = (game.u || game.player);
     const conduct = player.uconduct || {};
     _enl_lines = [];
 
@@ -1188,7 +1188,7 @@ export function sokoban_in_play(player) {
 
 // cf. insight.c:2542 — do_gamelog(game): #chronicle command handler
 export async function do_gamelog(game) {
-    const player = game.player;
+    const player = (game.u || game.player);
     const gamelog = player.gamelog || game.gamelog;
 
     if (gamelog && gamelog.length > 0) {
@@ -1207,7 +1207,7 @@ export async function do_gamelog(game) {
 
 // cf. insight.c:2571 — show_gamelog(final, game): display chronicle
 export async function show_gamelog(final, game) {
-    const player = game.player;
+    const player = (game.u || game.player);
     const gamelog = player.gamelog || game.gamelog || [];
 
     const lines = [];
@@ -1284,7 +1284,7 @@ function UniqCritterIndx(mndx) {
 // cf. insight.c:2794 — list_vanquished(defquery, ask, game): list vanquished
 export async function list_vanquished(defquery, ask, game) {
     // mvitals tracks .died counts per monster index
-    const mvitals = game.mvitals || (game.player && game.player.mvitals) || [];
+    const mvitals = game.mvitals || ((game.u || game.player) && (game.u || game.player).mvitals) || [];
     const sortmode = (game.flags && game.flags.vanq_sortmode) || VANQ_MLVL_MNDX;
 
     // Collect monster indices with kills
@@ -1419,7 +1419,7 @@ function makeplural_simple(word) {
 
 // cf. insight.c:2973 — num_genocides(game): count genocided species
 export function num_genocides(game) {
-    const mvitals = game.mvitals || (game.player && game.player.mvitals) || [];
+    const mvitals = game.mvitals || ((game.u || game.player) && (game.u || game.player).mvitals) || [];
     let n = 0;
 
     for (let i = LOW_PM; i < NUMMONS; i++) {
@@ -1438,7 +1438,7 @@ export function num_genocides(game) {
 
 // cf. insight.c:2990 [static] — num_extinct(game): count extinct species
 function num_extinct(game) {
-    const mvitals = game.mvitals || (game.player && game.player.mvitals) || [];
+    const mvitals = game.mvitals || ((game.u || game.player) && (game.u || game.player).mvitals) || [];
     let n = 0;
 
     for (let i = LOW_PM; i < NUMMONS; i++) {
@@ -1458,7 +1458,7 @@ function num_extinct(game) {
 
 // cf. insight.c:3005 [static] — num_gone(mvflags_mask, game): collect gone species
 function num_gone(mvflags_mask, game) {
-    const mvitals = game.mvitals || (game.player && game.player.mvitals) || [];
+    const mvitals = game.mvitals || ((game.u || game.player) && (game.u || game.player).mvitals) || [];
     const mindx = [];
 
     for (let i = LOW_PM; i < NUMMONS; i++) {
@@ -1492,7 +1492,7 @@ export async function list_genocided(defquery, ask, game) {
         return;
     }
 
-    const mvitals = game.mvitals || (game.player && game.player.mvitals) || [];
+    const mvitals = game.mvitals || ((game.u || game.player) && (game.u || game.player).mvitals) || [];
     const sortmode = (game.flags && game.flags.vanq_sortmode) || VANQ_MLVL_MNDX;
 
     // Sort using the vanquished comparator
@@ -1547,7 +1547,7 @@ export async function dogenocided(game) {
 
 // cf. insight.c:3165 — doborn(game): wizard born species command
 export async function doborn(game) {
-    const mvitals = game.mvitals || (game.player && game.player.mvitals) || [];
+    const mvitals = game.mvitals || ((game.u || game.player) && (game.u || game.player).mvitals) || [];
 
     const lines = [];
     lines.push('died born');

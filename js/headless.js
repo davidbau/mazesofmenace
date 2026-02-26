@@ -288,9 +288,9 @@ async function headlessFromSeed(seed, roleIndex = 11, opts = {}) {
     });
     game.display.flags.DECgraphics = opts.DECgraphics !== false;
     Object.assign(game.flags, SELFPLAY_GAME_FLAGS, opts.flags || {});
-    game.player.showExp = !!game.flags.showexp;
-    game.player.showScore = !!game.flags.showscore;
-    game.player.showTime = !!game.flags.time;
+    (game.u || game.player).showExp = !!game.flags.showexp;
+    (game.u || game.player).showScore = !!game.flags.showscore;
+    (game.u || game.player).showTime = !!game.flags.time;
     return game;
 }
 
@@ -343,7 +343,7 @@ export async function generateMapsWithCoreReplay(seed, maxDepth, options = {}) {
             game.teleportToLevel(depth);
         }
         grids[depth] = game.getTypGrid();
-        maps[depth] = game.map;
+        maps[depth] = (game.lev || game.map);
         const compact = game.getRngLog().map(toCompactRng);
         const filtered = compact.filter((entry) => {
             const call = rngCallPart(entry);
@@ -421,8 +421,8 @@ export async function generateStartupWithCoreReplay(seed, session, options = {})
 
     return {
         game,
-        map: game.map,
-        player: game.player,
+        map: (game.lev || game.map),
+        player: (game.u || game.player),
         grid: game.getTypGrid(),
         rngCalls: startupRng.length,
         rng: startupRng,

@@ -691,7 +691,7 @@ export async function pick_lock(game, pick, rx, ry, container) {
 // Returns true if something happened.
 export function boxlock(game, obj, otmp) {
     const xlock = getXlock(game);
-    const player = game.player;
+    const player = (game.u || game.player);
     let res = false;
 
     switch (otmp.otyp) {

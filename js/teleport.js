@@ -571,8 +571,8 @@ function tele_jump_ok(x1, y1, x2, y2, map) {
 
 // cf. teleport.c:414 — teleok: is (x,y) a valid hero teleport destination?
 function teleok(x, y, trapok, game) {
-    const map = game.map;
-    const player = game.player;
+    const map = (game.lev || game.map);
+    const player = (game.u || game.player);
 
     if (!trapok) {
         const trap = map.trapAt(x, y);
@@ -596,8 +596,8 @@ function teleok(x, y, trapok, game) {
 // ============================================================================
 
 export function teleds(nx, ny, flags, game) {
-    const player = game.player;
-    const map = game.map;
+    const player = (game.u || game.player);
+    const map = (game.lev || game.map);
     const is_teleport = (flags & TELEDS_TELEPORT) !== 0;
 
     const ux0 = player.x;
@@ -626,8 +626,8 @@ export function teleds(nx, ny, flags, game) {
 // ============================================================================
 
 export function safe_teleds(flags, game) {
-    const map = game.map;
-    const player = game.player;
+    const map = (game.lev || game.map);
+    const player = (game.u || game.player);
 
     // cf. teleport.c:731 — try 40 random spots first (RNG must match C)
     for (let tcnt = 0; tcnt < 40; tcnt++) {
@@ -683,8 +683,8 @@ export function tele(game) {
 // ============================================================================
 
 export function scrolltele(scroll, game) {
-    const player = game.player;
-    const map = game.map;
+    const player = (game.u || game.player);
+    const map = (game.lev || game.map);
 
     // cf. teleport.c:849 — check no-teleport level
     if (noteleport_level(player, map)) {
@@ -711,8 +711,8 @@ export function scrolltele(scroll, game) {
 // ============================================================================
 
 export function dotele(break_the_rules, game) {
-    const player = game.player;
-    const map = game.map;
+    const player = (game.u || game.player);
+    const map = (game.lev || game.map);
 
     // cf. teleport.c:1036-1064 — check for teleport trap at current position
     let trap = map.trapAt(player.x, player.y);
@@ -751,7 +751,7 @@ export function dotele(break_the_rules, game) {
 // ============================================================================
 
 export function level_tele(game) {
-    const player = game.player;
+    const player = (game.u || game.player);
 
     // cf. teleport.c:1180 — Amulet/endgame prevention
     if (player.hasAmulet) {
@@ -782,7 +782,7 @@ export function domagicportal(trap, game) {
     pline("You activated a magic portal!");
 
     // cf. teleport.c:1464 — endgame without amulet
-    if (game && game.player && game.player.inEndgame && !game.player.hasAmulet) {
+    if (game && (game.u || game.player) && (game.u || game.player).inEndgame && !(game.u || game.player).hasAmulet) {
         pline("You feel dizzy for a moment, but nothing happens...");
         return;
     }
@@ -797,8 +797,8 @@ export function domagicportal(trap, game) {
 let in_tele_trap = false;
 
 export function tele_trap(trap, game) {
-    const player = game.player;
-    const map = game.map;
+    const player = (game.u || game.player);
+    const map = (game.lev || game.map);
 
     // cf. teleport.c:1493 — prevent recursive activation
     if (in_tele_trap) return;
@@ -847,8 +847,8 @@ export function tele_trap(trap, game) {
 // ============================================================================
 
 export function level_tele_trap(trap, trflags, game) {
-    const player = game.player;
-    const map = game.map;
+    const player = (game.u || game.player);
+    const map = (game.lev || game.map);
     const intentional = (trflags & 0x02) !== 0; // FORCETRAP or VIASITTING
 
     pline("You step onto a level teleport trap!");

@@ -478,7 +478,7 @@ export async function handleInventory(player, display, game) {
                 if ((actionKey === 'f' || actionKey === 't') && game?.map) {
                     return await promptDirectionAndThrowItem(
                         player,
-                        game.map,
+                        (game.lev || game.map),
                         display,
                         selected,
                         { fromFire: stackCanShoot }

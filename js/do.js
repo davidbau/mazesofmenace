@@ -1086,19 +1086,19 @@ export function getArrivalPosition(map, dungeonLevel, transitionDir = null) {
 
 // Handle hero landing on a monster at arrival.
 export function resolveArrivalCollision(game) {
-    const mtmp = game.map?.monsterAt?.(game.player.x, game.player.y);
-    if (!mtmp || mtmp === game.player?.usteed) return;
+    const mtmp = (game.lev || game.map)?.monsterAt?.((game.u || game.player).x, (game.u || game.player).y);
+    if (!mtmp || mtmp === (game.u || game.player)?.usteed) return;
 
     const moveMonsterNearby = () => {
-        const pos = enexto(game.player.x, game.player.y, game.map);
+        const pos = enexto((game.u || game.player).x, (game.u || game.player).y, (game.lev || game.map));
         if (pos) { mtmp.mx = pos.x; mtmp.my = pos.y; }
     };
 
     if (!rn2(2)) {
-        const cc = enexto(game.player.x, game.player.y, game.map);
-        if (cc && Math.abs(cc.x - game.player.x) <= 1 && Math.abs(cc.y - game.player.y) <= 1) {
-            game.player.x = cc.x;
-            game.player.y = cc.y;
+        const cc = enexto((game.u || game.player).x, (game.u || game.player).y, (game.lev || game.map));
+        if (cc && Math.abs(cc.x - (game.u || game.player).x) <= 1 && Math.abs(cc.y - (game.u || game.player).y) <= 1) {
+            (game.u || game.player).x = cc.x;
+            (game.u || game.player).y = cc.y;
         } else {
             moveMonsterNearby();
         }
@@ -1106,11 +1106,11 @@ export function resolveArrivalCollision(game) {
         moveMonsterNearby();
     }
 
-    const still = game.map?.monsterAt?.(game.player.x, game.player.y);
+    const still = (game.lev || game.map)?.monsterAt?.((game.u || game.player).x, (game.u || game.player).y);
     if (!still) return;
-    const fallback = enexto(game.player.x, game.player.y, game.map);
+    const fallback = enexto((game.u || game.player).x, (game.u || game.player).y, (game.lev || game.map));
     if (fallback) { still.mx = fallback.x; still.my = fallback.y; }
-    else { game.map.removeMonster(still); }
+    else { (game.lev || game.map).removeMonster(still); }
 }
 
 // --- goto_level core (C ref: do.c goto_level) ---
@@ -1124,20 +1124,20 @@ export function resolveArrivalCollision(game) {
 export function changeLevel(game, depth, transitionDir = null, opts = {}) {
     const currentDnum = Number.isInteger(game.dnum)
         ? game.dnum
-        : (Number.isInteger(game.map?._genDnum) ? game.map._genDnum : 0);
+        : (Number.isInteger((game.lev || game.map)?._genDnum) ? (game.lev || game.map)._genDnum : 0);
     const levelKey = (dnum, dlev) => `${dnum}:${dlev}`;
     if (!game.levelsByBranch) game.levelsByBranch = {};
 
-    const previousDepth = game.player?.dungeonLevel;
-    const fromX = game.player?.x;
-    const fromY = game.player?.y;
+    const previousDepth = (game.u || game.player)?.dungeonLevel;
+    const fromX = (game.u || game.player)?.x;
+    const fromY = (game.u || game.player)?.y;
 
     // Cache current level
-    if (game.map) {
-        game.levels[game.player.dungeonLevel] = game.map;
-        game.levelsByBranch[levelKey(currentDnum, game.player.dungeonLevel)] = game.map;
+    if ((game.lev || game.map)) {
+        game.levels[(game.u || game.player).dungeonLevel] = (game.lev || game.map);
+        game.levelsByBranch[levelKey(currentDnum, (game.u || game.player).dungeonLevel)] = (game.lev || game.map);
     }
-    const previousMap = game.levels[game.player.dungeonLevel];
+    const previousMap = game.levels[(game.u || game.player).dungeonLevel];
     const targetDnum = Number.isInteger(game.dnum) ? game.dnum : currentDnum;
     const branchCacheKey = levelKey(targetDnum, depth);
 
@@ -1152,21 +1152,21 @@ export function changeLevel(game, depth, transitionDir = null, opts = {}) {
         game.map = game.levels[depth];
     } else {
         game.map = opts.makeLevel ? opts.makeLevel(depth) : makelevel(depth);
-        game.levels[depth] = game.map;
-        game.levelsByBranch[branchCacheKey] = game.map;
+        game.levels[depth] = (game.lev || game.map);
+        game.levelsByBranch[branchCacheKey] = (game.lev || game.map);
     }
 
-    if (Number.isInteger(game.map?._genDnum)) {
-        game.dnum = game.map._genDnum;
+    if (Number.isInteger((game.lev || game.map)?._genDnum)) {
+        game.dnum = (game.lev || game.map)._genDnum;
     }
 
-    game.player.dungeonLevel = depth;
-    game.player.inTutorial = !!game.map?.flags?.is_tutorial;
+    (game.u || game.player).dungeonLevel = depth;
+    (game.u || game.player).inTutorial = !!(game.lev || game.map)?.flags?.is_tutorial;
 
     // C ref: dungeon.c u_on_rndspot() / stairs.c u_on_upstairs()
-    const pos = getArrivalPosition(game.map, depth, transitionDir);
-    game.player.x = pos.x;
-    game.player.y = pos.y;
+    const pos = getArrivalPosition((game.lev || game.map), depth, transitionDir);
+    (game.u || game.player).x = pos.x;
+    (game.u || game.player).y = pos.y;
 
     // C ref: cmd.c goto_level() clears hero track history on level change.
     if (Number.isInteger(previousDepth) && depth !== previousDepth) {
@@ -1175,39 +1175,39 @@ export function changeLevel(game, depth, transitionDir = null, opts = {}) {
 
     // C ref: do.c goto_level() -> losedogs() -> mon_arrive()
     // Migrate followers from old level; resolve hero-monster collision.
-    if (previousMap && previousMap !== game.map) {
-        mon_arrive(previousMap, game.map, game.player, {
+    if (previousMap && previousMap !== (game.lev || game.map)) {
+        mon_arrive(previousMap, (game.lev || game.map), (game.u || game.player), {
             sourceHeroX: fromX,
             sourceHeroY: fromY,
-            heroX: game.player.x,
-            heroY: game.player.y,
+            heroX: (game.u || game.player).x,
+            heroY: (game.u || game.player).y,
         });
         resolveArrivalCollision(game);
     }
 
     // C ref: do.c goto_level() — initial bubble/cloud move before vision refresh.
-    if (game.map?.flags?.is_waterlevel || game.map?.flags?.is_airlevel) {
-        if (game.map?._water && game.player) {
-            game.map._water.heroPos = {
-                x: game.player.x,
-                y: game.player.y,
-                dx: game.player.dx || 0,
-                dy: game.player.dy || 0,
+    if ((game.lev || game.map)?.flags?.is_waterlevel || (game.lev || game.map)?.flags?.is_airlevel) {
+        if ((game.lev || game.map)?._water && (game.u || game.player)) {
+            (game.lev || game.map)._water.heroPos = {
+                x: (game.u || game.player).x,
+                y: (game.u || game.player).y,
+                dx: (game.u || game.player).dx || 0,
+                dy: (game.u || game.player).dy || 0,
             };
-            game.map._water.onHeroMoved = (x, y) => {
-                game.player.x = x;
-                game.player.y = y;
+            (game.lev || game.map)._water.onHeroMoved = (x, y) => {
+                (game.u || game.player).x = x;
+                (game.u || game.player).y = y;
                 if (game.fov?.compute) {
-                    game.fov.compute(game.map, game.player.x, game.player.y);
+                    game.fov.compute((game.lev || game.map), (game.u || game.player).x, (game.u || game.player).y);
                 }
             };
-            game.map._water.onVisionRecalc = () => {
+            (game.lev || game.map)._water.onVisionRecalc = () => {
                 if (game.fov?.compute) {
-                    game.fov.compute(game.map, game.player.x, game.player.y);
+                    game.fov.compute((game.lev || game.map), (game.u || game.player).x, (game.u || game.player).y);
                 }
             };
         }
-        movebubbles(game.map);
+        movebubbles((game.lev || game.map));
     }
 
 }
