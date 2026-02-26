@@ -243,7 +243,7 @@ export function makemaz(map, protofile, dnum, dlevel, depth) {
     // C ref: Invocation_lev(&u.uz) in mkmaze.c.
     // In current branch topology, Sanctum is Gehennom level 10, so invocation
     // level is the level above it (9). Allow explicit override via makelevel opts.
-    const isInvocationLevel = !!map._isInvocationLevel;
+    const isInvocationLevel = !!(map.is_invocation_lev || map._isInvocationLevel);
 
     // C ref: mkmaze.c:1189-1191
     // Set maze flags
@@ -568,7 +568,8 @@ export function pick_vibrasquare_location(map) {
     } while (true);
 
     const pos = { x, y };
-    map._invPos = pos;
+    map.inv_pos = pos;
+    map._invPos = pos; // IRON_PARITY_ALIAS_BRIDGE (retire by M6)
     return pos;
 }
 

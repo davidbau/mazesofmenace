@@ -3129,7 +3129,7 @@ export function mkinvpos(map, x, y, dist, depth = 1) {
 // C ref: mklev.c mkinvokearea()
 export function mkinvokearea(map, invPos, depth = 1) {
     if (!map) return false;
-    const center = invPos || map._invPos || map.upstair;
+    const center = invPos || map.inv_pos || map._invPos || map.upstair;
     if (!center || !isok(center.x, center.y)) return false;
 
     let xmin = center.x, xmax = center.x;
@@ -4369,8 +4369,9 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
     map._heroHasAmulet = heroHasAmulet;
     map._genDnum = Number.isInteger(dnum) ? dnum : DUNGEONS_OF_DOOM;
     map._genDlevel = Number.isInteger(dlevel) ? dlevel : depth;
-    map._isInvocationLevel = !!opts.invocationLevel
+    map.is_invocation_lev = !!opts.invocationLevel
         || (dnum === GEHENNOM && dlevel === 9);
+    map._isInvocationLevel = map.is_invocation_lev; // IRON_PARITY_ALIAS_BRIDGE (retire by M6)
 
     // C ref: mklev.c:1274-1287 — maze vs rooms decision (else-if chain)
     // The rn2(5) is part of the final condition in the chain

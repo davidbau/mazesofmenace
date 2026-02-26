@@ -537,8 +537,10 @@ export function occupied(map, x, y) {
     if (!loc) return true;
     if (IS_FURNITURE(loc.typ)) return true;
     if (IS_LAVA(loc.typ) || IS_POOL(loc.typ)) return true;
-    if (map._isInvocationLevel && map._invPos
-        && x === map._invPos.x && y === map._invPos.y) {
+    const inv_pos = map.inv_pos || map._invPos;
+    const isInvocationLevel = !!(map.is_invocation_lev || map._isInvocationLevel);
+    if (isInvocationLevel && inv_pos
+        && x === inv_pos.x && y === inv_pos.y) {
         return true;
     }
     return false;
