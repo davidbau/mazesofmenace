@@ -456,6 +456,12 @@ def _find_unresolved_tokens(lines):
         bad.add("&u.")
     if re.search(r"\bu\.[A-Za-z_]\w*", joined):
         bad.add("u.")
+    if re.search(r"\blevl\s*\[", joined):
+        bad.add("levl[]")
+    if re.search(r"\bSokoban\b", joined):
+        bad.add("Sokoban")
+    if re.search(r"\bW_[A-Z0-9_]+\b", joined):
+        bad.add("W_*")
     if "->" in joined:
         bad.add("->")
     return bad

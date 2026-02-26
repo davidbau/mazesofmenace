@@ -97,3 +97,46 @@ test('clang-backed emit-helper translates invocation_pos body', (t) => {
         false,
     );
 });
+
+test('clang-backed emit-helper rejects unresolved C globals in may_passwall', (t) => {
+    if (!fs.existsSync(CONDA)) {
+        t.skip('conda not available for clang-backed translator run');
+        return;
+    }
+
+    const outFile = path.join(
+        fs.mkdtempSync(path.join(os.tmpdir(), 'translator-emit-helper-clang-')),
+        'may_passwall.json',
+    );
+
+    const r = spawnSync(
+        CONDA,
+        [
+            'run',
+            '--live-stream',
+            '-n',
+            'base',
+            'python',
+            'tools/c_translator/main.py',
+            '--src',
+            'nethack-c/src/hack.c',
+            '--func',
+            'may_passwall',
+            '--emit',
+            'emit-helper',
+            '--out',
+            outFile,
+        ],
+        { encoding: 'utf8' },
+    );
+    assert.equal(r.status, 0, r.stderr || r.stdout);
+
+    const payload = JSON.parse(fs.readFileSync(outFile, 'utf8'));
+    assert.equal(payload.function, 'may_passwall');
+    assert.equal(payload.meta.translated, false);
+    assert.match(payload.js, /UNIMPLEMENTED_TRANSLATED_FUNCTION/);
+    assert.equal(
+        (payload.diag || []).some((d) => d.code === 'UNRESOLVED_C_TOKENS'),
+        true,
+    );
+});
