@@ -26,6 +26,7 @@ import { monDisplayName, monNam } from './mondata.js';
 import { maybeSmudgeEngraving, u_wipe_engr } from './engrave.js';
 import { describeGroundObjectForPlayer, maybeHandleShopEntryMessage } from './shk.js';
 import { observeObject } from './discovery.js';
+import { placeFloorObject } from './floor_objects.js';
 import { DIRECTION_KEYS } from './dothrow.js';
 import { dosearch0 } from './detect.js';
 import { monsterNearby, monnear } from './monutil.js';
@@ -80,6 +81,31 @@ function debug_travel_tmp_at(path, startX, startY) {
     }
     nh_delay_output_nowait();
     tmp_at(DISP_END, 0);
+}
+
+function ensure_context(game) {
+    if (!game.context) game.context = {};
+    const ctx = game.context;
+    if (!Number.isInteger(ctx.run)) {
+        // Default from legacy run mode if present.
+        if (game.runMode === 2) ctx.run = 2; // rush
+        else if (game.runMode === 1) ctx.run = 3; // run
+        else ctx.run = 0;
+    }
+    if (!Number.isInteger(ctx.travel)) ctx.travel = 0;
+    if (!Number.isInteger(ctx.travel1)) ctx.travel1 = 0;
+    if (!Number.isInteger(ctx.nopick)) ctx.nopick = 0;
+    if (!Number.isInteger(ctx.forcefight)) ctx.forcefight = 0;
+    // Legacy field sync
+    if (game.traveling) {
+        ctx.travel = 1;
+        if (!ctx.travel1) ctx.travel1 = 1;
+    }
+    if (game.menuRequested) ctx.nopick = 1;
+    if (game.forceFight) ctx.forcefight = 1;
+    if (!Number.isInteger(ctx.door_opened)) ctx.door_opened = 0;
+    if (!Number.isInteger(ctx.move)) ctx.move = 0;
+    return ctx;
 }
 
 // C ref: hack.c uint_to_any()
@@ -215,10 +241,11 @@ export function notice_mons_cmp(a, b) {
 
 // C ref: hack.c domove_bump_mon()
 export function domove_bump_mon(mon, _glyph, _nopick, game, display) {
+    const ctx = ensure_context(game);
     if (!mon || mon.dead) return { handled: false, tookTime: false };
     const visibleEnough = (!mon.mundetected) || !!mon.tame || !!mon.peaceful;
     // C: m-prefix bump into known/visible monster consumes a turn and stops.
-    if (_nopick && !game?.traveling && visibleEnough) {
+    if (_nopick && !ctx.travel && visibleEnough) {
         if (mon.peaceful && !game?.flags?.hallucination) {
             display?.putstr_message(`Pardon me, ${monNam(mon)}.`);
         } else {
@@ -260,8 +287,9 @@ export function domove_swap_with_pet(mon, nx, ny, dir, player, map, display, gam
 
 // C ref: hack.c domove_attackmon_at()
 export async function domove_attackmon_at(mon, nx, ny, dir, player, map, display, game) {
+    const ctx = ensure_context(game);
     if (!mon) return { handled: false };
-    const shouldDisplace = (mon.tame || mon.peaceful) && !game.forceFight;
+    const shouldDisplace = (mon.tame || mon.peaceful) && !ctx.forcefight;
     if (shouldDisplace) {
         const blocked = (!rn2(7));
         if (blocked) {
@@ -272,24 +300,24 @@ export async function domove_attackmon_at(mon, nx, ny, dir, player, map, display
                 ? monNam(mon, { article: 'your', capitalize: true })
                 : monNam(mon, { capitalize: true });
             display.putstr_message(`You stop.  ${label} is in the way!`);
-            game.forceFight = false;
+            game.forceFight = false; ctx.forcefight = 0;
             return { handled: true, moved: false, tookTime: true };
         }
         if (mon.mfrozen || mon.mcanmove === false || mon.msleeping
             || ((mon.type?.speed ?? 0) === 0 && rn2(6))) {
             const label = monNam(mon, { capitalize: true });
             display.putstr_message(`${label} doesn't seem to move!`);
-            game.forceFight = false;
+            game.forceFight = false; ctx.forcefight = 0;
             return { handled: true, moved: false, tookTime: true };
         }
         domove_swap_with_pet(mon, nx, ny, dir, player, map, display, game);
-        game.forceFight = false;
+        game.forceFight = false; ctx.forcefight = 0;
         return { handled: true, moved: true, tookTime: true };
     }
 
-    if (mon.tame && game.flags?.safe_pet && !game.forceFight) {
+    if (mon.tame && game.flags?.safe_pet && !ctx.forcefight) {
         display.putstr_message("You cannot attack your pet!");
-        game.forceFight = false;
+        game.forceFight = false; ctx.forcefight = 0;
         return { handled: true, moved: false, tookTime: false };
     }
     if (mon.peaceful && !mon.tame && game.flags?.confirm) {
@@ -301,11 +329,11 @@ export async function domove_attackmon_at(mon, nx, ny, dir, player, map, display
         );
         if (answer !== 'y'.charCodeAt(0)) {
             display.putstr_message('Cancelled.');
-            game.forceFight = false;
+            game.forceFight = false; ctx.forcefight = 0;
             return { handled: true, moved: false, tookTime: false };
         }
     }
-    game.forceFight = false;
+    game.forceFight = false; ctx.forcefight = 0;
     rn2(20);
     exercise(player, A_STR, true);
     u_wipe_engr(player, map, 3);
@@ -317,28 +345,31 @@ export async function domove_attackmon_at(mon, nx, ny, dir, player, map, display
 
 // C ref: hack.c domove_fight_ironbars()
 export function domove_fight_ironbars(x, y, map, display, game, player) {
+    const ctx = ensure_context(game);
     const loc = map?.at ? map.at(x, y) : null;
     const hasWeapon = !!(player?.weapon || player?.uwielded || player?.uwep);
-    if (!game?.forceFight || !loc || loc.typ !== IRONBARS || !hasWeapon) return false;
+    if (!ctx.forcefight || !loc || loc.typ !== IRONBARS || !hasWeapon) return false;
     if (display) display.putstr_message('You attack the iron bars.');
-    game.forceFight = false;
+    game.forceFight = false; ctx.forcefight = 0;
     return true; // action handled, consumes a turn
 }
 
 // C ref: hack.c domove_fight_web()
 export function domove_fight_web(x, y, map, display, game) {
+    const ctx = ensure_context(game);
     const trap = map?.trapAt ? map.trapAt(x, y) : null;
-    if (!game?.forceFight || !trap || trap.ttyp !== WEB || !trap.tseen) return false;
+    if (!ctx.forcefight || !trap || trap.ttyp !== WEB || !trap.tseen) return false;
     if (display) display.putstr_message('You cut through the web.');
     const idx = map.traps.indexOf(trap);
     if (idx >= 0) map.traps.splice(idx, 1);
-    game.forceFight = false;
+    game.forceFight = false; ctx.forcefight = 0;
     return true; // action handled, consumes a turn
 }
 
 // C ref: hack.c domove_fight_empty()
 export function domove_fight_empty(x, y, map, display, game) {
-    if (!game?.forceFight || map?.monsterAt?.(x, y)) return false;
+    const ctx = ensure_context(game);
+    if (!ctx.forcefight || map?.monsterAt?.(x, y)) return false;
     const loc = map?.at ? map.at(x, y) : null;
     let target = '';
     if (loc) {
@@ -355,13 +386,14 @@ export function domove_fight_empty(x, y, map, display, game) {
         }
     }
     display?.putstr_message(target ? `You harmlessly attack ${target}.` : 'You attack thin air.');
-    game.forceFight = false;
+    game.forceFight = false; ctx.forcefight = 0;
     return true;
 }
 
 // Handle directional movement
 // C ref: hack.c domove_core() worker
 export async function domove_core(dir, player, map, display, game) {
+    const ctx = ensure_context(game);
     const flags = game.flags || {};
     const oldX = player.x;
     const oldY = player.y;
@@ -374,8 +406,22 @@ export async function domove_core(dir, player, map, display, game) {
     player.dy = dir[1];
     // C ref: cmd.c move-prefix handling is consumed by the attempted move
     // path, even when that move is blocked.
-    const nopick = game.menuRequested;
+    const nopick = !!ctx.nopick;
     game.menuRequested = false;
+    ctx.nopick = 0;
+    ctx.door_opened = 0;
+    ctx.move = 0;
+
+    if (carrying_too_much(player, display)) {
+        return { moved: false, tookTime: false };
+    }
+    if (air_turbulence(player, map, display)) {
+        return { moved: false, tookTime: false };
+    }
+    slippery_ice_fumbling(player, map);
+    if (impaired_movement(player, map)) {
+        return { moved: false, tookTime: false };
+    }
 
     const tDest = { x: nx, y: ny };
     if (water_turbulence(player, map, display, tDest)) {
@@ -383,6 +429,13 @@ export async function domove_core(dir, player, map, display, game) {
     }
     nx = tDest.x;
     ny = tDest.y;
+
+    if (move_out_of_bounds(nx, ny, display, flags)) {
+        return { moved: false, tookTime: false };
+    }
+    if (avoid_running_into_trap_or_liquid(nx, ny, player, map, display, ctx.run)) {
+        return { moved: false, tookTime: false };
+    }
 
     if (!isok(nx, ny)) {
         display.putstr_message("You can't move there.");
@@ -511,6 +564,9 @@ export async function domove_core(dir, player, map, display, game) {
     if (!test_move(player.x, player.y, dir[0], dir[1], DO_MOVE, player, map, display, game)) {
         return { moved: false, tookTime: false };
     }
+    if (swim_move_danger(nx, ny, player, map, display)) {
+        return { moved: false, tookTime: false };
+    }
     if (u_rooted(player, display)) {
         return { moved: false, tookTime: false };
     }
@@ -537,6 +593,7 @@ export async function domove_core(dir, player, map, display, game) {
     player.x = nx;
     player.y = ny;
     player.moved = true;
+    ctx.move = 1;
     game.lastMoveDir = dir;
     maybe_smudge_engr(map, oldX, oldY, player.x, player.y);
 
@@ -731,6 +788,8 @@ export async function domove_core(dir, player, map, display, game) {
         display.putstr_message('There is a fountain here.');
     }
 
+    runmode_delay_output(game, display);
+
     return { moved: true, tookTime: true };
 }
 
@@ -752,6 +811,7 @@ export async function handleMovement(dir, player, map, display, game) {
 // Handle running in a direction
 // C ref: cmd.c do_run() -> hack.c domove() with context.run
 export async function handleRun(dir, player, map, display, fov, game, runStyle = 'run') {
+    const ctx = ensure_context(game);
     let runDir = dir;
     let steps = 0;
     let timedTurns = 0;
@@ -763,6 +823,8 @@ export async function handleRun(dir, player, map, display, fov, game, runStyle =
         `style=${runStyle}`,
         `hook=${hasRunTurnHook ? 1 : 0}`,
     );
+    ctx.run = (runStyle === 'rush') ? 2 : 3;
+    game.running = true;
     while (steps < 80) { // safety limit
         const beforeX = player.x;
         const beforeY = player.y;
@@ -811,6 +873,8 @@ export async function handleRun(dir, player, map, display, fov, game, runStyle =
         display.renderStatus(player);
 
     }
+    ctx.run = 0;
+    game.running = false;
     return {
         moved: steps > 0,
         tookTime: hasRunTurnHook ? false : timedTurns > 0,
@@ -842,8 +906,9 @@ function pickRunContinuationDir(map, player, dir) {
 // Check if running should stop
 // C ref: hack.c lookaround() -- checks for interesting things while running
 export function lookaround(map, player, fov, dir, runStyle = 'run', display = null, game = null) {
-    const runMode = Number(game?.context?.run ?? ((runStyle === 'rush') ? 2 : 3));
-    const travel = !!game?.traveling;
+    const ctx = game ? ensure_context(game) : { run: (runStyle === 'rush') ? 2 : 3, travel: 0 };
+    const runMode = Number(ctx.run ?? ((runStyle === 'rush') ? 2 : 3));
+    const travel = !!ctx.travel;
     const ux = player.x;
     const uy = player.y;
     const [dx, dy] = dir;
@@ -1023,16 +1088,23 @@ export function findPath(map, startX, startY, endX, endY) {
 // Returns true when a path (or travel viability for TRAVP_VALID) exists.
 export function findtravelpath(mode, game) {
     if (!game || !game.player || !game.map) return false;
+    const ctx = ensure_context(game);
     const { player, map } = game;
     const tx = game.travelX;
     const ty = game.travelY;
-    if (!Number.isInteger(tx) || !Number.isInteger(ty)) return false;
-    if (!isok(tx, ty)) return false;
+    if (!Number.isInteger(tx) || !Number.isInteger(ty) || !isok(tx, ty)) return false;
 
-    // Adjacent target path viability follows test_move rules.
+    const noDiag = !!player?.noDiag;
+    const dirs = noDiag
+        ? [[0, -1], [0, 1], [-1, 0], [1, 0]]
+        : [[0, -1], [0, 1], [-1, 0], [1, 0], [-1, -1], [1, -1], [-1, 1], [1, 1]];
+
+    // Adjacent target uses normal move legality with restricted diagonal handling.
     if ((mode === TRAVP_TRAVEL || mode === TRAVP_VALID)
-        && Math.max(Math.abs(tx - player.x), Math.abs(ty - player.y)) === 1) {
-        const ok = test_move(player.x, player.y, tx - player.x, ty - player.y, TEST_TRAV, player, map, null);
+        && ctx.travel1
+        && Math.max(Math.abs(tx - player.x), Math.abs(ty - player.y)) === 1
+        && crawl_destination(tx, ty, player, map)) {
+        const ok = test_move(player.x, player.y, tx - player.x, ty - player.y, TEST_MOVE, player, map, null, game);
         if (ok && mode === TRAVP_TRAVEL) {
             game.travelPath = [[tx - player.x, ty - player.y]];
             game.travelStep = 0;
@@ -1040,17 +1112,95 @@ export function findtravelpath(mode, game) {
         return ok;
     }
 
-    const path = findPath(map, player.x, player.y, tx, ty);
-    if (!path) {
-        if (mode === TRAVP_GUESS) {
-            // Guess mode in C tries "as close as possible"; JS currently keeps
-            // exact-target behavior and reports failure if no exact path exists.
-            return false;
+    function reverseWave(goalX, goalY) {
+        const dist = new Map();
+        const q = [[goalX, goalY]];
+        dist.set(`${goalX},${goalY}`, 1);
+        while (q.length) {
+            const [x, y] = q.shift();
+            const r = dist.get(`${x},${y}`) || 1;
+            for (const [dx, dy] of dirs) {
+                const nx = x + dx;
+                const ny = y + dy;
+                if (!isok(nx, ny)) continue;
+                const key = `${nx},${ny}`;
+                if (dist.has(key)) continue;
+                if (!test_move(x, y, nx - x, ny - y, TEST_TRAV, player, map, null, game)) continue;
+                const seen = !!(map.at(nx, ny)?.seenv);
+                if (!seen) continue;
+                dist.set(key, r + 1);
+                q.push([nx, ny]);
+            }
         }
-        return false;
+        return dist;
     }
+
+    const travel = reverseWave(tx, ty);
+    const heroKey = `${player.x},${player.y}`;
+    const ctrav = travel.get(heroKey) || 0;
+    if (ctrav > 0) {
+        // choose first step by selecting adjacent cell with smallest distance.
+        let best = null;
+        let bestR = Number.POSITIVE_INFINITY;
+        for (const [dx, dy] of dirs) {
+            const nx = player.x + dx;
+            const ny = player.y + dy;
+            if (!isok(nx, ny)) continue;
+            const r = travel.get(`${nx},${ny}`) || 0;
+            if (!r) continue;
+            if (!test_move(player.x, player.y, dx, dy, TEST_MOVE, player, map, null, game)) continue;
+            if (r < bestR) {
+                bestR = r;
+                best = [dx, dy];
+            }
+        }
+        if (best) {
+            if (mode === TRAVP_VALID) return true;
+            game.travelPath = [best];
+            game.travelStep = 0;
+            return true;
+        }
+    }
+
+    if (mode !== TRAVP_GUESS) return false;
+
+    // Guess mode: find visible point near target that is reachable.
+    let bestGoal = null;
+    let bestDist = Number.POSITIVE_INFINITY;
+    for (let x = 1; x < COLNO; x++) {
+        for (let y = 0; y < ROWNO; y++) {
+            const seen = !!(map.at(x, y)?.seenv);
+            if (!seen) continue;
+            const d0 = Math.abs(tx - x) + Math.abs(ty - y);
+            if (d0 > bestDist) continue;
+            const tw = reverseWave(x, y);
+            if (!tw.get(heroKey)) continue;
+            if (d0 < bestDist) {
+                bestDist = d0;
+                bestGoal = [x, y];
+            }
+        }
+    }
+    if (!bestGoal) return false;
+
+    const fallback = reverseWave(bestGoal[0], bestGoal[1]);
+    let best = null;
+    let bestR = Number.POSITIVE_INFINITY;
+    for (const [dx, dy] of dirs) {
+        const nx = player.x + dx;
+        const ny = player.y + dy;
+        if (!isok(nx, ny)) continue;
+        const r = fallback.get(`${nx},${ny}`) || 0;
+        if (!r) continue;
+        if (!test_move(player.x, player.y, dx, dy, TEST_MOVE, player, map, null, game)) continue;
+        if (r < bestR) {
+            bestR = r;
+            best = [dx, dy];
+        }
+    }
+    if (!best) return false;
     if (mode === TRAVP_VALID) return true;
-    game.travelPath = path;
+    game.travelPath = [best];
     game.travelStep = 0;
     return true;
 }
@@ -1059,6 +1209,7 @@ export function findtravelpath(mode, game) {
 // C ref: cmd.c dotravel()
 export async function handleTravel(game) {
     const { player, map, display } = game;
+    const ctx = ensure_context(game);
 
     display.putstr_message('Where do you want to travel to?');
     set_getpos_context({ map, display, flags: game.flags, goalPrompt: 'travel to', player });
@@ -1075,16 +1226,22 @@ export async function handleTravel(game) {
     game.travelX = cursorX;
     game.travelY = cursorY;
     game.traveling = true;
+    ctx.travel = 1;
+    ctx.travel1 = 1;
 
     // C-style travel setup: first strict travel mode, then guess mode.
     if (!findtravelpath(TRAVP_TRAVEL, game) && !findtravelpath(TRAVP_GUESS, game)) {
         display.putstr_message('No path to that location.');
         game.traveling = false;
+        ctx.travel = 0;
+        ctx.travel1 = 0;
         return { moved: false, tookTime: false };
     }
     if (!Array.isArray(game.travelPath) || game.travelPath.length === 0) {
         display.putstr_message('You are already there.');
         game.traveling = false;
+        ctx.travel = 0;
+        ctx.travel1 = 0;
         return { moved: false, tookTime: false };
     }
     display.putstr_message(`Traveling... (${game.travelPath.length} steps)`);
@@ -1097,18 +1254,22 @@ export async function handleTravel(game) {
 // C ref: hack.c domove() with context.travel flag
 export async function executeTravelStep(game) {
     const { player, map, display } = game;
+    const ctx = ensure_context(game);
 
     if (!game.travelPath || game.travelStep >= game.travelPath.length) {
         // Travel complete
         game.travelPath = null;
         game.travelStep = 0;
         game.traveling = false;
+        ctx.travel = 0;
+        ctx.travel1 = 0;
         display.putstr_message('You arrive at your destination.');
         return { moved: false, tookTime: false };
     }
 
     const [dx, dy] = game.travelPath[game.travelStep];
     game.travelStep++;
+    ctx.travel1 = 0;
 
     // Execute movement
     const result = await domove([dx, dy], player, map, display, game);
@@ -1118,6 +1279,8 @@ export async function executeTravelStep(game) {
         game.travelPath = null;
         game.travelStep = 0;
         game.traveling = false;
+        ctx.travel = 0;
+        ctx.travel1 = 0;
         display.putstr_message('Travel interrupted.');
     }
 
@@ -1741,11 +1904,15 @@ export function avoid_trap_andor_region(x, y, player, map, display, flags) {
 // C ref: hack.c end_running() — stop running/traveling
 export function end_running(and_travel, game) {
     if (!game) return;
+    const ctx = ensure_context(game);
     game.running = false;
+    ctx.run = 0;
     if (and_travel) {
         game.travelPath = null;
         game.travelStep = 0;
         game.traveling = false;
+        ctx.travel = 0;
+        ctx.travel1 = 0;
     }
     if (game.multi > 0) game.multi = 0;
 }
@@ -1753,7 +1920,8 @@ export function end_running(and_travel, game) {
 // C ref: hack.c runmode_delay_output()
 export function runmode_delay_output(game, display) {
     if (!game) return;
-    if (game.running || game.multi) {
+    const ctx = ensure_context(game);
+    if (ctx.run || game.multi) {
         if (display?.renderMessageWindow) display.renderMessageWindow();
         nh_delay_output_nowait();
     }
@@ -2411,7 +2579,7 @@ export function movobj(obj, ox, oy, map) {
     if (map && map.removeObject) map.removeObject(obj);
     obj.ox = ox;
     obj.oy = oy;
-    if (map && map.placeObject) map.placeObject(obj, ox, oy);
+    if (map) placeFloorObject(map, obj);
 }
 
 // C ref: hack.c dosinkfall() — fall into a sink while levitating
