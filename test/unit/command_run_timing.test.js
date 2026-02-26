@@ -119,7 +119,7 @@ describe('run timing on blocked steps', () => {
         assert.equal(runTurns, 1);
     });
 
-    it('run auto-turns through a single corridor corner', async () => {
+    it('newline rush stops at a corridor corner (does not auto-turn)', async () => {
         const game = makeCornerRunGame();
         let runTurns = 0;
         game.advanceRunTurn = async () => { runTurns++; };
@@ -128,8 +128,8 @@ describe('run timing on blocked steps', () => {
 
         assert.equal(result.tookTime, false);
         assert.equal(result.moved, true);
-        assert.equal(runTurns, 2);
-        assert.equal(game.player.x, 9);
+        assert.equal(runTurns, 1);
+        assert.equal(game.player.x, 10);
         assert.equal(game.player.y, 11);
     });
 });

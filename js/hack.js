@@ -629,9 +629,11 @@ export async function handleRun(dir, player, map, display, fov, game, runStyle =
         if (!result.moved) break;
         steps++;
 
-        // Stop if we see a monster, item, or interesting feature
+        // C ref: hack.c lookaround() — scan nearby squares to decide
+        // run/rush continuation and corner following.
         fov.compute(map, player.x, player.y);
-        const stopReason = checkRunStop(map, player, fov, runDir, runStyle);
+        const look = checkRunStop(map, player, fov, runDir, runStyle, display, game);
+        const stopReason = look?.stopReason || null;
         const shouldStop = !!stopReason;
         if (shouldStop) {
             runTrace(
@@ -642,20 +644,9 @@ export async function handleRun(dir, player, map, display, fov, game, runStyle =
             );
         }
         if (shouldStop) break;
-
-        // C ref: hack.c lookaround() corner-following while running.
-        // In corridors, auto-turn when there is exactly one forward continuation
-        // aside from the tile we just came from.
-        const nextDir = pickRunContinuationDir(map, player, runDir);
-        if (nextDir[0] !== runDir[0] || nextDir[1] !== runDir[1]) {
-            runTrace(
-                `step=${replayStepLabel(map)}`,
-                `iter=${steps}`,
-                `turn=(${runDir[0]},${runDir[1]})->(${nextDir[0]},${nextDir[1]})`,
-                `at=(${player.x},${player.y})`,
-            );
+        if (Array.isArray(look?.nextDir)) {
+            runDir = look.nextDir;
         }
-        runDir = nextDir;
 
         // Update display during run
         display.renderMap(map, player, fov);
@@ -692,85 +683,131 @@ function pickRunContinuationDir(map, player, dir) {
 
 // Check if running should stop
 // C ref: hack.c lookaround() -- checks for interesting things while running
-function checkRunStop(map, player, fov, dir, runStyle = 'run') {
-    const inFrontX = player.x + dir[0];
-    const inFrontY = player.y + dir[1];
-    // C lookaround() stops when a visible monster blocks the current heading,
-    // even for otherwise safe monsters; nearby unsafe monsters also stop run.
-    for (const mon of map.monsters) {
-        if (mon.dead) continue;
-        if (!fov.canSee(mon.mx, mon.my)) continue;
-        if (mon.mx === inFrontX && mon.my === inFrontY) return 'monster-in-front';
-        if (mon.tame || mon.peaceful || mon.mpeaceful) continue;
-        const dx = Math.abs(mon.mx - player.x);
-        const dy = Math.abs(mon.my - player.y);
-        if (dx <= 1 && dy <= 1) return 'hostile-nearby';
-    }
+function checkRunStop(map, player, fov, dir, runStyle = 'run', display = null, game = null) {
+    const runMode = (runStyle === 'rush') ? 2 : 3;
+    const travel = !!game?.traveling;
+    const ux = player.x;
+    const uy = player.y;
+    const [dx, dy] = dir;
+    const flags = map?.flags || {};
+    let corrct = 0;
+    let noturn = 0;
+    let x0 = 0;
+    let y0 = 0;
+    let m0 = 1;
+    let i0 = 9;
 
-    // Check for objects at current position
-    const objs = map.objectsAt(player.x, player.y);
-    if (objs.length > 0) return 'objects-on-square';
+    for (let x = ux - 1; x <= ux + 1; x++) {
+        for (let y = uy - 1; y <= uy + 1; y++) {
+            const infront = (x === ux + dx && y === uy + dy);
+            if (!isok(x, y) || (x === ux && y === uy)) continue;
 
-    // C ref: hack.c lookaround() run=3 ("rush") nearby-interesting scan.
-    if (runStyle === 'rush') {
-        for (let dx = -1; dx <= 1; dx++) {
-            for (let dy = -1; dy <= 1; dy++) {
-                if (dx === 0 && dy === 0) continue;
-                const x = player.x + dx;
-                const y = player.y + dy;
-                if (!isok(x, y)) continue;
-                const inFront = (x === inFrontX && y === inFrontY);
-                // C: ignore the exact square we're moving away from.
-                if (x === player.x - dir[0] && y === player.y - dir[1]) continue;
-                const mon = map.monsterAt(x, y);
-                if (mon && !mon.dead && fov.canSee(mon.mx, mon.my)) {
-                    const hostile = !(mon.tame || mon.peaceful || mon.mpeaceful);
-                    if (hostile || inFront) return 'rush-mon-scan';
+            const mon = map.monsterAt(x, y);
+            if (mon && !mon.dead
+                && mon.m_ap_type !== 'furniture'
+                && mon.m_ap_type !== 'object'
+                && fov.canSee(mon.mx, mon.my)) {
+                const isSafeMon = !!(mon.tame || mon.peaceful || mon.mpeaceful);
+                if ((runMode !== 1 && !isSafeMon) || (infront && !travel)) {
+                    return { stopReason: infront ? 'monster-in-front' : 'hostile-nearby' };
                 }
-                const loc = map.at(x, y);
-                if (!loc) continue;
-                if (loc.typ === STONE) continue;
-                const isClosedDoor = IS_DOOR(loc.typ) && (loc.flags & (D_CLOSED | D_LOCKED));
-                if (isClosedDoor) {
-                    // C ignores diagonal doors for this stop path.
-                    if (x !== player.x && y !== player.y) continue;
-                    return 'rush-door-near';
+            }
+
+            const loc = map.at(x, y);
+            if (!loc || loc.typ === STONE) continue;
+            if (x === ux - dx && y === uy - dy) continue;
+
+            const isClosedDoor = closed_door(x, y, map);
+            const doorMappear = !!(mon && mon.appear_as_type && IS_DOOR(mon.appear_as_type));
+            let bcorr = false;
+
+            if (avoid_moving_on_trap(x, y, (infront && runMode > 1), map, display, flags)) {
+                if (runMode === 1) {
+                    bcorr = true;
+                } else if (infront) {
+                    return { stopReason: 'trap-ahead' };
                 }
-                if (loc.typ === CORR || loc.typ === SCORR) continue;
-                if (IS_OBSTRUCTED(loc.typ) || loc.typ === ROOM || loc.typ === ICE) continue;
-                if ((loc.typ === POOL || loc.typ === LAVAPOOL) && inFront) return 'rush-liquid-ahead';
-                if (map.trapAt(x, y) && inFront) return 'rush-trap-ahead';
-                // C's final "interesting square" branch keeps some behind-edge
-                // exclusions to avoid stopping on irrelevant side squares.
-                if (mon && !mon.dead) continue;
-                if ((x === player.x - dir[0] && y !== player.y + dir[1])
-                    || (y === player.y - dir[1] && x !== player.x + dir[0])) {
+            }
+
+            if (bcorr) {
+                // goto bcorr
+            } else
+            if (IS_OBSTRUCTED(loc.typ) || loc.typ === ROOM || loc.typ === AIR || loc.typ === ICE) {
+                continue;
+            } else if (isClosedDoor || doorMappear) {
+                if (x !== ux && y !== uy) continue;
+                if (runMode !== 1 && !travel) {
+                    return { stopReason: 'door-ahead' };
+                }
+                bcorr = true;
+            } else if (loc.typ === CORR) {
+                bcorr = true;
+            } else if (is_pool_or_lava(x, y, map)) {
+                if (infront && avoid_moving_on_liquid(x, y, true, player, map, display, flags)) {
+                    return { stopReason: 'liquid-ahead' };
+                }
+                continue;
+            } else {
+                if (runMode === 1) {
+                    bcorr = true;
+                } else if (runMode === 8) {
                     continue;
+                } else if (mon && !mon.dead) {
+                    continue;
+                } else if (((x === ux - dx) && (y !== uy + dy))
+                    || ((y === uy - dy) && (x !== ux + dx))) {
+                    continue;
+                } else {
+                    return { stopReason: 'interesting-near' };
                 }
-                return 'rush-interesting-near';
+            }
+
+            if (bcorr) {
+                const uLoc = map.at(ux, uy);
+                if (uLoc && uLoc.typ !== ROOM) {
+                    if (runMode === 1 || runMode === 3 || runMode === 8) {
+                        const i = dist2(x, y, ux + dx, uy + dy);
+                        if (i > 2) continue;
+                        if (corrct === 1 && dist2(x, y, x0, y0) !== 1) noturn = 1;
+                        if (i < i0) {
+                            i0 = i;
+                            x0 = x;
+                            y0 = y;
+                            m0 = mon ? 1 : 0;
+                        }
+                    }
+                    corrct++;
+                }
+                continue;
             }
         }
     }
 
-    // Check for interesting terrain
-    const loc = map.at(player.x, player.y);
-    if (loc && (loc.typ === STAIRS || loc.typ === FOUNTAIN)) return 'interesting-terrain';
-
-    // Only treat corridor forks as run-stoppers.
-    if (loc && (loc.typ === CORR || loc.typ === SCORR)) {
-        let exits = 0;
-        const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-        for (const [dx, dy] of dirs) {
-            const nx = player.x + dx;
-            const ny = player.y + dy;
-            if (!isok(nx, ny)) continue;
-            const nloc = map.at(nx, ny);
-            if (nloc && ACCESSIBLE(nloc.typ)) exits++;
-        }
-        if (exits > 2) return 'corridor-fork';
+    if (corrct > 1 && runMode === 2) {
+        return { stopReason: 'corridor-widens' };
     }
-
-    return null;
+    if ((runMode === 1 || runMode === 3 || runMode === 8)
+        && !noturn && !m0 && i0
+        && (corrct === 1 || (corrct === 2 && i0 === 1))) {
+        let turn = 0;
+        if (i0 === 2) {
+            turn = (dx === y0 - uy && dy === ux - x0) ? 2 : -2;
+        } else if (dx && dy) {
+            turn = ((dx === dy && y0 === uy) || (dx !== dy && y0 !== uy)) ? -1 : 1;
+        } else {
+            turn = ((x0 - ux === y0 - uy && !dy) || (x0 - ux !== y0 - uy && dy)) ? 1 : -1;
+        }
+        const lastTurn = Number.isInteger(player.last_str_turn) ? player.last_str_turn : 0;
+        turn += lastTurn;
+        if (turn <= 2 && turn >= -2) {
+            player.last_str_turn = turn;
+            const nextDir = [x0 - ux, y0 - uy];
+            if (nextDir[0] !== dx || nextDir[1] !== dy) {
+                return { stopReason: null, nextDir };
+            }
+        }
+    }
+    return { stopReason: null, nextDir: null };
 }
 
 // BFS pathfinding for travel command

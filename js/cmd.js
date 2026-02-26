@@ -82,19 +82,10 @@ export async function rhack(ch, game) {
         return await handleRun(DIRECTION_KEYS.j, player, map, display, fov, game, 'rush');
     }
 
-    // Carriage return can still appear from some non-tty inputs; preserve
-    // existing compatibility behavior here.
+    // C-faithful: both LF (^J) and CR from Enter should behave like the
+    // movement binding in non-numpad mode (rush south).
     if (ch === 13) {
-        const southX = player.x + DIRECTION_KEYS.j[0];
-        const southY = player.y + DIRECTION_KEYS.j[1];
-        const southMon = map.monsterAt(southX, southY);
-        const noExplicitCount = (game.commandCount || 0) === 0 && (game.multi || 0) === 0;
-        const runDisplaceFlow = noExplicitCount && !!southMon && (southMon.tame || southMon.peaceful);
-        const replayForcedRun = noExplicitCount && !!game._replayForceEnterRun;
-        if (runDisplaceFlow || replayForcedRun) {
-            return await handleRun(DIRECTION_KEYS.j, player, map, display, fov, game);
-        }
-        return await handleMovement(DIRECTION_KEYS.j, player, map, display, game);
+        return await handleRun(DIRECTION_KEYS.j, player, map, display, fov, game, 'rush');
     }
 
     // Meta command keys (M-x / Alt+x).
