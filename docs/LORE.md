@@ -41,6 +41,22 @@ Wizard of Yendor while the Riders watch — dramatic, but unproductive.
 
 ## RNG Parity
 
+### `runmode_delay_output()` must be an awaited boundary in movement flow
+
+C `hack.c` calls `nh_delay_output()` from `runmode_delay_output()` while
+running/multi-turn movement. If JS uses only `nh_delay_output_nowait()`, timing
+boundaries exist structurally but the call graph does not match async gameplay
+flow. Port rule:
+
+1. keep `runmode_delay_output()` async,
+2. `await` it from `domove_core()`,
+3. preserve C runmode gating (`tport`, `leap` modulo-7, `crawl` extra delays).
+
+Also note a canonical-state subtlety: `ensure_context()` treats
+`game.context === game.svc.context` as the canonical path. Tests and helpers
+that set only `svc.context` without wiring `context` can silently drop runstate
+and miss delay behavior.
+
 ### STR18 encoding: attribute maximums are not what they seem
 
 C uses `STR18(x) = 18 + x` for strength maximums. A human's STR max is

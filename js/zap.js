@@ -63,7 +63,7 @@ import { find_mac } from './worn.js';
 import { mon_adjust_speed } from './worn.js';
 import { mon_set_minvis } from './worn.js';
 import { sleep_monst, slept_monst } from './mhitm.js';
-import { mstatusline } from './insight.js';
+import { mstatusline, run_magic_enlightenment_effect } from './insight.js';
 import { display_minventory } from './invent.js';
 import { obj_resists } from './objdata.js';
 import { splitobj } from './mkobj.js';
@@ -84,6 +84,7 @@ import {
     tmp_at, nh_delay_output,
     DISP_BEAM, DISP_END,
 } from './animation.js';
+import { WIN_MESSAGE, display_nhwindow } from './windows.js';
 import { attach_egg_hatch_timeout } from './timeout.js';
 
 // Direction vectors matching commands.js DIRECTION_KEYS
@@ -838,8 +839,7 @@ export async function zapnodir(obj, player, map, display, game) {
     }
     break;
   case WAN_ENLIGHTENMENT:
-    // Full enlightenment UI is not wired through this path yet.
-    pline("You feel self-knowledgeable...");
+    await do_enlightenment_effect(player, display, game);
     known = !!obj.dknown;
     break;
   default:
@@ -1746,12 +1746,20 @@ export function hit(fltxt = 'beam') {
 }
 
 // C ref: zap.c do_enlightenment_effect()
-export function do_enlightenment_effect(player = null, display = null) {
+export async function do_enlightenment_effect(player = null, display = null, game = null) {
   if (display?.putstr_message) {
     display.putstr_message('You feel self-knowledgeable...');
   } else {
     pline('You feel self-knowledgeable...');
   }
+  await display_nhwindow(WIN_MESSAGE, false);
+  if (game) await run_magic_enlightenment_effect(game);
+  if (display?.putstr_message) {
+    display.putstr_message('The feeling subsides.');
+  } else {
+    pline('The feeling subsides.');
+  }
+  if (player) exercise(player, A_WIS, true);
   if (player) player._recentEnlightenment = true;
 }
 

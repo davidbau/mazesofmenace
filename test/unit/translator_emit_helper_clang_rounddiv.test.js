@@ -140,3 +140,51 @@ test('clang-backed emit-helper rejects unresolved C globals in may_passwall', (t
         true,
     );
 });
+
+test('clang-backed emit-helper translates async runmode_delay_output with rewrites', (t) => {
+    if (!fs.existsSync(CONDA)) {
+        t.skip('conda not available for clang-backed translator run');
+        return;
+    }
+
+    const outFile = path.join(
+        fs.mkdtempSync(path.join(os.tmpdir(), 'translator-emit-helper-clang-')),
+        'runmode_delay_output.json',
+    );
+
+    const r = spawnSync(
+        CONDA,
+        [
+            'run',
+            '--live-stream',
+            '-n',
+            'base',
+            'python',
+            'tools/c_translator/main.py',
+            '--src',
+            'nethack-c/src/hack.c',
+            '--func',
+            'runmode_delay_output',
+            '--emit',
+            'emit-helper',
+            '--out',
+            outFile,
+        ],
+        { encoding: 'utf8' },
+    );
+    assert.equal(r.status, 0, r.stderr || r.stdout);
+
+    const payload = JSON.parse(fs.readFileSync(outFile, 'utf8'));
+    assert.equal(payload.function, 'runmode_delay_output');
+    assert.equal(payload.meta.translated, true);
+    assert.equal(payload.meta.requires_async, true);
+    assert.match(payload.js, /export async function runmode_delay_output\((display, game|game, display)\)/);
+    assert.match(payload.js, /await nh_delay_output\(\);/);
+    assert.doesNotMatch(payload.js, /\bsvc\./);
+    assert.doesNotMatch(payload.js, /\bflags\./);
+    assert.doesNotMatch(payload.js, /\bsvm\./);
+    assert.equal(
+        (payload.diag || []).some((d) => d.code === 'UNRESOLVED_C_TOKENS'),
+        false,
+    );
+});

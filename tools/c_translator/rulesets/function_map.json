@@ -15,6 +15,47 @@
       "c": "svi.inv_pos.y",
       "js": "map.inv_pos.y",
       "requires_params": ["map"]
+    },
+    {
+      "c": "svc.context.run",
+      "js": "(game?.svc?.context?.run || 0)",
+      "requires_params": ["game"]
+    },
+    {
+      "c": "gm.multi",
+      "js": "(game?.multi || 0)",
+      "requires_params": ["game"]
+    },
+    {
+      "c": "flags.runmode",
+      "js": "(game?.flags?.runmode || 'leap')",
+      "requires_params": ["game"]
+    },
+    {
+      "c": "RUN_TPORT",
+      "js": "'tport'"
+    },
+    {
+      "c": "RUN_LEAP",
+      "js": "'leap'"
+    },
+    {
+      "c": "RUN_CRAWL",
+      "js": "'crawl'"
+    },
+    {
+      "c": "svm.moves % 7L",
+      "js": "(Number(game?.moves) || 0) % 7",
+      "requires_params": ["game"]
+    },
+    {
+      "c": "disp.time_botl = flags.time",
+      "js": "display?.renderMessageWindow?.()",
+      "requires_params": ["display"]
+    },
+    {
+      "c": "curs_on_u()",
+      "js": "0"
     }
   ]
 }

@@ -957,6 +957,12 @@ async function enlightenment(mode, final, game) {
     }
 }
 
+// C ref: zap.c do_enlightenment_effect() uses MAGICENLIGHTENMENT in-game.
+// Exported for zap.js to preserve C ordering without duplicating insight internals.
+export async function run_magic_enlightenment_effect(game) {
+    await enlightenment(MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS, game);
+}
+
 // ============================================================================
 // doconduct
 // cf. insight.c:2086

@@ -34,7 +34,7 @@ import { monflee } from './monmove.js';
 import { ynFunction } from './input.js';
 import { water_friction, maybe_adjust_hero_bubble } from './mkmaze.js';
 import { Invocation_lev } from './dungeon.js';
-import { tmp_at, nh_delay_output_nowait, DISP_ALL, DISP_END } from './animation.js';
+import { tmp_at, nh_delay_output, nh_delay_output_nowait, DISP_ALL, DISP_END } from './animation.js';
 import { set_getpos_context, getpos_async } from './getpos.js';
 import { stucksteed } from './steed.js';
 import { in_out_region } from './region.js';
@@ -801,7 +801,7 @@ export async function domove_core(dir, player, map, display, game) {
         display.putstr_message('There is a fountain here.');
     }
 
-    runmode_delay_output(game, display);
+    await runmode_delay_output(game, display);
 
     return { moved: true, tookTime: true };
 }
@@ -1949,7 +1949,7 @@ export function end_running(and_travel, game) {
 }
 
 // C ref: hack.c runmode_delay_output()
-export function runmode_delay_output(game, display) {
+export async function runmode_delay_output(game, display) {
     if (!game) return;
     const ctx = ensure_context(game);
     const runmode = game?.flags?.runmode || 'leap';
@@ -1957,12 +1957,12 @@ export function runmode_delay_output(game, display) {
         if (runmode === 'tport') return;
         if (runmode === 'leap' && ((Number(game.moves) || 0) % 7 !== 0)) return;
         if (display?.renderMessageWindow) display.renderMessageWindow();
-        nh_delay_output_nowait();
+        await nh_delay_output();
         if (runmode === 'crawl') {
-            nh_delay_output_nowait();
-            nh_delay_output_nowait();
-            nh_delay_output_nowait();
-            nh_delay_output_nowait();
+            await nh_delay_output();
+            await nh_delay_output();
+            await nh_delay_output();
+            await nh_delay_output();
         }
     }
 }

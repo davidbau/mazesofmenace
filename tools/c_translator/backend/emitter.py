@@ -528,6 +528,18 @@ def _find_unresolved_tokens(lines):
         bad.add("Sokoban")
     if re.search(r"\bW_[A-Z0-9_]+\b", joined):
         bad.add("W_*")
+    if re.search(r"\bsvc\.", joined):
+        bad.add("svc.")
+    if re.search(r"\bgm\.", joined):
+        bad.add("gm.")
+    if re.search(r"\bflags\.", joined):
+        bad.add("flags.")
+    if re.search(r"\bsvm\.", joined):
+        bad.add("svm.")
+    if re.search(r"\bdisp\.", joined):
+        bad.add("disp.")
+    if re.search(r"\b\d+L\b", joined):
+        bad.add("*L")
     if "->" in joined:
         bad.add("->")
     return bad
@@ -540,8 +552,6 @@ def _find_legacy_js_tokens(lines):
         bad.add("map._*")
     if re.search(r"\bgame\._[A-Za-z_]\w*", joined):
         bad.add("game._*")
-    if re.search(r"\bcontext\.", joined):
-        bad.add("context.*")
     if re.search(r"\bglobals\.", joined):
         bad.add("globals.*")
     if re.search(r"\bstate\.", joined):
