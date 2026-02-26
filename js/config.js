@@ -262,6 +262,7 @@ export const DB_FLOOR = 16;
 export const DB_UNDER = 28; // mask for underneath
 
 // Trap types (trap.h)
+export const ALL_TRAPS = -1;
 export const NO_TRAP = 0;
 export const ARROW_TRAP = 1;
 export const DART_TRAP = 2;

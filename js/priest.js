@@ -8,7 +8,7 @@
 
 import { A_NONE, A_LAWFUL, A_CHAOTIC, A_NEUTRAL,
          AM_MASK, AM_SHRINE, ROOMOFFSET, TEMPLE,
-         Amask2align, A_WIS,
+         Amask2align, A_WIS, ALL_TRAPS,
          isok } from './config.js';
 import { IS_ALTAR, IS_DOOR, IS_ROOM } from './symbols.js';
 import { rn2, rnd, rn1, d } from './rng.js';
@@ -51,8 +51,6 @@ const MM_EMIN = 0x00000400;
 const MM_ADJACENTOK = 0x00000200;
 const MM_NOMSG = 0x00000800;
 const NO_MM_FLAGS = 0;
-const ALL_TRAPS = -1; // sentinel for mon_learns_traps
-
 // ============================================================================
 // newepri — cf. priest.c:16
 // Allocates EPRI struct on mtmp for temple/alignment/room tracking.

@@ -115,6 +115,7 @@ import {
 
 import { AMULET_OF_YENDOR, FOOD_CLASS, VEGGY, CORPSE, BANANA,
          objectData } from './objects.js';
+import { ALL_TRAPS, NO_TRAP } from './config.js';
 
 const NATTK = 6;
 
@@ -453,28 +454,21 @@ export function monNam(mon, { capitalize = false, article = null } = {}) {
 // C ref: mondata.c mon_knows_traps(mtmp, ttyp)
 export function mon_knows_traps(mon, ttyp) {
     const seen = Number(mon?.mtrapseen || 0) >>> 0;
-    if (ttyp === -1) return seen !== 0; // ALL_TRAPS
-    if (ttyp === 0) return seen === 0;  // NO_TRAP
+    if (ttyp === ALL_TRAPS) return seen !== 0;
+    if (ttyp === NO_TRAP) return seen === 0;
     const bit = ttyp - 1;
     if (bit < 0 || bit >= 31) return false;
     return (seen & (1 << bit)) !== 0;
 }
 
 // C ref: mondata.c mon_learns_traps(mtmp, ttyp)
-export function mon_learns_traps(mon, ttyp) {
-    if (!mon) return;
-    const seen = Number(mon.mtrapseen || 0) >>> 0;
-    if (ttyp === -1) {
-        mon.mtrapseen = 0x7fffffff;
-        return;
-    }
-    if (ttyp === 0) {
-        mon.mtrapseen = 0;
-        return;
-    }
-    const bit = ttyp - 1;
-    if (bit < 0 || bit >= 31) return;
-    mon.mtrapseen = (seen | (1 << bit)) >>> 0;
+// TRANSLATOR: AUTO (mondata.c:1628)
+export function mon_learns_traps(mtmp, ttyp) {
+  if (ttyp === ALL_TRAPS) mtmp.mtrapseen = ~0;
+  else if (ttyp === NO_TRAP) mtmp.mtrapseen = 0;
+  else {
+    mtmp.mtrapseen |= (1 << (ttyp - 1));
+  }
 }
 
 // ========================================================================
