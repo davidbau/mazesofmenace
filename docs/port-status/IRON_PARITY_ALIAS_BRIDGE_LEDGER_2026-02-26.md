@@ -51,3 +51,7 @@ Migration principle for M2 batches:
 6. Validation:
    1. `npm run -s test:unit`,
    2. `./scripts/run-session-tests.sh` (baseline unchanged: `186/204`, `18` failing).
+7. `ensure_context()` status:
+   1. now treated as a compatibility shim,
+   2. canonical `NetHackGame` path initializes from `svc.context`,
+   3. legacy backfill is restricted to non-canonical plain fixture objects.

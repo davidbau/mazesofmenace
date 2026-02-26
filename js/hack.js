@@ -89,16 +89,18 @@ function debug_travel_tmp_at(path, startX, startY) {
 function ensure_context(game) {
     if (!game.context) game.context = {};
     const ctx = game.context;
+    // Compatibility shim: canonical NetHackGame path uses svc.context as source
+    // of truth; legacy fallback is only for plain fixture objects.
+    const canonicalContext = !!(game && game.svc && game.context === game.svc.context);
     if (!Number.isInteger(ctx.run)) {
-        // Keep compatibility with plain test fixtures that still set runMode.
-        if (game.runMode === 2) ctx.run = 2;
-        else if (game.runMode === 1 || game.runMode === 3) ctx.run = 3;
+        if (!canonicalContext && game.runMode === 2) ctx.run = 2;
+        else if (!canonicalContext && (game.runMode === 1 || game.runMode === 3)) ctx.run = 3;
         else ctx.run = 0;
     }
-    if (!Number.isInteger(ctx.travel)) ctx.travel = 0;
+    if (!Number.isInteger(ctx.travel)) ctx.travel = (!canonicalContext && game.traveling) ? 1 : 0;
     if (!Number.isInteger(ctx.travel1)) ctx.travel1 = 0;
-    if (!Number.isInteger(ctx.nopick)) ctx.nopick = game.menuRequested ? 1 : 0;
-    if (!Number.isInteger(ctx.forcefight)) ctx.forcefight = game.forceFight ? 1 : 0;
+    if (!Number.isInteger(ctx.nopick)) ctx.nopick = (!canonicalContext && game.menuRequested) ? 1 : 0;
+    if (!Number.isInteger(ctx.forcefight)) ctx.forcefight = (!canonicalContext && game.forceFight) ? 1 : 0;
     if (!Number.isInteger(ctx.door_opened)) ctx.door_opened = 0;
     if (!Number.isInteger(ctx.move)) ctx.move = 0;
     return ctx;
