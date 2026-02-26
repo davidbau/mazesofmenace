@@ -168,6 +168,15 @@ def _translate_ast_compound(compound_stmt, base_indent, rewrite_rules):
             )
         )
         return None, diags, required_params
+    legacy_tokens = _find_legacy_js_tokens(out)
+    if legacy_tokens:
+        diags.append(
+            _diag(
+                "LEGACY_JS_TARGETS",
+                f"Generated output used legacy JS paths: {', '.join(sorted(legacy_tokens))}",
+            )
+        )
+        return None, diags, required_params
     return out, diags, required_params
 
 
@@ -449,4 +458,20 @@ def _find_unresolved_tokens(lines):
         bad.add("u.")
     if "->" in joined:
         bad.add("->")
+    return bad
+
+
+def _find_legacy_js_tokens(lines):
+    bad = set()
+    joined = "\n".join(lines)
+    if re.search(r"\bmap\._[A-Za-z_]\w*", joined):
+        bad.add("map._*")
+    if re.search(r"\bgame\._[A-Za-z_]\w*", joined):
+        bad.add("game._*")
+    if re.search(r"\bcontext\.", joined):
+        bad.add("context.*")
+    if re.search(r"\bglobals\.", joined):
+        bad.add("globals.*")
+    if re.search(r"\bstate\.", joined):
+        bad.add("state.*")
     return bad

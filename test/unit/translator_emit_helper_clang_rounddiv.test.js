@@ -90,5 +90,10 @@ test('clang-backed emit-helper translates invocation_pos body', (t) => {
     assert.match(payload.js, /y === map\.inv_pos\.y/);
     assert.doesNotMatch(payload.js, /&u\./);
     assert.doesNotMatch(payload.js, /svi\./);
+    assert.doesNotMatch(payload.js, /\bmap\._/);
     assert.doesNotMatch(payload.js, /UNIMPLEMENTED_TRANSLATED_FUNCTION/);
+    assert.equal(
+        (payload.diag || []).some((d) => d.code === 'LEGACY_JS_TARGETS'),
+        false,
+    );
 });
