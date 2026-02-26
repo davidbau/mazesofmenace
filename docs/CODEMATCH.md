@@ -73,7 +73,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[a]` | fountain.c | fountain.js | Fountain effects. drinkfountain/dryup implemented (RNG-parity); ~12 functions TODO |
 | `[~]` | getpos.c | getpos.js | Position selection UI. Core highlight callback lifecycle wired (`getpos_sethilite`, toggle, refresh, cleanup) and interactive cursor loop implemented (`getpos_async`: vi/arrow movement, pick/cancel, redraw/help, filter cycle, C-style target-class next/prev keys `m/M o/O d/D x/X i/I v/V`, typed map-symbol cycling forward/backward, and NHW_MENU-backed `=` target picking). `getloc_filter` handling now applies basic view/area gating in target gathering, target cycling, and map-symbol searches. Helper surfaces `getpos_getvalids_selection`, `getpos_help_keyxhelp`, `getpos_help`, and `getpos_menu` now exist in partial form. Full C parity for keybindings/target classes/filter-area behavior/help text details remains partial |
 | `[~]` | glyphs.c | glyphs.js | Glyph system. JS: partially in `display.js`, `symbols.js` |
-| `[a]` | hack.c | hack.js | Core movement and actions. handleMovement (domove_core) with door/trap/autopickup handling, handleRun (lookaround/context.run), checkRunStop, pickRunContinuationDir, findPath (findtravelpath), handleTravel (dotravel), executeTravelStep, performWaitSearch. All are approximations with partial RNG parity; ~70 C functions TODO |
+| `[a]` | hack.c | hack.js | Core movement and actions. C-structure entry points now explicit: `domove`, `domove_core`, `lookaround`, `findtravelpath` (with `TRAVP_*` modes), plus `handleMovement`/`handleRun` compatibility wrappers, travel setup (`handleTravel`/`executeTravelStep`), and spot/capacity helpers. Behavior remains partial vs C in many edge paths (~70 TODOs), but structure and naming fidelity improved. |
 | `[a]` | hacklib.c | hacklib.js | String/char utilities. All C functions implemented; in-place string ops return new strings in JS |
 | `[~]` | iactions.c | iactions.js | Item actions context menu |
 | `[~]` | insight.c | insight.js | Player knowledge/enlightenment |
@@ -1962,35 +1962,35 @@ This section is generated from source symbol tables and includes function rows f
 | 2444 | `avoid_moving_on_liquid` | - | Missing |
 | 2425 | `avoid_moving_on_trap` | - | Missing |
 | 2476 | `avoid_running_into_trap_or_liquid` | - | Missing |
-| 2496 | `avoid_trap_andor_region` | - | Missing |
+| 2496 | `avoid_trap_andor_region` | hack.js:avoid_trap_andor_region | Implemented (approx; trap/liquid coverage) |
 | 920 | `bad_rock` | - | Missing |
 | 4302 | `calc_capacity` | - | Missing |
-| 263 | `cannot_push` | - | Missing |
-| 248 | `cannot_push_msg` | - | Missing |
-| 934 | `cant_squeeze_thru` | - | Missing |
+| 263 | `cannot_push` | hack.js:cannot_push | Implemented (approx) — push-block checks for map bounds/terrain/monster/boulder |
+| 248 | `cannot_push_msg` | hack.js:cannot_push_msg | Implemented (approx) — feedback messaging for failed boulder push |
+| 934 | `cant_squeeze_thru` | hack.js:cant_squeeze_thru | Implemented (approx) — diagonal squeeze gate using rock checks |
 | 2597 | `carrying_too_much` | - | Missing |
 | 4329 | `check_capacity` | - | Missing |
 | 3511 | `check_special_room` | - | Missing |
-| 4416 | `cmp_weights` | - | Missing |
-| 146 | `could_move_onto_boulder` | - | Missing |
+| 4416 | `cmp_weights` | hack.js:cmp_weights | Implemented |
+| 146 | `could_move_onto_boulder` | hack.js:could_move_onto_boulder | Implemented (approx) |
 | 3964 | `crawl_destination` | - | Missing |
 | 1779 | `disturb_buried_zombies` | - | Missing |
-| 2676 | `domove` | - | Missing |
-| 1936 | `domove_attackmon_at` | - | Missing |
-| 1906 | `domove_bump_mon` | - | Missing |
-| 2693 | `domove_core` | hack.js:handleMovement | APPROX — movement, door auto-open, traps, autopickup |
-| 2210 | `domove_fight_empty` | - | Missing |
-| 1977 | `domove_fight_ironbars` | - | Missing |
-| 2002 | `domove_fight_web` | - | Missing |
-| 2079 | `domove_swap_with_pet` | hack.js:handleMovement | APPROX — pet displacement within handleMovement |
+| 2676 | `domove` | hack.js:domove | Implemented — C-style movement entrypoint dispatching to `domove_core` |
+| 1936 | `domove_attackmon_at` | hack.js:domove_attackmon_at | Implemented (approx) — displacement/safemon/confirm/attack split helper |
+| 1906 | `domove_bump_mon` | hack.js:domove_bump_mon | Implemented (approx) |
+| 2693 | `domove_core` | hack.js:domove_core | APPROX — movement, door auto-open, traps, autopickup |
+| 2210 | `domove_fight_empty` | hack.js:domove_fight_empty | Implemented (approx) |
+| 1977 | `domove_fight_ironbars` | hack.js:domove_fight_ironbars | Implemented (approx) |
+| 2002 | `domove_fight_web` | hack.js:domove_fight_web | Implemented (approx) |
+| 2079 | `domove_swap_with_pet` | hack.js:domove_swap_with_pet | Implemented (approx) — extracted pet swap helper |
 | 3948 | `doorless_door` | hack.js:handleMovement | APPROX — inline in handleMovement |
 | 3761 | `dopickup` | hack.js:handleMovement | APPROX — autopickup inline in handleMovement |
-| 167 | `dopush` | - | Missing |
+| 167 | `dopush` | hack.js:dopush | Implemented (approx) |
 | 817 | `dosinkfall` | - | Missing |
-| 4351 | `dump_weights` | - | Missing |
+| 4351 | `dump_weights` | hack.js:dump_weights | Implemented (approx) |
 | 4015 | `end_running` | - | Missing |
 | 2620 | `escape_from_sticky_mon` | - | Missing |
-| 1247 | `findtravelpath` | hack.js:findPath | APPROX — BFS pathfinding |
+| 1247 | `findtravelpath` | hack.js:findtravelpath | APPROX — `TRAVP_TRAVEL/GUESS/VALID` wrapper over BFS pathing |
 | 3367 | `furniture_present` | - | Missing |
 | 1833 | `handle_tip` | - | Missing |
 | 1768 | `impact_disturbs_zombies` | - | Missing |
@@ -2002,38 +2002,38 @@ This section is generated from source symbol tables and includes function rows f
 | 3045 | `invocation_message` | - | Missing |
 | 963 | `invocation_pos` | - | Missing |
 | 1507 | `is_valid_travelpt` | - | Missing |
-| 82 | `long_to_any` | - | Missing |
-| 3783 | `lookaround` | hack.js:checkRunStop | APPROX — run stop conditions |
+| 82 | `long_to_any` | hack.js:long_to_any | Implemented |
+| 3783 | `lookaround` | hack.js:lookaround | APPROX — run stop conditions and continuation direction |
 | 4185 | `losehp` | - | Missing |
 | 4321 | `max_capacity` | - | Missing |
 | 904 | `may_dig` | - | Missing |
 | 913 | `may_passwall` | - | Missing |
-| 3001 | `maybe_smudge_engr` | engrave.js:maybeSmudgeEngraving | Aligned — wipes both old and new pos, rnd(5), checks engr_at |
+| 3001 | `maybe_smudge_engr` | hack.js:maybe_smudge_engr | Implemented wrapper; delegates to `engrave.js:maybeSmudgeEngraving` |
 | 4086 | `maybe_wail` | - | Missing |
 | 4444 | `money_cnt` | - | Missing |
-| 90 | `monst_to_any` | - | Missing |
+| 90 | `monst_to_any` | hack.js:monst_to_any | Implemented |
 | 3991 | `monster_nearby` | monutil.js:monsterNearby | Aligned |
 | 3351 | `monstinroom` | - | Missing |
 | 2567 | `move_out_of_bounds` | - | Missing |
 | 3473 | `move_update` | - | Missing |
-| 337 | `moverock` | - | Missing |
-| 349 | `moverock_core` | - | Missing |
-| 328 | `moverock_done` | - | Missing |
+| 337 | `moverock` | hack.js:moverock | Implemented (approx) |
+| 349 | `moverock_core` | hack.js:moverock_core | Implemented (approx) |
+| 328 | `moverock_done` | hack.js:moverock_done | Implemented (boundary helper) |
 | 806 | `movobj` | - | Missing |
 | 4315 | `near_capacity` | - | Missing |
 | 4036 | `nomul` | - | Missing |
 | 1725 | `notice_all_mons` | - | Missing |
 | 1689 | `notice_mon` | - | Missing |
-| 1716 | `notice_mons_cmp` | - | Missing |
-| 98 | `obj_to_any` | - | Missing |
+| 1716 | `notice_mons_cmp` | hack.js:notice_mons_cmp | Implemented (approx comparator) |
+| 98 | `obj_to_any` | hack.js:obj_to_any | Implemented |
 | 3016 | `overexert_hp` | - | Missing |
 | 3032 | `overexertion` | - | Missing |
 | 3673 | `pickup_checks` | - | Missing |
 | 3121 | `pooleffects` | - | Missing |
 | 106 | `revive_nasty` | - | Missing |
-| 316 | `rock_disappear_msg` | - | Missing |
+| 316 | `rock_disappear_msg` | hack.js:rock_disappear_msg | Implemented (approx) |
 | 4481 | `rounddiv` | - | Missing |
-| 2977 | `runmode_delay_output` | - | Missing |
+| 2977 | `runmode_delay_output` | hack.js:runmode_delay_output | Implemented (approx) |
 | 4123 | `saving_grace` | - | Missing |
 | 3112 | `set_uinwater` | - | Missing |
 | 4176 | `showdamage` | - | Missing |

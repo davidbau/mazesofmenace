@@ -82,9 +82,275 @@ function debug_travel_tmp_at(path, startX, startY) {
     tmp_at(DISP_END, 0);
 }
 
+// C ref: hack.c uint_to_any()
+export function uint_to_any(ui) {
+    return { a_uint: (ui >>> 0) };
+}
+
+// C ref: hack.c long_to_any()
+export function long_to_any(lng) {
+    return { a_long: Number.isFinite(lng) ? Math.trunc(lng) : 0 };
+}
+
+// C ref: hack.c monst_to_any()
+export function monst_to_any(mon) {
+    return { a_monst: mon || null };
+}
+
+// C ref: hack.c obj_to_any()
+export function obj_to_any(obj) {
+    return { a_obj: obj || null };
+}
+
+// C ref: hack.c maybe_smudge_engr()
+export function maybe_smudge_engr(map, oldX, oldY, newX, newY) {
+    maybeSmudgeEngraving(map, oldX, oldY, newX, newY);
+}
+
+// C ref: hack.c could_move_onto_boulder()
+export function could_move_onto_boulder(_sx, _sy, player) {
+    if (player?.passesWalls) return true;
+    if (player?.usteed) return false;
+    if (player?.throwsRocks) return true;
+    if (player?.verysmall) return true;
+    return inv_weight(player) <= -850; // extremely light inventory
+}
+
+// C ref: hack.c cannot_push_msg()
+export function cannot_push_msg(otmp, rx, ry, map, display) {
+    const name = (otmp?.otyp === BOULDER) ? 'the boulder' : 'that object';
+    const mon = map?.monsterAt ? map.monsterAt(rx, ry) : null;
+    if (mon) {
+        display?.putstr_message(`You hear a monster behind ${name}.`);
+        return;
+    }
+    const loc = map?.at ? map.at(rx, ry) : null;
+    if (loc && IS_OBSTRUCTED(loc.typ)) {
+        display?.putstr_message(`${name} won't roll any further.`);
+    } else {
+        display?.putstr_message(`You cannot push ${name} there.`);
+    }
+}
+
+// C ref: hack.c cannot_push()
+export function cannot_push(otmp, rx, ry, map, display) {
+    if (!isok(rx, ry)) {
+        cannot_push_msg(otmp, rx, ry, map, display);
+        return true;
+    }
+    const loc = map.at(rx, ry);
+    if (!loc || IS_OBSTRUCTED(loc.typ) || closed_door(rx, ry, map)) {
+        cannot_push_msg(otmp, rx, ry, map, display);
+        return true;
+    }
+    if (map.monsterAt(rx, ry)) {
+        cannot_push_msg(otmp, rx, ry, map, display);
+        return true;
+    }
+    if (sobj_at(BOULDER, rx, ry, map)) {
+        cannot_push_msg(otmp, rx, ry, map, display);
+        return true;
+    }
+    return false;
+}
+
+// C ref: hack.c rock_disappear_msg()
+export function rock_disappear_msg(otmp, display) {
+    const name = (otmp?.otyp === BOULDER) ? 'The boulder' : 'It';
+    display?.putstr_message(`${name} disappears.`);
+}
+
+// C ref: hack.c dopush()
+export function dopush(sx, sy, rx, ry, otmp, _costly, map, display) {
+    const name = (otmp?.otyp === BOULDER) ? 'the boulder' : 'that object';
+    display?.putstr_message(`With great effort you move ${name}.`);
+    movobj(otmp, rx, ry, map);
+    return { sx, sy, rx, ry };
+}
+
+// C ref: hack.c moverock_done()
+export function moverock_done(_sx, _sy, _map) {
+    // In C this updates movement side effects after push. JS keeps this as a
+    // named boundary and performs side effects at the callsites.
+}
+
+// C ref: hack.c moverock_core()
+export function moverock_core(sx, sy, dx, dy, player, map, display, game) {
+    const otmp = sobj_at(BOULDER, sx, sy, map);
+    if (!otmp) return 0;
+    const rx = sx + dx;
+    const ry = sy + dy;
+    if (cannot_push(otmp, rx, ry, map, display)) {
+        return -1;
+    }
+    dopush(sx, sy, rx, ry, otmp, false, map, display);
+    if (game) game.lastMoveDir = [dx, dy];
+    if (player) exercise(player, A_STR, true);
+    return 1;
+}
+
+// C ref: hack.c moverock()
+export function moverock(sx, sy, dx, dy, player, map, display, game) {
+    const ret = moverock_core(sx, sy, dx, dy, player, map, display, game);
+    moverock_done(sx, sy, map);
+    return ret;
+}
+
+// C ref: hack.c cant_squeeze_thru()
+export function cant_squeeze_thru(ux, uy, x, y, player, map) {
+    if (!player) return false;
+    if (Math.abs(x - ux) !== 1 || Math.abs(y - uy) !== 1) return false;
+    if (!bad_rock(null, ux, y, map) || !bad_rock(null, x, uy, map)) return false;
+    return !could_move_onto_boulder(x, y, player);
+}
+
+// C ref: hack.c notice_mons_cmp()
+export function notice_mons_cmp(a, b) {
+    const ax = a?.mx ?? 0;
+    const ay = a?.my ?? 0;
+    const bx = b?.mx ?? 0;
+    const by = b?.my ?? 0;
+    return (ax + ay) - (bx + by);
+}
+
+// C ref: hack.c domove_bump_mon()
+export function domove_bump_mon(mon, _glyph, _nopick, game) {
+    if (!mon || mon.dead) return false;
+    // 'm' prefix into known monster should stop and avoid attack.
+    if (_nopick && !game?.traveling) {
+        return true;
+    }
+    return false;
+}
+
+// C ref: hack.c domove_swap_with_pet()
+export function domove_swap_with_pet(mon, nx, ny, dir, player, map, display, game) {
+    const oldPlayerX = player.x;
+    const oldPlayerY = player.y;
+    mon.mx = oldPlayerX;
+    mon.my = oldPlayerY;
+    player.x = nx;
+    player.y = ny;
+    player.moved = true;
+    game.lastMoveDir = dir;
+    maybe_smudge_engr(map, oldPlayerX, oldPlayerY, player.x, player.y);
+    player.displacedPetThisTurn = true;
+    maybeHandleShopEntryMessage(game, oldPlayerX, oldPlayerY);
+    display.putstr_message(`You swap places with ${monNam(mon)}.`);
+    const landedObjs = map.objectsAt(nx, ny);
+    if (landedObjs.length > 1) {
+        clearTopline(display);
+    } else if (landedObjs.length === 1) {
+        const seen = landedObjs[0];
+        if (seen.oclass === COIN_CLASS) {
+            const count = seen.quan || 1;
+            display.putstr_message(count === 1 ? 'You see here a gold piece.' : `You see here ${count} gold pieces.`);
+        } else {
+            observeObject(seen);
+            display.putstr_message(`You see here ${describeGroundObjectForPlayer(seen, player, map)}.`);
+        }
+    }
+}
+
+// C ref: hack.c domove_attackmon_at()
+export async function domove_attackmon_at(mon, nx, ny, dir, player, map, display, game) {
+    if (!mon) return { handled: false };
+    const shouldDisplace = (mon.tame || mon.peaceful) && !game.forceFight;
+    if (shouldDisplace) {
+        const blocked = (!rn2(7));
+        if (blocked) {
+            if (mon.tame) {
+                monflee(mon, rnd(6), false, false, player, display, null);
+            }
+            const label = mon.tame
+                ? monNam(mon, { article: 'your', capitalize: true })
+                : monNam(mon, { capitalize: true });
+            display.putstr_message(`You stop.  ${label} is in the way!`);
+            game.forceFight = false;
+            return { handled: true, moved: false, tookTime: true };
+        }
+        if (mon.mfrozen || mon.mcanmove === false || mon.msleeping
+            || ((mon.type?.speed ?? 0) === 0 && rn2(6))) {
+            const label = monNam(mon, { capitalize: true });
+            display.putstr_message(`${label} doesn't seem to move!`);
+            game.forceFight = false;
+            return { handled: true, moved: false, tookTime: true };
+        }
+        domove_swap_with_pet(mon, nx, ny, dir, player, map, display, game);
+        game.forceFight = false;
+        return { handled: true, moved: true, tookTime: true };
+    }
+
+    if (mon.tame && game.flags?.safe_pet && !game.forceFight) {
+        display.putstr_message("You cannot attack your pet!");
+        game.forceFight = false;
+        return { handled: true, moved: false, tookTime: false };
+    }
+    if (mon.peaceful && !mon.tame && game.flags?.confirm) {
+        const answer = await ynFunction(
+            `Really attack ${monDisplayName(mon)}?`,
+            'yn',
+            'n'.charCodeAt(0),
+            display
+        );
+        if (answer !== 'y'.charCodeAt(0)) {
+            display.putstr_message('Cancelled.');
+            game.forceFight = false;
+            return { handled: true, moved: false, tookTime: false };
+        }
+    }
+    game.forceFight = false;
+    rn2(20);
+    exercise(player, A_STR, true);
+    u_wipe_engr(player, map, 3);
+    const killed = playerAttackMonster(player, mon, display, map, game);
+    if (killed) map.removeMonster(mon);
+    player.moved = true;
+    return { handled: true, moved: false, tookTime: true };
+}
+
+// C ref: hack.c domove_fight_ironbars()
+export function domove_fight_ironbars(x, y, map, display) {
+    const loc = map?.at ? map.at(x, y) : null;
+    if (!loc || loc.typ !== IRONBARS) return false;
+    if (display) display.putstr_message('You cannot pass through the bars.');
+    return true;
+}
+
+// C ref: hack.c domove_fight_web()
+export function domove_fight_web(x, y, map, display) {
+    const trap = map?.trapAt ? map.trapAt(x, y) : null;
+    if (!trap || trap.ttyp !== WEB) return false;
+    if (display) display.putstr_message('You stumble into a web.');
+    return false;
+}
+
+// C ref: hack.c domove_fight_empty()
+export function domove_fight_empty(x, y, map, display, game) {
+    if (!game?.forceFight || map?.monsterAt?.(x, y)) return false;
+    const loc = map?.at ? map.at(x, y) : null;
+    let target = '';
+    if (loc) {
+        if (IS_WALL(loc.typ)) {
+            target = 'the wall';
+        } else if (loc.typ === STAIRS) {
+            if (map.upstair && map.upstair.x === x && map.upstair.y === y) {
+                target = 'the branch staircase up';
+            } else if (map.dnstair && map.dnstair.x === x && map.dnstair.y === y) {
+                target = 'the branch staircase down';
+            } else {
+                target = loc.stairdir ? 'the branch staircase up' : 'the branch staircase down';
+            }
+        }
+    }
+    display?.putstr_message(target ? `You harmlessly attack ${target}.` : 'You attack thin air.');
+    game.forceFight = false;
+    return true;
+}
+
 // Handle directional movement
-// C ref: hack.c domove() -- the core movement function
-export async function handleMovement(dir, player, map, display, game) {
+// C ref: hack.c domove_core() worker
+export async function domove_core(dir, player, map, display, game) {
     const flags = game.flags || {};
     const oldX = player.x;
     const oldY = player.y;
@@ -143,30 +409,7 @@ export async function handleMovement(dir, player, map, display, game) {
         }
     }
 
-    // C ref: cmd.c do_fight() + hack.c domove()/do_attack() fallback.
-    // Forced-fight into an empty square produces "You attack thin air."
-    // and does not perform normal movement handling.
-    if (game.forceFight && !map.monsterAt(nx, ny)) {
-        let target = '';
-        if (loc) {
-            if (IS_WALL(loc.typ)) {
-                target = 'the wall';
-            } else if (loc.typ === STAIRS) {
-                if (map.upstair && map.upstair.x === nx && map.upstair.y === ny) {
-                    target = 'the branch staircase up';
-                } else if (map.dnstair && map.dnstair.x === nx && map.dnstair.y === ny) {
-                    target = 'the branch staircase down';
-                } else {
-                    target = loc.stairdir ? 'the branch staircase up' : 'the branch staircase down';
-                }
-            }
-        }
-        if (target) {
-            display.putstr_message(`You harmlessly attack ${target}.`);
-        } else {
-            display.putstr_message('You attack thin air.');
-        }
-        game.forceFight = false;
+    if (domove_fight_empty(nx, ny, map, display, game)) {
         return { moved: false, tookTime: true };
     }
 
@@ -212,118 +455,27 @@ export async function handleMovement(dir, player, map, display, game) {
     // Check for monster at target position
     const mon = map.monsterAt(nx, ny);
     if (mon) {
-        // C ref: hack.c domove() — check for pet displacement
-        // C ref: uhitm.c do_attack() is invoked first for safemon targets.
-        // Even when displacement succeeds, it consumes rn2(7) via safemon checks.
-        // 'F' prefix (forceFight) skips safemon protection and forces attack.
-        const shouldDisplace = (mon.tame || mon.peaceful) && !game.forceFight;
-
-        if (shouldDisplace) {
-            // C ref: uhitm.c:462-509 — displacement logic for safemon
-            // Stormbringer override skipped (artifact not modeled)
-            // foo = blocked from displacing (Punished, random, longworm, obstructed)
-            const foo = (/* Punished */ false || !rn2(7)
-                         /* || is_longworm || IS_OBSTRUCTED */);
-            // inshop check skipped for simplicity
-            if (foo) {
-                // C ref: uhitm.c:495-501 — blocked: flee + "in the way" message
-                if (mon.tame) {
-                    monflee(mon, rnd(6), false, false, player, display, null);
-                }
-                // C ref: uhitm.c:497 — y_monnam for "Your little dog"
-                const label = mon.tame
-                    ? monNam(mon, { article: 'your', capitalize: true })
-                    : monNam(mon, { capitalize: true });
-                display.putstr_message(`You stop.  ${label} is in the way!`);
-                game.forceFight = false;
-                return { moved: false, tookTime: true };
-            } else if (mon.mfrozen || mon.mcanmove === false || mon.msleeping
-                       || ((mon.type?.speed ?? 0) === 0 && rn2(6))) {
-                // C ref: uhitm.c:502-506 — frozen/helpless/immobile monster
-                const label = monNam(mon, { capitalize: true });
-                display.putstr_message(`${label} doesn't seem to move!`);
-                game.forceFight = false;
-                return { moved: false, tookTime: true };
-            }
-
-            // Pet displacement: swap positions
-            // C ref: hack.c:2142-2156 — remove_monster + place_monster swaps positions
-            const oldPlayerX = player.x;
-            const oldPlayerY = player.y;
-            mon.mx = oldPlayerX;
-            mon.my = oldPlayerY;
-            player.x = nx;
-            player.y = ny;
-            player.moved = true;
-            game.lastMoveDir = dir;
-            maybeSmudgeEngraving(map, oldPlayerX, oldPlayerY, player.x, player.y);
-            player.displacedPetThisTurn = true;
-            maybeHandleShopEntryMessage(game, oldPlayerX, oldPlayerY);
-            // C ref: hack.c:2150 — x_monnam with ARTICLE_YOUR for tame
-            // includes "saddled" when the monster has a saddle worn.
-            display.putstr_message(`You swap places with ${monNam(mon)}.`);
-            const landedObjs = map.objectsAt(nx, ny);
-            if (landedObjs.length === 1) {
-                const seen = landedObjs[0];
-                if (seen.oclass === COIN_CLASS) {
-                    const count = seen.quan || 1;
-                    if (count === 1) {
-                        display.putstr_message('You see here a gold piece.');
-                    } else {
-                        display.putstr_message(`You see here ${count} gold pieces.`);
-                    }
-                } else {
-                    observeObject(seen);
-                    display.putstr_message(`You see here ${describeGroundObjectForPlayer(seen, player, map)}.`);
-                }
-            } else if (landedObjs.length > 1) {
-                // C ref: invent.c look_here() uses NHW_MENU for piles and
-                // display_nhwindow(WIN_MESSAGE, FALSE) before listing items.
-                // That clears any prior topline text (e.g. swap message).
-                clearTopline(display);
-            }
-            game.forceFight = false; // Clear prefix (shouldn't reach here but be safe)
-            return { moved: true, tookTime: true };
-        }
-
-        // Safety checks before attacking
-        // C ref: flag.h flags.safe_pet - prevent attacking pets
-        if (mon.tame && game.flags?.safe_pet && !game.forceFight) {
-            display.putstr_message("You cannot attack your pet!");
-            game.forceFight = false;
+        if (domove_bump_mon(mon, null, nopick, game)) {
             return { moved: false, tookTime: false };
         }
-
-        // C ref: flag.h flags.confirm - confirm attacking peacefuls
-        if (mon.peaceful && !mon.tame && game.flags?.confirm) {
-            const answer = await ynFunction(
-                `Really attack ${monDisplayName(mon)}?`,
-                'yn',
-                'n'.charCodeAt(0),
-                display
-            );
-            if (answer !== 'y'.charCodeAt(0)) {
-                display.putstr_message("Cancelled.");
-                game.forceFight = false;
-                return { moved: false, tookTime: false };
-            }
+        const attackResult = await domove_attackmon_at(mon, nx, ny, dir, player, map, display, game);
+        if (attackResult.handled) {
+            return { moved: !!attackResult.moved, tookTime: !!attackResult.tookTime };
         }
+    }
 
-        // Attack the monster (or forced attack on peaceful)
-        game.forceFight = false; // Clear prefix after use
-        // C ref: hack.c domove() -> do_attack() -> attack() -> hitum()
-        // C ref: hack.c:3036 overexertion() unconditionally calls gethungry() -> rn2(20)
-        rn2(20); // overexertion/gethungry before attack
-        // C ref: uhitm.c:550 exercise(A_STR, TRUE) before hitum()
-        exercise(player, A_STR, true);
-        // C ref: uhitm.c:552 u_wipe_engr(3) before hitum()
-        u_wipe_engr(player, map, 3);
-        const killed = playerAttackMonster(player, mon, display, map, game);
-        if (killed) {
-            map.removeMonster(mon);
-        }
-        player.moved = true;
+    if (domove_fight_ironbars(nx, ny, map, display)) {
+        return { moved: false, tookTime: false };
+    }
+    if (domove_fight_web(nx, ny, map, display)) {
         return { moved: false, tookTime: true };
+    }
+
+    if (sobj_at(BOULDER, nx, ny, map)) {
+        const moved = moverock(nx, ny, dir[0], dir[1], player, map, display, game);
+        if (moved < 0) {
+            return { moved: false, tookTime: false };
+        }
     }
 
     // Check terrain
@@ -395,7 +547,7 @@ export async function handleMovement(dir, player, map, display, game) {
     player.y = ny;
     player.moved = true;
     game.lastMoveDir = dir;
-    maybeSmudgeEngraving(map, oldX, oldY, player.x, player.y);
+    maybe_smudge_engr(map, oldX, oldY, player.x, player.y);
 
     // Clear force-fight prefix after successful movement.
     game.forceFight = false;
@@ -591,6 +743,21 @@ export async function handleMovement(dir, player, map, display, game) {
     return { moved: true, tookTime: true };
 }
 
+// C ref: hack.c domove() entrypoint.
+// Keep this as the canonical movement API and route handleMovement through it
+// for backward compatibility with existing JS callsites.
+export async function domove(dir, player, map, display, game) {
+    if (!Array.isArray(dir) || dir.length < 2) {
+        return { moved: false, tookTime: false };
+    }
+    return domove_core(dir, player, map, display, game);
+}
+
+// Legacy JS name used by cmd.js and tests.
+export async function handleMovement(dir, player, map, display, game) {
+    return domove(dir, player, map, display, game);
+}
+
 // Handle running in a direction
 // C ref: cmd.c do_run() -> hack.c domove() with context.run
 export async function handleRun(dir, player, map, display, fov, game, runStyle = 'run') {
@@ -608,7 +775,7 @@ export async function handleRun(dir, player, map, display, fov, game, runStyle =
     while (steps < 80) { // safety limit
         const beforeX = player.x;
         const beforeY = player.y;
-        const result = await handleMovement(runDir, player, map, display, game);
+        const result = await domove(runDir, player, map, display, game);
         if (result.tookTime) timedTurns++;
         runTrace(
             `step=${replayStepLabel(map)}`,
@@ -632,7 +799,7 @@ export async function handleRun(dir, player, map, display, fov, game, runStyle =
         // C ref: hack.c lookaround() — scan nearby squares to decide
         // run/rush continuation and corner following.
         fov.compute(map, player.x, player.y);
-        const look = checkRunStop(map, player, fov, runDir, runStyle, display, game);
+        const look = lookaround(map, player, fov, runDir, runStyle, display, game);
         const stopReason = look?.stopReason || null;
         const shouldStop = !!stopReason;
         if (shouldStop) {
@@ -683,7 +850,7 @@ function pickRunContinuationDir(map, player, dir) {
 
 // Check if running should stop
 // C ref: hack.c lookaround() -- checks for interesting things while running
-function checkRunStop(map, player, fov, dir, runStyle = 'run', display = null, game = null) {
+export function lookaround(map, player, fov, dir, runStyle = 'run', display = null, game = null) {
     const runMode = (runStyle === 'rush') ? 2 : 3;
     const travel = !!game?.traveling;
     const ux = player.x;
@@ -852,6 +1019,43 @@ export function findPath(map, startX, startY, endX, endY) {
     return null; // No path found
 }
 
+// C ref: hack.c findtravelpath(mode).
+// JS keeps the same role but uses existing BFS pathing in findPath().
+// Returns true when a path (or travel viability for TRAVP_VALID) exists.
+export function findtravelpath(mode, game) {
+    if (!game || !game.player || !game.map) return false;
+    const { player, map } = game;
+    const tx = game.travelX;
+    const ty = game.travelY;
+    if (!Number.isInteger(tx) || !Number.isInteger(ty)) return false;
+    if (!isok(tx, ty)) return false;
+
+    // Adjacent target path viability follows test_move rules.
+    if ((mode === TRAVP_TRAVEL || mode === TRAVP_VALID)
+        && Math.max(Math.abs(tx - player.x), Math.abs(ty - player.y)) === 1) {
+        const ok = test_move(player.x, player.y, tx - player.x, ty - player.y, TEST_TRAV, player, map, null);
+        if (ok && mode === TRAVP_TRAVEL) {
+            game.travelPath = [[tx - player.x, ty - player.y]];
+            game.travelStep = 0;
+        }
+        return ok;
+    }
+
+    const path = findPath(map, player.x, player.y, tx, ty);
+    if (!path) {
+        if (mode === TRAVP_GUESS) {
+            // Guess mode in C tries "as close as possible"; JS currently keeps
+            // exact-target behavior and reports failure if no exact path exists.
+            return false;
+        }
+        return false;
+    }
+    if (mode === TRAVP_VALID) return true;
+    game.travelPath = path;
+    game.travelStep = 0;
+    return true;
+}
+
 // Handle travel command (_)
 // C ref: cmd.c dotravel()
 export async function handleTravel(game) {
@@ -871,23 +1075,20 @@ export async function handleTravel(game) {
     // Store travel destination
     game.travelX = cursorX;
     game.travelY = cursorY;
+    game.traveling = true;
 
-    // Find path
-    const path = findPath(map, player.x, player.y, cursorX, cursorY);
-    if (!path) {
+    // C-style travel setup: first strict travel mode, then guess mode.
+    if (!findtravelpath(TRAVP_TRAVEL, game) && !findtravelpath(TRAVP_GUESS, game)) {
         display.putstr_message('No path to that location.');
+        game.traveling = false;
         return { moved: false, tookTime: false };
     }
-
-    if (path.length === 0) {
+    if (!Array.isArray(game.travelPath) || game.travelPath.length === 0) {
         display.putstr_message('You are already there.');
+        game.traveling = false;
         return { moved: false, tookTime: false };
     }
-
-    // Start traveling
-    game.travelPath = path;
-    game.travelStep = 0;
-    display.putstr_message(`Traveling... (${path.length} steps)`);
+    display.putstr_message(`Traveling... (${game.travelPath.length} steps)`);
 
     // Execute first step
     return executeTravelStep(game);
@@ -902,6 +1103,7 @@ export async function executeTravelStep(game) {
         // Travel complete
         game.travelPath = null;
         game.travelStep = 0;
+        game.traveling = false;
         display.putstr_message('You arrive at your destination.');
         return { moved: false, tookTime: false };
     }
@@ -910,12 +1112,13 @@ export async function executeTravelStep(game) {
     game.travelStep++;
 
     // Execute movement
-    const result = await handleMovement([dx, dy], player, map, display, game);
+    const result = await domove([dx, dy], player, map, display, game);
 
     // If movement failed, stop traveling
     if (!result.moved) {
         game.travelPath = null;
         game.travelStep = 0;
+        game.traveling = false;
         display.putstr_message('Travel interrupted.');
     }
 
@@ -1216,6 +1419,24 @@ export function money_cnt(player) {
     return 0;
 }
 
+// C ref: hack.c cmp_weights()
+export function cmp_weights(i1, i2) {
+    const w1 = Number(i1?.owt || 0);
+    const w2 = Number(i2?.owt || 0);
+    return w1 - w2;
+}
+
+// C ref: hack.c dump_weights()
+export function dump_weights(player, display) {
+    const inv = [...(player?.inventory || [])];
+    inv.sort(cmp_weights);
+    if (!display) return inv.map(o => `${o?.owt || 0}:${o?.otyp || '?'}`);
+    for (const obj of inv) {
+        display.putstr_message(`wt=${obj?.owt || 0} otyp=${obj?.otyp || '?'}`);
+    }
+    return inv;
+}
+
 // --------------------------------------------------------------------
 // Movement validation (test_move, carrying_too_much, etc.)
 // --------------------------------------------------------------------
@@ -1225,6 +1446,11 @@ export const DO_MOVE = 0;
 export const TEST_MOVE = 1;
 export const TEST_TRAV = 2;
 export const TEST_TRAP = 3;
+
+// C ref: hack.c findtravelpath() mode constants.
+export const TRAVP_TRAVEL = 0;
+export const TRAVP_GUESS = 1;
+export const TRAVP_VALID = 2;
 
 // C ref: hack.c test_move() — validate a move from (ux,uy) by (dx,dy)
 export function test_move(ux, uy, dx, dy, mode, player, map, display) {
@@ -1497,6 +1723,14 @@ export function avoid_running_into_trap_or_liquid(x, y, player, map, display, ru
     return false;
 }
 
+// C ref: hack.c avoid_trap_andor_region()
+export function avoid_trap_andor_region(x, y, player, map, display, flags) {
+    if (avoid_moving_on_trap(x, y, true, map, display, flags)) return true;
+    if (avoid_moving_on_liquid(x, y, true, player, map, display, flags)) return true;
+    // region.c integration is still partial in JS; this only covers trap/liquid.
+    return false;
+}
+
 // --------------------------------------------------------------------
 // Running control
 // --------------------------------------------------------------------
@@ -1511,6 +1745,15 @@ export function end_running(and_travel, game) {
         game.traveling = false;
     }
     if (game.multi > 0) game.multi = 0;
+}
+
+// C ref: hack.c runmode_delay_output()
+export function runmode_delay_output(game, display) {
+    if (!game) return;
+    if (game.running || game.multi) {
+        if (display?.renderMessageWindow) display.renderMessageWindow();
+        nh_delay_output_nowait();
+    }
 }
 
 // C ref: hack.c nomul() — set multi-turn action count
@@ -2135,9 +2378,9 @@ export function is_valid_travelpt(x, y, player, map) {
     if (!loc) return false;
     // Stone that hasn't been seen is not a valid travel point
     if (loc.typ === STONE && !loc.seenv) return false;
-    // Check if we can path there
-    const path = findPath(map, player.x, player.y, x, y);
-    return path !== null;
+    // Check if we can path there via C-style findtravelpath validation mode.
+    const game = { player, map, travelX: x, travelY: y };
+    return findtravelpath(TRAVP_VALID, game);
 }
 
 // C ref: hack.c revive_nasty() — revive rider corpses at (x,y)
