@@ -754,6 +754,24 @@ function m_next2m(mtmp, map) {
 }
 
 // ========================================================================
+// reveal_trap — C ref: muse.c:756
+// When a monster deliberately enters a trap, ensure concealed trap squares
+// become normal corridor and mark trap seen if the hero witnessed it.
+// ========================================================================
+function reveal_trap(t, seeit, map) {
+    if (!t || !map) return;
+    const loc = map.at ? map.at(t.tx, t.ty) : null;
+    if (loc && loc.typ === SCORR) {
+        loc.typ = CORR;
+        loc.flags = 0;
+    }
+    if (seeit) {
+        t.tseen = 1;
+        if (map?.newsym) map.newsym(t.tx, t.ty);
+    }
+}
+
+// ========================================================================
 // find_defensive — C ref: muse.c:439
 // ========================================================================
 export function find_defensive(mon, tryescape, map, player) {
@@ -1190,6 +1208,7 @@ export async function use_defensive(mon, map, player) {
         if (vis && t2) {
             pline_mon(mon, `${name} jumps into a trap!`);
         }
+        if (t2) reveal_trap(t2, vis, map);
         // Move monster to trap and migrate
         migrate_to_level(mon, ledger_no(null) + 1, 0, null, map);
         return 2;
@@ -1251,6 +1270,7 @@ export async function use_defensive(mon, map, player) {
         if (vis && t2) {
             pline_mon(mon, `${name} jumps onto a teleport trap!`);
         }
+        if (t2) reveal_trap(t2, vis, map);
         m_tele(mon, vismon, false, 0, map, player);
         return 2;
     }
@@ -2255,6 +2275,24 @@ export function rnd_misc_item(mtmp) {
         return POT_GAIN_LEVEL;
     }
     return 0;
+}
+
+// ========================================================================
+// necrophiliac — C ref: muse.c:2656 (#if 0 in C; retained as helper surface)
+// ========================================================================
+function necrophiliac(objlist, any_corpse = false) {
+    let cur = objlist;
+    while (cur) {
+        if (cur.otyp === CORPSE
+            && (any_corpse || touch_petrifies(mons[cur.corpsenm] || {}))) {
+            return true;
+        }
+        if (Has_contents(cur) && necrophiliac(cur.cobj, false)) {
+            return true;
+        }
+        cur = cur.nobj || null;
+    }
+    return false;
 }
 
 // ========================================================================
