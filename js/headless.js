@@ -240,6 +240,9 @@ export function createHeadlessInput({ throwOnEmpty = false } = {}) {
                 resolver = resolve;
             });
         },
+        isWaitingInput() {
+            return resolver !== null;
+        },
     };
 }
 
