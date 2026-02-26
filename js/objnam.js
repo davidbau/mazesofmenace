@@ -2259,8 +2259,9 @@ export function shield_simple_name(shield) {
 }
 
 // cf. objnam.c:5590 — shirt_simple_name(shirt): simple shirt name
-export function shirt_simple_name(_shirt) {
-    return 'shirt';
+// TRANSLATOR: AUTO (objnam.c:5589)
+export function shirt_simple_name(shirt) {
+  return "shirt";
 }
 
 // cf. objnam.c:5425 — armor_simple_name(armor): dispatch to specific armor type
