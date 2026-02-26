@@ -18,12 +18,13 @@ export function initrack() {
 }
 
 // cf. track.c:24 — add to track
+// TRANSLATOR: AUTO (track.c:23)
 export function settrack(player) {
-    if (_utcnt < UTSZ) _utcnt++;
-    if (_utpnt === UTSZ) _utpnt = 0;
-    _utrack[_utpnt].x = player.x;
-    _utrack[_utpnt].y = player.y;
-    _utpnt++;
+  if (_utcnt < UTSZ) _utcnt++;
+  if (_utpnt === UTSZ) _utpnt = 0;
+  _utrack[_utpnt].x = player.x;
+  _utrack[_utpnt].y = player.y;
+  _utpnt++;
 }
 
 // cf. track.c:38 — get a track coord on or next to x,y last tracked by hero
