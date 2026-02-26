@@ -185,6 +185,35 @@ Gate:
 
 1. Idempotence and static checks pass.
 
+### Phase 3 Hard-Part Execution Order (Authoritative)
+
+Work packages are intentionally ordered to avoid rework:
+
+1. `T3.1` Parser bootstrap (`clang.cindex` TU load + compile command profile)
+2. `T3.2` Source/PP span map + macro provenance extraction
+3. `T3.3` NIR core model + deterministic function-level serialization
+4. `T3.4` Rule/schema loader + strict validation
+5. `T3.5` Rewrite pass engine wiring (state/macros/function/boundary/controlflow)
+6. `T3.6` JS backend emitter skeleton (stable formatting + source map sidecar)
+7. `T3.7` CLI orchestration (`main.py`) and artifact writing (`meta/diag`)
+8. `T3.8` Idempotence/static gates + translator unit suite
+9. `T3.9` Safe-subset pilot translation on curated helper functions
+
+Dependency constraints:
+
+1. `T3.3` depends on `T3.1` and `T3.2`.
+2. `T3.5` depends on `T3.3` and `T3.4`.
+3. `T3.6` depends on `T3.3`.
+4. `T3.7` depends on `T3.5` and `T3.6`.
+5. `T3.8` depends on `T3.7`.
+6. `T3.9` depends on `T3.8`.
+
+Parallelization rule:
+
+1. `T3.4` can run in parallel with `T3.2/T3.3`.
+2. `T3.6` can start once `T3.3` is stable, in parallel with late `T3.5`.
+3. Final gate still requires all `T3.x` to be green.
+
 ## Phase 4: Combat/Monster Core Canonicalization + Translator Pilot
 
 Deliver:

@@ -737,6 +737,53 @@ Phase E: Broadening
 
 1. Add more C files as state model stabilizes.
 
+## M3 Execution Backlog (Parser/Emitter Explicit)
+
+This backlog is the concrete translation-infrastructure schedule for M3.
+
+1. `A1` Frontend bootstrap:
+   1. load TU with compile profile,
+   2. capture AST spans,
+   3. emit minimal parse report.
+2. `A2` Macro provenance layer:
+   1. Source/PP token crosswalk,
+   2. macro invocation/expansion records.
+3. `A3` NIR builder:
+   1. function-level node graph,
+   2. deterministic JSON snapshot output.
+4. `A4` Rule/schema validation:
+   1. schema definitions for all ruleset files,
+   2. strict loader diagnostics.
+5. `A5` Pass engine wiring:
+   1. state-path pass,
+   2. macro pass,
+   3. function-map pass,
+   4. boundary/controlflow pass.
+6. `A6` Backend emitter:
+   1. JS AST printer (or structured emitter),
+   2. stable formatting guarantees,
+   3. metadata/diagnostic sidecars.
+7. `A7` CLI integration:
+   1. `main.py` entry with `--src/--func/--emit`,
+   2. patch/scaffold output modes.
+8. `A8` Verification gates:
+   1. static unresolved-symbol checks,
+   2. policy-boundary checks,
+   3. idempotence check.
+9. `A9` Safe-subset pilot:
+   1. helper-function translation,
+   2. non-regressing parity smoke.
+
+Required order:
+
+1. `A1 -> A2 -> A3`
+2. `A4` in parallel with `A2/A3`
+3. `A5` after `A3` and `A4`
+4. `A6` after `A3`
+5. `A7` after `A5` and `A6`
+6. `A8` after `A7`
+7. `A9` after `A8`
+
 ## Failure Modes and Mitigations
 
 1. Macro mis-modeling causes silent semantic drift.
