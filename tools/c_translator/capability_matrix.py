@@ -60,6 +60,7 @@ def main():
 
     files = []
     totals = Counter()
+    detail_counter = Counter()
     for path in sources:
         payload = emit_capability_summary(str(path), profile)
         function_count = int(payload.get("function_count") or 0)
@@ -75,8 +76,16 @@ def main():
                 "blocked_count": blocked_count,
                 "translated_ratio": ratio,
                 "diag_histogram": payload.get("diag_histogram") or {},
+                "function_diags": payload.get("functions") or [],
             }
         )
+        for fn in (payload.get("functions") or []):
+            for d in (fn.get("diag") or []):
+                code = d.get("code")
+                if not code:
+                    continue
+                msg = d.get("message") or ""
+                detail_counter[(code, msg)] += 1
         totals["files"] += 1
         totals["functions"] += function_count
         totals["translated"] += translated_count
@@ -94,6 +103,10 @@ def main():
             "translated_ratio": overall_ratio,
         },
         "top_blockers": _top_blockers(files),
+        "top_blocker_details": [
+            {"code": code, "message": msg, "count": count}
+            for (code, msg), count in detail_counter.most_common(20)
+        ],
         "files": files,
     }
 

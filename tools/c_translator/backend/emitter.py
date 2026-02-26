@@ -255,6 +255,7 @@ def emit_capability_summary(src_path, compile_profile=None):
                 "signature_line": payload.get("meta", {}).get("signature_line"),
                 "translated": translated,
                 "diag_codes": diag_codes,
+                "diag": payload.get("diag") or [],
             }
         )
 
