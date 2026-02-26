@@ -929,10 +929,40 @@ def _find_unresolved_tokens(lines):
         bad.add("go.")
     if re.search(r"\bgy\.", joined):
         bad.add("gy.")
+    if re.search(r"\bgc\.", joined):
+        bad.add("gc.")
     if re.search(r"\bgt\.", joined):
         bad.add("gt.")
     if re.search(r"\bgv\.", joined):
         bad.add("gv.")
+    if re.search(r"\bgi\.", joined):
+        bad.add("gi.")
+    if re.search(r"\bgw\.", joined):
+        bad.add("gw.")
+    if re.search(r"\bga\.", joined):
+        bad.add("ga.")
+    if re.search(r"\bgl\.", joined):
+        bad.add("gl.")
+    if re.search(r"\bsvl\.", joined):
+        bad.add("svl.")
+    if re.search(r"\bsvd\.", joined):
+        bad.add("svd.")
+    if re.search(r"\bsvn\.", joined):
+        bad.add("svn.")
+    if re.search(r"\bsvr\.", joined):
+        bad.add("svr.")
+    if re.search(r"\bsvb\.", joined):
+        bad.add("svb.")
+    if re.search(r"\bsvx\.", joined):
+        bad.add("svx.")
+    if re.search(r"\bsvy\.", joined):
+        bad.add("svy.")
+    if re.search(r"\bsvplayer\.", joined):
+        bad.add("svplayer.")
+    if re.search(r"\bgplayer\.", joined):
+        bad.add("gplayer.")
+    if re.search(r"\bprogram_state\.", joined):
+        bad.add("program_state.")
     # W_* constants are valid symbols in translated C and handled by imports/rules.
     if re.search(r"(?<!game\.)\bsvc\.", joined):
         bad.add("svc.")
