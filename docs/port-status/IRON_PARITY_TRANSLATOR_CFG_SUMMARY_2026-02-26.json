@@ -1,0 +1,2402 @@
+{
+  "cfg_version": 1,
+  "function_count": 88,
+  "functions": [
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0001_uint_to_any",
+      "name": "uint_to_any",
+      "span": {
+        "body_end_line": 79,
+        "body_start_line": 75,
+        "signature_line": 74
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0002_long_to_any",
+      "name": "long_to_any",
+      "span": {
+        "body_end_line": 87,
+        "body_start_line": 83,
+        "signature_line": 82
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0003_monst_to_any",
+      "name": "monst_to_any",
+      "span": {
+        "body_end_line": 95,
+        "body_start_line": 91,
+        "signature_line": 90
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0004_obj_to_any",
+      "name": "obj_to_any",
+      "span": {
+        "body_end_line": 103,
+        "body_start_line": 99,
+        "signature_line": 98
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0005_revive_nasty",
+      "name": "revive_nasty",
+      "span": {
+        "body_end_line": 138,
+        "body_start_line": 107,
+        "signature_line": 106
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0006_could_move_onto_boulder",
+      "name": "could_move_onto_boulder",
+      "span": {
+        "body_end_line": 164,
+        "body_start_line": 147,
+        "signature_line": 146
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0007_cannot_push_msg",
+      "name": "cannot_push_msg",
+      "span": {
+        "body_end_line": 260,
+        "body_start_line": 249,
+        "signature_line": 248
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0008_cannot_push",
+      "name": "cannot_push",
+      "span": {
+        "body_end_line": 313,
+        "body_start_line": 264,
+        "signature_line": 263
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0009_rock_disappear_msg",
+      "name": "rock_disappear_msg",
+      "span": {
+        "body_end_line": 325,
+        "body_start_line": 317,
+        "signature_line": 316
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0010_moverock_done",
+      "name": "moverock_done",
+      "span": {
+        "body_end_line": 334,
+        "body_start_line": 329,
+        "signature_line": 328
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0011_moverock",
+      "name": "moverock",
+      "span": {
+        "body_end_line": 346,
+        "body_start_line": 338,
+        "signature_line": 337
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 2,
+        "break_lines": [
+          530,
+          597
+        ],
+        "case_count": 7,
+        "case_lines": [
+          506,
+          531,
+          532,
+          545,
+          546,
+          568,
+          579
+        ],
+        "default_count": 1,
+        "default_lines": [
+          596
+        ],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 1,
+        "labels": [
+          {
+            "line": 596,
+            "name": "default"
+          }
+        ],
+        "reducible_tags": [],
+        "switch_count": 1,
+        "switch_lines": [
+          505
+        ]
+      },
+      "id": "fn_0012_moverock_core",
+      "name": "moverock_core",
+      "span": {
+        "body_end_line": 619,
+        "body_start_line": 350,
+        "signature_line": 349
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0013_still_chewing",
+      "name": "still_chewing",
+      "span": {
+        "body_end_line": 803,
+        "body_start_line": 629,
+        "signature_line": 628
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0014_movobj",
+      "name": "movobj",
+      "span": {
+        "body_end_line": 814,
+        "body_start_line": 807,
+        "signature_line": 806
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 3,
+        "case_lines": [
+          839,
+          861,
+          873
+        ],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0015_dosinkfall",
+      "name": "dosinkfall",
+      "span": {
+        "body_end_line": 900,
+        "body_start_line": 818,
+        "signature_line": 817
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0016_may_dig",
+      "name": "may_dig",
+      "span": {
+        "body_end_line": 910,
+        "body_start_line": 905,
+        "signature_line": 904
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0017_may_passwall",
+      "name": "may_passwall",
+      "span": {
+        "body_end_line": 917,
+        "body_start_line": 914,
+        "signature_line": 913
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0018_bad_rock",
+      "name": "bad_rock",
+      "span": {
+        "body_end_line": 927,
+        "body_start_line": 921,
+        "signature_line": 920
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0019_cant_squeeze_thru",
+      "name": "cant_squeeze_thru",
+      "span": {
+        "body_end_line": 960,
+        "body_start_line": 935,
+        "signature_line": 934
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0020_invocation_pos",
+      "name": "invocation_pos",
+      "span": {
+        "body_end_line": 967,
+        "body_start_line": 964,
+        "signature_line": 963
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 2,
+        "gotos": [
+          {
+            "direction": "forward",
+            "from_line": 1470,
+            "target_label": "found",
+            "target_line": 1499
+          },
+          {
+            "direction": "backward",
+            "from_line": 1494,
+            "target_label": "noguess",
+            "target_line": 1296
+          }
+        ],
+        "label_count": 2,
+        "labels": [
+          {
+            "line": 1296,
+            "name": "noguess"
+          },
+          {
+            "line": 1499,
+            "name": "found"
+          }
+        ],
+        "reducible_tags": [
+          "retry_loop_candidate",
+          "single_exit_goto_ladder:found",
+          "trailing_cleanup_label_present"
+        ],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0021_findtravelpath",
+      "name": "findtravelpath",
+      "span": {
+        "body_end_line": 1504,
+        "body_start_line": 1248,
+        "signature_line": 1247
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0022_is_valid_travelpt",
+      "name": "is_valid_travelpt",
+      "span": {
+        "body_end_line": 1525,
+        "body_start_line": 1508,
+        "signature_line": 1507
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0023_u_rooted",
+      "name": "u_rooted",
+      "span": {
+        "body_end_line": 1686,
+        "body_start_line": 1676,
+        "signature_line": 1675
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0024_notice_mon",
+      "name": "notice_mon",
+      "span": {
+        "body_end_line": 1713,
+        "body_start_line": 1690,
+        "signature_line": 1689
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0025_notice_mons_cmp",
+      "name": "notice_mons_cmp",
+      "span": {
+        "body_end_line": 1722,
+        "body_start_line": 1717,
+        "signature_line": 1716
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0026_notice_all_mons",
+      "name": "notice_all_mons",
+      "span": {
+        "body_end_line": 1764,
+        "body_start_line": 1726,
+        "signature_line": 1725
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0027_impact_disturbs_zombies",
+      "name": "impact_disturbs_zombies",
+      "span": {
+        "body_end_line": 1775,
+        "body_start_line": 1769,
+        "signature_line": 1768
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0028_disturb_buried_zombies",
+      "name": "disturb_buried_zombies",
+      "span": {
+        "body_end_line": 1794,
+        "body_start_line": 1780,
+        "signature_line": 1779
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0029_u_locomotion",
+      "name": "u_locomotion",
+      "span": {
+        "body_end_line": 1810,
+        "body_start_line": 1799,
+        "signature_line": 1798
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0030_u_simple_floortyp",
+      "name": "u_simple_floortyp",
+      "span": {
+        "body_end_line": 1829,
+        "body_start_line": 1815,
+        "signature_line": 1814
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 5,
+        "break_lines": [
+          1844,
+          1848,
+          1851,
+          1854,
+          1857
+        ],
+        "case_count": 4,
+        "case_lines": [
+          1842,
+          1845,
+          1849,
+          1852
+        ],
+        "default_count": 1,
+        "default_lines": [
+          1855
+        ],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 1,
+        "labels": [
+          {
+            "line": 1855,
+            "name": "default"
+          }
+        ],
+        "reducible_tags": [],
+        "switch_count": 1,
+        "switch_lines": [
+          1841
+        ]
+      },
+      "id": "fn_0031_handle_tip",
+      "name": "handle_tip",
+      "span": {
+        "body_end_line": 1862,
+        "body_start_line": 1834,
+        "signature_line": 1833
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 1,
+        "case_lines": [
+          1881
+        ],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0032_swim_move_danger",
+      "name": "swim_move_danger",
+      "span": {
+        "body_end_line": 1902,
+        "body_start_line": 1867,
+        "signature_line": 1866
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0033_domove_bump_mon",
+      "name": "domove_bump_mon",
+      "span": {
+        "body_end_line": 1929,
+        "body_start_line": 1907,
+        "signature_line": 1906
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0034_domove_fight_ironbars",
+      "name": "domove_fight_ironbars",
+      "span": {
+        "body_end_line": 1998,
+        "body_start_line": 1978,
+        "signature_line": 1977
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0035_domove_fight_web",
+      "name": "domove_fight_web",
+      "span": {
+        "body_end_line": 2075,
+        "body_start_line": 2003,
+        "signature_line": 2002
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 1,
+        "case_lines": [
+          2219
+        ],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 1,
+        "gotos": [
+          {
+            "direction": "forward",
+            "from_line": 2236,
+            "target_label": "futile",
+            "target_line": 2299
+          }
+        ],
+        "label_count": 1,
+        "labels": [
+          {
+            "line": 2299,
+            "name": "futile"
+          }
+        ],
+        "reducible_tags": [
+          "single_exit_goto_ladder:futile"
+        ],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0036_domove_fight_empty",
+      "name": "domove_fight_empty",
+      "span": {
+        "body_end_line": 2319,
+        "body_start_line": 2211,
+        "signature_line": 2210
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 3,
+        "break_lines": [
+          2330,
+          2333,
+          2337
+        ],
+        "case_count": 3,
+        "case_lines": [
+          2327,
+          2331,
+          2334
+        ],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 1,
+        "switch_lines": [
+          2326
+        ]
+      },
+      "id": "fn_0037_air_turbulence",
+      "name": "air_turbulence",
+      "span": {
+        "body_end_line": 2342,
+        "body_start_line": 2324,
+        "signature_line": 2323
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0038_water_turbulence",
+      "name": "water_turbulence",
+      "span": {
+        "body_end_line": 2374,
+        "body_start_line": 2347,
+        "signature_line": 2346
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0039_slippery_ice_fumbling",
+      "name": "slippery_ice_fumbling",
+      "span": {
+        "body_end_line": 2396,
+        "body_start_line": 2378,
+        "signature_line": 2377
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0040_u_maybe_impaired",
+      "name": "u_maybe_impaired",
+      "span": {
+        "body_end_line": 2402,
+        "body_start_line": 2400,
+        "signature_line": 2399
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0041_impaired_movement",
+      "name": "impaired_movement",
+      "span": {
+        "body_end_line": 2422,
+        "body_start_line": 2407,
+        "signature_line": 2406
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0042_avoid_moving_on_trap",
+      "name": "avoid_moving_on_trap",
+      "span": {
+        "body_end_line": 2441,
+        "body_start_line": 2426,
+        "signature_line": 2425
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0043_avoid_running_into_trap_or_liquid",
+      "name": "avoid_running_into_trap_or_liquid",
+      "span": {
+        "body_end_line": 2490,
+        "body_start_line": 2477,
+        "signature_line": 2476
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 1,
+        "case_lines": [
+          2506
+        ],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0044_avoid_trap_andor_region",
+      "name": "avoid_trap_andor_region",
+      "span": {
+        "body_end_line": 2563,
+        "body_start_line": 2497,
+        "signature_line": 2496
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0045_move_out_of_bounds",
+      "name": "move_out_of_bounds",
+      "span": {
+        "body_end_line": 2593,
+        "body_start_line": 2568,
+        "signature_line": 2567
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0046_carrying_too_much",
+      "name": "carrying_too_much",
+      "span": {
+        "body_end_line": 2615,
+        "body_start_line": 2598,
+        "signature_line": 2597
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 1,
+        "break_lines": [
+          2668
+        ],
+        "case_count": 4,
+        "case_lines": [
+          2646,
+          2662,
+          2663,
+          2664
+        ],
+        "default_count": 1,
+        "default_lines": [
+          2654
+        ],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 1,
+        "labels": [
+          {
+            "line": 2654,
+            "name": "default"
+          }
+        ],
+        "reducible_tags": [],
+        "switch_count": 1,
+        "switch_lines": [
+          2645
+        ]
+      },
+      "id": "fn_0047_escape_from_sticky_mon",
+      "name": "escape_from_sticky_mon",
+      "span": {
+        "body_end_line": 2673,
+        "body_start_line": 2621,
+        "signature_line": 2620
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0048_domove",
+      "name": "domove",
+      "span": {
+        "body_end_line": 2690,
+        "body_start_line": 2677,
+        "signature_line": 2676
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 1,
+        "case_lines": [
+          2912
+        ],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0049_domove_core",
+      "name": "domove_core",
+      "span": {
+        "body_end_line": 2972,
+        "body_start_line": 2694,
+        "signature_line": 2693
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0050_runmode_delay_output",
+      "name": "runmode_delay_output",
+      "span": {
+        "body_end_line": 2998,
+        "body_start_line": 2978,
+        "signature_line": 2977
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0051_maybe_smudge_engr",
+      "name": "maybe_smudge_engr",
+      "span": {
+        "body_end_line": 3012,
+        "body_start_line": 3002,
+        "signature_line": 3001
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0052_overexert_hp",
+      "name": "overexert_hp",
+      "span": {
+        "body_end_line": 3028,
+        "body_start_line": 3017,
+        "signature_line": 3016
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0053_overexertion",
+      "name": "overexertion",
+      "span": {
+        "body_end_line": 3042,
+        "body_start_line": 3033,
+        "signature_line": 3032
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0054_invocation_message",
+      "name": "invocation_message",
+      "span": {
+        "body_end_line": 3066,
+        "body_start_line": 3046,
+        "signature_line": 3045
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0055_switch_terrain",
+      "name": "switch_terrain",
+      "span": {
+        "body_end_line": 3108,
+        "body_start_line": 3073,
+        "signature_line": 3072
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0056_set_uinwater",
+      "name": "set_uinwater",
+      "span": {
+        "body_end_line": 3115,
+        "body_start_line": 3113,
+        "signature_line": 3112
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 2,
+        "break_lines": [
+          3326,
+          3337
+        ],
+        "case_count": 1,
+        "case_lines": [
+          3305
+        ],
+        "default_count": 1,
+        "default_lines": [
+          3327
+        ],
+        "goto_count": 1,
+        "gotos": [
+          {
+            "direction": "forward",
+            "from_line": 3235,
+            "target_label": "spotdone",
+            "target_line": 3341
+          }
+        ],
+        "label_count": 2,
+        "labels": [
+          {
+            "line": 3327,
+            "name": "default"
+          },
+          {
+            "line": 3341,
+            "name": "spotdone"
+          }
+        ],
+        "reducible_tags": [
+          "single_exit_goto_ladder:spotdone",
+          "trailing_cleanup_label_present"
+        ],
+        "switch_count": 1,
+        "switch_lines": [
+          3304
+        ]
+      },
+      "id": "fn_0057_spoteffects",
+      "name": "spoteffects",
+      "span": {
+        "body_end_line": 3347,
+        "body_start_line": 3201,
+        "signature_line": 3200
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0058_monstinroom",
+      "name": "monstinroom",
+      "span": {
+        "body_end_line": 3363,
+        "body_start_line": 3352,
+        "signature_line": 3351
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0059_furniture_present",
+      "name": "furniture_present",
+      "span": {
+        "body_end_line": 3380,
+        "body_start_line": 3368,
+        "signature_line": 3367
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 2,
+        "break_lines": [
+          3400,
+          3403
+        ],
+        "case_count": 3,
+        "case_lines": [
+          3396,
+          3398,
+          3401
+        ],
+        "default_count": 1,
+        "default_lines": [
+          3404
+        ],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 1,
+        "labels": [
+          {
+            "line": 3404,
+            "name": "default"
+          }
+        ],
+        "reducible_tags": [],
+        "switch_count": 1,
+        "switch_lines": [
+          3395
+        ]
+      },
+      "id": "fn_0060_in_rooms",
+      "name": "in_rooms",
+      "span": {
+        "body_end_line": 3445,
+        "body_start_line": 3384,
+        "signature_line": 3383
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0061_in_town",
+      "name": "in_town",
+      "span": {
+        "body_end_line": 3470,
+        "body_start_line": 3450,
+        "signature_line": 3449
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0062_move_update",
+      "name": "move_update",
+      "span": {
+        "body_end_line": 3507,
+        "body_start_line": 3474,
+        "signature_line": 3473
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 18,
+        "break_lines": [
+          3557,
+          3561,
+          3566,
+          3569,
+          3577,
+          3580,
+          3583,
+          3586,
+          3595,
+          3608,
+          3617,
+          3629,
+          3632,
+          3635,
+          3638,
+          3641,
+          3644,
+          3647
+        ],
+        "case_count": 19,
+        "case_lines": [
+          3528,
+          3555,
+          3558,
+          3562,
+          3567,
+          3570,
+          3578,
+          3581,
+          3584,
+          3587,
+          3596,
+          3610,
+          3627,
+          3630,
+          3633,
+          3636,
+          3639,
+          3642,
+          3645
+        ],
+        "default_count": 1,
+        "default_lines": [
+          3614
+        ],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 1,
+        "labels": [
+          {
+            "line": 3614,
+            "name": "default"
+          }
+        ],
+        "reducible_tags": [],
+        "switch_count": 2,
+        "switch_lines": [
+          3554,
+          3626
+        ]
+      },
+      "id": "fn_0063_check_special_room",
+      "name": "check_special_room",
+      "span": {
+        "body_end_line": 3665,
+        "body_start_line": 3512,
+        "signature_line": 3511
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 1,
+        "case_lines": [
+          3677
+        ],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0064_pickup_checks",
+      "name": "pickup_checks",
+      "span": {
+        "body_end_line": 3757,
+        "body_start_line": 3674,
+        "signature_line": 3673
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0065_dopickup",
+      "name": "dopickup",
+      "span": {
+        "body_end_line": 3777,
+        "body_start_line": 3762,
+        "signature_line": 3761
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 8,
+        "gotos": [
+          {
+            "direction": "forward",
+            "from_line": 3823,
+            "target_label": "stop",
+            "target_line": 3905
+          },
+          {
+            "direction": "forward",
+            "from_line": 3838,
+            "target_label": "bcorr",
+            "target_line": 3863
+          },
+          {
+            "direction": "forward",
+            "from_line": 3840,
+            "target_label": "stop",
+            "target_line": 3905
+          },
+          {
+            "direction": "forward",
+            "from_line": 3857,
+            "target_label": "stop",
+            "target_line": 3905
+          },
+          {
+            "direction": "forward",
+            "from_line": 3860,
+            "target_label": "bcorr",
+            "target_line": 3863
+          },
+          {
+            "direction": "forward",
+            "from_line": 3892,
+            "target_label": "stop",
+            "target_line": 3905
+          },
+          {
+            "direction": "backward",
+            "from_line": 3896,
+            "target_label": "bcorr",
+            "target_line": 3863
+          },
+          {
+            "direction": "backward",
+            "from_line": 3913,
+            "target_label": "stop",
+            "target_line": 3905
+          }
+        ],
+        "label_count": 2,
+        "labels": [
+          {
+            "line": 3863,
+            "name": "bcorr"
+          },
+          {
+            "line": 3905,
+            "name": "stop"
+          }
+        ],
+        "reducible_tags": [
+          "retry_loop_candidate"
+        ],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0066_lookaround",
+      "name": "lookaround",
+      "span": {
+        "body_end_line": 3944,
+        "body_start_line": 3784,
+        "signature_line": 3783
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0067_doorless_door",
+      "name": "doorless_door",
+      "span": {
+        "body_end_line": 3959,
+        "body_start_line": 3949,
+        "signature_line": 3948
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0068_crawl_destination",
+      "name": "crawl_destination",
+      "span": {
+        "body_end_line": 3986,
+        "body_start_line": 3965,
+        "signature_line": 3964
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0069_monster_nearby",
+      "name": "monster_nearby",
+      "span": {
+        "body_end_line": 4012,
+        "body_start_line": 3992,
+        "signature_line": 3991
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0070_end_running",
+      "name": "end_running",
+      "span": {
+        "body_end_line": 4033,
+        "body_start_line": 4016,
+        "signature_line": 4015
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0071_nomul",
+      "name": "nomul",
+      "span": {
+        "body_end_line": 4048,
+        "body_start_line": 4037,
+        "signature_line": 4036
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0072_unmul",
+      "name": "unmul",
+      "span": {
+        "body_end_line": 4083,
+        "body_start_line": 4053,
+        "signature_line": 4052
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0073_maybe_wail",
+      "name": "maybe_wail",
+      "span": {
+        "body_end_line": 4118,
+        "body_start_line": 4087,
+        "signature_line": 4086
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0074_saving_grace",
+      "name": "saving_grace",
+      "span": {
+        "body_end_line": 4172,
+        "body_start_line": 4124,
+        "signature_line": 4123
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0075_showdamage",
+      "name": "showdamage",
+      "span": {
+        "body_end_line": 4182,
+        "body_start_line": 4177,
+        "signature_line": 4176
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0076_losehp",
+      "name": "losehp",
+      "span": {
+        "body_end_line": 4222,
+        "body_start_line": 4186,
+        "signature_line": 4185
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 1,
+        "case_lines": [
+          4235
+        ],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0077_weight_cap",
+      "name": "weight_cap",
+      "span": {
+        "body_end_line": 4276,
+        "body_start_line": 4226,
+        "signature_line": 4225
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0078_inv_weight",
+      "name": "inv_weight",
+      "span": {
+        "body_end_line": 4295,
+        "body_start_line": 4282,
+        "signature_line": 4281
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0079_calc_capacity",
+      "name": "calc_capacity",
+      "span": {
+        "body_end_line": 4312,
+        "body_start_line": 4303,
+        "signature_line": 4302
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0080_near_capacity",
+      "name": "near_capacity",
+      "span": {
+        "body_end_line": 4318,
+        "body_start_line": 4316,
+        "signature_line": 4315
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0081_max_capacity",
+      "name": "max_capacity",
+      "span": {
+        "body_end_line": 4326,
+        "body_start_line": 4322,
+        "signature_line": 4321
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0082_check_capacity",
+      "name": "check_capacity",
+      "span": {
+        "body_end_line": 4339,
+        "body_start_line": 4330,
+        "signature_line": 4329
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0083_dump_weights",
+      "name": "dump_weights",
+      "span": {
+        "body_end_line": 4413,
+        "body_start_line": 4352,
+        "signature_line": 4351
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0084_cmp_weights",
+      "name": "cmp_weights",
+      "span": {
+        "body_end_line": 4423,
+        "body_start_line": 4417,
+        "signature_line": 4416
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0085_inv_cnt",
+      "name": "inv_cnt",
+      "span": {
+        "body_end_line": 4437,
+        "body_start_line": 4427,
+        "signature_line": 4426
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0086_money_cnt",
+      "name": "money_cnt",
+      "span": {
+        "body_end_line": 4452,
+        "body_start_line": 4445,
+        "signature_line": 4444
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 1,
+        "break_lines": [
+          4475
+        ],
+        "case_count": 2,
+        "case_lines": [
+          4461,
+          4465
+        ],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 1,
+        "switch_lines": [
+          4460
+        ]
+      },
+      "id": "fn_0087_spot_checks",
+      "name": "spot_checks",
+      "span": {
+        "body_end_line": 4477,
+        "body_start_line": 4456,
+        "signature_line": 4455
+      }
+    },
+    {
+      "cfg": {
+        "break_count": 0,
+        "break_lines": [],
+        "case_count": 0,
+        "case_lines": [],
+        "default_count": 0,
+        "default_lines": [],
+        "goto_count": 0,
+        "gotos": [],
+        "label_count": 0,
+        "labels": [],
+        "reducible_tags": [],
+        "switch_count": 0,
+        "switch_lines": []
+      },
+      "id": "fn_0088_rounddiv",
+      "name": "rounddiv",
+      "span": {
+        "body_end_line": 4502,
+        "body_start_line": 4482,
+        "signature_line": 4481
+      }
+    }
+  ],
+  "source": "nethack-c/src/hack.c",
+  "source_sha256": "ac9dd7e72d4a72366019fc5c148d29d5c08f20d25f223920cd9f56abd0b4b3df"
+}

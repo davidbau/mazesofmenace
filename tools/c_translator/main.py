@@ -3,6 +3,7 @@ import argparse
 import json
 from pathlib import Path
 
+from cfg import build_cfg_summary
 from frontend import load_compile_profile, parse_summary, provenance_summary
 from nir import build_nir_snapshot
 
@@ -19,7 +20,14 @@ def build_parser():
     p.add_argument(
         "--emit",
         default="parse-summary",
-        choices=["parse-summary", "provenance-summary", "nir-snapshot", "scaffold", "patch"],
+        choices=[
+            "parse-summary",
+            "provenance-summary",
+            "nir-snapshot",
+            "cfg-summary",
+            "scaffold",
+            "patch",
+        ],
         help="Output mode",
     )
     p.add_argument("--out", required=True, help="Output file path")
@@ -39,6 +47,8 @@ def main():
         payload = provenance_summary(args.src, profile)
     elif args.emit == "nir-snapshot":
         payload = build_nir_snapshot(args.src, args.func)
+    elif args.emit == "cfg-summary":
+        payload = build_cfg_summary(args.src, args.func)
     else:
         # Scaffold placeholders for next M3 steps.
         payload = {
