@@ -49,6 +49,65 @@ Secondary outcomes:
 4. No widening of legacy mirror state paths.
 5. Headless replay speed remains high; animation timing is boundary-correct but skippable in headless.
 
+## Canonical Naming and Notation Rules (Campaign-Wide)
+
+Purpose:
+
+1. Remove ambiguity during migration.
+2. Ensure translator output converges directly to final-state architecture.
+3. Keep review and issue triage mechanically checkable.
+
+Authoritative target names:
+
+1. Runtime/global ownership must converge to canonical `game.*` paths.
+2. Translator output must target canonical names by default, never ad-hoc aliases.
+3. Legacy names are allowed only as explicitly marked transitional bridges.
+4. Within canonical paths, prefer C-like symbol names to maximize mechanical translation fidelity.
+
+Canonical path policy:
+
+1. Use this form for all parity-critical state reads/writes: `game.<namespace>.<field>`.
+2. Preferred namespaces: `game.u`, `game.flags`, `game.iflags`, `game.gd`, `game.gm`, `game.gn`, `game.lev`, `game.svc.*`.
+3. C symbol names remain C-shaped when they are semantic entities (for example `youmonst`, `moves`, `mvitals`), but mounted at canonical ownership paths.
+4. Prefer C field/function naming and ordering over JS-style cosmetic rewrites when behavior is equivalent.
+5. Do not introduce new top-level mirrors (`context.*`, `map.*`, `state.*`, `globals.*`) as long-term ownership.
+
+Legacy bridge policy:
+
+1. Transitional aliases are permitted only when required to avoid large-batch regressions.
+2. Every alias bridge must carry an explicit marker comment: `IRON_PARITY_ALIAS_BRIDGE`.
+3. Every alias bridge must reference a milestone retirement target (`M1`, `M2`, ... `M6`) and follow-up issue.
+4. Alias bridges are read-through/write-through adapters only; they must not become independent state owners.
+5. Any new alias bridge without retirement metadata is a policy violation.
+
+Translator naming and notation policy:
+
+1. Rewrite tables must map C globals/paths directly to canonical `game.*` targets.
+2. Rule tables may include compatibility profiles, but default emit profile is canonical-only.
+3. Generated identifiers should be deterministic and C-first:
+   1. preserve C local/global/member names whenever they are valid JS identifiers,
+   2. only rename when required by JS syntax/reserved words or established exported API contracts,
+   3. do not camelize/simplify names for style alone.
+4. Generated function names stay aligned to C function names unless file-level JS API constraints require wrappers.
+5. Temporary translator shims must be marked as `TRANSITIONAL_SHIM` and tracked in campaign issues.
+
+Issue and doc notation rules:
+
+1. Always describe state locations as canonical path pairs: `C:<symbol/path> -> JS:<game.path>`.
+2. For divergences, include `file:function`, divergence channel, and first step/index.
+3. For migration notes, explicitly tag status:
+   1. `canonical` (final target),
+   2. `bridge` (temporary alias),
+   3. `legacy` (to be removed).
+4. `docs/port-status/IRON_PARITY_ALIAS_BRIDGE_LEDGER_*.md` is the running bridge inventory and retirement tracker.
+
+Milestone enforcement:
+
+1. `M1`: canonical namespaces exist; no untracked alias bridges.
+2. `M2`: movement/turn modules stop writing through legacy ownership paths.
+3. `M3+`: translator output must be canonical-first; compatibility profile usage requires explicit justification.
+4. `M6`: Tier-1 legacy bridges removed, except explicitly approved long-tail exceptions.
+
 ## Program Structure
 
 Run three coordinated workstreams:

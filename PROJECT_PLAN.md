@@ -162,6 +162,9 @@ Campaign governance:
    explicit approved follow-up.
 4. The umbrella `IRON_PARITY_PLAN.md` milestone matrix is authoritative when
    phase wording across docs differs.
+5. Canonical naming is C-first: translator and refactor work must prefer
+   canonical `game.*` ownership with C-like symbols, and avoid cosmetic renames
+   that weaken mechanical translation generalization.
 
 ### GitHub Issue Organization (IRON_PARITY)
 
