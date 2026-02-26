@@ -1,0 +1,20 @@
+{
+  "diag": [],
+  "emit_mode": "emit-helper",
+  "function": "rounddiv",
+  "js": "// TRANSLATOR: AUTO (hack.c:4481)\nexport function rounddiv(x, y) {\n  // TODO(iron-parity): translated body pending pass pipeline.\n  throw new Error(\"UNIMPLEMENTED_TRANSLATED_FUNCTION\");\n}\n",
+  "meta": {
+    "assignment_count": 8,
+    "body_end_line": 4502,
+    "body_sha256": "6ac5ae79d8a14e41d495db760d7aec8180075a03d31874a73a737778777571ac",
+    "body_start_line": 4482,
+    "call_count": 1,
+    "cfg_tags": [],
+    "param_names": [
+      "x",
+      "y"
+    ],
+    "signature_line": 4481
+  },
+  "source": "nethack-c/src/hack.c"
+}

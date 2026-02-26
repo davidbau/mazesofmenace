@@ -3,6 +3,7 @@ import argparse
 import json
 from pathlib import Path
 
+from backend import emit_helper_scaffold
 from cfg import build_cfg_summary
 from frontend import load_compile_profile, parse_summary, provenance_summary
 from nir import build_nir_snapshot
@@ -25,6 +26,7 @@ def build_parser():
             "provenance-summary",
             "nir-snapshot",
             "cfg-summary",
+            "emit-helper",
             "scaffold",
             "patch",
         ],
@@ -49,6 +51,8 @@ def main():
         payload = build_nir_snapshot(args.src, args.func)
     elif args.emit == "cfg-summary":
         payload = build_cfg_summary(args.src, args.func)
+    elif args.emit == "emit-helper":
+        payload = emit_helper_scaffold(args.src, args.func)
     else:
         # Scaffold placeholders for next M3 steps.
         payload = {
