@@ -511,6 +511,13 @@ export async function domove_core(dir, player, map, display, game) {
     if (!test_move(player.x, player.y, dir[0], dir[1], DO_MOVE, player, map, display, game)) {
         return { moved: false, tookTime: false };
     }
+    if (u_rooted(player, display)) {
+        return { moved: false, tookTime: false };
+    }
+    if (player.utrap) {
+        const moved = trapmove(player, nx, ny, display, map);
+        if (!moved) return { moved: false, tookTime: false };
+    }
     loc = map.at(nx, ny);
     const steppingTrap = map.trapAt(nx, ny);
     // C-style confirmation prompt for known anti-magic fields.
@@ -835,12 +842,20 @@ function pickRunContinuationDir(map, player, dir) {
 // Check if running should stop
 // C ref: hack.c lookaround() -- checks for interesting things while running
 export function lookaround(map, player, fov, dir, runStyle = 'run', display = null, game = null) {
-    const runMode = (runStyle === 'rush') ? 2 : 3;
+    const runMode = Number(game?.context?.run ?? ((runStyle === 'rush') ? 2 : 3));
     const travel = !!game?.traveling;
     const ux = player.x;
     const uy = player.y;
     const [dx, dy] = dir;
     const flags = map?.flags || {};
+    if (player?.blind || runMode === 0) {
+        return { stopReason: null, nextDir: null };
+    }
+    // C: grid bugs can't continue diagonal run.
+    if (player?.noDiag && dx && dy) {
+        if (display) display.putstr_message('You cannot move diagonally.');
+        return { stopReason: 'no-diag', nextDir: null };
+    }
     let corrct = 0;
     let noturn = 0;
     let x0 = 0;
@@ -2326,22 +2341,31 @@ export function handle_tip(_tip, _player, _display) {
 
 // C ref: hack.c trapmove() — try to escape from a trap
 // Returns true if hero can continue moving to intended destination.
-export function trapmove(player, _x, _y, display) {
+export function trapmove(player, x, y, display, map = null) {
     if (!player.utrap) return true;
+    const ttyp = player.utraptype;
+    const isBear = (ttyp === 'beartrap' || ttyp === 0 || ttyp === 2);
+    const isPitTrap = (ttyp === 'pit' || ttyp === 1);
+    const isWebTrap = (ttyp === 'web' || ttyp === 3 || ttyp === 6);
+    const isLavaTrap = (ttyp === 'lava' || ttyp === 4);
+    const desttrap = map?.trapAt ? map.trapAt(x, y) : null;
 
-    switch (player.utraptype) {
-    case 'beartrap':
+    if (isBear) {
         if (display) display.putstr_message('You are caught in a bear trap.');
-        if (rn2(5) === 0) player.utrap--;
+        if ((player.dx && player.dy) || rn2(5) === 0) player.utrap--;
         if (!player.utrap) {
             if (display) display.putstr_message('You finally wriggle free.');
         }
         return false;
-    case 'pit':
-        // climb_pit() would be called
+    }
+    if (isPitTrap) {
+        if (desttrap && desttrap.tseen && is_pit(desttrap.ttyp)) {
+            return true; // move into adjacent known pit
+        }
         if (display) display.putstr_message('You are in a pit.');
         return false;
-    case 'web':
+    }
+    if (isWebTrap) {
         player.utrap--;
         if (!player.utrap) {
             if (display) display.putstr_message('You disentangle yourself.');
@@ -2349,13 +2373,18 @@ export function trapmove(player, _x, _y, display) {
             if (display) display.putstr_message('You are stuck to the web.');
         }
         return false;
-    case 'lava':
+    }
+    if (isLavaTrap) {
         if (display) display.putstr_message('You are stuck in the lava.');
-        player.utrap--;
-        return false;
-    default:
+        const steppingOffLava = map ? !is_lava(x, y, map) : true;
+        if (steppingOffLava) {
+            player.utrap--;
+            if ((player.utrap & 0xff) === 0) player.utrap = 0;
+        }
+        player.umoved = true;
         return false;
     }
+    return false;
 }
 
 // C ref: hack.c is_valid_travelpt() — can hero travel to (x,y)?
