@@ -578,8 +578,9 @@ export function mon_hates_silver(mon) {
 
 // C ref: mondata.c hates_blessings(ptr)
 // Returns true if this monster type is especially affected by blessed objects.
+// TRANSLATOR: AUTO (mondata.c:539)
 export function hates_blessings(ptr) {
-    return is_undead(ptr) || is_demon(ptr);
+  return (is_undead(ptr) || is_demon(ptr));
 }
 
 // C ref: mondata.c mon_hates_blessings(mon)
