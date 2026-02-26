@@ -10,6 +10,8 @@ Scope: M1 alias-bridge planning and retirement criteria for Tier-1 movement stac
 | `game.traveling` | `game.svc.context.travel` | `js/hack.js` | Travel-path active flag | Travel start/stop and stop-on-fail all write canonical context flag; legacy boolean removed |
 | `game.forceFight` | `game.svc.context.forcefight` | `js/cmd.js`, `js/hack.js`, `js/dokick.js` | Prefix force-attack behavior | Canonical writes only; legacy mirror replaced by compatibility accessor and later removed |
 | `game.menuRequested` | `game.svc.context.nopick` | `js/cmd.js`, `js/hack.js` | Prefix suppress-autopickup behavior | Canonical writes only; autopickup gating reads canonical flag; legacy mirror removed |
+| `map._isInvocationLevel` | `map.is_invocation_lev` | `js/dungeon.js`, `js/mkmaze.js`, `js/mklev.js`, `js/mkroom.js`, `js/do.js`, `js/hack.js` | Invocation-level topology gate | Map generation writes canonical `is_invocation_lev`; all readers prefer canonical field; `_isInvocationLevel` retired after M6 compatibility window |
+| `map._invPos` | `map.inv_pos` | `js/mkmaze.js`, `js/mklev.js`, `js/mkroom.js`, `js/do.js`, `js/hack.js`, `js/dungeon.js` | Invocation square coordinate | Invocation placement writes canonical `inv_pos`; all readers prefer canonical field; `_invPos` retired after M6 compatibility window |
 
 ## Active compatibility bridge
 
@@ -55,3 +57,7 @@ Migration principle for M2 batches:
    1. now treated as a compatibility shim,
    2. canonical `NetHackGame` path initializes from `svc.context`,
    3. legacy backfill is restricted to non-canonical plain fixture objects.
+8. Invocation map-field canonicalization batch:
+   1. map generation now writes canonical `map.is_invocation_lev` and `map.inv_pos`,
+   2. legacy `_isInvocationLevel` and `_invPos` remain as `IRON_PARITY_ALIAS_BRIDGE` compatibility fields,
+   3. occupancy and arrival callsites now prefer canonical fields and only fall back to legacy bridge fields.
