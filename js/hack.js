@@ -1378,11 +1378,16 @@ export function rounddiv(x, y) {
 
 // C ref: hack.c invocation_pos() — is (x,y) the invocation position?
 export function invocation_pos(x, y, map) {
-    if (!map || !map.flags) return false;
-    const inv = map.inv_pos || map.flags.inv_pos;
+    if (!map) return false;
+    const inv = map._invPos || map.inv_pos || map.flags?.inv_pos;
     if (!inv) return false;
-    // Invocation_lev check: only on the invocation level
-    if (!map.flags.is_invocation_lev) return false;
+    // Invocation_lev check: only on the invocation level.
+    // Keep compatibility with both canonical (_isInvocationLevel/_invPos)
+    // and legacy flags-based map mirrors.
+    const onInvocationLevel = !!(map._isInvocationLevel
+        || map.flags?.is_invocation_lev
+        || map.flags?.invocationLevel);
+    if (!onInvocationLevel) return false;
     return x === inv.x && y === inv.y;
 }
 
