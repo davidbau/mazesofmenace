@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "rewrites": [
+    {
+      "c": "Invocation_lev(&u.uz)",
+      "js": "Invocation_lev(map.uz)",
+      "requires_params": ["map"]
+    },
+    {
+      "c": "svi.inv_pos.x",
+      "js": "map.inv_pos.x",
+      "requires_params": ["map"]
+    },
+    {
+      "c": "svi.inv_pos.y",
+      "js": "map.inv_pos.y",
+      "requires_params": ["map"]
+    }
+  ]
+}

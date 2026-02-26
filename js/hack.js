@@ -33,6 +33,7 @@ import { monsterNearby, monnear } from './monutil.js';
 import { monflee } from './monmove.js';
 import { ynFunction } from './input.js';
 import { water_friction, maybe_adjust_hero_bubble } from './mkmaze.js';
+import { Invocation_lev } from './dungeon.js';
 import { tmp_at, nh_delay_output_nowait, DISP_ALL, DISP_END } from './animation.js';
 import { set_getpos_context, getpos_async } from './getpos.js';
 import { stucksteed } from './steed.js';
@@ -1380,16 +1381,15 @@ export function rounddiv(x, y) {
 // C ref: hack.c invocation_pos() — is (x,y) the invocation position?
 export function invocation_pos(x, y, map) {
     if (!map) return false;
-    const inv = map._invPos || map.inv_pos || map.flags?.inv_pos;
-    if (!inv) return false;
-    // Invocation_lev check: only on the invocation level.
-    // Keep compatibility with both canonical (_isInvocationLevel/_invPos)
-    // and legacy flags-based map mirrors.
-    const onInvocationLevel = !!(map._isInvocationLevel
-        || map.flags?.is_invocation_lev
-        || map.flags?.invocationLevel);
-    if (!onInvocationLevel) return false;
-    return x === inv.x && y === inv.y;
+    const uz = map.uz;
+    const inv_pos = map.inv_pos || map._invPos || map.flags?.inv_pos;
+    if (!inv_pos) return false;
+    const onInvocationLevel = uz
+        ? Invocation_lev(uz)
+        : !!(map._isInvocationLevel
+            || map.flags?.is_invocation_lev
+            || map.flags?.invocationLevel);
+    return !!(onInvocationLevel && x === inv_pos.x && y === inv_pos.y);
 }
 
 // --------------------------------------------------------------------

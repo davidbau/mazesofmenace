@@ -85,8 +85,10 @@ test('clang-backed emit-helper translates invocation_pos body', (t) => {
     const payload = JSON.parse(fs.readFileSync(outFile, 'utf8'));
     assert.equal(payload.function, 'invocation_pos');
     assert.equal(payload.meta.translated, true);
-    assert.match(payload.js, /Invocation_lev\(&u\.uz\)/);
-    assert.match(payload.js, /x === svi\.inv_pos\.x/);
-    assert.match(payload.js, /y === svi\.inv_pos\.y/);
+    assert.match(payload.js, /Invocation_lev\(map\.uz\)/);
+    assert.match(payload.js, /x === map\.inv_pos\.x/);
+    assert.match(payload.js, /y === map\.inv_pos\.y/);
+    assert.doesNotMatch(payload.js, /&u\./);
+    assert.doesNotMatch(payload.js, /svi\./);
     assert.doesNotMatch(payload.js, /UNIMPLEMENTED_TRANSLATED_FUNCTION/);
 });
