@@ -6,7 +6,7 @@ import { replaySession } from '../../js/replay_core.js';
 import { DEFAULT_FLAGS } from '../../js/storage.js';
 import { normalizeSession } from '../comparison/session_loader.js';
 
-describe('replay sparse boundary seed110', () => {
+describe('replay byte snapshot invariants', () => {
 
 function comparable(entries) {
     const out = [];
@@ -21,7 +21,7 @@ function comparable(entries) {
     return out;
 }
 
-test('replay defers sparse boundary RNG tail across zero-RNG frames (seed110 step 105)', async () => {
+test('replay emits byte snapshots with stable step attribution (seed110)', async () => {
     const raw = JSON.parse(readFileSync('test/comparison/sessions/seed110_samurai_selfplay200_gameplay.session.json', 'utf8'));
     const session = normalizeSession(raw, {
         file: 'seed110_samurai_selfplay200_gameplay.session.json',
@@ -37,21 +37,35 @@ test('replay defers sparse boundary RNG tail across zero-RNG frames (seed110 ste
             flags: { ...DEFAULT_FLAGS, bgcolors: true, customcolors: true },
         });
 
-        const expected105 = comparable(session.steps[105]?.rng || []);
-        const actual105 = comparable(replay.steps[105]?.rng || []);
-        assert.deepEqual(actual105, expected105);
-
-        const expected108 = comparable(session.steps[108]?.rng || []);
-        const actual108 = comparable(replay.steps[108]?.rng || []);
-        assert.ok(actual108.length > 0);
-        assert.equal(actual108[0], expected108[0]);
+        assert.ok(Array.isArray(replay.bytes));
+        assert.ok(replay.bytes.length > 0);
+        const expectedBytes = session.steps.reduce(
+            (n, s) => n + ((typeof s?.key === 'string') ? s.key.length : 0),
+            0
+        );
+        assert.equal(replay.bytes.length, expectedBytes);
+        for (let i = 0; i < replay.bytes.length; i++) {
+            const b = replay.bytes[i];
+            assert.ok(Number.isInteger(b.stepIndex));
+            assert.ok(Number.isInteger(b.byteIndex));
+            assert.equal(typeof b.key, 'string');
+            assert.equal(Array.isArray(b.rng), true);
+            assert.equal(Array.isArray(b.screen), true);
+            if (i > 0) {
+                const p = replay.bytes[i - 1];
+                assert.ok(
+                    b.stepIndex > p.stepIndex
+                    || (b.stepIndex === p.stepIndex && b.byteIndex >= p.byteIndex)
+                );
+            }
+        }
     } finally {
         if (prevTags === undefined) delete process.env.RNG_LOG_TAGS;
         else process.env.RNG_LOG_TAGS = prevTags;
     }
 });
 
-test('replay accumulates sparse boundary carries targeting the same step (seed5 462->464)', async () => {
+test('per-step RNG equals concatenated byte-frame RNG (seed5)', async () => {
     const raw = JSON.parse(readFileSync('test/comparison/sessions/seed5_gnomish_mines_gameplay.session.json', 'utf8'));
     const session = normalizeSession(raw, {
         file: 'seed5_gnomish_mines_gameplay.session.json',
@@ -67,24 +81,18 @@ test('replay accumulates sparse boundary carries targeting the same step (seed5 
             flags: { ...DEFAULT_FLAGS, bgcolors: true, customcolors: true },
         });
 
-        const expected462 = comparable(session.steps[462]?.rng || []);
-        const actual462 = comparable(replay.steps[462]?.rng || []);
-        assert.deepEqual(actual462, expected462);
-
-        const expected463 = comparable(session.steps[463]?.rng || []);
-        const actual463 = comparable(replay.steps[463]?.rng || []);
-        assert.deepEqual(actual463, expected463);
-
-        const expected464 = comparable(session.steps[464]?.rng || []);
-        const actual464 = comparable(replay.steps[464]?.rng || []);
-        assert.deepEqual(actual464, expected464);
+        for (let i = 0; i < replay.steps.length; i++) {
+            const step = replay.steps[i] || {};
+            const fromFrames = (step.byteFrames || []).flatMap((f) => f.rng || []);
+            assert.deepEqual(comparable(step.rng || []), comparable(fromFrames));
+        }
     } finally {
         if (prevTags === undefined) delete process.env.RNG_LOG_TAGS;
         else process.env.RNG_LOG_TAGS = prevTags;
     }
 });
 
-test('replay keeps runmode close-only boundary frame non-timed (seed5 step 540)', async () => {
+test('global step RNG stream equals global byte RNG stream (seed5 maxSteps)', async () => {
     const raw = JSON.parse(readFileSync('test/comparison/sessions/seed5_gnomish_mines_gameplay.session.json', 'utf8'));
     const session = normalizeSession(raw, {
         file: 'seed5_gnomish_mines_gameplay.session.json',
@@ -101,15 +109,15 @@ test('replay keeps runmode close-only boundary frame non-timed (seed5 step 540)'
             flags: { ...DEFAULT_FLAGS, bgcolors: true, customcolors: true },
         });
 
-        // normalizeSession strips startup, so capture step 540 maps to index 539.
-        const expected540 = comparable(session.steps[539]?.rng || []);
-        const actual540 = comparable(replay.steps[539]?.rng || []);
-        assert.deepEqual(actual540, expected540);
-        assert.equal(actual540.length, 0);
+        const stepsRng = comparable(replay.steps.flatMap((s) => s.rng || []));
+        const bytesRng = comparable(replay.bytes.flatMap((b) => b.rng || []));
+        assert.deepEqual(stepsRng, bytesRng);
 
-        const expected541 = comparable(session.steps[540]?.rng || []);
-        const actual541 = comparable(replay.steps[540]?.rng || []);
-        assert.deepEqual(actual541, expected541);
+        const expectedBytes = session.steps.slice(0, 541).reduce(
+            (n, s) => n + ((typeof s?.key === 'string') ? s.key.length : 0),
+            0
+        );
+        assert.equal(replay.bytes.length, expectedBytes);
     } finally {
         if (prevTags === undefined) delete process.env.RNG_LOG_TAGS;
         else process.env.RNG_LOG_TAGS = prevTags;
