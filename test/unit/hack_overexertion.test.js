@@ -49,3 +49,17 @@ test('overexertion still applies hunger when encumbrance damage gate is off', ()
     assert.equal(player.hp, 10); // no overexert_hp on moves%3 == 0
     assert.ok(log.some((entry) => entry.includes('rn2(20)=')));
 });
+
+test('overexertion uses polymorph HP pool when upolyd is active', () => {
+    const player = makePlayer();
+    player.upolyd = true;
+    player.mh = 6;
+    const game = { moves: 1, multi: 0 };
+    const display = { putstr_message() {} };
+
+    initRng(77);
+    overexertion(player, game, display);
+
+    assert.equal(player.mh, 5);
+    assert.equal(player.hp, 10); // unchanged when using poly hp pool
+});

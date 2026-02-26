@@ -2408,8 +2408,11 @@ export function dopickup(player, map, display) {
 
 // C ref: hack.c overexert_hp() — lose 1 HP or pass out from overexertion
 export function overexert_hp(player, display) {
-    if (player.hp > 1) {
-        player.hp -= 1;
+    const usingPolyHp = !!player?.upolyd;
+    const hpKey = usingPolyHp ? 'mh' : 'hp';
+    const curHp = Number(player?.[hpKey] || 0);
+    if (curHp > 1) {
+        player[hpKey] = curHp - 1;
     } else {
         if (display) display.putstr_message('You pass out from exertion!');
         exercise(player, A_CON, false);
