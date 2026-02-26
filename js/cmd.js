@@ -35,6 +35,7 @@ import { handleMovement, handleRun, findPath, handleTravel, executeTravelStep,
 // Process a command from the player
 // C ref: cmd.c rhack() -- main command dispatch
 // Returns: { moved: boolean, tookTime: boolean }
+// TRANSLATOR: AUTO
 export async function rhack(ch, game) {
     const { player, map, display, fov } = game;
     if (ch === 0) {

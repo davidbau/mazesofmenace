@@ -62,6 +62,7 @@ import { initAnimation, configureAnimation, setAnimationMode } from './animation
 // then moveloop_turnend() for once-per-turn effects.
 // opts.skipMonsterMove: skip movemon (used by some test harnesses)
 // opts.computeFov: recompute FOV before movemon (C ref: vision_recalc runs in domove)
+// TRANSLATOR: AUTO
 export async function moveloop_core(game, opts = {}) {
     const player = game.player;
     if (opts.computeFov) {

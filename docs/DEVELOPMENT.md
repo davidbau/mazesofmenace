@@ -184,6 +184,7 @@ Required gating expectations for campaign changes:
 1. policy classification remains complete for all `js/*.js` files:
    ```bash
    npm run -s translator:check-policy
+   npm run -s translator:check-annotations
    ```
 2. parity/test gates still apply (session replay evidence remains authoritative).
 3. no harness-side suppression of gameplay mismatches.

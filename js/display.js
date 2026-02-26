@@ -21,6 +21,7 @@ import { monsterMapGlyph, objectMapGlyph } from './display_rng.js';
 import { tempGlyphToCell } from './temp_glyph.js';
 import { isObjectNameKnown, isObjectEncountered, discoveryTypeName } from './discovery.js';
 
+// TRANSLATOR: AUTO
 // Color constants (color.h)
 // C ref: include/color.h
 export const CLR_BLACK = 0;

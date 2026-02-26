@@ -10,7 +10,7 @@
  *   node scripts/run-test-gates.mjs [--e2e] [--verbose]
  */
 
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -346,6 +346,18 @@ const SESSION_TYPES = ['chargen', 'interface', 'map', 'gameplay', 'special', 'ot
 
 async function main() {
     try {
+        // Translator policy checks are part of the CI/local gate path.
+        const policyCheck = spawnSync(process.execPath, ['scripts/check-translator-file-policy.mjs'], {
+            cwd: projectRoot,
+            stdio: 'inherit',
+        });
+        if ((policyCheck.status ?? 1) !== 0) process.exit(policyCheck.status ?? 1);
+        const annotationCheck = spawnSync(process.execPath, ['scripts/check-translator-annotations.mjs'], {
+            cwd: projectRoot,
+            stdio: 'inherit',
+        });
+        if ((annotationCheck.status ?? 1) !== 0) process.exit(annotationCheck.status ?? 1);
+
         // 1. Unit tests (estimate file count for progress)
         const unitResults = await runUnitTests();
 

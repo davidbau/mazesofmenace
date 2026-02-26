@@ -53,6 +53,7 @@ function applyHiliteForCurrentState() {
 }
 
 // cf. getpos.c:41
+// TRANSLATOR: AUTO
 export function getpos_sethilite(gp_hilitef, gp_getvalidf) {
     clearHiliteIfNeeded();
     getpos_hilitefunc = (typeof gp_hilitef === 'function') ? gp_hilitef : null;
