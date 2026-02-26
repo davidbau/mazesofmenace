@@ -2163,11 +2163,13 @@ export function readobjnam(bp, no_wish, opts = {}) {
 // ============================================================================
 
 // cf. objnam.c:5412 — Japanese_item_name(i, ordinaryname): Samurai item name
+// TRANSLATOR: AUTO (objnam.c:5411)
 export function Japanese_item_name(i, ordinaryname) {
-    for (const j of Japanese_items) {
-        if (i === j.item) return j.name;
-    }
-    return ordinaryname;
+  for (const j of Japanese_items) {
+    if (!j.item) break;
+    if (i === j.item) return j.name;
+  }
+  return ordinaryname;
 }
 
 // ============================================================================
