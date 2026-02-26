@@ -49,6 +49,7 @@ import { can_teleport, noeyes, perceives, nohands,
          passes_bars, is_human, canseemon } from './mondata.js';
 import { PM_GRID_BUG, PM_SHOPKEEPER, PM_MINOTAUR, mons,
          PM_LEPRECHAUN,
+         PM_XORN,
          PM_DISPLACER_BEAST,
          PM_WHITE_UNICORN, PM_GRAY_UNICORN, PM_BLACK_UNICORN,
          PM_SHRIEKER, PM_PURPLE_WORM, PM_MEDUSA, PM_ERINYS,
@@ -1476,6 +1477,7 @@ function m_move_aggress(mon, map, player, nx, ny, display = null, fov = null) {
 // set_apparxy — C ref: monmove.c:2200
 // ========================================================================
 export function set_apparxy(mon, map, player) {
+    const umoney = goldQuantity(player?.inventory || player?.invent || []);
     let mx = Number.isInteger(mon.mux) ? mon.mux : 0;
     let my = Number.isInteger(mon.muy) ? mon.muy : 0;
 
@@ -1491,11 +1493,15 @@ export function set_apparxy(mon, map, player) {
     const canFog = canOoze || !!(mdat.flags1 & M1_UNSOLID);
     const monCanSee = mon.mcansee !== false;
     const notseen = (!monCanSee || (player.invisible && !perceives(mdat)));
-    const playerDisplaced = !!(player.cloak && player.cloak.otyp === CLOAK_OF_DISPLACEMENT);
+    const playerDisplaced = !!(player.displaced
+        || (player.cloak && player.cloak.otyp === CLOAK_OF_DISPLACEMENT));
     const notthere = playerDisplaced && mon.mndx !== PM_DISPLACER_BEAST;
     let displ;
-    if (notseen) {
+    if (player.uinwater || player.underwater || player.Underwater) {
         displ = 1;
+    } else if (notseen) {
+        // C ref: monmove.c set_apparxy(): Xorn can smell coin piles.
+        displ = (mon.mndx === PM_XORN && umoney > 0) ? 0 : 1;
     } else if (notthere) {
         displ = couldsee(map, player, mx, my) ? 2 : 1;
     } else {
