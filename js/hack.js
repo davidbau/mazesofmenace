@@ -214,13 +214,19 @@ export function notice_mons_cmp(a, b) {
 }
 
 // C ref: hack.c domove_bump_mon()
-export function domove_bump_mon(mon, _glyph, _nopick, game) {
-    if (!mon || mon.dead) return false;
-    // 'm' prefix into known monster should stop and avoid attack.
-    if (_nopick && !game?.traveling) {
-        return true;
+export function domove_bump_mon(mon, _glyph, _nopick, game, display) {
+    if (!mon || mon.dead) return { handled: false, tookTime: false };
+    const visibleEnough = (!mon.mundetected) || !!mon.tame || !!mon.peaceful;
+    // C: m-prefix bump into known/visible monster consumes a turn and stops.
+    if (_nopick && !game?.traveling && visibleEnough) {
+        if (mon.peaceful && !game?.flags?.hallucination) {
+            display?.putstr_message(`Pardon me, ${monNam(mon)}.`);
+        } else {
+            display?.putstr_message(`You move right into ${monNam(mon)}.`);
+        }
+        return { handled: true, tookTime: true };
     }
-    return false;
+    return { handled: false, tookTime: false };
 }
 
 // C ref: hack.c domove_swap_with_pet()
@@ -310,19 +316,24 @@ export async function domove_attackmon_at(mon, nx, ny, dir, player, map, display
 }
 
 // C ref: hack.c domove_fight_ironbars()
-export function domove_fight_ironbars(x, y, map, display) {
+export function domove_fight_ironbars(x, y, map, display, game, player) {
     const loc = map?.at ? map.at(x, y) : null;
-    if (!loc || loc.typ !== IRONBARS) return false;
-    if (display) display.putstr_message('You cannot pass through the bars.');
-    return true;
+    const hasWeapon = !!(player?.weapon || player?.uwielded || player?.uwep);
+    if (!game?.forceFight || !loc || loc.typ !== IRONBARS || !hasWeapon) return false;
+    if (display) display.putstr_message('You attack the iron bars.');
+    game.forceFight = false;
+    return true; // action handled, consumes a turn
 }
 
 // C ref: hack.c domove_fight_web()
-export function domove_fight_web(x, y, map, display) {
+export function domove_fight_web(x, y, map, display, game) {
     const trap = map?.trapAt ? map.trapAt(x, y) : null;
-    if (!trap || trap.ttyp !== WEB) return false;
-    if (display) display.putstr_message('You stumble into a web.');
-    return false;
+    if (!game?.forceFight || !trap || trap.ttyp !== WEB || !trap.tseen) return false;
+    if (display) display.putstr_message('You cut through the web.');
+    const idx = map.traps.indexOf(trap);
+    if (idx >= 0) map.traps.splice(idx, 1);
+    game.forceFight = false;
+    return true; // action handled, consumes a turn
 }
 
 // C ref: hack.c domove_fight_empty()
@@ -455,8 +466,9 @@ export async function domove_core(dir, player, map, display, game) {
     // Check for monster at target position
     const mon = map.monsterAt(nx, ny);
     if (mon) {
-        if (domove_bump_mon(mon, null, nopick, game)) {
-            return { moved: false, tookTime: false };
+        const bump = domove_bump_mon(mon, null, nopick, game, display);
+        if (bump.handled) {
+            return { moved: false, tookTime: !!bump.tookTime };
         }
         const attackResult = await domove_attackmon_at(mon, nx, ny, dir, player, map, display, game);
         if (attackResult.handled) {
@@ -464,14 +476,15 @@ export async function domove_core(dir, player, map, display, game) {
         }
     }
 
-    if (domove_fight_ironbars(nx, ny, map, display)) {
-        return { moved: false, tookTime: false };
+    if (domove_fight_ironbars(nx, ny, map, display, game, player)) {
+        return { moved: false, tookTime: true };
     }
-    if (domove_fight_web(nx, ny, map, display)) {
+    if (domove_fight_web(nx, ny, map, display, game)) {
         return { moved: false, tookTime: true };
     }
 
-    if (sobj_at(BOULDER, nx, ny, map)) {
+    const sokoban = !!(map?.flags?.is_sokoban || map?.flags?.in_sokoban || game?.flags?.sokoban);
+    if (sobj_at(BOULDER, nx, ny, map) && (sokoban || !player?.passesWalls)) {
         const moved = moverock(nx, ny, dir[0], dir[1], player, map, display, game);
         if (moved < 0) {
             return { moved: false, tookTime: false };
