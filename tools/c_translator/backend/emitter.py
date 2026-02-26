@@ -162,28 +162,7 @@ def _translate_stmt(stmt, indent):
         return [pad + lowered], []
 
     if kind == "IF_STMT":
-        if len(children) < 2:
-            return None, [_diag("BAD_IF_AST", text)]
-        cond = _lower_expr(_normalize_space(children[0].get("text", "")))
-        if cond is None:
-            return None, [_diag("BAD_IF_COND", text)]
-        out = [f"{pad}if ({cond}) {{"]
-        then_lines, then_diags = _translate_stmt_as_block(children[1], indent + 1)
-        if then_lines is None:
-            return None, then_diags
-        out.extend(then_lines)
-        out.append(f"{pad}}}")
-        all_diags = list(then_diags)
-
-        if len(children) >= 3:
-            out.append(f"{pad}else {{")
-            else_lines, else_diags = _translate_stmt_as_block(children[2], indent + 1)
-            if else_lines is None:
-                return None, else_diags
-            out.extend(else_lines)
-            out.append(f"{pad}}}")
-            all_diags.extend(else_diags)
-        return out, all_diags
+        return _translate_if_stmt(stmt, indent)
 
     if kind == "COMPOUND_STMT":
         out = []
@@ -213,6 +192,90 @@ def _translate_stmt_as_block(stmt, indent):
     if kind == "COMPOUND_STMT":
         return _translate_stmt(stmt, indent)
     return _translate_stmt(stmt, indent)
+
+
+def _translate_if_stmt(stmt, indent):
+    children = stmt.get("children", [])
+    pad = "  " * indent
+    if len(children) < 2:
+        return None, [_diag("BAD_IF_AST", _normalize_space(stmt.get("text", "")))]
+
+    cond = _lower_expr(_normalize_space(children[0].get("text", "")))
+    if cond is None:
+        return None, [_diag("BAD_IF_COND", _normalize_space(stmt.get("text", "")))]
+
+    out = []
+    diags = []
+
+    then_stmt = children[1]
+    then_lines, then_diags = _translate_stmt_as_block(then_stmt, indent + 1)
+    if then_lines is None:
+        return None, then_diags
+    diags.extend(then_diags)
+
+    if _can_inline_if_body(then_stmt, then_lines):
+        out.append(f"{pad}if ({cond}) {then_lines[0].strip()}")
+    elif _can_inline_compact_block(then_stmt, then_lines):
+        compact = _compact_block_line(then_lines)
+        out.append(f"{pad}if ({cond}) {{ {compact} }}")
+    else:
+        out.append(f"{pad}if ({cond}) {{")
+        out.extend(then_lines)
+        out.append(f"{pad}}}")
+
+    if len(children) >= 3:
+        else_stmt = children[2]
+        if else_stmt.get("kind") == "IF_STMT":
+            else_lines, else_diags = _translate_if_stmt(else_stmt, indent)
+            if else_lines is None:
+                return None, else_diags
+            diags.extend(else_diags)
+            if not else_lines:
+                return out, diags
+            first = else_lines[0].lstrip()
+            out.append(f"{pad}else {first}")
+            out.extend(else_lines[1:])
+        else:
+            else_lines, else_diags = _translate_stmt_as_block(else_stmt, indent + 1)
+            if else_lines is None:
+                return None, else_diags
+            diags.extend(else_diags)
+            if _can_inline_compact_block(else_stmt, else_lines):
+                compact = _compact_block_line(else_lines)
+                out.append(f"{pad}else {{ {compact} }}")
+            else:
+                out.append(f"{pad}else {{")
+                out.extend(else_lines)
+                out.append(f"{pad}}}")
+
+    return out, diags
+
+
+def _can_inline_if_body(stmt, lines):
+    if not lines or len(lines) != 1:
+        return False
+    kind = stmt.get("kind")
+    return kind in {"BINARY_OPERATOR", "UNARY_OPERATOR", "RETURN_STMT", "CALL_EXPR"}
+
+
+def _can_inline_compact_block(stmt, lines):
+    if stmt.get("kind") != "COMPOUND_STMT":
+        return False
+    if not lines or len(lines) > 2:
+        return False
+    total_len = 0
+    for line in lines:
+        token = line.strip()
+        if not token or "{" in token or "}" in token:
+            return False
+        if len(token) > 48:
+            return False
+        total_len += len(token)
+    return total_len <= 72
+
+
+def _compact_block_line(lines):
+    return " ".join(line.strip() for line in lines)
 
 
 def _lower_decl_stmt(text):
