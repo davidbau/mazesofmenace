@@ -1,224 +1,224 @@
 {
   "files": [
     {
-      "blocked_count": 127,
-      "diag_histogram": {
-        "CLANG_AST_UNAVAILABLE": 62,
-        "PLACEHOLDER_BODY": 127,
-        "UNRESOLVED_C_TOKENS": 45,
-        "UNSUPPORTED_DECL_STMT": 18,
-        "UNSUPPORTED_STMT_KIND": 2
-      },
-      "function_count": 183,
-      "source": "nethack-c/src/cmd.c",
-      "translated_count": 56,
-      "translated_ratio": 0.30601092896174864
-    },
-    {
-      "blocked_count": 21,
-      "diag_histogram": {
-        "CLANG_AST_UNAVAILABLE": 6,
-        "PLACEHOLDER_BODY": 21,
-        "UNRESOLVED_C_TOKENS": 14,
-        "UNSUPPORTED_STMT_KIND": 1
-      },
-      "function_count": 27,
-      "source": "nethack-c/src/mthrowu.c",
-      "translated_count": 6,
-      "translated_ratio": 0.2222222222222222
-    },
-    {
-      "blocked_count": 14,
-      "diag_histogram": {
-        "CLANG_AST_UNAVAILABLE": 7,
-        "PLACEHOLDER_BODY": 14,
-        "UNRESOLVED_C_TOKENS": 6,
-        "UNSUPPORTED_STMT_KIND": 1
-      },
-      "function_count": 17,
-      "source": "nethack-c/src/u_init.c",
-      "translated_count": 3,
-      "translated_ratio": 0.17647058823529413
-    },
-    {
-      "blocked_count": 121,
-      "diag_histogram": {
-        "BAD_IF_COND": 6,
-        "CLANG_AST_UNAVAILABLE": 29,
-        "PLACEHOLDER_BODY": 121,
-        "UNRESOLVED_C_TOKENS": 54,
-        "UNSUPPORTED_DECL_STMT": 28,
-        "UNSUPPORTED_STMT_KIND": 4
-      },
-      "function_count": 145,
-      "source": "nethack-c/src/sp_lev.c",
-      "translated_count": 24,
-      "translated_ratio": 0.16551724137931034
-    },
-    {
-      "blocked_count": 52,
+      "blocked_count": 20,
       "diag_histogram": {
         "CLANG_AST_UNAVAILABLE": 8,
-        "PLACEHOLDER_BODY": 52,
-        "UNRESOLVED_C_TOKENS": 43,
+        "PLACEHOLDER_BODY": 20,
+        "UNRESOLVED_C_TOKENS": 11,
         "UNSUPPORTED_DECL_STMT": 1
       },
       "function_count": 61,
       "source": "nethack-c/src/read.c",
-      "translated_count": 9,
-      "translated_ratio": 0.14754098360655737
+      "translated_count": 41,
+      "translated_ratio": 0.6721311475409836
     },
     {
-      "blocked_count": 96,
-      "diag_histogram": {
-        "CLANG_AST_UNAVAILABLE": 18,
-        "PLACEHOLDER_BODY": 96,
-        "UNRESOLVED_C_TOKENS": 29,
-        "UNSUPPORTED_DECL_STMT": 48,
-        "UNSUPPORTED_STMT_KIND": 1
-      },
-      "function_count": 112,
-      "source": "nethack-c/src/dungeon.c",
-      "translated_count": 16,
-      "translated_ratio": 0.14285714285714285
-    },
-    {
-      "blocked_count": 48,
-      "diag_histogram": {
-        "CLANG_AST_UNAVAILABLE": 8,
-        "PLACEHOLDER_BODY": 48,
-        "UNRESOLVED_C_TOKENS": 29,
-        "UNSUPPORTED_DECL_STMT": 8,
-        "UNSUPPORTED_STMT_KIND": 3
-      },
-      "function_count": 56,
-      "source": "nethack-c/src/mklev.c",
-      "translated_count": 8,
-      "translated_ratio": 0.14285714285714285
-    },
-    {
-      "blocked_count": 70,
-      "diag_histogram": {
-        "CLANG_AST_UNAVAILABLE": 19,
-        "PLACEHOLDER_BODY": 70,
-        "UNRESOLVED_C_TOKENS": 42,
-        "UNSUPPORTED_DECL_STMT": 4,
-        "UNSUPPORTED_STMT_KIND": 5
-      },
-      "function_count": 81,
-      "source": "nethack-c/src/zap.c",
-      "translated_count": 11,
-      "translated_ratio": 0.13580246913580246
-    },
-    {
-      "blocked_count": 83,
-      "diag_histogram": {
-        "CLANG_AST_UNAVAILABLE": 11,
-        "PLACEHOLDER_BODY": 83,
-        "UNRESOLVED_C_TOKENS": 61,
-        "UNSUPPORTED_DECL_STMT": 2,
-        "UNSUPPORTED_STMT_KIND": 9
-      },
-      "function_count": 95,
-      "source": "nethack-c/src/hack.c",
-      "translated_count": 12,
-      "translated_ratio": 0.12631578947368421
-    },
-    {
-      "blocked_count": 40,
+      "blocked_count": 26,
       "diag_histogram": {
         "CLANG_AST_UNAVAILABLE": 7,
-        "PLACEHOLDER_BODY": 40,
-        "UNRESOLVED_C_TOKENS": 23,
-        "UNSUPPORTED_DECL_STMT": 7,
-        "UNSUPPORTED_STMT_KIND": 3
-      },
-      "function_count": 45,
-      "source": "nethack-c/src/do.c",
-      "translated_count": 5,
-      "translated_ratio": 0.1111111111111111
-    },
-    {
-      "blocked_count": 68,
-      "diag_histogram": {
-        "CLANG_AST_UNAVAILABLE": 7,
-        "PLACEHOLDER_BODY": 68,
-        "UNRESOLVED_C_TOKENS": 55,
+        "PLACEHOLDER_BODY": 26,
+        "UNRESOLVED_C_TOKENS": 13,
         "UNSUPPORTED_DECL_STMT": 2,
         "UNSUPPORTED_STMT_KIND": 4
       },
       "function_count": 76,
       "source": "nethack-c/src/apply.c",
-      "translated_count": 8,
-      "translated_ratio": 0.10526315789473684
+      "translated_count": 50,
+      "translated_ratio": 0.6578947368421053
     },
     {
       "blocked_count": 18,
       "diag_histogram": {
-        "CLANG_AST_UNAVAILABLE": 1,
-        "PLACEHOLDER_BODY": 18,
-        "UNRESOLVED_C_TOKENS": 13,
-        "UNSUPPORTED_DECL_STMT": 1,
-        "UNSUPPORTED_STMT_KIND": 3
-      },
-      "function_count": 20,
-      "source": "nethack-c/src/dogmove.c",
-      "translated_count": 2,
-      "translated_ratio": 0.1
-    },
-    {
-      "blocked_count": 42,
-      "diag_histogram": {
-        "BAD_IF_COND": 1,
-        "CLANG_AST_UNAVAILABLE": 12,
-        "PLACEHOLDER_BODY": 42,
-        "UNRESOLVED_C_TOKENS": 25,
-        "UNSUPPORTED_DECL_STMT": 1,
-        "UNSUPPORTED_STMT_KIND": 3
-      },
-      "function_count": 44,
-      "source": "nethack-c/src/muse.c",
-      "translated_count": 2,
-      "translated_ratio": 0.045454545454545456
-    },
-    {
-      "blocked_count": 49,
-      "diag_histogram": {
         "CLANG_AST_UNAVAILABLE": 10,
-        "PLACEHOLDER_BODY": 49,
-        "UNRESOLVED_C_TOKENS": 33,
+        "PLACEHOLDER_BODY": 18,
+        "UNRESOLVED_C_TOKENS": 2,
         "UNSUPPORTED_DECL_STMT": 2,
         "UNSUPPORTED_STMT_KIND": 4
       },
       "function_count": 51,
       "source": "nethack-c/src/monmove.c",
-      "translated_count": 2,
-      "translated_ratio": 0.0392156862745098
+      "translated_count": 33,
+      "translated_ratio": 0.6470588235294118
     },
     {
-      "blocked_count": 98,
+      "blocked_count": 10,
+      "diag_histogram": {
+        "CLANG_AST_UNAVAILABLE": 6,
+        "PLACEHOLDER_BODY": 10,
+        "UNRESOLVED_C_TOKENS": 3,
+        "UNSUPPORTED_STMT_KIND": 1
+      },
+      "function_count": 27,
+      "source": "nethack-c/src/mthrowu.c",
+      "translated_count": 17,
+      "translated_ratio": 0.6296296296296297
+    },
+    {
+      "blocked_count": 8,
+      "diag_histogram": {
+        "CLANG_AST_UNAVAILABLE": 1,
+        "PLACEHOLDER_BODY": 8,
+        "UNRESOLVED_C_TOKENS": 3,
+        "UNSUPPORTED_DECL_STMT": 1,
+        "UNSUPPORTED_STMT_KIND": 3
+      },
+      "function_count": 20,
+      "source": "nethack-c/src/dogmove.c",
+      "translated_count": 12,
+      "translated_ratio": 0.6
+    },
+    {
+      "blocked_count": 45,
       "diag_histogram": {
         "CLANG_AST_UNAVAILABLE": 15,
-        "PLACEHOLDER_BODY": 98,
-        "UNRESOLVED_C_TOKENS": 75,
+        "PLACEHOLDER_BODY": 45,
+        "UNRESOLVED_C_TOKENS": 22,
         "UNSUPPORTED_STMT_KIND": 8
       },
       "function_count": 101,
       "source": "nethack-c/src/uhitm.c",
-      "translated_count": 3,
-      "translated_ratio": 0.0297029702970297
+      "translated_count": 56,
+      "translated_ratio": 0.5544554455445545
     },
     {
-      "blocked_count": 31,
+      "blocked_count": 39,
+      "diag_histogram": {
+        "CLANG_AST_UNAVAILABLE": 19,
+        "PLACEHOLDER_BODY": 39,
+        "UNRESOLVED_C_TOKENS": 11,
+        "UNSUPPORTED_DECL_STMT": 4,
+        "UNSUPPORTED_STMT_KIND": 5
+      },
+      "function_count": 81,
+      "source": "nethack-c/src/zap.c",
+      "translated_count": 42,
+      "translated_ratio": 0.5185185185185185
+    },
+    {
+      "blocked_count": 27,
+      "diag_histogram": {
+        "CLANG_AST_UNAVAILABLE": 8,
+        "PLACEHOLDER_BODY": 27,
+        "UNRESOLVED_C_TOKENS": 8,
+        "UNSUPPORTED_DECL_STMT": 8,
+        "UNSUPPORTED_STMT_KIND": 3
+      },
+      "function_count": 56,
+      "source": "nethack-c/src/mklev.c",
+      "translated_count": 29,
+      "translated_ratio": 0.5178571428571429
+    },
+    {
+      "blocked_count": 46,
+      "diag_histogram": {
+        "CLANG_AST_UNAVAILABLE": 11,
+        "PLACEHOLDER_BODY": 46,
+        "UNRESOLVED_C_TOKENS": 24,
+        "UNSUPPORTED_DECL_STMT": 2,
+        "UNSUPPORTED_STMT_KIND": 9
+      },
+      "function_count": 95,
+      "source": "nethack-c/src/hack.c",
+      "translated_count": 49,
+      "translated_ratio": 0.5157894736842106
+    },
+    {
+      "blocked_count": 16,
       "diag_histogram": {
         "CLANG_AST_UNAVAILABLE": 3,
-        "PLACEHOLDER_BODY": 31,
-        "UNRESOLVED_C_TOKENS": 28
+        "PLACEHOLDER_BODY": 16,
+        "UNRESOLVED_C_TOKENS": 13
       },
       "function_count": 31,
       "source": "nethack-c/src/mhitu.c",
-      "translated_count": 0,
-      "translated_ratio": 0.0
+      "translated_count": 15,
+      "translated_ratio": 0.4838709677419355
+    },
+    {
+      "blocked_count": 24,
+      "diag_histogram": {
+        "BAD_IF_COND": 1,
+        "CLANG_AST_UNAVAILABLE": 12,
+        "PLACEHOLDER_BODY": 24,
+        "UNRESOLVED_C_TOKENS": 7,
+        "UNSUPPORTED_DECL_STMT": 1,
+        "UNSUPPORTED_STMT_KIND": 3
+      },
+      "function_count": 44,
+      "source": "nethack-c/src/muse.c",
+      "translated_count": 20,
+      "translated_ratio": 0.45454545454545453
+    },
+    {
+      "blocked_count": 102,
+      "diag_histogram": {
+        "CLANG_AST_UNAVAILABLE": 62,
+        "PLACEHOLDER_BODY": 102,
+        "UNRESOLVED_C_TOKENS": 20,
+        "UNSUPPORTED_DECL_STMT": 18,
+        "UNSUPPORTED_STMT_KIND": 2
+      },
+      "function_count": 183,
+      "source": "nethack-c/src/cmd.c",
+      "translated_count": 81,
+      "translated_ratio": 0.4426229508196721
+    },
+    {
+      "blocked_count": 83,
+      "diag_histogram": {
+        "BAD_IF_COND": 6,
+        "CLANG_AST_UNAVAILABLE": 29,
+        "PLACEHOLDER_BODY": 83,
+        "UNRESOLVED_C_TOKENS": 16,
+        "UNSUPPORTED_DECL_STMT": 28,
+        "UNSUPPORTED_STMT_KIND": 4
+      },
+      "function_count": 145,
+      "source": "nethack-c/src/sp_lev.c",
+      "translated_count": 62,
+      "translated_ratio": 0.42758620689655175
+    },
+    {
+      "blocked_count": 10,
+      "diag_histogram": {
+        "CLANG_AST_UNAVAILABLE": 7,
+        "PLACEHOLDER_BODY": 10,
+        "UNRESOLVED_C_TOKENS": 2,
+        "UNSUPPORTED_STMT_KIND": 1
+      },
+      "function_count": 17,
+      "source": "nethack-c/src/u_init.c",
+      "translated_count": 7,
+      "translated_ratio": 0.4117647058823529
+    },
+    {
+      "blocked_count": 27,
+      "diag_histogram": {
+        "CLANG_AST_UNAVAILABLE": 7,
+        "PLACEHOLDER_BODY": 27,
+        "UNRESOLVED_C_TOKENS": 10,
+        "UNSUPPORTED_DECL_STMT": 7,
+        "UNSUPPORTED_STMT_KIND": 3
+      },
+      "function_count": 45,
+      "source": "nethack-c/src/do.c",
+      "translated_count": 18,
+      "translated_ratio": 0.4
+    },
+    {
+      "blocked_count": 71,
+      "diag_histogram": {
+        "CLANG_AST_UNAVAILABLE": 18,
+        "PLACEHOLDER_BODY": 71,
+        "UNRESOLVED_C_TOKENS": 4,
+        "UNSUPPORTED_DECL_STMT": 48,
+        "UNSUPPORTED_STMT_KIND": 1
+      },
+      "function_count": 112,
+      "source": "nethack-c/src/dungeon.c",
+      "translated_count": 41,
+      "translated_ratio": 0.36607142857142855
     }
   ],
   "files_analyzed": 16,
@@ -226,33 +226,18 @@
   "top_blocker_details": [
     {
       "code": "PLACEHOLDER_BODY",
-      "count": 978,
+      "count": 572,
       "message": "Function body emitted as placeholder scaffold."
     },
     {
       "code": "UNRESOLVED_C_TOKENS",
-      "count": 211,
-      "message": "Unresolved C tokens after rewrite: ->"
+      "count": 56,
+      "message": "Unresolved C tokens after rewrite: flags."
     },
     {
       "code": "UNRESOLVED_C_TOKENS",
-      "count": 49,
-      "message": "Unresolved C tokens after rewrite: ->, u."
-    },
-    {
-      "code": "UNRESOLVED_C_TOKENS",
-      "count": 33,
-      "message": "Unresolved C tokens after rewrite: u."
-    },
-    {
-      "code": "UNRESOLVED_C_TOKENS",
-      "count": 27,
-      "message": "Unresolved C tokens after rewrite: levl[]"
-    },
-    {
-      "code": "UNRESOLVED_C_TOKENS",
-      "count": 21,
-      "message": "Unresolved C tokens after rewrite: *L, ->"
+      "count": 30,
+      "message": "Unresolved C tokens after rewrite: W_*"
     },
     {
       "code": "UNSUPPORTED_STMT_KIND",
@@ -261,8 +246,8 @@
     },
     {
       "code": "UNRESOLVED_C_TOKENS",
-      "count": 15,
-      "message": "Unresolved C tokens after rewrite: ->, levl[]"
+      "count": 18,
+      "message": "Unresolved C tokens after rewrite: svc."
     },
     {
       "code": "UNSUPPORTED_STMT_KIND",
@@ -271,8 +256,13 @@
     },
     {
       "code": "UNRESOLVED_C_TOKENS",
-      "count": 12,
-      "message": "Unresolved C tokens after rewrite: &u., ->, u."
+      "count": 14,
+      "message": "Unresolved C tokens after rewrite: disp."
+    },
+    {
+      "code": "UNRESOLVED_C_TOKENS",
+      "count": 13,
+      "message": "Unresolved C tokens after rewrite: ->"
     },
     {
       "code": "UNSUPPORTED_STMT_KIND",
@@ -281,23 +271,13 @@
     },
     {
       "code": "UNRESOLVED_C_TOKENS",
-      "count": 12,
-      "message": "Unresolved C tokens after rewrite: &u., u."
-    },
-    {
-      "code": "UNRESOLVED_C_TOKENS",
-      "count": 11,
-      "message": "Unresolved C tokens after rewrite: *L, ->, u."
+      "count": 10,
+      "message": "Unresolved C tokens after rewrite: flags., svc."
     },
     {
       "code": "UNRESOLVED_C_TOKENS",
       "count": 7,
-      "message": "Unresolved C tokens after rewrite: ->, svm."
-    },
-    {
-      "code": "UNRESOLVED_C_TOKENS",
-      "count": 7,
-      "message": "Unresolved C tokens after rewrite: W_*"
+      "message": "Unresolved C tokens after rewrite: u."
     },
     {
       "code": "UNSUPPORTED_DECL_STMT",
@@ -305,38 +285,58 @@
       "message": "branch *br;"
     },
     {
-      "code": "UNRESOLVED_C_TOKENS",
-      "count": 6,
-      "message": "Unresolved C tokens after rewrite: ->, flags."
-    },
-    {
-      "code": "UNRESOLVED_C_TOKENS",
-      "count": 6,
-      "message": "Unresolved C tokens after rewrite: &u., ->, levl[], u."
-    },
-    {
-      "code": "UNRESOLVED_C_TOKENS",
-      "count": 6,
-      "message": "Unresolved C tokens after rewrite: flags."
-    },
-    {
       "code": "UNSUPPORTED_STMT_KIND",
       "count": 5,
       "message": "LABEL_STMT"
+    },
+    {
+      "code": "UNSUPPORTED_DECL_STMT",
+      "count": 5,
+      "message": "mapseen *mptr;"
+    },
+    {
+      "code": "UNRESOLVED_C_TOKENS",
+      "count": 4,
+      "message": "Unresolved C tokens after rewrite: W_*, flags."
+    },
+    {
+      "code": "UNSUPPORTED_DECL_STMT",
+      "count": 4,
+      "message": "winid win;"
+    },
+    {
+      "code": "BAD_IF_COND",
+      "count": 4,
+      "message": "Free(s)"
+    },
+    {
+      "code": "UNSUPPORTED_DECL_STMT",
+      "count": 3,
+      "message": "stairway *stway;"
+    },
+    {
+      "code": "UNSUPPORTED_DECL_STMT",
+      "count": 3,
+      "message": "NHFILE *nhfp;"
+    },
+    {
+      "code": "UNSUPPORTED_DECL_STMT",
+      "count": 3,
+      "message": "FILE *fp;"
     }
   ],
   "top_blockers": [
     {
       "code": "PLACEHOLDER_BODY",
-      "count": 978
-    },
-    {
-      "code": "UNRESOLVED_C_TOKENS",
-      "count": 575
+      "count": 572
     },
     {
       "code": "CLANG_AST_UNAVAILABLE",
       "count": 223
+    },
+    {
+      "code": "UNRESOLVED_C_TOKENS",
+      "count": 169
     },
     {
       "code": "UNSUPPORTED_DECL_STMT",
@@ -352,9 +352,9 @@
     }
   ],
   "totals": {
-    "blocked": 978,
+    "blocked": 572,
     "functions": 1145,
-    "translated": 167,
-    "translated_ratio": 0.14585152838427948
+    "translated": 573,
+    "translated_ratio": 0.5004366812227075
   }
 }

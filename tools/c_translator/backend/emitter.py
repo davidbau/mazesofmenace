@@ -765,6 +765,10 @@ def _lower_expr(expr, rewrite_rules):
     if not out:
         return None, set()
     out, required_params = _apply_rewrite_rules(out, rewrite_rules)
+    # C pointer member access lowers to JS property access.
+    out = out.replace("->", ".")
+    # C integer long suffix (e.g., 7L) has no JS runtime equivalent.
+    out = re.sub(r"\b(\d+)L\b", r"\1", out)
     out = re.sub(
         r"\(\s*(?:unsigned\s+)?(?:int|long|short|coordxy|schar|uchar)\s*\)\s*\(([^()]+)\)",
         r"Math.trunc(\1)",

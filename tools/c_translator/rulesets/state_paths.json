@@ -1,0 +1,90 @@
+{
+  "version": 1,
+  "rewrites": [
+    {
+      "c": "&u.uz",
+      "js": "map.uz",
+      "requires_params": ["map"]
+    },
+    {
+      "c": "u.uz",
+      "js": "map.uz",
+      "requires_params": ["map"]
+    },
+    {
+      "c": "u.ux",
+      "js": "player.x",
+      "requires_params": ["player"]
+    },
+    {
+      "c": "u.uy",
+      "js": "player.y",
+      "requires_params": ["player"]
+    },
+    {
+      "c": "u.uhpmax",
+      "js": "player.hpmax",
+      "requires_params": ["player"]
+    },
+    {
+      "c": "u.uhp",
+      "js": "player.hp",
+      "requires_params": ["player"]
+    },
+    {
+      "c": "u.mhmax",
+      "js": "player.mhmax",
+      "requires_params": ["player"]
+    },
+    {
+      "c": "u.mh",
+      "js": "player.mh",
+      "requires_params": ["player"]
+    },
+    {
+      "c": "u.",
+      "js": "player.",
+      "requires_params": ["player"]
+    },
+    {
+      "c": "svm.moves",
+      "js": "(Number(game?.moves) || 0)",
+      "requires_params": ["game"]
+    },
+    {
+      "c": "svm.",
+      "js": "game.",
+      "requires_params": ["game"]
+    },
+    {
+      "c": "svc.context.",
+      "js": "game.svc.context.",
+      "requires_params": ["game"]
+    },
+    {
+      "c": "svc.",
+      "js": "game.svc.",
+      "requires_params": ["game"]
+    },
+    {
+      "c": "gm.",
+      "js": "game.",
+      "requires_params": ["game"]
+    },
+    {
+      "c": "flags.",
+      "js": "game.flags.",
+      "requires_params": ["game"]
+    },
+    {
+      "c": "disp.",
+      "js": "game.disp.",
+      "requires_params": ["game"]
+    },
+    {
+      "c": "levl[",
+      "js": "map.locations[",
+      "requires_params": ["map"]
+    }
+  ]
+}
