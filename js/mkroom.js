@@ -51,15 +51,19 @@ export function has_upstairs(croom, map) {
 }
 
 // C ref: mkroom.c:623-638 nexttodoor()
+// TRANSLATOR: AUTO (mkroom.c:623)
 export function nexttodoor(sx, sy, map) {
-    for (let dx = -1; dx <= 1; dx++) {
-        for (let dy = -1; dy <= 1; dy++) {
-            if (!isok(sx + dx, sy + dy)) continue;
-            const loc = map.at(sx + dx, sy + dy);
-            if (loc && (IS_DOOR(loc.typ) || loc.typ === SDOOR)) return true;
-        }
+  let dx, dy, lev;
+  for (dx = -1; dx <= 1; dx++) {
+    for (dy = -1; dy <= 1; dy++) {
+      if (!isok(sx + dx, sy + dy)) {
+        continue;
+      }
+      lev = map.locations[sx + dx][sy + dy];
+      if (IS_DOOR(lev.typ) || lev.typ === SDOOR) return true;
     }
-    return false;
+  }
+  return false;
 }
 
 // C ref: mkroom.c:577-596 shrine_pos()

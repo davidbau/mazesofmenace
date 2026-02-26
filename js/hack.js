@@ -245,10 +245,13 @@ export function moverock_core(sx, sy, dx, dy, player, map, display, game) {
 }
 
 // C ref: hack.c moverock()
-export function moverock(sx, sy, dx, dy, player, map, display, game) {
-    const ret = moverock_core(sx, sy, dx, dy, player, map, display, game);
-    moverock_done(sx, sy, map);
-    return ret;
+// TRANSLATOR: AUTO (hack.c:336)
+export function moverock(player) {
+  let sx, sy, ret;
+  sx = player.x + player.dx, sy = player.y + player.dy;
+  ret = moverock_core(sx, sy);
+  moverock_done(sx, sy);
+  return ret;
 }
 
 // C ref: hack.c cant_squeeze_thru()

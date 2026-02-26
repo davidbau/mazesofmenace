@@ -798,9 +798,9 @@ export function burn_floor_objects(x, y, give_feedback, u_caused, map) {
 // ============================================================
 // cf. zap.c buzz() — main beam propagation (C-style interface)
 // ============================================================
-export async function buzz(type, nd, sx, sy, dx, dy, map, player) {
-  // C ref: zap.c:4706 — buzz() delegates to dobuzz()
-  await dobuzz(type, nd, sx, sy, dx, dy, true, false, map, player);
+// TRANSLATOR: AUTO (zap.c:4705)
+export function buzz(type, nd, sx, sy, dx, dy) {
+  dobuzz(type, nd, sx, sy, dx, dy, true, false);
 }
 
 export async function zapnodir(obj, player, map, display, game) {
@@ -1179,24 +1179,19 @@ export function obj_zapped(obj, type) {
 // cf. zap.c:1474 obj_shudders() — object resists polymorph (shudder check)
 // Returns true if object should be destroyed instead of polymorphed
 // ============================================================
-export function obj_shudders(obj) {
-  if (!obj) return false;
-
-  // C ref: zap.c:1474-1495
+// TRANSLATOR: AUTO (zap.c:1473)
+export function obj_shudders(obj, game) {
   let zap_odds;
-  if (obj.oclass === WAND_CLASS) {
-    zap_odds = 3; // half-life = 2 zaps
-  } else if (obj.cursed) {
-    zap_odds = 3;
-  } else if (obj.blessed) {
-    zap_odds = 12; // half-life = 8 zaps
-  } else {
-    zap_odds = 8; // half-life = 6 zaps
+  if (game.game.svc.context.bypasses && obj.bypass) return false;
+  if (obj.oclass === WAND_CLASS) zap_odds = 3;
+  else if (obj.cursed) zap_odds = 3;
+  else if (obj.blessed) zap_odds = 12;
+  else {
+    zap_odds = 8;
   }
-
-  // Adjust for large quantities
-  if ((obj.quan || 1) > 4) zap_odds = Math.floor(zap_odds / 2);
-
+  if (obj.quan > 4) {
+    zap_odds /= 2;
+  }
   return !rn2(zap_odds);
 }
 
@@ -1698,16 +1693,10 @@ export function zappable(obj) {
 }
 
 // C ref: zap.c zap_ok()
-export function zap_ok(obj, player = null, display = null) {
-  if (!obj || obj.oclass !== WAND_CLASS) return false;
-  if (zappable(obj)) return true;
-  // Keep C-like user feedback surface for empty wands.
-  if (display?.putstr_message) {
-    display.putstr_message('Nothing happens.');
-  } else if (player) {
-    pline('Nothing happens.');
-  }
-  return false;
+// TRANSLATOR: AUTO (zap.c:2605)
+export function zap_ok(obj) {
+  if (obj && obj.oclass === WAND_CLASS) return GETOBJ_SUGGEST;
+  return GETOBJ_EXCLUDE;
 }
 
 // C ref: zap.c zapsetup()/zapwrapup() naming surfaces.
@@ -2264,8 +2253,9 @@ export function u_adtyp_resistance_obj(player, adtyp) {
   if (dwarfCloak && (adtyp === 2 || adtyp === 3)) return 90;
   return 0;
 }
-export async function ubuzz(type, nd, sx, sy, dx, dy, map, player) {
-  await buzz(type, nd, sx, sy, dx, dy, map, player);
+// TRANSLATOR: AUTO (zap.c:4699)
+export function ubuzz(type, nd, player) {
+  dobuzz(type, nd, player.x, player.y, player.dx, player.dy, true, false);
 }
 export async function ubreatheu(type, nd, sx, sy, dx, dy, map, player) {
   await buzz(ZT_BREATH(type), nd, sx, sy, dx, dy, map, player);

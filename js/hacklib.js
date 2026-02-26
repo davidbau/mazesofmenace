@@ -458,9 +458,12 @@ export function sgn(n) {
 // ============================================================================
 
 // hacklib.c:720 — distance between two points in moves (Chebyshev distance)
+// TRANSLATOR: AUTO (hacklib.c:720)
 export function distmin(x0, y0, x1, y1) {
-    const dx = Math.abs(x0 - x1), dy = Math.abs(y0 - y1);
-    return dx < dy ? dy : dx;
+  let dx = x0 - x1, dy = y0 - y1;
+  if (dx < 0) dx = -dx;
+  if (dy < 0) dy = -dy;
+  return (dx < dy) ? dy : dx;
 }
 
 // hacklib.c:737 — square of Euclidean distance between pair of points
@@ -470,14 +473,22 @@ export function dist2(x0, y0, x1, y1) {
 }
 
 // hacklib.c:746 — integer square root (floor(sqrt(val))); not in C comment block
+// TRANSLATOR: AUTO (hacklib.c:745)
 export function isqrt(val) {
-    return Math.floor(Math.sqrt(val));
+  let rt = 0, odd = 1;
+  while (val >= odd) {
+    val = val - odd;
+    odd = odd + 2;
+    rt = rt + 1;
+  }
+  return rt;
 }
 
 // hacklib.c:768 — are two points lined up (orthogonal or diagonal)?
+// TRANSLATOR: AUTO (hacklib.c:767)
 export function online2(x0, y0, x1, y1) {
-    const dx = x0 - x1, dy = y0 - y1;
-    return !dy || !dx || dy === dx || dy === -dx;
+  let dx = x0 - x1, dy = y0 - y1;
+  return (!dy || !dx || dy === dx || dy === -dx);
 }
 
 // ============================================================================

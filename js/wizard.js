@@ -452,11 +452,13 @@ export function amulet(map, player, display) {
 // cf. wizard.c:104
 // ============================================================================
 
+// TRANSLATOR: AUTO (wizard.c:105)
 export function mon_has_amulet(mtmp) {
-    for (const otmp of mtmp.minvent || []) {
-        if (otmp.otyp === AMULET_OF_YENDOR) return true;
-    }
-    return false;
+  let otmp;
+  for (otmp = mtmp.minvent; otmp; otmp = otmp.nobj) {
+    if (otmp.otyp === AMULET_OF_YENDOR) return 1;
+  }
+  return 0;
 }
 
 // ============================================================================

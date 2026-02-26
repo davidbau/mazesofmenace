@@ -5805,23 +5805,21 @@ export function mineralize(opts = {}) {
 }
 
 // C ref: sp_lev.c pm_to_humidity()
-export function pm_to_humidity(_pm) {
-    const pm = _pm || null;
-    let loc = GETLOC_DRY;
-    if (!pm) return loc;
-    if ((pm.symbol === S_EEL) || amphibious(pm) || is_swimmer(pm)) {
-        loc = GETLOC_WET;
-    }
-    if (is_flyer(pm) || is_floater(pm)) {
-        loc |= (GETLOC_HOT | GETLOC_WET);
-    }
-    if (passes_walls(pm) || noncorporeal(pm)) {
-        loc |= GETLOC_SOLID;
-    }
-    if (likes_fire(pm)) {
-        loc |= GETLOC_HOT;
-    }
-    return loc;
+// TRANSLATOR: AUTO (sp_lev.c:1884)
+export function pm_to_humidity(pm) {
+  let loc = DRY;
+  if (!pm) return loc;
+  if (pm.mlet === S_EEL || amphibious(pm) || is_swimmer(pm)) loc = WET;
+  if (is_flyer(pm) || is_floater(pm)) {
+    loc |= (HOT | WET);
+  }
+  if (passes_walls(pm) || noncorporeal(pm)) {
+    loc |= SOLID;
+  }
+  if (likes_fire(pm)) {
+    loc |= HOT;
+  }
+  return loc;
 }
 
 // C ref: sp_lev.c pm_good_location()

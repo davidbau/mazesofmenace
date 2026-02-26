@@ -276,15 +276,14 @@ function may_generate_eroded(obj) {
 }
 
 // C ref: mkobj.c blessorcurse()
-export function blessorcurse(obj, chance) {
-    if (obj.blessed || obj.cursed) return;
-    if (!rn2(chance)) {
-        if (!rn2(2)) {
-            curse(obj);
-        } else {
-            bless(obj);
-        }
-    }
+// TRANSLATOR: AUTO (mkobj.c:1837)
+export function blessorcurse(otmp, chance) {
+  if (otmp.blessed || otmp.cursed) return;
+  if (!rn2(chance)) {
+    if (!rn2(2)) { curse(otmp); }
+    else { bless(otmp); }
+  }
+  return;
 }
 
 // C ref: mkobj.c bless()
@@ -330,9 +329,10 @@ export function bcsign(obj) {
 }
 
 // C ref: mkobj.c container_weight() — set owt recursively up container chain
-export function container_weight(obj) {
-    obj.owt = weight(obj);
-    // If contained, propagate up (JS doesn't track ocontainer yet)
+// TRANSLATOR: AUTO (mkobj.c:2732)
+export function container_weight(object) {
+  object.owt = weight(object);
+  if (object.where === OBJ_CONTAINED) container_weight(object.ocontainer);
 }
 
 // C ref: mkobj.c splitobj() — split a stack, return the new portion
