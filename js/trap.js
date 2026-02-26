@@ -746,7 +746,6 @@ async function trapeffect_rolling_boulder_trap_mon(mon, trap, map, player) {
             return Trap_Effect_Finished;
         }
     }
-    let steps = 0;
     const removeBoulder = (obj) => {
         if (!obj || !map) return;
         if (typeof map.removeObject === 'function') {
@@ -758,7 +757,7 @@ async function trapeffect_rolling_boulder_trap_mon(mon, trap, map, player) {
 
     tmp_at(DISP_FLASH, { ch: '0', color: 7 });
     try {
-        while (isok(x, y) && steps < 8) {
+        while (isok(x, y)) {
             const loc = map.at ? map.at(x, y) : null;
             if (!loc || !ACCESSIBLE(loc.typ)) break;
             boulder.ox = x;
@@ -835,7 +834,6 @@ async function trapeffect_rolling_boulder_trap_mon(mon, trap, map, player) {
             if (nloc.typ === IRONBARS || nloc.typ === TREE || IS_STWALL(nloc.typ)) break;
             x = nx;
             y = ny;
-            steps++;
         }
     } finally {
         tmp_at(DISP_END, 0);

@@ -5,7 +5,10 @@
  * into throw and zap commands, matching C NetHack behavior.
  */
 
-import { tmp_at, DISP_BEAM, DISP_FLASH, DISP_TETHER, DISP_END, BACKTRACK } from './animation.js';
+import {
+    tmp_at, tmp_at_end_async,
+    DISP_BEAM, DISP_FLASH, DISP_TETHER, DISP_END, BACKTRACK,
+} from './animation.js';
 import { delay_output } from './delay.js';
 
 /**
@@ -156,7 +159,7 @@ export async function throwTetheredWeapon(weapon, dx, dy) {
         }
         
         // Return flight - BACKTRACK mode animates return
-        tmp_at(DISP_END, BACKTRACK);
+        await tmp_at_end_async(BACKTRACK);
         
         // Weapon automatically returns to hero
         message("Your aklys returns to your hand!");

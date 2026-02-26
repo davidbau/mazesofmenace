@@ -5,8 +5,11 @@
 import { mons } from './monsters.js';
 import { CORPSE, objectData } from './objects.js';
 import {
+    CLR_BLACK,
     CLR_BLUE,
+    CLR_BRIGHT_GREEN,
     CLR_BROWN,
+    CLR_CYAN,
     CLR_GREEN,
     CLR_GRAY,
     CLR_MAGENTA,
@@ -203,7 +206,25 @@ function decodeCMapGlyph(glyph, G) {
         return fromDefsym(S_grave + (glyph - G.GLYPH_CMAP_B_OFF));
     }
     if (inRange(glyph, G.GLYPH_ZAP_OFF, NUM_ZAP << 2)) {
-        return fromDefsym(S_vbeam + ((glyph - G.GLYPH_ZAP_OFF) % 4));
+        const orient = (glyph - G.GLYPH_ZAP_OFF) % 4;
+        const ztype = Math.floor((glyph - G.GLYPH_ZAP_OFF) / 4);
+        const cell = fromDefsym(S_vbeam + orient);
+        if (!cell) return null;
+        // C ref: GLYPH_ZAP encodes zap type in groups of 4 directional glyphs.
+        const zcolor = [
+            CLR_MAGENTA, // magic missile
+            CLR_RED,     // fire
+            CLR_CYAN,    // cold
+            CLR_GREEN,   // sleep
+            CLR_BLACK,   // death
+            CLR_WHITE,   // lightning
+            CLR_GREEN,   // poison gas
+            CLR_BRIGHT_GREEN, // acid
+        ][ztype];
+        return {
+            ...cell,
+            color: Number.isInteger(zcolor) ? zcolor : cell.color,
+        };
     }
     if (inRange(glyph, G.GLYPH_CMAP_C_OFF, CMAP_C_COUNT)) {
         return fromDefsym(S_digbeam + (glyph - G.GLYPH_CMAP_C_OFF));

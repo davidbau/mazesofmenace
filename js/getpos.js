@@ -280,6 +280,7 @@ function collectTargets(map, filter) {
 
     for (let y = 0; y < ROWNO; y++) {
         for (let x = 1; x < COLNO; x++) {
+            if (!gloc_filter_allows(map, x, y)) continue;
             if (filter === 'object') {
                 const objs = map.objectsAt ? map.objectsAt(x, y) : [];
                 if (Array.isArray(objs) && objs.length > 0) add(x, y);
@@ -411,7 +412,7 @@ async function getpos_menu(display, map, gloc) {
     }
 }
 
-function findNextMatchingMapChar(display, cx, cy, needle) {
+function findNextMatchingMapChar(display, map, cx, cy, needle) {
     if (!display || !needle) return null;
     for (let pass = 0; pass <= 1; pass++) {
         const yStart = pass === 0 ? cy : 0;
@@ -421,6 +422,7 @@ function findNextMatchingMapChar(display, cx, cy, needle) {
             const xEnd = (pass === 1 && y === yEnd) ? cx : (COLNO - 1);
             for (let x = xStart; x <= xEnd; x++) {
                 if (!isok(x, y)) continue;
+                if (!gloc_filter_allows(map, x, y)) continue;
                 const { col, row } = screenPosForMap(display, x, y);
                 const cell = getCell(display, col, row);
                 if (cell.ch === needle) return { x, y };
@@ -430,7 +432,7 @@ function findNextMatchingMapChar(display, cx, cy, needle) {
     return null;
 }
 
-function findPrevMatchingMapChar(display, cx, cy, needle) {
+function findPrevMatchingMapChar(display, map, cx, cy, needle) {
     if (!display || !needle) return null;
     for (let pass = 0; pass <= 1; pass++) {
         const yStart = pass === 0 ? cy : (ROWNO - 1);
@@ -440,6 +442,7 @@ function findPrevMatchingMapChar(display, cx, cy, needle) {
             const xEnd = (pass === 1 && y === yEnd) ? cx : 1;
             for (let x = xStart; x >= xEnd; x--) {
                 if (!isok(x, y)) continue;
+                if (!gloc_filter_allows(map, x, y)) continue;
                 const { col, row } = screenPosForMap(display, x, y);
                 const cell = getCell(display, col, row);
                 if (cell.ch === needle) return { x, y };
@@ -449,10 +452,10 @@ function findPrevMatchingMapChar(display, cx, cy, needle) {
     return null;
 }
 
-function findMatchingMapChar(display, cx, cy, needle, forward) {
+function findMatchingMapChar(display, map, cx, cy, needle, forward) {
     return forward
-        ? findNextMatchingMapChar(display, cx, cy, needle)
-        : findPrevMatchingMapChar(display, cx, cy, needle);
+        ? findNextMatchingMapChar(display, map, cx, cy, needle)
+        : findPrevMatchingMapChar(display, map, cx, cy, needle);
 }
 
 function isPrintable(ch) {
@@ -648,7 +651,7 @@ export async function getpos_async(ccp, force = true, goal = '') {
             }
 
             if (isShiftedPrintable(c, ch) || isUnshiftedPrintable(c, ch)) {
-                const found = findMatchingMapChar(display, cx, cy, c, !isShiftedPrintable(c, ch));
+                const found = findMatchingMapChar(display, getposContext.map, cx, cy, c, !isShiftedPrintable(c, ch));
                 if (found) {
                     restoreCursor(display, cursorState);
                     cx = found.x;

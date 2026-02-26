@@ -53,6 +53,7 @@ import { pline } from './pline.js';
 import { mon_nam, Monnam } from './do_name.js';
 import { find_mac } from './worn.js';
 import { mon_adjust_speed } from './worn.js';
+import { mon_set_minvis } from './worn.js';
 import { sleep_monst, slept_monst } from './mhitm.js';
 import { mstatusline } from './insight.js';
 import { display_minventory } from './invent.js';
@@ -442,6 +443,11 @@ export async function handleZap(player, map, display, game) {
     return { moved: false, tookTime: true };
 }
 
+// C ref: zap.c dozap() name-parity surface.
+export async function dozap(player, map, display, game) {
+  return handleZap(player, map, display, game);
+}
+
 // -- Phase 5: Additional zap functions --
 
 // Beam type constants (exported)
@@ -668,8 +674,7 @@ export function bhitm(mon, otmp, map, player) {
     }
     break;
   case WAN_MAKE_INVISIBLE:
-    // Would call mon_set_minvis — simplified
-    mon.minvis = 1;
+    mon_set_minvis(mon, map);
     break;
   case WAN_LOCKING:
   case SPE_WIZARD_LOCK:
@@ -772,7 +777,7 @@ export async function buzz(type, nd, sx, sy, dx, dy, map, player) {
   await dobuzz(type, nd, sx, sy, dx, dy, true, false, map, player);
 }
 
-async function zapnodir(obj, player, map, display, game) {
+export async function zapnodir(obj, player, map, display, game) {
   if (!obj) return;
   let known = false;
 
@@ -1611,6 +1616,218 @@ export function bhito(obj, otmp, map) {
 
   return res;
 }
+
+// ============================================================
+// Additional zap.c name-parity helpers
+// ============================================================
+
+// C ref: zap.c adtyp_to_prop()
+export function adtyp_to_prop(adtyp) {
+  switch (adtyp) {
+  case 1: return 'magic_missile_resistance';
+  case 2: return 'fire_resistance';
+  case 3: return 'cold_resistance';
+  case 4: return 'sleep_resistance';
+  case 5: return 'disintegration_resistance';
+  case 6: return 'shock_resistance';
+  case 7: return 'poison_resistance';
+  case 8: return 'acid_resistance';
+  default: return null;
+  }
+}
+
+// C ref: zap.c learnwand()
+export function learnwand(obj) {
+  if (!obj) return;
+  discoverObject(obj.otyp, true, true);
+}
+
+// C ref: zap.c zappable()
+export function zappable(obj) {
+  return !!(obj && obj.oclass === WAND_CLASS && Number(obj.spe || 0) > 0);
+}
+
+// C ref: zap.c zap_ok()
+export function zap_ok(obj, player = null, display = null) {
+  if (!obj || obj.oclass !== WAND_CLASS) return false;
+  if (zappable(obj)) return true;
+  // Keep C-like user feedback surface for empty wands.
+  if (display?.putstr_message) {
+    display.putstr_message('Nothing happens.');
+  } else if (player) {
+    pline('Nothing happens.');
+  }
+  return false;
+}
+
+// C ref: zap.c zapsetup()/zapwrapup() naming surfaces.
+export function zapsetup(player, dx = 0, dy = 0, dz = 0) {
+  if (!player) return;
+  player.dx = dx;
+  player.dy = dy;
+  player.dz = dz;
+}
+
+export function zapwrapup(_obj, _disclose = false) {
+  // Placeholder parity surface; gameplay side effects are in callsites.
+  return;
+}
+
+// C ref: zap.c exclam()
+export function exclam(force) {
+  if (force < 0) return '?';
+  if (force <= 4) return '.';
+  return '!';
+}
+
+// C ref: zap.c miss()/hit() message helpers.
+export function miss(fltxt = 'beam') {
+  pline('The %s misses.', fltxt);
+}
+
+export function hit(fltxt = 'beam') {
+  pline('The %s hits!', fltxt);
+}
+
+// C ref: zap.c do_enlightenment_effect()
+export function do_enlightenment_effect(player = null, display = null) {
+  if (display?.putstr_message) {
+    display.putstr_message('You feel self-knowledgeable...');
+  } else {
+    pline('You feel self-knowledgeable...');
+  }
+  if (player) player._recentEnlightenment = true;
+}
+
+// C ref: zap.c wishcmdassist()
+export function wishcmdassist(text) {
+  return typeof text === 'string' ? text.trim() : '';
+}
+
+// C ref: zap.c zapyourself()/zap_steed() placeholder surfaces.
+export function zapyourself(obj, player) {
+  if (!obj || !player) return 0;
+  const dmg = d(2, 6);
+  if (Number.isFinite(player.hp)) player.hp -= dmg;
+  pline('You zap yourself.');
+  return dmg;
+}
+
+export function zap_steed(_obj, _player, _map) {
+  return false;
+}
+
+// C ref: zap.c boxlock_invent()
+export function boxlock_invent(player, otmp) {
+  if (!player || !Array.isArray(player.inventory) || !otmp) return 0;
+  let changed = 0;
+  const shimGame = { player };
+  for (const obj of player.inventory) {
+    if (boxlock(shimGame, obj, otmp)) changed++;
+  }
+  return changed;
+}
+
+// C ref: zap.c location helpers.
+export function get_obj_location(obj, out = null) {
+  if (!obj) return null;
+  const pos = { x: obj.ox || 0, y: obj.oy || 0 };
+  if (out && typeof out === 'object') {
+    out.x = pos.x;
+    out.y = pos.y;
+  }
+  return pos;
+}
+
+export function get_mon_location(mon, out = null) {
+  if (!mon) return null;
+  const pos = { x: mon.mx || 0, y: mon.my || 0 };
+  if (out && typeof out === 'object') {
+    out.x = pos.x;
+    out.y = pos.y;
+  }
+  return pos;
+}
+
+export function get_container_location(container, out = null) {
+  return get_obj_location(container, out);
+}
+
+// C ref: zap.c release_hold()
+export function release_hold(mon, player) {
+  if (!player) return false;
+  if (player.ustuck && (!mon || player.ustuck === mon)) {
+    player.ustuck = null;
+    return true;
+  }
+  return false;
+}
+
+// C ref: zap.c object-destruction utility names.
+export function maybe_destroy_item(obj, dmgtyp, player) {
+  if (!obj) return 0;
+  return destroy_item(obj.oclass, dmgtyp, player);
+}
+
+export function inventory_resistance_check(_osym, _dmgtyp, _player) {
+  return 0;
+}
+
+export function item_what(_osym, dmgtyp) {
+  switch (dmgtyp) {
+  case 2: return 'burn';
+  case 3: return 'freeze';
+  case 6: return 'shock';
+  default: return 'destroy';
+  }
+}
+
+// C ref: zap.c remaining helper names (partial/no-op parity surfaces).
+export function blank_novel(_obj) { return false; }
+export function boomhit(_dx, _dy, _range, _obj, _player, _map) { return 0; }
+export function break_statue(obj, map) {
+  if (!obj || obj.otyp !== STATUE) return false;
+  obj.otyp = ROCK;
+  obj.oclass = GEM_CLASS;
+  if (map && map.removeFloorObject) {
+    map.removeFloorObject(obj);
+    placeFloorObject(map, obj);
+  }
+  return true;
+}
+export function create_polymon(_obj, _mndx, _map, _player) { return null; }
+export function disintegrate_mon(mon, map, player) {
+  if (!mon) return false;
+  mon.mhp = 0;
+  if (map?.removeMonster) map.removeMonster(mon);
+  mondead(mon, map, player);
+  return true;
+}
+export function flashburn(_obj, _amt) { return false; }
+export function lightdamage(_obj, _uwep, _amt) { return 0; }
+export function maybe_explode_trap(_x, _y, _type, _map, _player) { return false; }
+export function melt_ice(_x, _y, _range, _map) { return false; }
+export function melt_ice_away(_x, _y, _map) { return false; }
+export function mon_spell_hits_spot(_typ, _x, _y, _mon, _map, _player) { return false; }
+export function montraits(_obj, _fd) { return null; }
+export function obj_unpolyable(_obj) { return false; }
+export function polyuse(_objhdr) { return 0; }
+export function probe_objchain(_obj, _display) { return 0; }
+export function revive_egg(_obj, _silent, _map, _player) { return false; }
+export function start_melt_ice_timeout(_x, _y, _map) { return; }
+export function u_adtyp_resistance_obj(_player, _adtyp) { return null; }
+export async function ubuzz(type, nd, sx, sy, dx, dy, map, player) {
+  await buzz(type, nd, sx, sy, dx, dy, map, player);
+}
+export async function ubreatheu(type, nd, sx, sy, dx, dy, map, player) {
+  await buzz(ZT_BREATH(type), nd, sx, sy, dx, dy, map, player);
+}
+export function unturn_dead(_obj, _mon, _map, _player) { return false; }
+export function unturn_you(_obj, _player, _map) { return false; }
+export function zombie_can_dig(_obj, _map, _x, _y) { return false; }
+export function spell_hit_bonus(_spell, _player) { return 0; }
+export function spell_damage_bonus(_spell, _player) { return 0; }
+
 
 // ============================================================
 // cf. zap.c:3815 bhit() — beam travel for IMMEDIATE wands
