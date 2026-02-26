@@ -83,6 +83,16 @@ conda run -n base python tools/c_translator/select_candidates.py \
   --summary /tmp/translator-batch-summary.json \
   --allow-diag CFG_COMPLEXITY \
   --out /tmp/translator-batch-candidates-plus-cfg.json
+
+# Find clean candidates that already map to exported runtime JS functions
+conda run -n base python tools/c_translator/runtime_stitch_candidates.py \
+  --summary /tmp/translator-batch-summary.json \
+  --out /tmp/translator-runtime-stitch-candidates.json
+
+# Heuristic safety lint for runtime candidates (unknown callee detection)
+conda run -n base python tools/c_translator/runtime_candidate_safety.py \
+  --candidates /tmp/translator-runtime-stitch-candidates.json \
+  --out /tmp/translator-runtime-stitch-safety.json
 ```
 
 4. Translator policy/annotation checks (Node scripts):
