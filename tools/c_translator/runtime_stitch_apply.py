@@ -176,6 +176,49 @@ def find_function_span(text, name):
     return (line_start, end)
 
 
+def extract_function_param_tokens(text, name):
+    pat = re.compile(FN_HEAD_RE_TMPL.format(name=re.escape(name)), FN_HEAD_RE_FLAGS)
+    m = pat.search(text)
+    if not m:
+        return None
+    fn_idx = text.find("function", m.start(), m.end() + 64)
+    if fn_idx < 0:
+        return None
+    sig_open = text.find("(", fn_idx)
+    if sig_open < 0:
+        return None
+    sig_close = find_matching_paren(text, sig_open)
+    if sig_close < 0:
+        return None
+    raw = text[sig_open + 1:sig_close].strip()
+    if not raw:
+        return []
+    tokens = []
+    for piece in raw.split(","):
+        token = piece.strip()
+        if not token:
+            continue
+        # keep name-like prefix, drop defaults/rest noise
+        token = token.lstrip("...")
+        token = token.split("=")[0].strip()
+        tokens.append(token)
+    return tokens
+
+
+def signature_compatible(existing_tokens, emitted_tokens):
+    if existing_tokens is None or emitted_tokens is None:
+        return False, "missing_signature"
+    if len(existing_tokens) != len(emitted_tokens):
+        return False, "arity_mismatch"
+    # Strong ordering check for context-heavy runtime args.
+    key_params = ("map", "player", "game", "display")
+    for key in key_params:
+        if key in existing_tokens and key in emitted_tokens:
+            if existing_tokens.index(key) != emitted_tokens.index(key):
+                return False, f"key_param_order_mismatch:{key}"
+    return True, ""
+
+
 def has_auto_marker_near(text, fn_start):
     lookback_start = max(0, fn_start - 200)
     segment = text[lookback_start:fn_start]
@@ -214,6 +257,7 @@ def main():
     stitched = 0
     skipped_marked = 0
     skipped_missing = 0
+    skipped_signature_mismatch = 0
 
     for js_module, records in grouped.items():
         module_path = repo / js_module
@@ -244,6 +288,12 @@ def main():
                 skipped_marked += 1
                 continue
             emitted_js = load_emitted_js(rec["out_file"])
+            existing_tokens = extract_function_param_tokens(text, rec["function"])
+            emitted_tokens = extract_function_param_tokens(emitted_js, rec["function"])
+            compatible, reason = signature_compatible(existing_tokens, emitted_tokens)
+            if not compatible:
+                skipped_signature_mismatch += 1
+                continue
             text = text[:start] + emitted_js + text[end:]
             stitched += 1
             module_changed = True
@@ -262,6 +312,7 @@ def main():
         "stitched": stitched,
         "skipped_marked": skipped_marked,
         "skipped_missing": skipped_missing,
+        "skipped_signature_mismatch": skipped_signature_mismatch,
         "write": bool(args.write),
         "changes": changes,
     }

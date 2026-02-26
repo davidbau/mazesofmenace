@@ -79,8 +79,14 @@ export function shrine_pos(roomno, map) {
 }
 
 // C ref: mkroom.c somex()/somey()
-export function somex(croom) { return rn1(croom.hx - croom.lx + 1, croom.lx); }
-export function somey(croom) { return rn1(croom.hy - croom.ly + 1, croom.ly); }
+// TRANSLATOR: AUTO (mkroom.c:666)
+export function somex(croom) {
+  return rn1(croom.hx - croom.lx + 1, croom.lx);
+}
+// TRANSLATOR: AUTO (mkroom.c:672)
+export function somey(croom) {
+  return rn1(croom.hy - croom.ly + 1, croom.ly);
+}
 
 // C ref: mkroom.c inside_room() -- check if (x,y) is inside room bounds (including walls)
 export function inside_room(croom, x, y, map) {

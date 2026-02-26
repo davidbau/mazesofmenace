@@ -1624,12 +1624,13 @@ export function inv_cnt(player, incl_gold) {
 }
 
 // C ref: hack.c money_cnt() — count gold in inventory
-export function money_cnt(player) {
-    const inv = player.inventory || [];
-    for (const obj of inv) {
-        if (obj && obj.oclass === COIN_CLASS) return obj.quan || 0;
-    }
-    return 0;
+// TRANSLATOR: AUTO (hack.c:4443)
+export function money_cnt(otmp) {
+  while (otmp) {
+    if (otmp.oclass === COIN_CLASS) return otmp.quan;
+    otmp = otmp.nobj;
+  }
+  return 0;
 }
 
 // C ref: hack.c cmp_weights()
