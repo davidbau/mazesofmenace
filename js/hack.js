@@ -90,22 +90,15 @@ function ensure_context(game) {
     if (!game.context) game.context = {};
     const ctx = game.context;
     if (!Number.isInteger(ctx.run)) {
-        // Default from legacy run mode if present.
-        if (game.runMode === 2) ctx.run = 2; // rush
-        else if (game.runMode === 1) ctx.run = 3; // run
+        // Keep compatibility with plain test fixtures that still set runMode.
+        if (game.runMode === 2) ctx.run = 2;
+        else if (game.runMode === 1 || game.runMode === 3) ctx.run = 3;
         else ctx.run = 0;
     }
-    if (!Number.isInteger(ctx.travel)) ctx.travel = 0;
+    if (!Number.isInteger(ctx.travel)) ctx.travel = game.traveling ? 1 : 0;
     if (!Number.isInteger(ctx.travel1)) ctx.travel1 = 0;
-    if (!Number.isInteger(ctx.nopick)) ctx.nopick = 0;
-    if (!Number.isInteger(ctx.forcefight)) ctx.forcefight = 0;
-    // Legacy field sync
-    if (game.traveling) {
-        ctx.travel = 1;
-        if (!ctx.travel1) ctx.travel1 = 1;
-    }
-    if (game.menuRequested) ctx.nopick = 1;
-    if (game.forceFight) ctx.forcefight = 1;
+    if (!Number.isInteger(ctx.nopick)) ctx.nopick = game.menuRequested ? 1 : 0;
+    if (!Number.isInteger(ctx.forcefight)) ctx.forcefight = game.forceFight ? 1 : 0;
     if (!Number.isInteger(ctx.door_opened)) ctx.door_opened = 0;
     if (!Number.isInteger(ctx.move)) ctx.move = 0;
     return ctx;

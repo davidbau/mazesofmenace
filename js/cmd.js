@@ -38,6 +38,21 @@ import { handleMovement, handleRun, findPath, handleTravel, executeTravelStep,
 // TRANSLATOR: AUTO
 export async function rhack(ch, game) {
     const { player, map, display, fov } = game;
+    const context = game.context || (game.context = {});
+    const getRunMode = () => {
+        if (Number.isInteger(context.run)) return Number(context.run || 0);
+        return Number(game.runMode || 0);
+    };
+    const clearRunMode = () => {
+        context.run = 0;
+        game.runMode = 0;
+    };
+    const setRunMode = (mode) => {
+        const n = Number(mode) || 0;
+        const canonical = (n === 2) ? 2 : (n ? 3 : 0);
+        context.run = canonical;
+        game.runMode = canonical;
+    };
     if (ch === 0) {
         const queued = cmdq_pop_command(!!game?.inDoAgain);
         if (!queued) return { moved: false, tookTime: false };
@@ -101,9 +116,8 @@ export async function rhack(ch, game) {
     // Movement keys
     if (DIRECTION_KEYS[c]) {
         // Check if 'G' or 'g' prefix was used (run/rush mode)
-        if (game.runMode) {
-            const mode = game.runMode;
-            game.runMode = 0; // Clear prefix
+        if (getRunMode()) {
+            clearRunMode();
             return handleRun(DIRECTION_KEYS[c], player, map, display, fov, game);
         }
         return await handleMovement(DIRECTION_KEYS[c], player, map, display, game);
@@ -124,9 +138,9 @@ export async function rhack(ch, game) {
     // C ref: cmd.c do_rush()/do_run() prefix handling.
     // If the next key after g/G is not a movement command, cancel prefix
     // with a specific message instead of treating it as an unknown command.
-    if (game.runMode && c !== 'g' && c !== 'G' && ch !== 27) {
-        const prefix = game.runMode === 2 ? 'g' : 'G';
-        game.runMode = 0;
+    if (getRunMode() && c !== 'g' && c !== 'G' && ch !== 27) {
+        const prefix = getRunMode() === 2 ? 'g' : 'G';
+        clearRunMode();
         // C getdir-style quit keys after a run/rush prefix do not produce
         // the prefix-specific warning; they fall through as ordinary input.
         const isQuitLike = (ch === 32 || ch === 10 || ch === 13);
@@ -504,11 +518,11 @@ export async function rhack(ch, game) {
 
     // C ref: cmd.c:1655 do_run() — 'G' prefix (run)
     if (c === 'G') {
-        if (game.runMode) {
+        if (getRunMode()) {
             display.putstr_message('Double run prefix, canceled.');
-            game.runMode = 0;
+            clearRunMode();
         } else {
-            game.runMode = 3; // run mode
+            setRunMode(3); // run mode
             if (game.flags.verbose) {
                 display.putstr_message('Next direction will run until something interesting.');
             }
@@ -518,11 +532,11 @@ export async function rhack(ch, game) {
 
     // C ref: cmd.c:1639 do_rush() — 'g' prefix (rush)
     if (c === 'g') {
-        if (game.runMode) {
+        if (getRunMode()) {
             display.putstr_message('Double rush prefix, canceled.');
-            game.runMode = 0;
+            clearRunMode();
         } else {
-            game.runMode = 2; // rush mode
+            setRunMode(2); // rush mode
             if (game.flags.verbose) {
                 display.putstr_message('Next direction will rush until something interesting.');
             }
@@ -536,7 +550,7 @@ export async function rhack(ch, game) {
         // Also clear prefix flags
         game.menuRequested = false;
         game.forceFight = false;
-        game.runMode = 0;
+        clearRunMode();
         return { moved: false, tookTime: false };
     }
 

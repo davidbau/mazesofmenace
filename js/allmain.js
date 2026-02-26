@@ -665,7 +665,7 @@ function regen_hp(game) {
                 // interrupt_multi("You are in full health.")
                 if (game.multi > 0
                     && !game.travelPath?.length
-                    && !game.runMode) {
+                    && !(game.context?.run > 0)) {
                     game.multi = 0;
                     if (game.flags?.verbose !== false) {
                         game.display.putstr_message('You are in full health.');
@@ -1113,7 +1113,7 @@ export class NetHackGame {
 
     // C ref: allmain.c interrupt_multi() — check if multi-command should be interrupted
     shouldInterruptMulti() {
-        if ((this.runMode || 0) > 0) return false;
+        if ((this.context?.run || 0) > 0) return false;
         if (this.occupation) return this.shouldInterruptOccupation();
         if (monsterNearby(this.map, this.player, this.fov)) return true;
         if (this.lastHP !== undefined && this.player.hp !== this.lastHP) {
@@ -1126,7 +1126,7 @@ export class NetHackGame {
 
     // C ref: do.c cmd_safety_prevention()
     shouldInterruptOccupation() {
-        if ((this.runMode || 0) > 0) return false;
+        if ((this.context?.run || 0) > 0) return false;
         return monsterNearby(this.map, this.player, this.fov);
     }
 

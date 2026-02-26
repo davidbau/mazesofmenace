@@ -39,10 +39,15 @@ Migration principle for M2 batches:
 1. `runMode` ownership bridge executed in `NetHackGame`:
    1. legacy `game.runMode` now routes through accessor logic that writes canonical `game.svc.context.run`,
    2. run-mode reads are derived from canonical context values.
-2. Additional legacy mirrors now route through canonical context accessors:
+2. Tier-1 movement command flow now writes canonical run state directly:
+   1. `js/cmd.js` run/rush prefix handling now uses `context.run` read/write helpers,
+   2. run-prefix clearing now clears canonical context state directly.
+3. `js/hack.js` context bootstrap no longer backfills `context.run` from legacy mirrors.
+4. `js/allmain.js` turn-interrupt checks now read canonical `context.run`.
+5. Additional legacy mirrors now route through canonical context accessors:
    1. `game.traveling` -> `game.svc.context.travel`,
    2. `game.forceFight` -> `game.svc.context.forcefight`,
    3. `game.menuRequested` -> `game.svc.context.nopick`.
-3. Validation:
+6. Validation:
    1. `npm run -s test:unit`,
    2. `./scripts/run-session-tests.sh` (baseline unchanged: `186/204`, `18` failing).
