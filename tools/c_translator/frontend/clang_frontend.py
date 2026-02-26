@@ -281,6 +281,47 @@ def function_ast_summary(src_path, compile_profile, func_name):
     return found
 
 
+def all_function_ast_summaries(src_path, compile_profile):
+    path = Path(src_path)
+    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+
+    try:
+        cindex, tu = _parse_tu_with_clang(path, compile_profile.get("args", []))
+    except Exception as err:
+        return {"available": False, "reason": f"clang parse failed: {err}", "functions": []}
+
+    source_resolved = str(path.resolve())
+    functions = []
+
+    def walk(cur):
+        if cur.kind == cindex.CursorKind.FUNCTION_DECL:
+            f = cur.location.file
+            file_resolved = str(Path(str(f)).resolve()) if f else ""
+            if cur.is_definition() and file_resolved == source_resolved:
+                compound = None
+                params = []
+                for ch in cur.get_children():
+                    if ch.kind == cindex.CursorKind.PARM_DECL:
+                        params.append(ch.spelling or "arg")
+                    elif ch.kind == cindex.CursorKind.COMPOUND_STMT:
+                        compound = ch
+                if compound is not None:
+                    functions.append(
+                        {
+                            "available": True,
+                            "name": cur.spelling,
+                            "signature_line": cur.extent.start.line,
+                            "params": params,
+                            "compound": _serialize_stmt(compound, lines),
+                        }
+                    )
+        for ch in cur.get_children():
+            walk(ch)
+
+    walk(tu.cursor)
+    return {"available": True, "functions": functions}
+
+
 def _configure_libclang(cindex):
     if getattr(cindex.Config, "loaded", False):
         return

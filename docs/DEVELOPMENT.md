@@ -57,6 +57,13 @@ conda run -n base python tools/c_translator/main.py \
   --src nethack-c/src/hack.c \
   --emit capability-summary \
   --out /tmp/hack.capability.json
+
+# Multi-file capability matrix (for scale planning)
+conda run -n base python tools/c_translator/capability_matrix.py \
+  --src nethack-c/src/hack.c \
+  --src nethack-c/src/monmove.c \
+  --src nethack-c/src/zap.c \
+  --out /tmp/translator.capability.matrix.json
 ```
 
 4. Translator policy/annotation checks (Node scripts):

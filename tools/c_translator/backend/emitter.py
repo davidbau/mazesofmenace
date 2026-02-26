@@ -4,7 +4,7 @@ from pathlib import Path
 
 from async_infer import build_async_summary
 from cfg import build_cfg_summary
-from frontend import function_ast_summary
+from frontend import all_function_ast_summaries, function_ast_summary
 from nir import build_nir_snapshot
 
 
@@ -163,10 +163,84 @@ def emit_capability_summary(src_path, compile_profile=None):
     translated_count = 0
     blocked_count = 0
     diag_hist = {}
+    rewrite_rules = _load_rewrite_rules()
+
+    async_summary = build_async_summary(src_path)
+    async_map = {}
+    for fn in async_summary.get("functions", []):
+        direct = set(fn.get("direct_awaited_boundaries", []))
+        async_callees = set(fn.get("awaited_boundary_callsites", []))
+        async_map[fn.get("name")] = {
+            "requires_async": bool(fn.get("requires_async")),
+            "awaitable_calls": direct | async_callees,
+        }
+
+    ast_index = {}
+    ast_status = {"available": False, "reason": "compile profile unavailable"}
+    if compile_profile is not None:
+        ast_status = all_function_ast_summaries(src_path, compile_profile)
+    if ast_status.get("available"):
+        for fn in ast_status.get("functions", []):
+            key = (fn.get("name"), fn.get("signature_line"))
+            ast_index[key] = fn
 
     for fn in nir.get("functions", []):
         name = fn.get("name")
-        payload = emit_helper_scaffold(src_path, name, compile_profile)
+        sig = fn.get("span", {}).get("signature_line")
+        info = async_map.get(name) or {"requires_async": False, "awaitable_calls": set()}
+        ast_fn = ast_index.get((name, sig))
+        diags = []
+        translated = False
+
+        if ast_fn:
+            translated_lines, lower_diags, _required_params = _translate_ast_compound(
+                ast_fn.get("compound"),
+                1,
+                rewrite_rules,
+                info["awaitable_calls"],
+            )
+            diags.extend(lower_diags)
+            translated = translated_lines is not None
+            if not translated:
+                diags.append(
+                    {
+                        "severity": "warning",
+                        "code": "PLACEHOLDER_BODY",
+                        "message": "Function body emitted as placeholder scaffold.",
+                    }
+                )
+        else:
+            if ast_status.get("available"):
+                diags.append(
+                    {
+                        "severity": "warning",
+                        "code": "CLANG_AST_UNAVAILABLE",
+                        "message": f"function not found: {name}@{sig}",
+                    }
+                )
+            else:
+                diags.append(
+                    {
+                        "severity": "warning",
+                        "code": "CLANG_AST_UNAVAILABLE",
+                        "message": ast_status.get("reason", "unknown clang AST failure"),
+                    }
+                )
+            diags.append(
+                {
+                    "severity": "warning",
+                    "code": "PLACEHOLDER_BODY",
+                    "message": "Function body emitted as placeholder scaffold.",
+                }
+            )
+
+        payload = {
+            "meta": {
+                "translated": translated,
+                "signature_line": sig,
+            },
+            "diag": diags,
+        }
         translated = bool(payload.get("meta", {}).get("translated"))
         if translated:
             translated_count += 1
