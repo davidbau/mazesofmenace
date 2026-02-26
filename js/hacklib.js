@@ -11,8 +11,9 @@
 // ============================================================================
 
 // hacklib.c:125 — is 'c' a digit?
+// TRANSLATOR: AUTO (hacklib.c:125)
 export function digit(c) {
-    return c >= '0' && c <= '9';
+  return ('0' <= c && c <= '9');
 }
 
 // hacklib.c:132 — is 'c' a letter? note: '@' classed as letter
