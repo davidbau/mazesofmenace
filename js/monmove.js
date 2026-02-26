@@ -160,10 +160,12 @@ function leppie_avoidance(mon, player) {
 // ========================================================================
 
 // C ref: monmove.c:79 — add position (x,y) to front of monster's track ring
+// TRANSLATOR: AUTO
 export function mon_track_add(mon, x, y) {
     if (!Array.isArray(mon?.mtrack)) return;
-    for (let j = MTSZ - 1; j > 0; j--)
+    for (let j = MTSZ - 1; j > 0; j--) {
         mon.mtrack[j] = mon.mtrack[j - 1];
+    }
     mon.mtrack[0] = { x, y };
 }
 
@@ -298,11 +300,13 @@ export function monhaskey(mon, forUnlocking) {
 // Riders (Death/Famine/Pestilence) always can; shopkeepers, priests, and
 // quest leaders (MS_LEADER sound) can when their special-ability cooldown
 // is zero (mspec_used == 0).
+// TRANSLATOR: AUTO
 export function m_can_break_boulder(mon) {
-    const ptr = mon?.type || {};
+    const ptr = mon?.type || mon?.data || {};
+    const msound = ptr.msound ?? ptr.sound ?? 0;
     return is_rider(ptr)
         || (!mon.mspec_used
-            && (mon.isshk || mon.ispriest || ptr.sound === MS_LEADER));
+            && (mon.isshk || mon.ispriest || msound === MS_LEADER));
 }
 
 // ========================================================================

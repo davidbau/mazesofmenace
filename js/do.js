@@ -242,6 +242,7 @@ export function dropx(obj, player, map) {
 }
 
 // cf. do.c dropy() — put dropped object at destination
+// TRANSLATOR: AUTO
 export function dropy(obj, player, map) {
     dropz(obj, false, player, map);
 }
@@ -1289,6 +1290,7 @@ export function zombify_mon(body, player, map) {
 // ============================================================
 
 // cf. do.c danger_uprops() — return true if hero properties are dangerous
+// TRANSLATOR: AUTO
 export function danger_uprops(player) {
     return !!(player.stoned || player.slimed || player.strangled || player.sick);
 }

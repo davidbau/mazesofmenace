@@ -723,6 +723,7 @@ function first_weapon_hit(weapon) {
 // cf. uhitm.c:1970 — shade_aware(obj):
 //   Check if object can affect a shade (silver, blessed, artifact).
 //   Objects in this list either affect shades or are handled specially.
+// TRANSLATOR: AUTO
 export function shade_aware(obj) {
     if (!obj) return false;
     if (obj.otyp === BOULDER

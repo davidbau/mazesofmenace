@@ -225,6 +225,7 @@ export function unleash_all(player, map) {
 }
 
 // cf. apply.c:757 -- leashable: can monster be leashed?
+// TRANSLATOR: AUTO
 export function leashable(mtmp) {
     const data = mtmp.data || mons[mtmp.mnum] || {};
     return (mtmp.mnum !== PM_LONG_WORM
@@ -445,6 +446,7 @@ function dorub() { pline("You rub... but nothing special happens."); }
 function dojump() { You_cant("jump very far."); }
 
 // cf. apply.c:2163 -- tinnable
+// TRANSLATOR: AUTO
 export function tinnable(corpse) {
     if (corpse.oeaten) return false;
     const mdat = mons[corpse.corpsenm];

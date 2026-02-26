@@ -114,6 +114,7 @@ function has_boulder_at(map, x, y) {
 // ========================================================================
 // seetrap — C ref: trap.c seetrap()
 // ========================================================================
+// TRANSLATOR: AUTO
 export function seetrap(trap) {
     if (!trap) return;
     if (!trap.tseen) {
