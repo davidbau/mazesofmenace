@@ -146,6 +146,7 @@ def _translate_ast_compound(compound_stmt, base_indent):
         if lines is None:
             return None, diags
         out.extend(lines)
+    out = _merge_adjacent_let_lines(out)
     return out, diags
 
 
@@ -276,6 +277,45 @@ def _can_inline_compact_block(stmt, lines):
 
 def _compact_block_line(lines):
     return " ".join(line.strip() for line in lines)
+
+
+def _merge_adjacent_let_lines(lines):
+    merged = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if not _is_let_line(line):
+            merged.append(line)
+            i += 1
+            continue
+
+        indent = line[: len(line) - len(line.lstrip())]
+        decls = [_let_payload(line)]
+        j = i + 1
+        while j < len(lines) and _is_let_line(lines[j]):
+            next_indent = lines[j][: len(lines[j]) - len(lines[j].lstrip())]
+            if next_indent != indent:
+                break
+            candidate = decls + [_let_payload(lines[j])]
+            combined = ", ".join(candidate)
+            if len(combined) > 72:
+                break
+            decls.append(_let_payload(lines[j]))
+            j += 1
+
+        merged.append(f"{indent}let {', '.join(decls)};")
+        i = j
+    return merged
+
+
+def _is_let_line(line):
+    s = line.lstrip()
+    return s.startswith("let ") and s.endswith(";")
+
+
+def _let_payload(line):
+    s = line.strip()
+    return s[len("let ") : -1].strip()
 
 
 def _lower_decl_stmt(text):

@@ -43,7 +43,50 @@ test('clang-backed emit-helper translates rounddiv body', (t) => {
     const payload = JSON.parse(fs.readFileSync(outFile, 'utf8'));
     assert.equal(payload.function, 'rounddiv');
     assert.equal(payload.meta.translated, true);
+    assert.match(payload.js, /let r, m, divsgn = 1;/);
     assert.match(payload.js, /throw new Error\('division by zero in rounddiv'\)/);
     assert.match(payload.js, /Math\.trunc\(x \/ y\)/);
+    assert.doesNotMatch(payload.js, /UNIMPLEMENTED_TRANSLATED_FUNCTION/);
+});
+
+test('clang-backed emit-helper translates invocation_pos body', (t) => {
+    if (!fs.existsSync(CONDA)) {
+        t.skip('conda not available for clang-backed translator run');
+        return;
+    }
+
+    const outFile = path.join(
+        fs.mkdtempSync(path.join(os.tmpdir(), 'translator-emit-helper-clang-')),
+        'invocation_pos.json',
+    );
+
+    const r = spawnSync(
+        CONDA,
+        [
+            'run',
+            '--live-stream',
+            '-n',
+            'base',
+            'python',
+            'tools/c_translator/main.py',
+            '--src',
+            'nethack-c/src/hack.c',
+            '--func',
+            'invocation_pos',
+            '--emit',
+            'emit-helper',
+            '--out',
+            outFile,
+        ],
+        { encoding: 'utf8' },
+    );
+    assert.equal(r.status, 0, r.stderr || r.stdout);
+
+    const payload = JSON.parse(fs.readFileSync(outFile, 'utf8'));
+    assert.equal(payload.function, 'invocation_pos');
+    assert.equal(payload.meta.translated, true);
+    assert.match(payload.js, /Invocation_lev\(&u\.uz\)/);
+    assert.match(payload.js, /x === svi\.inv_pos\.x/);
+    assert.match(payload.js, /y === svi\.inv_pos\.y/);
     assert.doesNotMatch(payload.js, /UNIMPLEMENTED_TRANSLATED_FUNCTION/);
 });

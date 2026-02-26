@@ -1,0 +1,21 @@
+{
+  "diag": [],
+  "emit_mode": "emit-helper",
+  "function": "invocation_pos",
+  "js": "// TRANSLATOR: AUTO (hack.c:963)\nexport function invocation_pos(x, y) {\n  return (Invocation_lev(&u.uz) && x === svi.inv_pos.x && y === svi.inv_pos.y);\n}\n",
+  "meta": {
+    "assignment_count": 2,
+    "body_end_line": 967,
+    "body_sha256": "f09fc7a3b7527adedd234f2fbbd1bb6809d87f74940c5a0e06b1597f11d88bbf",
+    "body_start_line": 964,
+    "call_count": 1,
+    "cfg_tags": [],
+    "param_names": [
+      "x",
+      "y"
+    ],
+    "signature_line": 963,
+    "translated": true
+  },
+  "source": "nethack-c/src/hack.c"
+}

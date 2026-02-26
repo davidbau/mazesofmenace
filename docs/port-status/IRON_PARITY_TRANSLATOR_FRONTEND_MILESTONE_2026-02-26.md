@@ -35,6 +35,7 @@ This note records delivery of translator parser milestones `P3.1`, `P3.2`, `P3.3
    1. `docs/port-status/IRON_PARITY_TRANSLATOR_CFG_SUMMARY_2026-02-26.json`
 5. Emitter baseline:
    1. `docs/port-status/IRON_PARITY_TRANSLATOR_EMIT_HELPER_ROUNDDIV_2026-02-26.json`
+   2. `docs/port-status/IRON_PARITY_TRANSLATOR_EMIT_HELPER_INVOCATION_POS_2026-02-26.json`
 6. Async boundary summary:
    1. `docs/port-status/IRON_PARITY_TRANSLATOR_ASYNC_SUMMARY_2026-02-26.json`
 
@@ -47,7 +48,7 @@ For `nethack-c/src/hack.c` at this baseline:
 5. NIR function snapshots: `88`
 6. CFG summary functions: `88`
 7. CFG "interesting" functions (labels/goto/switch detected): `11`
-8. Emitter baseline function: `rounddiv`
+8. Emitter baseline functions: `rounddiv`, `invocation_pos`
 9. Async-required functions inferred in `hack.c`: `6`
 
 ## Environment Notes
