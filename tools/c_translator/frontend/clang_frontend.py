@@ -1,4 +1,5 @@
 import hashlib
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -48,6 +49,8 @@ def _try_libclang(path, compile_args):
     except Exception:
         return {"available": False, "reason": "clang.cindex import failed"}
 
+    _configure_libclang(cindex)
+
     try:
         index = cindex.Index.create()
         tu = index.parse(str(path), args=compile_args)
@@ -63,6 +66,117 @@ def _try_libclang(path, compile_args):
         "diagnostic_count": len(diagnostics),
         "diagnostics": diagnostics[:20],
     }
+
+
+def _parse_tu_with_clang(path, compile_args):
+    from clang import cindex  # type: ignore
+
+    _configure_libclang(cindex)
+    index = cindex.Index.create()
+    return cindex, index.parse(str(path), args=compile_args)
+
+
+def _extent_text(lines, extent):
+    sl = extent.start.line
+    sc = extent.start.column
+    el = extent.end.line
+    ec = extent.end.column
+    if sl < 1 or el < 1 or sl > len(lines) or el > len(lines):
+        return ""
+    if sl == el:
+        return lines[sl - 1][sc - 1 : ec - 1]
+    parts = [lines[sl - 1][sc - 1 :]]
+    for i in range(sl, el - 1):
+        parts.append(lines[i])
+    parts.append(lines[el - 1][: ec - 1])
+    return "\n".join(parts)
+
+
+def _serialize_stmt(cursor, lines):
+    return {
+        "kind": cursor.kind.name,
+        "text": _extent_text(lines, cursor.extent).strip(),
+        "children": [_serialize_stmt(ch, lines) for ch in cursor.get_children()],
+    }
+
+
+def function_ast_summary(src_path, compile_profile, func_name):
+    path = Path(src_path)
+    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+
+    try:
+        cindex, tu = _parse_tu_with_clang(path, compile_profile.get("args", []))
+    except Exception as err:
+        return {"available": False, "reason": f"clang parse failed: {err}"}
+
+    source_resolved = str(path.resolve())
+
+    def walk(cur):
+        if cur.kind == cindex.CursorKind.FUNCTION_DECL and cur.spelling == func_name:
+            f = cur.location.file
+            file_resolved = str(Path(str(f)).resolve()) if f else ""
+            if not cur.is_definition() or file_resolved != source_resolved:
+                return None
+
+            compound = None
+            params = []
+            for ch in cur.get_children():
+                if ch.kind == cindex.CursorKind.PARM_DECL:
+                    params.append(ch.spelling or "arg")
+                elif ch.kind == cindex.CursorKind.COMPOUND_STMT:
+                    compound = ch
+
+            if compound is None:
+                return None
+
+            return {
+                "available": True,
+                "name": cur.spelling,
+                "signature_line": cur.extent.start.line,
+                "params": params,
+                "compound": _serialize_stmt(compound, lines),
+            }
+        for ch in cur.get_children():
+            found = walk(ch)
+            if found is not None:
+                return found
+        return None
+
+    found = walk(tu.cursor)
+    if found is None:
+        return {"available": False, "reason": f"function not found: {func_name}"}
+    return found
+
+
+def _configure_libclang(cindex):
+    # Respect explicit override first.
+    explicit = os.environ.get("LIBCLANG_PATH") or os.environ.get("C_TRANSLATOR_LIBCLANG")
+    if explicit:
+        p = Path(explicit)
+        if p.is_file():
+            cindex.Config.set_library_file(str(p))
+            return
+        if p.is_dir():
+            cindex.Config.set_library_path(str(p))
+            return
+
+    # Next, look for libclang shipped with the python clang package.
+    try:
+        import clang  # type: ignore
+    except Exception:
+        return
+
+    clang_root = Path(getattr(clang, "__file__", "")).resolve().parent
+    candidates = sorted(clang_root.glob("**/libclang.so*"))
+    if not candidates:
+        return
+    # Prefer exact soname if present, otherwise latest lexical match.
+    preferred = None
+    for c in candidates:
+        if c.name == "libclang.so":
+            preferred = c
+            break
+    cindex.Config.set_library_file(str(preferred or candidates[-1]))
 
 
 def _collect_macro_definitions(lines):

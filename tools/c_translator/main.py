@@ -61,7 +61,7 @@ def main():
     elif args.emit == "async-summary":
         payload = build_async_summary(args.src, args.func, args.boundary_rules)
     elif args.emit == "emit-helper":
-        payload = emit_helper_scaffold(args.src, args.func)
+        payload = emit_helper_scaffold(args.src, args.func, profile)
     else:
         # Scaffold placeholders for next M3 steps.
         payload = {

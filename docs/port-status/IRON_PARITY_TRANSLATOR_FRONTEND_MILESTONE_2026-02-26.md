@@ -52,11 +52,11 @@ For `nethack-c/src/hack.c` at this baseline:
 
 ## Environment Notes
 
-1. This environment does not currently provide `clang.cindex`.
-2. Frontend therefore uses deterministic fallback paths:
-   1. function extraction: regex signature scanner,
-   2. macro provenance/source mapping: `cpp` line-marker crosswalk.
-3. Planned hardening remains:
-   1. libclang-backed AST/token provenance integration (`A1/A2` hard mode),
-   2. full lowering/emitter milestones (`P3.5+`),
-   3. fixture tests for deterministic serializer checks (`P3.x` exit criteria).
+1. Clang-backed parsing is available via conda base Python (`clang` + `libclang` 18.x).
+2. System `python3` path still falls back to regex/cpp unless clang bindings are present there.
+3. Current clang diagnostics still include missing builtin header paths (for example `stddef.h`) and are tracked in `#211`.
+4. Planned hardening remains:
+   1. toolchain/version pin + preflight (`#210`),
+   2. builtin header/resource path cleanup (`#211`),
+   3. full lowering/emitter milestones (`P3.5+`),
+   4. fixture tests for deterministic serializer checks (`P3.x` exit criteria).
