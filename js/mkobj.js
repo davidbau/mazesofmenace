@@ -193,10 +193,11 @@ export function is_rustprone(obj) {
 export function is_crackable(obj) {
     return objectData[obj.otyp].material === GLASS && obj.oclass === ARMOR_CLASS;
 }
-export function is_rottable(obj) {
-    const mat = objectData[obj.otyp].material;
-    if (mat === LIQUID) return false;
-    return mat <= WOOD || mat === DRAGON_HIDE;
+// TRANSLATOR: AUTO (mkobj.c:2286)
+export function is_rottable(otmp) {
+  const otyp = otmp.otyp;
+  const mat = objectData[otyp]?.material ?? 0;
+  return ((mat <= WOOD && mat !== LIQUID) || mat === DRAGON_HIDE);
 }
 export function is_corrodeable(obj) {
     const mat = objectData[obj.otyp].material;
