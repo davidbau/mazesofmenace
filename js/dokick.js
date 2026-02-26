@@ -736,18 +736,21 @@ function kickdmg(mon, clumsy, player, map) {
 // ============================================================================
 
 function maybe_kick_monster(mon, x, y, player, map, game) {
+    const ctx = (game && game.svc && game.svc.context)
+        ? game.svc.context
+        : game?.context;
     if (mon) {
-        const save_forcefight = game.context ? game.context.forcefight : false;
+        const save_forcefight = ctx ? ctx.forcefight : false;
         // bhitpos
         game.bhitpos = { x, y };
 
         if (!mon.mpeaceful || !canspotmon(mon, player, map))
-            if (game.context) game.context.forcefight = true;
+            if (ctx) ctx.forcefight = true;
 
         if (attack_checks(mon, null) || overexertion(player, game))
             mon = null;
 
-        if (game.context) game.context.forcefight = save_forcefight;
+        if (ctx) ctx.forcefight = save_forcefight;
     }
     return mon !== null;
 }
@@ -1857,7 +1860,10 @@ export async function dokick(player, map, display, game) {
     if (mtmp) {
         oldglyph = glyph_at(x, y);
         if (!maybe_kick_monster(mtmp, x, y, player, map, game))
-            return { moved: false, tookTime: game.context?.move ? true : false };
+            const ctx = (game && game.svc && game.svc.context)
+                ? game.svc.context
+                : game?.context;
+            return { moved: false, tookTime: ctx?.move ? true : false };
     }
 
     wake_nearby(player, map);
@@ -1883,7 +1889,10 @@ export async function dokick(player, map, display, game) {
         }
 
         // recoil if floating
-        if ((Is_airlevel(player.uz) || player.levitating) && game.context?.move) {
+        const ctx = (game && game.svc && game.svc.context)
+            ? game.svc.context
+            : game?.context;
+        if ((Is_airlevel(player.uz) || player.levitating) && ctx?.move) {
             let range = (playerData.cwt || 450) + (weight_cap(player) + inv_weight(player));
             if (range < 1) range = 1;
             range = Math.floor(3 * (mdat.cwt || 100) / range);

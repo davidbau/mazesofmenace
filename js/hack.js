@@ -92,8 +92,13 @@ function debug_travel_tmp_at(path, startX, startY) {
 }
 
 function ensure_context(game) {
-    if (!game.context) game.context = {};
-    const ctx = game.context;
+    if (game?.svc) {
+        if (!game.svc.context) game.svc.context = {};
+        if (!game.context) game.context = game.svc.context;
+    } else if (!game.context) {
+        game.context = {};
+    }
+    const ctx = (game?.svc?.context) || game.context;
     if (!Number.isInteger(ctx.run)) {
         if (game.runMode === 2) ctx.run = 2;
         else if (game.runMode === 1 || game.runMode === 3) ctx.run = 3;

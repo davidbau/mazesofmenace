@@ -306,7 +306,7 @@ export function cutworm(worm, x, y, cuttier, map, player, game) {
     // Sometimes the tail end dies
     if (!new_worm) {
         place_worm_seg_on_map(worm, x, y);
-        var context = (game && game.context) || {};
+        var context = (game && game.svc && game.svc.context) || game?.context || {};
         if (context.mon_moving) {
             // canspotmon check simplified
             pline("Part of %s tail has been cut off.", s_suffix(mon_nam(worm)));
@@ -339,7 +339,7 @@ export function cutworm(worm, x, y, cuttier, map, player, game) {
     // Place the new monster at all segment locations
     place_wsegs(new_worm, worm, map);
 
-    var ctx = (game && game.context) || {};
+    var ctx = (game && game.svc && game.svc.context) || game?.context || {};
     if (ctx.mon_moving)
         pline("%s is cut in half.", Monnam(worm));
     else

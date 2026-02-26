@@ -38,7 +38,9 @@ import { handleMovement, handleRun, findPath, handleTravel, executeTravelStep,
 // TRANSLATOR: AUTO
 export async function rhack(ch, game) {
     const { player, map, display, fov } = game;
-    const context = game.context || (game.context = {});
+    const context = (game?.svc?.context)
+        || game.context
+        || (game.context = {});
     const getRunMode = () => {
         if (Number.isInteger(context.run)) return Number(context.run || 0);
         if (Number.isInteger(game.runMode)) return Number(game.runMode || 0);

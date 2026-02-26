@@ -665,7 +665,7 @@ function regen_hp(game) {
                 // interrupt_multi("You are in full health.")
                 if (game.multi > 0
                     && !game.travelPath?.length
-                    && !(game.context?.run > 0)) {
+                    && !((game.svc?.context?.run || game.context?.run || 0) > 0)) {
                     game.multi = 0;
                     if (game.flags?.verbose !== false) {
                         game.display.putstr_message('You are in full health.');
