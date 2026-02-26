@@ -24,6 +24,7 @@ import { playerAttackMonster } from './uhitm.js';
 import { formatGoldPickupMessage, formatInventoryPickupMessage } from './do.js';
 import { monDisplayName, monNam } from './mondata.js';
 import { maybeSmudgeEngraving, u_wipe_engr } from './engrave.js';
+import { gethungry } from './eat.js';
 import { describeGroundObjectForPlayer, maybeHandleShopEntryMessage } from './shk.js';
 import { observeObject } from './discovery.js';
 import { placeFloorObject } from './floor_objects.js';
@@ -2419,8 +2420,7 @@ export function overexert_hp(player, display) {
 // C ref: hack.c overexertion() — combat metabolism check
 // Returns true if hero fainted (multi < 0).
 export function overexertion(player, game, display) {
-    // gethungry()
-    rn2(20);
+    gethungry(player);
     const moves = game.moves || 0;
     if ((moves % 3) !== 0 && near_capacity(player) >= HVY_ENCUMBER) {
         overexert_hp(player, display);
