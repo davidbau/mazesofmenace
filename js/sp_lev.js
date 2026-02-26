@@ -6720,7 +6720,11 @@ export function lspo_exclusion(...args) { return exclusion(...args); }
 export function lspo_wallify(...args) { return wallify(...args); }
 export function lspo_wall_property(...args) { return wall_property(...args); }
 export function lspo_non_diggable(...args) { return non_diggable(...args); }
-export function lspo_non_passwall(...args) { return non_passwall(...args); }
+// TRANSLATOR: AUTO (sp_lev.c:5942)
+export function lspo_non_passwall(L) {
+  set_wallprop_in_selection(L, W_NONPASSWALL);
+  return 0;
+}
 export function lspo_teleport_region(...args) { return teleport_region(...args); }
 export function lspo_reset_level(...args) { return reset_level(...args); }
 export function lspo_finalize_level(...args) { return finalize_level(...args); }
