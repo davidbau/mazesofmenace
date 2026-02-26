@@ -8028,8 +8028,10 @@ function placeObjectAt(obj, x, y) {
 }
 
 // C ref: sp_lev.c random_wdir()
+// TRANSLATOR: AUTO (sp_lev.c:4574)
 export function random_wdir() {
-    return rn2(4);
+  let wdirs = [ W_NORTH, W_SOUTH, W_EAST, W_WEST ];
+  return wdirs[rn2(4)];
 }
 
 // C ref: sp_lev.c rndtrap()
