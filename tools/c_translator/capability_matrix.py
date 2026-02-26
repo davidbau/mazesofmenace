@@ -76,7 +76,6 @@ def main():
                 "blocked_count": blocked_count,
                 "translated_ratio": ratio,
                 "diag_histogram": payload.get("diag_histogram") or {},
-                "function_diags": payload.get("functions") or [],
             }
         )
         for fn in (payload.get("functions") or []):
