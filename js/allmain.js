@@ -751,9 +751,6 @@ export class NetHackGame {
         this.lastCommand = null;
         this._repeatPrefixChainActive = false;
         this._namePromptEcho = '';
-        this.menuRequested = false;
-        this.forceFight = false;
-        this.runMode = 0;
         this._rngAccessors = { getRngState, setRngState, getRngCallCount, setRngCallCount };
         this.rfilter = {
             roles: new Array(roles.length).fill(false),
@@ -789,6 +786,56 @@ export class NetHackGame {
             get: () => this.map,
             set: (v) => { this.map = v; },
         });
+        // Legacy movement-prefix mirrors mapped onto canonical context fields.
+        Object.defineProperty(this, 'runMode', {
+            configurable: true,
+            enumerable: true,
+            get: () => {
+                const run = Number(this.svc.context?.run || 0);
+                if (run === 2) return 2;
+                if (run === 3) return 3;
+                return 0;
+            },
+            set: (v) => {
+                const n = Number(v) || 0;
+                const ctx = this.svc.context || (this.svc.context = {});
+                if (n === 2) ctx.run = 2;
+                else if (n === 1 || n === 3) ctx.run = 3;
+                else ctx.run = 0;
+            },
+        });
+        Object.defineProperty(this, 'traveling', {
+            configurable: true,
+            enumerable: true,
+            get: () => !!this.svc.context?.travel,
+            set: (v) => {
+                const ctx = this.svc.context || (this.svc.context = {});
+                ctx.travel = v ? 1 : 0;
+            },
+        });
+        Object.defineProperty(this, 'forceFight', {
+            configurable: true,
+            enumerable: true,
+            get: () => !!this.svc.context?.forcefight,
+            set: (v) => {
+                const ctx = this.svc.context || (this.svc.context = {});
+                ctx.forcefight = v ? 1 : 0;
+            },
+        });
+        Object.defineProperty(this, 'menuRequested', {
+            configurable: true,
+            enumerable: true,
+            get: () => !!this.svc.context?.nopick,
+            set: (v) => {
+                const ctx = this.svc.context || (this.svc.context = {});
+                ctx.nopick = v ? 1 : 0;
+            },
+        });
+        // Initialize mirrored defaults through accessors.
+        this.menuRequested = false;
+        this.forceFight = false;
+        this.traveling = false;
+        this.runMode = 0;
         this.input = deps.input || null;
         if (this.display) {
             initAnimation(this.display, { mode: 'headless', skipDelays: true });
