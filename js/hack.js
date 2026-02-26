@@ -1368,6 +1368,7 @@ const WT_WOUNDEDLEG_REDUCT = 100;
 // --------------------------------------------------------------------
 
 // C ref: hack.c rounddiv() — round-aware integer division
+// TRANSLATOR: AUTO
 export function rounddiv(x, y) {
     let r, m;
     let divsgn = 1;
@@ -1383,6 +1384,7 @@ export function rounddiv(x, y) {
 }
 
 // C ref: hack.c invocation_pos() — is (x,y) the invocation position?
+// TRANSLATOR: AUTO
 export function invocation_pos(x, y, map) {
     if (!map) return false;
     const uz = map.uz;
@@ -1409,6 +1411,7 @@ export function may_dig(x, y, map) {
 }
 
 // C ref: hack.c may_passwall() — can phase through wall at (x,y)?
+// TRANSLATOR: AUTO
 export function may_passwall(x, y, map) {
     const loc = map.at(x, y);
     if (!loc) return false;
@@ -1953,6 +1956,7 @@ export function end_running(and_travel, game) {
 }
 
 // C ref: hack.c runmode_delay_output()
+// TRANSLATOR: AUTO
 export async function runmode_delay_output(game, display) {
     if (!game) return;
     const ctx = ensure_context(game);
