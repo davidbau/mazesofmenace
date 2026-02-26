@@ -5823,8 +5823,9 @@ export function pm_to_humidity(pm) {
 }
 
 // C ref: sp_lev.c pm_good_location()
-export function pm_good_location(pm, x, y) {
-    return is_ok_location(x, y, pm_to_humidity(pm));
+// TRANSLATOR: AUTO (sp_lev.c:1311)
+export function pm_good_location(x, y, pm) {
+  return is_ok_location(x, y, pm_to_humidity(pm));
 }
 
 // C ref: sp_lev.c m_bad_boulder_spot()
