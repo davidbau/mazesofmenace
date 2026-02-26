@@ -94,18 +94,15 @@ function debug_travel_tmp_at(path, startX, startY) {
 function ensure_context(game) {
     if (!game.context) game.context = {};
     const ctx = game.context;
-    // Compatibility shim: canonical NetHackGame path uses svc.context as source
-    // of truth; legacy fallback is only for plain fixture objects.
-    const canonicalContext = !!(game && game.svc && game.context === game.svc.context);
     if (!Number.isInteger(ctx.run)) {
-        if (!canonicalContext && game.runMode === 2) ctx.run = 2;
-        else if (!canonicalContext && (game.runMode === 1 || game.runMode === 3)) ctx.run = 3;
+        if (game.runMode === 2) ctx.run = 2;
+        else if (game.runMode === 1 || game.runMode === 3) ctx.run = 3;
         else ctx.run = 0;
     }
-    if (!Number.isInteger(ctx.travel)) ctx.travel = (!canonicalContext && game.traveling) ? 1 : 0;
+    if (!Number.isInteger(ctx.travel)) ctx.travel = game.traveling ? 1 : 0;
     if (!Number.isInteger(ctx.travel1)) ctx.travel1 = 0;
-    if (!Number.isInteger(ctx.nopick)) ctx.nopick = (!canonicalContext && game.menuRequested) ? 1 : 0;
-    if (!Number.isInteger(ctx.forcefight)) ctx.forcefight = (!canonicalContext && game.forceFight) ? 1 : 0;
+    if (!Number.isInteger(ctx.nopick)) ctx.nopick = game.menuRequested ? 1 : 0;
+    if (!Number.isInteger(ctx.forcefight)) ctx.forcefight = game.forceFight ? 1 : 0;
     if (!Number.isInteger(ctx.door_opened)) ctx.door_opened = 0;
     if (!Number.isInteger(ctx.move)) ctx.move = 0;
     return ctx;
@@ -332,24 +329,24 @@ export async function domove_attackmon_at(mon, nx, ny, dir, player, map, display
                 ? monNam(mon, { article: 'your', capitalize: true })
                 : monNam(mon, { capitalize: true });
             display.putstr_message(`You stop.  ${label} is in the way!`);
-            game.forceFight = false; ctx.forcefight = 0;
+            ctx.forcefight = 0;
             return { handled: true, moved: false, tookTime: true };
         }
         if (mon.mfrozen || mon.mcanmove === false || mon.msleeping
             || ((mon.type?.speed ?? 0) === 0 && rn2(6))) {
             const label = monNam(mon, { capitalize: true });
             display.putstr_message(`${label} doesn't seem to move!`);
-            game.forceFight = false; ctx.forcefight = 0;
+            ctx.forcefight = 0;
             return { handled: true, moved: false, tookTime: true };
         }
         domove_swap_with_pet(mon, nx, ny, dir, player, map, display, game);
-        game.forceFight = false; ctx.forcefight = 0;
+        ctx.forcefight = 0;
         return { handled: true, moved: true, tookTime: true };
     }
 
     if (mon.tame && game.flags?.safe_pet && !ctx.forcefight) {
         display.putstr_message("You cannot attack your pet!");
-        game.forceFight = false; ctx.forcefight = 0;
+        ctx.forcefight = 0;
         return { handled: true, moved: false, tookTime: false };
     }
     if (mon.peaceful && !mon.tame && game.flags?.confirm) {
@@ -361,11 +358,11 @@ export async function domove_attackmon_at(mon, nx, ny, dir, player, map, display
         );
         if (answer !== 'y'.charCodeAt(0)) {
             display.putstr_message('Cancelled.');
-            game.forceFight = false; ctx.forcefight = 0;
+            ctx.forcefight = 0;
             return { handled: true, moved: false, tookTime: false };
         }
     }
-    game.forceFight = false; ctx.forcefight = 0;
+    ctx.forcefight = 0;
     rn2(20);
     exercise(player, A_STR, true);
     u_wipe_engr(player, map, 3);
@@ -382,7 +379,7 @@ export function domove_fight_ironbars(x, y, map, display, game, player) {
     const hasWeapon = !!(player?.weapon || player?.uwielded || player?.uwep);
     if (!ctx.forcefight || !loc || loc.typ !== IRONBARS || !hasWeapon) return false;
     if (display) display.putstr_message('You attack the iron bars.');
-    game.forceFight = false; ctx.forcefight = 0;
+    ctx.forcefight = 0;
     return true; // action handled, consumes a turn
 }
 
@@ -394,7 +391,7 @@ export function domove_fight_web(x, y, map, display, game) {
     if (display) display.putstr_message('You cut through the web.');
     const idx = map.traps.indexOf(trap);
     if (idx >= 0) map.traps.splice(idx, 1);
-    game.forceFight = false; ctx.forcefight = 0;
+    ctx.forcefight = 0;
     return true; // action handled, consumes a turn
 }
 
@@ -418,7 +415,7 @@ export function domove_fight_empty(x, y, map, display, game) {
         }
     }
     display?.putstr_message(target ? `You harmlessly attack ${target}.` : 'You attack thin air.');
-    game.forceFight = false; ctx.forcefight = 0;
+    ctx.forcefight = 0;
     return true;
 }
 
@@ -449,7 +446,6 @@ export async function domove_core(dir, player, map, display, game) {
     // C ref: cmd.c move-prefix handling is consumed by the attempted move
     // path, even when that move is blocked.
     const nopick = !!ctx.nopick;
-    game.menuRequested = false;
     ctx.nopick = 0;
     ctx.door_opened = 0;
     ctx.move = 0;
@@ -644,7 +640,7 @@ export async function domove_core(dir, player, map, display, game) {
     maybe_smudge_engr(map, oldX, oldY, player.x, player.y);
 
     // Clear force-fight prefix after successful movement.
-    game.forceFight = false;
+    ctx.forcefight = 0;
     maybeHandleShopEntryMessage(game, oldX, oldY);
 
     // Check for traps — C ref: hack.c spoteffects() → dotrap()
@@ -1332,7 +1328,7 @@ export async function executeTravelStep(game) {
 // C ref: do.c cmd_safety_prevention()
 export function performWaitSearch(cmd, game, map, player, fov, display) {
     if (game && game.flags && game.flags.safe_wait
-        && !game.menuRequested && !(game.multi > 0) && !game.occupation) {
+        && !ensure_context(game).nopick && !(game.multi > 0) && !game.occupation) {
         if (monsterNearby(map, player, fov)) {
             safetyWarning(cmd, game, display);
             return { moved: false, tookTime: false };

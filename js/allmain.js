@@ -831,11 +831,11 @@ export class NetHackGame {
                 ctx.nopick = v ? 1 : 0;
             },
         });
-        // Initialize mirrored defaults through accessors.
-        this.menuRequested = false;
-        this.forceFight = false;
-        this.traveling = false;
-        this.runMode = 0;
+        // Initialize canonical movement-prefix context defaults directly.
+        this.svc.context.nopick = 0;
+        this.svc.context.forcefight = 0;
+        this.svc.context.travel = 0;
+        this.svc.context.run = 0;
         this.input = deps.input || null;
         if (this.display) {
             initAnimation(this.display, { mode: 'headless', skipDelays: true });

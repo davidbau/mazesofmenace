@@ -41,33 +41,36 @@ export async function rhack(ch, game) {
     const context = game.context || (game.context = {});
     const getRunMode = () => {
         if (Number.isInteger(context.run)) return Number(context.run || 0);
-        return Number(game.runMode || 0);
+        if (Number.isInteger(game.runMode)) return Number(game.runMode || 0);
+        return 0;
     };
     const getMenuRequested = () => {
         if (Number.isInteger(context.nopick)) return !!context.nopick;
-        return !!game.menuRequested;
+        if (typeof game.menuRequested !== 'undefined') return !!game.menuRequested;
+        return false;
     };
     const setMenuRequested = (value) => {
         context.nopick = value ? 1 : 0;
-        game.menuRequested = !!value;
+        if (!game?.svc) game.menuRequested = !!value;
     };
     const getForceFight = () => {
         if (Number.isInteger(context.forcefight)) return !!context.forcefight;
-        return !!game.forceFight;
+        if (typeof game.forceFight !== 'undefined') return !!game.forceFight;
+        return false;
     };
     const setForceFight = (value) => {
         context.forcefight = value ? 1 : 0;
-        game.forceFight = !!value;
+        if (!game?.svc) game.forceFight = !!value;
     };
     const clearRunMode = () => {
         context.run = 0;
-        game.runMode = 0;
+        if (!game?.svc) game.runMode = 0;
     };
     const setRunMode = (mode) => {
         const n = Number(mode) || 0;
         const canonical = (n === 2) ? 2 : (n ? 3 : 0);
         context.run = canonical;
-        game.runMode = canonical;
+        if (!game?.svc) game.runMode = canonical;
     };
     if (ch === 0) {
         const queued = cmdq_pop_command(!!game?.inDoAgain);
