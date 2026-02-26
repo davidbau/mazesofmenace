@@ -325,8 +325,9 @@ export function set_bknown(obj, onoff) {
 }
 
 // C ref: mkobj.c bcsign()
-export function bcsign(obj) {
-    return obj.cursed ? -1 : obj.blessed ? 1 : 0;
+// TRANSLATOR: AUTO (mkobj.c:1853)
+export function bcsign(otmp) {
+  return (!!otmp.blessed - !!otmp.cursed);
 }
 
 // C ref: mkobj.c container_weight() — set owt recursively up container chain
