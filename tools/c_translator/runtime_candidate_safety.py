@@ -28,6 +28,7 @@ IDENT_RE = re.compile(r"\b([A-Za-z_]\w*)\b")
 
 JS_KEYWORDS = {
     "if", "for", "while", "switch", "return", "typeof", "new", "await",
+    "async",
     "Math", "Number", "String", "Object", "Array", "Boolean", "Promise",
     "true", "false", "null", "undefined",
     "const", "let", "var", "function", "export", "import", "default",
@@ -97,6 +98,34 @@ def candidate_unknown_calls(emitted_js, known_syms):
 def extract_emitted_locals(emitted_js):
     locals_set = set(LOCAL_FN_RE.findall(emitted_js))
     locals_set.update(LOCAL_VAR_RE.findall(emitted_js))
+    # Capture let/const/var declarations without initializer and with comma lists.
+    for m in re.finditer(r"^\s*(?:const|let|var)\s+([^;]+);", emitted_js, re.MULTILINE):
+        decl_src = m.group(1).strip()
+        if not decl_src:
+            continue
+        parts = []
+        cur = []
+        depth = 0
+        for ch in decl_src:
+            if ch == "," and depth == 0:
+                parts.append("".join(cur).strip())
+                cur = []
+                continue
+            cur.append(ch)
+            if ch in "([{":
+                depth += 1
+            elif ch in ")]}":
+                depth = max(0, depth - 1)
+        tail = "".join(cur).strip()
+        if tail:
+            parts.append(tail)
+        for part in parts:
+            token = part.split("=", 1)[0].strip()
+            token = re.sub(r"\[[^\]]*\]", " ", token)
+            token = token.replace("*", " ").strip()
+            mm = re.search(r"[A-Za-z_]\w*", token)
+            if mm:
+                locals_set.add(mm.group(0))
     # Add function parameters for exported/local function declarations.
     for m in re.finditer(r"(?:export\s+)?(?:async\s+)?function\s+[A-Za-z_]\w*\s*\(([^)]*)\)", emitted_js):
         raw = m.group(1).strip()
