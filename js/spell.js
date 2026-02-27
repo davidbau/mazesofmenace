@@ -196,7 +196,7 @@ function spellet(spell) {
 }
 
 // C ref: spell.c spell_let_to_idx() — convert menu letter to spell index
-function spell_let_to_idx(ilet) {
+export function spell_let_to_idx(ilet) {
     let indx = ilet.charCodeAt(0) - 'a'.charCodeAt(0);
     if (indx >= 0 && indx < 26) return indx;
     indx = ilet.charCodeAt(0) - 'A'.charCodeAt(0);
@@ -1410,13 +1410,4 @@ export function tport_spell(player, what) {
 export const dovspell = handleKnownSpells;
 
 // Export constants for use by other modules
-export {
-    KEEN, NO_SPELL, UNKNOWN_SPELL, MAX_SPELL_STUDY, MAXSPELL,
-    SPELL_LEV_PW, NODIR,
-    SPELL_CATEGORY_ATTACK, SPELL_CATEGORY_HEALING,
-    SPELL_CATEGORY_DIVINATION, SPELL_CATEGORY_ENCHANTMENT,
-    SPELL_CATEGORY_CLERICAL, SPELL_CATEGORY_ESCAPE,
-    SPELL_CATEGORY_MATTER,
-    spellCategoryForName, spellSkillRank, spellet, spell_let_to_idx,
-    spellRetentionText, estimateSpellFailPercent, percent_success,
-};
+export { KEEN, NO_SPELL, UNKNOWN_SPELL, MAX_SPELL_STUDY, MAXSPELL, SPELL_LEV_PW, NODIR, SPELL_CATEGORY_ATTACK, SPELL_CATEGORY_HEALING, SPELL_CATEGORY_DIVINATION, SPELL_CATEGORY_ENCHANTMENT, SPELL_CATEGORY_CLERICAL, SPELL_CATEGORY_ESCAPE, SPELL_CATEGORY_MATTER, spellCategoryForName, spellSkillRank, spellet, spellRetentionText, estimateSpellFailPercent, percent_success };

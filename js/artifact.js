@@ -34,21 +34,7 @@ import { SILVER } from './objects.js';
 import { pline, pline_The, You, You_feel, You_cant } from './pline.js';
 
 // Re-export key constants for consumers
-export {
-  artilist, NROFARTIFACTS, AFTER_LAST_ARTIFACT, ART_NONARTIFACT,
-  ART_EXCALIBUR, ART_GRIMTOOTH, ART_SUNSWORD, ART_MASTER_KEY_OF_THIEVERY,
-  ART_STING, ART_ORCRIST, ART_STORMBRINGER, ART_VORPAL_BLADE,
-  ART_TSURUGI_OF_MURAMASA, ART_MAGICBANE,
-  SPFX_NONE, SPFX_NOGEN, SPFX_RESTR, SPFX_INTEL, SPFX_SPEAK, SPFX_SEEK,
-  SPFX_WARN, SPFX_ATTK, SPFX_DEFN, SPFX_DRLI, SPFX_SEARCH, SPFX_BEHEAD,
-  SPFX_HALRES, SPFX_ESP, SPFX_STLTH, SPFX_REGEN, SPFX_EREGEN,
-  SPFX_HSPDAM, SPFX_HPHDAM, SPFX_TCTRL, SPFX_LUCK, SPFX_DMONS,
-  SPFX_DCLAS, SPFX_DFLAG1, SPFX_DFLAG2, SPFX_DALIGN, SPFX_DBONUS,
-  SPFX_XRAY, SPFX_REFLECT, SPFX_PROTECT,
-  TAMING, HEALING, ENERGY_BOOST, UNTRAP, CHARGE_OBJ,
-  LEV_TELE, CREATE_PORTAL, ENLIGHTENING, CREATE_AMMO,
-  BANISH, FLING_POISON, FIRESTORM, SNOWSTORM, BLINDING_RAY,
-};
+export { artilist, NROFARTIFACTS, AFTER_LAST_ARTIFACT, ART_NONARTIFACT, ART_EXCALIBUR, ART_GRIMTOOTH, ART_SUNSWORD, ART_MASTER_KEY_OF_THIEVERY, ART_STING, ART_ORCRIST, ART_STORMBRINGER, ART_VORPAL_BLADE, ART_TSURUGI_OF_MURAMASA, ART_MAGICBANE, SPFX_NONE, SPFX_NOGEN, SPFX_RESTR, SPFX_INTEL, SPFX_SPEAK, SPFX_SEEK, SPFX_WARN, SPFX_ATTK, SPFX_DEFN, SPFX_DRLI, SPFX_SEARCH, SPFX_BEHEAD, SPFX_HALRES, SPFX_ESP, SPFX_STLTH, SPFX_REGEN, SPFX_EREGEN, SPFX_HSPDAM, SPFX_HPHDAM, SPFX_TCTRL, SPFX_LUCK, SPFX_DMONS, SPFX_DCLAS, SPFX_DFLAG1, SPFX_DFLAG2, SPFX_DALIGN, SPFX_DBONUS, SPFX_XRAY, SPFX_REFLECT, SPFX_PROTECT, TAMING, HEALING, ENERGY_BOOST, UNTRAP, CHARGE_OBJ, LEV_TELE, CREATE_PORTAL, ENLIGHTENING, CREATE_AMMO, BANISH, FLING_POISON, FIRESTORM, SNOWSTORM, BLINDING_RAY };
 
 // ── Artifact existence tracking ──
 // artiexist[i] tracks artifact i (1-indexed; [0] is unused)
@@ -374,7 +360,7 @@ export function spec_m2(otmp) {
 // ── Combat: spec_applies, bane_applies, spec_abon, spec_dbon ──
 
 // cf. artifact.c:993 — bane_applies(oart, mon)
-function bane_applies(oart, mon) {
+export function bane_applies(oart, mon) {
   if (oart !== artilist[ART_NONARTIFACT] && (oart.spfx & SPFX_DBONUS) !== 0) {
     // Create a temporary copy with only DBONUS flags
     const atmp = { ...oart, spfx: oart.spfx & SPFX_DBONUS };
@@ -382,7 +368,7 @@ function bane_applies(oart, mon) {
   }
   return false;
 }
-export { bane_applies };
+
 
 // cf. artifact.c:1009 — spec_applies(weap, mon)
 export function spec_applies(weap, mon) {

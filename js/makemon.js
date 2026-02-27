@@ -441,7 +441,7 @@ function is_placeholder(mndx) {
 }
 
 // C ref: makemon.c mk_gen_ok()
-function mk_gen_ok(mndx, mvflagsmask, genomask) {
+export function mk_gen_ok(mndx, mvflagsmask, genomask) {
     const ptr = mons[mndx];
     // mvitals not tracked yet — skip mvflagsmask check
     if (ptr.geno & genomask) return false;
@@ -695,7 +695,7 @@ function mongets(mon,otyp) {
 // m_initthrow -- create missile objects
 // C ref: makemon.c:149-159
 // ========================================================================
-
+export 
 function m_initthrow(mon, otyp, oquan) {
     const otmp = mksobj(otyp, true, false);
     otmp.quan = rn1(oquan, 3);

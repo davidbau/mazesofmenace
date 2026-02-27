@@ -601,7 +601,7 @@ function ini_inv(player, table) {
 }
 
 // C ref: u_init.c trquan() — randomize quantity
-function trquan(trop) {
+export function trquan(trop) {
     if (!trop.qmin) return 1;
     return trop.qmin + rn2(trop.qmax - trop.qmin + 1);
 }

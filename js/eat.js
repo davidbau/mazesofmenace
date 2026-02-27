@@ -179,7 +179,7 @@ function gethungry(player) {
 }
 
 // cf. eat.c morehungry() — increase hunger by amount
-function morehungry(player, num) {
+export function morehungry(player, num) {
     player.hunger -= num;
     newuhs(player, true);
 }
@@ -243,7 +243,7 @@ function unfaint(player) {
 }
 
 // cf. eat.c is_fainted() — check if hero is fainted from hunger
-function is_fainted(player) {
+export function is_fainted(player) {
     return (player.hungerState || NOT_HUNGRY) === FAINTED;
 }
 
@@ -367,7 +367,7 @@ function should_givit(type, ptr) {
 }
 
 // cf. eat.c temp_givit() — grant temporary intrinsic from corpse
-function temp_givit(type, ptr) {
+export function temp_givit(type, ptr) {
     const chance = (type === STONE_RES) ? 6 : (type === ACID_RES) ? 3 : 0;
     return chance ? (ptr.mlevel > rn2(chance)) : false;
 }
@@ -449,7 +449,7 @@ function givit(player, type, ptr) {
 }
 
 // cf. eat.c eye_of_newt_buzz() — energy boost from eating newt
-function eye_of_newt_buzz(player) {
+export function eye_of_newt_buzz(player) {
     if (rn2(3) || 3 * (player.pw || 0) <= 2 * (player.pwmax || 0)) {
         const oldPw = player.pw || 0;
         player.pw = (player.pw || 0) + rnd(3);
@@ -1487,45 +1487,18 @@ async function handleEat(player, display, game) {
 // Exports
 // ============================================================
 
-export {
-    handleEat,
-    // Hunger system
-    hu_stat,
-    SATIATED, NOT_HUNGRY, HUNGRY, WEAK, FAINTING, FAINTED, STARVED,
-    init_uhunger, gethungry, morehungry, lesshungry, newuhs,
-    unfaint, is_fainted, reset_faint,
-    // Food state
-    is_edible, food_xname, foodword, obj_nutrition,
-    touchfood, reset_eat, do_reset_eat,
-    food_disappears, food_substitution, recalc_wt, adj_victual_nutrition,
-    // Choking
-    choke,
-    // Intrinsics
-    intrinsic_possible, should_givit, temp_givit, givit,
-    eye_of_newt_buzz, corpse_intrinsic,
-    // Corpse effects
-    maybe_cannibal, fix_petrification, cprefx, cpostfx,
-    // Conducts
-    eating_conducts, violated_vegetarian,
-    // Rotten/corpse
-    Hear_again, rottenfood, eatcorpse,
-    // Food effects
-    garlic_breath, fprefx, fpostfx,
-    // Accessories
-    bounded_increase, accessory_has_effect, eataccessory, eatspecial,
-    // Tins
-    tin_variety_txt, tin_details, set_tin_variety, tin_variety,
-    costly_tin, use_up_tin, consume_tin, start_tin,
-    // Prompts
-    edibility_prompts, doeat_nonfood, eating_dangerous_corpse,
-    // Callbacks
-    eat_ok, offer_ok, tin_ok, tinopen_ok, floorfood,
-    // Side effects
-    vomit, eaten_stat, consume_oeaten,
-    maybe_finished_meal, cant_finish_meal,
-    Popeye, Finish_digestion, eat_brains,
-    // Constants
-    nonrotting_corpse, nonrotting_food, CANNIBAL_ALLOWED, canchoke,
-    SPINACH_TIN, ROTTEN_TIN, HOMEMADE_TIN,
-    tintxts, TTSZ,
-};
+export { handleEat, // Hunger system
+    hu_stat, SATIATED, NOT_HUNGRY, HUNGRY, WEAK, FAINTING, FAINTED, STARVED, init_uhunger, gethungry, lesshungry, newuhs, unfaint, reset_faint, // Food state
+    is_edible, food_xname, foodword, obj_nutrition, touchfood, reset_eat, do_reset_eat, food_disappears, food_substitution, recalc_wt, adj_victual_nutrition, // Choking
+    choke, // Intrinsics
+    intrinsic_possible, should_givit, givit, corpse_intrinsic, // Corpse effects
+    maybe_cannibal, fix_petrification, cprefx, cpostfx, // Conducts
+    eating_conducts, violated_vegetarian, // Rotten/corpse
+    Hear_again, rottenfood, eatcorpse, // Food effects
+    garlic_breath, fprefx, fpostfx, // Accessories
+    bounded_increase, accessory_has_effect, eataccessory, eatspecial, // Tins
+    tin_variety_txt, tin_details, set_tin_variety, tin_variety, costly_tin, use_up_tin, consume_tin, start_tin, // Prompts
+    edibility_prompts, doeat_nonfood, eating_dangerous_corpse, // Callbacks
+    eat_ok, offer_ok, tin_ok, tinopen_ok, floorfood, // Side effects
+    vomit, eaten_stat, consume_oeaten, maybe_finished_meal, cant_finish_meal, Popeye, Finish_digestion, eat_brains, // Constants
+    nonrotting_corpse, nonrotting_food, CANNIBAL_ALLOWED, canchoke, SPINACH_TIN, ROTTEN_TIN, HOMEMADE_TIN, tintxts, TTSZ };

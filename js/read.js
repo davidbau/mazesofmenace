@@ -88,19 +88,19 @@ function read_ok(obj) {
 // ============================================================
 
 // cf. read.c p_glow1() — "Your <item> glows briefly" / "vibrates briefly"
-function p_glow1(otmp, player, display) {
+export function p_glow1(otmp, player, display) {
     display.putstr_message(
         `${Yobjnam2(otmp, player.blind ? 'vibrate' : 'glow')} briefly.`);
 }
 
 // cf. read.c p_glow2() — "Your <item> glows <color> for a moment"
-function p_glow2(otmp, color, player, display) {
+export function p_glow2(otmp, color, player, display) {
     display.putstr_message(
         `${Yobjnam2(otmp, player.blind ? 'vibrate' : 'glow')}${player.blind ? '' : ' '}${player.blind ? '' : hcolor(color)} for a moment.`);
 }
 
 // cf. read.c p_glow3() — "Your <item> glows feebly <color> for a moment"
-function p_glow3(otmp, color, player, display) {
+export function p_glow3(otmp, color, player, display) {
     display.putstr_message(
         `${Yobjnam2(otmp, player.blind ? 'vibrate' : 'glow')} feebly${player.blind ? '' : ' '}${player.blind ? '' : hcolor(color)} for a moment.`);
 }
@@ -1088,7 +1088,7 @@ function seffect_teleportation(sobj, player, display, game) {
 }
 
 // cf. read.c seffect_gold_detection()
-function seffect_gold_detection(sobj, player, display, game) {
+export function seffect_gold_detection(sobj, player, display, game) {
     const scursed = sobj.cursed;
     const confused = !!player.confused;
     const map = game?.map;
@@ -1112,7 +1112,7 @@ function seffect_gold_detection(sobj, player, display, game) {
 }
 
 // cf. read.c seffect_food_detection()
-function seffect_food_detection(sobj, player, display, game) {
+export function seffect_food_detection(sobj, player, display, game) {
     const map = game?.map;
     // cf. food_detect(sobj)
     if (food_detect(sobj, player, map, display, game)) {
@@ -1464,13 +1464,4 @@ async function seffects(sobj, player, display, game) {
     }
 }
 
-export {
-    handleRead,
-    tshirt_text, hawaiian_motif, hawaiian_design, apron_text,
-    candy_wrapper_text, assign_candy_wrapper,
-    erode_obj_text,
-    stripspe, p_glow1, p_glow2, p_glow3,
-    cap_spe, bcsign, blessorcurse, uncurse,
-    some_armor, useup_scroll, learnscrolltyp,
-    seffects,
-};
+export { handleRead, tshirt_text, hawaiian_motif, hawaiian_design, apron_text, candy_wrapper_text, assign_candy_wrapper, erode_obj_text, stripspe, cap_spe, bcsign, blessorcurse, uncurse, some_armor, useup_scroll, learnscrolltyp, seffects };

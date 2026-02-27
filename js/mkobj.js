@@ -387,7 +387,7 @@ function newobj(otyp) {
 }
 
 // C ref: mkobj.c mkobj_erosions()
-function mkobj_erosions(obj) {
+export function mkobj_erosions(obj) {
     if (!may_generate_eroded(obj)) return;
     if (!rn2(100)) {
         obj.oerodeproof = true;
@@ -1299,4 +1299,9 @@ export function doname(obj, player) {
     }
 
     return result;
+}
+
+// Autotranslated from mkobj.c:388
+export function rndmonnum() {
+  return rndmonnum_adj(0, 0);
 }

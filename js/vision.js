@@ -142,7 +142,7 @@ function get_unused_cs() {
 }
 
 // C ref: vision.c:237-251 — view_init()
-function view_init() {
+export function view_init() {
     // No-op in this port. Kept for API and future hooks.
 }
 

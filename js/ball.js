@@ -182,7 +182,7 @@ export function ballfall(player, map) {
 }
 
 // cf. ball.c:119 — placebc_core(): place ball and chain on floor
-function placebc_core(player, map) {
+export function placebc_core(player, map) {
     const uchain = player.uchain;
     const uball = player.uball;
     if (!uchain || !uball) {
@@ -211,7 +211,7 @@ function placebc_core(player, map) {
 }
 
 // cf. ball.c:146 — unplacebc_core(): remove ball and chain from floor
-function unplacebc_core(player, map) {
+export function unplacebc_core(player, map) {
     const uchain = player.uchain;
     const uball = player.uball;
 
@@ -247,7 +247,7 @@ function unplacebc_core(player, map) {
 }
 
 // cf. ball.c:179 — check_restriction(): validate bc operation
-function check_restriction(restriction) {
+export function check_restriction(restriction) {
     const override_restriction = -1; // cf. ball.c constant
     if (!bcrestriction || (restriction === override_restriction))
         return true;

@@ -734,7 +734,7 @@ function kickdmg(mon, clumsy, player, map) {
 // 2. maybe_kick_monster — precondition check for kicking a monster
 // cf. dokick.c:125
 // ============================================================================
-
+export 
 function maybe_kick_monster(mon, x, y, player, map, game) {
     const ctx = (game && game.svc && game.svc.context)
         ? game.svc.context
@@ -1323,7 +1323,7 @@ function kickstr(kickobjnam, maploc) {
 // 9. watchman_thief_arrest — guard arrest check
 // cf. dokick.c:833
 // ============================================================================
-
+export 
 function watchman_thief_arrest(mtmp) {
     const monData = mtmp.type || mtmp.data;
     if (is_watch(monData) && couldsee(mtmp.mx, mtmp.my)
@@ -1339,7 +1339,7 @@ function watchman_thief_arrest(mtmp) {
 // 10. watchman_door_damage — guard door response
 // cf. dokick.c:845
 // ============================================================================
-
+export 
 function watchman_door_damage(mtmp, x, y, map) {
     const monData = mtmp.type || mtmp.data;
     const loc = map.at(x, y);

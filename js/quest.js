@@ -176,7 +176,7 @@ function find_quest_artifact_on_level(map) {
 }
 
 // cf. quest.c:147 [static] — not_capable(): minimum XL check
-function not_capable(player) {
+export function not_capable(player) {
     return (player.ulevel || 1) < MIN_QUEST_LEVEL;
 }
 

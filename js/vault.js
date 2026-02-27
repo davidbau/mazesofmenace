@@ -329,7 +329,7 @@ function clear_fcorr(grd, forceshow, map, player, fov) {
 // cf. vault.c:117 [static] — restfakecorr(grd)
 // Attempts to clear the fake corridor; if successful, removes the guard.
 // ========================================================================
-function restfakecorr(grd, map, player, fov) {
+export function restfakecorr(grd, map, player, fov) {
     if (clear_fcorr(grd, false, map, player, fov)) {
         grd.isgd = 0;
         mongone(grd, map, player);
@@ -690,7 +690,7 @@ function gd_pick_corridor_gold(grd, goldx, goldy, map, player, fov) {
 // cf. vault.c:458 [static] — gd_letknow(grd)
 // Guard issues warning to hero.
 // ========================================================================
-function gd_letknow(grd, map, player, fov) {
+export function gd_letknow(grd, map, player, fov) {
     if (!cansee(map, player, fov, grd.mx, grd.my) || !mon_visible(grd, player)) {
         You_hear("%s.",
             m_carrying(grd, TIN_WHISTLE)

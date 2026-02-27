@@ -20,7 +20,7 @@ function upper_bits(y) {
 }
 
 // cf. isaac64.c:103 — mix 8 values using alternating shift pattern
-function isaac64_mix(x) {
+export function isaac64_mix(x) {
     const SHIFT = [9, 9, 23, 15, 14, 20, 17, 14];
     for (let i = 0; i < 8; i++) {
         x[i] = (x[i] - x[(i + 4) & 7]) & MASK;

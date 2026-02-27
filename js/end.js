@@ -826,7 +826,7 @@ function _toArray(list) {
 // ============================================================================
 
 // cf. end.c:800 [static] — sort_valuables(list, size): sort by count
-function sort_valuables(list, size) {
+export function sort_valuables(list, size) {
     // Insertion sort: move greater quantities to front
     for (let i = 1; i < size; i++) {
         if (list[i].count === 0) continue;

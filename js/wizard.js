@@ -233,7 +233,7 @@ function mon_has_arti(mtmp, otyp) {
 // other_mon_has_arti — find another monster carrying artifact
 // cf. wizard.c:183
 // ============================================================================
-
+export 
 function other_mon_has_arti(mtmp, otyp, map) {
     for (const mtmp2 of map.monsters || []) {
         // no need for dead check — dead monsters have no inventory

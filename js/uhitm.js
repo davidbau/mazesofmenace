@@ -163,7 +163,7 @@ export function check_caitiff(mtmp) {
 
 // cf. uhitm.c:350 — mon_maybe_unparalyze(mtmp):
 //   Wake up paralyzed monster on being attacked.
-function mon_maybe_unparalyze(mon) {
+export function mon_maybe_unparalyze(mon) {
     if (mon.mcanmove === false) {
         if (!rn2(10)) {
             mon.mcanmove = true;

@@ -673,7 +673,7 @@ function mquaffmsg(mtmp, otmp, player) {
 // ========================================================================
 // m_use_healing — C ref: muse.c:335
 // ========================================================================
-function m_use_healing(mtmp) {
+export function m_use_healing(mtmp) {
     let obj;
     if ((obj = m_carrying(mtmp, POT_FULL_HEALING)) != null) {
         m.defensive = obj;
@@ -696,7 +696,7 @@ function m_use_healing(mtmp) {
 // ========================================================================
 // m_sees_sleepy_soldier — C ref: muse.c:359
 // ========================================================================
-function m_sees_sleepy_soldier(mtmp, map) {
+export function m_sees_sleepy_soldier(mtmp, map) {
     const x = mtmp.mx, y = mtmp.my;
     for (let xx = x - 3; xx <= x + 3; xx++) {
         for (let yy = y - 3; yy <= y + 3; yy++) {
@@ -734,7 +734,7 @@ function m_tele(mtmp, vismon, oseen, how, map, player) {
 // ========================================================================
 // m_next2m — C ref: muse.c:418
 // ========================================================================
-function m_next2m(mtmp, map) {
+export function m_next2m(mtmp, map) {
     if (DEADMONSTER(mtmp) || mon_offmap(mtmp)) return false;
     for (let x = mtmp.mx - 1; x <= mtmp.mx + 1; x++) {
         for (let y = mtmp.my - 1; y <= mtmp.my + 1; y++) {
@@ -1374,7 +1374,7 @@ export function rnd_defensive_item(mtmp, map) {
 // ========================================================================
 // linedup_chk_corpse — C ref: muse.c:1292
 // ========================================================================
-function linedup_chk_corpse(x, y, map) {
+export function linedup_chk_corpse(x, y, map) {
     return sobj_at(CORPSE, x, y, map) != null;
 }
 
@@ -1419,7 +1419,7 @@ function hero_behind_chokepoint(mtmp, map, player) {
 // ========================================================================
 // mon_has_friends — C ref: muse.c:1368
 // ========================================================================
-function mon_has_friends(mtmp, map) {
+export function mon_has_friends(mtmp, map) {
     if (mtmp.tame || mtmp.mpeaceful) return false;
     for (let dx = -1; dx <= 1; dx++) {
         for (let dy = -1; dy <= 1; dy++) {
@@ -2523,7 +2523,7 @@ export function munslime(mon, by_you, map, player) {
 }
 
 // C ref: cures_sliming(mon, obj) — can this object cure green slime?
-function cures_sliming(mon, obj) {
+export function cures_sliming(mon, obj) {
     if (obj.otyp === SCR_FIRE)
         return haseyes(mon.type || {}) && mon.mcansee && !nohands(mon.type || {});
     if (obj.otyp === POT_OIL)

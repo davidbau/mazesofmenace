@@ -1726,3 +1726,8 @@ export function mon_would_consume_item(mon, obj) {
     if (mon.mndx === 8 /* PM_GELATINOUS_CUBE */) return true;
     return false;
 }
+
+// Autotranslated from monmove.c:2183
+export function closed_door(x, y, map) {
+  return  (IS_DOOR(map.locations[x][y].typ) && (map.locations[x][y].doormask & (D_LOCKED | D_CLOSED)));
+}

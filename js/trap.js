@@ -216,7 +216,7 @@ function thitm(tlev, mon, obj, d_override, nocorpse, map, player) {
 // ========================================================================
 // m_easy_escape_pit — C ref: trap.c m_easy_escape_pit()
 // ========================================================================
-function m_easy_escape_pit(mon) {
+export function m_easy_escape_pit(mon) {
     return (mon.mndx === PM_PIT_FIEND
             || ((mons[mon.mndx] || {}).msize || 0) >= MZ_HUGE);
 }

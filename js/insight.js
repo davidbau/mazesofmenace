@@ -495,7 +495,7 @@ function enlght_halfdmg(category, final) {
 // ============================================================================
 
 // cf. insight.c:223 [static] — walking_on_water(void): active water walking check
-function walking_on_water(player, map) {
+export function walking_on_water(player, map) {
     if (player.uinwater || player.levitating || player.flying)
         return false;
     if (!player.waterWalking)
@@ -1433,7 +1433,7 @@ export function num_genocides(game) {
 // ============================================================================
 
 // cf. insight.c:2990 [static] — num_extinct(game): count extinct species
-function num_extinct(game) {
+export function num_extinct(game) {
     const mvitals = game.mvitals || ((game.u || game.player) && (game.u || game.player).mvitals) || [];
     let n = 0;
 

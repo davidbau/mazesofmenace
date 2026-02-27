@@ -690,7 +690,7 @@ export function place_lregion(map, lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype, op
     console.warn(`Couldn't place lregion type ${rtype}!`);
 }
 
-export { wallification, fix_wall_spines };
+export { fix_wall_spines };
 
 // C ref: mkmaze.c baalz_fixup/fixup_special/check_ransacked/etc.
 export function baalz_fixup(map, state = {}) {
@@ -1634,3 +1634,9 @@ export function walkfrom(map, x, y, ftyp = CROSSWALL, btyp = STONE) {
 }
 
 export { bound_digging, repair_irregular_room_boundaries };
+
+// Autotranslated from mkmaze.c:289
+export function wallification(x1, y1, x2, y2) {
+  wall_cleanup(x1, y1, x2, y2);
+  fix_wall_spines(x1, y1, x2, y2);
+}

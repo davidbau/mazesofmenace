@@ -947,7 +947,7 @@ function check_innate_abil(player, propid, frommask) {
 }
 
 // cf. attrib.c:861 — innately(player, propid) [static]
-function innately(player, propid) {
+export function innately(player, propid) {
     let iptr;
 
     if ((iptr = check_innate_abil(player, propid, FROMEXPER)) !== null)
@@ -1248,7 +1248,7 @@ export function uchangealign(player, newalign, reason) {
 }
 
 // Export utility functions for use by other modules
-export { acurr as ACURR };
+
 export { ensureAttrArrays };
 export { STR18, STR19 };
 export { AVAL, LUCKMIN, LUCKMAX, LUCKADD };

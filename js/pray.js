@@ -1918,7 +1918,7 @@ function offer_real_amulet(otmp, altaralign, player, map) {
 // ================================================================
 // cf. pray.c:1592 -- offer_negative_valued(highaltar, altaralign, player, map)
 // ================================================================
-function offer_negative_valued(highaltar, altaralign, player, map) {
+export function offer_negative_valued(highaltar, altaralign, player, map) {
     if (altaralign !== player.alignment && highaltar) {
         desecrate_altar(highaltar, altaralign, player, map);
     } else {
@@ -1929,7 +1929,7 @@ function offer_negative_valued(highaltar, altaralign, player, map) {
 // ================================================================
 // cf. pray.c:1602 -- offer_fake_amulet(otmp, highaltar, altaralign, player, map)
 // ================================================================
-function offer_fake_amulet(otmp, highaltar, altaralign, player, map) {
+export function offer_fake_amulet(otmp, highaltar, altaralign, player, map) {
     if (!highaltar && !otmp.known) {
         offer_too_soon(altaralign, player, map);
         return;

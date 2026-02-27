@@ -121,7 +121,7 @@ function toss_wsegs(curr, display_update, map) {
 // ========================================================================
 // cf. worm.c:175 [static] -- shrink_worm(wnum, map)
 // ========================================================================
-function shrink_worm(wnum, map) {
+export function shrink_worm(wnum, map) {
     if (wtails[wnum] === wheads[wnum])
         return; // no tail
 
@@ -559,7 +559,7 @@ export function count_wsegs(mtmp) {
 // ========================================================================
 // cf. worm.c:852 [static] -- create_worm_tail(num_segs)
 // ========================================================================
-function create_worm_tail(num_segs) {
+export function create_worm_tail(num_segs) {
     if (!num_segs) return null;
 
     var new_tail = newseg();

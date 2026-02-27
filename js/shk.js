@@ -266,7 +266,7 @@ function corpsenm_price_adj(obj) {
 }
 
 // C ref: shk.c get_pricing_units() -- for globs, price by weight
-function get_pricing_units(obj) {
+export function get_pricing_units(obj) {
     let units = Number(obj.quan || 1);
     if (obj.globby) {
         const unit_weight = (objectData[obj.otyp] || {}).wt || 0;
@@ -499,7 +499,7 @@ function addupbill(shkp) {
 }
 
 // C ref: shk.c shop_debt() -- total debt to shopkeeper
-function shop_debt(shkp) {
+export function shop_debt(shkp) {
     let debt = Number(shkp.debit || 0);
     const bill = shkp.bill || [];
     for (let i = 0; i < (shkp.billct || 0); i++) {
@@ -720,7 +720,7 @@ function clear_unpaid_obj(shkp, otmp) {
 }
 
 // C ref: shk.c clear_unpaid()
-function clear_unpaid(shkp, list) {
+export function clear_unpaid(shkp, list) {
     let obj = list;
     while (obj) {
         clear_unpaid_obj(shkp, obj);
@@ -743,7 +743,7 @@ function clear_no_charge_obj(shkp, otmp) {
 }
 
 // C ref: shk.c clear_no_charge()
-function clear_no_charge(shkp, list) {
+export function clear_no_charge(shkp, list) {
     let obj = list;
     while (obj) {
         clear_no_charge_obj(shkp, obj);
@@ -818,7 +818,7 @@ function pacify_shk(shkp, clear_surcharge) {
 }
 
 // C ref: shk.c rouse_shk() -- wake up shopkeeper
-function rouse_shk(shkp, verbosely) {
+export function rouse_shk(shkp, verbosely) {
     if (helpless(shkp)) {
         if (verbosely && canspotmon(shkp)) {
             pline("%s %s.", Shknam(shkp),
@@ -1211,7 +1211,7 @@ export function donate_gold(gltmp, shkp, selling) {
 // ============================================================
 
 // C ref: shk.c cost_per_charge()
-function cost_per_charge(shkp, otmp, altusage, map) {
+export function cost_per_charge(shkp, otmp, altusage, map) {
     if (!shkp || (map && !inhishop(shkp, map))) return 0;
     let tmp = get_cost(otmp, shkp);
 
@@ -2179,20 +2179,12 @@ function kops_gone(silent) {
 // Export internal utilities used by other modules
 // ============================================================
 
-export {
-    insideShop as inside_shop,
-    shop_keeper,
-    findShopkeeper,
-    in_rooms,
-    get_cost,
-    set_cost,
-    get_pricing_units,
-    getprice_base as getprice,
-    addupbill,
-    shop_debt,
-    onbill,
-    rouse_shk,
-    pacify_shk,
-    helpless as shk_helpless,
-    muteshk,
-};
+export { insideShop as inside_shop, shop_keeper, findShopkeeper, in_rooms, get_cost, set_cost, getprice_base as getprice, addupbill, onbill, pacify_shk, helpless as shk_helpless, muteshk };
+
+// Autotranslated from shk.c:388
+export function clear_no_charge_pets(shkp, map) {
+  let mtmp;
+  for (mtmp = (map?.fmon || null); mtmp; mtmp = mtmp.nmon) {
+    if (mtmp.mtame && mtmp.minvent) clear_no_charge(shkp, mtmp.minvent);
+  }
+}

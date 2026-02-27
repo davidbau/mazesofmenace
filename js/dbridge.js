@@ -271,7 +271,7 @@ function e_survives_at(etmp, x, y, map) {
 }
 
 // cf. dbridge.c:463 — automiss: entity is never hit by drawbridge
-function automiss(etmp) {
+export function automiss(etmp) {
     return (is_u(etmp) ? false : passes_walls(etmp.edata))
            || noncorporeal(etmp.edata);
 }

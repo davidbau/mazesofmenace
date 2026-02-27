@@ -126,7 +126,7 @@ function fatal_corpse_mistake(obj, remotely, player) {
 }
 
 // cf. pickup.c:303 — rider_corpse_revival(obj, remotely)
-function rider_corpse_revival(obj, remotely, player, map) {
+export function rider_corpse_revival(obj, remotely, player, map) {
     if (!obj || obj.otyp !== CORPSE || !is_rider(mons[obj.corpsenm]))
         return false;
 
@@ -200,7 +200,7 @@ function all_but_uchain(obj, player) {
 }
 
 // cf. pickup.c:517 — allow_all(_obj)
-function allow_all(_obj) {
+export function allow_all(_obj) {
     return true;
 }
 
@@ -244,12 +244,12 @@ function allow_cat_no_uchain(obj, player) {
 }
 
 // cf. pickup.c:609 — is_worn_by_type(otmp)
-function is_worn_by_type(otmp, player) {
+export function is_worn_by_type(otmp, player) {
     return is_worn(otmp) && allow_category(otmp, player);
 }
 
 // cf. pickup.c:616 — reset_justpicked(olist)
-function reset_justpicked(olist) {
+export function reset_justpicked(olist) {
     if (Array.isArray(olist)) {
         for (const otmp of olist)
             otmp.pickup_prev = 0;
@@ -260,7 +260,7 @@ function reset_justpicked(olist) {
 }
 
 // cf. pickup.c:635 — count_justpicked(olist)
-function count_justpicked(olist) {
+export function count_justpicked(olist) {
     let cnt = 0;
     if (Array.isArray(olist)) {
         for (const otmp of olist)
@@ -273,7 +273,7 @@ function count_justpicked(olist) {
 }
 
 // cf. pickup.c:648 — find_justpicked(olist)
-function find_justpicked(olist) {
+export function find_justpicked(olist) {
     if (Array.isArray(olist)) {
         for (const otmp of olist)
             if (otmp.pickup_prev) return otmp;
@@ -660,7 +660,7 @@ function loot_mon(mtmp, passed_info, prev_loot, player) {
 }
 
 // cf. pickup.c:2482 — mbag_explodes(obj, depthin)
-function mbag_explodes(obj, depthin) {
+export function mbag_explodes(obj, depthin) {
     if ((obj.otyp === WAN_CANCELLATION || obj.otyp === BAG_OF_TRICKS)
         && (obj.spe || 0) <= 0)
         return false;
@@ -679,7 +679,7 @@ function mbag_explodes(obj, depthin) {
 }
 
 // cf. pickup.c:2504 — is_boh_item_gone()
-function is_boh_item_gone() {
+export function is_boh_item_gone() {
     // cf. pickup.c:2506 — RNG: rn2(13)
     return !rn2(13);
 }
@@ -701,7 +701,7 @@ function do_boh_explosion(boh, on_floor) {
 }
 
 // cf. pickup.c:2531 — boh_loss(container, held)
-function boh_loss(container, held) {
+export function boh_loss(container, held) {
     if (Is_mbag(container) && container.cursed && Has_contents(container)) {
         let loss = 0;
         const contents = Array.isArray(container.cobj) ? [...container.cobj] : [];
@@ -1267,29 +1267,5 @@ async function handleTogglePickup(game) {
     return { moved: false, tookTime: false };
 }
 
-export {
-    handlePickup, handleLoot, handlePay, handleTogglePickup,
-    // Ported from pickup.c
-    u_safe_from_fatal_corpse, fatal_corpse_mistake, rider_corpse_revival,
-    force_decor, deferred_decor, describe_decor, check_here,
-    n_or_more, menu_class_present, add_valid_menu_class,
-    all_but_uchain, allow_all, allow_category, allow_cat_no_uchain,
-    is_worn_by_type,
-    reset_justpicked, count_justpicked, find_justpicked,
-    check_autopickup_exceptions, autopick_testobj,
-    count_categories, delta_cwt, carry_count, lift_object,
-    pick_obj, pickup_object, pickup_prinv, encumber_msg,
-    container_at, able_to_loot, mon_beside,
-    do_loot_cont, doloot, doloot_core,
-    reverse_loot, loot_mon,
-    mbag_explodes, is_boh_item_gone, do_boh_explosion, boh_loss,
-    in_container, ck_bag, out_container,
-    removed_from_icebox, mbag_item_gone,
-    observe_quantum_cat, container_gone,
-    explain_container_prompt, u_handsy, stash_ok,
-    use_container_simple,
-    traditional_loot, menu_loot, in_or_out_menu,
-    tip_ok, choose_tip_container_menu, dotip,
-    tipcontainer, tipcontainer_gettarget, tipcontainer_checks,
-    collect_obj_classes, count_unpaid, count_buc,
-};
+export { handlePickup, handleLoot, handlePay, handleTogglePickup, // Ported from pickup.c
+    u_safe_from_fatal_corpse, fatal_corpse_mistake, force_decor, deferred_decor, describe_decor, check_here, n_or_more, menu_class_present, add_valid_menu_class, all_but_uchain, allow_category, allow_cat_no_uchain, check_autopickup_exceptions, autopick_testobj, count_categories, delta_cwt, carry_count, lift_object, pick_obj, pickup_object, pickup_prinv, encumber_msg, container_at, able_to_loot, mon_beside, do_loot_cont, doloot, doloot_core, reverse_loot, loot_mon, do_boh_explosion, in_container, ck_bag, out_container, removed_from_icebox, mbag_item_gone, observe_quantum_cat, container_gone, explain_container_prompt, u_handsy, stash_ok, use_container_simple, traditional_loot, menu_loot, in_or_out_menu, tip_ok, choose_tip_container_menu, dotip, tipcontainer, tipcontainer_gettarget, tipcontainer_checks, collect_obj_classes, count_unpaid, count_buc };

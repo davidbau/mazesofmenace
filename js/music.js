@@ -140,7 +140,7 @@ function awaken_scare(mtmp, scary) {
 // cf. music.c:66 — awaken_monsters(distance)
 // Wake every monster in range.
 // ============================================================================
-
+export 
 function awaken_monsters(distance, map, player) {
     for (const mtmp of (map.monsters || [])) {
         if (DEADMONSTER(mtmp)) continue;
@@ -155,7 +155,7 @@ function awaken_monsters(distance, map, player) {
 // cf. music.c:84 — put_monsters_to_sleep(distance)
 // Make monsters fall asleep. Note that they may resist the spell.
 // ============================================================================
-
+export 
 function put_monsters_to_sleep(distance, map, player) {
     for (const mtmp of (map.monsters || [])) {
         if (DEADMONSTER(mtmp)) continue;
@@ -171,7 +171,7 @@ function put_monsters_to_sleep(distance, map, player) {
 // cf. music.c:104 — charm_snakes(distance)
 // Charm snakes in range. Note that the snakes are NOT tamed.
 // ============================================================================
-
+export 
 function charm_snakes(distance, map, player, fov) {
     for (const mtmp of (map.monsters || [])) {
         if (DEADMONSTER(mtmp)) continue;
@@ -199,7 +199,7 @@ function charm_snakes(distance, map, player, fov) {
 // cf. music.c:138 — calm_nymphs(distance)
 // Calm nymphs in range.
 // ============================================================================
-
+export 
 function calm_nymphs(distance, map, player, fov) {
     for (const mtmp of (map.monsters || [])) {
         if (DEADMONSTER(mtmp)) continue;

@@ -83,7 +83,7 @@ function fingers_or_gloves(player, check_gloves) {
 }
 
 // cf. do_wear.c off_msg() — message when taking off an item
-function off_msg(obj, player) {
+export function off_msg(obj, player) {
     if (obj) You("were wearing %s.", doname(obj, player));
 }
 
@@ -1186,7 +1186,7 @@ function better_not_take_that_off(_otmp) {
 }
 
 // cf. do_wear.c reset_remarm() — reset multi-remove state
-function reset_remarm() {
+export function reset_remarm() {
     // No-op in JS — no persistent takeoff context to reset
 }
 
@@ -1234,7 +1234,7 @@ function wornarm_destroyed(player, wornarm) {
 
 // cf. do_wear.c maybe_destroy_armor() — check if armor resists destruction
 // Returns the armor with in_use set, or null.
-function maybe_destroy_armor(armor, atmp) {
+export function maybe_destroy_armor(armor, atmp) {
     if (armor && (!atmp || atmp === armor)
         && !obj_resists(armor, 0, 90)) {
         armor.in_use = true;
@@ -1404,22 +1404,22 @@ function equip_ok(player, obj, removing, accessory) {
 }
 
 // cf. do_wear.c puton_ok() — validation for P command items
-function puton_ok(player, obj) {
+export function puton_ok(player, obj) {
     return equip_ok(player, obj, false, true);
 }
 
 // cf. do_wear.c remove_ok() — validation for R command items
-function remove_ok(player, obj) {
+export function remove_ok(player, obj) {
     return equip_ok(player, obj, true, true);
 }
 
 // cf. do_wear.c wear_ok() — validation for W command items
-function wear_ok(player, obj) {
+export function wear_ok(player, obj) {
     return equip_ok(player, obj, false, false);
 }
 
 // cf. do_wear.c takeoff_ok() — validation for T command items
-function takeoff_ok(player, obj) {
+export function takeoff_ok(player, obj) {
     return equip_ok(player, obj, true, false);
 }
 
@@ -1693,21 +1693,4 @@ async function handleRemove(player, display) {
     return { moved: false, tookTime: true };
 }
 
-export {
-    handleWear, handlePutOn, handleTakeOff, handleRemove, find_ac,
-    canwearobj, cursed_check,
-    Boots_on, Boots_off, Cloak_on, Cloak_off, Helmet_on, Helmet_off,
-    Gloves_on, Gloves_off, Shield_on, Shield_off, Shirt_on, Shirt_off,
-    Armor_on, Armor_off, Armor_gone, Amulet_on, Amulet_off, Ring_on, Ring_off,
-    Blindf_on, Blindf_off,
-    fingers_or_gloves, off_msg, on_msg, hard_helmet, wielding_corpse,
-    dragon_armor_handling,
-    set_wear, donning, doffing, cancel_doff, cancel_don, stop_donning,
-    glibr, some_armor, stuck_ring, unchanger,
-    count_worn_stuff, armor_or_accessory_off,
-    select_off, do_takeoff, take_off, better_not_take_that_off,
-    reset_remarm, doddoremarm, remarm_swapwep, menu_remarm,
-    wornarm_destroyed, maybe_destroy_armor, destroy_arm,
-    inaccessible_equipment, equip_ok, puton_ok, remove_ok, wear_ok, takeoff_ok,
-    any_worn_armor_ok, count_worn_armor,
-};
+export { handleWear, handlePutOn, handleTakeOff, handleRemove, find_ac, canwearobj, cursed_check, Boots_on, Boots_off, Cloak_on, Cloak_off, Helmet_on, Helmet_off, Gloves_on, Gloves_off, Shield_on, Shield_off, Shirt_on, Shirt_off, Armor_on, Armor_off, Armor_gone, Amulet_on, Amulet_off, Ring_on, Ring_off, Blindf_on, Blindf_off, fingers_or_gloves, on_msg, hard_helmet, wielding_corpse, dragon_armor_handling, set_wear, donning, doffing, cancel_doff, cancel_don, stop_donning, glibr, some_armor, stuck_ring, unchanger, count_worn_stuff, armor_or_accessory_off, select_off, do_takeoff, take_off, better_not_take_that_off, doddoremarm, remarm_swapwep, menu_remarm, wornarm_destroyed, destroy_arm, inaccessible_equipment, equip_ok, any_worn_armor_ok, count_worn_armor };
