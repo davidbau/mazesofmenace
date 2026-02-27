@@ -106,6 +106,39 @@ def extract_function_snippet(file_path: Path, fn_name: str, max_lines: int = 18)
     return "\n".join(lines[:max_lines] + ["..."])
 
 
+def extract_function_full(file_path: Path, fn_name: str) -> str:
+    text = file_path.read_text(encoding="utf-8", errors="replace")
+    pat = re.compile(
+        rf"(?:^|\n)(?:\s*//[^\n]*\n)*\s*export\s+(?:async\s+)?function\s+{re.escape(fn_name)}\s*\(",
+        re.MULTILINE,
+    )
+    m = pat.search(text)
+    if not m:
+        return ""
+    fn_start = text.find("function", m.start(), m.end() + 64)
+    if fn_start < 0:
+        return ""
+    open_i = text.find("{", fn_start)
+    if open_i < 0:
+        return ""
+    close_i = find_matching_brace(text, open_i)
+    if close_i < 0:
+        return ""
+    return text[m.start():close_i + 1]
+
+
+def normalize_js_for_compare(src: str) -> str:
+    if not src:
+        return ""
+    # Drop comment lines and collapse whitespace for stable structural compare.
+    lines = []
+    for ln in src.splitlines():
+        if re.match(r"^\s*//", ln):
+            continue
+        lines.append(ln.strip())
+    return re.sub(r"\s+", " ", " ".join(lines)).strip()
+
+
 def parse_marked_functions(repo_root: Path) -> Tuple[List[Dict], int, List[Dict]]:
     out: List[Dict] = []
     marker_total = 0
@@ -244,6 +277,20 @@ def main() -> None:
             "current_js_snippet": extract_function_snippet(repo_root / js_module, fn),
             "current_emitted_snippet": emitted,
         }
+        current_full = extract_function_full(repo_root / js_module, fn)
+        emitted_full = ""
+        if out_file and Path(out_file).exists():
+            obj = json.loads(Path(out_file).read_text(encoding="utf-8"))
+            emitted_full = obj.get("js", "") or ""
+        sample["compare"] = {
+            "current_norm": normalize_js_for_compare(current_full),
+            "emitted_norm": normalize_js_for_compare(emitted_full),
+        }
+        sample["compare"]["same_norm"] = (
+            bool(sample["compare"]["current_norm"])
+            and bool(sample["compare"]["emitted_norm"])
+            and sample["compare"]["current_norm"] == sample["compare"]["emitted_norm"]
+        )
         by_category.setdefault(category, []).append(sample)
 
     counts = {k: len(v) for k, v in sorted(by_category.items(), key=lambda kv: kv[0])}
@@ -260,12 +307,25 @@ def main() -> None:
         "unpaired_marker_examples": unpaired_markers[:5],
         "categories": counts,
         "examples": examples,
+        "blocked_compare_split": {
+            "same_norm": 0,
+            "changed_norm": 0,
+        },
         "notes": {
             "safe_now_definition": "Passes current safety gate for restitch input.",
             "safe_signature_blocked_definition": "Safety passes but runtime signature compatibility rejects overwrite.",
             "summary_diag_blocked_definition": "Function emitted with diag codes in batch summary.",
         },
     }
+    for cat, arr in by_category.items():
+        if cat.startswith("safe_"):
+            continue
+        for rec in arr:
+            same = bool((rec.get("compare") or {}).get("same_norm"))
+            if same:
+                result["blocked_compare_split"]["same_norm"] += 1
+            else:
+                result["blocked_compare_split"]["changed_norm"] += 1
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
