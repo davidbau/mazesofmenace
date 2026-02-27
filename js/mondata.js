@@ -481,9 +481,9 @@ export function passes_bars(mdat) {
     const f1 = mdat?.flags1 || 0;
     if (f1 & M1_WALLWALK) return true;  // passes_walls
     if (f1 & M1_AMORPHOUS) return true; // amorphous
-    const mlet = mdat?.symbol ?? -1;
+    const mlet = mdat?.mlet ?? -1;
     if (mlet === S_VORTEX || mlet === S_ELEMENTAL) return true; // is_whirly
-    const size = mdat?.size || 0;
+    const size = mdat?.msize || 0;
     if (size === MZ_TINY) return true;  // verysmall
     if ((f1 & M1_SLITHY) && size <= MZ_MEDIUM) return true; // slithy && !bigmonst
     return false;
@@ -499,7 +499,9 @@ export function passes_bars(mdat) {
 export function dmgtype_fromattack(ptr, dtyp, atyp) {
     if (!ptr.attacks) return false;
     for (const atk of ptr.attacks) {
-        if (atk.damage === dtyp && (atyp === AT_ANY || atk.type === atyp))
+        const adtyp = atk.adtyp ?? atk.damage;
+        const aatyp = atk.aatyp ?? atk.type;
+        if (adtyp === dtyp && (atyp === AT_ANY || aatyp === atyp))
             return true;
     }
     return false;
@@ -789,7 +791,7 @@ export function big_to_little(montype) {
 // Returns true if the two monster indices are part of the same growth chain.
 export function big_little_match(montyp1, montyp2) {
     if (montyp1 === montyp2) return true;
-    if (mons[montyp1]?.symbol !== mons[montyp2]?.symbol) return false;
+    if (mons[montyp1]?.mlet !== mons[montyp2]?.mlet) return false;
     // Check whether montyp1 can grow up into montyp2
     for (let l = montyp1, b; (b = little_to_big(l)) !== l; l = b)
         if (b === montyp2) return true;
@@ -834,38 +836,38 @@ export function same_race(pm1, pm2) {
     if (is_golem(pm1)) return is_golem(pm2);
     if (is_mind_flayer(pm1)) return is_mind_flayer(pm2);
     // Kobolds (including zombie/mummy forms)
-    const lkob = pm1.symbol === S_KOBOLD || pm1 === mons[PM_KOBOLD_ZOMBIE]
+    const lkob = pm1.mlet === S_KOBOLD || pm1 === mons[PM_KOBOLD_ZOMBIE]
                || pm1 === mons[PM_KOBOLD_MUMMY];
     if (lkob) {
-        return pm2.symbol === S_KOBOLD || pm2 === mons[PM_KOBOLD_ZOMBIE]
+        return pm2.mlet === S_KOBOLD || pm2 === mons[PM_KOBOLD_ZOMBIE]
             || pm2 === mons[PM_KOBOLD_MUMMY];
     }
-    if (pm1.symbol === S_OGRE) return pm2.symbol === S_OGRE;
-    if (pm1.symbol === S_NYMPH) return pm2.symbol === S_NYMPH;
-    if (pm1.symbol === S_CENTAUR) return pm2.symbol === S_CENTAUR;
+    if (pm1.mlet === S_OGRE) return pm2.mlet === S_OGRE;
+    if (pm1.mlet === S_NYMPH) return pm2.mlet === S_NYMPH;
+    if (pm1.mlet === S_CENTAUR) return pm2.mlet === S_CENTAUR;
     if (is_unicorn(pm1)) return is_unicorn(pm2);
-    if (pm1.symbol === S_DRAGON) return pm2.symbol === S_DRAGON;
-    if (pm1.symbol === S_NAGA) return pm2.symbol === S_NAGA;
+    if (pm1.mlet === S_DRAGON) return pm2.mlet === S_DRAGON;
+    if (pm1.mlet === S_NAGA) return pm2.mlet === S_NAGA;
     // Riders and minions
     if (is_rider(pm1)) return is_rider(pm2);
     if (is_minion(pm1)) return is_minion(pm2);
     // Tengu don't match imps
     const m1idx = mons.indexOf(pm1), m2idx = mons.indexOf(pm2);
     if (pm1 === mons[PM_TENGU] || pm2 === mons[PM_TENGU]) return false;
-    if (pm1.symbol === S_IMP) return pm2.symbol === S_IMP;
-    else if (pm2.symbol === S_IMP) return false;
+    if (pm1.mlet === S_IMP) return pm2.mlet === S_IMP;
+    else if (pm2.mlet === S_IMP) return false;
     if (is_demon(pm1)) return is_demon(pm2);
     // Undead by sub-type
     if (is_undead(pm1)) {
-        if (pm1.symbol === S_ZOMBIE) return pm2.symbol === S_ZOMBIE;
-        if (pm1.symbol === S_MUMMY) return pm2.symbol === S_MUMMY;
-        if (pm1.symbol === S_VAMPIRE) return pm2.symbol === S_VAMPIRE;
-        if (pm1.symbol === S_LICH) return pm2.symbol === S_LICH;
-        if (pm1.symbol === S_WRAITH) return pm2.symbol === S_WRAITH;
-        if (pm1.symbol === S_GHOST) return pm2.symbol === S_GHOST;
+        if (pm1.mlet === S_ZOMBIE) return pm2.mlet === S_ZOMBIE;
+        if (pm1.mlet === S_MUMMY) return pm2.mlet === S_MUMMY;
+        if (pm1.mlet === S_VAMPIRE) return pm2.mlet === S_VAMPIRE;
+        if (pm1.mlet === S_LICH) return pm2.mlet === S_LICH;
+        if (pm1.mlet === S_WRAITH) return pm2.mlet === S_WRAITH;
+        if (pm1.mlet === S_GHOST) return pm2.mlet === S_GHOST;
     } else if (is_undead(pm2)) return false;
     // Check grow-up chains (same symbol class)
-    if (pm1.symbol === pm2.symbol && m1idx >= 0 && m2idx >= 0) {
+    if (pm1.mlet === pm2.mlet && m1idx >= 0 && m2idx >= 0) {
         if (big_little_match(m1idx, m2idx)) return true;
     }
     // Gargoyle family
