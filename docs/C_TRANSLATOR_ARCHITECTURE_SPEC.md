@@ -16,6 +16,7 @@ Parser/frontend internals live in:
 
 1. [C_TRANSLATOR_PARSER_IMPLEMENTATION_SPEC.md](/share/u/davidbau/git/mazesofmenace/game/docs/C_TRANSLATOR_PARSER_IMPLEMENTATION_SPEC.md)
 2. [C_TRANSLATOR_NIR_SPEC.md](/share/u/davidbau/git/mazesofmenace/game/docs/C_TRANSLATOR_NIR_SPEC.md)
+3. [C_TRANSLATOR_OUTPARAM_AND_FORMAT_ARCHITECTURE.md](/share/u/davidbau/git/mazesofmenace/game/docs/C_TRANSLATOR_OUTPARAM_AND_FORMAT_ARCHITECTURE.md)
 
 ## Purpose
 Define a concrete, project-specific C-to-JS translation architecture for NetHack gameplay porting in this repository.

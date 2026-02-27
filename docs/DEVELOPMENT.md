@@ -141,6 +141,21 @@ conda run -n base python tools/c_translator/refactor_queue.py \
 conda run -n base python tools/c_translator/identifier_hunt.py \
   --queue /tmp/translator-refactor-queue.json \
   --out /tmp/translator-identifier-hunt.json
+
+# Audit currently-marked autotranslations against current pipeline categories
+conda run -n base python tools/c_translator/audit_marked_autotranslations.py \
+  --repo-root . \
+  --summary /tmp/translator-batch-full-summary.json \
+  --candidates /tmp/translator-runtime-stitch-candidates-full.json \
+  --safety /tmp/translator-runtime-stitch-safety-full.json \
+  --apply-summary /tmp/translator-runtime-stitch-apply-full.json \
+  --out /tmp/marked-autotranslation-audit.json
+
+# Audit C out-param and Sprintf/Snprintf patterns from batch metadata
+conda run -n base python tools/c_translator/audit_outparams_and_formatting.py \
+  --summary /tmp/translator-batch-full-summary.json \
+  --safety /tmp/translator-runtime-stitch-safety-full.json \
+  --out /tmp/outparam-format-audit.json
 ```
 
 Notes:
