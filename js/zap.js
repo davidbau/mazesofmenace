@@ -52,7 +52,7 @@ import { xkilled, killed, monkilled,
          wakeup, healmon } from './mon.js';
 import { nhgetch } from './input.js';
 import { nonliving, is_undead, is_demon, is_rider,
-         monDisplayName, resists_fire, resists_cold, resists_elec,
+         x_monnam, resists_fire, resists_cold, resists_elec,
          resists_poison, resists_acid, resists_disint } from './mondata.js';
 import { mondead } from './monutil.js';
 import { placeFloorObject } from './floor_objects.js';
@@ -2131,7 +2131,7 @@ export function create_polymon(obj, mndx, map, player) {
   polyuse_internal(obj, mndx, minwt, map);
   if (mon) {
     const material = pick_material_text(mndx);
-    pline(`Some ${material}objects meld, and ${monDisplayName(mon)} arises from the pile!`);
+    pline(`Some ${material}objects meld, and ${x_monnam(mon)} arises from the pile!`);
   }
   return mon || null;
 }

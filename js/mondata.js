@@ -467,6 +467,21 @@ export function Monnam(mon) {
 // Lightweight compatibility for C-style x_monnam callsites that only depend on
 // article selection and optional capitalization.
 export function x_monnam(mon, article = null, _adjective = null, _suppress = 0, capitalize = false) {
+    // Compatibility bridge for migrated callsites that pass options object.
+    if (article && typeof article === 'object') {
+        const opts = article;
+        const optArticle = (opts.article === 'none') ? null : (opts.article ?? null);
+        const optCap = !!opts.capitalize;
+        if (optArticle === null) {
+            const base = monDisplayName(mon);
+            return optCap && base.length ? base.charAt(0).toUpperCase() + base.slice(1) : base;
+        }
+        return monNam(mon, { article: optArticle, capitalize: optCap });
+    }
+    if (article === null || article === undefined) {
+        const base = monDisplayName(mon);
+        return capitalize && base.length ? base.charAt(0).toUpperCase() + base.slice(1) : base;
+    }
     return monNam(mon, { article, capitalize });
 }
 

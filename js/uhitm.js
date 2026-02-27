@@ -38,7 +38,7 @@ import {
 import { mkobj, mkcorpstat, RANDOM_CLASS, next_ident, xname } from './mkobj.js';
 import { hitval as weapon_hitval, dmgval, abon, dbon, weapon_hit_bonus, weapon_dam_bonus } from './weapon.js';
 import {
-    nonliving, monDisplayName, y_monnam, is_undead, is_demon,
+    nonliving, x_monnam, y_monnam, is_undead, is_demon,
     magic_negation,
     resists_fire, resists_cold, resists_elec, resists_acid,
     resists_poison, resists_sleep, resists_ston,
@@ -94,7 +94,7 @@ export function mhitm_mgc_atk_negated(magr, mdef) {
 export function dynamic_multi_reason(mon, verb, by_gaze) {
     // C builds a formatted string like "frozen by a <monster>'s gaze"
     // for use with nomul(). In JS we don't use multi_reason strings.
-    const name = monDisplayName(mon);
+    const name = x_monnam(mon);
     const reason = by_gaze
         ? `${verb} by ${name}'s gaze`
         : `${verb} by ${name}`;
@@ -136,7 +136,7 @@ export function attack_checks(mtmp, wep, opts = {}) {
             return true;
         }
         if (mtmp.peaceful && !pets_too) {
-            if (display) display.putstr_message(`Really attack ${monDisplayName(mtmp)}?`);
+            if (display) display.putstr_message(`Really attack ${x_monnam(mtmp)}?`);
             return true;
         }
     }
@@ -559,7 +559,7 @@ function hmon_hitmon_splitmon(hmd, mon, obj) {
 //   Generate "You hit the <monster>" message.
 function hmon_hitmon_msg_hit(hmd, mon, obj, display) {
     if (!hmd.hittxt && !hmd.destroyed) {
-        const name = monDisplayName(mon);
+        const name = x_monnam(mon);
         display.putstr_message(`You hit the ${name}.`);
     }
 }
@@ -567,7 +567,7 @@ function hmon_hitmon_msg_hit(hmd, mon, obj, display) {
 // cf. uhitm.c:1641 — hmon_hitmon_msg_silver(hmd, mon, obj):
 //   "The silver sears <monster>!" message.
 function hmon_hitmon_msg_silver(hmd, mon, obj, display) {
-    const name = monDisplayName(mon);
+    const name = x_monnam(mon);
     const ptr = mon.type || {};
     let whom = name;
     if (!noncorporeal(ptr) && !amorphous(ptr)) {
@@ -586,7 +586,7 @@ function hmon_hitmon_msg_silver(hmd, mon, obj, display) {
 // cf. uhitm.c:1680 — hmon_hitmon_msg_lightobj(hmd, mon, obj):
 //   Light-source weapon message (burning undead, etc).
 function hmon_hitmon_msg_lightobj(hmd, mon, obj, display) {
-    const name = monDisplayName(mon);
+    const name = x_monnam(mon);
     const ptr = mon.type || {};
     let whom = name;
     if (!noncorporeal(ptr) && !amorphous(ptr)) {
@@ -748,7 +748,7 @@ export function shade_miss(magr, mdef, obj, thrown, verbose) {
 
     if (verbose) {
         const what = (!obj || shade_aware(obj)) ? 'attack' : xname(obj);
-        const target = monDisplayName(mdef);
+        const target = x_monnam(mdef);
         if (!thrown) {
             // "Your <what> passes harmlessly through <target>."
         } else {
@@ -1605,7 +1605,7 @@ function hitMonsterWithPotion(player, monster, display, weapon) {
 
     if (potionHealsMonster(potion) && monster.mhp < (monster.mhpmax || monster.mhp)) {
         monster.mhp = monster.mhpmax || monster.mhp;
-        display.putstr_message(`The ${monDisplayName(monster)} looks sound and hale again.`);
+        display.putstr_message(`The ${x_monnam(monster)} looks sound and hale again.`);
     }
 
     // cf. potion.c:1893 — distance<3 && !rn2((1+DEX)/2) gate for potionbreathe()
@@ -1621,7 +1621,7 @@ function handleMonsterKilled(player, monster, display, map) {
     // cf. uhitm.c -> mon.c mondead() -> killed() -> xkilled()
     const mdat = monster.type || {};
     const killVerb = nonliving(mdat) ? 'destroy' : 'kill';
-    display.putstr_message(`You ${killVerb} the ${monDisplayName(monster)}!`);
+    display.putstr_message(`You ${killVerb} the ${x_monnam(monster)}!`);
     mondead(monster, map, player);
 
     // cf. exper.c experience() -- roughly monster level * level
@@ -1912,9 +1912,9 @@ export function playerAttackMonster(player, monster, display, map, game = null) 
     } else {
         // cf. uhitm.c -- various hit messages
         if (dieRoll >= 18) {
-            display.putstr_message(`You smite the ${monDisplayName(monster)}!`);
+            display.putstr_message(`You smite the ${x_monnam(monster)}!`);
         } else {
-            display.putstr_message(`You hit the ${monDisplayName(monster)}.`);
+            display.putstr_message(`You hit the ${x_monnam(monster)}.`);
         }
         // cf. uhitm.c hmon_hitmon_core():
         // For armed melee hits with damage > 1: mhitm_knockback().
@@ -1933,7 +1933,7 @@ export function playerAttackMonster(player, monster, display, map, game = null) 
                     const adj = rn2(2) ? 'forceful' : 'powerful';
                     const noun = rn2(2) ? 'blow' : 'strike';
                     display.putstr_message(
-                        `You knock the ${monDisplayName(monster)} back with a ${adj} ${noun}!`
+                        `You knock the ${x_monnam(monster)} back with a ${adj} ${noun}!`
                     );
                 }
             }

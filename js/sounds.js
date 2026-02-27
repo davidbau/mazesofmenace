@@ -29,7 +29,7 @@ import {
     is_lord, is_prince, is_animal, is_undead, is_flyer, is_silent,
     is_mercenary, is_elf, is_dwarf, is_gnome, is_humanoid,
     carnivorous, herbivorous, likes_magic, same_race,
-    canseemon, monDisplayName, is_mplayer,
+    canseemon, x_monnam, is_mplayer,
 } from './mondata.js';
 import { wake_nearto } from './mon.js';
 import { night, midnight } from './calendar.js';
@@ -440,7 +440,7 @@ export function growl(mtmp, game) {
         verb = growl_sound(mtmp);
     }
     if (verb) {
-        const name = monDisplayName(mtmp);
+        const name = x_monnam(mtmp);
         // C: vtense — add "s" for 3rd person singular
         const verbed = verb.endsWith('s') ? `${verb}es` : `${verb}s`;
         game.display.putstr_message(`${name} ${verbed}!`);
@@ -484,7 +484,7 @@ export function yelp(mtmp, game) {
         }
     }
     if (verb) {
-        const name = monDisplayName(mtmp);
+        const name = x_monnam(mtmp);
         const verbed = verb.endsWith('s') ? `${verb}es` : `${verb}s`;
         game.display.putstr_message(`${name} ${verbed}!`);
         wake_nearto(mtmp.x, mtmp.y, (mtmp.type.mlevel || 0) * 12, (game.lev || game.map));
@@ -518,7 +518,7 @@ export function whimper(mtmp, game) {
         }
     }
     if (verb) {
-        const name = monDisplayName(mtmp);
+        const name = x_monnam(mtmp);
         const verbed = verb.endsWith('s') ? `${verb}es` : `${verb}s`;
         game.display.putstr_message(`${name} ${verbed}.`);
         wake_nearto(mtmp.x, mtmp.y, (mtmp.type.mlevel || 0) * 6, (game.lev || game.map));
@@ -540,7 +540,7 @@ export function beg(mtmp, game) {
     } else if (mtmp.type.sound >= MS_HUMANOID) {
         game.display.putstr_message(`"I'm hungry."`);
     } else {
-        const name = monDisplayName(mtmp);
+        const name = x_monnam(mtmp);
         game.display.putstr_message(`${name} seems famished.`);
     }
 }
@@ -688,19 +688,19 @@ export function domonnoise(mtmp, game) {
     switch (msound) {
     case MS_ORACLE:
         // C: return doconsult(mtmp) — not yet ported
-        game.display.putstr_message(`${monDisplayName(mtmp)} speaks mysteriously.`);
+        game.display.putstr_message(`${x_monnam(mtmp)} speaks mysteriously.`);
         return 1;
 
     case MS_PRIEST:
         // C: priest_talk(mtmp) — not yet ported
-        game.display.putstr_message(`${monDisplayName(mtmp)} mutters a prayer.`);
+        game.display.putstr_message(`${x_monnam(mtmp)} mutters a prayer.`);
         break;
 
     case MS_LEADER:
     case MS_NEMESIS:
     case MS_GUARDIAN:
         // C: quest_chat(mtmp) — not yet ported
-        game.display.putstr_message(`${monDisplayName(mtmp)} speaks to you.`);
+        game.display.putstr_message(`${x_monnam(mtmp)} speaks to you.`);
         break;
 
     case MS_SELL:
@@ -709,9 +709,9 @@ export function domonnoise(mtmp, game) {
             || (mtmp.isshk && !rn2(2))) {
             // C: shk_chat(mtmp) — not yet ported
             if (mtmp.isshk) {
-                game.display.putstr_message(`${monDisplayName(mtmp)} talks shop.`);
+                game.display.putstr_message(`${x_monnam(mtmp)} talks shop.`);
             } else {
-                game.display.putstr_message(`${monDisplayName(mtmp)} talks to you.`);
+                game.display.putstr_message(`${x_monnam(mtmp)} talks to you.`);
             }
         } else {
             verbl_msg = '15 minutes could save you 15 zorkmids.';
@@ -752,7 +752,7 @@ export function domonnoise(mtmp, game) {
             const howl = (ptr === mons[PM_HUMAN_WERERAT])
                 ? 'shriek' : 'howl';
             game.display.putstr_message(
-                `${monDisplayName(mtmp)} throws back its head`
+                `${x_monnam(mtmp)} throws back its head`
                 + ` and lets out a blood curdling ${howl}!`
             );
             wake_nearto(mtmp.x, mtmp.y, 11 * 11, (game.lev || game.map));
@@ -884,7 +884,7 @@ export function domonnoise(mtmp, game) {
         break;
 
     case MS_BONES:
-        game.display.putstr_message(`${monDisplayName(mtmp)} rattles noisily.`);
+        game.display.putstr_message(`${x_monnam(mtmp)} rattles noisily.`);
         game.display.putstr_message('You freeze for a moment.');
         // C: nomul(-2) — movement penalty, simplified
         break;
@@ -923,7 +923,7 @@ export function domonnoise(mtmp, game) {
             switch (rn2(4)) {
             case 0:
                 game.display.putstr_message(
-                    `${monDisplayName(mtmp)} boasts about its gem collection.`
+                    `${x_monnam(mtmp)} boasts about its gem collection.`
                 );
                 break;
             case 1:
@@ -1036,14 +1036,14 @@ export function domonnoise(mtmp, game) {
     case MS_BRIBE:
         if (mtmp.peaceful && !mtmp.tame) {
             // C: demon_talk(mtmp) — not ported
-            game.display.putstr_message(`${monDisplayName(mtmp)} makes a deal.`);
+            game.display.putstr_message(`${x_monnam(mtmp)} makes a deal.`);
             break;
         }
         // FALLTHRU
     case MS_CUSS: // eslint-disable-line no-fallthrough
         if (!mtmp.peaceful) {
             // C: cuss(mtmp) — not ported
-            game.display.putstr_message(`${monDisplayName(mtmp)} curses at you!`);
+            game.display.putstr_message(`${x_monnam(mtmp)} curses at you!`);
         } else {
             verbl_msg = "We're all doomed.";
         }
@@ -1097,7 +1097,7 @@ export function domonnoise(mtmp, game) {
     } // switch
 
     if (pline_msg) {
-        game.display.putstr_message(`${monDisplayName(mtmp)} ${pline_msg}`);
+        game.display.putstr_message(`${x_monnam(mtmp)} ${pline_msg}`);
     } else if (verbl_msg) {
         if (ptr === mons[PM_DEATH]) {
             game.display.putstr_message(verbl_msg.toUpperCase());

@@ -23,7 +23,7 @@ import { objectData, WEAPON_CLASS, TOOL_CLASS, GEM_CLASS, BALL_CLASS, CHAIN_CLAS
 import { rnd, d, rn2 } from './rng.js';
 import { mon_hates_blessings, mon_hates_silver, mon_hates_light,
          thick_skinned, strongmonst, is_giant, resists_ston, likes_gems,
-         is_animal, is_mindless, touch_petrifies, attacktype,
+         is_animal, is_mindless, touch_petrifies, attacktype, x_monnam,
        } from './mondata.js';
 import { MZ_LARGE, S_EEL, S_SNAKE, S_XORN, S_DRAGON, S_JABBERWOCK,
          S_NAGA, S_WORM_TAIL, S_KOP, S_GIANT,
@@ -236,7 +236,7 @@ export function special_dmgval(mon, obj = null) {
 export function silver_sears(mon, display) {
     if (!mon || !display) return false;
     if (!mon_hates_silver(mon)) return false;
-    display.putstr_message(`The silver sears ${monDisplayName(mon)}!`);
+    display.putstr_message(`The silver sears ${x_monnam(mon)}!`);
     return true;
 }
 

@@ -27,7 +27,7 @@ import { A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC,
          A_STR, A_DEX, A_CON, A_INT, A_WIS, A_CHA } from './config.js';
 import { mons, MZ_TINY, MZ_SMALL, MZ_MEDIUM, MZ_LARGE, MZ_HUGE, MZ_GIGANTIC,
          PM_LONG_WORM, PM_HIGH_CLERIC, G_UNIQ, M2_PNAME, NUMMONS, LOW_PM } from './monsters.js';
-import { monDisplayName } from './mondata.js';
+import { x_monnam } from './mondata.js';
 import { find_mac } from './worn.js';
 import { pline } from './pline.js';
 import { showPager } from './pager.js';
@@ -263,7 +263,7 @@ export function mstatusline(mtmp, game) {
     if (mtmp.mleashed)
         info += ', leashed';
 
-    const monnm = monDisplayName(mtmp);
+    const monnm = x_monnam(mtmp);
     const mac = find_mac(mtmp);
 
     pline("Status of %s (%s, %s):  Level %s  HP %s(%s)  AC %s%s.",
@@ -332,7 +332,7 @@ export function ustatusline(game) {
             info += ', engulfed by ';
         else
             info += ', held by ';
-        info += monDisplayName(player.ustuck);
+        info += x_monnam(player.ustuck);
     }
 
     const alignSuffix = align_str(player.alignment);
@@ -835,9 +835,9 @@ function status_enlightenment(mode, final, game) {
     }
     if (player.ustuck) {
         if (player.uswallow)
-            you_are(final, `swallowed by ${monDisplayName(player.ustuck)}`, '');
+            you_are(final, `swallowed by ${x_monnam(player.ustuck)}`, '');
         else
-            you_are(final, `held by ${monDisplayName(player.ustuck)}`, '');
+            you_are(final, `held by ${x_monnam(player.ustuck)}`, '');
     }
 
     // Hunger

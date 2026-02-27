@@ -27,7 +27,7 @@ import { mons, G_UNIQ, PM_GHOST, PM_HIGH_CLERIC, PM_WRAITH,
          PM_VAMPIRE, PM_GHOUL, S_WRAITH, S_MUMMY, S_VAMPIRE,
          M2_PNAME, PM_TOURIST, PM_HUMAN, PM_GREEN_SLIME, PM_HOUSECAT,
          NON_PM } from './monsters.js';
-import { monDisplayName, hasGivenName } from './mondata.js';
+import { x_monnam, hasGivenName } from './mondata.js';
 import { AMULET_OF_LIFE_SAVING, AMULET_CLASS, GEM_CLASS,
          FIRST_AMULET, FIRST_REAL_GEM, LAST_REAL_GEM, LAST_GLASS_GEM,
          BELL_OF_OPENING, CANDELABRUM_OF_INVOCATION,
@@ -294,7 +294,7 @@ export function done_in_by(mtmp, how, game) {
         buf += `${honorific}${shknm}, the shopkeeper`;
         killer.format = KILLED_BY;
     } else if (mtmp.ispriest || mtmp.isminion) {
-        buf += monDisplayName(mtmp);
+        buf += x_monnam(mtmp);
     } else {
         buf += mptr.name || 'monster';
         if (hasGivenName(mtmp)) {

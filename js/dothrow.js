@@ -38,7 +38,7 @@ import { objectData, WEAPON_CLASS, COIN_CLASS, GEM_CLASS, TOOL_CLASS,
        } from './objects.js';
 import { compactInvletPromptChars, renderOverlayMenuUntilDismiss } from './invent.js';
 import { doname, next_ident, xname, is_crackable } from './mkobj.js';
-import { monDisplayName, is_unicorn, nohands, notake } from './mondata.js';
+import { x_monnam, is_unicorn, nohands, notake } from './mondata.js';
 import { obj_resists } from './objdata.js';
 import { uwepgone, uswapwepgone, uqwepgone, handleSwapWeapon, setuqwep } from './wield.js';
 import { placeFloorObject } from './floor_objects.js';
@@ -224,7 +224,7 @@ export async function promptDirectionAndThrowItem(player, map, display, item, { 
         const named = (typeof item.oname === 'string' && item.oname.length > 0)
             ? `${baseName} named ${item.oname}`
             : baseName;
-        throwMessage = `The ${named} misses the ${monDisplayName(targetMonster)}.`;
+        throwMessage = `The ${named} misses the ${x_monnam(targetMonster)}.`;
     }
     replacePromptMessage();
     if (
