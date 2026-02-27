@@ -45,50 +45,10 @@
       "source": "nethack-c/src/apply.c"
     },
     {
-      "detail": "bhit",
-      "function": "do_blinding_ray",
-      "js_module": "js/apply.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/apply__do_blinding_ray.json",
-      "source": "nethack-c/src/apply.c"
-    },
-    {
-      "detail": "flash_hits_mon",
-      "function": "do_blinding_ray",
-      "js_module": "js/apply.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/apply__do_blinding_ray.json",
-      "source": "nethack-c/src/apply.c"
-    },
-    {
-      "detail": "see_monster_closeup",
-      "function": "do_blinding_ray",
-      "js_module": "js/apply.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/apply__do_blinding_ray.json",
-      "source": "nethack-c/src/apply.c"
-    },
-    {
-      "detail": "transient_light_cleanup",
-      "function": "do_blinding_ray",
-      "js_module": "js/apply.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/apply__do_blinding_ray.json",
-      "source": "nethack-c/src/apply.c"
-    },
-    {
       "detail": "abs",
       "function": "um_dist",
       "js_module": "js/apply.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/apply__um_dist.json",
-      "source": "nethack-c/src/apply.c"
-    },
-    {
-      "detail": "abs",
-      "function": "um_dist",
-      "js_module": "js/apply.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/apply__um_dist.json",
       "source": "nethack-c/src/apply.c"
     },
@@ -109,14 +69,6 @@
       "source": "nethack-c/src/apply.c"
     },
     {
-      "detail": "update_inventory",
-      "function": "o_unleash",
-      "js_module": "js/apply.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/apply__o_unleash.json",
-      "source": "nethack-c/src/apply.c"
-    },
-    {
       "detail": "canseemon",
       "function": "m_unleash",
       "js_module": "js/apply.js",
@@ -149,38 +101,6 @@
       "source": "nethack-c/src/apply.c"
     },
     {
-      "detail": "canseemon",
-      "function": "m_unleash",
-      "js_module": "js/apply.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/apply__m_unleash.json",
-      "source": "nethack-c/src/apply.c"
-    },
-    {
-      "detail": "get_mleash",
-      "function": "m_unleash",
-      "js_module": "js/apply.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/apply__m_unleash.json",
-      "source": "nethack-c/src/apply.c"
-    },
-    {
-      "detail": "mhis",
-      "function": "m_unleash",
-      "js_module": "js/apply.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/apply__m_unleash.json",
-      "source": "nethack-c/src/apply.c"
-    },
-    {
-      "detail": "update_inventory",
-      "function": "m_unleash",
-      "js_module": "js/apply.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/apply__m_unleash.json",
-      "source": "nethack-c/src/apply.c"
-    },
-    {
       "detail": "get_iter_mons",
       "function": "next_to_u",
       "js_module": "js/apply.js",
@@ -193,22 +113,6 @@
       "function": "next_to_u",
       "js_module": "js/apply.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/apply__next_to_u.json",
-      "source": "nethack-c/src/apply.c"
-    },
-    {
-      "detail": "get_iter_mons",
-      "function": "next_to_u",
-      "js_module": "js/apply.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/apply__next_to_u.json",
-      "source": "nethack-c/src/apply.c"
-    },
-    {
-      "detail": "mon_has_amulet",
-      "function": "next_to_u",
-      "js_module": "js/apply.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/apply__next_to_u.json",
       "source": "nethack-c/src/apply.c"
     },
@@ -257,38 +161,6 @@
       "function": "snuff_candle",
       "js_module": "js/apply.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/apply__snuff_candle.json",
-      "source": "nethack-c/src/apply.c"
-    },
-    {
-      "detail": "Is_candle",
-      "function": "snuff_candle",
-      "js_module": "js/apply.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/apply__snuff_candle.json",
-      "source": "nethack-c/src/apply.c"
-    },
-    {
-      "detail": "Shk_Your",
-      "function": "snuff_candle",
-      "js_module": "js/apply.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/apply__snuff_candle.json",
-      "source": "nethack-c/src/apply.c"
-    },
-    {
-      "detail": "cansee",
-      "function": "snuff_candle",
-      "js_module": "js/apply.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/apply__snuff_candle.json",
-      "source": "nethack-c/src/apply.c"
-    },
-    {
-      "detail": "get_obj_location",
-      "function": "snuff_candle",
-      "js_module": "js/apply.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/apply__snuff_candle.json",
       "source": "nethack-c/src/apply.c"
     },
@@ -437,94 +309,6 @@
       "source": "nethack-c/src/apply.c"
     },
     {
-      "detail": "Is_waterlevel",
-      "function": "splash_lit",
-      "js_module": "js/apply.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/apply__splash_lit.json",
-      "source": "nethack-c/src/apply.c"
-    },
-    {
-      "detail": "Yname2",
-      "function": "splash_lit",
-      "js_module": "js/apply.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/apply__splash_lit.json",
-      "source": "nethack-c/src/apply.c"
-    },
-    {
-      "detail": "cansee",
-      "function": "splash_lit",
-      "js_module": "js/apply.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/apply__splash_lit.json",
-      "source": "nethack-c/src/apply.c"
-    },
-    {
-      "detail": "couldsee",
-      "function": "splash_lit",
-      "js_module": "js/apply.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/apply__splash_lit.json",
-      "source": "nethack-c/src/apply.c"
-    },
-    {
-      "detail": "distu",
-      "function": "splash_lit",
-      "js_module": "js/apply.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/apply__splash_lit.json",
-      "source": "nethack-c/src/apply.c"
-    },
-    {
-      "detail": "get_obj_location",
-      "function": "splash_lit",
-      "js_module": "js/apply.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/apply__splash_lit.json",
-      "source": "nethack-c/src/apply.c"
-    },
-    {
-      "detail": "humanoid",
-      "function": "splash_lit",
-      "js_module": "js/apply.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/apply__splash_lit.json",
-      "source": "nethack-c/src/apply.c"
-    },
-    {
-      "detail": "is_floater",
-      "function": "splash_lit",
-      "js_module": "js/apply.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/apply__splash_lit.json",
-      "source": "nethack-c/src/apply.c"
-    },
-    {
-      "detail": "is_flyer",
-      "function": "splash_lit",
-      "js_module": "js/apply.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/apply__splash_lit.json",
-      "source": "nethack-c/src/apply.c"
-    },
-    {
-      "detail": "is_pool",
-      "function": "splash_lit",
-      "js_module": "js/apply.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/apply__splash_lit.json",
-      "source": "nethack-c/src/apply.c"
-    },
-    {
-      "detail": "set_msg_xy",
-      "function": "splash_lit",
-      "js_module": "js/apply.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/apply__splash_lit.json",
-      "source": "nethack-c/src/apply.c"
-    },
-    {
       "detail": "IS_TREE",
       "function": "figurine_location_checks",
       "js_module": "js/apply.js",
@@ -569,54 +353,6 @@
       "function": "figurine_location_checks",
       "js_module": "js/apply.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/apply__figurine_location_checks.json",
-      "source": "nethack-c/src/apply.c"
-    },
-    {
-      "detail": "IS_TREE",
-      "function": "figurine_location_checks",
-      "js_module": "js/apply.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/apply__figurine_location_checks.json",
-      "source": "nethack-c/src/apply.c"
-    },
-    {
-      "detail": "carried",
-      "function": "figurine_location_checks",
-      "js_module": "js/apply.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/apply__figurine_location_checks.json",
-      "source": "nethack-c/src/apply.c"
-    },
-    {
-      "detail": "may_passwall",
-      "function": "figurine_location_checks",
-      "js_module": "js/apply.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/apply__figurine_location_checks.json",
-      "source": "nethack-c/src/apply.c"
-    },
-    {
-      "detail": "passes_walls",
-      "function": "figurine_location_checks",
-      "js_module": "js/apply.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/apply__figurine_location_checks.json",
-      "source": "nethack-c/src/apply.c"
-    },
-    {
-      "detail": "sobj_at",
-      "function": "figurine_location_checks",
-      "js_module": "js/apply.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/apply__figurine_location_checks.json",
-      "source": "nethack-c/src/apply.c"
-    },
-    {
-      "detail": "throws_rocks",
-      "function": "figurine_location_checks",
-      "js_module": "js/apply.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/apply__figurine_location_checks.json",
       "source": "nethack-c/src/apply.c"
     },
@@ -669,22 +405,6 @@
       "source": "nethack-c/src/apply.c"
     },
     {
-      "detail": "P_SKILL",
-      "function": "calc_pole_range",
-      "js_module": "js/apply.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/apply__calc_pole_range.json",
-      "source": "nethack-c/src/apply.c"
-    },
-    {
-      "detail": "uwep_skill_type",
-      "function": "calc_pole_range",
-      "js_module": "js/apply.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/apply__calc_pole_range.json",
-      "source": "nethack-c/src/apply.c"
-    },
-    {
       "detail": "boulder_hits_pool",
       "function": "maybe_dunk_boulders",
       "js_module": "js/apply.js",
@@ -713,38 +433,6 @@
       "function": "maybe_dunk_boulders",
       "js_module": "js/apply.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/apply__maybe_dunk_boulders.json",
-      "source": "nethack-c/src/apply.c"
-    },
-    {
-      "detail": "boulder_hits_pool",
-      "function": "maybe_dunk_boulders",
-      "js_module": "js/apply.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/apply__maybe_dunk_boulders.json",
-      "source": "nethack-c/src/apply.c"
-    },
-    {
-      "detail": "is_pool_or_lava",
-      "function": "maybe_dunk_boulders",
-      "js_module": "js/apply.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/apply__maybe_dunk_boulders.json",
-      "source": "nethack-c/src/apply.c"
-    },
-    {
-      "detail": "obj_extract_self",
-      "function": "maybe_dunk_boulders",
-      "js_module": "js/apply.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/apply__maybe_dunk_boulders.json",
-      "source": "nethack-c/src/apply.c"
-    },
-    {
-      "detail": "sobj_at",
-      "function": "maybe_dunk_boulders",
-      "js_module": "js/apply.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/apply__maybe_dunk_boulders.json",
       "source": "nethack-c/src/apply.c"
     },
@@ -885,14 +573,6 @@
       "source": "nethack-c/src/apply.c"
     },
     {
-      "detail": "ATEMP",
-      "function": "unfixable_trouble_count",
-      "js_module": "js/apply.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/apply__unfixable_trouble_count.json",
-      "source": "nethack-c/src/apply.c"
-    },
-    {
       "detail": "KILLED_BY",
       "function": "losestr",
       "js_module": "js/attrib.js",
@@ -933,42 +613,10 @@
       "source": "nethack-c/src/attrib.c"
     },
     {
-      "detail": "impossible",
-      "function": "losestr",
-      "js_module": "js/attrib.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/attrib__losestr.json",
-      "source": "nethack-c/src/attrib.c"
-    },
-    {
-      "detail": "max",
-      "function": "losestr",
-      "js_module": "js/attrib.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/attrib__losestr.json",
-      "source": "nethack-c/src/attrib.c"
-    },
-    {
-      "detail": "nhUse",
-      "function": "losestr",
-      "js_module": "js/attrib.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/attrib__losestr.json",
-      "source": "nethack-c/src/attrib.c"
-    },
-    {
       "detail": "carrying",
       "function": "set_moreluck",
       "js_module": "js/attrib.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/attrib__set_moreluck.json",
-      "source": "nethack-c/src/attrib.c"
-    },
-    {
-      "detail": "carrying",
-      "function": "set_moreluck",
-      "js_module": "js/attrib.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/attrib__set_moreluck.json",
       "source": "nethack-c/src/attrib.c"
     },
@@ -1001,14 +649,6 @@
       "function": "restore_attrib",
       "js_module": "js/attrib.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/attrib__restore_attrib.json",
-      "source": "nethack-c/src/attrib.c"
-    },
-    {
-      "detail": "ACURR",
-      "function": "restore_attrib",
-      "js_module": "js/attrib.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/attrib__restore_attrib.json",
       "source": "nethack-c/src/attrib.c"
     },
@@ -1049,30 +689,6 @@
       "function": "acurrstr",
       "js_module": "js/attrib.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/attrib__acurrstr.json",
-      "source": "nethack-c/src/attrib.c"
-    },
-    {
-      "detail": "ACURR",
-      "function": "acurrstr",
-      "js_module": "js/attrib.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/attrib__acurrstr.json",
-      "source": "nethack-c/src/attrib.c"
-    },
-    {
-      "detail": "max",
-      "function": "acurrstr",
-      "js_module": "js/attrib.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/attrib__acurrstr.json",
-      "source": "nethack-c/src/attrib.c"
-    },
-    {
-      "detail": "min",
-      "function": "acurrstr",
-      "js_module": "js/attrib.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/attrib__acurrstr.json",
       "source": "nethack-c/src/attrib.c"
     },
@@ -1141,38 +757,6 @@
       "source": "nethack-c/src/bones.c"
     },
     {
-      "detail": "Is_branchlev",
-      "function": "can_make_bones",
-      "js_module": "js/bones.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/bones__can_make_bones.json",
-      "source": "nethack-c/src/bones.c"
-    },
-    {
-      "detail": "ledger_no",
-      "function": "can_make_bones",
-      "js_module": "js/bones.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/bones__can_make_bones.json",
-      "source": "nethack-c/src/bones.c"
-    },
-    {
-      "detail": "maxledgerno",
-      "function": "can_make_bones",
-      "js_module": "js/bones.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/bones__can_make_bones.json",
-      "source": "nethack-c/src/bones.c"
-    },
-    {
-      "detail": "no_bones_level",
-      "function": "can_make_bones",
-      "js_module": "js/bones.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/bones__can_make_bones.json",
-      "source": "nethack-c/src/bones.c"
-    },
-    {
       "detail": "objects",
       "function": "o_material",
       "js_module": "js/detect.js",
@@ -1221,30 +805,6 @@
       "source": "nethack-c/src/detect.c"
     },
     {
-      "detail": "Monnam",
-      "function": "openit",
-      "js_module": "js/detect.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/detect__openit.json",
-      "source": "nethack-c/src/detect.c"
-    },
-    {
-      "detail": "digests",
-      "function": "openit",
-      "js_module": "js/detect.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/detect__openit.json",
-      "source": "nethack-c/src/detect.c"
-    },
-    {
-      "detail": "expels",
-      "function": "openit",
-      "js_module": "js/detect.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/detect__openit.json",
-      "source": "nethack-c/src/detect.c"
-    },
-    {
       "detail": "Hallucination",
       "function": "find_trap",
       "js_module": "js/detect.js",
@@ -1289,38 +849,6 @@
       "function": "find_trap",
       "js_module": "js/detect.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/detect__find_trap.json",
-      "source": "nethack-c/src/detect.c"
-    },
-    {
-      "detail": "an",
-      "function": "find_trap",
-      "js_module": "js/detect.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/detect__find_trap.json",
-      "source": "nethack-c/src/detect.c"
-    },
-    {
-      "detail": "display_nhwindow",
-      "function": "find_trap",
-      "js_module": "js/detect.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/detect__find_trap.json",
-      "source": "nethack-c/src/detect.c"
-    },
-    {
-      "detail": "trap_to_glyph",
-      "function": "find_trap",
-      "js_module": "js/detect.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/detect__find_trap.json",
-      "source": "nethack-c/src/detect.c"
-    },
-    {
-      "detail": "trapname",
-      "function": "find_trap",
-      "js_module": "js/detect.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/detect__find_trap.json",
       "source": "nethack-c/src/detect.c"
     },
@@ -1413,66 +941,10 @@
       "source": "nethack-c/src/detect.c"
     },
     {
-      "detail": "activate_statue_trap",
-      "function": "dosearch0",
-      "js_module": "js/detect.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/detect__dosearch0.json",
-      "source": "nethack-c/src/detect.c"
-    },
-    {
-      "detail": "m_at",
-      "function": "dosearch0",
-      "js_module": "js/detect.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/detect__dosearch0.json",
-      "source": "nethack-c/src/detect.c"
-    },
-    {
-      "detail": "spec_ability",
-      "function": "dosearch0",
-      "js_module": "js/detect.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/detect__dosearch0.json",
-      "source": "nethack-c/src/detect.c"
-    },
-    {
-      "detail": "t_at",
-      "function": "dosearch0",
-      "js_module": "js/detect.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/detect__dosearch0.json",
-      "source": "nethack-c/src/detect.c"
-    },
-    {
-      "detail": "unmap_invisible",
-      "function": "dosearch0",
-      "js_module": "js/detect.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/detect__dosearch0.json",
-      "source": "nethack-c/src/detect.c"
-    },
-    {
-      "detail": "visible_region_at",
-      "function": "dosearch0",
-      "js_module": "js/detect.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/detect__dosearch0.json",
-      "source": "nethack-c/src/detect.c"
-    },
-    {
       "detail": "m_at",
       "function": "warnreveal",
       "js_module": "js/detect.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/detect__warnreveal.json",
-      "source": "nethack-c/src/detect.c"
-    },
-    {
-      "detail": "m_at",
-      "function": "warnreveal",
-      "js_module": "js/detect.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/detect__warnreveal.json",
       "source": "nethack-c/src/detect.c"
     },
@@ -1497,14 +969,6 @@
       "function": "premap_detect",
       "js_module": "js/detect.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/detect__premap_detect.json",
-      "source": "nethack-c/src/detect.c"
-    },
-    {
-      "detail": "map_background",
-      "function": "premap_detect",
-      "js_module": "js/detect.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/detect__premap_detect.json",
       "source": "nethack-c/src/detect.c"
     },
@@ -1573,38 +1037,6 @@
       "source": "nethack-c/src/do.c"
     },
     {
-      "detail": "Doname2",
-      "function": "doaltarobj",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__doaltarobj.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "an",
-      "function": "doaltarobj",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__doaltarobj.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "livelog_printf",
-      "function": "doaltarobj",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__doaltarobj.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "otense",
-      "function": "doaltarobj",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__doaltarobj.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
       "detail": "docall",
       "function": "trycall",
       "js_module": "js/do.js",
@@ -1621,14 +1053,6 @@
       "source": "nethack-c/src/do.c"
     },
     {
-      "detail": "docall",
-      "function": "trycall",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__trycall.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
       "detail": "freeinv",
       "function": "dropx",
       "js_module": "js/do.js",
@@ -1641,22 +1065,6 @@
       "function": "dropx",
       "js_module": "js/do.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__dropx.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "freeinv",
-      "function": "dropx",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__dropx.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "ship_object",
-      "function": "dropx",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/do__dropx.json",
       "source": "nethack-c/src/do.c"
     },
@@ -1689,38 +1097,6 @@
       "function": "currentlevel_rewrite",
       "js_module": "js/do.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__currentlevel_rewrite.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "create_levelfile",
-      "function": "currentlevel_rewrite",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__currentlevel_rewrite.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "ledger_no",
-      "function": "currentlevel_rewrite",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__currentlevel_rewrite.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "mark_synch",
-      "function": "currentlevel_rewrite",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__currentlevel_rewrite.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "pline1",
-      "function": "currentlevel_rewrite",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/do__currentlevel_rewrite.json",
       "source": "nethack-c/src/do.c"
     },
@@ -1765,30 +1141,6 @@
       "source": "nethack-c/src/do.c"
     },
     {
-      "detail": "Sprintf",
-      "function": "familiar_level_msg",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__familiar_level_msg.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "pline1",
-      "function": "familiar_level_msg",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__familiar_level_msg.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "strchr",
-      "function": "familiar_level_msg",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__familiar_level_msg.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
       "detail": "free",
       "function": "maybe_lvltport_feedback",
       "js_module": "js/do.js",
@@ -1809,22 +1161,6 @@
       "function": "maybe_lvltport_feedback",
       "js_module": "js/do.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__maybe_lvltport_feedback.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "free",
-      "function": "maybe_lvltport_feedback",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__maybe_lvltport_feedback.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "strncmpi",
-      "function": "maybe_lvltport_feedback",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/do__maybe_lvltport_feedback.json",
       "source": "nethack-c/src/do.c"
     },
@@ -1861,30 +1197,6 @@
       "source": "nethack-c/src/do.c"
     },
     {
-      "detail": "create_mplayers",
-      "function": "final_level",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__final_level.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "gain_guardian_angel",
-      "function": "final_level",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__final_level.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "iter_mons",
-      "function": "final_level",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__final_level.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
       "detail": "UTOTYPE_DEFERRED",
       "function": "schedule_goto",
       "js_module": "js/do.js",
@@ -1913,22 +1225,6 @@
       "function": "schedule_goto",
       "js_module": "js/do.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__schedule_goto.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "assign_level",
-      "function": "schedule_goto",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__schedule_goto.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "dupstr",
-      "function": "schedule_goto",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/do__schedule_goto.json",
       "source": "nethack-c/src/do.c"
     },
@@ -2025,54 +1321,6 @@
       "function": "deferred_goto",
       "js_module": "js/do.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__deferred_goto.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "assign_level",
-      "function": "deferred_goto",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__deferred_goto.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "free",
-      "function": "deferred_goto",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__deferred_goto.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "goto_level",
-      "function": "deferred_goto",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__deferred_goto.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "on_level",
-      "function": "deferred_goto",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__deferred_goto.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "pline1",
-      "function": "deferred_goto",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__deferred_goto.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "t_at",
-      "function": "deferred_goto",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/do__deferred_goto.json",
       "source": "nethack-c/src/do.c"
     },
@@ -2189,78 +1437,6 @@
       "source": "nethack-c/src/do.c"
     },
     {
-      "detail": "Monnam",
-      "function": "revive_mon",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__revive_mon.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "dist2",
-      "function": "revive_mon",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__revive_mon.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "get_obj_location",
-      "function": "revive_mon",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__revive_mon.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "is_displacer",
-      "function": "revive_mon",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__revive_mon.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "m_at",
-      "function": "revive_mon",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__revive_mon.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "obj_has_timer",
-      "function": "revive_mon",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__revive_mon.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "rider_revival_time",
-      "function": "revive_mon",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__revive_mon.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "rloc",
-      "function": "revive_mon",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__revive_mon.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "start_timer",
-      "function": "revive_mon",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__revive_mon.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
       "detail": "G_GENOD",
       "function": "zombify_mon",
       "js_module": "js/do.js",
@@ -2313,54 +1489,6 @@
       "function": "zombify_mon",
       "js_module": "js/do.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__zombify_mon.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "free_omid",
-      "function": "zombify_mon",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__zombify_mon.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "free_omonst",
-      "function": "zombify_mon",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__zombify_mon.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "has_omid",
-      "function": "zombify_mon",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__zombify_mon.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "has_omonst",
-      "function": "zombify_mon",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__zombify_mon.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "rot_corpse",
-      "function": "zombify_mon",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__zombify_mon.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "set_corpsenm",
-      "function": "zombify_mon",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/do__zombify_mon.json",
       "source": "nethack-c/src/do.c"
     },
@@ -2421,22 +1549,6 @@
       "source": "nethack-c/src/do.c"
     },
     {
-      "detail": "Sprintf",
-      "function": "dowipe",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__dowipe.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "set_occupation",
-      "function": "dowipe",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__dowipe.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
       "detail": "EWounded_legs",
       "function": "legs_in_no_shape",
       "js_module": "js/do.js",
@@ -2457,22 +1569,6 @@
       "function": "legs_in_no_shape",
       "js_module": "js/do.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__legs_in_no_shape.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "Monnam",
-      "function": "legs_in_no_shape",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__legs_in_no_shape.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "makeplural",
-      "function": "legs_in_no_shape",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/do__legs_in_no_shape.json",
       "source": "nethack-c/src/do.c"
     },
@@ -2534,30 +1630,6 @@
     },
     {
       "detail": "ATEMP",
-      "function": "set_wounded_legs",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__set_wounded_legs.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "encumber_msg",
-      "function": "set_wounded_legs",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__set_wounded_legs.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "set_itimeout",
-      "function": "set_wounded_legs",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__set_wounded_legs.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "ATEMP",
       "function": "heal_legs",
       "js_module": "js/do.js",
       "kind": "add_missing_identifier",
@@ -2613,38 +1685,6 @@
       "source": "nethack-c/src/do.c"
     },
     {
-      "detail": "ATEMP",
-      "function": "heal_legs",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__heal_legs.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "encumber_msg",
-      "function": "heal_legs",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__heal_legs.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "makeplural",
-      "function": "heal_legs",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__heal_legs.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "vtense",
-      "function": "heal_legs",
-      "js_module": "js/do.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/do__heal_legs.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
       "detail": "ceiling",
       "function": "cant_reach_floor",
       "js_module": "js/engrave.js",
@@ -2657,22 +1697,6 @@
       "function": "cant_reach_floor",
       "js_module": "js/engrave.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/engrave__cant_reach_floor.json",
-      "source": "nethack-c/src/engrave.c"
-    },
-    {
-      "detail": "ceiling",
-      "function": "cant_reach_floor",
-      "js_module": "js/engrave.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/engrave__cant_reach_floor.json",
-      "source": "nethack-c/src/engrave.c"
-    },
-    {
-      "detail": "surface",
-      "function": "cant_reach_floor",
-      "js_module": "js/engrave.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/engrave__cant_reach_floor.json",
       "source": "nethack-c/src/engrave.c"
     },
@@ -2717,22 +1741,6 @@
       "source": "nethack-c/src/engrave.c"
     },
     {
-      "detail": "strcmpi",
-      "function": "sengr_at",
-      "js_module": "js/engrave.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/engrave__sengr_at.json",
-      "source": "nethack-c/src/engrave.c"
-    },
-    {
-      "detail": "strstri",
-      "function": "sengr_at",
-      "js_module": "js/engrave.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/engrave__sengr_at.json",
-      "source": "nethack-c/src/engrave.c"
-    },
-    {
       "detail": "bimanual",
       "function": "freehand",
       "js_module": "js/engrave.js",
@@ -2745,22 +1753,6 @@
       "function": "freehand",
       "js_module": "js/engrave.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/engrave__freehand.json",
-      "source": "nethack-c/src/engrave.c"
-    },
-    {
-      "detail": "bimanual",
-      "function": "freehand",
-      "js_module": "js/engrave.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/engrave__freehand.json",
-      "source": "nethack-c/src/engrave.c"
-    },
-    {
-      "detail": "welded",
-      "function": "freehand",
-      "js_module": "js/engrave.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/engrave__freehand.json",
       "source": "nethack-c/src/engrave.c"
     },
@@ -2813,38 +1805,6 @@
       "source": "nethack-c/src/engrave.c"
     },
     {
-      "detail": "Is_airlevel",
-      "function": "engraving_sanity_check",
-      "js_module": "js/engrave.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/engrave__engraving_sanity_check.json",
-      "source": "nethack-c/src/engrave.c"
-    },
-    {
-      "detail": "Is_waterlevel",
-      "function": "engraving_sanity_check",
-      "js_module": "js/engrave.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/engrave__engraving_sanity_check.json",
-      "source": "nethack-c/src/engrave.c"
-    },
-    {
-      "detail": "SURFACE_AT",
-      "function": "engraving_sanity_check",
-      "js_module": "js/engrave.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/engrave__engraving_sanity_check.json",
-      "source": "nethack-c/src/engrave.c"
-    },
-    {
-      "detail": "surface",
-      "function": "engraving_sanity_check",
-      "js_module": "js/engrave.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/engrave__engraving_sanity_check.json",
-      "source": "nethack-c/src/engrave.c"
-    },
-    {
       "detail": "EPITAPHFILE",
       "function": "make_grave",
       "js_module": "js/engrave.js",
@@ -2889,30 +1849,6 @@
       "function": "make_grave",
       "js_module": "js/engrave.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/engrave__make_grave.json",
-      "source": "nethack-c/src/engrave.c"
-    },
-    {
-      "detail": "get_rnd_text",
-      "function": "make_grave",
-      "js_module": "js/engrave.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/engrave__make_grave.json",
-      "source": "nethack-c/src/engrave.c"
-    },
-    {
-      "detail": "set_levltyp",
-      "function": "make_grave",
-      "js_module": "js/engrave.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/engrave__make_grave.json",
-      "source": "nethack-c/src/engrave.c"
-    },
-    {
-      "detail": "t_at",
-      "function": "make_grave",
-      "js_module": "js/engrave.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/engrave__make_grave.json",
       "source": "nethack-c/src/engrave.c"
     },
@@ -3029,70 +1965,6 @@
       "source": "nethack-c/src/fountain.c"
     },
     {
-      "detail": "angry_guards",
-      "function": "dryup",
-      "js_module": "js/fountain.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/fountain__dryup.json",
-      "source": "nethack-c/src/fountain.c"
-    },
-    {
-      "detail": "get_iter_mons",
-      "function": "dryup",
-      "js_module": "js/fountain.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/fountain__dryup.json",
-      "source": "nethack-c/src/fountain.c"
-    },
-    {
-      "detail": "glyph_at",
-      "function": "dryup",
-      "js_module": "js/fountain.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/fountain__dryup.json",
-      "source": "nethack-c/src/fountain.c"
-    },
-    {
-      "detail": "glyph_is_cmap",
-      "function": "dryup",
-      "js_module": "js/fountain.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/fountain__dryup.json",
-      "source": "nethack-c/src/fountain.c"
-    },
-    {
-      "detail": "glyph_to_cmap",
-      "function": "dryup",
-      "js_module": "js/fountain.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/fountain__dryup.json",
-      "source": "nethack-c/src/fountain.c"
-    },
-    {
-      "detail": "in_town",
-      "function": "dryup",
-      "js_module": "js/fountain.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/fountain__dryup.json",
-      "source": "nethack-c/src/fountain.c"
-    },
-    {
-      "detail": "set_levltyp",
-      "function": "dryup",
-      "js_module": "js/fountain.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/fountain__dryup.json",
-      "source": "nethack-c/src/fountain.c"
-    },
-    {
-      "detail": "y_n",
-      "function": "dryup",
-      "js_module": "js/fountain.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/fountain__dryup.json",
-      "source": "nethack-c/src/fountain.c"
-    },
-    {
       "detail": "Glib",
       "function": "wash_hands",
       "js_module": "js/fountain.js",
@@ -3133,30 +2005,6 @@
       "source": "nethack-c/src/fountain.c"
     },
     {
-      "detail": "fingers_or_gloves",
-      "function": "wash_hands",
-      "js_module": "js/fountain.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/fountain__wash_hands.json",
-      "source": "nethack-c/src/fountain.c"
-    },
-    {
-      "detail": "make_glib",
-      "function": "wash_hands",
-      "js_module": "js/fountain.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/fountain__wash_hands.json",
-      "source": "nethack-c/src/fountain.c"
-    },
-    {
-      "detail": "makeplural",
-      "function": "wash_hands",
-      "js_module": "js/fountain.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/fountain__wash_hands.json",
-      "source": "nethack-c/src/fountain.c"
-    },
-    {
       "detail": "set_levltyp",
       "function": "breaksink",
       "js_module": "js/fountain.js",
@@ -3169,22 +2017,6 @@
       "function": "breaksink",
       "js_module": "js/fountain.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/fountain__breaksink.json",
-      "source": "nethack-c/src/fountain.c"
-    },
-    {
-      "detail": "set_levltyp",
-      "function": "breaksink",
-      "js_module": "js/fountain.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/fountain__breaksink.json",
-      "source": "nethack-c/src/fountain.c"
-    },
-    {
-      "detail": "u_at",
-      "function": "breaksink",
-      "js_module": "js/fountain.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/fountain__breaksink.json",
       "source": "nethack-c/src/fountain.c"
     },
@@ -3229,42 +2061,10 @@
       "source": "nethack-c/src/fountain.c"
     },
     {
-      "detail": "Sprintf",
-      "function": "sink_backs_up",
-      "js_module": "js/fountain.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/fountain__sink_backs_up.json",
-      "source": "nethack-c/src/fountain.c"
-    },
-    {
-      "detail": "Strcpy",
-      "function": "sink_backs_up",
-      "js_module": "js/fountain.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/fountain__sink_backs_up.json",
-      "source": "nethack-c/src/fountain.c"
-    },
-    {
-      "detail": "mkobj_at",
-      "function": "sink_backs_up",
-      "js_module": "js/fountain.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/fountain__sink_backs_up.json",
-      "source": "nethack-c/src/fountain.c"
-    },
-    {
       "detail": "free",
       "function": "unsortloot",
       "js_module": "js/invent.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__unsortloot.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "free",
-      "function": "unsortloot",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__unsortloot.json",
       "source": "nethack-c/src/invent.c"
     },
@@ -3445,126 +2245,6 @@
       "source": "nethack-c/src/invent.c"
     },
     {
-      "detail": "Is_pudding",
-      "function": "merged",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__merged.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "ONAME",
-      "function": "merged",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__merged.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "Role_if",
-      "function": "merged",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__merged.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "carried",
-      "function": "merged",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__merged.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "has_oname",
-      "function": "merged",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__merged.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "impossible",
-      "function": "merged",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__merged.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "obfree",
-      "function": "merged",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__merged.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "obj_absorb",
-      "function": "merged",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__merged.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "obj_extract_self",
-      "function": "merged",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__merged.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "obj_merge_light_sources",
-      "function": "merged",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__merged.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "obj_stop_timers",
-      "function": "merged",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__merged.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "oname",
-      "function": "merged",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__merged.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "pudding_merge_message",
-      "function": "merged",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__merged.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "setnotworn",
-      "function": "merged",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__merged.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "setworn",
-      "function": "merged",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__merged.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
       "detail": "ACH_AMUL",
       "function": "addinv_core1",
       "js_module": "js/invent.js",
@@ -3677,62 +2357,6 @@
       "source": "nethack-c/src/invent.c"
     },
     {
-      "detail": "artitouch",
-      "function": "addinv_core1",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__addinv_core1.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "impossible",
-      "function": "addinv_core1",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__addinv_core1.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "is_mines_prize",
-      "function": "addinv_core1",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__addinv_core1.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "is_quest_artifact",
-      "function": "addinv_core1",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__addinv_core1.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "is_soko_prize",
-      "function": "addinv_core1",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__addinv_core1.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "record_achievement",
-      "function": "addinv_core1",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__addinv_core1.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "set_artifact_intrinsic",
-      "function": "addinv_core1",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__addinv_core1.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
       "detail": "Blind",
       "function": "addinv_core2",
       "js_module": "js/invent.js",
@@ -3805,74 +2429,10 @@
       "source": "nethack-c/src/invent.c"
     },
     {
-      "detail": "Role_if",
-      "function": "addinv_core2",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__addinv_core2.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "confers_luck",
-      "function": "addinv_core2",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__addinv_core2.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "livelog_printf",
-      "function": "addinv_core2",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__addinv_core2.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "makeknown",
-      "function": "addinv_core2",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__addinv_core2.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "observe_object",
-      "function": "addinv_core2",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__addinv_core2.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "set_moreluck",
-      "function": "addinv_core2",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__addinv_core2.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "yname",
-      "function": "addinv_core2",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__addinv_core2.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
       "detail": "addinv_core0",
       "function": "addinv",
       "js_module": "js/invent.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__addinv.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "addinv_core0",
-      "function": "addinv",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__addinv.json",
       "source": "nethack-c/src/invent.c"
     },
@@ -3901,34 +2461,10 @@
       "source": "nethack-c/src/invent.c"
     },
     {
-      "detail": "attach_fig_transform_timeout",
-      "function": "carry_obj_effects",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__carry_obj_effects.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "dead_species",
-      "function": "carry_obj_effects",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__carry_obj_effects.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
       "detail": "check_unpaid",
       "function": "consume_obj_charge",
       "js_module": "js/invent.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__consume_obj_charge.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "check_unpaid",
-      "function": "consume_obj_charge",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__consume_obj_charge.json",
       "source": "nethack-c/src/invent.c"
     },
@@ -4013,82 +2549,10 @@
       "source": "nethack-c/src/invent.c"
     },
     {
-      "detail": "confers_luck",
-      "function": "freeinv_core",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__freeinv_core.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "curse",
-      "function": "freeinv_core",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__freeinv_core.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "impossible",
-      "function": "freeinv_core",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__freeinv_core.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "is_quest_artifact",
-      "function": "freeinv_core",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__freeinv_core.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "obj_to_any",
-      "function": "freeinv_core",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__freeinv_core.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "set_artifact_intrinsic",
-      "function": "freeinv_core",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__freeinv_core.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "set_moreluck",
-      "function": "freeinv_core",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__freeinv_core.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "stop_timer",
-      "function": "freeinv_core",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__freeinv_core.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
       "detail": "Has_contents",
       "function": "o_on",
       "js_module": "js/invent.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__o_on.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "Has_contents",
-      "function": "o_on",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__o_on.json",
       "source": "nethack-c/src/invent.c"
     },
@@ -4109,26 +2573,10 @@
       "source": "nethack-c/src/invent.c"
     },
     {
-      "detail": "welded",
-      "function": "splittable",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__splittable.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
       "detail": "Has_contents",
       "function": "ckunpaid",
       "js_module": "js/invent.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__ckunpaid.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "Has_contents",
-      "function": "ckunpaid",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__ckunpaid.json",
       "source": "nethack-c/src/invent.c"
     },
@@ -4229,14 +2677,6 @@
       "source": "nethack-c/src/invent.c"
     },
     {
-      "detail": "carried",
-      "function": "is_inuse",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__is_inuse.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
       "detail": "ansimpleoname",
       "function": "safeq_shortxprname",
       "js_module": "js/invent.js",
@@ -4249,14 +2689,6 @@
       "function": "safeq_shortxprname",
       "js_module": "js/invent.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__safeq_shortxprname.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "ansimpleoname",
-      "function": "safeq_shortxprname",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__safeq_shortxprname.json",
       "source": "nethack-c/src/invent.c"
     },
@@ -4301,50 +2733,10 @@
       "source": "nethack-c/src/invent.c"
     },
     {
-      "detail": "discover_artifact",
-      "function": "fully_identify_obj",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__fully_identify_obj.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "learn_egg_type",
-      "function": "fully_identify_obj",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__fully_identify_obj.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "makeknown",
-      "function": "fully_identify_obj",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__fully_identify_obj.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "observe_object",
-      "function": "fully_identify_obj",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__fully_identify_obj.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
       "detail": "Snprintf",
       "function": "prinv",
       "js_module": "js/invent.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__prinv.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "Snprintf",
-      "function": "prinv",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__prinv.json",
       "source": "nethack-c/src/invent.c"
     },
@@ -4358,25 +2750,9 @@
     },
     {
       "detail": "Has_contents",
-      "function": "find_unpaid",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__find_unpaid.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "Has_contents",
       "function": "count_unpaid",
       "js_module": "js/invent.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__count_unpaid.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "Has_contents",
-      "function": "count_unpaid",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__count_unpaid.json",
       "source": "nethack-c/src/invent.c"
     },
@@ -4421,30 +2797,6 @@
       "source": "nethack-c/src/invent.c"
     },
     {
-      "detail": "Has_contents",
-      "function": "count_contents",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__count_contents.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "costly_spot",
-      "function": "count_contents",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__count_contents.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "get_obj_location",
-      "function": "count_contents",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__count_contents.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
       "detail": "LOOKHERE_NOFLAGS",
       "function": "dolook",
       "js_module": "js/invent.js",
@@ -4465,14 +2817,6 @@
       "function": "dolook",
       "js_module": "js/invent.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__dolook.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "hide_unhide_msgtypes",
-      "function": "dolook",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__dolook.json",
       "source": "nethack-c/src/invent.c"
     },
@@ -4581,14 +2925,6 @@
       "source": "nethack-c/src/invent.c"
     },
     {
-      "detail": "dispinv_with_action",
-      "function": "doprarm",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__doprarm.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
       "detail": "ECMD_OK",
       "function": "dopramulet",
       "js_module": "js/invent.js",
@@ -4609,14 +2945,6 @@
       "function": "dopramulet",
       "js_module": "js/invent.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__dopramulet.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "dispinv_with_action",
-      "function": "dopramulet",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__dopramulet.json",
       "source": "nethack-c/src/invent.c"
     },
@@ -4709,54 +3037,6 @@
       "source": "nethack-c/src/invent.c"
     },
     {
-      "detail": "add_menu_heading",
-      "function": "invdisp_nothing",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__invdisp_nothing.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "add_menu_str",
-      "function": "invdisp_nothing",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__invdisp_nothing.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "end_menu",
-      "function": "invdisp_nothing",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__invdisp_nothing.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "free",
-      "function": "invdisp_nothing",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__invdisp_nothing.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "select_menu",
-      "function": "invdisp_nothing",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__invdisp_nothing.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "start_menu",
-      "function": "invdisp_nothing",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__invdisp_nothing.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
       "detail": "CORPSE",
       "function": "breakchestlock",
       "js_module": "js/lock.js",
@@ -4845,78 +3125,6 @@
       "source": "nethack-c/src/lock.c"
     },
     {
-      "detail": "costly_alteration",
-      "function": "breakchestlock",
-      "js_module": "js/lock.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/lock__breakchestlock.json",
-      "source": "nethack-c/src/lock.c"
-    },
-    {
-      "detail": "costly_spot",
-      "function": "breakchestlock",
-      "js_module": "js/lock.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/lock__breakchestlock.json",
-      "source": "nethack-c/src/lock.c"
-    },
-    {
-      "detail": "obfree",
-      "function": "breakchestlock",
-      "js_module": "js/lock.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/lock__breakchestlock.json",
-      "source": "nethack-c/src/lock.c"
-    },
-    {
-      "detail": "obj_extract_self",
-      "function": "breakchestlock",
-      "js_module": "js/lock.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/lock__breakchestlock.json",
-      "source": "nethack-c/src/lock.c"
-    },
-    {
-      "detail": "place_object",
-      "function": "breakchestlock",
-      "js_module": "js/lock.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/lock__breakchestlock.json",
-      "source": "nethack-c/src/lock.c"
-    },
-    {
-      "detail": "shop_keeper",
-      "function": "breakchestlock",
-      "js_module": "js/lock.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/lock__breakchestlock.json",
-      "source": "nethack-c/src/lock.c"
-    },
-    {
-      "detail": "start_corpse_timeout",
-      "function": "breakchestlock",
-      "js_module": "js/lock.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/lock__breakchestlock.json",
-      "source": "nethack-c/src/lock.c"
-    },
-    {
-      "detail": "stolen_value",
-      "function": "breakchestlock",
-      "js_module": "js/lock.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/lock__breakchestlock.json",
-      "source": "nethack-c/src/lock.c"
-    },
-    {
-      "detail": "the",
-      "function": "breakchestlock",
-      "js_module": "js/lock.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/lock__breakchestlock.json",
-      "source": "nethack-c/src/lock.c"
-    },
-    {
       "detail": "gx",
       "function": "reset_pick",
       "js_module": "js/lock.js",
@@ -4961,30 +3169,6 @@
       "function": "stumble_on_door_mimic",
       "js_module": "js/lock.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/lock__stumble_on_door_mimic.json",
-      "source": "nethack-c/src/lock.c"
-    },
-    {
-      "detail": "is_door_mappear",
-      "function": "stumble_on_door_mimic",
-      "js_module": "js/lock.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/lock__stumble_on_door_mimic.json",
-      "source": "nethack-c/src/lock.c"
-    },
-    {
-      "detail": "m_at",
-      "function": "stumble_on_door_mimic",
-      "js_module": "js/lock.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/lock__stumble_on_door_mimic.json",
-      "source": "nethack-c/src/lock.c"
-    },
-    {
-      "detail": "stumble_onto_mimic",
-      "function": "stumble_on_door_mimic",
-      "js_module": "js/lock.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/lock__stumble_on_door_mimic.json",
       "source": "nethack-c/src/lock.c"
     },
@@ -5085,78 +3269,6 @@
       "source": "nethack-c/src/mkobj.c"
     },
     {
-      "detail": "copy_oextra",
-      "function": "splitobj",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__splitobj.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "free_omid",
-      "function": "splitobj",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__splitobj.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "has_omid",
-      "function": "splitobj",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__splitobj.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "nextoid",
-      "function": "splitobj",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__splitobj.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "obj_sheds_light",
-      "function": "splitobj",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__splitobj.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "obj_split_light_source",
-      "function": "splitobj",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__splitobj.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "obj_split_timers",
-      "function": "splitobj",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__splitobj.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "panic",
-      "function": "splitobj",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__splitobj.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "splitbill",
-      "function": "splitobj",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__splitobj.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
       "detail": "FIG_TRANSFORM",
       "function": "bless",
       "js_module": "js/mkobj.js",
@@ -5222,62 +3334,6 @@
     },
     {
       "detail": "arti_light_radius",
-      "function": "bless",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__bless.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "carried",
-      "function": "bless",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__bless.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "confers_luck",
-      "function": "bless",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__bless.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "maybe_adjust_light",
-      "function": "bless",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__bless.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "obj_to_any",
-      "function": "bless",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__bless.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "set_moreluck",
-      "function": "bless",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__bless.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "stop_timer",
-      "function": "bless",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__bless.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "arti_light_radius",
       "function": "unbless",
       "js_module": "js/mkobj.js",
       "kind": "add_missing_identifier",
@@ -5313,46 +3369,6 @@
       "function": "unbless",
       "js_module": "js/mkobj.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__unbless.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "arti_light_radius",
-      "function": "unbless",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__unbless.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "carried",
-      "function": "unbless",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__unbless.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "confers_luck",
-      "function": "unbless",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__unbless.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "maybe_adjust_light",
-      "function": "unbless",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__unbless.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "set_moreluck",
-      "function": "unbless",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__unbless.json",
       "source": "nethack-c/src/mkobj.c"
     },
@@ -5477,102 +3493,6 @@
       "source": "nethack-c/src/mkobj.c"
     },
     {
-      "detail": "arti_light_radius",
-      "function": "curse",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__curse.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "attach_fig_transform_timeout",
-      "function": "curse",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__curse.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "bimanual",
-      "function": "curse",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__curse.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "book_cursed",
-      "function": "curse",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__curse.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "carried",
-      "function": "curse",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__curse.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "confers_luck",
-      "function": "curse",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__curse.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "dead_species",
-      "function": "curse",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__curse.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "drop_uswapwep",
-      "function": "curse",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__curse.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "maybe_adjust_light",
-      "function": "curse",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__curse.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "mcarried",
-      "function": "curse",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__curse.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "reset_remarm",
-      "function": "curse",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__curse.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "set_moreluck",
-      "function": "curse",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__curse.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
       "detail": "FIG_TRANSFORM",
       "function": "uncurse",
       "js_module": "js/mkobj.js",
@@ -5637,62 +3557,6 @@
       "source": "nethack-c/src/mkobj.c"
     },
     {
-      "detail": "arti_light_radius",
-      "function": "uncurse",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__uncurse.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "carried",
-      "function": "uncurse",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__uncurse.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "confers_luck",
-      "function": "uncurse",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__uncurse.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "maybe_adjust_light",
-      "function": "uncurse",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__uncurse.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "obj_to_any",
-      "function": "uncurse",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__uncurse.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "set_moreluck",
-      "function": "uncurse",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__uncurse.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "stop_timer",
-      "function": "uncurse",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__uncurse.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
       "detail": "OBJ_INVENT",
       "function": "set_bknown",
       "js_module": "js/mkobj.js",
@@ -5705,14 +3569,6 @@
       "function": "set_bknown",
       "js_module": "js/mkobj.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__set_bknown.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "update_inventory",
-      "function": "set_bknown",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__set_bknown.json",
       "source": "nethack-c/src/mkobj.c"
     },
@@ -5793,46 +3649,6 @@
       "function": "weight",
       "js_module": "js/mkobj.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__weight.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "eaten_stat",
-      "function": "weight",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__weight.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "impossible",
-      "function": "weight",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__weight.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "ismnum",
-      "function": "weight",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__weight.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "max",
-      "function": "weight",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__weight.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "simpleonames",
-      "function": "weight",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__weight.json",
       "source": "nethack-c/src/mkobj.c"
     },
@@ -5933,78 +3749,6 @@
       "source": "nethack-c/src/mkobj.c"
     },
     {
-      "detail": "event_log",
-      "function": "mkcorpstat",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__mkcorpstat.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "impossible",
-      "function": "mkcorpstat",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__mkcorpstat.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "is_rider",
-      "function": "mkcorpstat",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__mkcorpstat.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "mksobj_at",
-      "function": "mkcorpstat",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__mkcorpstat.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "monsndx",
-      "function": "mkcorpstat",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__mkcorpstat.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "obj_stop_timers",
-      "function": "mkcorpstat",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__mkcorpstat.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "rloco",
-      "function": "mkcorpstat",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__mkcorpstat.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "save_mtraits",
-      "function": "mkcorpstat",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__mkcorpstat.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "start_corpse_timeout",
-      "function": "mkcorpstat",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__mkcorpstat.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
       "detail": "FIRE_RES",
       "function": "is_flammable",
       "js_module": "js/mkobj.js",
@@ -6033,14 +3777,6 @@
       "function": "is_flammable",
       "js_module": "js/mkobj.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__is_flammable.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "Is_candle",
-      "function": "is_flammable",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/mkobj__is_flammable.json",
       "source": "nethack-c/src/mkobj.c"
     },
@@ -6085,14 +3821,6 @@
       "source": "nethack-c/src/shk.c"
     },
     {
-      "detail": "ESHK",
-      "function": "u_left_shop",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__u_left_shop.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
       "detail": "BEFORE",
       "function": "credit_report",
       "js_module": "js/shk.js",
@@ -6118,14 +3846,6 @@
     },
     {
       "detail": "ESHK",
-      "function": "credit_report",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__credit_report.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "ESHK",
       "function": "remote_burglary",
       "js_module": "js/shk.js",
       "kind": "add_missing_identifier",
@@ -6137,22 +3857,6 @@
       "function": "remote_burglary",
       "js_module": "js/shk.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__remote_burglary.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "ESHK",
-      "function": "remote_burglary",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__remote_burglary.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "in_rooms",
-      "function": "remote_burglary",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__remote_burglary.json",
       "source": "nethack-c/src/shk.c"
     },
@@ -6182,22 +3886,6 @@
     },
     {
       "detail": "ESHK",
-      "function": "shopper_financial_report",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__shopper_financial_report.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "inside_shop",
-      "function": "shopper_financial_report",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__shopper_financial_report.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "ESHK",
       "function": "inhishop",
       "js_module": "js/shk.js",
       "kind": "add_missing_identifier",
@@ -6225,38 +3913,6 @@
       "function": "inhishop",
       "js_module": "js/shk.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__inhishop.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "ESHK",
-      "function": "inhishop",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__inhishop.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "in_rooms",
-      "function": "inhishop",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__inhishop.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "on_level",
-      "function": "inhishop",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__inhishop.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "strchr",
-      "function": "inhishop",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__inhishop.json",
       "source": "nethack-c/src/shk.c"
     },
@@ -6285,26 +3941,10 @@
       "source": "nethack-c/src/shk.c"
     },
     {
-      "detail": "in_rooms",
-      "function": "find_objowner",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__find_objowner.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
       "detail": "wake_nearto",
       "function": "noisy_shop",
       "js_module": "js/shk.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__noisy_shop.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "wake_nearto",
-      "function": "noisy_shop",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__noisy_shop.json",
       "source": "nethack-c/src/shk.c"
     },
@@ -6325,22 +3965,6 @@
       "source": "nethack-c/src/shk.c"
     },
     {
-      "detail": "Has_contents",
-      "function": "is_unpaid",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__is_unpaid.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "count_unpaid",
-      "function": "is_unpaid",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__is_unpaid.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
       "detail": "obfree",
       "function": "delete_contents",
       "js_module": "js/shk.js",
@@ -6353,22 +3977,6 @@
       "function": "delete_contents",
       "js_module": "js/shk.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__delete_contents.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "obfree",
-      "function": "delete_contents",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__delete_contents.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "obj_extract_self",
-      "function": "delete_contents",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__delete_contents.json",
       "source": "nethack-c/src/shk.c"
     },
@@ -6389,14 +3997,6 @@
       "source": "nethack-c/src/shk.c"
     },
     {
-      "detail": "ANGRY",
-      "function": "angry_shk_exists",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__angry_shk_exists.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
       "detail": "ESHK",
       "function": "rile_shk",
       "js_module": "js/shk.js",
@@ -6409,22 +4009,6 @@
       "function": "rile_shk",
       "js_module": "js/shk.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__rile_shk.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "ESHK",
-      "function": "rile_shk",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__rile_shk.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "NOTANGRY",
-      "function": "rile_shk",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__rile_shk.json",
       "source": "nethack-c/src/shk.c"
     },
@@ -6541,114 +4125,10 @@
       "source": "nethack-c/src/shk.c"
     },
     {
-      "detail": "ANGRY",
-      "function": "make_happy_shk",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__make_happy_shk.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "ESHK",
-      "function": "make_happy_shk",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__make_happy_shk.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "Role_if",
-      "function": "make_happy_shk",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__make_happy_shk.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "Strcpy",
-      "function": "make_happy_shk",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__make_happy_shk.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "adjalign",
-      "function": "make_happy_shk",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__make_happy_shk.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "ledger_no",
-      "function": "make_happy_shk",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__make_happy_shk.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "mdrop_special_objs",
-      "function": "make_happy_shk",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__make_happy_shk.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "migrate_to_level",
-      "function": "make_happy_shk",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__make_happy_shk.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "noit_mhis",
-      "function": "make_happy_shk",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__make_happy_shk.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "on_level",
-      "function": "make_happy_shk",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__make_happy_shk.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "sensemon",
-      "function": "make_happy_shk",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__make_happy_shk.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "sgn",
-      "function": "make_happy_shk",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__make_happy_shk.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
       "detail": "pacify_guards",
       "function": "make_happy_shoppers",
       "js_module": "js/shk.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__make_happy_shoppers.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "pacify_guards",
-      "function": "make_happy_shoppers",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__make_happy_shoppers.json",
       "source": "nethack-c/src/shk.c"
     },
@@ -6697,30 +4177,6 @@
       "function": "hot_pursuit",
       "js_module": "js/shk.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__hot_pursuit.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "ESHK",
-      "function": "hot_pursuit",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__hot_pursuit.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "clear_no_charge_pets",
-      "function": "hot_pursuit",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__hot_pursuit.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "strncpy",
-      "function": "hot_pursuit",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__hot_pursuit.json",
       "source": "nethack-c/src/shk.c"
     },
@@ -6789,54 +4245,6 @@
       "source": "nethack-c/src/shk.c"
     },
     {
-      "detail": "ANGRY",
-      "function": "paybill",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__paybill.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "ESHK",
-      "function": "paybill",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__paybill.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "inherits",
-      "function": "paybill",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__paybill.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "mongone",
-      "function": "paybill",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__paybill.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "on_level",
-      "function": "paybill",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__paybill.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "strchr",
-      "function": "paybill",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__paybill.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
       "detail": "ESHK",
       "function": "contained_cost",
       "js_module": "js/shk.js",
@@ -6893,30 +4301,6 @@
       "source": "nethack-c/src/shk.c"
     },
     {
-      "detail": "ESHK",
-      "function": "contained_cost",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__contained_cost.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "Has_contents",
-      "function": "contained_cost",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__contained_cost.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "get_obj_location",
-      "function": "contained_cost",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__contained_cost.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
       "detail": "Has_contents",
       "function": "contained_gold",
       "js_module": "js/shk.js",
@@ -6926,25 +4310,9 @@
     },
     {
       "detail": "Has_contents",
-      "function": "contained_gold",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__contained_gold.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "Has_contents",
       "function": "picked_container",
       "js_module": "js/shk.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__picked_container.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "Has_contents",
-      "function": "picked_container",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__picked_container.json",
       "source": "nethack-c/src/shk.c"
     },
@@ -7045,94 +4413,6 @@
       "source": "nethack-c/src/shk.c"
     },
     {
-      "detail": "ANGRY",
-      "function": "addtobill",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__addtobill.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "ESHK",
-      "function": "addtobill",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__addtobill.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "Has_contents",
-      "function": "addtobill",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__addtobill.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "Strcat",
-      "function": "addtobill",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__addtobill.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "Strcpy",
-      "function": "addtobill",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__addtobill.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "The",
-      "function": "addtobill",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__addtobill.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "append_honorific",
-      "function": "addtobill",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__addtobill.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "bill_box_content",
-      "function": "addtobill",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__addtobill.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "count_unpaid",
-      "function": "addtobill",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__addtobill.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "set_voice",
-      "function": "addtobill",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__addtobill.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "the",
-      "function": "addtobill",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__addtobill.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
       "detail": "ESHK",
       "function": "splitbill",
       "js_module": "js/shk.js",
@@ -7141,26 +4421,10 @@
       "source": "nethack-c/src/shk.c"
     },
     {
-      "detail": "ESHK",
-      "function": "splitbill",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__splitbill.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
       "detail": "Has_contents",
       "function": "subfrombill",
       "js_module": "js/shk.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__subfrombill.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "Has_contents",
-      "function": "subfrombill",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__subfrombill.json",
       "source": "nethack-c/src/shk.c"
     },
@@ -7277,98 +4541,10 @@
       "source": "nethack-c/src/shk.c"
     },
     {
-      "detail": "ANGRY",
-      "function": "stolen_value",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__stolen_value.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "ESHK",
-      "function": "stolen_value",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__stolen_value.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "Has_contents",
-      "function": "stolen_value",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__stolen_value.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "Sprintf",
-      "function": "stolen_value",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__stolen_value.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "angry_guards",
-      "function": "stolen_value",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__stolen_value.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "assert",
-      "function": "stolen_value",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__stolen_value.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "count_contents",
-      "function": "stolen_value",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__stolen_value.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "eos",
-      "function": "stolen_value",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__stolen_value.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "in_rooms",
-      "function": "stolen_value",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__stolen_value.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "stolen_container",
-      "function": "stolen_value",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__stolen_value.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
       "detail": "ESHK",
       "function": "donate_gold",
       "js_module": "js/shk.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__donate_gold.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "ESHK",
-      "function": "donate_gold",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__donate_gold.json",
       "source": "nethack-c/src/shk.c"
     },
@@ -7470,86 +4646,6 @@
     },
     {
       "detail": "ESHK",
-      "function": "shkcatch",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__shkcatch.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "cansee",
-      "function": "shkcatch",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__shkcatch.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "dist2",
-      "function": "shkcatch",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__shkcatch.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "inside_shop",
-      "function": "shkcatch",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__shkcatch.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "map_invisible",
-      "function": "shkcatch",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__shkcatch.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "mark_synch",
-      "function": "shkcatch",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__shkcatch.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "mnearto",
-      "function": "shkcatch",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__shkcatch.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "mpickobj",
-      "function": "shkcatch",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__shkcatch.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "nh_delay_output",
-      "function": "shkcatch",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__shkcatch.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "the",
-      "function": "shkcatch",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__shkcatch.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "ESHK",
       "function": "shk_impaired",
       "js_module": "js/shk.js",
       "kind": "add_missing_identifier",
@@ -7558,25 +4654,9 @@
     },
     {
       "detail": "ESHK",
-      "function": "shk_impaired",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__shk_impaired.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "ESHK",
       "function": "is_fshk",
       "js_module": "js/shk.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__is_fshk.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "ESHK",
-      "function": "is_fshk",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__is_fshk.json",
       "source": "nethack-c/src/shk.c"
     },
@@ -7669,70 +4749,6 @@
       "source": "nethack-c/src/shk.c"
     },
     {
-      "detail": "Has_contents",
-      "function": "price_quote",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__price_quote.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "Sprintf",
-      "function": "price_quote",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__price_quote.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "Strcpy",
-      "function": "price_quote",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__price_quote.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "create_nhwindow",
-      "function": "price_quote",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__price_quote.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "destroy_nhwindow",
-      "function": "price_quote",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__price_quote.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "display_nhwindow",
-      "function": "price_quote",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__price_quote.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "inside_shop",
-      "function": "price_quote",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__price_quote.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "putstr",
-      "function": "price_quote",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__price_quote.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
       "detail": "ESHK",
       "function": "costly_gold",
       "js_module": "js/shk.js",
@@ -7745,22 +4761,6 @@
       "function": "costly_gold",
       "js_module": "js/shk.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__costly_gold.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "ESHK",
-      "function": "costly_gold",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__costly_gold.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "in_rooms",
-      "function": "costly_gold",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__costly_gold.json",
       "source": "nethack-c/src/shk.c"
     },
@@ -7801,38 +4801,6 @@
       "function": "block_door",
       "js_module": "js/shk.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__block_door.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "ESHK",
-      "function": "block_door",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__block_door.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "IS_DOOR",
-      "function": "block_door",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__block_door.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "IS_SHOP",
-      "function": "block_door",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__block_door.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "in_rooms",
-      "function": "block_door",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__block_door.json",
       "source": "nethack-c/src/shk.c"
     },
@@ -7901,46 +4869,6 @@
       "source": "nethack-c/src/shk.c"
     },
     {
-      "detail": "ANGRY",
-      "function": "globby_bill_fixup",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__globby_bill_fixup.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "ESHK",
-      "function": "globby_bill_fixup",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__globby_bill_fixup.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "bill_dummy_object",
-      "function": "globby_bill_fixup",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__globby_bill_fixup.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "in_rooms",
-      "function": "globby_bill_fixup",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__globby_bill_fixup.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "obj_typename",
-      "function": "globby_bill_fixup",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__globby_bill_fixup.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
       "detail": "Monnam",
       "function": "beg",
       "js_module": "js/sounds.js",
@@ -7985,54 +4913,6 @@
       "function": "beg",
       "js_module": "js/sounds.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/sounds__beg.json",
-      "source": "nethack-c/src/sounds.c"
-    },
-    {
-      "detail": "Monnam",
-      "function": "beg",
-      "js_module": "js/sounds.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/sounds__beg.json",
-      "source": "nethack-c/src/sounds.c"
-    },
-    {
-      "detail": "canspotmon",
-      "function": "beg",
-      "js_module": "js/sounds.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/sounds__beg.json",
-      "source": "nethack-c/src/sounds.c"
-    },
-    {
-      "detail": "helpless",
-      "function": "beg",
-      "js_module": "js/sounds.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/sounds__beg.json",
-      "source": "nethack-c/src/sounds.c"
-    },
-    {
-      "detail": "map_invisible",
-      "function": "beg",
-      "js_module": "js/sounds.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/sounds__beg.json",
-      "source": "nethack-c/src/sounds.c"
-    },
-    {
-      "detail": "pline",
-      "function": "beg",
-      "js_module": "js/sounds.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/sounds__beg.json",
-      "source": "nethack-c/src/sounds.c"
-    },
-    {
-      "detail": "verbalize",
-      "function": "beg",
-      "js_module": "js/sounds.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/sounds__beg.json",
       "source": "nethack-c/src/sounds.c"
     },
@@ -8085,46 +4965,6 @@
       "source": "nethack-c/src/sounds.c"
     },
     {
-      "detail": "haseyes",
-      "function": "responsive_mon_at",
-      "js_module": "js/sounds.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/sounds__responsive_mon_at.json",
-      "source": "nethack-c/src/sounds.c"
-    },
-    {
-      "detail": "helpless",
-      "function": "responsive_mon_at",
-      "js_module": "js/sounds.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/sounds__responsive_mon_at.json",
-      "source": "nethack-c/src/sounds.c"
-    },
-    {
-      "detail": "isok",
-      "function": "responsive_mon_at",
-      "js_module": "js/sounds.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/sounds__responsive_mon_at.json",
-      "source": "nethack-c/src/sounds.c"
-    },
-    {
-      "detail": "m_at",
-      "function": "responsive_mon_at",
-      "js_module": "js/sounds.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/sounds__responsive_mon_at.json",
-      "source": "nethack-c/src/sounds.c"
-    },
-    {
-      "detail": "perceives",
-      "function": "responsive_mon_at",
-      "js_module": "js/sounds.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/sounds__responsive_mon_at.json",
-      "source": "nethack-c/src/sounds.c"
-    },
-    {
       "detail": "WIN_MESSAGE",
       "function": "confused_book",
       "js_module": "js/spell.js",
@@ -8153,30 +4993,6 @@
       "function": "confused_book",
       "js_module": "js/spell.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/spell__confused_book.json",
-      "source": "nethack-c/src/spell.c"
-    },
-    {
-      "detail": "display_nhwindow",
-      "function": "confused_book",
-      "js_module": "js/spell.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/spell__confused_book.json",
-      "source": "nethack-c/src/spell.c"
-    },
-    {
-      "detail": "trycall",
-      "function": "confused_book",
-      "js_module": "js/spell.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/spell__confused_book.json",
-      "source": "nethack-c/src/spell.c"
-    },
-    {
-      "detail": "useup",
-      "function": "confused_book",
-      "js_module": "js/spell.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/spell__confused_book.json",
       "source": "nethack-c/src/spell.c"
     },
@@ -8285,78 +5101,6 @@
       "source": "nethack-c/src/spell.c"
     },
     {
-      "detail": "Snprintf",
-      "function": "getspell",
-      "js_module": "js/spell.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/spell__getspell.json",
-      "source": "nethack-c/src/spell.c"
-    },
-    {
-      "detail": "Sprintf",
-      "function": "getspell",
-      "js_module": "js/spell.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/spell__getspell.json",
-      "source": "nethack-c/src/spell.c"
-    },
-    {
-      "detail": "Strcpy",
-      "function": "getspell",
-      "js_module": "js/spell.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/spell__getspell.json",
-      "source": "nethack-c/src/spell.c"
-    },
-    {
-      "detail": "cmdq_pop",
-      "function": "getspell",
-      "js_module": "js/spell.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/spell__getspell.json",
-      "source": "nethack-c/src/spell.c"
-    },
-    {
-      "detail": "dospellmenu",
-      "function": "getspell",
-      "js_module": "js/spell.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/spell__getspell.json",
-      "source": "nethack-c/src/spell.c"
-    },
-    {
-      "detail": "free",
-      "function": "getspell",
-      "js_module": "js/spell.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/spell__getspell.json",
-      "source": "nethack-c/src/spell.c"
-    },
-    {
-      "detail": "pline1",
-      "function": "getspell",
-      "js_module": "js/spell.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/spell__getspell.json",
-      "source": "nethack-c/src/spell.c"
-    },
-    {
-      "detail": "strchr",
-      "function": "getspell",
-      "js_module": "js/spell.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/spell__getspell.json",
-      "source": "nethack-c/src/spell.c"
-    },
-    {
-      "detail": "yn_function",
-      "function": "getspell",
-      "js_module": "js/spell.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/spell__getspell.json",
-      "source": "nethack-c/src/spell.c"
-    },
-    {
       "detail": "CQ_REPEAT",
       "function": "docast",
       "js_module": "js/spell.js",
@@ -8385,14 +5129,6 @@
       "function": "docast",
       "js_module": "js/spell.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/spell__docast.json",
-      "source": "nethack-c/src/spell.c"
-    },
-    {
-      "detail": "cmdq_add_key",
-      "function": "docast",
-      "js_module": "js/spell.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/spell__docast.json",
       "source": "nethack-c/src/spell.c"
     },
@@ -8533,86 +5269,6 @@
       "source": "nethack-c/src/spell.c"
     },
     {
-      "detail": "IS_TREE",
-      "function": "cast_protection",
-      "js_module": "js/spell.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/spell__cast_protection.json",
-      "source": "nethack-c/src/spell.c"
-    },
-    {
-      "detail": "P_SKILL",
-      "function": "cast_protection",
-      "js_module": "js/spell.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/spell__cast_protection.json",
-      "source": "nethack-c/src/spell.c"
-    },
-    {
-      "detail": "an",
-      "function": "cast_protection",
-      "js_module": "js/spell.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/spell__cast_protection.json",
-      "source": "nethack-c/src/spell.c"
-    },
-    {
-      "detail": "enfolds",
-      "function": "cast_protection",
-      "js_module": "js/spell.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/spell__cast_protection.json",
-      "source": "nethack-c/src/spell.c"
-    },
-    {
-      "detail": "find_ac",
-      "function": "cast_protection",
-      "js_module": "js/spell.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/spell__cast_protection.json",
-      "source": "nethack-c/src/spell.c"
-    },
-    {
-      "detail": "hcolor",
-      "function": "cast_protection",
-      "js_module": "js/spell.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/spell__cast_protection.json",
-      "source": "nethack-c/src/spell.c"
-    },
-    {
-      "detail": "hliquid",
-      "function": "cast_protection",
-      "js_module": "js/spell.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/spell__cast_protection.json",
-      "source": "nethack-c/src/spell.c"
-    },
-    {
-      "detail": "is_animal",
-      "function": "cast_protection",
-      "js_module": "js/spell.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/spell__cast_protection.json",
-      "source": "nethack-c/src/spell.c"
-    },
-    {
-      "detail": "is_whirly",
-      "function": "cast_protection",
-      "js_module": "js/spell.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/spell__cast_protection.json",
-      "source": "nethack-c/src/spell.c"
-    },
-    {
-      "detail": "min",
-      "function": "cast_protection",
-      "js_module": "js/spell.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/spell__cast_protection.json",
-      "source": "nethack-c/src/spell.c"
-    },
-    {
       "detail": "HConfusion",
       "function": "spell_backfire",
       "js_module": "js/spell.js",
@@ -8649,22 +5305,6 @@
       "function": "spell_backfire",
       "js_module": "js/spell.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/spell__spell_backfire.json",
-      "source": "nethack-c/src/spell.c"
-    },
-    {
-      "detail": "make_confused",
-      "function": "spell_backfire",
-      "js_module": "js/spell.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/spell__spell_backfire.json",
-      "source": "nethack-c/src/spell.c"
-    },
-    {
-      "detail": "make_stunned",
-      "function": "spell_backfire",
-      "js_module": "js/spell.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/spell__spell_backfire.json",
       "source": "nethack-c/src/spell.c"
     },
@@ -8741,62 +5381,6 @@
       "source": "nethack-c/src/spell.c"
     },
     {
-      "detail": "Is_waterlevel",
-      "function": "throwspell",
-      "js_module": "js/spell.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/spell__throwspell.json",
-      "source": "nethack-c/src/spell.c"
-    },
-    {
-      "detail": "cansee",
-      "function": "throwspell",
-      "js_module": "js/spell.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/spell__throwspell.json",
-      "source": "nethack-c/src/spell.c"
-    },
-    {
-      "detail": "canspotmon",
-      "function": "throwspell",
-      "js_module": "js/spell.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/spell__throwspell.json",
-      "source": "nethack-c/src/spell.c"
-    },
-    {
-      "detail": "clear_nhwindow",
-      "function": "throwspell",
-      "js_module": "js/spell.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/spell__throwspell.json",
-      "source": "nethack-c/src/spell.c"
-    },
-    {
-      "detail": "getpos",
-      "function": "throwspell",
-      "js_module": "js/spell.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/spell__throwspell.json",
-      "source": "nethack-c/src/spell.c"
-    },
-    {
-      "detail": "m_at",
-      "function": "throwspell",
-      "js_module": "js/spell.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/spell__throwspell.json",
-      "source": "nethack-c/src/spell.c"
-    },
-    {
-      "detail": "walk_path",
-      "function": "throwspell",
-      "js_module": "js/spell.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/spell__throwspell.json",
-      "source": "nethack-c/src/spell.c"
-    },
-    {
       "detail": "OBJ_NAME",
       "function": "initialspell",
       "js_module": "js/spell.js",
@@ -8825,22 +5409,6 @@
       "function": "initialspell",
       "js_module": "js/spell.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/spell__initialspell.json",
-      "source": "nethack-c/src/spell.c"
-    },
-    {
-      "detail": "OBJ_NAME",
-      "function": "initialspell",
-      "js_module": "js/spell.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/spell__initialspell.json",
-      "source": "nethack-c/src/spell.c"
-    },
-    {
-      "detail": "impossible",
-      "function": "initialspell",
-      "js_module": "js/spell.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/spell__initialspell.json",
       "source": "nethack-c/src/spell.c"
     },
@@ -8889,14 +5457,6 @@
       "function": "force_learn_spell",
       "js_module": "js/spell.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/spell__force_learn_spell.json",
-      "source": "nethack-c/src/spell.c"
-    },
-    {
-      "detail": "impossible",
-      "function": "force_learn_spell",
-      "js_module": "js/spell.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/spell__force_learn_spell.json",
       "source": "nethack-c/src/spell.c"
     },
@@ -9094,158 +5654,6 @@
     },
     {
       "detail": "Monnam",
-      "function": "maybe_absorb_item",
-      "js_module": "js/steal.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/steal__maybe_absorb_item.json",
-      "source": "nethack-c/src/steal.c"
-    },
-    {
-      "detail": "Some_Monnam",
-      "function": "maybe_absorb_item",
-      "js_module": "js/steal.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/steal__maybe_absorb_item.json",
-      "source": "nethack-c/src/steal.c"
-    },
-    {
-      "detail": "bimanual",
-      "function": "maybe_absorb_item",
-      "js_module": "js/steal.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/steal__maybe_absorb_item.json",
-      "source": "nethack-c/src/steal.c"
-    },
-    {
-      "detail": "body_part",
-      "function": "maybe_absorb_item",
-      "js_module": "js/steal.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/steal__maybe_absorb_item.json",
-      "source": "nethack-c/src/steal.c"
-    },
-    {
-      "detail": "cansee",
-      "function": "maybe_absorb_item",
-      "js_module": "js/steal.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/steal__maybe_absorb_item.json",
-      "source": "nethack-c/src/steal.c"
-    },
-    {
-      "detail": "canspotmon",
-      "function": "maybe_absorb_item",
-      "js_module": "js/steal.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/steal__maybe_absorb_item.json",
-      "source": "nethack-c/src/steal.c"
-    },
-    {
-      "detail": "carried",
-      "function": "maybe_absorb_item",
-      "js_module": "js/steal.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/steal__maybe_absorb_item.json",
-      "source": "nethack-c/src/steal.c"
-    },
-    {
-      "detail": "encumber_msg",
-      "function": "maybe_absorb_item",
-      "js_module": "js/steal.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/steal__maybe_absorb_item.json",
-      "source": "nethack-c/src/steal.c"
-    },
-    {
-      "detail": "freeinv",
-      "function": "maybe_absorb_item",
-      "js_module": "js/steal.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/steal__maybe_absorb_item.json",
-      "source": "nethack-c/src/steal.c"
-    },
-    {
-      "detail": "makeplural",
-      "function": "maybe_absorb_item",
-      "js_module": "js/steal.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/steal__maybe_absorb_item.json",
-      "source": "nethack-c/src/steal.c"
-    },
-    {
-      "detail": "mpickobj",
-      "function": "maybe_absorb_item",
-      "js_module": "js/steal.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/steal__maybe_absorb_item.json",
-      "source": "nethack-c/src/steal.c"
-    },
-    {
-      "detail": "obj_resists",
-      "function": "maybe_absorb_item",
-      "js_module": "js/steal.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/steal__maybe_absorb_item.json",
-      "source": "nethack-c/src/steal.c"
-    },
-    {
-      "detail": "otense",
-      "function": "maybe_absorb_item",
-      "js_module": "js/steal.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/steal__maybe_absorb_item.json",
-      "source": "nethack-c/src/steal.c"
-    },
-    {
-      "detail": "pline",
-      "function": "maybe_absorb_item",
-      "js_module": "js/steal.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/steal__maybe_absorb_item.json",
-      "source": "nethack-c/src/steal.c"
-    },
-    {
-      "detail": "shop_keeper",
-      "function": "maybe_absorb_item",
-      "js_module": "js/steal.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/steal__maybe_absorb_item.json",
-      "source": "nethack-c/src/steal.c"
-    },
-    {
-      "detail": "subfrombill",
-      "function": "maybe_absorb_item",
-      "js_module": "js/steal.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/steal__maybe_absorb_item.json",
-      "source": "nethack-c/src/steal.c"
-    },
-    {
-      "detail": "touch_artifact",
-      "function": "maybe_absorb_item",
-      "js_module": "js/steal.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/steal__maybe_absorb_item.json",
-      "source": "nethack-c/src/steal.c"
-    },
-    {
-      "detail": "upstart",
-      "function": "maybe_absorb_item",
-      "js_module": "js/steal.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/steal__maybe_absorb_item.json",
-      "source": "nethack-c/src/steal.c"
-    },
-    {
-      "detail": "yname",
-      "function": "maybe_absorb_item",
-      "js_module": "js/steal.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/steal__maybe_absorb_item.json",
-      "source": "nethack-c/src/steal.c"
-    },
-    {
-      "detail": "Monnam",
       "function": "relobj",
       "js_module": "js/steal.js",
       "kind": "add_missing_identifier",
@@ -9313,78 +5721,6 @@
       "function": "relobj",
       "js_module": "js/steal.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/steal__relobj.json",
-      "source": "nethack-c/src/steal.c"
-    },
-    {
-      "detail": "Monnam",
-      "function": "relobj",
-      "js_module": "js/steal.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/steal__relobj.json",
-      "source": "nethack-c/src/steal.c"
-    },
-    {
-      "detail": "cansee",
-      "function": "relobj",
-      "js_module": "js/steal.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/steal__relobj.json",
-      "source": "nethack-c/src/steal.c"
-    },
-    {
-      "detail": "canseemon",
-      "function": "relobj",
-      "js_module": "js/steal.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/steal__relobj.json",
-      "source": "nethack-c/src/steal.c"
-    },
-    {
-      "detail": "canspotmon",
-      "function": "relobj",
-      "js_module": "js/steal.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/steal__relobj.json",
-      "source": "nethack-c/src/steal.c"
-    },
-    {
-      "detail": "droppables",
-      "function": "relobj",
-      "js_module": "js/steal.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/steal__relobj.json",
-      "source": "nethack-c/src/steal.c"
-    },
-    {
-      "detail": "obfree",
-      "function": "relobj",
-      "js_module": "js/steal.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/steal__relobj.json",
-      "source": "nethack-c/src/steal.c"
-    },
-    {
-      "detail": "obj_extract_self",
-      "function": "relobj",
-      "js_module": "js/steal.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/steal__relobj.json",
-      "source": "nethack-c/src/steal.c"
-    },
-    {
-      "detail": "pline",
-      "function": "relobj",
-      "js_module": "js/steal.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/steal__relobj.json",
-      "source": "nethack-c/src/steal.c"
-    },
-    {
-      "detail": "s_suffix",
-      "function": "relobj",
-      "js_module": "js/steal.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/steal__relobj.json",
       "source": "nethack-c/src/steal.c"
     },
@@ -9449,26 +5785,25 @@
   ],
   "totals": {
     "by_kind": {
-      "add_missing_call_binding": 458,
       "add_missing_identifier": 715,
       "signature_refactor": 4
     },
     "by_module": {
-      "js/apply.js": 111,
-      "js/attrib.js": 23,
-      "js/bones.js": 12,
-      "js/detect.js": 42,
-      "js/do.js": 142,
-      "js/engrave.js": 38,
-      "js/fountain.js": 38,
-      "js/invent.js": 189,
-      "js/lock.js": 29,
-      "js/mkobj.js": 134,
-      "js/shk.js": 236,
-      "js/sounds.js": 23,
-      "js/spell.js": 99,
-      "js/steal.js": 61
+      "js/apply.js": 71,
+      "js/attrib.js": 15,
+      "js/bones.js": 8,
+      "js/detect.js": 27,
+      "js/do.js": 89,
+      "js/engrave.js": 25,
+      "js/fountain.js": 22,
+      "js/invent.js": 123,
+      "js/lock.js": 17,
+      "js/mkobj.js": 78,
+      "js/shk.js": 135,
+      "js/sounds.js": 12,
+      "js/spell.js": 64,
+      "js/steal.js": 33
     },
-    "tasks": 1177
+    "tasks": 719
   }
 }

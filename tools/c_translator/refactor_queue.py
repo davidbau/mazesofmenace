@@ -36,7 +36,8 @@ def main():
         function = rec.get("function")
         source = rec.get("source")
         out_file = rec.get("out_file")
-        for ident in rec.get("unknown_identifiers", []):
+        unknown_identifiers = set(rec.get("unknown_identifiers", []))
+        for ident in sorted(unknown_identifiers):
             add_task(tasks, dedupe, {
                 "kind": "add_missing_identifier",
                 "js_module": js_module,
@@ -45,7 +46,11 @@ def main():
                 "out_file": out_file,
                 "detail": ident,
             })
-        for call in rec.get("unknown_calls", []):
+        for call in sorted(set(rec.get("unknown_calls", []))):
+            # If a symbol is already unresolved as an identifier for this function,
+            # the call-binding task is redundant noise in the queue.
+            if call in unknown_identifiers:
+                continue
             add_task(tasks, dedupe, {
                 "kind": "add_missing_call_binding",
                 "js_module": js_module,
