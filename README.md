@@ -34,9 +34,9 @@ The project exists at the intersection of two unlikely forces: the pending relea
 
 In February 2025, Andrej Karpathy coined the term **"vibe coding"** to describe a new way of working: describe what you want to an AI, accept its code without reading the diffs, paste error messages back when things break, and see what happens. By early 2026 the approach had matured into what Karpathy calls **"agentic engineering"**—the same core idea, but with more structure, more oversight, and the recognition that orchestrating AI agents to produce real software is itself *"an art and science and expertise."*
 
-This project is a test of that proposition at scale. Can AI agents, directed by a non-expert human, produce a faithful port of one of the most complex single-player codebases in gaming history? Not a toy demo or a weekend throwaway, but a real, playable, parity-correct reimplementation—over eighty thousand lines of readable JavaScript that match NetHack's behavior down to the random number generator?
+This project is a test of that proposition at scale. Can AI agents, directed by a non-expert human, produce a faithful port of one of the most complex single-player codebases in gaming history? Not a toy demo or a weekend throwaway, but a real, playable, parity-correct reimplementation—over one hundred forty thousand lines of readable JavaScript that match NetHack's behavior down to the random number generator?
 
-The entire codebase—136 JavaScript modules, 2,200+ passing unit tests, 204 golden C-comparison sessions, and a suite of Python test harness scripts—was produced through natural-language conversation with AI agents. The human provided direction and taste; the agents wrote the code, tests, and documentation.
+The entire codebase—141 JavaScript modules, 3,100+ passing tests, 204 golden C-comparison sessions, and a suite of Python test harness scripts—was produced through natural-language conversation with AI agents. The human provided direction and taste; the agents wrote the code, tests, and documentation.
 
 ## Architecture
 
@@ -88,6 +88,13 @@ throughout. See the full architecture and design documents:
 - Status bar with HP, AC, experience, hunger, conditions
 - High scores, tombstone display, and end-of-game sequence
 - Bones file system and game reset
+- Spell casting with C-faithful failure rates, retention decay, and effects
+- Scroll effects (identify, enchant weapon/armor, remove curse, magic mapping, taming, genocide, and more)
+- Potion effects (healing, speed, confusion, blindness, levitation, and more) and object dipping
+- Wand zapping with beam and contact effects for all wand types
+- Apply command (tools, lamps, mirrors, whistles, leashes, tinning kits, and more)
+- Polymorph into monster forms with full stat and intrinsic changes
+- Prayer and sacrifice with god relationship and alignment tracking
 
 ## What's Not Yet Implemented
 
@@ -95,14 +102,9 @@ throughout. See the full architecture and design documents:
 
 - **Shops** — the shopkeeper knows your name and the price of everything, but the billing system is not yet enforced (enjoy it while it lasts)
 - **Special level event logic** — all 132 levels generate correctly as maps, but their unique triggers, quest mechanics, and scripted monster placements are mostly missing
-- **Prayer and sacrifice** — your god hears you; nothing happens yet
-- **Spell effects** — you can study spellbooks and cast spells; the effects have yet to materialize
-- **Scroll effects** — you can read the scroll; the magic is pending
-- **Polymorph** — you feel like you should feel like a newt
-- **Trap variety** — pits, holes, and teleport traps work; arrow traps, dart traps, rolling boulders, and landmines are present in maps but inert
-- **Apply command** — tools, leashes, polearms, and other applied objects do nothing yet
-- **Artifact powers** — artifacts generate and can be wielded; their special powers are stubs
-- **And much more** — NetHack 3.7 has ~420,000 lines of C, headers, and Lua across ~8,600 functions; so far, this port covers the core loop and early gameplay with 83,000+ lines of JavaScript (with the goal of replicating the whole game faithfully)
+- **Player trap effects** — monster traps are fully ported; the player `dotrap()` path is not yet implemented, so arrow traps, dart traps, rolling boulders, landmines, and others are present in maps but do not trigger for the player
+- **Artifact invocation powers** — artifacts generate, wield, and provide passive properties correctly; most invocation effects (`#invoke`) are stubs
+- **And much more** — NetHack 3.7 has ~420,000 lines of C, headers, and Lua across ~8,600 functions; so far, this port covers the core engine and a large portion of gameplay mechanics with 140,000+ lines of JavaScript (with the goal of replicating the whole game faithfully)
 
 The Hive is aware of this.
 
@@ -168,7 +170,7 @@ python3 scripts/generators/gen_objects.py > js/objects.js      # 478 objects
 
 ```
 ├── index.html              Main web entry point
-├── js/                     Game source (136 modules mirroring C structure)
+├── js/                     Game source (141 modules mirroring C structure)
 │   ├── commands.js         Command dispatch
 │   ├── dungeon.js          Dungeon generation & management
 │   ├── display.js          Terminal rendering
@@ -182,7 +184,7 @@ python3 scripts/generators/gen_objects.py > js/objects.js      # 478 objects
 │   ├── levels/             132 special level modules
 │   └── ...
 ├── test/
-│   ├── unit/               154 unit test files
+│   ├── unit/               159 unit test files
 │   ├── comparison/         C-vs-JS golden session tests
 │   ├── e2e/                Puppeteer browser tests
 │   └── selfplay/           Self-play harness tests
