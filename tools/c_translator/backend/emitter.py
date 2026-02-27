@@ -20,6 +20,7 @@ DECL_FALLBACK_RE = re.compile(
     r"[A-Za-z_]\w*)\s+)+(.+);$"
 )
 PANIC_RE = re.compile(r'^panic\("([^"]+)"\)$')
+C_BLOCK_COMMENT_RE = re.compile(r"/\*.*?\*/")
 
 
 def _extract_param_names(signature_line):
@@ -553,6 +554,7 @@ def _let_payload(line):
 
 
 def _lower_decl_stmt(text, rewrite_rules):
+    text = C_BLOCK_COMMENT_RE.sub(" ", text)
     m = DECL_RE.match(text)
     if not m:
         m = DECL_FALLBACK_RE.match(text)
@@ -562,24 +564,27 @@ def _lower_decl_stmt(text, rewrite_rules):
     lowered = []
     req = set()
     for raw in _split_top_level_commas(decl):
-        token = raw.strip().replace("*", " ").strip()
+        token = raw.strip()
         if not token:
             return None, set()
         if "=" in token:
             lhs, rhs = token.split("=", 1)
             lhs = lhs.strip()
+            lhs_name = _extract_decl_name(lhs)
+            if lhs_name is None:
+                return None, set()
             rhs, rhs_req = _lower_expr(rhs.strip(), rewrite_rules)
             if rhs is None:
                 return None, set()
             req.update(rhs_req)
-            arr_lhs = re.match(r"^([A-Za-z_]\w*)\s*\[[^\]]*\]$", lhs)
-            if arr_lhs:
-                lhs = arr_lhs.group(1)
             if rhs.startswith("{") and rhs.endswith("}"):
-                rhs = f"[{rhs[1:-1]}]"
-            lowered.append(f"{lhs} = {rhs}")
+                rhs = rhs.replace("{", "[").replace("}", "]")
+            lowered.append(f"{lhs_name} = {rhs}")
         else:
-            lowered.append(token)
+            lhs_name = _extract_decl_name(token)
+            if lhs_name is None:
+                return None, set()
+            lowered.append(lhs_name)
     return f"let {', '.join(lowered)};", req
 
 
@@ -807,6 +812,9 @@ def _lower_expr_stmt(text, rewrite_rules, awaitable_calls):
     lowered, req = _lower_expr(t, rewrite_rules)
     if lowered is None:
         return None, set()
+    # Final syntax scrub for residual C pointer sugar in call arguments.
+    lowered = re.sub(r",\s*&\s*([A-Za-z_]\w*)", r", \1", lowered)
+    lowered = re.sub(r"\(\s*\*\s*([A-Za-z_]\w*)", r"(\1", lowered)
     lowered_call = _extract_call_name(lowered)
     if (original_call in awaitable_calls or lowered_call in awaitable_calls) and not lowered.startswith("await "):
         return f"await {lowered};", req
@@ -817,14 +825,41 @@ def _lower_expr(expr, rewrite_rules):
     out = _normalize_space(expr)
     if not out:
         return None, set()
+    out = C_BLOCK_COMMENT_RE.sub(" ", out)
     out, required_params = _apply_rewrite_rules(out, rewrite_rules)
     out = re.sub(r"\(\s*\*\s*([A-Za-z_]\w*)\s*\)\s*\(", r"\1(", out)
     out = re.sub(r"\bTRUE\b", "true", out)
     out = re.sub(r"\bFALSE\b", "false", out)
     out = re.sub(r"\bNULL\b", "null", out)
-    out = re.sub(r"&\s*([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+)", r"\1", out)
+    # Drop C address-of on unary contexts only (don't touch binary '&' or '&&').
+    out = re.sub(
+        r"(?:(?<=^)|(?<=[(,=?:!]))\s*&\s*([A-Za-z_]\w*(?:\.[A-Za-z_]\w*|\[[^\]]+\])*)",
+        r" \1",
+        out,
+    )
+    out = re.sub(r",\s*&\s*([A-Za-z_]\w*(?:\.[A-Za-z_]\w*|\[[^\]]+\])*)", r", \1", out)
+    out = re.sub(r"\(\s*&\s*([A-Za-z_]\w*(?:\.[A-Za-z_]\w*|\[[^\]]+\])*)", r"(\1", out)
+    out = re.sub(
+        r"(?:(?<=^)|(?<=[(,=?:!]))\s*&\s*\(([^)]+)\)",
+        r" (\1)",
+        out,
+    )
+    # Drop simple C pointer deref on lvalues.
+    out = re.sub(r"(^|[(,=?:])\s*\*\s*([A-Za-z_]\w*(?:\.[A-Za-z_]\w*|\[[^\]]+\])*)", r"\1 \2", out)
+    out = re.sub(r"!\s*\*\s*([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)", r"!\1", out)
     out = re.sub(r"\(\s*void\s*\)\s*", "", out)
     out = re.sub(r"\(\s*(?:const\s+)?(?:struct|enum|union)\s+[A-Za-z_]\w*\s*\**\s*\)", "", out)
+    out = re.sub(r"\(\s*(?:const\s+)?char\s*\*\s*\)", "", out)
+    out = re.sub(
+        r"\(\s*(?:unsigned|signed|long|short|int|char|float|double|boolean|coordxy|coord|"
+        r"schar|uchar|xint16|xint32|xint64|aligntyp|genericptr_t)\s*\)",
+        "",
+        out,
+    )
+    # Function-pointer null-casts like ((int (*)(...)) 0) -> null.
+    out = re.sub(r"\(\s*[A-Za-z_]\w*\s*\(\s*\*\s*\)\s*\([^)]*\)\s*\)\s*0\b", "null", out)
+    out = re.sub(r"\(\s*[A-Za-z_]\w*\s*\(\s*\)\s*\([^)]*\)\s*\)\s*0\b", "null", out)
+    out = re.sub(r"\(\s*[A-Za-z_]\w*\s*\*\s*\)\s*0\b", "null", out)
     # C pointer member access lowers to JS property access.
     out = out.replace("->", ".")
     # C integer long suffix (e.g., 7L) has no JS runtime equivalent.
@@ -834,6 +869,7 @@ def _lower_expr(expr, rewrite_rules):
         r"Math.trunc(\1)",
         out,
     )
+    out = re.sub(r"\bsizeof\s+([A-Za-z_]\w*)\b", r"\1.length", out)
     out = re.sub(r"\(\s*boolean\s*\)\s*", "", out)
     out = re.sub(r"(?<![=!<>])==(?![=])", "===", out)
     out = re.sub(r"(?<![=!<>])!=(?![=])", "!==", out)
@@ -846,6 +882,22 @@ def _normalize_space(text):
 
 def _diag(code, message):
     return {"severity": "warning", "code": code, "message": message}
+
+
+def _extract_decl_name(lhs):
+    raw = C_BLOCK_COMMENT_RE.sub(" ", lhs or "")
+    raw = raw.strip()
+    if not raw:
+        return None
+    # Strip array suffixes from declarators: foo[39] -> foo
+    raw = re.sub(r"\[[^\]]*\]", " ", raw)
+    # Remove pointer stars in declarations: *foo -> foo
+    raw = raw.replace("*", " ")
+    # Take the last identifier as declarator name.
+    names = re.findall(r"[A-Za-z_]\w*", raw)
+    if not names:
+        return None
+    return names[-1]
 
 
 def _load_async_info(src_path, func_name):
