@@ -627,12 +627,12 @@ function m_dowear_type(mon, flag, creation, racialexception) {
 // extra_pref — cf. worn.c:1328
 // ============================================================================
 // Monster's preference bonus for armor with special benefits.
+// Autotranslated from worn.c:1328
 export function extra_pref(mon, obj) {
-    if (obj) {
-        if (obj.otyp === SPEED_BOOTS && mon.permspeed !== MFAST)
-            return 20;
-    }
-    return 0;
+  if (obj) {
+    if (obj.otyp === SPEED_BOOTS && mon.permspeed !== MFAST) return 20;
+  }
+  return 0;
 }
 
 // ============================================================================

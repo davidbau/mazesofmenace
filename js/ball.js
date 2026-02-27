@@ -247,11 +247,14 @@ export function unplacebc_core(player, map) {
 }
 
 // cf. ball.c:179 — check_restriction(): validate bc operation
+// Autotranslated from ball.c:179
 export function check_restriction(restriction) {
-    const override_restriction = -1; // cf. ball.c constant
-    if (!bcrestriction || (restriction === override_restriction))
-        return true;
-    return (bcrestriction === restriction);
+  let ret = false;
+  if (!bcrestriction || (restriction === override_restriction)) ret = true;
+  else {
+    ret = (bcrestriction === restriction) ? true : false;
+  }
+  return ret;
 }
 
 // cf. ball.c:192 — placebc(): place ball and chain

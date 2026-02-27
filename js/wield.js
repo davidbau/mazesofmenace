@@ -82,10 +82,10 @@ export function weldmsg(player, display) {
 
 // cf. wield.c:1068 — mwelded(obj): monster version of welded
 // Caller is responsible for ensuring this is a monster's item
+// Autotranslated from wield.c:1068
 export function mwelded(obj) {
-    if (obj && (obj.owornmask & W_WEP) && will_weld(obj))
-        return true;
-    return false;
+  if (obj && (obj.owornmask & W_WEP) && will_weld(obj)) return true;
+  return false;
 }
 
 // cf. wield.c:150 — empty_handed(): description when not wielding anything

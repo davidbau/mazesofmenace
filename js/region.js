@@ -91,13 +91,14 @@ export function inside_rect(r, x, y) {
 // ========================================================================
 // cf. region.c:62 — inside_region(reg, x, y): is (x,y) in region?
 // ========================================================================
+// Autotranslated from region.c:62
 export function inside_region(reg, x, y) {
-    if (!reg || !inside_rect(reg.bounding_box, x, y))
-        return false;
-    for (let i = 0; i < reg.rects.length; i++)
-        if (inside_rect(reg.rects[i], x, y))
-            return true;
-    return false;
+  let i;
+  if (reg ===  0 || !inside_rect( (reg.bounding_box), x, y)) return false;
+  for (i = 0; i < reg.nrects; i++) {
+    if (inside_rect( (reg.rects[i]), x, y)) return true;
+  }
+  return false;
 }
 
 // ========================================================================

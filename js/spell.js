@@ -196,12 +196,14 @@ function spellet(spell) {
 }
 
 // C ref: spell.c spell_let_to_idx() — convert menu letter to spell index
+// Autotranslated from spell.c:114
 export function spell_let_to_idx(ilet) {
-    let indx = ilet.charCodeAt(0) - 'a'.charCodeAt(0);
-    if (indx >= 0 && indx < 26) return indx;
-    indx = ilet.charCodeAt(0) - 'A'.charCodeAt(0);
-    if (indx >= 0 && indx < 26) return indx + 26;
-    return -1;
+  let indx;
+  indx = ilet - 'a';
+  if (indx >= 0 && indx < 26) return indx;
+  indx = ilet - 'A';
+  if (indx >= 0 && indx < 26) return indx + 26;
+  return -1;
 }
 
 // Helper: get spell otyp from player.spells array at index
@@ -472,27 +474,25 @@ export function spell_skilltype(booktype) {
 }
 
 // C ref: spell.c num_spells() — count known spells
-export function num_spells(ctx = null) {
-    const player = ctx;
-    if (!player?.spells) return 0;
-    return player.spells.length;
+// Autotranslated from spell.c:2416
+export function num_spells() {
+  let i;
+  for (i = 0; i < MAXSPELL; i++) {
+    if (spellid(i) === NO_SPELL) {
+      break;
+    }
+  }
+  return i;
 }
 
 // C ref: spell.c spell_idx() — find index of spell by otyp, or UNKNOWN_SPELL
-export function spell_idx(otyp, ctx = null) {
-    // Backward-compatible with legacy call order: spell_idx(player, otyp).
-    let player = ctx;
-    if (otyp && typeof otyp === 'object' && typeof ctx !== 'object') {
-        const legacyPlayer = otyp;
-        otyp = ctx;
-        player = legacyPlayer;
-    }
-    const spells = player?.spells;
-    if (!spells) return UNKNOWN_SPELL;
-    for (let i = 0; i < spells.length; i++) {
-        if (spells[i].otyp === otyp) return i;
-    }
-    return UNKNOWN_SPELL;
+// Autotranslated from spell.c:2378
+export function spell_idx(otyp) {
+  let i;
+  for (i = 0; (i < MAXSPELL) && (spellid(i) !== NO_SPELL); i++) {
+    if (spellid(i) === otyp) return i;
+  }
+  return UNKNOWN_SPELL;
 }
 
 // C ref: spell.c known_spell() — returns spe_Unknown/spe_Fresh/spe_GoingStale/spe_Forgotten
@@ -845,16 +845,14 @@ export function cast_protection(player) {
 function distmin(x0, y0, x1, y1) {
     return Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
 }
-export 
-function can_center_spell_location(player, map, x, y) {
+export function can_center_spell_location(player, map, x, y) {
     if (!player || !map) return false;
     if (distmin(player.x, player.y, x, y) > SPELL_TARGET_DIST) return false;
     const loc = map.at ? map.at(x, y) : null;
     if (!loc) return false;
     return !IS_STWALL(loc.typ);
 }
-export 
-function display_spell_target_positions(player, map, on_off) {
+export function display_spell_target_positions(player, map, on_off) {
     if (!player || !map) return;
     if (on_off) {
         tmp_at(DISP_BEAM, { ch: '*', color: 10 });

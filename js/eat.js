@@ -246,8 +246,9 @@ export function unfaint(game, player) {
 }
 
 // cf. eat.c is_fainted() — check if hero is fainted from hunger
+// Autotranslated from eat.c:3341
 export function is_fainted(player) {
-    return (player.hungerState || NOT_HUNGRY) === FAINTED;
+  return  (player.uhs === FAINTED);
 }
 
 // cf. eat.c reset_faint() — reset faint counter
@@ -386,9 +387,10 @@ function should_givit(type, ptr) {
 }
 
 // cf. eat.c temp_givit() — grant temporary intrinsic from corpse
+// Autotranslated from eat.c:991
 export function temp_givit(type, ptr) {
-    const chance = (type === STONE_RES) ? 6 : (type === ACID_RES) ? 3 : 0;
-    return chance ? (ptr.mlevel > rn2(chance)) : false;
+  let chance = (type === STONE_RES) ? 6 : (type === ACID_RES) ? 3 : 0;
+  return chance ? (ptr.mlevel > rn2(chance)) : false;
 }
 
 // cf. eat.c givit() — grant intrinsic from corpse

@@ -246,39 +246,32 @@ export function is_worn_by_type(otmp, player) {
 }
 
 // cf. pickup.c:616 — reset_justpicked(olist)
+// Autotranslated from pickup.c:615
 export function reset_justpicked(olist) {
-    if (Array.isArray(olist)) {
-        for (const otmp of olist)
-            otmp.pickup_prev = 0;
-    } else {
-        for (let otmp = olist; otmp; otmp = otmp.nobj)
-            otmp.pickup_prev = 0;
-    }
+  let otmp;
+  for (otmp = olist; otmp; otmp = otmp.nobj) {
+    otmp.pickup_prev = 0;
+  }
 }
 
 // cf. pickup.c:635 — count_justpicked(olist)
+// Autotranslated from pickup.c:634
 export function count_justpicked(olist) {
-    let cnt = 0;
-    if (Array.isArray(olist)) {
-        for (const otmp of olist)
-            if (otmp.pickup_prev) cnt++;
-    } else {
-        for (let otmp = olist; otmp; otmp = otmp.nobj)
-            if (otmp.pickup_prev) cnt++;
-    }
-    return cnt;
+  let otmp, cnt = 0;
+  for (otmp = olist; otmp; otmp = otmp.nobj) {
+    if (otmp.pickup_prev) cnt++;
+  }
+  return cnt;
 }
 
 // cf. pickup.c:648 — find_justpicked(olist)
+// Autotranslated from pickup.c:647
 export function find_justpicked(olist) {
-    if (Array.isArray(olist)) {
-        for (const otmp of olist)
-            if (otmp.pickup_prev) return otmp;
-    } else {
-        for (let otmp = olist; otmp; otmp = otmp.nobj)
-            if (otmp.pickup_prev) return otmp;
-    }
-    return null;
+  let otmp;
+  for (otmp = olist; otmp; otmp = otmp.nobj) {
+    if (otmp.pickup_prev) return otmp;
+  }
+  return  0;
 }
 
 // cf. pickup.c:913 — check_autopickup_exceptions(obj)
@@ -669,28 +662,23 @@ function loot_mon(mtmp, passed_info, prev_loot, player) {
 }
 
 // cf. pickup.c:2482 — mbag_explodes(obj, depthin)
+// Autotranslated from pickup.c:2481
 export function mbag_explodes(obj, depthin) {
-    if ((obj.otyp === WAN_CANCELLATION || obj.otyp === BAG_OF_TRICKS)
-        && (obj.spe || 0) <= 0)
-        return false;
-
-    // cf. pickup.c:2491 — RNG: rn2(1 << min(depthin, 7))
-    if ((Is_mbag(obj) || obj.otyp === WAN_CANCELLATION)
-        && (rn2(1 << (depthin > 7 ? 7 : depthin)) <= depthin))
-        return true;
-    else if (Has_contents(obj)) {
-        const contents = Array.isArray(obj.cobj) ? obj.cobj : [];
-        for (const otmp of contents)
-            if (mbag_explodes(otmp, depthin + 1))
-                return true;
+  if ((obj.otyp === WAN_CANCELLATION || obj.otyp === BAG_OF_TRICKS) && obj.spe <= 0) return false;
+  if ((Is_mbag(obj) || obj.otyp === WAN_CANCELLATION) && (rn2(1 << (depthin > 7 ? 7 : depthin)) <= depthin)) return true;
+  else if (Has_contents(obj)) {
+    let otmp;
+    for (otmp = obj.cobj; otmp; otmp = otmp.nobj) {
+      if (mbag_explodes(otmp, depthin + 1)) return true;
     }
-    return false;
+  }
+  return false;
 }
 
 // cf. pickup.c:2504 — is_boh_item_gone()
+// Autotranslated from pickup.c:2503
 export function is_boh_item_gone() {
-    // cf. pickup.c:2506 — RNG: rn2(13)
-    return !rn2(13);
+  return  (!rn2(13));
 }
 
 // cf. pickup.c:2512 — do_boh_explosion(boh, on_floor)
@@ -710,24 +698,17 @@ function do_boh_explosion(boh, on_floor) {
 }
 
 // cf. pickup.c:2531 — boh_loss(container, held)
+// Autotranslated from pickup.c:2530
 export function boh_loss(container, held) {
-    if (Is_mbag(container) && container.cursed && Has_contents(container)) {
-        let loss = 0;
-        const contents = Array.isArray(container.cobj) ? [...container.cobj] : [];
-        for (const curr of contents) {
-            if (is_boh_item_gone()) {
-                obj_extract_self(curr);
-                loss += mbag_item_gone(held, curr, false);
-                // Remove from container array
-                if (Array.isArray(container.cobj)) {
-                    const idx = container.cobj.indexOf(curr);
-                    if (idx >= 0) container.cobj.splice(idx, 1);
-                }
-            }
-        }
-        return loss;
+  if (Is_mbag(container) && container.cursed && Has_contents(container)) {
+    let loss = 0, curr, otmp;
+    for (curr = container.cobj; curr; curr = otmp) {
+      otmp = curr.nobj;
+      if (is_boh_item_gone()) { obj_extract_self(curr); loss += mbag_item_gone(held, curr, false); }
     }
-    return 0;
+    return loss;
+  }
+  return 0;
 }
 
 // cf. pickup.c:2552 — in_container(obj)

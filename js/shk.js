@@ -496,14 +496,13 @@ export function addupbill(shkp) {
 }
 
 // C ref: shk.c shop_debt() -- total debt to shopkeeper
-export function shop_debt(shkp) {
-    let debt = Number(shkp.debit || 0);
-    const bill = shkp.bill || [];
-    for (let i = 0; i < (shkp.billct || 0); i++) {
-        const bp = bill[i];
-        if (bp) debt += (bp.price || 0) * (bp.bquan || 0);
-    }
-    return debt;
+// Autotranslated from shk.c:930
+export function shop_debt(eshkp) {
+  let bp, ct, debt = eshkp.debit;
+  for (bp = eshkp.bill_p, ct = eshkp.billct; ct > 0; bp++, ct--) {
+    debt += bp.price * bp.bquan;
+  }
+  return debt;
 }
 
 // C ref: shk.c check_credit() -- deduct cost from credit
@@ -721,12 +720,12 @@ export function clear_unpaid_obj(shkp, otmp) {
 }
 
 // C ref: shk.c clear_unpaid()
+// Autotranslated from shk.c:318
 export function clear_unpaid(shkp, list) {
-    let obj = list;
-    while (obj) {
-        clear_unpaid_obj(shkp, obj);
-        obj = obj.nobj;
-    }
+  while (list) {
+    clear_unpaid_obj(shkp, list);
+    list = list.nobj;
+  }
 }
 
 // C ref: shk.c clear_no_charge_obj()
@@ -744,12 +743,12 @@ function clear_no_charge_obj(shkp, otmp) {
 }
 
 // C ref: shk.c clear_no_charge()
+// Autotranslated from shk.c:376
 export function clear_no_charge(shkp, list) {
-    let obj = list;
-    while (obj) {
-        clear_no_charge_obj(shkp, obj);
-        obj = obj.nobj;
-    }
+  while (list) {
+    clear_no_charge_obj(shkp, list);
+    list = list.nobj;
+  }
 }
 
 // C ref: shk.c setpaid() -- clear all unpaid objects and reset bill
@@ -817,16 +816,14 @@ export function pacify_shk(shkp, clear_surcharge) {
 }
 
 // C ref: shk.c rouse_shk() -- wake up shopkeeper
+// Autotranslated from shk.c:1321
 export function rouse_shk(shkp, verbosely) {
-    if (helpless(shkp)) {
-        if (verbosely && canspotmon(shkp)) {
-            pline("%s %s.", Shknam(shkp),
-                  shkp.msleeping ? "wakes up" : "can move again");
-        }
-        shkp.msleeping = 0;
-        shkp.mfrozen = 0;
-        shkp.mcanmove = 1;
-    }
+  if (helpless(shkp)) {
+    if (verbosely && canspotmon(shkp)) pline("%s %s.", Shknam(shkp), shkp.msleeping ? "wakes up" : "can move again");
+    shkp.msleeping = 0;
+    shkp.mfrozen = 0;
+    shkp.mcanmove = 1;
+  }
 }
 
 // C ref: shk.c make_happy_shk()

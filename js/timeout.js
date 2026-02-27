@@ -252,8 +252,21 @@ export function peek_timer(funcIndex, arg = null) {
     return match ? match.when : 0;
 }
 
-export function remove_timer(_base, _funcIndex, _arg) {
-    return stop_timer(_funcIndex, _arg);
+// Autotranslated from timeout.c:2474
+export function remove_timer(base, func_index, arg) {
+  let prev, curr;
+  for (prev = 0, curr = base; curr; prev = curr, curr = curr.next) {
+    if (curr.func_index === func_index && curr.arg.a_void === arg.a_void) {
+      break;
+    }
+  }
+  if (curr) {
+    if (prev) prev.next = curr.next;
+    else {
+       base = curr.next;
+    }
+  }
+  return curr;
 }
 
 export function insert_timer(timer) {

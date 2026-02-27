@@ -831,18 +831,23 @@ function _toArray(list) {
 // ============================================================================
 
 // cf. end.c:800 [static] — sort_valuables(list, size): sort by count
+// Autotranslated from end.c:799
 export function sort_valuables(list, size) {
-    // Insertion sort: move greater quantities to front
-    for (let i = 1; i < size; i++) {
-        if (list[i].count === 0) continue;
-        const ltmp = { ...list[i] };
-        let j = i;
-        for (; j > 0; --j) {
-            if (list[j - 1].count >= ltmp.count) break;
-            list[j] = { ...list[j - 1] };
-        }
-        list[j] = ltmp;
+  let i, j, ltmp;
+  for (i = 1; i < size; i++) {
+    if (list[i].count === 0) {
+      continue;
     }
+    ltmp = list[i];
+    for (j = i; j > 0; --j) {
+      if (list[j - 1].count >= ltmp.count) {
+        break;
+      }
+      list[j] = list[j - 1];
+    }
+    list[j] = ltmp;
+  }
+  return;
 }
 
 // ============================================================================

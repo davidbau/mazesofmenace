@@ -452,8 +452,7 @@ export function mk_gen_ok(mndx, mvflagsmask, genomask) {
 // C ref: makemon.c:1750-1823 mongen_order initialization
 let mongen_order = null;
 let mclass_maxf = null;
-export 
-function init_mongen_order() {
+export function init_mongen_order() {
     if (mongen_order) return;
     mongen_order = [];
     mclass_maxf = new Array(MAXMCLASSES).fill(0);
@@ -637,8 +636,7 @@ export function newmonhp(mndx, depth = 1) {
 // Creates the object via mksobj, applies monster-specific adjustments,
 // then adds to monster inventory via mpickobj.
 // ========================================================================
-export 
-function mongets(mon,otyp) {
+export function mongets(mon,otyp) {
     if (!otyp) return null;
     const otmp = mksobj(otyp, true, false);
     if (!otmp) return null;
@@ -695,13 +693,14 @@ function mongets(mon,otyp) {
 // m_initthrow -- create missile objects
 // C ref: makemon.c:149-159
 // ========================================================================
-export 
-function m_initthrow(mon, otyp, oquan) {
-    const otmp = mksobj(otyp, true, false);
-    otmp.quan = rn1(oquan, 3);
-    otmp.owt = weight(otmp);
-    if (mon && otmp) mpickobj(mon, otmp);
-    return otmp;
+// Autotranslated from makemon.c:149
+export function m_initthrow(mtmp, otyp, oquan) {
+  let otmp;
+  otmp = mksobj(otyp, true, false);
+  otmp.quan =  rn1(oquan, 3);
+  otmp.owt = weight(otmp);
+  if (otyp === ORCISH_ARROW) otmp.opoisoned = true;
+  mpickobj(mtmp, otmp);
 }
 
 // ========================================================================
@@ -1142,8 +1141,7 @@ function findgold(minvent) {
     if (!Array.isArray(minvent)) return false;
     return minvent.some((obj) => obj && obj.otyp === GOLD_PIECE && Number(obj.quan || 0) > 0);
 }
-export 
-function mkmonmoney(mon, amount) {
+export function mkmonmoney(mon, amount) {
     if (!Number.isFinite(amount) || amount <= 0) return;
     const gold = mksobj(GOLD_PIECE, false, false);
     if (!gold) return;

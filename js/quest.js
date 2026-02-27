@@ -176,8 +176,9 @@ function find_quest_artifact_on_level(map) {
 }
 
 // cf. quest.c:147 [static] — not_capable(): minimum XL check
+// Autotranslated from quest.c:146
 export function not_capable(player) {
-    return (player.ulevel || 1) < MIN_QUEST_LEVEL;
+  return  (player.ulevel < MIN_QUEST_LEVEL);
 }
 
 // cf. quest.c:153 [static] — is_pure(talk): alignment purity check

@@ -37,20 +37,17 @@ import { tmp_at, DISP_ALWAYS, DISP_END } from './animation.js';
 // ============================================================
 
 // cf. potion.c itimeout() — clamp a timeout value to valid range
+// Autotranslated from potion.c:55
 export function itimeout(val) {
-    // C ref: potion.c:55 — clamp to [0, TIMEOUT]
-    if (val < 0) return 0;
-    if (val > TIMEOUT) return TIMEOUT;
-    return val;
+  if (val >= TIMEOUT) val = TIMEOUT;
+  else if (val < 1) val = 0;
+  return val;
 }
 
 // cf. potion.c itimeout_incr() — increment timeout with overflow protection
+// Autotranslated from potion.c:67
 export function itimeout_incr(old, incr) {
-    // C ref: potion.c:62 — increment with clamp
-    const result = old + incr;
-    if (result < 0) return TIMEOUT; // overflow wraps to max
-    if (result > TIMEOUT) return TIMEOUT;
-    return result;
+  return itimeout((old & TIMEOUT) +  incr);
 }
 
 // cf. potion.c set_itimeout() — set timeout on a property's intrinsic field
@@ -1131,89 +1128,71 @@ function potionbreathe(player, obj) {
 
 // cf. potion.c mixtype() — determine result of mixing two potions
 // C ref: potion.c:2107-2195
+// Autotranslated from potion.c:2107
 export function mixtype(o1, o2) {
-    let o1typ = o1.otyp, o2typ = o2.otyp;
-
-    // cut down on cases: swap if o1 is potion and o2 is special
-    if (o1.oclass === POTION_CLASS
-        && (o2typ === POT_GAIN_LEVEL || o2typ === POT_GAIN_ENERGY
-            || o2typ === POT_HEALING || o2typ === POT_EXTRA_HEALING
-            || o2typ === POT_FULL_HEALING || o2typ === POT_ENLIGHTENMENT
-            || o2typ === POT_FRUIT_JUICE)) {
-        o1typ = o2.otyp;
-        o2typ = o1.otyp;
-    }
-
-    switch (o1typ) {
+  let o1typ = o1.otyp, o2typ = o2.otyp;
+  if (o1.oclass === POTION_CLASS && (o2typ === POT_GAIN_LEVEL || o2typ === POT_GAIN_ENERGY || o2typ === POT_HEALING || o2typ === POT_EXTRA_HEALING || o2typ === POT_FULL_HEALING || o2typ === POT_ENLIGHTENMENT || o2typ === POT_FRUIT_JUICE)) { o1typ = o2.otyp; o2typ = o1.otyp; }
+  switch (o1typ) {
     case POT_HEALING:
-        if (o2typ === POT_SPEED)
-            return POT_EXTRA_HEALING;
-        // fallthrough
+      if (o2typ === POT_SPEED) return POT_EXTRA_HEALING;
     case POT_EXTRA_HEALING:
-    case POT_FULL_HEALING:
-        if (o2typ === POT_GAIN_LEVEL || o2typ === POT_GAIN_ENERGY)
-            return (o1typ === POT_HEALING) ? POT_EXTRA_HEALING
-                   : (o1typ === POT_EXTRA_HEALING) ? POT_FULL_HEALING
-                     : POT_GAIN_ABILITY;
-        // fallthrough
+      case POT_FULL_HEALING:
+        if (o2typ === POT_GAIN_LEVEL || o2typ === POT_GAIN_ENERGY) return (o1typ === POT_HEALING) ? POT_EXTRA_HEALING : (o1typ === POT_EXTRA_HEALING) ? POT_FULL_HEALING : POT_GAIN_ABILITY;
     case UNICORN_HORN:
-        switch (o2typ) {
+      switch (o2typ) {
         case POT_SICKNESS:
-            return POT_FRUIT_JUICE;
+          return POT_FRUIT_JUICE;
         case POT_HALLUCINATION:
-        case POT_BLINDNESS:
-        case POT_CONFUSION:
-            return POT_WATER;
-        }
-        break;
+          case POT_BLINDNESS:
+            case POT_CONFUSION:
+              return POT_WATER;
+      }
+    break;
     case AMETHYST:
-        if (o2typ === POT_BOOZE)
-            return POT_FRUIT_JUICE;
-        break;
+      if (o2typ === POT_BOOZE) return POT_FRUIT_JUICE;
+    break;
     case POT_GAIN_LEVEL:
-    case POT_GAIN_ENERGY:
+      case POT_GAIN_ENERGY:
         switch (o2typ) {
-        case POT_CONFUSION:
+          case POT_CONFUSION:
             return (rn2(3) ? POT_BOOZE : POT_ENLIGHTENMENT);
-        case POT_HEALING:
+          case POT_HEALING:
             return POT_EXTRA_HEALING;
-        case POT_EXTRA_HEALING:
+          case POT_EXTRA_HEALING:
             return POT_FULL_HEALING;
-        case POT_FULL_HEALING:
+          case POT_FULL_HEALING:
             return POT_GAIN_ABILITY;
-        case POT_FRUIT_JUICE:
+          case POT_FRUIT_JUICE:
             return POT_SEE_INVISIBLE;
-        case POT_BOOZE:
+          case POT_BOOZE:
             return POT_HALLUCINATION;
         }
-        break;
+    break;
     case POT_FRUIT_JUICE:
-        switch (o2typ) {
+      switch (o2typ) {
         case POT_SICKNESS:
-            return POT_SICKNESS;
+          return POT_SICKNESS;
         case POT_ENLIGHTENMENT:
-        case POT_SPEED:
+          case POT_SPEED:
             return POT_BOOZE;
         case POT_GAIN_LEVEL:
-        case POT_GAIN_ENERGY:
+          case POT_GAIN_ENERGY:
             return POT_SEE_INVISIBLE;
-        }
-        break;
+      }
+    break;
     case POT_ENLIGHTENMENT:
-        switch (o2typ) {
+      switch (o2typ) {
         case POT_LEVITATION:
-            if (rn2(3))
-                return POT_GAIN_LEVEL;
-            break;
-        case POT_FRUIT_JUICE:
-            return POT_BOOZE;
-        case POT_BOOZE:
-            return POT_CONFUSION;
-        }
+          if (rn2(3)) return POT_GAIN_LEVEL;
         break;
-    }
-
-    return STRANGE_OBJECT;
+        case POT_FRUIT_JUICE:
+          return POT_BOOZE;
+        case POT_BOOZE:
+          return POT_CONFUSION;
+      }
+    break;
+  }
+  return STRANGE_OBJECT;
 }
 
 // ============================================================

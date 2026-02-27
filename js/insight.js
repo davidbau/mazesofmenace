@@ -725,8 +725,7 @@ export function characteristics_enlightenment(mode, final, game) {
 // cf. insight.c:286 [static]
 // Format a characteristic value, handling Strength's 18/xx notation.
 // ============================================================================
-export 
-function attrval(attrindx, attrvalue) {
+export function attrval(attrindx, attrvalue) {
     if (attrindx !== A_STR || attrvalue <= 18)
         return String(attrvalue);
     else if (attrvalue > 118) // STR18(100) = 118
@@ -1433,16 +1432,16 @@ export function num_genocides(game) {
 // ============================================================================
 
 // cf. insight.c:2990 [static] — num_extinct(game): count extinct species
+// Autotranslated from insight.c:2989
 export function num_extinct(game) {
-    const mvitals = game.mvitals || ((game.u || game.player) && (game.u || game.player).mvitals) || [];
-    let n = 0;
-
-    for (let i = LOW_PM; i < NUMMONS; i++) {
-        if (UniqCritterIndx(i)) continue;
-        if (mvitals[i] && (mvitals[i].mvflags & G_GONE) === G_EXTINCT)
-            n++;
+  let i, n = 0;
+  for (i = LOW_PM; i < NUMMONS; ++i) {
+    if (UniqCritterIndx(i)) {
+      continue;
     }
-    return n;
+    if ((game.mvitals[i].mvflags & G_GONE) === G_EXTINCT) ++n;
+  }
+  return n;
 }
 
 // ============================================================================

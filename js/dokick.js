@@ -734,8 +734,7 @@ async function kickdmg(mon, clumsy, player, map) {
 // 2. maybe_kick_monster — precondition check for kicking a monster
 // cf. dokick.c:125
 // ============================================================================
-export 
-function maybe_kick_monster(mon, x, y, player, map, game) {
+export function maybe_kick_monster(mon, x, y, player, map, game) {
     const ctx = (game && game.svc && game.svc.context)
         ? game.svc.context
         : game?.context;
@@ -1323,37 +1322,34 @@ function kickstr(kickobjnam, maploc) {
 // 9. watchman_thief_arrest — guard arrest check
 // cf. dokick.c:833
 // ============================================================================
-export 
-function watchman_thief_arrest(mtmp) {
-    const monData = mtmp.type || mtmp.data;
-    if (is_watch(monData) && couldsee(mtmp.mx, mtmp.my)
-        && mtmp.mpeaceful) {
-        mon_yells(mtmp, "Halt, thief!  You're under arrest!");
-        angry_guards(false);
-        return true;
-    }
-    return false;
+// Autotranslated from dokick.c:833
+export function watchman_thief_arrest(mtmp) {
+  if (is_watch(mtmp.data) && couldsee(mtmp.mx, mtmp.my) && mtmp.mpeaceful) {
+    mon_yells(mtmp, "Halt, thief! You're under arrest!");
+    angry_guards(false);
+    return true;
+  }
+  return false;
 }
 
 // ============================================================================
 // 10. watchman_door_damage — guard door response
 // cf. dokick.c:845
 // ============================================================================
-export 
-function watchman_door_damage(mtmp, x, y, map) {
-    const monData = mtmp.type || mtmp.data;
-    const loc = map.at(x, y);
-    if (is_watch(monData) && mtmp.mpeaceful && couldsee(mtmp.mx, mtmp.my)) {
-        if (loc && (loc.looted & D_WARNED)) {
-            mon_yells(mtmp, "Halt, vandal!  You're under arrest!");
-            angry_guards(false);
-        } else {
-            mon_yells(mtmp, "Hey, stop damaging that door!");
-            if (loc) loc.looted = (loc.looted || 0) | D_WARNED;
-        }
-        return true;
+// Autotranslated from dokick.c:845
+export function watchman_door_damage(mtmp, x, y, map) {
+  if (is_watch(mtmp.data) && mtmp.mpeaceful && couldsee(mtmp.mx, mtmp.my)) {
+    if (map.locations[x][y].looted & D_WARNED) {
+      mon_yells(mtmp, "Halt, vandal! You're under arrest!");
+      angry_guards(false);
     }
-    return false;
+    else {
+      mon_yells(mtmp, "Hey, stop damaging that door!");
+      map.locations[x][y].looted |= D_WARNED;
+    }
+    return true;
+  }
+  return false;
 }
 
 // ============================================================================

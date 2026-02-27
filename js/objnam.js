@@ -1302,8 +1302,7 @@ const ch_k = [
     'gastrotrich', 'isopach', 'loch', 'oligarch', 'peritrich',
     'sandarach', 'sumach', 'symposiarch',
 ];
-export 
-function ch_ksound(basestr) {
+export function ch_ksound(basestr) {
     if (!basestr || basestr.length < 4) return false;
     const lower = basestr.toLowerCase();
     for (const ck of ch_k) {

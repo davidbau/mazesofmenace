@@ -246,10 +246,8 @@ export function set_entity(x, y, etmp, map, player) {
 
 function is_u(etmp) { return etmp.isPlayer === true; }
 function e_canseemon_fn(etmp) { return is_u(etmp) || canseemon(etmp.emon); }
-export 
-function e_nam(etmp) { return is_u(etmp) ? "you" : y_monnam(etmp.emon); }
-export 
-function E_phrase(etmp, verb) {
+export function e_nam(etmp) { return is_u(etmp) ? "you" : y_monnam(etmp.emon); }
+export function E_phrase(etmp, verb) {
     const who = is_u(etmp) ? "You" : x_monnam(etmp.emon);
     if (!verb) return who;
     // Simple 2nd->3rd person: add 's' for non-player
@@ -271,9 +269,9 @@ export function e_survives_at(etmp, x, y, map) {
 }
 
 // cf. dbridge.c:463 — automiss: entity is never hit by drawbridge
+// Autotranslated from dbridge.c:463
 export function automiss(etmp) {
-    return (is_u(etmp) ? false : passes_walls(etmp.edata))
-           || noncorporeal(etmp.edata);
+  return  ((is_u(etmp) ? Passes_walls : passes_walls(etmp.edata)) || noncorporeal(etmp.edata));
 }
 
 // cf. dbridge.c:473 — e_missed: does falling drawbridge/portcullis miss?

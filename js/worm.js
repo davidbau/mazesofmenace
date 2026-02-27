@@ -559,26 +559,23 @@ export function count_wsegs(mtmp) {
 // ========================================================================
 // cf. worm.c:852 [static] -- create_worm_tail(num_segs)
 // ========================================================================
+// Autotranslated from worm.c:851
 export function create_worm_tail(num_segs) {
-    if (!num_segs) return null;
-
-    var new_tail = newseg();
-    var curr = new_tail;
-    curr.nseg = null;
+  let i = 0, new_tail, curr;
+  if (!num_segs) return  0;
+  new_tail = curr = newseg();
+  curr.nseg =  0;
+  curr.wx = 0;
+  curr.wy = 0;
+  while (i < num_segs) {
+    curr.nseg = newseg();
+    curr = curr.nseg;
+    curr.nseg =  0;
     curr.wx = 0;
     curr.wy = 0;
-
-    var i = 0;
-    while (i < num_segs) {
-        curr.nseg = newseg();
-        curr = curr.nseg;
-        curr.nseg = null;
-        curr.wx = 0;
-        curr.wy = 0;
-        i++;
-    }
-
-    return new_tail;
+    i++;
+  }
+  return new_tail;
 }
 
 // ========================================================================

@@ -387,23 +387,24 @@ function newobj(otyp) {
 }
 
 // C ref: mkobj.c mkobj_erosions()
-export function mkobj_erosions(obj) {
-    if (!may_generate_eroded(obj)) return;
-    if (!rn2(100)) {
-        obj.oerodeproof = true;
-    } else {
-        if (!rn2(80) && (is_flammable(obj) || is_rustprone(obj) || is_crackable(obj))) {
-            do {
-                obj.oeroded++;
-            } while (obj.oeroded < 3 && !rn2(9));
-        }
-        if (!rn2(80) && (is_rottable(obj) || is_corrodeable(obj))) {
-            do {
-                obj.oeroded2++;
-            } while (obj.oeroded2 < 3 && !rn2(9));
-        }
+// Autotranslated from mkobj.c:196
+export function mkobj_erosions(otmp) {
+  if (may_generate_eroded(otmp)) {
+    if (!rn2(100)) { otmp.oerodeproof = 1; }
+    else {
+      if (!rn2(80) && (is_flammable(otmp) || is_rustprone(otmp) || is_crackable(otmp))) {
+        do {
+          otmp.oeroded++;
+        } while (otmp.oeroded < 3 && !rn2(9));
+      }
+      if (!rn2(80) && (is_rottable(otmp) || is_corrodeable(otmp))) {
+        do {
+          otmp.oeroded2++;
+        } while (otmp.oeroded2 < 3 && !rn2(9));
+      }
     }
-    if (!rn2(1000)) obj.greased = true;
+    if (!rn2(1000)) otmp.greased = 1;
+  }
 }
 
 // rndmonnum imported from makemon.js (circular but safe — called at runtime only)

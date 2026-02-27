@@ -216,9 +216,10 @@ export function nartifact_exist() {
 // ── Pure predicates ──
 
 // cf. artifact.c:516 — spec_ability(otmp, abil)
+// Autotranslated from artifact.c:515
 export function spec_ability(otmp, abil) {
-  const arti = get_artifact(otmp);
-  return arti !== artilist[ART_NONARTIFACT] && (arti.spfx & abil) !== 0;
+  let arti = get_artifact(otmp);
+  return  (arti !== artilist[ART_NONARTIFACT] && (arti.spfx & abil) !== 0);
 }
 
 // cf. artifact.c:526 — confers_luck(obj)
@@ -229,12 +230,11 @@ export function confers_luck(obj) {
 }
 
 // cf. artifact.c:537 — arti_reflects(obj)
+// Autotranslated from artifact.c:536
 export function arti_reflects(obj) {
-  const arti = get_artifact(obj);
+  let arti = get_artifact(obj);
   if (arti !== artilist[ART_NONARTIFACT]) {
-    // while being worn
-    if (obj.owornmask && (arti.spfx & SPFX_REFLECT)) return true;
-    // just being carried
+    if ((obj.owornmask & ~W_ART) && (arti.spfx & SPFX_REFLECT)) return true;
     if (arti.cspfx & SPFX_REFLECT) return true;
   }
   return false;
@@ -269,11 +269,10 @@ export function restrict_name(otmp, name) {
 }
 
 // cf. artifact.c:626 — attacks(adtyp, otmp)
+// Autotranslated from artifact.c:625
 export function attacks(adtyp, otmp) {
-  const weap = get_artifact(otmp);
-  if (weap !== artilist[ART_NONARTIFACT]) {
-    return weap.attk.ad === adtyp;
-  }
+  let weap;
+  if ((weap = get_artifact(otmp)) !== artilist[ART_NONARTIFACT]) return  (weap.attk.adtyp === adtyp);
   return false;
 }
 
@@ -289,11 +288,10 @@ export function defends(adtyp, otmp) {
 }
 
 // cf. artifact.c:687 — defends_when_carried(adtyp, otmp)
+// Autotranslated from artifact.c:686
 export function defends_when_carried(adtyp, otmp) {
-  const weap = get_artifact(otmp);
-  if (weap !== artilist[ART_NONARTIFACT]) {
-    return weap.cary.ad === adtyp;
-  }
+  let weap;
+  if ((weap = get_artifact(otmp)) !== artilist[ART_NONARTIFACT]) return  (weap.cary.adtyp === adtyp);
   return false;
 }
 
@@ -317,9 +315,10 @@ export function arti_immune(obj, dtyp) {
 }
 
 // cf. artifact.c:2299 — artifact_has_invprop(otmp, inv_prop)
+// Autotranslated from artifact.c:2298
 export function artifact_has_invprop(otmp, inv_prop) {
-  const arti = get_artifact(otmp);
-  return arti !== artilist[ART_NONARTIFACT] && arti.inv_prop === inv_prop;
+  let arti = get_artifact(otmp);
+  return  ((arti !== artilist[ART_NONARTIFACT]) && (arti.inv_prop === inv_prop));
 }
 
 // cf. artifact.c:2309 — arti_cost(otmp)
@@ -360,11 +359,13 @@ export function spec_m2(otmp) {
 // ── Combat: spec_applies, bane_applies, spec_abon, spec_dbon ──
 
 // cf. artifact.c:993 — bane_applies(oart, mon)
+// Autotranslated from artifact.c:992
 export function bane_applies(oart, mon) {
+  let atmp;
   if (oart !== artilist[ART_NONARTIFACT] && (oart.spfx & SPFX_DBONUS) !== 0) {
-    // Create a temporary copy with only DBONUS flags
-    const atmp = { ...oart, spfx: oart.spfx & SPFX_DBONUS };
-    return spec_applies(atmp, mon) !== 0;
+    atmp = oart;
+    atmp.spfx &= SPFX_DBONUS;
+    if (spec_applies( atmp, mon)) return true;
   }
   return false;
 }
@@ -413,12 +414,10 @@ export function spec_applies(weap, mon) {
 }
 
 // cf. artifact.c:1076 — spec_abon(otmp, mon)
+// Autotranslated from artifact.c:1075
 export function spec_abon(otmp, mon) {
-  const weap = get_artifact(otmp);
-  if (weap !== artilist[ART_NONARTIFACT]
-      && weap.attk.dice && spec_applies(weap, mon)) {
-    return rnd(weap.attk.dice);
-  }
+  let weap = get_artifact(otmp);
+  if (weap !== artilist[ART_NONARTIFACT] && weap.attk.damn && spec_applies(weap, mon)) return rnd( weap.attk.damn);
   return 0;
 }
 

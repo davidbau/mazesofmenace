@@ -217,8 +217,7 @@ function which_arti(mask) {
 // cf. wizard.c:164
 // If otyp=0, checks for quest artifact. Else checks specific otyp.
 // ============================================================================
-export 
-function mon_has_arti(mtmp, otyp) {
+export function mon_has_arti(mtmp, otyp) {
     for (const otmp of mtmp.minvent || []) {
         if (otyp) {
             if (otmp.otyp === otyp) return true;
@@ -233,8 +232,7 @@ function mon_has_arti(mtmp, otyp) {
 // other_mon_has_arti — find another monster carrying artifact
 // cf. wizard.c:183
 // ============================================================================
-export 
-function other_mon_has_arti(mtmp, otyp, map) {
+export function other_mon_has_arti(mtmp, otyp, map) {
     for (const mtmp2 of map.monsters || []) {
         // no need for dead check — dead monsters have no inventory
         if (mtmp2 !== mtmp && mon_has_arti(mtmp2, otyp))
@@ -247,8 +245,7 @@ function other_mon_has_arti(mtmp, otyp, map) {
 // on_ground — find object of type on the ground
 // cf. wizard.c:201
 // ============================================================================
-export 
-function on_ground(otyp, map) {
+export function on_ground(otyp, map) {
     for (const otmp of map.objects || []) {
         if (otyp) {
             if (otmp.otyp === otyp) return otmp;

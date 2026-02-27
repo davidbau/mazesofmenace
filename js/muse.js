@@ -2523,13 +2523,11 @@ export function munslime(mon, by_you, map, player) {
 }
 
 // C ref: cures_sliming(mon, obj) — can this object cure green slime?
+// Autotranslated from muse.c:3210
 export function cures_sliming(mon, obj) {
-    if (obj.otyp === SCR_FIRE)
-        return haseyes(mon.type || {}) && mon.mcansee && !nohands(mon.type || {});
-    if (obj.otyp === POT_OIL)
-        return !nohands(mon.type || {});
-    return ((obj.otyp === WAN_FIRE || (obj.otyp === FIRE_HORN && can_blow(mon.type || {})))
-        && obj.spe > 0);
+  if (obj.otyp === SCR_FIRE) return (haseyes(mon.data) && mon.mcansee && !nohands(mon.data));
+  if (obj.otyp === POT_OIL) return !nohands(mon.data);
+  return ((obj.otyp === WAN_FIRE || (obj.otyp === FIRE_HORN && can_blow(mon))) && obj.spe > 0);
 }
 
 // C ref: muse_unslime — use fire item to cure slime

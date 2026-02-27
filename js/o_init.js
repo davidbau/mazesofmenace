@@ -76,8 +76,7 @@ function copy_obj_descr(dst_idx, src_idx) {
     objectData[dst_idx].desc = objectData[src_idx].desc;
     objectData[dst_idx].color = objectData[src_idx].color;
 }
-export 
-function randomize_gem_colors() {
+export function randomize_gem_colors() {
     // Turquoise: maybe change from green to blue (copy from sapphire)
     if (rn2(2)) {
         copy_obj_descr(TURQUOISE, SAPPHIRE);
@@ -116,8 +115,7 @@ function classShuffleEnd(ocls) {
     }
     return i - 1;
 }
-export 
-function shuffle(o_low, o_high, domaterial) {
+export function shuffle(o_low, o_high, domaterial) {
     // Count shufflable items
     let num_to_shuffle = 0;
     for (let j = o_low; j <= o_high; j++) {

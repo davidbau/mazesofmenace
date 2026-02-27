@@ -321,8 +321,7 @@ export function fillholetyp(x, y, fill_if_any, map) {
 // furniture_handled (cf. dig.c:570-592)
 // Processes terrain furniture destruction when digging.
 // ============================================================================
-export 
-function furniture_handled(x, y, madeby_u, map) {
+export function furniture_handled(x, y, madeby_u, map) {
     const lev = map.at(x, y);
     if (!lev) return false;
 

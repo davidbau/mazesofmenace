@@ -770,7 +770,10 @@ export function sortloot(objList, mode, filterfunc) {
 }
 
 // C ref: invent.c unsortloot() — no-op in JS (GC handles it)
-export function unsortloot(loot_array_p = null) { return loot_array_p; }
+// Autotranslated from invent.c:646
+export function unsortloot(loot_array_p) {
+  if ( loot_array_p) (loot_array_p, 0), loot_array_p =  0;
+}
 
 // C ref: invent.c reorder_invent() — sort inventory by invlet
 // JS adaptation: sort the player.inventory array in-place
@@ -1385,10 +1388,11 @@ export function fully_identify_obj(otmp) {
 }
 
 // C ref: invent.c identify() — identify object and give feedback
-export function identify(otmp, ctx = null) {
-    fully_identify_obj(otmp);
-    prinv(null, otmp, 0, ctx);
-    return 1;
+// Autotranslated from invent.c:2650
+export function identify(otmp) {
+  fully_identify_obj(otmp);
+  prinv( 0, otmp, 0);
+  return 1;
 }
 
 // C ref: invent.c count_unidentified() — count unidentified objects

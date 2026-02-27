@@ -70,14 +70,11 @@ function cost(otmp) {
 
 // cf. write.c:61 — getobj callback: which objects can be written on?
 // Blank paper (scroll or spellbook) is SUGGEST; all others are DOWNPLAY or EXCLUDE.
+// Autotranslated from write.c:60
 export function write_ok(obj) {
-    if (!obj || (obj.oclass !== SCROLL_CLASS && obj.oclass !== SPBOOK_CLASS))
-        return GETOBJ_EXCLUDE;
-
-    if (obj.otyp === SCR_BLANK_PAPER || obj.otyp === SPE_BLANK_PAPER)
-        return GETOBJ_SUGGEST;
-
-    return GETOBJ_DOWNPLAY;
+  if (!obj || (obj.oclass !== SCROLL_CLASS && obj.oclass !== SPBOOK_CLASS)) return GETOBJ_EXCLUDE;
+  if (obj.otyp === SCR_BLANK_PAPER || obj.otyp === SPE_BLANK_PAPER) return GETOBJ_SUGGEST;
+  return GETOBJ_DOWNPLAY;
 }
 
 // cf. write.c:74 — apply a magic marker: write on a blank scroll or spellbook

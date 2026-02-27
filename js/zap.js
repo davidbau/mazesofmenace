@@ -1303,19 +1303,12 @@ export function probe_monster(mon) {
 // ============================================================
 // cf. zap.c:3567 skiprange() — range calculation for thrown rocks
 // ============================================================
-export function skiprange(range, skipstart_ref, skipend_ref) {
-  // C ref: zap.c:3567-3576
-  const tr = Math.floor(range / 4);
-  const tmp = range - ((tr > 0) ? rnd(tr) : 0);
-
-  const skipstart = tmp;
-  let skipend = tmp - (Math.floor(tmp / 4) * rnd(3));
-  if (skipend >= tmp) skipend = tmp - 1;
-
-  // Return values via refs (objects) or return
-  if (skipstart_ref && typeof skipstart_ref === 'object') skipstart_ref.value = skipstart;
-  if (skipend_ref && typeof skipend_ref === 'object') skipend_ref.value = skipend;
-  return { start: skipstart, end: skipend };
+// Autotranslated from zap.c:3566
+export function skiprange(range, skipstart, skipend) {
+  let tr = (range / 4), tmp = range - ((tr > 0) ? rnd(tr) : 0);
+   skipstart = tmp;
+   skipend = tmp - ((tmp / 4) * rnd(3));
+  if ( skipend >= tmp) skipend = tmp - 1;
 }
 
 // ============================================================
@@ -1910,51 +1903,37 @@ export function boxlock_invent(player, otmp) {
 }
 
 // C ref: zap.c location helpers.
-export function get_obj_location(obj, xp = null, yp = null, locflags = 0, player = null) {
-  if (!obj) return null;
-  // Backward compatibility:
-  // - old form: (obj, out, locflags[, player])
-  // - C-like form: (obj, xp, yp, locflags[, player])
-  let out = null;
-  if (typeof yp === 'number' && arguments.length <= 3) {
-    out = (xp && typeof xp === 'object') ? xp : null;
-    locflags = yp;
-    yp = null;
-  } else if (typeof yp === 'number' && locflags && typeof locflags === 'object' && player == null) {
-    out = (xp && typeof xp === 'object') ? xp : null;
-    player = locflags;
-    locflags = yp;
-    yp = null;
-  } else if (xp && typeof xp === 'object' && yp == null) {
-    out = xp;
+// Autotranslated from zap.c:651
+export function get_obj_location(obj, xp, yp, locflags, player) {
+  switch (obj.where) {
+    case OBJ_INVENT:
+       xp = player.x;
+     yp = player.y;
+    return true;
+    case OBJ_FLOOR:
+       xp = obj.ox;
+     yp = obj.oy;
+    return true;
+    case OBJ_MINVENT:
+      if (obj.ocarry.mx) {
+         xp = obj.ocarry.mx;
+         yp = obj.ocarry.my;
+        return true;
+      }
+    break;
+    case OBJ_BURIED:
+      if (locflags & BURIED_TOO) {
+         xp = obj.ox;
+         yp = obj.oy;
+        return true;
+      }
+    break;
+    case OBJ_CONTAINED:
+      if (locflags & CONTAINED_TOO) return get_obj_location(obj.ocontainer, xp, yp, locflags);
+    break;
   }
-  let x = 0;
-  let y = 0;
-  const where = String(obj.where || '').toUpperCase();
-  if (where === 'OBJ_INVENT' || where === 'INVENT') {
-    x = Number(player?.x ?? obj.ox ?? 0);
-    y = Number(player?.y ?? obj.oy ?? 0);
-  } else if (where === 'OBJ_FLOOR' || where === 'FLOOR' || (!where && Number.isFinite(obj.ox) && Number.isFinite(obj.oy))) {
-    x = Number(obj.ox ?? 0);
-    y = Number(obj.oy ?? 0);
-  } else if (where === 'OBJ_MINVENT' || where === 'MINVENT') {
-    x = Number(obj.ocarry?.mx ?? 0);
-    y = Number(obj.ocarry?.my ?? 0);
-  } else if ((where === 'OBJ_BURIED' || where === 'BURIED') && (locflags & BURIED_TOO)) {
-    x = Number(obj.ox ?? 0);
-    y = Number(obj.oy ?? 0);
-  } else if ((where === 'OBJ_CONTAINED' || where === 'CONTAINED') && (locflags & CONTAINED_TOO) && obj.ocontainer) {
-    return get_obj_location(obj.ocontainer, xp, yp, locflags, player);
-  }
-  if (!x || !y) return null;
-  const pos = { x, y };
-  if (out && typeof out === 'object') {
-    out.x = x;
-    out.y = y;
-  }
-  if (xp && typeof xp === 'object' && 'value' in xp) xp.value = x;
-  if (yp && typeof yp === 'object' && 'value' in yp) yp.value = y;
-  return pos;
+   xp = yp = 0;
+  return false;
 }
 
 export function get_mon_location(mon, out = null, locflags = 0, player = null) {

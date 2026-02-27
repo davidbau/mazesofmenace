@@ -2183,40 +2183,36 @@ export function dosacrifice(player, map) {
 // ================================================================
 // cf. pray.c:1899 -- eval_offering(otmp, altaralign, player)
 // ================================================================
+// Autotranslated from pray.c:1898
 export function eval_offering(otmp, altaralign, player) {
-    let value = sacrifice_value(otmp, player);
-    if (!value) return 0;
-
-    const ptr = mons[otmp.corpsenm];
-    if (!ptr) return value;
-
-    if (is_undead(ptr)) {
-        if (player.alignment !== A_CHAOTIC
-            || (ptr === mons[PM_WRAITH] && player.uconduct && player.uconduct.unvegetarian))
-            value += 1;
-    } else if (is_unicorn(ptr)) {
-        const unicalign = sgn(ptr.maligntyp || 0);
-        if (unicalign === altaralign) {
-            pline("Such an action is an insult to %s!",
-                  (unicalign === A_CHAOTIC) ? "chaos"
-                     : unicalign ? "law" : "balance");
-            adjattrib(player, A_WIS, -1, true);
-            return -1;
-        } else if (player.alignment === altaralign) {
-            if ((player.alignmentRecord || 0) < ALIGNLIM)
-                You_feel("appropriately %s.", align_str(player.alignment));
-            else
-                You_feel("you are thoroughly on the right path.");
-            adjalign(player, 5);
-            value += 3;
-        } else if (unicalign === player.alignment) {
-            player.alignmentRecord = -1;
-            value = 1;
-        } else {
-            value += 3;
-        }
+  let ptr, value;
+  value = sacrifice_value(otmp);
+  if (!value) return 0;
+  ptr = mons[otmp.corpsenm];
+  if (is_undead(ptr)) {
+    if (player.ualign.type !== A_CHAOTIC   || (ptr === mons[PM_WRAITH] && player.uconduct.unvegetarian)) {
+      value += 1;
     }
-    return value;
+  }
+  else if (is_unicorn(ptr)) {
+    let unicalign = sgn(ptr.maligntyp);
+    if (unicalign === altaralign) {
+      pline("Such an action is an insult to %s!", (unicalign === A_CHAOTIC) ? "chaos" : unicalign ? "law" : "balance");
+      adjattrib(A_WIS, -1, true);
+      return -1;
+    }
+    else if (player.ualign.type === altaralign) {
+      if (player.ualign.record < ALIGNLIM) You_feel("appropriately %s.", align_str(player.ualign.type));
+      else {
+        You_feel("you are thoroughly on the right path.");
+      }
+      adjalign(5);
+      value += 3;
+    }
+    else if (unicalign === player.ualign.type) { player.ualign.record = -1; value = 1; }
+    else { value += 3; }
+  }
+  return value;
 }
 
 // ================================================================

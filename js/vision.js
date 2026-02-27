@@ -620,8 +620,7 @@ export function fill_point(row, col) {
             left_ptrs_arr[row][i] = left_ptrs_arr[row][col - 1];
     }
 }
-export 
-function dig_point(row, col) {
+export function dig_point(row, col) {
     let i;
 
     if (viz_clear[row][col]) return;

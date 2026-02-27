@@ -640,11 +640,11 @@ export function br_string2(br, player) {
   return "(unknown)";
 }
 
-export function at_dgn_entrance(name, lev) {
-    const br = dungeon_branch(name);
-    if (!br) return false;
-    const clev = _coerceLevelArg(lev);
-    return clev.dnum === br.end1.dnum && clev.dlevel === br.end1.dlevel;
+// Autotranslated from dungeon.c:1890
+export function at_dgn_entrance(s, map) {
+  let br;
+  br = dungeon_branch(s);
+  return on_level(map.uz, br.end1) ? true : false;
 }
 
 export function Can_dig_down(levOrMap) {

@@ -1384,23 +1384,16 @@ export function dowipe(player) {
 // cf. do.c legs_in_no_shape() — common wounded legs feedback.
 // for_what: "jumping", "kicking", "riding", etc.
 // by_steed: true if the steed's legs are the issue.
+// Autotranslated from do.c:2403
 export function legs_in_no_shape(for_what, by_steed, player) {
-    const BOTH_SIDES = 0x30;
-    const LEFT_SIDE = 0x10;
-    const RIGHT_SIDE = 0x20;
-
-    if (by_steed && player.usteed) {
-        const name = player.usteed.name || player.usteed.data?.name || "Your steed";
-        pline("%s is in no shape for %s.", name, for_what);
-    } else {
-        const wl = (player.eWoundedLegs || 0) & BOTH_SIDES;
-        let bp = body_part(LEG, player);
-        if (wl === BOTH_SIDES)
-            bp = makeplural(bp);
-        Your("%s%s %s in no shape for %s.",
-             (wl === LEFT_SIDE) ? "left " : (wl === RIGHT_SIDE) ? "right " : "",
-             bp, (wl === BOTH_SIDES) ? "are" : "is", for_what);
-    }
+  if (by_steed && player.usteed) {
+    pline("%s is in_ no shape for %s.", Monnam(player.usteed), for_what);
+  }
+  else {
+    let wl = (EWounded_legs & BOTH_SIDES), bp = body_part(LEG);
+    if (wl === BOTH_SIDES) bp = makeplural(bp);
+    Your("%s%s %s in_ no shape for %s.", (wl === LEFT_SIDE) ? "left " : (wl === RIGHT_SIDE) ? "right " : "", bp, (wl === BOTH_SIDES) ? "are" : "is", for_what);
+  }
 }
 
 // cf. do.c set_wounded_legs() — set wounded legs condition.

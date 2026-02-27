@@ -114,8 +114,7 @@ function has_boulder_at(map, x, y) {
     }
     return false;
 }
-export 
-function t_at(x, y, map) {
+export function t_at(x, y, map) {
     if (!map || !Array.isArray(map.traps)) return null;
     for (const t of map.traps) {
         if (t && t.x === x && t.y === y) return t;
@@ -216,9 +215,9 @@ export function thitm(tlev, mon, obj, d_override, nocorpse, map, player) {
 // ========================================================================
 // m_easy_escape_pit — C ref: trap.c m_easy_escape_pit()
 // ========================================================================
-export function m_easy_escape_pit(mon) {
-    return (mon.mndx === PM_PIT_FIEND
-            || ((mons[mon.mndx] || {}).msize || 0) >= MZ_HUGE);
+// Autotranslated from trap.c:3633
+export function m_easy_escape_pit(mtmp) {
+  return (mtmp.data === mons[PM_PIT_FIEND] || mtmp.data.msize >= MZ_HUGE);
 }
 
 // ========================================================================

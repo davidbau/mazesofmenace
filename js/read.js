@@ -248,8 +248,7 @@ const apron_msgs = [
     "If you don't like the food, I'll stab you",
     "I am an alchemist; if you see me running, try to catch up...",
 ];
-export 
-function apron_text(apron) {
+export function apron_text(apron) {
     const buf = apron_msgs[(apron.o_id || 0) % apron_msgs.length];
     return erode_obj_text(apron, buf);
 }

@@ -595,12 +595,9 @@ export function sticks(ptr) {
 
 // C ref: mondata.c hates_silver(ptr)
 // Returns true if this monster type is especially affected by silver weapons.
+// Autotranslated from mondata.c:523
 export function hates_silver(ptr) {
-    return is_were(ptr)
-        || ptr.mlet === S_VAMPIRE
-        || is_demon(ptr)
-        || ptr === mons[PM_SHADE]
-        || (ptr.mlet === S_IMP && ptr !== mons[PM_TENGU]);
+  return  (is_were(ptr) || ptr.mlet === S_VAMPIRE || is_demon(ptr) || ptr === mons[PM_SHADE] || (ptr.mlet === S_IMP && ptr !== mons[PM_TENGU]));
 }
 
 // C ref: mondata.c mon_hates_silver(mon)
@@ -632,12 +629,11 @@ export function mon_hates_blessings(mon) {
 
 // C ref: mondata.c cantvomit(ptr)
 // Returns true if monster type is incapable of vomiting.
+// Autotranslated from mondata.c:662
 export function cantvomit(ptr) {
-    if (ptr.mlet === S_RODENT && ptr !== mons[PM_ROCK_MOLE] && ptr !== mons[PM_WOODCHUCK])
-        return true;
-    if (ptr === mons[PM_WARHORSE] || ptr === mons[PM_HORSE] || ptr === mons[PM_PONY])
-        return true;
-    return false;
+  if (ptr.mlet === S_RODENT && ptr !== mons[PM_ROCK_MOLE] && ptr !== mons[PM_WOODCHUCK]) return true;
+  if (ptr === mons[PM_WARHORSE] || ptr === mons[PM_HORSE] || ptr === mons[PM_PONY]) return true;
+  return false;
 }
 
 // C ref: mondata.c num_horns(ptr)
