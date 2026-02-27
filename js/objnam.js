@@ -114,10 +114,10 @@ const Japanese_items = [
 // ============================================================================
 
 // cf. objnam.c:142 — nextobuf(): no-op in JS (strings are immutable/GC'd)
-function nextobuf() { return ''; }
+export function nextobuf() { return ''; }
 
 // cf. objnam.c:150 — releaseobuf(): no-op in JS
-function releaseobuf(_bufp) {}
+export function releaseobuf(_bufp) {}
 
 // cf. objnam.c:167 — maybereleaseobuf(): no-op in JS
 export function maybereleaseobuf(_obuffer) {}
@@ -757,7 +757,7 @@ export function Doname2(obj, player) {
 // ============================================================================
 
 // cf. objnam.c:1815 — corpse_xname(): format corpse name with monster type
-function corpse_xname(otmp, adjective, { singular: ignorequan = false, noPfx = false, thePrefix = false, article: anyPrefix = false } = {}) {
+export function corpse_xname(otmp, adjective, { singular: ignorequan = false, noPfx = false, thePrefix = false, article: anyPrefix = false } = {}) {
     const omndx = otmp.corpsenm;
     let possessive = false;
     let glob = (otmp.otyp !== CORPSE && !!otmp.globby);
@@ -1302,7 +1302,7 @@ const ch_k = [
     'gastrotrich', 'isopach', 'loch', 'oligarch', 'peritrich',
     'sandarach', 'sumach', 'symposiarch',
 ];
-
+export 
 function ch_ksound(basestr) {
     if (!basestr || basestr.length < 4) return false;
     const lower = basestr.toLowerCase();
@@ -1348,7 +1348,7 @@ function badman(basestr, to_plural) {
 }
 
 // Find compound separator in string
-function singplur_compound(str) {
+export function singplur_compound(str) {
     const lower = str.toLowerCase();
     for (let i = 0; i < str.length; i++) {
         const ch = str[i];

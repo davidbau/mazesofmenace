@@ -173,7 +173,7 @@ export async function do_blinding_ray(_obj, player = null, map = null) {
 }
 
 // cf. apply.c:79 -- STUB: depends on getdir, bhit, zapyourself
-function use_camera(obj) {
+export function use_camera(obj) {
     if (obj.spe <= 0) { pline(_nothing_happens()); return; }
     obj.spe--;
     pline("You take a picture.");
@@ -183,7 +183,7 @@ function use_camera(obj) {
 function use_towel() { pline("You wipe your face."); }
 
 // cf. apply.c:198 -- STUB: depends on sobj_at, corpse processing
-function its_dead() { return false; }
+export function its_dead() { return false; }
 
 // cf. apply.c:318 -- STUB: depends on getdir, mstatusline
 function use_stethoscope() { You("hear nothing special."); }
@@ -258,13 +258,13 @@ export function leashable(mtmp) {
 }
 
 // cf. apply.c:765 -- STUB: use_leash
-function use_leash() { pline("You need to get closer to use a leash."); }
+export function use_leash() { pline("You need to get closer to use a leash."); }
 
 // cf. apply.c:817 -- STUB: use_leash_core
-function use_leash_core() {}
+export function use_leash_core() {}
 
 // cf. apply.c:887 -- STUB: mleashed_next2u
-function mleashed_next2u() { return false; }
+export function mleashed_next2u() { return false; }
 
 // cf. apply.c:915 -- next_to_u: conservative default
 export function next_to_u() { return true; }
@@ -416,7 +416,7 @@ export function catch_lit(obj) {
 }
 
 // cf. apply.c:1624 -- use_lamp
-function use_lamp(obj) {
+export function use_lamp(obj) {
     if (obj.lamplit) {
         const lamp = (obj.otyp === OIL_LAMP || obj.otyp === MAGIC_LAMP) ? "lamp"
                    : (obj.otyp === BRASS_LANTERN) ? "lantern" : null;
@@ -448,7 +448,7 @@ function use_lamp(obj) {
 }
 
 // cf. apply.c:1699 -- STUB: light_cocktail
-function light_cocktail(obj) {
+export function light_cocktail(obj) {
     if (obj.lamplit) { You("snuff the lit potion."); end_burn(obj, true); return; }
     You("light a potion. It gives off a dim light.");
     begin_burn(obj, false);
@@ -467,7 +467,7 @@ function rub_ok(obj) {
 function dorub() { pline("You rub... but nothing special happens."); }
 
 // cf. apply.c:1843 -- STUB: dojump
-function dojump() { You_cant("jump very far."); }
+export function dojump() { You_cant("jump very far."); }
 
 // cf. apply.c:2163 -- tinnable
 // Autotranslated from apply.c:2163
@@ -516,10 +516,10 @@ export function figurine_location_checks(obj, cc, quietly) {
 }
 
 // cf. apply.c:2540 -- STUB: use_figurine
-function use_figurine() { pline("The figurine wriggles but nothing happens."); }
+export function use_figurine() { pline("The figurine wriggles but nothing happens."); }
 
 // cf. apply.c:2581 -- grease_ok
-function grease_ok(obj) {
+export function grease_ok(obj) {
     if (!obj) return true;
     if (obj.oclass === COIN_CLASS) return false;
     return true;
@@ -541,7 +541,7 @@ function use_grease(obj) {
 }
 
 // cf. apply.c:2654 -- touchstone_ok
-function touchstone_ok(obj) {
+export function touchstone_ok(obj) {
     if (!obj) return false;
     return (obj.oclass === COIN_CLASS || obj.oclass === GEM_CLASS);
 }
@@ -634,10 +634,10 @@ function use_whip() { pline("Snap!"); }
 function find_poleable_mon() { return false; }
 
 // cf. apply.c:3317 -- STUB: get_valid_polearm_position
-function get_valid_polearm_position() { return false; }
+export function get_valid_polearm_position() { return false; }
 
 // cf. apply.c:3330 -- STUB: display_polearm_positions
-function display_polearm_positions(player, map) {
+export function display_polearm_positions(player, map) {
     if (!player || !map) return;
     // C ref: apply.c display_polearm_positions() => tmp_at(DISP_BEAM, S_goodpos)
     tmp_at(DISP_BEAM, { ch: '*', color: 10 });
@@ -659,10 +659,10 @@ export function calc_pole_range() { return { min_range: 4, max_range: 4 }; }
 export function could_pole_mon(_player, _x, _y, _map) { return false; }
 
 // cf. apply.c:3412 -- snickersnee_used_dist_attk
-function snickersnee_used_dist_attk() { return false; }
+export function snickersnee_used_dist_attk() { return false; }
 
 // cf. apply.c:3422 -- STUB: use_pole
-function use_pole() { pline("You miss; there is no one there to hit."); }
+export function use_pole() { pline("You miss; there is no one there to hit."); }
 
 // cf. apply.c:3564 -- use_cream_pie (partial)
 function use_cream_pie(obj, player) {
@@ -673,19 +673,19 @@ function use_cream_pie(obj, player) {
 }
 
 // cf. apply.c:3603 -- jelly_ok
-function jelly_ok(obj) { return (obj && obj.otyp === EGG); }
+export function jelly_ok(obj) { return (obj && obj.otyp === EGG); }
 
 // cf. apply.c:3612 -- STUB: use_royal_jelly
 function use_royal_jelly() { pline("You need an egg to use royal jelly on."); }
 
 // cf. apply.c:3682 -- grapple_range
-function grapple_range() { return 4; }
+export function grapple_range() { return 4; }
 
 // cf. apply.c:3697 -- STUB: can_grapple_location
-function can_grapple_location(_player, _x, _y, _map) { return false; }
+export function can_grapple_location(_player, _x, _y, _map) { return false; }
 
 // cf. apply.c:3703 -- STUB: display_grapple_positions
-function display_grapple_positions(player, map) {
+export function display_grapple_positions(player, map) {
     if (!player || !map) return;
     // C ref: apply.c display_grapple_positions() => tmp_at(DISP_BEAM, S_goodpos)
     tmp_at(DISP_BEAM, { ch: '*', color: 10 });
@@ -707,7 +707,7 @@ function use_grapple() { pline(_nothing_happens()); }
 function discard_broken_wand() {}
 
 // cf. apply.c:3884 -- STUB: broken_wand_explode
-function broken_wand_explode() {}
+export function broken_wand_explode() {}
 
 // cf. apply.c:3893 -- STUB: maybe_dunk_boulders
 export function maybe_dunk_boulders() {}
@@ -963,7 +963,7 @@ export function unfixable_trouble_count(/* is_horn, player */) {
 }
 
 // cf. apply.c:4468 -- flip_through_book
-function flip_through_book(obj) {
+export function flip_through_book(obj) {
     You("flip through the pages of %s.", xname(obj));
     if (obj.otyp === SPE_BOOK_OF_THE_DEAD) {
         You_hear("the pages make an unpleasant rustling sound.");
@@ -982,8 +982,49 @@ function flip_through_book(obj) {
 }
 
 // cf. apply.c:4522 -- flip_coin
-function flip_coin() {
+export function flip_coin() {
     You("flip a coin.");
     if (rn2(2)) pline("It comes up heads.");
     else pline("It comes up tails.");
+}
+
+// Autotranslated from apply.c:1954
+export function get_valid_jump_position(x, y, map) {
+  return (isok(x, y) && (ACCESSIBLE(map.locations[x][y].typ) || Passes_walls) && is_valid_jump_pos(x, y, gj.jumping_is_magic, false));
+}
+
+// Autotranslated from apply.c:1962
+export function display_jump_positions(on_off, player) {
+  let x, y, dx, dy;
+  if (on_off) {
+    tmp_at(DISP_BEAM, cmap_to_glyph(S_goodpos));
+    for (dx = -4; dx <= 4; dx++) {
+      for (dy = -4; dy <= 4; dy++) {
+        x = dx + player.x;
+        y = dy + player.y;
+        if (get_valid_jump_position(x, y) && !u_at(x, y)) tmp_at(x, y);
+      }
+    }
+  }
+  else { tmp_at(DISP_END, 0); }
+}
+
+// Autotranslated from apply.c:4145
+export function apply_ok(obj, player) {
+  if (!obj) return GETOBJ_EXCLUDE;
+  if (obj.oclass === TOOL_CLASS || obj.oclass === WAND_CLASS || obj.oclass === SPBOOK_CLASS) return GETOBJ_SUGGEST;
+  if (obj.oclass === COIN_CLASS) return GETOBJ_DOWNPLAY;
+  if (obj.oclass === WEAPON_CLASS && (is_pick(obj) || is_axe(obj) || is_pole(obj) || obj.otyp === BULLWHIP)) return GETOBJ_SUGGEST;
+  if (obj.oclass === POTION_CLASS) {
+    if (!obj.dknown || !objectData[obj.otyp].oc_name_known) return GETOBJ_DOWNPLAY;
+    if (obj.otyp === POT_OIL) return GETOBJ_SUGGEST;
+  }
+  if (obj.otyp === CREAM_PIE || obj.otyp === EUCALYPTUS_LEAF || obj.otyp === LUMP_OF_ROYAL_JELLY) return GETOBJ_SUGGEST;
+  if (obj.otyp === BANANA && (player?.Hallucination || player?.hallucinating || false)) return GETOBJ_DOWNPLAY;
+  if (is_graystone(obj)) {
+    if (!obj.dknown) return GETOBJ_SUGGEST;
+    if (obj.otyp !== TOUCHSTONE && (objectData[TOUCHSTONE].oc_name_known || objectData[obj.otyp].oc_name_known)) return GETOBJ_EXCLUDE_SELECTABLE;
+    return GETOBJ_SUGGEST;
+  }
+  return GETOBJ_EXCLUDE_SELECTABLE;
 }

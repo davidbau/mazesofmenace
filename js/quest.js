@@ -93,7 +93,7 @@ function com_pager(msgid, game) {
 // ======================================================================
 
 // cf. quest.c:26 [static] — on_start(): quest start-level arrival message
-function on_start(game) {
+export function on_start(game) {
     const qs = Qstat(game);
     const player = (game.u || game.player);
     if (!qs.first_start) {
@@ -109,7 +109,7 @@ function on_start(game) {
 }
 
 // cf. quest.c:40 [static] — on_locate(): quest locate-level arrival message
-function on_locate(game) {
+export function on_locate(game) {
     const qs = Qstat(game);
     const player = (game.u || game.player);
     // the locate messages only make sense when arriving from above
@@ -202,7 +202,7 @@ function is_pure(talk, game) {
 }
 
 // cf. quest.c:186 [static] — expulsion(seal): force-return from quest branch
-function expulsion(seal, game) {
+export function expulsion(seal, game) {
     const player = (game.u || game.player);
     const map = (game.lev || game.map);
     const qs = Qstat(game);
@@ -463,7 +463,7 @@ export function leader_speaks(mtmp, game) {
 }
 
 // cf. quest.c:380 [static] — chat_with_nemesis(): nemesis taunt dialog
-function chat_with_nemesis(game) {
+export function chat_with_nemesis(game) {
     const qs = Qstat(game);
     qt_pager("discourage", game);
     if (!qs.met_nemesis)
@@ -495,7 +495,7 @@ export function nemesis_stinks(mx, my, game) {
 }
 
 // cf. quest.c:427 [static] — chat_with_guardian(): guardian NPC dialog
-function chat_with_guardian(game) {
+export function chat_with_guardian(game) {
     const qs = Qstat(game);
     const player = (game.u || game.player);
     if (player.uhave && player.uhave.questart && qs.killed_nemesis)
@@ -505,7 +505,7 @@ function chat_with_guardian(game) {
 }
 
 // cf. quest.c:437 [static] — prisoner_speaks(mtmp): prisoner awakening
-function prisoner_speaks(mtmp, game) {
+export function prisoner_speaks(mtmp, game) {
     const player = (game.u || game.player);
     const map = (game.lev || game.map);
 

@@ -1294,3 +1294,135 @@ export function befriend_with_obj(ptr, obj) {
             || (objectData[obj.otyp]?.material === VEGGY)
             || (obj.otyp === CORPSE && obj.corpsenm === PM_LICHEN));
 }
+
+// Autotranslated from mondata.c:500
+export function mstrength_ranged_attk(ptr) {
+  let i, j, atk_mask = (1 << AT_BREA) | (1 << AT_SPIT) | (1 << AT_GAZE);
+  for (i = 0; i < NATTK; i++) {
+    if ((j = ptr.mattk[i].aatyp) >= AT_WEAP || (j < 32 && (atk_mask & (1 << j)) !== 0)) return true;
+  }
+  return false;
+}
+
+// Autotranslated from mondata.c:1179
+export function gender(mtmp) {
+  if (is_neuter(mtmp.data)) return 2;
+  return mtmp.female;
+}
+
+// Autotranslated from mondata.c:1379
+export function locomotion(ptr, def) {
+  let locoindx = ( def !== highc( def)) ? 0 : 1;
+  return (is_floater(ptr) ? levitate[locoindx] : (is_flyer(ptr) && ptr.msize <= MZ_SMALL) ? flys[locoindx] : (is_flyer(ptr) && ptr.msize > MZ_SMALL) ? flyl[locoindx] : slithy(ptr) ? slither[locoindx] : amorphous(ptr) ? ooze[locoindx] : !ptr.mmove ? immobile[locoindx] : nolimbs(ptr) ? crawl[locoindx] : def);
+}
+
+// Autotranslated from mondata.c:1394
+export function stagger(ptr, def) {
+  let locoindx = ( def !== highc( def)) ? 2 : 3;
+  return (is_floater(ptr) ? levitate[locoindx] : (is_flyer(ptr) && ptr.msize <= MZ_SMALL) ? flys[locoindx] : (is_flyer(ptr) && ptr.msize > MZ_SMALL) ? flyl[locoindx] : slithy(ptr) ? slither[locoindx] : amorphous(ptr) ? ooze[locoindx] : !ptr.mmove ? immobile[locoindx] : nolimbs(ptr) ? crawl[locoindx] : def);
+}
+
+// Autotranslated from mondata.c:1506
+export function olfaction(mdat) {
+  if (is_golem(mdat) || mdat.mlet === S_EYE   || mdat.mlet === S_JELLY || mdat.mlet === S_PUDDING || mdat.mlet === S_BLOB || mdat.mlet === S_VORTEX || mdat.mlet === S_ELEMENTAL || mdat.mlet === S_FUNGUS   || mdat.mlet === S_LIGHT) return false;
+  return true;
+}
+
+// Autotranslated from mondata.c:1521
+export function cvt_adtyp_to_mseenres(adtyp) {
+  switch (adtyp) {
+    case AD_MAGM:
+      return M_SEEN_MAGR;
+    case AD_FIRE:
+      return M_SEEN_FIRE;
+    case AD_COLD:
+      return M_SEEN_COLD;
+    case AD_SLEE:
+      return M_SEEN_SLEEP;
+    case AD_DISN:
+      return M_SEEN_DISINT;
+    case AD_ELEC:
+      return M_SEEN_ELEC;
+    case AD_DRST:
+      return M_SEEN_POISON;
+    case AD_ACID:
+      return M_SEEN_ACID;
+    default:
+      return M_SEEN_NOTHING;
+  }
+}
+
+// Autotranslated from mondata.c:1539
+export function cvt_prop_to_mseenres(prop) {
+  switch (prop) {
+    case ANTIMAGIC:
+      return M_SEEN_MAGR;
+    case FIRE_RES:
+      return M_SEEN_FIRE;
+    case COLD_RES:
+      return M_SEEN_COLD;
+    case SLEEP_RES:
+      return M_SEEN_SLEEP;
+    case DISINT_RES:
+      return M_SEEN_DISINT;
+    case POISON_RES:
+      return M_SEEN_POISON;
+    case SHOCK_RES:
+      return M_SEEN_ELEC;
+    case ACID_RES:
+      return M_SEEN_ACID;
+    case REFLECTING:
+      return M_SEEN_REFL;
+    default:
+      return M_SEEN_NOTHING;
+  }
+}
+
+// Autotranslated from mondata.c:1557
+export function monstseesu(seenres, map, player) {
+  let mtmp;
+  if (seenres === M_SEEN_NOTHING || player.uswallow) return;
+  for (mtmp = (map?.fmon || null); mtmp; mtmp = mtmp.nmon) {
+    if (!DEADMONSTER(mtmp) && m_canseeu(mtmp)) {
+      m_setseenres(mtmp, seenres);
+    }
+  }
+}
+
+// Autotranslated from mondata.c:1571
+export function monstunseesu(seenres, map, player) {
+  let mtmp;
+  if (seenres === M_SEEN_NOTHING || player.uswallow) return;
+  for (mtmp = (map?.fmon || null); mtmp; mtmp = mtmp.nmon) {
+    if (!DEADMONSTER(mtmp) && m_canseeu(mtmp)) {
+      m_clearseenres(mtmp, seenres);
+    }
+  }
+}
+
+// Autotranslated from mondata.c:1640
+export function mons_see_trap(ttmp, map) {
+  let mtmp, tx = ttmp.tx, ty = ttmp.ty;
+  let maxdist = map.locations[tx][ty].lit ? 7*7 : 2;
+  for (mtmp = (map?.fmon || null); mtmp; mtmp = mtmp.nmon) {
+    if (is_animal(mtmp.data) || mindless(mtmp.data) || !haseyes(mtmp.data) || !mtmp.mcansee) {
+      continue;
+    }
+    if (dist2(mtmp.mx, mtmp.my, tx, ty) > maxdist) {
+      continue;
+    }
+    if (!m_cansee(mtmp, tx, ty)) {
+      continue;
+    }
+    mon_learns_traps(mtmp, ttmp.ttyp);
+  }
+}
+
+// Autotranslated from mondata.c:1659
+export function get_atkdam_type(adtyp) {
+  if (adtyp === AD_RBRE) {
+    let rnd_breath_typ = [ AD_MAGM, AD_FIRE, AD_COLD, AD_SLEE, AD_DISN, AD_ELEC, AD_DRST, AD_ACID ];
+    return ROLL_FROM(rnd_breath_typ);
+  }
+  return adtyp;
+}

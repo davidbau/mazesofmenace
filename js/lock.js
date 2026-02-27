@@ -153,7 +153,7 @@ export function picking_at(game, x, y) {
 }
 
 // cf. lock.c:38 [static] — lock_action(void): current lock-picking action description
-function lock_action(game) {
+export function lock_action(game) {
     const xlock = getXlock(game);
     // if the target is currently unlocked, we're trying to lock it now
     if (xlock.door && !(xlock.door.flags & D_LOCKED)) {
@@ -1099,4 +1099,16 @@ export async function handleClose(player, map, display, game) {
     }
 
     return { moved: false, tookTime: true };
+}
+
+// Autotranslated from lock.c:758
+export function stumble_on_door_mimic(x, y) {
+  let mtmp;
+  if ((mtmp = m_at(x, y)) && is_door_mappear(mtmp) && !Protection_from_shape_changers) { stumble_onto_mimic(mtmp); return true; }
+  return false;
+}
+
+// Autotranslated from lock.c:772
+export function doopen() {
+  return doopen_indir(0, 0);
 }

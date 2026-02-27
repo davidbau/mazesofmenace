@@ -70,7 +70,7 @@ function mon_in_room(mon, rmtyp, map) {
 // ============================================================================
 
 // cf. sounds.c:29 — throne_mon_sound(mtmp): throne room ambient sound
-function throne_mon_sound(mtmp, hallu, game) {
+export function throne_mon_sound(mtmp, hallu, game) {
     const ptr = mtmp.type;
     if ((mtmp.sleeping || is_lord(ptr) || is_prince(ptr))
         && !is_animal(ptr)
@@ -95,7 +95,7 @@ function throne_mon_sound(mtmp, hallu, game) {
 }
 
 // cf. sounds.c:61 — beehive_mon_sound(mtmp): beehive ambient sound
-function beehive_mon_sound(mtmp, hallu, game) {
+export function beehive_mon_sound(mtmp, hallu, game) {
     const ptr = mtmp.type;
     if ((ptr.mlet === S_ANT && is_flyer(ptr))
         && mon_in_room(mtmp, BEEHIVE, (game.lev || game.map))) {
@@ -118,7 +118,7 @@ function beehive_mon_sound(mtmp, hallu, game) {
 }
 
 // cf. sounds.c:88 — morgue_mon_sound(mtmp): morgue ambient sound
-function morgue_mon_sound(mtmp, hallu, game) {
+export function morgue_mon_sound(mtmp, hallu, game) {
     const ptr = mtmp.type;
     if (is_undead(ptr) && mon_in_room(mtmp, MORGUE, (game.lev || game.map))) {
         switch (rn2(2) + hallu) {
@@ -138,7 +138,7 @@ function morgue_mon_sound(mtmp, hallu, game) {
 }
 
 // cf. sounds.c:114 — zoo_mon_sound(mtmp): zoo ambient sound
-function zoo_mon_sound(mtmp, hallu, game) {
+export function zoo_mon_sound(mtmp, hallu, game) {
     const ptr = mtmp.type;
     if ((mtmp.sleeping || is_animal(ptr))
         && mon_in_room(mtmp, ZOO, (game.lev || game.map))) {
@@ -158,7 +158,7 @@ function zoo_mon_sound(mtmp, hallu, game) {
 // Fires for awake priests in their temple, hero not in that temple.
 // Full implementation requires inhistemple, temple_occupied, EPRI which
 // are not yet ported. We consume RNG to match C, then emit a generic message.
-function temple_priest_sound(mtmp, hallu, game) {
+export function temple_priest_sound(mtmp, hallu, game) {
     if (mtmp.ispriest && !mtmp.sleeping) {
         // Simplified check: priest must be in a TEMPLE room
         if (!mon_in_room(mtmp, TEMPLE, (game.lev || game.map))) return false;
@@ -186,7 +186,7 @@ function temple_priest_sound(mtmp, hallu, game) {
 }
 
 // cf. sounds.c:180 — oracle_sound(mtmp): oracle ambient sound
-function oracle_sound(mtmp, hallu, game) {
+export function oracle_sound(mtmp, hallu, game) {
     if (mtmp.type !== mons[PM_ORACLE]) return false;
 
     if (hallu || !canseemon(mtmp, (game.u || game.player), game.fov)) {
@@ -636,7 +636,7 @@ export function cry_sound(mtmp) {
 // ============================================================================
 
 // cf. sounds.c:658 — mon_is_gecko(mon): check if monster appears as gecko
-function mon_is_gecko(mon) {
+export function mon_is_gecko(mon) {
     if (mon.type === mons[PM_GECKO]) return true;
     if (mon.type === mons[PM_LONG_WORM]) return false;
     // Simplified: would need glyph_at/glyph_to_mon for hallucination check

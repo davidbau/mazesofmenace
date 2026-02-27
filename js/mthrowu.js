@@ -214,7 +214,7 @@ export function m_useup(mon, obj) {
 
 // C ref: mthrowu.c monmulti() — compute multishot count.
 // Consumes rnd(multishot) when multishot > 0 and quan > 1.
-function monmulti(mon, otmp) {
+export function monmulti(mon, otmp) {
     let multishot = 1;
     const quan = Number.isInteger(otmp?.quan) ? otmp.quan : 1;
     const mwep = mon?.weapon || null;

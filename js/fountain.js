@@ -87,7 +87,7 @@ function dowatersnakes(player, map, display) {
 }
 
 // cf. fountain.c:64 [static] -- dowaterdemon(): fountain spawns demon or wish
-function dowaterdemon(player, map, display) {
+export function dowaterdemon(player, map, display) {
     // mvitals not tracked in JS -- always allow spawning
     const mtmp = makemon(PM_WATER_DEMON, player.x, player.y,
                          MM_NOMSG, map.depth || 1, map);
@@ -116,7 +116,7 @@ function dowaterdemon(player, map, display) {
 }
 
 // cf. fountain.c:94 [static] -- dowaternymph(): fountain spawns nymph
-function dowaternymph(player, map, display) {
+export function dowaternymph(player, map, display) {
     const mtmp = makemon(PM_WATER_NYMPH, player.x, player.y,
                          MM_NOMSG, map.depth || 1, map);
     if (mtmp) {
@@ -200,7 +200,7 @@ function gush(x, y, poolcnt, player, map, display, fov) {
 }
 
 // cf. fountain.c:165 [static] -- dofindgem(): gem in fountain
-function dofindgem(player, map, display) {
+export function dofindgem(player, map, display) {
     if (!player.blind)
         You("spot a gem in the sparkling waters!");
     else
@@ -220,7 +220,7 @@ function dofindgem(player, map, display) {
 }
 
 // cf. fountain.c:179 [static] -- watchman_warn_fountain(mtmp): guard fountain warning
-function watchman_warn_fountain(mtmp, player, fov) {
+export function watchman_warn_fountain(mtmp, player, fov) {
     if (is_watch(mtmp.data || mons[mtmp.mnum])
         && couldsee(null, player, mtmp.mx, mtmp.my)
         && mtmp.mpeaceful) {

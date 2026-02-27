@@ -210,7 +210,7 @@ export function free_egd(mtmp) {
 // cf. vault.c:234 [static] — in_fcorridor(grd, x, y)
 // Returns true if (x,y) is inside guard's fake corridor.
 // ========================================================================
-function in_fcorridor(grd, x, y) {
+export function in_fcorridor(grd, x, y) {
     const egrd = grd.egd;
     if (!egrd) return false;
     for (let fci = egrd.fcbeg; fci < egrd.fcend; fci++) {
@@ -340,7 +340,7 @@ export function restfakecorr(grd, map, player, fov) {
 // cf. vault.c:153 [static] — parkguard(grd)
 // Moves guard to <0,0> (off-map parking).
 // ========================================================================
-function parkguard(grd, map) {
+export function parkguard(grd, map) {
     // Either guard is dead or will now be treated as if so;
     // monster traversal loops should skip it
     if (grd.mx) {
@@ -615,7 +615,7 @@ function wallify_vault(grd, map, player, fov) {
 // cf. vault.c:733 [static] — gd_mv_monaway(grd, nx, ny)
 // Move any monster out of guard's way.
 // ========================================================================
-function gd_mv_monaway(grd, nx, ny, map, player, fov) {
+export function gd_mv_monaway(grd, nx, ny, map, player, fov) {
     const mtmp = map.monsterAt ? map.monsterAt(nx, ny) : null;
     if (mtmp && mtmp !== grd) {
         if (!player?.deaf) {

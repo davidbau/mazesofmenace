@@ -890,3 +890,37 @@ export function teleport_pet(mtmp, force) {
     }
     return true;
 }
+
+// Autotranslated from teleport.c:20
+export function m_blocks_teleporting(mtmp) {
+  if (is_dlord(mtmp.data) || is_dprince(mtmp.data)) return true;
+  return false;
+}
+
+// Autotranslated from teleport.c:200
+export function enexto_gpflags(cc, xx, yy, mdat, entflags) {
+  return (enexto_core(cc, xx, yy, mdat, GP_CHECKSCARY | entflags) || enexto_core(cc, xx, yy, mdat, entflags));
+}
+
+// Autotranslated from teleport.c:767
+export async function vault_tele() {
+  let croom = search_special(VAULT), c;
+  if (croom && somexyspace(croom, c) && teleok(c.x, c.y, false)) { teleds(c.x, c.y, TELEDS_TELEPORT); return; }
+  await tele();
+}
+
+// Autotranslated from teleport.c:1780
+export function stairway_find_forwiz(isladder, up, map) {
+  let stway = gs.stairs;
+  while (stway && !(stway.isladder === isladder && stway.up === up && stway.tolev.dnum === map.uz.dnum)) {
+    stway = stway.next;
+  }
+  return stway;
+}
+
+// Autotranslated from teleport.c:1931
+export async function mvault_tele(mtmp) {
+  let croom = search_special(VAULT), c;
+  if (croom && somexyspace(croom, c) && goodpos(c.x, c.y, mtmp, 0)) { rloc_to(mtmp, c.x, c.y); return; }
+  await rloc(mtmp, RLOC_NONE);
+}

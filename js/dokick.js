@@ -643,7 +643,7 @@ let gate_str = null;
 // cf. dokick.c:38
 // ============================================================================
 
-function kickdmg(mon, clumsy, player, map) {
+async function kickdmg(mon, clumsy, player, map) {
     const uarmf = player.boots;
     let dmg = Math.floor((ACURRSTR(player) + ACURR(player, A_DEX) + ACURR(player, A_CON)) / 15);
     let kick_skill = P_NONE;
@@ -855,7 +855,7 @@ async function kick_monster(mon, x, y, player, map, game) {
             }
         }
     }
-    kickdmg(mon, clumsy, player, map);
+    await kickdmg(mon, clumsy, player, map);
 }
 
 // ============================================================================
@@ -1859,11 +1859,12 @@ export async function dokick(player, map, display, game) {
     mtmp = isok(x, y) ? map.monsterAt(x, y) : null;
     if (mtmp) {
         oldglyph = glyph_at(x, y);
-        if (!maybe_kick_monster(mtmp, x, y, player, map, game))
+        if (!maybe_kick_monster(mtmp, x, y, player, map, game)) {
             const ctx = (game && game.svc && game.svc.context)
                 ? game.svc.context
                 : game?.context;
             return { moved: false, tookTime: ctx?.move ? true : false };
+        }
     }
 
     wake_nearby(player, map);

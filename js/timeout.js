@@ -834,3 +834,38 @@ export function restoreTimers() {
 export function relinkTimers() {
     return relink_timers();
 }
+
+// Autotranslated from timeout.c:1192
+export function learn_egg_type(mnum, game) {
+  mnum = little_to_big(mnum);
+  game.mvitals[mnum].mvflags |= MV_KNOWS_EGG;
+  update_inventory();
+}
+
+// Autotranslated from timeout.c:2575
+export function mon_is_local(mon, game) {
+  let curr;
+  for (curr = game.migrating_mons; curr; curr = curr.nmon) {
+    if (curr === mon) return false;
+  }
+  for (curr = game.mydogs; curr; curr = curr.nmon) {
+    if (curr === mon) return false;
+  }
+  return true;
+}
+
+// Autotranslated from timeout.c:2594
+export function timer_is_local(timer) {
+  switch (timer.kind) {
+    case TIMER_LEVEL:
+      return true;
+    case TIMER_GLOBAL:
+      return false;
+    case TIMER_OBJECT:
+      return obj_is_local(timer.arg.a_obj);
+    case TIMER_MONSTER:
+      return mon_is_local(timer.arg.a_monst);
+  }
+  throw new Error('timer_is_local');
+  return false;
+}

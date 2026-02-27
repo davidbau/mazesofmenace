@@ -246,7 +246,7 @@ function burnarmor(mon) {
 }
 
 // C ref: zap.c:4646 zap_hit() — determine if beam hits a monster
-function zap_hit(ac, type) {
+export function zap_hit(ac, type) {
     // C ref: zap.c:4650 — rn2(20) chance check
     const chance = rn2(20);
     if (!chance) {
@@ -2459,4 +2459,22 @@ export function resists_stun(mon) {
 // ============================================================
 // Exported zhitm and zap_hit for use by other modules (e.g., mcastu)
 // ============================================================
-export { zhitm, zap_hit, burnarmor };
+export { zhitm, burnarmor };
+
+// Autotranslated from zap.c:5582
+export function destroyable(obj, adtyp) {
+  if (obj.oartifact) { return false; }
+  if (obj.in_use && obj.quan === 1) { return false; }
+  if (adtyp === AD_FIRE) {
+    if (obj.otyp === SCR_FIRE || obj.otyp === SPE_FIREBALL) { return false; }
+    if (obj.otyp === GLOB_OF_GREEN_SLIME || obj.oclass === POTION_CLASS || obj.oclass === SCROLL_CLASS || obj.oclass === SPBOOK_CLASS) { return true; }
+  }
+  else if (adtyp === AD_COLD) {
+    if (obj.oclass === POTION_CLASS && obj.otyp !== POT_OIL) { return true; }
+  }
+  else if (adtyp === AD_ELEC) {
+    if (obj.oclass !== RING_CLASS && obj.oclass !== WAND_CLASS) { return false; }
+    if (obj.otyp !== RIN_SHOCK_RESISTANCE && obj.otyp !== WAN_LIGHTNING) { return true; }
+  }
+  return false;
+}

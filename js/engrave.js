@@ -330,7 +330,7 @@ export function freehand(player) {
 // Filter callback for getobj; rates objects as suitable engraving tools.
 // In C returns GETOBJ_SUGGEST or GETOBJ_DOWNPLAY.
 // In JS, returns true if the object is a suggested engraving tool.
-function stylus_ok(obj) {
+export function stylus_ok(obj) {
     if (!obj) return true; // fingers
     if (obj.oclass === 'WEAPON_CLASS' || obj.oclass === WAND_CLASS
         || obj.oclass === 'GEM_CLASS' || obj.oclass === 'RING_CLASS')
@@ -692,4 +692,15 @@ export function maybeSmudgeEngraving(map, x1, y1, x2, y2) {
             wipe_engr_at(map, x2, y2, rnd(5), false);
         }
     }
+}
+
+// Autotranslated from engrave.c:50
+export function random_engraving(outbuf, pristine_copy) {
+  let rumor;
+  if (!rn2(4) || !(rumor = getrumor(0, pristine_copy, true)) || !rumor) {
+    get_rnd_text(ENGRAVEFILE, pristine_copy, rn2, MD_PAD_RUMORS);
+  }
+  Strcpy(outbuf, pristine_copy);
+  wipeout_text(outbuf,  (strlen(outbuf) / 4), 0);
+  return outbuf;
 }

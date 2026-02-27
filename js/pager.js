@@ -539,3 +539,188 @@ async function showGuidebook(display) {
     }
     await showPager(display, guidebookText, 'NetHack Guidebook');
 }
+
+// Autotranslated from pager.c:67
+export function is_swallow_sym(c) {
+  let i;
+  for (i = S_sw_tl; i <= S_sw_br; i++) {
+    if ( gs.showsyms === c) return true;
+  }
+  return false;
+}
+
+// Autotranslated from pager.c:137
+export function monhealthdescr(mon, addspace, outbuf) {
+  nhUse(mon);
+  nhUse(addspace);
+   outbuf = '\0';
+  return outbuf;
+}
+
+// Autotranslated from pager.c:166
+export function trap_description(outbuf, tnum, x, y) {
+  if (trapped_chest_at(tnum, x, y)) {
+    Strcpy(outbuf, "trapped chest");
+  }
+  else if (trapped_door_at(tnum, x, y)) {
+    Strcpy(outbuf, "trapped door");
+  }
+  else {
+    Strcpy(outbuf, trapname(tnum, false));
+  }
+  return;
+}
+
+// Autotranslated from pager.c:379
+export function look_at_object(buf, x, y, glyph, map) {
+  let otmp = 0, fakeobj = object_from_map(glyph, x, y, otmp);
+  if (otmp) {
+    Strcpy(buf, (otmp.otyp !== STRANGE_OBJECT) ? distant_name(otmp, otmp.dknown ? doname_with_price : doname_vague_quan) : obj_descr[STRANGE_OBJECT].oc_name);
+    if (fakeobj) { otmp.where = OBJ_FREE; dealloc_obj(otmp), otmp = null; }
+  }
+  else { Strcpy(buf, something); }
+  if (otmp && otmp.where === OBJ_BURIED) {
+    Strcat(buf, " (buried)");
+  }
+  else if (IS_TREE(map.locations[x][y].typ)) Snprintf(eos(buf), BUFSZ - strlen(buf), " %s in a tree", (otmp && is_treefruit(otmp)) ? "dangling" : "stuck");
+  else if (map.locations[x][y].typ === STONE || map.locations[x][y].typ === SCORR) {
+    Strcat(buf, " embedded in stone");
+  }
+  else if (IS_WALL(map.locations[x][y].typ) || map.locations[x][y].typ === SDOOR) {
+    Strcat(buf, " embedded in a wall");
+  }
+  else if (closed_door(x, y)) {
+    Strcat(buf, " embedded in a door");
+  }
+  else if (is_pool(x, y)) {
+    Strcat(buf, " in water");
+  }
+  else if (is_lava(x, y)) {
+    Strcat(buf, " in molten lava");
+  }
+  return;
+}
+
+// Autotranslated from pager.c:1961
+export function look_region_nearby(lo_x, lo_y, hi_x, hi_y, nearby, player) {
+   lo_y = nearby ? Math.max(player.y - BOLT_LIM, 0) : 0;
+   lo_x = nearby ? Math.max(player.x - BOLT_LIM, 1) : 1;
+   hi_y = nearby ? Math.min(player.y + BOLT_LIM, ROWNO - 1) : ROWNO - 1;
+   hi_x = nearby ? Math.min(player.x + BOLT_LIM, COLNO - 1) : COLNO - 1;
+}
+
+// Autotranslated from pager.c:2324
+export async function doquickwhatis() {
+  return do_look(1, null);
+}
+
+// Autotranslated from pager.c:2331
+export function doidtrap(player) {
+  let trap, tt, glyph, x, y;
+  if (!getdir("^")) return ECMD_CANCEL;
+  x = player.x + player.dx;
+  y = player.y + player.dy;
+  glyph = glyph_at(x, y);
+  if (glyph_is_trap(glyph) && ((tt = glyph_to_trap(glyph)) === BEAR_TRAP || tt === TRAPPED_DOOR || tt === TRAPPED_CHEST)) {
+    let chesttrap = trapped_chest_at(tt, x, y);
+    if (chesttrap || trapped_door_at(tt, x, y)) {
+      pline("That is a trapped %s.", chesttrap ? "chest" : "door");
+      return ECMD_OK;
+    }
+  }
+  for (trap = gf.ftrap; trap; trap = trap.ntrap) {
+    if (trap.tx === x && trap.ty === y) {
+      if (!trap.tseen) {
+        break;
+      }
+      tt = trap.ttyp;
+      if (player.dz) {
+        if (player.dz < 0 ? is_hole(tt) : tt === ROCKTRAP) {
+          break;
+        }
+      }
+      pline("That is %s%s%s.", an(trapname(tt, false)), !trap.madeby_u ? "" : (tt === WEB) ? " woven"   : (tt === HOLE || tt === PIT) ? " dug" : " set", !trap.madeby_u ? "" : " by you");
+      return ECMD_OK;
+    }
+  }
+  pline("I can't see a trap there.");
+  return ECMD_OK;
+}
+
+// Autotranslated from pager.c:2572
+export async function dowhatdoes_core(q, cbuf) {
+  let buf, ec_desc;
+  if ((ec_desc = key2extcmddesc(q)) !== null) {
+    let keybuf;
+    Sprintf(buf, "%-8s%s.", key2txt(q, keybuf), ec_desc);
+    Strcpy(cbuf, buf);
+    return cbuf;
+  }
+  return 0;
+}
+
+// Autotranslated from pager.c:2743
+export function dispfile_help() {
+  display_file(HELP, true);
+}
+
+// Autotranslated from pager.c:2749
+export function dispfile_shelp() {
+  display_file(SHELP, true);
+}
+
+// Autotranslated from pager.c:2755
+export function dispfile_optionfile() {
+  display_file(OPTIONFILE, true);
+}
+
+// Autotranslated from pager.c:2761
+export function dispfile_optmenu() {
+  display_file(OPTMENUHELP, true);
+}
+
+// Autotranslated from pager.c:2767
+export function dispfile_license() {
+  display_file(LICENSE, true);
+}
+
+// Autotranslated from pager.c:2773
+export function dispfile_debughelp() {
+  display_file(DEBUGHELP, true);
+}
+
+// Autotranslated from pager.c:2779
+export function dispfile_usagehelp() {
+  display_file(USAGEHELP, true);
+}
+
+// Autotranslated from pager.c:2785
+export function hmenu_doextversion() {
+  doextversion();
+}
+
+// Autotranslated from pager.c:2791
+export function hmenu_dohistory() {
+  dohistory();
+}
+
+// Autotranslated from pager.c:2797
+export async function hmenu_dowhatis() {
+  await dowhatis();
+}
+
+// Autotranslated from pager.c:2803
+export async function hmenu_dowhatdoes() {
+  await dowhatdoes();
+}
+
+// Autotranslated from pager.c:2809
+export function hmenu_doextlist() {
+  doextlist();
+}
+
+// Autotranslated from pager.c:2956
+export function dohistory() {
+  display_file(HISTORY, true);
+  return ECMD_OK;
+}

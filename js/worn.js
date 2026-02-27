@@ -748,3 +748,27 @@ export function nxt_unbypassed_obj(objchain) {
     }
     return null;
 }
+
+// Autotranslated from worn.c:1044
+export function clear_bypass(objchn) {
+  let o;
+  for (o = objchn; o; o = o.nobj) {
+    o.bypass = 0;
+    if (Has_contents(o)) clear_bypass(o.cobj);
+  }
+}
+
+// Autotranslated from worn.c:1148
+export function nxt_unbypassed_loot(lootarray, listhead) {
+  let o, obj;
+  while ((obj = lootarray.obj) !== 0) {
+    for (o = listhead; o; o = o.nobj) {
+      if (o === obj) {
+        break;
+      }
+    }
+    if (o && !obj.bypass) { bypass_obj(obj); break; }
+    ++lootarray;
+  }
+  return obj;
+}

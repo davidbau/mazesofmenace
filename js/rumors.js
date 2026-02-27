@@ -203,3 +203,31 @@ export function getrumor(truth, exclude_cookie) {
 // cf. rumors.c:939 — free_CapMons(): release CapMons[] memory
 // N/A: JS has garbage collection.
 // N/A: rumors.c:939 — free_CapMons()
+
+// Autotranslated from rumors.c:528
+export function outrumor(truth, mechanism, player) {
+  let fortune_msg = "This cookie has a scrap of paper inside.", line, buf;
+  let reading = (mechanism === BY_COOKIE || mechanism === BY_PAPER);
+  if (reading) {
+    if (is_fainted() && mechanism === BY_COOKIE) { return; }
+    else if ((player?.Blind || player?.blind || false)) {
+      if (mechanism === BY_COOKIE) pline(fortune_msg);
+      pline("What a pity that you cannot read it!");
+      return;
+    }
+  }
+  line = getrumor(truth, buf, reading ? false : true);
+  if (!line) line = "NetHack rumors file closed for renovation.";
+  switch (mechanism) {
+    case BY_ORACLE:
+      pline("True to her word, the Oracle %ssays: ", (!rn2(4) ? "offhandedly " : (!rn2(3) ? "casually " : (rn2(2) ? "nonchalantly " : ""))));
+    verbalize1(line);
+    return;
+    case BY_COOKIE:
+      pline(fortune_msg);
+    case BY_PAPER:
+      pline("It reads:");
+    break;
+  }
+  pline1(line);
+}

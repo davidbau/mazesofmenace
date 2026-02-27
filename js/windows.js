@@ -257,3 +257,280 @@ export async function select_menu(win, how) {
 
     return null;
 }
+
+// Autotranslated from windows.c:192
+export function genl_can_suspend_no() {
+  return false;
+}
+
+// Autotranslated from windows.c:198
+export function genl_can_suspend_yes() {
+  return true;
+}
+
+// Autotranslated from windows.c:230
+export function check_tty_wincap(wincap) {
+  let wc = win_choices_find("tty");
+  if (wc) return ((wc.procs.wincap & wincap) === wincap);
+  return false;
+}
+
+// Autotranslated from windows.c:240
+export function check_tty_wincap2(wincap2) {
+  let wc = win_choices_find("tty");
+  if (wc) return ((wc.procs.wincap2 & wincap2) === wincap2);
+  return false;
+}
+
+// Autotranslated from windows.c:460
+export function genl_preference_update(pref) {
+  return;
+}
+
+// Autotranslated from windows.c:471
+export function genl_getmsghistory(init) {
+  return  0;
+}
+
+// Autotranslated from windows.c:488
+export function genl_putmsghistory(msg, is_restoring) {
+  if (!is_restoring) pline("%s", msg);
+  return;
+}
+
+// Autotranslated from windows.c:696
+export function hup_create_nhwindow(type) {
+  return WIN_ERR;
+}
+
+// Autotranslated from windows.c:703
+export function hup_select_menu(window, how, menu_list) {
+  return -1;
+}
+
+// Autotranslated from windows.c:713
+export function hup_add_menu(window, glyphinfo, identifier, sel, grpsel, attr, clr, txt, itemflags) {
+  return;
+}
+
+// Autotranslated from windows.c:729
+export function hup_end_menu(window, prompt) {
+  return;
+}
+
+// Autotranslated from windows.c:736
+export function hup_putstr(window, attr, text) {
+  return;
+}
+
+// Autotranslated from windows.c:743
+export function hup_print_glyph(window, x, y, glyphinfo, bkglyphinfo) {
+  return;
+}
+
+// Autotranslated from windows.c:754
+export function hup_outrip(tmpwin, how, when) {
+  return;
+}
+
+// Autotranslated from windows.c:761
+export function hup_curs(window, x, y) {
+  return;
+}
+
+// Autotranslated from windows.c:768
+export function hup_display_nhwindow(window, blocking) {
+  return;
+}
+
+// Autotranslated from windows.c:775
+export function hup_display_file(fname, complain) {
+  return;
+}
+
+// Autotranslated from windows.c:783
+export function hup_cliparound(x, y) {
+  return;
+}
+
+// Autotranslated from windows.c:815
+export function hup_status_update(idx, ptr, chg, pc, color, colormasks) {
+  return;
+}
+
+// Autotranslated from windows.c:828
+export function hup_int_ndecl() {
+  return -1;
+}
+
+// Autotranslated from windows.c:834
+export function hup_void_ndecl() {
+  return;
+}
+
+// Autotranslated from windows.c:841
+export function hup_void_fdecl_int(arg) {
+  return;
+}
+
+// Autotranslated from windows.c:848
+export function hup_void_fdecl_winid(window) {
+  return;
+}
+
+// Autotranslated from windows.c:855
+export function hup_void_fdecl_winid_ulong(window, mbehavior) {
+  return;
+}
+
+// Autotranslated from windows.c:864
+export function hup_void_fdecl_constchar_p(string) {
+  return;
+}
+
+// Autotranslated from windows.c:871
+export function hup_ctrl_nhwindow(window, request, wri) {
+  return null;
+}
+
+// Autotranslated from windows.c:908
+export function genl_status_finish() {
+  let i;
+  for (i = 0; i < MAXBLSTATS; ++i) {
+    if (status_vals) (status_vals[i], 0), status_vals =  0;
+  }
+}
+
+// Autotranslated from windows.c:921
+export function genl_status_enablefield(fieldidx, nm, fmt, enable) {
+  status_fieldfmt = fmt;
+  status_fieldnm = nm;
+  status_activefields = enable;
+}
+
+// Autotranslated from windows.c:1243
+export function dump_open_log(now) {
+  nhUse(now);
+}
+
+// Autotranslated from windows.c:1266
+export function dump_close_log() {
+  if (dumplog_file) { fclose(dumplog_file); dumplog_file = null; }
+}
+
+// Autotranslated from windows.c:1275
+export function dump_forward_putstr(win, attr, str, no_forward) {
+  if (dumplog_file) fprintf(dumplog_file, "%s\n", str);
+  if (!no_forward) putstr(win, attr, str);
+}
+
+// Autotranslated from windows.c:1285
+export function dump_putstr(win, attr, str) {
+  if (dumplog_file) fprintf(dumplog_file, "%s\n", str);
+}
+
+// Autotranslated from windows.c:1292
+export function dump_create_nhwindow(type) {
+  return WIN_ERR;
+}
+
+// Autotranslated from windows.c:1299
+export function dump_clear_nhwindow(win) {
+  return;
+}
+
+// Autotranslated from windows.c:1306
+export function dump_display_nhwindow(win, p) {
+  return;
+}
+
+// Autotranslated from windows.c:1313
+export function dump_destroy_nhwindow(win) {
+  return;
+}
+
+// Autotranslated from windows.c:1320
+export function dump_start_menu(win, mbehavior) {
+  return;
+}
+
+// Autotranslated from windows.c:1327
+export function dump_add_menu(win, glyphinfo, identifier, ch, gch, attr, clr, str, itemflags) {
+  if (dumplog_file) {
+    if (glyphinfo.glyph === NO_GLYPH) fprintf(dumplog_file, " %s\n", str);
+    else {
+      fprintf(dumplog_file, " %c - %s\n", ch, str);
+    }
+  }
+}
+
+// Autotranslated from windows.c:1347
+export function dump_end_menu(win, str) {
+  if (dumplog_file) {
+    if (str) fprintf(dumplog_file, "%s\n", str);
+    else {
+      fputs("\n", dumplog_file);
+    }
+  }
+}
+
+// Autotranslated from windows.c:1358
+export function dump_select_menu(win, how, item) {
+   item = null;
+  return 0;
+}
+
+// Autotranslated from windows.c:1409
+export function glyph2ttychar(glyph) {
+  let glyphinfo;
+  map_glyphinfo(0, 0, glyph, 0, glyphinfo);
+  return glyphinfo.ttychar;
+}
+
+// Autotranslated from windows.c:1418
+export function glyph2symidx(glyph, game) {
+  let glyphinfo;
+  map_glyphinfo(0, 0, glyph, 0, glyphinfo);
+  return glyphinfo.game.sym.symidx;
+}
+
+// Autotranslated from windows.c:1427
+export function encglyph(glyph, game) {
+  let encbuf;
+  Sprintf(encbuf, "\\G%04X%04X", game.game.svc.context.rndencode, glyph);
+  return encbuf;
+}
+
+// Autotranslated from windows.c:1438
+export function decode_glyph(str, glyph_ptr, game) {
+  let rndchk = 0, dcount = 0, retval = 0, dp;
+  for ( str && ++dcount <= 4; ++str; ) {
+    if ((dp = strchr(hexdd, str)) !== 0) {
+      retval++;
+      rndchk = (rndchk * 16) + (Math.trunc(dp - hexdd) / 2);
+    }
+    else {
+      break;
+    }
+  }
+  if (rndchk === game.game.svc.context.rndencode) {
+     glyph_ptr = dcount = 0;
+    for ( str && ++dcount <= 4; ++str; ) {
+      if ((dp = strchr(hexdd, str)) !== 0) {
+        retval++;
+         glyph_ptr = ( glyph_ptr * 16) + (Math.trunc(dp - hexdd) / 2);
+      }
+      else {
+        break;
+      }
+    }
+    return retval;
+  }
+  return 0;
+}
+
+// Autotranslated from windows.c:1527
+export function genl_putmixed(window, attr, str) {
+  let buf;
+  putstr(window, attr, decode_mixed(buf, str));
+}

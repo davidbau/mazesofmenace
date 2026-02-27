@@ -697,7 +697,7 @@ export function clearrolefilter(which, game) {
 // cf. role.c:1384
 // In JS, returns the separator string to append.
 // Uses a mutable state object for role_post_attribs counter.
-function promptsep(state, num_post_attribs) {
+export function promptsep(state, num_post_attribs) {
     let sep = '';
     if (num_post_attribs > 1 && state.role_post_attribs < num_post_attribs
         && state.role_post_attribs > 1)
@@ -1164,3 +1164,9 @@ export function setup_algnmenu(filtering, rolenum, racenum, gendnum, game) {
 export { RS_ROLE, RS_RACE, RS_GENDER, RS_ALGNMNT, RS_filter };
 export { alignData, genderData, racePMIndex };
 export { alignIndexToValue, alignValueToIndex };
+
+// Autotranslated from role.c:2176
+export function genl_player_selection() {
+  if (genl_player_setup(0)) return;
+  nh_terminate(EXIT_SUCCESS);
+}

@@ -335,7 +335,7 @@ function shkveg() {
 }
 
 // C ref: shknam.c:442-450 — make a random veggy item at position
-function mkveggy_at(sx, sy) {
+export function mkveggy_at(sx, sy) {
     const obj = mksobj(shkveg(), true, true);
     if (obj) {
         obj.ox = sx;
@@ -773,4 +773,10 @@ export function monsterInShop(mon, map) {
         return false;
     }
     return pointInShop(mon.mx, mon.my, map);
+}
+
+// Autotranslated from shknam.c:568
+export function free_eshk(mtmp) {
+  if (mtmp.mextra && ESHK(mtmp)) { free( ESHK(mtmp)); ESHK(mtmp) =  0; }
+  mtmp.isshk = 0;
 }

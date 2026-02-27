@@ -407,7 +407,7 @@ function gazemm(magr, mdef, mattk, display, vis, map, ctx) {
 // ============================================================================
 
 // cf. mhitm.c:969 — explmm(magr, mdef, mattk)
-function explmm(magr, mdef, mattk, display, vis, map, ctx) {
+export function explmm(magr, mdef, mattk, display, vis, map, ctx) {
     if (magr.mcan) return M_ATTK_MISS;
 
     let result = mdamagem(magr, mdef, mattk, null, 0, display, vis, map, ctx);
@@ -873,7 +873,7 @@ export function mon_poly(magr, mdef, dmg) {
 // ============================================================================
 
 // cf. mhitm.c:1282 — mswingsm(magr, mdef, obj)
-function mswingsm(magr, mdef, otemp, display, vis, ctx) {
+export function mswingsm(magr, mdef, otemp, display, vis, ctx) {
     if (!vis || !display) return;
     const bash = false; // is_pole check omitted; adjacent polearm bash not yet needed
     const verb = monsterWeaponSwingVerb(otemp, bash);

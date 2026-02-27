@@ -352,7 +352,7 @@ function cant_squeeze_thru_mon(mon) {
 
 // C ref: monmove.c monlineu() — true if (nx,ny) lies on a line from mon through hero.
 // Used for NOTONL: shopkeepers/priests avoid standing on a line from hero.
-function monlineu(mon, player, nx, ny) {
+export function monlineu(mon, player, nx, ny) {
     const mux = Number.isInteger(mon.mux) ? mon.mux : player.x;
     const muy = Number.isInteger(mon.muy) ? mon.muy : player.y;
     return nx === mux || ny === muy
@@ -361,7 +361,7 @@ function monlineu(mon, player, nx, ny) {
 }
 
 // C ref: mon.c mm_displacement() — can attacker displace defender?
-function mm_displacement(mon, monAtPos) {
+export function mm_displacement(mon, monAtPos) {
     const monLevel = (m) => Number.isInteger(m?.m_lev) ? m.m_lev
         : (Number.isInteger(m?.type?.mlevel) ? m.type.mlevel : 0);
     if (!is_displacer(mon.type || {})) return false;
@@ -1543,4 +1543,484 @@ export async function movemon(map, player, display, fov, game = null, { dochug, 
     map.monsters = map.monsters.filter(m => !m.dead);
     player.displacedPetThisTurn = false;
     return somebodyCanMove;
+}
+
+// Autotranslated from mon.c:1897
+export function curr_mon_load(mtmp) {
+  let curload = 0, obj;
+  for (obj = mtmp.minvent; obj; obj = obj.nobj) {
+    if (obj.otyp !== BOULDER || !throws_rocks(mtmp.data)) {
+      curload += obj.owt;
+    }
+  }
+  return curload;
+}
+
+// Autotranslated from mon.c:1911
+export function max_mon_load(mtmp) {
+  let maxload;
+  if (!mtmp.data.cwt) maxload = (MAX_CARR_CAP *  mtmp.data.msize) / MZ_HUMAN;
+  else if (!strongmonst(mtmp.data) || (strongmonst(mtmp.data) && (mtmp.data.cwt > WT_HUMAN))) maxload = (MAX_CARR_CAP *  mtmp.data.cwt) / WT_HUMAN;
+  else {
+    maxload = MAX_CARR_CAP;
+  }
+  if (!strongmonst(mtmp.data)) {
+    maxload /= 2;
+  }
+  if (maxload < 1) maxload = 1;
+  return  maxload;
+}
+
+// Autotranslated from mon.c:1974
+export function can_carry(mtmp, otmp, player) {
+  let iquan, otyp = otmp.otyp, newload = otmp.owt, mdat = mtmp.data, nattk = 0;
+  if (notake(mdat)) return 0;
+  if (!can_touch_safely(mtmp, otmp)) return 0;
+  iquan = (otmp.quan >  LARGEST_INT) ? 20000 + rn2(LARGEST_INT - 20000 + 1) :  otmp.quan;
+  if (iquan > 1) {
+    let glomper = false;
+    if (mtmp.data.mlet === S_DRAGON && (otmp.oclass === COIN_CLASS || otmp.oclass === GEM_CLASS)) glomper = true;
+    else {
+      for (nattk = 0; nattk < NATTK; nattk++) {
+        if (mtmp.data.mattk[nattk].aatyp === AT_ENGL) { glomper = true; break; }
+      }
+    }
+    if ((mtmp.data.mflags1 & M1_NOHANDS) && !glomper) return 1;
+  }
+  if (mtmp === player.usteed) return 0;
+  if (mtmp.isshk) return iquan;
+  if (mtmp.mpeaceful && !mtmp.mtame) return 0;
+  if (throws_rocks(mdat) && otyp === BOULDER) return iquan;
+  if (mdat.mlet === S_NYMPH) return (otmp.oclass === ROCK_CLASS) ? 0 : iquan;
+  if (curr_mon_load(mtmp) + newload > max_mon_load(mtmp)) return 0;
+  return iquan;
+}
+
+// Autotranslated from mon.c:2581
+export function copy_mextra(mtmp2, mtmp1) {
+  if (!mtmp2 || !mtmp1 || !mtmp1.mextra) return;
+  if (!mtmp2.mextra) mtmp2.mextra = newmextra();
+  if (MGIVENNAME(mtmp1)) {
+    new_mgivenname(mtmp2,  strlen(MGIVENNAME(mtmp1)) + 1);
+    Strcpy(MGIVENNAME(mtmp2), MGIVENNAME(mtmp1));
+  }
+  if (EGD(mtmp1)) {
+    if (!EGD(mtmp2)) newegd(mtmp2);
+    assert(has_egd(mtmp2));
+     EGD(mtmp2) = EGD(mtmp1);
+  }
+  if (EPRI(mtmp1)) {
+    if (!EPRI(mtmp2)) newepri(mtmp2);
+    assert(has_epri(mtmp2));
+     EPRI(mtmp2) = EPRI(mtmp1);
+  }
+  if (ESHK(mtmp1)) {
+    if (!ESHK(mtmp2)) neweshk(mtmp2);
+    assert(has_eshk(mtmp2));
+     ESHK(mtmp2) = ESHK(mtmp1);
+  }
+  if (EMIN(mtmp1)) {
+    if (!EMIN(mtmp2)) newemin(mtmp2);
+    assert(has_emin(mtmp2));
+     EMIN(mtmp2) = EMIN(mtmp1);
+  }
+  if (EDOG(mtmp1)) {
+    if (!EDOG(mtmp2)) newedog(mtmp2);
+    assert(has_edog(mtmp2));
+     EDOG(mtmp2) = EDOG(mtmp1);
+  }
+  if (EBONES(mtmp1)) {
+    if (!EBONES(mtmp2)) newebones(mtmp2);
+    assert(has_ebones(mtmp2));
+     EBONES(mtmp2) = EBONES(mtmp1);
+  }
+  if (has_mcorpsenm(mtmp1)) MCORPSENM(mtmp2) = MCORPSENM(mtmp1);
+}
+
+// Autotranslated from mon.c:2633
+export function dealloc_mextra(m) {
+  let x = m.mextra;
+  if (x) {
+    if (x.mgivenname) (x.mgivenname, 0), x.mgivenname = 0;
+    if (x.egd) (x.egd, 0), x.egd = 0;
+    if (x.epri) (x.epri, 0), x.epri = 0;
+    if (x.eshk) (x.eshk, 0), x.eshk = 0;
+    if (x.emin) (x.emin, 0), x.emin = 0;
+    if (x.edog) (x.edog, 0), x.edog = 0;
+    if (x.ebones) (x.ebones, 0), x.ebones = 0;
+    x.mcorpsenm = NON_PM;
+    (x, 0);
+    m.mextra =  0;
+  }
+}
+
+// Autotranslated from mon.c:2660
+export function dealloc_monst(mon) {
+  let buf;
+  buf = '\0';
+  if (mon.nmon) { describe_level(buf, 2); panic("dealloc_monst with nmon on %s", buf); }
+  if (mon.mextra) dealloc_mextra(mon);
+   mon = cg.zeromonst;
+  (mon, 0);
+}
+
+// Autotranslated from mon.c:2995
+export function logdeadmon(mtmp, mndx, game) {
+  let howmany = game.mvitals[mndx].died;
+  if (mndx === PM_MEDUSA && howmany === 1) { record_achievement(ACH_MEDU); }
+  else if ((unique_corpstat(mtmp.data) && (mndx !== PM_HIGH_CLERIC || !mtmp.mrevived)) || (mtmp.isshk && !mtmp.mrevived)) {
+    let shkdetail, mkilled, herodidit = !game.game.svc.context.mon_moving;
+    shkdetail = '\0';
+    if (mtmp.isshk) {
+      howmany = 1;
+      Snprintf(shkdetail, shkdetail.length, ", the %s %s%s", shtypes[ESHK(mtmp).shoptype - SHOPBASE].name,   mtmp.female ? "proprietrix" : "proprietor", herodidit ? "" : ",");
+    }
+    else if (mndx === PM_HIGH_CLERIC) { howmany = 1; }
+    if (howmany <= 3 || howmany === 5 || howmany === 10 || howmany === 25 || (howmany % 50) === 0) {
+      let xtra, llevent_type = LL_UMONST;
+      if (howmany === 1 || mtmp.iswiz || is_rider(mtmp.data)) {
+        llevent_type |= LL_ACHIEVE;
+      }
+      xtra = '\0';
+      if (howmany > 1) {
+        Sprintf(xtra, " (%d%s time)", howmany, ordin(howmany));
+      }
+      mkilled = nonliving(mtmp.data) ? "destroyed" : "killed";
+      if (herodidit) livelog_printf(llevent_type, "%s %s%s%s", mkilled, livelog_mon_nam(mtmp), shkdetail, xtra);
+      else {
+        livelog_printf(llevent_type, "%s%s has been %s%s", livelog_mon_nam(mtmp), shkdetail, mkilled, xtra);
+      }
+    }
+  }
+}
+
+// Autotranslated from mon.c:3070
+export function anger_quest_guardians(mtmp, player) {
+  if (mtmp.data === mons) setmangry(mtmp, true);
+}
+
+// Autotranslated from mon.c:3746
+export async function mon_to_stone(mtmp) {
+  if (mtmp.data.mlet === S_GOLEM) {
+    if (canseemon(mtmp)) pline_mon(mtmp, "%s solidifies...", Monnam(mtmp));
+    if (newcham(mtmp, mons, NO_NC_FLAGS)) {
+      if (canseemon(mtmp)) pline("Now it's %s.", an(pmname(mtmp.data, Mgender(mtmp))));
+    }
+    else {
+      if (canseemon(mtmp)) pline("... and returns to normal.");
+    }
+  }
+  else {
+    impossible("Can't polystone %s!", a_monnam(mtmp));
+  }
+}
+
+// Autotranslated from mon.c:3764
+export async function vamp_stone(mtmp, game) {
+  if (is_vampshifter(mtmp)) {
+    let mndx = mtmp.cham, x = mtmp.mx, y = mtmp.my;
+    if (mndx >= LOW_PM && mndx !== monsndx(mtmp.data) && !(game.mvitals[mndx].mvflags & G_GENOD)) {
+      let buf;
+      Sprintf(buf, "The lapidifying %s %s %s", x_monnam(mtmp, ARTICLE_NONE,  0, (SUPPRESS_SADDLE | SUPPRESS_HALLUCINATION | SUPPRESS_INVISIBLE | SUPPRESS_IT), false), amorphous(mtmp.data) ? "coalesces on the" : is_flyer(mtmp.data) ? "drops to the" : "writhes on the", surface(x, y));
+      mtmp.mcanmove = 1;
+      mtmp.mfrozen = 0;
+      set_mon_min_mhpmax(mtmp, 10);
+      mtmp.mhp = mtmp.mhpmax;
+      if (engulfing_u(mtmp)) expels(mtmp, mtmp.data, false);
+      if (amorphous(mtmp.data) && closed_door(mtmp.mx, mtmp.my)) {
+        let new_xy;
+        if (enexto( new_xy, mtmp.mx, mtmp.my, mons[mndx])) { rloc_to(mtmp, new_xy.x, new_xy.y); }
+      }
+      if (canspotmon(mtmp)) { pline_mon(mtmp, "%s!", buf); await display_nhwindow(WIN_MESSAGE, false); }
+      newcham(mtmp, mons, NO_NC_FLAGS);
+      if (mtmp.data === mons) mtmp.cham = NON_PM;
+      else {
+        mtmp.cham = mndx;
+      }
+      if (canspotmon(mtmp)) {
+        pline_mon(mtmp, "%s rises from the %s with renewed agility!", Amonnam(mtmp), surface(mtmp.mx, mtmp.my));
+      }
+      newsym(mtmp.mx, mtmp.my);
+      return false;
+    }
+  }
+  else if (ismnum(mtmp.cham) && (mons[mtmp.cham].mresists & MR_STONE)) {
+    mtmp.mcanmove = 1;
+    mtmp.mfrozen = 0;
+    set_mon_min_mhpmax(mtmp, 10);
+    mtmp.mhp = mtmp.mhpmax;
+    newcham(mtmp, mons, NC_SHOW_MSG);
+    newsym(mtmp.mx, mtmp.my);
+    return false;
+  }
+  return true;
+}
+
+// Autotranslated from mon.c:3841
+export function migrate_mon(mtmp, target_lev, xyloc) {
+  if (mtmp.mx) { unstuck(mtmp); mdrop_special_objs(mtmp); }
+  migrate_to_level(mtmp, target_lev, xyloc, null);
+}
+
+// Autotranslated from mon.c:3862
+export function ok_to_obliterate(mtmp, player) {
+  if (mtmp.data === mons[PM_WIZARD_OF_YENDOR] || is_rider(mtmp.data) || has_emin(mtmp) || has_epri(mtmp) || has_eshk(mtmp) || mtmp === player.ustuck || mtmp === player.usteed) return false;
+  return true;
+}
+
+// Autotranslated from mon.c:3997
+export function maybe_mnexto(mtmp, player) {
+  let mm, ptr = mtmp.data, diagok = !NODIAG(ptr - mons), tryct = 20;
+  do {
+    if (!enexto( mm, player.x, player.y, ptr)) return;
+    if (couldsee(mm.x, mm.y)   && (diagok || mm.x === mtmp.mx || mm.y === mtmp.my)) { rloc_to(mtmp, mm.x, mm.y); return; }
+  } while (--tryct > 0);
+}
+
+// Autotranslated from mon.c:4087
+export function m_respond_shrieker(mtmp, player) {
+  if (!(player?.Deaf || player?.deaf || false)) { pline("%s shrieks.", Monnam(mtmp)); stop_occupation(); }
+  if (!rn2(10)) { makemon(rn2(13) ?  0 : mons, 0, 0, NO_MM_FLAGS); }
+  aggravate();
+}
+
+// Autotranslated from mon.c:4107
+export function m_respond_medusa(mtmp) {
+  let i;
+  for (i = 0; i < NATTK; i++) {
+    if (mtmp.data.mattk[i].aatyp === AT_GAZE) { gazemu(mtmp, mtmp.data.mattk[i]); break; }
+  }
+}
+
+// Autotranslated from mon.c:4120
+export function m_respond(mtmp) {
+  if (mtmp.data.msound === MS_SHRIEK && !um_dist(mtmp.mx, mtmp.my, 1)) m_respond_shrieker(mtmp);
+  if (mtmp.data === mons[PM_MEDUSA] && couldsee(mtmp.mx, mtmp.my)) m_respond_medusa(mtmp);
+  if (mtmp.data === mons[PM_ERINYS] && !mtmp.mpeaceful && m_canseeu(mtmp)) aggravate();
+}
+
+// Autotranslated from mon.c:4133
+export function qst_guardians_respond(map, player) {
+  let mon, q_guardian =  mons, got_mad = 0;
+  for (mon = (map?.fmon || null); mon; mon = mon.nmon) {
+    if (DEADMONSTER(mon)) {
+      continue;
+    }
+    if (mon.data === q_guardian && mon.mpeaceful) { mon.mpeaceful = 0; if (canseemon(mon)) ++got_mad; }
+  }
+  if (got_mad && !(player?.Hallucination || player?.hallucinating || false)) {
+    let who = q_guardian.pmnames;
+    if (got_mad > 1) who = makeplural(who);
+    pline_The("%s %s to be angry too...", who, vtense(who, "appear"));
+  }
+}
+
+// Autotranslated from mon.c:4625
+export function m_restartcham(mtmp) {
+  if (!mtmp.mcan) mtmp.cham = pm_to_cham(monsndx(mtmp.data));
+  if (mtmp.data.mlet === S_MIMIC && mtmp.msleeping) { set_mimic_sym(mtmp); newsym(mtmp.mx, mtmp.my); }
+}
+
+// Autotranslated from mon.c:4660
+export function restrap(mtmp, map, player) {
+  let t;
+  if (mtmp.mcan || M_AP_TYPE(mtmp) || cansee(mtmp.mx, mtmp.my) || rn2(3) || mtmp === player.ustuck   || (mtmp.mtrapped && (t = t_at(mtmp.mx, mtmp.my)) !== 0 && !is_pit(t.ttyp))   || (ceiling_hider(mtmp.data) && !has_ceiling(map.uz))   || (sensemon(mtmp) && m_next2u(mtmp))) return false;
+  if (mtmp.data.mlet === S_MIMIC) {
+    if (mtmp.msleeping || mtmp.mfrozen) { return false; }
+    set_mimic_sym(mtmp);
+    return true;
+  }
+  else if (map.locations[mtmp.mx][mtmp.my].typ === ROOM) { mtmp.mundetected = 1; return true; }
+  return false;
+}
+
+// Autotranslated from mon.c:4937
+export function pickvampshape(mon, game, map) {
+  let mndx = mon.cham, wolfchance = 10;
+  let uppercase_only = Is_rogue_level(map.uz);
+  switch (mndx) {
+    case PM_VLAD_THE_IMPALER:
+      if (mon_has_special(mon)) {
+        break;
+      }
+    wolfchance = 3;
+    case PM_VAMPIRE_LEADER:
+      if (!rn2(wolfchance) && !uppercase_only   && !is_pool_or_lava(mon.mx, mon.my)) { mndx = PM_WOLF; break; }
+    case PM_VAMPIRE:
+      mndx = (!rn2(4) && !uppercase_only) ? PM_FOG_CLOUD : PM_VAMPIRE_BAT;
+    break;
+  }
+  if ((game.mvitals[mndx].mvflags & G_GENOD) !== 0 || (mon.data !== mons[mon.cham] && !rn2(4))) return mon.cham;
+  return mndx;
+}
+
+// Autotranslated from mon.c:4979
+export function isspecmon(mon) {
+  return (mon.isshk || mon.ispriest || mon.isgd || mon.m_id === svq.quest_status.leader_m_id);
+}
+
+// Autotranslated from mon.c:5011
+export function valid_vampshiftform(base, form) {
+  if (base >= LOW_PM && is_vampire( mons[base])) {
+    if (form === PM_VAMPIRE_BAT || form === PM_FOG_CLOUD || (form === PM_WOLF && base !== PM_VAMPIRE)) return true;
+  }
+  return false;
+}
+
+// Autotranslated from mon.c:5225
+export async function accept_newcham_form(mon, mndx, game) {
+  let mdat;
+  if (mndx === NON_PM) return 0;
+  mdat = mons;
+  if ((game.mvitals[mndx].mvflags & G_GENOD) !== 0) return 0;
+  if (is_placeholder(mdat)) return 0;
+  if (is_mplayer(mdat)) return mdat;
+  if (is_shapeshifter(mdat) && ismnum(mon.cham) && mdat === mons) return mdat;
+  return polyok(mdat) ? mdat : 0;
+}
+
+// Autotranslated from mon.c:5252
+export function mgender_from_permonst(mtmp, mdat) {
+  if (is_male(mdat)) { mtmp.female = false; }
+  else if (is_female(mdat)) { mtmp.female = true; }
+  else if (!is_neuter(mdat)) {
+    if (!rn2(10) && !(is_vampire(mdat) || is_vampshifter(mtmp))) mtmp.female = !mtmp.female;
+  }
+}
+
+// Autotranslated from mon.c:5542
+export function can_be_hatched(mnum) {
+  if (mnum === PM_SCORPIUS) mnum = PM_SCORPION;
+  mnum = little_to_big(mnum);
+  if (mnum === PM_KILLER_BEE || mnum === PM_GARGOYLE || (lays_eggs( mons[mnum]) && (BREEDER_EGG || (mnum !== PM_QUEEN_BEE && mnum !== PM_WINGED_GARGOYLE)))) return mnum;
+  return NON_PM;
+}
+
+// Autotranslated from mon.c:5605
+export function kill_eggs(obj_list) {
+  let otmp;
+  for (otmp = obj_list; otmp; otmp = otmp.nobj) {
+    if (otmp.otyp === EGG) {
+      if (dead_species(otmp.corpsenm, true)) { kill_egg(otmp); }
+    }
+    else if (Has_contents(otmp)) { kill_eggs(otmp.cobj); }
+  }
+}
+
+// Autotranslated from mon.c:5676
+export function golemeffects(mon, damtype, dam) {
+  let heal = 0, slow = 0;
+  if (mon.data === mons) {
+    if (damtype === AD_ELEC) heal = (dam + 5) / 6;
+    else if (damtype === AD_FIRE || damtype === AD_COLD) slow = 1;
+  }
+  else if (mon.data === mons) {
+    if (damtype === AD_ELEC) slow = 1;
+    else if (damtype === AD_FIRE) heal = dam;
+  }
+  else { return; }
+  if (slow) {
+    if (mon.mspeed !== MSLOW) mon_adjust_speed(mon, -1,  0);
+  }
+  if (heal) {
+    if (healmon(mon, heal, 0)) {
+      if (cansee(mon.mx, mon.my)) pline_mon(mon, "%s seems healthier.", Monnam(mon));
+    }
+  }
+}
+
+// Autotranslated from mon.c:5707
+export function angry_guards(silent, map) {
+  let mtmp, ct = 0, nct = 0, sct = 0, slct = 0;
+  for (mtmp = (map?.fmon || null); mtmp; mtmp = mtmp.nmon) {
+    if (DEADMONSTER(mtmp)) {
+      continue;
+    }
+    if (is_watch(mtmp.data) && mtmp.mpeaceful) {
+      ct++;
+      if (canspotmon(mtmp) && mtmp.mcanmove) {
+        if (m_next2u(mtmp)) nct++;
+        else {
+          sct++;
+        }
+      }
+      if (mtmp.msleeping || mtmp.mfrozen) { slct++; mtmp.msleeping = mtmp.mfrozen = 0; }
+      mtmp.mpeaceful = 0;
+    }
+  }
+  if (ct) {
+    if (!silent) {
+      let buf;
+      if (slct) {
+        Sprintf(buf, "guard%s", plur(slct));
+        pline_The("%s %s up.", buf, vtense(buf, "wake"));
+      }
+      if (nct) {
+        Sprintf(buf, "guard%s", plur(nct));
+        pline_The("%s %s angry!", buf, vtense(buf, "get"));
+      }
+      else if (sct) {
+        Sprintf(buf, "guard%s", plur(sct));
+        pline("%s %s %s approaching!", (sct === 1) ? "An angry" : "Angry", buf, vtense(buf, "are"));
+      }
+      else {
+        Strcpy(buf, (ct === 1) ? "a guard's" : "guards'");
+        You_hear("the shrill sound of %s whistle%s.", buf, plur(ct));
+      }
+    }
+    return true;
+  }
+  return false;
+}
+
+// Autotranslated from mon.c:5759
+export function pacify_guard(mtmp) {
+  if (is_watch(mtmp.data)) mtmp.mpeaceful = 1;
+}
+
+// Autotranslated from mon.c:5766
+export function pacify_guards() {
+  iter_mons(pacify_guard);
+}
+
+// Autotranslated from mon.c:5772
+export function mimic_hit_msg(mtmp, otyp) {
+  let ap = mtmp.mappearance;
+  switch (M_AP_TYPE(mtmp)) {
+    case M_AP_NOTHING:
+      case M_AP_FURNITURE:
+        case M_AP_MONSTER:
+          break;
+    case M_AP_OBJECT:
+      if (otyp === SPE_HEALING || otyp === SPE_EXTRA_HEALING) {
+        pline_mon(mtmp, "%s seems a more vivid %s than before.", The(simple_typename(ap)), c_obj_colors[objectData[ap].oc_color]);
+      }
+    break;
+  }
+}
+
+// Autotranslated from mon.c:5918
+export function adj_erinys(abuse, game, player) {
+  let pm =  mons;
+  if (abuse > 5) { pm.mflags1 |= M1_SEE_INVIS; }
+  if (abuse > 10) { pm.mflags1 |= M1_AMPHIBIOUS; }
+  if (abuse > 15) { pm.mflags1 |= M1_FLY; }
+  if (abuse > 20) { pm.mattk[0].damn = 3; }
+  if (abuse > 25) { pm.mflags1 |= M1_REGEN; }
+  if (abuse > 30) { pm.mflags1 |= M1_TPORT_CNTRL; }
+  if (abuse > 35) {
+    pm.mattk[1].aatyp = AT_WEAP;
+    pm.mattk[1].adtyp = AD_DRST;
+    pm.mattk[1].damn = 3;
+    pm.mattk[1].damd = 4;
+  }
+  if (abuse > 40) { pm.mflags1 |= M1_TPORT; }
+  if (abuse > 50) {
+    pm.mattk[2].aatyp = AT_MAGC;
+    pm.mattk[2].adtyp = AD_SPEL;
+    pm.mattk[2].damn = 3;
+    pm.mattk[2].damd = 4;
+  }
+  pm.mlevel = Math.min(7 + player.ualigame.gn.abuse, 50);
+  pm.difficulty = Math.min(10 + (player.ualigame.gn.abuse / 3), 25);
 }

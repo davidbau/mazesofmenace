@@ -328,7 +328,7 @@ export function weapon_type(obj) {
 // oselect — cf. weapon.c:475
 // ============================================================================
 // Find one item of given type in monster inventory.
-function oselect(mtmp, type) {
+export function oselect(mtmp, type) {
     for (const otmp of (mtmp.minvent || [])) {
         if (otmp.otyp !== type) continue;
         // Never select non-cockatrice corpses/eggs

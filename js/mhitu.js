@@ -1880,3 +1880,45 @@ export function passiveum(olduasmon, mtmp, mattk, map, player) {
         return assess_dmg(mtmp, tmp, map, player);
     }
 }
+
+// Autotranslated from mhitu.c:105
+export function mswings_verb(mwep, bash) {
+  let verb;
+  let otyp = mwep.otyp, lash = (objectData[otyp].oc_skill === P_WHIP || is_wet_towel(mwep)), thrust = ((objectData[otyp].oc_dir & PIERCE) !== 0 && ((objectData[otyp].oc_dir & ~PIERCE) === 0 || !rn2(2)));
+  verb = bash ? "bashes with"   : lash ? "lashes" : thrust ? "thrusts" : "swings";
+  return verb;
+}
+
+// Autotranslated from mhitu.c:130
+export function mswings(mtmp, otemp, bash, game, player) {
+  if (game.flags.verbose && !(player?.Blind || player?.blind || false) && mon_visible(mtmp)) {
+    pline_mon(mtmp, "%s %s %s%s %s.", Monnam(mtmp), mswings_verb(otemp, bash), (otemp.quan > 1) ? "one of " : "", mhis(mtmp), xname(otemp));
+  }
+}
+
+// Autotranslated from mhitu.c:2302
+export function mayberem(mon, seducer, obj, str, player) {
+  let qbuf;
+  if (!obj || !obj.owornmask) return;
+  if (player.utotype || !m_next2u(mon)) return;
+  if ((player?.Deaf || player?.deaf || false)) { pline("%s takes off your %s.", seducer, str); }
+  else if (rn2(20) < acurr(player,A_CHA)) {
+    Sprintf(qbuf, "\"Shall I remove your %s, %s?\"", str, (!rn2(2) ? "lover" : !rn2(2) ? "dear" : "sweetheart"));
+    if (y_n(qbuf) === 'n') return;
+  }
+  else {
+    let hairbuf;
+    Sprintf(hairbuf, "let me run my fingers through your %s", body_part(HAIR));
+    verbalize("Take off your %s; %s.", str, (obj === uarm) ? "let's get a little closer" : (obj === uarmc || obj === uarms) ? "it's in the way" : (obj === uarmf) ? "let me rub your feet" : (obj === uarmg) ? "they're too clumsy" : (obj === uarmu) ? "let me massage you"   : hairbuf);
+  }
+  remove_worn_item(obj, true);
+}
+
+// Autotranslated from mhitu.c:2403
+export function ranged_attk_available(mtmp) {
+  let i, typ = -1, ptr = mtmp.data;
+  for (i = 0; i < NATTK; i++) {
+    if (DISTANCE_ATTK_TYPE(ptr.mattk[i].aatyp) && (typ = get_atkdam_type(ptr.mattk[i].adtyp)) >= 0 && m_seenres(mtmp, cvt_adtyp_to_mseenres(typ)) === 0) return true;
+  }
+  return false;
+}

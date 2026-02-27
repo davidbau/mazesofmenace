@@ -1551,7 +1551,7 @@ export function drop_weapon(player, alone) {
 // polysense(player) — cf. polyself.c:2220
 // Some species have awareness of other species when polymorphed.
 // ============================================================================
-
+export 
 function polysense(player) {
     // cf. polyself.c:2220 — polysense()
     // Some species have awareness of other species when polymorphed.

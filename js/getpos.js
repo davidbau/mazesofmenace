@@ -692,8 +692,77 @@ export function getpos_clear_hilite() {
     getpos_sethilite(null, null);
 }
 
-export {
-    HiliteNormalMap,
-    HiliteGoodposSymbol,
-    HiliteBackground,
-};
+export { HiliteNormalMap, HiliteGoodposSymbol, HiliteBackground };
+
+// Autotranslated from getpos.c:340
+export function gloc_filter_classify_glyph(glyph) {
+  let c;
+  if (!glyph_is_cmap(glyph)) return 0;
+  c = glyph_to_cmap(glyph);
+  if (is_cmap_room(c) || is_cmap_furniture(c)) return 1;
+  else if (is_cmap_wall(c) || c === S_tree) return 2;
+  else if (is_cmap_corr(c)) return 3;
+  else if (is_cmap_water(c)) return 4;
+  else if (is_cmap_lava(c)) return 5;
+  return 0;
+}
+
+// Autotranslated from getpos.c:363
+export function gloc_filter_floodfill_matcharea(x, y, map) {
+  let glyph = back_to_glyph(x, y);
+  if (!map.locations[x][y].seenv) return false;
+  if (glyph === gg.gloc_filter_floodfill_match_glyph) return true;
+  if (gloc_filter_classify_glyph(glyph) === gloc_filter_classify_glyph(gg.gloc_filter_floodfill_match_glyph)) return true;
+  return false;
+}
+
+// Autotranslated from getpos.c:381
+export function gloc_filter_floodfill(x, y) {
+  gg.gloc_filter_floodfill_match_glyph = back_to_glyph(x, y);
+  set_selection_floodfillchk(gloc_filter_floodfill_matcharea);
+  selection_floodfill(gg.gloc_filter_map, x, y, false);
+}
+
+// Autotranslated from getpos.c:411
+export function gloc_filter_done() {
+  if (gg.gloc_filter_map) { selection_free(gg.gloc_filter_map, true); gg.gloc_filter_map =  0; }
+}
+
+// Autotranslated from getpos.c:421
+export function known_vibrating_square_at(x, y) {
+  if (invocation_pos(x, y)) {
+    let ttmp = t_at(x, y);
+    return ttmp && ttmp.ttyp === VIBRATING_SQUARE && ttmp.tseen;
+  }
+  return false;
+}
+
+// Autotranslated from getpos.c:556
+export function dxdy_to_dist_descr(dx, dy, fulldir) {
+  let buf, dst;
+  if (!dx && !dy) { Sprintf(buf, "here"); }
+  else if ((dst = xytod(dx, dy)) !== -1) { Sprintf(buf, "%s", directionname(dst)); }
+  else {
+    let dirnames = [ [ "n", "north" ], [ "s", "south" ], [ "w", "west" ], [ "e", "east" ] ];
+    buf = '\0';
+    if (dy) {
+      if (Math.abs(dy) > 9999) dy = sgn(dy) * 9999;
+      Sprintf(eos(buf), "%d%s%s", Math.abs(dy), dirnames[(dy > 0)][fulldir], dx ? "," : "");
+    }
+    if (dx) {
+      if (Math.abs(dx) > 9999) dx = sgn(dx) * 9999;
+      Sprintf(eos(buf), "%d%s", Math.abs(dx), dirnames[2 + (dx > 0)][fulldir]);
+    }
+  }
+  return buf;
+}
+
+// Autotranslated from getpos.c:728
+export function truncate_to_map(cx, cy, dx, dy) {
+  if ( cx + dx < 1) { dy -= sgn(dy) * (1 - ( cx + dx)); dx = 1 - cx.value; }
+  else if ( cx + dx > COLNO - 1) { dy += sgn(dy) * ((COLNO - 1) - ( cx + dx)); dx = (COLNO - 1) - cx.value; }
+  if ( cy + dy < 0) { dx -= sgn(dx) * (0 - ( cy + dy)); dy = 0 - cy.value; }
+  else if ( cy + dy > ROWNO - 1) { dx += sgn(dx) * ((ROWNO - 1) - ( cy + dy)); dy = (ROWNO - 1) - cy.value; }
+   cx += dx;
+   cy += dy;
+}

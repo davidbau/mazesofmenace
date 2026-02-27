@@ -133,3 +133,24 @@
 // Delivers lev_message via deliver_by_pline(); frees lev_message.
 // Called on first arrival at a special level that has a custom message.
 // TODO: questpgr.c:654 — deliver_splev_message(): special level custom message
+
+// Autotranslated from questpgr.c:72
+export function find_qarti(ochain) {
+  let otmp, qarti;
+  for (otmp = ochain; otmp; otmp = otmp.nobj) {
+    if (is_quest_artifact(otmp)) return otmp;
+    if (Has_contents(otmp) && (qarti = find_qarti(otmp.cobj)) !== 0) return qarti;
+  }
+  return  0;
+}
+
+// Autotranslated from questpgr.c:422
+export function deliver_by_pline(str) {
+  let in_line, out_line, msgp = str, msgend = eos( str);
+  while (msgp < msgend) {
+    copynchars(in_line, msgp,  in_line.length - 1);
+    msgp += strlen(in_line) + 1;
+    convert_line(in_line, out_line);
+    pline("%s", out_line);
+  }
+}

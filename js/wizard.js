@@ -217,7 +217,7 @@ function which_arti(mask) {
 // cf. wizard.c:164
 // If otyp=0, checks for quest artifact. Else checks specific otyp.
 // ============================================================================
-
+export 
 function mon_has_arti(mtmp, otyp) {
     for (const otmp of mtmp.minvent || []) {
         if (otyp) {
@@ -247,7 +247,7 @@ function other_mon_has_arti(mtmp, otyp, map) {
 // on_ground — find object of type on the ground
 // cf. wizard.c:201
 // ============================================================================
-
+export 
 function on_ground(otyp, map) {
     for (const otmp of map.objects || []) {
         if (otyp) {
@@ -978,11 +978,4 @@ export function cuss(mtmp, map, player) {
 // Exports of constants and internal functions for use by other modules
 // ============================================================================
 
-export {
-    STRAT_APPEARMSG, STRAT_WAITFORU, STRAT_CLOSE,
-    STRAT_WAITMASK, STRAT_HEAL, STRAT_GROUND, STRAT_MONSTR,
-    STRAT_PLAYER, STRAT_NONE, STRAT_STRATMASK, STRAT_GOAL,
-    nasties, wizapp,
-    which_arti, mon_has_arti,
-    strategy,
-};
+export { STRAT_APPEARMSG, STRAT_WAITFORU, STRAT_CLOSE, STRAT_WAITMASK, STRAT_HEAL, STRAT_GROUND, STRAT_MONSTR, STRAT_PLAYER, STRAT_NONE, STRAT_STRATMASK, STRAT_GOAL, nasties, wizapp, which_arti, strategy };

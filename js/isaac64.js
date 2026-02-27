@@ -10,12 +10,12 @@ const SEED_SZ_MAX = SZ * 8;   // 2048
 const GOLDEN = 0x9E3779B97F4A7C13n;
 
 // cf. isaac64.c:39 — extract SZ_LOG bits starting at bit 3
-function lower_bits(x) {
+export function lower_bits(x) {
     return Number((x >> 3n) & 0xFFn);
 }
 
 // cf. isaac64.c:45 — extract SZ_LOG bits starting at bit SZ_LOG+3 = 11
-function upper_bits(y) {
+export function upper_bits(y) {
     return Number((y >> 11n) & 0xFFn);
 }
 
@@ -34,7 +34,7 @@ export function isaac64_mix(x) {
 }
 
 // cf. isaac64.c:50 — generate next batch of 256 random values
-function isaac64_update(ctx) {
+export function isaac64_update(ctx) {
     const m = ctx.m;
     const r = ctx.r;
     let a = ctx.a;

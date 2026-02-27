@@ -416,3 +416,236 @@ export async function wizLevelChange(game) {
 // cf. wizcmds.c:1938 — wizcustom_callback(win, glyphnum, id): glyph customization callback
 // Callback for each glyph in wizcustom display; shows customization details.
 // TODO: wizcmds.c:1938 — wizcustom_callback(): glyph detail display callback
+
+// Autotranslated from wizcmds.c:217
+export function wiz_where() {
+  if (wizard) {
+    print_dungeon(false, null, null);
+  }
+  else {
+    pline(unavailcmd, ecname_from_fn(wiz_where));
+  }
+  return ECMD_OK;
+}
+
+// Autotranslated from wizcmds.c:228
+export function wiz_detect() {
+  if (wizard) {
+    findit();
+  }
+  else {
+    pline(unavailcmd, ecname_from_fn(wiz_detect));
+  }
+  return ECMD_OK;
+}
+
+// Autotranslated from wizcmds.c:398
+export function wiz_level_tele() {
+  if (wizard) level_tele();
+  else {
+    pline(unavailcmd, ecname_from_fn(wiz_level_tele));
+  }
+  return ECMD_OK;
+}
+
+// Autotranslated from wizcmds.c:567
+export function wiz_polyself() {
+  polyself(POLY_CONTROLLED);
+  return ECMD_OK;
+}
+
+// Autotranslated from wizcmds.c:575
+export async function wiz_show_seenv(map, player) {
+  let win, x, y, startx, stopx, curx, v, row;
+  win = create_nhwindow(NHW_TEXT);
+  startx = Math.max(1, player.x - (COLNO / 4));
+  stopx = Math.min(startx + (COLNO / 2), COLNO);
+  if (stopx - startx === COLNO / 2) startx++;
+  for (y = 0; y < ROWNO; y++) {
+    for (x = startx, curx = 0; x < stopx; x++, curx += 2) {
+      if (u_at(x, y)) { row = row = '@'; }
+      else {
+        v = map.locations[x][y].seenv & 0xff;
+        if (v === 0) row = row = ' ';
+        else {
+          Sprintf( row, "%02x", v);
+        }
+      }
+    }
+    for (x = curx - 1; x >= 0; x--) {
+      if (row[x] !== ' ') {
+        break;
+      }
+    }
+    row = '\0';
+    putstr(win, 0, row);
+  }
+  await display_nhwindow(win, true);
+  destroy_nhwindow(win);
+  return ECMD_OK;
+}
+
+// Autotranslated from wizcmds.c:656
+export async function wiz_show_wmodes(map) {
+  let win, x, y, row, lev, istty = WINDOWPORT(tty);
+  win = create_nhwindow(NHW_TEXT);
+  if (istty) putstr(win, 0, "");
+  for (y = 0; y < ROWNO; y++) {
+    for (x = 0; x < COLNO; x++) {
+      lev = map.locations[x][y];
+      if (u_at(x, y)) row = '@';
+      else if (IS_WALL(lev.typ) || lev.typ === SDOOR) row = '0' + (lev.wall_info & WM_MASK);
+      else if (lev.typ === CORR) row = '#';
+      else if (IS_ROOM(lev.typ) || IS_DOOR(lev.typ)) row = '.';
+      else {
+        row = 'x';
+      }
+    }
+    row = '\0';
+    putstr(win, 0, row[1]);
+  }
+  await display_nhwindow(win, true);
+  destroy_nhwindow(win);
+  return ECMD_OK;
+}
+
+// Autotranslated from wizcmds.c:1116
+export function size_obj(otmp) {
+  let sz =  sizeof;
+  if (otmp.oextra) {
+    sz +=  sizeof ;
+    if (ONAME(otmp)) {
+      sz +=  strlen(ONAME(otmp)) + 1;
+    }
+    if (OMONST(otmp)) {
+      sz += size_monst(OMONST(otmp), false);
+    }
+    if (OMAILCMD(otmp)) {
+      sz +=  strlen(OMAILCMD(otmp)) + 1;
+    }
+  }
+  return sz;
+}
+
+// Autotranslated from wizcmds.c:1134
+export function count_obj(chain, total_count, total_size, top, recurse) {
+  let count, size, obj;
+  for (count = size = 0, obj = chain; obj; obj = obj.nobj) {
+    if (top) { count++; size += size_obj(obj); }
+    if (recurse && obj.cobj) count_obj(obj.cobj, total_count, total_size, true, true);
+  }
+   total_count += count;
+   total_size += size;
+}
+
+// Autotranslated from wizcmds.c:1176
+export function mon_invent_chain(win, src, chain, total_count, total_size) {
+  let buf, count = 0, size = 0, mon;
+  for (mon = chain; mon; mon = mon.nmon) {
+    count_obj(mon.minvent, count, size, true, false);
+  }
+  if (count || size) {
+     total_count += count;
+     total_size += size;
+    Sprintf(buf, template, src, count, size);
+    putstr(win, 0, buf);
+  }
+}
+
+// Autotranslated from wizcmds.c:1227
+export function size_monst(mtmp, incl_wsegs) {
+  let sz =  sizeof;
+  if (mtmp.wormno && incl_wsegs) {
+    sz += size_wseg(mtmp);
+  }
+  if (mtmp.mextra) {
+    sz +=  sizeof ;
+    if (MGIVENNAME(mtmp)) {
+      sz +=  strlen(MGIVENNAME(mtmp)) + 1;
+    }
+    if (EGD(mtmp)) {
+      sz +=  sizeof ;
+    }
+    if (EPRI(mtmp)) {
+      sz +=  sizeof ;
+    }
+    if (ESHK(mtmp)) {
+      sz +=  sizeof ;
+    }
+    if (EMIN(mtmp)) {
+      sz +=  sizeof ;
+    }
+    if (EDOG(mtmp)) {
+      sz +=  sizeof ;
+    }
+    if (EBONES(mtmp)) {
+      sz +=  sizeof ;
+    }
+  }
+  return sz;
+}
+
+// Autotranslated from wizcmds.c:1256
+export function mon_chain(win, src, chain, force, total_count, total_size, map) {
+  let buf, count, size, mon, incl_wsegs = !strcmpi(src, "(map?.fmon || null)");
+  count = size = 0;
+  for (mon = chain; mon; mon = mon.nmon) {
+    count++;
+    size += size_monst(mon, incl_wsegs);
+  }
+  if (count || size || force) {
+     total_count += count;
+     total_size += size;
+    Sprintf(buf, template, src, count, size);
+    putstr(win, 0, buf);
+  }
+}
+
+// Autotranslated from wizcmds.c:1401
+export async function you_sanity_check(player) {
+  let mtmp;
+  if (player.uswallow && !player.ustuck) {
+    impossible("sanity_check: swallowed by nothing?");
+    await display_nhwindow(WIN_MESSAGE, true);
+    player.uswallow = 0;
+    player.uswldtim = 0;
+    docrt();
+  }
+  if ((mtmp = m_at(player.x, player.y)) !== 0) {
+    if (player.ustuck !== mtmp) impossible("sanity_check: you over monster");
+  }
+  if (player.hp > player.hpmax) {
+    impossible("current hero health (%d) better than maximum? (%d)", player.hp, player.hpmax);
+    player.hp = player.hpmax;
+  }
+  if ((player?.Upolyd || (player?.mtimedone > 0) || false) && player.mh > player.mhmax) {
+    impossible( "current hero health as monster (%d) better than maximum? (%d)", player.mh, player.mhmax);
+    player.mh = player.mhmax;
+  }
+  if (player.uen > player.uenmax) {
+    impossible("current hero energy (%d) better than maximum? (%d)", player.uen, player.uenmax);
+    player.uen = player.uenmax;
+  }
+  check_wornmask_slots();
+  check_invent_gold("invent");
+}
+
+// Autotranslated from wizcmds.c:1443
+export function levl_sanity_check(map) {
+  let x, y;
+  if (Underwater) return;
+  for (y = 0; y < ROWNO; y++) {
+    for (x = 1; x < COLNO; x++) {
+      if ((does_block(x, y, map.locations[x][y]) ? 1 : 0) !== get_viz_clear(x, y)) impossible("map.locations[%i][%i] vision blocking", x, y);
+    }
+  }
+}
+
+// Autotranslated from wizcmds.c:1484
+export function migrsort_cmp(vptr1, vptr2) {
+  let m1 = vptr1.value, m2 = vptr2.value;
+  let d1 =  m1.mux, l1 =  m1.muy, d2 =  m2.mux, l2 =  m2.muy;
+  if (d1 !== d2) return d1 - d2;
+  if (l1 !== l2) return l1 - l2;
+  return (m1.m_id < m2.m_id) ? -1 : (m1.m_id > m2.m_id);
+}

@@ -126,3 +126,161 @@
 // cf. glyphs.c:1176 — reset_customcolors(void): reset to applied colors
 // Resets custom glyph colors to their currently applied state.
 // TODO: glyphs.c:1176 — reset_customcolors(): custom color reset
+
+// Autotranslated from glyphs.c:199
+export function glyph_to_cmap(glyph) {
+  if (glyph === GLYPH_CMAP_STONE_OFF) return S_stone;
+  else if (glyph_is_cmap_main(glyph)) return (glyph - GLYPH_CMAP_MAIN_OFF) + S_vwall;
+  else if (glyph_is_cmap_mines(glyph)) return (glyph - GLYPH_CMAP_MINES_OFF) + S_vwall;
+  else if (glyph_is_cmap_gehennom(glyph)) return (glyph - GLYPH_CMAP_GEH_OFF) + S_vwall;
+  else if (glyph_is_cmap_knox(glyph)) return (glyph - GLYPH_CMAP_KNOX_OFF) + S_vwall;
+  else if (glyph_is_cmap_sokoban(glyph)) return (glyph - GLYPH_CMAP_SOKO_OFF) + S_vwall;
+  else if (glyph_is_cmap_a(glyph)) return (glyph - GLYPH_CMAP_A_OFF) + S_ndoor;
+  else if (glyph_is_cmap_altar(glyph)) return S_altar;
+  else if (glyph_is_cmap_b(glyph)) return (glyph - GLYPH_CMAP_B_OFF) + S_grave;
+  else if (glyph_is_cmap_c(glyph)) return (glyph - GLYPH_CMAP_C_OFF) + S_digbeam;
+  else if (glyph_is_cmap_zap(glyph)) return ((glyph - GLYPH_ZAP_OFF) % 4) + S_vbeam;
+  else if (glyph_is_swallow(glyph)) return glyph_to_swallow(glyph) + S_sw_tl;
+  else if (glyph_is_explosion(glyph)) return glyph_to_explosion(glyph) + S_expl_tl;
+  else {
+    return MAXPCHARS;
+  }
+}
+
+// Autotranslated from glyphs.c:332
+export function init_glyph_cache() {
+  let glyph;
+  glyphid_cache_lsize = 0;
+  glyphid_cache_size = 1;
+  while (glyphid_cache_size < 2*MAX_GLYPH) {
+    ++glyphid_cache_lsize;
+    glyphid_cache_size <<= 1;
+  }
+  glyphid_cache =  alloc( glyphid_cache_size * 0);
+  for (glyph = 0; glyph < glyphid_cache_size; ++glyph) {
+    glyphid_cache[glyph].glyphnum = 0;
+    glyphid_cache[glyph].id =  0;
+  }
+}
+
+// Autotranslated from glyphs.c:353
+export function free_glyphid_cache() {
+  let idx;
+  if (!glyphid_cache) return;
+  for (idx = 0; idx < glyphid_cache_size; ++idx) {
+    if (glyphid_cache[idx].id) { (glyphid_cache[idx].id, 0); glyphid_cache[idx].id =  0; }
+  }
+  (glyphid_cache, 0);
+  glyphid_cache =  0;
+}
+
+// Autotranslated from glyphs.c:415
+export function find_glyphid_in_cache_by_glyphnum(glyphnum) {
+  let idx;
+  if (!glyphid_cache) return  0;
+  for (idx = 0; idx < glyphid_cache_size; ++idx) {
+    if (glyphid_cache[idx].glyphnum === glyphnum && glyphid_cache[idx].id !== 0) { return glyphid_cache[idx].id; }
+  }
+  return  0;
+}
+
+// Autotranslated from glyphs.c:449
+export function glyphid_cache_status() {
+  return (glyphid_cache !== 0);
+}
+
+// Autotranslated from glyphs.c:455
+export function match_glyph(buf) {
+  let workbuf;
+  Snprintf(workbuf, workbuf.length, "%s", buf);
+  return glyphrep(workbuf);
+}
+
+// Autotranslated from glyphs.c:467
+export function glyphrep(op) {
+  let reslt = 0, glyph = NO_GLYPH;
+  if (!glyphid_cache) reslt = 1;
+  nhUse(reslt);
+  reslt = glyphrep_to_custom_map_entries(op, glyph);
+  if (reslt) return 1;
+  return 0;
+}
+
+// Autotranslated from glyphs.c:481
+export function add_custom_nhcolor_entry(customization_name, glyphidx, nhcolor, which_set) {
+  let gdc =  gs.sym_customizations[which_set][custom_nhcolor];
+  let details, newdetails = 0;
+  if (!gdc.details) {
+    gdc.customization_name = dupstr(customization_name);
+    gdc.custtype = custom_nhcolor;
+    gdc.details = 0;
+    gdc.details_end = 0;
+  }
+  details = find_matching_customization(customization_name, custom_nhcolor, which_set);
+  if (details) {
+    while (details) {
+      if (details.content.ccolor.glyphidx === glyphidx) { details.content.ccolor.nhcolor = nhcolor; return 1; }
+      details = details.next;
+    }
+  }
+  newdetails =  alloc(newdetails.length);
+  newdetails.content.urep.glyphidx = glyphidx;
+  newdetails.content.ccolor.nhcolor = nhcolor;
+  newdetails.next =  0;
+  if (gdc.details === null) { gdc.details = newdetails; }
+  else { gdc.details_end.next = newdetails; }
+  gdc.details_end = newdetails;
+  gdc.count++;
+  return 1;
+}
+
+// Autotranslated from glyphs.c:748
+export function purge_all_custom_entries() {
+  let i;
+  for (i = 0; i < NUM_GRAPHICS + 1; ++i) {
+    purge_custom_entries(i);
+  }
+}
+
+// Autotranslated from glyphs.c:758
+export function purge_custom_entries(which_set, player) {
+  let custtype, gdc, details, next;
+  for (custtype = custom_none; custtype < custom_count; ++custtype) {
+    gdc = gs.sym_customizations[which_set][custtype];
+    details = gdc.details;
+    while (details) {
+      next = details.next;
+      if (gdc.custtype === custom_ureps) {
+        if (details.content.urep.player.utf8str) (details.content.urep.player.utf8str, 0);
+        details.content.urep.player.utf8str = null;
+      }
+      else if (gdc.custtype === custom_symbols) { details.content.sym.symparse =  0; details.content.sym.val = 0; }
+      else if (gdc.custtype === custom_nhcolor) { details.content.ccolor.nhcolor = 0; details.content.ccolor.glyphidx = 0; }
+      (details, 0);
+      details = next;
+    }
+    gdc.details = 0;
+    gdc.details_end = 0;
+    if (gdc.customization_name) { (gdc.customization_name, 0); gdc.customization_name = 0; }
+    gdc.count = 0;
+  }
+}
+
+// Autotranslated from glyphs.c:805
+export function wizcustom_glyphids(win) {
+  let glyphnum, id;
+  if (!glyphid_cache) return;
+  for (glyphnum = 0; glyphnum < MAX_GLYPH; ++glyphnum) {
+    id = find_glyphid_in_cache_by_glyphnum(glyphnum);
+    if (id) { wizcustom_callback(win, glyphnum, id); }
+  }
+}
+
+// Autotranslated from glyphs.c:1164
+export function clear_all_glyphmap_colors() {
+  let glyph;
+  for (glyph = 0; glyph < MAX_GLYPH; ++glyph) {
+    if (glyphmap[glyph].customcolor) glyphmap[glyph].customcolor = 0;
+    glyphmap[glyph].color256idx = 0;
+  }
+}

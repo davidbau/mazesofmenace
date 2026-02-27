@@ -359,7 +359,7 @@ function hmon_hitmon_barehands(hmd, mon) {
 
 // cf. uhitm.c:884 — hmon_hitmon_weapon_ranged(hmd, mon, obj):
 //   Ranged weapon used in melee: rnd(2) base damage.
-function hmon_hitmon_weapon_ranged(hmd, mon, obj) {
+export function hmon_hitmon_weapon_ranged(hmd, mon, obj) {
     if ((mon.mndx ?? -1) === PM_SHADE) {
         hmd.dmg = 0;
     } else {
@@ -399,7 +399,7 @@ function hmon_hitmon_weapon_melee(hmd, mon, obj) {
 
 // cf. uhitm.c:1048 — hmon_hitmon_weapon(hmd, mon, obj):
 //   Dispatch weapon hit to ranged or melee sub-handler.
-function hmon_hitmon_weapon(hmd, mon, obj) {
+export function hmon_hitmon_weapon(hmd, mon, obj) {
     if (usesRangedMeleeDamage(obj)) {
         hmon_hitmon_weapon_ranged(hmd, mon, obj);
     } else {
@@ -409,7 +409,7 @@ function hmon_hitmon_weapon(hmd, mon, obj) {
 
 // cf. uhitm.c:1073 — hmon_hitmon_potion(hmd, mon, obj):
 //   Potion used as melee weapon: potionhit() then 1 damage (0 vs shade).
-function hmon_hitmon_potion(hmd, mon, obj, player, display) {
+export function hmon_hitmon_potion(hmd, mon, obj, player, display) {
     // Use existing hitMonsterWithPotion for the potion effect
     hitMonsterWithPotion(player, mon, display, obj);
     hmd.hittxt = true;
@@ -464,7 +464,7 @@ function hmon_hitmon_misc_obj(hmd, mon, obj) {
 
 // cf. uhitm.c:1365 — hmon_hitmon_do_hit(hmd, mon, obj):
 //   Top-level dispatch: bare hands or object (weapon/potion/misc).
-function hmon_hitmon_do_hit(hmd, mon, obj, player, display) {
+export function hmon_hitmon_do_hit(hmd, mon, obj, player, display) {
     if (!obj) {
         hmon_hitmon_barehands(hmd, mon);
     } else {
@@ -486,7 +486,7 @@ function hmon_hitmon_do_hit(hmd, mon, obj, player, display) {
 // cf. uhitm.c:1414 — hmon_hitmon_dmg_recalc(hmd, obj):
 //   Recalculate damage after enchantment/bonus adjustments.
 //   Adds strength bonus (dbon) and weapon skill bonus.
-function hmon_hitmon_dmg_recalc(hmd, obj, player) {
+export function hmon_hitmon_dmg_recalc(hmd, obj, player) {
     let dmgbonus = 0;
     if (hmd.get_dmg_bonus) {
         // Strength bonus
@@ -503,7 +503,7 @@ function hmon_hitmon_dmg_recalc(hmd, obj, player) {
 
 // cf. uhitm.c:1488 — hmon_hitmon_poison(hmd, mon, obj):
 //   Apply poison from poisoned weapon to monster.
-function hmon_hitmon_poison(hmd, mon, obj) {
+export function hmon_hitmon_poison(hmd, mon, obj) {
     // C: nopoison = max(2, 10 - owt/10); if !rn2(nopoison) remove poison
     const nopoison = Math.max(2, 10 - Math.floor((obj.owt || 0) / 10));
     if (!rn2(nopoison)) {
@@ -522,7 +522,7 @@ function hmon_hitmon_poison(hmd, mon, obj) {
 // cf. uhitm.c:1519 — hmon_hitmon_jousting(hmd, mon, obj):
 //   Jousting bonus damage with lance while riding.
 //   In JS, riding/jousting is not yet implemented.
-function hmon_hitmon_jousting(hmd, mon, obj) {
+export function hmon_hitmon_jousting(hmd, mon, obj) {
     hmd.dmg += d(2, 10);
     hmd.hittxt = true;
 }
@@ -530,7 +530,7 @@ function hmon_hitmon_jousting(hmd, mon, obj) {
 // cf. uhitm.c:1548 — hmon_hitmon_stagger(hmd, mon, obj):
 //   VERY small chance of stunning opponent if unarmed.
 //   Consumes rnd(100) for RNG parity.
-function hmon_hitmon_stagger(hmd, mon, obj) {
+export function hmon_hitmon_stagger(hmd, mon, obj) {
     // C: if (rnd(100) < P_SKILL(P_BARE_HANDED_COMBAT) && !bigmonst && !thick_skinned)
     // In JS, skill levels not tracked, so just consume the RNG
     rnd(100);
@@ -538,7 +538,7 @@ function hmon_hitmon_stagger(hmd, mon, obj) {
 
 // cf. uhitm.c:1566 — hmon_hitmon_pet(hmd, mon, obj):
 //   Adjust behavior when hitting a pet.
-function hmon_hitmon_pet(hmd, mon, obj) {
+export function hmon_hitmon_pet(hmd, mon, obj) {
     if (mon.mtame && hmd.dmg > 0) {
         // C: abuse_dog(mon) — reduces tameness
         if (mon.mtame > 0) mon.mtame--;
@@ -552,14 +552,14 @@ function hmon_hitmon_pet(hmd, mon, obj) {
 // cf. uhitm.c:1582 — hmon_hitmon_splitmon(hmd, mon, obj):
 //   Handle pudding splitting on hit with iron/metal weapon.
 //   In JS, clone_mon is not yet implemented. Stub: no splitting.
-function hmon_hitmon_splitmon(hmd, mon, obj) {
+export function hmon_hitmon_splitmon(hmd, mon, obj) {
     // C: black/brown pudding splits when hit with iron weapon
     // Requires clone_mon() which is not yet available in JS.
 }
 
 // cf. uhitm.c:1615 — hmon_hitmon_msg_hit(hmd, mon, obj):
 //   Generate "You hit the <monster>" message.
-function hmon_hitmon_msg_hit(hmd, mon, obj, display) {
+export function hmon_hitmon_msg_hit(hmd, mon, obj, display) {
     if (!hmd.hittxt && !hmd.destroyed) {
         const name = x_monnam(mon);
         display.putstr_message(`You hit the ${name}.`);
@@ -719,7 +719,7 @@ function mhurtle_to_doom(mon, tmp, mptr) {
 // cf. uhitm.c:1941 — first_weapon_hit(weapon):
 //   Gamelog message for breaking never-hit-with-wielded-weapon conduct.
 //   In JS, conducts and livelog are not tracked. Stub: no-op.
-function first_weapon_hit(weapon) {
+export function first_weapon_hit(weapon) {
     // C: livelog_printf(LL_CONDUCT, "hit with a wielded weapon (%s) for the first time", buf);
 }
 
@@ -763,7 +763,7 @@ export function shade_miss(magr, mdef, obj, thrown, verbose) {
 // cf. uhitm.c:2034 — m_slips_free(mdef, mattk):
 //   Check if slippery clothing (greased/oilskin) protects from grab/wrap.
 //   In JS, greased armor is not fully modeled. Stub: always returns false.
-function m_slips_free(mdef, mattk) {
+export function m_slips_free(mdef, mattk) {
     return false;
 }
 
@@ -787,7 +787,7 @@ function demonpet() {
 // cf. uhitm.c:2126 — theft_petrifies(otmp):
 //   Check if stealing a corpse would petrify the thief.
 //   Returns true if the theft would cause petrification.
-function theft_petrifies(otmp) {
+export function theft_petrifies(otmp) {
     // C: checks uarmg, corpse type, touch_petrifies, Stone_resistance
     // Simplified: always safe (petrification system not fully ported)
     return false;
@@ -1232,7 +1232,7 @@ async function start_engulf(mdef) {
 
 // cf. uhitm.c:4927 — end_engulf():
 //   End engulfing animation/state. Display-only in C.
-function end_engulf() {
+export function end_engulf() {
     tmp_at(DISP_END, 0);
 }
 
@@ -1463,7 +1463,7 @@ export function disguised_as_mon(mtmp) {
 // cf. uhitm.c:6293 — nohandglow(mon):
 //   Reduce hero's umconf counter (hand-glow for confusion touch).
 //   Called after a hand-to-hand hit when umconf > 0 and mon is not confused.
-function nohandglow(mon) {
+export function nohandglow(mon) {
     // C: if (!u.umconf || mon->mconf) return;
     //    decrements u.umconf, prints message about hands stopping glowing.
     // In JS, u.umconf is not tracked. Stub: no-op.

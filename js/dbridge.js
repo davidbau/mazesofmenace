@@ -212,7 +212,7 @@ function e_at(x, y, occupants) {
 }
 
 // cf. dbridge.c:303 — m_to_e: populate entity from monster
-function m_to_e(mtmp, x, y, etmp) {
+export function m_to_e(mtmp, x, y, etmp) {
     etmp.emon = mtmp;
     if (mtmp) {
         etmp.ex = x;
@@ -234,7 +234,7 @@ function u_to_e(etmp, player) {
 }
 
 // cf. dbridge.c:330 — set_entity: populate entity from whatever's at (x,y)
-function set_entity(x, y, etmp, map, player) {
+export function set_entity(x, y, etmp, map, player) {
     if (player && player.x === x && player.y === y) {
         u_to_e(etmp, player);
     } else {
@@ -246,9 +246,9 @@ function set_entity(x, y, etmp, map, player) {
 
 function is_u(etmp) { return etmp.isPlayer === true; }
 function e_canseemon_fn(etmp) { return is_u(etmp) || canseemon(etmp.emon); }
-
+export 
 function e_nam(etmp) { return is_u(etmp) ? "you" : y_monnam(etmp.emon); }
-
+export 
 function E_phrase(etmp, verb) {
     const who = is_u(etmp) ? "You" : x_monnam(etmp.emon);
     if (!verb) return who;
@@ -258,7 +258,7 @@ function E_phrase(etmp, verb) {
 }
 
 // cf. dbridge.c:379 — e_survives_at: can entity survive at (x,y)?
-function e_survives_at(etmp, x, y, map) {
+export function e_survives_at(etmp, x, y, map) {
     if (noncorporeal(etmp.edata)) return true;
     if (is_pool(x, y, map))
         return is_u(etmp) || is_swimmer(etmp.edata)

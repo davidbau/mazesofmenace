@@ -563,7 +563,7 @@ function view_from(srow, scol, loc_cs_rows, left_most, right_most, range = 0, fu
 // fill_point() / dig_point() — maintain clear/block pointers
 // C ref: vision.c:956-1040
 // ========================================================================
-function fill_point(row, col) {
+export function fill_point(row, col) {
     let i;
 
     if (!viz_clear[row][col]) return;
@@ -620,7 +620,7 @@ function fill_point(row, col) {
             left_ptrs_arr[row][i] = left_ptrs_arr[row][col - 1];
     }
 }
-
+export 
 function dig_point(row, col) {
     let i;
 

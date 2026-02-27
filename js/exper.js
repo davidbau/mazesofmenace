@@ -190,3 +190,78 @@ export function pluslvl(player, display, incr) {
 
 // cf. exper.c:377 — rndexp(): random XP for potions/polyself
 // TODO: exper.c:377 — rndexp(gaining): needs LARGEST_INT handling, rn2 with large diff
+
+// Autotranslated from exper.c:84
+export function experience(mtmp, nk) {
+  let ptr = mtmp.data, i, tmp, tmp2;
+  tmp = 1 + mtmp.m_lev * mtmp.m_lev;
+  if ((i = find_mac(mtmp)) < 3) {
+    tmp += (7 - i) * ((i < 0) ? 2 : 1);
+  }
+  if (ptr.mmove > NORMAL_SPEED) {
+    tmp += (ptr.mmove > (3 * NORMAL_SPEED / 2)) ? 5 : 3;
+  }
+  for (i = 0; i < NATTK; i++) {
+    tmp2 = ptr.mattk[i].aatyp;
+    if (tmp2 > AT_BUTT) {
+      if (tmp2 === AT_WEAP) {
+        tmp += 5;
+      }
+      else if (tmp2 === AT_MAGC) {
+        tmp += 10;
+      }
+      else {
+        tmp += 3;
+      }
+    }
+  }
+  for (i = 0; i < NATTK; i++) {
+    tmp2 = ptr.mattk[i].adtyp;
+    if (tmp2 > AD_PHYS && tmp2 < AD_BLND) {
+      tmp += 2 * mtmp.m_lev;
+    }
+    else if ((tmp2 === AD_DRLI) || (tmp2 === AD_STON) || (tmp2 === AD_SLIM)) {
+      tmp += 50;
+    }
+    else if (tmp2 !== AD_PHYS) {
+      tmp += mtmp.m_lev;
+    }
+    if (Math.trunc(ptr.mattk[i].damd * ptr.mattk[i].damn) > 23) {
+      tmp += mtmp.m_lev;
+    }
+    if (tmp2 === AD_WRAP && ptr.mlet === S_EEL && !Amphibious) {
+      tmp += 1000;
+    }
+  }
+  if (extra_nasty(ptr)) {
+    tmp += (7 * mtmp.m_lev);
+  }
+  if (mtmp.m_lev > 8) {
+    tmp += 50;
+  }
+  if (mtmp.data === mons) tmp = 1;
+  if (mtmp.mrevived || mtmp.mcloned) {
+    for (i = 0, tmp2 = 20; nk > tmp2 && tmp > 1; ++i) {
+      tmp = (tmp + 1) / 2;
+      nk -= tmp2;
+      if (i & 1) {
+        tmp2 += 20;
+      }
+    }
+  }
+  return (tmp);
+}
+
+// Autotranslated from exper.c:168
+export function more_experienced(exper, rexp, game, player) {
+  let oldexp = player.uexp, oldrexp = player.urexp, newexp = oldexp + exper, rexpincr = 4 * exper + rexp, newrexp = oldrexp + rexpincr;
+  if (newexp < 0 && exper > 0) newexp = LONG_MAX;
+  if (newrexp < 0 && rexpincr > 0) newrexp = LONG_MAX;
+  if (newexp !== oldexp) {
+    player.uexp = newexp;
+    if (game.flags.showexp) game.disp.botl = true;
+    if (!game.disp.botl && exp_percent_changing()) game.disp.botl = true;
+  }
+  if (newrexp !== oldrexp) { player.urexp = newrexp; }
+  if (player.urexp >= (Role_if(PM_WIZARD) ? 1000 : 2000)) game.flags.beginner = false;
+}

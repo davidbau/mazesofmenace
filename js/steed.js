@@ -84,7 +84,7 @@ export function put_saddle_on_mon(saddle, mtmp) {
 }
 
 // cf. steed.c:827 -- maybewakesteed(steed): wake sleeping/paralyzed steed
-function maybewakesteed(steed) {
+export function maybewakesteed(steed) {
     const wasimmobile = !!(steed.msleeping || (steed.mfrozen && !steed.mcanmove));
 
     steed.msleeping = 0;

@@ -317,3 +317,14 @@ export const sanitizeName = sanitize_name;
 export const giveToNearbyMon = give_to_nearby_mon;
 export const removeMonFromBones = remove_mon_from_bones;
 export const setGhostlyObjlist = set_ghostly_objlist;
+
+// Autotranslated from bones.c:41
+export function goodfruit(id) {
+  let f = fruit_from_indx(-id);
+  if (f) f.fid = id;
+}
+
+// Autotranslated from bones.c:822
+export function free_ebones(mtmp) {
+  if (mtmp.mextra && EBONES(mtmp)) { free( EBONES(mtmp)); EBONES(mtmp) =  0; }
+}

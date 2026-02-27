@@ -25,13 +25,44 @@ from runtime_candidate_safety import (
 EXPORT_RE_TMPL = r"^\s*export\s+(?:async\s+)?function\s+{name}\s*\("
 LOCAL_RE_TMPL = r"^\s*(?:async\s+)?function\s+{name}\s*\("
 
+EXPORT_FN_RE = re.compile(
+    r"^\s*export\s+(?:async\s+)?function\s+([A-Za-z_]\w*)\s*\(",
+    re.MULTILINE,
+)
+EXPORT_LIST_RE = re.compile(r"export\s*\{\s*([^}]*)\s*\};")
+
 
 def parse_args():
     p = argparse.ArgumentParser(description="Insert safe unmatched translator candidates")
     p.add_argument("--candidates", required=True, help="runtime_stitch_candidates JSON path")
     p.add_argument("--report", required=True, help="output JSON report path")
     p.add_argument("--write", action="store_true", help="apply edits")
+    p.add_argument(
+        "--mode",
+        choices=("strict", "syntax"),
+        default="strict",
+        help="strict: require no unknown symbols; syntax: require syntax only",
+    )
     return p.parse_args()
+
+
+def dedupe_export_lists(source_text):
+    export_fns = set(EXPORT_FN_RE.findall(source_text))
+
+    def repl(match):
+        body = match.group(1)
+        parts = [x.strip() for x in body.split(",") if x.strip()]
+        kept = []
+        for part in parts:
+            name = part.split(" as ")[0].strip()
+            if name in export_fns:
+                continue
+            kept.append(part)
+        if not kept:
+            return ""
+        return "export { " + ", ".join(kept) + " };"
+
+    return EXPORT_LIST_RE.sub(repl, source_text)
 
 
 def main():
@@ -77,7 +108,7 @@ def main():
             continue
         unknown_calls = candidate_unknown_calls(emitted_js, known)
         unknown_ids, _ = candidate_unknown_identifiers(emitted_js, known, module, alias_map)
-        if unknown_calls or unknown_ids:
+        if args.mode == "strict" and (unknown_calls or unknown_ids):
             skipped.append({"record": rec, "reason": "unknown_symbols"})
             continue
 
@@ -93,6 +124,7 @@ def main():
             m = local_matches[0]
             # Safe prefix injection: only replace this exact token.
             patched = source_text[:m.start()] + "export " + source_text[m.start():]
+            patched = dedupe_export_lists(patched)
             if args.write:
                 mpath.write_text(patched, encoding="utf-8")
             edits.append({"record": rec, "mode": "promote_local"})
@@ -114,6 +146,7 @@ def main():
         if not appended.endswith("\n"):
             appended += "\n"
         appended += "\n" + emitted_js.rstrip() + "\n"
+        appended = dedupe_export_lists(appended)
         if args.write:
             mpath.write_text(appended, encoding="utf-8")
         edits.append({"record": rec, "mode": "append_emit"})
@@ -122,6 +155,7 @@ def main():
     report = {
         "candidates": args.candidates,
         "write": bool(args.write),
+        "mode": args.mode,
         "applied": len(edits),
         "promoted": sum(1 for e in edits if e["mode"] == "promote_local"),
         "appended": sum(1 for e in edits if e["mode"] == "append_emit"),

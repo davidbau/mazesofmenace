@@ -107,7 +107,7 @@ function seemimic_local(mtmp) {
 function cls() {}
 function browse_map() {}
 function map_redisplay_stub() {}
-function map_monst() {}
+export function map_monst() {}
 function map_object() {}
 function map_trap() {}
 function display_self() {}
@@ -188,7 +188,7 @@ export function o_material(obj, material) {
 // ========================================================================
 // cf. detect.c:249 -- observe_recursively
 // ========================================================================
-function observe_recursively(obj) {
+export function observe_recursively(obj) {
     if (!obj) return;
     observeObject(obj);
     if (Has_contents(obj)) for (const otmp of obj.cobj) observe_recursively(otmp);
@@ -198,7 +198,7 @@ function observe_recursively(obj) {
 // cf. detect.c:262/318 -- check_map_spot / clear_stale_map
 // ========================================================================
 function check_map_spot() { return false; }
-function clear_stale_map(oclass, material, map) {
+export function clear_stale_map(oclass, material, map) {
     let change = false;
     for (let zx = 1; zx < COLNO; zx++)
         for (let zy = 0; zy < ROWNO; zy++)
@@ -513,7 +513,7 @@ export function monster_detect(otmp, mclass, player, map, display, game) {
 // ========================================================================
 // cf. detect.c:865 -- sense_trap
 // ========================================================================
-function sense_trap(trap, x, y, src_cursed, player, map, display) {
+export function sense_trap(trap, x, y, src_cursed, player, map, display) {
     if (player.hallucinating || src_cursed) {
         const fakeOtyp = !player.hallucinating ? GOLD_PIECE : random_object(rn2);
         const fakeQuan = (fakeOtyp === GOLD_PIECE) ? rnd(10)
@@ -632,7 +632,7 @@ export function trap_detect(sobj, player, map, display, game) {
 // ========================================================================
 // cf. detect.c:1091 -- furniture_detect (stub)
 // ========================================================================
-function furniture_detect() {
+export function furniture_detect() {
     There("seems to be nothing of interest on this level."); return 0;
 }
 
@@ -928,7 +928,7 @@ export function find_trap(trap, player, map, display) {
 // ========================================================================
 // cf. detect.c:1965 -- mfind0
 // ========================================================================
-function mfind0(mtmp, via_warning, player, map, display) {
+export function mfind0(mtmp, via_warning, player, map, display) {
     if (!mtmp) return 0;
     const x = mtmp.mx, y = mtmp.my;
     let found_something = false;
@@ -1036,7 +1036,7 @@ export function warnreveal(player, map, display) {
 // ========================================================================
 // cf. detect.c:2124/2134 -- skip_premap_detect / premap_detect
 // ========================================================================
-function skip_premap_detect(x, y, map) {
+export function skip_premap_detect(x, y, map) {
     const lev = map.at(x, y);
     if (!lev) return true;
     if (lev.typ === STONE && ((lev.wall_info || lev.flags || 0) !== 0)) return true;
@@ -1076,4 +1076,12 @@ export function reveal_terrain(which_subset, player, map, display) {
     flush_screen(1);
     pline("Showing terrain only...");
     browse_map(); map_redisplay_stub(); reconstrain_map(player);
+}
+
+// Autotranslated from detect.c:94
+export function map_redisplay(player) {
+  reconstrain_map();
+  docrt();
+  if (Underwater) under_water(2);
+  if (player.uburied) under_ground(2);
 }

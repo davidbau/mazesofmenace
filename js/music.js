@@ -118,7 +118,7 @@ function plur(n) { return n === 1 ? '' : 's'; }
 // cf. music.c:44 — awaken_scare(mtmp, scary)
 // Wake up monster, possibly scare it.
 // ============================================================================
-
+export 
 function awaken_scare(mtmp, scary) {
     mtmp.msleeping = 0;
     mtmp.mcanmove = 1;
@@ -257,7 +257,7 @@ export function awaken_soldiers(bugler, map, player, fov) {
 // cf. music.c:195 — charm_monsters(distance)
 // Charm monsters in range. Note that they may resist the spell.
 // ============================================================================
-
+export 
 function charm_monsters(distance, map, player) {
     if (player.uswallow)
         distance = 0; // only ustuck affected
@@ -519,7 +519,7 @@ function do_earthquake(force, map, player, fov) {
 // cf. music.c:477 — generic_lvl_desc()
 // Returns a generic description of the current level type for messages.
 // ============================================================================
-
+export 
 function generic_lvl_desc() {
     // Simplified: endgame/sokoban/vlad tower not modeled yet
     return 'dungeon';
@@ -541,7 +541,7 @@ const beats = [
 
 // Module-level state for the jingle context
 let _jingle = '';
-
+export 
 function improvised_notes(player) {
     const notes = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
     let same_as_last_time = false;

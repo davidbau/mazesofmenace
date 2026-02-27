@@ -297,7 +297,7 @@ export function dog_eat(mon, obj, map, turnCount, ctx = null) {
 // and experience. JS simplified to mon.dead = true. C also checks usteed.
 // C uses cansee() for visibility; JS uses fov?.canSee which may differ in edge cases.
 // C has Hallucination check ("bummed" vs "sad"); JS always uses "sad".
-function dog_starve(mon, map, display, player, fov) {
+export function dog_starve(mon, map, display, player, fov) {
     if (mon.mleashed) {
         if (display) display.putstr_message('Your leash goes slack.');
     } else {
@@ -320,7 +320,7 @@ function dog_starve(mon, map, display, player, fov) {
 // calls beg(mtmp) when not visible but couldsee. JS skips beg() and
 // uses "worried" message for the else branch. C also calls stop_occupation().
 // ========================================================================
-function dog_hunger(mon, edog, turnCount, map, display, player, fov) {
+export function dog_hunger(mon, edog, turnCount, map, display, player, fov) {
     if (turnCount > edog.hungrytime + DOG_WEAK) {
         const mdat = monPtr(mon);
         if (mdat && !carnivorous(mdat) && !herbivorous(mdat)) {
@@ -370,7 +370,7 @@ export function finish_meating(mon) {
 // ========================================================================
 // mnum_leashable — C ref: dogmove.c:1456-1463
 // ========================================================================
-function mnum_leashable(mnum) {
+export function mnum_leashable(mnum) {
     if (mnum < 0 || mnum >= NUMMONS) return false;
     const ptr = mons[mnum];
     if (!ptr) return false;
@@ -428,7 +428,7 @@ export function could_reach_item(map, mon, nx, ny) {
 // C ref: dogmove.c:1371-1407 — can_reach_location(mon, mx, my, fx, fy)
 // Recursive pathfinding: can monster navigate from (mx,my) to (fx,fy)?
 // Uses greedy approach: only steps through cells closer to target.
-function can_reach_location(map, mon, mx, my, fx, fy) {
+export function can_reach_location(map, mon, mx, my, fx, fy) {
     if (mx === fx && my === fy) return true;
     if (!isok(mx, my)) return false;
 
@@ -688,7 +688,7 @@ function find_targ(mon, dx, dy, maxdist, map, player) {
 // C ref: dogmove.c:698-740 find_friends() — check if allies are behind target
 // Scans beyond the target in the same direction to see if the player or
 // tame monsters are in the line of fire. Returns 1 if so (pet should not fire).
-function find_friends(mon, target, maxdist, map, player) {
+export function find_friends(mon, target, maxdist, map, player) {
     const dx = Math.sign(target.mx - mon.mx);
     const dy = Math.sign(target.my - mon.my);
     const mux = Number.isInteger(mon.mux) ? mon.mux : 0;
@@ -1438,4 +1438,40 @@ export async function dog_move(mon, map, player, display, fov, after = false, ga
     }
 
     return nix !== omx || niy !== omy ? 1 : 0;
+}
+
+// Autotranslated from dogmove.c:1473
+export async function quickmimic(mtmp, player) {
+  let idx = 0, trycnt = 5, spotted, seeloc, was_leashed = mtmp.mleashed, buf;
+  if (Protection_from_shape_changers || !mtmp.meating) return;
+  if (mtmp === player.usteed) dismount_steed(DISMOUNT_POLY);
+  do {
+    idx = rn2(SIZE(qm));
+    if (qm[idx].mndx !== 0 && monsndx(mtmp.data) === qm[idx].mndx) {
+      break;
+    }
+    if (qm[idx].mlet !== 0 && mtmp.data.mlet === qm[idx].mlet) {
+      break;
+    }
+    if (qm[idx].mndx === 0 && qm[idx].mlet === 0) {
+      break;
+    }
+  } while (--trycnt > 0);
+  if (trycnt === 0) idx = SIZE(qm) - 1;
+  Strcpy(buf, y_monnam(mtmp));
+  spotted = canspotmon(mtmp);
+  seeloc = cansee(mtmp.mx, mtmp.my);
+  mtmp.m_ap_type = qm[idx].m_ap_type;
+  mtmp.mappearance = qm[idx].mappearance;
+  if (spotted || seeloc || canspotmon(mtmp)) {
+    let prev_glyph = glyph_at(mtmp.mx, mtmp.my);
+    let what = (M_AP_TYPE(mtmp) === M_AP_FURNITURE) ? defsyms[mtmp.mappearance].explanation : (M_AP_TYPE(mtmp) === M_AP_OBJECT && OBJ_DESCR(objectData[mtmp.mappearance])) ? OBJ_DESCR(objectData[mtmp.mappearance]) : (M_AP_TYPE(mtmp) === M_AP_OBJECT && OBJ_NAME(objectData[mtmp.mappearance])) ? OBJ_NAME(objectData[mtmp.mappearance]) : (M_AP_TYPE(mtmp) === M_AP_MONSTER) ? pmname( mons, Mgender(mtmp)) : something;
+    newsym(mtmp.mx, mtmp.my);
+    if (was_leashed && (M_AP_TYPE(mtmp) !== M_AP_MONSTER || !mnum_leashable(mtmp.mappearance))) { Your("leash goes slack."); m_unleash(mtmp, false); }
+    if (glyph_at(mtmp.mx, mtmp.my) !== prev_glyph) You("%s %s %s where %s was!", seeloc ? "see" : "sense that", (what !== something) ? an(what) : what, seeloc ? "appear" : "has appeared", buf);
+    else {
+      You("sense that %s feels rather %s-ish.", buf, what);
+    }
+    await display_nhwindow(WIN_MAP, true);
+  }
 }

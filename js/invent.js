@@ -2004,3 +2004,63 @@ function setnotworn(obj, player) {
     if (obj === player.quiver) player.quiver = null;
     if (obj === player.blindfold) player.blindfold = null;
 }
+
+// Autotranslated from invent.c:390
+export function invletter_value(c) {
+  return ('a' <= c && c <= 'z') ? (c - 'a' + 2) : ('A' <= c && c <= 'Z') ? (c - 'A' + 2 + 26) : (c === '$') ? 1 : (c === '#') ? 1 + invlet_basic + 1 : 1 + invlet_basic + 1 + 1;
+}
+
+// Autotranslated from invent.c:1626
+export function compactify(buf) {
+  let i1 = 1, i2 = 1, ilet, ilet1, ilet2;
+  ilet2 = buf;
+  ilet1 = buf;
+  buf = buf;
+  ilet = buf;
+  while (ilet) {
+    if (ilet === ilet1 + 1) {
+      if (ilet1 === ilet2 + 1) buf = ilet1 = '-';
+      else if (ilet2 === '-') {
+        buf = ++ilet1;
+        buf = buf;
+        ilet = buf;
+        continue;
+      }
+    }
+    else if (ilet === NOINVSYM) {
+      if (i2 >= 2 && buf === NOINVSYM && buf === NOINVSYM) buf = '-';
+      else if (i2 >= 3 && buf === NOINVSYM && buf === '-' && buf === NOINVSYM) --i2;
+    }
+    ilet2 = ilet1;
+    ilet1 = ilet;
+    buf = buf;
+    ilet = buf;
+  }
+}
+
+// Autotranslated from invent.c:2142
+export function ckunpaid(otmp) {
+  return (otmp.unpaid || (Has_contents(otmp) && count_unpaid(otmp.cobj)));
+}
+
+// Autotranslated from invent.c:3005
+export function ddoinv() {
+  return dispinv_with_action( 0, false, null);
+}
+
+// Autotranslated from invent.c:3455
+export function repopulate_perminvent() {
+  display_pickinv(null,  0,  0, false, false, null);
+}
+
+// Autotranslated from invent.c:4916
+export function adjust_ok(obj) {
+  if (!obj || obj.oclass === COIN_CLASS) return GETOBJ_EXCLUDE;
+  return GETOBJ_SUGGEST;
+}
+
+// Autotranslated from invent.c:4926
+export function adjust_gold_ok(obj) {
+  if (!obj) return GETOBJ_EXCLUDE;
+  return GETOBJ_SUGGEST;
+}

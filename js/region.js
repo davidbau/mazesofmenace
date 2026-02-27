@@ -845,3 +845,14 @@ export function region_safety(map, player, game) {
         player.blind = false;
     }
 }
+
+// Autotranslated from region.c:262
+export function free_region(reg) {
+  if (reg) {
+    if (reg.rects) (reg.rects, 0);
+    if (reg.monsters) (reg.monsters, 0);
+    if (reg.enter_msg) (reg.enter_msg, 0);
+    if (reg.leave_msg) (reg.leave_msg, 0);
+    (reg, 0);
+  }
+}

@@ -104,7 +104,7 @@ export function temple_occupied(rooms_str, map) {
 // histemple_at — cf. priest.c:153 (static in C)
 // Returns true if (x,y) is inside the priest's temple room.
 // ============================================================================
-function histemple_at(priest, x, y, map) {
+export function histemple_at(priest, x, y, map) {
     if (!priest || !priest.ispriest || !priest.epri) return false;
     const roomsAtXY = in_rooms(x, y, TEMPLE, map);
     if (!roomsAtXY) return false;
@@ -132,7 +132,7 @@ export function inhistemple(priest) {
 // has_shrine — cf. priest.c:376 (static in C)
 // Checks that an altar of the proper alignment exists in the temple room.
 // ============================================================================
-function has_shrine(pri, map) {
+export function has_shrine(pri, map) {
     if (!pri || !pri.ispriest || !pri.epri) return false;
     const epri_p = pri.epri;
     const loc = map.at(epri_p.shrpos.x, epri_p.shrpos.y);

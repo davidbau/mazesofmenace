@@ -73,7 +73,7 @@ export function incr_itimeout(player, prop, incr) {
 // ============================================================
 
 // cf. potion.c make_confused() — C ref: potion.c:88-104
-function make_confused(player, xtime, talk) {
+export function make_confused(player, xtime, talk) {
     const old = player.getPropTimeout(CONFUSION);
 
     // C ref: if (Unaware) talk = FALSE;
@@ -265,7 +265,7 @@ function make_hallucinated(player, xtime, talk, mask) {
 }
 
 // cf. potion.c make_vomiting() — C ref: potion.c:242-255
-function make_vomiting(player, xtime, talk) {
+export function make_vomiting(player, xtime, talk) {
     const old = player.getPropTimeout(VOMITING);
 
     if (player.sleeping) talk = false;
@@ -288,7 +288,7 @@ function make_slimed(player, xtime, msg) {
 }
 
 // cf. potion.c make_stoned() — C ref: potion.c:221-240
-function make_stoned(player, xtime, msg) {
+export function make_stoned(player, xtime, msg) {
     const old = player.getPropTimeout(STONED);
     set_itimeout(player, STONED, xtime);
     if ((!!xtime) !== (!!old)) {
@@ -312,12 +312,12 @@ function make_deaf(player, xtime, talk) {
 }
 
 // cf. potion.c make_glib() — set/clear slippery fingers
-function make_glib(player, xtime, talk) {
+export function make_glib(player, xtime, talk) {
     set_itimeout(player, GLIB, xtime);
 }
 
 // cf. potion.c speed_up() — character becomes very fast temporarily
-function speed_up(player, duration) {
+export function speed_up(player, duration) {
     // C ref: potion.c:2904-2914
     const veryFast = player.getPropTimeout(FAST) > 0;
     if (!veryFast)
@@ -333,7 +333,7 @@ function speed_up(player, duration) {
 // ============================================================
 
 // cf. potion.c self_invis_message() — "you can't see yourself" message
-function self_invis_message(player) {
+export function self_invis_message(player) {
     // C ref: potion.c:470-478
     pline("%s %s.",
           player.hallucinating ? "Far out, man!  You"
@@ -343,7 +343,7 @@ function self_invis_message(player) {
 }
 
 // cf. potion.c ghost_from_bottle() — release ghost from smoky potion
-function ghost_from_bottle(player, map) {
+export function ghost_from_bottle(player, map) {
     // C ref: potion.c:480-500
     // makemon(&mons[PM_GHOST], ...) — ghost creation not yet fully ported
     if (player.blind) {
@@ -359,7 +359,7 @@ function ghost_from_bottle(player, map) {
 }
 
 // cf. potion.c drink_ok() — validate object is drinkable
-function drink_ok(obj) {
+export function drink_ok(obj) {
     // C ref: potion.c:504-521
     if (!obj) return false;
     return obj.oclass === POTION_CLASS;
@@ -496,7 +496,7 @@ export function healup(player, nhp, nxtra, curesick, cureblind) {
 }
 
 // cf. potion.c peffect_confusion()
-function peffect_confusion(player, otmp, display) {
+export function peffect_confusion(player, otmp, display) {
     if (!player.getPropTimeout(CONFUSION)) {
         if (otmp.blessed) {
             You_feel("less confused.");
@@ -523,7 +523,7 @@ function peffect_blindness(player, otmp, display) {
 }
 
 // cf. potion.c peffect_speed()
-function peffect_speed(player, otmp, display) {
+export function peffect_speed(player, otmp, display) {
     if (otmp.cursed) {
         pline("You feel rather sluggish.");
         return true;
@@ -539,7 +539,7 @@ function peffect_speed(player, otmp, display) {
 }
 
 // cf. potion.c peffect_sleeping()
-function peffect_sleeping(player, otmp, display) {
+export function peffect_sleeping(player, otmp, display) {
     // C ref: check FREE_ACTION resistance
     const freeAct = player.uprops[FREE_ACTION];
     if (freeAct && (freeAct.intrinsic || freeAct.extrinsic)) {
@@ -559,7 +559,7 @@ function peffect_sleeping(player, otmp, display) {
 }
 
 // cf. potion.c peffect_paralysis()
-function peffect_paralysis(player, otmp, display) {
+export function peffect_paralysis(player, otmp, display) {
     // C ref: check FREE_ACTION resistance
     const freeAct = player.uprops[FREE_ACTION];
     if (freeAct && (freeAct.intrinsic || freeAct.extrinsic)) {
@@ -583,7 +583,7 @@ function peffect_paralysis(player, otmp, display) {
 }
 
 // cf. potion.c peffect_sickness()
-function peffect_sickness(player, otmp, display) {
+export function peffect_sickness(player, otmp, display) {
     if (otmp.blessed) {
         pline("This tastes like medicine.");
         healup(player, 0, 0, true, false);
@@ -600,7 +600,7 @@ function peffect_sickness(player, otmp, display) {
 }
 
 // cf. potion.c peffect_hallucination()
-function peffect_hallucination(player, otmp, display) {
+export function peffect_hallucination(player, otmp, display) {
     if (otmp.blessed) {
         make_hallucinated(player, 0, true);
         return false;
@@ -612,7 +612,7 @@ function peffect_hallucination(player, otmp, display) {
 }
 
 // cf. potion.c peffect_healing()
-function peffect_healing(player, otmp, display) {
+export function peffect_healing(player, otmp, display) {
     const bcsign = otmp.blessed ? 1 : (otmp.cursed ? -1 : 0);
     const heal = 8 + c_d(4 + (2 * bcsign), 4);
     healup(player, heal, !otmp.cursed ? 1 : 0, false, !otmp.cursed);
@@ -623,7 +623,7 @@ function peffect_healing(player, otmp, display) {
 }
 
 // cf. potion.c peffect_extra_healing()
-function peffect_extra_healing(player, otmp, display) {
+export function peffect_extra_healing(player, otmp, display) {
     const bcsign = otmp.blessed ? 1 : (otmp.cursed ? -1 : 0);
     const heal = 16 + c_d(4 + (2 * bcsign), 8);
     const nxtra = otmp.blessed ? 5 : (!otmp.cursed ? 2 : 0);
@@ -636,7 +636,7 @@ function peffect_extra_healing(player, otmp, display) {
 }
 
 // cf. potion.c peffect_full_healing()
-function peffect_full_healing(player, otmp, display) {
+export function peffect_full_healing(player, otmp, display) {
     const bcsign = otmp.blessed ? 1 : (otmp.cursed ? -1 : 0);
     healup(player, 400, 4 + 4 * bcsign, !otmp.cursed, true);
     make_hallucinated(player, 0, true);
@@ -647,7 +647,7 @@ function peffect_full_healing(player, otmp, display) {
 }
 
 // cf. potion.c peffect_gain_level()
-function peffect_gain_level(player, otmp, display) {
+export function peffect_gain_level(player, otmp, display) {
     if (otmp.cursed) {
         if (player.ulevel > 1) player.ulevel -= 1;
         You_feel("less experienced.");
@@ -659,7 +659,7 @@ function peffect_gain_level(player, otmp, display) {
 }
 
 // cf. potion.c peffect_gain_energy()
-function peffect_gain_energy(player, otmp, display) {
+export function peffect_gain_energy(player, otmp, display) {
     const bcsign = otmp.blessed ? 1 : (otmp.cursed ? -1 : 0);
     const gain = 5 * bcsign + rnd(10) + 5;
     if (gain > 0) {
@@ -677,7 +677,7 @@ function peffect_gain_energy(player, otmp, display) {
 }
 
 // cf. potion.c peffect_acid()
-function peffect_acid(player, otmp, display) {
+export function peffect_acid(player, otmp, display) {
     // C ref: check Acid_resistance
     const acidRes = player.uprops[ACID_RES];
     if (acidRes && (acidRes.intrinsic || acidRes.extrinsic)) {
@@ -693,7 +693,7 @@ function peffect_acid(player, otmp, display) {
 }
 
 // cf. potion.c peffect_invisibility()
-function peffect_invisibility(player, otmp, display) {
+export function peffect_invisibility(player, otmp, display) {
     if (otmp.blessed) {
         incr_itimeout(player, INVIS, rnd(15) + 31);
     } else {
@@ -704,7 +704,7 @@ function peffect_invisibility(player, otmp, display) {
 }
 
 // cf. potion.c peffect_see_invisible()
-function peffect_see_invisible(player, otmp, display) {
+export function peffect_see_invisible(player, otmp, display) {
     incr_itimeout(player, SEE_INVIS, rnd(100) + (otmp.blessed ? 42 : 0));
     You_feel("perceptive!");
     return false;
@@ -718,7 +718,7 @@ function peffect_restore_ability(player, otmp, display) {
 }
 
 // cf. potion.c peffect_gain_ability()
-function peffect_gain_ability(player, otmp, display) {
+export function peffect_gain_ability(player, otmp, display) {
     // Simplified: pick a random attribute and increase it
     const attrs = [A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA];
     const attr = attrs[rn2(attrs.length)];
@@ -732,7 +732,7 @@ function peffect_gain_ability(player, otmp, display) {
 }
 
 // cf. potion.c peffect_booze()
-function peffect_booze(player, otmp, display) {
+export function peffect_booze(player, otmp, display) {
     pline("Ooph!  This tastes like %s!",
         otmp.cursed ? "liquid fire" : "dandelion wine");
     if (!otmp.cursed) {
@@ -780,7 +780,7 @@ function peffects(player, otmp, display) {
 // ============================================================
 
 // cf. potion.c strange_feeling() — "strange feeling" for unIDed potions
-function strange_feeling(player, obj, txt) {
+export function strange_feeling(player, obj, txt) {
     // C ref: potion.c:1456-1472
     if (!txt) {
         You("have a %s feeling for a moment, then it passes.",
@@ -877,7 +877,7 @@ function H2Opotion_dip(potion, targobj, useeit, objphrase) {
 // ============================================================
 
 // cf. potion.c impact_arti_light() — artifact light on potion impact
-function impact_arti_light(obj, worsen, seeit) {
+export function impact_arti_light(obj, worsen, seeit) {
     // C ref: potion.c:1590-1617
     // Simplified: artifact light interaction requires mksobj infrastructure
     // not yet available. Stub for now.
@@ -1226,7 +1226,7 @@ export function mixtype(o1, o2) {
 // ============================================================
 
 // cf. potion.c dip_ok() — validate dip target
-function dip_ok(obj) {
+export function dip_ok(obj) {
     // C ref: potion.c:2199-2213
     if (!obj) return false;
     if (obj.oclass === COIN_CLASS) return false;
@@ -1234,7 +1234,7 @@ function dip_ok(obj) {
 }
 
 // cf. potion.c dip_hands_ok() — check if hands are free for dipping
-function dip_hands_ok(obj) {
+export function dip_hands_ok(obj) {
     // C ref: potion.c:2216-2223
     if (!obj) return true; // hands are valid target when slippery
     return dip_ok(obj);
@@ -1261,7 +1261,7 @@ async function dodip(player, map, display) {
 }
 
 // cf. potion.c dip_into() — alternate dip entry (potion selected first)
-async function dip_into(player, map, display) {
+export async function dip_into(player, map, display) {
     // C ref: potion.c:2364-2391
     // Requires cmdq infrastructure. Stub.
     pline("That command is not yet available.");
@@ -1269,7 +1269,7 @@ async function dip_into(player, map, display) {
 }
 
 // cf. potion.c poof() — potion disappears in a poof (trycall + useup)
-function poof(player, potion) {
+export function poof(player, potion) {
     // C ref: potion.c:2393-2399
     // trycall(potion) — ID attempt; useup(potion) — consume it
     if (player && player.removeFromInventory) {
@@ -1378,7 +1378,7 @@ function potion_dip(player, obj, potion) {
 // ============================================================
 
 // cf. potion.c mongrantswish() — monster grants a wish
-function mongrantswish(mon, player, map) {
+export function mongrantswish(mon, player, map) {
     // C ref: potion.c:2780-2798
     // Full wish system not yet ported. Keep C-style temporary glyph overlay.
     if (mon && map) {
@@ -1477,4 +1477,118 @@ registerMakeStatusFns({
     make_stoned,
 });
 
-export { handleQuaff, peffects, make_confused, make_stunned, make_blinded, make_sick, make_hallucinated, make_vomiting, make_deaf, make_glib, make_slimed, make_stoned, speed_up, self_invis_message, ghost_from_bottle, drink_ok, strange_feeling, bottlename, H2Opotion_dip, impact_arti_light, potionhit, potionbreathe, dip_ok, dip_hands_ok, hold_potion, dodip, dip_into, poof, dip_potion_explosion, potion_dip, mongrantswish, djinni_from_bottle, split_mon };
+export { handleQuaff, peffects, make_stunned, make_blinded, make_sick, make_hallucinated, make_deaf, make_slimed, bottlename, H2Opotion_dip, potionhit, potionbreathe, hold_potion, dodip, dip_potion_explosion, potion_dip, djinni_from_bottle, split_mon };
+
+// Autotranslated from potion.c:617
+export async function dopotion(otmp, player) {
+  let retval;
+  otmp.in_use = true;
+  gp.potion_nothing = gp.potion_unkn = 0;
+  if ((retval = peffects(otmp)) >= 0) return retval ? ECMD_TIME : ECMD_OK;
+  if (gp.potion_nothing) {
+    gp.potion_unkn++;
+    You("have a %s feeling for a moment, then it passes.", (player?.Hallucination || player?.hallucinating || false) ? "normal" : "peculiar");
+  }
+  if (otmp.dknown && !objectData[otmp.otyp].oc_name_known) {
+    if (!gp.potion_unkn) { makeknown(otmp.otyp); more_experienced(0, 10); }
+    else {
+      trycall(otmp);
+    }
+  }
+  useup(otmp);
+  return ECMD_TIME;
+}
+
+// Autotranslated from potion.c:791
+export function peffect_enlightenment(otmp) {
+  if (otmp.cursed) {
+    gp.potion_unkn++;
+    You("have an uneasy feeling...");
+    exercise(A_WIS, false);
+  }
+  else {
+    if (otmp.blessed) { adjattrib(A_INT, 1, false); adjattrib(A_WIS, 1, false); }
+    do_enlightenment_effect();
+  }
+}
+
+// Autotranslated from potion.c:909
+export function peffect_monster_detection(otmp, map, player) {
+  if (otmp.blessed) {
+    let i, x, y;
+    if (Detect_monsters) gp.potion_nothing++;
+    gp.potion_unkn++;
+    if ((HDetect_monsters & TIMEOUT) >= 300) i = 1;
+    else if (otmp.oclass === SPBOOK_CLASS) i = rn1(40, 21);
+    else {
+      i = rn2(100) + 100;
+    }
+    incr_itimeout( HDetect_monsters, i);
+    for (x = 1; x < COLNO; x++) {
+      for (y = 0; y < ROWNO; y++) {
+        if (map.locations[x][y].glyph === GLYPH_INVISIBLE) { unmap_object(x, y); newsym(x, y); }
+        if (MON_AT(x, y)) gp.potion_unkn = 0;
+      }
+    }
+    if (!player.uswallow && !Underwater) {
+      see_monsters();
+      if (gp.potion_unkn) You_feel("lonely.");
+      return 0;
+    }
+  }
+  if (monster_detect(otmp, 0)) return 1;
+  exercise(A_WIS, true);
+  return 0;
+}
+
+// Autotranslated from potion.c:950
+export function peffect_object_detection(otmp) {
+  if (object_detect(otmp, 0)) return 1;
+  exercise(A_WIS, true);
+  return 0;
+}
+
+// Autotranslated from potion.c:1160
+export function peffect_levitation(otmp, map, player) {
+  if (!(player?.Levitation || player?.levitating || false) && !B(player?.Levitation || player?.levitating || false)) {
+    set_itimeout( H(player?.Levitation || player?.levitating || false), 1);
+    float_up();
+  }
+  else {
+    gp.potion_nothing++;
+  }
+  if (otmp.cursed) {
+    let stway;
+    H(player?.Levitation || player?.levitating || false) &= ~I_SPECIAL;
+    if (B(player?.Levitation || player?.levitating || false)) {
+    }
+    else if ((stway = stairway_at(player.x, player.y)) !== 0 && stway.up) { doup(); gp.potion_nothing = 0; }
+    else if (has_ceiling(map.uz)) {
+      let dmg = rnd(!uarmh ? 10 : !hard_helmet(uarmh) ? 6 : 3);
+      You("hit your %s on the %s.", body_part(HEAD), ceiling(player.x, player.y));
+      losehp(Maybe_Half_Phys(dmg), "colliding with the ceiling", KILLED_BY);
+      gp.potion_nothing = 0;
+    }
+  }
+  else if (otmp.blessed) {
+    incr_itimeout( H(player?.Levitation || player?.levitating || false), rn1(50, 250));
+    H(player?.Levitation || player?.levitating || false) |= I_SPECIAL;
+  }
+  else {
+    incr_itimeout( H(player?.Levitation || player?.levitating || false), rn1(140, 10));
+  }
+  if ((player?.Levitation || player?.levitating || false) && IS_SINK(map.locations[player.x][player.y].typ)) spoteffects(false);
+  float_vs_flight();
+}
+
+// Autotranslated from potion.c:1313
+export function peffect_polymorph(otmp, player) {
+  You_feel("a little %s.", (player?.Hallucination || player?.hallucinating || false) ? "normal" : "strange");
+  if (!Unchanging) {
+    if (!otmp.blessed || (player.umonnum !== player.umonster)) polyself(POLY_NOFLAGS);
+    else {
+      polyself(POLY_CONTROLLED|POLY_LOW_CTRL);
+      if (player.mtimedone && player.umonnum !== player.umonster) player.mtimedone = Math.min(player.mtimedone, rn2(15) + 10);
+    }
+  }
+}

@@ -971,7 +971,7 @@ function throwit_return(clear_thrownobj, game) {
 }
 
 // cf. dothrow.c:1467 [static] -- swallowit(obj, player, game)
-function swallowit(obj, player, game) {
+export function swallowit(obj, player, game) {
     if (player.ustuck) {
         mpickobj(player.ustuck, obj);
         throwit_return(false, game);
@@ -1136,7 +1136,7 @@ export function omon_adj(mon, obj, mon_notices) {
 }
 
 // cf. dothrow.c:1950 [static] -- tmiss(obj, mon, maybe_wakeup, player, map)
-function tmiss(obj, mon, maybe_wakeup, player, map) {
+export function tmiss(obj, mon, maybe_wakeup, player, map) {
     pline(`The ${xname(obj)} misses ${mon_nam(mon)}.`);
     if (maybe_wakeup && !rn2(3)) wakeup(mon, true, map, player);
 }
@@ -1397,4 +1397,19 @@ export function throw_gold(obj, player, map, _game) {
     obj.ox = bx; obj.oy = by;
     placeFloorObject(map, obj);
     return 1;
+}
+
+// Autotranslated from dothrow.c:1441
+export async function sho_obj_return_to_u(obj, game, player) {
+  if ((player.dx || player.dy) && (game.gb.bhitpos.x !== player.x || game.gb.bhitpos.y !== player.y)) {
+    let x = game.gb.bhitpos.x - player.dx, y = game.gb.bhitpos.y - player.dy;
+    tmp_at(DISP_FLASH, obj_to_glyph(obj, rn2_on_display_rng));
+    while (isok(x,y) && (x !== player.x || y !== player.y)) {
+      tmp_at(x, y);
+      await nh_delay_output();
+      x -= player.dx;
+      y -= player.dy;
+    }
+    tmp_at(DISP_END, 0);
+  }
 }

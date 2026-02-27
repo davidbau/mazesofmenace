@@ -526,7 +526,7 @@ const BOGON_CODES = '-_+|=';
 // In C this reads from BOGUSMONFILE; we use the compiled-in list.
 // Uses rn2_on_display_rng to match C's RNG consumption.
 // ========================================================================
-function bogusmon() {
+export function bogusmon() {
     const idx = rn2_on_display_rng(bogusmons.length);
     let entry = bogusmons[idx];
     let code = '';
@@ -812,3 +812,166 @@ export function noveltitle(novidx = null) {
 // TODO: do_name.c:678 — namefloorobj(): floor object naming (player interactive)
 // TODO: do_name.c:1320 — obj_pmname(): object creature type name
 // TODO: do_name.c:1626 — lookup_novel(): novel title search (player interactive)
+
+// Autotranslated from do_name.c:50
+export function free_mgivenname(mon) {
+  if (has_mgivenname(mon)) { free( MGIVENNAME(mon)); MGIVENNAME(mon) =  0; }
+}
+
+// Autotranslated from do_name.c:80
+export function free_oname(obj) {
+  if (has_oname(obj)) { free( ONAME(obj)); ONAME(obj) =  0; }
+}
+
+// Autotranslated from do_name.c:94
+export function safe_oname(obj) {
+  if (has_oname(obj)) return ONAME(obj);
+  return "";
+}
+
+// Autotranslated from do_name.c:198
+export async function do_mgivenname(player) {
+  let buf, monnambuf, qbuf, cc, cx, cy, mtmp = 0, do_swallow = false;
+  if ((player?.Hallucination || player?.hallucinating || false)) { You("would never recognize it anyway."); return; }
+  cc.x = player.x;
+  cc.y = player.y;
+  if (getpos( cc, false, "the monster you want to name") < 0 || !isok(cc.x, cc.y)) return;
+  cx = cc.x, cy = cc.y;
+  if (u_at(cx, cy)) {
+    if (player.usteed && canspotmon(player.usteed)) { mtmp = player.usteed; }
+    else {
+      pline("This %s creature is called %s and cannot be renamed.", beautiful(), svp.plname);
+      return;
+    }
+  }
+  else {
+    mtmp = m_at(cx, cy);
+  }
+  if (!mtmp && player.uswallow) {
+    let glyph = glyph_at(cx, cy);
+    if (glyph_is_swallow(glyph)) { mtmp = player.ustuck; do_swallow = true; }
+  }
+  if (!do_swallow && (!mtmp || (!sensemon(mtmp) && (!(cansee(cx, cy) || see_with_infrared(mtmp)) || mtmp.mundetected || M_AP_TYPE(mtmp) === M_AP_FURNITURE || M_AP_TYPE(mtmp) === M_AP_OBJECT || (mtmp.minvis && !See_invisible))))) { pline("I see no monster there."); return; }
+  Sprintf(qbuf, "What do you want to call %s?", distant_monnam(mtmp, ARTICLE_THE, monnambuf));
+  if (!name_from_player(buf, qbuf, has_mgivenname(mtmp) ? MGIVENNAME(mtmp) : null)) return;
+  if ((mtmp.data.geno & G_UNIQ) && !mtmp.ispriest) {
+    if (!alreadynamed(mtmp, monnambuf, buf)) pline("%s doesn't like being called names!", upstart(monnambuf));
+  }
+  else if (mtmp.isshk && !((player?.Deaf || player?.deaf || false) || helpless(mtmp) || mtmp.data.msound <= MS_ANIMAL)) {
+    if (!alreadynamed(mtmp, monnambuf, buf)) {
+      verbalize("I'm %s, not %s.", shkname(mtmp), buf);
+    }
+  }
+  else if (mtmp.ispriest || mtmp.isminion || mtmp.isshk || mtmp.data === mons[PM_GHOST] || has_ebones(mtmp)) {
+    if (!alreadynamed(mtmp, monnambuf, buf)) pline("%s will not accept the name %s.", upstart(monnambuf), buf);
+  }
+  else { christen_monst(mtmp, buf); }
+}
+
+// Autotranslated from do_name.c:371
+export function oname(obj, name, oflgs, player) {
+  let lth, buf;
+  let via_naming = (oflgs & ONAME_VIA_NAMING) !== 0, skip_inv_update = (oflgs & ONAME_SKIP_INVUPD) !== 0;
+  lth = name ?  (strlen(name) + 1) : 0;
+  if (lth > PL_PSIZ) {
+    lth = PL_PSIZ;
+    name = strncpy(buf, name, PL_PSIZ - 1);
+    buf = '\0';
+  }
+  if (obj.oartifact || (lth && exist_artifact(obj.otyp, name))) return obj;
+  new_oname(obj, lth);
+  if (lth) {
+    Strcpy(ONAME(obj), name);
+  }
+  if (lth) artifact_exists(obj, name, true, oflgs);
+  if (obj.oartifact) {
+    if (obj === uswapwep) untwoweapon();
+    if (obj === uwep) set_artifact_intrinsic(obj, true, W_WEP);
+    if (obj.unpaid) alter_cost(obj, 0);
+    if (via_naming) {
+      if (!player.uconduct.literate++) livelog_printf(LL_CONDUCT | LL_ARTIFACT, "became literate by naming %s", bare_artifactname(obj));
+      else {
+        livelog_printf(LL_ARTIFACT, "chose %s to be named \"%s\"", ansimpleoname(obj), bare_artifactname(obj));
+      }
+    }
+  }
+  if (carried(obj) && !skip_inv_update) update_inventory();
+  return obj;
+}
+
+// Autotranslated from do_name.c:466
+export function name_ok(obj) {
+  if (!obj || obj.oclass === COIN_CLASS) return GETOBJ_EXCLUDE;
+  if (!obj.dknown || obj.oartifact || obj.otyp === SPE_NOVEL) return GETOBJ_DOWNPLAY;
+  return GETOBJ_SUGGEST;
+}
+
+// Autotranslated from do_name.c:479
+export function call_ok(obj) {
+  if (!obj || !objtyp_is_callable(obj.otyp)) return GETOBJ_EXCLUDE;
+  if (!obj.dknown || (objectData[obj.otyp].oc_name_known && !objectData[obj.otyp].oc_uname)) return GETOBJ_DOWNPLAY;
+  return GETOBJ_SUGGEST;
+}
+
+// Autotranslated from do_name.c:604
+export function docall_xname(obj) {
+  let otemp;
+  otemp = obj;
+  otemp.oextra =  0;
+  otemp.quan = 1;
+  otemp.blessed = otemp.cursed = 0;
+  if (otemp.oclass === WEAPON_CLASS) otemp.opoisoned = 0;
+  else if (otemp.oclass === POTION_CLASS) otemp.odiluted = 0;
+  else if (otemp.otyp === TOWEL || otemp.otyp === STATUE) otemp.spe = 0;
+  else if (otemp.otyp === TIN) otemp.known = 0;
+  else if (otemp.otyp === FIGURINE) otemp.corpsenm = NON_PM;
+  else if (otemp.otyp === HEAVY_IRON_BALL) otemp.owt = objectData[HEAVY_IRON_BALL].oc_weight;
+  else if (otemp.oclass === FOOD_CLASS && otemp.globby) otemp.owt = 120;
+  return an(xname( otemp));
+}
+
+// Autotranslated from do_name.c:635
+export async function docall(obj) {
+  let buf, qbuf, uname_p, had_name = false;
+  if (!obj.dknown) return;
+  flush_screen(1);
+  if (obj.oclass === POTION_CLASS && obj.fromsink) {
+    Sprintf(qbuf, "Call a stream of %s fluid:", OBJ_DESCR(objectData[obj.otyp]));
+  }
+  else {
+    safe_qbuf(qbuf, "Call ", ":", obj, docall_xname, simpleonames, "thing");
+  }
+  uname_p = (objectData[obj.otyp].oc_uname);
+  if (!name_from_player(buf, qbuf, uname_p)) return;
+  if ( uname_p) { had_name = true; (uname_p, 0), uname_p = null; }
+  mungspaces(buf);
+  if (!buf) { if (had_name) undiscover_object(obj.otyp); }
+  else { uname_p = dupstr(buf); discover_object(obj.otyp, false, true, true); }
+  if (obj.where === 'OBJ_INVENT' || carrying(obj.otyp)) update_inventory();
+}
+
+// Autotranslated from do_name.c:1320
+export function obj_pmname(obj) {
+  if ((obj.otyp === CORPSE || obj.otyp === STATUE || obj.otyp === FIGURINE) && ismnum(obj.corpsenm)) {
+    let cgend = (obj.spe & CORPSTAT_GENDER), mgend = ((cgend === CORPSTAT_MALE) ? MALE : (cgend === CORPSTAT_FEMALE) ? FEMALE : NEUTRAL), mndx = obj.corpsenm;
+    if (mndx === PM_ALIGNED_CLERIC && cgend === CORPSTAT_RANDOM) mndx = PM_CLERIC;
+    return pmname( mons, mgend);
+  }
+  impossible("obj_pmname otyp:%i,corpsenm:%i", obj.otyp, obj.corpsenm);
+  return "two-legged glorkum-seeker";
+}
+
+// Autotranslated from do_name.c:1626
+export function lookup_novel(lookname, idx) {
+  let k;
+  if (!strcmpi(The(lookname), "The Color of Magic")) lookname = sir_Terry_novels;
+  else if (!strcmpi(lookname, "Sorcery")) lookname = sir_Terry_novels;
+  else if (!strcmpi(lookname, "Masquerade")) lookname = sir_Terry_novels;
+  else if (!strcmpi(The(lookname), "The Amazing Maurice")) lookname = sir_Terry_novels;
+  else if (!strcmpi(lookname, "Thud")) lookname = sir_Terry_novels;
+  for (k = 0; k < SIZE(sir_Terry_novels); ++k) {
+    if (!strcmpi(lookname, sir_Terry_novels[k]) || !strcmpi(The(lookname), sir_Terry_novels[k])) { if (idx) idx = k; return sir_Terry_novels; }
+  }
+  if (idx && IndexOk( idx, sir_Terry_novels)) return sir_Terry_novels;
+  return  0;
+}

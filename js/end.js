@@ -154,7 +154,7 @@ export function dealloc_killer(kptr) {
 // ============================================================================
 
 // cf. end.c:1794 [static] — wordcount(p): count words in string
-function wordcount(p) {
+export function wordcount(p) {
     let words = 0;
     let i = 0;
     while (i < p.length) {
@@ -674,7 +674,7 @@ function dump_plines(game) {
 // ============================================================================
 
 // cf. end.c:544 [static] — dump_everything(how, when, game): dumplog generation
-function dump_everything(how, when, game) {
+export function dump_everything(how, when, game) {
     const player = (game.u || game.player);
     const dumplog = game.dumplog || [];
 
@@ -852,7 +852,7 @@ export function sort_valuables(list, size) {
 // counting: if true, add points to player.urexp; if false, push display lines
 // lines: array to push display strings into (when !counting)
 // player: the player state
-function artifact_score(list, counting, lines, player) {
+export function artifact_score(list, counting, lines, player) {
     const items = Array.isArray(list) ? list : _toArray(list);
     for (const otmp of items) {
         if (otmp.oartifact || otmp.otyp === BELL_OF_OPENING

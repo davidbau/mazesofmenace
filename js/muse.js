@@ -444,7 +444,7 @@ function rndmonst() { return null; }
 function awaken_soldiers(_bugler) { }
 
 // C ref: mon_consume_unstone — eat lizard/acid to cure stone
-function mon_consume_unstone(mon, obj, by_you, stoning, map, player) {
+export function mon_consume_unstone(mon, obj, by_you, stoning, map, player) {
     const vis = canseemon(mon, player);
     const tinned = obj.otyp === TIN;
     const food = obj.otyp === CORPSE || tinned;
@@ -495,7 +495,7 @@ function mon_consume_unstone(mon, obj, by_you, stoning, map, player) {
 }
 
 // C ref: cures_stoning — does object cure petrification?
-function cures_stoning(mon, obj, tinok) {
+export function cures_stoning(mon, obj, tinok) {
     if (obj.otyp === POT_ACID) return true;
     if (obj.otyp !== CORPSE && (obj.otyp !== TIN || !tinok)) return false;
     if ((obj.corpsenm ?? NON_PM) === NON_PM) return false;
@@ -504,7 +504,7 @@ function cures_stoning(mon, obj, tinok) {
 }
 
 // C ref: mcould_eat_tin — can monster open a tin?
-function mcould_eat_tin(mon) {
+export function mcould_eat_tin(mon) {
     const mdat = mon.type || {};
     if (is_animal(mdat)) return false;
     const mwep = MON_WEP(mon);
@@ -620,7 +620,7 @@ function mzapwand(mtmp, otmp, self, map, player) {
 // ========================================================================
 // mplayhorn — C ref: muse.c:193
 // ========================================================================
-function mplayhorn(mtmp, otmp, self, map, player) {
+export function mplayhorn(mtmp, otmp, self, map, player) {
     const vismon = canseemon(mtmp, player);
     if (!vismon) {
         const range = couldsee(map, player, mtmp.mx, mtmp.my)
@@ -660,7 +660,7 @@ function mreadmsg(mtmp, otmp, player) {
 // ========================================================================
 // mquaffmsg — C ref: muse.c:291
 // ========================================================================
-function mquaffmsg(mtmp, otmp, player) {
+export function mquaffmsg(mtmp, otmp, player) {
     const vismon = canseemon(mtmp, player);
     if (vismon) {
         const name = x_monnam(mtmp, { article: 'the', capitalize: true });
@@ -1020,7 +1020,7 @@ export function find_defensive(mon, tryescape, map, player) {
 // ========================================================================
 // mon_escape — C ref: muse.c:778
 // ========================================================================
-function mon_escape(mtmp, vismon, map, player) {
+export function mon_escape(mtmp, vismon, map, player) {
     if (mon_has_special(mtmp)
         || (mtmp.iswiz && (player.no_of_wizards || 0) < 2))
         return 0;
@@ -1381,7 +1381,7 @@ export function linedup_chk_corpse(x, y, map) {
 // ========================================================================
 // m_use_undead_turning — C ref: muse.c:1298
 // ========================================================================
-function m_use_undead_turning(mtmp, obj, map, player) {
+export function m_use_undead_turning(mtmp, obj, map, player) {
     const ax = player.x + Math.sign((mtmp.mux ?? player.x) - mtmp.mx) * 3;
     const ay = player.y + Math.sign((mtmp.muy ?? player.y) - mtmp.my) * 3;
     const bx = mtmp.mx, by = mtmp.my;
@@ -1398,7 +1398,7 @@ function m_use_undead_turning(mtmp, obj, map, player) {
 // ========================================================================
 // hero_behind_chokepoint — C ref: muse.c:1341
 // ========================================================================
-function hero_behind_chokepoint(mtmp, map, player) {
+export function hero_behind_chokepoint(mtmp, map, player) {
     const mux = mtmp.mux ?? player.x;
     const muy = mtmp.muy ?? player.y;
     const dx = Math.sign(mtmp.mx - mux);
@@ -2031,7 +2031,7 @@ export function find_misc(mon, map, player) {
 // ========================================================================
 // muse_newcham_mon — C ref: muse.c:2227
 // ========================================================================
-function muse_newcham_mon(mon) {
+export function muse_newcham_mon(mon) {
     const m_armr = which_armor(mon, W_ARM);
     if (m_armr && (m_armr.otyp === SILVER_DRAGON_SCALES
         || m_armr.otyp === SILVER_DRAGON_SCALE_MAIL)) {

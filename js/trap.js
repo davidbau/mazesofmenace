@@ -114,7 +114,7 @@ function has_boulder_at(map, x, y) {
     }
     return false;
 }
-
+export 
 function t_at(x, y, map) {
     if (!map || !Array.isArray(map.traps)) return null;
     for (const t of map.traps) {
@@ -161,7 +161,7 @@ export function seetrap(trap) {
 // t_missile — C ref: trap.c t_missile()
 // Make a single arrow/dart/rock for a trap to shoot or drop
 // ========================================================================
-function t_missile(otyp, trap) {
+export function t_missile(otyp, trap) {
     const otmp = mksobj(otyp, true, false);
     if (otmp) {
         otmp.quan = 1;
@@ -177,7 +177,7 @@ function t_missile(otyp, trap) {
 // ========================================================================
 // thitm — C ref: trap.c thitm() — Monster is hit by trap
 // ========================================================================
-function thitm(tlev, mon, obj, d_override, nocorpse, map, player) {
+export function thitm(tlev, mon, obj, d_override, nocorpse, map, player) {
     let strike;
     let trapkilled = false;
 
@@ -1224,4 +1224,442 @@ export function minstapetrify(mon, byplayer) {
     // C ref: monstone(mon) or xkilled(mon) depending on byplayer
     // For now, kill the monster
     mon.mhp = 0;
+}
+
+// Autotranslated from trap.c:389
+export function mk_trap_statue(x, y, game, player) {
+  let mtmp, otmp, statue, mptr, trycount = 10;
+  do {
+    mptr = mons;
+  } while (--trycount > 0 && is_unicorn(mptr) && sgn(player.ualigame.gn.type) === sgn(mptr.maligntyp));
+  statue = mkcorpstat(STATUE,  0, mptr, x, y, CORPSTAT_NONE);
+  mtmp = makemon( mons, 0, 0, MM_NOCOUNTBIRTH | MM_NOMSG);
+  if (!mtmp) return;
+  while (mtmp.minvent) {
+    otmp = mtmp.minvent;
+    otmp.owornmask = 0;
+    obj_extract_self(otmp);
+    add_to_container(statue, otmp);
+  }
+  statue.owt = weight(statue);
+  mongone(mtmp);
+}
+
+// Autotranslated from trap.c:417
+export function dng_bottom(lev, player) {
+  let bottom = dunlevs_in_dungeon(lev);
+  if (In_quest(lev)) {
+    let qlocate_depth = qlocate_level.dlevel;
+    if (dunlev_reached(lev) < qlocate_depth) bottom = qlocate_depth;
+  }
+  else if (In_hell(lev)) {
+    if (!player.uevent.invoked) {
+      bottom -= 1;
+    }
+  }
+  return bottom;
+}
+
+// Autotranslated from trap.c:441
+export function hole_destination(dst, map) {
+  let bottom = dng_bottom(map.uz);
+  dst.dnum = map.uz.dnum;
+  dst.dlevel = dunlev(map.uz);
+  while (dst.dlevel < bottom) {
+    dst.dlevel++;
+    if (rn2(4)) {
+      break;
+    }
+  }
+}
+
+// Autotranslated from trap.c:908
+export function activate_statue_trap(trap, x, y, shatter) {
+  let mtmp =  0, otmp = sobj_at(STATUE, x, y), fail_reason;
+  deltrap(trap);
+  while (otmp) {
+    mtmp = animate_statue(otmp, x, y, shatter ? ANIMATE_SHATTER : ANIMATE_NORMAL, fail_reason);
+    if (mtmp || fail_reason !== AS_MON_IS_UNIQUE) {
+      break;
+    }
+    otmp = nxtobj(otmp, STATUE, true);
+  }
+  feel_newsym(x, y);
+  return mtmp;
+}
+
+// Autotranslated from trap.c:939
+export function keep_saddle_with_steedcorpse(steed_mid, objchn, saddle) {
+  if (!saddle) return false;
+  while (objchn) {
+    if (objchn.otyp === CORPSE && has_omonst(objchn)) {
+      let mtmp = OMONST(objchn);
+      if (mtmp.m_id === steed_mid) {
+        let x, y;
+        if (get_obj_location(objchn, x, y, 0)) {
+          obj_extract_self(saddle);
+          place_object(saddle, x, y);
+          stackobj(saddle);
+        }
+        return true;
+      }
+    }
+    if (Has_contents(objchn) && keep_saddle_with_steedcorpse(steed_mid, objchn.cobj, saddle)) return true;
+    objchn = objchn.nobj;
+  }
+  return false;
+}
+
+// Autotranslated from trap.c:1030
+export function set_utrap(tim, typ, game, player) {
+  if (!player.utrap ^ !tim) game.disp.botl = true;
+  player.utrap = tim;
+  player.utraptype = tim ? typ : TT_NONE;
+  float_vs_flight();
+}
+
+// Autotranslated from trap.c:1045
+export function reset_utrap(msg, player) {
+  let was_Lev = ((player?.Levitation || player?.levitating || false) !== 0), was_Fly = ((player?.Flying || player?.flying || false) !== 0);
+  set_utrap(0, 0);
+  if (msg) {
+    if (!was_Lev && (player?.Levitation || player?.levitating || false)) float_up();
+    if (!was_Fly && (player?.Flying || player?.flying || false)) You("can fly.");
+  }
+}
+
+// Autotranslated from trap.c:3098
+export function blow_up_landmine(trap, map) {
+  let x = trap.tx, y = trap.ty, dbx, dby, lev =  map.locations[x][y];
+  let old_typ, typ;
+  old_typ = lev.typ;
+  scatter(x, y, 4, MAY_DESTROY | MAY_HIT | MAY_FRACTURE | VIS_EFFECTS,  0);
+  del_engr_at(x, y);
+  wake_nearto(x, y, 400);
+  if (IS_DOOR(lev.typ)) lev.doormask = D_BROKEN;
+  if (lev.typ === DRAWBRIDGE_DOWN || is_drawbridge_wall(x, y) >= 0) {
+    dbx = x, dby = y;
+    if (find_drawbridge( dbx, dby)) destroy_drawbridge(dbx, dby);
+  }
+  trap = t_at(x, y);
+  if (trap) {
+    if (Is_waterlevel(map.uz) || Is_airlevel(map.uz)) { deltrap(trap); }
+    else {
+      typ = fillholetyp(x, y, false);
+      if (typ !== ROOM) {
+        lev.typ = typ;
+        liquid_flow(x, y, typ, trap, cansee(x, y) ? "The hole fills with %s!" :  0);
+      }
+      else {
+        trap.ttyp = PIT;
+        trap.madeby_u = false;
+        seetrap(trap);
+      }
+    }
+  }
+  fill_pit(x, y);
+  maybe_dunk_boulders(x, y);
+  recalc_block_point(x, y);
+  spot_checks(x, y, old_typ);
+}
+
+// Autotranslated from trap.c:3495
+export function feeltrap(trap) {
+  trap.tseen = 1;
+  map_trap(trap, 1);
+  newsym(trap.tx, trap.ty);
+}
+
+// Autotranslated from trap.c:3602
+export function isclearpath(cc, distance, dx, dy, map) {
+  let t, typ, x, y;
+  x = cc.x;
+  y = cc.y;
+  while (distance-- > 0) {
+    x += dx;
+    y += dy;
+    if (!isok(x, y)) return false;
+    typ = map.locations[x][y].typ;
+    if (!ZAP_POS(typ) || closed_door(x, y)) return false;
+    if ((t = t_at(x, y)) !== 0 && (is_pit(t.ttyp) || is_hole(t.ttyp) || is_xport(t.ttyp))) return false;
+  }
+  cc.x = x;
+  cc.y = y;
+  return true;
+}
+
+// Autotranslated from trap.c:3917
+export function fill_pit(x, y) {
+  let otmp, t;
+  if ((t = t_at(x, y)) !== 0 && (is_pit(t.ttyp) || is_hole(t.ttyp)) && (otmp = sobj_at(BOULDER, x, y)) !== 0) { obj_extract_self(otmp); flooreffects(otmp, x, y, "settle"); }
+}
+
+// Autotranslated from trap.c:5155
+export async function dountrap() {
+  if (!could_untrap(true, false)) return ECMD_OK;
+  return untrap(false, 0, 0,  0) ? ECMD_TIME : ECMD_OK;
+}
+
+// Autotranslated from trap.c:5248
+export function cnv_trap_obj(otyp, cnt, ttmp, bury_it, player) {
+  let otmp = mksobj(otyp, true, false), mtmp;
+  otmp.quan = cnt;
+  otmp.owt = weight(otmp);
+  if (otyp !== DART) otmp.opoisoned = 0;
+  place_object(otmp, ttmp.tx, ttmp.ty);
+  if (bury_it) { bury_an_obj(otmp, null); }
+  else {
+    if (ttmp.madeby_u) sellobj(otmp, ttmp.tx, ttmp.ty);
+    stackobj(otmp);
+  }
+  newsym(ttmp.tx, ttmp.ty);
+  if (player.utrap && u_at(ttmp.tx, ttmp.ty)) reset_utrap(true);
+  if (((mtmp = m_at(ttmp.tx, ttmp.ty)) !== 0) && mtmp.mtrapped) mtmp.mtrapped = 0;
+  deltrap(ttmp);
+}
+
+// Autotranslated from trap.c:5282
+export function into_vs_onto(traptype) {
+  switch (traptype) {
+    case BEAR_TRAP:
+      case PIT:
+        case SPIKED_PIT:
+          case HOLE:
+            case TELEP_TRAP:
+              case LEVEL_TELEP:
+                case MAGIC_PORTAL:
+                  case WEB:
+                    return true;
+  }
+  return false;
+}
+
+// Autotranslated from trap.c:5437
+export function reward_untrap(ttmp, mtmp, game, player) {
+  if (!ttmp.madeby_u) {
+    if (rnl(10) < 8 && !mtmp.mpeaceful && !helpless(mtmp) && !mtmp.mfrozen && !mindless(mtmp.data) && !unique_corpstat(mtmp.data) && mtmp.data.mlet !== S_HUMAN) {
+      mtmp.mpeaceful = 1;
+      set_malign(mtmp);
+      pline("%s is grateful.", Monnam(mtmp));
+    }
+    if (!rn2(3) && !rnl(8) && player.ualigame.gn.type === A_LAWFUL) { adjalign(1); You_feel("that you did the right thing."); }
+  }
+}
+
+// Autotranslated from trap.c:5501
+export async function disarm_landmine(ttmp) {
+  let fails = try_disarm(ttmp, false);
+  if (fails < 2) return fails;
+  You("disarm %s land mine.", the_your[ttmp.madeby_u]);
+  cnv_trap_obj(LAND_MINE, 1, ttmp, false);
+  return 1;
+}
+
+// Autotranslated from trap.c:5514
+export function unsqueak_ok(obj) {
+  if (!obj) return GETOBJ_EXCLUDE;
+  if (obj.otyp === CAN_OF_GREASE) return GETOBJ_SUGGEST;
+  if (obj.otyp === POT_OIL && obj.dknown && objectData[POT_OIL].oc_name_known) return GETOBJ_SUGGEST;
+  if (obj.oclass === POTION_CLASS) return GETOBJ_DOWNPLAY;
+  return GETOBJ_EXCLUDE;
+}
+
+// Autotranslated from trap.c:5537
+export async function disarm_squeaky_board(ttmp, player) {
+  let obj, bad_tool, fails;
+  obj = getobj("untrap with", unsqueak_ok, GETOBJ_PROMPT);
+  if (!obj) return 0;
+  bad_tool = (obj.cursed || ((obj.otyp !== POT_OIL || obj.lamplit) && (obj.otyp !== CAN_OF_GREASE || !obj.spe)));
+  fails = try_disarm(ttmp, bad_tool);
+  if (fails < 2) return fails;
+  if (obj.otyp === CAN_OF_GREASE) { consume_obj_charge(obj, true); }
+  else { useup(obj); makeknown(POT_OIL); }
+  You("repair the squeaky board.");
+  deltrap(ttmp);
+  newsym(player.x + player.dx, player.y + player.dy);
+  more_experienced(1, 5);
+  newexplevel();
+  return 1;
+}
+
+// Autotranslated from trap.c:5571
+export async function disarm_shooting_trap(ttmp, otyp) {
+  let fails = try_disarm(ttmp, false);
+  if (fails < 2) return fails;
+  You("disarm %s trap.", the_your[ttmp.madeby_u]);
+  cnv_trap_obj(otyp, 50 - rnl(50), ttmp, false);
+  return 1;
+}
+
+// Autotranslated from trap.c:5701
+export async function disarm_box(box, force, confused, player) {
+  if (box.otrapped) {
+    let ch = acurr(player,A_DEX) + player.ulevel;
+    if (Role_if(PM_ROGUE)) {
+      ch *= 2;
+    }
+    if (!force && (confused || Fumbling || rnd(75 + level_difficulty() / 2) > ch)) { await chest_trap(box, FINGER, true); }
+    else {
+      You("disarm it!");
+      box.otrapped = 0;
+      box.tknown = 1;
+      more_experienced(8, 0);
+      newexplevel();
+    }
+    exercise(A_DEX, true);
+  }
+  else { pline("That %s was not trapped.", xname(box)); box.tknown = 0; }
+}
+
+// Autotranslated from trap.c:5728
+export async function untrap_box(box, force, confused, player) {
+  if ((box.otrapped && (force || (!confused && rn2(MAXULEV + 1 - player.ulevel) < 10))) || box.tknown || (!force && confused && !rn2(3))) {
+    if (!(box.tknown && box.dknown)) You("find a trap on %s!", the(xname(box)));
+    else {
+      pline("There's a trap on %s.", the(xname(box)));
+    }
+    box.tknown = 1;
+    observe_object(box);
+    if (!confused) exercise(A_WIS, true);
+    if (ynq("Disarm it?") === 'y') await disarm_box(box, force, confused);
+  }
+  else { You("find no traps on %s.", the(xname(box))); }
+}
+
+// Autotranslated from trap.c:6423
+export function count_traps(ttyp) {
+  let ret = 0, trap = gf.ftrap;
+  while (trap) {
+    if ( trap.ttyp === ttyp) ret++;
+    trap = trap.ntrap;
+  }
+  return ret;
+}
+
+// Autotranslated from trap.c:6460
+export function conjoined_pits(trap2, trap1, u_entering_trap2, player) {
+  let dx, dy, diridx, adjidx;
+  if (!trap1 || !trap2) return false;
+  if (!isok(trap2.tx, trap2.ty) || !isok(trap1.tx, trap1.ty) || !is_pit(trap2.ttyp) || !is_pit(trap1.ttyp) || (u_entering_trap2 && !(player.utrap && player.utraptype === TT_PIT))) return false;
+  dx = sgn(trap2.tx - trap1.tx);
+  dy = sgn(trap2.ty - trap1.ty);
+  diridx = xytod(dx, dy);
+  if (diridx !== DIR_ERR) {
+    adjidx = DIR_180(diridx);
+    if ((trap1.conjoined & (1 << diridx)) && (trap2.conjoined & (1 << adjidx))) return true;
+  }
+  return false;
+}
+
+// Autotranslated from trap.c:6488
+export function clear_conjoined_pits(trap) {
+  let diridx, adjidx, x, y, t;
+  if (trap && is_pit(trap.ttyp)) {
+    for (diridx = 0; diridx < N_DIRS; ++diridx) {
+      if (trap.conjoined & (1 << diridx)) {
+        x = trap.tx + xdir;
+        y = trap.ty + ydir;
+        if (isok(x, y) && (t = t_at(x, y)) !== 0 && is_pit(t.ttyp)) { adjidx = DIR_180(diridx); t.conjoined &= ~(1 << adjidx); }
+        trap.conjoined &= ~(1 << diridx);
+      }
+    }
+  }
+}
+
+// Autotranslated from trap.c:6512
+export function adj_nonconjoined_pit(adjtrap, player) {
+  let trap_with_u = t_at(player.x0, player.y0);
+  if (trap_with_u && adjtrap && player.utrap && player.utraptype === TT_PIT && is_pit(trap_with_u.ttyp) && is_pit(adjtrap.ttyp)) {
+    if (xytod(player.dx, player.dy) !== DIR_ERR) return true;
+  }
+  return false;
+}
+
+// Autotranslated from trap.c:6556
+export function uteetering_at_seen_pit(trap, player) {
+  return (trap && is_pit(trap.ttyp) && trap.tseen && u_at(trap.tx, trap.ty) && !(player.utrap && player.utraptype === TT_PIT));
+}
+
+// Autotranslated from trap.c:6568
+export function uescaped_shaft(trap) {
+  return (trap && is_hole(trap.ttyp) && trap.tseen && u_at(trap.tx, trap.ty));
+}
+
+// Autotranslated from trap.c:6576
+export function delfloortrap(ttmp, player) {
+  if (ttmp && ((ttmp.ttyp === SQKY_BOARD) || (ttmp.ttyp === BEAR_TRAP) || (ttmp.ttyp === LANDMINE) || (ttmp.ttyp === FIRE_TRAP) || is_pit(ttmp.ttyp) || is_hole(ttmp.ttyp) || (ttmp.ttyp === TELEP_TRAP) || (ttmp.ttyp === LEVEL_TELEP) || (ttmp.ttyp === WEB) || (ttmp.ttyp === MAGIC_TRAP) || (ttmp.ttyp === ANTI_MAGIC))) {
+    let mtmp;
+    if (u_at(ttmp.tx, ttmp.ty)) {
+      if (player.utraptype !== TT_BURIEDBALL) reset_utrap(true);
+    }
+    else if ((mtmp = m_at(ttmp.tx, ttmp.ty)) !== 0) { mtmp.mtrapped = 0; }
+    deltrap(ttmp);
+    return true;
+  }
+  return false;
+}
+
+// Autotranslated from trap.c:6602
+export function b_trapped(item, bodypart) {
+  let lvl = level_difficulty(), dmg = rnd(5 + (lvl < 5 ? lvl : 2 + lvl / 2));
+  pline("KABOOM!! %s was booby-trapped!", The(item));
+  wake_nearby(false);
+  losehp(Maybe_Half_Phys(dmg), "explosion", KILLED_BY_AN);
+  exercise(A_STR, false);
+  if (bodypart !== NO_PART) exercise(A_CON, false);
+  make_stunned((HStun & TIMEOUT) +  dmg, true);
+}
+
+// Autotranslated from trap.c:6899
+export function sink_into_lava(player) {
+  let sink_deeper = "You sink deeper into the lava.";
+  if (!player.utrap || player.utraptype !== TT_LAVA) {
+  }
+  else if (!is_lava(player.x, player.y)) { reset_utrap(false); }
+  else if (!player.uinvulnerable) {
+    if (!Fire_resistance) player.hp = (player.hp + 2) / 3;
+    player.utrap -= (1 << 8);
+    if (player.utrap < (1 << 8)) {
+      svk.killer.format = KILLED_BY;
+      Strcpy(svk.killer.name, "molten lava");
+      urgent_pline("You sink below the surface and die.");
+      burn_away_slime();
+      done(DISSOLVED);
+      reset_utrap(true);
+      if (!(player?.Levitation || player?.levitating || false) && !(player?.Flying || player?.flying || false)) {
+        safe_teleds(TELEDS_ALLOW_DRAG | TELEDS_TELEPORT);
+      }
+    }
+    else if (!player.umoved) {
+      if (Slimed && rnd(10 - 1) >= Math.trunc(Slimed & TIMEOUT)) { pline(sink_deeper); burn_away_slime(); }
+      else { Norep(sink_deeper); }
+      player.utrap += rnd(4);
+    }
+  }
+}
+
+// Autotranslated from trap.c:7080
+export function trap_ice_effects(x, y, ice_is_melting) {
+  let ttmp = t_at(x, y);
+  if (ttmp && ice_is_melting) {
+    let mtmp;
+    if (((mtmp = m_at(x, y)) !== 0) && mtmp.mtrapped) mtmp.mtrapped = 0;
+    if (ttmp.ttyp === LANDMINE || ttmp.ttyp === BEAR_TRAP) {
+      let otyp = (ttmp.ttyp === LANDMINE) ? LAND_MINE : BEARTRAP;
+      cnv_trap_obj(otyp, 1, ttmp, true);
+    }
+    else {
+      if (!undestroyable_trap(ttmp.ttyp)) deltrap(ttmp);
+    }
+  }
+}
+
+// Autotranslated from trap.c:7103
+export function trap_sanity_check() {
+  let ttmp = gf.ftrap;
+  while (ttmp) {
+    if (!isok(ttmp.tx, ttmp.ty)) impossible("trap sanity: location (%i,%i)", ttmp.tx, ttmp.ty);
+    if (ttmp.ttyp <= NO_TRAP || ttmp.ttyp >= TRAPNUM) impossible("trap sanity: type (%i)", ttmp.ttyp);
+    ttmp = ttmp.ntrap;
+  }
 }

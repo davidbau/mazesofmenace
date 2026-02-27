@@ -391,12 +391,12 @@ function hasIntrinsic(player, name) {
 let _enl_lines = [];
 
 // cf. insight.c:117 [static] — enlght_out(buf): output enlightenment text
-function enlght_out(buf) {
+export function enlght_out(buf) {
     _enl_lines.push(buf);
 }
 
 // cf. insight.c:126 [static] — enlght_line(start, middle, end, ps): build enl line
-function enlght_line(start, middle, end, ps) {
+export function enlght_line(start, middle, end, ps) {
     let buf = ` ${start}${middle}${end}${ps}.`;
     // Apply contractions (cf. C's contra[] array)
     const contractions = [
@@ -708,7 +708,7 @@ function basics_enlightenment(mode, final, game) {
 // ============================================================================
 
 // cf. insight.c:804 [static] — characteristics_enlightenment(mode, final, game)
-function characteristics_enlightenment(mode, final, game) {
+export function characteristics_enlightenment(mode, final, game) {
     enlght_out('');
     enlght_out(`${!final ? '' : 'Final '}Characteristics:`);
 
@@ -725,7 +725,7 @@ function characteristics_enlightenment(mode, final, game) {
 // cf. insight.c:286 [static]
 // Format a characteristic value, handling Strength's 18/xx notation.
 // ============================================================================
-
+export 
 function attrval(attrindx, attrvalue) {
     if (attrindx !== A_STR || attrvalue <= 18)
         return String(attrvalue);
@@ -876,7 +876,7 @@ function status_enlightenment(mode, final, game) {
 // ============================================================================
 
 // cf. insight.c:1247 [static] — weapon_insight(final, game)
-function weapon_insight(final, game) {
+export function weapon_insight(final, game) {
     const player = (game.u || game.player);
     const uwep = player.uwep || player.weapon;
 
@@ -1575,4 +1575,13 @@ export async function doborn(game) {
         await showPager(game.display, lines.join('\n'), 'Monsters Born');
     }
     return 0; // ECMD_OK
+}
+
+// Autotranslated from insight.c:1444
+export function item_resistance_message(adtyp, prot_message, final) {
+  let protection = u_adtyp_resistance_obj(adtyp);
+  if (protection) {
+    let somewhat = protection < 99;
+    enl_msg("Your items ", somewhat ? "are somewhat" : "are", somewhat ? "were somewhat" : "were", prot_message, item_what(adtyp));
+  }
 }

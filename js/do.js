@@ -182,7 +182,7 @@ export function obj_no_longer_held(obj) {
 // cf. do.c better_not_try_to_drop_that() — warn about dropping
 // corpses that could petrify the hero without glove protection.
 // Returns true if the player decided NOT to drop it.
-function better_not_try_to_drop_that(otmp, player) {
+export function better_not_try_to_drop_that(otmp, player) {
     // In the full C code this checks for petrifying corpses without gloves.
     // Simplified: if dropping a cockatrice/chickatrice corpse without gloves,
     // we would warn. For now, return false (allow drop).
@@ -197,7 +197,7 @@ function better_not_try_to_drop_that(otmp, player) {
 }
 
 // cf. do.c menudrop_split() — handle splitting a stack for partial drop
-function menudrop_split(otmp, cnt, player, map) {
+export function menudrop_split(otmp, cnt, player, map) {
     if (cnt && cnt < (otmp.quan || 1)) {
         if (otmp.welded) {
             // don't split
@@ -1448,4 +1448,55 @@ export function heal_legs(how, player) {
         player.eWoundedLegs = 0;
         player.woundedLegs = false;
     }
+}
+
+// Autotranslated from do.c:28
+export function dodrop(player) {
+  let result;
+  if ( player.ushops) sellobj_state(SELL_DELIBERATE);
+  result = drop(getobj("drop", any_obj_ok, GETOBJ_PROMPT | GETOBJ_ALLOWCNT));
+  if ( player.ushops) sellobj_state(SELL_NORMAL);
+  if (result) reset_occupations();
+  return result;
+}
+
+// Autotranslated from do.c:713
+export function drop(obj, game, map, player) {
+  if (!obj) return ECMD_FAIL;
+  if (!canletgo(obj, "drop")) return ECMD_FAIL;
+  if (obj.otyp === CORPSE && better_not_try_to_drop_that(obj)) return ECMD_FAIL;
+  if (obj === uwep) {
+    if (welded(uwep)) { weldmsg(obj); return ECMD_FAIL; }
+    setuwep( 0);
+  }
+  if (obj === uquiver) { setuqwep( 0); }
+  if (obj === uswapwep) { setuswapwep( 0); }
+  if (player.uswallow) {
+    if (game.flags.verbose) {
+      let onam_p, mnam_p, monbuf;
+      mnam_p = mon_nam(player.ustuck);
+      if (digests(player.ustuck.data)) {
+        Sprintf(monbuf, "%s %s", s_suffix(mnam_p), mbodypart(player.ustuck, STOMACH));
+        mnam_p = monbuf;
+      }
+      onam_p = is_unpaid(obj) ? yobjnam(obj,  0) : doname(obj);
+      You("drop %s into %s.", onam_p, mnam_p);
+    }
+  }
+  else {
+    if ((obj.oclass === RING_CLASS || obj.otyp === MEAT_RING) && IS_SINK(map.locations[player.x][player.y].typ)) { dosinkring(obj); return ECMD_TIME; }
+    if (!can_reach_floor(true)) {
+      let levhack = finesse_ahriman(obj);
+      if (levhack) E(player?.Levitation || player?.levitating || false) = W_ART;
+      if (game.flags.verbose) You("drop %s.", doname(obj));
+      freeinv(obj);
+      hitfloor(obj, true);
+      if (levhack) float_down(I_SPECIAL | TIMEOUT, W_ARTI | W_ART);
+      return ECMD_TIME;
+    }
+    if (!IS_ALTAR(map.locations[player.x][player.y].typ) && game.flags.verbose) You("drop %s.", doname(obj));
+  }
+  obj.how_lost = LOST_DROPPED;
+  dropx(obj);
+  return ECMD_TIME;
 }

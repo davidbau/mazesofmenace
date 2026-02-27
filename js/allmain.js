@@ -1463,3 +1463,72 @@ export class NetHackGame {
         await this.showGameOver();
     }
 }
+
+// Autotranslated from allmain.c:35
+export function early_init(argc, argv) {
+  crashreport_init(argc, argv);
+  decl_globals_init();
+  objects_globals_init();
+  monst_globals_init();
+  sys_early_init();
+  runtime_info_init();
+}
+
+// Autotranslated from allmain.c:591
+export async function moveloop(resuming) {
+  moveloop_preamble(resuming);
+  if (!resuming) maybe_do_tutorial();
+  for (; ; ) {
+    await moveloop_core();
+  }
+}
+
+// Autotranslated from allmain.c:604
+export function regen_pw(wtcap, game, player) {
+  if (player.uen < player.uenmax && ((wtcap < MOD_ENCUMBER && (!((Number(game?.moves) || 0) % ((MAXULEV + 8 - player.ulevel) * (Role_if(PM_WIZARD) ? 3 : 4) / 6)))) || Energy_regeneration)) {
+    let upper =  (acurr(player,A_WIS) + acurr(player,A_INT)) / 15 + 1;
+    player.uen += rn1(upper, 1);
+    if (player.uen > player.uenmax) player.uen = player.uenmax;
+    game.disp.botl = true;
+    if (player.uen === player.uenmax) interrupt_multi("You feel full of energy.");
+  }
+}
+
+// Autotranslated from allmain.c:955
+export function interrupt_multi(msg, game) {
+  if (game.multi > 0 && !game.game.svc.context.travel && !(game?.svc?.context?.run || 0)) { nomul(0); if (game.flags.verbose && msg) Norep("%s", msg); }
+}
+
+// Autotranslated from allmain.c:1187
+export function timet_delta(etim, stim) {
+  return  difftime(etim, stim);
+}
+
+// Autotranslated from allmain.c:1264
+export function dump_enums() {
+  let NUM_ENUM_DUMPS;
+  let omdump = [ dump_om(LAST_GENERIC), dump_om(OBJCLASS_HACK), dump_om(FIRST_OBJECT), dump_om(FIRST_AMULET), dump_om(LAST_AMULET), dump_om(FIRST_SPELL), dump_om(LAST_SPELL), dump_om(MAXSPELL), dump_om(FIRST_REAL_GEM), dump_om(LAST_REAL_GEM), dump_om(FIRST_GLASS_GEM), dump_om(LAST_GLASS_GEM), dump_om(NUM_REAL_GEMS), dump_om(NUM_GLASS_GEMS), dump_om(MAX_GLYPH), ];
+  let ed = [ monsdump, objdump, omdump, defsym_cmap_dump, defsym_mon_syms_dump, defsym_mon_defchars_dump, objclass_defchars_dump, objclass_classes_dump, objclass_syms_dump, arti_enum_dump, ];
+  let edmp = [ [ "monnums", "PM_", UNPREFIXED_COUNT, 0, SIZE(monsdump) ], [ "objects_nums", "", 1, 0, SIZE(objdump) ], [ "misc_object_nums", "", 1, 0, SIZE(omdump) ], [ "cmap_symbols", "", 1, 0, SIZE(defsym_cmap_dump) ], [ "mon_syms", "", 1, 0, SIZE(defsym_mon_syms_dump) ], [ "mon_defchars", "", 1, 1, SIZE(defsym_mon_defchars_dump) ], [ "objclass_defchars", "", 1, 1, SIZE(objclass_defchars_dump) ], [ "objclass_classes", "", 1, 0, SIZE(objclass_classes_dump) ], [ "objclass_syms", "", 1, 0, SIZE(objclass_syms_dump) ], [ "artifacts_nums", "", 1, 0, SIZE(arti_enum_dump) ], ];
+  let nmprefix, i, j, nmwidth, comment;
+  for (i = 0; i < NUM_ENUM_DUMPS; ++ i) {
+    raw_printf("enum %s = {", edmp[i].title);
+    for (j = 0; j < edmp[i].szd; ++j) {
+      nmprefix = (j >= edmp[i].szd - edmp[i].unprefixed_count) ? "" : edmp[i].pfx;
+      nmwidth = 27 -  strlen(nmprefix);
+      if (edmp[i].dumpflgs > 0) {
+        Snprintf(comment, comment.length, "  ", (ed[i][j].val >= 32 && ed[i][j].val <= 126) ? ed[i][j].val : ' ');
+      }
+      else { comment = '\0'; }
+      raw_printf(" %s% s.value = %3d,%s", nmprefix, -nmwidth, ed[i][j].nm, ed[i][j].val, comment);
+    }
+    raw_print("};");
+    raw_print("");
+  }
+  raw_print("");
+}
+
+// Autotranslated from allmain.c:1361
+export function dump_glyphids() {
+  dump_all_glyphids(stdout);
+}

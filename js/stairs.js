@@ -261,3 +261,14 @@ export function stairs_description(sway, stcase, player) {
     const branchName = sway.tolev.dname || "a branch";
     return `branch ${stairs} ${updown} to ${branchName}`;
 }
+
+// Autotranslated from stairs.c:26
+export function stairway_free_all() {
+  let tmp = gs.stairs;
+  while (tmp) {
+    let tmp2 = tmp.next;
+    (tmp, 0);
+    tmp = tmp2;
+  }
+  gs.stairs = null;
+}

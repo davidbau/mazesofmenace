@@ -1578,3 +1578,10 @@ export function restore_artifacts(data) {
 
 // ── Expose artiexist for direct access (needed by some callers) ──
 export function get_artiexist() { return artiexist; }
+
+// Autotranslated from artifact.c:311
+export function dispose_of_orig_obj(obj) {
+  if (!obj) return;
+  obj_extract_self(obj);
+  obfree(obj,  0);
+}

@@ -717,8 +717,7 @@ import {
     XLIM, YLIM, init_rect, get_rect_count, get_rects, rnd_rect, get_rect,
     split_rects, update_rect_pool_for_room, rect_bounds
 } from './rect.js';
-export { init_rect, get_rect_count, get_rects, rnd_rect, get_rect,
-    split_rects, update_rect_pool_for_room };
+export { init_rect, get_rect_count, get_rects, rnd_rect, get_rect, split_rects, update_rect_pool_for_room };
 
 // ========================================================================
 // sp_lev.c -- Room creation (check_room, create_room)
@@ -4615,4 +4614,392 @@ const LR_DOWNSTAIR = 6;
 // Check if (x,y) is within the inclusive rectangle (lx,ly,hx,hy)
 function within_bounded_area(x, y, lx, ly, hx, hy) {
     return x >= lx && x <= hx && y >= ly && y <= hy;
+}
+
+// Autotranslated from dungeon.c:439
+export function correct_branch_type(tbr) {
+  switch (tbr.type) {
+    case TBR_STAIR:
+      return BR_STAIR;
+    case TBR_NO_UP:
+      return tbr.up ? BR_NO_END1 : BR_NO_END2;
+    case TBR_NO_DOWN:
+      return tbr.up ? BR_NO_END2 : BR_NO_END1;
+    case TBR_PORTAL:
+      return BR_PORTAL;
+  }
+  impossible("correct_branch_type: unknown branch type");
+  return BR_STAIR;
+}
+
+// Autotranslated from dungeon.c:597
+export function possible_places(idx, map, pd) {
+  let i, start, count, lev = pd.final_lev;
+  for (i = 0; i <= MAXLEVEL; i++) {
+    map = false;
+  }
+  count = level_range(lev.dlevel.dnum, pd.tmplevel[idx].lev.base, pd.tmplevel[idx].lev.rand, pd.tmplevel[idx].chain, pd, start);
+  for (i = start; i < start + count; i++) {
+    map = true;
+  }
+  for (i = pd.start; i < idx; i++) {
+    if (pd.final_lev[i] && map[pd.final_lev[i].dlevel.dlevel]) { map[pd.final_lev[i].dlevel.dlevel] = false; --count; }
+  }
+  return count;
+}
+
+// Autotranslated from dungeon.c:665
+export function place_level(proto_index, pd) {
+  let map, lev, npossible;
+  if (proto_index === pd.n_levs) return true;
+  lev = pd.final_lev;
+  if (!lev) return place_level(proto_index + 1, pd);
+  npossible = possible_places(proto_index, map, pd);
+  for (npossible; --npossible; ) {
+    lev.dlevel.dlevel = pick_level(map, rn2(npossible));
+    if (place_level(proto_index + 1, pd)) return true;
+    map = false;
+  }
+  return false;
+}
+
+// Autotranslated from dungeon.c:743
+export function get_dgn_flags(L) {
+  let dgn_flags = 0;
+  let flagstrs = [ "town", "hellish", "mazelike", "roguelike", "unconnected", null ];
+  let flagstrs2i = [ TOWN, HELLISH, MAZELIKE, ROGUELIKE, UNCONNECTED, 0 ];
+  lua_getfield(L, -1, "flags");
+  if (lua_type(L, -1) === LUA_TTABLE) {
+    let f, nflags;
+    lua_len(L, -1);
+    nflags =  lua_tointeger(L, -1);
+    lua_pop(L, 1);
+    for (f = 0; f < nflags; f++) {
+      lua_pushinteger(L, f + 1);
+      lua_gettable(L, -2);
+      if (lua_type(L, -1) === LUA_TSTRING) { dgn_flags |= flagstrs2i; lua_pop(L, 1); }
+      else {
+        impossible("flags[%i] is not a string", f);
+      }
+    }
+  }
+  else if (lua_type(L, -1) === LUA_TSTRING) { dgn_flags |= flagstrs2i; }
+  else if (lua_type(L, -1) !== LUA_TNIL) impossible("flags is not an array or string");
+  lua_pop(L, 1);
+  return dgn_flags;
+}
+
+// Autotranslated from dungeon.c:780
+export function get_dgn_align(L) {
+  let dgnaligns = [ "unaligned", "noalign", "lawful", "neutral", "chaotic", null ];
+  let dgnaligns2i = [ D_ALIGN_NONE, D_ALIGN_NONE, D_ALIGN_LAWFUL, D_ALIGN_NEUTRAL, D_ALIGN_CHAOTIC, D_ALIGN_NONE ];
+  let a = dgnaligns2i;
+  return a;
+}
+
+// Autotranslated from dungeon.c:1110
+export function init_castle_tune() {
+  let i;
+  for (i = 0; i < 5; i++) {
+    svt.tune = 'A' + rn2(7);
+  }
+  svt.tune = 0;
+}
+
+// Autotranslated from dungeon.c:1496
+export function next_level(at_stairs, map, player) {
+  let stway = stairway_at(player.x, player.y), newlevel;
+  if (at_stairs && stway) stway.u_traversed = true;
+  if (at_stairs && stway) {
+    newlevel.dnum = stway.tolev.dnum;
+    newlevel.dlevel = stway.tolev.dlevel;
+    goto_level( newlevel, at_stairs, false, false);
+  }
+  else {
+    newlevel.dnum = map.uz.dnum;
+    newlevel.dlevel = map.uz.dlevel + 1;
+    goto_level( newlevel, at_stairs, !at_stairs, false);
+  }
+}
+
+// Autotranslated from dungeon.c:1517
+export function prev_level(at_stairs, map, player) {
+  let stway = stairway_at(player.x, player.y), newlevel;
+  if (at_stairs && stway) stway.u_traversed = true;
+  if (at_stairs && stway && stway.tolev.dnum !== map.uz.dnum) {
+    if (!map.uz.dnum && map.uz.dlevel === 1 && !player.uhave.amulet) done(ESCAPED);
+    else {
+      newlevel.dnum = stway.tolev.dnum;
+      newlevel.dlevel = stway.tolev.dlevel;
+      goto_level( newlevel, at_stairs, false, false);
+    }
+  }
+  else {
+    newlevel.dnum = map.uz.dnum;
+    newlevel.dlevel = map.uz.dlevel - 1;
+    goto_level( newlevel, at_stairs, false, false);
+  }
+}
+
+// Autotranslated from dungeon.c:1567
+export function u_on_newpos(x, y, map, player) {
+  if (!isok(x, y)) {
+    let PRINTF_F_PTR;
+    func = (x < 0 || y < 0 || x > COLNO - 1 || y > ROWNO - 1) ? panic : impossible;
+    func("u_on_newpos: trying to place hero off map <%d,%d>", x, y);
+  }
+  player.x = x;
+  player.y = y;
+  cliparound(player.x, player.y);
+  player.uundetected = 0;
+  if (player.usteed) player.usteed.mx = player.x, player.usteed.my = player.y;
+  if (!on_level(map.uz, map.uz0)) player.x0 = player.x, player.y0 = player.y;
+  else if (!(player?.Blind || player?.blind || false) && !(player?.Hallucination || player?.hallucinating || false) && !player.uswallow) see_nearby_objects();
+  earth_sense();
+}
+
+// Autotranslated from dungeon.c:1743
+export function surface(x, y, map, player) {
+  let lev =  map.locations[x][y], levtyp = SURFACE_AT(x, y);
+  if (u_at(x, y) && player.uswallow && is_animal(player.ustuck.data)) return digests(player.ustuck.data) ? "maw" : enfolds(player.ustuck.data) ? "husk" : "nonesuch";
+  else if (IS_AIR(levtyp)) return Is_waterlevel(map.uz) ? "air bubble" : (levtyp === CLOUD) ? "cloud" : "air";
+  else if (is_pool(x, y)) return (Underwater && !Is_waterlevel(map.uz)) ? "bottom" : hliquid("water");
+  else if (is_ice(x, y)) return "ice";
+  else if (is_lava(x, y)) return hliquid("lava");
+  else if (lev.typ === DRAWBRIDGE_DOWN) return "bridge";
+  else if (IS_ALTAR(levtyp)) return "altar";
+  else if (IS_GRAVE(levtyp)) return "headstone";
+  else if (IS_FOUNTAIN(levtyp)) return "fountain";
+  else if (On_stairs(x, y)) return "stairs";
+  else if (IS_WALL(levtyp) || levtyp === SDOOR) return "wall";
+  else if (IS_DOOR(levtyp)) return "doorway";
+  else if (IS_ROOM(levtyp) && !Is_earthlevel(map.uz)) return "floor";
+  else {
+    return "ground";
+  }
+}
+
+// Autotranslated from dungeon.c:1950
+export function goto_hell(at_stairs, falling) {
+  let lev;
+  find_hell( lev);
+  goto_level( lev, at_stairs, falling, false);
+}
+
+// Autotranslated from dungeon.c:1960
+export function single_level_branch(lev) {
+  return Is_knox(lev);
+}
+
+// Autotranslated from dungeon.c:2183
+export function unreachable_level(lvl_p, unplaced, map) {
+  let dummy;
+  if (unplaced) return true;
+  if (In_endgame(map.uz) && !In_endgame(lvl_p)) return true;
+  if ((dummy = find_level("dummy")) !== 0 && on_level(lvl_p, dummy.dlevel)) return true;
+  return false;
+}
+
+// Autotranslated from dungeon.c:2197
+export function tport_menu(win, entry, lchoices, lvl_p, cannotreach) {
+  let tmpbuf, any, clr = NO_COLOR;
+  lchoices.lev = lvl_p.dlevel;
+  lchoices.dgn = lvl_p.dnum;
+  lchoices.playerlev = depth(lvl_p);
+  any = cg.zeroany;
+  if (cannotreach) { Sprintf(tmpbuf, " %s", entry); entry = tmpbuf; }
+  else { any.a_int = lchoices.idx + 1; }
+  add_menu(win, nul_glyphinfo, any, lchoices.menuletter, 0, ATR_NONE, clr, entry, MENU_ITEMFLAGS_NONE);
+  if (lchoices.menuletter === 'z') lchoices.menuletter = 'A';
+  else {
+    lchoices.menuletter++;
+  }
+  lchoices.idx++;
+  return;
+}
+
+// Autotranslated from dungeon.c:2249
+export function chr_u_on_lvl(dlev, map) {
+  return map.uz.dnum === dlev.dnum && map.uz.dlevel === dlev.dlevel ? '*' : ' ';
+}
+
+// Autotranslated from dungeon.c:2471
+export function get_annotation(lev) {
+  let mptr;
+  if ((mptr = find_mapseen(lev))) return mptr.custom;
+  return null;
+}
+
+// Autotranslated from dungeon.c:2482
+export function print_level_annotation(map) {
+  let annotation;
+  if ((annotation = get_annotation(map.uz)) !== 0) You("remember this level as %s.", annotation);
+}
+
+// Autotranslated from dungeon.c:2564
+export async function donamelevel() {
+  await query_annotation(null);
+  return ECMD_OK;
+}
+
+// Autotranslated from dungeon.c:2573
+export function free_exclusions() {
+  let ez = sve.exclusion_zones;
+  while (ez) {
+    let nxtez = ez.next;
+    (ez, 0);
+    ez = nxtez;
+  }
+  sve.exclusion_zones =  0;
+}
+
+// Autotranslated from dungeon.c:2587
+export function save_exclusions(nhfp) {
+  let ez, nez;
+  for (nez = 0, ez = sve.exclusion_zones; ez; ez = ez.next, ++nez) {
+  }
+  if (update_file(nhfp)) {
+    Sfo_int(nhfp, nez, "exclusion_count");
+    for (ez = sve.exclusion_zones; ez; ez = ez.next) {
+      Sfo_xint16(nhfp, ez.zonetype, "exclusion-zonetype");
+      Sfo_coordxy(nhfp, ez.lx, "exclusion-lx");
+      Sfo_coordxy(nhfp, ez.ly, "exclusion-ly");
+      Sfo_coordxy(nhfp, ez.hx, "exclusion-hx");
+      Sfo_coordxy(nhfp, ez.hy, "exclusion-hy");
+    }
+  }
+}
+
+// Autotranslated from dungeon.c:2608
+export function load_exclusions(nhfp) {
+  let ez, nez = 0;
+  Sfi_int(nhfp, nez, "exclusion_count");
+  while (nez-- > 0) {
+    ez =  alloc(ez.length);
+    Sfi_xint16(nhfp, ez.zonetype, "exclusion-zonetype");
+    Sfi_coordxy(nhfp, ez.lx, "exclusion-lx");
+    Sfi_coordxy(nhfp, ez.ly, "exclusion-ly");
+    Sfi_coordxy(nhfp, ez.hx, "exclusion-hx");
+    Sfi_coordxy(nhfp, ez.hy, "exclusion-hy");
+    ez.next = sve.exclusion_zones;
+    sve.exclusion_zones = ez;
+  }
+}
+
+// Autotranslated from dungeon.c:2631
+export function find_mapseen(lev, game) {
+  let mptr;
+  for (mptr = game.mapseenchn; mptr; mptr = mptr.next) {
+    if (on_level( (mptr.lev), lev)) {
+      break;
+    }
+  }
+  return mptr;
+}
+
+// Autotranslated from dungeon.c:2643
+export function find_mapseen_by_str(s, game) {
+  let mptr;
+  for (mptr = game.mapseenchn; mptr; mptr = mptr.next) {
+    if (mptr.custom && !strcmpi(s, mptr.custom)) {
+      break;
+    }
+  }
+  return mptr;
+}
+
+// Autotranslated from dungeon.c:3273
+export function room_discovered(roomno, map) {
+  let mptr = find_mapseen(map.uz);
+  if (mptr && !mptr.msrooms[roomno].seen) { mptr.msrooms[roomno].seen = 1; recalc_mapseen(); }
+}
+
+// Autotranslated from dungeon.c:3296
+export async function show_overview(why, reason, map) {
+  let win, lastdun = -1, selected, n;
+  recalc_mapseen();
+  win = create_nhwindow(NHW_MENU);
+  start_menu(win, MENU_BEHAVE_STANDARD);
+  if (In_endgame(map.uz)) traverse_mapseenchn(1, win, why, reason, lastdun);
+  if (why > 0 || !In_endgame(map.uz)) traverse_mapseenchn(0, win, why, reason, lastdun);
+  end_menu(win,  0);
+  n = select_menu(win, (why !== -1) ? PICK_NONE : PICK_ONE, selected);
+  if (n > 0) {
+    let ledger, lev;
+    ledger = selected[0].item.a_int - 1;
+    lev.dnum = ledger_to_dnum(ledger);
+    lev.dlevel = ledger_to_dlev(ledger);
+    query_annotation( lev);
+    (selected, 0);
+  }
+  destroy_nhwindow(win);
+}
+
+// Autotranslated from dungeon.c:3335
+export function traverse_mapseenchn(viewendgame, win, why, reason, lastdun_p, game) {
+  let mptr, showheader;
+  for (mptr = game.mapseenchn; mptr; mptr = mptr.next) {
+    if (viewendgame ^ In_endgame( mptr.lev)) {
+      continue;
+    }
+    if (why !== 0 || interest_mapseen(mptr)) {
+      showheader =  (mptr.lev.dnum !== lastdun_p);
+      print_mapseen(win, mptr, why, reason, showheader);
+       lastdun_p = mptr.lev.dnum;
+    }
+  }
+}
+
+// Autotranslated from dungeon.c:3359
+export function seen_string(x, obj) {
+  switch (x) {
+    case 0:
+      return "no";
+    case 1:
+      return strchr(vowels, obj) ? "an" : "a";
+    case 2:
+      return "some";
+    case 3:
+      return "many";
+  }
+  return "(unknown)";
+}
+
+// Autotranslated from dungeon.c:3401
+export function endgamelevelname(outbuf, indx) {
+  let planename = 0;
+   outbuf = '\0';
+  switch (indx) {
+    case -5:
+      Strcpy(outbuf, "Astral Plane");
+    break;
+    case -4:
+      planename = "Water";
+    break;
+    case -3:
+      planename = "Fire";
+    break;
+    case -2:
+      planename = "Air";
+    break;
+    case -1:
+      planename = "Earth";
+    break;
+  }
+  if (planename) {
+    Sprintf(outbuf, "Plane of %s", planename);
+  }
+  else if (!outbuf) {
+    Sprintf(outbuf, "unknown plane #%d", indx);
+  }
+  return outbuf;
+}
+
+// Autotranslated from dungeon.c:3432
+export function shop_string(rtype) {
+  let shtypes, shoptype = rtype - SHOPBASE, str = "shop?";
+  if (shoptype < 0) { str = "untended shop"; }
+  else if (shtypes[shoptype].annotation) { str = shtypes[shoptype].annotation; }
+  else if (shtypes[shoptype].name) { str = shtypes[shoptype].name; }
+  return str;
 }

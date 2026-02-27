@@ -716,3 +716,563 @@ async function handleExtendedCommandName(game) {
         // Keep waiting for a supported selection.
     }
 }
+
+// Autotranslated from cmd.c:407
+export function doprev_message() {
+  nh_doprev_message();
+  return ECMD_OK;
+}
+
+// Autotranslated from cmd.c:415
+export function timed_occupation(game) {
+  let result;
+  midlog_enter("timed_occupation", __FILE__, __LINE__, __func__);
+  timed_occ_fn();
+  if (game.multi > 0) game.multi--;
+  result = game.multi > 0;
+  midlog_exit_int("timed_occupation", result, __FILE__, __LINE__, __func__);
+  return result;
+}
+
+// Autotranslated from cmd.c:442
+export function reset_occupations() {
+  reset_remarm();
+  reset_pick();
+  reset_trapset();
+}
+
+// Autotranslated from cmd.c:622
+export function cmdq_reverse(head) {
+  let prev = null, curr = head, next;
+  while (curr) {
+    next = curr.next;
+    curr.next = prev;
+    prev = curr;
+    curr = next;
+  }
+  return prev;
+}
+
+// Autotranslated from cmd.c:1201
+export async function enter_explore_mode() {
+  if (discover) { You("are already in explore mode."); }
+  else {
+    let oldmode = !wizard ? "normal game" : "debug mode";
+    if (!authorize_explore_mode()) {
+      if (!wizard) { You("cannot access explore mode."); return ECMD_OK; }
+      else {
+        pline( "Note: normally you wouldn't be allowed into explore mode.");
+      }
+    }
+    pline("Beware! From explore mode there will be no return to %s,", oldmode);
+    if (paranoid_query(ParanoidQuit, "Do you want to enter explore mode?")) {
+      discover = true;
+      wizard = false;
+      clear_nhwindow(WIN_MESSAGE);
+      You("are now in non-scoring explore mode.");
+    }
+    else { clear_nhwindow(WIN_MESSAGE); pline("Continuing with %s.", oldmode); }
+  }
+  return ECMD_OK;
+}
+
+// Autotranslated from cmd.c:1323
+export function wiz_dumpmap(map) {
+  let fname, fp, x, y;
+  fname = getenv("NETHACK_DUMPMAP");
+  if (!fname || !fname) fname = "dumpmap.txt";
+  fp = fopen(fname, "w");
+  if (!fp) { pline("Cannot open %s for writing.", fname); return ECMD_OK; }
+  for (y = 0; y < ROWNO; y++) {
+    for (x = 0; x < COLNO; x++) {
+      if (x > 0) fputc(' ', fp);
+      fprintf(fp, "%d", map.locations[x][y].typ);
+    }
+    fputc('\n', fp);
+  }
+  fclose(fp);
+  pline("Map dumped to %s.", fname);
+  return ECMD_OK;
+}
+
+// Autotranslated from cmd.c:1357
+export function wiz_dumpobj() {
+  let fname, fp, obj;
+  fname = getenv("NETHACK_DUMPOBJ");
+  if (!fname || !fname) fname = "dumpobj.txt";
+  fp = fopen(fname, "w");
+  if (!fp) { pline("Cannot open %s for writing.", fname); return ECMD_OK; }
+  for (obj = fobj; obj; obj = obj.nobj) {
+    fprintf(fp, "%d %d %d %u %s\n", obj.ox, obj.oy, obj.otyp, obj.owt, OBJ_NAME(objectData[obj.otyp]));
+  }
+  fclose(fp);
+  pline("Objects dumped to %s.", fname);
+  return ECMD_OK;
+}
+
+// Autotranslated from cmd.c:1387
+export async function wiz_dumpsnap() {
+  let phasebuf;
+  Sprintf(phasebuf, "manual");
+  await getlin("Checkpoint phase tag:", phasebuf);
+  mungspaces(phasebuf);
+  if (!phasebuf) {
+    Strcpy(phasebuf, "manual");
+  }
+  harness_dump_checkpoint(phasebuf);
+  pline("Snapshot appended (%s).", phasebuf);
+  return ECMD_OK;
+}
+
+// Autotranslated from cmd.c:1595
+export function dolookaround_floodfill_findroom(x, y, map) {
+  let typ = map.locations[x][y].typ;
+  if (IS_STWALL(typ) || IS_DOOR(typ) || IS_TREE(typ) || IS_WATERWALL(typ) || typ === LAVAWALL || typ === IRONBARS || typ === SCORR || typ === SDOOR || typ === DRAWBRIDGE_UP) return false;
+  return true;
+}
+
+// Autotranslated from cmd.c:1608
+export function lookaround_known_room(x, y, player) {
+  let sel = selection_new(), rmno = player.urooms[0] - ROOMOFFSET, qbuf;
+  set_selection_floodfillchk(dolookaround_floodfill_findroom);
+  selection_floodfill(sel, x, y, true);
+  if (!u_at(x, y)) set_msg_xy(x, y);
+  if (u_have_seen_whole_selection(sel)) {
+    let u_in =  selection_getpoint(x, y, sel);
+    You("%s %s %s.", u_at(x, y) && u_in && u_can_see_whole_selection(sel) ? "are in" : (u_at(x, y)) ? "remember this as" : "remember that as", an(selection_size_description(sel, qbuf)), rmno >= 0 ? "room" : "area");
+  }
+  else if (u_have_seen_bounds_selection(sel)) {
+    You("guess %s to be %s %s.", u_at(x, y) ? "this" : "that", an(selection_size_description(sel, qbuf)), rmno >= 0 ? "room" : "area");
+  }
+  else {
+    You("can't guess the size of %s area.", u_at(x, y) ? "this" : "that");
+  }
+  selection_free(sel, true);
+}
+
+// Autotranslated from cmd.c:1721
+export function do_move_west() {
+  set_move_cmd(DIR_W, 0);
+  return ECMD_TIME;
+}
+
+// Autotranslated from cmd.c:1728
+export function do_move_northwest() {
+  set_move_cmd(DIR_NW, 0);
+  return ECMD_TIME;
+}
+
+// Autotranslated from cmd.c:1735
+export function do_move_north() {
+  set_move_cmd(DIR_N, 0);
+  return ECMD_TIME;
+}
+
+// Autotranslated from cmd.c:1742
+export function do_move_northeast() {
+  set_move_cmd(DIR_NE, 0);
+  return ECMD_TIME;
+}
+
+// Autotranslated from cmd.c:1749
+export function do_move_east() {
+  set_move_cmd(DIR_E, 0);
+  return ECMD_TIME;
+}
+
+// Autotranslated from cmd.c:1756
+export function do_move_southeast() {
+  set_move_cmd(DIR_SE, 0);
+  return ECMD_TIME;
+}
+
+// Autotranslated from cmd.c:1763
+export function do_move_south() {
+  set_move_cmd(DIR_S, 0);
+  return ECMD_TIME;
+}
+
+// Autotranslated from cmd.c:1770
+export function do_move_southwest() {
+  set_move_cmd(DIR_SW, 0);
+  return ECMD_TIME;
+}
+
+// Autotranslated from cmd.c:1778
+export function do_rush_west() {
+  set_move_cmd(DIR_W, 3);
+  return ECMD_TIME;
+}
+
+// Autotranslated from cmd.c:1785
+export function do_rush_northwest() {
+  set_move_cmd(DIR_NW, 3);
+  return ECMD_TIME;
+}
+
+// Autotranslated from cmd.c:1792
+export function do_rush_north() {
+  set_move_cmd(DIR_N, 3);
+  return ECMD_TIME;
+}
+
+// Autotranslated from cmd.c:1799
+export function do_rush_northeast() {
+  set_move_cmd(DIR_NE, 3);
+  return ECMD_TIME;
+}
+
+// Autotranslated from cmd.c:1806
+export function do_rush_east() {
+  set_move_cmd(DIR_E, 3);
+  return ECMD_TIME;
+}
+
+// Autotranslated from cmd.c:1813
+export function do_rush_southeast() {
+  set_move_cmd(DIR_SE, 3);
+  return ECMD_TIME;
+}
+
+// Autotranslated from cmd.c:1820
+export function do_rush_south() {
+  set_move_cmd(DIR_S, 3);
+  return ECMD_TIME;
+}
+
+// Autotranslated from cmd.c:1827
+export function do_rush_southwest() {
+  set_move_cmd(DIR_SW, 3);
+  return ECMD_TIME;
+}
+
+// Autotranslated from cmd.c:1835
+export function do_run_west() {
+  set_move_cmd(DIR_W, 1);
+  return ECMD_TIME;
+}
+
+// Autotranslated from cmd.c:1842
+export function do_run_northwest() {
+  set_move_cmd(DIR_NW, 1);
+  return ECMD_TIME;
+}
+
+// Autotranslated from cmd.c:1849
+export function do_run_north() {
+  set_move_cmd(DIR_N, 1);
+  return ECMD_TIME;
+}
+
+// Autotranslated from cmd.c:1856
+export function do_run_northeast() {
+  set_move_cmd(DIR_NE, 1);
+  return ECMD_TIME;
+}
+
+// Autotranslated from cmd.c:1863
+export function do_run_east() {
+  set_move_cmd(DIR_E, 1);
+  return ECMD_TIME;
+}
+
+// Autotranslated from cmd.c:1870
+export function do_run_southeast() {
+  set_move_cmd(DIR_SE, 1);
+  return ECMD_TIME;
+}
+
+// Autotranslated from cmd.c:1877
+export function do_run_south() {
+  set_move_cmd(DIR_S, 1);
+  return ECMD_TIME;
+}
+
+// Autotranslated from cmd.c:1884
+export function do_run_southwest() {
+  set_move_cmd(DIR_SW, 1);
+  return ECMD_TIME;
+}
+
+// Autotranslated from cmd.c:1939
+export function do_fight(game) {
+  if (game.game.svc.context.forcefight) {
+    Norep("Double fight prefix, canceled.");
+    game.game.svc.context.forcefight = 0;
+    game.gd.domove_attempting = 0;
+    return ECMD_CANCEL;
+  }
+  game.game.svc.context.forcefight = 1;
+  game.gd.domove_attempting |= DOMOVE_WALK;
+  return ECMD_OK;
+}
+
+// Autotranslated from cmd.c:2613
+export async function handler_change_autocompletions() {
+  let win, any, i, n, picks = null, clr = NO_COLOR, ec, buf;
+  win = create_nhwindow(NHW_MENU);
+  start_menu(win, MENU_BEHAVE_STANDARD);
+  any = cg.zeroany;
+  for (i = 0; i < extcmdlist_length; i++) {
+    ec = extcmdlist;
+    if ((ec.flags & (INTERNALCMD|CMD_NOT_AVAILABLE)) !== 0) {
+      continue;
+    }
+    if (strlen(ec.ef_txt) < 2) {
+      continue;
+    }
+    any.a_int = (i + 1);
+    Sprintf(buf, "%c %s: %s", (ec.flags & AUTOCOMP_ADJ) ? '*' : ' ', ec.ef_txt, ec.ef_desc);
+    add_menu(win, nul_glyphinfo, any, '\0', 0, ATR_NONE, clr, buf, (ec.flags & AUTOCOMPLETE) ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
+  }
+  end_menu(win, "Which commands autocomplete?");
+  n = select_menu(win, PICK_ANY, picks);
+  if (n >= 0) {
+    let j;
+    for (i = 0; i < extcmdlist_length; i++) {
+      let setit = false;
+      ec = extcmdlist;
+      if ((ec.flags & (INTERNALCMD|CMD_NOT_AVAILABLE)) !== 0) {
+        continue;
+      }
+      if (strlen(ec.ef_txt) < 2) {
+        continue;
+      }
+      Sprintf(buf, "%s", ec.ef_txt);
+      for (j = 0; j < n; ++j) {
+        if (ec === extcmdlist[(picks[j].item.a_int - 1)]) {
+          parseautocomplete(buf, true);
+          setit = true;
+          break;
+        }
+      }
+      if (!setit) { parseautocomplete(buf, false); }
+    }
+    if (n > 0) (picks, 0);
+  }
+  destroy_nhwindow(win);
+}
+
+// Autotranslated from cmd.c:3144
+export function cmd_from_dir(dir, mode) {
+  return cmd_from_func(move_funcs[dir][mode]);
+}
+
+// Autotranslated from cmd.c:3321
+export function spkey_name(nhkf) {
+  let name = 0, i;
+  for (i = 0; i < SIZE(spkeys_binds); i++) {
+    if (spkeys_binds[i].nhkf === nhkf) {
+      name = (nhkf === NHKF_ESC) ? "escape" : spkeys_binds[i].name;
+      break;
+    }
+  }
+  return name;
+}
+
+// Autotranslated from cmd.c:3409
+export function all_options_autocomplete(sbuf) {
+  let efp, buf;
+  for (efp = extcmdlist; efp.ef_txt; efp++) {
+    if ((efp.flags & AUTOCOMP_ADJ) !== 0) {
+      Sprintf(buf, "AUTOCOMPLETE=%s%s\n", (efp.flags & AUTOCOMPLETE) ? "" : "!", efp.ef_txt);
+      strbuf_append(sbuf, buf);
+    }
+  }
+}
+
+// Autotranslated from cmd.c:3425
+export function count_autocompletions() {
+  let efp, n = 0;
+  for (efp = extcmdlist; efp.ef_txt; efp++) {
+    if ((efp.flags & AUTOCOMP_ADJ) !== 0) n++;
+  }
+  return n;
+}
+
+// Autotranslated from cmd.c:3717
+export function rnd_extcmd_idx() {
+  return rn2(extcmdlist_length + 1) - 1;
+}
+
+// Autotranslated from cmd.c:3960
+export function xytod(x, y) {
+  let dd;
+  for (dd = 0; dd < N_DIRS; dd++) {
+    if (x === xdir[dd] && y === ydir) return dd;
+  }
+  return DIR_ERR;
+}
+
+// Autotranslated from cmd.c:3972
+export function dtoxy(cc, dd) {
+  if (dd > DIR_ERR && dd < N_DIRS_Z) { cc.x = xdir; cc.y = ydir; }
+}
+
+// Autotranslated from cmd.c:4014
+export function dxdy_moveok(player) {
+  if (player.dx && player.dy && NODIAG(player.umonnum)) player.dx = player.dy = 0;
+  return player.dx || player.dy;
+}
+
+// Autotranslated from cmd.c:4042
+export async function get_adjacent_loc(prompt, emsg, x, y, cc, player) {
+  let new_x, new_y;
+  if (!getdir(prompt)) { pline1(Never_mind); return 0; }
+  new_x = x + player.dx;
+  new_y = y + player.dy;
+  if (cc && isok(new_x, new_y)) { cc.x = new_x; cc.y = new_y; }
+  else { if (emsg) pline1(emsg); return 0; }
+  return 1;
+}
+
+// Autotranslated from cmd.c:4233
+export function show_direction_keys(win, centerchar, nodiag) {
+  let buf;
+  if (!centerchar) centerchar = ' ';
+  if (nodiag) {
+    Sprintf(buf, " %s ", visctrl(cmd_from_func(do_move_north)));
+    putstr(win, 0, buf);
+    putstr(win, 0, " | ");
+    Sprintf(buf, " %s- %c -%s", visctrl(cmd_from_func(do_move_west)), centerchar, visctrl(cmd_from_func(do_move_east)));
+    putstr(win, 0, buf);
+    putstr(win, 0, " | ");
+    Sprintf(buf, " %s ", visctrl(cmd_from_func(do_move_south)));
+    putstr(win, 0, buf);
+  }
+  else {
+    Sprintf(buf, " %s %s %s", visctrl(cmd_from_func(do_move_northwest)), visctrl(cmd_from_func(do_move_north)), visctrl(cmd_from_func(do_move_northeast)));
+    putstr(win, 0, buf);
+    putstr(win, 0, " \\ | / ");
+    Sprintf(buf, " %s- %c -%s", visctrl(cmd_from_func(do_move_west)), centerchar, visctrl(cmd_from_func(do_move_east)));
+    putstr(win, 0, buf);
+    putstr(win, 0, " / | \\ ");
+    Sprintf(buf, " %s %s %s", visctrl(cmd_from_func(do_move_southwest)), visctrl(cmd_from_func(do_move_south)), visctrl(cmd_from_func(do_move_southeast)));
+    putstr(win, 0, buf);
+  }
+}
+
+// Autotranslated from cmd.c:4411
+export function confdir(force_impairment, player) {
+  if (force_impairment || u_maybe_impaired()) {
+    let kmax = NODIAG(player.umonnum) ? (N_DIRS / 2) : N_DIRS, k =  dirs_ord;
+    player.dx = xdir;
+    player.dy = ydir;
+  }
+  return;
+}
+
+// Autotranslated from cmd.c:4424
+export function directionname(dir) {
+  let dirnames = [ "west", "northwest", "north", "northeast", "east", "southeast", "south", "southwest", "down", "up", ];
+  if (dir < 0 || dir >= N_DIRS_Z) return "invalid";
+  return dirnames;
+}
+
+// Autotranslated from cmd.c:4437
+export function isok(x, y) {
+  return x >= 1 && x <= COLNO - 1 && y >= 0 && y <= ROWNO - 1;
+}
+
+// Autotranslated from cmd.c:4635
+export function there_cmd_menu_next2u(win, x, y, mod, act, map, player) {
+  let K = 0, buf, typ = map.locations[x][y].typ, ttmp, mtmp;
+  if (!next2u(x, y)) return K;
+  if (IS_DOOR(typ)) {
+    let key_or_pick, card, dm = map.locations[x][y].doormask;
+    if ((dm & (D_CLOSED | D_LOCKED))) {
+      mcmd_addmenu(win, MCMD_OPEN_DOOR, "Open the door"), ++K;
+      key_or_pick = (carrying(SKELETON_KEY) || carrying(LOCK_PICK));
+      card = (carrying(CREDIT_CARD) !== 0);
+      if (key_or_pick || card) {
+        Sprintf(buf, "%sunlock the door", key_or_pick ? "lock or " : "");
+        mcmd_addmenu(win, MCMD_LOCK_DOOR, upstart(buf)), ++K;
+      }
+      mcmd_addmenu(win, MCMD_UNTRAP_DOOR, "Search the door for a trap"), ++K;
+      mcmd_addmenu(win, MCMD_KICK_DOOR, "Kick the door"), ++K;
+    }
+    else if ((dm & D_ISOPEN) && (mod === CLICK_2)) {
+      mcmd_addmenu(win, MCMD_CLOSE_DOOR, "Close the door"), ++K;
+    }
+  }
+  if (typ <= SCORR) mcmd_addmenu(win, MCMD_SEARCH, "Search for secret doors"), ++K;
+  if ((ttmp = t_at(x, y)) !== 0 && ttmp.tseen) {
+    mcmd_addmenu(win, MCMD_LOOK_TRAP, "Examine trap"), ++K;
+    if (ttmp.ttyp !== VIBRATING_SQUARE) mcmd_addmenu(win, MCMD_UNTRAP_TRAP, "Attempt to disarm trap"), ++K;
+    mcmd_addmenu(win, MCMD_MOVE_DIR, "Move on the trap"), ++K;
+  }
+  if (map.locations[x][y].glyph === objnum_to_glyph(BOULDER)) mcmd_addmenu(win, MCMD_MOVE_DIR, "Push the boulder"), ++K;
+  mtmp = m_at(x, y);
+  if (mtmp && !canspotmon(mtmp)) mtmp = 0;
+  if (mtmp && which_armor(mtmp, W_SADDLE)) {
+    let mnam = x_monnam(mtmp, ARTICLE_THE,  0, SUPPRESS_SADDLE, false);
+    if (!player.usteed) { Sprintf(buf, "Ride %s", mnam); mcmd_addmenu(win, MCMD_RIDE, buf), ++K; }
+    Sprintf(buf, "Remove saddle from %s", mnam);
+    mcmd_addmenu(win, MCMD_REMOVE_SADDLE, buf), ++K;
+  }
+  if (mtmp && can_saddle(mtmp) && !which_armor(mtmp, W_SADDLE) && carrying(SADDLE)) {
+    Sprintf(buf, "Put saddle on %s", mon_nam(mtmp));
+    mcmd_addmenu(win, MCMD_APPLY_SADDLE, buf), ++K;
+  }
+  if (mtmp && (mtmp.mpeaceful || mtmp.mtame)) {
+    Sprintf(buf, "Talk to %s", mon_nam(mtmp));
+    mcmd_addmenu(win, MCMD_TALK, buf), ++K;
+    Sprintf(buf, "Swap places with %s", mon_nam(mtmp));
+    mcmd_addmenu(win, MCMD_MOVE_DIR, buf), ++K;
+    Sprintf(buf, "%s %s", !has_mgivenname(mtmp) ? "Name" : "Rename", mon_nam(mtmp));
+    mcmd_addmenu(win, MCMD_NAME, buf), ++K;
+  }
+  if ((mtmp && !(mtmp.mpeaceful || mtmp.mtame)) || glyph_is_invisible(glyph_at(x, y))) {
+    Sprintf(buf, "Attack %s", mtmp ? mon_nam(mtmp) : "unseen creature");
+    mcmd_addmenu(win, MCMD_ATTACK_NEXT2U, buf), ++K;
+     act = MCMD_ATTACK_NEXT2U;
+  }
+  else {
+  }
+  return K;
+}
+
+// Autotranslated from cmd.c:4735
+export function there_cmd_menu_far(win, x, y, mod, player) {
+  let K = 0;
+  if (mod === CLICK_1) {
+    if (linedup(player.x, player.y, x, y, 1) && dist2(player.x, player.y, x, y) < 18*18) mcmd_addmenu(win, MCMD_THROW_OBJ, "Throw something"), ++K;
+    mcmd_addmenu(win, MCMD_TRAVEL, "Travel here"), ++K;
+  }
+  return K;
+}
+
+// Autotranslated from cmd.c:4750
+export function there_cmd_menu_common(win, x, y, mod, act, player) {
+  let K = 0;
+  if (mod === CLICK_1 || mod === CLICK_2) {
+    if (!u_at(x, y) || (player?.Upolyd || (player?.mtimedone > 0) || false) || glyph_at(x, y) !== hero_glyph) mcmd_addmenu(win, MCMD_LOOK_AT, "Look at map symbol"), ++K;
+  }
+  return K;
+}
+
+// Autotranslated from cmd.c:5010
+export async function here_cmd_menu(player) {
+  await there_cmd_menu(player.x, player.y, CLICK_1);
+  return '\0';
+}
+
+// Autotranslated from cmd.c:5385
+export async function readchar(player) {
+  let ch, x = player.x, y = player.y, mod = 0;
+  ch = readchar_core( x, y, mod);
+  return ch;
+}
+
+// Autotranslated from cmd.c:5511
+export function yn_func_menu_opt(win, key, text, def) {
+  let any;
+  any = cg.zeroany;
+  any.a_char = key;
+  add_menu(win, nul_glyphinfo, any, key, 0, ATR_NONE, NO_COLOR, text, (def === key) ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
+}
+
+// Autotranslated from cmd.c:5808
+export function dummyfunction() {
+  return ECMD_CANCEL;
+}

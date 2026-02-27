@@ -612,3 +612,39 @@ export function parseRumorsFile(fileText) {
 
     return { trueTexts, trueLineBytes, trueSize, falseTexts, falseLineBytes, falseSize };
 }
+
+// Autotranslated from hacklib.c:985
+export function case_insensitive_comp(s1, s2) {
+  let u1, u2;
+  for (s1++, s2++; ; ) {
+    u1 = s1.value;
+    if (isupper(u1)) u1 =  tolower(u1);
+    u2 = s2.value;
+    if (isupper(u2)) u2 =  tolower(u2);
+    if (u1 === '\0' || u1 !== u2) {
+      break;
+    }
+  }
+  return u1 - u2;
+}
+
+// Autotranslated from hacklib.c:1003
+export function copy_bytes(ifd, ofd) {
+  let buf, nfrom, nto;
+  do {
+    nto = 0;
+    nfrom = read(ifd, buf, BUFSIZ);
+    if (nfrom >= 0 && nfrom <= BUFSIZ) nto = write(ofd, buf, nfrom);
+    if (nto !== nfrom || nfrom < 0) return false;
+  } while (nfrom === BUFSIZ);
+  return true;
+}
+
+// Autotranslated from hacklib.c:1055
+export function what_datamodel_is_this(retidx, szshort, szint, szlong, szll, szptr) {
+  let i, unknown = "Unknown";
+  for (i = 1; i < SIZE(dm); ++i) {
+    if (szshort === dm[i].sz[0] && szint === dm[i].sz[1] && szlong === dm[i].sz[2] && szll === dm[i].sz[3] && szptr === dm[i].sz) return (retidx === 0) ? dm[i].datamodel : dm[i].dmplatform;
+  }
+  return unknown;
+}

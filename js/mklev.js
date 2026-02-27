@@ -961,3 +961,19 @@ export function mktrap_pick_kind(map, num, depth, mktrapflags = MKTRAP_NOFLAGS) 
     } while (kind === NO_TRAP);
     return kind;
 }
+
+// Autotranslated from mklev.c:1427
+export function water_has_kelp(x, y, kelp_pool, kelp_moat, map) {
+  if ((kelp_pool && (map.locations[x][y].typ === POOL || (map.locations[x][y].typ === WATER && !Is_waterlevel(map.uz))) && !rn2(kelp_pool)) || (kelp_moat && map.locations[x][y].typ === MOAT && !rn2(kelp_moat))) return true;
+  return false;
+}
+
+// Autotranslated from mklev.c:2598
+export function mkinvk_check_wall(x, y, map) {
+  let ltyp;
+  if (!isok(x, y)) return 0;
+  assert(x > 0 && x < COLNO);
+  assert(y >= 0 && y < ROWNO);
+  ltyp = map.locations[x][y].typ;
+  return (IS_STWALL(ltyp) || ltyp === IRONBARS) ? 1 : 0;
+}

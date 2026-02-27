@@ -297,7 +297,7 @@ function monmin_difficulty(levdif) {
 }
 
 // C ref: makemon.c uncommon()
-function uncommon(mndx) {
+export function uncommon(mndx) {
     const ptr = mons[mndx];
     if (ptr.geno & (G_NOGEN | G_UNIQ)) return true;
     // mvitals not tracked — skip G_GONE check
@@ -452,7 +452,7 @@ export function mk_gen_ok(mndx, mvflagsmask, genomask) {
 // C ref: makemon.c:1750-1823 mongen_order initialization
 let mongen_order = null;
 let mclass_maxf = null;
-
+export 
 function init_mongen_order() {
     if (mongen_order) return;
     mongen_order = [];
@@ -473,7 +473,7 @@ function init_mongen_order() {
 }
 
 // C ref: makemon.c:2007-2039 adj_lev()
-function adj_lev(ptr, depth = 1) {
+export function adj_lev(ptr, depth = 1) {
     const ulevel = 1; // during level gen
     let tmp = ptr.mlevel;
     if (tmp > 49) return 50;
@@ -637,7 +637,7 @@ export function newmonhp(mndx, depth = 1) {
 // Creates the object via mksobj, applies monster-specific adjustments,
 // then adds to monster inventory via mpickobj.
 // ========================================================================
-
+export 
 function mongets(mon,otyp) {
     if (!otyp) return null;
     const otmp = mksobj(otyp, true, false);
@@ -1142,7 +1142,7 @@ function findgold(minvent) {
     if (!Array.isArray(minvent)) return false;
     return minvent.some((obj) => obj && obj.otyp === GOLD_PIECE && Number(obj.quan || 0) > 0);
 }
-
+export 
 function mkmonmoney(mon, amount) {
     if (!Number.isFinite(amount) || amount <= 0) return;
     const gold = mksobj(GOLD_PIECE, false, false);
@@ -2097,4 +2097,263 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
     // C ref: event_log("makemon[%d@%d,%d]", mndx, mtmp->mx, mtmp->my)
     pushRngLogEntry(`^makemon[${mndx}@${mon?.mx ?? 0},${mon?.my ?? 0}]`);
     return mon;
+}
+
+// Autotranslated from makemon.c:57
+export function wrong_elem_type(ptr, map) {
+  if (ptr.mlet === S_ELEMENTAL) { return  !is_home_elemental(ptr); }
+  else if (Is_earthlevel(map.uz)) {
+  }
+  else if (Is_waterlevel(map.uz)) { if (!is_swimmer(ptr)) return true; }
+  else if (Is_firelevel(map.uz)) { if (!pm_resistance(ptr, MR_FIRE)) return true; }
+  else if (Is_airlevel(map.uz)) {
+    if (!(is_flyer(ptr) && ptr.mlet !== S_TRAPPER) && !is_floater(ptr) && !amorphous(ptr) && !noncorporeal(ptr) && !is_whirly(ptr)) return true;
+  }
+  return false;
+}
+
+// Autotranslated from makemon.c:80
+export function m_initgrp(mtmp, x, y, n, mmflags, player) {
+  let mm, cnt = rnd(n), mon;
+  cnt /= (player.ulevel < 3) ? 4 : (player.ulevel < 5) ? 2 : 1;
+  if (!cnt) cnt++;
+  mm.x = x;
+  mm.y = y;
+  while (cnt--) {
+    if (peace_minded(mtmp.data)) {
+      continue;
+    }
+    if (enexto_gpflags( mm, mm.x, mm.y, mtmp.data, mmflags)) {
+      mon = makemon(mtmp.data, mm.x, mm.y, (mmflags | MM_NOGRP));
+      if (mon) {
+        mon.mpeaceful = false;
+        mon.mavenge = 0;
+        set_malign(mon);
+      }
+    }
+  }
+}
+
+// Autotranslated from makemon.c:987
+export function monhp_per_lvl(mon) {
+  let ptr = mon.data, hp = rnd(8);
+  if (is_golem(ptr)) { hp = golemhp(monsndx(ptr)) /  ptr.mlevel; }
+  else if (ptr.mlevel > 49) { hp = 4 + rnd(4); }
+  else if (ptr.mlet === S_DRAGON && monsndx(ptr) >= PM_GRAY_DRAGON) { hp = 4 + rn2(5); }
+  else if (!mon.m_lev) { hp = rnd(4); }
+  return hp;
+}
+
+// Autotranslated from makemon.c:1060
+export function init_mextra(mex) {
+   mex = zeromextra;
+  mex.mcorpsenm = NON_PM;
+}
+
+// Autotranslated from makemon.c:1067
+export function newmextra() {
+  let mextra;
+  mextra =  alloc(0);
+  init_mextra(mextra);
+  return mextra;
+}
+
+// Autotranslated from makemon.c:1511
+export function unmakemon(mon, mmflags, game) {
+  let countbirth = ((mmflags & MM_NOCOUNTBIRTH) === 0);
+  let mndx = monsndx(mon.data);
+  if (countbirth && game.mvitals[mndx].born > 0 && game.mvitals[mndx].born < 255) {
+    game.mvitals[mndx].born -= 1;
+  }
+  if ((mon.data.geno & G_UNIQ) !== 0) {
+    game.mvitals[mndx].mvflags &= ~G_EXTINCT;
+  }
+  mon.mhp = 0;
+  discard_minvent(mon, true);
+  mongone(mon);
+  return  0;
+}
+
+// Autotranslated from makemon.c:1553
+export function create_critters(cnt, mptr, neverask, player) {
+  let c, x, y, mon, known = false, ask = (wizard && !neverask);
+  while (cnt--) {
+    if (ask) {
+      if (create_particular()) { known = true; continue; }
+      else {
+        ask = false;
+      }
+    }
+    x = player.x, y = player.y;
+    if (!mptr && player.uinwater && enexto( c, x, y, mons[PM_GIANT_EEL])) x = c.x, y = c.y;
+    if ((mon = makemon(mptr, x, y, NO_MM_FLAGS)) === 0) {
+      continue;
+    }
+    if ((canseemon(mon) && (M_AP_TYPE(mon) === M_AP_NOTHING || M_AP_TYPE(mon) === M_AP_MONSTER)) || sensemon(mon)) known = true;
+  }
+  return known;
+}
+
+// Autotranslated from makemon.c:1649
+export function rndmonst() {
+  return rndmonst_adj(0, 0);
+}
+
+// Autotranslated from makemon.c:2045
+export function grow_up(mtmp, victim, game) {
+  let oldtype, newtype, max_increase, cur_increase, lev_limit, hp_threshold;
+  let fem, ptr = mtmp.data;
+  if (DEADMONSTER(mtmp)) return  0;
+  oldtype = monsndx(ptr);
+  newtype = (oldtype === PM_KILLER_BEE && !victim) ? PM_QUEEN_BEE : little_to_big(oldtype);
+  if (victim) {
+    hp_threshold = mtmp.m_lev * 8;
+    if (!mtmp.m_lev) hp_threshold = 4;
+    else if (is_golem(ptr)) hp_threshold = ((mtmp.mhpmax / 10) + 1) * 10 - 1;
+    else if (is_home_elemental(ptr)) {
+      hp_threshold *= 3;
+    }
+    lev_limit = 3 *  ptr.mlevel / 2;
+    if (oldtype !== newtype && mons[newtype].mlevel > lev_limit) lev_limit =  mons[newtype].mlevel;
+    max_increase = rnd( victim.m_lev + 1);
+    if (mtmp.mhpmax + max_increase > hp_threshold + 1) max_increase = Math.max((hp_threshold + 1) - mtmp.mhpmax, 0);
+    cur_increase = (max_increase > 1) ? rn2(max_increase) : 0;
+  }
+  else {
+    max_increase = cur_increase = rnd(8);
+    hp_threshold = 0;
+    lev_limit = 50;
+  }
+  mtmp.mhpmax += max_increase;
+  mtmp.mhp += cur_increase;
+  if (mtmp.mhpmax <= hp_threshold) return ptr;
+  if (is_mplayer(ptr)) lev_limit = 30;
+  else if (lev_limit < 5) lev_limit = 5;
+  else if (lev_limit > 49) lev_limit = (ptr.mlevel > 49 ? 50 : 49);
+  if ( ++mtmp.m_lev >= mons[newtype].mlevel && newtype !== oldtype) {
+    ptr = mons;
+    fem = is_male(ptr) ? 0 : is_female(ptr) ? 1 : mtmp.female;
+    if (game.mvitals[newtype].mvflags & G_GENOD) {
+      if (canspotmon(mtmp)) pline("As %s grows up into %s, %s %s!", mon_nam(mtmp), an(pmname(ptr, Mgender(mtmp))), mhe(mtmp), nonliving(ptr) ? "expires" : "dies");
+      set_mon_data(mtmp, ptr);
+      mondied(mtmp);
+      return  0;
+    }
+    else if (canspotmon(mtmp)) {
+      let buf;
+      Sprintf(buf, "%s%s",   (mtmp.female && !fem) ? "male "   : (fem && !mtmp.female) ? "female " : "", pmname(ptr, fem));
+      pline_mon(mtmp, "%s %s %s.", YMonnam(mtmp), (fem !== mtmp.female) ? "changes into" : humanoid(ptr) ? "becomes" : "grows up into", an(buf));
+    }
+    set_mon_data(mtmp, ptr);
+    if (mtmp.cham === oldtype && is_shapeshifter(ptr)) mtmp.cham = newtype;
+    newsym(mtmp.mx, mtmp.my);
+    lev_limit =  mtmp.m_lev;
+    mtmp.female = fem;
+    if (mtmp.mleashed) update_inventory();
+  }
+  if ( mtmp.m_lev > lev_limit) {
+    mtmp.m_lev--;
+    if (mtmp.mhpmax === hp_threshold + 1) mtmp.mhpmax--;
+  }
+  if (mtmp.mhpmax > 50 * 8) mtmp.mhpmax = 50 * 8;
+  if (mtmp.mhp > mtmp.mhpmax) mtmp.mhp = mtmp.mhpmax;
+  return ptr;
+}
+
+// Autotranslated from makemon.c:2315
+export function set_malign(mtmp, game, player) {
+  let mal = mtmp.data.maligntyp, coaligned;
+  if (mtmp.ispriest || mtmp.isminion) {
+    if (mtmp.ispriest && EPRI(mtmp)) mal = EPRI(mtmp).shralign;
+    else if (mtmp.isminion && EMIN(mtmp)) mal = EMIN(mtmp).min_align;
+    if (mal !== A_NONE) {
+      mal *= 5;
+    }
+  }
+  coaligned = (sgn(mal) === sgn(player.ualigame.gn.type));
+  if (mtmp.data.msound === MS_LEADER) { mtmp.malign = -20; }
+  else if (mal === A_NONE) {
+    if (mtmp.mpeaceful) mtmp.malign = 0;
+    else {
+      mtmp.malign = 20;
+    }
+  }
+  else if (always_peaceful(mtmp.data)) {
+    let absmal = Math.abs(mal);
+    if (mtmp.mpeaceful) mtmp.malign = -3 * Math.max(5, absmal);
+    else {
+      mtmp.malign = 3 * Math.max(5, absmal);
+    }
+  }
+  else if (always_hostile(mtmp.data)) {
+    let absmal = Math.abs(mal);
+    if (coaligned) mtmp.malign = 0;
+    else {
+      mtmp.malign = Math.max(5, absmal);
+    }
+  }
+  else if (coaligned) {
+    let absmal = Math.abs(mal);
+    if (mtmp.mpeaceful) mtmp.malign = -3 * Math.max(3, absmal);
+    else {
+      mtmp.malign = Math.max(3, absmal);
+    }
+  }
+  else {
+    mtmp.malign = Math.abs(mal);
+  }
+}
+
+// Autotranslated from makemon.c:2364
+export function newmcorpsenm(mtmp) {
+  if (!mtmp.mextra) mtmp.mextra = newmextra();
+  MCORPSENM(mtmp) = NON_PM;
+}
+
+// Autotranslated from makemon.c:2373
+export function freemcorpsenm(mtmp) {
+  if (has_mcorpsenm(mtmp)) MCORPSENM(mtmp) = NON_PM;
+}
+
+// Autotranslated from makemon.c:2548
+export function bagotricks(bag, tipping, seencount, player) {
+  let moncount = 0;
+  if (!bag || bag.otyp !== BAG_OF_TRICKS) { impossible("bad bag o' tricks"); }
+  else if (bag.spe < 1) {
+    pline1((tipping && bag.cknown) ? "It's empty." : nothing_happens);
+    if (bag.dknown && objectData[bag.otyp].oc_name_known) { bag.cknown = 1; update_inventory(); }
+  }
+  else {
+    let mtmp, creatcnt = 1, seecount = 0;
+    consume_obj_charge(bag, !tipping);
+    if (!rn2(23)) {
+      creatcnt += rnd(7);
+    }
+    do {
+      mtmp = makemon( 0, player.x, player.y, NO_MM_FLAGS);
+      if (mtmp) {
+        ++moncount;
+        if ((canseemon(mtmp) && (M_AP_TYPE(mtmp) === M_AP_NOTHING || M_AP_TYPE(mtmp) === M_AP_MONSTER)) || sensemon(mtmp)) ++seecount;
+      }
+    } while (--creatcnt > 0);
+    if (seecount) {
+      if (seencount) {
+         seencount += seecount;
+      }
+      if (bag.dknown) { makeknown(BAG_OF_TRICKS); update_inventory(); }
+    }
+    else if (!tipping) {
+      pline1(!moncount ? nothing_happens : nothing_seems_to_happen);
+    }
+  }
+  return moncount;
+}
+
+// Autotranslated from makemon.c:2599
+export function summon_furies(limit, player) {
+  let i = 0;
+  while (mk_gen_ok(PM_ERINYS, G_GONE, 0) && (i < limit || !limit)) {
+    makemon( mons, player.x, player.y, MM_ADJACENTOK | MM_NOWAIT);
+    i++;
+  }
 }

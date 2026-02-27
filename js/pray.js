@@ -1196,7 +1196,7 @@ function fix_worst_trouble(trouble, player, map) {
 // ================================================================
 // cf. pray.c:610 -- god_zaps_you(resp_god, player, map)
 // ================================================================
-function god_zaps_you(resp_god, player, map) {
+export function god_zaps_you(resp_god, player, map) {
     if (player.uswallow) {
         pline(
           "Suddenly a bolt of lightning comes down at you from the heavens!");
@@ -1259,7 +1259,7 @@ function god_zaps_you(resp_god, player, map) {
 // ================================================================
 // cf. pray.c:694 -- fry_by_god(resp_god, via_disintegration, player)
 // ================================================================
-function fry_by_god(resp_god, via_disintegration, player) {
+export function fry_by_god(resp_god, via_disintegration, player) {
     You("%s!", !via_disintegration ? "fry to a crisp"
                                    : "disintegrate into a pile of dust");
     player.deathCause = "the wrath of " + align_gname(resp_god, player);
@@ -1347,7 +1347,7 @@ function angrygods(resp_god, player, map) {
 // ================================================================
 // cf. pray.c:788 -- at_your_feet(str, player)
 // ================================================================
-function at_your_feet(str, player) {
+export function at_your_feet(str, player) {
     if (player.blind) str = "Something";
     if (player.uswallow) {
         pline("%s drops into %s %s.", str,
@@ -1953,7 +1953,7 @@ export function offer_fake_amulet(otmp, highaltar, altaralign, player, map) {
 // ================================================================
 // cf. pray.c:1631 -- offer_different_alignment_altar(otmp, altaralign, player, map)
 // ================================================================
-function offer_different_alignment_altar(otmp, altaralign, player, map) {
+export function offer_different_alignment_altar(otmp, altaralign, player, map) {
     if (ugod_is_angry(player) || (altaralign === A_NONE && Inhell(player))) {
         const ualignbase_current = player.ualignbase_current || player.alignment;
         const ualignbase_original = player.ualignbase_original || player.alignment;
@@ -2080,7 +2080,7 @@ function sacrifice_your_race(otmp, highaltar, altaralign, player, map) {
 // ================================================================
 // cf. pray.c:1781 -- bestow_artifact(max_giftvalue, player, map)
 // ================================================================
-function bestow_artifact(max_giftvalue, player, map) {
+export function bestow_artifact(max_giftvalue, player, map) {
     const nartifacts = nartifact_exist();
     let do_bestow = (player.ulevel || 1) > 2 && (player.luck || 0) >= 0;
     if (do_bestow)

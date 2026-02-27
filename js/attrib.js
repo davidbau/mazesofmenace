@@ -901,7 +901,7 @@ function postadjabil(propid) {
 }
 
 // cf. attrib.c:786 — role_abil(r) [static]
-function role_abil(r) {
+export function role_abil(r) {
     const roleabils = {
         [PM_ARCHEOLOGIST]: arc_abil,
         [PM_BARBARIAN]: bar_abil,

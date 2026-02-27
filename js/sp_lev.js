@@ -2399,7 +2399,7 @@ const GETLOC_WET = 1 << 3;
 const GETLOC_HOT = 1 << 4;
 const GETLOC_SPACELOC = 1 << 5;
 const GETLOC_NO_LOC_WARN = 1 << 6;
-
+export 
 function get_unpacked_coord(coord) {
     if (coord && typeof coord === 'object'
         && Number.isFinite(coord.x) && Number.isFinite(coord.y)) {
@@ -2444,7 +2444,7 @@ function isOkLocation(x, y, humidity) {
     if ((humidity & GETLOC_HOT) !== 0 && IS_LAVA(typ)) return true;
     return false;
 }
-
+export 
 function is_ok_location(x, y, humidity) {
     return isOkLocation(x, y, humidity);
 }
@@ -4101,7 +4101,7 @@ export function object(name_or_opts, x, y) {
     }
     return obj;
 }
-
+export 
 function l_push_wid_hei_table(room) {
     if (!room) return { w: 0, h: 0 };
     const w = (Number.isFinite(room.hx) && Number.isFinite(room.lx))
@@ -4112,7 +4112,7 @@ function l_push_wid_hei_table(room) {
         : Number.isFinite(room.height) ? room.height : 0;
     return { w, h };
 }
-
+export 
 function l_push_mkroom_table(room) {
     if (!room) return { x1: 0, y1: 0, x2: 0, y2: 0, w: 0, h: 0 };
     const wh = l_push_wid_hei_table(room);
@@ -4180,12 +4180,12 @@ function trapNameToType(name) {
         default: return null;
     }
 }
-
+export 
 function get_traptype_byname(trapname) {
     const t = trapNameToType(trapname);
     return (t === null) ? NO_TRAP : t;
 }
-
+export 
 function get_trapname_bytype(ttyp) {
     const names = [
         ['arrow', ARROW_TRAP],
@@ -4232,7 +4232,7 @@ function get_table_intarray_entry(arr, entrynum) {
     }
     return Math.trunc(value);
 }
-
+export 
 function get_table_region(opts = {}, name, optional = false) {
     const region = opts?.[name];
     if (region === undefined || region === null) {
@@ -4396,7 +4396,7 @@ export function create_trap(type_or_opts, x, y) {
 export function trap(type_or_opts, x, y) {
     return create_trap(type_or_opts, x, y);
 }
-
+export 
 function light_region(x1, y1, x2, y2, litVal) {
     if (!levelState.map) return;
     const lx1 = Math.min(x1, x2);

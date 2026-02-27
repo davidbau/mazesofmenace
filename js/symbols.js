@@ -1098,3 +1098,145 @@ export function def_char_is_furniture(ch) {
     }
     return 0;
 }
+
+// Autotranslated from symbols.c:84
+export function init_symbols() {
+  init_ov_primary_symbols();
+  init_ov_rogue_symbols();
+  init_primary_symbols();
+  init_showsyms();
+  init_rogue_symbols();
+}
+
+// Autotranslated from symbols.c:94
+export function init_showsyms() {
+  let i;
+  for (i = 0; i < MAXPCHARS; i++) {
+    gs.showsyms = defsyms[i].sym;
+  }
+  for (i = 0; i < MAXOCLASSES; i++) {
+    gs.showsyms = def_oc_syms[i].sym;
+  }
+  for (i = 0; i < MAXMCLASSES; i++) {
+    gs.showsyms = def_monsyms[i].sym;
+  }
+  for (i = 0; i < WARNCOUNT; i++) {
+    gs.showsyms = def_warnsyms[i].sym;
+  }
+  for (i = 0; i < MAXOTHER; i++) {
+    gs.showsyms = get_othersym(i, PRIMARYSET);
+  }
+}
+
+// Autotranslated from symbols.c:166
+export function init_primary_symbols() {
+  let i;
+  for (i = 0; i < MAXPCHARS; i++) {
+    gp.primary_syms = defsyms[i].sym;
+  }
+  for (i = 0; i < MAXOCLASSES; i++) {
+    gp.primary_syms = def_oc_syms[i].sym;
+  }
+  for (i = 0; i < MAXMCLASSES; i++) {
+    gp.primary_syms = def_monsyms[i].sym;
+  }
+  for (i = 0; i < WARNCOUNT; i++) {
+    gp.primary_syms = def_warnsyms[i].sym;
+  }
+  for (i = 0; i < MAXOTHER; i++) {
+    gp.primary_syms = get_othersym(i, PRIMARYSET);
+  }
+  clear_symsetentry(PRIMARYSET, false);
+}
+
+// Autotranslated from symbols.c:186
+export function init_rogue_symbols() {
+  let i;
+  for (i = 0; i < MAXPCHARS; i++) {
+    gr.rogue_syms = defsyms[i].sym;
+  }
+  gr.rogue_syms = gr.rogue_syms = gr.rogue_syms = '+';
+  gr.rogue_syms = gr.rogue_syms = '%';
+  for (i = 0; i < MAXOCLASSES; i++) {
+    gr.rogue_syms = def_r_oc_syms;
+  }
+  for (i = 0; i < MAXMCLASSES; i++) {
+    gr.rogue_syms = def_monsyms[i].sym;
+  }
+  for (i = 0; i < WARNCOUNT; i++) {
+    gr.rogue_syms = def_warnsyms[i].sym;
+  }
+  for (i = 0; i < MAXOTHER; i++) {
+    gr.rogue_syms = get_othersym(i, ROGUESET);
+  }
+  clear_symsetentry(ROGUESET, false);
+  gs.symset[ROGUESET].nocolor = 1;
+}
+
+// Autotranslated from symbols.c:306
+export function update_primary_symset(symp, val) {
+  gp.primary_syms = val;
+}
+
+// Autotranslated from symbols.c:312
+export function update_rogue_symset(symp, val) {
+  gr.rogue_syms = val;
+}
+
+// Autotranslated from symbols.c:352
+export function symset_is_compatible(handling, wincap2) {
+  if (handling === H_UTF8 && ((wincap2 & WC2_utf8_bits) !== WC2_utf8_bits)) return false;
+  return true;
+}
+
+// Autotranslated from symbols.c:656
+export function set_symhandling(handling, which_set) {
+  let i = 0;
+  gs.symset[which_set].handling = H_UNK;
+  while (known_handling) {
+    if (!strcmpi(known_handling, handling)) { gs.symset[which_set].handling = i; return; }
+    i++;
+  }
+}
+
+// Autotranslated from symbols.c:692
+export function free_symsets() {
+  clear_symsetentry(PRIMARYSET, true);
+  clear_symsetentry(ROGUESET, true);
+}
+
+// Autotranslated from symbols.c:711
+export function savedsym_free() {
+  let tmp = saved_symbols, tmp2;
+  while (tmp) {
+    tmp2 = tmp.next;
+    (tmp.name, 0);
+    (tmp.val, 0);
+    (tmp, 0);
+    tmp = tmp2;
+  }
+}
+
+// Autotranslated from symbols.c:738
+export function savedsym_add(name, val, which_set) {
+  let tmp = null;
+  if ((tmp = savedsym_find(name, which_set)) !== 0) { (tmp.val, 0); tmp.val = dupstr(val); }
+  else {
+    tmp =  alloc(tmp.length);
+    tmp.name = dupstr(name);
+    tmp.val = dupstr(val);
+    tmp.which_set = which_set;
+    tmp.next = saved_symbols;
+    saved_symbols = tmp;
+  }
+}
+
+// Autotranslated from symbols.c:756
+export function savedsym_strbuf(sbuf) {
+  let tmp = saved_symbols, buf;
+  while (tmp) {
+    Sprintf(buf, "%sSYMBOLS=%s:%s\n", (tmp.which_set === ROGUESET) ? "ROGUE" : "", tmp.name, tmp.val);
+    strbuf_append(sbuf, buf);
+    tmp = tmp.next;
+  }
+}
