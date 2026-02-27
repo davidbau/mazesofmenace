@@ -141,6 +141,9 @@ Notes:
   C identifier differs only by case/underscore from an existing module symbol.
 - It also consumes curated non-mechanical alias rules from
   `tools/c_translator/rulesets/identifier_aliases.json`.
+- It now also rejects known semantic trap patterns even when syntax is valid:
+  pointer-style truthy loops, NUL-sentinel scalar writes, and whole-string
+  `highc/lowc` rewrites.
 - `refactor_queue.py` emits these as `rename_alias` tasks so we can prioritize
   canonical renames separately from true missing identifiers.
 

@@ -1524,3 +1524,12 @@ hard-won wisdom:
   - keep broad autostitch on modules with scalar/control logic (`windows`, small status helpers),
   - require stricter semantic gating for string/pointer-mutation families (`hacklib`, name-formatting surfaces) until translator rules model immutable JS strings explicitly,
   - when in doubt, prefer conservative module filtering and revert suspect subsets immediately.
+
+### Translator safety lint now blocks pointer-string traps pre-stitch (2026-02-27)
+
+- Added semantic hazard checks to `runtime_candidate_safety.py` so syntax-valid but JS-invalid string-pointer rewrites are rejected before stitching.
+- New blocked patterns:
+  - `NUL_SENTINEL_ASSIGN` (scalar assignment of `'\0'` / `'\x00'`),
+  - `POINTER_TRUTHY_FOR` (C-style pointer scan loops like `for (p=s; p; p++)`),
+  - `WHOLE_STRING_HIGHC_LOWC` (whole-string `highc/lowc` rewrites).
+- On the latest full candidate set (`/tmp/translator-runtime-stitch-candidates-v4.json`), safe candidates decreased from `470` to `452` and dry-run stitchable count dropped from `174` to `129`, preventing known bad inserts from entering runtime patches.

@@ -314,6 +314,27 @@ def candidate_syntax_ok(emitted_js):
             pass
 
 
+def candidate_semantic_hazards(emitted_js):
+    """Detect known C->JS semantic traps that remain syntactically valid."""
+    hazards = []
+    # C pointer-terminator writes lowered into scalar assignment are unsafe in JS.
+    if re.search(r"\b[A-Za-z_]\w*\s*=\s*(['\"])(?:\\x00|\\0)\1", emitted_js):
+        hazards.append("NUL_SENTINEL_ASSIGN")
+    # Typical C pointer scan loop translated literally: for (p = s; p; p++).
+    if re.search(
+        r"for\s*\(\s*([A-Za-z_]\w*)\s*=\s*[A-Za-z_]\w*\s*;\s*\1\s*;\s*\1\s*\+\+\s*\)",
+        emitted_js,
+    ):
+        hazards.append("POINTER_TRUTHY_FOR")
+    # Whole-string capitalization through char helper indicates pointer/string mismatch.
+    if re.search(
+        r"\b([A-Za-z_]\w{1,})\s*=\s*(?:highc|lowc)\(\s*\1\s*\)",
+        emitted_js,
+    ):
+        hazards.append("WHOLE_STRING_HIGHC_LOWC")
+    return hazards
+
+
 def main():
     args = parse_args()
     repo = Path(args.repo_root)
@@ -349,18 +370,20 @@ def main():
             js_module,
             alias_map,
         )
+        semantic_hazards = candidate_semantic_hazards(emitted_js)
         syntax_ok, syntax_error = candidate_syntax_ok(emitted_js)
         out_rec = {
             **rec,
             "unknown_calls": unknown,
             "unknown_identifiers": unknown_idents,
             "alias_candidates": alias_candidates,
+            "semantic_hazards": semantic_hazards,
             "syntax_ok": syntax_ok,
         }
         if not syntax_ok:
             out_rec["syntax_error"] = syntax_error
             unsafe.append(out_rec)
-        elif unknown or unknown_idents:
+        elif unknown or unknown_idents or semantic_hazards:
             unsafe.append(out_rec)
         else:
             safe.append(out_rec)
