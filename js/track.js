@@ -43,6 +43,7 @@ export function gettrack(x, y) {
 }
 
 // cf. track.c:59 — return true if x,y has hero tracks on it
+// TRANSLATOR: AUTO (track.c:58)
 export function hastrack(x, y) {
     for (let i = 0; i < _utcnt; i++) {
         if (_utrack[i].x === x && _utrack[i].y === y)
