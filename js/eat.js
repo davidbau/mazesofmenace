@@ -128,17 +128,16 @@ function is_edible(obj) {
 }
 
 // cf. eat.c food_xname() — food-specific naming for messages
-function food_xname(food, the_pfx) {
-    // Simplified: use doname for corpses, object name otherwise
-    if (food.otyp === CORPSE) {
-        const cnum = food.corpsenm;
-        if (cnum >= 0 && cnum < mons.length) {
-            const name = mons[cnum].name;
-            return the_pfx ? `the ${name} corpse` : `${name} corpse`;
-        }
-    }
-    const name = food.name || (objectData[food.otyp] ? objectData[food.otyp].name : 'food');
-    return the_pfx ? `the ${name}` : name;
+// TRANSLATOR: AUTO (eat.c:216)
+export function food_xname(food, the_pfx) {
+  let result;
+  if (food.otyp === CORPSE) {
+    result = corpse_xname(food,  0, CXN_SINGULAR | (the_pfx ? CXN_PFX_THE : 0));
+    if (type_is_pname( mons[food.corpsenm])) the_pfx = false;
+  }
+  else { result = singular(food, xname); }
+  if (the_pfx) result = the(result);
+  return result;
 }
 
 // cf. eat.c foodword() — word for eating action
@@ -158,9 +157,12 @@ function obj_nutrition(otmp) {
 }
 
 // cf. eat.c init_uhunger() — initialize hunger state at game start
-function init_uhunger(player) {
-    player.hunger = 900;
-    player.nutrition = 900;
+// TRANSLATOR: AUTO (eat.c:125)
+export function init_uhunger(game, player) {
+  game.disp.botl = (player.uhs !== NOT_HUNGRY || ATEMP(A_STR) < 0);
+  player.uhunger = 900;
+  player.uhs = NOT_HUNGRY;
+  if (ATEMP(A_STR) < 0) { ATEMP(A_STR) = 0; encumber_msg(); }
 }
 
 
@@ -234,12 +236,13 @@ function newuhs(player, incr) {
 }
 
 // cf. eat.c unfaint() — recover from fainting
-function unfaint(player) {
-    Hear_again();
-    if ((player.hungerState || NOT_HUNGRY) > FAINTING) {
-        player.hungerState = FAINTING;
-    }
-    return 0;
+// TRANSLATOR: AUTO (eat.c:3330)
+export function unfaint(game, player) {
+  Hear_again();
+  if (player.uhs > FAINTING) player.uhs = FAINTING;
+  stop_occupation();
+  game.disp.botl = true;
+  return 0;
 }
 
 // cf. eat.c is_fainted() — check if hero is fainted from hunger
@@ -253,19 +256,33 @@ function reset_faint(player) {
 }
 
 // cf. eat.c choke() — choking on food
-function choke(player, food) {
-    if ((player.hungerState || NOT_HUNGRY) !== SATIATED) {
-        if (!food) return;
+// TRANSLATOR: AUTO (eat.c:244)
+export async function choke(food, player) {
+  if (player.uhs !== SATIATED) {
+    if (!food || food.otyp !== AMULET_OF_STRANGULATION) return;
+  }
+  else if (Role_if(PM_KNIGHT) && player.ualign.type === A_LAWFUL) { adjalign(-1); You_feel("like a glutton!"); }
+  exercise(A_CON, false);
+  if (Breathless || Hunger || (!Strangled && !rn2(20))) {
+    if (food && food.otyp === AMULET_OF_STRANGULATION) { You("choke, but recover your composure."); return; }
+    You("stuff yourself and then vomit voluminously.");
+    await morehungry(Hunger ? (player.uhunger - 60) : 1000);
+    vomit();
+  }
+  else {
+    svk.killer.format = KILLED_BY_AN;
+    if (food) {
+      You("choke over your %s.", foodword(food));
+      if (food.oclass === COIN_CLASS) { Strcpy(svk.killer.name, "very rich meal"); }
+      else {
+        svk.killer.format = KILLED_BY;
+        Strcpy(svk.killer.name, killer_xname(food));
+      }
     }
-    exercise(player, A_CON, false);
-    if (!rn2(20)) {
-        You('stuff yourself and then vomit voluminously.');
-        morehungry(player, 1000);
-        vomit(player);
-    } else {
-        You('choke over your food.');
-        // In C this can be fatal; here we just log a message
-    }
+    else { You("choke over it."); Strcpy(svk.killer.name, "quick snack"); }
+    You("die...");
+    done(CHOKING);
+  }
 }
 
 
@@ -295,8 +312,10 @@ function do_reset_eat(game) {
 }
 
 // cf. eat.c food_disappears() — check if food vanishes on level change
-function food_disappears(obj) {
-    // stub — in JS, object lifecycle is managed differently
+// TRANSLATOR: AUTO (eat.c:395)
+export function food_disappears(obj, game) {
+  if (obj === game.game.svc.context.victual.piece) game.game.svc.context.victual = zero_victual;
+  if (obj.timed) obj_stop_timers(obj);
 }
 
 // cf. eat.c food_substitution() — substitute food type
@@ -510,9 +529,16 @@ function maybe_cannibal(player, pm, allowmsg) {
 }
 
 // cf. eat.c fix_petrification() — cure petrification by eating
-function fix_petrification(player) {
-    You_feel('limber!');
-    // Would call make_stoned(0, ...)
+// TRANSLATOR: AUTO (eat.c:866)
+export function fix_petrification() {
+  let buf;
+  if (Hallucination) {
+    Sprintf(buf, "What a pity--you just ruined a future piece of %sart!", ACURR(A_CHA) > 15 ? "fine " : "");
+  }
+  else {
+    Strcpy(buf, "You feel limber!");
+  }
+  make_stoned(0, buf, 0,  0);
 }
 
 // cf. eat.c cprefx() — corpse prefix effects (before eating)
@@ -658,22 +684,31 @@ function cpostfx(player, pm, display) {
 // ============================================================
 
 // cf. eat.c eating_conducts() — track dietary conducts
-function eating_conducts(player, pd) {
-    // Simplified: just track the conduct flags
-    if (!player.conduct) player.conduct = {};
-    player.conduct.food = (player.conduct.food || 0) + 1;
-    if (!vegan(pd)) {
-        player.conduct.unvegan = (player.conduct.unvegan || 0) + 1;
+// TRANSLATOR: AUTO (eat.c:575)
+export function eating_conducts(pd, player) {
+  let ll_conduct = 0;
+  if (!player.uconduct.food++) {
+    livelog_printf(LL_CONDUCT, "ate for the first time - %s", pd.pmnames[NEUTRAL]);
+    ll_conduct++;
+  }
+  if (!vegan(pd)) {
+    if (!player.uconduct.unvegan++ && !ll_conduct) {
+      livelog_printf(LL_CONDUCT, "consumed animal products (%s) for the first time", pd.pmnames[NEUTRAL]);
+      ll_conduct++;
     }
-    if (!vegetarian(pd)) {
-        violated_vegetarian(player);
-    }
+  }
+  if (!vegetarian(pd)) {
+    if (!player.uconduct.unvegetarian && !ll_conduct) livelog_printf(LL_CONDUCT, "tasted meat (%s) for the first time", pd.pmnames[NEUTRAL]);
+    violated_vegetarian();
+  }
 }
 
 // cf. eat.c violated_vegetarian() — check vegetarian conduct violation
-function violated_vegetarian(player) {
-    if (!player.conduct) player.conduct = {};
-    player.conduct.unvegetarian = (player.conduct.unvegetarian || 0) + 1;
+// TRANSLATOR: AUTO (eat.c:1375)
+export function violated_vegetarian(player) {
+  player.uconduct.unvegetarian++;
+  if (Role_if(PM_MONK)) { You_feel("guilty."); adjalign(-1); }
+  return;
 }
 
 
@@ -682,11 +717,10 @@ function violated_vegetarian(player) {
 // ============================================================
 
 // cf. eat.c Hear_again() — restore hearing after deafening food
-function Hear_again() {
-    if (!rn2(2)) {
-        // Would make_deaf(0)
-    }
-    return 0;
+// TRANSLATOR: AUTO (eat.c:1795)
+export function Hear_again(game) {
+  if (!rn2(2)) { make_deaf(0, false); game.disp.botl = true; }
+  return 0;
 }
 
 // cf. eat.c rottenfood() — effects of eating rotten food
@@ -752,22 +786,9 @@ function eatcorpse(player, otmp) {
 // ============================================================
 
 // cf. eat.c garlic_breath() — scare nearby olfaction monsters
-function garlic_breath(player, map) {
-    if (!map) return;
-    for (const mon of map.monsters) {
-        if (mon.dead) continue;
-        const sym = mon.type?.mlet ?? (mons[mon.mndx]?.mlet);
-        // cf. mondata.c olfaction() — these monster types lack olfaction
-        if (sym === S_GOLEM || sym === S_EYE || sym === S_JELLY
-            || sym === S_PUDDING || sym === S_BLOB || sym === S_VORTEX
-            || sym === S_ELEMENTAL || sym === S_FUNGUS || sym === S_LIGHT) {
-            continue;
-        }
-        const dx = mon.mx - player.x, dy = mon.my - player.y;
-        if (dx * dx + dy * dy < 7) {
-            applyMonflee(mon, 0, false);
-        }
-    }
+// TRANSLATOR: AUTO (eat.c:2079)
+export function garlic_breath(mtmp) {
+  if (olfaction(mtmp.data) && distu(mtmp.mx, mtmp.my) < 7) monflee(mtmp, 0, false, false);
 }
 
 // cf. eat.c fprefx() — food prefix effects (non-corpse)
@@ -863,31 +884,43 @@ function fpostfx(player, otmp) {
 // ============================================================
 
 // cf. eat.c bounded_increase() — bounded stat increase helper
-function bounded_increase(old, inc, typ) {
-    const absold = Math.abs(old), absinc = Math.abs(inc);
-    const sgnold = Math.sign(old), sgninc = Math.sign(inc);
-    let actualInc = inc;
-
-    if (absinc === 0 || sgnold !== sgninc || absold + absinc < 10) {
-        // use inc as-is
-    } else if (absold + absinc < 20) {
-        let ai = rnd(absinc);
-        if (absold + ai < 10) ai = 10 - absold;
-        actualInc = sgninc * ai;
-    } else if (absold + absinc < 40) {
-        let ai = rn2(absinc) ? 1 : 0;
-        if (absold + ai < 20) ai = rnd(20 - absold);
-        actualInc = sgninc * ai;
-    } else {
-        actualInc = 0;
-    }
-    return old + actualInc;
+// TRANSLATOR: AUTO (eat.c:2215)
+export function bounded_increase(old, inc, typ) {
+  let absold, absinc, sgnold, sgninc;
+  if (uright && uright.otyp === typ && typ !== RIN_PROTECTION) {
+    old -= uright.spe;
+  }
+  if (uleft && uleft.otyp === typ && typ !== RIN_PROTECTION) {
+    old -= uleft.spe;
+  }
+  absold = Math.abs(old), absinc = Math.abs(inc);
+  sgnold = sgn(old), sgninc = sgn(inc);
+  if (absinc === 0 || sgnold !== sgninc || absold + absinc < 10) {
+  }
+  else if (absold + absinc < 20) {
+    absinc = rnd(absinc);
+    if (absold + absinc < 10) absinc = 10 - absold;
+    inc = sgninc * absinc;
+  }
+  else if (absold + absinc < 40) {
+    absinc = rn2(absinc) ? 1 : 0;
+    if (absold + absinc < 20) absinc = rnd(20 - absold);
+    inc = sgninc * absinc;
+  }
+  else { inc = 0; }
+  if (uright && uright.otyp === typ && typ !== RIN_PROTECTION) {
+    old += uright.spe;
+  }
+  if (uleft && uleft.otyp === typ && typ !== RIN_PROTECTION) {
+    old += uleft.spe;
+  }
+  return old + inc;
 }
 
 // cf. eat.c accessory_has_effect() — check if accessory eating has effect
-function accessory_has_effect(otmp) {
-    pline(`Magic spreads through your body as you digest the ${
-        otmp.oclass === 3 /* RING_CLASS */ ? 'ring' : 'amulet'}.`);
+// TRANSLATOR: AUTO (eat.c:2252)
+export function accessory_has_effect(otmp) {
+  pline("Magic spreads through your body as you digest the %s.", (otmp.oclass === RING_CLASS) ? "ring" : "amulet");
 }
 
 // cf. eat.c eataccessory() — eat a ring or amulet
@@ -908,15 +941,17 @@ function eatspecial(player, otmp) {
 // ============================================================
 
 // cf. eat.c tin_variety_txt() — text for tin variety
-function tin_variety_txt(s) {
-    if (!s) return { offset: 0, variety: -1 };
-    for (let k = 0; k < TTSZ - 1; k++) {
-        const txt = tintxts[k].txt;
-        if (s.startsWith(txt + ' ')) {
-            return { offset: txt.length + 1, variety: k };
-        }
+// TRANSLATOR: AUTO (eat.c:1404)
+export function tin_variety_txt(s, tinvariety) {
+  let k, l;
+  if (s && tinvariety) {
+     tinvariety = -1;
+    for (k = 0; k < TTSZ - 1; ++k) {
+      l =  strlen(tintxts[k].txt);
+      if (!strncmpi(s, tintxts[k].txt, l) && ( strlen(s) > l) && s[l] === ' ') { tinvariety = k; return (l + 1); }
     }
-    return { offset: 0, variety: -1 };
+  }
+  return 0;
 }
 
 // cf. eat.c tin_details() — determine tin contents and variety
@@ -926,55 +961,65 @@ function tin_details(obj, mnum, buf) {
 }
 
 // cf. eat.c set_tin_variety() — set variety on a tin object
-function set_tin_variety(obj, forcetype) {
-    const mnum = obj.corpsenm;
-    let r;
-    if (forcetype === SPINACH_TIN) {
-        obj.corpsenm = -1;
-        obj.spe = 1;
-        return;
+// TRANSLATOR: AUTO (eat.c:1460)
+export function set_tin_variety(obj, forcetype) {
+  let r, mnum = obj.corpsenm;
+  if (forcetype === SPINACH_TIN || (forcetype === HEALTHY_TIN && (mnum === NON_PM   || !vegetarian( mons[mnum])))) {
+    obj.corpsenm = NON_PM;
+    obj.spe = 1;
+    return;
+  }
+  else if (forcetype === HEALTHY_TIN) {
+    r = tin_variety(obj, false);
+    if (r < 0 || r >= TTSZ) r = ROTTEN_TIN;
+    while ((r === ROTTEN_TIN && !obj.cursed) || !tintxts[r].fodder) {
+      r = rn2(TTSZ - 1);
     }
-    if (forcetype >= 0 && forcetype < TTSZ - 1) {
-        r = forcetype;
-    } else {
-        r = rn2(TTSZ - 1);
-        if (r === ROTTEN_TIN && mnum >= 0 && nonrotting_corpse(mnum))
-            r = HOMEMADE_TIN;
-    }
-    obj.spe = -(r + 1);
+  }
+  else if (forcetype >= 0 && forcetype < TTSZ - 1) { r = forcetype; }
+  else {
+    r = rn2(TTSZ - 1);
+    if (r === ROTTEN_TIN && (ismnum(mnum) && nonrotting_corpse(mnum))) r = HOMEMADE_TIN;
+  }
+  obj.spe = -(r + 1);
 }
 
 // cf. eat.c tin_variety() — get tin variety
-function tin_variety(obj, displ) {
-    let r;
-    const mnum = obj.corpsenm;
-    if (obj.spe === 1) {
-        r = SPINACH_TIN;
-    } else if (obj.cursed) {
-        r = ROTTEN_TIN;
-    } else if (obj.spe < 0) {
-        r = -(obj.spe) - 1;
-    } else {
-        r = rn2(TTSZ - 1);
-    }
-    if (!displ && r === HOMEMADE_TIN && !obj.blessed && !rn2(7))
-        r = ROTTEN_TIN;
-    if (r === ROTTEN_TIN && mnum >= 0 && nonrotting_corpse(mnum))
-        r = HOMEMADE_TIN;
-    return r;
+// TRANSLATOR: AUTO (eat.c:1488)
+export function tin_variety(obj, displ) {
+  let r, mnum = obj.corpsenm;
+  if (obj.spe === 1) { r = SPINACH_TIN; }
+  else if (obj.cursed) { r = ROTTEN_TIN; }
+  else if (obj.spe < 0) { r = -(obj.spe); --r; }
+  else { r = rn2(TTSZ - 1); }
+  if (!displ && r === HOMEMADE_TIN && !obj.blessed && !rn2(7)) r = ROTTEN_TIN;
+  if (r === ROTTEN_TIN && (ismnum(mnum) && nonrotting_corpse(mnum))) r = HOMEMADE_TIN;
+  return r;
 }
 
 // cf. eat.c costly_tin() — handle cost of tin from shop
-function costly_tin(tin) {
-    // Stub: shop cost handling
-    return tin;
+// TRANSLATOR: AUTO (eat.c:1388)
+export function costly_tin(alter_type, game) {
+  let tin = game.game.svc.context.tin.tin;
+  if (carried(tin) ? tin.unpaid : (costly_spot(tin.ox, tin.oy) && !tin.no_charge)) {
+    if (tin.quan > 1) {
+      tin = game.game.svc.context.tin.tin = splitobj(tin, 1);
+      game.game.svc.context.tin.o_id = tin.o_id;
+    }
+    costly_alteration(tin, alter_type);
+  }
+  return tin;
 }
 
 // cf. eat.c use_up_tin() — consume a tin after opening
-function use_up_tin(player, tin) {
-    if (tin) {
-        player.removeFromInventory(tin);
-    }
+// TRANSLATOR: AUTO (eat.c:1515)
+export function use_up_tin(tin, game) {
+  if (carried(tin)) useup(tin);
+  else {
+    useupf(tin, 1);
+  }
+  game.game.svc.context.tin.tin =  null;
+  game.game.svc.context.tin.o_id = 0;
 }
 
 // cf. eat.c consume_tin() — eat the contents of an opened tin
@@ -1001,10 +1046,53 @@ function edibility_prompts(player, otmp) {
 }
 
 // cf. eat.c doeat_nonfood() — attempt to eat non-food item
-function doeat_nonfood(player, otmp) {
-    // Stub: would handle eating non-food items
-    pline('You cannot eat that!');
-    return 0;
+// TRANSLATOR: AUTO (eat.c:2728)
+export async function doeat_nonfood(otmp, game, player) {
+  let basenutrit, ll_conduct = 0, nodelicious = false, material;
+  game.game.svc.context.victual.reqtime = 1;
+  game.game.svc.context.victual.piece = otmp;
+  game.game.svc.context.victual.o_id = otmp.o_id;
+  game.game.svc.context.victual.usedtime = 0;
+  game.game.svc.context.victual.canchoke = (player.uhs === SATIATED);
+  if (otmp.oclass === COIN_CLASS) basenutrit = ((otmp.quan > 200000) ? 2000 : Math.trunc(otmp.quan / 100));
+  else if (otmp.oclass === BALL_CLASS || otmp.oclass === CHAIN_CLASS) basenutrit = weight(otmp);
+  else {
+    basenutrit = objects[otmp.otyp].oc_nutrition;
+  }
+  if (otmp.otyp === SCR_MAIL) { basenutrit = 0; nodelicious = true; }
+  game.game.svc.context.victual.nmod = basenutrit;
+  game.game.svc.context.victual.eating = 1;
+  if (!player.uconduct.food++) {
+    ll_conduct++;
+    livelog_printf(LL_CONDUCT, "ate for the first time (%s)", food_xname(otmp, false));
+  }
+  material = objects[otmp.otyp].oc_material;
+  if (material === LEATHER || material === BONE || material === DRAGON_HIDE || material === WAX) {
+    if (!player.uconduct.unvegan++ && !ll_conduct) {
+      livelog_printf(LL_CONDUCT, "consumed animal products for the first time, by eating %s", an(food_xname(otmp, false)));
+      ll_conduct++;
+    }
+    if (material !== WAX) {
+      if (!player.uconduct.unvegetarian && !ll_conduct) livelog_printf(LL_CONDUCT, "tasted meat by-products for the first time, by eating %s", an(food_xname(otmp, false)));
+      violated_vegetarian();
+    }
+  }
+  if (otmp.cursed) { rottenfood(otmp); nodelicious = true; }
+  else if (objects[otmp.otyp].oc_material === PAPER) nodelicious = true;
+  if (otmp.oclass === WEAPON_CLASS && otmp.opoisoned) {
+    pline("Ecch - that must have been poisonous!");
+    if (!Poison_resistance) {
+      poison_strdmg(rnd(4), rnd(15), xname(otmp), KILLED_BY_AN);
+    }
+    else {
+      You("seem unaffected by the poison.");
+    }
+  }
+  else if (!nodelicious) {
+    pline("%s%s is delicious!", (obj_is_pname(otmp) && otmp.oartifact < ART_ORB_OF_DETECTION) ? "" : "This ", (otmp.oclass === COIN_CLASS) ? foodword(otmp) : singular(otmp, xname));
+  }
+  await eatspecial();
+  return ECMD_TIME;
 }
 
 // cf. eat.c eating_dangerous_corpse() — warn about dangerous corpses
@@ -1019,27 +1107,38 @@ function eating_dangerous_corpse(res) {
 // ============================================================
 
 // cf. eat.c eat_ok() — getobj callback for edible items
-function eat_ok(obj) {
-    if (!obj) return false;
-    return is_edible(obj);
+// TRANSLATOR: AUTO (eat.c:3511)
+export function eat_ok(obj) {
+  if (!obj) return getobj_else ? GETOBJ_EXCLUDE_NONINVENT : GETOBJ_EXCLUDE;
+  if (is_edible(obj)) return GETOBJ_SUGGEST;
+  if (obj.oclass === COIN_CLASS) return GETOBJ_EXCLUDE;
+  return GETOBJ_EXCLUDE_SELECTABLE;
 }
 
 // cf. eat.c offer_ok() — getobj callback for sacrifice items
-function offer_ok(obj) {
-    if (!obj) return false;
-    return obj.otyp === CORPSE;
+// TRANSLATOR: AUTO (eat.c:3533)
+export function offer_ok(obj, map) {
+  if (!obj) return getobj_else ? GETOBJ_EXCLUDE_NONINVENT : GETOBJ_EXCLUDE;
+  if (obj.oclass !== FOOD_CLASS && obj.oclass !== AMULET_CLASS) return GETOBJ_EXCLUDE;
+  if (obj.otyp !== CORPSE && obj.otyp !== AMULET_OF_YENDOR && obj.otyp !== FAKE_AMULET_OF_YENDOR) return GETOBJ_EXCLUDE_SELECTABLE;
+  if (Is_astralevel(map.uz) ^ (obj.oclass === AMULET_CLASS)) return GETOBJ_DOWNPLAY;
+  return GETOBJ_SUGGEST;
 }
 
 // cf. eat.c tin_ok() — getobj callback for tins
-function tin_ok(obj) {
-    if (!obj) return false;
-    return obj.otyp === TIN;
+// TRANSLATOR: AUTO (eat.c:3555)
+export function tin_ok(obj) {
+  if (!obj) return getobj_else ? GETOBJ_EXCLUDE_NONINVENT : GETOBJ_EXCLUDE;
+  if (obj.oclass !== FOOD_CLASS) return GETOBJ_EXCLUDE;
+  if (obj.otyp !== CORPSE || !tinnable(obj)) return GETOBJ_EXCLUDE_SELECTABLE;
+  return GETOBJ_SUGGEST;
 }
 
 // cf. eat.c tinopen_ok() — getobj callback for tin opener
-function tinopen_ok(obj) {
-    if (!obj) return false;
-    return obj.otyp === TIN;
+// TRANSLATOR: AUTO (eat.c:3082)
+export function tinopen_ok(obj) {
+  if (obj && obj.otyp === TIN) return GETOBJ_SUGGEST;
+  return GETOBJ_EXCLUDE;
 }
 
 // cf. eat.c floorfood() — check/prompt for food on floor
@@ -1060,29 +1159,45 @@ function vomit(player) {
 }
 
 // cf. eat.c eaten_stat() — calculate how much of food has been eaten
-function eaten_stat(base, obj) {
-    const full_amount = obj_nutrition(obj);
-    let uneaten_amt = obj.oeaten || 0;
-    if (uneaten_amt > full_amount) uneaten_amt = full_amount;
-    if (full_amount === 0) return 0;
-    const result = Math.floor(base * uneaten_amt / full_amount);
-    return result < 1 ? 1 : result;
+// TRANSLATOR: AUTO (eat.c:3782)
+export function eaten_stat(base, obj) {
+  let uneaten_amt, full_amount;
+  full_amount =  obj_nutrition(obj);
+  uneaten_amt =  obj.oeaten;
+  if (uneaten_amt > full_amount) {
+    impossible( "partly eaten food (%ld) more nutritious than untouched food (%ld)", uneaten_amt, full_amount);
+    uneaten_amt = full_amount;
+  }
+  base =  (full_amount ?  base * uneaten_amt / full_amount : 0);
+  return (base < 1) ? 1 : base;
 }
 
 // cf. eat.c consume_oeaten() — reduce oeaten field
-function consume_oeaten(obj, amt) {
-    if (!obj_nutrition(obj)) return;
-    if (amt > 0) {
-        obj.oeaten >>= amt;
-    } else {
-        if (obj.oeaten > -amt)
-            obj.oeaten += amt;
-        else
-            obj.oeaten = 0;
+// TRANSLATOR: AUTO (eat.c:3802)
+export async function consume_oeaten(obj, amt, game) {
+  if (!obj_nutrition(obj)) {
+    let itembuf, otyp = obj.otyp;
+    if (otyp === CORPSE || otyp === EGG || otyp === TIN) {
+      Strcpy(itembuf, (otyp === CORPSE) ? "corpse" : (otyp === EGG) ? "egg" : (otyp === TIN) ? "tin" : "other?");
+      Sprintf(eos(itembuf), " [%d]", obj.corpsenm);
     }
-    if (obj.oeaten === 0) {
-        obj.oeaten = 1;
+    else { Sprintf(itembuf, "%d", otyp); }
+    impossible( "oeaten: attempting to set 0 nutrition food (%s) partially eaten", itembuf);
+    return;
+  }
+  if (amt > 0) { obj.oeaten >>= amt; }
+  else {
+    if ( obj.oeaten > -amt) {
+      obj.oeaten += amt;
     }
+    else {
+      obj.oeaten = 0;
+    }
+  }
+  if (obj.oeaten === 0) {
+    if (obj === game.game.svc.context.victual.piece) game.game.svc.context.victual.reqtime = game.game.svc.context.victual.usedtime;
+    obj.oeaten = 1;
+  }
 }
 
 // cf. eat.c maybe_finished_meal() — check if meal is done
@@ -1488,17 +1603,66 @@ async function handleEat(player, display, game) {
 // ============================================================
 
 export { handleEat, // Hunger system
-    hu_stat, SATIATED, NOT_HUNGRY, HUNGRY, WEAK, FAINTING, FAINTED, STARVED, init_uhunger, gethungry, lesshungry, newuhs, unfaint, reset_faint, // Food state
-    is_edible, food_xname, foodword, obj_nutrition, touchfood, reset_eat, do_reset_eat, food_disappears, food_substitution, recalc_wt, adj_victual_nutrition, // Choking
-    choke, // Intrinsics
+    hu_stat, SATIATED, NOT_HUNGRY, HUNGRY, WEAK, FAINTING, FAINTED, STARVED, gethungry, lesshungry, newuhs, reset_faint, // Food state
+    is_edible, foodword, obj_nutrition, touchfood, reset_eat, do_reset_eat, food_substitution, recalc_wt, adj_victual_nutrition, // Intrinsics
     intrinsic_possible, should_givit, givit, corpse_intrinsic, // Corpse effects
-    maybe_cannibal, fix_petrification, cprefx, cpostfx, // Conducts
-    eating_conducts, violated_vegetarian, // Rotten/corpse
-    Hear_again, rottenfood, eatcorpse, // Food effects
-    garlic_breath, fprefx, fpostfx, // Accessories
-    bounded_increase, accessory_has_effect, eataccessory, eatspecial, // Tins
-    tin_variety_txt, tin_details, set_tin_variety, tin_variety, costly_tin, use_up_tin, consume_tin, start_tin, // Prompts
-    edibility_prompts, doeat_nonfood, eating_dangerous_corpse, // Callbacks
-    eat_ok, offer_ok, tin_ok, tinopen_ok, floorfood, // Side effects
-    vomit, eaten_stat, consume_oeaten, maybe_finished_meal, cant_finish_meal, Popeye, Finish_digestion, eat_brains, // Constants
+    maybe_cannibal, cprefx, cpostfx, rottenfood, eatcorpse, fprefx, fpostfx, eataccessory, eatspecial, tin_details, consume_tin, start_tin, // Prompts
+    edibility_prompts, eating_dangerous_corpse, floorfood, // Side effects
+    vomit, maybe_finished_meal, cant_finish_meal, Popeye, Finish_digestion, eat_brains, // Constants
     nonrotting_corpse, nonrotting_food, CANNIBAL_ALLOWED, canchoke, SPINACH_TIN, ROTTEN_TIN, HOMEMADE_TIN, tintxts, TTSZ };
+
+// TRANSLATOR: AUTO (eat.c:518)
+export async function eatfood(game, player) {
+  let food = game.game.svc.context.victual.piece;
+  if (food && !carried(food) && !obj_here(food, player.x, player.y)) food = 0;
+  if (!food) { await do_reset_eat(); return 0; }
+  if (!game.game.svc.context.victual.eating) return 0;
+  if (++game.game.svc.context.victual.usedtime <= game.game.svc.context.victual.reqtime) { if (bite()) return 0; return 1; }
+  else { await done_eating(true); return 0; }
+}
+
+// TRANSLATOR: AUTO (eat.c:1697)
+export async function opentin(game, player) {
+  if (!carried(game.game.svc.context.tin.tin) && (!obj_here(game.game.svc.context.tin.tin, player.x, player.y) || !can_reach_floor(true))) return 0;
+  if (game.game.svc.context.tin.usedtime++ >= 50) { You("give up your attempt to open the tin."); return 0; }
+  if (game.game.svc.context.tin.usedtime < game.game.svc.context.tin.reqtime) return 1;
+  await consume_tin("You succeed in opening the tin.");
+  return 0;
+}
+
+// TRANSLATOR: AUTO (eat.c:3092)
+export async function use_tin_opener(obj) {
+  let otmp, res = ECMD_OK;
+  if (!carrying(TIN)) { You("have no tin to open."); return ECMD_OK; }
+  if (obj !== uwep) {
+    if (obj.cursed && obj.bknown) {
+      let qbuf;
+      if (ynq(safe_qbuf(qbuf, "Really wield ", "?", obj, doname, thesimpleoname, "that")) !== 'y') return ECMD_OK;
+    }
+    if (!wield_tool(obj, "use")) return ECMD_OK;
+    res = ECMD_TIME;
+  }
+  otmp = getobj("open", tinopen_ok, GETOBJ_NOFLAGS);
+  if (!otmp) return (res|ECMD_CANCEL);
+  await start_tin(otmp);
+  return ECMD_TIME;
+}
+
+// TRANSLATOR: AUTO (eat.c:3127)
+export async function bite(game, player) {
+  sa_victual( game.game.svc.context.victual);
+  if (game.game.svc.context.victual.canchoke && player.uhunger >= 2000) { choke(game.game.svc.context.victual.piece); return 1; }
+  if (game.game.svc.context.victual.doreset) { await do_reset_eat(); return 0; }
+  gf.force_save_hs = true;
+  if (game.game.svc.context.victual.nmod < 0) {
+    lesshungry(adj_victual_nutrition( ));
+    await consume_oeaten(game.game.svc.context.victual.piece, game.game.svc.context.victual.nmod);
+  }
+  else if (game.game.svc.context.victual.nmod > 0 && (game.game.svc.context.victual.usedtime % game.game.svc.context.victual.nmod)) {
+    lesshungry(1);
+    await consume_oeaten(game.game.svc.context.victual.piece, -1);
+  }
+  gf.force_save_hs = false;
+  recalc_wt();
+  return 0;
+}

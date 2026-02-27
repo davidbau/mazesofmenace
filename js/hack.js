@@ -2649,7 +2649,7 @@ export function losehp(n, knam, k_format, player, display, game) {
 
 // C ref: hack.c monster_nearby() — is a threatening monster adjacent?
 // Re-export from monutil.js for convenience.
-export { monsterNearby as monster_nearby };
+
 
 // C ref: hack.c notice_mon() — accessibility notice for a monster
 export function notice_mon(_mtmp) {
@@ -2881,4 +2881,18 @@ export function drag_ball(_x, _y, _player, _map) {
     // Ball & chain (punishment) system not yet fully implemented.
     // Always allow movement.
     return true;
+}
+
+// TRANSLATOR: AUTO (hack.c:3990)
+export function monster_nearby(player) {
+  let x, y, mtmp;
+  for (x = player.x - 1; x <= player.x + 1; x++) {
+    for (y = player.y - 1; y <= player.y + 1; y++) {
+      if (!isok(x, y) || u_at(x, y)) {
+        continue;
+      }
+      if ((mtmp = m_at(x, y)) !== 0 && M_AP_TYPE(mtmp) !== M_AP_FURNITURE && M_AP_TYPE(mtmp) !== M_AP_OBJECT && (Hallucination || (!mtmp.mpeaceful && !noattacks(mtmp.data))) && (!is_hider(mtmp.data) || !mtmp.mundetected) && !helpless(mtmp) && !onscary(player.x, player.y, mtmp) && canspotmon(mtmp)) return 1;
+    }
+  }
+  return 0;
 }

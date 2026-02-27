@@ -1070,65 +1070,41 @@ function count_worn_stuff(player) {
 }
 
 // cf. do_wear.c armor_or_accessory_off() — take off armor or accessory
-function armor_or_accessory_off(player, obj, display) {
-    if (!obj) return false;
-
-    const sub = objectData[obj.otyp]?.sub;
-    const slot = ARMOR_SLOTS[sub];
-
-    // Check if it's armor
-    if (slot) {
-        // Layering checks
-        if (sub === ARM_SUIT && player.cloak) {
-            pline("You can't take that off without taking off your cloak first.");
-            return false;
+// TRANSLATOR: AUTO (do_wear.c:1765)
+export function armor_or_accessory_off(obj, game) {
+  if (!(obj.owornmask & (W_ARMOR | W_ACCESSORY))) { You("are not wearing that."); return ECMD_OK; }
+  if (obj === uskin || ((obj === uarm) && uarmc) || ((obj === uarmu) && (uarmc || uarm))) {
+    let why, what;
+    why[0] = what[0] = '\0';
+    if (obj !== uskin) {
+      if (uarmc) {
+        Strcat(what, cloak_simple_name(uarmc));
+      }
+      if ((obj === uarmu) && uarm) {
+        if (uarmc) {
+          Strcat(what, " and ");
         }
-        if (sub === ARM_SHIRT && (player.cloak || player.armor)) {
-            if (player.cloak)
-                pline("You can't take that off without taking off your cloak first.");
-            else
-                pline("You can't take that off without taking off your suit first.");
-            return false;
-        }
-        if (cursed_check(obj, display)) return false;
-
-        const offFn = SLOT_OFF[sub];
-        if (offFn) offFn(player);
-        player[slot.prop] = null;
-        find_ac(player);
-        off_msg(obj, player);
-        return true;
+        Strcat(what, suit_simple_name(uarm));
+      }
+      Snprintf(why, why.length, " without taking off your %s first", what);
     }
-
-    // Ring
-    if (obj === player.leftRing || obj === player.rightRing) {
-        if (cursed_check(obj, display)) return false;
-        off_msg(obj, player);
-        Ring_off(player, obj);
-        if (obj === player.leftRing) player.leftRing = null;
-        else player.rightRing = null;
-        find_ac(player);
-        return true;
-    }
-
-    // Amulet
-    if (obj === player.amulet) {
-        if (cursed_check(obj, display)) return false;
-        Amulet_off(player);
-        player.amulet = null;
-        off_msg(obj, player);
-        find_ac(player);
-        return true;
-    }
-
-    // Blindfold/towel/lenses
-    if (obj === player.blindfold) {
-        if (cursed_check(obj, display)) return false;
-        Blindf_off(player, obj);
-        return true;
-    }
-
-    return false;
+    else { Strcpy(why, "; it's embedded"); }
+    You_cant("take that off%s.", why);
+    return ECMD_OK;
+  }
+  reset_remarm();
+  select_off(obj);
+  if (!game.game.svc.context.takeoff.mask) return ECMD_OK;
+  reset_remarm();
+  if (obj.owornmask & W_ARMOR) { armoroff(obj); }
+  else if (obj === uright || obj === uleft) { off_msg(obj); Ring_off(obj); }
+  else if (obj === uamul) { Amulet_off(); }
+  else if (obj === ublindf) { Blindf_off(obj); }
+  else {
+    impossible("removing strange accessory: %s", safe_typename(obj.otyp));
+    if (obj.owornmask) remove_worn_item(obj, false);
+  }
+  return ECMD_TIME;
 }
 
 // ============================================================
@@ -1168,9 +1144,76 @@ function select_off(player, otmp, display) {
 }
 
 // cf. do_wear.c do_takeoff() — execute removal of one item
-function do_takeoff(player, otmp, display) {
-    if (!otmp) return null;
-    return armor_or_accessory_off(player, otmp, display) ? otmp : null;
+// TRANSLATOR: AUTO (do_wear.c:2818)
+export function do_takeoff(game, player) {
+  let otmp =  0, was_twoweap = player.twoweap;
+  let doff =  game.game.svc.context.takeoff;
+  game.game.svc.context.takeoff.mask |= I_SPECIAL;
+  if (doff.what === W_WEP) {
+    if (!cursed(uwep)) {
+      setuwep( 0);
+      if (was_twoweap) You("are no longer wielding either weapon.");
+      else {
+        You("are %s.", empty_handed());
+      }
+    }
+  }
+  else if (doff.what === W_SWAPWEP) {
+    setuswapwep( 0);
+    You("%sno longer %s.", was_twoweap ? "are " : "", was_twoweap ? "wielding two weapons at once" : "have a second weapon readied");
+  }
+  else if (doff.what === W_QUIVER) { setuqwep( 0); You("no longer have ammunition readied."); }
+  else if (doff.what === WORN_ARMOR) {
+    otmp = uarm;
+    if (!cursed(otmp)) {
+      Armor_off();
+    }
+  }
+  else if (doff.what === WORN_CLOAK) {
+    otmp = uarmc;
+    if (!cursed(otmp)) {
+      Cloak_off();
+    }
+  }
+  else if (doff.what === WORN_BOOTS) {
+    otmp = uarmf;
+    if (!cursed(otmp)) {
+      Boots_off();
+    }
+  }
+  else if (doff.what === WORN_GLOVES) {
+    otmp = uarmg;
+    if (!cursed(otmp)) {
+      Gloves_off();
+    }
+  }
+  else if (doff.what === WORN_HELMET) {
+    otmp = uarmh;
+    if (!cursed(otmp)) {
+      Helmet_off();
+    }
+  }
+  else if (doff.what === WORN_SHIELD) {
+    otmp = uarms;
+    if (!cursed(otmp)) {
+      Shield_off();
+    }
+  }
+  else if (doff.what === WORN_SHIRT) {
+    otmp = uarmu;
+    if (!cursed(otmp)) {
+      Shirt_off();
+    }
+  }
+  else if (doff.what === WORN_AMUL) { otmp = uamul; if (!cursed(otmp)) Amulet_off(); }
+  else if (doff.what === LEFT_RING) { otmp = uleft; if (!cursed(otmp)) Ring_off(uleft); }
+  else if (doff.what === RIGHT_RING) { otmp = uright; if (!cursed(otmp)) Ring_off(uright); }
+  else if (doff.what === WORN_BLINDF) { if (!cursed(ublindf)) Blindf_off(ublindf); }
+  else {
+    impossible("do_takeoff: taking off %lx", doff.what);
+  }
+  game.game.svc.context.takeoff.mask &= ~I_SPECIAL;
+  return otmp;
 }
 
 // cf. do_wear.c take_off() — take off a specific item (occupation callback in C)
@@ -1693,7 +1736,7 @@ async function handleRemove(player, display) {
     return { moved: false, tookTime: true };
 }
 
-export { handleWear, handlePutOn, handleTakeOff, handleRemove, canwearobj, cursed_check, Boots_on, Boots_off, Cloak_on, Cloak_off, Helmet_on, Helmet_off, Gloves_on, Gloves_off, Shield_on, Shield_off, Shirt_on, Shirt_off, Amulet_on, Amulet_off, wielding_corpse, dragon_armor_handling, set_wear, donning, doffing, cancel_doff, cancel_don, stop_donning, glibr, some_armor, stuck_ring, count_worn_stuff, armor_or_accessory_off, select_off, do_takeoff, remarm_swapwep, menu_remarm, wornarm_destroyed, inaccessible_equipment, equip_ok, any_worn_armor_ok };
+export { handleWear, handlePutOn, handleTakeOff, handleRemove, canwearobj, cursed_check, Boots_on, Boots_off, Cloak_on, Cloak_off, Helmet_on, Helmet_off, Gloves_on, Gloves_off, Shield_on, Shield_off, Shirt_on, Shirt_off, Amulet_on, Amulet_off, wielding_corpse, dragon_armor_handling, set_wear, donning, doffing, cancel_doff, cancel_don, stop_donning, glibr, some_armor, stuck_ring, count_worn_stuff, select_off, remarm_swapwep, menu_remarm, wornarm_destroyed, inaccessible_equipment, equip_ok, any_worn_armor_ok };
 
 // Autotranslated from do_wear.c:1217
 export function adjust_attrib(obj, which, val, game, player) {

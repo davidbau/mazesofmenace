@@ -1578,3 +1578,28 @@ export function unpunish() {
   delobj(savechain);
   setworn( 0, W_BALL);
 }
+
+// TRANSLATOR: AUTO (read.c:1078)
+export function can_center_cloud(x, y) {
+  if (!valid_cloud_pos(x, y)) return false;
+  return (cansee(x, y) && distu(x, y) < 32);
+}
+
+// TRANSLATOR: AUTO (read.c:1086)
+export function display_stinking_cloud_positions(on_off, player) {
+  let x, y, dx, dy, dist = 6;
+  if (on_off) {
+    tmp_at(DISP_BEAM, cmap_to_glyph(S_goodpos));
+    for (dx = -dist; dx <= dist; dx++) {
+      for (dy = -dist; dy <= dist; dy++) {
+        x = player.x + dx;
+        y = player.y + dy;
+        if (u_at(x, y)) {
+          continue;
+        }
+        if (can_center_cloud(x, y)) tmp_at(x, y);
+      }
+    }
+  }
+  else { tmp_at(DISP_END, 0); }
+}

@@ -180,7 +180,66 @@ export function use_camera(obj) {
 }
 
 // cf. apply.c:112 -- STUB: depends on freehand, Glib, makeplural
-function use_towel() { pline("You wipe your face."); }
+// TRANSLATOR: AUTO (apply.c:111)
+export function use_towel(obj, player) {
+  let drying_feedback = (obj === uwep);
+  if (!freehand()) { You("have no free %s!", body_part(HAND)); return ECMD_OK; }
+  else if (obj === ublindf) { You("cannot use it while you're wearing it!"); return ECMD_OK; }
+  else if (obj.cursed) {
+    let old;
+    switch (rn2(3)) {
+      case 2:
+        old = (Glib & TIMEOUT);
+      make_glib( old + rn1(10, 3));
+      Your("%s %s!", makeplural(body_part(HAND)), (old ? "are filthier than ever" : "get slimy"));
+      if (is_wet_towel(obj)) dry_a_towel(obj, -1, drying_feedback);
+      return ECMD_TIME;
+      case 1:
+        if (!ublindf) {
+          old = player.ucreamed;
+          player.ucreamed += rn1(10, 3);
+          pline("Yecch! Your %s %s gunk on it!", body_part(FACE), (old ? "has more" : "now has"));
+          make_blinded(BlindedTimeout +  player.ucreamed - old, true);
+        }
+        else {
+          let what;
+          what = (ublindf.otyp === LENSES) ? "lenses" : (obj.otyp === ublindf.otyp) ? "other towel" : "blindfold";
+          if (ublindf.cursed) {
+            You("push your %s %s.", what, rn2(2) ? "cock-eyed" : "crooked");
+          }
+          else {
+            let saved_ublindf = ublindf;
+            You("push your %s off.", what);
+            Blindf_off(ublindf);
+            dropx(saved_ublindf);
+          }
+        }
+      if (is_wet_towel(obj)) dry_a_towel(obj, -1, drying_feedback);
+      return ECMD_TIME;
+      case 0:
+        break;
+    }
+  }
+  if (Glib) {
+    make_glib(0);
+    You("wipe off your %s.", !uarmg ? makeplural(body_part(HAND)) : gloves_simple_name(uarmg));
+    if (is_wet_towel(obj)) dry_a_towel(obj, -1, drying_feedback);
+    return ECMD_TIME;
+  }
+  else if (player.ucreamed) {
+    incr_itimeout( HBlinded, (-1 *  player.ucreamed));
+    player.ucreamed = 0;
+    if (!Blinded) {
+      pline("You've got the glop off.");
+      if (!gulp_blnd_check()) { set_itimeout( HBlinded, 1); make_blinded(0, true); }
+    }
+    else { Your("%s feels clean now.", body_part(FACE)); }
+    if (is_wet_towel(obj)) dry_a_towel(obj, -1, drying_feedback);
+    return ECMD_TIME;
+  }
+  Your("%s and %s are already clean.", body_part(FACE), makeplural(body_part(HAND)));
+  return ECMD_OK;
+}
 
 // cf. apply.c:198 -- STUB: depends on sobj_at, corpse processing
 export function its_dead() { return false; }

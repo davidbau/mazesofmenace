@@ -511,15 +511,10 @@ export function peffect_confusion(player, otmp, display) {
 }
 
 // cf. potion.c peffect_blindness()
-function peffect_blindness(player, otmp, display) {
-    if (otmp.blessed) {
-        make_blinded(player, 0, true);
-        return false;
-    }
-    const duration = itimeout_incr(player.getPropTimeout(BLINDED),
-        rnd(200) + (otmp.cursed ? 100 : 0));
-    make_blinded(player, duration, true);
-    return true;
+// TRANSLATOR: AUTO (potion.c:1068)
+export function peffect_blindness(otmp) {
+  if (Blind || ((HBlinded || EBlinded) && BBlinded)) gp.potion_nothing++;
+  make_blinded(itimeout_incr(BlindedTimeout, rn1(200, 250 - 125 * bcsign(otmp))),  !Blind);
 }
 
 // cf. potion.c peffect_speed()

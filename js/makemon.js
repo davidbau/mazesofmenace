@@ -2357,3 +2357,61 @@ export function summon_furies(limit, player) {
     i++;
   }
 }
+
+// TRANSLATOR: AUTO (makemon.c:838)
+export function clone_mon(mon, x, y, game, player) {
+  let mm, m2;
+  if (mon.mhp <= 1 || (game.mvitals[monsndx(mon.data)].mvflags & G_EXTINCT) !== 0) return  0;
+  if (x === 0) { mm.x = mon.mx; mm.y = mon.my; }
+  else { mm.x = x; mm.y = y; }
+  if (!isok(mm.x, mm.y)) {
+    impossible("clone_mon trying to create a monster at <%d,%d>?", mm.x, mm.y);
+    return  0;
+  }
+  if (MON_AT(mm.x, mm.y)) {
+    if (!enexto( mm, mm.x, mm.y, mon.data) || MON_AT(mm.x, mm.y)) return  0;
+  }
+  m2 = newmonst();
+   m2 = mon;
+  m2.mextra =  0;
+  m2.nmon = fmon;
+  fmon = m2;
+  m2.m_id = next_ident();
+  m2.mx = mm.x;
+  m2.my = mm.y;
+  m2.mundetected = 0;
+  m2.mtrapped = 0;
+  m2.mcloned = 1;
+  m2.minvent =  0;
+  m2.mleashed = 0;
+  m2.mhpmax = mon.mhpmax;
+  m2.mhp = mon.mhp / 2;
+  mon.mhp -= m2.mhp;
+  m2.isshk = 0;
+  m2.isgd = 0;
+  m2.ispriest = 0;
+  mon_track_clear(m2);
+  place_monster(m2, m2.mx, m2.my);
+  if (emits_light(m2.data)) new_light_source(m2.mx, m2.my, emits_light(m2.data), LS_MONSTER, monst_to_any(m2));
+  if (has_mgivenname(mon)) { m2 = christen_monst(m2, MGIVENNAME(mon)); }
+  else if (mon.isshk) { m2 = christen_monst(m2, shkname(mon)); }
+  if (!game.game.svc.context.mon_moving && mon.mpeaceful) {
+    if (mon.mtame) m2.mtame = rn2(Math.max(2 + player.uluck, 2)) ? mon.mtame : 0;
+    else if (mon.mpeaceful) m2.mpeaceful = rn2(Math.max(2 + player.uluck, 2)) ? 1 : 0;
+  }
+  if (m2.isminion) {
+    let atyp;
+    newemin(m2);
+    assert(has_emin(m2) && has_emin(mon));
+     EMIN(m2) = EMIN(mon);
+    atyp = EMIN(m2).min_align;
+    EMIN(m2).renegade = (atyp !== player.ualign.type) ^ !m2.mpeaceful;
+  }
+  else if (m2.mtame) {
+    m2.mtame = 0;
+    if (tamedog(m2,  0, false)) { assert(has_edog(m2) && has_edog(mon)); EDOG(m2) = EDOG(mon); }
+  }
+  set_malign(m2);
+  newsym(m2.mx, m2.my);
+  return m2;
+}

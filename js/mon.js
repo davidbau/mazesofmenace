@@ -2024,3 +2024,53 @@ export function adj_erinys(abuse, game, player) {
   pm.mlevel = Math.min(7 + player.ualigame.gn.abuse, 50);
   pm.difficulty = Math.min(10 + (player.ualigame.gn.abuse / 3), 25);
 }
+
+// TRANSLATOR: AUTO (mon.c:2499)
+export function replmon(mtmp, mtmp2, game, player) {
+  let otmp;
+  for (otmp = mtmp2.minvent; otmp; otmp = otmp.nobj) {
+    if (otmp.where !== OBJ_MINVENT || otmp.ocarry !== mtmp) impossible("replmon: minvent inconsistency");
+    otmp.ocarry = mtmp2;
+  }
+  mtmp.minvent = 0;
+  if (game.game.svc.context.polearm.hitmon === mtmp) game.game.svc.context.polearm.hitmon = mtmp2;
+  relmon(mtmp,  0);
+  if (mtmp !== player.usteed) place_monster(mtmp2, mtmp2.mx, mtmp2.my);
+  if (mtmp2.wormno) place_wsegs(mtmp2, mtmp);
+  if (emits_light(mtmp2.data)) {
+    new_light_source(mtmp2.mx, mtmp2.my, emits_light(mtmp2.data), LS_MONSTER, monst_to_any(mtmp2));
+    del_light_source(LS_MONSTER, monst_to_any(mtmp));
+  }
+  mtmp2.nmon = fmon;
+  fmon = mtmp2;
+  if (player.ustuck === mtmp) set_ustuck(mtmp2);
+  if (player.usteed === mtmp) player.usteed = mtmp2;
+  if (mtmp2.isshk) replshk(mtmp, mtmp2);
+  dealloc_monst(mtmp);
+}
+
+// TRANSLATOR: AUTO (mon.c:6021)
+export async function see_nearby_monsters(game, player) {
+  let mtmp, mndx, x, y;
+  if (Hallucination || (Blind && !Blind_telepat)) return;
+  for (x = player.x - 1; x <= player.x + 1; x++) {
+    for (y = player.y - 1; y <= player.y + 1; y++) {
+      if (!isok(x, y)) {
+        continue;
+      }
+      if (!(mtmp = m_at(x, y))) {
+        continue;
+      }
+      mndx = monsndx(mtmp.data);
+      if (M_AP_TYPE(mtmp) === M_AP_MONSTER) mndx = mtmp.mappearance;
+      if (game.mvitals[mndx].seen_close) {
+        continue;
+      }
+      if (canseemon(mtmp) || (mtmp.mundetected && sensemon(mtmp))) {
+        gb.bhitpos.x = x, gb.bhitpos.y = y;
+        gn.notonhead = (x !== mtmp.mx || y !== mtmp.my);
+        see_monster_closeup(mtmp, false);
+      }
+    }
+  }
+}

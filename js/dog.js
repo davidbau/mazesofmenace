@@ -815,3 +815,42 @@ export function abuse_dog(mtmp) {
     }
   }
 }
+
+// TRANSLATOR: AUTO (dog.c:303)
+export function losedogs(game, map) {
+  let mtmp, mprev, dismissKops = 0, xyloc;
+  failed_arrivals = 0;
+  for (mtmp = game.migrating_mons; mtmp; mtmp = mtmp.nmon) {
+    if (mtmp.mux !== map.uz.dnum || mtmp.muy !== map.uz.dlevel) {
+      continue;
+    }
+    if (mtmp.isshk) {
+      if (ESHK(mtmp).dismiss_kops) { if (dismissKops === 0) dismissKops = 1; ESHK(mtmp).dismiss_kops = false; }
+      else if (!mtmp.mpeaceful) { dismissKops = -1; }
+    }
+  }
+  for (mtmp = game.mydogs; mtmp && dismissKops >= 0; mtmp = mtmp.nmon) {
+    if (mtmp.isshk) { if (!mtmp.mpeaceful) dismissKops = -1; }
+  }
+  if (dismissKops > 0) make_happy_shoppers(true);
+  for (mprev = game.migrating_mons; (mtmp = mprev) !== 0; ) {
+    xyloc = mtmp.mtrack[0].x;
+    if (mtmp.mux === map.uz.dnum && mtmp.muy === map.uz.dlevel && xyloc === MIGR_EXACT_XY) { mprev = mtmp.nmon; mon_arrive(mtmp, Before_you); }
+    else { mprev = mtmp.nmon; }
+  }
+  while ((mtmp = game.mydogs) !== 0) {
+    game.mydogs = mtmp.nmon;
+    mon_arrive(mtmp, With_you);
+  }
+  for (mprev = game.migrating_mons; (mtmp = mprev) !== 0; ) {
+    xyloc = mtmp.mtrack[0].x;
+    if (mtmp.mux === map.uz.dnum && mtmp.muy === map.uz.dlevel && xyloc !== MIGR_EXACT_XY) { mprev = mtmp.nmon; mon_arrive(mtmp, After_you); }
+    else { mprev = mtmp.nmon; }
+  }
+  while ((mtmp = failed_arrivals) !== 0) {
+    failed_arrivals = mtmp.nmon;
+    mtmp.nmon = fmon;
+    fmon = mtmp;
+    m_into_limbo(mtmp);
+  }
+}

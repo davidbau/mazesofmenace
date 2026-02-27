@@ -100,14 +100,10 @@ const st_corpse = 0x02;
 const st_petrifies = 0x04;
 const st_resists = 0x08;
 const st_all = st_gloves | st_corpse | st_petrifies | st_resists;
-
-function u_safe_from_fatal_corpse(obj, tests, player) {
-    if (((tests & st_gloves) && player.uarmg)
-        || ((tests & st_corpse) && obj.otyp !== CORPSE)
-        || ((tests & st_petrifies) && !touch_petrifies(mons[obj.corpsenm]))
-        || ((tests & st_resists) && player.Stone_resistance))
-        return true;
-    return false;
+// TRANSLATOR: AUTO (pickup.c:272)
+export function u_safe_from_fatal_corpse(obj, tests) {
+  if (((tests & st_gloves) && uarmg) || ((tests & st_corpse) && obj.otyp !== CORPSE) || ((tests & st_petrifies) && !touch_petrifies( mons[obj.corpsenm])) || ((tests & st_resists) && Stone_resistance)) return true;
+  return false;
 }
 
 // cf. pickup.c:285 — fatal_corpse_mistake(obj, remotely)
@@ -195,8 +191,9 @@ function add_valid_menu_class(c) {
 }
 
 // cf. pickup.c:509 — all_but_uchain(obj)
-function all_but_uchain(obj, player) {
-    return obj !== player.uchain;
+// TRANSLATOR: AUTO (pickup.c:508)
+export function all_but_uchain(obj) {
+  return  (obj !== uchain);
 }
 
 // cf. pickup.c:517 — allow_all(_obj)
@@ -317,45 +314,46 @@ function autopick_testobj(otmp, calc_costly, player) {
 }
 
 // cf. pickup.c:1511 — count_categories(olist, qflags)
-function count_categories(olist, qflags, player) {
-    const pack = (player.flags && player.flags.inv_order) || '';
-    const do_worn = !!(qflags & 0x100); // WORN_TYPES
-    let ccount = 0;
-    for (let pi = 0; pi < pack.length; pi++) {
-        let counted_category = false;
-        const cls = pack.charCodeAt(pi);
-        const items = Array.isArray(olist) ? olist : [];
-        for (const curr of items) {
-            if (curr.oclass === cls) {
-                if (do_worn && !(curr.owornmask & (W_ARMOR | W_ACCESSORY | W_WEAPONS)))
-                    continue;
-                if (!counted_category) {
-                    ccount++;
-                    counted_category = true;
-                }
-            }
+// TRANSLATOR: AUTO (pickup.c:1510)
+export function count_categories(olist, qflags, game) {
+  let pack, counted_category, ccount = 0, curr;
+  let do_worn = (qflags & WORN_TYPES) !== 0;
+  pack = game.flags.inv_order;
+  do {
+    counted_category = false;
+    for (curr = olist; curr; curr = FOLLOW(curr, qflags)) {
+      if (curr.oclass === pack) {
+        if (do_worn && !(curr.owornmask & (W_ARMOR | W_ACCESSORY | W_WEAPONS))) {
+          continue;
         }
+        if (!counted_category) { ccount++; counted_category = true; }
+      }
     }
-    return ccount;
+    pack++;
+  } while ( pack);
+  return ccount;
 }
 
 // cf. pickup.c:1544 — delta_cwt(container, obj)
-function delta_cwt(container, obj) {
-    if (container.otyp !== BAG_OF_HOLDING)
-        return obj.owt || 0;
-
-    const owt = container.owt || 0;
-    // Temporarily remove obj from container contents to calculate new weight
-    const contents = container.cobj;
-    if (Array.isArray(contents)) {
-        const idx = contents.indexOf(obj);
-        if (idx < 0) return obj.owt || 0;
-        contents.splice(idx, 1);
-        const nwt = weight(container);
-        contents.splice(idx, 0, obj);
-        return owt - nwt;
+// TRANSLATOR: AUTO (pickup.c:1543)
+export function delta_cwt(container, obj) {
+  let prev, owt, nwt;
+  if (container.otyp !== BAG_OF_HOLDING) return obj.owt;
+  owt = nwt = container.owt;
+  for (prev = container.cobj;  prev; prev = ( prev).nobj) {
+    if ( prev === obj) {
+      break;
     }
-    return obj.owt || 0;
+  }
+  if (!prev) {
+    throw new Error('delta_cwt: obj not inside container?');
+  }
+  else {
+     prev = obj.nobj;
+    nwt = weight(container);
+     prev = obj;
+  }
+  return owt - nwt;
 }
 
 // cf. pickup.c:1574 — carry_count(obj, container, count, telekinesis)
@@ -387,15 +385,25 @@ function lift_object(obj, container, cnt_p, telekinesis, player) {
 }
 
 // cf. pickup.c:1897 — pick_obj(otmp)
-function pick_obj(otmp, player, map) {
-    const ox = otmp.ox, oy = otmp.oy;
-
-    obj_extract_self(otmp);
-    if (map) newsym(map, ox, oy);
-
-    // Shop billing stub: addtobill/remote_burglary not yet ported
-    const result = player.addToInventory ? player.addToInventory(otmp) : otmp;
-    return result;
+// TRANSLATOR: AUTO (pickup.c:1896)
+export function pick_obj(otmp, player) {
+  let result, ox = otmp.ox, oy = otmp.oy;
+  let robshop = (!player.uswallow && otmp !== uball && costly_spot(ox, oy));
+  obj_extract_self(otmp);
+  newsym(ox, oy);
+  if (robshop) {
+    let saveushops, fakeshop;
+    Strcpy(saveushops, player.ushops);
+    fakeshop[0] = in_rooms(ox, oy, SHOPBASE);
+    fakeshop[1] = '\0';
+    Strcpy(player.ushops, fakeshop);
+    addtobill(otmp, true, false, false);
+    Strcpy(player.ushops, saveushops);
+    robshop = otmp.unpaid && !strchr(player.ushops, fakeshop);
+  }
+  result = addinv(otmp);
+  if (robshop) remote_burglary(ox, oy);
+  return result;
 }
 
 // cf. pickup.c:1802 — pickup_object(obj, count, telekinesis)
@@ -525,16 +533,17 @@ function able_to_loot(x, y, looting, player, map) {
 }
 
 // cf. pickup.c:2066 — mon_beside(x, y)
-function mon_beside(x, y, map) {
-    for (let i = -1; i <= 1; i++) {
-        for (let j = -1; j <= 1; j++) {
-            const nx = x + i;
-            const ny = y + j;
-            if (isok(nx, ny) && map.monAt(nx, ny))
-                return true;
-        }
+// TRANSLATOR: AUTO (pickup.c:2065)
+export function mon_beside(x, y) {
+  let i, j, nx, ny;
+  for (i = -1; i <= 1; i++) {
+    for (j = -1; j <= 1; j++) {
+      nx = x + i;
+      ny = y + j;
+      if (isok(nx, ny) && MON_AT(nx, ny)) return true;
     }
-    return false;
+  }
+  return false;
 }
 
 // cf. pickup.c:2082 — do_loot_cont(cobjp, cindex, ccount)
@@ -835,67 +844,72 @@ function out_container(obj, player, map) {
 }
 
 // cf. pickup.c:2775 — removed_from_icebox(obj)
-function removed_from_icebox(obj, player) {
-    if (!age_is_relative(obj)) {
-        obj.age = (player.moves || 0) - (obj.age || 0);
-        if (obj.otyp === CORPSE) {
-            const iceT = obj.corpsenm === PM_ICE_TROLL;
-            obj.norevive = iceT ? 0 : 1;
-            // start_corpse_timeout stub
-        }
+// TRANSLATOR: AUTO (pickup.c:2774)
+export function removed_from_icebox(obj, game) {
+  if (!age_is_relative(obj)) {
+    obj.age = (Number(game?.moves) || 0) - obj.age;
+    if (obj.otyp === CORPSE) {
+      let m = get_mtraits(obj, false);
+      let iceT = m ? (m.data === mons[PM_ICE_TROLL]) : (obj.corpsenm === PM_ICE_TROLL);
+      obj.norevive = iceT ? 0 : 1;
+      start_corpse_timeout(obj);
     }
+    else if (obj.globby) { start_glob_timeout(obj, 0); }
+  }
 }
 
 // cf. pickup.c:2797 — mbag_item_gone(held, item, silent)
-function mbag_item_gone(held, item, silent) {
-    let loss = 0;
-    if (!silent) {
-        if (item.dknown)
-            pline("%s %s vanished!", doname(item), item.quan !== 1 ? "have" : "has");
-        else
-            You("see %s disappear!", doname(item));
+// TRANSLATOR: AUTO (pickup.c:2796)
+export function mbag_item_gone(held, item, silent, player) {
+  let shkp, loss = 0;
+  if (!silent) {
+    if (item.dknown) pline("%s %s vanished!", Doname2(item), otense(item, "have"));
+    else {
+      You("%s %s disappear!", Blind ? "notice" : "see", doname(item));
     }
-    // Shop billing stub
-    // obfree stub — item is effectively destroyed
-    return loss;
+  }
+  if ( player.ushops && (shkp = shop_keeper( player.ushops)) !== 0) {
+    if (held ?  item.unpaid : costly_spot(player.x, player.y)) loss = stolen_value(item, player.x, player.y,  shkp.mpeaceful, true);
+  }
+  obfree(item,  0);
+  return loss;
 }
 
 // cf. pickup.c:2820 — observe_quantum_cat(box, makecat, givemsg)
-function observe_quantum_cat(box, makecat, givemsg, player, map) {
-    // cf. pickup.c:2826 — RNG: rn2(2)
-    const itsalive = !rn2(2);
-
-    if (box.ox === undefined) box.ox = player.x;
-    if (box.oy === undefined) box.oy = player.y;
-
-    const deadcat = Array.isArray(box.cobj) ? box.cobj[0] : box.cobj;
-
-    if (itsalive) {
-        let livecat = null;
-        if (makecat && map) {
-            livecat = makemon(mons[PM_HOUSECAT], box.ox, box.oy,
-                              NO_MINVENT | MM_ADJACENTOK, 1, map);
+// TRANSLATOR: AUTO (pickup.c:2819)
+export function observe_quantum_cat(box, makecat, givemsg, game) {
+  let sc = "Schroedinger's Cat", deadcat, livecat = 0, ox, oy;
+  let itsalive = !rn2(2);
+  if (get_obj_location(box, ox, oy, 0)) box.ox = ox, box.oy = oy;
+  deadcat = box.cobj;
+  if (itsalive) {
+    if (makecat) livecat = makemon( mons[PM_HOUSECAT], box.ox, box.oy, NO_MINVENT | MM_ADJACENTOK | MM_NOMSG);
+    if (livecat) {
+      livecat.mpeaceful = 1;
+      set_malign(livecat);
+      if (givemsg) {
+        if (!canspotmon(livecat)) You("think %s brushed your %s.", something, body_part(FOOT));
+        else {
+          pline("%s inside the box is still alive!", Monnam(livecat));
         }
-        if (livecat) {
-            livecat.mpeaceful = 1;
-            if (givemsg)
-                pline("%s inside the box is still alive!", Monnam(livecat));
-            christen_monst(livecat, "Schroedinger's Cat");
-            if (deadcat && Array.isArray(box.cobj)) {
-                box.cobj = [];
-            }
-            box.owt = weight(box);
-            box.spe = 0;
-        }
-    } else {
-        box.spe = 0;
-        if (deadcat) {
-            deadcat.age = player.moves || 0;
-            set_corpsenm(deadcat, PM_HOUSECAT);
-        }
-        if (givemsg)
-            pline_The("housecat inside the box is dead!");
+      }
+      christen_monst(livecat, sc);
+      if (deadcat) { obj_extract_self(deadcat); obfree(deadcat,  0), deadcat = 0; }
+      box.owt = weight(box);
+      box.spe = 0;
     }
+  }
+  else {
+    box.spe = 0;
+    if (deadcat) {
+      deadcat.age = (Number(game?.moves) || 0);
+      set_corpsenm(deadcat, PM_HOUSECAT);
+      deadcat = oname(deadcat, sc, ONAME_NO_FLAGS);
+    }
+    if (givemsg) pline_The("%s inside the box is dead!", Hallucination ? rndmonnam( 0) : "housecat");
+  }
+  nhUse(deadcat);
+  return;
 }
 
 // cf. pickup.c:2883 — container_gone(fn)
@@ -919,10 +933,11 @@ function u_handsy(player) {
 }
 
 // cf. pickup.c:2937 — stash_ok(obj)
-function stash_ok(obj) {
-    if (!obj) return false;
-    if (!ck_bag(obj)) return false;
-    return true;
+// TRANSLATOR: AUTO (pickup.c:2936)
+export async function stash_ok(obj) {
+  if (!obj) return GETOBJ_EXCLUDE;
+  if (!ck_bag(obj)) return GETOBJ_EXCLUDE_SELECTABLE;
+  return GETOBJ_SUGGEST;
 }
 
 // cf. pickup.c:2951 — use_container (simplified)
@@ -981,19 +996,67 @@ function menu_loot(_retry, _put_in) {
 
 // cf. pickup.c:3376 — in_or_out_menu(prompt, obj, outokay, inokay, alreadyused, more_containers)
 // Stub: menu system not yet ported
-function in_or_out_menu(_prompt, _obj, _outokay, _inokay, _alreadyused, _more_containers) {
-    return 'q';
+// TRANSLATOR: AUTO (pickup.c:3376)
+export async function in_or_out_menu(prompt, obj, outokay, inokay, alreadyused, more_containers, game) {
+  let lootchars = "_:oibrsnq", abc_chars = "_:abcdenq", win, any, pick_list;
+  let buf, n, menuselector = game.flags.lootabc ? abc_chars : lootchars;
+  let clr = NO_COLOR;
+  any = cg.zeroany;
+  win = create_nhwindow(NHW_MENU);
+  start_menu(win, MENU_BEHAVE_STANDARD);
+  any.a_int = 1;
+  Sprintf(buf, "Look inside %s", thesimpleoname(obj));
+  add_menu(win, nul_glyphinfo, any, menuselector[any.a_int], 0, ATR_NONE, clr, buf, MENU_ITEMFLAGS_NONE);
+  if (outokay) {
+    any.a_int = 2;
+    Sprintf(buf, "take %s out", something);
+    add_menu(win, nul_glyphinfo, any, menuselector[any.a_int], 0, ATR_NONE, clr, buf, MENU_ITEMFLAGS_NONE);
+  }
+  if (inokay) {
+    any.a_int = 3;
+    Sprintf(buf, "put %s in", something);
+    add_menu(win, nul_glyphinfo, any, menuselector[any.a_int], 0, ATR_NONE, clr, buf, MENU_ITEMFLAGS_NONE);
+  }
+  if (outokay) {
+    any.a_int = 4;
+    Sprintf(buf, "%stake out, then put in", inokay ? "both; " : "");
+    add_menu(win, nul_glyphinfo, any, menuselector[any.a_int], 0, ATR_NONE, clr, buf, MENU_ITEMFLAGS_NONE);
+  }
+  if (inokay) {
+    any.a_int = 5;
+    Sprintf(buf, "%sput in, then take out", outokay ? "both reversed; " : "");
+    add_menu(win, nul_glyphinfo, any, menuselector[any.a_int], 0, ATR_NONE, clr, buf, MENU_ITEMFLAGS_NONE);
+    any.a_int = 6;
+    Sprintf(buf, "stash one item into %s", thesimpleoname(obj));
+    add_menu(win, nul_glyphinfo, any, menuselector[any.a_int], 0, ATR_NONE, clr, buf, MENU_ITEMFLAGS_NONE);
+  }
+  add_menu_str(win, "");
+  if (more_containers) {
+    any.a_int = 7;
+    add_menu(win, nul_glyphinfo, any, menuselector[any.a_int], 0, ATR_NONE, clr, "loot next container", MENU_ITEMFLAGS_SELECTED);
+  }
+  any.a_int = 8;
+  Strcpy(buf, alreadyused ? "done" : "do nothing");
+  add_menu(win, nul_glyphinfo, any, menuselector[any.a_int], 0, ATR_NONE, clr, buf, more_containers ? MENU_ITEMFLAGS_NONE : MENU_ITEMFLAGS_SELECTED);
+  end_menu(win, prompt);
+  n = select_menu(win, PICK_ONE, pick_list);
+  destroy_nhwindow(win);
+  if (n > 0) {
+    let k = pick_list[0].item.a_int;
+    if (n > 1 && k === (more_containers ? 7 : 8)) k = pick_list[1].item.a_int;
+    (pick_list, 0);
+    return lootchars[k];
+  }
+  return (n === 0 && more_containers) ? 'n' : 'q';
 }
 
 // cf. pickup.c:3461 — tip_ok(obj)
-function tip_ok(obj) {
-    if (!obj || obj.oclass === COIN_CLASS)
-        return false;
-    if (Is_container(obj))
-        return true;
-    if (obj.otyp === HORN_OF_PLENTY && obj.dknown)
-        return true;
-    return false;
+// TRANSLATOR: AUTO (pickup.c:3460)
+export function tip_ok(obj) {
+  if (!obj || obj.oclass === COIN_CLASS) return GETOBJ_EXCLUDE;
+  if (Is_container(obj)) { return GETOBJ_SUGGEST; }
+  if (obj.otyp === HORN_OF_PLENTY && obj.dknown && objects[obj.otyp].oc_name_known) return GETOBJ_SUGGEST;
+  return GETOBJ_DOWNPLAY;
 }
 
 // cf. pickup.c:3485 — choose_tip_container_menu()
@@ -1267,5 +1330,4 @@ async function handleTogglePickup(game) {
     return { moved: false, tookTime: false };
 }
 
-export { handlePickup, handleLoot, handlePay, handleTogglePickup, // Ported from pickup.c
-    u_safe_from_fatal_corpse, fatal_corpse_mistake, force_decor, deferred_decor, describe_decor, check_here, n_or_more, menu_class_present, add_valid_menu_class, all_but_uchain, allow_category, allow_cat_no_uchain, check_autopickup_exceptions, autopick_testobj, count_categories, delta_cwt, carry_count, lift_object, pick_obj, pickup_object, pickup_prinv, encumber_msg, container_at, able_to_loot, mon_beside, do_loot_cont, doloot, doloot_core, reverse_loot, loot_mon, do_boh_explosion, in_container, ck_bag, out_container, removed_from_icebox, mbag_item_gone, observe_quantum_cat, container_gone, explain_container_prompt, u_handsy, stash_ok, use_container_simple, traditional_loot, menu_loot, in_or_out_menu, tip_ok, choose_tip_container_menu, dotip, tipcontainer, tipcontainer_gettarget, tipcontainer_checks, collect_obj_classes, count_unpaid, count_buc };
+export { handlePickup, handleLoot, handlePay, handleTogglePickup, fatal_corpse_mistake, force_decor, deferred_decor, describe_decor, check_here, n_or_more, menu_class_present, add_valid_menu_class, allow_category, allow_cat_no_uchain, check_autopickup_exceptions, autopick_testobj, carry_count, lift_object, pickup_object, pickup_prinv, encumber_msg, container_at, able_to_loot, do_loot_cont, doloot, doloot_core, reverse_loot, loot_mon, do_boh_explosion, in_container, ck_bag, out_container, container_gone, explain_container_prompt, u_handsy, use_container_simple, traditional_loot, menu_loot, choose_tip_container_menu, dotip, tipcontainer, tipcontainer_gettarget, tipcontainer_checks, collect_obj_classes, count_unpaid, count_buc };

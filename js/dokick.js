@@ -1360,52 +1360,41 @@ function watchman_door_damage(mtmp, x, y, map) {
 // 11. kick_dumb — clumsy kick at empty space
 // cf. dokick.c:863
 // ============================================================================
-
-function kick_dumb(x, y, player, map) {
-    exercise(player, A_DEX, false);
-    if (martial(player) || ACURR(player, A_DEX) >= 16 || rn2(3)) {
-        You("kick at empty space.");
-        if (player.blind)
-            feel_location(x, y, map);
-    } else {
-        pline("Dumb move!  You strain a muscle.");
-        exercise(player, A_STR, false);
-        set_wounded_legs(RIGHT_SIDE, 5 + rnd(5), player);
-    }
-    if ((Is_airlevel(player.uz) || player.levitating) && rn2(2))
-        hurtle(-(player.dx || 0), -(player.dy || 0), 1, true, player, map);
+// TRANSLATOR: AUTO (dokick.c:863)
+export function kick_dumb(x, y, map, player) {
+  exercise(A_DEX, false);
+  if (martial() || ACURR(A_DEX) >= 16 || rn2(3)) { You("kick at empty space."); if (Blind) feel_location(x, y); }
+  else {
+    pline("Dumb move! You strain a muscle.");
+    exercise(A_STR, false);
+    set_wounded_legs(RIGHT_SIDE, 5 + rnd(5));
+  }
+  if ((Is_airlevel(map.uz) || Levitation) && rn2(2)) hurtle(-player.dx, -player.dy, 1, true);
 }
 
 // ============================================================================
 // 12. kick_ouch — player hurt by kick
 // cf. dokick.c:880
 // ============================================================================
-
-function kick_ouch(x, y, kickobjnam, maploc, player, map) {
-    pline("Ouch!  That hurts!");
-    exercise(player, A_DEX, false);
-    exercise(player, A_STR, false);
-    if (isok(x, y)) {
-        if (player.blind)
-            feel_location(x, y, map);
-        if (is_drawbridge_wall(x, y, map) >= 0) {
-            pline_The("drawbridge is unaffected.");
-            // update maploc to refer to the drawbridge
-            const result = find_drawbridge(x, y, map);
-            if (result) maploc = map.at(result.x, result.y);
-        }
-        wake_nearto(x, y, 25, map);
+// TRANSLATOR: AUTO (dokick.c:880)
+export function kick_ouch(x, y, kickobjnam, game, map, player) {
+  let dmg, buf;
+  pline("Ouch! That hurts!");
+  exercise(A_DEX, false);
+  exercise(A_STR, false);
+  if (isok(x, y)) {
+    if (Blind) feel_location(x, y);
+    if (is_drawbridge_wall(x, y) >= 0) {
+      pline_The("drawbridge is unaffected.");
+      find_drawbridge( x, y);
+      game.maploc = map.locations[x][y];
     }
-    if (!rn2(3))
-        set_wounded_legs(RIGHT_SIDE, 5 + rnd(5), player);
-    let dmg = rnd(ACURR(player, A_CON) > 15 ? 3 : 5);
-    // Maybe_Half_Phys
-    if (player.halfPhysDamage) dmg = Math.floor((dmg + 1) / 2);
-    // losehp
-    player.uhp = Math.max(1, (player.uhp || 1) - dmg);
-    // TODO: check if player died from kick; format death message with kickstr
-    if ((Is_airlevel(player.uz) || player.levitating))
-        hurtle(-(player.dx || 0), -(player.dy || 0), rn2(2) + 4, true, player, map);
+    wake_nearto(x, y, 5 * 5);
+  }
+  if (!rn2(3)) set_wounded_legs(RIGHT_SIDE, 5 + rnd(5));
+  dmg = rnd(ACURR(A_CON) > 15 ? 3 : 5);
+  losehp(Maybe_Half_Phys(dmg), kickstr(buf, kickobjnam), KILLED_BY);
+  if (Is_airlevel(map.uz) || Levitation) hurtle(-player.dx, -player.dy, rn1(2, 4), true);
 }
 
 // ============================================================================
@@ -1480,253 +1469,187 @@ function in_town(x, y, map) {
 // 14. kick_nondoor — kick non-door terrain
 // cf. dokick.c:972
 // ============================================================================
-
-function kick_nondoor(x, y, avrg_attrib, maploc, player, map, game) {
-    if (maploc.typ === SDOOR) {
-        if (!player.levitating && rn2(30) < avrg_attrib) {
-            cvt_sdoor_to_door(maploc);
-            pline("Crash!  %s a secret door!",
-                ((maploc.doormask & (D_LOCKED | D_TRAPPED)) === D_LOCKED)
-                    ? "Your kick uncovers" : "You kick open");
-            exercise(player, A_DEX, true);
-            if (maploc.doormask & D_TRAPPED) {
-                maploc.doormask = D_NODOOR;
-                maploc.flags = D_NODOOR;
-                b_trapped("door", FOOT, player, map);
-            } else if (maploc.doormask !== D_NODOOR
-                       && !(maploc.doormask & D_LOCKED)) {
-                maploc.doormask = D_ISOPEN;
-                maploc.flags = D_ISOPEN;
-            }
-            feel_newsym(map, x, y);
-            if (maploc.doormask === D_ISOPEN || maploc.doormask === D_NODOOR)
-                unblock_point(x, y);
-            return true;
-        } else {
-            kick_ouch(x, y, "", maploc, player, map);
-            return true;
-        }
+// TRANSLATOR: AUTO (dokick.c:973)
+export function kick_nondoor(x, y, avrg_attrib, game, map, player) {
+  if (game.maploc.typ === SDOOR) {
+    if (!Levitation && rn2(30) < avrg_attrib) {
+      cvt_sdoor_to_door(game.maploc);
+      pline("Crash! %s a secret door!",   ((game.maploc.doormask & (D_LOCKED | D_TRAPPED)) === D_LOCKED) ? "Your kick uncovers" : "You kick open");
+      exercise(A_DEX, true);
+      if (game.maploc.doormask & D_TRAPPED) { game.maploc.doormask = D_NODOOR; b_trapped("door", FOOT); }
+      else if (game.maploc.doormask !== D_NODOOR && !(game.maploc.doormask & D_LOCKED)) game.maploc.doormask = D_ISOPEN;
+      feel_newsym(x, y);
+      if (game.maploc.doormask === D_ISOPEN || game.maploc.doormask === D_NODOOR) unblock_point(x, y);
+      return ECMD_TIME;
     }
-    if (maploc.typ === SCORR) {
-        if (!player.levitating && rn2(30) < avrg_attrib) {
-            pline("Crash!  You kick open a secret passage!");
-            exercise(player, A_DEX, true);
-            maploc.typ = CORR;
-            feel_newsym(map, x, y);
-            unblock_point(x, y);
-            return true;
-        } else {
-            kick_ouch(x, y, "", maploc, player, map);
-            return true;
-        }
+    else { kick_ouch(x, y, ""); return ECMD_TIME; }
+  }
+  if (game.maploc.typ === SCORR) {
+    if (!Levitation && rn2(30) < avrg_attrib) {
+      pline("Crash! You kick open a secret passage!");
+      exercise(A_DEX, true);
+      game.maploc.typ = CORR;
+      feel_newsym(x, y);
+      unblock_point(x, y);
+      return ECMD_TIME;
     }
-    if (IS_THRONE(maploc.typ)) {
-        if (player.levitating) {
-            kick_dumb(x, y, player, map);
-            return true;
-        }
-        if (((player.luck || 0) < 0 || maploc.looted) && !rn2(3)) {
-            maploc.looted = 0;
-            maploc.typ = ROOM;
-            mkgold(rnd(200), x, y, map);
-            if (player.blind)
-                pline("CRASH!  You destroy it.");
-            else {
-                pline("CRASH!  You destroy the throne.");
-                newsym(x, y, map);
-            }
-            exercise(player, A_DEX, true);
-            return true;
-        } else if ((player.luck || 0) > 0 && !rn2(3) && !maploc.looted) {
-            mkgold(rn2(201) + 300, x, y, map);
-            let i = (player.luck || 0) + 1;
-            if (i > 6) i = 6;
-            while (i--) {
-                mksobj_at(rnd_class(DILITHIUM_CRYSTAL, LUCKSTONE - 1),
-                    x, y, false, true, map);
-            }
-            if (player.blind)
-                You("kick %s loose!", something);
-            else {
-                You("kick loose some ornamental coins and gems!");
-                newsym(x, y, map);
-            }
-            maploc.looted = T_LOOTED;
-            return true;
-        } else if (!rn2(4)) {
-            if (dunlev(player.uz) < dunlevs_in_dungeon(player.uz)) {
-                fall_through(false, 0, player, map);
-                return true;
-            } else {
-                kick_ouch(x, y, "", maploc, player, map);
-                return true;
-            }
-        }
-        kick_ouch(x, y, "", maploc, player, map);
-        return true;
+    else { kick_ouch(x, y, ""); return ECMD_TIME; }
+  }
+  if (IS_THRONE(game.maploc.typ)) {
+    let i;
+    if (Levitation) { kick_dumb(x, y); return ECMD_TIME; }
+    if ((Luck < 0 || game.maploc.looted) && !rn2(3)) {
+      game.maploc.looted = 0;
+      game.maploc.typ = ROOM;
+      mkgold( rnd(200), x, y);
+      if (Blind) pline("CRASH! You destroy it.");
+      else { pline("CRASH! You destroy the throne."); newsym(x, y); }
+      exercise(A_DEX, true);
+      return ECMD_TIME;
     }
-    if (IS_ALTAR(maploc.typ)) {
-        if (player.levitating) {
-            kick_dumb(x, y, player, map);
-            return true;
-        }
-        You("kick %s.", player.blind ? something : "the altar");
-        altar_wrath(x, y, player, map);
-        if (!rn2(3)) {
-            kick_ouch(x, y, "", maploc, player, map);
-            return true;
-        }
-        exercise(player, A_DEX, true);
-        return true;
+    else if (Luck > 0 && !rn2(3) && !game.maploc.looted) {
+      mkgold( rn1(201, 300), x, y);
+      i = Luck + 1;
+      if (i > 6) i = 6;
+      while (i--) {
+        mksobj_at( rnd_class(DILITHIUM_CRYSTAL, LUCKSTONE - 1), x, y, false, true);
+      }
+      if (Blind) You("kick %s loose!", something);
+      else {
+        You("kick loose some ornamental coins and gems!");
+        newsym(x, y);
+      }
+      game.maploc.looted = T_LOOTED;
+      return ECMD_TIME;
     }
-    if (IS_FOUNTAIN(maploc.typ)) {
-        if (player.levitating) {
-            kick_dumb(x, y, player, map);
-            return true;
-        }
-        You("kick %s.", player.blind ? something : "the fountain");
-        if (!rn2(3)) {
-            kick_ouch(x, y, "", maploc, player, map);
-            return true;
-        }
-        if (player.boots && rn2(3)) {
-            if (water_damage(player.boots, "metal boots", true) === 0) {
-                Your("boots get wet.");
-            }
-        }
-        exercise(player, A_DEX, true);
-        return true;
+    else if (!rn2(4)) {
+      if (dunlev(map.uz) < dunlevs_in_dungeon(map.uz)) { fall_through(false, 0); return ECMD_TIME; }
+      else { kick_ouch(x, y, ""); return ECMD_TIME; }
     }
-    if (IS_GRAVE(maploc.typ)) {
-        if (player.levitating) {
-            kick_dumb(x, y, player, map);
-        } else if (rn2(4)) {
-            kick_ouch(x, y, "", maploc, player, map);
-        } else if (!maploc.disturbed && !rn2(2)) {
-            disturb_grave(map, x, y, player);
-        } else {
-            exercise(player, A_WIS, false);
-            if (player.alignment?.type === A_LAWFUL && (player.alignment?.record || 0) > -10)
-                adjalign(player, -sgn(player.alignment.type));
-            maploc.typ = ROOM;
-            maploc.emptygrave = 0;
-            maploc.disturbed = 0;
-            mksobj_at(ROCK, x, y, true, false, map);
-            del_engr_at(map, x, y);
-            if (player.blind) {
-                pline("Crack!  %s broke!", Something);
-            } else {
-                pline_The("headstone topples over and breaks!");
-                newsym(x, y, map);
-            }
-        }
-        return true;
+    kick_ouch(x, y, "");
+    return ECMD_TIME;
+  }
+  if (IS_ALTAR(game.maploc.typ)) {
+    if (Levitation) { kick_dumb(x, y); return ECMD_TIME; }
+    You("kick %s.", (Blind ? something : "the altar"));
+    altar_wrath(x, y);
+    if (!rn2(3)) { kick_ouch(x, y, ""); return ECMD_TIME; }
+    exercise(A_DEX, true);
+    return ECMD_TIME;
+  }
+  if (IS_FOUNTAIN(game.maploc.typ)) {
+    if (Levitation) { kick_dumb(x, y); return ECMD_TIME; }
+    You("kick %s.", (Blind ? something : "the fountain"));
+    if (!rn2(3)) { kick_ouch(x, y, ""); return ECMD_TIME; }
+    if (uarmf && rn2(3)) {
+      if (water_damage(uarmf, "metal boots", true) === ER_NOTHING) { Your("boots get wet."); }
     }
-    if (maploc.typ === IRONBARS) {
-        kick_ouch(x, y, "", maploc, player, map);
-        return true;
+    exercise(A_DEX, true);
+    return ECMD_TIME;
+  }
+  if (IS_GRAVE(game.maploc.typ)) {
+    if (Levitation) { kick_dumb(x, y); }
+    else if (rn2(4)) { kick_ouch(x, y, ""); }
+    else if (!game.maploc.disturbed && !rn2(2)) { disturb_grave(x, y); }
+    else {
+      exercise(A_WIS, false);
+      if (Role_if(PM_ARCHEOLOGIST) || Role_if(PM_SAMURAI) || (player.ualign.type === A_LAWFUL && player.ualign.record > -10)) adjalign(-sgn(player.ualign.type));
+      game.maploc.typ = ROOM;
+      game.maploc.emptygrave = 0;
+      game.maploc.disturbed = 0;
+      mksobj_at(ROCK, x, y, true, false);
+      del_engr_at(x, y);
+      if (Blind) { pline("Crack! %s broke!", Something); }
+      else { pline_The("headstone topples over and breaks!"); newsym(x, y); }
     }
-    if (IS_TREE(maploc.typ)) {
-        if (rn2(3)) {
-            kick_ouch(x, y, "", maploc, player, map);
-            return true;
-        }
-        if (rn2(15) && !(maploc.looted & TREE_LOOTED)) {
-            const treefruit = rnd_treefruit_at(x, y, map);
-            if (treefruit) {
-                let nfruit = 8 - rnl(7);
-                treefruit.quan = nfruit;
-                treefruit.owt = weight(treefruit);
-                if (nfruit > 1)
-                    pline("Some %s fall from the tree!", xname(treefruit));
-                else
-                    pline("%s falls from the tree!", An(xname(treefruit)));
-                const nfall = scatter(x, y, 2, 0x08, treefruit, map); // MAY_HIT
-                if (nfall !== nfruit) {
-                    const tf2 = mksobj(treefruit.otyp, true, false);
-                    if (tf2) {
-                        tf2.quan = nfruit - nfall;
-                        pline("%d %s got caught in the branches.",
-                            nfruit - nfall, xname(tf2));
-                    }
-                }
-                exercise(player, A_DEX, true);
-                exercise(player, A_WIS, true);
-                newsym(x, y, map);
-                maploc.looted = (maploc.looted || 0) | TREE_LOOTED;
-                return true;
-            }
-        }
-        if (!(maploc.looted & TREE_SWARM)) {
-            let cnt = rnl(4) + 2;
-            let made = 0;
-            const mm = { x, y };
-            while (cnt--) {
-                if (enexto(mm, mm.x, mm.y, mons[PM_KILLER_BEE], map)) {
-                    if (makemon(mons[PM_KILLER_BEE], mm.x, mm.y, 0x10 | 0x20, map))
-                        made++;
-                }
-            }
-            if (made)
-                pline("You've attracted the tree's former occupants!");
-            else
-                You("smell stale honey.");
-            maploc.looted = (maploc.looted || 0) | TREE_SWARM;
-            return true;
-        }
-        kick_ouch(x, y, "", maploc, player, map);
-        return true;
+    return ECMD_TIME;
+  }
+  if (game.maploc.typ === IRONBARS) { kick_ouch(x, y, ""); return ECMD_TIME; }
+  if (IS_TREE(game.maploc.typ)) {
+    let treefruit;
+    if (rn2(3)) {
+      if (!rn2(6) && !(game.mvitals[PM_KILLER_BEE].mvflags & G_GONE)) You_hear("a low buzzing.");
+      kick_ouch(x, y, "");
+      return ECMD_TIME;
     }
-    if (IS_SINK(maploc.typ)) {
-        if (player.levitating) {
-            kick_dumb(x, y, player, map);
-            return true;
-        }
-        if (rn2(5)) {
-            if (!player.deaf)
-                pline("Klunk!  The pipes vibrate noisily.");
-            else
-                pline("Klunk!");
-            exercise(player, A_DEX, true);
-            return true;
-        } else if (!((maploc.looted || 0) & S_LPUDDING) && !rn2(3)) {
-            if (player.blind) {
-                if (!player.deaf)
-                    You_hear("a gushing sound.");
-            } else {
-                pline("A %s ooze gushes up from the drain!", hcolor("black"));
-            }
-            makemon(mons[PM_BLACK_PUDDING], x, y, 0x20, map);
-            exercise(player, A_DEX, true);
-            newsym(x, y, map);
-            maploc.looted = (maploc.looted || 0) | S_LPUDDING;
-            return true;
-        } else if (!((maploc.looted || 0) & S_LDWASHER) && !rn2(3)) {
-            pline("%s returns!", player.blind ? Something : "The dish washer");
-            const gend = poly_gender(player);
-            makemon(mons[PM_AMOROUS_DEMON], x, y,
-                0x20 | ((gend === 1 || (gend === 2 && rn2(2))) ? 0x40 : 0x80), map);
-            newsym(x, y, map);
-            maploc.looted = (maploc.looted || 0) | S_LDWASHER;
-            exercise(player, A_DEX, true);
-            return true;
-        } else if (!rn2(3)) {
-            sink_backs_up(x, y, player, map);
-            return true;
-        }
-        kick_ouch(x, y, "", maploc, player, map);
-        return true;
+    if (rn2(15) && !(game.maploc.looted & TREE_LOOTED) && (treefruit = rnd_treefruit_at(x, y))) {
+      let nfruit = 8 - rnl(7), nfall, frtype = treefruit.otyp;
+      treefruit.quan = nfruit;
+      treefruit.owt = weight(treefruit);
+      if (is_plural(treefruit)) pline("Some %s fall from the tree!", xname(treefruit));
+      else {
+        pline("%s falls from the tree!", An(xname(treefruit)));
+      }
+      nfall = scatter(x, y, 2, MAY_HIT, treefruit);
+      if (nfall !== nfruit) {
+        treefruit = mksobj(frtype, true, false);
+        treefruit.quan = nfruit - nfall;
+        pline("%ld %s got caught in the branches.", nfruit - nfall, xname(treefruit));
+        dealloc_obj(treefruit);
+      }
+      exercise(A_DEX, true);
+      exercise(A_WIS, true);
+      newsym(x, y);
+      game.maploc.looted |= TREE_LOOTED;
+      return ECMD_TIME;
     }
-    if (maploc.typ === STAIRS || maploc.typ === LADDER || IS_STWALL(maploc.typ)) {
-        if (!IS_STWALL(maploc.typ) && maploc.ladder === 'down') {
-            kick_dumb(x, y, player, map);
-            return true;
-        }
-        kick_ouch(x, y, "", maploc, player, map);
-        return true;
+    else if (!(game.maploc.looted & TREE_SWARM)) {
+      let cnt = rnl(4) + 2, made = 0, mm;
+      mm.x = x;
+      mm.y = y;
+      while (cnt--) {
+        if (enexto( mm, mm.x, mm.y, mons[PM_KILLER_BEE]) && makemon( mons[PM_KILLER_BEE], mm.x, mm.y, MM_ANGRY|MM_NOMSG)) made++;
+      }
+      if (made) pline("You've attracted the tree's former occupants!");
+      else {
+        You("smell stale honey.");
+      }
+      game.maploc.looted |= TREE_SWARM;
+      return ECMD_TIME;
     }
-    kick_dumb(x, y, player, map);
-    return true;
+    kick_ouch(x, y, "");
+    return ECMD_TIME;
+  }
+  if (IS_SINK(game.maploc.typ)) {
+    let gend = poly_gender();
+    if (Levitation) { kick_dumb(x, y); return ECMD_TIME; }
+    if (rn2(5)) {
+      if (!Deaf) pline("Klunk! The pipes vibrate noisily.");
+      else {
+        pline("Klunk!");
+      }
+      exercise(A_DEX, true);
+      return ECMD_TIME;
+    }
+    else if (!(game.maploc.looted & S_LPUDDING) && !rn2(3) && !(game.mvitals[PM_BLACK_PUDDING].mvflags & G_GONE)) {
+      if (Blind) { if (!Deaf) You_hear("a gushing sound."); }
+      else {
+        pline("A %s ooze gushes up from the drain!", hcolor(NH_BLACK));
+      }
+      makemon( mons[PM_BLACK_PUDDING], x, y, MM_NOMSG);
+      exercise(A_DEX, true);
+      newsym(x, y);
+      game.maploc.looted |= S_LPUDDING;
+      return ECMD_TIME;
+    }
+    else if (!(game.maploc.looted & S_LDWASHER) && !rn2(3) && !(game.mvitals[PM_AMOROUS_DEMON].mvflags & G_GONE)) {
+      pline("%s returns!", (Blind ? Something : "The dish washer"));
+      if (makemon( mons[PM_AMOROUS_DEMON], x, y, MM_NOMSG | ((gend === 1 || (gend === 2 && rn2(2))) ? MM_MALE : MM_FEMALE))) newsym(x, y);
+      game.maploc.looted |= S_LDWASHER;
+      exercise(A_DEX, true);
+      return ECMD_TIME;
+    }
+    else if (!rn2(3)) { sink_backs_up(x, y); return ECMD_TIME; }
+    kick_ouch(x, y, "");
+    return ECMD_TIME;
+  }
+  if (game.maploc.typ === STAIRS || game.maploc.typ === LADDER || IS_STWALL(game.maploc.typ)) {
+    if (!IS_STWALL(game.maploc.typ) && game.maploc.ladder === LA_DOWN) { kick_dumb(x, y); return ECMD_TIME; }
+    kick_ouch(x, y, "");
+    return ECMD_TIME;
+  }
+  kick_dumb(x, y);
+  return ECMD_TIME;
 }
 
 // A_LAWFUL import
@@ -2326,32 +2249,30 @@ export function deliver_obj_to_mon(mtmp, cnt, deliverflags, game) {
 // 21. otransit_msg — object transit message
 // cf. dokick.c:1908
 // ============================================================================
-
-function otransit_msg(otmp, nodrop, chainthere, num) {
-    let optr;
-    if (otmp.otyp === CORPSE) {
-        optr = corpse_xname(otmp, null, 4); // CXN_PFX_THE
-        if (optr) optr = optr.charAt(0).toUpperCase() + optr.slice(1);
-    } else {
-        optr = Tobjnam(otmp, null);
+// TRANSLATOR: AUTO (dokick.c:1908)
+export function otransit_msg(otmp, nodrop, chainthere, num) {
+  let optr = 0, obuf, xbuf;
+  if (otmp.otyp === CORPSE) {
+    optr = upstart(corpse_xname(otmp,  0, CXN_PFX_THE));
+  }
+  else { optr = Tobjnam(otmp,  0); }
+  Strcpy(obuf, optr);
+  if (num || chainthere) {
+    if (num) {
+      Sprintf(xbuf, " %s %s object%s", otense(otmp, "hit"), (num === 1) ? "another" : "other", (num > 1) ? "s" : "");
     }
-    const obuf = optr || "Something";
-
-    if (num || chainthere) {
-        let xbuf;
-        if (num) {
-            xbuf = ` ${otense(otmp, "hit")} ${num === 1 ? "another" : "other"} object${num > 1 ? "s" : ""}`;
-        } else {
-            xbuf = ` ${otense(otmp, "rattle")} your chain`;
-        }
-        if (nodrop)
-            xbuf += ".";
-        else
-            xbuf += ` and ${otense(otmp, "fall")} ${gate_str || "down"}.`;
-        pline("%s%s", obuf, xbuf);
-    } else if (!nodrop) {
-        pline("%s %s %s.", obuf, otense(otmp, "fall"), gate_str || "down");
+    else {
+      Sprintf(xbuf, " %s your chain", otense(otmp, "rattle"));
     }
+    if (nodrop) {
+      Sprintf(eos(xbuf), ".");
+    }
+    else {
+      Sprintf(eos(xbuf), " and %s %s.", otense(otmp, "fall"), gg.gate_str);
+    }
+    pline("%s%s", obuf, xbuf);
+  }
+  else if (!nodrop) pline("%s %s %s.", obuf, otense(otmp, "fall"), gg.gate_str);
 }
 
 // ============================================================================
