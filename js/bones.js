@@ -238,7 +238,7 @@ export function savebones(game) {
         ghost.name = 'Ghost of ' + sanitize_name(player.name);
         ghost.mhp = player.ulevel * 10;
         ghost.mhpmax = player.ulevel * 10;
-        ghost.mlevel = player.ulevel;
+        ghost.m_lev = player.ulevel;
         ghost.peaceful = false;
     }
 

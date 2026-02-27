@@ -125,7 +125,7 @@ function dog_nutrition(mon, obj) {
             mon.meating = objectData[obj.otyp].delay || 0;
             nutrit = objectData[obj.otyp].nutrition || 0;
         }
-        switch (mdat.size) {
+        switch (mdat.msize) {
             case MZ_TINY:     nutrit *= 8; break;
             case MZ_SMALL:    nutrit *= 6; break;
             default:
@@ -153,7 +153,7 @@ function max_mon_load(mon) {
     if (!mdat) return 0;
     const strong = !!(mdat.flags2 & M2_STRONG);
     const cwt = mdat.weight || 0;
-    const msize = mdat.size || 0;
+    const msize = mdat.msize || 0;
     let maxload;
 
     if (!cwt) {
@@ -203,7 +203,7 @@ export function can_carry(mon, obj) {
 
     if (iquan > 1 && (mdat.flags1 & M1_NOHANDS)) {
         let glomper = false;
-        if (mdat.symbol === S_DRAGON
+        if (mdat.mlet === S_DRAGON
             && (obj.oclass === COIN_CLASS || obj.oclass === GEM_CLASS)) {
             glomper = true;
         } else {
@@ -216,7 +216,7 @@ export function can_carry(mon, obj) {
 
     if (mon.peaceful && !mon.tame) return 0;
     if ((mdat.flags2 & M2_ROCKTHROW) && obj.otyp === BOULDER) return iquan;
-    if (mdat.symbol === S_NYMPH)
+    if (mdat.mlet === S_NYMPH)
         return (obj.oclass === ROCK_CLASS) ? 0 : iquan;
     if (curr_mon_load(mon) + (obj.owt || 0) > max_mon_load(mon)) return 0;
 
@@ -462,7 +462,7 @@ function droppables(mon) {
     let pickaxe = null;
     let unihorn = null;
     let key = null;
-    const verysmall = (mdat.size || 0) === MZ_TINY;
+    const verysmall = (mdat.msize || 0) === MZ_TINY;
 
     if (is_animal(mdat) || is_mindless(mdat)) {
         pickaxe = unihorn = key = dummy;
@@ -762,7 +762,7 @@ function score_targ(mon, target, map, player) {
             score -= 1000;
         }
         // C ref: dogmove.c:804-807 — weak target penalty
-        const targLev = target.mlevel || 0;
+        const targLev = target.m_lev || 0;
         const monLev = mon.m_lev || 0;
         if ((targLev < 2 && monLev > 5)
             || (monLev > 12 && targLev < monLev - 9)) {
@@ -1174,7 +1174,7 @@ export async function dog_move(mon, map, player, display, fov, after = false, ga
                 const balk = (mon.m_lev || 1)
                     + Math.floor((5 * (mon.mhp || 1)) / Math.max(1, mon.mhpmax || 1))
                     - 2;
-                if ((target.mlevel || 0) >= balk
+                if ((target.m_lev || 0) >= balk
                     || (target.tame && mon.tame)
                     || (target.peaceful && (mon.mhp || 1) * 4 < Math.max(1, mon.mhpmax || 1))) {
                     continue;

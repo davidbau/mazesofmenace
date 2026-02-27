@@ -397,7 +397,7 @@ export function dosit(player, map, display) {
     if (objs.length > 0 && !(trap && (trap.ttyp === 7 || trap.ttyp === 8))) {
         // Not teetering at a pit — sit on objects
         const obj = objs[0]; // top object
-        if (playerType.symbol === 30 /* S_DRAGON */ && obj.oclass === COIN_CLASS) {
+        if (playerType.mlet === 30 /* S_DRAGON */ && obj.oclass === COIN_CLASS) {
             You("coil up around your hoard.");
         } else {
             if (slithy(playerType))

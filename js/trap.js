@@ -184,7 +184,7 @@ function thitm(tlev, mon, obj, d_override, nocorpse, map, player) {
 // ========================================================================
 function m_easy_escape_pit(mon) {
     return (mon.mndx === PM_PIT_FIEND
-            || ((mons[mon.mndx] || {}).size || 0) >= MZ_HUGE);
+            || ((mons[mon.mndx] || {}).msize || 0) >= MZ_HUGE);
 }
 
 // ========================================================================
@@ -237,7 +237,7 @@ export function m_harmless_trap(mon, trap) {
     case ROLLING_BOULDER_TRAP:
         break;
     case BEAR_TRAP:
-        if ((mdat.size || 0) <= MZ_SMALL || amorphous(mdat)
+        if ((mdat.msize || 0) <= MZ_SMALL || amorphous(mdat)
             || is_whirly(mdat) || unsolid(mdat))
             return true;
         break;
@@ -361,7 +361,7 @@ function trapeffect_bear_trap_mon(mon, trap, map, player) {
     const mptr = mons[mon.mndx] || {};
     let trapkilled = false;
 
-    if ((mptr.size || 0) > MZ_SMALL && !amorphous(mptr) && !m_in_air(mon)
+    if ((mptr.msize || 0) > MZ_SMALL && !amorphous(mptr) && !m_in_air(mon)
         && !is_whirly(mptr) && !unsolid(mptr)) {
         mon.mtrapped = 1;
         seetrap(trap);
@@ -523,7 +523,7 @@ function trapeffect_pit_mon(mon, trap, trflags, map, player) {
 function trapeffect_hole_mon(mon, trap, trflags, map, player) {
     const mptr = mons[mon.mndx] || {};
 
-    if (!grounded(mptr) || (mptr.size || 0) >= MZ_HUGE) {
+    if (!grounded(mptr) || (mptr.msize || 0) >= MZ_HUGE) {
         return Trap_Effect_Finished;
     }
     // C ref: calls trapeffect_level_telep for monsters
@@ -577,8 +577,8 @@ function trapeffect_web_mon(mon, trap, map) {
         tear_web = true;
         break;
     default:
-        if (mptr.symbol === S_GIANT
-            || (mptr.symbol === S_DRAGON && extra_nasty(mptr))) {
+        if (mptr.mlet === S_GIANT
+            || (mptr.mlet === S_DRAGON && extra_nasty(mptr))) {
             tear_web = true;
         }
         break;

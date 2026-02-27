@@ -219,7 +219,7 @@ export function weight(obj) {
     if (Is_container(obj) || obj.otyp === STATUE) {
         if (obj.otyp === STATUE && obj.corpsenm >= 0 && obj.corpsenm < mons.length) {
             wt = Math.floor(3 * mons[obj.corpsenm].weight / 2);
-            const msize = mons[obj.corpsenm].size || 0;
+            const msize = mons[obj.corpsenm].msize || 0;
             const minwt = (msize * 2 + 1) * 100;
             if (wt < minwt) wt = minwt;
         }
@@ -662,7 +662,7 @@ function mksobj_init(obj, artif, skipErosion) {
             // verysmall = msize < MZ_SMALL (i.e., MZ_TINY)
             // Short-circuit: skip rn2 if monster is very small
             if (obj.corpsenm >= 0 && obj.corpsenm < mons.length
-                && mons[obj.corpsenm].size >= MZ_SMALL
+                && mons[obj.corpsenm].msize >= MZ_SMALL
                 && rn2(Math.floor(_levelDepth / 2 + 10)) > 10) {
                 // C ref: mkobj.c:1152-1154 — statue may contain a non-novel spellbook.
                 const inside = mkobj(SPBOOK_no_NOVEL, false);
@@ -826,7 +826,7 @@ export function mksobj(otyp, init, artif, skipErosion) {
 function special_corpse(mndx) {
     if (mndx < 0) return false;
     return mndx === PM_LIZARD || mndx === PM_LICHEN
-        || mons[mndx].symbol === S_TROLL
+        || mons[mndx].mlet === S_TROLL
         || mons[mndx].sound === MS_RIDER;
 }
 
@@ -846,7 +846,7 @@ function start_corpse_timeout_rng(corpsenm) {
         for (let when = minturn; when < 67; when++) {
             if (!rn2(3)) break;
         }
-    } else if (mons[corpsenm].symbol === S_TROLL) {
+    } else if (mons[corpsenm].mlet === S_TROLL) {
         // Troll: rn2(37) loop up to TAINT_AGE times
         for (let age = 2; age <= TAINT_AGE; age++) {
             if (!rn2(TROLL_REVIVE_CHANCE)) break;

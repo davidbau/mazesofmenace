@@ -116,7 +116,7 @@ export function goodpos(x, y, mtmp, gpflags, map, player) {
             const M1_AMPHIBIOUS = 0x00100000;
             const M1_FLY = 0x00004000;
             return !!(f1 & (M1_SWIM | M1_AMPHIBIOUS | M1_FLY));
-        } else if (mdat.symbol === 59 /* S_EEL */ && rn2(13) && !ignorewater) {
+        } else if (mdat.mlet === 59 /* S_EEL */ && rn2(13) && !ignorewater) {
             return false;
         } else if (is_lava(x, y, map) && !ignorelava) {
             const M1_FLY = 0x00004000;
