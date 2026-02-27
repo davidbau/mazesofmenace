@@ -846,6 +846,7 @@ def _lower_expr(expr, rewrite_rules):
     out = re.sub(r"#\s*ifn?def\b[^#]*", " ", out)
     out = re.sub(r"#\s*if\b[^#]*", " ", out)
     out = re.sub(r"#\s*endif\b", " ", out)
+    out = re.sub(r"#\s*\w+\b", " ", out)
     out, required_params = _apply_rewrite_rules(out, rewrite_rules)
     out = re.sub(r"\(\s*\*\s*([A-Za-z_]\w*)\s*\)\s*\(", r"\1(", out)
     out = re.sub(r"\bTRUE\b", "true", out)
@@ -871,6 +872,11 @@ def _lower_expr(expr, rewrite_rules):
     out = re.sub(r"\(\s*(?:const\s+)?(?:struct|enum|union)\s+[A-Za-z_]\w*\s*\**\s*\)", "", out)
     out = re.sub(r"\(\s*(?:const\s+)?char\s*\*\s*\)", "", out)
     out = re.sub(
+        r"\(\s*(?:const\s+)?(?:unsigned\s+|signed\s+)?[A-Za-z_]\w*\s*\*\s*\)",
+        "",
+        out,
+    )
+    out = re.sub(
         r"\(\s*(?:unsigned|signed)\s+(?:char|short|int|long)\s*\)",
         "",
         out,
@@ -886,6 +892,7 @@ def _lower_expr(expr, rewrite_rules):
         "",
         out,
     )
+    out = re.sub(r"\(\s*[A-Z_][A-Z0-9_]*\s*\)", "", out)
     # Common typedef casts (time_t, anything_t, etc.) have no JS equivalent.
     out = re.sub(r"\(\s*(?:const\s+)?[A-Za-z_]\w*_t\s*\)", "", out)
     # Deref casted pointers like *(int *)vptr -> vptr.
@@ -919,6 +926,7 @@ def _lower_expr(expr, rewrite_rules):
     )
     out = re.sub(r"\(\s*boolean\s*\)\s*", "", out)
     out = _rewrite_c_char_literals(out)
+    out = _rewrite_octal_escapes(out)
     # Address-of in return position is pointer semantics in C; drop for JS refs.
     out = re.sub(r"\breturn\s*&\s*([A-Za-z_]\w*(?:\[[^\]]+\])?)", r"return \1", out)
     out = re.sub(r"([A-Za-z_]\w*)\+\+\s*=", r"\1 =", out)
@@ -944,6 +952,15 @@ def _rewrite_c_char_literals(text):
         return f"'\\x{value:02x}'"
 
     return re.sub(r"'\\([0-7]{1,3})'", repl, text)
+
+
+def _rewrite_octal_escapes(text):
+    def repl(match):
+        digits = match.group(1)
+        value = int(digits, 8) & 0xFF
+        return f"\\x{value:02x}"
+
+    return re.sub(r"\\([0-7]{1,3})", repl, text)
 
 
 def _normalize_space(text):
