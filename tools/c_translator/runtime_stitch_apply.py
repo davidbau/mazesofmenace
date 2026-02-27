@@ -219,6 +219,11 @@ def signature_compatible(existing_tokens, emitted_tokens):
             return False, "arity_mismatch"
     # Strong ordering check for context-heavy runtime args.
     key_params = ("map", "player", "game", "display")
+    # Never allow dropping a context-heavy runtime parameter from an existing
+    # wrapper signature; prefix matching alone is too permissive for these.
+    for key in key_params:
+        if key in existing_tokens and key not in emitted_tokens:
+            return False, f"missing_key_param:{key}"
     for key in key_params:
         if key in existing_tokens and key in emitted_tokens:
             if existing_tokens.index(key) != emitted_tokens.index(key):
