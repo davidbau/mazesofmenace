@@ -190,7 +190,7 @@ export function dogfood(mon, obj, moves) {
             const corpseAge = peek_at_iced_corpse_age(obj);
             if ((corpseAge + 50 <= (moves || 0)
                  && fx !== PM_LIZARD && fx !== PM_LICHEN
-                 && mptr.symbol !== S_FUNGUS)
+                 && mptr.mlet !== S_FUNGUS)
                 || (fptr && acidic(fptr) && !resists_acid(mon))
                 || (fptr && poisonous(fptr) && !resists_poison(mon)))
                 return POISON;
@@ -199,8 +199,8 @@ export function dogfood(mon, obj, moves) {
             else if (fptr && mon_vegan(fptr))
                 return herbi ? CADAVER : MANFOOD;
             else if (humanoid(mptr) && fptr && same_race(mptr, fptr)
-                     && !is_undead(mptr) && fptr.symbol !== S_KOBOLD
-                     && fptr.symbol !== S_ORC && fptr.symbol !== S_OGRE)
+                     && !is_undead(mptr) && fptr.mlet !== S_KOBOLD
+                     && fptr.mlet !== S_ORC && fptr.mlet !== S_OGRE)
                 return (starving && carni && !is_elf(mptr)) ? ACCFOOD : TABU;
             else
                 return carni ? CADAVER : MANFOOD;
@@ -224,7 +224,7 @@ export function dogfood(mon, obj, moves) {
             return (herbi || mblind) ? DOGFOOD : starving ? ACCFOOD : MANFOOD;
 
         case BANANA:
-            return (mptr.symbol === S_YETI && herbi) ? DOGFOOD
+            return (mptr.mlet === S_YETI && herbi) ? DOGFOOD
                 : (herbi || starving) ? ACCFOOD
                 : MANFOOD;
 

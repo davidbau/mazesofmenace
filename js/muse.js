@@ -240,7 +240,7 @@ function NODIAG(mndx) { return mndx === PM_GRID_BUG; }
 function is_vampshifter(mtmp) {
     if (mtmp.cham == null || mtmp.cham < 0) return false;
     const chamData = mons[mtmp.cham];
-    return chamData && chamData.symbol === S_VAMPIRE;
+    return chamData && chamData.mlet === S_VAMPIRE;
 }
 
 // C ref: monsndx(ptr) — get monster index from permonst pointer
@@ -1331,11 +1331,11 @@ export async function use_defensive(mon, map, player) {
 // ========================================================================
 export function rnd_defensive_item(mtmp, map) {
     const pm = mtmp.type || {};
-    const difficulty = pm.difficulty || pm.level || 0;
+    const difficulty = pm.difficulty || pm.mlevel || 0;
     let trycnt = 0;
 
     if (is_animal(pm) || attacktype(pm, AT_EXPL) || mindless(pm)
-        || pm.symbol === S_GHOST || pm.symbol === S_KOP)
+        || pm.mlet === S_GHOST || pm.mlet === S_KOP)
         return 0;
 
     while (true) {
@@ -1926,7 +1926,7 @@ export function find_misc(mon, map, player) {
     // Poly trap check for weak monsters
     const pmidx = monsndx(mdat);
     if (!stuck && !immobile && !mon.mtrapped && (mon.cham === undefined || mon.cham === NON_PM)
-        && (mdat.difficulty || mdat.level || 0) < 6) {
+        && (mdat.difficulty || mdat.mlevel || 0) < 6) {
         const ignore_boulders = verysmall(mdat) || throws_rocks(mdat) || passes_walls(mdat);
         const diag_ok = !NODIAG(pmidx);
 
@@ -2002,7 +2002,7 @@ export function find_misc(mon, map, player) {
         if (m.has_misc === MUSE_MISC_WAN_POLYMORPH) continue;
         if (obj.otyp === WAN_POLYMORPH && obj.spe > 0
             && (mon.cham === undefined || mon.cham === NON_PM)
-            && (mdat.difficulty || mdat.level || 0) < 6) {
+            && (mdat.difficulty || mdat.mlevel || 0) < 6) {
             m.misc = obj;
             m.has_misc = MUSE_MISC_WAN_POLYMORPH;
         }
@@ -2010,7 +2010,7 @@ export function find_misc(mon, map, player) {
         if (m.has_misc === MUSE_MISC_POT_POLYMORPH) continue;
         if (obj.otyp === POT_POLYMORPH
             && (mon.cham === undefined || mon.cham === NON_PM)
-            && (mdat.difficulty || mdat.level || 0) < 6) {
+            && (mdat.difficulty || mdat.mlevel || 0) < 6) {
             m.misc = obj;
             m.has_misc = MUSE_MISC_POT_POLYMORPH;
         }
@@ -2330,7 +2330,7 @@ export function searches_for_item(mon, obj) {
     case WAND_CLASS:
         if (obj.spe <= 0) return false;
         if (typ === WAN_DIGGING) return !is_floater(mdat);
-        if (typ === WAN_POLYMORPH) return (mdat.difficulty || mdat.level || 0) < 6;
+        if (typ === WAN_POLYMORPH) return (mdat.difficulty || mdat.mlevel || 0) < 6;
         if (typ === WAN_STRIKING || typ === WAN_UNDEAD_TURNING
             || typ === WAN_TELEPORTATION || typ === WAN_CREATE_MONSTER)
             return true;

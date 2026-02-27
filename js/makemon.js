@@ -459,15 +459,15 @@ function init_mongen_order() {
     mclass_maxf = new Array(MAXMCLASSES).fill(0);
     for (let i = LOW_PM; i < SPECIAL_PM; i++) {
         mongen_order.push(i);
-        const mlet = mons[i].symbol;
+        const mlet = mons[i].mlet;
         const freq = mons[i].geno & G_FREQ;
         if (freq > mclass_maxf[mlet])
             mclass_maxf[mlet] = freq;
     }
     // C ref: qsort by (mlet << 8) | difficulty, ascending
     mongen_order.sort((a, b) => {
-        const ka = (mons[a].symbol << 8) | mons[a].difficulty;
-        const kb = (mons[b].symbol << 8) | mons[b].difficulty;
+        const ka = (mons[a].mlet << 8) | mons[a].difficulty;
+        const kb = (mons[b].mlet << 8) | mons[b].difficulty;
         return ka - kb;
     });
 }
@@ -505,7 +505,7 @@ export function mkclass(monclass, spc, depth = 1, atyp = A_NONE) {
     // Find first monster of this class in sorted order
     let first;
     for (first = 0; first < SPECIAL_PM; first++) {
-        if (mons[mongen_order[first]].symbol === monclass) break;
+        if (mons[mongen_order[first]].mlet === monclass) break;
     }
     if (first === SPECIAL_PM) return -1;
 
@@ -519,7 +519,7 @@ export function mkclass(monclass, spc, depth = 1, atyp = A_NONE) {
     const nums = new Array(SPECIAL_PM + 1).fill(0);
     let last;
 
-    for (last = first; last < SPECIAL_PM && mons[mongen_order[last]].symbol === monclass; last++) {
+    for (last = first; last < SPECIAL_PM && mons[mongen_order[last]].mlet === monclass; last++) {
         const mndx = mongen_order[last];
 
         // Alignment filter (for mkclass_aligned)
@@ -1472,14 +1472,14 @@ function apply_newcham_from_base(mon, baseMndx, depth, map = null) {
 
     // C ref: mgender_from_permonst() -- RNG call for ungendered forms.
     if (!is_male(target) && !is_female(target) && !is_neuter(target)) {
-        if (!rn2(10) && !(target.symbol === S_VAMPIRE || is_vampshifter_mndx(baseMndx))) {
+        if (!rn2(10) && !(target.mlet === S_VAMPIRE || is_vampshifter_mndx(baseMndx))) {
             // female toggle omitted; RNG parity only.
         }
     }
 
     const { hp: newHp, m_lev: newLev } = newmonhp(newMndx, depth || 1);
 
-    const symEntry = def_monsyms[target.symbol];
+    const symEntry = def_monsyms[target.mlet];
     mon.mndx = newMndx;
     mon.type = target;
     mon.name = target.name;
