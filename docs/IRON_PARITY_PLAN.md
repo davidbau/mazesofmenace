@@ -20,6 +20,7 @@ This campaign treats green tests as guardrails, not the goal. The goal is faithf
 5. Coverage ledger: [CODEMATCH.md](/share/u/davidbau/git/mazesofmenace/game/docs/CODEMATCH.md)
 6. Parity debugging workflow: [RNG_ALIGNMENT_GUIDE.md](/share/u/davidbau/git/mazesofmenace/game/docs/RNG_ALIGNMENT_GUIDE.md)
 7. Learnings: [LORE.md](/share/u/davidbau/git/mazesofmenace/game/docs/LORE.md)
+8. Translator capability gap tracker: [C_TRANSLATOR_99_PERCENT_CAPABILITY_GAPS.md](/share/u/davidbau/git/mazesofmenace/game/docs/C_TRANSLATOR_99_PERCENT_CAPABILITY_GAPS.md)
 
 ## Strategic Thesis
 

@@ -1073,6 +1073,8 @@ def _lower_expr(expr, rewrite_rules):
     out = re.sub(r"\bfree\s*\(\s*([^()]+?)\s*\)", r"(\1, 0)", out)
     # C integer long suffix (e.g., 7L) has no JS runtime equivalent.
     out = re.sub(r"\b(0x[0-9A-Fa-f]+|\d+)(?:ULL|LLU|UL|LU|LL|L|U)\b", r"\1", out)
+    # C octal integer literals (e.g., 040) -> JS octal (0o40).
+    out = re.sub(r"(?<![A-Za-z0-9_.])0([0-7]{1,})\b", lambda m: "0" if m.group(1) == "0" else f"0o{m.group(1)}", out)
     out = re.sub(r"\bsizeof\s+([A-Za-z_]\w*)\b", r"\1.length", out)
     out = re.sub(
         r'\bsizeof\s+("(?:(?:\\.)|[^"\\])*")',
