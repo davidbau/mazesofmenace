@@ -160,6 +160,30 @@ Add dedicated lowering before safety lint:
 Safety impact:
 - post-lowering, unresolved-symbol gates should not see raw `Sprintf/Snprintf` in emitted JS.
 
+### `pline`/`raw_printf` Family Policy
+
+Decision:
+
+1. Keep `pline`/`raw_printf` call structure C-faithful (do not rewrite to ad-hoc template strings at callsites).
+2. Normalize formatting through one translator/runtime formatter contract so `%` semantics remain centralized and testable.
+
+Implementation contract:
+
+1. Translator rewrites C vararg format calls to:
+   - `plinef(fmt, ...args)` for gameplay message sinks (`pline`, `You`, `Your`, etc. wrappers as applicable).
+   - `raw_printf_f(fmt, ...args)` for raw/banners/debug sinks.
+2. Formatter helper implements a supported specifier subset sufficient for gameplay parity:
+   - `%s`, `%d`, `%i`, `%u`, `%ld`, `%lu`, `%c`, `%%`
+   - precision/width patterns used in NetHack status/messages (for example `%.*s`, `%02d`, `%3d`, `%-Ns`).
+3. Unsupported specifiers are explicit diagnostics (translator emits blocking diag code, not silent fallback).
+4. Keep argument evaluation order identical to C emission order.
+
+Rationale:
+
+1. Avoid scattershot JS string concatenation that drifts from C format semantics.
+2. Keep translation deterministic and auditable.
+3. Allow incremental expansion of supported format codes with unit tests.
+
 ## 6) Rule Tables / Config
 
 Add/extend translator rulesets:

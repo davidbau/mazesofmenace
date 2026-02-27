@@ -242,6 +242,7 @@ Execution rules:
 2. Keep C order and branch structure; only replace helper semantics with JS-equivalent expression/helpers.
 3. Add function-summary metadata for out-param role classification and callsite rewrite (`single`, `single+result`, `multi`).
 4. Gate each wave with unit tests, translator regression tests, and session parity baseline check.
+5. For printf-family sinks (`Sprintf`, `Snprintf`, `pline`, `raw_printf`), enforce one shared formatter contract and explicit unsupported-specifier diagnostics.
 
 Exit gate for B-H1:
 
