@@ -87,7 +87,7 @@ import {
 import { WIN_MESSAGE, display_nhwindow } from './windows.js';
 import { attach_egg_hatch_timeout, MELT_ICE_AWAY } from './timeout.js';
 
-// Direction vectors matching commands.js DIRECTION_KEYS
+// Direction vectors matching cmd.js DIRECTION_KEYS
 const DIRECTION_KEYS = {
     'h': [-1,  0],  'j': [ 0,  1],  'k': [ 0, -1],  'l': [ 1,  0],
     'y': [-1, -1],  'u': [ 1, -1],  'b': [-1,  1],  'n': [ 1,  1],
@@ -401,7 +401,7 @@ function xkilled_local(mon, map, player, display) {
     }
 }
 
-// Main zap handler — called from commands.js
+// Main zap handler — called from cmd.js
 // C ref: zap.c dozap()
 export async function handleZap(player, map, display, game) {
     // Read item letter

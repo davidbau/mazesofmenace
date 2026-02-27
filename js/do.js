@@ -47,7 +47,7 @@ import { movebubbles } from './mkmaze.js';
 
 
 // ============================================================
-// Pickup message helpers (used by handlePickup in commands.js)
+// Pickup message helpers (used by pickup dispatch in cmd.js)
 // ============================================================
 
 export function formatGoldPickupMessage(gold, player) {

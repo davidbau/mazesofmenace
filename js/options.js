@@ -106,8 +106,8 @@
 
 // cf. options.c:9286 — dotogglepickup(void): toggle autopickup
 // Toggles autopickup on/off.
-// JS equiv: commands.js:3459 — handleTogglePickup()
-// PARTIAL: options.c:9286 — dotogglepickup() ↔ commands.js:3459
+// JS equiv: cmd.js rhack() '@' command route via handleTogglePickup()
+// PARTIAL: options.c:9286 — dotogglepickup() ↔ cmd.js handleTogglePickup()
 
 // cf. options.c:9307 — add_autopickup_exception(mapping): add autopickup exception
 // Adds an autopickup exception mapping.

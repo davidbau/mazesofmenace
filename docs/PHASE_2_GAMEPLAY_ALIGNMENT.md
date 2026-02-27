@@ -727,8 +727,8 @@ appropriate tests based on session type:
 | `js/vision.js` | Algorithm C FOV, couldsee, m_cansee, clear_path |
 | `js/dog.js` | Pet food classification, dog_eat, can_carry |
 | `js/u_init.js` | Post-level init: makedog, inventory, attributes |
-| `js/commands.js` | Player command dispatch: rhack, movement, stairs |
-| `js/combat.js` | Attack rolls, damage, corpse creation, level-up |
+| `js/cmd.js` + `js/hack.js` | Player command dispatch: `rhack`, movement, stairs |
+| `js/uhitm.js` + `js/mhitu.js` (+ `js/combat.js` shim) | Attack rolls, damage, corpse creation, level-up |
 | `js/player.js` | Player class with 13 roles, attributes, equipment |
 | `test/comparison/session_helpers.js` | HeadlessGame, replaySession, grid/RNG comparison |
 | `test/comparison/session_runner.test.js` | Unified test runner for all session types |

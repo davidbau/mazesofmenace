@@ -340,7 +340,7 @@ function ready_weapon(player, display, wep) {
 // 4. Command handlers
 // ============================================================
 
-// Helper to clear prompt line (same pattern used throughout commands.js)
+// Helper to clear prompt line (same pattern used throughout cmd.js)
 function replacePromptMessage(display) {
     if (typeof display.clearRow === 'function') display.clearRow(0);
     display.topMessage = null;
@@ -348,7 +348,7 @@ function replacePromptMessage(display) {
 }
 
 // cf. wield.c:350 — dowield(): #wield command
-// Moved from commands.js handleWield
+// Moved from cmd.js handleWield
 async function handleWield(player, display) {
     // Weld check
     if (welded(player)) {
@@ -416,7 +416,7 @@ async function handleWield(player, display) {
 }
 
 // cf. wield.c:456 — doswapweapon(): #swap command
-// Moved from commands.js handleSwapWeapon
+// Moved from cmd.js handleSwapWeapon
 async function handleSwapWeapon(player, display) {
     // Weld check
     if (welded(player)) {

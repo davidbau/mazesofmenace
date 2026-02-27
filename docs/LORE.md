@@ -1323,7 +1323,7 @@ hard-won wisdom:
 ### uhitm improvised-weapon opening message parity (2026-02-24)
 
 - In C (`uhitm.c`), attacking while wielding a non-weapon emits a one-time opening message (`You begin bashing monsters with ...`) before the attack outcome line.
-- For replay parity, when that opening message and miss result need to appear in the same turn at topline-width boundary, emitting the combined miss line directly in `playerAttackMonster()` avoids relying on display-layer concat edge cases.
+- For replay parity, when that opening message and miss result need to appear in the same turn at topline-width boundary, emitting the combined miss line directly in `do_attack()` avoids relying on display-layer concat edge cases.
 - Miss messages should use `monNam()` semantics (not hardcoded `the ...`) so named monsters/pets (e.g. `Idefix`) match C wording.
 
 ### mkmaze protofile special-level loading parity (2026-02-24)

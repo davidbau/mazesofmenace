@@ -226,7 +226,7 @@ function isSearchHit(line, c, term) {
 }
 
 // -----------------------------------------------------------------------
-// Pager-related command handlers (moved from commands.js)
+// Pager-related command handlers (moved from cmd.js)
 // C ref: pager.c — dolook, dowhatis, dowhatdoes, dohelp, dohistory, etc.
 // -----------------------------------------------------------------------
 

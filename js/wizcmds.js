@@ -13,28 +13,28 @@
 // Wizard mode provides debug-only commands (accessed via ^W prefix in NetHack).
 // These commands are keyed in cmd.c and dispatched to wizcmds.c functions.
 //
-// JS implementations: several wizard debug commands are implemented in commands.js
+// JS implementations: several wizard debug commands are implemented in cmd.js
 //   as part of the game's wizard/debug mode support:
 //   wiz_level_change() → wizLevelChange() [PARTIAL]
 //   wiz_map()          → wizMap() [PARTIAL]
 //   wiz_teleport()     → wizTeleport() [PARTIAL]
 //   wiz_genesis()      → wizGenesis() [PARTIAL]
 //   wiz_load_splua()   → handleWizLoadDes() [PARTIAL]
-//   wiz_wish()         → commands.js (handleWizWish) [PARTIAL]
-//   wiz_identify()     → commands.js (handleWizIdentify) [PARTIAL]
+//   wiz_wish()         → cmd.js (handleWizWish) [PARTIAL]
+//   wiz_identify()     → cmd.js (handleWizIdentify) [PARTIAL]
 // Sanity checks, Lua-based commands, and advanced debug commands → not implemented.
 //
 // Note: wiz_load_lua/wiz_load_splua use the Lua interpreter (N/A for browser port).
 
 // cf. wizcmds.c:32 — wiz_wish(): unlimited wishes for debug mode
 // Asks for a wish via askfor_menu or getlin; processes via makewish().
-// JS equiv: commands.js (handleWizWish) — partial wish granting.
-// PARTIAL: wizcmds.c:32 — wiz_wish() ↔ handleWizWish (commands.js)
+// JS equiv: cmd.js (handleWizWish) — partial wish granting.
+// PARTIAL: wizcmds.c:32 — wiz_wish() ↔ handleWizWish (cmd.js)
 
 // cf. wizcmds.c:50 — wiz_identify(): reveal and identify hero's inventory
 // Presents menu of items; calls makeknown/fully_identified for selected ones.
-// JS equiv: commands.js (handleWizIdentify) — partial identification.
-// PARTIAL: wizcmds.c:50 — wiz_identify() ↔ handleWizIdentify (commands.js)
+// JS equiv: cmd.js (handleWizIdentify) — partial identification.
+// PARTIAL: wizcmds.c:50 — wiz_identify() ↔ handleWizIdentify (cmd.js)
 
 // cf. wizcmds.c:73 [static] — makemap_unmakemon(mtmp, migratory): remove monster for regen
 // Removes monster from level before discarding the old level incarnation.

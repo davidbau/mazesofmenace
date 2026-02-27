@@ -18,7 +18,7 @@
 //   cg: constant globals structure (shared read-only data).
 //
 // JS implementations: global state is spread across multiple JS modules.
-//   xdir/ydir → commands.js (direction deltas)
+//   xdir/ydir → cmd.js (direction deltas)
 //   c_obj_colors → symbols.js or display.js
 //   initializeGameDataStructures → nethack.js startup
 //   All per-instance globals → player.js, dungeon.js, etc.

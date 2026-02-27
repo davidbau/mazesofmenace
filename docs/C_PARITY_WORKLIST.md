@@ -36,8 +36,8 @@ status), see [CODEMATCH.md](CODEMATCH.md).
 | Monster movement + pet AI | `monmove.c`, `dogmove.c`, movement portions of `mon.c`, targeting portions of `mhitm.c` | `js/monmove.js` | `partial` | #8, #11 |
 | Monster generation + startup entities | `makemon.c`, `u_init.c` | `js/makemon.js`, `js/u_init.js` | `partial` | #10 |
 | Object generation + naming | `mkobj.c`, `objnam.c`, `o_init.c`, `objects.c` | `js/mkobj.js`, `js/o_init.js`, `js/objects.js` | `partial` | #10 |
-| Combat + XP progression | `uhitm.c`, `mhitu.c`, `exper.c`, parts of `weapon.c`, `mon.c` kill paths | `js/combat.js`, `js/commands.js`, `js/monmove.js` | `partial` | #8, #11 |
-| Command flow + turn loop | `allmain.c`, `cmd.c`, `hack.c`, `do.c`, `pickup.c`, `invent.c`, `read.c` | `js/nethack.js`, `js/headless_runtime.js`, `js/commands.js`, `js/player.js` | `partial` | #6, #7, #11 |
+| Combat + XP progression | `uhitm.c`, `mhitu.c`, `exper.c`, parts of `weapon.c`, `mon.c` kill paths | `js/uhitm.js`, `js/mhitu.js`, `js/combat.js` (shim), `js/monmove.js` | `partial` | #8, #11 |
+| Command flow + turn loop | `allmain.c`, `cmd.c`, `hack.c`, `do.c`, `pickup.c`, `invent.c`, `read.c` | `js/nethack.js`, `js/headless_runtime.js`, `js/cmd.js`, `js/hack.js`, `js/player.js` | `partial` | #6, #7, #11 |
 
 ## Function-Level Correspondence (High Priority)
 

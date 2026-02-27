@@ -96,7 +96,7 @@ Completed incremental migrations in code:
    3. `dogmove.js:dog_move`
    4. `muse.js:use_defensive`
 2. Combat ordering/state:
-   1. `uhitm.js:playerAttackMonster` call chain from `hack.js:domove_attackmon_at`
+   1. `uhitm.js:do_attack` call chain from `hack.js:domove_attackmon_at`
 3. Generation/startup:
    1. `u_init.js:ini_inv`
    2. `makemon.js:makemon/enexto_core`
