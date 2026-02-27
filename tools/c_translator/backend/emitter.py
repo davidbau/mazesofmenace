@@ -855,14 +855,14 @@ def _lower_expr(expr, rewrite_rules):
     out = re.sub(r"\bNULL\b", "null", out)
     # Drop C address-of on unary contexts only (don't touch binary '&' or '&&').
     out = re.sub(
-        r"(?:(?<=^)|(?<=[(,=?:!]))\s*&\s*([A-Za-z_]\w*(?:\.[A-Za-z_]\w*|\[[^\]]+\])*)",
+        r"(?:(?<=^)|(?<=[(,=?:!<>]))\s*&\s*([A-Za-z_]\w*(?:\.[A-Za-z_]\w*|\[[^\]]+\])*)",
         r" \1",
         out,
     )
     out = re.sub(r",\s*&\s*([A-Za-z_]\w*(?:\.[A-Za-z_]\w*|\[[^\]]+\])*)", r", \1", out)
     out = re.sub(r"\(\s*&\s*([A-Za-z_]\w*(?:\.[A-Za-z_]\w*|\[[^\]]+\])*)", r"(\1", out)
     out = re.sub(
-        r"(?:(?<=^)|(?<=[(,=?:!]))\s*&\s*\(([^)]+)\)",
+        r"(?:(?<=^)|(?<=[(,=?:!<>]))\s*&\s*\(([^)]+)\)",
         r" (\1)",
         out,
     )
@@ -893,6 +893,12 @@ def _lower_expr(expr, rewrite_rules):
         "",
         out,
     )
+    out = re.sub(
+        r"(?<![A-Za-z0-9_)\]])\(\s*(?:const\s+)?[A-Za-z_][A-Za-z0-9_]*\s*\)"
+        r"(?=\s*(?:[A-Za-z_(\"'0-9*+\-!~]))",
+        "",
+        out,
+    )
     # Common typedef casts (time_t, anything_t, etc.) have no JS equivalent.
     out = re.sub(r"\(\s*(?:const\s+)?[A-Za-z_]\w*_t\s*\)", "", out)
     # Deref casted pointers like *(int *)vptr -> vptr.
@@ -903,7 +909,7 @@ def _lower_expr(expr, rewrite_rules):
         r"\1",
         out,
     )
-    out = re.sub(r"\*\s*\(\s*([A-Za-z_]\w*(?:\[[^\]]+\])?)\s*\)", r"\1", out)
+    out = re.sub(r"\*\s*\(\s*([^)]+)\s*\)", r"(\1)", out)
     # Function-pointer null-casts like ((int (*)(...)) 0) -> null.
     out = re.sub(r"\(\s*[A-Za-z_]\w*\s*\(\s*\*\s*\)\s*\([^)]*\)\s*\)\s*0\b", "null", out)
     out = re.sub(r"\(\s*[A-Za-z_]\w*\s*\(\s*\)\s*\([^)]*\)\s*\)\s*0\b", "null", out)
@@ -928,8 +934,19 @@ def _lower_expr(expr, rewrite_rules):
     out = _rewrite_c_char_literals(out)
     out = _rewrite_octal_escapes(out)
     out = _rewrite_adjacent_string_literals(out)
+    out = _rewrite_printf_int_macros(out)
     # Address-of in return position is pointer semantics in C; drop for JS refs.
     out = re.sub(r"\breturn\s*&\s*([A-Za-z_]\w*(?:\[[^\]]+\])?)", r"return \1", out)
+    out = re.sub(
+        r"\(\s*game\?\.svc\?\.context\?\.run\s*\|\|\s*0\s*\)\s*=(?!=)",
+        "game.svc.context.run =",
+        out,
+    )
+    out = re.sub(
+        r"\(\s*game\?\.flags\?\.runmode\s*\|\|\s*'leap'\s*\)\s*=(?!=)",
+        "game.flags.runmode =",
+        out,
+    )
     out = re.sub(r"([A-Za-z_]\w*)\+\+\s*=", r"\1 =", out)
     out = re.sub(r"\bclass\b", "class_", out)
     out = re.sub(r"\blet\b", "let_", out)
@@ -966,6 +983,15 @@ def _rewrite_adjacent_string_literals(text):
     while prev != out:
         prev = out
         out = patt.sub(r"\1 + \2", out)
+    return out
+
+
+def _rewrite_printf_int_macros(text):
+    out = text
+    out = re.sub(r'"%"\s*PRId(?:32|64)', '"%d"', out)
+    out = re.sub(r'"%"\s*PRIu(?:32|64)', '"%u"', out)
+    out = re.sub(r'"%"\s*PRIx(?:32|64)', '"%x"', out)
+    out = re.sub(r'"%"\s*PRIo(?:32|64)', '"%o"', out)
     return out
 
 

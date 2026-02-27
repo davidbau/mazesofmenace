@@ -527,3 +527,18 @@ export function nhl_hookfn(L, ar) {
   nud.steps -= NHL_SB_STEPSIZE;
   nud.statctr++;
 }
+
+// TRANSLATOR: AUTO (nhlua.c:257)
+export function get_table_mapchr_opt(L, name, defval) {
+  let ter, typ;
+  ter = get_table_str_opt(L, name, emptystr);
+  if (ter && ter) {
+    typ =  check_mapchr;
+    if (typ === INVALID_TYPE) nhl_error(L, "Erroneous map char");
+  }
+  else {
+    typ =  defval;
+  }
+  if (ter) free;
+  return typ;
+}

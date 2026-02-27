@@ -281,3 +281,21 @@ export function reset_oattached_mids(ghostly) {
     }
   }
 }
+
+// TRANSLATOR: AUTO (restore.c:129)
+export function restlevchn(nhfp) {
+  let cnt = 0, tmplev, x;
+  svs.sp_levchn =  0;
+  Sfi_int(nhfp, cnt, "levchn-lev_count");
+  for (cnt > 0; cnt--; ) {
+    tmplev =  alloc(sizeof);
+    Sfi_s_level(nhfp, tmplev, "levchn-s_level");
+    if (!svs.sp_levchn) svs.sp_levchn = tmplev;
+    else {
+      for (x = svs.sp_levchn; x.next; x = x.next) {
+      }
+      x.next = tmplev;
+    }
+    tmplev.next =  0;
+  }
+}

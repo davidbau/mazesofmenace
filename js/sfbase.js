@@ -585,3 +585,38 @@ export function sf_log(nhfp, t1, sz, cnt, txtvalue) {
     fflush(fp);
   }
 }
+
+// TRANSLATOR: AUTO (sfbase.c:448)
+export function sfvalue_any(a) {
+  let buf;
+  Snprintf(buf, buf.length, "%d", a.a_int64);
+  return buf;
+}
+
+// TRANSLATOR: AUTO (sfbase.c:477)
+export function sfvalue_int32(a) {
+  let buf;
+  Snprintf(buf, buf.length, "%d", a);
+  return buf;
+}
+
+// TRANSLATOR: AUTO (sfbase.c:485)
+export function sfvalue_int64(a) {
+  let buf;
+  Snprintf(buf, buf.length, "%d", a);
+  return buf;
+}
+
+// TRANSLATOR: AUTO (sfbase.c:510)
+export function sfvalue_uint32(a) {
+  let buf;
+  Snprintf(buf, buf.length, "%u", a);
+  return buf;
+}
+
+// TRANSLATOR: AUTO (sfbase.c:518)
+export function sfvalue_uint64(a) {
+  let buf;
+  Snprintf(buf, buf.length, "%u", a);
+  return buf;
+}

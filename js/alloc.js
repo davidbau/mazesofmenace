@@ -33,3 +33,12 @@ export function re_alloc(oldptr, newlth) {
   if (newlth && !newptr) panic("Memory allocation failure; cannot extend to %u bytes", newlth);
   return newptr;
 }
+
+// TRANSLATOR: AUTO (alloc.c:124)
+export function fmt_ptr(ptr) {
+  let buf;
+  buf = ptrbuf[ptrbufidx];
+  if (++ptrbufidx >= PTRBUFCNT) ptrbufidx = 0;
+  Sprintf(buf, PTR_FMT,  ptr);
+  return buf;
+}

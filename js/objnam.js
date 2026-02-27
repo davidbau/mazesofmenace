@@ -1328,23 +1328,28 @@ const no_man = [
     'tegu', 'vela', 'da', 'hy', 'lu', 'no', 'nu', 'ra', 'ru', 'se', 'vi',
     'ya', 'o', 'a',
 ];
-
-function badman(basestr, to_plural) {
-    if (!basestr || basestr.length < 4) return false;
-    const lower = basestr.toLowerCase();
-    const list = to_plural ? no_men : no_man;
-    const suffix = to_plural ? 'man' : 'men';
-    for (const prefix of list) {
-        const al = prefix.length;
-        const spotIdx = lower.length - (al + 3);
-        if (spotIdx < 0) continue;
-        if (lower.slice(spotIdx, spotIdx + al) === prefix
-            && lower.slice(spotIdx + al) === suffix
-            && (spotIdx === 0 || basestr[spotIdx - 1] === ' ')) {
-            return true;
-        }
+// TRANSLATOR: AUTO (objnam.c:3183)
+export function badman(basestr, to_plural) {
+  let no_men = [ "albu", "antihu", "anti", "ata", "auto", "bildungsro", "cai", "cay", "ceru", "corner", "decu", "des", "dura", "fir", "hanu", "het", "infrahu", "inhu", "nonhu", "otto", "out", "prehu", "protohu", "subhu", "superhu", "talis", "unhu", "sha", "hu", "un", "le", "re", "so", "to", "at", "a", ];
+  let no_man = [ "abdo", "acu", "agno", "ceru", "cogno", "cycla", "fleh", "grava", "hegu", "preno", "sonar", "speci", "dai", "exa", "fla", "sta", "teg", "tegu", "vela", "da", "hy", "lu", "no", "nu", "ra", "ru", "se", "vi", "ya", "o", "a", ];
+  let i, al, endstr, spot;
+  if (!basestr || strlen < 4) return false;
+  endstr = eos;
+  if (to_plural) {
+    for (i = 0; i < SIZE; i++) {
+      al =  strlen(no_men[i]);
+      spot = endstr - (al + 3);
+      if (!BSTRNCMPI(basestr, spot, no_men[i], al) && (spot === basestr || (spot - 1) === ' ')) return true;
     }
-    return false;
+  }
+  else {
+    for (i = 0; i < SIZE; i++) {
+      al =  strlen(no_man[i]);
+      spot = endstr - (al + 3);
+      if (!BSTRNCMPI(basestr, spot, no_man[i], al) && (spot === basestr || (spot - 1) === ' ')) return true;
+    }
+  }
+  return false;
 }
 
 // Find compound separator in string

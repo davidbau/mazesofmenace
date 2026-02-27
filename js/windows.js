@@ -559,3 +559,25 @@ export function hup_yn_function(prompt, resp, deflt) {
 export function hup_nh_poskey(x, y, mod) {
   return '\x1b';
 }
+
+// TRANSLATOR: AUTO (windows.c:450)
+export function genl_message_menu(let_, how, mesg) {
+  pline("%s", mesg);
+  return 0;
+}
+
+// TRANSLATOR: AUTO (windows.c:682)
+export function hup_getlin(prompt, outbuf) {
+  Strcpy(outbuf, "\x1b");
+}
+
+// TRANSLATOR: AUTO (windows.c:1599)
+export function mixed_to_glyphinfo(str, gip) {
+  let dcount, ggv;
+  if (!str || !gip) return " ";
+   gip = nul_glyphinfo;
+  if ( str === '\\' && (str + 1) === 'G') {
+    if ((dcount = decode_glyph(str + 2, ggv))) { map_glyphinfo(0, 0, ggv, 0, gip); str += (dcount + 2); }
+  }
+  return str;
+}
