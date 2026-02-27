@@ -19,7 +19,7 @@ import { BOULDER } from './objects.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { is_pool, is_lava, is_waterwall } from './dbridge.js';
 import { passes_walls, is_swimmer, is_flyer, is_floater,
-         likes_lava, canseemon, monNam, monDisplayName,
+         likes_lava, canseemon, monDisplayName,
          is_rider, is_dlord, is_dprince, control_teleport,
          } from './mondata.js';
 import { newsym, mondead } from './monutil.js';

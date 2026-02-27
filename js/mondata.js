@@ -447,6 +447,29 @@ export function monNam(mon, { capitalize = false, article = null } = {}) {
     return result;
 }
 
+// C-style naming helpers for callsites migrating off legacy monNam().
+export function y_monnam(mon) {
+    return monNam(mon);
+}
+
+export function YMonnam(mon) {
+    return monNam(mon, { capitalize: true });
+}
+
+export function mon_nam(mon) {
+    return monNam(mon, { article: 'the' });
+}
+
+export function Monnam(mon) {
+    return monNam(mon, { article: 'the', capitalize: true });
+}
+
+// Lightweight compatibility for C-style x_monnam callsites that only depend on
+// article selection and optional capitalization.
+export function x_monnam(mon, article = null, _adjective = null, _suppress = 0, capitalize = false) {
+    return monNam(mon, { article, capitalize });
+}
+
 // ========================================================================
 // Trap awareness — C ref: mondata.c
 // ========================================================================

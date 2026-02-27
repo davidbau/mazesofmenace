@@ -41,7 +41,7 @@ import { next_ident, weight } from './mkobj.js';
 import { can_carry } from './dogmove.js';
 import { couldsee, m_cansee } from './vision.js';
 import { can_teleport, noeyes, perceives, nohands,
-         hides_under, is_mercenary, monDisplayName, monNam,
+         hides_under, is_mercenary, monDisplayName, YMonnam, Monnam,
          mon_knows_traps, is_rider, is_mind_flayer,
          is_mindless, telepathic,
          is_giant, is_undead, is_unicorn, is_minion, throws_rocks,
@@ -200,9 +200,9 @@ export function monflee(mon, fleetime, first, fleemsg, player, display, fov) {
         // C ref: monmove.c:487-520 — flee message
         if (!mon.flee && fleemsg && canseemon(mon, player, fov)) {
             if (!mon.mcanmove || !(mon.type?.speed)) {
-                display?.putstr_message(`${monNam(mon, { capitalize: true })} seems to flinch.`);
+                display?.putstr_message(`${YMonnam(mon)} seems to flinch.`);
             } else {
-                display?.putstr_message(`${monNam(mon, { capitalize: true })} turns to flee.`);
+                display?.putstr_message(`${YMonnam(mon)} turns to flee.`);
             }
         }
         mon.flee = true;
@@ -604,7 +604,7 @@ function m_respond_shrieker(mon, map, player, display = null, game = null) {
     if (distmin(mon.mx, mon.my, player.x, player.y) > 1) return;
     if (!player?.deaf) {
         if (display) {
-            display.putstr_message(`${monNam(mon, { article: 'the', capitalize: true })} shrieks.`);
+            display.putstr_message(`${Monnam(mon)} shrieks.`);
         }
         if (game && typeof game.stopOccupation === 'function') {
             game.stopOccupation();
@@ -664,7 +664,7 @@ function mind_blast(mon, map, player, display = null, fov = null) {
     // C ref: monmove.c:590 — canseemon message
     const vismon = canSpotMonsterForMap(mon, map, player, fov);
     if (vismon && display) {
-        display.putstr_message(`${monNam(mon, { article: 'the', capitalize: true })} concentrates.`);
+        display.putstr_message(`${Monnam(mon)} concentrates.`);
     }
 
     // C ref: monmove.c:592 — distance check
@@ -1422,7 +1422,7 @@ function m_move(mon, map, player, display = null, fov = null) {
                 if (display) {
                     const canSeeDoor = fov?.canSee ? fov.canSee(mon.mx, mon.my) : couldsee(map, player, mon.mx, mon.my);
                     if (canSeeDoor && mon.name) {
-                        display.putstr_message(`${monNam(mon, { article: 'the', capitalize: true })} opens a door.`);
+                        display.putstr_message(`${Monnam(mon)} opens a door.`);
                     } else {
                         display.putstr_message('You hear a door open.');
                     }

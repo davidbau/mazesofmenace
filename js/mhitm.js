@@ -21,7 +21,7 @@ import { distmin } from './hacklib.js';
 import { monnear, mondead, monAttackName, map_invisible, helpless } from './monutil.js';
 import { cansee } from './vision.js';
 import {
-    monNam, monDisplayName, touch_petrifies, unsolid, resists_fire, resists_cold,
+    x_monnam, monDisplayName, touch_petrifies, unsolid, resists_fire, resists_cold,
     resists_elec, resists_acid, resists_sleep, resists_ston,
     nonliving, sticks, attacktype, dmgtype, is_whirly,
 } from './mondata.js';
@@ -110,7 +110,7 @@ function pre_mm_attack(magr, mdef, vis, map, ctx) {
 // In C, canspotmon() is checked per-monster even within visible combat messages.
 function monCombatName(mon, visible, { capitalize = false, article = 'the' } = {}) {
     if (visible === false) return capitalize ? 'It' : 'it';
-    return monNam(mon, { capitalize, article });
+    return x_monnam(mon, article, null, 0, capitalize);
 }
 
 // cf. mhitm.c:75 — missmm(magr, mdef, mattk): miss message

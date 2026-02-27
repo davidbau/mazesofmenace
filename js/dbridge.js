@@ -25,7 +25,7 @@ import {
 import { rnd, rn2 } from './rng.js';
 import { block_point, unblock_point } from './vision.js';
 import { passes_walls, noncorporeal, is_flyer, is_floater,
-         is_swimmer, likes_lava, monDisplayName, monNam,
+         is_swimmer, likes_lava, monDisplayName, y_monnam,
          canseemon } from './mondata.js';
 import { mondead, newsym } from './monutil.js';
 
@@ -247,7 +247,7 @@ function set_entity(x, y, etmp, map, player) {
 function is_u(etmp) { return etmp.isPlayer === true; }
 function e_canseemon_fn(etmp) { return is_u(etmp) || canseemon(etmp.emon); }
 
-function e_nam(etmp) { return is_u(etmp) ? "you" : monNam(etmp.emon); }
+function e_nam(etmp) { return is_u(etmp) ? "you" : y_monnam(etmp.emon); }
 
 function E_phrase(etmp, verb) {
     const who = is_u(etmp) ? "You" : monDisplayName(etmp.emon);

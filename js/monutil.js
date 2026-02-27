@@ -7,7 +7,7 @@ import { PM_GRID_BUG,
          AT_BITE, AT_CLAW, AT_KICK, AT_BUTT, AT_TUCH, AT_STNG, AT_WEAP,
          AT_ENGL, AT_HUGS, AD_STCK } from './monsters.js';
 import { cansee, couldsee } from './vision.js';
-import { monNam } from './mondata.js';
+import { Monnam } from './mondata.js';
 import { is_hider, noattacks, dmgtype, attacktype } from './mondata.js';
 import { weight } from './mkobj.js';
 import { pushRngLogEntry, rnd } from './rng.js';
@@ -104,7 +104,7 @@ export function attackVerb(type) {
 export function monAttackName(mon) {
     // C ref: do_name.c Monnam() — uses ARTICLE_THE regardless of tame status,
     // and "saddled" is prepended when a saddle is worn.
-    return monNam(mon, { article: 'the', capitalize: true });
+    return Monnam(mon);
 }
 
 // ========================================================================

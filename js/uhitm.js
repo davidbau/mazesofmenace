@@ -38,7 +38,7 @@ import {
 import { mkobj, mkcorpstat, RANDOM_CLASS, next_ident, xname } from './mkobj.js';
 import { hitval as weapon_hitval, dmgval, abon, dbon, weapon_hit_bonus, weapon_dam_bonus } from './weapon.js';
 import {
-    nonliving, monDisplayName, monNam, is_undead, is_demon,
+    nonliving, monDisplayName, y_monnam, is_undead, is_demon,
     magic_negation,
     resists_fire, resists_cold, resists_elec, resists_acid,
     resists_poison, resists_sleep, resists_ston,
@@ -1262,7 +1262,7 @@ export function missum(mdef, uattk, wouldhavehit) {
     if (wouldhavehit) {
         display.putstr_message('Your armor is rather cumbersome...');
     }
-    display.putstr_message(`You miss ${monNam(mdef)}.`);
+    display.putstr_message(`You miss ${y_monnam(mdef)}.`);
 }
 
 // Internal version of missum used by known_hitum
@@ -1765,7 +1765,7 @@ function passive(mon, weapon, mhit, malive, aatyp = AT_WEAP, wep_was_destroyed =
             if (!rn2(4)) tmp = 127;
             if (!playerHasProp(player, FREE_ACTION) && tmp > 0) {
                 if (game) game.multi = Math.max(game.multi || 0, tmp);
-                if (display) display.putstr_message(`You are frozen by ${monNam(mon)}!`);
+                if (display) display.putstr_message(`You are frozen by ${y_monnam(mon)}!`);
             }
         } else {
             tmp = 0;
@@ -1829,9 +1829,9 @@ export function playerAttackMonster(player, monster, display, map, game = null) 
     if (!mhit) {
         // cf. uhitm.c:608 — known_hitum miss path → missum()
         if (bashPrefix) {
-            display.putstr_message(`${bashPrefix}  You miss ${monNam(monster)}.`);
+            display.putstr_message(`${bashPrefix}  You miss ${y_monnam(monster)}.`);
         } else {
-            display.putstr_message(`You miss ${monNam(monster)}.`);
+            display.putstr_message(`You miss ${y_monnam(monster)}.`);
         }
         // cf. uhitm.c:788 passive() after miss
         passive(monster, player.weapon || null, false, true, AT_WEAP, false, {

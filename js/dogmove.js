@@ -23,7 +23,7 @@ import { couldsee, m_cansee, do_clear_area } from './vision.js';
 import { mattackm, M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED } from './mhitm.js';
 import { is_animal, is_mindless, nohands, nolimbs, unsolid,
          carnivorous, herbivorous, is_metallivore,
-         monNam } from './mondata.js';
+         y_monnam, YMonnam, Monnam } from './mondata.js';
 import { PM_FIRE_ELEMENTAL, PM_SALAMANDER, PM_FLOATING_EYE, PM_GELATINOUS_CUBE,
          PM_LONG_WORM, PM_COCKATRICE, PM_CHICKATRICE, PM_MEDUSA,
          NUMMONS,
@@ -266,7 +266,7 @@ export function dog_eat(mon, obj, map, turnCount, ctx = null) {
         const sawPet = (fov?.canSee ? fov.canSee(startX, startY) : couldsee(map, player, startX, startY))
             && !mon.minvis;
         if (sawPet || (seeObj && !mon.minvis)) {
-            display.putstr_message(`${monNam(mon, { capitalize: true })} eats ${doname(obj, null)}.`);
+            display.putstr_message(`${YMonnam(mon)} eats ${doname(obj, null)}.`);
         } else if (seeObj) {
             display.putstr_message(`It eats ${doname(obj, null)}.`);
         }
@@ -305,7 +305,7 @@ function dog_starve(mon, map, display, player, fov) {
             fov?.canSee ? fov.canSee(mon.mx, mon.my) : false
         );
         if (canSee) {
-            display.putstr_message(`${monNam(mon, { article: 'the', capitalize: true })} starves.`);
+            display.putstr_message(`${Monnam(mon)} starves.`);
         } else if (display) {
             display.putstr_message('You feel sad for a moment.');
         }
@@ -340,9 +340,9 @@ function dog_hunger(mon, edog, turnCount, map, display, player, fov) {
                 fov?.canSee ? fov.canSee(mon.mx, mon.my) : false
             );
             if (canSee) {
-                display.putstr_message(`${monNam(mon, { article: 'the', capitalize: true })} is confused from hunger.`);
+                display.putstr_message(`${Monnam(mon)} is confused from hunger.`);
             } else if (display) {
-                display.putstr_message(`You feel worried about ${monNam(mon)}.`);
+                display.putstr_message(`You feel worried about ${y_monnam(mon)}.`);
             }
         } else if (turnCount > edog.hungrytime + DOG_STARVE
                    || mon.mhp <= 0 || mon.dead) {
@@ -555,7 +555,7 @@ function dog_invent(mon, edog, udist, map, turnCount, display, player, fov = nul
                     if (canSeePet) {
                         observeObject(dropObj);
                         // C ref: weapon.c:766 — Monnam(mon) uses ARTICLE_THE
-                        const monLabel = monNam(mon, { article: 'the', capitalize: true });
+                        const monLabel = Monnam(mon);
                         display.putstr_message(`${monLabel} drops ${doname(dropObj, null)}.`);
                     }
                 }
@@ -590,7 +590,7 @@ function dog_invent(mon, edog, udist, map, turnCount, display, player, fov = nul
                     fov?.canSee ? fov.canSee(mon.mx, mon.my) : couldsee(map, player, mon.mx, mon.my)
                 );
                 if (canSeePet) {
-                    display.putstr_message(`${monNam(mon, { capitalize: true })} eats ${doname(obj, null)}.`);
+                    display.putstr_message(`${YMonnam(mon)} eats ${doname(obj, null)}.`);
                 }
                 dog_eat(mon, obj, map, turnCount);
                 return 1;
@@ -629,7 +629,7 @@ function dog_invent(mon, edog, udist, map, turnCount, display, player, fov = nul
                         if (canSeePet) {
                             observeObject(picked);
                             // C ref: dogmove.c:454 — Monnam(mtmp) uses ARTICLE_THE
-                            const monLabel = monNam(mon, { article: 'the', capitalize: true });
+                            const monLabel = Monnam(mon);
                             display.putstr_message(`${monLabel} picks up ${doname(picked, null)}.`);
                         }
                     }
@@ -1381,7 +1381,7 @@ export async function dog_move(mon, map, player, display, fov, after = false, ga
         if (chi >= 0 && positions[chi] && positions[chi].allowU) {
             if (mon.mleashed) {
                 if (display) {
-                    display.putstr_message(`${monNam(mon, { article: 'the', capitalize: true })} breaks loose of ${mon.female ? 'her' : 'his'} leash!`);
+                    display.putstr_message(`${Monnam(mon)} breaks loose of ${mon.female ? 'her' : 'his'} leash!`);
                 }
                 mon.mleashed = false;
             }
@@ -1399,7 +1399,7 @@ export async function dog_move(mon, map, player, display, fov, after = false, ga
                     : couldsee(map, player, mon.mx, mon.my) || couldsee(map, player, nix, niy)
             );
             if (canSeePet && display) {
-                display.putstr_message(`${monNam(mon, { capitalize: true })} moves reluctantly.`);
+                display.putstr_message(`${YMonnam(mon)} moves reluctantly.`);
             }
         }
 
@@ -1414,7 +1414,7 @@ export async function dog_move(mon, map, player, display, fov, after = false, ga
             const sawPet = fov?.canSee ? fov.canSee(omx, omy) : couldsee(map, player, omx, omy);
             const seeObj = fov?.canSee ? fov.canSee(mon.mx, mon.my) : couldsee(map, player, mon.mx, mon.my);
             if (display && (sawPet || seeObj)) {
-                display.putstr_message(`${monNam(mon, { capitalize: true })} eats ${doname(eatObj, null)}.`);
+                display.putstr_message(`${YMonnam(mon)} eats ${doname(eatObj, null)}.`);
             }
             dog_eat(mon, eatObj, map, turnCount);
         }
