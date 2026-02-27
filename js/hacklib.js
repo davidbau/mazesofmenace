@@ -648,3 +648,12 @@ export function what_datamodel_is_this(retidx, szshort, szint, szlong, szll, szp
   }
   return unknown;
 }
+
+// TRANSLATOR: AUTO (hacklib.c:18)
+export function nh_qsort_idx_cmp(va, vb) {
+  let a =  va, b =  vb;
+  let c = nh_qsort_cmp_fn( (nh_qsort_base + (a.idx * nh_qsort_size)),  (nh_qsort_base + (b.idx * nh_qsort_size)));
+  if (c) return c;
+  if (a.idx < b.idx) return -1;
+  return (a.idx > b.idx);
+}

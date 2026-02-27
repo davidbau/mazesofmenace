@@ -459,3 +459,44 @@ export function reveal_paths(code) {
   nhUse(skip_sysopt);
   nhUse(nodumpreason);
 }
+
+// TRANSLATOR: AUTO (files.c:998)
+export function set_savefile_name(regularize_it) {
+  let regoffset = 0, overflow = 0, indicator_spot = 0;
+  let postappend =  0, sfindicator =  0;
+  Sprintf(gs.SAVEF, "save/%d%s",  getuid(), svp.plname);
+  regoffset = 5;
+  indicator_spot = 2;
+  if (regularize_it) regularize(gs.SAVEF + regoffset);
+  if (indicator_spot === 1 && sfindicator && !overflow) {
+    if (strlen(gs.SAVEF) + strlen(sfindicator) < (SAVESIZE - 1)) {
+      Strcat(gs.SAVEF, sfindicator);
+    }
+    else {
+      overflow = 2;
+    }
+  }
+  if (strlen(SAVE_EXTENSION) > (0) && !overflow) {
+    if (strlen(gs.SAVEF) + strlen(SAVE_EXTENSION) < (SAVESIZE - 1)) { Strcat(gs.SAVEF, SAVE_EXTENSION); }
+    else {
+      overflow = 3;
+    }
+  }
+  if (indicator_spot === 2 && sfindicator && !overflow) {
+    if (strlen(gs.SAVEF) + strlen(sfindicator) < (SAVESIZE - 1)) {
+      Strcat(gs.SAVEF, sfindicator);
+    }
+    else {
+      overflow = 4;
+    }
+  }
+  if (postappend && !overflow) {
+    if (strlen(gs.SAVEF) + strlen(postappend) < (SAVESIZE - 1)) {
+      Strcat(gs.SAVEF, postappend);
+    }
+    else {
+      overflow = 5;
+    }
+  }
+  if (overflow) impossible("set_savefile_name() couldn't complete" + " without overflow %d", overflow);
+}

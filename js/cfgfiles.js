@@ -471,3 +471,56 @@ export function choose_random_part(str, sep) {
   }
   return  0;
 }
+
+// TRANSLATOR: AUTO (cfgfiles.c:166)
+export function do_write_config_file(game) {
+  let fp, tmp;
+  if (!configfile[0]) {
+    pline("Strange, could not figure out config file name.");
+    return ECMD_OK;
+  }
+  if (game.flags.suppress_alert < FEATURE_NOTICE_VER(3,7,0)) {
+    pline("Warning: saveoptions is highly experimental!");
+    wait_synch();
+    pline("Some settings are not saved!");
+    wait_synch();
+    pline("All manual customization and comments are removed" + " from the file!");
+    wait_synch();
+  }
+  Sprintf(tmp, overwrite_prompt, Math.trunc(BUFSZ - overwrite_prompt.length - 2), configfile);
+  if (!paranoid_query(true, tmp)) return ECMD_OK;
+  fp = fopen(configfile, "w");
+  if (fp) {
+    let len, wrote, buf;
+    strbuf_init( buf);
+    all_options_strbuf( buf);
+    len = strlen(buf.str);
+    wrote = fwrite(buf.str, 1, len, fp);
+    fclose(fp);
+    strbuf_empty( buf);
+    if (wrote !== len) pline("An error occurred, wrote only partial data (%zu/%zu).", wrote, len);
+  }
+  return ECMD_OK;
+}
+
+// TRANSLATOR: AUTO (cfgfiles.c:1018)
+export function cnf_line_MAX_STATUENAME_RANK(bufp) {
+  let n = atoi(bufp);
+  if (n < 1) {
+    config_error_add("Illegal value in_ MAX_STATUENAME_RANK" + " (minimum is 1)");
+    n = 10;
+  }
+  sysopt.tt_oname_maxrank = n;
+  return true;
+}
+
+// TRANSLATOR: AUTO (cfgfiles.c:1032)
+export function cnf_line_LIVELOG(bufp) {
+  let L = strtol(bufp, null, 0);
+  if (L < 0 || L > 0xffff) {
+    config_error_add("Illegal value for LIVELOG" + " (must be between 0 and 0xFFFF).");
+    return 0;
+  }
+  sysopt.livelog = L;
+  return true;
+}

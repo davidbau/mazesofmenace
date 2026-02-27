@@ -7,3 +7,29 @@ export function FITSint_(i, file, line) {
   if (iret !== i) panic("Overflow at %s:%d", file, line);
   return iret;
 }
+
+// TRANSLATOR: AUTO (alloc.c:67)
+export function alloc(lth) {
+  let ptr;
+  do {
+    if (ForceAlignedLength(lth)) {
+      ForceAlignedLength(lth);
+    }
+  } while (ForceAlignedLength(lth));
+  ptr = malloc(lth);
+  if (!ptr) panic("Memory allocation failure; cannot get %u bytes", lth);
+  return  ptr;
+}
+
+// TRANSLATOR: AUTO (alloc.c:84)
+export function re_alloc(oldptr, newlth) {
+  let newptr;
+  do {
+    if (ForceAlignedLength(newlth)) {
+      ForceAlignedLength(newlth);
+    }
+  } while (ForceAlignedLength(newlth));
+  newptr =  realloc( oldptr,  newlth);
+  if (newlth && !newptr) panic("Memory allocation failure; cannot extend to %u bytes", newlth);
+  return newptr;
+}

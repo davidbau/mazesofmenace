@@ -97,6 +97,7 @@ def emit_helper_scaffold(src_path, func_name, compile_profile=None):
         )
         if translated_lines is not None:
             params = ast_summary.get("params") or params
+            params = [_sanitize_ident(p) for p in params]
             for p in sorted(required_params):
                 if p not in params:
                     params.append(p)
@@ -872,7 +873,7 @@ def _lower_expr(expr, rewrite_rules):
     out = re.sub(r"\(\s*(?:const\s+)?(?:struct|enum|union)\s+[A-Za-z_]\w*\s*\**\s*\)", "", out)
     out = re.sub(r"\(\s*(?:const\s+)?char\s*\*\s*\)", "", out)
     out = re.sub(
-        r"\(\s*(?:const\s+)?(?:unsigned\s+|signed\s+)?[A-Za-z_]\w*\s*\*\s*\)",
+        r"\(\s*(?:const\s+)?(?:unsigned\s+|signed\s+)?[A-Za-z_]\w*\s*\*+\s*\)",
         "",
         out,
     )
@@ -892,7 +893,6 @@ def _lower_expr(expr, rewrite_rules):
         "",
         out,
     )
-    out = re.sub(r"\(\s*[A-Z_][A-Z0-9_]*\s*\)", "", out)
     # Common typedef casts (time_t, anything_t, etc.) have no JS equivalent.
     out = re.sub(r"\(\s*(?:const\s+)?[A-Za-z_]\w*_t\s*\)", "", out)
     # Deref casted pointers like *(int *)vptr -> vptr.
@@ -903,6 +903,7 @@ def _lower_expr(expr, rewrite_rules):
         r"\1",
         out,
     )
+    out = re.sub(r"\*\s*\(\s*([A-Za-z_]\w*(?:\[[^\]]+\])?)\s*\)", r"\1", out)
     # Function-pointer null-casts like ((int (*)(...)) 0) -> null.
     out = re.sub(r"\(\s*[A-Za-z_]\w*\s*\(\s*\*\s*\)\s*\([^)]*\)\s*\)\s*0\b", "null", out)
     out = re.sub(r"\(\s*[A-Za-z_]\w*\s*\(\s*\)\s*\([^)]*\)\s*\)\s*0\b", "null", out)
@@ -916,8 +917,7 @@ def _lower_expr(expr, rewrite_rules):
     # free() is a no-op in JS runtime; preserve operand side-effects only.
     out = re.sub(r"\bfree\s*\(\s*([^()]+?)\s*\)", r"(\1, 0)", out)
     # C integer long suffix (e.g., 7L) has no JS runtime equivalent.
-    out = re.sub(r"\b(\d+)L\b", r"\1", out)
-    out = re.sub(r"\b(\d+)(?:ULL|LLU|UL|LU|LL|U)\b", r"\1", out)
+    out = re.sub(r"\b(0x[0-9A-Fa-f]+|\d+)(?:ULL|LLU|UL|LU|LL|L|U)\b", r"\1", out)
     out = re.sub(r"\bsizeof\s+([A-Za-z_]\w*)\b", r"\1.length", out)
     out = re.sub(
         r'\bsizeof\s+("(?:(?:\\.)|[^"\\])*")',
@@ -927,14 +927,10 @@ def _lower_expr(expr, rewrite_rules):
     out = re.sub(r"\(\s*boolean\s*\)\s*", "", out)
     out = _rewrite_c_char_literals(out)
     out = _rewrite_octal_escapes(out)
+    out = _rewrite_adjacent_string_literals(out)
     # Address-of in return position is pointer semantics in C; drop for JS refs.
     out = re.sub(r"\breturn\s*&\s*([A-Za-z_]\w*(?:\[[^\]]+\])?)", r"return \1", out)
     out = re.sub(r"([A-Za-z_]\w*)\+\+\s*=", r"\1 =", out)
-    out = re.sub(
-        r"(^|[\s(,=!?:+\-/*])\*\s*([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)?)",
-        r"\1\2",
-        out,
-    )
     out = re.sub(r"\bclass\b", "class_", out)
     out = re.sub(r"\blet\b", "let_", out)
     out = re.sub(r"\bin\b", "in_", out)
@@ -961,6 +957,16 @@ def _rewrite_octal_escapes(text):
         return f"\\x{value:02x}"
 
     return re.sub(r"\\([0-7]{1,3})", repl, text)
+
+
+def _rewrite_adjacent_string_literals(text):
+    patt = re.compile(r'("(?:(?:\\.)|[^"\\])*")\s+("(?:(?:\\.)|[^"\\])*")')
+    prev = None
+    out = text
+    while prev != out:
+        prev = out
+        out = patt.sub(r"\1 + \2", out)
+    return out
 
 
 def _normalize_space(text):

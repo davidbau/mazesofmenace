@@ -540,3 +540,48 @@ export function sfvalue_xint16(a) {
   Snprintf(buf, buf.length, "%d",  a);
   return buf;
 }
+
+// TRANSLATOR: AUTO (sfbase.c:329)
+export function sfo_version_info(nhfp, d_version_info, myname) {
+  if (nhfp.fplog) sf_log(nhfp, myname, sizeof *d_version_info, 1, complex_dump( d_version_info));
+  if (nhfp.structlevel) {
+    ( sfoprocs[nhfp.fnidx].fn.sf_version_info)(nhfp, d_version_info, myname);
+  }
+  else {
+    let save_fplog = nhfp.fplog;
+    nhfp.fplog = 0;
+    ( sfoflprocs[nhfp.fnidx].fn_x.sf_version_info)(nhfp, d_version_info, myname);
+    nhfp.fplog = save_fplog;
+  }
+}
+
+// TRANSLATOR: AUTO (sfbase.c:347)
+export function sfi_version_info(nhfp, d_version_info, myname) {
+  if (nhfp.structlevel) {
+    ( sfiprocs[nhfp.fnidx].fn.sf_version_info)(nhfp, d_version_info, myname);
+  }
+  else {
+    let save_mode = nhfp.mode;
+    nhfp.mode &= ~(CONVERTING | UNCONVERTING);
+    nhfp.mode |= TURN_OFF_LOGGING;
+    ( sfiflprocs[nhfp.fnidx].fn_x.sf_version_info)(nhfp, d_version_info, myname);
+    nhfp.mode = save_mode;
+  }
+  if (!nhfp.eof) {
+    if ((((nhfp.mode & CONVERTING) !== 0) || ((nhfp.mode & UNCONVERTING) !== 0)) && nhfp.nhfpconvert) {
+      d_version_info.feature_set |= SFCTOOL_BIT;
+      sfo_version_info(nhfp.nhfpconvert, d_version_info, myname);
+    }
+    if (nhfp.fplog) sf_log(nhfp, myname, sizeof *d_version_info, 1, complex_dump( d_version_info));
+  }
+}
+
+// TRANSLATOR: AUTO (sfbase.c:376)
+export function sf_log(nhfp, t1, sz, cnt, txtvalue) {
+  let fp = nhfp.fplog, iocount, dolog = ((nhfp.mode & TURN_OFF_LOGGING) === 0);
+  if (fp && dolog) {
+    iocount = ((nhfp.mode & WRITING) === 0) ? nhfp.rcount : nhfp.wcount;
+    fprintf(fp,    "%08ld %s sz=%lu cnt=%d |%s|\n", iocount, t1,     sz,   cnt, txtvalue);
+    fflush(fp);
+  }
+}

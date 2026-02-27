@@ -500,3 +500,30 @@ export async function nhl_text(L) {
   }
   return 0;
 }
+
+// TRANSLATOR: AUTO (nhlua.c:2305)
+export function nhl_pcall_handle(L, nargs, nresults, name, npa) {
+  let rv = nhl_pcall(L, nargs, nresults, name);
+  if (rv) {
+    let nud;
+    lua_getallocf(L, nud);
+    switch (npa) {
+      case NHLpa_panic:
+        panic("Lua error %d:%s %s", nud.sid, nud.name ? nud.name : "(unknown)", lua_tostring(L, -1));
+      break;
+      case NHLpa_impossible:
+        impossible("Lua error: %d:%s %s", nud.sid, nud.name ? nud.name : "(unknown)", lua_tostring(L, -1));
+      lua_pop(L, 1);
+    }
+  }
+  return rv;
+}
+
+// TRANSLATOR: AUTO (nhlua.c:3179)
+export function nhl_hookfn(L, ar) {
+  let nud;
+  lua_getallocf(L, nud);
+  if (nud.steps <= NHL_SB_STEPSIZE) longjmp(nud.jb, 1);
+  nud.steps -= NHL_SB_STEPSIZE;
+  nud.statctr++;
+}

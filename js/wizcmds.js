@@ -685,3 +685,75 @@ export async function wiz_level_change(player) {
   player.ulevelmax = player.ulevel;
   return ECMD_OK;
 }
+
+// TRANSLATOR: AUTO (wizcmds.c:1704)
+export async function wiz_display_macros() {
+  let display_issues = "Display macro issues:", buf, win;
+  let glyph, test, trouble = 0, no_glyph = NO_GLYPH, max_glyph = MAX_GLYPH;
+  win = create_nhwindow(NHW_TEXT);
+  for (glyph = 0; glyph < MAX_GLYPH; ++glyph) {
+    if (glyph_is_cmap(glyph)) {
+      test = glyph_to_cmap(glyph);
+      if (test === no_glyph) {
+        if (!trouble++) putstr(win, 0, display_issues);
+        Sprintf(buf, "glyph_is_cmap() / glyph_to_cmap(glyph=%d)" + " sync failure, returned NO_GLYPH (%d)", glyph, test);
+        putstr(win, 0, buf);
+      }
+      if (glyph_is_cmap_zap(glyph) && !(test >= S_vbeam && test <= S_rslant)) {
+        if (!trouble++) putstr(win, 0, display_issues);
+        Sprintf(buf, "glyph_is_cmap_zap(glyph=%d) returned non-zap cmap %d", glyph, test);
+        putstr(win, 0, buf);
+      }
+      if (!IndexOk(test, defsyms)) {
+        if (!trouble++) putstr(win, 0, display_issues);
+        Sprintf(buf, "glyph_to_cmap(glyph=%d) returns %d" + " exceeds defsyms[%d] bounds (MAX_GLYPH = %d)", glyph, test, SIZE(defsyms), max_glyph);
+        putstr(win, 0, buf);
+      }
+    }
+    if (glyph_is_monster(glyph)) {
+      test = glyph_to_mon(glyph);
+      if (test < 0 || test >= NUMMONS) {
+        if (!trouble++) putstr(win, 0, display_issues);
+        Sprintf(buf, "glyph_to_mon(glyph=%d) returns %d" + " exceeds mons[%d] bounds", glyph, test, NUMMONS);
+        putstr(win, 0, buf);
+      }
+    }
+    if (glyph_is_object(glyph)) {
+      test = glyph_to_obj(glyph);
+      if (test < 0 || test > NUM_OBJECTS) {
+        if (!trouble++) putstr(win, 0, display_issues);
+        Sprintf(buf, "glyph_to_obj(glyph=%d) returns %d" + " exceeds objects[%d] bounds", glyph, test, NUM_OBJECTS);
+        putstr(win, 0, buf);
+      }
+    }
+  }
+  if (!trouble) putstr(win, 0, "No display macro issues detected.");
+  await display_nhwindow(win, false);
+  destroy_nhwindow(win);
+  return ECMD_OK;
+}
+
+// TRANSLATOR: AUTO (wizcmds.c:1783)
+export async function wiz_mon_diff() {
+  let window_title = "Review of monster difficulty ratings" + " [index:level]:";
+  let buf, win;
+  let mhardcoded = 0, mcalculated = 0, trouble = 0, cnt = 0, mdiff = 0, mlev;
+  let ptr;
+  win = create_nhwindow(NHW_TEXT);
+  for (ptr = mons[0]; ptr.mlet; ptr++, cnt++) {
+    mcalculated = mstrength(ptr);
+    mhardcoded =  ptr.difficulty;
+    mdiff = mhardcoded - mcalculated;
+    if (mdiff) {
+      if (!trouble++) putstr(win, 0, window_title);
+      mlev =  ptr.mlevel;
+      if (mlev > 50) mlev = 50;
+      Snprintf(buf, buf.length, "%-18s [%3d:%2d]: calculated: %2d, hardcoded: %2d (%+d)", ptr.pmnames[NEUTRAL], cnt, mlev, mcalculated, mhardcoded, mdiff);
+      putstr(win, 0, buf);
+    }
+  }
+  if (!trouble) putstr(win, 0, "No monster difficulty discrepancies were detected.");
+  await display_nhwindow(win, false);
+  destroy_nhwindow(win);
+  return ECMD_OK;
+}

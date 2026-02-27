@@ -231,3 +231,31 @@ export function outrumor(truth, mechanism, player) {
   }
   pline1(line);
 }
+
+// TRANSLATOR: AUTO (rumors.c:576)
+export function init_oracles(fp) {
+  let i, line, cnt = 0;
+  dlb_fgets(line, line.length, fp);
+  dlb_fgets(line, line.length, fp);
+  if (sscanf(line, "%5d\n", cnt) === 1 && cnt > 0) {
+    svo.oracle_cnt =  cnt;
+    svo.oracle_loc =  alloc( cnt * sizeof);
+    for (i = 0; i < cnt; i++) {
+      dlb_fgets(line, line.length, fp);
+      sscanf(line, "%5lx\n", svo.oracle_loc[i]);
+    }
+  }
+  return;
+}
+
+// TRANSLATOR: AUTO (rumors.c:938)
+export function free_CapMons() {
+  if (CapMons) {
+    let idx;
+    for (idx = CapMonstCnt; idx < CapMonSiz - 1; ++idx) {
+      (CapMons[idx], 0);
+    }
+    (CapMons, 0), CapMons =  0;
+  }
+  CapMonSiz = 0;
+}

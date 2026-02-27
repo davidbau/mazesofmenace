@@ -154,3 +154,8 @@ export function deliver_by_pline(str) {
     pline("%s", out_line);
   }
 }
+
+// TRANSLATOR: AUTO (questpgr.c:623)
+export async function com_pager(msgid) {
+  await com_pager_core("common", msgid, true,  0);
+}
