@@ -214,10 +214,11 @@ export function encodeconduct(player) {
 }
 
 // Autotranslated from topten.c:454
+// TRANSLATOR: AUTO (topten.c:454)
 export function encodeachieve(secondlong, player) {
   let i, achidx, offset, r = 0;
   offset = secondlong ? (32 - 1) : 0;
-  for (i = 0; player.uachieved; ++i) {
+  for (i = 0; player.uachieved[i]; ++i) {
     achidx = player.uachieved[i] - offset;
     if (achidx > 0 && achidx < 32) {
       r |= 1 << (achidx - 1);

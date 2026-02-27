@@ -259,16 +259,19 @@ export async function select_menu(win, how) {
 }
 
 // Autotranslated from windows.c:192
+// TRANSLATOR: AUTO (windows.c:192)
 export function genl_can_suspend_no() {
   return false;
 }
 
 // Autotranslated from windows.c:198
+// TRANSLATOR: AUTO (windows.c:198)
 export function genl_can_suspend_yes() {
   return true;
 }
 
 // Autotranslated from windows.c:230
+// TRANSLATOR: AUTO (windows.c:230)
 export function check_tty_wincap(wincap) {
   let wc = win_choices_find("tty");
   if (wc) return ((wc.procs.wincap & wincap) === wincap);
@@ -276,6 +279,7 @@ export function check_tty_wincap(wincap) {
 }
 
 // Autotranslated from windows.c:240
+// TRANSLATOR: AUTO (windows.c:240)
 export function check_tty_wincap2(wincap2) {
   let wc = win_choices_find("tty");
   if (wc) return ((wc.procs.wincap2 & wincap2) === wincap2);
@@ -283,11 +287,13 @@ export function check_tty_wincap2(wincap2) {
 }
 
 // Autotranslated from windows.c:460
+// TRANSLATOR: AUTO (windows.c:460)
 export function genl_preference_update(pref) {
   return;
 }
 
 // Autotranslated from windows.c:471
+// TRANSLATOR: AUTO (windows.c:471)
 export function genl_getmsghistory(init) {
   return  0;
 }
@@ -304,93 +310,111 @@ export function hup_create_nhwindow(type) {
 }
 
 // Autotranslated from windows.c:703
+// TRANSLATOR: AUTO (windows.c:703)
 export function hup_select_menu(window, how, menu_list) {
   return -1;
 }
 
 // Autotranslated from windows.c:713
+// TRANSLATOR: AUTO (windows.c:713)
 export function hup_add_menu(window, glyphinfo, identifier, sel, grpsel, attr, clr, txt, itemflags) {
   return;
 }
 
 // Autotranslated from windows.c:729
+// TRANSLATOR: AUTO (windows.c:729)
 export function hup_end_menu(window, prompt) {
   return;
 }
 
 // Autotranslated from windows.c:736
+// TRANSLATOR: AUTO (windows.c:736)
 export function hup_putstr(window, attr, text) {
   return;
 }
 
 // Autotranslated from windows.c:743
+// TRANSLATOR: AUTO (windows.c:743)
 export function hup_print_glyph(window, x, y, glyphinfo, bkglyphinfo) {
   return;
 }
 
 // Autotranslated from windows.c:754
+// TRANSLATOR: AUTO (windows.c:754)
 export function hup_outrip(tmpwin, how, when) {
   return;
 }
 
 // Autotranslated from windows.c:761
+// TRANSLATOR: AUTO (windows.c:761)
 export function hup_curs(window, x, y) {
   return;
 }
 
 // Autotranslated from windows.c:768
+// TRANSLATOR: AUTO (windows.c:768)
 export function hup_display_nhwindow(window, blocking) {
   return;
 }
 
 // Autotranslated from windows.c:775
+// TRANSLATOR: AUTO (windows.c:775)
 export function hup_display_file(fname, complain) {
   return;
 }
 
 // Autotranslated from windows.c:783
+// TRANSLATOR: AUTO (windows.c:783)
 export function hup_cliparound(x, y) {
   return;
 }
 
 // Autotranslated from windows.c:815
+// TRANSLATOR: AUTO (windows.c:815)
 export function hup_status_update(idx, ptr, chg, pc, color, colormasks) {
   return;
 }
 
 // Autotranslated from windows.c:828
+// TRANSLATOR: AUTO (windows.c:828)
 export function hup_int_ndecl() {
   return -1;
 }
 
 // Autotranslated from windows.c:834
+// TRANSLATOR: AUTO (windows.c:834)
 export function hup_void_ndecl() {
   return;
 }
 
 // Autotranslated from windows.c:841
+// TRANSLATOR: AUTO (windows.c:841)
 export function hup_void_fdecl_int(arg) {
   return;
 }
 
 // Autotranslated from windows.c:848
+// TRANSLATOR: AUTO (windows.c:848)
 export function hup_void_fdecl_winid(window) {
   return;
 }
 
 // Autotranslated from windows.c:855
+// TRANSLATOR: AUTO (windows.c:855)
 export function hup_void_fdecl_winid_ulong(window, mbehavior) {
   return;
 }
 
 // Autotranslated from windows.c:864
+// TRANSLATOR: AUTO (windows.c:864)
 export function hup_void_fdecl_constchar_p(string) {
   return;
 }
 
 // Autotranslated from windows.c:871
+// TRANSLATOR: AUTO (windows.c:871)
 export function hup_ctrl_nhwindow(window, request, wri) {
-  return null;
+  return  0;
 }
 
 // Autotranslated from windows.c:908
@@ -435,21 +459,25 @@ export function dump_create_nhwindow(type) {
 }
 
 // Autotranslated from windows.c:1299
+// TRANSLATOR: AUTO (windows.c:1299)
 export function dump_clear_nhwindow(win) {
   return;
 }
 
 // Autotranslated from windows.c:1306
+// TRANSLATOR: AUTO (windows.c:1306)
 export function dump_display_nhwindow(win, p) {
   return;
 }
 
 // Autotranslated from windows.c:1313
+// TRANSLATOR: AUTO (windows.c:1313)
 export function dump_destroy_nhwindow(win) {
   return;
 }
 
 // Autotranslated from windows.c:1320
+// TRANSLATOR: AUTO (windows.c:1320)
 export function dump_start_menu(win, mbehavior) {
   return;
 }
@@ -475,8 +503,9 @@ export function dump_end_menu(win, str) {
 }
 
 // Autotranslated from windows.c:1358
+// TRANSLATOR: AUTO (windows.c:1358)
 export function dump_select_menu(win, how, item) {
-   item = null;
+   item =  0;
   return 0;
 }
 

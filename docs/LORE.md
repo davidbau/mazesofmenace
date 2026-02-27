@@ -1515,3 +1515,12 @@ hard-won wisdom:
 - Keep campaign work issue-driven in three layers: tracker epic (`M0..M6`), milestone issues, and concrete child implementation issues. Milestones should not carry unscoped implementation directly.
 - For failing-session burndown, capture two artifacts per baseline run: a full pass/fail snapshot and a first-divergence taxonomy grouped by JS origin (`function(file:line)`). Use the taxonomy to open follow-up cluster issues immediately.
 - Require each campaign issue to carry dependency links (`Blocked by`, `Blocks`) and evidence fields (session/seed, first divergence, expected C vs actual JS) to keep parallel engineers aligned.
+
+### Translator safe-scaling lesson: string-pointer style ports must be gated (2026-02-27)
+
+- A wide stitch batch surfaced that several `hacklib.c`-style string functions can emit syntactically-valid but semantically-wrong JS when C pointer mutation idioms are lowered mechanically (`p++`, in-place char writes, NUL termination).
+- These outputs can pass structural safety checks yet still regress runtime behavior or hang unit runs.
+- Practical policy update for batch stitching:
+  - keep broad autostitch on modules with scalar/control logic (`windows`, small status helpers),
+  - require stricter semantic gating for string/pointer-mutation families (`hacklib`, name-formatting surfaces) until translator rules model immutable JS strings explicitly,
+  - when in doubt, prefer conservative module filtering and revert suspect subsets immediately.
