@@ -843,6 +843,7 @@ export function learn_egg_type(mnum, game) {
 }
 
 // Autotranslated from timeout.c:2575
+// TRANSLATOR: AUTO (timeout.c:2575)
 export function mon_is_local(mon, game) {
   let curr;
   for (curr = game.migrating_mons; curr; curr = curr.nmon) {

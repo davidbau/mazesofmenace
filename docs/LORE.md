@@ -1532,4 +1532,8 @@ hard-won wisdom:
   - `NUL_SENTINEL_ASSIGN` (scalar assignment of `'\0'` / `'\x00'`),
   - `POINTER_TRUTHY_FOR` (C-style pointer scan loops like `for (p=s; p; p++)`),
   - `WHOLE_STRING_HIGHC_LOWC` (whole-string `highc/lowc` rewrites).
+- Added module-level semantic blocking (`MODULE_SEMANTIC_BLOCK`) driven by
+  `tools/c_translator/rulesets/semantic_block_modules.json` for known
+  string/pointer-heavy files (`hacklib`, `do_name`, `objnam`) until emitter
+  rules can preserve JS string semantics safely.
 - On the latest full candidate set (`/tmp/translator-runtime-stitch-candidates-v4.json`), safe candidates decreased from `470` to `452` and dry-run stitchable count dropped from `174` to `129`, preventing known bad inserts from entering runtime patches.

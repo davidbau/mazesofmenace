@@ -106,11 +106,13 @@ export function get_strength_str(player) {
 }
 
 // Autotranslated from botl.c:300
+// TRANSLATOR: AUTO (botl.c:300)
 export function xlev_to_rank(xlev) {
   return (xlev <= 2) ? 0 : (xlev <= 30) ? ((xlev + 2) / 4) : 8;
 }
 
 // Autotranslated from botl.c:317
+// TRANSLATOR: AUTO (botl.c:317)
 export function rank_to_xlev(rank) {
   return (rank < 1) ? 1 : (rank < 2) ? 3 : (rank < 8) ? ((rank * 4) - 2) : 30;
 }
@@ -262,6 +264,7 @@ export function hilite_reset_needed(bl_p, augmented_time, game) {
 }
 
 // Autotranslated from botl.c:2318
+// TRANSLATOR: AUTO (botl.c:2318)
 export function split_clridx(idx, coloridx, attrib) {
   if (coloridx) coloridx = idx & 0x00FF;
   if (attrib) attrib = (idx >> 8) & 0x00FF;

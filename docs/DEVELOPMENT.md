@@ -144,6 +144,9 @@ Notes:
 - It now also rejects known semantic trap patterns even when syntax is valid:
   pointer-style truthy loops, NUL-sentinel scalar writes, and whole-string
   `highc/lowc` rewrites.
+- It also supports module-level semantic blocking via
+  `tools/c_translator/rulesets/semantic_block_modules.json` for files whose C
+  pointer/string idioms are not yet safely lowerable to JS.
 - `refactor_queue.py` emits these as `rename_alias` tasks so we can prioritize
   canonical renames separately from true missing identifiers.
 

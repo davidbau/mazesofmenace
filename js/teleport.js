@@ -892,6 +892,7 @@ export function teleport_pet(mtmp, force) {
 }
 
 // Autotranslated from teleport.c:20
+// TRANSLATOR: AUTO (teleport.c:20)
 export function m_blocks_teleporting(mtmp) {
   if (is_dlord(mtmp.data) || is_dprince(mtmp.data)) return true;
   return false;

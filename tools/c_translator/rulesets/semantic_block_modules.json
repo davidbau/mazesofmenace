@@ -1,0 +1,7 @@
+{
+  "modules": [
+    "js/hacklib.js",
+    "js/do_name.js",
+    "js/objnam.js"
+  ]
+}

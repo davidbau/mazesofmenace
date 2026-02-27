@@ -79,6 +79,20 @@ def load_identifier_aliases():
     return out
 
 
+def load_semantic_block_modules():
+    path = Path("tools/c_translator/rulesets/semantic_block_modules.json")
+    if not path.exists():
+        return set()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return set()
+    mods = data.get("modules", [])
+    if not isinstance(mods, list):
+        return set()
+    return {m for m in mods if isinstance(m, str) and m}
+
+
 def parse_module_symbols(js_text):
     syms = set(EXPORT_FN_RE.findall(js_text))
     syms.update(LOCAL_FN_RE.findall(js_text))
@@ -340,6 +354,7 @@ def main():
     repo = Path(args.repo_root)
     cand = json.loads(Path(args.candidates).read_text(encoding="utf-8"))
     alias_map = load_identifier_aliases()
+    semantic_block_modules = load_semantic_block_modules()
 
     safe = []
     unsafe = []
@@ -371,6 +386,8 @@ def main():
             alias_map,
         )
         semantic_hazards = candidate_semantic_hazards(emitted_js)
+        if js_module in semantic_block_modules:
+            semantic_hazards = sorted(set(semantic_hazards + ["MODULE_SEMANTIC_BLOCK"]))
         syntax_ok, syntax_error = candidate_syntax_ok(emitted_js)
         out_rec = {
             **rec,
