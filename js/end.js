@@ -27,7 +27,7 @@ import { mons, G_UNIQ, PM_GHOST, PM_HIGH_CLERIC, PM_WRAITH,
          PM_VAMPIRE, PM_GHOUL, S_WRAITH, S_MUMMY, S_VAMPIRE,
          M2_PNAME, PM_TOURIST, PM_HUMAN, PM_GREEN_SLIME, PM_HOUSECAT,
          NON_PM } from './monsters.js';
-import { monDisplayName, hasGivenName } from './mondata.js';
+import { x_monnam, hasGivenName } from './mondata.js';
 import { AMULET_OF_LIFE_SAVING, AMULET_CLASS, GEM_CLASS,
          FIRST_AMULET, FIRST_REAL_GEM, LAST_REAL_GEM, LAST_GLASS_GEM,
          BELL_OF_OPENING, CANDELABRUM_OF_INVOCATION,
@@ -121,11 +121,15 @@ export function delayed_killer(id, format, killername) {
 
 // cf. end.c:1728 — find_delayed_killer(id): find delayed killer
 // Searches delayed killer list for record matching given id.
+// TRANSLATOR: AUTO (end.c:1728)
 export function find_delayed_killer(id) {
-    for (let k = killer.next; k != null; k = k.next) {
-        if (k.id === id) return k;
+  let k;
+  for (k = svk.killer.next; k !==  0; k = k.next) {
+    if (k.id === id) {
+      break;
     }
-    return null;
+  }
+  return k;
 }
 
 // cf. end.c:1740 — dealloc_killer(kptr): remove delayed killer
@@ -227,7 +231,7 @@ function is_vampshifter(mtmp) {
 // Builds detailed killer message from monster type, name, and context.
 // In the JS port, this sets player.deathCause and then calls done().
 export function done_in_by(mtmp, how, game) {
-    const player = game.player;
+    const player = (game.u || game.player);
     const mndx = mtmp.mndx;
     const mptr = mons[mndx] || {};
     const chamMndx = (mtmp.cham != null && mtmp.cham >= 0) ? mtmp.cham : mndx;
@@ -290,7 +294,7 @@ export function done_in_by(mtmp, how, game) {
         buf += `${honorific}${shknm}, the shopkeeper`;
         killer.format = KILLED_BY;
     } else if (mtmp.ispriest || mtmp.isminion) {
-        buf += monDisplayName(mtmp);
+        buf += x_monnam(mtmp);
     } else {
         buf += mptr.name || 'monster';
         if (hasGivenName(mtmp)) {
@@ -349,13 +353,13 @@ function fixup_death(how, game) {
 
 // cf. end.c:706 [static] — savelife(how): life-saving amulet restoration
 function savelife(how, game) {
-    const player = game.player;
+    const player = (game.u || game.player);
     const givehp = 50 + 10 * Math.floor(player.attributes[A_CON] / 2);
 
-    if (player.level < 1) player.level = 1;
+    if (player.ulevel < 1) player.ulevel = 1;
     // C: uhpmin = minuhpmax(10) — ensure hpmax >= 10
-    if (player.hpmax < 10) player.hpmax = 10;
-    player.hp = Math.min(player.hpmax, givehp);
+    if (player.uhpmax < 10) player.uhpmax = 10;
+    player.uhp = Math.min(player.uhpmax, givehp);
 
     if (player.hunger < 500 || how === CHOKING) {
         player.hunger = 900;
@@ -381,7 +385,7 @@ function savelife(how, game) {
 // cf. end.c:1022 — done(how): main game-end handler
 // Checks for life-saving, wizard/discover options, then calls really_done.
 export function done(how, game) {
-    const player = game.player;
+    const player = (game.u || game.player);
     let survive = false;
 
     if (how === TRICKED) {
@@ -404,8 +408,8 @@ export function done(how, game) {
 
     if (how < PANICKED) {
         player.umortality = (player.umortality || 0) + 1;
-        if (player.hp !== 0) {
-            player.hp = 0;
+        if (player.uhp !== 0) {
+            player.uhp = 0;
         }
     }
 
@@ -464,7 +468,7 @@ export function done(how, game) {
 
 // cf. end.c:1131 [static] — really_done(how): final game termination
 function really_done(how, game) {
-    const player = game.player;
+    const player = (game.u || game.player);
 
     // Build death description for display
     player.deathCause = formatkiller(how);
@@ -671,7 +675,7 @@ function dump_plines(game) {
 
 // cf. end.c:544 [static] — dump_everything(how, when, game): dumplog generation
 function dump_everything(how, when, game) {
-    const player = game.player;
+    const player = (game.u || game.player);
     const dumplog = game.dumplog || [];
 
     // Character name and basic info
@@ -716,7 +720,7 @@ function dump_everything(how, when, game) {
 
 // cf. end.c:621 [static] — disclose(how, taken, game): end-of-game disclosure
 function disclose(how, taken, game) {
-    const player = game.player;
+    const player = (game.u || game.player);
     const disclosure = game.disclosure || {};
 
     // Inventory disclosure
@@ -822,7 +826,7 @@ function _toArray(list) {
 // ============================================================================
 
 // cf. end.c:800 [static] — sort_valuables(list, size): sort by count
-function sort_valuables(list, size) {
+export function sort_valuables(list, size) {
     // Insertion sort: move greater quantities to front
     for (let i = 1; i < size; i++) {
         if (list[i].count === 0) continue;
@@ -893,7 +897,7 @@ function nowrap_add(a, b) {
 
 // cf. end.c:852 — done_object_cleanup(game): pre-bones object cleanup
 export function done_object_cleanup(game) {
-    const player = game.player;
+    const player = (game.u || game.player);
     if (!player) return;
 
     // C: inven_inuse(TRUE) — use up any active disposable item
@@ -909,10 +913,10 @@ export function done_object_cleanup(game) {
     // place them at the hero's position
     const ox = player.x + (player.dx || 0);
     const oy = player.y + (player.dy || 0);
-    const px = (isok(ox, oy) && game.map && game.map.at(ox, oy)
-                && game.map.at(ox, oy).accessible) ? ox : player.x;
-    const py = (isok(ox, oy) && game.map && game.map.at(ox, oy)
-                && game.map.at(ox, oy).accessible) ? oy : player.y;
+    const px = (isok(ox, oy) && (game.lev || game.map) && (game.lev || game.map).at(ox, oy)
+                && (game.lev || game.map).at(ox, oy).accessible) ? ox : player.x;
+    const py = (isok(ox, oy) && (game.lev || game.map) && (game.lev || game.map).at(ox, oy)
+                && (game.lev || game.map).at(ox, oy).accessible) ? oy : player.y;
 
     if (game.thrownobj && game.thrownobj.where === 'free') {
         game.thrownobj.x = px;
@@ -980,7 +984,7 @@ export function container_contents(list, identified, all_containers, reportempty
                         }
                     }
                     const name = (typeof doname === 'function')
-                        ? doname(obj, game && game.player) : (obj.name || 'item');
+                        ? doname(obj, game && (game.u || game.player)) : (obj.name || 'item');
                     lines.push(`  ${name}`);
                 }
 

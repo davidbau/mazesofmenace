@@ -151,20 +151,16 @@ function nexttodoor(x, y, map) {
 }
 
 // cf. fountain.c:120 -- dogushforth(drinking): fountain gushes
-export function dogushforth(drinking, player, map, display, fov) {
-    let madepool = { count: 0 };
-
-    if (fov) {
-        do_clear_area(fov, map, player.x, player.y, 7,
-            (x, y) => gush(x, y, madepool, player, map, display, fov),
-            null);
+// TRANSLATOR: AUTO (fountain.c:119)
+export function dogushforth(drinking, player) {
+  let madepool = 0;
+  do_clear_area(player.x, player.y, 7, gush, (genericptr_t) &madepool);
+  if (!madepool) {
+    if (drinking) Your("thirst is quenched.");
+    else {
+      pline("Water sprays all over yoplayer.");
     }
-    if (!madepool.count) {
-        if (drinking)
-            Your("thirst is quenched.");
-        else
-            pline("Water sprays all over you.");
-    }
+  }
 }
 
 // cf. fountain.c:134 [static] -- gush(x, y, poolcnt): place pool at location
@@ -430,7 +426,7 @@ export function dipfountain(obj, player, map, display, fov) {
     const loc = map.at(player.x, player.y);
 
     // Excalibur check
-    if (obj && obj.otyp === LONG_SWORD && (player.ulevel || player.level || 1) >= 5
+    if (obj && obj.otyp === LONG_SWORD && (player.ulevel || 1) >= 5
         && !rn2(player.roleIndex === 4 /* PM_KNIGHT */ ? 6 : 30)
         && (obj.quan || 1) === 1 && !obj.oartifact
         && !exist_artifact(LONG_SWORD, artiname(ART_EXCALIBUR))) {

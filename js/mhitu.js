@@ -28,7 +28,7 @@ import {
 import { objectData, BULLWHIP } from './objects.js';
 import { xname } from './mkobj.js';
 import {
-    monDisplayName, is_humanoid, thick_skinned,
+    x_monnam, is_humanoid, thick_skinned,
     resists_fire, resists_cold, resists_elec, resists_acid, resists_ston,
     sticks, unsolid, attacktype, is_demon, is_were, is_human,
     is_animal, digests, enfolds, is_whirly, haseyes, perceives,
@@ -55,6 +55,7 @@ import { msummon } from './minion.js';
 import { new_were, were_summon } from './were.js';
 import { Mgender } from './do_name.js';
 import { resists_blnd } from './zap.js';
+import { canonicalizeAttackFields } from './attack_fields.js';
 
 const PIERCE = 1;
 
@@ -68,7 +69,7 @@ const PIERCE = 1;
 function hitmsg(monster, attack, display, suppressHitMsg) {
     if (suppressHitMsg) return;
     let verb;
-    switch (attack.type) {
+    switch (attack.aatyp) {
     case AT_BITE: verb = 'bites'; break;
     case AT_KICK:
         verb = 'kicks';
@@ -79,7 +80,7 @@ function hitmsg(monster, attack, display, suppressHitMsg) {
     case AT_TENT: verb = 'tentacles suck your brain'; break;
     default: verb = 'hits'; break;
     }
-    display.putstr_message(`The ${monDisplayName(monster)} ${verb}!`);
+    display.putstr_message(`The ${x_monnam(monster)} ${verb}!`);
 }
 
 // cf. mhitu.c mswings_verb() / mswings().
@@ -121,7 +122,7 @@ function maybeMonsterWeaponSwingMessage(monster, player, display, suppressHitMsg
     const swingVerb = monsterWeaponSwingVerb(monster.weapon, bash);
     const oneOf = ((monster.weapon.quan || 1) > 1) ? 'one of ' : '';
     display.putstr_message(
-        `The ${monDisplayName(monster)} ${swingVerb} ${oneOf}${monsterPossessive(monster)} ${xname(monster.weapon)}.`
+        `The ${x_monnam(monster)} ${swingVerb} ${oneOf}${monsterPossessive(monster)} ${xname(monster.weapon)}.`
     );
 }
 
@@ -191,9 +192,9 @@ function mhitm_knockback(monster, attack, weaponUsed, display) {
     if (rn2(chance)) return false; // didn't trigger
 
     // Eligibility: only AD_PHYS + specific attack types
-    if (!(attack.damage === AD_PHYS
-          && (attack.type === AT_CLAW || attack.type === AT_KICK
-              || attack.type === AT_BUTT || attack.type === AT_WEAP))) {
+    if (!(attack.adtyp === AD_PHYS
+          && (attack.aatyp === AT_CLAW || attack.aatyp === AT_KICK
+              || attack.aatyp === AT_BUTT || attack.aatyp === AT_WEAP))) {
         return false;
     }
 
@@ -204,7 +205,7 @@ function mhitm_knockback(monster, attack, weaponUsed, display) {
     }
 
     // Size check: attacker must be much larger than defender
-    const agrSize = mdat.size ?? 0;
+    const agrSize = mdat.msize ?? 0;
     const defSize = MZ_HUMAN; // hero is human-sized
     if (!(agrSize > defSize + 1)) return false;
 
@@ -219,7 +220,7 @@ function mhitm_knockback(monster, attack, weaponUsed, display) {
     const noun = rn2(2) ? 'blow' : 'strike';
     if (display) {
         display.putstr_message(
-            `The ${monDisplayName(monster)} knocks you back with a ${adj} ${noun}!`
+            `The ${x_monnam(monster)} knocks you back with a ${adj} ${noun}!`
         );
     }
 
@@ -239,12 +240,12 @@ function mhitm_knockback(monster, attack, weaponUsed, display) {
 function mhitu_ad_phys(monster, attack, player, mhm, ctx) {
     const { display, suppressHitMsg } = ctx;
 
-    if (attack.type === AT_HUGS) {
+    if (attack.aatyp === AT_HUGS) {
         // Grab attack — rn2(2) for grab attempt
         if (!player.ustuck && rn2(2)) {
             // Grabbed
             player.ustuck = monster;
-            display.putstr_message(`The ${monDisplayName(monster)} grabs you!`);
+            display.putstr_message(`The ${x_monnam(monster)} grabs you!`);
             mhm.hitflags |= M_ATTK_HIT;
         } else if (player.ustuck === monster) {
             exercise(player, A_STR, false);
@@ -255,7 +256,7 @@ function mhitu_ad_phys(monster, attack, player, mhm, ctx) {
         }
     } else {
         // Hand-to-hand / weapon attack
-        if (attack.type === AT_WEAP && monster.weapon) {
+        if (attack.aatyp === AT_WEAP && monster.weapon) {
             // Weapon damage: dmgval equivalent
             const wsdam = weaponDamageSides(monster.weapon, null);
             if (wsdam > 0) mhm.damage += rnd(wsdam);
@@ -272,7 +273,7 @@ function mhitu_ad_phys(monster, attack, player, mhm, ctx) {
             }
             // Weapon poison: C checks dieroll <= 5 for poisoned weapons
             // TODO: implement weapon poison path
-        } else if (attack.type !== AT_TUCH || mhm.damage !== 0
+        } else if (attack.aatyp !== AT_TUCH || mhm.damage !== 0
                    || monster !== player.ustuck) {
             hitmsg(monster, attack, display, suppressHitMsg);
             mhm.hitflags |= M_ATTK_HIT;
@@ -379,12 +380,12 @@ function mhitu_ad_wrap(monster, attack, player, mhm, ctx) {
             player.ustuck = monster;
             if (!ctx.suppressHitMsg) {
                 ctx.display.putstr_message(
-                    `The ${monDisplayName(monster)} swings itself around you!`
+                    `The ${x_monnam(monster)} swings itself around you!`
                 );
             }
         } else if (player.ustuck === monster) {
             // Already grabbed — crushing
-            if (attack.type === AT_HUGS) {
+            if (attack.aatyp === AT_HUGS) {
                 if (!ctx.suppressHitMsg)
                     ctx.display.putstr_message('You are being crushed.');
             }
@@ -410,7 +411,7 @@ function mhitu_ad_plys(monster, attack, player, mhm, ctx) {
         } else {
             if (!ctx.suppressHitMsg) {
                 ctx.display.putstr_message(
-                    `You are frozen by ${monDisplayName(monster)}!`
+                    `You are frozen by ${x_monnam(monster)}!`
                 );
             }
             // cf. nomul(-rnd(10))
@@ -442,7 +443,7 @@ function mhitu_ad_slee(monster, attack, player, mhm, ctx) {
         }
         if (!ctx.suppressHitMsg) {
             ctx.display.putstr_message(
-                `You are put to sleep by ${monDisplayName(monster)}!`
+                `You are put to sleep by ${x_monnam(monster)}!`
             );
         }
     }
@@ -489,7 +490,7 @@ function mhitu_ad_blnd(monster, attack, player, mhm, ctx) {
     // C: if (can_blnd(magr, mdef, mattk->aatyp, NULL)) — simplified: always can
     if (!player.blind) {
         if (!ctx.suppressHitMsg)
-            ctx.display.putstr_message(`The ${monDisplayName(monster)} blinds you!`);
+            ctx.display.putstr_message(`The ${x_monnam(monster)} blinds you!`);
     }
     // cf. make_blinded(BlindedTimeout + damage, FALSE)
     const oldTimeout = player.getPropTimeout
@@ -508,7 +509,7 @@ function mhitu_ad_drst(monster, attack, player, mhm, ctx) {
         // C: poisoned(buf, ptmp, ..., 30, FALSE)
         // ptmp depends on adtyp: AD_DRST→A_STR, AD_DRDX→A_DEX, AD_DRCO→A_CON
         let ptmp = A_STR;
-        switch (attack.damage) {
+        switch (attack.adtyp) {
         case AD_DRST: ptmp = A_STR; break;
         case AD_DRDX: ptmp = A_DEX; break;
         case AD_DRCO: ptmp = A_CON; break;
@@ -538,7 +539,7 @@ function mhitu_ad_drli(monster, attack, player, mhm, ctx) {
     // Note: rn2(3) BEFORE negation check — short-circuit!
     if (!rn2(3) && !playerHasProp(player, DRAIN_RES)
         && !mhitm_mgc_atk_negated(monster, player)) {
-        losexp(player, ctx.display, monDisplayName(monster));
+        losexp(player, ctx.display, x_monnam(monster));
     }
 }
 
@@ -601,13 +602,13 @@ function mhitu_ad_ston(monster, attack, player, mhm, ctx) {
             // Cancelled: just a cough
             if (!ctx.suppressHitMsg)
                 ctx.display.putstr_message(
-                    `You hear a cough from ${monDisplayName(monster)}!`
+                    `You hear a cough from ${x_monnam(monster)}!`
                 );
         } else {
             // Hissing + possible petrification
             if (!ctx.suppressHitMsg) {
                 ctx.display.putstr_message(
-                    `You hear ${monDisplayName(monster)}'s hissing!`
+                    `You hear ${x_monnam(monster)}'s hissing!`
                 );
             }
             // C: if (!rn2(10) || newmoon) do_stone_u()
@@ -631,9 +632,9 @@ function mhitu_ad_tlpt(monster, attack, player, mhm, ctx) {
     } else {
         // Teleport hero — not implemented
         // C: if (damage >= u.uhp) cap damage
-        if (mhm.damage >= player.hp) {
-            if (player.hp === 1) player.hp++;
-            mhm.damage = player.hp - 1;
+        if (mhm.damage >= player.uhp) {
+            if (player.uhp === 1) player.uhp++;
+            mhm.damage = player.uhp - 1;
         }
     }
 }
@@ -759,7 +760,7 @@ function mhitu_ad_ssex(monster, attack, player, mhm, ctx) {
 function mhitu_ad_deth(monster, attack, player, mhm, ctx) {
     if (!ctx.suppressHitMsg) {
         ctx.display.putstr_message(
-            `The ${monDisplayName(monster)} reaches out with its deadly touch.`
+            `The ${x_monnam(monster)} reaches out with its deadly touch.`
         );
     }
     // C: switch(rn2(20)) for death/drain/lucky outcomes
@@ -784,7 +785,7 @@ function mhitu_ad_deth(monster, attack, player, mhm, ctx) {
 function mhitu_ad_pest(monster, attack, player, mhm, ctx) {
     if (!ctx.suppressHitMsg) {
         ctx.display.putstr_message(
-            `The ${monDisplayName(monster)} reaches out, and you feel fever and chills.`
+            `The ${x_monnam(monster)} reaches out, and you feel fever and chills.`
         );
     }
     // C: diseasemu(pa) — not implemented, keep damage
@@ -794,7 +795,7 @@ function mhitu_ad_pest(monster, attack, player, mhm, ctx) {
 function mhitu_ad_famn(monster, attack, player, mhm, ctx) {
     if (!ctx.suppressHitMsg) {
         ctx.display.putstr_message(
-            `The ${monDisplayName(monster)} reaches out, and your body shrivels.`
+            `The ${x_monnam(monster)} reaches out, and your body shrivels.`
         );
     }
     exercise(player, A_CON, false);
@@ -846,7 +847,7 @@ function mhitu_ad_dcay(monster, attack, player, mhm, ctx) {
 // cf. uhitm.c:4760 mhitm_adtyping() — mhitu branch dispatch.
 // Replaces the old mhitu_adtyping_rng() stub with real handler calls.
 function mhitu_adtyping(monster, attack, player, mhm, ctx) {
-    const adtyp = attack.damage ?? AD_PHYS;
+    const adtyp = attack.adtyp ?? AD_PHYS;
     switch (adtyp) {
     case AD_PHYS: mhitu_ad_phys(monster, attack, player, mhm, ctx); break;
     case AD_FIRE: mhitu_ad_fire(monster, attack, player, mhm, ctx); break;
@@ -900,13 +901,13 @@ function mhitu_adtyping(monster, attack, player, mhm, ctx) {
 
 
 // ============================================================================
-// monsterAttackPlayer — main monster-attacks-hero entry point
+// mattacku — main monster-attacks-hero entry point
 // ============================================================================
 
 // cf. mhitu.c mattacku() / hitmu() — restructured to match C's flow.
 // opts.range2: true if monster is not adjacent (ranged attacks only)
 // opts.map: map object (needed for thrwmu ranged throwing)
-export async function monsterAttackPlayer(monster, player, display, game = null, opts = {}) {
+export async function mattacku(monster, player, display, game = null, opts = {}) {
     if (!monster.attacks || monster.attacks.length === 0) return;
     if (monster.passive) return; // passive monsters don't initiate attacks
 
@@ -914,27 +915,27 @@ export async function monsterAttackPlayer(monster, player, display, game = null,
     const map = opts.map || null;
 
     for (let i = 0; i < monster.attacks.length; i++) {
-        const attack = monster.attacks[i];
+        const attack = canonicalizeAttackFields(monster.attacks[i]);
 
         // cf. mhitu.c mattacku() attack dispatch:
         // Melee attacks (AT_CLAW, AT_BITE, etc.) only fire when !range2.
         // AT_WEAP: melee when !range2, thrwmu when range2.
         // AT_BREA, AT_SPIT, AT_MAGC: ranged-only handlers.
         if (range2) {
-            if (attack.type === AT_WEAP) {
+            if (attack.aatyp === AT_WEAP) {
                 // cf. mhitu.c:882-885 — AT_WEAP at range calls thrwmu
                 if (map) await thrwmu(monster, map, player, display, game);
                 continue;
             }
-            if (attack.type === AT_SPIT) {
+            if (attack.aatyp === AT_SPIT) {
                 if (map) await spitmu(monster, attack, map, player, display, game);
                 continue;
             }
-            if (attack.type === AT_BREA) {
+            if (attack.aatyp === AT_BREA) {
                 if (map) await breamu(monster, attack, map, player, display, game);
                 continue;
             }
-            if (attack.type === AT_MAGC) {
+            if (attack.aatyp === AT_MAGC) {
                 const vis = !player?.blind && !(monster.minvis && !player?.seeInvisible);
                 await castmu(monster, attack, vis, true, player, map);
                 continue;
@@ -956,7 +957,7 @@ export async function monsterAttackPlayer(monster, player, display, game = null,
         const acValue = (playerAc >= 0) ? playerAc : -rnd(-playerAc);
         const toHit = acValue + 10 + monster.mlevel;
 
-        if (attack.type === AT_WEAP && monster.weapon) {
+        if (attack.aatyp === AT_WEAP && monster.weapon) {
             maybeMonsterWeaponSwingMessage(monster, player, display, suppressHitMsg);
         }
 
@@ -966,7 +967,7 @@ export async function monsterAttackPlayer(monster, player, display, game = null,
             // Miss — cf. mhitu.c:86-98 missmu()
             if (!suppressHitMsg) {
                 const just = (toHit === dieRoll) ? 'just ' : '';
-                display.putstr_message(`The ${monDisplayName(monster)} ${just}misses!`);
+                display.putstr_message(`The ${x_monnam(monster)} ${just}misses!`);
             }
             continue;
         }
@@ -982,8 +983,8 @@ export async function monsterAttackPlayer(monster, player, display, game = null,
             permdmg: 0,
             done: false,
         };
-        if (attack.dice && attack.sides) {
-            mhm.damage = c_d(attack.dice, attack.sides);
+        if (attack.damn && attack.damd) {
+            mhm.damage = c_d(attack.damn, attack.damd);
         } else if (attack.dmg) {
             mhm.damage = c_d(attack.dmg[0], attack.dmg[1]);
         }
@@ -997,7 +998,7 @@ export async function monsterAttackPlayer(monster, player, display, game = null,
         mhitu_adtyping(monster, attack, player, mhm, ctx);
 
         // cf. mhitu.c:1189 — mhitm_knockback()
-        const weaponUsed = !!(attack.type === AT_WEAP && monster.weapon);
+        const weaponUsed = !!(attack.aatyp === AT_WEAP && monster.weapon);
         mhitm_knockback(monster, attack, weaponUsed, display);
 
         // cf. mhitu.c:1192 — check if handler consumed the attack
@@ -1016,7 +1017,7 @@ export async function monsterAttackPlayer(monster, player, display, game = null,
         // Apply damage
         // ================================================================
         if (mhm.damage > 0) {
-            const died = player.takeDamage(mhm.damage, monDisplayName(monster));
+            const died = player.takeDamage(mhm.damage, x_monnam(monster));
 
             // cf. allmain.c stop_occupation() via mhitu.c attack flow.
             if (game && game.occupation) {
@@ -1034,7 +1035,7 @@ export async function monsterAttackPlayer(monster, player, display, game = null,
                         ? player.attributes[A_CON]
                         : 10;
                     const givehp = 50 + 10 * Math.floor(con / 2);
-                    player.hp = Math.min(player.hpmax || givehp, givehp);
+                    player.uhp = Math.min(player.uhpmax || givehp, givehp);
                     if (display) {
                         if (typeof display.clearRow === 'function') display.clearRow(0);
                         display.topMessage = null;
@@ -1048,7 +1049,7 @@ export async function monsterAttackPlayer(monster, player, display, game = null,
                         game._suppressMonsterHitMessagesThisTurn = true;
                     }
                 } else {
-                    player.deathCause = `killed by a ${monDisplayName(monster)}`;
+                    player.deathCause = `killed by a ${x_monnam(monster)}`;
                     display.putstr_message('You die...');
                 }
                 break;
@@ -1066,12 +1067,12 @@ export async function monsterAttackPlayer(monster, player, display, game = null,
 
 // C ref: mhitu.c:146 mpoisons_subj() — poison delivery subject name
 export function mpoisons_subj(monster, attack) {
-    if (attack.type === AT_WEAP) {
+    if (attack.aatyp === AT_WEAP) {
         const mwep = monster.weapon;
         return (!mwep || !mwep.opoisoned) ? 'attack' : 'weapon';
     }
-    if (attack.type === AT_TUCH) return 'contact';
-    if (attack.type === AT_BITE) return 'bite';
+    if (attack.aatyp === AT_TUCH) return 'contact';
+    if (attack.aatyp === AT_BITE) return 'bite';
     return 'sting';
 }
 
@@ -1093,7 +1094,7 @@ export function u_slow_down(player, display) {
 function wildmiss(monster, attack, player, display) {
     if (!display) return;
     // Simplified: just consume rn2(3) and show a message
-    const name = monDisplayName(monster);
+    const name = x_monnam(monster);
     switch (rn2(3)) {
     case 0:
         display.putstr_message(`The ${name} swings wildly and misses!`);
@@ -1116,21 +1117,21 @@ export function expels(mtmp, mdat, message, player, display) {
         if (digests(mdat)) {
             display.putstr_message('You get regurgitated!');
         } else if (enfolds(mdat)) {
-            display.putstr_message(`The ${monDisplayName(mtmp)} unfolds and you are released!`);
+            display.putstr_message(`The ${x_monnam(mtmp)} unfolds and you are released!`);
         } else {
             const attk = dmgtype_fromattack(mdat, AD_WRAP, AT_ENGL)
                       || dmgtype_fromattack(mdat, AD_PHYS, AT_ENGL);
             let blast = '';
             if (attk) {
                 if (is_whirly(mdat)) {
-                    const adtyp = attk.damage ?? attk.adtyp;
+                    const adtyp = attk.adtyp ?? attk.damage;
                     if (adtyp === AD_ELEC) blast = ' in a shower of sparks';
                     else if (adtyp === AD_COLD) blast = ' in a blast of frost';
                 } else {
                     blast = ' with a squelch';
                 }
             }
-            display.putstr_message(`You get expelled from the ${monDisplayName(mtmp)}${blast}!`);
+            display.putstr_message(`You get expelled from the ${x_monnam(mtmp)}${blast}!`);
         }
     }
     // Unstuck
@@ -1152,24 +1153,24 @@ export function getmattk(monster, mdef, indx, prev_result) {
     // Consecutive disease/pest/famn → stun
     if (indx > 0 && prev_result && prev_result[indx - 1] > M_ATTK_MISS) {
         const prevAttk = attacks[indx - 1];
-        if ((attk.damage === AD_DISE || attk.damage === AD_PEST || attk.damage === AD_FAMN)
-            && prevAttk && attk.damage === prevAttk.damage) {
-            attk.damage = AD_STUN;
+        if ((attk.adtyp === AD_DISE || attk.adtyp === AD_PEST || attk.adtyp === AD_FAMN)
+            && prevAttk && attk.adtyp === prevAttk.damage) {
+            attk.adtyp = AD_STUN;
         }
     }
 
     // mspec_used holders/engulfers get fallback attack
-    if (monster.mspec_used && (attk.type === AT_ENGL || attk.type === AT_HUGS
-        || attk.damage === AD_STCK || attk.damage === AD_POLY)) {
-        if (attk.damage === AD_ACID || attk.damage === AD_ELEC
-            || attk.damage === AD_COLD || attk.damage === AD_FIRE) {
-            attk.type = AT_TUCH;
+    if (monster.mspec_used && (attk.aatyp === AT_ENGL || attk.aatyp === AT_HUGS
+        || attk.adtyp === AD_STCK || attk.adtyp === AD_POLY)) {
+        if (attk.adtyp === AD_ACID || attk.adtyp === AD_ELEC
+            || attk.adtyp === AD_COLD || attk.adtyp === AD_FIRE) {
+            attk.aatyp = AT_TUCH;
         } else {
-            attk.type = AT_CLAW;
-            attk.damage = AD_PHYS;
+            attk.aatyp = AT_CLAW;
+            attk.adtyp = AD_PHYS;
         }
-        attk.dice = 1;
-        attk.sides = 6;
+        attk.damn = 1;
+        attk.damd = 6;
     }
 
     return attk;
@@ -1223,7 +1224,7 @@ export function summonmu(mtmp, youseeit, map, player, display) {
         // Maybe summon compatible critters
         if (!rn2(10)) {
             if (youseeit && display) {
-                display.putstr_message(`The ${monDisplayName(mtmp)} summons help!`);
+                display.putstr_message(`The ${x_monnam(mtmp)} summons help!`);
             }
             const result = were_summon(
                 mtmp.type || mtmp.data,
@@ -1267,24 +1268,25 @@ export function diseasemu(mdat, player, display) {
 
 // cf. mhitu.c:1044 u_slip_free() — check whether slippery clothing protects from grab
 export function u_slip_free(mtmp, mattk, player, display) {
+    canonicalizeAttackFields(mattk);
     // Greased armor does not protect against AT_ENGL+AD_WRAP
-    if (mattk.type === AT_ENGL) return false;
+    if (mattk.aatyp === AT_ENGL) return false;
 
     // Select the relevant armor piece
     let obj = player.cloak || player.armor || player.suit;
     if (!obj) obj = player.shirt;
-    if ((mattk.damage ?? mattk.adtyp) === AD_DRIN) obj = player.helmet;
+    if (mattk.adtyp === AD_DRIN) obj = player.helmet;
 
     // If armor is greased or oilskin, monster slips off
     // (unless cursed, 1/3 chance of failure)
     if (obj && (obj.greased || obj.oilskin)
         && (!obj.cursed || rn2(3))) {
         if (display) {
-            const adtyp = mattk.damage ?? mattk.adtyp;
+            const adtyp = mattk.adtyp;
             const action = adtyp === AD_WRAP ? 'slips off of' : 'grabs you, but cannot hold onto';
             const adjective = obj.greased ? 'greased' : 'slippery';
             display.putstr_message(
-                `The ${monDisplayName(mtmp)} ${action} your ${adjective} ${xname(obj)}.`
+                `The ${x_monnam(mtmp)} ${action} your ${adjective} ${xname(obj)}.`
             );
         }
         if (obj.greased && !rn2(2)) {
@@ -1301,8 +1303,9 @@ export function u_slip_free(mtmp, mattk, player, display) {
 // cf. mhitu.c:1284 gulpmu() — monster engulfs hero, or damages if already engulfed
 export function gulpmu(mtmp, mattk, player, map, display) {
     if (!mtmp || !player) return M_ATTK_MISS;
+    canonicalizeAttackFields(mattk);
 
-    const tmp_dmg = c_d(mattk.dice || mattk.damn || 0, mattk.sides || mattk.damd || 0);
+    const tmp_dmg = c_d(mattk.damn || 0, mattk.damd || 0);
     let tmp = tmp_dmg;
     let physical_damage = false;
 
@@ -1312,25 +1315,25 @@ export function gulpmu(mtmp, mattk, player, map, display) {
         player.uswallow = true;
         if (display) {
             if (digests(mtmp.type || mtmp.data || {})) {
-                display.putstr_message(`The ${monDisplayName(mtmp)} swallows you whole!`);
+                display.putstr_message(`The ${x_monnam(mtmp)} swallows you whole!`);
             } else if (enfolds(mtmp.type || mtmp.data || {})) {
-                display.putstr_message(`The ${monDisplayName(mtmp)} folds itself around you!`);
+                display.putstr_message(`The ${x_monnam(mtmp)} folds itself around you!`);
             } else {
-                display.putstr_message(`The ${monDisplayName(mtmp)} engulfs you!`);
+                display.putstr_message(`The ${x_monnam(mtmp)} engulfs you!`);
             }
         }
         // Compute swallow timer
-        const adtyp = mattk.damage ?? mattk.adtyp ?? AD_PHYS;
+        const adtyp = mattk.adtyp ?? AD_PHYS;
         let tim_tmp;
         if (adtyp === AD_DGST) {
             const con = (player.attributes && player.attributes[A_CON]) || 10;
             const ac = player.ac ?? player.effectiveAC ?? 10;
             tim_tmp = con + 10 - ac + rn2(20);
             if (tim_tmp < 0) tim_tmp = 0;
-            tim_tmp = Math.floor(tim_tmp / (mtmp.mlevel || 1));
+            tim_tmp = Math.floor(tim_tmp / (mtmp.m_lev || 1));
             tim_tmp += 3;
         } else {
-            tim_tmp = rnd(Math.floor((mtmp.mlevel || 1) + 10 / 2));
+            tim_tmp = rnd(Math.floor((mtmp.m_lev || 1) + 10 / 2));
         }
         player.uswldtim = (tim_tmp < 2) ? 2 : tim_tmp;
     }
@@ -1339,18 +1342,18 @@ export function gulpmu(mtmp, mattk, player, map, display) {
 
     if (player.uswldtim > 0) player.uswldtim -= 1;
 
-    const adtyp = mattk.damage ?? mattk.adtyp ?? AD_PHYS;
+    const adtyp = mattk.adtyp ?? AD_PHYS;
     switch (adtyp) {
     case AD_DGST:
         physical_damage = true;
         if (player.uswldtim === 0) {
-            if (display) display.putstr_message(`The ${monDisplayName(mtmp)} totally digests you!`);
-            tmp = player.hp || 999;
+            if (display) display.putstr_message(`The ${x_monnam(mtmp)} totally digests you!`);
+            tmp = player.uhp || 999;
         } else {
             const suffix = (player.uswldtim === 2) ? ' thoroughly'
                          : (player.uswldtim === 1) ? ' utterly' : '';
             if (display)
-                display.putstr_message(`The ${monDisplayName(mtmp)}${suffix} digests you!`);
+                display.putstr_message(`The ${x_monnam(mtmp)}${suffix} digests you!`);
             exercise(player, A_STR, false);
         }
         break;
@@ -1460,12 +1463,13 @@ export function gulpmu(mtmp, mattk, player, map, display) {
 export async function explmu(mtmp, mattk, ufound, player, map, display) {
     if (!mtmp) return M_ATTK_MISS;
     if (mtmp.mcan) return M_ATTK_MISS;
+    canonicalizeAttackFields(mattk);
 
-    let tmp = c_d(mattk.dice || mattk.damn || 0, mattk.sides || mattk.damd || 0);
-    const adtyp = mattk.damage ?? mattk.adtyp ?? AD_PHYS;
+    let tmp = c_d(mattk.damn || 0, mattk.damd || 0);
+    const adtyp = mattk.adtyp ?? AD_PHYS;
 
     if (!ufound) {
-        if (display) display.putstr_message(`The ${monDisplayName(mtmp)} explodes at a spot in thin air!`);
+        if (display) display.putstr_message(`The ${x_monnam(mtmp)} explodes at a spot in thin air!`);
     } else {
         hitmsg(mtmp, mattk, display, false);
     }
@@ -1484,8 +1488,8 @@ export async function explmu(mtmp, mattk, ufound, player, map, display) {
         if (adtyp === AD_ELEC) not_affected = playerHasProp(player, SHOCK_RES);
         // C: mon_explodes(mtmp, mattk) — kills the monster via explosion
         await mon_explodes(mtmp, {
-            damn: mattk.dice || mattk.damn || 0,
-            damd: mattk.sides || mattk.damd || 0,
+            damn: mattk.damn || 0,
+            damd: mattk.damd || 0,
             adtyp: adtyp,
         }, map, player);
         if (!mtmp.dead && mtmp.mhp > 0)
@@ -1529,8 +1533,9 @@ export async function explmu(mtmp, mattk, ufound, player, map, display) {
 // cf. mhitu.c:1660 gazemu() — monster gazes at hero
 export function gazemu(mtmp, mattk, player, map, display) {
     if (!mtmp || !player) return M_ATTK_MISS;
+    canonicalizeAttackFields(mattk);
 
-    const adtyp = mattk.damage ?? mattk.adtyp ?? AD_PHYS;
+    const adtyp = mattk.adtyp ?? AD_PHYS;
     const cancelled = !!(mtmp.mcan);
     const mdat = mtmp.type || mtmp.data || {};
 
@@ -1539,16 +1544,16 @@ export function gazemu(mtmp, mattk, player, map, display) {
         // Medusa stoning gaze
         if (cancelled || !mtmp.mcansee) {
             // Ineffective
-            if (display) display.putstr_message(`The ${monDisplayName(mtmp)} gazes ineffectually.`);
+            if (display) display.putstr_message(`The ${x_monnam(mtmp)} gazes ineffectually.`);
             break;
         }
         // C: check reflectable, hero stone resistance, etc.
         if (playerHasProp(player, REFLECTING)) {
             if (display)
-                display.putstr_message(`The ${monDisplayName(mtmp)}'s gaze is reflected by your shield!`);
+                display.putstr_message(`The ${x_monnam(mtmp)}'s gaze is reflected by your shield!`);
             // Reflected gaze petrifies Medusa
             if (mtmp.mcansee) {
-                if (display) display.putstr_message(`The ${monDisplayName(mtmp)} is turned to stone!`);
+                if (display) display.putstr_message(`The ${x_monnam(mtmp)} is turned to stone!`);
                 mtmp.mhp = 0;
                 mtmp.dead = true;
                 return M_ATTK_AGR_DIED;
@@ -1557,13 +1562,13 @@ export function gazemu(mtmp, mattk, player, map, display) {
         }
         if (!playerHasProp(player, STONE_RES) && !player.blind) {
             if (display) {
-                display.putstr_message(`You meet the ${monDisplayName(mtmp)}'s gaze.`);
+                display.putstr_message(`You meet the ${x_monnam(mtmp)}'s gaze.`);
                 display.putstr_message('You turn to stone...');
             }
             // Petrification death
             if (player.takeDamage) {
-                player.deathCause = `turned to stone by a ${monDisplayName(mtmp)}`;
-                player.takeDamage(player.hp || 999, monDisplayName(mtmp));
+                player.deathCause = `turned to stone by a ${x_monnam(mtmp)}`;
+                player.takeDamage(player.uhp || 999, x_monnam(mtmp));
             }
         }
         break;
@@ -1573,12 +1578,12 @@ export function gazemu(mtmp, mattk, player, map, display) {
         if (mtmp.mcansee && !mtmp.mspec_used && rn2(5)) {
             if (cancelled) {
                 // Cancelled — just look confused
-                if (display) display.putstr_message(`The ${monDisplayName(mtmp)} looks confused.`);
+                if (display) display.putstr_message(`The ${x_monnam(mtmp)} looks confused.`);
             } else {
                 const conf = d(3, 4);
                 mtmp.mspec_used = (mtmp.mspec_used || 0) + conf + rn2(6);
                 if (!player.confused) {
-                    if (display) display.putstr_message(`The ${monDisplayName(mtmp)}'s gaze confuses you!`);
+                    if (display) display.putstr_message(`The ${x_monnam(mtmp)}'s gaze confuses you!`);
                 } else {
                     if (display) display.putstr_message('You are getting more and more confused.');
                 }
@@ -1593,11 +1598,11 @@ export function gazemu(mtmp, mattk, player, map, display) {
         // Stun gaze
         if (mtmp.mcansee && !mtmp.mspec_used && rn2(5)) {
             if (cancelled) {
-                if (display) display.putstr_message(`The ${monDisplayName(mtmp)} looks stunned.`);
+                if (display) display.putstr_message(`The ${x_monnam(mtmp)} looks stunned.`);
             } else {
                 const stun = d(2, 6);
                 mtmp.mspec_used = (mtmp.mspec_used || 0) + stun + rn2(6);
-                if (display) display.putstr_message(`The ${monDisplayName(mtmp)} stares piercingly at you!`);
+                if (display) display.putstr_message(`The ${x_monnam(mtmp)} stares piercingly at you!`);
                 const oldTimeout = player.getPropTimeout
                     ? player.getPropTimeout(STUNNED) : 0;
                 make_stunned(player, oldTimeout + stun, true);
@@ -1611,11 +1616,11 @@ export function gazemu(mtmp, mattk, player, map, display) {
             if (cancelled) {
                 if (display) {
                     const reaction = rn2(2) ? 'puzzled' : 'dazzled';
-                    display.putstr_message(`The ${monDisplayName(mtmp)} looks ${reaction}.`);
+                    display.putstr_message(`The ${x_monnam(mtmp)} looks ${reaction}.`);
                 }
             } else {
-                const blnd = c_d(mattk.dice || mattk.damn || 1, mattk.sides || mattk.damd || 6);
-                if (display) display.putstr_message(`You are blinded by the ${monDisplayName(mtmp)}'s radiance!`);
+                const blnd = c_d(mattk.damn || 1, mattk.damd || 6);
+                if (display) display.putstr_message(`You are blinded by the ${x_monnam(mtmp)}'s radiance!`);
                 make_blinded(player, blnd, false);
             }
         }
@@ -1626,10 +1631,10 @@ export function gazemu(mtmp, mattk, player, map, display) {
         if (mtmp.mcansee && !mtmp.mspec_used && rn2(5)) {
             if (cancelled) {
                 const reaction = rn2(2) ? 'irritated' : 'inflamed';
-                if (display) display.putstr_message(`The ${monDisplayName(mtmp)} looks ${reaction}.`);
+                if (display) display.putstr_message(`The ${x_monnam(mtmp)} looks ${reaction}.`);
             } else {
                 let dmg = d(2, 6);
-                if (display) display.putstr_message(`The ${monDisplayName(mtmp)} attacks you with a fiery gaze!`);
+                if (display) display.putstr_message(`The ${x_monnam(mtmp)} attacks you with a fiery gaze!`);
                 if (playerHasProp(player, FIRE_RES)) {
                     if (display) display.putstr_message("The fire doesn't feel hot!");
                     dmg = 0;
@@ -1655,13 +1660,13 @@ export function mdamageu(mtmp, n, player, display) {
     if (n < 0) n = 0;
 
     if (n > 0 && player.takeDamage) {
-        const died = player.takeDamage(n, monDisplayName(mtmp));
+        const died = player.takeDamage(n, x_monnam(mtmp));
         if (died) {
             if (player.wizard) {
                 // Wizard mode survival
                 const con = (player.attributes && player.attributes[A_CON]) || 10;
                 const givehp = 50 + 10 * Math.floor(con / 2);
-                player.hp = Math.min(player.hpmax || givehp, givehp);
+                player.uhp = Math.min(player.uhpmax || givehp, givehp);
                 if (display) {
                     if (typeof display.clearRow === 'function') display.clearRow(0);
                     display.topMessage = null;
@@ -1674,7 +1679,7 @@ export function mdamageu(mtmp, n, player, display) {
                     game.multi_reason = 'attempting to cheat Death';
                 }
             } else {
-                player.deathCause = `killed by a ${monDisplayName(mtmp)}`;
+                player.deathCause = `killed by a ${x_monnam(mtmp)}`;
                 if (display) display.putstr_message('You die...');
             }
         }
@@ -1691,18 +1696,19 @@ export function could_seduce(magr, mdef, mattk) {
     const genagr = magr.female ? FEMALE : MALE;
     const gendef = mdef?.female ? FEMALE : (mdef?.gender ?? MALE);
 
-    const adtyp = mattk ? (mattk.damage ?? mattk.adtyp ?? AD_PHYS)
+    if (mattk) canonicalizeAttackFields(mattk);
+    const adtyp = mattk ? (mattk.adtyp ?? AD_PHYS)
                  : dmgtype(pagr, AD_SSEX) ? AD_SSEX
                  : dmgtype(pagr, AD_SEDU) ? AD_SEDU
                  : AD_PHYS;
 
     // Only nymphs and amorous demons can seduce
-    if ((pagr.symbol !== S_NYMPH && pagr !== mons[PM_AMOROUS_DEMON])
+    if ((pagr.mlet !== S_NYMPH && pagr !== mons[PM_AMOROUS_DEMON])
         || (adtyp !== AD_SEDU && adtyp !== AD_SSEX && adtyp !== AD_SITM)) {
         return 0;
     }
 
-    return (genagr === 1 - gendef) ? 1 : (pagr.symbol === S_NYMPH) ? 2 : 0;
+    return (genagr === 1 - gendef) ? 1 : (pagr.mlet === S_NYMPH) ? 2 : 0;
 }
 
 // cf. mhitu.c:1978 doseduce() — seduction attack
@@ -1715,17 +1721,17 @@ export function doseduce(mon, player, display) {
         if (display) {
             const pronoun = mon.female ? 'she' : 'he';
             display.putstr_message(
-                `The ${monDisplayName(mon)} acts as though ${pronoun} has got a ${mon.mcan ? 'severe ' : ''}headache.`
+                `The ${x_monnam(mon)} acts as though ${pronoun} has got a ${mon.mcan ? 'severe ' : ''}headache.`
             );
         }
         return 0;
     }
 
-    if (display) display.putstr_message(`You feel very attracted to the ${monDisplayName(mon)}.`);
+    if (display) display.putstr_message(`You feel very attracted to the ${x_monnam(mon)}.`);
 
     // Simplified: skip armor removal dialogue, go straight to outcome
     if (display) display.putstr_message(
-        `Time stands still while you and the ${monDisplayName(mon)} lie in each other's arms...`
+        `Time stands still while you and the ${x_monnam(mon)} lie in each other's arms...`
     );
 
     // C: attr_tot = ACURR(A_CHA) + ACURR(A_INT); if (rn2(35) > min(attr_tot, 32)) bad outcome
@@ -1736,7 +1742,7 @@ export function doseduce(mon, player, display) {
     if (rn2(35) > Math.min(attr_tot, 32)) {
         // Bad outcome
         if (display) display.putstr_message(
-            `The ${monDisplayName(mon)} seems to have enjoyed it more than you...`
+            `The ${x_monnam(mon)} seems to have enjoyed it more than you...`
         );
         switch (rn2(5)) {
         case 0:
@@ -1777,7 +1783,7 @@ export function doseduce(mon, player, display) {
         // Good outcome
         mon.mspec_used = rnd(100);
         if (display) display.putstr_message(
-            `You seem to have enjoyed it more than the ${monDisplayName(mon)}...`
+            `You seem to have enjoyed it more than the ${x_monnam(mon)}...`
         );
         switch (rn2(5)) {
         case 0:
@@ -1792,7 +1798,7 @@ export function doseduce(mon, player, display) {
             exercise(player, A_CON, true);
             break;
         case 2:
-            if (display) display.putstr_message(`You will always remember the ${monDisplayName(mon)}...`);
+            if (display) display.putstr_message(`You will always remember the ${x_monnam(mon)}...`);
             if (player.attributes) player.attributes[A_WIS] = (player.attributes[A_WIS] || 10) + 1;
             exercise(player, A_WIS, true);
             break;
@@ -1803,7 +1809,7 @@ export function doseduce(mon, player, display) {
             break;
         case 4:
             if (display) display.putstr_message('You feel restored to health!');
-            if (player.hpmax) player.hp = player.hpmax;
+            if (player.uhpmax) player.uhp = player.uhpmax;
             exercise(player, A_STR, true);
             break;
         }
@@ -1850,12 +1856,12 @@ export function passiveum(olduasmon, mtmp, mattk, map, player) {
     if (!oldu_mattk) return M_ATTK_HIT;
 
     let tmp = 0;
-    if (oldu_mattk.dice)
-        tmp = c_d(oldu_mattk.dice, oldu_mattk.sides || 1);
-    else if (oldu_mattk.sides)
-        tmp = c_d((olduasmon.mlevel || 0) + 1, oldu_mattk.sides);
+    if (oldu_mattk.damn)
+        tmp = c_d(oldu_mattk.damn, oldu_mattk.damd || 1);
+    else if (oldu_mattk.damd)
+        tmp = c_d((olduasmon.mlevel || 0) + 1, oldu_mattk.damd);
 
-    switch (oldu_mattk.damage) {
+    switch (oldu_mattk.adtyp) {
     case AD_ACID:
         if (!rn2(2)) {
             if (resists_acid(mtmp)) tmp = 0;

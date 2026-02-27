@@ -23,9 +23,8 @@ export const XL_RIGHT = 8;
 
 // C ref: extralev.c:277 corr()
 export function corr(map, x, y) {
-    const loc = map.at(x, y);
-    if (!loc) return;
-    loc.typ = rn2(50) ? CORR : SCORR;
+    if (rn2(50)) { map.locations[x][y].typ = CORR; }
+    else { map.locations[x][y].typ = SCORR; }
 }
 
 // C ref: extralev.c:20 roguejoin()

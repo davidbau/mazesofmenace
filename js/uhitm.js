@@ -38,7 +38,7 @@ import {
 import { mkobj, mkcorpstat, RANDOM_CLASS, next_ident, xname } from './mkobj.js';
 import { hitval as weapon_hitval, dmgval, abon, dbon, weapon_hit_bonus, weapon_dam_bonus } from './weapon.js';
 import {
-    nonliving, monDisplayName, monNam, is_undead, is_demon,
+    nonliving, x_monnam, y_monnam, is_undead, is_demon,
     magic_negation,
     resists_fire, resists_cold, resists_elec, resists_acid,
     resists_poison, resists_sleep, resists_ston,
@@ -58,6 +58,9 @@ import {
     EF_GREASE, EF_VERBOSE,
 } from './trap.js';
 import { tmp_at, nh_delay_output, DISP_ALWAYS, DISP_END } from './animation.js';
+import { canonicalizeAttackFields } from './attack_fields.js';
+import { pline, pline_The, You, impossible } from './pline.js';
+import { mon_nam, Monnam } from './do_name.js';
 
 
 // ============================================================================
@@ -93,7 +96,7 @@ export function mhitm_mgc_atk_negated(magr, mdef) {
 export function dynamic_multi_reason(mon, verb, by_gaze) {
     // C builds a formatted string like "frozen by a <monster>'s gaze"
     // for use with nomul(). In JS we don't use multi_reason strings.
-    const name = monDisplayName(mon);
+    const name = x_monnam(mon);
     const reason = by_gaze
         ? `${verb} by ${name}'s gaze`
         : `${verb} by ${name}`;
@@ -135,7 +138,7 @@ export function attack_checks(mtmp, wep, opts = {}) {
             return true;
         }
         if (mtmp.peaceful && !pets_too) {
-            if (display) display.putstr_message(`Really attack ${monDisplayName(mtmp)}?`);
+            if (display) display.putstr_message(`Really attack ${x_monnam(mtmp)}?`);
             return true;
         }
     }
@@ -160,7 +163,7 @@ export function check_caitiff(mtmp) {
 
 // cf. uhitm.c:350 — mon_maybe_unparalyze(mtmp):
 //   Wake up paralyzed monster on being attacked.
-function mon_maybe_unparalyze(mon) {
+export function mon_maybe_unparalyze(mon) {
     if (mon.mcanmove === false) {
         if (!rn2(10)) {
             mon.mcanmove = true;
@@ -178,11 +181,11 @@ function find_roll_to_hit(player, mtmp, aatyp, weapon) {
     //         + Luck_bonus + u.ulevel
     const str = player.attributes?.[A_STR] ?? 10;
     const dex = player.attributes?.[A_DEX] ?? 10;
-    let tmp = 1 + abon(str, dex, player.level)
+    let tmp = 1 + abon(str, dex, player.ulevel)
         + find_mac(mtmp)
         + (player.uhitinc || 0) // rings of increase accuracy etc.
         + luckBonus(player.luck || 0)
-        + player.level;
+        + player.ulevel;
 
     // cf. uhitm.c:386-393 — monster state adjustments
     if (mtmp.stunned || mtmp.mstun) tmp += 2;
@@ -193,7 +196,7 @@ function find_roll_to_hit(player, mtmp, aatyp, weapon) {
     // cf. uhitm.c:396-404 — role/race adjustments
     // Monk: bonus when unarmed; heavy penalty if armored.
     if ((player.roleIndex === PM_MONK) && !weapon) {
-        tmp += Math.floor((player.level || 1) / 3) + 2;
+        tmp += Math.floor((player.ulevel || 1) / 3) + 2;
         const armored = !!(player.armor || player.suit || player.cloak
             || player.helmet || player.gloves || player.boots || player.shield);
         if (armored) tmp -= 20;
@@ -234,7 +237,7 @@ export function force_attack(mtmp, pets_too, player = null, display = null, map 
 
 // cf. uhitm.c:447 — do_attack(mtmp):
 //   Top-level attack dispatcher: checks, weapon selection, special cases.
-//   Partially implemented via playerAttackMonster() below.
+//   Partially implemented via hmon() below.
 //   Full implementation would handle: attack_checks, capacity, poly attacks,
 //   leprechaun dodge, hitum/hmonas dispatch, invisible monster mapping.
 export function do_attack(player, mtmp, display, map, opts = {}) {
@@ -247,8 +250,8 @@ export function do_attack(player, mtmp, display, map, opts = {}) {
     })) {
         return false;
     }
-    // Delegate to playerAttackMonster for the normal case
-    return playerAttackMonster(player, mtmp, display, map, game);
+    // Delegate to hmon for the normal case
+    return do_attack_core(player, mtmp, display, map, game);
 }
 
 
@@ -558,7 +561,7 @@ function hmon_hitmon_splitmon(hmd, mon, obj) {
 //   Generate "You hit the <monster>" message.
 function hmon_hitmon_msg_hit(hmd, mon, obj, display) {
     if (!hmd.hittxt && !hmd.destroyed) {
-        const name = monDisplayName(mon);
+        const name = x_monnam(mon);
         display.putstr_message(`You hit the ${name}.`);
     }
 }
@@ -566,7 +569,7 @@ function hmon_hitmon_msg_hit(hmd, mon, obj, display) {
 // cf. uhitm.c:1641 — hmon_hitmon_msg_silver(hmd, mon, obj):
 //   "The silver sears <monster>!" message.
 function hmon_hitmon_msg_silver(hmd, mon, obj, display) {
-    const name = monDisplayName(mon);
+    const name = x_monnam(mon);
     const ptr = mon.type || {};
     let whom = name;
     if (!noncorporeal(ptr) && !amorphous(ptr)) {
@@ -585,7 +588,7 @@ function hmon_hitmon_msg_silver(hmd, mon, obj, display) {
 // cf. uhitm.c:1680 — hmon_hitmon_msg_lightobj(hmd, mon, obj):
 //   Light-source weapon message (burning undead, etc).
 function hmon_hitmon_msg_lightobj(hmd, mon, obj, display) {
-    const name = monDisplayName(mon);
+    const name = x_monnam(mon);
     const ptr = mon.type || {};
     let whom = name;
     if (!noncorporeal(ptr) && !amorphous(ptr)) {
@@ -654,7 +657,7 @@ function hmon_hitmon(player, mon, obj, thrown, dieroll, display, map) {
     } else if (hmd.unarmed && hmd.dmg > 1 && !thrown) {
         hmon_hitmon_stagger(hmd, mon, obj);
     }
-    // knockback for armed melee is handled in playerAttackMonster
+    // knockback for armed melee is handled in hmon
 
     // Phase 6: apply damage
     if (!hmd.already_killed) {
@@ -691,7 +694,7 @@ function hmon_hitmon(player, mon, obj, thrown, dieroll, display, map) {
         hmd.destroyed = true;
     }
     if (hmd.destroyed && !hmd.already_killed) {
-        // Kill handled by caller (playerAttackMonster)
+        // Kill handled by caller (hmon)
     }
 
     return hmd.destroyed ? false : true;
@@ -723,6 +726,7 @@ function first_weapon_hit(weapon) {
 // cf. uhitm.c:1970 — shade_aware(obj):
 //   Check if object can affect a shade (silver, blessed, artifact).
 //   Objects in this list either affect shades or are handled specially.
+// Autotranslated from uhitm.c:1970
 export function shade_aware(obj) {
     if (!obj) return false;
     if (obj.otyp === BOULDER
@@ -746,7 +750,7 @@ export function shade_miss(magr, mdef, obj, thrown, verbose) {
 
     if (verbose) {
         const what = (!obj || shade_aware(obj)) ? 'attack' : xname(obj);
-        const target = monDisplayName(mdef);
+        const target = x_monnam(mdef);
         if (!thrown) {
             // "Your <what> passes harmlessly through <target>."
         } else {
@@ -805,14 +809,14 @@ function steal_it(mdef, mattk) {
 // These handlers implement the m-vs-m (monster-vs-monster) combat path.
 // Each takes (magr, mattk, mdef, mhm) where mhm is:
 //   { damage, hitflags, done, permdmg, specialdmg, dieroll }
-// The uhitm (u-vs-m) and mhitu (m-vs-u) paths remain in playerAttackMonster()
-// and monsterAttackPlayer() respectively.
+// The uhitm (u-vs-m) and mhitu (m-vs-u) paths remain in hmon()
+// and mattacku() respectively.
 
 // cf. uhitm.c:3959 — physical damage handler
 // m-vs-m branch: uhitm.c:4106-4177
 export function mhitm_ad_phys(magr, mattk, mdef, mhm) {
     const pd = mdef.type || {};
-    if (mattk.type === AT_KICK && thick_skinned(pd)) {
+    if (mattk.aatyp === AT_KICK && thick_skinned(pd)) {
         mhm.damage = 0;
     }
 }
@@ -876,8 +880,8 @@ function mhitm_really_poison(magr, mattk, mdef, mhm) {
         return;
     }
     // C ref: mhitm.c:3094 — m_lev > 0 ? lose a level : take 2d6 damage
-    if ((mdef.m_lev ?? mdef.mlevel ?? 0) > 0) {
-        const mlev = mdef.m_lev ?? mdef.mlevel ?? 0;
+    if ((mdef.m_lev || 0) > 0) {
+        const mlev = mdef.m_lev || 0;
         mhm.damage = d(2, 6);
         if (mdef.mhpmax > (mlev + 1)) {
             mdef.mhpmax -= mhm.damage;
@@ -917,7 +921,7 @@ export function mhitm_ad_conf(magr, mattk, mdef, mhm) {
 // m-vs-m branch: uhitm.c:2964-2989
 export function mhitm_ad_blnd(magr, mattk, mdef, mhm) {
     // C ref: can_blnd check omitted for simplicity; uses damage dice for duration
-    let rnd_tmp = d(mattk.dice || 0, mattk.sides || 0);
+    let rnd_tmp = d(mattk.damn || 0, mattk.damd || 0);
     rnd_tmp += (mdef.mblinded || 0);
     if (rnd_tmp > 127) rnd_tmp = 127;
     mdef.mblinded = rnd_tmp;
@@ -967,7 +971,7 @@ export function mhitm_ad_drli(magr, mattk, mdef, mhm) {
     if (!rn2(3) && !resists_ston(mdef) /* resists_drli in C, using ston as proxy */
         && !mhitm_mgc_atk_negated(magr, mdef)) {
         mhm.damage = d(2, 6);
-        const mlev = mdef.m_lev ?? mdef.mlevel ?? 0;
+        const mlev = mdef.m_lev || 0;
         if (mdef.mhpmax - mhm.damage > mlev) {
             mdef.mhpmax -= mhm.damage;
         } else if (mdef.mhpmax > mlev) {
@@ -977,7 +981,6 @@ export function mhitm_ad_drli(magr, mattk, mdef, mhm) {
             mhm.damage = mdef.mhp;
         } else {
             if (mdef.m_lev !== undefined) mdef.m_lev--;
-            else if (mdef.mlevel !== undefined) mdef.mlevel--;
         }
     }
 }
@@ -1012,10 +1015,9 @@ export function mhitm_ad_drin(magr, mattk, mdef, mhm) {
         return;
     }
     // C ref: intelligence drain — reduces m_lev and mhpmax
-    const mlev = mdef.m_lev ?? mdef.mlevel ?? 0;
+    const mlev = mdef.m_lev || 0;
     if (mlev > 0) {
         if (mdef.m_lev !== undefined) mdef.m_lev--;
-        else if (mdef.mlevel !== undefined) mdef.mlevel--;
         mhm.damage = d(2, 6);
         if (mdef.mhpmax > (mlev + 1)) {
             mdef.mhpmax -= mhm.damage;
@@ -1118,9 +1120,10 @@ export function mhitm_ad_halu(magr, mattk, mdef, mhm) { mhm.damage = 0; }
 
 // cf. uhitm.c:4760 — mhitm_adtyping(magr, mattk, mdef, mhm):
 //   Dispatch to specific mhitm_ad_* handler based on attack damage type.
-//   mattk.damage is the JS equivalent of mattk->adtyp.
+//   mattk.adtyp is the JS equivalent of mattk->adtyp.
 export function mhitm_adtyping(magr, mattk, mdef, mhm) {
-    switch (mattk.damage) {
+    canonicalizeAttackFields(mattk);
+    switch (mattk.adtyp) {
     case AD_PHYS: mhitm_ad_phys(magr, mattk, mdef, mhm); break;
     case AD_FIRE: mhitm_ad_fire(magr, mattk, mdef, mhm); break;
     case AD_COLD: mhitm_ad_cold(magr, mattk, mdef, mhm); break;
@@ -1175,11 +1178,12 @@ export function mhitm_adtyping(magr, mattk, mdef, mhm) {
 
 // cf. uhitm.c:4813 — damageum(mdef, mattk, specialdmg):
 //   Apply hero's attack damage to monster (used by polymorphed hero attacks).
-//   Rolls d(mattk.dice, mattk.sides), dispatches through mhitm_adtyping.
+//   Rolls d(mattk.damn, mattk.damd), dispatches through mhitm_adtyping.
 //   Returns M_ATTK_DEF_DIED if monster dies, M_ATTK_HIT otherwise.
 export function damageum(mdef, mattk, specialdmg) {
+    canonicalizeAttackFields(mattk);
     const mhm = {
-        damage: d(mattk.dice || 0, mattk.sides || 0),
+        damage: d(mattk.damn || 0, mattk.damd || 0),
         hitflags: M_ATTK_MISS,
         permdmg: 0,
         specialdmg: specialdmg || 0,
@@ -1204,7 +1208,8 @@ export function damageum(mdef, mattk, specialdmg) {
 //   Exploding attack (hero polymorphed into exploding monster).
 //   Returns M_ATTK_DEF_DIED or M_ATTK_HIT.
 export function explum(mdef, mattk) {
-    const tmp = d(mattk.dice || 0, mattk.sides || 0);
+    canonicalizeAttackFields(mattk);
+    const tmp = d(mattk.damn || 0, mattk.damd || 0);
     // C: various cases (AD_BLND, AD_HALU, AD_COLD/FIRE/ELEC → explode())
     // Simplified: just apply damage for elemental types
     if (mdef) {
@@ -1237,6 +1242,7 @@ function end_engulf() {
 //   Returns M_ATTK_MISS or M_ATTK_DEF_DIED.
 //   In JS, engulfment is not yet supported. Stub returns miss.
 export async function gulpum(mdef, mattk) {
+    canonicalizeAttackFields(mattk);
     if (mdef) {
         await start_engulf(mdef);
         end_engulf();
@@ -1258,7 +1264,7 @@ export function missum(mdef, uattk, wouldhavehit) {
     if (wouldhavehit) {
         display.putstr_message('Your armor is rather cumbersome...');
     }
-    display.putstr_message(`You miss ${monNam(mdef)}.`);
+    display.putstr_message(`You miss ${y_monnam(mdef)}.`);
 }
 
 // Internal version of missum used by known_hitum
@@ -1283,21 +1289,22 @@ export function m_is_steadfast(mtmp) {
 //   Returns true if knockback occurred.
 //   Consumes rn2(3), rn2(chance), and possibly rn2(2)*2 for message.
 export function mhitm_knockback(magr, mdef, mattk, hitflags, weapon_used) {
+    canonicalizeAttackFields(mattk);
     const knockdistance = rn2(3) ? 1 : 2;
     const chance = 6;
     if (rn2(chance)) return false;
 
     // Only AD_PHYS with AT_CLAW/AT_KICK/AT_BUTT/AT_WEAP qualifies
     if (!mattk) return false;
-    const adtyp = mattk.damage ?? mattk.adtyp ?? AD_PHYS;
-    const aatyp = mattk.type ?? mattk.aatyp ?? AT_WEAP;
+    const adtyp = mattk.adtyp ?? AD_PHYS;
+    const aatyp = mattk.aatyp ?? AT_WEAP;
     if (adtyp !== AD_PHYS) return false;
     if (aatyp !== AT_CLAW && aatyp !== AT_KICK && aatyp !== AT_BUTT && aatyp !== AT_WEAP)
         return false;
 
     // Attacker must be much larger than defender
-    const agrSize = (magr.type || magr.data || {}).size ?? MZ_HUMAN;
-    const defSize = (mdef.type || mdef.data || {}).size ?? MZ_HUMAN;
+    const agrSize = (magr.type || magr.data || {}).msize ?? MZ_HUMAN;
+    const defSize = (mdef.type || mdef.data || {}).msize ?? MZ_HUMAN;
     if (!(agrSize > defSize + 1)) return false;
 
     // Unsolid attacker can't knock back
@@ -1345,9 +1352,10 @@ export function hmonas(player, mon, display, map) {
 //   Called for AD_FIRE, AD_ACID, AD_RUST, AD_CORR, AD_ENCH when hero hits
 //   a monster with those passive attack types.
 export function passive_obj(mon, obj, mattk) {
+    canonicalizeAttackFields(mattk);
     if (!obj) return;
     const ptr = mon.type || {};
-    const adtyp = mattk ? (mattk.damage ?? mattk.adtyp) : AD_PHYS;
+    const adtyp = mattk ? (mattk.adtyp ?? AD_PHYS) : AD_PHYS;
 
     switch (adtyp) {
     case AD_FIRE:
@@ -1473,10 +1481,10 @@ export function flash_hits_mon(mtmp, otmp) {
     if (mtmp.msleeping && haseyes(ptr)) {
         mtmp.msleeping = 0;
         res = 1;
-    } else if (ptr.symbol !== S_LIGHT) {
+    } else if (ptr.mlet !== S_LIGHT) {
         // Blind non-resistant monsters
         // C: if (!resists_blnd(mtmp)) — simplified check
-        const isBlindRes = ptr.symbol === S_LIGHT; // already checked above
+        const isBlindRes = ptr.mlet === S_LIGHT; // already checked above
         if (!isBlindRes) {
             // C: distance-based blinding
             if ((mtmp.mndx ?? -1) === PM_GREMLIN) {
@@ -1518,7 +1526,7 @@ export function light_hits_gremlin(mon, dmg) {
 // cf. uhitm.c find_roll_to_hit() — luck component (partial)
 function isUndeadOrDemon(monsterType) {
     if (!monsterType) return false;
-    const sym = monsterType.symbol;
+    const sym = monsterType.mlet;
     return sym === S_ZOMBIE
         || sym === S_MUMMY
         || sym === S_VAMPIRE
@@ -1539,7 +1547,7 @@ export function weaponDamageSides(weapon, monster) {
     if (weapon.wsdam) return weapon.wsdam;
     const info = objectData[weapon.otyp];
     if (!info) return 0;
-    const isLarge = (monster?.type?.size ?? MZ_TINY) >= MZ_LARGE;
+    const isLarge = (monster?.type?.msize ?? MZ_TINY) >= MZ_LARGE;
     return isLarge ? (info.ldam || 0) : (info.sdam || 0);
 }
 
@@ -1599,7 +1607,7 @@ function hitMonsterWithPotion(player, monster, display, weapon) {
 
     if (potionHealsMonster(potion) && monster.mhp < (monster.mhpmax || monster.mhp)) {
         monster.mhp = monster.mhpmax || monster.mhp;
-        display.putstr_message(`The ${monDisplayName(monster)} looks sound and hale again.`);
+        display.putstr_message(`The ${x_monnam(monster)} looks sound and hale again.`);
     }
 
     // cf. potion.c:1893 — distance<3 && !rn2((1+DEX)/2) gate for potionbreathe()
@@ -1609,17 +1617,17 @@ function hitMonsterWithPotion(player, monster, display, weapon) {
 }
 
 // cf. mon.c xkilled() — monster death handling.
-// Co-located here with its primary caller playerAttackMonster().
+// Co-located here with its primary caller hmon().
 // TODO: future mon.js codematch should migrate this to mon.js.
 function handleMonsterKilled(player, monster, display, map) {
     // cf. uhitm.c -> mon.c mondead() -> killed() -> xkilled()
     const mdat = monster.type || {};
     const killVerb = nonliving(mdat) ? 'destroy' : 'kill';
-    display.putstr_message(`You ${killVerb} the ${monDisplayName(monster)}!`);
+    display.putstr_message(`You ${killVerb} the ${x_monnam(monster)}!`);
     mondead(monster, map, player);
 
     // cf. exper.c experience() -- roughly monster level * level
-    const exp = (monster.mlevel + 1) * (monster.mlevel + 1);
+    const exp = ((monster.m_lev || 0) + 1) * ((monster.m_lev || 0) + 1);
     player.exp += exp;
     player.score += exp;
     newexplevel(player, display);
@@ -1630,11 +1638,11 @@ function handleMonsterKilled(player, monster, display, map) {
         && !((mdat.geno || 0) & G_NOCORPSE)
         && !monster.mcloned
         && (monster.mx !== player.x || monster.my !== player.y)
-        && mdat.symbol !== S_KOP;
+        && mdat.mlet !== S_KOP;
     if (canDropTreasure && map) {
         const otmp = mkobj(RANDOM_CLASS, true, false);
         const flags2 = mdat.flags2 || 0;
-        const isSmallMonster = (mdat.size || 0) < MZ_HUMAN;
+        const isSmallMonster = (mdat.msize || 0) < MZ_HUMAN;
         const isPermaFood = otmp && otmp.oclass === FOOD_CLASS && !otmp.oartifact;
         const dropTooBig = isSmallMonster && !!otmp
             && otmp.otyp !== FIGURINE
@@ -1684,27 +1692,29 @@ function passive(mon, weapon, mhit, malive, aatyp = AT_WEAP, wep_was_destroyed =
     let passiveAttk = null;
     for (let i = 0; i < attacks.length; i++) {
         if (i >= NATTK) return; // no passive attacks
-        if (attacks[i].type === AT_NONE) {
-            passiveAttk = attacks[i];
+        const attack = canonicalizeAttackFields(attacks[i]);
+        if (attack.aatyp === AT_NONE) {
+            passiveAttk = attack;
             break;
         }
     }
     if (!passiveAttk) {
         if (attacks.length >= NATTK) return; // no room for passive
         // Synthesize NO_ATTK: C would find AT_NONE/AD_NONE(=AD_PHYS)/0/0
-        passiveAttk = { type: AT_NONE, damage: AD_PHYS, dice: 0, sides: 0 };
+        passiveAttk = { aatyp: AT_NONE, adtyp: AD_PHYS, damn: 0, damd: 0 };
     }
+    canonicalizeAttackFields(passiveAttk);
 
-    const adtyp = passiveAttk.damage;
+    const adtyp = passiveAttk.adtyp;
 
     // C ref: uhitm.c:5862-5868 — calculate tmp (damage dice)
     // tmp = d(damn, damd) or d(mlev+1, damd) or 0
     let tmp = 0;
-    if (passiveAttk.dice) {
-        tmp = d(passiveAttk.dice, passiveAttk.sides || 0);
-    } else if (passiveAttk.sides) {
-        const mlev = mon.m_lev ?? mon.mlevel ?? (ptr.level || 0);
-        tmp = d(mlev + 1, passiveAttk.sides);
+    if (passiveAttk.damn) {
+        tmp = d(passiveAttk.damn, passiveAttk.damd || 0);
+    } else if (passiveAttk.damd) {
+        const mlev = mon.m_lev ?? (ptr.mlevel || 0);
+        tmp = d(mlev + 1, passiveAttk.damd);
     }
 
     // C ref: uhitm.c:5872-5993 — first switch: effects that work even if dead
@@ -1741,7 +1751,7 @@ function passive(mon, weapon, mhit, malive, aatyp = AT_WEAP, wep_was_destroyed =
     }
 
     if (tmp > 0 && player) {
-        player.hp = Math.max(0, (player.hp || 0) - tmp);
+        player.uhp = Math.max(0, (player.uhp || 0) - tmp);
     }
 
     // C ref: uhitm.c:5997 — if (malive && !mon->mcan && rn2(3)) return;
@@ -1757,7 +1767,7 @@ function passive(mon, weapon, mhit, malive, aatyp = AT_WEAP, wep_was_destroyed =
             if (!rn2(4)) tmp = 127;
             if (!playerHasProp(player, FREE_ACTION) && tmp > 0) {
                 if (game) game.multi = Math.max(game.multi || 0, tmp);
-                if (display) display.putstr_message(`You are frozen by ${monNam(mon)}!`);
+                if (display) display.putstr_message(`You are frozen by ${y_monnam(mon)}!`);
             }
         } else {
             tmp = 0;
@@ -1785,13 +1795,13 @@ function passive(mon, weapon, mhit, malive, aatyp = AT_WEAP, wep_was_destroyed =
     }
 
     if (tmp > 0 && player) {
-        player.hp = Math.max(0, (player.hp || 0) - tmp);
+        player.uhp = Math.max(0, (player.uhp || 0) - tmp);
     }
 }
 
 
 // cf. uhitm.c do_attack() / hitum() / known_hitum() — hero attacks monster
-export function playerAttackMonster(player, monster, display, map, game = null) {
+export function do_attack_core(player, monster, display, map, game = null) {
     // C ref: uhitm.c:538-549 — first attack while wielding a non-weapon
     // emits "You begin bashing monsters with <item>."
     const wielded = player.weapon;
@@ -1821,9 +1831,9 @@ export function playerAttackMonster(player, monster, display, map, game = null) 
     if (!mhit) {
         // cf. uhitm.c:608 — known_hitum miss path → missum()
         if (bashPrefix) {
-            display.putstr_message(`${bashPrefix}  You miss ${monNam(monster)}.`);
+            display.putstr_message(`${bashPrefix}  You miss ${y_monnam(monster)}.`);
         } else {
-            display.putstr_message(`You miss ${monNam(monster)}.`);
+            display.putstr_message(`You miss ${y_monnam(monster)}.`);
         }
         // cf. uhitm.c:788 passive() after miss
         passive(monster, player.weapon || null, false, true, AT_WEAP, false, {
@@ -1904,9 +1914,9 @@ export function playerAttackMonster(player, monster, display, map, game = null) 
     } else {
         // cf. uhitm.c -- various hit messages
         if (dieRoll >= 18) {
-            display.putstr_message(`You smite the ${monDisplayName(monster)}!`);
+            display.putstr_message(`You smite the ${x_monnam(monster)}!`);
         } else {
-            display.putstr_message(`You hit the ${monDisplayName(monster)}.`);
+            display.putstr_message(`You hit the ${x_monnam(monster)}.`);
         }
         // cf. uhitm.c hmon_hitmon_core():
         // For armed melee hits with damage > 1: mhitm_knockback().
@@ -1919,13 +1929,13 @@ export function playerAttackMonster(player, monster, display, map, game = null) 
                 // Passed 1/6 chance gate. Check eligibility:
                 // AD_PHYS + AT_WEAP: passes for armed hero (mattk is hero's attack)
                 // Size: hero (MZ_HUMAN) must be > mdef.msize + 1
-                const msize = monster.type?.size ?? MZ_HUMAN;
+                const msize = monster.type?.msize ?? MZ_HUMAN;
                 if (msize + 1 < MZ_HUMAN) {
                     // cf. uhitm.c:5350-5352 — knockback message
                     const adj = rn2(2) ? 'forceful' : 'powerful';
                     const noun = rn2(2) ? 'blow' : 'strike';
                     display.putstr_message(
-                        `You knock the ${monDisplayName(monster)} back with a ${adj} ${noun}!`
+                        `You knock the ${x_monnam(monster)} back with a ${adj} ${noun}!`
                     );
                 }
             }

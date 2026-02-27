@@ -103,10 +103,10 @@ function does_block(map, x, y) {
 }
 
 // C ref: vision.c:105 — get_viz_clear()
+// TRANSLATOR: AUTO (vision.c:104)
 export function get_viz_clear(x, y) {
-    if (!isok(x, y)) return false;
-    if (!viz_clear || !viz_clear[y]) return false;
-    return !viz_clear[y][x];
+  if (isok(x,y) && !viz_clear[y][x]) return true;
+  return false;
 }
 
 // C ref: vision.c:121, 121-? — vision_init()
@@ -142,7 +142,7 @@ function get_unused_cs() {
 }
 
 // C ref: vision.c:237-251 — view_init()
-function view_init() {
+export function view_init() {
     // No-op in this port. Kept for API and future hooks.
 }
 

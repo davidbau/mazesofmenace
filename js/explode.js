@@ -131,9 +131,9 @@ export async function explode(x, y, type, dam, olet, expltype, map, player) {
 
           if (player && tx === player.x && ty === player.y && phase === 2) {
             const damu = dam;
-            if (player.hp) {
-              player.hp -= damu;
-              if (player.hp < 0) player.hp = 0;
+            if (player.uhp) {
+              player.uhp -= damu;
+              if (player.uhp < 0) player.uhp = 0;
             }
           }
         }
@@ -156,9 +156,10 @@ export function scatter(sx, sy, blastforce, scflags, obj, map) {
 }
 
 // cf. explode.c:959 — splatter_burning_oil(x, y, diluted_oil)
-export async function splatter_burning_oil(x, y, diluted_oil, map, player) {
-  const dmg = d(diluted_oil ? 3 : 4, 4);
-  await explode(x, y, AD_FIRE, dmg, BURNING_OIL, EXPL_FIERY, map, player);
+// TRANSLATOR: AUTO (explode.c:959)
+export async function splatter_burning_oil(x, y, diluted_oil) {
+  let dmg = d(diluted_oil ? 3 : 4, 4);
+  await explode(x, y, ZT_SPELL_O_FIRE, dmg, BURNING_OIL, EXPL_FIERY);
 }
 
 // cf. explode.c:971 — explode_oil(obj, x, y)
@@ -178,7 +179,7 @@ export async function mon_explodes(mon, mattk, map, player) {
   if (mattk.damn) {
     dmg = d(mattk.damn, mattk.damd);
   } else if (mattk.damd) {
-    const mlev = mon.m_lev || mon.mlevel || 0;
+    const mlev = mon.m_lev || 0;
     dmg = d(mlev + 1, mattk.damd);
   } else {
     dmg = 0;

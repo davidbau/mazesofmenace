@@ -6,7 +6,7 @@ import { COLNO, ROWNO, STAIRS,
          CORR, ROOM, AIR, A_DEX,
          IS_FURNITURE, IS_LAVA, IS_POOL, MAGIC_PORTAL, VIBRATING_SQUARE } from './config.js';
 import { rn1, rn2, rnd, d } from './rng.js';
-import { deltrap, enexto, makelevel } from './dungeon.js';
+import { deltrap, enexto, makelevel, assign_level } from './dungeon.js';
 import { mon_arrive } from './dog.js';
 import { initrack } from './monmove.js';
 import { COIN_CLASS, RING_CLASS, POTION_CLASS,
@@ -31,7 +31,8 @@ import { uwepgone, uswapwepgone, uqwepgone } from './wield.js';
 import { observeObject } from './discovery.js';
 import { compactInvletPromptChars, buildInventoryOverlayLines, renderOverlayMenuUntilDismiss } from './invent.js';
 import { pline, pline_The, You, Your, You_hear, You_see, You_feel, There, Norep } from './pline.js';
-import { hcolor, hliquid, rndmonnam } from './do_name.js';
+import { hcolor, hliquid, rndmonnam, Monnam } from './do_name.js';
+import { an } from './objnam.js';
 import { body_part, FACE, HAND, LEG, STOMACH } from './polyself.js';
 import { IS_SINK, IS_ALTAR } from './symbols.js';
 import { newsym } from './monutil.js';
@@ -45,9 +46,27 @@ import { cansee } from './vision.js';
 import { canseemon } from './mondata.js';
 import { movebubbles } from './mkmaze.js';
 
+// Translator-compat globals used by some C-emitted helper candidates.
+const gd = {};
+function encumber_msg(_player) {}
+function Wounded_legs(player) { return !!(player?.woundedLegs); }
+function EWounded_legs(player) { return Number(player?.eWoundedLegs || 0); }
+function HWounded_legs(player) { return Number(player?.hWoundedLegs || 0); }
+function Sprintf(fmt, ...args) {
+    let i = 0;
+    return String(fmt || '').replace(/%[sd]/g, () => String(args[i++] ?? ''));
+}
+function strchr(s, ch) {
+    if (s == null || ch == null) return null;
+    const text = String(s);
+    const needle = String(ch)[0] || '';
+    const idx = text.indexOf(needle);
+    return idx >= 0 ? text.slice(idx) : null;
+}
+
 
 // ============================================================
-// Pickup message helpers (used by handlePickup in commands.js)
+// Pickup message helpers (used by pickup dispatch in cmd.js)
 // ============================================================
 
 export function formatGoldPickupMessage(gold, player) {
@@ -94,7 +113,7 @@ export function canletgo(obj, word, player) {
         if (word) {
             let hand = body_part(HAND, player);
             if (obj.bimanual)
-                hand = makeplural_simple(hand);
+                hand = makeplural(hand);
             Norep("You cannot %s %s welded to your %s.", word, "something", hand);
         }
         return false;
@@ -121,7 +140,7 @@ export function canletgo(obj, word, player) {
 }
 
 // Simple makeplural for body part strings
-function makeplural_simple(word) {
+function makeplural(word) {
     if (!word) return word;
     if (word.endsWith('s') || word.endsWith('x') || word.endsWith('z') ||
         word.endsWith('sh') || word.endsWith('ch'))
@@ -242,6 +261,7 @@ export function dropx(obj, player, map) {
 }
 
 // cf. do.c dropy() — put dropped object at destination
+// Autotranslated from do.c:800
 export function dropy(obj, player, map) {
     dropz(obj, false, player, map);
 }
@@ -929,8 +949,10 @@ function isTeleportArrivalBlocked(map, x, y) {
     if (!loc) return true;
     if (IS_FURNITURE(loc.typ)) return true;
     if (IS_LAVA(loc.typ) || IS_POOL(loc.typ)) return true;
-    if (map._isInvocationLevel && map._invPos
-        && x === map._invPos.x && y === map._invPos.y) {
+    const inv_pos = map.inv_pos || map._invPos;
+    const isInvocationLevel = !!(map.is_invocation_lev || map._isInvocationLevel);
+    if (isInvocationLevel && inv_pos
+        && x === inv_pos.x && y === inv_pos.y) {
         return true;
     }
     return false;
@@ -1083,19 +1105,19 @@ export function getArrivalPosition(map, dungeonLevel, transitionDir = null) {
 
 // Handle hero landing on a monster at arrival.
 export function resolveArrivalCollision(game) {
-    const mtmp = game.map?.monsterAt?.(game.player.x, game.player.y);
-    if (!mtmp || mtmp === game.player?.usteed) return;
+    const mtmp = (game.lev || game.map)?.monsterAt?.((game.u || game.player).x, (game.u || game.player).y);
+    if (!mtmp || mtmp === (game.u || game.player)?.usteed) return;
 
     const moveMonsterNearby = () => {
-        const pos = enexto(game.player.x, game.player.y, game.map);
+        const pos = enexto((game.u || game.player).x, (game.u || game.player).y, (game.lev || game.map));
         if (pos) { mtmp.mx = pos.x; mtmp.my = pos.y; }
     };
 
     if (!rn2(2)) {
-        const cc = enexto(game.player.x, game.player.y, game.map);
-        if (cc && Math.abs(cc.x - game.player.x) <= 1 && Math.abs(cc.y - game.player.y) <= 1) {
-            game.player.x = cc.x;
-            game.player.y = cc.y;
+        const cc = enexto((game.u || game.player).x, (game.u || game.player).y, (game.lev || game.map));
+        if (cc && Math.abs(cc.x - (game.u || game.player).x) <= 1 && Math.abs(cc.y - (game.u || game.player).y) <= 1) {
+            (game.u || game.player).x = cc.x;
+            (game.u || game.player).y = cc.y;
         } else {
             moveMonsterNearby();
         }
@@ -1103,11 +1125,11 @@ export function resolveArrivalCollision(game) {
         moveMonsterNearby();
     }
 
-    const still = game.map?.monsterAt?.(game.player.x, game.player.y);
+    const still = (game.lev || game.map)?.monsterAt?.((game.u || game.player).x, (game.u || game.player).y);
     if (!still) return;
-    const fallback = enexto(game.player.x, game.player.y, game.map);
+    const fallback = enexto((game.u || game.player).x, (game.u || game.player).y, (game.lev || game.map));
     if (fallback) { still.mx = fallback.x; still.my = fallback.y; }
-    else { game.map.removeMonster(still); }
+    else { (game.lev || game.map).removeMonster(still); }
 }
 
 // --- goto_level core (C ref: do.c goto_level) ---
@@ -1121,49 +1143,49 @@ export function resolveArrivalCollision(game) {
 export function changeLevel(game, depth, transitionDir = null, opts = {}) {
     const currentDnum = Number.isInteger(game.dnum)
         ? game.dnum
-        : (Number.isInteger(game.map?._genDnum) ? game.map._genDnum : 0);
+        : (Number.isInteger((game.lev || game.map)?._genDnum) ? (game.lev || game.map)._genDnum : 0);
     const levelKey = (dnum, dlev) => `${dnum}:${dlev}`;
     if (!game.levelsByBranch) game.levelsByBranch = {};
 
-    const previousDepth = game.player?.dungeonLevel;
-    const fromX = game.player?.x;
-    const fromY = game.player?.y;
+    const previousDepth = (game.u || game.player)?.dungeonLevel;
+    const fromX = (game.u || game.player)?.x;
+    const fromY = (game.u || game.player)?.y;
 
     // Cache current level
-    if (game.map) {
-        game.levels[game.player.dungeonLevel] = game.map;
-        game.levelsByBranch[levelKey(currentDnum, game.player.dungeonLevel)] = game.map;
+    if ((game.lev || game.map)) {
+        game.levels[(game.u || game.player).dungeonLevel] = (game.lev || game.map);
+        game.levelsByBranch[levelKey(currentDnum, (game.u || game.player).dungeonLevel)] = (game.lev || game.map);
     }
-    const previousMap = game.levels[game.player.dungeonLevel];
+    const previousMap = game.levels[(game.u || game.player).dungeonLevel];
     const targetDnum = Number.isInteger(game.dnum) ? game.dnum : currentDnum;
     const branchCacheKey = levelKey(targetDnum, depth);
 
     // Use pre-generated map if provided, otherwise check cache or generate new.
     if (opts.map) {
-        game.map = opts.map;
+        game.lev = opts.map;
         game.levels[depth] = opts.map;
         game.levelsByBranch[branchCacheKey] = opts.map;
     } else if (game.levelsByBranch[branchCacheKey]) {
-        game.map = game.levelsByBranch[branchCacheKey];
+        game.lev = game.levelsByBranch[branchCacheKey];
     } else if (game.levels[depth]) {
-        game.map = game.levels[depth];
+        game.lev = game.levels[depth];
     } else {
-        game.map = opts.makeLevel ? opts.makeLevel(depth) : makelevel(depth);
-        game.levels[depth] = game.map;
-        game.levelsByBranch[branchCacheKey] = game.map;
+        game.lev = opts.makeLevel ? opts.makeLevel(depth) : makelevel(depth);
+        game.levels[depth] = (game.lev || game.map);
+        game.levelsByBranch[branchCacheKey] = (game.lev || game.map);
     }
 
-    if (Number.isInteger(game.map?._genDnum)) {
-        game.dnum = game.map._genDnum;
+    if (Number.isInteger((game.lev || game.map)?._genDnum)) {
+        game.dnum = (game.lev || game.map)._genDnum;
     }
 
-    game.player.dungeonLevel = depth;
-    game.player.inTutorial = !!game.map?.flags?.is_tutorial;
+    (game.u || game.player).dungeonLevel = depth;
+    (game.u || game.player).inTutorial = !!(game.lev || game.map)?.flags?.is_tutorial;
 
     // C ref: dungeon.c u_on_rndspot() / stairs.c u_on_upstairs()
-    const pos = getArrivalPosition(game.map, depth, transitionDir);
-    game.player.x = pos.x;
-    game.player.y = pos.y;
+    const pos = getArrivalPosition((game.lev || game.map), depth, transitionDir);
+    (game.u || game.player).x = pos.x;
+    (game.u || game.player).y = pos.y;
 
     // C ref: cmd.c goto_level() clears hero track history on level change.
     if (Number.isInteger(previousDepth) && depth !== previousDepth) {
@@ -1172,39 +1194,39 @@ export function changeLevel(game, depth, transitionDir = null, opts = {}) {
 
     // C ref: do.c goto_level() -> losedogs() -> mon_arrive()
     // Migrate followers from old level; resolve hero-monster collision.
-    if (previousMap && previousMap !== game.map) {
-        mon_arrive(previousMap, game.map, game.player, {
+    if (previousMap && previousMap !== (game.lev || game.map)) {
+        mon_arrive(previousMap, (game.lev || game.map), (game.u || game.player), {
             sourceHeroX: fromX,
             sourceHeroY: fromY,
-            heroX: game.player.x,
-            heroY: game.player.y,
+            heroX: (game.u || game.player).x,
+            heroY: (game.u || game.player).y,
         });
         resolveArrivalCollision(game);
     }
 
     // C ref: do.c goto_level() — initial bubble/cloud move before vision refresh.
-    if (game.map?.flags?.is_waterlevel || game.map?.flags?.is_airlevel) {
-        if (game.map?._water && game.player) {
-            game.map._water.heroPos = {
-                x: game.player.x,
-                y: game.player.y,
-                dx: game.player.dx || 0,
-                dy: game.player.dy || 0,
+    if ((game.lev || game.map)?.flags?.is_waterlevel || (game.lev || game.map)?.flags?.is_airlevel) {
+        if ((game.lev || game.map)?._water && (game.u || game.player)) {
+            (game.lev || game.map)._water.heroPos = {
+                x: (game.u || game.player).x,
+                y: (game.u || game.player).y,
+                dx: (game.u || game.player).dx || 0,
+                dy: (game.u || game.player).dy || 0,
             };
-            game.map._water.onHeroMoved = (x, y) => {
-                game.player.x = x;
-                game.player.y = y;
+            (game.lev || game.map)._water.onHeroMoved = (x, y) => {
+                (game.u || game.player).x = x;
+                (game.u || game.player).y = y;
                 if (game.fov?.compute) {
-                    game.fov.compute(game.map, game.player.x, game.player.y);
+                    game.fov.compute((game.lev || game.map), (game.u || game.player).x, (game.u || game.player).y);
                 }
             };
-            game.map._water.onVisionRecalc = () => {
+            (game.lev || game.map)._water.onVisionRecalc = () => {
                 if (game.fov?.compute) {
-                    game.fov.compute(game.map, game.player.x, game.player.y);
+                    game.fov.compute((game.lev || game.map), (game.u || game.player).x, (game.u || game.player).y);
                 }
             };
         }
-        movebubbles(game.map);
+        movebubbles((game.lev || game.map));
     }
 
 }
@@ -1221,7 +1243,7 @@ export function revive_corpse(corpse, player, map) {
     if (!corpse || corpse.otyp !== CORPSE) return false;
 
     const montype = corpse.corpsenm;
-    const is_zomb = (mons[montype]?.symbol === S_ZOMBIE
+    const is_zomb = (mons[montype]?.mlet === S_ZOMBIE
                      || (corpse.buried && is_reviver(mons[montype])));
     const chewed = (corpse.oeaten || 0) !== 0;
     const where = corpse.where || 'floor';
@@ -1287,6 +1309,7 @@ export function zombify_mon(body, player, map) {
 // ============================================================
 
 // cf. do.c danger_uprops() — return true if hero properties are dangerous
+// Autotranslated from do.c:2308
 export function danger_uprops(player) {
     return !!(player.stoned || player.slimed || player.strangled || player.sick);
 }
@@ -1373,7 +1396,7 @@ export function legs_in_no_shape(for_what, by_steed, player) {
         const wl = (player.eWoundedLegs || 0) & BOTH_SIDES;
         let bp = body_part(LEG, player);
         if (wl === BOTH_SIDES)
-            bp = makeplural_simple(bp);
+            bp = makeplural(bp);
         Your("%s%s %s in no shape for %s.",
              (wl === LEFT_SIDE) ? "left " : (wl === RIGHT_SIDE) ? "right " : "",
              bp, (wl === BOTH_SIDES) ? "are" : "is", for_what);
@@ -1417,7 +1440,7 @@ export function heal_legs(how, player) {
             const wl = (player.eWoundedLegs || 0) & BOTH_SIDES;
             let legs = body_part(LEG, player);
             if (wl === BOTH_SIDES)
-                legs = makeplural_simple(legs);
+                legs = makeplural(legs);
             Your("%s %s better.", legs, (wl === BOTH_SIDES) ? "feel" : "feels");
         }
 

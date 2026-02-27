@@ -11,8 +11,9 @@
 // ============================================================================
 
 // hacklib.c:125 — is 'c' a digit?
+// TRANSLATOR: AUTO (hacklib.c:125)
 export function digit(c) {
-    return c >= '0' && c <= '9';
+  return ('0' <= c && c <= '9');
 }
 
 // hacklib.c:132 — is 'c' a letter? note: '@' classed as letter
@@ -436,10 +437,12 @@ export function fuzzymatch(s1, s2, ignore_chars, caseblind) {
 // ============================================================================
 
 // hacklib.c:689 — return the ordinal suffix of a number (1st, 2nd, 3rd, 4th...)
+// TRANSLATOR: AUTO (hacklib.c:688)
 export function ordin(n) {
-    const dd = n % 10;
-    return (dd === 0 || dd > 3 || Math.floor((n % 100) / 10) === 1)
-        ? 'th' : (dd === 1) ? 'st' : (dd === 2) ? 'nd' : 'rd';
+  let dd = n % 10;
+  return (dd === 0 || dd > 3 || Math.trunc((n % 100) / 10) === 1)
+    ? "th"
+    : (dd === 1) ? "st" : (dd === 2) ? "nd" : "rd";
 }
 
 // hacklib.c:701 — make a signed digit string from a number ("+3" or "-2")
@@ -458,26 +461,38 @@ export function sgn(n) {
 // ============================================================================
 
 // hacklib.c:720 — distance between two points in moves (Chebyshev distance)
+// TRANSLATOR: AUTO (hacklib.c:720)
 export function distmin(x0, y0, x1, y1) {
-    const dx = Math.abs(x0 - x1), dy = Math.abs(y0 - y1);
-    return dx < dy ? dy : dx;
+  let dx = x0 - x1, dy = y0 - y1;
+  if (dx < 0) dx = -dx;
+  if (dy < 0) dy = -dy;
+  return (dx < dy) ? dy : dx;
 }
 
 // hacklib.c:737 — square of Euclidean distance between pair of points
+// TRANSLATOR: AUTO (hacklib.c:736)
 export function dist2(x0, y0, x1, y1) {
-    const dx = x0 - x1, dy = y0 - y1;
-    return dx * dx + dy * dy;
+  let dx = x0 - x1, dy = y0 - y1;
+  return dx * dx + dy * dy;
 }
 
 // hacklib.c:746 — integer square root (floor(sqrt(val))); not in C comment block
+// TRANSLATOR: AUTO (hacklib.c:745)
 export function isqrt(val) {
-    return Math.floor(Math.sqrt(val));
+  let rt = 0, odd = 1;
+  while (val >= odd) {
+    val = val - odd;
+    odd = odd + 2;
+    rt = rt + 1;
+  }
+  return rt;
 }
 
 // hacklib.c:768 — are two points lined up (orthogonal or diagonal)?
+// TRANSLATOR: AUTO (hacklib.c:767)
 export function online2(x0, y0, x1, y1) {
-    const dx = x0 - x1, dy = y0 - y1;
-    return !dy || !dx || dy === dx || dy === -dx;
+  let dx = x0 - x1, dy = y0 - y1;
+  return (!dy || !dx || dy === dx || dy === -dx);
 }
 
 // ============================================================================
@@ -486,9 +501,10 @@ export function online2(x0, y0, x1, y1) {
 // ============================================================================
 
 // hacklib.c:894 — swap bit at position bita with bit at position bitb in val
+// TRANSLATOR: AUTO (hacklib.c:895)
 export function swapbits(val, bita, bitb) {
-    const tmp = ((val >> bita) & 1) ^ ((val >> bitb) & 1);
-    return val ^ ((tmp << bita) | (tmp << bitb));
+  let tmp = ((val >> bita) & 1) ^ ((val >> bitb) & 1);
+  return (val ^ ((tmp << bita) | (tmp << bitb)));
 }
 
 // ============================================================================

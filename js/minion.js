@@ -79,7 +79,7 @@ export function monster_census(spotted, map, player, fov) {
 function is_lminion(mon) {
     if (!mon) return false;
     const ptr = mon.type || mon.data || {};
-    if (ptr.symbol !== S_ANGEL) return false;
+    if (ptr.mlet !== S_ANGEL) return false;
     // If it has emin data, check alignment
     if (mon.isminion && mon.emin) {
         return mon.emin.min_align === A_LAWFUL;
@@ -129,10 +129,10 @@ export function dlord(atyp) {
 // cf. minion.c:418
 // ============================================================================
 
-export function llord() {
-    // C: if (!(mvitals[PM_ARCHON].mvflags & G_GONE)) return PM_ARCHON
-    // genocide not tracked yet; always return Archon
-    return PM_ARCHON;
+// TRANSLATOR: AUTO (minion.c:418)
+export function llord(game) {
+  if (!(game.mvitals[PM_ARCHON].mvflags & G_GONE)) return PM_ARCHON;
+  return lminion();
 }
 
 // ============================================================================

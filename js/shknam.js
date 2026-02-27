@@ -287,13 +287,17 @@ export const shtypes = [
 // get_shop_item(type) — C ref: shknam.c:829-839
 // ========================================================================
 
+// TRANSLATOR: AUTO (shknam.c:828)
 export function get_shop_item(type) {
-    const shp = shtypes[type];
-    let j = rnd(100);
-    for (let i = 0; i < shp.iprobs.length; i++) {
-        if ((j -= shp.iprobs[i].iprob) <= 0) return shp.iprobs[i].itype;
+  const shp = shtypes[type];
+  if (!shp || !Array.isArray(shp.iprobs)) return RANDOM_CLASS;
+  let j = rnd(100);
+  for (let i = 0; i < shp.iprobs.length; i++) {
+    if ((j -= shp.iprobs[i].iprob) <= 0) {
+      return shp.iprobs[i].itype;
     }
-    return RANDOM_CLASS;
+  }
+  return RANDOM_CLASS;
 }
 
 // Register get_shop_item with makemon.js (avoids circular dependency)
@@ -770,4 +774,3 @@ export function monsterInShop(mon, map) {
     }
     return pointInShop(mon.mx, mon.my, map);
 }
-

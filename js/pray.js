@@ -371,8 +371,8 @@ function nomul(player, turns) {
 
 // Helper: losehp -- lose hit points
 function losehp(player, dmg, reason, _type) {
-    player.hp -= dmg;
-    if (player.hp <= 0) {
+    player.uhp -= dmg;
+    if (player.uhp <= 0) {
         player.deathCause = reason;
     }
 }
@@ -411,7 +411,7 @@ function encumber_msg() {
 // Helper: setuhpmax
 function setuhpmax(player, newmax, alwaysSetBase) {
     if (alwaysSetBase || !player.Upolyd) {
-        player.hpmax = newmax;
+        player.uhpmax = newmax;
     }
     if (player.Upolyd) {
         player.mhmax = newmax;
@@ -775,9 +775,9 @@ function rnd_class(low, high) {
 // cf. pray.c:116 -- critically_low_hp(only_if_injured)
 // ================================================================
 export function critically_low_hp(player, only_if_injured) {
-    const curhp = Upolyd(player) ? (player.mh || 0) : player.hp;
-    const rawmax = Upolyd(player) ? (player.mhmax || 1) : player.hpmax;
-    const ulevel = player.level || 1;
+    const curhp = Upolyd(player) ? (player.mh || 0) : player.uhp;
+    const rawmax = Upolyd(player) ? (player.mhmax || 1) : player.uhpmax;
+    const ulevel = player.ulevel || 1;
 
     if (only_if_injured && !(curhp < rawmax))
         return false;
@@ -1054,11 +1054,11 @@ function fix_worst_trouble(trouble, player, map) {
             player.mhmax = Math.max(maxhp, 6);
             player.mh = player.mhmax;
         }
-        maxhp = player.hpmax;
-        if (maxhp < (player.level || 1) * 5 + 11)
+        maxhp = player.uhpmax;
+        if (maxhp < (player.ulevel || 1) * 5 + 11)
             maxhp += rnd(5);
-        player.hpmax = Math.max(maxhp, 6);
-        player.hp = player.hpmax;
+        player.uhpmax = Math.max(maxhp, 6);
+        player.uhp = player.uhpmax;
         break;
     }
     case TROUBLE_COLLAPSING: {
@@ -1510,7 +1510,7 @@ function gcrownu(player, map) {
 function give_spell(player, map) {
     // Create a random spellbook
     let otmp = mkobj(SPBOOK_CLASS, true);
-    let trycnt = (player.level || 1) + 1;
+    let trycnt = (player.ulevel || 1) + 1;
     while (--trycnt > 0) {
         if (otmp.otyp !== SPE_BLANK_PAPER) {
             if (known_spell(player, otmp.otyp) <= 0)
@@ -1661,14 +1661,14 @@ function pleased(g_align, player, map) {
         case 2:
             if (!player.blind)
                 You("are surrounded by %s glow.", an(hcolor("golden")));
-            if ((player.level || 1) < (player.levelmax || player.level || 1)) {
+            if ((player.ulevel || 1) < (player.levelmax || player.ulevel || 1)) {
                 // Would call pluslvl
             } else {
-                player.hpmax = (player.hpmax || 0) + 5;
+                player.uhpmax = (player.uhpmax || 0) + 5;
                 if (Upolyd(player))
                     player.mhmax = (player.mhmax || 0) + 5;
             }
-            player.hp = player.hpmax;
+            player.uhp = player.uhpmax;
             if (Upolyd(player))
                 player.mh = player.mhmax;
             if (player.attributes && player.attrMax
@@ -1795,52 +1795,48 @@ export function godvoice(g_align, words, player) {
 }
 
 // cf. pray.c:1429 -- gods_angry(g_align): print angry god message
-export function gods_angry(g_align, player) {
-    godvoice(g_align, "Thou hast angered me.", player);
+// TRANSLATOR: AUTO (pray.c:1428)
+export function gods_angry(g_align) {
+  godvoice(g_align, "Thou hast angered me.");
 }
 
 // ================================================================
 // cf. pray.c:1436 -- gods_upset(g_align, player, map)
 // ================================================================
-export function gods_upset(g_align, player, map) {
-    if (g_align === player.alignment)
-        player.ugangr = (player.ugangr || 0) + 1;
-    else if (player.ugangr)
-        player.ugangr--;
-    angrygods(g_align, player, map);
+// TRANSLATOR: AUTO (pray.c:1435)
+export function gods_upset(g_align, player) {
+  if (g_align === player.ualign.type) player.ugangr++;
+  else if (player.ugangr) player.ugangr--;
+  angrygods(g_align);
 }
 
 // ================================================================
 // cf. pray.c:1446 -- consume_offering(otmp, player, map)
 // ================================================================
-export function consume_offering(otmp, player, map) {
-    if (player.hallucinating) {
-        switch (rn2(3)) {
-        case 0:
-            Your("sacrifice sprouts wings and a propeller and roars away!");
-            break;
-        case 1:
-            Your("sacrifice puffs up, swelling bigger and bigger, and pops!");
-            break;
-        case 2:
-            Your("sacrifice collapses into a cloud of dancing particles and fades away!");
-            break;
-        }
-    } else if (player.blind && player.alignment === A_LAWFUL) {
-        Your("sacrifice disappears!");
-    } else {
-        Your("sacrifice is consumed in a %s!",
-             (player.alignment === A_LAWFUL)
-                ? "flash of light"
-                : (player.alignment === A_NEUTRAL)
-                    ? "plume of smoke"
-                    : "burst of flame");
+// TRANSLATOR: AUTO (pray.c:1445)
+export function consume_offering(otmp, player) {
+  if (Hallucination) {
+    switch (rn2(3)) {
+      case 0:
+        Your("sacrifice sprouts wings and a propeller and roars away!");
+      break;
+      case 1:
+        Your("sacrifice puffs up, swelling bigger and bigger, and pops!");
+      break;
+      case 2:
+        Your( "sacrifice collapses into a cloud of dancing particles and fades away!");
+      break;
     }
-    if (carried(otmp, player))
-        useup(otmp, player);
-    else
-        useupf(otmp, 1, map);
-    exercise(player, A_WIS, true);
+  }
+  else if (Blind &player.ualign.type === A_LAWFUL) Your("sacrifice disappears!");
+  else {
+    Your("sacrifice is consumed in a %s!", (player.ualign.type === A_LAWFUL) ? "flash of light" : (player.ualign.type === A_NEUTRAL) ? "plume of smoke" : "burst of flame");
+  }
+  if (carried(otmp)) useup(otmp);
+  else {
+    useupf(otmp, 1);
+  }
+  exercise(A_WIS, true);
 }
 
 // ================================================================
@@ -1922,7 +1918,7 @@ function offer_real_amulet(otmp, altaralign, player, map) {
 // ================================================================
 // cf. pray.c:1592 -- offer_negative_valued(highaltar, altaralign, player, map)
 // ================================================================
-function offer_negative_valued(highaltar, altaralign, player, map) {
+export function offer_negative_valued(highaltar, altaralign, player, map) {
     if (altaralign !== player.alignment && highaltar) {
         desecrate_altar(highaltar, altaralign, player, map);
     } else {
@@ -1933,7 +1929,7 @@ function offer_negative_valued(highaltar, altaralign, player, map) {
 // ================================================================
 // cf. pray.c:1602 -- offer_fake_amulet(otmp, highaltar, altaralign, player, map)
 // ================================================================
-function offer_fake_amulet(otmp, highaltar, altaralign, player, map) {
+export function offer_fake_amulet(otmp, highaltar, altaralign, player, map) {
     if (!highaltar && !otmp.known) {
         offer_too_soon(altaralign, player, map);
         return;
@@ -1982,7 +1978,7 @@ function offer_different_alignment_altar(otmp, altaralign, player, map) {
     } else {
         consume_offering(otmp, player, map);
         You("sense a conflict between %s and %s.", u_gname(player), a_gname(player, map));
-        if (rn2(8 + (player.level || 1)) > 5) {
+        if (rn2(8 + (player.ulevel || 1)) > 5) {
             You_feel("the power of %s increase.", u_gname(player));
             exercise(player, A_WIS, true);
             change_luck(player, 1);
@@ -1996,7 +1992,7 @@ function offer_different_alignment_altar(otmp, altaralign, player, map) {
                              : player.alignment ? "black" : "gray";
                 pline_The("altar glows %s.", hcolor(color));
             }
-            if (rnl(player.level || 1, Luck(player)) > 6 && (player.alignmentRecord || 0) > 0
+            if (rnl(player.ulevel || 1, Luck(player)) > 6 && (player.alignmentRecord || 0) > 0
                 && rnd(player.alignmentRecord) > Math.floor(3 * ALIGNLIM / 4))
                 summon_minion(altaralign, true, map, player);
             angry_priest();
@@ -2004,7 +2000,7 @@ function offer_different_alignment_altar(otmp, altaralign, player, map) {
             pline("Unluckily, you feel the power of %s decrease.", u_gname(player));
             change_luck(player, -1);
             exercise(player, A_WIS, false);
-            if (rnl(player.level || 1, Luck(player)) > 6 && (player.alignmentRecord || 0) > 0
+            if (rnl(player.ulevel || 1, Luck(player)) > 6 && (player.alignmentRecord || 0) > 0
                 && rnd(player.alignmentRecord) > Math.floor(7 * ALIGNLIM / 8))
                 summon_minion(altaralign, true, map, player);
         }
@@ -2086,7 +2082,7 @@ function sacrifice_your_race(otmp, highaltar, altaralign, player, map) {
 // ================================================================
 function bestow_artifact(max_giftvalue, player, map) {
     const nartifacts = nartifact_exist();
-    let do_bestow = (player.level || 1) > 2 && (player.luck || 0) >= 0;
+    let do_bestow = (player.ulevel || 1) > 2 && (player.luck || 0) >= 0;
     if (do_bestow)
         do_bestow = !rn2(6 + 2 * (player.ugifts || 0) * nartifacts);
 
@@ -2524,7 +2520,7 @@ function maybe_turn_mon_iter(mtmp, player, map) {
 
     if (!mtmp.mpeaceful
         && (is_undead(mdat)
-            || (is_demon(mdat) && (player.level || 1) > 15))) {
+            || (is_demon(mdat) && (player.ulevel || 1) > 15))) {
         mtmp.msleeping = 0;
         if (player.confused) {
             if (!turn_undead_msg_cnt++)
@@ -2534,14 +2530,14 @@ function maybe_turn_mon_iter(mtmp, player, map) {
             mtmp.mcanmove = true;
         } else if (!resist(mtmp, '\0')) {
             let xlev = 6;
-            switch (mdat.mlet || mdat.symbol) {
+            switch (mdat.mlet) {
             case S_LICH:    xlev += 2; // FALLTHRU
             case S_GHOST:   xlev += 2; // FALLTHRU
             case S_VAMPIRE: xlev += 2; // FALLTHRU
             case S_WRAITH:  xlev += 2; // FALLTHRU
             case S_MUMMY:   xlev += 2; // FALLTHRU
             case S_ZOMBIE:
-                if ((player.level || 1) >= xlev && !resist(mtmp, '\0')) {
+                if ((player.ulevel || 1) >= xlev && !resist(mtmp, '\0')) {
                     if (player.alignment === A_CHAOTIC) {
                         mtmp.mpeaceful = true;
                         set_malign(mtmp);
@@ -2598,7 +2594,7 @@ export async function doturn(player, map) {
     pline("Calling upon %s, you chant an arcane formula.", Gname);
     exercise(player, A_WIS, true);
 
-    turn_undead_range = BOLT_LIM + Math.floor((player.level || 1) / 5);
+    turn_undead_range = BOLT_LIM + Math.floor((player.ulevel || 1) / 5);
     turn_undead_range *= turn_undead_range;
     turn_undead_msg_cnt = 0;
 
@@ -2609,7 +2605,7 @@ export async function doturn(player, map) {
         }
     }
 
-    nomul(player, -(5 - Math.floor(((player.level || 1) - 1) / 6)));
+    nomul(player, -(5 - Math.floor(((player.ulevel || 1) - 1) / 6)));
     player.multi_reason = "trying to turn the monsters";
     player.nomovemsg = "You can move again.";
     return 1;
@@ -2639,8 +2635,9 @@ function a_align(x, y, map) {
 }
 
 // cf. pray.c:2507 -- a_gname(): name of altar's deity at player position
-export function a_gname(player, map) {
-    return a_gname_at(player.x, player.y, player, map);
+// TRANSLATOR: AUTO (pray.c:2506)
+export function a_gname(player) {
+  return a_gname_at(player.x, player.y);
 }
 
 // cf. pray.c:2514 -- a_gname_at(x, y): name of altar's deity at position
@@ -2651,8 +2648,9 @@ export function a_gname_at(x, y, player, map) {
 }
 
 // cf. pray.c:2524 -- u_gname(): player's own deity name
+// TRANSLATOR: AUTO (pray.c:2523)
 export function u_gname(player) {
-    return align_gname(player.alignment, player);
+  return align_gname(player.ualign.type);
 }
 
 // cf. pray.c:2530 -- align_gname(alignment): alignment to deity name

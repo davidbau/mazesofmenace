@@ -34,21 +34,7 @@ import { SILVER } from './objects.js';
 import { pline, pline_The, You, You_feel, You_cant } from './pline.js';
 
 // Re-export key constants for consumers
-export {
-  artilist, NROFARTIFACTS, AFTER_LAST_ARTIFACT, ART_NONARTIFACT,
-  ART_EXCALIBUR, ART_GRIMTOOTH, ART_SUNSWORD, ART_MASTER_KEY_OF_THIEVERY,
-  ART_STING, ART_ORCRIST, ART_STORMBRINGER, ART_VORPAL_BLADE,
-  ART_TSURUGI_OF_MURAMASA, ART_MAGICBANE,
-  SPFX_NONE, SPFX_NOGEN, SPFX_RESTR, SPFX_INTEL, SPFX_SPEAK, SPFX_SEEK,
-  SPFX_WARN, SPFX_ATTK, SPFX_DEFN, SPFX_DRLI, SPFX_SEARCH, SPFX_BEHEAD,
-  SPFX_HALRES, SPFX_ESP, SPFX_STLTH, SPFX_REGEN, SPFX_EREGEN,
-  SPFX_HSPDAM, SPFX_HPHDAM, SPFX_TCTRL, SPFX_LUCK, SPFX_DMONS,
-  SPFX_DCLAS, SPFX_DFLAG1, SPFX_DFLAG2, SPFX_DALIGN, SPFX_DBONUS,
-  SPFX_XRAY, SPFX_REFLECT, SPFX_PROTECT,
-  TAMING, HEALING, ENERGY_BOOST, UNTRAP, CHARGE_OBJ,
-  LEV_TELE, CREATE_PORTAL, ENLIGHTENING, CREATE_AMMO,
-  BANISH, FLING_POISON, FIRESTORM, SNOWSTORM, BLINDING_RAY,
-};
+export { artilist, NROFARTIFACTS, AFTER_LAST_ARTIFACT, ART_NONARTIFACT, ART_EXCALIBUR, ART_GRIMTOOTH, ART_SUNSWORD, ART_MASTER_KEY_OF_THIEVERY, ART_STING, ART_ORCRIST, ART_STORMBRINGER, ART_VORPAL_BLADE, ART_TSURUGI_OF_MURAMASA, ART_MAGICBANE, SPFX_NONE, SPFX_NOGEN, SPFX_RESTR, SPFX_INTEL, SPFX_SPEAK, SPFX_SEEK, SPFX_WARN, SPFX_ATTK, SPFX_DEFN, SPFX_DRLI, SPFX_SEARCH, SPFX_BEHEAD, SPFX_HALRES, SPFX_ESP, SPFX_STLTH, SPFX_REGEN, SPFX_EREGEN, SPFX_HSPDAM, SPFX_HPHDAM, SPFX_TCTRL, SPFX_LUCK, SPFX_DMONS, SPFX_DCLAS, SPFX_DFLAG1, SPFX_DFLAG2, SPFX_DALIGN, SPFX_DBONUS, SPFX_XRAY, SPFX_REFLECT, SPFX_PROTECT, TAMING, HEALING, ENERGY_BOOST, UNTRAP, CHARGE_OBJ, LEV_TELE, CREATE_PORTAL, ENLIGHTENING, CREATE_AMMO, BANISH, FLING_POISON, FIRESTORM, SNOWSTORM, BLINDING_RAY };
 
 // ── Artifact existence tracking ──
 // artiexist[i] tracks artifact i (1-indexed; [0] is unused)
@@ -77,8 +63,9 @@ export { get_artifact };
 // ── Name lookup ──
 
 // cf. artifact.c:151 — artiname(artinum)
+// TRANSLATOR: AUTO (artifact.c:150)
 export function artiname(artinum) {
-  if (artinum <= 0 || artinum > NROFARTIFACTS) return '';
+  if (artinum <= 0 || artinum > NROFARTIFACTS) return "";
   return artilist[artinum].name;
 }
 
@@ -217,12 +204,13 @@ export function find_artifact(otmp) {
 }
 
 // cf. artifact.c:462 — nartifact_exist()
+// TRANSLATOR: AUTO (artifact.c:461)
 export function nartifact_exist() {
-  let count = 0;
-  for (let i = 1; i <= NROFARTIFACTS; i++) {
-    if (artiexist[i].exists) count++;
+  let i, a = 0;
+  for (i = 1; i <= NROFARTIFACTS; ++i) {
+    if (artiexist[i].exists) ++a;
   }
-  return count;
+  return a;
 }
 
 // ── Pure predicates ──
@@ -234,9 +222,10 @@ export function spec_ability(otmp, abil) {
 }
 
 // cf. artifact.c:526 — confers_luck(obj)
+// TRANSLATOR: AUTO (artifact.c:525)
 export function confers_luck(obj) {
   if (obj.otyp === LUCKSTONE) return true;
-  return !!(obj.oartifact && spec_ability(obj, SPFX_LUCK));
+  return (obj.oartifact && spec_ability(obj, SPFX_LUCK));
 }
 
 // cf. artifact.c:537 — arti_reflects(obj)
@@ -348,13 +337,16 @@ export function artifact_light(obj) {
 }
 
 // cf. artifact.c:2808 — is_art(obj, art)
+// TRANSLATOR: AUTO (artifact.c:2807)
 export function is_art(obj, art) {
-  return !!(obj && obj.oartifact === art);
+  if (obj && obj.oartifact === art) return true;
+  return false;
 }
 
 // cf. artifact.c:2837 — permapoisoned(obj)
+// TRANSLATOR: AUTO (artifact.c:2836)
 export function permapoisoned(obj) {
-  return !!(obj && is_art(obj, ART_GRIMTOOTH));
+  return (obj && is_art(obj, ART_GRIMTOOTH));
 }
 
 // cf. artifact.c:1065 — spec_m2(otmp)
@@ -368,7 +360,7 @@ export function spec_m2(otmp) {
 // ── Combat: spec_applies, bane_applies, spec_abon, spec_dbon ──
 
 // cf. artifact.c:993 — bane_applies(oart, mon)
-function bane_applies(oart, mon) {
+export function bane_applies(oart, mon) {
   if (oart !== artilist[ART_NONARTIFACT] && (oart.spfx & SPFX_DBONUS) !== 0) {
     // Create a temporary copy with only DBONUS flags
     const atmp = { ...oart, spfx: oart.spfx & SPFX_DBONUS };
@@ -376,7 +368,7 @@ function bane_applies(oart, mon) {
   }
   return false;
 }
-export { bane_applies };
+
 
 // cf. artifact.c:1009 — spec_applies(weap, mon)
 export function spec_applies(weap, mon) {
@@ -464,8 +456,16 @@ export function discover_artifact(m) {
 }
 
 // cf. artifact.c:1131 — undiscovered_artifact(m)
+// TRANSLATOR: AUTO (artifact.c:1130)
 export function undiscovered_artifact(m) {
-  return !artidisco.includes(m);
+  let i;
+  for (i = 0; i < NROFARTIFACTS; i++) {
+    if (artidisco[i] === m) return false;
+    else if (artidisco[i] === 0) {
+      break;
+    }
+  }
+  return true;
 }
 
 // cf. artifact.c:1147 — disp_artifact_discoveries(putstr_fn)
@@ -1084,7 +1084,7 @@ export function artifact_hit(magr, mdef, otmp, dmgptr, dieroll) {
       const wepdesc = 'The razor-sharp blade';
       if (!youdefend) {
         const mdat = mdef.data || (mdef.mnum != null ? mons[mdef.mnum] : null);
-        if (mdat && (mdat.msize || mdat.size || 0) >= MZ_LARGE) {
+        if (mdat && (mdat.msize || 0) >= MZ_LARGE) {
           if (youattack) You("slice deeply into %s!", hittee);
           else if (vis) pline("%s cuts deeply into %s!", magr.name || 'It', hittee);
           dmgptr.value *= 2;
@@ -1180,7 +1180,7 @@ export function artifact_hit(magr, mdef, otmp, dmgptr, dieroll) {
 
 // Simple helpers for mondata checks used above, avoiding circular imports
 function has_head_simple(ptr) { return !(ptr.mflags1 & 0x00000020); /* M1_NOHEAD */ }
-function noncorporeal_simple(ptr) { return ptr.mlet === 'W' || ptr.symbol === ' '; /* S_GHOST */ }
+function noncorporeal_simple(ptr) { return ptr.mlet === 'W' || ptr.mlet === ' '; /* S_GHOST */ }
 function amorphous_simple(ptr) { return !!(ptr.mflags1 & 0x00000004); /* M1_AMORPHOUS */ }
 function nonliving_simple(ptr) { return !!(ptr.mflags1 & 0x00004000); /* M1_NONLIVING - approximation */ }
 
@@ -1214,10 +1214,10 @@ export function invoke_taming(obj) {
 // cf. artifact.c:1780 — invoke_healing(obj, player)
 export function invoke_healing(obj, player) {
   if (!player) { nothing_special(obj); return 1; }
-  let healamt = ((player.hpmax + 1 - player.hp) / 2) | 0;
+  let healamt = ((player.uhpmax + 1 - player.uhp) / 2) | 0;
   if (healamt > 0) {
     You_feel("better.");
-    player.hp += healamt;
+    player.uhp += healamt;
   } else {
     nothing_special(obj);
   }
@@ -1225,18 +1225,18 @@ export function invoke_healing(obj, player) {
 }
 
 // cf. artifact.c:1818 — invoke_energy_boost(obj, player)
-export function invoke_energy_boost(obj, player) {
-  if (!player) { nothing_special(obj); return 1; }
-  let epboost = ((player.enmax + 1 - (player.en || 0)) / 2) | 0;
+// TRANSLATOR: AUTO (artifact.c:1817)
+export function invoke_energy_boost(obj, game, player) {
+  let epboost = (player.uenmax + 1 - player.uen) / 2;
   if (epboost > 120) epboost = 120;
-  else if (epboost < 12) epboost = (player.enmax || 0) - (player.en || 0);
-  if (epboost > 0) {
-    player.en = (player.en || 0) + epboost;
+  else if (epboost < 12) epboost = player.uenmax - player.uen;
+  if (epboost) {
+    player.uen += epboost;
+    game.disp.botl = true;
     You_feel("re-energized.");
-  } else {
-    nothing_special(obj);
   }
-  return 1;
+  else { nothing_special(obj); return ECMD_TIME; }
+  return ECMD_TIME;
 }
 
 // cf. artifact.c:1838 — invoke_untrap(obj)

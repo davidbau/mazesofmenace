@@ -355,10 +355,9 @@ function getLedgerNoForLevel(dnum, dlevel) {
 }
 
 // C ref: dungeon.c dunlev()/dunlevs_in_dungeon()/depth() and ledger helpers.
+// TRANSLATOR: AUTO (dungeon.c:1324)
 export function dunlev(lev) {
-    if (Number.isInteger(lev?.dlevel)) return lev.dlevel;
-    if (Number.isInteger(lev)) return lev;
-    return 1;
+  return lev.dlevel;
 }
 export function dunlevs_in_dungeon(dnum) {
     const cdnum = Number.isInteger(dnum) ? dnum : DUNGEONS_OF_DOOM;
@@ -406,10 +405,9 @@ export function get_level(lev, levnum) {
     out.dlevel = ledger_to_dlev(ledger);
     return out;
 }
-export function on_level(a, b) {
-    return Number.isInteger(a?.dnum) && Number.isInteger(a?.dlevel)
-        && Number.isInteger(b?.dnum) && Number.isInteger(b?.dlevel)
-        && a.dnum === b.dnum && a.dlevel === b.dlevel;
+// TRANSLATOR: AUTO (dungeon.c:1438)
+export function on_level(lev1, lev2) {
+  return (lev1.dnum === lev2.dnum && lev1.dlevel === lev2.dlevel);
 }
 export function Is_special(dnum, dlevel) {
     return !!runtimeSpecialLevelFor(dnum, dlevel);
@@ -420,17 +418,20 @@ export function Is_branchlev(dnum, dlevel) {
 export function Is_botlevel(dnum, dlevel) {
     return Number.isInteger(dlevel) && dlevel >= dunlevs_in_dungeon(dnum);
 }
+// TRANSLATOR: AUTO (dungeon.c:1849)
 export function In_mines(lev) {
-    return (lev?.dnum ?? lev) === GNOMISH_MINES;
+  return (lev.dnum === mines_dnum);
 }
+// TRANSLATOR: AUTO (dungeon.c:1842)
 export function In_quest(lev) {
-    return (lev?.dnum ?? lev) === QUEST;
+  return (lev.dnum === quest_dnum);
 }
 export function In_hell(lev) {
     return (lev?.dnum ?? lev) === GEHENNOM;
 }
+// TRANSLATOR: AUTO (dungeon.c:1900)
 export function In_V_tower(lev) {
-    return (lev?.dnum ?? lev) === VLADS_TOWER;
+  return (lev.dnum === tower_dnum);
 }
 export function In_W_tower(lev) {
     return In_hell(lev) || In_V_tower(lev);
@@ -525,19 +526,18 @@ export function add_level(new_lev, chain = _specialLevelChain) {
     chain.splice(idx, 0, new_lev);
 }
 
+// TRANSLATOR: AUTO (dungeon.c:1971)
 export function assign_level(dest, src) {
-    if (!dest || !src) return;
-    dest.dnum = src.dnum;
-    dest.dlevel = src.dlevel;
+  dest.dnum = src.dnum;
+  dest.dlevel = src.dlevel;
 }
 
+// TRANSLATOR: AUTO (dungeon.c:1979)
 export function assign_rnd_level(dest, src, range) {
-    if (!dest || !src) return;
-    dest.dnum = src.dnum;
-    dest.dlevel = src.dlevel + ((range > 0) ? rnd(range) : -rnd(-range));
-    const maxLev = dunlevs_in_dungeon(dest.dnum);
-    if (dest.dlevel > maxLev) dest.dlevel = maxLev;
-    else if (dest.dlevel < 1) dest.dlevel = 1;
+  dest.dnum = src.dnum;
+  dest.dlevel = src.dlevel + ((range > 0) ? rnd(range) : -rnd(-range));
+  if (dest.dlevel > dunlevs_in_dungeon(dest)) dest.dlevel = dunlevs_in_dungeon(dest);
+  else if (dest.dlevel < 1) dest.dlevel = 1;
 }
 
 export function builds_up(lev) {
@@ -599,32 +599,45 @@ export function find_level(dnum, dlevel) {
     return null;
 }
 
-export function find_hell(dest = { dnum: DUNGEONS_OF_DOOM, dlevel: 1 }) {
-    dest.dnum = GEHENNOM;
-    dest.dlevel = 1;
-    return dest;
+// TRANSLATOR: AUTO (dungeon.c:1942)
+export function find_hell(lev) {
+  lev.dnum = valley_level.dnum;
+  lev.dlevel = 1;
 }
 
 export function deepest_lev_reached() {
     return maxledgerno();
 }
 
-export function br_string(branch) {
-    if (!branch) return 'none';
-    switch (branch.type) {
-    case BR_STAIR: return 'stair';
-    case BR_NO_END1: return 'no_end1';
-    case BR_NO_END2: return 'no_end2';
-    case BR_PORTAL: return 'portal';
-    default: return 'unknown';
-    }
+// TRANSLATOR: AUTO (dungeon.c:2233)
+export function br_string(type) {
+  switch (type) {
+    case BR_PORTAL:
+      return "Portal";
+    case BR_NO_END1:
+      return "Connection";
+    case BR_NO_END2:
+      return "One way stair";
+    case BR_STAIR:
+      return "Stair";
+  }
+  return " (unknown)";
 }
 
-export function br_string2(branch) {
-    if (!branch) return 'none';
-    if (branch.type === BR_PORTAL) return 'portal';
-    const up = !!branch.end1_up;
-    return up ? 'stair up' : 'stair down';
+// TRANSLATOR: AUTO (dungeon.c:3379)
+export function br_string2(br, player) {
+  let closed_portal = (br.end2.dnum === quest_dnum &player.uevent.qexpelled);
+  switch (br.type) {
+    case BR_PORTAL:
+      return closed_portal ? "Sealed portal" : "Portal";
+    case BR_NO_END1:
+      return "Connection";
+    case BR_NO_END2:
+      return br.end1_up ? "One way stairs up" : "One way stairs down";
+    case BR_STAIR:
+      return br.end1_up ? "Stairs up" : "Stairs down";
+  }
+  return "(unknown)";
 }
 
 export function at_dgn_entrance(name, lev) {
@@ -659,15 +672,16 @@ export function Can_rise_up(x, y, levOrMap) {
     return placement === 'stair-up';
 }
 
-export function has_ceiling(levOrMap) {
-    const lev = _coerceLevelArg(levOrMap);
-    if (In_endgame(lev) && !Is_earthlevel(lev)) return false;
-    return true;
+// TRANSLATOR: AUTO (dungeon.c:1683)
+export function has_ceiling(lev) {
+  if (In_endgame(lev) && !Is_earthlevel(lev)) return false;
+  return true;
 }
 
-export function avoid_ceiling(levOrMap) {
-    const lev = _coerceLevelArg(levOrMap);
-    return In_quest(lev) || !has_ceiling(lev);
+// TRANSLATOR: AUTO (dungeon.c:1694)
+export function avoid_ceiling(lev) {
+  if (In_quest(lev) || !has_ceiling(lev)) return true;
+  return false;
 }
 
 function room_type_at(map, x, y) {
@@ -2159,7 +2173,7 @@ function mk_trap_statue(map, x, y, depth = 1) {
         statueMndx = rndmonnum_adj(3, 6, depth);
     } while (--trycount > 0
         && statueMndx >= 0
-        && mons[statueMndx]?.symbol === S_UNICORN
+        && mons[statueMndx]?.mlet === S_UNICORN
         && sgn(ualign) === sgn(mons[statueMndx]?.align || 0));
 
     if (statueMndx < 0 || !mons[statueMndx]) return;
@@ -3129,7 +3143,7 @@ export function mkinvpos(map, x, y, dist, depth = 1) {
 // C ref: mklev.c mkinvokearea()
 export function mkinvokearea(map, invPos, depth = 1) {
     if (!map) return false;
-    const center = invPos || map._invPos || map.upstair;
+    const center = invPos || map.inv_pos || map._invPos || map.upstair;
     if (!center || !isok(center.x, center.y)) return false;
 
     let xmin = center.x, xmax = center.x;
@@ -4369,8 +4383,9 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
     map._heroHasAmulet = heroHasAmulet;
     map._genDnum = Number.isInteger(dnum) ? dnum : DUNGEONS_OF_DOOM;
     map._genDlevel = Number.isInteger(dlevel) ? dlevel : depth;
-    map._isInvocationLevel = !!opts.invocationLevel
+    map.is_invocation_lev = !!opts.invocationLevel
         || (dnum === GEHENNOM && dlevel === 9);
+    map._isInvocationLevel = map.is_invocation_lev; // IRON_PARITY_ALIAS_BRIDGE (retire by M6)
 
     // C ref: mklev.c:1274-1287 — maze vs rooms decision (else-if chain)
     // The rn2(5) is part of the final condition in the chain

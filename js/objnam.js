@@ -1824,18 +1824,20 @@ export function shiny_obj(oclass) {
 
 // cf. objnam.c:5393 — rnd_class(first, last): random type in range
 // Already implemented in mkobj.js; re-export for completeness
+// TRANSLATOR: AUTO (objnam.c:5392)
 export function rnd_class(first, last) {
-    if (last > first) {
-        let sum = 0;
-        for (let i = first; i <= last; i++) sum += objectData[i].prob || 0;
-        if (!sum) return rn1(last - first + 1, first);
-        let x = rnd(sum);
-        for (let i = first; i <= last; i++) {
-            x -= objectData[i].prob || 0;
-            if (x <= 0) return i;
-        }
+  let i, x, sum = 0;
+  if (last > first) {
+    for (i = first; i <= last; i++) {
+      sum += objects[i].oc_prob;
     }
-    return (first === last) ? first : STRANGE_OBJECT;
+    if (!sum) return rn1(last - first + 1, first);
+    x = rnd(sum);
+    for (i = first; i <= last; i++) {
+      if ((x -= objects[i].oc_prob) <= 0) return i;
+    }
+  }
+  return (first === last) ? first : STRANGE_OBJECT;
 }
 
 // ============================================================================
@@ -2161,11 +2163,13 @@ export function readobjnam(bp, no_wish, opts = {}) {
 // ============================================================================
 
 // cf. objnam.c:5412 — Japanese_item_name(i, ordinaryname): Samurai item name
+// TRANSLATOR: AUTO (objnam.c:5411)
 export function Japanese_item_name(i, ordinaryname) {
-    for (const j of Japanese_items) {
-        if (i === j.item) return j.name;
-    }
-    return ordinaryname;
+  for (const j of Japanese_items) {
+    if (!j.item) break;
+    if (i === j.item) return j.name;
+  }
+  return ordinaryname;
 }
 
 // ============================================================================
@@ -2248,17 +2252,18 @@ export function boots_simple_name(boots) {
 }
 
 // cf. objnam.c:5560 — shield_simple_name(shield): simple shield name
+// TRANSLATOR: AUTO (objnam.c:5559)
 export function shield_simple_name(shield) {
-    if (shield) {
-        if (shield.otyp === SHIELD_OF_REFLECTION)
-            return shield.dknown ? 'silver shield' : 'smooth shield';
-    }
-    return 'shield';
+  if (shield) {
+    if (shield.otyp === SHIELD_OF_REFLECTION) return shield.dknown ? "silver shield" : "smooth shield";
+  }
+  return "shield";
 }
 
 // cf. objnam.c:5590 — shirt_simple_name(shirt): simple shirt name
-export function shirt_simple_name(_shirt) {
-    return 'shirt';
+// TRANSLATOR: AUTO (objnam.c:5589)
+export function shirt_simple_name(shirt) {
+  return "shirt";
 }
 
 // cf. objnam.c:5425 — armor_simple_name(armor): dispatch to specific armor type

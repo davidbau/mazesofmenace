@@ -111,7 +111,7 @@ function map_monst() {}
 function map_object() {}
 function map_trap() {}
 function display_self() {}
-function magic_map_background() {}
+function map_background() {}
 function show_glyph(x, y, glyph) {
     if (!isok(x, y)) return;
     tmp_at(DISP_CHANGE, glyph);
@@ -156,31 +156,33 @@ function reconstrain_map(player) {
 // ========================================================================
 // cf. detect.c:201 -- o_in(obj, oclass)
 // ========================================================================
+// TRANSLATOR: AUTO (detect.c:201)
 export function o_in(obj, oclass) {
-    if (!obj || !oclass) return null;
-    if (objectData[obj.otyp] && objectData[obj.otyp].oc_class === oclass) return obj;
-    if (Has_contents(obj) && !SchroedingersBox(obj)) {
-        for (const otmp of obj.cobj) {
-            if (objectData[otmp.otyp] && objectData[otmp.otyp].oc_class === oclass) return otmp;
-            if (Has_contents(otmp)) { const t = o_in(otmp, oclass); if (t) return t; }
-        }
+  let otmp, temp;
+  if (obj.oclass === oclass) return obj;
+  if (Has_contents(obj) && !SchroedingersBox(obj)) {
+    for (otmp = obj.cobj; otmp; otmp = otmp.nobj) {
+      if (otmp.oclass === oclass) return otmp;
+      else if (Has_contents(otmp) && (temp = o_in(otmp, oclass)) !== 0) return temp;
     }
-    return null;
+  }
+  return  0;
 }
 
 // ========================================================================
 // cf. detect.c:229 -- o_material(obj, material)
 // ========================================================================
+// TRANSLATOR: AUTO (detect.c:229)
 export function o_material(obj, material) {
-    if (!obj) return null;
-    if (objectData[obj.otyp] && objectData[obj.otyp].material === material) return obj;
-    if (Has_contents(obj)) {
-        for (const otmp of obj.cobj) {
-            if (objectData[otmp.otyp] && objectData[otmp.otyp].material === material) return otmp;
-            if (Has_contents(otmp)) { const t = o_material(otmp, material); if (t) return t; }
-        }
+  let otmp, temp;
+  if (objects[obj.otyp].oc_material === material) return obj;
+  if (Has_contents(obj)) {
+    for (otmp = obj.cobj; otmp; otmp = otmp.nobj) {
+      if (objects[otmp.otyp].oc_material === material) return otmp;
+      else if (Has_contents(otmp) && (temp = o_material(otmp, material)) !== 0) return temp;
     }
-    return null;
+  }
+  return  0;
 }
 
 // ========================================================================
@@ -707,7 +709,7 @@ export function show_map_spot(x, y, cnf, map) {
     const lev = map.at(x, y); if (!lev) return;
     lev.seenv = 0xFF;
     if (lev.typ === SCORR) { lev.typ = CORR; unblock_point(x, y); }
-    magic_map_background(map, x, y, 0);
+    map_background(map, x, y, 0);
     newsym(map, x, y);
 }
 
@@ -744,13 +746,18 @@ export function do_vicinity_map(sobj, player, map, display) {
 // ========================================================================
 // cf. detect.c:1589 -- cvt_sdoor_to_door
 // ========================================================================
-export function cvt_sdoor_to_door(lev) {
-    if (!lev) return;
-    let newmask = (lev.flags || 0) & ~WM_MASK;
-    if (Is_rogue_level()) newmask = D_NODOOR;
-    else if (!(newmask & D_LOCKED)) newmask |= D_CLOSED;
-    lev.typ = DOOR;
-    lev.flags = newmask;
+// TRANSLATOR: AUTO (detect.c:1589)
+export function cvt_sdoor_to_door(lev, map) {
+  let newmask = lev.doormask & ~WM_MASK;
+  if (Is_rogue_level(map.uz)) { newmask = D_NODOOR; }
+  else {
+    if (!(newmask & D_LOCKED)) {
+      newmask |= D_CLOSED;
+    }
+  }
+  lev.typ = DOOR;
+  lev.doormask = newmask;
+  lev.arboreal_sdoor = 0;
 }
 
 // ========================================================================
@@ -774,11 +781,11 @@ function findone_fn(zx, zy, found_p, player, map, display) {
     found_p.ft_cc_x = zx; found_p.ft_cc_y = zy;
     if (lev.typ === SDOOR) {
         cvt_sdoor_to_door(lev); recalc_block_point(zx, zy);
-        magic_map_background(map, zx, zy, 0); foundone(zx, zy, 0, map);
+        map_background(map, zx, zy, 0); foundone(zx, zy, 0, map);
         found_p.num_sdoors++;
     } else if (lev.typ === SCORR) {
         lev.typ = CORR; unblock_point(zx, zy);
-        magic_map_background(map, zx, zy, 0); foundone(zx, zy, 0, map);
+        map_background(map, zx, zy, 0); foundone(zx, zy, 0, map);
         found_p.num_scorrs++;
     }
     if (ttmp && !ttmp.tseen && ttmp.ttyp !== STATUE_TRAP) {
@@ -812,7 +819,7 @@ function findone_fn(zx, zy, found_p, player, map, display) {
 // ========================================================================
 // cf. detect.c:1729 -- openone
 // ========================================================================
-function openone_fn(zx, zy, numRef, player, map, display) {
+function openone(zx, zy, numRef, player, map, display) {
     const lev = map.at(zx, zy); if (!lev) return;
     const floorObjs = map.objectsAt ? map.objectsAt(zx, zy) : [];
     for (const otmp of floorObjs)
@@ -895,7 +902,7 @@ export function openit(player, map, display, game) {
     if (player.uswallow) { pline("Something opens!"); return -1; }
     const fov = game && game.fov ? game.fov : null;
     do_clear_area(fov, map, player.x, player.y, BOLT_LIM,
-        (zx, zy, arg) => openone_fn(zx, zy, arg, player, map, display), numRef);
+        (zx, zy, arg) => openone(zx, zy, arg, player, map, display), numRef);
     return numRef.value;
 }
 
@@ -903,7 +910,7 @@ export function openit(player, map, display, game) {
 // cf. detect.c:1929 -- detecting
 // ========================================================================
 export function detecting(func) {
-    return func === findone_fn || func === openone_fn;
+    return func === findone_fn || func === openone;
 }
 
 // ========================================================================
@@ -1042,7 +1049,7 @@ export function premap_detect(map) {
             const lev = map.at(x, y); if (!lev) continue;
             lev.seenv = 0xFF; lev.waslit = true;
             if (lev.typ === SDOOR) { lev.wall_info = 0; if (lev.flags != null) lev.flags = 0; }
-            magic_map_background(map, x, y, 1);
+            map_background(map, x, y, 1);
             const b = sobj_at(BOULDER, x, y, map);
             if (b) map_object(b, 1);
         }

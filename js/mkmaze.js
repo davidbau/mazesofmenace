@@ -72,10 +72,10 @@ export function iswall(map, x, y) {
 }
 
 // C ref: mkmaze.c iswall_or_stone
-export function iswall_or_stone(map, x, y) {
-    const loc = at(map, x, y);
-    if (!loc) return 1;
-    return loc.typ === STONE || iswall(map, x, y);
+// TRANSLATOR: AUTO (mkmaze.c:58)
+export function iswall_or_stone(x, y, map) {
+  if (!isok(x, y)) return 1;
+  return (map.locations[x][y].typ === STONE || iswall(x, y));
 }
 
 // C ref: mkmaze.c is_solid
@@ -100,18 +100,23 @@ export function set_levltyp_lit(map, x, y, typ, lit) {
 }
 
 // C ref: mkmaze.c extend_spine
+// TRANSLATOR: AUTO (mkmaze.c:165)
 export function extend_spine(locale, wall_there, dx, dy) {
-    const nx = 1 + dx;
-    const ny = 1 + dy;
-    if (wall_there) {
-        if (dx) {
-            if (locale[1][0] && locale[1][2] && locale[nx][0] && locale[nx][2]) return 0;
-            return 1;
-        }
-        if (locale[0][1] && locale[2][1] && locale[0][ny] && locale[2][ny]) return 0;
-        return 1;
+  let spine, nx, ny;
+  nx = 1 + dx;
+  ny = 1 + dy;
+  if (wall_there) {
+    if (dx) {
+      if (locale[1][0] && locale[1][2] /* EW are wall/stone */ && locale[nx][0] && locale[nx][2]) { spine = 0; }
+      else { spine = 1; }
     }
-    return 0;
+    else {
+      if (locale[0][1] && locale[2][1] /* NS are wall/stone */ && locale[0][ny] && locale[2][ny]) { spine = 0; }
+      else { spine = 1; }
+    }
+  }
+  else { spine = 0; }
+  return spine;
 }
 
 // C ref: mkmaze.c wall_cleanup
@@ -243,7 +248,7 @@ export function makemaz(map, protofile, dnum, dlevel, depth) {
     // C ref: Invocation_lev(&u.uz) in mkmaze.c.
     // In current branch topology, Sanctum is Gehennom level 10, so invocation
     // level is the level above it (9). Allow explicit override via makelevel opts.
-    const isInvocationLevel = !!map._isInvocationLevel;
+    const isInvocationLevel = !!(map.is_invocation_lev || map._isInvocationLevel);
 
     // C ref: mkmaze.c:1189-1191
     // Set maze flags
@@ -568,7 +573,8 @@ export function pick_vibrasquare_location(map) {
     } while (true);
 
     const pos = { x, y };
-    map._invPos = pos;
+    map.inv_pos = pos;
+    map._invPos = pos; // IRON_PARITY_ALIAS_BRIDGE (retire by M6)
     return pos;
 }
 
@@ -684,7 +690,7 @@ export function place_lregion(map, lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype, op
     console.warn(`Couldn't place lregion type ${rtype}!`);
 }
 
-export { wallification, fix_wall_spines };
+export { fix_wall_spines };
 
 // C ref: mkmaze.c baalz_fixup/fixup_special/check_ransacked/etc.
 export function baalz_fixup(map, state = {}) {

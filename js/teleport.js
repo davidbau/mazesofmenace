@@ -19,7 +19,7 @@ import { BOULDER } from './objects.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { is_pool, is_lava, is_waterwall } from './dbridge.js';
 import { passes_walls, is_swimmer, is_flyer, is_floater,
-         likes_lava, canseemon, monNam, monDisplayName,
+         likes_lava, canseemon,
          is_rider, is_dlord, is_dprince, control_teleport,
          } from './mondata.js';
 import { newsym, mondead } from './monutil.js';
@@ -116,7 +116,7 @@ export function goodpos(x, y, mtmp, gpflags, map, player) {
             const M1_AMPHIBIOUS = 0x00100000;
             const M1_FLY = 0x00004000;
             return !!(f1 & (M1_SWIM | M1_AMPHIBIOUS | M1_FLY));
-        } else if (mdat.symbol === 59 /* S_EEL */ && rn2(13) && !ignorewater) {
+        } else if (mdat.mlet === 59 /* S_EEL */ && rn2(13) && !ignorewater) {
             return false;
         } else if (is_lava(x, y, map) && !ignorelava) {
             const M1_FLY = 0x00004000;
@@ -241,9 +241,9 @@ export function collect_coords(cx, cy, maxradius, cc_flags, map) {
 // enexto — cf. teleport.c:190 (runtime version)
 // ============================================================================
 
-export function enexto(cc_out, xx, yy, mdat, map, player) {
-    return enexto_core(cc_out, xx, yy, mdat, GP_CHECKSCARY, map, player)
-        || enexto_core(cc_out, xx, yy, mdat, NO_MM_FLAGS, map, player);
+// TRANSLATOR: AUTO (teleport.c:190)
+export function enexto(cc, xx, yy, mdat) {
+  return (enexto_core(cc, xx, yy, mdat, GP_CHECKSCARY) || enexto_core(cc, xx, yy, mdat, NO_MM_FLAGS));
 }
 
 export function enexto_core(cc_out, xx, yy, mdat, entflags, map, player) {
@@ -352,13 +352,15 @@ function rloc_to_core(mtmp, x, y, rlocflags, map, player, display, fov) {
 }
 
 // cf. teleport.c:1766 — rloc_to(mon, x, y)
-export function rloc_to(mtmp, x, y, map, player, display, fov) {
-    rloc_to_core(mtmp, x, y, RLOC_NOMSG, map, player, display, fov);
+// TRANSLATOR: AUTO (teleport.c:1765)
+export function rloc_to(mtmp, x, y) {
+  rloc_to_core(mtmp, x, y, RLOC_NOMSG);
 }
 
 // cf. teleport.c:1772 — rloc_to_flag(mon, x, y, rflags)
-export function rloc_to_flag(mtmp, x, y, rlocflags, map, player, display, fov) {
-    rloc_to_core(mtmp, x, y, rlocflags, map, player, display, fov);
+// TRANSLATOR: AUTO (teleport.c:1771)
+export function rloc_to_flag(mtmp, x, y, rlocflags) {
+  rloc_to_core(mtmp, x, y, rlocflags);
 }
 
 // ============================================================================
@@ -569,8 +571,8 @@ function tele_jump_ok(x1, y1, x2, y2, map) {
 
 // cf. teleport.c:414 — teleok: is (x,y) a valid hero teleport destination?
 function teleok(x, y, trapok, game) {
-    const map = game.map;
-    const player = game.player;
+    const map = (game.lev || game.map);
+    const player = (game.u || game.player);
 
     if (!trapok) {
         const trap = map.trapAt(x, y);
@@ -594,8 +596,8 @@ function teleok(x, y, trapok, game) {
 // ============================================================================
 
 export function teleds(nx, ny, flags, game) {
-    const player = game.player;
-    const map = game.map;
+    const player = (game.u || game.player);
+    const map = (game.lev || game.map);
     const is_teleport = (flags & TELEDS_TELEPORT) !== 0;
 
     const ux0 = player.x;
@@ -624,8 +626,8 @@ export function teleds(nx, ny, flags, game) {
 // ============================================================================
 
 export function safe_teleds(flags, game) {
-    const map = game.map;
-    const player = game.player;
+    const map = (game.lev || game.map);
+    const player = (game.u || game.player);
 
     // cf. teleport.c:731 — try 40 random spots first (RNG must match C)
     for (let tcnt = 0; tcnt < 40; tcnt++) {
@@ -672,8 +674,9 @@ export function safe_teleds(flags, game) {
 // cf. teleport.c:837 — tele(): hero teleport via non-scroll method
 // ============================================================================
 
-export function tele(game) {
-    scrolltele(null, game);
+// TRANSLATOR: AUTO (teleport.c:836)
+export async function tele() {
+  await scrolltele( 0);
 }
 
 // ============================================================================
@@ -681,8 +684,8 @@ export function tele(game) {
 // ============================================================================
 
 export function scrolltele(scroll, game) {
-    const player = game.player;
-    const map = game.map;
+    const player = (game.u || game.player);
+    const map = (game.lev || game.map);
 
     // cf. teleport.c:849 — check no-teleport level
     if (noteleport_level(player, map)) {
@@ -709,8 +712,8 @@ export function scrolltele(scroll, game) {
 // ============================================================================
 
 export function dotele(break_the_rules, game) {
-    const player = game.player;
-    const map = game.map;
+    const player = (game.u || game.player);
+    const map = (game.lev || game.map);
 
     // cf. teleport.c:1036-1064 — check for teleport trap at current position
     let trap = map.trapAt(player.x, player.y);
@@ -749,7 +752,7 @@ export function dotele(break_the_rules, game) {
 // ============================================================================
 
 export function level_tele(game) {
-    const player = game.player;
+    const player = (game.u || game.player);
 
     // cf. teleport.c:1180 — Amulet/endgame prevention
     if (player.hasAmulet) {
@@ -780,7 +783,7 @@ export function domagicportal(trap, game) {
     pline("You activated a magic portal!");
 
     // cf. teleport.c:1464 — endgame without amulet
-    if (game && game.player && game.player.inEndgame && !game.player.hasAmulet) {
+    if (game && (game.u || game.player) && (game.u || game.player).inEndgame && !(game.u || game.player).hasAmulet) {
         pline("You feel dizzy for a moment, but nothing happens...");
         return;
     }
@@ -795,8 +798,8 @@ export function domagicportal(trap, game) {
 let in_tele_trap = false;
 
 export function tele_trap(trap, game) {
-    const player = game.player;
-    const map = game.map;
+    const player = (game.u || game.player);
+    const map = (game.lev || game.map);
 
     // cf. teleport.c:1493 — prevent recursive activation
     if (in_tele_trap) return;
@@ -845,8 +848,8 @@ export function tele_trap(trap, game) {
 // ============================================================================
 
 export function level_tele_trap(trap, trflags, game) {
-    const player = game.player;
-    const map = game.map;
+    const player = (game.u || game.player);
+    const map = (game.lev || game.map);
     const intentional = (trflags & 0x02) !== 0; // FORCETRAP or VIASITTING
 
     pline("You step onto a level teleport trap!");

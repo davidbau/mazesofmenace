@@ -168,15 +168,16 @@ export function add_mon_to_reg(reg, mon) {
 // ========================================================================
 // cf. region.c:191 — remove_mon_from_reg(reg, mon): remove monster from region
 // ========================================================================
+// TRANSLATOR: AUTO (region.c:191)
 export function remove_mon_from_reg(reg, mon) {
-    for (let i = 0; i < reg.monsters.length; i++) {
-        if (reg.monsters[i] === mon.m_id) {
-            // Swap with last and pop (matches C's shift-last behavior)
-            reg.monsters[i] = reg.monsters[reg.monsters.length - 1];
-            reg.monsters.pop();
-            return;
-        }
+  let i;
+  for (i = 0; i < reg.n_monst; i++) {
+    if (reg.monsters[i] === mon.m_id) {
+      reg.n_monst--;
+      reg.monsters[i] = reg.monsters[reg.n_monst];
+      return;
     }
+  }
 }
 
 // ========================================================================
@@ -445,8 +446,10 @@ export function update_monster_region(mon, map) {
 // ========================================================================
 // cf. region.c:651 — reg_damg(reg): damage-per-turn for region
 // ========================================================================
+// TRANSLATOR: AUTO (region.c:650)
 export function reg_damg(reg) {
-    return (!reg.visible || reg.ttl === -2) ? 0 : reg.arg;
+  let damg = (!reg.visible || reg.ttl === -2) ? 0 : reg.arg.a_int;
+  return damg;
 }
 
 // ========================================================================

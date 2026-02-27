@@ -478,7 +478,7 @@ export async function handleInventory(player, display, game) {
                 if ((actionKey === 'f' || actionKey === 't') && game?.map) {
                     return await promptDirectionAndThrowItem(
                         player,
-                        game.map,
+                        (game.lev || game.map),
                         display,
                         selected,
                         { fromFire: stackCanShoot }
@@ -770,7 +770,7 @@ export function sortloot(objList, mode, filterfunc) {
 }
 
 // C ref: invent.c unsortloot() — no-op in JS (GC handles it)
-export function unsortloot() {}
+export function unsortloot(loot_array_p = null) { return loot_array_p; }
 
 // C ref: invent.c reorder_invent() — sort inventory by invlet
 // JS adaptation: sort the player.inventory array in-place
@@ -1041,20 +1041,20 @@ export function hold_another_object(obj, player, drop_fmt, drop_arg, hold_msg) {
 
 // C ref: invent.c useupall() — consume entire stack of an object
 export function useupall(obj, player) {
-    setnotworn_safe(obj, player);
+    setnotworn(obj, player);
     freeinv(obj, player);
 }
 
 // C ref: invent.c useup() — consume one item from a stack
-export function useup(obj, player) {
-    if ((obj.quan || 1) > 1) {
-        obj.in_use = false;
-        obj.quan--;
-        obj.owt = weight(obj);
-        update_inventory(player);
-    } else {
-        useupall(obj, player);
-    }
+// TRANSLATOR: AUTO (invent.c:1320)
+export function useup(obj) {
+  if (obj.quan > 1) {
+    obj.in_use = false;
+    obj.quan--;
+    obj.owt = weight(obj);
+    update_inventory();
+  }
+  else { useupall(obj); }
 }
 
 // C ref: invent.c consume_obj_charge() — consume a charge from a wand/tool
@@ -1111,8 +1111,9 @@ export function delallobj(x, y, map) {
 }
 
 // C ref: invent.c delobj() — delete a single object
-export function delobj(obj, map) {
-    delobj_core(obj, map, false);
+// TRANSLATOR: AUTO (invent.c:1429)
+export function delobj(obj) {
+  delobj_core(obj, false);
 }
 
 // C ref: invent.c delobj_core() — core object deletion
@@ -1157,13 +1158,17 @@ export function sobj_at(otyp, x, y, map) {
 }
 
 // C ref: invent.c nxtobj() — find next object of given type after obj in a list
-export function nxtobj(list, obj, type) {
-    let found = false;
-    for (const o of list) {
-        if (found && o.otyp === type) return o;
-        if (o === obj) found = true;
+// TRANSLATOR: AUTO (invent.c:1478)
+export function nxtobj(obj, type, by_nexthere) {
+  let otmp;
+  otmp = obj;
+  do {
+    otmp = !by_nexthere ? otmp.nobj : otmp.nexthere;
+    if (!otmp) {
+      break;
     }
-    return null;
+  } while (otmp.otyp !== type);
+  return otmp;
 }
 
 // C ref: invent.c carrying() — check if hero carries object of given type
@@ -1273,9 +1278,10 @@ export function mime_action(word) {
 }
 
 // C ref: invent.c any_obj_ok() — callback that allows any object but not hands
+// TRANSLATOR: AUTO (invent.c:1709)
 export function any_obj_ok(obj) {
-    if (obj) return GETOBJ_SUGGEST;
-    return GETOBJ_EXCLUDE;
+  if (obj) return GETOBJ_SUGGEST;
+  return GETOBJ_EXCLUDE;
 }
 
 // C ref: invent.c silly_thing() — message for using silly object
@@ -1289,30 +1295,21 @@ export function ckvalidcat(otmp) {
     return 1;
 }
 
-// C ref: invent.c ckunpaid() — check if object is unpaid
-export function ckunpaid(otmp) {
+// C ref: invent.c check_unpaid() — check if object is unpaid
+export function check_unpaid(otmp) {
     return !!(otmp.unpaid || (otmp.cobj && count_unpaid(otmp.cobj)));
 }
 
 // C ref: invent.c wearing_armor() — check if hero is wearing any armor
-export function wearing_armor(player) {
-    return !!(player.armor || player.cloak || player.boots
-              || player.gloves || player.helmet || player.shield || player.shirt);
+// TRANSLATOR: AUTO (invent.c:2148)
+export function wearing_armor() {
+  return (uarm || uarmc || uarmf || uarmg || uarmh || uarms || uarmu);
 }
 
 // C ref: invent.c is_worn() — check if object is being worn/wielded
-export function is_worn(obj, player) {
-    if (!player) {
-        // Check owornmask as fallback
-        return !!(obj.owornmask);
-    }
-    return obj === player.armor || obj === player.shield
-        || obj === player.helmet || obj === player.gloves
-        || obj === player.boots || obj === player.cloak
-        || obj === player.shirt || obj === player.amulet
-        || obj === player.leftRing || obj === player.rightRing
-        || obj === player.weapon || obj === player.swapWeapon
-        || obj === player.quiver || obj === player.blindfold;
+// TRANSLATOR: AUTO (invent.c:2155)
+export function is_worn(otmp) {
+  return (otmp.owornmask & (W_ARMOR | W_ACCESSORY | W_SADDLE | W_WEAPONS)) ? true : false;
 }
 
 // C ref: invent.c is_inuse() — check if object is in use (worn/wielded/active tool)
@@ -1360,13 +1357,11 @@ export function getobj_hands_txt(action) {
 // ============================================================
 
 // C ref: invent.c set_cknown_lknown() — set container/lock known flags
+// TRANSLATOR: AUTO (invent.c:2623)
 export function set_cknown_lknown(obj) {
-    if (Is_container(obj) || obj.otyp === STATUE) {
-        obj.cknown = true;
-        obj.lknown = true;
-    } else if (obj.otyp === TIN) {
-        obj.cknown = true;
-    }
+  if (Is_container(obj) || obj.otyp === STATUE) obj.cknown = obj.lknown = 1;
+  else if (obj.otyp === TIN) obj.cknown = 1;
+  return;
 }
 
 // C ref: invent.c not_fully_identified() — check if object is not fully ID'd
@@ -1390,19 +1385,20 @@ export function fully_identify_obj(otmp) {
 }
 
 // C ref: invent.c identify() — identify object and give feedback
-export function identify(otmp, player) {
+export function identify(otmp, ctx = null) {
     fully_identify_obj(otmp);
-    prinv(null, otmp, 0, player);
+    prinv(null, otmp, 0, ctx);
     return 1;
 }
 
 // C ref: invent.c count_unidentified() — count unidentified objects
-export function count_unidentified(objList) {
-    let count = 0;
-    for (const obj of (objList || [])) {
-        if (not_fully_identified(obj)) count++;
-    }
-    return count;
+// TRANSLATOR: AUTO (invent.c:2697)
+export function count_unidentified(objchn) {
+  let unid_cnt = 0, obj;
+  for (obj = objchn; obj; obj = obj.nobj) {
+    if (not_fully_identified(obj)) ++unid_cnt;
+  }
+  return unid_cnt;
 }
 
 // C ref: invent.c identify_pack() — identify pack items
@@ -1839,12 +1835,11 @@ export function dopramulet(player) {
 }
 
 // C ref: invent.c tool_being_used() — check if tool is in active use
-export function tool_being_used(obj, player) {
-    if (!obj) return false;
-    if (obj === player?.blindfold) return true;
-    if (obj.oclass !== TOOL_CLASS) return false;
-    return !!(obj === player?.weapon || obj.lamplit
-              || (obj.otyp === LEASH && obj.leashmon));
+// TRANSLATOR: AUTO (invent.c:4697)
+export function tool_being_used(obj) {
+  if ((obj.owornmask & (W_TOOL | W_SADDLE)) !== 0) return true;
+  if (obj.oclass !== TOOL_CLASS) return false;
+  return (obj === uwep || obj.lamplit || (obj.otyp === LEASH && obj.leashmon));
 }
 
 // C ref: invent.c doprtool() — print tools in use
@@ -1939,8 +1934,9 @@ export function check_invent_gold(player) {
 // ============================================================
 
 // C ref: invent.c worn_wield_only() — filter to worn/wielded items only
+// TRANSLATOR: AUTO (invent.c:5308)
 export function worn_wield_only(obj) {
-    return !!(obj.owornmask);
+  return (obj.owornmask !== 0);
 }
 
 // C ref: invent.c display_minventory() — display monster inventory
@@ -1991,7 +1987,7 @@ export function perm_invent_toggled() {}
 // ============================================================
 
 // Helper: safely un-wear an object
-function setnotworn_safe(obj, player) {
+function setnotworn(obj, player) {
     if (!player) return;
     if (obj === player.weapon) player.weapon = null;
     if (obj === player.armor) player.armor = null;

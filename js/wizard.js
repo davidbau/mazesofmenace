@@ -183,7 +183,7 @@ function cansee_pos(map, player, fov, x, y) {
 function is_lminion(mon) {
     if (!mon) return false;
     const ptr = mptr(mon);
-    if (ptr.symbol !== S_ANGEL) return false;
+    if (ptr.mlet !== S_ANGEL) return false;
     if (mon.isminion && mon.emin) return (mon.emin.min_align || 0) > 0;
     return (ptr.align || 0) > 0;
 }
@@ -233,7 +233,7 @@ function mon_has_arti(mtmp, otyp) {
 // other_mon_has_arti — find another monster carrying artifact
 // cf. wizard.c:183
 // ============================================================================
-
+export 
 function other_mon_has_arti(mtmp, otyp, map) {
     for (const mtmp2 of map.monsters || []) {
         // no need for dead check — dead monsters have no inventory
@@ -452,11 +452,13 @@ export function amulet(map, player, display) {
 // cf. wizard.c:104
 // ============================================================================
 
+// TRANSLATOR: AUTO (wizard.c:105)
 export function mon_has_amulet(mtmp) {
-    for (const otmp of mtmp.minvent || []) {
-        if (otmp.otyp === AMULET_OF_YENDOR) return true;
-    }
-    return false;
+  let otmp;
+  for (otmp = mtmp.minvent; otmp; otmp = otmp.nobj) {
+    if (otmp.otyp === AMULET_OF_YENDOR) return 1;
+  }
+  return 0;
 }
 
 // ============================================================================
@@ -733,11 +735,11 @@ export function nasty(summoner, map, player, display, fov) {
     }
 
     let count = 0;
-    const s_cls = summoner ? mptr(summoner).symbol : 0;
+    const s_cls = summoner ? mptr(summoner).mlet : 0;
     let difcap = summoner ? (mptr(summoner).difficulty || 0) : 0;
     const castalign = summoner ? sgn(mptr(summoner).align || 0) : 0;
-    let tmp = ((player.level || 1) > 3)
-        ? Math.floor((player.level || 1) / 3) : 1;
+    let tmp = ((player.ulevel || 1) > 3)
+        ? Math.floor((player.ulevel || 1) / 3) : 1;
 
     const bypos = { x: player.x, y: player.y };
 
@@ -751,7 +753,7 @@ export function nasty(summoner, map, player, display, fov) {
             do {
                 if (!--trylimit) { gotoNextJ = true; break; }
                 makeindex = pick_nasty(difcap);
-                m_cls = mons[makeindex].symbol;
+                m_cls = mons[makeindex].mlet;
             } while ((difcap > 0 && (mons[makeindex].difficulty || 0) >= difcap
                       && attacktype(mons[makeindex], AT_MAGC))
                      || (s_cls === S_DEMON && m_cls === S_ANGEL)
@@ -785,7 +787,7 @@ export function nasty(summoner, map, player, display, fov) {
                 // random monster substitute for genocided selection
                 mtmp = makemon(null, bypos.x, bypos.y, mmflags, depth, map);
                 if (mtmp) {
-                    m_cls = mptr(mtmp).symbol;
+                    m_cls = mptr(mtmp).mlet;
                     if ((difcap > 0 && (mptr(mtmp).difficulty || 0) >= difcap
                          // in endgame, rn2(3); otherwise rn2(7)
                          && rn2(In_endgame() ? 3 : 7) // usually cap
@@ -942,7 +944,7 @@ export function cuss(mtmp, map, player) {
         } else if (you_have(M3_WANTSAMUL, player) && !rn2(random_insult.length)) {
             // C: SetVoice(mtmp, 0, 80, 0);
             verbalize("Relinquish the amulet, %s!", ROLL_FROM(random_insult));
-        } else if ((player.hp || player.uhp || 0) < 5 && !rn2(2)) { // Panic
+        } else if ((player.uhp || 0) < 5 && !rn2(2)) { // Panic
             // C: SetVoice(mtmp, 0, 80, 0);
             verbalize(rn2(2) ? "Even now thy life force ebbs, %s!"
                              : "Savor thy breath, %s, it be thy last!",

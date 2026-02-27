@@ -6,7 +6,7 @@ import { IS_DOOR, D_LOCKED, D_CLOSED, D_ISOPEN, D_BROKEN, D_NODOOR,
          IS_WALL, A_STR, A_DEX, A_CON } from './config.js';
 import { rn2, rnd, rnl } from './rng.js';
 import { exercise } from './attrib_exercise.js';
-import { monDisplayName } from './mondata.js';
+import { x_monnam } from './mondata.js';
 import { mondead } from './monutil.js';
 import { nhgetch } from './input.js';
 import { DIRECTION_KEYS } from './dothrow.js';
@@ -40,12 +40,12 @@ export async function handleKick(player, map, display, game) {
     // Kick a monster
     const mon = map.monsterAt(nx, ny);
     if (mon) {
-        display.putstr_message(`You kick the ${monDisplayName(mon)}!`);
+        display.putstr_message(`You kick the ${x_monnam(mon)}!`);
         const damage = rnd(4) + player.strDamage;
         mon.mhp -= Math.max(1, damage);
         if (mon.mhp <= 0) {
             mondead(mon, map, player);
-            display.putstr_message(`The ${monDisplayName(mon)} dies!`);
+            display.putstr_message(`The ${x_monnam(mon)} dies!`);
             map.removeMonster(mon);
         }
         return { moved: false, tookTime: true };
@@ -109,7 +109,7 @@ export async function handleKick(player, map, display, game) {
         // C ref: dmg = rnd(ACURR(A_CON) > 15 ? 3 : 5)
         const con = player.attributes?.[A_CON] || 10;
         const dmg = rnd(con > 15 ? 3 : 5);
-        player.hp = Math.max(1, (player.hp || player.hpmax || 1) - Math.max(1, dmg));
+        player.uhp = Math.max(1, (player.uhpmax || 1) - Math.max(1, dmg));
         return { moved: false, tookTime: true };
     }
 

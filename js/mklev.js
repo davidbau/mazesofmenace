@@ -69,10 +69,13 @@ let _luathemesLoaded = false;
 let _specialThemesLoaded = false;
 
 // C ref: mklev.c mkroom_cmp() — sort rooms by lx only
-export function mkroom_cmp(a, b) {
-    if (a.lx < b.lx) return -1;
-    if (a.lx > b.lx) return 1;
-    return 0;
+// TRANSLATOR: AUTO (mklev.c:60)
+export function mkroom_cmp(vx, vy) {
+  let x, y;
+  x =  vx;
+  y =  vy;
+  if (x.lx < y.lx) return -1;
+  return (x.lx > y.lx);
 }
 
 // C ref: mklev.c sort_rooms()
@@ -537,8 +540,10 @@ export function occupied(map, x, y) {
     if (!loc) return true;
     if (IS_FURNITURE(loc.typ)) return true;
     if (IS_LAVA(loc.typ) || IS_POOL(loc.typ)) return true;
-    if (map._isInvocationLevel && map._invPos
-        && x === map._invPos.x && y === map._invPos.y) {
+    const inv_pos = map.inv_pos || map._invPos;
+    const isInvocationLevel = !!(map.is_invocation_lev || map._isInvocationLevel);
+    if (isInvocationLevel && inv_pos
+        && x === inv_pos.x && y === inv_pos.y) {
         return true;
     }
     return false;

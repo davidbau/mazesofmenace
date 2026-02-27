@@ -196,7 +196,7 @@ function spellet(spell) {
 }
 
 // C ref: spell.c spell_let_to_idx() — convert menu letter to spell index
-function spell_let_to_idx(ilet) {
+export function spell_let_to_idx(ilet) {
     let indx = ilet.charCodeAt(0) - 'a'.charCodeAt(0);
     if (indx >= 0 && indx < 26) return indx;
     indx = ilet.charCodeAt(0) - 'A'.charCodeAt(0);
@@ -267,7 +267,7 @@ function percent_success(player, spell_idx) {
         || { spelbase: 10, spelheal: 0, spelshld: 2, spelarmr: 10, spelstat: A_INT, spelspec: '', spelsbon: 0 };
     const statValue = Math.max(3, Math.min(25, Number(player.attributes?.[role.spelstat] || 10)));
     const spellSkill = spellSkillRank(player, category);
-    const heroLevel = Math.max(1, Number(player.level || 1));
+    const heroLevel = Math.max(1, Number(player.ulevel || 1));
 
     // C ref: Role_if(PM_KNIGHT) && skilltype == P_CLERIC_SPELL
     const paladinBonus = player.roleIndex === PM_KNIGHT && category === SPELL_CATEGORY_CLERICAL;
@@ -331,7 +331,7 @@ function estimateSpellFailPercent(player, spellName, spellLevel, category) {
         || { spelbase: 10, spelheal: 0, spelshld: 2, spelarmr: 10, spelstat: A_INT, spelspec: '', spelsbon: 0 };
     const statValue = Math.max(3, Math.min(25, Number(player.attributes?.[role.spelstat] || 10)));
     const spellSkill = spellSkillRank(player, category);
-    const heroLevel = Math.max(1, Number(player.level || 1));
+    const heroLevel = Math.max(1, Number(player.ulevel || 1));
     const spellLvl = Math.max(1, Number(spellLevel || 1));
 
     const paladinBonus = player.roleIndex === PM_KNIGHT && category === SPELL_CATEGORY_CLERICAL;
@@ -472,14 +472,22 @@ export function spell_skilltype(booktype) {
 }
 
 // C ref: spell.c num_spells() — count known spells
-export function num_spells(player) {
-    if (!player.spells) return 0;
+export function num_spells(ctx = null) {
+    const player = ctx;
+    if (!player?.spells) return 0;
     return player.spells.length;
 }
 
 // C ref: spell.c spell_idx() — find index of spell by otyp, or UNKNOWN_SPELL
-export function spell_idx(player, otyp) {
-    const spells = player.spells;
+export function spell_idx(otyp, ctx = null) {
+    // Backward-compatible with legacy call order: spell_idx(player, otyp).
+    let player = ctx;
+    if (otyp && typeof otyp === 'object' && typeof ctx !== 'object') {
+        const legacyPlayer = otyp;
+        otyp = ctx;
+        player = legacyPlayer;
+    }
+    const spells = player?.spells;
     if (!spells) return UNKNOWN_SPELL;
     for (let i = 0; i < spells.length; i++) {
         if (spells[i].otyp === otyp) return i;
@@ -550,7 +558,7 @@ export function study_book(spellbook, player) {
     }
 
     // Check if already known with good retention
-    const idx = spell_idx(player, booktype);
+    const idx = spell_idx(booktype, player);
     if (idx !== UNKNOWN_SPELL && spellknow(player, idx) > KEEN / 10) {
         You("know \"%s\" quite well already.", od.name || 'this spell');
         return 0;
@@ -567,7 +575,7 @@ export function study_book(spellbook, player) {
             // Uncursed: check read ability
             const intel = (player.attributes ? player.attributes[A_INT] : 12) || 12;
             const lensBonus = (player.blindfolded?.otyp === LENSES) ? 2 : 0;
-            const read_ability = intel + 4 + Math.floor((player.level || 1) / 2)
+            const read_ability = intel + 4 + Math.floor((player.ulevel || 1) / 2)
                                  - 2 * ocLevel + lensBonus;
             if (rnd(20) > read_ability) {
                 too_hard = true;
@@ -800,7 +808,7 @@ export function spell_backfire(player, spellIdx) {
 
 // C ref: spell.c cast_protection() — SPE_PROTECTION effect
 export function cast_protection(player) {
-    let l = player.level || 1;
+    let l = player.ulevel || 1;
     let loglev = 0;
     const uspellprot = player.uspellprot || 0;
     const uac = player.uac || 10;
@@ -916,7 +924,7 @@ async function cast_chain_lightning(player, map) {
 export function spell_damage_bonus(dmg, player) {
     if (!player) return dmg;
     const intell = (player.attributes ? player.attributes[A_INT] : 10) || 10;
-    const level = player.level || 1;
+    const level = player.ulevel || 1;
 
     if (intell <= 9) {
         if (dmg > 1)
@@ -937,7 +945,7 @@ export function spell_damage_bonus(dmg, player) {
 export function spell_would_be_useless_hero(spellOtyp, player) {
     // Check a few obvious cases
     if (spellOtyp === SPE_HEALING || spellOtyp === SPE_EXTRA_HEALING) {
-        if ((player.hp || 0) >= (player.hpmax || 1)) return true;
+        if ((player.uhp || 0) >= (player.uhpmax || 1)) return true;
     }
     if (spellOtyp === SPE_CURE_BLINDNESS && !player.blind) return true;
     if (spellOtyp === SPE_CURE_SICKNESS && !player.sick && !player.slimed) return true;
@@ -1060,7 +1068,7 @@ export async function spelleffects(spell_otyp, atme, player, map, display) {
     if (!player || !player.spells) return 0;
 
     // Find spell index
-    const idx = spell_idx(player, spell_otyp);
+    const idx = spell_idx(spell_otyp, player);
     if (idx === UNKNOWN_SPELL) return 0;
 
     const sp = player.spells[idx];
@@ -1402,13 +1410,4 @@ export function tport_spell(player, what) {
 export const dovspell = handleKnownSpells;
 
 // Export constants for use by other modules
-export {
-    KEEN, NO_SPELL, UNKNOWN_SPELL, MAX_SPELL_STUDY, MAXSPELL,
-    SPELL_LEV_PW, NODIR,
-    SPELL_CATEGORY_ATTACK, SPELL_CATEGORY_HEALING,
-    SPELL_CATEGORY_DIVINATION, SPELL_CATEGORY_ENCHANTMENT,
-    SPELL_CATEGORY_CLERICAL, SPELL_CATEGORY_ESCAPE,
-    SPELL_CATEGORY_MATTER,
-    spellCategoryForName, spellSkillRank, spellet, spell_let_to_idx,
-    spellRetentionText, estimateSpellFailPercent, percent_success,
-};
+export { KEEN, NO_SPELL, UNKNOWN_SPELL, MAX_SPELL_STUDY, MAXSPELL, SPELL_LEV_PW, NODIR, SPELL_CATEGORY_ATTACK, SPELL_CATEGORY_HEALING, SPELL_CATEGORY_DIVINATION, SPELL_CATEGORY_ENCHANTMENT, SPELL_CATEGORY_CLERICAL, SPELL_CATEGORY_ESCAPE, SPELL_CATEGORY_MATTER, spellCategoryForName, spellSkillRank, spellet, spellRetentionText, estimateSpellFailPercent, percent_success };

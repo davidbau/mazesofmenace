@@ -1,0 +1,4828 @@
+{
+  "function_count": 88,
+  "functions": [
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "tmp_anything"
+        },
+        {
+          "op": "=",
+          "target": "a_uint"
+        }
+      ],
+      "body_line_count": 5,
+      "body_sha256": "1e111f9684ec8768345043bf00efb66ae6460d5c691867dc2dcecfc0a8647ca1",
+      "calls": [],
+      "id": "fn_0001_uint_to_any",
+      "name": "uint_to_any",
+      "span": {
+        "body_end_line": 79,
+        "body_start_line": 75,
+        "signature_line": 74
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "tmp_anything"
+        },
+        {
+          "op": "=",
+          "target": "a_long"
+        }
+      ],
+      "body_line_count": 5,
+      "body_sha256": "2f3c26bc141b68605a39f8324f5e1f828cd79cc8ac93953e26469838c7ea6e95",
+      "calls": [],
+      "id": "fn_0002_long_to_any",
+      "name": "long_to_any",
+      "span": {
+        "body_end_line": 87,
+        "body_start_line": 83,
+        "signature_line": 82
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "tmp_anything"
+        },
+        {
+          "op": "=",
+          "target": "a_monst"
+        }
+      ],
+      "body_line_count": 5,
+      "body_sha256": "e8c455dc55ec66056d1bd90802aa2ed96e3ac654b4ca4ccf49f2e1c1f5089326",
+      "calls": [],
+      "id": "fn_0003_monst_to_any",
+      "name": "monst_to_any",
+      "span": {
+        "body_end_line": 95,
+        "body_start_line": 91,
+        "signature_line": 90
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "tmp_anything"
+        },
+        {
+          "op": "=",
+          "target": "a_obj"
+        }
+      ],
+      "body_line_count": 5,
+      "body_sha256": "03b387339852cc00c8cc99878ea6e44acca7d1ad9c7f93fa6f944fa9ec0ae436",
+      "calls": [],
+      "id": "fn_0004_obj_to_any",
+      "name": "obj_to_any",
+      "span": {
+        "body_end_line": 103,
+        "body_start_line": 99,
+        "signature_line": 98
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "otmp"
+        },
+        {
+          "op": "=",
+          "target": "otmp2"
+        },
+        {
+          "op": "=",
+          "target": "revived"
+        },
+        {
+          "op": "=",
+          "target": "otmp"
+        },
+        {
+          "op": "=",
+          "target": "otmp"
+        },
+        {
+          "op": "=",
+          "target": "otmp2"
+        },
+        {
+          "op": "=",
+          "target": "otyp"
+        },
+        {
+          "op": "=",
+          "target": "corpsenm"
+        },
+        {
+          "op": "=",
+          "target": "mtmp"
+        },
+        {
+          "op": "=",
+          "target": "revived"
+        },
+        {
+          "op": "=",
+          "target": "mtmp"
+        }
+      ],
+      "body_line_count": 32,
+      "body_sha256": "0336d5afcbdc5c537bce8117ef2b8a25c16ba7e3b64ee801223bff69f451246d",
+      "calls": [
+        "is_rider",
+        "m_at",
+        "enexto",
+        "rloc_to",
+        "Norep",
+        "revive_corpse",
+        "goodpos"
+      ],
+      "id": "fn_0005_revive_nasty",
+      "name": "revive_nasty",
+      "span": {
+        "body_end_line": 138,
+        "body_start_line": 107,
+        "signature_line": 106
+      }
+    },
+    {
+      "assignments": [],
+      "body_line_count": 18,
+      "body_sha256": "d677bf80249e11748fe520447528cc09d89bfce5326a3933c0eade811eb4a06c",
+      "calls": [
+        "rock",
+        "throws_rocks",
+        "IS_OBSTRUCTED",
+        "tiny",
+        "verysmall",
+        "squeezeablylightinvent"
+      ],
+      "id": "fn_0006_could_move_onto_boulder",
+      "name": "could_move_onto_boulder",
+      "span": {
+        "body_end_line": 164,
+        "body_start_line": 147,
+        "signature_line": 146
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "what"
+        }
+      ],
+      "body_line_count": 12,
+      "body_sha256": "9631b9694bfb69b326d2345195aacc147f5e00b30b82f00bbdfcdae4a168f20f",
+      "calls": [
+        "the",
+        "xname",
+        "pline",
+        "YMonnam",
+        "You",
+        "feel_location"
+      ],
+      "id": "fn_0007_cannot_push_msg",
+      "name": "cannot_push_msg",
+      "span": {
+        "body_end_line": 260,
+        "body_start_line": 249,
+        "signature_line": 248
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "canpickup"
+        },
+        {
+          "op": "=",
+          "target": "willpickup"
+        }
+      ],
+      "body_line_count": 50,
+      "body_sha256": "89115fa5d925c6441b4ccf9fce9fe14e12c1e09c35696f13ff5caf919cd1b81d",
+      "calls": [
+        "throws_rocks",
+        "can_lift",
+        "overflow",
+        "inv_cnt",
+        "carrying",
+        "autopick_testobj",
+        "P_SKILL",
+        "You",
+        "the",
+        "xname",
+        "y_monnam",
+        "it",
+        "pline",
+        "sokoban_guilt",
+        "could_move_onto_boulder"
+      ],
+      "id": "fn_0008_cannot_push",
+      "name": "cannot_push",
+      "span": {
+        "body_end_line": 313,
+        "body_start_line": 264,
+        "signature_line": 263
+      }
+    },
+    {
+      "assignments": [],
+      "body_line_count": 9,
+      "body_sha256": "08046a0c9b620b324395df81052777505591d488f0f2fb18a6786618964aede0",
+      "calls": [
+        "pline",
+        "YMonnam",
+        "the",
+        "xname",
+        "You"
+      ],
+      "id": "fn_0009_rock_disappear_msg",
+      "name": "rock_disappear_msg",
+      "span": {
+        "body_end_line": 325,
+        "body_start_line": 317,
+        "signature_line": 316
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "otmp"
+        },
+        {
+          "op": "=",
+          "target": "otmp"
+        },
+        {
+          "op": "=",
+          "target": "otyp"
+        },
+        {
+          "op": "=",
+          "target": "next_boulder"
+        }
+      ],
+      "body_line_count": 6,
+      "body_sha256": "7401fa7ff09c18b742dbc51db7927578bf4739b61a171b168afa8bc7c71cdae0",
+      "calls": [
+        "xname"
+      ],
+      "id": "fn_0010_moverock_done",
+      "name": "moverock_done",
+      "span": {
+        "body_end_line": 334,
+        "body_start_line": 329,
+        "signature_line": 328
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "sx"
+        },
+        {
+          "op": "=",
+          "target": "sy"
+        },
+        {
+          "op": "=",
+          "target": "ret"
+        }
+      ],
+      "body_line_count": 9,
+      "body_sha256": "ddd02e053917dd39af4301367daa3d6985b0c872974f1ca95920db4f593d5c5b",
+      "calls": [
+        "moverock_core",
+        "moverock_done"
+      ],
+      "id": "fn_0011_moverock",
+      "name": "moverock",
+      "span": {
+        "body_end_line": 346,
+        "body_start_line": 338,
+        "signature_line": 337
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "firstboulder"
+        },
+        {
+          "op": "=",
+          "target": "otmp"
+        },
+        {
+          "op": "=",
+          "target": "next_boulder"
+        },
+        {
+          "op": "=",
+          "target": "firstboulder"
+        },
+        {
+          "op": "=",
+          "target": "rx"
+        },
+        {
+          "op": "=",
+          "target": "ry"
+        },
+        {
+          "op": "=",
+          "target": "oldglyph"
+        },
+        {
+          "op": "=",
+          "target": "res"
+        },
+        {
+          "op": "=",
+          "target": "res"
+        },
+        {
+          "op": "=",
+          "target": "door_opened"
+        },
+        {
+          "op": "=",
+          "target": "move"
+        },
+        {
+          "op": "=",
+          "target": "res"
+        },
+        {
+          "op": "=",
+          "target": "ttmp"
+        },
+        {
+          "op": "=",
+          "target": "mtmp"
+        },
+        {
+          "op": "=",
+          "target": "costly"
+        },
+        {
+          "op": "=",
+          "target": "deliver_part1"
+        },
+        {
+          "op": "=",
+          "target": "deliver_part1"
+        },
+        {
+          "op": "=",
+          "target": "deliver_part1"
+        },
+        {
+          "op": "=",
+          "target": "newlev"
+        },
+        {
+          "op": "=",
+          "target": "ttyp"
+        },
+        {
+          "op": "=",
+          "target": "ttyp"
+        },
+        {
+          "op": "=",
+          "target": "ttyp"
+        },
+        {
+          "op": "&=",
+          "target": "wall_info"
+        },
+        {
+          "op": "=",
+          "target": "candig"
+        },
+        {
+          "op": "=",
+          "target": "newlev"
+        },
+        {
+          "op": "=",
+          "target": "newlev"
+        },
+        {
+          "op": "=",
+          "target": "next_boulder"
+        },
+        {
+          "op": "=",
+          "target": "ttyp"
+        },
+        {
+          "op": "=",
+          "target": "ox"
+        },
+        {
+          "op": "=",
+          "target": "oy"
+        },
+        {
+          "op": "=",
+          "target": "owornmask"
+        }
+      ],
+      "body_line_count": 270,
+      "body_sha256": "22fc1b5ae95c0746c000acc800af48db5c06c03c05967d6999291bb960106754",
+      "calls": [
+        "sobj_at",
+        "glyph_to_obj",
+        "glyph_at",
+        "pline",
+        "map_object",
+        "nomul",
+        "xname",
+        "boulder_hits_pool",
+        "movobj",
+        "feel_location",
+        "throws_rocks",
+        "levitating",
+        "flying",
+        "You",
+        "u_locomotion",
+        "sokoban_guilt",
+        "could_move_onto_boulder",
+        "There",
+        "test_move",
+        "Is_airlevel",
+        "the",
+        "verysmall",
+        "cannot_push",
+        "isok",
+        "IS_OBSTRUCTED",
+        "IS_DOOR",
+        "doorless_door",
+        "t_at",
+        "m_at",
+        "costly_spot",
+        "shop_keeper",
+        "in_rooms",
+        "The",
+        "surface",
+        "revive_nasty",
+        "noncorporeal",
+        "is_pit",
+        "canspotmon",
+        "a_monnam",
+        "Soundeffect",
+        "You_hear",
+        "map_invisible",
+        "Strcpy",
+        "y_monnam",
+        "upstart",
+        "closed_door",
+        "cannot_push_msg",
+        "move",
+        "disturb_buried_zombies",
+        "rn2",
+        "obj_extract_self",
+        "place_object",
+        "newsym",
+        "shake",
+        "Tobjnam",
+        "blow_up_landmine",
+        "fill_pit",
+        "cansee",
+        "flooreffects",
+        "otense",
+        "deltrap",
+        "useupf",
+        "bury_objs",
+        "branch",
+        "random_teleport_level",
+        "depth",
+        "dopush",
+        "rock_disappear_msg",
+        "rloco",
+        "stolen_value",
+        "add_to_migration",
+        "get_level",
+        "seetrap",
+        "remove_object"
+      ],
+      "id": "fn_0012_moverock_core",
+      "name": "moverock_core",
+      "span": {
+        "body_end_line": 619,
+        "body_start_line": 350,
+        "signature_line": 349
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "lev"
+        },
+        {
+          "op": "=",
+          "target": "boulder"
+        },
+        {
+          "op": "=",
+          "target": "digtxt"
+        },
+        {
+          "op": "=",
+          "target": "dmgtxt"
+        },
+        {
+          "op": "=",
+          "target": "typ"
+        },
+        {
+          "op": "=",
+          "target": "typ"
+        },
+        {
+          "op": "=",
+          "target": "typ"
+        },
+        {
+          "op": "=",
+          "target": "down"
+        },
+        {
+          "op": "=",
+          "target": "chew"
+        },
+        {
+          "op": "=",
+          "target": "warned"
+        },
+        {
+          "op": "=",
+          "target": "x"
+        },
+        {
+          "op": "=",
+          "target": "y"
+        },
+        {
+          "op": "=",
+          "target": "effort"
+        },
+        {
+          "op": "=",
+          "target": "typ"
+        },
+        {
+          "op": "=",
+          "target": "typ"
+        },
+        {
+          "op": "+=",
+          "target": "effort"
+        },
+        {
+          "op": "=",
+          "target": "typ"
+        },
+        {
+          "op": "=",
+          "target": "chew"
+        },
+        {
+          "op": "=",
+          "target": "typ"
+        },
+        {
+          "op": "+=",
+          "target": "uhunger"
+        },
+        {
+          "op": "=",
+          "target": "dmgtxt"
+        },
+        {
+          "op": "=",
+          "target": "digtxt"
+        },
+        {
+          "op": "=",
+          "target": "typ"
+        },
+        {
+          "op": "=",
+          "target": "typ"
+        },
+        {
+          "op": "=",
+          "target": "typ"
+        },
+        {
+          "op": "=",
+          "target": "doormask"
+        },
+        {
+          "op": "=",
+          "target": "digtxt"
+        },
+        {
+          "op": "=",
+          "target": "typ"
+        },
+        {
+          "op": "=",
+          "target": "typ"
+        },
+        {
+          "op": "=",
+          "target": "nut"
+        },
+        {
+          "op": "=",
+          "target": "digtxt"
+        },
+        {
+          "op": "=",
+          "target": "typ"
+        },
+        {
+          "op": "=",
+          "target": "doormask"
+        },
+        {
+          "op": "=",
+          "target": "digtxt"
+        },
+        {
+          "op": "=",
+          "target": "doormask"
+        },
+        {
+          "op": "=",
+          "target": "typ"
+        },
+        {
+          "op": "=",
+          "target": "dmgtxt"
+        },
+        {
+          "op": "=",
+          "target": "doormask"
+        },
+        {
+          "op": "=",
+          "target": "digtxt"
+        },
+        {
+          "op": "=",
+          "target": "doormask"
+        },
+        {
+          "op": "=",
+          "target": "digtxt"
+        },
+        {
+          "op": "=",
+          "target": "typ"
+        }
+      ],
+      "body_line_count": 175,
+      "body_sha256": "83f18e6bcd24bc6d80fa42faf944938bca278030be7b1d9213049aff91b09256",
+      "calls": [
+        "sobj_at",
+        "dig",
+        "memset",
+        "IS_OBSTRUCTED",
+        "may_dig",
+        "You",
+        "IS_TREE",
+        "nomul",
+        "metallivorous",
+        "morehungry",
+        "on_level",
+        "assign_level",
+        "watch_dig",
+        "livelog_printf",
+        "rnd",
+        "delobj",
+        "does_block",
+        "below",
+        "closed_door",
+        "block_point",
+        "IS_WALL",
+        "in_rooms",
+        "add_damage",
+        "in_town",
+        "lesshungry",
+        "u_at",
+        "dissolve_bars",
+        "b_trapped",
+        "IS_DOOR",
+        "recalc_block_point",
+        "newsym",
+        "You1",
+        "pay_for_damage"
+      ],
+      "id": "fn_0013_still_chewing",
+      "name": "still_chewing",
+      "span": {
+        "body_end_line": 803,
+        "body_start_line": 629,
+        "signature_line": 628
+      }
+    },
+    {
+      "assignments": [],
+      "body_line_count": 8,
+      "body_sha256": "b75997d0e6af223894e10fc091250fa51e7c6d8bdd2ec3abeea0e3cfeccb2e70",
+      "calls": [
+        "remove_object",
+        "maybe_unhide_at",
+        "newsym",
+        "place_object"
+      ],
+      "id": "fn_0014_movobj",
+      "name": "movobj",
+      "span": {
+        "body_end_line": 814,
+        "body_start_line": 807,
+        "signature_line": 806
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "lev_boots"
+        },
+        {
+          "op": "=",
+          "target": "otyp"
+        },
+        {
+          "op": "=",
+          "target": "innate_lev"
+        },
+        {
+          "op": "=",
+          "target": "blockd_lev"
+        },
+        {
+          "op": "=",
+          "target": "BLevitation"
+        },
+        {
+          "op": "=",
+          "target": "ufall"
+        },
+        {
+          "op": "=",
+          "target": "save_ELev"
+        },
+        {
+          "op": "=",
+          "target": "save_HLev"
+        },
+        {
+          "op": "=",
+          "target": "ELevitation"
+        },
+        {
+          "op": "=",
+          "target": "HLevitation"
+        },
+        {
+          "op": "=",
+          "target": "dmg"
+        },
+        {
+          "op": "=",
+          "target": "obj"
+        },
+        {
+          "op": "=",
+          "target": "obj"
+        },
+        {
+          "op": "=",
+          "target": "oclass"
+        },
+        {
+          "op": "=",
+          "target": "ELevitation"
+        },
+        {
+          "op": "=",
+          "target": "HLevitation"
+        },
+        {
+          "op": "=",
+          "target": "lev_boots"
+        },
+        {
+          "op": "=",
+          "target": "otyp"
+        },
+        {
+          "op": "&=",
+          "target": "ELevitation"
+        },
+        {
+          "op": "&=",
+          "target": "HLevitation"
+        },
+        {
+          "op": "=",
+          "target": "otyp"
+        },
+        {
+          "op": "=",
+          "target": "obj"
+        },
+        {
+          "op": "=",
+          "target": "otyp"
+        },
+        {
+          "op": "=",
+          "target": "obj"
+        },
+        {
+          "op": "=",
+          "target": "obj"
+        }
+      ],
+      "body_line_count": 83,
+      "body_sha256": "9f181605c82ce20186d8cd6bbb79cd8fce207fb11c9fc69dc5af5c3d1a954d73",
+      "calls": [
+        "You",
+        "rn1",
+        "ACURR",
+        "losehp",
+        "Maybe_Half_Phys",
+        "exercise",
+        "selftouch",
+        "is_weptool",
+        "doname",
+        "rnd",
+        "armor",
+        "Boots_on",
+        "Boots_off",
+        "via",
+        "fallen",
+        "stop_donning",
+        "Ring_off",
+        "off_msg",
+        "float_down",
+        "float_vs_flight"
+      ],
+      "id": "fn_0015_dosinkfall",
+      "name": "dosinkfall",
+      "span": {
+        "body_end_line": 900,
+        "body_start_line": 818,
+        "signature_line": 817
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "lev"
+        }
+      ],
+      "body_line_count": 6,
+      "body_sha256": "072f6c116b00c98e4064f4ef4524e1314e67db94ac553078bedf77de404e67d7",
+      "calls": [
+        "IS_STWALL",
+        "IS_TREE"
+      ],
+      "id": "fn_0016_may_dig",
+      "name": "may_dig",
+      "span": {
+        "body_end_line": 910,
+        "body_start_line": 905,
+        "signature_line": 904
+      }
+    },
+    {
+      "assignments": [],
+      "body_line_count": 4,
+      "body_sha256": "b473dbdfca595e13ff356986e45120db237698ac41285ce08be473c867402f78",
+      "calls": [
+        "IS_STWALL"
+      ],
+      "id": "fn_0017_may_passwall",
+      "name": "may_passwall",
+      "span": {
+        "body_end_line": 917,
+        "body_start_line": 914,
+        "signature_line": 913
+      }
+    },
+    {
+      "assignments": [],
+      "body_line_count": 7,
+      "body_sha256": "e6b93c963edbec0e1c3c70b04bf16e332897e27a29b7122fd0d8da0888ef65f7",
+      "calls": [
+        "sobj_at",
+        "IS_OBSTRUCTED",
+        "tunnels",
+        "needspick",
+        "may_dig",
+        "passes_walls",
+        "may_passwall"
+      ],
+      "id": "fn_0018_bad_rock",
+      "name": "bad_rock",
+      "span": {
+        "body_end_line": 927,
+        "body_start_line": 921,
+        "signature_line": 920
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "ptr"
+        },
+        {
+          "op": "=",
+          "target": "mon"
+        },
+        {
+          "op": "=",
+          "target": "amt"
+        },
+        {
+          "op": "=",
+          "target": "mon"
+        },
+        {
+          "op": "=",
+          "target": "mon"
+        }
+      ],
+      "body_line_count": 26,
+      "body_sha256": "ef96749190407fbe2d9fc2083b9ddb39c6dbc27fdd8335e51b9daffa6ea526c3",
+      "calls": [
+        "passes_walls",
+        "bigmonst",
+        "amorphous",
+        "is_whirly",
+        "noncorporeal",
+        "slithy",
+        "can_fog",
+        "inv_weight",
+        "weight_cap",
+        "curr_mon_load"
+      ],
+      "id": "fn_0019_cant_squeeze_thru",
+      "name": "cant_squeeze_thru",
+      "span": {
+        "body_end_line": 960,
+        "body_start_line": 935,
+        "signature_line": 934
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "x"
+        },
+        {
+          "op": "=",
+          "target": "y"
+        }
+      ],
+      "body_line_count": 4,
+      "body_sha256": "f09fc7a3b7527adedd234f2fbbd1bb6809d87f74940c5a0e06b1597f11d88bbf",
+      "calls": [
+        "Invocation_lev"
+      ],
+      "id": "fn_0020_invocation_pos",
+      "name": "invocation_pos",
+      "span": {
+        "body_end_line": 967,
+        "body_start_line": 964,
+        "signature_line": 963
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "travelmap"
+        },
+        {
+          "op": "=",
+          "target": "mode"
+        },
+        {
+          "op": "=",
+          "target": "mode"
+        },
+        {
+          "op": "=",
+          "target": "mode"
+        },
+        {
+          "op": "=",
+          "target": "dx"
+        },
+        {
+          "op": "=",
+          "target": "dy"
+        },
+        {
+          "op": "=",
+          "target": "x"
+        },
+        {
+          "op": "=",
+          "target": "y"
+        },
+        {
+          "op": "=",
+          "target": "mode"
+        },
+        {
+          "op": "=",
+          "target": "run"
+        },
+        {
+          "op": "=",
+          "target": "n"
+        },
+        {
+          "op": "=",
+          "target": "set"
+        },
+        {
+          "op": "=",
+          "target": "radius"
+        },
+        {
+          "op": "=",
+          "target": "mode"
+        },
+        {
+          "op": "=",
+          "target": "mode"
+        },
+        {
+          "op": "=",
+          "target": "tx"
+        },
+        {
+          "op": "=",
+          "target": "ty"
+        },
+        {
+          "op": "=",
+          "target": "ux"
+        },
+        {
+          "op": "=",
+          "target": "uy"
+        },
+        {
+          "op": "=",
+          "target": "tx"
+        },
+        {
+          "op": "=",
+          "target": "ty"
+        },
+        {
+          "op": "=",
+          "target": "ux"
+        },
+        {
+          "op": "=",
+          "target": "uy"
+        },
+        {
+          "op": "=",
+          "target": "nn"
+        },
+        {
+          "op": "=",
+          "target": "i"
+        },
+        {
+          "op": "=",
+          "target": "x"
+        },
+        {
+          "op": "=",
+          "target": "y"
+        },
+        {
+          "op": "=",
+          "target": "dirmax"
+        },
+        {
+          "op": "=",
+          "target": "alreadyrepeated"
+        },
+        {
+          "op": "=",
+          "target": "dir"
+        },
+        {
+          "op": "=",
+          "target": "nx"
+        },
+        {
+          "op": "=",
+          "target": "ny"
+        },
+        {
+          "op": "=",
+          "target": "mode"
+        },
+        {
+          "op": "=",
+          "target": "alreadyrepeated"
+        },
+        {
+          "op": "=",
+          "target": "nx"
+        },
+        {
+          "op": "=",
+          "target": "ny"
+        },
+        {
+          "op": "=",
+          "target": "mode"
+        },
+        {
+          "op": "=",
+          "target": "mode"
+        },
+        {
+          "op": "=",
+          "target": "visited"
+        },
+        {
+          "op": "=",
+          "target": "dx"
+        },
+        {
+          "op": "=",
+          "target": "dy"
+        },
+        {
+          "op": "=",
+          "target": "mode"
+        },
+        {
+          "op": "=",
+          "target": "x"
+        },
+        {
+          "op": "=",
+          "target": "y"
+        },
+        {
+          "op": "=",
+          "target": "run"
+        },
+        {
+          "op": "=",
+          "target": "x"
+        },
+        {
+          "op": "=",
+          "target": "y"
+        },
+        {
+          "op": "=",
+          "target": "i"
+        },
+        {
+          "op": "=",
+          "target": "runmode"
+        },
+        {
+          "op": "=",
+          "target": "n"
+        },
+        {
+          "op": "=",
+          "target": "set"
+        },
+        {
+          "op": "=",
+          "target": "mode"
+        },
+        {
+          "op": "=",
+          "target": "px"
+        },
+        {
+          "op": "=",
+          "target": "py"
+        },
+        {
+          "op": "=",
+          "target": "ptrav"
+        },
+        {
+          "op": "=",
+          "target": "dist"
+        },
+        {
+          "op": "=",
+          "target": "d2"
+        },
+        {
+          "op": "=",
+          "target": "tx"
+        },
+        {
+          "op": "=",
+          "target": "ty"
+        },
+        {
+          "op": "=",
+          "target": "ctrav"
+        },
+        {
+          "op": "=",
+          "target": "nxtdist"
+        },
+        {
+          "op": "=",
+          "target": "nxtdist"
+        },
+        {
+          "op": "=",
+          "target": "nd2"
+        },
+        {
+          "op": "=",
+          "target": "px"
+        },
+        {
+          "op": "=",
+          "target": "py"
+        },
+        {
+          "op": "=",
+          "target": "d2"
+        },
+        {
+          "op": "=",
+          "target": "ptrav"
+        },
+        {
+          "op": "=",
+          "target": "px"
+        },
+        {
+          "op": "=",
+          "target": "py"
+        },
+        {
+          "op": "=",
+          "target": "dist"
+        },
+        {
+          "op": "=",
+          "target": "d2"
+        },
+        {
+          "op": "=",
+          "target": "ptrav"
+        },
+        {
+          "op": "=",
+          "target": "dx"
+        },
+        {
+          "op": "=",
+          "target": "dy"
+        },
+        {
+          "op": "=",
+          "target": "runmode"
+        },
+        {
+          "op": "=",
+          "target": "tx"
+        },
+        {
+          "op": "=",
+          "target": "ty"
+        },
+        {
+          "op": "=",
+          "target": "ux"
+        },
+        {
+          "op": "=",
+          "target": "uy"
+        },
+        {
+          "op": "=",
+          "target": "set"
+        },
+        {
+          "op": "=",
+          "target": "n"
+        },
+        {
+          "op": "=",
+          "target": "radius"
+        },
+        {
+          "op": "=",
+          "target": "mode"
+        },
+        {
+          "op": "=",
+          "target": "dx"
+        },
+        {
+          "op": "=",
+          "target": "dy"
+        }
+      ],
+      "body_line_count": 257,
+      "body_sha256": "039aaef60b4c82e3f593d47d55498d0c6e351898617172b3732b8e2d905819be",
+      "calls": [
+        "selection_new",
+        "distmin",
+        "next2u",
+        "crawl_destination",
+        "end_running",
+        "test_move",
+        "nomul",
+        "memset",
+        "NODIAG",
+        "couldsee",
+        "findtravelpath",
+        "isok",
+        "can_ooze",
+        "closed_door",
+        "sobj_at",
+        "could_move_onto_boulder",
+        "selection_getpoint",
+        "You",
+        "selection_setpoint",
+        "tmp_at",
+        "warning_to_glyph",
+        "nh_delay_output",
+        "dist2",
+        "u_at",
+        "sgn"
+      ],
+      "id": "fn_0021_findtravelpath",
+      "name": "findtravelpath",
+      "span": {
+        "body_end_line": 1504,
+        "body_start_line": 1248,
+        "signature_line": 1247
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "tx"
+        },
+        {
+          "op": "=",
+          "target": "ty"
+        },
+        {
+          "op": "=",
+          "target": "glyph"
+        },
+        {
+          "op": "=",
+          "target": "S_stone"
+        },
+        {
+          "op": "=",
+          "target": "tx"
+        },
+        {
+          "op": "=",
+          "target": "ty"
+        },
+        {
+          "op": "=",
+          "target": "ret"
+        },
+        {
+          "op": "=",
+          "target": "tx"
+        },
+        {
+          "op": "=",
+          "target": "ty"
+        }
+      ],
+      "body_line_count": 18,
+      "body_sha256": "57dfd3d902d180960b0f4c2c8ed148790a68a2fec499262d6136ca30fbcfd459",
+      "calls": [
+        "glyph_at",
+        "u_at",
+        "isok",
+        "glyph_is_cmap",
+        "glyph_to_cmap",
+        "findtravelpath"
+      ],
+      "id": "fn_0022_is_valid_travelpt",
+      "name": "is_valid_travelpt",
+      "span": {
+        "body_end_line": 1525,
+        "body_start_line": 1508,
+        "signature_line": 1507
+      }
+    },
+    {
+      "assignments": [],
+      "body_line_count": 11,
+      "body_sha256": "b8aa9cfa89f224c5e8cfe0320ab9e033c4971a142e26b91d28f2c4387536703f",
+      "calls": [
+        "You",
+        "Is_airlevel",
+        "Is_waterlevel",
+        "nomul"
+      ],
+      "id": "fn_0023_u_rooted",
+      "name": "u_rooted",
+      "span": {
+        "body_end_line": 1686,
+        "body_start_line": 1676,
+        "signature_line": 1675
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "spot"
+        },
+        {
+          "op": "=",
+          "target": "mspotted"
+        },
+        {
+          "op": "=",
+          "target": "mspotted"
+        }
+      ],
+      "body_line_count": 24,
+      "body_sha256": "29e3ab5e6f8de0bbc3634767bfdfafac51260c481f3d5812e22db73c238c4815",
+      "calls": [
+        "canspotmon",
+        "is_hider",
+        "M_AP_TYPE",
+        "DEADMONSTER",
+        "set_msg_xy",
+        "You",
+        "canseemon",
+        "x_monnam",
+        "has_mgivenname",
+        "type_is_pname"
+      ],
+      "id": "fn_0024_notice_mon",
+      "name": "notice_mon",
+      "span": {
+        "body_end_line": 1713,
+        "body_start_line": 1690,
+        "signature_line": 1689
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "m1"
+        },
+        {
+          "op": "=",
+          "target": "m2"
+        }
+      ],
+      "body_line_count": 6,
+      "body_sha256": "82e21cf41c6cc025264cef363f996657c56775a5cbf80539e01176ed701e48da",
+      "calls": [
+        "distu"
+      ],
+      "id": "fn_0025_notice_mons_cmp",
+      "name": "notice_mons_cmp",
+      "span": {
+        "body_end_line": 1722,
+        "body_start_line": 1717,
+        "signature_line": 1716
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "arr"
+        },
+        {
+          "op": "=",
+          "target": "i"
+        },
+        {
+          "op": "=",
+          "target": "cnt"
+        },
+        {
+          "op": "=",
+          "target": "mtmp"
+        },
+        {
+          "op": "=",
+          "target": "mtmp"
+        },
+        {
+          "op": "=",
+          "target": "mspotted"
+        },
+        {
+          "op": "=",
+          "target": "arr"
+        },
+        {
+          "op": "=",
+          "target": "mtmp"
+        },
+        {
+          "op": "=",
+          "target": "mtmp"
+        },
+        {
+          "op": "=",
+          "target": "mspotted"
+        },
+        {
+          "op": "=",
+          "target": "j"
+        }
+      ],
+      "body_line_count": 39,
+      "body_sha256": "443ea0da9cf56faa8bb7f8be1506773ee7354423ee81f29614cddd0a634c6e5c",
+      "calls": [
+        "DEADMONSTER",
+        "canspotmon",
+        "alloc",
+        "qsort",
+        "notice_mon",
+        "free"
+      ],
+      "id": "fn_0026_notice_all_mons",
+      "name": "notice_all_mons",
+      "span": {
+        "body_end_line": 1764,
+        "body_start_line": 1726,
+        "signature_line": 1725
+      }
+    },
+    {
+      "assignments": [],
+      "body_line_count": 7,
+      "body_sha256": "5096d9de6d02e2de5157ed30de1e531dcd15e8edc4b1be327ea876decda9f729",
+      "calls": [
+        "is_flimsy",
+        "disturb_buried_zombies"
+      ],
+      "id": "fn_0027_impact_disturbs_zombies",
+      "name": "impact_disturbs_zombies",
+      "span": {
+        "body_end_line": 1775,
+        "body_start_line": 1769,
+        "signature_line": 1768
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "otmp"
+        },
+        {
+          "op": "=",
+          "target": "otmp"
+        },
+        {
+          "op": "=",
+          "target": "otyp"
+        },
+        {
+          "op": "=",
+          "target": "t"
+        },
+        {
+          "op": "=",
+          "target": "t"
+        }
+      ],
+      "body_line_count": 15,
+      "body_sha256": "6e803c40a9867ef0c945b9f4ef0f56123a319adb5d0f7629c38de5fa087d270b",
+      "calls": [
+        "peek_timer",
+        "obj_to_any",
+        "stop_timer",
+        "start_timer",
+        "max"
+      ],
+      "id": "fn_0028_disturb_buried_zombies",
+      "name": "disturb_buried_zombies",
+      "span": {
+        "body_end_line": 1794,
+        "body_start_line": 1780,
+        "signature_line": 1779
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "capitalize"
+        },
+        {
+          "op": "=",
+          "target": "def"
+        }
+      ],
+      "body_line_count": 12,
+      "body_sha256": "a5455f3ba189126347bd4b9a8b73b796dd5cbf242dbe0fcad3bb09179a148eec",
+      "calls": [
+        "highc",
+        "locomotion",
+        "is_flyer",
+        "is_floater"
+      ],
+      "id": "fn_0029_u_locomotion",
+      "name": "u_locomotion",
+      "span": {
+        "body_end_line": 1810,
+        "body_start_line": 1799,
+        "signature_line": 1798
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "u_in_air"
+        },
+        {
+          "op": "=",
+          "target": "typ"
+        }
+      ],
+      "body_line_count": 15,
+      "body_sha256": "4a99cb8a8ab1e75138c937739cd9811deb6713dc2f51d77488d053b57abfe0fb",
+      "calls": [
+        "grounded",
+        "is_waterwall",
+        "is_pool",
+        "is_lava"
+      ],
+      "id": "fn_0030_u_simple_floortyp",
+      "name": "u_simple_floortyp",
+      "span": {
+        "body_end_line": 1829,
+        "body_start_line": 1815,
+        "signature_line": 1814
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "OPTIONS"
+        }
+      ],
+      "body_line_count": 29,
+      "body_sha256": "eeb62fe4b226e2a80ebed267dd83481f2302639ca058117d241eca3d8affbc22",
+      "calls": [
+        "pline",
+        "visctrl",
+        "cmd_from_func",
+        "l_nhcore_call",
+        "impossible",
+        "handle_tip"
+      ],
+      "id": "fn_0031_handle_tip",
+      "name": "handle_tip",
+      "span": {
+        "body_end_line": 1862,
+        "body_start_line": 1834,
+        "signature_line": 1833
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "newtyp"
+        },
+        {
+          "op": "=",
+          "target": "liquid_wall"
+        },
+        {
+          "op": "=",
+          "target": "newtyp"
+        }
+      ],
+      "body_line_count": 36,
+      "body_sha256": "4c1cb15faa8c3f8e2ab4d47c240efee5dd71eec0b424f416243ba0a64fefd12a",
+      "calls": [
+        "u_simple_floortyp",
+        "IS_WATERWALL",
+        "is_pool",
+        "is_lava",
+        "You",
+        "ing_suffix",
+        "u_locomotion",
+        "waterbody_name",
+        "handle_tip"
+      ],
+      "id": "fn_0032_swim_move_danger",
+      "name": "swim_move_danger",
+      "span": {
+        "body_end_line": 1902,
+        "body_start_line": 1867,
+        "signature_line": 1866
+      }
+    },
+    {
+      "assignments": [],
+      "body_line_count": 23,
+      "body_sha256": "408a844925f08ff33bbe628ac6a3279b2564426e9b04823a81d6870b48de11d9",
+      "calls": [
+        "do_attack",
+        "attack_check",
+        "canspotmon",
+        "glyph_is_invisible",
+        "glyph_is_warning",
+        "M_AP_TYPE",
+        "sensemon",
+        "stumble_onto_mimic",
+        "m_monnam",
+        "pline",
+        "You",
+        "mon_nam"
+      ],
+      "id": "fn_0033_domove_bump_mon",
+      "name": "domove_bump_mon",
+      "span": {
+        "body_end_line": 1929,
+        "body_start_line": 1907,
+        "signature_line": 1906
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "typ"
+        },
+        {
+          "op": "=",
+          "target": "obj"
+        },
+        {
+          "op": "=",
+          "target": "breakflags"
+        },
+        {
+          "op": "=",
+          "target": "obj"
+        },
+        {
+          "op": "|=",
+          "target": "breakflags"
+        },
+        {
+          "op": "|=",
+          "target": "breakflags"
+        }
+      ],
+      "body_line_count": 21,
+      "body_sha256": "77ccdad4aa41a6aebb1a2a9038cff2aef0870e0397cb7702911e75e13cd8c8a5",
+      "calls": [
+        "breaktest",
+        "splitobj",
+        "setuwep",
+        "freeinv",
+        "hit_bars"
+      ],
+      "id": "fn_0034_domove_fight_ironbars",
+      "name": "domove_fight_ironbars",
+      "span": {
+        "body_end_line": 1998,
+        "body_start_line": 1978,
+        "signature_line": 1977
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "trap"
+        },
+        {
+          "op": "=",
+          "target": "ttyp"
+        },
+        {
+          "op": "=",
+          "target": "wtype"
+        },
+        {
+          "op": "=",
+          "target": "wskill_minus_2"
+        },
+        {
+          "op": "=",
+          "target": "roll"
+        },
+        {
+          "op": "=",
+          "target": "uwepstr"
+        },
+        {
+          "op": "=",
+          "target": "scndstr"
+        },
+        {
+          "op": "=",
+          "target": "onewep"
+        },
+        {
+          "op": "=",
+          "target": "uwepstr"
+        },
+        {
+          "op": "=",
+          "target": "quan"
+        },
+        {
+          "op": "=",
+          "target": "uwepstr"
+        },
+        {
+          "op": "=",
+          "target": "uwepstr"
+        },
+        {
+          "op": "=",
+          "target": "scndstr"
+        },
+        {
+          "op": "=",
+          "target": "quan"
+        }
+      ],
+      "body_line_count": 73,
+      "body_sha256": "7513f201afd44920f4d90efaac7d8103d16d4abc246ff66efbb55be2b25e87a4",
+      "calls": [
+        "t_at",
+        "uwep_skill_type",
+        "max",
+        "P_SKILL",
+        "rn2",
+        "u_wield_art",
+        "attacks",
+        "pline",
+        "bare_artifactname",
+        "is_blade",
+        "daggers",
+        "Strcpy",
+        "weapon_descr",
+        "strcmp",
+        "strcmpi",
+        "an",
+        "makeplural",
+        "assert",
+        "You_cant",
+        "acurrstr",
+        "You",
+        "use_skill",
+        "deltrap",
+        "newsym"
+      ],
+      "id": "fn_0035_domove_fight_web",
+      "name": "domove_fight_web",
+      "span": {
+        "body_end_line": 2075,
+        "body_start_line": 2003,
+        "signature_line": 2002
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "off_edge"
+        },
+        {
+          "op": "=",
+          "target": "glyph"
+        },
+        {
+          "op": "=",
+          "target": "x"
+        },
+        {
+          "op": "=",
+          "target": "y"
+        },
+        {
+          "op": "=",
+          "target": "boulder"
+        },
+        {
+          "op": "=",
+          "target": "explo"
+        },
+        {
+          "op": "=",
+          "target": "solid"
+        },
+        {
+          "op": "=",
+          "target": "boulder"
+        },
+        {
+          "op": "=",
+          "target": "boulder"
+        },
+        {
+          "op": "=",
+          "target": "glyph"
+        },
+        {
+          "op": "=",
+          "target": "typ"
+        },
+        {
+          "op": "=",
+          "target": "typ"
+        },
+        {
+          "op": "=",
+          "target": "typ"
+        },
+        {
+          "op": "=",
+          "target": "glyph"
+        },
+        {
+          "op": "=",
+          "target": "attk"
+        },
+        {
+          "op": "=",
+          "target": "mh"
+        }
+      ],
+      "body_line_count": 109,
+      "body_sha256": "b45c459fb7b8e65f7235347811af7aeda3388f1ed999e07982711818fd055f76",
+      "calls": [
+        "isok",
+        "glyph_at",
+        "m_at",
+        "glyph_is_invisible",
+        "attacktype",
+        "accessible",
+        "IS_FURNITURE",
+        "Strcpy",
+        "sobj_at",
+        "glyph_is_statue",
+        "glyph_is_monster",
+        "dig_typ",
+        "use_pick_axe2",
+        "unmap_object",
+        "map_object",
+        "newsym",
+        "nhUse",
+        "ansimpleoname",
+        "is_pool",
+        "Sprintf",
+        "Is_waterlevel",
+        "rooms",
+        "IS_STWALL",
+        "back_to_glyph",
+        "the",
+        "glyph_to_cmap",
+        "You",
+        "nomul",
+        "attacktype_fordmg",
+        "explum",
+        "wake_nearto",
+        "rehumanize"
+      ],
+      "id": "fn_0036_domove_fight_empty",
+      "name": "domove_fight_empty",
+      "span": {
+        "body_end_line": 2319,
+        "body_start_line": 2211,
+        "signature_line": 2210
+      }
+    },
+    {
+      "assignments": [],
+      "body_line_count": 19,
+      "body_sha256": "c0d9eeb9d2dbcaada9221d0c5f5803483b2a84ffefebb782cfa1c1af0582b066",
+      "calls": [
+        "Is_airlevel",
+        "rn2",
+        "You",
+        "exercise",
+        "You_cant",
+        "pline"
+      ],
+      "id": "fn_0037_air_turbulence",
+      "name": "air_turbulence",
+      "span": {
+        "body_end_line": 2342,
+        "body_start_line": 2324,
+        "signature_line": 2323
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "wtmod"
+        },
+        {
+          "op": "=",
+          "target": "x"
+        },
+        {
+          "op": "=",
+          "target": "y"
+        },
+        {
+          "op": "=",
+          "target": "wtcap"
+        }
+      ],
+      "body_line_count": 28,
+      "body_sha256": "21b36039d83fa562adc7f9b29a0414e2364134057600c1226fa23df610215047",
+      "calls": [
+        "water_friction",
+        "nomul",
+        "isok",
+        "is_pool",
+        "Is_waterlevel",
+        "near_capacity",
+        "otherwise",
+        "You"
+      ],
+      "id": "fn_0038_water_turbulence",
+      "name": "water_turbulence",
+      "span": {
+        "body_end_line": 2374,
+        "body_start_line": 2347,
+        "signature_line": 2346
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "on_ice"
+        },
+        {
+          "op": "=",
+          "target": "iceskater"
+        },
+        {
+          "op": "=",
+          "target": "on_ice"
+        },
+        {
+          "op": "|=",
+          "target": "HFumbling"
+        },
+        {
+          "op": "&=",
+          "target": "HFumbling"
+        },
+        {
+          "op": "+=",
+          "target": "HFumbling"
+        },
+        {
+          "op": "&=",
+          "target": "HFumbling"
+        }
+      ],
+      "body_line_count": 19,
+      "body_sha256": "5a6f7cb2e2eb58a821c16e918080a1c36ae65584b48f9f8550d2b595e7686569",
+      "calls": [
+        "is_ice",
+        "objdescr_is",
+        "resists_cold",
+        "is_floater",
+        "is_clinger",
+        "is_whirly",
+        "rn2"
+      ],
+      "id": "fn_0039_slippery_ice_fumbling",
+      "name": "slippery_ice_fumbling",
+      "span": {
+        "body_end_line": 2396,
+        "body_start_line": 2378,
+        "signature_line": 2377
+      }
+    },
+    {
+      "assignments": [],
+      "body_line_count": 3,
+      "body_sha256": "9c46eea326935d5b50575cbe2276f78d1bcb11573169da3aef74dede8a9f0d33",
+      "calls": [
+        "rn2"
+      ],
+      "id": "fn_0040_u_maybe_impaired",
+      "name": "u_maybe_impaired",
+      "span": {
+        "body_end_line": 2402,
+        "body_start_line": 2400,
+        "signature_line": 2399
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "tries"
+        },
+        {
+          "op": "=",
+          "target": "x"
+        },
+        {
+          "op": "=",
+          "target": "y"
+        }
+      ],
+      "body_line_count": 16,
+      "body_sha256": "c6879754c7d4e6757f8193858b46b702415e4ee49d508664981a532db109747a",
+      "calls": [
+        "u_maybe_impaired",
+        "nomul",
+        "confdir",
+        "isok",
+        "bad_rock"
+      ],
+      "id": "fn_0041_impaired_movement",
+      "name": "impaired_movement",
+      "span": {
+        "body_end_line": 2422,
+        "body_start_line": 2407,
+        "signature_line": 2406
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "trap"
+        }
+      ],
+      "body_line_count": 16,
+      "body_sha256": "ee6e0dba3532abf279d5aef8bc02f4002bb575f71867ff46c8aa9a6e4c63ac86",
+      "calls": [
+        "t_at",
+        "set_msg_xy",
+        "You",
+        "an",
+        "trapname"
+      ],
+      "id": "fn_0042_avoid_moving_on_trap",
+      "name": "avoid_moving_on_trap",
+      "span": {
+        "body_end_line": 2441,
+        "body_start_line": 2426,
+        "signature_line": 2425
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "would_stop"
+        },
+        {
+          "op": "=",
+          "target": "move"
+        }
+      ],
+      "body_line_count": 14,
+      "body_sha256": "0be7aa4fe264eb5b8120dac05fcdc3dfab8c526471205cb571155c4f488f2851",
+      "calls": [
+        "avoid_moving_on_trap",
+        "avoid_moving_on_liquid",
+        "nomul"
+      ],
+      "id": "fn_0043_avoid_running_into_trap_or_liquid",
+      "name": "avoid_running_into_trap_or_liquid",
+      "span": {
+        "body_end_line": 2490,
+        "body_start_line": 2477,
+        "signature_line": 2476
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "trap"
+        },
+        {
+          "op": "=",
+          "target": "newreg"
+        },
+        {
+          "op": "=",
+          "target": "oldreg"
+        },
+        {
+          "op": "=",
+          "target": "move"
+        },
+        {
+          "op": "=",
+          "target": "trap"
+        },
+        {
+          "op": "=",
+          "target": "traptype"
+        },
+        {
+          "op": "=",
+          "target": "into"
+        },
+        {
+          "op": "=",
+          "target": "move"
+        }
+      ],
+      "body_line_count": 67,
+      "body_sha256": "46d21b0d6670d4bb6f80b1564c0a0aeb3481aa01a683ba2fcb88d42ba862bba2",
+      "calls": [
+        "region",
+        "visible_region_at",
+        "damage",
+        "t",
+        "reg_damg",
+        "test_move",
+        "Snprintf",
+        "u_locomotion",
+        "paranoid_query",
+        "upstart",
+        "nomul",
+        "t_at",
+        "immune_to_trap",
+        "rnd",
+        "into_vs_onto",
+        "trap_to_defsym",
+        "set"
+      ],
+      "id": "fn_0044_avoid_trap_andor_region",
+      "name": "avoid_trap_andor_region",
+      "span": {
+        "body_end_line": 2563,
+        "body_start_line": 2497,
+        "signature_line": 2496
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "dx"
+        },
+        {
+          "op": "=",
+          "target": "dy"
+        },
+        {
+          "op": "=",
+          "target": "dx"
+        },
+        {
+          "op": "=",
+          "target": "dy"
+        },
+        {
+          "op": "=",
+          "target": "move"
+        }
+      ],
+      "body_line_count": 26,
+      "body_sha256": "df78b3aaea925fa1ce9feef92963ef1a7c1c9c25aebf680f07ba6fdafc222866",
+      "calls": [
+        "isok",
+        "domove_fight_empty",
+        "You",
+        "directionname",
+        "xytod",
+        "nomul"
+      ],
+      "id": "fn_0045_move_out_of_bounds",
+      "name": "move_out_of_bounds",
+      "span": {
+        "body_end_line": 2593,
+        "body_start_line": 2568,
+        "signature_line": 2567
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "wtcap"
+        }
+      ],
+      "body_line_count": 18,
+      "body_sha256": "2d134a20064c345011078ff8f50a569364465be8282b15eb29a87bbb6a6d52ea",
+      "calls": [
+        "near_capacity",
+        "Is_airlevel",
+        "You",
+        "exercise",
+        "nomul"
+      ],
+      "id": "fn_0046_carrying_too_much",
+      "name": "carrying_too_much",
+      "span": {
+        "body_end_line": 2615,
+        "body_start_line": 2598,
+        "signature_line": 2597
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "mtmp"
+        },
+        {
+          "op": "=",
+          "target": "mfrozen"
+        },
+        {
+          "op": "=",
+          "target": "msleeping"
+        },
+        {
+          "op": "=",
+          "target": "mtmp"
+        }
+      ],
+      "body_line_count": 53,
+      "body_sha256": "e0e080f0b605c1c9332d295cc7fa048141fe4b2e1d8258ae281f2b744d3363c5",
+      "calls": [
+        "m_next2u",
+        "fled",
+        "set_ustuck",
+        "sticks",
+        "You",
+        "y_monnam",
+        "rn2",
+        "nomul"
+      ],
+      "id": "fn_0047_escape_from_sticky_mon",
+      "name": "escape_from_sticky_mon",
+      "span": {
+        "body_end_line": 2673,
+        "body_start_line": 2621,
+        "signature_line": 2620
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "ux1"
+        },
+        {
+          "op": "=",
+          "target": "uy1"
+        },
+        {
+          "op": "=",
+          "target": "domove_succeeded"
+        },
+        {
+          "op": "=",
+          "target": "domove_attempting"
+        },
+        {
+          "op": "=",
+          "target": "x"
+        },
+        {
+          "op": "=",
+          "target": "y"
+        }
+      ],
+      "body_line_count": 14,
+      "body_sha256": "7e0ea9d10781331e98e0b8039e0683a709d0290b5f5afb402bdbeb0cfd7f29f4",
+      "calls": [
+        "domove_core",
+        "maybe_smudge_engr",
+        "maybe_adjust_hero_bubble"
+      ],
+      "id": "fn_0048_domove",
+      "name": "domove",
+      "span": {
+        "body_end_line": 2690,
+        "body_start_line": 2677,
+        "signature_line": 2676
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "chainx"
+        },
+        {
+          "op": "=",
+          "target": "chainy"
+        },
+        {
+          "op": "=",
+          "target": "ballx"
+        },
+        {
+          "op": "=",
+          "target": "bally"
+        },
+        {
+          "op": "=",
+          "target": "bc_control"
+        },
+        {
+          "op": "=",
+          "target": "cause_delay"
+        },
+        {
+          "op": "=",
+          "target": "displaceu"
+        },
+        {
+          "op": "=",
+          "target": "travel1"
+        },
+        {
+          "op": "=",
+          "target": "dx"
+        },
+        {
+          "op": "=",
+          "target": "dy"
+        },
+        {
+          "op": "=",
+          "target": "x"
+        },
+        {
+          "op": "=",
+          "target": "y"
+        },
+        {
+          "op": "=",
+          "target": "mtmp"
+        },
+        {
+          "op": "=",
+          "target": "x"
+        },
+        {
+          "op": "=",
+          "target": "y"
+        },
+        {
+          "op": "=",
+          "target": "mtmp"
+        },
+        {
+          "op": "=",
+          "target": "move"
+        },
+        {
+          "op": "=",
+          "target": "ux0"
+        },
+        {
+          "op": "=",
+          "target": "uy0"
+        },
+        {
+          "op": "=",
+          "target": "x"
+        },
+        {
+          "op": "=",
+          "target": "y"
+        },
+        {
+          "op": "=",
+          "target": "tmpr"
+        },
+        {
+          "op": "=",
+          "target": "glyph"
+        },
+        {
+          "op": "=",
+          "target": "moved"
+        },
+        {
+          "op": "=",
+          "target": "botl"
+        },
+        {
+          "op": "=",
+          "target": "move"
+        },
+        {
+          "op": "=",
+          "target": "move"
+        },
+        {
+          "op": "=",
+          "target": "mtmp"
+        },
+        {
+          "op": "+=",
+          "target": "ux"
+        },
+        {
+          "op": "+=",
+          "target": "uy"
+        },
+        {
+          "op": "=",
+          "target": "mx"
+        },
+        {
+          "op": "=",
+          "target": "my"
+        },
+        {
+          "op": "=",
+          "target": "noticed_it"
+        },
+        {
+          "op": "=",
+          "target": "mux"
+        },
+        {
+          "op": "=",
+          "target": "muy"
+        },
+        {
+          "op": "=",
+          "target": "mon_moving"
+        },
+        {
+          "op": "=",
+          "target": "mon_moving"
+        },
+        {
+          "op": "=",
+          "target": "ux"
+        },
+        {
+          "op": "=",
+          "target": "uy"
+        },
+        {
+          "op": "=",
+          "target": "mx"
+        },
+        {
+          "op": "=",
+          "target": "my"
+        },
+        {
+          "op": "=",
+          "target": "mlet"
+        },
+        {
+          "op": "=",
+          "target": "U_AP_TYPE"
+        },
+        {
+          "op": "=",
+          "target": "U_AP_TYPE"
+        },
+        {
+          "op": "=",
+          "target": "m_ap_type"
+        },
+        {
+          "op": "|=",
+          "target": "domove_succeeded"
+        },
+        {
+          "op": "=",
+          "target": "umoved"
+        },
+        {
+          "op": "=",
+          "target": "multi_reason"
+        },
+        {
+          "op": "=",
+          "target": "nomovemsg"
+        }
+      ],
+      "body_line_count": 279,
+      "body_sha256": "09b5ae5f08cbdc1fd02c6d142d5329b6d714f52184682b3c5d86c1bef03b3626",
+      "calls": [
+        "findtravelpath",
+        "carrying_too_much",
+        "u_on_newpos",
+        "air_turbulence",
+        "slippery_ice_fumbling",
+        "impaired_movement",
+        "water_turbulence",
+        "move_out_of_bounds",
+        "avoid_running_into_trap_or_liquid",
+        "escape_from_sticky_mon",
+        "m_at",
+        "is_safemon",
+        "mon_visible",
+        "M_AP_TYPE",
+        "sensemon",
+        "nomul",
+        "glyph_at",
+        "do_attack",
+        "domove_bump_mon",
+        "domove_attackmon_at",
+        "domove_fight_ironbars",
+        "domove_fight_web",
+        "domove_fight_empty",
+        "unmap_invisible",
+        "stucksteed",
+        "u_rooted",
+        "avoid_trap_andor_region",
+        "trapmove",
+        "reset_utrap",
+        "test_move",
+        "swim_move_danger",
+        "drag_ball",
+        "in_out_region",
+        "m_postmove_effect",
+        "exercise_steed",
+        "canspotmon",
+        "glyph_is_invisible",
+        "glyph_is_warning",
+        "remove_monster",
+        "place_monster",
+        "newsym",
+        "pline",
+        "YMonnam",
+        "map_invisible",
+        "minliquid",
+        "mintrap",
+        "is_hider",
+        "domove_swap_with_pet",
+        "reset_occupations",
+        "IS_DOOR",
+        "IS_OBSTRUCTED",
+        "IS_FURNITURE",
+        "disturb_buried_zombies",
+        "hides_under",
+        "hideunder",
+        "Mimics",
+        "check_leash",
+        "vision_recalc",
+        "invocation_message",
+        "move_bc",
+        "spoteffects",
+        "runmode_delay_output"
+      ],
+      "id": "fn_0049_domove_core",
+      "name": "domove_core",
+      "span": {
+        "body_end_line": 2972,
+        "body_start_line": 2694,
+        "signature_line": 2693
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "time_botl"
+        },
+        {
+          "op": "=",
+          "target": "runmode"
+        }
+      ],
+      "body_line_count": 21,
+      "body_sha256": "4d78d262ba6060cb5ea293d2a4eaf0b3ddcb82722b6030c17a0b69fea2a26bba",
+      "calls": [
+        "normal",
+        "step",
+        "crawl",
+        "moveloop",
+        "curs_on_u",
+        "nh_delay_output"
+      ],
+      "id": "fn_0050_runmode_delay_output",
+      "name": "runmode_delay_output",
+      "span": {
+        "body_end_line": 2998,
+        "body_start_line": 2978,
+        "signature_line": 2977
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "ep"
+        },
+        {
+          "op": "=",
+          "target": "ep"
+        }
+      ],
+      "body_line_count": 11,
+      "body_sha256": "ecbbc4a2265508fdb3673b542d053d287348636087d3f8c73d190d8ca5103fbe",
+      "calls": [
+        "can_reach_floor",
+        "engr_at",
+        "wipe_engr_at",
+        "rnd"
+      ],
+      "id": "fn_0051_maybe_smudge_engr",
+      "name": "maybe_smudge_engr",
+      "span": {
+        "body_end_line": 3012,
+        "body_start_line": 3002,
+        "signature_line": 3001
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "hp"
+        },
+        {
+          "op": "-=",
+          "target": "hp"
+        },
+        {
+          "op": "=",
+          "target": "botl"
+        }
+      ],
+      "body_line_count": 12,
+      "body_sha256": "a1f9c8530a63d91c173f5c70c265062b4f62c37610059d07058e55c1544a5ab5",
+      "calls": [
+        "You",
+        "exercise",
+        "fall_asleep"
+      ],
+      "id": "fn_0052_overexert_hp",
+      "name": "overexert_hp",
+      "span": {
+        "body_end_line": 3028,
+        "body_start_line": 3017,
+        "signature_line": 3016
+      }
+    },
+    {
+      "assignments": [],
+      "body_line_count": 10,
+      "body_sha256": "cb0eca8e3bd52516a1389e5dcc5f28cee27d86c52eb8b75ce0cc6367c49b04f9",
+      "calls": [
+        "domove",
+        "do_attack",
+        "gethungry",
+        "near_capacity",
+        "overexert_hp",
+        "fainted"
+      ],
+      "id": "fn_0053_overexertion",
+      "name": "overexertion",
+      "span": {
+        "body_end_line": 3042,
+        "body_start_line": 3033,
+        "signature_line": 3032
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "otmp"
+        },
+        {
+          "op": "=",
+          "target": "uvibrated"
+        },
+        {
+          "op": "=",
+          "target": "spe"
+        }
+      ],
+      "body_line_count": 21,
+      "body_sha256": "6b45475e62a2a135a7b4c5f45e9044344945425108b33c8ef18cab2481e662a5",
+      "calls": [
+        "invocation_pos",
+        "On_stairs",
+        "carrying",
+        "nomul",
+        "Sprintf",
+        "y_monnam",
+        "Strcpy",
+        "makeplural",
+        "body_part",
+        "You_feel",
+        "pline",
+        "The",
+        "xname"
+      ],
+      "id": "fn_0054_invocation_message",
+      "name": "invocation_message",
+      "span": {
+        "body_end_line": 3066,
+        "body_start_line": 3046,
+        "signature_line": 3045
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "lev"
+        },
+        {
+          "op": "=",
+          "target": "blocklev"
+        },
+        {
+          "op": "=",
+          "target": "typ"
+        },
+        {
+          "op": "=",
+          "target": "was_levitating"
+        },
+        {
+          "op": "=",
+          "target": "was_flying"
+        },
+        {
+          "op": "|=",
+          "target": "BLevitation"
+        },
+        {
+          "op": "&=",
+          "target": "BLevitation"
+        },
+        {
+          "op": "|=",
+          "target": "BFlying"
+        },
+        {
+          "op": "&=",
+          "target": "BFlying"
+        },
+        {
+          "op": "=",
+          "target": "botl"
+        }
+      ],
+      "body_line_count": 36,
+      "body_sha256": "1f625715672bbf928d74c6ae94ec7a97ddefb5de815903f7ac8732c66944a53e",
+      "calls": [
+        "IS_OBSTRUCTED",
+        "closed_door",
+        "IS_WATERWALL",
+        "spoteffects",
+        "float_down",
+        "You_cant",
+        "float_up",
+        "float_vs_flight",
+        "toggle",
+        "You"
+      ],
+      "id": "fn_0055_switch_terrain",
+      "name": "switch_terrain",
+      "span": {
+        "body_end_line": 3108,
+        "body_start_line": 3073,
+        "signature_line": 3072
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "uinwater"
+        }
+      ],
+      "body_line_count": 3,
+      "body_sha256": "243209d9498b16322a7c2a39e0b21a40b9e268b8bc9d2a797dc51efdc8123061",
+      "calls": [],
+      "id": "fn_0056_set_uinwater",
+      "name": "set_uinwater",
+      "span": {
+        "body_end_line": 3115,
+        "body_start_line": 3113,
+        "signature_line": 3112
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "inspoteffects"
+        },
+        {
+          "op": "=",
+          "target": "spottrap"
+        },
+        {
+          "op": "=",
+          "target": "spottraptyp"
+        },
+        {
+          "op": "=",
+          "target": "trap"
+        },
+        {
+          "op": "=",
+          "target": "trapflag"
+        },
+        {
+          "op": "=",
+          "target": "spotterrain"
+        },
+        {
+          "op": "=",
+          "target": "ttyp"
+        },
+        {
+          "op": "=",
+          "target": "spotterrain"
+        },
+        {
+          "op": "=",
+          "target": "x"
+        },
+        {
+          "op": "=",
+          "target": "y"
+        },
+        {
+          "op": "=",
+          "target": "trap"
+        },
+        {
+          "op": "=",
+          "target": "pick"
+        },
+        {
+          "op": "=",
+          "target": "pit"
+        },
+        {
+          "op": "=",
+          "target": "spottrap"
+        },
+        {
+          "op": "=",
+          "target": "spottraptyp"
+        },
+        {
+          "op": "=",
+          "target": "spottrap"
+        },
+        {
+          "op": "=",
+          "target": "spottraptyp"
+        },
+        {
+          "op": "=",
+          "target": "time_left"
+        },
+        {
+          "op": "=",
+          "target": "mtmp"
+        },
+        {
+          "op": "=",
+          "target": "mundetected"
+        },
+        {
+          "op": "=",
+          "target": "msleeping"
+        },
+        {
+          "op": "=",
+          "target": "dmg"
+        },
+        {
+          "op": "=",
+          "target": "dmg"
+        },
+        {
+          "op": "=",
+          "target": "mpeaceful"
+        },
+        {
+          "op": "=",
+          "target": "spotterrain"
+        },
+        {
+          "op": "=",
+          "target": "x"
+        },
+        {
+          "op": "=",
+          "target": "y"
+        }
+      ],
+      "body_line_count": 147,
+      "body_sha256": "d4f1ca3bc94b00d048f599a0410dff36449fa0ecfc3d0e37e1846879281d427b",
+      "calls": [
+        "t_at",
+        "drown",
+        "rehumanize",
+        "spoteffects",
+        "u_at",
+        "terrain",
+        "trap",
+        "float_down",
+        "on_level",
+        "switch_terrain",
+        "pooleffects",
+        "check_special_room",
+        "IS_SINK",
+        "dosinkfall",
+        "rn2",
+        "incr_itimeout",
+        "is_pit",
+        "pickup",
+        "melt_ice",
+        "morph",
+        "dotrap",
+        "is_ice",
+        "spot_time_left",
+        "pline",
+        "m_at",
+        "Amonnam",
+        "ceiling",
+        "hard_helmet",
+        "helm_simple_name",
+        "rnd",
+        "You",
+        "x_monnam",
+        "d",
+        "mdamageu",
+        "sensemon",
+        "a_monnam",
+        "mnexto"
+      ],
+      "id": "fn_0057_spoteffects",
+      "name": "spoteffects",
+      "span": {
+        "body_end_line": 3347,
+        "body_start_line": 3201,
+        "signature_line": 3200
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "mtmp"
+        },
+        {
+          "op": "=",
+          "target": "mtmp"
+        },
+        {
+          "op": "=",
+          "target": "data"
+        }
+      ],
+      "body_line_count": 12,
+      "body_sha256": "6f0c2103505e06d2482e4b038b12b8eabe4875e16f286f51953c298e0bea6864",
+      "calls": [
+        "DEADMONSTER",
+        "strchr",
+        "in_rooms"
+      ],
+      "id": "fn_0058_monstinroom",
+      "name": "monstinroom",
+      "span": {
+        "body_end_line": 3363,
+        "body_start_line": 3352,
+        "signature_line": 3351
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "sroom"
+        },
+        {
+          "op": "=",
+          "target": "ly"
+        },
+        {
+          "op": "=",
+          "target": "hy"
+        },
+        {
+          "op": "=",
+          "target": "lx"
+        },
+        {
+          "op": "=",
+          "target": "hx"
+        },
+        {
+          "op": "=",
+          "target": "y"
+        },
+        {
+          "op": "=",
+          "target": "x"
+        },
+        {
+          "op": "=",
+          "target": "typ"
+        }
+      ],
+      "body_line_count": 13,
+      "body_sha256": "ed00e69907afb74f0bbef826b142224b4b42f1ee77d1ee87a64213cfe39fdbe3",
+      "calls": [
+        "inside_room"
+      ],
+      "id": "fn_0059_furniture_present",
+      "name": "furniture_present",
+      "span": {
+        "body_end_line": 3380,
+        "body_start_line": 3368,
+        "signature_line": 3367
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "rno"
+        },
+        {
+          "op": "=",
+          "target": "ptr"
+        },
+        {
+          "op": "=",
+          "target": "typefound"
+        },
+        {
+          "op": "=",
+          "target": "typewanted"
+        },
+        {
+          "op": "=",
+          "target": "rno"
+        },
+        {
+          "op": "=",
+          "target": "step"
+        },
+        {
+          "op": "=",
+          "target": "step"
+        },
+        {
+          "op": "=",
+          "target": "min_x"
+        },
+        {
+          "op": "=",
+          "target": "max_x"
+        },
+        {
+          "op": "+=",
+          "target": "min_x"
+        },
+        {
+          "op": "-=",
+          "target": "max_x"
+        },
+        {
+          "op": "=",
+          "target": "min_y"
+        },
+        {
+          "op": "=",
+          "target": "max_y_offset"
+        },
+        {
+          "op": "+=",
+          "target": "min_y"
+        },
+        {
+          "op": "-=",
+          "target": "max_y_offset"
+        },
+        {
+          "op": "-=",
+          "target": "max_y_offset"
+        },
+        {
+          "op": "=",
+          "target": "x"
+        },
+        {
+          "op": "+=",
+          "target": "x"
+        },
+        {
+          "op": "=",
+          "target": "lev"
+        },
+        {
+          "op": "=",
+          "target": "y"
+        },
+        {
+          "op": "=",
+          "target": "rno"
+        },
+        {
+          "op": "+=",
+          "target": "y"
+        },
+        {
+          "op": "=",
+          "target": "rno"
+        },
+        {
+          "op": "+=",
+          "target": "y"
+        },
+        {
+          "op": "=",
+          "target": "rno"
+        }
+      ],
+      "body_line_count": 62,
+      "body_sha256": "e848c5662a25e3892d81f19d3d351ec03b3aab626108c8d58ca433613afa1a1c",
+      "calls": [
+        "goodtype",
+        "strchr"
+      ],
+      "id": "fn_0060_in_rooms",
+      "name": "in_rooms",
+      "span": {
+        "body_end_line": 3445,
+        "body_start_line": 3384,
+        "signature_line": 3383
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "has_subrooms"
+        },
+        {
+          "op": "=",
+          "target": "sroom"
+        },
+        {
+          "op": "=",
+          "target": "has_subrooms"
+        }
+      ],
+      "body_line_count": 21,
+      "body_sha256": "feb0041f9a7e316bdfd3b126989d9947798137f87b5f4a155cf0604ee1febcaf",
+      "calls": [
+        "inside_room"
+      ],
+      "id": "fn_0061_in_town",
+      "name": "in_town",
+      "span": {
+        "body_end_line": 3470,
+        "body_start_line": 3450,
+        "signature_line": 3449
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "ptr1"
+        },
+        {
+          "op": "=",
+          "target": "ptr2"
+        },
+        {
+          "op": "=",
+          "target": "ptr3"
+        },
+        {
+          "op": "=",
+          "target": "ptr4"
+        },
+        {
+          "op": "=",
+          "target": "c"
+        },
+        {
+          "op": "=",
+          "target": "ptr2"
+        },
+        {
+          "op": "=",
+          "target": "ptr3"
+        },
+        {
+          "op": "=",
+          "target": "ptr4"
+        },
+        {
+          "op": "=",
+          "target": "ptr1"
+        },
+        {
+          "op": "=",
+          "target": "ptr2"
+        },
+        {
+          "op": "=",
+          "target": "ptr2"
+        }
+      ],
+      "body_line_count": 34,
+      "body_sha256": "04a92fe7ddf634184dd94c0b6154c92f6cbe440d0213adf70b7402cfa6736bf8",
+      "calls": [
+        "Strcpy",
+        "memset",
+        "in_rooms",
+        "strchr",
+        "IS_SHOP"
+      ],
+      "id": "fn_0062_move_update",
+      "name": "move_update",
+      "span": {
+        "body_end_line": 3507,
+        "body_start_line": 3474,
+        "signature_line": 3473
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "minetn_reached"
+        },
+        {
+          "op": "=",
+          "target": "ptr"
+        },
+        {
+          "op": "=",
+          "target": "roomno"
+        },
+        {
+          "op": "=",
+          "target": "rt"
+        },
+        {
+          "op": "=",
+          "target": "msg_given"
+        },
+        {
+          "op": "=",
+          "target": "run"
+        },
+        {
+          "op": "=",
+          "target": "oracle"
+        },
+        {
+          "op": "=",
+          "target": "msg_given"
+        },
+        {
+          "op": "=",
+          "target": "msg_given"
+        },
+        {
+          "op": "=",
+          "target": "rt"
+        },
+        {
+          "op": "=",
+          "target": "rt"
+        },
+        {
+          "op": "=",
+          "target": "rtype"
+        },
+        {
+          "op": "=",
+          "target": "has_court"
+        },
+        {
+          "op": "=",
+          "target": "has_swamp"
+        },
+        {
+          "op": "=",
+          "target": "has_morgue"
+        },
+        {
+          "op": "=",
+          "target": "has_zoo"
+        },
+        {
+          "op": "=",
+          "target": "has_barracks"
+        },
+        {
+          "op": "=",
+          "target": "has_temple"
+        },
+        {
+          "op": "=",
+          "target": "has_beehive"
+        },
+        {
+          "op": "=",
+          "target": "rt"
+        },
+        {
+          "op": "=",
+          "target": "rt"
+        },
+        {
+          "op": "=",
+          "target": "rt"
+        },
+        {
+          "op": "=",
+          "target": "rt"
+        },
+        {
+          "op": "=",
+          "target": "mtmp"
+        },
+        {
+          "op": "=",
+          "target": "mtmp"
+        },
+        {
+          "op": "=",
+          "target": "msleeping"
+        }
+      ],
+      "body_line_count": 154,
+      "body_sha256": "e9901bc4047ea088789aded2555b1112475a4b6037b17dce27b300fbd4b2f65a",
+      "calls": [
+        "move_update",
+        "u_left_shop",
+        "In_mines",
+        "in_town",
+        "record_achievement",
+        "u_entered_shop",
+        "pline",
+        "You",
+        "furniture_present",
+        "midnight",
+        "u_locomotion",
+        "monstinroom",
+        "SetVoice",
+        "verbalize",
+        "Hello",
+        "intemple",
+        "room_discovered",
+        "search_special",
+        "DEADMONSTER",
+        "isok",
+        "rn2",
+        "wake_msg"
+      ],
+      "id": "fn_0063_check_special_room",
+      "name": "check_special_room",
+      "span": {
+        "body_end_line": 3665,
+        "body_start_line": 3512,
+        "signature_line": 3511
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "lev"
+        },
+        {
+          "op": "=",
+          "target": "typ"
+        },
+        {
+          "op": "=",
+          "target": "traphere"
+        },
+        {
+          "op": "=",
+          "target": "surf"
+        },
+        {
+          "op": "=",
+          "target": "ttyp"
+        },
+        {
+          "op": "=",
+          "target": "surf"
+        },
+        {
+          "op": "=",
+          "target": "ttyp"
+        },
+        {
+          "op": "=",
+          "target": "surf"
+        }
+      ],
+      "body_line_count": 84,
+      "body_sha256": "89fd58005a0c52a6f71e36b4b1310b7600d2ba526e826f49f835bccab3d0a17e",
+      "calls": [
+        "digests",
+        "You",
+        "s_suffix",
+        "mon_nam",
+        "pline",
+        "is_pool",
+        "is_floater",
+        "is_clinger",
+        "hliquid",
+        "You_cant",
+        "is_lava",
+        "likes_lava",
+        "OBJ_AT",
+        "IS_THRONE",
+        "IS_SINK",
+        "pline_The",
+        "IS_GRAVE",
+        "IS_FOUNTAIN",
+        "IS_DOOR",
+        "IS_ALTAR",
+        "There",
+        "t_at",
+        "can_reach_floor",
+        "is_pit",
+        "uteetering_at_seen_pit",
+        "P_SKILL",
+        "rider_cant_reach",
+        "surface"
+      ],
+      "id": "fn_0064_pickup_checks",
+      "name": "pickup_checks",
+      "span": {
+        "body_end_line": 3757,
+        "body_start_line": 3674,
+        "signature_line": 3673
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "count"
+        },
+        {
+          "op": "=",
+          "target": "multi"
+        },
+        {
+          "op": "=",
+          "target": "ret"
+        },
+        {
+          "op": "=",
+          "target": "ret"
+        },
+        {
+          "op": "=",
+          "target": "tmpcount"
+        },
+        {
+          "op": "=",
+          "target": "ret"
+        }
+      ],
+      "body_line_count": 16,
+      "body_sha256": "1ebc3f5ab7efa24dfc5f1a8b8108cd6c012a67fa8b2e2866643fb564672ea68e",
+      "calls": [
+        "pickup_checks",
+        "loot_mon",
+        "pickup"
+      ],
+      "id": "fn_0065_dopickup",
+      "name": "dopickup",
+      "span": {
+        "body_end_line": 3777,
+        "body_start_line": 3762,
+        "signature_line": 3761
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "x0"
+        },
+        {
+          "op": "=",
+          "target": "y0"
+        },
+        {
+          "op": "=",
+          "target": "m0"
+        },
+        {
+          "op": "=",
+          "target": "i0"
+        },
+        {
+          "op": "=",
+          "target": "corrct"
+        },
+        {
+          "op": "=",
+          "target": "noturn"
+        },
+        {
+          "op": "=",
+          "target": "run"
+        },
+        {
+          "op": "=",
+          "target": "x"
+        },
+        {
+          "op": "=",
+          "target": "y"
+        },
+        {
+          "op": "=",
+          "target": "infront"
+        },
+        {
+          "op": "=",
+          "target": "x"
+        },
+        {
+          "op": "=",
+          "target": "y"
+        },
+        {
+          "op": "=",
+          "target": "mtmp"
+        },
+        {
+          "op": "=",
+          "target": "typ"
+        },
+        {
+          "op": "=",
+          "target": "x"
+        },
+        {
+          "op": "=",
+          "target": "y"
+        },
+        {
+          "op": "=",
+          "target": "run"
+        },
+        {
+          "op": "=",
+          "target": "typ"
+        },
+        {
+          "op": "=",
+          "target": "typ"
+        },
+        {
+          "op": "=",
+          "target": "typ"
+        },
+        {
+          "op": "=",
+          "target": "run"
+        },
+        {
+          "op": "=",
+          "target": "run"
+        },
+        {
+          "op": "=",
+          "target": "run"
+        },
+        {
+          "op": "=",
+          "target": "i"
+        },
+        {
+          "op": "=",
+          "target": "corrct"
+        },
+        {
+          "op": "=",
+          "target": "noturn"
+        },
+        {
+          "op": "=",
+          "target": "i0"
+        },
+        {
+          "op": "=",
+          "target": "x0"
+        },
+        {
+          "op": "=",
+          "target": "y0"
+        },
+        {
+          "op": "=",
+          "target": "m0"
+        },
+        {
+          "op": "=",
+          "target": "run"
+        },
+        {
+          "op": "=",
+          "target": "run"
+        },
+        {
+          "op": "=",
+          "target": "x"
+        },
+        {
+          "op": "=",
+          "target": "y"
+        },
+        {
+          "op": "=",
+          "target": "run"
+        },
+        {
+          "op": "=",
+          "target": "run"
+        },
+        {
+          "op": "=",
+          "target": "run"
+        },
+        {
+          "op": "=",
+          "target": "run"
+        },
+        {
+          "op": "=",
+          "target": "corrct"
+        },
+        {
+          "op": "=",
+          "target": "corrct"
+        },
+        {
+          "op": "=",
+          "target": "i0"
+        },
+        {
+          "op": "=",
+          "target": "i0"
+        },
+        {
+          "op": "=",
+          "target": "dx"
+        },
+        {
+          "op": "=",
+          "target": "dy"
+        },
+        {
+          "op": "=",
+          "target": "i"
+        },
+        {
+          "op": "=",
+          "target": "i"
+        },
+        {
+          "op": "=",
+          "target": "dx"
+        },
+        {
+          "op": "=",
+          "target": "y0"
+        },
+        {
+          "op": "=",
+          "target": "i"
+        },
+        {
+          "op": "=",
+          "target": "i"
+        },
+        {
+          "op": "=",
+          "target": "ux"
+        },
+        {
+          "op": "=",
+          "target": "i"
+        },
+        {
+          "op": "=",
+          "target": "i"
+        },
+        {
+          "op": "+=",
+          "target": "i"
+        },
+        {
+          "op": "=",
+          "target": "last_str_turn"
+        },
+        {
+          "op": "=",
+          "target": "dx"
+        },
+        {
+          "op": "=",
+          "target": "dy"
+        }
+      ],
+      "body_line_count": 161,
+      "body_sha256": "43350251a851713f8b9bdabd7078a4c44ee4130cb56a837292454abb0f9fab5c",
+      "calls": [
+        "NODIAG",
+        "You",
+        "nomul",
+        "isok",
+        "u_at",
+        "m_at",
+        "M_AP_TYPE",
+        "mon_visible",
+        "is_safemon",
+        "pline_xy",
+        "upstart",
+        "a_monnam",
+        "avoid_moving_on_trap",
+        "IS_OBSTRUCTED",
+        "IS_AIR",
+        "closed_door",
+        "is_door_mappear",
+        "set_msg_xy",
+        "dist2",
+        "is",
+        "orthogonal",
+        "is_pool_or_lava",
+        "avoid_moving_on_liquid",
+        "pline_The"
+      ],
+      "id": "fn_0066_lookaround",
+      "name": "lookaround",
+      "span": {
+        "body_end_line": 3944,
+        "body_start_line": 3784,
+        "signature_line": 3783
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "lev_p"
+        }
+      ],
+      "body_line_count": 11,
+      "body_sha256": "58c5f89e05c22fed7008f669e93c37ced7f9c51754fcb12709491693aa20baeb",
+      "calls": [
+        "IS_DOOR",
+        "Is_rogue_level"
+      ],
+      "id": "fn_0067_doorless_door",
+      "name": "doorless_door",
+      "span": {
+        "body_end_line": 3959,
+        "body_start_line": 3949,
+        "signature_line": 3948
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "x"
+        },
+        {
+          "op": "=",
+          "target": "y"
+        }
+      ],
+      "body_line_count": 22,
+      "body_sha256": "1adde682cf1cbeb9d08af5a9657bf5badf953ac78662ed11bbdc6750bca5a0a0",
+      "calls": [
+        "goodpos",
+        "NODIAG",
+        "IS_DOOR",
+        "doorless_door",
+        "block_door",
+        "bad_rock",
+        "cant_squeeze_thru"
+      ],
+      "id": "fn_0068_crawl_destination",
+      "name": "crawl_destination",
+      "span": {
+        "body_end_line": 3986,
+        "body_start_line": 3965,
+        "signature_line": 3964
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "x"
+        },
+        {
+          "op": "=",
+          "target": "y"
+        },
+        {
+          "op": "=",
+          "target": "mtmp"
+        }
+      ],
+      "body_line_count": 21,
+      "body_sha256": "b2def6bf33fbce3b39492c8809212cec1f11c1ad8903d7f611e636d431333760",
+      "calls": [
+        "dochugw",
+        "isok",
+        "u_at",
+        "m_at",
+        "M_AP_TYPE",
+        "noattacks",
+        "is_hider",
+        "helpless",
+        "onscary",
+        "canspotmon"
+      ],
+      "id": "fn_0069_monster_nearby",
+      "name": "monster_nearby",
+      "span": {
+        "body_end_line": 4012,
+        "body_start_line": 3992,
+        "signature_line": 3991
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "time_botl"
+        },
+        {
+          "op": "=",
+          "target": "run"
+        },
+        {
+          "op": "=",
+          "target": "travel"
+        },
+        {
+          "op": "=",
+          "target": "travel1"
+        },
+        {
+          "op": "=",
+          "target": "mv"
+        },
+        {
+          "op": "=",
+          "target": "travelmap"
+        },
+        {
+          "op": "=",
+          "target": "multi"
+        }
+      ],
+      "body_line_count": 18,
+      "body_sha256": "b0ac0fd99a2fa7e6781955b117e079bedfb631b54b81bb2b7a1f28e70a5bb020",
+      "calls": [
+        "moveloop",
+        "selection_free"
+      ],
+      "id": "fn_0070_end_running",
+      "name": "end_running",
+      "span": {
+        "body_end_line": 4033,
+        "body_start_line": 4016,
+        "signature_line": 4015
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "|=",
+          "target": "botl"
+        },
+        {
+          "op": "=",
+          "target": "uinvulnerable"
+        },
+        {
+          "op": "=",
+          "target": "usleep"
+        },
+        {
+          "op": "=",
+          "target": "multi"
+        },
+        {
+          "op": "=",
+          "target": "nval"
+        },
+        {
+          "op": "=",
+          "target": "multi_reason"
+        }
+      ],
+      "body_line_count": 12,
+      "body_sha256": "974d9a7b179acae1145fa7016da34a8cb2eb845ffed04546307ed52c72fbdea8",
+      "calls": [
+        "end_running",
+        "cmdq_clear"
+      ],
+      "id": "fn_0071_nomul",
+      "name": "nomul",
+      "span": {
+        "body_end_line": 4048,
+        "body_start_line": 4037,
+        "signature_line": 4036
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "botl"
+        },
+        {
+          "op": "=",
+          "target": "multi"
+        },
+        {
+          "op": "=",
+          "target": "nomovemsg"
+        },
+        {
+          "op": "=",
+          "target": "nomovemsg"
+        },
+        {
+          "op": "=",
+          "target": "nomovemsg"
+        },
+        {
+          "op": "=",
+          "target": "usleep"
+        },
+        {
+          "op": "=",
+          "target": "multi_reason"
+        },
+        {
+          "op": "=",
+          "target": "afternmv"
+        }
+      ],
+      "body_line_count": 31,
+      "body_sha256": "77bdbde7f2932862e73f205f1d130fb4c8e3cdab9912a6f6f176198f60dc7cb4",
+      "calls": [
+        "pline",
+        "Unchanging",
+        "strncmpi",
+        "You",
+        "an",
+        "pmname",
+        "int",
+        "it",
+        "weight_cap"
+      ],
+      "id": "fn_0072_unmul",
+      "name": "unmul",
+      "span": {
+        "body_end_line": 4083,
+        "body_start_line": 4053,
+        "signature_line": 4052
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "wailmsg"
+        },
+        {
+          "op": "=",
+          "target": "who"
+        },
+        {
+          "op": "=",
+          "target": "uhp"
+        },
+        {
+          "op": "=",
+          "target": "i"
+        },
+        {
+          "op": "=",
+          "target": "powercnt"
+        },
+        {
+          "op": "=",
+          "target": "uhp"
+        }
+      ],
+      "body_line_count": 32,
+      "body_sha256": "df2a51699a2338f1863f270094c67b8c1c14360bade7eec27fb4c5f27fb3deea",
+      "calls": [
+        "Role_if",
+        "Race_if",
+        "pline",
+        "SIZE",
+        "Soundeffect",
+        "You_hear"
+      ],
+      "id": "fn_0073_maybe_wail",
+      "name": "maybe_wail",
+      "span": {
+        "body_end_line": 4118,
+        "body_start_line": 4087,
+        "signature_line": 4086
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "uhpmax"
+        },
+        {
+          "op": "=",
+          "target": "dmg"
+        },
+        {
+          "op": "=",
+          "target": "usaving_grace"
+        },
+        {
+          "op": "=",
+          "target": "saving_grace_turn"
+        }
+      ],
+      "body_line_count": 49,
+      "body_sha256": "bf89d55b567bac44011d7faf434fce03b35190873ba7a2783833266258aff3c8",
+      "calls": [
+        "impossible",
+        "turn",
+        "death",
+        "livelog_printf",
+        "s",
+        "end_running",
+        "unmul",
+        "is_fainted",
+        "reset_faint"
+      ],
+      "id": "fn_0074_saving_grace",
+      "name": "saving_grace",
+      "span": {
+        "body_end_line": 4172,
+        "body_start_line": 4124,
+        "signature_line": 4123
+      }
+    },
+    {
+      "assignments": [],
+      "body_line_count": 6,
+      "body_sha256": "c647cf71e9fc25fc910c4b1501d21d50101f88675bee0392d498caa3931f9bf6",
+      "calls": [
+        "pline"
+      ],
+      "id": "fn_0075_showdamage",
+      "name": "showdamage",
+      "span": {
+        "body_end_line": 4182,
+        "body_start_line": 4177,
+        "signature_line": 4176
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "botl"
+        },
+        {
+          "op": "-=",
+          "target": "mh"
+        },
+        {
+          "op": "=",
+          "target": "mhmax"
+        },
+        {
+          "op": "=",
+          "target": "n"
+        },
+        {
+          "op": "-=",
+          "target": "uhp"
+        },
+        {
+          "op": "=",
+          "target": "uhpmax"
+        },
+        {
+          "op": "=",
+          "target": "format"
+        }
+      ],
+      "body_line_count": 37,
+      "body_sha256": "5b987eee239b0bc7d2b75cca18e4ffa8239e9dc689d6fe84683f1e3dc0261411",
+      "calls": [
+        "impossible",
+        "end_running",
+        "showdamage",
+        "rehumanize",
+        "maybe_wail",
+        "saving_grace",
+        "Strcpy",
+        "urgent_pline",
+        "done"
+      ],
+      "id": "fn_0076_losehp",
+      "name": "losehp",
+      "span": {
+        "body_end_line": 4222,
+        "body_start_line": 4186,
+        "signature_line": 4185
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "save_ELev"
+        },
+        {
+          "op": "=",
+          "target": "save_BLev"
+        },
+        {
+          "op": "=",
+          "target": "afternmv"
+        },
+        {
+          "op": "&=",
+          "target": "ELevitation"
+        },
+        {
+          "op": "&=",
+          "target": "BLevitation"
+        },
+        {
+          "op": "=",
+          "target": "carrcap"
+        },
+        {
+          "op": "=",
+          "target": "mlet"
+        },
+        {
+          "op": "=",
+          "target": "carrcap"
+        },
+        {
+          "op": "=",
+          "target": "carrcap"
+        },
+        {
+          "op": "=",
+          "target": "carrcap"
+        },
+        {
+          "op": "=",
+          "target": "carrcap"
+        },
+        {
+          "op": "=",
+          "target": "carrcap"
+        },
+        {
+          "op": "-=",
+          "target": "carrcap"
+        },
+        {
+          "op": "-=",
+          "target": "carrcap"
+        },
+        {
+          "op": "=",
+          "target": "ELevitation"
+        },
+        {
+          "op": "=",
+          "target": "BLevitation"
+        }
+      ],
+      "body_line_count": 51,
+      "body_sha256": "e70413aada45ea18b2aad572d9e9c720aa48d29381ab6bc7c09caa3c419cd674",
+      "calls": [
+        "float_vs_flight",
+        "ACURR",
+        "can_carry",
+        "strongmonst",
+        "Is_airlevel",
+        "max"
+      ],
+      "id": "fn_0077_weight_cap",
+      "name": "weight_cap",
+      "span": {
+        "body_end_line": 4276,
+        "body_start_line": 4226,
+        "signature_line": 4225
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "otmp"
+        },
+        {
+          "op": "=",
+          "target": "wt"
+        },
+        {
+          "op": "=",
+          "target": "oclass"
+        },
+        {
+          "op": "+=",
+          "target": "wt"
+        },
+        {
+          "op": "+=",
+          "target": "wt"
+        },
+        {
+          "op": "=",
+          "target": "otmp"
+        },
+        {
+          "op": "=",
+          "target": "wc"
+        }
+      ],
+      "body_line_count": 14,
+      "body_sha256": "0f0516530a1af8df1684db74442d79c1c7faca4ca0ab33c8785d655ce3077a2f",
+      "calls": [
+        "throws_rocks",
+        "weight_cap"
+      ],
+      "id": "fn_0078_inv_weight",
+      "name": "inv_weight",
+      "span": {
+        "body_end_line": 4295,
+        "body_start_line": 4282,
+        "signature_line": 4281
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "wt"
+        },
+        {
+          "op": "=",
+          "target": "cap"
+        }
+      ],
+      "body_line_count": 10,
+      "body_sha256": "fb459cc5edfead213eaa2f08dbc076cff2433c6fdc23b6051c3c063f0a6b43c4",
+      "calls": [
+        "inv_weight",
+        "min"
+      ],
+      "id": "fn_0079_calc_capacity",
+      "name": "calc_capacity",
+      "span": {
+        "body_end_line": 4312,
+        "body_start_line": 4303,
+        "signature_line": 4302
+      }
+    },
+    {
+      "assignments": [],
+      "body_line_count": 3,
+      "body_sha256": "ff369b05211a2d94846508d875fee286b8ecbb758f432b97f58c1c440a19526d",
+      "calls": [
+        "calc_capacity"
+      ],
+      "id": "fn_0080_near_capacity",
+      "name": "near_capacity",
+      "span": {
+        "body_end_line": 4318,
+        "body_start_line": 4316,
+        "signature_line": 4315
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "wt"
+        }
+      ],
+      "body_line_count": 5,
+      "body_sha256": "7172c313a70675438a6f963467db50fc912a7822577a860d7c82700a4b913b4f",
+      "calls": [
+        "inv_weight"
+      ],
+      "id": "fn_0081_max_capacity",
+      "name": "max_capacity",
+      "span": {
+        "body_end_line": 4326,
+        "body_start_line": 4322,
+        "signature_line": 4321
+      }
+    },
+    {
+      "assignments": [],
+      "body_line_count": 10,
+      "body_sha256": "a9a2390f5ec1dc78d4f4843976c82192ebcca093fe28914516a6671a3cb9de45",
+      "calls": [
+        "near_capacity",
+        "pline1",
+        "You_cant"
+      ],
+      "id": "fn_0082_check_capacity",
+      "name": "check_capacity",
+      "span": {
+        "body_end_line": 4339,
+        "body_start_line": 4330,
+        "signature_line": 4329
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "cnt"
+        },
+        {
+          "op": "=",
+          "target": "nmwidth"
+        },
+        {
+          "op": "=",
+          "target": "mcount"
+        },
+        {
+          "op": "=",
+          "target": "ocount"
+        },
+        {
+          "op": "=",
+          "target": "num_entries"
+        },
+        {
+          "op": "=",
+          "target": "weightlist"
+        },
+        {
+          "op": "=",
+          "target": "i"
+        },
+        {
+          "op": "=",
+          "target": "wt"
+        },
+        {
+          "op": "=",
+          "target": "idx"
+        },
+        {
+          "op": "=",
+          "target": "wtyp"
+        },
+        {
+          "op": "=",
+          "target": "unique"
+        },
+        {
+          "op": "=",
+          "target": "cm"
+        },
+        {
+          "op": "=",
+          "target": "nm"
+        },
+        {
+          "op": "=",
+          "target": "i"
+        },
+        {
+          "op": "=",
+          "target": "oc_name"
+        },
+        {
+          "op": "=",
+          "target": "i"
+        },
+        {
+          "op": "=",
+          "target": "wt"
+        },
+        {
+          "op": "=",
+          "target": "idx"
+        },
+        {
+          "op": "=",
+          "target": "wt"
+        },
+        {
+          "op": "=",
+          "target": "wtyp"
+        },
+        {
+          "op": "=",
+          "target": "unique"
+        },
+        {
+          "op": "=",
+          "target": "oc_name_known"
+        },
+        {
+          "op": "=",
+          "target": "nm"
+        },
+        {
+          "op": "=",
+          "target": "i"
+        },
+        {
+          "op": "=",
+          "target": "i"
+        },
+        {
+          "op": "=",
+          "target": "nm"
+        }
+      ],
+      "body_line_count": 62,
+      "body_sha256": "65304045c6621a0007b97a9d079b65f4122fe811fa83768c4a7cc0e14057e500",
+      "calls": [
+        "alloc",
+        "decl_globals_init",
+        "init_objects",
+        "Snprintf",
+        "CapitalMon",
+        "the",
+        "an",
+        "dupstr",
+        "Strcpy",
+        "simple_typename",
+        "qsort",
+        "raw_printf",
+        "free",
+        "raw_print",
+        "freedynamicdata"
+      ],
+      "id": "fn_0083_dump_weights",
+      "name": "dump_weights",
+      "span": {
+        "body_end_line": 4413,
+        "body_start_line": 4352,
+        "signature_line": 4351
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "i1"
+        },
+        {
+          "op": "=",
+          "target": "i2"
+        }
+      ],
+      "body_line_count": 7,
+      "body_sha256": "53648e328e9f1fcdb8aacd77022313c7d52ef1c428b8088abf1db2a1ef4c7193",
+      "calls": [
+        "strcmp"
+      ],
+      "id": "fn_0084_cmp_weights",
+      "name": "cmp_weights",
+      "span": {
+        "body_end_line": 4423,
+        "body_start_line": 4417,
+        "signature_line": 4416
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "otmp"
+        },
+        {
+          "op": "=",
+          "target": "ct"
+        },
+        {
+          "op": "=",
+          "target": "otmp"
+        }
+      ],
+      "body_line_count": 11,
+      "body_sha256": "74c2285823269c1f00b336fa1a7e17c21a294fd3465118fee8ef68d544740cbe",
+      "calls": [],
+      "id": "fn_0085_inv_cnt",
+      "name": "inv_cnt",
+      "span": {
+        "body_end_line": 4437,
+        "body_start_line": 4427,
+        "signature_line": 4426
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "oclass"
+        },
+        {
+          "op": "=",
+          "target": "otmp"
+        }
+      ],
+      "body_line_count": 8,
+      "body_sha256": "b9e774bf2d3453e645b9244b7ebac73c7976e7eb38e36620e2884bb7e771a82e",
+      "calls": [],
+      "id": "fn_0086_money_cnt",
+      "name": "money_cnt",
+      "span": {
+        "body_end_line": 4452,
+        "body_start_line": 4445,
+        "signature_line": 4444
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "new_typ"
+        },
+        {
+          "op": "=",
+          "target": "db_ice_now"
+        },
+        {
+          "op": "=",
+          "target": "db_ice_now"
+        },
+        {
+          "op": "=",
+          "target": "old_typ"
+        }
+      ],
+      "body_line_count": 22,
+      "body_sha256": "65d7186314af198ed1a7f04b1a6d5de498a1903c9cea029bc10f554eeebd1093",
+      "calls": [
+        "spot_time_left",
+        "spot_stop_timers",
+        "obj_ice_effects"
+      ],
+      "id": "fn_0087_spot_checks",
+      "name": "spot_checks",
+      "span": {
+        "body_end_line": 4477,
+        "body_start_line": 4456,
+        "signature_line": 4455
+      }
+    },
+    {
+      "assignments": [
+        {
+          "op": "=",
+          "target": "divsgn"
+        },
+        {
+          "op": "=",
+          "target": "y"
+        },
+        {
+          "op": "=",
+          "target": "divsgn"
+        },
+        {
+          "op": "=",
+          "target": "y"
+        },
+        {
+          "op": "=",
+          "target": "divsgn"
+        },
+        {
+          "op": "=",
+          "target": "x"
+        },
+        {
+          "op": "=",
+          "target": "r"
+        },
+        {
+          "op": "=",
+          "target": "m"
+        }
+      ],
+      "body_line_count": 21,
+      "body_sha256": "6ac5ae79d8a14e41d495db760d7aec8180075a03d31874a73a737778777571ac",
+      "calls": [
+        "panic"
+      ],
+      "id": "fn_0088_rounddiv",
+      "name": "rounddiv",
+      "span": {
+        "body_end_line": 4502,
+        "body_start_line": 4482,
+        "signature_line": 4481
+      }
+    }
+  ],
+  "nir_version": 1,
+  "source": "nethack-c/src/hack.c",
+  "source_sha256": "ac9dd7e72d4a72366019fc5c148d29d5c08f20d25f223920cd9f56abd0b4b3df"
+}

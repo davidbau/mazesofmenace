@@ -470,11 +470,11 @@ export function which_armor(mon, flag) {
 export function m_dowear(mon, creation) {
     const ptr = mon.type || {};
     // Guards: verysmall, nohands, animal skip entirely
-    if ((ptr.size || 0) < MZ_SMALL || nohands(ptr) || is_animal(ptr))
+    if ((ptr.msize || 0) < MZ_SMALL || nohands(ptr) || is_animal(ptr))
         return;
     // Mindless skip unless mummy or skeleton at creation
     if (is_mindless(ptr)
-        && (!creation || (ptr.symbol !== S_MUMMY
+        && (!creation || (ptr.mlet !== S_MUMMY
                           && mon.mndx !== PM_SKELETON)))
         return;
 
@@ -492,7 +492,7 @@ export function m_dowear(mon, creation) {
     if (!mwep || !(objectData[mwep.otyp]?.big))
         m_dowear_type(mon, W_ARMS, creation, false);
     m_dowear_type(mon, W_ARMG, creation, false);
-    if (!slithy(ptr) && ptr.symbol !== S_CENTAUR)
+    if (!slithy(ptr) && ptr.mlet !== S_CENTAUR)
         m_dowear_type(mon, W_ARMF, creation, false);
     if (can_wear_armor)
         m_dowear_type(mon, W_ARM, creation, false);
@@ -539,7 +539,7 @@ function m_dowear_type(mon, flag, creation, racialexception) {
         case W_ARMC:
             if (armcat !== ARM_CLOAK) continue;
             // mummy wrapping is only cloak for monsters bigger than human
-            if ((mon.type?.size || 0) > MZ_HUMAN && obj.otyp !== MUMMY_WRAPPING)
+            if ((mon.type?.msize || 0) > MZ_HUMAN && obj.otyp !== MUMMY_WRAPPING)
                 continue;
             break;
         case W_ARMH:
@@ -656,7 +656,7 @@ export function m_lose_armor(mon, obj, polyspot, map) {
 // Remove/destroy armor when monster polymorphs.
 export function mon_break_armor(mon, polyspot, map) {
     const mdat = mon.type || {};
-    const handless_or_tiny = nohands(mdat) || (mdat.size || 0) < MZ_SMALL;
+    const handless_or_tiny = nohands(mdat) || (mdat.msize || 0) < MZ_SMALL;
     let otmp;
 
     if (breakarm(mdat)) {
@@ -704,7 +704,7 @@ export function mon_break_armor(mon, polyspot, map) {
         }
     }
 
-    if (handless_or_tiny || slithy(mdat) || mdat.symbol === S_CENTAUR) {
+    if (handless_or_tiny || slithy(mdat) || mdat.mlet === S_CENTAUR) {
         if ((otmp = which_armor(mon, W_ARMF)) != null) {
             m_lose_armor(mon, otmp, polyspot, map);
         }
@@ -713,7 +713,7 @@ export function mon_break_armor(mon, polyspot, map) {
     // Saddle: simplified — just drop it if monster can no longer be saddled
     if ((otmp = which_armor(mon, W_SADDLE)) != null) {
         // can_saddle: check humanoid or animal + right size
-        const canSaddle = !nohands(mdat) || (is_animal(mdat) && (mdat.size || 0) >= MZ_SMALL);
+        const canSaddle = !nohands(mdat) || (is_animal(mdat) && (mdat.msize || 0) >= MZ_SMALL);
         if (!canSaddle) {
             m_lose_armor(mon, otmp, polyspot, map);
         }

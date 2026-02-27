@@ -211,7 +211,7 @@ export function setDiscoveryState(state) {
 }
 
 // -----------------------------------------------------------------------
-// Discoveries display UI (moved from commands.js)
+// Discoveries display UI (moved from cmd.js)
 // C ref: o_init.c dodiscovered()
 // -----------------------------------------------------------------------
 

@@ -118,8 +118,8 @@ function is_neuter(ptr) { return !!(ptr.flags2 & M2_NEUTER); }
 function is_domestic(ptr) { return !!(ptr.flags2 & M2_DOMESTIC); }
 function is_elf(ptr) { return !!(ptr.flags2 & M2_ELF); }
 function is_dwarf(ptr) { return !!(ptr.flags2 & M2_DWARF); }
-function is_hobbit(ptr) { return ptr.symbol === S_HUMANOID && ptr.name && ptr.name.includes('hobbit'); }
-function is_giant_species(ptr) { return ptr.symbol === S_GIANT && ptr.name && ptr.name.includes('giant'); }
+function is_hobbit(ptr) { return ptr.mlet === S_HUMANOID && ptr.name && ptr.name.includes('hobbit'); }
+function is_giant_species(ptr) { return ptr.mlet === S_GIANT && ptr.name && ptr.name.includes('giant'); }
 // C ref: mondata.h:87 — #define is_armed(ptr) attacktype(ptr, AT_WEAP)
 function is_armed(ptr) { return ptr.attacks && ptr.attacks.some(a => a.type === AT_WEAP); }
 // C ref: #define is_sword(otmp) (otmp->otyp >= SHORT_SWORD && otmp->otyp <= KATANA)
@@ -129,12 +129,12 @@ function is_mplayer_idx(mndx) { return mndx >= PM_ARCHEOLOGIST && mndx <= PM_WIZ
 // C ref: is_lminion — lawful minion (angel aligned to lawful god)
 // During level generation, we approximate: angel with A_LAWFUL alignment
 function is_lminion(mon) {
-    return mon.type?.symbol === S_ANGEL && (mon.type?.align || 0) > 0;
+    return mon.type?.mlet === S_ANGEL && (mon.type?.align || 0) > 0;
 }
 function attacktype(ptr, atyp) { return ptr.attacks && ptr.attacks.some(a => a.type === atyp); }
 function is_animal(ptr) { return !!(ptr.flags1 & 0x00040000); } // M1_ANIMAL
 function mindless(ptr) { return !!(ptr.flags1 & 0x00010000); } // M1_MINDLESS
-function is_ndemon(ptr) { return ptr.symbol === S_DEMON; }
+function is_ndemon(ptr) { return ptr.mlet === S_DEMON; }
 function always_hostile(ptr) { return !!(ptr.flags2 & M2_HOSTILE); }
 function always_peaceful(ptr) { return !!(ptr.flags2 & M2_PEACEFUL); }
 function playerHasAmulet(map) {
@@ -441,7 +441,7 @@ function is_placeholder(mndx) {
 }
 
 // C ref: makemon.c mk_gen_ok()
-function mk_gen_ok(mndx, mvflagsmask, genomask) {
+export function mk_gen_ok(mndx, mvflagsmask, genomask) {
     const ptr = mons[mndx];
     // mvitals not tracked yet — skip mvflagsmask check
     if (ptr.geno & genomask) return false;
@@ -459,15 +459,15 @@ function init_mongen_order() {
     mclass_maxf = new Array(MAXMCLASSES).fill(0);
     for (let i = LOW_PM; i < SPECIAL_PM; i++) {
         mongen_order.push(i);
-        const mlet = mons[i].symbol;
+        const mlet = mons[i].mlet;
         const freq = mons[i].geno & G_FREQ;
         if (freq > mclass_maxf[mlet])
             mclass_maxf[mlet] = freq;
     }
     // C ref: qsort by (mlet << 8) | difficulty, ascending
     mongen_order.sort((a, b) => {
-        const ka = (mons[a].symbol << 8) | mons[a].difficulty;
-        const kb = (mons[b].symbol << 8) | mons[b].difficulty;
+        const ka = (mons[a].mlet << 8) | mons[a].difficulty;
+        const kb = (mons[b].mlet << 8) | mons[b].difficulty;
         return ka - kb;
     });
 }
@@ -475,14 +475,14 @@ function init_mongen_order() {
 // C ref: makemon.c:2007-2039 adj_lev()
 function adj_lev(ptr, depth = 1) {
     const ulevel = 1; // during level gen
-    let tmp = ptr.level;
+    let tmp = ptr.mlevel;
     if (tmp > 49) return 50;
     let tmp2 = depth - tmp;
     if (tmp2 < 0) tmp--;
     else tmp += Math.floor(tmp2 / 5);
-    tmp2 = ulevel - ptr.level;
+    tmp2 = ulevel - ptr.mlevel;
     if (tmp2 > 0) tmp += Math.floor(tmp2 / 4);
-    tmp2 = Math.floor(3 * ptr.level / 2);
+    tmp2 = Math.floor(3 * ptr.mlevel / 2);
     if (tmp2 > 49) tmp2 = 49;
     return tmp > tmp2 ? tmp2 : (tmp > 0 ? tmp : 0);
 }
@@ -505,7 +505,7 @@ export function mkclass(monclass, spc, depth = 1, atyp = A_NONE) {
     // Find first monster of this class in sorted order
     let first;
     for (first = 0; first < SPECIAL_PM; first++) {
-        if (mons[mongen_order[first]].symbol === monclass) break;
+        if (mons[mongen_order[first]].mlet === monclass) break;
     }
     if (first === SPECIAL_PM) return -1;
 
@@ -519,7 +519,7 @@ export function mkclass(monclass, spc, depth = 1, atyp = A_NONE) {
     const nums = new Array(SPECIAL_PM + 1).fill(0);
     let last;
 
-    for (last = first; last < SPECIAL_PM && mons[mongen_order[last]].symbol === monclass; last++) {
+    for (last = first; last < SPECIAL_PM && mons[mongen_order[last]].mlet === monclass; last++) {
         const mndx = mongen_order[last];
 
         // Alignment filter (for mkclass_aligned)
@@ -572,9 +572,10 @@ export function def_char_to_monclass(ch) {
 // cf. makemon.c:1539 — return the birth limit for a monster type
 // (how many of this monster can exist before the population is considered too large)
 // C ref: global.h MAXMONNO = 120
+// TRANSLATOR: AUTO (makemon.c:1539)
 export function mbirth_limit(mndx) {
-    const MAXMONNO = 120;
-    return mndx === PM_NAZGUL ? 9 : mndx === PM_ERINYS ? 3 : MAXMONNO;
+  const MAXMONNO = 120;
+  return (mndx === PM_NAZGUL ? 9 : mndx === PM_ERINYS ? 3 : MAXMONNO);
 }
 
 // ========================================================================
@@ -605,15 +606,15 @@ export function newmonhp(mndx, depth = 1) {
     let hp;
     let basehp = 0;
 
-    if (ptr.symbol === S_GOLEM) {
+    if (ptr.mlet === S_GOLEM) {
         hp = golemhp(mndx);
     } else if (mndx === PM_DEATH || mndx === PM_PESTILENCE || mndx === PM_FAMINE) {
         basehp = 10;
         hp = c_d(basehp, 8);
-    } else if ((ptr.level || 0) > 49) {
-        hp = 2 * ((ptr.level || 0) - 6);
+    } else if ((ptr.mlevel || 0) > 49) {
+        hp = 2 * ((ptr.mlevel || 0) - 6);
         m_lev = Math.floor(hp / 4);
-    } else if (ptr.symbol === S_DRAGON && mndx >= PM_GRAY_DRAGON) {
+    } else if (ptr.mlet === S_DRAGON && mndx >= PM_GRAY_DRAGON) {
         basehp = m_lev;
         // In_endgame() path is not yet modeled in JS runtime.
         hp = (4 * basehp) + c_d(basehp, 4);
@@ -694,7 +695,7 @@ function mongets(mon,otyp) {
 // m_initthrow -- create missile objects
 // C ref: makemon.c:149-159
 // ========================================================================
-
+export 
 function m_initthrow(mon, otyp, oquan) {
     const otmp = mksobj(otyp, true, false);
     otmp.quan = rn1(oquan, 3);
@@ -711,7 +712,7 @@ function m_initthrow(mon, otyp, oquan) {
 
 function m_initweap(mon, mndx, depth) {
     const ptr = mons[mndx];
-    const mm = ptr.symbol; // mlet
+    const mm = ptr.mlet; // mlet
     const bias = is_lord(ptr) ? 1 : is_prince(ptr) ? 2 : is_nasty(ptr) ? 1 : 0;
 
     switch (mm) {
@@ -978,7 +979,7 @@ function m_initweap(mon, mndx, depth) {
 
     // C ref: makemon.c:571 — offensive item check, OUTSIDE the switch,
     // always called for ALL monsters. rn2(75) is always consumed.
-    if (mon.mlevel > rn2(75)) {
+    if ((mon.m_lev ?? 0) > rn2(75)) {
         // C ref: makemon.c -> muse.c rnd_offensive_item()
         const otyp = rnd_offensive_item(mon);
         if (otyp) mongets(mon, otyp);
@@ -996,7 +997,7 @@ function rnd_defensive_item(mndx) {
 
     // Animals, exploders, mindless, ghosts, Kops don't get defensive items
     if (is_animal(ptr) || attacktype(ptr, AT_EXPL) || mindless(ptr)
-        || ptr.symbol === S_GHOST || ptr.symbol === S_KOP) {
+        || ptr.mlet === S_GHOST || ptr.mlet === S_KOP) {
         return 0;
     }
 
@@ -1046,7 +1047,7 @@ function rnd_misc_item(mon) {
 
     // Animals, exploders, mindless, ghosts, Kops don't get misc items
     if (is_animal(ptr) || attacktype(ptr, AT_EXPL) || mindless(ptr)
-        || ptr.symbol === S_GHOST || ptr.symbol === S_KOP) {
+        || ptr.mlet === S_GHOST || ptr.mlet === S_KOP) {
         return 0;
     }
 
@@ -1091,7 +1092,7 @@ function rnd_offensive_item(mon) {
 
     // Animals, exploders, mindless, ghosts, Kops don't get offensive items.
     if (is_animal(ptr) || attacktype(ptr, AT_EXPL) || mindless(ptr)
-        || ptr.symbol === S_GHOST || ptr.symbol === S_KOP) {
+        || ptr.mlet === S_GHOST || ptr.mlet === S_KOP) {
         return 0;
     }
 
@@ -1160,7 +1161,7 @@ function m_initinv(mon, mndx, depth, m_lev, map) {
     if (map?.flags?.is_rogue_lev || map?.flags?.roguelike || map?.flags?.is_rogue) {
         return;
     }
-    const mm = ptr.symbol;
+    const mm = ptr.mlet;
     switch (mm) {
     case S_HUMAN:
         if (is_mercenary(ptr)) {
@@ -1369,7 +1370,7 @@ function polyok_for_newcham(ptr) {
     const f2 = ptr.flags2 || 0;
     if (f2 & M2_PNAME) return false;
     if (f2 & M2_WERE) return false;
-    if ((f2 & M2_HUMAN) && ptr.symbol !== S_KOP) return false;
+    if ((f2 & M2_HUMAN) && ptr.mlet !== S_KOP) return false;
     return true;
 }
 
@@ -1472,14 +1473,14 @@ function apply_newcham_from_base(mon, baseMndx, depth, map = null) {
 
     // C ref: mgender_from_permonst() -- RNG call for ungendered forms.
     if (!is_male(target) && !is_female(target) && !is_neuter(target)) {
-        if (!rn2(10) && !(target.symbol === S_VAMPIRE || is_vampshifter_mndx(baseMndx))) {
+        if (!rn2(10) && !(target.mlet === S_VAMPIRE || is_vampshifter_mndx(baseMndx))) {
             // female toggle omitted; RNG parity only.
         }
     }
 
     const { hp: newHp, m_lev: newLev } = newmonhp(newMndx, depth || 1);
 
-    const symEntry = def_monsyms[target.symbol];
+    const symEntry = def_monsyms[target.mlet];
     mon.mndx = newMndx;
     mon.type = target;
     mon.name = target.name;
@@ -1488,7 +1489,8 @@ function apply_newcham_from_base(mon, baseMndx, depth, map = null) {
     mon.attacks = target.attacks;
     mon.mhp = newHp;
     mon.mhpmax = newHp;
-    mon.mlevel = newLev;
+    mon.m_lev = newLev;
+    mon.m_lev = newLev;
     mon.mac = target.ac;
     mon.speed = target.speed;
     return true;
@@ -1638,7 +1640,7 @@ function boulderBlocks(ptr, map, x, y) {
 function eelDryPlacementFails(ptr, typ) {
     // C ref: teleport.c goodpos() eel clause:
     // else if (mdat->mlet == S_EEL && rn2(13) && !ignorewater) return FALSE;
-    if (!ptr || ptr.symbol !== S_EEL) return false;
+    if (!ptr || ptr.mlet !== S_EEL) return false;
     if (IS_POOL(typ)) return false;
     return rn2(13) !== 0;
 }
@@ -1688,7 +1690,7 @@ function makemonGoodpos(map, x, y, ptr, mmflags = NO_MM_FLAGS, avoidMonpos = tru
         if (IS_POOL(loc.typ) && !ignoreWater) {
             const f1 = ptr.flags1 || 0;
             if (!(f1 & (M1_SWIM | M1_AMPHIBIOUS | M1_FLY))) return false;
-        } else if (ptr.symbol === S_EEL && !ignoreWater && eelDryPlacementFails(ptr, loc.typ)) {
+        } else if (ptr.mlet === S_EEL && !ignoreWater && eelDryPlacementFails(ptr, loc.typ)) {
             return false;
         } else if (IS_LAVA(loc.typ) && !ignoreLava) {
             const f1 = ptr.flags1 || 0;
@@ -1941,9 +1943,9 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
 
     // C ref: makemon.c:1299-1310 — post-placement switch on mlet
     let mimicApType = null;
-    if (ptr.symbol === S_MIMIC) {
+    if (ptr.mlet === S_MIMIC) {
         mimicApType = set_mimic_sym(mndx, x, y, map, depth);
-    } else if ((ptr.symbol === S_SPIDER || ptr.symbol === S_SNAKE) && map) {
+    } else if ((ptr.mlet === S_SPIDER || ptr.mlet === S_SNAKE) && map) {
         // C ref: in_mklev && x && y → mkobj_at(RANDOM_CLASS, x, y, TRUE)
         // mkobj_at creates a random object (consumes RNG), then hideunder (no RNG)
         if (x && y) {
@@ -1955,7 +1957,7 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
     // C ref: makemon.c:1299-1340 switch(ptr->mlet), nymph/jabberwock case.
     // This check happens regardless of in_mklev; preserve RNG side effects.
     const hasAmulet = playerHasAmulet(map);
-    if ((ptr.symbol === S_JABBERWOCK || ptr.symbol === S_NYMPH)
+    if ((ptr.mlet === S_JABBERWOCK || ptr.mlet === S_NYMPH)
         && !hasAmulet && rn2(5)) {
         // mtmp->msleeping = TRUE; RNG side effect only.
     }
@@ -1986,7 +1988,7 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
 
     // Build full monster object for gameplay.
     // C ref: makemon.c creates/places monster before group and inventory setup.
-    const symEntry = def_monsyms[ptr.symbol];
+    const symEntry = def_monsyms[ptr.mlet];
     const mon = {
         mndx,
         m_id,
@@ -1999,6 +2001,7 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
         mhp: hp,
         mhpmax: hp,
         mlevel: m_lev,
+        m_lev,
         mac: ptr.ac,
         speed: ptr.speed,
         movement: 0,  // C ref: *mtmp = cg.zeromonst (zero-init)

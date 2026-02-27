@@ -179,7 +179,7 @@ function gethungry(player) {
 }
 
 // cf. eat.c morehungry() — increase hunger by amount
-function morehungry(player, num) {
+export function morehungry(player, num) {
     player.hunger -= num;
     newuhs(player, true);
 }
@@ -243,7 +243,7 @@ function unfaint(player) {
 }
 
 // cf. eat.c is_fainted() — check if hero is fainted from hunger
-function is_fainted(player) {
+export function is_fainted(player) {
     return (player.hungerState || NOT_HUNGRY) === FAINTED;
 }
 
@@ -363,13 +363,13 @@ function should_givit(type, ptr) {
         chance = 15;
         break;
     }
-    return ptr.level > rn2(chance);
+    return ptr.mlevel > rn2(chance);
 }
 
 // cf. eat.c temp_givit() — grant temporary intrinsic from corpse
-function temp_givit(type, ptr) {
+export function temp_givit(type, ptr) {
     const chance = (type === STONE_RES) ? 6 : (type === ACID_RES) ? 3 : 0;
-    return chance ? (ptr.level > rn2(chance)) : false;
+    return chance ? (ptr.mlevel > rn2(chance)) : false;
 }
 
 // cf. eat.c givit() — grant intrinsic from corpse
@@ -449,7 +449,7 @@ function givit(player, type, ptr) {
 }
 
 // cf. eat.c eye_of_newt_buzz() — energy boost from eating newt
-function eye_of_newt_buzz(player) {
+export function eye_of_newt_buzz(player) {
     if (rn2(3) || 3 * (player.pw || 0) <= 2 * (player.pwmax || 0)) {
         const oldPw = player.pw || 0;
         player.pw = (player.pw || 0) + rnd(3);
@@ -566,7 +566,7 @@ function cpostfx(player, pm, display) {
         // Would set lycanthropy
         break;
     case PM_NURSE:
-        player.hp = player.hpmax;
+        player.uhp = player.uhpmax;
         check_intrinsics = true;
         break;
     case PM_STALKER:
@@ -756,7 +756,7 @@ function garlic_breath(player, map) {
     if (!map) return;
     for (const mon of map.monsters) {
         if (mon.dead) continue;
-        const sym = mon.type?.symbol ?? (mons[mon.mndx]?.symbol);
+        const sym = mon.type?.mlet ?? (mons[mon.mndx]?.mlet);
         // cf. mondata.c olfaction() — these monster types lack olfaction
         if (sym === S_GOLEM || sym === S_EYE || sym === S_JELLY
             || sym === S_PUDDING || sym === S_BLOB || sym === S_VORTEX
@@ -832,13 +832,13 @@ function fpostfx(player, otmp) {
         // Would grant strength, heal
         {
             const hpChange = otmp.cursed ? -rnd(20) : rnd(20);
-            player.hp += hpChange;
-            if (player.hp > player.hpmax) {
+            player.uhp += hpChange;
+            if (player.uhp > player.uhpmax) {
                 if (!rn2(17))
-                    player.hpmax++;
-                player.hp = player.hpmax;
-            } else if (player.hp <= 0) {
-                player.hp = 1; // simplified — C version kills or rehumanizes
+                    player.uhpmax++;
+                player.uhp = player.uhpmax;
+            } else if (player.uhp <= 0) {
+                player.uhp = 1; // simplified — C version kills or rehumanizes
             }
         }
         break;
@@ -1462,7 +1462,7 @@ async function handleEat(player, display, game) {
             if (eatenItem.otyp === CLOVE_OF_GARLIC && map) {
                 for (const mon of map.monsters) {
                     if (mon.dead) continue;
-                    const sym = mon.type?.symbol ?? (mons[mon.mndx]?.symbol);
+                    const sym = mon.type?.mlet ?? (mons[mon.mndx]?.mlet);
                     // cf. mondata.c olfaction() — golems, eyes, jellies, puddings,
                     // blobs, vortexes, elementals, fungi, and lights lack olfaction.
                     if (sym === S_GOLEM || sym === S_EYE || sym === S_JELLY
@@ -1487,45 +1487,18 @@ async function handleEat(player, display, game) {
 // Exports
 // ============================================================
 
-export {
-    handleEat,
-    // Hunger system
-    hu_stat,
-    SATIATED, NOT_HUNGRY, HUNGRY, WEAK, FAINTING, FAINTED, STARVED,
-    init_uhunger, gethungry, morehungry, lesshungry, newuhs,
-    unfaint, is_fainted, reset_faint,
-    // Food state
-    is_edible, food_xname, foodword, obj_nutrition,
-    touchfood, reset_eat, do_reset_eat,
-    food_disappears, food_substitution, recalc_wt, adj_victual_nutrition,
-    // Choking
-    choke,
-    // Intrinsics
-    intrinsic_possible, should_givit, temp_givit, givit,
-    eye_of_newt_buzz, corpse_intrinsic,
-    // Corpse effects
-    maybe_cannibal, fix_petrification, cprefx, cpostfx,
-    // Conducts
-    eating_conducts, violated_vegetarian,
-    // Rotten/corpse
-    Hear_again, rottenfood, eatcorpse,
-    // Food effects
-    garlic_breath, fprefx, fpostfx,
-    // Accessories
-    bounded_increase, accessory_has_effect, eataccessory, eatspecial,
-    // Tins
-    tin_variety_txt, tin_details, set_tin_variety, tin_variety,
-    costly_tin, use_up_tin, consume_tin, start_tin,
-    // Prompts
-    edibility_prompts, doeat_nonfood, eating_dangerous_corpse,
-    // Callbacks
-    eat_ok, offer_ok, tin_ok, tinopen_ok, floorfood,
-    // Side effects
-    vomit, eaten_stat, consume_oeaten,
-    maybe_finished_meal, cant_finish_meal,
-    Popeye, Finish_digestion, eat_brains,
-    // Constants
-    nonrotting_corpse, nonrotting_food, CANNIBAL_ALLOWED, canchoke,
-    SPINACH_TIN, ROTTEN_TIN, HOMEMADE_TIN,
-    tintxts, TTSZ,
-};
+export { handleEat, // Hunger system
+    hu_stat, SATIATED, NOT_HUNGRY, HUNGRY, WEAK, FAINTING, FAINTED, STARVED, init_uhunger, gethungry, lesshungry, newuhs, unfaint, reset_faint, // Food state
+    is_edible, food_xname, foodword, obj_nutrition, touchfood, reset_eat, do_reset_eat, food_disappears, food_substitution, recalc_wt, adj_victual_nutrition, // Choking
+    choke, // Intrinsics
+    intrinsic_possible, should_givit, givit, corpse_intrinsic, // Corpse effects
+    maybe_cannibal, fix_petrification, cprefx, cpostfx, // Conducts
+    eating_conducts, violated_vegetarian, // Rotten/corpse
+    Hear_again, rottenfood, eatcorpse, // Food effects
+    garlic_breath, fprefx, fpostfx, // Accessories
+    bounded_increase, accessory_has_effect, eataccessory, eatspecial, // Tins
+    tin_variety_txt, tin_details, set_tin_variety, tin_variety, costly_tin, use_up_tin, consume_tin, start_tin, // Prompts
+    edibility_prompts, doeat_nonfood, eating_dangerous_corpse, // Callbacks
+    eat_ok, offer_ok, tin_ok, tinopen_ok, floorfood, // Side effects
+    vomit, eaten_stat, consume_oeaten, maybe_finished_meal, cant_finish_meal, Popeye, Finish_digestion, eat_brains, // Constants
+    nonrotting_corpse, nonrotting_food, CANNIBAL_ALLOWED, canchoke, SPINACH_TIN, ROTTEN_TIN, HOMEMADE_TIN, tintxts, TTSZ };

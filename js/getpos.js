@@ -53,6 +53,7 @@ function applyHiliteForCurrentState() {
 }
 
 // cf. getpos.c:41
+// TRANSLATOR: AUTO
 export function getpos_sethilite(gp_hilitef, gp_getvalidf) {
     clearHiliteIfNeeded();
     getpos_hilitefunc = (typeof gp_hilitef === 'function') ? gp_hilitef : null;
@@ -62,16 +63,23 @@ export function getpos_sethilite(gp_hilitef, gp_getvalidf) {
 }
 
 // cf. getpos.c:72
+// TRANSLATOR: AUTO
 export function getpos_toggle_hilite_state() {
     if (!getpos_hilitefunc) return;
-    clearHiliteIfNeeded();
-    getpos_hilite_state = (getpos_hilite_state + 1) % HiliteStateCount;
-    applyHiliteForCurrentState();
+    if (getpos_hilite_state === HiliteGoodposSymbol) {
+        callHilite(false);
+    }
+    const cycleCount = getposContext?.flags?.bgcolors ? HiliteStateCount : HiliteBackground;
+    getpos_hilite_state = (getpos_hilite_state + 1) % cycleCount;
+    if (getpos_hilite_state === HiliteGoodposSymbol) {
+        callHilite(true);
+    }
 }
 
 // cf. getpos.c:94
+// TRANSLATOR: AUTO
 export function mapxy_valid(x, y) {
-    if (typeof getpos_getvalid !== 'function') return true;
+    if (typeof getpos_getvalid !== 'function') return false;
     return !!getpos_getvalid(x, y);
 }
 

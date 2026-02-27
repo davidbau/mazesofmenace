@@ -70,7 +70,7 @@ function cost(otmp) {
 
 // cf. write.c:61 — getobj callback: which objects can be written on?
 // Blank paper (scroll or spellbook) is SUGGEST; all others are DOWNPLAY or EXCLUDE.
-function write_ok(obj) {
+export function write_ok(obj) {
     if (!obj || (obj.oclass !== SCROLL_CLASS && obj.oclass !== SPBOOK_CLASS))
         return GETOBJ_EXCLUDE;
 
@@ -100,4 +100,4 @@ function new_book_description(booktype) {
     return (compositions.includes(descr) ? 'into ' : '') + descr;
 }
 
-export { cost, write_ok, new_book_description };
+export { cost, new_book_description };

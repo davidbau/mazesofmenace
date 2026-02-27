@@ -20,7 +20,7 @@ function upper_bits(y) {
 }
 
 // cf. isaac64.c:103 — mix 8 values using alternating shift pattern
-function isaac64_mix(x) {
+export function isaac64_mix(x) {
     const SHIFT = [9, 9, 23, 15, 14, 20, 17, 14];
     for (let i = 0; i < 8; i++) {
         x[i] = (x[i] - x[(i + 4) & 7]) & MASK;
@@ -170,19 +170,20 @@ export function isaac64_reseed(ctx, seed_bytes) {
 }
 
 // cf. isaac64.c:161 — return next random uint64
-export function isaac64_next_uint64(ctx) {
-    if (!ctx.n) isaac64_update(ctx);
-    return ctx.r[--ctx.n];
+// TRANSLATOR: AUTO (isaac64.c:161)
+export function isaac64_next_uint64(_ctx) {
+  if (!_ctx.n) isaac64_update(_ctx);
+  return _ctx.r[--_ctx.n];
 }
 
 // cf. isaac64.c:166 — return unbiased random value in [0, n)
-export function isaac64_next_uint(ctx, n) {
-    n = BigInt(n);
-    let r, v, d;
-    do {
-        r = isaac64_next_uint64(ctx);
-        v = r % n;
-        d = r - v;
-    } while (((d + n - 1n) & MASK) < d);
-    return v;
+// TRANSLATOR: AUTO (isaac64.c:166)
+export function isaac64_next_uint(_ctx, _n) {
+  let r, v, d;
+  do {
+    r=isaac64_next_uint64(_ctx);
+    v=r%_n;
+    d=r-v;
+  } while (((d+_n-1)&ISAAC64_MASK)<d);
+  return v;
 }

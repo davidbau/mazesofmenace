@@ -8,7 +8,7 @@
 
 import { A_NONE, A_LAWFUL, A_CHAOTIC, A_NEUTRAL,
          AM_MASK, AM_SHRINE, ROOMOFFSET, TEMPLE,
-         Amask2align, A_WIS,
+         Amask2align, A_WIS, ALL_TRAPS,
          isok } from './config.js';
 import { IS_ALTAR, IS_DOOR, IS_ROOM } from './symbols.js';
 import { rn2, rnd, rn1, d } from './rng.js';
@@ -51,8 +51,6 @@ const MM_EMIN = 0x00000400;
 const MM_ADJACENTOK = 0x00000200;
 const MM_NOMSG = 0x00000800;
 const NO_MM_FLAGS = 0;
-const ALL_TRAPS = -1; // sentinel for mon_learns_traps
-
 // ============================================================================
 // newepri — cf. priest.c:16
 // Allocates EPRI struct on mtmp for temple/alignment/room tracking.
@@ -123,10 +121,11 @@ function histemple_at(priest, x, y, map) {
 // inhistemple — cf. priest.c:161
 // Checks that priest is in his temple room and shrine is properly aligned.
 // ============================================================================
-export function inhistemple(priest, map) {
-    if (!priest || !priest.ispriest) return false;
-    if (!histemple_at(priest, priest.mx, priest.my, map)) return false;
-    return has_shrine(priest, map);
+// TRANSLATOR: AUTO (priest.c:160)
+export function inhistemple(priest) {
+  if (!priest || !priest.ispriest) return false;
+  if (!histemple_at(priest, priest.mx, priest.my)) return false;
+  return has_shrine(priest);
 }
 
 // ============================================================================
@@ -163,8 +162,9 @@ export function findpriest(roomno, map) {
 // p_coaligned — cf. priest.c:370
 // Returns true if player and priest share the same alignment.
 // ============================================================================
+// TRANSLATOR: AUTO (priest.c:369)
 export function p_coaligned(priest, player) {
-    return (player.alignment || 0) === mon_aligntyp(priest);
+  return (player.ualign.type === mon_aligntyp(priest));
 }
 
 // ============================================================================
@@ -592,14 +592,14 @@ export function priest_talk(priest, map, player, display) {
         if (offer === 0) {
             verbalize("Thou shalt regret thine action!");
             if (coaligned) adjalign(player, -1);
-        } else if (offer < ((player.level || 1) * 200)) {
+        } else if (offer < ((player.ulevel || 1) * 200)) {
             if (playerMoney > (offer * 2)) {
                 verbalize("Cheapskate.");
             } else {
                 verbalize("I thank thee for thy contribution.");
                 exercise(player, A_WIS, true);
             }
-        } else if (offer < ((player.level || 1) * 400)) {
+        } else if (offer < ((player.ulevel || 1) * 400)) {
             verbalize("Thou art indeed a pious individual.");
             if (playerMoney < (offer * 2)) {
                 if (coaligned && (player.alignmentRecord || 0) <= ALGN_SINNED) {
@@ -611,7 +611,7 @@ export function priest_talk(priest, map, player, display) {
                 if (!player.clairvoyantTimeout) player.clairvoyantTimeout = 0;
                 player.clairvoyantTimeout += rn1(500, 500);
             }
-        } else if (offer < ((player.level || 1) * 600)
+        } else if (offer < ((player.ulevel || 1) * 600)
                    && (!(player.protectionIntrinsic)
                        || ((player.ublessed || 0) < 20
                            && ((player.ublessed || 0) < 9 || !rn2(player.ublessed || 1))))) {

@@ -6,7 +6,7 @@ import { COLNO, ROWNO, IS_ROOM, IS_DOOR, IS_POOL, IS_LAVA,
          D_CLOSED, D_LOCKED,
          POOL, STAIRS, LADDER, isok } from './config.js';
 import { rn2, rnd, pushRngLogEntry } from './rng.js';
-import { monsterAttackPlayer } from './mhitu.js';
+import { mattacku } from './mhitu.js';
 import { CORPSE, BALL_CLASS, CHAIN_CLASS, ROCK_CLASS, FOOD_CLASS,
          COIN_CLASS, GEM_CLASS,
          PICK_AXE, DWARVISH_MATTOCK, UNICORN_HORN,
@@ -23,7 +23,7 @@ import { couldsee, m_cansee, do_clear_area } from './vision.js';
 import { mattackm, M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED } from './mhitm.js';
 import { is_animal, is_mindless, nohands, nolimbs, unsolid,
          carnivorous, herbivorous, is_metallivore,
-         monNam } from './mondata.js';
+         y_monnam, YMonnam, Monnam } from './mondata.js';
 import { PM_FIRE_ELEMENTAL, PM_SALAMANDER, PM_FLOATING_EYE, PM_GELATINOUS_CUBE,
          PM_LONG_WORM, PM_COCKATRICE, PM_CHICKATRICE, PM_MEDUSA,
          NUMMONS,
@@ -125,7 +125,7 @@ function dog_nutrition(mon, obj) {
             mon.meating = objectData[obj.otyp].delay || 0;
             nutrit = objectData[obj.otyp].nutrition || 0;
         }
-        switch (mdat.size) {
+        switch (mdat.msize) {
             case MZ_TINY:     nutrit *= 8; break;
             case MZ_SMALL:    nutrit *= 6; break;
             default:
@@ -153,7 +153,7 @@ function max_mon_load(mon) {
     if (!mdat) return 0;
     const strong = !!(mdat.flags2 & M2_STRONG);
     const cwt = mdat.weight || 0;
-    const msize = mdat.size || 0;
+    const msize = mdat.msize || 0;
     let maxload;
 
     if (!cwt) {
@@ -203,7 +203,7 @@ export function can_carry(mon, obj) {
 
     if (iquan > 1 && (mdat.flags1 & M1_NOHANDS)) {
         let glomper = false;
-        if (mdat.symbol === S_DRAGON
+        if (mdat.mlet === S_DRAGON
             && (obj.oclass === COIN_CLASS || obj.oclass === GEM_CLASS)) {
             glomper = true;
         } else {
@@ -216,7 +216,7 @@ export function can_carry(mon, obj) {
 
     if (mon.peaceful && !mon.tame) return 0;
     if ((mdat.flags2 & M2_ROCKTHROW) && obj.otyp === BOULDER) return iquan;
-    if (mdat.symbol === S_NYMPH)
+    if (mdat.mlet === S_NYMPH)
         return (obj.oclass === ROCK_CLASS) ? 0 : iquan;
     if (curr_mon_load(mon) + (obj.owt || 0) > max_mon_load(mon)) return 0;
 
@@ -266,7 +266,7 @@ export function dog_eat(mon, obj, map, turnCount, ctx = null) {
         const sawPet = (fov?.canSee ? fov.canSee(startX, startY) : couldsee(map, player, startX, startY))
             && !mon.minvis;
         if (sawPet || (seeObj && !mon.minvis)) {
-            display.putstr_message(`${monNam(mon, { capitalize: true })} eats ${doname(obj, null)}.`);
+            display.putstr_message(`${YMonnam(mon)} eats ${doname(obj, null)}.`);
         } else if (seeObj) {
             display.putstr_message(`It eats ${doname(obj, null)}.`);
         }
@@ -305,7 +305,7 @@ function dog_starve(mon, map, display, player, fov) {
             fov?.canSee ? fov.canSee(mon.mx, mon.my) : false
         );
         if (canSee) {
-            display.putstr_message(`${monNam(mon, { article: 'the', capitalize: true })} starves.`);
+            display.putstr_message(`${Monnam(mon)} starves.`);
         } else if (display) {
             display.putstr_message('You feel sad for a moment.');
         }
@@ -340,9 +340,9 @@ function dog_hunger(mon, edog, turnCount, map, display, player, fov) {
                 fov?.canSee ? fov.canSee(mon.mx, mon.my) : false
             );
             if (canSee) {
-                display.putstr_message(`${monNam(mon, { article: 'the', capitalize: true })} is confused from hunger.`);
+                display.putstr_message(`${Monnam(mon)} is confused from hunger.`);
             } else if (display) {
-                display.putstr_message(`You feel worried about ${monNam(mon)}.`);
+                display.putstr_message(`You feel worried about ${y_monnam(mon)}.`);
             }
         } else if (turnCount > edog.hungrytime + DOG_STARVE
                    || mon.mhp <= 0 || mon.dead) {
@@ -361,7 +361,7 @@ function dog_hunger(mon, edog, turnCount, map, display, player, fov) {
 export function finish_meating(mon) {
     mon.meating = 0;
     if (mon.m_ap_type && mon.m_ap_type !== 0
-        && (mon.type?.symbol || mon.type?.mlet) !== S_MIMIC) {
+        && mon.type?.mlet !== S_MIMIC) {
         mon.m_ap_type = 0;
         mon.mappearance = 0;
     }
@@ -462,7 +462,7 @@ function droppables(mon) {
     let pickaxe = null;
     let unihorn = null;
     let key = null;
-    const verysmall = (mdat.size || 0) === MZ_TINY;
+    const verysmall = (mdat.msize || 0) === MZ_TINY;
 
     if (is_animal(mdat) || is_mindless(mdat)) {
         pickaxe = unihorn = key = dummy;
@@ -555,7 +555,7 @@ function dog_invent(mon, edog, udist, map, turnCount, display, player, fov = nul
                     if (canSeePet) {
                         observeObject(dropObj);
                         // C ref: weapon.c:766 — Monnam(mon) uses ARTICLE_THE
-                        const monLabel = monNam(mon, { article: 'the', capitalize: true });
+                        const monLabel = Monnam(mon);
                         display.putstr_message(`${monLabel} drops ${doname(dropObj, null)}.`);
                     }
                 }
@@ -590,7 +590,7 @@ function dog_invent(mon, edog, udist, map, turnCount, display, player, fov = nul
                     fov?.canSee ? fov.canSee(mon.mx, mon.my) : couldsee(map, player, mon.mx, mon.my)
                 );
                 if (canSeePet) {
-                    display.putstr_message(`${monNam(mon, { capitalize: true })} eats ${doname(obj, null)}.`);
+                    display.putstr_message(`${YMonnam(mon)} eats ${doname(obj, null)}.`);
                 }
                 dog_eat(mon, obj, map, turnCount);
                 return 1;
@@ -629,7 +629,7 @@ function dog_invent(mon, edog, udist, map, turnCount, display, player, fov = nul
                         if (canSeePet) {
                             observeObject(picked);
                             // C ref: dogmove.c:454 — Monnam(mtmp) uses ARTICLE_THE
-                            const monLabel = monNam(mon, { article: 'the', capitalize: true });
+                            const monLabel = Monnam(mon);
                             display.putstr_message(`${monLabel} picks up ${doname(picked, null)}.`);
                         }
                     }
@@ -762,8 +762,8 @@ function score_targ(mon, target, map, player) {
             score -= 1000;
         }
         // C ref: dogmove.c:804-807 — weak target penalty
-        const targLev = target.mlevel || 0;
-        const monLev = mon.mlevel || 0;
+        const targLev = target.m_lev || 0;
+        const monLev = mon.m_lev || 0;
         if ((targLev < 2 && monLev > 5)
             || (monLev > 12 && targLev < monLev - 9)) {
             score -= 25;
@@ -787,7 +787,7 @@ function score_targ(mon, target, map, player) {
 }
 
 // C ref: dogmove.c:842-890 best_target() — find best ranged attack target
-function best_target(mon, forced, map, player) {
+export function best_target(mon, forced, map, player) {
     // C ref: dogmove.c:854 — if (!mtmp->mcansee) return 0;
     const monCanSee = (mon.mcansee !== false)
         && !mon.blind
@@ -825,7 +825,7 @@ export async function pet_ranged_attk(mon, map, player, display, fov = null, gam
     // C ref: dogmove.c:897 — hungry pets only attack 1 in 5
     if (hungry && rn2(5)) return 0;
     if (mtarg.isPlayer) {
-        await monsterAttackPlayer(mon, player, display, game);
+        await mattacku(mon, player, display, game);
         return 1; // acted (MMOVE_DONE)
     }
     // C ref: dogmove.c:918 — mattackm(mtmp, mtarg)
@@ -1171,10 +1171,10 @@ export async function dog_move(mon, map, player, display, fov, after = false, ga
             const target = map.monsterAt(nx, ny);
             if (target && !target.dead) {
                 // C ref: dogmove.c:1114-1128 — balk if target too strong/dangerous.
-                const balk = (mon.mlevel || 1)
+                const balk = (mon.m_lev || 1)
                     + Math.floor((5 * (mon.mhp || 1)) / Math.max(1, mon.mhpmax || 1))
                     - 2;
-                if ((target.mlevel || 0) >= balk
+                if ((target.m_lev || 0) >= balk
                     || (target.tame && mon.tame)
                     || (target.peaceful && (mon.mhp || 1) * 4 < Math.max(1, mon.mhpmax || 1))) {
                     continue;
@@ -1381,11 +1381,11 @@ export async function dog_move(mon, map, player, display, fov, after = false, ga
         if (chi >= 0 && positions[chi] && positions[chi].allowU) {
             if (mon.mleashed) {
                 if (display) {
-                    display.putstr_message(`${monNam(mon, { article: 'the', capitalize: true })} breaks loose of ${mon.female ? 'her' : 'his'} leash!`);
+                    display.putstr_message(`${Monnam(mon)} breaks loose of ${mon.female ? 'her' : 'his'} leash!`);
                 }
                 mon.mleashed = false;
             }
-            await monsterAttackPlayer(mon, player, display, game);
+            await mattacku(mon, player, display, game);
             return 0; // MMOVE_DONE
         }
 
@@ -1399,7 +1399,7 @@ export async function dog_move(mon, map, player, display, fov, after = false, ga
                     : couldsee(map, player, mon.mx, mon.my) || couldsee(map, player, nix, niy)
             );
             if (canSeePet && display) {
-                display.putstr_message(`${monNam(mon, { capitalize: true })} moves reluctantly.`);
+                display.putstr_message(`${YMonnam(mon)} moves reluctantly.`);
             }
         }
 
@@ -1414,7 +1414,7 @@ export async function dog_move(mon, map, player, display, fov, after = false, ga
             const sawPet = fov?.canSee ? fov.canSee(omx, omy) : couldsee(map, player, omx, omy);
             const seeObj = fov?.canSee ? fov.canSee(mon.mx, mon.my) : couldsee(map, player, mon.mx, mon.my);
             if (display && (sawPet || seeObj)) {
-                display.putstr_message(`${monNam(mon, { capitalize: true })} eats ${doname(eatObj, null)}.`);
+                display.putstr_message(`${YMonnam(mon)} eats ${doname(eatObj, null)}.`);
             }
             dog_eat(mon, eatObj, map, turnCount);
         }

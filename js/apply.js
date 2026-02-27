@@ -89,13 +89,14 @@ import { begin_burn, end_burn, obj_has_timer,
 import { maketrap } from './dungeon.js';
 import { tmp_at, nh_delay_output, DISP_BEAM, DISP_END } from './animation.js';
 import { break_wand } from './zap.js';
-import { useupall } from './invent.js';
+import { useupall, update_inventory, sobj_at } from './invent.js';
+import { cansee } from './vision.js';
 
 // -- Inline helpers --
 
 // cf. C macros bigmonst/verysmall (not exported from mondata.js)
-function bigmonst(ptr) { return (ptr.size || 0) >= MZ_LARGE; }
-function verysmall(ptr) { return (ptr.size || 0) < MZ_SMALL; }
+function bigmonst(ptr) { return (ptr.msize || 0) >= MZ_LARGE; }
+function verysmall(ptr) { return (ptr.msize || 0) < MZ_SMALL; }
 
 const MAXLEASHED = 2;
 
@@ -105,6 +106,29 @@ const DIRECTION_KEYS = {
 };
 
 function _nothing_happens() { return "Nothing happens."; }
+
+function t_at(x, y, map) {
+    if (!map || !Array.isArray(map.traps)) return null;
+    for (const t of map.traps) {
+        if (t && t.x === x && t.y === y) return t;
+    }
+    return null;
+}
+
+function m_at(x, y, map) {
+    if (!map) return null;
+    if (typeof map.monsterAt === 'function') return map.monsterAt(x, y);
+    if (Array.isArray(map.monsters)) {
+        for (const mon of map.monsters) {
+            if (mon && mon.mx === x && mon.my === y) return mon;
+        }
+    }
+    return null;
+}
+
+function u_at(player, x, y) {
+    return !!(player && player.x === x && player.y === y);
+}
 
 // Internal: is this object type ignitable? (mirrors light.c ignitable)
 function _ignitable(obj) {
@@ -225,6 +249,7 @@ export function unleash_all(player, map) {
 }
 
 // cf. apply.c:757 -- leashable: can monster be leashed?
+// Autotranslated from apply.c:757
 export function leashable(mtmp) {
     const data = mtmp.data || mons[mtmp.mnum] || {};
     return (mtmp.mnum !== PM_LONG_WORM
@@ -445,6 +470,7 @@ function dorub() { pline("You rub... but nothing special happens."); }
 function dojump() { You_cant("jump very far."); }
 
 // cf. apply.c:2163 -- tinnable
+// Autotranslated from apply.c:2163
 export function tinnable(corpse) {
     if (corpse.oeaten) return false;
     const mdat = mons[corpse.corpsenm];

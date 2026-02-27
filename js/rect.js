@@ -76,7 +76,7 @@ export function rnd_rect() {
 }
 
 // cf. rect.c:116 — intersection of two rectangles, or null
-function intersect(r1, r2) {
+export function intersect(r1, r2) {
     if (r2.lx > r1.hx || r2.ly > r1.hy || r2.hx < r1.lx || r2.hy < r1.ly)
         return null;
     const r3 = {

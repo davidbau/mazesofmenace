@@ -19,11 +19,8 @@ import { CLR_MAX, NO_COLOR } from './symbols.js';
 import { hasGivenName, type_is_pname, is_mplayer,
          is_animal, is_mindless, is_humanoid } from './mondata.js';
 
-// Re-export existing simplified implementations from mondata.js.
-// These are used throughout the codebase via mondata.js imports already;
-// re-exporting here so do_name.js can serve as the canonical module for
-// C callers that import from do_name.c.
-export { monDisplayName, monNam, hasGivenName } from './mondata.js';
+// Re-export helper needed by x_monnam naming logic.
+export { hasGivenName } from './mondata.js';
 
 // ========================================================================
 // Article constants — cf. do_name.c article enum
@@ -100,17 +97,19 @@ export function Mgender(mtmp) {
 // Returns the creature type name. C has pmnames[] array per gender;
 // JS monsters just have a single .name field.
 // ========================================================================
-export function pmname(pm, _mgender) {
-    // JS monsters don't have gendered pmnames; just return .name
-    return pm?.name || 'monster';
+// TRANSLATOR: AUTO (do_name.c:1302)
+export function pmname(pm, mgender) {
+  if (mgender < MALE || mgender >= NUM_MGENDERS || !pm.pmnames[mgender]) mgender = NEUTRAL;
+  return pm.pmnames[mgender];
 }
 
 // ========================================================================
 // mon_pmname — cf. do_name.c:1312
 // Returns the creature type name for a specific monster instance.
 // ========================================================================
+// TRANSLATOR: AUTO (do_name.c:1312)
 export function mon_pmname(mon) {
-    return pmname(mon?.type || {}, Mgender(mon));
+  return pmname(mon.data, Mgender(mon));
 }
 
 // ========================================================================

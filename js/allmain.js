@@ -62,10 +62,11 @@ import { initAnimation, configureAnimation, setAnimationMode } from './animation
 // then moveloop_turnend() for once-per-turn effects.
 // opts.skipMonsterMove: skip movemon (used by some test harnesses)
 // opts.computeFov: recompute FOV before movemon (C ref: vision_recalc runs in domove)
+// TRANSLATOR: AUTO
 export async function moveloop_core(game, opts = {}) {
-    const player = game.player;
+    const player = (game.u || game.player);
     if (opts.computeFov) {
-        game.fov.compute(game.map, player.x, player.y);
+        game.fov.compute((game.lev || game.map), player.x, player.y);
     }
     if (!Number.isFinite(player.umovement)) {
         player.umovement = NORMAL_SPEED;
@@ -77,7 +78,7 @@ export async function moveloop_core(game, opts = {}) {
         let monscanmove = false;
         if (!opts.skipMonsterMove) {
             do {
-                monscanmove = await movemon(game.map, player, game.display, game.fov, game);
+                monscanmove = await movemon((game.lev || game.map), player, game.display, game.fov, game);
                 if (player.umovement >= NORMAL_SPEED)
                     break; /* it's now your turn */
             } while (monscanmove);
@@ -94,7 +95,7 @@ export async function moveloop_core(game, opts = {}) {
     } while (player.umovement < NORMAL_SPEED);
 
     // C ref: allmain.c end of moveloop_core — check for player death
-    if (player.isDead || player.hp <= 0) {
+    if (player.isDead || player.uhp <= 0) {
         if (!player.deathCause) {
             player.deathCause = 'died';
         }
@@ -113,14 +114,14 @@ export async function moveloop_core(game, opts = {}) {
 //                    flags, travelPath, runMode
 export function moveloop_turnend(game) {
     // C ref: allmain.c:239 — settrack() called after movemon, before moves++
-    settrack(game.player);
+    settrack((game.u || game.player));
     game.turnCount++;
-    game.player.turns = game.turnCount;
+    (game.u || game.player).turns = game.turnCount;
     setCurrentTurn(game.turnCount);
     setOutputContext(game.display);
     nh_timeout({
-        player: game.player,
-        map: game.map,
+        player: (game.u || game.player),
+        map: (game.lev || game.map),
         display: game.display,
     });
     // C ref: allmain.c -- random spawn happens before svm.moves++.
@@ -130,26 +131,26 @@ export function moveloop_turnend(game) {
 
     // Minimal C-faithful wounded-legs timer (set_wounded_legs): while active,
     // DEX stays penalized; recover when timeout expires.
-    if ((game.player.woundedLegsTimeout || 0) > 0) {
-        game.player.woundedLegsTimeout--;
-        if (game.player.woundedLegsTimeout <= 0 && game.player.attributes) {
-            game.player.woundedLegsTimeout = 0;
-            game.player.attributes[A_DEX] = Math.min(25, game.player.attributes[A_DEX] + 1);
-            game.player.justHealedLegs = true;
+    if (((game.u || game.player).woundedLegsTimeout || 0) > 0) {
+        (game.u || game.player).woundedLegsTimeout--;
+        if ((game.u || game.player).woundedLegsTimeout <= 0 && (game.u || game.player).attributes) {
+            (game.u || game.player).woundedLegsTimeout = 0;
+            (game.u || game.player).attributes[A_DEX] = Math.min(25, (game.u || game.player).attributes[A_DEX] + 1);
+            (game.u || game.player).justHealedLegs = true;
         }
     }
     // C ref: allmain.c repeat loop behavior for repeated searching.
     // When wounded legs heal during repeated search, interrupt the repeat.
-    if (game.player.justHealedLegs
+    if ((game.u || game.player).justHealedLegs
         && game.multi > 0
         && game.cmdKey === 's'.charCodeAt(0)) {
-        game.player.justHealedLegs = false;
+        (game.u || game.player).justHealedLegs = false;
         game.multi = 0;
         game.display.putstr_message('Your leg feels better.');
     }
 
     // C ref: mon.c m_calcdistress() — temporary flee timeout handling.
-    for (const mon of game.map.monsters) {
+    for (const mon of (game.lev || game.map).monsters) {
         if (mon.dead) continue;
         if (mon.fleetim && mon.fleetim > 0) {
             mon.fleetim--;
@@ -161,13 +162,13 @@ export function moveloop_turnend(game) {
     }
 
     // C ref: mon.c m_calcdistress() shapechange + lycanthropy pass.
-    for (const mon of game.map.monsters) {
+    for (const mon of (game.lev || game.map).monsters) {
         if (mon.dead) continue;
-        runtimeDecideToShapeshift(mon, game.player.dungeonLevel);
+        runtimeDecideToShapeshift(mon, (game.u || game.player).dungeonLevel);
         if (mon.type && (mon.type.flags2 & M2_WERE)) {
             were_change(mon, {
-                player: game.player,
-                map: game.map,
+                player: (game.u || game.player),
+                map: (game.lev || game.map),
                 fov: game.fov,
                 display: game.display,
             });
@@ -175,90 +176,90 @@ export function moveloop_turnend(game) {
     }
 
     // C ref: allmain.c:226-227 — reallocate movement to monsters via mcalcmove
-    allocateMonsterMovement(game.map);
+    allocateMonsterMovement((game.lev || game.map));
 
     // C ref: allmain.c:232-236 — occasionally spawn a new monster.
     // New monster spawns after movement allocation and therefore loses its first turn.
-    if (!rn2(70) && !(game.map?.flags?.nomongen) && !(game.map?.flags?.is_tutorial)) {
-        setMakemonPlayerContext(game.player);
-        makemon(null, 0, 0, 0, game.player.dungeonLevel, game.map);
+    if (!rn2(70) && !((game.lev || game.map)?.flags?.nomongen) && !((game.lev || game.map)?.flags?.is_tutorial)) {
+        setMakemonPlayerContext((game.u || game.player));
+        makemon(null, 0, 0, 0, (game.u || game.player).dungeonLevel, (game.lev || game.map));
     }
 
     // C ref: allmain.c:238 u_calc_moveamt(wtcap)
-    u_calc_moveamt(game.player);
+    u_calc_moveamt((game.u || game.player));
 
     // C ref: allmain.c:295-301 — regen_hp(mvl_wtcap)
     regen_hp(game);
 
     // C ref: allmain.c:341-343 — autosearch for players with Searching
     // intrinsic (Archeologists/Rangers at level 1, Rogues at 10, etc.)
-    if (game.player.searching && game.multi >= 0) {
-        dosearch0(game.player, game.map, game.display, game);
+    if ((game.u || game.player).searching && game.multi >= 0) {
+        dosearch0((game.u || game.player), (game.lev || game.map), game.display, game);
     }
 
     // C ref: allmain.c:351 dosounds() — ambient sounds
     moveloop_dosounds(game);
 
     // C ref: allmain.c:374 — water/air planes update moving bubbles/clouds each turn.
-    if (game.map?.flags?.is_waterlevel || game.map?.flags?.is_airlevel) {
-        if (game.map?._water && game.player) {
-            game.map._water.heroPos = {
-                x: game.player.x,
-                y: game.player.y,
-                dx: game.player.dx || 0,
-                dy: game.player.dy || 0,
+    if ((game.lev || game.map)?.flags?.is_waterlevel || (game.lev || game.map)?.flags?.is_airlevel) {
+        if ((game.lev || game.map)?._water && (game.u || game.player)) {
+            (game.lev || game.map)._water.heroPos = {
+                x: (game.u || game.player).x,
+                y: (game.u || game.player).y,
+                dx: (game.u || game.player).dx || 0,
+                dy: (game.u || game.player).dy || 0,
             };
-            game.map._water.onHeroMoved = (x, y) => {
-                game.player.x = x;
-                game.player.y = y;
+            (game.lev || game.map)._water.onHeroMoved = (x, y) => {
+                (game.u || game.player).x = x;
+                (game.u || game.player).y = y;
                 if (game.fov?.compute) {
-                    game.fov.compute(game.map, game.player.x, game.player.y);
+                    game.fov.compute((game.lev || game.map), (game.u || game.player).x, (game.u || game.player).y);
                 }
             };
-            game.map._water.onVisionRecalc = () => {
+            (game.lev || game.map)._water.onVisionRecalc = () => {
                 if (game.fov?.compute) {
-                    game.fov.compute(game.map, game.player.x, game.player.y);
+                    game.fov.compute((game.lev || game.map), (game.u || game.player).x, (game.u || game.player).y);
                 }
             };
         }
-        movebubbles(game.map);
+        movebubbles((game.lev || game.map));
     }
 
     // C ref: allmain.c:353 gethungry()
     // eat.c:3186 — rn2(20) for accessory hunger timing
     rn2(20);
-    game.player.hunger--;
-    if (game.player.hunger <= 0) {
+    (game.u || game.player).hunger--;
+    if ((game.u || game.player).hunger <= 0) {
         game.display.putstr_message('You faint from lack of food.');
-        game.player.hunger = 1;
-        game.player.hp -= rnd(3);
-        if (game.player.hp <= 0) {
-            game.player.deathCause = 'starvation';
+        (game.u || game.player).hunger = 1;
+        (game.u || game.player).hp -= rnd(3);
+        if ((game.u || game.player).hp <= 0) {
+            (game.u || game.player).deathCause = 'starvation';
         }
     }
-    if (game.player.hunger === 150) {
+    if ((game.u || game.player).hunger === 150) {
         game.display.putstr_message('You are beginning to feel weak.');
     }
-    if (game.player.hunger === 300) {
+    if ((game.u || game.player).hunger === 300) {
         game.display.putstr_message('You are beginning to feel hungry.');
     }
 
     // C ref: allmain.c:354 age_spells() — decrement spell retention each turn
-    ageSpells(game.player);
+    ageSpells((game.u || game.player));
 
     // C ref: attrib.c exerper() — periodic exercise updates.
     // C's svm.moves starts at 1 and increments before exerper/exerchk.
     const moves = game.turnCount + 1;
-    exerper(game.player, moves);
+    exerper((game.u || game.player), moves);
 
     // C ref: attrib.c exerchk()
-    exerchk(game.player, moves);
+    exerchk((game.u || game.player), moves);
 
     // C ref: allmain.c:359 — engrave wipe check
-    const dex = game.player.attributes ? game.player.attributes[A_DEX] : 14;
+    const dex = (game.u || game.player).attributes ? (game.u || game.player).attributes[A_DEX] : 14;
     if (!rn2(40 + dex * 3)) {
         // C ref: allmain.c:359-360 u_wipe_engr(rnd(3))
-        wipe_engr_at(game.map, game.player.x, game.player.y, rnd(3), false);
+        wipe_engr_at((game.lev || game.map), (game.u || game.player).x, (game.u || game.player).y, rnd(3), false);
     }
 
     // C ref: allmain.c:414 seer_turn check
@@ -269,9 +270,9 @@ export function moveloop_turnend(game) {
     // C ref: allmain.c:385-393 — immobile turn countdown and unmul().
     if (game.multi < 0) {
         if (++game.multi === 0) {
-            unmul(null, game.player, game.display, game);
-            if (game.player?.utotype) {
-                deferred_goto(game.player, game);
+            unmul(null, (game.u || game.player), game.display, game);
+            if ((game.u || game.player)?.utotype) {
+                deferred_goto((game.u || game.player), game);
             }
         }
     }
@@ -322,16 +323,16 @@ function u_calc_moveamt(player) {
 // all others return on a triggered sound.
 export function moveloop_dosounds(game) {
     if (game.flags && game.flags.acoustics === false) return;
-    const hallu = game.player?.hallucinating ? 1 : 0;
+    const hallu = (game.u || game.player)?.hallucinating ? 1 : 0;
     const playerInShop = (() => {
-        const loc = game.map?.at?.(game.player.x, game.player.y);
+        const loc = (game.lev || game.map)?.at?.((game.u || game.player).x, (game.u || game.player).y);
         if (!loc || !Number.isFinite(loc.roomno)) return false;
         const ridx = loc.roomno - ROOMOFFSET;
-        const room = game.map?.rooms?.[ridx];
+        const room = (game.lev || game.map)?.rooms?.[ridx];
         return !!(room && Number.isFinite(room.rtype) && room.rtype >= SHOPBASE);
     })();
-    const tendedShop = (game.map?.monsters || []).some((m) => m && !m.dead && m.isshk);
-    const f = game.map.flags || {};
+    const tendedShop = ((game.lev || game.map)?.monsters || []).some((m) => m && !m.dead && m.isshk);
+    const f = (game.lev || game.map).flags || {};
     if (f.nfountains && !rn2(400)) {
         const fountainMsg = [
             'You hear bubbling water.',
@@ -578,7 +579,7 @@ export function maybe_deferred_goto_after_rhack(game, result, opts = {}) {
     const { skipTurnEnd = false } = opts;
     if (!game?.player?.utotype) return;
     if (!(result && result.tookTime) || skipTurnEnd) {
-        deferred_goto(game.player, game);
+        deferred_goto((game.u || game.player), game);
     }
 }
 
@@ -643,12 +644,12 @@ async function _drainOccupation(game, coreOpts, onTimedTurn) {
 // JS doesn't track wtcap or umoved, so we skip the gate.
 // This causes rn2(100) to be consumed when C would skip it in overencumbered+moved cases.
 function regen_hp(game) {
-    const player = game.player;
+    const player = (game.u || game.player);
     // C ref: allmain.c:656-660 — non-polymorph branch, encumbrance-gated
-    if (player.hp < player.hpmax) {
+    if (player.uhp < player.uhpmax) {
         const con = player.attributes ? player.attributes[A_CON] : 10;
         // C ref: allmain.c:661 — heal = (ulevel + ACURR(A_CON)) > rn2(100)
-        let heal = (player.level + con) > rn2(100) ? 1 : 0;
+        let heal = (player.ulevel + con) > rn2(100) ? 1 : 0;
         // C ref: allmain.c:663 — U_CAN_REGEN bonus: +1 heal
         if (player.regeneration) {
             heal += 1;
@@ -656,15 +657,15 @@ function regen_hp(game) {
         // C ref: allmain.c:665 — Sleepy+asleep bonus: +1 heal
         // (not tracked in JS yet)
         if (heal) {
-            player.hp += heal;
-            if (player.hp > player.hpmax)
-                player.hp = player.hpmax;
+            player.uhp += heal;
+            if (player.uhp > player.uhpmax)
+                player.uhp = player.uhpmax;
             // C ref: allmain.c:670 — stop voluntary multi-turn activity if fully healed
-            if (player.hp === player.hpmax) {
+            if (player.uhp === player.uhpmax) {
                 // interrupt_multi("You are in full health.")
                 if (game.multi > 0
                     && !game.travelPath?.length
-                    && !game.runMode) {
+                    && !((game.svc?.context?.run || game.context?.run || 0) > 0)) {
                     game.multi = 0;
                     if (game.flags?.verbose !== false) {
                         game.display.putstr_message('You are in full health.');
@@ -727,6 +728,11 @@ export class NetHackGame {
         this.lifecycle = deps.lifecycle || {};
         this.hooks = deps.hooks || {};
         this.fov = new FOV();
+        this.svc = { context: {} };
+        this.gd = {};
+        this.gm = {};
+        this.gn = {};
+        this.flags = null; // set in init()
         this.levels = {};
         this.gameOver = false;
         this.gameOverReason = '';
@@ -745,9 +751,6 @@ export class NetHackGame {
         this.lastCommand = null;
         this._repeatPrefixChainActive = false;
         this._namePromptEcho = '';
-        this.menuRequested = false;
-        this.forceFight = false;
-        this.runMode = 0;
         this._rngAccessors = { getRngState, setRngState, getRngCallCount, setRngCallCount };
         this.rfilter = {
             roles: new Array(roles.length).fill(false),
@@ -764,7 +767,75 @@ export class NetHackGame {
         this.map = null;
         this.display = deps.display || null;
         setOutputContext(this.display);
-        this.flags = null; // set in init()
+        // Canonical namespace aliases for state refactor campaign.
+        Object.defineProperty(this, 'context', {
+            configurable: true,
+            enumerable: true,
+            get: () => this.svc.context,
+            set: (v) => { this.svc.context = v || {}; },
+        });
+        Object.defineProperty(this, 'u', {
+            configurable: true,
+            enumerable: true,
+            get: () => this.player,
+            set: (v) => { this.player = v; },
+        });
+        Object.defineProperty(this, 'lev', {
+            configurable: true,
+            enumerable: true,
+            get: () => this.map,
+            set: (v) => { this.map = v; },
+        });
+        // Legacy movement-prefix mirrors mapped onto canonical context fields.
+        Object.defineProperty(this, 'runMode', {
+            configurable: true,
+            enumerable: true,
+            get: () => {
+                const run = Number(this.svc.context?.run || 0);
+                if (run === 2) return 2;
+                if (run === 3) return 3;
+                return 0;
+            },
+            set: (v) => {
+                const n = Number(v) || 0;
+                const ctx = this.svc.context || (this.svc.context = {});
+                if (n === 2) ctx.run = 2;
+                else if (n === 1 || n === 3) ctx.run = 3;
+                else ctx.run = 0;
+            },
+        });
+        Object.defineProperty(this, 'traveling', {
+            configurable: true,
+            enumerable: true,
+            get: () => !!this.svc.context?.travel,
+            set: (v) => {
+                const ctx = this.svc.context || (this.svc.context = {});
+                ctx.travel = v ? 1 : 0;
+            },
+        });
+        Object.defineProperty(this, 'forceFight', {
+            configurable: true,
+            enumerable: true,
+            get: () => !!this.svc.context?.forcefight,
+            set: (v) => {
+                const ctx = this.svc.context || (this.svc.context = {});
+                ctx.forcefight = v ? 1 : 0;
+            },
+        });
+        Object.defineProperty(this, 'menuRequested', {
+            configurable: true,
+            enumerable: true,
+            get: () => !!this.svc.context?.nopick,
+            set: (v) => {
+                const ctx = this.svc.context || (this.svc.context = {});
+                ctx.nopick = v ? 1 : 0;
+            },
+        });
+        // Initialize canonical movement-prefix context defaults directly.
+        this.svc.context.nopick = 0;
+        this.svc.context.forcefight = 0;
+        this.svc.context.travel = 0;
+        this.svc.context.run = 0;
         this.input = deps.input || null;
         if (this.display) {
             initAnimation(this.display, { mode: 'headless', skipDelays: true });
@@ -1042,20 +1113,20 @@ export class NetHackGame {
 
     // C ref: allmain.c interrupt_multi() — check if multi-command should be interrupted
     shouldInterruptMulti() {
-        if ((this.runMode || 0) > 0) return false;
+        if ((this.context?.run || 0) > 0) return false;
         if (this.occupation) return this.shouldInterruptOccupation();
         if (monsterNearby(this.map, this.player, this.fov)) return true;
-        if (this.lastHP !== undefined && this.player.hp !== this.lastHP) {
-            this.lastHP = this.player.hp;
+        if (this.lastHP !== undefined && this.player.uhp !== this.lastHP) {
+            this.lastHP = this.player.uhp;
             return true;
         }
-        this.lastHP = this.player.hp;
+        this.lastHP = this.player.uhp;
         return false;
     }
 
     // C ref: do.c cmd_safety_prevention()
     shouldInterruptOccupation() {
-        if ((this.runMode || 0) > 0) return false;
+        if ((this.context?.run || 0) > 0) return false;
         return monsterNearby(this.map, this.player, this.fov);
     }
 
@@ -1181,7 +1252,7 @@ export class NetHackGame {
             this.hooks.onScreenRendered({ game: this, keyCode: code });
         }
 
-        if (this.player.hp <= 0) {
+        if (this.player.uhp <= 0) {
             this.gameOver = true;
             this.gameOverReason = 'died';
         }
@@ -1308,8 +1379,8 @@ export class NetHackGame {
         while (!this.gameOver) {
             // Travel continuation
             if (this.travelPath && this.travelStep < this.travelPath.length) {
-                const { executeTravelStep } = await import('./hack.js');
-                const result = await executeTravelStep(this);
+                const { dotravel_target } = await import('./hack.js');
+                const result = await dotravel_target(this);
                 if (result.tookTime) {
                     await moveloop_core(this);
                 }

@@ -74,13 +74,13 @@ function monPtr(mon) {
 // ========================================================================
 
 function mon_vegan(ptr) {
-    return ptr.symbol === S_BLOB || ptr.symbol === S_JELLY
-        || ptr.symbol === S_FUNGUS || ptr.symbol === S_VORTEX
-        || ptr.symbol === S_LIGHT
-        || (ptr.symbol === S_ELEMENTAL && ptr !== mons[PM_STALKER])
-        || (ptr.symbol === S_GOLEM && ptr !== mons[PM_FLESH_GOLEM]
+    return ptr.mlet === S_BLOB || ptr.mlet === S_JELLY
+        || ptr.mlet === S_FUNGUS || ptr.mlet === S_VORTEX
+        || ptr.mlet === S_LIGHT
+        || (ptr.mlet === S_ELEMENTAL && ptr !== mons[PM_STALKER])
+        || (ptr.mlet === S_GOLEM && ptr !== mons[PM_FLESH_GOLEM]
             && ptr !== mons[PM_LEATHER_GOLEM])
-        || ptr.symbol === S_GHOST;
+        || ptr.mlet === S_GHOST;
 }
 
 function flesh_petrifies(pm) {
@@ -190,7 +190,7 @@ export function dogfood(mon, obj, moves) {
             const corpseAge = peek_at_iced_corpse_age(obj);
             if ((corpseAge + 50 <= (moves || 0)
                  && fx !== PM_LIZARD && fx !== PM_LICHEN
-                 && mptr.symbol !== S_FUNGUS)
+                 && mptr.mlet !== S_FUNGUS)
                 || (fptr && acidic(fptr) && !resists_acid(mon))
                 || (fptr && poisonous(fptr) && !resists_poison(mon)))
                 return POISON;
@@ -199,8 +199,8 @@ export function dogfood(mon, obj, moves) {
             else if (fptr && mon_vegan(fptr))
                 return herbi ? CADAVER : MANFOOD;
             else if (humanoid(mptr) && fptr && same_race(mptr, fptr)
-                     && !is_undead(mptr) && fptr.symbol !== S_KOBOLD
-                     && fptr.symbol !== S_ORC && fptr.symbol !== S_OGRE)
+                     && !is_undead(mptr) && fptr.mlet !== S_KOBOLD
+                     && fptr.mlet !== S_ORC && fptr.mlet !== S_OGRE)
                 return (starving && carni && !is_elf(mptr)) ? ACCFOOD : TABU;
             else
                 return carni ? CADAVER : MANFOOD;
@@ -224,7 +224,7 @@ export function dogfood(mon, obj, moves) {
             return (herbi || mblind) ? DOGFOOD : starving ? ACCFOOD : MANFOOD;
 
         case BANANA:
-            return (mptr.symbol === S_YETI && herbi) ? DOGFOOD
+            return (mptr.mlet === S_YETI && herbi) ? DOGFOOD
                 : (herbi || starving) ? ACCFOOD
                 : MANFOOD;
 

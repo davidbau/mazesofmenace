@@ -1,0 +1,1601 @@
+{
+  "async_infer_version": 1,
+  "boundary_rules_path": "tools/c_translator/rulesets/boundary_calls.json",
+  "function_count": 88,
+  "functions": [
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0001_uint_to_any",
+      "name": "uint_to_any",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 79,
+        "body_start_line": 75,
+        "signature_line": 74
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0002_long_to_any",
+      "name": "long_to_any",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 87,
+        "body_start_line": 83,
+        "signature_line": 82
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0003_monst_to_any",
+      "name": "monst_to_any",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 95,
+        "body_start_line": 91,
+        "signature_line": 90
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0004_obj_to_any",
+      "name": "obj_to_any",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 103,
+        "body_start_line": 99,
+        "signature_line": 98
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0005_revive_nasty",
+      "name": "revive_nasty",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 138,
+        "body_start_line": 107,
+        "signature_line": 106
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0006_could_move_onto_boulder",
+      "name": "could_move_onto_boulder",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 164,
+        "body_start_line": 147,
+        "signature_line": 146
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0007_cannot_push_msg",
+      "name": "cannot_push_msg",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 260,
+        "body_start_line": 249,
+        "signature_line": 248
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [
+        "could_move_onto_boulder",
+        "inv_cnt"
+      ],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0008_cannot_push",
+      "name": "cannot_push",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 313,
+        "body_start_line": 264,
+        "signature_line": 263
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0009_rock_disappear_msg",
+      "name": "rock_disappear_msg",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 325,
+        "body_start_line": 317,
+        "signature_line": 316
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0010_moverock_done",
+      "name": "moverock_done",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 334,
+        "body_start_line": 329,
+        "signature_line": 328
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [
+        "moverock_core",
+        "moverock_done"
+      ],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0011_moverock",
+      "name": "moverock",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 346,
+        "body_start_line": 338,
+        "signature_line": 337
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [
+        "cannot_push",
+        "cannot_push_msg",
+        "could_move_onto_boulder",
+        "disturb_buried_zombies",
+        "doorless_door",
+        "in_rooms",
+        "movobj",
+        "nomul",
+        "revive_nasty",
+        "rock_disappear_msg",
+        "u_locomotion"
+      ],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0012_moverock_core",
+      "name": "moverock_core",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 619,
+        "body_start_line": 350,
+        "signature_line": 349
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [
+        "in_rooms",
+        "in_town",
+        "may_dig",
+        "nomul"
+      ],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0013_still_chewing",
+      "name": "still_chewing",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 803,
+        "body_start_line": 629,
+        "signature_line": 628
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0014_movobj",
+      "name": "movobj",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 814,
+        "body_start_line": 807,
+        "signature_line": 806
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [
+        "losehp"
+      ],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0015_dosinkfall",
+      "name": "dosinkfall",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 900,
+        "body_start_line": 818,
+        "signature_line": 817
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0016_may_dig",
+      "name": "may_dig",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 910,
+        "body_start_line": 905,
+        "signature_line": 904
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0017_may_passwall",
+      "name": "may_passwall",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 917,
+        "body_start_line": 914,
+        "signature_line": 913
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [
+        "may_dig",
+        "may_passwall"
+      ],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0018_bad_rock",
+      "name": "bad_rock",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 927,
+        "body_start_line": 921,
+        "signature_line": 920
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [
+        "inv_weight",
+        "weight_cap"
+      ],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0019_cant_squeeze_thru",
+      "name": "cant_squeeze_thru",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 960,
+        "body_start_line": 935,
+        "signature_line": 934
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0020_invocation_pos",
+      "name": "invocation_pos",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 967,
+        "body_start_line": 964,
+        "signature_line": 963
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [
+        "could_move_onto_boulder",
+        "crawl_destination",
+        "end_running",
+        "findtravelpath",
+        "nomul"
+      ],
+      "direct_awaited_boundaries": [
+        "nh_delay_output"
+      ],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [
+        "tmp_at"
+      ],
+      "id": "fn_0021_findtravelpath",
+      "name": "findtravelpath",
+      "reasons": [
+        "direct_awaited_boundary"
+      ],
+      "requires_async": true,
+      "span": {
+        "body_end_line": 1504,
+        "body_start_line": 1248,
+        "signature_line": 1247
+      }
+    },
+    {
+      "awaited_boundary_callsites": [
+        "findtravelpath"
+      ],
+      "callees": [
+        "findtravelpath"
+      ],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0022_is_valid_travelpt",
+      "name": "is_valid_travelpt",
+      "reasons": [
+        "async_callee"
+      ],
+      "requires_async": true,
+      "span": {
+        "body_end_line": 1525,
+        "body_start_line": 1508,
+        "signature_line": 1507
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [
+        "nomul"
+      ],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0023_u_rooted",
+      "name": "u_rooted",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 1686,
+        "body_start_line": 1676,
+        "signature_line": 1675
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0024_notice_mon",
+      "name": "notice_mon",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 1713,
+        "body_start_line": 1690,
+        "signature_line": 1689
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0025_notice_mons_cmp",
+      "name": "notice_mons_cmp",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 1722,
+        "body_start_line": 1717,
+        "signature_line": 1716
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [
+        "notice_mon"
+      ],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0026_notice_all_mons",
+      "name": "notice_all_mons",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 1764,
+        "body_start_line": 1726,
+        "signature_line": 1725
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [
+        "disturb_buried_zombies"
+      ],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0027_impact_disturbs_zombies",
+      "name": "impact_disturbs_zombies",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 1775,
+        "body_start_line": 1769,
+        "signature_line": 1768
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [
+        "obj_to_any"
+      ],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0028_disturb_buried_zombies",
+      "name": "disturb_buried_zombies",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 1794,
+        "body_start_line": 1780,
+        "signature_line": 1779
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0029_u_locomotion",
+      "name": "u_locomotion",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 1810,
+        "body_start_line": 1799,
+        "signature_line": 1798
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0030_u_simple_floortyp",
+      "name": "u_simple_floortyp",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 1829,
+        "body_start_line": 1815,
+        "signature_line": 1814
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [
+        "handle_tip"
+      ],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0031_handle_tip",
+      "name": "handle_tip",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 1862,
+        "body_start_line": 1834,
+        "signature_line": 1833
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [
+        "handle_tip",
+        "u_locomotion",
+        "u_simple_floortyp"
+      ],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0032_swim_move_danger",
+      "name": "swim_move_danger",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 1902,
+        "body_start_line": 1867,
+        "signature_line": 1866
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0033_domove_bump_mon",
+      "name": "domove_bump_mon",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 1929,
+        "body_start_line": 1907,
+        "signature_line": 1906
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0034_domove_fight_ironbars",
+      "name": "domove_fight_ironbars",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 1998,
+        "body_start_line": 1978,
+        "signature_line": 1977
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0035_domove_fight_web",
+      "name": "domove_fight_web",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 2075,
+        "body_start_line": 2003,
+        "signature_line": 2002
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [
+        "nomul"
+      ],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0036_domove_fight_empty",
+      "name": "domove_fight_empty",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 2319,
+        "body_start_line": 2211,
+        "signature_line": 2210
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0037_air_turbulence",
+      "name": "air_turbulence",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 2342,
+        "body_start_line": 2324,
+        "signature_line": 2323
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [
+        "near_capacity",
+        "nomul"
+      ],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0038_water_turbulence",
+      "name": "water_turbulence",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 2374,
+        "body_start_line": 2347,
+        "signature_line": 2346
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0039_slippery_ice_fumbling",
+      "name": "slippery_ice_fumbling",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 2396,
+        "body_start_line": 2378,
+        "signature_line": 2377
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0040_u_maybe_impaired",
+      "name": "u_maybe_impaired",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 2402,
+        "body_start_line": 2400,
+        "signature_line": 2399
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [
+        "bad_rock",
+        "nomul",
+        "u_maybe_impaired"
+      ],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0041_impaired_movement",
+      "name": "impaired_movement",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 2422,
+        "body_start_line": 2407,
+        "signature_line": 2406
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0042_avoid_moving_on_trap",
+      "name": "avoid_moving_on_trap",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 2441,
+        "body_start_line": 2426,
+        "signature_line": 2425
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [
+        "avoid_moving_on_trap",
+        "nomul"
+      ],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0043_avoid_running_into_trap_or_liquid",
+      "name": "avoid_running_into_trap_or_liquid",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 2490,
+        "body_start_line": 2477,
+        "signature_line": 2476
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [
+        "nomul",
+        "u_locomotion"
+      ],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0044_avoid_trap_andor_region",
+      "name": "avoid_trap_andor_region",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 2563,
+        "body_start_line": 2497,
+        "signature_line": 2496
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [
+        "domove_fight_empty",
+        "nomul"
+      ],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0045_move_out_of_bounds",
+      "name": "move_out_of_bounds",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 2593,
+        "body_start_line": 2568,
+        "signature_line": 2567
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [
+        "near_capacity",
+        "nomul"
+      ],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0046_carrying_too_much",
+      "name": "carrying_too_much",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 2615,
+        "body_start_line": 2598,
+        "signature_line": 2597
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [
+        "nomul"
+      ],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0047_escape_from_sticky_mon",
+      "name": "escape_from_sticky_mon",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 2673,
+        "body_start_line": 2621,
+        "signature_line": 2620
+      }
+    },
+    {
+      "awaited_boundary_callsites": [
+        "domove_core"
+      ],
+      "callees": [
+        "domove_core",
+        "maybe_smudge_engr"
+      ],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0048_domove",
+      "name": "domove",
+      "reasons": [
+        "async_callee"
+      ],
+      "requires_async": true,
+      "span": {
+        "body_end_line": 2690,
+        "body_start_line": 2677,
+        "signature_line": 2676
+      }
+    },
+    {
+      "awaited_boundary_callsites": [
+        "findtravelpath",
+        "runmode_delay_output"
+      ],
+      "callees": [
+        "air_turbulence",
+        "avoid_running_into_trap_or_liquid",
+        "avoid_trap_andor_region",
+        "carrying_too_much",
+        "disturb_buried_zombies",
+        "domove_bump_mon",
+        "domove_fight_empty",
+        "domove_fight_ironbars",
+        "domove_fight_web",
+        "escape_from_sticky_mon",
+        "findtravelpath",
+        "impaired_movement",
+        "invocation_message",
+        "move_out_of_bounds",
+        "nomul",
+        "runmode_delay_output",
+        "slippery_ice_fumbling",
+        "spoteffects",
+        "swim_move_danger",
+        "u_rooted",
+        "water_turbulence"
+      ],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0049_domove_core",
+      "name": "domove_core",
+      "reasons": [
+        "async_callee"
+      ],
+      "requires_async": true,
+      "span": {
+        "body_end_line": 2972,
+        "body_start_line": 2694,
+        "signature_line": 2693
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [],
+      "direct_awaited_boundaries": [
+        "nh_delay_output"
+      ],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0050_runmode_delay_output",
+      "name": "runmode_delay_output",
+      "reasons": [
+        "direct_awaited_boundary"
+      ],
+      "requires_async": true,
+      "span": {
+        "body_end_line": 2998,
+        "body_start_line": 2978,
+        "signature_line": 2977
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0051_maybe_smudge_engr",
+      "name": "maybe_smudge_engr",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 3012,
+        "body_start_line": 3002,
+        "signature_line": 3001
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0052_overexert_hp",
+      "name": "overexert_hp",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 3028,
+        "body_start_line": 3017,
+        "signature_line": 3016
+      }
+    },
+    {
+      "awaited_boundary_callsites": [
+        "domove"
+      ],
+      "callees": [
+        "domove",
+        "near_capacity",
+        "overexert_hp"
+      ],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0053_overexertion",
+      "name": "overexertion",
+      "reasons": [
+        "async_callee"
+      ],
+      "requires_async": true,
+      "span": {
+        "body_end_line": 3042,
+        "body_start_line": 3033,
+        "signature_line": 3032
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [
+        "invocation_pos",
+        "nomul"
+      ],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0054_invocation_message",
+      "name": "invocation_message",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 3066,
+        "body_start_line": 3046,
+        "signature_line": 3045
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [
+        "spoteffects"
+      ],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0055_switch_terrain",
+      "name": "switch_terrain",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 3108,
+        "body_start_line": 3073,
+        "signature_line": 3072
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0056_set_uinwater",
+      "name": "set_uinwater",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 3115,
+        "body_start_line": 3113,
+        "signature_line": 3112
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [
+        "check_special_room",
+        "dosinkfall",
+        "spoteffects",
+        "switch_terrain"
+      ],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0057_spoteffects",
+      "name": "spoteffects",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 3347,
+        "body_start_line": 3201,
+        "signature_line": 3200
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [
+        "in_rooms"
+      ],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0058_monstinroom",
+      "name": "monstinroom",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 3363,
+        "body_start_line": 3352,
+        "signature_line": 3351
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0059_furniture_present",
+      "name": "furniture_present",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 3380,
+        "body_start_line": 3368,
+        "signature_line": 3367
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0060_in_rooms",
+      "name": "in_rooms",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 3445,
+        "body_start_line": 3384,
+        "signature_line": 3383
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0061_in_town",
+      "name": "in_town",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 3470,
+        "body_start_line": 3450,
+        "signature_line": 3449
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [
+        "in_rooms"
+      ],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0062_move_update",
+      "name": "move_update",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 3507,
+        "body_start_line": 3474,
+        "signature_line": 3473
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [
+        "furniture_present",
+        "in_town",
+        "monstinroom",
+        "move_update",
+        "u_locomotion"
+      ],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0063_check_special_room",
+      "name": "check_special_room",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 3665,
+        "body_start_line": 3512,
+        "signature_line": 3511
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0064_pickup_checks",
+      "name": "pickup_checks",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 3757,
+        "body_start_line": 3674,
+        "signature_line": 3673
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [
+        "pickup_checks"
+      ],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0065_dopickup",
+      "name": "dopickup",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 3777,
+        "body_start_line": 3762,
+        "signature_line": 3761
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [
+        "avoid_moving_on_trap",
+        "nomul"
+      ],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0066_lookaround",
+      "name": "lookaround",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 3944,
+        "body_start_line": 3784,
+        "signature_line": 3783
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0067_doorless_door",
+      "name": "doorless_door",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 3959,
+        "body_start_line": 3949,
+        "signature_line": 3948
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [
+        "bad_rock",
+        "cant_squeeze_thru",
+        "doorless_door"
+      ],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0068_crawl_destination",
+      "name": "crawl_destination",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 3986,
+        "body_start_line": 3965,
+        "signature_line": 3964
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0069_monster_nearby",
+      "name": "monster_nearby",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 4012,
+        "body_start_line": 3992,
+        "signature_line": 3991
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0070_end_running",
+      "name": "end_running",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 4033,
+        "body_start_line": 4016,
+        "signature_line": 4015
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [
+        "end_running"
+      ],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0071_nomul",
+      "name": "nomul",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 4048,
+        "body_start_line": 4037,
+        "signature_line": 4036
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [
+        "weight_cap"
+      ],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0072_unmul",
+      "name": "unmul",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 4083,
+        "body_start_line": 4053,
+        "signature_line": 4052
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0073_maybe_wail",
+      "name": "maybe_wail",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 4118,
+        "body_start_line": 4087,
+        "signature_line": 4086
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [
+        "end_running",
+        "unmul"
+      ],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0074_saving_grace",
+      "name": "saving_grace",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 4172,
+        "body_start_line": 4124,
+        "signature_line": 4123
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0075_showdamage",
+      "name": "showdamage",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 4182,
+        "body_start_line": 4177,
+        "signature_line": 4176
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [
+        "end_running",
+        "maybe_wail",
+        "saving_grace",
+        "showdamage"
+      ],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0076_losehp",
+      "name": "losehp",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 4222,
+        "body_start_line": 4186,
+        "signature_line": 4185
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0077_weight_cap",
+      "name": "weight_cap",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 4276,
+        "body_start_line": 4226,
+        "signature_line": 4225
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [
+        "weight_cap"
+      ],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0078_inv_weight",
+      "name": "inv_weight",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 4295,
+        "body_start_line": 4282,
+        "signature_line": 4281
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [
+        "inv_weight"
+      ],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0079_calc_capacity",
+      "name": "calc_capacity",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 4312,
+        "body_start_line": 4303,
+        "signature_line": 4302
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [
+        "calc_capacity"
+      ],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0080_near_capacity",
+      "name": "near_capacity",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 4318,
+        "body_start_line": 4316,
+        "signature_line": 4315
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [
+        "inv_weight"
+      ],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0081_max_capacity",
+      "name": "max_capacity",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 4326,
+        "body_start_line": 4322,
+        "signature_line": 4321
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [
+        "near_capacity"
+      ],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0082_check_capacity",
+      "name": "check_capacity",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 4339,
+        "body_start_line": 4330,
+        "signature_line": 4329
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0083_dump_weights",
+      "name": "dump_weights",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 4413,
+        "body_start_line": 4352,
+        "signature_line": 4351
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0084_cmp_weights",
+      "name": "cmp_weights",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 4423,
+        "body_start_line": 4417,
+        "signature_line": 4416
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0085_inv_cnt",
+      "name": "inv_cnt",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 4437,
+        "body_start_line": 4427,
+        "signature_line": 4426
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0086_money_cnt",
+      "name": "money_cnt",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 4452,
+        "body_start_line": 4445,
+        "signature_line": 4444
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0087_spot_checks",
+      "name": "spot_checks",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 4477,
+        "body_start_line": 4456,
+        "signature_line": 4455
+      }
+    },
+    {
+      "awaited_boundary_callsites": [],
+      "callees": [],
+      "direct_awaited_boundaries": [],
+      "direct_nowait_boundaries": [],
+      "direct_sync_boundaries": [],
+      "id": "fn_0088_rounddiv",
+      "name": "rounddiv",
+      "reasons": [],
+      "requires_async": false,
+      "span": {
+        "body_end_line": 4502,
+        "body_start_line": 4482,
+        "signature_line": 4481
+      }
+    }
+  ],
+  "requires_async_count": 6,
+  "source": "nethack-c/src/hack.c",
+  "source_sha256": "ac9dd7e72d4a72366019fc5c148d29d5c08f20d25f223920cd9f56abd0b4b3df"
+}

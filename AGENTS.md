@@ -11,8 +11,9 @@ This project uses GitHub Issues for work tracking. `PROJECT_PLAN.md` is the auth
 ## Source of Truth and Priorities
 1. NetHack C 3.7.0 behavior is the gameplay source of truth.
 2. `PROJECT_PLAN.md` is the execution roadmap and phase gate definition.
-3. Test harness outputs are evidence for divergences, not a place to hide or special-case them.
-4. For gameplay parity sign-off, session replay results are authoritative over unit tests.
+3. For Iron Parity work, `docs/IRON_PARITY_PLAN.md` milestone IDs (`M0..M6`) are the authoritative campaign gates.
+4. Test harness outputs are evidence for divergences, not a place to hide or special-case them.
+5. For gameplay parity sign-off, session replay results are authoritative over unit tests.
 
 ## Work Types and Primary Metrics
 1. Porting Work
@@ -36,6 +37,18 @@ This project uses GitHub Issues for work tracking. `PROJECT_PLAN.md` is the auth
 6. Keep tests fast to expose hangs early:
    - unit tests: 1000ms timeout per test
    - single-session parity runs: 10000ms timeout per session
+
+## No-Fake-Implementation Rule (Strict)
+1. Do not present scaffolds, placeholders, or heuristics as completed parity or translation work.
+2. If a prerequisite from plan is missing (for example clang frontend), stop and fix the prerequisite before implementing downstream features.
+3. Never claim "translated" when output is stubbed or manually hardcoded per function name.
+4. If using fallback behavior temporarily, label it explicitly as fallback and do not count it toward milestone completion.
+
+Examples of forbidden fakes:
+1. Regex-only parsing presented as completion for a clang/libclang parser milestone.
+2. Emitter logic like `if function_name == "X": emit hardcoded string`.
+3. Output marked as translated while body still throws `UNIMPLEMENTED_TRANSLATED_FUNCTION`.
+4. Adding comparator/harness exceptions to hide gameplay divergence instead of fixing game logic.
 
 ## Development Cycle
 1. Identify a failing parity behavior from sessions/tests.
@@ -98,7 +111,13 @@ Issue hygiene:
 - Close obsolete/superseded issues with a clear reason.
 - Update issue body/labels/status comments promptly when new evidence changes scope or priority.
 - Use `parity` label for C-vs-JS divergence/parity issues in the unified backlog.
+- For Iron Parity campaign issues, also add `campaign:iron-parity` and one scope label (`state`, `translator`, `animation`, `parity-test`, `docs`, or `infra`).
 - If a `gh` command fails due sandbox/network restrictions, request command escalation and rerun it immediately.
+
+Iron Parity issue structure:
+- Maintain one campaign tracker epic: `IRON_PARITY: Campaign Tracker (M0-M6)`.
+- Maintain one issue per milestone (`M0` through `M6`) and link implementation issues under the relevant milestone.
+- Each implementation issue should include explicit divergence evidence and expected C behavior when parity-related.
 
 ## Agent Ownership and Intake
 1. Agent name is the current working directory basename; use it as identity for issue ownership.
@@ -141,9 +160,13 @@ Set `RNG_LOG_TAGS=0` to disable caller tags when you need lower-overhead runs.
 ## Priority Docs (Read Order)
 1. Always start with:
    - `PROJECT_PLAN.md`
+   - `docs/IRON_PARITY_PLAN.md` (for parity/state/translator campaign work)
    - `docs/DEVELOPMENT.md`
    - `docs/LORE.md`
 2. For porting/parity divergence work:
+   - `docs/C_FAITHFUL_STATE_REFACTOR_PLAN.md`
+   - `docs/C_TRANSLATOR_ARCHITECTURE_SPEC.md`
+   - `docs/C_TRANSLATOR_PARSER_IMPLEMENTATION_SPEC.md`
    - `docs/SESSION_FORMAT_V3.md`
    - `docs/RNG_ALIGNMENT_GUIDE.md`
    - `docs/C_PARITY_WORKLIST.md`

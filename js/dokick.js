@@ -45,7 +45,7 @@ import { placeFloorObject } from './floor_objects.js';
 import {
     thick_skinned, nolimbs, slithy, nohands, haseyes, attacktype,
     likes_gold, is_mercenary, is_flyer, is_floater, is_giant,
-    can_teleport, canseemon, monDisplayName,
+    can_teleport, canseemon,
 } from './mondata.js';
 import {
     mons,
@@ -184,8 +184,8 @@ function martial_bonus(player) {
     return role === 'Monk' || role === 10; // PM_MONK index
 }
 
-function bigmonst(ptr) { return (ptr.msize || ptr.size || 0) >= MZ_LARGE; }
-function verysmall(ptr) { return (ptr.msize || ptr.size || 0) < MZ_SMALL; }
+function bigmonst(ptr) { return (ptr.msize || 0) >= MZ_LARGE; }
+function verysmall(ptr) { return (ptr.msize || 0) < MZ_SMALL; }
 function canspotmon(mon, player, map, fov) {
     // simplified — if not invisible or player can see invisible
     if (!mon || mon.dead) return false;
@@ -734,20 +734,23 @@ function kickdmg(mon, clumsy, player, map) {
 // 2. maybe_kick_monster — precondition check for kicking a monster
 // cf. dokick.c:125
 // ============================================================================
-
+export 
 function maybe_kick_monster(mon, x, y, player, map, game) {
+    const ctx = (game && game.svc && game.svc.context)
+        ? game.svc.context
+        : game?.context;
     if (mon) {
-        const save_forcefight = game.context ? game.context.forcefight : false;
+        const save_forcefight = ctx ? ctx.forcefight : false;
         // bhitpos
         game.bhitpos = { x, y };
 
         if (!mon.mpeaceful || !canspotmon(mon, player, map))
-            if (game.context) game.context.forcefight = true;
+            if (ctx) ctx.forcefight = true;
 
         if (attack_checks(mon, null) || overexertion(player, game))
             mon = null;
 
-        if (game.context) game.context.forcefight = save_forcefight;
+        if (ctx) ctx.forcefight = save_forcefight;
     }
     return mon !== null;
 }
@@ -823,7 +826,7 @@ async function kick_monster(mon, x, y, player, map, game) {
     You("kick %s.", mon_nam(mon));
     if (!rn2(clumsy ? 3 : 4) && (clumsy || !bigmonst(monData))
         && mon.mcansee !== false && !mon.mtrapped && !thick_skinned(monData)
-        && (monData.mlet || monData.symbol) !== S_EEL && haseyes(monData)
+        && monData.mlet !== S_EEL && haseyes(monData)
         && mon.mcanmove !== false
         && !mon.mstun && !mon.mconf && !mon.msleeping
         && (monData.mmove || 12) >= 12) {
@@ -1320,7 +1323,7 @@ function kickstr(kickobjnam, maploc) {
 // 9. watchman_thief_arrest — guard arrest check
 // cf. dokick.c:833
 // ============================================================================
-
+export 
 function watchman_thief_arrest(mtmp) {
     const monData = mtmp.type || mtmp.data;
     if (is_watch(monData) && couldsee(mtmp.mx, mtmp.my)
@@ -1336,7 +1339,7 @@ function watchman_thief_arrest(mtmp) {
 // 10. watchman_door_damage — guard door response
 // cf. dokick.c:845
 // ============================================================================
-
+export 
 function watchman_door_damage(mtmp, x, y, map) {
     const monData = mtmp.type || mtmp.data;
     const loc = map.at(x, y);
@@ -1399,7 +1402,7 @@ function kick_ouch(x, y, kickobjnam, maploc, player, map) {
     // Maybe_Half_Phys
     if (player.halfPhysDamage) dmg = Math.floor((dmg + 1) / 2);
     // losehp
-    player.hp = Math.max(1, (player.hp || 1) - dmg);
+    player.uhp = Math.max(1, (player.uhp || 1) - dmg);
     // TODO: check if player died from kick; format death message with kickstr
     if ((Is_airlevel(player.uz) || player.levitating))
         hurtle(-(player.dx || 0), -(player.dy || 0), rn2(2) + 4, true, player, map);
@@ -1760,7 +1763,7 @@ export async function dokick(player, map, display, game) {
     } else if (near_capacity(player) > SLT_ENCUMBER) {
         Your("load is too heavy to balance yourself for a kick.");
         no_kick = true;
-    } else if ((playerData.mlet || playerData.symbol) === S_LIZARD) {
+    } else if (playerData.mlet === S_LIZARD) {
         Your("legs cannot kick effectively.");
         no_kick = true;
     } else if (player.uinwater && !rn2(2)) {
@@ -1857,7 +1860,10 @@ export async function dokick(player, map, display, game) {
     if (mtmp) {
         oldglyph = glyph_at(x, y);
         if (!maybe_kick_monster(mtmp, x, y, player, map, game))
-            return { moved: false, tookTime: game.context?.move ? true : false };
+            const ctx = (game && game.svc && game.svc.context)
+                ? game.svc.context
+                : game?.context;
+            return { moved: false, tookTime: ctx?.move ? true : false };
     }
 
     wake_nearby(player, map);
@@ -1883,7 +1889,10 @@ export async function dokick(player, map, display, game) {
         }
 
         // recoil if floating
-        if ((Is_airlevel(player.uz) || player.levitating) && game.context?.move) {
+        const ctx = (game && game.svc && game.svc.context)
+            ? game.svc.context
+            : game?.context;
+        if ((Is_airlevel(player.uz) || player.levitating) && ctx?.move) {
             let range = (playerData.cwt || 450) + (weight_cap(player) + inv_weight(player));
             if (range < 1) range = 1;
             range = Math.floor(3 * (mdat.cwt || 100) / range);

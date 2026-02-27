@@ -193,10 +193,11 @@ export function is_rustprone(obj) {
 export function is_crackable(obj) {
     return objectData[obj.otyp].material === GLASS && obj.oclass === ARMOR_CLASS;
 }
-export function is_rottable(obj) {
-    const mat = objectData[obj.otyp].material;
-    if (mat === LIQUID) return false;
-    return mat <= WOOD || mat === DRAGON_HIDE;
+// TRANSLATOR: AUTO (mkobj.c:2286)
+export function is_rottable(otmp) {
+  const otyp = otmp.otyp;
+  const mat = objectData[otyp]?.material ?? 0;
+  return ((mat <= WOOD && mat !== LIQUID) || mat === DRAGON_HIDE);
 }
 export function is_corrodeable(obj) {
     const mat = objectData[obj.otyp].material;
@@ -218,7 +219,7 @@ export function weight(obj) {
     if (Is_container(obj) || obj.otyp === STATUE) {
         if (obj.otyp === STATUE && obj.corpsenm >= 0 && obj.corpsenm < mons.length) {
             wt = Math.floor(3 * mons[obj.corpsenm].weight / 2);
-            const msize = mons[obj.corpsenm].size || 0;
+            const msize = mons[obj.corpsenm].msize || 0;
             const minwt = (msize * 2 + 1) * 100;
             if (wt < minwt) wt = minwt;
         }
@@ -276,15 +277,14 @@ function may_generate_eroded(obj) {
 }
 
 // C ref: mkobj.c blessorcurse()
-export function blessorcurse(obj, chance) {
-    if (obj.blessed || obj.cursed) return;
-    if (!rn2(chance)) {
-        if (!rn2(2)) {
-            curse(obj);
-        } else {
-            bless(obj);
-        }
-    }
+// TRANSLATOR: AUTO (mkobj.c:1837)
+export function blessorcurse(otmp, chance) {
+  if (otmp.blessed || otmp.cursed) return;
+  if (!rn2(chance)) {
+    if (!rn2(2)) { curse(otmp); }
+    else { bless(otmp); }
+  }
+  return;
 }
 
 // C ref: mkobj.c bless()
@@ -325,14 +325,16 @@ export function set_bknown(obj, onoff) {
 }
 
 // C ref: mkobj.c bcsign()
-export function bcsign(obj) {
-    return obj.cursed ? -1 : obj.blessed ? 1 : 0;
+// TRANSLATOR: AUTO (mkobj.c:1853)
+export function bcsign(otmp) {
+  return (!!otmp.blessed - !!otmp.cursed);
 }
 
 // C ref: mkobj.c container_weight() — set owt recursively up container chain
-export function container_weight(obj) {
-    obj.owt = weight(obj);
-    // If contained, propagate up (JS doesn't track ocontainer yet)
+// TRANSLATOR: AUTO (mkobj.c:2732)
+export function container_weight(object) {
+  object.owt = weight(object);
+  if (object.where === OBJ_CONTAINED) container_weight(object.ocontainer);
 }
 
 // C ref: mkobj.c splitobj() — split a stack, return the new portion
@@ -385,7 +387,7 @@ function newobj(otyp) {
 }
 
 // C ref: mkobj.c mkobj_erosions()
-function mkobj_erosions(obj) {
+export function mkobj_erosions(obj) {
     if (!may_generate_eroded(obj)) return;
     if (!rn2(100)) {
         obj.oerodeproof = true;
@@ -660,7 +662,7 @@ function mksobj_init(obj, artif, skipErosion) {
             // verysmall = msize < MZ_SMALL (i.e., MZ_TINY)
             // Short-circuit: skip rn2 if monster is very small
             if (obj.corpsenm >= 0 && obj.corpsenm < mons.length
-                && mons[obj.corpsenm].size >= MZ_SMALL
+                && mons[obj.corpsenm].msize >= MZ_SMALL
                 && rn2(Math.floor(_levelDepth / 2 + 10)) > 10) {
                 // C ref: mkobj.c:1152-1154 — statue may contain a non-novel spellbook.
                 const inside = mkobj(SPBOOK_no_NOVEL, false);
@@ -824,7 +826,7 @@ export function mksobj(otyp, init, artif, skipErosion) {
 function special_corpse(mndx) {
     if (mndx < 0) return false;
     return mndx === PM_LIZARD || mndx === PM_LICHEN
-        || mons[mndx].symbol === S_TROLL
+        || mons[mndx].mlet === S_TROLL
         || mons[mndx].sound === MS_RIDER;
 }
 
@@ -832,7 +834,7 @@ function special_corpse(mndx) {
 // Only called for RNG alignment; we don't actually track timers.
 export const TAINT_AGE = 50;
 const TROLL_REVIVE_CHANCE = 37;
-function start_corpse_timeout_rng(corpsenm) {
+function start_corpse_timeout(corpsenm) {
     // Lizards and lichen don't rot or revive
     if (corpsenm === PM_LIZARD || corpsenm === PM_LICHEN) return;
     // C ref: mkobj.c start_corpse_timeout() — rot_adjust depends on gi.in_mklev.
@@ -844,7 +846,7 @@ function start_corpse_timeout_rng(corpsenm) {
         for (let when = minturn; when < 67; when++) {
             if (!rn2(3)) break;
         }
-    } else if (mons[corpsenm].symbol === S_TROLL) {
+    } else if (mons[corpsenm].mlet === S_TROLL) {
         // Troll: rn2(37) loop up to TAINT_AGE times
         for (let age = 2; age <= TAINT_AGE; age++) {
             if (!rn2(TROLL_REVIVE_CHANCE)) break;
@@ -878,7 +880,7 @@ export function set_corpsenm(obj, id) {
         : 0;
     obj.corpsenm = id;
     if (obj.otyp === CORPSE) {
-        start_corpse_timeout_rng(id);
+        start_corpse_timeout(id);
     } else if (obj.otyp === EGG) {
         if (id >= 0) {
             obj._egg_hatch_when = attach_egg_hatch_timeout_rng(when);
@@ -912,7 +914,7 @@ export function mkcorpstat(objtype, ptr_mndx, init, x = 0, y = 0, map = null) {
                 || special_corpse(ptr_mndx))) {
             // C: obj_stop_timers(otmp) — no RNG consumed
             // Restart corpse timeout with new corpsenm
-            start_corpse_timeout_rng(ptr_mndx);
+            start_corpse_timeout(ptr_mndx);
         }
     }
     pushRngLogEntry(`^corpse[${otmp.corpsenm},${otmp.ox || 0},${otmp.oy || 0}]`);

@@ -32,10 +32,23 @@ import { explode } from './explode.js';
 import { EXPL_FIERY } from './explode.js';
 import { tmp_at, DISP_BEAM, DISP_END } from './animation.js';
 import { getpos_sethilite, getpos_async, set_getpos_context } from './getpos.js';
+import { pline, impossible } from './pline.js';
+import { cansee } from './vision.js';
 
 const SPELL_KEEN = 20000; // cf. spell.c KEEN
 const MAX_SPELL_STUDY = 3; // cf. spell.h MAX_SPELL_STUDY
 const STINKING_CLOUD_TARGET_DIST = 6;
+
+function m_at(x, y, map) {
+    if (!map) return null;
+    if (typeof map.monsterAt === 'function') return map.monsterAt(x, y);
+    if (Array.isArray(map.monsters)) {
+        for (const mon of map.monsters) {
+            if (mon && mon.mx === x && mon.my === y) return mon;
+        }
+    }
+    return null;
+}
 
 
 // ============================================================
@@ -75,19 +88,19 @@ function read_ok(obj) {
 // ============================================================
 
 // cf. read.c p_glow1() — "Your <item> glows briefly" / "vibrates briefly"
-function p_glow1(otmp, player, display) {
+export function p_glow1(otmp, player, display) {
     display.putstr_message(
         `${Yobjnam2(otmp, player.blind ? 'vibrate' : 'glow')} briefly.`);
 }
 
 // cf. read.c p_glow2() — "Your <item> glows <color> for a moment"
-function p_glow2(otmp, color, player, display) {
+export function p_glow2(otmp, color, player, display) {
     display.putstr_message(
         `${Yobjnam2(otmp, player.blind ? 'vibrate' : 'glow')}${player.blind ? '' : ' '}${player.blind ? '' : hcolor(color)} for a moment.`);
 }
 
 // cf. read.c p_glow3() — "Your <item> glows feebly <color> for a moment"
-function p_glow3(otmp, color, player, display) {
+export function p_glow3(otmp, color, player, display) {
     display.putstr_message(
         `${Yobjnam2(otmp, player.blind ? 'vibrate' : 'glow')} feebly${player.blind ? '' : ' '}${player.blind ? '' : hcolor(color)} for a moment.`);
 }
@@ -362,7 +375,7 @@ async function handleRead(player, display, game) {
                     }
                     // Uncursed: roll difficulty
                     const intel = (player.attributes ? player.attributes[A_INT] : 12) || 12;
-                    const readAbility = intel + 4 + Math.floor((player.level || 1) / 2) - 2 * ocLevel;
+                    const readAbility = intel + 4 + Math.floor((player.ulevel || 1) / 2) - 2 * ocLevel;
                     if (rnd(20) > readAbility) {
                         display.putstr_message("You can't make heads or tails of this.");
                         return { moved: false, tookTime: true };
@@ -1075,7 +1088,7 @@ function seffect_teleportation(sobj, player, display, game) {
 }
 
 // cf. read.c seffect_gold_detection()
-function seffect_gold_detection(sobj, player, display, game) {
+export function seffect_gold_detection(sobj, player, display, game) {
     const scursed = sobj.cursed;
     const confused = !!player.confused;
     const map = game?.map;
@@ -1099,7 +1112,7 @@ function seffect_gold_detection(sobj, player, display, game) {
 }
 
 // cf. read.c seffect_food_detection()
-function seffect_food_detection(sobj, player, display, game) {
+export function seffect_food_detection(sobj, player, display, game) {
     const map = game?.map;
     // cf. food_detect(sobj)
     if (food_detect(sobj, player, map, display, game)) {
@@ -1271,7 +1284,7 @@ async function seffect_fire(sobj, player, display, game) {
         // Confused: minor self-burn
         display.putstr_message('The scroll catches fire and you burn your hands.');
         // cf. losehp(1, ...) simplified: take 1 damage
-        player.hp = Math.max(0, (player.hp || 0) - 1);
+        player.uhp = Math.max(0, (player.uhp || 0) - 1);
         return true; // consumed
     }
 
@@ -1289,7 +1302,7 @@ async function seffect_fire(sobj, player, display, game) {
         await explode(ccx, ccy, ZT_SPELL_O_FIRE, dam, SCROLL_CLASS, EXPL_FIERY, map, player);
     } else {
         // Fallback: take damage directly
-        player.hp = Math.max(0, (player.hp || 0) - dam);
+        player.uhp = Math.max(0, (player.uhp || 0) - dam);
     }
     return true; // consumed
 }
@@ -1312,10 +1325,10 @@ function seffect_earth(sobj, player, display, game) {
         const dam = confused ? rnd(6) : rnd(20);
         if (player.helmet) {
             display.putstr_message('Fortunately, you are wearing a hard helmet.');
-            player.hp = Math.max(0, (player.hp || 0) - Math.min(dam, 2));
+            player.uhp = Math.max(0, (player.uhp || 0) - Math.min(dam, 2));
         } else {
             display.putstr_message(`You are hit by ${confused ? 'rocks' : 'a boulder'}!`);
-            player.hp = Math.max(0, (player.hp || 0) - dam);
+            player.uhp = Math.max(0, (player.uhp || 0) - dam);
         }
     }
     return false;
@@ -1451,13 +1464,4 @@ async function seffects(sobj, player, display, game) {
     }
 }
 
-export {
-    handleRead,
-    tshirt_text, hawaiian_motif, hawaiian_design, apron_text,
-    candy_wrapper_text, assign_candy_wrapper,
-    erode_obj_text,
-    stripspe, p_glow1, p_glow2, p_glow3,
-    cap_spe, bcsign, blessorcurse, uncurse,
-    some_armor, useup_scroll, learnscrolltyp,
-    seffects,
-};
+export { handleRead, tshirt_text, hawaiian_motif, hawaiian_design, apron_text, candy_wrapper_text, assign_candy_wrapper, erode_obj_text, stripspe, cap_spe, bcsign, blessorcurse, uncurse, some_armor, useup_scroll, learnscrolltyp, seffects };

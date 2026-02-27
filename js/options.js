@@ -106,8 +106,8 @@
 
 // cf. options.c:9286 — dotogglepickup(void): toggle autopickup
 // Toggles autopickup on/off.
-// JS equiv: commands.js:3459 — handleTogglePickup()
-// PARTIAL: options.c:9286 — dotogglepickup() ↔ commands.js:3459
+// JS equiv: cmd.js rhack() '@' command route via handleTogglePickup()
+// PARTIAL: options.c:9286 — dotogglepickup() ↔ cmd.js handleTogglePickup()
 
 // cf. options.c:9307 — add_autopickup_exception(mapping): add autopickup exception
 // Adds an autopickup exception mapping.
@@ -309,3 +309,36 @@
 // NOTE: options.c contains approximately 100 additional static optfn_* handler
 // functions (one per option type) and handler_* functions for interactive editing.
 // These are all TODO and follow the same pattern as the representative examples above.
+
+// ---------------------------------------------------------------------------
+// Minimal C-compat helper surface for translator-stitched options.c functions.
+// ---------------------------------------------------------------------------
+
+function Sprintf(fmt, ...args) {
+    let i = 0;
+    return String(fmt || '').replace(/%[lds]/g, () => String(args[i++] ?? ''));
+}
+
+function Strcpy(_dst, src) {
+    return String(src || '');
+}
+
+function pline(_fmt, ..._args) {}
+
+function impossible(_fmt, ..._args) {}
+
+function optn_ok(_msg = null) {
+    return true;
+}
+
+function optn_err(_msg = null) {
+    return false;
+}
+
+function do_set(_name, _value = null, _flags = 0) {
+    return optn_ok();
+}
+
+function get_cnf_val(_name) {
+    return null;
+}

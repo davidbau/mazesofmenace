@@ -58,6 +58,10 @@ import { is_flammable, is_rustprone, is_rottable, is_corrodeable,
 import { CORPSE, WEAPON_CLASS, ARMOR_CLASS,
          ARROW, DART, ROCK, BOULDER, WAND_CLASS } from './objects.js';
 import { tmp_at, nh_delay_output, DISP_FLASH, DISP_END } from './animation.js';
+import { cansee, couldsee } from './vision.js';
+import { pline, You } from './pline.js';
+import { Monnam, mon_nam } from './do_name.js';
+import { an } from './objnam.js';
 
 // Trap result constants
 const Trap_Effect_Finished = 0;
@@ -111,9 +115,40 @@ function has_boulder_at(map, x, y) {
     return false;
 }
 
+function t_at(x, y, map) {
+    if (!map || !Array.isArray(map.traps)) return null;
+    for (const t of map.traps) {
+        if (t && t.x === x && t.y === y) return t;
+    }
+    return null;
+}
+
+function m_at(x, y, map) {
+    if (!map) return null;
+    if (typeof map.monsterAt === 'function') return map.monsterAt(x, y);
+    if (Array.isArray(map.monsters)) {
+        for (const mon of map.monsters) {
+            if (mon && mon.mx === x && mon.my === y) return mon;
+        }
+    }
+    return null;
+}
+
+function u_at(player, x, y) {
+    return !!(player && player.x === x && player.y === y);
+}
+
+function Sprintf(fmt, ...args) {
+    // Minimal C-style formatter bridge used by translated helper candidates.
+    const conv = String(fmt || '').replace(/%[lds]/g, '%s');
+    let i = 0;
+    return conv.replace(/%s/g, () => String(args[i++] ?? ''));
+}
+
 // ========================================================================
 // seetrap — C ref: trap.c seetrap()
 // ========================================================================
+// Autotranslated from trap.c:3486
 export function seetrap(trap) {
     if (!trap) return;
     if (!trap.tseen) {
@@ -181,9 +216,9 @@ function thitm(tlev, mon, obj, d_override, nocorpse, map, player) {
 // ========================================================================
 // m_easy_escape_pit — C ref: trap.c m_easy_escape_pit()
 // ========================================================================
-function m_easy_escape_pit(mon) {
+export function m_easy_escape_pit(mon) {
     return (mon.mndx === PM_PIT_FIEND
-            || ((mons[mon.mndx] || {}).size || 0) >= MZ_HUGE);
+            || ((mons[mon.mndx] || {}).msize || 0) >= MZ_HUGE);
 }
 
 // ========================================================================
@@ -236,7 +271,7 @@ export function m_harmless_trap(mon, trap) {
     case ROLLING_BOULDER_TRAP:
         break;
     case BEAR_TRAP:
-        if ((mdat.size || 0) <= MZ_SMALL || amorphous(mdat)
+        if ((mdat.msize || 0) <= MZ_SMALL || amorphous(mdat)
             || is_whirly(mdat) || unsolid(mdat))
             return true;
         break;
@@ -360,7 +395,7 @@ function trapeffect_bear_trap_mon(mon, trap, map, player) {
     const mptr = mons[mon.mndx] || {};
     let trapkilled = false;
 
-    if ((mptr.size || 0) > MZ_SMALL && !amorphous(mptr) && !m_in_air(mon)
+    if ((mptr.msize || 0) > MZ_SMALL && !amorphous(mptr) && !m_in_air(mon)
         && !is_whirly(mptr) && !unsolid(mptr)) {
         mon.mtrapped = 1;
         seetrap(trap);
@@ -522,7 +557,7 @@ function trapeffect_pit_mon(mon, trap, trflags, map, player) {
 function trapeffect_hole_mon(mon, trap, trflags, map, player) {
     const mptr = mons[mon.mndx] || {};
 
-    if (!grounded(mptr) || (mptr.size || 0) >= MZ_HUGE) {
+    if (!grounded(mptr) || (mptr.msize || 0) >= MZ_HUGE) {
         return Trap_Effect_Finished;
     }
     // C ref: calls trapeffect_level_telep for monsters
@@ -576,8 +611,8 @@ function trapeffect_web_mon(mon, trap, map) {
         tear_web = true;
         break;
     default:
-        if (mptr.symbol === S_GIANT
-            || (mptr.symbol === S_DRAGON && extra_nasty(mptr))) {
+        if (mptr.mlet === S_GIANT
+            || (mptr.mlet === S_DRAGON && extra_nasty(mptr))) {
             tear_web = true;
         }
         break;
@@ -768,7 +803,7 @@ async function trapeffect_rolling_boulder_trap_mon(mon, trap, map, player) {
                 // C ref: launch_obj()/ohitmon can strike the hero while rolling.
                 const dmg = rnd(20);
                 if (typeof player.takeDamage === 'function') player.takeDamage(dmg, 'a rolling boulder');
-                else if (Number.isFinite(player.hp)) player.hp -= dmg;
+                else if (Number.isFinite(player.uhp)) player.uhp -= dmg;
                 return Trap_Effect_Finished;
             }
             if (x === mon.mx && y === mon.my) {
@@ -1136,7 +1171,7 @@ export function water_damage_chain(chain, here) {
 }
 
 // C ref: trap.c fire_damage_chain() — apply fire damage to inventory chain
-export function fire_damage_chain(chain, force, here, x, y) {
+export function fire_damage_chain(chain, force, here, x, y, game = null, player = null) {
     if (!chain) return 0;
     let num = 0;
     if (Array.isArray(chain)) {

@@ -137,12 +137,12 @@ The JS `dogfood()` in `dog.js` (lines 131-284) implements the full food classifi
 
 ## What's been fixed
 
-1. **Gold auto-pickup removed** (`commands.js`) — JS was auto-collecting gold coins
+1. **Gold auto-pickup removed** (`cmd.js`/`hack.js`) — JS was auto-collecting gold coins
    during movement; C does not. This removed gold from `map.objects` before pet AI
    ran, causing missing `rn2(100)` calls in `dog_goal`'s object scan. Root cause of
    the original step 22 divergence.
 
-2. **Door auto-open RNG added** (`commands.js`) — JS was opening doors silently during
+2. **Door auto-open RNG added** (`cmd.js`/`hack.js`) — JS was opening doors silently during
    movement. C calls `rnl(20)` for strength check + `rn2(19)` for exercise.
 
 3. **`ALLOW_M` in mfndpos** (`monmove.js`) — Pets can consider monster-occupied squares

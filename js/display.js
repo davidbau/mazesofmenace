@@ -16,11 +16,12 @@ import {
 } from './config.js';
 
 import { def_monsyms, def_oc_syms, defsyms, trap_to_defsym } from './symbols.js';
-import { monDisplayName } from './mondata.js';
 import { monsterMapGlyph, objectMapGlyph } from './display_rng.js';
 import { tempGlyphToCell } from './temp_glyph.js';
 import { isObjectNameKnown, isObjectEncountered, discoveryTypeName } from './discovery.js';
+import { do_lookat, format_do_look_html } from './look.js';
 
+// TRANSLATOR: AUTO
 // Color constants (color.h)
 // C ref: include/color.h
 export const CLR_BLACK = 0;
@@ -605,8 +606,16 @@ export class Display {
                     const hallu = !!player?.hallucinating;
                     const glyph = monsterMapGlyph(mon, hallu);
                     this.setCell(col, row, glyph.ch, glyph.color);
-                    const classInfo = this._monsterClassDesc(mon.displayChar);
-                    this.cellInfo[row][col] = { name: monDisplayName(mon), desc: classInfo, color: mon.displayColor };
+                    const look = do_lookat({ map: gameMap, player }, { x, y });
+                    const styled = format_do_look_html(look);
+                    const classInfo = look.classDesc || this._monsterClassDesc(mon.displayChar);
+                    this.cellInfo[row][col] = {
+                        name: styled.nameText || look.firstmatch || 'monster',
+                        desc: styled.descText || classInfo || '',
+                        nameHtml: styled.nameHtml || '',
+                        descHtml: styled.descHtml || '',
+                        color: mon.displayColor,
+                    };
                     continue;
                 }
                 if (loc.mem_invis) {
@@ -900,18 +909,21 @@ export class Display {
         // Status line 2: Dungeon level, HP, Pw, AC, etc.
         // C ref: botl.c bot2str()
         const line2Parts = [];
+        const heroHp = Number.isFinite(player?.uhp) ? player.uhp : (player?.hp || 0);
+        const heroHpMax = Number.isFinite(player?.uhpmax) ? player.uhpmax : (player?.hpmax || 0);
+        const heroLevel = Number.isFinite(player?.ulevel) ? player.ulevel : (player?.level || 1);
         const levelLabel = player.inTutorial ? 'Tutorial' : 'Dlvl';
         line2Parts.push(`${levelLabel}:${player.dungeonLevel}`);
         line2Parts.push(`$:${player.gold}`);
-        line2Parts.push(`HP:${player.hp}(${player.hpmax})`);
+        line2Parts.push(`HP:${heroHp}(${heroHpMax})`);
         line2Parts.push(`Pw:${player.pw}(${player.pwmax})`);
         line2Parts.push(`AC:${player.ac}`);
 
         // Experience
         if (player.showExp) {
-            line2Parts.push(`Xp:${player.level}/${player.exp}`);
+            line2Parts.push(`Xp:${heroLevel}/${player.exp}`);
         } else {
-            line2Parts.push(`Xp:${player.level}`);
+            line2Parts.push(`Xp:${heroLevel}`);
         }
 
         // Turn counter (time option)
@@ -950,11 +962,11 @@ export class Display {
         // C parity: status-line HP text is not force-highlighted unless an
         // explicit hitpoint highlight option is enabled.
         if (this.flags.hitpointbar) {
-            const hpPct = player.hpmax > 0 ? player.hp / player.hpmax : 1;
+            const hpPct = heroHpMax > 0 ? heroHp / heroHpMax : 1;
             const hpColor = hpPct <= 0.15 ? CLR_RED
                 : hpPct <= 0.33 ? CLR_ORANGE
                     : CLR_GRAY;
-            const hpStr = `HP:${player.hp}(${player.hpmax})`;
+            const hpStr = `HP:${heroHp}(${heroHpMax})`;
             const hpIdx = line2.indexOf(hpStr);
             if (hpIdx >= 0) {
                 for (let i = 0; i < hpStr.length; i++) {
@@ -1277,8 +1289,10 @@ export class Display {
                     symbolEl.textContent = ch;
                     symbolEl.style.color = color;
                 }
-                if (nameEl) nameEl.textContent = info.name;
-                if (descEl) descEl.textContent = info.desc;
+                if (nameEl && info.nameHtml) nameEl.innerHTML = info.nameHtml;
+                else if (nameEl) nameEl.textContent = info.name;
+                if (descEl && info.descHtml) descEl.innerHTML = info.descHtml;
+                else if (descEl) descEl.textContent = info.desc;
                 if (statsEl) statsEl.textContent = info.stats || '';
                 panel.style.visibility = 'visible';
             } else {

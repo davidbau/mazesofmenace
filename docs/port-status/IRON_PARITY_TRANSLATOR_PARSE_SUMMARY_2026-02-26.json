@@ -1,0 +1,365 @@
+{
+  "backend": "regex-only",
+  "clang": {
+    "available": false,
+    "reason": "clang.cindex import failed"
+  },
+  "function_count": 88,
+  "functions": [
+    {
+      "line": 74,
+      "name": "uint_to_any"
+    },
+    {
+      "line": 82,
+      "name": "long_to_any"
+    },
+    {
+      "line": 90,
+      "name": "monst_to_any"
+    },
+    {
+      "line": 98,
+      "name": "obj_to_any"
+    },
+    {
+      "line": 106,
+      "name": "revive_nasty"
+    },
+    {
+      "line": 146,
+      "name": "could_move_onto_boulder"
+    },
+    {
+      "line": 248,
+      "name": "cannot_push_msg"
+    },
+    {
+      "line": 263,
+      "name": "cannot_push"
+    },
+    {
+      "line": 316,
+      "name": "rock_disappear_msg"
+    },
+    {
+      "line": 328,
+      "name": "moverock_done"
+    },
+    {
+      "line": 337,
+      "name": "moverock"
+    },
+    {
+      "line": 349,
+      "name": "moverock_core"
+    },
+    {
+      "line": 628,
+      "name": "still_chewing"
+    },
+    {
+      "line": 806,
+      "name": "movobj"
+    },
+    {
+      "line": 817,
+      "name": "dosinkfall"
+    },
+    {
+      "line": 904,
+      "name": "may_dig"
+    },
+    {
+      "line": 913,
+      "name": "may_passwall"
+    },
+    {
+      "line": 920,
+      "name": "bad_rock"
+    },
+    {
+      "line": 934,
+      "name": "cant_squeeze_thru"
+    },
+    {
+      "line": 963,
+      "name": "invocation_pos"
+    },
+    {
+      "line": 1247,
+      "name": "findtravelpath"
+    },
+    {
+      "line": 1507,
+      "name": "is_valid_travelpt"
+    },
+    {
+      "line": 1675,
+      "name": "u_rooted"
+    },
+    {
+      "line": 1689,
+      "name": "notice_mon"
+    },
+    {
+      "line": 1716,
+      "name": "notice_mons_cmp"
+    },
+    {
+      "line": 1725,
+      "name": "notice_all_mons"
+    },
+    {
+      "line": 1768,
+      "name": "impact_disturbs_zombies"
+    },
+    {
+      "line": 1779,
+      "name": "disturb_buried_zombies"
+    },
+    {
+      "line": 1798,
+      "name": "u_locomotion"
+    },
+    {
+      "line": 1814,
+      "name": "u_simple_floortyp"
+    },
+    {
+      "line": 1833,
+      "name": "handle_tip"
+    },
+    {
+      "line": 1866,
+      "name": "swim_move_danger"
+    },
+    {
+      "line": 1906,
+      "name": "domove_bump_mon"
+    },
+    {
+      "line": 1977,
+      "name": "domove_fight_ironbars"
+    },
+    {
+      "line": 2002,
+      "name": "domove_fight_web"
+    },
+    {
+      "line": 2210,
+      "name": "domove_fight_empty"
+    },
+    {
+      "line": 2323,
+      "name": "air_turbulence"
+    },
+    {
+      "line": 2346,
+      "name": "water_turbulence"
+    },
+    {
+      "line": 2377,
+      "name": "slippery_ice_fumbling"
+    },
+    {
+      "line": 2399,
+      "name": "u_maybe_impaired"
+    },
+    {
+      "line": 2406,
+      "name": "impaired_movement"
+    },
+    {
+      "line": 2425,
+      "name": "avoid_moving_on_trap"
+    },
+    {
+      "line": 2476,
+      "name": "avoid_running_into_trap_or_liquid"
+    },
+    {
+      "line": 2496,
+      "name": "avoid_trap_andor_region"
+    },
+    {
+      "line": 2567,
+      "name": "move_out_of_bounds"
+    },
+    {
+      "line": 2597,
+      "name": "carrying_too_much"
+    },
+    {
+      "line": 2620,
+      "name": "escape_from_sticky_mon"
+    },
+    {
+      "line": 2676,
+      "name": "domove"
+    },
+    {
+      "line": 2693,
+      "name": "domove_core"
+    },
+    {
+      "line": 2977,
+      "name": "runmode_delay_output"
+    },
+    {
+      "line": 3001,
+      "name": "maybe_smudge_engr"
+    },
+    {
+      "line": 3016,
+      "name": "overexert_hp"
+    },
+    {
+      "line": 3032,
+      "name": "overexertion"
+    },
+    {
+      "line": 3045,
+      "name": "invocation_message"
+    },
+    {
+      "line": 3072,
+      "name": "switch_terrain"
+    },
+    {
+      "line": 3112,
+      "name": "set_uinwater"
+    },
+    {
+      "line": 3200,
+      "name": "spoteffects"
+    },
+    {
+      "line": 3351,
+      "name": "monstinroom"
+    },
+    {
+      "line": 3367,
+      "name": "furniture_present"
+    },
+    {
+      "line": 3383,
+      "name": "in_rooms"
+    },
+    {
+      "line": 3449,
+      "name": "in_town"
+    },
+    {
+      "line": 3473,
+      "name": "move_update"
+    },
+    {
+      "line": 3511,
+      "name": "check_special_room"
+    },
+    {
+      "line": 3673,
+      "name": "pickup_checks"
+    },
+    {
+      "line": 3761,
+      "name": "dopickup"
+    },
+    {
+      "line": 3783,
+      "name": "lookaround"
+    },
+    {
+      "line": 3948,
+      "name": "doorless_door"
+    },
+    {
+      "line": 3964,
+      "name": "crawl_destination"
+    },
+    {
+      "line": 3991,
+      "name": "monster_nearby"
+    },
+    {
+      "line": 4015,
+      "name": "end_running"
+    },
+    {
+      "line": 4036,
+      "name": "nomul"
+    },
+    {
+      "line": 4052,
+      "name": "unmul"
+    },
+    {
+      "line": 4086,
+      "name": "maybe_wail"
+    },
+    {
+      "line": 4123,
+      "name": "saving_grace"
+    },
+    {
+      "line": 4176,
+      "name": "showdamage"
+    },
+    {
+      "line": 4185,
+      "name": "losehp"
+    },
+    {
+      "line": 4225,
+      "name": "weight_cap"
+    },
+    {
+      "line": 4281,
+      "name": "inv_weight"
+    },
+    {
+      "line": 4302,
+      "name": "calc_capacity"
+    },
+    {
+      "line": 4315,
+      "name": "near_capacity"
+    },
+    {
+      "line": 4321,
+      "name": "max_capacity"
+    },
+    {
+      "line": 4329,
+      "name": "check_capacity"
+    },
+    {
+      "line": 4351,
+      "name": "dump_weights"
+    },
+    {
+      "line": 4416,
+      "name": "cmp_weights"
+    },
+    {
+      "line": 4426,
+      "name": "inv_cnt"
+    },
+    {
+      "line": 4444,
+      "name": "money_cnt"
+    },
+    {
+      "line": 4455,
+      "name": "spot_checks"
+    },
+    {
+      "line": 4481,
+      "name": "rounddiv"
+    }
+  ],
+  "line_count": 4505,
+  "source": "nethack-c/src/hack.c",
+  "source_sha256": "ac9dd7e72d4a72366019fc5c148d29d5c08f20d25f223920cd9f56abd0b4b3df"
+}

@@ -26,8 +26,9 @@ function getlt() {
 }
 
 // cf. calendar.c:55
+// TRANSLATOR: AUTO (calendar.c:54)
 export function getyear() {
-    return getlt().getFullYear();
+  return (1900 + getlt().tm_year);
 }
 
 // cf. calendar.c:62
@@ -74,31 +75,32 @@ export function time_from_yyyymmddhhmmss(buf) {
 }
 
 // cf. calendar.c:200
-export function phase_of_the_moon() { // 0-7, with 0: new, 4: full
-    const lt = getlt();
-    const diy = Math.floor(
-        (lt - new Date(lt.getFullYear(), 0, 1)) / (24 * 60 * 60 * 1000)
-    ); // tm_yday equivalent (0-based day of year)
-    const goldn = ((lt.getFullYear() - 1900) % 19) + 1; // tm_year is year-1900
-    let epact = (11 * goldn + 18) % 30;
-    if ((epact === 25 && goldn > 11) || epact === 24)
-        epact++;
-    return ((((((diy + epact) * 6) + 11) % 177) / 22) & 7);
+// TRANSLATOR: AUTO (calendar.c:199)
+export function phase_of_the_moon() {
+  let lt = getlt(), epact, diy, goldn;
+  diy = lt.tm_yday;
+  goldn = (lt.tm_year % 19) + 1;
+  epact = (11 * goldn + 18) % 30;
+  if ((epact === 25 && goldn > 11) || epact === 24) epact++;
+  return ((((((diy + epact) * 6) + 11) % 177) / 22) & 7);
 }
 
 // cf. calendar.c:215
+// TRANSLATOR: AUTO (calendar.c:214)
 export function friday_13th() {
-    const lt = getlt();
-    return lt.getDay() === 5 && lt.getDate() === 13;
+  let lt = getlt();
+  return (lt.tm_wday === 5 && lt.tm_mday === 13);
 }
 
 // cf. calendar.c:224
+// TRANSLATOR: AUTO (calendar.c:223)
 export function night() {
-    const hour = getlt().getHours();
-    return hour < 6 || hour > 21;
+  let hour = getlt().tm_hour;
+  return (hour < 6 || hour > 21);
 }
 
 // cf. calendar.c:232
+// TRANSLATOR: AUTO (calendar.c:231)
 export function midnight() {
-    return getlt().getHours() === 0;
+  return (getlt().tm_hour === 0);
 }

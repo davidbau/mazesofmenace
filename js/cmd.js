@@ -21,22 +21,91 @@ import { handleWield, handleSwapWeapon, handleQuiver } from './wield.js';
 import { handleDownstairs, handleUpstairs, handleDrop } from './do.js';
 import { handleInventory, currency } from './invent.js';
 import { handleCallObjectTypePrompt, handleDiscoveries } from './discovery.js';
-import { handleLook, handlePrevMessages, handleHelp, handleWhatis,
-         handleWhatdoes, handleHistory, handleViewMapPrompt } from './pager.js';
+import { handlePrevMessages, handleHelp, handleWhatdoes, handleHistory, handleViewMapPrompt } from './pager.js';
+import { dolook, dowhatis, doquickwhatis } from './look.js';
 import { handleKick } from './kick.js';
 import { handleZap } from './zap.js';
 import { handleSave } from './storage.js';
 import { handleForce, handleOpen, handleClose } from './lock.js';
 import { handlePickup, handleLoot, handlePay, handleTogglePickup } from './pickup.js';
 import { handleSet } from './options_menu.js';
-import { handleMovement, handleRun, findPath, handleTravel, executeTravelStep,
+import { pline, impossible } from './pline.js';
+import { domove, do_run, do_rush, findPath, dotravel, dotravel_target,
          RUN_KEYS, performWaitSearch } from './hack.js';
+
+function Sprintf(fmt, ...args) {
+    let i = 0;
+    return String(fmt || '').replace(/%[lds]/g, () => String(args[i++] ?? ''));
+}
+
+function Strcpy(_dst, src) {
+    return String(src || '');
+}
+
+function t_at(x, y, map) {
+    if (!map || !Array.isArray(map.traps)) return null;
+    for (const t of map.traps) {
+        if (t && t.x === x && t.y === y) return t;
+    }
+    return null;
+}
+
+function m_at(x, y, map) {
+    if (!map) return null;
+    if (typeof map.monsterAt === 'function') return map.monsterAt(x, y);
+    if (Array.isArray(map.monsters)) {
+        for (const mon of map.monsters) {
+            if (mon && mon.mx === x && mon.my === y) return mon;
+        }
+    }
+    return null;
+}
+
+function u_at(player, x, y) {
+    return !!(player && player.x === x && player.y === y);
+}
 
 // Process a command from the player
 // C ref: cmd.c rhack() -- main command dispatch
 // Returns: { moved: boolean, tookTime: boolean }
+// Autotranslated from cmd.c:3744
 export async function rhack(ch, game) {
     const { player, map, display, fov } = game;
+    const svc = game.svc || (game.svc = {});
+    const context = svc.context || (svc.context = {});
+    const getRunMode = () => {
+        if (Number.isInteger(context.run)) return Number(context.run || 0);
+        if (Number.isInteger(game.runMode)) return Number(game.runMode || 0);
+        return 0;
+    };
+    const getMenuRequested = () => {
+        if (Number.isInteger(context.nopick)) return !!context.nopick;
+        if (typeof game.menuRequested !== 'undefined') return !!game.menuRequested;
+        return false;
+    };
+    const setMenuRequested = (value) => {
+        context.nopick = value ? 1 : 0;
+        if ('menuRequested' in game) game.menuRequested = !!value;
+    };
+    const getForceFight = () => {
+        if (Number.isInteger(context.forcefight)) return !!context.forcefight;
+        if (typeof game.forceFight !== 'undefined') return !!game.forceFight;
+        return false;
+    };
+    const setForceFight = (value) => {
+        context.forcefight = value ? 1 : 0;
+        if ('forceFight' in game) game.forceFight = !!value;
+    };
+    const clearRunMode = () => {
+        context.run = 0;
+        if ('runMode' in game) game.runMode = 0;
+    };
+    const setRunMode = (mode) => {
+        const n = Number(mode) || 0;
+        const canonical = (n === 2) ? 2 : (n ? 3 : 0);
+        context.run = canonical;
+        if ('runMode' in game) game.runMode = canonical;
+    };
     if (ch === 0) {
         const queued = cmdq_pop_command(!!game?.inDoAgain);
         if (!queued) return { moved: false, tookTime: false };
@@ -79,13 +148,13 @@ export async function rhack(ch, game) {
     // ^J (LF/newline) is bound to a south "go until near something" command
     // in non-numpad mode, while ^M is separate (often transformed before core).
     if (ch === 10) {
-        return await handleRun(DIRECTION_KEYS.j, player, map, display, fov, game, 'rush');
+        return await do_rush(DIRECTION_KEYS.j, player, map, display, fov, game);
     }
 
     // C-faithful: both LF (^J) and CR from Enter should behave like the
     // movement binding in non-numpad mode (rush south).
     if (ch === 13) {
-        return await handleRun(DIRECTION_KEYS.j, player, map, display, fov, game, 'rush');
+        return await do_rush(DIRECTION_KEYS.j, player, map, display, fov, game);
     }
 
     // Meta command keys (M-x / Alt+x).
@@ -100,17 +169,16 @@ export async function rhack(ch, game) {
     // Movement keys
     if (DIRECTION_KEYS[c]) {
         // Check if 'G' or 'g' prefix was used (run/rush mode)
-        if (game.runMode) {
-            const mode = game.runMode;
-            game.runMode = 0; // Clear prefix
-            return handleRun(DIRECTION_KEYS[c], player, map, display, fov, game);
+        if (getRunMode()) {
+            clearRunMode();
+            return do_run(DIRECTION_KEYS[c], player, map, display, fov, game);
         }
-        return await handleMovement(DIRECTION_KEYS[c], player, map, display, game);
+        return await domove(DIRECTION_KEYS[c], player, map, display, game);
     }
 
     // Run keys (capital letter = run in that direction)
     if (RUN_KEYS[c]) {
-        return handleRun(RUN_KEYS[c], player, map, display, fov, game);
+        return do_run(RUN_KEYS[c], player, map, display, fov, game);
     }
 
     function clearTopline() {
@@ -123,9 +191,9 @@ export async function rhack(ch, game) {
     // C ref: cmd.c do_rush()/do_run() prefix handling.
     // If the next key after g/G is not a movement command, cancel prefix
     // with a specific message instead of treating it as an unknown command.
-    if (game.runMode && c !== 'g' && c !== 'G' && ch !== 27) {
-        const prefix = game.runMode === 2 ? 'g' : 'G';
-        game.runMode = 0;
+    if (getRunMode() && c !== 'g' && c !== 'G' && ch !== 27) {
+        const prefix = getRunMode() === 2 ? 'g' : 'G';
+        clearRunMode();
         // C getdir-style quit keys after a run/rush prefix do not produce
         // the prefix-specific warning; they fall through as ordinary input.
         const isQuitLike = (ch === 32 || ch === 10 || ch === 13);
@@ -286,7 +354,7 @@ export async function rhack(ch, game) {
     // Read scroll/spellbook
     // C ref: read.c doread()
     if (c === 'r') {
-        if (game.menuRequested) game.menuRequested = false;
+        if (getMenuRequested()) setMenuRequested(false);
         return await handleRead(player, display, game);
     }
 
@@ -297,21 +365,18 @@ export async function rhack(ch, game) {
 
     // Look (:)
     if (c === ':') {
-        return handleLook(player, map, display);
+        return dolook(game);
     }
 
     // What is (;)
     if (c === ';') {
-        if (game.flags.verbose) {
-            display.putstr_message('Pick a position to identify (use movement keys, . when done)');
-        }
-        return { moved: false, tookTime: false };
+        return await doquickwhatis(game);
     }
 
     // Whatis (/)
     // C ref: pager.c dowhatis()
     if (c === '/') {
-        return await handleWhatis(game);
+        return await dowhatis(game);
     }
 
     // Whatdoes (&)
@@ -404,7 +469,7 @@ export async function rhack(ch, game) {
     // Travel command (_)
     // C ref: cmd.c dotravel()
     if (c === '_') {
-        return await handleTravel(game);
+        return await dotravel(game);
     }
 
     // Retravel (Ctrl+_)
@@ -423,7 +488,7 @@ export async function rhack(ch, game) {
             game.travelPath = path;
             game.travelStep = 0;
             display.putstr_message(`Traveling... (${path.length} steps)`);
-            return await executeTravelStep(game);
+            return await dotravel_target(game);
         } else {
             display.putstr_message('No previous travel destination.');
             return { moved: false, tookTime: false };
@@ -477,10 +542,10 @@ export async function rhack(ch, game) {
     // Prefix commands (modifiers for next command)
     // C ref: cmd.c:1624 do_reqmenu() — 'm' prefix
     if (c === 'm') {
-        if (game.menuRequested) {
-            game.menuRequested = false;
+        if (getMenuRequested()) {
+            setMenuRequested(false);
         } else {
-            game.menuRequested = true;
+            setMenuRequested(true);
             // C ref: cmd.c do_reqmenu() — sets iflags.menu_requested
             // silently; no screen message in C's TTY implementation.
         }
@@ -489,11 +554,11 @@ export async function rhack(ch, game) {
 
     // C ref: cmd.c:1671 do_fight() — 'F' prefix
     if (c === 'F') {
-        if (game.forceFight) {
+        if (getForceFight()) {
             display.putstr_message('Double fight prefix, canceled.');
-            game.forceFight = false;
+            setForceFight(false);
         } else {
-            game.forceFight = true;
+            setForceFight(true);
             if (game.flags.verbose) {
                 display.putstr_message('Next movement will force fight even if no monster visible.');
             }
@@ -503,11 +568,11 @@ export async function rhack(ch, game) {
 
     // C ref: cmd.c:1655 do_run() — 'G' prefix (run)
     if (c === 'G') {
-        if (game.runMode) {
+        if (getRunMode()) {
             display.putstr_message('Double run prefix, canceled.');
-            game.runMode = 0;
+            clearRunMode();
         } else {
-            game.runMode = 3; // run mode
+            setRunMode(3); // run mode
             if (game.flags.verbose) {
                 display.putstr_message('Next direction will run until something interesting.');
             }
@@ -517,11 +582,11 @@ export async function rhack(ch, game) {
 
     // C ref: cmd.c:1639 do_rush() — 'g' prefix (rush)
     if (c === 'g') {
-        if (game.runMode) {
+        if (getRunMode()) {
             display.putstr_message('Double rush prefix, canceled.');
-            game.runMode = 0;
+            clearRunMode();
         } else {
-            game.runMode = 2; // rush mode
+            setRunMode(2); // rush mode
             if (game.flags.verbose) {
                 display.putstr_message('Next direction will rush until something interesting.');
             }
@@ -533,9 +598,9 @@ export async function rhack(ch, game) {
     // C ref: cmd.c -- ESC aborts current command
     if (ch === 27) {
         // Also clear prefix flags
-        game.menuRequested = false;
-        game.forceFight = false;
-        game.runMode = 0;
+        setMenuRequested(false);
+        setForceFight(false);
+        clearRunMode();
         return { moved: false, tookTime: false };
     }
 

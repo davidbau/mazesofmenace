@@ -37,7 +37,7 @@ import { tmp_at, DISP_ALWAYS, DISP_END } from './animation.js';
 // ============================================================
 
 // cf. potion.c itimeout() — clamp a timeout value to valid range
-function itimeout(val) {
+export function itimeout(val) {
     // C ref: potion.c:55 — clamp to [0, TIMEOUT]
     if (val < 0) return 0;
     if (val > TIMEOUT) return TIMEOUT;
@@ -45,7 +45,7 @@ function itimeout(val) {
 }
 
 // cf. potion.c itimeout_incr() — increment timeout with overflow protection
-function itimeout_incr(old, incr) {
+export function itimeout_incr(old, incr) {
     // C ref: potion.c:62 — increment with clamp
     const result = old + incr;
     if (result < 0) return TIMEOUT; // overflow wraps to max
@@ -54,14 +54,14 @@ function itimeout_incr(old, incr) {
 }
 
 // cf. potion.c set_itimeout() — set timeout on a property's intrinsic field
-function set_itimeout(player, prop, val) {
+export function set_itimeout(player, prop, val) {
     // C ref: potion.c:72 — set timeout portion of intrinsic
     const entry = player.ensureUProp(prop);
     entry.intrinsic = (entry.intrinsic & ~TIMEOUT) | itimeout(val);
 }
 
 // cf. potion.c incr_itimeout() — increment timeout on a property
-function incr_itimeout(player, prop, incr) {
+export function incr_itimeout(player, prop, incr) {
     // C ref: potion.c:80 — increment timeout portion of intrinsic
     const entry = player.ensureUProp(prop);
     const oldTimeout = entry.intrinsic & TIMEOUT;
@@ -375,11 +375,11 @@ async function handleQuaff(player, map, display) {
     // TODO: cure blindness, sickness, hallucination when appropriate
     const healup = (nhp, nxtra = 0) => {
         if (!Number.isFinite(nhp) || nhp <= 0) return;
-        player.hp += nhp;
-        if (player.hp > player.hpmax) {
+        player.uhp += nhp;
+        if (player.uhp > player.uhpmax) {
             const extra = Math.max(0, Number(nxtra) || 0);
-            player.hpmax += extra;
-            player.hp = player.hpmax;
+            player.uhpmax += extra;
+            player.uhp = player.uhpmax;
         }
     };
 
@@ -460,10 +460,10 @@ async function handleQuaff(player, map, display) {
         } else if (potionName.includes('gain level')) {
             replacePromptMessage();
             if (item.cursed) {
-                if (player.level > 1) player.level -= 1;
+                if (player.ulevel > 1) player.ulevel -= 1;
                 display.putstr_message('You feel less experienced.');
             } else {
-                player.level += 1;
+                player.ulevel += 1;
                 display.putstr_message('You feel more experienced.');
             }
         } else {
@@ -483,12 +483,12 @@ async function handleQuaff(player, map, display) {
 // ============================================================
 
 // cf. potion.c healup() — heal HP, optionally increase max, cure status
-function healup(player, nhp, nxtra, curesick, cureblind) {
+export function healup(player, nhp, nxtra, curesick, cureblind) {
     if (nhp > 0) {
-        player.hp += nhp;
-        if (player.hp > player.hpmax) {
-            if (nxtra > 0) player.hpmax += nxtra;
-            if (player.hp > player.hpmax) player.hp = player.hpmax;
+        player.uhp += nhp;
+        if (player.uhp > player.uhpmax) {
+            if (nxtra > 0) player.uhpmax += nxtra;
+            if (player.uhp > player.uhpmax) player.uhp = player.uhpmax;
         }
     }
     if (cureblind) make_blinded(player, 0, true);
@@ -649,10 +649,10 @@ function peffect_full_healing(player, otmp, display) {
 // cf. potion.c peffect_gain_level()
 function peffect_gain_level(player, otmp, display) {
     if (otmp.cursed) {
-        if (player.level > 1) player.level -= 1;
+        if (player.ulevel > 1) player.ulevel -= 1;
         You_feel("less experienced.");
     } else {
-        player.level += 1;
+        player.ulevel += 1;
         You_feel("more experienced.");
     }
     return false;
@@ -686,8 +686,8 @@ function peffect_acid(player, otmp, display) {
     }
     const dmg = rnd(otmp.cursed ? 10 : 5);
     pline("This burns%s!", otmp.blessed ? " a little" : " like acid");
-    player.hp -= dmg;
-    if (player.hp < 1) player.hp = 1;
+    player.uhp -= dmg;
+    if (player.uhp < 1) player.uhp = 1;
     exercise(player, A_CON, false);
     return otmp.cursed;
 }
@@ -896,8 +896,8 @@ function potionhit(mon, obj, how, player, map) {
         pline("The %s crashes on your head and breaks into shards.", botlnam);
         // losehp(rnd(2)) — damage from bottle
         const bottleDmg = rnd(2);
-        player.hp -= bottleDmg;
-        if (player.hp < 1) player.hp = 1;
+        player.uhp -= bottleDmg;
+        if (player.uhp < 1) player.uhp = 1;
     } else {
         // hit a monster
         if (rn2(5) && mon.mhp > 1)
@@ -913,8 +913,8 @@ function potionhit(mon, obj, how, player, map) {
                 pline("This burns%s!",
                       obj.blessed ? " a little" : obj.cursed ? " a lot" : "");
                 const dmg = c_d(obj.cursed ? 2 : 1, obj.blessed ? 4 : 8);
-                player.hp -= dmg;
-                if (player.hp < 1) player.hp = 1;
+                player.uhp -= dmg;
+                if (player.uhp < 1) player.uhp = 1;
             }
             break;
         case POT_POLYMORPH:
@@ -1033,22 +1033,22 @@ function potionbreathe(player, obj) {
         }
         break;
     case POT_FULL_HEALING:
-        if (player.hp < player.hpmax) {
-            player.hp++;
+        if (player.uhp < player.uhpmax) {
+            player.uhp++;
             player._botl = true;
         }
         cureblind = true;
         // fallthrough
     case POT_EXTRA_HEALING:
-        if (player.hp < player.hpmax) {
-            player.hp++;
+        if (player.uhp < player.uhpmax) {
+            player.uhp++;
             player._botl = true;
         }
         if (!obj.cursed) cureblind = true;
         // fallthrough
     case POT_HEALING:
-        if (player.hp < player.hpmax) {
-            player.hp++;
+        if (player.uhp < player.uhpmax) {
+            player.uhp++;
             player._botl = true;
         }
         if (obj.blessed) cureblind = true;
@@ -1059,10 +1059,10 @@ function potionbreathe(player, obj) {
         exercise(player, A_CON, true);
         break;
     case POT_SICKNESS:
-        if (player.hp <= 5)
-            player.hp = 1;
+        if (player.uhp <= 5)
+            player.uhp = 1;
         else
-            player.hp -= 5;
+            player.uhp -= 5;
         player._botl = true;
         exercise(player, A_CON, false);
         break;
@@ -1136,7 +1136,7 @@ function potionbreathe(player, obj) {
 
 // cf. potion.c mixtype() — determine result of mixing two potions
 // C ref: potion.c:2107-2195
-function mixtype(o1, o2) {
+export function mixtype(o1, o2) {
     let o1typ = o1.otyp, o2typ = o2.otyp;
 
     // cut down on cases: swap if o1 is potion and o2 is special
@@ -1288,8 +1288,8 @@ function dip_potion_explosion(player, obj, dmg) {
         potionbreathe(player, obj);
         // useupall(obj) — remove entire stack
         if (player.removeFromInventory) player.removeFromInventory(obj);
-        player.hp -= dmg;
-        if (player.hp < 1) player.hp = 1;
+        player.uhp -= dmg;
+        if (player.uhp < 1) player.uhp = 1;
         return true;
     }
     return false;
@@ -1477,17 +1477,4 @@ registerMakeStatusFns({
     make_stoned,
 });
 
-export {
-    handleQuaff, peffects, healup,
-    make_confused, make_stunned, make_blinded, make_sick,
-    make_hallucinated, make_vomiting, make_deaf, make_glib,
-    make_slimed, make_stoned,
-    itimeout, itimeout_incr, set_itimeout, incr_itimeout,
-    speed_up, self_invis_message, ghost_from_bottle, drink_ok,
-    strange_feeling, bottlename,
-    H2Opotion_dip, impact_arti_light, potionhit, potionbreathe,
-    mixtype,
-    dip_ok, dip_hands_ok, hold_potion, dodip, dip_into,
-    poof, dip_potion_explosion, potion_dip,
-    mongrantswish, djinni_from_bottle, split_mon,
-};
+export { handleQuaff, peffects, make_confused, make_stunned, make_blinded, make_sick, make_hallucinated, make_vomiting, make_deaf, make_glib, make_slimed, make_stoned, speed_up, self_invis_message, ghost_from_bottle, drink_ok, strange_feeling, bottlename, H2Opotion_dip, impact_arti_light, potionhit, potionbreathe, dip_ok, dip_hands_ok, hold_potion, dodip, dip_into, poof, dip_potion_explosion, potion_dip, mongrantswish, djinni_from_bottle, split_mon };

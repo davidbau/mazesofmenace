@@ -32,7 +32,11 @@ export const TIMER_FUNC = {
     FIGURINE_TRANSFORM: 'FIGURINE_TRANSFORM',
     FALL_ASLEEP: 'FALL_ASLEEP',
     DO_STORMS: 'DO_STORMS',
+    MELT_ICE_AWAY: 'MELT_ICE_AWAY',
 };
+
+// C ref: timeout.h func_index enum value used by zap.c melt-ice timers.
+export const MELT_ICE_AWAY = TIMER_FUNC.MELT_ICE_AWAY;
 
 const MAX_EGG_HATCH_TIME = 200;
 
@@ -404,10 +408,10 @@ export function spot_time_expires(x, y, funcIndex) {
     return 0;
 }
 
-export function spot_time_left(x, y, funcIndex) {
-    const expires = spot_time_expires(x, y, funcIndex);
-    if (!expires) return 0;
-    return Math.max(0, expires - _currentTurn);
+// TRANSLATOR: AUTO (timeout.c:2450)
+export function spot_time_left(x, y, func_index, game) {
+  let expires = spot_time_expires(x, y, func_index);
+  return (expires > 0) ? expires - (Number(game?.moves) || 0) : 0;
 }
 
 // Timeout-driven gameplay behavior ------------------------------------------
@@ -778,7 +782,11 @@ export function do_storms() {
 
 export function stoned_dialogue() {}
 export function vomiting_dialogue() {}
-export function sleep_dialogue() {}
+// TRANSLATOR: AUTO (timeout.c:267)
+export function sleep_dialogue() {
+  let i = (HSleepy & TIMEOUT);
+  if (i === 4) You("yawn.");
+}
 export function choke_dialogue() {}
 export function sickness_dialogue() {}
 export function levitation_dialogue() {}

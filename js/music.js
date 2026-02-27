@@ -140,7 +140,7 @@ function awaken_scare(mtmp, scary) {
 // cf. music.c:66 — awaken_monsters(distance)
 // Wake every monster in range.
 // ============================================================================
-
+export 
 function awaken_monsters(distance, map, player) {
     for (const mtmp of (map.monsters || [])) {
         if (DEADMONSTER(mtmp)) continue;
@@ -155,7 +155,7 @@ function awaken_monsters(distance, map, player) {
 // cf. music.c:84 — put_monsters_to_sleep(distance)
 // Make monsters fall asleep. Note that they may resist the spell.
 // ============================================================================
-
+export 
 function put_monsters_to_sleep(distance, map, player) {
     for (const mtmp of (map.monsters || [])) {
         if (DEADMONSTER(mtmp)) continue;
@@ -171,7 +171,7 @@ function put_monsters_to_sleep(distance, map, player) {
 // cf. music.c:104 — charm_snakes(distance)
 // Charm snakes in range. Note that the snakes are NOT tamed.
 // ============================================================================
-
+export 
 function charm_snakes(distance, map, player, fov) {
     for (const mtmp of (map.monsters || [])) {
         if (DEADMONSTER(mtmp)) continue;
@@ -199,7 +199,7 @@ function charm_snakes(distance, map, player, fov) {
 // cf. music.c:138 — calm_nymphs(distance)
 // Calm nymphs in range.
 // ============================================================================
-
+export 
 function calm_nymphs(distance, map, player, fov) {
     for (const mtmp of (map.monsters || [])) {
         if (DEADMONSTER(mtmp)) continue;
@@ -225,7 +225,7 @@ export function awaken_soldiers(bugler, map, player, fov) {
     const isHero = (bugler === player || bugler === 'player');
     // distance of affected non-soldier monsters to bugler
     const distance = (isHero
-        ? (player.ulevel || player.level || 1)
+        ? (player.ulevel || 1)
         : ((bugler.data || bugler.type || {}).mlevel || 0)) * 30;
 
     for (const mtmp of (map.monsters || [])) {
@@ -631,7 +631,7 @@ function do_improvisation(instr, player, map, display, fov) {
 
     const { notes: improvisation, same_as_last_time: same_old_song } = improvised_notes(player);
 
-    const ulevel = player.ulevel || player.level || 1;
+    const ulevel = player.ulevel || 1;
 
     switch (itmp_otyp) { // note: itmp_otyp might differ from instr.otyp
     case MAGIC_FLUTE: // Make monster fall asleep

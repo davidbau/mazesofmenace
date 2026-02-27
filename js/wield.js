@@ -82,7 +82,7 @@ function weldmsg(player, display) {
 
 // cf. wield.c:1068 — mwelded(obj): monster version of welded
 // Caller is responsible for ensuring this is a monster's item
-function mwelded(obj) {
+export function mwelded(obj) {
     if (obj && (obj.owornmask & W_WEP) && will_weld(obj))
         return true;
     return false;
@@ -107,7 +107,7 @@ function cant_wield_corpse(player, _obj) {
 // ============================================================
 
 // cf. wield.c:829 — set_twoweap(on_off)
-function set_twoweap(player, on) {
+export function set_twoweap(player, on) {
     player.twoweap = !!on;
 }
 
@@ -340,7 +340,7 @@ function ready_weapon(player, display, wep) {
 // 4. Command handlers
 // ============================================================
 
-// Helper to clear prompt line (same pattern used throughout commands.js)
+// Helper to clear prompt line (same pattern used throughout cmd.js)
 function replacePromptMessage(display) {
     if (typeof display.clearRow === 'function') display.clearRow(0);
     display.topMessage = null;
@@ -348,7 +348,7 @@ function replacePromptMessage(display) {
 }
 
 // cf. wield.c:350 — dowield(): #wield command
-// Moved from commands.js handleWield
+// Moved from cmd.js handleWield
 async function handleWield(player, display) {
     // Weld check
     if (welded(player)) {
@@ -416,7 +416,7 @@ async function handleWield(player, display) {
 }
 
 // cf. wield.c:456 — doswapweapon(): #swap command
-// Moved from commands.js handleSwapWeapon
+// Moved from cmd.js handleSwapWeapon
 async function handleSwapWeapon(player, display) {
     // Weld check
     if (welded(player)) {
@@ -496,13 +496,4 @@ async function handleQuiver(player, display) {
     }
 }
 
-export {
-    setuwep, setuswapwep, setuqwep,
-    uwepgone, uswapwepgone, uqwepgone,
-    welded, weldmsg, mwelded, will_weld, erodeable_wep,
-    can_twoweapon, set_twoweap, untwoweapon, drop_uswapwep,
-    empty_handed, cant_wield_corpse,
-    wield_tool, chwepon,
-    ready_weapon,
-    handleWield, handleSwapWeapon, handleQuiver, handleTwoWeapon,
-};
+export { setuwep, setuswapwep, setuqwep, uwepgone, uswapwepgone, uqwepgone, welded, weldmsg, will_weld, erodeable_wep, can_twoweapon, untwoweapon, drop_uswapwep, empty_handed, cant_wield_corpse, wield_tool, chwepon, ready_weapon, handleWield, handleSwapWeapon, handleQuiver, handleTwoWeapon };

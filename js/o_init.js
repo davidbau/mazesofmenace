@@ -116,7 +116,7 @@ function classShuffleEnd(ocls) {
     }
     return i - 1;
 }
-
+export 
 function shuffle(o_low, o_high, domaterial) {
     // Count shufflable items
     let num_to_shuffle = 0;
