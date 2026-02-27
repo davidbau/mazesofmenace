@@ -29,13 +29,46 @@ import { handleSave } from './storage.js';
 import { handleForce, handleOpen, handleClose } from './lock.js';
 import { handlePickup, handleLoot, handlePay, handleTogglePickup } from './pickup.js';
 import { handleSet } from './options_menu.js';
+import { pline, impossible } from './pline.js';
 import { domove, do_run, do_rush, findPath, dotravel, dotravel_target,
          RUN_KEYS, performWaitSearch } from './hack.js';
+
+function Sprintf(fmt, ...args) {
+    let i = 0;
+    return String(fmt || '').replace(/%[lds]/g, () => String(args[i++] ?? ''));
+}
+
+function Strcpy(_dst, src) {
+    return String(src || '');
+}
+
+function t_at(x, y, map) {
+    if (!map || !Array.isArray(map.traps)) return null;
+    for (const t of map.traps) {
+        if (t && t.x === x && t.y === y) return t;
+    }
+    return null;
+}
+
+function m_at(x, y, map) {
+    if (!map) return null;
+    if (typeof map.monsterAt === 'function') return map.monsterAt(x, y);
+    if (Array.isArray(map.monsters)) {
+        for (const mon of map.monsters) {
+            if (mon && mon.mx === x && mon.my === y) return mon;
+        }
+    }
+    return null;
+}
+
+function u_at(player, x, y) {
+    return !!(player && player.x === x && player.y === y);
+}
 
 // Process a command from the player
 // C ref: cmd.c rhack() -- main command dispatch
 // Returns: { moved: boolean, tookTime: boolean }
-// TRANSLATOR: AUTO
+// Autotranslated from cmd.c:3744
 export async function rhack(ch, game) {
     const { player, map, display, fov } = game;
     const svc = game.svc || (game.svc = {});

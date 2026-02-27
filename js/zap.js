@@ -64,13 +64,14 @@ import { mon_adjust_speed } from './worn.js';
 import { mon_set_minvis } from './worn.js';
 import { sleep_monst, slept_monst } from './mhitm.js';
 import { mstatusline, run_magic_enlightenment_effect } from './insight.js';
-import { display_minventory } from './invent.js';
+import { display_minventory, sobj_at, update_inventory } from './invent.js';
 import { obj_resists } from './objdata.js';
-import { splitobj } from './mkobj.js';
+import { splitobj, Is_container } from './mkobj.js';
 import { delobj } from './invent.js';
 import { useupall } from './invent.js';
 import { monflee } from './monmove.js';
 import { readobjnam, hands_obj } from './objnam.js';
+import { xname, an, The } from './objnam.js';
 import { hold_another_object, prinv } from './invent.js';
 import { findit } from './detect.js';
 import { is_db_wall, find_drawbridge, open_drawbridge, close_drawbridge, destroy_drawbridge } from './dbridge.js';
@@ -80,12 +81,16 @@ import { random_engraving_rng, deltrap } from './dungeon.js';
 import { discoverObject } from './discovery.js';
 import { u_teleport_mon, rloco } from './teleport.js';
 import { boxlock } from './lock.js';
+import { cansee } from './vision.js';
 import {
     tmp_at, nh_delay_output,
     DISP_BEAM, DISP_END,
 } from './animation.js';
 import { WIN_MESSAGE, display_nhwindow } from './windows.js';
 import { attach_egg_hatch_timeout, MELT_ICE_AWAY } from './timeout.js';
+import { impossible, You_feel } from './pline.js';
+import { acurr } from './attrib.js';
+import { noit_Monnam } from './do_name.js';
 
 // Direction vectors matching cmd.js DIRECTION_KEYS
 const DIRECTION_KEYS = {
@@ -110,9 +115,37 @@ const ZT_SPELL = (x) => 10 + x;
 const ZT_BREATH = (x) => 20 + x;
 const BURIED_TOO = 1;
 const CONTAINED_TOO = 2;
+const PICK_NONE = 0;
+const MINV_NOLET = 0x04;
+const MINV_ALL = 0x08;
 
 let go_obj_zapped = false;
 let gp_poly_zapped = -1;
+const objects = objectData;
+const observe_object = discoverObject;
+const makeknown = observe_object;
+
+function SchroedingersBox(obj) {
+  return !!(obj && obj.spe === 1 && Is_container(obj));
+}
+
+function engulfing_u(player) {
+  return !!player?.uswallow;
+}
+
+function t_at(x, y, map) {
+  if (!map || !Array.isArray(map.traps)) return null;
+  for (const t of map.traps) {
+    if (t && t.x === x && t.y === y) return t;
+  }
+  return null;
+}
+
+function obj_extract_self(obj, map) {
+  if (!obj || !map || !Array.isArray(map.objects)) return;
+  const idx = map.objects.indexOf(obj);
+  if (idx >= 0) map.objects.splice(idx, 1);
+}
 
 function is_hero_spell(type) { return type >= 10 && type < 20; }
 
@@ -798,7 +831,7 @@ export function burn_floor_objects(x, y, give_feedback, u_caused, map) {
 // ============================================================
 // cf. zap.c buzz() — main beam propagation (C-style interface)
 // ============================================================
-// TRANSLATOR: AUTO (zap.c:4705)
+// Autotranslated from zap.c:4705
 export function buzz(type, nd, sx, sy, dx, dy) {
   dobuzz(type, nd, sx, sy, dx, dy, true, false);
 }
@@ -1179,7 +1212,7 @@ export function obj_zapped(obj, type) {
 // cf. zap.c:1474 obj_shudders() — object resists polymorph (shudder check)
 // Returns true if object should be destroyed instead of polymorphed
 // ============================================================
-// TRANSLATOR: AUTO (zap.c:1473)
+// Autotranslated from zap.c:1473
 export function obj_shudders(obj, game) {
   let zap_odds;
   if (game.game.svc.context.bypasses && obj.bypass) return false;
@@ -1693,7 +1726,7 @@ export function zappable(obj) {
 }
 
 // C ref: zap.c zap_ok()
-// TRANSLATOR: AUTO (zap.c:2605)
+// Autotranslated from zap.c:2605
 export function zap_ok(obj) {
   if (obj && obj.oclass === WAND_CLASS) return GETOBJ_SUGGEST;
   return GETOBJ_EXCLUDE;
@@ -1877,8 +1910,24 @@ export function boxlock_invent(player, otmp) {
 }
 
 // C ref: zap.c location helpers.
-export function get_obj_location(obj, out = null, locflags = 0, player = null) {
+export function get_obj_location(obj, xp = null, yp = null, locflags = 0, player = null) {
   if (!obj) return null;
+  // Backward compatibility:
+  // - old form: (obj, out, locflags[, player])
+  // - C-like form: (obj, xp, yp, locflags[, player])
+  let out = null;
+  if (typeof yp === 'number' && arguments.length <= 3) {
+    out = (xp && typeof xp === 'object') ? xp : null;
+    locflags = yp;
+    yp = null;
+  } else if (typeof yp === 'number' && locflags && typeof locflags === 'object' && player == null) {
+    out = (xp && typeof xp === 'object') ? xp : null;
+    player = locflags;
+    locflags = yp;
+    yp = null;
+  } else if (xp && typeof xp === 'object' && yp == null) {
+    out = xp;
+  }
   let x = 0;
   let y = 0;
   const where = String(obj.where || '').toUpperCase();
@@ -1895,7 +1944,7 @@ export function get_obj_location(obj, out = null, locflags = 0, player = null) {
     x = Number(obj.ox ?? 0);
     y = Number(obj.oy ?? 0);
   } else if ((where === 'OBJ_CONTAINED' || where === 'CONTAINED') && (locflags & CONTAINED_TOO) && obj.ocontainer) {
-    return get_obj_location(obj.ocontainer, out, locflags, player);
+    return get_obj_location(obj.ocontainer, xp, yp, locflags, player);
   }
   if (!x || !y) return null;
   const pos = { x, y };
@@ -1903,6 +1952,8 @@ export function get_obj_location(obj, out = null, locflags = 0, player = null) {
     out.x = x;
     out.y = y;
   }
+  if (xp && typeof xp === 'object' && 'value' in xp) xp.value = x;
+  if (yp && typeof yp === 'object' && 'value' in yp) yp.value = y;
   return pos;
 }
 
@@ -2259,7 +2310,7 @@ export function u_adtyp_resistance_obj(player, adtyp) {
   if (dwarfCloak && (adtyp === 2 || adtyp === 3)) return 90;
   return 0;
 }
-// TRANSLATOR: AUTO (zap.c:4699)
+// Autotranslated from zap.c:4699
 export function ubuzz(type, nd, player) {
   dobuzz(type, nd, player.x, player.y, player.dx, player.dy, true, false);
 }

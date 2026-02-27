@@ -22,6 +22,11 @@ def parse_args():
     p.add_argument("--summary", required=True, help="batch_emit summary JSON")
     p.add_argument("--repo-root", default=".", help="Repository root (default: .)")
     p.add_argument("--out", required=True, help="Output JSON path")
+    p.add_argument(
+        "--exclude-sources-file",
+        default="",
+        help="Optional JSON file with {\"sources\":[...]} C sources to exclude from counts",
+    )
     return p.parse_args()
 
 
@@ -37,6 +42,13 @@ def main():
     repo = Path(args.repo_root)
     summary = json.loads(Path(args.summary).read_text(encoding="utf-8"))
     js_dir = repo / "js"
+    excluded_sources = set()
+    if args.exclude_sources_file:
+        payload = json.loads(Path(args.exclude_sources_file).read_text(encoding="utf-8"))
+        for src in payload.get("sources", []):
+            if isinstance(src, str) and src.strip():
+                excluded_sources.add(src.strip())
+                excluded_sources.add(Path(src).name)
 
     js_exports = {}
     for js_file in js_dir.glob("*.js"):
@@ -45,6 +57,9 @@ def main():
     records = []
     for file_rec in summary.get("files", []):
         source = file_rec.get("source", "")
+        source_name = Path(source).name
+        if source in excluded_sources or source_name in excluded_sources:
+            continue
         stem = Path(source).stem
         module_exports = js_exports.get(stem, set())
         js_module_path = (js_dir / f"{stem}.js")
@@ -74,6 +89,8 @@ def main():
 
     output = {
         "summary": args.summary,
+        "exclude_sources_file": args.exclude_sources_file or None,
+        "excluded_sources_count": len(excluded_sources),
         "totals": {
             "clean_candidates": len(records),
             "runtime_matching_exports": len(matched),
@@ -95,4 +112,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

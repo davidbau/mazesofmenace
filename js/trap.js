@@ -58,6 +58,10 @@ import { is_flammable, is_rustprone, is_rottable, is_corrodeable,
 import { CORPSE, WEAPON_CLASS, ARMOR_CLASS,
          ARROW, DART, ROCK, BOULDER, WAND_CLASS } from './objects.js';
 import { tmp_at, nh_delay_output, DISP_FLASH, DISP_END } from './animation.js';
+import { cansee, couldsee } from './vision.js';
+import { pline, You } from './pline.js';
+import { Monnam, mon_nam } from './do_name.js';
+import { an } from './objnam.js';
 
 // Trap result constants
 const Trap_Effect_Finished = 0;
@@ -111,10 +115,40 @@ function has_boulder_at(map, x, y) {
     return false;
 }
 
+function t_at(x, y, map) {
+    if (!map || !Array.isArray(map.traps)) return null;
+    for (const t of map.traps) {
+        if (t && t.x === x && t.y === y) return t;
+    }
+    return null;
+}
+
+function m_at(x, y, map) {
+    if (!map) return null;
+    if (typeof map.monsterAt === 'function') return map.monsterAt(x, y);
+    if (Array.isArray(map.monsters)) {
+        for (const mon of map.monsters) {
+            if (mon && mon.mx === x && mon.my === y) return mon;
+        }
+    }
+    return null;
+}
+
+function u_at(player, x, y) {
+    return !!(player && player.x === x && player.y === y);
+}
+
+function Sprintf(fmt, ...args) {
+    // Minimal C-style formatter bridge used by translated helper candidates.
+    const conv = String(fmt || '').replace(/%[lds]/g, '%s');
+    let i = 0;
+    return conv.replace(/%s/g, () => String(args[i++] ?? ''));
+}
+
 // ========================================================================
 // seetrap — C ref: trap.c seetrap()
 // ========================================================================
-// TRANSLATOR: AUTO
+// Autotranslated from trap.c:3486
 export function seetrap(trap) {
     if (!trap) return;
     if (!trap.tseen) {
@@ -1137,7 +1171,7 @@ export function water_damage_chain(chain, here) {
 }
 
 // C ref: trap.c fire_damage_chain() — apply fire damage to inventory chain
-export function fire_damage_chain(chain, force, here, x, y) {
+export function fire_damage_chain(chain, force, here, x, y, game = null, player = null) {
     if (!chain) return 0;
     let num = 0;
     if (Array.isArray(chain)) {

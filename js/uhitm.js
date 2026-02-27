@@ -59,6 +59,8 @@ import {
 } from './trap.js';
 import { tmp_at, nh_delay_output, DISP_ALWAYS, DISP_END } from './animation.js';
 import { canonicalizeAttackFields } from './attack_fields.js';
+import { pline, pline_The, You, impossible } from './pline.js';
+import { mon_nam, Monnam } from './do_name.js';
 
 
 // ============================================================================
@@ -724,7 +726,7 @@ function first_weapon_hit(weapon) {
 // cf. uhitm.c:1970 — shade_aware(obj):
 //   Check if object can affect a shade (silver, blessed, artifact).
 //   Objects in this list either affect shades or are handled specially.
-// TRANSLATOR: AUTO
+// Autotranslated from uhitm.c:1970
 export function shade_aware(obj) {
     if (!obj) return false;
     if (obj.otyp === BOULDER

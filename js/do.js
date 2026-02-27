@@ -6,7 +6,7 @@ import { COLNO, ROWNO, STAIRS,
          CORR, ROOM, AIR, A_DEX,
          IS_FURNITURE, IS_LAVA, IS_POOL, MAGIC_PORTAL, VIBRATING_SQUARE } from './config.js';
 import { rn1, rn2, rnd, d } from './rng.js';
-import { deltrap, enexto, makelevel } from './dungeon.js';
+import { deltrap, enexto, makelevel, assign_level } from './dungeon.js';
 import { mon_arrive } from './dog.js';
 import { initrack } from './monmove.js';
 import { COIN_CLASS, RING_CLASS, POTION_CLASS,
@@ -31,7 +31,8 @@ import { uwepgone, uswapwepgone, uqwepgone } from './wield.js';
 import { observeObject } from './discovery.js';
 import { compactInvletPromptChars, buildInventoryOverlayLines, renderOverlayMenuUntilDismiss } from './invent.js';
 import { pline, pline_The, You, Your, You_hear, You_see, You_feel, There, Norep } from './pline.js';
-import { hcolor, hliquid, rndmonnam } from './do_name.js';
+import { hcolor, hliquid, rndmonnam, Monnam } from './do_name.js';
+import { an } from './objnam.js';
 import { body_part, FACE, HAND, LEG, STOMACH } from './polyself.js';
 import { IS_SINK, IS_ALTAR } from './symbols.js';
 import { newsym } from './monutil.js';
@@ -44,6 +45,24 @@ import { revive } from './zap.js';
 import { cansee } from './vision.js';
 import { canseemon } from './mondata.js';
 import { movebubbles } from './mkmaze.js';
+
+// Translator-compat globals used by some C-emitted helper candidates.
+const gd = {};
+function encumber_msg(_player) {}
+function Wounded_legs(player) { return !!(player?.woundedLegs); }
+function EWounded_legs(player) { return Number(player?.eWoundedLegs || 0); }
+function HWounded_legs(player) { return Number(player?.hWoundedLegs || 0); }
+function Sprintf(fmt, ...args) {
+    let i = 0;
+    return String(fmt || '').replace(/%[sd]/g, () => String(args[i++] ?? ''));
+}
+function strchr(s, ch) {
+    if (s == null || ch == null) return null;
+    const text = String(s);
+    const needle = String(ch)[0] || '';
+    const idx = text.indexOf(needle);
+    return idx >= 0 ? text.slice(idx) : null;
+}
 
 
 // ============================================================
@@ -242,7 +261,7 @@ export function dropx(obj, player, map) {
 }
 
 // cf. do.c dropy() — put dropped object at destination
-// TRANSLATOR: AUTO
+// Autotranslated from do.c:800
 export function dropy(obj, player, map) {
     dropz(obj, false, player, map);
 }
@@ -1290,7 +1309,7 @@ export function zombify_mon(body, player, map) {
 // ============================================================
 
 // cf. do.c danger_uprops() — return true if hero properties are dangerous
-// TRANSLATOR: AUTO
+// Autotranslated from do.c:2308
 export function danger_uprops(player) {
     return !!(player.stoned || player.slimed || player.strangled || player.sick);
 }

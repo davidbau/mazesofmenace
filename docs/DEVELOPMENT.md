@@ -89,6 +89,12 @@ conda run -n base python tools/c_translator/runtime_stitch_candidates.py \
   --summary /tmp/translator-batch-summary.json \
   --out /tmp/translator-runtime-stitch-candidates.json
 
+# Gameplay-parity scoped counts (exclude non-HTML/non-gameplay C subsystems)
+conda run -n base python tools/c_translator/runtime_stitch_candidates.py \
+  --summary /tmp/translator-batch-summary.json \
+  --exclude-sources-file tools/c_translator/rulesets/gameplay_scope_excluded_sources.json \
+  --out /tmp/translator-runtime-stitch-candidates-gameplay.json
+
 # Heuristic safety lint for runtime candidates (unknown callee detection)
 conda run -n base python tools/c_translator/runtime_candidate_safety.py \
   --candidates /tmp/translator-runtime-stitch-candidates.json \

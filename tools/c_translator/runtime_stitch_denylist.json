@@ -23,5 +23,10 @@
     "js_module": "js/hack.js",
     "function": "u_maybe_impaired",
     "reason": "Current auto-translation emits C macro globals (Stunned/Confusion) not yet canonicalized to JS runtime fields."
+  },
+  {
+    "js_module": "js/hack.js",
+    "function": "notice_all_mons",
+    "reason": "Keep manual JS implementation; avoid introducing alloc/qsort-driven auto-stitch dependency for this path."
   }
 ]

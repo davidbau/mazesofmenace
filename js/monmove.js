@@ -40,12 +40,13 @@ import { FOOD_CLASS, COIN_CLASS, BOULDER, ROCK, ROCK_CLASS,
 import { next_ident, weight } from './mkobj.js';
 import { can_carry } from './dogmove.js';
 import { couldsee, m_cansee } from './vision.js';
+import { pline_mon, verbalize } from './pline.js';
 import { can_teleport, noeyes, perceives, nohands,
          hides_under, is_mercenary, YMonnam, Monnam,
          mon_knows_traps, is_rider, is_mind_flayer,
          is_mindless, telepathic,
          is_giant, is_undead, is_unicorn, is_minion, throws_rocks,
-         passes_walls,
+         passes_walls, corpse_eater,
          passes_bars, is_human, canseemon } from './mondata.js';
 import { PM_GRID_BUG, PM_SHOPKEEPER, PM_MINOTAUR, mons,
          PM_LEPRECHAUN,
@@ -64,6 +65,7 @@ import { PM_GRID_BUG, PM_SHOPKEEPER, PM_MINOTAUR, mons,
 import { dog_move, could_reach_item } from './dogmove.js';
 import { initrack, settrack, gettrack } from './track.js';
 import { pointInShop, monsterInShop } from './shknam.js';
+import { stop_occupation } from './allmain.js';
 
 // Shared utilities — re-exported for consumers
 import { dist2, distmin, monnear,
@@ -104,6 +106,7 @@ export { m_harmless_trap, floor_trigger, mintrap_postmove };
 
 // Re-export mthrowu.c functions
 import { hasWeaponAttack, maybeMonsterWieldBeforeAttack, linedUpToPlayer } from './mthrowu.js';
+import { m_carrying } from './mthrowu.js';
 import { find_defensive, use_defensive, find_misc, use_misc } from './muse.js';
 
 // ========================================================================
@@ -121,6 +124,22 @@ function mon_is_peaceful(mon) {
     if (!mon) return false;
     if (mon.mpeaceful !== undefined) return !!mon.mpeaceful;
     return !!mon.peaceful;
+}
+
+function DEADMONSTER(mon) {
+    return !!(mon && (mon.dead || mon.mhp <= 0));
+}
+
+const M_AP_NOTHING = 0;
+const M_AP_FURNITURE = 1;
+const M_AP_OBJECT = 2;
+function M_AP_TYPE(mon) {
+    return Number(mon?.m_ap_type || mon?.mappearanceType || M_AP_NOTHING);
+}
+
+function m_canseeu(mon, map, player) {
+    if (!mon || !player) return false;
+    return !!m_cansee(mon, player.x, player.y, map);
 }
 
 // ========================================================================
@@ -160,7 +179,7 @@ function leppie_avoidance(mon, player) {
 // ========================================================================
 
 // C ref: monmove.c:79 — add position (x,y) to front of monster's track ring
-// TRANSLATOR: AUTO
+// Autotranslated from monmove.c:79
 export function mon_track_add(mon, x, y) {
     if (!Array.isArray(mon?.mtrack)) return;
     for (let j = MTSZ - 1; j > 0; j--) {
@@ -300,7 +319,7 @@ export function monhaskey(mon, forUnlocking) {
 // Riders (Death/Famine/Pestilence) always can; shopkeepers, priests, and
 // quest leaders (MS_LEADER sound) can when their special-ability cooldown
 // is zero (mspec_used == 0).
-// TRANSLATOR: AUTO
+// Autotranslated from monmove.c:134
 export function m_can_break_boulder(mon) {
     const ptr = mon?.type || mon?.data || {};
     const msound = ptr.msound ?? ptr.sound ?? 0;

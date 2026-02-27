@@ -32,10 +32,23 @@ import { explode } from './explode.js';
 import { EXPL_FIERY } from './explode.js';
 import { tmp_at, DISP_BEAM, DISP_END } from './animation.js';
 import { getpos_sethilite, getpos_async, set_getpos_context } from './getpos.js';
+import { pline, impossible } from './pline.js';
+import { cansee } from './vision.js';
 
 const SPELL_KEEN = 20000; // cf. spell.c KEEN
 const MAX_SPELL_STUDY = 3; // cf. spell.h MAX_SPELL_STUDY
 const STINKING_CLOUD_TARGET_DIST = 6;
+
+function m_at(x, y, map) {
+    if (!map) return null;
+    if (typeof map.monsterAt === 'function') return map.monsterAt(x, y);
+    if (Array.isArray(map.monsters)) {
+        for (const mon of map.monsters) {
+            if (mon && mon.mx === x && mon.my === y) return mon;
+        }
+    }
+    return null;
+}
 
 
 // ============================================================

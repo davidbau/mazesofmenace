@@ -25,15 +25,16 @@ import { WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
 import { nhgetch } from './input.js';
 import { do_attack } from './uhitm.js';
 import { formatGoldPickupMessage, formatInventoryPickupMessage } from './do.js';
-import { x_monnam, y_monnam, YMonnam } from './mondata.js';
+import { x_monnam, y_monnam, YMonnam, Monnam, mon_nam, canseemon } from './mondata.js';
 import { maybeSmudgeEngraving, u_wipe_engr } from './engrave.js';
 import { gethungry } from './eat.js';
 import { describeGroundObjectForPlayer, maybeHandleShopEntryMessage } from './shk.js';
 import { observeObject } from './discovery.js';
-import { placeFloorObject } from './floor_objects.js';
+import { placeFloorObject, place_object } from './floor_objects.js';
+import { xname, an, The } from './objnam.js';
 import { DIRECTION_KEYS } from './dothrow.js';
 import { dosearch0 } from './detect.js';
-import { monsterNearby, monnear } from './monutil.js';
+import { monsterNearby, monnear, newsym } from './monutil.js';
 import { monflee } from './monmove.js';
 import { ynFunction } from './input.js';
 import { water_friction, maybe_adjust_hero_bubble } from './mkmaze.js';
@@ -43,7 +44,8 @@ import { set_getpos_context, getpos_async } from './getpos.js';
 import { stucksteed } from './steed.js';
 import { in_out_region } from './region.js';
 import { drag_ball as drag_ball_core } from './ball.js';
-// pline available from './pline.js' if needed for direct message output
+import { pline, You, You_feel, You_cant, set_msg_xy } from './pline.js';
+import { maybe_unhide_at } from './mon.js';
 
 // Run direction keys (shift = run)
 export const RUN_KEYS = {
@@ -89,6 +91,31 @@ function debug_travel_tmp_at(path, startX, startY) {
     }
     nh_delay_output_nowait();
     tmp_at(DISP_END, 0);
+}
+
+// C macro compat used by translated helper candidates.
+function DEADMONSTER(mon) {
+    return !!(mon && (mon.dead || mon.mhp <= 0));
+}
+
+function M_AP_TYPE(mon) {
+    return Number(mon?.m_ap_type || mon?.mappearanceType || 0);
+}
+
+function canspotmon(mon, player = null, fov = null) {
+    return !!canseemon(mon, player, fov);
+}
+
+function remove_object(obj, map) {
+    if (!obj || !map) return;
+    if (typeof map.removeObject === 'function') {
+        map.removeObject(obj);
+        return;
+    }
+    if (Array.isArray(map.objects)) {
+        const idx = map.objects.indexOf(obj);
+        if (idx >= 0) map.objects.splice(idx, 1);
+    }
 }
 
 function ensure_context(game) {
@@ -138,7 +165,7 @@ function reset_tmp_anything() {
 }
 
 // C ref: hack.c uint_to_any()
-// TRANSLATOR: AUTO
+// Autotranslated from hack.c:74
 export function uint_to_any(ui) {
     reset_tmp_anything();
     tmp_anything.a_uint = (ui >>> 0);
@@ -146,7 +173,7 @@ export function uint_to_any(ui) {
 }
 
 // C ref: hack.c long_to_any()
-// TRANSLATOR: AUTO
+// Autotranslated from hack.c:82
 export function long_to_any(lng) {
     reset_tmp_anything();
     tmp_anything.a_long = Number.isFinite(lng) ? Math.trunc(lng) : 0;
@@ -154,7 +181,7 @@ export function long_to_any(lng) {
 }
 
 // C ref: hack.c monst_to_any()
-// TRANSLATOR: AUTO
+// Autotranslated from hack.c:90
 export function monst_to_any(mon) {
     reset_tmp_anything();
     tmp_anything.a_monst = mon || null;
@@ -162,7 +189,7 @@ export function monst_to_any(mon) {
 }
 
 // C ref: hack.c obj_to_any()
-// TRANSLATOR: AUTO
+// Autotranslated from hack.c:98
 export function obj_to_any(obj) {
     reset_tmp_anything();
     tmp_anything.a_obj = obj || null;
@@ -257,7 +284,7 @@ export function moverock_core(sx, sy, dx, dy, player, map, display, game) {
 }
 
 // C ref: hack.c moverock()
-// TRANSLATOR: AUTO (hack.c:336)
+// Autotranslated from hack.c:336
 export function moverock(player) {
   let sx, sy, ret;
   sx = player.x + player.dx, sy = player.y + player.dy;
@@ -1403,7 +1430,7 @@ const WT_WOUNDEDLEG_REDUCT = 100;
 // --------------------------------------------------------------------
 
 // C ref: hack.c rounddiv() — round-aware integer division
-// TRANSLATOR: AUTO
+// Autotranslated from hack.c:4481
 export function rounddiv(x, y) {
     let r, m;
     let divsgn = 1;
@@ -1419,7 +1446,7 @@ export function rounddiv(x, y) {
 }
 
 // C ref: hack.c invocation_pos() — is (x,y) the invocation position?
-// TRANSLATOR: AUTO
+// Autotranslated from hack.c:963
 export function invocation_pos(x, y, map) {
     if (!map) return false;
     const uz = map.uz;
@@ -1446,7 +1473,7 @@ export function may_dig(x, y, map) {
 }
 
 // C ref: hack.c may_passwall() — can phase through wall at (x,y)?
-// TRANSLATOR: AUTO
+// Autotranslated from hack.c:913
 export function may_passwall(x, y, map) {
     const loc = map.at(x, y);
     if (!loc) return false;
@@ -1592,7 +1619,9 @@ export function calc_capacity(player, xtra_wt) {
 }
 
 // C ref: hack.c near_capacity() — current encumbrance level
-export function near_capacity(player) {
+export function near_capacity() {
+    const player = arguments[0];
+    if (!player) return UNENCUMBERED;
     return calc_capacity(player, 0);
 }
 
@@ -1630,7 +1659,7 @@ export function inv_cnt(player, incl_gold) {
 }
 
 // C ref: hack.c money_cnt() — count gold in inventory
-// TRANSLATOR: AUTO (hack.c:4443)
+// Autotranslated from hack.c:4443
 export function money_cnt(otmp) {
   while (otmp) {
     if (otmp.oclass === COIN_CLASS) return otmp.quan;
@@ -1993,7 +2022,7 @@ export function end_running(and_travel, game) {
 }
 
 // C ref: hack.c runmode_delay_output()
-// TRANSLATOR: AUTO
+// Autotranslated from hack.c:2977
 export async function runmode_delay_output(game, display) {
     if (!game) return;
     const ctx = ensure_context(game);
@@ -2252,7 +2281,17 @@ export function check_special_room(newlev, player, map, display) {
 // --------------------------------------------------------------------
 
 // C ref: hack.c set_uinwater()
-export function set_uinwater(player, in_out) {
+export function set_uinwater(in_out, player) {
+    // Backward compatibility: older JS call sites pass (player, in_out).
+    if (player == null && in_out && typeof in_out === 'object') {
+        player = in_out;
+        in_out = arguments[1];
+    } else if (player && typeof player !== 'object' && in_out && typeof in_out === 'object') {
+        const oldInOut = player;
+        player = in_out;
+        in_out = oldInOut;
+    }
+    if (!player) return;
     player.uinwater = in_out ? 1 : 0;
 }
 
@@ -2466,7 +2505,18 @@ export function overexert_hp(player, display) {
 
 // C ref: hack.c overexertion() — combat metabolism check
 // Returns true if hero fainted (multi < 0).
-export function overexertion(player, game, display) {
+export function overexertion(game) {
+    // Backward compatibility: older JS call sites pass (player, game, display).
+    let player = game?.player;
+    let display = game?.display;
+    if (arguments.length >= 2 && arguments[0] && typeof arguments[0] === 'object'
+        && arguments[1] && typeof arguments[1] === 'object'
+        && ('moves' in arguments[1] || 'player' in arguments[1])) {
+        player = arguments[0];
+        game = arguments[1];
+        display = arguments[2];
+    }
+    if (!game || !player) return false;
     gethungry(player);
     const moves = game.moves || 0;
     if ((moves % 3) !== 0 && near_capacity(player) >= HVY_ENCUMBER) {
