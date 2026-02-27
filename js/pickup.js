@@ -52,7 +52,7 @@ let loot_reset_justpicked = false; // gl.loot_reset_justpicked
 
 // cf. C macro: #define bigmonst(ptr) ((ptr)->msize >= MZ_LARGE)
 function bigmonst(ptr) {
-    return (ptr.size || ptr.msize || 0) >= MZ_LARGE;
+    return (ptr.msize || ptr.size || 0) >= MZ_LARGE;
 }
 
 // cf. C macro: Is_mbag(obj) — bag of holding, sack, or oilskin sack type

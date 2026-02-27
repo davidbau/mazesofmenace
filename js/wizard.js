@@ -944,7 +944,7 @@ export function cuss(mtmp, map, player) {
         } else if (you_have(M3_WANTSAMUL, player) && !rn2(random_insult.length)) {
             // C: SetVoice(mtmp, 0, 80, 0);
             verbalize("Relinquish the amulet, %s!", ROLL_FROM(random_insult));
-        } else if ((player.hp || player.uhp || 0) < 5 && !rn2(2)) { // Panic
+        } else if ((player.uhp || player.hp || 0) < 5 && !rn2(2)) { // Panic
             // C: SetVoice(mtmp, 0, 80, 0);
             verbalize(rn2(2) ? "Even now thy life force ebbs, %s!"
                              : "Savor thy breath, %s, it be thy last!",

@@ -47,6 +47,7 @@ import { monsterWeaponSwingVerb, monsterPossessive } from './mhitu.js';
 import { find_mac, W_ARMG, W_ARMF, W_ARMH } from './worn.js';
 import { mon_wield_item, possibly_unwield, NEED_WEAPON, NEED_HTH_WEAPON, hitval } from './weapon.js';
 import { spec_dbon } from './artifact.js';
+import { canonicalizeAttackFields } from './attack_fields.js';
 
 // Re-export M_ATTK_* for convenience
 export { M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE };
@@ -133,8 +134,8 @@ function missmm(magr, mdef, mattk, display, vis, map, ctx) {
 export function failed_grab(magr, mdef, mattk) {
     const pd = mdef.type || {};
     if (unsolid(pd)
-        && (mattk.type === AT_HUGS || mattk.damage === AD_WRAP
-            || mattk.damage === AD_STCK || mattk.damage === AD_DGST)) {
+        && (mattk.aatyp === AT_HUGS || mattk.adtyp === AD_WRAP
+            || mattk.adtyp === AD_STCK || mattk.adtyp === AD_DGST)) {
         return true;
     }
     return false;
@@ -250,8 +251,9 @@ export function passivemm(magr, mdef, mhitb, mdead, mwep, map) {
     // entry to match C's behavior (which still consumes rn2(3) for the no-op).
     let passiveAttk = null;
     for (let i = 0; i < attacks.length; i++) {
-        if (attacks[i].type === AT_NONE) {
-            passiveAttk = attacks[i];
+        const attack = canonicalizeAttackFields(attacks[i]);
+        if (attack.aatyp === AT_NONE) {
+            passiveAttk = attack;
             break;
         }
         if (i >= NATTK) return (mdead | mhit);
@@ -259,21 +261,22 @@ export function passivemm(magr, mdef, mhitb, mdead, mwep, map) {
     if (!passiveAttk) {
         if (attacks.length >= NATTK) return (mdead | mhit);
         // Synthesize NO_ATTK: C would find AT_NONE/AD_PHYS(=AD_NONE)/0/0
-        passiveAttk = { type: AT_NONE, damage: AD_PHYS, dice: 0, sides: 0 };
+        passiveAttk = { aatyp: AT_NONE, adtyp: AD_PHYS, damn: 0, damd: 0 };
     }
+    canonicalizeAttackFields(passiveAttk);
 
     // Roll damage
     let tmp;
-    if (passiveAttk.dice) {
-        tmp = d(passiveAttk.dice, passiveAttk.sides || 0);
-    } else if (passiveAttk.sides) {
+    if (passiveAttk.damn) {
+        tmp = d(passiveAttk.damn, passiveAttk.damd || 0);
+    } else if (passiveAttk.damd) {
         const mlev = mdef.m_lev ?? mdef.mlevel ?? (mddat.level || 0);
-        tmp = d(mlev + 1, passiveAttk.sides);
+        tmp = d(mlev + 1, passiveAttk.damd);
     } else {
         tmp = 0;
     }
 
-    const adtyp = passiveAttk.damage;
+    const adtyp = passiveAttk.adtyp;
 
     // Effects that work even if defender died
     if (adtyp === AD_ACID) {
@@ -364,7 +367,7 @@ function hitmm(magr, mdef, mattk, mwep, dieroll, display, vis, map, ctx) {
     // Display hit message
     if (vis && display) {
         let verb = 'hits';
-        switch (mattk.type) {
+        switch (mattk.aatyp) {
         case AT_BITE: verb = 'bites'; break;
         case AT_STNG: verb = 'stings'; break;
         case AT_BUTT: verb = 'butts'; break;
@@ -435,9 +438,9 @@ function mhitm_knockback_mm(magr, mdef, mattk, mwep, vis, display, ctx) {
     if (rn2(chance)) return false; // didn't trigger
 
     // Eligibility: only AD_PHYS + specific melee attack types
-    if (!(mattk.damage === AD_PHYS
-          && (mattk.type === AT_CLAW || mattk.type === AT_KICK
-              || mattk.type === AT_BUTT || mattk.type === AT_WEAP))) {
+    if (!(mattk.adtyp === AD_PHYS
+          && (mattk.aatyp === AT_CLAW || mattk.aatyp === AT_KICK
+              || mattk.aatyp === AT_BUTT || mattk.aatyp === AT_WEAP))) {
         return false;
     }
 
@@ -490,7 +493,7 @@ function mhitm_knockback_mm(magr, mdef, mattk, mwep, vis, display, ctx) {
 // ctx: optional { player, turnCount } for corpse creation and XP
 function mdamagem(magr, mdef, mattk, mwep, dieroll, display, vis, map, ctx) {
     const mhm = {
-        damage: c_d(mattk.dice || 0, mattk.sides || 0),
+        damage: c_d(mattk.damn || 0, mattk.damd || 0),
         hitflags: M_ATTK_MISS,
         permdmg: 0,
         specialdmg: 0,
@@ -620,8 +623,8 @@ export function mattackm(magr, mdef, display, vis, map, ctx) {
 
     for (let i = 0; i < Math.min(attacks.length, NATTK); i++) {
         res[i] = M_ATTK_MISS;
-        const mattk = attacks[i];
-        if (!mattk || mattk.type === AT_NONE) continue;
+        const mattk = canonicalizeAttackFields(attacks[i]);
+        if (!mattk || mattk.aatyp === AT_NONE) continue;
 
         // C ref: check if target still valid after previous attacks
         if (i > 0 && (DEADMONSTER(magr) || DEADMONSTER(mdef))) continue;
@@ -630,7 +633,7 @@ export function mattackm(magr, mdef, display, vis, map, ctx) {
         let attk = 1;
         let strike = 0;
 
-        switch (mattk.type) {
+        switch (mattk.aatyp) {
         case AT_WEAP:
             // C ref: mhitm.c:393-416 — weapon attack
             if (distmin(magr.mx, magr.my, mdef.mx, mdef.my) > 1) {
@@ -661,7 +664,7 @@ export function mattackm(magr, mdef, display, vis, map, ctx) {
         case AT_TUCH:
         case AT_BUTT:
         case AT_TENT:
-            if (mattk.type === AT_KICK && /* mtrapped_in_pit */ false) {
+            if (mattk.aatyp === AT_KICK && /* mtrapped_in_pit */ false) {
                 continue;
             }
             if (distmin(magr.mx, magr.my, mdef.mx, mdef.my) > 1) {

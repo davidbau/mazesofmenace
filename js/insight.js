@@ -609,7 +609,7 @@ function background_enlightenment(mode, final, game) {
     // Report role and level
     const roleName = player.roleName || player.role || 'Adventurer';
     const raceName = player.raceName || player.race || 'human';
-    const level = player.level || player.ulevel || 1;
+    const level = player.ulevel || player.level || 1;
     const rankTitle = player.rankTitle || roleName;
 
     if (rankTitle.toLowerCase() !== roleName.toLowerCase()) {

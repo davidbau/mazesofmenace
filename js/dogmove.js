@@ -361,7 +361,7 @@ function dog_hunger(mon, edog, turnCount, map, display, player, fov) {
 export function finish_meating(mon) {
     mon.meating = 0;
     if (mon.m_ap_type && mon.m_ap_type !== 0
-        && (mon.type?.symbol || mon.type?.mlet) !== S_MIMIC) {
+        && (mon.type?.mlet || mon.type?.symbol) !== S_MIMIC) {
         mon.m_ap_type = 0;
         mon.mappearance = 0;
     }

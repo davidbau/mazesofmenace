@@ -12,6 +12,7 @@ import {
   buzz, ZT_BREATH, ZT_MAGIC_MISSILE, ZT_FIRE, ZT_COLD, ZT_SLEEP,
   ZT_DEATH, ZT_LIGHTNING, ZT_POISON_GAS, ZT_ACID,
 } from './zap.js';
+import { canonicalizeAttackFields } from './attack_fields.js';
 
 // Wizard spell constants (C ref: mcastu.c)
 export const MGC_PSI_BOLT = 0;
@@ -228,6 +229,7 @@ export function cast_cleric_spell(mtmp, dmg, spellid, player, map) {
 // Returns 1 if spell was cast, 0 if failed
 export async function castmu(mtmp, mattk, vis, thrown, player, map) {
   if (!mtmp || !mattk) return 0;
+  canonicalizeAttackFields(mattk);
 
   const ml = mtmp.m_lev || mtmp.mlevel || 1;
   const aatyp = mattk.aatyp || mattk.at || mattk.type || 0;
@@ -314,9 +316,10 @@ export function spell_would_be_useless(mtmp, aatyp, spellid) {
 // Monster fires a directed beam at hero
 export async function buzzmu(mtmp, mattk, player, map) {
   if (!mtmp || !mattk || !player || !map) return 0;
+  canonicalizeAttackFields(mattk);
 
   const adtyp = mattk.adtyp || mattk.ad || mattk.damage || AD_MAGM;
-  const nd = Math.max(1, mattk.dice || mattk.damn || 6);
+  const nd = Math.max(1, mattk.damn || mattk.dice || 6);
   const dx = Math.sign((player.x || 0) - (mtmp.mx || 0));
   const dy = Math.sign((player.y || 0) - (mtmp.my || 0));
   if (dx === 0 && dy === 0) return 0;

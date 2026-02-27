@@ -743,6 +743,18 @@ export class Player {
         this.hp = Math.min(this.hp + amount, this.hpmax);
     }
 
+    // C-compat aliases for struct you naming.
+    get uhp() { return this.hp; }
+    set uhp(v) { this.hp = v; }
+    get uhpmax() { return this.hpmax; }
+    set uhpmax(v) { this.hpmax = v; }
+    get ulevel() { return this.level; }
+    set ulevel(v) { this.level = v; }
+    get ux() { return this.x; }
+    set ux(v) { this.x = v; }
+    get uy() { return this.y; }
+    set uy(v) { this.y = v; }
+
     // --- Intrinsic property helpers ---
 
     // Ensure a uprops entry exists for the given property index.

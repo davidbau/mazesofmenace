@@ -55,6 +55,7 @@ import { msummon } from './minion.js';
 import { new_were, were_summon } from './were.js';
 import { Mgender } from './do_name.js';
 import { resists_blnd } from './zap.js';
+import { canonicalizeAttackFields } from './attack_fields.js';
 
 const PIERCE = 1;
 
@@ -68,7 +69,7 @@ const PIERCE = 1;
 function hitmsg(monster, attack, display, suppressHitMsg) {
     if (suppressHitMsg) return;
     let verb;
-    switch (attack.type) {
+    switch (attack.aatyp) {
     case AT_BITE: verb = 'bites'; break;
     case AT_KICK:
         verb = 'kicks';
@@ -191,9 +192,9 @@ function mhitm_knockback(monster, attack, weaponUsed, display) {
     if (rn2(chance)) return false; // didn't trigger
 
     // Eligibility: only AD_PHYS + specific attack types
-    if (!(attack.damage === AD_PHYS
-          && (attack.type === AT_CLAW || attack.type === AT_KICK
-              || attack.type === AT_BUTT || attack.type === AT_WEAP))) {
+    if (!(attack.adtyp === AD_PHYS
+          && (attack.aatyp === AT_CLAW || attack.aatyp === AT_KICK
+              || attack.aatyp === AT_BUTT || attack.aatyp === AT_WEAP))) {
         return false;
     }
 
@@ -239,7 +240,7 @@ function mhitm_knockback(monster, attack, weaponUsed, display) {
 function mhitu_ad_phys(monster, attack, player, mhm, ctx) {
     const { display, suppressHitMsg } = ctx;
 
-    if (attack.type === AT_HUGS) {
+    if (attack.aatyp === AT_HUGS) {
         // Grab attack — rn2(2) for grab attempt
         if (!player.ustuck && rn2(2)) {
             // Grabbed
@@ -255,7 +256,7 @@ function mhitu_ad_phys(monster, attack, player, mhm, ctx) {
         }
     } else {
         // Hand-to-hand / weapon attack
-        if (attack.type === AT_WEAP && monster.weapon) {
+        if (attack.aatyp === AT_WEAP && monster.weapon) {
             // Weapon damage: dmgval equivalent
             const wsdam = weaponDamageSides(monster.weapon, null);
             if (wsdam > 0) mhm.damage += rnd(wsdam);
@@ -272,7 +273,7 @@ function mhitu_ad_phys(monster, attack, player, mhm, ctx) {
             }
             // Weapon poison: C checks dieroll <= 5 for poisoned weapons
             // TODO: implement weapon poison path
-        } else if (attack.type !== AT_TUCH || mhm.damage !== 0
+        } else if (attack.aatyp !== AT_TUCH || mhm.damage !== 0
                    || monster !== player.ustuck) {
             hitmsg(monster, attack, display, suppressHitMsg);
             mhm.hitflags |= M_ATTK_HIT;
@@ -384,7 +385,7 @@ function mhitu_ad_wrap(monster, attack, player, mhm, ctx) {
             }
         } else if (player.ustuck === monster) {
             // Already grabbed — crushing
-            if (attack.type === AT_HUGS) {
+            if (attack.aatyp === AT_HUGS) {
                 if (!ctx.suppressHitMsg)
                     ctx.display.putstr_message('You are being crushed.');
             }
@@ -508,7 +509,7 @@ function mhitu_ad_drst(monster, attack, player, mhm, ctx) {
         // C: poisoned(buf, ptmp, ..., 30, FALSE)
         // ptmp depends on adtyp: AD_DRST→A_STR, AD_DRDX→A_DEX, AD_DRCO→A_CON
         let ptmp = A_STR;
-        switch (attack.damage) {
+        switch (attack.adtyp) {
         case AD_DRST: ptmp = A_STR; break;
         case AD_DRDX: ptmp = A_DEX; break;
         case AD_DRCO: ptmp = A_CON; break;
@@ -846,7 +847,7 @@ function mhitu_ad_dcay(monster, attack, player, mhm, ctx) {
 // cf. uhitm.c:4760 mhitm_adtyping() — mhitu branch dispatch.
 // Replaces the old mhitu_adtyping_rng() stub with real handler calls.
 function mhitu_adtyping(monster, attack, player, mhm, ctx) {
-    const adtyp = attack.damage ?? AD_PHYS;
+    const adtyp = attack.adtyp ?? AD_PHYS;
     switch (adtyp) {
     case AD_PHYS: mhitu_ad_phys(monster, attack, player, mhm, ctx); break;
     case AD_FIRE: mhitu_ad_fire(monster, attack, player, mhm, ctx); break;
@@ -914,27 +915,27 @@ export async function monsterAttackPlayer(monster, player, display, game = null,
     const map = opts.map || null;
 
     for (let i = 0; i < monster.attacks.length; i++) {
-        const attack = monster.attacks[i];
+        const attack = canonicalizeAttackFields(monster.attacks[i]);
 
         // cf. mhitu.c mattacku() attack dispatch:
         // Melee attacks (AT_CLAW, AT_BITE, etc.) only fire when !range2.
         // AT_WEAP: melee when !range2, thrwmu when range2.
         // AT_BREA, AT_SPIT, AT_MAGC: ranged-only handlers.
         if (range2) {
-            if (attack.type === AT_WEAP) {
+            if (attack.aatyp === AT_WEAP) {
                 // cf. mhitu.c:882-885 — AT_WEAP at range calls thrwmu
                 if (map) await thrwmu(monster, map, player, display, game);
                 continue;
             }
-            if (attack.type === AT_SPIT) {
+            if (attack.aatyp === AT_SPIT) {
                 if (map) await spitmu(monster, attack, map, player, display, game);
                 continue;
             }
-            if (attack.type === AT_BREA) {
+            if (attack.aatyp === AT_BREA) {
                 if (map) await breamu(monster, attack, map, player, display, game);
                 continue;
             }
-            if (attack.type === AT_MAGC) {
+            if (attack.aatyp === AT_MAGC) {
                 const vis = !player?.blind && !(monster.minvis && !player?.seeInvisible);
                 await castmu(monster, attack, vis, true, player, map);
                 continue;
@@ -956,7 +957,7 @@ export async function monsterAttackPlayer(monster, player, display, game = null,
         const acValue = (playerAc >= 0) ? playerAc : -rnd(-playerAc);
         const toHit = acValue + 10 + monster.mlevel;
 
-        if (attack.type === AT_WEAP && monster.weapon) {
+        if (attack.aatyp === AT_WEAP && monster.weapon) {
             maybeMonsterWeaponSwingMessage(monster, player, display, suppressHitMsg);
         }
 
@@ -982,8 +983,8 @@ export async function monsterAttackPlayer(monster, player, display, game = null,
             permdmg: 0,
             done: false,
         };
-        if (attack.dice && attack.sides) {
-            mhm.damage = c_d(attack.dice, attack.sides);
+        if (attack.damn && attack.damd) {
+            mhm.damage = c_d(attack.damn, attack.damd);
         } else if (attack.dmg) {
             mhm.damage = c_d(attack.dmg[0], attack.dmg[1]);
         }
@@ -997,7 +998,7 @@ export async function monsterAttackPlayer(monster, player, display, game = null,
         mhitu_adtyping(monster, attack, player, mhm, ctx);
 
         // cf. mhitu.c:1189 — mhitm_knockback()
-        const weaponUsed = !!(attack.type === AT_WEAP && monster.weapon);
+        const weaponUsed = !!(attack.aatyp === AT_WEAP && monster.weapon);
         mhitm_knockback(monster, attack, weaponUsed, display);
 
         // cf. mhitu.c:1192 — check if handler consumed the attack
@@ -1066,12 +1067,12 @@ export async function monsterAttackPlayer(monster, player, display, game = null,
 
 // C ref: mhitu.c:146 mpoisons_subj() — poison delivery subject name
 export function mpoisons_subj(monster, attack) {
-    if (attack.type === AT_WEAP) {
+    if (attack.aatyp === AT_WEAP) {
         const mwep = monster.weapon;
         return (!mwep || !mwep.opoisoned) ? 'attack' : 'weapon';
     }
-    if (attack.type === AT_TUCH) return 'contact';
-    if (attack.type === AT_BITE) return 'bite';
+    if (attack.aatyp === AT_TUCH) return 'contact';
+    if (attack.aatyp === AT_BITE) return 'bite';
     return 'sting';
 }
 
@@ -1123,7 +1124,7 @@ export function expels(mtmp, mdat, message, player, display) {
             let blast = '';
             if (attk) {
                 if (is_whirly(mdat)) {
-                    const adtyp = attk.damage ?? attk.adtyp;
+                    const adtyp = attk.adtyp ?? attk.damage;
                     if (adtyp === AD_ELEC) blast = ' in a shower of sparks';
                     else if (adtyp === AD_COLD) blast = ' in a blast of frost';
                 } else {
@@ -1152,24 +1153,24 @@ export function getmattk(monster, mdef, indx, prev_result) {
     // Consecutive disease/pest/famn → stun
     if (indx > 0 && prev_result && prev_result[indx - 1] > M_ATTK_MISS) {
         const prevAttk = attacks[indx - 1];
-        if ((attk.damage === AD_DISE || attk.damage === AD_PEST || attk.damage === AD_FAMN)
-            && prevAttk && attk.damage === prevAttk.damage) {
-            attk.damage = AD_STUN;
+        if ((attk.adtyp === AD_DISE || attk.adtyp === AD_PEST || attk.adtyp === AD_FAMN)
+            && prevAttk && attk.adtyp === prevAttk.damage) {
+            attk.adtyp = AD_STUN;
         }
     }
 
     // mspec_used holders/engulfers get fallback attack
-    if (monster.mspec_used && (attk.type === AT_ENGL || attk.type === AT_HUGS
-        || attk.damage === AD_STCK || attk.damage === AD_POLY)) {
-        if (attk.damage === AD_ACID || attk.damage === AD_ELEC
-            || attk.damage === AD_COLD || attk.damage === AD_FIRE) {
-            attk.type = AT_TUCH;
+    if (monster.mspec_used && (attk.aatyp === AT_ENGL || attk.aatyp === AT_HUGS
+        || attk.adtyp === AD_STCK || attk.adtyp === AD_POLY)) {
+        if (attk.adtyp === AD_ACID || attk.adtyp === AD_ELEC
+            || attk.adtyp === AD_COLD || attk.adtyp === AD_FIRE) {
+            attk.aatyp = AT_TUCH;
         } else {
-            attk.type = AT_CLAW;
-            attk.damage = AD_PHYS;
+            attk.aatyp = AT_CLAW;
+            attk.adtyp = AD_PHYS;
         }
-        attk.dice = 1;
-        attk.sides = 6;
+        attk.damn = 1;
+        attk.damd = 6;
     }
 
     return attk;
@@ -1268,19 +1269,19 @@ export function diseasemu(mdat, player, display) {
 // cf. mhitu.c:1044 u_slip_free() — check whether slippery clothing protects from grab
 export function u_slip_free(mtmp, mattk, player, display) {
     // Greased armor does not protect against AT_ENGL+AD_WRAP
-    if (mattk.type === AT_ENGL) return false;
+    if (mattk.aatyp === AT_ENGL) return false;
 
     // Select the relevant armor piece
     let obj = player.cloak || player.armor || player.suit;
     if (!obj) obj = player.shirt;
-    if ((mattk.damage ?? mattk.adtyp) === AD_DRIN) obj = player.helmet;
+    if ((mattk.adtyp ?? mattk.damage) === AD_DRIN) obj = player.helmet;
 
     // If armor is greased or oilskin, monster slips off
     // (unless cursed, 1/3 chance of failure)
     if (obj && (obj.greased || obj.oilskin)
         && (!obj.cursed || rn2(3))) {
         if (display) {
-            const adtyp = mattk.damage ?? mattk.adtyp;
+            const adtyp = mattk.adtyp ?? mattk.damage;
             const action = adtyp === AD_WRAP ? 'slips off of' : 'grabs you, but cannot hold onto';
             const adjective = obj.greased ? 'greased' : 'slippery';
             display.putstr_message(
@@ -1302,7 +1303,7 @@ export function u_slip_free(mtmp, mattk, player, display) {
 export function gulpmu(mtmp, mattk, player, map, display) {
     if (!mtmp || !player) return M_ATTK_MISS;
 
-    const tmp_dmg = c_d(mattk.dice || mattk.damn || 0, mattk.sides || mattk.damd || 0);
+    const tmp_dmg = c_d(mattk.damn || mattk.dice || 0, mattk.damd || mattk.sides || 0);
     let tmp = tmp_dmg;
     let physical_damage = false;
 
@@ -1320,7 +1321,7 @@ export function gulpmu(mtmp, mattk, player, map, display) {
             }
         }
         // Compute swallow timer
-        const adtyp = mattk.damage ?? mattk.adtyp ?? AD_PHYS;
+        const adtyp = mattk.adtyp ?? mattk.damage ?? AD_PHYS;
         let tim_tmp;
         if (adtyp === AD_DGST) {
             const con = (player.attributes && player.attributes[A_CON]) || 10;
@@ -1339,7 +1340,7 @@ export function gulpmu(mtmp, mattk, player, map, display) {
 
     if (player.uswldtim > 0) player.uswldtim -= 1;
 
-    const adtyp = mattk.damage ?? mattk.adtyp ?? AD_PHYS;
+    const adtyp = mattk.adtyp ?? mattk.damage ?? AD_PHYS;
     switch (adtyp) {
     case AD_DGST:
         physical_damage = true;
@@ -1461,8 +1462,8 @@ export async function explmu(mtmp, mattk, ufound, player, map, display) {
     if (!mtmp) return M_ATTK_MISS;
     if (mtmp.mcan) return M_ATTK_MISS;
 
-    let tmp = c_d(mattk.dice || mattk.damn || 0, mattk.sides || mattk.damd || 0);
-    const adtyp = mattk.damage ?? mattk.adtyp ?? AD_PHYS;
+    let tmp = c_d(mattk.damn || mattk.dice || 0, mattk.damd || mattk.sides || 0);
+    const adtyp = mattk.adtyp ?? mattk.damage ?? AD_PHYS;
 
     if (!ufound) {
         if (display) display.putstr_message(`The ${monDisplayName(mtmp)} explodes at a spot in thin air!`);
@@ -1484,8 +1485,8 @@ export async function explmu(mtmp, mattk, ufound, player, map, display) {
         if (adtyp === AD_ELEC) not_affected = playerHasProp(player, SHOCK_RES);
         // C: mon_explodes(mtmp, mattk) — kills the monster via explosion
         await mon_explodes(mtmp, {
-            damn: mattk.dice || mattk.damn || 0,
-            damd: mattk.sides || mattk.damd || 0,
+            damn: mattk.damn || mattk.dice || 0,
+            damd: mattk.damd || mattk.sides || 0,
             adtyp: adtyp,
         }, map, player);
         if (!mtmp.dead && mtmp.mhp > 0)
@@ -1530,7 +1531,7 @@ export async function explmu(mtmp, mattk, ufound, player, map, display) {
 export function gazemu(mtmp, mattk, player, map, display) {
     if (!mtmp || !player) return M_ATTK_MISS;
 
-    const adtyp = mattk.damage ?? mattk.adtyp ?? AD_PHYS;
+    const adtyp = mattk.adtyp ?? mattk.damage ?? AD_PHYS;
     const cancelled = !!(mtmp.mcan);
     const mdat = mtmp.type || mtmp.data || {};
 
@@ -1614,7 +1615,7 @@ export function gazemu(mtmp, mattk, player, map, display) {
                     display.putstr_message(`The ${monDisplayName(mtmp)} looks ${reaction}.`);
                 }
             } else {
-                const blnd = c_d(mattk.dice || mattk.damn || 1, mattk.sides || mattk.damd || 6);
+                const blnd = c_d(mattk.damn || mattk.dice || 1, mattk.damd || mattk.sides || 6);
                 if (display) display.putstr_message(`You are blinded by the ${monDisplayName(mtmp)}'s radiance!`);
                 make_blinded(player, blnd, false);
             }
@@ -1691,7 +1692,7 @@ export function could_seduce(magr, mdef, mattk) {
     const genagr = magr.female ? FEMALE : MALE;
     const gendef = mdef?.female ? FEMALE : (mdef?.gender ?? MALE);
 
-    const adtyp = mattk ? (mattk.damage ?? mattk.adtyp ?? AD_PHYS)
+    const adtyp = mattk ? (mattk.adtyp ?? mattk.damage ?? AD_PHYS)
                  : dmgtype(pagr, AD_SSEX) ? AD_SSEX
                  : dmgtype(pagr, AD_SEDU) ? AD_SEDU
                  : AD_PHYS;
@@ -1850,12 +1851,12 @@ export function passiveum(olduasmon, mtmp, mattk, map, player) {
     if (!oldu_mattk) return M_ATTK_HIT;
 
     let tmp = 0;
-    if (oldu_mattk.dice)
-        tmp = c_d(oldu_mattk.dice, oldu_mattk.sides || 1);
-    else if (oldu_mattk.sides)
-        tmp = c_d((olduasmon.mlevel || 0) + 1, oldu_mattk.sides);
+    if (oldu_mattk.damn)
+        tmp = c_d(oldu_mattk.damn, oldu_mattk.damd || 1);
+    else if (oldu_mattk.damd)
+        tmp = c_d((olduasmon.mlevel || 0) + 1, oldu_mattk.damd);
 
-    switch (oldu_mattk.damage) {
+    switch (oldu_mattk.adtyp) {
     case AD_ACID:
         if (!rn2(2)) {
             if (resists_acid(mtmp)) tmp = 0;

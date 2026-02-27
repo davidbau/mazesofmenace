@@ -779,7 +779,7 @@ export async function breamm(mtmp, mattk, mtarg, map, player, display, game) {
     if (display) {
         display.putstr_message(`The ${monDisplayName(mtmp)} breathes ${breathwep_name(adtyp, !!player?.hallucinating)}!`);
     }
-    const nd = Math.max(1, mattk?.dice || mattk?.damn || 6);
+    const nd = Math.max(1, mattk?.damn || mattk?.dice || 6);
     const dx = Math.sign((mtarg?.x ?? mtarg?.mx ?? 0) - (mtmp.mx ?? 0));
     const dy = Math.sign((mtarg?.y ?? mtarg?.my ?? 0) - (mtmp.my ?? 0));
     if (map && (dx !== 0 || dy !== 0)) {

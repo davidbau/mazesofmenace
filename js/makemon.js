@@ -978,7 +978,7 @@ function m_initweap(mon, mndx, depth) {
 
     // C ref: makemon.c:571 — offensive item check, OUTSIDE the switch,
     // always called for ALL monsters. rn2(75) is always consumed.
-    if (mon.mlevel > rn2(75)) {
+    if ((mon.m_lev ?? mon.mlevel ?? 0) > rn2(75)) {
         // C ref: makemon.c -> muse.c rnd_offensive_item()
         const otyp = rnd_offensive_item(mon);
         if (otyp) mongets(mon, otyp);
@@ -1489,6 +1489,7 @@ function apply_newcham_from_base(mon, baseMndx, depth, map = null) {
     mon.mhp = newHp;
     mon.mhpmax = newHp;
     mon.mlevel = newLev;
+    mon.m_lev = newLev;
     mon.mac = target.ac;
     mon.speed = target.speed;
     return true;
@@ -1999,6 +2000,7 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
         mhp: hp,
         mhpmax: hp,
         mlevel: m_lev,
+        m_lev,
         mac: ptr.ac,
         speed: ptr.speed,
         movement: 0,  // C ref: *mtmp = cg.zeromonst (zero-init)

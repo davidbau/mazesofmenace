@@ -1628,7 +1628,7 @@ export function dobreathe(player, map) {
         } else {
             // Directed breath: ubuzz subsystem
             if (player.ubuzz) {
-                player.ubuzz(mattk.damage, mattk.dice || 0);
+                player.ubuzz(mattk.adtyp, mattk.damn || 0);
             }
         }
     }
@@ -1650,7 +1650,7 @@ export async function dospit(player, map) {
         pline("bad spit attack?"); // impossible
     } else {
         let otmp;
-        switch (mattk.damage) {
+        switch (mattk.adtyp) {
         case AD_BLND:
         case AD_DRST:
             otmp = mksobj(BLINDING_VENOM, true, false);

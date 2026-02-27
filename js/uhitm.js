@@ -58,6 +58,7 @@ import {
     EF_GREASE, EF_VERBOSE,
 } from './trap.js';
 import { tmp_at, nh_delay_output, DISP_ALWAYS, DISP_END } from './animation.js';
+import { canonicalizeAttackFields } from './attack_fields.js';
 
 
 // ============================================================================
@@ -813,7 +814,7 @@ function steal_it(mdef, mattk) {
 // m-vs-m branch: uhitm.c:4106-4177
 export function mhitm_ad_phys(magr, mattk, mdef, mhm) {
     const pd = mdef.type || {};
-    if (mattk.type === AT_KICK && thick_skinned(pd)) {
+    if (mattk.aatyp === AT_KICK && thick_skinned(pd)) {
         mhm.damage = 0;
     }
 }
@@ -918,7 +919,7 @@ export function mhitm_ad_conf(magr, mattk, mdef, mhm) {
 // m-vs-m branch: uhitm.c:2964-2989
 export function mhitm_ad_blnd(magr, mattk, mdef, mhm) {
     // C ref: can_blnd check omitted for simplicity; uses damage dice for duration
-    let rnd_tmp = d(mattk.dice || 0, mattk.sides || 0);
+    let rnd_tmp = d(mattk.damn || 0, mattk.damd || 0);
     rnd_tmp += (mdef.mblinded || 0);
     if (rnd_tmp > 127) rnd_tmp = 127;
     mdef.mblinded = rnd_tmp;
@@ -1119,9 +1120,10 @@ export function mhitm_ad_halu(magr, mattk, mdef, mhm) { mhm.damage = 0; }
 
 // cf. uhitm.c:4760 — mhitm_adtyping(magr, mattk, mdef, mhm):
 //   Dispatch to specific mhitm_ad_* handler based on attack damage type.
-//   mattk.damage is the JS equivalent of mattk->adtyp.
+//   mattk.adtyp is the JS equivalent of mattk->adtyp.
 export function mhitm_adtyping(magr, mattk, mdef, mhm) {
-    switch (mattk.damage) {
+    canonicalizeAttackFields(mattk);
+    switch (mattk.adtyp) {
     case AD_PHYS: mhitm_ad_phys(magr, mattk, mdef, mhm); break;
     case AD_FIRE: mhitm_ad_fire(magr, mattk, mdef, mhm); break;
     case AD_COLD: mhitm_ad_cold(magr, mattk, mdef, mhm); break;
@@ -1176,11 +1178,12 @@ export function mhitm_adtyping(magr, mattk, mdef, mhm) {
 
 // cf. uhitm.c:4813 — damageum(mdef, mattk, specialdmg):
 //   Apply hero's attack damage to monster (used by polymorphed hero attacks).
-//   Rolls d(mattk.dice, mattk.sides), dispatches through mhitm_adtyping.
+//   Rolls d(mattk.damn, mattk.damd), dispatches through mhitm_adtyping.
 //   Returns M_ATTK_DEF_DIED if monster dies, M_ATTK_HIT otherwise.
 export function damageum(mdef, mattk, specialdmg) {
+    canonicalizeAttackFields(mattk);
     const mhm = {
-        damage: d(mattk.dice || 0, mattk.sides || 0),
+        damage: d(mattk.damn || 0, mattk.damd || 0),
         hitflags: M_ATTK_MISS,
         permdmg: 0,
         specialdmg: specialdmg || 0,
@@ -1205,7 +1208,8 @@ export function damageum(mdef, mattk, specialdmg) {
 //   Exploding attack (hero polymorphed into exploding monster).
 //   Returns M_ATTK_DEF_DIED or M_ATTK_HIT.
 export function explum(mdef, mattk) {
-    const tmp = d(mattk.dice || 0, mattk.sides || 0);
+    canonicalizeAttackFields(mattk);
+    const tmp = d(mattk.damn || 0, mattk.damd || 0);
     // C: various cases (AD_BLND, AD_HALU, AD_COLD/FIRE/ELEC → explode())
     // Simplified: just apply damage for elemental types
     if (mdef) {
@@ -1238,6 +1242,7 @@ function end_engulf() {
 //   Returns M_ATTK_MISS or M_ATTK_DEF_DIED.
 //   In JS, engulfment is not yet supported. Stub returns miss.
 export async function gulpum(mdef, mattk) {
+    canonicalizeAttackFields(mattk);
     if (mdef) {
         await start_engulf(mdef);
         end_engulf();
@@ -1284,14 +1289,15 @@ export function m_is_steadfast(mtmp) {
 //   Returns true if knockback occurred.
 //   Consumes rn2(3), rn2(chance), and possibly rn2(2)*2 for message.
 export function mhitm_knockback(magr, mdef, mattk, hitflags, weapon_used) {
+    canonicalizeAttackFields(mattk);
     const knockdistance = rn2(3) ? 1 : 2;
     const chance = 6;
     if (rn2(chance)) return false;
 
     // Only AD_PHYS with AT_CLAW/AT_KICK/AT_BUTT/AT_WEAP qualifies
     if (!mattk) return false;
-    const adtyp = mattk.damage ?? mattk.adtyp ?? AD_PHYS;
-    const aatyp = mattk.type ?? mattk.aatyp ?? AT_WEAP;
+    const adtyp = mattk.adtyp ?? mattk.damage ?? AD_PHYS;
+    const aatyp = mattk.aatyp ?? mattk.type ?? AT_WEAP;
     if (adtyp !== AD_PHYS) return false;
     if (aatyp !== AT_CLAW && aatyp !== AT_KICK && aatyp !== AT_BUTT && aatyp !== AT_WEAP)
         return false;
@@ -1346,9 +1352,10 @@ export function hmonas(player, mon, display, map) {
 //   Called for AD_FIRE, AD_ACID, AD_RUST, AD_CORR, AD_ENCH when hero hits
 //   a monster with those passive attack types.
 export function passive_obj(mon, obj, mattk) {
+    canonicalizeAttackFields(mattk);
     if (!obj) return;
     const ptr = mon.type || {};
-    const adtyp = mattk ? (mattk.damage ?? mattk.adtyp) : AD_PHYS;
+    const adtyp = mattk ? (mattk.adtyp ?? mattk.damage) : AD_PHYS;
 
     switch (adtyp) {
     case AD_FIRE:
@@ -1685,27 +1692,29 @@ function passive(mon, weapon, mhit, malive, aatyp = AT_WEAP, wep_was_destroyed =
     let passiveAttk = null;
     for (let i = 0; i < attacks.length; i++) {
         if (i >= NATTK) return; // no passive attacks
-        if (attacks[i].type === AT_NONE) {
-            passiveAttk = attacks[i];
+        const attack = canonicalizeAttackFields(attacks[i]);
+        if (attack.aatyp === AT_NONE) {
+            passiveAttk = attack;
             break;
         }
     }
     if (!passiveAttk) {
         if (attacks.length >= NATTK) return; // no room for passive
         // Synthesize NO_ATTK: C would find AT_NONE/AD_NONE(=AD_PHYS)/0/0
-        passiveAttk = { type: AT_NONE, damage: AD_PHYS, dice: 0, sides: 0 };
+        passiveAttk = { aatyp: AT_NONE, adtyp: AD_PHYS, damn: 0, damd: 0 };
     }
+    canonicalizeAttackFields(passiveAttk);
 
-    const adtyp = passiveAttk.damage;
+    const adtyp = passiveAttk.adtyp;
 
     // C ref: uhitm.c:5862-5868 — calculate tmp (damage dice)
     // tmp = d(damn, damd) or d(mlev+1, damd) or 0
     let tmp = 0;
-    if (passiveAttk.dice) {
-        tmp = d(passiveAttk.dice, passiveAttk.sides || 0);
-    } else if (passiveAttk.sides) {
+    if (passiveAttk.damn) {
+        tmp = d(passiveAttk.damn, passiveAttk.damd || 0);
+    } else if (passiveAttk.damd) {
         const mlev = mon.m_lev ?? mon.mlevel ?? (ptr.level || 0);
-        tmp = d(mlev + 1, passiveAttk.sides);
+        tmp = d(mlev + 1, passiveAttk.damd);
     }
 
     // C ref: uhitm.c:5872-5993 — first switch: effects that work even if dead
