@@ -19,11 +19,8 @@ import { CLR_MAX, NO_COLOR } from './symbols.js';
 import { hasGivenName, type_is_pname, is_mplayer,
          is_animal, is_mindless, is_humanoid } from './mondata.js';
 
-// Re-export existing simplified implementations from mondata.js.
-// These are used throughout the codebase via mondata.js imports already;
-// re-exporting here so do_name.js can serve as the canonical module for
-// C callers that import from do_name.c.
-export { monDisplayName, monNam, hasGivenName } from './mondata.js';
+// Re-export helper needed by x_monnam naming logic.
+export { hasGivenName } from './mondata.js';
 
 // ========================================================================
 // Article constants — cf. do_name.c article enum
