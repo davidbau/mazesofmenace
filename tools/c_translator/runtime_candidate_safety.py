@@ -34,6 +34,13 @@ JS_KEYWORDS = {
     "else", "do", "break", "continue", "case", "throw", "try", "catch",
 }
 
+# C parser/emitter artifacts that should not be treated as unresolved symbols.
+C_NONSYMBOL_TOKENS = {
+    "int", "long", "short", "unsigned", "signed", "char", "void",
+    "float", "double", "sizeof",
+    "boolean", "uchar", "schar", "xchar", "coord", "aligntyp",
+}
+
 
 def is_escaped(text, i):
     backslashes = 0
@@ -79,7 +86,7 @@ def candidate_unknown_calls(emitted_js, known_syms):
         if re.search(r"\bfunction\s+[A-Za-z_]\w*\s*\(", line):
             continue
         for name in CALL_RE.findall(line):
-            if name in JS_KEYWORDS:
+            if name in JS_KEYWORDS or name in C_NONSYMBOL_TOKENS:
                 continue
             if name in known_syms:
                 continue
@@ -168,6 +175,7 @@ def sanitize_code_for_identifier_scan(text):
 def candidate_unknown_identifiers(emitted_js, known_syms):
     known = set(known_syms)
     known.update(JS_KEYWORDS)
+    known.update(C_NONSYMBOL_TOKENS)
     known.update(extract_emitted_locals(emitted_js))
     unknown = set()
     scan_text = sanitize_code_for_identifier_scan(emitted_js)

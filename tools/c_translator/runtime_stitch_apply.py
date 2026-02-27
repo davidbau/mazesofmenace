@@ -270,6 +270,7 @@ def main():
     skipped_marked = 0
     skipped_missing = 0
     skipped_signature_mismatch = 0
+    skipped_signature_details = []
 
     for js_module, records in grouped.items():
         module_path = repo / js_module
@@ -305,6 +306,15 @@ def main():
             compatible, reason = signature_compatible(existing_tokens, emitted_tokens)
             if not compatible:
                 skipped_signature_mismatch += 1
+                skipped_signature_details.append({
+                    "js_module": js_module,
+                    "function": rec["function"],
+                    "reason": reason,
+                    "existing_tokens": existing_tokens,
+                    "emitted_tokens": emitted_tokens,
+                    "source": rec.get("source"),
+                    "out_file": rec.get("out_file"),
+                })
                 continue
             text = text[:start] + emitted_js + text[end:]
             stitched += 1
@@ -325,6 +335,7 @@ def main():
         "skipped_marked": skipped_marked,
         "skipped_missing": skipped_missing,
         "skipped_signature_mismatch": skipped_signature_mismatch,
+        "skipped_signature_details": skipped_signature_details,
         "write": bool(args.write),
         "changes": changes,
     }
