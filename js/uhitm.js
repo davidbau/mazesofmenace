@@ -878,8 +878,8 @@ function mhitm_really_poison(magr, mattk, mdef, mhm) {
         return;
     }
     // C ref: mhitm.c:3094 — m_lev > 0 ? lose a level : take 2d6 damage
-    if ((mdef.m_lev ?? mdef.mlevel ?? 0) > 0) {
-        const mlev = mdef.m_lev ?? mdef.mlevel ?? 0;
+    if ((mdef.m_lev || 0) > 0) {
+        const mlev = mdef.m_lev || 0;
         mhm.damage = d(2, 6);
         if (mdef.mhpmax > (mlev + 1)) {
             mdef.mhpmax -= mhm.damage;
@@ -969,7 +969,7 @@ export function mhitm_ad_drli(magr, mattk, mdef, mhm) {
     if (!rn2(3) && !resists_ston(mdef) /* resists_drli in C, using ston as proxy */
         && !mhitm_mgc_atk_negated(magr, mdef)) {
         mhm.damage = d(2, 6);
-        const mlev = mdef.m_lev ?? mdef.mlevel ?? 0;
+        const mlev = mdef.m_lev || 0;
         if (mdef.mhpmax - mhm.damage > mlev) {
             mdef.mhpmax -= mhm.damage;
         } else if (mdef.mhpmax > mlev) {
@@ -979,7 +979,6 @@ export function mhitm_ad_drli(magr, mattk, mdef, mhm) {
             mhm.damage = mdef.mhp;
         } else {
             if (mdef.m_lev !== undefined) mdef.m_lev--;
-            else if (mdef.mlevel !== undefined) mdef.mlevel--;
         }
     }
 }
@@ -1014,10 +1013,9 @@ export function mhitm_ad_drin(magr, mattk, mdef, mhm) {
         return;
     }
     // C ref: intelligence drain — reduces m_lev and mhpmax
-    const mlev = mdef.m_lev ?? mdef.mlevel ?? 0;
+    const mlev = mdef.m_lev || 0;
     if (mlev > 0) {
         if (mdef.m_lev !== undefined) mdef.m_lev--;
-        else if (mdef.mlevel !== undefined) mdef.mlevel--;
         mhm.damage = d(2, 6);
         if (mdef.mhpmax > (mlev + 1)) {
             mdef.mhpmax -= mhm.damage;

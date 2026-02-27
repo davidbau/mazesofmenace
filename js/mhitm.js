@@ -270,7 +270,7 @@ export function passivemm(magr, mdef, mhitb, mdead, mwep, map) {
     if (passiveAttk.damn) {
         tmp = d(passiveAttk.damn, passiveAttk.damd || 0);
     } else if (passiveAttk.damd) {
-        const mlev = mdef.m_lev ?? mdef.mlevel ?? (mddat.mlevel || 0);
+        const mlev = mdef.m_lev ?? (mddat.mlevel || 0);
         tmp = d(mlev + 1, passiveAttk.damd);
     } else {
         tmp = 0;
@@ -555,8 +555,8 @@ function mdamagem(magr, mdef, mattk, mwep, dieroll, display, vis, map, ctx) {
         }
 
         // cf. mhitm.c:1115 — grow_up(magr, mdef)
-        const victimLevel = mdef.m_lev ?? mdef.mlevel ?? (pd.mlevel || 0);
-        const agrLevel = magr.m_lev ?? magr.mlevel ?? ((magr.type || {}).mlevel || 0);
+        const victimLevel = mdef.m_lev ?? (pd.mlevel || 0);
+        const agrLevel = magr.m_lev ?? ((magr.type || {}).mlevel || 0);
         const hp_threshold = agrLevel > 0 ? agrLevel * 8 : 4;
         let max_increase = rnd(Math.max(1, victimLevel + 1));
         if ((magr.mhpmax || 0) + max_increase > hp_threshold + 1) {
@@ -571,7 +571,7 @@ function mdamagem(magr, mdef, mattk, mwep, dieroll, display, vis, map, ctx) {
             let lev_limit = Math.floor((3 * baseSpeciesLevel) / 2);
             if (lev_limit < 5) lev_limit = 5;
             else if (lev_limit > 49) lev_limit = (baseSpeciesLevel > 49 ? 50 : 49);
-            const curLevel = magr.m_lev ?? magr.mlevel ?? baseSpeciesLevel;
+            const curLevel = magr.m_lev ?? baseSpeciesLevel;
             if (curLevel < lev_limit) {
                 const nextLevel = curLevel + 1;
                 magr.m_lev = nextLevel;
@@ -604,7 +604,7 @@ export function mattackm(magr, mdef, display, vis, map, ctx) {
     // (Skipped for simplicity — rare edge case)
 
     // Calculate armor class differential
-    let tmp = find_mac(mdef) + (magr.m_lev ?? magr.mlevel ?? (pa.mlevel || 0));
+    let tmp = find_mac(mdef) + (magr.m_lev ?? (pa.mlevel || 0));
     if (mdef.mconf || helpless(mdef)) {
         tmp += 4;
         if (mdef.msleeping) mdef.msleeping = 0;

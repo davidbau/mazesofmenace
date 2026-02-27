@@ -363,8 +363,7 @@ function monlineu(mon, player, nx, ny) {
 // C ref: mon.c mm_displacement() — can attacker displace defender?
 function mm_displacement(mon, monAtPos) {
     const monLevel = (m) => Number.isInteger(m?.m_lev) ? m.m_lev
-        : (Number.isInteger(m?.mlevel) ? m.mlevel
-            : (Number.isInteger(m?.type?.mlevel) ? m.type.mlevel : 0));
+        : (Number.isInteger(m?.type?.mlevel) ? m.type.mlevel : 0);
     if (!is_displacer(mon.type || {})) return false;
     const defenderIsDisplacer = is_displacer(monAtPos.type || {});
     const attackerHigherLevel = monLevel(mon) > monLevel(monAtPos);
