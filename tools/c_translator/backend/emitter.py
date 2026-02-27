@@ -823,6 +823,12 @@ def _lower_expr_stmt(text, rewrite_rules, awaitable_calls):
     t = text.rstrip(";").strip()
     if not t:
         return None, set()
+    helper_lowered, helper_req = _lower_known_helper_stmt(t, rewrite_rules)
+    if helper_lowered is not None:
+        lowered_stmt = helper_lowered.strip()
+        if lowered_stmt.startswith("{") and lowered_stmt.endswith("}"):
+            return lowered_stmt, helper_req
+        return f"{lowered_stmt};", helper_req
     original_call = _extract_call_name(t)
     pm = PANIC_RE.match(t)
     if pm:
@@ -837,6 +843,133 @@ def _lower_expr_stmt(text, rewrite_rules, awaitable_calls):
     if (original_call in awaitable_calls or lowered_call in awaitable_calls) and not lowered.startswith("await "):
         return f"await {lowered};", req
     return f"{lowered};", req
+
+
+def _split_top_level_args(src):
+    out = []
+    cur = []
+    depth = 0
+    in_str = None
+    i = 0
+    n = len(src or "")
+    while i < n:
+        c = src[i]
+        nxt = src[i + 1] if i + 1 < n else ""
+        if in_str:
+            cur.append(c)
+            if c == in_str and (i == 0 or src[i - 1] != "\\"):
+                in_str = None
+            i += 1
+            continue
+        if c in ("'", '"'):
+            in_str = c
+            cur.append(c)
+            i += 1
+            continue
+        if c == "/" and nxt == "/":
+            # Keep comments as part of current chunk; caller already normalizes space.
+            cur.append(c)
+            cur.append(nxt)
+            i += 2
+            continue
+        if c in "([{":
+            depth += 1
+            cur.append(c)
+            i += 1
+            continue
+        if c in ")]}":
+            depth = max(0, depth - 1)
+            cur.append(c)
+            i += 1
+            continue
+        if c == "," and depth == 0:
+            out.append("".join(cur).strip())
+            cur = []
+            i += 1
+            continue
+        cur.append(c)
+        i += 1
+    tail = "".join(cur).strip()
+    if tail:
+        out.append(tail)
+    return out
+
+
+def _emit_c_format_expr(fmt_expr, arg_exprs):
+    args_src = ", ".join(arg_exprs) if arg_exprs else ""
+    return (
+        "(() => { "
+        f"const __a = [{args_src}]; "
+        f"const __f = String({fmt_expr}); "
+        "return __f.replace(/%[-+ #0-9.*hlLzjt]*[cCdiouxXfFeEgGaAnps%]/g, (m) => { "
+        "if (m === '%%') return '%'; "
+        "const __stars = (m.match(/\\*/g) || []).length; "
+        "for (let __k = 0; __k < __stars; __k++) { if (__a.length) __a.shift(); } "
+        "const __v = __a.length ? __a.shift() : ''; "
+        "return String(__v ?? ''); "
+        "}); "
+        "})()"
+    )
+
+
+def _lower_known_helper_stmt(stmt, rewrite_rules):
+    m = re.match(r"^([A-Za-z_]\w*)\s*\((.*)\)$", stmt.strip())
+    if not m:
+        return None, set()
+    name = m.group(1)
+    raw_args = _split_top_level_args(m.group(2))
+    lowered_args = []
+    required = set()
+    for a in raw_args:
+        la, req = _lower_expr(a, rewrite_rules)
+        if la is None:
+            return None, set()
+        lowered_args.append(la)
+        required.update(req)
+
+    if name in {"Sprintf", "sprintf"}:
+        if len(lowered_args) < 2:
+            return None, set()
+        dst, fmt = lowered_args[0], lowered_args[1]
+        fmt_args = lowered_args[2:]
+        formatted = _emit_c_format_expr(fmt, fmt_args)
+        eos_m = re.match(r"^eos\s*\(\s*(.+)\s*\)$", raw_args[0].strip())
+        if eos_m:
+            target_raw = eos_m.group(1).strip()
+            target, req2 = _lower_expr(target_raw, rewrite_rules)
+            if target is None:
+                return None, set()
+            required.update(req2)
+            return f"{{ const __fmt = {formatted}; {target} = String({target} ?? '') + __fmt; }}", required
+        return f"{{ const __fmt = {formatted}; {dst} = __fmt; }}", required
+
+    if name in {"Snprintf", "snprintf"}:
+        if len(lowered_args) < 3:
+            return None, set()
+        dst, maxlen, fmt = lowered_args[0], lowered_args[1], lowered_args[2]
+        fmt_args = lowered_args[3:]
+        formatted = _emit_c_format_expr(fmt, fmt_args)
+        bounded = f"({formatted}).slice(0, Math.max(0, Number({maxlen}) - 1))"
+        eos_m = re.match(r"^eos\s*\(\s*(.+)\s*\)$", raw_args[0].strip())
+        if eos_m:
+            target_raw = eos_m.group(1).strip()
+            target, req2 = _lower_expr(target_raw, rewrite_rules)
+            if target is None:
+                return None, set()
+            required.update(req2)
+            return f"{{ const __fmt = {bounded}; {target} = String({target} ?? '') + __fmt; }}", required
+        return f"{{ const __fmt = {bounded}; {dst} = __fmt; }}", required
+
+    if name in {"Strcpy", "strcpy"} and len(lowered_args) >= 2:
+        return f"{lowered_args[0]} = String({lowered_args[1]} ?? '')", required
+    if name in {"Strcat", "strcat"} and len(lowered_args) >= 2:
+        dst = lowered_args[0]
+        return f"{dst} = String({dst} ?? '') + String({lowered_args[1]} ?? '')", required
+    if name in {"Strncpy", "strncpy"} and len(lowered_args) >= 3:
+        return (
+            f"{lowered_args[0]} = String({lowered_args[1]} ?? '').slice(0, Math.max(0, Number({lowered_args[2]})))"
+        ), required
+    return None, set()
 
 
 def _lower_expr(expr, rewrite_rules):
@@ -920,6 +1053,22 @@ def _lower_expr(expr, rewrite_rules):
     out = re.sub(r"\bmax\s*\(", "Math.max(", out)
     out = re.sub(r"\bmin\s*\(", "Math.min(", out)
     out = re.sub(r"\babs\s*\(", "Math.abs(", out)
+    out = re.sub(r"\bstrlen\s*\(\s*([^()]+?)\s*\)", r"String(\1).length", out)
+    out = re.sub(r"\batoi\s*\(\s*([^()]+?)\s*\)", r"Number.parseInt(\1, 10)", out)
+    out = re.sub(
+        r"\bstrcmpi\s*\(\s*([^(),]+?)\s*,\s*([^()]+?)\s*\)",
+        r"(String(\1).toLowerCase().localeCompare(String(\2).toLowerCase()))",
+        out,
+    )
+    out = re.sub(
+        r"\bstrncmpi\s*\(\s*([^(),]+?)\s*,\s*([^(),]+?)\s*,\s*([^()]+?)\s*\)",
+        (
+            r"(String(\1).slice(0, Number(\3)).toLowerCase()"
+            r".localeCompare(String(\2).slice(0, Number(\3)).toLowerCase()))"
+        ),
+        out,
+    )
+    out = re.sub(r"\beos\s*\(\s*([^()]+?)\s*\)", r"(String(\1).length)", out)
     # free() is a no-op in JS runtime; preserve operand side-effects only.
     out = re.sub(r"\bfree\s*\(\s*([^()]+?)\s*\)", r"(\1, 0)", out)
     # C integer long suffix (e.g., 7L) has no JS runtime equivalent.
