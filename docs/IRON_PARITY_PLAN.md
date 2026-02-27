@@ -16,9 +16,10 @@ This campaign treats green tests as guardrails, not the goal. The goal is faithf
 1. State refactor plan: [C_FAITHFUL_STATE_REFACTOR_PLAN.md](/share/u/davidbau/git/mazesofmenace/game/docs/C_FAITHFUL_STATE_REFACTOR_PLAN.md)
 2. Translator architecture: [C_TRANSLATOR_ARCHITECTURE_SPEC.md](/share/u/davidbau/git/mazesofmenace/game/docs/C_TRANSLATOR_ARCHITECTURE_SPEC.md)
 3. Translator parser strategy: [C_TRANSLATOR_PARSER_IMPLEMENTATION_SPEC.md](/share/u/davidbau/git/mazesofmenace/game/docs/C_TRANSLATOR_PARSER_IMPLEMENTATION_SPEC.md)
-4. Coverage ledger: [CODEMATCH.md](/share/u/davidbau/git/mazesofmenace/game/docs/CODEMATCH.md)
-5. Parity debugging workflow: [RNG_ALIGNMENT_GUIDE.md](/share/u/davidbau/git/mazesofmenace/game/docs/RNG_ALIGNMENT_GUIDE.md)
-6. Learnings: [LORE.md](/share/u/davidbau/git/mazesofmenace/game/docs/LORE.md)
+4. Translator out-param/format strategy: [C_TRANSLATOR_OUTPARAM_AND_FORMAT_ARCHITECTURE.md](/share/u/davidbau/git/mazesofmenace/game/docs/C_TRANSLATOR_OUTPARAM_AND_FORMAT_ARCHITECTURE.md)
+5. Coverage ledger: [CODEMATCH.md](/share/u/davidbau/git/mazesofmenace/game/docs/CODEMATCH.md)
+6. Parity debugging workflow: [RNG_ALIGNMENT_GUIDE.md](/share/u/davidbau/git/mazesofmenace/game/docs/RNG_ALIGNMENT_GUIDE.md)
+7. Learnings: [LORE.md](/share/u/davidbau/git/mazesofmenace/game/docs/LORE.md)
 
 ## Strategic Thesis
 
@@ -210,6 +211,43 @@ Stage 3: Thousands
    1. all prior stage gates remain active,
    2. high-risk files remain policy-constrained (`manual_only` or strict `mixed`),
    3. release-critical parity suites remain authoritative for accept/reject.
+
+### Common Helper and Out-Param Normalization Lane (High Priority)
+
+Purpose:
+
+1. Remove high-volume translator blockers caused by unresolved C helper idioms and out-param mutation patterns.
+2. Convert these blockers into deterministic lowering rules so large-batch autotranslation can scale safely.
+
+Current audited scope (full pipeline snapshot):
+
+1. `298` unsafe functions are blocked by common C helper symbols (`sprintf/strcpy/strlen/...` family).
+2. `203` functions contain `Sprintf/Snprintf` calls.
+3. `116` functions contain detected direct out-param writes.
+
+Authoritative helper automation tranche (Phase B-H1):
+
+1. `sprintf` / `snprintf` (including `Sprintf` / `Snprintf`)
+2. `strcpy` / `strcat` / `strncpy`
+3. `strlen`
+4. `strchr` / `strrchr`
+5. `strcmpi` / `strncmpi`
+6. `atoi`
+7. `abs`
+8. `eos`
+
+Execution rules:
+
+1. Implement as translator lowering/normalization, not comparator exceptions.
+2. Keep C order and branch structure; only replace helper semantics with JS-equivalent expression/helpers.
+3. Add function-summary metadata for out-param role classification and callsite rewrite (`single`, `single+result`, `multi`).
+4. Gate each wave with unit tests, translator regression tests, and session parity baseline check.
+
+Exit gate for B-H1:
+
+1. Marked-function audit shows reduced `unsafe_unknown_calls_and_identifiers` count in helper-driven categories.
+2. `Sprintf/Snprintf`-blocked marked set reduced by at least `50%` from current baseline.
+3. No regression in parity baseline (`test:session`) and no unit-test failures.
 
 ## Workstream C: Parity Operations and Governance
 
