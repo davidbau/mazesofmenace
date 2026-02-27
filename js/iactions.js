@@ -33,3 +33,27 @@
 // Displays an interactive menu of possible actions for a given inventory item
 // and executes the selected action.
 // TODO: iactions.c:277 — itemactions(): item actions menu display and execution
+
+// TRANSLATOR: AUTO (iactions.c:85)
+export function item_reading_classification(obj, outbuf) {
+  let otyp = obj.otyp, res = IA_READ_OBJ;
+   outbuf = '\x00';
+  if (otyp === FORTUNE_COOKIE) {
+    Strcpy(outbuf, "Read the message inside this cookie");
+  }
+  else if (otyp === T_SHIRT) { Strcpy(outbuf, "Read the slogan on the shirt"); }
+  else if (otyp === ALCHEMY_SMOCK) { Strcpy(outbuf, "Read the slogan on the apron"); }
+  else if (otyp === HAWAIIAN_SHIRT) {
+    Strcpy(outbuf, "Look at the pattern on the shirt");
+  }
+  else if (obj.oclass === SCROLL_CLASS) {
+    let magic = ((obj.dknown    && (otyp !== SCR_BLANK_PAPER || !objects[otyp].oc_name_known)) ? " to activate its magic" : "");
+    Sprintf(outbuf, "Read this scroll%s", magic);
+  }
+  else if (obj.oclass === SPBOOK_CLASS) {
+    let novel = (otyp === SPE_NOVEL), blank = (otyp === SPE_BLANK_PAPER && objects[otyp].oc_name_known), tome = (otyp === SPE_BOOK_OF_THE_DEAD && objects[otyp].oc_name_known);
+    Sprintf(outbuf, "%s this %s", (novel || blank) ? "Read" : tome ? "Examine" : "Study", novel ? simpleonames(obj)   : tome ? "tome" : "spellbook");
+  }
+  else { res = IA_NONE; }
+  return res;
+}

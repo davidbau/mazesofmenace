@@ -31,3 +31,13 @@
 //   Notable difference: JS receives pre-split deathLines array rather than calling
 //   formatkiller() (JS formatkiller() is TODO in topten.js:13).
 // ALIGNED: rip.c:85 — genl_outrip() ↔ display.renderTombstone() (display.js:1135)
+
+// TRANSLATOR: AUTO (rip.c:74)
+export function center(line, text) {
+  let ip, op;
+  ip = text;
+  op = gr.rip[line][STONE_LINE_CENT - ((strlen(text) + 1) >> 1)];
+  while ( ip) {
+     op = ip++;
+  }
+}

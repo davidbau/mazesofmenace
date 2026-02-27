@@ -280,41 +280,30 @@ function you_have(mask, player) {
 // target_on — find goal position for covetous monster
 // cf. wizard.c:235
 // ============================================================================
-
-function target_on(mask, mtmp, map, player) {
-    if (!M_Wants(mtmp, mask)) return STRAT_NONE;
-
-    const otyp = which_arti(mask);
-    if (!mon_has_arti(mtmp, otyp)) {
-        if (you_have(mask, player)) {
-            if (!mtmp.mgoal) mtmp.mgoal = {};
-            mtmp.mgoal.x = player.x;
-            mtmp.mgoal.y = player.y;
-            return (STRAT_PLAYER | mask);
-        }
-        const otmp = on_ground(otyp, map);
-        if (otmp) {
-            if (!mtmp.mgoal) mtmp.mgoal = {};
-            mtmp.mgoal.x = otmp.ox;
-            mtmp.mgoal.y = otmp.oy;
-            return (STRAT_GROUND | mask);
-        }
-        const mtmp2 = other_mon_has_arti(mtmp, otyp, map);
-        if (mtmp2
-            // when seeking the Amulet, avoid targeting the Wizard
-            // or temple priests (to protect Moloch's high priest)
-            && (otyp !== AMULET_OF_YENDOR
-                || (!mtmp2.iswiz && !inhistemple(mtmp2)))) {
-            if (!mtmp.mgoal) mtmp.mgoal = {};
-            mtmp.mgoal.x = mtmp2.mx;
-            mtmp.mgoal.y = mtmp2.my;
-            return (STRAT_MONSTR | mask);
-        }
+// TRANSLATOR: AUTO (wizard.c:235)
+export function target_on(mask, mtmp, player) {
+  let otyp, otmp, mtmp2;
+  if (!M_Wants(mask)) return  STRAT_NONE;
+  otyp = which_arti(mask);
+  if (!mon_has_arti(mtmp, otyp)) {
+    if (you_have(mask)) {
+      mtmp.mgoal.x = player.x;
+      mtmp.mgoal.y = player.y;
+      return (STRAT_PLAYER | mask);
     }
-    if (!mtmp.mgoal) mtmp.mgoal = {};
-    mtmp.mgoal.x = 0;
-    mtmp.mgoal.y = 0;
-    return STRAT_NONE;
+    else if ((otmp = on_ground(otyp))) {
+      mtmp.mgoal.x = otmp.ox;
+      mtmp.mgoal.y = otmp.oy;
+      return (STRAT_GROUND | mask);
+    }
+    else if ((mtmp2 = other_mon_has_arti(mtmp, otyp)) !== 0   && (otyp !== AMULET_OF_YENDOR || (!mtmp2.iswiz && !inhistemple(mtmp2)))) {
+      mtmp.mgoal.x = mtmp2.mx;
+      mtmp.mgoal.y = mtmp2.my;
+      return (STRAT_MONSTR | mask);
+    }
+  }
+  mtmp.mgoal.x = mtmp.mgoal.y = 0;
+  return  STRAT_NONE;
 }
 
 // ============================================================================

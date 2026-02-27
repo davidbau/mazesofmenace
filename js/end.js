@@ -167,13 +167,18 @@ export function wordcount(p) {
 
 // cf. end.c:1811 [static] — bel_copy1(inp, out): copy next word
 // Returns [nextInputIndex, appendedWord]
-function bel_copy1(p, idx) {
-    while (idx < p.length && p[idx] === ' ') idx++;
-    let word = '';
-    while (idx < p.length && p[idx] !== ' ') {
-        word += p[idx++];
-    }
-    return [idx, word];
+// TRANSLATOR: AUTO (end.c:1811)
+export function bel_copy1(inp, out) {
+  let in_ =  inp;
+  out += strlen(out);
+  while ( in_ && isspace( in_)) {
+    in_++;
+  }
+  while ( in_ && !isspace( in_)) {
+     out = in_++;
+  }
+   out = '\x00';
+   inp = in_;
 }
 
 // cf. end.c:1825 — build_english_list(input): build English list

@@ -1473,3 +1473,72 @@ export function illegal_menu_cmd_key(c) {
   }
   return false;
 }
+
+// TRANSLATOR: AUTO (options.c:8076)
+export function oc_to_str(src, dest) {
+  let i;
+  while ((i =  src++) !== 0) {
+    if (i < 0 || i >= MAXOCLASSES) impossible("oc_to_str: illegal object class_ %d", i);
+    else {
+       dest = def_oc_syms[i].sym;
+    }
+  }
+   dest = '\x00';
+}
+
+// TRANSLATOR: AUTO (options.c:10026)
+export function wc_set_window_colors(op) {
+  let j, clr, buf, wn, tfg, tbg, newop;
+  Strcpy(buf, op);
+  newop = mungspaces(buf);
+  while ( newop) {
+    wn = tfg = tbg =  0;
+    if ( newop === ' ') newop++;
+    if (!newop) return 0;
+    wn = newop;
+    while ( newop && newop !== ' ') {
+      newop++;
+    }
+    if (!newop) return 0;
+     newop = '\x00';
+    if ( newop === ' ') newop++;
+    if (!newop) return 0;
+    tfg = newop;
+    while ( newop && newop !== '/') {
+      newop++;
+    }
+    if (!newop) return 0;
+     newop = '\x00';
+    if ( newop === ' ') newop++;
+    if (!newop) return 0;
+    tbg = newop;
+    while ( newop && newop !== ' ') {
+      newop++;
+    }
+    if ( newop) newop = '\x00';
+    for (j = 0; j < WC_COUNT; ++j) {
+      if (!strcmpi(wn, wcnames[j]) || !strcmpi(wn, wcshortnames[j])) {
+        if (!strstri(tfg, " ")) {
+          if ( fgp[j]) (fgp[j], 0);
+          clr = check_enhanced_colors(tfg);
+           fgp[j] = dupstr((clr >= 0) ? wc_color_name(clr) : tfg);
+        }
+        if (!strstri(tbg, " ")) {
+          if ( bgp[j]) (bgp[j], 0);
+          clr = check_enhanced_colors(tbg);
+           bgp[j] = dupstr((clr >= 0) ? wc_color_name(clr) : tbg);
+        }
+        if (wcolors_opt[j] !== 0) {
+          config_error_add( "windowcolors for %s windows specified multiple times", wcnames[j]);
+        }
+        wcolors_opt[j]++;
+        break;
+      }
+    }
+    if (j === WC_COUNT) {
+      config_error_add("windowcolors for unrecognized window type: %s", wn);
+    }
+  }
+  options_set_window_colors_flag = 1;
+  return 1;
+}

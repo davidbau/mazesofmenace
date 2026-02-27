@@ -1316,3 +1316,38 @@ export function random_response(buf, sz) {
   }
   buf[count] = '\x00';
 }
+
+// TRANSLATOR: AUTO (cmd.c:154)
+export function json_write_escaped(fp, s) {
+  let c;
+  if (!s) { fputs("", fp); return; }
+  while ((c =  s++) !== '\x00') {
+    if (c === '"' || c === '\\') { fputc('\\', fp); fputc(c, fp); }
+    else if (c >= 0x20 && c <= 0x7e) { fputc(c, fp); }
+    else { fprintf(fp, "\\u%04x", c & 0xff); }
+  }
+}
+
+// TRANSLATOR: AUTO (cmd.c:773)
+export function doc_extcmd_flagstr(menuwin, efp) {
+  let Abuf;
+  if (!efp) {
+    let qbuf;
+    add_menu_str(menuwin, "[A] Command autocompletes");
+    Sprintf(qbuf, "[m] Command accepts '%s' prefix", visctrl(cmd_from_func(do_reqmenu)));
+    add_menu_str(menuwin, qbuf);
+    return  0;
+  }
+  else {
+    let mprefix = accept_menu_prefix(efp), autocomplete = (efp.flags & AUTOCOMPLETE) !== 0;
+    let p = Abuf;
+    if (mprefix || autocomplete) {
+       p = '[';
+      if (mprefix) p = 'm';
+      if (autocomplete) p = 'A';
+       p = ']';
+    }
+     p = '\x00';
+    return Abuf;
+  }
+}

@@ -1571,3 +1571,28 @@ export function spellretention(idx, outbuf) {
   }
   return outbuf;
 }
+
+// TRANSLATOR: AUTO (spell.c:1975)
+export async function spellsortmenu() {
+  let tmpwin, selected, any, let_, i, n, choice, clr = NO_COLOR;
+  tmpwin = create_nhwindow(NHW_MENU);
+  start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+  any = cg.zeroany;
+  for (i = 0; i < SIZE(spl_sortchoices); i++) {
+    if (i === SORTRETAINORDER) { let_ = 'z'; add_menu_str(tmpwin, ""); }
+    else { let_ = 'a' + i; }
+    any.a_int = i + 1;
+    add_menu(tmpwin, nul_glyphinfo, any, let_, 0, ATR_NONE, clr, spl_sortchoices[i], (i === gs.spl_sortmode) ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
+  }
+  end_menu(tmpwin, "View known spells list sorted");
+  n = select_menu(tmpwin, PICK_ONE, selected);
+  destroy_nhwindow(tmpwin);
+  if (n > 0) {
+    choice = selected[0].item.a_int - 1;
+    if (n > 1 && choice === gs.spl_sortmode) choice = selected[1].item.a_int - 1;
+    (selected, 0);
+    gs.spl_sortmode = choice;
+    return true;
+  }
+  return false;
+}

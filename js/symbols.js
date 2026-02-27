@@ -1240,3 +1240,65 @@ export function savedsym_strbuf(sbuf) {
     tmp = tmp.next;
   }
 }
+
+// TRANSLATOR: AUTO (symbols.c:772)
+export function parsesymbols(opts, which_set) {
+  let val;
+  let symname, strval, ch, first_unquoted_comma = 0, first_unquoted_colon = 0;
+  let symp, is_glyph = false;
+  for (ch = opts + 1;  ch; ++ch) {
+    let prech, postch;
+    prech = ch - 1;
+    postch = ch + 1;
+    if (!postch) {
+      break;
+    }
+    if ( ch === ',') {
+      if ( prech === '\'' && postch === '\'') {
+        continue;
+      }
+      if ( prech === '\\') {
+        continue;
+      }
+    }
+    if ( ch === ':') {
+      if ( prech === '\'' && postch === '\'') {
+        continue;
+      }
+    }
+    if ( ch === ',' && !first_unquoted_comma) first_unquoted_comma = ch;
+    if ( ch === ':' && !first_unquoted_colon) first_unquoted_colon = ch;
+  }
+  if (first_unquoted_comma !== 0) {
+     first_unquoted_comma = '\x00';
+    if (!parsesymbols(first_unquoted_comma, which_set)) return false;
+  }
+  symname = opts;
+  strval = first_unquoted_colon;
+  if (!strval) strval = strchr(opts, '=');
+  if (!strval) return false;
+   strval = '\x00';
+  mungspaces(symname);
+  mungspaces(strval);
+  symp = match_sym(symname);
+  if (!symp && symname[0] === 'G' && symname[1] === '_') { is_glyph = match_glyph(symname); }
+  if (!symp && !is_glyph) return false;
+  if (symp) {
+    if (symp.range && symp.range !== SYM_CONTROL) {
+      if (gs.symset[which_set].handling === H_UTF8 || (lowc(strval[0]) === 'u' && strval[1] === '+')) {
+        let buf, glyph;
+        Snprintf(buf, buf.length, "%s:%s", opts, strval);
+        glyphrep_to_custom_map_entries(buf, glyph);
+      }
+      else {
+        val = sym_val(strval);
+        if (which_set === ROGUESET) update_ov_rogue_symset(symp, val);
+        else {
+          update_ov_primary_symset(symp, val);
+        }
+      }
+    }
+  }
+  savedsym_add(opts, strval, which_set);
+  return true;
+}

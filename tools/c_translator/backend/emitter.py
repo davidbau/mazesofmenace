@@ -10,6 +10,17 @@ from nir import build_nir_snapshot
 
 FUNC_SIG_LINE_RE = re.compile(r"^\s*([A-Za-z_]\w*)\s*\(([^)]*)\)\s*$")
 IDENT_RE = re.compile(r"[A-Za-z_]\w*$")
+JS_RESERVED_IDENTS = {
+    "class",
+    "let",
+    "in",
+    "default",
+    "function",
+    "return",
+    "switch",
+    "case",
+    "new",
+}
 DECL_RE = re.compile(
     r"^(?:unsigned\s+)?(?:int|long|short|boolean|coordxy|schar|uchar)\s+(.+);$"
 )
@@ -38,10 +49,16 @@ def _extract_param_names(signature_line):
             continue
         ident = IDENT_RE.search(token)
         if ident:
-            names.append(ident.group(0))
+            names.append(_sanitize_ident(ident.group(0)))
         else:
             names.append("arg")
     return names
+
+
+def _sanitize_ident(name):
+    if name in JS_RESERVED_IDENTS:
+        return f"{name}_"
+    return name
 
 
 def emit_helper_scaffold(src_path, func_name, compile_profile=None):
@@ -826,6 +843,9 @@ def _lower_expr(expr, rewrite_rules):
     if not out:
         return None, set()
     out = C_BLOCK_COMMENT_RE.sub(" ", out)
+    out = re.sub(r"#\s*ifn?def\b[^#]*", " ", out)
+    out = re.sub(r"#\s*if\b[^#]*", " ", out)
+    out = re.sub(r"#\s*endif\b", " ", out)
     out, required_params = _apply_rewrite_rules(out, rewrite_rules)
     out = re.sub(r"\(\s*\*\s*([A-Za-z_]\w*)\s*\)\s*\(", r"\1(", out)
     out = re.sub(r"\bTRUE\b", "true", out)
@@ -850,6 +870,11 @@ def _lower_expr(expr, rewrite_rules):
     out = re.sub(r"\(\s*void\s*\)\s*", "", out)
     out = re.sub(r"\(\s*(?:const\s+)?(?:struct|enum|union)\s+[A-Za-z_]\w*\s*\**\s*\)", "", out)
     out = re.sub(r"\(\s*(?:const\s+)?char\s*\*\s*\)", "", out)
+    out = re.sub(
+        r"\(\s*(?:unsigned|signed)\s+(?:char|short|int|long)\s*\)",
+        "",
+        out,
+    )
     out = re.sub(
         r"\(\s*(?:unsigned\s+)?(?:int|long|short|coordxy|schar|uchar)\s*\)\s*\(([^()]+)\)",
         r"Math.trunc(\1)",
@@ -885,6 +910,7 @@ def _lower_expr(expr, rewrite_rules):
     out = re.sub(r"\bfree\s*\(\s*([^()]+?)\s*\)", r"(\1, 0)", out)
     # C integer long suffix (e.g., 7L) has no JS runtime equivalent.
     out = re.sub(r"\b(\d+)L\b", r"\1", out)
+    out = re.sub(r"\b(\d+)(?:ULL|LLU|UL|LU|LL|U)\b", r"\1", out)
     out = re.sub(r"\bsizeof\s+([A-Za-z_]\w*)\b", r"\1.length", out)
     out = re.sub(
         r'\bsizeof\s+("(?:(?:\\.)|[^"\\])*")',
@@ -895,6 +921,15 @@ def _lower_expr(expr, rewrite_rules):
     out = _rewrite_c_char_literals(out)
     # Address-of in return position is pointer semantics in C; drop for JS refs.
     out = re.sub(r"\breturn\s*&\s*([A-Za-z_]\w*(?:\[[^\]]+\])?)", r"return \1", out)
+    out = re.sub(r"([A-Za-z_]\w*)\+\+\s*=", r"\1 =", out)
+    out = re.sub(
+        r"(^|[\s(,=!?:+\-/*])\*\s*([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)?)",
+        r"\1\2",
+        out,
+    )
+    out = re.sub(r"\bclass\b", "class_", out)
+    out = re.sub(r"\blet\b", "let_", out)
+    out = re.sub(r"\bin\b", "in_", out)
     # Remove unary pointer-deref in boolean/comparison contexts: *p -> p.
     out = re.sub(r"([(&|!=?:,]\s*)\*\s*([A-Za-z_]\w*)", r"\1\2", out)
     out = re.sub(r"(?<![=!<>])==(?![=])", "===", out)
@@ -932,7 +967,7 @@ def _extract_decl_name(lhs):
     names = re.findall(r"[A-Za-z_]\w*", raw)
     if not names:
         return None
-    return names[-1]
+    return _sanitize_ident(names[-1])
 
 
 def _load_async_info(src_path, func_name):

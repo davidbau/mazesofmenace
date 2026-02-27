@@ -693,3 +693,25 @@ export function all_options_statushilites(sbuf) {
   }
   status_hilite_linestr_done();
 }
+
+// TRANSLATOR: AUTO (botl.c:2913)
+export function match_str2conditionbitmask(str) {
+  let i, nmatches = 0, mask = 0;
+  if (str && str) {
+    for (i = 0; i < SIZE(conditions); i++) {
+      if (fuzzymatch(conditions[i].text[0], str, " -_", true)) { mask |= conditions[i].mask; nmatches++; }
+    }
+    if (!nmatches) {
+      for (i = 0; i < SIZE(condition_aliases); i++) {
+        if (fuzzymatch(condition_aliases[i].id, str, " -_", true)) { mask |= condition_aliases[i].bitmask; nmatches++; }
+      }
+    }
+    if (!nmatches) {
+      let len =  strlen(str);
+      for (i = 0; i < SIZE(condition_aliases); i++) {
+        if (!strncmpi(str, condition_aliases[i].id, len)) { mask |= condition_aliases[i].bitmask; nmatches++; }
+      }
+    }
+  }
+  return mask;
+}

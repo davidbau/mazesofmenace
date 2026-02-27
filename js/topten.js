@@ -296,3 +296,15 @@ export function tt_doppel(mon) {
   }
   return ret;
 }
+
+// TRANSLATOR: AUTO (topten.c:928)
+export function outheader() {
+  let linebuf, bp;
+  Strcpy(linebuf, " No Points Name");
+  bp = eos(linebuf);
+  while (bp < linebuf + COLNO - 9) {
+     bp = ' ';
+  }
+  Strcpy(bp, "Hp [max]");
+  topten_print(linebuf);
+}

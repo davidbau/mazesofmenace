@@ -1426,3 +1426,11 @@ export function get_atkdam_type(adtyp) {
   }
   return adtyp;
 }
+
+// TRANSLATOR: AUTO (mondata.c:1585)
+export function give_u_to_m_resistances(mtmp, player) {
+  let intr;
+  for (intr = FIRE_RES; intr <= STONE_RES; intr++) {
+    if ((player.uprops[intr].intrinsic & INTRINSIC) !== 0) { mtmp.mintrinsics |=  res_to_mr(intr); }
+  }
+}
