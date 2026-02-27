@@ -1296,15 +1296,15 @@ export function mhitm_knockback(magr, mdef, mattk, hitflags, weapon_used) {
 
     // Only AD_PHYS with AT_CLAW/AT_KICK/AT_BUTT/AT_WEAP qualifies
     if (!mattk) return false;
-    const adtyp = mattk.adtyp ?? mattk.damage ?? AD_PHYS;
-    const aatyp = mattk.aatyp ?? mattk.type ?? AT_WEAP;
+    const adtyp = mattk.adtyp ?? AD_PHYS;
+    const aatyp = mattk.aatyp ?? AT_WEAP;
     if (adtyp !== AD_PHYS) return false;
     if (aatyp !== AT_CLAW && aatyp !== AT_KICK && aatyp !== AT_BUTT && aatyp !== AT_WEAP)
         return false;
 
     // Attacker must be much larger than defender
-    const agrSize = (magr.type || magr.data || {}).size ?? MZ_HUMAN;
-    const defSize = (mdef.type || mdef.data || {}).size ?? MZ_HUMAN;
+    const agrSize = (magr.type || magr.data || {}).msize ?? MZ_HUMAN;
+    const defSize = (mdef.type || mdef.data || {}).msize ?? MZ_HUMAN;
     if (!(agrSize > defSize + 1)) return false;
 
     // Unsolid attacker can't knock back
@@ -1355,7 +1355,7 @@ export function passive_obj(mon, obj, mattk) {
     canonicalizeAttackFields(mattk);
     if (!obj) return;
     const ptr = mon.type || {};
-    const adtyp = mattk ? (mattk.adtyp ?? mattk.damage) : AD_PHYS;
+    const adtyp = mattk ? (mattk.adtyp ?? AD_PHYS) : AD_PHYS;
 
     switch (adtyp) {
     case AD_FIRE:
@@ -1526,7 +1526,7 @@ export function light_hits_gremlin(mon, dmg) {
 // cf. uhitm.c find_roll_to_hit() — luck component (partial)
 function isUndeadOrDemon(monsterType) {
     if (!monsterType) return false;
-    const sym = monsterType.symbol;
+    const sym = monsterType.mlet;
     return sym === S_ZOMBIE
         || sym === S_MUMMY
         || sym === S_VAMPIRE
@@ -1547,7 +1547,7 @@ export function weaponDamageSides(weapon, monster) {
     if (weapon.wsdam) return weapon.wsdam;
     const info = objectData[weapon.otyp];
     if (!info) return 0;
-    const isLarge = (monster?.type?.size ?? MZ_TINY) >= MZ_LARGE;
+    const isLarge = (monster?.type?.msize ?? MZ_TINY) >= MZ_LARGE;
     return isLarge ? (info.ldam || 0) : (info.sdam || 0);
 }
 
@@ -1627,7 +1627,7 @@ function handleMonsterKilled(player, monster, display, map) {
     mondead(monster, map, player);
 
     // cf. exper.c experience() -- roughly monster level * level
-    const exp = (monster.mlevel + 1) * (monster.mlevel + 1);
+    const exp = ((monster.m_lev || 0) + 1) * ((monster.m_lev || 0) + 1);
     player.exp += exp;
     player.score += exp;
     newexplevel(player, display);
@@ -1638,11 +1638,11 @@ function handleMonsterKilled(player, monster, display, map) {
         && !((mdat.geno || 0) & G_NOCORPSE)
         && !monster.mcloned
         && (monster.mx !== player.x || monster.my !== player.y)
-        && mdat.symbol !== S_KOP;
+        && mdat.mlet !== S_KOP;
     if (canDropTreasure && map) {
         const otmp = mkobj(RANDOM_CLASS, true, false);
         const flags2 = mdat.flags2 || 0;
-        const isSmallMonster = (mdat.size || 0) < MZ_HUMAN;
+        const isSmallMonster = (mdat.msize || 0) < MZ_HUMAN;
         const isPermaFood = otmp && otmp.oclass === FOOD_CLASS && !otmp.oartifact;
         const dropTooBig = isSmallMonster && !!otmp
             && otmp.otyp !== FIGURINE
@@ -1929,7 +1929,7 @@ export function playerAttackMonster(player, monster, display, map, game = null) 
                 // Passed 1/6 chance gate. Check eligibility:
                 // AD_PHYS + AT_WEAP: passes for armed hero (mattk is hero's attack)
                 // Size: hero (MZ_HUMAN) must be > mdef.msize + 1
-                const msize = monster.type?.size ?? MZ_HUMAN;
+                const msize = monster.type?.msize ?? MZ_HUMAN;
                 if (msize + 1 < MZ_HUMAN) {
                     // cf. uhitm.c:5350-5352 — knockback message
                     const adj = rn2(2) ? 'forceful' : 'powerful';

@@ -270,7 +270,7 @@ export function passivemm(magr, mdef, mhitb, mdead, mwep, map) {
     if (passiveAttk.damn) {
         tmp = d(passiveAttk.damn, passiveAttk.damd || 0);
     } else if (passiveAttk.damd) {
-        const mlev = mdef.m_lev ?? mdef.mlevel ?? (mddat.level || 0);
+        const mlev = mdef.m_lev ?? mdef.mlevel ?? (mddat.mlevel || 0);
         tmp = d(mlev + 1, passiveAttk.damd);
     } else {
         tmp = 0;
@@ -451,8 +451,8 @@ function mhitm_knockback_mm(magr, mdef, mattk, mwep, vis, display, ctx) {
     }
 
     // C ref: uhitm.c:5298 — size check: agr must be much larger
-    const agrSize = pa.size ?? 0;
-    const defSize = (mdef.type || {}).size ?? 0;
+    const agrSize = pa.msize ?? 0;
+    const defSize = (mdef.type || {}).msize ?? 0;
     if (!(agrSize > defSize + 1)) return false;
 
     // C ref: uhitm.c:5303 — unsolid attacker can't knockback
@@ -555,8 +555,8 @@ function mdamagem(magr, mdef, mattk, mwep, dieroll, display, vis, map, ctx) {
         }
 
         // cf. mhitm.c:1115 — grow_up(magr, mdef)
-        const victimLevel = mdef.m_lev ?? mdef.mlevel ?? (pd.level || 0);
-        const agrLevel = magr.m_lev ?? magr.mlevel ?? ((magr.type || {}).level || 0);
+        const victimLevel = mdef.m_lev ?? mdef.mlevel ?? (pd.mlevel || 0);
+        const agrLevel = magr.m_lev ?? magr.mlevel ?? ((magr.type || {}).mlevel || 0);
         const hp_threshold = agrLevel > 0 ? agrLevel * 8 : 4;
         let max_increase = rnd(Math.max(1, victimLevel + 1));
         if ((magr.mhpmax || 0) + max_increase > hp_threshold + 1) {
@@ -567,7 +567,7 @@ function mdamagem(magr, mdef, mattk, mwep, dieroll, display, vis, map, ctx) {
         magr.mhp = (magr.mhp || 0) + cur_increase;
         // C ref: makemon.c grow_up() — if hpmax crosses threshold, gain one level.
         if ((magr.mhpmax || 0) > hp_threshold) {
-            const baseSpeciesLevel = ((magr.type || {}).level || 0);
+            const baseSpeciesLevel = ((magr.type || {}).mlevel || 0);
             let lev_limit = Math.floor((3 * baseSpeciesLevel) / 2);
             if (lev_limit < 5) lev_limit = 5;
             else if (lev_limit > 49) lev_limit = (baseSpeciesLevel > 49 ? 50 : 49);
@@ -575,7 +575,6 @@ function mdamagem(magr, mdef, mattk, mwep, dieroll, display, vis, map, ctx) {
             if (curLevel < lev_limit) {
                 const nextLevel = curLevel + 1;
                 magr.m_lev = nextLevel;
-                magr.mlevel = nextLevel;
             }
         }
 
@@ -605,7 +604,7 @@ export function mattackm(magr, mdef, display, vis, map, ctx) {
     // (Skipped for simplicity — rare edge case)
 
     // Calculate armor class differential
-    let tmp = find_mac(mdef) + (magr.m_lev ?? magr.mlevel ?? (pa.level || 0));
+    let tmp = find_mac(mdef) + (magr.m_lev ?? magr.mlevel ?? (pa.mlevel || 0));
     if (mdef.mconf || helpless(mdef)) {
         tmp += 4;
         if (mdef.msleeping) mdef.msleeping = 0;
@@ -841,8 +840,8 @@ export function engulf_target(magr, mdef) {
     const adat = magr.type || {};
     const ddat = mdef.type || {};
     // Can't swallow something too big
-    if ((ddat.size || 0) >= MZ_HUGE) return false;
-    if ((adat.size || 0) < (ddat.size || 0) && !is_whirly(adat)) return false;
+    if ((ddat.msize || 0) >= MZ_HUGE) return false;
+    if ((adat.msize || 0) < (ddat.msize || 0) && !is_whirly(adat)) return false;
     // Can't engulf if either is trapped
     if (mdef.mtrapped || magr.mtrapped) return false;
     return true;

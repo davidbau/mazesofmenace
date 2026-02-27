@@ -183,7 +183,7 @@ export function onscary(map, x, y, mon = null) {
 // mm_aggression — C ref: mon.c
 // ========================================================================
 function zombie_form_exists(mdat) {
-    const mlet = mdat?.symbol ?? -1;
+    const mlet = mdat?.mlet ?? -1;
     switch (mlet) {
     case S_KOBOLD:
     case S_ORC:
@@ -202,7 +202,7 @@ function zombie_form_exists(mdat) {
 // C ref: mon.c zombie_maker(mon) — returns true if mon can create zombies
 export function zombie_maker(mon) {
     if (!mon || mon.mcan) return false;
-    const mlet = mon.type?.symbol ?? -1;
+    const mlet = mon.type?.mlet ?? -1;
     if (mlet === S_ZOMBIE) {
         return mon.mndx !== PM_GHOUL && mon.mndx !== PM_SKELETON;
     }
@@ -213,7 +213,7 @@ export function zombie_maker(mon) {
 // Note: C uses ptr comparison; JS uses symbol and flag predicates.
 export function zombie_form(pm) {
     if (!pm) return NON_PM;
-    switch (pm.symbol) {
+    switch (pm.mlet) {
     case S_ZOMBIE:
         return NON_PM; // already a zombie/ghoul/skeleton
     case S_KOBOLD:
@@ -364,15 +364,15 @@ function monlineu(mon, player, nx, ny) {
 function mm_displacement(mon, monAtPos) {
     const monLevel = (m) => Number.isInteger(m?.m_lev) ? m.m_lev
         : (Number.isInteger(m?.mlevel) ? m.mlevel
-            : (Number.isInteger(m?.type?.level) ? m.type.level : 0));
+            : (Number.isInteger(m?.type?.mlevel) ? m.type.mlevel : 0));
     if (!is_displacer(mon.type || {})) return false;
     const defenderIsDisplacer = is_displacer(monAtPos.type || {});
     const attackerHigherLevel = monLevel(mon) > monLevel(monAtPos);
     const defenderIsGridBugDiag = (monAtPos.mndx === PM_GRID_BUG)
         && (mon.mx !== monAtPos.mx && mon.my !== monAtPos.my);
     const defenderMultiworm = !!monAtPos.wormno;
-    const attackerSize = Number.isInteger(mon.type?.size) ? mon.type.size : 0;
-    const defenderSize = Number.isInteger(monAtPos.type?.size) ? monAtPos.type.size : 0;
+    const attackerSize = Number.isInteger(mon.type?.msize) ? mon.type.msize : 0;
+    const defenderSize = Number.isInteger(monAtPos.type?.msize) ? monAtPos.type.msize : 0;
     const sizeOk = is_rider(mon.type || {}) || attackerSize >= defenderSize;
     return (!defenderIsDisplacer || attackerHigherLevel)
         && !defenderIsGridBugDiag
@@ -389,7 +389,7 @@ export function mfndpos(mon, map, player, flag) {
     const omx = mon.mx, omy = mon.my;
     const mdat = mon.type || {};
     const mflags1 = mdat.flags1 || 0;
-    const mlet = mdat.symbol ?? -1;
+    const mlet = mdat.mlet ?? -1;
     const nodiag = (mon.mndx === PM_GRID_BUG);
 
     // C ref: mon.c:2142-2145 — confused: grant all, remove notonl
@@ -657,7 +657,7 @@ export function corpse_chance(mon) {
     if (!mdat) return false;
 
     // C ref: mon.c:3190-3194 — Vlad and liches crumble to dust (no corpse, no RNG)
-    if (mon.mndx === PM_VLAD_THE_IMPALER || mdat.symbol === S_LICH)
+    if (mon.mndx === PM_VLAD_THE_IMPALER || mdat.mlet === S_LICH)
         return false;
 
     // C ref: mon.c:3197-3229 — gas spores explode (no corpse, no RNG)
@@ -672,14 +672,14 @@ export function corpse_chance(mon) {
 
     // C ref: mon.c:3235-3238 — big monsters, lizards, golems, players, riders,
     // shopkeepers ALWAYS leave corpses (no RNG consumed)
-    const bigmonst = (mdat.size || 0) >= MZ_LARGE;
+    const bigmonst = (mdat.msize || 0) >= MZ_LARGE;
     if (((bigmonst || mon.mndx === PM_LIZARD) && !mon.mcloned)
         || is_golem(mdat) || is_mplayer(mdat) || is_rider(mdat) || mon.isshk)
         return true;
 
     // C ref: mon.c:3239-3240 — probabilistic: rn2(tmp) where tmp = 2 + rare + tiny
     const gfreq = (mdat.geno || 0) & G_FREQ;
-    const verysmall = (mdat.size || 0) === MZ_TINY;
+    const verysmall = (mdat.msize || 0) === MZ_TINY;
     const corpsetmp = 2 + (gfreq < 2 ? 1 : 0) + (verysmall ? 1 : 0);
     return !rn2(corpsetmp);
 }
@@ -698,7 +698,7 @@ export function mlifesaver(mon) {
 
 // C ref: mon.c set_mon_min_mhpmax() — ensure minimum mhpmax after life-save
 export function set_mon_min_mhpmax(mon, minimum) {
-    const mlev = mon.m_lev ?? (mon.type?.level ?? 0);
+    const mlev = mon.m_lev ?? (mon.type?.mlevel ?? 0);
     const minval = Math.max(mlev + 1, minimum);
     if ((mon.mhpmax || 0) < minval) mon.mhpmax = minval;
 }
@@ -921,7 +921,7 @@ export function m_poisongas_ok(mon) {
     if (nonliving(mdat) || (mdat.flags1 & M1_BREATHLESS))
         return M_POISONGAS_OK;
     // C ref: is_swimmer eels in pools
-    if (mdat.symbol === S_EEL)
+    if (mdat.mlet === S_EEL)
         return M_POISONGAS_OK;
     if (resists_poison(mon))
         return M_POISONGAS_MINOR;
@@ -952,7 +952,7 @@ export function maybe_unhide_at(x, y, map) {
 
     const mdat = mon.type || {};
     // Eel out of water
-    if (mdat.symbol === S_EEL && !IS_POOL(map.at(x, y)?.typ)) {
+    if (mdat.mlet === S_EEL && !IS_POOL(map.at(x, y)?.typ)) {
         hideunder(mon, map);
         return;
     }
@@ -972,7 +972,7 @@ export function hideunder(mon, map) {
     const x = mon.mx, y = mon.my;
     let undetected = false;
 
-    if (mdat.symbol === S_EEL) {
+    if (mdat.mlet === S_EEL) {
         // Eels hide in pools
         undetected = IS_POOL(map.at(x, y)?.typ);
     } else if (hides_under(mdat)) {
@@ -995,7 +995,7 @@ export function hideunder(mon, map) {
 export function hide_monst(mon, map) {
     if (!mon || !map) return;
     const mdat = mon.type || {};
-    const hider_under = hides_under(mdat) || mdat.symbol === S_EEL;
+    const hider_under = hides_under(mdat) || mdat.mlet === S_EEL;
     if ((is_hider(mdat) || hider_under) && !mon.mundetected && !mon.m_ap_type) {
         if (hider_under)
             hideunder(mon, map);
@@ -1274,7 +1274,7 @@ function minliquid_core(mon, map, player) {
         }
     } else {
         // Eels out of water
-        if (mdat.symbol === S_EEL) {
+        if (mdat.mlet === S_EEL) {
             if ((mon.mhp || 0) > 1 && rn2(mon.mhp || 1) > rn2(8)) {
                 mon.mhp = (mon.mhp || 0) - 1;
             }
@@ -1502,7 +1502,7 @@ export async function movemon(map, player, display, fov, game = null, { dochug, 
             // TODO: minliquid(mon) — drowning/sinking not yet ported
             // TODO: m_dowear(mon, FALSE) — monster armor equipping not yet ported
             // C ref: mon.c:1277-1284 — eel hiding
-            if (mon.type?.symbol === S_EEL && !mon.mundetected
+            if (mon.type?.mlet === S_EEL && !mon.mundetected
                 && (mon.flee || distmin(mon.mx, mon.my, player.x, player.y) > 1)
                 && !(fov?.canSee ? fov.canSee(mon.mx, mon.my) : couldsee(map, player, mon.mx, mon.my))
                 && !rn2(4)) {
