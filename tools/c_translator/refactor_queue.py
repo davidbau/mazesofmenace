@@ -36,9 +36,20 @@ def main():
         function = rec.get("function")
         source = rec.get("source")
         out_file = rec.get("out_file")
+        syntax_ok = rec.get("syntax_ok", True)
         unknown_identifiers = set(rec.get("unknown_identifiers", []))
         alias_candidates = rec.get("alias_candidates", {}) or {}
         alias_sources = set(alias_candidates.keys())
+        if not syntax_ok:
+            add_task(tasks, dedupe, {
+                "kind": "syntax_emit_fix",
+                "js_module": js_module,
+                "function": function,
+                "source": source,
+                "out_file": out_file,
+                "detail": rec.get("syntax_error", "node --check failed"),
+            })
+            continue
         for src, dst in sorted(alias_candidates.items()):
             add_task(tasks, dedupe, {
                 "kind": "rename_alias",
@@ -69,15 +80,6 @@ def main():
                 "source": source,
                 "out_file": out_file,
                 "detail": call,
-            })
-        if not rec.get("syntax_ok", True):
-            add_task(tasks, dedupe, {
-                "kind": "syntax_emit_fix",
-                "js_module": js_module,
-                "function": function,
-                "source": source,
-                "out_file": out_file,
-                "detail": rec.get("syntax_error", "node --check failed"),
             })
 
     for rec in apply_summary.get("skipped_signature_details", []):

@@ -32,7 +32,11 @@ export const TIMER_FUNC = {
     FIGURINE_TRANSFORM: 'FIGURINE_TRANSFORM',
     FALL_ASLEEP: 'FALL_ASLEEP',
     DO_STORMS: 'DO_STORMS',
+    MELT_ICE_AWAY: 'MELT_ICE_AWAY',
 };
+
+// C ref: timeout.h func_index enum value used by zap.c melt-ice timers.
+export const MELT_ICE_AWAY = TIMER_FUNC.MELT_ICE_AWAY;
 
 const MAX_EGG_HATCH_TIME = 200;
 

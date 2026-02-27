@@ -48,7 +48,7 @@ import { rndmonnum, makemon } from './makemon.js';
 import { next_ident, mksobj, mkobj, weight } from './mkobj.js';
 import { newexplevel } from './exper.js';
 import { corpse_chance } from './mon.js';
-import { xkilled as mon_xkilled, killed as mon_killed, monkilled,
+import { xkilled, killed, monkilled,
          wakeup, healmon } from './mon.js';
 import { nhgetch } from './input.js';
 import { nonliving, is_undead, is_demon, is_rider,
@@ -85,7 +85,7 @@ import {
     DISP_BEAM, DISP_END,
 } from './animation.js';
 import { WIN_MESSAGE, display_nhwindow } from './windows.js';
-import { attach_egg_hatch_timeout } from './timeout.js';
+import { attach_egg_hatch_timeout, MELT_ICE_AWAY } from './timeout.js';
 
 // Direction vectors matching commands.js DIRECTION_KEYS
 const DIRECTION_KEYS = {
@@ -1982,7 +1982,7 @@ export function item_what(_osym_or_dmgtyp, maybe_dmgtyp = null, maybe_player = n
   return `by your ${name}`;
 }
 
-function is_box(otmp) {
+function Is_box(otmp) {
   return !!otmp && (otmp.otyp === CHEST || otmp.otyp === LARGE_BOX);
 }
 
@@ -2010,7 +2010,7 @@ function build_obj_chain(head) {
 function mark_probe_obj_known(otmp) {
   if (!otmp) return;
   otmp.dknown = 1;
-  if (is_box(otmp) || otmp.otyp === STATUE) {
+  if (Is_box(otmp) || otmp.otyp === STATUE) {
     otmp.lknown = 1;
     otmp.cknown = 1;
   } else if (otmp.otyp === TIN) {
@@ -2206,9 +2206,15 @@ export function montraits(obj, _fd) {
   if (obj.otyp !== CORPSE) return null;
   return { mndx: Number(obj.corpsenm ?? 0), mhp: Number(obj.oeaten || 0), mrevived: 1 };
 }
+// C ref: obj.h unpolyable(o) macro.
+function unpolyable(obj) {
+  if (!obj) return false;
+  return obj.otyp === WAN_POLYMORPH
+      || obj.otyp === SPE_POLYMORPH;
+}
 export function obj_unpolyable(obj) {
   if (!obj) return true;
-  if (obj.otyp === STATUE) return true;
+  if (unpolyable(obj) || obj.otyp === STATUE) return true;
   return !!obj.oartifact || obj_resists(obj, 5, 95);
 }
 export function polyuse(objhdr, mat = 0, minwt = 0, map = null) {
