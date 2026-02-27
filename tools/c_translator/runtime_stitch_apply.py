@@ -38,6 +38,14 @@ def parse_args():
         default="",
         help="Optional JSON path with [{\"js_module\",\"function\"}] entries to skip",
     )
+    p.add_argument(
+        "--allowlist",
+        default="",
+        help=(
+            "Optional JSON path with [{\"js_module\",\"function\"}] entries to include; "
+            "when set, only these pairs are eligible for stitching"
+        ),
+    )
     return p.parse_args()
 
 
@@ -243,25 +251,43 @@ def load_emitted_js(out_file):
     return js if js.endswith("\n") else (js + "\n")
 
 
+def load_pair_set(path):
+    out = set()
+    if not path:
+        return out
+    p = Path(path)
+    if not p.exists():
+        return out
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return out
+    if not isinstance(data, list):
+        return out
+    for rec in data:
+        if not isinstance(rec, dict):
+            continue
+        mod = rec.get("js_module")
+        fn = rec.get("function")
+        if isinstance(mod, str) and isinstance(fn, str) and mod and fn:
+            out.add((mod, fn))
+    return out
+
+
 def main():
     args = parse_args()
     repo = Path(args.repo_root)
     safety = json.loads(Path(args.safety).read_text(encoding="utf-8"))
     safe = list(safety.get("safe", []))
-    denyset = set()
-    if args.denylist:
-        dpath = Path(args.denylist)
-        if dpath.exists():
-            denied = json.loads(dpath.read_text(encoding="utf-8"))
-            for rec in denied:
-                mod = rec.get("js_module")
-                fn = rec.get("function")
-                if mod and fn:
-                    denyset.add((mod, fn))
+    denyset = load_pair_set(args.denylist)
+    allowset = load_pair_set(args.allowlist)
 
     grouped = defaultdict(list)
     for rec in safe:
-        if (rec.get("js_module"), rec.get("function")) in denyset:
+        pair = (rec.get("js_module"), rec.get("function"))
+        if allowset and pair not in allowset:
+            continue
+        if pair in denyset:
             continue
         grouped[rec["js_module"]].append(rec)
 

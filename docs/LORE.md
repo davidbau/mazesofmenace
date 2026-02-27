@@ -1537,3 +1537,9 @@ hard-won wisdom:
   string/pointer-heavy files (`hacklib`, `do_name`, `objnam`) until emitter
   rules can preserve JS string semantics safely.
 - On the latest full candidate set (`/tmp/translator-runtime-stitch-candidates-v4.json`), safe candidates decreased from `470` to `452` and dry-run stitchable count dropped from `174` to `129`, preventing known bad inserts from entering runtime patches.
+
+### Translator batch-control lesson: prefer allowlist stitching for surgical batches (2026-02-27)
+
+- Denylists are useful for broad suppression, but they still leave room for accidental extra inserts when candidate sets evolve.
+- `runtime_stitch_apply.py` now supports `--allowlist` with exact `{js_module,function}` pairs, so surgical batches can be applied deterministically.
+- Operationally, use allowlists for high-accuracy incremental landings; reserve denylists for coarse global exclusions.

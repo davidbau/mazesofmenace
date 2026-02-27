@@ -118,6 +118,13 @@ conda run -n base python tools/c_translator/runtime_stitch_apply.py \
   --denylist tools/c_translator/runtime_stitch_denylist.json \
   --write
 
+# Optional: strict allowlist stitch (only listed pairs will be applied)
+conda run -n base python tools/c_translator/runtime_stitch_apply.py \
+  --safety /tmp/translator-runtime-stitch-safety.json \
+  --repo-root . \
+  --allowlist /tmp/translator-allowlist.json \
+  --write
+
 # Build a refactor queue from rejected safety/signature candidates
 # (capture stitch dry-run JSON first)
 conda run -n base python tools/c_translator/runtime_stitch_apply.py \
