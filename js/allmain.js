@@ -29,7 +29,8 @@ import { rn2, rnd, rn1, initRng, getRngState, setRngState, getRngCallCount, setR
 import { NORMAL_SPEED, A_DEX, A_CON, ROOMOFFSET, SHOPBASE,
          COLNO, ROWNO, A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC,
          FEMALE, MALE, TERMINAL_COLS,
-         RACE_HUMAN, RACE_ELF, RACE_DWARF, RACE_GNOME, RACE_ORC } from './config.js';
+         RACE_HUMAN, RACE_ELF, RACE_DWARF, RACE_GNOME, RACE_ORC,
+         SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER } from './config.js';
 import { ageSpells } from './spell.js';
 import { wipe_engr_at } from './engrave.js';
 import { dosearch0 } from './detect.js';
@@ -38,7 +39,7 @@ import { exerper, exerchk } from './attrib_exercise.js';
 import { rhack } from './cmd.js';
 import { FOV } from './vision.js';
 import { monsterNearby } from './monutil.js';
-import { nomul, unmul } from './hack.js';
+import { nomul, unmul, near_capacity } from './hack.js';
 import { Player, roles, races } from './player.js';
 import { makelevel, setGameSeed, isBranchLevelToDnum } from './dungeon.js';
 import { getArrivalPosition, changeLevel as changeLevelCore, deferred_goto } from './do.js';
@@ -305,13 +306,24 @@ export function stop_occupation(game) {
 }
 
 // C ref: allmain.c:116 [static] — u_calc_moveamt(wtcap): hero movement amount.
-// JS approximation: no steed movement or encumbrance penalties yet.
+// JS approximation: no steed movement penalty.
 function u_calc_moveamt(player) {
     let moveamt = player.speed || NORMAL_SPEED;
     if (player.veryFast) {
         if (rn2(3) !== 0) moveamt += NORMAL_SPEED;
     } else if (player.fast) {
         if (rn2(3) === 0) moveamt += NORMAL_SPEED;
+    }
+    // C ref: allmain.c:138-156 — encumbrance penalty reduces movement amount
+    const wtcap = near_capacity(player);
+    if (wtcap === SLT_ENCUMBER) {
+        moveamt -= Math.floor(moveamt / 4);
+    } else if (wtcap === MOD_ENCUMBER) {
+        moveamt -= Math.floor(moveamt / 2);
+    } else if (wtcap === HVY_ENCUMBER) {
+        moveamt -= Math.floor((moveamt * 3) / 4);
+    } else if (wtcap === EXT_ENCUMBER) {
+        moveamt -= Math.floor((moveamt * 7) / 8);
     }
     player.umovement = Math.max(0, (player.umovement || 0) + moveamt);
 }
