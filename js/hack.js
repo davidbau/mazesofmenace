@@ -113,6 +113,16 @@ function ensure_context(game) {
     return ctx;
 }
 
+function has_forcefight_prefix(game, ctx) {
+    if (ctx?.forcefight) return true;
+    return !!game?.forceFight;
+}
+
+function clear_forcefight_prefix(game, ctx) {
+    if (ctx) ctx.forcefight = 0;
+    if (game && typeof game.forceFight !== 'undefined') game.forceFight = false;
+}
+
 const tmp_anything = {
     a_uint: 0,
     a_long: 0,
@@ -323,7 +333,9 @@ export function domove_swap_with_pet(mon, nx, ny, dir, player, map, display, gam
 export async function domove_attackmon_at(mon, nx, ny, dir, player, map, display, game) {
     const ctx = ensure_context(game);
     if (!mon) return { handled: false };
-    const shouldDisplace = (mon.tame || mon.peaceful) && !ctx.forcefight;
+    const forcefight = has_forcefight_prefix(game, ctx);
+    if (forcefight && ctx) ctx.forcefight = 1;
+    const shouldDisplace = (mon.tame || mon.peaceful) && !forcefight;
     if (shouldDisplace) {
         const blocked = (!rn2(7));
         if (blocked) {
@@ -332,24 +344,24 @@ export async function domove_attackmon_at(mon, nx, ny, dir, player, map, display
             }
             const label = YMonnam(mon);
             display.putstr_message(`You stop.  ${label} is in the way!`);
-            ctx.forcefight = 0;
+            clear_forcefight_prefix(game, ctx);
             return { handled: true, moved: false, tookTime: true };
         }
         if (mon.mfrozen || mon.mcanmove === false || mon.msleeping
             || ((mon.type?.speed ?? 0) === 0 && rn2(6))) {
             const label = YMonnam(mon);
             display.putstr_message(`${label} doesn't seem to move!`);
-            ctx.forcefight = 0;
+            clear_forcefight_prefix(game, ctx);
             return { handled: true, moved: false, tookTime: true };
         }
         domove_swap_with_pet(mon, nx, ny, dir, player, map, display, game);
-        ctx.forcefight = 0;
+        clear_forcefight_prefix(game, ctx);
         return { handled: true, moved: true, tookTime: true };
     }
 
-    if (mon.tame && game.flags?.safe_pet && !ctx.forcefight) {
+    if (mon.tame && game.flags?.safe_pet && !forcefight) {
         display.putstr_message("You cannot attack your pet!");
-        ctx.forcefight = 0;
+        clear_forcefight_prefix(game, ctx);
         return { handled: true, moved: false, tookTime: false };
     }
     if (mon.peaceful && !mon.tame && game.flags?.confirm) {
@@ -361,15 +373,15 @@ export async function domove_attackmon_at(mon, nx, ny, dir, player, map, display
         );
         if (answer !== 'y'.charCodeAt(0)) {
             display.putstr_message('Cancelled.');
-            ctx.forcefight = 0;
+            clear_forcefight_prefix(game, ctx);
             return { handled: true, moved: false, tookTime: false };
         }
     }
-    ctx.forcefight = 0;
     rn2(20);
     exercise(player, A_STR, true);
     u_wipe_engr(player, map, 3);
-    const killed = do_attack(player, mon, display, map, { game });
+    const killed = do_attack(player, mon, display, map, { game, context: ctx });
+    clear_forcefight_prefix(game, ctx);
     if (killed) map.removeMonster(mon);
     player.moved = true;
     return { handled: true, moved: false, tookTime: true };
@@ -380,9 +392,9 @@ export function domove_fight_ironbars(x, y, map, display, game, player) {
     const ctx = ensure_context(game);
     const loc = map?.at ? map.at(x, y) : null;
     const hasWeapon = !!(player?.weapon || player?.uwielded || player?.uwep);
-    if (!ctx.forcefight || !loc || loc.typ !== IRONBARS || !hasWeapon) return false;
+    if (!has_forcefight_prefix(game, ctx) || !loc || loc.typ !== IRONBARS || !hasWeapon) return false;
     if (display) display.putstr_message('You attack the iron bars.');
-    ctx.forcefight = 0;
+    clear_forcefight_prefix(game, ctx);
     return true; // action handled, consumes a turn
 }
 
@@ -390,18 +402,18 @@ export function domove_fight_ironbars(x, y, map, display, game, player) {
 export function domove_fight_web(x, y, map, display, game) {
     const ctx = ensure_context(game);
     const trap = map?.trapAt ? map.trapAt(x, y) : null;
-    if (!ctx.forcefight || !trap || trap.ttyp !== WEB || !trap.tseen) return false;
+    if (!has_forcefight_prefix(game, ctx) || !trap || trap.ttyp !== WEB || !trap.tseen) return false;
     if (display) display.putstr_message('You cut through the web.');
     const idx = map.traps.indexOf(trap);
     if (idx >= 0) map.traps.splice(idx, 1);
-    ctx.forcefight = 0;
+    clear_forcefight_prefix(game, ctx);
     return true; // action handled, consumes a turn
 }
 
 // C ref: hack.c domove_fight_empty()
 export function domove_fight_empty(x, y, map, display, game) {
     const ctx = ensure_context(game);
-    if (!ctx.forcefight || map?.monsterAt?.(x, y)) return false;
+    if (!has_forcefight_prefix(game, ctx) || map?.monsterAt?.(x, y)) return false;
     const loc = map?.at ? map.at(x, y) : null;
     let target = '';
     if (loc) {
@@ -418,7 +430,7 @@ export function domove_fight_empty(x, y, map, display, game) {
         }
     }
     display?.putstr_message(target ? `You harmlessly attack ${target}.` : 'You attack thin air.');
-    ctx.forcefight = 0;
+    clear_forcefight_prefix(game, ctx);
     return true;
 }
 
@@ -471,7 +483,7 @@ export async function domove_core(dir, player, map, display, game) {
     nx = tDest.x;
     ny = tDest.y;
 
-    if (!isok(nx, ny) && ctx.forcefight) {
+    if (!isok(nx, ny) && has_forcefight_prefix(game, ctx)) {
         if (domove_fight_empty(nx, ny, map, display, game)) {
             return { moved: false, tookTime: true };
         }
@@ -643,7 +655,7 @@ export async function domove_core(dir, player, map, display, game) {
     maybe_smudge_engr(map, oldX, oldY, player.x, player.y);
 
     // Clear force-fight prefix after successful movement.
-    ctx.forcefight = 0;
+    clear_forcefight_prefix(game, ctx);
     maybeHandleShopEntryMessage(game, oldX, oldY);
 
     // Check for traps — C ref: hack.c spoteffects() → dotrap()
