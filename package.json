@@ -11,6 +11,7 @@
     "test:session": "node test/comparison/sessions.test.js",
     "replay:dump": "node scripts/dump-js-replay.mjs",
     "session:compare": "node scripts/compare-sessions.mjs",
+    "translator:check-policy": "node scripts/check-translator-file-policy.mjs",
     "serve": "python3 -m http.server 8080",
     "postinstall": "./scripts/setup-testing.sh"
   },
