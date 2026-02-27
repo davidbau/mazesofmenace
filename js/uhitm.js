@@ -235,7 +235,7 @@ export function force_attack(mtmp, pets_too, player = null, display = null, map 
 
 // cf. uhitm.c:447 — do_attack(mtmp):
 //   Top-level attack dispatcher: checks, weapon selection, special cases.
-//   Partially implemented via playerAttackMonster() below.
+//   Partially implemented via hmon() below.
 //   Full implementation would handle: attack_checks, capacity, poly attacks,
 //   leprechaun dodge, hitum/hmonas dispatch, invisible monster mapping.
 export function do_attack(player, mtmp, display, map, opts = {}) {
@@ -248,8 +248,8 @@ export function do_attack(player, mtmp, display, map, opts = {}) {
     })) {
         return false;
     }
-    // Delegate to playerAttackMonster for the normal case
-    return playerAttackMonster(player, mtmp, display, map, game);
+    // Delegate to hmon for the normal case
+    return do_attack_core(player, mtmp, display, map, game);
 }
 
 
@@ -655,7 +655,7 @@ function hmon_hitmon(player, mon, obj, thrown, dieroll, display, map) {
     } else if (hmd.unarmed && hmd.dmg > 1 && !thrown) {
         hmon_hitmon_stagger(hmd, mon, obj);
     }
-    // knockback for armed melee is handled in playerAttackMonster
+    // knockback for armed melee is handled in hmon
 
     // Phase 6: apply damage
     if (!hmd.already_killed) {
@@ -692,7 +692,7 @@ function hmon_hitmon(player, mon, obj, thrown, dieroll, display, map) {
         hmd.destroyed = true;
     }
     if (hmd.destroyed && !hmd.already_killed) {
-        // Kill handled by caller (playerAttackMonster)
+        // Kill handled by caller (hmon)
     }
 
     return hmd.destroyed ? false : true;
@@ -807,8 +807,8 @@ function steal_it(mdef, mattk) {
 // These handlers implement the m-vs-m (monster-vs-monster) combat path.
 // Each takes (magr, mattk, mdef, mhm) where mhm is:
 //   { damage, hitflags, done, permdmg, specialdmg, dieroll }
-// The uhitm (u-vs-m) and mhitu (m-vs-u) paths remain in playerAttackMonster()
-// and monsterAttackPlayer() respectively.
+// The uhitm (u-vs-m) and mhitu (m-vs-u) paths remain in hmon()
+// and mattacku() respectively.
 
 // cf. uhitm.c:3959 — physical damage handler
 // m-vs-m branch: uhitm.c:4106-4177
@@ -1615,7 +1615,7 @@ function hitMonsterWithPotion(player, monster, display, weapon) {
 }
 
 // cf. mon.c xkilled() — monster death handling.
-// Co-located here with its primary caller playerAttackMonster().
+// Co-located here with its primary caller hmon().
 // TODO: future mon.js codematch should migrate this to mon.js.
 function handleMonsterKilled(player, monster, display, map) {
     // cf. uhitm.c -> mon.c mondead() -> killed() -> xkilled()
@@ -1799,7 +1799,7 @@ function passive(mon, weapon, mhit, malive, aatyp = AT_WEAP, wep_was_destroyed =
 
 
 // cf. uhitm.c do_attack() / hitum() / known_hitum() — hero attacks monster
-export function playerAttackMonster(player, monster, display, map, game = null) {
+export function do_attack_core(player, monster, display, map, game = null) {
     // C ref: uhitm.c:538-549 — first attack while wielding a non-weapon
     // emits "You begin bashing monsters with <item>."
     const wielded = player.weapon;

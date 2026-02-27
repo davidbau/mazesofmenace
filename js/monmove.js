@@ -28,7 +28,7 @@ import { COLNO, ROWNO, IS_WALL, IS_DOOR, IS_ROOM,
          NORMAL_SPEED, isok } from './config.js';
 import { rn2, rnd } from './rng.js';
 import { wipe_engr_at } from './engrave.js';
-import { monsterAttackPlayer } from './mhitu.js';
+import { mattacku } from './mhitu.js';
 import { makemon } from './makemon.js';
 import { FOOD_CLASS, COIN_CLASS, BOULDER, ROCK, ROCK_CLASS,
          WEAPON_CLASS, ARMOR_CLASS, GEM_CLASS,
@@ -41,7 +41,7 @@ import { next_ident, weight } from './mkobj.js';
 import { can_carry } from './dogmove.js';
 import { couldsee, m_cansee } from './vision.js';
 import { can_teleport, noeyes, perceives, nohands,
-         hides_under, is_mercenary, monDisplayName, YMonnam, Monnam,
+         hides_under, is_mercenary, YMonnam, Monnam,
          mon_knows_traps, is_rider, is_mind_flayer,
          is_mindless, telepathic,
          is_giant, is_undead, is_unicorn, is_minion, throws_rocks,
@@ -1023,12 +1023,12 @@ async function dochug(mon, map, player, display, fov, game = null) {
                     if (maybeMonsterWieldBeforeAttack(mon, player, display, fov, true)) {
                         return;
                     }
-                    await monsterAttackPlayer(mon, player, display, game);
+                    await mattacku(mon, player, display, game);
                 }
             } else {
-                // At range: route through monsterAttackPlayer with range2=true
+                // At range: route through mattacku with range2=true
                 // so it iterates the attack table and calls thrwmu for AT_WEAP.
-                await monsterAttackPlayer(mon, player, display, game, { range2: true, map });
+                await mattacku(mon, player, display, game, { range2: true, map });
             }
         }
     }

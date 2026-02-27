@@ -21,7 +21,7 @@ import { distmin } from './hacklib.js';
 import { monnear, mondead, monAttackName, map_invisible, helpless } from './monutil.js';
 import { cansee } from './vision.js';
 import {
-    x_monnam, monDisplayName, touch_petrifies, unsolid, resists_fire, resists_cold,
+    x_monnam, touch_petrifies, unsolid, resists_fire, resists_cold,
     resists_elec, resists_acid, resists_sleep, resists_ston,
     nonliving, sticks, attacktype, dmgtype, is_whirly,
 } from './mondata.js';

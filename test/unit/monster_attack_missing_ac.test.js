@@ -1,12 +1,12 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { monsterAttackPlayer } from '../../js/mhitu.js';
+import { mattacku } from '../../js/mhitu.js';
 import { initRng } from '../../js/rng.js';
 
 describe('monster attack missing AC', () => {
 
-test('monsterAttackPlayer does not crash when replay player AC fields are missing', () => {
+test('mattacku does not crash when replay player AC fields are missing', async () => {
     initRng(206);
     const monster = {
         name: 'goblin',
@@ -23,7 +23,9 @@ test('monsterAttackPlayer does not crash when replay player AC fields are missin
         putstr_message() {},
     };
 
-    assert.doesNotThrow(() => monsterAttackPlayer(monster, player, display, null));
+    await assert.doesNotReject(async () => {
+        await mattacku(monster, player, display, null);
+    });
 });
 
 }); // describe

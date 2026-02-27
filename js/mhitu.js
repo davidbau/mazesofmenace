@@ -901,13 +901,13 @@ function mhitu_adtyping(monster, attack, player, mhm, ctx) {
 
 
 // ============================================================================
-// monsterAttackPlayer — main monster-attacks-hero entry point
+// mattacku — main monster-attacks-hero entry point
 // ============================================================================
 
 // cf. mhitu.c mattacku() / hitmu() — restructured to match C's flow.
 // opts.range2: true if monster is not adjacent (ranged attacks only)
 // opts.map: map object (needed for thrwmu ranged throwing)
-export async function monsterAttackPlayer(monster, player, display, game = null, opts = {}) {
+export async function mattacku(monster, player, display, game = null, opts = {}) {
     if (!monster.attacks || monster.attacks.length === 0) return;
     if (monster.passive) return; // passive monsters don't initiate attacks
 

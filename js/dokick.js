@@ -45,7 +45,7 @@ import { placeFloorObject } from './floor_objects.js';
 import {
     thick_skinned, nolimbs, slithy, nohands, haseyes, attacktype,
     likes_gold, is_mercenary, is_flyer, is_floater, is_giant,
-    can_teleport, canseemon, monDisplayName,
+    can_teleport, canseemon,
 } from './mondata.js';
 import {
     mons,

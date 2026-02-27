@@ -21,15 +21,15 @@ import { handleWield, handleSwapWeapon, handleQuiver } from './wield.js';
 import { handleDownstairs, handleUpstairs, handleDrop } from './do.js';
 import { handleInventory, currency } from './invent.js';
 import { handleCallObjectTypePrompt, handleDiscoveries } from './discovery.js';
-import { handleLook, handlePrevMessages, handleHelp, handleWhatis,
-         handleWhatdoes, handleHistory, handleViewMapPrompt } from './pager.js';
+import { handlePrevMessages, handleHelp, handleWhatdoes, handleHistory, handleViewMapPrompt } from './pager.js';
+import { dolook, dowhatis, doquickwhatis } from './look.js';
 import { handleKick } from './kick.js';
 import { handleZap } from './zap.js';
 import { handleSave } from './storage.js';
 import { handleForce, handleOpen, handleClose } from './lock.js';
 import { handlePickup, handleLoot, handlePay, handleTogglePickup } from './pickup.js';
 import { handleSet } from './options_menu.js';
-import { handleMovement, handleRun, findPath, handleTravel, executeTravelStep,
+import { domove, do_run, do_rush, findPath, dotravel, dotravel_target,
          RUN_KEYS, performWaitSearch } from './hack.js';
 
 // Process a command from the player
@@ -115,13 +115,13 @@ export async function rhack(ch, game) {
     // ^J (LF/newline) is bound to a south "go until near something" command
     // in non-numpad mode, while ^M is separate (often transformed before core).
     if (ch === 10) {
-        return await handleRun(DIRECTION_KEYS.j, player, map, display, fov, game, 'rush');
+        return await do_rush(DIRECTION_KEYS.j, player, map, display, fov, game);
     }
 
     // C-faithful: both LF (^J) and CR from Enter should behave like the
     // movement binding in non-numpad mode (rush south).
     if (ch === 13) {
-        return await handleRun(DIRECTION_KEYS.j, player, map, display, fov, game, 'rush');
+        return await do_rush(DIRECTION_KEYS.j, player, map, display, fov, game);
     }
 
     // Meta command keys (M-x / Alt+x).
@@ -138,14 +138,14 @@ export async function rhack(ch, game) {
         // Check if 'G' or 'g' prefix was used (run/rush mode)
         if (getRunMode()) {
             clearRunMode();
-            return handleRun(DIRECTION_KEYS[c], player, map, display, fov, game);
+            return do_run(DIRECTION_KEYS[c], player, map, display, fov, game);
         }
-        return await handleMovement(DIRECTION_KEYS[c], player, map, display, game);
+        return await domove(DIRECTION_KEYS[c], player, map, display, game);
     }
 
     // Run keys (capital letter = run in that direction)
     if (RUN_KEYS[c]) {
-        return handleRun(RUN_KEYS[c], player, map, display, fov, game);
+        return do_run(RUN_KEYS[c], player, map, display, fov, game);
     }
 
     function clearTopline() {
@@ -332,21 +332,18 @@ export async function rhack(ch, game) {
 
     // Look (:)
     if (c === ':') {
-        return handleLook(player, map, display);
+        return dolook(game);
     }
 
     // What is (;)
     if (c === ';') {
-        if (game.flags.verbose) {
-            display.putstr_message('Pick a position to identify (use movement keys, . when done)');
-        }
-        return { moved: false, tookTime: false };
+        return await doquickwhatis(game);
     }
 
     // Whatis (/)
     // C ref: pager.c dowhatis()
     if (c === '/') {
-        return await handleWhatis(game);
+        return await dowhatis(game);
     }
 
     // Whatdoes (&)
@@ -439,7 +436,7 @@ export async function rhack(ch, game) {
     // Travel command (_)
     // C ref: cmd.c dotravel()
     if (c === '_') {
-        return await handleTravel(game);
+        return await dotravel(game);
     }
 
     // Retravel (Ctrl+_)
@@ -458,7 +455,7 @@ export async function rhack(ch, game) {
             game.travelPath = path;
             game.travelStep = 0;
             display.putstr_message(`Traveling... (${path.length} steps)`);
-            return await executeTravelStep(game);
+            return await dotravel_target(game);
         } else {
             display.putstr_message('No previous travel destination.');
             return { moved: false, tookTime: false };

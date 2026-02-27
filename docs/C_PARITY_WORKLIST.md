@@ -86,17 +86,17 @@ status), see [CODEMATCH.md](CODEMATCH.md).
 
 | C Function(s) | JS Function(s) | Status | Notes |
 | --- | --- | --- | --- |
-| Hero attack path (`uhitm.c`) | `playerAttackMonster` (`js/combat.js`) | `partial` | Hit/miss, passive probes, and kill side effects still under parity work (#8, #11). |
-| Monster attack path (`mhitu.c`) | `monsterAttackPlayer` (`js/combat.js`) | `partial` | Message sequencing and side effects still divergent in mixed combat traces (#8). |
-| XP + level-up (`exper.c`) | `checkLevelUp` and XP updates (`js/combat.js`) | `partial` | Functional but still coupled to combat parity closure. |
+| Hero attack path (`uhitm.c`) | `do_attack` (`js/uhitm.js`; re-exported via `js/combat.js`) | `partial` | Hit/miss, passive probes, and kill side effects still under parity work (#8, #11). |
+| Monster attack path (`mhitu.c`) | `mattacku` (`js/mhitu.js`; re-exported via `js/combat.js`) | `partial` | Message sequencing and side effects still divergent in mixed combat traces (#8). |
+| XP + level-up (`exper.c`) | `newexplevel`/XP updates (`js/exper.js`; `checkLevelUp` shim in `js/combat.js`) | `partial` | Functional but still coupled to combat parity closure. |
 
 ### F) Command Flow + Turn Loop
 
 | C Function(s) | JS Function(s) | Status | Notes |
 | --- | --- | --- | --- |
-| `rhack` (`cmd.c`) | `rhack` (`js/commands.js`) | `partial` | Direction prompt/modal cancellation mismatch tracked in #6. |
-| Core movement/action dispatch (`hack.c`, `do.c`) | `handleMovement`, `handleDownstairs`, `handleUpstairs`, `handleOpen`, `handleClose` (`js/commands.js`) | `partial` | Counted no-op and prompt interactions still diverge (#6, #7). |
-| Pickup/search/read command paths (`pickup.c`, `invent.c`, `read.c`, `do.c`) | `handlePickup`, `dosearch0`, `handleRead` (`js/commands.js`) | `partial` | Wait/search safety timing mismatch tracked in #7. |
+| `rhack` (`cmd.c`) | `rhack` (`js/cmd.js`) | `partial` | Direction prompt/modal cancellation mismatch tracked in #6. |
+| Core movement/action dispatch (`hack.c`, `do.c`) | `domove`, `do_run`, `do_rush`, `dotravel` (`js/hack.js` via `js/cmd.js`) | `partial` | Counted no-op and prompt interactions still diverge (#6, #7). |
+| Pickup/search/read command paths (`pickup.c`, `invent.c`, `read.c`, `do.c`) | `dopickup`, `dosearch0`, `doread` dispatch (`js/cmd.js`) | `partial` | Wait/search safety timing mismatch tracked in #7. |
 | `moveloop_core` turn sequencing (`allmain.c`) | `processTurnEnd` / `simulateTurnEnd` (`js/nethack.js`, `js/headless_runtime.js`) | `partial` | Turn loop exists; downstream divergence depends on command/AI parity gaps. |
 
 ## PRNG Timing Parity (#143)

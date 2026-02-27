@@ -6,7 +6,7 @@ import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { initRng } from '../../js/rng.js';
 import { Player, roles, races, rankOf, roleNameForGender } from '../../js/player.js';
-import { monsterAttackPlayer } from '../../js/mhitu.js';
+import { mattacku } from '../../js/mhitu.js';
 import { rhack } from '../../js/cmd.js';
 import { pushInput, clearInputQueue } from '../../js/input.js';
 import { FEMALE, MALE, A_NEUTRAL, A_CHAOTIC, A_LAWFUL, RACE_HUMAN, STAIRS } from '../../js/config.js';
@@ -46,7 +46,7 @@ describe('Death cause: Player field', () => {
 // Monster kill sets deathCause
 // ========================================================================
 describe('Death cause: monster attack', () => {
-    it('monsterAttackPlayer sets deathCause when player dies', () => {
+    it('mattacku sets deathCause when player dies', async () => {
         initRng(42);
         const p = new Player();
         p.initRole(0);
@@ -71,14 +71,14 @@ describe('Death cause: monster attack', () => {
 
         // Attack repeatedly until death
         for (let i = 0; i < 100 && p.hp > 0; i++) {
-            monsterAttackPlayer(monster, p, display);
+            await mattacku(monster, p, display);
         }
 
         assert.ok(p.hp <= 0, 'Player should be dead');
         assert.equal(p.deathCause, 'killed by a dragon');
     });
 
-    it('deathCause includes monster name', () => {
+    it('deathCause includes monster name', async () => {
         initRng(99);
         const p = new Player();
         p.initRole(0);
@@ -100,14 +100,14 @@ describe('Death cause: monster attack', () => {
         };
 
         for (let i = 0; i < 100 && p.hp > 0; i++) {
-            monsterAttackPlayer(monster, p, display);
+            await mattacku(monster, p, display);
         }
 
         assert.ok(p.hp <= 0);
         assert.equal(p.deathCause, 'killed by a floating eye');
     });
 
-    it('deathCause is not set when player survives', () => {
+    it('deathCause is not set when player survives', async () => {
         initRng(42);
         const p = new Player();
         p.initRole(0);
@@ -128,7 +128,7 @@ describe('Death cause: monster attack', () => {
             passive: false,
         };
 
-        monsterAttackPlayer(monster, p, display);
+        await mattacku(monster, p, display);
         assert.equal(p.deathCause, '', 'deathCause should remain empty when player lives');
     });
 });

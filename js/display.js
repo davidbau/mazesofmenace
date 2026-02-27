@@ -16,10 +16,10 @@ import {
 } from './config.js';
 
 import { def_monsyms, def_oc_syms, defsyms, trap_to_defsym } from './symbols.js';
-import { monDisplayName } from './mondata.js';
 import { monsterMapGlyph, objectMapGlyph } from './display_rng.js';
 import { tempGlyphToCell } from './temp_glyph.js';
 import { isObjectNameKnown, isObjectEncountered, discoveryTypeName } from './discovery.js';
+import { do_lookat, format_do_look_html } from './look.js';
 
 // TRANSLATOR: AUTO
 // Color constants (color.h)
@@ -606,8 +606,16 @@ export class Display {
                     const hallu = !!player?.hallucinating;
                     const glyph = monsterMapGlyph(mon, hallu);
                     this.setCell(col, row, glyph.ch, glyph.color);
-                    const classInfo = this._monsterClassDesc(mon.displayChar);
-                    this.cellInfo[row][col] = { name: monDisplayName(mon), desc: classInfo, color: mon.displayColor };
+                    const look = do_lookat({ map: gameMap, player }, { x, y });
+                    const styled = format_do_look_html(look);
+                    const classInfo = look.classDesc || this._monsterClassDesc(mon.displayChar);
+                    this.cellInfo[row][col] = {
+                        name: styled.nameText || look.firstmatch || 'monster',
+                        desc: styled.descText || classInfo || '',
+                        nameHtml: styled.nameHtml || '',
+                        descHtml: styled.descHtml || '',
+                        color: mon.displayColor,
+                    };
                     continue;
                 }
                 if (loc.mem_invis) {
@@ -1281,8 +1289,10 @@ export class Display {
                     symbolEl.textContent = ch;
                     symbolEl.style.color = color;
                 }
-                if (nameEl) nameEl.textContent = info.name;
-                if (descEl) descEl.textContent = info.desc;
+                if (nameEl && info.nameHtml) nameEl.innerHTML = info.nameHtml;
+                else if (nameEl) nameEl.textContent = info.name;
+                if (descEl && info.descHtml) descEl.innerHTML = info.descHtml;
+                else if (descEl) descEl.textContent = info.desc;
                 if (statsEl) statsEl.textContent = info.stats || '';
                 panel.style.visibility = 'visible';
             } else {

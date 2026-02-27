@@ -6,7 +6,7 @@ import { COLNO, ROWNO, IS_ROOM, IS_DOOR, IS_POOL, IS_LAVA,
          D_CLOSED, D_LOCKED,
          POOL, STAIRS, LADDER, isok } from './config.js';
 import { rn2, rnd, pushRngLogEntry } from './rng.js';
-import { monsterAttackPlayer } from './mhitu.js';
+import { mattacku } from './mhitu.js';
 import { CORPSE, BALL_CLASS, CHAIN_CLASS, ROCK_CLASS, FOOD_CLASS,
          COIN_CLASS, GEM_CLASS,
          PICK_AXE, DWARVISH_MATTOCK, UNICORN_HORN,
@@ -825,7 +825,7 @@ export async function pet_ranged_attk(mon, map, player, display, fov = null, gam
     // C ref: dogmove.c:897 — hungry pets only attack 1 in 5
     if (hungry && rn2(5)) return 0;
     if (mtarg.isPlayer) {
-        await monsterAttackPlayer(mon, player, display, game);
+        await mattacku(mon, player, display, game);
         return 1; // acted (MMOVE_DONE)
     }
     // C ref: dogmove.c:918 — mattackm(mtmp, mtarg)
@@ -1385,7 +1385,7 @@ export async function dog_move(mon, map, player, display, fov, after = false, ga
                 }
                 mon.mleashed = false;
             }
-            await monsterAttackPlayer(mon, player, display, game);
+            await mattacku(mon, player, display, game);
             return 0; // MMOVE_DONE
         }
 

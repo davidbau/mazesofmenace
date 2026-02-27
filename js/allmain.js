@@ -1379,8 +1379,8 @@ export class NetHackGame {
         while (!this.gameOver) {
             // Travel continuation
             if (this.travelPath && this.travelStep < this.travelPath.length) {
-                const { executeTravelStep } = await import('./hack.js');
-                const result = await executeTravelStep(this);
+                const { dotravel_target } = await import('./hack.js');
+                const result = await dotravel_target(this);
                 if (result.tookTime) {
                     await moveloop_core(this);
                 }

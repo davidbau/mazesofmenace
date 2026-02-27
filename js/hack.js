@@ -23,7 +23,7 @@ import { WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
          TOOL_CLASS, FOOD_CLASS, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS,
          WAND_CLASS, COIN_CLASS, GEM_CLASS, ROCK_CLASS, BOULDER } from './objects.js';
 import { nhgetch } from './input.js';
-import { playerAttackMonster } from './uhitm.js';
+import { do_attack } from './uhitm.js';
 import { formatGoldPickupMessage, formatInventoryPickupMessage } from './do.js';
 import { x_monnam, y_monnam, YMonnam } from './mondata.js';
 import { maybeSmudgeEngraving, u_wipe_engr } from './engrave.js';
@@ -369,7 +369,7 @@ export async function domove_attackmon_at(mon, nx, ny, dir, player, map, display
     rn2(20);
     exercise(player, A_STR, true);
     u_wipe_engr(player, map, 3);
-    const killed = playerAttackMonster(player, mon, display, map, game);
+    const killed = do_attack(player, mon, display, map, { game });
     if (killed) map.removeMonster(mon);
     player.moved = true;
     return { handled: true, moved: false, tookTime: true };
@@ -839,8 +839,6 @@ export async function domove_core(dir, player, map, display, game) {
 }
 
 // C ref: hack.c domove() entrypoint.
-// Keep this as the canonical movement API and route handleMovement through it
-// for backward compatibility with existing JS callsites.
 export async function domove(dir, player, map, display, game) {
     if (!Array.isArray(dir) || dir.length < 2) {
         return { moved: false, tookTime: false };
@@ -848,14 +846,8 @@ export async function domove(dir, player, map, display, game) {
     return domove_core(dir, player, map, display, game);
 }
 
-// Legacy JS name used by cmd.js and tests.
-export async function handleMovement(dir, player, map, display, game) {
-    return domove(dir, player, map, display, game);
-}
-
-// Handle running in a direction
 // C ref: cmd.c do_run() -> hack.c domove() with context.run
-export async function handleRun(dir, player, map, display, fov, game, runStyle = 'run') {
+export async function do_run(dir, player, map, display, fov, game, runStyle = 'run') {
     const ctx = ensure_context(game);
     let runDir = dir;
     let steps = 0;
@@ -925,6 +917,11 @@ export async function handleRun(dir, player, map, display, fov, game, runStyle =
         tookTime: hasRunTurnHook ? false : timedTurns > 0,
         runSteps: hasRunTurnHook ? 0 : timedTurns,
     };
+}
+
+// C ref: cmd.c do_rush()
+export async function do_rush(dir, player, map, display, fov, game) {
+    return do_run(dir, player, map, display, fov, game, 'rush');
 }
 
 function pickRunContinuationDir(map, player, dir) {
@@ -1250,9 +1247,8 @@ export function findtravelpath(mode, game) {
     return true;
 }
 
-// Handle travel command (_)
 // C ref: cmd.c dotravel()
-export async function handleTravel(game) {
+export async function dotravel(game) {
     const { player, map, display } = game;
     const ctx = ensure_context(game);
 
@@ -1289,12 +1285,11 @@ export async function handleTravel(game) {
     display.putstr_message(`Traveling... (${game.travelPath.length} steps)`);
 
     // Execute first step
-    return executeTravelStep(game);
+    return dotravel_target(game);
 }
 
-// Execute one step of travel
-// C ref: hack.c domove() with context.travel flag
-export async function executeTravelStep(game) {
+// C ref: cmd.c dotravel_target()
+export async function dotravel_target(game) {
     const { player, map, display } = game;
     const ctx = ensure_context(game);
 
@@ -1696,7 +1691,7 @@ export function test_move(ux, uy, dx, dy, mode, player, map, display, game = nul
         if (closed_door(x, y, map)) {
             // Closed door blocks movement
             if (mode === DO_MOVE) {
-                // Auto-open handled elsewhere in handleMovement
+                // Auto-open handled elsewhere in domove
                 if (flags.mention_walls) {
                     if (display) display.putstr_message('That door is closed.');
                 }
@@ -2330,14 +2325,14 @@ export function spoteffects(pick, player, map, display, game) {
 
         // Pick up before trap (unless pit)
         if (pick && !isPit) {
-            // Autopickup handled by handleMovement
+            // Autopickup handled by domove
         }
 
-        // Trigger trap (already handled in handleMovement for basic traps)
+        // Trigger trap (already handled in domove for basic traps)
 
         // Pick up after pit trap
         if (pick && isPit) {
-            // Autopickup handled by handleMovement
+            // Autopickup handled by domove
         }
 
     } finally {
