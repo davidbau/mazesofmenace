@@ -207,6 +207,13 @@ def candidate_unknown_identifiers(emitted_js, known_syms):
     known.update(C_NONSYMBOL_TOKENS)
     known.update(extract_emitted_locals(emitted_js))
     unknown = set()
+    alias_candidates = {}
+    norm_index = {}
+    for sym in known_syms:
+        key = re.sub(r"[_\W]+", "", sym).lower()
+        if not key:
+            continue
+        norm_index.setdefault(key, set()).add(sym)
     scan_text = sanitize_code_for_identifier_scan(emitted_js)
     n = len(scan_text)
     for m in IDENT_RE.finditer(scan_text):
@@ -224,8 +231,15 @@ def candidate_unknown_identifiers(emitted_js, known_syms):
             continue
         if name in known:
             continue
+        nkey = re.sub(r"[_\W]+", "", name).lower()
+        matches = norm_index.get(nkey, set())
+        if len(matches) == 1:
+            target = next(iter(matches))
+            if target != name:
+                alias_candidates[name] = target
+                continue
         unknown.add(name)
-    return sorted(unknown)
+    return sorted(unknown), alias_candidates
 
 
 def candidate_syntax_ok(emitted_js):
@@ -303,12 +317,13 @@ def main():
         payload = json.loads(Path(out_file).read_text(encoding="utf-8"))
         emitted_js = payload.get("js", "")
         unknown = candidate_unknown_calls(emitted_js, known_syms)
-        unknown_idents = candidate_unknown_identifiers(emitted_js, known_syms)
+        unknown_idents, alias_candidates = candidate_unknown_identifiers(emitted_js, known_syms)
         syntax_ok, syntax_error = candidate_syntax_ok(emitted_js)
         out_rec = {
             **rec,
             "unknown_calls": unknown,
             "unknown_identifiers": unknown_idents,
+            "alias_candidates": alias_candidates,
             "syntax_ok": syntax_ok,
         }
         if not syntax_ok:

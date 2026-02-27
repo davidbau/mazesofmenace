@@ -770,7 +770,7 @@ export function sortloot(objList, mode, filterfunc) {
 }
 
 // C ref: invent.c unsortloot() — no-op in JS (GC handles it)
-export function unsortloot() {}
+export function unsortloot(loot_array_p = null) { return loot_array_p; }
 
 // C ref: invent.c reorder_invent() — sort inventory by invlet
 // JS adaptation: sort the player.inventory array in-place

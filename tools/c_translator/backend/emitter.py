@@ -867,6 +867,12 @@ def _lower_expr(expr, rewrite_rules):
     out = re.sub(r"\(\s*[A-Za-z_]\w*\s*\*\s*\)\s*0\b", "null", out)
     # C pointer member access lowers to JS property access.
     out = out.replace("->", ".")
+    # Canonicalize common C helper calls to JS equivalents.
+    out = re.sub(r"\bmax\s*\(", "Math.max(", out)
+    out = re.sub(r"\bmin\s*\(", "Math.min(", out)
+    out = re.sub(r"\babs\s*\(", "Math.abs(", out)
+    # free() is a no-op in JS runtime; preserve operand side-effects only.
+    out = re.sub(r"\bfree\s*\(\s*([^()]+?)\s*\)", r"(\1, 0)", out)
     # C integer long suffix (e.g., 7L) has no JS runtime equivalent.
     out = re.sub(r"\b(\d+)L\b", r"\1", out)
     out = re.sub(r"\bsizeof\s+([A-Za-z_]\w*)\b", r"\1.length", out)

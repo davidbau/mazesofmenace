@@ -125,6 +125,12 @@ conda run -n base python tools/c_translator/refactor_queue.py \
   --out /tmp/translator-refactor-queue.json
 ```
 
+Notes:
+- `runtime_candidate_safety.py` now auto-detects strict alias matches where a
+  C identifier differs only by case/underscore from an existing module symbol.
+- `refactor_queue.py` emits these as `rename_alias` tasks so we can prioritize
+  canonical renames separately from true missing identifiers.
+
 4. Translator policy/annotation checks (Node scripts):
 ```bash
 npm run -s translator:check-policy

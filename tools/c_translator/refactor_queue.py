@@ -37,6 +37,16 @@ def main():
         source = rec.get("source")
         out_file = rec.get("out_file")
         unknown_identifiers = set(rec.get("unknown_identifiers", []))
+        alias_candidates = rec.get("alias_candidates", {}) or {}
+        for src, dst in sorted(alias_candidates.items()):
+            add_task(tasks, dedupe, {
+                "kind": "rename_alias",
+                "js_module": js_module,
+                "function": function,
+                "source": source,
+                "out_file": out_file,
+                "detail": f"{src}->{dst}",
+            })
         for ident in sorted(unknown_identifiers):
             add_task(tasks, dedupe, {
                 "kind": "add_missing_identifier",
