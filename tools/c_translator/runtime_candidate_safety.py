@@ -16,18 +16,32 @@ import tempfile
 EXPORT_FN_RE = re.compile(r"^\s*export\s+(?:async\s+)?function\s+([A-Za-z_]\w*)\s*\(", re.MULTILINE)
 LOCAL_FN_RE = re.compile(r"^\s*(?:async\s+)?function\s+([A-Za-z_]\w*)\s*\(", re.MULTILINE)
 LOCAL_VAR_RE = re.compile(r"^\s*(?:const|let|var)\s+([A-Za-z_]\w*)\s*=", re.MULTILINE)
+EXPORT_VAR_RE = re.compile(r"^\s*export\s+(?:const|let|var)\s+([A-Za-z_]\w*)\s*=", re.MULTILINE)
 IMPORT_RE = re.compile(r"^\s*import\s*\{([^}]*)\}\s*from\s*['\"][^'\"]+['\"]\s*;", re.MULTILINE)
 IMPORT_DEFAULT_RE = re.compile(
     r"^\s*import\s+([A-Za-z_]\w*)\s+from\s*['\"][^'\"]+['\"]\s*;",
     re.MULTILINE,
 )
 CALL_RE = re.compile(r"\b([A-Za-z_]\w*)\s*\(")
+IDENT_RE = re.compile(r"\b([A-Za-z_]\w*)\b")
 
 
 JS_KEYWORDS = {
     "if", "for", "while", "switch", "return", "typeof", "new", "await",
     "Math", "Number", "String", "Object", "Array", "Boolean", "Promise",
+    "true", "false", "null", "undefined",
+    "const", "let", "var", "function", "export", "import", "default",
+    "else", "do", "break", "continue", "case", "throw", "try", "catch",
 }
+
+
+def is_escaped(text, i):
+    backslashes = 0
+    j = i - 1
+    while j >= 0 and text[j] == "\\":
+        backslashes += 1
+        j -= 1
+    return (backslashes % 2) == 1
 
 
 def parse_args():
@@ -42,6 +56,7 @@ def parse_module_symbols(js_text):
     syms = set(EXPORT_FN_RE.findall(js_text))
     syms.update(LOCAL_FN_RE.findall(js_text))
     syms.update(LOCAL_VAR_RE.findall(js_text))
+    syms.update(EXPORT_VAR_RE.findall(js_text))
     for m in IMPORT_RE.findall(js_text):
         for part in m.split(","):
             token = part.strip()
@@ -69,6 +84,110 @@ def candidate_unknown_calls(emitted_js, known_syms):
             if name in known_syms:
                 continue
             unknown.add(name)
+    return sorted(unknown)
+
+
+def extract_emitted_locals(emitted_js):
+    locals_set = set(LOCAL_FN_RE.findall(emitted_js))
+    locals_set.update(LOCAL_VAR_RE.findall(emitted_js))
+    # Add function parameters for exported/local function declarations.
+    for m in re.finditer(r"(?:export\s+)?(?:async\s+)?function\s+[A-Za-z_]\w*\s*\(([^)]*)\)", emitted_js):
+        raw = m.group(1).strip()
+        if not raw:
+            continue
+        for piece in raw.split(","):
+            token = piece.strip()
+            if not token:
+                continue
+            token = token.lstrip("...")
+            token = token.split("=")[0].strip()
+            if token:
+                locals_set.add(token)
+    return locals_set
+
+
+def sanitize_code_for_identifier_scan(text):
+    """Return text with strings/comments replaced by spaces (same length)."""
+    out = []
+    i = 0
+    n = len(text)
+    in_str = None
+    in_line_comment = False
+    in_block_comment = False
+    while i < n:
+        c = text[i]
+        nxt = text[i + 1] if i + 1 < n else ""
+        if in_line_comment:
+            if c == "\n":
+                in_line_comment = False
+                out.append("\n")
+            else:
+                out.append(" ")
+            i += 1
+            continue
+        if in_block_comment:
+            if c == "*" and nxt == "/":
+                out.append(" ")
+                out.append(" ")
+                i += 2
+                in_block_comment = False
+                continue
+            out.append("\n" if c == "\n" else " ")
+            i += 1
+            continue
+        if in_str:
+            if c == in_str and not is_escaped(text, i):
+                in_str = None
+                out.append(" ")
+            else:
+                out.append("\n" if c == "\n" else " ")
+            i += 1
+            continue
+        if c == "/" and nxt == "/":
+            in_line_comment = True
+            out.append(" ")
+            out.append(" ")
+            i += 2
+            continue
+        if c == "/" and nxt == "*":
+            in_block_comment = True
+            out.append(" ")
+            out.append(" ")
+            i += 2
+            continue
+        if c in ("'", '"', "`"):
+            in_str = c
+            out.append(" ")
+            i += 1
+            continue
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
+def candidate_unknown_identifiers(emitted_js, known_syms):
+    known = set(known_syms)
+    known.update(JS_KEYWORDS)
+    known.update(extract_emitted_locals(emitted_js))
+    unknown = set()
+    scan_text = sanitize_code_for_identifier_scan(emitted_js)
+    n = len(scan_text)
+    for m in IDENT_RE.finditer(scan_text):
+        name = m.group(1)
+        start = m.start(1)
+        end = m.end(1)
+        prev = scan_text[start - 1] if start > 0 else ""
+        if prev == ".":  # property access (obj.prop)
+            continue
+        # object literal key ({ key: value }) should not count as free identifier
+        j = end
+        while j < n and scan_text[j].isspace():
+            j += 1
+        if j < n and scan_text[j] == ":":
+            continue
+        if name in known:
+            continue
+        unknown.add(name)
     return sorted(unknown)
 
 
@@ -123,16 +242,18 @@ def main():
         payload = json.loads(Path(out_file).read_text(encoding="utf-8"))
         emitted_js = payload.get("js", "")
         unknown = candidate_unknown_calls(emitted_js, known_syms)
+        unknown_idents = candidate_unknown_identifiers(emitted_js, known_syms)
         syntax_ok, syntax_error = candidate_syntax_ok(emitted_js)
         out_rec = {
             **rec,
             "unknown_calls": unknown,
+            "unknown_identifiers": unknown_idents,
             "syntax_ok": syntax_ok,
         }
         if not syntax_ok:
             out_rec["syntax_error"] = syntax_error
             unsafe.append(out_rec)
-        elif unknown:
+        elif unknown or unknown_idents:
             unsafe.append(out_rec)
         else:
             safe.append(out_rec)
