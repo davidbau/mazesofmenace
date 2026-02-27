@@ -123,6 +123,11 @@ conda run -n base python tools/c_translator/refactor_queue.py \
   --safety /tmp/translator-runtime-stitch-safety.json \
   --apply-summary /tmp/translator-runtime-stitch-apply.json \
   --out /tmp/translator-refactor-queue.json
+
+# Hunt non-mechanical aliases and missing import/binding candidates
+conda run -n base python tools/c_translator/identifier_hunt.py \
+  --queue /tmp/translator-refactor-queue.json \
+  --out /tmp/translator-identifier-hunt.json
 ```
 
 Notes:
