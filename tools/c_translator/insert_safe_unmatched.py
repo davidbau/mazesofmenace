@@ -103,6 +103,13 @@ def main():
             skipped.append({"record": rec, "reason": "multiple_local_defs"})
             continue
 
+        # No local function to promote. If this name is already bound in module
+        # scope (import/const/etc), appending a function would be a duplicate
+        # declaration syntax error.
+        if fn in known:
+            skipped.append({"record": rec, "reason": "name_already_bound"})
+            continue
+
         appended = source_text
         if not appended.endswith("\n"):
             appended += "\n"

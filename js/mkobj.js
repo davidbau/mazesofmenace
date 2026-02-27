@@ -1300,8 +1300,3 @@ export function doname(obj, player) {
 
     return result;
 }
-
-// Autotranslated from mkobj.c:388
-export function rndmonnum() {
-  return rndmonnum_adj(0, 0);
-}

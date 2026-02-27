@@ -1634,9 +1634,3 @@ export function walkfrom(map, x, y, ftyp = CROSSWALL, btyp = STONE) {
 }
 
 export { bound_digging, repair_irregular_room_boundaries };
-
-// Autotranslated from mkmaze.c:289
-export function wallification(x1, y1, x2, y2) {
-  wall_cleanup(x1, y1, x2, y2);
-  fix_wall_spines(x1, y1, x2, y2);
-}
