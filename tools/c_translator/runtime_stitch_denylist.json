@@ -13,5 +13,15 @@
     "js_module": "js/uhitm.js",
     "function": "mhitm_adtyping",
     "reason": "Known parity regression: stitched translation causes monmove/drop ordering drift; tracked in issue #212."
+  },
+  {
+    "js_module": "js/hack.js",
+    "function": "near_capacity",
+    "reason": "Current auto-translation drops required player argument and mismatches calc_capacity call signature."
+  },
+  {
+    "js_module": "js/hack.js",
+    "function": "u_maybe_impaired",
+    "reason": "Current auto-translation emits C macro globals (Stunned/Confusion) not yet canonicalized to JS runtime fields."
   }
 ]

@@ -452,13 +452,13 @@ export function monNam(mon, { capitalize = false, article = null } = {}) {
 // ========================================================================
 
 // C ref: mondata.c mon_knows_traps(mtmp, ttyp)
-export function mon_knows_traps(mon, ttyp) {
-    const seen = Number(mon?.mtrapseen || 0) >>> 0;
-    if (ttyp === ALL_TRAPS) return seen !== 0;
-    if (ttyp === NO_TRAP) return seen === 0;
-    const bit = ttyp - 1;
-    if (bit < 0 || bit >= 31) return false;
-    return (seen & (1 << bit)) !== 0;
+// TRANSLATOR: AUTO (mondata.c:1616)
+export function mon_knows_traps(mtmp, ttyp) {
+  if (ttyp === ALL_TRAPS) return (mtmp.mtrapseen);
+  else if (ttyp === NO_TRAP) return !(mtmp.mtrapseen);
+  else {
+    return ((mtmp.mtrapseen & (1 << (ttyp - 1))) !== 0);
+  }
 }
 
 // C ref: mondata.c mon_learns_traps(mtmp, ttyp)
@@ -509,8 +509,9 @@ export function dmgtype_fromattack(ptr, dtyp, atyp) {
 
 // C ref: mondata.c dmgtype(ptr, dtyp)
 // Returns true if monster deals this damage type from any attack.
+// TRANSLATOR: AUTO (mondata.c:711)
 export function dmgtype(ptr, dtyp) {
-    return dmgtype_fromattack(ptr, dtyp, AT_ANY);
+  return dmgtype_fromattack(ptr, dtyp, AT_ANY) ? true : false;
 }
 
 // C ref: mondata.c noattacks(ptr)
@@ -614,11 +615,9 @@ export function num_horns(ptr) {
 // C ref: mondata.c sliparm(ptr)
 // Returns true if creature would slip out of armor (too small, whirly, or noncorporeal).
 // is_whirly: S_VORTEX || PM_AIR_ELEMENTAL; noncorporeal: S_GHOST
+// TRANSLATOR: AUTO (mondata.c:631)
 export function sliparm(ptr) {
-    return ptr.mlet === S_VORTEX
-        || ptr === mons[PM_AIR_ELEMENTAL]
-        || (ptr.msize || 0) <= MZ_SMALL
-        || ptr.mlet === S_GHOST;
+  return (is_whirly(ptr) || ptr.msize <= MZ_SMALL || noncorporeal(ptr));
 }
 
 // C ref: mondata.c breakarm(ptr)
@@ -640,9 +639,10 @@ export function haseyes(ptr) { return !(ptr.flags1 & M1_NOEYES); }
 export function hates_light(ptr) { return ptr === mons[PM_GREMLIN]; }
 
 // C ref: mondata.c:547 — mon_hates_light(mon)
+// TRANSLATOR: AUTO (mondata.c:546)
 export function mon_hates_light(mon) {
-    const ptr = monsdat(mon);
-    return ptr ? hates_light(ptr) : false;
+  const ptr = monsdat(mon);
+  return ptr ? hates_light(ptr) : false;
 }
 
 // C ref: mondata.c:80 — poly_when_stoned(ptr)
@@ -781,6 +781,7 @@ export function little_to_big(montype) {
 
 // C ref: mondata.c:1316 — big_to_little(montype)
 // Returns the juvenile form of a monster index, or the index itself if none.
+// TRANSLATOR: AUTO (mondata.c:1315)
 export function big_to_little(montype) {
     for (const [little, big] of grownups)
         if (montype === big) return little;
