@@ -834,7 +834,7 @@ function special_corpse(mndx) {
 // Only called for RNG alignment; we don't actually track timers.
 export const TAINT_AGE = 50;
 const TROLL_REVIVE_CHANCE = 37;
-function start_corpse_timeout_rng(corpsenm) {
+function start_corpse_timeout(corpsenm) {
     // Lizards and lichen don't rot or revive
     if (corpsenm === PM_LIZARD || corpsenm === PM_LICHEN) return;
     // C ref: mkobj.c start_corpse_timeout() — rot_adjust depends on gi.in_mklev.
@@ -880,7 +880,7 @@ export function set_corpsenm(obj, id) {
         : 0;
     obj.corpsenm = id;
     if (obj.otyp === CORPSE) {
-        start_corpse_timeout_rng(id);
+        start_corpse_timeout(id);
     } else if (obj.otyp === EGG) {
         if (id >= 0) {
             obj._egg_hatch_when = attach_egg_hatch_timeout_rng(when);
@@ -914,7 +914,7 @@ export function mkcorpstat(objtype, ptr_mndx, init, x = 0, y = 0, map = null) {
                 || special_corpse(ptr_mndx))) {
             // C: obj_stop_timers(otmp) — no RNG consumed
             // Restart corpse timeout with new corpsenm
-            start_corpse_timeout_rng(ptr_mndx);
+            start_corpse_timeout(ptr_mndx);
         }
     }
     pushRngLogEntry(`^corpse[${otmp.corpsenm},${otmp.ox || 0},${otmp.oy || 0}]`);

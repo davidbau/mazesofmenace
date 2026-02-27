@@ -2,7 +2,7 @@
 // cf. lock.c — picking_lock, picking_at, lock_action, picklock,
 //              breakchestlock, forcelock, reset_pick, maybe_reset_pick,
 //              autokey, pick_lock, u_have_forceable_weapon, doforce,
-//              stumble_on_door_mimic, doopen, doopen_indir, obstructed,
+//              stumble_onto_mimic, doopen, doopen_indir, obstructed,
 //              doclose, boxlock, doorlock, chest_shatter_msg
 //
 // lock.c handles all lock manipulation mechanics:
@@ -277,8 +277,8 @@ export function u_have_forceable_weapon() {
   return true;
 }
 
-// cf. lock.c:759 — stumble_on_door_mimic(x, y): detect door mimic
-export function stumble_on_door_mimic(x, y, map) {
+// cf. lock.c:759 — stumble_onto_mimic(x, y): detect door mimic
+export function stumble_onto_mimic(x, y, map) {
     const mtmp = map.monsterAt(x, y);
     if (mtmp && mtmp.m_ap_type === 'furniture'
         && mtmp.mappearance === DOOR) {
@@ -974,8 +974,8 @@ export async function handleOpen(player, map, display, game) {
     const nx = player.x + dir[0];
     const ny = player.y + dir[1];
 
-    // C ref: stumble_on_door_mimic
-    if (stumble_on_door_mimic(nx, ny, map)) {
+    // C ref: stumble_onto_mimic
+    if (stumble_onto_mimic(nx, ny, map)) {
         return { moved: false, tookTime: true };
     }
 
@@ -1052,8 +1052,8 @@ export async function handleClose(player, map, display, game) {
 
     const loc = map.at(nx, ny);
 
-    // C: stumble_on_door_mimic
-    if (stumble_on_door_mimic(nx, ny, map)) {
+    // C: stumble_onto_mimic
+    if (stumble_onto_mimic(nx, ny, map)) {
         return { moved: false, tookTime: true };
     }
 

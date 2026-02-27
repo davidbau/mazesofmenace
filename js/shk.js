@@ -63,7 +63,7 @@ function roomMatchesType(map, roomno, typeWanted) {
     return rt === typeWanted || (typeWanted === SHOPBASE && rt >= SHOPBASE);
 }
 
-function inRoomsAt(map, x, y, typeWanted = 0) {
+function in_rooms(map, x, y, typeWanted = 0) {
     const loc = map.at(x, y);
     if (!loc) return [];
     const out = [];
@@ -658,7 +658,7 @@ export function splitbill(obj, otmp, map) {
     // obj is original, otmp has been split off
     if (!map) return;
     // Find shopkeeper
-    const rooms = inRoomsAt(map, obj.ox || 0, obj.oy || 0, SHOPBASE);
+    const rooms = in_rooms(map, obj.ox || 0, obj.oy || 0, SHOPBASE);
     if (rooms.length === 0) return;
     const shkp = shop_keeper(map, rooms[0]);
     if (!shkp) return;
@@ -775,7 +775,7 @@ export function inhishop(shkp, map) {
     if (!map) return false;
     const roomno = Number(shkp.shoproom || 0);
     if (roomno < ROOMOFFSET) return false;
-    const rooms = inRoomsAt(map, shkp.mx, shkp.my, SHOPBASE);
+    const rooms = in_rooms(map, shkp.mx, shkp.my, SHOPBASE);
     return rooms.includes(roomno);
 }
 
@@ -979,7 +979,7 @@ export function shk_impaired(shkp, map) {
 // C ref: shk.c costly_spot() -- is this a spot where shop goods are costly?
 export function costly_spot(x, y, map) {
     if (!map) return false;
-    const rooms = inRoomsAt(map, x, y, SHOPBASE);
+    const rooms = in_rooms(map, x, y, SHOPBASE);
     if (rooms.length === 0) return false;
     const shkp = shop_keeper(map, rooms[0]);
     if (!shkp || !inhishop(shkp, map)) return false;
@@ -1004,7 +1004,7 @@ export function costly_adjacent(shkp, x, y, map) {
 // C ref: shk.c shop_object() -- get first non-gold object at shop location
 export function shop_object(x, y, map) {
     if (!map) return null;
-    const rooms = inRoomsAt(map, x, y, SHOPBASE);
+    const rooms = in_rooms(map, x, y, SHOPBASE);
     if (rooms.length === 0) return null;
     const shkp = shop_keeper(map, rooms[0]);
     if (!shkp || !inhishop(shkp, map)) return null;
@@ -1071,7 +1071,7 @@ export function stolen_value(obj, x, y, peaceful, silent, map) {
     if (!map) return 0;
 
     // Find shopkeeper
-    const rooms = inRoomsAt(map, x, y, SHOPBASE);
+    const rooms = in_rooms(map, x, y, SHOPBASE);
     if (rooms.length === 0) return 0;
     let shkp = shop_keeper(map, rooms[0]);
     if (!shkp) return 0;
@@ -1150,7 +1150,7 @@ export function stolen_value(obj, x, y, peaceful, silent, map) {
 export function costly_gold(x, y, amount, silent, map) {
     if (!costly_spot(x, y, map)) return;
 
-    const rooms = inRoomsAt(map, x, y, SHOPBASE);
+    const rooms = in_rooms(map, x, y, SHOPBASE);
     const shkp = shop_keeper(map, rooms[0]);
     if (!shkp) return;
 
@@ -1244,7 +1244,7 @@ function cost_per_charge(shkp, otmp, altusage, map) {
 export function check_unpaid_usage(otmp, altusage, map) {
     if (!otmp.unpaid) return;
 
-    const rooms = inRoomsAt(map, otmp.ox || 0, otmp.oy || 0, SHOPBASE);
+    const rooms = in_rooms(map, otmp.ox || 0, otmp.oy || 0, SHOPBASE);
     if (rooms.length === 0) return;
     const shkp = shop_keeper(map, rooms[0]);
     if (!shkp || !inhishop(shkp, map)) return;
@@ -1429,9 +1429,9 @@ function getShopQuoteForFloorObject(obj, player, map) {
     if (!obj || obj.oclass === COIN_CLASS) return null;
     if (!Number.isInteger(obj.ox) || !Number.isInteger(obj.oy)) return null;
 
-    const playerShops = inRoomsAt(map, player.x, player.y, SHOPBASE);
+    const playerShops = in_rooms(map, player.x, player.y, SHOPBASE);
     if (playerShops.length === 0) return null;
-    const objShops = inRoomsAt(map, obj.ox, obj.oy, SHOPBASE);
+    const objShops = in_rooms(map, obj.ox, obj.oy, SHOPBASE);
     const shoproom = playerShops.find((r) => objShops.includes(r));
     if (!shoproom) return null;
 
@@ -1464,8 +1464,8 @@ export function describeGroundObjectForPlayer(obj, player, map) {
 
 export function maybeHandleShopEntryMessage(game, oldX, oldY) {
     const { map, player, display } = game;
-    const oldShops = inRoomsAt(map, oldX, oldY, SHOPBASE);
-    const newShops = inRoomsAt(map, player.x, player.y, SHOPBASE);
+    const oldShops = in_rooms(map, oldX, oldY, SHOPBASE);
+    const newShops = in_rooms(map, player.x, player.y, SHOPBASE);
     game._ushops = newShops;
     const entered = newShops.filter((r) => !oldShops.includes(r));
     if (entered.length === 0) return;
@@ -1518,7 +1518,7 @@ export function dopay(game) {
         if (!m || m.dead || !m.isshk) continue;
         sk++;
         if (m.mpeaceful !== false) seensk++;
-        const rooms = inRoomsAt(map, player.x, player.y, SHOPBASE);
+        const rooms = in_rooms(map, player.x, player.y, SHOPBASE);
         if (rooms.length > 0 && Number(m.shoproom || 0) === rooms[0] && inhishop(m, map)) {
             resident = m;
         }
@@ -1565,7 +1565,7 @@ export function sellobj_state(deliberate) {
 // C ref: shk.c sellobj()
 export function sellobj(obj, x, y, map) {
     if (!map) return;
-    const rooms = inRoomsAt(map, x, y, SHOPBASE);
+    const rooms = in_rooms(map, x, y, SHOPBASE);
     if (rooms.length === 0) return;
     const shkp = shop_keeper(map, rooms[0]);
     if (!shkp || !inhishop(shkp, map)) return;
@@ -1587,7 +1587,7 @@ export function sellobj(obj, x, y, map) {
 // C ref: shk.c doinvbill()
 export function doinvbill(mode, map) {
     if (!map) return 0;
-    const rooms = inRoomsAt(map, 0, 0, SHOPBASE); // needs player pos
+    const rooms = in_rooms(map, 0, 0, SHOPBASE); // needs player pos
     // Stub: full implementation requires window system
     return 0;
 }
@@ -1694,7 +1694,7 @@ export function pay_for_damage(dmgstr, cant_mollify, map, player, moves) {
     for (const dam of damagelist) {
         if (dam.when !== moves || !dam.cost) continue;
         cost_of_damage += dam.cost;
-        const rooms = inRoomsAt(map, dam.x, dam.y, SHOPBASE);
+        const rooms = in_rooms(map, dam.x, dam.y, SHOPBASE);
         for (const r of rooms) {
             const tmp_shk = shop_keeper(map, r);
             if (tmp_shk && inhishop(tmp_shk, map)) {
@@ -1719,7 +1719,7 @@ export function pay_for_damage(dmgstr, cant_mollify, map, player, moves) {
 // C ref: shk.c shopdig()
 export function shopdig(fall, map, player) {
     if (!map || !player) return;
-    const rooms = inRoomsAt(map, player.x, player.y, SHOPBASE);
+    const rooms = in_rooms(map, player.x, player.y, SHOPBASE);
     if (rooms.length === 0) return;
     const shkp = shop_keeper(map, rooms[0]);
     if (!shkp) return;
@@ -1742,7 +1742,7 @@ export function shopdig(fall, map, player) {
 // C ref: shk.c block_door()
 export function block_door(x, y, map, player) {
     if (!map || !player) return false;
-    const rooms = inRoomsAt(map, x, y, SHOPBASE);
+    const rooms = in_rooms(map, x, y, SHOPBASE);
     if (rooms.length === 0) return false;
     const shkp = shop_keeper(map, rooms[0]);
     if (!shkp || !inhishop(shkp, map)) return false;
@@ -1760,7 +1760,7 @@ export function block_door(x, y, map, player) {
 // C ref: shk.c block_entry()
 export function block_entry(x, y, map, player) {
     if (!map || !player) return false;
-    const rooms = inRoomsAt(map, x, y, SHOPBASE);
+    const rooms = in_rooms(map, x, y, SHOPBASE);
     if (rooms.length === 0) return false;
     const shkp = shop_keeper(map, rooms[0]);
     if (!shkp || !inhishop(shkp, map)) return false;
@@ -1924,7 +1924,7 @@ export function credit_report(shkp, idx, silent) {
 // C ref: shk.c remote_burglary()
 export function remote_burglary(x, y, map) {
     if (!map) return;
-    const rooms = inRoomsAt(map, x, y, SHOPBASE);
+    const rooms = in_rooms(map, x, y, SHOPBASE);
     if (rooms.length === 0) return;
     const shkp = shop_keeper(map, rooms[0]);
     if (!shkp || !inhishop(shkp, map)) return;
@@ -2036,7 +2036,7 @@ export function gem_learned(oindx, map) {
 // C ref: shk.c find_objowner()
 export function find_objowner(obj, x, y, map) {
     if (!map) return null;
-    const rooms = inRoomsAt(map, x, y, SHOPBASE);
+    const rooms = in_rooms(map, x, y, SHOPBASE);
     for (const r of rooms) {
         const shkp = shop_keeper(map, r);
         if (shkp) return shkp;
@@ -2183,7 +2183,7 @@ export {
     insideShop as inside_shop,
     shop_keeper,
     findShopkeeper,
-    inRoomsAt,
+    in_rooms,
     get_cost,
     set_cost,
     get_pricing_units,

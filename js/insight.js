@@ -1326,7 +1326,7 @@ export async function list_vanquished(defquery, ask, game) {
                 const article = /^[aeiou]/i.test(mname) ? 'an' : 'a';
                 buf = `  ${article} ${mname}`;
             } else {
-                buf = `${String(nkilled).padStart(3)} ${makeplural_simple(mname)}`;
+                buf = `${String(nkilled).padStart(3)} ${makeplural(mname)}`;
             }
         }
         lines.push(buf);
@@ -1397,7 +1397,7 @@ function vanqsort_cmp(indx1, indx2, sortmode, mvitals) {
 }
 
 // Simple pluralization helper (for vanquished names)
-function makeplural_simple(word) {
+function makeplural(word) {
     if (!word) return 's';
     if (/(s|x|z|ch|sh)$/i.test(word)) return word + 'es';
     if (/[^aeiou]y$/i.test(word)) return word.slice(0, -1) + 'ies';
@@ -1504,7 +1504,7 @@ export async function list_genocided(defquery, ask, game) {
 
     for (const mndx of mindx) {
         const mname = (mons[mndx] && mons[mndx].name) || `monster #${mndx}`;
-        let buf = ` ${makeplural_simple(mname)}`;
+        let buf = ` ${makeplural(mname)}`;
         if (mvitals[mndx] && (mvitals[mndx].mvflags & G_GONE) === G_EXTINCT)
             buf += ' (extinct)';
         lines.push(buf);

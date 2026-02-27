@@ -1041,7 +1041,7 @@ export function hold_another_object(obj, player, drop_fmt, drop_arg, hold_msg) {
 
 // C ref: invent.c useupall() — consume entire stack of an object
 export function useupall(obj, player) {
-    setnotworn_safe(obj, player);
+    setnotworn(obj, player);
     freeinv(obj, player);
 }
 
@@ -1295,8 +1295,8 @@ export function ckvalidcat(otmp) {
     return 1;
 }
 
-// C ref: invent.c ckunpaid() — check if object is unpaid
-export function ckunpaid(otmp) {
+// C ref: invent.c check_unpaid() — check if object is unpaid
+export function check_unpaid(otmp) {
     return !!(otmp.unpaid || (otmp.cobj && count_unpaid(otmp.cobj)));
 }
 
@@ -1987,7 +1987,7 @@ export function perm_invent_toggled() {}
 // ============================================================
 
 // Helper: safely un-wear an object
-function setnotworn_safe(obj, player) {
+function setnotworn(obj, player) {
     if (!player) return;
     if (obj === player.weapon) player.weapon = null;
     if (obj === player.armor) player.armor = null;

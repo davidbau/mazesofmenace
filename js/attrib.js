@@ -278,7 +278,7 @@ function Fixed_abil(player) {
 }
 
 // C: Upolyd
-function isUpolyd(player) {
+function Upolyd(player) {
     return !!(player.Upolyd || (player.mtimedone && player.mtimedone > 0));
 }
 
@@ -305,7 +305,7 @@ function encumber_msg(_player) {
 // Stub for losehp
 function losehp(player, dmg, knam, _k_format) {
     if (!player) return;
-    if (isUpolyd(player)) {
+    if (Upolyd(player)) {
         player.mh = (player.mh || 0) - dmg;
     } else {
         player.uhp -= dmg;
@@ -488,7 +488,7 @@ export function gainstr(otmp, incr, givemsg) {
 export function losestr(player, num, knam, k_format) {
     const uhpmin = minuhpmax(player, 1);
     let ustr = ABASE(player, A_STR) - num;
-    const waspolyd = isUpolyd(player);
+    const waspolyd = Upolyd(player);
     let dmg = 0;
 
     if (num <= 0 || ABASE(player, A_STR) < ATTRMIN(player, A_STR)) {
@@ -508,7 +508,7 @@ export function losestr(player, num, knam, k_format) {
         }
         losehp(player, dmg, knam, k_format);
 
-        if (isUpolyd(player)) {
+        if (Upolyd(player)) {
             setuhpmax(player, Math.max((player.mhmax || 1) - dmg, 1), false);
         } else if (!waspolyd) {
             if ((player.uhpmax || 1) > uhpmin)
@@ -516,7 +516,7 @@ export function losestr(player, num, knam, k_format) {
         }
     }
 
-    if (num > 0 && (isUpolyd(player) || !waspolyd))
+    if (num > 0 && (Upolyd(player) || !waspolyd))
         adjattrib(player, A_STR, -num, 1);
 }
 
@@ -669,7 +669,7 @@ export function restore_attrib(player) {
 // This version is the faithful C port for use when full attribute mutation is needed.
 export function exercise(player, i, inc_or_dec) {
     if (i === A_INT || i === A_CHA) return;
-    if (isUpolyd(player) && i !== A_WIS) return;
+    if (Upolyd(player) && i !== A_WIS) return;
 
     if (Math.abs(AEXE(player, i)) < AVAL) {
         if (inc_or_dec) {
@@ -785,7 +785,7 @@ export function exerchk(player) {
                 setAEXE(player, i, Math.floor(Math.abs(ax) / 2) * mod_val);
                 continue;
             }
-            if (isUpolyd(player) && i !== A_WIS) {
+            if (Upolyd(player) && i !== A_WIS) {
                 setAEXE(player, i, Math.floor(Math.abs(ax) / 2) * mod_val);
                 continue;
             }
@@ -1139,7 +1139,7 @@ export function minuhpmax(player, altmin) {
 
 // cf. attrib.c:1154 — setuhpmax(newmax, even_when_polyd)
 export function setuhpmax(player, newmax, even_when_polyd) {
-    if (!isUpolyd(player) || even_when_polyd) {
+    if (!Upolyd(player) || even_when_polyd) {
         if (newmax !== (player.uhpmax || 0)) {
             player.uhpmax = newmax;
             if (player.uhpmax > (player.uhppeak || 0))
@@ -1159,7 +1159,7 @@ export function setuhpmax(player, newmax, even_when_polyd) {
 
 // cf. attrib.c:1179 — adjuhploss(loss, olduhp)
 export function adjuhploss(player, loss, olduhp) {
-    if (!isUpolyd(player)) {
+    if (!Upolyd(player)) {
         if (player.uhp < olduhp)
             loss -= (olduhp - player.uhp);
     } else {

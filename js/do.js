@@ -94,7 +94,7 @@ export function canletgo(obj, word, player) {
         if (word) {
             let hand = body_part(HAND, player);
             if (obj.bimanual)
-                hand = makeplural_simple(hand);
+                hand = makeplural(hand);
             Norep("You cannot %s %s welded to your %s.", word, "something", hand);
         }
         return false;
@@ -121,7 +121,7 @@ export function canletgo(obj, word, player) {
 }
 
 // Simple makeplural for body part strings
-function makeplural_simple(word) {
+function makeplural(word) {
     if (!word) return word;
     if (word.endsWith('s') || word.endsWith('x') || word.endsWith('z') ||
         word.endsWith('sh') || word.endsWith('ch'))
@@ -1377,7 +1377,7 @@ export function legs_in_no_shape(for_what, by_steed, player) {
         const wl = (player.eWoundedLegs || 0) & BOTH_SIDES;
         let bp = body_part(LEG, player);
         if (wl === BOTH_SIDES)
-            bp = makeplural_simple(bp);
+            bp = makeplural(bp);
         Your("%s%s %s in no shape for %s.",
              (wl === LEFT_SIDE) ? "left " : (wl === RIGHT_SIDE) ? "right " : "",
              bp, (wl === BOTH_SIDES) ? "are" : "is", for_what);
@@ -1421,7 +1421,7 @@ export function heal_legs(how, player) {
             const wl = (player.eWoundedLegs || 0) & BOTH_SIDES;
             let legs = body_part(LEG, player);
             if (wl === BOTH_SIDES)
-                legs = makeplural_simple(legs);
+                legs = makeplural(legs);
             Your("%s %s better.", legs, (wl === BOTH_SIDES) ? "feel" : "feels");
         }
 
