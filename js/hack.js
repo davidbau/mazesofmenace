@@ -285,12 +285,23 @@ export function moverock_core(sx, sy, dx, dy, player, map, display, game) {
 
 // C ref: hack.c moverock()
 // Autotranslated from hack.c:336
-export function moverock(player) {
-  let sx, sy, ret;
-  sx = player.x + player.dx, sy = player.y + player.dy;
-  ret = moverock_core(sx, sy);
-  moverock_done(sx, sy);
-  return ret;
+export function moverock(a0, a1, a2, a3, a4, a5, a6, a7) {
+    // Runtime call path uses explicit coords/dir:
+    // moverock(sx, sy, dx, dy, player, map, display, game)
+    if (typeof a0 === 'number') {
+        const sx = a0, sy = a1, dx = a2, dy = a3;
+        const player = a4, map = a5, display = a6, game = a7;
+        const ret = moverock_core(sx, sy, dx, dy, player, map, display, game);
+        moverock_done(sx, sy, map);
+        return ret;
+    }
+    // C-style wrapper fallback:
+    // moverock(player, map, display, game) uses player.dx/player.dy.
+    const player = a0, map = a1, display = a2, game = a3;
+    const sx = player.x + player.dx, sy = player.y + player.dy;
+    const ret = moverock_core(sx, sy, player.dx, player.dy, player, map, display, game);
+    moverock_done(sx, sy, map);
+    return ret;
 }
 
 // C ref: hack.c cant_squeeze_thru()
