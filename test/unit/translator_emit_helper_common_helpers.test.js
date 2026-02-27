@@ -50,7 +50,7 @@ test('emit-helper lowers Sprintf/Snprintf and string helpers', (t) => {
 
     const fmtAppend = emitHelper('fmt_append');
     assert.equal(fmtAppend.meta.translated, true);
-    assert.match(fmtAppend.js, /buf = String\(buf \?\? ''\) \+ __fmt;/);
+    assert.match(fmtAppend.js, /buf = \(buf \?\? ''\) \+ __fmt;/);
     assert.doesNotMatch(fmtAppend.js, /\beos\s*\(/);
 
     const fmtBound = emitHelper('fmt_bound');
@@ -60,13 +60,13 @@ test('emit-helper lowers Sprintf/Snprintf and string helpers', (t) => {
 
     const strOps = emitHelper('str_ops');
     assert.equal(strOps.meta.translated, true);
-    assert.match(strOps.js, /buf = String\(src \?\? ''\);/);
-    assert.match(strOps.js, /buf = String\(buf \?\? ''\) \+ String\("!" \?\? ''\);/);
-    assert.match(strOps.js, /buf = String\(src \?\? ''\)\.slice\(0, Math\.max\(0, Number\(3\)\)\);/);
+    assert.match(strOps.js, /buf = \(src \?\? ''\);/);
+    assert.match(strOps.js, /buf = \(buf \?\? ''\) \+ \("!" \?\? ''\);/);
+    assert.match(strOps.js, /buf = \(src \?\? ''\)\.slice\(0, Math\.max\(0, Number\(3\)\)\);/);
 
     const convOps = emitHelper('conv_ops');
     assert.equal(convOps.meta.translated, true);
-    assert.match(convOps.js, /String\(s\)\.length/);
+    assert.match(convOps.js, /\(s \?\? ''\)\.length/);
     assert.match(convOps.js, /Number\.parseInt\(s, 10\)/);
     assert.match(convOps.js, /Math\.abs\(x\)/);
     assert.match(convOps.js, /toLowerCase\(\)\.localeCompare/);

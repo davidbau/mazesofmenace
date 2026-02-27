@@ -940,7 +940,7 @@ def _lower_known_helper_stmt(stmt, rewrite_rules):
             if target is None:
                 return None, set()
             required.update(req2)
-            return f"{{ const __fmt = {formatted}; {target} = String({target} ?? '') + __fmt; }}", required
+            return f"{{ const __fmt = {formatted}; {target} = ({target} ?? '') + __fmt; }}", required
         return f"{{ const __fmt = {formatted}; {dst} = __fmt; }}", required
 
     if name in {"Snprintf", "snprintf"}:
@@ -957,17 +957,17 @@ def _lower_known_helper_stmt(stmt, rewrite_rules):
             if target is None:
                 return None, set()
             required.update(req2)
-            return f"{{ const __fmt = {bounded}; {target} = String({target} ?? '') + __fmt; }}", required
+            return f"{{ const __fmt = {bounded}; {target} = ({target} ?? '') + __fmt; }}", required
         return f"{{ const __fmt = {bounded}; {dst} = __fmt; }}", required
 
     if name in {"Strcpy", "strcpy"} and len(lowered_args) >= 2:
-        return f"{lowered_args[0]} = String({lowered_args[1]} ?? '')", required
+        return f"{lowered_args[0]} = ({lowered_args[1]} ?? '')", required
     if name in {"Strcat", "strcat"} and len(lowered_args) >= 2:
         dst = lowered_args[0]
-        return f"{dst} = String({dst} ?? '') + String({lowered_args[1]} ?? '')", required
+        return f"{dst} = ({dst} ?? '') + ({lowered_args[1]} ?? '')", required
     if name in {"Strncpy", "strncpy"} and len(lowered_args) >= 3:
         return (
-            f"{lowered_args[0]} = String({lowered_args[1]} ?? '').slice(0, Math.max(0, Number({lowered_args[2]})))"
+            f"{lowered_args[0]} = ({lowered_args[1]} ?? '').slice(0, Math.max(0, Number({lowered_args[2]})))"
         ), required
     return None, set()
 
@@ -1053,7 +1053,7 @@ def _lower_expr(expr, rewrite_rules):
     out = re.sub(r"\bmax\s*\(", "Math.max(", out)
     out = re.sub(r"\bmin\s*\(", "Math.min(", out)
     out = re.sub(r"\babs\s*\(", "Math.abs(", out)
-    out = re.sub(r"\bstrlen\s*\(\s*([^()]+?)\s*\)", r"String(\1).length", out)
+    out = re.sub(r"\bstrlen\s*\(\s*([^()]+?)\s*\)", r"(\1 ?? '').length", out)
     out = re.sub(r"\batoi\s*\(\s*([^()]+?)\s*\)", r"Number.parseInt(\1, 10)", out)
     out = re.sub(
         r"\bstrcmpi\s*\(\s*([^(),]+?)\s*,\s*([^()]+?)\s*\)",
