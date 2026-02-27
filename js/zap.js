@@ -2305,7 +2305,7 @@ export function spell_hit_bonus(skill, player) {
 export function spell_damage_bonus(dmg, player) {
   let out = Number(dmg || 0);
   const intell = (player?.attributes?.[A_INT] || 10);
-  const level = player?.level || 1;
+  const level = player?.ulevel ?? player?.level ?? 1;
   if (intell <= 9) {
     if (out > 1) out = (out <= 3) ? 1 : out - 3;
   } else if (intell <= 13 || level < 5) {

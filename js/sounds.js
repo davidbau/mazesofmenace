@@ -444,7 +444,7 @@ export function growl(mtmp, game) {
         // C: vtense — add "s" for 3rd person singular
         const verbed = verb.endsWith('s') ? `${verb}es` : `${verb}s`;
         game.display.putstr_message(`${name} ${verbed}!`);
-        wake_nearto(mtmp.x, mtmp.y, (mtmp.type.level || 0) * 18, (game.lev || game.map));
+        wake_nearto(mtmp.x, mtmp.y, (mtmp.type.mlevel || 0) * 18, (game.lev || game.map));
     }
 }
 
@@ -487,7 +487,7 @@ export function yelp(mtmp, game) {
         const name = monDisplayName(mtmp);
         const verbed = verb.endsWith('s') ? `${verb}es` : `${verb}s`;
         game.display.putstr_message(`${name} ${verbed}!`);
-        wake_nearto(mtmp.x, mtmp.y, (mtmp.type.level || 0) * 12, (game.lev || game.map));
+        wake_nearto(mtmp.x, mtmp.y, (mtmp.type.mlevel || 0) * 12, (game.lev || game.map));
     }
 }
 
@@ -521,7 +521,7 @@ export function whimper(mtmp, game) {
         const name = monDisplayName(mtmp);
         const verbed = verb.endsWith('s') ? `${verb}es` : `${verb}s`;
         game.display.putstr_message(`${name} ${verbed}.`);
-        wake_nearto(mtmp.x, mtmp.y, (mtmp.type.level || 0) * 6, (game.lev || game.map));
+        wake_nearto(mtmp.x, mtmp.y, (mtmp.type.mlevel || 0) * 6, (game.lev || game.map));
     }
 }
 
