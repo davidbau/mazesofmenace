@@ -1,7 +1,7 @@
 {
   "input": {
-    "apply_summary": "/tmp/translator-runtime-stitch-apply-gapwave2-fix6b.json",
-    "safety": "/tmp/translator-runtime-stitch-safety-gapwave2-fix6.json"
+    "apply_summary": "/tmp/translator-runtime-stitch-apply-gapwave2-fix7.json",
+    "safety": "/tmp/translator-runtime-stitch-safety-gapwave2-fix7.json"
   },
   "tasks": [
     {
@@ -161,14 +161,6 @@
       "function": "snuff_candle",
       "js_module": "js/apply.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__snuff_candle.json",
-      "source": "nethack-c/src/apply.c"
-    },
-    {
-      "detail": "Is_candle",
-      "function": "snuff_candle",
-      "js_module": "js/apply.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__snuff_candle.json",
       "source": "nethack-c/src/apply.c"
     },
@@ -661,26 +653,10 @@
       "source": "nethack-c/src/attrib.c"
     },
     {
-      "detail": "ACURR",
-      "function": "restore_attrib",
-      "js_module": "js/attrib.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix6/attrib__restore_attrib.json",
-      "source": "nethack-c/src/attrib.c"
-    },
-    {
       "detail": "ACURR->acurr",
       "function": "acurrstr",
       "js_module": "js/attrib.js",
       "kind": "rename_alias",
-      "out_file": "/tmp/translator-batch-gapwave2-fix6/attrib__acurrstr.json",
-      "source": "nethack-c/src/attrib.c"
-    },
-    {
-      "detail": "ACURR",
-      "function": "acurrstr",
-      "js_module": "js/attrib.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix6/attrib__acurrstr.json",
       "source": "nethack-c/src/attrib.c"
     },
@@ -773,6 +749,14 @@
       "source": "nethack-c/src/detect.c"
     },
     {
+      "detail": "openone->openone_fn",
+      "function": "openit",
+      "js_module": "js/detect.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/detect__openit.json",
+      "source": "nethack-c/src/detect.c"
+    },
+    {
       "detail": "Blind",
       "function": "openit",
       "js_module": "js/detect.js",
@@ -798,14 +782,6 @@
     },
     {
       "detail": "expels",
-      "function": "openit",
-      "js_module": "js/detect.js",
-      "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix6/detect__openit.json",
-      "source": "nethack-c/src/detect.c"
-    },
-    {
-      "detail": "openone",
       "function": "openit",
       "js_module": "js/detect.js",
       "kind": "add_missing_identifier",
@@ -957,6 +933,14 @@
       "source": "nethack-c/src/detect.c"
     },
     {
+      "detail": "map_background->magic_map_background",
+      "function": "premap_detect",
+      "js_module": "js/detect.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/detect__premap_detect.json",
+      "source": "nethack-c/src/detect.c"
+    },
+    {
       "detail": "SVALL",
       "function": "premap_detect",
       "js_module": "js/detect.js",
@@ -973,23 +957,15 @@
       "source": "nethack-c/src/detect.c"
     },
     {
-      "detail": "map_background",
-      "function": "premap_detect",
-      "js_module": "js/detect.js",
-      "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix6/detect__premap_detect.json",
-      "source": "nethack-c/src/detect.c"
-    },
-    {
-      "detail": "Blind",
+      "detail": "Doname2->doname",
       "function": "doaltarobj",
       "js_module": "js/do.js",
-      "kind": "add_missing_identifier",
+      "kind": "rename_alias",
       "out_file": "/tmp/translator-batch-gapwave2-fix6/do__doaltarobj.json",
       "source": "nethack-c/src/do.c"
     },
     {
-      "detail": "Doname2",
+      "detail": "Blind",
       "function": "doaltarobj",
       "js_module": "js/do.js",
       "kind": "add_missing_identifier",
@@ -1077,6 +1053,14 @@
       "source": "nethack-c/src/do.c"
     },
     {
+      "detail": "pline1->pline",
+      "function": "currentlevel_rewrite",
+      "js_module": "js/do.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__currentlevel_rewrite.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
       "detail": "create_levelfile",
       "function": "currentlevel_rewrite",
       "js_module": "js/do.js",
@@ -1101,11 +1085,11 @@
       "source": "nethack-c/src/do.c"
     },
     {
-      "detail": "pline1",
-      "function": "currentlevel_rewrite",
+      "detail": "pline1->pline",
+      "function": "familiar_level_msg",
       "js_module": "js/do.js",
-      "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__currentlevel_rewrite.json",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__familiar_level_msg.json",
       "source": "nethack-c/src/do.c"
     },
     {
@@ -1126,14 +1110,6 @@
     },
     {
       "detail": "Sprintf",
-      "function": "familiar_level_msg",
-      "js_module": "js/do.js",
-      "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__familiar_level_msg.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "pline1",
       "function": "familiar_level_msg",
       "js_module": "js/do.js",
       "kind": "add_missing_identifier",
@@ -1229,6 +1205,14 @@
       "source": "nethack-c/src/do.c"
     },
     {
+      "detail": "pline1->pline",
+      "function": "deferred_goto",
+      "js_module": "js/do.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__deferred_goto.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
       "detail": "UTOTYPE_ATSTAIRS",
       "function": "deferred_goto",
       "js_module": "js/do.js",
@@ -1294,14 +1278,6 @@
     },
     {
       "detail": "on_level",
-      "function": "deferred_goto",
-      "js_module": "js/do.js",
-      "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__deferred_goto.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "pline1",
       "function": "deferred_goto",
       "js_module": "js/do.js",
       "kind": "add_missing_identifier",
@@ -1541,6 +1517,14 @@
       "source": "nethack-c/src/do.c"
     },
     {
+      "detail": "makeplural->makeplural_simple",
+      "function": "legs_in_no_shape",
+      "js_module": "js/do.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__legs_in_no_shape.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
       "detail": "EWounded_legs",
       "function": "legs_in_no_shape",
       "js_module": "js/do.js",
@@ -1550,14 +1534,6 @@
     },
     {
       "detail": "Monnam",
-      "function": "legs_in_no_shape",
-      "js_module": "js/do.js",
-      "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__legs_in_no_shape.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "makeplural",
       "function": "legs_in_no_shape",
       "js_module": "js/do.js",
       "kind": "add_missing_identifier",
@@ -1621,6 +1597,14 @@
       "source": "nethack-c/src/do.c"
     },
     {
+      "detail": "makeplural->makeplural_simple",
+      "function": "heal_legs",
+      "js_module": "js/do.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__heal_legs.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
       "detail": "ATEMP",
       "function": "heal_legs",
       "js_module": "js/do.js",
@@ -1654,14 +1638,6 @@
     },
     {
       "detail": "encumber_msg",
-      "function": "heal_legs",
-      "js_module": "js/do.js",
-      "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__heal_legs.json",
-      "source": "nethack-c/src/do.c"
-    },
-    {
-      "detail": "makeplural",
       "function": "heal_legs",
       "js_module": "js/do.js",
       "kind": "add_missing_identifier",
@@ -2061,6 +2037,14 @@
       "source": "nethack-c/src/fountain.c"
     },
     {
+      "detail": "setnotworn->setnotworn_safe",
+      "function": "merged",
+      "js_module": "js/invent.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__merged.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
       "detail": "Is_pudding",
       "function": "merged",
       "js_module": "js/invent.js",
@@ -2214,14 +2198,6 @@
     },
     {
       "detail": "pudding_merge_message",
-      "function": "merged",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__merged.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "setnotworn",
       "function": "merged",
       "js_module": "js/invent.js",
       "kind": "add_missing_identifier",
@@ -2421,14 +2397,6 @@
       "source": "nethack-c/src/invent.c"
     },
     {
-      "detail": "observe_object",
-      "function": "addinv_core2",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__addinv_core2.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
       "detail": "addinv_core0",
       "function": "addinv",
       "js_module": "js/invent.js",
@@ -2461,10 +2429,10 @@
       "source": "nethack-c/src/invent.c"
     },
     {
-      "detail": "check_unpaid",
+      "detail": "check_unpaid->ckunpaid",
       "function": "consume_obj_charge",
       "js_module": "js/invent.js",
-      "kind": "add_missing_identifier",
+      "kind": "rename_alias",
       "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__consume_obj_charge.json",
       "source": "nethack-c/src/invent.c"
     },
@@ -2729,14 +2697,6 @@
       "function": "fully_identify_obj",
       "js_module": "js/invent.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__fully_identify_obj.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "observe_object",
-      "function": "fully_identify_obj",
-      "js_module": "js/invent.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__fully_identify_obj.json",
       "source": "nethack-c/src/invent.c"
     },
@@ -3169,14 +3129,6 @@
       "function": "stumble_on_door_mimic",
       "js_module": "js/lock.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix6/lock__stumble_on_door_mimic.json",
-      "source": "nethack-c/src/lock.c"
-    },
-    {
-      "detail": "m_at",
-      "function": "stumble_on_door_mimic",
-      "js_module": "js/lock.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix6/lock__stumble_on_door_mimic.json",
       "source": "nethack-c/src/lock.c"
     },
@@ -3889,14 +3841,6 @@
       "function": "shopper_financial_report",
       "js_module": "js/shk.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__shopper_financial_report.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "inside_shop",
-      "function": "shopper_financial_report",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__shopper_financial_report.json",
       "source": "nethack-c/src/shk.c"
     },
@@ -4661,14 +4605,6 @@
       "source": "nethack-c/src/shk.c"
     },
     {
-      "detail": "inside_shop",
-      "function": "shkcatch",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
-      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__shkcatch.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
       "detail": "ESHK",
       "function": "shk_impaired",
       "js_module": "js/shk.js",
@@ -4769,14 +4705,6 @@
       "function": "price_quote",
       "js_module": "js/shk.js",
       "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__price_quote.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "inside_shop",
-      "function": "price_quote",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_call_binding",
       "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__price_quote.json",
       "source": "nethack-c/src/shk.c"
     },
@@ -5029,6 +4957,14 @@
       "source": "nethack-c/src/spell.c"
     },
     {
+      "detail": "pline1->pline",
+      "function": "getspell",
+      "js_module": "js/spell.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__getspell.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
       "detail": "CMDQ_KEY",
       "function": "getspell",
       "js_module": "js/spell.js",
@@ -5086,14 +5022,6 @@
     },
     {
       "detail": "dospellmenu",
-      "function": "getspell",
-      "js_module": "js/spell.js",
-      "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__getspell.json",
-      "source": "nethack-c/src/spell.c"
-    },
-    {
-      "detail": "pline1",
       "function": "getspell",
       "js_module": "js/spell.js",
       "kind": "add_missing_identifier",
@@ -5751,27 +5679,27 @@
   ],
   "totals": {
     "by_kind": {
-      "add_missing_call_binding": 16,
-      "add_missing_identifier": 691,
-      "rename_alias": 11
+      "add_missing_call_binding": 7,
+      "add_missing_identifier": 680,
+      "rename_alias": 22
     },
     "by_module": {
-      "js/apply.js": 72,
-      "js/attrib.js": 15,
+      "js/apply.js": 71,
+      "js/attrib.js": 13,
       "js/bones.js": 8,
       "js/detect.js": 27,
       "js/do.js": 87,
       "js/engrave.js": 25,
       "js/exper.js": 1,
       "js/fountain.js": 22,
-      "js/invent.js": 122,
-      "js/lock.js": 18,
+      "js/invent.js": 120,
+      "js/lock.js": 17,
       "js/mkobj.js": 78,
-      "js/shk.js": 137,
+      "js/shk.js": 134,
       "js/sounds.js": 12,
       "js/spell.js": 61,
       "js/steal.js": 33
     },
-    "tasks": 718
+    "tasks": 709
   }
 }

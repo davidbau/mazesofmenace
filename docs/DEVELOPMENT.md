@@ -128,6 +128,8 @@ conda run -n base python tools/c_translator/refactor_queue.py \
 Notes:
 - `runtime_candidate_safety.py` now auto-detects strict alias matches where a
   C identifier differs only by case/underscore from an existing module symbol.
+- It also consumes curated non-mechanical alias rules from
+  `tools/c_translator/rulesets/identifier_aliases.json`.
 - `refactor_queue.py` emits these as `rename_alias` tasks so we can prioritize
   canonical renames separately from true missing identifiers.
 

@@ -1,25 +1,25 @@
 # Translator Refactor Queue (2026-02-27)
 
-Generated from `/tmp/translator-refactor-queue-gapwave2-fix6b.json` after safety+stitch dry-run.
+Generated from `/tmp/translator-refactor-queue-gapwave2-fix8.json` after safety+stitch dry-run.
 
-- Total tasks: 718
-- add_missing_call_binding: 16
-- add_missing_identifier: 691
-- rename_alias: 11
+- Total tasks: 709
+- add_missing_call_binding: 7
+- add_missing_identifier: 680
+- rename_alias: 22
 
 ## Top Modules
-- `js/shk.js`: 137
-- `js/invent.js`: 122
+- `js/shk.js`: 134
+- `js/invent.js`: 120
 - `js/do.js`: 87
 - `js/mkobj.js`: 78
-- `js/apply.js`: 72
+- `js/apply.js`: 71
 - `js/spell.js`: 61
 - `js/steal.js`: 33
 - `js/detect.js`: 27
 - `js/engrave.js`: 25
 - `js/fountain.js`: 22
-- `js/lock.js`: 18
-- `js/attrib.js`: 15
+- `js/lock.js`: 17
+- `js/attrib.js`: 13
 - `js/sounds.js`: 12
 - `js/bones.js`: 8
 - `js/exper.js`: 1
@@ -29,13 +29,24 @@ Generated from `/tmp/translator-refactor-queue-gapwave2-fix6b.json` after safety
 - `js/attrib.js::restore_attrib`: `ACURR->acurr`
 - `js/attrib.js::restore_attrib`: `A_MAX->AMAX`
 - `js/attrib.js::acurrstr`: `ACURR->acurr`
+- `js/detect.js::openit`: `openone->openone_fn`
+- `js/detect.js::premap_detect`: `map_background->magic_map_background`
+- `js/do.js::doaltarobj`: `Doname2->doname`
+- `js/do.js::currentlevel_rewrite`: `pline1->pline`
+- `js/do.js::familiar_level_msg`: `pline1->pline`
+- `js/do.js::deferred_goto`: `pline1->pline`
 - `js/do.js::revive_mon`: `REVIVE_MON->revive_mon`
+- `js/do.js::legs_in_no_shape`: `makeplural->makeplural_simple`
+- `js/do.js::heal_legs`: `makeplural->makeplural_simple`
+- `js/invent.js::merged`: `setnotworn->setnotworn_safe`
 - `js/invent.js::addinv_core2`: `observe_object->observeObject`
+- `js/invent.js::consume_obj_charge`: `check_unpaid->ckunpaid`
 - `js/invent.js::fully_identify_obj`: `observe_object->observeObject`
 - `js/lock.js::stumble_on_door_mimic`: `m_at->mat`
 - `js/shk.js::shopper_financial_report`: `inside_shop->insideShop`
 - `js/shk.js::shkcatch`: `inside_shop->insideShop`
 - `js/shk.js::price_quote`: `inside_shop->insideShop`
+- `js/spell.js::getspell`: `pline1->pline`
 
 ## First Actionable Slice
 - `add_missing_identifier` js/apply.js::do_blinding_ray (FLASHED_LIGHT)
@@ -58,8 +69,8 @@ Generated from `/tmp/translator-refactor-queue-gapwave2-fix6b.json` after safety
 - `add_missing_identifier` js/apply.js::snuff_candle (Shk_Your)
 - `add_missing_identifier` js/apply.js::snuff_candle (cansee)
 - `add_missing_identifier` js/apply.js::snuff_candle (get_obj_location)
-- `add_missing_call_binding` js/apply.js::snuff_candle (Is_candle)
 - `add_missing_identifier` js/apply.js::splash_lit (Blind)
 - `add_missing_identifier` js/apply.js::splash_lit (Deaf)
 - `add_missing_identifier` js/apply.js::splash_lit (Flying)
 - `add_missing_identifier` js/apply.js::splash_lit (Is_waterlevel)
+- `add_missing_identifier` js/apply.js::splash_lit (Levitation)

@@ -60,6 +60,25 @@ def parse_args():
     return p.parse_args()
 
 
+def load_identifier_aliases():
+    path = Path("tools/c_translator/rulesets/identifier_aliases.json")
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    out = {}
+    for rec in data.get("aliases", []):
+        module = rec.get("module")
+        src = rec.get("from")
+        dst = rec.get("to")
+        if not (isinstance(module, str) and isinstance(src, str) and isinstance(dst, str)):
+            continue
+        out.setdefault(module, {})[src] = dst
+    return out
+
+
 def parse_module_symbols(js_text):
     syms = set(EXPORT_FN_RE.findall(js_text))
     syms.update(LOCAL_FN_RE.findall(js_text))
@@ -201,13 +220,16 @@ def sanitize_code_for_identifier_scan(text):
     return "".join(out)
 
 
-def candidate_unknown_identifiers(emitted_js, known_syms):
+def candidate_unknown_identifiers(emitted_js, known_syms, js_module, alias_map):
     known = set(known_syms)
     known.update(JS_KEYWORDS)
     known.update(C_NONSYMBOL_TOKENS)
     known.update(extract_emitted_locals(emitted_js))
     unknown = set()
     alias_candidates = {}
+    module_aliases = {}
+    module_aliases.update(alias_map.get("*", {}))
+    module_aliases.update(alias_map.get(js_module, {}))
     norm_index = {}
     for sym in known_syms:
         key = re.sub(r"[_\W]+", "", sym).lower()
@@ -230,6 +252,9 @@ def candidate_unknown_identifiers(emitted_js, known_syms):
         if j < n and scan_text[j] == ":":
             continue
         if name in known:
+            continue
+        if name in module_aliases and module_aliases[name] in known_syms:
+            alias_candidates[name] = module_aliases[name]
             continue
         nkey = re.sub(r"[_\W]+", "", name).lower()
         matches = norm_index.get(nkey, set())
@@ -293,6 +318,7 @@ def main():
     args = parse_args()
     repo = Path(args.repo_root)
     cand = json.loads(Path(args.candidates).read_text(encoding="utf-8"))
+    alias_map = load_identifier_aliases()
 
     safe = []
     unsafe = []
@@ -317,7 +343,12 @@ def main():
         payload = json.loads(Path(out_file).read_text(encoding="utf-8"))
         emitted_js = payload.get("js", "")
         unknown = candidate_unknown_calls(emitted_js, known_syms)
-        unknown_idents, alias_candidates = candidate_unknown_identifiers(emitted_js, known_syms)
+        unknown_idents, alias_candidates = candidate_unknown_identifiers(
+            emitted_js,
+            known_syms,
+            js_module,
+            alias_map,
+        )
         syntax_ok, syntax_error = candidate_syntax_ok(emitted_js)
         out_rec = {
             **rec,

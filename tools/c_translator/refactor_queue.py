@@ -38,6 +38,7 @@ def main():
         out_file = rec.get("out_file")
         unknown_identifiers = set(rec.get("unknown_identifiers", []))
         alias_candidates = rec.get("alias_candidates", {}) or {}
+        alias_sources = set(alias_candidates.keys())
         for src, dst in sorted(alias_candidates.items()):
             add_task(tasks, dedupe, {
                 "kind": "rename_alias",
@@ -59,7 +60,7 @@ def main():
         for call in sorted(set(rec.get("unknown_calls", []))):
             # If a symbol is already unresolved as an identifier for this function,
             # the call-binding task is redundant noise in the queue.
-            if call in unknown_identifiers:
+            if call in unknown_identifiers or call in alias_sources:
                 continue
             add_task(tasks, dedupe, {
                 "kind": "add_missing_call_binding",
