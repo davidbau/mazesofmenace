@@ -69,10 +69,13 @@ let _luathemesLoaded = false;
 let _specialThemesLoaded = false;
 
 // C ref: mklev.c mkroom_cmp() — sort rooms by lx only
-export function mkroom_cmp(a, b) {
-    if (a.lx < b.lx) return -1;
-    if (a.lx > b.lx) return 1;
-    return 0;
+// TRANSLATOR: AUTO (mklev.c:60)
+export function mkroom_cmp(vx, vy) {
+  let x, y;
+  x =  vx;
+  y =  vy;
+  if (x.lx < y.lx) return -1;
+  return (x.lx > y.lx);
 }
 
 // C ref: mklev.c sort_rooms()

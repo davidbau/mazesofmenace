@@ -312,6 +312,7 @@ export function weapon_dam_bonus(weapon) {
 // ============================================================================
 // weapon_type — cf. weapon.c:1512
 // ============================================================================
+// TRANSLATOR: AUTO (weapon.c:1511)
 export function weapon_type(obj) {
     if (!obj) return P_BARE_HANDED_COMBAT;
     const od = objectData[obj.otyp];
@@ -319,7 +320,7 @@ export function weapon_type(obj) {
     if (od.oc_class !== WEAPON_CLASS && od.oc_class !== TOOL_CLASS
         && od.oc_class !== GEM_CLASS)
         return P_NONE;
-    const skill = od.sub || 0;  // oc_skill mapped to sub
+    const skill = od.sub || 0; // mapped from C oc_skill
     return skill < 0 ? -skill : skill;
 }
 
@@ -893,6 +894,8 @@ export function give_may_advance_msg(display = null) {
 }
 
 // C ref: weapon.c uwep_skill_type().
-export function uwep_skill_type(uwep = null) {
-    return weapon_type(uwep);
+// TRANSLATOR: AUTO (weapon.c:1526)
+export function uwep_skill_type(player = null) {
+  if (player?.twoweap) return P_TWO_WEAPON_COMBAT;
+  return weapon_type(player?.weapon || null);
 }
