@@ -790,7 +790,7 @@ function newman(player) {
     if (!player) return;
 
     const MAXULEV = 30;
-    const oldlvl = player.ulevel || player.level || 1;
+    const oldlvl = player.ulevel || 1;
     let newlvl = oldlvl + rn1(5, -2); // new = old + {-2,-1,0,+1,+2}
 
     if (newlvl > 127 || newlvl < 1) {
@@ -810,7 +810,7 @@ function newman(player) {
     if ((player.ulevelmax || 0) < newlvl)
         player.ulevelmax = newlvl;
     player.ulevel = newlvl;
-    if (player.level !== undefined) player.level = newlvl;
+    if (player.ulevel !== undefined) player.ulevel = newlvl;
 
     const oldgend = poly_gender(player);
     // sex_change_ok is set by caller (polyself)
@@ -885,7 +885,7 @@ function newman(player) {
     player.uenmax = enmax;
 
     player.ulevel = newlvl;
-    if (player.level !== undefined) player.level = newlvl;
+    if (player.ulevel !== undefined) player.ulevel = newlvl;
 
     player.uhunger = rn1(500, 500);
     // Clear sickness and stoning
@@ -1919,7 +1919,7 @@ export function dogaze(player, map) {
                 // RNG: d(2,6) for fire damage, rn2(20) for item destroy chance
                 let dmg = d(2, 6);
                 const orig_dmg = dmg;
-                const lev = player.ulevel || player.level || 1;
+                const lev = player.ulevel || 1;
 
                 You("attack %s with a fiery gaze!", mon_nam(mtmp));
                 if (resists_fire(mtmp)) {

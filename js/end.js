@@ -356,10 +356,10 @@ function savelife(how, game) {
     const player = (game.u || game.player);
     const givehp = 50 + 10 * Math.floor(player.attributes[A_CON] / 2);
 
-    if (player.level < 1) player.level = 1;
+    if (player.ulevel < 1) player.ulevel = 1;
     // C: uhpmin = minuhpmax(10) — ensure hpmax >= 10
-    if (player.hpmax < 10) player.hpmax = 10;
-    player.hp = Math.min(player.hpmax, givehp);
+    if (player.uhpmax < 10) player.uhpmax = 10;
+    player.uhp = Math.min(player.uhpmax, givehp);
 
     if (player.hunger < 500 || how === CHOKING) {
         player.hunger = 900;
@@ -408,8 +408,8 @@ export function done(how, game) {
 
     if (how < PANICKED) {
         player.umortality = (player.umortality || 0) + 1;
-        if (player.hp !== 0) {
-            player.hp = 0;
+        if (player.uhp !== 0) {
+            player.uhp = 0;
         }
     }
 

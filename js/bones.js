@@ -236,9 +236,9 @@ export function savebones(game) {
     if (ghost) {
         // C ref: bones.c:499-504 — override ghost stats with player-based values
         ghost.name = 'Ghost of ' + sanitize_name(player.name);
-        ghost.mhp = player.level * 10;
-        ghost.mhpmax = player.level * 10;
-        ghost.mlevel = player.level;
+        ghost.mhp = player.ulevel * 10;
+        ghost.mhpmax = player.ulevel * 10;
+        ghost.mlevel = player.ulevel;
         ghost.peaceful = false;
     }
 
@@ -247,8 +247,8 @@ export function savebones(game) {
         who: sanitize_name(player.name),
         when: Date.now(),
         frpg: player.roleName || 'Unknown',
-        hp: player.hp,
-        maxhp: player.hpmax,
+        hp: player.uhp,
+        maxhp: player.uhpmax,
         death: game.gameOverReason || 'killed',
     };
 
@@ -256,7 +256,7 @@ export function savebones(game) {
     const mapData = saveLev(map);
     mapData.isBones = true;
     saveBones(depth, mapData, player.name,
-              player.x, player.y, player.level, []);
+              player.x, player.y, player.ulevel, []);
 }
 
 // ========================================================================

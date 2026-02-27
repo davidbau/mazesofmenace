@@ -183,7 +183,7 @@ function cansee_pos(map, player, fov, x, y) {
 function is_lminion(mon) {
     if (!mon) return false;
     const ptr = mptr(mon);
-    if (ptr.symbol !== S_ANGEL) return false;
+    if (ptr.mlet !== S_ANGEL) return false;
     if (mon.isminion && mon.emin) return (mon.emin.min_align || 0) > 0;
     return (ptr.align || 0) > 0;
 }
@@ -738,8 +738,8 @@ export function nasty(summoner, map, player, display, fov) {
     const s_cls = summoner ? mptr(summoner).symbol : 0;
     let difcap = summoner ? (mptr(summoner).difficulty || 0) : 0;
     const castalign = summoner ? sgn(mptr(summoner).align || 0) : 0;
-    let tmp = ((player.level || 1) > 3)
-        ? Math.floor((player.level || 1) / 3) : 1;
+    let tmp = ((player.ulevel || 1) > 3)
+        ? Math.floor((player.ulevel || 1) / 3) : 1;
 
     const bypos = { x: player.x, y: player.y };
 
@@ -944,7 +944,7 @@ export function cuss(mtmp, map, player) {
         } else if (you_have(M3_WANTSAMUL, player) && !rn2(random_insult.length)) {
             // C: SetVoice(mtmp, 0, 80, 0);
             verbalize("Relinquish the amulet, %s!", ROLL_FROM(random_insult));
-        } else if ((player.uhp || player.hp || 0) < 5 && !rn2(2)) { // Panic
+        } else if ((player.uhp || 0) < 5 && !rn2(2)) { // Panic
             // C: SetVoice(mtmp, 0, 80, 0);
             verbalize(rn2(2) ? "Even now thy life force ebbs, %s!"
                              : "Savor thy breath, %s, it be thy last!",

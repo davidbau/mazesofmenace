@@ -340,7 +340,7 @@ export function mon_allowflags(mon) {
     }
 
     // C ref: mon.c:2070-2073 — can open doors (not nohands and not verysmall)
-    const verysmall = (ptr.size || 0) === MZ_TINY;
+    const verysmall = (ptr.msize || 0) === MZ_TINY;
     if (!nohands(ptr) && !verysmall) {
         flag |= OPENDOOR;
     }
@@ -377,7 +377,7 @@ export function mon_allowflags(mon) {
     }
 
     // C ref: mon.c:2098-2102 — undead (non-ghost) avoid garlic
-    if (is_undead(ptr) && (ptr.symbol !== S_GHOST)) {
+    if (is_undead(ptr) && (ptr.mlet !== S_GHOST)) {
         flag |= NOGARLIC;
     }
 
@@ -1217,7 +1217,7 @@ function m_move(mon, map, player, display = null, fov = null) {
 
     const omx = mon.mx, omy = mon.my;
     const ptr = mon.type || {};
-    const verysmall = (ptr.size || 0) === MZ_TINY;
+    const verysmall = (ptr.msize || 0) === MZ_TINY;
     const can_open = !(nohands(ptr) || verysmall);
     // C ref: monmove.c:1768 — can_unlock = (can_open && monhaskey) || iswiz || is_rider
     const can_unlock = (can_open && monhaskey(mon, true)) || !!mon.iswiz || is_rider(ptr);

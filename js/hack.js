@@ -1781,10 +1781,11 @@ export function test_move(ux, uy, dx, dy, mode, player, map, display, game = nul
 
 // C ref: hack.c carrying_too_much() — can hero move?
 export function carrying_too_much(player, map, display) {
+    const heroHp = Number.isFinite(player?.uhp) ? player.uhp : (player?.hp || 0);
+    const heroHpMax = Number.isFinite(player?.uhpmax) ? player.uhpmax : (player?.hpmax || 0);
     const wtcap = near_capacity(player);
     if (wtcap >= OVERLOADED
-        || (wtcap > SLT_ENCUMBER
-            && (player.hp < 10 && player.hp !== player.hpmax))) {
+        || (wtcap > SLT_ENCUMBER && (heroHp < 10 && heroHp !== heroHpMax))) {
         if (map?.flags?.is_airlevel) return false;
         if (wtcap < OVERLOADED) {
             if (display) display.putstr_message("You don't have enough stamina to move.");
@@ -2474,6 +2475,7 @@ export function maybe_wail(player, game, display) {
     const moves = game.moves || 0;
     if (moves <= (game.wailmsg || 0) + 50) return;
     game.wailmsg = moves;
+    const heroHp = Number.isFinite(player?.uhp) ? player.uhp : (player?.hp || 0);
 
     const role = player.roleIndex ?? player.role;
     const race = player.raceIndex ?? player.race;
@@ -2483,7 +2485,7 @@ export function maybe_wail(player, game, display) {
 
     if (isWizard || isElf || isValkyrie) {
         const who = (isWizard || isValkyrie) ? (player.roleName || player.role || 'Adventurer') : 'Elf';
-        if (player.hp === 1) {
+        if (heroHp === 1) {
             if (display) display.putstr_message(`${who} is about to die.`);
         } else {
             const powers = [TELEPORT, SEE_INVIS, POISON_RES, COLD_RES, SHOCK_RES,
@@ -2499,7 +2501,7 @@ export function maybe_wail(player, game, display) {
             }
         }
     } else {
-        if (player.hp === 1) {
+        if (heroHp === 1) {
             if (display) display.putstr_message('You hear the wailing of the Banshee...');
         } else {
             if (display) display.putstr_message('You hear the howling of the CwnAnnwn...');
@@ -2510,20 +2512,22 @@ export function maybe_wail(player, game, display) {
 // C ref: hack.c saving_grace() — one-time survival of lethal blow
 export function saving_grace(dmg, player, game) {
     if (dmg < 0) return 0;
+    const heroHp = Number.isFinite(player?.uhp) ? player.uhp : (player?.hp || 0);
+    const heroHpMax = Number.isFinite(player?.uhpmax) ? player.uhpmax : (player?.hpmax || 0);
     // Only protects from monster attacks
     const monMoving = !!(game?.context?.mon_moving || game?.mon_moving);
     if (!monMoving) return dmg;
-    if (dmg < player.hp || player.hp <= 0) return dmg;
+    if (dmg < heroHp || heroHp <= 0) return dmg;
     // Already used?
-    if (game.saving_grace_turn) return player.hp - 1;
+    if (game.saving_grace_turn) return heroHp - 1;
     const hpAtStart = Number.isFinite(game?.uhp_at_start_of_monster_turn)
         ? game.uhp_at_start_of_monster_turn
         : player._uhp_at_start;
     if (!player.usaving_grace
         && Number.isFinite(hpAtStart)
-        && player.hpmax > 0
-        && (hpAtStart * 100 / player.hpmax) >= 90) {
-        dmg = player.hp - 1;
+        && heroHpMax > 0
+        && (hpAtStart * 100 / heroHpMax) >= 90) {
+        dmg = heroHp - 1;
         player.usaving_grace = 1;
         game.saving_grace_turn = true;
         end_running(true, game);
@@ -2534,7 +2538,9 @@ export function saving_grace(dmg, player, game) {
 // C ref: hack.c showdamage() — display HP loss
 export function showdamage(dmg, player, display, game) {
     if (!game?.iflags?.showdamage || !dmg) return;
-    const hp = player.upolyd ? (player.mh || 0) : (player.hp || 0);
+    const hp = player.upolyd
+        ? (player.mh || 0)
+        : (Number.isFinite(player?.uhp) ? player.uhp : (player?.hp || 0));
     if (display) display.putstr_message(`[HP ${-dmg}, ${hp} left]`);
 }
 
@@ -2555,19 +2561,29 @@ export function losehp(n, knam, k_format, player, display, game) {
     }
 
     n = saving_grace(n, player, game);
-    player.hp -= n;
+    const hadLegacyHp = Object.prototype.hasOwnProperty.call(player, 'hp');
+    const hadLegacyHpMax = Object.prototype.hasOwnProperty.call(player, 'hpmax');
+    const heroHp = Number.isFinite(player?.uhp) ? player.uhp : (player?.hp || 0);
+    const heroHpMax = Number.isFinite(player?.uhpmax) ? player.uhpmax : (player?.hpmax || 0);
+    const nextHp = heroHp - n;
+    player.uhp = nextHp;
+    if (hadLegacyHp) player.hp = nextHp;
     showdamage(n, player, display, game);
-    if (player.hpmax < player.hp) player.hpmax = player.hp;
-    if (player.hp < 1) {
+    if (heroHpMax < nextHp) {
+        player.uhpmax = nextHp;
+        if (hadLegacyHpMax) player.hpmax = nextHp;
+    }
+    if (player.uhp < 1) {
         if (display) display.putstr_message('You die...');
         // done(DIED) would be called in full implementation
         // For now, set hp to 0
-        player.hp = 0;
+        player.uhp = 0;
+        if (hadLegacyHp) player.hp = 0;
         if (game) {
             game.killer = { format: k_format, name: knam || '' };
             game.playerDied = true;
         }
-    } else if (n > 0 && player.hp * 10 < player.hpmax) {
+    } else if (n > 0 && player.uhp * 10 < player.uhpmax) {
         maybe_wail(player, game, display);
     }
 }

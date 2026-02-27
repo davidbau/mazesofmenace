@@ -362,7 +362,7 @@ async function handleRead(player, display, game) {
                     }
                     // Uncursed: roll difficulty
                     const intel = (player.attributes ? player.attributes[A_INT] : 12) || 12;
-                    const readAbility = intel + 4 + Math.floor((player.level || 1) / 2) - 2 * ocLevel;
+                    const readAbility = intel + 4 + Math.floor((player.ulevel || 1) / 2) - 2 * ocLevel;
                     if (rnd(20) > readAbility) {
                         display.putstr_message("You can't make heads or tails of this.");
                         return { moved: false, tookTime: true };
@@ -1271,7 +1271,7 @@ async function seffect_fire(sobj, player, display, game) {
         // Confused: minor self-burn
         display.putstr_message('The scroll catches fire and you burn your hands.');
         // cf. losehp(1, ...) simplified: take 1 damage
-        player.hp = Math.max(0, (player.hp || 0) - 1);
+        player.uhp = Math.max(0, (player.uhp || 0) - 1);
         return true; // consumed
     }
 
@@ -1289,7 +1289,7 @@ async function seffect_fire(sobj, player, display, game) {
         await explode(ccx, ccy, ZT_SPELL_O_FIRE, dam, SCROLL_CLASS, EXPL_FIERY, map, player);
     } else {
         // Fallback: take damage directly
-        player.hp = Math.max(0, (player.hp || 0) - dam);
+        player.uhp = Math.max(0, (player.uhp || 0) - dam);
     }
     return true; // consumed
 }
@@ -1312,10 +1312,10 @@ function seffect_earth(sobj, player, display, game) {
         const dam = confused ? rnd(6) : rnd(20);
         if (player.helmet) {
             display.putstr_message('Fortunately, you are wearing a hard helmet.');
-            player.hp = Math.max(0, (player.hp || 0) - Math.min(dam, 2));
+            player.uhp = Math.max(0, (player.uhp || 0) - Math.min(dam, 2));
         } else {
             display.putstr_message(`You are hit by ${confused ? 'rocks' : 'a boulder'}!`);
-            player.hp = Math.max(0, (player.hp || 0) - dam);
+            player.uhp = Math.max(0, (player.uhp || 0) - dam);
         }
     }
     return false;

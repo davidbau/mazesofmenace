@@ -268,7 +268,7 @@ export function mstatusline(mtmp, game) {
 
     pline("Status of %s (%s, %s):  Level %s  HP %s(%s)  AC %s%s.",
           monnm, align_str(alignment), size_str(mptr.size || MZ_MEDIUM),
-          String(mtmp.m_lev || mtmp.mlevel || 0),
+          String(mtmp.m_lev || 0),
           String(mtmp.mhp || 0), String(mtmp.mhpmax || 0),
           String(mac), info);
 }
@@ -340,8 +340,8 @@ export function ustatusline(game) {
 
     pline("Status of %s (%s):  Level %s  HP %s(%s)  AC %s%s.",
           player.name, pious,
-          String(player.level || 1),
-          String(player.hp || 0), String(player.hpmax || 0),
+          String(player.ulevel || 1),
+          String(player.uhp || 0), String(player.uhpmax || 0),
           String(player.ac || 10), info);
 }
 
@@ -609,7 +609,7 @@ function background_enlightenment(mode, final, game) {
     // Report role and level
     const roleName = player.roleName || player.role || 'Adventurer';
     const raceName = player.raceName || player.race || 'human';
-    const level = player.ulevel || player.level || 1;
+    const level = player.ulevel || 1;
     const rankTitle = player.rankTitle || roleName;
 
     if (rankTitle.toLowerCase() !== roleName.toLowerCase()) {
@@ -661,8 +661,8 @@ function basics_enlightenment(mode, final, game) {
     enlght_out('Basics:');
 
     // Hit points
-    let hp = player.hp || 0;
-    const hpmax = player.hpmax || 0;
+    let hp = player.uhp || 0;
+    const hpmax = player.uhpmax || 0;
     if (hp < 0) hp = 0;
 
     if (hp === hpmax && hpmax > 1)

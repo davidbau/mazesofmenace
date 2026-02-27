@@ -230,7 +230,7 @@ function helpless(mon) { return !!(mon.sleeping || mon.msleeping || mon.mfrozen)
 function mindless(ptr) { return is_mindless(ptr); }
 
 // C ref: verysmall(ptr)
-function verysmall(ptr) { return (ptr.msize || ptr.size || 0) < MZ_SMALL; }
+function verysmall(ptr) { return (ptr.msize || 0) < MZ_SMALL; }
 
 // C ref: NODIAG(mndx) — only grid bugs
 function NODIAG(mndx) { return mndx === PM_GRID_BUG; }
@@ -1618,7 +1618,7 @@ function mbhitm(mtmp, otmp, map, player) {
                 pline('The wand hits you!');
                 tmp = d(2, 12);
                 if (player.halfSpellDamage) tmp = Math.floor((tmp + 1) / 2);
-                player.hp = Math.max(0, (player.hp || 0) - tmp);
+                player.uhp = Math.max(0, (player.uhp || 0) - tmp);
                 learnit = true;
             } else {
                 pline('The wand misses you.');
@@ -1822,7 +1822,7 @@ export async function use_offensive(mtmp, map, player) {
         m_useup(mtmp, otmp);
         if (dist2(mmx, mmy, player.x, player.y) <= 2 && !otmp.cursed) {
             const dmg = rnd(6);
-            if (Number.isFinite(player.hp)) player.hp -= dmg;
+            if (Number.isFinite(player.uhp)) player.uhp -= dmg;
             pline('A boulder crashes down near you!');
         }
         return DEADMONSTER(mtmp) ? 1 : 2;

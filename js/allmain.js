@@ -95,7 +95,7 @@ export async function moveloop_core(game, opts = {}) {
     } while (player.umovement < NORMAL_SPEED);
 
     // C ref: allmain.c end of moveloop_core — check for player death
-    if (player.isDead || player.hp <= 0) {
+    if (player.isDead || player.uhp <= 0) {
         if (!player.deathCause) {
             player.deathCause = 'died';
         }
@@ -646,10 +646,10 @@ async function _drainOccupation(game, coreOpts, onTimedTurn) {
 function regen_hp(game) {
     const player = (game.u || game.player);
     // C ref: allmain.c:656-660 — non-polymorph branch, encumbrance-gated
-    if (player.hp < player.hpmax) {
+    if (player.uhp < player.uhpmax) {
         const con = player.attributes ? player.attributes[A_CON] : 10;
         // C ref: allmain.c:661 — heal = (ulevel + ACURR(A_CON)) > rn2(100)
-        let heal = (player.level + con) > rn2(100) ? 1 : 0;
+        let heal = (player.ulevel + con) > rn2(100) ? 1 : 0;
         // C ref: allmain.c:663 — U_CAN_REGEN bonus: +1 heal
         if (player.regeneration) {
             heal += 1;
@@ -657,11 +657,11 @@ function regen_hp(game) {
         // C ref: allmain.c:665 — Sleepy+asleep bonus: +1 heal
         // (not tracked in JS yet)
         if (heal) {
-            player.hp += heal;
-            if (player.hp > player.hpmax)
-                player.hp = player.hpmax;
+            player.uhp += heal;
+            if (player.uhp > player.uhpmax)
+                player.uhp = player.uhpmax;
             // C ref: allmain.c:670 — stop voluntary multi-turn activity if fully healed
-            if (player.hp === player.hpmax) {
+            if (player.uhp === player.uhpmax) {
                 // interrupt_multi("You are in full health.")
                 if (game.multi > 0
                     && !game.travelPath?.length
@@ -1116,11 +1116,11 @@ export class NetHackGame {
         if ((this.context?.run || 0) > 0) return false;
         if (this.occupation) return this.shouldInterruptOccupation();
         if (monsterNearby(this.map, this.player, this.fov)) return true;
-        if (this.lastHP !== undefined && this.player.hp !== this.lastHP) {
-            this.lastHP = this.player.hp;
+        if (this.lastHP !== undefined && this.player.uhp !== this.lastHP) {
+            this.lastHP = this.player.uhp;
             return true;
         }
-        this.lastHP = this.player.hp;
+        this.lastHP = this.player.uhp;
         return false;
     }
 
@@ -1252,7 +1252,7 @@ export class NetHackGame {
             this.hooks.onScreenRendered({ game: this, keyCode: code });
         }
 
-        if (this.player.hp <= 0) {
+        if (this.player.uhp <= 0) {
             this.gameOver = true;
             this.gameOverReason = 'died';
         }

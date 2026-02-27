@@ -186,7 +186,7 @@ export function resist(mon, oclass) {
     }
 
     // C ref: zap.c:6104-6109 — defense level
-    let dlev = mon.m_lev ?? mon.mlevel ?? 0;
+    let dlev = mon.m_lev ?? 0;
     if (dlev > 50) dlev = 50;
     else if (dlev < 1) dlev = 1;
 
@@ -343,7 +343,7 @@ function zhitm(mon, type, nd, map) {
 // Creates corpse, awards XP
 function xkilled_local(mon, map, player, display) {
     // Award experience
-    const exp = (mon.mlevel + 1) * (mon.mlevel + 1);
+    const exp = (mon.m_lev + 1) * (mon.m_lev + 1);
     player.exp += exp;
     player.score += exp;
     newexplevel(player, display);
@@ -989,7 +989,7 @@ async function dobuzz(type, nd, sx, sy, dx, dy, sayhit, saymiss, map, player) {
           // C ref: zap.c:4920 — zhitu (damage to player)
           // Simplified: just apply damage
           const dam = d(nd, 6);
-          if (player.hp) player.hp -= dam;
+          if (player.uhp) player.uhp -= dam;
         }
       }
 
@@ -1115,7 +1115,7 @@ export function backfire(obj, player) {
   // C ref: zap.c:2593-2602
   pline("The wand suddenly explodes!");
   const dmg = d((obj.spe || 0) + 2, 6);
-  if (player.hp) player.hp -= dmg;
+  if (player.uhp) player.uhp -= dmg;
   // C would call useupall — simplified
 }
 
@@ -1325,7 +1325,7 @@ export async function break_wand(obj, player, map) {
 
   pline("The wand explodes!");
   if (beamType < 0 || !map) {
-    if (player.hp) player.hp -= dmg;
+    if (player.uhp) player.uhp -= dmg;
     return;
   }
 
@@ -1516,7 +1516,7 @@ export function zap_updown(obj, player, map) {
     if (player.dz && player.dz < 0 && rn2(3)) {
       pline("A rock is dislodged from the ceiling and falls on your head.");
       const dmg = rnd(6);
-      if (player.hp) player.hp -= dmg;
+      if (player.uhp) player.uhp -= dmg;
     }
     if (player.dz && player.dz > 0 && map?.trapAt) {
       const ttmp = map.trapAt(x, y);
@@ -1827,7 +1827,7 @@ export function zapyourself(obj, player, ordinary = true, map = null) {
     damage = d(2, 6);
     break;
   }
-  if (Number.isFinite(player.hp) && damage > 0) player.hp -= damage;
+  if (Number.isFinite(player.uhp) && damage > 0) player.uhp -= damage;
   return Math.max(0, damage);
 }
 
@@ -2162,8 +2162,8 @@ export function lightdamage(obj, playerOrUwep, amt, ordinary = true) {
     dmg = rnd(dmg);
     if (dmg > 10) dmg = 10 + rnd(dmg - 10);
     if (dmg > 20) dmg = 20;
-    pline(`Ow, that light hurts${(dmg > 2 || (player.hp || 0) <= 5) ? '!' : '.'}`);
-    if (Number.isFinite(player.hp)) player.hp -= dmg;
+    pline(`Ow, that light hurts${(dmg > 2 || (player.uhp || 0) <= 5) ? '!' : '.'}`);
+    if (Number.isFinite(player.uhp)) player.uhp -= dmg;
   }
   return dmg;
 }

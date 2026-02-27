@@ -361,7 +361,7 @@ function dog_hunger(mon, edog, turnCount, map, display, player, fov) {
 export function finish_meating(mon) {
     mon.meating = 0;
     if (mon.m_ap_type && mon.m_ap_type !== 0
-        && (mon.type?.mlet || mon.type?.symbol) !== S_MIMIC) {
+        && mon.type?.mlet !== S_MIMIC) {
         mon.m_ap_type = 0;
         mon.mappearance = 0;
     }
@@ -763,7 +763,7 @@ function score_targ(mon, target, map, player) {
         }
         // C ref: dogmove.c:804-807 — weak target penalty
         const targLev = target.mlevel || 0;
-        const monLev = mon.mlevel || 0;
+        const monLev = mon.m_lev || 0;
         if ((targLev < 2 && monLev > 5)
             || (monLev > 12 && targLev < monLev - 9)) {
             score -= 25;
@@ -1171,7 +1171,7 @@ export async function dog_move(mon, map, player, display, fov, after = false, ga
             const target = map.monsterAt(nx, ny);
             if (target && !target.dead) {
                 // C ref: dogmove.c:1114-1128 — balk if target too strong/dangerous.
-                const balk = (mon.mlevel || 1)
+                const balk = (mon.m_lev || 1)
                     + Math.floor((5 * (mon.mhp || 1)) / Math.max(1, mon.mhpmax || 1))
                     - 2;
                 if ((target.mlevel || 0) >= balk

@@ -308,7 +308,7 @@ function losehp(player, dmg, knam, _k_format) {
     if (isUpolyd(player)) {
         player.mh = (player.mh || 0) - dmg;
     } else {
-        player.hp -= dmg;
+        player.uhp -= dmg;
     }
 }
 
@@ -511,8 +511,8 @@ export function losestr(player, num, knam, k_format) {
         if (isUpolyd(player)) {
             setuhpmax(player, Math.max((player.mhmax || 1) - dmg, 1), false);
         } else if (!waspolyd) {
-            if ((player.hpmax || 1) > uhpmin)
-                setuhpmax(player, Math.max((player.hpmax || 1) - dmg, uhpmin), false);
+            if ((player.uhpmax || 1) > uhpmin)
+                setuhpmax(player, Math.max((player.uhpmax || 1) - dmg, uhpmin), false);
         }
     }
 
@@ -570,12 +570,12 @@ export function poisoned(player, reason, typ, pkiller, fatal, thrown_weapon) {
     if (i === 0 && typ !== A_CHA) {
         // sometimes survivable instant kill
         const loss0 = 6 + d(4, 6); // 10..34
-        if (player.hp <= loss0) {
-            player.hp = -1;
+        if (player.uhp <= loss0) {
+            player.uhp = -1;
             pline_The("poison was deadly...");
         } else {
-            const olduhp = player.hp;
-            const newuhpmax = (player.hpmax || 1) - Math.floor(loss0 / 2);
+            const olduhp = player.uhp;
+            const newuhpmax = (player.uhpmax || 1) - Math.floor(loss0 / 2);
             setuhpmax(player, Math.max(newuhpmax, minuhpmax(player, 3)), true);
             const loss1 = adjuhploss(player, loss0, olduhp);
 
@@ -597,7 +597,7 @@ export function poisoned(player, reason, typ, pkiller, fatal, thrown_weapon) {
             poisontell(player, typ, true);
     }
 
-    if (player.hp < 1) {
+    if (player.uhp < 1) {
         player.deathCause = pkiller || "poison";
         done(strstri(pkiller || "", "poison") ? 0 /* DIED */ : 2 /* POISONING */, player);
     }
@@ -938,7 +938,7 @@ function check_innate_abil(player, propid, frommask) {
     }
 
     if (!abil) return null;
-    const ulevel = player.level || 1;
+    const ulevel = player.ulevel || 1;
     for (const entry of abil) {
         if (entry.propid === propid && ulevel >= entry.ulevel)
             return entry;
@@ -1086,7 +1086,7 @@ export function newhp(player) {
     const raceHpadv = race.hpadv || {infix:2, inrnd:0, lofix:0, lornd:2, hifix:1, hirnd:0};
     let hp;
 
-    if ((player.level || 0) === 0) {
+    if ((player.ulevel || 0) === 0) {
         hp = roleHpadv.infix + raceHpadv.infix;
         if (roleHpadv.inrnd > 0)
             hp += rnd(roleHpadv.inrnd);
@@ -1098,7 +1098,7 @@ export function newhp(player) {
             // Already done in u_init; included here for C parity
         }
     } else {
-        if (player.level < (role.xlev || 14)) {
+        if (player.ulevel < (role.xlev || 14)) {
             hp = roleHpadv.lofix + raceHpadv.lofix;
             if (roleHpadv.lornd > 0) hp += rnd(roleHpadv.lornd);
             if (raceHpadv.lornd > 0) hp += rnd(raceHpadv.lornd);
@@ -1120,11 +1120,11 @@ export function newhp(player) {
     }
     if (hp <= 0) hp = 1;
 
-    if ((player.level || 0) < MAXULEV) {
+    if ((player.ulevel || 0) < MAXULEV) {
         if (!player.uhpinc) player.uhpinc = [];
-        player.uhpinc[player.level || 0] = hp;
+        player.uhpinc[player.ulevel || 0] = hp;
     } else {
-        let lim = 5 - Math.floor((player.hpmax || 0) / 300);
+        let lim = 5 - Math.floor((player.uhpmax || 0) / 300);
         lim = Math.max(lim, 1);
         if (hp > lim) hp = lim;
     }
@@ -1134,19 +1134,19 @@ export function newhp(player) {
 // cf. attrib.c:1144 — minuhpmax(altmin)
 export function minuhpmax(player, altmin) {
     if (altmin < 1) altmin = 1;
-    return Math.max(player.level || 1, altmin);
+    return Math.max(player.ulevel || 1, altmin);
 }
 
 // cf. attrib.c:1154 — setuhpmax(newmax, even_when_polyd)
 export function setuhpmax(player, newmax, even_when_polyd) {
     if (!isUpolyd(player) || even_when_polyd) {
-        if (newmax !== (player.hpmax || 0)) {
-            player.hpmax = newmax;
-            if (player.hpmax > (player.uhppeak || 0))
-                player.uhppeak = player.hpmax;
+        if (newmax !== (player.uhpmax || 0)) {
+            player.uhpmax = newmax;
+            if (player.uhpmax > (player.uhppeak || 0))
+                player.uhppeak = player.uhpmax;
         }
-        if (player.hp > player.hpmax)
-            player.hp = player.hpmax;
+        if (player.uhp > player.uhpmax)
+            player.uhp = player.uhpmax;
     } else {
         // Upolyd
         if (newmax !== (player.mhmax || 0)) {
@@ -1160,8 +1160,8 @@ export function setuhpmax(player, newmax, even_when_polyd) {
 // cf. attrib.c:1179 — adjuhploss(loss, olduhp)
 export function adjuhploss(player, loss, olduhp) {
     if (!isUpolyd(player)) {
-        if (player.hp < olduhp)
-            loss -= (olduhp - player.hp);
+        if (player.uhp < olduhp)
+            loss -= (olduhp - player.uhp);
     } else {
         if ((player.mh || 0) < olduhp)
             loss -= (olduhp - (player.mh || 0));

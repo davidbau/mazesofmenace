@@ -55,6 +55,7 @@ import {
     DISP_FLASH, DISP_TETHER, DISP_END, BACKTRACK,
 } from './animation.js';
 import { objectMapGlyph } from './display_rng.js';
+import { canonicalizeAttackFields } from './attack_fields.js';
 
 const hallublasts = [
     'bubbles', 'butterflies', 'dust specks', 'flowers', 'glitter',
@@ -280,7 +281,7 @@ export function thitu(tlev, dam, objp, name, player, display, game, mon = null) 
         display.putstr_message(`You are hit by ${text}${punct}`);
     }
     if (player.takeDamage) player.takeDamage(dam, mon ? monDisplayName(mon) : 'an object');
-    else player.hp -= dam;
+    else player.uhp -= dam;
     exercise(player, A_STR, false);
     return 1;
 }
@@ -769,17 +770,18 @@ function breath_zap_type(adtyp) {
 // C ref: mthrowu.c breamm().
 export async function breamm(mtmp, mattk, mtarg, map, player, display, game) {
     if (!m_lined_up(mtarg, mtmp, map, player)) return 0;
+    canonicalizeAttackFields(mattk);
     if (mtmp.mcan) {
         if (display) display.putstr_message(`The ${monDisplayName(mtmp)} coughs.`);
         return 0;
     }
     if (mtmp.mspec_used) return 0;
     if (rn2(3)) return 0;
-    const adtyp = mattk?.adtyp ?? mattk?.damage ?? AD_FIRE;
+    const adtyp = mattk?.adtyp ?? AD_FIRE;
     if (display) {
         display.putstr_message(`The ${monDisplayName(mtmp)} breathes ${breathwep_name(adtyp, !!player?.hallucinating)}!`);
     }
-    const nd = Math.max(1, mattk?.damn || mattk?.dice || 6);
+    const nd = Math.max(1, mattk?.damn || 6);
     const dx = Math.sign((mtarg?.x ?? mtarg?.mx ?? 0) - (mtmp.mx ?? 0));
     const dy = Math.sign((mtarg?.y ?? mtarg?.my ?? 0) - (mtmp.my ?? 0));
     if (map && (dx !== 0 || dy !== 0)) {

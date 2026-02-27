@@ -1098,7 +1098,7 @@ export function artifact_hit(magr, mdef, otmp, dmgptr, dieroll) {
       const wepdesc = 'The razor-sharp blade';
       if (!youdefend) {
         const mdat = mdef.data || (mdef.mnum != null ? mons[mdef.mnum] : null);
-        if (mdat && (mdat.msize || mdat.size || 0) >= MZ_LARGE) {
+        if (mdat && (mdat.msize || 0) >= MZ_LARGE) {
           if (youattack) You("slice deeply into %s!", hittee);
           else if (vis) pline("%s cuts deeply into %s!", magr.name || 'It', hittee);
           dmgptr.value *= 2;
@@ -1194,7 +1194,7 @@ export function artifact_hit(magr, mdef, otmp, dmgptr, dieroll) {
 
 // Simple helpers for mondata checks used above, avoiding circular imports
 function has_head_simple(ptr) { return !(ptr.mflags1 & 0x00000020); /* M1_NOHEAD */ }
-function noncorporeal_simple(ptr) { return ptr.mlet === 'W' || ptr.symbol === ' '; /* S_GHOST */ }
+function noncorporeal_simple(ptr) { return ptr.mlet === 'W' || ptr.mlet === ' '; /* S_GHOST */ }
 function amorphous_simple(ptr) { return !!(ptr.mflags1 & 0x00000004); /* M1_AMORPHOUS */ }
 function nonliving_simple(ptr) { return !!(ptr.mflags1 & 0x00004000); /* M1_NONLIVING - approximation */ }
 
@@ -1228,10 +1228,10 @@ export function invoke_taming(obj) {
 // cf. artifact.c:1780 — invoke_healing(obj, player)
 export function invoke_healing(obj, player) {
   if (!player) { nothing_special(obj); return 1; }
-  let healamt = ((player.hpmax + 1 - player.hp) / 2) | 0;
+  let healamt = ((player.uhpmax + 1 - player.uhp) / 2) | 0;
   if (healamt > 0) {
     You_feel("better.");
-    player.hp += healamt;
+    player.uhp += healamt;
   } else {
     nothing_special(obj);
   }

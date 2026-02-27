@@ -79,7 +79,7 @@ export function monster_census(spotted, map, player, fov) {
 function is_lminion(mon) {
     if (!mon) return false;
     const ptr = mon.type || mon.data || {};
-    if (ptr.symbol !== S_ANGEL) return false;
+    if (ptr.mlet !== S_ANGEL) return false;
     // If it has emin data, check alignment
     if (mon.isminion && mon.emin) {
         return mon.emin.min_align === A_LAWFUL;

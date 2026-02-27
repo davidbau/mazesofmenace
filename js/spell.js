@@ -267,7 +267,7 @@ function percent_success(player, spell_idx) {
         || { spelbase: 10, spelheal: 0, spelshld: 2, spelarmr: 10, spelstat: A_INT, spelspec: '', spelsbon: 0 };
     const statValue = Math.max(3, Math.min(25, Number(player.attributes?.[role.spelstat] || 10)));
     const spellSkill = spellSkillRank(player, category);
-    const heroLevel = Math.max(1, Number(player.level || 1));
+    const heroLevel = Math.max(1, Number(player.ulevel || 1));
 
     // C ref: Role_if(PM_KNIGHT) && skilltype == P_CLERIC_SPELL
     const paladinBonus = player.roleIndex === PM_KNIGHT && category === SPELL_CATEGORY_CLERICAL;
@@ -331,7 +331,7 @@ function estimateSpellFailPercent(player, spellName, spellLevel, category) {
         || { spelbase: 10, spelheal: 0, spelshld: 2, spelarmr: 10, spelstat: A_INT, spelspec: '', spelsbon: 0 };
     const statValue = Math.max(3, Math.min(25, Number(player.attributes?.[role.spelstat] || 10)));
     const spellSkill = spellSkillRank(player, category);
-    const heroLevel = Math.max(1, Number(player.level || 1));
+    const heroLevel = Math.max(1, Number(player.ulevel || 1));
     const spellLvl = Math.max(1, Number(spellLevel || 1));
 
     const paladinBonus = player.roleIndex === PM_KNIGHT && category === SPELL_CATEGORY_CLERICAL;
@@ -567,7 +567,7 @@ export function study_book(spellbook, player) {
             // Uncursed: check read ability
             const intel = (player.attributes ? player.attributes[A_INT] : 12) || 12;
             const lensBonus = (player.blindfolded?.otyp === LENSES) ? 2 : 0;
-            const read_ability = intel + 4 + Math.floor((player.level || 1) / 2)
+            const read_ability = intel + 4 + Math.floor((player.ulevel || 1) / 2)
                                  - 2 * ocLevel + lensBonus;
             if (rnd(20) > read_ability) {
                 too_hard = true;
@@ -800,7 +800,7 @@ export function spell_backfire(player, spellIdx) {
 
 // C ref: spell.c cast_protection() — SPE_PROTECTION effect
 export function cast_protection(player) {
-    let l = player.level || 1;
+    let l = player.ulevel || 1;
     let loglev = 0;
     const uspellprot = player.uspellprot || 0;
     const uac = player.uac || 10;
@@ -916,7 +916,7 @@ async function cast_chain_lightning(player, map) {
 export function spell_damage_bonus(dmg, player) {
     if (!player) return dmg;
     const intell = (player.attributes ? player.attributes[A_INT] : 10) || 10;
-    const level = player.level || 1;
+    const level = player.ulevel || 1;
 
     if (intell <= 9) {
         if (dmg > 1)
@@ -937,7 +937,7 @@ export function spell_damage_bonus(dmg, player) {
 export function spell_would_be_useless_hero(spellOtyp, player) {
     // Check a few obvious cases
     if (spellOtyp === SPE_HEALING || spellOtyp === SPE_EXTRA_HEALING) {
-        if ((player.hp || 0) >= (player.hpmax || 1)) return true;
+        if ((player.uhp || 0) >= (player.uhpmax || 1)) return true;
     }
     if (spellOtyp === SPE_CURE_BLINDNESS && !player.blind) return true;
     if (spellOtyp === SPE_CURE_SICKNESS && !player.sick && !player.slimed) return true;

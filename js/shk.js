@@ -366,7 +366,7 @@ function getCost(obj, player, shkp) {
     if (player?.helmet?.otyp === DUNCE_CAP) {
         multiplier *= 4;
         divisor *= 3;
-    } else if (player?.roleIndex === 10 && Number(player.level || 1) < 15) {
+    } else if (player?.roleIndex === 10 && Number(player.ulevel || 1) < 15) {
         multiplier *= 4;
         divisor *= 3;
     }

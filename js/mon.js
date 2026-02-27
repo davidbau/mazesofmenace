@@ -341,7 +341,7 @@ function cant_squeeze_thru_mon(mon) {
     const ptr = mon.type || {};
     const f1 = ptr.flags1 || 0;
     if (f1 & M1_WALLWALK) return false;
-    const size = ptr.size || 0;
+    const size = ptr.msize || 0;
     const canMorph = !!(f1 & (M1_AMORPHOUS | M1_UNSOLID | M1_SLITHY));
     if (size > MZ_MEDIUM && !canMorph) return true;
     const load = Array.isArray(mon.minvent)
@@ -616,7 +616,7 @@ export function handleHiderPremove(mon, map, player, fov) {
 
     const trap = mon.mtrapped ? map.trapAt(mon.mx, mon.my) : null;
     const trappedOutsidePit = !!(mon.mtrapped && trap && trap.ttyp !== PIT && trap.ttyp !== SPIKED_PIT);
-    const isCeilingHider = ptr.symbol === S_PIERCER;
+    const isCeilingHider = ptr.mlet === S_PIERCER;
     const hasCeiling = !(map?.flags?.is_airlevel || map?.flags?.is_waterlevel);
     const sensedAndAdjacent = canSpotMonsterForMap(mon, map, player, fov) && monnear(mon, player.x, player.y);
 
@@ -631,7 +631,7 @@ export function handleHiderPremove(mon, map, player, fov) {
         || sensedAndAdjacent;
 
     if (!blocked) {
-        if (ptr.symbol === S_MIMIC) {
+        if (ptr.mlet === S_MIMIC) {
             if (!(mon.sleeping || (mon.mfrozen > 0))) {
                 mon.m_ap_type = mon.m_ap_type || 'object';
                 return true;
@@ -698,7 +698,7 @@ export function mlifesaver(mon) {
 
 // C ref: mon.c set_mon_min_mhpmax() — ensure minimum mhpmax after life-save
 export function set_mon_min_mhpmax(mon, minimum) {
-    const mlev = mon.m_lev ?? mon.mlevel ?? (mon.type?.level ?? 0);
+    const mlev = mon.m_lev ?? (mon.type?.level ?? 0);
     const minval = Math.max(mlev + 1, minimum);
     if ((mon.mhpmax || 0) < minval) mon.mhpmax = minval;
 }

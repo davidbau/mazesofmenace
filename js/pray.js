@@ -371,8 +371,8 @@ function nomul(player, turns) {
 
 // Helper: losehp -- lose hit points
 function losehp(player, dmg, reason, _type) {
-    player.hp -= dmg;
-    if (player.hp <= 0) {
+    player.uhp -= dmg;
+    if (player.uhp <= 0) {
         player.deathCause = reason;
     }
 }
@@ -411,7 +411,7 @@ function encumber_msg() {
 // Helper: setuhpmax
 function setuhpmax(player, newmax, alwaysSetBase) {
     if (alwaysSetBase || !player.Upolyd) {
-        player.hpmax = newmax;
+        player.uhpmax = newmax;
     }
     if (player.Upolyd) {
         player.mhmax = newmax;
@@ -775,9 +775,9 @@ function rnd_class(low, high) {
 // cf. pray.c:116 -- critically_low_hp(only_if_injured)
 // ================================================================
 export function critically_low_hp(player, only_if_injured) {
-    const curhp = Upolyd(player) ? (player.mh || 0) : player.hp;
-    const rawmax = Upolyd(player) ? (player.mhmax || 1) : player.hpmax;
-    const ulevel = player.level || 1;
+    const curhp = Upolyd(player) ? (player.mh || 0) : player.uhp;
+    const rawmax = Upolyd(player) ? (player.mhmax || 1) : player.uhpmax;
+    const ulevel = player.ulevel || 1;
 
     if (only_if_injured && !(curhp < rawmax))
         return false;
@@ -1054,11 +1054,11 @@ function fix_worst_trouble(trouble, player, map) {
             player.mhmax = Math.max(maxhp, 6);
             player.mh = player.mhmax;
         }
-        maxhp = player.hpmax;
-        if (maxhp < (player.level || 1) * 5 + 11)
+        maxhp = player.uhpmax;
+        if (maxhp < (player.ulevel || 1) * 5 + 11)
             maxhp += rnd(5);
-        player.hpmax = Math.max(maxhp, 6);
-        player.hp = player.hpmax;
+        player.uhpmax = Math.max(maxhp, 6);
+        player.uhp = player.uhpmax;
         break;
     }
     case TROUBLE_COLLAPSING: {
@@ -1510,7 +1510,7 @@ function gcrownu(player, map) {
 function give_spell(player, map) {
     // Create a random spellbook
     let otmp = mkobj(SPBOOK_CLASS, true);
-    let trycnt = (player.level || 1) + 1;
+    let trycnt = (player.ulevel || 1) + 1;
     while (--trycnt > 0) {
         if (otmp.otyp !== SPE_BLANK_PAPER) {
             if (known_spell(player, otmp.otyp) <= 0)
@@ -1661,14 +1661,14 @@ function pleased(g_align, player, map) {
         case 2:
             if (!player.blind)
                 You("are surrounded by %s glow.", an(hcolor("golden")));
-            if ((player.level || 1) < (player.levelmax || player.level || 1)) {
+            if ((player.ulevel || 1) < (player.levelmax || player.ulevel || 1)) {
                 // Would call pluslvl
             } else {
-                player.hpmax = (player.hpmax || 0) + 5;
+                player.uhpmax = (player.uhpmax || 0) + 5;
                 if (Upolyd(player))
                     player.mhmax = (player.mhmax || 0) + 5;
             }
-            player.hp = player.hpmax;
+            player.uhp = player.uhpmax;
             if (Upolyd(player))
                 player.mh = player.mhmax;
             if (player.attributes && player.attrMax
@@ -1978,7 +1978,7 @@ function offer_different_alignment_altar(otmp, altaralign, player, map) {
     } else {
         consume_offering(otmp, player, map);
         You("sense a conflict between %s and %s.", u_gname(player), a_gname(player, map));
-        if (rn2(8 + (player.level || 1)) > 5) {
+        if (rn2(8 + (player.ulevel || 1)) > 5) {
             You_feel("the power of %s increase.", u_gname(player));
             exercise(player, A_WIS, true);
             change_luck(player, 1);
@@ -1992,7 +1992,7 @@ function offer_different_alignment_altar(otmp, altaralign, player, map) {
                              : player.alignment ? "black" : "gray";
                 pline_The("altar glows %s.", hcolor(color));
             }
-            if (rnl(player.level || 1, Luck(player)) > 6 && (player.alignmentRecord || 0) > 0
+            if (rnl(player.ulevel || 1, Luck(player)) > 6 && (player.alignmentRecord || 0) > 0
                 && rnd(player.alignmentRecord) > Math.floor(3 * ALIGNLIM / 4))
                 summon_minion(altaralign, true, map, player);
             angry_priest();
@@ -2000,7 +2000,7 @@ function offer_different_alignment_altar(otmp, altaralign, player, map) {
             pline("Unluckily, you feel the power of %s decrease.", u_gname(player));
             change_luck(player, -1);
             exercise(player, A_WIS, false);
-            if (rnl(player.level || 1, Luck(player)) > 6 && (player.alignmentRecord || 0) > 0
+            if (rnl(player.ulevel || 1, Luck(player)) > 6 && (player.alignmentRecord || 0) > 0
                 && rnd(player.alignmentRecord) > Math.floor(7 * ALIGNLIM / 8))
                 summon_minion(altaralign, true, map, player);
         }
@@ -2082,7 +2082,7 @@ function sacrifice_your_race(otmp, highaltar, altaralign, player, map) {
 // ================================================================
 function bestow_artifact(max_giftvalue, player, map) {
     const nartifacts = nartifact_exist();
-    let do_bestow = (player.level || 1) > 2 && (player.luck || 0) >= 0;
+    let do_bestow = (player.ulevel || 1) > 2 && (player.luck || 0) >= 0;
     if (do_bestow)
         do_bestow = !rn2(6 + 2 * (player.ugifts || 0) * nartifacts);
 
@@ -2520,7 +2520,7 @@ function maybe_turn_mon_iter(mtmp, player, map) {
 
     if (!mtmp.mpeaceful
         && (is_undead(mdat)
-            || (is_demon(mdat) && (player.level || 1) > 15))) {
+            || (is_demon(mdat) && (player.ulevel || 1) > 15))) {
         mtmp.msleeping = 0;
         if (player.confused) {
             if (!turn_undead_msg_cnt++)
@@ -2530,14 +2530,14 @@ function maybe_turn_mon_iter(mtmp, player, map) {
             mtmp.mcanmove = true;
         } else if (!resist(mtmp, '\0')) {
             let xlev = 6;
-            switch (mdat.mlet || mdat.symbol) {
+            switch (mdat.mlet) {
             case S_LICH:    xlev += 2; // FALLTHRU
             case S_GHOST:   xlev += 2; // FALLTHRU
             case S_VAMPIRE: xlev += 2; // FALLTHRU
             case S_WRAITH:  xlev += 2; // FALLTHRU
             case S_MUMMY:   xlev += 2; // FALLTHRU
             case S_ZOMBIE:
-                if ((player.level || 1) >= xlev && !resist(mtmp, '\0')) {
+                if ((player.ulevel || 1) >= xlev && !resist(mtmp, '\0')) {
                     if (player.alignment === A_CHAOTIC) {
                         mtmp.mpeaceful = true;
                         set_malign(mtmp);
@@ -2594,7 +2594,7 @@ export async function doturn(player, map) {
     pline("Calling upon %s, you chant an arcane formula.", Gname);
     exercise(player, A_WIS, true);
 
-    turn_undead_range = BOLT_LIM + Math.floor((player.level || 1) / 5);
+    turn_undead_range = BOLT_LIM + Math.floor((player.ulevel || 1) / 5);
     turn_undead_range *= turn_undead_range;
     turn_undead_msg_cnt = 0;
 
@@ -2605,7 +2605,7 @@ export async function doturn(player, map) {
         }
     }
 
-    nomul(player, -(5 - Math.floor(((player.level || 1) - 1) / 6)));
+    nomul(player, -(5 - Math.floor(((player.ulevel || 1) - 1) / 6)));
     player.multi_reason = "trying to turn the monsters";
     player.nomovemsg = "You can move again.";
     return 1;

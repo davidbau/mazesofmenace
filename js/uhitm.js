@@ -179,11 +179,11 @@ function find_roll_to_hit(player, mtmp, aatyp, weapon) {
     //         + Luck_bonus + u.ulevel
     const str = player.attributes?.[A_STR] ?? 10;
     const dex = player.attributes?.[A_DEX] ?? 10;
-    let tmp = 1 + abon(str, dex, player.level)
+    let tmp = 1 + abon(str, dex, player.ulevel)
         + find_mac(mtmp)
         + (player.uhitinc || 0) // rings of increase accuracy etc.
         + luckBonus(player.luck || 0)
-        + player.level;
+        + player.ulevel;
 
     // cf. uhitm.c:386-393 — monster state adjustments
     if (mtmp.stunned || mtmp.mstun) tmp += 2;
@@ -194,7 +194,7 @@ function find_roll_to_hit(player, mtmp, aatyp, weapon) {
     // cf. uhitm.c:396-404 — role/race adjustments
     // Monk: bonus when unarmed; heavy penalty if armored.
     if ((player.roleIndex === PM_MONK) && !weapon) {
-        tmp += Math.floor((player.level || 1) / 3) + 2;
+        tmp += Math.floor((player.ulevel || 1) / 3) + 2;
         const armored = !!(player.armor || player.suit || player.cloak
             || player.helmet || player.gloves || player.boots || player.shield);
         if (armored) tmp -= 20;
@@ -1481,10 +1481,10 @@ export function flash_hits_mon(mtmp, otmp) {
     if (mtmp.msleeping && haseyes(ptr)) {
         mtmp.msleeping = 0;
         res = 1;
-    } else if (ptr.symbol !== S_LIGHT) {
+    } else if (ptr.mlet !== S_LIGHT) {
         // Blind non-resistant monsters
         // C: if (!resists_blnd(mtmp)) — simplified check
-        const isBlindRes = ptr.symbol === S_LIGHT; // already checked above
+        const isBlindRes = ptr.mlet === S_LIGHT; // already checked above
         if (!isBlindRes) {
             // C: distance-based blinding
             if ((mtmp.mndx ?? -1) === PM_GREMLIN) {
@@ -1713,7 +1713,7 @@ function passive(mon, weapon, mhit, malive, aatyp = AT_WEAP, wep_was_destroyed =
     if (passiveAttk.damn) {
         tmp = d(passiveAttk.damn, passiveAttk.damd || 0);
     } else if (passiveAttk.damd) {
-        const mlev = mon.m_lev ?? mon.mlevel ?? (ptr.level || 0);
+        const mlev = mon.m_lev ?? (ptr.mlevel || 0);
         tmp = d(mlev + 1, passiveAttk.damd);
     }
 
@@ -1751,7 +1751,7 @@ function passive(mon, weapon, mhit, malive, aatyp = AT_WEAP, wep_was_destroyed =
     }
 
     if (tmp > 0 && player) {
-        player.hp = Math.max(0, (player.hp || 0) - tmp);
+        player.uhp = Math.max(0, (player.uhp || 0) - tmp);
     }
 
     // C ref: uhitm.c:5997 — if (malive && !mon->mcan && rn2(3)) return;
@@ -1795,7 +1795,7 @@ function passive(mon, weapon, mhit, malive, aatyp = AT_WEAP, wep_was_destroyed =
     }
 
     if (tmp > 0 && player) {
-        player.hp = Math.max(0, (player.hp || 0) - tmp);
+        player.uhp = Math.max(0, (player.uhp || 0) - tmp);
     }
 }
 

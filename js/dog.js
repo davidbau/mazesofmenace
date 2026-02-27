@@ -74,13 +74,13 @@ function monPtr(mon) {
 // ========================================================================
 
 function mon_vegan(ptr) {
-    return ptr.symbol === S_BLOB || ptr.symbol === S_JELLY
-        || ptr.symbol === S_FUNGUS || ptr.symbol === S_VORTEX
-        || ptr.symbol === S_LIGHT
-        || (ptr.symbol === S_ELEMENTAL && ptr !== mons[PM_STALKER])
-        || (ptr.symbol === S_GOLEM && ptr !== mons[PM_FLESH_GOLEM]
+    return ptr.mlet === S_BLOB || ptr.mlet === S_JELLY
+        || ptr.mlet === S_FUNGUS || ptr.mlet === S_VORTEX
+        || ptr.mlet === S_LIGHT
+        || (ptr.mlet === S_ELEMENTAL && ptr !== mons[PM_STALKER])
+        || (ptr.mlet === S_GOLEM && ptr !== mons[PM_FLESH_GOLEM]
             && ptr !== mons[PM_LEATHER_GOLEM])
-        || ptr.symbol === S_GHOST;
+        || ptr.mlet === S_GHOST;
 }
 
 function flesh_petrifies(pm) {

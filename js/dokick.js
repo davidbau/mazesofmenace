@@ -184,8 +184,8 @@ function martial_bonus(player) {
     return role === 'Monk' || role === 10; // PM_MONK index
 }
 
-function bigmonst(ptr) { return (ptr.msize || ptr.size || 0) >= MZ_LARGE; }
-function verysmall(ptr) { return (ptr.msize || ptr.size || 0) < MZ_SMALL; }
+function bigmonst(ptr) { return (ptr.msize || 0) >= MZ_LARGE; }
+function verysmall(ptr) { return (ptr.msize || 0) < MZ_SMALL; }
 function canspotmon(mon, player, map, fov) {
     // simplified — if not invisible or player can see invisible
     if (!mon || mon.dead) return false;
@@ -826,7 +826,7 @@ async function kick_monster(mon, x, y, player, map, game) {
     You("kick %s.", mon_nam(mon));
     if (!rn2(clumsy ? 3 : 4) && (clumsy || !bigmonst(monData))
         && mon.mcansee !== false && !mon.mtrapped && !thick_skinned(monData)
-        && (monData.mlet || monData.symbol) !== S_EEL && haseyes(monData)
+        && monData.mlet !== S_EEL && haseyes(monData)
         && mon.mcanmove !== false
         && !mon.mstun && !mon.mconf && !mon.msleeping
         && (monData.mmove || 12) >= 12) {
@@ -1402,7 +1402,7 @@ function kick_ouch(x, y, kickobjnam, maploc, player, map) {
     // Maybe_Half_Phys
     if (player.halfPhysDamage) dmg = Math.floor((dmg + 1) / 2);
     // losehp
-    player.hp = Math.max(1, (player.hp || 1) - dmg);
+    player.uhp = Math.max(1, (player.uhp || 1) - dmg);
     // TODO: check if player died from kick; format death message with kickstr
     if ((Is_airlevel(player.uz) || player.levitating))
         hurtle(-(player.dx || 0), -(player.dy || 0), rn2(2) + 4, true, player, map);
@@ -1763,7 +1763,7 @@ export async function dokick(player, map, display, game) {
     } else if (near_capacity(player) > SLT_ENCUMBER) {
         Your("load is too heavy to balance yourself for a kick.");
         no_kick = true;
-    } else if ((playerData.mlet || playerData.symbol) === S_LIZARD) {
+    } else if (playerData.mlet === S_LIZARD) {
         Your("legs cannot kick effectively.");
         no_kick = true;
     } else if (player.uinwater && !rn2(2)) {

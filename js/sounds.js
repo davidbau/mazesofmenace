@@ -97,7 +97,7 @@ function throne_mon_sound(mtmp, hallu, game) {
 // cf. sounds.c:61 — beehive_mon_sound(mtmp): beehive ambient sound
 function beehive_mon_sound(mtmp, hallu, game) {
     const ptr = mtmp.type;
-    if ((ptr.symbol === S_ANT && is_flyer(ptr))
+    if ((ptr.mlet === S_ANT && is_flyer(ptr))
         && mon_in_room(mtmp, BEEHIVE, (game.lev || game.map))) {
         switch (rn2(2) + hallu) {
         case 0:
@@ -612,7 +612,7 @@ export function cry_sound(mtmp) {
     switch (ptr.sound) {
     default:
     case MS_SILENT:
-        return (ptr.symbol === S_EEL) ? 'gurgle' : 'chitter';
+        return (ptr.mlet === S_EEL) ? 'gurgle' : 'chitter';
     case MS_HISS:
         return 'hiss';
     case MS_ROAR:
@@ -964,7 +964,7 @@ export function domonnoise(mtmp, game) {
             pline_msg = 'talks about mining.';
         else if (likes_magic(ptr))
             pline_msg = 'talks about spellcraft.';
-        else if (ptr.symbol === S_CENTAUR)
+        else if (ptr.mlet === S_CENTAUR)
             pline_msg = 'discusses hunting.';
         else if (is_gnome(ptr)) {
             let gnomeplan = 0;

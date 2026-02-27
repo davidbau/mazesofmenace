@@ -1161,7 +1161,7 @@ export function thitmonst(mon, obj, player, map, game) {
     const uwep = player.weapon;
     const otyp = obj.otyp;
     const data = mon.data || (mons ? mons[mon.mndx] : null) || {};
-    let tmp = -1 + (player.luck || 0) + find_mac(mon) + (player.uhitinc || 0) + (player.level || 1);
+    let tmp = -1 + (player.luck || 0) + find_mac(mon) + (player.uhitinc || 0) + (player.ulevel || 1);
     const dex = player.dex || 10;
     if (dex < 4) tmp -= 3;
     else if (dex < 6) tmp -= 2;

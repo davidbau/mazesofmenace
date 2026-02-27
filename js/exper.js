@@ -48,7 +48,7 @@ export function newpw(player) {
     const raceEnadv = race.enadv || {infix:0, inrnd:0, lofix:0, lornd:0, hifix:0, hirnd:0};
     let en = 0;
 
-    if (player.level === 0) {
+    if (player.ulevel === 0) {
         // Initialization
         en = roleEnadv.infix + raceEnadv.infix;
         if (roleEnadv.inrnd > 0)
@@ -59,7 +59,7 @@ export function newpw(player) {
         // Level-up
         const enrndWis = Math.floor((player.attributes?.[A_WIS] || 10) / 2);
         let enrnd, enfix;
-        if (player.level < (role.xlev || 14)) {
+        if (player.ulevel < (role.xlev || 14)) {
             enrnd = enrndWis + roleEnadv.lornd + raceEnadv.lornd;
             enfix = roleEnadv.lofix + raceEnadv.lofix;
         } else {
@@ -83,7 +83,7 @@ export function newhp(player) {
     const raceHpadv = race.hpadv || {infix:2, inrnd:0, lofix:0, lornd:2, hifix:1, hirnd:0};
     let hp;
 
-    if (player.level === 0) {
+    if (player.ulevel === 0) {
         // Initialization — no Con adjustment
         hp = roleHpadv.infix + raceHpadv.infix;
         if (roleHpadv.inrnd > 0)
@@ -92,7 +92,7 @@ export function newhp(player) {
             hp += rnd(raceHpadv.inrnd);
     } else {
         // Level-up
-        if (player.level < (role.xlev || 14)) {
+        if (player.ulevel < (role.xlev || 14)) {
             hp = roleHpadv.lofix + raceHpadv.lofix;
             if (roleHpadv.lornd > 0)
                 hp += rnd(roleHpadv.lornd);
@@ -125,15 +125,15 @@ export function newhp(player) {
 // Partial: drains level and HP but does not implement adjabil/uhpinc/ueninc.
 // RNG: consumes rnd(10) for HP loss, rn2(5) for PW loss (matching C's newhp/newpw calls).
 export function losexp(player, display, drainer) {
-    if (player.level <= 1) {
+    if (player.ulevel <= 1) {
         // Can't lose a level below 1; C would kill the hero
         return;
     }
     // cf. exper.c:230 — lose HP: normally role-dependent via uhpinc array;
     // simplified: rnd(10) as placeholder (matches C's newhp typical range).
     const hpLoss = rnd(10);
-    player.hpmax = Math.max(1, player.hpmax - hpLoss);
-    player.hp = Math.min(player.hp, player.hpmax);
+    player.uhpmax = Math.max(1, player.uhpmax - hpLoss);
+    player.uhp = Math.min(player.uhp, player.uhpmax);
 
     // cf. exper.c:250 — lose PW: normally role-dependent via ueninc array;
     // simplified: rn2(5) placeholder (matches C's newpw typical range).
@@ -141,8 +141,8 @@ export function losexp(player, display, drainer) {
     player.pwmax = Math.max(0, player.pwmax - pwLoss);
     player.pw = Math.min(player.pw, player.pwmax);
 
-    player.level--;
-    player.exp = newuexp(player.level);
+    player.ulevel--;
+    player.exp = newuexp(player.ulevel);
     if (display) {
         display.putstr_message(`You feel your life force draining away.`);
     }
@@ -162,28 +162,28 @@ export function pluslvl(player, display, incr) {
 
     // cf. exper.c:324 newhp() — role-dependent HP gain
     const hpGain = newhp(player);
-    player.hpmax += hpGain;
-    player.hp += hpGain;
+    player.uhpmax += hpGain;
+    player.uhp += hpGain;
 
     // cf. exper.c:330 newpw() — role-dependent PW gain
     const pwGain = newpw(player);
     player.pwmax += pwGain;
     player.pw += pwGain;
 
-    if (player.level < MAXULEV) {
+    if (player.ulevel < MAXULEV) {
         if (incr) {
-            const tmp = newuexp(player.level + 1);
+            const tmp = newuexp(player.ulevel + 1);
             if (player.exp >= tmp) {
                 player.exp = tmp - 1;
             }
         } else {
-            player.exp = newuexp(player.level);
+            player.exp = newuexp(player.ulevel);
         }
-        player.level++;
-        const back = (player.ulevelmax != null && player.ulevelmax >= player.level) ? 'back ' : '';
-        display.putstr_message(`Welcome ${back}to experience level ${player.level}.`);
-        if (player.ulevelmax == null || player.ulevelmax < player.level) {
-            player.ulevelmax = player.level;
+        player.ulevel++;
+        const back = (player.ulevelmax != null && player.ulevelmax >= player.ulevel) ? 'back ' : '';
+        display.putstr_message(`Welcome ${back}to experience level ${player.ulevel}.`);
+        if (player.ulevelmax == null || player.ulevelmax < player.ulevel) {
+            player.ulevelmax = player.ulevel;
         }
     }
 }

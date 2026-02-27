@@ -94,8 +94,8 @@ import { useupall } from './invent.js';
 // -- Inline helpers --
 
 // cf. C macros bigmonst/verysmall (not exported from mondata.js)
-function bigmonst(ptr) { return (ptr.size || 0) >= MZ_LARGE; }
-function verysmall(ptr) { return (ptr.size || 0) < MZ_SMALL; }
+function bigmonst(ptr) { return (ptr.msize || 0) >= MZ_LARGE; }
+function verysmall(ptr) { return (ptr.msize || 0) < MZ_SMALL; }
 
 const MAXLEASHED = 2;
 

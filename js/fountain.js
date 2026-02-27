@@ -426,7 +426,7 @@ export function dipfountain(obj, player, map, display, fov) {
     const loc = map.at(player.x, player.y);
 
     // Excalibur check
-    if (obj && obj.otyp === LONG_SWORD && (player.ulevel || player.level || 1) >= 5
+    if (obj && obj.otyp === LONG_SWORD && (player.ulevel || 1) >= 5
         && !rn2(player.roleIndex === 4 /* PM_KNIGHT */ ? 6 : 30)
         && (obj.quan || 1) === 1 && !obj.oartifact
         && !exist_artifact(LONG_SWORD, artiname(ART_EXCALIBUR))) {

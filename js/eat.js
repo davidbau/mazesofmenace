@@ -363,13 +363,13 @@ function should_givit(type, ptr) {
         chance = 15;
         break;
     }
-    return ptr.level > rn2(chance);
+    return ptr.mlevel > rn2(chance);
 }
 
 // cf. eat.c temp_givit() — grant temporary intrinsic from corpse
 function temp_givit(type, ptr) {
     const chance = (type === STONE_RES) ? 6 : (type === ACID_RES) ? 3 : 0;
-    return chance ? (ptr.level > rn2(chance)) : false;
+    return chance ? (ptr.mlevel > rn2(chance)) : false;
 }
 
 // cf. eat.c givit() — grant intrinsic from corpse
@@ -566,7 +566,7 @@ function cpostfx(player, pm, display) {
         // Would set lycanthropy
         break;
     case PM_NURSE:
-        player.hp = player.hpmax;
+        player.uhp = player.uhpmax;
         check_intrinsics = true;
         break;
     case PM_STALKER:
@@ -832,13 +832,13 @@ function fpostfx(player, otmp) {
         // Would grant strength, heal
         {
             const hpChange = otmp.cursed ? -rnd(20) : rnd(20);
-            player.hp += hpChange;
-            if (player.hp > player.hpmax) {
+            player.uhp += hpChange;
+            if (player.uhp > player.uhpmax) {
                 if (!rn2(17))
-                    player.hpmax++;
-                player.hp = player.hpmax;
-            } else if (player.hp <= 0) {
-                player.hp = 1; // simplified — C version kills or rehumanizes
+                    player.uhpmax++;
+                player.uhp = player.uhpmax;
+            } else if (player.uhp <= 0) {
+                player.uhp = 1; // simplified — C version kills or rehumanizes
             }
         }
         break;

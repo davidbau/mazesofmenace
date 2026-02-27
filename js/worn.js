@@ -470,11 +470,11 @@ export function which_armor(mon, flag) {
 export function m_dowear(mon, creation) {
     const ptr = mon.type || {};
     // Guards: verysmall, nohands, animal skip entirely
-    if ((ptr.size || 0) < MZ_SMALL || nohands(ptr) || is_animal(ptr))
+    if ((ptr.msize || 0) < MZ_SMALL || nohands(ptr) || is_animal(ptr))
         return;
     // Mindless skip unless mummy or skeleton at creation
     if (is_mindless(ptr)
-        && (!creation || (ptr.symbol !== S_MUMMY
+        && (!creation || (ptr.mlet !== S_MUMMY
                           && mon.mndx !== PM_SKELETON)))
         return;
 
@@ -492,7 +492,7 @@ export function m_dowear(mon, creation) {
     if (!mwep || !(objectData[mwep.otyp]?.big))
         m_dowear_type(mon, W_ARMS, creation, false);
     m_dowear_type(mon, W_ARMG, creation, false);
-    if (!slithy(ptr) && ptr.symbol !== S_CENTAUR)
+    if (!slithy(ptr) && ptr.mlet !== S_CENTAUR)
         m_dowear_type(mon, W_ARMF, creation, false);
     if (can_wear_armor)
         m_dowear_type(mon, W_ARM, creation, false);

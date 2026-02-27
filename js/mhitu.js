@@ -632,9 +632,9 @@ function mhitu_ad_tlpt(monster, attack, player, mhm, ctx) {
     } else {
         // Teleport hero — not implemented
         // C: if (damage >= u.uhp) cap damage
-        if (mhm.damage >= player.hp) {
-            if (player.hp === 1) player.hp++;
-            mhm.damage = player.hp - 1;
+        if (mhm.damage >= player.uhp) {
+            if (player.uhp === 1) player.uhp++;
+            mhm.damage = player.uhp - 1;
         }
     }
 }
@@ -1035,7 +1035,7 @@ export async function monsterAttackPlayer(monster, player, display, game = null,
                         ? player.attributes[A_CON]
                         : 10;
                     const givehp = 50 + 10 * Math.floor(con / 2);
-                    player.hp = Math.min(player.hpmax || givehp, givehp);
+                    player.uhp = Math.min(player.uhpmax || givehp, givehp);
                     if (display) {
                         if (typeof display.clearRow === 'function') display.clearRow(0);
                         display.topMessage = null;
@@ -1268,20 +1268,21 @@ export function diseasemu(mdat, player, display) {
 
 // cf. mhitu.c:1044 u_slip_free() — check whether slippery clothing protects from grab
 export function u_slip_free(mtmp, mattk, player, display) {
+    canonicalizeAttackFields(mattk);
     // Greased armor does not protect against AT_ENGL+AD_WRAP
     if (mattk.aatyp === AT_ENGL) return false;
 
     // Select the relevant armor piece
     let obj = player.cloak || player.armor || player.suit;
     if (!obj) obj = player.shirt;
-    if ((mattk.adtyp ?? mattk.damage) === AD_DRIN) obj = player.helmet;
+    if (mattk.adtyp === AD_DRIN) obj = player.helmet;
 
     // If armor is greased or oilskin, monster slips off
     // (unless cursed, 1/3 chance of failure)
     if (obj && (obj.greased || obj.oilskin)
         && (!obj.cursed || rn2(3))) {
         if (display) {
-            const adtyp = mattk.adtyp ?? mattk.damage;
+            const adtyp = mattk.adtyp;
             const action = adtyp === AD_WRAP ? 'slips off of' : 'grabs you, but cannot hold onto';
             const adjective = obj.greased ? 'greased' : 'slippery';
             display.putstr_message(
@@ -1302,8 +1303,9 @@ export function u_slip_free(mtmp, mattk, player, display) {
 // cf. mhitu.c:1284 gulpmu() — monster engulfs hero, or damages if already engulfed
 export function gulpmu(mtmp, mattk, player, map, display) {
     if (!mtmp || !player) return M_ATTK_MISS;
+    canonicalizeAttackFields(mattk);
 
-    const tmp_dmg = c_d(mattk.damn || mattk.dice || 0, mattk.damd || mattk.sides || 0);
+    const tmp_dmg = c_d(mattk.damn || 0, mattk.damd || 0);
     let tmp = tmp_dmg;
     let physical_damage = false;
 
@@ -1321,17 +1323,17 @@ export function gulpmu(mtmp, mattk, player, map, display) {
             }
         }
         // Compute swallow timer
-        const adtyp = mattk.adtyp ?? mattk.damage ?? AD_PHYS;
+        const adtyp = mattk.adtyp ?? AD_PHYS;
         let tim_tmp;
         if (adtyp === AD_DGST) {
             const con = (player.attributes && player.attributes[A_CON]) || 10;
             const ac = player.ac ?? player.effectiveAC ?? 10;
             tim_tmp = con + 10 - ac + rn2(20);
             if (tim_tmp < 0) tim_tmp = 0;
-            tim_tmp = Math.floor(tim_tmp / (mtmp.mlevel || 1));
+            tim_tmp = Math.floor(tim_tmp / (mtmp.m_lev || 1));
             tim_tmp += 3;
         } else {
-            tim_tmp = rnd(Math.floor((mtmp.mlevel || 1) + 10 / 2));
+            tim_tmp = rnd(Math.floor((mtmp.m_lev || 1) + 10 / 2));
         }
         player.uswldtim = (tim_tmp < 2) ? 2 : tim_tmp;
     }
@@ -1340,13 +1342,13 @@ export function gulpmu(mtmp, mattk, player, map, display) {
 
     if (player.uswldtim > 0) player.uswldtim -= 1;
 
-    const adtyp = mattk.adtyp ?? mattk.damage ?? AD_PHYS;
+    const adtyp = mattk.adtyp ?? AD_PHYS;
     switch (adtyp) {
     case AD_DGST:
         physical_damage = true;
         if (player.uswldtim === 0) {
             if (display) display.putstr_message(`The ${monDisplayName(mtmp)} totally digests you!`);
-            tmp = player.hp || 999;
+            tmp = player.uhp || 999;
         } else {
             const suffix = (player.uswldtim === 2) ? ' thoroughly'
                          : (player.uswldtim === 1) ? ' utterly' : '';
@@ -1461,9 +1463,10 @@ export function gulpmu(mtmp, mattk, player, map, display) {
 export async function explmu(mtmp, mattk, ufound, player, map, display) {
     if (!mtmp) return M_ATTK_MISS;
     if (mtmp.mcan) return M_ATTK_MISS;
+    canonicalizeAttackFields(mattk);
 
-    let tmp = c_d(mattk.damn || mattk.dice || 0, mattk.damd || mattk.sides || 0);
-    const adtyp = mattk.adtyp ?? mattk.damage ?? AD_PHYS;
+    let tmp = c_d(mattk.damn || 0, mattk.damd || 0);
+    const adtyp = mattk.adtyp ?? AD_PHYS;
 
     if (!ufound) {
         if (display) display.putstr_message(`The ${monDisplayName(mtmp)} explodes at a spot in thin air!`);
@@ -1485,8 +1488,8 @@ export async function explmu(mtmp, mattk, ufound, player, map, display) {
         if (adtyp === AD_ELEC) not_affected = playerHasProp(player, SHOCK_RES);
         // C: mon_explodes(mtmp, mattk) — kills the monster via explosion
         await mon_explodes(mtmp, {
-            damn: mattk.damn || mattk.dice || 0,
-            damd: mattk.damd || mattk.sides || 0,
+            damn: mattk.damn || 0,
+            damd: mattk.damd || 0,
             adtyp: adtyp,
         }, map, player);
         if (!mtmp.dead && mtmp.mhp > 0)
@@ -1530,8 +1533,9 @@ export async function explmu(mtmp, mattk, ufound, player, map, display) {
 // cf. mhitu.c:1660 gazemu() — monster gazes at hero
 export function gazemu(mtmp, mattk, player, map, display) {
     if (!mtmp || !player) return M_ATTK_MISS;
+    canonicalizeAttackFields(mattk);
 
-    const adtyp = mattk.adtyp ?? mattk.damage ?? AD_PHYS;
+    const adtyp = mattk.adtyp ?? AD_PHYS;
     const cancelled = !!(mtmp.mcan);
     const mdat = mtmp.type || mtmp.data || {};
 
@@ -1564,7 +1568,7 @@ export function gazemu(mtmp, mattk, player, map, display) {
             // Petrification death
             if (player.takeDamage) {
                 player.deathCause = `turned to stone by a ${monDisplayName(mtmp)}`;
-                player.takeDamage(player.hp || 999, monDisplayName(mtmp));
+                player.takeDamage(player.uhp || 999, monDisplayName(mtmp));
             }
         }
         break;
@@ -1615,7 +1619,7 @@ export function gazemu(mtmp, mattk, player, map, display) {
                     display.putstr_message(`The ${monDisplayName(mtmp)} looks ${reaction}.`);
                 }
             } else {
-                const blnd = c_d(mattk.damn || mattk.dice || 1, mattk.damd || mattk.sides || 6);
+                const blnd = c_d(mattk.damn || 1, mattk.damd || 6);
                 if (display) display.putstr_message(`You are blinded by the ${monDisplayName(mtmp)}'s radiance!`);
                 make_blinded(player, blnd, false);
             }
@@ -1662,7 +1666,7 @@ export function mdamageu(mtmp, n, player, display) {
                 // Wizard mode survival
                 const con = (player.attributes && player.attributes[A_CON]) || 10;
                 const givehp = 50 + 10 * Math.floor(con / 2);
-                player.hp = Math.min(player.hpmax || givehp, givehp);
+                player.uhp = Math.min(player.uhpmax || givehp, givehp);
                 if (display) {
                     if (typeof display.clearRow === 'function') display.clearRow(0);
                     display.topMessage = null;
@@ -1692,7 +1696,8 @@ export function could_seduce(magr, mdef, mattk) {
     const genagr = magr.female ? FEMALE : MALE;
     const gendef = mdef?.female ? FEMALE : (mdef?.gender ?? MALE);
 
-    const adtyp = mattk ? (mattk.adtyp ?? mattk.damage ?? AD_PHYS)
+    if (mattk) canonicalizeAttackFields(mattk);
+    const adtyp = mattk ? (mattk.adtyp ?? AD_PHYS)
                  : dmgtype(pagr, AD_SSEX) ? AD_SSEX
                  : dmgtype(pagr, AD_SEDU) ? AD_SEDU
                  : AD_PHYS;
@@ -1804,7 +1809,7 @@ export function doseduce(mon, player, display) {
             break;
         case 4:
             if (display) display.putstr_message('You feel restored to health!');
-            if (player.hpmax) player.hp = player.hpmax;
+            if (player.uhpmax) player.uhp = player.uhpmax;
             exercise(player, A_STR, true);
             break;
         }

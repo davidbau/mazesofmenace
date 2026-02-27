@@ -109,7 +109,7 @@ export async function handleKick(player, map, display, game) {
         // C ref: dmg = rnd(ACURR(A_CON) > 15 ? 3 : 5)
         const con = player.attributes?.[A_CON] || 10;
         const dmg = rnd(con > 15 ? 3 : 5);
-        player.hp = Math.max(1, (player.hp || player.hpmax || 1) - Math.max(1, dmg));
+        player.uhp = Math.max(1, (player.uhpmax || 1) - Math.max(1, dmg));
         return { moved: false, tookTime: true };
     }
 

@@ -769,7 +769,7 @@ async function trapeffect_rolling_boulder_trap_mon(mon, trap, map, player) {
                 // C ref: launch_obj()/ohitmon can strike the hero while rolling.
                 const dmg = rnd(20);
                 if (typeof player.takeDamage === 'function') player.takeDamage(dmg, 'a rolling boulder');
-                else if (Number.isFinite(player.hp)) player.hp -= dmg;
+                else if (Number.isFinite(player.uhp)) player.uhp -= dmg;
                 return Trap_Effect_Finished;
             }
             if (x === mon.mx && y === mon.my) {

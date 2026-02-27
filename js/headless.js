@@ -1190,7 +1190,9 @@ export class HeadlessDisplay {
     renderStatus(player) {
         if (!player) return;
 
-        const level = player.level || 1;
+        const level = Number.isFinite(player?.ulevel) ? player.ulevel : (player?.level || 1);
+        const heroHp = Number.isFinite(player?.uhp) ? player.uhp : (player?.hp || 0);
+        const heroHpMax = Number.isFinite(player?.uhpmax) ? player.uhpmax : (player?.hpmax || 0);
         const female = player.gender === 1;
         const rank = rankOf(level, player.roleIndex, female);
         const title = `${player.name} the ${rank}`;
@@ -1215,13 +1217,13 @@ export class HeadlessDisplay {
         const levelLabel = player.inTutorial ? 'Tutorial' : 'Dlvl';
         line2Parts.push(`${levelLabel}:${player.dungeonLevel}`);
         line2Parts.push(`$:${player.gold}`);
-        line2Parts.push(`HP:${player.hp}(${player.hpmax})`);
+        line2Parts.push(`HP:${heroHp}(${heroHpMax})`);
         line2Parts.push(`Pw:${player.pw}(${player.pwmax})`);
         line2Parts.push(`AC:${player.ac}`);
         if (player.showExp) {
-            line2Parts.push(`Xp:${player.level}/${player.exp}`);
+            line2Parts.push(`Xp:${level}/${player.exp}`);
         } else {
-            line2Parts.push(`Xp:${player.level}`);
+            line2Parts.push(`Xp:${level}`);
         }
         if (player.showTime) line2Parts.push(`T:${player.turns}`);
         if (player.hunger > 1000) line2Parts.push('Satiated');
@@ -1245,11 +1247,11 @@ export class HeadlessDisplay {
         // C parity: status-line HP text remains default color unless
         // hitpointbar/status highlight settings explicitly request emphasis.
         if (this.flags.hitpointbar) {
-            const hpPct = player.hpmax > 0 ? player.hp / player.hpmax : 1;
+            const hpPct = heroHpMax > 0 ? heroHp / heroHpMax : 1;
             const hpColor = hpPct <= 0.15 ? CLR_RED
                 : hpPct <= 0.33 ? CLR_ORANGE
                     : CLR_GRAY;
-            const hpStr = `HP:${player.hp}(${player.hpmax})`;
+            const hpStr = `HP:${heroHp}(${heroHpMax})`;
             const hpIdx = line2.indexOf(hpStr);
             if (hpIdx >= 0) {
                 for (let i = 0; i < hpStr.length; i++) {

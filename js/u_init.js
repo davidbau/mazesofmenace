@@ -1186,8 +1186,8 @@ export function simulatePostLevelInit(player, map, depth, opts = {}) {
     // correct HP/PW VALUES but their RNG has already been consumed.
     const raceHP = RACE_HP[player.race] ?? 2;
     const racePW = RACE_PW[player.race] ?? 1;
-    player.hp = role.startingHP + raceHP;
-    player.hpmax = player.hp;
+    player.uhp = role.startingHP + raceHP;
+    player.uhpmax = player.uhp;
     player.pw = role.startingPW + racePW + (opts.enadv_roll || 0);
     player.pwmax = player.pw;
 

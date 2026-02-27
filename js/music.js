@@ -225,7 +225,7 @@ export function awaken_soldiers(bugler, map, player, fov) {
     const isHero = (bugler === player || bugler === 'player');
     // distance of affected non-soldier monsters to bugler
     const distance = (isHero
-        ? (player.ulevel || player.level || 1)
+        ? (player.ulevel || 1)
         : ((bugler.data || bugler.type || {}).mlevel || 0)) * 30;
 
     for (const mtmp of (map.monsters || [])) {
@@ -631,7 +631,7 @@ function do_improvisation(instr, player, map, display, fov) {
 
     const { notes: improvisation, same_as_last_time: same_old_song } = improvised_notes(player);
 
-    const ulevel = player.ulevel || player.level || 1;
+    const ulevel = player.ulevel || 1;
 
     switch (itmp_otyp) { // note: itmp_otyp might differ from instr.otyp
     case MAGIC_FLUTE: // Make monster fall asleep

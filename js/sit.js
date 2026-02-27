@@ -195,12 +195,12 @@ function throne_sit_effect(player, map, display) {
                     player.mhmax += 4;
                 player.mh = player.mhmax;
             }
-            if (player.hp >= (player.maxhp - 5)) {
+            if (player.uhp >= (player.maxhp - 5)) {
                 player.maxhp += 4;
                 if (player.maxhp > (player.hppeak || player.maxhp))
                     player.hppeak = player.maxhp;
             }
-            player.hp = player.maxhp;
+            player.uhp = player.maxhp;
             player.ucreamed = 0;
             // TODO: make_blinded(0, TRUE) — cure blindness
             // TODO: make_sick(0, null, FALSE, SICK_ALL) — cure sickness

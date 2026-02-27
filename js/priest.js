@@ -592,14 +592,14 @@ export function priest_talk(priest, map, player, display) {
         if (offer === 0) {
             verbalize("Thou shalt regret thine action!");
             if (coaligned) adjalign(player, -1);
-        } else if (offer < ((player.level || 1) * 200)) {
+        } else if (offer < ((player.ulevel || 1) * 200)) {
             if (playerMoney > (offer * 2)) {
                 verbalize("Cheapskate.");
             } else {
                 verbalize("I thank thee for thy contribution.");
                 exercise(player, A_WIS, true);
             }
-        } else if (offer < ((player.level || 1) * 400)) {
+        } else if (offer < ((player.ulevel || 1) * 400)) {
             verbalize("Thou art indeed a pious individual.");
             if (playerMoney < (offer * 2)) {
                 if (coaligned && (player.alignmentRecord || 0) <= ALGN_SINNED) {
@@ -611,7 +611,7 @@ export function priest_talk(priest, map, player, display) {
                 if (!player.clairvoyantTimeout) player.clairvoyantTimeout = 0;
                 player.clairvoyantTimeout += rn1(500, 500);
             }
-        } else if (offer < ((player.level || 1) * 600)
+        } else if (offer < ((player.ulevel || 1) * 600)
                    && (!(player.protectionIntrinsic)
                        || ((player.ublessed || 0) < 20
                            && ((player.ublessed || 0) < 9 || !rn2(player.ublessed || 1))))) {

@@ -12,10 +12,16 @@ function setAliasPair(obj, canonical, legacy) {
 
 export function canonicalizeAttackFields(attk) {
     if (!attk || typeof attk !== 'object') return attk;
+    // aatyp has appeared as both "at" and "type" in legacy JS callsites.
+    if (attk.aatyp === undefined) {
+        if (attk.at !== undefined) attk.aatyp = attk.at;
+        else if (attk.type !== undefined) attk.aatyp = attk.type;
+    }
     setAliasPair(attk, 'aatyp', 'type');
+    setAliasPair(attk, 'aatyp', 'at');
     setAliasPair(attk, 'adtyp', 'damage');
+    setAliasPair(attk, 'adtyp', 'ad');
     setAliasPair(attk, 'damn', 'dice');
     setAliasPair(attk, 'damd', 'sides');
     return attk;
 }
-

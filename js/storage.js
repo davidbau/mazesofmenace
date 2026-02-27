@@ -121,7 +121,7 @@ export function restMon(data) {
     const ptr = mons[mon.mndx];
     mon.type = ptr;
     mon.attacks = ptr.attacks;
-    const symEntry = def_monsyms[ptr.symbol];
+    const symEntry = def_monsyms[ptr.mlet];
     mon.displayChar = symEntry ? symEntry.sym : '?';
     mon.displayColor = ptr.color;
     // Restore monster inventory
@@ -276,8 +276,8 @@ export function saveYou(player) {
         name: player.name, roleIndex: player.roleIndex,
         race: player.race, gender: player.gender, alignment: player.alignment,
         alignmentRecord: player.alignmentRecord, alignmentAbuse: player.alignmentAbuse,
-        hp: player.hp, hpmax: player.hpmax, pw: player.pw, pwmax: player.pwmax,
-        ac: player.ac, level: player.level, exp: player.exp, score: player.score,
+        hp: player.uhp, hpmax: player.uhpmax, pw: player.pw, pwmax: player.pwmax,
+        ac: player.ac, level: player.ulevel, exp: player.exp, score: player.score,
         attributes: [...player.attributes],
         dungeonLevel: player.dungeonLevel, maxDungeonLevel: player.maxDungeonLevel,
         gold: player.gold, hunger: player.hunger, nutrition: player.nutrition,

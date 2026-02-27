@@ -165,7 +165,7 @@ export function dmgval(otmp, mon) {
     if (otyp === CREAM_PIE) return 0;
 
     const ptr = mon?.type || mon?.data || {};
-    const isLarge = (ptr.size ?? 0) >= MZ_LARGE;
+    const isLarge = (ptr.msize ?? 0) >= MZ_LARGE;
     let tmp = 0;
 
     if (isLarge) {
