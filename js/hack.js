@@ -25,8 +25,7 @@ import { WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
 import { nhgetch } from './input.js';
 import { playerAttackMonster } from './uhitm.js';
 import { formatGoldPickupMessage, formatInventoryPickupMessage } from './do.js';
-import { monDisplayName } from './mondata.js';
-import { y_monnam, YMonnam, m_monnam } from './do_name.js';
+import { monDisplayName, monNam } from './mondata.js';
 import { maybeSmudgeEngraving, u_wipe_engr } from './engrave.js';
 import { gethungry } from './eat.js';
 import { describeGroundObjectForPlayer, maybeHandleShopEntryMessage } from './shk.js';
@@ -282,9 +281,9 @@ export function domove_bump_mon(mon, _glyph, _nopick, game, display) {
     // C: m-prefix bump into known/visible monster consumes a turn and stops.
     if (_nopick && !ctx.travel && visibleEnough) {
         if (mon.peaceful && !game?.flags?.hallucination) {
-            display?.putstr_message(`Pardon me, ${m_monnam(mon)}.`);
+            display?.putstr_message(`Pardon me, ${monNam(mon)}.`);
         } else {
-            display?.putstr_message(`You move right into ${m_monnam(mon)}.`);
+            display?.putstr_message(`You move right into ${monNam(mon)}.`);
         }
         return { handled: true, tookTime: true };
     }
@@ -304,7 +303,7 @@ export function domove_swap_with_pet(mon, nx, ny, dir, player, map, display, gam
     maybe_smudge_engr(map, oldPlayerX, oldPlayerY, player.x, player.y);
     player.displacedPetThisTurn = true;
     maybeHandleShopEntryMessage(game, oldPlayerX, oldPlayerY);
-    display.putstr_message(`You swap places with ${y_monnam(mon)}.`);
+    display.putstr_message(`You swap places with ${monNam(mon)}.`);
     const landedObjs = map.objectsAt(nx, ny);
     if (landedObjs.length > 1) {
         clearTopline(display);
@@ -331,14 +330,16 @@ export async function domove_attackmon_at(mon, nx, ny, dir, player, map, display
             if (mon.tame) {
                 monflee(mon, rnd(6), false, false, player, display, null);
             }
-            const label = YMonnam(mon);
+            const label = mon.tame
+                ? monNam(mon, { article: 'your', capitalize: true })
+                : monNam(mon, { capitalize: true });
             display.putstr_message(`You stop.  ${label} is in the way!`);
             ctx.forcefight = 0;
             return { handled: true, moved: false, tookTime: true };
         }
         if (mon.mfrozen || mon.mcanmove === false || mon.msleeping
             || ((mon.type?.speed ?? 0) === 0 && rn2(6))) {
-            const label = YMonnam(mon);
+            const label = monNam(mon, { capitalize: true });
             display.putstr_message(`${label} doesn't seem to move!`);
             ctx.forcefight = 0;
             return { handled: true, moved: false, tookTime: true };
