@@ -214,7 +214,31 @@ def candidate_syntax_ok(emitted_js):
         if proc.returncode == 0:
             return True, ""
         detail = (proc.stderr or proc.stdout or "").strip()
-        return False, detail.splitlines()[-1] if detail else "node --check failed"
+        if not detail:
+            return False, "node --check failed"
+        # Keep a compact, actionable syntax summary: "<loc> <message>".
+        lines = [ln.rstrip() for ln in detail.splitlines() if ln.strip()]
+        loc = ""
+        msg = ""
+        for ln in lines:
+            stripped = ln.strip()
+            if stripped.startswith("Node.js "):
+                continue
+            if not loc and re.search(r"\.mjs:\d+", stripped):
+                loc = stripped
+                continue
+            if not msg and "SyntaxError:" in stripped:
+                msg = stripped
+                break
+        if msg and loc:
+            return False, f"{loc} {msg}"
+        if msg:
+            return False, msg
+        for ln in lines:
+            stripped = ln.strip()
+            if not stripped.startswith("Node.js "):
+                return False, stripped
+        return False, lines[0].strip()
     finally:
         try:
             tmp_path.unlink(missing_ok=True)
