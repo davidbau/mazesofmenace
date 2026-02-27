@@ -649,3 +649,39 @@ export function migrsort_cmp(vptr1, vptr2) {
   if (l1 !== l2) return l1 - l2;
   return (m1.m_id < m2.m_id) ? -1 : (m1.m_id > m2.m_id);
 }
+
+// TRANSLATOR: AUTO (wizcmds.c:445)
+export async function wiz_level_change(player) {
+  let buf, dummy = '\x00', newlevel = 0, ret;
+  buf[0] = '\x00';
+  await getlin("To what experience level do you want to be set?", buf);
+  mungspaces(buf);
+  if (buf[0] === '\x1b' || buf[0] === '\x00') ret = 0;
+  else {
+    ret = sscanf(buf, "%d%c", newlevel, dummy);
+  }
+  if (ret !== 1) { pline1(Never_mind); return ECMD_OK; }
+  if (newlevel === player.ulevel) { You("are already that experienced."); }
+  else if (newlevel < player.ulevel) {
+    if (player.ulevel === 1) {
+      You("are already as inexperienced as you can get.");
+      return ECMD_OK;
+    }
+    if (newlevel < 1) newlevel = 1;
+    while (player.ulevel > newlevel) {
+      losexp("#levelchange");
+    }
+  }
+  else {
+    if (player.ulevel >= MAXULEV) {
+      You("are already as experienced as you can get.");
+      return ECMD_OK;
+    }
+    if (newlevel > MAXULEV) newlevel = MAXULEV;
+    while (player.ulevel < newlevel) {
+      pluslvl(false);
+    }
+  }
+  player.ulevelmax = player.ulevel;
+  return ECMD_OK;
+}

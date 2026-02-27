@@ -826,8 +826,28 @@ export function mhurtle(mon, dx, dy, range, map, player) {
 }
 
 // cf. dothrow.c:1180 [static] -- check_shop_obj(obj, x, y, broken)
-function check_shop_obj(obj, x, y, broken) {
+// TRANSLATOR: AUTO (dothrow.c:1180)
+export function check_shop_obj(obj, x, y, broken, player) {
+  let costly_xy, shkp = shop_keeper( player.ushops);
+  if (!shkp) return;
+  costly_xy = costly_spot(x, y);
+  if (broken || !costly_xy || in_rooms(x, y, SHOPBASE) !== player.ushops) {
+    if (is_unpaid(obj)) {
+      stolen_value(obj, player.x, player.y,  shkp.mpeaceful, false);
+    }
     if (broken) obj.no_charge = 1;
+  }
+  else if (costly_xy) {
+    let oshops = in_rooms(x, y, SHOPBASE);
+    if ( oshops === player.ushops || oshops === player.ushops0) {
+      if (is_unpaid(obj)) {
+        let gtg = Has_contents(obj) ? contained_gold(obj, true) : 0;
+        subfrombill(obj, shkp);
+        if (gtg > 0) donate_gold(gtg, shkp, true);
+      }
+      else if (x !== shkp.mx || y !== shkp.my) { sellobj(obj, x, y); }
+    }
+  }
 }
 
 // cf. dothrow.c:1219 -- harmless_missile(obj)

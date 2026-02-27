@@ -534,3 +534,28 @@ export function genl_putmixed(window, attr, str) {
   let buf;
   putstr(window, attr, decode_mixed(buf, str));
 }
+
+// TRANSLATOR: AUTO (windows.c:252)
+export function win_choices_find(s) {
+  let i;
+  for (i = 0; winchoices[i].procs; i++) {
+    if (!strcmpi(s, winchoices[i].procs.name)) { return winchoices[i]; }
+  }
+  return  0;
+}
+
+// TRANSLATOR: AUTO (windows.c:656)
+export function hup_nhgetch() {
+  return '\x1b';
+}
+
+// TRANSLATOR: AUTO (windows.c:663)
+export function hup_yn_function(prompt, resp, deflt) {
+  if (!deflt) deflt = '\x1b';
+  return deflt;
+}
+
+// TRANSLATOR: AUTO (windows.c:675)
+export function hup_nh_poskey(x, y, mod) {
+  return '\x1b';
+}

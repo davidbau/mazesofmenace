@@ -284,3 +284,54 @@ export function clear_all_glyphmap_colors() {
     glyphmap[glyph].color256idx = 0;
   }
 }
+
+// TRANSLATOR: AUTO (glyphs.c:111)
+export function glyphrep_to_custom_map_entries(op, glyphptr) {
+  to_custom_symbol_find = zero_find;
+  let buf, c_glyphid, c_unicode, c_colorval, cp, reslt = 0, rgb = 0;
+  let slash = false, colon = false;
+  if (!glyphid_cache) reslt = 1;
+  nhUse(reslt);
+  Snprintf(buf, buf.length, "%s", op);
+  c_unicode = c_colorval =  0;
+  c_glyphid = cp = buf;
+  while ( cp) {
+    if ( cp === ':' || cp === '/') {
+      if ( cp === ':') { colon = true; cp = '\x00'; }
+      if ( cp === '/') { slash = true; cp = '\x00'; }
+    }
+    cp++;
+    if (colon) { c_unicode = cp; colon = false; }
+    if (slash) { c_colorval = cp; slash = false; }
+  }
+  if (c_glyphid && c_glyphid === ' ') c_glyphid++;
+  if (c_colorval && c_colorval === ' ') c_colorval++;
+  if (c_unicode && c_unicode === ' ') {
+    while ( c_unicode === ' ') {
+      c_unicode++;
+    }
+  }
+  if (c_unicode && !c_unicode) c_unicode = 0;
+  if ((c_colorval && (rgb = rgbstr_to_int32(c_colorval)) !== -1) || !c_colorval) {
+    to_custom_symbol_find.color = (rgb === -1 || !c_colorval) ? 0 : (rgb === 0) ? nonzero_black : rgb;
+  }
+  if (c_unicode) to_custom_symbol_find.unicode_val = c_unicode;
+  to_custom_symbol_find.extraval = glyphptr;
+  to_custom_symbol_find.callback = to_custom_symset_entry_callback;
+  reslt = glyph_find_core(c_glyphid, to_custom_symbol_find);
+  return reslt;
+}
+
+// TRANSLATOR: AUTO (glyphs.c:183)
+export function fix_glyphname(str) {
+  let c;
+  for (c = str;  c; c++) {
+    if ( c >= 'A' && c <= 'Z') {
+       c +=  ('a' - 'A');
+    }
+    else if ( c >= '0' && c <= '9') {
+    }
+    else if ( c < 'a' || c > 'z') c = '_';
+  }
+  return str;
+}

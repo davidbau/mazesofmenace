@@ -1878,3 +1878,11 @@ export function can_fog(mtmp, game) {
   if (!(game.mvitals[PM_FOG_CLOUD].mvflags & G_GENOD) && is_vampshifter(mtmp) && !Protection_from_shape_changers && !stuff_prevents_passage(mtmp)) return true;
   return false;
 }
+
+// TRANSLATOR: AUTO (monmove.c:2172)
+export function dissolve_bars(x, y, map) {
+  map.locations[x][y].typ = (map.locations[x][y].edge === 1) ? DOOR : (Is_special(map.uz) || in_rooms(x, y, 0)) ? ROOM : CORR;
+  map.locations[x][y].flags = 0;
+  newsym(x, y);
+  if (u_at(x, y)) switch_terrain();
+}

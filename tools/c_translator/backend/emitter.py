@@ -861,6 +861,16 @@ def _lower_expr(expr, rewrite_rules):
         "",
         out,
     )
+    # Common typedef casts (time_t, anything_t, etc.) have no JS equivalent.
+    out = re.sub(r"\(\s*(?:const\s+)?[A-Za-z_]\w*_t\s*\)", "", out)
+    # Deref casted pointers like *(int *)vptr -> vptr.
+    out = re.sub(
+        r"\*\s*\(\s*(?:const\s+)?(?:unsigned\s+|signed\s+|long\s+|short\s+)?"
+        r"(?:int|char|float|double|boolean|coordxy|coord|schar|uchar|xint16|xint32|xint64)"
+        r"\s*\*\s*\)\s*([A-Za-z_]\w*(?:\[[^\]]+\])?)",
+        r"\1",
+        out,
+    )
     # Function-pointer null-casts like ((int (*)(...)) 0) -> null.
     out = re.sub(r"\(\s*[A-Za-z_]\w*\s*\(\s*\*\s*\)\s*\([^)]*\)\s*\)\s*0\b", "null", out)
     out = re.sub(r"\(\s*[A-Za-z_]\w*\s*\(\s*\)\s*\([^)]*\)\s*\)\s*0\b", "null", out)
@@ -876,10 +886,29 @@ def _lower_expr(expr, rewrite_rules):
     # C integer long suffix (e.g., 7L) has no JS runtime equivalent.
     out = re.sub(r"\b(\d+)L\b", r"\1", out)
     out = re.sub(r"\bsizeof\s+([A-Za-z_]\w*)\b", r"\1.length", out)
+    out = re.sub(
+        r'\bsizeof\s+("(?:(?:\\.)|[^"\\])*")',
+        r"(\1).length",
+        out,
+    )
     out = re.sub(r"\(\s*boolean\s*\)\s*", "", out)
+    out = _rewrite_c_char_literals(out)
+    # Address-of in return position is pointer semantics in C; drop for JS refs.
+    out = re.sub(r"\breturn\s*&\s*([A-Za-z_]\w*(?:\[[^\]]+\])?)", r"return \1", out)
+    # Remove unary pointer-deref in boolean/comparison contexts: *p -> p.
+    out = re.sub(r"([(&|!=?:,]\s*)\*\s*([A-Za-z_]\w*)", r"\1\2", out)
     out = re.sub(r"(?<![=!<>])==(?![=])", "===", out)
     out = re.sub(r"(?<![=!<>])!=(?![=])", "!==", out)
     return out, required_params
+
+
+def _rewrite_c_char_literals(text):
+    def repl(match):
+        digits = match.group(1)
+        value = int(digits, 8) & 0xFF
+        return f"'\\x{value:02x}'"
+
+    return re.sub(r"'\\([0-7]{1,3})'", repl, text)
 
 
 def _normalize_space(text):

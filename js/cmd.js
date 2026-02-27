@@ -1276,3 +1276,43 @@ export function yn_func_menu_opt(win, key, text, def) {
 export function dummyfunction() {
   return ECMD_CANCEL;
 }
+
+// TRANSLATOR: AUTO (cmd.c:2416)
+export function extcmds_getentry(i) {
+  if (i < 0 || i > extcmdlist_length) return 0;
+  return extcmdlist[i];
+}
+
+// TRANSLATOR: AUTO (cmd.c:3338)
+export function key2txt(c, txt) {
+  if (c === ' ') {
+    Sprintf(txt, "<space>");
+  }
+  else if (c === '\x1b') {
+    Sprintf(txt, "<esc>");
+  }
+  else if (c === '\n') {
+    Sprintf(txt, "<enter>");
+  }
+  else if (c === '\x7f') {
+    Sprintf(txt, "<del>");
+  }
+  else {
+    Strcpy(txt, visctrl( c));
+  }
+  return txt;
+}
+
+// TRANSLATOR: AUTO (cmd.c:3697)
+export function random_response(buf, sz) {
+  let c, count = 0;
+  for (; ; ) {
+    c = randomkey();
+    if (c === '\n') {
+      break;
+    }
+    if (c === '\x1b') { count = 0; break; }
+    if (count < sz - 1) buf[count++] = c;
+  }
+  buf[count] = '\x00';
+}

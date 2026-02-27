@@ -617,3 +617,79 @@ export async function status_hilite_menu_choose_updownboth(fld, str, ltok, gtok)
   if (res > 0) { ret = picks.item.a_int - 10; (picks, 0); }
   return ret;
 }
+
+// TRANSLATOR: AUTO (botl.c:1085)
+export function cond_cmp(vptr1, vptr2) {
+  let indx1 = vptr1, indx2 = vptr2, c1 = conditions[indx1].ranking, c2 = conditions[indx2].ranking;
+  if (c1 !== c2) return c1 - c2;
+  return strcmpi(condtests[indx1].useroption, condtests[indx2].useroption);
+}
+
+// TRANSLATOR: AUTO (botl.c:1098)
+export function menualpha_cmp(vptr1, vptr2) {
+  let indx1 = vptr1, indx2 = vptr2;
+  return strcmpi(condtests[indx1].useroption, condtests[indx2].useroption);
+}
+
+// TRANSLATOR: AUTO (botl.c:1963)
+export function fldname_to_bl_indx(name) {
+  let i, nmatches = 0, fld = 0;
+  if (name && name) {
+    for (i = 0; i < SIZE(initblstats); i++) {
+      if (fuzzymatch(initblstats[i].fldname, name, " -_", true)) { fld = initblstats[i].fld; nmatches++; }
+    }
+    if (!nmatches) {
+      for (i = 0; fieldids_alias[i].fieldname; i++) {
+        if (fuzzymatch(fieldids_alias[i].fieldname, name, " -_", true)) { fld = fieldids_alias[i].fldid; nmatches++; }
+      }
+    }
+    if (!nmatches) {
+      let len =  strlen(name);
+      for (i = 0; i < SIZE(initblstats); i++) {
+        if (!strncmpi(name, initblstats[i].fldname, len)) { fld = initblstats[i].fld; nmatches++; }
+      }
+    }
+  }
+  return (nmatches === 1) ? fld : BL_FLUSH;
+}
+
+// TRANSLATOR: AUTO (botl.c:2394)
+export function is_ltgt_percentnumber(str) {
+  let s = str;
+  if ( s === '<' || s === '>') s++;
+  if ( s === '=') s++;
+  if ( s === '-' || s === '+') s++;
+  if (!digit( s)) return false;
+  while (digit( s)) {
+    s++;
+  }
+  if ( s === '%') s++;
+  return ( s === '\x00');
+}
+
+// TRANSLATOR: AUTO (botl.c:4193)
+export async function status_hilites_viewall() {
+  let datawin, hlstr = status_hilite_str, buf;
+  datawin = create_nhwindow(NHW_TEXT);
+  while (hlstr) {
+    Sprintf(buf, "OPTIONS=hilite_status: %.*s", Math.trunc(BUFSZ - ("OPTIONS=hilite_status: ").length - 1), hlstr.str);
+    putstr(datawin, 0, buf);
+    hlstr = hlstr.next;
+  }
+  await display_nhwindow(datawin, false);
+  destroy_nhwindow(datawin);
+}
+
+// TRANSLATOR: AUTO (botl.c:4214)
+export function all_options_statushilites(sbuf) {
+  let hlstr, buf;
+  status_hilite_linestr_done();
+  status_hilite_linestr_gather();
+  hlstr = status_hilite_str;
+  while (hlstr) {
+    Sprintf(buf, "OPTIONS=hilite_status: %.*s\n", Math.trunc(BUFSZ - ("OPTIONS=hilite_status: ").length - 1), hlstr.str);
+    strbuf_append(sbuf, buf);
+    hlstr = hlstr.next;
+  }
+  status_hilite_linestr_done();
+}

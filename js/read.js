@@ -1603,3 +1603,31 @@ export function display_stinking_cloud_positions(on_off, player) {
   }
   else { tmp_at(DISP_END, 0); }
 }
+
+// TRANSLATOR: AUTO (read.c:3318)
+export async function create_particular() {
+  let d, bufp, buf, prompt, tryct = CP_TRYLIM, altmsg = 0;
+  buf[0] = '\x00';
+  Strcpy(prompt, "Create what kind of monster?");
+  do {
+    await getlin(prompt, buf);
+    bufp = mungspaces(buf);
+    if ( bufp === '\x1b') return false;
+    if (create_particular_parse(bufp, d)) {
+      break;
+    }
+    if ( bufp || altmsg || tryct < 2) { pline("I've never heard of such monsters."); }
+    else {
+      pline("Try again (type * for random, ESC to cancel).");
+      ++altmsg;
+    }
+    if (tryct === CP_TRYLIM) {
+      Strcat(prompt, " [type name or symbol]");
+    }
+  } while (--tryct > 0);
+  if (!tryct) pline1(thats_enough_tries);
+  else {
+    return create_particular_creation( d);
+  }
+  return false;
+}

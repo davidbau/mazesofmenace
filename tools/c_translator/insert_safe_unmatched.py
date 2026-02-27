@@ -249,9 +249,11 @@ def main():
                 mpath.read_text(encoding="utf-8", errors="replace")
             )
         known = module_symbols[module]
-        ok, _ = candidate_syntax_ok(emitted_js)
+        ok, syntax_detail = candidate_syntax_ok(emitted_js)
         if not ok:
-            skipped.append({"record": rec, "reason": "syntax_bad"})
+            skipped.append(
+                {"record": rec, "reason": "syntax_bad", "syntax_error": syntax_detail}
+            )
             continue
         unknown_calls = candidate_unknown_calls(emitted_js, known)
         unknown_ids, _ = candidate_unknown_identifiers(emitted_js, known, module, alias_map)

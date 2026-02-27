@@ -1532,3 +1532,8 @@ export function dump_enums() {
 export function dump_glyphids() {
   dump_all_glyphids(stdout);
 }
+
+// TRANSLATOR: AUTO (allmain.c:1178)
+export function timet_to_seconds(ttim) {
+  return timet_delta(ttim,  0);
+}

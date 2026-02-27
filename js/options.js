@@ -1393,3 +1393,83 @@ export function enhance_menu_text(buf, sz, whichpass, bool_p, thisopt) {
   nhUse(thisopt);
   return;
 }
+
+// TRANSLATOR: AUTO (options.c:5659)
+export async function handler_disclose(game) {
+  let tmpwin, any, i, n, buf;
+  let disclosure_names = [ "inventory", "attributes", "vanquished", "genocides", "conduct", "overview", ];
+  let disc_cat, pick_cnt, pick_idx, opt_idx, c, disclosure_pick = null;
+  let clr = NO_COLOR;
+  tmpwin = create_nhwindow(NHW_MENU);
+  start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+  any = cg.zeroany;
+  for (i = 0; i < NUM_DISCLOSURE_OPTIONS; i++) {
+    Sprintf(buf, "%-12s[%c%c]", disclosure_names[i], game.flags.end_disclose[i], disclosure_options[i]);
+    any.a_int = i + 1;
+    add_menu(tmpwin, nul_glyphinfo, any, disclosure_options[i], 0, ATR_NONE, clr, buf, MENU_ITEMFLAGS_NONE);
+    disc_cat[i] = 0;
+  }
+  end_menu(tmpwin, "Change which disclosure options categories:");
+  pick_cnt = select_menu(tmpwin, PICK_ANY, disclosure_pick);
+  if (pick_cnt > 0) {
+    for (pick_idx = 0; pick_idx < pick_cnt; ++pick_idx) {
+      opt_idx = disclosure_pick[pick_idx].item.a_int - 1;
+      disc_cat[opt_idx] = 1;
+    }
+    (disclosure_pick, 0);
+    disclosure_pick = null;
+  }
+  destroy_nhwindow(tmpwin);
+  for (i = 0; i < NUM_DISCLOSURE_OPTIONS; i++) {
+    if (disc_cat[i]) {
+      c = game.flags.end_disclose[i];
+      Sprintf(buf, "Disclosure options for %s:", disclosure_names[i]);
+      tmpwin = create_nhwindow(NHW_MENU);
+      start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+      any = cg.zeroany;
+      any.a_char = DISCLOSE_NO_WITHOUT_PROMPT;
+      add_menu(tmpwin, nul_glyphinfo, any, 0, any.a_char, ATR_NONE, clr, "Never disclose, without prompting", (c === any.a_char) ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
+      any.a_char = DISCLOSE_YES_WITHOUT_PROMPT;
+      add_menu(tmpwin, nul_glyphinfo, any, 0, any.a_char, ATR_NONE, clr, "Always disclose, without prompting", (c === any.a_char) ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
+      if ( disclosure_names[i] === 'v' || disclosure_names[i] === 'g') {
+        any.a_char = DISCLOSE_SPECIAL_WITHOUT_PROMPT;
+        add_menu(tmpwin, nul_glyphinfo, any, 0, any.a_char, ATR_NONE, clr, "Always disclose, pick sort order from menu", (c === any.a_char) ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
+      }
+      any.a_char = DISCLOSE_PROMPT_DEFAULT_NO;
+      add_menu(tmpwin, nul_glyphinfo, any, 0, any.a_char, ATR_NONE, clr, "Prompt, with default answer of \"No\"", (c === any.a_char) ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
+      any.a_char = DISCLOSE_PROMPT_DEFAULT_YES;
+      add_menu(tmpwin, nul_glyphinfo, any, 0, any.a_char, ATR_NONE, clr, "Prompt, with default answer of \"Yes\"", (c === any.a_char) ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
+      if ( disclosure_names[i] === 'v' || disclosure_names[i] === 'g') {
+        any.a_char = DISCLOSE_PROMPT_DEFAULT_SPECIAL;
+        add_menu(tmpwin, nul_glyphinfo, any, 0, any.a_char, ATR_NONE, clr, "Prompt, with default answer of \"Ask\" to request sort menu", (c === any.a_char) ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
+      }
+      end_menu(tmpwin, buf);
+      n = select_menu(tmpwin, PICK_ONE, disclosure_pick);
+      if (n > 0) {
+        game.flags.end_disclose[i] = disclosure_pick[0].item.a_char;
+        if (n > 1 && game.flags.end_disclose[i] === c) game.flags.end_disclose[i] = disclosure_pick[1].item.a_char;
+        (disclosure_pick, 0);
+      }
+      destroy_nhwindow(tmpwin);
+    }
+  }
+  return optn_ok;
+}
+
+// TRANSLATOR: AUTO (options.c:8051)
+export function illegal_menu_cmd_key(c) {
+  if (c === 0 || c === '\r' || c === '\n' || c === '\x1b' || c === ' ' || digit( c) || (letter( c) && c !== '@')) {
+    config_error_add("Reserved menu command key '%s'", visctrl( c));
+    return true;
+  }
+  else {
+    let j;
+    for (j = 1; j < MAXOCLASSES; j++) {
+      if (c ===  def_oc_syms[j].sym) {
+        config_error_add("Menu command key '%s' is an object class", visctrl( c));
+        return true;
+      }
+    }
+  }
+  return false;
+}
