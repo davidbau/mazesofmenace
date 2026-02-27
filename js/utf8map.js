@@ -1,7 +1,7 @@
 // Translator target module placeholder for utf8map.c exports.
 
 
-// TRANSLATOR: AUTO (utf8map.c:147)
+// Autotranslated from utf8map.c:147
 export function add_custom_urep_entry(customization_name, glyphidx, utf32ch, utf8str, which_set, player) {
   let gdc =  gs.sym_customizations[which_set][custom_ureps];
   let details, newdetails = 0;

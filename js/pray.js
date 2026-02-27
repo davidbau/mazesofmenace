@@ -1795,7 +1795,7 @@ export function godvoice(g_align, words, player) {
 }
 
 // cf. pray.c:1429 -- gods_angry(g_align): print angry god message
-// TRANSLATOR: AUTO (pray.c:1428)
+// Autotranslated from pray.c:1428
 export function gods_angry(g_align) {
   godvoice(g_align, "Thou hast angered me.");
 }
@@ -1803,7 +1803,7 @@ export function gods_angry(g_align) {
 // ================================================================
 // cf. pray.c:1436 -- gods_upset(g_align, player, map)
 // ================================================================
-// TRANSLATOR: AUTO (pray.c:1435)
+// Autotranslated from pray.c:1435
 export function gods_upset(g_align, player) {
   if (g_align === player.ualign.type) player.ugangr++;
   else if (player.ugangr) player.ugangr--;
@@ -1813,7 +1813,7 @@ export function gods_upset(g_align, player) {
 // ================================================================
 // cf. pray.c:1446 -- consume_offering(otmp, player, map)
 // ================================================================
-// TRANSLATOR: AUTO (pray.c:1445)
+// Autotranslated from pray.c:1445
 export function consume_offering(otmp, player) {
   if (Hallucination) {
     switch (rn2(3)) {
@@ -2635,7 +2635,7 @@ function a_align(x, y, map) {
 }
 
 // cf. pray.c:2507 -- a_gname(): name of altar's deity at player position
-// TRANSLATOR: AUTO (pray.c:2506)
+// Autotranslated from pray.c:2506
 export function a_gname(player) {
   return a_gname_at(player.x, player.y);
 }
@@ -2648,7 +2648,7 @@ export function a_gname_at(x, y, player, map) {
 }
 
 // cf. pray.c:2524 -- u_gname(): player's own deity name
-// TRANSLATOR: AUTO (pray.c:2523)
+// Autotranslated from pray.c:2523
 export function u_gname(player) {
   return align_gname(player.ualign.type);
 }

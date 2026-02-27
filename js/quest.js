@@ -280,13 +280,13 @@ export function onquest(game) {
 }
 
 // cf. quest.c:107 — nemdead(): nemesis was killed
-// TRANSLATOR: AUTO (quest.c:106)
+// Autotranslated from quest.c:106
 export function nemdead() {
   if (!Qstat(killed_nemesis)) { Qstat(killed_nemesis) = true; qt_pager("killed_nemesis"); }
 }
 
 // cf. quest.c:116 — leaddead(): quest leader was killed
-// TRANSLATOR: AUTO (quest.c:115)
+// Autotranslated from quest.c:115
 export function leaddead() {
   if (!Qstat(killed_leader)) { Qstat(killed_leader) = true; }
 }
@@ -307,7 +307,7 @@ export function artitouch(obj, game) {
 
 // cf. quest.c:140 — ok_to_quest(): quest dungeon entry eligibility
 // Returns true if player is allowed to enter quest dungeon.
-// TRANSLATOR: AUTO (quest.c:139)
+// Autotranslated from quest.c:139
 export async function ok_to_quest() {
   return (((Qstat(got_quest) || Qstat(got_thanks)) && is_pure(false) > 0) || Qstat(killed_leader));
 }
@@ -471,7 +471,7 @@ export function chat_with_nemesis(game) {
 }
 
 // cf. quest.c:388 — nemesis_speaks(): nemesis NPC response to chat
-// TRANSLATOR: AUTO (quest.c:388)
+// Autotranslated from quest.c:388
 export function nemesis_speaks(player) {
   if (!Qstat(in_battle)) {
     if (player.uhave.questart) qt_pager("nemesis_wantsit");
@@ -486,7 +486,7 @@ export function nemesis_speaks(player) {
 }
 
 // cf. quest.c:411 — nemesis_stinks(mx, my): gas cloud on nemesis death
-// TRANSLATOR: AUTO (quest.c:411)
+// Autotranslated from quest.c:411
 export function nemesis_stinks(mx, my, game) {
   let save_mon_moving = game.game.svc.context.mon_moving;
   game.game.svc.context.mon_moving = true;
@@ -553,7 +553,7 @@ export function quest_chat(mtmp, game) {
 }
 
 // cf. quest.c:481 — quest_talk(mtmp): dispatch proactive NPC talk
-// TRANSLATOR: AUTO (quest.c:480)
+// Autotranslated from quest.c:480
 export async function quest_talk(mtmp) {
   if (mtmp.m_id === Qstat(leader_m_id)) { await leader_speaks(mtmp); return; }
   switch (mtmp.data.msound) {
@@ -569,7 +569,7 @@ export async function quest_talk(mtmp) {
 }
 
 // cf. quest.c:499 — quest_stat_check(mtmp): update nemesis battle status
-// TRANSLATOR: AUTO (quest.c:499)
+// Autotranslated from quest.c:499
 export function quest_stat_check(mtmp, player) {
   if (mtmp.data.msound === MS_NEMESIS) Qstat(in_battle) = (!helpless(mtmp) && monnear(mtmp, player.x, player.y));
 }

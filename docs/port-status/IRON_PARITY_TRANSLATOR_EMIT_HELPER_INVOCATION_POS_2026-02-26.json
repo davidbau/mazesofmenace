@@ -2,7 +2,7 @@
   "diag": [],
   "emit_mode": "emit-helper",
   "function": "invocation_pos",
-  "js": "// TRANSLATOR: AUTO (hack.c:963)\nexport function invocation_pos(x, y) {\n  return (Invocation_lev(&u.uz) && x === svi.inv_pos.x && y === svi.inv_pos.y);\n}\n",
+  "js": "// Autotranslated from hack.c:963\nexport function invocation_pos(x, y) {\n  return (Invocation_lev(&u.uz) && x === svi.inv_pos.x && y === svi.inv_pos.y);\n}\n",
   "meta": {
     "assignment_count": 2,
     "body_end_line": 967,

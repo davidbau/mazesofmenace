@@ -26,7 +26,7 @@ function getlt() {
 }
 
 // cf. calendar.c:55
-// TRANSLATOR: AUTO (calendar.c:54)
+// Autotranslated from calendar.c:54
 export function getyear() {
   return (1900 + getlt().tm_year);
 }
@@ -75,7 +75,7 @@ export function time_from_yyyymmddhhmmss(buf) {
 }
 
 // cf. calendar.c:200
-// TRANSLATOR: AUTO (calendar.c:199)
+// Autotranslated from calendar.c:199
 export function phase_of_the_moon() {
   let lt = getlt(), epact, diy, goldn;
   diy = lt.tm_yday;
@@ -86,21 +86,21 @@ export function phase_of_the_moon() {
 }
 
 // cf. calendar.c:215
-// TRANSLATOR: AUTO (calendar.c:214)
+// Autotranslated from calendar.c:214
 export function friday_13th() {
   let lt = getlt();
   return (lt.tm_wday === 5 && lt.tm_mday === 13);
 }
 
 // cf. calendar.c:224
-// TRANSLATOR: AUTO (calendar.c:223)
+// Autotranslated from calendar.c:223
 export function night() {
   let hour = getlt().tm_hour;
   return (hour < 6 || hour > 21);
 }
 
 // cf. calendar.c:232
-// TRANSLATOR: AUTO (calendar.c:231)
+// Autotranslated from calendar.c:231
 export function midnight() {
   return (getlt().tm_hour === 0);
 }

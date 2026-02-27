@@ -490,7 +490,7 @@ export function x_monnam(mon, article = null, _adjective = null, _suppress = 0, 
 // ========================================================================
 
 // C ref: mondata.c mon_knows_traps(mtmp, ttyp)
-// TRANSLATOR: AUTO (mondata.c:1616)
+// Autotranslated from mondata.c:1616
 export function mon_knows_traps(mtmp, ttyp) {
   if (ttyp === ALL_TRAPS) return (mtmp.mtrapseen);
   else if (ttyp === NO_TRAP) return !(mtmp.mtrapseen);
@@ -500,7 +500,7 @@ export function mon_knows_traps(mtmp, ttyp) {
 }
 
 // C ref: mondata.c mon_learns_traps(mtmp, ttyp)
-// TRANSLATOR: AUTO (mondata.c:1628)
+// Autotranslated from mondata.c:1628
 export function mon_learns_traps(mtmp, ttyp) {
   if (ttyp === ALL_TRAPS) mtmp.mtrapseen = ~0;
   else if (ttyp === NO_TRAP) mtmp.mtrapseen = 0;
@@ -547,14 +547,14 @@ export function dmgtype_fromattack(ptr, dtyp, atyp) {
 
 // C ref: mondata.c dmgtype(ptr, dtyp)
 // Returns true if monster deals this damage type from any attack.
-// TRANSLATOR: AUTO (mondata.c:711)
+// Autotranslated from mondata.c:711
 export function dmgtype(ptr, dtyp) {
   return dmgtype_fromattack(ptr, dtyp, AT_ANY) ? true : false;
 }
 
 // C ref: mondata.c noattacks(ptr)
 // Returns true if monster has no real attacks (AT_BOOM passive ignored).
-// TRANSLATOR: AUTO (mondata.c:60)
+// Autotranslated from mondata.c:60
 export function noattacks(ptr) {
   let i;
   const mattk = ptr?.mattk || ptr?.attacks || [];
@@ -584,7 +584,7 @@ export function ranged_attk(ptr) {
 
 // C ref: mondata.c sticks(ptr)
 // Returns true if monster can stick/grab/wrap targets it hits.
-// TRANSLATOR: AUTO (mondata.c:653)
+// Autotranslated from mondata.c:653
 export function sticks(ptr) {
   return (dmgtype(ptr, AD_STCK) || (dmgtype(ptr, AD_WRAP) && !attacktype(ptr, AT_ENGL)) || attacktype(ptr, AT_HUGS));
 }
@@ -613,7 +613,7 @@ export function mon_hates_silver(mon) {
 
 // C ref: mondata.c hates_blessings(ptr)
 // Returns true if this monster type is especially affected by blessed objects.
-// TRANSLATOR: AUTO (mondata.c:539)
+// Autotranslated from mondata.c:539
 export function hates_blessings(ptr) {
   return (is_undead(ptr) || is_demon(ptr));
 }
@@ -653,7 +653,7 @@ export function num_horns(ptr) {
 // C ref: mondata.c sliparm(ptr)
 // Returns true if creature would slip out of armor (too small, whirly, or noncorporeal).
 // is_whirly: S_VORTEX || PM_AIR_ELEMENTAL; noncorporeal: S_GHOST
-// TRANSLATOR: AUTO (mondata.c:631)
+// Autotranslated from mondata.c:631
 export function sliparm(ptr) {
   return (is_whirly(ptr) || ptr.msize <= MZ_SMALL || noncorporeal(ptr));
 }
@@ -677,7 +677,7 @@ export function haseyes(ptr) { return !(ptr.flags1 & M1_NOEYES); }
 export function hates_light(ptr) { return ptr === mons[PM_GREMLIN]; }
 
 // C ref: mondata.c:547 — mon_hates_light(mon)
-// TRANSLATOR: AUTO (mondata.c:546)
+// Autotranslated from mondata.c:546
 export function mon_hates_light(mon) {
   const ptr = monsdat(mon);
   return ptr ? hates_light(ptr) : false;
@@ -819,7 +819,7 @@ export function little_to_big(montype) {
 
 // C ref: mondata.c:1316 — big_to_little(montype)
 // Returns the juvenile form of a monster index, or the index itself if none.
-// TRANSLATOR: AUTO (mondata.c:1315)
+// Autotranslated from mondata.c:1315
 export function big_to_little(montype) {
     for (const [little, big] of grownups)
         if (montype === big) return little;
@@ -1427,7 +1427,7 @@ export function get_atkdam_type(adtyp) {
   return adtyp;
 }
 
-// TRANSLATOR: AUTO (mondata.c:1585)
+// Autotranslated from mondata.c:1585
 export function give_u_to_m_resistances(mtmp, player) {
   let intr;
   for (intr = FIRE_RES; intr <= STONE_RES; intr++) {

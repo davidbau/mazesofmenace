@@ -249,7 +249,7 @@ function Is_candle(obj) {
 }
 
 // C ref: shk.c corpsenm_price_adj() -- adjust price for corpse/tin/egg
-// TRANSLATOR: AUTO (shk.c:4209)
+// Autotranslated from shk.c:4209
 export function corpsenm_price_adj(obj) {
   let val = 0;
   if ((obj.otyp === TIN || obj.otyp === EGG || obj.otyp === CORPSE) && ismnum(obj.corpsenm)) {
@@ -406,7 +406,7 @@ function getCost(obj, player, shkp) {
 }
 
 // C ref: shk.c set_cost() -- price shk will pay when buying (selling to player)
-// TRANSLATOR: AUTO (shk.c:3088)
+// Autotranslated from shk.c:3088
 export function set_cost(obj, shkp, player) {
   let tmp, unit_price = getprice(obj, true), multiplier = 1, divisor = 1;
   tmp = get_pricing_units(obj) * unit_price;
@@ -447,7 +447,7 @@ export function set_cost(obj, shkp, player) {
 // ============================================================
 
 // C ref: shk.c onbill() -- find bill entry for object
-// TRANSLATOR: AUTO (shk.c:1076)
+// Autotranslated from shk.c:1076
 export function onbill(obj, shkp, silent) {
   if (shkp) {
     let bp, ct;
@@ -468,7 +468,7 @@ export function onshopbill(obj, shkp, silent) {
 }
 
 // C ref: shk.c next_shkp() -- iterate shopkeepers
-// TRANSLATOR: AUTO (shk.c:214)
+// Autotranslated from shk.c:214
 export function next_shkp(shkp, withbill) {
   for (shkp; shkp = shkp.nmon; ) {
     if (DEADMONSTER(shkp)) {
@@ -485,7 +485,7 @@ export function next_shkp(shkp, withbill) {
 }
 
 // C ref: shk.c addupbill() -- total of all items on bill
-// TRANSLATOR: AUTO (shk.c:436)
+// Autotranslated from shk.c:436
 export function addupbill(shkp) {
   let ct = ESHK(shkp).billct, bp = ESHK(shkp).bill_p, total = 0;
   while (ct--) {
@@ -507,7 +507,7 @@ export function shop_debt(shkp) {
 }
 
 // C ref: shk.c check_credit() -- deduct cost from credit
-// TRANSLATOR: AUTO (shk.c:1218)
+// Autotranslated from shk.c:1218
 export function check_credit(tmp, shkp) {
   let credit = ESHK(shkp).credit;
   if (credit === 0) {
@@ -526,7 +526,7 @@ export function check_credit(tmp, shkp) {
 }
 
 // C ref: shk.c pay() -- make payment to shopkeeper
-// TRANSLATOR: AUTO (shk.c:1237)
+// Autotranslated from shk.c:1237
 export function pay(tmp, shkp, game) {
   let robbed = ESHK(shkp).robbed;
   let balance = ((tmp <= 0) ? tmp : check_credit(tmp, shkp));
@@ -580,7 +580,7 @@ function ensureBill(shkp) {
 }
 
 // C ref: shk.c add_one_tobill()
-// TRANSLATOR: AUTO (shk.c:3249)
+// Autotranslated from shk.c:3249
 export function add_one_tobill(obj, dummy, shkp, player) {
   let eshkp, bp, bct, unbilled = false;
   eshkp = ESHK(shkp);
@@ -607,7 +607,7 @@ export function add_one_tobill(obj, dummy, shkp, player) {
 }
 
 // C ref: shk.c sub_one_frombill()
-// TRANSLATOR: AUTO (shk.c:3597)
+// Autotranslated from shk.c:3597
 export function sub_one_frombill(obj, shkp) {
   let bp, eshkp;
   if ((bp = onbill(obj, shkp, false)) !== 0) {
@@ -714,7 +714,7 @@ export function subfrombill(obj, shkp) {
 // ============================================================
 
 // C ref: shk.c clear_unpaid_obj()
-// TRANSLATOR: AUTO (shk.c:308)
+// Autotranslated from shk.c:308
 export function clear_unpaid_obj(shkp, otmp) {
   if (Has_contents(otmp)) clear_unpaid(shkp, otmp.cobj);
   if (onbill(otmp, shkp, true)) otmp.unpaid = 0;
@@ -802,7 +802,7 @@ export function rile_shk(shkp) {
 }
 
 // C ref: shk.c pacify_shk() -- make shopkeeper peaceful, optionally remove surcharge
-// TRANSLATOR: AUTO (shk.c:1284)
+// Autotranslated from shk.c:1284
 export function pacify_shk(shkp, clear_surcharge) {
   NOTANGRY(shkp) = true;
   if (clear_surcharge && ESHK(shkp).surcharge) {
@@ -1984,7 +1984,7 @@ export function picked_container(obj) {
 }
 
 // C ref: shk.c dropped_container()
-// TRANSLATOR: AUTO (shk.c:3004)
+// Autotranslated from shk.c:3004
 export function dropped_container(obj, shkp, sale) {
   let otmp;
   for (otmp = obj.cobj; otmp; otmp = otmp.nobj) {
@@ -2001,7 +2001,7 @@ export function dropped_container(obj, shkp, sale) {
 // ============================================================
 
 // C ref: shk.c tended_shop()
-// TRANSLATOR: AUTO (shk.c:1058)
+// Autotranslated from shk.c:1058
 export function tended_shop(sroom) {
   let mtmp = sroom.resident;
   return !mtmp ? false : inhishop(mtmp);
@@ -2125,7 +2125,7 @@ function deserted_shop(enterroom, map) {
 // ============================================================
 // Special stock (C: special_stock)
 // ============================================================
-// TRANSLATOR: AUTO (shk.c:3043)
+// Autotranslated from shk.c:3043
 export function special_stock(obj, shkp, quietly, player) {
   if (ESHK(shkp).shoptype === CANDLESHOP && obj.otyp === CANDELABRUM_OF_INVOCATION) {
     if (!quietly) {
@@ -2169,7 +2169,7 @@ function cad(altusage) {
 // Kops (C: call_kops, kops_gone, makekops)
 // Stubs -- kop system not fully ported
 // ============================================================
-// TRANSLATOR: AUTO (shk.c:450)
+// Autotranslated from shk.c:450
 export function call_kops(shkp, nearshop, game, player) {
   let nokops;
   if (!shkp) return;
@@ -2232,7 +2232,7 @@ export function clear_no_charge_pets(shkp, map) {
   }
 }
 
-// TRANSLATOR: AUTO (shk.c:289)
+// Autotranslated from shk.c:289
 export function restshk(shkp, ghostly, map) {
   if (map.uz.dlevel) {
     let eshkp = ESHK(shkp);
@@ -2244,7 +2244,7 @@ export function restshk(shkp, ghostly, map) {
   }
 }
 
-// TRANSLATOR: AUTO (shk.c:508)
+// Autotranslated from shk.c:508
 export function inside_shop(x, y, map) {
   let rno;
   rno = map.locations[x][y].roomno;
@@ -2252,7 +2252,7 @@ export function inside_shop(x, y, map) {
   return rno;
 }
 
-// TRANSLATOR: AUTO (shk.c:1127)
+// Autotranslated from shk.c:1127
 export function obfree(obj, merge, player) {
   let bp, bpm, shkp;
   if (obj.otyp === LEASH && obj.leashmon) o_unleash(obj);
@@ -2300,7 +2300,7 @@ export function obfree(obj, merge, player) {
   dealloc_obj(obj);
 }
 
-// TRANSLATOR: AUTO (shk.c:1462)
+// Autotranslated from shk.c:1462
 export function cheapest_item(ibillct, ibill) {
   let i, gmin = ibill[0].cost;
   for (i = 1; i < ibillct; ++i) {
@@ -2309,7 +2309,7 @@ export function cheapest_item(ibillct, ibill) {
   return gmin;
 }
 
-// TRANSLATOR: AUTO (shk.c:2111)
+// Autotranslated from shk.c:2111
 export function update_bill(indx, ibillct, ibill, eshkp, bp, paiditem) {
   let j, newebillct;
   if (indx >= 0 && ibill[indx].usedup === PartlyUsedUp) {
@@ -2331,7 +2331,7 @@ export function update_bill(indx, ibillct, ibill, eshkp, bp, paiditem) {
   return;
 }
 
-// TRANSLATOR: AUTO (shk.c:2622)
+// Autotranslated from shk.c:2622
 export function set_repo_loc(shkp, player) {
   let ox, oy, eshkp = ESHK(shkp);
   if (gr.repo.shopkeeper) return;
@@ -2350,7 +2350,7 @@ export function set_repo_loc(shkp, player) {
   gr.repo.shopkeeper = shkp;
 }
 
-// TRANSLATOR: AUTO (shk.c:2699)
+// Autotranslated from shk.c:2699
 export function bp_to_obj(bp) {
   let obj, id = bp.bo_id;
   if (bp.useup) obj = o_on(id, gb.billobjs);
@@ -2360,7 +2360,7 @@ export function bp_to_obj(bp) {
   return obj;
 }
 
-// TRANSLATOR: AUTO (shk.c:3200)
+// Autotranslated from shk.c:3200
 export function unpaid_cost(unp_obj, cost_type, player) {
   let bp =  0, shkp = 0, shop, amt = 0;
   for (shop = player.ushops;  shop; shop++) {
@@ -2379,7 +2379,7 @@ export function unpaid_cost(unp_obj, cost_type, player) {
   return amt;
 }
 
-// TRANSLATOR: AUTO (shk.c:3305)
+// Autotranslated from shk.c:3305
 export function add_to_billobjs(obj) {
   if (obj.where !== OBJ_FREE) throw new Error('add_to_billobjs: obj not free');
   if (obj.timed) obj_stop_timers(obj);
@@ -2390,7 +2390,7 @@ export function add_to_billobjs(obj) {
   obj.bypass = 0;
 }
 
-// TRANSLATOR: AUTO (shk.c:3326)
+// Autotranslated from shk.c:3326
 export function bill_box_content(obj, ininv, dummy, shkp) {
   let otmp;
   if (SchroedingersBox(obj)) return;
@@ -2403,7 +2403,7 @@ export function bill_box_content(obj, ininv, dummy, shkp) {
   }
 }
 
-// TRANSLATOR: AUTO (shk.c:3649)
+// Autotranslated from shk.c:3649
 export function stolen_container(obj, shkp, price, ininv) {
   let otmp, bp, billamt;
   for (otmp = obj.cobj; otmp; otmp = otmp.nobj) {
@@ -2430,7 +2430,7 @@ export function stolen_container(obj, shkp, price, ininv) {
   return price;
 }
 
-// TRANSLATOR: AUTO (shk.c:4253)
+// Autotranslated from shk.c:4253
 export function getprice(obj, shk_buying, player) {
   let tmp =  objects[obj.otyp].oc_cost;
   if (obj.oartifact) {
@@ -2468,7 +2468,7 @@ export function getprice(obj, shk_buying, player) {
   return tmp;
 }
 
-// TRANSLATOR: AUTO (shk.c:4386)
+// Autotranslated from shk.c:4386
 export function repairable_damage(dam, shkp, game) {
   let x, y, ttmp, mtmp;
   if (!dam || shk_impaired(shkp)) return false;
@@ -2487,7 +2487,7 @@ export function repairable_damage(dam, shkp, game) {
   return true;
 }
 
-// TRANSLATOR: AUTO (shk.c:4490)
+// Autotranslated from shk.c:4490
 export function shk_fixes_damage(shkp) {
   let dam = find_damage(shkp), shk_closeby;
   if (!dam) return;
@@ -2500,7 +2500,7 @@ export function shk_fixes_damage(shkp) {
   discard_damage_struct(dam);
 }
 
-// TRANSLATOR: AUTO (shk.c:4646)
+// Autotranslated from shk.c:4646
 export function litter_newsyms(litter, x, y) {
   let i;
   for (i = 0; i < 9; i++) {
@@ -2508,7 +2508,7 @@ export function litter_newsyms(litter, x, y) {
   }
 }
 
-// TRANSLATOR: AUTO (shk.c:5047)
+// Autotranslated from shk.c:5047
 export function makekops(mm, game, map) {
   let k_mndx = [ PM_KEYSTONE_KOP, PM_KOP_SERGEANT, PM_KOP_LIEUTENANT, PM_KOP_KAPTAIN ];
   let k_cnt, cnt, mndx, k;
@@ -2532,7 +2532,7 @@ export function makekops(mm, game, map) {
   }
 }
 
-// TRANSLATOR: AUTO (shk.c:6035)
+// Autotranslated from shk.c:6035
 export function use_unpaid_trapobj(otmp, x, y) {
   if (otmp.unpaid) {
     if (!Deaf) {

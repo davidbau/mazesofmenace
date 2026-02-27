@@ -1879,7 +1879,7 @@ export function can_fog(mtmp, game) {
   return false;
 }
 
-// TRANSLATOR: AUTO (monmove.c:2172)
+// Autotranslated from monmove.c:2172
 export function dissolve_bars(x, y, map) {
   map.locations[x][y].typ = (map.locations[x][y].edge === 1) ? DOOR : (Is_special(map.uz) || in_rooms(x, y, 0)) ? ROOM : CORR;
   map.locations[x][y].flags = 0;

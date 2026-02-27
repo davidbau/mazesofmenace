@@ -121,7 +121,7 @@ export function histemple_at(priest, x, y, map) {
 // inhistemple — cf. priest.c:161
 // Checks that priest is in his temple room and shrine is properly aligned.
 // ============================================================================
-// TRANSLATOR: AUTO (priest.c:160)
+// Autotranslated from priest.c:160
 export function inhistemple(priest) {
   if (!priest || !priest.ispriest) return false;
   if (!histemple_at(priest, priest.mx, priest.my)) return false;
@@ -162,7 +162,7 @@ export function findpriest(roomno, map) {
 // p_coaligned — cf. priest.c:370
 // Returns true if player and priest share the same alignment.
 // ============================================================================
-// TRANSLATOR: AUTO (priest.c:369)
+// Autotranslated from priest.c:369
 export function p_coaligned(priest, player) {
   return (player.ualign.type === mon_aligntyp(priest));
 }

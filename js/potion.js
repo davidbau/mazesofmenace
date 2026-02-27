@@ -511,7 +511,7 @@ export function peffect_confusion(player, otmp, display) {
 }
 
 // cf. potion.c peffect_blindness()
-// TRANSLATOR: AUTO (potion.c:1068)
+// Autotranslated from potion.c:1068
 export function peffect_blindness(otmp) {
   if (Blind || ((HBlinded || EBlinded) && BBlinded)) gp.potion_nothing++;
   make_blinded(itimeout_incr(BlindedTimeout, rn1(200, 250 - 125 * bcsign(otmp))),  !Blind);

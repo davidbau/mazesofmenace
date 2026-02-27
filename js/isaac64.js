@@ -170,14 +170,14 @@ export function isaac64_reseed(ctx, seed_bytes) {
 }
 
 // cf. isaac64.c:161 — return next random uint64
-// TRANSLATOR: AUTO (isaac64.c:161)
+// Autotranslated from isaac64.c:161
 export function isaac64_next_uint64(_ctx) {
   if (!_ctx.n) isaac64_update(_ctx);
   return _ctx.r[--_ctx.n];
 }
 
 // cf. isaac64.c:166 — return unbiased random value in [0, n)
-// TRANSLATOR: AUTO (isaac64.c:166)
+// Autotranslated from isaac64.c:166
 export function isaac64_next_uint(_ctx, _n) {
   let r, v, d;
   do {

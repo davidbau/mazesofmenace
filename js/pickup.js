@@ -100,7 +100,7 @@ const st_corpse = 0x02;
 const st_petrifies = 0x04;
 const st_resists = 0x08;
 const st_all = st_gloves | st_corpse | st_petrifies | st_resists;
-// TRANSLATOR: AUTO (pickup.c:272)
+// Autotranslated from pickup.c:272
 export function u_safe_from_fatal_corpse(obj, tests) {
   if (((tests & st_gloves) && uarmg) || ((tests & st_corpse) && obj.otyp !== CORPSE) || ((tests & st_petrifies) && !touch_petrifies( mons[obj.corpsenm])) || ((tests & st_resists) && Stone_resistance)) return true;
   return false;
@@ -191,7 +191,7 @@ function add_valid_menu_class(c) {
 }
 
 // cf. pickup.c:509 — all_but_uchain(obj)
-// TRANSLATOR: AUTO (pickup.c:508)
+// Autotranslated from pickup.c:508
 export function all_but_uchain(obj) {
   return  (obj !== uchain);
 }
@@ -314,7 +314,7 @@ function autopick_testobj(otmp, calc_costly, player) {
 }
 
 // cf. pickup.c:1511 — count_categories(olist, qflags)
-// TRANSLATOR: AUTO (pickup.c:1510)
+// Autotranslated from pickup.c:1510
 export function count_categories(olist, qflags, game) {
   let pack, counted_category, ccount = 0, curr;
   let do_worn = (qflags & WORN_TYPES) !== 0;
@@ -335,7 +335,7 @@ export function count_categories(olist, qflags, game) {
 }
 
 // cf. pickup.c:1544 — delta_cwt(container, obj)
-// TRANSLATOR: AUTO (pickup.c:1543)
+// Autotranslated from pickup.c:1543
 export function delta_cwt(container, obj) {
   let prev, owt, nwt;
   if (container.otyp !== BAG_OF_HOLDING) return obj.owt;
@@ -385,7 +385,7 @@ function lift_object(obj, container, cnt_p, telekinesis, player) {
 }
 
 // cf. pickup.c:1897 — pick_obj(otmp)
-// TRANSLATOR: AUTO (pickup.c:1896)
+// Autotranslated from pickup.c:1896
 export function pick_obj(otmp, player) {
   let result, ox = otmp.ox, oy = otmp.oy;
   let robshop = (!player.uswallow && otmp !== uball && costly_spot(ox, oy));
@@ -533,7 +533,7 @@ function able_to_loot(x, y, looting, player, map) {
 }
 
 // cf. pickup.c:2066 — mon_beside(x, y)
-// TRANSLATOR: AUTO (pickup.c:2065)
+// Autotranslated from pickup.c:2065
 export function mon_beside(x, y) {
   let i, j, nx, ny;
   for (i = -1; i <= 1; i++) {
@@ -844,7 +844,7 @@ function out_container(obj, player, map) {
 }
 
 // cf. pickup.c:2775 — removed_from_icebox(obj)
-// TRANSLATOR: AUTO (pickup.c:2774)
+// Autotranslated from pickup.c:2774
 export function removed_from_icebox(obj, game) {
   if (!age_is_relative(obj)) {
     obj.age = (Number(game?.moves) || 0) - obj.age;
@@ -859,7 +859,7 @@ export function removed_from_icebox(obj, game) {
 }
 
 // cf. pickup.c:2797 — mbag_item_gone(held, item, silent)
-// TRANSLATOR: AUTO (pickup.c:2796)
+// Autotranslated from pickup.c:2796
 export function mbag_item_gone(held, item, silent, player) {
   let shkp, loss = 0;
   if (!silent) {
@@ -876,7 +876,7 @@ export function mbag_item_gone(held, item, silent, player) {
 }
 
 // cf. pickup.c:2820 — observe_quantum_cat(box, makecat, givemsg)
-// TRANSLATOR: AUTO (pickup.c:2819)
+// Autotranslated from pickup.c:2819
 export function observe_quantum_cat(box, makecat, givemsg, game) {
   let sc = "Schroedinger's Cat", deadcat, livecat = 0, ox, oy;
   let itsalive = !rn2(2);
@@ -933,7 +933,7 @@ function u_handsy(player) {
 }
 
 // cf. pickup.c:2937 — stash_ok(obj)
-// TRANSLATOR: AUTO (pickup.c:2936)
+// Autotranslated from pickup.c:2936
 export async function stash_ok(obj) {
   if (!obj) return GETOBJ_EXCLUDE;
   if (!ck_bag(obj)) return GETOBJ_EXCLUDE_SELECTABLE;
@@ -996,7 +996,7 @@ function menu_loot(_retry, _put_in) {
 
 // cf. pickup.c:3376 — in_or_out_menu(prompt, obj, outokay, inokay, alreadyused, more_containers)
 // Stub: menu system not yet ported
-// TRANSLATOR: AUTO (pickup.c:3376)
+// Autotranslated from pickup.c:3376
 export async function in_or_out_menu(prompt, obj, outokay, inokay, alreadyused, more_containers, game) {
   let lootchars = "_:oibrsnq", abc_chars = "_:abcdenq", win, any, pick_list;
   let buf, n, menuselector = game.flags.lootabc ? abc_chars : lootchars;
@@ -1051,7 +1051,7 @@ export async function in_or_out_menu(prompt, obj, outokay, inokay, alreadyused, 
 }
 
 // cf. pickup.c:3461 — tip_ok(obj)
-// TRANSLATOR: AUTO (pickup.c:3460)
+// Autotranslated from pickup.c:3460
 export function tip_ok(obj) {
   if (!obj || obj.oclass === COIN_CLASS) return GETOBJ_EXCLUDE;
   if (Is_container(obj)) { return GETOBJ_SUGGEST; }

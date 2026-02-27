@@ -11,7 +11,7 @@
 // ============================================================================
 
 // hacklib.c:125 — is 'c' a digit?
-// TRANSLATOR: AUTO (hacklib.c:125)
+// Autotranslated from hacklib.c:125
 export function digit(c) {
   return ('0' <= c && c <= '9');
 }
@@ -437,7 +437,7 @@ export function fuzzymatch(s1, s2, ignore_chars, caseblind) {
 // ============================================================================
 
 // hacklib.c:689 — return the ordinal suffix of a number (1st, 2nd, 3rd, 4th...)
-// TRANSLATOR: AUTO (hacklib.c:688)
+// Autotranslated from hacklib.c:688
 export function ordin(n) {
   let dd = n % 10;
   return (dd === 0 || dd > 3 || Math.trunc((n % 100) / 10) === 1)
@@ -461,7 +461,7 @@ export function sgn(n) {
 // ============================================================================
 
 // hacklib.c:720 — distance between two points in moves (Chebyshev distance)
-// TRANSLATOR: AUTO (hacklib.c:720)
+// Autotranslated from hacklib.c:720
 export function distmin(x0, y0, x1, y1) {
   let dx = x0 - x1, dy = y0 - y1;
   if (dx < 0) dx = -dx;
@@ -470,14 +470,14 @@ export function distmin(x0, y0, x1, y1) {
 }
 
 // hacklib.c:737 — square of Euclidean distance between pair of points
-// TRANSLATOR: AUTO (hacklib.c:736)
+// Autotranslated from hacklib.c:736
 export function dist2(x0, y0, x1, y1) {
   let dx = x0 - x1, dy = y0 - y1;
   return dx * dx + dy * dy;
 }
 
 // hacklib.c:746 — integer square root (floor(sqrt(val))); not in C comment block
-// TRANSLATOR: AUTO (hacklib.c:745)
+// Autotranslated from hacklib.c:745
 export function isqrt(val) {
   let rt = 0, odd = 1;
   while (val >= odd) {
@@ -489,7 +489,7 @@ export function isqrt(val) {
 }
 
 // hacklib.c:768 — are two points lined up (orthogonal or diagonal)?
-// TRANSLATOR: AUTO (hacklib.c:767)
+// Autotranslated from hacklib.c:767
 export function online2(x0, y0, x1, y1) {
   let dx = x0 - x1, dy = y0 - y1;
   return (!dy || !dx || dy === dx || dy === -dx);
@@ -501,7 +501,7 @@ export function online2(x0, y0, x1, y1) {
 // ============================================================================
 
 // hacklib.c:894 — swap bit at position bita with bit at position bitb in val
-// TRANSLATOR: AUTO (hacklib.c:895)
+// Autotranslated from hacklib.c:895
 export function swapbits(val, bita, bitb) {
   let tmp = ((val >> bita) & 1) ^ ((val >> bitb) & 1);
   return (val ^ ((tmp << bita) | (tmp << bitb)));
@@ -649,7 +649,7 @@ export function what_datamodel_is_this(retidx, szshort, szint, szlong, szll, szp
   return unknown;
 }
 
-// TRANSLATOR: AUTO (hacklib.c:18)
+// Autotranslated from hacklib.c:18
 export function nh_qsort_idx_cmp(va, vb) {
   let a =  va, b =  vb;
   let c = nh_qsort_cmp_fn( (nh_qsort_base + (a.idx * nh_qsort_size)),  (nh_qsort_base + (b.idx * nh_qsort_size)));

@@ -241,7 +241,7 @@ export function collect_coords(cx, cy, maxradius, cc_flags, map) {
 // enexto — cf. teleport.c:190 (runtime version)
 // ============================================================================
 
-// TRANSLATOR: AUTO (teleport.c:190)
+// Autotranslated from teleport.c:190
 export function enexto(cc, xx, yy, mdat) {
   return (enexto_core(cc, xx, yy, mdat, GP_CHECKSCARY) || enexto_core(cc, xx, yy, mdat, NO_MM_FLAGS));
 }
@@ -352,13 +352,13 @@ function rloc_to_core(mtmp, x, y, rlocflags, map, player, display, fov) {
 }
 
 // cf. teleport.c:1766 — rloc_to(mon, x, y)
-// TRANSLATOR: AUTO (teleport.c:1765)
+// Autotranslated from teleport.c:1765
 export function rloc_to(mtmp, x, y) {
   rloc_to_core(mtmp, x, y, RLOC_NOMSG);
 }
 
 // cf. teleport.c:1772 — rloc_to_flag(mon, x, y, rflags)
-// TRANSLATOR: AUTO (teleport.c:1771)
+// Autotranslated from teleport.c:1771
 export function rloc_to_flag(mtmp, x, y, rlocflags) {
   rloc_to_core(mtmp, x, y, rlocflags);
 }
@@ -674,7 +674,7 @@ export function safe_teleds(flags, game) {
 // cf. teleport.c:837 — tele(): hero teleport via non-scroll method
 // ============================================================================
 
-// TRANSLATOR: AUTO (teleport.c:836)
+// Autotranslated from teleport.c:836
 export async function tele() {
   await scrolltele( 0);
 }
@@ -892,7 +892,6 @@ export function teleport_pet(mtmp, force) {
 }
 
 // Autotranslated from teleport.c:20
-// TRANSLATOR: AUTO (teleport.c:20)
 export function m_blocks_teleporting(mtmp) {
   if (is_dlord(mtmp.data) || is_dprince(mtmp.data)) return true;
   return false;

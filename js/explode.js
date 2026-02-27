@@ -156,7 +156,7 @@ export function scatter(sx, sy, blastforce, scflags, obj, map) {
 }
 
 // cf. explode.c:959 — splatter_burning_oil(x, y, diluted_oil)
-// TRANSLATOR: AUTO (explode.c:959)
+// Autotranslated from explode.c:959
 export async function splatter_burning_oil(x, y, diluted_oil) {
   let dmg = d(diluted_oil ? 3 : 4, 4);
   await explode(x, y, ZT_SPELL_O_FIRE, dmg, BURNING_OIL, EXPL_FIERY);

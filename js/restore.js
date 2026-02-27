@@ -282,7 +282,7 @@ export function reset_oattached_mids(ghostly) {
   }
 }
 
-// TRANSLATOR: AUTO (restore.c:129)
+// Autotranslated from restore.c:129
 export function restlevchn(nhfp) {
   let cnt = 0, tmplev, x;
   svs.sp_levchn =  0;

@@ -2,7 +2,7 @@
   "diag": [],
   "emit_mode": "emit-helper",
   "function": "rounddiv",
-  "js": "// TRANSLATOR: AUTO (hack.c:4481)\nexport function rounddiv(x, y) {\n  let r, m, divsgn = 1;\n  if (y === 0) throw new Error('division by zero in rounddiv');\n  else if (y < 0) { divsgn = -divsgn; y = -y; }\n  if (x < 0) { divsgn = -divsgn; x = -x; }\n  r = Math.trunc(x / y);\n  m = x % y;\n  if (2 * m >= y) r++;\n  return divsgn * r;\n}\n",
+  "js": "// Autotranslated from hack.c:4481\nexport function rounddiv(x, y) {\n  let r, m, divsgn = 1;\n  if (y === 0) throw new Error('division by zero in rounddiv');\n  else if (y < 0) { divsgn = -divsgn; y = -y; }\n  if (x < 0) { divsgn = -divsgn; x = -x; }\n  r = Math.trunc(x / y);\n  m = x % y;\n  if (2 * m >= y) r++;\n  return divsgn * r;\n}\n",
   "meta": {
     "assignment_count": 8,
     "body_end_line": 4502,

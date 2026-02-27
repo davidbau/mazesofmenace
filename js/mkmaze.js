@@ -72,7 +72,7 @@ export function iswall(map, x, y) {
 }
 
 // C ref: mkmaze.c iswall_or_stone
-// TRANSLATOR: AUTO (mkmaze.c:58)
+// Autotranslated from mkmaze.c:58
 export function iswall_or_stone(x, y, map) {
   if (!isok(x, y)) return 1;
   return (map.locations[x][y].typ === STONE || iswall(x, y));
@@ -100,7 +100,7 @@ export function set_levltyp_lit(map, x, y, typ, lit) {
 }
 
 // C ref: mkmaze.c extend_spine
-// TRANSLATOR: AUTO (mkmaze.c:165)
+// Autotranslated from mkmaze.c:165
 export function extend_spine(locale, wall_there, dx, dy) {
   let spine, nx, ny;
   nx = 1 + dx;

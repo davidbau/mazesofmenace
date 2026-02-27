@@ -129,7 +129,7 @@ export function dlord(atyp) {
 // cf. minion.c:418
 // ============================================================================
 
-// TRANSLATOR: AUTO (minion.c:418)
+// Autotranslated from minion.c:418
 export function llord(game) {
   if (!(game.mvitals[PM_ARCHON].mvflags & G_GONE)) return PM_ARCHON;
   return lminion();

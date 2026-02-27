@@ -1870,7 +1870,7 @@ export async function use_offensive(mtmp, map, player) {
 // ========================================================================
 // rnd_offensive_item — C ref: muse.c:2014
 // ========================================================================
-// TRANSLATOR: AUTO (muse.c:2014)
+// Autotranslated from muse.c:2014
 export function rnd_offensive_item(mtmp) {
   let pm = mtmp.data, difficulty = mons[(monsndx(pm))].difficulty;
   if (is_animal(pm) || attacktype(pm, AT_EXPL) || mindless(mtmp.data) || pm.mlet === S_GHOST || pm.mlet === S_KOP) return 0;
@@ -2265,7 +2265,7 @@ export function use_misc(mon, map, player) {
 // rnd_misc_item — C ref: muse.c:2619
 // Note: also implemented in makemon.js for level generation.
 // ========================================================================
-// TRANSLATOR: AUTO (muse.c:2618)
+// Autotranslated from muse.c:2618
 export function rnd_misc_item(mtmp) {
   let pm = mtmp.data, difficulty = mons[(monsndx(pm))].difficulty;
   if (is_animal(pm) || attacktype(pm, AT_EXPL) || mindless(mtmp.data) || pm.mlet === S_GHOST || pm.mlet === S_KOP) return 0;
@@ -2472,7 +2472,7 @@ export function ureflects(fmt, str, player) {
 // ========================================================================
 // munstone — C ref: muse.c:2848
 // ========================================================================
-// TRANSLATOR: AUTO (muse.c:2848)
+// Autotranslated from muse.c:2848
 export function munstone(mon, by_you) {
   let obj, tinok;
   if (resists_ston(mon)) return false;

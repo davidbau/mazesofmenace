@@ -471,7 +471,7 @@ export function adjattrib(player, ndx, incr, msgflg) {
 }
 
 // cf. attrib.c:199 — gainstr(otmp, incr, givemsg)
-// TRANSLATOR: AUTO (attrib.c:199)
+// Autotranslated from attrib.c:199
 export function gainstr(otmp, incr, givemsg) {
   let num = incr;
   if (!num) {
@@ -521,7 +521,7 @@ export function losestr(player, num, knam, k_format) {
 }
 
 // cf. attrib.c:271 — poison_strdmg(strloss, dmg, knam, k_format)
-// TRANSLATOR: AUTO (attrib.c:270)
+// Autotranslated from attrib.c:270
 export function poison_strdmg(strloss, dmg, knam, k_format) {
   losestr(strloss, knam, k_format);
   losehp(dmg, knam, k_format);
@@ -605,7 +605,7 @@ export function poisoned(player, reason, typ, pkiller, fatal, thrown_weapon) {
 }
 
 // cf. attrib.c:408 — change_luck(n)
-// TRANSLATOR: AUTO (attrib.c:407)
+// Autotranslated from attrib.c:407
 export function change_luck(n, player) {
   player.uluck += n;
   if (player.uluck < 0 &player.uluck < LUCKMIN) player.uluck = LUCKMIN;
@@ -865,7 +865,7 @@ export function init_attr(player, np) {
 }
 
 // cf. attrib.c:737 — redist_attr()
-// TRANSLATOR: AUTO (attrib.c:736)
+// Autotranslated from attrib.c:736
 export function redist_attr() {
   let i, tmp;
   for (i = 0; i < A_MAX; i++) {
@@ -882,7 +882,7 @@ export function redist_attr() {
 }
 
 // cf. attrib.c:761 — vary_init_attr()
-// TRANSLATOR: AUTO (attrib.c:760)
+// Autotranslated from attrib.c:760
 export function vary_init_attr() {
   let i;
   for (i = 0; i < A_MAX; i++) {

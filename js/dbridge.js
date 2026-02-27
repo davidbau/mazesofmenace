@@ -35,14 +35,14 @@ import { mondead, newsym } from './monutil.js';
 // ============================================================================
 
 // cf. dbridge.c:38 — is_waterwall(x, y)
-// TRANSLATOR: AUTO (dbridge.c:37)
+// Autotranslated from dbridge.c:37
 export function is_waterwall(x, y, map) {
   if (isok(x, y) && IS_WATERWALL(map.locations[x][y].typ)) return true;
   return false;
 }
 
 // cf. dbridge.c:45 — is_pool(x, y)
-// TRANSLATOR: AUTO (dbridge.c:45)
+// Autotranslated from dbridge.c:45
 export function is_pool(x, y, map) {
   let ltyp;
   if (!isok(x, y)) return false;
@@ -52,7 +52,7 @@ export function is_pool(x, y, map) {
 }
 
 // cf. dbridge.c:61 — is_lava(x, y)
-// TRANSLATOR: AUTO (dbridge.c:61)
+// Autotranslated from dbridge.c:61
 export function is_lava(x, y, map) {
   let ltyp;
   if (!isok(x, y)) return false;
@@ -67,7 +67,7 @@ export function is_pool_or_lava(x, y, map) {
 }
 
 // cf. dbridge.c:85 — is_ice(x, y)
-// TRANSLATOR: AUTO (dbridge.c:85)
+// Autotranslated from dbridge.c:85
 export function is_ice(x, y, map) {
   let ltyp;
   if (!isok(x, y)) return false;
@@ -108,7 +108,7 @@ export function db_under_typ(mask) {
 
 // cf. dbridge.c:136 — is_drawbridge_wall(x, y)
 // Returns direction if wall at (x,y) is a drawbridge portcullis; -1 otherwise.
-// TRANSLATOR: AUTO (dbridge.c:136)
+// Autotranslated from dbridge.c:136
 export function is_drawbridge_wall(x, y, map) {
   let lev;
   if (!isok(x, y)) return -1;
@@ -122,7 +122,7 @@ export function is_drawbridge_wall(x, y, map) {
 }
 
 // cf. dbridge.c:169 — is_db_wall(x, y)
-// TRANSLATOR: AUTO (dbridge.c:169)
+// Autotranslated from dbridge.c:169
 export function is_db_wall(x, y, map) {
   return (map.locations[x][y].typ === DBWALL);
 }

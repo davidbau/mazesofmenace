@@ -156,7 +156,7 @@ function reconstrain_map(player) {
 // ========================================================================
 // cf. detect.c:201 -- o_in(obj, oclass)
 // ========================================================================
-// TRANSLATOR: AUTO (detect.c:201)
+// Autotranslated from detect.c:201
 export function o_in(obj, oclass) {
   let otmp, temp;
   if (obj.oclass === oclass) return obj;
@@ -172,7 +172,7 @@ export function o_in(obj, oclass) {
 // ========================================================================
 // cf. detect.c:229 -- o_material(obj, material)
 // ========================================================================
-// TRANSLATOR: AUTO (detect.c:229)
+// Autotranslated from detect.c:229
 export function o_material(obj, material) {
   let otmp, temp;
   if (objects[obj.otyp].oc_material === material) return obj;
@@ -746,7 +746,7 @@ export function do_vicinity_map(sobj, player, map, display) {
 // ========================================================================
 // cf. detect.c:1589 -- cvt_sdoor_to_door
 // ========================================================================
-// TRANSLATOR: AUTO (detect.c:1589)
+// Autotranslated from detect.c:1589
 export function cvt_sdoor_to_door(lev, map) {
   let newmask = lev.doormask & ~WM_MASK;
   if (Is_rogue_level(map.uz)) { newmask = D_NODOOR; }

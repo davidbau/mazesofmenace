@@ -1277,13 +1277,13 @@ export function dummyfunction() {
   return ECMD_CANCEL;
 }
 
-// TRANSLATOR: AUTO (cmd.c:2416)
+// Autotranslated from cmd.c:2416
 export function extcmds_getentry(i) {
   if (i < 0 || i > extcmdlist_length) return 0;
   return extcmdlist[i];
 }
 
-// TRANSLATOR: AUTO (cmd.c:3338)
+// Autotranslated from cmd.c:3338
 export function key2txt(c, txt) {
   if (c === ' ') {
     Sprintf(txt, "<space>");
@@ -1303,7 +1303,7 @@ export function key2txt(c, txt) {
   return txt;
 }
 
-// TRANSLATOR: AUTO (cmd.c:3697)
+// Autotranslated from cmd.c:3697
 export function random_response(buf, sz) {
   let c, count = 0;
   for (; ; ) {
@@ -1317,7 +1317,7 @@ export function random_response(buf, sz) {
   buf[count] = '\x00';
 }
 
-// TRANSLATOR: AUTO (cmd.c:154)
+// Autotranslated from cmd.c:154
 export function json_write_escaped(fp, s) {
   let c;
   if (!s) { fputs("", fp); return; }
@@ -1328,7 +1328,7 @@ export function json_write_escaped(fp, s) {
   }
 }
 
-// TRANSLATOR: AUTO (cmd.c:773)
+// Autotranslated from cmd.c:773
 export function doc_extcmd_flagstr(menuwin, efp) {
   let Abuf;
   if (!efp) {

@@ -280,7 +280,7 @@ function you_have(mask, player) {
 // target_on — find goal position for covetous monster
 // cf. wizard.c:235
 // ============================================================================
-// TRANSLATOR: AUTO (wizard.c:235)
+// Autotranslated from wizard.c:235
 export function target_on(mask, mtmp, player) {
   let otyp, otmp, mtmp2;
   if (!M_Wants(mask)) return  STRAT_NONE;
@@ -441,7 +441,7 @@ export function amulet(map, player, display) {
 // cf. wizard.c:104
 // ============================================================================
 
-// TRANSLATOR: AUTO (wizard.c:105)
+// Autotranslated from wizard.c:105
 export function mon_has_amulet(mtmp) {
   let otmp;
   for (otmp = mtmp.minvent; otmp; otmp = otmp.nobj) {

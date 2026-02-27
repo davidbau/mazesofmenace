@@ -362,7 +362,7 @@ export function parkguard(grd, map) {
 // cf. vault.c:188 — grddead(grd)
 // Called when a vault guard dies. Cleans up fake corridors.
 // ========================================================================
-// TRANSLATOR: AUTO (vault.c:174)
+// Autotranslated from vault.c:174
 export function grddead(grd) {
   let dispose = clear_fcorr(grd, true);
   if (!dispose) {
@@ -402,7 +402,7 @@ export function findgd(map, player) {
 // cf. vault.c:237 — vault_summon_gd()
 // Summons a vault guard if hero is in a vault and there isn't one already.
 // ========================================================================
-// TRANSLATOR: AUTO (vault.c:236)
+// Autotranslated from vault.c:236
 export function vault_summon_gd(player) {
   if (vault_occupied(player.urooms) && !findgd()) player.uinvault = (VAULT_GUARD_TIME - 1);
 }
@@ -1463,7 +1463,7 @@ function contained_gold(container, even_if_unknown) {
 // cf. vault.c:921 — gd_sound()
 // Returns false if hero is in vault or guard is present (suppress footsteps).
 // ========================================================================
-// TRANSLATOR: AUTO (vault.c:1271)
+// Autotranslated from vault.c:1271
 export function gd_sound(player) {
   return !(vault_occupied(player.urooms) || findgd());
 }

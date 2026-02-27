@@ -1328,7 +1328,7 @@ const no_man = [
     'tegu', 'vela', 'da', 'hy', 'lu', 'no', 'nu', 'ra', 'ru', 'se', 'vi',
     'ya', 'o', 'a',
 ];
-// TRANSLATOR: AUTO (objnam.c:3183)
+// Autotranslated from objnam.c:3183
 export function badman(basestr, to_plural) {
   let no_men = [ "albu", "antihu", "anti", "ata", "auto", "bildungsro", "cai", "cay", "ceru", "corner", "decu", "des", "dura", "fir", "hanu", "het", "infrahu", "inhu", "nonhu", "otto", "out", "prehu", "protohu", "subhu", "superhu", "talis", "unhu", "sha", "hu", "un", "le", "re", "so", "to", "at", "a", ];
   let no_man = [ "abdo", "acu", "agno", "ceru", "cogno", "cycla", "fleh", "grava", "hegu", "preno", "sonar", "speci", "dai", "exa", "fla", "sta", "teg", "tegu", "vela", "da", "hy", "lu", "no", "nu", "ra", "ru", "se", "vi", "ya", "o", "a", ];
@@ -1829,7 +1829,7 @@ export function shiny_obj(oclass) {
 
 // cf. objnam.c:5393 — rnd_class(first, last): random type in range
 // Already implemented in mkobj.js; re-export for completeness
-// TRANSLATOR: AUTO (objnam.c:5392)
+// Autotranslated from objnam.c:5392
 export function rnd_class(first, last) {
   let i, x, sum = 0;
   if (last > first) {
@@ -2168,7 +2168,7 @@ export function readobjnam(bp, no_wish, opts = {}) {
 // ============================================================================
 
 // cf. objnam.c:5412 — Japanese_item_name(i, ordinaryname): Samurai item name
-// TRANSLATOR: AUTO (objnam.c:5411)
+// Autotranslated from objnam.c:5411
 export function Japanese_item_name(i, ordinaryname) {
   for (const j of Japanese_items) {
     if (!j.item) break;
@@ -2257,7 +2257,7 @@ export function boots_simple_name(boots) {
 }
 
 // cf. objnam.c:5560 — shield_simple_name(shield): simple shield name
-// TRANSLATOR: AUTO (objnam.c:5559)
+// Autotranslated from objnam.c:5559
 export function shield_simple_name(shield) {
   if (shield) {
     if (shield.otyp === SHIELD_OF_REFLECTION) return shield.dknown ? "silver shield" : "smooth shield";
@@ -2266,7 +2266,7 @@ export function shield_simple_name(shield) {
 }
 
 // cf. objnam.c:5590 — shirt_simple_name(shirt): simple shirt name
-// TRANSLATOR: AUTO (objnam.c:5589)
+// Autotranslated from objnam.c:5589
 export function shirt_simple_name(shirt) {
   return "shirt";
 }

@@ -16,7 +16,7 @@ function resolveMap(firstArg) {
     return firstArg && firstArg.at ? firstArg : null;
 }
 
-// TRANSLATOR: AUTO (mkmap.c:23)
+// Autotranslated from mkmap.c:23
 export function init_map(bg_typ, map) {
   let x, y;
   for (x = 1; x < COLNO; x++) {
@@ -41,7 +41,7 @@ export function init_fill(map, bgTyp, fgTyp) {
     }
 }
 
-// TRANSLATOR: AUTO (mkmap.c:54)
+// Autotranslated from mkmap.c:54
 export function get_map(col, row, bg_typ, map) {
   if (col <= 0 || row < 0 || col > WIDTH || row >= HEIGHT) return bg_typ;
   return map.locations[col][row].typ;

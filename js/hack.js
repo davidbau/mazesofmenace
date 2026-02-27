@@ -2894,7 +2894,7 @@ export function drag_ball(_x, _y, _player, _map) {
     return true;
 }
 
-// TRANSLATOR: AUTO (hack.c:3990)
+// Autotranslated from hack.c:3990
 export function monster_nearby(player) {
   let x, y, mtmp;
   for (x = player.x - 1; x <= player.x + 1; x++) {

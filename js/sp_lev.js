@@ -5805,7 +5805,7 @@ export function mineralize(opts = {}) {
 }
 
 // C ref: sp_lev.c pm_to_humidity()
-// TRANSLATOR: AUTO (sp_lev.c:1884)
+// Autotranslated from sp_lev.c:1884
 export function pm_to_humidity(pm) {
   let loc = DRY;
   if (!pm) return loc;
@@ -5823,7 +5823,7 @@ export function pm_to_humidity(pm) {
 }
 
 // C ref: sp_lev.c pm_good_location()
-// TRANSLATOR: AUTO (sp_lev.c:1311)
+// Autotranslated from sp_lev.c:1311
 export function pm_good_location(x, y, pm) {
   return is_ok_location(x, y, pm_to_humidity(pm));
 }
@@ -6720,7 +6720,7 @@ export function lspo_exclusion(...args) { return exclusion(...args); }
 export function lspo_wallify(...args) { return wallify(...args); }
 export function lspo_wall_property(...args) { return wall_property(...args); }
 export function lspo_non_diggable(...args) { return non_diggable(...args); }
-// TRANSLATOR: AUTO (sp_lev.c:5942)
+// Autotranslated from sp_lev.c:5942
 export function lspo_non_passwall(L) {
   set_wallprop_in_selection(L, W_NONPASSWALL);
   return 0;
@@ -8032,7 +8032,7 @@ function placeObjectAt(obj, x, y) {
 }
 
 // C ref: sp_lev.c random_wdir()
-// TRANSLATOR: AUTO (sp_lev.c:4574)
+// Autotranslated from sp_lev.c:4574
 export function random_wdir() {
   let wdirs = [ W_NORTH, W_SOUTH, W_EAST, W_WEST ];
   return wdirs[rn2(4)];

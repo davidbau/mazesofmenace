@@ -355,7 +355,7 @@ function getLedgerNoForLevel(dnum, dlevel) {
 }
 
 // C ref: dungeon.c dunlev()/dunlevs_in_dungeon()/depth() and ledger helpers.
-// TRANSLATOR: AUTO (dungeon.c:1324)
+// Autotranslated from dungeon.c:1324
 export function dunlev(lev) {
   return lev.dlevel;
 }
@@ -405,7 +405,7 @@ export function get_level(lev, levnum) {
     out.dlevel = ledger_to_dlev(ledger);
     return out;
 }
-// TRANSLATOR: AUTO (dungeon.c:1438)
+// Autotranslated from dungeon.c:1438
 export function on_level(lev1, lev2) {
   return (lev1.dnum === lev2.dnum && lev1.dlevel === lev2.dlevel);
 }
@@ -418,18 +418,18 @@ export function Is_branchlev(dnum, dlevel) {
 export function Is_botlevel(dnum, dlevel) {
     return Number.isInteger(dlevel) && dlevel >= dunlevs_in_dungeon(dnum);
 }
-// TRANSLATOR: AUTO (dungeon.c:1849)
+// Autotranslated from dungeon.c:1849
 export function In_mines(lev) {
   return (lev.dnum === mines_dnum);
 }
-// TRANSLATOR: AUTO (dungeon.c:1842)
+// Autotranslated from dungeon.c:1842
 export function In_quest(lev) {
   return (lev.dnum === quest_dnum);
 }
 export function In_hell(lev) {
     return (lev?.dnum ?? lev) === GEHENNOM;
 }
-// TRANSLATOR: AUTO (dungeon.c:1900)
+// Autotranslated from dungeon.c:1900
 export function In_V_tower(lev) {
   return (lev.dnum === tower_dnum);
 }
@@ -526,13 +526,13 @@ export function add_level(new_lev, chain = _specialLevelChain) {
     chain.splice(idx, 0, new_lev);
 }
 
-// TRANSLATOR: AUTO (dungeon.c:1971)
+// Autotranslated from dungeon.c:1971
 export function assign_level(dest, src) {
   dest.dnum = src.dnum;
   dest.dlevel = src.dlevel;
 }
 
-// TRANSLATOR: AUTO (dungeon.c:1979)
+// Autotranslated from dungeon.c:1979
 export function assign_rnd_level(dest, src, range) {
   dest.dnum = src.dnum;
   dest.dlevel = src.dlevel + ((range > 0) ? rnd(range) : -rnd(-range));
@@ -599,7 +599,7 @@ export function find_level(dnum, dlevel) {
     return null;
 }
 
-// TRANSLATOR: AUTO (dungeon.c:1942)
+// Autotranslated from dungeon.c:1942
 export function find_hell(lev) {
   lev.dnum = valley_level.dnum;
   lev.dlevel = 1;
@@ -609,7 +609,7 @@ export function deepest_lev_reached() {
     return maxledgerno();
 }
 
-// TRANSLATOR: AUTO (dungeon.c:2233)
+// Autotranslated from dungeon.c:2233
 export function br_string(type) {
   switch (type) {
     case BR_PORTAL:
@@ -624,7 +624,7 @@ export function br_string(type) {
   return " (unknown)";
 }
 
-// TRANSLATOR: AUTO (dungeon.c:3379)
+// Autotranslated from dungeon.c:3379
 export function br_string2(br, player) {
   let closed_portal = (br.end2.dnum === quest_dnum &player.uevent.qexpelled);
   switch (br.type) {
@@ -672,13 +672,13 @@ export function Can_rise_up(x, y, levOrMap) {
     return placement === 'stair-up';
 }
 
-// TRANSLATOR: AUTO (dungeon.c:1683)
+// Autotranslated from dungeon.c:1683
 export function has_ceiling(lev) {
   if (In_endgame(lev) && !Is_earthlevel(lev)) return false;
   return true;
 }
 
-// TRANSLATOR: AUTO (dungeon.c:1694)
+// Autotranslated from dungeon.c:1694
 export function avoid_ceiling(lev) {
   if (In_quest(lev) || !has_ceiling(lev)) return true;
   return false;

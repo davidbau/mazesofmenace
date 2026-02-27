@@ -151,7 +151,7 @@ function nexttodoor(x, y, map) {
 }
 
 // cf. fountain.c:120 -- dogushforth(drinking): fountain gushes
-// TRANSLATOR: AUTO (fountain.c:119)
+// Autotranslated from fountain.c:119
 export function dogushforth(drinking, player) {
   let madepool = 0;
   do_clear_area(player.x, player.y, 7, gush, (genericptr_t) &madepool);

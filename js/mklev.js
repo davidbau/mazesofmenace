@@ -69,7 +69,7 @@ let _luathemesLoaded = false;
 let _specialThemesLoaded = false;
 
 // C ref: mklev.c mkroom_cmp() — sort rooms by lx only
-// TRANSLATOR: AUTO (mklev.c:60)
+// Autotranslated from mklev.c:60
 export function mkroom_cmp(vx, vy) {
   let x, y;
   x =  vx;

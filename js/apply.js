@@ -180,7 +180,7 @@ export function use_camera(obj) {
 }
 
 // cf. apply.c:112 -- STUB: depends on freehand, Glib, makeplural
-// TRANSLATOR: AUTO (apply.c:111)
+// Autotranslated from apply.c:111
 export function use_towel(obj, player) {
   let drying_feedback = (obj === uwep);
   if (!freehand()) { You("have no free %s!", body_part(HAND)); return ECMD_OK; }

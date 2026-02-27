@@ -1241,7 +1241,7 @@ export function savedsym_strbuf(sbuf) {
   }
 }
 
-// TRANSLATOR: AUTO (symbols.c:772)
+// Autotranslated from symbols.c:772
 export function parsesymbols(opts, which_set) {
   let val;
   let symname, strval, ch, first_unquoted_comma = 0, first_unquoted_colon = 0;

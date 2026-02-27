@@ -267,7 +267,7 @@ export function placebc(player, map) {
 }
 
 // cf. ball.c:211 — unplacebc(): remove ball and chain
-// TRANSLATOR: AUTO (ball.c:211)
+// Autotranslated from ball.c:211
 export function unplacebc() {
   if (bcrestriction) {
     impossible("unplacebc denied, restriction in place");
@@ -277,7 +277,7 @@ export function unplacebc() {
 }
 
 // cf. ball.c:221 — unplacebc_and_covet_placebc(): remove and pin bc
-// TRANSLATOR: AUTO (ball.c:221)
+// Autotranslated from ball.c:221
 export function unplacebc_and_covet_placebc() {
   let restriction = 0;
   if (bcrestriction) {

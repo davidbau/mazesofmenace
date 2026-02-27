@@ -214,7 +214,6 @@ export function encodeconduct(player) {
 }
 
 // Autotranslated from topten.c:454
-// TRANSLATOR: AUTO (topten.c:454)
 export function encodeachieve(secondlong, player) {
   let i, achidx, offset, r = 0;
   offset = secondlong ? (32 - 1) : 0;
@@ -298,7 +297,7 @@ export function tt_doppel(mon) {
   return ret;
 }
 
-// TRANSLATOR: AUTO (topten.c:928)
+// Autotranslated from topten.c:928
 export function outheader() {
   let linebuf, bp;
   Strcpy(linebuf, " No Points Name");

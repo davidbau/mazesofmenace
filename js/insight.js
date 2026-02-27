@@ -901,7 +901,7 @@ export function weapon_insight(final, game) {
 // ============================================================================
 
 // cf. insight.c:2014 — doattributes(game): ^X attribute display command
-// TRANSLATOR: AUTO (insight.c:2013)
+// Autotranslated from insight.c:2013
 export function doattributes() {
   let mode = BASICENLIGHTENMENT;
   if (wizard || discover) {
@@ -970,7 +970,7 @@ export async function run_magic_enlightenment_effect(game) {
 // ============================================================================
 
 // cf. insight.c:2086 — doconduct(game): #conduct command handler
-// TRANSLATOR: AUTO (insight.c:2085)
+// Autotranslated from insight.c:2085
 export async function doconduct() {
   await show_conduct(ENL_GAMEINPROGRESS);
   return ECMD_OK;
@@ -1156,7 +1156,7 @@ export function remove_achievement(achidx, player) {
 // ============================================================================
 
 // cf. insight.c:2504 — count_achievements(player): count current achievements
-// TRANSLATOR: AUTO (insight.c:2503)
+// Autotranslated from insight.c:2503
 export function count_achievements(player) {
   let i, acnt = 0;
   for (i = 0; player.uachieved[i]; ++i) {
@@ -1172,7 +1172,7 @@ export function count_achievements(player) {
 // ============================================================================
 
 // cf. insight.c:2527 — sokoban_in_play(game): check if sokoban entered
-// TRANSLATOR: AUTO (insight.c:2526)
+// Autotranslated from insight.c:2526
 export function sokoban_in_play(player) {
   let achidx;
   for (achidx = 0; player.uachieved[achidx]; ++achidx) {
@@ -1188,7 +1188,7 @@ export function sokoban_in_play(player) {
 // ============================================================================
 
 // cf. insight.c:2542 — do_gamelog(game): #chronicle command handler
-// TRANSLATOR: AUTO (insight.c:2541)
+// Autotranslated from insight.c:2541
 export async function do_gamelog() {
   if (gg.gamelog) { await show_gamelog(ENL_GAMEINPROGRESS); }
   else { pline("No chronicled events."); }

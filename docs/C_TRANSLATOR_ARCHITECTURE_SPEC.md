@@ -529,7 +529,7 @@ Practically, this includes gameplay files mapped in `docs/CODEMATCH.md` (example
 For each `mixed` file:
 
 1. Maintain in-code markers as source of truth:
-   1. `// TRANSLATOR: AUTO` on function declarations to allow translation.
+   1. `// Autotranslated from <file>.c:<line>` on function declarations to allow translation.
    2. `// TRANSLATOR: MANUAL` on functions or blocks to deny translation.
 2. Maintain optional region guards:
    1. `TRANSLATOR: MANUAL-BEGIN <id>`
@@ -548,7 +548,7 @@ Required checks:
    2. enforces `allow_source` on every `mixed` entry,
    3. enforces `allow_functions` when `allow_source=manifest`.
 2. `translator:check-annotations`:
-   1. for `allow_source=annotations`, verifies presence of `TRANSLATOR: AUTO` or approved-region markers,
+   1. for `allow_source=annotations`, verifies presence of `Autotranslated from <file>.c:<line>` or approved-region markers,
    2. verifies `TRANSLATOR: MANUAL-BEGIN/END` markers are balanced and non-overlapping,
    3. fails if proposed edits touch unapproved regions.
 3. Apply-mode translator run must emit `blocked-edits.json`; CI fails when non-empty.

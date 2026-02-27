@@ -112,7 +112,7 @@ function getXlock(game) {
 }
 
 // cf. lock.c:259 — reset_pick(void): clear lock-picking context
-// TRANSLATOR: AUTO (lock.c:258)
+// Autotranslated from lock.c:258
 export function reset_pick() {
   gx.xlock.usedtime = gx.xlock.chance = gx.xlock.picktyp = 0;
   gx.xlock.magic_key = false;
@@ -271,7 +271,7 @@ export function obstructed(x, y, quietly, map) {
 }
 
 // cf. lock.c:660 — u_have_forceable_weapon(void): check for force weapon
-// TRANSLATOR: AUTO (lock.c:659)
+// Autotranslated from lock.c:659
 export function u_have_forceable_weapon() {
   if (!uwep /* proper type test */ || ((uwep.oclass === WEAPON_CLASS || is_weptool(uwep)) ? (objects[uwep.otyp].oc_skill < P_DAGGER || objects[uwep.otyp].oc_skill === P_FLAIL || objects[uwep.otyp].oc_skill > P_LANCE) : uwep.oclass !== ROCK_CLASS)) return false;
   return true;

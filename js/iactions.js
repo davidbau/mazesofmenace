@@ -34,7 +34,7 @@
 // and executes the selected action.
 // TODO: iactions.c:277 — itemactions(): item actions menu display and execution
 
-// TRANSLATOR: AUTO (iactions.c:85)
+// Autotranslated from iactions.c:85
 export function item_reading_classification(obj, outbuf) {
   let otyp = obj.otyp, res = IA_READ_OBJ;
    outbuf = '\x00';
@@ -58,7 +58,7 @@ export function item_reading_classification(obj, outbuf) {
   return res;
 }
 
-// TRANSLATOR: AUTO (iactions.c:126)
+// Autotranslated from iactions.c:126
 export function ia_addmenu(win, act, let_, txt) {
   let any, clr = NO_COLOR;
   any = cg.zeroany;

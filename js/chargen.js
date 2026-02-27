@@ -37,7 +37,7 @@ import { init_nhwindows, create_nhwindow, destroy_nhwindow,
 
 // Player role selection -- faithful C chargen flow
 // C ref: role.c player_selection() -- choose role, race, gender, alignment
-// TRANSLATOR: AUTO
+// Autotranslated from role.c:2204
 export async function playerSelection(game) {
     // Phase 0: Prompt for player name
     // C ref: role.c plnamesuffix() -> askname() — prompts "Who are you?"

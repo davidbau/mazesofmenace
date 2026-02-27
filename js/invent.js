@@ -1046,7 +1046,7 @@ export function useupall(obj, player) {
 }
 
 // C ref: invent.c useup() — consume one item from a stack
-// TRANSLATOR: AUTO (invent.c:1320)
+// Autotranslated from invent.c:1320
 export function useup(obj) {
   if (obj.quan > 1) {
     obj.in_use = false;
@@ -1111,7 +1111,7 @@ export function delallobj(x, y, map) {
 }
 
 // C ref: invent.c delobj() — delete a single object
-// TRANSLATOR: AUTO (invent.c:1429)
+// Autotranslated from invent.c:1429
 export function delobj(obj) {
   delobj_core(obj, false);
 }
@@ -1158,7 +1158,7 @@ export function sobj_at(otyp, x, y, map) {
 }
 
 // C ref: invent.c nxtobj() — find next object of given type after obj in a list
-// TRANSLATOR: AUTO (invent.c:1478)
+// Autotranslated from invent.c:1478
 export function nxtobj(obj, type, by_nexthere) {
   let otmp;
   otmp = obj;
@@ -1278,7 +1278,7 @@ export function mime_action(word) {
 }
 
 // C ref: invent.c any_obj_ok() — callback that allows any object but not hands
-// TRANSLATOR: AUTO (invent.c:1709)
+// Autotranslated from invent.c:1709
 export function any_obj_ok(obj) {
   if (obj) return GETOBJ_SUGGEST;
   return GETOBJ_EXCLUDE;
@@ -1301,13 +1301,13 @@ export function check_unpaid(otmp) {
 }
 
 // C ref: invent.c wearing_armor() — check if hero is wearing any armor
-// TRANSLATOR: AUTO (invent.c:2148)
+// Autotranslated from invent.c:2148
 export function wearing_armor() {
   return (uarm || uarmc || uarmf || uarmg || uarmh || uarms || uarmu);
 }
 
 // C ref: invent.c is_worn() — check if object is being worn/wielded
-// TRANSLATOR: AUTO (invent.c:2155)
+// Autotranslated from invent.c:2155
 export function is_worn(otmp) {
   return (otmp.owornmask & (W_ARMOR | W_ACCESSORY | W_SADDLE | W_WEAPONS)) ? true : false;
 }
@@ -1357,7 +1357,7 @@ export function getobj_hands_txt(action) {
 // ============================================================
 
 // C ref: invent.c set_cknown_lknown() — set container/lock known flags
-// TRANSLATOR: AUTO (invent.c:2623)
+// Autotranslated from invent.c:2623
 export function set_cknown_lknown(obj) {
   if (Is_container(obj) || obj.otyp === STATUE) obj.cknown = obj.lknown = 1;
   else if (obj.otyp === TIN) obj.cknown = 1;
@@ -1392,7 +1392,7 @@ export function identify(otmp, ctx = null) {
 }
 
 // C ref: invent.c count_unidentified() — count unidentified objects
-// TRANSLATOR: AUTO (invent.c:2697)
+// Autotranslated from invent.c:2697
 export function count_unidentified(objchn) {
   let unid_cnt = 0, obj;
   for (obj = objchn; obj; obj = obj.nobj) {
@@ -1835,7 +1835,7 @@ export function dopramulet(player) {
 }
 
 // C ref: invent.c tool_being_used() — check if tool is in active use
-// TRANSLATOR: AUTO (invent.c:4697)
+// Autotranslated from invent.c:4697
 export function tool_being_used(obj) {
   if ((obj.owornmask & (W_TOOL | W_SADDLE)) !== 0) return true;
   if (obj.oclass !== TOOL_CLASS) return false;
@@ -1934,7 +1934,7 @@ export function check_invent_gold(player) {
 // ============================================================
 
 // C ref: invent.c worn_wield_only() — filter to worn/wielded items only
-// TRANSLATOR: AUTO (invent.c:5308)
+// Autotranslated from invent.c:5308
 export function worn_wield_only(obj) {
   return (obj.owornmask !== 0);
 }

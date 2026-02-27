@@ -149,7 +149,7 @@ export function losexp(player, display, drainer) {
 }
 
 // cf. exper.c:299 — newexplevel(): check if player should gain a level
-// TRANSLATOR: AUTO (exper.c:299)
+// Autotranslated from exper.c:299
 export function newexplevel(player) {
   if (player.ulevel < MAXULEV &player.uexp >= newuexp(player.ulevel)) pluslvl(true);
 }

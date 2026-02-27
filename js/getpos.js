@@ -53,7 +53,7 @@ function applyHiliteForCurrentState() {
 }
 
 // cf. getpos.c:41
-// TRANSLATOR: AUTO
+// Autotranslated from getpos.c:41
 export function getpos_sethilite(gp_hilitef, gp_getvalidf) {
     clearHiliteIfNeeded();
     getpos_hilitefunc = (typeof gp_hilitef === 'function') ? gp_hilitef : null;
@@ -63,7 +63,7 @@ export function getpos_sethilite(gp_hilitef, gp_getvalidf) {
 }
 
 // cf. getpos.c:72
-// TRANSLATOR: AUTO
+// Autotranslated from getpos.c:72
 export function getpos_toggle_hilite_state() {
     if (!getpos_hilitefunc) return;
     if (getpos_hilite_state === HiliteGoodposSymbol) {
@@ -77,7 +77,7 @@ export function getpos_toggle_hilite_state() {
 }
 
 // cf. getpos.c:94
-// TRANSLATOR: AUTO
+// Autotranslated from getpos.c:94
 export function mapxy_valid(x, y) {
     if (typeof getpos_getvalid !== 'function') return false;
     return !!getpos_getvalid(x, y);

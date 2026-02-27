@@ -121,7 +121,7 @@ export function delayed_killer(id, format, killername) {
 
 // cf. end.c:1728 — find_delayed_killer(id): find delayed killer
 // Searches delayed killer list for record matching given id.
-// TRANSLATOR: AUTO (end.c:1728)
+// Autotranslated from end.c:1728
 export function find_delayed_killer(id) {
   let k;
   for (k = svk.killer.next; k !==  0; k = k.next) {
@@ -167,7 +167,7 @@ export function wordcount(p) {
 
 // cf. end.c:1811 [static] — bel_copy1(inp, out): copy next word
 // Returns [nextInputIndex, appendedWord]
-// TRANSLATOR: AUTO (end.c:1811)
+// Autotranslated from end.c:1811
 export function bel_copy1(inp, out) {
   let in_ =  inp;
   out += strlen(out);

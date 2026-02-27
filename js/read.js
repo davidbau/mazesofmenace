@@ -1467,7 +1467,6 @@ async function seffects(sobj, player, display, game) {
 export { handleRead, tshirt_text, hawaiian_motif, hawaiian_design, candy_wrapper_text, stripspe, bcsign, blessorcurse, uncurse, some_armor, useup_scroll, seffects };
 
 // Autotranslated from read.c:68
-// TRANSLATOR: AUTO (read.c:68)
 export function learnscroll(sobj) {
   if (sobj.oclass !== SPBOOK_CLASS) {
     learnscrolltyp(sobj.otyp);
@@ -1580,13 +1579,13 @@ export function unpunish() {
   setworn( 0, W_BALL);
 }
 
-// TRANSLATOR: AUTO (read.c:1078)
+// Autotranslated from read.c:1078
 export function can_center_cloud(x, y) {
   if (!valid_cloud_pos(x, y)) return false;
   return (cansee(x, y) && distu(x, y) < 32);
 }
 
-// TRANSLATOR: AUTO (read.c:1086)
+// Autotranslated from read.c:1086
 export function display_stinking_cloud_positions(on_off, player) {
   let x, y, dx, dy, dist = 6;
   if (on_off) {
@@ -1605,7 +1604,7 @@ export function display_stinking_cloud_positions(on_off, player) {
   else { tmp_at(DISP_END, 0); }
 }
 
-// TRANSLATOR: AUTO (read.c:3318)
+// Autotranslated from read.c:3318
 export async function create_particular() {
   let d, bufp, buf, prompt, tryct = CP_TRYLIM, altmsg = 0;
   buf[0] = '\x00';

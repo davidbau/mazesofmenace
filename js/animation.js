@@ -66,7 +66,7 @@ class AnimationCore {
         }
     }
 
-    // TRANSLATOR: AUTO
+    // Autotranslated from display.c:1165
     tmp_at(x, y) {
         if (x === DISP_BEAM || x === DISP_ALL || x === DISP_TETHER
             || x === DISP_FLASH || x === DISP_ALWAYS) {

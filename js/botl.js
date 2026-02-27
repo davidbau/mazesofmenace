@@ -106,13 +106,11 @@ export function get_strength_str(player) {
 }
 
 // Autotranslated from botl.c:300
-// TRANSLATOR: AUTO (botl.c:300)
 export function xlev_to_rank(xlev) {
   return (xlev <= 2) ? 0 : (xlev <= 30) ? ((xlev + 2) / 4) : 8;
 }
 
 // Autotranslated from botl.c:317
-// TRANSLATOR: AUTO (botl.c:317)
 export function rank_to_xlev(rank) {
   return (rank < 1) ? 1 : (rank < 2) ? 3 : (rank < 8) ? ((rank * 4) - 2) : 30;
 }
@@ -264,7 +262,6 @@ export function hilite_reset_needed(bl_p, augmented_time, game) {
 }
 
 // Autotranslated from botl.c:2318
-// TRANSLATOR: AUTO (botl.c:2318)
 export function split_clridx(idx, coloridx, attrib) {
   if (coloridx) coloridx = idx & 0x00FF;
   if (attrib) attrib = (idx >> 8) & 0x00FF;
@@ -621,20 +618,20 @@ export async function status_hilite_menu_choose_updownboth(fld, str, ltok, gtok)
   return ret;
 }
 
-// TRANSLATOR: AUTO (botl.c:1085)
+// Autotranslated from botl.c:1085
 export function cond_cmp(vptr1, vptr2) {
   let indx1 = vptr1, indx2 = vptr2, c1 = conditions[indx1].ranking, c2 = conditions[indx2].ranking;
   if (c1 !== c2) return c1 - c2;
   return strcmpi(condtests[indx1].useroption, condtests[indx2].useroption);
 }
 
-// TRANSLATOR: AUTO (botl.c:1098)
+// Autotranslated from botl.c:1098
 export function menualpha_cmp(vptr1, vptr2) {
   let indx1 = vptr1, indx2 = vptr2;
   return strcmpi(condtests[indx1].useroption, condtests[indx2].useroption);
 }
 
-// TRANSLATOR: AUTO (botl.c:1963)
+// Autotranslated from botl.c:1963
 export function fldname_to_bl_indx(name) {
   let i, nmatches = 0, fld = 0;
   if (name && name) {
@@ -656,7 +653,7 @@ export function fldname_to_bl_indx(name) {
   return (nmatches === 1) ? fld : BL_FLUSH;
 }
 
-// TRANSLATOR: AUTO (botl.c:2394)
+// Autotranslated from botl.c:2394
 export function is_ltgt_percentnumber(str) {
   let s = str;
   if ( s === '<' || s === '>') s++;
@@ -670,7 +667,7 @@ export function is_ltgt_percentnumber(str) {
   return ( s === '\x00');
 }
 
-// TRANSLATOR: AUTO (botl.c:4193)
+// Autotranslated from botl.c:4193
 export async function status_hilites_viewall() {
   let datawin, hlstr = status_hilite_str, buf;
   datawin = create_nhwindow(NHW_TEXT);
@@ -683,7 +680,7 @@ export async function status_hilites_viewall() {
   destroy_nhwindow(datawin);
 }
 
-// TRANSLATOR: AUTO (botl.c:4214)
+// Autotranslated from botl.c:4214
 export function all_options_statushilites(sbuf) {
   let hlstr, buf;
   status_hilite_linestr_done();
@@ -697,7 +694,7 @@ export function all_options_statushilites(sbuf) {
   status_hilite_linestr_done();
 }
 
-// TRANSLATOR: AUTO (botl.c:2913)
+// Autotranslated from botl.c:2913
 export function match_str2conditionbitmask(str) {
   let i, nmatches = 0, mask = 0;
   if (str && str) {

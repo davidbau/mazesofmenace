@@ -128,7 +128,7 @@ function is_edible(obj) {
 }
 
 // cf. eat.c food_xname() — food-specific naming for messages
-// TRANSLATOR: AUTO (eat.c:216)
+// Autotranslated from eat.c:216
 export function food_xname(food, the_pfx) {
   let result;
   if (food.otyp === CORPSE) {
@@ -157,7 +157,7 @@ function obj_nutrition(otmp) {
 }
 
 // cf. eat.c init_uhunger() — initialize hunger state at game start
-// TRANSLATOR: AUTO (eat.c:125)
+// Autotranslated from eat.c:125
 export function init_uhunger(game, player) {
   game.disp.botl = (player.uhs !== NOT_HUNGRY || ATEMP(A_STR) < 0);
   player.uhunger = 900;
@@ -236,7 +236,7 @@ function newuhs(player, incr) {
 }
 
 // cf. eat.c unfaint() — recover from fainting
-// TRANSLATOR: AUTO (eat.c:3330)
+// Autotranslated from eat.c:3330
 export function unfaint(game, player) {
   Hear_again();
   if (player.uhs > FAINTING) player.uhs = FAINTING;
@@ -256,7 +256,7 @@ function reset_faint(player) {
 }
 
 // cf. eat.c choke() — choking on food
-// TRANSLATOR: AUTO (eat.c:244)
+// Autotranslated from eat.c:244
 export async function choke(food, player) {
   if (player.uhs !== SATIATED) {
     if (!food || food.otyp !== AMULET_OF_STRANGULATION) return;
@@ -312,7 +312,7 @@ function do_reset_eat(game) {
 }
 
 // cf. eat.c food_disappears() — check if food vanishes on level change
-// TRANSLATOR: AUTO (eat.c:395)
+// Autotranslated from eat.c:395
 export function food_disappears(obj, game) {
   if (obj === game.game.svc.context.victual.piece) game.game.svc.context.victual = zero_victual;
   if (obj.timed) obj_stop_timers(obj);
@@ -529,7 +529,7 @@ function maybe_cannibal(player, pm, allowmsg) {
 }
 
 // cf. eat.c fix_petrification() — cure petrification by eating
-// TRANSLATOR: AUTO (eat.c:866)
+// Autotranslated from eat.c:866
 export function fix_petrification() {
   let buf;
   if (Hallucination) {
@@ -684,7 +684,7 @@ function cpostfx(player, pm, display) {
 // ============================================================
 
 // cf. eat.c eating_conducts() — track dietary conducts
-// TRANSLATOR: AUTO (eat.c:575)
+// Autotranslated from eat.c:575
 export function eating_conducts(pd, player) {
   let ll_conduct = 0;
   if (!player.uconduct.food++) {
@@ -704,7 +704,7 @@ export function eating_conducts(pd, player) {
 }
 
 // cf. eat.c violated_vegetarian() — check vegetarian conduct violation
-// TRANSLATOR: AUTO (eat.c:1375)
+// Autotranslated from eat.c:1375
 export function violated_vegetarian(player) {
   player.uconduct.unvegetarian++;
   if (Role_if(PM_MONK)) { You_feel("guilty."); adjalign(-1); }
@@ -717,7 +717,7 @@ export function violated_vegetarian(player) {
 // ============================================================
 
 // cf. eat.c Hear_again() — restore hearing after deafening food
-// TRANSLATOR: AUTO (eat.c:1795)
+// Autotranslated from eat.c:1795
 export function Hear_again(game) {
   if (!rn2(2)) { make_deaf(0, false); game.disp.botl = true; }
   return 0;
@@ -786,7 +786,7 @@ function eatcorpse(player, otmp) {
 // ============================================================
 
 // cf. eat.c garlic_breath() — scare nearby olfaction monsters
-// TRANSLATOR: AUTO (eat.c:2079)
+// Autotranslated from eat.c:2079
 export function garlic_breath(mtmp) {
   if (olfaction(mtmp.data) && distu(mtmp.mx, mtmp.my) < 7) monflee(mtmp, 0, false, false);
 }
@@ -884,7 +884,7 @@ function fpostfx(player, otmp) {
 // ============================================================
 
 // cf. eat.c bounded_increase() — bounded stat increase helper
-// TRANSLATOR: AUTO (eat.c:2215)
+// Autotranslated from eat.c:2215
 export function bounded_increase(old, inc, typ) {
   let absold, absinc, sgnold, sgninc;
   if (uright && uright.otyp === typ && typ !== RIN_PROTECTION) {
@@ -918,7 +918,7 @@ export function bounded_increase(old, inc, typ) {
 }
 
 // cf. eat.c accessory_has_effect() — check if accessory eating has effect
-// TRANSLATOR: AUTO (eat.c:2252)
+// Autotranslated from eat.c:2252
 export function accessory_has_effect(otmp) {
   pline("Magic spreads through your body as you digest the %s.", (otmp.oclass === RING_CLASS) ? "ring" : "amulet");
 }
@@ -941,7 +941,7 @@ function eatspecial(player, otmp) {
 // ============================================================
 
 // cf. eat.c tin_variety_txt() — text for tin variety
-// TRANSLATOR: AUTO (eat.c:1404)
+// Autotranslated from eat.c:1404
 export function tin_variety_txt(s, tinvariety) {
   let k, l;
   if (s && tinvariety) {
@@ -961,7 +961,7 @@ function tin_details(obj, mnum, buf) {
 }
 
 // cf. eat.c set_tin_variety() — set variety on a tin object
-// TRANSLATOR: AUTO (eat.c:1460)
+// Autotranslated from eat.c:1460
 export function set_tin_variety(obj, forcetype) {
   let r, mnum = obj.corpsenm;
   if (forcetype === SPINACH_TIN || (forcetype === HEALTHY_TIN && (mnum === NON_PM   || !vegetarian( mons[mnum])))) {
@@ -985,7 +985,7 @@ export function set_tin_variety(obj, forcetype) {
 }
 
 // cf. eat.c tin_variety() — get tin variety
-// TRANSLATOR: AUTO (eat.c:1488)
+// Autotranslated from eat.c:1488
 export function tin_variety(obj, displ) {
   let r, mnum = obj.corpsenm;
   if (obj.spe === 1) { r = SPINACH_TIN; }
@@ -998,7 +998,7 @@ export function tin_variety(obj, displ) {
 }
 
 // cf. eat.c costly_tin() — handle cost of tin from shop
-// TRANSLATOR: AUTO (eat.c:1388)
+// Autotranslated from eat.c:1388
 export function costly_tin(alter_type, game) {
   let tin = game.game.svc.context.tin.tin;
   if (carried(tin) ? tin.unpaid : (costly_spot(tin.ox, tin.oy) && !tin.no_charge)) {
@@ -1012,7 +1012,7 @@ export function costly_tin(alter_type, game) {
 }
 
 // cf. eat.c use_up_tin() — consume a tin after opening
-// TRANSLATOR: AUTO (eat.c:1515)
+// Autotranslated from eat.c:1515
 export function use_up_tin(tin, game) {
   if (carried(tin)) useup(tin);
   else {
@@ -1046,7 +1046,7 @@ function edibility_prompts(player, otmp) {
 }
 
 // cf. eat.c doeat_nonfood() — attempt to eat non-food item
-// TRANSLATOR: AUTO (eat.c:2728)
+// Autotranslated from eat.c:2728
 export async function doeat_nonfood(otmp, game, player) {
   let basenutrit, ll_conduct = 0, nodelicious = false, material;
   game.game.svc.context.victual.reqtime = 1;
@@ -1107,7 +1107,7 @@ function eating_dangerous_corpse(res) {
 // ============================================================
 
 // cf. eat.c eat_ok() — getobj callback for edible items
-// TRANSLATOR: AUTO (eat.c:3511)
+// Autotranslated from eat.c:3511
 export function eat_ok(obj) {
   if (!obj) return getobj_else ? GETOBJ_EXCLUDE_NONINVENT : GETOBJ_EXCLUDE;
   if (is_edible(obj)) return GETOBJ_SUGGEST;
@@ -1116,7 +1116,7 @@ export function eat_ok(obj) {
 }
 
 // cf. eat.c offer_ok() — getobj callback for sacrifice items
-// TRANSLATOR: AUTO (eat.c:3533)
+// Autotranslated from eat.c:3533
 export function offer_ok(obj, map) {
   if (!obj) return getobj_else ? GETOBJ_EXCLUDE_NONINVENT : GETOBJ_EXCLUDE;
   if (obj.oclass !== FOOD_CLASS && obj.oclass !== AMULET_CLASS) return GETOBJ_EXCLUDE;
@@ -1126,7 +1126,7 @@ export function offer_ok(obj, map) {
 }
 
 // cf. eat.c tin_ok() — getobj callback for tins
-// TRANSLATOR: AUTO (eat.c:3555)
+// Autotranslated from eat.c:3555
 export function tin_ok(obj) {
   if (!obj) return getobj_else ? GETOBJ_EXCLUDE_NONINVENT : GETOBJ_EXCLUDE;
   if (obj.oclass !== FOOD_CLASS) return GETOBJ_EXCLUDE;
@@ -1135,7 +1135,7 @@ export function tin_ok(obj) {
 }
 
 // cf. eat.c tinopen_ok() — getobj callback for tin opener
-// TRANSLATOR: AUTO (eat.c:3082)
+// Autotranslated from eat.c:3082
 export function tinopen_ok(obj) {
   if (obj && obj.otyp === TIN) return GETOBJ_SUGGEST;
   return GETOBJ_EXCLUDE;
@@ -1159,7 +1159,7 @@ function vomit(player) {
 }
 
 // cf. eat.c eaten_stat() — calculate how much of food has been eaten
-// TRANSLATOR: AUTO (eat.c:3782)
+// Autotranslated from eat.c:3782
 export function eaten_stat(base, obj) {
   let uneaten_amt, full_amount;
   full_amount =  obj_nutrition(obj);
@@ -1173,7 +1173,7 @@ export function eaten_stat(base, obj) {
 }
 
 // cf. eat.c consume_oeaten() — reduce oeaten field
-// TRANSLATOR: AUTO (eat.c:3802)
+// Autotranslated from eat.c:3802
 export async function consume_oeaten(obj, amt, game) {
   if (!obj_nutrition(obj)) {
     let itembuf, otyp = obj.otyp;
@@ -1611,7 +1611,7 @@ export { handleEat, // Hunger system
     vomit, maybe_finished_meal, cant_finish_meal, Popeye, Finish_digestion, eat_brains, // Constants
     nonrotting_corpse, nonrotting_food, CANNIBAL_ALLOWED, canchoke, SPINACH_TIN, ROTTEN_TIN, HOMEMADE_TIN, tintxts, TTSZ };
 
-// TRANSLATOR: AUTO (eat.c:518)
+// Autotranslated from eat.c:518
 export async function eatfood(game, player) {
   let food = game.game.svc.context.victual.piece;
   if (food && !carried(food) && !obj_here(food, player.x, player.y)) food = 0;
@@ -1621,7 +1621,7 @@ export async function eatfood(game, player) {
   else { await done_eating(true); return 0; }
 }
 
-// TRANSLATOR: AUTO (eat.c:1697)
+// Autotranslated from eat.c:1697
 export async function opentin(game, player) {
   if (!carried(game.game.svc.context.tin.tin) && (!obj_here(game.game.svc.context.tin.tin, player.x, player.y) || !can_reach_floor(true))) return 0;
   if (game.game.svc.context.tin.usedtime++ >= 50) { You("give up your attempt to open the tin."); return 0; }
@@ -1630,7 +1630,7 @@ export async function opentin(game, player) {
   return 0;
 }
 
-// TRANSLATOR: AUTO (eat.c:3092)
+// Autotranslated from eat.c:3092
 export async function use_tin_opener(obj) {
   let otmp, res = ECMD_OK;
   if (!carrying(TIN)) { You("have no tin to open."); return ECMD_OK; }
@@ -1648,7 +1648,7 @@ export async function use_tin_opener(obj) {
   return ECMD_TIME;
 }
 
-// TRANSLATOR: AUTO (eat.c:3127)
+// Autotranslated from eat.c:3127
 export async function bite(game, player) {
   sa_victual( game.game.svc.context.victual);
   if (game.game.svc.context.victual.canchoke && player.uhunger >= 2000) { choke(game.game.svc.context.victual.piece); return 1; }

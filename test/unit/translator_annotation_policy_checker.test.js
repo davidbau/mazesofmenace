@@ -43,11 +43,11 @@ test('fails when mixed annotations file has no TRANSLATOR markers', () => {
     assert.match(r.stderr + r.stdout, /no TRANSLATOR markers/);
 });
 
-test('passes when mixed annotations file has TRANSLATOR: AUTO marker', () => {
+test('passes when mixed annotations file has Autotranslated marker', () => {
     const root = mkTmpRoot();
     const jsFile = path.join(root, 'js', 'mixed.js');
     fs.mkdirSync(path.dirname(jsFile), { recursive: true });
-    fs.writeFileSync(jsFile, '// TRANSLATOR: AUTO\nexport function f() { return 1; }\n', 'utf8');
+    fs.writeFileSync(jsFile, '// Autotranslated from test.c:1234\nexport function f() { return 1; }\n', 'utf8');
 
     const policyPath = path.join(root, 'tools', 'c_translator', 'rulesets', 'file_policy.json');
     writeJson(policyPath, {

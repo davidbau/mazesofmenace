@@ -13,7 +13,6 @@ import {
 
 let animationDelayMs = 50;
 
-// TRANSLATOR: AUTO
 export async function delay_output(ms = animationDelayMs) {
     await nh_delay_output(ms);
 }

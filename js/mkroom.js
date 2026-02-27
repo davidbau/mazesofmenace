@@ -51,7 +51,7 @@ export function has_upstairs(croom, map) {
 }
 
 // C ref: mkroom.c:623-638 nexttodoor()
-// TRANSLATOR: AUTO (mkroom.c:623)
+// Autotranslated from mkroom.c:623
 export function nexttodoor(sx, sy, map) {
   let dx, dy, lev;
   for (dx = -1; dx <= 1; dx++) {
@@ -79,11 +79,11 @@ export function shrine_pos(roomno, map) {
 }
 
 // C ref: mkroom.c somex()/somey()
-// TRANSLATOR: AUTO (mkroom.c:666)
+// Autotranslated from mkroom.c:666
 export function somex(croom) {
   return rn1(croom.hx - croom.lx + 1, croom.lx);
 }
-// TRANSLATOR: AUTO (mkroom.c:672)
+// Autotranslated from mkroom.c:672
 export function somey(croom) {
   return rn1(croom.hy - croom.ly + 1, croom.ly);
 }

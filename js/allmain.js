@@ -62,7 +62,7 @@ import { initAnimation, configureAnimation, setAnimationMode } from './animation
 // then moveloop_turnend() for once-per-turn effects.
 // opts.skipMonsterMove: skip movemon (used by some test harnesses)
 // opts.computeFov: recompute FOV before movemon (C ref: vision_recalc runs in domove)
-// TRANSLATOR: AUTO
+// Autotranslated from allmain.c:169
 export async function moveloop_core(game, opts = {}) {
     const player = (game.u || game.player);
     if (opts.computeFov) {
@@ -1533,7 +1533,7 @@ export function dump_glyphids() {
   dump_all_glyphids(stdout);
 }
 
-// TRANSLATOR: AUTO (allmain.c:1178)
+// Autotranslated from allmain.c:1178
 export function timet_to_seconds(ttim) {
   return timet_delta(ttim,  0);
 }

@@ -408,7 +408,7 @@ export function spot_time_expires(x, y, funcIndex) {
     return 0;
 }
 
-// TRANSLATOR: AUTO (timeout.c:2450)
+// Autotranslated from timeout.c:2450
 export function spot_time_left(x, y, func_index, game) {
   let expires = spot_time_expires(x, y, func_index);
   return (expires > 0) ? expires - (Number(game?.moves) || 0) : 0;
@@ -782,7 +782,7 @@ export function do_storms() {
 
 export function stoned_dialogue() {}
 export function vomiting_dialogue() {}
-// TRANSLATOR: AUTO (timeout.c:267)
+// Autotranslated from timeout.c:267
 export function sleep_dialogue() {
   let i = (HSleepy & TIMEOUT);
   if (i === 4) You("yawn.");
@@ -843,7 +843,6 @@ export function learn_egg_type(mnum, game) {
 }
 
 // Autotranslated from timeout.c:2575
-// TRANSLATOR: AUTO (timeout.c:2575)
 export function mon_is_local(mon, game) {
   let curr;
   for (curr = game.migrating_mons; curr; curr = curr.nmon) {

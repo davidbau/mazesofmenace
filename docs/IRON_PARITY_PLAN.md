@@ -158,7 +158,7 @@ Required assets:
 1. `tools/c_translator/rulesets/*` rule tables and schemas
 2. coverage policy manifest: `tools/c_translator/rulesets/file_policy.json`
 3. policy checker: `scripts/check-translator-file-policy.mjs`
-4. annotation-driven mixed-file controls (`TRANSLATOR: AUTO/MANUAL/MANUAL-BEGIN/MANUAL-END`)
+4. annotation-driven mixed-file controls (`Autotranslated from <file>.c:<line>/TRANSLATOR: MANUAL/MANUAL-BEGIN/MANUAL-END`)
 
 Translation policy classes:
 

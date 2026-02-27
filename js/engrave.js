@@ -76,7 +76,7 @@ export function del_engr(map, x, y) {
 
 // cf. engrave.c:461 — del_engr_at(x, y)
 // Deletes any engraving at location (x,y). Convenience wrapper around del_engr.
-// TRANSLATOR: AUTO (engrave.c:462)
+// Autotranslated from engrave.c:462
 export function del_engr_at(x, y) {
   let ep = engr_at(x, y);
   if (ep) del_engr(ep);
@@ -223,7 +223,7 @@ export function sengr_at(map, s, x, y, strict) {
 
 // cf. engrave.c:264 — u_wipe_engr(cnt): wipe engraving at hero's location
 // Wipes cnt characters from engraving at hero's position if reachable.
-// TRANSLATOR: AUTO (engrave.c:263)
+// Autotranslated from engrave.c:263
 export function u_wipe_engr(cnt, player) {
   if (can_reach_floor(true)) wipe_engr_at(player.x, player.y, cnt, false);
 }
@@ -598,7 +598,7 @@ export function engr_stats(map) {
 
 // cf. engrave.c:1666 — rloc_engr(ep): relocate engraving randomly
 // Moves engraving to a new valid location on the level.
-// TRANSLATOR: AUTO (engrave.c:1668)
+// Autotranslated from engrave.c:1668
 export function rloc_engr(ep) {
   let tx, ty, tryct = 200;
   do {
@@ -657,7 +657,7 @@ export function disturb_grave(map, x, y, player, depth) {
 
 // cf. engrave.c:1723 — see_engraving(ep): update engraving display
 // Updates display symbol at engraving location.
-// TRANSLATOR: AUTO (engrave.c:1725)
+// Autotranslated from engrave.c:1725
 export function see_engraving(ep) {
   newsym(ep.engr_x, ep.engr_y);
 }

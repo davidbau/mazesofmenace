@@ -21,7 +21,6 @@ import { tempGlyphToCell } from './temp_glyph.js';
 import { isObjectNameKnown, isObjectEncountered, discoveryTypeName } from './discovery.js';
 import { do_lookat, format_do_look_html } from './look.js';
 
-// TRANSLATOR: AUTO
 // Color constants (color.h)
 // C ref: include/color.h
 export const CLR_BLACK = 0;
@@ -1648,7 +1647,6 @@ export function check_pos(x, y, which, map) {
 }
 
 // Autotranslated from display.c:3196
-// TRANSLATOR: AUTO (display.c:3196)
 export function set_corn(x1, y1, x2, y2, x3, y3, x4, y4) {
   let wmode, is_1, is_2, is_3, is_4;
   is_1 = check_pos(x1, y1, 1);

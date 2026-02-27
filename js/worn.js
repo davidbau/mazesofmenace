@@ -201,7 +201,7 @@ export function wearmask_to_obj(player, wornmask) {
 // wornmask_to_armcat — cf. worn.c:210
 // ============================================================================
 // Convert an armor wornmask to corresponding ARM_* category.
-// TRANSLATOR: AUTO (worn.c:209)
+// Autotranslated from worn.c:209
 export function wornmask_to_armcat(mask) {
   let cat = 0;
   switch (mask & W_ARMOR) {
@@ -234,7 +234,7 @@ export function wornmask_to_armcat(mask) {
 // armcat_to_wornmask — cf. worn.c:242
 // ============================================================================
 // Convert an ARM_* category to corresponding wornmask bit.
-// TRANSLATOR: AUTO (worn.c:241)
+// Autotranslated from worn.c:241
 export function armcat_to_wornmask(cat) {
   let mask = 0;
   switch (cat) {

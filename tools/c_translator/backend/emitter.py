@@ -106,14 +106,14 @@ def emit_helper_scaffold(src_path, func_name, compile_profile=None):
     func_decl = "export async function" if requires_async else "export function"
     if translated:
         js_lines = [
-            f"// TRANSLATOR: AUTO ({path.name}:{fn['span']['signature_line']})",
+            f"// Autotranslated from {path.name}:{fn['span']['signature_line']}",
             f"{func_decl} {fn['name']}({', '.join(params)}) {{",
             *translated_lines,
             "}",
         ]
     else:
         js_lines = [
-            f"// TRANSLATOR: AUTO ({path.name}:{fn['span']['signature_line']})",
+            f"// Autotranslated from {path.name}:{fn['span']['signature_line']}",
             f"{func_decl} {fn['name']}({', '.join(params)}) {{",
             "  // TODO(iron-parity): translated body pending pass pipeline.",
             '  throw new Error("UNIMPLEMENTED_TRANSLATED_FUNCTION");',

@@ -826,7 +826,7 @@ export function mhurtle(mon, dx, dy, range, map, player) {
 }
 
 // cf. dothrow.c:1180 [static] -- check_shop_obj(obj, x, y, broken)
-// TRANSLATOR: AUTO (dothrow.c:1180)
+// Autotranslated from dothrow.c:1180
 export function check_shop_obj(obj, x, y, broken, player) {
   let costly_xy, shkp = shop_keeper( player.ushops);
   if (!shkp) return;

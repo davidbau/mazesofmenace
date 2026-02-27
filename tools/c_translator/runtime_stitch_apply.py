@@ -25,7 +25,7 @@ def parse_args():
         "--only-unmarked",
         action="store_true",
         default=True,
-        help="Only stitch functions not already tagged TRANSLATOR: AUTO (default: true)",
+        help="Only stitch functions not already tagged Autotranslated from <file>:<line> (default: true)",
     )
     p.add_argument(
         "--max-functions",
@@ -242,7 +242,7 @@ def signature_compatible(existing_tokens, emitted_tokens):
 def has_auto_marker_near(text, fn_start):
     lookback_start = max(0, fn_start - 200)
     segment = text[lookback_start:fn_start]
-    return "TRANSLATOR: AUTO" in segment
+    return "Autotranslated from " in segment
 
 
 def load_emitted_js(out_file):

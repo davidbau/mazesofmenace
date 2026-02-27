@@ -32,7 +32,7 @@
 //   formatkiller() (JS formatkiller() is TODO in topten.js:13).
 // ALIGNED: rip.c:85 — genl_outrip() ↔ display.renderTombstone() (display.js:1135)
 
-// TRANSLATOR: AUTO (rip.c:74)
+// Autotranslated from rip.c:74
 export function center(line, text) {
   let ip, op;
   ip = text;
@@ -42,7 +42,7 @@ export function center(line, text) {
   }
 }
 
-// TRANSLATOR: AUTO (rip.c:84)
+// Autotranslated from rip.c:84
 export function genl_outrip(tmpwin, how, when) {
   let dp, dpx, buf, x, line, year, cash;
   gr.rip = dp =  alloc(sizeof(rip_txt));

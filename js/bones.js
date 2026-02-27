@@ -158,7 +158,7 @@ export function give_to_nearby_mon(map, otmp, x, y) {
 
 // Mark objects as ghostly (from bones level).
 // C ref: bones.c:134
-// TRANSLATOR: AUTO (bones.c:773)
+// Autotranslated from bones.c:773
 export function set_ghostly_objlist(objchain) {
     // Runtime supports both C-style linked object chains and JS arrays.
     if (Array.isArray(objchain)) {

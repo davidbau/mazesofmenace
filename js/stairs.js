@@ -53,7 +53,7 @@ export function stairway_add(map, x, y, up, isladder, dest) {
 // cf. stairs.c:39 — stairway_at(x, y): find stairway at grid position
 // Returns stairway node at (x, y), or null.
 // ============================================================================
-// TRANSLATOR: AUTO (stairs.c:39)
+// Autotranslated from stairs.c:39
 export function stairway_at(x, y) {
   let tmp = gs.stairs;
   while (tmp && !(tmp.sx === x && tmp.sy === y)) {
@@ -66,7 +66,7 @@ export function stairway_at(x, y) {
 // cf. stairs.c:49 — stairway_find(fromdlev): find stairway whose tolev matches
 // Returns stairway whose tolev.dnum==fromdlev.dnum && tolev.dlevel==fromdlev.dlevel.
 // ============================================================================
-// TRANSLATOR: AUTO (stairs.c:49)
+// Autotranslated from stairs.c:49
 export function stairway_find(fromdlev) {
   let tmp = gs.stairs;
   while (tmp) {
@@ -82,7 +82,7 @@ export function stairway_find(fromdlev) {
 // cf. stairs.c:63 — stairway_find_from(fromdlev, isladder): find by dest + type
 // Like stairway_find() but also matches isladder flag.
 // ============================================================================
-// TRANSLATOR: AUTO (stairs.c:63)
+// Autotranslated from stairs.c:63
 export function stairway_find_from(fromdlev, isladder) {
   let tmp = gs.stairs;
   while (tmp) {
@@ -98,7 +98,7 @@ export function stairway_find_from(fromdlev, isladder) {
 // cf. stairs.c:78 — stairway_find_dir(up): find first stairway going up or down
 // Returns first stairway with matching up flag.
 // ============================================================================
-// TRANSLATOR: AUTO (stairs.c:78)
+// Autotranslated from stairs.c:78
 export function stairway_find_dir(up) {
   let tmp = gs.stairs;
   while (tmp && !(tmp.up === up)) {
@@ -111,7 +111,7 @@ export function stairway_find_dir(up) {
 // cf. stairs.c:88 — stairway_find_type_dir(isladder, up): find by type+direction
 // Matches both isladder and up flags.
 // ============================================================================
-// TRANSLATOR: AUTO (stairs.c:88)
+// Autotranslated from stairs.c:88
 export function stairway_find_type_dir(isladder, up) {
   let tmp = gs.stairs;
   while (tmp && !(tmp.isladder === isladder && tmp.up === up)) {
@@ -125,7 +125,7 @@ export function stairway_find_type_dir(isladder, up) {
 // Returns first stairway where tolev.dnum != u.uz.dnum AND stway.up != up.
 // In JS, player.dnum (or 0 if absent) represents u.uz.dnum.
 // ============================================================================
-// TRANSLATOR: AUTO (stairs.c:98)
+// Autotranslated from stairs.c:98
 export function stairway_find_special_dir(up, map) {
   let tmp = gs.stairs;
   while (tmp) {
@@ -179,7 +179,7 @@ export function u_on_dnstairs(map, player) {
 // ============================================================================
 // cf. stairs.c:147 — On_stairs(x, y): is there any stairway at this position?
 // ============================================================================
-// TRANSLATOR: AUTO (stairs.c:147)
+// Autotranslated from stairs.c:147
 export function On_stairs(x, y) {
   return (stairway_at(x, y) !== null);
 }
@@ -187,7 +187,7 @@ export function On_stairs(x, y) {
 // ============================================================================
 // cf. stairs.c:153 — On_ladder(x, y): is there a ladder (not stairs) at position?
 // ============================================================================
-// TRANSLATOR: AUTO (stairs.c:153)
+// Autotranslated from stairs.c:153
 export function On_ladder(x, y) {
   let stway = stairway_at(x, y);
   return (stway && stway.isladder);
@@ -196,7 +196,7 @@ export function On_ladder(x, y) {
 // ============================================================================
 // cf. stairs.c:161 — On_stairs_up(x, y): is there an up stairway at position?
 // ============================================================================
-// TRANSLATOR: AUTO (stairs.c:161)
+// Autotranslated from stairs.c:161
 export function On_stairs_up(x, y) {
   let stway = stairway_at(x, y);
   return (stway && stway.up);
@@ -205,7 +205,7 @@ export function On_stairs_up(x, y) {
 // ============================================================================
 // cf. stairs.c:169 — On_stairs_dn(x, y): is there a down stairway at position?
 // ============================================================================
-// TRANSLATOR: AUTO (stairs.c:169)
+// Autotranslated from stairs.c:169
 export function On_stairs_dn(x, y) {
   let stway = stairway_at(x, y);
   return (stway && !stway.up);

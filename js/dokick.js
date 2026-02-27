@@ -1360,7 +1360,7 @@ function watchman_door_damage(mtmp, x, y, map) {
 // 11. kick_dumb — clumsy kick at empty space
 // cf. dokick.c:863
 // ============================================================================
-// TRANSLATOR: AUTO (dokick.c:863)
+// Autotranslated from dokick.c:863
 export function kick_dumb(x, y, map, player) {
   exercise(A_DEX, false);
   if (martial() || ACURR(A_DEX) >= 16 || rn2(3)) { You("kick at empty space."); if (Blind) feel_location(x, y); }
@@ -1376,7 +1376,7 @@ export function kick_dumb(x, y, map, player) {
 // 12. kick_ouch — player hurt by kick
 // cf. dokick.c:880
 // ============================================================================
-// TRANSLATOR: AUTO (dokick.c:880)
+// Autotranslated from dokick.c:880
 export function kick_ouch(x, y, kickobjnam, game, map, player) {
   let dmg, buf;
   pline("Ouch! That hurts!");
@@ -1469,7 +1469,7 @@ function in_town(x, y, map) {
 // 14. kick_nondoor — kick non-door terrain
 // cf. dokick.c:972
 // ============================================================================
-// TRANSLATOR: AUTO (dokick.c:973)
+// Autotranslated from dokick.c:973
 export function kick_nondoor(x, y, avrg_attrib, game, map, player) {
   if (game.maploc.typ === SDOOR) {
     if (!Levitation && rn2(30) < avrg_attrib) {
@@ -2249,7 +2249,7 @@ export function deliver_obj_to_mon(mtmp, cnt, deliverflags, game) {
 // 21. otransit_msg — object transit message
 // cf. dokick.c:1908
 // ============================================================================
-// TRANSLATOR: AUTO (dokick.c:1908)
+// Autotranslated from dokick.c:1908
 export function otransit_msg(otmp, nodrop, chainthere, num) {
   let optr = 0, obuf, xbuf;
   if (otmp.otyp === CORPSE) {

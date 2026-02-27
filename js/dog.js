@@ -816,7 +816,7 @@ export function abuse_dog(mtmp) {
   }
 }
 
-// TRANSLATOR: AUTO (dog.c:303)
+// Autotranslated from dog.c:303
 export function losedogs(game, map) {
   let mtmp, mprev, dismissKops = 0, xyloc;
   failed_arrivals = 0;

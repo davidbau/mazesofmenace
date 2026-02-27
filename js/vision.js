@@ -103,7 +103,7 @@ function does_block(map, x, y) {
 }
 
 // C ref: vision.c:105 — get_viz_clear()
-// TRANSLATOR: AUTO (vision.c:104)
+// Autotranslated from vision.c:104
 export function get_viz_clear(x, y) {
   if (isok(x,y) && !viz_clear[y][x]) return true;
   return false;
@@ -142,7 +142,7 @@ function get_unused_cs() {
 }
 
 // C ref: vision.c:237-251 — view_init()
-// TRANSLATOR: AUTO (vision.c:1639)
+// Autotranslated from vision.c:1639
 export function view_init() {
 }
 

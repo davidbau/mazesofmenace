@@ -68,7 +68,7 @@ function distu(player, x, y) {
 // ========================================================================
 // cf. worm.c:96 -- get_wormno(): find an unused worm tail slot
 // ========================================================================
-// TRANSLATOR: AUTO (worm.c:95)
+// Autotranslated from worm.c:95
 export function get_wormno() {
   let new_wormno = 1;
   while (new_wormno < MAX_NUM_WORMS) {
@@ -81,7 +81,7 @@ export function get_wormno() {
 // ========================================================================
 // cf. worm.c:120 -- initworm(worm, wseg_count)
 // ========================================================================
-// TRANSLATOR: AUTO (worm.c:119)
+// Autotranslated from worm.c:119
 export function initworm(worm, wseg_count) {
   let seg, new_tail = create_worm_tail(wseg_count), wnum = worm.wormno;
   if (new_tail) {
@@ -349,7 +349,7 @@ export function cutworm(worm, x, y, cuttier, map, player, game) {
 // ========================================================================
 // cf. worm.c:487 -- see_wsegs(worm, map)
 // ========================================================================
-// TRANSLATOR: AUTO (worm.c:486)
+// Autotranslated from worm.c:486
 export function see_wsegs(worm) {
   let curr = wtails[worm.wormno];
   while (curr !== wheads[worm.wormno]) {
@@ -537,7 +537,7 @@ function _rnd_nextto_goodpos(map, mtmp, x, y, player) {
 // ========================================================================
 // cf. worm.c:827 -- size_wseg(worm): segment memory accounting
 // ========================================================================
-// TRANSLATOR: AUTO (worm.c:826)
+// Autotranslated from worm.c:826
 export function size_wseg(worm) {
   return (int) (count_wsegs(worm) * sizeof );
 }
@@ -545,7 +545,7 @@ export function size_wseg(worm) {
 // ========================================================================
 // cf. worm.c:836 -- count_wsegs(mtmp): count worm body segments
 // ========================================================================
-// TRANSLATOR: AUTO (worm.c:835)
+// Autotranslated from worm.c:835
 export function count_wsegs(mtmp) {
   let i = 0, curr;
   if (mtmp.wormno) {
@@ -584,7 +584,7 @@ export function create_worm_tail(num_segs) {
 // ========================================================================
 // cf. worm.c:883 -- worm_known(worm, map, player, fov)
 // ========================================================================
-// TRANSLATOR: AUTO (worm.c:882)
+// Autotranslated from worm.c:882
 export function worm_known(worm) {
   let curr = wtails[worm.wormno];
   while (curr) {
@@ -651,7 +651,7 @@ export function wseg_at(worm, x, y, map) {
 // ========================================================================
 // cf. worm.c:968 -- flip_worm_segs_vertical(worm, miny, maxy)
 // ========================================================================
-// TRANSLATOR: AUTO (worm.c:967)
+// Autotranslated from worm.c:967
 export function flip_worm_segs_vertical(worm, miny, maxy) {
   let curr = wtails[worm.wormno];
   while (curr) {
@@ -663,7 +663,7 @@ export function flip_worm_segs_vertical(worm, miny, maxy) {
 // ========================================================================
 // cf. worm.c:979 -- flip_worm_segs_horizontal(worm, minx, maxx)
 // ========================================================================
-// TRANSLATOR: AUTO (worm.c:978)
+// Autotranslated from worm.c:978
 export function flip_worm_segs_horizontal(worm, minx, maxx) {
   let curr = wtails[worm.wormno];
   while (curr) {
@@ -675,7 +675,7 @@ export function flip_worm_segs_horizontal(worm, minx, maxx) {
 // ========================================================================
 // cf. worm.c:990 -- redraw_worm(worm, map)
 // ========================================================================
-// TRANSLATOR: AUTO (worm.c:989)
+// Autotranslated from worm.c:989
 export function redraw_worm(worm) {
   let curr = wtails[worm.wormno];
   while (curr) {

@@ -1070,7 +1070,7 @@ function count_worn_stuff(player) {
 }
 
 // cf. do_wear.c armor_or_accessory_off() — take off armor or accessory
-// TRANSLATOR: AUTO (do_wear.c:1765)
+// Autotranslated from do_wear.c:1765
 export function armor_or_accessory_off(obj, game) {
   if (!(obj.owornmask & (W_ARMOR | W_ACCESSORY))) { You("are not wearing that."); return ECMD_OK; }
   if (obj === uskin || ((obj === uarm) && uarmc) || ((obj === uarmu) && (uarmc || uarm))) {
@@ -1144,7 +1144,7 @@ function select_off(player, otmp, display) {
 }
 
 // cf. do_wear.c do_takeoff() — execute removal of one item
-// TRANSLATOR: AUTO (do_wear.c:2818)
+// Autotranslated from do_wear.c:2818
 export function do_takeoff(game, player) {
   let otmp =  0, was_twoweap = player.twoweap;
   let doff =  game.game.svc.context.takeoff;

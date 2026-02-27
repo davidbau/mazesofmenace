@@ -193,7 +193,7 @@ export function is_rustprone(obj) {
 export function is_crackable(obj) {
     return objectData[obj.otyp].material === GLASS && obj.oclass === ARMOR_CLASS;
 }
-// TRANSLATOR: AUTO (mkobj.c:2286)
+// Autotranslated from mkobj.c:2286
 export function is_rottable(otmp) {
   const otyp = otmp.otyp;
   const mat = objectData[otyp]?.material ?? 0;
@@ -277,7 +277,7 @@ function may_generate_eroded(obj) {
 }
 
 // C ref: mkobj.c blessorcurse()
-// TRANSLATOR: AUTO (mkobj.c:1837)
+// Autotranslated from mkobj.c:1837
 export function blessorcurse(otmp, chance) {
   if (otmp.blessed || otmp.cursed) return;
   if (!rn2(chance)) {
@@ -325,13 +325,13 @@ export function set_bknown(obj, onoff) {
 }
 
 // C ref: mkobj.c bcsign()
-// TRANSLATOR: AUTO (mkobj.c:1853)
+// Autotranslated from mkobj.c:1853
 export function bcsign(otmp) {
   return (!!otmp.blessed - !!otmp.cursed);
 }
 
 // C ref: mkobj.c container_weight() — set owt recursively up container chain
-// TRANSLATOR: AUTO (mkobj.c:2732)
+// Autotranslated from mkobj.c:2732
 export function container_weight(object) {
   object.owt = weight(object);
   if (object.where === OBJ_CONTAINED) container_weight(object.ocontainer);

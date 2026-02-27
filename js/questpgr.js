@@ -155,7 +155,7 @@ export function deliver_by_pline(str) {
   }
 }
 
-// TRANSLATOR: AUTO (questpgr.c:623)
+// Autotranslated from questpgr.c:623
 export async function com_pager(msgid) {
   await com_pager_core("common", msgid, true,  0);
 }

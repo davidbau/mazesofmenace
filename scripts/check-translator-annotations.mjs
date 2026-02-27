@@ -29,23 +29,25 @@ function fail(msg) {
 
 function validateAnnotationMarkers(filePath, source, rootPath) {
     const lines = source.split(/\r?\n/);
-    const markerRe = /TRANSLATOR:\s*(AUTO|MANUAL|MANUAL-BEGIN|MANUAL-END)(?:\s+([A-Za-z0-9_.:-]+))?/;
+    const markerRe = /TRANSLATOR:\s*(MANUAL|MANUAL-BEGIN|MANUAL-END)(?:\s+([A-Za-z0-9_.:-]+))?/;
+    const autoRe = /Autotranslated from [A-Za-z0-9_.-]+\.c:\d+/;
     let markerCount = 0;
     let hasApprovedScope = false;
     let activeManualRegion = null;
 
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
+        if (autoRe.test(line)) {
+            markerCount++;
+            hasApprovedScope = true;
+            continue;
+        }
         const m = line.match(markerRe);
         if (!m) continue;
         markerCount++;
         const kind = m[1];
         const regionId = m[2] || null;
 
-        if (kind === 'AUTO') {
-            hasApprovedScope = true;
-            continue;
-        }
         if (kind === 'MANUAL') {
             continue;
         }
@@ -84,7 +86,7 @@ function validateAnnotationMarkers(filePath, source, rootPath) {
         fail(`${rel(rootPath, filePath)} has allow_source=annotations but no TRANSLATOR markers`);
     }
     if (!hasApprovedScope) {
-        fail(`${rel(rootPath, filePath)} has allow_source=annotations but no TRANSLATOR: AUTO markers`);
+        fail(`${rel(rootPath, filePath)} has allow_source=annotations but no Autotranslated markers`);
     }
 }
 

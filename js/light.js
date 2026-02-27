@@ -338,7 +338,7 @@ export function snuff_light_source(x, y) {
 // cf. light.c:763 — obj_sheds_light(obj)
 // Returns true if object emits any light.
 // ========================================================================
-// TRANSLATOR: AUTO (light.c:762)
+// Autotranslated from light.c:762
 export function obj_sheds_light(obj) {
   return obj_is_burning(obj);
 }
@@ -347,7 +347,7 @@ export function obj_sheds_light(obj) {
 // cf. light.c:771 — obj_is_burning(obj)
 // Returns true if object is lit and will be snuffed by end_burn().
 // ========================================================================
-// TRANSLATOR: AUTO (light.c:770)
+// Autotranslated from light.c:770
 export function obj_is_burning(obj) {
   return (obj.lamplit && (ignitable(obj) || artifact_light(obj)));
 }
@@ -443,7 +443,7 @@ export function candle_light_range(obj) {
 // cf. light.c:881 — arti_light_radius(obj)
 // Returns the light radius for a light-emitting artifact.
 // ========================================================================
-// TRANSLATOR: AUTO (light.c:880)
+// Autotranslated from light.c:880
 export function arti_light_radius(obj) {
   let res;
   if (!obj.lamplit || !artifact_light(obj)) return 0;

@@ -232,7 +232,7 @@ export function outrumor(truth, mechanism, player) {
   pline1(line);
 }
 
-// TRANSLATOR: AUTO (rumors.c:576)
+// Autotranslated from rumors.c:576
 export function init_oracles(fp) {
   let i, line, cnt = 0;
   dlb_fgets(line, line.length, fp);
@@ -248,7 +248,7 @@ export function init_oracles(fp) {
   return;
 }
 
-// TRANSLATOR: AUTO (rumors.c:938)
+// Autotranslated from rumors.c:938
 export function free_CapMons() {
   if (CapMons) {
     let idx;

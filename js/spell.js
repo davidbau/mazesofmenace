@@ -1572,7 +1572,7 @@ export function spellretention(idx, outbuf) {
   return outbuf;
 }
 
-// TRANSLATOR: AUTO (spell.c:1975)
+// Autotranslated from spell.c:1975
 export async function spellsortmenu() {
   let tmpwin, selected, any, let_, i, n, choice, clr = NO_COLOR;
   tmpwin = create_nhwindow(NHW_MENU);

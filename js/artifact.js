@@ -63,7 +63,7 @@ export { get_artifact };
 // ── Name lookup ──
 
 // cf. artifact.c:151 — artiname(artinum)
-// TRANSLATOR: AUTO (artifact.c:150)
+// Autotranslated from artifact.c:150
 export function artiname(artinum) {
   if (artinum <= 0 || artinum > NROFARTIFACTS) return "";
   return artilist[artinum].name;
@@ -204,7 +204,7 @@ export function find_artifact(otmp) {
 }
 
 // cf. artifact.c:462 — nartifact_exist()
-// TRANSLATOR: AUTO (artifact.c:461)
+// Autotranslated from artifact.c:461
 export function nartifact_exist() {
   let i, a = 0;
   for (i = 1; i <= NROFARTIFACTS; ++i) {
@@ -222,7 +222,7 @@ export function spec_ability(otmp, abil) {
 }
 
 // cf. artifact.c:526 — confers_luck(obj)
-// TRANSLATOR: AUTO (artifact.c:525)
+// Autotranslated from artifact.c:525
 export function confers_luck(obj) {
   if (obj.otyp === LUCKSTONE) return true;
   return (obj.oartifact && spec_ability(obj, SPFX_LUCK));
@@ -337,14 +337,14 @@ export function artifact_light(obj) {
 }
 
 // cf. artifact.c:2808 — is_art(obj, art)
-// TRANSLATOR: AUTO (artifact.c:2807)
+// Autotranslated from artifact.c:2807
 export function is_art(obj, art) {
   if (obj && obj.oartifact === art) return true;
   return false;
 }
 
 // cf. artifact.c:2837 — permapoisoned(obj)
-// TRANSLATOR: AUTO (artifact.c:2836)
+// Autotranslated from artifact.c:2836
 export function permapoisoned(obj) {
   return (obj && is_art(obj, ART_GRIMTOOTH));
 }
@@ -456,7 +456,7 @@ export function discover_artifact(m) {
 }
 
 // cf. artifact.c:1131 — undiscovered_artifact(m)
-// TRANSLATOR: AUTO (artifact.c:1130)
+// Autotranslated from artifact.c:1130
 export function undiscovered_artifact(m) {
   let i;
   for (i = 0; i < NROFARTIFACTS; i++) {
@@ -1225,7 +1225,7 @@ export function invoke_healing(obj, player) {
 }
 
 // cf. artifact.c:1818 — invoke_energy_boost(obj, player)
-// TRANSLATOR: AUTO (artifact.c:1817)
+// Autotranslated from artifact.c:1817
 export function invoke_energy_boost(obj, game, player) {
   let epboost = (player.uenmax + 1 - player.uen) / 2;
   if (epboost > 120) epboost = 120;

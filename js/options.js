@@ -1394,7 +1394,7 @@ export function enhance_menu_text(buf, sz, whichpass, bool_p, thisopt) {
   return;
 }
 
-// TRANSLATOR: AUTO (options.c:5659)
+// Autotranslated from options.c:5659
 export async function handler_disclose(game) {
   let tmpwin, any, i, n, buf;
   let disclosure_names = [ "inventory", "attributes", "vanquished", "genocides", "conduct", "overview", ];
@@ -1456,7 +1456,7 @@ export async function handler_disclose(game) {
   return optn_ok;
 }
 
-// TRANSLATOR: AUTO (options.c:8051)
+// Autotranslated from options.c:8051
 export function illegal_menu_cmd_key(c) {
   if (c === 0 || c === '\r' || c === '\n' || c === '\x1b' || c === ' ' || digit( c) || (letter( c) && c !== '@')) {
     config_error_add("Reserved menu command key '%s'", visctrl( c));
@@ -1474,7 +1474,7 @@ export function illegal_menu_cmd_key(c) {
   return false;
 }
 
-// TRANSLATOR: AUTO (options.c:8076)
+// Autotranslated from options.c:8076
 export function oc_to_str(src, dest) {
   let i;
   while ((i =  src++) !== 0) {
@@ -1486,7 +1486,7 @@ export function oc_to_str(src, dest) {
    dest = '\x00';
 }
 
-// TRANSLATOR: AUTO (options.c:10026)
+// Autotranslated from options.c:10026
 export function wc_set_window_colors(op) {
   let j, clr, buf, wn, tfg, tbg, newop;
   Strcpy(buf, op);

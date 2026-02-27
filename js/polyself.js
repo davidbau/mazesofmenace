@@ -407,7 +407,7 @@ export function poly_gender(player) {
 // Golem-specific damage absorption. Returns true if damage was absorbed.
 // ============================================================================
 
-// TRANSLATOR: AUTO (polyself.c:2143)
+// Autotranslated from polyself.c:2143
 export function ugolemeffects(damtype, dam, game, player) {
   let heal = 0;
   if (player.umonnum !== PM_FLESH_GOLEM &player.umonnum !== PM_IRON_GOLEM) return;
@@ -625,7 +625,7 @@ export function set_uasmon(player) {
 // float_vs_flight() — cf. polyself.c:131
 // ============================================================================
 
-// TRANSLATOR: AUTO (polyself.c:130)
+// Autotranslated from polyself.c:130
 export function float_vs_flight(game, player) {
   let stuck_in_floor = (player.utrap &player.utraptype !== TT_PIT);
   if ((HLevitation || ELevitation) || ((HFlying || EFlying) && stuck_in_floor)) {
@@ -648,7 +648,7 @@ export function float_vs_flight(game, player) {
 // steed_vs_stealth() — cf. polyself.c:158
 // ============================================================================
 
-// TRANSLATOR: AUTO (polyself.c:157)
+// Autotranslated from polyself.c:157
 export function steed_vs_stealth(player) {
   if (player.usteed && !Flying && !Levitation) {
     BStealth |= FROMOUTSIDE;

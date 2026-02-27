@@ -820,7 +820,7 @@ export function xkilled(mon, xkill_flags, map, player) {
 }
 
 // C ref: mon.c killed() — wrapper for xkilled with XKILL_GIVEMSG
-// TRANSLATOR: AUTO (mon.c:3468)
+// Autotranslated from mon.c:3468
 export async function killed(mtmp) {
   await xkilled(mtmp, XKILL_GIVEMSG);
 }
@@ -877,13 +877,13 @@ export function wake_nearto_core(x, y, distance, petcall, map) {
 }
 
 // C ref: mon.c wake_nearto() — wrapper
-// TRANSLATOR: AUTO (mon.c:4400)
+// Autotranslated from mon.c:4400
 export function wake_nearto(x, y, distance) {
   wake_nearto_core(x, y, distance, false);
 }
 
 // C ref: mon.c wake_nearby() — wake all near hero
-// TRANSLATOR: AUTO (mon.c:4365)
+// Autotranslated from mon.c:4365
 export function wake_nearby(petcall, player) {
   wake_nearto_core(player.x, player.y, player.ulevel * 20, petcall);
 }
@@ -2025,7 +2025,7 @@ export function adj_erinys(abuse, game, player) {
   pm.difficulty = Math.min(10 + (player.ualigame.gn.abuse / 3), 25);
 }
 
-// TRANSLATOR: AUTO (mon.c:2499)
+// Autotranslated from mon.c:2499
 export function replmon(mtmp, mtmp2, game, player) {
   let otmp;
   for (otmp = mtmp2.minvent; otmp; otmp = otmp.nobj) {
@@ -2049,7 +2049,7 @@ export function replmon(mtmp, mtmp2, game, player) {
   dealloc_monst(mtmp);
 }
 
-// TRANSLATOR: AUTO (mon.c:6021)
+// Autotranslated from mon.c:6021
 export async function see_nearby_monsters(game, player) {
   let mtmp, mndx, x, y;
   if (Hallucination || (Blind && !Blind_telepat)) return;

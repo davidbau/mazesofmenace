@@ -285,7 +285,7 @@ export function clear_all_glyphmap_colors() {
   }
 }
 
-// TRANSLATOR: AUTO (glyphs.c:111)
+// Autotranslated from glyphs.c:111
 export function glyphrep_to_custom_map_entries(op, glyphptr) {
   to_custom_symbol_find = zero_find;
   let buf, c_glyphid, c_unicode, c_colorval, cp, reslt = 0, rgb = 0;
@@ -322,7 +322,7 @@ export function glyphrep_to_custom_map_entries(op, glyphptr) {
   return reslt;
 }
 
-// TRANSLATOR: AUTO (glyphs.c:183)
+// Autotranslated from glyphs.c:183
 export function fix_glyphname(str) {
   let c;
   for (c = str;  c; c++) {

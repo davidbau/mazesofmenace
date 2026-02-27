@@ -650,7 +650,7 @@ export function migrsort_cmp(vptr1, vptr2) {
   return (m1.m_id < m2.m_id) ? -1 : (m1.m_id > m2.m_id);
 }
 
-// TRANSLATOR: AUTO (wizcmds.c:445)
+// Autotranslated from wizcmds.c:445
 export async function wiz_level_change(player) {
   let buf, dummy = '\x00', newlevel = 0, ret;
   buf[0] = '\x00';
@@ -686,7 +686,7 @@ export async function wiz_level_change(player) {
   return ECMD_OK;
 }
 
-// TRANSLATOR: AUTO (wizcmds.c:1704)
+// Autotranslated from wizcmds.c:1704
 export async function wiz_display_macros() {
   let display_issues = "Display macro issues:", buf, win;
   let glyph, test, trouble = 0, no_glyph = NO_GLYPH, max_glyph = MAX_GLYPH;
@@ -733,7 +733,7 @@ export async function wiz_display_macros() {
   return ECMD_OK;
 }
 
-// TRANSLATOR: AUTO (wizcmds.c:1783)
+// Autotranslated from wizcmds.c:1783
 export async function wiz_mon_diff() {
   let window_title = "Review of monster difficulty ratings" + " [index:level]:";
   let buf, win;

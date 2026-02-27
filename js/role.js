@@ -236,14 +236,14 @@ export function str2race(str) {
 
 // cf. role.c — validgend(rolenum, racenum, gendnum): is gender valid?
 // cf. role.c:844
-// TRANSLATOR: AUTO (role.c:843)
+// Autotranslated from role.c:843
 export function validgend(rolenum, racenum, gendnum) {
   return (gendnum >= 0 && gendnum < ROLE_GENDERS && (roles[rolenum].allow & races[racenum].allow & genders[gendnum].allow & ROLE_GENDMASK));
 }
 
 // cf. role.c — randgend(rolenum, racenum): random gender for role/race
 // cf. role.c:853
-// TRANSLATOR: AUTO (role.c:852)
+// Autotranslated from role.c:852
 export function randgend(rolenum, racenum) {
   let i, n = 0;
   for (i = 0; i < ROLE_GENDERS; i++) {
@@ -280,14 +280,14 @@ export function str2gend(str) {
 // cf. role.c — validalign(rolenum, racenum, alignnum): is alignment valid?
 // alignnum is an alignment index (0=lawful, 1=neutral, 2=chaotic)
 // cf. role.c:907
-// TRANSLATOR: AUTO (role.c:906)
+// Autotranslated from role.c:906
 export function validalign(rolenum, racenum, alignnum) {
   return (alignnum >= 0 && alignnum < ROLE_ALIGNS && (roles[rolenum].allow & races[racenum].allow & aligns[alignnum].allow & ROLE_ALIGNMASK));
 }
 
 // cf. role.c — randalign(rolenum, racenum): random alignment for role/race
 // cf. role.c:916
-// TRANSLATOR: AUTO (role.c:915)
+// Autotranslated from role.c:915
 export function randalign(rolenum, racenum) {
   let i, n = 0;
   for (i = 0; i < ROLE_ALIGNS; i++) {
@@ -522,7 +522,7 @@ export function pick_race(rolenum, gendnum, alignnum, pickhow, game) {
 
 // cf. role.c — pick_gend(rolenum, racenum, alignnum, pickhow): pick a gender
 // cf. role.c:1146
-// TRANSLATOR: AUTO (role.c:1145)
+// Autotranslated from role.c:1145
 export function pick_gend(rolenum, racenum, alignnum, pickhow) {
   let i, gends_ok = 0;
   for (i = 0; i < ROLE_GENDERS; i++) {
@@ -569,7 +569,7 @@ export function pick_align(rolenum, racenum, gendnum, pickhow, game) {
 //
 // In C, this modifies flags.initrole/initrace/initgend/initalign.
 // In JS, takes and modifies an init object { role, race, gend, align }.
-// TRANSLATOR: AUTO (role.c:1234)
+// Autotranslated from role.c:1234
 export function rigid_role_checks(game) {
   let tmp;
   if (game.flags.initrole === ROLE_RANDOM) {
@@ -591,7 +591,7 @@ export function rigid_role_checks(game) {
 
 // cf. role.c — setrolefilter(bufp): add role/race/gender/alignment exclusion filter
 // cf. role.c:1284
-// TRANSLATOR: AUTO (role.c:1283)
+// Autotranslated from role.c:1283
 export function setrolefilter(bufp) {
   let i, reslt = true;
   if ((i = str2role(bufp)) !== ROLE_NONE && i !== ROLE_RANDOM) gr.rfilter.roles[i] = true;
@@ -711,7 +711,7 @@ export function promptsep(state, num_post_attribs) {
 
 // cf. role.c — role_gendercount(rolenum): count valid genders for role
 // cf. role.c:1399
-// TRANSLATOR: AUTO (role.c:1398)
+// Autotranslated from role.c:1398
 export function role_gendercount(rolenum) {
   let gendcount = 0;
   if (validrole(rolenum)) {
@@ -724,7 +724,7 @@ export function role_gendercount(rolenum) {
 
 // cf. role.c — race_alignmentcount(racenum): count valid alignments for race
 // cf. role.c:1415
-// TRANSLATOR: AUTO (role.c:1414)
+// Autotranslated from role.c:1414
 export function race_alignmentcount(racenum) {
   let aligncount = 0;
   if (racenum !== ROLE_NONE && racenum !== ROLE_RANDOM) {
