@@ -472,14 +472,22 @@ export function spell_skilltype(booktype) {
 }
 
 // C ref: spell.c num_spells() — count known spells
-export function num_spells(player) {
-    if (!player.spells) return 0;
+export function num_spells(ctx = null) {
+    const player = ctx;
+    if (!player?.spells) return 0;
     return player.spells.length;
 }
 
 // C ref: spell.c spell_idx() — find index of spell by otyp, or UNKNOWN_SPELL
-export function spell_idx(player, otyp) {
-    const spells = player.spells;
+export function spell_idx(otyp, ctx = null) {
+    // Backward-compatible with legacy call order: spell_idx(player, otyp).
+    let player = ctx;
+    if (otyp && typeof otyp === 'object' && typeof ctx !== 'object') {
+        const legacyPlayer = otyp;
+        otyp = ctx;
+        player = legacyPlayer;
+    }
+    const spells = player?.spells;
     if (!spells) return UNKNOWN_SPELL;
     for (let i = 0; i < spells.length; i++) {
         if (spells[i].otyp === otyp) return i;
@@ -550,7 +558,7 @@ export function study_book(spellbook, player) {
     }
 
     // Check if already known with good retention
-    const idx = spell_idx(player, booktype);
+    const idx = spell_idx(booktype, player);
     if (idx !== UNKNOWN_SPELL && spellknow(player, idx) > KEEN / 10) {
         You("know \"%s\" quite well already.", od.name || 'this spell');
         return 0;
@@ -1060,7 +1068,7 @@ export async function spelleffects(spell_otyp, atme, player, map, display) {
     if (!player || !player.spells) return 0;
 
     // Find spell index
-    const idx = spell_idx(player, spell_otyp);
+    const idx = spell_idx(spell_otyp, player);
     if (idx === UNKNOWN_SPELL) return 0;
 
     const sp = player.spells[idx];

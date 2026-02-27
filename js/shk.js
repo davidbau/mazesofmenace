@@ -1786,8 +1786,16 @@ export function shk_your(obj, map) {
 }
 
 // C ref: shk.c Shk_Your()
-export function Shk_Your(obj, map) {
-    const result = shk_your(obj, map);
+export function Shk_Your(buf, obj) {
+    // Backward-compatible with legacy JS order: Shk_Your(obj, map).
+    const looksLikeObj = (v) => !!(v && typeof v === 'object'
+        && ('otyp' in v || 'where' in v || 'carried' in v));
+    if (looksLikeObj(buf) && !looksLikeObj(obj)) {
+        const result = shk_your(buf, obj);
+        return result.charAt(0).toUpperCase() + result.slice(1);
+    }
+
+    const result = shk_your(obj || buf, null);
     return result.charAt(0).toUpperCase() + result.slice(1);
 }
 

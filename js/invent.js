@@ -1385,9 +1385,9 @@ export function fully_identify_obj(otmp) {
 }
 
 // C ref: invent.c identify() — identify object and give feedback
-export function identify(otmp, player) {
+export function identify(otmp, ctx = null) {
     fully_identify_obj(otmp);
-    prinv(null, otmp, 0, player);
+    prinv(null, otmp, 0, ctx);
     return 1;
 }
 

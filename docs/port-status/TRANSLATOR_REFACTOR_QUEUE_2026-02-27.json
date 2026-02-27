@@ -1,6 +1,6 @@
 {
   "input": {
-    "apply_summary": "/tmp/translator-runtime-stitch-apply-gapwave2-fix4.json",
+    "apply_summary": "/tmp/translator-runtime-stitch-apply-gapwave2-signaturefix.json",
     "safety": "/tmp/translator-runtime-stitch-safety-gapwave2-fix4.json"
   },
   "tasks": [
@@ -5723,70 +5723,11 @@
       "kind": "add_missing_identifier",
       "out_file": "/tmp/translator-batch-gapwave2-fix3/steal__relobj.json",
       "source": "nethack-c/src/steal.c"
-    },
-    {
-      "detail": "missing_key_param:player",
-      "emitted_tokens": [
-        "otmp"
-      ],
-      "existing_tokens": [
-        "otmp",
-        "player"
-      ],
-      "function": "identify",
-      "js_module": "js/invent.js",
-      "kind": "signature_refactor",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/invent__identify.json",
-      "source": "nethack-c/src/invent.c"
-    },
-    {
-      "detail": "missing_key_param:map",
-      "emitted_tokens": [
-        "buf",
-        "obj"
-      ],
-      "existing_tokens": [
-        "obj",
-        "map"
-      ],
-      "function": "Shk_Your",
-      "js_module": "js/shk.js",
-      "kind": "signature_refactor",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/shk__Shk_Your.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "arity_mismatch",
-      "emitted_tokens": [
-        "otyp"
-      ],
-      "existing_tokens": [
-        "player",
-        "otyp"
-      ],
-      "function": "spell_idx",
-      "js_module": "js/spell.js",
-      "kind": "signature_refactor",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/spell__spell_idx.json",
-      "source": "nethack-c/src/spell.c"
-    },
-    {
-      "detail": "missing_key_param:player",
-      "emitted_tokens": [],
-      "existing_tokens": [
-        "player"
-      ],
-      "function": "num_spells",
-      "js_module": "js/spell.js",
-      "kind": "signature_refactor",
-      "out_file": "/tmp/translator-batch-gapwave2-fix3/spell__num_spells.json",
-      "source": "nethack-c/src/spell.c"
     }
   ],
   "totals": {
     "by_kind": {
-      "add_missing_identifier": 715,
-      "signature_refactor": 4
+      "add_missing_identifier": 715
     },
     "by_module": {
       "js/apply.js": 71,
@@ -5796,14 +5737,14 @@
       "js/do.js": 89,
       "js/engrave.js": 25,
       "js/fountain.js": 22,
-      "js/invent.js": 123,
+      "js/invent.js": 122,
       "js/lock.js": 17,
       "js/mkobj.js": 78,
-      "js/shk.js": 135,
+      "js/shk.js": 134,
       "js/sounds.js": 12,
-      "js/spell.js": 64,
+      "js/spell.js": 62,
       "js/steal.js": 33
     },
-    "tasks": 719
+    "tasks": 715
   }
 }

@@ -1,18 +1,17 @@
 # Translator Refactor Queue (2026-02-27)
 
-Generated from `/tmp/translator-refactor-queue-gapwave2-fix5.json` after safety+stitch dry-run.
+Generated from `/tmp/translator-refactor-queue-gapwave2-signaturefix.json` after safety+stitch dry-run.
 
-- Total tasks: 719
+- Total tasks: 715
 - add_missing_identifier: 715
-- signature_refactor: 4
 
 ## Top Modules
-- `js/shk.js`: 135
-- `js/invent.js`: 123
+- `js/shk.js`: 134
+- `js/invent.js`: 122
 - `js/do.js`: 89
 - `js/mkobj.js`: 78
 - `js/apply.js`: 71
-- `js/spell.js`: 64
+- `js/spell.js`: 62
 - `js/steal.js`: 33
 - `js/detect.js`: 27
 - `js/engrave.js`: 25

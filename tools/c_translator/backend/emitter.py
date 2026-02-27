@@ -851,6 +851,11 @@ def _lower_expr(expr, rewrite_rules):
     out = re.sub(r"\(\s*(?:const\s+)?(?:struct|enum|union)\s+[A-Za-z_]\w*\s*\**\s*\)", "", out)
     out = re.sub(r"\(\s*(?:const\s+)?char\s*\*\s*\)", "", out)
     out = re.sub(
+        r"\(\s*(?:unsigned\s+)?(?:int|long|short|coordxy|schar|uchar)\s*\)\s*\(([^()]+)\)",
+        r"Math.trunc(\1)",
+        out,
+    )
+    out = re.sub(
         r"\(\s*(?:unsigned|signed|long|short|int|char|float|double|boolean|coordxy|coord|"
         r"schar|uchar|xint16|xint32|xint64|aligntyp|genericptr_t)\s*\)",
         "",
@@ -864,11 +869,6 @@ def _lower_expr(expr, rewrite_rules):
     out = out.replace("->", ".")
     # C integer long suffix (e.g., 7L) has no JS runtime equivalent.
     out = re.sub(r"\b(\d+)L\b", r"\1", out)
-    out = re.sub(
-        r"\(\s*(?:unsigned\s+)?(?:int|long|short|coordxy|schar|uchar)\s*\)\s*\(([^()]+)\)",
-        r"Math.trunc(\1)",
-        out,
-    )
     out = re.sub(r"\bsizeof\s+([A-Za-z_]\w*)\b", r"\1.length", out)
     out = re.sub(r"\(\s*boolean\s*\)\s*", "", out)
     out = re.sub(r"(?<![=!<>])==(?![=])", "===", out)
