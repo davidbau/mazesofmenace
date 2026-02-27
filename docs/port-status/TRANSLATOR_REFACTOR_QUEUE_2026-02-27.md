@@ -1,11 +1,11 @@
 # Translator Refactor Queue (2026-02-27)
 
-Generated from `/tmp/translator-refactor-queue-gapwave2-fix8.json` after safety+stitch dry-run.
+Generated from `/tmp/translator-refactor-queue-gapwave2-fix9.json` after safety+stitch dry-run.
 
 - Total tasks: 709
 - add_missing_call_binding: 7
-- add_missing_identifier: 680
-- rename_alias: 22
+- add_missing_identifier: 668
+- rename_alias: 34
 
 ## Top Modules
 - `js/shk.js`: 134
@@ -26,6 +26,8 @@ Generated from `/tmp/translator-refactor-queue-gapwave2-fix8.json` after safety+
 
 ## Alias Renames (Auto-caught)
 - `js/apply.js::snuff_candle`: `Is_candle->isCandle`
+- `js/apply.js::splash_lit`: `humanoid->is_humanoid`
+- `js/attrib.js::losestr`: `Upolyd->isUpolyd`
 - `js/attrib.js::restore_attrib`: `ACURR->acurr`
 - `js/attrib.js::restore_attrib`: `A_MAX->AMAX`
 - `js/attrib.js::acurrstr`: `ACURR->acurr`
@@ -43,9 +45,19 @@ Generated from `/tmp/translator-refactor-queue-gapwave2-fix8.json` after safety+
 - `js/invent.js::consume_obj_charge`: `check_unpaid->ckunpaid`
 - `js/invent.js::fully_identify_obj`: `observe_object->observeObject`
 - `js/lock.js::stumble_on_door_mimic`: `m_at->mat`
+- `js/lock.js::stumble_on_door_mimic`: `stumble_onto_mimic->stumble_on_door_mimic`
+- `js/mkobj.js::mkcorpstat`: `start_corpse_timeout->start_corpse_timeout_rng`
+- `js/shk.js::remote_burglary`: `in_rooms->inRoomsAt`
 - `js/shk.js::shopper_financial_report`: `inside_shop->insideShop`
+- `js/shk.js::inhishop`: `in_rooms->inRoomsAt`
+- `js/shk.js::find_objowner`: `in_rooms->inRoomsAt`
+- `js/shk.js::hot_pursuit`: `clear_no_charge_pets->clear_no_charge`
+- `js/shk.js::stolen_value`: `in_rooms->inRoomsAt`
 - `js/shk.js::shkcatch`: `inside_shop->insideShop`
 - `js/shk.js::price_quote`: `inside_shop->insideShop`
+- `js/shk.js::costly_gold`: `in_rooms->inRoomsAt`
+- `js/shk.js::block_door`: `in_rooms->inRoomsAt`
+- `js/shk.js::globby_bill_fixup`: `in_rooms->inRoomsAt`
 - `js/spell.js::getspell`: `pline1->pline`
 
 ## First Actionable Slice
@@ -69,8 +81,8 @@ Generated from `/tmp/translator-refactor-queue-gapwave2-fix8.json` after safety+
 - `add_missing_identifier` js/apply.js::snuff_candle (Shk_Your)
 - `add_missing_identifier` js/apply.js::snuff_candle (cansee)
 - `add_missing_identifier` js/apply.js::snuff_candle (get_obj_location)
+- `rename_alias` js/apply.js::splash_lit (humanoid->is_humanoid)
 - `add_missing_identifier` js/apply.js::splash_lit (Blind)
 - `add_missing_identifier` js/apply.js::splash_lit (Deaf)
 - `add_missing_identifier` js/apply.js::splash_lit (Flying)
 - `add_missing_identifier` js/apply.js::splash_lit (Is_waterlevel)
-- `add_missing_identifier` js/apply.js::splash_lit (Levitation)

@@ -3,26 +3,6 @@
     {
       "candidates": [
         {
-          "score": 0.889,
-          "target": "is_humanoid"
-        }
-      ],
-      "identifier": "humanoid",
-      "js_module": "js/apply.js"
-    },
-    {
-      "candidates": [
-        {
-          "score": 0.857,
-          "target": "isUpolyd"
-        }
-      ],
-      "identifier": "Upolyd",
-      "js_module": "js/attrib.js"
-    },
-    {
-      "candidates": [
-        {
           "score": 0.923,
           "target": "map_invisible"
         }
@@ -74,11 +54,11 @@
       "candidates": [
         {
           "score": 0.909,
-          "target": "addinv_core1"
+          "target": "addinv_core2"
         },
         {
           "score": 0.909,
-          "target": "addinv_core2"
+          "target": "addinv_core1"
         }
       ],
       "identifier": "addinv_core0",
@@ -97,16 +77,6 @@
     {
       "candidates": [
         {
-          "score": 0.882,
-          "target": "stumble_on_door_mimic"
-        }
-      ],
-      "identifier": "stumble_onto_mimic",
-      "js_module": "js/lock.js"
-    },
-    {
-      "candidates": [
-        {
           "score": 0.824,
           "target": "NUM_OBJECTS"
         }
@@ -117,41 +87,11 @@
     {
       "candidates": [
         {
-          "score": 0.923,
-          "target": "start_corpse_timeout_rng"
-        }
-      ],
-      "identifier": "start_corpse_timeout",
-      "js_module": "js/mkobj.js"
-    },
-    {
-      "candidates": [
-        {
           "score": 0.8,
           "target": "canseemon"
         }
       ],
       "identifier": "cansee",
-      "js_module": "js/shk.js"
-    },
-    {
-      "candidates": [
-        {
-          "score": 0.867,
-          "target": "clear_no_charge"
-        }
-      ],
-      "identifier": "clear_no_charge_pets",
-      "js_module": "js/shk.js"
-    },
-    {
-      "candidates": [
-        {
-          "score": 0.875,
-          "target": "inRoomsAt"
-        }
-      ],
-      "identifier": "in_rooms",
       "js_module": "js/shk.js"
     }
   ],
@@ -1015,13 +955,6 @@
     },
     {
       "exported_in": [
-        "js/uhitm.js"
-      ],
-      "identifier": "stumble_onto_mimic",
-      "js_module": "js/lock.js"
-    },
-    {
-      "exported_in": [
         "js/objnam.js"
       ],
       "identifier": "the",
@@ -1302,13 +1235,6 @@
         "js/zap.js"
       ],
       "identifier": "get_obj_location",
-      "js_module": "js/shk.js"
-    },
-    {
-      "exported_in": [
-        "js/hack.js"
-      ],
-      "identifier": "in_rooms",
       "js_module": "js/shk.js"
     },
     {
@@ -1755,9 +1681,9 @@
       "js_module": "js/steal.js"
     }
   ],
-  "input_queue": "docs/port-status/TRANSLATOR_REFACTOR_QUEUE_2026-02-27.json",
+  "input_queue": "/tmp/translator-refactor-queue-gapwave2-fix9.json",
   "summary": {
-    "alias_candidates": 15,
-    "binding_candidates": 227
+    "alias_candidates": 9,
+    "binding_candidates": 225
   }
 }

@@ -1,7 +1,7 @@
 {
   "input": {
-    "apply_summary": "/tmp/translator-runtime-stitch-apply-gapwave2-fix7.json",
-    "safety": "/tmp/translator-runtime-stitch-safety-gapwave2-fix7.json"
+    "apply_summary": "/tmp/translator-runtime-stitch-apply-gapwave2-fix9.json",
+    "safety": "/tmp/translator-runtime-stitch-safety-gapwave2-fix9.json"
   },
   "tasks": [
     {
@@ -165,6 +165,14 @@
       "source": "nethack-c/src/apply.c"
     },
     {
+      "detail": "humanoid->is_humanoid",
+      "function": "splash_lit",
+      "js_module": "js/apply.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__splash_lit.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
       "detail": "Blind",
       "function": "splash_lit",
       "js_module": "js/apply.js",
@@ -262,14 +270,6 @@
     },
     {
       "detail": "get_obj_location",
-      "function": "splash_lit",
-      "js_module": "js/apply.js",
-      "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__splash_lit.json",
-      "source": "nethack-c/src/apply.c"
-    },
-    {
-      "detail": "humanoid",
       "function": "splash_lit",
       "js_module": "js/apply.js",
       "kind": "add_missing_identifier",
@@ -573,15 +573,15 @@
       "source": "nethack-c/src/apply.c"
     },
     {
-      "detail": "KILLED_BY",
+      "detail": "Upolyd->isUpolyd",
       "function": "losestr",
       "js_module": "js/attrib.js",
-      "kind": "add_missing_identifier",
+      "kind": "rename_alias",
       "out_file": "/tmp/translator-batch-gapwave2-fix6/attrib__losestr.json",
       "source": "nethack-c/src/attrib.c"
     },
     {
-      "detail": "Upolyd",
+      "detail": "KILLED_BY",
       "function": "losestr",
       "js_module": "js/attrib.js",
       "kind": "add_missing_identifier",
@@ -3109,6 +3109,14 @@
       "source": "nethack-c/src/lock.c"
     },
     {
+      "detail": "stumble_onto_mimic->stumble_on_door_mimic",
+      "function": "stumble_on_door_mimic",
+      "js_module": "js/lock.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/lock__stumble_on_door_mimic.json",
+      "source": "nethack-c/src/lock.c"
+    },
+    {
       "detail": "Protection_from_shape_changers",
       "function": "stumble_on_door_mimic",
       "js_module": "js/lock.js",
@@ -3118,14 +3126,6 @@
     },
     {
       "detail": "is_door_mappear",
-      "function": "stumble_on_door_mimic",
-      "js_module": "js/lock.js",
-      "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix6/lock__stumble_on_door_mimic.json",
-      "source": "nethack-c/src/lock.c"
-    },
-    {
-      "detail": "stumble_onto_mimic",
       "function": "stumble_on_door_mimic",
       "js_module": "js/lock.js",
       "kind": "add_missing_identifier",
@@ -3613,6 +3613,14 @@
       "source": "nethack-c/src/mkobj.c"
     },
     {
+      "detail": "start_corpse_timeout->start_corpse_timeout_rng",
+      "function": "mkcorpstat",
+      "js_module": "js/mkobj.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__mkcorpstat.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
       "detail": "CORPSTAT_INIT",
       "function": "mkcorpstat",
       "js_module": "js/mkobj.js",
@@ -3694,14 +3702,6 @@
     },
     {
       "detail": "save_mtraits",
-      "function": "mkcorpstat",
-      "js_module": "js/mkobj.js",
-      "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__mkcorpstat.json",
-      "source": "nethack-c/src/mkobj.c"
-    },
-    {
-      "detail": "start_corpse_timeout",
       "function": "mkcorpstat",
       "js_module": "js/mkobj.js",
       "kind": "add_missing_identifier",
@@ -3805,15 +3805,15 @@
       "source": "nethack-c/src/shk.c"
     },
     {
-      "detail": "ESHK",
+      "detail": "in_rooms->inRoomsAt",
       "function": "remote_burglary",
       "js_module": "js/shk.js",
-      "kind": "add_missing_identifier",
+      "kind": "rename_alias",
       "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__remote_burglary.json",
       "source": "nethack-c/src/shk.c"
     },
     {
-      "detail": "in_rooms",
+      "detail": "ESHK",
       "function": "remote_burglary",
       "js_module": "js/shk.js",
       "kind": "add_missing_identifier",
@@ -3845,15 +3845,15 @@
       "source": "nethack-c/src/shk.c"
     },
     {
-      "detail": "ESHK",
+      "detail": "in_rooms->inRoomsAt",
       "function": "inhishop",
       "js_module": "js/shk.js",
-      "kind": "add_missing_identifier",
+      "kind": "rename_alias",
       "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__inhishop.json",
       "source": "nethack-c/src/shk.c"
     },
     {
-      "detail": "in_rooms",
+      "detail": "ESHK",
       "function": "inhishop",
       "js_module": "js/shk.js",
       "kind": "add_missing_identifier",
@@ -3877,6 +3877,14 @@
       "source": "nethack-c/src/shk.c"
     },
     {
+      "detail": "in_rooms->inRoomsAt",
+      "function": "find_objowner",
+      "js_module": "js/shk.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__find_objowner.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
       "detail": "OBJ_ONBILL",
       "function": "find_objowner",
       "js_module": "js/shk.js",
@@ -3886,14 +3894,6 @@
     },
     {
       "detail": "fmon",
-      "function": "find_objowner",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__find_objowner.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "in_rooms",
       "function": "find_objowner",
       "js_module": "js/shk.js",
       "kind": "add_missing_identifier",
@@ -4093,6 +4093,14 @@
       "source": "nethack-c/src/shk.c"
     },
     {
+      "detail": "clear_no_charge_pets->clear_no_charge",
+      "function": "hot_pursuit",
+      "js_module": "js/shk.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__hot_pursuit.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
       "detail": "ESHK",
       "function": "hot_pursuit",
       "js_module": "js/shk.js",
@@ -4102,14 +4110,6 @@
     },
     {
       "detail": "PL_NSIZ",
-      "function": "hot_pursuit",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__hot_pursuit.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "clear_no_charge_pets",
       "function": "hot_pursuit",
       "js_module": "js/shk.js",
       "kind": "add_missing_identifier",
@@ -4389,6 +4389,14 @@
       "source": "nethack-c/src/shk.c"
     },
     {
+      "detail": "in_rooms->inRoomsAt",
+      "function": "stolen_value",
+      "js_module": "js/shk.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__stolen_value.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
       "detail": "ANGRY",
       "function": "stolen_value",
       "js_module": "js/shk.js",
@@ -4470,14 +4478,6 @@
     },
     {
       "detail": "eos",
-      "function": "stolen_value",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__stolen_value.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "in_rooms",
       "function": "stolen_value",
       "js_module": "js/shk.js",
       "kind": "add_missing_identifier",
@@ -4709,6 +4709,14 @@
       "source": "nethack-c/src/shk.c"
     },
     {
+      "detail": "in_rooms->inRoomsAt",
+      "function": "costly_gold",
+      "js_module": "js/shk.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__costly_gold.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
       "detail": "ESHK",
       "function": "costly_gold",
       "js_module": "js/shk.js",
@@ -4717,11 +4725,11 @@
       "source": "nethack-c/src/shk.c"
     },
     {
-      "detail": "in_rooms",
-      "function": "costly_gold",
+      "detail": "in_rooms->inRoomsAt",
+      "function": "block_door",
       "js_module": "js/shk.js",
-      "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__costly_gold.json",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__block_door.json",
       "source": "nethack-c/src/shk.c"
     },
     {
@@ -4757,11 +4765,11 @@
       "source": "nethack-c/src/shk.c"
     },
     {
-      "detail": "in_rooms",
-      "function": "block_door",
+      "detail": "in_rooms->inRoomsAt",
+      "function": "globby_bill_fixup",
       "js_module": "js/shk.js",
-      "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__block_door.json",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__globby_bill_fixup.json",
       "source": "nethack-c/src/shk.c"
     },
     {
@@ -4806,14 +4814,6 @@
     },
     {
       "detail": "fmon",
-      "function": "globby_bill_fixup",
-      "js_module": "js/shk.js",
-      "kind": "add_missing_identifier",
-      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__globby_bill_fixup.json",
-      "source": "nethack-c/src/shk.c"
-    },
-    {
-      "detail": "in_rooms",
       "function": "globby_bill_fixup",
       "js_module": "js/shk.js",
       "kind": "add_missing_identifier",
@@ -5680,8 +5680,8 @@
   "totals": {
     "by_kind": {
       "add_missing_call_binding": 7,
-      "add_missing_identifier": 680,
-      "rename_alias": 22
+      "add_missing_identifier": 668,
+      "rename_alias": 34
     },
     "by_module": {
       "js/apply.js": 71,

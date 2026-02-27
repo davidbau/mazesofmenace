@@ -11,6 +11,12 @@ normalization).
 - `js/do.js`: `pline1 -> pline`
 - `js/spell.js`: `pline1 -> pline`
 - `js/invent.js`: `setnotworn -> setnotworn_safe`
+- `js/apply.js`: `humanoid -> is_humanoid`
+- `js/attrib.js`: `Upolyd -> isUpolyd`
+- `js/lock.js`: `stumble_onto_mimic -> stumble_on_door_mimic`
+- `js/mkobj.js`: `start_corpse_timeout -> start_corpse_timeout_rng`
+- `js/shk.js`: `in_rooms -> inRoomsAt`
+- `js/shk.js`: `clear_no_charge_pets -> clear_no_charge`
 
 ## Probable Aliases (Need Spot Verification in Context)
 - `js/do.js`: `Doname2 -> doname`
