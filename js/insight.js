@@ -970,9 +970,10 @@ export async function run_magic_enlightenment_effect(game) {
 // ============================================================================
 
 // cf. insight.c:2086 — doconduct(game): #conduct command handler
-export async function doconduct(game) {
-    await show_conduct(ENL_GAMEINPROGRESS, game);
-    return 0; // ECMD_OK
+// TRANSLATOR: AUTO (insight.c:2085)
+export async function doconduct() {
+  await show_conduct(ENL_GAMEINPROGRESS);
+  return ECMD_OK;
 }
 
 // ============================================================================
@@ -1187,16 +1188,11 @@ export function sokoban_in_play(player) {
 // ============================================================================
 
 // cf. insight.c:2542 — do_gamelog(game): #chronicle command handler
-export async function do_gamelog(game) {
-    const player = (game.u || game.player);
-    const gamelog = player.gamelog || game.gamelog;
-
-    if (gamelog && gamelog.length > 0) {
-        await show_gamelog(ENL_GAMEINPROGRESS, game);
-    } else {
-        pline("No chronicled events.");
-    }
-    return 0; // ECMD_OK
+// TRANSLATOR: AUTO (insight.c:2541)
+export async function do_gamelog() {
+  if (gg.gamelog) { await show_gamelog(ENL_GAMEINPROGRESS); }
+  else { pline("No chronicled events."); }
+  return ECMD_OK;
 }
 
 // ============================================================================

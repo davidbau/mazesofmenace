@@ -674,8 +674,9 @@ export function safe_teleds(flags, game) {
 // cf. teleport.c:837 — tele(): hero teleport via non-scroll method
 // ============================================================================
 
-export function tele(game) {
-    scrolltele(null, game);
+// TRANSLATOR: AUTO (teleport.c:836)
+export async function tele() {
+  await scrolltele( 0);
 }
 
 // ============================================================================

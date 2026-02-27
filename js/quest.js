@@ -553,23 +553,19 @@ export function quest_chat(mtmp, game) {
 }
 
 // cf. quest.c:481 — quest_talk(mtmp): dispatch proactive NPC talk
-export function quest_talk(mtmp, game) {
-    const qs = Qstat(game);
-
-    if (mtmp.m_id === qs.leader_m_id) {
-        leader_speaks(mtmp, game);
-        return;
-    }
-    switch (mtmp.type ? mtmp.type.sound : 0) {
+// TRANSLATOR: AUTO (quest.c:480)
+export async function quest_talk(mtmp) {
+  if (mtmp.m_id === Qstat(leader_m_id)) { await leader_speaks(mtmp); return; }
+  switch (mtmp.data.msound) {
     case MS_NEMESIS:
-        nemesis_speaks(game);
-        break;
+      nemesis_speaks();
+    break;
     case MS_DJINNI:
-        prisoner_speaks(mtmp, game);
-        break;
+      prisoner_speaks(mtmp);
+    break;
     default:
-        break;
-    }
+      break;
+  }
 }
 
 // cf. quest.c:499 — quest_stat_check(mtmp): update nemesis battle status

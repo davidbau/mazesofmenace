@@ -156,9 +156,10 @@ export function scatter(sx, sy, blastforce, scflags, obj, map) {
 }
 
 // cf. explode.c:959 — splatter_burning_oil(x, y, diluted_oil)
-export async function splatter_burning_oil(x, y, diluted_oil, map, player) {
-  const dmg = d(diluted_oil ? 3 : 4, 4);
-  await explode(x, y, AD_FIRE, dmg, BURNING_OIL, EXPL_FIERY, map, player);
+// TRANSLATOR: AUTO (explode.c:959)
+export async function splatter_burning_oil(x, y, diluted_oil) {
+  let dmg = d(diluted_oil ? 3 : 4, 4);
+  await explode(x, y, ZT_SPELL_O_FIRE, dmg, BURNING_OIL, EXPL_FIERY);
 }
 
 // cf. explode.c:971 — explode_oil(obj, x, y)

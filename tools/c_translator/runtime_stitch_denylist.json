@@ -8,5 +8,10 @@
     "js_module": "js/invent.js",
     "function": "obj_to_let",
     "reason": "Current auto-translation expects game argument and breaks existing callsites."
+  },
+  {
+    "js_module": "js/uhitm.js",
+    "function": "mhitm_adtyping",
+    "reason": "Known parity regression: stitched translation causes monmove/drop ordering drift; tracked in issue #212."
   }
 ]

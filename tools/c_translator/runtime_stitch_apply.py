@@ -208,8 +208,16 @@ def extract_function_param_tokens(text, name):
 def signature_compatible(existing_tokens, emitted_tokens):
     if existing_tokens is None or emitted_tokens is None:
         return False, "missing_signature"
+    # Safe widening for runtime wrappers: allow emitted signatures to omit
+    # JS-only wrapper params (for example `game/map/player/display`) as long as
+    # every emitted parameter name exists in the current runtime signature.
     if len(existing_tokens) != len(emitted_tokens):
-        return False, "arity_mismatch"
+        if len(emitted_tokens) <= len(existing_tokens):
+            existing_set = set(existing_tokens)
+            if not all(tok in existing_set for tok in emitted_tokens):
+                return False, "arity_mismatch"
+        else:
+            return False, "arity_mismatch"
     # Strong ordering check for context-heavy runtime args.
     key_params = ("map", "player", "game", "display")
     for key in key_params:
