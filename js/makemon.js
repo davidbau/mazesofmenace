@@ -129,7 +129,7 @@ function is_mplayer_idx(mndx) { return mndx >= PM_ARCHEOLOGIST && mndx <= PM_WIZ
 // C ref: is_lminion — lawful minion (angel aligned to lawful god)
 // During level generation, we approximate: angel with A_LAWFUL alignment
 function is_lminion(mon) {
-    return mon.type?.symbol === S_ANGEL && (mon.type?.align || 0) > 0;
+    return mon.type?.mlet === S_ANGEL && (mon.type?.align || 0) > 0;
 }
 function attacktype(ptr, atyp) { return ptr.attacks && ptr.attacks.some(a => a.type === atyp); }
 function is_animal(ptr) { return !!(ptr.flags1 & 0x00040000); } // M1_ANIMAL

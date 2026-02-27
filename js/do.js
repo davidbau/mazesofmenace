@@ -1224,7 +1224,7 @@ export function revive_corpse(corpse, player, map) {
     if (!corpse || corpse.otyp !== CORPSE) return false;
 
     const montype = corpse.corpsenm;
-    const is_zomb = (mons[montype]?.symbol === S_ZOMBIE
+    const is_zomb = (mons[montype]?.mlet === S_ZOMBIE
                      || (corpse.buried && is_reviver(mons[montype])));
     const chewed = (corpse.oeaten || 0) !== 0;
     const where = corpse.where || 'floor';

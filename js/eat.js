@@ -756,7 +756,7 @@ function garlic_breath(player, map) {
     if (!map) return;
     for (const mon of map.monsters) {
         if (mon.dead) continue;
-        const sym = mon.type?.symbol ?? (mons[mon.mndx]?.symbol);
+        const sym = mon.type?.mlet ?? (mons[mon.mndx]?.mlet);
         // cf. mondata.c olfaction() — these monster types lack olfaction
         if (sym === S_GOLEM || sym === S_EYE || sym === S_JELLY
             || sym === S_PUDDING || sym === S_BLOB || sym === S_VORTEX
@@ -1462,7 +1462,7 @@ async function handleEat(player, display, game) {
             if (eatenItem.otyp === CLOVE_OF_GARLIC && map) {
                 for (const mon of map.monsters) {
                     if (mon.dead) continue;
-                    const sym = mon.type?.symbol ?? (mons[mon.mndx]?.symbol);
+                    const sym = mon.type?.mlet ?? (mons[mon.mndx]?.mlet);
                     // cf. mondata.c olfaction() — golems, eyes, jellies, puddings,
                     // blobs, vortexes, elementals, fungi, and lights lack olfaction.
                     if (sym === S_GOLEM || sym === S_EYE || sym === S_JELLY

@@ -434,7 +434,7 @@ function max_mon_load_for_search(mon) {
     const mdat = mon?.type || {};
     const strong = !!(mdat.flags2 & M2_STRONG);
     const cwt = Number(mdat.weight || 0);
-    const msize = Number(mdat.size || 0);
+    const msize = Number(mdat.msize || 0);
     let maxload;
     if (!cwt) {
         maxload = (MAX_CARR_CAP * msize) / MZ_HUMAN;
@@ -762,7 +762,7 @@ function mind_blast(mon, map, player, display = null, fov = null) {
 async function dochug(mon, map, player, display, fov, game = null) {
     if (mon.waiting && map?.flags?.is_tutorial) return;
 
-    if (mon.type && mon.type.symbol === S_MIMIC) {
+    if (mon.type && mon.type.mlet === S_MIMIC) {
         return;
     }
 
@@ -777,7 +777,7 @@ async function dochug(mon, map, player, display, fov, game = null) {
             if (!(isEttin && rn2(10))) return false;
         }
 
-        const sym = monster.type?.symbol;
+        const sym = monster.type?.mlet;
         const isHardSleeper = sym === S_NYMPH
             || monster.type?.name === 'jabberwock'
             || sym === S_LEPRECHAUN;
@@ -1599,7 +1599,7 @@ export async function postmov(mon, map, player, mmoved) {
         if (objects.length > 0 && !mon.dead) {
             // Hiding under objects
             const mdat = mon.type || {};
-            if (hides_under(mdat) || mdat.symbol === 57 /* S_EEL */) {
+            if (hides_under(mdat) || mdat.mlet === 57 /* S_EEL */) {
                 if (mon.mundetected || rn2(5)) {
                     // hideunder logic — simplified
                 }

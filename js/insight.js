@@ -267,7 +267,7 @@ export function mstatusline(mtmp, game) {
     const mac = find_mac(mtmp);
 
     pline("Status of %s (%s, %s):  Level %s  HP %s(%s)  AC %s%s.",
-          monnm, align_str(alignment), size_str(mptr.size || MZ_MEDIUM),
+          monnm, align_str(alignment), size_str(mptr.msize || MZ_MEDIUM),
           String(mtmp.m_lev || 0),
           String(mtmp.mhp || 0), String(mtmp.mhpmax || 0),
           String(mac), info);
@@ -1348,7 +1348,7 @@ function vanqsort_cmp(indx1, indx2, sortmode, mvitals) {
     switch (sortmode) {
     default:
     case VANQ_MLVL_MNDX:
-        res = (mons[indx2].level || 0) - (mons[indx1].level || 0);
+        res = (mons[indx2].mlevel || 0) - (mons[indx1].mlevel || 0);
         break;
     case VANQ_MSTR_MNDX:
         res = (mons[indx2].difficulty || 0) - (mons[indx1].difficulty || 0);
@@ -1371,12 +1371,12 @@ function vanqsort_cmp(indx1, indx2, sortmode, mvitals) {
     }
     case VANQ_MCLS_HTOL:
     case VANQ_MCLS_LTOH: {
-        const mcls1 = mons[indx1].symbol || 0;
-        const mcls2 = mons[indx2].symbol || 0;
+        const mcls1 = mons[indx1].mlet || 0;
+        const mcls2 = mons[indx2].mlet || 0;
         res = mcls1 - mcls2;
         if (res === 0) {
-            const mlev1 = mons[indx1].level || 0;
-            const mlev2 = mons[indx2].level || 0;
+            const mlev1 = mons[indx1].mlevel || 0;
+            const mlev2 = mons[indx2].mlevel || 0;
             res = mlev1 - mlev2;
             if (sortmode === VANQ_MCLS_HTOL) res = -res;
         }

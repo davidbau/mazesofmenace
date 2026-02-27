@@ -205,7 +205,7 @@ function mhitm_knockback(monster, attack, weaponUsed, display) {
     }
 
     // Size check: attacker must be much larger than defender
-    const agrSize = mdat.size ?? 0;
+    const agrSize = mdat.msize ?? 0;
     const defSize = MZ_HUMAN; // hero is human-sized
     if (!(agrSize > defSize + 1)) return false;
 
@@ -1703,12 +1703,12 @@ export function could_seduce(magr, mdef, mattk) {
                  : AD_PHYS;
 
     // Only nymphs and amorous demons can seduce
-    if ((pagr.symbol !== S_NYMPH && pagr !== mons[PM_AMOROUS_DEMON])
+    if ((pagr.mlet !== S_NYMPH && pagr !== mons[PM_AMOROUS_DEMON])
         || (adtyp !== AD_SEDU && adtyp !== AD_SSEX && adtyp !== AD_SITM)) {
         return 0;
     }
 
-    return (genagr === 1 - gendef) ? 1 : (pagr.symbol === S_NYMPH) ? 2 : 0;
+    return (genagr === 1 - gendef) ? 1 : (pagr.mlet === S_NYMPH) ? 2 : 0;
 }
 
 // cf. mhitu.c:1978 doseduce() — seduction attack

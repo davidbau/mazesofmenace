@@ -347,10 +347,10 @@ export function hits_bars(objp, x, y, barsx, barsy, always_hit = 0, whodidit = -
                 WAX_CANDLE, LENSES, TIN_WHISTLE, MAGIC_WHISTLE].includes(obj.otyp);
             break;
         case ROCK_CLASS:
-            hits = (obj.otyp !== STATUE || ((mons[obj.corpsenm || 0]?.size || 0) > MZ_TINY));
+            hits = (obj.otyp !== STATUE || ((mons[obj.corpsenm || 0]?.msize || 0) > MZ_TINY));
             break;
         case FOOD_CLASS:
-            if (obj.otyp === CORPSE) hits = ((mons[obj.corpsenm || 0]?.size || 0) > MZ_TINY);
+            if (obj.otyp === CORPSE) hits = ((mons[obj.corpsenm || 0]?.msize || 0) > MZ_TINY);
             else hits = (obj.otyp === MEAT_STICK || obj.otyp === ENORMOUS_MEATBALL);
             break;
         case SPBOOK_CLASS:
@@ -542,7 +542,7 @@ export async function m_throw_timed(
                         if (mon.weapon?.otyp === ELVEN_BOW) hitv += 1;
                         if (weapon.otyp === ELVEN_ARROW) dam += 1;
                     }
-                    const heroSize = player?.data?.size ?? MZ_HUMAN;
+                    const heroSize = player?.data?.msize ?? MZ_HUMAN;
                     if (heroSize >= MZ_LARGE) hitv += 1;
                     hitv += 8 + (weapon.spe || 0);
                     if (dam < 1) dam = 1;

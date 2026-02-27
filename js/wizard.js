@@ -735,7 +735,7 @@ export function nasty(summoner, map, player, display, fov) {
     }
 
     let count = 0;
-    const s_cls = summoner ? mptr(summoner).symbol : 0;
+    const s_cls = summoner ? mptr(summoner).mlet : 0;
     let difcap = summoner ? (mptr(summoner).difficulty || 0) : 0;
     const castalign = summoner ? sgn(mptr(summoner).align || 0) : 0;
     let tmp = ((player.ulevel || 1) > 3)
@@ -753,7 +753,7 @@ export function nasty(summoner, map, player, display, fov) {
             do {
                 if (!--trylimit) { gotoNextJ = true; break; }
                 makeindex = pick_nasty(difcap);
-                m_cls = mons[makeindex].symbol;
+                m_cls = mons[makeindex].mlet;
             } while ((difcap > 0 && (mons[makeindex].difficulty || 0) >= difcap
                       && attacktype(mons[makeindex], AT_MAGC))
                      || (s_cls === S_DEMON && m_cls === S_ANGEL)
@@ -787,7 +787,7 @@ export function nasty(summoner, map, player, display, fov) {
                 // random monster substitute for genocided selection
                 mtmp = makemon(null, bypos.x, bypos.y, mmflags, depth, map);
                 if (mtmp) {
-                    m_cls = mptr(mtmp).symbol;
+                    m_cls = mptr(mtmp).mlet;
                     if ((difcap > 0 && (mptr(mtmp).difficulty || 0) >= difcap
                          // in endgame, rn2(3); otherwise rn2(7)
                          && rn2(In_endgame() ? 3 : 7) // usually cap

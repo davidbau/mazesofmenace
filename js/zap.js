@@ -373,7 +373,7 @@ function xkilled_local(mon, map, player, display) {
         // C ref: set_corpsenm -> start_corpse_timeout for the RANDOM monster
         // (lichen/lizard skip is checked against random monster, not actual monster)
         if (rndmndx !== PM_LIZARD && rndmndx !== PM_LICHEN
-            && mons[rndmndx] && mons[rndmndx].symbol !== S_TROLL) {
+            && mons[rndmndx] && mons[rndmndx].mlet !== S_TROLL) {
             // Normal rot timeout: rnz(10) during gameplay, rnz(25) during mklev
             rnz(10);
         }
@@ -541,7 +541,7 @@ export function revive(obj, by_hero, map) {
   const mptr = mons[montype];
   if (!mptr) return null;
 
-  const is_zomb = (mptr.symbol === S_ZOMBIE);
+  const is_zomb = (mptr.mlet === S_ZOMBIE);
 
   // C ref: zap.c:910-937 — get location from corpse
   let x = obj.ox || 0;

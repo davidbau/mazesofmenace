@@ -2173,7 +2173,7 @@ function mk_trap_statue(map, x, y, depth = 1) {
         statueMndx = rndmonnum_adj(3, 6, depth);
     } while (--trycount > 0
         && statueMndx >= 0
-        && mons[statueMndx]?.symbol === S_UNICORN
+        && mons[statueMndx]?.mlet === S_UNICORN
         && sgn(ualign) === sgn(mons[statueMndx]?.align || 0));
 
     if (statueMndx < 0 || !mons[statueMndx]) return;
