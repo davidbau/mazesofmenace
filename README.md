@@ -36,7 +36,7 @@ In February 2025, Andrej Karpathy coined the term **"vibe coding"** to describe 
 
 This project is a test of that proposition at scale. Can AI agents, directed by a non-expert human, produce a faithful port of one of the most complex single-player codebases in gaming history? Not a toy demo or a weekend throwaway, but a real, playable, parity-correct reimplementation—over eighty thousand lines of readable JavaScript that match NetHack's behavior down to the random number generator?
 
-The entire codebase—136 JavaScript modules, 2,200+ passing unit tests, 204 golden C-comparison sessions, and a suite of Python test harness scripts—was produced through natural-language conversation with AI agents. The human provided direction, taste, and domain knowledge about NetHack; the agents wrote the code, tests, and documentation.
+The entire codebase—136 JavaScript modules, 2,200+ passing unit tests, 204 golden C-comparison sessions, and a suite of Python test harness scripts—was produced through natural-language conversation with AI agents. The human provided direction and taste; the agents wrote the code, tests, and documentation.
 
 ## Architecture
 
