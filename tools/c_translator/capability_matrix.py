@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import fnmatch
 import json
 from collections import Counter
 from pathlib import Path
@@ -8,13 +9,48 @@ from backend import emit_capability_summary
 from frontend import load_compile_profile
 
 
-def _iter_sources(src, include_glob, max_files):
+def _normalize_source_path(src):
+    return str(Path(src)).replace("\\", "/").lstrip("./")
+
+
+def _load_source_exclusions(path):
+    if not path:
+        return set(), []
+    p = Path(path)
+    if not p.exists():
+        return set(), []
+    payload = json.loads(p.read_text(encoding="utf-8"))
+    exact = set()
+    globs = []
+    for src in payload.get("sources", []):
+        if isinstance(src, str) and src.strip():
+            norm = _normalize_source_path(src.strip())
+            exact.add(norm)
+            exact.add(Path(norm).name)
+    for patt in payload.get("source_globs", []):
+        if isinstance(patt, str) and patt.strip():
+            globs.append(patt.strip())
+    return exact, globs
+
+
+def _source_excluded(src, exact, globs):
+    norm = _normalize_source_path(src)
+    base = Path(norm).name
+    if norm in exact or base in exact:
+        return True
+    return any(fnmatch.fnmatch(norm, patt) or fnmatch.fnmatch(base, patt) for patt in globs)
+
+
+def _iter_sources(src, include_glob, max_files, excluded_exact, excluded_globs):
     if src:
         for p in src:
+            if _source_excluded(p, excluded_exact, excluded_globs):
+                continue
             yield Path(p)
         return
     root = Path("nethack-c/src")
     files = sorted(root.glob(include_glob))
+    files = [p for p in files if not _source_excluded(str(p), excluded_exact, excluded_globs)]
     if max_files and max_files > 0:
         files = files[:max_files]
     for p in files:
@@ -52,11 +88,24 @@ def main():
         default="tools/c_translator/compile_profile.json",
         help="Compile profile path",
     )
+    ap.add_argument(
+        "--exclude-sources-file",
+        default="tools/c_translator/rulesets/translation_scope_excluded_sources.json",
+        help="JSON file with {sources:[], source_globs:[]} to exclude from counts",
+    )
+    ap.add_argument(
+        "--no-exclude-sources",
+        action="store_true",
+        help="Disable source exclusions (useful for fixture-focused translator tests)",
+    )
     ap.add_argument("--out", required=True, help="Output JSON path")
     args = ap.parse_args()
 
     profile = load_compile_profile(args.compile_profile)
-    sources = list(_iter_sources(args.src, args.include_glob, args.max_files))
+    excluded_exact, excluded_globs = (set(), [])
+    if not args.no_exclude_sources:
+        excluded_exact, excluded_globs = _load_source_exclusions(args.exclude_sources_file)
+    sources = list(_iter_sources(args.src, args.include_glob, args.max_files, excluded_exact, excluded_globs))
 
     files = []
     totals = Counter()
@@ -94,6 +143,8 @@ def main():
     overall_ratio = (totals["translated"] / totals["functions"]) if totals["functions"] else 0.0
     out = {
         "report": "translator-capability-matrix",
+        "exclude_sources_file": None if args.no_exclude_sources else args.exclude_sources_file,
+        "excluded_sources_count": len(excluded_exact) + len(excluded_globs),
         "files_analyzed": totals["files"],
         "totals": {
             "functions": totals["functions"],

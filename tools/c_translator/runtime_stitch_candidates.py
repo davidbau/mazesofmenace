@@ -9,6 +9,7 @@ A candidate is:
 """
 
 import argparse
+import fnmatch
 import json
 from pathlib import Path
 import re
@@ -24,8 +25,13 @@ def parse_args():
     p.add_argument("--out", required=True, help="Output JSON path")
     p.add_argument(
         "--exclude-sources-file",
-        default="",
-        help="Optional JSON file with {\"sources\":[...]} C sources to exclude from counts",
+        default="tools/c_translator/rulesets/translation_scope_excluded_sources.json",
+        help="JSON file with {\"sources\":[...], \"source_globs\":[...]} C sources to exclude from counts",
+    )
+    p.add_argument(
+        "--no-exclude-sources",
+        action="store_true",
+        help="Disable source exclusions (useful for fixture-focused translator tests)",
     )
     return p.parse_args()
 
@@ -37,18 +43,46 @@ def load_js_exports(js_path):
     return set(EXPORT_RE.findall(text))
 
 
+def _normalize_source_path(src):
+    return str(Path(src)).replace("\\", "/").lstrip("./")
+
+
+def _load_source_exclusions(path):
+    if not path:
+        return set(), []
+    p = Path(path)
+    if not p.exists():
+        return set(), []
+    payload = json.loads(p.read_text(encoding="utf-8"))
+    exact = set()
+    globs = []
+    for src in payload.get("sources", []):
+        if isinstance(src, str) and src.strip():
+            norm = _normalize_source_path(src.strip())
+            exact.add(norm)
+            exact.add(Path(norm).name)
+    for patt in payload.get("source_globs", []):
+        if isinstance(patt, str) and patt.strip():
+            globs.append(patt.strip())
+    return exact, globs
+
+
+def _source_excluded(src, exact, globs):
+    norm = _normalize_source_path(src)
+    base = Path(norm).name
+    if norm in exact or base in exact:
+        return True
+    return any(fnmatch.fnmatch(norm, patt) or fnmatch.fnmatch(base, patt) for patt in globs)
+
+
 def main():
     args = parse_args()
     repo = Path(args.repo_root)
     summary = json.loads(Path(args.summary).read_text(encoding="utf-8"))
     js_dir = repo / "js"
-    excluded_sources = set()
-    if args.exclude_sources_file:
-        payload = json.loads(Path(args.exclude_sources_file).read_text(encoding="utf-8"))
-        for src in payload.get("sources", []):
-            if isinstance(src, str) and src.strip():
-                excluded_sources.add(src.strip())
-                excluded_sources.add(Path(src).name)
+    excluded_exact, excluded_globs = (set(), [])
+    if not args.no_exclude_sources:
+        excluded_exact, excluded_globs = _load_source_exclusions(args.exclude_sources_file)
 
     js_exports = {}
     for js_file in js_dir.glob("*.js"):
@@ -57,8 +91,7 @@ def main():
     records = []
     for file_rec in summary.get("files", []):
         source = file_rec.get("source", "")
-        source_name = Path(source).name
-        if source in excluded_sources or source_name in excluded_sources:
+        if _source_excluded(source, excluded_exact, excluded_globs):
             continue
         stem = Path(source).stem
         module_exports = js_exports.get(stem, set())
@@ -89,8 +122,8 @@ def main():
 
     output = {
         "summary": args.summary,
-        "exclude_sources_file": args.exclude_sources_file or None,
-        "excluded_sources_count": len(excluded_sources),
+        "exclude_sources_file": None if args.no_exclude_sources else args.exclude_sources_file,
+        "excluded_sources_count": len(excluded_exact) + len(excluded_globs),
         "totals": {
             "clean_candidates": len(records),
             "runtime_matching_exports": len(matched),

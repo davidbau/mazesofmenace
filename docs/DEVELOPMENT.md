@@ -64,6 +64,10 @@ conda run -n base python tools/c_translator/capability_matrix.py \
   --src nethack-c/src/monmove.c \
   --src nethack-c/src/zap.c \
   --out /tmp/translator.capability.matrix.json
+# Note: default excludes apply from
+# tools/c_translator/rulesets/translation_scope_excluded_sources.json
+# (tests/fixtures + non-gameplay C subsystems). Use --no-exclude-sources
+# when intentionally running fixture-only translation checks.
 
 # Batch emit-helper generation (hundreds-scale sweeps)
 conda run -n base python tools/c_translator/batch_emit.py \
@@ -89,10 +93,10 @@ conda run -n base python tools/c_translator/runtime_stitch_candidates.py \
   --summary /tmp/translator-batch-summary.json \
   --out /tmp/translator-runtime-stitch-candidates.json
 
-# Gameplay-parity scoped counts (exclude non-HTML/non-gameplay C subsystems)
+# Optional: override default translator-scope excludes
 conda run -n base python tools/c_translator/runtime_stitch_candidates.py \
   --summary /tmp/translator-batch-summary.json \
-  --exclude-sources-file tools/c_translator/rulesets/gameplay_scope_excluded_sources.json \
+  --exclude-sources-file tools/c_translator/rulesets/translation_scope_excluded_sources.json \
   --out /tmp/translator-runtime-stitch-candidates-gameplay.json
 
 # Heuristic safety lint for runtime candidates (unknown callee detection)

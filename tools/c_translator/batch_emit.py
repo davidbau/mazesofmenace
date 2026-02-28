@@ -5,6 +5,7 @@ Outputs per-function emit-helper JSON payloads plus a summary JSON.
 """
 
 import argparse
+import fnmatch
 import json
 from pathlib import Path
 
@@ -29,6 +30,16 @@ def parse_args():
         help="Emit functions even when capability-summary marks them blocked",
     )
     p.add_argument("--limit", type=int, default=0, help="Optional max function emits (0 = no limit)")
+    p.add_argument(
+        "--exclude-sources-file",
+        default="tools/c_translator/rulesets/translation_scope_excluded_sources.json",
+        help="JSON file with {sources:[], source_globs:[]} to exclude from sweep counts",
+    )
+    p.add_argument(
+        "--no-exclude-sources",
+        action="store_true",
+        help="Disable source exclusions (useful for fixture-focused translator tests)",
+    )
     return p.parse_args()
 
 
@@ -42,6 +53,38 @@ def sanitize_name(text):
     return "".join(out)
 
 
+def _normalize_source_path(src):
+    return str(Path(src)).replace("\\", "/").lstrip("./")
+
+
+def _load_source_exclusions(path):
+    if not path:
+        return set(), []
+    p = Path(path)
+    if not p.exists():
+        return set(), []
+    payload = json.loads(p.read_text(encoding="utf-8"))
+    exact = set()
+    globs = []
+    for src in payload.get("sources", []):
+        if isinstance(src, str) and src.strip():
+            norm = _normalize_source_path(src.strip())
+            exact.add(norm)
+            exact.add(Path(norm).name)
+    for patt in payload.get("source_globs", []):
+        if isinstance(patt, str) and patt.strip():
+            globs.append(patt.strip())
+    return exact, globs
+
+
+def _source_excluded(src, exact, globs):
+    norm = _normalize_source_path(src)
+    base = Path(norm).name
+    if norm in exact or base in exact:
+        return True
+    return any(fnmatch.fnmatch(norm, patt) or fnmatch.fnmatch(base, patt) for patt in globs)
+
+
 def main():
     args = parse_args()
     out_dir = Path(args.out_dir)
@@ -50,12 +93,17 @@ def main():
     summary_path.parent.mkdir(parents=True, exist_ok=True)
 
     profile = load_compile_profile(args.compile_profile)
+    excluded_exact, excluded_globs = (set(), [])
+    if not args.no_exclude_sources:
+        excluded_exact, excluded_globs = _load_source_exclusions(args.exclude_sources_file)
 
     emitted = 0
     files = []
     errors = []
 
     for src in args.src:
+        if _source_excluded(src, excluded_exact, excluded_globs):
+            continue
         cap = emit_capability_summary(src, profile)
         file_rec = {
             "source": src,
@@ -136,6 +184,8 @@ def main():
 
     summary = {
         "sources": args.src,
+        "exclude_sources_file": None if args.no_exclude_sources else args.exclude_sources_file,
+        "excluded_sources_count": len(excluded_exact) + len(excluded_globs),
         "include_blocked": bool(args.include_blocked),
         "limit": int(args.limit),
         "totals": {
