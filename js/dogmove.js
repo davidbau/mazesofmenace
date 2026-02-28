@@ -938,6 +938,7 @@ export async function dog_move(mon, map, player, display, fov, after = false, ga
         }
         // C ref: dog_goal iterates fobj (ALL objects on level)
         // C's fobj is LIFO (place_object prepends), so iterate in reverse to match
+        // C's fobj excludes buried objects (those are on buriedobjlist, a separate list)
         for (let oi = map.objects.length - 1; oi >= 0; oi--) {
             const obj = map.objects[oi];
             if (obj.buried) continue;

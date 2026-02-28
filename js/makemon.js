@@ -1939,6 +1939,9 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
         monFemale = !!rn2(2); // random sex for gendered-but-unfixed forms
     }
 
+    // C ref: makemon.c:1296 — peace_minded called BEFORE post-placement switch
+    const monPeaceful = peace_minded(ptr);
+
     // C ref: makemon.c:1299-1310 — post-placement switch on mlet
     let mimicApType = null;
     if (ptr.mlet === S_MIMIC) {
@@ -2004,7 +2007,7 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
         speed: ptr.speed,
         movement: 0,  // C ref: *mtmp = cg.zeromonst (zero-init)
         attacks: ptr.attacks,
-        peaceful: peace_minded(ptr),
+        peaceful: monPeaceful,
         mpeaceful: false,
         female: monFemale,
         tame: false,
