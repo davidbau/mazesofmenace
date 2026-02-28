@@ -315,7 +315,7 @@ function do_reset_eat(game) {
 // cf. eat.c food_disappears() — check if food vanishes on level change
 // Autotranslated from eat.c:395
 export function food_disappears(obj, game) {
-  if (obj === game.game.svc.context.victual.piece) game.game.svc.context.victual = zero_victual;
+  if (obj === game.svc.context.victual.piece) game.svc.context.victual = zero_victual;
   if (obj.timed) obj_stop_timers(obj);
 }
 
@@ -1002,11 +1002,11 @@ export function tin_variety(obj, displ) {
 // cf. eat.c costly_tin() — handle cost of tin from shop
 // Autotranslated from eat.c:1388
 export function costly_tin(alter_type, game) {
-  let tin = game.game.svc.context.tin.tin;
+  let tin = game.svc.context.tin.tin;
   if (carried(tin) ? tin.unpaid : (costly_spot(tin.ox, tin.oy) && !tin.no_charge)) {
     if (tin.quan > 1) {
-      tin = game.game.svc.context.tin.tin = splitobj(tin, 1);
-      game.game.svc.context.tin.o_id = tin.o_id;
+      tin = game.svc.context.tin.tin = splitobj(tin, 1);
+      game.svc.context.tin.o_id = tin.o_id;
     }
     costly_alteration(tin, alter_type);
   }
@@ -1020,8 +1020,8 @@ export function use_up_tin(tin, game) {
   else {
     useupf(tin, 1);
   }
-  game.game.svc.context.tin.tin =  null;
-  game.game.svc.context.tin.o_id = 0;
+  game.svc.context.tin.tin =  null;
+  game.svc.context.tin.o_id = 0;
 }
 
 // cf. eat.c consume_tin() — eat the contents of an opened tin
@@ -1051,19 +1051,19 @@ function edibility_prompts(player, otmp) {
 // Autotranslated from eat.c:2728
 export async function doeat_nonfood(otmp, game, player) {
   let basenutrit, ll_conduct = 0, nodelicious = false, material;
-  game.game.svc.context.victual.reqtime = 1;
-  game.game.svc.context.victual.piece = otmp;
-  game.game.svc.context.victual.o_id = otmp.o_id;
-  game.game.svc.context.victual.usedtime = 0;
-  game.game.svc.context.victual.canchoke = (player.uhs === SATIATED);
+  game.svc.context.victual.reqtime = 1;
+  game.svc.context.victual.piece = otmp;
+  game.svc.context.victual.o_id = otmp.o_id;
+  game.svc.context.victual.usedtime = 0;
+  game.svc.context.victual.canchoke = (player.uhs === SATIATED);
   if (otmp.oclass === COIN_CLASS) basenutrit = ((otmp.quan > 200000) ? 2000 : Math.trunc(otmp.quan / 100));
   else if (otmp.oclass === BALL_CLASS || otmp.oclass === CHAIN_CLASS) basenutrit = weight(otmp);
   else {
     basenutrit = objects[otmp.otyp].oc_nutrition;
   }
   if (otmp.otyp === SCR_MAIL) { basenutrit = 0; nodelicious = true; }
-  game.game.svc.context.victual.nmod = basenutrit;
-  game.game.svc.context.victual.eating = 1;
+  game.svc.context.victual.nmod = basenutrit;
+  game.svc.context.victual.eating = 1;
   if (!player.uconduct.food++) {
     ll_conduct++;
     livelog_printf(LL_CONDUCT, "ate for the first time (%s)", food_xname(otmp, false));
@@ -1197,7 +1197,7 @@ export async function consume_oeaten(obj, amt, game) {
     }
   }
   if (obj.oeaten === 0) {
-    if (obj === game.game.svc.context.victual.piece) game.game.svc.context.victual.reqtime = game.game.svc.context.victual.usedtime;
+    if (obj === game.svc.context.victual.piece) game.svc.context.victual.reqtime = game.svc.context.victual.usedtime;
     obj.oeaten = 1;
   }
 }
@@ -1615,19 +1615,19 @@ export { handleEat, // Hunger system
 
 // Autotranslated from eat.c:518
 export async function eatfood(game, player) {
-  let food = game.game.svc.context.victual.piece;
+  let food = game.svc.context.victual.piece;
   if (food && !carried(food) && !obj_here(food, player.x, player.y)) food = 0;
   if (!food) { await do_reset_eat(); return 0; }
-  if (!game.game.svc.context.victual.eating) return 0;
-  if (++game.game.svc.context.victual.usedtime <= game.game.svc.context.victual.reqtime) { if (bite()) return 0; return 1; }
+  if (!game.svc.context.victual.eating) return 0;
+  if (++game.svc.context.victual.usedtime <= game.svc.context.victual.reqtime) { if (bite()) return 0; return 1; }
   else { await done_eating(true); return 0; }
 }
 
 // Autotranslated from eat.c:1697
 export async function opentin(game, player) {
-  if (!carried(game.game.svc.context.tin.tin) && (!obj_here(game.game.svc.context.tin.tin, player.x, player.y) || !can_reach_floor(true))) return 0;
-  if (game.game.svc.context.tin.usedtime++ >= 50) { You("give up your attempt to open the tin."); return 0; }
-  if (game.game.svc.context.tin.usedtime < game.game.svc.context.tin.reqtime) return 1;
+  if (!carried(game.svc.context.tin.tin) && (!obj_here(game.svc.context.tin.tin, player.x, player.y) || !can_reach_floor(true))) return 0;
+  if (game.svc.context.tin.usedtime++ >= 50) { You("give up your attempt to open the tin."); return 0; }
+  if (game.svc.context.tin.usedtime < game.svc.context.tin.reqtime) return 1;
   await consume_tin("You succeed in opening the tin.");
   return 0;
 }
@@ -1652,17 +1652,17 @@ export async function use_tin_opener(obj) {
 
 // Autotranslated from eat.c:3127
 export async function bite(game, player) {
-  sa_victual( game.game.svc.context.victual);
-  if (game.game.svc.context.victual.canchoke && player.uhunger >= 2000) { choke(game.game.svc.context.victual.piece); return 1; }
-  if (game.game.svc.context.victual.doreset) { await do_reset_eat(); return 0; }
+  sa_victual( game.svc.context.victual);
+  if (game.svc.context.victual.canchoke && player.uhunger >= 2000) { choke(game.svc.context.victual.piece); return 1; }
+  if (game.svc.context.victual.doreset) { await do_reset_eat(); return 0; }
   gf.force_save_hs = true;
-  if (game.game.svc.context.victual.nmod < 0) {
+  if (game.svc.context.victual.nmod < 0) {
     lesshungry(adj_victual_nutrition( ));
-    await consume_oeaten(game.game.svc.context.victual.piece, game.game.svc.context.victual.nmod);
+    await consume_oeaten(game.svc.context.victual.piece, game.svc.context.victual.nmod);
   }
-  else if (game.game.svc.context.victual.nmod > 0 && (game.game.svc.context.victual.usedtime % game.game.svc.context.victual.nmod)) {
+  else if (game.svc.context.victual.nmod > 0 && (game.svc.context.victual.usedtime % game.svc.context.victual.nmod)) {
     lesshungry(1);
-    await consume_oeaten(game.game.svc.context.victual.piece, -1);
+    await consume_oeaten(game.svc.context.victual.piece, -1);
   }
   gf.force_save_hs = false;
   recalc_wt();

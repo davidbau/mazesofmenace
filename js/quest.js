@@ -489,10 +489,10 @@ export function nemesis_speaks(player) {
 // cf. quest.c:411 — nemesis_stinks(mx, my): gas cloud on nemesis death
 // Autotranslated from quest.c:411
 export function nemesis_stinks(mx, my, game) {
-  let save_mon_moving = game.game.svc.context.mon_moving;
-  game.game.svc.context.mon_moving = true;
+  let save_mon_moving = game.svc.context.mon_moving;
+  game.svc.context.mon_moving = true;
   create_gas_cloud(mx, my, 5, 8);
-  game.game.svc.context.mon_moving = save_mon_moving;
+  game.svc.context.mon_moving = save_mon_moving;
 }
 
 // cf. quest.c:427 [static] — chat_with_guardian(): guardian NPC dialog

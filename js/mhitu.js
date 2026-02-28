@@ -558,7 +558,7 @@ function mhitu_ad_dren(monster, attack, player, mhm, ctx) {
 function mhitu_ad_drin(monster, attack, player, mhm, ctx) {
     // C: no mhitm_mgc_atk_negated for AD_DRIN mhitu!
     hitmsg(monster, attack, ctx.display, ctx.suppressHitMsg);
-    // C: helmet check: if (uarmh && rn2(8)) blocks attack
+    // C: helmet check: if (player.helmet && rn2(8)) blocks attack
     if (player.helmet && rn2(8)) {
         if (!ctx.suppressHitMsg)
             ctx.display.putstr_message('Your helmet blocks the attack to your head.');
@@ -696,7 +696,7 @@ function mhitu_ad_poly(monster, attack, player, mhm, ctx) {
 function mhitu_ad_were(monster, attack, player, mhm, ctx) {
     hitmsg(monster, attack, ctx.display, ctx.suppressHitMsg);
     // C: if (!rn2(4) && u.ulycn == NON_PM && !Protection_from_shape_changers
-    //        && !defends(AD_WERE, uwep) && !mhitm_mgc_atk_negated(...))
+    //        && !defends(AD_WERE, player.weapon) && !mhitm_mgc_atk_negated(...))
     if (!rn2(4) && !mhitm_mgc_atk_negated(monster, player)) {
         // Lycanthropy — not implemented
         exercise(player, A_CON, false);
@@ -1909,7 +1909,7 @@ export function mayberem(mon, seducer, obj, str, player) {
   else {
     let hairbuf;
     Sprintf(hairbuf, "let me run my fingers through your %s", body_part(HAIR));
-    verbalize("Take off your %s; %s.", str, (obj === uarm) ? "let's get a little closer" : (obj === uarmc || obj === uarms) ? "it's in the way" : (obj === uarmf) ? "let me rub your feet" : (obj === uarmg) ? "they're too clumsy" : (obj === uarmu) ? "let me massage you"   : hairbuf);
+    verbalize("Take off your %s; %s.", str, (obj === player.armor) ? "let's get a little closer" : (obj === player.cloak || obj === player.shield) ? "it's in the way" : (obj === player.boots) ? "let me rub your feet" : (obj === player.gloves) ? "they're too clumsy" : (obj === player.shirt) ? "let me massage you"   : hairbuf);
   }
   remove_worn_item(obj, true);
 }

@@ -1215,7 +1215,7 @@ export function obj_zapped(obj, type) {
 // Autotranslated from zap.c:1473
 export function obj_shudders(obj, game) {
   let zap_odds;
-  if (game.game.svc.context.bypasses && obj.bypass) return false;
+  if (game.svc.context.bypasses && obj.bypass) return false;
   if (obj.oclass === WAND_CLASS) zap_odds = 3;
   else if (obj.cursed) zap_odds = 3;
   else if (obj.blessed) zap_odds = 12;

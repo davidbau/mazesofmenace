@@ -272,9 +272,9 @@ export function savemonchn(nhfp, mtmp, game, player) {
     }
     if (mtmp.minvent) saveobjchn(nhfp, mtmp.minvent);
     if (release_data(nhfp)) {
-      if (mtmp === game.game.svc.context.polearm.hitmon) {
-        game.game.svc.context.polearm.m_id = mtmp.m_id;
-        game.game.svc.context.polearm.hitmon = null;
+      if (mtmp === game.svc.context.polearm.hitmon) {
+        game.svc.context.polearm.m_id = mtmp.m_id;
+        game.svc.context.polearm.hitmon = null;
       }
       if (mtmp === player.ustuck) player.ustuck_mid = player.ustuck.m_id;
       if (mtmp === player.usteed) player.usteed_mid = player.usteed.m_id;

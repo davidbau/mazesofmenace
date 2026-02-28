@@ -1669,7 +1669,7 @@ export function logdeadmon(mtmp, mndx, game) {
   let howmany = game.mvitals[mndx].died;
   if (mndx === PM_MEDUSA && howmany === 1) { record_achievement(ACH_MEDU); }
   else if ((unique_corpstat(mtmp.data) && (mndx !== PM_HIGH_CLERIC || !mtmp.mrevived)) || (mtmp.isshk && !mtmp.mrevived)) {
-    let shkdetail, mkilled, herodidit = !game.game.svc.context.mon_moving;
+    let shkdetail, mkilled, herodidit = !game.svc.context.mon_moving;
     shkdetail = '\0';
     if (mtmp.isshk) {
       howmany = 1;
@@ -2033,7 +2033,7 @@ export function replmon(mtmp, mtmp2, game, player) {
     otmp.ocarry = mtmp2;
   }
   mtmp.minvent = 0;
-  if (game.game.svc.context.polearm.hitmon === mtmp) game.game.svc.context.polearm.hitmon = mtmp2;
+  if (game.svc.context.polearm.hitmon === mtmp) game.svc.context.polearm.hitmon = mtmp2;
   relmon(mtmp,  0);
   if (mtmp !== player.usteed) place_monster(mtmp2, mtmp2.mx, mtmp2.my);
   if (mtmp2.wormno) place_wsegs(mtmp2, mtmp);

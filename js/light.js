@@ -444,11 +444,11 @@ export function candle_light_range(obj) {
 // Returns the light radius for a light-emitting artifact.
 // ========================================================================
 // Autotranslated from light.c:880
-export function arti_light_radius(obj) {
+export function arti_light_radius(obj, player) {
   let res;
   if (!obj.lamplit || !artifact_light(obj)) return 0;
   res = (obj.blessed ? 3 : !obj.cursed ? 2 : 1);
-  if (obj === uskin) res = 1;
+  if (player && obj === player.uskin) res = 1;
   else if (obj.otyp === GOLD_DRAGON_SCALE_MAIL) ++res;
   return res;
 }

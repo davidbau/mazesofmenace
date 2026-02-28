@@ -108,9 +108,8 @@
     },
     {
       "path": "js/delay.js",
-      "policy": "mixed",
-      "reason": "Contains both translatable core logic and manual boundary code.",
-      "allow_source": "annotations"
+      "policy": "manual_only",
+      "reason": "Hand-written compatibility wrapper re-exporting from animation.js; no direct C source equivalent."
     },
     {
       "path": "js/detect.js",

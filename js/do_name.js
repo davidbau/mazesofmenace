@@ -885,8 +885,8 @@ export function oname(obj, name, oflgs, player) {
   }
   if (lth) artifact_exists(obj, name, true, oflgs);
   if (obj.oartifact) {
-    if (obj === uswapwep) untwoweapon();
-    if (obj === uwep) set_artifact_intrinsic(obj, true, W_WEP);
+    if (obj === player.swapWeapon) untwoweapon();
+    if (obj === player.weapon) set_artifact_intrinsic(obj, true, W_WEP);
     if (obj.unpaid) alter_cost(obj, 0);
     if (via_naming) {
       if (!player.uconduct.literate++) livelog_printf(LL_CONDUCT | LL_ARTIFACT, "became literate by naming %s", bare_artifactname(obj));

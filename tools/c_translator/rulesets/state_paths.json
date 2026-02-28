@@ -42,6 +42,91 @@
       "requires_params": ["player"]
     },
     {
+      "c": "uswapwep",
+      "js": "player.swapWeapon",
+      "requires_params": ["player"]
+    },
+    {
+      "c": "uwep",
+      "js": "player.weapon",
+      "requires_params": ["player"]
+    },
+    {
+      "c": "uquiver",
+      "js": "player.quiver",
+      "requires_params": ["player"]
+    },
+    {
+      "c": "ublindf",
+      "js": "player.blindfold",
+      "requires_params": ["player"]
+    },
+    {
+      "c": "uarmc",
+      "js": "player.cloak",
+      "requires_params": ["player"]
+    },
+    {
+      "c": "uarmh",
+      "js": "player.helmet",
+      "requires_params": ["player"]
+    },
+    {
+      "c": "uarmg",
+      "js": "player.gloves",
+      "requires_params": ["player"]
+    },
+    {
+      "c": "uarmf",
+      "js": "player.boots",
+      "requires_params": ["player"]
+    },
+    {
+      "c": "uarmu",
+      "js": "player.shirt",
+      "requires_params": ["player"]
+    },
+    {
+      "c": "uarms",
+      "js": "player.shield",
+      "requires_params": ["player"]
+    },
+    {
+      "c": "uamul",
+      "js": "player.amulet",
+      "requires_params": ["player"]
+    },
+    {
+      "c": "uright",
+      "js": "player.rightRing",
+      "requires_params": ["player"]
+    },
+    {
+      "c": "uleft",
+      "js": "player.leftRing",
+      "requires_params": ["player"]
+    },
+    {
+      "c": "uchain",
+      "js": "player.uchain",
+      "requires_params": ["player"]
+    },
+    {
+      "c": "uball",
+      "js": "player.uball",
+      "requires_params": ["player"]
+    },
+    {
+      "c": "uskin",
+      "js": "player.uskin",
+      "requires_params": ["player"]
+    },
+    {
+      "c": "uarm",
+      "js": "player.armor",
+      "requires_params": ["player"]
+    },
+    {
       "c": "u.",
       "js": "player.",
       "requires_params": ["player"]

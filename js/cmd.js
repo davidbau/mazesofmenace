@@ -996,13 +996,13 @@ export function do_run_southwest() {
 
 // Autotranslated from cmd.c:1939
 export function do_fight(game) {
-  if (game.game.svc.context.forcefight) {
+  if (game.svc.context.forcefight) {
     Norep("Double fight prefix, canceled.");
-    game.game.svc.context.forcefight = 0;
+    game.svc.context.forcefight = 0;
     game.gd.domove_attempting = 0;
     return ECMD_CANCEL;
   }
-  game.game.svc.context.forcefight = 1;
+  game.svc.context.forcefight = 1;
   game.gd.domove_attempting |= DOMOVE_WALK;
   return ECMD_OK;
 }

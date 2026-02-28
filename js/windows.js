@@ -497,7 +497,7 @@ export function glyph2symidx(glyph, game) {
 // Autotranslated from windows.c:1427
 export function encglyph(glyph, game) {
   let encbuf;
-  Sprintf(encbuf, "\\G%04X%04X", game.game.svc.context.rndencode, glyph);
+  Sprintf(encbuf, "\\G%04X%04X", game.svc.context.rndencode, glyph);
   return encbuf;
 }
 
@@ -513,7 +513,7 @@ export function decode_glyph(str, glyph_ptr, game) {
       break;
     }
   }
-  if (rndchk === game.game.svc.context.rndencode) {
+  if (rndchk === game.svc.context.rndencode) {
      glyph_ptr = dcount = 0;
     for ( str && ++dcount <= 4; ++str; ) {
       if ((dp = strchr(hexdd, str)) !== 0) {

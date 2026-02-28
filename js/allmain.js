@@ -311,6 +311,13 @@ export function stop_occupation(game) {
 function u_calc_moveamt(player) {
     let moveamt = player.speed || NORMAL_SPEED;
     if (player.veryFast) {
+        if (typeof process !== 'undefined') {
+            const e = player.uprops[28];
+            const rngIdx = readRngLog().length;
+            process.stderr.write(`DBG u_calc_moveamt veryFast turns=${player.turns} rngIdx=${rngIdx} intr=${e?.intrinsic} extr=${e?.extrinsic}\n`);
+        }
+    }
+    if (player.veryFast) {
         if (rn2(3) !== 0) moveamt += NORMAL_SPEED;
     } else if (player.fast) {
         if (rn2(3) === 0) moveamt += NORMAL_SPEED;
@@ -1508,7 +1515,7 @@ export function regen_pw(wtcap, game, player) {
 
 // Autotranslated from allmain.c:955
 export function interrupt_multi(msg, game) {
-  if (game.multi > 0 && !game.game.svc.context.travel && !(game?.svc?.context?.run || 0)) { nomul(0); if (game.flags.verbose && msg) Norep("%s", msg); }
+  if (game.multi > 0 && !game.svc.context.travel && !(game?.svc?.context?.run || 0)) { nomul(0); if (game.flags.verbose && msg) Norep("%s", msg); }
 }
 
 // Autotranslated from allmain.c:1187

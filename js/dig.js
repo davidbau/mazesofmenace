@@ -779,7 +779,7 @@ export function use_pick_axe(obj, map, player) {
     const verb = isPick ? 'dig' : 'chop';
 
     // Check: wielded?
-    if (player.uwep !== obj) {
+    if (player.weapon !== obj) {
         // Would need to wield first — not yet wired
         return 0;
     }
@@ -944,7 +944,7 @@ export function dig(map, player) {
     if (!player || !player.context || !player.context.digging) return 0;
     const ctx = player.context.digging;
     const dpx = ctx.pos.x, dpy = ctx.pos.y;
-    const uwep = player.uwep;
+    const uwep = player.weapon;
     const isPick = uwep && (uwep.otyp === 257 || uwep.otyp === 71); // PICK_AXE, DWARVISH_MATTOCK
     const isAxeWep = uwep && !isPick && uwep.otyp >= 0; // simplified axe check
     const verb = (!uwep || isPick) ? 'dig into' : 'chop through';

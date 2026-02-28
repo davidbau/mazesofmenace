@@ -1392,7 +1392,7 @@ export function mksobj_migr_to_species(otyp, mflags2, init, artif) {
 
 // Autotranslated from mkobj.c:626
 export function clear_splitobjs(game) {
-  game.game.svc.context.objsplit.parent_oid = game.game.svc.context.objsplit.child_oid = 0;
+  game.svc.context.objsplit.parent_oid = game.svc.context.objsplit.child_oid = 0;
 }
 
 // Autotranslated from mkobj.c:712

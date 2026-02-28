@@ -1305,8 +1305,8 @@ export function check_unpaid(otmp) {
 
 // C ref: invent.c wearing_armor() — check if hero is wearing any armor
 // Autotranslated from invent.c:2148
-export function wearing_armor() {
-  return (uarm || uarmc || uarmf || uarmg || uarmh || uarms || uarmu);
+export function wearing_armor(player) {
+  return (player.armor || player.cloak || player.boots || player.gloves || player.helmet || player.shield || player.shirt);
 }
 
 // C ref: invent.c is_worn() — check if object is being worn/wielded
@@ -1840,10 +1840,10 @@ export function dopramulet(player) {
 
 // C ref: invent.c tool_being_used() — check if tool is in active use
 // Autotranslated from invent.c:4697
-export function tool_being_used(obj) {
+export function tool_being_used(obj, player) {
   if ((obj.owornmask & (W_TOOL | W_SADDLE)) !== 0) return true;
   if (obj.oclass !== TOOL_CLASS) return false;
-  return (obj === uwep || obj.lamplit || (obj.otyp === LEASH && obj.leashmon));
+  return (obj === player?.weapon || obj.lamplit || (obj.otyp === LEASH && obj.leashmon));
 }
 
 // C ref: invent.c doprtool() — print tools in use

@@ -1260,6 +1260,13 @@ def _apply_rewrite_rules(expr, rules):
         if rule["c"] in out:
             out = out.replace(rule["c"], rule["js"])
             required.update(rule["requires_params"])
+    # Remove any cascaded game.game. artifacts that arise when one rewrite
+    # (e.g. "svc.context." -> "game.svc.context.") produces output that
+    # contains the search string of a later rule (e.g. "svc." -> "game.svc.").
+    prev = None
+    while prev != out:
+        prev = out
+        out = out.replace("game.game.", "game.")
     return out, required
 
 

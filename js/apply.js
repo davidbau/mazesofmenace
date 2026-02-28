@@ -182,9 +182,9 @@ export function use_camera(obj) {
 // cf. apply.c:112 -- STUB: depends on freehand, Glib, makeplural
 // Autotranslated from apply.c:111
 export function use_towel(obj, player) {
-  let drying_feedback = (obj === uwep);
+  let drying_feedback = (obj === player.weapon);
   if (!freehand()) { You("have no free %s!", body_part(HAND)); return ECMD_OK; }
-  else if (obj === ublindf) { You("cannot use it while you're wearing it!"); return ECMD_OK; }
+  else if (obj === player.blindfold) { You("cannot use it while you're wearing it!"); return ECMD_OK; }
   else if (obj.cursed) {
     let old;
     switch (rn2(3)) {
@@ -195,7 +195,7 @@ export function use_towel(obj, player) {
       if (is_wet_towel(obj)) dry_a_towel(obj, -1, drying_feedback);
       return ECMD_TIME;
       case 1:
-        if (!ublindf) {
+        if (!player.blindfold) {
           old = player.ucreamed;
           player.ucreamed += rn1(10, 3);
           pline("Yecch! Your %s %s gunk on it!", body_part(FACE), (old ? "has more" : "now has"));
@@ -203,14 +203,14 @@ export function use_towel(obj, player) {
         }
         else {
           let what;
-          what = (ublindf.otyp === LENSES) ? "lenses" : (obj.otyp === ublindf.otyp) ? "other towel" : "blindfold";
-          if (ublindf.cursed) {
+          what = (player.blindfold.otyp === LENSES) ? "lenses" : (obj.otyp === player.blindfold.otyp) ? "other towel" : "blindfold";
+          if (player.blindfold.cursed) {
             You("push your %s %s.", what, rn2(2) ? "cock-eyed" : "crooked");
           }
           else {
-            let saved_ublindf = ublindf;
+            let saved_ublindf = player.blindfold;
             You("push your %s off.", what);
-            Blindf_off(ublindf);
+            Blindf_off(player.blindfold);
             dropx(saved_ublindf);
           }
         }
@@ -222,7 +222,7 @@ export function use_towel(obj, player) {
   }
   if (Glib) {
     make_glib(0);
-    You("wipe off your %s.", !uarmg ? makeplural(body_part(HAND)) : gloves_simple_name(uarmg));
+    You("wipe off your %s.", !player.gloves ? makeplural(body_part(HAND)) : gloves_simple_name(player.gloves));
     if (is_wet_towel(obj)) dry_a_towel(obj, -1, drying_feedback);
     return ECMD_TIME;
   }

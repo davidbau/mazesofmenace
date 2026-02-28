@@ -971,18 +971,18 @@ function equipInitialGear(player) {
     for (const item of player.inventory) {
         const info = objectData[item.otyp];
         // C ref: u_init.c ini_inv_use_obj() — weapons and weptools
-        // (TOOL_CLASS with oc_skill != P_NONE) are eligible for uwep/uswapwep.
+        // (TOOL_CLASS with oc_skill != P_NONE) are eligible for player.weapon/player.swapWeapon.
         const isWeptool = item.oclass === TOOL_CLASS && info && (info.sub || 0) !== 0;
         if (item.oclass !== WEAPON_CLASS && !isWeptool) continue;
         // C ref: u_init.c:1282-1293 ini_inv_use_obj() — ammo (is_ammo)
-        // and missiles (is_missile) go to quiver, not uwep.  Both have
+        // and missiles (is_missile) go to quiver, not player.weapon.  Both have
         // negative oc_skill (sub < 0); melee weapons and launchers have
         // non-negative oc_skill.
         if (info && info.sub >= 0) {
             if (!player.weapon) {
                 player.weapon = item;
             } else if (!player.swapWeapon) {
-                // C ref: startup sets up an alternate weapon slot (uswapwep)
+                // C ref: startup sets up an alternate weapon slot (player.swapWeapon)
                 // for classes with multiple starting weapons (e.g. Valkyrie).
                 player.swapWeapon = item;
                 break;
@@ -1252,22 +1252,22 @@ export function initFirstLevel(player, roleIndex, wizard, opts = {}) {
 }
 
 // Autotranslated from u_init.c:1249
-export function ini_inv_use_obj(obj) {
+export function ini_inv_use_obj(obj, player) {
   if (OBJ_DESCR(objectData[obj.otyp]) && obj.known) discover_object(obj.otyp, true, true, false);
   if (obj.otyp === OIL_LAMP) discover_object(POT_OIL, true, true, false);
   if (obj.oclass === ARMOR_CLASS) {
-    if (is_shield(obj) && !uarms && !(uwep && bimanual(uwep))) { setworn(obj, W_ARMS); set_twoweap(false); }
-    else if (is_helmet(obj) && !uarmh) setworn(obj, W_ARMH);
-    else if (is_gloves(obj) && !uarmg) setworn(obj, W_ARMG);
-    else if (is_shirt(obj) && !uarmu) setworn(obj, W_ARMU);
-    else if (is_cloak(obj) && !uarmc) setworn(obj, W_ARMC);
-    else if (is_boots(obj) && !uarmf) setworn(obj, W_ARMF);
-    else if (is_suit(obj) && !uarm) setworn(obj, W_ARM);
+    if (is_shield(obj) && !player.shield && !(player.weapon && bimanual(player.weapon))) { setworn(obj, W_ARMS); set_twoweap(false); }
+    else if (is_helmet(obj) && !player.helmet) setworn(obj, W_ARMH);
+    else if (is_gloves(obj) && !player.gloves) setworn(obj, W_ARMG);
+    else if (is_shirt(obj) && !player.shirt) setworn(obj, W_ARMU);
+    else if (is_cloak(obj) && !player.cloak) setworn(obj, W_ARMC);
+    else if (is_boots(obj) && !player.boots) setworn(obj, W_ARMF);
+    else if (is_suit(obj) && !player.armor) setworn(obj, W_ARM);
   }
   if (obj.oclass === WEAPON_CLASS || is_weptool(obj) || obj.otyp === TIN_OPENER || obj.otyp === FLINT || obj.otyp === ROCK) {
-    if (is_ammo(obj) || is_missile(obj)) { if (!uquiver) setuqwep(obj); }
-    else if (!uwep && (!uarms || !bimanual(obj))) { setuwep(obj); }
-    else if (!uswapwep) { setuswapwep(obj); }
+    if (is_ammo(obj) || is_missile(obj)) { if (!player.quiver) setuqwep(obj); }
+    else if (!player.weapon && (!player.shield || !bimanual(obj))) { setuwep(obj); }
+    else if (!player.swapWeapon) { setuswapwep(obj); }
   }
   if (obj.oclass === SPBOOK_CLASS && obj.otyp !== SPE_BLANK_PAPER) initialspell(obj);
 }

@@ -327,7 +327,7 @@ function get_cost(obj, shkp) {
     }
 
     // Dunce cap or Tourist penalty
-    // C ref: uarmh && uarmh->otyp == DUNCE_CAP
+    // C ref: player.helmet && player.helmet->otyp == DUNCE_CAP
     // We check via the shkp.player reference or a global approach
     // For now, just handle the basic multiplier/divisor as in getCost
     // (The existing getCost function already handles player attributes;
@@ -410,10 +410,10 @@ function getCost(obj, player, shkp) {
 export function set_cost(obj, shkp, player) {
   let tmp, unit_price = getprice(obj, true), multiplier = 1, divisor = 1;
   tmp = get_pricing_units(obj) * unit_price;
-  if (uarmh && uarmh.otyp === DUNCE_CAP) {
+  if (player.helmet && player.helmet.otyp === DUNCE_CAP) {
     divisor *= 3;
   }
-  else if ((Role_if(PM_TOURIST) && player.ulevel < (MAXULEV / 2)) || (uarmu && !uarm && !uarmc)) {
+  else if ((Role_if(PM_TOURIST) && player.ulevel < (MAXULEV / 2)) || (player.shirt && !player.armor && !player.cloak)) {
     divisor *= 3;
   }
   else {

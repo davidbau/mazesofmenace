@@ -2393,7 +2393,7 @@ export function clone_mon(mon, x, y, game, player) {
   if (emits_light(m2.data)) new_light_source(m2.mx, m2.my, emits_light(m2.data), LS_MONSTER, monst_to_any(m2));
   if (has_mgivenname(mon)) { m2 = christen_monst(m2, MGIVENNAME(mon)); }
   else if (mon.isshk) { m2 = christen_monst(m2, shkname(mon)); }
-  if (!game.game.svc.context.mon_moving && mon.mpeaceful) {
+  if (!game.svc.context.mon_moving && mon.mpeaceful) {
     if (mon.mtame) m2.mtame = rn2(Math.max(2 + player.uluck, 2)) ? mon.mtame : 0;
     else if (mon.mpeaceful) m2.mpeaceful = rn2(Math.max(2 + player.uluck, 2)) ? 1 : 0;
   }

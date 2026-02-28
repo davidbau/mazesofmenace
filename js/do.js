@@ -1458,12 +1458,12 @@ export function drop(obj, game, map, player) {
   if (!obj) return ECMD_FAIL;
   if (!canletgo(obj, "drop")) return ECMD_FAIL;
   if (obj.otyp === CORPSE && better_not_try_to_drop_that(obj)) return ECMD_FAIL;
-  if (obj === uwep) {
-    if (welded(uwep)) { weldmsg(obj); return ECMD_FAIL; }
+  if (obj === player.weapon) {
+    if (welded(player.weapon)) { weldmsg(obj); return ECMD_FAIL; }
     setuwep( 0);
   }
-  if (obj === uquiver) { setuqwep( 0); }
-  if (obj === uswapwep) { setuswapwep( 0); }
+  if (obj === player.quiver) { setuqwep( 0); }
+  if (obj === player.swapWeapon) { setuswapwep( 0); }
   if (player.uswallow) {
     if (game.flags.verbose) {
       let onam_p, mnam_p, monbuf;
