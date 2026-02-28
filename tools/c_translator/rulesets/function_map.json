@@ -56,6 +56,22 @@
     {
       "c": "curs_on_u()",
       "js": "0"
+    },
+    {
+      "c": "qsort(cond_idx, CONDITION_COUNT, sizeof cond_idx[0], cond_cmp)",
+      "js": "cond_idx.sort(cond_cmp)"
+    },
+    {
+      "c": "qsort(cond_idx, CONDITION_COUNT, sizeof(cond_idx[0]), cond_cmp)",
+      "js": "cond_idx.sort(cond_cmp)"
+    },
+    {
+      "c": "qsort(sequence, CONDITION_COUNT, sizeof sequence[0], menualpha_cmp)",
+      "js": "sequence.sort(menualpha_cmp)"
+    },
+    {
+      "c": "qsort(sequence, CONDITION_COUNT, sizeof(sequence[0]), menualpha_cmp)",
+      "js": "sequence.sort(menualpha_cmp)"
     }
   ]
 }

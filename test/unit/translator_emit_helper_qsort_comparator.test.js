@@ -47,3 +47,67 @@ test('emit-helper lowers qsort comparator pointer params for cond_cmp', (t) => {
     assert.doesNotMatch(payload.js, /\*\s*vptr1|\*\s*vptr2/);
     assert.doesNotMatch(payload.js, /UNIMPLEMENTED_TRANSLATED_FUNCTION/);
 });
+
+test('emit-helper rewrites qsort(cond_cmp/menualpha_cmp) callsites to Array.sort', (t) => {
+    if (!fs.existsSync(CONDA)) {
+        t.skip('conda not available for clang-backed translator run');
+        return;
+    }
+
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'translator-emit-helper-qsort-callsite-'));
+    const fixture = 'test/fixtures/translator_qsort_fixture.c';
+
+    const condOut = path.join(outDir, 'cond_sort_callsite.json');
+    const condRun = spawnSync(
+        CONDA,
+        [
+            'run',
+            '--live-stream',
+            '-n',
+            'base',
+            'python',
+            'tools/c_translator/main.py',
+            '--src',
+            fixture,
+            '--func',
+            'cond_sort_callsite',
+            '--emit',
+            'emit-helper',
+            '--out',
+            condOut,
+        ],
+        { encoding: 'utf8' },
+    );
+    assert.equal(condRun.status, 0, condRun.stderr || condRun.stdout);
+    const condPayload = JSON.parse(fs.readFileSync(condOut, 'utf8'));
+    assert.equal(condPayload.meta.translated, true);
+    assert.match(condPayload.js, /cond_idx\.sort\(cond_cmp\)/);
+    assert.doesNotMatch(condPayload.js, /\bqsort\s*\(/);
+
+    const alphaOut = path.join(outDir, 'menualpha_sort_callsite.json');
+    const alphaRun = spawnSync(
+        CONDA,
+        [
+            'run',
+            '--live-stream',
+            '-n',
+            'base',
+            'python',
+            'tools/c_translator/main.py',
+            '--src',
+            fixture,
+            '--func',
+            'menualpha_sort_callsite',
+            '--emit',
+            'emit-helper',
+            '--out',
+            alphaOut,
+        ],
+        { encoding: 'utf8' },
+    );
+    assert.equal(alphaRun.status, 0, alphaRun.stderr || alphaRun.stdout);
+    const alphaPayload = JSON.parse(fs.readFileSync(alphaOut, 'utf8'));
+    assert.equal(alphaPayload.meta.translated, true);
+    assert.match(alphaPayload.js, /sequence\.sort\(menualpha_cmp\)/);
+    assert.doesNotMatch(alphaPayload.js, /\bqsort\s*\(/);
+});

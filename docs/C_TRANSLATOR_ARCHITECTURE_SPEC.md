@@ -249,6 +249,11 @@ Example:
   parity_critical: true
 ```
 
+Comparator translation note:
+
+1. C `qsort(base, n, size, cmp)` callsites that sort JS arrays must translate to `base.sort(cmp)`.
+2. Comparator functions such as `cond_cmp`/`menualpha_cmp` are emitted with JS `Array.sort` semantics: comparator args are elements, not C pointers.
+
 ## 5) `boundary_calls.yml`
 Declares known async/display/input boundaries and exact handling.
 
