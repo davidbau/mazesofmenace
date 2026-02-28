@@ -17,6 +17,34 @@
       "requires_params": ["map"]
     },
     {
+      "c": "mon->data",
+      "js": "(monsdat(mon) || {})"
+    },
+    {
+      "c": "mtmp->data",
+      "js": "(monsdat(mtmp) || {})"
+    },
+    {
+      "c": "mon->data->msound",
+      "js": "(((monsdat(mon) || {}).msound ?? (monsdat(mon) || {}).sound ?? 0))"
+    },
+    {
+      "c": "mtmp->data->msound",
+      "js": "(((monsdat(mtmp) || {}).msound ?? (monsdat(mtmp) || {}).sound ?? 0))"
+    },
+    {
+      "c": "mtmp->mtrack[j] = mtmp->mtrack[j - 1]",
+      "js": "mtmp.mtrack[j] = { ...mtmp.mtrack[j - 1] }"
+    },
+    {
+      "c": "mon.data",
+      "js": "(monsdat(mon) || {})"
+    },
+    {
+      "c": "mtmp.data",
+      "js": "(monsdat(mtmp) || {})"
+    },
+    {
       "c": "svc.context.run",
       "js": "(game?.svc?.context?.run || 0)",
       "requires_params": ["game"]

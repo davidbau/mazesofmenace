@@ -676,9 +676,9 @@ export function hates_light(ptr) { return ptr === mons[PM_GREMLIN]; }
 
 // C ref: mondata.c:547 — mon_hates_light(mon)
 // Autotranslated from mondata.c:546
+// Autotranslated from mondata.c:546
 export function mon_hates_light(mon) {
-  const ptr = monsdat(mon);
-  return ptr ? hates_light(ptr) : false;
+  return  hates_light((monsdat(mon) || {}));
 }
 
 // C ref: mondata.c:80 — poly_when_stoned(ptr)

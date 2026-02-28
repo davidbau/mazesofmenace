@@ -177,7 +177,7 @@ export function mon_track_add(mon, x, y) {
         mon.mtrack = new Array(MTSZ).fill(null).map(() => ({ x: 0, y: 0 }));
     }
     for (let j = MTSZ - 1; j > 0; j--) {
-        mon.mtrack[j] = mon.mtrack[j - 1];
+        mon.mtrack[j] = { ...mon.mtrack[j - 1] };
     }
     mon.mtrack[0] = { x, y };
 }
@@ -314,12 +314,9 @@ export function monhaskey(mon, forUnlocking) {
 // quest leaders (MS_LEADER sound) can when their special-ability cooldown
 // is zero (mspec_used == 0).
 // Autotranslated from monmove.c:134
-export function m_can_break_boulder(mon) {
-    const ptr = monsdat(mon) || {};
-    const msound = ptr.msound ?? ptr.sound ?? 0;
-    return is_rider(ptr)
-        || (!mon?.mspec_used
-            && (mon?.isshk || mon?.ispriest || msound === MS_LEADER));
+// Autotranslated from monmove.c:133
+export function m_can_break_boulder(mtmp) {
+  return (is_rider((monsdat(mtmp) || {})) || (!mtmp.mspec_used && (mtmp.isshk || mtmp.ispriest || ((((monsdat(mtmp) || {}).msound ?? (monsdat(mtmp) || {}).sound ?? 0)) === MS_LEADER))));
 }
 
 // ========================================================================

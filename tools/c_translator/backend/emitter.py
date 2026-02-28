@@ -61,6 +61,21 @@ def _sanitize_ident(name):
     return name
 
 
+def _normalize_runtime_param_order(params):
+    if not params:
+        return params
+    # Preserve source/AST order, but stabilize the common wrapper mismatch
+    # where generated helpers produce "(display, game)" and runtime exports
+    # expect "(game, display)".
+    out = list(params)
+    if "game" in out and "display" in out:
+        ig = out.index("game")
+        idisp = out.index("display")
+        if ig > idisp:
+            out[idisp], out[ig] = out[ig], out[idisp]
+    return out
+
+
 def emit_helper_scaffold(src_path, func_name, compile_profile=None):
     if not func_name:
         raise ValueError("--func is required for emit-helper mode")
@@ -101,6 +116,7 @@ def emit_helper_scaffold(src_path, func_name, compile_profile=None):
             for p in sorted(required_params):
                 if p not in params:
                     params.append(p)
+            params = _normalize_runtime_param_order(params)
             translated = True
 
     func_decl = "export async function" if requires_async else "export function"

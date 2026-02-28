@@ -1458,15 +1458,9 @@ export function rounddiv(x, y) {
 
 // C ref: hack.c invocation_pos() — is (x,y) the invocation position?
 // Autotranslated from hack.c:963
+// Autotranslated from hack.c:962
 export function invocation_pos(x, y, map) {
-    if (!map) return false;
-    const uz = map.uz;
-    const inv_pos = map.inv_pos;
-    if (!inv_pos) return false;
-    const onInvocationLevel = uz
-        ? Invocation_lev(uz)
-        : !!map.is_invocation_lev;
-    return !!(onInvocationLevel && x === inv_pos.x && y === inv_pos.y);
+  return  (Invocation_lev(map.uz) && x === map.inv_pos.x && y === map.inv_pos.y);
 }
 
 // --------------------------------------------------------------------
