@@ -372,8 +372,10 @@ export function is_pet_type(ptr) {
 // Get the permonst entry for a monster instance
 // C ref: mtmp->data = &mons[mtmp->mnum]
 export function monsdat(mon) {
-    if (mon.mnum !== undefined) return mons[mon.mnum];
-    // Fallback for old-style monster instances without mnum
+    if (!mon) return null;
+    if (mon.type) return mon.type;
+    if (Number.isInteger(mon.mndx)) return mons[mon.mndx] || null;
+    if (Number.isInteger(mon.mnum)) return mons[mon.mnum] || null;
     return null;
 }
 

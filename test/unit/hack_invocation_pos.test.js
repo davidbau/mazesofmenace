@@ -21,9 +21,9 @@ test('invocation_pos returns false off invocation level', () => {
     assert.equal(invocation_pos(17, 4, map), false);
 });
 
-test('invocation_pos supports legacy flags compatibility fields', () => {
+test('invocation_pos ignores legacy flags compatibility fields', () => {
     const map = {
         flags: { is_invocation_lev: true, inv_pos: { x: 3, y: 9 } },
     };
-    assert.equal(invocation_pos(3, 9, map), true);
+    assert.equal(invocation_pos(3, 9, map), false);
 });

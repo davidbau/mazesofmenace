@@ -419,6 +419,11 @@ describe('hates_light', () => {
 });
 
 describe('mon_hates_light', () => {
+    it('returns true for a gremlin monster instance using canonical type pointer', () => {
+        const mon = { type: mons[PM_GREMLIN], mndx: PM_GREMLIN };
+        assert.equal(mon_hates_light(mon), true);
+    });
+
     it('returns true for a gremlin monster instance', () => {
         const mon = { mnum: PM_GREMLIN };
         assert.equal(mon_hates_light(mon), true);

@@ -1461,13 +1461,11 @@ export function rounddiv(x, y) {
 export function invocation_pos(x, y, map) {
     if (!map) return false;
     const uz = map.uz;
-    const inv_pos = map.inv_pos || map._invPos || map.flags?.inv_pos;
+    const inv_pos = map.inv_pos;
     if (!inv_pos) return false;
     const onInvocationLevel = uz
         ? Invocation_lev(uz)
-        : !!(map._isInvocationLevel
-            || map.flags?.is_invocation_lev
-            || map.flags?.invocationLevel);
+        : !!map.is_invocation_lev;
     return !!(onInvocationLevel && x === inv_pos.x && y === inv_pos.y);
 }
 

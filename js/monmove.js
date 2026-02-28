@@ -47,7 +47,7 @@ import { can_teleport, noeyes, perceives, nohands,
          is_mindless, telepathic,
          is_giant, is_undead, is_unicorn, is_minion, throws_rocks,
          passes_walls, corpse_eater,
-         passes_bars, is_human, canseemon } from './mondata.js';
+         passes_bars, is_human, canseemon, monsdat } from './mondata.js';
 import { PM_GRID_BUG, PM_SHOPKEEPER, PM_MINOTAUR, mons,
          PM_LEPRECHAUN,
          PM_XORN,
@@ -172,7 +172,10 @@ function leppie_avoidance(mon, player) {
 // C ref: monmove.c:79 — add position (x,y) to front of monster's track ring
 // Autotranslated from monmove.c:79
 export function mon_track_add(mon, x, y) {
-    if (!Array.isArray(mon?.mtrack)) return;
+    if (!mon) return;
+    if (!Array.isArray(mon.mtrack) || mon.mtrack.length !== MTSZ) {
+        mon.mtrack = new Array(MTSZ).fill(null).map(() => ({ x: 0, y: 0 }));
+    }
     for (let j = MTSZ - 1; j > 0; j--) {
         mon.mtrack[j] = mon.mtrack[j - 1];
     }
@@ -312,11 +315,11 @@ export function monhaskey(mon, forUnlocking) {
 // is zero (mspec_used == 0).
 // Autotranslated from monmove.c:134
 export function m_can_break_boulder(mon) {
-    const ptr = mon?.type || mon?.data || {};
+    const ptr = monsdat(mon) || {};
     const msound = ptr.msound ?? ptr.sound ?? 0;
     return is_rider(ptr)
-        || (!mon.mspec_used
-            && (mon.isshk || mon.ispriest || msound === MS_LEADER));
+        || (!mon?.mspec_used
+            && (mon?.isshk || mon?.ispriest || msound === MS_LEADER));
 }
 
 // ========================================================================

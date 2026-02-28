@@ -162,9 +162,7 @@ export function give_to_nearby_mon(map, otmp, x, y) {
 export function set_ghostly_objlist(objchain) {
     const markGhostly = (obj) => {
         if (!obj) return;
-        // Preserve both field names used across porting stages.
         obj.ghostly = true;
-        obj.ghost = true;
     };
     // Runtime supports both C-style linked object chains and JS arrays.
     if (Array.isArray(objchain)) {

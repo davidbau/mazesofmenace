@@ -462,8 +462,12 @@ describe('mon_track_add', () => {
         assert.deepEqual(mon.mtrack[MTSZ - 1], { x: 0, y: 0 });
     });
 
-    it('is a no-op when mon.mtrack is absent', () => {
-        assert.doesNotThrow(() => mon_track_add({}, 1, 2));
+    it('initializes canonical track ring when mon.mtrack is absent', () => {
+        const mon = {};
+        assert.doesNotThrow(() => mon_track_add(mon, 1, 2));
+        assert.equal(Array.isArray(mon.mtrack), true);
+        assert.equal(mon.mtrack.length, MTSZ);
+        assert.deepEqual(mon.mtrack[0], { x: 1, y: 2 });
         assert.doesNotThrow(() => mon_track_add(null, 1, 2));
     });
 });
