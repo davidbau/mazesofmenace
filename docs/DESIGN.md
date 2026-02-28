@@ -49,7 +49,7 @@ webhack/
 │   ├── nethack.js             Entry point, game init (← allmain.c)
 │   ├── config.js              Game constants & terrain types (← rm.h, hack.h)
 │   ├── player.js              Player state (← you.h, decl.h)
-│   ├── commands.js            Command dispatch (← cmd.c)
+│   ├── cmd.js                 Command dispatch (← cmd.c)
 │   │
 │   │  ┌─ Display & I/O ───────────────────────────────────┐
 │   ├── display.js             Browser TTY display (← win/tty/*.c)
@@ -84,7 +84,9 @@ webhack/
 │   ├── u_init.js              Post-level init: pet, inventory, attrs (← u_init.c)
 │   │
 │   │  ┌─ Combat ──────────────────────────────────────────┐
-│   ├── combat.js              Combat system (← uhitm.c, mhitu.c, mhitm.c)
+│   ├── uhitm.js               Hero-vs-monster combat core (← uhitm.c)
+│   ├── mhitu.js               Monster-vs-hero combat core (← mhitu.c)
+│   ├── mhitm.js               Monster-vs-monster combat core (← mhitm.c)
 │   │
 │   │  ┌─ Persistence ─────────────────────────────────────┐
 │   ├── storage.js             Save/restore via localStorage (← save.c, restore.c)

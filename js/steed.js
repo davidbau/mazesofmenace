@@ -47,9 +47,9 @@ export function rider_cant_reach(player) {
 export function can_saddle(mtmp) {
     const ptr = mtmp.data || mtmp.type;
     if (!ptr) return false;
-    return STEEDS.includes(ptr.symbol)
+    return STEEDS.includes(ptr.mlet)
         && (ptr.msize >= MZ_MEDIUM)
-        && (!is_humanoid(ptr) || ptr.symbol === S_CENTAUR)
+        && (!is_humanoid(ptr) || ptr.mlet === S_CENTAUR)
         && !amorphous(ptr)
         && !noncorporeal(ptr)
         && !is_whirly(ptr)
@@ -84,7 +84,7 @@ export function put_saddle_on_mon(saddle, mtmp) {
 }
 
 // cf. steed.c:827 -- maybewakesteed(steed): wake sleeping/paralyzed steed
-function maybewakesteed(steed) {
+export function maybewakesteed(steed) {
     const wasimmobile = !!(steed.msleeping || (steed.mfrozen && !steed.mcanmove));
 
     steed.msleeping = 0;
@@ -217,7 +217,7 @@ export function mount_steed(mtmp, force, player, map, display) {
     if (!force
         && (player.confused || player.fumbling || player.glib
             || player.wounded_legs || otmp.cursed || otmp.greased
-            || ((player.level || 1) + mtmp.mtame < rnd(Math.floor(MAXULEV / 2) + 5)))) {
+            || ((player.ulevel || 1) + mtmp.mtame < rnd(Math.floor(MAXULEV / 2) + 5)))) {
         if (player.levitating) {
             pline("%s slips away from you.", Monnam(mtmp));
             return false;
@@ -301,7 +301,7 @@ export function kick_steed(player, map, display) {
         steed.mtame--;
 
     if (!steed.mtame
-        || ((player.level || 1) + steed.mtame < rnd(Math.floor(MAXULEV / 2) + 5))) {
+        || ((player.ulevel || 1) + steed.mtame < rnd(Math.floor(MAXULEV / 2) + 5))) {
         dismount_steed(player, map, display, DISMOUNT_THROWN);
         return;
     }

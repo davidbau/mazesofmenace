@@ -118,8 +118,7 @@ function plur(n) { return n === 1 ? '' : 's'; }
 // cf. music.c:44 — awaken_scare(mtmp, scary)
 // Wake up monster, possibly scare it.
 // ============================================================================
-
-function awaken_scare(mtmp, scary) {
+export function awaken_scare(mtmp, scary) {
     mtmp.msleeping = 0;
     mtmp.mcanmove = 1;
     mtmp.mfrozen = 0;
@@ -140,8 +139,7 @@ function awaken_scare(mtmp, scary) {
 // cf. music.c:66 — awaken_monsters(distance)
 // Wake every monster in range.
 // ============================================================================
-
-function awaken_monsters(distance, map, player) {
+export function awaken_monsters(distance, map, player) {
     for (const mtmp of (map.monsters || [])) {
         if (DEADMONSTER(mtmp)) continue;
         const distm = mdistu(mtmp, player);
@@ -155,8 +153,7 @@ function awaken_monsters(distance, map, player) {
 // cf. music.c:84 — put_monsters_to_sleep(distance)
 // Make monsters fall asleep. Note that they may resist the spell.
 // ============================================================================
-
-function put_monsters_to_sleep(distance, map, player) {
+export function put_monsters_to_sleep(distance, map, player) {
     for (const mtmp of (map.monsters || [])) {
         if (DEADMONSTER(mtmp)) continue;
         if (mdistu(mtmp, player) < distance
@@ -171,8 +168,7 @@ function put_monsters_to_sleep(distance, map, player) {
 // cf. music.c:104 — charm_snakes(distance)
 // Charm snakes in range. Note that the snakes are NOT tamed.
 // ============================================================================
-
-function charm_snakes(distance, map, player, fov) {
+export function charm_snakes(distance, map, player, fov) {
     for (const mtmp of (map.monsters || [])) {
         if (DEADMONSTER(mtmp)) continue;
         const ptr = mtmp.data || mtmp.type;
@@ -199,8 +195,7 @@ function charm_snakes(distance, map, player, fov) {
 // cf. music.c:138 — calm_nymphs(distance)
 // Calm nymphs in range.
 // ============================================================================
-
-function calm_nymphs(distance, map, player, fov) {
+export function calm_nymphs(distance, map, player, fov) {
     for (const mtmp of (map.monsters || [])) {
         if (DEADMONSTER(mtmp)) continue;
         const ptr = mtmp.data || mtmp.type;
@@ -225,7 +220,7 @@ export function awaken_soldiers(bugler, map, player, fov) {
     const isHero = (bugler === player || bugler === 'player');
     // distance of affected non-soldier monsters to bugler
     const distance = (isHero
-        ? (player.ulevel || player.level || 1)
+        ? (player.ulevel || 1)
         : ((bugler.data || bugler.type || {}).mlevel || 0)) * 30;
 
     for (const mtmp of (map.monsters || [])) {
@@ -257,8 +252,7 @@ export function awaken_soldiers(bugler, map, player, fov) {
 // cf. music.c:195 — charm_monsters(distance)
 // Charm monsters in range. Note that they may resist the spell.
 // ============================================================================
-
-function charm_monsters(distance, map, player) {
+export function charm_monsters(distance, map, player) {
     if (player.uswallow)
         distance = 0; // only ustuck affected
 
@@ -519,8 +513,7 @@ function do_earthquake(force, map, player, fov) {
 // cf. music.c:477 — generic_lvl_desc()
 // Returns a generic description of the current level type for messages.
 // ============================================================================
-
-function generic_lvl_desc() {
+export function generic_lvl_desc() {
     // Simplified: endgame/sokoban/vlad tower not modeled yet
     return 'dungeon';
 }
@@ -541,8 +534,7 @@ const beats = [
 
 // Module-level state for the jingle context
 let _jingle = '';
-
-function improvised_notes(player) {
+export function improvised_notes(player) {
     const notes = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
     let same_as_last_time = false;
 
@@ -631,7 +623,7 @@ function do_improvisation(instr, player, map, display, fov) {
 
     const { notes: improvisation, same_as_last_time: same_old_song } = improvised_notes(player);
 
-    const ulevel = player.ulevel || player.level || 1;
+    const ulevel = player.ulevel || 1;
 
     switch (itmp_otyp) { // note: itmp_otyp might differ from instr.otyp
     case MAGIC_FLUTE: // Make monster fall asleep

@@ -18,12 +18,13 @@ export function initrack() {
 }
 
 // cf. track.c:24 — add to track
+// Autotranslated from track.c:23
 export function settrack(player) {
-    if (_utcnt < UTSZ) _utcnt++;
-    if (_utpnt === UTSZ) _utpnt = 0;
-    _utrack[_utpnt].x = player.x;
-    _utrack[_utpnt].y = player.y;
-    _utpnt++;
+  if (_utcnt < UTSZ) _utcnt++;
+  if (_utpnt === UTSZ) _utpnt = 0;
+  _utrack[_utpnt].x = player.x;
+  _utrack[_utpnt].y = player.y;
+  _utpnt++;
 }
 
 // cf. track.c:38 — get a track coord on or next to x,y last tracked by hero
@@ -42,6 +43,7 @@ export function gettrack(x, y) {
 }
 
 // cf. track.c:59 — return true if x,y has hero tracks on it
+// Autotranslated from track.c:58
 export function hastrack(x, y) {
     for (let i = 0; i < _utcnt; i++) {
         if (_utrack[i].x === x && _utrack[i].y === y)
@@ -52,3 +54,27 @@ export function hastrack(x, y) {
 
 // TODO: track.c:72 — save_track(): save/restore not yet implemented
 // TODO: track.c:89 — rest_track(): save/restore not yet implemented
+
+// Autotranslated from track.c:71
+export function save_track(nhfp) {
+  if (update_file(nhfp)) {
+    let i;
+    Sfo_int(nhfp, utcnt, "track-utcnt");
+    Sfo_int(nhfp, utpnt, "track-utpnt");
+    for (i = 0; i < utcnt; i++) {
+      Sfo_nhcoord(nhfp, utrack, "utrack");
+    }
+  }
+  if (release_data(nhfp)) initrack();
+}
+
+// Autotranslated from track.c:88
+export function rest_track(nhfp) {
+  let i;
+  Sfi_int(nhfp, utcnt, "track-utcnt");
+  Sfi_int(nhfp, utpnt, "track-utpnt");
+  if (utcnt > UTSZ || utpnt > UTSZ) throw new Error('rest_track: impossible pt counts');
+  for (i = 0; i < utcnt; i++) {
+    Sfi_nhcoord(nhfp, utrack, "utrack");
+  }
+}

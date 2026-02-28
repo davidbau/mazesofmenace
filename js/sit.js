@@ -195,12 +195,12 @@ function throne_sit_effect(player, map, display) {
                     player.mhmax += 4;
                 player.mh = player.mhmax;
             }
-            if (player.hp >= (player.maxhp - 5)) {
+            if (player.uhp >= (player.maxhp - 5)) {
                 player.maxhp += 4;
                 if (player.maxhp > (player.hppeak || player.maxhp))
                     player.hppeak = player.maxhp;
             }
-            player.hp = player.maxhp;
+            player.uhp = player.maxhp;
             player.ucreamed = 0;
             // TODO: make_blinded(0, TRUE) — cure blindness
             // TODO: make_sick(0, null, FALSE, SICK_ALL) — cure sickness
@@ -397,7 +397,7 @@ export function dosit(player, map, display) {
     if (objs.length > 0 && !(trap && (trap.ttyp === 7 || trap.ttyp === 8))) {
         // Not teetering at a pit — sit on objects
         const obj = objs[0]; // top object
-        if (playerType.symbol === 30 /* S_DRAGON */ && obj.oclass === COIN_CLASS) {
+        if (playerType.mlet === 30 /* S_DRAGON */ && obj.oclass === COIN_CLASS) {
             You("coil up around your hoard.");
         } else {
             if (slithy(playerType))

@@ -32,7 +32,11 @@ export const TIMER_FUNC = {
     FIGURINE_TRANSFORM: 'FIGURINE_TRANSFORM',
     FALL_ASLEEP: 'FALL_ASLEEP',
     DO_STORMS: 'DO_STORMS',
+    MELT_ICE_AWAY: 'MELT_ICE_AWAY',
 };
+
+// C ref: timeout.h func_index enum value used by zap.c melt-ice timers.
+export const MELT_ICE_AWAY = TIMER_FUNC.MELT_ICE_AWAY;
 
 const MAX_EGG_HATCH_TIME = 200;
 
@@ -248,8 +252,21 @@ export function peek_timer(funcIndex, arg = null) {
     return match ? match.when : 0;
 }
 
-export function remove_timer(_base, _funcIndex, _arg) {
-    return stop_timer(_funcIndex, _arg);
+// Autotranslated from timeout.c:2474
+export function remove_timer(base, func_index, arg) {
+  let prev, curr;
+  for (prev = 0, curr = base; curr; prev = curr, curr = curr.next) {
+    if (curr.func_index === func_index && curr.arg.a_void === arg.a_void) {
+      break;
+    }
+  }
+  if (curr) {
+    if (prev) prev.next = curr.next;
+    else {
+       base = curr.next;
+    }
+  }
+  return curr;
 }
 
 export function insert_timer(timer) {
@@ -404,10 +421,10 @@ export function spot_time_expires(x, y, funcIndex) {
     return 0;
 }
 
-export function spot_time_left(x, y, funcIndex) {
-    const expires = spot_time_expires(x, y, funcIndex);
-    if (!expires) return 0;
-    return Math.max(0, expires - _currentTurn);
+// Autotranslated from timeout.c:2450
+export function spot_time_left(x, y, func_index, game) {
+  let expires = spot_time_expires(x, y, func_index);
+  return (expires > 0) ? expires - (Number(game?.moves) || 0) : 0;
 }
 
 // Timeout-driven gameplay behavior ------------------------------------------
@@ -778,7 +795,11 @@ export function do_storms() {
 
 export function stoned_dialogue() {}
 export function vomiting_dialogue() {}
-export function sleep_dialogue() {}
+// Autotranslated from timeout.c:267
+export function sleep_dialogue() {
+  let i = (HSleepy & TIMEOUT);
+  if (i === 4) You("yawn.");
+}
 export function choke_dialogue() {}
 export function sickness_dialogue() {}
 export function levitation_dialogue() {}
@@ -825,4 +846,39 @@ export function restoreTimers() {
 
 export function relinkTimers() {
     return relink_timers();
+}
+
+// Autotranslated from timeout.c:1192
+export function learn_egg_type(mnum, game) {
+  mnum = little_to_big(mnum);
+  game.mvitals[mnum].mvflags |= MV_KNOWS_EGG;
+  update_inventory();
+}
+
+// Autotranslated from timeout.c:2575
+export function mon_is_local(mon, game) {
+  let curr;
+  for (curr = game.migrating_mons; curr; curr = curr.nmon) {
+    if (curr === mon) return false;
+  }
+  for (curr = game.mydogs; curr; curr = curr.nmon) {
+    if (curr === mon) return false;
+  }
+  return true;
+}
+
+// Autotranslated from timeout.c:2594
+export function timer_is_local(timer) {
+  switch (timer.kind) {
+    case TIMER_LEVEL:
+      return true;
+    case TIMER_GLOBAL:
+      return false;
+    case TIMER_OBJECT:
+      return obj_is_local(timer.arg.a_obj);
+    case TIMER_MONSTER:
+      return mon_is_local(timer.arg.a_monst);
+  }
+  throw new Error('timer_is_local');
+  return false;
 }

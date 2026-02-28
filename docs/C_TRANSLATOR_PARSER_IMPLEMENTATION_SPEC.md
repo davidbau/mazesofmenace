@@ -15,6 +15,7 @@ This document is the parser/frontend implementation spec:
 Translator program architecture and governance live in:
 
 1. [C_TRANSLATOR_ARCHITECTURE_SPEC.md](/share/u/davidbau/git/mazesofmenace/game/docs/C_TRANSLATOR_ARCHITECTURE_SPEC.md)
+2. [C_TRANSLATOR_NIR_SPEC.md](/share/u/davidbau/git/mazesofmenace/game/docs/C_TRANSLATOR_NIR_SPEC.md)
 
 ## Purpose
 Specify the concrete parser and semantic-lowering strategy for C-to-JS translation in this repository, with enough structure-awareness to:
@@ -301,6 +302,34 @@ Phase P3: Async boundary pilot
 Phase P4: Core campaign integration
 
 1. couple parser translator output with Operation Iron Parity module waves.
+
+## Concrete Deliverables (M3)
+
+The parser/emitter hard parts are tracked as explicit deliverables with exit checks.
+
+1. `P3.1` Frontend TU loader:
+   1. deterministic parse of one target file (`hack.c` baseline),
+   2. compile-arg profile pinned in repo config.
+2. `P3.2` Source/PP provenance extractor:
+   1. macro invocation table with source spans,
+   2. expanded-token backreferences.
+3. `P3.3` NIR serializer:
+   1. function-level NIR JSON snapshots,
+   2. stable key ordering for diffability.
+4. `P3.4` CFG/control lowering prototype:
+   1. labels/goto graph extraction,
+   2. reducible-pattern tagging.
+5. `P3.5` Emitter baseline:
+   1. JS output for a safe helper function,
+   2. sidecars (`meta`, `diag`) emitted.
+6. `P3.6` Async-boundary inference prototype:
+   1. boundary-driven await placement validation on selected functions.
+
+Exit checks:
+
+1. Each `P3.x` has at least one deterministic fixture test.
+2. Re-running the same input yields byte-stable artifacts (except timestamps).
+3. Unsupported constructs appear in diagnostics, never silently dropped.
 
 ## Definition of Done (Parser Spec v1)
 

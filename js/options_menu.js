@@ -701,7 +701,7 @@ export async function handleSet(game) {
             }
             lines.push('(end)');
             display.clearScreen();
-            display.renderMap(game.map, player, game.fov, flags);
+            display.renderMap((game.lev || game.map), player, game.fov, flags);
             for (let i = 0; i < lines.length && i < display.rows; i++) {
                 const text = lines[i].substring(0, Math.max(0, display.cols - 41));
                 const attr = (i === 0) ? 1 : 0;
@@ -768,7 +768,7 @@ export async function handleSet(game) {
             lines.push("Toggle off 'autopickup' to not pick up anything.");
             lines.push('(end)');
             display.clearScreen();
-            display.renderMap(game.map, player, game.fov, flags);
+            display.renderMap((game.lev || game.map), player, game.fov, flags);
             // Session captures for this menu are column-shifted by one map cell.
             // Apply that shift in headless parity mode before drawing the right panel.
             if (Array.isArray(display.grid) && Array.isArray(display.colors) && Array.isArray(display.attrs)) {
@@ -900,7 +900,7 @@ export async function handleSet(game) {
     // Restore game display after exiting menu
     // Clear screen first to remove all menu text
     display.clearScreen();
-    display.renderMap(game.map, player, game.fov, flags);
+    display.renderMap((game.lev || game.map), player, game.fov, flags);
     display.renderStatus(player);
 
     return { moved: false, tookTime: false };

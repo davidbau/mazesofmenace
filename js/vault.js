@@ -210,7 +210,7 @@ export function free_egd(mtmp) {
 // cf. vault.c:234 [static] — in_fcorridor(grd, x, y)
 // Returns true if (x,y) is inside guard's fake corridor.
 // ========================================================================
-function in_fcorridor(grd, x, y) {
+export function in_fcorridor(grd, x, y) {
     const egrd = grd.egd;
     if (!egrd) return false;
     for (let fci = egrd.fcbeg; fci < egrd.fcend; fci++) {
@@ -329,7 +329,7 @@ function clear_fcorr(grd, forceshow, map, player, fov) {
 // cf. vault.c:117 [static] — restfakecorr(grd)
 // Attempts to clear the fake corridor; if successful, removes the guard.
 // ========================================================================
-function restfakecorr(grd, map, player, fov) {
+export function restfakecorr(grd, map, player, fov) {
     if (clear_fcorr(grd, false, map, player, fov)) {
         grd.isgd = 0;
         mongone(grd, map, player);
@@ -340,7 +340,7 @@ function restfakecorr(grd, map, player, fov) {
 // cf. vault.c:153 [static] — parkguard(grd)
 // Moves guard to <0,0> (off-map parking).
 // ========================================================================
-function parkguard(grd, map) {
+export function parkguard(grd, map) {
     // Either guard is dead or will now be treated as if so;
     // monster traversal loops should skip it
     if (grd.mx) {
@@ -362,19 +362,17 @@ function parkguard(grd, map) {
 // cf. vault.c:188 — grddead(grd)
 // Called when a vault guard dies. Cleans up fake corridors.
 // ========================================================================
-export function grddead(grd, map, player, fov) {
-    let dispose = clear_fcorr(grd, true, map, player, fov);
-    if (!dispose) {
-        // Destroy guard's gold; drop any other inventory
-        relobj(grd, map, false, false);
-        grd.mhp = 0;
-        parkguard(grd, map);
-        dispose = clear_fcorr(grd, true, map, player, fov);
-    }
-    if (dispose) {
-        grd.isgd = 0;
-    }
-    return dispose;
+// Autotranslated from vault.c:174
+export function grddead(grd) {
+  let dispose = clear_fcorr(grd, true);
+  if (!dispose) {
+    relobj(grd, 0, false);
+    grd.mhp = 0;
+    parkguard(grd);
+    dispose = clear_fcorr(grd, true);
+  }
+  if (dispose) grd.isgd = 0;
+  return dispose;
 }
 
 // ========================================================================
@@ -404,10 +402,9 @@ export function findgd(map, player) {
 // cf. vault.c:237 — vault_summon_gd()
 // Summons a vault guard if hero is in a vault and there isn't one already.
 // ========================================================================
-export function vault_summon_gd(map, player) {
-    if (vault_occupied(player.urooms || '', map) && !findgd(map, player)) {
-        player.uinvault = (VAULT_GUARD_TIME - 1);
-    }
+// Autotranslated from vault.c:236
+export function vault_summon_gd(player) {
+  if (vault_occupied(player.urooms) && !findgd()) player.uinvault = (VAULT_GUARD_TIME - 1);
 }
 
 // ========================================================================
@@ -618,7 +615,7 @@ function wallify_vault(grd, map, player, fov) {
 // cf. vault.c:733 [static] — gd_mv_monaway(grd, nx, ny)
 // Move any monster out of guard's way.
 // ========================================================================
-function gd_mv_monaway(grd, nx, ny, map, player, fov) {
+export function gd_mv_monaway(grd, nx, ny, map, player, fov) {
     const mtmp = map.monsterAt ? map.monsterAt(nx, ny) : null;
     if (mtmp && mtmp !== grd) {
         if (!player?.deaf) {
@@ -693,7 +690,7 @@ function gd_pick_corridor_gold(grd, goldx, goldy, map, player, fov) {
 // cf. vault.c:458 [static] — gd_letknow(grd)
 // Guard issues warning to hero.
 // ========================================================================
-function gd_letknow(grd, map, player, fov) {
+export function gd_letknow(grd, map, player, fov) {
     if (!cansee(map, player, fov, grd.mx, grd.my) || !mon_visible(grd, player)) {
         You_hear("%s.",
             m_carrying(grd, TIN_WHISTLE)
@@ -1466,8 +1463,9 @@ function contained_gold(container, even_if_unknown) {
 // cf. vault.c:921 — gd_sound()
 // Returns false if hero is in vault or guard is present (suppress footsteps).
 // ========================================================================
-export function gd_sound(map, player) {
-    return !(vault_occupied(player?.urooms || '', map) || findgd(map, player));
+// Autotranslated from vault.c:1271
+export function gd_sound(player) {
+  return !(vault_occupied(player.urooms) || findgd());
 }
 
 // ========================================================================

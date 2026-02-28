@@ -203,3 +203,59 @@ export function getrumor(truth, exclude_cookie) {
 // cf. rumors.c:939 — free_CapMons(): release CapMons[] memory
 // N/A: JS has garbage collection.
 // N/A: rumors.c:939 — free_CapMons()
+
+// Autotranslated from rumors.c:528
+export function outrumor(truth, mechanism, player) {
+  let fortune_msg = "This cookie has a scrap of paper inside.", line, buf;
+  let reading = (mechanism === BY_COOKIE || mechanism === BY_PAPER);
+  if (reading) {
+    if (is_fainted() && mechanism === BY_COOKIE) { return; }
+    else if ((player?.Blind || player?.blind || false)) {
+      if (mechanism === BY_COOKIE) pline(fortune_msg);
+      pline("What a pity that you cannot read it!");
+      return;
+    }
+  }
+  line = getrumor(truth, buf, reading ? false : true);
+  if (!line) line = "NetHack rumors file closed for renovation.";
+  switch (mechanism) {
+    case BY_ORACLE:
+      pline("True to her word, the Oracle %ssays: ", (!rn2(4) ? "offhandedly " : (!rn2(3) ? "casually " : (rn2(2) ? "nonchalantly " : ""))));
+    verbalize1(line);
+    return;
+    case BY_COOKIE:
+      pline(fortune_msg);
+    case BY_PAPER:
+      pline("It reads:");
+    break;
+  }
+  pline1(line);
+}
+
+// Autotranslated from rumors.c:576
+export function init_oracles(fp) {
+  let i, line, cnt = 0;
+  dlb_fgets(line, line.length, fp);
+  dlb_fgets(line, line.length, fp);
+  if (sscanf(line, "%5d\n", cnt) === 1 && cnt > 0) {
+    svo.oracle_cnt =  cnt;
+    svo.oracle_loc =  alloc( cnt * sizeof);
+    for (i = 0; i < cnt; i++) {
+      dlb_fgets(line, line.length, fp);
+      sscanf(line, "%5lx\n", svo.oracle_loc[i]);
+    }
+  }
+  return;
+}
+
+// Autotranslated from rumors.c:938
+export function free_CapMons() {
+  if (CapMons) {
+    let idx;
+    for (idx = CapMonstCnt; idx < CapMonSiz - 1; ++idx) {
+      (CapMons[idx], 0);
+    }
+    (CapMons, 0), CapMons =  0;
+  }
+  CapMonSiz = 0;
+}

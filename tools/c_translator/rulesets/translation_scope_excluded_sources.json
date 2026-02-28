@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "description": "Sources excluded from default translator campaign sweeps (tests, fixtures, and non-gameplay C subsystems).",
+  "sources": [
+    "nethack-c/src/sfbase.c",
+    "nethack-c/src/sfstruct.c",
+    "nethack-c/src/cfgfiles.c",
+    "nethack-c/src/files.c",
+    "nethack-c/src/nhlua.c",
+    "nethack-c/src/nhlobj.c",
+    "nethack-c/src/nhlsel.c",
+    "nethack-c/src/report.c",
+    "nethack-c/src/mail.c",
+    "nethack-c/src/nhmd4.c",
+    "nethack-c/src/coloratt.c",
+    "nethack-c/src/date.c"
+  ],
+  "source_globs": [
+    "test/**/*.c",
+    "**/test/**/*.c",
+    "**/tests/**/*.c",
+    "**/fixtures/**/*.c",
+    "nethack-c/sys/libnh/test/*.c"
+  ]
+}

@@ -16,15 +16,16 @@ function resolveMap(firstArg) {
     return firstArg && firstArg.at ? firstArg : null;
 }
 
-export function init_map(map, bgTyp) {
-    for (let x = 1; x < COLNO; x++) {
-        for (let y = 0; y < ROWNO; y++) {
-            const loc = map.locations[x][y];
-            loc.roomno = 0;
-            loc.typ = bgTyp;
-            loc.lit = 0;
-        }
+// Autotranslated from mkmap.c:23
+export function init_map(bg_typ, map) {
+  let x, y;
+  for (x = 1; x < COLNO; x++) {
+    for (y = 0; y < ROWNO; y++) {
+      map.locations[x][y].roomno = NO_ROOM;
+      map.locations[x][y].typ = bg_typ;
+      map.locations[x][y].lit = false;
     }
+  }
 }
 
 export function init_fill(map, bgTyp, fgTyp) {
@@ -40,11 +41,10 @@ export function init_fill(map, bgTyp, fgTyp) {
     }
 }
 
-export function get_map(map, x, y, bgTyp) {
-    if (x <= 0 || y < 0 || x > MKMAP_WIDTH || y >= MKMAP_HEIGHT) {
-        return bgTyp;
-    }
-    return map.locations[x][y].typ;
+// Autotranslated from mkmap.c:54
+export function get_map(col, row, bg_typ, map) {
+  if (col <= 0 || row < 0 || col > WIDTH || row >= HEIGHT) return bg_typ;
+  return map.locations[col][row].typ;
 }
 
 export function pass_one(map, bgTyp, fgTyp) {

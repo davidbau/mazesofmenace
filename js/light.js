@@ -338,16 +338,18 @@ export function snuff_light_source(x, y) {
 // cf. light.c:763 — obj_sheds_light(obj)
 // Returns true if object emits any light.
 // ========================================================================
+// Autotranslated from light.c:762
 export function obj_sheds_light(obj) {
-    return obj_is_burning(obj);
+  return obj_is_burning(obj);
 }
 
 // ========================================================================
 // cf. light.c:771 — obj_is_burning(obj)
 // Returns true if object is lit and will be snuffed by end_burn().
 // ========================================================================
+// Autotranslated from light.c:770
 export function obj_is_burning(obj) {
-    return !!(obj && obj.lamplit && (ignitable(obj) || artifact_light(obj)));
+  return (obj.lamplit && (ignitable(obj) || artifact_light(obj)));
 }
 
 // ========================================================================
@@ -441,18 +443,14 @@ export function candle_light_range(obj) {
 // cf. light.c:881 — arti_light_radius(obj)
 // Returns the light radius for a light-emitting artifact.
 // ========================================================================
+// Autotranslated from light.c:880
 export function arti_light_radius(obj) {
-    if (!obj.lamplit || !artifact_light(obj)) return 0;
-
-    // cursed=1, uncursed=2, blessed=3
-    let res = obj.blessed ? 3 : !obj.cursed ? 2 : 1;
-
-    // TODO: if poly'd into gold dragon with embedded scales (uskin), res = 1
-    if (obj.otyp === GOLD_DRAGON_SCALE_MAIL) {
-        ++res; // DSM but not scales gives more light
-    }
-
-    return res;
+  let res;
+  if (!obj.lamplit || !artifact_light(obj)) return 0;
+  res = (obj.blessed ? 3 : !obj.cursed ? 2 : 1);
+  if (obj === uskin) res = 1;
+  else if (obj.otyp === GOLD_DRAGON_SCALE_MAIL) ++res;
+  return res;
 }
 
 // ========================================================================

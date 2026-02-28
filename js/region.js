@@ -91,13 +91,14 @@ export function inside_rect(r, x, y) {
 // ========================================================================
 // cf. region.c:62 — inside_region(reg, x, y): is (x,y) in region?
 // ========================================================================
+// Autotranslated from region.c:62
 export function inside_region(reg, x, y) {
-    if (!reg || !inside_rect(reg.bounding_box, x, y))
-        return false;
-    for (let i = 0; i < reg.rects.length; i++)
-        if (inside_rect(reg.rects[i], x, y))
-            return true;
-    return false;
+  let i;
+  if (reg ===  0 || !inside_rect( (reg.bounding_box), x, y)) return false;
+  for (i = 0; i < reg.nrects; i++) {
+    if (inside_rect( (reg.rects[i]), x, y)) return true;
+  }
+  return false;
 }
 
 // ========================================================================
@@ -168,15 +169,16 @@ export function add_mon_to_reg(reg, mon) {
 // ========================================================================
 // cf. region.c:191 — remove_mon_from_reg(reg, mon): remove monster from region
 // ========================================================================
+// Autotranslated from region.c:191
 export function remove_mon_from_reg(reg, mon) {
-    for (let i = 0; i < reg.monsters.length; i++) {
-        if (reg.monsters[i] === mon.m_id) {
-            // Swap with last and pop (matches C's shift-last behavior)
-            reg.monsters[i] = reg.monsters[reg.monsters.length - 1];
-            reg.monsters.pop();
-            return;
-        }
+  let i;
+  for (i = 0; i < reg.n_monst; i++) {
+    if (reg.monsters[i] === mon.m_id) {
+      reg.n_monst--;
+      reg.monsters[i] = reg.monsters[reg.n_monst];
+      return;
     }
+  }
 }
 
 // ========================================================================
@@ -445,8 +447,10 @@ export function update_monster_region(mon, map) {
 // ========================================================================
 // cf. region.c:651 — reg_damg(reg): damage-per-turn for region
 // ========================================================================
+// Autotranslated from region.c:650
 export function reg_damg(reg) {
-    return (!reg.visible || reg.ttl === -2) ? 0 : reg.arg;
+  let damg = (!reg.visible || reg.ttl === -2) ? 0 : reg.arg.a_int;
+  return damg;
 }
 
 // ========================================================================
@@ -841,4 +845,15 @@ export function region_safety(map, player, game) {
         player.blindedTimeout = 0;
         player.blind = false;
     }
+}
+
+// Autotranslated from region.c:262
+export function free_region(reg) {
+  if (reg) {
+    if (reg.rects) (reg.rects, 0);
+    if (reg.monsters) (reg.monsters, 0);
+    if (reg.enter_msg) (reg.enter_msg, 0);
+    if (reg.leave_msg) (reg.leave_msg, 0);
+    (reg, 0);
+  }
 }

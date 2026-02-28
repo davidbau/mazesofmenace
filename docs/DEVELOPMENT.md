@@ -22,6 +22,177 @@ For C comparison testing (optional):
 - **ncurses-dev** (`libncurses-dev` on Linux, Xcode command line tools on macOS)
 - **tmux** (drives the C binary headlessly)
 
+## Practical Setup (This Repo Runtime)
+
+Use this as the default command setup for development and translator work in
+this repository.
+
+1. Check core tools:
+```bash
+node -v
+npm -v
+python3 -V
+conda --version
+```
+
+2. Use conda Python for translator tooling:
+```bash
+# Confirm conda base has pip + clang bindings
+conda run -n base python -m pip --version
+conda run -n base python -c "import clang, clang.cindex; print('clang ok')"
+```
+
+3. Run translator commands with conda Python:
+```bash
+conda run -n base python tools/c_translator/main.py --help
+
+# Example parse summary
+conda run -n base python tools/c_translator/main.py \
+  --src nethack-c/src/hack.c \
+  --emit parse-summary \
+  --out /tmp/hack.parse.json
+
+# File-wide translation capability summary
+conda run -n base python tools/c_translator/main.py \
+  --src nethack-c/src/hack.c \
+  --emit capability-summary \
+  --out /tmp/hack.capability.json
+
+# Multi-file capability matrix (for scale planning)
+conda run -n base python tools/c_translator/capability_matrix.py \
+  --src nethack-c/src/hack.c \
+  --src nethack-c/src/monmove.c \
+  --src nethack-c/src/zap.c \
+  --out /tmp/translator.capability.matrix.json
+# Note: default excludes apply from
+# tools/c_translator/rulesets/translation_scope_excluded_sources.json
+# (tests/fixtures + non-gameplay C subsystems). Use --no-exclude-sources
+# when intentionally running fixture-only translation checks.
+
+# Batch emit-helper generation (hundreds-scale sweeps)
+conda run -n base python tools/c_translator/batch_emit.py \
+  --src nethack-c/src/hack.c \
+  --src nethack-c/src/allmain.c \
+  --src nethack-c/src/getpos.c \
+  --out-dir /tmp/translator-batch \
+  --summary-out /tmp/translator-batch-summary.json
+
+# Select stitch-ready candidates from a batch summary
+conda run -n base python tools/c_translator/select_candidates.py \
+  --summary /tmp/translator-batch-summary.json \
+  --out /tmp/translator-batch-candidates.json
+
+# Optional: allow specific diag codes (for example CFG complexity review queue)
+conda run -n base python tools/c_translator/select_candidates.py \
+  --summary /tmp/translator-batch-summary.json \
+  --allow-diag CFG_COMPLEXITY \
+  --out /tmp/translator-batch-candidates-plus-cfg.json
+
+# Find clean candidates that already map to exported runtime JS functions
+conda run -n base python tools/c_translator/runtime_stitch_candidates.py \
+  --summary /tmp/translator-batch-summary.json \
+  --out /tmp/translator-runtime-stitch-candidates.json
+
+# Optional: override default translator-scope excludes
+conda run -n base python tools/c_translator/runtime_stitch_candidates.py \
+  --summary /tmp/translator-batch-summary.json \
+  --exclude-sources-file tools/c_translator/rulesets/translation_scope_excluded_sources.json \
+  --out /tmp/translator-runtime-stitch-candidates-gameplay.json
+
+# Heuristic safety lint for runtime candidates (unknown callee detection)
+conda run -n base python tools/c_translator/runtime_candidate_safety.py \
+  --candidates /tmp/translator-runtime-stitch-candidates.json \
+  --out /tmp/translator-runtime-stitch-safety.json
+
+# Apply runtime-safe candidates into JS modules (dry run by default)
+conda run -n base python tools/c_translator/runtime_stitch_apply.py \
+  --safety /tmp/translator-runtime-stitch-safety.json \
+  --repo-root .
+
+# Write stitched updates
+conda run -n base python tools/c_translator/runtime_stitch_apply.py \
+  --safety /tmp/translator-runtime-stitch-safety.json \
+  --repo-root . \
+  --write
+
+# Optional: skip known-bad auto-translations while stitching
+conda run -n base python tools/c_translator/runtime_stitch_apply.py \
+  --safety /tmp/translator-runtime-stitch-safety.json \
+  --repo-root . \
+  --denylist tools/c_translator/runtime_stitch_denylist.json \
+  --write
+
+# Optional: strict allowlist stitch (only listed pairs will be applied)
+conda run -n base python tools/c_translator/runtime_stitch_apply.py \
+  --safety /tmp/translator-runtime-stitch-safety.json \
+  --repo-root . \
+  --allowlist /tmp/translator-allowlist.json \
+  --write
+
+# Build a refactor queue from rejected safety/signature candidates
+# (capture stitch dry-run JSON first)
+conda run -n base python tools/c_translator/runtime_stitch_apply.py \
+  --safety /tmp/translator-runtime-stitch-safety.json \
+  --repo-root . \
+  --denylist tools/c_translator/runtime_stitch_denylist.json \
+  > /tmp/translator-runtime-stitch-apply.json
+conda run -n base python tools/c_translator/refactor_queue.py \
+  --safety /tmp/translator-runtime-stitch-safety.json \
+  --apply-summary /tmp/translator-runtime-stitch-apply.json \
+  --out /tmp/translator-refactor-queue.json
+
+# Hunt non-mechanical aliases and missing import/binding candidates
+conda run -n base python tools/c_translator/identifier_hunt.py \
+  --queue /tmp/translator-refactor-queue.json \
+  --out /tmp/translator-identifier-hunt.json
+
+# Audit currently-marked autotranslations against current pipeline categories
+conda run -n base python tools/c_translator/audit_marked_autotranslations.py \
+  --repo-root . \
+  --summary /tmp/translator-batch-full-summary.json \
+  --candidates /tmp/translator-runtime-stitch-candidates-full.json \
+  --safety /tmp/translator-runtime-stitch-safety-full.json \
+  --apply-summary /tmp/translator-runtime-stitch-apply-full.json \
+  --out /tmp/marked-autotranslation-audit.json
+
+# Audit C out-param and Sprintf/Snprintf patterns from batch metadata
+conda run -n base python tools/c_translator/audit_outparams_and_formatting.py \
+  --summary /tmp/translator-batch-full-summary.json \
+  --safety /tmp/translator-runtime-stitch-safety-full.json \
+  --out /tmp/outparam-format-audit.json
+```
+
+Notes:
+- `runtime_candidate_safety.py` now auto-detects strict alias matches where a
+  C identifier differs only by case/underscore from an existing module symbol.
+- It also consumes curated non-mechanical alias rules from
+  `tools/c_translator/rulesets/identifier_aliases.json`.
+- It now also rejects known semantic trap patterns even when syntax is valid:
+  pointer-style truthy loops, NUL-sentinel scalar writes, and whole-string
+  `highc/lowc` rewrites.
+- It also supports module-level semantic blocking via
+  `tools/c_translator/rulesets/semantic_block_modules.json` for files whose C
+  pointer/string idioms are not yet safely lowerable to JS.
+- `refactor_queue.py` emits these as `rename_alias` tasks so we can prioritize
+  canonical renames separately from true missing identifiers.
+
+4. Translator policy/annotation checks (Node scripts):
+```bash
+npm run -s translator:check-policy
+npm run -s translator:check-annotations
+```
+
+5. Core parity test loops:
+```bash
+npm run -s test:unit
+npm run -s test:session
+```
+
+Notes:
+- On some hosts, `/usr/bin/python3` may not include `pip` or `clang` bindings.
+- Prefer `conda run -n base python ...` for `tools/c_translator/*` commands to
+  ensure `clang.cindex` is available.
+
 ## Quick Start
 
 ```bash
@@ -168,6 +339,48 @@ When working on C-vs-JS parity, follow this rule:
 - Do not "fix to the trace" with JS-only heuristics when C code disagrees.
 - If a test reveals missing behavior, port the corresponding C logic path.
 - Keep changes incremental and keep tests green after each port batch.
+
+## Iron Parity Campaign Workflow
+
+For state-canonicalization and translator campaign work, use the Iron Parity
+docs as the planning authority:
+
+1. [IRON_PARITY_PLAN.md](/share/u/davidbau/git/mazesofmenace/game/docs/IRON_PARITY_PLAN.md)
+2. [C_FAITHFUL_STATE_REFACTOR_PLAN.md](/share/u/davidbau/git/mazesofmenace/game/docs/C_FAITHFUL_STATE_REFACTOR_PLAN.md)
+3. [C_TRANSLATOR_ARCHITECTURE_SPEC.md](/share/u/davidbau/git/mazesofmenace/game/docs/C_TRANSLATOR_ARCHITECTURE_SPEC.md)
+4. [C_TRANSLATOR_PARSER_IMPLEMENTATION_SPEC.md](/share/u/davidbau/git/mazesofmenace/game/docs/C_TRANSLATOR_PARSER_IMPLEMENTATION_SPEC.md)
+
+Required gating expectations for campaign changes:
+
+1. policy classification remains complete for all `js/*.js` files:
+   ```bash
+   npm run -s translator:check-policy
+   npm run -s translator:check-annotations
+   ```
+2. parity/test gates still apply (session replay evidence remains authoritative).
+3. no harness-side suppression of gameplay mismatches.
+4. campaign milestone naming should use shared `M0..M6` IDs from
+   `IRON_PARITY_PLAN.md` when documenting progress.
+
+Iron Parity GitHub workflow:
+
+1. Create or maintain these issue tiers:
+   - one campaign tracker epic (`IRON_PARITY: Campaign Tracker (M0-M6)`),
+   - one milestone issue per `M0..M6`,
+   - subsystem implementation issues linked to the milestone issue.
+2. Use labels:
+   - required: `parity`, `campaign:iron-parity`,
+   - one scope label: `state` | `translator` | `animation` | `parity-test` | `docs` | `infra`,
+   - optional active owner: `agent:<name>`.
+3. Include evidence-first parity body fields:
+   - `Session/Seed`,
+   - `First mismatch (step/index/channel)`,
+   - `Expected C`,
+   - `Actual JS`,
+   - `Suspected origin (file:function)`.
+4. Use dependency links:
+   - `Blocked by #<milestone-or-prereq>`
+   - `Blocks #<downstream>`
 
 ### Parity Backlog Intake Loop
 

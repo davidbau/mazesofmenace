@@ -23,7 +23,7 @@ import { objectData, WEAPON_CLASS, TOOL_CLASS, GEM_CLASS, BALL_CLASS, CHAIN_CLAS
 import { rnd, d, rn2 } from './rng.js';
 import { mon_hates_blessings, mon_hates_silver, mon_hates_light,
          thick_skinned, strongmonst, is_giant, resists_ston, likes_gems,
-         is_animal, is_mindless, touch_petrifies, attacktype,
+         is_animal, is_mindless, touch_petrifies, attacktype, x_monnam,
        } from './mondata.js';
 import { MZ_LARGE, S_EEL, S_SNAKE, S_XORN, S_DRAGON, S_JABBERWOCK,
          S_NAGA, S_WORM_TAIL, S_KOP, S_GIANT,
@@ -165,7 +165,7 @@ export function dmgval(otmp, mon) {
     if (otyp === CREAM_PIE) return 0;
 
     const ptr = mon?.type || mon?.data || {};
-    const isLarge = (ptr.size ?? 0) >= MZ_LARGE;
+    const isLarge = (ptr.msize ?? 0) >= MZ_LARGE;
     let tmp = 0;
 
     if (isLarge) {
@@ -236,7 +236,7 @@ export function special_dmgval(mon, obj = null) {
 export function silver_sears(mon, display) {
     if (!mon || !display) return false;
     if (!mon_hates_silver(mon)) return false;
-    display.putstr_message(`The silver sears ${monDisplayName(mon)}!`);
+    display.putstr_message(`The silver sears ${x_monnam(mon)}!`);
     return true;
 }
 
@@ -312,6 +312,7 @@ export function weapon_dam_bonus(weapon) {
 // ============================================================================
 // weapon_type — cf. weapon.c:1512
 // ============================================================================
+// Autotranslated from weapon.c:1511
 export function weapon_type(obj) {
     if (!obj) return P_BARE_HANDED_COMBAT;
     const od = objectData[obj.otyp];
@@ -319,7 +320,7 @@ export function weapon_type(obj) {
     if (od.oc_class !== WEAPON_CLASS && od.oc_class !== TOOL_CLASS
         && od.oc_class !== GEM_CLASS)
         return P_NONE;
-    const skill = od.sub || 0;  // oc_skill mapped to sub
+    const skill = od.sub || 0; // mapped from C oc_skill
     return skill < 0 ? -skill : skill;
 }
 
@@ -327,7 +328,7 @@ export function weapon_type(obj) {
 // oselect — cf. weapon.c:475
 // ============================================================================
 // Find one item of given type in monster inventory.
-function oselect(mtmp, type) {
+export function oselect(mtmp, type) {
     for (const otmp of (mtmp.minvent || [])) {
         if (otmp.otyp !== type) continue;
         // Never select non-cockatrice corpses/eggs
@@ -893,6 +894,8 @@ export function give_may_advance_msg(display = null) {
 }
 
 // C ref: weapon.c uwep_skill_type().
-export function uwep_skill_type(uwep = null) {
-    return weapon_type(uwep);
+// Autotranslated from weapon.c:1526
+export function uwep_skill_type(player = null) {
+  if (player?.twoweap) return P_TWO_WEAPON_COMBAT;
+  return weapon_type(player?.weapon || null);
 }

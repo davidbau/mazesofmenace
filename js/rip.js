@@ -31,3 +31,60 @@
 //   Notable difference: JS receives pre-split deathLines array rather than calling
 //   formatkiller() (JS formatkiller() is TODO in topten.js:13).
 // ALIGNED: rip.c:85 — genl_outrip() ↔ display.renderTombstone() (display.js:1135)
+
+// Autotranslated from rip.c:74
+export function center(line, text) {
+  let ip, op;
+  ip = text;
+  op = gr.rip[line][STONE_LINE_CENT - ((strlen(text) + 1) >> 1)];
+  while ( ip) {
+     op = ip++;
+  }
+}
+
+// Autotranslated from rip.c:84
+export function genl_outrip(tmpwin, how, when) {
+  let dp, dpx, buf, x, line, year, cash;
+  gr.rip = dp =  alloc(sizeof(rip_txt));
+  for (x = 0; rip_txt[x]; ++x) {
+    dp[x] = dupstr(rip_txt[x]);
+  }
+  dp[x] =  0;
+  Sprintf(buf, "%.*s",  STONE_LINE_LEN, svp.plname);
+  center(NAME_LINE, buf);
+  cash = Math.max(gd.done_money, 0);
+  if (cash > 999999999) cash = 999999999;
+  Sprintf(buf, "%ld Au", cash);
+  center(GOLD_LINE, buf);
+  formatkiller(buf, buf.length, how, false);
+  for (line = DEATH_LINE, dpx = buf; line < YEAR_LINE; line++) {
+    let tmpchar, i, i0 =  strlen(dpx);
+    if (i0 > STONE_LINE_LEN) {
+      for (i = STONE_LINE_LEN; (i > 0) && (i0 > STONE_LINE_LEN); --i) {
+        if (dpx[i] === ' ') i0 = i;
+      }
+      if (!i) i0 = STONE_LINE_LEN;
+    }
+    tmpchar = dpx[i0];
+    dpx[i0] = 0;
+    center(line, dpx);
+    if (tmpchar !== ' ') { dpx[i0] = tmpchar; dpx = dpx[i0]; }
+    else {
+      dpx = dpx[i0 + 1];
+    }
+  }
+  year =  ((yyyymmdd(when) / 10000) % 10000);
+  Sprintf(buf, "%4d", year);
+  center(YEAR_LINE, buf);
+  putstr(tmpwin, 0, "");
+  for ( dp; dp++; ) {
+    putstr(tmpwin, 0, dp);
+  }
+  putstr(tmpwin, 0, "");
+  putstr(tmpwin, 0, "");
+  for (x = 0; rip_txt[x]; x++) {
+    (gr.rip[x], 0);
+  }
+  (gr.rip, 0);
+  gr.rip = 0;
+}

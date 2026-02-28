@@ -10,17 +10,17 @@ const SEED_SZ_MAX = SZ * 8;   // 2048
 const GOLDEN = 0x9E3779B97F4A7C13n;
 
 // cf. isaac64.c:39 — extract SZ_LOG bits starting at bit 3
-function lower_bits(x) {
+export function lower_bits(x) {
     return Number((x >> 3n) & 0xFFn);
 }
 
 // cf. isaac64.c:45 — extract SZ_LOG bits starting at bit SZ_LOG+3 = 11
-function upper_bits(y) {
+export function upper_bits(y) {
     return Number((y >> 11n) & 0xFFn);
 }
 
 // cf. isaac64.c:103 — mix 8 values using alternating shift pattern
-function isaac64_mix(x) {
+export function isaac64_mix(x) {
     const SHIFT = [9, 9, 23, 15, 14, 20, 17, 14];
     for (let i = 0; i < 8; i++) {
         x[i] = (x[i] - x[(i + 4) & 7]) & MASK;
@@ -34,7 +34,7 @@ function isaac64_mix(x) {
 }
 
 // cf. isaac64.c:50 — generate next batch of 256 random values
-function isaac64_update(ctx) {
+export function isaac64_update(ctx) {
     const m = ctx.m;
     const r = ctx.r;
     let a = ctx.a;
@@ -170,19 +170,20 @@ export function isaac64_reseed(ctx, seed_bytes) {
 }
 
 // cf. isaac64.c:161 — return next random uint64
-export function isaac64_next_uint64(ctx) {
-    if (!ctx.n) isaac64_update(ctx);
-    return ctx.r[--ctx.n];
+// Autotranslated from isaac64.c:161
+export function isaac64_next_uint64(_ctx) {
+  if (!_ctx.n) isaac64_update(_ctx);
+  return _ctx.r[--_ctx.n];
 }
 
 // cf. isaac64.c:166 — return unbiased random value in [0, n)
-export function isaac64_next_uint(ctx, n) {
-    n = BigInt(n);
-    let r, v, d;
-    do {
-        r = isaac64_next_uint64(ctx);
-        v = r % n;
-        d = r - v;
-    } while (((d + n - 1n) & MASK) < d);
-    return v;
+// Autotranslated from isaac64.c:166
+export function isaac64_next_uint(_ctx, _n) {
+  let r, v, d;
+  do {
+    r=isaac64_next_uint64(_ctx);
+    v=r%_n;
+    d=r-v;
+  } while (((d+_n-1)&ISAAC64_MASK)<d);
+  return v;
 }

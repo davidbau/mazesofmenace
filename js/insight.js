@@ -27,7 +27,7 @@ import { A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC,
          A_STR, A_DEX, A_CON, A_INT, A_WIS, A_CHA } from './config.js';
 import { mons, MZ_TINY, MZ_SMALL, MZ_MEDIUM, MZ_LARGE, MZ_HUGE, MZ_GIGANTIC,
          PM_LONG_WORM, PM_HIGH_CLERIC, G_UNIQ, M2_PNAME, NUMMONS, LOW_PM } from './monsters.js';
-import { monDisplayName } from './mondata.js';
+import { x_monnam } from './mondata.js';
 import { find_mac } from './worn.js';
 import { pline } from './pline.js';
 import { showPager } from './pager.js';
@@ -193,7 +193,7 @@ const MSLOW = 1;
 
 // cf. insight.c:3295 — mstatusline(mtmp): monster probe/stethoscope status
 export function mstatusline(mtmp, game) {
-    const player = game ? game.player : null;
+    const player = game ? (game.u || game.player) : null;
     const mptr = mtmp.data || mons[mtmp.mndx] || {};
     const alignment = mptr.maligntyp != null ? Math.sign(mptr.maligntyp) : A_NONE;
 
@@ -263,12 +263,12 @@ export function mstatusline(mtmp, game) {
     if (mtmp.mleashed)
         info += ', leashed';
 
-    const monnm = monDisplayName(mtmp);
+    const monnm = x_monnam(mtmp);
     const mac = find_mac(mtmp);
 
     pline("Status of %s (%s, %s):  Level %s  HP %s(%s)  AC %s%s.",
-          monnm, align_str(alignment), size_str(mptr.size || MZ_MEDIUM),
-          String(mtmp.m_lev || mtmp.mlevel || 0),
+          monnm, align_str(alignment), size_str(mptr.msize || MZ_MEDIUM),
+          String(mtmp.m_lev || 0),
           String(mtmp.mhp || 0), String(mtmp.mhpmax || 0),
           String(mac), info);
 }
@@ -281,7 +281,7 @@ export function mstatusline(mtmp, game) {
 
 // cf. insight.c:3422 — ustatusline(void): hero probe/stethoscope status
 export function ustatusline(game) {
-    const player = game.player;
+    const player = (game.u || game.player);
     let info = '';
 
     // C: Sick
@@ -332,7 +332,7 @@ export function ustatusline(game) {
             info += ', engulfed by ';
         else
             info += ', held by ';
-        info += monDisplayName(player.ustuck);
+        info += x_monnam(player.ustuck);
     }
 
     const alignSuffix = align_str(player.alignment);
@@ -340,8 +340,8 @@ export function ustatusline(game) {
 
     pline("Status of %s (%s):  Level %s  HP %s(%s)  AC %s%s.",
           player.name, pious,
-          String(player.level || 1),
-          String(player.hp || 0), String(player.hpmax || 0),
+          String(player.ulevel || 1),
+          String(player.uhp || 0), String(player.uhpmax || 0),
           String(player.ac || 10), info);
 }
 
@@ -391,12 +391,12 @@ function hasIntrinsic(player, name) {
 let _enl_lines = [];
 
 // cf. insight.c:117 [static] — enlght_out(buf): output enlightenment text
-function enlght_out(buf) {
+export function enlght_out(buf) {
     _enl_lines.push(buf);
 }
 
 // cf. insight.c:126 [static] — enlght_line(start, middle, end, ps): build enl line
-function enlght_line(start, middle, end, ps) {
+export function enlght_line(start, middle, end, ps) {
     let buf = ` ${start}${middle}${end}${ps}.`;
     // Apply contractions (cf. C's contra[] array)
     const contractions = [
@@ -495,7 +495,7 @@ function enlght_halfdmg(category, final) {
 // ============================================================================
 
 // cf. insight.c:223 [static] — walking_on_water(void): active water walking check
-function walking_on_water(player, map) {
+export function walking_on_water(player, map) {
     if (player.uinwater || player.levitating || player.flying)
         return false;
     if (!player.waterWalking)
@@ -601,7 +601,7 @@ function fmt_elapsed_time(final, game) {
 
 // cf. insight.c:445 [static] — background_enlightenment(mode, final, game)
 function background_enlightenment(mode, final, game) {
-    const player = game.player;
+    const player = (game.u || game.player);
 
     enlght_out('');
     enlght_out('Background:');
@@ -609,7 +609,7 @@ function background_enlightenment(mode, final, game) {
     // Report role and level
     const roleName = player.roleName || player.role || 'Adventurer';
     const raceName = player.raceName || player.race || 'human';
-    const level = player.level || player.ulevel || 1;
+    const level = player.ulevel || 1;
     const rankTitle = player.rankTitle || roleName;
 
     if (rankTitle.toLowerCase() !== roleName.toLowerCase()) {
@@ -655,14 +655,14 @@ function background_enlightenment(mode, final, game) {
 
 // cf. insight.c:705 [static] — basics_enlightenment(mode, final, game)
 function basics_enlightenment(mode, final, game) {
-    const player = game.player;
+    const player = (game.u || game.player);
 
     enlght_out('');
     enlght_out('Basics:');
 
     // Hit points
-    let hp = player.hp || 0;
-    const hpmax = player.hpmax || 0;
+    let hp = player.uhp || 0;
+    const hpmax = player.uhpmax || 0;
     if (hp < 0) hp = 0;
 
     if (hp === hpmax && hpmax > 1)
@@ -708,7 +708,7 @@ function basics_enlightenment(mode, final, game) {
 // ============================================================================
 
 // cf. insight.c:804 [static] — characteristics_enlightenment(mode, final, game)
-function characteristics_enlightenment(mode, final, game) {
+export function characteristics_enlightenment(mode, final, game) {
     enlght_out('');
     enlght_out(`${!final ? '' : 'Final '}Characteristics:`);
 
@@ -725,8 +725,7 @@ function characteristics_enlightenment(mode, final, game) {
 // cf. insight.c:286 [static]
 // Format a characteristic value, handling Strength's 18/xx notation.
 // ============================================================================
-
-function attrval(attrindx, attrvalue) {
+export function attrval(attrindx, attrvalue) {
     if (attrindx !== A_STR || attrvalue <= 18)
         return String(attrvalue);
     else if (attrvalue > 118) // STR18(100) = 118
@@ -743,7 +742,7 @@ function attrval(attrindx, attrvalue) {
 
 // cf. insight.c:823 [static] — one_characteristic(mode, final, attrindx, game)
 function one_characteristic(mode, final, attrindx, game) {
-    const player = game.player;
+    const player = (game.u || game.player);
     const attrs = player.attributes || player.attrs || [];
     const acurrent = attrs[attrindx] || 0;
     const name = attrname[attrindx] || 'unknown';
@@ -763,8 +762,8 @@ function one_characteristic(mode, final, attrindx, game) {
 
 // cf. insight.c:917 [static] — status_enlightenment(mode, final, game)
 function status_enlightenment(mode, final, game) {
-    const player = game.player;
-    const map = game.map;
+    const player = (game.u || game.player);
+    const map = (game.lev || game.map);
 
     enlght_out('');
     enlght_out(final ? 'Final Status:' : 'Status:');
@@ -835,9 +834,9 @@ function status_enlightenment(mode, final, game) {
     }
     if (player.ustuck) {
         if (player.uswallow)
-            you_are(final, `swallowed by ${monDisplayName(player.ustuck)}`, '');
+            you_are(final, `swallowed by ${x_monnam(player.ustuck)}`, '');
         else
-            you_are(final, `held by ${monDisplayName(player.ustuck)}`, '');
+            you_are(final, `held by ${x_monnam(player.ustuck)}`, '');
     }
 
     // Hunger
@@ -876,8 +875,8 @@ function status_enlightenment(mode, final, game) {
 // ============================================================================
 
 // cf. insight.c:1247 [static] — weapon_insight(final, game)
-function weapon_insight(final, game) {
-    const player = game.player;
+export function weapon_insight(final, game) {
+    const player = (game.u || game.player);
     const uwep = player.uwep || player.weapon;
 
     if (!uwep) {
@@ -901,14 +900,14 @@ function weapon_insight(final, game) {
 // ============================================================================
 
 // cf. insight.c:2014 — doattributes(game): ^X attribute display command
-export async function doattributes(game) {
-    let mode = BASICENLIGHTENMENT;
-    // show more for wizard and explore modes
-    if (game.wizard || game.discover)
-        mode |= MAGICENLIGHTENMENT;
-
-    await enlightenment(mode, ENL_GAMEINPROGRESS, game);
-    return 0; // ECMD_OK
+// Autotranslated from insight.c:2013
+export function doattributes() {
+  let mode = BASICENLIGHTENMENT;
+  if (wizard || discover) {
+    mode |= MAGICENLIGHTENMENT;
+  }
+  enlightenment(mode, ENL_GAMEINPROGRESS);
+  return ECMD_OK;
 }
 
 // ============================================================================
@@ -918,7 +917,7 @@ export async function doattributes(game) {
 // ============================================================================
 
 async function enlightenment(mode, final, game) {
-    const player = game.player;
+    const player = (game.u || game.player);
     _enl_lines = [];
 
     const pname = (player.name || 'Hero');
@@ -957,6 +956,12 @@ async function enlightenment(mode, final, game) {
     }
 }
 
+// C ref: zap.c do_enlightenment_effect() uses MAGICENLIGHTENMENT in-game.
+// Exported for zap.js to preserve C ordering without duplicating insight internals.
+export async function run_magic_enlightenment_effect(game) {
+    await enlightenment(MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS, game);
+}
+
 // ============================================================================
 // doconduct
 // cf. insight.c:2086
@@ -964,9 +969,10 @@ async function enlightenment(mode, final, game) {
 // ============================================================================
 
 // cf. insight.c:2086 — doconduct(game): #conduct command handler
-export async function doconduct(game) {
-    await show_conduct(ENL_GAMEINPROGRESS, game);
-    return 0; // ECMD_OK
+// Autotranslated from insight.c:2085
+export async function doconduct() {
+  await show_conduct(ENL_GAMEINPROGRESS);
+  return ECMD_OK;
 }
 
 // ============================================================================
@@ -977,7 +983,7 @@ export async function doconduct(game) {
 
 // cf. insight.c:2094 — show_conduct(final, game): display conduct list
 export async function show_conduct(final, game) {
-    const player = game.player;
+    const player = (game.u || game.player);
     const conduct = player.uconduct || {};
     _enl_lines = [];
 
@@ -1149,9 +1155,13 @@ export function remove_achievement(achidx, player) {
 // ============================================================================
 
 // cf. insight.c:2504 — count_achievements(player): count current achievements
+// Autotranslated from insight.c:2503
 export function count_achievements(player) {
-    if (!player.uachieved) return 0;
-    return player.uachieved.length;
+  let i, acnt = 0;
+  for (i = 0; player.uachieved[i]; ++i) {
+    ++acnt;
+  }
+  return acnt;
 }
 
 // ============================================================================
@@ -1161,15 +1171,13 @@ export function count_achievements(player) {
 // ============================================================================
 
 // cf. insight.c:2527 — sokoban_in_play(game): check if sokoban entered
-export function sokoban_in_play(game) {
-    const player = game.player || game;
-    if (!player.uachieved) return false;
-
-    for (let i = 0; i < player.uachieved.length; i++) {
-        if (player.uachieved[i] === ACH_SOKO)
-            return true;
-    }
-    return false;
+// Autotranslated from insight.c:2526
+export function sokoban_in_play(player) {
+  let achidx;
+  for (achidx = 0; player.uachieved[achidx]; ++achidx) {
+    if (player.uachieved[achidx] === ACH_SOKO) return true;
+  }
+  return false;
 }
 
 // ============================================================================
@@ -1179,16 +1187,11 @@ export function sokoban_in_play(game) {
 // ============================================================================
 
 // cf. insight.c:2542 — do_gamelog(game): #chronicle command handler
-export async function do_gamelog(game) {
-    const player = game.player;
-    const gamelog = player.gamelog || game.gamelog;
-
-    if (gamelog && gamelog.length > 0) {
-        await show_gamelog(ENL_GAMEINPROGRESS, game);
-    } else {
-        pline("No chronicled events.");
-    }
-    return 0; // ECMD_OK
+// Autotranslated from insight.c:2541
+export async function do_gamelog() {
+  if (gg.gamelog) { await show_gamelog(ENL_GAMEINPROGRESS); }
+  else { pline("No chronicled events."); }
+  return ECMD_OK;
 }
 
 // ============================================================================
@@ -1199,7 +1202,7 @@ export async function do_gamelog(game) {
 
 // cf. insight.c:2571 — show_gamelog(final, game): display chronicle
 export async function show_gamelog(final, game) {
-    const player = game.player;
+    const player = (game.u || game.player);
     const gamelog = player.gamelog || game.gamelog || [];
 
     const lines = [];
@@ -1276,7 +1279,7 @@ function UniqCritterIndx(mndx) {
 // cf. insight.c:2794 — list_vanquished(defquery, ask, game): list vanquished
 export async function list_vanquished(defquery, ask, game) {
     // mvitals tracks .died counts per monster index
-    const mvitals = game.mvitals || (game.player && game.player.mvitals) || [];
+    const mvitals = game.mvitals || ((game.u || game.player) && (game.u || game.player).mvitals) || [];
     const sortmode = (game.flags && game.flags.vanq_sortmode) || VANQ_MLVL_MNDX;
 
     // Collect monster indices with kills
@@ -1322,7 +1325,7 @@ export async function list_vanquished(defquery, ask, game) {
                 const article = /^[aeiou]/i.test(mname) ? 'an' : 'a';
                 buf = `  ${article} ${mname}`;
             } else {
-                buf = `${String(nkilled).padStart(3)} ${makeplural_simple(mname)}`;
+                buf = `${String(nkilled).padStart(3)} ${makeplural(mname)}`;
             }
         }
         lines.push(buf);
@@ -1344,7 +1347,7 @@ function vanqsort_cmp(indx1, indx2, sortmode, mvitals) {
     switch (sortmode) {
     default:
     case VANQ_MLVL_MNDX:
-        res = (mons[indx2].level || 0) - (mons[indx1].level || 0);
+        res = (mons[indx2].mlevel || 0) - (mons[indx1].mlevel || 0);
         break;
     case VANQ_MSTR_MNDX:
         res = (mons[indx2].difficulty || 0) - (mons[indx1].difficulty || 0);
@@ -1367,12 +1370,12 @@ function vanqsort_cmp(indx1, indx2, sortmode, mvitals) {
     }
     case VANQ_MCLS_HTOL:
     case VANQ_MCLS_LTOH: {
-        const mcls1 = mons[indx1].symbol || 0;
-        const mcls2 = mons[indx2].symbol || 0;
+        const mcls1 = mons[indx1].mlet || 0;
+        const mcls2 = mons[indx2].mlet || 0;
         res = mcls1 - mcls2;
         if (res === 0) {
-            const mlev1 = mons[indx1].level || 0;
-            const mlev2 = mons[indx2].level || 0;
+            const mlev1 = mons[indx1].mlevel || 0;
+            const mlev2 = mons[indx2].mlevel || 0;
             res = mlev1 - mlev2;
             if (sortmode === VANQ_MCLS_HTOL) res = -res;
         }
@@ -1393,7 +1396,7 @@ function vanqsort_cmp(indx1, indx2, sortmode, mvitals) {
 }
 
 // Simple pluralization helper (for vanquished names)
-function makeplural_simple(word) {
+function makeplural(word) {
     if (!word) return 's';
     if (/(s|x|z|ch|sh)$/i.test(word)) return word + 'es';
     if (/[^aeiou]y$/i.test(word)) return word.slice(0, -1) + 'ies';
@@ -1411,7 +1414,7 @@ function makeplural_simple(word) {
 
 // cf. insight.c:2973 — num_genocides(game): count genocided species
 export function num_genocides(game) {
-    const mvitals = game.mvitals || (game.player && game.player.mvitals) || [];
+    const mvitals = game.mvitals || ((game.u || game.player) && (game.u || game.player).mvitals) || [];
     let n = 0;
 
     for (let i = LOW_PM; i < NUMMONS; i++) {
@@ -1429,16 +1432,16 @@ export function num_genocides(game) {
 // ============================================================================
 
 // cf. insight.c:2990 [static] — num_extinct(game): count extinct species
-function num_extinct(game) {
-    const mvitals = game.mvitals || (game.player && game.player.mvitals) || [];
-    let n = 0;
-
-    for (let i = LOW_PM; i < NUMMONS; i++) {
-        if (UniqCritterIndx(i)) continue;
-        if (mvitals[i] && (mvitals[i].mvflags & G_GONE) === G_EXTINCT)
-            n++;
+// Autotranslated from insight.c:2989
+export function num_extinct(game) {
+  let i, n = 0;
+  for (i = LOW_PM; i < NUMMONS; ++i) {
+    if (UniqCritterIndx(i)) {
+      continue;
     }
-    return n;
+    if ((game.mvitals[i].mvflags & G_GONE) === G_EXTINCT) ++n;
+  }
+  return n;
 }
 
 // ============================================================================
@@ -1450,7 +1453,7 @@ function num_extinct(game) {
 
 // cf. insight.c:3005 [static] — num_gone(mvflags_mask, game): collect gone species
 function num_gone(mvflags_mask, game) {
-    const mvitals = game.mvitals || (game.player && game.player.mvitals) || [];
+    const mvitals = game.mvitals || ((game.u || game.player) && (game.u || game.player).mvitals) || [];
     const mindx = [];
 
     for (let i = LOW_PM; i < NUMMONS; i++) {
@@ -1484,7 +1487,7 @@ export async function list_genocided(defquery, ask, game) {
         return;
     }
 
-    const mvitals = game.mvitals || (game.player && game.player.mvitals) || [];
+    const mvitals = game.mvitals || ((game.u || game.player) && (game.u || game.player).mvitals) || [];
     const sortmode = (game.flags && game.flags.vanq_sortmode) || VANQ_MLVL_MNDX;
 
     // Sort using the vanquished comparator
@@ -1500,7 +1503,7 @@ export async function list_genocided(defquery, ask, game) {
 
     for (const mndx of mindx) {
         const mname = (mons[mndx] && mons[mndx].name) || `monster #${mndx}`;
-        let buf = ` ${makeplural_simple(mname)}`;
+        let buf = ` ${makeplural(mname)}`;
         if (mvitals[mndx] && (mvitals[mndx].mvflags & G_GONE) === G_EXTINCT)
             buf += ' (extinct)';
         lines.push(buf);
@@ -1539,7 +1542,7 @@ export async function dogenocided(game) {
 
 // cf. insight.c:3165 — doborn(game): wizard born species command
 export async function doborn(game) {
-    const mvitals = game.mvitals || (game.player && game.player.mvitals) || [];
+    const mvitals = game.mvitals || ((game.u || game.player) && (game.u || game.player).mvitals) || [];
 
     const lines = [];
     lines.push('died born');
@@ -1571,4 +1574,13 @@ export async function doborn(game) {
         await showPager(game.display, lines.join('\n'), 'Monsters Born');
     }
     return 0; // ECMD_OK
+}
+
+// Autotranslated from insight.c:1444
+export function item_resistance_message(adtyp, prot_message, final) {
+  let protection = u_adtyp_resistance_obj(adtyp);
+  if (protection) {
+    let somewhat = protection < 99;
+    enl_msg("Your items ", somewhat ? "are somewhat" : "are", somewhat ? "were somewhat" : "were", prot_message, item_what(adtyp));
+  }
 }

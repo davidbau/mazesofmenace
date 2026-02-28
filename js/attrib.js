@@ -278,7 +278,7 @@ function Fixed_abil(player) {
 }
 
 // C: Upolyd
-function isUpolyd(player) {
+function Upolyd(player) {
     return !!(player.Upolyd || (player.mtimedone && player.mtimedone > 0));
 }
 
@@ -305,10 +305,10 @@ function encumber_msg(_player) {
 // Stub for losehp
 function losehp(player, dmg, knam, _k_format) {
     if (!player) return;
-    if (isUpolyd(player)) {
+    if (Upolyd(player)) {
         player.mh = (player.mh || 0) - dmg;
     } else {
-        player.hp -= dmg;
+        player.uhp -= dmg;
     }
 }
 
@@ -471,26 +471,24 @@ export function adjattrib(player, ndx, incr, msgflg) {
 }
 
 // cf. attrib.c:199 — gainstr(otmp, incr, givemsg)
-export function gainstr(player, otmp, incr, givemsg) {
-    let num = incr;
-
-    if (!num) {
-        if (ABASE(player, A_STR) < 18)
-            num = (rn2(4) ? 1 : rnd(6));
-        else if (ABASE(player, A_STR) < STR18(85))
-            num = rnd(10);
-        else
-            num = 1;
+// Autotranslated from attrib.c:199
+export function gainstr(otmp, incr, givemsg) {
+  let num = incr;
+  if (!num) {
+    if (ABASE(A_STR) < 18) num = (rn2(4) ? 1 : rnd(6));
+    else if (ABASE(A_STR) < STR18(85)) num = rnd(10);
+    else {
+      num = 1;
     }
-    adjattrib(player, A_STR, (otmp && otmp.cursed) ? -num : num,
-              givemsg ? -1 : 1);
+  }
+  adjattrib(A_STR, (otmp && otmp.cursed) ? -num : num, givemsg ? -1 : 1);
 }
 
 // cf. attrib.c:218 — losestr(num, knam, k_format)
 export function losestr(player, num, knam, k_format) {
     const uhpmin = minuhpmax(player, 1);
     let ustr = ABASE(player, A_STR) - num;
-    const waspolyd = isUpolyd(player);
+    const waspolyd = Upolyd(player);
     let dmg = 0;
 
     if (num <= 0 || ABASE(player, A_STR) < ATTRMIN(player, A_STR)) {
@@ -510,22 +508,23 @@ export function losestr(player, num, knam, k_format) {
         }
         losehp(player, dmg, knam, k_format);
 
-        if (isUpolyd(player)) {
+        if (Upolyd(player)) {
             setuhpmax(player, Math.max((player.mhmax || 1) - dmg, 1), false);
         } else if (!waspolyd) {
-            if ((player.hpmax || 1) > uhpmin)
-                setuhpmax(player, Math.max((player.hpmax || 1) - dmg, uhpmin), false);
+            if ((player.uhpmax || 1) > uhpmin)
+                setuhpmax(player, Math.max((player.uhpmax || 1) - dmg, uhpmin), false);
         }
     }
 
-    if (num > 0 && (isUpolyd(player) || !waspolyd))
+    if (num > 0 && (Upolyd(player) || !waspolyd))
         adjattrib(player, A_STR, -num, 1);
 }
 
 // cf. attrib.c:271 — poison_strdmg(strloss, dmg, knam, k_format)
-export function poison_strdmg(player, strloss, dmg, knam, k_format) {
-    losestr(player, strloss, knam, k_format);
-    losehp(player, dmg, knam, k_format);
+// Autotranslated from attrib.c:270
+export function poison_strdmg(strloss, dmg, knam, k_format) {
+  losestr(strloss, knam, k_format);
+  losehp(dmg, knam, k_format);
 }
 
 // cf. attrib.c:291 — poisontell(typ, exclaim)
@@ -571,12 +570,12 @@ export function poisoned(player, reason, typ, pkiller, fatal, thrown_weapon) {
     if (i === 0 && typ !== A_CHA) {
         // sometimes survivable instant kill
         const loss0 = 6 + d(4, 6); // 10..34
-        if (player.hp <= loss0) {
-            player.hp = -1;
+        if (player.uhp <= loss0) {
+            player.uhp = -1;
             pline_The("poison was deadly...");
         } else {
-            const olduhp = player.hp;
-            const newuhpmax = (player.hpmax || 1) - Math.floor(loss0 / 2);
+            const olduhp = player.uhp;
+            const newuhpmax = (player.uhpmax || 1) - Math.floor(loss0 / 2);
             setuhpmax(player, Math.max(newuhpmax, minuhpmax(player, 3)), true);
             const loss1 = adjuhploss(player, loss0, olduhp);
 
@@ -598,7 +597,7 @@ export function poisoned(player, reason, typ, pkiller, fatal, thrown_weapon) {
             poisontell(player, typ, true);
     }
 
-    if (player.hp < 1) {
+    if (player.uhp < 1) {
         player.deathCause = pkiller || "poison";
         done(strstri(pkiller || "", "poison") ? 0 /* DIED */ : 2 /* POISONING */, player);
     }
@@ -606,12 +605,11 @@ export function poisoned(player, reason, typ, pkiller, fatal, thrown_weapon) {
 }
 
 // cf. attrib.c:408 — change_luck(n)
-export function change_luck(player, n) {
-    player.luck = (player.luck || 0) + n;
-    if (player.luck < 0 && player.luck < LUCKMIN)
-        player.luck = LUCKMIN;
-    if (player.luck > 0 && player.luck > LUCKMAX)
-        player.luck = LUCKMAX;
+// Autotranslated from attrib.c:407
+export function change_luck(n, player) {
+  player.uluck += n;
+  if (player.uluck < 0 &player.uluck < LUCKMIN) player.uluck = LUCKMIN;
+  if (player.uluck > 0 &player.uluck > LUCKMAX) player.uluck = LUCKMAX;
 }
 
 // cf. attrib.c:420 — stone_luck(include_uncursed)
@@ -671,7 +669,7 @@ export function restore_attrib(player) {
 // This version is the faithful C port for use when full attribute mutation is needed.
 export function exercise(player, i, inc_or_dec) {
     if (i === A_INT || i === A_CHA) return;
-    if (isUpolyd(player) && i !== A_WIS) return;
+    if (Upolyd(player) && i !== A_WIS) return;
 
     if (Math.abs(AEXE(player, i)) < AVAL) {
         if (inc_or_dec) {
@@ -787,7 +785,7 @@ export function exerchk(player) {
                 setAEXE(player, i, Math.floor(Math.abs(ax) / 2) * mod_val);
                 continue;
             }
-            if (isUpolyd(player) && i !== A_WIS) {
+            if (Upolyd(player) && i !== A_WIS) {
                 setAEXE(player, i, Math.floor(Math.abs(ax) / 2) * mod_val);
                 continue;
             }
@@ -867,32 +865,33 @@ export function init_attr(player, np) {
 }
 
 // cf. attrib.c:737 — redist_attr()
-export function redist_attr(player) {
-    ensureAttrArrays(player);
-
-    for (let i = 0; i < NUM_ATTRS; i++) {
-        if (i === A_INT || i === A_WIS) continue;
-        const tmp = AMAX(player, i);
-        let newmax = tmp + (rn2(5) - 2);
-        if (newmax > ATTRMAX(player, i)) newmax = ATTRMAX(player, i);
-        if (newmax < ATTRMIN(player, i)) newmax = ATTRMIN(player, i);
-        setAMAX(player, i, newmax);
-        let newbase = Math.floor(ABASE(player, i) * newmax / tmp);
-        if (newbase < ATTRMIN(player, i)) newbase = ATTRMIN(player, i);
-        setABASE(player, i, newbase);
+// Autotranslated from attrib.c:736
+export function redist_attr() {
+  let i, tmp;
+  for (i = 0; i < A_MAX; i++) {
+    if (i === A_INT || i === A_WIS) {
+      continue;
     }
+    tmp = AMAX(i);
+    AMAX(i) += (rn2(5) - 2);
+    if (AMAX(i) > ATTRMAX(i)) AMAX(i) = ATTRMAX(i);
+    if (AMAX(i) < ATTRMIN(i)) AMAX(i) = ATTRMIN(i);
+    ABASE(i) = ABASE(i) * AMAX(i) / tmp;
+    if (ABASE(i) < ATTRMIN(i)) ABASE(i) = ATTRMIN(i);
+  }
 }
 
 // cf. attrib.c:761 — vary_init_attr()
-export function vary_init_attr(player) {
-    for (let i = 0; i < NUM_ATTRS; i++) {
-        if (!rn2(20)) {
-            const xd = rn2(7) - 2;
-            adjattrib(player, i, xd, true);
-            if (ABASE(player, i) < AMAX(player, i))
-                setAMAX(player, i, ABASE(player, i));
-        }
+// Autotranslated from attrib.c:760
+export function vary_init_attr() {
+  let i;
+  for (i = 0; i < A_MAX; i++) {
+    if (!rn2(20)) {
+      let xd = rn2(7) - 2;
+      adjattrib(i, xd, true);
+      if (ABASE(i) < AMAX(i)) AMAX(i) = ABASE(i);
     }
+  }
 }
 
 // cf. attrib.c:777 — postadjabil(propid) [static]
@@ -902,7 +901,7 @@ function postadjabil(propid) {
 }
 
 // cf. attrib.c:786 — role_abil(r) [static]
-function role_abil(r) {
+export function role_abil(r) {
     const roleabils = {
         [PM_ARCHEOLOGIST]: arc_abil,
         [PM_BARBARIAN]: bar_abil,
@@ -939,7 +938,7 @@ function check_innate_abil(player, propid, frommask) {
     }
 
     if (!abil) return null;
-    const ulevel = player.level || 1;
+    const ulevel = player.ulevel || 1;
     for (const entry of abil) {
         if (entry.propid === propid && ulevel >= entry.ulevel)
             return entry;
@@ -948,7 +947,7 @@ function check_innate_abil(player, propid, frommask) {
 }
 
 // cf. attrib.c:861 — innately(player, propid) [static]
-function innately(player, propid) {
+export function innately(player, propid) {
     let iptr;
 
     if ((iptr = check_innate_abil(player, propid, FROMEXPER)) !== null)
@@ -1087,7 +1086,7 @@ export function newhp(player) {
     const raceHpadv = race.hpadv || {infix:2, inrnd:0, lofix:0, lornd:2, hifix:1, hirnd:0};
     let hp;
 
-    if ((player.level || 0) === 0) {
+    if ((player.ulevel || 0) === 0) {
         hp = roleHpadv.infix + raceHpadv.infix;
         if (roleHpadv.inrnd > 0)
             hp += rnd(roleHpadv.inrnd);
@@ -1099,7 +1098,7 @@ export function newhp(player) {
             // Already done in u_init; included here for C parity
         }
     } else {
-        if (player.level < (role.xlev || 14)) {
+        if (player.ulevel < (role.xlev || 14)) {
             hp = roleHpadv.lofix + raceHpadv.lofix;
             if (roleHpadv.lornd > 0) hp += rnd(roleHpadv.lornd);
             if (raceHpadv.lornd > 0) hp += rnd(raceHpadv.lornd);
@@ -1121,11 +1120,11 @@ export function newhp(player) {
     }
     if (hp <= 0) hp = 1;
 
-    if ((player.level || 0) < MAXULEV) {
+    if ((player.ulevel || 0) < MAXULEV) {
         if (!player.uhpinc) player.uhpinc = [];
-        player.uhpinc[player.level || 0] = hp;
+        player.uhpinc[player.ulevel || 0] = hp;
     } else {
-        let lim = 5 - Math.floor((player.hpmax || 0) / 300);
+        let lim = 5 - Math.floor((player.uhpmax || 0) / 300);
         lim = Math.max(lim, 1);
         if (hp > lim) hp = lim;
     }
@@ -1135,19 +1134,19 @@ export function newhp(player) {
 // cf. attrib.c:1144 — minuhpmax(altmin)
 export function minuhpmax(player, altmin) {
     if (altmin < 1) altmin = 1;
-    return Math.max(player.level || 1, altmin);
+    return Math.max(player.ulevel || 1, altmin);
 }
 
 // cf. attrib.c:1154 — setuhpmax(newmax, even_when_polyd)
 export function setuhpmax(player, newmax, even_when_polyd) {
-    if (!isUpolyd(player) || even_when_polyd) {
-        if (newmax !== (player.hpmax || 0)) {
-            player.hpmax = newmax;
-            if (player.hpmax > (player.uhppeak || 0))
-                player.uhppeak = player.hpmax;
+    if (!Upolyd(player) || even_when_polyd) {
+        if (newmax !== (player.uhpmax || 0)) {
+            player.uhpmax = newmax;
+            if (player.uhpmax > (player.uhppeak || 0))
+                player.uhppeak = player.uhpmax;
         }
-        if (player.hp > player.hpmax)
-            player.hp = player.hpmax;
+        if (player.uhp > player.uhpmax)
+            player.uhp = player.uhpmax;
     } else {
         // Upolyd
         if (newmax !== (player.mhmax || 0)) {
@@ -1160,9 +1159,9 @@ export function setuhpmax(player, newmax, even_when_polyd) {
 
 // cf. attrib.c:1179 — adjuhploss(loss, olduhp)
 export function adjuhploss(player, loss, olduhp) {
-    if (!isUpolyd(player)) {
-        if (player.hp < olduhp)
-            loss -= (olduhp - player.hp);
+    if (!Upolyd(player)) {
+        if (player.uhp < olduhp)
+            loss -= (olduhp - player.uhp);
     } else {
         if ((player.mh || 0) < olduhp)
             loss -= (olduhp - (player.mh || 0));
@@ -1249,7 +1248,7 @@ export function uchangealign(player, newalign, reason) {
 }
 
 // Export utility functions for use by other modules
-export { acurr as ACURR };
+
 export { ensureAttrArrays };
 export { STR18, STR19 };
 export { AVAL, LUCKMIN, LUCKMAX, LUCKADD };

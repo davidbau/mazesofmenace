@@ -1,0 +1,1689 @@
+{
+  "alias_candidates": [
+    {
+      "candidates": [
+        {
+          "score": 0.923,
+          "target": "map_invisible"
+        }
+      ],
+      "identifier": "unmap_invisible",
+      "js_module": "js/detect.js"
+    },
+    {
+      "candidates": [
+        {
+          "score": 0.923,
+          "target": "set_wounded_legs"
+        }
+      ],
+      "identifier": "EWounded_legs",
+      "js_module": "js/do.js"
+    },
+    {
+      "candidates": [
+        {
+          "score": 0.8,
+          "target": "rndmonnam"
+        }
+      ],
+      "identifier": "Monnam",
+      "js_module": "js/do.js"
+    },
+    {
+      "candidates": [
+        {
+          "score": 0.88,
+          "target": "set_wounded_legs"
+        }
+      ],
+      "identifier": "Wounded_legs",
+      "js_module": "js/do.js"
+    },
+    {
+      "candidates": [
+        {
+          "score": 0.909,
+          "target": "doname"
+        }
+      ],
+      "identifier": "ONAME",
+      "js_module": "js/invent.js"
+    },
+    {
+      "candidates": [
+        {
+          "score": 0.909,
+          "target": "addinv_core2"
+        },
+        {
+          "score": 0.909,
+          "target": "addinv_core1"
+        }
+      ],
+      "identifier": "addinv_core0",
+      "js_module": "js/invent.js"
+    },
+    {
+      "candidates": [
+        {
+          "score": 0.909,
+          "target": "doname"
+        }
+      ],
+      "identifier": "oname",
+      "js_module": "js/invent.js"
+    },
+    {
+      "candidates": [
+        {
+          "score": 0.824,
+          "target": "NUM_OBJECTS"
+        }
+      ],
+      "identifier": "objects",
+      "js_module": "js/mkobj.js"
+    },
+    {
+      "candidates": [
+        {
+          "score": 0.8,
+          "target": "canseemon"
+        }
+      ],
+      "identifier": "cansee",
+      "js_module": "js/shk.js"
+    }
+  ],
+  "binding_candidates": [
+    {
+      "exported_in": [
+        "js/symbols.js"
+      ],
+      "identifier": "IS_TREE",
+      "js_module": "js/apply.js"
+    },
+    {
+      "exported_in": [
+        "js/weapon.js"
+      ],
+      "identifier": "P_BASIC",
+      "js_module": "js/apply.js"
+    },
+    {
+      "exported_in": [
+        "js/weapon.js"
+      ],
+      "identifier": "P_SKILLED",
+      "js_module": "js/apply.js"
+    },
+    {
+      "exported_in": [
+        "js/shk.js"
+      ],
+      "identifier": "Shk_Your",
+      "js_module": "js/apply.js"
+    },
+    {
+      "exported_in": [
+        "js/config.js"
+      ],
+      "identifier": "TIMEOUT",
+      "js_module": "js/apply.js"
+    },
+    {
+      "exported_in": [
+        "js/objnam.js"
+      ],
+      "identifier": "Yname2",
+      "js_module": "js/apply.js"
+    },
+    {
+      "exported_in": [
+        "js/zap.js"
+      ],
+      "identifier": "bhit",
+      "js_module": "js/apply.js"
+    },
+    {
+      "exported_in": [
+        "js/do.js"
+      ],
+      "identifier": "boulder_hits_pool",
+      "js_module": "js/apply.js"
+    },
+    {
+      "exported_in": [
+        "js/vision.js"
+      ],
+      "identifier": "cansee",
+      "js_module": "js/apply.js"
+    },
+    {
+      "exported_in": [
+        "js/mondata.js"
+      ],
+      "identifier": "canseemon",
+      "js_module": "js/apply.js"
+    },
+    {
+      "exported_in": [
+        "js/vision.js"
+      ],
+      "identifier": "couldsee",
+      "js_module": "js/apply.js"
+    },
+    {
+      "exported_in": [
+        "js/uhitm.js"
+      ],
+      "identifier": "flash_hits_mon",
+      "js_module": "js/apply.js"
+    },
+    {
+      "exported_in": [
+        "js/zap.js"
+      ],
+      "identifier": "get_obj_location",
+      "js_module": "js/apply.js"
+    },
+    {
+      "exported_in": [
+        "js/mondata.js"
+      ],
+      "identifier": "is_floater",
+      "js_module": "js/apply.js"
+    },
+    {
+      "exported_in": [
+        "js/mondata.js"
+      ],
+      "identifier": "is_flyer",
+      "js_module": "js/apply.js"
+    },
+    {
+      "exported_in": [
+        "js/dbridge.js"
+      ],
+      "identifier": "is_pool",
+      "js_module": "js/apply.js"
+    },
+    {
+      "exported_in": [
+        "js/dbridge.js"
+      ],
+      "identifier": "is_pool_or_lava",
+      "js_module": "js/apply.js"
+    },
+    {
+      "exported_in": [
+        "js/hack.js"
+      ],
+      "identifier": "may_passwall",
+      "js_module": "js/apply.js"
+    },
+    {
+      "exported_in": [
+        "js/wizard.js"
+      ],
+      "identifier": "mon_has_amulet",
+      "js_module": "js/apply.js"
+    },
+    {
+      "exported_in": [
+        "js/mondata.js"
+      ],
+      "identifier": "passes_walls",
+      "js_module": "js/apply.js"
+    },
+    {
+      "exported_in": [
+        "js/pline.js"
+      ],
+      "identifier": "set_msg_xy",
+      "js_module": "js/apply.js"
+    },
+    {
+      "exported_in": [
+        "js/invent.js"
+      ],
+      "identifier": "sobj_at",
+      "js_module": "js/apply.js"
+    },
+    {
+      "exported_in": [
+        "js/mondata.js"
+      ],
+      "identifier": "throws_rocks",
+      "js_module": "js/apply.js"
+    },
+    {
+      "exported_in": [
+        "js/light.js"
+      ],
+      "identifier": "transient_light_cleanup",
+      "js_module": "js/apply.js"
+    },
+    {
+      "exported_in": [
+        "js/invent.js"
+      ],
+      "identifier": "update_inventory",
+      "js_module": "js/apply.js"
+    },
+    {
+      "exported_in": [
+        "js/weapon.js"
+      ],
+      "identifier": "uwep_skill_type",
+      "js_module": "js/apply.js"
+    },
+    {
+      "exported_in": [
+        "js/end.js"
+      ],
+      "identifier": "KILLED_BY",
+      "js_module": "js/attrib.js"
+    },
+    {
+      "exported_in": [
+        "js/invent.js"
+      ],
+      "identifier": "carrying",
+      "js_module": "js/attrib.js"
+    },
+    {
+      "exported_in": [
+        "js/pline.js"
+      ],
+      "identifier": "impossible",
+      "js_module": "js/attrib.js"
+    },
+    {
+      "exported_in": [
+        "js/dungeon.js"
+      ],
+      "identifier": "Is_branchlev",
+      "js_module": "js/bones.js"
+    },
+    {
+      "exported_in": [
+        "js/config.js",
+        "js/symbols.js"
+      ],
+      "identifier": "MAGIC_PORTAL",
+      "js_module": "js/bones.js"
+    },
+    {
+      "exported_in": [
+        "js/dungeon.js"
+      ],
+      "identifier": "ledger_no",
+      "js_module": "js/bones.js"
+    },
+    {
+      "exported_in": [
+        "js/dungeon.js"
+      ],
+      "identifier": "maxledgerno",
+      "js_module": "js/bones.js"
+    },
+    {
+      "exported_in": [
+        "js/objects.js"
+      ],
+      "identifier": "LENSES",
+      "js_module": "js/detect.js"
+    },
+    {
+      "exported_in": [
+        "js/do_name.js"
+      ],
+      "identifier": "Monnam",
+      "js_module": "js/detect.js"
+    },
+    {
+      "exported_in": [
+        "js/artifacts.js"
+      ],
+      "identifier": "SPFX_SEARCH",
+      "js_module": "js/detect.js"
+    },
+    {
+      "exported_in": [
+        "js/objnam.js"
+      ],
+      "identifier": "an",
+      "js_module": "js/detect.js"
+    },
+    {
+      "exported_in": [
+        "js/mondata.js"
+      ],
+      "identifier": "digests",
+      "js_module": "js/detect.js"
+    },
+    {
+      "exported_in": [
+        "js/windows.js"
+      ],
+      "identifier": "display_nhwindow",
+      "js_module": "js/detect.js"
+    },
+    {
+      "exported_in": [
+        "js/mhitu.js"
+      ],
+      "identifier": "expels",
+      "js_module": "js/detect.js"
+    },
+    {
+      "exported_in": [
+        "js/artifact.js"
+      ],
+      "identifier": "spec_ability",
+      "js_module": "js/detect.js"
+    },
+    {
+      "exported_in": [
+        "js/region.js"
+      ],
+      "identifier": "visible_region_at",
+      "js_module": "js/detect.js"
+    },
+    {
+      "exported_in": [
+        "js/do_name.js"
+      ],
+      "identifier": "Monnam",
+      "js_module": "js/do.js"
+    },
+    {
+      "exported_in": [
+        "js/teleport.js"
+      ],
+      "identifier": "RLOC_NOMSG",
+      "js_module": "js/do.js"
+    },
+    {
+      "exported_in": [
+        "js/config.js"
+      ],
+      "identifier": "TIMEOUT",
+      "js_module": "js/do.js"
+    },
+    {
+      "exported_in": [
+        "js/objnam.js"
+      ],
+      "identifier": "an",
+      "js_module": "js/do.js"
+    },
+    {
+      "exported_in": [
+        "js/dungeon.js"
+      ],
+      "identifier": "assign_level",
+      "js_module": "js/do.js"
+    },
+    {
+      "exported_in": [
+        "js/hacklib.js",
+        "js/monutil.js"
+      ],
+      "identifier": "dist2",
+      "js_module": "js/do.js"
+    },
+    {
+      "exported_in": [
+        "js/invent.js"
+      ],
+      "identifier": "freeinv",
+      "js_module": "js/do.js"
+    },
+    {
+      "exported_in": [
+        "js/minion.js"
+      ],
+      "identifier": "gain_guardian_angel",
+      "js_module": "js/do.js"
+    },
+    {
+      "exported_in": [
+        "js/zap.js"
+      ],
+      "identifier": "get_obj_location",
+      "js_module": "js/do.js"
+    },
+    {
+      "exported_in": [
+        "js/mondata.js"
+      ],
+      "identifier": "is_displacer",
+      "js_module": "js/do.js"
+    },
+    {
+      "exported_in": [
+        "js/dungeon.js"
+      ],
+      "identifier": "ledger_no",
+      "js_module": "js/do.js"
+    },
+    {
+      "exported_in": [
+        "js/pline.js"
+      ],
+      "identifier": "livelog_printf",
+      "js_module": "js/do.js"
+    },
+    {
+      "exported_in": [
+        "js/timeout.js"
+      ],
+      "identifier": "obj_has_timer",
+      "js_module": "js/do.js"
+    },
+    {
+      "exported_in": [
+        "js/dungeon.js"
+      ],
+      "identifier": "on_level",
+      "js_module": "js/do.js"
+    },
+    {
+      "exported_in": [
+        "js/objnam.js"
+      ],
+      "identifier": "otense",
+      "js_module": "js/do.js"
+    },
+    {
+      "exported_in": [
+        "js/priest.js"
+      ],
+      "identifier": "reset_hostility",
+      "js_module": "js/do.js"
+    },
+    {
+      "exported_in": [
+        "js/teleport.js"
+      ],
+      "identifier": "rloc",
+      "js_module": "js/do.js"
+    },
+    {
+      "exported_in": [
+        "js/dig.js"
+      ],
+      "identifier": "rot_corpse",
+      "js_module": "js/do.js"
+    },
+    {
+      "exported_in": [
+        "js/mkobj.js"
+      ],
+      "identifier": "set_corpsenm",
+      "js_module": "js/do.js"
+    },
+    {
+      "exported_in": [
+        "js/dokick.js"
+      ],
+      "identifier": "ship_object",
+      "js_module": "js/do.js"
+    },
+    {
+      "exported_in": [
+        "js/timeout.js"
+      ],
+      "identifier": "start_timer",
+      "js_module": "js/do.js"
+    },
+    {
+      "exported_in": [
+        "js/hacklib.js"
+      ],
+      "identifier": "strncmpi",
+      "js_module": "js/do.js"
+    },
+    {
+      "exported_in": [
+        "js/objnam.js"
+      ],
+      "identifier": "vtense",
+      "js_module": "js/do.js"
+    },
+    {
+      "exported_in": [
+        "js/config.js"
+      ],
+      "identifier": "A_WIS",
+      "js_module": "js/engrave.js"
+    },
+    {
+      "exported_in": [
+        "js/makemon.js",
+        "js/teleport.js"
+      ],
+      "identifier": "NO_MM_FLAGS",
+      "js_module": "js/engrave.js"
+    },
+    {
+      "exported_in": [
+        "js/monsters.js"
+      ],
+      "identifier": "PM_GHOUL",
+      "js_module": "js/engrave.js"
+    },
+    {
+      "exported_in": [
+        "js/dungeon.js"
+      ],
+      "identifier": "ceiling",
+      "js_module": "js/engrave.js"
+    },
+    {
+      "exported_in": [
+        "js/monsters.js"
+      ],
+      "identifier": "mons",
+      "js_module": "js/engrave.js"
+    },
+    {
+      "exported_in": [
+        "js/mkmaze.js"
+      ],
+      "identifier": "set_levltyp",
+      "js_module": "js/engrave.js"
+    },
+    {
+      "exported_in": [
+        "js/hacklib.js"
+      ],
+      "identifier": "strstri",
+      "js_module": "js/engrave.js"
+    },
+    {
+      "exported_in": [
+        "js/symbols.js"
+      ],
+      "identifier": "S_cloud",
+      "js_module": "js/fountain.js"
+    },
+    {
+      "exported_in": [
+        "js/hack.js"
+      ],
+      "identifier": "in_town",
+      "js_module": "js/fountain.js"
+    },
+    {
+      "exported_in": [
+        "js/objnam.js"
+      ],
+      "identifier": "makeplural",
+      "js_module": "js/fountain.js"
+    },
+    {
+      "exported_in": [
+        "js/mkmaze.js"
+      ],
+      "identifier": "set_levltyp",
+      "js_module": "js/fountain.js"
+    },
+    {
+      "exported_in": [
+        "js/insight.js"
+      ],
+      "identifier": "ACH_AMUL",
+      "js_module": "js/invent.js"
+    },
+    {
+      "exported_in": [
+        "js/insight.js"
+      ],
+      "identifier": "ACH_BELL",
+      "js_module": "js/invent.js"
+    },
+    {
+      "exported_in": [
+        "js/insight.js"
+      ],
+      "identifier": "ACH_BOOK",
+      "js_module": "js/invent.js"
+    },
+    {
+      "exported_in": [
+        "js/insight.js"
+      ],
+      "identifier": "ACH_CNDL",
+      "js_module": "js/invent.js"
+    },
+    {
+      "exported_in": [
+        "js/insight.js"
+      ],
+      "identifier": "ACH_MINE_PRIZE",
+      "js_module": "js/invent.js"
+    },
+    {
+      "exported_in": [
+        "js/insight.js"
+      ],
+      "identifier": "ACH_SOKO_PRIZE",
+      "js_module": "js/invent.js"
+    },
+    {
+      "exported_in": [
+        "js/windows.js"
+      ],
+      "identifier": "MENU_BEHAVE_STANDARD",
+      "js_module": "js/invent.js"
+    },
+    {
+      "exported_in": [
+        "js/monsters.js"
+      ],
+      "identifier": "NON_PM",
+      "js_module": "js/invent.js"
+    },
+    {
+      "exported_in": [
+        "js/windows.js"
+      ],
+      "identifier": "PICK_NONE",
+      "js_module": "js/invent.js"
+    },
+    {
+      "exported_in": [
+        "js/monsters.js"
+      ],
+      "identifier": "PM_CLERIC",
+      "js_module": "js/invent.js"
+    },
+    {
+      "exported_in": [
+        "js/worn.js"
+      ],
+      "identifier": "W_ACCESSORY",
+      "js_module": "js/invent.js"
+    },
+    {
+      "exported_in": [
+        "js/worn.js"
+      ],
+      "identifier": "W_ARMOR",
+      "js_module": "js/invent.js"
+    },
+    {
+      "exported_in": [
+        "js/worn.js"
+      ],
+      "identifier": "W_QUIVER",
+      "js_module": "js/invent.js"
+    },
+    {
+      "exported_in": [
+        "js/worn.js"
+      ],
+      "identifier": "W_SADDLE",
+      "js_module": "js/invent.js"
+    },
+    {
+      "exported_in": [
+        "js/worn.js"
+      ],
+      "identifier": "W_SWAPWEP",
+      "js_module": "js/invent.js"
+    },
+    {
+      "exported_in": [
+        "js/worn.js"
+      ],
+      "identifier": "W_TOOL",
+      "js_module": "js/invent.js"
+    },
+    {
+      "exported_in": [
+        "js/worn.js"
+      ],
+      "identifier": "W_WEAPONS",
+      "js_module": "js/invent.js"
+    },
+    {
+      "exported_in": [
+        "js/worn.js"
+      ],
+      "identifier": "W_WEP",
+      "js_module": "js/invent.js"
+    },
+    {
+      "exported_in": [
+        "js/objnam.js"
+      ],
+      "identifier": "ansimpleoname",
+      "js_module": "js/invent.js"
+    },
+    {
+      "exported_in": [
+        "js/quest.js"
+      ],
+      "identifier": "artitouch",
+      "js_module": "js/invent.js"
+    },
+    {
+      "exported_in": [
+        "js/timeout.js"
+      ],
+      "identifier": "attach_fig_transform_timeout",
+      "js_module": "js/invent.js"
+    },
+    {
+      "exported_in": [
+        "js/artifact.js"
+      ],
+      "identifier": "confers_luck",
+      "js_module": "js/invent.js"
+    },
+    {
+      "exported_in": [
+        "js/shk.js"
+      ],
+      "identifier": "costly_spot",
+      "js_module": "js/invent.js"
+    },
+    {
+      "exported_in": [
+        "js/mkobj.js"
+      ],
+      "identifier": "curse",
+      "js_module": "js/invent.js"
+    },
+    {
+      "exported_in": [
+        "js/artifact.js"
+      ],
+      "identifier": "discover_artifact",
+      "js_module": "js/invent.js"
+    },
+    {
+      "exported_in": [
+        "js/windows.js"
+      ],
+      "identifier": "end_menu",
+      "js_module": "js/invent.js"
+    },
+    {
+      "exported_in": [
+        "js/zap.js"
+      ],
+      "identifier": "get_obj_location",
+      "js_module": "js/invent.js"
+    },
+    {
+      "exported_in": [
+        "js/pline.js"
+      ],
+      "identifier": "impossible",
+      "js_module": "js/invent.js"
+    },
+    {
+      "exported_in": [
+        "js/objdata.js"
+      ],
+      "identifier": "is_quest_artifact",
+      "js_module": "js/invent.js"
+    },
+    {
+      "exported_in": [
+        "js/pline.js"
+      ],
+      "identifier": "livelog_printf",
+      "js_module": "js/invent.js"
+    },
+    {
+      "exported_in": [
+        "js/monsters.js"
+      ],
+      "identifier": "mons",
+      "js_module": "js/invent.js"
+    },
+    {
+      "exported_in": [
+        "js/light.js"
+      ],
+      "identifier": "obj_merge_light_sources",
+      "js_module": "js/invent.js"
+    },
+    {
+      "exported_in": [
+        "js/timeout.js"
+      ],
+      "identifier": "obj_stop_timers",
+      "js_module": "js/invent.js"
+    },
+    {
+      "exported_in": [
+        "js/hack.js"
+      ],
+      "identifier": "obj_to_any",
+      "js_module": "js/invent.js"
+    },
+    {
+      "exported_in": [
+        "js/insight.js"
+      ],
+      "identifier": "record_achievement",
+      "js_module": "js/invent.js"
+    },
+    {
+      "exported_in": [
+        "js/windows.js"
+      ],
+      "identifier": "select_menu",
+      "js_module": "js/invent.js"
+    },
+    {
+      "exported_in": [
+        "js/artifact.js"
+      ],
+      "identifier": "set_artifact_intrinsic",
+      "js_module": "js/invent.js"
+    },
+    {
+      "exported_in": [
+        "js/attrib.js"
+      ],
+      "identifier": "set_moreluck",
+      "js_module": "js/invent.js"
+    },
+    {
+      "exported_in": [
+        "js/worn.js"
+      ],
+      "identifier": "setworn",
+      "js_module": "js/invent.js"
+    },
+    {
+      "exported_in": [
+        "js/windows.js"
+      ],
+      "identifier": "start_menu",
+      "js_module": "js/invent.js"
+    },
+    {
+      "exported_in": [
+        "js/timeout.js"
+      ],
+      "identifier": "stop_timer",
+      "js_module": "js/invent.js"
+    },
+    {
+      "exported_in": [
+        "js/objnam.js"
+      ],
+      "identifier": "yname",
+      "js_module": "js/invent.js"
+    },
+    {
+      "exported_in": [
+        "js/objects.js"
+      ],
+      "identifier": "CORPSE",
+      "js_module": "js/lock.js"
+    },
+    {
+      "exported_in": [
+        "js/shk.js"
+      ],
+      "identifier": "costly_spot",
+      "js_module": "js/lock.js"
+    },
+    {
+      "exported_in": [
+        "js/floor_objects.js"
+      ],
+      "identifier": "place_object",
+      "js_module": "js/lock.js"
+    },
+    {
+      "exported_in": [
+        "js/shk.js"
+      ],
+      "identifier": "stolen_value",
+      "js_module": "js/lock.js"
+    },
+    {
+      "exported_in": [
+        "js/objnam.js"
+      ],
+      "identifier": "the",
+      "js_module": "js/lock.js"
+    },
+    {
+      "exported_in": [
+        "js/objects.js"
+      ],
+      "identifier": "CANDELABRUM_OF_INVOCATION",
+      "js_module": "js/mkobj.js"
+    },
+    {
+      "exported_in": [
+        "js/config.js"
+      ],
+      "identifier": "FIRE_RES",
+      "js_module": "js/mkobj.js"
+    },
+    {
+      "exported_in": [
+        "js/objects.js"
+      ],
+      "identifier": "HEAVY_IRON_BALL",
+      "js_module": "js/mkobj.js"
+    },
+    {
+      "exported_in": [
+        "js/monsters.js"
+      ],
+      "identifier": "NON_PM",
+      "js_module": "js/mkobj.js"
+    },
+    {
+      "exported_in": [
+        "js/objects.js"
+      ],
+      "identifier": "TALLOW_CANDLE",
+      "js_module": "js/mkobj.js"
+    },
+    {
+      "exported_in": [
+        "js/objects.js"
+      ],
+      "identifier": "WAN_FIRE",
+      "js_module": "js/mkobj.js"
+    },
+    {
+      "exported_in": [
+        "js/light.js"
+      ],
+      "identifier": "arti_light_radius",
+      "js_module": "js/mkobj.js"
+    },
+    {
+      "exported_in": [
+        "js/timeout.js"
+      ],
+      "identifier": "attach_fig_transform_timeout",
+      "js_module": "js/mkobj.js"
+    },
+    {
+      "exported_in": [
+        "js/spell.js"
+      ],
+      "identifier": "book_cursed",
+      "js_module": "js/mkobj.js"
+    },
+    {
+      "exported_in": [
+        "js/artifact.js"
+      ],
+      "identifier": "confers_luck",
+      "js_module": "js/mkobj.js"
+    },
+    {
+      "exported_in": [
+        "js/pline.js"
+      ],
+      "identifier": "impossible",
+      "js_module": "js/mkobj.js"
+    },
+    {
+      "exported_in": [
+        "js/mondata.js"
+      ],
+      "identifier": "is_rider",
+      "js_module": "js/mkobj.js"
+    },
+    {
+      "exported_in": [
+        "js/light.js"
+      ],
+      "identifier": "obj_sheds_light",
+      "js_module": "js/mkobj.js"
+    },
+    {
+      "exported_in": [
+        "js/light.js"
+      ],
+      "identifier": "obj_split_light_source",
+      "js_module": "js/mkobj.js"
+    },
+    {
+      "exported_in": [
+        "js/timeout.js"
+      ],
+      "identifier": "obj_split_timers",
+      "js_module": "js/mkobj.js"
+    },
+    {
+      "exported_in": [
+        "js/timeout.js"
+      ],
+      "identifier": "obj_stop_timers",
+      "js_module": "js/mkobj.js"
+    },
+    {
+      "exported_in": [
+        "js/hack.js"
+      ],
+      "identifier": "obj_to_any",
+      "js_module": "js/mkobj.js"
+    },
+    {
+      "exported_in": [
+        "js/end.js"
+      ],
+      "identifier": "panic",
+      "js_module": "js/mkobj.js"
+    },
+    {
+      "exported_in": [
+        "js/teleport.js"
+      ],
+      "identifier": "rloco",
+      "js_module": "js/mkobj.js"
+    },
+    {
+      "exported_in": [
+        "js/attrib.js"
+      ],
+      "identifier": "set_moreluck",
+      "js_module": "js/mkobj.js"
+    },
+    {
+      "exported_in": [
+        "js/objnam.js"
+      ],
+      "identifier": "simpleonames",
+      "js_module": "js/mkobj.js"
+    },
+    {
+      "exported_in": [
+        "js/shk.js"
+      ],
+      "identifier": "splitbill",
+      "js_module": "js/mkobj.js"
+    },
+    {
+      "exported_in": [
+        "js/timeout.js"
+      ],
+      "identifier": "stop_timer",
+      "js_module": "js/mkobj.js"
+    },
+    {
+      "exported_in": [
+        "js/invent.js"
+      ],
+      "identifier": "update_inventory",
+      "js_module": "js/mkobj.js"
+    },
+    {
+      "exported_in": [
+        "js/config.js",
+        "js/symbols.js"
+      ],
+      "identifier": "IS_DOOR",
+      "js_module": "js/shk.js"
+    },
+    {
+      "exported_in": [
+        "js/config.js",
+        "js/windows.js"
+      ],
+      "identifier": "NHW_MENU",
+      "js_module": "js/shk.js"
+    },
+    {
+      "exported_in": [
+        "js/config.js",
+        "js/monsters.js"
+      ],
+      "identifier": "PM_ROGUE",
+      "js_module": "js/shk.js"
+    },
+    {
+      "exported_in": [
+        "js/teleport.js"
+      ],
+      "identifier": "RLOC_NOMSG",
+      "js_module": "js/shk.js"
+    },
+    {
+      "exported_in": [
+        "js/objnam.js"
+      ],
+      "identifier": "The",
+      "js_module": "js/shk.js"
+    },
+    {
+      "exported_in": [
+        "js/attrib.js"
+      ],
+      "identifier": "adjalign",
+      "js_module": "js/shk.js"
+    },
+    {
+      "exported_in": [
+        "js/vision.js"
+      ],
+      "identifier": "cansee",
+      "js_module": "js/shk.js"
+    },
+    {
+      "exported_in": [
+        "js/invent.js"
+      ],
+      "identifier": "count_contents",
+      "js_module": "js/shk.js"
+    },
+    {
+      "exported_in": [
+        "js/invent.js"
+      ],
+      "identifier": "count_unpaid",
+      "js_module": "js/shk.js"
+    },
+    {
+      "exported_in": [
+        "js/windows.js"
+      ],
+      "identifier": "create_nhwindow",
+      "js_module": "js/shk.js"
+    },
+    {
+      "exported_in": [
+        "js/windows.js"
+      ],
+      "identifier": "destroy_nhwindow",
+      "js_module": "js/shk.js"
+    },
+    {
+      "exported_in": [
+        "js/windows.js"
+      ],
+      "identifier": "display_nhwindow",
+      "js_module": "js/shk.js"
+    },
+    {
+      "exported_in": [
+        "js/hacklib.js",
+        "js/monutil.js"
+      ],
+      "identifier": "dist2",
+      "js_module": "js/shk.js"
+    },
+    {
+      "exported_in": [
+        "js/hacklib.js"
+      ],
+      "identifier": "eos",
+      "js_module": "js/shk.js"
+    },
+    {
+      "exported_in": [
+        "js/zap.js"
+      ],
+      "identifier": "get_obj_location",
+      "js_module": "js/shk.js"
+    },
+    {
+      "exported_in": [
+        "js/dungeon.js"
+      ],
+      "identifier": "ledger_no",
+      "js_module": "js/shk.js"
+    },
+    {
+      "exported_in": [
+        "js/monutil.js"
+      ],
+      "identifier": "map_invisible",
+      "js_module": "js/shk.js"
+    },
+    {
+      "exported_in": [
+        "js/steal.js"
+      ],
+      "identifier": "mdrop_special_objs",
+      "js_module": "js/shk.js"
+    },
+    {
+      "exported_in": [
+        "js/mon.js"
+      ],
+      "identifier": "mongone",
+      "js_module": "js/shk.js"
+    },
+    {
+      "exported_in": [
+        "js/monutil.js"
+      ],
+      "identifier": "mpickobj",
+      "js_module": "js/shk.js"
+    },
+    {
+      "exported_in": [
+        "js/animation.js"
+      ],
+      "identifier": "nh_delay_output",
+      "js_module": "js/shk.js"
+    },
+    {
+      "exported_in": [
+        "js/objnam.js"
+      ],
+      "identifier": "obj_typename",
+      "js_module": "js/shk.js"
+    },
+    {
+      "exported_in": [
+        "js/dungeon.js"
+      ],
+      "identifier": "on_level",
+      "js_module": "js/shk.js"
+    },
+    {
+      "exported_in": [
+        "js/windows.js"
+      ],
+      "identifier": "putstr",
+      "js_module": "js/shk.js"
+    },
+    {
+      "exported_in": [
+        "js/sounds.js"
+      ],
+      "identifier": "set_voice",
+      "js_module": "js/shk.js"
+    },
+    {
+      "exported_in": [
+        "js/hacklib.js"
+      ],
+      "identifier": "sgn",
+      "js_module": "js/shk.js"
+    },
+    {
+      "exported_in": [
+        "js/objnam.js"
+      ],
+      "identifier": "the",
+      "js_module": "js/shk.js"
+    },
+    {
+      "exported_in": [
+        "js/mon.js"
+      ],
+      "identifier": "wake_nearto",
+      "js_module": "js/shk.js"
+    },
+    {
+      "exported_in": [
+        "js/do_name.js"
+      ],
+      "identifier": "Monnam",
+      "js_module": "js/sounds.js"
+    },
+    {
+      "exported_in": [
+        "js/mondata.js"
+      ],
+      "identifier": "haseyes",
+      "js_module": "js/sounds.js"
+    },
+    {
+      "exported_in": [
+        "js/monutil.js"
+      ],
+      "identifier": "helpless",
+      "js_module": "js/sounds.js"
+    },
+    {
+      "exported_in": [
+        "js/config.js"
+      ],
+      "identifier": "isok",
+      "js_module": "js/sounds.js"
+    },
+    {
+      "exported_in": [
+        "js/monutil.js"
+      ],
+      "identifier": "map_invisible",
+      "js_module": "js/sounds.js"
+    },
+    {
+      "exported_in": [
+        "js/mondata.js"
+      ],
+      "identifier": "perceives",
+      "js_module": "js/sounds.js"
+    },
+    {
+      "exported_in": [
+        "js/pline.js"
+      ],
+      "identifier": "pline",
+      "js_module": "js/sounds.js"
+    },
+    {
+      "exported_in": [
+        "js/pline.js"
+      ],
+      "identifier": "verbalize",
+      "js_module": "js/sounds.js"
+    },
+    {
+      "exported_in": [
+        "js/config.js",
+        "js/symbols.js"
+      ],
+      "identifier": "CLOUD",
+      "js_module": "js/spell.js"
+    },
+    {
+      "exported_in": [
+        "js/input.js"
+      ],
+      "identifier": "CMDQ_KEY",
+      "js_module": "js/spell.js"
+    },
+    {
+      "exported_in": [
+        "js/input.js"
+      ],
+      "identifier": "CQ_REPEAT",
+      "js_module": "js/spell.js"
+    },
+    {
+      "exported_in": [
+        "js/symbols.js"
+      ],
+      "identifier": "IS_TREE",
+      "js_module": "js/spell.js"
+    },
+    {
+      "exported_in": [
+        "js/monsters.js"
+      ],
+      "identifier": "PM_FOG_CLOUD",
+      "js_module": "js/spell.js"
+    },
+    {
+      "exported_in": [
+        "js/weapon.js"
+      ],
+      "identifier": "P_EXPERT",
+      "js_module": "js/spell.js"
+    },
+    {
+      "exported_in": [
+        "js/config.js"
+      ],
+      "identifier": "TIMEOUT",
+      "js_module": "js/spell.js"
+    },
+    {
+      "exported_in": [
+        "js/windows.js"
+      ],
+      "identifier": "WIN_MESSAGE",
+      "js_module": "js/spell.js"
+    },
+    {
+      "exported_in": [
+        "js/objnam.js"
+      ],
+      "identifier": "an",
+      "js_module": "js/spell.js"
+    },
+    {
+      "exported_in": [
+        "js/vision.js"
+      ],
+      "identifier": "cansee",
+      "js_module": "js/spell.js"
+    },
+    {
+      "exported_in": [
+        "js/windows.js"
+      ],
+      "identifier": "clear_nhwindow",
+      "js_module": "js/spell.js"
+    },
+    {
+      "exported_in": [
+        "js/input.js"
+      ],
+      "identifier": "cmdq_add_key",
+      "js_module": "js/spell.js"
+    },
+    {
+      "exported_in": [
+        "js/input.js"
+      ],
+      "identifier": "cmdq_pop",
+      "js_module": "js/spell.js"
+    },
+    {
+      "exported_in": [
+        "js/windows.js"
+      ],
+      "identifier": "display_nhwindow",
+      "js_module": "js/spell.js"
+    },
+    {
+      "exported_in": [
+        "js/mondata.js"
+      ],
+      "identifier": "enfolds",
+      "js_module": "js/spell.js"
+    },
+    {
+      "exported_in": [
+        "js/do_name.js"
+      ],
+      "identifier": "hcolor",
+      "js_module": "js/spell.js"
+    },
+    {
+      "exported_in": [
+        "js/do_name.js"
+      ],
+      "identifier": "hliquid",
+      "js_module": "js/spell.js"
+    },
+    {
+      "exported_in": [
+        "js/pline.js"
+      ],
+      "identifier": "impossible",
+      "js_module": "js/spell.js"
+    },
+    {
+      "exported_in": [
+        "js/mondata.js"
+      ],
+      "identifier": "is_animal",
+      "js_module": "js/spell.js"
+    },
+    {
+      "exported_in": [
+        "js/mondata.js"
+      ],
+      "identifier": "is_whirly",
+      "js_module": "js/spell.js"
+    },
+    {
+      "exported_in": [
+        "js/monsters.js"
+      ],
+      "identifier": "mons",
+      "js_module": "js/spell.js"
+    },
+    {
+      "exported_in": [
+        "js/do.js"
+      ],
+      "identifier": "trycall",
+      "js_module": "js/spell.js"
+    },
+    {
+      "exported_in": [
+        "js/invent.js"
+      ],
+      "identifier": "useup",
+      "js_module": "js/spell.js"
+    },
+    {
+      "exported_in": [
+        "js/dothrow.js"
+      ],
+      "identifier": "walk_path",
+      "js_module": "js/spell.js"
+    },
+    {
+      "exported_in": [
+        "js/polyself.js"
+      ],
+      "identifier": "HAND",
+      "js_module": "js/steal.js"
+    },
+    {
+      "exported_in": [
+        "js/do_name.js"
+      ],
+      "identifier": "Monnam",
+      "js_module": "js/steal.js"
+    },
+    {
+      "exported_in": [
+        "js/objects.js",
+        "js/symbols.js"
+      ],
+      "identifier": "ROCK_CLASS",
+      "js_module": "js/steal.js"
+    },
+    {
+      "exported_in": [
+        "js/do_name.js"
+      ],
+      "identifier": "Some_Monnam",
+      "js_module": "js/steal.js"
+    },
+    {
+      "exported_in": [
+        "js/polyself.js"
+      ],
+      "identifier": "body_part",
+      "js_module": "js/steal.js"
+    },
+    {
+      "exported_in": [
+        "js/vision.js"
+      ],
+      "identifier": "cansee",
+      "js_module": "js/steal.js"
+    },
+    {
+      "exported_in": [
+        "js/mondata.js"
+      ],
+      "identifier": "canseemon",
+      "js_module": "js/steal.js"
+    },
+    {
+      "exported_in": [
+        "js/invent.js"
+      ],
+      "identifier": "freeinv",
+      "js_module": "js/steal.js"
+    },
+    {
+      "exported_in": [
+        "js/objnam.js"
+      ],
+      "identifier": "makeplural",
+      "js_module": "js/steal.js"
+    },
+    {
+      "exported_in": [
+        "js/monutil.js"
+      ],
+      "identifier": "mpickobj",
+      "js_module": "js/steal.js"
+    },
+    {
+      "exported_in": [
+        "js/objdata.js"
+      ],
+      "identifier": "obj_resists",
+      "js_module": "js/steal.js"
+    },
+    {
+      "exported_in": [
+        "js/objnam.js"
+      ],
+      "identifier": "otense",
+      "js_module": "js/steal.js"
+    },
+    {
+      "exported_in": [
+        "js/pline.js"
+      ],
+      "identifier": "pline",
+      "js_module": "js/steal.js"
+    },
+    {
+      "exported_in": [
+        "js/hacklib.js"
+      ],
+      "identifier": "s_suffix",
+      "js_module": "js/steal.js"
+    },
+    {
+      "exported_in": [
+        "js/shk.js"
+      ],
+      "identifier": "subfrombill",
+      "js_module": "js/steal.js"
+    },
+    {
+      "exported_in": [
+        "js/artifact.js"
+      ],
+      "identifier": "touch_artifact",
+      "js_module": "js/steal.js"
+    },
+    {
+      "exported_in": [
+        "js/hacklib.js"
+      ],
+      "identifier": "upstart",
+      "js_module": "js/steal.js"
+    },
+    {
+      "exported_in": [
+        "js/objnam.js"
+      ],
+      "identifier": "yname",
+      "js_module": "js/steal.js"
+    }
+  ],
+  "input_queue": "/tmp/translator-refactor-queue-gapwave2-fix9.json",
+  "summary": {
+    "alias_candidates": 9,
+    "binding_candidates": 225
+  }
+}

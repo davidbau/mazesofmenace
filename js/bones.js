@@ -40,7 +40,7 @@ import {
 // Check if bones can be saved at this depth.
 // C ref: bones.c:61 — depth check + rn2(1+(depth>>2)) ghost probability
 export function can_make_bones(game) {
-    const depth = game.player.dungeonLevel;
+    const depth = (game.u || game.player).dungeonLevel;
     // C ref: bones.c:70 — can't make bones on level 1
     if (depth <= 1) return false;
     // C ref: bones.c:88 — ghost probability: rn2(1 + (depth >> 2))
@@ -158,12 +158,22 @@ export function give_to_nearby_mon(map, otmp, x, y) {
 
 // Mark objects as ghostly (from bones level).
 // C ref: bones.c:134
-export function set_ghostly_objlist(list) {
-    for (const obj of list) {
-        obj.ghostly = true;
-        if (obj.contents && obj.contents.length > 0) {
-            set_ghostly_objlist(obj.contents);
+// Autotranslated from bones.c:773
+export function set_ghostly_objlist(objchain) {
+    // Runtime supports both C-style linked object chains and JS arrays.
+    if (Array.isArray(objchain)) {
+        for (const obj of objchain) {
+            if (!obj) continue;
+            obj.ghostly = true;
+            if (obj.contents && obj.contents.length > 0) {
+                set_ghostly_objlist(obj.contents);
+            }
         }
+        return;
+    }
+    while (objchain) {
+        objchain.ghostly = true;
+        objchain = objchain.nobj;
     }
 }
 
@@ -236,9 +246,9 @@ export function savebones(game) {
     if (ghost) {
         // C ref: bones.c:499-504 — override ghost stats with player-based values
         ghost.name = 'Ghost of ' + sanitize_name(player.name);
-        ghost.mhp = player.level * 10;
-        ghost.mhpmax = player.level * 10;
-        ghost.mlevel = player.level;
+        ghost.mhp = player.ulevel * 10;
+        ghost.mhpmax = player.ulevel * 10;
+        ghost.m_lev = player.ulevel;
         ghost.peaceful = false;
     }
 
@@ -247,8 +257,8 @@ export function savebones(game) {
         who: sanitize_name(player.name),
         when: Date.now(),
         frpg: player.roleName || 'Unknown',
-        hp: player.hp,
-        maxhp: player.hpmax,
+        hp: player.uhp,
+        maxhp: player.uhpmax,
         death: game.gameOverReason || 'killed',
     };
 
@@ -256,7 +266,7 @@ export function savebones(game) {
     const mapData = saveLev(map);
     mapData.isBones = true;
     saveBones(depth, mapData, player.name,
-              player.x, player.y, player.level, []);
+              player.x, player.y, player.ulevel, []);
 }
 
 // ========================================================================
@@ -307,3 +317,14 @@ export const sanitizeName = sanitize_name;
 export const giveToNearbyMon = give_to_nearby_mon;
 export const removeMonFromBones = remove_mon_from_bones;
 export const setGhostlyObjlist = set_ghostly_objlist;
+
+// Autotranslated from bones.c:41
+export function goodfruit(id) {
+  let f = fruit_from_indx(-id);
+  if (f) f.fid = id;
+}
+
+// Autotranslated from bones.c:822
+export function free_ebones(mtmp) {
+  if (mtmp.mextra && EBONES(mtmp)) { free( EBONES(mtmp)); EBONES(mtmp) =  0; }
+}

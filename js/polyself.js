@@ -137,12 +137,11 @@ import {
 } from './config.js';
 
 // Local helper: cf. C attacktype_fordmg() — find attack with given type and damage type
-// Attack objects have: { type, damage, dice, sides }
-// C fields: aatyp -> type, adtyp -> damage, damn -> dice, damd -> sides
+// Attack objects are canonicalized to C field names: aatyp/adtyp/damn/damd.
 function attacktype_fordmg(ptr, atyp, adtyp) {
     if (!ptr.attacks) return null;
     for (const atk of ptr.attacks) {
-        if (atk.type === atyp && (adtyp === AD_ANY || atk.damage === adtyp))
+        if (atk.aatyp === atyp && (adtyp === AD_ANY || atk.adtyp === adtyp))
             return atk;
     }
     return null;
@@ -295,8 +294,8 @@ export function mbodypart(mon, part) {
     }
 
     // some special cases
-    if (mptr.symbol === S_DOG || mptr.symbol === S_FELINE
-        || mptr.symbol === S_RODENT || mptr === mons[PM_OWLBEAR]) {
+    if (mptr.mlet === S_DOG || mptr.mlet === S_FELINE
+        || mptr.mlet === S_RODENT || mptr === mons[PM_OWLBEAR]) {
         switch (part) {
         case HAND:
             return 'paw';
@@ -310,14 +309,14 @@ export function mbodypart(mon, part) {
         default:
             break; // for other parts, use animal_parts[] below
         }
-    } else if (mptr.symbol === S_YETI) { // excl. owlbear due to 'if' above
+    } else if (mptr.mlet === S_YETI) { // excl. owlbear due to 'if' above
         // opposable thumbs, hence "hands", "arms", "legs", &c
         return humanoid_parts[part]; // yeti/sasquatch, monkey/ape
     }
 
     if ((part === HAND || part === HANDED)
         && (humanoid(mptr) && attacktype(mptr, AT_CLAW)
-            && !not_claws.includes(mptr.symbol)
+            && !not_claws.includes(mptr.mlet)
             && mptr !== mons[PM_STONE_GOLEM]
             && mptr !== mons[PM_AMOROUS_DEMON]))
         return (part === HAND) ? 'claw' : 'clawed';
@@ -336,15 +335,15 @@ export function mbodypart(mon, part) {
     if (humanoid(mptr) && (part === ARM || part === FINGER || part === FINGERTIP
                            || part === HAND || part === HANDED))
         return humanoid_parts[part];
-    if (mptr.symbol === S_COCKATRICE)
+    if (mptr.mlet === S_COCKATRICE)
         return (part === HAIR) ? snake_parts[part] : bird_parts[part];
     if (mptr === mons[PM_RAVEN])
         return bird_parts[part];
-    if (mptr.symbol === S_CENTAUR || mptr.symbol === S_UNICORN
+    if (mptr.mlet === S_CENTAUR || mptr.mlet === S_UNICORN
         || mptr === mons[PM_KI_RIN]
         || (mptr === mons[PM_ROTHE] && part !== HAIR))
         return horse_parts[part];
-    if (mptr.symbol === S_LIGHT) {
+    if (mptr.mlet === S_LIGHT) {
         if (part === HANDED)
             return 'rayed';
         else if (part === ARM || part === FINGER || part === FINGERTIP
@@ -355,22 +354,22 @@ export function mbodypart(mon, part) {
     }
     if (mptr === mons[PM_STALKER] && part === HEAD)
         return 'head';
-    if (mptr.symbol === S_EEL && mptr !== mons[PM_JELLYFISH])
+    if (mptr.mlet === S_EEL && mptr !== mons[PM_JELLYFISH])
         return fish_parts[part];
-    if (mptr.symbol === S_WORM)
+    if (mptr.mlet === S_WORM)
         return worm_parts[part];
-    if (mptr.symbol === S_SPIDER)
+    if (mptr.mlet === S_SPIDER)
         return spider_parts[part];
-    if (slithy(mptr) || (mptr.symbol === S_DRAGON && part === HAIR))
+    if (slithy(mptr) || (mptr.mlet === S_DRAGON && part === HAIR))
         return snake_parts[part];
-    if (mptr.symbol === S_EYE)
+    if (mptr.mlet === S_EYE)
         return sphere_parts[part];
-    if (mptr.symbol === S_JELLY || mptr.symbol === S_PUDDING
-        || mptr.symbol === S_BLOB || mptr === mons[PM_JELLYFISH])
+    if (mptr.mlet === S_JELLY || mptr.mlet === S_PUDDING
+        || mptr.mlet === S_BLOB || mptr === mons[PM_JELLYFISH])
         return jelly_parts[part];
-    if (mptr.symbol === S_VORTEX || mptr.symbol === S_ELEMENTAL)
+    if (mptr.mlet === S_VORTEX || mptr.mlet === S_ELEMENTAL)
         return vortex_parts[part];
-    if (mptr.symbol === S_FUNGUS)
+    if (mptr.mlet === S_FUNGUS)
         return fungus_parts[part];
     if (humanoid(mptr))
         return humanoid_parts[part];
@@ -408,37 +407,25 @@ export function poly_gender(player) {
 // Golem-specific damage absorption. Returns true if damage was absorbed.
 // ============================================================================
 
-export function ugolemeffects(player, damtype, dam) {
-    if (!player) return false;
-    const umonnum = player.umonnum;
-    if (umonnum === undefined) return false;
-
-    let heal = 0;
-
-    if (umonnum !== PM_FLESH_GOLEM && umonnum !== PM_IRON_GOLEM)
-        return false;
-
-    switch (damtype) {
+// Autotranslated from polyself.c:2143
+export function ugolemeffects(damtype, dam, game, player) {
+  let heal = 0;
+  if (player.umonnum !== PM_FLESH_GOLEM &player.umonnum !== PM_IRON_GOLEM) return;
+  switch (damtype) {
     case AD_ELEC:
-        if (umonnum === PM_FLESH_GOLEM)
-            heal = Math.floor((dam + 5) / 6); // Approx 1 per die
-        break;
+      if (player.umonnum === PM_FLESH_GOLEM) heal = (dam + 5) / 6;
+    break;
     case AD_FIRE:
-        if (umonnum === PM_IRON_GOLEM)
-            heal = dam;
-        break;
-    }
-
-    if (heal && player.mh !== undefined && player.mhmax !== undefined
-        && player.mh < player.mhmax) {
-        player.mh += heal;
-        if (player.mh > player.mhmax)
-            player.mh = player.mhmax;
-        pline("Strangely, you feel better than before.");
-        exercise('A_STR', true);
-        return true;
-    }
-    return false;
+      if (player.umonnum === PM_IRON_GOLEM) heal = dam;
+    break;
+  }
+  if (heal && (player.mh < player.mhmax)) {
+    player.mh += heal;
+    if (player.mh > player.mhmax) player.mh = player.mhmax;
+    game.disp.botl = true;
+    pline("Strangely, you feel better than before.");
+    exercise(A_STR, true);
+  }
 }
 
 // ============================================================================
@@ -607,7 +594,7 @@ export function set_uasmon(player) {
                         || dmgtype(mdat, AD_RBRE)));
 
     // SICK_RES: fungus or ghoul
-    propset(SICK_RES, (mdat.symbol === S_FUNGUS || mdat === mons[PM_GHOUL]));
+    propset(SICK_RES, (mdat.mlet === S_FUNGUS || mdat === mons[PM_GHOUL]));
 
     // STUNNED: stalker or bat
     propset(STUNNED, (mdat === mons[PM_STALKER] || is_bat(mdat)));
@@ -638,69 +625,37 @@ export function set_uasmon(player) {
 // float_vs_flight() — cf. polyself.c:131
 // ============================================================================
 
-export function float_vs_flight(player) {
-    // cf. polyself.c:131 — float_vs_flight()
-    // Levitation overrides Flying; set or clear I_SPECIAL on Flying's blocked.
-    if (!player || !player.uprops) return;
-
-    const stuck_in_floor = (player.utrap && player.utraptype !== 0 /* TT_PIT */);
-
-    // Ensure entries exist
-    if (!player.uprops[FLYING])
-        player.uprops[FLYING] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
-    if (!player.uprops[LEVITATION])
-        player.uprops[LEVITATION] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
-
-    const HLevitation = player.uprops[LEVITATION].intrinsic;
-    const ELevitation = player.uprops[LEVITATION].extrinsic;
-    const HFlying = player.uprops[FLYING].intrinsic;
-    const EFlying = player.uprops[FLYING].extrinsic;
-
-    // floating overrides flight; so does being trapped in the floor
-    if ((HLevitation || ELevitation)
-        || ((HFlying || EFlying) && stuck_in_floor)) {
-        player.uprops[FLYING].blocked |= I_SPECIAL;
-    } else {
-        player.uprops[FLYING].blocked &= ~I_SPECIAL;
-    }
-    // being trapped on the ground overrides floating
-    if ((HLevitation || ELevitation) && stuck_in_floor) {
-        player.uprops[LEVITATION].blocked |= I_SPECIAL;
-    } else {
-        player.uprops[LEVITATION].blocked &= ~I_SPECIAL;
-    }
-
-    steed_vs_stealth(player);
+// Autotranslated from polyself.c:130
+export function float_vs_flight(game, player) {
+  let stuck_in_floor = (player.utrap &player.utraptype !== TT_PIT);
+  if ((HLevitation || ELevitation) || ((HFlying || EFlying) && stuck_in_floor)) {
+    BFlying |= I_SPECIAL;
+  }
+  else {
+    BFlying &= ~I_SPECIAL;
+  }
+  if ((HLevitation || ELevitation) && stuck_in_floor) {
+    BLevitation |= I_SPECIAL;
+  }
+  else {
+    BLevitation &= ~I_SPECIAL;
+  }
+  steed_vs_stealth();
+  game.disp.botl = true;
 }
 
 // ============================================================================
 // steed_vs_stealth() — cf. polyself.c:158
 // ============================================================================
 
+// Autotranslated from polyself.c:157
 export function steed_vs_stealth(player) {
-    // cf. polyself.c:158 — steed_vs_stealth()
-    // Riding blocks stealth unless hero+steed fly.
-    if (!player || !player.uprops) return;
-    // STEALTH property index imported from config
-    // Check if we have the STEALTH constant; if not, skip
-    // (stealth is property index 39 in config.js)
-    const STEALTH_IDX = 39; // matches config.js STEALTH
-    if (!player.uprops[STEALTH_IDX])
-        player.uprops[STEALTH_IDX] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
-
-    // In C: Flying and Levitation check all sources
-    const isFlying = player.uprops[FLYING] &&
-        (player.uprops[FLYING].intrinsic || player.uprops[FLYING].extrinsic) &&
-        !player.uprops[FLYING].blocked;
-    const isLevitating = player.uprops[LEVITATION] &&
-        (player.uprops[LEVITATION].intrinsic || player.uprops[LEVITATION].extrinsic) &&
-        !player.uprops[LEVITATION].blocked;
-
-    if (player.usteed && !isFlying && !isLevitating) {
-        player.uprops[STEALTH_IDX].blocked |= FROMOUTSIDE;
-    } else {
-        player.uprops[STEALTH_IDX].blocked &= ~FROMOUTSIDE;
-    }
+  if (player.usteed && !Flying && !Levitation) {
+    BStealth |= FROMOUTSIDE;
+  }
+  else {
+    BStealth &= ~FROMOUTSIDE;
+  }
 }
 
 // ============================================================================
@@ -834,7 +789,7 @@ function newman(player) {
     if (!player) return;
 
     const MAXULEV = 30;
-    const oldlvl = player.ulevel || player.level || 1;
+    const oldlvl = player.ulevel || 1;
     let newlvl = oldlvl + rn1(5, -2); // new = old + {-2,-1,0,+1,+2}
 
     if (newlvl > 127 || newlvl < 1) {
@@ -854,7 +809,7 @@ function newman(player) {
     if ((player.ulevelmax || 0) < newlvl)
         player.ulevelmax = newlvl;
     player.ulevel = newlvl;
-    if (player.level !== undefined) player.level = newlvl;
+    if (player.ulevel !== undefined) player.ulevel = newlvl;
 
     const oldgend = poly_gender(player);
     // sex_change_ok is set by caller (polyself)
@@ -929,7 +884,7 @@ function newman(player) {
     player.uenmax = enmax;
 
     player.ulevel = newlvl;
-    if (player.level !== undefined) player.level = newlvl;
+    if (player.ulevel !== undefined) player.ulevel = newlvl;
 
     player.uhunger = rn1(500, 500);
     // Clear sickness and stoning
@@ -1205,7 +1160,7 @@ export function polymon(player, mntmp, map) {
         You("no longer seem to be petrifying.");
     }
     // Sick_resistance && Sick -> clear sickness
-    if (player.sick && (mons[mntmp].symbol === S_FUNGUS || mons[mntmp] === mons[PM_GHOUL])) {
+    if (player.sick && (mons[mntmp].mlet === S_FUNGUS || mons[mntmp] === mons[PM_GHOUL])) {
         player.sick = 0;
         You("no longer feel sick.");
     }
@@ -1225,7 +1180,7 @@ export function polymon(player, mntmp, map) {
 
     // Hit point calculation — must match C's RNG consumption
     const mlvl = mons[mntmp].mlevel || 0;
-    if (mons[mntmp].symbol === S_DRAGON && mntmp >= PM_GRAY_DRAGON) {
+    if (mons[mntmp].mlet === S_DRAGON && mntmp >= PM_GRAY_DRAGON) {
         const inEndgame = player.inEndgame || false;
         player.mhmax = inEndgame ? (8 * mlvl) : (4 * mlvl + d(mlvl, 4));
     } else if (is_golem(mons[mntmp])) {
@@ -1269,11 +1224,11 @@ export function polymon(player, mntmp, map) {
 
     // Engulf/swallow handling
     if (player.uswallow && player.ustuck) {
-        const usiz = mons[mntmp].size || 0;
+        const usiz = mons[mntmp].msize || 0;
         const ustdata = player.ustuck.type || player.ustuck.data;
         if (unsolid(mons[mntmp])
             || usiz >= MZ_HUGE
-            || (ustdata && ustdata.size < usiz && !is_whirly(ustdata))) {
+            || (ustdata && ustdata.msize < usiz && !is_whirly(ustdata))) {
             if (unsolid(mons[mntmp])) {
                 pline("%s can no longer contain you.",
                     player.ustuck.name || "It");
@@ -1337,7 +1292,7 @@ export function polymon(player, mntmp, map) {
     if (player.utrap) {
         const TT_WEB = 6, TT_BEARTRAP = 1;
         if ((player.utraptype === TT_WEB || player.utraptype === TT_BEARTRAP)
-            && (mons[mntmp].size !== undefined && mons[mntmp].size <= MZ_SMALL)) {
+            && (mons[mntmp].msize !== undefined && mons[mntmp].msize <= MZ_SMALL)) {
             You("are no longer stuck in the %s.",
                 player.utraptype === TT_WEB ? "web" : "bear trap");
             player.utrap = 0;
@@ -1367,7 +1322,7 @@ export function polymon(player, mntmp, map) {
         pline("Use the command #monster to use your breath weapon.");
     if (attacktype(uptr, AT_SPIT))
         pline("Use the command #monster to spit venom.");
-    if (uptr.symbol === S_NYMPH)
+    if (uptr.mlet === S_NYMPH)
         pline("Use the command #monster to remove an iron ball.");
     if (attacktype(uptr, AT_GAZE))
         pline("Use the command #monster to gaze at monsters.");
@@ -1526,7 +1481,7 @@ export function break_armor(player) {
     }
 
     // No hands or very small — lose gloves, shield, helmet
-    if (nohands(uptr) || (uptr.size !== undefined && uptr.size <= MZ_SMALL)) {
+    if (nohands(uptr) || (uptr.msize !== undefined && uptr.msize <= MZ_SMALL)) {
         if (player.uarmg) {
             You("drop your gloves%s!", player.uwep ? " and weapon" : "");
             drop_weapon(player, 0);
@@ -1543,14 +1498,14 @@ export function break_armor(player) {
     }
 
     // No hands, very small, slithy, or centaur — lose boots
-    if (nohands(uptr) || (uptr.size !== undefined && uptr.size <= MZ_SMALL)
-        || slithy(uptr) || uptr.symbol === S_CENTAUR) {
+    if (nohands(uptr) || (uptr.msize !== undefined && uptr.msize <= MZ_SMALL)
+        || slithy(uptr) || uptr.mlet === S_CENTAUR) {
         if (player.uarmf) {
             if (is_whirly(uptr))
                 Your("boots fall away!");
             else
                 Your("boots %s off your feet!",
-                    (uptr.size !== undefined && uptr.size <= MZ_SMALL) ? "slide" : "are pushed");
+                    (uptr.msize !== undefined && uptr.msize <= MZ_SMALL) ? "slide" : "are pushed");
             removeArmor('uarmf', 'Boots_off');
         }
     }
@@ -1596,8 +1551,7 @@ export function drop_weapon(player, alone) {
 // polysense(player) — cf. polyself.c:2220
 // Some species have awareness of other species when polymorphed.
 // ============================================================================
-
-function polysense(player) {
+export function polysense(player) {
     // cf. polyself.c:2220 — polysense()
     // Some species have awareness of other species when polymorphed.
     if (!player) return;
@@ -1672,7 +1626,7 @@ export function dobreathe(player, map) {
         } else {
             // Directed breath: ubuzz subsystem
             if (player.ubuzz) {
-                player.ubuzz(mattk.damage, mattk.dice || 0);
+                player.ubuzz(mattk.adtyp, mattk.damn || 0);
             }
         }
     }
@@ -1694,7 +1648,7 @@ export async function dospit(player, map) {
         pline("bad spit attack?"); // impossible
     } else {
         let otmp;
-        switch (mattk.damage) {
+        switch (mattk.adtyp) {
         case AD_BLND:
         case AD_DRST:
             otmp = mksobj(BLINDING_VENOM, true, false);
@@ -1769,7 +1723,7 @@ export function dospinweb(player, map) {
                 for (let i = 0; i < ustdata.attacks.length; i++) {
                     if (ustdata.attacks[i].type === AT_ENGL) {
                         let sweep = "";
-                        switch (ustdata.attacks[i].damage) {
+                        switch (ustdata.attacks[i].adtyp) {
                         case AD_FIRE: sweep = "ignites and "; break;
                         case AD_ELEC: sweep = "fries and "; break;
                         case AD_COLD: sweep = "freezes, shatters and "; break;
@@ -1890,7 +1844,7 @@ export function dogaze(player, map) {
     const attacks = player.type.attacks || [];
     for (let i = 0; i < attacks.length; i++) {
         if (attacks[i].type === AT_GAZE) {
-            adtyp = attacks[i].damage;
+            adtyp = attacks[i].adtyp;
             break;
         }
     }
@@ -1963,7 +1917,7 @@ export function dogaze(player, map) {
                 // RNG: d(2,6) for fire damage, rn2(20) for item destroy chance
                 let dmg = d(2, 6);
                 const orig_dmg = dmg;
-                const lev = player.ulevel || player.level || 1;
+                const lev = player.ulevel || 1;
 
                 You("attack %s with a fiery gaze!", mon_nam(mtmp));
                 if (resists_fire(mtmp)) {
@@ -1992,7 +1946,7 @@ export function dogaze(player, map) {
                     You("are frozen by %s gaze!", s_suffix(mon_nam(mtmp)));
                     const mlev = mdata.mlevel || 0;
                     const damd = (mdata.attacks && mdata.attacks[0])
-                        ? (mdata.attacks[0].sides || 1) : 1;
+                        ? (mdata.attacks[0].damd || 1) : 1;
                     const freezeTime = ((player.ulevel || 1) > 6 || rn2(4))
                         ? -d(mlev + 1, damd)
                         : -200;
@@ -2026,7 +1980,7 @@ export function dohide(player, map) {
     // Form-specific hiding ability (mimics, piercers, lurkers, trappers, etc.)
     if (!player || !player.type) return 0;
 
-    const ismimic = player.type.symbol === S_MIMIC;
+    const ismimic = player.type.mlet === S_MIMIC;
     const Flying = player.flying || false;
     const on_ceiling = is_clinger(player.type) || Flying;
 
@@ -2054,7 +2008,7 @@ export function dohide(player, map) {
     }
 
     // Eel in non-pool
-    if (player.type.symbol === S_EEL) {
+    if (player.type.mlet === S_EEL) {
         const loc = map && map.at ? map.at(player.x, player.y) : null;
         const isPool = loc && loc.isPool;
         if (!isPool) {

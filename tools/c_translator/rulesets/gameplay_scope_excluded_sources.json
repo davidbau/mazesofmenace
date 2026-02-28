@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "description": "C sources excluded from HTML gameplay-parity translator counts",
+  "sources": [
+    "nethack-c/src/sfbase.c",
+    "nethack-c/src/sfstruct.c",
+    "nethack-c/src/cfgfiles.c",
+    "nethack-c/src/files.c",
+    "nethack-c/src/nhlua.c",
+    "nethack-c/src/nhlobj.c",
+    "nethack-c/src/nhlsel.c",
+    "nethack-c/src/report.c",
+    "nethack-c/src/mail.c",
+    "nethack-c/src/nhmd4.c",
+    "nethack-c/src/coloratt.c",
+    "nethack-c/src/date.c"
+  ]
+}

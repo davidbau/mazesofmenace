@@ -1,0 +1,32 @@
+[
+  {
+    "js_module": "js/extralev.js",
+    "function": "corr",
+    "reason": "Current auto-translation has parameter order mismatch with runtime callsites."
+  },
+  {
+    "js_module": "js/invent.js",
+    "function": "obj_to_let",
+    "reason": "Current auto-translation expects game argument and breaks existing callsites."
+  },
+  {
+    "js_module": "js/uhitm.js",
+    "function": "mhitm_adtyping",
+    "reason": "Known parity regression: stitched translation causes monmove/drop ordering drift; tracked in issue #212."
+  },
+  {
+    "js_module": "js/hack.js",
+    "function": "near_capacity",
+    "reason": "Current auto-translation drops required player argument and mismatches calc_capacity call signature."
+  },
+  {
+    "js_module": "js/hack.js",
+    "function": "u_maybe_impaired",
+    "reason": "Current auto-translation emits C macro globals (Stunned/Confusion) not yet canonicalized to JS runtime fields."
+  },
+  {
+    "js_module": "js/hack.js",
+    "function": "notice_all_mons",
+    "reason": "Keep manual JS implementation; avoid introducing alloc/qsort-driven auto-stitch dependency for this path."
+  }
+]

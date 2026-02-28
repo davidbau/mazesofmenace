@@ -97,3 +97,34 @@
 // Other class: "The low-life wants to talk, eh?" / "Fight, scum!" / "Here is what I have to say!"
 // Uses SetVoice(mtmp, 0, 80, 0) + verbalize().
 // TODO: mplayer.c:355 — mplayer_talk(): rival adventurer chat
+
+// Autotranslated from mplayer.c:94
+export function mk_mplayer_armor(mon, typ) {
+  let obj;
+  if (typ === STRANGE_OBJECT) return;
+  obj = mksobj(typ, false, false);
+  obj.oeroded = obj.oeroded2 = 0;
+  if (!rn2(3)) obj.oerodeproof = 1;
+  if (!rn2(3)) curse(obj);
+  if (!rn2(3)) bless(obj);
+  obj.spe = rn2(10) ? (rn2(3) ? rn2(5) : rn1(4, 4)) : -rnd(3);
+  mpickobj(mon, obj);
+}
+
+// Autotranslated from mplayer.c:326
+export function create_mplayers(num, special) {
+  let pm, x, y, fakemon;
+  fakemon = cg.zeromonst;
+  while (num) {
+    let tryct = 0;
+    pm = rn1(PM_WIZARD - PM_ARCHEOLOGIST + 1, PM_ARCHEOLOGIST);
+    set_mon_data( fakemon, mons[pm]);
+    do {
+      x = rn1(COLNO - 4, 2);
+      y = rnd(ROWNO - 2);
+    } while (!goodpos(x, y, fakemon, 0) && tryct++ <= 50);
+    if (tryct > 50) return;
+    mk_mplayer( mons,  x,  y, special);
+    num--;
+  }
+}

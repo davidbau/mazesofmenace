@@ -87,7 +87,7 @@ function dowatersnakes(player, map, display) {
 }
 
 // cf. fountain.c:64 [static] -- dowaterdemon(): fountain spawns demon or wish
-function dowaterdemon(player, map, display) {
+export function dowaterdemon(player, map, display) {
     // mvitals not tracked in JS -- always allow spawning
     const mtmp = makemon(PM_WATER_DEMON, player.x, player.y,
                          MM_NOMSG, map.depth || 1, map);
@@ -116,7 +116,7 @@ function dowaterdemon(player, map, display) {
 }
 
 // cf. fountain.c:94 [static] -- dowaternymph(): fountain spawns nymph
-function dowaternymph(player, map, display) {
+export function dowaternymph(player, map, display) {
     const mtmp = makemon(PM_WATER_NYMPH, player.x, player.y,
                          MM_NOMSG, map.depth || 1, map);
     if (mtmp) {
@@ -151,20 +151,16 @@ function nexttodoor(x, y, map) {
 }
 
 // cf. fountain.c:120 -- dogushforth(drinking): fountain gushes
-export function dogushforth(drinking, player, map, display, fov) {
-    let madepool = { count: 0 };
-
-    if (fov) {
-        do_clear_area(fov, map, player.x, player.y, 7,
-            (x, y) => gush(x, y, madepool, player, map, display, fov),
-            null);
+// Autotranslated from fountain.c:119
+export function dogushforth(drinking, player) {
+  let madepool = 0;
+  do_clear_area(player.x, player.y, 7, gush, (genericptr_t) &madepool);
+  if (!madepool) {
+    if (drinking) Your("thirst is quenched.");
+    else {
+      pline("Water sprays all over yoplayer.");
     }
-    if (!madepool.count) {
-        if (drinking)
-            Your("thirst is quenched.");
-        else
-            pline("Water sprays all over you.");
-    }
+  }
 }
 
 // cf. fountain.c:134 [static] -- gush(x, y, poolcnt): place pool at location
@@ -204,7 +200,7 @@ function gush(x, y, poolcnt, player, map, display, fov) {
 }
 
 // cf. fountain.c:165 [static] -- dofindgem(): gem in fountain
-function dofindgem(player, map, display) {
+export function dofindgem(player, map, display) {
     if (!player.blind)
         You("spot a gem in the sparkling waters!");
     else
@@ -224,7 +220,7 @@ function dofindgem(player, map, display) {
 }
 
 // cf. fountain.c:179 [static] -- watchman_warn_fountain(mtmp): guard fountain warning
-function watchman_warn_fountain(mtmp, player, fov) {
+export function watchman_warn_fountain(mtmp, player, fov) {
     if (is_watch(mtmp.data || mons[mtmp.mnum])
         && couldsee(null, player, mtmp.mx, mtmp.my)
         && mtmp.mpeaceful) {
@@ -430,7 +426,7 @@ export function dipfountain(obj, player, map, display, fov) {
     const loc = map.at(player.x, player.y);
 
     // Excalibur check
-    if (obj && obj.otyp === LONG_SWORD && (player.ulevel || player.level || 1) >= 5
+    if (obj && obj.otyp === LONG_SWORD && (player.ulevel || 1) >= 5
         && !rn2(player.roleIndex === 4 /* PM_KNIGHT */ ? 6 : 30)
         && (obj.quan || 1) === 1 && !obj.oartifact
         && !exist_artifact(LONG_SWORD, artiname(ART_EXCALIBUR))) {

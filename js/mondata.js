@@ -4,7 +4,7 @@
 // Monster instances have a .mnum field indexing into mons[].
 
 import {
-    mons,
+    mons, LOW_PM,
     M1_FLY, M1_SWIM, M1_AMORPHOUS, M1_WALLWALK, M1_CLING,
     M1_TUNNEL, M1_NEEDPICK, M1_CONCEAL, M1_HIDE, M1_AMPHIBIOUS,
     M1_BREATHLESS, M1_NOTAKE, M1_NOEYES, M1_NOHANDS, M1_NOLIMBS,
@@ -115,6 +115,9 @@ import {
 
 import { AMULET_OF_YENDOR, FOOD_CLASS, VEGGY, CORPSE, BANANA,
          objectData } from './objects.js';
+import { ALL_TRAPS, NO_TRAP } from './config.js';
+
+const NATTK = 6;
 
 // ========================================================================
 // Diet predicates — C ref: mondata.h
@@ -273,10 +276,10 @@ export function is_giant(ptr) { return !!(ptr.flags2 & M2_GIANT); }
 export function is_shapeshifter(ptr) { return !!(ptr.flags2 & M2_SHAPESHIFTER); }
 
 // C ref: #define is_golem(ptr)      ((ptr)->mlet == S_GOLEM)
-export function is_golem(ptr) { return ptr.symbol === S_GOLEM; }
+export function is_golem(ptr) { return ptr.mlet === S_GOLEM; }
 
 // C ref: #define weirdnonliving(ptr) (is_golem(ptr) || (ptr)->mlet == S_VORTEX)
-export function weirdnonliving(ptr) { return is_golem(ptr) || ptr.symbol === S_VORTEX; }
+export function weirdnonliving(ptr) { return is_golem(ptr) || ptr.mlet === S_VORTEX; }
 
 // C ref: #define nonliving(ptr) (is_undead(ptr) || (ptr) == &mons[PM_MANES] || weirdnonliving(ptr))
 export function nonliving(ptr) {
@@ -359,7 +362,7 @@ export function can_breathe(ptr) { return attacktype(ptr, AT_BREA); }
 
 // C ref: mondata.h — pet_type(ptr) checks if S_DOG or S_FELINE
 export function is_pet_type(ptr) {
-    return ptr.symbol === S_DOG || ptr.symbol === S_FELINE;
+    return ptr.mlet === S_DOG || ptr.mlet === S_FELINE;
 }
 
 // ========================================================================
@@ -444,35 +447,66 @@ export function monNam(mon, { capitalize = false, article = null } = {}) {
     return result;
 }
 
+// C-style naming helpers for callsites migrating off legacy monNam().
+export function y_monnam(mon) {
+    return monNam(mon);
+}
+
+export function YMonnam(mon) {
+    return monNam(mon, { capitalize: true });
+}
+
+export function mon_nam(mon) {
+    return monNam(mon, { article: 'the' });
+}
+
+export function Monnam(mon) {
+    return monNam(mon, { article: 'the', capitalize: true });
+}
+
+// Lightweight compatibility for C-style x_monnam callsites that only depend on
+// article selection and optional capitalization.
+export function x_monnam(mon, article = null, _adjective = null, _suppress = 0, capitalize = false) {
+    // Compatibility bridge for migrated callsites that pass options object.
+    if (article && typeof article === 'object') {
+        const opts = article;
+        const optArticle = (opts.article === 'none') ? null : (opts.article ?? null);
+        const optCap = !!opts.capitalize;
+        if (optArticle === null) {
+            const base = monDisplayName(mon);
+            return optCap && base.length ? base.charAt(0).toUpperCase() + base.slice(1) : base;
+        }
+        return monNam(mon, { article: optArticle, capitalize: optCap });
+    }
+    if (article === null || article === undefined) {
+        const base = monDisplayName(mon);
+        return capitalize && base.length ? base.charAt(0).toUpperCase() + base.slice(1) : base;
+    }
+    return monNam(mon, { article, capitalize });
+}
+
 // ========================================================================
 // Trap awareness — C ref: mondata.c
 // ========================================================================
 
 // C ref: mondata.c mon_knows_traps(mtmp, ttyp)
-export function mon_knows_traps(mon, ttyp) {
-    const seen = Number(mon?.mtrapseen || 0) >>> 0;
-    if (ttyp === -1) return seen !== 0; // ALL_TRAPS
-    if (ttyp === 0) return seen === 0;  // NO_TRAP
-    const bit = ttyp - 1;
-    if (bit < 0 || bit >= 31) return false;
-    return (seen & (1 << bit)) !== 0;
+// Autotranslated from mondata.c:1616
+export function mon_knows_traps(mtmp, ttyp) {
+  if (ttyp === ALL_TRAPS) return (mtmp.mtrapseen);
+  else if (ttyp === NO_TRAP) return !(mtmp.mtrapseen);
+  else {
+    return ((mtmp.mtrapseen & (1 << (ttyp - 1))) !== 0);
+  }
 }
 
 // C ref: mondata.c mon_learns_traps(mtmp, ttyp)
-export function mon_learns_traps(mon, ttyp) {
-    if (!mon) return;
-    const seen = Number(mon.mtrapseen || 0) >>> 0;
-    if (ttyp === -1) {
-        mon.mtrapseen = 0x7fffffff;
-        return;
-    }
-    if (ttyp === 0) {
-        mon.mtrapseen = 0;
-        return;
-    }
-    const bit = ttyp - 1;
-    if (bit < 0 || bit >= 31) return;
-    mon.mtrapseen = (seen | (1 << bit)) >>> 0;
+// Autotranslated from mondata.c:1628
+export function mon_learns_traps(mtmp, ttyp) {
+  if (ttyp === ALL_TRAPS) mtmp.mtrapseen = ~0;
+  else if (ttyp === NO_TRAP) mtmp.mtrapseen = 0;
+  else {
+    mtmp.mtrapseen |= (1 << (ttyp - 1));
+  }
 }
 
 // ========================================================================
@@ -485,9 +519,9 @@ export function passes_bars(mdat) {
     const f1 = mdat?.flags1 || 0;
     if (f1 & M1_WALLWALK) return true;  // passes_walls
     if (f1 & M1_AMORPHOUS) return true; // amorphous
-    const mlet = mdat?.symbol ?? -1;
+    const mlet = mdat?.mlet ?? -1;
     if (mlet === S_VORTEX || mlet === S_ELEMENTAL) return true; // is_whirly
-    const size = mdat?.size || 0;
+    const size = mdat?.msize || 0;
     if (size === MZ_TINY) return true;  // verysmall
     if ((f1 & M1_SLITHY) && size <= MZ_MEDIUM) return true; // slithy && !bigmonst
     return false;
@@ -503,7 +537,9 @@ export function passes_bars(mdat) {
 export function dmgtype_fromattack(ptr, dtyp, atyp) {
     if (!ptr.attacks) return false;
     for (const atk of ptr.attacks) {
-        if (atk.damage === dtyp && (atyp === AT_ANY || atk.type === atyp))
+        const adtyp = atk.adtyp ?? atk.damage;
+        const aatyp = atk.aatyp ?? atk.type;
+        if (adtyp === dtyp && (atyp === AT_ANY || aatyp === atyp))
             return true;
     }
     return false;
@@ -511,19 +547,26 @@ export function dmgtype_fromattack(ptr, dtyp, atyp) {
 
 // C ref: mondata.c dmgtype(ptr, dtyp)
 // Returns true if monster deals this damage type from any attack.
+// Autotranslated from mondata.c:711
 export function dmgtype(ptr, dtyp) {
-    return dmgtype_fromattack(ptr, dtyp, AT_ANY);
+  return dmgtype_fromattack(ptr, dtyp, AT_ANY) ? true : false;
 }
 
 // C ref: mondata.c noattacks(ptr)
 // Returns true if monster has no real attacks (AT_BOOM passive ignored).
+// Autotranslated from mondata.c:60
 export function noattacks(ptr) {
-    if (!ptr.attacks) return true;
-    for (const atk of ptr.attacks) {
-        if (atk.type === AT_BOOM) continue;
-        if (atk.type !== AT_NONE && atk.type) return false;
+  let i;
+  const mattk = ptr?.mattk || ptr?.attacks || [];
+  for (i = 0; i < NATTK; i++) {
+    const atk = mattk[i] || null;
+    const aatyp = atk?.aatyp ?? atk?.type ?? 0;
+    if (aatyp === AT_BOOM) {
+      continue;
     }
-    return true;
+    if (aatyp) return false;
+  }
+  return true;
 }
 
 // C ref: mondata.c ranged_attk(ptr)
@@ -541,10 +584,9 @@ export function ranged_attk(ptr) {
 
 // C ref: mondata.c sticks(ptr)
 // Returns true if monster can stick/grab/wrap targets it hits.
+// Autotranslated from mondata.c:653
 export function sticks(ptr) {
-    return dmgtype(ptr, AD_STCK)
-        || (dmgtype(ptr, AD_WRAP) && !attacktype(ptr, AT_ENGL))
-        || attacktype(ptr, AT_HUGS);
+  return (dmgtype(ptr, AD_STCK) || (dmgtype(ptr, AD_WRAP) && !attacktype(ptr, AT_ENGL)) || attacktype(ptr, AT_HUGS));
 }
 
 // ========================================================================
@@ -553,12 +595,9 @@ export function sticks(ptr) {
 
 // C ref: mondata.c hates_silver(ptr)
 // Returns true if this monster type is especially affected by silver weapons.
+// Autotranslated from mondata.c:523
 export function hates_silver(ptr) {
-    return is_were(ptr)
-        || ptr.symbol === S_VAMPIRE
-        || is_demon(ptr)
-        || ptr === mons[PM_SHADE]
-        || (ptr.symbol === S_IMP && ptr !== mons[PM_TENGU]);
+  return  (is_were(ptr) || ptr.mlet === S_VAMPIRE || is_demon(ptr) || ptr === mons[PM_SHADE] || (ptr.mlet === S_IMP && ptr !== mons[PM_TENGU]));
 }
 
 // C ref: mondata.c mon_hates_silver(mon)
@@ -571,8 +610,9 @@ export function mon_hates_silver(mon) {
 
 // C ref: mondata.c hates_blessings(ptr)
 // Returns true if this monster type is especially affected by blessed objects.
+// Autotranslated from mondata.c:539
 export function hates_blessings(ptr) {
-    return is_undead(ptr) || is_demon(ptr);
+  return (is_undead(ptr) || is_demon(ptr));
 }
 
 // C ref: mondata.c mon_hates_blessings(mon)
@@ -589,12 +629,11 @@ export function mon_hates_blessings(mon) {
 
 // C ref: mondata.c cantvomit(ptr)
 // Returns true if monster type is incapable of vomiting.
+// Autotranslated from mondata.c:662
 export function cantvomit(ptr) {
-    if (ptr.symbol === S_RODENT && ptr !== mons[PM_ROCK_MOLE] && ptr !== mons[PM_WOODCHUCK])
-        return true;
-    if (ptr === mons[PM_WARHORSE] || ptr === mons[PM_HORSE] || ptr === mons[PM_PONY])
-        return true;
-    return false;
+  if (ptr.mlet === S_RODENT && ptr !== mons[PM_ROCK_MOLE] && ptr !== mons[PM_WOODCHUCK]) return true;
+  if (ptr === mons[PM_WARHORSE] || ptr === mons[PM_HORSE] || ptr === mons[PM_PONY]) return true;
+  return false;
 }
 
 // C ref: mondata.c num_horns(ptr)
@@ -610,11 +649,9 @@ export function num_horns(ptr) {
 // C ref: mondata.c sliparm(ptr)
 // Returns true if creature would slip out of armor (too small, whirly, or noncorporeal).
 // is_whirly: S_VORTEX || PM_AIR_ELEMENTAL; noncorporeal: S_GHOST
+// Autotranslated from mondata.c:631
 export function sliparm(ptr) {
-    return ptr.symbol === S_VORTEX
-        || ptr === mons[PM_AIR_ELEMENTAL]
-        || (ptr.size || 0) <= MZ_SMALL
-        || ptr.symbol === S_GHOST;
+  return (is_whirly(ptr) || ptr.msize <= MZ_SMALL || noncorporeal(ptr));
 }
 
 // C ref: mondata.c breakarm(ptr)
@@ -622,7 +659,7 @@ export function sliparm(ptr) {
 // PM_MARILITH and PM_WINGED_GARGOYLE are special-cased humanoids that can't wear suits.
 export function breakarm(ptr) {
     if (sliparm(ptr)) return false;
-    const sz = ptr.size || 0;
+    const sz = ptr.msize || 0;
     return sz >= MZ_LARGE
         || (sz > MZ_SMALL && !is_humanoid(ptr))
         || ptr === mons[PM_MARILITH]
@@ -636,9 +673,10 @@ export function haseyes(ptr) { return !(ptr.flags1 & M1_NOEYES); }
 export function hates_light(ptr) { return ptr === mons[PM_GREMLIN]; }
 
 // C ref: mondata.c:547 — mon_hates_light(mon)
+// Autotranslated from mondata.c:546
 export function mon_hates_light(mon) {
-    const ptr = monsdat(mon);
-    return ptr ? hates_light(ptr) : false;
+  const ptr = monsdat(mon);
+  return ptr ? hates_light(ptr) : false;
 }
 
 // C ref: mondata.c:80 — poly_when_stoned(ptr)
@@ -664,7 +702,7 @@ export function can_track(ptr, wieldsExcalibur = false) {
 // C ref: verysmall(ptr) = msize < MZ_SMALL
 export function can_blow(ptr, isStrangled = false) {
     if ((ptr.sound === MS_SILENT || ptr.sound === MS_BUZZ)
-        && (breathless(ptr) || ptr.size < MZ_SMALL || nohead(ptr) || ptr.symbol === S_EEL))
+        && (breathless(ptr) || ptr.msize < MZ_SMALL || nohead(ptr) || ptr.mlet === S_EEL))
         return false;
     if (isStrangled) return false;
     return true;
@@ -777,6 +815,7 @@ export function little_to_big(montype) {
 
 // C ref: mondata.c:1316 — big_to_little(montype)
 // Returns the juvenile form of a monster index, or the index itself if none.
+// Autotranslated from mondata.c:1315
 export function big_to_little(montype) {
     for (const [little, big] of grownups)
         if (montype === big) return little;
@@ -787,7 +826,7 @@ export function big_to_little(montype) {
 // Returns true if the two monster indices are part of the same growth chain.
 export function big_little_match(montyp1, montyp2) {
     if (montyp1 === montyp2) return true;
-    if (mons[montyp1]?.symbol !== mons[montyp2]?.symbol) return false;
+    if (mons[montyp1]?.mlet !== mons[montyp2]?.mlet) return false;
     // Check whether montyp1 can grow up into montyp2
     for (let l = montyp1, b; (b = little_to_big(l)) !== l; l = b)
         if (b === montyp2) return true;
@@ -804,7 +843,7 @@ export function is_mind_flayer(ptr) {
 }
 // is_unicorn: S_UNICORN symbol && likes_gems
 export function is_unicorn(ptr) {
-    return ptr.symbol === S_UNICORN && likes_gems(ptr);
+    return ptr.mlet === S_UNICORN && likes_gems(ptr);
 }
 // is_rider: Death, Famine, or Pestilence
 export function is_rider(ptr) {
@@ -832,38 +871,38 @@ export function same_race(pm1, pm2) {
     if (is_golem(pm1)) return is_golem(pm2);
     if (is_mind_flayer(pm1)) return is_mind_flayer(pm2);
     // Kobolds (including zombie/mummy forms)
-    const lkob = pm1.symbol === S_KOBOLD || pm1 === mons[PM_KOBOLD_ZOMBIE]
+    const lkob = pm1.mlet === S_KOBOLD || pm1 === mons[PM_KOBOLD_ZOMBIE]
                || pm1 === mons[PM_KOBOLD_MUMMY];
     if (lkob) {
-        return pm2.symbol === S_KOBOLD || pm2 === mons[PM_KOBOLD_ZOMBIE]
+        return pm2.mlet === S_KOBOLD || pm2 === mons[PM_KOBOLD_ZOMBIE]
             || pm2 === mons[PM_KOBOLD_MUMMY];
     }
-    if (pm1.symbol === S_OGRE) return pm2.symbol === S_OGRE;
-    if (pm1.symbol === S_NYMPH) return pm2.symbol === S_NYMPH;
-    if (pm1.symbol === S_CENTAUR) return pm2.symbol === S_CENTAUR;
+    if (pm1.mlet === S_OGRE) return pm2.mlet === S_OGRE;
+    if (pm1.mlet === S_NYMPH) return pm2.mlet === S_NYMPH;
+    if (pm1.mlet === S_CENTAUR) return pm2.mlet === S_CENTAUR;
     if (is_unicorn(pm1)) return is_unicorn(pm2);
-    if (pm1.symbol === S_DRAGON) return pm2.symbol === S_DRAGON;
-    if (pm1.symbol === S_NAGA) return pm2.symbol === S_NAGA;
+    if (pm1.mlet === S_DRAGON) return pm2.mlet === S_DRAGON;
+    if (pm1.mlet === S_NAGA) return pm2.mlet === S_NAGA;
     // Riders and minions
     if (is_rider(pm1)) return is_rider(pm2);
     if (is_minion(pm1)) return is_minion(pm2);
     // Tengu don't match imps
     const m1idx = mons.indexOf(pm1), m2idx = mons.indexOf(pm2);
     if (pm1 === mons[PM_TENGU] || pm2 === mons[PM_TENGU]) return false;
-    if (pm1.symbol === S_IMP) return pm2.symbol === S_IMP;
-    else if (pm2.symbol === S_IMP) return false;
+    if (pm1.mlet === S_IMP) return pm2.mlet === S_IMP;
+    else if (pm2.mlet === S_IMP) return false;
     if (is_demon(pm1)) return is_demon(pm2);
     // Undead by sub-type
     if (is_undead(pm1)) {
-        if (pm1.symbol === S_ZOMBIE) return pm2.symbol === S_ZOMBIE;
-        if (pm1.symbol === S_MUMMY) return pm2.symbol === S_MUMMY;
-        if (pm1.symbol === S_VAMPIRE) return pm2.symbol === S_VAMPIRE;
-        if (pm1.symbol === S_LICH) return pm2.symbol === S_LICH;
-        if (pm1.symbol === S_WRAITH) return pm2.symbol === S_WRAITH;
-        if (pm1.symbol === S_GHOST) return pm2.symbol === S_GHOST;
+        if (pm1.mlet === S_ZOMBIE) return pm2.mlet === S_ZOMBIE;
+        if (pm1.mlet === S_MUMMY) return pm2.mlet === S_MUMMY;
+        if (pm1.mlet === S_VAMPIRE) return pm2.mlet === S_VAMPIRE;
+        if (pm1.mlet === S_LICH) return pm2.mlet === S_LICH;
+        if (pm1.mlet === S_WRAITH) return pm2.mlet === S_WRAITH;
+        if (pm1.mlet === S_GHOST) return pm2.mlet === S_GHOST;
     } else if (is_undead(pm2)) return false;
     // Check grow-up chains (same symbol class)
-    if (pm1.symbol === pm2.symbol && m1idx >= 0 && m2idx >= 0) {
+    if (pm1.mlet === pm2.mlet && m1idx >= 0 && m2idx >= 0) {
         if (big_little_match(m1idx, m2idx)) return true;
     }
     // Gargoyle family
@@ -973,14 +1012,14 @@ export function tunnels(ptr) { return !!(ptr.flags1 & M1_TUNNEL); }
 export function needspick(ptr) { return !!(ptr.flags1 & M1_NEEDPICK); }
 
 // C ref: #define is_floater(ptr) ((ptr)->mlet == S_EYE || (ptr)->mlet == S_LIGHT)
-export function is_floater(ptr) { return ptr.symbol === S_EYE || ptr.symbol === S_LIGHT; }
+export function is_floater(ptr) { return ptr.mlet === S_EYE || ptr.mlet === S_LIGHT; }
 
 // C ref: #define noncorporeal(ptr) ((ptr)->mlet == S_GHOST)
-export function noncorporeal(ptr) { return ptr.symbol === S_GHOST; }
+export function noncorporeal(ptr) { return ptr.mlet === S_GHOST; }
 
 // C ref: #define is_whirly(ptr) ((ptr)->mlet == S_VORTEX || (ptr)==&mons[PM_AIR_ELEMENTAL])
 export function is_whirly(ptr) {
-    return ptr.symbol === S_VORTEX || ptr === mons[PM_AIR_ELEMENTAL];
+    return ptr.mlet === S_VORTEX || ptr === mons[PM_AIR_ELEMENTAL];
 }
 
 // C ref: #define cant_drown(ptr) (is_swimmer(ptr) || amphibious(ptr) || breathless(ptr))
@@ -996,7 +1035,7 @@ export function grounded(ptr, hasCeiling = true) {
 // C ref: #define ceiling_hider(ptr) (is_hider(ptr) && ((is_clinger(ptr) && (ptr)->mlet != S_MIMIC) || is_flyer(ptr)))
 export function ceiling_hider(ptr) {
     return is_hider(ptr)
-        && ((is_clinger(ptr) && ptr.symbol !== S_MIMIC) || is_flyer(ptr));
+        && ((is_clinger(ptr) && ptr.mlet !== S_MIMIC) || is_flyer(ptr));
 }
 
 // C ref: #define eyecount(ptr) (!haseyes(ptr) ? 0 : ((ptr)==&mons[PM_CYCLOPS] || (ptr)==&mons[PM_FLOATING_EYE]) ? 1 : 2)
@@ -1028,7 +1067,7 @@ export function flaming(ptr) {
 export function is_silent(ptr) { return ptr.sound === MS_SILENT; }
 
 // C ref: #define is_vampire(ptr) ((ptr)->mlet == S_VAMPIRE)
-export function is_vampire(ptr) { return ptr.symbol === S_VAMPIRE; }
+export function is_vampire(ptr) { return ptr.mlet === S_VAMPIRE; }
 
 // C ref: #define passes_rocks(ptr) (passes_walls(ptr) && !unsolid(ptr))
 export function passes_rocks(ptr) { return passes_walls(ptr) && !unsolid(ptr); }
@@ -1076,7 +1115,7 @@ export function is_armed(ptr) { return attacktype(ptr, AT_WEAP); }
 
 // C ref: #define cantwield(ptr) (nohands(ptr) || verysmall(ptr))
 // verysmall(ptr): (ptr)->msize < MZ_SMALL
-export function cantwield(ptr) { return nohands(ptr) || (ptr.size || 0) < MZ_SMALL; }
+export function cantwield(ptr) { return nohands(ptr) || (ptr.msize || 0) < MZ_SMALL; }
 
 // C ref: #define could_twoweap(ptr) — multiple AT_WEAP in first 3 attack slots
 export function could_twoweap(ptr) {
@@ -1106,7 +1145,7 @@ export function slimeproof(ptr) {
 
 // C ref: #define eggs_in_water(ptr) (lays_eggs(ptr) && (ptr)->mlet == S_EEL && is_swimmer(ptr))
 export function eggs_in_water(ptr) {
-    return lays_eggs(ptr) && ptr.symbol === S_EEL && is_swimmer(ptr);
+    return lays_eggs(ptr) && ptr.mlet === S_EEL && is_swimmer(ptr);
 }
 
 // C ref: #define telepathic(ptr) (PM_FLOATING_EYE || PM_MIND_FLAYER || PM_MASTER_MIND_FLAYER)
@@ -1140,14 +1179,14 @@ export function is_placeholder(ptr) {
 }
 
 // C ref: #define is_reviver(ptr) (is_rider(ptr) || (ptr)->mlet == S_TROLL)
-export function is_reviver(ptr) { return is_rider(ptr) || ptr.symbol === S_TROLL; }
+export function is_reviver(ptr) { return is_rider(ptr) || ptr.mlet === S_TROLL; }
 
 // C ref: #define unique_corpstat(ptr) (((ptr)->geno & G_UNIQ) != 0)
 export function unique_corpstat(ptr) { return !!(ptr.geno & G_UNIQ); }
 
 // C ref: #define emits_light(ptr) — returns light range (0 or 1)
 export function emits_light(ptr) {
-    if (ptr.symbol === S_LIGHT
+    if (ptr.mlet === S_LIGHT
         || ptr === mons[PM_FLAMING_SPHERE]
         || ptr === mons[PM_SHOCKING_SPHERE]
         || ptr === mons[PM_BABY_GOLD_DRAGON]
@@ -1200,7 +1239,7 @@ export function is_bat(ptr) {
 }
 
 // C ref: #define is_bird(ptr) ((ptr)->mlet == S_BAT && !is_bat(ptr))
-export function is_bird(ptr) { return ptr.symbol === S_BAT && !is_bat(ptr); }
+export function is_bird(ptr) { return ptr.mlet === S_BAT && !is_bat(ptr); }
 
 // cf. monst.h canseemon(mon) — player can see this monster
 export function canseemon(mon, player, fov) {
@@ -1215,7 +1254,7 @@ export function canseemon(mon, player, fov) {
 // Diet predicates — C ref: mondata.h
 // C ref: #define vegan(ptr) (blobs/jellies/fungi/vortexes/lights/most elementals/most golems/noncorporeal)
 export function vegan(ptr) {
-    const sym = ptr.symbol;
+    const sym = ptr.mlet;
     if (sym === S_BLOB || sym === S_JELLY || sym === S_FUNGUS
         || sym === S_VORTEX || sym === S_LIGHT) return true;
     if (sym === S_ELEMENTAL && ptr !== mons[PM_STALKER]) return true;
@@ -1227,7 +1266,7 @@ export function vegan(ptr) {
 // C ref: #define vegetarian(ptr) (vegan(ptr) || (S_PUDDING && not PM_BLACK_PUDDING))
 export function vegetarian(ptr) {
     return vegan(ptr)
-        || (ptr.symbol === S_PUDDING && ptr !== mons[PM_BLACK_PUDDING]);
+        || (ptr.mlet === S_PUDDING && ptr !== mons[PM_BLACK_PUDDING]);
 }
 
 // C ref: #define corpse_eater(ptr) (PM_PURPLE_WORM || PM_BABY_PURPLE_WORM || PM_GHOUL || PM_PIRANHA)
@@ -1247,7 +1286,147 @@ export function befriend_with_obj(ptr, obj) {
     if (ptr === mons[PM_MONKEY] || ptr === mons[PM_APE])
         return obj.otyp === BANANA;
     return is_domestic(ptr) && obj.oclass === FOOD_CLASS
-        && (ptr.symbol !== S_UNICORN
+        && (ptr.mlet !== S_UNICORN
             || (objectData[obj.otyp]?.material === VEGGY)
             || (obj.otyp === CORPSE && obj.corpsenm === PM_LICHEN));
+}
+
+// Autotranslated from mondata.c:500
+export function mstrength_ranged_attk(ptr) {
+  let i, j, atk_mask = (1 << AT_BREA) | (1 << AT_SPIT) | (1 << AT_GAZE);
+  for (i = 0; i < NATTK; i++) {
+    if ((j = ptr.mattk[i].aatyp) >= AT_WEAP || (j < 32 && (atk_mask & (1 << j)) !== 0)) return true;
+  }
+  return false;
+}
+
+// Autotranslated from mondata.c:1179
+export function gender(mtmp) {
+  if (is_neuter(mtmp.data)) return 2;
+  return mtmp.female;
+}
+
+// Autotranslated from mondata.c:1379
+export function locomotion(ptr, def) {
+  let locoindx = ( def !== highc( def)) ? 0 : 1;
+  return (is_floater(ptr) ? levitate[locoindx] : (is_flyer(ptr) && ptr.msize <= MZ_SMALL) ? flys[locoindx] : (is_flyer(ptr) && ptr.msize > MZ_SMALL) ? flyl[locoindx] : slithy(ptr) ? slither[locoindx] : amorphous(ptr) ? ooze[locoindx] : !ptr.mmove ? immobile[locoindx] : nolimbs(ptr) ? crawl[locoindx] : def);
+}
+
+// Autotranslated from mondata.c:1394
+export function stagger(ptr, def) {
+  let locoindx = ( def !== highc( def)) ? 2 : 3;
+  return (is_floater(ptr) ? levitate[locoindx] : (is_flyer(ptr) && ptr.msize <= MZ_SMALL) ? flys[locoindx] : (is_flyer(ptr) && ptr.msize > MZ_SMALL) ? flyl[locoindx] : slithy(ptr) ? slither[locoindx] : amorphous(ptr) ? ooze[locoindx] : !ptr.mmove ? immobile[locoindx] : nolimbs(ptr) ? crawl[locoindx] : def);
+}
+
+// Autotranslated from mondata.c:1506
+export function olfaction(mdat) {
+  if (is_golem(mdat) || mdat.mlet === S_EYE   || mdat.mlet === S_JELLY || mdat.mlet === S_PUDDING || mdat.mlet === S_BLOB || mdat.mlet === S_VORTEX || mdat.mlet === S_ELEMENTAL || mdat.mlet === S_FUNGUS   || mdat.mlet === S_LIGHT) return false;
+  return true;
+}
+
+// Autotranslated from mondata.c:1521
+export function cvt_adtyp_to_mseenres(adtyp) {
+  switch (adtyp) {
+    case AD_MAGM:
+      return M_SEEN_MAGR;
+    case AD_FIRE:
+      return M_SEEN_FIRE;
+    case AD_COLD:
+      return M_SEEN_COLD;
+    case AD_SLEE:
+      return M_SEEN_SLEEP;
+    case AD_DISN:
+      return M_SEEN_DISINT;
+    case AD_ELEC:
+      return M_SEEN_ELEC;
+    case AD_DRST:
+      return M_SEEN_POISON;
+    case AD_ACID:
+      return M_SEEN_ACID;
+    default:
+      return M_SEEN_NOTHING;
+  }
+}
+
+// Autotranslated from mondata.c:1539
+export function cvt_prop_to_mseenres(prop) {
+  switch (prop) {
+    case ANTIMAGIC:
+      return M_SEEN_MAGR;
+    case FIRE_RES:
+      return M_SEEN_FIRE;
+    case COLD_RES:
+      return M_SEEN_COLD;
+    case SLEEP_RES:
+      return M_SEEN_SLEEP;
+    case DISINT_RES:
+      return M_SEEN_DISINT;
+    case POISON_RES:
+      return M_SEEN_POISON;
+    case SHOCK_RES:
+      return M_SEEN_ELEC;
+    case ACID_RES:
+      return M_SEEN_ACID;
+    case REFLECTING:
+      return M_SEEN_REFL;
+    default:
+      return M_SEEN_NOTHING;
+  }
+}
+
+// Autotranslated from mondata.c:1557
+export function monstseesu(seenres, map, player) {
+  let mtmp;
+  if (seenres === M_SEEN_NOTHING || player.uswallow) return;
+  for (mtmp = (map?.fmon || null); mtmp; mtmp = mtmp.nmon) {
+    if (!DEADMONSTER(mtmp) && m_canseeu(mtmp)) {
+      m_setseenres(mtmp, seenres);
+    }
+  }
+}
+
+// Autotranslated from mondata.c:1571
+export function monstunseesu(seenres, map, player) {
+  let mtmp;
+  if (seenres === M_SEEN_NOTHING || player.uswallow) return;
+  for (mtmp = (map?.fmon || null); mtmp; mtmp = mtmp.nmon) {
+    if (!DEADMONSTER(mtmp) && m_canseeu(mtmp)) {
+      m_clearseenres(mtmp, seenres);
+    }
+  }
+}
+
+// Autotranslated from mondata.c:1640
+export function mons_see_trap(ttmp, map) {
+  let mtmp, tx = ttmp.tx, ty = ttmp.ty;
+  let maxdist = map.locations[tx][ty].lit ? 7*7 : 2;
+  for (mtmp = (map?.fmon || null); mtmp; mtmp = mtmp.nmon) {
+    if (is_animal(mtmp.data) || mindless(mtmp.data) || !haseyes(mtmp.data) || !mtmp.mcansee) {
+      continue;
+    }
+    if (dist2(mtmp.mx, mtmp.my, tx, ty) > maxdist) {
+      continue;
+    }
+    if (!m_cansee(mtmp, tx, ty)) {
+      continue;
+    }
+    mon_learns_traps(mtmp, ttmp.ttyp);
+  }
+}
+
+// Autotranslated from mondata.c:1659
+export function get_atkdam_type(adtyp) {
+  if (adtyp === AD_RBRE) {
+    let rnd_breath_typ = [ AD_MAGM, AD_FIRE, AD_COLD, AD_SLEE, AD_DISN, AD_ELEC, AD_DRST, AD_ACID ];
+    return ROLL_FROM(rnd_breath_typ);
+  }
+  return adtyp;
+}
+
+// Autotranslated from mondata.c:1585
+export function give_u_to_m_resistances(mtmp, player) {
+  let intr;
+  for (intr = FIRE_RES; intr <= STONE_RES; intr++) {
+    if ((player.uprops[intr].intrinsic & INTRINSIC) !== 0) { mtmp.mintrinsics |=  res_to_mr(intr); }
+  }
 }

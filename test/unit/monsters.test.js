@@ -49,7 +49,12 @@ describe('Monsters database', () => {
     it('monsters have valid attack types', () => {
         for (const m of monsterData) {
             for (const atk of m.attacks) {
-                // Attacks are {type, damage, dice, sides} objects
+                // Attacks are canonical C-style {aatyp, adtyp, damn, damd}
+                // with legacy aliases kept for compatibility.
+                assert.equal(typeof atk.aatyp, 'number', `${m.name} aatyp not number`);
+                assert.equal(typeof atk.adtyp, 'number', `${m.name} adtyp not number`);
+                assert.equal(typeof atk.damn, 'number', `${m.name} damn not number`);
+                assert.equal(typeof atk.damd, 'number', `${m.name} damd not number`);
                 assert.equal(typeof atk.type, 'number', `${m.name} attack type not number`);
                 assert.equal(typeof atk.damage, 'number', `${m.name} damage type not number`);
                 assert.equal(typeof atk.dice, 'number', `${m.name} attack dice not number`);

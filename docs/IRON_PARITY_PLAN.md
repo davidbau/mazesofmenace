@@ -16,9 +16,11 @@ This campaign treats green tests as guardrails, not the goal. The goal is faithf
 1. State refactor plan: [C_FAITHFUL_STATE_REFACTOR_PLAN.md](/share/u/davidbau/git/mazesofmenace/game/docs/C_FAITHFUL_STATE_REFACTOR_PLAN.md)
 2. Translator architecture: [C_TRANSLATOR_ARCHITECTURE_SPEC.md](/share/u/davidbau/git/mazesofmenace/game/docs/C_TRANSLATOR_ARCHITECTURE_SPEC.md)
 3. Translator parser strategy: [C_TRANSLATOR_PARSER_IMPLEMENTATION_SPEC.md](/share/u/davidbau/git/mazesofmenace/game/docs/C_TRANSLATOR_PARSER_IMPLEMENTATION_SPEC.md)
-4. Coverage ledger: [CODEMATCH.md](/share/u/davidbau/git/mazesofmenace/game/docs/CODEMATCH.md)
-5. Parity debugging workflow: [RNG_ALIGNMENT_GUIDE.md](/share/u/davidbau/git/mazesofmenace/game/docs/RNG_ALIGNMENT_GUIDE.md)
-6. Learnings: [LORE.md](/share/u/davidbau/git/mazesofmenace/game/docs/LORE.md)
+4. Translator out-param/format strategy: [C_TRANSLATOR_OUTPARAM_AND_FORMAT_ARCHITECTURE.md](/share/u/davidbau/git/mazesofmenace/game/docs/C_TRANSLATOR_OUTPARAM_AND_FORMAT_ARCHITECTURE.md)
+5. Coverage ledger: [CODEMATCH.md](/share/u/davidbau/git/mazesofmenace/game/docs/CODEMATCH.md)
+6. Parity debugging workflow: [RNG_ALIGNMENT_GUIDE.md](/share/u/davidbau/git/mazesofmenace/game/docs/RNG_ALIGNMENT_GUIDE.md)
+7. Learnings: [LORE.md](/share/u/davidbau/git/mazesofmenace/game/docs/LORE.md)
+8. Translator capability gap tracker: [C_TRANSLATOR_99_PERCENT_CAPABILITY_GAPS.md](/share/u/davidbau/git/mazesofmenace/game/docs/C_TRANSLATOR_99_PERCENT_CAPABILITY_GAPS.md)
 
 ## Strategic Thesis
 
@@ -41,6 +43,19 @@ Secondary outcomes:
 2. Lower manual churn for repetitive ports.
 3. Better long-term maintainability with explicit translation policies and boundary contracts.
 
+## Scope Baseline (Operational)
+
+From `docs/CODEMATCH.md` function-level rows (snapshot 2026-02-26):
+
+1. Total function rows tracked: `5000`.
+2. Missing rows (raw): `3863`.
+3. Missing rows excluding files marked `N/A`: `3242`.
+
+Execution implication:
+
+1. The campaign must explicitly scale translation throughput from validated pilots
+   to large batches; one-function-at-a-time porting cannot close this backlog.
+
 ## Non-Negotiable Constraints
 
 1. No comparator exceptions that hide real mismatches.
@@ -48,6 +63,65 @@ Secondary outcomes:
 3. No big-bang refactor without parity gates.
 4. No widening of legacy mirror state paths.
 5. Headless replay speed remains high; animation timing is boundary-correct but skippable in headless.
+
+## Canonical Naming and Notation Rules (Campaign-Wide)
+
+Purpose:
+
+1. Remove ambiguity during migration.
+2. Ensure translator output converges directly to final-state architecture.
+3. Keep review and issue triage mechanically checkable.
+
+Authoritative target names:
+
+1. Runtime/global ownership must converge to canonical `game.*` paths.
+2. Translator output must target canonical names by default, never ad-hoc aliases.
+3. Legacy names are allowed only as explicitly marked transitional bridges.
+4. Within canonical paths, prefer C-like symbol names to maximize mechanical translation fidelity.
+
+Canonical path policy:
+
+1. Use this form for all parity-critical state reads/writes: `game.<namespace>.<field>`.
+2. Preferred namespaces: `game.u`, `game.flags`, `game.iflags`, `game.gd`, `game.gm`, `game.gn`, `game.lev`, `game.svc.*`.
+3. C symbol names remain C-shaped when they are semantic entities (for example `youmonst`, `moves`, `mvitals`), but mounted at canonical ownership paths.
+4. Prefer C field/function naming and ordering over JS-style cosmetic rewrites when behavior is equivalent.
+5. Do not introduce new top-level mirrors (`context.*`, `map.*`, `state.*`, `globals.*`) as long-term ownership.
+
+Legacy bridge policy:
+
+1. Transitional aliases are permitted only when required to avoid large-batch regressions.
+2. Every alias bridge must carry an explicit marker comment: `IRON_PARITY_ALIAS_BRIDGE`.
+3. Every alias bridge must reference a milestone retirement target (`M1`, `M2`, ... `M6`) and follow-up issue.
+4. Alias bridges are read-through/write-through adapters only; they must not become independent state owners.
+5. Any new alias bridge without retirement metadata is a policy violation.
+
+Translator naming and notation policy:
+
+1. Rewrite tables must map C globals/paths directly to canonical `game.*` targets.
+2. Rule tables may include compatibility profiles, but default emit profile is canonical-only.
+3. Generated identifiers should be deterministic and C-first:
+   1. preserve C local/global/member names whenever they are valid JS identifiers,
+   2. only rename when required by JS syntax/reserved words or established exported API contracts,
+   3. do not camelize/simplify names for style alone.
+4. Generated function names stay aligned to C function names unless file-level JS API constraints require wrappers.
+5. Temporary translator shims must be marked as `TRANSITIONAL_SHIM` and tracked in campaign issues.
+
+Issue and doc notation rules:
+
+1. Always describe state locations as canonical path pairs: `C:<symbol/path> -> JS:<game.path>`.
+2. For divergences, include `file:function`, divergence channel, and first step/index.
+3. For migration notes, explicitly tag status:
+   1. `canonical` (final target),
+   2. `bridge` (temporary alias),
+   3. `legacy` (to be removed).
+4. `docs/port-status/IRON_PARITY_ALIAS_BRIDGE_LEDGER_*.md` is the running bridge inventory and retirement tracker.
+
+Milestone enforcement:
+
+1. `M1`: canonical namespaces exist; no untracked alias bridges.
+2. `M2`: movement/turn modules stop writing through legacy ownership paths.
+3. `M3+`: translator output must be canonical-first; compatibility profile usage requires explicit justification.
+4. `M6`: Tier-1 legacy bridges removed, except explicitly approved long-tail exceptions.
 
 ## Program Structure
 
@@ -86,7 +160,7 @@ Required assets:
 1. `tools/c_translator/rulesets/*` rule tables and schemas
 2. coverage policy manifest: `tools/c_translator/rulesets/file_policy.json`
 3. policy checker: `scripts/check-translator-file-policy.mjs`
-4. annotation-driven mixed-file controls (`TRANSLATOR: AUTO/MANUAL/MANUAL-BEGIN/MANUAL-END`)
+4. annotation-driven mixed-file controls (`Autotranslated from <file>.c:<line>/TRANSLATOR: MANUAL/MANUAL-BEGIN/MANUAL-END`)
 
 Translation policy classes:
 
@@ -100,6 +174,82 @@ Exit conditions for B:
 1. Schema + rule loader stable.
 2. Translator regression tests in place.
 3. Pilot files translated with no parity regression.
+
+### Translation Throughput Ramp (Authoritative)
+
+Stage 0: Scrutinized pilots
+
+1. Batch size: `1-12` functions.
+2. Scope: hand-audited exemplars (sync, async, boundary, macro-heavy, control-flow variants).
+3. Promotion gate:
+   1. translator regression tests green,
+   2. policy checks green (`translator:check-policy`, `translator:check-annotations`),
+   3. no parity regression in targeted session subset.
+
+Stage 1: Dozens
+
+1. Batch size: `12-60` functions per wave.
+2. Scope: one subsystem slice with shared rewrite policy.
+3. Promotion gate:
+   1. stable idempotence/static gates across repeated runs,
+   2. unresolved-token diagnostics trend downward,
+   3. parity baseline stable/improving on campaign dashboard.
+
+Stage 2: Hundreds
+
+1. Batch size: `60-400` functions per wave.
+2. Scope: multi-file subsystem families after canonical state ownership is stable.
+3. Promotion gate:
+   1. automated triage for blocked/partial emits,
+   2. issue workflow keeps follow-ups bounded and linked,
+   3. no unreviewed growth in bridge/compatibility debt.
+
+Stage 3: Thousands
+
+1. Batch size: campaign-scale closure waves (`400+` cumulative per wave window).
+2. Scope: full backlog burn-down with mixed auto/manual policy.
+3. Gate discipline:
+   1. all prior stage gates remain active,
+   2. high-risk files remain policy-constrained (`manual_only` or strict `mixed`),
+   3. release-critical parity suites remain authoritative for accept/reject.
+
+### Common Helper and Out-Param Normalization Lane (High Priority)
+
+Purpose:
+
+1. Remove high-volume translator blockers caused by unresolved C helper idioms and out-param mutation patterns.
+2. Convert these blockers into deterministic lowering rules so large-batch autotranslation can scale safely.
+
+Current audited scope (full pipeline snapshot):
+
+1. `298` unsafe functions are blocked by common C helper symbols (`sprintf/strcpy/strlen/...` family).
+2. `203` functions contain `Sprintf/Snprintf` calls.
+3. `116` functions contain detected direct out-param writes.
+
+Authoritative helper automation tranche (Phase B-H1):
+
+1. `sprintf` / `snprintf` (including `Sprintf` / `Snprintf`)
+2. `strcpy` / `strcat` / `strncpy`
+3. `strlen`
+4. `strchr` / `strrchr`
+5. `strcmpi` / `strncmpi`
+6. `atoi`
+7. `abs`
+8. `eos`
+
+Execution rules:
+
+1. Implement as translator lowering/normalization, not comparator exceptions.
+2. Keep C order and branch structure; only replace helper semantics with JS-equivalent expression/helpers.
+3. Add function-summary metadata for out-param role classification and callsite rewrite (`single`, `single+result`, `multi`).
+4. Gate each wave with unit tests, translator regression tests, and session parity baseline check.
+5. For printf-family sinks (`Sprintf`, `Snprintf`, `pline`, `raw_printf`), enforce one shared formatter contract and explicit unsupported-specifier diagnostics.
+
+Exit gate for B-H1:
+
+1. Marked-function audit shows reduced `unsafe_unknown_calls_and_identifiers` count in helper-driven categories.
+2. `Sprintf/Snprintf`-blocked marked set reduced by at least `50%` from current baseline.
+3. No regression in parity baseline (`test:session`) and no unit-test failures.
 
 ## Workstream C: Parity Operations and Governance
 
@@ -184,6 +334,36 @@ Deliver:
 Gate:
 
 1. Idempotence and static checks pass.
+2. Stage-0 throughput ramp gate passes (scrutinized pilot set complete).
+
+### Phase 3 Hard-Part Execution Order (Authoritative)
+
+Work packages are intentionally ordered to avoid rework:
+
+1. `T3.1` Parser bootstrap (`clang.cindex` TU load + compile command profile)
+2. `T3.2` Source/PP span map + macro provenance extraction
+3. `T3.3` NIR core model + deterministic function-level serialization
+4. `T3.4` Rule/schema loader + strict validation
+5. `T3.5` Rewrite pass engine wiring (state/macros/function/boundary/controlflow)
+6. `T3.6` JS backend emitter skeleton (stable formatting + source map sidecar)
+7. `T3.7` CLI orchestration (`main.py`) and artifact writing (`meta/diag`)
+8. `T3.8` Idempotence/static gates + translator unit suite
+9. `T3.9` Safe-subset pilot translation on curated helper functions
+
+Dependency constraints:
+
+1. `T3.3` depends on `T3.1` and `T3.2`.
+2. `T3.5` depends on `T3.3` and `T3.4`.
+3. `T3.6` depends on `T3.3`.
+4. `T3.7` depends on `T3.5` and `T3.6`.
+5. `T3.8` depends on `T3.7`.
+6. `T3.9` depends on `T3.8`.
+
+Parallelization rule:
+
+1. `T3.4` can run in parallel with `T3.2/T3.3`.
+2. `T3.6` can start once `T3.3` is stable, in parallel with late `T3.5`.
+3. Final gate still requires all `T3.x` to be green.
 
 ## Phase 4: Combat/Monster Core Canonicalization + Translator Pilot
 
@@ -195,6 +375,7 @@ Deliver:
 Gate:
 
 1. No parity regression on targeted seeds; at least one divergence cluster improves.
+2. Stage-1 throughput ramp gate passes (dozens-scale subsystem wave).
 
 ## Phase 5: Generation/Startup Canonicalization + Translator Expansion
 
@@ -206,6 +387,7 @@ Deliver:
 Gate:
 
 1. Early-step divergence class improved.
+2. Stage-2 throughput ramp gate passes (hundreds-scale wave reliability).
 
 ## Phase 6: Boundary Hardening and Legacy Path Elimination
 
@@ -218,6 +400,7 @@ Deliver:
 Gate:
 
 1. Stable campaign-level parity metrics and clean policy checks.
+2. Stage-3 throughput operation is stable for remaining backlog closure.
 
 ## Artifacts and Evidence Required Per Batch
 

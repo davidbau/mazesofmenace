@@ -321,8 +321,7 @@ export function fillholetyp(x, y, fill_if_any, map) {
 // furniture_handled (cf. dig.c:570-592)
 // Processes terrain furniture destruction when digging.
 // ============================================================================
-
-function furniture_handled(x, y, madeby_u, map) {
+export function furniture_handled(x, y, madeby_u, map) {
     const lev = map.at(x, y);
     if (!lev) return false;
 
@@ -1669,4 +1668,120 @@ export function escape_tomb(map, player) {
             }
         }
     }
+}
+
+// Autotranslated from dig.c:140
+export function pick_can_reach(pick, x, y, player) {
+  let t = t_at(x, y), target_in_pit = t && is_pit(t.ttyp) && t.tseen;
+  if (player.utrap && player.utraptype === TT_PIT) {
+    if (target_in_pit) return conjoined_pits(t, t_at(player.x, player.y), false);
+    return bimanual(pick);
+  }
+  if (bimanual(pick) || (player?.Flying || player?.flying || false)) return true;
+  if (!target_in_pit) return true;
+  return false;
+}
+
+// Autotranslated from dig.c:254
+export function digcheck_fail_message(digresult, madeby, x, y) {
+  let verb = (madeby === BY_YOU && uwep && is_axe(uwep)) ? "chop" : "dig in";
+  if (digresult < DIGCHECK_FAILED) return;
+  switch (digresult) {
+    case DIGCHECK_FAIL_AIRLEVEL:
+      You("cannot %s thin air.", verb);
+    break;
+    case DIGCHECK_FAIL_ALTAR:
+      pline_The("altar is too hard to break apart.");
+    break;
+    case DIGCHECK_FAIL_BOULDER:
+      There("isn't enough room to %s here.", verb);
+    break;
+    case DIGCHECK_FAIL_ONLADDER:
+      pline_The("ladder resists your effort.");
+    break;
+    case DIGCHECK_FAIL_ONSTAIRS:
+      pline_The("stairs are too hard to %s.", verb);
+    break;
+    case DIGCHECK_FAIL_THRONE:
+      pline_The("throne is too hard to break apart.");
+    break;
+    case DIGCHECK_FAIL_CANTDIG:
+      case DIGCHECK_FAIL_TOOHARD:
+        case DIGCHECK_FAIL_UNDESTROYABLETRAP:
+          pline_The("%s here is too hard to %s.", surface(x, y), verb);
+    break;
+    case DIGCHECK_FAIL_WATERLEVEL:
+      pline_The("%s splashes and subsides.", hliquid("water"));
+    break;
+    case DIGCHECK_FAIL_OBJ_POOL_OR_TRAP:
+      case DIGCHECK_PASSED:
+        case DIGCHECK_PASSED_PITONLY:
+          case DIGCHECK_PASSED_DESTROY_TRAP:
+            break;
+  }
+}
+
+// Autotranslated from dig.c:1361
+export function watchman_canseeu(mtmp) {
+  if (is_watch(mtmp.data) && mtmp.mcansee && m_canseeu(mtmp) && mtmp.mpeaceful) return true;
+  return false;
+}
+
+// Autotranslated from dig.c:1762
+export function adj_pit_checks(cc, msg, map) {
+  let ltyp, room;
+  let foundation_msg = "The foundation is too hard to dig through from this angle.";
+  if (!cc) return false;
+  if (!isok(cc.x, cc.y)) return false;
+   msg = '\0';
+  room = map.locations[cc.x][cc.y];
+  ltyp = room.typ, room.flags = 0;
+  if (is_pool(cc.x, cc.y) || is_lava(cc.x, cc.y)) { return false; }
+  else if (closed_door(cc.x, cc.y) || room.typ === SDOOR) { Strcpy(msg, foundation_msg); return false; }
+  else if (IS_WALL(ltyp)) { Strcpy(msg, foundation_msg); return false; }
+  else if (IS_TREE(ltyp)) { Strcpy(msg, "The tree's roots glow then fade."); return false; }
+  else if (ltyp === STONE || ltyp === SCORR) {
+    if (room.wall_info & W_NONDIGGABLE) { Strcpy(msg, "The rock glows then fades."); return false; }
+  }
+  else if (ltyp === IRONBARS) {
+    Strcpy(msg, "The bars go much deeper than your pit.");
+    return false;
+  }
+  else if (IS_SINK(ltyp)) {
+    Strcpy(msg, "A tangled mass of plumbing remains below the sink.");
+    return false;
+  }
+  else if (On_ladder(cc.x, cc.y)) { Strcpy(msg, "The ladder is unaffected."); return false; }
+  else {
+    let supporting =  0;
+    if (IS_FOUNTAIN(ltyp)) supporting = "fountain";
+    else if (IS_THRONE(ltyp)) supporting = "throne";
+    else if (IS_ALTAR(ltyp)) supporting = "altar";
+    else if (On_stairs(cc.x, cc.y)) supporting = "stairs";
+    else if (ltyp === DRAWBRIDGE_DOWN   || ltyp === DBWALL) supporting = "drawbridge";
+    if (supporting) {
+      Sprintf(msg, "The %s supporting structures remain intact.", s_suffix(supporting));
+      return false;
+    }
+  }
+  return true;
+}
+
+// Autotranslated from dig.c:1843
+export function pit_flow(trap, filltyp, map) {
+  if (trap && filltyp !== ROOM && is_pit(trap.ttyp)) {
+    let t, idx;
+    t = trap;
+    map.locations[t.tx][t.ty].typ = filltyp, map.locations[t.tx][t.ty].flags = 0;
+    liquid_flow(t.tx, t.ty, filltyp, trap, u_at(t.tx, t.ty) ? "Suddenly %s flows in from the adjacent pit!" :  0);
+    for (idx = 0; idx < N_DIRS; ++idx) {
+      if (t.conjoined & (1 << idx)) {
+        let x, y, t2;
+        x = t.tx + xdir;
+        y = t.ty + ydir;
+        t2 = t_at(x, y);
+        pit_flow(t2, filltyp);
+      }
+    }
+  }
 }

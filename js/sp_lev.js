@@ -2399,7 +2399,7 @@ const GETLOC_WET = 1 << 3;
 const GETLOC_HOT = 1 << 4;
 const GETLOC_SPACELOC = 1 << 5;
 const GETLOC_NO_LOC_WARN = 1 << 6;
-
+export 
 function get_unpacked_coord(coord) {
     if (coord && typeof coord === 'object'
         && Number.isFinite(coord.x) && Number.isFinite(coord.y)) {
@@ -2444,7 +2444,7 @@ function isOkLocation(x, y, humidity) {
     if ((humidity & GETLOC_HOT) !== 0 && IS_LAVA(typ)) return true;
     return false;
 }
-
+export 
 function is_ok_location(x, y, humidity) {
     return isOkLocation(x, y, humidity);
 }
@@ -4101,7 +4101,7 @@ export function object(name_or_opts, x, y) {
     }
     return obj;
 }
-
+export 
 function l_push_wid_hei_table(room) {
     if (!room) return { w: 0, h: 0 };
     const w = (Number.isFinite(room.hx) && Number.isFinite(room.lx))
@@ -4112,7 +4112,7 @@ function l_push_wid_hei_table(room) {
         : Number.isFinite(room.height) ? room.height : 0;
     return { w, h };
 }
-
+export 
 function l_push_mkroom_table(room) {
     if (!room) return { x1: 0, y1: 0, x2: 0, y2: 0, w: 0, h: 0 };
     const wh = l_push_wid_hei_table(room);
@@ -4180,12 +4180,12 @@ function trapNameToType(name) {
         default: return null;
     }
 }
-
+export 
 function get_traptype_byname(trapname) {
     const t = trapNameToType(trapname);
     return (t === null) ? NO_TRAP : t;
 }
-
+export 
 function get_trapname_bytype(ttyp) {
     const names = [
         ['arrow', ARROW_TRAP],
@@ -4232,7 +4232,7 @@ function get_table_intarray_entry(arr, entrynum) {
     }
     return Math.trunc(value);
 }
-
+export 
 function get_table_region(opts = {}, name, optional = false) {
     const region = opts?.[name];
     if (region === undefined || region === null) {
@@ -4396,7 +4396,7 @@ export function create_trap(type_or_opts, x, y) {
 export function trap(type_or_opts, x, y) {
     return create_trap(type_or_opts, x, y);
 }
-
+export 
 function light_region(x1, y1, x2, y2, litVal) {
     if (!levelState.map) return;
     const lx1 = Math.min(x1, x2);
@@ -5805,28 +5805,27 @@ export function mineralize(opts = {}) {
 }
 
 // C ref: sp_lev.c pm_to_humidity()
-export function pm_to_humidity(_pm) {
-    const pm = _pm || null;
-    let loc = GETLOC_DRY;
-    if (!pm) return loc;
-    if ((pm.symbol === S_EEL) || amphibious(pm) || is_swimmer(pm)) {
-        loc = GETLOC_WET;
-    }
-    if (is_flyer(pm) || is_floater(pm)) {
-        loc |= (GETLOC_HOT | GETLOC_WET);
-    }
-    if (passes_walls(pm) || noncorporeal(pm)) {
-        loc |= GETLOC_SOLID;
-    }
-    if (likes_fire(pm)) {
-        loc |= GETLOC_HOT;
-    }
-    return loc;
+// Autotranslated from sp_lev.c:1884
+export function pm_to_humidity(pm) {
+  let loc = DRY;
+  if (!pm) return loc;
+  if (pm.mlet === S_EEL || amphibious(pm) || is_swimmer(pm)) loc = WET;
+  if (is_flyer(pm) || is_floater(pm)) {
+    loc |= (HOT | WET);
+  }
+  if (passes_walls(pm) || noncorporeal(pm)) {
+    loc |= SOLID;
+  }
+  if (likes_fire(pm)) {
+    loc |= HOT;
+  }
+  return loc;
 }
 
 // C ref: sp_lev.c pm_good_location()
-export function pm_good_location(pm, x, y) {
-    return is_ok_location(x, y, pm_to_humidity(pm));
+// Autotranslated from sp_lev.c:1311
+export function pm_good_location(x, y, pm) {
+  return is_ok_location(x, y, pm_to_humidity(pm));
 }
 
 // C ref: sp_lev.c m_bad_boulder_spot()
@@ -6721,7 +6720,11 @@ export function lspo_exclusion(...args) { return exclusion(...args); }
 export function lspo_wallify(...args) { return wallify(...args); }
 export function lspo_wall_property(...args) { return wall_property(...args); }
 export function lspo_non_diggable(...args) { return non_diggable(...args); }
-export function lspo_non_passwall(...args) { return non_passwall(...args); }
+// Autotranslated from sp_lev.c:5942
+export function lspo_non_passwall(L) {
+  set_wallprop_in_selection(L, W_NONPASSWALL);
+  return 0;
+}
 export function lspo_teleport_region(...args) { return teleport_region(...args); }
 export function lspo_reset_level(...args) { return reset_level(...args); }
 export function lspo_finalize_level(...args) { return finalize_level(...args); }
@@ -8029,8 +8032,10 @@ function placeObjectAt(obj, x, y) {
 }
 
 // C ref: sp_lev.c random_wdir()
+// Autotranslated from sp_lev.c:4574
 export function random_wdir() {
-    return rn2(4);
+  let wdirs = [ W_NORTH, W_SOUTH, W_EAST, W_WEST ];
+  return wdirs[rn2(4)];
 }
 
 // C ref: sp_lev.c rndtrap()

@@ -13,28 +13,28 @@
 // Wizard mode provides debug-only commands (accessed via ^W prefix in NetHack).
 // These commands are keyed in cmd.c and dispatched to wizcmds.c functions.
 //
-// JS implementations: several wizard debug commands are implemented in commands.js
+// JS implementations: several wizard debug commands are implemented in cmd.js
 //   as part of the game's wizard/debug mode support:
 //   wiz_level_change() → wizLevelChange() [PARTIAL]
 //   wiz_map()          → wizMap() [PARTIAL]
 //   wiz_teleport()     → wizTeleport() [PARTIAL]
 //   wiz_genesis()      → wizGenesis() [PARTIAL]
 //   wiz_load_splua()   → handleWizLoadDes() [PARTIAL]
-//   wiz_wish()         → commands.js (handleWizWish) [PARTIAL]
-//   wiz_identify()     → commands.js (handleWizIdentify) [PARTIAL]
+//   wiz_wish()         → cmd.js (handleWizWish) [PARTIAL]
+//   wiz_identify()     → cmd.js (handleWizIdentify) [PARTIAL]
 // Sanity checks, Lua-based commands, and advanced debug commands → not implemented.
 //
 // Note: wiz_load_lua/wiz_load_splua use the Lua interpreter (N/A for browser port).
 
 // cf. wizcmds.c:32 — wiz_wish(): unlimited wishes for debug mode
 // Asks for a wish via askfor_menu or getlin; processes via makewish().
-// JS equiv: commands.js (handleWizWish) — partial wish granting.
-// PARTIAL: wizcmds.c:32 — wiz_wish() ↔ handleWizWish (commands.js)
+// JS equiv: cmd.js (handleWizWish) — partial wish granting.
+// PARTIAL: wizcmds.c:32 — wiz_wish() ↔ handleWizWish (cmd.js)
 
 // cf. wizcmds.c:50 — wiz_identify(): reveal and identify hero's inventory
 // Presents menu of items; calls makeknown/fully_identified for selected ones.
-// JS equiv: commands.js (handleWizIdentify) — partial identification.
-// PARTIAL: wizcmds.c:50 — wiz_identify() ↔ handleWizIdentify (commands.js)
+// JS equiv: cmd.js (handleWizIdentify) — partial identification.
+// PARTIAL: wizcmds.c:50 — wiz_identify() ↔ handleWizIdentify (cmd.js)
 
 // cf. wizcmds.c:73 [static] — makemap_unmakemon(mtmp, migratory): remove monster for regen
 // Removes monster from level before discarding the old level incarnation.
@@ -416,3 +416,344 @@ export async function wizLevelChange(game) {
 // cf. wizcmds.c:1938 — wizcustom_callback(win, glyphnum, id): glyph customization callback
 // Callback for each glyph in wizcustom display; shows customization details.
 // TODO: wizcmds.c:1938 — wizcustom_callback(): glyph detail display callback
+
+// Autotranslated from wizcmds.c:217
+export function wiz_where() {
+  if (wizard) {
+    print_dungeon(false, null, null);
+  }
+  else {
+    pline(unavailcmd, ecname_from_fn(wiz_where));
+  }
+  return ECMD_OK;
+}
+
+// Autotranslated from wizcmds.c:228
+export function wiz_detect() {
+  if (wizard) {
+    findit();
+  }
+  else {
+    pline(unavailcmd, ecname_from_fn(wiz_detect));
+  }
+  return ECMD_OK;
+}
+
+// Autotranslated from wizcmds.c:398
+export function wiz_level_tele() {
+  if (wizard) level_tele();
+  else {
+    pline(unavailcmd, ecname_from_fn(wiz_level_tele));
+  }
+  return ECMD_OK;
+}
+
+// Autotranslated from wizcmds.c:567
+export function wiz_polyself() {
+  polyself(POLY_CONTROLLED);
+  return ECMD_OK;
+}
+
+// Autotranslated from wizcmds.c:575
+export async function wiz_show_seenv(map, player) {
+  let win, x, y, startx, stopx, curx, v, row;
+  win = create_nhwindow(NHW_TEXT);
+  startx = Math.max(1, player.x - (COLNO / 4));
+  stopx = Math.min(startx + (COLNO / 2), COLNO);
+  if (stopx - startx === COLNO / 2) startx++;
+  for (y = 0; y < ROWNO; y++) {
+    for (x = startx, curx = 0; x < stopx; x++, curx += 2) {
+      if (u_at(x, y)) { row = row = '@'; }
+      else {
+        v = map.locations[x][y].seenv & 0xff;
+        if (v === 0) row = row = ' ';
+        else {
+          Sprintf( row, "%02x", v);
+        }
+      }
+    }
+    for (x = curx - 1; x >= 0; x--) {
+      if (row[x] !== ' ') {
+        break;
+      }
+    }
+    row = '\0';
+    putstr(win, 0, row);
+  }
+  await display_nhwindow(win, true);
+  destroy_nhwindow(win);
+  return ECMD_OK;
+}
+
+// Autotranslated from wizcmds.c:656
+export async function wiz_show_wmodes(map) {
+  let win, x, y, row, lev, istty = WINDOWPORT(tty);
+  win = create_nhwindow(NHW_TEXT);
+  if (istty) putstr(win, 0, "");
+  for (y = 0; y < ROWNO; y++) {
+    for (x = 0; x < COLNO; x++) {
+      lev = map.locations[x][y];
+      if (u_at(x, y)) row = '@';
+      else if (IS_WALL(lev.typ) || lev.typ === SDOOR) row = '0' + (lev.wall_info & WM_MASK);
+      else if (lev.typ === CORR) row = '#';
+      else if (IS_ROOM(lev.typ) || IS_DOOR(lev.typ)) row = '.';
+      else {
+        row = 'x';
+      }
+    }
+    row = '\0';
+    putstr(win, 0, row[1]);
+  }
+  await display_nhwindow(win, true);
+  destroy_nhwindow(win);
+  return ECMD_OK;
+}
+
+// Autotranslated from wizcmds.c:1116
+export function size_obj(otmp) {
+  let sz =  sizeof;
+  if (otmp.oextra) {
+    sz +=  sizeof ;
+    if (ONAME(otmp)) {
+      sz +=  strlen(ONAME(otmp)) + 1;
+    }
+    if (OMONST(otmp)) {
+      sz += size_monst(OMONST(otmp), false);
+    }
+    if (OMAILCMD(otmp)) {
+      sz +=  strlen(OMAILCMD(otmp)) + 1;
+    }
+  }
+  return sz;
+}
+
+// Autotranslated from wizcmds.c:1134
+export function count_obj(chain, total_count, total_size, top, recurse) {
+  let count, size, obj;
+  for (count = size = 0, obj = chain; obj; obj = obj.nobj) {
+    if (top) { count++; size += size_obj(obj); }
+    if (recurse && obj.cobj) count_obj(obj.cobj, total_count, total_size, true, true);
+  }
+   total_count += count;
+   total_size += size;
+}
+
+// Autotranslated from wizcmds.c:1176
+export function mon_invent_chain(win, src, chain, total_count, total_size) {
+  let buf, count = 0, size = 0, mon;
+  for (mon = chain; mon; mon = mon.nmon) {
+    count_obj(mon.minvent, count, size, true, false);
+  }
+  if (count || size) {
+     total_count += count;
+     total_size += size;
+    Sprintf(buf, template, src, count, size);
+    putstr(win, 0, buf);
+  }
+}
+
+// Autotranslated from wizcmds.c:1227
+export function size_monst(mtmp, incl_wsegs) {
+  let sz =  sizeof;
+  if (mtmp.wormno && incl_wsegs) {
+    sz += size_wseg(mtmp);
+  }
+  if (mtmp.mextra) {
+    sz +=  sizeof ;
+    if (MGIVENNAME(mtmp)) {
+      sz +=  strlen(MGIVENNAME(mtmp)) + 1;
+    }
+    if (EGD(mtmp)) {
+      sz +=  sizeof ;
+    }
+    if (EPRI(mtmp)) {
+      sz +=  sizeof ;
+    }
+    if (ESHK(mtmp)) {
+      sz +=  sizeof ;
+    }
+    if (EMIN(mtmp)) {
+      sz +=  sizeof ;
+    }
+    if (EDOG(mtmp)) {
+      sz +=  sizeof ;
+    }
+    if (EBONES(mtmp)) {
+      sz +=  sizeof ;
+    }
+  }
+  return sz;
+}
+
+// Autotranslated from wizcmds.c:1256
+export function mon_chain(win, src, chain, force, total_count, total_size, map) {
+  let buf, count, size, mon, incl_wsegs = !strcmpi(src, "(map?.fmon || null)");
+  count = size = 0;
+  for (mon = chain; mon; mon = mon.nmon) {
+    count++;
+    size += size_monst(mon, incl_wsegs);
+  }
+  if (count || size || force) {
+     total_count += count;
+     total_size += size;
+    Sprintf(buf, template, src, count, size);
+    putstr(win, 0, buf);
+  }
+}
+
+// Autotranslated from wizcmds.c:1401
+export async function you_sanity_check(player) {
+  let mtmp;
+  if (player.uswallow && !player.ustuck) {
+    impossible("sanity_check: swallowed by nothing?");
+    await display_nhwindow(WIN_MESSAGE, true);
+    player.uswallow = 0;
+    player.uswldtim = 0;
+    docrt();
+  }
+  if ((mtmp = m_at(player.x, player.y)) !== 0) {
+    if (player.ustuck !== mtmp) impossible("sanity_check: you over monster");
+  }
+  if (player.hp > player.hpmax) {
+    impossible("current hero health (%d) better than maximum? (%d)", player.hp, player.hpmax);
+    player.hp = player.hpmax;
+  }
+  if ((player?.Upolyd || (player?.mtimedone > 0) || false) && player.mh > player.mhmax) {
+    impossible( "current hero health as monster (%d) better than maximum? (%d)", player.mh, player.mhmax);
+    player.mh = player.mhmax;
+  }
+  if (player.uen > player.uenmax) {
+    impossible("current hero energy (%d) better than maximum? (%d)", player.uen, player.uenmax);
+    player.uen = player.uenmax;
+  }
+  check_wornmask_slots();
+  check_invent_gold("invent");
+}
+
+// Autotranslated from wizcmds.c:1443
+export function levl_sanity_check(map) {
+  let x, y;
+  if (Underwater) return;
+  for (y = 0; y < ROWNO; y++) {
+    for (x = 1; x < COLNO; x++) {
+      if ((does_block(x, y, map.locations[x][y]) ? 1 : 0) !== get_viz_clear(x, y)) impossible("map.locations[%i][%i] vision blocking", x, y);
+    }
+  }
+}
+
+// Autotranslated from wizcmds.c:1484
+export function migrsort_cmp(vptr1, vptr2) {
+  let m1 = vptr1.value, m2 = vptr2.value;
+  let d1 =  m1.mux, l1 =  m1.muy, d2 =  m2.mux, l2 =  m2.muy;
+  if (d1 !== d2) return d1 - d2;
+  if (l1 !== l2) return l1 - l2;
+  return (m1.m_id < m2.m_id) ? -1 : (m1.m_id > m2.m_id);
+}
+
+// Autotranslated from wizcmds.c:445
+export async function wiz_level_change(player) {
+  let buf, dummy = '\x00', newlevel = 0, ret;
+  buf[0] = '\x00';
+  await getlin("To what experience level do you want to be set?", buf);
+  mungspaces(buf);
+  if (buf[0] === '\x1b' || buf[0] === '\x00') ret = 0;
+  else {
+    ret = sscanf(buf, "%d%c", newlevel, dummy);
+  }
+  if (ret !== 1) { pline1(Never_mind); return ECMD_OK; }
+  if (newlevel === player.ulevel) { You("are already that experienced."); }
+  else if (newlevel < player.ulevel) {
+    if (player.ulevel === 1) {
+      You("are already as inexperienced as you can get.");
+      return ECMD_OK;
+    }
+    if (newlevel < 1) newlevel = 1;
+    while (player.ulevel > newlevel) {
+      losexp("#levelchange");
+    }
+  }
+  else {
+    if (player.ulevel >= MAXULEV) {
+      You("are already as experienced as you can get.");
+      return ECMD_OK;
+    }
+    if (newlevel > MAXULEV) newlevel = MAXULEV;
+    while (player.ulevel < newlevel) {
+      pluslvl(false);
+    }
+  }
+  player.ulevelmax = player.ulevel;
+  return ECMD_OK;
+}
+
+// Autotranslated from wizcmds.c:1704
+export async function wiz_display_macros() {
+  let display_issues = "Display macro issues:", buf, win;
+  let glyph, test, trouble = 0, no_glyph = NO_GLYPH, max_glyph = MAX_GLYPH;
+  win = create_nhwindow(NHW_TEXT);
+  for (glyph = 0; glyph < MAX_GLYPH; ++glyph) {
+    if (glyph_is_cmap(glyph)) {
+      test = glyph_to_cmap(glyph);
+      if (test === no_glyph) {
+        if (!trouble++) putstr(win, 0, display_issues);
+        Sprintf(buf, "glyph_is_cmap() / glyph_to_cmap(glyph=%d)" + " sync failure, returned NO_GLYPH (%d)", glyph, test);
+        putstr(win, 0, buf);
+      }
+      if (glyph_is_cmap_zap(glyph) && !(test >= S_vbeam && test <= S_rslant)) {
+        if (!trouble++) putstr(win, 0, display_issues);
+        Sprintf(buf, "glyph_is_cmap_zap(glyph=%d) returned non-zap cmap %d", glyph, test);
+        putstr(win, 0, buf);
+      }
+      if (!IndexOk(test, defsyms)) {
+        if (!trouble++) putstr(win, 0, display_issues);
+        Sprintf(buf, "glyph_to_cmap(glyph=%d) returns %d" + " exceeds defsyms[%d] bounds (MAX_GLYPH = %d)", glyph, test, SIZE(defsyms), max_glyph);
+        putstr(win, 0, buf);
+      }
+    }
+    if (glyph_is_monster(glyph)) {
+      test = glyph_to_mon(glyph);
+      if (test < 0 || test >= NUMMONS) {
+        if (!trouble++) putstr(win, 0, display_issues);
+        Sprintf(buf, "glyph_to_mon(glyph=%d) returns %d" + " exceeds mons[%d] bounds", glyph, test, NUMMONS);
+        putstr(win, 0, buf);
+      }
+    }
+    if (glyph_is_object(glyph)) {
+      test = glyph_to_obj(glyph);
+      if (test < 0 || test > NUM_OBJECTS) {
+        if (!trouble++) putstr(win, 0, display_issues);
+        Sprintf(buf, "glyph_to_obj(glyph=%d) returns %d" + " exceeds objects[%d] bounds", glyph, test, NUM_OBJECTS);
+        putstr(win, 0, buf);
+      }
+    }
+  }
+  if (!trouble) putstr(win, 0, "No display macro issues detected.");
+  await display_nhwindow(win, false);
+  destroy_nhwindow(win);
+  return ECMD_OK;
+}
+
+// Autotranslated from wizcmds.c:1783
+export async function wiz_mon_diff() {
+  let window_title = "Review of monster difficulty ratings" + " [index:level]:";
+  let buf, win;
+  let mhardcoded = 0, mcalculated = 0, trouble = 0, cnt = 0, mdiff = 0, mlev;
+  let ptr;
+  win = create_nhwindow(NHW_TEXT);
+  for (ptr = mons[0]; ptr.mlet; ptr++, cnt++) {
+    mcalculated = mstrength(ptr);
+    mhardcoded =  ptr.difficulty;
+    mdiff = mhardcoded - mcalculated;
+    if (mdiff) {
+      if (!trouble++) putstr(win, 0, window_title);
+      mlev =  ptr.mlevel;
+      if (mlev > 50) mlev = 50;
+      Snprintf(buf, buf.length, "%-18s [%3d:%2d]: calculated: %2d, hardcoded: %2d (%+d)", ptr.pmnames[NEUTRAL], cnt, mlev, mcalculated, mhardcoded, mdiff);
+      putstr(win, 0, buf);
+    }
+  }
+  if (!trouble) putstr(win, 0, "No monster difficulty discrepancies were detected.");
+  await display_nhwindow(win, false);
+  destroy_nhwindow(win);
+  return ECMD_OK;
+}

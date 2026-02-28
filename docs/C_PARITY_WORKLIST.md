@@ -36,8 +36,8 @@ status), see [CODEMATCH.md](CODEMATCH.md).
 | Monster movement + pet AI | `monmove.c`, `dogmove.c`, movement portions of `mon.c`, targeting portions of `mhitm.c` | `js/monmove.js` | `partial` | #8, #11 |
 | Monster generation + startup entities | `makemon.c`, `u_init.c` | `js/makemon.js`, `js/u_init.js` | `partial` | #10 |
 | Object generation + naming | `mkobj.c`, `objnam.c`, `o_init.c`, `objects.c` | `js/mkobj.js`, `js/o_init.js`, `js/objects.js` | `partial` | #10 |
-| Combat + XP progression | `uhitm.c`, `mhitu.c`, `exper.c`, parts of `weapon.c`, `mon.c` kill paths | `js/combat.js`, `js/commands.js`, `js/monmove.js` | `partial` | #8, #11 |
-| Command flow + turn loop | `allmain.c`, `cmd.c`, `hack.c`, `do.c`, `pickup.c`, `invent.c`, `read.c` | `js/nethack.js`, `js/headless_runtime.js`, `js/commands.js`, `js/player.js` | `partial` | #6, #7, #11 |
+| Combat + XP progression | `uhitm.c`, `mhitu.c`, `exper.c`, parts of `weapon.c`, `mon.c` kill paths | `js/uhitm.js`, `js/mhitu.js`, `js/combat.js` (shim), `js/monmove.js` | `partial` | #8, #11 |
+| Command flow + turn loop | `allmain.c`, `cmd.c`, `hack.c`, `do.c`, `pickup.c`, `invent.c`, `read.c` | `js/nethack.js`, `js/headless_runtime.js`, `js/cmd.js`, `js/hack.js`, `js/player.js` | `partial` | #6, #7, #11 |
 
 ## Function-Level Correspondence (High Priority)
 
@@ -86,17 +86,17 @@ status), see [CODEMATCH.md](CODEMATCH.md).
 
 | C Function(s) | JS Function(s) | Status | Notes |
 | --- | --- | --- | --- |
-| Hero attack path (`uhitm.c`) | `playerAttackMonster` (`js/combat.js`) | `partial` | Hit/miss, passive probes, and kill side effects still under parity work (#8, #11). |
-| Monster attack path (`mhitu.c`) | `monsterAttackPlayer` (`js/combat.js`) | `partial` | Message sequencing and side effects still divergent in mixed combat traces (#8). |
-| XP + level-up (`exper.c`) | `checkLevelUp` and XP updates (`js/combat.js`) | `partial` | Functional but still coupled to combat parity closure. |
+| Hero attack path (`uhitm.c`) | `do_attack` (`js/uhitm.js`; re-exported via `js/combat.js`) | `partial` | Hit/miss, passive probes, and kill side effects still under parity work (#8, #11). |
+| Monster attack path (`mhitu.c`) | `mattacku` (`js/mhitu.js`; re-exported via `js/combat.js`) | `partial` | Message sequencing and side effects still divergent in mixed combat traces (#8). |
+| XP + level-up (`exper.c`) | `newexplevel`/XP updates (`js/exper.js`; `checkLevelUp` shim in `js/combat.js`) | `partial` | Functional but still coupled to combat parity closure. |
 
 ### F) Command Flow + Turn Loop
 
 | C Function(s) | JS Function(s) | Status | Notes |
 | --- | --- | --- | --- |
-| `rhack` (`cmd.c`) | `rhack` (`js/commands.js`) | `partial` | Direction prompt/modal cancellation mismatch tracked in #6. |
-| Core movement/action dispatch (`hack.c`, `do.c`) | `handleMovement`, `handleDownstairs`, `handleUpstairs`, `handleOpen`, `handleClose` (`js/commands.js`) | `partial` | Counted no-op and prompt interactions still diverge (#6, #7). |
-| Pickup/search/read command paths (`pickup.c`, `invent.c`, `read.c`, `do.c`) | `handlePickup`, `dosearch0`, `handleRead` (`js/commands.js`) | `partial` | Wait/search safety timing mismatch tracked in #7. |
+| `rhack` (`cmd.c`) | `rhack` (`js/cmd.js`) | `partial` | Direction prompt/modal cancellation mismatch tracked in #6. |
+| Core movement/action dispatch (`hack.c`, `do.c`) | `domove`, `do_run`, `do_rush`, `dotravel` (`js/hack.js` via `js/cmd.js`) | `partial` | Counted no-op and prompt interactions still diverge (#6, #7). |
+| Pickup/search/read command paths (`pickup.c`, `invent.c`, `read.c`, `do.c`) | `dopickup`, `dosearch0`, `doread` dispatch (`js/cmd.js`) | `partial` | Wait/search safety timing mismatch tracked in #7. |
 | `moveloop_core` turn sequencing (`allmain.c`) | `processTurnEnd` / `simulateTurnEnd` (`js/nethack.js`, `js/headless_runtime.js`) | `partial` | Turn loop exists; downstream divergence depends on command/AI parity gaps. |
 
 ## PRNG Timing Parity (#143)

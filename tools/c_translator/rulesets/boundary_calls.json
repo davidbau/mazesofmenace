@@ -1,0 +1,110 @@
+{
+  "version": 2,
+  "reviewed_on": "2026-02-26",
+  "reviewed_files": [
+    "js/animation.js",
+    "js/delay.js",
+    "js/input.js",
+    "js/getpos.js",
+    "js/windows.js",
+    "js/display.js",
+    "js/hack.js",
+    "js/zap.js",
+    "js/dothrow.js",
+    "js/mthrowu.js",
+    "js/apply.js",
+    "js/uhitm.js"
+  ],
+  "boundaries": [
+    {
+      "name": "nh_delay_output",
+      "mode": "awaited_boundary",
+      "evidence": "animation.js exports async nh_delay_output(); gameplay callsites await it."
+    },
+    {
+      "name": "delay_output",
+      "mode": "awaited_boundary",
+      "evidence": "delay.js delay_output() awaits nh_delay_output()."
+    },
+    {
+      "name": "delay_output_raf",
+      "mode": "awaited_boundary",
+      "evidence": "delay.js delay_output_raf() awaits nh_delay_output()."
+    },
+    {
+      "name": "tmp_at_end_async",
+      "mode": "awaited_boundary",
+      "evidence": "animation.js exports async tmp_at_end_async()."
+    },
+    {
+      "name": "nhgetch",
+      "mode": "awaited_boundary",
+      "evidence": "input.js nhgetch() returns Promise; callers await."
+    },
+    {
+      "name": "getlin",
+      "mode": "awaited_boundary",
+      "evidence": "input.js exports async getlin()."
+    },
+    {
+      "name": "ynFunction",
+      "mode": "awaited_boundary",
+      "evidence": "input.js exports async ynFunction()."
+    },
+    {
+      "name": "yn_function",
+      "mode": "awaited_boundary",
+      "evidence": "C-side alias for ynFunction; async yes/no prompt boundary."
+    },
+    {
+      "name": "getCount",
+      "mode": "awaited_boundary",
+      "evidence": "input.js exports async getCount()."
+    },
+    {
+      "name": "get_count",
+      "mode": "awaited_boundary",
+      "evidence": "C-side alias for getCount; consumes queued input asynchronously."
+    },
+    {
+      "name": "getpos_async",
+      "mode": "awaited_boundary",
+      "evidence": "getpos.js exports async getpos_async()."
+    },
+    {
+      "name": "getpos",
+      "mode": "awaited_boundary",
+      "evidence": "C-side cursor targeting call; mapped to async getpos path in JS."
+    },
+    {
+      "name": "display_nhwindow",
+      "mode": "awaited_boundary",
+      "evidence": "windows.js exports async display_nhwindow()."
+    },
+    {
+      "name": "select_menu",
+      "mode": "awaited_boundary",
+      "evidence": "windows.js exports async select_menu()."
+    },
+    {
+      "name": "morePrompt",
+      "mode": "awaited_boundary",
+      "evidence": "display.js Display.morePrompt is async and awaits nhgetch()."
+    },
+    {
+      "name": "showMenu",
+      "mode": "awaited_boundary",
+      "evidence": "display.js Display.showMenu is async and awaits nhgetch()."
+    },
+    {
+      "name": "nh_delay_output_nowait",
+      "mode": "nowait_boundary",
+      "evidence": "animation.js nowait delay boundary; does not await."
+    },
+    {
+      "name": "tmp_at",
+      "mode": "sync_boundary",
+      "evidence": "animation.js tmp_at is synchronous transient draw call."
+    }
+  ]
+}

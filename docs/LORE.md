@@ -41,6 +41,33 @@ Wizard of Yendor while the Riders watch — dramatic, but unproductive.
 
 ## RNG Parity
 
+### `maybe_wail()` message parity depends on intrinsic power-count branch
+
+C `hack.c maybe_wail()` does not always print the same warning for
+Wizard/Elf/Valkyrie. At low HP, it counts intrinsic powers across this fixed
+set:
+`TELEPORT, SEE_INVIS, POISON_RES, COLD_RES, SHOCK_RES, FIRE_RES, SLEEP_RES,
+DISINT_RES, TELEPORT_CONTROL, STEALTH, FAST, INVIS`.
+If at least 4 are intrinsic, C prints "all your powers will be lost...",
+otherwise it prints "your life force is running out." Porting this branch
+matters for event-sequence parity.
+
+### `runmode_delay_output()` must be an awaited boundary in movement flow
+
+C `hack.c` calls `nh_delay_output()` from `runmode_delay_output()` while
+running/multi-turn movement. If JS uses only `nh_delay_output_nowait()`, timing
+boundaries exist structurally but the call graph does not match async gameplay
+flow. Port rule:
+
+1. keep `runmode_delay_output()` async,
+2. `await` it from `domove_core()`,
+3. preserve C runmode gating (`tport`, `leap` modulo-7, `crawl` extra delays).
+
+Also note a canonical-state subtlety: `ensure_context()` treats
+`game.context === game.svc.context` as the canonical path. Tests and helpers
+that set only `svc.context` without wiring `context` can silently drop runstate
+and miss delay behavior.
+
 ### STR18 encoding: attribute maximums are not what they seem
 
 C uses `STR18(x) = 18 + x` for strength maximums. A human's STR max is
@@ -1296,8 +1323,8 @@ hard-won wisdom:
 ### uhitm improvised-weapon opening message parity (2026-02-24)
 
 - In C (`uhitm.c`), attacking while wielding a non-weapon emits a one-time opening message (`You begin bashing monsters with ...`) before the attack outcome line.
-- For replay parity, when that opening message and miss result need to appear in the same turn at topline-width boundary, emitting the combined miss line directly in `playerAttackMonster()` avoids relying on display-layer concat edge cases.
-- Miss messages should use `monNam()` semantics (not hardcoded `the ...`) so named monsters/pets (e.g. `Idefix`) match C wording.
+- For replay parity, when that opening message and miss result need to appear in the same turn at topline-width boundary, emitting the combined miss line directly in `do_attack()` avoids relying on display-layer concat edge cases.
+- Miss messages should use `mon_nam()` semantics (not hardcoded `the ...`) so named monsters/pets (e.g. `Idefix`) match C wording.
 
 ### mkmaze protofile special-level loading parity (2026-02-24)
 
@@ -1483,3 +1510,36 @@ hard-won wisdom:
 - Capture experiment showed the fixture itself was timing-sensitive: re-recording with a small final settle (`NETHACK_FINAL_CAPTURE_DELAY_S=0.10`) changed C's captured final topline to `"You stop waiting."` without changing RNG counts.
 - Correct resolution was to remove the suppression and keep C-like `stop_occupation` behavior (`You stop ...`), then re-record only the targeted session with final settle delay.
 - Operational rule: when mismatch is screen-only and RNG/events are stable, treat fixture capture timing as a first-class suspect; do not change core gameplay semantics to satisfy a possibly stale/under-settled frame.
+## 2026-02-26: Iron Parity campaign operations
+
+- Keep campaign work issue-driven in three layers: tracker epic (`M0..M6`), milestone issues, and concrete child implementation issues. Milestones should not carry unscoped implementation directly.
+- For failing-session burndown, capture two artifacts per baseline run: a full pass/fail snapshot and a first-divergence taxonomy grouped by JS origin (`function(file:line)`). Use the taxonomy to open follow-up cluster issues immediately.
+- Require each campaign issue to carry dependency links (`Blocked by`, `Blocks`) and evidence fields (session/seed, first divergence, expected C vs actual JS) to keep parallel engineers aligned.
+
+### Translator safe-scaling lesson: string-pointer style ports must be gated (2026-02-27)
+
+- A wide stitch batch surfaced that several `hacklib.c`-style string functions can emit syntactically-valid but semantically-wrong JS when C pointer mutation idioms are lowered mechanically (`p++`, in-place char writes, NUL termination).
+- These outputs can pass structural safety checks yet still regress runtime behavior or hang unit runs.
+- Practical policy update for batch stitching:
+  - keep broad autostitch on modules with scalar/control logic (`windows`, small status helpers),
+  - require stricter semantic gating for string/pointer-mutation families (`hacklib`, name-formatting surfaces) until translator rules model immutable JS strings explicitly,
+  - when in doubt, prefer conservative module filtering and revert suspect subsets immediately.
+
+### Translator safety lint now blocks pointer-string traps pre-stitch (2026-02-27)
+
+- Added semantic hazard checks to `runtime_candidate_safety.py` so syntax-valid but JS-invalid string-pointer rewrites are rejected before stitching.
+- New blocked patterns:
+  - `NUL_SENTINEL_ASSIGN` (scalar assignment of `'\0'` / `'\x00'`),
+  - `POINTER_TRUTHY_FOR` (C-style pointer scan loops like `for (p=s; p; p++)`),
+  - `WHOLE_STRING_HIGHC_LOWC` (whole-string `highc/lowc` rewrites).
+- Added module-level semantic blocking (`MODULE_SEMANTIC_BLOCK`) driven by
+  `tools/c_translator/rulesets/semantic_block_modules.json` for known
+  string/pointer-heavy files (`hacklib`, `do_name`, `objnam`) until emitter
+  rules can preserve JS string semantics safely.
+- On the latest full candidate set (`/tmp/translator-runtime-stitch-candidates-v4.json`), safe candidates decreased from `470` to `452` and dry-run stitchable count dropped from `174` to `129`, preventing known bad inserts from entering runtime patches.
+
+### Translator batch-control lesson: prefer allowlist stitching for surgical batches (2026-02-27)
+
+- Denylists are useful for broad suppression, but they still leave room for accidental extra inserts when candidate sets evolve.
+- `runtime_stitch_apply.py` now supports `--allowlist` with exact `{js_module,function}` pairs, so surgical batches can be applied deterministically.
+- Operationally, use allowlists for high-accuracy incremental landings; reserve denylists for coarse global exclusions.

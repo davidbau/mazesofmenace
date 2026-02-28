@@ -2,13 +2,12 @@
 // Displays long text documents inside the 80x24 terminal, with scrolling.
 // Modeled after NetHack's built-in text display (pager.c).
 
-import { TERMINAL_COLS, TERMINAL_ROWS, STAIRS, LADDER, FOUNTAIN, SINK, THRONE,
-         ALTAR, GRAVE, POOL, LAVAPOOL, DOOR, IRONBARS, TREE,
-         VERSION_STRING } from './config.js';
+import { TERMINAL_COLS, TERMINAL_ROWS, VERSION_STRING } from './config.js';
 import { nhgetch } from './input.js';
 import { CLR_GRAY, CLR_WHITE, CLR_GREEN, CLR_CYAN } from './display.js';
 import { create_nhwindow, destroy_nhwindow, start_menu, add_menu, end_menu, select_menu,
          NHW_MENU, NHW_TEXT, MENU_BEHAVE_STANDARD, PICK_ONE, ATR_NONE } from './windows.js';
+import { dowhatis } from './look.js';
 
 // Number of usable text rows (reserve 1 for status bar at bottom)
 const PAGE_ROWS = TERMINAL_ROWS - 1;
@@ -227,44 +226,9 @@ function isSearchHit(line, c, term) {
 }
 
 // -----------------------------------------------------------------------
-// Pager-related command handlers (moved from commands.js)
+// Pager-related command handlers (moved from cmd.js)
 // C ref: pager.c — dolook, dowhatis, dowhatdoes, dohelp, dohistory, etc.
 // -----------------------------------------------------------------------
-
-// Handle looking at what's here
-// C ref: cmd.c dolook()
-export function handleLook(player, map, display) {
-    const loc = map.at(player.x, player.y);
-    const objs = map.objectsAt(player.x, player.y);
-
-    let msg = '';
-    if (loc) {
-        // Describe terrain features - C ref: cmd.c dolook() describes current location
-        if (loc.typ === STAIRS && loc.flags === 1) msg += 'There is a staircase up out of the dungeon here. ';
-        else if (loc.typ === STAIRS && loc.flags === 0) msg += 'There is a staircase down here. ';
-        else if (loc.typ === LADDER && loc.flags === 1) msg += 'There is a ladder up here. ';
-        else if (loc.typ === LADDER && loc.flags === 0) msg += 'There is a ladder down here. ';
-        else if (loc.typ === FOUNTAIN) msg += 'There is a fountain here. ';
-        else if (loc.typ === SINK) msg += 'There is a sink here. ';
-        else if (loc.typ === THRONE) msg += 'There is a throne here. ';
-        else if (loc.typ === ALTAR) msg += 'There is an altar here. ';
-        else if (loc.typ === GRAVE) msg += 'There is a grave here. ';
-        else if (loc.typ === POOL) msg += 'There is a pool of water here. ';
-        else if (loc.typ === LAVAPOOL) msg += 'There is molten lava here. ';
-        else if (loc.typ === DOOR && loc.flags > 0) msg += 'There is an open door here. ';
-        else if (loc.typ === DOOR && loc.flags === 0) msg += 'There is a closed door here. ';
-        else if (loc.typ === IRONBARS) msg += 'There are iron bars here. ';
-        else if (loc.typ === TREE) msg += 'There is a tree here. ';
-    }
-
-    if (objs.length > 0) {
-        msg += `Things that are here: ${objs.map(o => o.name).join(', ')}`;
-    }
-
-    if (!msg) msg = 'You see no objects here.';
-    display.putstr_message(msg.substring(0, 79));
-    return { moved: false, tookTime: false };
-}
 
 // Handle previous messages
 // C ref: cmd.c doprev_message() -> topl.c tty_doprev_message()
@@ -375,39 +339,6 @@ const COMMAND_DESCRIPTIONS = {
     'W': 'Wear armor.',
 };
 
-// Symbol descriptions for / (whatis)
-// C ref: dat/help symbol legend
-const SYMBOL_DESCRIPTIONS = {
-    '-': 'wall of a room, or an open door',
-    '|': 'wall of a room, or an open door',
-    '.': 'floor of a room, or a doorway',
-    '#': 'a corridor, or iron bars, or a tree',
-    '>': 'stairs down: a way to the next level',
-    '<': 'stairs up: a way to the previous level',
-    '@': 'you (usually), or another human',
-    ')': 'a weapon',
-    '[': 'a suit or piece of armor',
-    '%': 'something edible (not necessarily healthy)',
-    '/': 'a wand',
-    '=': 'a ring',
-    '?': 'a scroll',
-    '!': 'a potion',
-    '(': 'a useful item (pick-axe, key, lamp...)',
-    '$': 'a pile of gold',
-    '*': 'a gem or rock',
-    '+': 'a closed door, or a spellbook',
-    '^': 'a trap (once you detect it)',
-    '"': 'an amulet, or a spider web',
-    '0': 'an iron ball',
-    '_': 'an altar, or an iron chain',
-    '{': 'a fountain',
-    '}': 'a pool of water or moat or lava',
-    '\\': 'an opulent throne',
-    '`': 'a boulder or statue',
-    ' ': 'dark part of a room, or solid rock',
-    '\u00b7': 'floor of a room (middle dot)',
-};
-
 // Handle help (?)
 // C ref: pager.c dohelp() -> help_menu_items[]
 export async function handleHelp(game) {
@@ -450,7 +381,7 @@ export async function handleHelp(game) {
         if (text) await showPager(display, text, 'History of NetHack');
         else display.putstr_message('Failed to load history.');
     } else if (c === 'e') {
-        return await handleWhatis(game);
+        return await dowhatis(game);
     } else if (c === 'f') {
         return await handleWhatdoes(game);
     } else if (c === 'g') {
@@ -530,33 +461,6 @@ const extendedCommandsText = [
     ' #genesis       create a monster by name (debug mode)',
 ].join('\n');
 
-// Handle / (whatis) command
-// C ref: pager.c dowhatis()
-export async function handleWhatis(game) {
-    const { display } = game;
-
-    display.putstr_message('What do you want to identify? [type a symbol or ESC]');
-    const ch = await nhgetch();
-
-    if (ch === 27) {
-        // ESC - cancel
-        return { moved: false, tookTime: false };
-    }
-
-    const c = String.fromCharCode(ch);
-
-    // Check for letter - could be a monster
-    if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) {
-        display.putstr_message(`'${c}': a monster (or straddling the letter range).`);
-    } else if (SYMBOL_DESCRIPTIONS[c]) {
-        display.putstr_message(`'${c}': ${SYMBOL_DESCRIPTIONS[c]}.`);
-    } else {
-        display.putstr_message(`I don't know what '${c}' represents.`);
-    }
-
-    return { moved: false, tookTime: false };
-}
-
 // Handle & (whatdoes) command
 // C ref: pager.c dowhatdoes()
 export async function handleWhatdoes(game) {
@@ -634,4 +538,189 @@ async function showGuidebook(display) {
         }
     }
     await showPager(display, guidebookText, 'NetHack Guidebook');
+}
+
+// Autotranslated from pager.c:67
+export function is_swallow_sym(c) {
+  let i;
+  for (i = S_sw_tl; i <= S_sw_br; i++) {
+    if ( gs.showsyms === c) return true;
+  }
+  return false;
+}
+
+// Autotranslated from pager.c:137
+export function monhealthdescr(mon, addspace, outbuf) {
+  nhUse(mon);
+  nhUse(addspace);
+   outbuf = '\0';
+  return outbuf;
+}
+
+// Autotranslated from pager.c:166
+export function trap_description(outbuf, tnum, x, y) {
+  if (trapped_chest_at(tnum, x, y)) {
+    Strcpy(outbuf, "trapped chest");
+  }
+  else if (trapped_door_at(tnum, x, y)) {
+    Strcpy(outbuf, "trapped door");
+  }
+  else {
+    Strcpy(outbuf, trapname(tnum, false));
+  }
+  return;
+}
+
+// Autotranslated from pager.c:379
+export function look_at_object(buf, x, y, glyph, map) {
+  let otmp = 0, fakeobj = object_from_map(glyph, x, y, otmp);
+  if (otmp) {
+    Strcpy(buf, (otmp.otyp !== STRANGE_OBJECT) ? distant_name(otmp, otmp.dknown ? doname_with_price : doname_vague_quan) : obj_descr[STRANGE_OBJECT].oc_name);
+    if (fakeobj) { otmp.where = OBJ_FREE; dealloc_obj(otmp), otmp = null; }
+  }
+  else { Strcpy(buf, something); }
+  if (otmp && otmp.where === OBJ_BURIED) {
+    Strcat(buf, " (buried)");
+  }
+  else if (IS_TREE(map.locations[x][y].typ)) Snprintf(eos(buf), BUFSZ - strlen(buf), " %s in a tree", (otmp && is_treefruit(otmp)) ? "dangling" : "stuck");
+  else if (map.locations[x][y].typ === STONE || map.locations[x][y].typ === SCORR) {
+    Strcat(buf, " embedded in stone");
+  }
+  else if (IS_WALL(map.locations[x][y].typ) || map.locations[x][y].typ === SDOOR) {
+    Strcat(buf, " embedded in a wall");
+  }
+  else if (closed_door(x, y)) {
+    Strcat(buf, " embedded in a door");
+  }
+  else if (is_pool(x, y)) {
+    Strcat(buf, " in water");
+  }
+  else if (is_lava(x, y)) {
+    Strcat(buf, " in molten lava");
+  }
+  return;
+}
+
+// Autotranslated from pager.c:1961
+export function look_region_nearby(lo_x, lo_y, hi_x, hi_y, nearby, player) {
+   lo_y = nearby ? Math.max(player.y - BOLT_LIM, 0) : 0;
+   lo_x = nearby ? Math.max(player.x - BOLT_LIM, 1) : 1;
+   hi_y = nearby ? Math.min(player.y + BOLT_LIM, ROWNO - 1) : ROWNO - 1;
+   hi_x = nearby ? Math.min(player.x + BOLT_LIM, COLNO - 1) : COLNO - 1;
+}
+
+// Autotranslated from pager.c:2324
+export async function doquickwhatis() {
+  return do_look(1, null);
+}
+
+// Autotranslated from pager.c:2331
+export function doidtrap(player) {
+  let trap, tt, glyph, x, y;
+  if (!getdir("^")) return ECMD_CANCEL;
+  x = player.x + player.dx;
+  y = player.y + player.dy;
+  glyph = glyph_at(x, y);
+  if (glyph_is_trap(glyph) && ((tt = glyph_to_trap(glyph)) === BEAR_TRAP || tt === TRAPPED_DOOR || tt === TRAPPED_CHEST)) {
+    let chesttrap = trapped_chest_at(tt, x, y);
+    if (chesttrap || trapped_door_at(tt, x, y)) {
+      pline("That is a trapped %s.", chesttrap ? "chest" : "door");
+      return ECMD_OK;
+    }
+  }
+  for (trap = gf.ftrap; trap; trap = trap.ntrap) {
+    if (trap.tx === x && trap.ty === y) {
+      if (!trap.tseen) {
+        break;
+      }
+      tt = trap.ttyp;
+      if (player.dz) {
+        if (player.dz < 0 ? is_hole(tt) : tt === ROCKTRAP) {
+          break;
+        }
+      }
+      pline("That is %s%s%s.", an(trapname(tt, false)), !trap.madeby_u ? "" : (tt === WEB) ? " woven"   : (tt === HOLE || tt === PIT) ? " dug" : " set", !trap.madeby_u ? "" : " by you");
+      return ECMD_OK;
+    }
+  }
+  pline("I can't see a trap there.");
+  return ECMD_OK;
+}
+
+// Autotranslated from pager.c:2572
+export async function dowhatdoes_core(q, cbuf) {
+  let buf, ec_desc;
+  if ((ec_desc = key2extcmddesc(q)) !== null) {
+    let keybuf;
+    Sprintf(buf, "%-8s%s.", key2txt(q, keybuf), ec_desc);
+    Strcpy(cbuf, buf);
+    return cbuf;
+  }
+  return 0;
+}
+
+// Autotranslated from pager.c:2743
+export function dispfile_help() {
+  display_file(HELP, true);
+}
+
+// Autotranslated from pager.c:2749
+export function dispfile_shelp() {
+  display_file(SHELP, true);
+}
+
+// Autotranslated from pager.c:2755
+export function dispfile_optionfile() {
+  display_file(OPTIONFILE, true);
+}
+
+// Autotranslated from pager.c:2761
+export function dispfile_optmenu() {
+  display_file(OPTMENUHELP, true);
+}
+
+// Autotranslated from pager.c:2767
+export function dispfile_license() {
+  display_file(LICENSE, true);
+}
+
+// Autotranslated from pager.c:2773
+export function dispfile_debughelp() {
+  display_file(DEBUGHELP, true);
+}
+
+// Autotranslated from pager.c:2779
+export function dispfile_usagehelp() {
+  display_file(USAGEHELP, true);
+}
+
+// Autotranslated from pager.c:2785
+export function hmenu_doextversion() {
+  doextversion();
+}
+
+// Autotranslated from pager.c:2791
+export function hmenu_dohistory() {
+  dohistory();
+}
+
+// Autotranslated from pager.c:2797
+export async function hmenu_dowhatis() {
+  await dowhatis();
+}
+
+// Autotranslated from pager.c:2803
+export async function hmenu_dowhatdoes() {
+  await dowhatdoes();
+}
+
+// Autotranslated from pager.c:2809
+export function hmenu_doextlist() {
+  doextlist();
+}
+
+// Autotranslated from pager.c:2956
+export function dohistory() {
+  display_file(HISTORY, true);
+  return ECMD_OK;
 }

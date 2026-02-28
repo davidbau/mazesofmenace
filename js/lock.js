@@ -2,7 +2,7 @@
 // cf. lock.c — picking_lock, picking_at, lock_action, picklock,
 //              breakchestlock, forcelock, reset_pick, maybe_reset_pick,
 //              autokey, pick_lock, u_have_forceable_weapon, doforce,
-//              stumble_on_door_mimic, doopen, doopen_indir, obstructed,
+//              stumble_onto_mimic, doopen, doopen_indir, obstructed,
 //              doclose, boxlock, doorlock, chest_shatter_msg
 //
 // lock.c handles all lock manipulation mechanics:
@@ -112,14 +112,12 @@ function getXlock(game) {
 }
 
 // cf. lock.c:259 — reset_pick(void): clear lock-picking context
-export function reset_pick(game) {
-    const xlock = getXlock(game);
-    xlock.usedtime = 0;
-    xlock.chance = 0;
-    xlock.picktyp = 0;
-    xlock.magic_key = false;
-    xlock.door = null;
-    xlock.box = null;
+// Autotranslated from lock.c:258
+export function reset_pick() {
+  gx.xlock.usedtime = gx.xlock.chance = gx.xlock.picktyp = 0;
+  gx.xlock.magic_key = false;
+  gx.xlock.door =  0;
+  gx.xlock.box =  0;
 }
 
 // cf. lock.c:269 — maybe_reset_pick(container): reset pick if container gone
@@ -155,7 +153,7 @@ export function picking_at(game, x, y) {
 }
 
 // cf. lock.c:38 [static] — lock_action(void): current lock-picking action description
-function lock_action(game) {
+export function lock_action(game) {
     const xlock = getXlock(game);
     // if the target is currently unlocked, we're trying to lock it now
     if (xlock.door && !(xlock.door.flags & D_LOCKED)) {
@@ -273,22 +271,14 @@ export function obstructed(x, y, quietly, map) {
 }
 
 // cf. lock.c:660 — u_have_forceable_weapon(void): check for force weapon
-export function u_have_forceable_weapon(player) {
-    const uwep = player.weapon;
-    if (!uwep) return false;
-    if (uwep.oclass === WEAPON_CLASS || is_weptool(uwep)) {
-        const sk = objectData[uwep.otyp]?.sub ?? 0;
-        if (sk < P_DAGGER || sk === P_FLAIL || sk > P_LANCE) {
-            return false;
-        }
-    } else if (uwep.oclass !== ROCK_CLASS) {
-        return false;
-    }
-    return true;
+// Autotranslated from lock.c:659
+export function u_have_forceable_weapon() {
+  if (!uwep /* proper type test */ || ((uwep.oclass === WEAPON_CLASS || is_weptool(uwep)) ? (objects[uwep.otyp].oc_skill < P_DAGGER || objects[uwep.otyp].oc_skill === P_FLAIL || objects[uwep.otyp].oc_skill > P_LANCE) : uwep.oclass !== ROCK_CLASS)) return false;
+  return true;
 }
 
-// cf. lock.c:759 — stumble_on_door_mimic(x, y): detect door mimic
-export function stumble_on_door_mimic(x, y, map) {
+// cf. lock.c:759 — stumble_onto_mimic(x, y): detect door mimic
+export function stumble_onto_mimic(x, y, map) {
     const mtmp = map.monsterAt(x, y);
     if (mtmp && mtmp.m_ap_type === 'furniture'
         && mtmp.mappearance === DOOR) {
@@ -701,7 +691,7 @@ export async function pick_lock(game, pick, rx, ry, container) {
 // Returns true if something happened.
 export function boxlock(game, obj, otmp) {
     const xlock = getXlock(game);
-    const player = game.player;
+    const player = (game.u || game.player);
     let res = false;
 
     switch (otmp.otyp) {
@@ -984,8 +974,8 @@ export async function handleOpen(player, map, display, game) {
     const nx = player.x + dir[0];
     const ny = player.y + dir[1];
 
-    // C ref: stumble_on_door_mimic
-    if (stumble_on_door_mimic(nx, ny, map)) {
+    // C ref: stumble_onto_mimic
+    if (stumble_onto_mimic(nx, ny, map)) {
         return { moved: false, tookTime: true };
     }
 
@@ -1062,8 +1052,8 @@ export async function handleClose(player, map, display, game) {
 
     const loc = map.at(nx, ny);
 
-    // C: stumble_on_door_mimic
-    if (stumble_on_door_mimic(nx, ny, map)) {
+    // C: stumble_onto_mimic
+    if (stumble_onto_mimic(nx, ny, map)) {
         return { moved: false, tookTime: true };
     }
 
@@ -1109,4 +1099,16 @@ export async function handleClose(player, map, display, game) {
     }
 
     return { moved: false, tookTime: true };
+}
+
+// Autotranslated from lock.c:758
+export function stumble_on_door_mimic(x, y) {
+  let mtmp;
+  if ((mtmp = m_at(x, y)) && is_door_mappear(mtmp) && !Protection_from_shape_changers) { stumble_onto_mimic(mtmp); return true; }
+  return false;
+}
+
+// Autotranslated from lock.c:772
+export function doopen() {
+  return doopen_indir(0, 0);
 }

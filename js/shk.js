@@ -63,7 +63,7 @@ function roomMatchesType(map, roomno, typeWanted) {
     return rt === typeWanted || (typeWanted === SHOPBASE && rt >= SHOPBASE);
 }
 
-function inRoomsAt(map, x, y, typeWanted = 0) {
+function in_rooms(map, x, y, typeWanted = 0) {
     const loc = map.at(x, y);
     if (!loc) return [];
     const out = [];
@@ -249,24 +249,31 @@ function Is_candle(obj) {
 }
 
 // C ref: shk.c corpsenm_price_adj() -- adjust price for corpse/tin/egg
-function corpsenm_price_adj(obj) {
-    if ((obj.otyp === TIN || obj.otyp === EGG || obj.otyp === CORPSE)
-        && obj.corpsenm !== undefined && obj.corpsenm >= 0) {
-        // Simplified: just add a small amount based on monster level
-        // Full implementation would check intrinsic_possible for each resistance
-        const mlevel = obj.monsterLevel || 0;
-        let val = Math.max(1, (mlevel - 1) * 2);
-        if (obj.otyp === CORPSE) {
-            const cnutrit = obj.cnutrit || 100;
-            val += Math.max(1, Math.floor(cnutrit / 30));
-        }
-        return val;
+// Autotranslated from shk.c:4209
+export function corpsenm_price_adj(obj) {
+  let val = 0;
+  if ((obj.otyp === TIN || obj.otyp === EGG || obj.otyp === CORPSE) && ismnum(obj.corpsenm)) {
+    let i, tmp = 1, ptr =  mons[obj.corpsenm];
+    let icost = [ [ FIRE_RES, 2 ], [ SLEEP_RES, 3 ], [ COLD_RES, 2 ], [ DISINT_RES, 5 ], [ SHOCK_RES, 4 ], [ POISON_RES, 2 ], [ ACID_RES, 1 ], [ STONE_RES, 3 ], [ TELEPORT, 2 ], [ TELEPORT_CONTROL, 3 ], [ TELEPAT, 5 ] ];
+    for (i = 0; i < SIZE(icost); i++) {
+      if (intrinsic_possible(icost[i].trinsic, ptr)) {
+        tmp += icost[i].cost;
+      }
     }
-    return 0;
+    if (unique_corpstat(ptr)) {
+      tmp += 50;
+    }
+    val = Math.max(1, ((ptr.mlevel - 1) * 2));
+    if (obj.otyp === CORPSE) {
+      val += Math.max(1, (ptr.cnutrit / 30));
+    }
+    val = val * tmp;
+  }
+  return val;
 }
 
 // C ref: shk.c get_pricing_units() -- for globs, price by weight
-function get_pricing_units(obj) {
+export function get_pricing_units(obj) {
     let units = Number(obj.quan || 1);
     if (obj.globby) {
         const unit_weight = (objectData[obj.otyp] || {}).wt || 0;
@@ -366,7 +373,7 @@ function getCost(obj, player, shkp) {
     if (player?.helmet?.otyp === DUNCE_CAP) {
         multiplier *= 4;
         divisor *= 3;
-    } else if (player?.roleIndex === 10 && Number(player.level || 1) < 15) {
+    } else if (player?.roleIndex === 10 && Number(player.ulevel || 1) < 15) {
         multiplier *= 4;
         divisor *= 3;
     }
@@ -399,46 +406,40 @@ function getCost(obj, player, shkp) {
 }
 
 // C ref: shk.c set_cost() -- price shk will pay when buying (selling to player)
-function set_cost(obj, shkp) {
-    let tmp = getprice_base(obj, true);
-    const od = objectData[obj.otyp] || {};
-    let multiplier = 1;
-    let divisor = 1;
-
-    tmp = get_pricing_units(obj) * (tmp || 0);
-
-    // Dunce cap or tourist penalty for selling
-    // Simplified: default divisor of 2
+// Autotranslated from shk.c:3088
+export function set_cost(obj, shkp, player) {
+  let tmp, unit_price = getprice(obj, true), multiplier = 1, divisor = 1;
+  tmp = get_pricing_units(obj) * unit_price;
+  if (uarmh && uarmh.otyp === DUNCE_CAP) {
+    divisor *= 3;
+  }
+  else if ((Role_if(PM_TOURIST) && player.ulevel < (MAXULEV / 2)) || (uarmu && !uarm && !uarmc)) {
+    divisor *= 3;
+  }
+  else {
     divisor *= 2;
-
-    // Shopkeeper may notice if player isn't knowledgeable
-    const nameKnown = isObjectNameKnown(obj.otyp);
-    if (!obj.dknown || !nameKnown) {
-        if (obj.oclass === GEM_CLASS) {
-            if ((od.material || 0) === GEMSTONE || (od.material || 0) === GLASS) {
-                const shkId = Number(shkp?.m_id || 0);
-                tmp = ((obj.otyp - FIRST_REAL_GEM) % (6 - shkId % 3));
-                tmp = (tmp + 3) * Number(obj.quan || 1);
-                divisor = 1;
-            }
-        } else if (tmp > 1 && !(Number(shkp?.m_id || 0) % 4)) {
-            multiplier *= 3;
-            divisor *= 4;
-        }
+  }
+  if (!obj.dknown || !objects[obj.otyp].oc_name_known) {
+    if (obj.oclass === GEM_CLASS) {
+      if (objects[obj.otyp].oc_material === GEMSTONE || objects[obj.otyp].oc_material === GLASS) {
+        tmp = ((obj.otyp - FIRST_REAL_GEM) % (6 - shkp.m_id % 3));
+        tmp = (tmp + 3) * obj.quan;
+        divisor = 1;
+      }
     }
-
-    if (tmp >= 1) {
-        tmp *= multiplier;
-        if (divisor > 1) {
-            tmp *= 10;
-            tmp = Math.floor(tmp / divisor);
-            tmp += 5;
-            tmp = Math.floor(tmp / 10);
-        }
-        if (tmp < 1) tmp = 1;
+    else if (tmp > 1 && !(shkp.m_id % 4)) multiplier *= 3, divisor *= 4;
+  }
+  if (tmp >= 1) {
+    tmp *= multiplier;
+    if (divisor > 1) {
+      tmp *= 10;
+      tmp /= divisor;
+      tmp += 5;
+      tmp /= 10;
     }
-
-    return tmp;
+    if (tmp < 1) tmp = 1;
+  }
+  return tmp;
 }
 
 // ============================================================
@@ -446,22 +447,19 @@ function set_cost(obj, shkp) {
 // ============================================================
 
 // C ref: shk.c onbill() -- find bill entry for object
-function onbill(obj, shkp, silent) {
-    if (shkp) {
-        const bill = shkp.bill || [];
-        for (let i = 0; i < (shkp.billct || 0); i++) {
-            const bp = bill[i];
-            if (bp && bp.bo_id === obj.o_id) {
-                if (!obj.unpaid)
-                    impossible("onbill: paid obj on bill?");
-                return bp;
-            }
-        }
+// Autotranslated from shk.c:1076
+export function onbill(obj, shkp, silent) {
+  if (shkp) {
+    let bp, ct;
+    for (ct = ESHK(shkp).billct, bp = ESHK(shkp).bill_p; ct > 0; --ct, ++bp) {
+      if (bp.bo_id === obj.o_id) {
+        if (!obj.unpaid) impossible("onbill: paid obj on bill?");
+        return bp;
+      }
     }
-    if (obj.unpaid && !silent)
-        impossible("onbill: unpaid obj %s?",
-                   !shkp ? "without shopkeeper" : "not on shk's bill");
-    return null;
+  }
+  if (obj.unpaid && !silent) impossible("onbill: unpaid obj %s?", !shkp ? "without shopkeeper" : "not on shk's bill");
+  return  0;
 }
 
 // C ref: shk.c onshopbill() -- boolean wrapper for onbill
@@ -470,77 +468,75 @@ export function onshopbill(obj, shkp, silent) {
 }
 
 // C ref: shk.c next_shkp() -- iterate shopkeepers
-function next_shkp(monsters, startIdx, withbill) {
-    if (!monsters) return { shkp: null, nextIdx: -1 };
-    for (let i = startIdx; i < monsters.length; i++) {
-        const m = monsters[i];
-        if (!m || m.dead) continue;
-        if (m.isshk && ((m.billct || 0) > 0 || !withbill)) {
-            // If angry, make sure surcharge is set
-            if (!m.mpeaceful && m.peaceful === false) {
-                if (!m.surcharge)
-                    rile_shk(m);
-            }
-            return { shkp: m, nextIdx: i + 1 };
-        }
+// Autotranslated from shk.c:214
+export function next_shkp(shkp, withbill) {
+  for (shkp; shkp = shkp.nmon; ) {
+    if (DEADMONSTER(shkp)) {
+      continue;
     }
-    return { shkp: null, nextIdx: -1 };
+    if (shkp.isshk && (ESHK(shkp).billct || !withbill)) {
+      break;
+    }
+  }
+  if (shkp) {
+    if (ANGRY(shkp)) { if (!ESHK(shkp).surcharge) rile_shk(shkp); }
+  }
+  return shkp;
 }
 
 // C ref: shk.c addupbill() -- total of all items on bill
-function addupbill(shkp) {
-    let total = 0;
-    const bill = shkp.bill || [];
-    for (let i = 0; i < (shkp.billct || 0); i++) {
-        const bp = bill[i];
-        if (bp) total += (bp.price || 0) * (bp.bquan || 0);
-    }
-    return total;
+// Autotranslated from shk.c:436
+export function addupbill(shkp) {
+  let ct = ESHK(shkp).billct, bp = ESHK(shkp).bill_p, total = 0;
+  while (ct--) {
+    total += bp.price * bp.bquan;
+    bp++;
+  }
+  return total;
 }
 
 // C ref: shk.c shop_debt() -- total debt to shopkeeper
-function shop_debt(shkp) {
-    let debt = Number(shkp.debit || 0);
-    const bill = shkp.bill || [];
-    for (let i = 0; i < (shkp.billct || 0); i++) {
-        const bp = bill[i];
-        if (bp) debt += (bp.price || 0) * (bp.bquan || 0);
-    }
-    return debt;
+// Autotranslated from shk.c:930
+export function shop_debt(eshkp) {
+  let bp, ct, debt = eshkp.debit;
+  for (bp = eshkp.bill_p, ct = eshkp.billct; ct > 0; bp++, ct--) {
+    debt += bp.price * bp.bquan;
+  }
+  return debt;
 }
 
 // C ref: shk.c check_credit() -- deduct cost from credit
-function check_credit(tmp, shkp) {
-    const credit = Number(shkp.credit || 0);
-    if (credit === 0) {
-        return tmp;
-    } else if (credit >= tmp) {
-        pline_The("price is deducted from your credit.");
-        shkp.credit = credit - tmp;
-        return 0;
-    } else {
-        pline_The("price is partially covered by your credit.");
-        shkp.credit = 0;
-        return tmp - credit;
-    }
+// Autotranslated from shk.c:1218
+export function check_credit(tmp, shkp) {
+  let credit = ESHK(shkp).credit;
+  if (credit === 0) {
+  }
+  else if (credit >= tmp) {
+    pline_The("price is deducted from your credit.");
+    ESHK(shkp).credit -= tmp;
+    tmp = 0;
+  }
+  else {
+    pline_The("price is partially covered by your credit.");
+    ESHK(shkp).credit = 0;
+    tmp -= credit;
+  }
+  return tmp;
 }
 
 // C ref: shk.c pay() -- make payment to shopkeeper
-function pay(tmp, shkp) {
-    const robbed = Number(shkp.robbed || 0);
-    const balance = (tmp <= 0) ? tmp : check_credit(tmp, shkp);
-
-    if (balance > 0) {
-        money2mon(shkp, balance);
-    } else if (balance < 0) {
-        money2u(shkp, -balance);
-    }
-
-    if (robbed) {
-        let r = robbed - tmp;
-        if (r < 0) r = 0;
-        shkp.robbed = r;
-    }
+// Autotranslated from shk.c:1237
+export function pay(tmp, shkp, game) {
+  let robbed = ESHK(shkp).robbed;
+  let balance = ((tmp <= 0) ? tmp : check_credit(tmp, shkp));
+  if (balance > 0) money2mon(shkp, balance);
+  else if (balance < 0) money2u(shkp, -balance);
+  game.disp.botl = true;
+  if (robbed) {
+    robbed -= tmp;
+    if (robbed < 0) robbed = 0;
+    ESHK(shkp).robbed = robbed;
+  }
 }
 
 // ============================================================
@@ -583,55 +579,60 @@ function ensureBill(shkp) {
 }
 
 // C ref: shk.c add_one_tobill()
-function add_one_tobill(obj, dummy, shkp) {
-    ensureBill(shkp);
-    if (shkp.billct >= BILLSZ) {
-        You("got that for free!");
-        return;
-    }
-
-    const bct = shkp.billct;
-    const bp = {
-        bo_id: obj.o_id,
-        bquan: Number(obj.quan || 1),
-        useup: !!dummy,
-        price: get_cost(obj, shkp),
-    };
-
-    if (obj.globby) {
-        bp.price *= get_pricing_units(obj);
-    }
-
-    shkp.bill[bct] = bp;
-    shkp.billct = bct + 1;
-    obj.unpaid = 1;
+// Autotranslated from shk.c:3249
+export function add_one_tobill(obj, dummy, shkp, player) {
+  let eshkp, bp, bct, unbilled = false;
+  eshkp = ESHK(shkp);
+  if (!eshkp.bill_p) eshkp.bill_p = eshkp.bill[0];
+  if (!billable( shkp, obj, player.ushops, true)) { unbilled = true; }
+  else if (eshkp.billct === BILLSZ) { You("got that for free!"); unbilled = true; }
+  if (unbilled) { if (obj.where === OBJ_FREE) dealloc_obj(obj); return; }
+  bct = eshkp.billct;
+  bp = eshkp.bill_p[bct];
+  bp.bo_id = obj.o_id;
+  bp.bquan = obj.quan;
+  if (dummy) { bp.useup = true; add_to_billobjs(obj); }
+  else {
+    bp.useup = false;
+  }
+  bp.price = get_cost(obj, shkp);
+  if (obj.globby) {
+    bp.price *= get_pricing_units(obj);
+    newomid(obj);
+    OMID(obj) = obj.owt;
+  }
+  eshkp.billct++;
+  obj.unpaid = 1;
 }
 
 // C ref: shk.c sub_one_frombill()
-function sub_one_frombill(obj, shkp) {
-    const bp = onbill(obj, shkp, false);
-    if (bp) {
-        obj.unpaid = 0;
-        if (bp.bquan > Number(obj.quan || 1)) {
-            // Partially used: create a dummy bill object
-            bp.bquan -= Number(obj.quan || 1);
-            bp.useup = true;
-            // In C this creates a billobjs entry; we just update the bill
-            return;
-        }
-        ensureBill(shkp);
-        // Remove this entry by replacing with last
-        const idx = shkp.bill.indexOf(bp);
-        if (idx >= 0 && idx < shkp.billct) {
-            shkp.billct--;
-            shkp.bill[idx] = shkp.bill[shkp.billct];
-            shkp.bill[shkp.billct] = undefined;
-        }
-        return;
-    } else if (obj.unpaid) {
-        impossible("sub_one_frombill: unpaid object not on bill");
-        obj.unpaid = 0;
+// Autotranslated from shk.c:3597
+export function sub_one_frombill(obj, shkp) {
+  let bp, eshkp;
+  if ((bp = onbill(obj, shkp, false)) !== 0) {
+    let otmp;
+    obj.unpaid = 0;
+    if (bp.bquan > obj.quan) {
+      otmp = newobj();
+       otmp = obj;
+      otmp.oextra =  0;
+      bp.bo_id = otmp.o_id = next_ident();
+      otmp.where = OBJ_FREE;
+      otmp.quan = (bp.bquan -= obj.quan);
+      otmp.owt = 0;
+      bp.useup = true;
+      add_to_billobjs(otmp);
+      return;
     }
+    eshkp = ESHK(shkp);
+    eshkp.billct--;
+     bp = eshkp.bill_p[eshkp.billct];
+    return;
+  }
+  else if (obj.unpaid) {
+    impossible("sub_one_frombill: unpaid object not on bill");
+    obj.unpaid = 0;
+  }
 }
 
 // C ref: shk.c addtobill() -- add object to shop bill
@@ -658,7 +659,7 @@ export function splitbill(obj, otmp, map) {
     // obj is original, otmp has been split off
     if (!map) return;
     // Find shopkeeper
-    const rooms = inRoomsAt(map, obj.ox || 0, obj.oy || 0, SHOPBASE);
+    const rooms = in_rooms(map, obj.ox || 0, obj.oy || 0, SHOPBASE);
     if (rooms.length === 0) return;
     const shkp = shop_keeper(map, rooms[0]);
     if (!shkp) return;
@@ -712,20 +713,19 @@ export function subfrombill(obj, shkp) {
 // ============================================================
 
 // C ref: shk.c clear_unpaid_obj()
-function clear_unpaid_obj(shkp, otmp) {
-    if (otmp.cobj)
-        clear_unpaid(shkp, otmp.cobj);
-    if (onbill(otmp, shkp, true))
-        otmp.unpaid = 0;
+// Autotranslated from shk.c:308
+export function clear_unpaid_obj(shkp, otmp) {
+  if (Has_contents(otmp)) clear_unpaid(shkp, otmp.cobj);
+  if (onbill(otmp, shkp, true)) otmp.unpaid = 0;
 }
 
 // C ref: shk.c clear_unpaid()
-function clear_unpaid(shkp, list) {
-    let obj = list;
-    while (obj) {
-        clear_unpaid_obj(shkp, obj);
-        obj = obj.nobj;
-    }
+// Autotranslated from shk.c:318
+export function clear_unpaid(shkp, list) {
+  while (list) {
+    clear_unpaid_obj(shkp, list);
+    list = list.nobj;
+  }
 }
 
 // C ref: shk.c clear_no_charge_obj()
@@ -743,12 +743,12 @@ function clear_no_charge_obj(shkp, otmp) {
 }
 
 // C ref: shk.c clear_no_charge()
-function clear_no_charge(shkp, list) {
-    let obj = list;
-    while (obj) {
-        clear_no_charge_obj(shkp, obj);
-        obj = obj.nobj;
-    }
+// Autotranslated from shk.c:376
+export function clear_no_charge(shkp, list) {
+  while (list) {
+    clear_no_charge_obj(shkp, list);
+    list = list.nobj;
+  }
 }
 
 // C ref: shk.c setpaid() -- clear all unpaid objects and reset bill
@@ -775,7 +775,7 @@ export function inhishop(shkp, map) {
     if (!map) return false;
     const roomno = Number(shkp.shoproom || 0);
     if (roomno < ROOMOFFSET) return false;
-    const rooms = inRoomsAt(map, shkp.mx, shkp.my, SHOPBASE);
+    const rooms = in_rooms(map, shkp.mx, shkp.my, SHOPBASE);
     return rooms.includes(roomno);
 }
 
@@ -801,33 +801,29 @@ export function rile_shk(shkp) {
 }
 
 // C ref: shk.c pacify_shk() -- make shopkeeper peaceful, optionally remove surcharge
-function pacify_shk(shkp, clear_surcharge) {
-    shkp.mpeaceful = true;
-    shkp.peaceful = true;
-    if (clear_surcharge && shkp.surcharge) {
-        shkp.surcharge = false;
-        const bill = shkp.bill || [];
-        for (let i = 0; i < (shkp.billct || 0); i++) {
-            const bp = bill[i];
-            if (bp) {
-                const reduction = Math.floor((bp.price + 3) / 4);
-                bp.price -= reduction;
-            }
-        }
+// Autotranslated from shk.c:1284
+export function pacify_shk(shkp, clear_surcharge) {
+  NOTANGRY(shkp) = true;
+  if (clear_surcharge && ESHK(shkp).surcharge) {
+    let bp = ESHK(shkp).bill_p, ct = ESHK(shkp).billct;
+    ESHK(shkp).surcharge = false;
+    while (ct-- > 0) {
+      let reduction = (bp.price + 3) / 4;
+      bp.price -= reduction;
+      bp++;
     }
+  }
 }
 
 // C ref: shk.c rouse_shk() -- wake up shopkeeper
-function rouse_shk(shkp, verbosely) {
-    if (helpless(shkp)) {
-        if (verbosely && canspotmon(shkp)) {
-            pline("%s %s.", Shknam(shkp),
-                  shkp.msleeping ? "wakes up" : "can move again");
-        }
-        shkp.msleeping = 0;
-        shkp.mfrozen = 0;
-        shkp.mcanmove = 1;
-    }
+// Autotranslated from shk.c:1321
+export function rouse_shk(shkp, verbosely) {
+  if (helpless(shkp)) {
+    if (verbosely && canspotmon(shkp)) pline("%s %s.", Shknam(shkp), shkp.msleeping ? "wakes up" : "can move again");
+    shkp.msleeping = 0;
+    shkp.mfrozen = 0;
+    shkp.mcanmove = 1;
+  }
 }
 
 // C ref: shk.c make_happy_shk()
@@ -979,7 +975,7 @@ export function shk_impaired(shkp, map) {
 // C ref: shk.c costly_spot() -- is this a spot where shop goods are costly?
 export function costly_spot(x, y, map) {
     if (!map) return false;
-    const rooms = inRoomsAt(map, x, y, SHOPBASE);
+    const rooms = in_rooms(map, x, y, SHOPBASE);
     if (rooms.length === 0) return false;
     const shkp = shop_keeper(map, rooms[0]);
     if (!shkp || !inhishop(shkp, map)) return false;
@@ -1004,7 +1000,7 @@ export function costly_adjacent(shkp, x, y, map) {
 // C ref: shk.c shop_object() -- get first non-gold object at shop location
 export function shop_object(x, y, map) {
     if (!map) return null;
-    const rooms = inRoomsAt(map, x, y, SHOPBASE);
+    const rooms = in_rooms(map, x, y, SHOPBASE);
     if (rooms.length === 0) return null;
     const shkp = shop_keeper(map, rooms[0]);
     if (!shkp || !inhishop(shkp, map)) return null;
@@ -1071,7 +1067,7 @@ export function stolen_value(obj, x, y, peaceful, silent, map) {
     if (!map) return 0;
 
     // Find shopkeeper
-    const rooms = inRoomsAt(map, x, y, SHOPBASE);
+    const rooms = in_rooms(map, x, y, SHOPBASE);
     if (rooms.length === 0) return 0;
     let shkp = shop_keeper(map, rooms[0]);
     if (!shkp) return 0;
@@ -1150,7 +1146,7 @@ export function stolen_value(obj, x, y, peaceful, silent, map) {
 export function costly_gold(x, y, amount, silent, map) {
     if (!costly_spot(x, y, map)) return;
 
-    const rooms = inRoomsAt(map, x, y, SHOPBASE);
+    const rooms = in_rooms(map, x, y, SHOPBASE);
     const shkp = shop_keeper(map, rooms[0]);
     if (!shkp) return;
 
@@ -1211,7 +1207,7 @@ export function donate_gold(gltmp, shkp, selling) {
 // ============================================================
 
 // C ref: shk.c cost_per_charge()
-function cost_per_charge(shkp, otmp, altusage, map) {
+export function cost_per_charge(shkp, otmp, altusage, map) {
     if (!shkp || (map && !inhishop(shkp, map))) return 0;
     let tmp = get_cost(otmp, shkp);
 
@@ -1244,7 +1240,7 @@ function cost_per_charge(shkp, otmp, altusage, map) {
 export function check_unpaid_usage(otmp, altusage, map) {
     if (!otmp.unpaid) return;
 
-    const rooms = inRoomsAt(map, otmp.ox || 0, otmp.oy || 0, SHOPBASE);
+    const rooms = in_rooms(map, otmp.ox || 0, otmp.oy || 0, SHOPBASE);
     if (rooms.length === 0) return;
     const shkp = shop_keeper(map, rooms[0]);
     if (!shkp || !inhishop(shkp, map)) return;
@@ -1429,9 +1425,9 @@ function getShopQuoteForFloorObject(obj, player, map) {
     if (!obj || obj.oclass === COIN_CLASS) return null;
     if (!Number.isInteger(obj.ox) || !Number.isInteger(obj.oy)) return null;
 
-    const playerShops = inRoomsAt(map, player.x, player.y, SHOPBASE);
+    const playerShops = in_rooms(map, player.x, player.y, SHOPBASE);
     if (playerShops.length === 0) return null;
-    const objShops = inRoomsAt(map, obj.ox, obj.oy, SHOPBASE);
+    const objShops = in_rooms(map, obj.ox, obj.oy, SHOPBASE);
     const shoproom = playerShops.find((r) => objShops.includes(r));
     if (!shoproom) return null;
 
@@ -1464,8 +1460,8 @@ export function describeGroundObjectForPlayer(obj, player, map) {
 
 export function maybeHandleShopEntryMessage(game, oldX, oldY) {
     const { map, player, display } = game;
-    const oldShops = inRoomsAt(map, oldX, oldY, SHOPBASE);
-    const newShops = inRoomsAt(map, player.x, player.y, SHOPBASE);
+    const oldShops = in_rooms(map, oldX, oldY, SHOPBASE);
+    const newShops = in_rooms(map, player.x, player.y, SHOPBASE);
     game._ushops = newShops;
     const entered = newShops.filter((r) => !oldShops.includes(r));
     if (entered.length === 0) return;
@@ -1518,7 +1514,7 @@ export function dopay(game) {
         if (!m || m.dead || !m.isshk) continue;
         sk++;
         if (m.mpeaceful !== false) seensk++;
-        const rooms = inRoomsAt(map, player.x, player.y, SHOPBASE);
+        const rooms = in_rooms(map, player.x, player.y, SHOPBASE);
         if (rooms.length > 0 && Number(m.shoproom || 0) === rooms[0] && inhishop(m, map)) {
             resident = m;
         }
@@ -1565,7 +1561,7 @@ export function sellobj_state(deliberate) {
 // C ref: shk.c sellobj()
 export function sellobj(obj, x, y, map) {
     if (!map) return;
-    const rooms = inRoomsAt(map, x, y, SHOPBASE);
+    const rooms = in_rooms(map, x, y, SHOPBASE);
     if (rooms.length === 0) return;
     const shkp = shop_keeper(map, rooms[0]);
     if (!shkp || !inhishop(shkp, map)) return;
@@ -1587,7 +1583,7 @@ export function sellobj(obj, x, y, map) {
 // C ref: shk.c doinvbill()
 export function doinvbill(mode, map) {
     if (!map) return 0;
-    const rooms = inRoomsAt(map, 0, 0, SHOPBASE); // needs player pos
+    const rooms = in_rooms(map, 0, 0, SHOPBASE); // needs player pos
     // Stub: full implementation requires window system
     return 0;
 }
@@ -1694,7 +1690,7 @@ export function pay_for_damage(dmgstr, cant_mollify, map, player, moves) {
     for (const dam of damagelist) {
         if (dam.when !== moves || !dam.cost) continue;
         cost_of_damage += dam.cost;
-        const rooms = inRoomsAt(map, dam.x, dam.y, SHOPBASE);
+        const rooms = in_rooms(map, dam.x, dam.y, SHOPBASE);
         for (const r of rooms) {
             const tmp_shk = shop_keeper(map, r);
             if (tmp_shk && inhishop(tmp_shk, map)) {
@@ -1719,7 +1715,7 @@ export function pay_for_damage(dmgstr, cant_mollify, map, player, moves) {
 // C ref: shk.c shopdig()
 export function shopdig(fall, map, player) {
     if (!map || !player) return;
-    const rooms = inRoomsAt(map, player.x, player.y, SHOPBASE);
+    const rooms = in_rooms(map, player.x, player.y, SHOPBASE);
     if (rooms.length === 0) return;
     const shkp = shop_keeper(map, rooms[0]);
     if (!shkp) return;
@@ -1742,7 +1738,7 @@ export function shopdig(fall, map, player) {
 // C ref: shk.c block_door()
 export function block_door(x, y, map, player) {
     if (!map || !player) return false;
-    const rooms = inRoomsAt(map, x, y, SHOPBASE);
+    const rooms = in_rooms(map, x, y, SHOPBASE);
     if (rooms.length === 0) return false;
     const shkp = shop_keeper(map, rooms[0]);
     if (!shkp || !inhishop(shkp, map)) return false;
@@ -1760,7 +1756,7 @@ export function block_door(x, y, map, player) {
 // C ref: shk.c block_entry()
 export function block_entry(x, y, map, player) {
     if (!map || !player) return false;
-    const rooms = inRoomsAt(map, x, y, SHOPBASE);
+    const rooms = in_rooms(map, x, y, SHOPBASE);
     if (rooms.length === 0) return false;
     const shkp = shop_keeper(map, rooms[0]);
     if (!shkp || !inhishop(shkp, map)) return false;
@@ -1786,8 +1782,16 @@ export function shk_your(obj, map) {
 }
 
 // C ref: shk.c Shk_Your()
-export function Shk_Your(obj, map) {
-    const result = shk_your(obj, map);
+export function Shk_Your(buf, obj) {
+    // Backward-compatible with legacy JS order: Shk_Your(obj, map).
+    const looksLikeObj = (v) => !!(v && typeof v === 'object'
+        && ('otyp' in v || 'where' in v || 'carried' in v));
+    if (looksLikeObj(buf) && !looksLikeObj(obj)) {
+        const result = shk_your(buf, obj);
+        return result.charAt(0).toUpperCase() + result.slice(1);
+    }
+
+    const result = shk_your(obj || buf, null);
     return result.charAt(0).toUpperCase() + result.slice(1);
 }
 
@@ -1916,7 +1920,7 @@ export function credit_report(shkp, idx, silent) {
 // C ref: shk.c remote_burglary()
 export function remote_burglary(x, y, map) {
     if (!map) return;
-    const rooms = inRoomsAt(map, x, y, SHOPBASE);
+    const rooms = in_rooms(map, x, y, SHOPBASE);
     if (rooms.length === 0) return;
     const shkp = shop_keeper(map, rooms[0]);
     if (!shkp || !inhishop(shkp, map)) return;
@@ -1977,14 +1981,16 @@ export function picked_container(obj) {
 }
 
 // C ref: shk.c dropped_container()
-function dropped_container(obj, shkp, sale) {
-    if (!obj || !obj.cobj) return;
-    for (let otmp = obj.cobj; otmp; otmp = otmp.nobj) {
-        if (otmp.oclass === COIN_CLASS) continue;
-        if (!otmp.unpaid && !(sale && saleable(shkp, otmp)))
-            otmp.no_charge = 1;
-        if (otmp.cobj) dropped_container(otmp, shkp, sale);
+// Autotranslated from shk.c:3004
+export function dropped_container(obj, shkp, sale) {
+  let otmp;
+  for (otmp = obj.cobj; otmp; otmp = otmp.nobj) {
+    if (otmp.oclass === COIN_CLASS) {
+      continue;
     }
+    if (!otmp.unpaid && !(sale && saleable(shkp, otmp))) otmp.no_charge = 1;
+    if (Has_contents(otmp)) dropped_container(otmp, shkp, sale);
+  }
 }
 
 // ============================================================
@@ -1992,9 +1998,10 @@ function dropped_container(obj, shkp, sale) {
 // ============================================================
 
 // C ref: shk.c tended_shop()
-export function tended_shop(sroom, map) {
-    if (!sroom || !sroom.resident) return false;
-    return inhishop(sroom.resident, map);
+// Autotranslated from shk.c:1058
+export function tended_shop(sroom) {
+  let mtmp = sroom.resident;
+  return !mtmp ? false : inhishop(mtmp);
 }
 
 // C ref: shk.c noisy_shop()
@@ -2027,7 +2034,7 @@ export function gem_learned(oindx, map) {
 // C ref: shk.c find_objowner()
 export function find_objowner(obj, x, y, map) {
     if (!map) return null;
-    const rooms = inRoomsAt(map, x, y, SHOPBASE);
+    const rooms = in_rooms(map, x, y, SHOPBASE);
     for (const r of rooms) {
         const shkp = shop_keeper(map, r);
         if (shkp) return shkp;
@@ -2115,17 +2122,33 @@ function deserted_shop(enterroom, map) {
 // ============================================================
 // Special stock (C: special_stock)
 // ============================================================
-
-function special_stock(obj, shkp, quietly) {
-    if ((shkp.shoptype || 0) === CANDLESHOP
-        && obj.otyp === CANDELABRUM_OF_INVOCATION) {
-        if (!quietly) {
-            if (!muteshk(shkp))
-                verbalize("I won't stock that.  Take it out of here!");
+// Autotranslated from shk.c:3043
+export function special_stock(obj, shkp, quietly, player) {
+  if (ESHK(shkp).shoptype === CANDLESHOP && obj.otyp === CANDELABRUM_OF_INVOCATION) {
+    if (!quietly) {
+      if (is_izchak(shkp, true) && !player.uevent.invoked) {
+        if (Deaf || muteshk(shkp)) {
+          pline("%s seems %s that you want to sell that.", Shknam(shkp), (obj.spe < 7) ? "horrified" : "concerned");
         }
-        return true;
+        else {
+          verbalize("No thanks, I'd hang onto that if I were yoplayer.");
+          if (obj.spe < 7) {
+            verbalize( "You'll need %d%s candle%s to go along with it.", (7 - obj.spe), (obj.spe > 0) ? " more" : "", plur(7 - obj.spe));
+          }
+        }
+      }
+      else {
+        if (!Deaf && !muteshk(shkp)) {
+          verbalize("I won't stock that. Take it out of here!");
+        }
+        else {
+          pline("%s shakes %s %s in refusal.", Shknam(shkp), noit_mhis(shkp), mbodypart(shkp, HEAD));
+        }
+      }
     }
-    return false;
+    return true;
+  }
+  return false;
 }
 
 // ============================================================
@@ -2143,9 +2166,35 @@ function cad(altusage) {
 // Kops (C: call_kops, kops_gone, makekops)
 // Stubs -- kop system not fully ported
 // ============================================================
-
-function call_kops(shkp, nearshop) {
-    // Stub: Keystone Kops not implemented
+// Autotranslated from shk.c:450
+export function call_kops(shkp, nearshop, game, player) {
+  let nokops;
+  if (!shkp) return;
+  if (!Deaf) pline("An alarm sounds!");
+  nokops = ((game.mvitals[PM_KEYSTONE_KOP].mvflags & G_GONE) && (game.mvitals[PM_KOP_SERGEANT].mvflags & G_GONE) && (game.mvitals[PM_KOP_LIEUTENANT].mvflags & G_GONE) && (game.mvitals[PM_KOP_KAPTAIN].mvflags & G_GONE));
+  if (!angry_guards(!!Deaf) && nokops) {
+    if (game.flags.verbose && !Deaf) pline("But no one seems to respond to it.");
+    return;
+  }
+  if (nokops) return;
+  let mm, sx = 0, sy = 0;
+  choose_stairs( sx, sy, true);
+  if (nearshop) {
+    if (game.flags.verbose) pline_The("Keystone Kops appear!");
+    mm.x = player.x;
+    mm.y = player.y;
+    makekops( mm);
+    return;
+  }
+  if (game.flags.verbose) pline_The("Keystone Kops are after you!");
+  if (isok(sx, sy)) {
+    mm.x = sx;
+    mm.y = sy;
+    makekops( mm);
+  }
+  mm.x = shkp.mx;
+  mm.y = shkp.my;
+  makekops( mm);
 }
 
 function kops_gone(silent) {
@@ -2170,20 +2219,323 @@ function kops_gone(silent) {
 // Export internal utilities used by other modules
 // ============================================================
 
-export {
-    insideShop as inside_shop,
-    shop_keeper,
-    findShopkeeper,
-    inRoomsAt,
-    get_cost,
-    set_cost,
-    get_pricing_units,
-    getprice_base as getprice,
-    addupbill,
-    shop_debt,
-    onbill,
-    rouse_shk,
-    pacify_shk,
-    helpless as shk_helpless,
-    muteshk,
-};
+export { shop_keeper, findShopkeeper, in_rooms, get_cost, helpless as shk_helpless, muteshk };
+
+// Autotranslated from shk.c:388
+export function clear_no_charge_pets(shkp, map) {
+  let mtmp;
+  for (mtmp = (map?.fmon || null); mtmp; mtmp = mtmp.nmon) {
+    if (mtmp.mtame && mtmp.minvent) clear_no_charge(shkp, mtmp.minvent);
+  }
+}
+
+// Autotranslated from shk.c:289
+export function restshk(shkp, ghostly, map) {
+  if (map.uz.dlevel) {
+    let eshkp = ESHK(shkp);
+    if (eshkp.bill_p !==  -1000) eshkp.bill_p = eshkp.bill[0];
+    if (ghostly) {
+      assign_level( eshkp.shoplevel, map.uz);
+      if (ANGRY(shkp) && strncmpi(eshkp.customer, svp.plname, PL_NSIZ)) pacify_shk(shkp, true);
+    }
+  }
+}
+
+// Autotranslated from shk.c:508
+export function inside_shop(x, y, map) {
+  let rno;
+  rno = map.locations[x][y].roomno;
+  if ((rno < ROOMOFFSET) || map.locations[x][y].edge || !IS_SHOP(rno - ROOMOFFSET)) rno = NO_ROOM;
+  return rno;
+}
+
+// Autotranslated from shk.c:1127
+export function obfree(obj, merge, player) {
+  let bp, bpm, shkp;
+  if (obj.otyp === LEASH && obj.leashmon) o_unleash(obj);
+  if (obj.oclass === FOOD_CLASS) food_disappears(obj);
+  if (obj.oclass === SPBOOK_CLASS) book_disappears(obj);
+  if (Has_contents(obj)) delete_contents(obj);
+  if (Is_container(obj)) maybe_reset_pick(obj);
+  if (obj.otyp === BOULDER) obj.next_boulder = 0;
+  shkp = 0;
+  if (obj.unpaid) {
+    for (shkp = next_shkp(fmon, true); shkp; shkp = next_shkp(shkp.nmon, true)) {
+      if (onbill(obj, shkp, true)) {
+        break;
+      }
+    }
+  }
+  if (!shkp) shkp = shop_keeper( player.ushops);
+  if ((bp = onbill(obj, shkp, false)) !== 0) {
+    if (!merge) {
+      bp.useup = true;
+      obj.unpaid = 0;
+      if (obj.globby && !obj.owt && has_omid(obj)) obj.owt = OMID(obj);
+      add_to_billobjs(obj);
+      return;
+    }
+    bpm = onbill(merge, shkp, false);
+    if (!bpm) {
+      impossible( "obfree: not on bill, %s = (%d,%d,%ld,%d) (%d,%d,%ld,%d)?", "otyp,where,quan,unpaid", obj.otyp, obj.where, obj.quan, obj.unpaid ? 1 : 0, merge.otyp, merge.where, merge.quan, merge.unpaid ? 1 : 0);
+      return;
+    }
+    else {
+      let eshkp = ESHK(shkp);
+      bpm.bquan += bp.bquan;
+      eshkp.billct--;
+       bp = eshkp.bill_p[eshkp.billct];
+    }
+  }
+  else {
+    if (merge && (oid_price_adjustment(obj, obj.o_id) > oid_price_adjustment(merge, merge.o_id))) merge.o_id = obj.o_id;
+  }
+  if (obj.owornmask) {
+    impossible("obfree: deleting worn obj (%d: %ld)", obj.otyp, obj.owornmask);
+    setnotworn(obj);
+  }
+  dealloc_obj(obj);
+}
+
+// Autotranslated from shk.c:1462
+export function cheapest_item(ibillct, ibill) {
+  let i, gmin = ibill[0].cost;
+  for (i = 1; i < ibillct; ++i) {
+    if (ibill[i].cost < gmin) gmin = ibill[i].cost;
+  }
+  return gmin;
+}
+
+// Autotranslated from shk.c:2111
+export function update_bill(indx, ibillct, ibill, eshkp, bp, paiditem) {
+  let j, newebillct;
+  if (indx >= 0 && ibill[indx].usedup === PartlyUsedUp) {
+    bp.bquan = paiditem.quan;
+    for (j = 0; j < ibillct; ++j) {
+      if (ibill[j].obj === paiditem && ibill[j].usedup === PartlyIntact) { ibill[j].usedup = FullyIntact; break; }
+    }
+  }
+  else {
+    paiditem.unpaid = 0;
+    if (paiditem.where === OBJ_ONBILL) { obj_extract_self(paiditem); dealloc_obj(paiditem); }
+    newebillct = eshkp.billct - 1;
+     bp = eshkp.bill_p[newebillct];
+    for (j = 0; j < ibillct; ++j) {
+      if (ibill[j].bidx === newebillct) ibill[j].bidx = Math.trunc(bp - eshkp.bill_p);
+    }
+    eshkp.billct = newebillct;
+  }
+  return;
+}
+
+// Autotranslated from shk.c:2622
+export function set_repo_loc(shkp, player) {
+  let ox, oy, eshkp = ESHK(shkp);
+  if (gr.repo.shopkeeper) return;
+  ox = player.x ? player.x : player.x0;
+  oy = player.x ? player.y : player.y0;
+  if (!strchr(player.ushops, eshkp.shoproom) || costly_adjacent(shkp, ox, oy)) {
+    ox = eshkp.shk.x;
+    oy = eshkp.shk.y;
+    ox += sgn(ox - eshkp.shd.x);
+    oy += sgn(oy - eshkp.shd.y);
+  }
+  else {
+  }
+  gr.repo.location.x = ox;
+  gr.repo.location.y = oy;
+  gr.repo.shopkeeper = shkp;
+}
+
+// Autotranslated from shk.c:2699
+export function bp_to_obj(bp) {
+  let obj, id = bp.bo_id;
+  if (bp.useup) obj = o_on(id, gb.billobjs);
+  else {
+    obj = find_oid(id);
+  }
+  return obj;
+}
+
+// Autotranslated from shk.c:3200
+export function unpaid_cost(unp_obj, cost_type, player) {
+  let bp =  0, shkp = 0, shop, amt = 0;
+  for (shop = player.ushops;  shop; shop++) {
+    if ((shkp = shop_keeper( shop)) !== 0) {
+      if ((bp = onbill(unp_obj, shkp, true))) {
+        amt = bp.price;
+        if (cost_type !== COST_SINGLEOBJ) { amt *= unp_obj.quan; }
+      }
+      if (cost_type === COST_CONTENTS && Has_contents(unp_obj)) amt = contained_cost(unp_obj, shkp, amt, false, true);
+      if (bp || (!unp_obj.unpaid && amt)) {
+        break;
+      }
+    }
+  }
+  if (!shkp || (unp_obj.unpaid && !bp)) impossible("unpaid_cost: object wasn't on any bill.");
+  return amt;
+}
+
+// Autotranslated from shk.c:3305
+export function add_to_billobjs(obj) {
+  if (obj.where !== OBJ_FREE) throw new Error('add_to_billobjs: obj not free');
+  if (obj.timed) obj_stop_timers(obj);
+  obj.nobj = gb.billobjs;
+  gb.billobjs = obj;
+  obj.where = OBJ_ONBILL;
+  obj.in_use = 0;
+  obj.bypass = 0;
+}
+
+// Autotranslated from shk.c:3326
+export function bill_box_content(obj, ininv, dummy, shkp) {
+  let otmp;
+  if (SchroedingersBox(obj)) return;
+  for (otmp = obj.cobj; otmp; otmp = otmp.nobj) {
+    if (otmp.oclass === COIN_CLASS) {
+      continue;
+    }
+    if (!otmp.no_charge) add_one_tobill(otmp, dummy, shkp);
+    if (Has_contents(otmp)) bill_box_content(otmp, ininv, dummy, shkp);
+  }
+}
+
+// Autotranslated from shk.c:3649
+export function stolen_container(obj, shkp, price, ininv) {
+  let otmp, bp, billamt;
+  for (otmp = obj.cobj; otmp; otmp = otmp.nobj) {
+    if (otmp.oclass === COIN_CLASS) {
+      continue;
+    }
+    billamt = 0;
+    if (!billable( shkp, otmp, ESHK(shkp).shoproom, true)) {
+      if ((bp = onbill(otmp, shkp, false)) === 0) {
+        continue;
+      }
+      assert(shkp !== null);
+      billamt = bp.bquan * bp.price;
+      sub_one_frombill(otmp, shkp);
+    }
+    if (billamt) {
+      price += billamt;
+    }
+    else if (ininv ? otmp.unpaid : !otmp.no_charge) {
+      price += get_pricing_units(otmp) * get_cost(otmp, shkp);
+    }
+    if (Has_contents(otmp)) price = stolen_container(otmp, shkp, price, ininv);
+  }
+  return price;
+}
+
+// Autotranslated from shk.c:4253
+export function getprice(obj, shk_buying, player) {
+  let tmp =  objects[obj.otyp].oc_cost;
+  if (obj.oartifact) {
+    tmp = arti_cost(obj);
+    if (shk_buying) {
+      tmp /= 4;
+    }
+  }
+  switch (obj.oclass) {
+    case FOOD_CLASS:
+      tmp += corpsenm_price_adj(obj);
+    if (player.uhs >= HUNGRY && !shk_buying) {
+      tmp *=  player.uhs;
+    }
+    if (obj.oeaten) tmp = 0;
+    break;
+    case WAND_CLASS:
+      if (obj.spe === -1) tmp = 0;
+    break;
+    case POTION_CLASS:
+      if (obj.otyp === POT_WATER && !obj.blessed && !obj.cursed) tmp = 0;
+    break;
+    case ARMOR_CLASS:
+      case WEAPON_CLASS:
+        if (obj.spe > 0) {
+          tmp += 10 *  obj.spe;
+        }
+    break;
+    case TOOL_CLASS:
+      if (Is_candle(obj) && obj.age < 20 *  objects[obj.otyp].oc_cost) {
+        tmp /= 2;
+      }
+    break;
+  }
+  return tmp;
+}
+
+// Autotranslated from shk.c:4386
+export function repairable_damage(dam, shkp, game) {
+  let x, y, ttmp, mtmp;
+  if (!dam || shk_impaired(shkp)) return false;
+  x = dam.place.x;
+  y = dam.place.y;
+  if (((Number(game?.moves) || 0) - dam.when) < REPAIR_DELAY) return false;
+  if (!IS_ROOM(dam.typ)) {
+    if ((u_at(x, y) && !Passes_walls) || (x === shkp.mx && y === shkp.my) || ((mtmp = m_at(x, y)) !== 0 && !passes_walls(mtmp.data))) return false;
+  }
+  ttmp = t_at(x, y);
+  if (ttmp) {
+    if (u_at(x, y)) return false;
+    if ((mtmp = m_at(x,y)) !== 0 && mtmp.mtrapped) return false;
+  }
+  if (!strchr(in_rooms(x, y, SHOPBASE), ESHK(shkp).shoproom)) return false;
+  return true;
+}
+
+// Autotranslated from shk.c:4490
+export function shk_fixes_damage(shkp) {
+  let dam = find_damage(shkp), shk_closeby;
+  if (!dam) return;
+  shk_closeby = (mdistu(shkp) <= (BOLT_LIM / 2) * (BOLT_LIM / 2));
+  if (canseemon(shkp)) {
+    pline("%s whispers %s.", Shknam(shkp), shk_closeby ? "an incantation" : "something");
+  }
+  else if (!Deaf && shk_closeby) { You_hear("someone muttering an incantation."); }
+  repair_damage(shkp, dam, false);
+  discard_damage_struct(dam);
+}
+
+// Autotranslated from shk.c:4646
+export function litter_newsyms(litter, x, y) {
+  let i;
+  for (i = 0; i < 9; i++) {
+    if (litter[i] & LITTER_UPDATE) newsym(x + horiz(i), y + vert(i));
+  }
+}
+
+// Autotranslated from shk.c:5047
+export function makekops(mm, game, map) {
+  let k_mndx = [ PM_KEYSTONE_KOP, PM_KOP_SERGEANT, PM_KOP_LIEUTENANT, PM_KOP_KAPTAIN ];
+  let k_cnt, cnt, mndx, k;
+  k_cnt[0] = cnt = Math.abs(depth(map.uz)) + rnd(5);
+  k_cnt[1] = (cnt / 3) + 1;
+  k_cnt[2] = (cnt / 6);
+  k_cnt[3] = (cnt / 9);
+  for (k = 0; k < 4; k++) {
+    if ((cnt = k_cnt[k]) === 0) {
+      break;
+    }
+    mndx = k_mndx[k];
+    if (game.mvitals[mndx].mvflags & G_GONE) {
+      continue;
+    }
+    while (cnt--) {
+      if (enexto(mm, mm.x, mm.y, mons[mndx])) {
+        makemon( mons[mndx], mm.x, mm.y, MM_NOMSG);
+      }
+    }
+  }
+}
+
+// Autotranslated from shk.c:6035
+export function use_unpaid_trapobj(otmp, x, y) {
+  if (otmp.unpaid) {
+    if (!Deaf) {
+      let shkp = find_objowner(otmp, x, y);
+      if (shkp && !muteshk(shkp)) { verbalize("You set it, you buy it!"); }
+    }
+    bill_dummy_object(otmp);
+  }
+}

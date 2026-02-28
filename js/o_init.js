@@ -76,8 +76,7 @@ function copy_obj_descr(dst_idx, src_idx) {
     objectData[dst_idx].desc = objectData[src_idx].desc;
     objectData[dst_idx].color = objectData[src_idx].color;
 }
-
-function randomize_gem_colors() {
+export function randomize_gem_colors() {
     // Turquoise: maybe change from green to blue (copy from sapphire)
     if (rn2(2)) {
         copy_obj_descr(TURQUOISE, SAPPHIRE);
@@ -116,8 +115,7 @@ function classShuffleEnd(ocls) {
     }
     return i - 1;
 }
-
-function shuffle(o_low, o_high, domaterial) {
+export function shuffle(o_low, o_high, domaterial) {
     // Count shufflable items
     let num_to_shuffle = 0;
     for (let j = o_low; j <= o_high; j++) {
@@ -309,4 +307,99 @@ export function setgemprobs(depth) {
     for (j = bases[GEM_CLASS]; j < bases[GEM_CLASS + 1]; j++)
         sum += (objectData[j].prob || 0);
     oclass_prob_totals[GEM_CLASS] = sum;
+}
+
+// Autotranslated from o_init.c:367
+export function oinit(map) {
+  setgemprobs(map.uz);
+}
+
+// Autotranslated from o_init.c:440
+export function observe_object(obj) {
+  obj.dknown = 1;
+  discover_object(obj.otyp, false, true, false);
+}
+
+// Autotranslated from o_init.c:519
+export function interesting_to_discover(i) {
+  if (Role_if(PM_SAMURAI) && Japanese_item_name(i,  0)) return true;
+  return  (objectData[i].oc_uname !==  0 || ((objectData[i].oc_name_known || objectData[i].oc_encountered) && OBJ_DESCR(objectData[i]) !==  0));
+}
+
+// Autotranslated from o_init.c:601
+export async function choose_disco_sort(mode, game) {
+  let tmpwin, selected, any, i, n, choice, clr = NO_COLOR;
+  tmpwin = create_nhwindow(NHW_MENU);
+  start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+  any = cg.zeroany;
+  for (i = 0; disco_orders_descr; ++i) {
+    any.a_int = disco_order_let;
+    add_menu(tmpwin, nul_glyphinfo, any,  any.a_int, 0, ATR_NONE, clr, disco_orders_descr, (disco_order_let === game.flags.discosort) ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
+  }
+  if (mode === 2) {
+    add_menu_str(tmpwin, "");
+    add_menu_str(tmpwin, "Note: full alphabetical and alphabetical within class");
+    add_menu_str(tmpwin, " are equivalent for single class discovery, but");
+    add_menu_str(tmpwin, " will matter for future use of total discoveries.");
+  }
+  end_menu(tmpwin, "Ordering of discoveries");
+  n = select_menu(tmpwin, PICK_ONE, selected);
+  destroy_nhwindow(tmpwin);
+  if (n > 0) {
+    choice = selected[0].item.a_int;
+    if (n > 1 && choice ===  game.flags.discosort) choice = selected[1].item.a_int;
+    (selected, 0);
+    game.flags.discosort = choice;
+  }
+  return n;
+}
+
+// Autotranslated from o_init.c:651
+export function disco_typename(otyp) {
+  let result = obj_typename(otyp);
+  if (Role_if(PM_SAMURAI) && Japanese_item_name(otyp,  0)) {
+    let buf;
+    let actualn = (((otyp !== MAGIC_HARP && otyp !== WOODEN_HARP) || objectData[otyp].oc_name_known) ? OBJ_NAME(objectData[otyp]) : "harp");
+    if (!actualn) {
+    }
+    else if (strstri(result, " called")) { Sprintf(buf, " [%s] called", actualn); strsubst(result, " called", buf); }
+    else if (strstri(result, " (")) { Sprintf(buf, " [%s] (", actualn); strsubst(result, " (", buf); }
+    else { Sprintf(eos(result), " [%s]", actualn); }
+  }
+  return result;
+}
+
+// Autotranslated from o_init.c:707
+export function disco_output_sorted(tmpwin, sorted_lines, sorted_ct, lootsort) {
+  let p, j;
+  qsort(sorted_lines, sorted_ct, sizeof , discovered_cmp);
+  for (j = 0; j < sorted_ct; ++j) {
+    p = sorted_lines;
+    assert(p !== null);
+    if (lootsort) { p = p; p += 6; }
+    putstr(tmpwin, 0, p);
+    (sorted_lines[j], 0), sorted_lines = 0;
+  }
+}
+
+// Autotranslated from o_init.c:832
+export function oclass_to_name(oclass, buf) {
+  let s;
+  Strcpy(buf, let_to_name(oclass, false, false));
+  for (s = buf;  s; ++s) {
+     s = lowc( s);
+  }
+  return buf;
+}
+
+// Autotranslated from o_init.c:1138
+export function get_sortdisco(opts, cnf, game) {
+  let p = strchr(disco_order_let, game.flags.discosort);
+  if (!p) game.flags.discosort = 'o', p = disco_order_let;
+  if (cnf) {
+    Sprintf(opts, "%c", game.flags.discosort);
+  }
+  else {
+    Strcpy(opts, disco_orders_descr[p - disco_order_let]);
+  }
 }

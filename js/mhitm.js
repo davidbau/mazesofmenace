@@ -21,7 +21,7 @@ import { distmin } from './hacklib.js';
 import { monnear, mondead, monAttackName, map_invisible, helpless } from './monutil.js';
 import { cansee } from './vision.js';
 import {
-    monNam, monDisplayName, touch_petrifies, unsolid, resists_fire, resists_cold,
+    x_monnam, touch_petrifies, unsolid, resists_fire, resists_cold,
     resists_elec, resists_acid, resists_sleep, resists_ston,
     nonliving, sticks, attacktype, dmgtype, is_whirly,
 } from './mondata.js';
@@ -47,6 +47,7 @@ import { monsterWeaponSwingVerb, monsterPossessive } from './mhitu.js';
 import { find_mac, W_ARMG, W_ARMF, W_ARMH } from './worn.js';
 import { mon_wield_item, possibly_unwield, NEED_WEAPON, NEED_HTH_WEAPON, hitval } from './weapon.js';
 import { spec_dbon } from './artifact.js';
+import { canonicalizeAttackFields } from './attack_fields.js';
 
 // Re-export M_ATTK_* for convenience
 export { M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE };
@@ -109,7 +110,7 @@ function pre_mm_attack(magr, mdef, vis, map, ctx) {
 // In C, canspotmon() is checked per-monster even within visible combat messages.
 function monCombatName(mon, visible, { capitalize = false, article = 'the' } = {}) {
     if (visible === false) return capitalize ? 'It' : 'it';
-    return monNam(mon, { capitalize, article });
+    return x_monnam(mon, article, null, 0, capitalize);
 }
 
 // cf. mhitm.c:75 — missmm(magr, mdef, mattk): miss message
@@ -133,8 +134,8 @@ function missmm(magr, mdef, mattk, display, vis, map, ctx) {
 export function failed_grab(magr, mdef, mattk) {
     const pd = mdef.type || {};
     if (unsolid(pd)
-        && (mattk.type === AT_HUGS || mattk.damage === AD_WRAP
-            || mattk.damage === AD_STCK || mattk.damage === AD_DGST)) {
+        && (mattk.aatyp === AT_HUGS || mattk.adtyp === AD_WRAP
+            || mattk.adtyp === AD_STCK || mattk.adtyp === AD_DGST)) {
         return true;
     }
     return false;
@@ -169,10 +170,13 @@ export function attk_protection(aatyp) {
 // ============================================================================
 
 // cf. mhitm.c:1209 — paralyze_monst(mon, amt)
+// Autotranslated from mhitm.c:1209
 export function paralyze_monst(mon, amt) {
-    if (amt > 127) amt = 127;
-    mon.mcanmove = false;
-    mon.mfrozen = amt;
+  if (amt > 127) amt = 127;
+  mon.mcanmove = 0;
+  mon.mfrozen = amt;
+  mon.meating = 0;
+  mon.mstrategy &= ~STRAT_WAITFORU;
 }
 
 // cf. mhitm.c:1222 — sleep_monst(mon, amt, how)
@@ -247,8 +251,9 @@ export function passivemm(magr, mdef, mhitb, mdead, mwep, map) {
     // entry to match C's behavior (which still consumes rn2(3) for the no-op).
     let passiveAttk = null;
     for (let i = 0; i < attacks.length; i++) {
-        if (attacks[i].type === AT_NONE) {
-            passiveAttk = attacks[i];
+        const attack = canonicalizeAttackFields(attacks[i]);
+        if (attack.aatyp === AT_NONE) {
+            passiveAttk = attack;
             break;
         }
         if (i >= NATTK) return (mdead | mhit);
@@ -256,21 +261,22 @@ export function passivemm(magr, mdef, mhitb, mdead, mwep, map) {
     if (!passiveAttk) {
         if (attacks.length >= NATTK) return (mdead | mhit);
         // Synthesize NO_ATTK: C would find AT_NONE/AD_PHYS(=AD_NONE)/0/0
-        passiveAttk = { type: AT_NONE, damage: AD_PHYS, dice: 0, sides: 0 };
+        passiveAttk = { aatyp: AT_NONE, adtyp: AD_PHYS, damn: 0, damd: 0 };
     }
+    canonicalizeAttackFields(passiveAttk);
 
     // Roll damage
     let tmp;
-    if (passiveAttk.dice) {
-        tmp = d(passiveAttk.dice, passiveAttk.sides || 0);
-    } else if (passiveAttk.sides) {
-        const mlev = mdef.m_lev ?? mdef.mlevel ?? (mddat.level || 0);
-        tmp = d(mlev + 1, passiveAttk.sides);
+    if (passiveAttk.damn) {
+        tmp = d(passiveAttk.damn, passiveAttk.damd || 0);
+    } else if (passiveAttk.damd) {
+        const mlev = mdef.m_lev ?? (mddat.mlevel || 0);
+        tmp = d(mlev + 1, passiveAttk.damd);
     } else {
         tmp = 0;
     }
 
-    const adtyp = passiveAttk.damage;
+    const adtyp = passiveAttk.adtyp;
 
     // Effects that work even if defender died
     if (adtyp === AD_ACID) {
@@ -361,7 +367,7 @@ function hitmm(magr, mdef, mattk, mwep, dieroll, display, vis, map, ctx) {
     // Display hit message
     if (vis && display) {
         let verb = 'hits';
-        switch (mattk.type) {
+        switch (mattk.aatyp) {
         case AT_BITE: verb = 'bites'; break;
         case AT_STNG: verb = 'stings'; break;
         case AT_BUTT: verb = 'butts'; break;
@@ -401,7 +407,7 @@ function gazemm(magr, mdef, mattk, display, vis, map, ctx) {
 // ============================================================================
 
 // cf. mhitm.c:969 — explmm(magr, mdef, mattk)
-function explmm(magr, mdef, mattk, display, vis, map, ctx) {
+export function explmm(magr, mdef, mattk, display, vis, map, ctx) {
     if (magr.mcan) return M_ATTK_MISS;
 
     let result = mdamagem(magr, mdef, mattk, null, 0, display, vis, map, ctx);
@@ -432,9 +438,9 @@ function mhitm_knockback_mm(magr, mdef, mattk, mwep, vis, display, ctx) {
     if (rn2(chance)) return false; // didn't trigger
 
     // Eligibility: only AD_PHYS + specific melee attack types
-    if (!(mattk.damage === AD_PHYS
-          && (mattk.type === AT_CLAW || mattk.type === AT_KICK
-              || mattk.type === AT_BUTT || mattk.type === AT_WEAP))) {
+    if (!(mattk.adtyp === AD_PHYS
+          && (mattk.aatyp === AT_CLAW || mattk.aatyp === AT_KICK
+              || mattk.aatyp === AT_BUTT || mattk.aatyp === AT_WEAP))) {
         return false;
     }
 
@@ -445,8 +451,8 @@ function mhitm_knockback_mm(magr, mdef, mattk, mwep, vis, display, ctx) {
     }
 
     // C ref: uhitm.c:5298 — size check: agr must be much larger
-    const agrSize = pa.size ?? 0;
-    const defSize = (mdef.type || {}).size ?? 0;
+    const agrSize = pa.msize ?? 0;
+    const defSize = (mdef.type || {}).msize ?? 0;
     if (!(agrSize > defSize + 1)) return false;
 
     // C ref: uhitm.c:5303 — unsolid attacker can't knockback
@@ -487,7 +493,7 @@ function mhitm_knockback_mm(magr, mdef, mattk, mwep, vis, display, ctx) {
 // ctx: optional { player, turnCount } for corpse creation and XP
 function mdamagem(magr, mdef, mattk, mwep, dieroll, display, vis, map, ctx) {
     const mhm = {
-        damage: c_d(mattk.dice || 0, mattk.sides || 0),
+        damage: c_d(mattk.damn || 0, mattk.damd || 0),
         hitflags: M_ATTK_MISS,
         permdmg: 0,
         specialdmg: 0,
@@ -549,8 +555,8 @@ function mdamagem(magr, mdef, mattk, mwep, dieroll, display, vis, map, ctx) {
         }
 
         // cf. mhitm.c:1115 — grow_up(magr, mdef)
-        const victimLevel = mdef.m_lev ?? mdef.mlevel ?? (pd.level || 0);
-        const agrLevel = magr.m_lev ?? magr.mlevel ?? ((magr.type || {}).level || 0);
+        const victimLevel = mdef.m_lev ?? (pd.mlevel || 0);
+        const agrLevel = magr.m_lev ?? ((magr.type || {}).mlevel || 0);
         const hp_threshold = agrLevel > 0 ? agrLevel * 8 : 4;
         let max_increase = rnd(Math.max(1, victimLevel + 1));
         if ((magr.mhpmax || 0) + max_increase > hp_threshold + 1) {
@@ -561,15 +567,14 @@ function mdamagem(magr, mdef, mattk, mwep, dieroll, display, vis, map, ctx) {
         magr.mhp = (magr.mhp || 0) + cur_increase;
         // C ref: makemon.c grow_up() — if hpmax crosses threshold, gain one level.
         if ((magr.mhpmax || 0) > hp_threshold) {
-            const baseSpeciesLevel = ((magr.type || {}).level || 0);
+            const baseSpeciesLevel = ((magr.type || {}).mlevel || 0);
             let lev_limit = Math.floor((3 * baseSpeciesLevel) / 2);
             if (lev_limit < 5) lev_limit = 5;
             else if (lev_limit > 49) lev_limit = (baseSpeciesLevel > 49 ? 50 : 49);
-            const curLevel = magr.m_lev ?? magr.mlevel ?? baseSpeciesLevel;
+            const curLevel = magr.m_lev ?? baseSpeciesLevel;
             if (curLevel < lev_limit) {
                 const nextLevel = curLevel + 1;
                 magr.m_lev = nextLevel;
-                magr.mlevel = nextLevel;
             }
         }
 
@@ -599,7 +604,7 @@ export function mattackm(magr, mdef, display, vis, map, ctx) {
     // (Skipped for simplicity — rare edge case)
 
     // Calculate armor class differential
-    let tmp = find_mac(mdef) + (magr.m_lev ?? magr.mlevel ?? (pa.level || 0));
+    let tmp = find_mac(mdef) + (magr.m_lev ?? (pa.mlevel || 0));
     if (mdef.mconf || helpless(mdef)) {
         tmp += 4;
         if (mdef.msleeping) mdef.msleeping = 0;
@@ -617,8 +622,8 @@ export function mattackm(magr, mdef, display, vis, map, ctx) {
 
     for (let i = 0; i < Math.min(attacks.length, NATTK); i++) {
         res[i] = M_ATTK_MISS;
-        const mattk = attacks[i];
-        if (!mattk || mattk.type === AT_NONE) continue;
+        const mattk = canonicalizeAttackFields(attacks[i]);
+        if (!mattk || mattk.aatyp === AT_NONE) continue;
 
         // C ref: check if target still valid after previous attacks
         if (i > 0 && (DEADMONSTER(magr) || DEADMONSTER(mdef))) continue;
@@ -627,7 +632,7 @@ export function mattackm(magr, mdef, display, vis, map, ctx) {
         let attk = 1;
         let strike = 0;
 
-        switch (mattk.type) {
+        switch (mattk.aatyp) {
         case AT_WEAP:
             // C ref: mhitm.c:393-416 — weapon attack
             if (distmin(magr.mx, magr.my, mdef.mx, mdef.my) > 1) {
@@ -658,7 +663,7 @@ export function mattackm(magr, mdef, display, vis, map, ctx) {
         case AT_TUCH:
         case AT_BUTT:
         case AT_TENT:
-            if (mattk.type === AT_KICK && /* mtrapped_in_pit */ false) {
+            if (mattk.aatyp === AT_KICK && /* mtrapped_in_pit */ false) {
                 continue;
             }
             if (distmin(magr.mx, magr.my, mdef.mx, mdef.my) > 1) {
@@ -835,8 +840,8 @@ export function engulf_target(magr, mdef) {
     const adat = magr.type || {};
     const ddat = mdef.type || {};
     // Can't swallow something too big
-    if ((ddat.size || 0) >= MZ_HUGE) return false;
-    if ((adat.size || 0) < (ddat.size || 0) && !is_whirly(adat)) return false;
+    if ((ddat.msize || 0) >= MZ_HUGE) return false;
+    if ((adat.msize || 0) < (ddat.msize || 0) && !is_whirly(adat)) return false;
     // Can't engulf if either is trapped
     if (mdef.mtrapped || magr.mtrapped) return false;
     return true;
@@ -868,7 +873,7 @@ export function mon_poly(magr, mdef, dmg) {
 // ============================================================================
 
 // cf. mhitm.c:1282 — mswingsm(magr, mdef, obj)
-function mswingsm(magr, mdef, otemp, display, vis, ctx) {
+export function mswingsm(magr, mdef, otemp, display, vis, ctx) {
     if (!vis || !display) return;
     const bash = false; // is_pole check omitted; adjacent polearm bash not yet needed
     const verb = monsterWeaponSwingVerb(otemp, bash);

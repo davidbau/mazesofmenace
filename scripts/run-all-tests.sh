@@ -20,6 +20,11 @@ trap cleanup EXIT
 echo "=== Running All Tests ==="
 echo ""
 
+echo "Running translator policy checks..."
+node scripts/check-translator-file-policy.mjs
+node scripts/check-translator-annotations.mjs
+echo ""
+
 # Track overall status
 UNIT_PASSED=0
 UNIT_TOTAL=0

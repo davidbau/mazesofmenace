@@ -427,7 +427,7 @@ function spellDisciplineForRole(otyp, roleIndex) {
     const name = objectData[otyp]?.name;
     return SPELL_DISCIPLINE_BY_NAME[name] || null;
 }
-
+export 
 function restricted_spell_discipline(otyp, roleIndex) {
     const discipline = spellDisciplineForRole(otyp, roleIndex);
     if (!discipline) return false;
@@ -438,7 +438,7 @@ function restricted_spell_discipline(otyp, roleIndex) {
 
 // ---- UNDEF_TYP Item Filter ----
 // C ref: u_init.c ini_inv_mkobj_filter() — create random object, reject dangerous items
-function ini_inv_mkobj_filter(oclass, gotSp1, roleIndex, race) {
+export function ini_inv_mkobj_filter(oclass, gotSp1, roleIndex, race) {
     let trycnt = 0;
     while (true) {
         if (++trycnt > 1000) break; // fallback (shouldn't happen)
@@ -478,7 +478,7 @@ function initialSpell(player, obj) {
 
 // ---- ini_inv: Create starting inventory from trobj table ----
 // C ref: u_init.c ini_inv() — processes table entries, handles UNDEF_TYP
-function ini_inv(player, table) {
+export function ini_inv(player, table) {
     let tropIdx = 0;
     let quan = trquan(table[tropIdx]);
     let gotSp1 = false;
@@ -601,7 +601,7 @@ function ini_inv(player, table) {
 }
 
 // C ref: u_init.c trquan() — randomize quantity
-function trquan(trop) {
+export function trquan(trop) {
     if (!trop.qmin) return 1;
     return trop.qmin + rn2(trop.qmax - trop.qmin + 1);
 }
@@ -884,7 +884,7 @@ function startupAdjAttrib(player, ndx, incr, attrmax) {
     player.attributes[ndx] = newVal;
     return true;
 }
-
+export 
 function u_init_carry_attr_boost(player) {
     // Boost STR and CON until hero can carry inventory, or both are capped.
     const attrmax = RACE_ATTRMAX[player.race] || RACE_ATTRMAX[RACE_HUMAN];
@@ -1186,8 +1186,8 @@ export function simulatePostLevelInit(player, map, depth, opts = {}) {
     // correct HP/PW VALUES but their RNG has already been consumed.
     const raceHP = RACE_HP[player.race] ?? 2;
     const racePW = RACE_PW[player.race] ?? 1;
-    player.hp = role.startingHP + raceHP;
-    player.hpmax = player.hp;
+    player.uhp = role.startingHP + raceHP;
+    player.uhpmax = player.uhp;
     player.pw = role.startingPW + racePW + (opts.enadv_roll || 0);
     player.pwmax = player.pw;
 
@@ -1249,4 +1249,25 @@ export function initFirstLevel(player, roleIndex, wizard, opts = {}) {
     player.inTutorial = !!map?.flags?.is_tutorial;
     const initResult = simulatePostLevelInit(player, map, startDlevel, { enadv_roll });
     return { map, initResult };
+}
+
+// Autotranslated from u_init.c:1249
+export function ini_inv_use_obj(obj) {
+  if (OBJ_DESCR(objectData[obj.otyp]) && obj.known) discover_object(obj.otyp, true, true, false);
+  if (obj.otyp === OIL_LAMP) discover_object(POT_OIL, true, true, false);
+  if (obj.oclass === ARMOR_CLASS) {
+    if (is_shield(obj) && !uarms && !(uwep && bimanual(uwep))) { setworn(obj, W_ARMS); set_twoweap(false); }
+    else if (is_helmet(obj) && !uarmh) setworn(obj, W_ARMH);
+    else if (is_gloves(obj) && !uarmg) setworn(obj, W_ARMG);
+    else if (is_shirt(obj) && !uarmu) setworn(obj, W_ARMU);
+    else if (is_cloak(obj) && !uarmc) setworn(obj, W_ARMC);
+    else if (is_boots(obj) && !uarmf) setworn(obj, W_ARMF);
+    else if (is_suit(obj) && !uarm) setworn(obj, W_ARM);
+  }
+  if (obj.oclass === WEAPON_CLASS || is_weptool(obj) || obj.otyp === TIN_OPENER || obj.otyp === FLINT || obj.otyp === ROCK) {
+    if (is_ammo(obj) || is_missile(obj)) { if (!uquiver) setuqwep(obj); }
+    else if (!uwep && (!uarms || !bimanual(obj))) { setuwep(obj); }
+    else if (!uswapwep) { setuswapwep(obj); }
+  }
+  if (obj.oclass === SPBOOK_CLASS && obj.otyp !== SPE_BLANK_PAPER) initialspell(obj);
 }

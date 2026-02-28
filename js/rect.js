@@ -34,7 +34,7 @@ export function get_rects() {
 }
 
 // cf. rect.c:60 — search index of one precise rect
-function get_rect_ind(r) {
+export function get_rect_ind(r) {
     for (let i = 0; i < rect_cnt; i++) {
         if (rects[i].lx === r.lx && rects[i].ly === r.ly &&
             rects[i].hx === r.hx && rects[i].hy === r.hy)
@@ -76,7 +76,7 @@ export function rnd_rect() {
 }
 
 // cf. rect.c:116 — intersection of two rectangles, or null
-function intersect(r1, r2) {
+export function intersect(r1, r2) {
     if (r2.lx > r1.hx || r2.ly > r1.hy || r2.hx < r1.lx || r2.hy < r1.ly)
         return null;
     const r3 = {
@@ -100,7 +100,7 @@ export function rect_bounds(r1, r2) {
 }
 
 // cf. rect.c:147 — remove a rectangle from the list
-function remove_rect(r) {
+export function remove_rect(r) {
     const ind = get_rect_ind(r);
     if (ind >= 0) {
         rects[ind] = rects[--rect_cnt];
@@ -108,7 +108,7 @@ function remove_rect(r) {
 }
 
 // cf. rect.c:161 — add a rect to the list
-function add_rect(r) {
+export function add_rect(r) {
     if (rect_cnt >= n_rects) return;
     if (get_rect(r)) return; // already contained in another rect
     rects[rect_cnt] = { lx: r.lx, ly: r.ly, hx: r.hx, hy: r.hy };
@@ -185,4 +185,11 @@ export function update_rect_pool_for_room(room) {
     if (DEBUG && rect_cnt !== old_cnt) {
         console.log(`  update_rect_pool_for_room: split around (${r2.lx},${r2.ly})-(${r2.hx},${r2.hy}), pool ${old_cnt}->${rect_cnt}`);
     }
+}
+
+// Autotranslated from rect.c:44
+export function free_rect() {
+  if (rect) (rect, 0);
+  rect = 0;
+  n_rects = rect_cnt = 0;
 }

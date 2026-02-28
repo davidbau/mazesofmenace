@@ -114,10 +114,10 @@ const Japanese_items = [
 // ============================================================================
 
 // cf. objnam.c:142 — nextobuf(): no-op in JS (strings are immutable/GC'd)
-function nextobuf() { return ''; }
+export function nextobuf() { return ''; }
 
 // cf. objnam.c:150 — releaseobuf(): no-op in JS
-function releaseobuf(_bufp) {}
+export function releaseobuf(_bufp) {}
 
 // cf. objnam.c:167 — maybereleaseobuf(): no-op in JS
 export function maybereleaseobuf(_obuffer) {}
@@ -757,7 +757,7 @@ export function Doname2(obj, player) {
 // ============================================================================
 
 // cf. objnam.c:1815 — corpse_xname(): format corpse name with monster type
-function corpse_xname(otmp, adjective, { singular: ignorequan = false, noPfx = false, thePrefix = false, article: anyPrefix = false } = {}) {
+export function corpse_xname(otmp, adjective, { singular: ignorequan = false, noPfx = false, thePrefix = false, article: anyPrefix = false } = {}) {
     const omndx = otmp.corpsenm;
     let possessive = false;
     let glob = (otmp.otyp !== CORPSE && !!otmp.globby);
@@ -1302,8 +1302,7 @@ const ch_k = [
     'gastrotrich', 'isopach', 'loch', 'oligarch', 'peritrich',
     'sandarach', 'sumach', 'symposiarch',
 ];
-
-function ch_ksound(basestr) {
+export function ch_ksound(basestr) {
     if (!basestr || basestr.length < 4) return false;
     const lower = basestr.toLowerCase();
     for (const ck of ch_k) {
@@ -1328,27 +1327,32 @@ const no_man = [
     'tegu', 'vela', 'da', 'hy', 'lu', 'no', 'nu', 'ra', 'ru', 'se', 'vi',
     'ya', 'o', 'a',
 ];
-
-function badman(basestr, to_plural) {
-    if (!basestr || basestr.length < 4) return false;
-    const lower = basestr.toLowerCase();
-    const list = to_plural ? no_men : no_man;
-    const suffix = to_plural ? 'man' : 'men';
-    for (const prefix of list) {
-        const al = prefix.length;
-        const spotIdx = lower.length - (al + 3);
-        if (spotIdx < 0) continue;
-        if (lower.slice(spotIdx, spotIdx + al) === prefix
-            && lower.slice(spotIdx + al) === suffix
-            && (spotIdx === 0 || basestr[spotIdx - 1] === ' ')) {
-            return true;
-        }
+// Autotranslated from objnam.c:3183
+export function badman(basestr, to_plural) {
+  let no_men = [ "albu", "antihu", "anti", "ata", "auto", "bildungsro", "cai", "cay", "ceru", "corner", "decu", "des", "dura", "fir", "hanu", "het", "infrahu", "inhu", "nonhu", "otto", "out", "prehu", "protohu", "subhu", "superhu", "talis", "unhu", "sha", "hu", "un", "le", "re", "so", "to", "at", "a", ];
+  let no_man = [ "abdo", "acu", "agno", "ceru", "cogno", "cycla", "fleh", "grava", "hegu", "preno", "sonar", "speci", "dai", "exa", "fla", "sta", "teg", "tegu", "vela", "da", "hy", "lu", "no", "nu", "ra", "ru", "se", "vi", "ya", "o", "a", ];
+  let i, al, endstr, spot;
+  if (!basestr || strlen < 4) return false;
+  endstr = eos;
+  if (to_plural) {
+    for (i = 0; i < SIZE; i++) {
+      al =  strlen(no_men[i]);
+      spot = endstr - (al + 3);
+      if (!BSTRNCMPI(basestr, spot, no_men[i], al) && (spot === basestr || (spot - 1) === ' ')) return true;
     }
-    return false;
+  }
+  else {
+    for (i = 0; i < SIZE; i++) {
+      al =  strlen(no_man[i]);
+      spot = endstr - (al + 3);
+      if (!BSTRNCMPI(basestr, spot, no_man[i], al) && (spot === basestr || (spot - 1) === ' ')) return true;
+    }
+  }
+  return false;
 }
 
 // Find compound separator in string
-function singplur_compound(str) {
+export function singplur_compound(str) {
     const lower = str.toLowerCase();
     for (let i = 0; i < str.length; i++) {
         const ch = str[i];
@@ -1824,18 +1828,20 @@ export function shiny_obj(oclass) {
 
 // cf. objnam.c:5393 — rnd_class(first, last): random type in range
 // Already implemented in mkobj.js; re-export for completeness
+// Autotranslated from objnam.c:5392
 export function rnd_class(first, last) {
-    if (last > first) {
-        let sum = 0;
-        for (let i = first; i <= last; i++) sum += objectData[i].prob || 0;
-        if (!sum) return rn1(last - first + 1, first);
-        let x = rnd(sum);
-        for (let i = first; i <= last; i++) {
-            x -= objectData[i].prob || 0;
-            if (x <= 0) return i;
-        }
+  let i, x, sum = 0;
+  if (last > first) {
+    for (i = first; i <= last; i++) {
+      sum += objects[i].oc_prob;
     }
-    return (first === last) ? first : STRANGE_OBJECT;
+    if (!sum) return rn1(last - first + 1, first);
+    x = rnd(sum);
+    for (i = first; i <= last; i++) {
+      if ((x -= objects[i].oc_prob) <= 0) return i;
+    }
+  }
+  return (first === last) ? first : STRANGE_OBJECT;
 }
 
 // ============================================================================
@@ -2161,11 +2167,13 @@ export function readobjnam(bp, no_wish, opts = {}) {
 // ============================================================================
 
 // cf. objnam.c:5412 — Japanese_item_name(i, ordinaryname): Samurai item name
+// Autotranslated from objnam.c:5411
 export function Japanese_item_name(i, ordinaryname) {
-    for (const j of Japanese_items) {
-        if (i === j.item) return j.name;
-    }
-    return ordinaryname;
+  for (const j of Japanese_items) {
+    if (!j.item) break;
+    if (i === j.item) return j.name;
+  }
+  return ordinaryname;
 }
 
 // ============================================================================
@@ -2248,17 +2256,18 @@ export function boots_simple_name(boots) {
 }
 
 // cf. objnam.c:5560 — shield_simple_name(shield): simple shield name
+// Autotranslated from objnam.c:5559
 export function shield_simple_name(shield) {
-    if (shield) {
-        if (shield.otyp === SHIELD_OF_REFLECTION)
-            return shield.dknown ? 'silver shield' : 'smooth shield';
-    }
-    return 'shield';
+  if (shield) {
+    if (shield.otyp === SHIELD_OF_REFLECTION) return shield.dknown ? "silver shield" : "smooth shield";
+  }
+  return "shield";
 }
 
 // cf. objnam.c:5590 — shirt_simple_name(shirt): simple shirt name
-export function shirt_simple_name(_shirt) {
-    return 'shirt';
+// Autotranslated from objnam.c:5589
+export function shirt_simple_name(shirt) {
+  return "shirt";
 }
 
 // cf. objnam.c:5425 — armor_simple_name(armor): dispatch to specific armor type

@@ -182,7 +182,7 @@ export function ballfall(player, map) {
 }
 
 // cf. ball.c:119 — placebc_core(): place ball and chain on floor
-function placebc_core(player, map) {
+export function placebc_core(player, map) {
     const uchain = player.uchain;
     const uball = player.uball;
     if (!uchain || !uball) {
@@ -211,7 +211,7 @@ function placebc_core(player, map) {
 }
 
 // cf. ball.c:146 — unplacebc_core(): remove ball and chain from floor
-function unplacebc_core(player, map) {
+export function unplacebc_core(player, map) {
     const uchain = player.uchain;
     const uball = player.uball;
 
@@ -247,11 +247,14 @@ function unplacebc_core(player, map) {
 }
 
 // cf. ball.c:179 — check_restriction(): validate bc operation
-function check_restriction(restriction) {
-    const override_restriction = -1; // cf. ball.c constant
-    if (!bcrestriction || (restriction === override_restriction))
-        return true;
-    return (bcrestriction === restriction);
+// Autotranslated from ball.c:179
+export function check_restriction(restriction) {
+  let ret = false;
+  if (!bcrestriction || (restriction === override_restriction)) ret = true;
+  else {
+    ret = (bcrestriction === restriction) ? true : false;
+  }
+  return ret;
 }
 
 // cf. ball.c:192 — placebc(): place ball and chain
@@ -267,25 +270,24 @@ export function placebc(player, map) {
 }
 
 // cf. ball.c:211 — unplacebc(): remove ball and chain
-export function unplacebc(player, map) {
-    if (bcrestriction) {
-        impossible("unplacebc denied, restriction in place");
-        return;
-    }
-    unplacebc_core(player, map);
+// Autotranslated from ball.c:211
+export function unplacebc() {
+  if (bcrestriction) {
+    impossible("unplacebc denied, restriction in place");
+    return;
+  }
+  unplacebc_core();
 }
 
 // cf. ball.c:221 — unplacebc_and_covet_placebc(): remove and pin bc
-export function unplacebc_and_covet_placebc(player, map) {
-    let restriction = 0;
-
-    if (bcrestriction) {
-        impossible("unplacebc_and_covet_placebc denied, already restricted");
-    } else {
-        restriction = bcrestriction = rnd(400);
-        unplacebc_core(player, map);
-    }
-    return restriction;
+// Autotranslated from ball.c:221
+export function unplacebc_and_covet_placebc() {
+  let restriction = 0;
+  if (bcrestriction) {
+    impossible("unplacebc_and_covet_placebc denied, already restricted");
+  }
+  else { restriction = bcrestriction = rnd(400); unplacebc_core(); }
+  return restriction;
 }
 
 // cf. ball.c:235 — lift_covet_and_placebc(pin): lift restriction and replace

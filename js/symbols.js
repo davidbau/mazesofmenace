@@ -1,3 +1,79 @@
+import {
+    STONE as CFG_STONE,
+    VWALL as CFG_VWALL,
+    HWALL as CFG_HWALL,
+    TLCORNER as CFG_TLCORNER,
+    TRCORNER as CFG_TRCORNER,
+    BLCORNER as CFG_BLCORNER,
+    BRCORNER as CFG_BRCORNER,
+    CROSSWALL as CFG_CROSSWALL,
+    TUWALL as CFG_TUWALL,
+    TDWALL as CFG_TDWALL,
+    TLWALL as CFG_TLWALL,
+    TRWALL as CFG_TRWALL,
+    DBWALL as CFG_DBWALL,
+    TREE as CFG_TREE,
+    SDOOR as CFG_SDOOR,
+    SCORR as CFG_SCORR,
+    POOL as CFG_POOL,
+    MOAT as CFG_MOAT,
+    WATER as CFG_WATER,
+    DRAWBRIDGE_UP as CFG_DRAWBRIDGE_UP,
+    LAVAPOOL as CFG_LAVAPOOL,
+    LAVAWALL as CFG_LAVAWALL,
+    IRONBARS as CFG_IRONBARS,
+    DOOR as CFG_DOOR,
+    CORR as CFG_CORR,
+    ROOM as CFG_ROOM,
+    STAIRS as CFG_STAIRS,
+    LADDER as CFG_LADDER,
+    FOUNTAIN as CFG_FOUNTAIN,
+    THRONE as CFG_THRONE,
+    SINK as CFG_SINK,
+    GRAVE as CFG_GRAVE,
+    ALTAR as CFG_ALTAR,
+    ICE as CFG_ICE,
+    DRAWBRIDGE_DOWN as CFG_DRAWBRIDGE_DOWN,
+    AIR as CFG_AIR,
+    CLOUD as CFG_CLOUD,
+    MAX_TYPE as CFG_MAX_TYPE,
+    D_NODOOR as CFG_D_NODOOR,
+    D_BROKEN as CFG_D_BROKEN,
+    D_ISOPEN as CFG_D_ISOPEN,
+    D_CLOSED as CFG_D_CLOSED,
+    D_LOCKED as CFG_D_LOCKED,
+    D_TRAPPED as CFG_D_TRAPPED,
+    D_SECRET as CFG_D_SECRET,
+    ALL_TRAPS as CFG_ALL_TRAPS,
+    NO_TRAP as CFG_NO_TRAP,
+    ARROW_TRAP as CFG_ARROW_TRAP,
+    DART_TRAP as CFG_DART_TRAP,
+    ROCKTRAP as CFG_ROCKTRAP,
+    SQKY_BOARD as CFG_SQKY_BOARD,
+    BEAR_TRAP as CFG_BEAR_TRAP,
+    LANDMINE as CFG_LANDMINE,
+    ROLLING_BOULDER_TRAP as CFG_ROLLING_BOULDER_TRAP,
+    SLP_GAS_TRAP as CFG_SLP_GAS_TRAP,
+    RUST_TRAP as CFG_RUST_TRAP,
+    FIRE_TRAP as CFG_FIRE_TRAP,
+    PIT as CFG_PIT,
+    SPIKED_PIT as CFG_SPIKED_PIT,
+    HOLE as CFG_HOLE,
+    TRAPDOOR as CFG_TRAPDOOR,
+    TELEP_TRAP as CFG_TELEP_TRAP,
+    LEVEL_TELEP as CFG_LEVEL_TELEP,
+    MAGIC_PORTAL as CFG_MAGIC_PORTAL,
+    WEB as CFG_WEB,
+    STATUE_TRAP as CFG_STATUE_TRAP,
+    MAGIC_TRAP as CFG_MAGIC_TRAP,
+    ANTI_MAGIC as CFG_ANTI_MAGIC,
+    POLY_TRAP as CFG_POLY_TRAP,
+    VIBRATING_SQUARE as CFG_VIBRATING_SQUARE,
+    TRAPPED_DOOR as CFG_TRAPPED_DOOR,
+    TRAPPED_CHEST as CFG_TRAPPED_CHEST,
+    TRAPNUM as CFG_TRAPNUM,
+} from './config.js';
+
 /**
  * symbols.js - NetHack 3.7 symbol and color definitions
  *
@@ -432,44 +508,44 @@ export const MAXEXPCHARS = 9;                               // number of explosi
 //    enum levl_typ_types
 // ==========================================================================
 
-export const STONE           = 0;
-export const VWALL           = 1;
-export const HWALL           = 2;
-export const TLCORNER        = 3;
-export const TRCORNER        = 4;
-export const BLCORNER        = 5;
-export const BRCORNER        = 6;
-export const CROSSWALL       = 7;   // For pretty mazes and special levels
-export const TUWALL          = 8;
-export const TDWALL          = 9;
-export const TLWALL          = 10;
-export const TRWALL          = 11;
-export const DBWALL          = 12;
-export const TREE            = 13;
-export const SDOOR           = 14;
-export const SCORR           = 15;
-export const POOL            = 16;
-export const MOAT            = 17;   // pool that doesn't boil
-export const WATER           = 18;
-export const DRAWBRIDGE_UP   = 19;
-export const LAVAPOOL        = 20;
-export const LAVAWALL        = 21;
-export const IRONBARS        = 22;
-export const DOOR            = 23;
-export const CORR            = 24;
-export const ROOM            = 25;
-export const STAIRS          = 26;
-export const LADDER          = 27;
-export const FOUNTAIN        = 28;
-export const THRONE          = 29;
-export const SINK            = 30;
-export const GRAVE           = 31;
-export const ALTAR           = 32;
-export const ICE             = 33;
-export const DRAWBRIDGE_DOWN = 34;
-export const AIR             = 35;
-export const CLOUD           = 36;
-export const MAX_TYPE        = 37;
+export const STONE           = CFG_STONE;
+export const VWALL           = CFG_VWALL;
+export const HWALL           = CFG_HWALL;
+export const TLCORNER        = CFG_TLCORNER;
+export const TRCORNER        = CFG_TRCORNER;
+export const BLCORNER        = CFG_BLCORNER;
+export const BRCORNER        = CFG_BRCORNER;
+export const CROSSWALL       = CFG_CROSSWALL; // For pretty mazes and special levels
+export const TUWALL          = CFG_TUWALL;
+export const TDWALL          = CFG_TDWALL;
+export const TLWALL          = CFG_TLWALL;
+export const TRWALL          = CFG_TRWALL;
+export const DBWALL          = CFG_DBWALL;
+export const TREE            = CFG_TREE;
+export const SDOOR           = CFG_SDOOR;
+export const SCORR           = CFG_SCORR;
+export const POOL            = CFG_POOL;
+export const MOAT            = CFG_MOAT; // pool that doesn't boil
+export const WATER           = CFG_WATER;
+export const DRAWBRIDGE_UP   = CFG_DRAWBRIDGE_UP;
+export const LAVAPOOL        = CFG_LAVAPOOL;
+export const LAVAWALL        = CFG_LAVAWALL;
+export const IRONBARS        = CFG_IRONBARS;
+export const DOOR            = CFG_DOOR;
+export const CORR            = CFG_CORR;
+export const ROOM            = CFG_ROOM;
+export const STAIRS          = CFG_STAIRS;
+export const LADDER          = CFG_LADDER;
+export const FOUNTAIN        = CFG_FOUNTAIN;
+export const THRONE          = CFG_THRONE;
+export const SINK            = CFG_SINK;
+export const GRAVE           = CFG_GRAVE;
+export const ALTAR           = CFG_ALTAR;
+export const ICE             = CFG_ICE;
+export const DRAWBRIDGE_DOWN = CFG_DRAWBRIDGE_DOWN;
+export const AIR             = CFG_AIR;
+export const CLOUD           = CFG_CLOUD;
+export const MAX_TYPE        = CFG_MAX_TYPE;
 export const MATCH_WALL      = 38;
 export const INVALID_TYPE    = 127;
 
@@ -498,13 +574,13 @@ export function IS_SOFT(typ)       { return typ === AIR || typ === CLOUD || IS_P
 export function IS_WATERWALL(typ)  { return typ === WATER; }
 
 // Door flags (from include/rm.h, lines 220-227)
-export const D_NODOOR  = 0x00;
-export const D_BROKEN  = 0x01;
-export const D_ISOPEN  = 0x02;
-export const D_CLOSED  = 0x04;
-export const D_LOCKED  = 0x08;
-export const D_TRAPPED = 0x10;
-export const D_SECRET  = 0x20;
+export const D_NODOOR  = CFG_D_NODOOR;
+export const D_BROKEN  = CFG_D_BROKEN;
+export const D_ISOPEN  = CFG_D_ISOPEN;
+export const D_CLOSED  = CFG_D_CLOSED;
+export const D_LOCKED  = CFG_D_LOCKED;
+export const D_TRAPPED = CFG_D_TRAPPED;
+export const D_SECRET  = CFG_D_SECRET;
 
 // ==========================================================================
 // 4. Monster Class Symbols (from include/defsym.h, lines 295-367)
@@ -815,34 +891,34 @@ export const def_oc_syms = [
 //    enum trap_types
 // ==========================================================================
 
-export const ALL_TRAPS              = -1;  // mon_knows_traps(), mon_learns_traps()
-export const NO_TRAP                = 0;
-export const ARROW_TRAP             = 1;
-export const DART_TRAP              = 2;
-export const ROCKTRAP               = 3;
-export const SQKY_BOARD             = 4;
-export const BEAR_TRAP              = 5;
-export const LANDMINE               = 6;
-export const ROLLING_BOULDER_TRAP   = 7;
-export const SLP_GAS_TRAP           = 8;
-export const RUST_TRAP              = 9;
-export const FIRE_TRAP              = 10;
-export const PIT                    = 11;
-export const SPIKED_PIT             = 12;
-export const HOLE                   = 13;
-export const TRAPDOOR               = 14;
-export const TELEP_TRAP             = 15;
-export const LEVEL_TELEP            = 16;
-export const MAGIC_PORTAL           = 17;
-export const WEB                    = 18;
-export const STATUE_TRAP            = 19;
-export const MAGIC_TRAP             = 20;
-export const ANTI_MAGIC             = 21;
-export const POLY_TRAP              = 22;
-export const VIBRATING_SQUARE       = 23;
-export const TRAPPED_DOOR           = 24;
-export const TRAPPED_CHEST          = 25;
-export const TRAPNUM                = 26;
+export const ALL_TRAPS              = CFG_ALL_TRAPS; // mon_knows_traps(), mon_learns_traps()
+export const NO_TRAP                = CFG_NO_TRAP;
+export const ARROW_TRAP             = CFG_ARROW_TRAP;
+export const DART_TRAP              = CFG_DART_TRAP;
+export const ROCKTRAP               = CFG_ROCKTRAP;
+export const SQKY_BOARD             = CFG_SQKY_BOARD;
+export const BEAR_TRAP              = CFG_BEAR_TRAP;
+export const LANDMINE               = CFG_LANDMINE;
+export const ROLLING_BOULDER_TRAP   = CFG_ROLLING_BOULDER_TRAP;
+export const SLP_GAS_TRAP           = CFG_SLP_GAS_TRAP;
+export const RUST_TRAP              = CFG_RUST_TRAP;
+export const FIRE_TRAP              = CFG_FIRE_TRAP;
+export const PIT                    = CFG_PIT;
+export const SPIKED_PIT             = CFG_SPIKED_PIT;
+export const HOLE                   = CFG_HOLE;
+export const TRAPDOOR               = CFG_TRAPDOOR;
+export const TELEP_TRAP             = CFG_TELEP_TRAP;
+export const LEVEL_TELEP            = CFG_LEVEL_TELEP;
+export const MAGIC_PORTAL           = CFG_MAGIC_PORTAL;
+export const WEB                    = CFG_WEB;
+export const STATUE_TRAP            = CFG_STATUE_TRAP;
+export const MAGIC_TRAP             = CFG_MAGIC_TRAP;
+export const ANTI_MAGIC             = CFG_ANTI_MAGIC;
+export const POLY_TRAP              = CFG_POLY_TRAP;
+export const VIBRATING_SQUARE       = CFG_VIBRATING_SQUARE;
+export const TRAPPED_DOOR           = CFG_TRAPPED_DOOR;
+export const TRAPPED_CHEST          = CFG_TRAPPED_CHEST;
+export const TRAPNUM                = CFG_TRAPNUM;
 
 // Trap utility macros (from include/trap.h)
 export function is_pit(ttyp)  { return ttyp === PIT || ttyp === SPIKED_PIT; }
@@ -1021,4 +1097,208 @@ export function def_char_is_furniture(ch) {
         if (defsyms[i] && defsyms[i].ch === ch) return i;
     }
     return 0;
+}
+
+// Autotranslated from symbols.c:84
+export function init_symbols() {
+  init_ov_primary_symbols();
+  init_ov_rogue_symbols();
+  init_primary_symbols();
+  init_showsyms();
+  init_rogue_symbols();
+}
+
+// Autotranslated from symbols.c:94
+export function init_showsyms() {
+  let i;
+  for (i = 0; i < MAXPCHARS; i++) {
+    gs.showsyms = defsyms[i].sym;
+  }
+  for (i = 0; i < MAXOCLASSES; i++) {
+    gs.showsyms = def_oc_syms[i].sym;
+  }
+  for (i = 0; i < MAXMCLASSES; i++) {
+    gs.showsyms = def_monsyms[i].sym;
+  }
+  for (i = 0; i < WARNCOUNT; i++) {
+    gs.showsyms = def_warnsyms[i].sym;
+  }
+  for (i = 0; i < MAXOTHER; i++) {
+    gs.showsyms = get_othersym(i, PRIMARYSET);
+  }
+}
+
+// Autotranslated from symbols.c:166
+export function init_primary_symbols() {
+  let i;
+  for (i = 0; i < MAXPCHARS; i++) {
+    gp.primary_syms = defsyms[i].sym;
+  }
+  for (i = 0; i < MAXOCLASSES; i++) {
+    gp.primary_syms = def_oc_syms[i].sym;
+  }
+  for (i = 0; i < MAXMCLASSES; i++) {
+    gp.primary_syms = def_monsyms[i].sym;
+  }
+  for (i = 0; i < WARNCOUNT; i++) {
+    gp.primary_syms = def_warnsyms[i].sym;
+  }
+  for (i = 0; i < MAXOTHER; i++) {
+    gp.primary_syms = get_othersym(i, PRIMARYSET);
+  }
+  clear_symsetentry(PRIMARYSET, false);
+}
+
+// Autotranslated from symbols.c:186
+export function init_rogue_symbols() {
+  let i;
+  for (i = 0; i < MAXPCHARS; i++) {
+    gr.rogue_syms = defsyms[i].sym;
+  }
+  gr.rogue_syms = gr.rogue_syms = gr.rogue_syms = '+';
+  gr.rogue_syms = gr.rogue_syms = '%';
+  for (i = 0; i < MAXOCLASSES; i++) {
+    gr.rogue_syms = def_r_oc_syms;
+  }
+  for (i = 0; i < MAXMCLASSES; i++) {
+    gr.rogue_syms = def_monsyms[i].sym;
+  }
+  for (i = 0; i < WARNCOUNT; i++) {
+    gr.rogue_syms = def_warnsyms[i].sym;
+  }
+  for (i = 0; i < MAXOTHER; i++) {
+    gr.rogue_syms = get_othersym(i, ROGUESET);
+  }
+  clear_symsetentry(ROGUESET, false);
+  gs.symset[ROGUESET].nocolor = 1;
+}
+
+// Autotranslated from symbols.c:306
+export function update_primary_symset(symp, val) {
+  gp.primary_syms = val;
+}
+
+// Autotranslated from symbols.c:312
+export function update_rogue_symset(symp, val) {
+  gr.rogue_syms = val;
+}
+
+// Autotranslated from symbols.c:352
+export function symset_is_compatible(handling, wincap2) {
+  if (handling === H_UTF8 && ((wincap2 & WC2_utf8_bits) !== WC2_utf8_bits)) return false;
+  return true;
+}
+
+// Autotranslated from symbols.c:656
+export function set_symhandling(handling, which_set) {
+  let i = 0;
+  gs.symset[which_set].handling = H_UNK;
+  while (known_handling) {
+    if (!strcmpi(known_handling, handling)) { gs.symset[which_set].handling = i; return; }
+    i++;
+  }
+}
+
+// Autotranslated from symbols.c:692
+export function free_symsets() {
+  clear_symsetentry(PRIMARYSET, true);
+  clear_symsetentry(ROGUESET, true);
+}
+
+// Autotranslated from symbols.c:711
+export function savedsym_free() {
+  let tmp = saved_symbols, tmp2;
+  while (tmp) {
+    tmp2 = tmp.next;
+    (tmp.name, 0);
+    (tmp.val, 0);
+    (tmp, 0);
+    tmp = tmp2;
+  }
+}
+
+// Autotranslated from symbols.c:738
+export function savedsym_add(name, val, which_set) {
+  let tmp = null;
+  if ((tmp = savedsym_find(name, which_set)) !== 0) { (tmp.val, 0); tmp.val = dupstr(val); }
+  else {
+    tmp =  alloc(tmp.length);
+    tmp.name = dupstr(name);
+    tmp.val = dupstr(val);
+    tmp.which_set = which_set;
+    tmp.next = saved_symbols;
+    saved_symbols = tmp;
+  }
+}
+
+// Autotranslated from symbols.c:756
+export function savedsym_strbuf(sbuf) {
+  let tmp = saved_symbols, buf;
+  while (tmp) {
+    Sprintf(buf, "%sSYMBOLS=%s:%s\n", (tmp.which_set === ROGUESET) ? "ROGUE" : "", tmp.name, tmp.val);
+    strbuf_append(sbuf, buf);
+    tmp = tmp.next;
+  }
+}
+
+// Autotranslated from symbols.c:772
+export function parsesymbols(opts, which_set) {
+  let val;
+  let symname, strval, ch, first_unquoted_comma = 0, first_unquoted_colon = 0;
+  let symp, is_glyph = false;
+  for (ch = opts + 1;  ch; ++ch) {
+    let prech, postch;
+    prech = ch - 1;
+    postch = ch + 1;
+    if (!postch) {
+      break;
+    }
+    if ( ch === ',') {
+      if ( prech === '\'' && postch === '\'') {
+        continue;
+      }
+      if ( prech === '\\') {
+        continue;
+      }
+    }
+    if ( ch === ':') {
+      if ( prech === '\'' && postch === '\'') {
+        continue;
+      }
+    }
+    if ( ch === ',' && !first_unquoted_comma) first_unquoted_comma = ch;
+    if ( ch === ':' && !first_unquoted_colon) first_unquoted_colon = ch;
+  }
+  if (first_unquoted_comma !== 0) {
+     first_unquoted_comma = '\x00';
+    if (!parsesymbols(first_unquoted_comma, which_set)) return false;
+  }
+  symname = opts;
+  strval = first_unquoted_colon;
+  if (!strval) strval = strchr(opts, '=');
+  if (!strval) return false;
+   strval = '\x00';
+  mungspaces(symname);
+  mungspaces(strval);
+  symp = match_sym(symname);
+  if (!symp && symname[0] === 'G' && symname[1] === '_') { is_glyph = match_glyph(symname); }
+  if (!symp && !is_glyph) return false;
+  if (symp) {
+    if (symp.range && symp.range !== SYM_CONTROL) {
+      if (gs.symset[which_set].handling === H_UTF8 || (lowc(strval[0]) === 'u' && strval[1] === '+')) {
+        let buf, glyph;
+        Snprintf(buf, buf.length, "%s:%s", opts, strval);
+        glyphrep_to_custom_map_entries(buf, glyph);
+      }
+      else {
+        val = sym_val(strval);
+        if (which_set === ROGUESET) update_ov_rogue_symset(symp, val);
+        else {
+          update_ov_primary_symset(symp, val);
+        }
+      }
+    }
+  }
+  savedsym_add(opts, strval, which_set);
+  return true;
 }

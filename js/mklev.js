@@ -69,10 +69,13 @@ let _luathemesLoaded = false;
 let _specialThemesLoaded = false;
 
 // C ref: mklev.c mkroom_cmp() — sort rooms by lx only
-export function mkroom_cmp(a, b) {
-    if (a.lx < b.lx) return -1;
-    if (a.lx > b.lx) return 1;
-    return 0;
+// Autotranslated from mklev.c:60
+export function mkroom_cmp(vx, vy) {
+  let x, y;
+  x =  vx;
+  y =  vy;
+  if (x.lx < y.lx) return -1;
+  return (x.lx > y.lx);
 }
 
 // C ref: mklev.c sort_rooms()
@@ -537,8 +540,10 @@ export function occupied(map, x, y) {
     if (!loc) return true;
     if (IS_FURNITURE(loc.typ)) return true;
     if (IS_LAVA(loc.typ) || IS_POOL(loc.typ)) return true;
-    if (map._isInvocationLevel && map._invPos
-        && x === map._invPos.x && y === map._invPos.y) {
+    const inv_pos = map.inv_pos || map._invPos;
+    const isInvocationLevel = !!(map.is_invocation_lev || map._isInvocationLevel);
+    if (isInvocationLevel && inv_pos
+        && x === inv_pos.x && y === inv_pos.y) {
         return true;
     }
     return false;
@@ -955,4 +960,20 @@ export function mktrap_pick_kind(map, num, depth, mktrapflags = MKTRAP_NOFLAGS) 
         kind = traptype_rnd(map, depth, mktrapflags);
     } while (kind === NO_TRAP);
     return kind;
+}
+
+// Autotranslated from mklev.c:1427
+export function water_has_kelp(x, y, kelp_pool, kelp_moat, map) {
+  if ((kelp_pool && (map.locations[x][y].typ === POOL || (map.locations[x][y].typ === WATER && !Is_waterlevel(map.uz))) && !rn2(kelp_pool)) || (kelp_moat && map.locations[x][y].typ === MOAT && !rn2(kelp_moat))) return true;
+  return false;
+}
+
+// Autotranslated from mklev.c:2598
+export function mkinvk_check_wall(x, y, map) {
+  let ltyp;
+  if (!isok(x, y)) return 0;
+  assert(x > 0 && x < COLNO);
+  assert(y >= 0 && y < ROWNO);
+  ltyp = map.locations[x][y].typ;
+  return (IS_STWALL(ltyp) || ltyp === IRONBARS) ? 1 : 0;
 }

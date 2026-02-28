@@ -68,43 +68,39 @@ function distu(player, x, y) {
 // ========================================================================
 // cf. worm.c:96 -- get_wormno(): find an unused worm tail slot
 // ========================================================================
+// Autotranslated from worm.c:95
 export function get_wormno() {
-    var new_wormno = 1;
-    while (new_wormno < MAX_NUM_WORMS) {
-        if (!wheads[new_wormno])
-            return new_wormno;
-        new_wormno++;
-    }
-    return 0; // level infested with worms
+  let new_wormno = 1;
+  while (new_wormno < MAX_NUM_WORMS) {
+    if (!wheads[new_wormno]) return new_wormno;
+    new_wormno++;
+  }
+  return 0;
 }
 
 // ========================================================================
 // cf. worm.c:120 -- initworm(worm, wseg_count)
 // ========================================================================
+// Autotranslated from worm.c:119
 export function initworm(worm, wseg_count) {
-    var new_tail = create_worm_tail(wseg_count);
-    var wnum = worm.wormno;
-    var seg;
-
-    if (new_tail) {
-        wtails[wnum] = new_tail;
-        for (seg = new_tail; seg.nseg; seg = seg.nseg)
-            continue;
-        wheads[wnum] = seg;
-    } else {
-        seg = newseg();
-        seg.nseg = null;
-        wtails[wnum] = wheads[wnum] = seg;
+  let seg, new_tail = create_worm_tail(wseg_count), wnum = worm.wormno;
+  if (new_tail) {
+    wtails[wnum] = new_tail;
+    for (seg = new_tail; seg.nseg; seg = seg.nseg) {
+      continue;
     }
-    seg.wx = worm.mx;
-    seg.wy = worm.my;
-    wgrowtime[wnum] = 0;
+    wheads[wnum] = seg;
+  }
+  else { wtails[wnum] = wheads[wnum] = seg = newseg(); seg.nseg =  0; }
+  seg.wx = worm.mx;
+  seg.wy = worm.my;
+  wgrowtime[wnum] = 0;
 }
 
 // ========================================================================
 // cf. worm.c:146 [static] -- toss_wsegs(curr, display_update, map)
 // ========================================================================
-function toss_wsegs(curr, display_update, map) {
+export function toss_wsegs(curr, display_update, map) {
     while (curr) {
         var nxtseg = curr.nseg;
 
@@ -125,7 +121,7 @@ function toss_wsegs(curr, display_update, map) {
 // ========================================================================
 // cf. worm.c:175 [static] -- shrink_worm(wnum, map)
 // ========================================================================
-function shrink_worm(wnum, map) {
+export function shrink_worm(wnum, map) {
     if (wtails[wnum] === wheads[wnum])
         return; // no tail
 
@@ -310,7 +306,7 @@ export function cutworm(worm, x, y, cuttier, map, player, game) {
     // Sometimes the tail end dies
     if (!new_worm) {
         place_worm_seg_on_map(worm, x, y);
-        var context = (game && game.context) || {};
+        var context = (game && game.svc && game.svc.context) || game?.context || {};
         if (context.mon_moving) {
             // canspotmon check simplified
             pline("Part of %s tail has been cut off.", s_suffix(mon_nam(worm)));
@@ -343,7 +339,7 @@ export function cutworm(worm, x, y, cuttier, map, player, game) {
     // Place the new monster at all segment locations
     place_wsegs(new_worm, worm, map);
 
-    var ctx = (game && game.context) || {};
+    var ctx = (game && game.svc && game.svc.context) || game?.context || {};
     if (ctx.mon_moving)
         pline("%s is cut in half.", Monnam(worm));
     else
@@ -353,13 +349,13 @@ export function cutworm(worm, x, y, cuttier, map, player, game) {
 // ========================================================================
 // cf. worm.c:487 -- see_wsegs(worm, map)
 // ========================================================================
-export function see_wsegs(worm, map) {
-    var curr = wtails[worm.wormno];
-
-    while (curr !== wheads[worm.wormno]) {
-        newsym(map, curr.wx, curr.wy);
-        curr = curr.nseg;
-    }
+// Autotranslated from worm.c:486
+export function see_wsegs(worm) {
+  let curr = wtails[worm.wormno];
+  while (curr !== wheads[worm.wormno]) {
+    newsym(curr.wx, curr.wy);
+    curr = curr.nseg;
+  }
 }
 
 // ========================================================================
@@ -541,63 +537,58 @@ function _rnd_nextto_goodpos(map, mtmp, x, y, player) {
 // ========================================================================
 // cf. worm.c:827 -- size_wseg(worm): segment memory accounting
 // ========================================================================
+// Autotranslated from worm.c:826
 export function size_wseg(worm) {
-    // In C, returns count * sizeof(wseg). In JS, just return count.
-    return count_wsegs(worm);
+  return (int) (count_wsegs(worm) * sizeof );
 }
 
 // ========================================================================
 // cf. worm.c:836 -- count_wsegs(mtmp): count worm body segments
 // ========================================================================
+// Autotranslated from worm.c:835
 export function count_wsegs(mtmp) {
-    var i = 0;
-    if (mtmp.wormno) {
-        var curr = wtails[mtmp.wormno];
-        if (curr) {
-            for (curr = curr.nseg; curr; curr = curr.nseg)
-                i++;
-        }
+  let i = 0, curr;
+  if (mtmp.wormno) {
+    for (curr = wtails[mtmp.wormno].nseg; curr; curr = curr.nseg) {
+      i++;
     }
-    return i;
+  }
+  return i;
 }
 
 // ========================================================================
 // cf. worm.c:852 [static] -- create_worm_tail(num_segs)
 // ========================================================================
-function create_worm_tail(num_segs) {
-    if (!num_segs) return null;
-
-    var new_tail = newseg();
-    var curr = new_tail;
-    curr.nseg = null;
+// Autotranslated from worm.c:851
+export function create_worm_tail(num_segs) {
+  let i = 0, new_tail, curr;
+  if (!num_segs) return  0;
+  new_tail = curr = newseg();
+  curr.nseg =  0;
+  curr.wx = 0;
+  curr.wy = 0;
+  while (i < num_segs) {
+    curr.nseg = newseg();
+    curr = curr.nseg;
+    curr.nseg =  0;
     curr.wx = 0;
     curr.wy = 0;
-
-    var i = 0;
-    while (i < num_segs) {
-        curr.nseg = newseg();
-        curr = curr.nseg;
-        curr.nseg = null;
-        curr.wx = 0;
-        curr.wy = 0;
-        i++;
-    }
-
-    return new_tail;
+    i++;
+  }
+  return new_tail;
 }
 
 // ========================================================================
 // cf. worm.c:883 -- worm_known(worm, map, player, fov)
 // ========================================================================
-export function worm_known(worm, map, player, fov) {
-    var curr = wtails[worm.wormno];
-
-    while (curr) {
-        if (cansee(map, player, fov, curr.wx, curr.wy))
-            return true;
-        curr = curr.nseg;
-    }
-    return false;
+// Autotranslated from worm.c:882
+export function worm_known(worm) {
+  let curr = wtails[worm.wormno];
+  while (curr) {
+    if (cansee(curr.wx, curr.wy)) return true;
+    curr = curr.nseg;
+  }
+  return false;
 }
 
 // ========================================================================
@@ -657,37 +648,37 @@ export function wseg_at(worm, x, y, map) {
 // ========================================================================
 // cf. worm.c:968 -- flip_worm_segs_vertical(worm, miny, maxy)
 // ========================================================================
+// Autotranslated from worm.c:967
 export function flip_worm_segs_vertical(worm, miny, maxy) {
-    var curr = wtails[worm.wormno];
-
-    while (curr) {
-        curr.wy = maxy - curr.wy + miny;
-        curr = curr.nseg;
-    }
+  let curr = wtails[worm.wormno];
+  while (curr) {
+    curr.wy = (maxy - curr.wy + miny);
+    curr = curr.nseg;
+  }
 }
 
 // ========================================================================
 // cf. worm.c:979 -- flip_worm_segs_horizontal(worm, minx, maxx)
 // ========================================================================
+// Autotranslated from worm.c:978
 export function flip_worm_segs_horizontal(worm, minx, maxx) {
-    var curr = wtails[worm.wormno];
-
-    while (curr) {
-        curr.wx = maxx - curr.wx + minx;
-        curr = curr.nseg;
-    }
+  let curr = wtails[worm.wormno];
+  while (curr) {
+    curr.wx = (maxx - curr.wx + minx);
+    curr = curr.nseg;
+  }
 }
 
 // ========================================================================
 // cf. worm.c:990 -- redraw_worm(worm, map)
 // ========================================================================
-export function redraw_worm(worm, map) {
-    var curr = wtails[worm.wormno];
-
-    while (curr) {
-        newsym(map, curr.wx, curr.wy);
-        curr = curr.nseg;
-    }
+// Autotranslated from worm.c:989
+export function redraw_worm(worm) {
+  let curr = wtails[worm.wormno];
+  while (curr) {
+    newsym(curr.wx, curr.wy);
+    curr = curr.nseg;
+  }
 }
 
 // ========================================================================
@@ -742,4 +733,77 @@ export function restore_worm_state(state) {
     }
     for (var k = 0; k < MAX_NUM_WORMS; k++)
         wgrowtime[k] = state.growtime[k] || 0;
+}
+
+// Autotranslated from worm.c:527
+export function save_worm(nhfp) {
+  let i, count, curr, temp;
+  if (update_file(nhfp)) {
+    for (i = 1; i < MAX_NUM_WORMS; i++) {
+      for (count = 0, curr = wtails; curr; curr = curr.nseg) {
+        count++;
+      }
+      Sfo_int(nhfp, count, "worm-segment_count");
+      if (count) {
+        for (curr = wtails; curr; curr = curr.nseg) {
+          Sfo_coordxy(nhfp, (curr.wx), "worm-wx");
+          Sfo_coordxy(nhfp, (curr.wy), "worm-wy");
+        }
+      }
+    }
+    for (i = 0; i < MAX_NUM_WORMS; ++i) {
+      Sfo_long(nhfp, wgrowtime, "worm-wgrowtime");
+    }
+  }
+  if (release_data(nhfp)) {
+    for (i = 1; i < MAX_NUM_WORMS; i++) {
+      if (!(curr = wtails[i])) {
+        continue;
+      }
+      while (curr) {
+        temp = curr.nseg;
+        dealloc_seg(curr);
+        curr = temp;
+      }
+      wheads = wtails =  0;
+      wgrowtime = 0;
+    }
+  }
+}
+
+// Autotranslated from worm.c:576
+export function rest_worm(nhfp) {
+  let i, j, count = 0, curr, temp;
+  for (i = 1; i < MAX_NUM_WORMS; i++) {
+    Sfi_int(nhfp, count, "worm-segment_count");
+    for (curr =  0, j = 0; j < count; j++) {
+      temp = newseg();
+      temp.nseg =  0;
+      Sfi_coordxy(nhfp, (temp.wx), "worm-wx");
+      Sfi_coordxy(nhfp, (temp.wy), "worm-wy");
+      if (curr) curr.nseg = temp;
+      else {
+        wtails = temp;
+      }
+      curr = temp;
+    }
+    wheads = curr;
+  }
+  for (i = 0; i < MAX_NUM_WORMS; ++i) {
+    Sfi_long(nhfp, wgrowtime, "worm-wgrowtime");
+  }
+}
+
+// Autotranslated from worm.c:681
+export function wormno_sanity_check() {
+  let seg, wh = 0, wt = 0;
+  for (seg = wheads; seg; seg = seg.nseg) {
+    ++wh;
+  }
+  for (seg = wtails; seg; seg = seg.nseg) {
+    ++wt;
+  }
+  if (wh || wt) {
+    impossible( "phantom worm tail #0 [head=%s, %d segment%s; tail=%s, %d segment%s]", fmt_ptr(wheads[0]), wh, plur(wh), fmt_ptr(wtails[0]), wt, plur(wt));
+  }
 }

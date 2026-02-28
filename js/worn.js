@@ -201,25 +201,66 @@ export function wearmask_to_obj(player, wornmask) {
 // wornmask_to_armcat — cf. worn.c:210
 // ============================================================================
 // Convert an armor wornmask to corresponding ARM_* category.
+// Autotranslated from worn.c:209
 export function wornmask_to_armcat(mask) {
-    switch (mask & W_ARMOR) {
-    case W_ARM:  return ARM_SUIT;
-    case W_ARMC: return ARM_CLOAK;
-    case W_ARMH: return ARM_HELM;
-    case W_ARMS: return ARM_SHIELD;
-    case W_ARMG: return ARM_GLOVES;
-    case W_ARMF: return ARM_BOOTS;
-    case W_ARMU: return ARM_SHIRT;
-    default: return 0;
-    }
+  let cat = 0;
+  switch (mask & W_ARMOR) {
+    case W_ARM:
+      cat = ARM_SUIT;
+    break;
+    case W_ARMC:
+      cat = ARM_CLOAK;
+    break;
+    case W_ARMH:
+      cat = ARM_HELM;
+    break;
+    case W_ARMS:
+      cat = ARM_SHIELD;
+    break;
+    case W_ARMG:
+      cat = ARM_GLOVES;
+    break;
+    case W_ARMF:
+      cat = ARM_BOOTS;
+    break;
+    case W_ARMU:
+      cat = ARM_SHIRT;
+    break;
+  }
+  return cat;
 }
 
 // ============================================================================
 // armcat_to_wornmask — cf. worn.c:242
 // ============================================================================
 // Convert an ARM_* category to corresponding wornmask bit.
+// Autotranslated from worn.c:241
 export function armcat_to_wornmask(cat) {
-    return ARMCAT_TO_MASK[cat] || 0;
+  let mask = 0;
+  switch (cat) {
+    case ARM_SUIT:
+      mask = W_ARM;
+    break;
+    case ARM_CLOAK:
+      mask = W_ARMC;
+    break;
+    case ARM_HELM:
+      mask = W_ARMH;
+    break;
+    case ARM_SHIELD:
+      mask = W_ARMS;
+    break;
+    case ARM_GLOVES:
+      mask = W_ARMG;
+    break;
+    case ARM_BOOTS:
+      mask = W_ARMF;
+    break;
+    case ARM_SHIRT:
+      mask = W_ARMU;
+    break;
+  }
+  return mask;
 }
 
 // ============================================================================
@@ -470,11 +511,11 @@ export function which_armor(mon, flag) {
 export function m_dowear(mon, creation) {
     const ptr = mon.type || {};
     // Guards: verysmall, nohands, animal skip entirely
-    if ((ptr.size || 0) < MZ_SMALL || nohands(ptr) || is_animal(ptr))
+    if ((ptr.msize || 0) < MZ_SMALL || nohands(ptr) || is_animal(ptr))
         return;
     // Mindless skip unless mummy or skeleton at creation
     if (is_mindless(ptr)
-        && (!creation || (ptr.symbol !== S_MUMMY
+        && (!creation || (ptr.mlet !== S_MUMMY
                           && mon.mndx !== PM_SKELETON)))
         return;
 
@@ -492,7 +533,7 @@ export function m_dowear(mon, creation) {
     if (!mwep || !(objectData[mwep.otyp]?.big))
         m_dowear_type(mon, W_ARMS, creation, false);
     m_dowear_type(mon, W_ARMG, creation, false);
-    if (!slithy(ptr) && ptr.symbol !== S_CENTAUR)
+    if (!slithy(ptr) && ptr.mlet !== S_CENTAUR)
         m_dowear_type(mon, W_ARMF, creation, false);
     if (can_wear_armor)
         m_dowear_type(mon, W_ARM, creation, false);
@@ -539,7 +580,7 @@ function m_dowear_type(mon, flag, creation, racialexception) {
         case W_ARMC:
             if (armcat !== ARM_CLOAK) continue;
             // mummy wrapping is only cloak for monsters bigger than human
-            if ((mon.type?.size || 0) > MZ_HUMAN && obj.otyp !== MUMMY_WRAPPING)
+            if ((mon.type?.msize || 0) > MZ_HUMAN && obj.otyp !== MUMMY_WRAPPING)
                 continue;
             break;
         case W_ARMH:
@@ -586,12 +627,12 @@ function m_dowear_type(mon, flag, creation, racialexception) {
 // extra_pref — cf. worn.c:1328
 // ============================================================================
 // Monster's preference bonus for armor with special benefits.
+// Autotranslated from worn.c:1328
 export function extra_pref(mon, obj) {
-    if (obj) {
-        if (obj.otyp === SPEED_BOOTS && mon.permspeed !== MFAST)
-            return 20;
-    }
-    return 0;
+  if (obj) {
+    if (obj.otyp === SPEED_BOOTS && mon.permspeed !== MFAST) return 20;
+  }
+  return 0;
 }
 
 // ============================================================================
@@ -656,7 +697,7 @@ export function m_lose_armor(mon, obj, polyspot, map) {
 // Remove/destroy armor when monster polymorphs.
 export function mon_break_armor(mon, polyspot, map) {
     const mdat = mon.type || {};
-    const handless_or_tiny = nohands(mdat) || (mdat.size || 0) < MZ_SMALL;
+    const handless_or_tiny = nohands(mdat) || (mdat.msize || 0) < MZ_SMALL;
     let otmp;
 
     if (breakarm(mdat)) {
@@ -704,7 +745,7 @@ export function mon_break_armor(mon, polyspot, map) {
         }
     }
 
-    if (handless_or_tiny || slithy(mdat) || mdat.symbol === S_CENTAUR) {
+    if (handless_or_tiny || slithy(mdat) || mdat.mlet === S_CENTAUR) {
         if ((otmp = which_armor(mon, W_ARMF)) != null) {
             m_lose_armor(mon, otmp, polyspot, map);
         }
@@ -713,7 +754,7 @@ export function mon_break_armor(mon, polyspot, map) {
     // Saddle: simplified — just drop it if monster can no longer be saddled
     if ((otmp = which_armor(mon, W_SADDLE)) != null) {
         // can_saddle: check humanoid or animal + right size
-        const canSaddle = !nohands(mdat) || (is_animal(mdat) && (mdat.size || 0) >= MZ_SMALL);
+        const canSaddle = !nohands(mdat) || (is_animal(mdat) && (mdat.msize || 0) >= MZ_SMALL);
         if (!canSaddle) {
             m_lose_armor(mon, otmp, polyspot, map);
         }
@@ -747,4 +788,28 @@ export function nxt_unbypassed_obj(objchain) {
         }
     }
     return null;
+}
+
+// Autotranslated from worn.c:1044
+export function clear_bypass(objchn) {
+  let o;
+  for (o = objchn; o; o = o.nobj) {
+    o.bypass = 0;
+    if (Has_contents(o)) clear_bypass(o.cobj);
+  }
+}
+
+// Autotranslated from worn.c:1148
+export function nxt_unbypassed_loot(lootarray, listhead) {
+  let o, obj;
+  while ((obj = lootarray.obj) !== 0) {
+    for (o = listhead; o; o = o.nobj) {
+      if (o === obj) {
+        break;
+      }
+    }
+    if (o && !obj.bypass) { bypass_obj(obj); break; }
+    ++lootarray;
+  }
+  return obj;
 }

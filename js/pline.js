@@ -52,9 +52,10 @@ export function set_msg_dir(dir) {
     _pendingContext.dir = Number.isFinite(dir) ? dir : null;
 }
 
+// Autotranslated from pline.c:92
 export function set_msg_xy(x, y) {
-    _pendingContext.x = Number.isFinite(x) ? x : null;
-    _pendingContext.y = Number.isFinite(y) ? y : null;
+  a11y.msg_loc.x = x;
+  a11y.msg_loc.y = y;
 }
 
 function formatLine(format, args) {

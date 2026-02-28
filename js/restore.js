@@ -150,3 +150,152 @@
 // cf. restore.c:1506 — restore_menu(win): display saved game selection menu
 // Shows list of saved games for player to choose from (ifdef SELECTSAVED).
 // N/A: restore.c:1506 — restore_menu() (JS uses storage.js UI)
+
+// Autotranslated from restore.c:306
+export function restmon(nhfp, mtmp) {
+  let buflen = 0, mc = 0;
+  Sfi_monst(nhfp, mtmp, "monst");
+  mtmp.nmon =  0;
+  if (mtmp.mextra) {
+    mtmp.mextra = newmextra();
+    Sfi_int(nhfp, buflen, "monst-mgivenname_length");
+    if (buflen > 0) {
+      new_mgivenname(mtmp, buflen);
+      Sfi_char(nhfp, MGIVENNAME(mtmp), "monst-mgivenname",  buflen);
+    }
+    Sfi_int(nhfp, buflen, "monst-egd_length");
+    if (buflen > 0) { newegd(mtmp); Sfi_egd(nhfp, EGD(mtmp), "monst-egd"); }
+    Sfi_int(nhfp, buflen, "monst-epri_length");
+    if (buflen > 0) { newepri(mtmp); Sfi_epri(nhfp, EPRI(mtmp), "monst-epri"); }
+    Sfi_int(nhfp, buflen, "monst-eshk_length");
+    if (buflen > 0) { neweshk(mtmp); Sfi_eshk(nhfp, ESHK(mtmp), "monst-eshk"); }
+    Sfi_int(nhfp, buflen, "monst-emin_length");
+    if (buflen > 0) { newemin(mtmp); Sfi_emin(nhfp, EMIN(mtmp), "monst-emin"); }
+    Sfi_int(nhfp, buflen, "monst-edog_length");
+    if (buflen > 0) {
+      newedog(mtmp);
+      Sfi_edog(nhfp, EDOG(mtmp), "monst-edog");
+      if (EDOG(mtmp).apport <= 0) { EDOG(mtmp).apport = 1; }
+    }
+    Sfi_int(nhfp, buflen, "monst-ebones_length");
+    if (buflen > 0) { newebones(mtmp); Sfi_ebones(nhfp, EBONES(mtmp), "monst-ebones"); }
+    Sfi_int(nhfp, mc, "monst-mcorpsenm");
+    MCORPSENM(mtmp) = mc;
+  }
+}
+
+// Autotranslated from restore.c:464
+export function loadfruitchn(nhfp) {
+  let flist, fnext;
+  flist = 0;
+  for (; ; ) {
+    fnext = newfruit();
+    Sfi_fruit(nhfp, fnext, "fruit");
+    if (fnext.fid !== 0) { fnext.nextf = flist; flist = fnext; }
+    else {
+      break;
+    }
+  }
+  dealloc_fruit(fnext);
+  return flist;
+}
+
+// Autotranslated from restore.c:483
+export function freefruitchn(flist) {
+  let fnext;
+  while (flist) {
+    fnext = flist.nextf;
+    dealloc_fruit(flist);
+    flist = fnext;
+  }
+}
+
+// Autotranslated from restore.c:979
+export function restcemetery(nhfp, cemeteryaddr) {
+  let bonesinfo, bonesaddr, cflag = 0;
+  Sfi_int(nhfp, cflag, "cemetery-cemetery_flag");
+  if (cflag === 0) {
+    bonesaddr = cemeteryaddr;
+    do {
+      bonesinfo =  alloc(bonesinfo.length);
+      Sfi_cemetery(nhfp, bonesinfo, "cemetery-bonesinfo");
+       bonesaddr = bonesinfo;
+      bonesaddr = ( bonesaddr).next;
+    } while ( bonesaddr);
+  }
+  else { cemeteryaddr = 0; }
+  if (((nhfp.mode & CONVERTING) !== 0) || ((nhfp.mode & UNCONVERTING) !== 0)) {
+    let thisbones, nextbones;
+    nextbones = cemeteryaddr;
+    while ((thisbones = nextbones) !== 0) {
+      nextbones = thisbones.next;
+      (thisbones, 0);
+    }
+     cemeteryaddr = 0;
+  }
+}
+
+// Autotranslated from restore.c:1012
+export function rest_levl(nhfp, map) {
+  let c, r;
+  for (c = 0; c < COLNO; ++c) {
+    for (r = 0; r < ROWNO; ++r) {
+      Sfi_rm(nhfp, map.locations[c][r], "location-rm");
+    }
+  }
+}
+
+// Autotranslated from restore.c:1026
+export function trickery(reason) {
+  event_log("trick[%s]", reason ? reason : "");
+  pline("Strange, this map is not as I remember it.");
+  pline("Somebody is trying some trickery here...");
+  pline("This game is void.");
+  Strcpy(svk.killer.name, reason ? reason : "");
+  done(TRICKED);
+}
+
+// Autotranslated from restore.c:1339
+export function rest_bubbles(nhfp) {
+  let bbubbly;
+  bbubbly = 0;
+  Sfi_xint8(nhfp, bbubbly, "bubbles-bbubbly");
+  if (bbubbly) restore_waterlevel(nhfp);
+}
+
+// Autotranslated from restore.c:1480
+export function reset_oattached_mids(ghostly) {
+  let otmp, oldid, nid;
+  for (otmp = fobj; otmp; otmp = otmp.nobj) {
+    if (ghostly && has_omonst(otmp)) {
+      let mtmp = OMONST(otmp);
+      mtmp.m_id = 0;
+      mtmp.mpeaceful = mtmp.mtame = 0;
+    }
+    if (ghostly && has_omid(otmp)) {
+      oldid = OMID(otmp);
+      if (lookup_id_mapping(oldid, nid)) OMID(otmp) = nid;
+      else {
+        free_omid(otmp);
+      }
+    }
+  }
+}
+
+// Autotranslated from restore.c:129
+export function restlevchn(nhfp) {
+  let cnt = 0, tmplev, x;
+  svs.sp_levchn =  0;
+  Sfi_int(nhfp, cnt, "levchn-lev_count");
+  for (cnt > 0; cnt--; ) {
+    tmplev =  alloc(sizeof);
+    Sfi_s_level(nhfp, tmplev, "levchn-s_level");
+    if (!svs.sp_levchn) svs.sp_levchn = tmplev;
+    else {
+      for (x = svs.sp_levchn; x.next; x = x.next) {
+      }
+      x.next = tmplev;
+    }
+    tmplev.next =  0;
+  }
+}

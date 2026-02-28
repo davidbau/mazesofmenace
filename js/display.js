@@ -16,10 +16,10 @@ import {
 } from './config.js';
 
 import { def_monsyms, def_oc_syms, defsyms, trap_to_defsym } from './symbols.js';
-import { monDisplayName } from './mondata.js';
 import { monsterMapGlyph, objectMapGlyph } from './display_rng.js';
 import { tempGlyphToCell } from './temp_glyph.js';
 import { isObjectNameKnown, isObjectEncountered, discoveryTypeName } from './discovery.js';
+import { do_lookat, format_do_look_html } from './look.js';
 
 // Color constants (color.h)
 // C ref: include/color.h
@@ -605,8 +605,16 @@ export class Display {
                     const hallu = !!player?.hallucinating;
                     const glyph = monsterMapGlyph(mon, hallu);
                     this.setCell(col, row, glyph.ch, glyph.color);
-                    const classInfo = this._monsterClassDesc(mon.displayChar);
-                    this.cellInfo[row][col] = { name: monDisplayName(mon), desc: classInfo, color: mon.displayColor };
+                    const look = do_lookat({ map: gameMap, player }, { x, y });
+                    const styled = format_do_look_html(look);
+                    const classInfo = look.classDesc || this._monsterClassDesc(mon.displayChar);
+                    this.cellInfo[row][col] = {
+                        name: styled.nameText || look.firstmatch || 'monster',
+                        desc: styled.descText || classInfo || '',
+                        nameHtml: styled.nameHtml || '',
+                        descHtml: styled.descHtml || '',
+                        color: mon.displayColor,
+                    };
                     continue;
                 }
                 if (loc.mem_invis) {
@@ -900,18 +908,21 @@ export class Display {
         // Status line 2: Dungeon level, HP, Pw, AC, etc.
         // C ref: botl.c bot2str()
         const line2Parts = [];
+        const heroHp = Number.isFinite(player?.uhp) ? player.uhp : (player?.hp || 0);
+        const heroHpMax = Number.isFinite(player?.uhpmax) ? player.uhpmax : (player?.hpmax || 0);
+        const heroLevel = Number.isFinite(player?.ulevel) ? player.ulevel : (player?.level || 1);
         const levelLabel = player.inTutorial ? 'Tutorial' : 'Dlvl';
         line2Parts.push(`${levelLabel}:${player.dungeonLevel}`);
         line2Parts.push(`$:${player.gold}`);
-        line2Parts.push(`HP:${player.hp}(${player.hpmax})`);
+        line2Parts.push(`HP:${heroHp}(${heroHpMax})`);
         line2Parts.push(`Pw:${player.pw}(${player.pwmax})`);
         line2Parts.push(`AC:${player.ac}`);
 
         // Experience
         if (player.showExp) {
-            line2Parts.push(`Xp:${player.level}/${player.exp}`);
+            line2Parts.push(`Xp:${heroLevel}/${player.exp}`);
         } else {
-            line2Parts.push(`Xp:${player.level}`);
+            line2Parts.push(`Xp:${heroLevel}`);
         }
 
         // Turn counter (time option)
@@ -950,11 +961,11 @@ export class Display {
         // C parity: status-line HP text is not force-highlighted unless an
         // explicit hitpoint highlight option is enabled.
         if (this.flags.hitpointbar) {
-            const hpPct = player.hpmax > 0 ? player.hp / player.hpmax : 1;
+            const hpPct = heroHpMax > 0 ? heroHp / heroHpMax : 1;
             const hpColor = hpPct <= 0.15 ? CLR_RED
                 : hpPct <= 0.33 ? CLR_ORANGE
                     : CLR_GRAY;
-            const hpStr = `HP:${player.hp}(${player.hpmax})`;
+            const hpStr = `HP:${heroHp}(${heroHpMax})`;
             const hpIdx = line2.indexOf(hpStr);
             if (hpIdx >= 0) {
                 for (let i = 0; i < hpStr.length; i++) {
@@ -1277,8 +1288,10 @@ export class Display {
                     symbolEl.textContent = ch;
                     symbolEl.style.color = color;
                 }
-                if (nameEl) nameEl.textContent = info.name;
-                if (descEl) descEl.textContent = info.desc;
+                if (nameEl && info.nameHtml) nameEl.innerHTML = info.nameHtml;
+                else if (nameEl) nameEl.textContent = info.name;
+                if (descEl && info.descHtml) descEl.innerHTML = info.descHtml;
+                else if (descEl) descEl.textContent = info.desc;
                 if (statsEl) statsEl.textContent = info.stats || '';
                 panel.style.visibility = 'visible';
             } else {
@@ -1356,4 +1369,335 @@ export class Display {
                 line.highlight ? CLR_YELLOW : CLR_GRAY);
         }
     }
+}
+
+// Autotranslated from display.c:165
+export function tp_sensemon(mon) {
+  return _tp_sensemon(mon);
+}
+
+// Autotranslated from display.c:172
+export function sensemon(mon) {
+  return _sensemon(mon);
+}
+
+// Autotranslated from display.c:179
+export function mon_warning(mon) {
+  return _mon_warning(mon);
+}
+
+// Autotranslated from display.c:186
+export function mon_visible(mon) {
+  return _mon_visible(mon);
+}
+
+// Autotranslated from display.c:193
+export function see_with_infrared(mon) {
+  return _see_with_infrared(mon);
+}
+
+// Autotranslated from display.c:200
+export function canseemon(mon) {
+  return _canseemon(mon);
+}
+
+// Autotranslated from display.c:207
+export function knowninvisible(mon) {
+  return _knowninvisible(mon);
+}
+
+// Autotranslated from display.c:214
+export function is_safemon(mon) {
+  return _is_safemon(mon);
+}
+
+// Autotranslated from display.c:387
+export function unmap_invisible(x, y, map) {
+  if (isok(x,y) && glyph_is_invisible(map.locations[x][y].glyph)) {
+    unmap_object(x, y);
+    newsym(x, y);
+    return true;
+  }
+  return false;
+}
+
+// Autotranslated from display.c:481
+export function show_mon_or_warn(x, y, monglyph, map) {
+  let o;
+  if (glyph_is_invisible(map.locations[x][y].glyph)) {
+    unmap_object(x, y);
+    if (cansee(x, y) && (o = vobj_at(x, y)) !== 0) map_object(o, false);
+  }
+  show_glyph(x, y, monglyph);
+}
+
+// Autotranslated from display.c:633
+export function display_warning(mon, player) {
+  let x = mon.mx, y = mon.my, glyph;
+  if (mon_warning(mon)) {
+    let wl = (player?.Hallucination || player?.hallucinating || false) ? rn2_on_display_rng(WARNCOUNT - 1) + 1 : warning_of(mon);
+    glyph = warning_to_glyph(wl);
+  }
+  else if (MATCH_WARN_OF_MON(mon)) { glyph = mon_to_glyph(mon, rn2_on_display_rng); }
+  else {
+    impossible("display_warning did not match warning type?");
+    return;
+  }
+  show_mon_or_warn(x, y, glyph);
+}
+
+// Autotranslated from display.c:653
+export function warning_of(mon) {
+  let wl = 0, tmp = 0;
+  if (mon_warning(mon)) {
+    tmp = Math.trunc(mon.m_lev / 4);
+    wl = (tmp > WARNCOUNT - 1) ? WARNCOUNT - 1 : tmp;
+  }
+  return wl;
+}
+
+// Autotranslated from display.c:725
+export function feel_newsym(x, y, player) {
+  if ((player?.Blind || player?.blind || false)) feel_location(x, y);
+  else {
+    newsym(x, y);
+  }
+}
+
+// Autotranslated from display.c:1100
+export async function shieldeff(x, y, game) {
+  let i;
+  if (!game.flags.sparkle) return;
+  if (cansee(x, y)) {
+    for (i = 0; i < SHIELD_COUNT; i++) {
+      show_glyph(x, y, cmap_to_glyph(shield_static[i]));
+      flush_screen(1);
+      await nh_delay_output();
+    }
+    newsym(x, y);
+  }
+}
+
+// Autotranslated from display.c:1117
+export function tether_glyph(x, y, player) {
+  let tdx, tdy;
+  tdx = player.x - x;
+  tdy = player.y - y;
+  return zapdir_to_glyph(sgn(tdx),sgn(tdy), 2);
+}
+
+// Autotranslated from display.c:1322
+export async function swallowed(first, player) {
+  let lastx, lasty, swallower, left_ok, rght_ok;
+  if (first) { await cls(); bot(); }
+  else {
+    let x, y;
+    for (y = lasty - 1; y <= lasty + 1; y++) {
+      for (x = lastx - 1; x <= lastx + 1; x++) {
+        if (isok(x, y)) show_glyph(x, y, GLYPH_UNEXPLORED);
+      }
+    }
+  }
+  swallower = monsndx(player.ustuck.data);
+  left_ok = isok(player.x - 1, player.y);
+  rght_ok = isok(player.x + 1, player.y);
+  if (isok(player.x, player.y - 1)) {
+    if (left_ok) show_glyph(player.x - 1, player.y - 1, swallow_to_glyph(swallower, S_sw_tl));
+    show_glyph(player.x, player.y - 1, swallow_to_glyph(swallower, S_sw_tc));
+    if (rght_ok) show_glyph(player.x + 1, player.y - 1, swallow_to_glyph(swallower, S_sw_tr));
+  }
+  if (left_ok) show_glyph(player.x - 1, player.y, swallow_to_glyph(swallower, S_sw_ml));
+  display_self();
+  if (rght_ok) show_glyph(player.x + 1, player.y, swallow_to_glyph(swallower, S_sw_mr));
+  if (isok(player.x, player.y + 1)) {
+    if (left_ok) show_glyph(player.x - 1, player.y + 1, swallow_to_glyph(swallower, S_sw_bl));
+    show_glyph(player.x, player.y + 1, swallow_to_glyph(swallower, S_sw_bc));
+    if (rght_ok) show_glyph(player.x + 1, player.y + 1, swallow_to_glyph(swallower, S_sw_br));
+  }
+  lastx = player.x;
+  lasty = player.y;
+}
+
+// Autotranslated from display.c:1385
+export async function under_water(mode, map, player) {
+  let lastx, lasty, dela, x, y;
+  if (Is_waterlevel(map.uz) || player.uswallow) return;
+  if (mode === 1 || dela) { await cls(); dela = false; }
+  else if (mode === 2) { dela = true; return; }
+  else {
+    for (y = lasty - 1; y <= lasty + 1; y++) {
+      for (x = lastx - 1; x <= lastx + 1; x++) {
+        if (isok(x, y)) show_glyph(x, y, GLYPH_UNEXPLORED);
+      }
+    }
+  }
+  for (x = player.x - 1; x <= player.x + 1; x++) {
+    for (y = player.y - 1; y <= player.y + 1; y++) {
+      if (isok(x, y) && (is_pool_or_lava(x, y) || is_ice(x, y))) {
+        if ((player?.Blind || player?.blind || false) && !u_at(x, y)) show_glyph(x, y, GLYPH_UNEXPLORED);
+        else {
+          newsym(x, y);
+        }
+      }
+    }
+  }
+  lastx = player.x;
+  lasty = player.y;
+}
+
+// Autotranslated from display.c:1435
+export async function under_ground(mode, player) {
+  let dela;
+  if (player.uswallow) return;
+  if (mode === 1 || dela) { await cls(); dela = false; }
+  else if (mode === 2) { dela = true; return; }
+  else { newsym(player.x, player.y); }
+}
+
+// Autotranslated from display.c:1520
+export function mimic_light_blocking(mtmp) {
+  if (mtmp.minvis && is_lightblocker_mappear(mtmp)) {
+    if (See_invisible) block_point(mtmp.mx, mtmp.my);
+    else {
+      unblock_point(mtmp.mx, mtmp.my);
+    }
+  }
+}
+
+// Autotranslated from display.c:1536
+export function set_mimic_blocking() {
+  iter_mons(mimic_light_blocking);
+}
+
+// Autotranslated from display.c:1546
+export function see_objects() {
+  let obj;
+  for (obj = fobj; obj; obj = obj.nobj) {
+    if (vobj_at(obj.ox, obj.oy) === obj) newsym(obj.ox, obj.oy);
+  }
+  update_inventory();
+}
+
+// Autotranslated from display.c:1599
+export function see_traps() {
+  let trap, glyph;
+  for (trap = gf.ftrap; trap; trap = trap.ntrap) {
+    glyph = _glyph_at(trap.tx, trap.ty);
+    if (glyph_is_trap(glyph)) newsym(trap.tx, trap.ty);
+  }
+}
+
+// Autotranslated from display.c:1675
+export async function curs_on_u() {
+  await flush_screen(1);
+}
+
+// Autotranslated from display.c:1682
+export async function doredraw() {
+  await docrt();
+  return ECMD_OK;
+}
+
+// Autotranslated from display.c:1690
+export async function docrt() {
+  await docrt_flags(docrtRecalc);
+}
+
+// Autotranslated from display.c:1851
+export function newsym_force(x, y) {
+  newsym(x, y);
+  gg.gbuf[y][x].gnew = 1;
+  if (gg.gbuf_start[y] > x) gg.gbuf_start = x;
+  if (gg.gbuf_stop[y] < x) gg.gbuf_stop = x;
+}
+
+// Autotranslated from display.c:2425
+export function swallow_to_glyph(mnum, loc) {
+  let m_3 = what_mon(mnum, rn2_on_display_rng) << 3;
+  if (loc < S_sw_tl || S_sw_br < loc) {
+    impossible("swallow_to_glyph: bad swallow location");
+    loc = S_sw_br;
+  }
+  return (m_3 | (loc - S_sw_tl)) + GLYPH_SWALLOW_OFF;
+}
+
+// Autotranslated from display.c:2449
+export function zapdir_to_glyph(dx, dy, beam_type) {
+  if (beam_type >= NUM_ZAP) {
+    impossible("zapdir_to_glyph: illegal beam type");
+    beam_type = 0;
+  }
+  dx = (dx === dy) ? 2 : (dx && dy) ? 3 : dx ? 1 : 0;
+  return ( ((beam_type << 2) | dx)) + GLYPH_ZAP_OFF;
+}
+
+// Autotranslated from display.c:2466
+export function glyph_at(x, y) {
+  if (x < 0 || y < 0 || x >= COLNO || y >= ROWNO) return cmap_to_glyph(S_room);
+  return gg.gbuf[y][x].glyphinfo.glyph;
+}
+
+// Autotranslated from display.c:3118
+export function check_pos(x, y, which, map) {
+  let type;
+  if (!isok(x, y)) return which;
+  type = map.locations[x][y].typ;
+  if (IS_STWALL(type) || type === CORR || type === SCORR || IS_SDOOR(type)) return which;
+  return 0;
+}
+
+// Autotranslated from display.c:3196
+export function set_corn(x1, y1, x2, y2, x3, y3, x4, y4) {
+  let wmode, is_1, is_2, is_3, is_4;
+  is_1 = check_pos(x1, y1, 1);
+  is_2 = check_pos(x2, y2, 1);
+  is_3 = check_pos(x3, y3, 1);
+  is_4 = check_pos(x4, y4, 1);
+  if (is_4) { wmode = WM_C_INNER; }
+  else if (is_1 && is_2 && is_3) wmode = WM_C_OUTER;
+  else {
+    wmode = 0;
+  }
+  return wmode;
+}
+
+// Autotranslated from display.c:3228
+export function set_crosswall(x, y) {
+  let wmode, is_1, is_2, is_3, is_4;
+  is_1 = check_pos(x - 1, y - 1, 1);
+  is_2 = check_pos(x + 1, y - 1, 1);
+  is_3 = check_pos(x + 1, y + 1, 1);
+  is_4 = check_pos(x - 1, y + 1, 1);
+  wmode = is_1 + is_2 + is_3 + is_4;
+  if (wmode > 1) {
+    if (is_1 && is_3 && (is_2 + is_4 === 0)) { wmode = WM_X_TLBR; }
+    else if (is_2 && is_4 && (is_1 + is_3 === 0)) { wmode = WM_X_BLTR; }
+    else { wmode = 0; }
+  }
+  else if (is_1) wmode = WM_X_TL;
+  else if (is_2) wmode = WM_X_TR;
+  else if (is_3) wmode = WM_X_BR;
+  else if (is_4) wmode = WM_X_BL;
+  return wmode;
+}
+
+// Autotranslated from display.c:3318
+export function set_wall_state() {
+  let x, y;
+  for (x = 0; x < COLNO; x++) {
+    for (y = 0; y < ROWNO; y++) {
+      xy_set_wall_state(x, y);
+    }
+  }
+}
+
+// Autotranslated from display.c:3357
+export function set_seenv(lev, x0, y0, x, y) {
+  let dx = x - x0, dy = y0 - y;
+  lev.seenv |= seenv_matrix[sign(dy) + 1][sign(dx) + 1];
+}
+
+// Autotranslated from display.c:3785
+export function fn_cmap_to_glyph(cmap) {
+  return cmap_to_glyph(cmap);
 }

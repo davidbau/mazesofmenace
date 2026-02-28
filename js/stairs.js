@@ -53,65 +53,71 @@ export function stairway_add(map, x, y, up, isladder, dest) {
 // cf. stairs.c:39 — stairway_at(x, y): find stairway at grid position
 // Returns stairway node at (x, y), or null.
 // ============================================================================
-export function stairway_at(x, y, map) {
-    const up = _makeStairNode(map.upstair, true);
-    if (up && up.sx === x && up.sy === y) return up;
-    const dn = _makeStairNode(map.dnstair, false);
-    if (dn && dn.sx === x && dn.sy === y) return dn;
-    return null;
+// Autotranslated from stairs.c:39
+export function stairway_at(x, y) {
+  let tmp = gs.stairs;
+  while (tmp && !(tmp.sx === x && tmp.sy === y)) {
+    tmp = tmp.next;
+  }
+  return tmp;
 }
 
 // ============================================================================
 // cf. stairs.c:49 — stairway_find(fromdlev): find stairway whose tolev matches
 // Returns stairway whose tolev.dnum==fromdlev.dnum && tolev.dlevel==fromdlev.dlevel.
 // ============================================================================
-export function stairway_find(fromdlev, map) {
-    const up = _makeStairNode(map.upstair, true);
-    if (up && up.tolev.dnum === fromdlev.dnum && up.tolev.dlevel === fromdlev.dlevel) return up;
-    const dn = _makeStairNode(map.dnstair, false);
-    if (dn && dn.tolev.dnum === fromdlev.dnum && dn.tolev.dlevel === fromdlev.dlevel) return dn;
-    return null;
+// Autotranslated from stairs.c:49
+export function stairway_find(fromdlev) {
+  let tmp = gs.stairs;
+  while (tmp) {
+    if (tmp.tolev.dnum === fromdlev.dnum && tmp.tolev.dlevel === fromdlev.dlevel) {
+      break;
+    }
+    tmp = tmp.next;
+  }
+  return tmp;
 }
 
 // ============================================================================
 // cf. stairs.c:63 — stairway_find_from(fromdlev, isladder): find by dest + type
 // Like stairway_find() but also matches isladder flag.
 // ============================================================================
-export function stairway_find_from(fromdlev, isladder, map) {
-    const up = _makeStairNode(map.upstair, true);
-    if (up && up.tolev.dnum === fromdlev.dnum
-        && up.tolev.dlevel === fromdlev.dlevel
-        && up.isladder === !!isladder) return up;
-    const dn = _makeStairNode(map.dnstair, false);
-    if (dn && dn.tolev.dnum === fromdlev.dnum
-        && dn.tolev.dlevel === fromdlev.dlevel
-        && dn.isladder === !!isladder) return dn;
-    return null;
+// Autotranslated from stairs.c:63
+export function stairway_find_from(fromdlev, isladder) {
+  let tmp = gs.stairs;
+  while (tmp) {
+    if (tmp.tolev.dnum === fromdlev.dnum && tmp.tolev.dlevel === fromdlev.dlevel && tmp.isladder === isladder) {
+      break;
+    }
+    tmp = tmp.next;
+  }
+  return tmp;
 }
 
 // ============================================================================
 // cf. stairs.c:78 — stairway_find_dir(up): find first stairway going up or down
 // Returns first stairway with matching up flag.
 // ============================================================================
-export function stairway_find_dir(up, map) {
-    if (up) {
-        const s = _makeStairNode(map.upstair, true);
-        if (s) return s;
-    } else {
-        const s = _makeStairNode(map.dnstair, false);
-        if (s) return s;
-    }
-    return null;
+// Autotranslated from stairs.c:78
+export function stairway_find_dir(up) {
+  let tmp = gs.stairs;
+  while (tmp && !(tmp.up === up)) {
+    tmp = tmp.next;
+  }
+  return tmp;
 }
 
 // ============================================================================
 // cf. stairs.c:88 — stairway_find_type_dir(isladder, up): find by type+direction
 // Matches both isladder and up flags.
 // ============================================================================
-export function stairway_find_type_dir(isladder, up, map) {
-    const s = stairway_find_dir(up, map);
-    if (s && s.isladder === !!isladder) return s;
-    return null;
+// Autotranslated from stairs.c:88
+export function stairway_find_type_dir(isladder, up) {
+  let tmp = gs.stairs;
+  while (tmp && !(tmp.isladder === isladder && tmp.up === up)) {
+    tmp = tmp.next;
+  }
+  return tmp;
 }
 
 // ============================================================================
@@ -119,15 +125,14 @@ export function stairway_find_type_dir(isladder, up, map) {
 // Returns first stairway where tolev.dnum != u.uz.dnum AND stway.up != up.
 // In JS, player.dnum (or 0 if absent) represents u.uz.dnum.
 // ============================================================================
-export function stairway_find_special_dir(up, map, player) {
-    const playerDnum = (player && player.dnum) || 0;
-    // Check upstair (up=true)
-    const us = _makeStairNode(map.upstair, true);
-    if (us && us.tolev.dnum !== playerDnum && us.up !== !!up) return us;
-    // Check dnstair (up=false)
-    const ds = _makeStairNode(map.dnstair, false);
-    if (ds && ds.tolev.dnum !== playerDnum && ds.up !== !!up) return ds;
-    return null;
+// Autotranslated from stairs.c:98
+export function stairway_find_special_dir(up, map) {
+  let tmp = gs.stairs;
+  while (tmp) {
+    if (tmp.tolev.dnum !== map.uz.dnum && tmp.up !== up) return tmp;
+    tmp = tmp.next;
+  }
+  return tmp;
 }
 
 // ============================================================================
@@ -174,32 +179,36 @@ export function u_on_dnstairs(map, player) {
 // ============================================================================
 // cf. stairs.c:147 — On_stairs(x, y): is there any stairway at this position?
 // ============================================================================
-export function On_stairs(x, y, map) {
-    return stairway_at(x, y, map) !== null;
+// Autotranslated from stairs.c:147
+export function On_stairs(x, y) {
+  return (stairway_at(x, y) !== null);
 }
 
 // ============================================================================
 // cf. stairs.c:153 — On_ladder(x, y): is there a ladder (not stairs) at position?
 // ============================================================================
-export function On_ladder(x, y, map) {
-    const stway = stairway_at(x, y, map);
-    return !!(stway && stway.isladder);
+// Autotranslated from stairs.c:153
+export function On_ladder(x, y) {
+  let stway = stairway_at(x, y);
+  return (stway && stway.isladder);
 }
 
 // ============================================================================
 // cf. stairs.c:161 — On_stairs_up(x, y): is there an up stairway at position?
 // ============================================================================
-export function On_stairs_up(x, y, map) {
-    const stway = stairway_at(x, y, map);
-    return !!(stway && stway.up);
+// Autotranslated from stairs.c:161
+export function On_stairs_up(x, y) {
+  let stway = stairway_at(x, y);
+  return (stway && stway.up);
 }
 
 // ============================================================================
 // cf. stairs.c:169 — On_stairs_dn(x, y): is there a down stairway at position?
 // ============================================================================
-export function On_stairs_dn(x, y, map) {
-    const stway = stairway_at(x, y, map);
-    return !!(stway && !stway.up);
+// Autotranslated from stairs.c:169
+export function On_stairs_dn(x, y) {
+  let stway = stairway_at(x, y);
+  return (stway && !stway.up);
 }
 
 // ============================================================================
@@ -251,4 +260,15 @@ export function stairs_description(sway, stcase, player) {
     // Use a generic description.
     const branchName = sway.tolev.dname || "a branch";
     return `branch ${stairs} ${updown} to ${branchName}`;
+}
+
+// Autotranslated from stairs.c:26
+export function stairway_free_all() {
+  let tmp = gs.stairs;
+  while (tmp) {
+    let tmp2 = tmp.next;
+    (tmp, 0);
+    tmp = tmp2;
+  }
+  gs.stairs = null;
 }

@@ -134,3 +134,193 @@ export function freedynamicdata() {
     // C parity: clear any lingering tmp_at transient display state.
     tmp_at(DISP_FREEMEM, 0);
 }
+
+// Autotranslated from save.c:236
+export function save_gamelog(nhfp) {
+  let tmp = gg.gamelog, tmp2, slen;
+  while (tmp) {
+    tmp2 = tmp.next;
+    if (nhfp.mode & (COUNTING | WRITING)) {
+      slen = Strlen(tmp.text);
+      Sfo_int(nhfp, slen, "gamelog-length");
+      Sfo_char(nhfp, tmp.text, "gamelog-gamelog_text", slen);
+      Sfo_gamelog_line(nhfp, tmp, "gamelog-gamelog_line");
+    }
+    if (nhfp.mode & FREEING) { (tmp.text, 0); (tmp, 0); }
+    tmp = tmp2;
+  }
+  if (nhfp.mode & (COUNTING | WRITING)) { slen = -1; Sfo_int(nhfp, slen, "gamelog-length"); }
+  if (nhfp.mode & FREEING) gg.gamelog = null;
+}
+
+// Autotranslated from save.c:328
+export function tricked_fileremoved(nhfp, whynot) {
+  if (!nhfp) {
+    pline1(whynot);
+    pline("Probably someone removed it.");
+    Strcpy(svk.killer.name, whynot);
+    done(TRICKED);
+    return true;
+  }
+  return false;
+}
+
+// Autotranslated from save.c:559
+export function savelevl(nhfp, map) {
+  let x, y;
+  for (x = 0; x < COLNO; x++) {
+    for (y = 0; y < ROWNO; y++) {
+      Sfo_rm(nhfp, map.locations[x][y], "location-rm");
+    }
+  }
+  return;
+}
+
+// Autotranslated from save.c:573
+export function save_bubbles(nhfp, lev) {
+  let bbubbly;
+  bbubbly = 0;
+  if (lev === ledger_no( water_level) || lev === ledger_no( air_level)) bbubbly = lev;
+  if (update_file(nhfp)) Sfo_xint8(nhfp, bbubbly, "bubbles-bbubbly");
+  if (bbubbly) save_waterlevel(nhfp);
+}
+
+// Autotranslated from save.c:599
+export function savecemetery(nhfp, cemeteryaddr) {
+  let thisbones, nextbones, flag;
+  flag = cemeteryaddr ? 0 : -1;
+  if (update_file(nhfp)) { Sfo_int(nhfp, flag, "cemetery-cemetery_flag"); }
+  nextbones = cemeteryaddr;
+  while ((thisbones = nextbones) !== 0) {
+    nextbones = thisbones.next;
+    if (update_file(nhfp)) {
+      Sfo_cemetery(nhfp, thisbones, "cemetery-bonesinfo");
+    }
+    if (release_data(nhfp)) (thisbones, 0);
+  }
+  if (release_data(nhfp)) cemeteryaddr = 0;
+}
+
+// Autotranslated from save.c:708
+export function saveobj(nhfp, otmp) {
+  let buflen, zerobuf = 0;
+  buflen =  sizeof ;
+  Sfo_int(nhfp, buflen, "obj-obj_length");
+  Sfo_obj(nhfp, otmp, "obj");
+  if (otmp.oextra) {
+    buflen = ONAME(otmp) ?  strlen(ONAME(otmp)) + 1 : 0;
+    Sfo_int(nhfp, buflen, "obj-oname_length");
+    if (buflen > 0) {
+      Sfo_char(nhfp, ONAME(otmp), "obj-oname", buflen);
+    }
+    if (OMONST(otmp)) { savemon(nhfp, OMONST(otmp)); }
+    else { Sfo_int(nhfp, zerobuf, "obj-omonst_length"); }
+    buflen = OMAILCMD(otmp) ?  strlen(OMAILCMD(otmp)) + 1 : 0;
+    Sfo_int(nhfp, buflen, "obj-omailcmd_length");
+    if (buflen > 0) {
+      Sfo_char(nhfp, OMAILCMD(otmp), "obj-omailcmd", buflen);
+    }
+    Sfo_unsigned(nhfp, OMID(otmp), "obj-omid");
+  }
+}
+
+// Autotranslated from save.c:808
+export function savemon(nhfp, mtmp) {
+  let buflen;
+  mtmp.mtemplit = 0;
+  buflen =  sizeof ;
+  Sfo_int(nhfp, buflen, "monst-monst_length");
+  Sfo_monst(nhfp, mtmp, "monst");
+  if (mtmp.mextra) {
+    buflen = MGIVENNAME(mtmp) ?  strlen(MGIVENNAME(mtmp)) + 1 : 0;
+    Sfo_int(nhfp, buflen, "monst-mgivenname_length");
+    if (buflen > 0) {
+      Sfo_char(nhfp, MGIVENNAME(mtmp), "monst-mgivenname", buflen);
+    }
+    buflen = EGD(mtmp) ?  sizeof  : 0;
+    Sfo_int(nhfp, buflen, "monst-egd_length");
+    if (buflen > 0) { Sfo_egd(nhfp, EGD(mtmp), "monst-egd"); }
+    buflen = EPRI(mtmp) ?  sizeof  : 0;
+    Sfo_int(nhfp, buflen, "monst-epri_length");
+    if (buflen > 0) { Sfo_epri(nhfp, EPRI(mtmp), "monst-epri"); }
+    buflen = ESHK(mtmp) ?  sizeof  : 0;
+    Sfo_int(nhfp, buflen, "monst-eshk_length");
+    if (buflen > 0) { Sfo_eshk(nhfp, ESHK(mtmp), "monst-eshk"); }
+    buflen = EMIN(mtmp) ?  sizeof  : 0;
+    Sfo_int(nhfp, buflen, "monst-emin_length");
+    if (buflen > 0) { Sfo_emin(nhfp, EMIN(mtmp), "monst-emin"); }
+    buflen = EDOG(mtmp) ?  sizeof  : 0;
+    Sfo_int(nhfp, buflen, "monst-edog_length");
+    if (buflen > 0) { Sfo_edog(nhfp, EDOG(mtmp), "monst-edog"); }
+    buflen = EBONES(mtmp) ?  sizeof  : 0;
+    Sfo_int(nhfp, buflen, "monst-ebones_length");
+    if (buflen > 0) { Sfo_ebones(nhfp, EBONES(mtmp), "monst-ebones"); }
+    buflen =  MCORPSENM(mtmp);
+    Sfo_int(nhfp, buflen, "monst-mcorpsenm");
+  }
+}
+
+// Autotranslated from save.c:861
+export function savemonchn(nhfp, mtmp, game, player) {
+  let mtmp2, minusone = -1;
+  while (mtmp) {
+    mtmp2 = mtmp.nmon;
+    if (update_file(nhfp)) {
+      mtmp.mnum = monsndx(mtmp.data);
+      if (mtmp.ispriest) forget_temple_entry(mtmp);
+      savemon(nhfp, mtmp);
+    }
+    if (mtmp.minvent) saveobjchn(nhfp, mtmp.minvent);
+    if (release_data(nhfp)) {
+      if (mtmp === game.game.svc.context.polearm.hitmon) {
+        game.game.svc.context.polearm.m_id = mtmp.m_id;
+        game.game.svc.context.polearm.hitmon = null;
+      }
+      if (mtmp === player.ustuck) player.ustuck_mid = player.ustuck.m_id;
+      if (mtmp === player.usteed) player.usteed_mid = player.usteed.m_id;
+      mtmp.nmon = null;
+      dealloc_monst(mtmp);
+    }
+    mtmp = mtmp2;
+  }
+  if (update_file(nhfp)) { Sfo_int(nhfp, minusone, "monst-monst_length"); }
+}
+
+// Autotranslated from save.c:928
+export function savefruitchn(nhfp) {
+  let zerofruit, f2, f1;
+  f1 = gf.ffruit;
+  while (f1) {
+    f2 = f1.nextf;
+    if (f1.fid >= 0 && update_file(nhfp)) { Sfo_fruit(nhfp, f1, "fruit"); }
+    if (release_data(nhfp)) dealloc_fruit(f1);
+    f1 = f2;
+  }
+  if (update_file(nhfp)) { Sfo_fruit(nhfp, zerofruit, "fruit"); }
+  if (release_data(nhfp)) gf.ffruit = 0;
+}
+
+// Autotranslated from save.c:951
+export function savelevchn(nhfp) {
+  let tmplev, tmplev2, cnt = 0;
+  for (tmplev = svs.sp_levchn; tmplev; tmplev = tmplev.next) {
+    cnt++;
+  }
+  if (update_file(nhfp)) { Sfo_int(nhfp, cnt, "levchn-lev_count"); }
+  for (tmplev = svs.sp_levchn; tmplev; tmplev = tmplev2) {
+    tmplev2 = tmplev.next;
+    if (update_file(nhfp)) { Sfo_s_level(nhfp, tmplev, "levchn-s_level"); }
+    if (release_data(nhfp)) (tmplev, 0);
+  }
+  if (release_data(nhfp)) svs.sp_levchn = 0;
+}
+
+// Autotranslated from save.c:1037
+export function free_dungeons() {
+  let tnhfp = get_freeing_nhfile();
+  savelevchn(tnhfp);
+  save_dungeon(tnhfp, false, true);
+  free_luathemes(all_themes);
+  close_nhfile(tnhfp);
+  return;
+}

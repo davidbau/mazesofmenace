@@ -29,7 +29,7 @@ import {
 import { doname, mkcorpstat, mksobj } from './mkobj.js';
 import { couldsee, m_cansee } from './vision.js';
 import {
-    monDisplayName, is_prince, is_lord, is_mplayer, is_elf, is_orc, is_gnome,
+    x_monnam, is_prince, is_lord, is_mplayer, is_elf, is_orc, is_gnome,
     throws_rocks, is_unicorn,
 } from './mondata.js';
 import {
@@ -55,6 +55,7 @@ import {
     DISP_FLASH, DISP_TETHER, DISP_END, BACKTRACK,
 } from './animation.js';
 import { objectMapGlyph } from './display_rng.js';
+import { canonicalizeAttackFields } from './attack_fields.js';
 
 const hallublasts = [
     'bubbles', 'butterflies', 'dust specks', 'flowers', 'glitter',
@@ -213,7 +214,7 @@ export function m_useup(mon, obj) {
 
 // C ref: mthrowu.c monmulti() — compute multishot count.
 // Consumes rnd(multishot) when multishot > 0 and quan > 1.
-function monmulti(mon, otmp) {
+export function monmulti(mon, otmp) {
     let multishot = 1;
     const quan = Number.isInteger(otmp?.quan) ? otmp.quan : 1;
     const mwep = mon?.weapon || null;
@@ -279,8 +280,8 @@ export function thitu(tlev, dam, objp, name, player, display, game, mon = null) 
         const punct = exclam(Number.isFinite(dam) ? dam : 0);
         display.putstr_message(`You are hit by ${text}${punct}`);
     }
-    if (player.takeDamage) player.takeDamage(dam, mon ? monDisplayName(mon) : 'an object');
-    else player.hp -= dam;
+    if (player.takeDamage) player.takeDamage(dam, mon ? x_monnam(mon) : 'an object');
+    else player.uhp -= dam;
     exercise(player, A_STR, false);
     return 1;
 }
@@ -346,10 +347,10 @@ export function hits_bars(objp, x, y, barsx, barsy, always_hit = 0, whodidit = -
                 WAX_CANDLE, LENSES, TIN_WHISTLE, MAGIC_WHISTLE].includes(obj.otyp);
             break;
         case ROCK_CLASS:
-            hits = (obj.otyp !== STATUE || ((mons[obj.corpsenm || 0]?.size || 0) > MZ_TINY));
+            hits = (obj.otyp !== STATUE || ((mons[obj.corpsenm || 0]?.msize || 0) > MZ_TINY));
             break;
         case FOOD_CLASS:
-            if (obj.otyp === CORPSE) hits = ((mons[obj.corpsenm || 0]?.size || 0) > MZ_TINY);
+            if (obj.otyp === CORPSE) hits = ((mons[obj.corpsenm || 0]?.msize || 0) > MZ_TINY);
             else hits = (obj.otyp === MEAT_STICK || obj.otyp === ENORMOUS_MEATBALL);
             break;
         case SPBOOK_CLASS:
@@ -422,8 +423,8 @@ export async function monshoot(mon, otmp, mwep, map, player, display, game, mtar
     const tethered_weapon = !!(mwep && otmp?.otyp === AKLYS && mwep.otyp === AKLYS);
 
     if (display) {
-        const targetName = mtarg ? ` at the ${monDisplayName(mtarg)}` : '';
-        display.putstr_message(`The ${monDisplayName(mon)} throws ${thrownObjectName(otmp, player)}${targetName}!`);
+        const targetName = mtarg ? ` at the ${x_monnam(mtarg)}` : '';
+        display.putstr_message(`The ${x_monnam(mon)} throws ${thrownObjectName(otmp, player)}${targetName}!`);
     }
 
     const ddx = Math.sign(tx - mon.mx);
@@ -541,7 +542,7 @@ export async function m_throw_timed(
                         if (mon.weapon?.otyp === ELVEN_BOW) hitv += 1;
                         if (weapon.otyp === ELVEN_ARROW) dam += 1;
                     }
-                    const heroSize = player?.data?.size ?? MZ_HUMAN;
+                    const heroSize = player?.data?.msize ?? MZ_HUMAN;
                     if (heroSize >= MZ_LARGE) hitv += 1;
                     hitv += 8 + (weapon.spe || 0);
                     if (dam < 1) dam = 1;
@@ -622,7 +623,7 @@ export async function thrwmu(mon, map, player, display, game) {
         const range2 = dist2(mon.mx, mon.my, targetX, targetY);
         if (range2 <= 5 && couldsee(map, player, mon.mx, mon.my)) {
             if (display) {
-                display.putstr_message(`The ${monDisplayName(mon)} thrusts ${thrownObjectName(otmp, player)}.`);
+                display.putstr_message(`The ${x_monnam(mon)} thrusts ${thrownObjectName(otmp, player)}.`);
             }
             const od = objectData[otmp.otyp] || {};
             let dam = (od.sdam || 0) > 0 ? rnd(od.sdam || 0) : 1;
@@ -678,7 +679,7 @@ export async function thrwmm(mtmp, mtarg, map, player, display, game) {
 export async function spitmm(mtmp, mattk, mtarg, map, player, display, game) {
     if (!mtmp || !mattk || !mtarg) return 0;
     if (mtmp.mcan) {
-        if (display) display.putstr_message(`A dry rattle comes from the ${monDisplayName(mtmp)}'s throat.`);
+        if (display) display.putstr_message(`A dry rattle comes from the ${x_monnam(mtmp)}'s throat.`);
         return 0;
     }
     if (!m_lined_up(mtarg, mtmp, map, player)) return 0;
@@ -692,7 +693,7 @@ export async function spitmm(mtmp, mattk, mtarg, map, player, display, game) {
     const denom = Math.max(1, BOLT_LIM - distmin(mtmp.mx, mtmp.my, tx, ty));
     if (rn2(denom)) return 0;
     if (display) {
-        display.putstr_message(`The ${monDisplayName(mtmp)} spits venom!`);
+        display.putstr_message(`The ${x_monnam(mtmp)} spits venom!`);
     }
     return (await monshoot(mtmp, otmp, null, map, player, display, game, mtarg)) ? 1 : 0;
 }
@@ -714,9 +715,9 @@ export function ucatchgem(gem, mon, player, map, display) {
     if (display) {
         display.putstr_message(`You catch the ${name}.`);
         if (isGlass) {
-            display.putstr_message(`You are not interested in ${monDisplayName(mon)}'s junk.`);
+            display.putstr_message(`You are not interested in ${x_monnam(mon)}'s junk.`);
         } else {
-            display.putstr_message(`You accept ${monDisplayName(mon)}'s gift.`);
+            display.putstr_message(`You accept ${x_monnam(mon)}'s gift.`);
         }
     }
     if (isGlass) {
@@ -769,17 +770,18 @@ function breath_zap_type(adtyp) {
 // C ref: mthrowu.c breamm().
 export async function breamm(mtmp, mattk, mtarg, map, player, display, game) {
     if (!m_lined_up(mtarg, mtmp, map, player)) return 0;
+    canonicalizeAttackFields(mattk);
     if (mtmp.mcan) {
-        if (display) display.putstr_message(`The ${monDisplayName(mtmp)} coughs.`);
+        if (display) display.putstr_message(`The ${x_monnam(mtmp)} coughs.`);
         return 0;
     }
     if (mtmp.mspec_used) return 0;
     if (rn2(3)) return 0;
-    const adtyp = mattk?.adtyp ?? mattk?.damage ?? AD_FIRE;
+    const adtyp = mattk?.adtyp ?? AD_FIRE;
     if (display) {
-        display.putstr_message(`The ${monDisplayName(mtmp)} breathes ${breathwep_name(adtyp, !!player?.hallucinating)}!`);
+        display.putstr_message(`The ${x_monnam(mtmp)} breathes ${breathwep_name(adtyp, !!player?.hallucinating)}!`);
     }
-    const nd = Math.max(1, mattk?.dice || mattk?.damn || 6);
+    const nd = Math.max(1, mattk?.damn || 6);
     const dx = Math.sign((mtarg?.x ?? mtarg?.mx ?? 0) - (mtmp.mx ?? 0));
     const dy = Math.sign((mtarg?.y ?? mtarg?.my ?? 0) - (mtmp.my ?? 0));
     if (map && (dx !== 0 || dy !== 0)) {
@@ -821,7 +823,7 @@ export function maybeMonsterWieldBeforeAttack(mon, player, display, fov, nearby 
             const visible = !fov?.canSee || (fov.canSee(mon.mx, mon.my)
                 && !player?.blind && !mon.minvis);
             if (display && visible) {
-                display.putstr_message(`The ${monDisplayName(mon)} wields ${thrownObjectName(mon.weapon, player)}!`);
+                display.putstr_message(`The ${x_monnam(mon)} wields ${thrownObjectName(mon.weapon, player)}!`);
             }
         }
         return true;

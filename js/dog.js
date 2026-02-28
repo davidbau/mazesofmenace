@@ -74,13 +74,13 @@ function monPtr(mon) {
 // ========================================================================
 
 function mon_vegan(ptr) {
-    return ptr.symbol === S_BLOB || ptr.symbol === S_JELLY
-        || ptr.symbol === S_FUNGUS || ptr.symbol === S_VORTEX
-        || ptr.symbol === S_LIGHT
-        || (ptr.symbol === S_ELEMENTAL && ptr !== mons[PM_STALKER])
-        || (ptr.symbol === S_GOLEM && ptr !== mons[PM_FLESH_GOLEM]
+    return ptr.mlet === S_BLOB || ptr.mlet === S_JELLY
+        || ptr.mlet === S_FUNGUS || ptr.mlet === S_VORTEX
+        || ptr.mlet === S_LIGHT
+        || (ptr.mlet === S_ELEMENTAL && ptr !== mons[PM_STALKER])
+        || (ptr.mlet === S_GOLEM && ptr !== mons[PM_FLESH_GOLEM]
             && ptr !== mons[PM_LEATHER_GOLEM])
-        || ptr.symbol === S_GHOST;
+        || ptr.mlet === S_GHOST;
 }
 
 function flesh_petrifies(pm) {
@@ -190,7 +190,7 @@ export function dogfood(mon, obj, moves) {
             const corpseAge = peek_at_iced_corpse_age(obj);
             if ((corpseAge + 50 <= (moves || 0)
                  && fx !== PM_LIZARD && fx !== PM_LICHEN
-                 && mptr.symbol !== S_FUNGUS)
+                 && mptr.mlet !== S_FUNGUS)
                 || (fptr && acidic(fptr) && !resists_acid(mon))
                 || (fptr && poisonous(fptr) && !resists_poison(mon)))
                 return POISON;
@@ -199,8 +199,8 @@ export function dogfood(mon, obj, moves) {
             else if (fptr && mon_vegan(fptr))
                 return herbi ? CADAVER : MANFOOD;
             else if (humanoid(mptr) && fptr && same_race(mptr, fptr)
-                     && !is_undead(mptr) && fptr.symbol !== S_KOBOLD
-                     && fptr.symbol !== S_ORC && fptr.symbol !== S_OGRE)
+                     && !is_undead(mptr) && fptr.mlet !== S_KOBOLD
+                     && fptr.mlet !== S_ORC && fptr.mlet !== S_OGRE)
                 return (starving && carni && !is_elf(mptr)) ? ACCFOOD : TABU;
             else
                 return carni ? CADAVER : MANFOOD;
@@ -224,7 +224,7 @@ export function dogfood(mon, obj, moves) {
             return (herbi || mblind) ? DOGFOOD : starving ? ACCFOOD : MANFOOD;
 
         case BANANA:
-            return (mptr.symbol === S_YETI && herbi) ? DOGFOOD
+            return (mptr.mlet === S_YETI && herbi) ? DOGFOOD
                 : (herbi || starving) ? ACCFOOD
                 : MANFOOD;
 
@@ -548,4 +548,309 @@ export function mon_arrive(oldMap, newMap, player, opts = {}) {
     }
 
     return migratedCount > 0;
+}
+
+// Autotranslated from dog.c:34
+export function free_edog(mtmp) {
+  if (mtmp.mextra && EDOG(mtmp)) { free( EDOG(mtmp)); EDOG(mtmp) =  0; }
+  mtmp.mtame = 0;
+}
+
+// Autotranslated from dog.c:103
+export function pick_familiar_pm(otmp, quietly, game) {
+  let pm =  0;
+  if (otmp) {
+    let mndx = otmp.corpsenm;
+    assert(ismnum(mndx));
+    pm = mons;
+    if ((game.mvitals[mndx].mvflags & G_EXTINCT) && mbirth_limit(mndx) !== MAXMONNO) { if (!quietly) pline("... into a pile of dust."); return  0; }
+  }
+  else if (!rn2(3)) { pm = mons; }
+  else {
+    let skill = spell_skilltype(SPE_CREATE_FAMILIAR), max = 3 * P_SKILL(skill);
+    pm = rndmonst_adj(0, max);
+    if (!pm && !quietly) There("seems to be nothing available for a familiar.");
+  }
+  return pm;
+}
+
+// Autotranslated from dog.c:137
+export function make_familiar(otmp, x, y, quietly) {
+  let pm, mtmp = 0, chance, trycnt = 100, reallytame = true;
+  do {
+    let mmflags, cgend;
+    if (!(pm = pick_familiar_pm(otmp, quietly))) {
+      break;
+    }
+    mmflags = MM_EDOG | MM_IGNOREWATER | NO_MINVENT | MM_NOMSG;
+    cgend = otmp ? (otmp.spe & CORPSTAT_GENDER) : 0;
+    mmflags |= ((cgend === CORPSTAT_FEMALE) ? MM_FEMALE : (cgend === CORPSTAT_MALE) ? MM_MALE : 0);
+    mtmp = makemon(pm, x, y, mmflags);
+    if (otmp) {
+      if (!mtmp) {
+        if (!quietly) pline_The( "figurine writhes and then shatters into pieces!");
+        break;
+      }
+      else if (mtmp.isminion) { mtmp.isminion = 0; free_emin(mtmp); }
+    }
+  } while (!mtmp && --trycnt > 0);
+  if (!mtmp) return  0;
+  if (is_pool(mtmp.mx, mtmp.my) && minliquid(mtmp)) return  0;
+  if (otmp) {
+    chance = rn2(10);
+    if (chance > 2) chance = otmp.blessed ? 0 : !otmp.cursed ? 1 : 2;
+    if (chance > 0) {
+      reallytame = false;
+      if (chance === 2) {
+        if (!quietly) You("get a bad feeling about this.");
+        mtmp.mpeaceful = 0;
+        set_malign(mtmp);
+      }
+    }
+    if (has_oname(otmp)) mtmp = christen_monst(mtmp, ONAME(otmp));
+  }
+  if (reallytame) initedog(mtmp, true);
+  mtmp.msleeping = 0;
+  set_malign(mtmp);
+  newsym(mtmp.mx, mtmp.my);
+  if (mtmp.mtame && attacktype(mtmp.data, AT_WEAP)) { mtmp.weapon_check = NEED_HTH_WEAPON; mon_wield_item(mtmp); }
+  return mtmp;
+}
+
+// Autotranslated from dog.c:286
+export function set_mon_lastmove(mtmp, game) {
+  mtmp.mlstmv = (Number(game?.moves) || 0);
+}
+
+// Autotranslated from dog.c:294
+export function update_mlstmv() {
+  iter_mons(set_mon_lastmove);
+}
+
+// Autotranslated from dog.c:622
+export function mon_catchup_elapsed_time(mtmp, nmv, game) {
+  let imv = 0;
+  if (nmv < 0) { throw new Error('catchup from future time?'); return; }
+  else if (nmv === 0) { impossible("catchup from now?"); }
+  else if (nmv >= LARGEST_INT) imv = LARGEST_INT - 1;
+  else {
+    imv =  nmv;
+  }
+  if (mtmp.mblinded) {
+    if (imv >=  mtmp.mblinded) mtmp.mblinded = 1;
+    else {
+      mtmp.mblinded -= imv;
+    }
+  }
+  if (mtmp.mfrozen) {
+    if (imv >=  mtmp.mfrozen) mtmp.mfrozen = 1;
+    else {
+      mtmp.mfrozen -= imv;
+    }
+  }
+  if (mtmp.mfleetim) {
+    if (imv >=  mtmp.mfleetim) mtmp.mfleetim = 1;
+    else {
+      mtmp.mfleetim -= imv;
+    }
+  }
+  if (mtmp.mtrapped && rn2(imv + 1) > 40 / 2) mtmp.mtrapped = 0;
+  if (mtmp.mconf && rn2(imv + 1) > 50 / 2) mtmp.mconf = 0;
+  if (mtmp.mstun && rn2(imv + 1) > 10 / 2) mtmp.mstun = 0;
+  if (mtmp.meating) {
+    if (imv > mtmp.meating) finish_meating(mtmp);
+    else {
+      mtmp.meating -= imv;
+    }
+  }
+  if (imv > mtmp.mspec_used) mtmp.mspec_used = 0;
+  else {
+    mtmp.mspec_used -= imv;
+  }
+  if (mtmp.mtame) {
+    let wilder = (imv + 75) / 150;
+    if (mtmp.mtame > wilder) {
+      mtmp.mtame -= wilder;
+    }
+    else if (mtmp.mtame > rn2(wilder)) mtmp.mtame = 0;
+    else {
+      mtmp.mtame = mtmp.mpeaceful = 0;
+    }
+  }
+  if (mtmp.mtame && !mtmp.isminion && (carnivorous(mtmp.data) || herbivorous(mtmp.data))) {
+    let edog = EDOG(mtmp);
+    if (((Number(game?.moves) || 0) > edog.hungrytime + 500 && mtmp.mhp < 3) || ((Number(game?.moves) || 0) > edog.hungrytime + 750)) mtmp.mtame = mtmp.mpeaceful = 0;
+  }
+  if (!mtmp.mtame && mtmp.mleashed) { impossible("catching up for leashed monster?"); m_unleash(mtmp, false); }
+  if (!regenerates(mtmp.data)) {
+    imv /= 20;
+  }
+  healmon(mtmp, imv, 0);
+  set_mon_lastmove(mtmp);
+}
+
+// Autotranslated from dog.c:724
+export function mon_leave(mtmp) {
+  let obj, num_segs = 0;
+  for (obj = mtmp.minvent; obj; obj = obj.nobj) {
+    if (Has_contents(obj)) picked_container(obj);
+    obj.no_charge = 0;
+  }
+  if (mtmp.isshk) set_residency(mtmp, true);
+  if (mtmp.wormno) {
+    let cnt = count_wsegs(mtmp), mx = mtmp.mx, my = mtmp.my;
+    num_segs = Math.min(cnt, MAX_NUM_WORMS - 1);
+    wormgone(mtmp);
+    if (mx) place_monster(mtmp, mx, my);
+  }
+  return num_segs;
+}
+
+// Autotranslated from dog.c:784
+export function keepdogs(pets_only, game, map, player) {
+  let mtmp, mtmp2;
+  for (mtmp = (map?.fmon || null); mtmp; mtmp = mtmp2) {
+    mtmp2 = mtmp.nmon;
+    if (DEADMONSTER(mtmp)) {
+      continue;
+    }
+    if (pets_only) {
+      if (!mtmp.mtame) {
+        continue;
+      }
+      mtmp.mtrapped = 0;
+      finish_meating(mtmp);
+      mtmp.msleeping = 0;
+      mtmp.mfrozen = 0;
+      mtmp.mcanmove = 1;
+    }
+    if (((monnear(mtmp, player.x, player.y) && levl_follower(mtmp))   || (player.uhave.amulet && mtmp.iswiz)) && (!helpless(mtmp)   || (mtmp === player.usteed))   && !(mtmp.mstrategy & STRAT_WAITFORU)) {
+      let num_segs, stay_behind = false;
+      if (mtmp.mtrapped) {
+        mintrap(mtmp, NO_TRAP_FLAGS);
+      }
+      if (mtmp === player.usteed) {
+        mtmp.mtrapped = 0;
+        mtmp.meating = 0;
+        mdrop_special_objs(mtmp);
+      }
+      else if (mtmp.meating || mtmp.mtrapped) {
+        if (canseemon(mtmp)) pline_mon(mtmp, "%s is still %s.", Monnam(mtmp), mtmp.meating ? "eating" : "trapped");
+        stay_behind = true;
+      }
+      else if (mon_has_amulet(mtmp)) {
+        if (canseemon(mtmp)) pline("%s seems very disoriented for a moment.", Monnam(mtmp));
+        stay_behind = true;
+      }
+      if (stay_behind) {
+        if (mtmp.mleashed) {
+          pline("%s leash suddenly comes loose.", humanoid(mtmp.data) ? (mtmp.female ? "Her" : "His") : "Its");
+          m_unleash(mtmp, false);
+        }
+        if (mtmp === player.usteed) { impossible("steed left behind?"); dismount_steed(DISMOUNT_GENERIC); }
+        continue;
+      }
+      num_segs = mon_leave(mtmp);
+      relmon(mtmp, game.mydogs);
+      mtmp.mx = mtmp.my = 0;
+      mtmp.wormno = num_segs;
+      mtmp.mlstmv = (Number(game?.moves) || 0);
+    }
+    else if (keep_mon_accessible(mtmp)) {
+      migrate_to_level(mtmp, ledger_no(map.uz), MIGR_EXACT_XY, null);
+    }
+    else if (mtmp.mleashed) {
+      pline("%s leash goes slack.", s_suffix(Monnam(mtmp)));
+      m_unleash(mtmp, false);
+    }
+  }
+}
+
+// Autotranslated from dog.c:882
+export function migrate_to_level(mtmp, tolev, xyloc, cc, game, map) {
+  let new_lev, xyflags, mx = mtmp.mx, my = mtmp.my, num_segs;
+  if (mtmp.mleashed) { mtmp.mtame--; m_unleash(mtmp, true); }
+  num_segs = mon_leave(mtmp);
+  relmon(mtmp, game.migrating_mons);
+  mtmp.mstate |= MON_MIGRATING;
+  new_lev.dnum = ledger_to_dnum( tolev);
+  new_lev.dlevel = ledger_to_dlev( tolev);
+  xyflags = (depth( new_lev) < depth(map.uz));
+  if (In_W_tower(mx, my, map.uz)) {
+    xyflags |= 2;
+  }
+  mtmp.wormno = num_segs;
+  mtmp.mlstmv = (Number(game?.moves) || 0);
+  mtmp.mtrack[2].x = map.uz.dnum;
+  mtmp.mtrack[2].y = map.uz.dlevel;
+  mtmp.mtrack[1].x = cc ? cc.x : mx;
+  mtmp.mtrack[1].y = cc ? cc.y : my;
+  mtmp.mtrack[0].x = xyloc;
+  mtmp.mtrack[0].y = xyflags;
+  mtmp.mux = new_lev.dnum;
+  mtmp.muy = new_lev.dlevel;
+  mtmp.mx = mtmp.my = 0;
+  if (emits_light(mtmp.data)) vision_recalc(0);
+}
+
+// Autotranslated from dog.c:1357
+export function abuse_dog(mtmp) {
+  if (!mtmp.mtame) return;
+  if (Aggravate_monster || Conflict) {
+    mtmp.mtame /= 2;
+  }
+  else {
+    mtmp.mtame--;
+  }
+  if (mtmp.mtame && !mtmp.isminion) EDOG(mtmp).abuse++;
+  if (!mtmp.mtame && mtmp.mleashed) m_unleash(mtmp, true);
+  if (mtmp.mx !== 0) {
+    if (mtmp.mtame && rn2(mtmp.mtame)) yelp(mtmp);
+    else {
+      growl(mtmp);
+    }
+    if (!mtmp.mtame) {
+      newsym(mtmp.mx, mtmp.my);
+      if (mtmp.wormno) { redraw_worm(mtmp); }
+    }
+  }
+}
+
+// Autotranslated from dog.c:303
+export function losedogs(game, map) {
+  let mtmp, mprev, dismissKops = 0, xyloc;
+  failed_arrivals = 0;
+  for (mtmp = game.migrating_mons; mtmp; mtmp = mtmp.nmon) {
+    if (mtmp.mux !== map.uz.dnum || mtmp.muy !== map.uz.dlevel) {
+      continue;
+    }
+    if (mtmp.isshk) {
+      if (ESHK(mtmp).dismiss_kops) { if (dismissKops === 0) dismissKops = 1; ESHK(mtmp).dismiss_kops = false; }
+      else if (!mtmp.mpeaceful) { dismissKops = -1; }
+    }
+  }
+  for (mtmp = game.mydogs; mtmp && dismissKops >= 0; mtmp = mtmp.nmon) {
+    if (mtmp.isshk) { if (!mtmp.mpeaceful) dismissKops = -1; }
+  }
+  if (dismissKops > 0) make_happy_shoppers(true);
+  for (mprev = game.migrating_mons; (mtmp = mprev) !== 0; ) {
+    xyloc = mtmp.mtrack[0].x;
+    if (mtmp.mux === map.uz.dnum && mtmp.muy === map.uz.dlevel && xyloc === MIGR_EXACT_XY) { mprev = mtmp.nmon; mon_arrive(mtmp, Before_you); }
+    else { mprev = mtmp.nmon; }
+  }
+  while ((mtmp = game.mydogs) !== 0) {
+    game.mydogs = mtmp.nmon;
+    mon_arrive(mtmp, With_you);
+  }
+  for (mprev = game.migrating_mons; (mtmp = mprev) !== 0; ) {
+    xyloc = mtmp.mtrack[0].x;
+    if (mtmp.mux === map.uz.dnum && mtmp.muy === map.uz.dlevel && xyloc !== MIGR_EXACT_XY) { mprev = mtmp.nmon; mon_arrive(mtmp, After_you); }
+    else { mprev = mtmp.nmon; }
+  }
+  while ((mtmp = failed_arrivals) !== 0) {
+    failed_arrivals = mtmp.nmon;
+    mtmp.nmon = fmon;
+    fmon = mtmp;
+    m_into_limbo(mtmp);
+  }
 }

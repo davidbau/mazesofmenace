@@ -48,7 +48,7 @@ export function newpw(player) {
     const raceEnadv = race.enadv || {infix:0, inrnd:0, lofix:0, lornd:0, hifix:0, hirnd:0};
     let en = 0;
 
-    if (player.level === 0) {
+    if (player.ulevel === 0) {
         // Initialization
         en = roleEnadv.infix + raceEnadv.infix;
         if (roleEnadv.inrnd > 0)
@@ -59,7 +59,7 @@ export function newpw(player) {
         // Level-up
         const enrndWis = Math.floor((player.attributes?.[A_WIS] || 10) / 2);
         let enrnd, enfix;
-        if (player.level < (role.xlev || 14)) {
+        if (player.ulevel < (role.xlev || 14)) {
             enrnd = enrndWis + roleEnadv.lornd + raceEnadv.lornd;
             enfix = roleEnadv.lofix + raceEnadv.lofix;
         } else {
@@ -83,7 +83,7 @@ export function newhp(player) {
     const raceHpadv = race.hpadv || {infix:2, inrnd:0, lofix:0, lornd:2, hifix:1, hirnd:0};
     let hp;
 
-    if (player.level === 0) {
+    if (player.ulevel === 0) {
         // Initialization — no Con adjustment
         hp = roleHpadv.infix + raceHpadv.infix;
         if (roleHpadv.inrnd > 0)
@@ -92,7 +92,7 @@ export function newhp(player) {
             hp += rnd(raceHpadv.inrnd);
     } else {
         // Level-up
-        if (player.level < (role.xlev || 14)) {
+        if (player.ulevel < (role.xlev || 14)) {
             hp = roleHpadv.lofix + raceHpadv.lofix;
             if (roleHpadv.lornd > 0)
                 hp += rnd(roleHpadv.lornd);
@@ -125,15 +125,15 @@ export function newhp(player) {
 // Partial: drains level and HP but does not implement adjabil/uhpinc/ueninc.
 // RNG: consumes rnd(10) for HP loss, rn2(5) for PW loss (matching C's newhp/newpw calls).
 export function losexp(player, display, drainer) {
-    if (player.level <= 1) {
+    if (player.ulevel <= 1) {
         // Can't lose a level below 1; C would kill the hero
         return;
     }
     // cf. exper.c:230 — lose HP: normally role-dependent via uhpinc array;
     // simplified: rnd(10) as placeholder (matches C's newhp typical range).
     const hpLoss = rnd(10);
-    player.hpmax = Math.max(1, player.hpmax - hpLoss);
-    player.hp = Math.min(player.hp, player.hpmax);
+    player.uhpmax = Math.max(1, player.uhpmax - hpLoss);
+    player.uhp = Math.min(player.uhp, player.uhpmax);
 
     // cf. exper.c:250 — lose PW: normally role-dependent via ueninc array;
     // simplified: rn2(5) placeholder (matches C's newpw typical range).
@@ -141,18 +141,17 @@ export function losexp(player, display, drainer) {
     player.pwmax = Math.max(0, player.pwmax - pwLoss);
     player.pw = Math.min(player.pw, player.pwmax);
 
-    player.level--;
-    player.exp = newuexp(player.level);
+    player.ulevel--;
+    player.exp = newuexp(player.ulevel);
     if (display) {
         display.putstr_message(`You feel your life force draining away.`);
     }
 }
 
 // cf. exper.c:299 — newexplevel(): check if player should gain a level
-export function newexplevel(player, display) {
-    if (player.level < MAXULEV && player.exp >= newuexp(player.level)) {
-        pluslvl(player, display, true);
-    }
+// Autotranslated from exper.c:299
+export function newexplevel(player) {
+  if (player.ulevel < MAXULEV &player.uexp >= newuexp(player.ulevel)) pluslvl(true);
 }
 
 // cf. exper.c:306 — pluslvl(): gain an experience level
@@ -163,31 +162,106 @@ export function pluslvl(player, display, incr) {
 
     // cf. exper.c:324 newhp() — role-dependent HP gain
     const hpGain = newhp(player);
-    player.hpmax += hpGain;
-    player.hp += hpGain;
+    player.uhpmax += hpGain;
+    player.uhp += hpGain;
 
     // cf. exper.c:330 newpw() — role-dependent PW gain
     const pwGain = newpw(player);
     player.pwmax += pwGain;
     player.pw += pwGain;
 
-    if (player.level < MAXULEV) {
+    if (player.ulevel < MAXULEV) {
         if (incr) {
-            const tmp = newuexp(player.level + 1);
+            const tmp = newuexp(player.ulevel + 1);
             if (player.exp >= tmp) {
                 player.exp = tmp - 1;
             }
         } else {
-            player.exp = newuexp(player.level);
+            player.exp = newuexp(player.ulevel);
         }
-        player.level++;
-        const back = (player.ulevelmax != null && player.ulevelmax >= player.level) ? 'back ' : '';
-        display.putstr_message(`Welcome ${back}to experience level ${player.level}.`);
-        if (player.ulevelmax == null || player.ulevelmax < player.level) {
-            player.ulevelmax = player.level;
+        player.ulevel++;
+        const back = (player.ulevelmax != null && player.ulevelmax >= player.ulevel) ? 'back ' : '';
+        display.putstr_message(`Welcome ${back}to experience level ${player.ulevel}.`);
+        if (player.ulevelmax == null || player.ulevelmax < player.ulevel) {
+            player.ulevelmax = player.ulevel;
         }
     }
 }
 
 // cf. exper.c:377 — rndexp(): random XP for potions/polyself
 // TODO: exper.c:377 — rndexp(gaining): needs LARGEST_INT handling, rn2 with large diff
+
+// Autotranslated from exper.c:84
+export function experience(mtmp, nk) {
+  let ptr = mtmp.data, i, tmp, tmp2;
+  tmp = 1 + mtmp.m_lev * mtmp.m_lev;
+  if ((i = find_mac(mtmp)) < 3) {
+    tmp += (7 - i) * ((i < 0) ? 2 : 1);
+  }
+  if (ptr.mmove > NORMAL_SPEED) {
+    tmp += (ptr.mmove > (3 * NORMAL_SPEED / 2)) ? 5 : 3;
+  }
+  for (i = 0; i < NATTK; i++) {
+    tmp2 = ptr.mattk[i].aatyp;
+    if (tmp2 > AT_BUTT) {
+      if (tmp2 === AT_WEAP) {
+        tmp += 5;
+      }
+      else if (tmp2 === AT_MAGC) {
+        tmp += 10;
+      }
+      else {
+        tmp += 3;
+      }
+    }
+  }
+  for (i = 0; i < NATTK; i++) {
+    tmp2 = ptr.mattk[i].adtyp;
+    if (tmp2 > AD_PHYS && tmp2 < AD_BLND) {
+      tmp += 2 * mtmp.m_lev;
+    }
+    else if ((tmp2 === AD_DRLI) || (tmp2 === AD_STON) || (tmp2 === AD_SLIM)) {
+      tmp += 50;
+    }
+    else if (tmp2 !== AD_PHYS) {
+      tmp += mtmp.m_lev;
+    }
+    if (Math.trunc(ptr.mattk[i].damd * ptr.mattk[i].damn) > 23) {
+      tmp += mtmp.m_lev;
+    }
+    if (tmp2 === AD_WRAP && ptr.mlet === S_EEL && !Amphibious) {
+      tmp += 1000;
+    }
+  }
+  if (extra_nasty(ptr)) {
+    tmp += (7 * mtmp.m_lev);
+  }
+  if (mtmp.m_lev > 8) {
+    tmp += 50;
+  }
+  if (mtmp.data === mons) tmp = 1;
+  if (mtmp.mrevived || mtmp.mcloned) {
+    for (i = 0, tmp2 = 20; nk > tmp2 && tmp > 1; ++i) {
+      tmp = (tmp + 1) / 2;
+      nk -= tmp2;
+      if (i & 1) {
+        tmp2 += 20;
+      }
+    }
+  }
+  return (tmp);
+}
+
+// Autotranslated from exper.c:168
+export function more_experienced(exper, rexp, game, player) {
+  let oldexp = player.uexp, oldrexp = player.urexp, newexp = oldexp + exper, rexpincr = 4 * exper + rexp, newrexp = oldrexp + rexpincr;
+  if (newexp < 0 && exper > 0) newexp = LONG_MAX;
+  if (newrexp < 0 && rexpincr > 0) newrexp = LONG_MAX;
+  if (newexp !== oldexp) {
+    player.uexp = newexp;
+    if (game.flags.showexp) game.disp.botl = true;
+    if (!game.disp.botl && exp_percent_changing()) game.disp.botl = true;
+  }
+  if (newrexp !== oldrexp) { player.urexp = newrexp; }
+  if (player.urexp >= (Role_if(PM_WIZARD) ? 1000 : 2000)) game.flags.beginner = false;
+}

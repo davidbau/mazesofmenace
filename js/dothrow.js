@@ -38,7 +38,7 @@ import { objectData, WEAPON_CLASS, COIN_CLASS, GEM_CLASS, TOOL_CLASS,
        } from './objects.js';
 import { compactInvletPromptChars, renderOverlayMenuUntilDismiss } from './invent.js';
 import { doname, next_ident, xname, is_crackable } from './mkobj.js';
-import { monDisplayName, is_unicorn, nohands, notake } from './mondata.js';
+import { x_monnam, is_unicorn, nohands, notake } from './mondata.js';
 import { obj_resists } from './objdata.js';
 import { uwepgone, uswapwepgone, uqwepgone, handleSwapWeapon, setuqwep } from './wield.js';
 import { placeFloorObject } from './floor_objects.js';
@@ -224,7 +224,7 @@ export async function promptDirectionAndThrowItem(player, map, display, item, { 
         const named = (typeof item.oname === 'string' && item.oname.length > 0)
             ? `${baseName} named ${item.oname}`
             : baseName;
-        throwMessage = `The ${named} misses the ${monDisplayName(targetMonster)}.`;
+        throwMessage = `The ${named} misses the ${x_monnam(targetMonster)}.`;
     }
     replacePromptMessage();
     if (
@@ -826,8 +826,28 @@ export function mhurtle(mon, dx, dy, range, map, player) {
 }
 
 // cf. dothrow.c:1180 [static] -- check_shop_obj(obj, x, y, broken)
-function check_shop_obj(obj, x, y, broken) {
+// Autotranslated from dothrow.c:1180
+export function check_shop_obj(obj, x, y, broken, player) {
+  let costly_xy, shkp = shop_keeper( player.ushops);
+  if (!shkp) return;
+  costly_xy = costly_spot(x, y);
+  if (broken || !costly_xy || in_rooms(x, y, SHOPBASE) !== player.ushops) {
+    if (is_unpaid(obj)) {
+      stolen_value(obj, player.x, player.y,  shkp.mpeaceful, false);
+    }
     if (broken) obj.no_charge = 1;
+  }
+  else if (costly_xy) {
+    let oshops = in_rooms(x, y, SHOPBASE);
+    if ( oshops === player.ushops || oshops === player.ushops0) {
+      if (is_unpaid(obj)) {
+        let gtg = Has_contents(obj) ? contained_gold(obj, true) : 0;
+        subfrombill(obj, shkp);
+        if (gtg > 0) donate_gold(gtg, shkp, true);
+      }
+      else if (x !== shkp.mx || y !== shkp.my) { sellobj(obj, x, y); }
+    }
+  }
 }
 
 // cf. dothrow.c:1219 -- harmless_missile(obj)
@@ -971,7 +991,7 @@ function throwit_return(clear_thrownobj, game) {
 }
 
 // cf. dothrow.c:1467 [static] -- swallowit(obj, player, game)
-function swallowit(obj, player, game) {
+export function swallowit(obj, player, game) {
     if (player.ustuck) {
         mpickobj(player.ustuck, obj);
         throwit_return(false, game);
@@ -1136,7 +1156,7 @@ export function omon_adj(mon, obj, mon_notices) {
 }
 
 // cf. dothrow.c:1950 [static] -- tmiss(obj, mon, maybe_wakeup, player, map)
-function tmiss(obj, mon, maybe_wakeup, player, map) {
+export function tmiss(obj, mon, maybe_wakeup, player, map) {
     pline(`The ${xname(obj)} misses ${mon_nam(mon)}.`);
     if (maybe_wakeup && !rn2(3)) wakeup(mon, true, map, player);
 }
@@ -1161,7 +1181,7 @@ export function thitmonst(mon, obj, player, map, game) {
     const uwep = player.weapon;
     const otyp = obj.otyp;
     const data = mon.data || (mons ? mons[mon.mndx] : null) || {};
-    let tmp = -1 + (player.luck || 0) + find_mac(mon) + (player.uhitinc || 0) + (player.level || 1);
+    let tmp = -1 + (player.luck || 0) + find_mac(mon) + (player.uhitinc || 0) + (player.ulevel || 1);
     const dex = player.dex || 10;
     if (dex < 4) tmp -= 3;
     else if (dex < 6) tmp -= 2;
@@ -1397,4 +1417,19 @@ export function throw_gold(obj, player, map, _game) {
     obj.ox = bx; obj.oy = by;
     placeFloorObject(map, obj);
     return 1;
+}
+
+// Autotranslated from dothrow.c:1441
+export async function sho_obj_return_to_u(obj, game, player) {
+  if ((player.dx || player.dy) && (game.gb.bhitpos.x !== player.x || game.gb.bhitpos.y !== player.y)) {
+    let x = game.gb.bhitpos.x - player.dx, y = game.gb.bhitpos.y - player.dy;
+    tmp_at(DISP_FLASH, obj_to_glyph(obj, rn2_on_display_rng));
+    while (isok(x,y) && (x !== player.x || y !== player.y)) {
+      tmp_at(x, y);
+      await nh_delay_output();
+      x -= player.dx;
+      y -= player.dy;
+    }
+    tmp_at(DISP_END, 0);
+  }
 }

@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "language": "c11",
+  "args": [
+    "-x",
+    "c",
+    "-std=c11",
+    "-Dnethack",
+    "-DNOTPARMDECL",
+    "-I./nethack-c/include",
+    "-I./nethack-c/src",
+    "-I./nethack-c/sys/unix"
+  ]
+}

@@ -680,9 +680,9 @@ export async function replaySession(seed, session, opts = {}) {
     game.flags.DECgraphics = !!decgraphicsMode;
     if (opts.flags && typeof opts.flags === 'object') {
         Object.assign(game.flags, opts.flags);
-        game.player.showExp = !!game.flags.showexp;
-        game.player.showTime = !!game.flags.time;
-        game.player.showScore = !!game.flags.showscore;
+        (game.u || game.player).showExp = !!game.flags.showexp;
+        (game.u || game.player).showTime = !!game.flags.time;
+        (game.u || game.player).showScore = !!game.flags.showscore;
     }
 
     const startupLog = getRngLog();
@@ -746,7 +746,7 @@ export async function replaySession(seed, session, opts = {}) {
     for (let stepIndex = 0; stepIndex < maxSteps; stepIndex++) {
         stepAnimationBoundaries = [];
         const step = allSteps[stepIndex];
-        game.map._replayStepIndex = stepIndex;
+        (game.lev || game.map)._replayStepIndex = stepIndex;
         const stepStartCount = getRngLog().length;
         game._replayForceEnterRun = false;
         // pendingDeferredTimedTurn is consumed later (after the player's command)
@@ -776,7 +776,7 @@ export async function replaySession(seed, session, opts = {}) {
                 game.display.topMessage = null;
             }
             if (!pendingCommand
-                && (game.player?.deathCause || game.player?.dead || (game.player?.hp || 0) <= 0)) {
+                && ((game.u || game.player)?.deathCause || (game.u || game.player)?.dead || ((game.u || game.player)?.hp || 0) <= 0)) {
                 game.renderCurrentScreen();
                 const raw = getRngLog().slice(prevByteCount);
                 const frame = captureSnapshot(

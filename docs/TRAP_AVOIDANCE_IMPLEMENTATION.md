@@ -210,7 +210,7 @@ Monsters use BOTH `mndx` and `mnum` for type index:
 
 ### Trap Discovery
 Traps become seen (`tseen=true`) when:
-1. Player/pet steps on trap → `commands.js` sets tseen
+1. Player/pet steps on trap → command/movement flow (`cmd.js` + `hack.js`) sets `tseen`
 2. Player searches and finds trap
 3. Trap triggers with visible effect
 
@@ -235,7 +235,7 @@ Traps become seen (`tseen=true`) when:
 | `js/monmove.js` | +73, -14 | Added m_harmless_trap(), extended mfndpos(), trap avoidance |
 | `js/u_init.js` | +1, -0 | Added mndx field to makedog() |
 | `test/comparison/session_helpers.js` | +6, -12 | Fixed wizard mode trap handling |
-| `js/commands.js` | 0 | Trap discovery already correct |
+| `js/cmd.js` + `js/hack.js` | 0 | Trap discovery already correct |
 | `js/dungeon.js` | 0 | Trap creation already correct |
 
 **Total**: ~80 lines changed

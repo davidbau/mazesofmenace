@@ -73,7 +73,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[a]` | fountain.c | fountain.js | Fountain effects. drinkfountain/dryup implemented (RNG-parity); ~12 functions TODO |
 | `[~]` | getpos.c | getpos.js | Position selection UI. Core highlight callback lifecycle wired (`getpos_sethilite`, toggle, refresh, cleanup) and interactive cursor loop implemented (`getpos_async`: vi/arrow movement, pick/cancel, redraw/help, filter cycle, C-style target-class next/prev keys `m/M o/O d/D x/X i/I v/V`, typed map-symbol cycling forward/backward, and NHW_MENU-backed `=` target picking). `getloc_filter` handling now applies basic view/area gating in target gathering, target cycling, and map-symbol searches. Helper surfaces `getpos_getvalids_selection`, `getpos_help_keyxhelp`, `getpos_help`, and `getpos_menu` now exist in partial form. Full C parity for keybindings/target classes/filter-area behavior/help text details remains partial |
 | `[~]` | glyphs.c | glyphs.js | Glyph system. JS: partially in `display.js`, `symbols.js` |
-| `[a]` | hack.c | hack.js | Core movement and actions. C-structure entry points now explicit: `domove`, `domove_core`, `lookaround`, `findtravelpath` (with `TRAVP_*` modes), plus `handleMovement`/`handleRun` compatibility wrappers, travel setup (`handleTravel`/`executeTravelStep`), and spot/capacity helpers. Behavior remains partial vs C in many edge paths (~70 TODOs), but structure and naming fidelity improved. |
+| `[a]` | hack.c | hack.js | Core movement and actions. C-structure entry points now explicit: `domove`, `domove_core`, `do_run`, `do_rush`, `lookaround`, `findtravelpath` (with `TRAVP_*` modes), travel setup (`dotravel`/`dotravel_target`), and spot/capacity helpers. Behavior remains partial vs C in many edge paths (~70 TODOs), but structure and naming fidelity improved. |
 | `[a]` | hacklib.c | hacklib.js | String/char utilities. All C functions implemented; in-place string ops return new strings in JS |
 | `[~]` | iactions.c | iactions.js | Item actions context menu |
 | `[~]` | insight.c | insight.js | Player knowledge/enlightenment |
@@ -86,7 +86,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[p]` | mcastu.c | mcastu.js | Monster spellcasting. All 14 functions present: castmu (full spell selection pipeline with fumble check), buzzmu (beam path via zap.buzz), choose_magic_spell, choose_clerical_spell, cast_wizard_spell, cast_cleric_spell, m_cure_self, touch_of_death, death_inflicted_by, cursetxt (stub), is_undirected_spell, spell_would_be_useless, aggravation (stub), curse_objects (stub) |
 | `[N/A]` | mdlib.c | — | Metadata library utilities |
 | `[a]` | mhitm.c | mhitm.js | Monster-vs-monster combat. mattackm/hitmm/mdamagem/passivemm/fightm implemented (m-vs-m path); RNG parity for pets in dogmove.js; monCombatName per-monster visibility pronouns; rustm (full erode_obj dispatch), mdisplacem (position swap + petrification), engulf_target, gulpmm (simplified), mon_poly (simplified); artifact spec_dbon wired into mdamagem. gazemu/gulpmm full effects TODO |
-| `[a]` | mhitu.c | mhitu.js | Monster-vs-hero combat. monsterAttackPlayer restructured to match hitmu() flow; hitmsg, mhitm_knockback, mhitu_adtyping dispatcher, ~30 AD_* handlers (phys/fire/cold/elec/acid/stck/plys/slee/conf/stun/blnd/drst/drli/dren/drin/slow/ston etc.) implemented with real effects; mpoisons_subj, u_slow_down, wildmiss, getmattk (attack substitution), assess_dmg, passiveum (hero passive counter); AD_SGLD→stealgold, AD_SEDU→steal, AD_RUST/CORR/DCAY→erode_obj wired; artifact spec_dbon wired into mhitu_ad_phys; gazemu/gulpmu/expels/summonmu/doseduce TODO |
+| `[a]` | mhitu.c | mhitu.js | Monster-vs-hero combat. `mattacku` restructured to match `hitmu()` flow; `hitmsg`, `mhitm_knockback`, `mhitu_adtyping` dispatcher, ~30 AD_* handlers (phys/fire/cold/elec/acid/stck/plys/slee/conf/stun/blnd/drst/drli/dren/drin/slow/ston etc.) implemented with real effects; `mpoisons_subj`, `u_slow_down`, `wildmiss`, `getmattk` (attack substitution), `assess_dmg`, `passiveum` (hero passive counter); `AD_SGLD`→`stealgold`, `AD_SEDU`→`steal`, `AD_RUST/CORR/DCAY`→`erode_obj` wired; artifact `spec_dbon` wired into `mhitu_ad_phys`; `gazemu`/`gulpmu`/`expels`/`summonmu`/`doseduce` still partial |
 | `[~]` | minion.c | minion.js | Minion summoning: msummon, summon_minion, demon_talk, bribe, guardian angels. All 14 functions TODO (runtime gameplay) |
 | `[~]` | mklev.c | mklev.js | Level generation. Helpers moved to `mklev.js`: door/door-position (`mkroom_cmp`, `bydoor`, `okdoor`, `good_rm_wall_doorpos`, `finddpos_shift`, `finddpos`, `maybe_sdoor`), stairs/feature placement (`mkstairs`, `generate_stairs*`, `cardinal_nextto_room`, `place_niche`, `occupied`, `find_okay_roompos`, `mkfount`, `mksink`, `mkaltar`, `mkgrave`), and niche pipeline (`makeniche`, `make_niches`, `makevtele`); remaining generation pipeline still in `dungeon.js` |
 | `[~]` | mkmap.c | mkmap.js | Map generation algorithms now implemented in `mkmap.js` (`init_map`, `init_fill`, `get_map`, `pass_*`, `flood_fill_rm`, `join_map`, `finish_map`, `mkmap`, room cleanup/removal); `sp_lev.js` now calls `mkmap.js` directly |
@@ -109,7 +109,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[a]` | objects.c | objects.js | Object data tables. objects.js is auto-generated from objects.h (same source as C); objects_globals_init implicit in module load |
 | `[p]` | objnam.c | objnam.js | Object naming/wishing now covers xname/doname/makeplural/makesingular/readobjnam plus helper symbol set (fruit lookup, safe_qbuf, wallprop/terrain hooks, readobjnam pre/postparse wrappers). Remaining parity gaps: full wiz terrain wish behavior and precise C fruit-chain semantics |
 | `[~]` | options.c | options.js | Game options. JS: options.js (data), options_menu.js (handleSet UI) |
-| `[a]` | pager.c | pager.js | Text pager and look/describe commands. handleHelp/handleWhatis/handleWhatdoes/handleHistory/handlePrevMessages/handleViewMapPrompt/handleLook (dohelp/dowhatis/dowhatdoes/dohistory/doprev_message/doterrain). Game look functions (do_look, lookat, waterbody_name) TODO |
+| `[~]` | pager.c | pager.js + look.js | Text pager and look/describe commands. `pager.js` handles menu/history/help wrappers (`dohelp`/`dowhatdoes`/`dohistory`/`doprev_message`/`doterrain`) and routes `:` through shared look core. `look.js` now hosts shared reduced-structure ports of `do_look()` and `do_screen_description()` used by `:` and display hover metadata. Remaining full `do_look` menu/cursor flows (`/`, `;`, lookat, waterbody_name, checkfile/supplemental info) still partial |
 | `[a]` | pickup.c | pickup.js | Picking up items. handlePickup/handleLoot/handlePay/handleTogglePickup (dopickup/doloot/dopay/dotogglepickup); pay is a stub; ~50 functions TODO |
 | `[a]` | pline.c | pline.js | Message output. pline, custompline, vpline, Norep, urgent_pline, raw_printf, vraw_printf, impossible, livelog_printf, gamelog_add, verbalize, You/Your/You_feel/You_cant/You_hear/You_see/pline_The/There, pline_dir/pline_xy/pline_mon, set_msg_dir/set_msg_xy, dumplogmsg/dumplogfreemessages, execplinehandler, nhassert_failed, You_buf/free_youbuf all implemented. putmesg semantics handled via setOutputContext |
 | `[~]` | polyself.c | polyself.js | Polymorphing |
@@ -149,7 +149,7 @@ don't follow the same 1:1 C→JS mapping pattern.
 | `[p]` | track.c | track.js | Player tracking for pets. save/rest not yet implemented |
 | `[p]` | trap.c | trap.js | Trap mechanics: monster-side flow is largely ported (m_harmless_trap, floor_trigger, mintrap_postmove, mon_check_in_air, trap effect dispatcher, erosion/water/fire/acid chains, petrification helpers). Rolling-boulder monster trap path now includes `tmp_at` flash lifecycle with awaited per-cell `nh_delay_output()` timing, launch-point/other-side boulder selection, per-cell boulder-coordinate updates, closed-door break handling, boulder-to-boulder handoff, bars/wall/tree stop rules, and basic trap-tile interactions while rolling (landmine converted to pit-state before boulder removal, tele trap relocate, level-tele consume, pit/spiked-pit fill behavior, hole/trapdoor fall-through removal), plus monster impact via `thitm` and hero impact damage when the rolling boulder crosses the hero cell. Rolling travel no longer uses a fixed short-step cap, matching C-style "travel until blocked/impact" behavior more closely. Full `launch_obj` parity (scatter/fall-through chain detail and richer object interactions) is still TODO. Remaining parity gaps are mainly player-side `dotrap`/interaction flow plus complex trap side-effects. |
 | `[a]` | u_init.c | u_init.js | Player initialization. u_init_role, u_init_race, u_init_carry_attr_boost, trquan, ini_inv, ini_inv_mkobj_filter, restricted_spell_discipline aligned. JS-only wrappers: simulatePostLevelInit, initAttributes |
-| `[a]` | uhitm.c | uhitm.js | Hero-vs-monster combat. playerAttackMonster, all mhitm_ad_* handlers (40+), mhitm_adtyping dispatcher, mhitm_mgc_atk_negated, mhitm_knockback (with eligibility + messages) implemented; artifact spec_abon wired into find_roll_to_hit, spec_dbon wired into damage calc; engulf start-frame helper now uses awaited delay boundaries (`start_engulf`/`gulpum` async). 50 functions TODO |
+| `[a]` | uhitm.c | uhitm.js | Hero-vs-monster combat. `do_attack` (+ `hmon` pipeline), all `mhitm_ad_*` handlers (40+), `mhitm_adtyping` dispatcher, `mhitm_mgc_atk_negated`, `mhitm_knockback` (with eligibility + messages) implemented; artifact `spec_abon` wired into `find_roll_to_hit`, `spec_dbon` wired into damage calc; engulf start-frame helper now uses awaited delay boundaries (`start_engulf`/`gulpum` async). 50 functions TODO |
 | `[N/A]` | utf8map.c | — | UTF-8 glyph mapping for terminal |
 | `[~]` | vault.c | `vault.js` | Vault guard behavior |
 | `[N/A]` | version.c | — | Version info |
@@ -806,7 +806,7 @@ This section is generated from source symbol tables and includes function rows f
 | 1656 | `do_move_west` | - | Missing |
 | 1890 | `do_repeat` | allmain.js:549, cmd.js:612 | APPROX |
 | 1827 | `do_reqmenu` | cmd.js:rhack (m prefix) | Aligned |
-| 1858 | `do_run` | hack.js:handleRun | APPROX |
+| 1858 | `do_run` | hack.js:do_run | APPROX |
 | 1798 | `do_run_east` | - | Missing |
 | 1784 | `do_run_north` | - | Missing |
 | 1791 | `do_run_northeast` | - | Missing |
@@ -815,7 +815,7 @@ This section is generated from source symbol tables and includes function rows f
 | 1805 | `do_run_southeast` | - | Missing |
 | 1819 | `do_run_southwest` | - | Missing |
 | 1770 | `do_run_west` | - | Missing |
-| 1842 | `do_rush` | hack.js:handleRun (rush) | APPROX |
+| 1842 | `do_rush` | hack.js:do_rush | APPROX |
 | 1741 | `do_rush_east` | - | Missing |
 | 1727 | `do_rush_north` | - | Missing |
 | 1734 | `do_rush_northeast` | - | Missing |
@@ -839,7 +839,7 @@ This section is generated from source symbol tables and includes function rows f
 | 5706 | `dosuspend_core` | - | Missing |
 | 1365 | `doterrain` | - | Missing |
 | 4389 | `dotherecmdmenu` | - | Missing |
-| 5343 | `dotravel` | hack.js:handleTravel | APPROX — cursor-based travel |
+| 5343 | `dotravel` | hack.js:dotravel | APPROX — cursor-based travel |
 | 5392 | `dotravel_target` | cmd.js:rhack (ch=31) | APPROX — retravel via stored destination |
 | 3907 | `dtoxy` | - | Missing |
 | 5743 | `dummyfunction` | - | Missing |
@@ -1983,8 +1983,8 @@ This section is generated from source symbol tables and includes function rows f
 | 1977 | `domove_fight_ironbars` | hack.js:domove_fight_ironbars | Implemented (approx) |
 | 2002 | `domove_fight_web` | hack.js:domove_fight_web | Implemented (approx) |
 | 2079 | `domove_swap_with_pet` | hack.js:domove_swap_with_pet | Implemented (approx) — extracted pet swap helper |
-| 3948 | `doorless_door` | hack.js:handleMovement | APPROX — inline in handleMovement |
-| 3761 | `dopickup` | hack.js:handleMovement | APPROX — autopickup inline in handleMovement |
+| 3948 | `doorless_door` | hack.js:domove_core | APPROX — inline in movement path |
+| 3761 | `dopickup` | hack.js:domove_core | APPROX — autopickup inline in movement path |
 | 167 | `dopush` | hack.js:dopush | Implemented (approx) |
 | 817 | `dosinkfall` | - | Missing |
 | 4351 | `dump_weights` | hack.js:dump_weights | Implemented (approx) |
@@ -2000,16 +2000,16 @@ This section is generated from source symbol tables and includes function rows f
 | 4426 | `inv_cnt` | - | Missing |
 | 4281 | `inv_weight` | - | Missing |
 | 3045 | `invocation_message` | - | Missing |
-| 963 | `invocation_pos` | - | Missing |
+| 963 | `invocation_pos` | hack.js:invocation_pos | Implemented (C-faithful core predicate via `Invocation_lev` + `map.inv_pos`) |
 | 1507 | `is_valid_travelpt` | - | Missing |
 | 82 | `long_to_any` | hack.js:long_to_any | Implemented |
 | 3783 | `lookaround` | hack.js:lookaround | APPROX — run stop conditions and continuation direction |
-| 4185 | `losehp` | - | Missing |
+| 4185 | `losehp` | hack.js:losehp | Implemented (partial) — includes saving-grace hook, polymorph HP path, death/wail thresholds |
 | 4321 | `max_capacity` | - | Missing |
 | 904 | `may_dig` | - | Missing |
 | 913 | `may_passwall` | - | Missing |
 | 3001 | `maybe_smudge_engr` | hack.js:maybe_smudge_engr | Implemented wrapper; delegates to `engrave.js:maybeSmudgeEngraving` |
-| 4086 | `maybe_wail` | - | Missing |
+| 4086 | `maybe_wail` | hack.js:maybe_wail | Implemented (partial) — role/race gates and intrinsic-power warning split |
 | 4444 | `money_cnt` | - | Missing |
 | 90 | `monst_to_any` | hack.js:monst_to_any | Implemented |
 | 3991 | `monster_nearby` | monutil.js:monsterNearby | Aligned |
@@ -2026,17 +2026,17 @@ This section is generated from source symbol tables and includes function rows f
 | 1689 | `notice_mon` | - | Missing |
 | 1716 | `notice_mons_cmp` | hack.js:notice_mons_cmp | Implemented (approx comparator) |
 | 98 | `obj_to_any` | hack.js:obj_to_any | Implemented |
-| 3016 | `overexert_hp` | - | Missing |
-| 3032 | `overexertion` | - | Missing |
+| 3016 | `overexert_hp` | hack.js:overexert_hp | Implemented (partial) — polymorph HP and pass-out message |
+| 3032 | `overexertion` | hack.js:overexertion | Implemented (partial) — metabolism + encumbrance damage gate |
 | 3673 | `pickup_checks` | - | Missing |
 | 3121 | `pooleffects` | - | Missing |
 | 106 | `revive_nasty` | - | Missing |
 | 316 | `rock_disappear_msg` | hack.js:rock_disappear_msg | Implemented (approx) |
-| 4481 | `rounddiv` | - | Missing |
+| 4481 | `rounddiv` | hack.js:rounddiv | Implemented (C-faithful) |
 | 2977 | `runmode_delay_output` | hack.js:runmode_delay_output | Implemented (approx) |
-| 4123 | `saving_grace` | - | Missing |
+| 4123 | `saving_grace` | hack.js:saving_grace | Implemented (partial) — monster-turn lethal blow clamp with one-shot flag |
 | 3112 | `set_uinwater` | - | Missing |
-| 4176 | `showdamage` | - | Missing |
+| 4176 | `showdamage` | hack.js:showdamage | Implemented (partial) — iflags gate and polymorph HP display |
 | 2377 | `slippery_ice_fumbling` | - | Missing |
 | 4455 | `spot_checks` | - | Missing |
 | 3200 | `spoteffects` | - | Missing |
@@ -2488,12 +2488,12 @@ No function symbols parsed from isaac64.c.
 | 1269 | `gulp_blnd_check` | - | Missing |
 | 1285 | `gulpmu` | mhitu.js:gulpmu | Implemented (simplified engulf path) |
 | 30 | `hitmsg` | mhitu.js:hitmsg | Implemented — C-faithful attack verb dispatch (bite/kick/sting/butt/touch/tentacle/hit) |
-| 1140 | `hitmu` | mhitu.js:monsterAttackPlayer | Implemented — restructured to match C hitmu() flow: mhm state object, mhitu_adtyping dispatch, mhitm_knockback, negative AC damage reduction |
+| 1140 | `hitmu` | mhitu.js:mattacku | Implemented — restructured to match C hitmu() flow: mhm state object, mhitu_adtyping dispatch, mhitm_knockback, negative AC damage reduction |
 | 1085 | `magic_negation` | mondata.js | Implemented (simplified) |
-| 490 | `mattacku` | mhitu.js:monsterAttackPlayer | Implemented — attack loop with AT_WEAP weapon swing messages, range2 dispatch for thrwmu |
+| 490 | `mattacku` | mhitu.js:mattacku | Implemented — attack loop with AT_WEAP weapon swing messages, range2 dispatch for thrwmu |
 | 2303 | `mayberem` | - | Missing |
 | 1895 | `mdamageu` | mhitu.js:mdamageu | Implemented |
-| 86 | `missmu` | mhitu.js:monsterAttackPlayer | Implemented — miss message with "just misses" variant |
+| 86 | `missmu` | mhitu.js:mattacku | Implemented — miss message with "just misses" variant |
 | 2386 | `mon_avoiding_this_attack` | - | Missing |
 | 146 | `mpoisons_subj` | mhitu.js:mpoisons_subj | Implemented |
 | 131 | `mswings` | mhitu.js:monsterWeaponSwingMsg | Implemented — weapon swing verb/message for AT_WEAP |
@@ -3711,18 +3711,18 @@ Remaining parity gaps are mostly behavioral depth:
 | 2762 | `dispfile_optmenu` | - | Missing |
 | 2750 | `dispfile_shelp` | - | Missing |
 | 2780 | `dispfile_usagehelp` | - | Missing |
-| 1669 | `do_look` | pager.js:handleLook | APPROX — look at ground |
-| 1246 | `do_screen_description` | - | Missing |
+| 1669 | `do_look` | look.js:do_look | Partial — C-shaped async look core for `/` and `;` with getpos loop + symbol path; full menu/checkfile/supplemental-info branches still TODO |
+| 1246 | `do_screen_description` | look.js:do_screen_description | Partial — monster/object/trap/terrain location description core |
 | 2249 | `do_supplemental_info` | - | Missing |
 | 2714 | `docontact` | - | Missing |
 | 2856 | `dohelp` | pager.js:handleHelp | APPROX — help command |
 | 2957 | `dohistory` | pager.js:handleHistory | APPROX — message history |
 | 2332 | `doidtrap` | - | Missing |
 | 2816 | `domenucontrols` | - | Missing |
-| 2325 | `doquickwhatis` | - | Missing |
+| 2325 | `doquickwhatis` | look.js:doquickwhatis | Partial — quick cursor-based glance path |
 | 2655 | `dowhatdoes` | pager.js:handleWhatdoes | APPROX — key help |
 | 2573 | `dowhatdoes_core` | - | Missing |
-| 2318 | `dowhatis` | pager.js:handleWhatis | APPROX — identify symbol |
+| 2318 | `dowhatis` | look.js:dowhatis | Partial — routed through do_look mode 0 |
 | 2810 | `hmenu_doextlist` | - | Missing |
 | 2786 | `hmenu_doextversion` | - | Missing |
 | 2792 | `hmenu_dohistory` | - | Missing |

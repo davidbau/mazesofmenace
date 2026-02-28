@@ -193,10 +193,11 @@ export function is_rustprone(obj) {
 export function is_crackable(obj) {
     return objectData[obj.otyp].material === GLASS && obj.oclass === ARMOR_CLASS;
 }
-export function is_rottable(obj) {
-    const mat = objectData[obj.otyp].material;
-    if (mat === LIQUID) return false;
-    return mat <= WOOD || mat === DRAGON_HIDE;
+// Autotranslated from mkobj.c:2286
+export function is_rottable(otmp) {
+  const otyp = otmp.otyp;
+  const mat = objectData[otyp]?.material ?? 0;
+  return ((mat <= WOOD && mat !== LIQUID) || mat === DRAGON_HIDE);
 }
 export function is_corrodeable(obj) {
     const mat = objectData[obj.otyp].material;
@@ -218,7 +219,7 @@ export function weight(obj) {
     if (Is_container(obj) || obj.otyp === STATUE) {
         if (obj.otyp === STATUE && obj.corpsenm >= 0 && obj.corpsenm < mons.length) {
             wt = Math.floor(3 * mons[obj.corpsenm].weight / 2);
-            const msize = mons[obj.corpsenm].size || 0;
+            const msize = mons[obj.corpsenm].msize || 0;
             const minwt = (msize * 2 + 1) * 100;
             if (wt < minwt) wt = minwt;
         }
@@ -276,15 +277,14 @@ function may_generate_eroded(obj) {
 }
 
 // C ref: mkobj.c blessorcurse()
-export function blessorcurse(obj, chance) {
-    if (obj.blessed || obj.cursed) return;
-    if (!rn2(chance)) {
-        if (!rn2(2)) {
-            curse(obj);
-        } else {
-            bless(obj);
-        }
-    }
+// Autotranslated from mkobj.c:1837
+export function blessorcurse(otmp, chance) {
+  if (otmp.blessed || otmp.cursed) return;
+  if (!rn2(chance)) {
+    if (!rn2(2)) { curse(otmp); }
+    else { bless(otmp); }
+  }
+  return;
 }
 
 // C ref: mkobj.c bless()
@@ -325,14 +325,16 @@ export function set_bknown(obj, onoff) {
 }
 
 // C ref: mkobj.c bcsign()
-export function bcsign(obj) {
-    return obj.cursed ? -1 : obj.blessed ? 1 : 0;
+// Autotranslated from mkobj.c:1853
+export function bcsign(otmp) {
+  return (!!otmp.blessed - !!otmp.cursed);
 }
 
 // C ref: mkobj.c container_weight() — set owt recursively up container chain
-export function container_weight(obj) {
-    obj.owt = weight(obj);
-    // If contained, propagate up (JS doesn't track ocontainer yet)
+// Autotranslated from mkobj.c:2732
+export function container_weight(object) {
+  object.owt = weight(object);
+  if (object.where === OBJ_CONTAINED) container_weight(object.ocontainer);
 }
 
 // C ref: mkobj.c splitobj() — split a stack, return the new portion
@@ -385,23 +387,24 @@ function newobj(otyp) {
 }
 
 // C ref: mkobj.c mkobj_erosions()
-function mkobj_erosions(obj) {
-    if (!may_generate_eroded(obj)) return;
-    if (!rn2(100)) {
-        obj.oerodeproof = true;
-    } else {
-        if (!rn2(80) && (is_flammable(obj) || is_rustprone(obj) || is_crackable(obj))) {
-            do {
-                obj.oeroded++;
-            } while (obj.oeroded < 3 && !rn2(9));
-        }
-        if (!rn2(80) && (is_rottable(obj) || is_corrodeable(obj))) {
-            do {
-                obj.oeroded2++;
-            } while (obj.oeroded2 < 3 && !rn2(9));
-        }
+// Autotranslated from mkobj.c:196
+export function mkobj_erosions(otmp) {
+  if (may_generate_eroded(otmp)) {
+    if (!rn2(100)) { otmp.oerodeproof = 1; }
+    else {
+      if (!rn2(80) && (is_flammable(otmp) || is_rustprone(otmp) || is_crackable(otmp))) {
+        do {
+          otmp.oeroded++;
+        } while (otmp.oeroded < 3 && !rn2(9));
+      }
+      if (!rn2(80) && (is_rottable(otmp) || is_corrodeable(otmp))) {
+        do {
+          otmp.oeroded2++;
+        } while (otmp.oeroded2 < 3 && !rn2(9));
+      }
     }
-    if (!rn2(1000)) obj.greased = true;
+    if (!rn2(1000)) otmp.greased = 1;
+  }
 }
 
 // rndmonnum imported from makemon.js (circular but safe — called at runtime only)
@@ -660,7 +663,7 @@ function mksobj_init(obj, artif, skipErosion) {
             // verysmall = msize < MZ_SMALL (i.e., MZ_TINY)
             // Short-circuit: skip rn2 if monster is very small
             if (obj.corpsenm >= 0 && obj.corpsenm < mons.length
-                && mons[obj.corpsenm].size >= MZ_SMALL
+                && mons[obj.corpsenm].msize >= MZ_SMALL
                 && rn2(Math.floor(_levelDepth / 2 + 10)) > 10) {
                 // C ref: mkobj.c:1152-1154 — statue may contain a non-novel spellbook.
                 const inside = mkobj(SPBOOK_no_NOVEL, false);
@@ -824,7 +827,7 @@ export function mksobj(otyp, init, artif, skipErosion) {
 function special_corpse(mndx) {
     if (mndx < 0) return false;
     return mndx === PM_LIZARD || mndx === PM_LICHEN
-        || mons[mndx].symbol === S_TROLL
+        || mons[mndx].mlet === S_TROLL
         || mons[mndx].sound === MS_RIDER;
 }
 
@@ -832,7 +835,7 @@ function special_corpse(mndx) {
 // Only called for RNG alignment; we don't actually track timers.
 export const TAINT_AGE = 50;
 const TROLL_REVIVE_CHANCE = 37;
-function start_corpse_timeout_rng(corpsenm) {
+function start_corpse_timeout(corpsenm) {
     // Lizards and lichen don't rot or revive
     if (corpsenm === PM_LIZARD || corpsenm === PM_LICHEN) return;
     // C ref: mkobj.c start_corpse_timeout() — rot_adjust depends on gi.in_mklev.
@@ -844,7 +847,7 @@ function start_corpse_timeout_rng(corpsenm) {
         for (let when = minturn; when < 67; when++) {
             if (!rn2(3)) break;
         }
-    } else if (mons[corpsenm].symbol === S_TROLL) {
+    } else if (mons[corpsenm].mlet === S_TROLL) {
         // Troll: rn2(37) loop up to TAINT_AGE times
         for (let age = 2; age <= TAINT_AGE; age++) {
             if (!rn2(TROLL_REVIVE_CHANCE)) break;
@@ -878,7 +881,7 @@ export function set_corpsenm(obj, id) {
         : 0;
     obj.corpsenm = id;
     if (obj.otyp === CORPSE) {
-        start_corpse_timeout_rng(id);
+        start_corpse_timeout(id);
     } else if (obj.otyp === EGG) {
         if (id >= 0) {
             obj._egg_hatch_when = attach_egg_hatch_timeout_rng(when);
@@ -912,7 +915,7 @@ export function mkcorpstat(objtype, ptr_mndx, init, x = 0, y = 0, map = null) {
                 || special_corpse(ptr_mndx))) {
             // C: obj_stop_timers(otmp) — no RNG consumed
             // Restart corpse timeout with new corpsenm
-            start_corpse_timeout_rng(ptr_mndx);
+            start_corpse_timeout(ptr_mndx);
         }
     }
     pushRngLogEntry(`^corpse[${otmp.corpsenm},${otmp.ox || 0},${otmp.oy || 0}]`);
@@ -1297,4 +1300,478 @@ export function doname(obj, player) {
     }
 
     return result;
+}
+
+// Autotranslated from mkobj.c:80
+export function init_oextra(oex) {
+   oex = zerooextra;
+}
+
+// Autotranslated from mkobj.c:86
+export function newoextra() {
+  let oextra;
+  oextra =  alloc(0);
+  init_oextra(oextra);
+  return oextra;
+}
+
+// Autotranslated from mkobj.c:96
+export function dealloc_oextra(o) {
+  let x = o.oextra;
+  if (x) {
+    if (x.oname) (x.oname, 0), x.oname = 0;
+    if (x.omonst) free_omonst(o);
+    if (x.omailcmd) (x.omailcmd, 0), x.omailcmd = 0;
+    (x, 0);
+    o.oextra =  0;
+  }
+}
+
+// Autotranslated from mkobj.c:114
+export function newomonst(otmp) {
+  if (!otmp.oextra) otmp.oextra = newoextra();
+  if (!OMONST(otmp)) {
+    let m = newmonst();
+     m = cg.zeromonst;
+    OMONST(otmp) = m;
+  }
+}
+
+// Autotranslated from mkobj.c:128
+export function free_omonst(otmp) {
+  if (otmp.oextra) {
+    let m = OMONST(otmp);
+    if (m) {
+      if (m.mextra) dealloc_mextra(m);
+      (m, 0);
+      OMONST(otmp) =  0;
+    }
+  }
+}
+
+// Autotranslated from mkobj.c:143
+export function newomid(otmp) {
+  if (!otmp.oextra) otmp.oextra = newoextra();
+  OMID(otmp) = 0;
+}
+
+// Autotranslated from mkobj.c:151
+export function free_omid(otmp) {
+  OMID(otmp) = 0;
+}
+
+// Autotranslated from mkobj.c:157
+export function new_omailcmd(otmp, response_cmd) {
+  if (!otmp.oextra) otmp.oextra = newoextra();
+  if (OMAILCMD(otmp)) free_omailcmd(otmp);
+  OMAILCMD(otmp) = dupstr(response_cmd);
+}
+
+// Autotranslated from mkobj.c:167
+export function free_omailcmd(otmp) {
+  if (otmp.oextra && OMAILCMD(otmp)) { free( OMAILCMD(otmp)); OMAILCMD(otmp) =  0; }
+}
+
+// Autotranslated from mkobj.c:238
+export function mksobj_at(otyp, x, y, init, artif) {
+  let otmp;
+  otmp = mksobj(otyp, init, artif);
+  place_object(otmp, x, y);
+  return otmp;
+}
+
+// Autotranslated from mkobj.c:253
+export function mksobj_migr_to_species(otyp, mflags2, init, artif) {
+  let otmp;
+  otmp = mksobj(otyp, init, artif);
+  add_to_migration(otmp);
+  otmp.owornmask =  MIGR_TO_SPECIES;
+  otmp.migr_species = mflags2;
+  return otmp;
+}
+
+// Autotranslated from mkobj.c:626
+export function clear_splitobjs(game) {
+  game.game.svc.context.objsplit.parent_oid = game.game.svc.context.objsplit.child_oid = 0;
+}
+
+// Autotranslated from mkobj.c:712
+export function bill_dummy_object(otmp, player) {
+  let dummy, cost = 0;
+  if (otmp.unpaid) {
+    cost = unpaid_cost(otmp, COST_SINGLEOBJ);
+    subfrombill(otmp, shop_keeper( player.ushops));
+  }
+  dummy = newobj();
+   dummy = otmp;
+  dummy.oextra =  0;
+  dummy.where = OBJ_FREE;
+  dummy.o_id = nextoid(otmp, dummy);
+  dummy.timed = 0;
+  copy_oextra(dummy, otmp);
+  if (has_omid(dummy)) free_omid(dummy);
+  if (Is_candle(dummy)) dummy.lamplit = 0;
+  dummy.owornmask = 0;
+  addtobill(dummy, false, true, true);
+  if (cost && dummy.where !== OBJ_DELETED) alter_cost(dummy, -cost);
+  otmp.no_charge = (otmp.where === 'OBJ_FLOOR' || otmp.where === OBJ_CONTAINED) ? 1 : 0;
+  otmp.unpaid = 0;
+  return;
+}
+
+// Autotranslated from mkobj.c:835
+export function clear_dknown(obj) {
+  obj.dknown = strchr(dknowns, obj.oclass) ? 0 : 1;
+  if ((obj.otyp >= ELVEN_SHIELD && obj.otyp <= ORCISH_SHIELD) || obj.otyp === SHIELD_OF_REFLECTION || objectData[obj.otyp].oc_merge) obj.dknown = 0;
+  if (Is_pudding(obj)) obj.dknown = 1;
+}
+
+// Autotranslated from mkobj.c:1367
+export function rider_revival_time(body, retry) {
+  let when, minturn = retry ? 3 : (body.corpsenm === PM_DEATH) ? 6 : 12;
+  for (when = minturn; when < 67; when++) {
+    if (!rn2(3)) {
+      break;
+    }
+  }
+  return when;
+}
+
+// Autotranslated from mkobj.c:1469
+export function start_glob_timeout(obj, when) {
+  if (!obj.globby) {
+    impossible("start_glob_timeout for non-glob [%d: %s]?", obj.otyp, simpleonames(obj));
+    return;
+  }
+  if (obj.timed) {
+    stop_timer(SHRINK_GLOB, obj_to_any(obj));
+  }
+  if (when < 1) when = 25 +  rn2(5) - 2;
+  start_timer(when, TIMER_OBJECT, SHRINK_GLOB, obj_to_any(obj));
+}
+
+// Autotranslated from mkobj.c:1987
+export function is_treefruit(otmp) {
+  let fruitidx;
+  for (fruitidx = 0; fruitidx < SIZE(treefruits); ++fruitidx) {
+    if (treefruits === otmp.otyp) return true;
+  }
+  return false;
+}
+
+// Autotranslated from mkobj.c:1999
+export function mkgold(amount, x, y, map) {
+  let gold = g_at(x, y);
+  if (amount <= 0) {
+    let mul = rnd(30 / Math.max(12-depth(map.uz), 2));
+    amount =  (1 + rnd(level_difficulty() + 2) * mul);
+  }
+  if (gold) { gold.quan += amount; }
+  else { gold = mksobj_at(GOLD_PIECE, x, y, true, false); gold.quan = amount; }
+  gold.owt = weight(gold);
+  return gold;
+}
+
+// Autotranslated from mkobj.c:2126
+export function corpse_revive_type(obj) {
+  let revivetype = obj.corpsenm, mtmp;
+  if (has_omonst(obj) && ((mtmp = get_mtraits(obj, false)) !== 0)) { revivetype = mtmp.mnum; }
+  return revivetype;
+}
+
+// Autotranslated from mkobj.c:2144
+export function obj_attach_mid(obj, mid) {
+  if (!mid || !obj) return  0;
+  newomid(obj);
+  OMID(obj) = mid;
+  return obj;
+}
+
+// Autotranslated from mkobj.c:2154
+export function save_mtraits(obj, mtmp) {
+  if (mtmp.ispriest) forget_temple_entry(mtmp);
+  if (!has_omonst(obj)) newomonst(obj);
+  if (has_omonst(obj)) {
+    let baselevel = mtmp.data.mlevel, mtmp2 = OMONST(obj);
+     mtmp2 = mtmp;
+    mtmp2.mextra =  0;
+    mtmp2.mnum = monsndx(mtmp.data);
+    mtmp2.nmon =  0;
+    mtmp2.data =  0;
+    mtmp2.minvent =  0;
+    MON_NOWEP(mtmp2);
+    if (mtmp.mextra) copy_mextra(mtmp2, mtmp);
+    mtmp2.wormno = 0;
+    if (mtmp2.mhpmax <= baselevel) mtmp2.mhpmax = baselevel + 1;
+    if (mtmp2.mhp > mtmp2.mhpmax) mtmp2.mhp = mtmp2.mhpmax;
+    if (mtmp2.mhp < 1) mtmp2.mhp = 0;
+    mtmp2.mstate &= ~MON_DETACH;
+  }
+  return obj;
+}
+
+// Autotranslated from mkobj.c:2198
+export function get_mtraits(obj, copyof) {
+  let mtmp =  0, mnew =  0;
+  if (has_omonst(obj)) mtmp = OMONST(obj);
+  if (mtmp) {
+    if (copyof) {
+      mnew = newmonst();
+       mnew = mtmp;
+      mnew.mextra =  0;
+      if (mtmp.mextra) copy_mextra(mnew, mtmp);
+    }
+    else { mnew = mtmp; }
+    mnew.data = mons;
+  }
+  return mnew;
+}
+
+// Autotranslated from mkobj.c:2523
+export function discard_minvent(mtmp, uncreate_artifacts) {
+  let otmp;
+  while ((otmp = mtmp.minvent) !== 0) {
+    extract_from_minvent(mtmp, otmp, true, true);
+    if (uncreate_artifacts && otmp.oartifact) artifact_exists(otmp, safe_oname(otmp), false, ONAME_NO_FLAGS);
+    obfree(otmp,  0);
+  }
+}
+
+// Autotranslated from mkobj.c:2595
+export function extract_nobj(obj, head_ptr) {
+  let curr, prev;
+  curr = head_ptr;
+  for (prev =  0; curr; prev = curr, curr = curr.nobj) {
+    if (curr === obj) {
+      if (prev) prev.nobj = curr.nobj;
+      else {
+         head_ptr = curr.nobj;
+      }
+      break;
+    }
+  }
+  if (!curr) throw new Error('extract_nobj: object lost');
+  obj.where = OBJ_FREE;
+  obj.nobj =  0;
+}
+
+// Autotranslated from mkobj.c:2622
+export function extract_nexthere(obj, head_ptr) {
+  let curr, prev;
+  curr = head_ptr;
+  for (prev =  0; curr; prev = curr, curr = curr.nexthere) {
+    if (curr === obj) {
+      if (prev) prev.nexthere = curr.nexthere;
+      else {
+         head_ptr = curr.nexthere;
+      }
+      break;
+    }
+  }
+  if (!curr) throw new Error('extract_nexthere: object lost');
+  obj.nexthere =  0;
+}
+
+// Autotranslated from mkobj.c:2647
+export function add_to_minv(mon, obj) {
+  let otmp;
+  if (obj.where !== OBJ_FREE) panic("add_to_minv: obj where=%d, not free", obj.where);
+  for (otmp = mon.minvent; otmp; otmp = otmp.nobj) {
+    if (merged( otmp, obj)) return 1;
+  }
+  obj.where = 'OBJ_MINVENT';
+  obj.ocarry = mon;
+  obj.nobj = mon.minvent;
+  mon.minvent = obj;
+  return 0;
+}
+
+// Autotranslated from mkobj.c:2675
+export function add_to_container(container, obj) {
+  let otmp;
+  if (obj.where !== OBJ_FREE) panic("add_to_container: obj where=%d, not free", obj.where);
+  if (container.where !== 'OBJ_INVENT' && container.where !== 'OBJ_MINVENT') obj_no_longer_held(obj);
+  for (otmp = container.cobj; otmp; otmp = otmp.nobj) {
+    if (merged( otmp, obj)) return otmp;
+  }
+  obj.where = OBJ_CONTAINED;
+  obj.ocontainer = container;
+  obj.nobj = container.cobj;
+  container.cobj = obj;
+  return obj;
+}
+
+// Autotranslated from mkobj.c:2697
+export function add_to_migration(obj, game, map) {
+  if (obj.where !== OBJ_FREE) panic("add_to_migration: obj where=%d, not free", obj.where);
+  if (obj.unpaid) impossible("unpaid object migrating to another level? [%s]", simpleonames(obj));
+  obj.no_charge = 0;
+  if (Is_container(obj)) maybe_reset_pick(obj);
+  obj.where = OBJ_MIGRATING;
+  obj.nobj = game.migrating_objs;
+  obj.omigr_from_dnum = map.uz.dnum;
+  obj.omigr_from_dlevel = map.uz.dlevel;
+  game.migrating_objs = obj;
+}
+
+// Autotranslated from mkobj.c:2814
+export function dealloc_obj_real(obj) {
+  if (obj.oextra) dealloc_oextra(obj);
+   obj = cg.zeroobj;
+  (obj, 0);
+}
+
+// Autotranslated from mkobj.c:3203
+export function mon_obj_sanity(monlist, mesg) {
+  let mon, obj, mwep;
+  for (mon = monlist; mon; mon = mon.nmon) {
+    if (DEADMONSTER(mon)) {
+      continue;
+    }
+    mwep = MON_WEP(mon);
+    if (mwep) {
+      if (!mcarried(mwep)) insane_object(mwep, mfmt1, mesg, mon);
+      if (mwep.ocarry !== mon) insane_object(mwep, mfmt2, mesg, mon);
+    }
+    for (obj = mon.minvent; obj; obj = obj.nobj) {
+      if (obj.where !== 'OBJ_MINVENT') insane_object(obj, mfmt1, mesg, mon);
+      if (obj.ocarry !== mon) insane_object(obj, mfmt2, mesg, mon);
+      if (obj.globby) check_glob(obj, mesg);
+      check_contained(obj, mesg);
+      if (obj.unpaid || obj.no_charge) shop_obj_sanity(obj, mesg);
+      if (obj.in_use || obj.bypass || obj.nomerge || (obj.otyp === BOULDER && obj.next_boulder)) insane_obj_bits(obj, mon);
+      if (obj === mwep) mwep =  0;
+    }
+    if (mwep) {
+      impossible("monst (%s: %u) wielding %s (%u) not in %s inventory", pmname(mon.data, Mgender(mon)), mon.m_id, safe_typename(mwep.otyp), mwep.o_id, mhis(mon));
+    }
+  }
+}
+
+// Autotranslated from mkobj.c:3248
+export function insane_obj_bits(obj, mon) {
+  let o_in_use, o_bypass, o_nomerge, o_boulder;
+  if (obj.where === OBJ_DELETED) return;
+  o_in_use = obj.in_use;
+  o_bypass = obj.bypass;
+  o_nomerge = (obj.nomerge && !nomerge_exception(obj));
+  o_boulder = (obj.otyp === BOULDER && obj.next_boulder);
+  if (o_in_use || o_bypass || o_nomerge || o_boulder) {
+    let infobuf;
+    Sprintf(infobuf, "flagged%s%s%s%s", o_in_use ? " in_use" : "", o_bypass ? " bypass" : "", o_nomerge ? " nomerge" : "", o_boulder ? " nxtbldr" : "");
+    insane_object(obj, ofmt0, infobuf, mon);
+  }
+}
+
+// Autotranslated from mkobj.c:3277
+export function nomerge_exception(obj) {
+  if (is_mines_prize(obj) || is_soko_prize(obj)) return true;
+  return false;
+}
+
+// Autotranslated from mkobj.c:3642
+export function obj_nexto(otmp) {
+  if (!otmp) {
+    impossible("obj_nexto: wasn't given an object to check");
+    return  0;
+  }
+  return obj_nexto_xy(otmp, otmp.ox, otmp.oy, true);
+}
+
+// Autotranslated from mkobj.c:3660
+export function obj_nexto_xy(obj, x, y, recurs) {
+  let otmp, fx, fy, ex, ey, otyp = obj.otyp, dx, dy;
+  otmp = sobj_at(otyp, x, y);
+  while (otmp) {
+    if (otmp !== obj && mergable(otmp, obj)) return otmp;
+    otmp = nxtobj(otmp, otyp, true);
+  }
+  if (!recurs) return  0;
+  dx = (rn2(2) ? -1 : 1);
+  dy = (rn2(2) ? -1 : 1);
+  ex = x - dx;
+  ey = y - dy;
+  for (fx = ex; Math.abs(fx - ex) < 3; fx += dx) {
+    for (fy = ey; Math.abs(fy - ey) < 3; fy += dy) {
+      if (isok(fx, fy) && (fx !== x || fy !== y)) {
+        if ((otmp = obj_nexto_xy(obj, fx, fy, false)) !== 0) return otmp;
+      }
+    }
+  }
+  return  0;
+}
+
+// Autotranslated from mkobj.c:3701
+export function obj_absorb(obj1, obj2, game) {
+  let otmp1, otmp2, o1wt, o2wt, agetmp;
+  if (obj1 && obj2) {
+    otmp1 = obj1;
+    otmp2 = obj2;
+    if (otmp1 && otmp2 && otmp1 !== otmp2) {
+      globby_bill_fixup(otmp1, otmp2);
+      if (otmp1.bknown !== otmp2.bknown) otmp1.bknown = otmp2.bknown = 0;
+      if (otmp1.rknown !== otmp2.rknown) otmp1.rknown = otmp2.rknown = 0;
+      if (otmp1.greased !== otmp2.greased) otmp1.greased = otmp2.greased = 0;
+      if (otmp1.orotten || otmp2.orotten) otmp1.orotten = otmp2.orotten = 1;
+      o1wt = otmp1.oeaten ? otmp1.oeaten : otmp1.owt;
+      o2wt = otmp2.oeaten ? otmp2.oeaten : otmp2.owt;
+      agetmp = ((((Number(game?.moves) || 0) - otmp1.age) * o1wt + ((Number(game?.moves) || 0) - otmp2.age) * o2wt) / (o1wt + o2wt));
+      otmp1.age = (Number(game?.moves) || 0) - agetmp;
+      otmp1.owt += o2wt;
+      if (otmp1.oeaten || otmp2.oeaten) otmp1.oeaten = o1wt + o2wt;
+      otmp1.quan = 1;
+      if (otmp1.globby && otmp2.globby) {
+        let tm1 = stop_timer(SHRINK_GLOB, obj_to_any(otmp1)), tm2 = stop_timer(SHRINK_GLOB, obj_to_any(otmp2));
+        tm1 = ((tm1 ? tm1 : 25) + (tm2 ? tm2 : 25) + 1) / 2;
+        start_glob_timeout(otmp1, tm1);
+      }
+      obj_extract_self(otmp2);
+      dealloc_obj(otmp2);
+       obj2 =  0;
+      return otmp1;
+    }
+  }
+  impossible("obj_absorb: not called with two actual objects");
+  return  0;
+}
+
+// Autotranslated from mkobj.c:3767
+export function obj_meld(obj1, obj2) {
+  let otmp1, otmp2, result = 0, ox, oy;
+  if (obj1 && obj2) {
+    otmp1 = obj1;
+    otmp2 = obj2;
+    if (otmp1 && otmp2 && otmp1 !== otmp2) {
+      ox = oy = 0;
+      if (!(otmp2.where === 'OBJ_FLOOR' && otmp1.where === OBJ_FREE) && (otmp1.owt > otmp2.owt || (otmp1.owt === otmp2.owt && rn2(2)))) {
+        if (otmp2.where === 'OBJ_FLOOR') ox = otmp2.ox, oy = otmp2.oy;
+        result = obj_absorb(obj1, obj2);
+      }
+      else {
+        if (otmp1.where === 'OBJ_FLOOR') ox = otmp1.ox, oy = otmp1.oy;
+        result = obj_absorb(obj2, obj1);
+      }
+      if (ox) { if (cansee(ox, oy)) newsym(ox, oy); maybe_unhide_at(ox, oy); }
+    }
+  }
+  else {
+    impossible("obj_meld: not called with two actual objects");
+  }
+  return result;
+}
+
+// Autotranslated from mkobj.c:3817
+export function pudding_merge_message(otmp, otmp2, player) {
+  let visible = (cansee(otmp.ox, otmp.oy) || cansee(otmp2.ox, otmp2.oy)), onfloor = (otmp.where === 'OBJ_FLOOR' || otmp2.where === 'OBJ_FLOOR'), inpack = (carried(otmp) || carried(otmp2));
+  if ((!(player?.Blind || player?.blind || false) && visible) || inpack) {
+    if ((player?.Hallucination || player?.hallucinating || false)) {
+      if (onfloor) { You_see("parts of the floor melting!"); }
+      else if (inpack) { Your("pack reaches out and grabs something!"); }
+    }
+    else if (onfloor || inpack) {
+      let adj = ((otmp.ox !== player.x || otmp.oy !== player.y) && (otmp2.ox !== player.x || otmp2.oy !== player.y));
+      pline("The %s%s coalesce%s.", (onfloor && adj) ? "adjacent " : "", makeplural(obj_typename(otmp.otyp)), inpack ? " inside your pack" : "");
+    }
+  }
+  else { You_hear("a faint sloshing sound."); }
 }

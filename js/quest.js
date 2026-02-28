@@ -93,9 +93,9 @@ function com_pager(msgid, game) {
 // ======================================================================
 
 // cf. quest.c:26 [static] — on_start(): quest start-level arrival message
-function on_start(game) {
+export function on_start(game) {
     const qs = Qstat(game);
-    const player = game.player;
+    const player = (game.u || game.player);
     if (!qs.first_start) {
         qt_pager("firsttime", game);
         qs.first_start = true;
@@ -109,9 +109,9 @@ function on_start(game) {
 }
 
 // cf. quest.c:40 [static] — on_locate(): quest locate-level arrival message
-function on_locate(game) {
+export function on_locate(game) {
     const qs = Qstat(game);
-    const player = game.player;
+    const player = (game.u || game.player);
     // the locate messages only make sense when arriving from above
     const from_above = (player.prevDungeonLevel || 0) < player.dungeonLevel;
 
@@ -131,7 +131,7 @@ function on_locate(game) {
 // cf. quest.c:62 [static] — on_goal(): quest goal-level arrival message
 function on_goal(game) {
     const qs = Qstat(game);
-    const map = game.map;
+    const map = (game.lev || game.map);
 
     if (qs.killed_nemesis) {
         return;
@@ -176,14 +176,15 @@ function find_quest_artifact_on_level(map) {
 }
 
 // cf. quest.c:147 [static] — not_capable(): minimum XL check
-function not_capable(player) {
-    return (player.level || player.ulevel || 1) < MIN_QUEST_LEVEL;
+// Autotranslated from quest.c:146
+export function not_capable(player) {
+  return  (player.ulevel < MIN_QUEST_LEVEL);
 }
 
 // cf. quest.c:153 [static] — is_pure(talk): alignment purity check
 // Returns: 1=pure, 0=impure (record too low), -1=converted
 function is_pure(talk, game) {
-    const player = game.player;
+    const player = (game.u || game.player);
     const original_alignment = player.ualignbase_original != null
         ? player.ualignbase_original : player.alignment;
     const current_base = player.ualignbase_current != null
@@ -202,9 +203,9 @@ function is_pure(talk, game) {
 }
 
 // cf. quest.c:186 [static] — expulsion(seal): force-return from quest branch
-function expulsion(seal, game) {
-    const player = game.player;
-    const map = game.map;
+export function expulsion(seal, game) {
+    const player = (game.u || game.player);
+    const map = (game.lev || game.map);
     const qs = Qstat(game);
 
     // In C, this finds the quest branch and schedules a goto to the parent dungeon.
@@ -252,7 +253,7 @@ function expulsion(seal, game) {
 // cf. quest.c:89 — onquest(): dispatch arrival messages for quest levels
 // Called on level change; does nothing if qcompleted or Not_firsttime.
 export function onquest(game) {
-    const player = game.player;
+    const player = (game.u || game.player);
     const qs = Qstat(game);
 
     if ((player.uevent && player.uevent.qcompleted) || Not_firsttime(player))
@@ -261,7 +262,7 @@ export function onquest(game) {
     // In C, these check dungeon topology:
     //   Is_special, Is_qstart, Is_qlocate, Is_nemesis
     // In JS, we check map.quest_level_type if set by level generation.
-    const map = game.map;
+    const map = (game.lev || game.map);
     if (!map || !map.quest_level_type)
         return;
 
@@ -280,26 +281,21 @@ export function onquest(game) {
 }
 
 // cf. quest.c:107 — nemdead(): nemesis was killed
-export function nemdead(game) {
-    const qs = Qstat(game);
-    if (!qs.killed_nemesis) {
-        qs.killed_nemesis = true;
-        qt_pager("killed_nemesis", game);
-    }
+// Autotranslated from quest.c:106
+export function nemdead() {
+  if (!Qstat(killed_nemesis)) { Qstat(killed_nemesis) = true; qt_pager("killed_nemesis"); }
 }
 
 // cf. quest.c:116 — leaddead(): quest leader was killed
-export function leaddead(game) {
-    const qs = Qstat(game);
-    if (!qs.killed_leader) {
-        qs.killed_leader = true;
-    }
+// Autotranslated from quest.c:115
+export function leaddead() {
+  if (!Qstat(killed_leader)) { Qstat(killed_leader) = true; }
 }
 
 // cf. quest.c:125 — artitouch(obj): player first touches quest artifact
 export function artitouch(obj, game) {
     const qs = Qstat(game);
-    const player = game.player;
+    const player = (game.u || game.player);
     if (!qs.touched_artifact) {
         // In C: observe_object(obj) so blind player gets it named
         // observe_object not yet ported globally; stub
@@ -312,18 +308,16 @@ export function artitouch(obj, game) {
 
 // cf. quest.c:140 — ok_to_quest(): quest dungeon entry eligibility
 // Returns true if player is allowed to enter quest dungeon.
-export function ok_to_quest(game) {
-    const qs = Qstat(game);
-    return ((qs.got_quest || qs.got_thanks)
-            && is_pure(false, game) > 0)
-        || !!qs.killed_leader;
+// Autotranslated from quest.c:139
+export async function ok_to_quest() {
+  return (((Qstat(got_quest) || Qstat(got_thanks)) && is_pure(false) > 0) || Qstat(killed_leader));
 }
 
 // cf. quest.c:225 — finish_quest(obj): handle quest artifact return to leader
 // obj=null: player has Amulet; obj=quest artifact: completion;
 // obj=other item: leader identifies it.
 export function finish_quest(obj, game) {
-    const player = game.player;
+    const player = (game.u || game.player);
     const qs = Qstat(game);
 
     if (obj && !is_quest_artifact(obj)) {
@@ -369,8 +363,8 @@ export function finish_quest(obj, game) {
 
 // cf. quest.c:282 [static] — chat_with_leader(mtmp): leader conversation logic
 function chat_with_leader(mtmp, game) {
-    const player = game.player;
-    const map = game.map;
+    const player = (game.u || game.player);
+    const map = (game.lev || game.map);
     const qs = Qstat(game);
 
     if (!mtmp.peaceful || qs.pissed_off)
@@ -450,7 +444,7 @@ function chat_with_leader(mtmp, game) {
 // cf. quest.c:357 — leader_speaks(mtmp): leader NPC response to chat
 export function leader_speaks(mtmp, game) {
     const qs = Qstat(game);
-    const map = game.map;
+    const map = (game.lev || game.map);
 
     // Maybe you attacked leader?
     if (!mtmp.peaceful) {
@@ -470,7 +464,7 @@ export function leader_speaks(mtmp, game) {
 }
 
 // cf. quest.c:380 [static] — chat_with_nemesis(): nemesis taunt dialog
-function chat_with_nemesis(game) {
+export function chat_with_nemesis(game) {
     const qs = Qstat(game);
     qt_pager("discourage", game);
     if (!qs.met_nemesis)
@@ -478,47 +472,33 @@ function chat_with_nemesis(game) {
 }
 
 // cf. quest.c:388 — nemesis_speaks(): nemesis NPC response to chat
-export function nemesis_speaks(game) {
-    const qs = Qstat(game);
-
-    if (!qs.in_battle) {
-        const player = game.player;
-        if (player.uhave && player.uhave.questart)
-            qt_pager("nemesis_wantsit", game);
-        else if (qs.made_goal === 1 || !qs.met_nemesis)
-            qt_pager("nemesis_first", game);
-        else if ((qs.made_goal || 0) < 4)
-            qt_pager("nemesis_next", game);
-        else if ((qs.made_goal || 0) < 7)
-            qt_pager("nemesis_other", game);
-        else if (!rn2(5))
-            qt_pager("discourage", game);
-
-        if ((qs.made_goal || 0) < 7)
-            qs.made_goal = (qs.made_goal || 0) + 1;
-        qs.met_nemesis = true;
-    } else {
-        // He will spit out random maledictions
-        if (!rn2(5))
-            qt_pager("discourage", game);
-    }
+// Autotranslated from quest.c:388
+export function nemesis_speaks(player) {
+  if (!Qstat(in_battle)) {
+    if (player.uhave.questart) qt_pager("nemesis_wantsit");
+    else if (Qstat(made_goal) === 1 || !Qstat(met_nemesis)) qt_pager("nemesis_first");
+    else if (Qstat(made_goal) < 4) qt_pager("nemesis_next");
+    else if (Qstat(made_goal) < 7) qt_pager("nemesis_other");
+    else if (!rn2(5)) qt_pager("discourage");
+    if (Qstat(made_goal) < 7) Qstat(made_goal)++;
+    Qstat(met_nemesis) = true;
+  }
+  else if (!rn2(5)) qt_pager("discourage");
 }
 
 // cf. quest.c:411 — nemesis_stinks(mx, my): gas cloud on nemesis death
-export function nemesis_stinks(mx, my, map, player, game) {
-    // In C, this temporarily sets context.mon_moving = TRUE
-    // so the hero is not attributed with the cloud.
-    const save_mon_moving = game.context ? game.context.mon_moving : false;
-    if (!game.context) game.context = {};
-    game.context.mon_moving = true;
-    create_gas_cloud(mx, my, 5, 8, map, player, game);
-    game.context.mon_moving = save_mon_moving;
+// Autotranslated from quest.c:411
+export function nemesis_stinks(mx, my, game) {
+  let save_mon_moving = game.game.svc.context.mon_moving;
+  game.game.svc.context.mon_moving = true;
+  create_gas_cloud(mx, my, 5, 8);
+  game.game.svc.context.mon_moving = save_mon_moving;
 }
 
 // cf. quest.c:427 [static] — chat_with_guardian(): guardian NPC dialog
-function chat_with_guardian(game) {
+export function chat_with_guardian(game) {
     const qs = Qstat(game);
-    const player = game.player;
+    const player = (game.u || game.player);
     if (player.uhave && player.uhave.questart && qs.killed_nemesis)
         qt_pager("guardtalk_after", game);
     else
@@ -526,9 +506,9 @@ function chat_with_guardian(game) {
 }
 
 // cf. quest.c:437 [static] — prisoner_speaks(mtmp): prisoner awakening
-function prisoner_speaks(mtmp, game) {
-    const player = game.player;
-    const map = game.map;
+export function prisoner_speaks(mtmp, game) {
+    const player = (game.u || game.player);
+    const map = (game.lev || game.map);
 
     if (mtmp.type === mons[PM_PRISONER]
         && ((mtmp.mstrategy || 0) & STRAT_WAITMASK)) {
@@ -557,7 +537,7 @@ export function quest_chat(mtmp, game) {
         chat_with_leader(mtmp, game);
         // Leader might have become pissed during the chat
         if (qs.pissed_off)
-            setmangry(mtmp, false, game.map, game.player);
+            setmangry(mtmp, false, (game.lev || game.map), (game.u || game.player));
         return;
     }
     switch (mtmp.type ? mtmp.type.sound : 0) {
@@ -574,30 +554,23 @@ export function quest_chat(mtmp, game) {
 }
 
 // cf. quest.c:481 — quest_talk(mtmp): dispatch proactive NPC talk
-export function quest_talk(mtmp, game) {
-    const qs = Qstat(game);
-
-    if (mtmp.m_id === qs.leader_m_id) {
-        leader_speaks(mtmp, game);
-        return;
-    }
-    switch (mtmp.type ? mtmp.type.sound : 0) {
+// Autotranslated from quest.c:480
+export async function quest_talk(mtmp) {
+  if (mtmp.m_id === Qstat(leader_m_id)) { await leader_speaks(mtmp); return; }
+  switch (mtmp.data.msound) {
     case MS_NEMESIS:
-        nemesis_speaks(game);
-        break;
+      nemesis_speaks();
+    break;
     case MS_DJINNI:
-        prisoner_speaks(mtmp, game);
-        break;
+      prisoner_speaks(mtmp);
+    break;
     default:
-        break;
-    }
+      break;
+  }
 }
 
 // cf. quest.c:499 — quest_stat_check(mtmp): update nemesis battle status
-export function quest_stat_check(mtmp, game) {
-    const qs = Qstat(game);
-    const player = game.player;
-
-    if (mtmp.type && mtmp.type.sound === MS_NEMESIS)
-        qs.in_battle = (!helpless(mtmp) && monnear(mtmp, player.x, player.y));
+// Autotranslated from quest.c:499
+export function quest_stat_check(mtmp, player) {
+  if (mtmp.data.msound === MS_NEMESIS) Qstat(in_battle) = (!helpless(mtmp) && monnear(mtmp, player.x, player.y));
 }

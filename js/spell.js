@@ -196,12 +196,14 @@ function spellet(spell) {
 }
 
 // C ref: spell.c spell_let_to_idx() — convert menu letter to spell index
-function spell_let_to_idx(ilet) {
-    let indx = ilet.charCodeAt(0) - 'a'.charCodeAt(0);
-    if (indx >= 0 && indx < 26) return indx;
-    indx = ilet.charCodeAt(0) - 'A'.charCodeAt(0);
-    if (indx >= 0 && indx < 26) return indx + 26;
-    return -1;
+// Autotranslated from spell.c:114
+export function spell_let_to_idx(ilet) {
+  let indx;
+  indx = ilet - 'a';
+  if (indx >= 0 && indx < 26) return indx;
+  indx = ilet - 'A';
+  if (indx >= 0 && indx < 26) return indx + 26;
+  return -1;
 }
 
 // Helper: get spell otyp from player.spells array at index
@@ -267,7 +269,7 @@ function percent_success(player, spell_idx) {
         || { spelbase: 10, spelheal: 0, spelshld: 2, spelarmr: 10, spelstat: A_INT, spelspec: '', spelsbon: 0 };
     const statValue = Math.max(3, Math.min(25, Number(player.attributes?.[role.spelstat] || 10)));
     const spellSkill = spellSkillRank(player, category);
-    const heroLevel = Math.max(1, Number(player.level || 1));
+    const heroLevel = Math.max(1, Number(player.ulevel || 1));
 
     // C ref: Role_if(PM_KNIGHT) && skilltype == P_CLERIC_SPELL
     const paladinBonus = player.roleIndex === PM_KNIGHT && category === SPELL_CATEGORY_CLERICAL;
@@ -331,7 +333,7 @@ function estimateSpellFailPercent(player, spellName, spellLevel, category) {
         || { spelbase: 10, spelheal: 0, spelshld: 2, spelarmr: 10, spelstat: A_INT, spelspec: '', spelsbon: 0 };
     const statValue = Math.max(3, Math.min(25, Number(player.attributes?.[role.spelstat] || 10)));
     const spellSkill = spellSkillRank(player, category);
-    const heroLevel = Math.max(1, Number(player.level || 1));
+    const heroLevel = Math.max(1, Number(player.ulevel || 1));
     const spellLvl = Math.max(1, Number(spellLevel || 1));
 
     const paladinBonus = player.roleIndex === PM_KNIGHT && category === SPELL_CATEGORY_CLERICAL;
@@ -472,19 +474,25 @@ export function spell_skilltype(booktype) {
 }
 
 // C ref: spell.c num_spells() — count known spells
-export function num_spells(player) {
-    if (!player.spells) return 0;
-    return player.spells.length;
+// Autotranslated from spell.c:2416
+export function num_spells() {
+  let i;
+  for (i = 0; i < MAXSPELL; i++) {
+    if (spellid(i) === NO_SPELL) {
+      break;
+    }
+  }
+  return i;
 }
 
 // C ref: spell.c spell_idx() — find index of spell by otyp, or UNKNOWN_SPELL
-export function spell_idx(player, otyp) {
-    const spells = player.spells;
-    if (!spells) return UNKNOWN_SPELL;
-    for (let i = 0; i < spells.length; i++) {
-        if (spells[i].otyp === otyp) return i;
-    }
-    return UNKNOWN_SPELL;
+// Autotranslated from spell.c:2378
+export function spell_idx(otyp) {
+  let i;
+  for (i = 0; (i < MAXSPELL) && (spellid(i) !== NO_SPELL); i++) {
+    if (spellid(i) === otyp) return i;
+  }
+  return UNKNOWN_SPELL;
 }
 
 // C ref: spell.c known_spell() — returns spe_Unknown/spe_Fresh/spe_GoingStale/spe_Forgotten
@@ -550,7 +558,7 @@ export function study_book(spellbook, player) {
     }
 
     // Check if already known with good retention
-    const idx = spell_idx(player, booktype);
+    const idx = spell_idx(booktype, player);
     if (idx !== UNKNOWN_SPELL && spellknow(player, idx) > KEEN / 10) {
         You("know \"%s\" quite well already.", od.name || 'this spell');
         return 0;
@@ -567,7 +575,7 @@ export function study_book(spellbook, player) {
             // Uncursed: check read ability
             const intel = (player.attributes ? player.attributes[A_INT] : 12) || 12;
             const lensBonus = (player.blindfolded?.otyp === LENSES) ? 2 : 0;
-            const read_ability = intel + 4 + Math.floor((player.level || 1) / 2)
+            const read_ability = intel + 4 + Math.floor((player.ulevel || 1) / 2)
                                  - 2 * ocLevel + lensBonus;
             if (rnd(20) > read_ability) {
                 too_hard = true;
@@ -800,7 +808,7 @@ export function spell_backfire(player, spellIdx) {
 
 // C ref: spell.c cast_protection() — SPE_PROTECTION effect
 export function cast_protection(player) {
-    let l = player.level || 1;
+    let l = player.ulevel || 1;
     let loglev = 0;
     const uspellprot = player.uspellprot || 0;
     const uac = player.uac || 10;
@@ -837,16 +845,14 @@ export function cast_protection(player) {
 function distmin(x0, y0, x1, y1) {
     return Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
 }
-
-function can_center_spell_location(player, map, x, y) {
+export function can_center_spell_location(player, map, x, y) {
     if (!player || !map) return false;
     if (distmin(player.x, player.y, x, y) > SPELL_TARGET_DIST) return false;
     const loc = map.at ? map.at(x, y) : null;
     if (!loc) return false;
     return !IS_STWALL(loc.typ);
 }
-
-function display_spell_target_positions(player, map, on_off) {
+export function display_spell_target_positions(player, map, on_off) {
     if (!player || !map) return;
     if (on_off) {
         tmp_at(DISP_BEAM, { ch: '*', color: 10 });
@@ -916,7 +922,7 @@ async function cast_chain_lightning(player, map) {
 export function spell_damage_bonus(dmg, player) {
     if (!player) return dmg;
     const intell = (player.attributes ? player.attributes[A_INT] : 10) || 10;
-    const level = player.level || 1;
+    const level = player.ulevel || 1;
 
     if (intell <= 9) {
         if (dmg > 1)
@@ -937,7 +943,7 @@ export function spell_damage_bonus(dmg, player) {
 export function spell_would_be_useless_hero(spellOtyp, player) {
     // Check a few obvious cases
     if (spellOtyp === SPE_HEALING || spellOtyp === SPE_EXTRA_HEALING) {
-        if ((player.hp || 0) >= (player.hpmax || 1)) return true;
+        if ((player.uhp || 0) >= (player.uhpmax || 1)) return true;
     }
     if (spellOtyp === SPE_CURE_BLINDNESS && !player.blind) return true;
     if (spellOtyp === SPE_CURE_SICKNESS && !player.sick && !player.slimed) return true;
@@ -1060,7 +1066,7 @@ export async function spelleffects(spell_otyp, atme, player, map, display) {
     if (!player || !player.spells) return 0;
 
     // Find spell index
-    const idx = spell_idx(player, spell_otyp);
+    const idx = spell_idx(spell_otyp, player);
     if (idx === UNKNOWN_SPELL) return 0;
 
     const sp = player.spells[idx];
@@ -1402,13 +1408,189 @@ export function tport_spell(player, what) {
 export const dovspell = handleKnownSpells;
 
 // Export constants for use by other modules
-export {
-    KEEN, NO_SPELL, UNKNOWN_SPELL, MAX_SPELL_STUDY, MAXSPELL,
-    SPELL_LEV_PW, NODIR,
-    SPELL_CATEGORY_ATTACK, SPELL_CATEGORY_HEALING,
-    SPELL_CATEGORY_DIVINATION, SPELL_CATEGORY_ENCHANTMENT,
-    SPELL_CATEGORY_CLERICAL, SPELL_CATEGORY_ESCAPE,
-    SPELL_CATEGORY_MATTER,
-    spellCategoryForName, spellSkillRank, spellet, spell_let_to_idx,
-    spellRetentionText, estimateSpellFailPercent, percent_success,
-};
+export { KEEN, NO_SPELL, UNKNOWN_SPELL, MAX_SPELL_STUDY, MAXSPELL, SPELL_LEV_PW, NODIR, SPELL_CATEGORY_ATTACK, SPELL_CATEGORY_HEALING, SPELL_CATEGORY_DIVINATION, SPELL_CATEGORY_ENCHANTMENT, SPELL_CATEGORY_CLERICAL, SPELL_CATEGORY_ESCAPE, SPELL_CATEGORY_MATTER, spellCategoryForName, spellSkillRank, spellet, spellRetentionText, estimateSpellFailPercent, percent_success };
+
+// Autotranslated from spell.c:210
+export function deadbook_pacify_undead(mtmp, game, player) {
+  if ((is_undead(mtmp.data) || is_vampshifter(mtmp)) && cansee(mtmp.mx, mtmp.my)) {
+    mtmp.mpeaceful = true;
+    if (sgn(mtmp.data.maligntyp) === sgn(player.ualigame.gn.type) && mdistu(mtmp) < 4) {
+      if (mtmp.mtame) { if (mtmp.mtame < 20) mtmp.mtame++; }
+      else {
+        tamedog(mtmp,  0, true);
+      }
+    }
+    else {
+      monflee(mtmp, 0, false, true);
+    }
+  }
+}
+
+// Autotranslated from spell.c:668
+export function age_spells() {
+  let i;
+  for (i = 0; i < MAXSPELL && spellid(i) !== NO_SPELL; i++) {
+    if (spellknow(i)) decrnknow(i);
+  }
+  return;
+}
+
+// Autotranslated from spell.c:786
+export async function dowizcast() {
+  let win, selected, any, i, n;
+  win = create_nhwindow(NHW_MENU);
+  start_menu(win, MENU_BEHAVE_STANDARD);
+  any = cg.zeroany;
+  for (i = 0; i < MAXSPELL; i++) {
+    n = (SPE_DIG + i);
+    if (n >= SPE_BLANK_PAPER) {
+      break;
+    }
+    any.a_int = n;
+    add_menu(win, nul_glyphinfo, any, 0, 0, ATR_NONE, NO_COLOR, OBJ_NAME(objectData[n]), MENU_ITEMFLAGS_NONE);
+  }
+  end_menu(win, "Cast which spell?");
+  n = select_menu(win, PICK_ONE, selected);
+  destroy_nhwindow(win);
+  if (n > 0) {
+    i = selected[0].item.a_int;
+    (selected, 0);
+    return spelleffects(i, false, true);
+  }
+  return ECMD_OK;
+}
+
+// Autotranslated from spell.c:1219
+export async function spelleffects_check(spell, res, energy, game, player) {
+  let chance;
+  let confused = ((player?.Confusion || player?.confused || false) !== 0);
+   energy = 0;
+  if ((spell === UNKNOWN_SPELL) || rejectcasting()) { res = ECMD_OK; return true; }
+   energy = SPELL_LEV_PW(spellev(spell));
+  if (spellknow(spell) <= 0) {
+    Your("knowledge of this spell is twisted.");
+    pline("It invokes nightmarish images in your mind...");
+    spell_backfire(spell);
+    player.uen -= rnd( energy);
+    if (player.uen < 0) player.uen = 0;
+    game.disp.botl = true;
+     res = ECMD_TIME;
+    return true;
+  }
+  else if (spellknow(spell) <= KEEN / 200) { You("strain to recall the spell."); }
+  else if (spellknow(spell) <= KEEN / 40) { You("have difficulty remembering the spell."); }
+  else if (spellknow(spell) <= KEEN / 20) {
+    Your("knowledge of this spell is growing faint.");
+  }
+  else if (spellknow(spell) <= KEEN / 10) {
+    Your("recall of this spell is gradually fading.");
+  }
+  if (player.uhunger <= 10 && spellid(spell) !== SPE_DETECT_FOOD) {
+    You("are too hungry to cast that spell.");
+     res = ECMD_OK;
+    return true;
+  }
+  else if (acurr(player,A_STR) < 4 && spellid(spell) !== SPE_RESTORE_ABILITY) {
+    You("lack the strength to cast spells.");
+     res = ECMD_OK;
+    return true;
+  }
+  else if (check_capacity( "Your concentration falters while carrying so much stuff.")) { res = ECMD_TIME; return true; }
+  if (player.uhave.amulet && player.uen >= energy) {
+    You_feel("the amulet draining your energy away.");
+    player.uen -= rnd(2 * energy.value);
+    if (player.uen < 0) player.uen = 0;
+    game.disp.botl = true;
+     res = ECMD_TIME;
+  }
+  if ( energy > player.uen) {
+    You("don't have enough energy to cast that spell%s.", (player.uen < player.uenmax) ? ""   : ( energy > player.uenpeak) ? " yet"   : " anymore");
+    return true;
+  }
+  else {
+    if (spellid(spell) !== SPE_DETECT_FOOD) {
+      let hungr =  energy * 2, intell = acurr(A_INT);
+      if (!Role_if(PM_WIZARD)) intell = 10;
+      switch (intell) {
+        case 25:
+          case 24:
+            case 23:
+              case 22:
+                case 21:
+                  case 20:
+                    case 19:
+                      case 18:
+                        case 17:
+                          hungr = 0;
+        break;
+        case 16:
+          hungr /= 4;
+        break;
+        case 15:
+          hungr /= 2;
+        break;
+      }
+      if (hungr > player.uhunger - 3) hungr = player.uhunger - 3;
+      morehungry(hungr);
+    }
+  }
+  chance = percent_success(spell);
+  if (confused || (rnd(100) > chance)) {
+    You("fail to cast the spell correctly.");
+    player.uen -= energy / 2;
+    game.disp.botl = true;
+     res = ECMD_TIME;
+    return true;
+  }
+  return false;
+}
+
+// Autotranslated from spell.c:1606
+export function spell_aim_step(arg, x, y, map) {
+  if (!isok(x,y)) return false;
+  if (!ZAP_POS(map.locations[x][y].typ) && !(IS_DOOR(map.locations[x][y].typ) && (map.locations[x][y].doormask & D_ISOPEN))) return false;
+  return true;
+}
+
+// Autotranslated from spell.c:2294
+export function spellretention(idx, outbuf) {
+  let turnsleft, percent, accuracy, skill;
+  skill = P_SKILL(spell_skilltype(spellid(idx)));
+  skill = Math.max(skill, P_UNSKILLED);
+  turnsleft = spellknow(idx);
+   outbuf = '\0';
+  if (turnsleft < 1) { Strcpy(outbuf, "(gone)"); }
+  else if (turnsleft >=  KEEN) { Strcpy(outbuf, "100%"); }
+  else {
+    percent = (turnsleft - 1) / ( KEEN / 100) + 1;
+    accuracy = (skill === P_EXPERT) ? 2 : (skill === P_SKILLED) ? 5 : (skill === P_BASIC) ? 10 : 25;
+    percent = accuracy * ((percent - 1) / accuracy + 1);
+    Sprintf(outbuf, "%ld%%-%ld%%", percent - accuracy + 1, percent);
+  }
+  return outbuf;
+}
+
+// Autotranslated from spell.c:1975
+export async function spellsortmenu() {
+  let tmpwin, selected, any, let_, i, n, choice, clr = NO_COLOR;
+  tmpwin = create_nhwindow(NHW_MENU);
+  start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+  any = cg.zeroany;
+  for (i = 0; i < SIZE(spl_sortchoices); i++) {
+    if (i === SORTRETAINORDER) { let_ = 'z'; add_menu_str(tmpwin, ""); }
+    else { let_ = 'a' + i; }
+    any.a_int = i + 1;
+    add_menu(tmpwin, nul_glyphinfo, any, let_, 0, ATR_NONE, clr, spl_sortchoices[i], (i === gs.spl_sortmode) ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
+  }
+  end_menu(tmpwin, "View known spells list sorted");
+  n = select_menu(tmpwin, PICK_ONE, selected);
+  destroy_nhwindow(tmpwin);
+  if (n > 0) {
+    choice = selected[0].item.a_int - 1;
+    if (n > 1 && choice === gs.spl_sortmode) choice = selected[1].item.a_int - 1;
+    (selected, 0);
+    gs.spl_sortmode = choice;
+    return true;
+  }
+  return false;
+}

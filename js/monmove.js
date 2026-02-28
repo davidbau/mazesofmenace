@@ -28,7 +28,7 @@ import { COLNO, ROWNO, IS_WALL, IS_DOOR, IS_ROOM,
          NORMAL_SPEED, isok } from './config.js';
 import { rn2, rnd } from './rng.js';
 import { wipe_engr_at } from './engrave.js';
-import { monsterAttackPlayer } from './mhitu.js';
+import { mattacku } from './mhitu.js';
 import { makemon } from './makemon.js';
 import { FOOD_CLASS, COIN_CLASS, BOULDER, ROCK, ROCK_CLASS,
          WEAPON_CLASS, ARMOR_CLASS, GEM_CLASS,
@@ -40,12 +40,13 @@ import { FOOD_CLASS, COIN_CLASS, BOULDER, ROCK, ROCK_CLASS,
 import { next_ident, weight } from './mkobj.js';
 import { can_carry } from './dogmove.js';
 import { couldsee, m_cansee } from './vision.js';
+import { pline_mon, verbalize } from './pline.js';
 import { can_teleport, noeyes, perceives, nohands,
-         hides_under, is_mercenary, monDisplayName, monNam,
+         hides_under, is_mercenary, YMonnam, Monnam,
          mon_knows_traps, is_rider, is_mind_flayer,
          is_mindless, telepathic,
          is_giant, is_undead, is_unicorn, is_minion, throws_rocks,
-         passes_walls,
+         passes_walls, corpse_eater,
          passes_bars, is_human, canseemon } from './mondata.js';
 import { PM_GRID_BUG, PM_SHOPKEEPER, PM_MINOTAUR, mons,
          PM_LEPRECHAUN,
@@ -64,6 +65,7 @@ import { PM_GRID_BUG, PM_SHOPKEEPER, PM_MINOTAUR, mons,
 import { dog_move, could_reach_item } from './dogmove.js';
 import { initrack, settrack, gettrack } from './track.js';
 import { pointInShop, monsterInShop } from './shknam.js';
+import { stop_occupation } from './allmain.js';
 
 // Shared utilities — re-exported for consumers
 import { dist2, distmin, monnear,
@@ -73,13 +75,7 @@ import { dist2, distmin, monnear,
          addToMonsterInventory, canMergeMonsterInventoryObj,
          mondead, mpickobj, mdrop_obj, unstuck,
          MTSZ, SQSRCHRADIUS, FARAWAY, BOLT_LIM } from './monutil.js';
-export { dist2, distmin, monnear,
-         monmoveTrace, monmovePhase3Trace, monmoveStepLabel,
-         attackVerb, monAttackName,
-         canSpotMonsterForMap, map_invisible,
-         addToMonsterInventory, canMergeMonsterInventoryObj,
-         mondead, mpickobj, mdrop_obj,
-         MTSZ, SQSRCHRADIUS, FARAWAY, BOLT_LIM };
+export { dist2, distmin, monnear, monmoveTrace, monmovePhase3Trace, monmoveStepLabel, attackVerb, monAttackName, canSpotMonsterForMap, map_invisible, addToMonsterInventory, canMergeMonsterInventoryObj, mondead, mpickobj, mdrop_obj, MTSZ, SQSRCHRADIUS, FARAWAY, BOLT_LIM };
 
 // Re-export track functions (track.c)
 export { initrack, settrack };
@@ -92,10 +88,7 @@ import { movemon as _movemon, mfndpos, handleHiderPremove,
          NOTONL, OPENDOOR, UNLOCKDOOR, BUSTDOOR, ALLOW_ROCK, ALLOW_WALL,
          ALLOW_DIG, ALLOW_BARS, ALLOW_SANCT, ALLOW_SSM, NOGARLIC } from './mon.js';
 import { mattackm, M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED } from './mhitm.js';
-export { mfndpos, onscary, corpse_chance,
-         ALLOW_MDISP, ALLOW_TRAPS, ALLOW_U, ALLOW_M, ALLOW_TM, ALLOW_ALL,
-         NOTONL, OPENDOOR, UNLOCKDOOR, BUSTDOOR, ALLOW_ROCK, ALLOW_WALL,
-         ALLOW_DIG, ALLOW_BARS, ALLOW_SANCT, ALLOW_SSM, NOGARLIC };
+export { mfndpos, onscary, corpse_chance, ALLOW_MDISP, ALLOW_TRAPS, ALLOW_U, ALLOW_M, ALLOW_TM, ALLOW_ALL, NOTONL, OPENDOOR, UNLOCKDOOR, BUSTDOOR, ALLOW_ROCK, ALLOW_WALL, ALLOW_DIG, ALLOW_BARS, ALLOW_SANCT, ALLOW_SSM, NOGARLIC };
 // mon_allowflags is exported from its definition below
 
 // Re-export trap.c functions
@@ -104,6 +97,7 @@ export { m_harmless_trap, floor_trigger, mintrap_postmove };
 
 // Re-export mthrowu.c functions
 import { hasWeaponAttack, maybeMonsterWieldBeforeAttack, linedUpToPlayer } from './mthrowu.js';
+import { m_carrying } from './mthrowu.js';
 import { find_defensive, use_defensive, find_misc, use_misc } from './muse.js';
 
 // ========================================================================
@@ -121,6 +115,22 @@ function mon_is_peaceful(mon) {
     if (!mon) return false;
     if (mon.mpeaceful !== undefined) return !!mon.mpeaceful;
     return !!mon.peaceful;
+}
+
+function DEADMONSTER(mon) {
+    return !!(mon && (mon.dead || mon.mhp <= 0));
+}
+
+const M_AP_NOTHING = 0;
+const M_AP_FURNITURE = 1;
+const M_AP_OBJECT = 2;
+function M_AP_TYPE(mon) {
+    return Number(mon?.m_ap_type || mon?.mappearanceType || M_AP_NOTHING);
+}
+
+function m_canseeu(mon, map, player) {
+    if (!mon || !player) return false;
+    return !!m_cansee(mon, player.x, player.y, map);
 }
 
 // ========================================================================
@@ -160,10 +170,12 @@ function leppie_avoidance(mon, player) {
 // ========================================================================
 
 // C ref: monmove.c:79 — add position (x,y) to front of monster's track ring
+// Autotranslated from monmove.c:79
 export function mon_track_add(mon, x, y) {
     if (!Array.isArray(mon?.mtrack)) return;
-    for (let j = MTSZ - 1; j > 0; j--)
+    for (let j = MTSZ - 1; j > 0; j--) {
         mon.mtrack[j] = mon.mtrack[j - 1];
+    }
     mon.mtrack[0] = { x, y };
 }
 
@@ -198,9 +210,9 @@ export function monflee(mon, fleetime, first, fleemsg, player, display, fov) {
         // C ref: monmove.c:487-520 — flee message
         if (!mon.flee && fleemsg && canseemon(mon, player, fov)) {
             if (!mon.mcanmove || !(mon.type?.speed)) {
-                display?.putstr_message(`${monNam(mon, { capitalize: true })} seems to flinch.`);
+                display?.putstr_message(`${YMonnam(mon)} seems to flinch.`);
             } else {
-                display?.putstr_message(`${monNam(mon, { capitalize: true })} turns to flee.`);
+                display?.putstr_message(`${YMonnam(mon)} turns to flee.`);
             }
         }
         mon.flee = true;
@@ -216,7 +228,7 @@ export function monflee(mon, fleetime, first, fleemsg, player, display, fov) {
 // and/or scared of something at or near the hero's position.
 // Sets inrange (within BOLT_LIM), nearby (adjacent), and scared (triggers flee).
 // Always consumes rn2(5) for bravegremlin check.
-function distfleeck(mon, map, player, display, fov) {
+export function distfleeck(mon, map, player, display, fov) {
     const bravegremlin = (rn2(5) === 0);
 
     const targetX = Number.isInteger(mon.mux) ? mon.mux : player.x;
@@ -298,11 +310,13 @@ export function monhaskey(mon, forUnlocking) {
 // Riders (Death/Famine/Pestilence) always can; shopkeepers, priests, and
 // quest leaders (MS_LEADER sound) can when their special-ability cooldown
 // is zero (mspec_used == 0).
+// Autotranslated from monmove.c:134
 export function m_can_break_boulder(mon) {
-    const ptr = mon?.type || {};
+    const ptr = mon?.type || mon?.data || {};
+    const msound = ptr.msound ?? ptr.sound ?? 0;
     return is_rider(ptr)
         || (!mon.mspec_used
-            && (mon.isshk || mon.ispriest || ptr.sound === MS_LEADER));
+            && (mon.isshk || mon.ispriest || msound === MS_LEADER));
 }
 
 // ========================================================================
@@ -336,7 +350,7 @@ export function mon_allowflags(mon) {
     }
 
     // C ref: mon.c:2070-2073 — can open doors (not nohands and not verysmall)
-    const verysmall = (ptr.size || 0) === MZ_TINY;
+    const verysmall = (ptr.msize || 0) === MZ_TINY;
     if (!nohands(ptr) && !verysmall) {
         flag |= OPENDOOR;
     }
@@ -373,7 +387,7 @@ export function mon_allowflags(mon) {
     }
 
     // C ref: mon.c:2098-2102 — undead (non-ghost) avoid garlic
-    if (is_undead(ptr) && (ptr.symbol !== S_GHOST)) {
+    if (is_undead(ptr) && (ptr.mlet !== S_GHOST)) {
         flag |= NOGARLIC;
     }
 
@@ -430,7 +444,7 @@ function max_mon_load_for_search(mon) {
     const mdat = mon?.type || {};
     const strong = !!(mdat.flags2 & M2_STRONG);
     const cwt = Number(mdat.weight || 0);
-    const msize = Number(mdat.size || 0);
+    const msize = Number(mdat.msize || 0);
     let maxload;
     if (!cwt) {
         maxload = (MAX_CARR_CAP * msize) / MZ_HUMAN;
@@ -600,7 +614,7 @@ function m_respond_shrieker(mon, map, player, display = null, game = null) {
     if (distmin(mon.mx, mon.my, player.x, player.y) > 1) return;
     if (!player?.deaf) {
         if (display) {
-            display.putstr_message(`${monNam(mon, { article: 'the', capitalize: true })} shrieks.`);
+            display.putstr_message(`${Monnam(mon)} shrieks.`);
         }
         if (game && typeof game.stopOccupation === 'function') {
             game.stopOccupation();
@@ -660,7 +674,7 @@ function mind_blast(mon, map, player, display = null, fov = null) {
     // C ref: monmove.c:590 — canseemon message
     const vismon = canSpotMonsterForMap(mon, map, player, fov);
     if (vismon && display) {
-        display.putstr_message(`${monNam(mon, { article: 'the', capitalize: true })} concentrates.`);
+        display.putstr_message(`${Monnam(mon)} concentrates.`);
     }
 
     // C ref: monmove.c:592 — distance check
@@ -758,7 +772,7 @@ function mind_blast(mon, map, player, display = null, fov = null) {
 async function dochug(mon, map, player, display, fov, game = null) {
     if (mon.waiting && map?.flags?.is_tutorial) return;
 
-    if (mon.type && mon.type.symbol === S_MIMIC) {
+    if (mon.type && mon.type.mlet === S_MIMIC) {
         return;
     }
 
@@ -773,7 +787,7 @@ async function dochug(mon, map, player, display, fov, game = null) {
             if (!(isEttin && rn2(10))) return false;
         }
 
-        const sym = monster.type?.symbol;
+        const sym = monster.type?.mlet;
         const isHardSleeper = sym === S_NYMPH
             || monster.type?.name === 'jabberwock'
             || sym === S_LEPRECHAUN;
@@ -1019,12 +1033,12 @@ async function dochug(mon, map, player, display, fov, game = null) {
                     if (maybeMonsterWieldBeforeAttack(mon, player, display, fov, true)) {
                         return;
                     }
-                    await monsterAttackPlayer(mon, player, display, game);
+                    await mattacku(mon, player, display, game);
                 }
             } else {
-                // At range: route through monsterAttackPlayer with range2=true
+                // At range: route through mattacku with range2=true
                 // so it iterates the attack table and calls thrwmu for AT_WEAP.
-                await monsterAttackPlayer(mon, player, display, game, { range2: true, map });
+                await mattacku(mon, player, display, game, { range2: true, map });
             }
         }
     }
@@ -1213,7 +1227,7 @@ function m_move(mon, map, player, display = null, fov = null) {
 
     const omx = mon.mx, omy = mon.my;
     const ptr = mon.type || {};
-    const verysmall = (ptr.size || 0) === MZ_TINY;
+    const verysmall = (ptr.msize || 0) === MZ_TINY;
     const can_open = !(nohands(ptr) || verysmall);
     // C ref: monmove.c:1768 — can_unlock = (can_open && monhaskey) || iswiz || is_rider
     const can_unlock = (can_open && monhaskey(mon, true)) || !!mon.iswiz || is_rider(ptr);
@@ -1418,7 +1432,7 @@ function m_move(mon, map, player, display = null, fov = null) {
                 if (display) {
                     const canSeeDoor = fov?.canSee ? fov.canSee(mon.mx, mon.my) : couldsee(map, player, mon.mx, mon.my);
                     if (canSeeDoor && mon.name) {
-                        display.putstr_message(`${monNam(mon, { article: 'the', capitalize: true })} opens a door.`);
+                        display.putstr_message(`${Monnam(mon)} opens a door.`);
                     } else {
                         display.putstr_message('You hear a door open.');
                     }
@@ -1434,7 +1448,7 @@ function m_move(mon, map, player, display = null, fov = null) {
 // m_move_aggress — C ref: monmove.c:2090
 // ========================================================================
 // C-faithful: calls shared mattackm for full multi-attack resolution.
-function m_move_aggress(mon, map, player, nx, ny, display = null, fov = null) {
+export function m_move_aggress(mon, map, player, nx, ny, display = null, fov = null) {
     const target = map.monsterAt(nx, ny);
     if (!target || target === mon || target.dead) return false;
 
@@ -1595,7 +1609,7 @@ export async function postmov(mon, map, player, mmoved) {
         if (objects.length > 0 && !mon.dead) {
             // Hiding under objects
             const mdat = mon.type || {};
-            if (hides_under(mdat) || mdat.symbol === 57 /* S_EEL */) {
+            if (hides_under(mdat) || mdat.mlet === 57 /* S_EEL */) {
                 if (mon.mundetected || rn2(5)) {
                     // hideunder logic — simplified
                 }
@@ -1702,4 +1716,173 @@ export function mon_would_consume_item(mon, obj) {
     // Gelatinous cubes eat organic
     if (mon.mndx === 8 /* PM_GELATINOUS_CUBE */) return true;
     return false;
+}
+
+// Autotranslated from monmove.c:2183
+export function closed_door(x, y, map) {
+  return  (IS_DOOR(map.locations[x][y].typ) && (map.locations[x][y].doormask & (D_LOCKED | D_CLOSED)));
+}
+
+// Autotranslated from monmove.c:33
+export function msg_mon_movement(mtmp, omx, omy, game) {
+  if (game.a11y.mon_movement && canspotmon(mtmp) && mtmp.mspotted) {
+    let nix = mtmp.mx, niy = mtmp.my;
+    let n2u = next2u(nix, niy), close = !n2u && (distu(nix, niy) <= (BOLT_LIM * BOLT_LIM)), closer = !n2u && (distu(nix, niy) <= distu(omx, omy));
+    pline_xy(nix, niy, "%s %s%s.", Monnam(mtmp), vtense( 0, locomotion(mtmp.data, "move")), n2u ? " next to you" : (close && closer) ? " closer" : (close && !closer) ? " further away" : " in the distance");
+  }
+}
+
+// Autotranslated from monmove.c:106
+export function mon_yells(mon, shout, player) {
+  if ((player?.Deaf || player?.deaf || false)) {
+    if (canspotmon(mon)) pline_mon(mon, "%s angrily %s %s %s!", Amonnam(mon), nolimbs(mon.data) ? "shakes" : "waves", mhis(mon), nolimbs(mon.data) ? mbodypart(mon, HEAD) : makeplural(mbodypart(mon, ARM)));
+  }
+  else {
+    if (canspotmon(mon)) { pline_mon(mon, "%s yells:", Amonnam(mon)); }
+    else { You_hear("someone yell:"); }
+    verbalize1(shout);
+  }
+}
+
+// Autotranslated from monmove.c:143
+export function m_break_boulder(mtmp, x, y, player) {
+  let otmp;
+  if (m_can_break_boulder(mtmp) && ((otmp = sobj_at(BOULDER, x, y)) !== 0)) {
+    if (!is_rider(mtmp.data)) {
+      if (!(player?.Deaf || player?.deaf || false) && (mdistu(mtmp) < 4*4)) {
+        if (canspotmon(mtmp)) set_msg_xy(mtmp.mx, mtmp.my);
+        pline("%s mutters %s.", Monnam(mtmp), mtmp.ispriest ? "a prayer" : "an incantation");
+      }
+      mtmp.mspec_used += rn1(20, 10);
+    }
+    if (cansee(x, y)) { set_msg_xy(x, y); pline_The("boulder falls apart."); }
+    if (otmp.unpaid) { bill_dummy_object(otmp); }
+    fracture_rock(otmp);
+  }
+}
+
+// Autotranslated from monmove.c:375
+export function find_pmmonst(pm, game, map) {
+  let mtmp = 0;
+  if ((game.mvitals[pm].mvflags & G_GENOD) === 0) {
+    for (mtmp = (map?.fmon || null); mtmp; mtmp = mtmp.nmon) {
+      if (DEADMONSTER(mtmp)) {
+        continue;
+      }
+      if (mtmp.data === mons) {
+        break;
+      }
+    }
+  }
+  return mtmp;
+}
+
+// Autotranslated from monmove.c:424
+export function gelcube_digests(mtmp) {
+  let otmp = mtmp.minvent;
+  if (mtmp.meating || !mtmp.minvent) return -1;
+  while (otmp) {
+    if (is_organic(otmp) && !otmp.oartifact && !is_mines_prize(otmp) && !is_soko_prize(otmp)) {
+      break;
+    }
+    otmp = otmp.nobj;
+  }
+  if (!otmp) return -1;
+  mtmp.meating = eaten_stat(mtmp.meating, otmp);
+  extract_from_minvent(mtmp, otmp, true, true);
+  m_consume_obj(mtmp, otmp);
+  return 0;
+}
+
+// Autotranslated from monmove.c:1157
+export function leppie_stash(mtmp, map) {
+  let gold;
+  if (mtmp.data === mons[PM_LEPRECHAUN] && !DEADMONSTER(mtmp) && !m_canseeu(mtmp) && !in_rooms(mtmp.mx, mtmp.my, SHOPBASE) && map.locations[mtmp.mx][mtmp.my].typ === ROOM && !t_at(mtmp.mx, mtmp.my) && rn2(4) && (gold = findgold(mtmp.minvent)) !== 0) {
+    mdrop_obj(mtmp, gold, false);
+    gold = g_at(mtmp.mx, mtmp.my);
+    if (gold) {
+      bury_an_obj(gold, null);
+    }
+  }
+}
+
+// Autotranslated from monmove.c:1230
+export function holds_up_web(x, y, map) {
+  let sway;
+  if (!isok(x, y) || IS_OBSTRUCTED(map.locations[x][y].typ) || ((map.locations[x][y].typ === STAIRS || map.locations[x][y].typ === LADDER) && (sway = stairway_at(x, y)) !== 0 && sway.up) || map.locations[x][y].typ === IRONBARS) return true;
+  return false;
+}
+
+// Autotranslated from monmove.c:1272
+export function maybe_spin_web(mtmp) {
+  if (webmaker(mtmp.data) && !helpless(mtmp) && !mtmp.mspec_used && !t_at(mtmp.mx, mtmp.my) && soko_allow_web(mtmp)) {
+    let trap;
+    let prob = ((((mtmp.data === mons[PM_GIANT_SPIDER]) ? 15 : 5) * (count_webbing_walls(mtmp.mx, mtmp.my) + 1)) - (3 * count_traps(WEB)));
+    if (rn2(1000) < prob && (trap = maketrap(mtmp.mx, mtmp.my, WEB)) !== 0) {
+      mtmp.mspec_used = d(4, 4);
+      if (cansee(mtmp.mx, mtmp.my)) {
+        let mbuf;
+        Strcpy(mbuf, canspotmon(mtmp) ? y_monnam(mtmp) : something);
+        pline_mon(mtmp, "%s spins a web.", upstart(mbuf));
+        trap.tseen = 1;
+      }
+      if ( in_rooms(mtmp.mx, mtmp.my, SHOPBASE)) add_damage(mtmp.mx, mtmp.my, 0);
+    }
+  }
+}
+
+// Autotranslated from monmove.c:2123
+export function can_hide_under_obj(obj) {
+  let t;
+  if (!obj || obj.where !== 'OBJ_FLOOR') return false;
+  if ((t = t_at(obj.ox, obj.oy)) !== 0 && !is_pit(t.ttyp)) return false;
+  if (obj.oclass === COIN_CLASS) {
+    let coinquan = 0;
+    do {
+      if ((coinquan += obj.quan) >= 10) {
+        break;
+      }
+      obj = obj.nexthere;
+      if (!obj) return false;
+    } while (obj.oclass === COIN_CLASS);
+  }
+  return true;
+}
+
+// Autotranslated from monmove.c:2190
+export function accessible(x, y) {
+  let levtyp = SURFACE_AT(x, y);
+  return  (ACCESSIBLE(levtyp) && !closed_door(x, y));
+}
+
+// Autotranslated from monmove.c:2279
+export function undesirable_disp(mtmp, x, y) {
+  let is_pet = (mtmp.mtame && !mtmp.isminion), trap = t_at(x, y);
+  if (is_pet) {
+    if (trap && trap.tseen && rn2(40)) return true;
+    if (cursed_object_at(x, y)) return true;
+  }
+  else if (trap && rn2(40) && mon_knows_traps(mtmp, trap.ttyp)) { return true; }
+  if (!accessible(x, y)   && !(is_pool(x, y) && is_pool(mtmp.mx, mtmp.my))) return true;
+  return false;
+}
+
+// Autotranslated from monmove.c:2358
+export function can_ooze(mtmp) {
+  if (!amorphous(mtmp.data) || stuff_prevents_passage(mtmp)) return false;
+  return true;
+}
+
+// Autotranslated from monmove.c:2367
+export function can_fog(mtmp, game) {
+  if (!(game.mvitals[PM_FOG_CLOUD].mvflags & G_GENOD) && is_vampshifter(mtmp) && !Protection_from_shape_changers && !stuff_prevents_passage(mtmp)) return true;
+  return false;
+}
+
+// Autotranslated from monmove.c:2172
+export function dissolve_bars(x, y, map) {
+  map.locations[x][y].typ = (map.locations[x][y].edge === 1) ? DOOR : (Is_special(map.uz) || in_rooms(x, y, 0)) ? ROOM : CORR;
+  map.locations[x][y].flags = 0;
+  newsym(x, y);
+  if (u_at(x, y)) switch_terrain();
 }

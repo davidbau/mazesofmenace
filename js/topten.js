@@ -87,8 +87,8 @@ export function buildEntry(player, gameOverReason, roles, races) {
         points: player.score,
         deathlev: player.dungeonLevel,
         maxlvl: player.maxDungeonLevel,
-        hp: player.hp,
-        maxhp: player.hpmax,
+        hp: player.uhp,
+        maxhp: player.uhpmax,
         name: player.name,
         death: player.deathCause || gameOverReason || 'died',
         plrole: role ? role.abbr : '???',
@@ -138,3 +138,173 @@ export function observable_depth(depth) {
 
 // Get the topten localStorage key (for storage.js integration)
 export { TOPTEN_KEY };
+
+// Autotranslated from topten.c:207
+export function discardexcess(rfile) {
+  let c;
+  do {
+    c = fgetc(rfile);
+  } while (c !== '\n' && c !== EOF);
+}
+
+// Autotranslated from topten.c:393
+export function encodexlogflags(player) {
+  let e = 0;
+  if (wizard) {
+    e |= 1 << 0;
+  }
+  if (discover) {
+    e |= 1 << 1;
+  }
+  if (!player.uroleplay.numbones) {
+    e |= 1 << 2;
+  }
+  if (player.uroleplay.reroll) {
+    e |= 1 << 3;
+  }
+  return e;
+}
+
+// Autotranslated from topten.c:410
+export function encodeconduct(player) {
+  let e = 0;
+  if (!player.uconduct.food) {
+    e |= 1 << 0;
+  }
+  if (!player.uconduct.unvegan) {
+    e |= 1 << 1;
+  }
+  if (!player.uconduct.unvegetarian) {
+    e |= 1 << 2;
+  }
+  if (!player.uconduct.gnostic) {
+    e |= 1 << 3;
+  }
+  if (!player.uconduct.weaphit) {
+    e |= 1 << 4;
+  }
+  if (!player.uconduct.killer) {
+    e |= 1 << 5;
+  }
+  if (!player.uconduct.literate) {
+    e |= 1 << 6;
+  }
+  if (!player.uconduct.polypiles) {
+    e |= 1 << 7;
+  }
+  if (!player.uconduct.polyselfs) {
+    e |= 1 << 8;
+  }
+  if (!player.uconduct.wishes) {
+    e |= 1 << 9;
+  }
+  if (!player.uconduct.wisharti) {
+    e |= 1 << 10;
+  }
+  if (!num_genocides()) {
+    e |= 1 << 11;
+  }
+  if (!player.uconduct.sokocheat && sokoban_in_play()) {
+    e |= 1 << 12;
+  }
+  if (!player.uconduct.pets) {
+    e |= 1 << 13;
+  }
+  return e;
+}
+
+// Autotranslated from topten.c:454
+export function encodeachieve(secondlong, player) {
+  let i, achidx, offset, r = 0;
+  offset = secondlong ? (32 - 1) : 0;
+  for (i = 0; player.uachieved[i]; ++i) {
+    achidx = player.uachieved[i] - offset;
+    if (achidx > 0 && achidx < 32) {
+      r |= 1 << (achidx - 1);
+    }
+  }
+  return r;
+}
+
+// Autotranslated from topten.c:479
+export function add_achieveX(buf, achievement, condition) {
+  if (condition) {
+    if (buf[0] !== '\0') { Strcat(buf, ","); }
+    Strcat(buf, achievement);
+  }
+}
+
+// Autotranslated from topten.c:583
+export function encode_extended_conducts(buf, game, player) {
+  buf = '\0';
+  add_achieveX(buf, "foodless", !player.uconduct.food);
+  add_achieveX(buf, "vegan", !player.uconduct.unvegan);
+  add_achieveX(buf, "vegetarian", !player.uconduct.unvegetarian);
+  add_achieveX(buf, "atheist", !player.uconduct.gnostic);
+  add_achieveX(buf, "weaponless", !player.uconduct.weaphit);
+  add_achieveX(buf, "pacifist", !player.uconduct.killer);
+  add_achieveX(buf, "illiterate", !player.uconduct.literate);
+  add_achieveX(buf, "polyless", !player.uconduct.polypiles);
+  add_achieveX(buf, "polyselfless", !player.uconduct.polyselfs);
+  add_achieveX(buf, "wishless", !player.uconduct.wishes);
+  add_achieveX(buf, "artiwishless", !player.uconduct.wisharti);
+  add_achieveX(buf, "genocideless", !num_genocides());
+  if (sokoban_in_play()) add_achieveX(buf, "sokoban", !player.uconduct.sokocheat);
+  add_achieveX(buf, "blind", player.uroleplay.blind);
+  add_achieveX(buf, "deaf", player.uroleplay.deaf);
+  add_achieveX(buf, "nudist", player.uroleplay.nudist);
+  add_achieveX(buf, "pauper", player.uroleplay.pauper);
+  add_achieveX(buf, "bonesless", !game.flags.bones);
+  add_achieveX(buf, "petless", !player.uconduct.pets);
+  add_achieveX(buf, "unrerolled", !player.uroleplay.reroll);
+  return buf;
+}
+
+// Autotranslated from topten.c:614
+export function free_ttlist(tt) {
+  let ttnext;
+  while (tt.points > 0) {
+    ttnext = tt.tt_next;
+    dealloc_ttentry(tt);
+    tt = ttnext;
+  }
+  dealloc_ttentry(tt);
+}
+
+// Autotranslated from topten.c:1421
+export function tt_oname(otmp) {
+  let tt;
+  if (!otmp) return  0;
+  tt = get_rnd_toptenentry();
+  if (!tt) return  0;
+  set_corpsenm(otmp, classmon(tt.plrole));
+  if (tt.plgend === 'F') otmp.spe = CORPSTAT_FEMALE;
+  else if (tt.plgend === 'M') otmp.spe = CORPSTAT_MALE;
+  otmp = oname(otmp, tt.name, ONAME_NO_FLAGS);
+  return otmp;
+}
+
+// Autotranslated from topten.c:1444
+export function tt_doppel(mon) {
+  let tt = rn2(13) ? get_rnd_toptenentry() : null, ret;
+  if (!tt) ret = rn1(PM_WIZARD - PM_ARCHEOLOGIST + 1, PM_ARCHEOLOGIST);
+  else {
+    if (tt.plgend === 'F') mon.female = 1;
+    else if (tt.plgend === 'M') mon.female = 0;
+    ret = classmon(tt.plrole);
+    if (canseemon(mon)) christen_monst(mon, tt.name);
+  }
+  return ret;
+}
+
+// Autotranslated from topten.c:928
+export function outheader() {
+  let linebuf, bp;
+  Strcpy(linebuf, " No Points Name");
+  bp = eos(linebuf);
+  while (bp < linebuf + COLNO - 9) {
+     bp = ' ';
+  }
+  Strcpy(bp, "Hp [max]");
+  topten_print(linebuf);
+}

@@ -1,0 +1,5705 @@
+{
+  "input": {
+    "apply_summary": "/tmp/translator-runtime-stitch-apply-gapwave2-fix9.json",
+    "safety": "/tmp/translator-runtime-stitch-safety-gapwave2-fix9.json"
+  },
+  "tasks": [
+    {
+      "detail": "FLASHED_LIGHT",
+      "function": "do_blinding_ray",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__do_blinding_ray.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "bhit",
+      "function": "do_blinding_ray",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__do_blinding_ray.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "flash_hits_mon",
+      "function": "do_blinding_ray",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__do_blinding_ray.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "see_monster_closeup",
+      "function": "do_blinding_ray",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__do_blinding_ray.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "transient_light_cleanup",
+      "function": "do_blinding_ray",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__do_blinding_ray.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "abs",
+      "function": "um_dist",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_call_binding",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__um_dist.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "fmon",
+      "function": "o_unleash",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__o_unleash.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "update_inventory",
+      "function": "o_unleash",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__o_unleash.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "canseemon",
+      "function": "m_unleash",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__m_unleash.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "get_mleash",
+      "function": "m_unleash",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__m_unleash.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "mhis",
+      "function": "m_unleash",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__m_unleash.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "update_inventory",
+      "function": "m_unleash",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__m_unleash.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "get_iter_mons",
+      "function": "next_to_u",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__next_to_u.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "mon_has_amulet",
+      "function": "next_to_u",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__next_to_u.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "Is_candle->isCandle",
+      "function": "snuff_candle",
+      "js_module": "js/apply.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__snuff_candle.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "Blind",
+      "function": "snuff_candle",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__snuff_candle.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "OBJ_MINVENT",
+      "function": "snuff_candle",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__snuff_candle.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "Shk_Your",
+      "function": "snuff_candle",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__snuff_candle.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "cansee",
+      "function": "snuff_candle",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__snuff_candle.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "get_obj_location",
+      "function": "snuff_candle",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__snuff_candle.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "humanoid->is_humanoid",
+      "function": "splash_lit",
+      "js_module": "js/apply.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__splash_lit.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "Blind",
+      "function": "splash_lit",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__splash_lit.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "Deaf",
+      "function": "splash_lit",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__splash_lit.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "Flying",
+      "function": "splash_lit",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__splash_lit.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "Is_waterlevel",
+      "function": "splash_lit",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__splash_lit.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "Levitation",
+      "function": "splash_lit",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__splash_lit.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "OBJ_INVENT",
+      "function": "splash_lit",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__splash_lit.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "OBJ_MINVENT",
+      "function": "splash_lit",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__splash_lit.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "Wwalking",
+      "function": "splash_lit",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__splash_lit.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "Yname2",
+      "function": "splash_lit",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__splash_lit.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "cansee",
+      "function": "splash_lit",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__splash_lit.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "couldsee",
+      "function": "splash_lit",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__splash_lit.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "distu",
+      "function": "splash_lit",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__splash_lit.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "get_obj_location",
+      "function": "splash_lit",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__splash_lit.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "is_floater",
+      "function": "splash_lit",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__splash_lit.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "is_flyer",
+      "function": "splash_lit",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__splash_lit.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "is_pool",
+      "function": "splash_lit",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__splash_lit.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "set_msg_xy",
+      "function": "splash_lit",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__splash_lit.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "IS_TREE",
+      "function": "figurine_location_checks",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__figurine_location_checks.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "carried",
+      "function": "figurine_location_checks",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__figurine_location_checks.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "may_passwall",
+      "function": "figurine_location_checks",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__figurine_location_checks.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "passes_walls",
+      "function": "figurine_location_checks",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__figurine_location_checks.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "sobj_at",
+      "function": "figurine_location_checks",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__figurine_location_checks.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "throws_rocks",
+      "function": "figurine_location_checks",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__figurine_location_checks.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "P_BASIC",
+      "function": "calc_pole_range",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__calc_pole_range.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "P_NONE",
+      "function": "calc_pole_range",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__calc_pole_range.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "P_SKILL",
+      "function": "calc_pole_range",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__calc_pole_range.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "P_SKILLED",
+      "function": "calc_pole_range",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__calc_pole_range.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "gp",
+      "function": "calc_pole_range",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__calc_pole_range.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "uwep_skill_type",
+      "function": "calc_pole_range",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__calc_pole_range.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "boulder_hits_pool",
+      "function": "maybe_dunk_boulders",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__maybe_dunk_boulders.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "is_pool_or_lava",
+      "function": "maybe_dunk_boulders",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__maybe_dunk_boulders.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "obj_extract_self",
+      "function": "maybe_dunk_boulders",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__maybe_dunk_boulders.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "sobj_at",
+      "function": "maybe_dunk_boulders",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__maybe_dunk_boulders.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "ATEMP",
+      "function": "unfixable_trouble_count",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__unfixable_trouble_count.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "Confusion",
+      "function": "unfixable_trouble_count",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__unfixable_trouble_count.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "Deaf",
+      "function": "unfixable_trouble_count",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__unfixable_trouble_count.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "HConfusion",
+      "function": "unfixable_trouble_count",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__unfixable_trouble_count.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "HDeaf",
+      "function": "unfixable_trouble_count",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__unfixable_trouble_count.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "HHallucination",
+      "function": "unfixable_trouble_count",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__unfixable_trouble_count.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "HStun",
+      "function": "unfixable_trouble_count",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__unfixable_trouble_count.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "Hallucination",
+      "function": "unfixable_trouble_count",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__unfixable_trouble_count.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "Sick",
+      "function": "unfixable_trouble_count",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__unfixable_trouble_count.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "Slimed",
+      "function": "unfixable_trouble_count",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__unfixable_trouble_count.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "Stoned",
+      "function": "unfixable_trouble_count",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__unfixable_trouble_count.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "Strangled",
+      "function": "unfixable_trouble_count",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__unfixable_trouble_count.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "Stunned",
+      "function": "unfixable_trouble_count",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__unfixable_trouble_count.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "TIMEOUT",
+      "function": "unfixable_trouble_count",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__unfixable_trouble_count.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "Vomiting",
+      "function": "unfixable_trouble_count",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__unfixable_trouble_count.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "WEAK",
+      "function": "unfixable_trouble_count",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__unfixable_trouble_count.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "Wounded_legs",
+      "function": "unfixable_trouble_count",
+      "js_module": "js/apply.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/apply__unfixable_trouble_count.json",
+      "source": "nethack-c/src/apply.c"
+    },
+    {
+      "detail": "Upolyd->isUpolyd",
+      "function": "losestr",
+      "js_module": "js/attrib.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/attrib__losestr.json",
+      "source": "nethack-c/src/attrib.c"
+    },
+    {
+      "detail": "KILLED_BY",
+      "function": "losestr",
+      "js_module": "js/attrib.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/attrib__losestr.json",
+      "source": "nethack-c/src/attrib.c"
+    },
+    {
+      "detail": "impossible",
+      "function": "losestr",
+      "js_module": "js/attrib.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/attrib__losestr.json",
+      "source": "nethack-c/src/attrib.c"
+    },
+    {
+      "detail": "nhUse",
+      "function": "losestr",
+      "js_module": "js/attrib.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/attrib__losestr.json",
+      "source": "nethack-c/src/attrib.c"
+    },
+    {
+      "detail": "max",
+      "function": "losestr",
+      "js_module": "js/attrib.js",
+      "kind": "add_missing_call_binding",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/attrib__losestr.json",
+      "source": "nethack-c/src/attrib.c"
+    },
+    {
+      "detail": "carrying",
+      "function": "set_moreluck",
+      "js_module": "js/attrib.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/attrib__set_moreluck.json",
+      "source": "nethack-c/src/attrib.c"
+    },
+    {
+      "detail": "ACURR->acurr",
+      "function": "restore_attrib",
+      "js_module": "js/attrib.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/attrib__restore_attrib.json",
+      "source": "nethack-c/src/attrib.c"
+    },
+    {
+      "detail": "A_MAX->AMAX",
+      "function": "restore_attrib",
+      "js_module": "js/attrib.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/attrib__restore_attrib.json",
+      "source": "nethack-c/src/attrib.c"
+    },
+    {
+      "detail": "WEAK",
+      "function": "restore_attrib",
+      "js_module": "js/attrib.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/attrib__restore_attrib.json",
+      "source": "nethack-c/src/attrib.c"
+    },
+    {
+      "detail": "Wounded_legs",
+      "function": "restore_attrib",
+      "js_module": "js/attrib.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/attrib__restore_attrib.json",
+      "source": "nethack-c/src/attrib.c"
+    },
+    {
+      "detail": "ACURR->acurr",
+      "function": "acurrstr",
+      "js_module": "js/attrib.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/attrib__acurrstr.json",
+      "source": "nethack-c/src/attrib.c"
+    },
+    {
+      "detail": "max",
+      "function": "acurrstr",
+      "js_module": "js/attrib.js",
+      "kind": "add_missing_call_binding",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/attrib__acurrstr.json",
+      "source": "nethack-c/src/attrib.c"
+    },
+    {
+      "detail": "min",
+      "function": "acurrstr",
+      "js_module": "js/attrib.js",
+      "kind": "add_missing_call_binding",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/attrib__acurrstr.json",
+      "source": "nethack-c/src/attrib.c"
+    },
+    {
+      "detail": "Is_branchlev",
+      "function": "can_make_bones",
+      "js_module": "js/bones.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/bones__can_make_bones.json",
+      "source": "nethack-c/src/bones.c"
+    },
+    {
+      "detail": "MAGIC_PORTAL",
+      "function": "can_make_bones",
+      "js_module": "js/bones.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/bones__can_make_bones.json",
+      "source": "nethack-c/src/bones.c"
+    },
+    {
+      "detail": "discover",
+      "function": "can_make_bones",
+      "js_module": "js/bones.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/bones__can_make_bones.json",
+      "source": "nethack-c/src/bones.c"
+    },
+    {
+      "detail": "gf",
+      "function": "can_make_bones",
+      "js_module": "js/bones.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/bones__can_make_bones.json",
+      "source": "nethack-c/src/bones.c"
+    },
+    {
+      "detail": "ledger_no",
+      "function": "can_make_bones",
+      "js_module": "js/bones.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/bones__can_make_bones.json",
+      "source": "nethack-c/src/bones.c"
+    },
+    {
+      "detail": "maxledgerno",
+      "function": "can_make_bones",
+      "js_module": "js/bones.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/bones__can_make_bones.json",
+      "source": "nethack-c/src/bones.c"
+    },
+    {
+      "detail": "no_bones_level",
+      "function": "can_make_bones",
+      "js_module": "js/bones.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/bones__can_make_bones.json",
+      "source": "nethack-c/src/bones.c"
+    },
+    {
+      "detail": "wizard",
+      "function": "can_make_bones",
+      "js_module": "js/bones.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/bones__can_make_bones.json",
+      "source": "nethack-c/src/bones.c"
+    },
+    {
+      "detail": "objects",
+      "function": "o_material",
+      "js_module": "js/detect.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/detect__o_material.json",
+      "source": "nethack-c/src/detect.c"
+    },
+    {
+      "detail": "openone->openone_fn",
+      "function": "openit",
+      "js_module": "js/detect.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/detect__openit.json",
+      "source": "nethack-c/src/detect.c"
+    },
+    {
+      "detail": "Blind",
+      "function": "openit",
+      "js_module": "js/detect.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/detect__openit.json",
+      "source": "nethack-c/src/detect.c"
+    },
+    {
+      "detail": "Monnam",
+      "function": "openit",
+      "js_module": "js/detect.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/detect__openit.json",
+      "source": "nethack-c/src/detect.c"
+    },
+    {
+      "detail": "digests",
+      "function": "openit",
+      "js_module": "js/detect.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/detect__openit.json",
+      "source": "nethack-c/src/detect.c"
+    },
+    {
+      "detail": "expels",
+      "function": "openit",
+      "js_module": "js/detect.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/detect__openit.json",
+      "source": "nethack-c/src/detect.c"
+    },
+    {
+      "detail": "Hallucination",
+      "function": "find_trap",
+      "js_module": "js/detect.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/detect__find_trap.json",
+      "source": "nethack-c/src/detect.c"
+    },
+    {
+      "detail": "WIN_MAP",
+      "function": "find_trap",
+      "js_module": "js/detect.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/detect__find_trap.json",
+      "source": "nethack-c/src/detect.c"
+    },
+    {
+      "detail": "an",
+      "function": "find_trap",
+      "js_module": "js/detect.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/detect__find_trap.json",
+      "source": "nethack-c/src/detect.c"
+    },
+    {
+      "detail": "display_nhwindow",
+      "function": "find_trap",
+      "js_module": "js/detect.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/detect__find_trap.json",
+      "source": "nethack-c/src/detect.c"
+    },
+    {
+      "detail": "trap_to_glyph",
+      "function": "find_trap",
+      "js_module": "js/detect.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/detect__find_trap.json",
+      "source": "nethack-c/src/detect.c"
+    },
+    {
+      "detail": "trapname",
+      "function": "find_trap",
+      "js_module": "js/detect.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/detect__find_trap.json",
+      "source": "nethack-c/src/detect.c"
+    },
+    {
+      "detail": "Blind",
+      "function": "dosearch0",
+      "js_module": "js/detect.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/detect__dosearch0.json",
+      "source": "nethack-c/src/detect.c"
+    },
+    {
+      "detail": "LENSES",
+      "function": "dosearch0",
+      "js_module": "js/detect.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/detect__dosearch0.json",
+      "source": "nethack-c/src/detect.c"
+    },
+    {
+      "detail": "SPFX_SEARCH",
+      "function": "dosearch0",
+      "js_module": "js/detect.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/detect__dosearch0.json",
+      "source": "nethack-c/src/detect.c"
+    },
+    {
+      "detail": "activate_statue_trap",
+      "function": "dosearch0",
+      "js_module": "js/detect.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/detect__dosearch0.json",
+      "source": "nethack-c/src/detect.c"
+    },
+    {
+      "detail": "m_at",
+      "function": "dosearch0",
+      "js_module": "js/detect.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/detect__dosearch0.json",
+      "source": "nethack-c/src/detect.c"
+    },
+    {
+      "detail": "spec_ability",
+      "function": "dosearch0",
+      "js_module": "js/detect.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/detect__dosearch0.json",
+      "source": "nethack-c/src/detect.c"
+    },
+    {
+      "detail": "t_at",
+      "function": "dosearch0",
+      "js_module": "js/detect.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/detect__dosearch0.json",
+      "source": "nethack-c/src/detect.c"
+    },
+    {
+      "detail": "ublindf",
+      "function": "dosearch0",
+      "js_module": "js/detect.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/detect__dosearch0.json",
+      "source": "nethack-c/src/detect.c"
+    },
+    {
+      "detail": "unmap_invisible",
+      "function": "dosearch0",
+      "js_module": "js/detect.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/detect__dosearch0.json",
+      "source": "nethack-c/src/detect.c"
+    },
+    {
+      "detail": "uwep",
+      "function": "dosearch0",
+      "js_module": "js/detect.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/detect__dosearch0.json",
+      "source": "nethack-c/src/detect.c"
+    },
+    {
+      "detail": "visible_region_at",
+      "function": "dosearch0",
+      "js_module": "js/detect.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/detect__dosearch0.json",
+      "source": "nethack-c/src/detect.c"
+    },
+    {
+      "detail": "m_at",
+      "function": "warnreveal",
+      "js_module": "js/detect.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/detect__warnreveal.json",
+      "source": "nethack-c/src/detect.c"
+    },
+    {
+      "detail": "map_background->magic_map_background",
+      "function": "premap_detect",
+      "js_module": "js/detect.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/detect__premap_detect.json",
+      "source": "nethack-c/src/detect.c"
+    },
+    {
+      "detail": "SVALL",
+      "function": "premap_detect",
+      "js_module": "js/detect.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/detect__premap_detect.json",
+      "source": "nethack-c/src/detect.c"
+    },
+    {
+      "detail": "gf",
+      "function": "premap_detect",
+      "js_module": "js/detect.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/detect__premap_detect.json",
+      "source": "nethack-c/src/detect.c"
+    },
+    {
+      "detail": "Doname2->doname",
+      "function": "doaltarobj",
+      "js_module": "js/do.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__doaltarobj.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "Blind",
+      "function": "doaltarobj",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__doaltarobj.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "Hallucination",
+      "function": "doaltarobj",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__doaltarobj.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "LL_CONDUCT",
+      "function": "doaltarobj",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__doaltarobj.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "NH_BLACK",
+      "function": "doaltarobj",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__doaltarobj.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "an",
+      "function": "doaltarobj",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__doaltarobj.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "livelog_printf",
+      "function": "doaltarobj",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__doaltarobj.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "otense",
+      "function": "doaltarobj",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__doaltarobj.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "docall",
+      "function": "trycall",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__trycall.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "objects",
+      "function": "trycall",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__trycall.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "freeinv",
+      "function": "dropx",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__dropx.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "ship_object",
+      "function": "dropx",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__dropx.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "pline1->pline",
+      "function": "currentlevel_rewrite",
+      "js_module": "js/do.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__currentlevel_rewrite.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "create_levelfile",
+      "function": "currentlevel_rewrite",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__currentlevel_rewrite.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "ledger_no",
+      "function": "currentlevel_rewrite",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__currentlevel_rewrite.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "mark_synch",
+      "function": "currentlevel_rewrite",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__currentlevel_rewrite.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "pline1->pline",
+      "function": "familiar_level_msg",
+      "js_module": "js/do.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__familiar_level_msg.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "Blind",
+      "function": "familiar_level_msg",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__familiar_level_msg.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "Hallucination",
+      "function": "familiar_level_msg",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__familiar_level_msg.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "Sprintf",
+      "function": "familiar_level_msg",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__familiar_level_msg.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "strchr",
+      "function": "familiar_level_msg",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__familiar_level_msg.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "gd",
+      "function": "maybe_lvltport_feedback",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__maybe_lvltport_feedback.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "strncmpi",
+      "function": "maybe_lvltport_feedback",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__maybe_lvltport_feedback.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "create_mplayers",
+      "function": "final_level",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__final_level.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "gain_guardian_angel",
+      "function": "final_level",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__final_level.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "iter_mons",
+      "function": "final_level",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__final_level.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "reset_hostility",
+      "function": "final_level",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__final_level.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "UTOTYPE_DEFERRED",
+      "function": "schedule_goto",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__schedule_goto.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "assign_level",
+      "function": "schedule_goto",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__schedule_goto.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "dupstr",
+      "function": "schedule_goto",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__schedule_goto.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "gd",
+      "function": "schedule_goto",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__schedule_goto.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "pline1->pline",
+      "function": "deferred_goto",
+      "js_module": "js/do.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__deferred_goto.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "UTOTYPE_ATSTAIRS",
+      "function": "deferred_goto",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__deferred_goto.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "UTOTYPE_FALLING",
+      "function": "deferred_goto",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__deferred_goto.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "UTOTYPE_NONE",
+      "function": "deferred_goto",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__deferred_goto.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "UTOTYPE_PORTAL",
+      "function": "deferred_goto",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__deferred_goto.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "UTOTYPE_RMPORTAL",
+      "function": "deferred_goto",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__deferred_goto.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "assign_level",
+      "function": "deferred_goto",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__deferred_goto.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "gd",
+      "function": "deferred_goto",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__deferred_goto.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "goto_level",
+      "function": "deferred_goto",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__deferred_goto.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "on_level",
+      "function": "deferred_goto",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__deferred_goto.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "t_at",
+      "function": "deferred_goto",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__deferred_goto.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "REVIVE_MON->revive_mon",
+      "function": "revive_mon",
+      "js_module": "js/do.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__revive_mon.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "Monnam",
+      "function": "revive_mon",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__revive_mon.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "OBJ_FLOOR",
+      "function": "revive_mon",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__revive_mon.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "RLOC_NOMSG",
+      "function": "revive_mon",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__revive_mon.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "ROT_CORPSE",
+      "function": "revive_mon",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__revive_mon.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "TIMER_OBJECT",
+      "function": "revive_mon",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__revive_mon.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "dist2",
+      "function": "revive_mon",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__revive_mon.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "get_obj_location",
+      "function": "revive_mon",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__revive_mon.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "is_displacer",
+      "function": "revive_mon",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__revive_mon.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "m_at",
+      "function": "revive_mon",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__revive_mon.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "obj_has_timer",
+      "function": "revive_mon",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__revive_mon.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "rider_revival_time",
+      "function": "revive_mon",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__revive_mon.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "rloc",
+      "function": "revive_mon",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__revive_mon.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "start_timer",
+      "function": "revive_mon",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__revive_mon.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "G_GENOD",
+      "function": "zombify_mon",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__zombify_mon.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "free_omid",
+      "function": "zombify_mon",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__zombify_mon.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "free_omonst",
+      "function": "zombify_mon",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__zombify_mon.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "has_omid",
+      "function": "zombify_mon",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__zombify_mon.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "has_omonst",
+      "function": "zombify_mon",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__zombify_mon.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "rot_corpse",
+      "function": "zombify_mon",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__zombify_mon.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "set_corpsenm",
+      "function": "zombify_mon",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__zombify_mon.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "Sick",
+      "function": "danger_uprops",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__danger_uprops.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "Slimed",
+      "function": "danger_uprops",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__danger_uprops.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "Stoned",
+      "function": "danger_uprops",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__danger_uprops.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "Strangled",
+      "function": "danger_uprops",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__danger_uprops.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "ECMD_TIME",
+      "function": "dowipe",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__dowipe.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "Sprintf",
+      "function": "dowipe",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__dowipe.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "set_occupation",
+      "function": "dowipe",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__dowipe.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "makeplural->makeplural_simple",
+      "function": "legs_in_no_shape",
+      "js_module": "js/do.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__legs_in_no_shape.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "EWounded_legs",
+      "function": "legs_in_no_shape",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__legs_in_no_shape.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "Monnam",
+      "function": "legs_in_no_shape",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__legs_in_no_shape.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "ATEMP",
+      "function": "set_wounded_legs",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__set_wounded_legs.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "EWounded_legs",
+      "function": "set_wounded_legs",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__set_wounded_legs.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "HWounded_legs",
+      "function": "set_wounded_legs",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__set_wounded_legs.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "TIMEOUT",
+      "function": "set_wounded_legs",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__set_wounded_legs.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "Wounded_legs",
+      "function": "set_wounded_legs",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__set_wounded_legs.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "encumber_msg",
+      "function": "set_wounded_legs",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__set_wounded_legs.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "set_itimeout",
+      "function": "set_wounded_legs",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__set_wounded_legs.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "makeplural->makeplural_simple",
+      "function": "heal_legs",
+      "js_module": "js/do.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__heal_legs.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "ATEMP",
+      "function": "heal_legs",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__heal_legs.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "EWounded_legs",
+      "function": "heal_legs",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__heal_legs.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "HWounded_legs",
+      "function": "heal_legs",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__heal_legs.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "Wounded_legs",
+      "function": "heal_legs",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__heal_legs.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "encumber_msg",
+      "function": "heal_legs",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__heal_legs.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "vtense",
+      "function": "heal_legs",
+      "js_module": "js/do.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/do__heal_legs.json",
+      "source": "nethack-c/src/do.c"
+    },
+    {
+      "detail": "ceiling",
+      "function": "cant_reach_floor",
+      "js_module": "js/engrave.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/engrave__cant_reach_floor.json",
+      "source": "nethack-c/src/engrave.c"
+    },
+    {
+      "detail": "surface",
+      "function": "cant_reach_floor",
+      "js_module": "js/engrave.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/engrave__cant_reach_floor.json",
+      "source": "nethack-c/src/engrave.c"
+    },
+    {
+      "detail": "head_engr",
+      "function": "engr_at",
+      "js_module": "js/engrave.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/engrave__engr_at.json",
+      "source": "nethack-c/src/engrave.c"
+    },
+    {
+      "detail": "HEADSTONE",
+      "function": "sengr_at",
+      "js_module": "js/engrave.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/engrave__sengr_at.json",
+      "source": "nethack-c/src/engrave.c"
+    },
+    {
+      "detail": "actual_text",
+      "function": "sengr_at",
+      "js_module": "js/engrave.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/engrave__sengr_at.json",
+      "source": "nethack-c/src/engrave.c"
+    },
+    {
+      "detail": "strcmpi",
+      "function": "sengr_at",
+      "js_module": "js/engrave.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/engrave__sengr_at.json",
+      "source": "nethack-c/src/engrave.c"
+    },
+    {
+      "detail": "strstri",
+      "function": "sengr_at",
+      "js_module": "js/engrave.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/engrave__sengr_at.json",
+      "source": "nethack-c/src/engrave.c"
+    },
+    {
+      "detail": "bimanual",
+      "function": "freehand",
+      "js_module": "js/engrave.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/engrave__freehand.json",
+      "source": "nethack-c/src/engrave.c"
+    },
+    {
+      "detail": "welded",
+      "function": "freehand",
+      "js_module": "js/engrave.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/engrave__freehand.json",
+      "source": "nethack-c/src/engrave.c"
+    },
+    {
+      "detail": "head_engr",
+      "function": "forget_engravings",
+      "js_module": "js/engrave.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/engrave__forget_engravings.json",
+      "source": "nethack-c/src/engrave.c"
+    },
+    {
+      "detail": "Is_airlevel",
+      "function": "engraving_sanity_check",
+      "js_module": "js/engrave.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/engrave__engraving_sanity_check.json",
+      "source": "nethack-c/src/engrave.c"
+    },
+    {
+      "detail": "Is_waterlevel",
+      "function": "engraving_sanity_check",
+      "js_module": "js/engrave.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/engrave__engraving_sanity_check.json",
+      "source": "nethack-c/src/engrave.c"
+    },
+    {
+      "detail": "SURFACE_AT",
+      "function": "engraving_sanity_check",
+      "js_module": "js/engrave.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/engrave__engraving_sanity_check.json",
+      "source": "nethack-c/src/engrave.c"
+    },
+    {
+      "detail": "head_engr",
+      "function": "engraving_sanity_check",
+      "js_module": "js/engrave.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/engrave__engraving_sanity_check.json",
+      "source": "nethack-c/src/engrave.c"
+    },
+    {
+      "detail": "surface",
+      "function": "engraving_sanity_check",
+      "js_module": "js/engrave.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/engrave__engraving_sanity_check.json",
+      "source": "nethack-c/src/engrave.c"
+    },
+    {
+      "detail": "EPITAPHFILE",
+      "function": "make_grave",
+      "js_module": "js/engrave.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/engrave__make_grave.json",
+      "source": "nethack-c/src/engrave.c"
+    },
+    {
+      "detail": "HEADSTONE",
+      "function": "make_grave",
+      "js_module": "js/engrave.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/engrave__make_grave.json",
+      "source": "nethack-c/src/engrave.c"
+    },
+    {
+      "detail": "MD_PAD_RUMORS",
+      "function": "make_grave",
+      "js_module": "js/engrave.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/engrave__make_grave.json",
+      "source": "nethack-c/src/engrave.c"
+    },
+    {
+      "detail": "get_rnd_text",
+      "function": "make_grave",
+      "js_module": "js/engrave.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/engrave__make_grave.json",
+      "source": "nethack-c/src/engrave.c"
+    },
+    {
+      "detail": "set_levltyp",
+      "function": "make_grave",
+      "js_module": "js/engrave.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/engrave__make_grave.json",
+      "source": "nethack-c/src/engrave.c"
+    },
+    {
+      "detail": "t_at",
+      "function": "make_grave",
+      "js_module": "js/engrave.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/engrave__make_grave.json",
+      "source": "nethack-c/src/engrave.c"
+    },
+    {
+      "detail": "A_WIS",
+      "function": "disturb_grave",
+      "js_module": "js/engrave.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/engrave__disturb_grave.json",
+      "source": "nethack-c/src/engrave.c"
+    },
+    {
+      "detail": "NO_MM_FLAGS",
+      "function": "disturb_grave",
+      "js_module": "js/engrave.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/engrave__disturb_grave.json",
+      "source": "nethack-c/src/engrave.c"
+    },
+    {
+      "detail": "PM_GHOUL",
+      "function": "disturb_grave",
+      "js_module": "js/engrave.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/engrave__disturb_grave.json",
+      "source": "nethack-c/src/engrave.c"
+    },
+    {
+      "detail": "mons",
+      "function": "disturb_grave",
+      "js_module": "js/engrave.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/engrave__disturb_grave.json",
+      "source": "nethack-c/src/engrave.c"
+    },
+    {
+      "detail": "trunc",
+      "function": "newuexp",
+      "js_module": "js/exper.js",
+      "kind": "add_missing_call_binding",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/exper__newuexp.json",
+      "source": "nethack-c/src/exper.c"
+    },
+    {
+      "detail": "S_cloud",
+      "function": "dryup",
+      "js_module": "js/fountain.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/fountain__dryup.json",
+      "source": "nethack-c/src/fountain.c"
+    },
+    {
+      "detail": "angry_guards",
+      "function": "dryup",
+      "js_module": "js/fountain.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/fountain__dryup.json",
+      "source": "nethack-c/src/fountain.c"
+    },
+    {
+      "detail": "get_iter_mons",
+      "function": "dryup",
+      "js_module": "js/fountain.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/fountain__dryup.json",
+      "source": "nethack-c/src/fountain.c"
+    },
+    {
+      "detail": "glyph_at",
+      "function": "dryup",
+      "js_module": "js/fountain.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/fountain__dryup.json",
+      "source": "nethack-c/src/fountain.c"
+    },
+    {
+      "detail": "glyph_is_cmap",
+      "function": "dryup",
+      "js_module": "js/fountain.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/fountain__dryup.json",
+      "source": "nethack-c/src/fountain.c"
+    },
+    {
+      "detail": "glyph_to_cmap",
+      "function": "dryup",
+      "js_module": "js/fountain.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/fountain__dryup.json",
+      "source": "nethack-c/src/fountain.c"
+    },
+    {
+      "detail": "in_town",
+      "function": "dryup",
+      "js_module": "js/fountain.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/fountain__dryup.json",
+      "source": "nethack-c/src/fountain.c"
+    },
+    {
+      "detail": "set_levltyp",
+      "function": "dryup",
+      "js_module": "js/fountain.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/fountain__dryup.json",
+      "source": "nethack-c/src/fountain.c"
+    },
+    {
+      "detail": "wizard",
+      "function": "dryup",
+      "js_module": "js/fountain.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/fountain__dryup.json",
+      "source": "nethack-c/src/fountain.c"
+    },
+    {
+      "detail": "y_n",
+      "function": "dryup",
+      "js_module": "js/fountain.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/fountain__dryup.json",
+      "source": "nethack-c/src/fountain.c"
+    },
+    {
+      "detail": "Glib",
+      "function": "wash_hands",
+      "js_module": "js/fountain.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/fountain__wash_hands.json",
+      "source": "nethack-c/src/fountain.c"
+    },
+    {
+      "detail": "fingers_or_gloves",
+      "function": "wash_hands",
+      "js_module": "js/fountain.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/fountain__wash_hands.json",
+      "source": "nethack-c/src/fountain.c"
+    },
+    {
+      "detail": "make_glib",
+      "function": "wash_hands",
+      "js_module": "js/fountain.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/fountain__wash_hands.json",
+      "source": "nethack-c/src/fountain.c"
+    },
+    {
+      "detail": "makeplural",
+      "function": "wash_hands",
+      "js_module": "js/fountain.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/fountain__wash_hands.json",
+      "source": "nethack-c/src/fountain.c"
+    },
+    {
+      "detail": "uarmg",
+      "function": "wash_hands",
+      "js_module": "js/fountain.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/fountain__wash_hands.json",
+      "source": "nethack-c/src/fountain.c"
+    },
+    {
+      "detail": "set_levltyp",
+      "function": "breaksink",
+      "js_module": "js/fountain.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/fountain__breaksink.json",
+      "source": "nethack-c/src/fountain.c"
+    },
+    {
+      "detail": "u_at",
+      "function": "breaksink",
+      "js_module": "js/fountain.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/fountain__breaksink.json",
+      "source": "nethack-c/src/fountain.c"
+    },
+    {
+      "detail": "Blind",
+      "function": "sink_backs_up",
+      "js_module": "js/fountain.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/fountain__sink_backs_up.json",
+      "source": "nethack-c/src/fountain.c"
+    },
+    {
+      "detail": "Deaf",
+      "function": "sink_backs_up",
+      "js_module": "js/fountain.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/fountain__sink_backs_up.json",
+      "source": "nethack-c/src/fountain.c"
+    },
+    {
+      "detail": "Sprintf",
+      "function": "sink_backs_up",
+      "js_module": "js/fountain.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/fountain__sink_backs_up.json",
+      "source": "nethack-c/src/fountain.c"
+    },
+    {
+      "detail": "Strcpy",
+      "function": "sink_backs_up",
+      "js_module": "js/fountain.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/fountain__sink_backs_up.json",
+      "source": "nethack-c/src/fountain.c"
+    },
+    {
+      "detail": "mkobj_at",
+      "function": "sink_backs_up",
+      "js_module": "js/fountain.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/fountain__sink_backs_up.json",
+      "source": "nethack-c/src/fountain.c"
+    },
+    {
+      "detail": "setnotworn->setnotworn_safe",
+      "function": "merged",
+      "js_module": "js/invent.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__merged.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "Is_pudding",
+      "function": "merged",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__merged.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "LOST_THROWN",
+      "function": "merged",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__merged.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "OBJ_INVENT",
+      "function": "merged",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__merged.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "ONAME",
+      "function": "merged",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__merged.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "ONAME_SKIP_INVUPD",
+      "function": "merged",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__merged.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "PM_CLERIC",
+      "function": "merged",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__merged.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "Role_if",
+      "function": "merged",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__merged.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "W_QUIVER",
+      "function": "merged",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__merged.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "W_SWAPWEP",
+      "function": "merged",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__merged.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "W_WEP",
+      "function": "merged",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__merged.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "carried",
+      "function": "merged",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__merged.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "has_oname",
+      "function": "merged",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__merged.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "impossible",
+      "function": "merged",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__merged.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "obfree",
+      "function": "merged",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__merged.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "obj_absorb",
+      "function": "merged",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__merged.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "obj_extract_self",
+      "function": "merged",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__merged.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "obj_merge_light_sources",
+      "function": "merged",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__merged.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "obj_stop_timers",
+      "function": "merged",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__merged.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "oname",
+      "function": "merged",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__merged.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "pudding_merge_message",
+      "function": "merged",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__merged.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "setworn",
+      "function": "merged",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__merged.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "ACH_AMUL",
+      "function": "addinv_core1",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__addinv_core1.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "ACH_BELL",
+      "function": "addinv_core1",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__addinv_core1.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "ACH_BOOK",
+      "function": "addinv_core1",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__addinv_core1.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "ACH_CNDL",
+      "function": "addinv_core1",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__addinv_core1.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "ACH_MINE_PRIZE",
+      "function": "addinv_core1",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__addinv_core1.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "ACH_SOKO_PRIZE",
+      "function": "addinv_core1",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__addinv_core1.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "W_ART",
+      "function": "addinv_core1",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__addinv_core1.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "artitouch",
+      "function": "addinv_core1",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__addinv_core1.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "impossible",
+      "function": "addinv_core1",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__addinv_core1.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "is_mines_prize",
+      "function": "addinv_core1",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__addinv_core1.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "is_quest_artifact",
+      "function": "addinv_core1",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__addinv_core1.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "is_soko_prize",
+      "function": "addinv_core1",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__addinv_core1.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "record_achievement",
+      "function": "addinv_core1",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__addinv_core1.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "set_artifact_intrinsic",
+      "function": "addinv_core1",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__addinv_core1.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "observe_object->observeObject",
+      "function": "addinv_core2",
+      "js_module": "js/invent.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__addinv_core2.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "Blind",
+      "function": "addinv_core2",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__addinv_core2.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "LL_CONDUCT",
+      "function": "addinv_core2",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__addinv_core2.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "Role_if",
+      "function": "addinv_core2",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__addinv_core2.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "confers_luck",
+      "function": "addinv_core2",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__addinv_core2.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "livelog_printf",
+      "function": "addinv_core2",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__addinv_core2.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "makeknown",
+      "function": "addinv_core2",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__addinv_core2.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "set_moreluck",
+      "function": "addinv_core2",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__addinv_core2.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "yname",
+      "function": "addinv_core2",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__addinv_core2.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "addinv_core0",
+      "function": "addinv",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__addinv.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "NON_PM",
+      "function": "carry_obj_effects",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__carry_obj_effects.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "attach_fig_transform_timeout",
+      "function": "carry_obj_effects",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__carry_obj_effects.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "dead_species",
+      "function": "carry_obj_effects",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__carry_obj_effects.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "check_unpaid->ckunpaid",
+      "function": "consume_obj_charge",
+      "js_module": "js/invent.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__consume_obj_charge.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "FIG_TRANSFORM",
+      "function": "freeinv_core",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__freeinv_core.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "W_ART",
+      "function": "freeinv_core",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__freeinv_core.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "confers_luck",
+      "function": "freeinv_core",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__freeinv_core.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "curse",
+      "function": "freeinv_core",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__freeinv_core.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "impossible",
+      "function": "freeinv_core",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__freeinv_core.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "is_quest_artifact",
+      "function": "freeinv_core",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__freeinv_core.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "obj_to_any",
+      "function": "freeinv_core",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__freeinv_core.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "set_artifact_intrinsic",
+      "function": "freeinv_core",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__freeinv_core.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "set_moreluck",
+      "function": "freeinv_core",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__freeinv_core.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "stop_timer",
+      "function": "freeinv_core",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__freeinv_core.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "Has_contents",
+      "function": "o_on",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__o_on.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "uwep",
+      "function": "splittable",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__splittable.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "welded",
+      "function": "splittable",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__splittable.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "Has_contents",
+      "function": "ckunpaid",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__ckunpaid.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "uarm",
+      "function": "wearing_armor",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__wearing_armor.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "uarmc",
+      "function": "wearing_armor",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__wearing_armor.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "uarmf",
+      "function": "wearing_armor",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__wearing_armor.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "uarmg",
+      "function": "wearing_armor",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__wearing_armor.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "uarmh",
+      "function": "wearing_armor",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__wearing_armor.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "uarms",
+      "function": "wearing_armor",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__wearing_armor.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "uarmu",
+      "function": "wearing_armor",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__wearing_armor.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "W_ACCESSORY",
+      "function": "is_worn",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__is_worn.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "W_ARMOR",
+      "function": "is_worn",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__is_worn.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "W_SADDLE",
+      "function": "is_worn",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__is_worn.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "W_WEAPONS",
+      "function": "is_worn",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__is_worn.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "carried",
+      "function": "is_inuse",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__is_inuse.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "ansimpleoname",
+      "function": "safeq_shortxprname",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__safeq_shortxprname.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "safeq_xprn_ctx",
+      "function": "safeq_shortxprname",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__safeq_shortxprname.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "observe_object->observeObject",
+      "function": "fully_identify_obj",
+      "js_module": "js/invent.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__fully_identify_obj.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "NON_PM",
+      "function": "fully_identify_obj",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__fully_identify_obj.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "discover_artifact",
+      "function": "fully_identify_obj",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__fully_identify_obj.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "learn_egg_type",
+      "function": "fully_identify_obj",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__fully_identify_obj.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "makeknown",
+      "function": "fully_identify_obj",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__fully_identify_obj.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "Snprintf",
+      "function": "prinv",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__prinv.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "Has_contents",
+      "function": "find_unpaid",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__find_unpaid.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "Has_contents",
+      "function": "count_unpaid",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__count_unpaid.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "Has_contents",
+      "function": "count_contents",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__count_contents.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "OBJ_CONTAINED",
+      "function": "count_contents",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__count_contents.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "OBJ_FLOOR",
+      "function": "count_contents",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__count_contents.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "costly_spot",
+      "function": "count_contents",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__count_contents.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "get_obj_location",
+      "function": "count_contents",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__count_contents.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "LOOKHERE_NOFLAGS",
+      "function": "dolook",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__dolook.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "MSGTYP_MASK_REP_SHOW",
+      "function": "dolook",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__dolook.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "hide_unhide_msgtypes",
+      "function": "dolook",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__dolook.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "Blind",
+      "function": "will_feel_cockatrice",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__will_feel_cockatrice.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "Stone_resistance",
+      "function": "will_feel_cockatrice",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__will_feel_cockatrice.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "mons",
+      "function": "will_feel_cockatrice",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__will_feel_cockatrice.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "uarmg",
+      "function": "will_feel_cockatrice",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__will_feel_cockatrice.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "ECMD_OK",
+      "function": "doprarm",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__doprarm.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "dispinv_with_action",
+      "function": "doprarm",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__doprarm.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "uarm",
+      "function": "doprarm",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__doprarm.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "uarmc",
+      "function": "doprarm",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__doprarm.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "uarmf",
+      "function": "doprarm",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__doprarm.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "uarmg",
+      "function": "doprarm",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__doprarm.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "uarmh",
+      "function": "doprarm",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__doprarm.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "uarms",
+      "function": "doprarm",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__doprarm.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "uarmu",
+      "function": "doprarm",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__doprarm.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "ECMD_OK",
+      "function": "dopramulet",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__dopramulet.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "dispinv_with_action",
+      "function": "dopramulet",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__dopramulet.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "uamul",
+      "function": "dopramulet",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__dopramulet.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "W_SADDLE",
+      "function": "tool_being_used",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__tool_being_used.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "W_TOOL",
+      "function": "tool_being_used",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__tool_being_used.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "uwep",
+      "function": "tool_being_used",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__tool_being_used.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "MENU_BEHAVE_STANDARD",
+      "function": "invdisp_nothing",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__invdisp_nothing.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "PICK_NONE",
+      "function": "invdisp_nothing",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__invdisp_nothing.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "add_menu_heading",
+      "function": "invdisp_nothing",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__invdisp_nothing.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "add_menu_str",
+      "function": "invdisp_nothing",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__invdisp_nothing.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "end_menu",
+      "function": "invdisp_nothing",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__invdisp_nothing.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "select_menu",
+      "function": "invdisp_nothing",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__invdisp_nothing.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "start_menu",
+      "function": "invdisp_nothing",
+      "js_module": "js/invent.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/invent__invdisp_nothing.json",
+      "source": "nethack-c/src/invent.c"
+    },
+    {
+      "detail": "CORPSE",
+      "function": "breakchestlock",
+      "js_module": "js/lock.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/lock__breakchestlock.json",
+      "source": "nethack-c/src/lock.c"
+    },
+    {
+      "detail": "COST_BRKLCK",
+      "function": "breakchestlock",
+      "js_module": "js/lock.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/lock__breakchestlock.json",
+      "source": "nethack-c/src/lock.c"
+    },
+    {
+      "detail": "costly_alteration",
+      "function": "breakchestlock",
+      "js_module": "js/lock.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/lock__breakchestlock.json",
+      "source": "nethack-c/src/lock.c"
+    },
+    {
+      "detail": "costly_spot",
+      "function": "breakchestlock",
+      "js_module": "js/lock.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/lock__breakchestlock.json",
+      "source": "nethack-c/src/lock.c"
+    },
+    {
+      "detail": "obfree",
+      "function": "breakchestlock",
+      "js_module": "js/lock.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/lock__breakchestlock.json",
+      "source": "nethack-c/src/lock.c"
+    },
+    {
+      "detail": "obj_extract_self",
+      "function": "breakchestlock",
+      "js_module": "js/lock.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/lock__breakchestlock.json",
+      "source": "nethack-c/src/lock.c"
+    },
+    {
+      "detail": "place_object",
+      "function": "breakchestlock",
+      "js_module": "js/lock.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/lock__breakchestlock.json",
+      "source": "nethack-c/src/lock.c"
+    },
+    {
+      "detail": "shop_keeper",
+      "function": "breakchestlock",
+      "js_module": "js/lock.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/lock__breakchestlock.json",
+      "source": "nethack-c/src/lock.c"
+    },
+    {
+      "detail": "start_corpse_timeout",
+      "function": "breakchestlock",
+      "js_module": "js/lock.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/lock__breakchestlock.json",
+      "source": "nethack-c/src/lock.c"
+    },
+    {
+      "detail": "stolen_value",
+      "function": "breakchestlock",
+      "js_module": "js/lock.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/lock__breakchestlock.json",
+      "source": "nethack-c/src/lock.c"
+    },
+    {
+      "detail": "the",
+      "function": "breakchestlock",
+      "js_module": "js/lock.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/lock__breakchestlock.json",
+      "source": "nethack-c/src/lock.c"
+    },
+    {
+      "detail": "gx",
+      "function": "reset_pick",
+      "js_module": "js/lock.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/lock__reset_pick.json",
+      "source": "nethack-c/src/lock.c"
+    },
+    {
+      "detail": "objects",
+      "function": "u_have_forceable_weapon",
+      "js_module": "js/lock.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/lock__u_have_forceable_weapon.json",
+      "source": "nethack-c/src/lock.c"
+    },
+    {
+      "detail": "m_at->mat",
+      "function": "stumble_on_door_mimic",
+      "js_module": "js/lock.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/lock__stumble_on_door_mimic.json",
+      "source": "nethack-c/src/lock.c"
+    },
+    {
+      "detail": "stumble_onto_mimic->stumble_on_door_mimic",
+      "function": "stumble_on_door_mimic",
+      "js_module": "js/lock.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/lock__stumble_on_door_mimic.json",
+      "source": "nethack-c/src/lock.c"
+    },
+    {
+      "detail": "Protection_from_shape_changers",
+      "function": "stumble_on_door_mimic",
+      "js_module": "js/lock.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/lock__stumble_on_door_mimic.json",
+      "source": "nethack-c/src/lock.c"
+    },
+    {
+      "detail": "is_door_mappear",
+      "function": "stumble_on_door_mimic",
+      "js_module": "js/lock.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/lock__stumble_on_door_mimic.json",
+      "source": "nethack-c/src/lock.c"
+    },
+    {
+      "detail": "OBJ_FLOOR",
+      "function": "splitobj",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__splitobj.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "OBJ_FREE",
+      "function": "splitobj",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__splitobj.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "OBJ_LUAFREE",
+      "function": "splitobj",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__splitobj.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "copy_oextra",
+      "function": "splitobj",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__splitobj.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "free_omid",
+      "function": "splitobj",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__splitobj.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "has_omid",
+      "function": "splitobj",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__splitobj.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "nextoid",
+      "function": "splitobj",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__splitobj.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "obj_sheds_light",
+      "function": "splitobj",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__splitobj.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "obj_split_light_source",
+      "function": "splitobj",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__splitobj.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "obj_split_timers",
+      "function": "splitobj",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__splitobj.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "panic",
+      "function": "splitobj",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__splitobj.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "splitbill",
+      "function": "splitobj",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__splitobj.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "FIG_TRANSFORM",
+      "function": "bless",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__bless.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "arti_light_radius",
+      "function": "bless",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__bless.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "carried",
+      "function": "bless",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__bless.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "confers_luck",
+      "function": "bless",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__bless.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "maybe_adjust_light",
+      "function": "bless",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__bless.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "obj_to_any",
+      "function": "bless",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__bless.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "set_moreluck",
+      "function": "bless",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__bless.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "stop_timer",
+      "function": "bless",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__bless.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "arti_light_radius",
+      "function": "unbless",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__unbless.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "carried",
+      "function": "unbless",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__unbless.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "confers_luck",
+      "function": "unbless",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__unbless.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "maybe_adjust_light",
+      "function": "unbless",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__unbless.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "set_moreluck",
+      "function": "unbless",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__unbless.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "NON_PM",
+      "function": "curse",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__curse.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "arti_light_radius",
+      "function": "curse",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__curse.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "attach_fig_transform_timeout",
+      "function": "curse",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__curse.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "bimanual",
+      "function": "curse",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__curse.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "book_cursed",
+      "function": "curse",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__curse.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "carried",
+      "function": "curse",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__curse.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "confers_luck",
+      "function": "curse",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__curse.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "dead_species",
+      "function": "curse",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__curse.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "drop_uswapwep",
+      "function": "curse",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__curse.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "maybe_adjust_light",
+      "function": "curse",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__curse.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "mcarried",
+      "function": "curse",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__curse.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "reset_remarm",
+      "function": "curse",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__curse.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "set_moreluck",
+      "function": "curse",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__curse.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "uswapwep",
+      "function": "curse",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__curse.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "uwep",
+      "function": "curse",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__curse.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "FIG_TRANSFORM",
+      "function": "uncurse",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__uncurse.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "arti_light_radius",
+      "function": "uncurse",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__uncurse.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "carried",
+      "function": "uncurse",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__uncurse.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "confers_luck",
+      "function": "uncurse",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__uncurse.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "maybe_adjust_light",
+      "function": "uncurse",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__uncurse.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "obj_to_any",
+      "function": "uncurse",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__uncurse.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "set_moreluck",
+      "function": "uncurse",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__uncurse.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "stop_timer",
+      "function": "uncurse",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__uncurse.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "OBJ_INVENT",
+      "function": "set_bknown",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__set_bknown.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "update_inventory",
+      "function": "set_bknown",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__set_bknown.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "CANDELABRUM_OF_INVOCATION",
+      "function": "weight",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__weight.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "HEAVY_IRON_BALL",
+      "function": "weight",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__weight.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "LARGEST_INT",
+      "function": "weight",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__weight.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "TALLOW_CANDLE",
+      "function": "weight",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__weight.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "eaten_stat",
+      "function": "weight",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__weight.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "impossible",
+      "function": "weight",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__weight.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "ismnum",
+      "function": "weight",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__weight.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "objects",
+      "function": "weight",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__weight.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "simpleonames",
+      "function": "weight",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__weight.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "max",
+      "function": "weight",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_call_binding",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__weight.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "start_corpse_timeout->start_corpse_timeout_rng",
+      "function": "mkcorpstat",
+      "js_module": "js/mkobj.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__mkcorpstat.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "CORPSTAT_INIT",
+      "function": "mkcorpstat",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__mkcorpstat.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "CORPSTAT_SPE_VAL",
+      "function": "mkcorpstat",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__mkcorpstat.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "event_log",
+      "function": "mkcorpstat",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__mkcorpstat.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "gz",
+      "function": "mkcorpstat",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__mkcorpstat.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "impossible",
+      "function": "mkcorpstat",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__mkcorpstat.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "is_rider",
+      "function": "mkcorpstat",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__mkcorpstat.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "mksobj_at",
+      "function": "mkcorpstat",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__mkcorpstat.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "monsndx",
+      "function": "mkcorpstat",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__mkcorpstat.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "obj_stop_timers",
+      "function": "mkcorpstat",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__mkcorpstat.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "rloco",
+      "function": "mkcorpstat",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__mkcorpstat.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "save_mtraits",
+      "function": "mkcorpstat",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__mkcorpstat.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "FIRE_RES",
+      "function": "is_flammable",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__is_flammable.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "Is_candle",
+      "function": "is_flammable",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__is_flammable.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "WAN_FIRE",
+      "function": "is_flammable",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__is_flammable.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "objects",
+      "function": "is_flammable",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__is_flammable.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "objects",
+      "function": "is_rottable",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__is_rottable.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "OBJ_CONTAINED",
+      "function": "container_weight",
+      "js_module": "js/mkobj.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/mkobj__container_weight.json",
+      "source": "nethack-c/src/mkobj.c"
+    },
+    {
+      "detail": "Deaf",
+      "function": "u_left_shop",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__u_left_shop.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "ESHK",
+      "function": "u_left_shop",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__u_left_shop.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "svp",
+      "function": "u_left_shop",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__u_left_shop.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "BEFORE",
+      "function": "credit_report",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__credit_report.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "ESHK",
+      "function": "credit_report",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__credit_report.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "NOW",
+      "function": "credit_report",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__credit_report.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "in_rooms->inRoomsAt",
+      "function": "remote_burglary",
+      "js_module": "js/shk.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__remote_burglary.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "ESHK",
+      "function": "remote_burglary",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__remote_burglary.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "inside_shop->insideShop",
+      "function": "shopper_financial_report",
+      "js_module": "js/shk.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__shopper_financial_report.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "ESHK",
+      "function": "shopper_financial_report",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__shopper_financial_report.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "fmon",
+      "function": "shopper_financial_report",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__shopper_financial_report.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "in_rooms->inRoomsAt",
+      "function": "inhishop",
+      "js_module": "js/shk.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__inhishop.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "ESHK",
+      "function": "inhishop",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__inhishop.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "on_level",
+      "function": "inhishop",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__inhishop.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "strchr",
+      "function": "inhishop",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__inhishop.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "in_rooms->inRoomsAt",
+      "function": "find_objowner",
+      "js_module": "js/shk.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__find_objowner.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "OBJ_ONBILL",
+      "function": "find_objowner",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__find_objowner.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "fmon",
+      "function": "find_objowner",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__find_objowner.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "wake_nearto",
+      "function": "noisy_shop",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__noisy_shop.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "Has_contents",
+      "function": "is_unpaid",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__is_unpaid.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "count_unpaid",
+      "function": "is_unpaid",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__is_unpaid.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "obfree",
+      "function": "delete_contents",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__delete_contents.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "obj_extract_self",
+      "function": "delete_contents",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__delete_contents.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "ANGRY",
+      "function": "angry_shk_exists",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__angry_shk_exists.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "fmon",
+      "function": "angry_shk_exists",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__angry_shk_exists.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "ESHK",
+      "function": "rile_shk",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__rile_shk.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "NOTANGRY",
+      "function": "rile_shk",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__rile_shk.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "ANGRY",
+      "function": "make_happy_shk",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__make_happy_shk.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "ESHK",
+      "function": "make_happy_shk",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__make_happy_shk.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "MIGR_APPROX_XY",
+      "function": "make_happy_shk",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__make_happy_shk.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "PM_ROGUE",
+      "function": "make_happy_shk",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__make_happy_shk.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "Role_if",
+      "function": "make_happy_shk",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__make_happy_shk.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "Strcpy",
+      "function": "make_happy_shk",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__make_happy_shk.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "adjalign",
+      "function": "make_happy_shk",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__make_happy_shk.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "ledger_no",
+      "function": "make_happy_shk",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__make_happy_shk.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "mdrop_special_objs",
+      "function": "make_happy_shk",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__make_happy_shk.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "migrate_to_level",
+      "function": "make_happy_shk",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__make_happy_shk.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "noit_mhis",
+      "function": "make_happy_shk",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__make_happy_shk.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "on_level",
+      "function": "make_happy_shk",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__make_happy_shk.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "sensemon",
+      "function": "make_happy_shk",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__make_happy_shk.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "sgn",
+      "function": "make_happy_shk",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__make_happy_shk.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "pacify_guards",
+      "function": "make_happy_shoppers",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__make_happy_shoppers.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "clear_no_charge_pets->clear_no_charge",
+      "function": "hot_pursuit",
+      "js_module": "js/shk.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__hot_pursuit.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "ESHK",
+      "function": "hot_pursuit",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__hot_pursuit.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "PL_NSIZ",
+      "function": "hot_pursuit",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__hot_pursuit.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "fobj",
+      "function": "hot_pursuit",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__hot_pursuit.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "strncpy",
+      "function": "hot_pursuit",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__hot_pursuit.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "svp",
+      "function": "hot_pursuit",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__hot_pursuit.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "ANGRY",
+      "function": "paybill",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__paybill.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "ESHK",
+      "function": "paybill",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__paybill.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "fmon",
+      "function": "paybill",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__paybill.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "gr",
+      "function": "paybill",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__paybill.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "inherits",
+      "function": "paybill",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__paybill.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "mongone",
+      "function": "paybill",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__paybill.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "on_level",
+      "function": "paybill",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__paybill.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "strchr",
+      "function": "paybill",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__paybill.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "ESHK",
+      "function": "contained_cost",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__contained_cost.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "Has_contents",
+      "function": "contained_cost",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__contained_cost.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "OBJ_CONTAINED",
+      "function": "contained_cost",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__contained_cost.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "OBJ_FLOOR",
+      "function": "contained_cost",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__contained_cost.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "OBJ_FREE",
+      "function": "contained_cost",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__contained_cost.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "get_obj_location",
+      "function": "contained_cost",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__contained_cost.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "objects",
+      "function": "contained_cost",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__contained_cost.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "Has_contents",
+      "function": "contained_gold",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__contained_gold.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "Has_contents",
+      "function": "picked_container",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__picked_container.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "ANGRY",
+      "function": "addtobill",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__addtobill.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "Deaf",
+      "function": "addtobill",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__addtobill.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "ESHK",
+      "function": "addtobill",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__addtobill.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "Has_contents",
+      "function": "addtobill",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__addtobill.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "Strcat",
+      "function": "addtobill",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__addtobill.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "Strcpy",
+      "function": "addtobill",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__addtobill.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "The",
+      "function": "addtobill",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__addtobill.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "append_honorific",
+      "function": "addtobill",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__addtobill.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "bill_box_content",
+      "function": "addtobill",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__addtobill.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "count_unpaid",
+      "function": "addtobill",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__addtobill.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "set_voice",
+      "function": "addtobill",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__addtobill.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "the",
+      "function": "addtobill",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__addtobill.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "ESHK",
+      "function": "splitbill",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__splitbill.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "Has_contents",
+      "function": "subfrombill",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__subfrombill.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "in_rooms->inRoomsAt",
+      "function": "stolen_value",
+      "js_module": "js/shk.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__stolen_value.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "ANGRY",
+      "function": "stolen_value",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__stolen_value.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "Deaf",
+      "function": "stolen_value",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__stolen_value.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "ESHK",
+      "function": "stolen_value",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__stolen_value.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "Has_contents",
+      "function": "stolen_value",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__stolen_value.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "OBJ_FREE",
+      "function": "stolen_value",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__stolen_value.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "OBJ_INVENT",
+      "function": "stolen_value",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__stolen_value.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "Sprintf",
+      "function": "stolen_value",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__stolen_value.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "angry_guards",
+      "function": "stolen_value",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__stolen_value.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "assert",
+      "function": "stolen_value",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__stolen_value.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "count_contents",
+      "function": "stolen_value",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__stolen_value.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "eos",
+      "function": "stolen_value",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__stolen_value.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "stolen_container",
+      "function": "stolen_value",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__stolen_value.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "svp",
+      "function": "stolen_value",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__stolen_value.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "ESHK",
+      "function": "donate_gold",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__donate_gold.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "inside_shop->insideShop",
+      "function": "shkcatch",
+      "js_module": "js/shk.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__shkcatch.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "Deaf",
+      "function": "shkcatch",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__shkcatch.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "ESHK",
+      "function": "shkcatch",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__shkcatch.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "RLOC_NOMSG",
+      "function": "shkcatch",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__shkcatch.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "cansee",
+      "function": "shkcatch",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__shkcatch.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "dist2",
+      "function": "shkcatch",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__shkcatch.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "map_invisible",
+      "function": "shkcatch",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__shkcatch.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "mark_synch",
+      "function": "shkcatch",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__shkcatch.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "mnearto",
+      "function": "shkcatch",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__shkcatch.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "mpickobj",
+      "function": "shkcatch",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__shkcatch.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "nh_delay_output",
+      "function": "shkcatch",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__shkcatch.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "the",
+      "function": "shkcatch",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__shkcatch.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "ESHK",
+      "function": "shk_impaired",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__shk_impaired.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "ESHK",
+      "function": "is_fshk",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__is_fshk.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "inside_shop->insideShop",
+      "function": "price_quote",
+      "js_module": "js/shk.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__price_quote.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "Has_contents",
+      "function": "price_quote",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__price_quote.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "NHW_MENU",
+      "function": "price_quote",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__price_quote.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "Sprintf",
+      "function": "price_quote",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__price_quote.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "Strcpy",
+      "function": "price_quote",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__price_quote.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "create_nhwindow",
+      "function": "price_quote",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__price_quote.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "destroy_nhwindow",
+      "function": "price_quote",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__price_quote.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "display_nhwindow",
+      "function": "price_quote",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__price_quote.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "putstr",
+      "function": "price_quote",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__price_quote.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "uball",
+      "function": "price_quote",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__price_quote.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "uchain",
+      "function": "price_quote",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__price_quote.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "in_rooms->inRoomsAt",
+      "function": "costly_gold",
+      "js_module": "js/shk.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__costly_gold.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "ESHK",
+      "function": "costly_gold",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__costly_gold.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "in_rooms->inRoomsAt",
+      "function": "block_door",
+      "js_module": "js/shk.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__block_door.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "ESHK",
+      "function": "block_door",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__block_door.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "IS_DOOR",
+      "function": "block_door",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__block_door.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "IS_SHOP",
+      "function": "block_door",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__block_door.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "Invis",
+      "function": "block_door",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__block_door.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "in_rooms->inRoomsAt",
+      "function": "globby_bill_fixup",
+      "js_module": "js/shk.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__globby_bill_fixup.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "ANGRY",
+      "function": "globby_bill_fixup",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__globby_bill_fixup.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "ESHK",
+      "function": "globby_bill_fixup",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__globby_bill_fixup.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "OBJ_FLOOR",
+      "function": "globby_bill_fixup",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__globby_bill_fixup.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "OBJ_FREE",
+      "function": "globby_bill_fixup",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__globby_bill_fixup.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "bill_dummy_object",
+      "function": "globby_bill_fixup",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__globby_bill_fixup.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "fmon",
+      "function": "globby_bill_fixup",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__globby_bill_fixup.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "obj_typename",
+      "function": "globby_bill_fixup",
+      "js_module": "js/shk.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/shk__globby_bill_fixup.json",
+      "source": "nethack-c/src/shk.c"
+    },
+    {
+      "detail": "Monnam",
+      "function": "beg",
+      "js_module": "js/sounds.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/sounds__beg.json",
+      "source": "nethack-c/src/sounds.c"
+    },
+    {
+      "detail": "canspotmon",
+      "function": "beg",
+      "js_module": "js/sounds.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/sounds__beg.json",
+      "source": "nethack-c/src/sounds.c"
+    },
+    {
+      "detail": "helpless",
+      "function": "beg",
+      "js_module": "js/sounds.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/sounds__beg.json",
+      "source": "nethack-c/src/sounds.c"
+    },
+    {
+      "detail": "map_invisible",
+      "function": "beg",
+      "js_module": "js/sounds.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/sounds__beg.json",
+      "source": "nethack-c/src/sounds.c"
+    },
+    {
+      "detail": "pline",
+      "function": "beg",
+      "js_module": "js/sounds.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/sounds__beg.json",
+      "source": "nethack-c/src/sounds.c"
+    },
+    {
+      "detail": "verbalize",
+      "function": "beg",
+      "js_module": "js/sounds.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/sounds__beg.json",
+      "source": "nethack-c/src/sounds.c"
+    },
+    {
+      "detail": "Invis",
+      "function": "responsive_mon_at",
+      "js_module": "js/sounds.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/sounds__responsive_mon_at.json",
+      "source": "nethack-c/src/sounds.c"
+    },
+    {
+      "detail": "haseyes",
+      "function": "responsive_mon_at",
+      "js_module": "js/sounds.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/sounds__responsive_mon_at.json",
+      "source": "nethack-c/src/sounds.c"
+    },
+    {
+      "detail": "helpless",
+      "function": "responsive_mon_at",
+      "js_module": "js/sounds.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/sounds__responsive_mon_at.json",
+      "source": "nethack-c/src/sounds.c"
+    },
+    {
+      "detail": "isok",
+      "function": "responsive_mon_at",
+      "js_module": "js/sounds.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/sounds__responsive_mon_at.json",
+      "source": "nethack-c/src/sounds.c"
+    },
+    {
+      "detail": "m_at",
+      "function": "responsive_mon_at",
+      "js_module": "js/sounds.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/sounds__responsive_mon_at.json",
+      "source": "nethack-c/src/sounds.c"
+    },
+    {
+      "detail": "perceives",
+      "function": "responsive_mon_at",
+      "js_module": "js/sounds.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/sounds__responsive_mon_at.json",
+      "source": "nethack-c/src/sounds.c"
+    },
+    {
+      "detail": "WIN_MESSAGE",
+      "function": "confused_book",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__confused_book.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "display_nhwindow",
+      "function": "confused_book",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__confused_book.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "trycall",
+      "function": "confused_book",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__confused_book.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "useup",
+      "function": "confused_book",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__confused_book.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "pline1->pline",
+      "function": "getspell",
+      "js_module": "js/spell.js",
+      "kind": "rename_alias",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__getspell.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "CMDQ_KEY",
+      "function": "getspell",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__getspell.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "MENU_TRADITIONAL",
+      "function": "getspell",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__getspell.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "Never_mind",
+      "function": "getspell",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__getspell.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "Snprintf",
+      "function": "getspell",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__getspell.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "Sprintf",
+      "function": "getspell",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__getspell.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "Strcpy",
+      "function": "getspell",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__getspell.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "cmdq_pop",
+      "function": "getspell",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__getspell.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "dospellmenu",
+      "function": "getspell",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__getspell.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "quitchars",
+      "function": "getspell",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__getspell.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "strchr",
+      "function": "getspell",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__getspell.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "yn_function",
+      "function": "getspell",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__getspell.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "CQ_REPEAT",
+      "function": "docast",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__docast.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "ECMD_FAIL",
+      "function": "docast",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__docast.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "cmdq_add_key",
+      "function": "docast",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__docast.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "svs",
+      "function": "docast",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__docast.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "objects",
+      "function": "spell_skilltype",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__spell_skilltype.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "Blind",
+      "function": "cast_protection",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__cast_protection.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "CLOUD",
+      "function": "cast_protection",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__cast_protection.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "IS_TREE",
+      "function": "cast_protection",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__cast_protection.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "NH_GOLDEN",
+      "function": "cast_protection",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__cast_protection.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "PM_FOG_CLOUD",
+      "function": "cast_protection",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__cast_protection.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "P_EXPERT",
+      "function": "cast_protection",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__cast_protection.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "P_SKILL",
+      "function": "cast_protection",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__cast_protection.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "an",
+      "function": "cast_protection",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__cast_protection.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "enfolds",
+      "function": "cast_protection",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__cast_protection.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "find_ac",
+      "function": "cast_protection",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__cast_protection.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "hcolor",
+      "function": "cast_protection",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__cast_protection.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "hliquid",
+      "function": "cast_protection",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__cast_protection.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "is_animal",
+      "function": "cast_protection",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__cast_protection.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "is_whirly",
+      "function": "cast_protection",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__cast_protection.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "mons",
+      "function": "cast_protection",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__cast_protection.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "min",
+      "function": "cast_protection",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_call_binding",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__cast_protection.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "HConfusion",
+      "function": "spell_backfire",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__spell_backfire.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "HStun",
+      "function": "spell_backfire",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__spell_backfire.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "TIMEOUT",
+      "function": "spell_backfire",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__spell_backfire.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "make_confused",
+      "function": "spell_backfire",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__spell_backfire.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "make_stunned",
+      "function": "spell_backfire",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__spell_backfire.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "Is_waterlevel",
+      "function": "throwspell",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__throwspell.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "WIN_MESSAGE",
+      "function": "throwspell",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__throwspell.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "cansee",
+      "function": "throwspell",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__throwspell.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "canspotmon",
+      "function": "throwspell",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__throwspell.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "clear_nhwindow",
+      "function": "throwspell",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__throwspell.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "getpos",
+      "function": "throwspell",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__throwspell.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "m_at",
+      "function": "throwspell",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__throwspell.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "spell_aim_step",
+      "function": "throwspell",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__throwspell.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "walk_path",
+      "function": "throwspell",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__throwspell.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "OBJ_NAME",
+      "function": "initialspell",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__initialspell.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "impossible",
+      "function": "initialspell",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__initialspell.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "objects",
+      "function": "initialspell",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__initialspell.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "svs",
+      "function": "initialspell",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__initialspell.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "spe_Forgotten",
+      "function": "known_spell",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__known_spell.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "spe_Unknown",
+      "function": "known_spell",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__known_spell.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "impossible",
+      "function": "force_learn_spell",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__force_learn_spell.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "objects",
+      "function": "force_learn_spell",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__force_learn_spell.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "spe_Fresh",
+      "function": "force_learn_spell",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__force_learn_spell.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "svs",
+      "function": "force_learn_spell",
+      "js_module": "js/spell.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/spell__force_learn_spell.json",
+      "source": "nethack-c/src/spell.c"
+    },
+    {
+      "detail": "LARGEST_INT",
+      "function": "somegold",
+      "js_module": "js/steal.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/steal__somegold.json",
+      "source": "nethack-c/src/steal.c"
+    },
+    {
+      "detail": "HAND",
+      "function": "maybe_absorb_item",
+      "js_module": "js/steal.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/steal__maybe_absorb_item.json",
+      "source": "nethack-c/src/steal.c"
+    },
+    {
+      "detail": "Monnam",
+      "function": "maybe_absorb_item",
+      "js_module": "js/steal.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/steal__maybe_absorb_item.json",
+      "source": "nethack-c/src/steal.c"
+    },
+    {
+      "detail": "ROCK_CLASS",
+      "function": "maybe_absorb_item",
+      "js_module": "js/steal.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/steal__maybe_absorb_item.json",
+      "source": "nethack-c/src/steal.c"
+    },
+    {
+      "detail": "Some_Monnam",
+      "function": "maybe_absorb_item",
+      "js_module": "js/steal.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/steal__maybe_absorb_item.json",
+      "source": "nethack-c/src/steal.c"
+    },
+    {
+      "detail": "bimanual",
+      "function": "maybe_absorb_item",
+      "js_module": "js/steal.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/steal__maybe_absorb_item.json",
+      "source": "nethack-c/src/steal.c"
+    },
+    {
+      "detail": "body_part",
+      "function": "maybe_absorb_item",
+      "js_module": "js/steal.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/steal__maybe_absorb_item.json",
+      "source": "nethack-c/src/steal.c"
+    },
+    {
+      "detail": "cansee",
+      "function": "maybe_absorb_item",
+      "js_module": "js/steal.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/steal__maybe_absorb_item.json",
+      "source": "nethack-c/src/steal.c"
+    },
+    {
+      "detail": "canspotmon",
+      "function": "maybe_absorb_item",
+      "js_module": "js/steal.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/steal__maybe_absorb_item.json",
+      "source": "nethack-c/src/steal.c"
+    },
+    {
+      "detail": "carried",
+      "function": "maybe_absorb_item",
+      "js_module": "js/steal.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/steal__maybe_absorb_item.json",
+      "source": "nethack-c/src/steal.c"
+    },
+    {
+      "detail": "encumber_msg",
+      "function": "maybe_absorb_item",
+      "js_module": "js/steal.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/steal__maybe_absorb_item.json",
+      "source": "nethack-c/src/steal.c"
+    },
+    {
+      "detail": "freeinv",
+      "function": "maybe_absorb_item",
+      "js_module": "js/steal.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/steal__maybe_absorb_item.json",
+      "source": "nethack-c/src/steal.c"
+    },
+    {
+      "detail": "makeplural",
+      "function": "maybe_absorb_item",
+      "js_module": "js/steal.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/steal__maybe_absorb_item.json",
+      "source": "nethack-c/src/steal.c"
+    },
+    {
+      "detail": "mpickobj",
+      "function": "maybe_absorb_item",
+      "js_module": "js/steal.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/steal__maybe_absorb_item.json",
+      "source": "nethack-c/src/steal.c"
+    },
+    {
+      "detail": "obj_resists",
+      "function": "maybe_absorb_item",
+      "js_module": "js/steal.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/steal__maybe_absorb_item.json",
+      "source": "nethack-c/src/steal.c"
+    },
+    {
+      "detail": "otense",
+      "function": "maybe_absorb_item",
+      "js_module": "js/steal.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/steal__maybe_absorb_item.json",
+      "source": "nethack-c/src/steal.c"
+    },
+    {
+      "detail": "pline",
+      "function": "maybe_absorb_item",
+      "js_module": "js/steal.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/steal__maybe_absorb_item.json",
+      "source": "nethack-c/src/steal.c"
+    },
+    {
+      "detail": "shop_keeper",
+      "function": "maybe_absorb_item",
+      "js_module": "js/steal.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/steal__maybe_absorb_item.json",
+      "source": "nethack-c/src/steal.c"
+    },
+    {
+      "detail": "subfrombill",
+      "function": "maybe_absorb_item",
+      "js_module": "js/steal.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/steal__maybe_absorb_item.json",
+      "source": "nethack-c/src/steal.c"
+    },
+    {
+      "detail": "touch_artifact",
+      "function": "maybe_absorb_item",
+      "js_module": "js/steal.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/steal__maybe_absorb_item.json",
+      "source": "nethack-c/src/steal.c"
+    },
+    {
+      "detail": "uball",
+      "function": "maybe_absorb_item",
+      "js_module": "js/steal.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/steal__maybe_absorb_item.json",
+      "source": "nethack-c/src/steal.c"
+    },
+    {
+      "detail": "uchain",
+      "function": "maybe_absorb_item",
+      "js_module": "js/steal.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/steal__maybe_absorb_item.json",
+      "source": "nethack-c/src/steal.c"
+    },
+    {
+      "detail": "upstart",
+      "function": "maybe_absorb_item",
+      "js_module": "js/steal.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/steal__maybe_absorb_item.json",
+      "source": "nethack-c/src/steal.c"
+    },
+    {
+      "detail": "yname",
+      "function": "maybe_absorb_item",
+      "js_module": "js/steal.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/steal__maybe_absorb_item.json",
+      "source": "nethack-c/src/steal.c"
+    },
+    {
+      "detail": "Monnam",
+      "function": "relobj",
+      "js_module": "js/steal.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/steal__relobj.json",
+      "source": "nethack-c/src/steal.c"
+    },
+    {
+      "detail": "cansee",
+      "function": "relobj",
+      "js_module": "js/steal.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/steal__relobj.json",
+      "source": "nethack-c/src/steal.c"
+    },
+    {
+      "detail": "canseemon",
+      "function": "relobj",
+      "js_module": "js/steal.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/steal__relobj.json",
+      "source": "nethack-c/src/steal.c"
+    },
+    {
+      "detail": "canspotmon",
+      "function": "relobj",
+      "js_module": "js/steal.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/steal__relobj.json",
+      "source": "nethack-c/src/steal.c"
+    },
+    {
+      "detail": "droppables",
+      "function": "relobj",
+      "js_module": "js/steal.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/steal__relobj.json",
+      "source": "nethack-c/src/steal.c"
+    },
+    {
+      "detail": "obfree",
+      "function": "relobj",
+      "js_module": "js/steal.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/steal__relobj.json",
+      "source": "nethack-c/src/steal.c"
+    },
+    {
+      "detail": "obj_extract_self",
+      "function": "relobj",
+      "js_module": "js/steal.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/steal__relobj.json",
+      "source": "nethack-c/src/steal.c"
+    },
+    {
+      "detail": "pline",
+      "function": "relobj",
+      "js_module": "js/steal.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/steal__relobj.json",
+      "source": "nethack-c/src/steal.c"
+    },
+    {
+      "detail": "s_suffix",
+      "function": "relobj",
+      "js_module": "js/steal.js",
+      "kind": "add_missing_identifier",
+      "out_file": "/tmp/translator-batch-gapwave2-fix6/steal__relobj.json",
+      "source": "nethack-c/src/steal.c"
+    }
+  ],
+  "totals": {
+    "by_kind": {
+      "add_missing_call_binding": 7,
+      "add_missing_identifier": 668,
+      "rename_alias": 34
+    },
+    "by_module": {
+      "js/apply.js": 71,
+      "js/attrib.js": 13,
+      "js/bones.js": 8,
+      "js/detect.js": 27,
+      "js/do.js": 87,
+      "js/engrave.js": 25,
+      "js/exper.js": 1,
+      "js/fountain.js": 22,
+      "js/invent.js": 120,
+      "js/lock.js": 17,
+      "js/mkobj.js": 78,
+      "js/shk.js": 134,
+      "js/sounds.js": 12,
+      "js/spell.js": 61,
+      "js/steal.js": 33
+    },
+    "tasks": 709
+  }
+}

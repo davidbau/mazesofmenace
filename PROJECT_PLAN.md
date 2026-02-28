@@ -125,6 +125,93 @@ Milestones use a hybrid model: phase completion + parity gates + release-timing 
 9. **Public release**
    - Publish within 1–2 days of official NetHack 3.7.0 release with must-hit criteria satisfied.
 
+## IRON_PARITY Campaign (Active Cross-Phase Program)
+
+Operation Iron Parity is the repository's structured campaign for closing the
+remaining C-faithfulness gap through coordinated state canonicalization and
+translator-assisted porting. It runs across Phases 2-4 and feeds Phase 6
+readiness by reducing hidden-state drift and improving auditability.
+
+Authoritative design and execution documents:
+1. [docs/IRON_PARITY_PLAN.md](docs/IRON_PARITY_PLAN.md)
+2. [docs/C_FAITHFUL_STATE_REFACTOR_PLAN.md](docs/C_FAITHFUL_STATE_REFACTOR_PLAN.md)
+3. [docs/C_TRANSLATOR_ARCHITECTURE_SPEC.md](docs/C_TRANSLATOR_ARCHITECTURE_SPEC.md)
+4. [docs/C_TRANSLATOR_PARSER_IMPLEMENTATION_SPEC.md](docs/C_TRANSLATOR_PARSER_IMPLEMENTATION_SPEC.md)
+
+Campaign objectives:
+1. Move parity-critical runtime ownership to canonical `game.*` state paths.
+2. Eliminate legacy mirror drift in Tier-1 gameplay modules.
+3. Stand up deterministic, policy-governed translation tooling for scalable
+   C-to-JS function-body porting.
+4. Keep parity evidence first: session replay metrics remain the acceptance
+   authority for gameplay fidelity.
+
+Campaign scope baseline (from `docs/CODEMATCH.md`, snapshot 2026-02-26):
+1. Function rows tracked: `5000`.
+2. Missing function rows (raw): `3863`.
+3. Missing function rows excluding `N/A` files: `3242`.
+4. Planning implication: this is a thousands-function campaign; strategy must
+   optimize for safe throughput scaling, not one-off manual edits.
+
+Campaign phase map (shared IDs):
+1. `M0` baseline + policy guardrails
+2. `M1` canonical state spine
+3. `M2` movement/turn canonicalization
+4. `M3` translator alpha (safe subset)
+5. `M4` combat/monster + translator pilot
+6. `M5` generation/startup + translator expansion
+7. `M6` boundary hardening + legacy path removal
+
+Campaign governance:
+1. No harness-side mismatch suppression to "improve" metrics.
+2. Mixed translator files are annotation/policy constrained and CI enforced.
+3. Any regression is either fixed immediately, rolled back, or tracked as an
+   explicit approved follow-up.
+4. The umbrella `IRON_PARITY_PLAN.md` milestone matrix is authoritative when
+   phase wording across docs differs.
+5. Canonical naming is C-first: translator and refactor work must prefer
+   canonical `game.*` ownership with C-like symbols, and avoid cosmetic renames
+   that weaken mechanical translation generalization.
+6. Translation throughput scales only by gated stages:
+   1. scrutinized pilot set (single-digit to low dozens),
+   2. batched expansion (dozens),
+   3. subsystem waves (hundreds),
+   4. campaign-scale closure (thousands).
+7. No stage promotion without passing quality gates from the prior stage
+   (translator regression, policy checks, and parity evidence stability).
+
+### GitHub Issue Organization (IRON_PARITY)
+
+Use a campaign hierarchy so progress is visible at both strategic and tactical
+levels.
+
+1. One parent epic issue for the campaign:
+   - Title: `IRON_PARITY: Campaign Tracker (M0-M6)`
+   - Contains checklist links for all milestone and workstream issues.
+2. One milestone issue per campaign milestone:
+   - `IRON_PARITY M0: Baseline + guardrails`
+   - `IRON_PARITY M1: Canonical state spine`
+   - `IRON_PARITY M2: Movement/turn canonicalization`
+   - `IRON_PARITY M3: Translator alpha`
+   - `IRON_PARITY M4: Combat/monster + translator pilot`
+   - `IRON_PARITY M5: Generation/startup + expansion`
+   - `IRON_PARITY M6: Boundary hardening + legacy removal`
+3. Child implementation issues grouped by subsystem, each linked with:
+   - `Blocked by #<milestone-issue>`
+   - `Blocks #<dependent-issue>` where applicable.
+4. Label policy:
+   - required: `parity`, `campaign:iron-parity`
+   - exactly one scope label: `state`, `translator`, `animation`, `parity-test`, `docs`, or `infra`
+   - optional ownership label: `agent:<name>` only while actively worked.
+5. Evidence policy for every parity issue:
+   - session/seed reference,
+   - first divergence step/index and channel (`rng`, `event`, `screen`, `typgrid`),
+   - expected C behavior and current JS behavior,
+   - suspected `file:function` origin when available.
+6. Closure policy:
+   - issues close only with a linked commit and validation summary,
+   - if partial, close with explicit follow-up issue linked in the closing comment.
+
 ## Phasing Strategy
 
 1. Treat parity failures as the primary prioritization signal.

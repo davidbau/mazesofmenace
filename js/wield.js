@@ -19,12 +19,12 @@ function setuwep(player, obj) {
 }
 
 // cf. wield.c:280 — setuswapwep(obj): set secondary weapon slot
-function setuswapwep(player, obj) {
+export function setuswapwep(player, obj) {
     player.swapWeapon = obj;
 }
 
 // cf. wield.c:271 — setuqwep(obj): set quivered ammunition slot
-function setuqwep(player, obj) {
+export function setuqwep(player, obj) {
     player.quiver = obj;
 }
 
@@ -34,12 +34,12 @@ function uwepgone(player) {
 }
 
 // cf. wield.c:879 — uswapwepgone(): force-remove secondary weapon
-function uswapwepgone(player) {
+export function uswapwepgone(player) {
     player.swapWeapon = null;
 }
 
 // cf. wield.c:888 — uqwepgone(): force-remove quivered weapon
-function uqwepgone(player) {
+export function uqwepgone(player) {
     player.quiver = null;
 }
 
@@ -65,7 +65,7 @@ function will_weld(obj) {
 }
 
 // cf. wield.c:1042 — welded(obj): test if hero's main weapon is welded to hand
-function welded(player) {
+export function welded(player) {
     if (player.weapon && will_weld(player.weapon)) {
         player.weapon.bknown = true;
         return true;
@@ -74,7 +74,7 @@ function welded(player) {
 }
 
 // cf. wield.c:1052 — weldmsg(obj): print "X is welded to your hand!" message
-function weldmsg(player, display) {
+export function weldmsg(player, display) {
     if (!player.weapon) return;
     player.weapon.bknown = true;
     display.putstr_message(`${doname(player.weapon, player)} welded to your hand!`);
@@ -82,10 +82,10 @@ function weldmsg(player, display) {
 
 // cf. wield.c:1068 — mwelded(obj): monster version of welded
 // Caller is responsible for ensuring this is a monster's item
-function mwelded(obj) {
-    if (obj && (obj.owornmask & W_WEP) && will_weld(obj))
-        return true;
-    return false;
+// Autotranslated from wield.c:1068
+export function mwelded(obj) {
+  if (obj && (obj.owornmask & W_WEP) && will_weld(obj)) return true;
+  return false;
 }
 
 // cf. wield.c:150 — empty_handed(): description when not wielding anything
@@ -96,7 +96,7 @@ function empty_handed(player) {
 
 // cf. wield.c:132 — cant_wield_corpse(obj): cockatrice petrification check
 // Returns true if wielding would petrify (hero doesn't have gloves/resistance)
-function cant_wield_corpse(player, _obj) {
+export function cant_wield_corpse(player, _obj) {
     // Simplified: full cockatrice handling requires instapetrify, touch_petrifies
     // which would kill the hero. For now return false (safety handled elsewhere).
     return false;
@@ -107,12 +107,12 @@ function cant_wield_corpse(player, _obj) {
 // ============================================================
 
 // cf. wield.c:829 — set_twoweap(on_off)
-function set_twoweap(player, on) {
+export function set_twoweap(player, on) {
     player.twoweap = !!on;
 }
 
 // cf. wield.c:897 — untwoweapon(): disable two-weapon mode
-function untwoweapon(player, display) {
+export function untwoweapon(player, display) {
     if (player.twoweap) {
         if (display) display.putstr_message('You can no longer wield two weapons at once.');
         set_twoweap(player, false);
@@ -202,7 +202,7 @@ function handleTwoWeapon(player, display) {
 
 // cf. wield.c:908 — chwepon(otmp, amount): enchant/corrode wielded weapon
 // Called from scroll of enchant weapon. Returns 1 if something happened.
-function chwepon(player, display, otmp, amount) {
+export function chwepon(player, display, otmp, amount) {
     const uwep = player.weapon;
     const od = uwep ? objectData[uwep.otyp] : null;
 
@@ -340,7 +340,7 @@ function ready_weapon(player, display, wep) {
 // 4. Command handlers
 // ============================================================
 
-// Helper to clear prompt line (same pattern used throughout commands.js)
+// Helper to clear prompt line (same pattern used throughout cmd.js)
 function replacePromptMessage(display) {
     if (typeof display.clearRow === 'function') display.clearRow(0);
     display.topMessage = null;
@@ -348,7 +348,7 @@ function replacePromptMessage(display) {
 }
 
 // cf. wield.c:350 — dowield(): #wield command
-// Moved from commands.js handleWield
+// Moved from cmd.js handleWield
 async function handleWield(player, display) {
     // Weld check
     if (welded(player)) {
@@ -416,7 +416,7 @@ async function handleWield(player, display) {
 }
 
 // cf. wield.c:456 — doswapweapon(): #swap command
-// Moved from commands.js handleSwapWeapon
+// Moved from cmd.js handleSwapWeapon
 async function handleSwapWeapon(player, display) {
     // Weld check
     if (welded(player)) {
@@ -496,13 +496,40 @@ async function handleQuiver(player, display) {
     }
 }
 
-export {
-    setuwep, setuswapwep, setuqwep,
-    uwepgone, uswapwepgone, uqwepgone,
-    welded, weldmsg, mwelded, will_weld, erodeable_wep,
-    can_twoweapon, set_twoweap, untwoweapon, drop_uswapwep,
-    empty_handed, cant_wield_corpse,
-    wield_tool, chwepon,
-    ready_weapon,
-    handleWield, handleSwapWeapon, handleQuiver, handleTwoWeapon,
-};
+export { setuwep, uwepgone, will_weld, erodeable_wep, can_twoweapon, drop_uswapwep, empty_handed, wield_tool, ready_weapon, handleWield, handleSwapWeapon, handleQuiver, handleTwoWeapon };
+
+// Autotranslated from wield.c:325
+export function wield_ok(obj) {
+  if (!obj) return GETOBJ_SUGGEST;
+  if (obj.oclass === COIN_CLASS) return GETOBJ_EXCLUDE;
+  if (obj.oclass === WEAPON_CLASS || is_weptool(obj)) return GETOBJ_SUGGEST;
+  return GETOBJ_DOWNPLAY;
+}
+
+// Autotranslated from wield.c:340
+export function finish_splitting(obj) {
+  freeinv(obj);
+  addinv_nomerge(obj);
+}
+
+// Autotranslated from wield.c:499
+export function dowieldquiver() {
+  return doquiver_core("ready");
+}
+
+// Autotranslated from wield.c:835
+export function dotwoweapon(player) {
+  if (player.twoweap) {
+    You("switch to your primary weapon.");
+    set_twoweap(false);
+    update_inventory();
+    return ECMD_OK;
+  }
+  if (can_twoweapon()) {
+    You("begin two-weapon combat.");
+    set_twoweap(true);
+    update_inventory();
+    return (rnd(20) > acurr(player,A_DEX)) ? ECMD_TIME : ECMD_OK;
+  }
+  return ECMD_OK;
+}

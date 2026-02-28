@@ -107,11 +107,11 @@ function seemimic_local(mtmp) {
 function cls() {}
 function browse_map() {}
 function map_redisplay_stub() {}
-function map_monst() {}
+export function map_monst() {}
 function map_object() {}
 function map_trap() {}
 function display_self() {}
-function magic_map_background() {}
+function map_background() {}
 function show_glyph(x, y, glyph) {
     if (!isok(x, y)) return;
     tmp_at(DISP_CHANGE, glyph);
@@ -156,37 +156,39 @@ function reconstrain_map(player) {
 // ========================================================================
 // cf. detect.c:201 -- o_in(obj, oclass)
 // ========================================================================
+// Autotranslated from detect.c:201
 export function o_in(obj, oclass) {
-    if (!obj || !oclass) return null;
-    if (objectData[obj.otyp] && objectData[obj.otyp].oc_class === oclass) return obj;
-    if (Has_contents(obj) && !SchroedingersBox(obj)) {
-        for (const otmp of obj.cobj) {
-            if (objectData[otmp.otyp] && objectData[otmp.otyp].oc_class === oclass) return otmp;
-            if (Has_contents(otmp)) { const t = o_in(otmp, oclass); if (t) return t; }
-        }
+  let otmp, temp;
+  if (obj.oclass === oclass) return obj;
+  if (Has_contents(obj) && !SchroedingersBox(obj)) {
+    for (otmp = obj.cobj; otmp; otmp = otmp.nobj) {
+      if (otmp.oclass === oclass) return otmp;
+      else if (Has_contents(otmp) && (temp = o_in(otmp, oclass)) !== 0) return temp;
     }
-    return null;
+  }
+  return  0;
 }
 
 // ========================================================================
 // cf. detect.c:229 -- o_material(obj, material)
 // ========================================================================
+// Autotranslated from detect.c:229
 export function o_material(obj, material) {
-    if (!obj) return null;
-    if (objectData[obj.otyp] && objectData[obj.otyp].material === material) return obj;
-    if (Has_contents(obj)) {
-        for (const otmp of obj.cobj) {
-            if (objectData[otmp.otyp] && objectData[otmp.otyp].material === material) return otmp;
-            if (Has_contents(otmp)) { const t = o_material(otmp, material); if (t) return t; }
-        }
+  let otmp, temp;
+  if (objects[obj.otyp].oc_material === material) return obj;
+  if (Has_contents(obj)) {
+    for (otmp = obj.cobj; otmp; otmp = otmp.nobj) {
+      if (objects[otmp.otyp].oc_material === material) return otmp;
+      else if (Has_contents(otmp) && (temp = o_material(otmp, material)) !== 0) return temp;
     }
-    return null;
+  }
+  return  0;
 }
 
 // ========================================================================
 // cf. detect.c:249 -- observe_recursively
 // ========================================================================
-function observe_recursively(obj) {
+export function observe_recursively(obj) {
     if (!obj) return;
     observeObject(obj);
     if (Has_contents(obj)) for (const otmp of obj.cobj) observe_recursively(otmp);
@@ -196,7 +198,7 @@ function observe_recursively(obj) {
 // cf. detect.c:262/318 -- check_map_spot / clear_stale_map
 // ========================================================================
 function check_map_spot() { return false; }
-function clear_stale_map(oclass, material, map) {
+export function clear_stale_map(oclass, material, map) {
     let change = false;
     for (let zx = 1; zx < COLNO; zx++)
         for (let zy = 0; zy < ROWNO; zy++)
@@ -511,7 +513,7 @@ export function monster_detect(otmp, mclass, player, map, display, game) {
 // ========================================================================
 // cf. detect.c:865 -- sense_trap
 // ========================================================================
-function sense_trap(trap, x, y, src_cursed, player, map, display) {
+export function sense_trap(trap, x, y, src_cursed, player, map, display) {
     if (player.hallucinating || src_cursed) {
         const fakeOtyp = !player.hallucinating ? GOLD_PIECE : random_object(rn2);
         const fakeQuan = (fakeOtyp === GOLD_PIECE) ? rnd(10)
@@ -630,7 +632,7 @@ export function trap_detect(sobj, player, map, display, game) {
 // ========================================================================
 // cf. detect.c:1091 -- furniture_detect (stub)
 // ========================================================================
-function furniture_detect() {
+export function furniture_detect() {
     There("seems to be nothing of interest on this level."); return 0;
 }
 
@@ -707,7 +709,7 @@ export function show_map_spot(x, y, cnf, map) {
     const lev = map.at(x, y); if (!lev) return;
     lev.seenv = 0xFF;
     if (lev.typ === SCORR) { lev.typ = CORR; unblock_point(x, y); }
-    magic_map_background(map, x, y, 0);
+    map_background(map, x, y, 0);
     newsym(map, x, y);
 }
 
@@ -744,13 +746,18 @@ export function do_vicinity_map(sobj, player, map, display) {
 // ========================================================================
 // cf. detect.c:1589 -- cvt_sdoor_to_door
 // ========================================================================
-export function cvt_sdoor_to_door(lev) {
-    if (!lev) return;
-    let newmask = (lev.flags || 0) & ~WM_MASK;
-    if (Is_rogue_level()) newmask = D_NODOOR;
-    else if (!(newmask & D_LOCKED)) newmask |= D_CLOSED;
-    lev.typ = DOOR;
-    lev.flags = newmask;
+// Autotranslated from detect.c:1589
+export function cvt_sdoor_to_door(lev, map) {
+  let newmask = lev.doormask & ~WM_MASK;
+  if (Is_rogue_level(map.uz)) { newmask = D_NODOOR; }
+  else {
+    if (!(newmask & D_LOCKED)) {
+      newmask |= D_CLOSED;
+    }
+  }
+  lev.typ = DOOR;
+  lev.doormask = newmask;
+  lev.arboreal_sdoor = 0;
 }
 
 // ========================================================================
@@ -774,11 +781,11 @@ function findone_fn(zx, zy, found_p, player, map, display) {
     found_p.ft_cc_x = zx; found_p.ft_cc_y = zy;
     if (lev.typ === SDOOR) {
         cvt_sdoor_to_door(lev); recalc_block_point(zx, zy);
-        magic_map_background(map, zx, zy, 0); foundone(zx, zy, 0, map);
+        map_background(map, zx, zy, 0); foundone(zx, zy, 0, map);
         found_p.num_sdoors++;
     } else if (lev.typ === SCORR) {
         lev.typ = CORR; unblock_point(zx, zy);
-        magic_map_background(map, zx, zy, 0); foundone(zx, zy, 0, map);
+        map_background(map, zx, zy, 0); foundone(zx, zy, 0, map);
         found_p.num_scorrs++;
     }
     if (ttmp && !ttmp.tseen && ttmp.ttyp !== STATUE_TRAP) {
@@ -812,7 +819,7 @@ function findone_fn(zx, zy, found_p, player, map, display) {
 // ========================================================================
 // cf. detect.c:1729 -- openone
 // ========================================================================
-function openone_fn(zx, zy, numRef, player, map, display) {
+function openone(zx, zy, numRef, player, map, display) {
     const lev = map.at(zx, zy); if (!lev) return;
     const floorObjs = map.objectsAt ? map.objectsAt(zx, zy) : [];
     for (const otmp of floorObjs)
@@ -895,7 +902,7 @@ export function openit(player, map, display, game) {
     if (player.uswallow) { pline("Something opens!"); return -1; }
     const fov = game && game.fov ? game.fov : null;
     do_clear_area(fov, map, player.x, player.y, BOLT_LIM,
-        (zx, zy, arg) => openone_fn(zx, zy, arg, player, map, display), numRef);
+        (zx, zy, arg) => openone(zx, zy, arg, player, map, display), numRef);
     return numRef.value;
 }
 
@@ -903,7 +910,7 @@ export function openit(player, map, display, game) {
 // cf. detect.c:1929 -- detecting
 // ========================================================================
 export function detecting(func) {
-    return func === findone_fn || func === openone_fn;
+    return func === findone_fn || func === openone;
 }
 
 // ========================================================================
@@ -921,7 +928,7 @@ export function find_trap(trap, player, map, display) {
 // ========================================================================
 // cf. detect.c:1965 -- mfind0
 // ========================================================================
-function mfind0(mtmp, via_warning, player, map, display) {
+export function mfind0(mtmp, via_warning, player, map, display) {
     if (!mtmp) return 0;
     const x = mtmp.mx, y = mtmp.my;
     let found_something = false;
@@ -1029,7 +1036,7 @@ export function warnreveal(player, map, display) {
 // ========================================================================
 // cf. detect.c:2124/2134 -- skip_premap_detect / premap_detect
 // ========================================================================
-function skip_premap_detect(x, y, map) {
+export function skip_premap_detect(x, y, map) {
     const lev = map.at(x, y);
     if (!lev) return true;
     if (lev.typ === STONE && ((lev.wall_info || lev.flags || 0) !== 0)) return true;
@@ -1042,7 +1049,7 @@ export function premap_detect(map) {
             const lev = map.at(x, y); if (!lev) continue;
             lev.seenv = 0xFF; lev.waslit = true;
             if (lev.typ === SDOOR) { lev.wall_info = 0; if (lev.flags != null) lev.flags = 0; }
-            magic_map_background(map, x, y, 1);
+            map_background(map, x, y, 1);
             const b = sobj_at(BOULDER, x, y, map);
             if (b) map_object(b, 1);
         }
@@ -1069,4 +1076,12 @@ export function reveal_terrain(which_subset, player, map, display) {
     flush_screen(1);
     pline("Showing terrain only...");
     browse_map(); map_redisplay_stub(); reconstrain_map(player);
+}
+
+// Autotranslated from detect.c:94
+export function map_redisplay(player) {
+  reconstrain_map();
+  docrt();
+  if (Underwater) under_water(2);
+  if (player.uburied) under_ground(2);
 }

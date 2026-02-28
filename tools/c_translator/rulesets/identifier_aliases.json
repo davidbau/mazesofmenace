@@ -1,0 +1,103 @@
+{
+  "version": 1,
+  "aliases": [
+    {
+      "module": "js/detect.js",
+      "from": "openone",
+      "to": "openone_fn",
+      "confidence": "high",
+      "note": "C callback helper name differs from JS helper suffix."
+    },
+    {
+      "module": "js/detect.js",
+      "from": "map_background",
+      "to": "magic_map_background",
+      "confidence": "high",
+      "note": "JS uses a prefixed helper name for map background redraw."
+    },
+    {
+      "module": "js/do.js",
+      "from": "Doname2",
+      "to": "doname",
+      "confidence": "medium",
+      "note": "Fallback to existing object naming helper; casing wrapper not present."
+    },
+    {
+      "module": "js/do.js",
+      "from": "makeplural",
+      "to": "makeplural_simple",
+      "confidence": "high",
+      "note": "Module provides simplified pluralization helper."
+    },
+    {
+      "module": "js/do.js",
+      "from": "pline1",
+      "to": "pline",
+      "confidence": "high",
+      "note": "Single-string topline helper maps to pline in JS."
+    },
+    {
+      "module": "js/spell.js",
+      "from": "pline1",
+      "to": "pline",
+      "confidence": "high",
+      "note": "Single-string topline helper maps to pline in JS."
+    },
+    {
+      "module": "js/invent.js",
+      "from": "setnotworn",
+      "to": "setnotworn_safe",
+      "confidence": "high",
+      "note": "Module uses safety wrapper around C setnotworn behavior."
+    },
+    {
+      "module": "js/invent.js",
+      "from": "check_unpaid",
+      "to": "ckunpaid",
+      "confidence": "medium",
+      "note": "Module canonicalized C helper name to ckunpaid."
+    },
+    {
+      "module": "js/apply.js",
+      "from": "humanoid",
+      "to": "is_humanoid",
+      "confidence": "high",
+      "note": "C helper name maps to mondata.js predicate naming."
+    },
+    {
+      "module": "js/attrib.js",
+      "from": "Upolyd",
+      "to": "isUpolyd",
+      "confidence": "high",
+      "note": "Module uses explicit boolean helper for polymorphed state."
+    },
+    {
+      "module": "js/lock.js",
+      "from": "stumble_onto_mimic",
+      "to": "stumble_on_door_mimic",
+      "confidence": "high",
+      "note": "Local helper was renamed for clearer lock-specific semantics."
+    },
+    {
+      "module": "js/mkobj.js",
+      "from": "start_corpse_timeout",
+      "to": "start_corpse_timeout_rng",
+      "confidence": "high",
+      "note": "RNG parity helper suffix differs from C timeout function name."
+    },
+    {
+      "module": "js/shk.js",
+      "from": "in_rooms",
+      "to": "inRoomsAt",
+      "confidence": "high",
+      "note": "Shop room lookup helper renamed to descriptive JS style."
+    },
+    {
+      "module": "js/shk.js",
+      "from": "clear_no_charge_pets",
+      "to": "clear_no_charge",
+      "confidence": "high",
+      "note": "Simplified JS helper clears no_charge flags generically."
+    }
+  ]
+}

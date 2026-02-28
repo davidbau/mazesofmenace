@@ -70,14 +70,11 @@ function cost(otmp) {
 
 // cf. write.c:61 — getobj callback: which objects can be written on?
 // Blank paper (scroll or spellbook) is SUGGEST; all others are DOWNPLAY or EXCLUDE.
-function write_ok(obj) {
-    if (!obj || (obj.oclass !== SCROLL_CLASS && obj.oclass !== SPBOOK_CLASS))
-        return GETOBJ_EXCLUDE;
-
-    if (obj.otyp === SCR_BLANK_PAPER || obj.otyp === SPE_BLANK_PAPER)
-        return GETOBJ_SUGGEST;
-
-    return GETOBJ_DOWNPLAY;
+// Autotranslated from write.c:60
+export function write_ok(obj) {
+  if (!obj || (obj.oclass !== SCROLL_CLASS && obj.oclass !== SPBOOK_CLASS)) return GETOBJ_EXCLUDE;
+  if (obj.otyp === SCR_BLANK_PAPER || obj.otyp === SPE_BLANK_PAPER) return GETOBJ_SUGGEST;
+  return GETOBJ_DOWNPLAY;
 }
 
 // cf. write.c:74 — apply a magic marker: write on a blank scroll or spellbook
@@ -94,10 +91,17 @@ export function dowrite(pen) {
 // "the spellbook warps strangely, then turns <result>."
 // Composition-material descriptions (parchment, vellum, cloth) get "into " prepended.
 // JS: returns the string directly rather than writing into a caller-provided buffer.
-function new_book_description(booktype) {
-    const compositions = ['parchment', 'vellum', 'cloth'];
-    const descr = objectData[booktype].desc;
-    return (compositions.includes(descr) ? 'into ' : '') + descr;
+// Autotranslated from write.c:394
+export function new_book_description(booktype, outbuf) {
+  let compositions = [ "parchment", "vellum", "cloth",    0 ], descr, comp_p;
+  descr = OBJ_DESCR(objects[booktype]);
+  for (comp_p = compositions;  comp_p; ++comp_p) {
+    if (!strcmpi(descr, comp_p)) {
+      break;
+    }
+  }
+  Sprintf(outbuf, "%s%s", comp_p ? "into " : "", descr);
+  return outbuf;
 }
 
-export { cost, write_ok, new_book_description };
+export { cost };

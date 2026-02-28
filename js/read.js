@@ -32,10 +32,23 @@ import { explode } from './explode.js';
 import { EXPL_FIERY } from './explode.js';
 import { tmp_at, DISP_BEAM, DISP_END } from './animation.js';
 import { getpos_sethilite, getpos_async, set_getpos_context } from './getpos.js';
+import { pline, impossible } from './pline.js';
+import { cansee } from './vision.js';
 
 const SPELL_KEEN = 20000; // cf. spell.c KEEN
 const MAX_SPELL_STUDY = 3; // cf. spell.h MAX_SPELL_STUDY
 const STINKING_CLOUD_TARGET_DIST = 6;
+
+function m_at(x, y, map) {
+    if (!map) return null;
+    if (typeof map.monsterAt === 'function') return map.monsterAt(x, y);
+    if (Array.isArray(map.monsters)) {
+        for (const mon of map.monsters) {
+            if (mon && mon.mx === x && mon.my === y) return mon;
+        }
+    }
+    return null;
+}
 
 
 // ============================================================
@@ -64,7 +77,7 @@ function stripspe(obj, player, display) {
 // ============================================================
 
 // cf. read.c read_ok() — validate object is readable
-function read_ok(obj) {
+export function read_ok(obj) {
     if (!obj) return false;
     if (obj.oclass === SCROLL_CLASS || obj.oclass === SPBOOK_CLASS) return true;
     return false;
@@ -75,19 +88,19 @@ function read_ok(obj) {
 // ============================================================
 
 // cf. read.c p_glow1() — "Your <item> glows briefly" / "vibrates briefly"
-function p_glow1(otmp, player, display) {
+export function p_glow1(otmp, player, display) {
     display.putstr_message(
         `${Yobjnam2(otmp, player.blind ? 'vibrate' : 'glow')} briefly.`);
 }
 
 // cf. read.c p_glow2() — "Your <item> glows <color> for a moment"
-function p_glow2(otmp, color, player, display) {
+export function p_glow2(otmp, color, player, display) {
     display.putstr_message(
         `${Yobjnam2(otmp, player.blind ? 'vibrate' : 'glow')}${player.blind ? '' : ' '}${player.blind ? '' : hcolor(color)} for a moment.`);
 }
 
 // cf. read.c p_glow3() — "Your <item> glows feebly <color> for a moment"
-function p_glow3(otmp, color, player, display) {
+export function p_glow3(otmp, color, player, display) {
     display.putstr_message(
         `${Yobjnam2(otmp, player.blind ? 'vibrate' : 'glow')} feebly${player.blind ? '' : ' '}${player.blind ? '' : hcolor(color)} for a moment.`);
 }
@@ -98,7 +111,7 @@ function p_glow3(otmp, color, player, display) {
 
 // cf. read.c erode_obj_text() — erode text based on object erosion
 // Simplified: returns text as-is since wipeout_text with seed is not exported
-function erode_obj_text(otmp, buf) {
+export function erode_obj_text(otmp, buf) {
     const erosion = Math.max(otmp.oeroded || 0, otmp.oeroded2 || 0);
     if (erosion) {
         // Approximate: replace some chars with '?' based on erosion level
@@ -235,8 +248,7 @@ const apron_msgs = [
     "If you don't like the food, I'll stab you",
     "I am an alchemist; if you see me running, try to catch up...",
 ];
-
-function apron_text(apron) {
+export function apron_text(apron) {
     const buf = apron_msgs[(apron.o_id || 0) % apron_msgs.length];
     return erode_obj_text(apron, buf);
 }
@@ -258,7 +270,7 @@ function candy_wrapper_text(obj) {
 }
 
 // cf. read.c assign_candy_wrapper() — assign wrapper text to candy bar
-function assign_candy_wrapper(obj) {
+export function assign_candy_wrapper(obj) {
     if (obj.otyp === CANDY_BAR) {
         obj.spe = 1 + rn2(candy_wrappers.length - 1);
     }
@@ -362,7 +374,7 @@ async function handleRead(player, display, game) {
                     }
                     // Uncursed: roll difficulty
                     const intel = (player.attributes ? player.attributes[A_INT] : 12) || 12;
-                    const readAbility = intel + 4 + Math.floor((player.level || 1) / 2) - 2 * ocLevel;
+                    const readAbility = intel + 4 + Math.floor((player.ulevel || 1) / 2) - 2 * ocLevel;
                     if (rnd(20) > readAbility) {
                         display.putstr_message("You can't make heads or tails of this.");
                         return { moved: false, tookTime: true };
@@ -462,12 +474,12 @@ function useup_scroll(sobj, player) {
 }
 
 // cf. read.c learnscrolltyp() — mark scroll type as discovered
-function learnscrolltyp(otyp) {
+export function learnscrolltyp(otyp) {
     discoverObject(otyp, true, true);
 }
 
 // cf. read.c cap_spe() — cap enchantment at SPE_LIM (99)
-function cap_spe(obj) {
+export function cap_spe(obj) {
     if (obj.spe > 99) obj.spe = 99;
     if (obj.spe < -99) obj.spe = -99;
 }
@@ -509,7 +521,7 @@ function uncurse(obj) {
 // ============================================================
 
 // cf. read.c seffect_blank_paper()
-function seffect_blank_paper(sobj, player, display) {
+export function seffect_blank_paper(sobj, player, display) {
     if (player.blind) {
         display.putstr_message("You don't remember there being any magic words on this scroll.");
     } else {
@@ -580,7 +592,7 @@ function seffect_identify(sobj, player, display) {
 }
 
 // cf. read.c seffect_charging()
-function seffect_charging(sobj, player, display, game) {
+export function seffect_charging(sobj, player, display, game) {
     const sblessed = sobj.blessed;
     const scursed = sobj.cursed;
     const confused = !!player.confused;
@@ -619,7 +631,7 @@ function seffect_charging(sobj, player, display, game) {
 }
 
 // cf. read.c seffect_light()
-function seffect_light(sobj, player, display, game) {
+export function seffect_light(sobj, player, display, game) {
     const sblessed = sobj.blessed;
     const scursed = sobj.cursed;
     const confused = !!player.confused;
@@ -709,7 +721,7 @@ function seffect_confuse_monster(sobj, player, display) {
 }
 
 // cf. read.c seffect_scare_monster()
-function seffect_scare_monster(sobj, player, display, game) {
+export function seffect_scare_monster(sobj, player, display, game) {
     const scursed = sobj.cursed;
     const confused = !!player.confused;
     const map = game?.map;
@@ -799,7 +811,7 @@ function seffect_remove_curse(sobj, player, display) {
 }
 
 // cf. read.c seffect_enchant_weapon()
-function seffect_enchant_weapon(sobj, player, display) {
+export function seffect_enchant_weapon(sobj, player, display) {
     const sblessed = sobj.blessed;
     const scursed = sobj.cursed;
     const confused = !!player.confused;
@@ -1032,7 +1044,7 @@ function seffect_destroy_armor(sobj, player, display) {
 }
 
 // cf. read.c seffect_create_monster()
-function seffect_create_monster(sobj, player, display, game) {
+export function seffect_create_monster(sobj, player, display, game) {
     const sblessed = sobj.blessed;
     const scursed = sobj.cursed;
     const confused = !!player.confused;
@@ -1060,7 +1072,7 @@ function seffect_create_monster(sobj, player, display, game) {
 }
 
 // cf. read.c seffect_teleportation()
-function seffect_teleportation(sobj, player, display, game) {
+export function seffect_teleportation(sobj, player, display, game) {
     const scursed = sobj.cursed;
     const confused = !!player.confused;
 
@@ -1075,7 +1087,7 @@ function seffect_teleportation(sobj, player, display, game) {
 }
 
 // cf. read.c seffect_gold_detection()
-function seffect_gold_detection(sobj, player, display, game) {
+export function seffect_gold_detection(sobj, player, display, game) {
     const scursed = sobj.cursed;
     const confused = !!player.confused;
     const map = game?.map;
@@ -1099,7 +1111,7 @@ function seffect_gold_detection(sobj, player, display, game) {
 }
 
 // cf. read.c seffect_food_detection()
-function seffect_food_detection(sobj, player, display, game) {
+export function seffect_food_detection(sobj, player, display, game) {
     const map = game?.map;
     // cf. food_detect(sobj)
     if (food_detect(sobj, player, map, display, game)) {
@@ -1203,7 +1215,7 @@ function maybe_tame(mtmp, sobj) {
 }
 
 // cf. read.c seffect_taming()
-function seffect_taming(sobj, player, display, game) {
+export function seffect_taming(sobj, player, display, game) {
     const confused = !!player.confused;
     const map = game?.map;
     const bd = confused ? 5 : 1;
@@ -1234,7 +1246,7 @@ function seffect_taming(sobj, player, display, game) {
 }
 
 // cf. read.c seffect_genocide()
-function seffect_genocide(sobj, player, display) {
+export function seffect_genocide(sobj, player, display) {
     const sblessed = sobj.blessed;
     const scursed = sobj.cursed;
     const confused = !!player.confused;
@@ -1271,7 +1283,7 @@ async function seffect_fire(sobj, player, display, game) {
         // Confused: minor self-burn
         display.putstr_message('The scroll catches fire and you burn your hands.');
         // cf. losehp(1, ...) simplified: take 1 damage
-        player.hp = Math.max(0, (player.hp || 0) - 1);
+        player.uhp = Math.max(0, (player.uhp || 0) - 1);
         return true; // consumed
     }
 
@@ -1289,13 +1301,13 @@ async function seffect_fire(sobj, player, display, game) {
         await explode(ccx, ccy, ZT_SPELL_O_FIRE, dam, SCROLL_CLASS, EXPL_FIERY, map, player);
     } else {
         // Fallback: take damage directly
-        player.hp = Math.max(0, (player.hp || 0) - dam);
+        player.uhp = Math.max(0, (player.uhp || 0) - dam);
     }
     return true; // consumed
 }
 
 // cf. read.c seffect_earth()
-function seffect_earth(sobj, player, display, game) {
+export function seffect_earth(sobj, player, display, game) {
     const sblessed = sobj.blessed;
     const scursed = sobj.cursed;
     const confused = !!player.confused;
@@ -1312,17 +1324,17 @@ function seffect_earth(sobj, player, display, game) {
         const dam = confused ? rnd(6) : rnd(20);
         if (player.helmet) {
             display.putstr_message('Fortunately, you are wearing a hard helmet.');
-            player.hp = Math.max(0, (player.hp || 0) - Math.min(dam, 2));
+            player.uhp = Math.max(0, (player.uhp || 0) - Math.min(dam, 2));
         } else {
             display.putstr_message(`You are hit by ${confused ? 'rocks' : 'a boulder'}!`);
-            player.hp = Math.max(0, (player.hp || 0) - dam);
+            player.uhp = Math.max(0, (player.uhp || 0) - dam);
         }
     }
     return false;
 }
 
 // cf. read.c seffect_punishment()
-function seffect_punishment(sobj, player, display) {
+export function seffect_punishment(sobj, player, display) {
     const sblessed = sobj.blessed;
     const confused = !!player.confused;
 
@@ -1339,7 +1351,7 @@ function seffect_punishment(sobj, player, display) {
 }
 
 // cf. read.c seffect_stinking_cloud()
-async function seffect_stinking_cloud(sobj, player, display, game) {
+export async function seffect_stinking_cloud(sobj, player, display, game) {
     const already_known = isObjectNameKnown(sobj.otyp);
 
     if (!already_known) {
@@ -1451,13 +1463,170 @@ async function seffects(sobj, player, display, game) {
     }
 }
 
-export {
-    handleRead,
-    tshirt_text, hawaiian_motif, hawaiian_design, apron_text,
-    candy_wrapper_text, assign_candy_wrapper,
-    erode_obj_text,
-    stripspe, p_glow1, p_glow2, p_glow3,
-    cap_spe, bcsign, blessorcurse, uncurse,
-    some_armor, useup_scroll, learnscrolltyp,
-    seffects,
-};
+export { handleRead, tshirt_text, hawaiian_motif, hawaiian_design, candy_wrapper_text, stripspe, bcsign, blessorcurse, uncurse, some_armor, useup_scroll, seffects };
+
+// Autotranslated from read.c:68
+export function learnscroll(sobj) {
+  if (sobj.oclass !== SPBOOK_CLASS) {
+    learnscrolltyp(sobj.otyp);
+  }
+}
+
+// Autotranslated from read.c:687
+export function charge_ok(obj) {
+  if (!obj) return GETOBJ_EXCLUDE;
+  if (obj.oclass === WAND_CLASS) return GETOBJ_SUGGEST;
+  if (obj.oclass === RING_CLASS && objectData[obj.otyp].oc_charged && obj.dknown && objectData[obj.otyp].oc_name_known) return GETOBJ_SUGGEST;
+  if (is_weptool(obj)) return GETOBJ_EXCLUDE;
+  if (obj.oclass === TOOL_CLASS) {
+    if (obj.otyp === BRASS_LANTERN || (obj.otyp === OIL_LAMP)   || (obj.otyp === MAGIC_LAMP && !objectData[MAGIC_LAMP].oc_name_known)) { return GETOBJ_SUGGEST; }
+    if (objectData[obj.otyp].oc_charged) {
+      return (obj.dknown && objectData[obj.otyp].oc_name_known) ? GETOBJ_SUGGEST : GETOBJ_DOWNPLAY;
+    }
+    return GETOBJ_EXCLUDE;
+  }
+  return GETOBJ_EXCLUDE_SELECTABLE;
+}
+
+// Autotranslated from read.c:1018
+export function forget(howmuch, game, map, player) {
+  let mtmp;
+  if (Punished) player.bc_felt = 0;
+  if (howmuch & ALL_SPELLS) losespells();
+  drain_weapon_skill(rnd(howmuch ? 5 : 3));
+  for (mtmp = (map?.fmon || null); mtmp; mtmp = mtmp.nmon) {
+    if (mtmp !== player.usteed && mtmp !== player.ustuck) mtmp.meverseen = 0;
+  }
+  for (mtmp = game.migrating_mons; mtmp; mtmp = mtmp.nmon) {
+    mtmp.meverseen = 0;
+  }
+}
+
+// Autotranslated from read.c:1067
+export function valid_cloud_pos(x, y, map) {
+  if (!isok(x,y)) return false;
+  return ACCESSIBLE(map.locations[x][y].typ) || is_pool(x, y) || is_lava(x, y);
+}
+
+// Autotranslated from read.c:2287
+export function drop_boulder_on_monster(x, y, confused, byu, player) {
+  let otmp2, mtmp;
+  otmp2 = mksobj(confused ? ROCK : BOULDER, false, false);
+  if (!otmp2) return false;
+  otmp2.quan = confused ? rn1(5, 2) : 1;
+  otmp2.owt = weight(otmp2);
+  mtmp = m_at(x, y);
+  if (mtmp && !amorphous(mtmp.data) && !passes_walls(mtmp.data) && !noncorporeal(mtmp.data) && !unsolid(mtmp.data)) {
+    let helmet = which_armor(mtmp, W_ARMH), mdmg;
+    if (cansee(mtmp.mx, mtmp.my)) {
+      pline("%s is hit by %s!", Monnam(mtmp), doname(otmp2));
+      if (mtmp.minvis && !canspotmon(mtmp)) map_invisible(mtmp.mx, mtmp.my);
+    }
+    else if (engulfing_u(mtmp)) You_hear("something hit %s %s over your %s!", s_suffix(mon_nam(mtmp)), mbodypart(mtmp, STOMACH), body_part(HEAD));
+    mdmg = dmgval(otmp2, mtmp) * otmp2.quan;
+    if (helmet) {
+      if (hard_helmet(helmet)) {
+        if (canspotmon(mtmp)) pline("Fortunately, %s is wearing a hard helmet.", mon_nam(mtmp));
+        else if (!(player?.Deaf || player?.deaf || false)) You_hear("a clanging sound.");
+        if (mdmg > 2) mdmg = 2;
+      }
+      else {
+        if (canspotmon(mtmp)) pline("%s's %s does not protect %s.", Monnam(mtmp), xname(helmet), mhim(mtmp));
+      }
+    }
+    mtmp.mhp -= mdmg;
+    if (DEADMONSTER(mtmp)) {
+      if (byu) { killed(mtmp); }
+      else { pline("%s is killed.", Monnam(mtmp)); mondied(mtmp); }
+    }
+    else { wakeup(mtmp, byu); }
+    wake_nearto(x, y, 4 * 4);
+  }
+  else if (engulfing_u(mtmp)) {
+    obfree(otmp2,  0);
+    drop_boulder_on_player(confused, true, false, true);
+    return 1;
+  }
+  if (!flooreffects(otmp2, x, y, "fall")) {
+    place_object(otmp2, x, y);
+    stackobj(otmp2);
+    newsym(x, y);
+  }
+  return true;
+}
+
+// Autotranslated from read.c:2417
+export function set_lit(x, y, val, map) {
+  let mtmp, gremlin;
+  if (val) {
+    map.locations[x][y].lit = 1;
+    if ((mtmp = m_at(x, y)) !== 0 && mtmp.data === mons) {
+      gremlin =  alloc(gremlin.length);
+      gremlin.mon = mtmp;
+      gremlin.nxt = gremlins;
+      gremlins = gremlin;
+    }
+  }
+  else { map.locations[x][y].lit = 0; snuff_light_source(x, y); }
+}
+
+// Autotranslated from read.c:3012
+export function unpunish() {
+  let savechain = uchain;
+  setworn( 0, W_CHAIN);
+  delobj(savechain);
+  setworn( 0, W_BALL);
+}
+
+// Autotranslated from read.c:1078
+export function can_center_cloud(x, y) {
+  if (!valid_cloud_pos(x, y)) return false;
+  return (cansee(x, y) && distu(x, y) < 32);
+}
+
+// Autotranslated from read.c:1086
+export function display_stinking_cloud_positions(on_off, player) {
+  let x, y, dx, dy, dist = 6;
+  if (on_off) {
+    tmp_at(DISP_BEAM, cmap_to_glyph(S_goodpos));
+    for (dx = -dist; dx <= dist; dx++) {
+      for (dy = -dist; dy <= dist; dy++) {
+        x = player.x + dx;
+        y = player.y + dy;
+        if (u_at(x, y)) {
+          continue;
+        }
+        if (can_center_cloud(x, y)) tmp_at(x, y);
+      }
+    }
+  }
+  else { tmp_at(DISP_END, 0); }
+}
+
+// Autotranslated from read.c:3318
+export async function create_particular() {
+  let d, bufp, buf, prompt, tryct = CP_TRYLIM, altmsg = 0;
+  buf[0] = '\x00';
+  Strcpy(prompt, "Create what kind of monster?");
+  do {
+    await getlin(prompt, buf);
+    bufp = mungspaces(buf);
+    if ( bufp === '\x1b') return false;
+    if (create_particular_parse(bufp, d)) {
+      break;
+    }
+    if ( bufp || altmsg || tryct < 2) { pline("I've never heard of such monsters."); }
+    else {
+      pline("Try again (type * for random, ESC to cancel).");
+      ++altmsg;
+    }
+    if (tryct === CP_TRYLIM) {
+      Strcat(prompt, " [type name or symbol]");
+    }
+  } while (--tryct > 0);
+  if (!tryct) pline1(thats_enough_tries);
+  else {
+    return create_particular_creation( d);
+  }
+  return false;
+}

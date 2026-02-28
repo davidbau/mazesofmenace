@@ -8,6 +8,9 @@ import { COLNO, ROWNO, STONE, DOOR, CORR, SDOOR, SCORR, STAIRS, LADDER, FOUNTAIN
          IS_STWALL, IS_ROCK, IS_ROOM, IS_FURNITURE, IS_POOL, IS_LAVA, IS_WATERWALL,
          WATER, LAVAWALL, AIR, MOAT, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN,
          isok, A_STR, A_DEX, A_CON, A_WIS, A_INT, A_CHA,
+         PM_WIZARD, PM_VALKYRIE, RACE_ELF,
+         TELEPORT, SEE_INVIS, POISON_RES, COLD_RES, SHOCK_RES, FIRE_RES,
+         SLEEP_RES, DISINT_RES, TELEPORT_CONTROL, STEALTH, FAST, INVIS, INTRINSIC,
          ROOMOFFSET, SHOPBASE, OROOM, COURT, SWAMP, VAULT, BEEHIVE, MORGUE,
          BARRACKS, ZOO, DELPHI, TEMPLE, LEPREHALL, COCKNEST, ANTHOLE,
          UNENCUMBERED, SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, OVERLOADED,
@@ -20,25 +23,29 @@ import { WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
          TOOL_CLASS, FOOD_CLASS, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS,
          WAND_CLASS, COIN_CLASS, GEM_CLASS, ROCK_CLASS, BOULDER } from './objects.js';
 import { nhgetch } from './input.js';
-import { playerAttackMonster } from './uhitm.js';
+import { do_attack } from './uhitm.js';
 import { formatGoldPickupMessage, formatInventoryPickupMessage } from './do.js';
-import { monDisplayName, monNam } from './mondata.js';
+import { x_monnam, y_monnam, YMonnam, Monnam, mon_nam, canseemon } from './mondata.js';
 import { maybeSmudgeEngraving, u_wipe_engr } from './engrave.js';
+import { gethungry } from './eat.js';
 import { describeGroundObjectForPlayer, maybeHandleShopEntryMessage } from './shk.js';
 import { observeObject } from './discovery.js';
-import { placeFloorObject } from './floor_objects.js';
+import { placeFloorObject, place_object } from './floor_objects.js';
+import { xname, an, The } from './objnam.js';
 import { DIRECTION_KEYS } from './dothrow.js';
 import { dosearch0 } from './detect.js';
-import { monsterNearby, monnear } from './monutil.js';
+import { monsterNearby, monnear, newsym } from './monutil.js';
 import { monflee } from './monmove.js';
 import { ynFunction } from './input.js';
 import { water_friction, maybe_adjust_hero_bubble } from './mkmaze.js';
-import { tmp_at, nh_delay_output_nowait, DISP_ALL, DISP_END } from './animation.js';
+import { Invocation_lev } from './dungeon.js';
+import { tmp_at, nh_delay_output, nh_delay_output_nowait, DISP_ALL, DISP_END } from './animation.js';
 import { set_getpos_context, getpos_async } from './getpos.js';
 import { stucksteed } from './steed.js';
 import { in_out_region } from './region.js';
 import { drag_ball as drag_ball_core } from './ball.js';
-// pline available from './pline.js' if needed for direct message output
+import { pline, You, You_feel, You_cant, set_msg_xy } from './pline.js';
+import { maybe_unhide_at } from './mon.js';
 
 // Run direction keys (shift = run)
 export const RUN_KEYS = {
@@ -86,49 +93,107 @@ function debug_travel_tmp_at(path, startX, startY) {
     tmp_at(DISP_END, 0);
 }
 
+// C macro compat used by translated helper candidates.
+function DEADMONSTER(mon) {
+    return !!(mon && (mon.dead || mon.mhp <= 0));
+}
+
+function M_AP_TYPE(mon) {
+    return Number(mon?.m_ap_type || mon?.mappearanceType || 0);
+}
+
+function canspotmon(mon, player = null, fov = null) {
+    return !!canseemon(mon, player, fov);
+}
+
+function remove_object(obj, map) {
+    if (!obj || !map) return;
+    if (typeof map.removeObject === 'function') {
+        map.removeObject(obj);
+        return;
+    }
+    if (Array.isArray(map.objects)) {
+        const idx = map.objects.indexOf(obj);
+        if (idx >= 0) map.objects.splice(idx, 1);
+    }
+}
+
 function ensure_context(game) {
-    if (!game.context) game.context = {};
-    const ctx = game.context;
+    if (game?.svc) {
+        if (!game.svc.context) game.svc.context = {};
+        if (!game.context) game.context = game.svc.context;
+    } else if (!game.context) {
+        game.context = {};
+    }
+    const ctx = (game?.svc?.context) || game.context;
     if (!Number.isInteger(ctx.run)) {
-        // Default from legacy run mode if present.
-        if (game.runMode === 2) ctx.run = 2; // rush
-        else if (game.runMode === 1) ctx.run = 3; // run
+        if (game.runMode === 2) ctx.run = 2;
+        else if (game.runMode === 1 || game.runMode === 3) ctx.run = 3;
         else ctx.run = 0;
     }
-    if (!Number.isInteger(ctx.travel)) ctx.travel = 0;
+    if (!Number.isInteger(ctx.travel)) ctx.travel = game.traveling ? 1 : 0;
     if (!Number.isInteger(ctx.travel1)) ctx.travel1 = 0;
-    if (!Number.isInteger(ctx.nopick)) ctx.nopick = 0;
-    if (!Number.isInteger(ctx.forcefight)) ctx.forcefight = 0;
-    // Legacy field sync
-    if (game.traveling) {
-        ctx.travel = 1;
-        if (!ctx.travel1) ctx.travel1 = 1;
-    }
-    if (game.menuRequested) ctx.nopick = 1;
-    if (game.forceFight) ctx.forcefight = 1;
+    if (!Number.isInteger(ctx.nopick)) ctx.nopick = game.menuRequested ? 1 : 0;
+    if (!Number.isInteger(ctx.forcefight)) ctx.forcefight = game.forceFight ? 1 : 0;
     if (!Number.isInteger(ctx.door_opened)) ctx.door_opened = 0;
     if (!Number.isInteger(ctx.move)) ctx.move = 0;
     return ctx;
 }
 
+function has_forcefight_prefix(game, ctx) {
+    if (ctx?.forcefight) return true;
+    return !!game?.forceFight;
+}
+
+function clear_forcefight_prefix(game, ctx) {
+    if (ctx) ctx.forcefight = 0;
+    if (game && typeof game.forceFight !== 'undefined') game.forceFight = false;
+}
+
+const tmp_anything = {
+    a_uint: 0,
+    a_long: 0,
+    a_monst: null,
+    a_obj: null,
+};
+
+function reset_tmp_anything() {
+    tmp_anything.a_uint = 0;
+    tmp_anything.a_long = 0;
+    tmp_anything.a_monst = null;
+    tmp_anything.a_obj = null;
+}
+
 // C ref: hack.c uint_to_any()
+// Autotranslated from hack.c:74
 export function uint_to_any(ui) {
-    return { a_uint: (ui >>> 0) };
+    reset_tmp_anything();
+    tmp_anything.a_uint = (ui >>> 0);
+    return tmp_anything;
 }
 
 // C ref: hack.c long_to_any()
+// Autotranslated from hack.c:82
 export function long_to_any(lng) {
-    return { a_long: Number.isFinite(lng) ? Math.trunc(lng) : 0 };
+    reset_tmp_anything();
+    tmp_anything.a_long = Number.isFinite(lng) ? Math.trunc(lng) : 0;
+    return tmp_anything;
 }
 
 // C ref: hack.c monst_to_any()
+// Autotranslated from hack.c:90
 export function monst_to_any(mon) {
-    return { a_monst: mon || null };
+    reset_tmp_anything();
+    tmp_anything.a_monst = mon || null;
+    return tmp_anything;
 }
 
 // C ref: hack.c obj_to_any()
+// Autotranslated from hack.c:98
 export function obj_to_any(obj) {
-    return { a_obj: obj || null };
+    reset_tmp_anything();
+    tmp_anything.a_obj = obj || null;
+    return tmp_anything;
 }
 
 // C ref: hack.c maybe_smudge_engr()
@@ -219,8 +284,22 @@ export function moverock_core(sx, sy, dx, dy, player, map, display, game) {
 }
 
 // C ref: hack.c moverock()
-export function moverock(sx, sy, dx, dy, player, map, display, game) {
-    const ret = moverock_core(sx, sy, dx, dy, player, map, display, game);
+// Autotranslated from hack.c:336
+export function moverock(a0, a1, a2, a3, a4, a5, a6, a7) {
+    // Runtime call path uses explicit coords/dir:
+    // moverock(sx, sy, dx, dy, player, map, display, game)
+    if (typeof a0 === 'number') {
+        const sx = a0, sy = a1, dx = a2, dy = a3;
+        const player = a4, map = a5, display = a6, game = a7;
+        const ret = moverock_core(sx, sy, dx, dy, player, map, display, game);
+        moverock_done(sx, sy, map);
+        return ret;
+    }
+    // C-style wrapper fallback:
+    // moverock(player, map, display, game) uses player.dx/player.dy.
+    const player = a0, map = a1, display = a2, game = a3;
+    const sx = player.x + player.dx, sy = player.y + player.dy;
+    const ret = moverock_core(sx, sy, player.dx, player.dy, player, map, display, game);
     moverock_done(sx, sy, map);
     return ret;
 }
@@ -250,9 +329,9 @@ export function domove_bump_mon(mon, _glyph, _nopick, game, display) {
     // C: m-prefix bump into known/visible monster consumes a turn and stops.
     if (_nopick && !ctx.travel && visibleEnough) {
         if (mon.peaceful && !game?.flags?.hallucination) {
-            display?.putstr_message(`Pardon me, ${monNam(mon)}.`);
+            display?.putstr_message(`Pardon me, ${y_monnam(mon)}.`);
         } else {
-            display?.putstr_message(`You move right into ${monNam(mon)}.`);
+            display?.putstr_message(`You move right into ${y_monnam(mon)}.`);
         }
         return { handled: true, tookTime: true };
     }
@@ -272,7 +351,7 @@ export function domove_swap_with_pet(mon, nx, ny, dir, player, map, display, gam
     maybe_smudge_engr(map, oldPlayerX, oldPlayerY, player.x, player.y);
     player.displacedPetThisTurn = true;
     maybeHandleShopEntryMessage(game, oldPlayerX, oldPlayerY);
-    display.putstr_message(`You swap places with ${monNam(mon)}.`);
+    display.putstr_message(`You swap places with ${y_monnam(mon)}.`);
     const landedObjs = map.objectsAt(nx, ny);
     if (landedObjs.length > 1) {
         clearTopline(display);
@@ -292,55 +371,55 @@ export function domove_swap_with_pet(mon, nx, ny, dir, player, map, display, gam
 export async function domove_attackmon_at(mon, nx, ny, dir, player, map, display, game) {
     const ctx = ensure_context(game);
     if (!mon) return { handled: false };
-    const shouldDisplace = (mon.tame || mon.peaceful) && !ctx.forcefight;
+    const forcefight = has_forcefight_prefix(game, ctx);
+    if (forcefight && ctx) ctx.forcefight = 1;
+    const shouldDisplace = (mon.tame || mon.peaceful) && !forcefight;
     if (shouldDisplace) {
         const blocked = (!rn2(7));
         if (blocked) {
             if (mon.tame) {
                 monflee(mon, rnd(6), false, false, player, display, null);
             }
-            const label = mon.tame
-                ? monNam(mon, { article: 'your', capitalize: true })
-                : monNam(mon, { capitalize: true });
+            const label = YMonnam(mon);
             display.putstr_message(`You stop.  ${label} is in the way!`);
-            game.forceFight = false; ctx.forcefight = 0;
+            clear_forcefight_prefix(game, ctx);
             return { handled: true, moved: false, tookTime: true };
         }
         if (mon.mfrozen || mon.mcanmove === false || mon.msleeping
             || ((mon.type?.speed ?? 0) === 0 && rn2(6))) {
-            const label = monNam(mon, { capitalize: true });
+            const label = YMonnam(mon);
             display.putstr_message(`${label} doesn't seem to move!`);
-            game.forceFight = false; ctx.forcefight = 0;
+            clear_forcefight_prefix(game, ctx);
             return { handled: true, moved: false, tookTime: true };
         }
         domove_swap_with_pet(mon, nx, ny, dir, player, map, display, game);
-        game.forceFight = false; ctx.forcefight = 0;
+        clear_forcefight_prefix(game, ctx);
         return { handled: true, moved: true, tookTime: true };
     }
 
-    if (mon.tame && game.flags?.safe_pet && !ctx.forcefight) {
+    if (mon.tame && game.flags?.safe_pet && !forcefight) {
         display.putstr_message("You cannot attack your pet!");
-        game.forceFight = false; ctx.forcefight = 0;
+        clear_forcefight_prefix(game, ctx);
         return { handled: true, moved: false, tookTime: false };
     }
     if (mon.peaceful && !mon.tame && game.flags?.confirm) {
         const answer = await ynFunction(
-            `Really attack ${monDisplayName(mon)}?`,
+            `Really attack ${x_monnam(mon)}?`,
             'yn',
             'n'.charCodeAt(0),
             display
         );
         if (answer !== 'y'.charCodeAt(0)) {
             display.putstr_message('Cancelled.');
-            game.forceFight = false; ctx.forcefight = 0;
+            clear_forcefight_prefix(game, ctx);
             return { handled: true, moved: false, tookTime: false };
         }
     }
-    game.forceFight = false; ctx.forcefight = 0;
     rn2(20);
     exercise(player, A_STR, true);
     u_wipe_engr(player, map, 3);
-    const killed = playerAttackMonster(player, mon, display, map, game);
+    const killed = do_attack(player, mon, display, map, { game, context: ctx });
+    clear_forcefight_prefix(game, ctx);
     if (killed) map.removeMonster(mon);
     player.moved = true;
     return { handled: true, moved: false, tookTime: true };
@@ -351,9 +430,9 @@ export function domove_fight_ironbars(x, y, map, display, game, player) {
     const ctx = ensure_context(game);
     const loc = map?.at ? map.at(x, y) : null;
     const hasWeapon = !!(player?.weapon || player?.uwielded || player?.uwep);
-    if (!ctx.forcefight || !loc || loc.typ !== IRONBARS || !hasWeapon) return false;
+    if (!has_forcefight_prefix(game, ctx) || !loc || loc.typ !== IRONBARS || !hasWeapon) return false;
     if (display) display.putstr_message('You attack the iron bars.');
-    game.forceFight = false; ctx.forcefight = 0;
+    clear_forcefight_prefix(game, ctx);
     return true; // action handled, consumes a turn
 }
 
@@ -361,18 +440,18 @@ export function domove_fight_ironbars(x, y, map, display, game, player) {
 export function domove_fight_web(x, y, map, display, game) {
     const ctx = ensure_context(game);
     const trap = map?.trapAt ? map.trapAt(x, y) : null;
-    if (!ctx.forcefight || !trap || trap.ttyp !== WEB || !trap.tseen) return false;
+    if (!has_forcefight_prefix(game, ctx) || !trap || trap.ttyp !== WEB || !trap.tseen) return false;
     if (display) display.putstr_message('You cut through the web.');
     const idx = map.traps.indexOf(trap);
     if (idx >= 0) map.traps.splice(idx, 1);
-    game.forceFight = false; ctx.forcefight = 0;
+    clear_forcefight_prefix(game, ctx);
     return true; // action handled, consumes a turn
 }
 
 // C ref: hack.c domove_fight_empty()
 export function domove_fight_empty(x, y, map, display, game) {
     const ctx = ensure_context(game);
-    if (!ctx.forcefight || map?.monsterAt?.(x, y)) return false;
+    if (!has_forcefight_prefix(game, ctx) || map?.monsterAt?.(x, y)) return false;
     const loc = map?.at ? map.at(x, y) : null;
     let target = '';
     if (loc) {
@@ -389,7 +468,7 @@ export function domove_fight_empty(x, y, map, display, game) {
         }
     }
     display?.putstr_message(target ? `You harmlessly attack ${target}.` : 'You attack thin air.');
-    game.forceFight = false; ctx.forcefight = 0;
+    clear_forcefight_prefix(game, ctx);
     return true;
 }
 
@@ -420,7 +499,6 @@ export async function domove_core(dir, player, map, display, game) {
     // C ref: cmd.c move-prefix handling is consumed by the attempted move
     // path, even when that move is blocked.
     const nopick = !!ctx.nopick;
-    game.menuRequested = false;
     ctx.nopick = 0;
     ctx.door_opened = 0;
     ctx.move = 0;
@@ -443,7 +521,7 @@ export async function domove_core(dir, player, map, display, game) {
     nx = tDest.x;
     ny = tDest.y;
 
-    if (!isok(nx, ny) && ctx.forcefight) {
+    if (!isok(nx, ny) && has_forcefight_prefix(game, ctx)) {
         if (domove_fight_empty(nx, ny, map, display, game)) {
             return { moved: false, tookTime: true };
         }
@@ -504,26 +582,26 @@ export async function domove_core(dir, player, map, display, game) {
             const escapeRoll = rn2(canMove ? 40 : 8);
             if (escapeRoll <= 2) {
                 // Escape successful (cases 0, 1, 2)
-                display.putstr_message(`You pull free from the ${monDisplayName(stuckMon)}.`);
+                display.putstr_message(`You pull free from the ${x_monnam(stuckMon)}.`);
                 player.ustuck = null;
             } else if (escapeRoll === 3 && !canMove) {
                 // Wake/release frozen monster, then check tame
                 stuckMon.mfrozen = 1;
                 stuckMon.sleeping = false;
                 if (stuckMon.tame && !game?.flags?.conflict) {
-                    display.putstr_message(`You pull free from the ${monDisplayName(stuckMon)}.`);
+                    display.putstr_message(`You pull free from the ${x_monnam(stuckMon)}.`);
                     player.ustuck = null;
                 } else {
-                    display.putstr_message(`You cannot escape from the ${monDisplayName(stuckMon)}!`);
+                    display.putstr_message(`You cannot escape from the ${x_monnam(stuckMon)}!`);
                     return { moved: false, tookTime: true };
                 }
             } else {
                 // Failed to escape
                 if (stuckMon.tame && !game?.flags?.conflict) {
-                    display.putstr_message(`You pull free from the ${monDisplayName(stuckMon)}.`);
+                    display.putstr_message(`You pull free from the ${x_monnam(stuckMon)}.`);
                     player.ustuck = null;
                 } else {
-                    display.putstr_message(`You cannot escape from the ${monDisplayName(stuckMon)}!`);
+                    display.putstr_message(`You cannot escape from the ${x_monnam(stuckMon)}!`);
                     return { moved: false, tookTime: true };
                 }
             }
@@ -615,7 +693,7 @@ export async function domove_core(dir, player, map, display, game) {
     maybe_smudge_engr(map, oldX, oldY, player.x, player.y);
 
     // Clear force-fight prefix after successful movement.
-    game.forceFight = false;
+    clear_forcefight_prefix(game, ctx);
     maybeHandleShopEntryMessage(game, oldX, oldY);
 
     // Check for traps — C ref: hack.c spoteffects() → dotrap()
@@ -805,14 +883,12 @@ export async function domove_core(dir, player, map, display, game) {
         display.putstr_message('There is a fountain here.');
     }
 
-    runmode_delay_output(game, display);
+    await runmode_delay_output(game, display);
 
     return { moved: true, tookTime: true };
 }
 
 // C ref: hack.c domove() entrypoint.
-// Keep this as the canonical movement API and route handleMovement through it
-// for backward compatibility with existing JS callsites.
 export async function domove(dir, player, map, display, game) {
     if (!Array.isArray(dir) || dir.length < 2) {
         return { moved: false, tookTime: false };
@@ -820,14 +896,8 @@ export async function domove(dir, player, map, display, game) {
     return domove_core(dir, player, map, display, game);
 }
 
-// Legacy JS name used by cmd.js and tests.
-export async function handleMovement(dir, player, map, display, game) {
-    return domove(dir, player, map, display, game);
-}
-
-// Handle running in a direction
 // C ref: cmd.c do_run() -> hack.c domove() with context.run
-export async function handleRun(dir, player, map, display, fov, game, runStyle = 'run') {
+export async function do_run(dir, player, map, display, fov, game, runStyle = 'run') {
     const ctx = ensure_context(game);
     let runDir = dir;
     let steps = 0;
@@ -897,6 +967,11 @@ export async function handleRun(dir, player, map, display, fov, game, runStyle =
         tookTime: hasRunTurnHook ? false : timedTurns > 0,
         runSteps: hasRunTurnHook ? 0 : timedTurns,
     };
+}
+
+// C ref: cmd.c do_rush()
+export async function do_rush(dir, player, map, display, fov, game) {
+    return do_run(dir, player, map, display, fov, game, 'rush');
 }
 
 function pickRunContinuationDir(map, player, dir) {
@@ -1104,7 +1179,7 @@ export function findPath(map, startX, startY, endX, endY) {
 // JS keeps the same role but uses existing BFS pathing in findPath().
 // Returns true when a path (or travel viability for TRAVP_VALID) exists.
 export function findtravelpath(mode, game) {
-    if (!game || !game.player || !game.map) return false;
+    if (!game || !(game.u || game.player) || !(game.lev || game.map)) return false;
     const ctx = ensure_context(game);
     const { player, map } = game;
     const tx = game.travelX;
@@ -1222,9 +1297,8 @@ export function findtravelpath(mode, game) {
     return true;
 }
 
-// Handle travel command (_)
 // C ref: cmd.c dotravel()
-export async function handleTravel(game) {
+export async function dotravel(game) {
     const { player, map, display } = game;
     const ctx = ensure_context(game);
 
@@ -1242,21 +1316,18 @@ export async function handleTravel(game) {
     // Store travel destination
     game.travelX = cursorX;
     game.travelY = cursorY;
-    game.traveling = true;
     ctx.travel = 1;
     ctx.travel1 = 1;
 
     // C-style travel setup: first strict travel mode, then guess mode.
     if (!findtravelpath(TRAVP_TRAVEL, game) && !findtravelpath(TRAVP_GUESS, game)) {
         display.putstr_message('No path to that location.');
-        game.traveling = false;
         ctx.travel = 0;
         ctx.travel1 = 0;
         return { moved: false, tookTime: false };
     }
     if (!Array.isArray(game.travelPath) || game.travelPath.length === 0) {
         display.putstr_message('You are already there.');
-        game.traveling = false;
         ctx.travel = 0;
         ctx.travel1 = 0;
         return { moved: false, tookTime: false };
@@ -1264,12 +1335,11 @@ export async function handleTravel(game) {
     display.putstr_message(`Traveling... (${game.travelPath.length} steps)`);
 
     // Execute first step
-    return executeTravelStep(game);
+    return dotravel_target(game);
 }
 
-// Execute one step of travel
-// C ref: hack.c domove() with context.travel flag
-export async function executeTravelStep(game) {
+// C ref: cmd.c dotravel_target()
+export async function dotravel_target(game) {
     const { player, map, display } = game;
     const ctx = ensure_context(game);
 
@@ -1277,7 +1347,6 @@ export async function executeTravelStep(game) {
         // Travel complete
         game.travelPath = null;
         game.travelStep = 0;
-        game.traveling = false;
         ctx.travel = 0;
         ctx.travel1 = 0;
         display.putstr_message('You arrive at your destination.');
@@ -1295,7 +1364,6 @@ export async function executeTravelStep(game) {
     if (!result.moved) {
         game.travelPath = null;
         game.travelStep = 0;
-        game.traveling = false;
         ctx.travel = 0;
         ctx.travel1 = 0;
         display.putstr_message('Travel interrupted.');
@@ -1308,7 +1376,7 @@ export async function executeTravelStep(game) {
 // C ref: do.c cmd_safety_prevention()
 export function performWaitSearch(cmd, game, map, player, fov, display) {
     if (game && game.flags && game.flags.safe_wait
-        && !game.menuRequested && !(game.multi > 0) && !game.occupation) {
+        && !ensure_context(game).nopick && !(game.multi > 0) && !game.occupation) {
         if (monsterNearby(map, player, fov)) {
             safetyWarning(cmd, game, display);
             return { moved: false, tookTime: false };
@@ -1373,25 +1441,34 @@ const WT_WOUNDEDLEG_REDUCT = 100;
 // --------------------------------------------------------------------
 
 // C ref: hack.c rounddiv() — round-aware integer division
+// Autotranslated from hack.c:4481
 export function rounddiv(x, y) {
-    if (y === 0) return 0; // avoid panic in JS
+    let r, m;
     let divsgn = 1;
-    if (y < 0) { divsgn = -divsgn; y = -y; }
+    if (y === 0) {
+        throw new Error('division by zero in rounddiv');
+    }
+    else if (y < 0) { divsgn = -divsgn; y = -y; }
     if (x < 0) { divsgn = -divsgn; x = -x; }
-    let r = Math.floor(x / y);
-    const m = x % y;
+    r = Math.trunc(x / y);
+    m = x % y;
     if (2 * m >= y) r++;
     return divsgn * r;
 }
 
 // C ref: hack.c invocation_pos() — is (x,y) the invocation position?
+// Autotranslated from hack.c:963
 export function invocation_pos(x, y, map) {
-    if (!map || !map.flags) return false;
-    const inv = map.inv_pos || map.flags.inv_pos;
-    if (!inv) return false;
-    // Invocation_lev check: only on the invocation level
-    if (!map.flags.is_invocation_lev) return false;
-    return x === inv.x && y === inv.y;
+    if (!map) return false;
+    const uz = map.uz;
+    const inv_pos = map.inv_pos || map._invPos || map.flags?.inv_pos;
+    if (!inv_pos) return false;
+    const onInvocationLevel = uz
+        ? Invocation_lev(uz)
+        : !!(map._isInvocationLevel
+            || map.flags?.is_invocation_lev
+            || map.flags?.invocationLevel);
+    return !!(onInvocationLevel && x === inv_pos.x && y === inv_pos.y);
 }
 
 // --------------------------------------------------------------------
@@ -1407,6 +1484,7 @@ export function may_dig(x, y, map) {
 }
 
 // C ref: hack.c may_passwall() — can phase through wall at (x,y)?
+// Autotranslated from hack.c:913
 export function may_passwall(x, y, map) {
     const loc = map.at(x, y);
     if (!loc) return false;
@@ -1552,7 +1630,9 @@ export function calc_capacity(player, xtra_wt) {
 }
 
 // C ref: hack.c near_capacity() — current encumbrance level
-export function near_capacity(player) {
+export function near_capacity() {
+    const player = arguments[0];
+    if (!player) return UNENCUMBERED;
     return calc_capacity(player, 0);
 }
 
@@ -1590,12 +1670,13 @@ export function inv_cnt(player, incl_gold) {
 }
 
 // C ref: hack.c money_cnt() — count gold in inventory
-export function money_cnt(player) {
-    const inv = player.inventory || [];
-    for (const obj of inv) {
-        if (obj && obj.oclass === COIN_CLASS) return obj.quan || 0;
-    }
-    return 0;
+// Autotranslated from hack.c:4443
+export function money_cnt(otmp) {
+  while (otmp) {
+    if (otmp.oclass === COIN_CLASS) return otmp.quan;
+    otmp = otmp.nobj;
+  }
+  return 0;
 }
 
 // C ref: hack.c cmp_weights()
@@ -1662,7 +1743,7 @@ export function test_move(ux, uy, dx, dy, mode, player, map, display, game = nul
         if (closed_door(x, y, map)) {
             // Closed door blocks movement
             if (mode === DO_MOVE) {
-                // Auto-open handled elsewhere in handleMovement
+                // Auto-open handled elsewhere in domove
                 if (flags.mention_walls) {
                     if (display) display.putstr_message('That door is closed.');
                 }
@@ -1693,8 +1774,8 @@ export function test_move(ux, uy, dx, dy, mode, player, map, display, game = nul
     }
 
     // C parity: trap/liquid travel gating is only active while running/travel.
-    const runMode = Number(game?.context?.run ?? game?.runMode ?? 0);
-    const travelMode = !!(game?.context?.travel ?? game?.traveling);
+    const runMode = Number(game?.context?.run ?? 0);
+    const travelMode = !!(game?.context?.travel);
     if ((mode === TEST_TRAV || mode === TEST_TRAP)
         && (runMode === 8 || travelMode)) {
         const trap = map.trapAt ? map.trapAt(x, y) : null;
@@ -1745,10 +1826,11 @@ export function test_move(ux, uy, dx, dy, mode, player, map, display, game = nul
 
 // C ref: hack.c carrying_too_much() — can hero move?
 export function carrying_too_much(player, map, display) {
+    const heroHp = Number.isFinite(player?.uhp) ? player.uhp : (player?.hp || 0);
+    const heroHpMax = Number.isFinite(player?.uhpmax) ? player.uhpmax : (player?.hpmax || 0);
     const wtcap = near_capacity(player);
     if (wtcap >= OVERLOADED
-        || (wtcap > SLT_ENCUMBER
-            && (player.hp < 10 && player.hp !== player.hpmax))) {
+        || (wtcap > SLT_ENCUMBER && (heroHp < 10 && heroHp !== heroHpMax))) {
         if (map?.flags?.is_airlevel) return false;
         if (wtcap < OVERLOADED) {
             if (display) display.putstr_message("You don't have enough stamina to move.");
@@ -1944,7 +2026,6 @@ export function end_running(and_travel, game) {
     if (and_travel) {
         game.travelPath = null;
         game.travelStep = 0;
-        game.traveling = false;
         ctx.travel = 0;
         ctx.travel1 = 0;
     }
@@ -1952,7 +2033,8 @@ export function end_running(and_travel, game) {
 }
 
 // C ref: hack.c runmode_delay_output()
-export function runmode_delay_output(game, display) {
+// Autotranslated from hack.c:2977
+export async function runmode_delay_output(game, display) {
     if (!game) return;
     const ctx = ensure_context(game);
     const runmode = game?.flags?.runmode || 'leap';
@@ -1960,12 +2042,12 @@ export function runmode_delay_output(game, display) {
         if (runmode === 'tport') return;
         if (runmode === 'leap' && ((Number(game.moves) || 0) % 7 !== 0)) return;
         if (display?.renderMessageWindow) display.renderMessageWindow();
-        nh_delay_output_nowait();
+        await nh_delay_output();
         if (runmode === 'crawl') {
-            nh_delay_output_nowait();
-            nh_delay_output_nowait();
-            nh_delay_output_nowait();
-            nh_delay_output_nowait();
+            await nh_delay_output();
+            await nh_delay_output();
+            await nh_delay_output();
+            await nh_delay_output();
         }
     }
 }
@@ -2210,7 +2292,17 @@ export function check_special_room(newlev, player, map, display) {
 // --------------------------------------------------------------------
 
 // C ref: hack.c set_uinwater()
-export function set_uinwater(player, in_out) {
+export function set_uinwater(in_out, player) {
+    // Backward compatibility: older JS call sites pass (player, in_out).
+    if (player == null && in_out && typeof in_out === 'object') {
+        player = in_out;
+        in_out = arguments[1];
+    } else if (player && typeof player !== 'object' && in_out && typeof in_out === 'object') {
+        const oldInOut = player;
+        player = in_out;
+        in_out = oldInOut;
+    }
+    if (!player) return;
     player.uinwater = in_out ? 1 : 0;
 }
 
@@ -2295,14 +2387,14 @@ export function spoteffects(pick, player, map, display, game) {
 
         // Pick up before trap (unless pit)
         if (pick && !isPit) {
-            // Autopickup handled by handleMovement
+            // Autopickup handled by domove
         }
 
-        // Trigger trap (already handled in handleMovement for basic traps)
+        // Trigger trap (already handled in domove for basic traps)
 
         // Pick up after pit trap
         if (pick && isPit) {
-            // Autopickup handled by handleMovement
+            // Autopickup handled by domove
         }
 
     } finally {
@@ -2410,8 +2502,11 @@ export function dopickup(player, map, display) {
 
 // C ref: hack.c overexert_hp() — lose 1 HP or pass out from overexertion
 export function overexert_hp(player, display) {
-    if (player.hp > 1) {
-        player.hp -= 1;
+    const usingPolyHp = !!player?.upolyd;
+    const hpKey = usingPolyHp ? 'mh' : 'hp';
+    const curHp = Number(player?.[hpKey] || 0);
+    if (curHp > 1) {
+        player[hpKey] = curHp - 1;
     } else {
         if (display) display.putstr_message('You pass out from exertion!');
         exercise(player, A_CON, false);
@@ -2421,9 +2516,19 @@ export function overexert_hp(player, display) {
 
 // C ref: hack.c overexertion() — combat metabolism check
 // Returns true if hero fainted (multi < 0).
-export function overexertion(player, game, display) {
-    // gethungry()
-    rn2(20);
+export function overexertion(game) {
+    // Backward compatibility: older JS call sites pass (player, game, display).
+    let player = game?.player;
+    let display = game?.display;
+    if (arguments.length >= 2 && arguments[0] && typeof arguments[0] === 'object'
+        && arguments[1] && typeof arguments[1] === 'object'
+        && ('moves' in arguments[1] || 'player' in arguments[1])) {
+        player = arguments[0];
+        game = arguments[1];
+        display = arguments[2];
+    }
+    if (!game || !player) return false;
+    gethungry(player);
     const moves = game.moves || 0;
     if ((moves % 3) !== 0 && near_capacity(player) >= HVY_ENCUMBER) {
         overexert_hp(player, display);
@@ -2436,24 +2541,33 @@ export function maybe_wail(player, game, display) {
     const moves = game.moves || 0;
     if (moves <= (game.wailmsg || 0) + 50) return;
     game.wailmsg = moves;
+    const heroHp = Number.isFinite(player?.uhp) ? player.uhp : (player?.hp || 0);
 
-    const role = player.role;
-    const race = player.race;
-    const isWizard = role === 'Wizard' || role === 12;
-    const isValkyrie = role === 'Valkyrie' || role === 11;
-    const isElf = race === 'Elf' || race === 1;
+    const role = player.roleIndex ?? player.role;
+    const race = player.raceIndex ?? player.race;
+    const isWizard = role === PM_WIZARD || role === 'Wizard';
+    const isValkyrie = role === PM_VALKYRIE || role === 'Valkyrie';
+    const isElf = race === RACE_ELF || race === 'Elf';
 
     if (isWizard || isElf || isValkyrie) {
-        const who = (isWizard || isValkyrie)
-            ? (player.roleName || 'Adventurer')
-            : 'Elf';
-        if (player.hp === 1) {
+        const who = (isWizard || isValkyrie) ? (player.roleName || player.role || 'Adventurer') : 'Elf';
+        if (heroHp === 1) {
             if (display) display.putstr_message(`${who} is about to die.`);
         } else {
-            if (display) display.putstr_message(`${who}, your life force is running out.`);
+            const powers = [TELEPORT, SEE_INVIS, POISON_RES, COLD_RES, SHOCK_RES,
+                FIRE_RES, SLEEP_RES, DISINT_RES, TELEPORT_CONTROL, STEALTH, FAST, INVIS];
+            let powercnt = 0;
+            for (const prop of powers) {
+                if ((player?.uprops?.[prop]?.intrinsic & INTRINSIC) !== 0) powercnt++;
+            }
+            if (display) {
+                display.putstr_message(powercnt >= 4
+                    ? `${who}, all your powers will be lost...`
+                    : `${who}, your life force is running out.`);
+            }
         }
     } else {
-        if (player.hp === 1) {
+        if (heroHp === 1) {
             if (display) display.putstr_message('You hear the wailing of the Banshee...');
         } else {
             if (display) display.putstr_message('You hear the howling of the CwnAnnwn...');
@@ -2464,15 +2578,22 @@ export function maybe_wail(player, game, display) {
 // C ref: hack.c saving_grace() — one-time survival of lethal blow
 export function saving_grace(dmg, player, game) {
     if (dmg < 0) return 0;
+    const heroHp = Number.isFinite(player?.uhp) ? player.uhp : (player?.hp || 0);
+    const heroHpMax = Number.isFinite(player?.uhpmax) ? player.uhpmax : (player?.hpmax || 0);
     // Only protects from monster attacks
-    if (!game.mon_moving) return dmg;
-    if (dmg < player.hp || player.hp <= 0) return dmg;
+    const monMoving = !!(game?.context?.mon_moving || game?.mon_moving);
+    if (!monMoving) return dmg;
+    if (dmg < heroHp || heroHp <= 0) return dmg;
     // Already used?
-    if (game.saving_grace_turn) return player.hp - 1;
+    if (game.saving_grace_turn) return heroHp - 1;
+    const hpAtStart = Number.isFinite(game?.uhp_at_start_of_monster_turn)
+        ? game.uhp_at_start_of_monster_turn
+        : player._uhp_at_start;
     if (!player.usaving_grace
-        && player._uhp_at_start >= 0
-        && (player._uhp_at_start * 100 / player.hpmax) >= 90) {
-        dmg = player.hp - 1;
+        && Number.isFinite(hpAtStart)
+        && heroHpMax > 0
+        && (hpAtStart * 100 / heroHpMax) >= 90) {
+        dmg = heroHp - 1;
         player.usaving_grace = 1;
         game.saving_grace_turn = true;
         end_running(true, game);
@@ -2481,27 +2602,54 @@ export function saving_grace(dmg, player, game) {
 }
 
 // C ref: hack.c showdamage() — display HP loss
-export function showdamage(dmg, player, display) {
-    if (!dmg) return;
-    const hp = player.hp || 0;
+export function showdamage(dmg, player, display, game) {
+    if (!game?.iflags?.showdamage || !dmg) return;
+    const hp = player.upolyd
+        ? (player.mh || 0)
+        : (Number.isFinite(player?.uhp) ? player.uhp : (player?.hp || 0));
     if (display) display.putstr_message(`[HP ${-dmg}, ${hp} left]`);
 }
 
 // C ref: hack.c losehp() — hero loses hit points
 export function losehp(n, knam, k_format, player, display, game) {
     end_running(true, game);
-    player.hp -= n;
-    if (player.hpmax < player.hp) player.hpmax = player.hp;
-    if (player.hp < 1) {
+
+    if (player.upolyd) {
+        player.mh = (player.mh || 0) - n;
+        showdamage(n, player, display, game);
+        if ((player.mhmax || 0) < player.mh) player.mhmax = player.mh;
+        if (player.mh < 1) {
+            // rehumanize() would be called in full implementation
+        } else if (n > 0 && player.mh * 10 < (player.mhmax || 0) && player.unchanging) {
+            maybe_wail(player, game, display);
+        }
+        return;
+    }
+
+    n = saving_grace(n, player, game);
+    const hadLegacyHp = Object.prototype.hasOwnProperty.call(player, 'hp');
+    const hadLegacyHpMax = Object.prototype.hasOwnProperty.call(player, 'hpmax');
+    const heroHp = Number.isFinite(player?.uhp) ? player.uhp : (player?.hp || 0);
+    const heroHpMax = Number.isFinite(player?.uhpmax) ? player.uhpmax : (player?.hpmax || 0);
+    const nextHp = heroHp - n;
+    player.uhp = nextHp;
+    if (hadLegacyHp) player.hp = nextHp;
+    showdamage(n, player, display, game);
+    if (heroHpMax < nextHp) {
+        player.uhpmax = nextHp;
+        if (hadLegacyHpMax) player.hpmax = nextHp;
+    }
+    if (player.uhp < 1) {
         if (display) display.putstr_message('You die...');
         // done(DIED) would be called in full implementation
         // For now, set hp to 0
-        player.hp = 0;
+        player.uhp = 0;
+        if (hadLegacyHp) player.hp = 0;
         if (game) {
             game.killer = { format: k_format, name: knam || '' };
             game.playerDied = true;
         }
-    } else if (n > 0 && player.hp * 10 < player.hpmax) {
+    } else if (n > 0 && player.uhp * 10 < player.uhpmax) {
         maybe_wail(player, game, display);
     }
 }
@@ -2512,7 +2660,7 @@ export function losehp(n, knam, k_format, player, display, game) {
 
 // C ref: hack.c monster_nearby() — is a threatening monster adjacent?
 // Re-export from monutil.js for convenience.
-export { monsterNearby as monster_nearby };
+
 
 // C ref: hack.c notice_mon() — accessibility notice for a monster
 export function notice_mon(_mtmp) {
@@ -2744,4 +2892,18 @@ export function drag_ball(_x, _y, _player, _map) {
     // Ball & chain (punishment) system not yet fully implemented.
     // Always allow movement.
     return true;
+}
+
+// Autotranslated from hack.c:3990
+export function monster_nearby(player) {
+  let x, y, mtmp;
+  for (x = player.x - 1; x <= player.x + 1; x++) {
+    for (y = player.y - 1; y <= player.y + 1; y++) {
+      if (!isok(x, y) || u_at(x, y)) {
+        continue;
+      }
+      if ((mtmp = m_at(x, y)) !== 0 && M_AP_TYPE(mtmp) !== M_AP_FURNITURE && M_AP_TYPE(mtmp) !== M_AP_OBJECT && (Hallucination || (!mtmp.mpeaceful && !noattacks(mtmp.data))) && (!is_hider(mtmp.data) || !mtmp.mundetected) && !helpless(mtmp) && !onscary(player.x, player.y, mtmp) && canspotmon(mtmp)) return 1;
+    }
+  }
+  return 0;
 }
