@@ -107,11 +107,11 @@ export function extend_spine(locale, wall_there, dx, dy) {
   ny = 1 + dy;
   if (wall_there) {
     if (dx) {
-      if (locale[1][0] && locale[1][2] /* EW are wall/stone */ && locale[nx][0] && locale[nx][2]) { spine = 0; }
+      if (locale[1][0] && locale[1][2]   && locale[nx][0] && locale[nx][2]) { spine = 0; }
       else { spine = 1; }
     }
     else {
-      if (locale[0][1] && locale[2][1] /* NS are wall/stone */ && locale[0][ny] && locale[2][ny]) { spine = 0; }
+      if (locale[0][1] && locale[2][1]   && locale[0][ny] && locale[2][ny]) { spine = 0; }
       else { spine = 1; }
     }
   }

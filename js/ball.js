@@ -273,7 +273,7 @@ export function placebc(player, map) {
 // Autotranslated from ball.c:211
 export function unplacebc() {
   if (bcrestriction) {
-    impossible("unplacebc denied, restriction in place");
+    impossible("unplacebc denied, restriction in_ place");
     return;
   }
   unplacebc_core();

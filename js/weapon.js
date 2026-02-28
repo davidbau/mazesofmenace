@@ -895,7 +895,7 @@ export function give_may_advance_msg(display = null) {
 
 // C ref: weapon.c uwep_skill_type().
 // Autotranslated from weapon.c:1526
-export function uwep_skill_type(player = null) {
-  if (player?.twoweap) return P_TWO_WEAPON_COMBAT;
-  return weapon_type(player?.weapon || null);
+export function uwep_skill_type(player) {
+  if (player.twoweap) return P_TWO_WEAPON_COMBAT;
+  return weapon_type(player.weapon);
 }

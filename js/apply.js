@@ -308,12 +308,9 @@ export function unleash_all(player, map) {
 }
 
 // cf. apply.c:757 -- leashable: can monster be leashed?
-// Autotranslated from apply.c:757
+// Autotranslated from apply.c:756
 export function leashable(mtmp) {
-    const data = mtmp.data || mons[mtmp.mnum] || {};
-    return (mtmp.mnum !== PM_LONG_WORM
-            && !unsolid(data)
-            && (!nolimbs(data) || has_head(data)));
+  return  (mtmp.mnum !== PM_LONG_WORM && !unsolid(mtmp.data) && (!nolimbs(mtmp.data) || has_head(mtmp.data)));
 }
 
 // cf. apply.c:765 -- STUB: use_leash
@@ -529,12 +526,11 @@ function dorub() { pline("You rub... but nothing special happens."); }
 export function dojump() { You_cant("jump very far."); }
 
 // cf. apply.c:2163 -- tinnable
-// Autotranslated from apply.c:2163
+// Autotranslated from apply.c:2162
 export function tinnable(corpse) {
-    if (corpse.oeaten) return false;
-    const mdat = mons[corpse.corpsenm];
-    if (!mdat || !mdat.nutrition) return false;
-    return true;
+  if (corpse.oeaten) return 0;
+  if (!mons[corpse.corpsenm].cnutrit) return 0;
+  return 1;
 }
 
 // cf. apply.c:2173 -- STUB: use_tinning_kit

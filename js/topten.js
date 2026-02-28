@@ -229,8 +229,8 @@ export function encodeachieve(secondlong, player) {
 // Autotranslated from topten.c:479
 export function add_achieveX(buf, achievement, condition) {
   if (condition) {
-    if (buf[0] !== '\0') { Strcat(buf, ","); }
-    Strcat(buf, achievement);
+    if (buf[0] !== '\x00') { buf = (buf ?? '') + ("," ?? ''); }
+    buf = (buf ?? '') + (achievement ?? '');
   }
 }
 

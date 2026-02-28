@@ -77,10 +77,10 @@ export function getpos_toggle_hilite_state() {
 }
 
 // cf. getpos.c:94
-// Autotranslated from getpos.c:94
+// Autotranslated from getpos.c:93
 export function mapxy_valid(x, y) {
-    if (typeof getpos_getvalid !== 'function') return false;
-    return !!getpos_getvalid(x, y);
+  if (getpos_getvalid) return getpos_getvalid(x, y);
+  return false;
 }
 
 // cf. getpos.c:753

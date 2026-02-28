@@ -643,7 +643,7 @@ export function levl_sanity_check(map) {
 
 // Autotranslated from wizcmds.c:1484
 export function migrsort_cmp(vptr1, vptr2) {
-  let m1 = vptr1.value, m2 = vptr2.value;
+  let m1 =  vptr1, m2 =  vptr2;
   let d1 =  m1.mux, l1 =  m1.muy, d2 =  m2.mux, l2 =  m2.muy;
   if (d1 !== d2) return d1 - d2;
   if (l1 !== l2) return l1 - l2;

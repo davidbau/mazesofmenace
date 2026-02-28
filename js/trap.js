@@ -147,13 +147,9 @@ function Sprintf(fmt, ...args) {
 // ========================================================================
 // seetrap — C ref: trap.c seetrap()
 // ========================================================================
-// Autotranslated from trap.c:3486
+// Autotranslated from trap.c:3485
 export function seetrap(trap) {
-    if (!trap) return;
-    if (!trap.tseen) {
-        trap.tseen = 1;
-        // newsym would update display; skip if no map context
-    }
+  if (!trap.tseen) { trap.tseen = 1; newsym(trap.tx, trap.ty); }
 }
 
 // ========================================================================

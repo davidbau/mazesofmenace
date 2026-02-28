@@ -2017,28 +2017,28 @@ export function invletter_value(c) {
 // Autotranslated from invent.c:1626
 export function compactify(buf) {
   let i1 = 1, i2 = 1, ilet, ilet1, ilet2;
-  ilet2 = buf;
-  ilet1 = buf;
-  buf = buf;
-  ilet = buf;
+  ilet2 = buf[0];
+  ilet1 = buf[1];
+  buf[++i2] = buf[++i1];
+  ilet = buf[i1];
   while (ilet) {
     if (ilet === ilet1 + 1) {
-      if (ilet1 === ilet2 + 1) buf = ilet1 = '-';
+      if (ilet1 === ilet2 + 1) buf[i2 - 1] = ilet1 = '-';
       else if (ilet2 === '-') {
-        buf = ++ilet1;
-        buf = buf;
-        ilet = buf;
+        buf[i2 - 1] = ++ilet1;
+        buf[i2] = buf[++i1];
+        ilet = buf[i1];
         continue;
       }
     }
     else if (ilet === NOINVSYM) {
-      if (i2 >= 2 && buf === NOINVSYM && buf === NOINVSYM) buf = '-';
-      else if (i2 >= 3 && buf === NOINVSYM && buf === '-' && buf === NOINVSYM) --i2;
+      if (i2 >= 2 && buf[i2 - 2] === NOINVSYM && buf[i2 - 1] === NOINVSYM) buf[i2 - 1] = '-';
+      else if (i2 >= 3 && buf[i2 - 3] === NOINVSYM && buf[i2 - 2] === '-' && buf[i2 - 1] === NOINVSYM) --i2;
     }
     ilet2 = ilet1;
     ilet1 = ilet;
-    buf = buf;
-    ilet = buf;
+    buf[++i2] = buf[++i1];
+    ilet = buf[i1];
   }
 }
 

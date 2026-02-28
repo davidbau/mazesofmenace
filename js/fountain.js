@@ -154,7 +154,7 @@ function nexttodoor(x, y, map) {
 // Autotranslated from fountain.c:119
 export function dogushforth(drinking, player) {
   let madepool = 0;
-  do_clear_area(player.x, player.y, 7, gush, (genericptr_t) &madepool);
+  do_clear_area(player.x, player.y, 7, gush, madepool);
   if (!madepool) {
     if (drinking) Your("thirst is quenched.");
     else {

@@ -281,7 +281,7 @@ export function has_ltgt_percentnumber(str) {
 export function is_fld_arrayvalues(str, arr, arrmin, arrmax, retidx) {
   let i;
   for (i = arrmin; i < arrmax; i++) {
-    if (!strcmpi(str, arr[i])) { retidx = i; return true; }
+    if (!(String(str).toLowerCase().localeCompare(String(arr[i]).toLowerCase()))) { retidx = i; return true; }
   }
   return false;
 }

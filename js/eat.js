@@ -949,8 +949,8 @@ export function tin_variety_txt(s, tinvariety) {
   if (s && tinvariety) {
      tinvariety = -1;
     for (k = 0; k < TTSZ - 1; ++k) {
-      l =  strlen(tintxts[k].txt);
-      if (!strncmpi(s, tintxts[k].txt, l) && ( strlen(s) > l) && s[l] === ' ') { tinvariety = k; return (l + 1); }
+      l =  (tintxts[k].txt ?? '').length;
+      if (!(String(s).slice(0, Number(l)).toLowerCase().localeCompare(String(tintxts[k].txt).slice(0, Number(l)).toLowerCase())) && ( (s ?? '').length > l) && s[l] === ' ') { tinvariety = k; return (l + 1); }
     }
   }
   return 0;

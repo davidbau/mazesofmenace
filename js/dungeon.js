@@ -621,7 +621,7 @@ export function br_string(type) {
     case BR_STAIR:
       return "Stair";
   }
-  return " (unknown)";
+  return " ";
 }
 
 // Autotranslated from dungeon.c:3379
@@ -4901,7 +4901,7 @@ export function find_mapseen(lev, game) {
 export function find_mapseen_by_str(s, game) {
   let mptr;
   for (mptr = game.mapseenchn; mptr; mptr = mptr.next) {
-    if (mptr.custom && !strcmpi(s, mptr.custom)) {
+    if (mptr.custom && !(String(s).toLowerCase().localeCompare(String(mptr.custom).toLowerCase()))) {
       break;
     }
   }

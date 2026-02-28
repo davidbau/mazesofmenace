@@ -1875,7 +1875,7 @@ export function rnd_offensive_item(mtmp) {
   let pm = mtmp.data, difficulty = mons[(monsndx(pm))].difficulty;
   if (is_animal(pm) || attacktype(pm, AT_EXPL) || mindless(mtmp.data) || pm.mlet === S_GHOST || pm.mlet === S_KOP) return 0;
   if (difficulty > 7 && !rn2(35)) return WAN_DEATH;
-  switch (rn2(9 - (difficulty < 4) + 4 * (difficulty > 6))) {
+  switch (rn2(9 - (difficulty < 4) + 4 (difficulty > 6))) {
     case 0:
       let mtmp_helmet = which_armor(mtmp, W_ARMH);
       if (hard_helmet(mtmp_helmet) || amorphous(pm) || passes_walls(pm) || noncorporeal(pm) || unsolid(pm)) return SCR_EARTH;

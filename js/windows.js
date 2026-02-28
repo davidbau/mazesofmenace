@@ -546,18 +546,18 @@ export function win_choices_find(s) {
 
 // Autotranslated from windows.c:656
 export function hup_nhgetch() {
-  return '\x1b';
+  return '\x00o33';
 }
 
 // Autotranslated from windows.c:663
 export function hup_yn_function(prompt, resp, deflt) {
-  if (!deflt) deflt = '\x1b';
+  if (!deflt) deflt = '\x00o33';
   return deflt;
 }
 
 // Autotranslated from windows.c:675
 export function hup_nh_poskey(x, y, mod) {
-  return '\x1b';
+  return '\x00o33';
 }
 
 // Autotranslated from windows.c:450
@@ -568,7 +568,7 @@ export function genl_message_menu(let_, how, mesg) {
 
 // Autotranslated from windows.c:682
 export function hup_getlin(prompt, outbuf) {
-  Strcpy(outbuf, "\x1b");
+  outbuf = ("\x00o33" ?? '');
 }
 
 // Autotranslated from windows.c:1599
