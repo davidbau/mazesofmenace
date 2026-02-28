@@ -1,0 +1,49 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+
+const CONDA = '/opt/miniconda3/condabin/conda';
+
+test('emit-helper lowers qsort comparator pointer params for cond_cmp', (t) => {
+    if (!fs.existsSync(CONDA)) {
+        t.skip('conda not available for clang-backed translator run');
+        return;
+    }
+
+    const outFile = path.join(
+        fs.mkdtempSync(path.join(os.tmpdir(), 'translator-emit-helper-qsort-')),
+        'cond_cmp.json',
+    );
+
+    const r = spawnSync(
+        CONDA,
+        [
+            'run',
+            '--live-stream',
+            '-n',
+            'base',
+            'python',
+            'tools/c_translator/main.py',
+            '--src',
+            'nethack-c/src/botl.c',
+            '--func',
+            'cond_cmp',
+            '--emit',
+            'emit-helper',
+            '--out',
+            outFile,
+        ],
+        { encoding: 'utf8' },
+    );
+    assert.equal(r.status, 0, r.stderr || r.stdout);
+
+    const payload = JSON.parse(fs.readFileSync(outFile, 'utf8'));
+    assert.equal(payload.function, 'cond_cmp');
+    assert.equal(payload.meta.translated, true);
+    assert.match(payload.js, /let indx1 =\s*vptr1, indx2 =\s*vptr2/);
+    assert.doesNotMatch(payload.js, /\*\s*vptr1|\*\s*vptr2/);
+    assert.doesNotMatch(payload.js, /UNIMPLEMENTED_TRANSLATED_FUNCTION/);
+});

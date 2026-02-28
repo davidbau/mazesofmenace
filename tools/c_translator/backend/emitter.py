@@ -1047,6 +1047,10 @@ def _lower_expr(expr, rewrite_rules):
     out = re.sub(r"\(\s*[A-Za-z_]\w*\s*\(\s*\*\s*\)\s*\([^)]*\)\s*\)\s*0\b", "null", out)
     out = re.sub(r"\(\s*[A-Za-z_]\w*\s*\(\s*\)\s*\([^)]*\)\s*\)\s*0\b", "null", out)
     out = re.sub(r"\(\s*[A-Za-z_]\w*\s*\*\s*\)\s*0\b", "null", out)
+    # Run pointer-deref scalar cleanup again after cast stripping, so patterns
+    # like *(int *)vptr normalize to vptr.
+    out = re.sub(r"(^|[(,=?:])\s*\*\s*([A-Za-z_]\w*(?:\.[A-Za-z_]\w*|\[[^\]]+\])*)", r"\1 \2", out)
+    out = re.sub(r"!\s*\*\s*([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)", r"!\1", out)
     # C pointer member access lowers to JS property access.
     out = out.replace("->", ".")
     # Canonicalize common C helper calls to JS equivalents.
