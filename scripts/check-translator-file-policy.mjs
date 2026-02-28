@@ -5,7 +5,7 @@ import path from 'node:path';
 const ROOT = process.cwd();
 const JS_DIR = path.join(ROOT, 'js');
 const POLICY_PATH = path.join(ROOT, 'tools', 'c_translator', 'rulesets', 'file_policy.json');
-const ALLOWED_POLICIES = new Set(['manual_only', 'mixed', 'auto', 'generated_data']);
+const ALLOWED_POLICIES = new Set(['manual_only', 'mixed', 'auto', 'generated_data', 'not_to_translate']);
 
 function fail(msg) {
     console.error(msg);
@@ -95,10 +95,10 @@ if (process.exitCode) {
     process.exit(1);
 }
 
-const counts = { manual_only: 0, mixed: 0, auto: 0, generated_data: 0 };
+const counts = { manual_only: 0, mixed: 0, auto: 0, generated_data: 0, not_to_translate: 0 };
 for (const entry of byPath.values()) {
     counts[entry.policy] += 1;
 }
 
 console.log('translator:file-policy-check OK');
-console.log(`files=${jsFiles.length} manual_only=${counts.manual_only} mixed=${counts.mixed} auto=${counts.auto} generated_data=${counts.generated_data}`);
+console.log(`files=${jsFiles.length} manual_only=${counts.manual_only} mixed=${counts.mixed} auto=${counts.auto} generated_data=${counts.generated_data} not_to_translate=${counts.not_to_translate}`);
