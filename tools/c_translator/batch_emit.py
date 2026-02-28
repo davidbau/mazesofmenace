@@ -120,8 +120,6 @@ def main():
         for fn in candidates:
             if args.limit > 0 and emitted >= args.limit:
                 break
-            if not args.include_blocked and not fn.get("translated"):
-                continue
             func = fn.get("name")
             if not func:
                 continue
@@ -163,6 +161,19 @@ def main():
                         "name": func,
                         "ok": False,
                         "error": str(exc),
+                    }
+                )
+                continue
+
+            # Capability summary can under-report translatable functions for
+            # some signatures; gate on actual emit payload for accuracy.
+            if not args.include_blocked and not bool(payload.get("meta", {}).get("translated")):
+                file_rec["functions"].append(
+                    {
+                        "name": func,
+                        "ok": False,
+                        "skipped_blocked": True,
+                        "diag_codes": [d.get("code") for d in (payload.get("diag") or []) if d.get("code")],
                     }
                 )
                 continue

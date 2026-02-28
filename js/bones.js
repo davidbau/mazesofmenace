@@ -159,6 +159,10 @@ export function give_to_nearby_mon(map, otmp, x, y) {
 // Mark objects as ghostly (from bones level).
 // C ref: bones.c:134
 // Autotranslated from bones.c:773
+// TRANSLATOR: MANUAL set_ghostly_objlist-shape-compat
+// Reason: JS runtime must traverse both linked chains (nobj/cobj) and array
+// container forms (objects[]/contents[]). Pure C-chain autotranslation drops
+// array recursion and regresses ghostly flag propagation.
 export function set_ghostly_objlist(objchain) {
     const markGhostly = (obj) => {
         if (!obj) return;
