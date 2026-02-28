@@ -28,6 +28,11 @@ def parse_args():
         help="Only stitch functions not already tagged Autotranslated from <file>:<line> (default: true)",
     )
     p.add_argument(
+        "--include-marked",
+        action="store_true",
+        help="Allow stitching functions even when an Autotranslated marker already exists",
+    )
+    p.add_argument(
         "--max-functions",
         type=int,
         default=0,
@@ -276,6 +281,8 @@ def load_pair_set(path):
 
 def main():
     args = parse_args()
+    if args.include_marked:
+        args.only_unmarked = False
     repo = Path(args.repo_root)
     safety = json.loads(Path(args.safety).read_text(encoding="utf-8"))
     safe = list(safety.get("safe", []))
