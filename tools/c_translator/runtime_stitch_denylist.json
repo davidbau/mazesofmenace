@@ -28,5 +28,15 @@
     "js_module": "js/hack.js",
     "function": "notice_all_mons",
     "reason": "Keep manual JS implementation; avoid introducing alloc/qsort-driven auto-stitch dependency for this path."
+  },
+  {
+    "js_module": "js/bones.js",
+    "function": "set_ghostly_objlist",
+    "reason": "Manual-required shape bridge: JS runtime must recurse both linked-chain (nobj/cobj) and array/container (objects[]/contents[]) forms; pure C-structure restitch regresses ghostly propagation."
+  },
+  {
+    "js_module": "js/monmove.js",
+    "function": "mon_track_add",
+    "reason": "Current emitted translation can drift from canonical JS mtrack ring shape assumptions and has caused runtime regressions; keep manual/canonical implementation until translator shape lowering is upgraded."
   }
 ]
