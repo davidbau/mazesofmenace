@@ -126,6 +126,10 @@ function toggle_displacement(player, on) {
 // Helper: adjust a single extrinsic flag by +1 or -1
 function toggle_extrinsic(player, prop, on) {
     const entry = player.ensureUProp(prop);
+    if (prop === 28 && typeof process !== 'undefined') {
+        const e = new Error();
+        process.stderr.write(`DBG toggle_extrinsic FAST on=${on} turns=${player?.turns} stack=${e.stack.split('\n').slice(1,8).join('|')}\n`);
+    }
     if (on) {
         entry.extrinsic = (entry.extrinsic || 0) + 1;
     } else {
@@ -1074,21 +1078,20 @@ function count_worn_stuff(player) {
 export function armor_or_accessory_off(obj, game) {
   if (!(obj.owornmask & (W_ARMOR | W_ACCESSORY))) { You("are not wearing that."); return ECMD_OK; }
   if (obj === uskin || ((obj === uarm) && uarmc) || ((obj === uarmu) && (uarmc || uarm))) {
-    let why, what;
-    why[0] = what[0] = '\0';
+    let why = '', what = '';
     if (obj !== uskin) {
       if (uarmc) {
-        Strcat(what, cloak_simple_name(uarmc));
+        what = (what ?? '') + (cloak_simple_name(uarmc) ?? '');
       }
       if ((obj === uarmu) && uarm) {
         if (uarmc) {
-          Strcat(what, " and ");
+          what = (what ?? '') + (" and " ?? '');
         }
-        Strcat(what, suit_simple_name(uarm));
+        what = (what ?? '') + (suit_simple_name(uarm) ?? '');
       }
-      Snprintf(why, why.length, " without taking off your %s first", what);
+      why = ` without taking off your ${what} first`;
     }
-    else { Strcpy(why, "; it's embedded"); }
+    else { why = "; it's embedded"; }
     You_cant("take that off%s.", why);
     return ECMD_OK;
   }

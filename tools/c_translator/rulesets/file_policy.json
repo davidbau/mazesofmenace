@@ -300,6 +300,11 @@
       "reason": "C-mapped gameplay module; eligible for rule-driven translation."
     },
     {
+      "path": "js/look.js",
+      "policy": "manual_only",
+      "reason": "Hand-written look/describe module; no direct C source equivalent."
+    },
+    {
       "path": "js/makemon.js",
       "policy": "auto",
       "reason": "C-mapped gameplay module; eligible for rule-driven translation."
@@ -648,6 +653,11 @@
       "path": "js/uhitm.js",
       "policy": "auto",
       "reason": "C-mapped gameplay module; eligible for rule-driven translation."
+    },
+    {
+      "path": "js/utf8map.js",
+      "policy": "manual_only",
+      "reason": "Hand-written Unicode/UTF-8 symbol map; no C source equivalent."
     },
     {
       "path": "js/vault.js",

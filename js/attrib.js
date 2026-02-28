@@ -608,8 +608,8 @@ export function poisoned(player, reason, typ, pkiller, fatal, thrown_weapon) {
 // Autotranslated from attrib.c:407
 export function change_luck(n, player) {
   player.uluck += n;
-  if (player.uluck < 0 &player.uluck < LUCKMIN) player.uluck = LUCKMIN;
-  if (player.uluck > 0 &player.uluck > LUCKMAX) player.uluck = LUCKMAX;
+  if (player.uluck < 0 && player.uluck < LUCKMIN) player.uluck = LUCKMIN;
+  if (player.uluck > 0 && player.uluck > LUCKMAX) player.uluck = LUCKMAX;
 }
 
 // cf. attrib.c:420 — stone_luck(include_uncursed)

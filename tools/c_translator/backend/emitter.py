@@ -578,7 +578,10 @@ def _lower_decl_stmt(text, rewrite_rules):
         m = DECL_FALLBACK_RE.match(text)
     if not m:
         return None, set()
-    decl = m.group(1)
+    # Remember if this is a char array declaration so declarators like foo[N]
+    # can be initialized to '' instead of left undefined.
+    is_char_array_decl = bool(re.match(r"^(?:const\s+)?char\s+\w+\s*\[", text.strip()))
+    decl = m.group(m.lastindex)
     lowered = []
     req = set()
     for raw in _split_top_level_commas(decl):
@@ -602,7 +605,11 @@ def _lower_decl_stmt(text, rewrite_rules):
             lhs_name = _extract_decl_name(token)
             if lhs_name is None:
                 return None, set()
-            lowered.append(lhs_name)
+            # char foo[N] declarations are string buffers; initialize to '' in JS.
+            if is_char_array_decl and re.search(r"\[", token):
+                lowered.append(f"{lhs_name} = ''")
+            else:
+                lowered.append(lhs_name)
     return f"let {', '.join(lowered)};", req
 
 
@@ -823,7 +830,11 @@ def _lower_expr_stmt(text, rewrite_rules, awaitable_calls):
     t = text.rstrip(";").strip()
     if not t:
         return None, set()
-    helper_lowered, helper_req = _lower_known_helper_stmt(t, rewrite_rules)
+    # Strip implicit C (void) cast that clang inserts when discarding a return value.
+    # Without this, "(void) Strcpy(dst, src)" fails the helper regex and falls through
+    # to _lower_expr which has no assignment-form rewriting for string helpers.
+    t_novoid = re.sub(r"^\(\s*void\s*\)\s*", "", t)
+    helper_lowered, helper_req = _lower_known_helper_stmt(t_novoid, rewrite_rules)
     if helper_lowered is not None:
         lowered_stmt = helper_lowered.strip()
         if lowered_stmt.startswith("{") and lowered_stmt.endswith("}"):
@@ -1110,6 +1121,22 @@ def _lower_expr(expr, rewrite_rules):
     out = re.sub(r"([(&|!=?:,]\s*)\*\s*([A-Za-z_]\w*)", r"\1\2", out)
     out = re.sub(r"(?<![=!<>])==(?![=])", "===", out)
     out = re.sub(r"(?<![=!<>])!=(?![=])", "!==", out)
+    # C buffer-clear idiom: buf[0] = '\0' (or chained a[0] = b[0] = '\0')
+    # means "set to empty string" in JS. '\0' is already rewritten to '\x00'
+    # by _rewrite_c_char_literals at this point, so match that form.
+    out = re.sub(
+        r"([A-Za-z_]\w*(?:\s*\[\s*0\s*\]\s*=\s*)*[A-Za-z_]\w*)\s*\[\s*0\s*\]\s*=\s*'\\x00'",
+        lambda m: m.group(0).replace("[0]", "").replace("'\\x00'", "''"),
+        out,
+    )
+    # Guard against AST text-extraction bug that corrupts '&&' to '&': a lone '&'
+    # between relational sub-expressions (where the left side ends with a comparison
+    # result) must be '&&'. Handles both spaced and unspaced forms.
+    out = re.sub(
+        r"([><=!]=?\s+\S+)\s*&\s*([A-Za-z_(])",
+        r"\1 && \2",
+        out,
+    )
     return out, required_params
 
 
