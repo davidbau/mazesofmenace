@@ -619,16 +619,25 @@ export async function status_hilite_menu_choose_updownboth(fld, str, ltok, gtok)
 }
 
 // Autotranslated from botl.c:1085
-export function cond_cmp(vptr1, vptr2) {
-  let indx1 = vptr1, indx2 = vptr2, c1 = conditions[indx1].ranking, c2 = conditions[indx2].ranking;
+export function cond_cmp(a, b) {
+  // JS sort comparator: a/b are array elements (condition indices), not C pointers.
+  const indx1 = Number(a);
+  const indx2 = Number(b);
+  const c1 = conditions[indx1].ranking;
+  const c2 = conditions[indx2].ranking;
   if (c1 !== c2) return c1 - c2;
-  return strcmpi(condtests[indx1].useroption, condtests[indx2].useroption);
+  return String(condtests[indx1].useroption || '')
+    .toLowerCase()
+    .localeCompare(String(condtests[indx2].useroption || '').toLowerCase());
 }
 
 // Autotranslated from botl.c:1098
-export function menualpha_cmp(vptr1, vptr2) {
-  let indx1 = vptr1, indx2 = vptr2;
-  return strcmpi(condtests[indx1].useroption, condtests[indx2].useroption);
+export function menualpha_cmp(a, b) {
+  const indx1 = Number(a);
+  const indx2 = Number(b);
+  return String(condtests[indx1].useroption || '')
+    .toLowerCase()
+    .localeCompare(String(condtests[indx2].useroption || '').toLowerCase());
 }
 
 // Autotranslated from botl.c:1963
