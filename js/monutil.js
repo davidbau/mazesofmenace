@@ -11,7 +11,7 @@ import { Monnam } from './mondata.js';
 import { is_hider, noattacks, dmgtype, attacktype } from './mondata.js';
 import { weight } from './mkobj.js';
 import { pushRngLogEntry, rnd } from './rng.js';
-import { place_object, stackobj } from './floor_objects.js';
+import { place_object, stackobj } from './stackobj.js';
 import { SCR_SCARE_MONSTER } from './objects.js';
 import { extract_from_minvent, update_mon_extrinsics } from './worn.js';
 

@@ -23,7 +23,7 @@ import { MAXOCLASSES, ROOM, SHOPBASE, ROOMOFFSET, SDOOR, DOOR, CORR,
 import { makemon, mkclass, NO_MM_FLAGS, registerGetShopItem } from './makemon.js';
 import { mksobj, mkobj, RANDOM_CLASS } from './mkobj.js';
 import { PM_SHOPKEEPER, S_MIMIC } from './monsters.js';
-import { placeFloorObject } from './floor_objects.js';
+import { placeFloorObject } from './stackobj.js';
 
 const VEGETARIAN_CLASS = MAXOCLASSES + 1; // 19
 

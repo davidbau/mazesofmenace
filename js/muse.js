@@ -73,7 +73,7 @@ import { onscary, healmon, mongone, monkilled, xkilled,
 import { monflee } from './monmove.js';
 import { paralyze_monst } from './mhitm.js';
 import { makemon } from './makemon.js';
-import { placeFloorObject } from './floor_objects.js';
+import { placeFloorObject } from './stackobj.js';
 import { linedUpToPlayer, m_throw_timed } from './mthrowu.js';
 import {
     buzz, ZT_WAND, ZT_BREATH,

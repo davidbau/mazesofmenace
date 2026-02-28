@@ -10,7 +10,7 @@ import { CORR, D_NODOOR, OROOM, SCORR } from './config.js';
 import { PM_GHOST } from './monsters.js';
 import { makemon, NO_MM_FLAGS } from './makemon.js';
 import { christen_monst, roguename } from './do_name.js';
-import { placeFloorObject } from './floor_objects.js';
+import { placeFloorObject } from './stackobj.js';
 import {
     fill_ordinary_room,
 } from './dungeon.js';

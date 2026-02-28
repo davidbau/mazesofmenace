@@ -49,7 +49,7 @@ import { obj_resists } from './objdata.js';
 import { newexplevel } from './exper.js';
 import { applyMonflee } from './mhitu.js';
 import { mondead } from './monutil.js';
-import { placeFloorObject } from './floor_objects.js';
+import { placeFloorObject } from './stackobj.js';
 import { uwepgone, uswapwepgone, uqwepgone } from './wield.js';
 import { find_mac } from './worn.js';
 import { make_stunned } from './potion.js';

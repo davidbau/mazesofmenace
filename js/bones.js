@@ -25,7 +25,7 @@ import { rn2 } from './rng.js';
 import { ACCESSIBLE } from './config.js';
 import { CLASS_SYMBOLS } from './objects.js';
 import { mons, PM_GHOST } from './monsters.js';
-import { placeFloorObject } from './floor_objects.js';
+import { placeFloorObject } from './stackobj.js';
 import { uwepgone, uswapwepgone, uqwepgone } from './wield.js';
 import { makemon, MM_NONAME } from './makemon.js';
 import {

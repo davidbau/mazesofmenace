@@ -30,7 +30,7 @@ import { maybeSmudgeEngraving, u_wipe_engr } from './engrave.js';
 import { gethungry } from './eat.js';
 import { describeGroundObjectForPlayer, maybeHandleShopEntryMessage } from './shk.js';
 import { observeObject } from './discovery.js';
-import { placeFloorObject, place_object } from './floor_objects.js';
+import { placeFloorObject, place_object } from './stackobj.js';
 import { xname, an, The } from './objnam.js';
 import { DIRECTION_KEYS } from './dothrow.js';
 import { dosearch0 } from './detect.js';

@@ -28,7 +28,7 @@ describe('floor object placement', () => {
         const jsDir = path.join(projectRoot, 'js');
         const files = collectJsFiles(jsDir).filter((filePath) => {
             const base = path.basename(filePath);
-            return base !== 'floor_objects.js';
+            return base !== 'stackobj.js' && base !== 'mkobj.js';
         });
 
         const offenders = [];

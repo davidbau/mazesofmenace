@@ -42,7 +42,7 @@ import { newsym } from './monutil.js';
 import { mb_trapped } from './monmove.js';
 import { canseemon } from './mondata.js';
 import { mksobj } from './mkobj.js';
-import { placeFloorObject } from './floor_objects.js';
+import { placeFloorObject } from './stackobj.js';
 import { makemon, mkclass } from './makemon.js';
 import {
     BOULDER, ROCK, STATUE, HEAVY_IRON_BALL, CORPSE,

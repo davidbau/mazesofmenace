@@ -70,7 +70,7 @@ import {
 import { mons, M2_FEMALE, M2_MALE, G_NOGEN, G_IGNORE, PM_MINOTAUR, MR_STONE, S_EEL } from './monsters.js';
 import { poly_when_stoned } from './mondata.js';
 import { getSpecialLevel, findSpecialLevelByName, GEHENNOM } from './special_levels.js';
-import { placeFloorObject } from './floor_objects.js';
+import { placeFloorObject } from './stackobj.js';
 import { premap_detect } from './detect.js';
 import { start_timer, stop_timer, obj_move_timers as moveObjectTimers, obj_split_timers as splitObjectTimers, obj_has_timer as hasObjectTimer } from './timeout.js';
 import {

@@ -35,7 +35,7 @@ import { Monnam, noit_Monnam, noit_mon_nam, Some_Monnam, x_monnam,
 import { m_carrying } from './weapon.js';
 import { upstart, dist2 } from './hacklib.js';
 import { currency } from './invent.js';
-import { placeFloorObject } from './floor_objects.js';
+import { placeFloorObject } from './stackobj.js';
 import { deltrap } from './dungeon.js';
 import { mpickobj, add_to_minv } from './monutil.js';
 import { makemon } from './makemon.js';

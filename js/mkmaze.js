@@ -20,7 +20,7 @@ import {
     bound_digging,
     repair_irregular_room_boundaries,
 } from './dungeon.js';
-import { placeFloorObject } from './floor_objects.js';
+import { placeFloorObject } from './stackobj.js';
 import { mkobj, mksobj, mkcorpstat, set_corpsenm, weight, RANDOM_CLASS } from './mkobj.js';
 import { GEM_CLASS, BOULDER, GOLD_PIECE, STATUE } from './objects.js';
 import { makemon, NO_MM_FLAGS, rndmonnum, getMakemonRoleIndex } from './makemon.js';

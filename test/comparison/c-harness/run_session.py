@@ -115,6 +115,12 @@ def fixed_datetime_env():
     return f'NETHACK_FIXED_DATETIME={dt} ' if dt else ''
 
 
+def diag_events_env():
+    """Pass WEBHACK_DIAG_EVENTS through to the C binary if set."""
+    v = os.environ.get('WEBHACK_DIAG_EVENTS', '')
+    return f'WEBHACK_DIAG_EVENTS={v} ' if v else ''
+
+
 def has_calendar_luck_warning(content):
     lowered = content.lower()
     return (
@@ -922,6 +928,7 @@ def run_wizload_session(seed, output_json, level_name, verbose=False):
         cmd = (
             f'NETHACKDIR={INSTALL_DIR} '
             f'{fixed_datetime_env()}'
+            f'{diag_events_env()}'
             f'NETHACK_SEED={seed} '
             f'NETHACK_RNGLOG={rng_log_file} '
             f'NETHACK_DUMPMAP={dumpmap_file} '
@@ -1105,6 +1112,7 @@ def run_chargen_session(seed, output_json, selections, tutorial_response='n', ve
         cmd = (
             f'NETHACKDIR={INSTALL_DIR} '
             f'{fixed_datetime_env()}'
+            f'{diag_events_env()}'
             f'NETHACK_SEED={seed} '
             f'NETHACK_RNGLOG={rng_log_file} '
             f'HOME={RESULTS_DIR} '
@@ -1370,6 +1378,7 @@ def run_interface_session(seed, output_json, keys, verbose=False, auto_clear_mor
         cmd = (
             f'NETHACKDIR={INSTALL_DIR} '
             f'{fixed_datetime_env()}'
+            f'{diag_events_env()}'
             f'NETHACK_SEED={seed} '
             f'NETHACK_RNGLOG={rng_log_file} '
             f'HOME={RESULTS_DIR} '
@@ -1712,6 +1721,7 @@ def run_session(seed, output_json, move_str, raw_moves=False, character=None, wi
         cmd = (
             f'NETHACKDIR={INSTALL_DIR} '
             f'{fixed_datetime_env()}'
+            f'{diag_events_env()}'
             f'NETHACK_SEED={seed} '
             f'NETHACK_RNGLOG={rng_log_file} '
             f'NETHACK_DUMPMAP={dumpmap_file} '

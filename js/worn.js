@@ -16,7 +16,7 @@ import { PM_SKELETON, PM_HOBBIT, MZ_TINY, MZ_SMALL, MZ_HUMAN, MZ_HUGE,
        } from './monsters.js';
 import { mons } from './monsters.js';
 import { newsym } from './monutil.js';
-import { placeFloorObject } from './floor_objects.js';
+import { placeFloorObject } from './stackobj.js';
 import { pushRngLogEntry } from './rng.js';
 
 // ============================================================================

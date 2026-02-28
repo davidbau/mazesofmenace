@@ -26,7 +26,7 @@ import { COIN_CLASS, RING_CLASS, POTION_CLASS,
          RIN_PROTECTION_FROM_SHAPE_CHAN,
          objectData } from './objects.js';
 import { doname, xname, splitobj, set_bknown } from './mkobj.js';
-import { placeFloorObject } from './floor_objects.js';
+import { placeFloorObject } from './stackobj.js';
 import { uwepgone, uswapwepgone, uqwepgone } from './wield.js';
 import { observeObject } from './discovery.js';
 import { compactInvletPromptChars, buildInventoryOverlayLines, renderOverlayMenuUntilDismiss } from './invent.js';

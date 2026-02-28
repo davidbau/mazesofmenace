@@ -16,7 +16,7 @@ import { objectData, WEAPON_CLASS, FOOD_CLASS, WAND_CLASS, SPBOOK_CLASS,
          GLASS, GEMSTONE, MINERAL,
          ARM_SUIT, ARM_SHIELD, ARM_HELM, ARM_GLOVES, ARM_BOOTS, ARM_CLOAK, ARM_SHIRT,
          CLASS_SYMBOLS } from './objects.js';
-import { doname, xname, weight, splitobj, Is_container, erosion_matters } from './mkobj.js';
+import { doname, xname, weight, splitobj, Is_container, erosion_matters, mergable } from './mkobj.js';
 import { promptDirectionAndThrowItem, ammoAndLauncher } from './dothrow.js';
 import { pline, You, Your } from './pline.js';
 import { rn2 } from './rng.js';
@@ -1690,91 +1690,19 @@ export function feel_cockatrice(otmp, force_touch, player) {
 // 12. Stacking / merging
 // ============================================================
 
-// C ref: invent.c stackobj() — try to merge object into existing stack on floor
-export function stackobj(obj, map) {
-    if (!map || !map.objects) return;
-    for (const otmp of map.objects) {
-        if (otmp !== obj && otmp.ox === obj.ox && otmp.oy === obj.oy
-            && !otmp.buried && !obj.buried && mergable(otmp, obj)) {
-            // Merge obj into otmp
-            otmp.quan = (otmp.quan || 1) + (obj.quan || 1);
-            otmp.owt = weight(otmp);
-            // Remove obj from map
-            const idx = map.objects.indexOf(obj);
-            if (idx >= 0) map.objects.splice(idx, 1);
-            return;
-        }
-    }
-}
+// C ref: invent.c stackobj() — canonical C location is invent.c, but in JS
+// this function lives in stackobj.js to break a circular dependency between
+// mkobj.js and invent.js.  See stackobj.js for the implementation and
+// a full explanation of the dependency issue.
 
-// C ref: invent.c mergable() — check if two objects can merge
-export function mergable(otmp, obj) {
-    if (obj === otmp) return false;
-    if (obj.otyp !== otmp.otyp) return false;
-    if (obj.nomerge || otmp.nomerge) return false;
-    const od = objectData[obj.otyp];
-    if (!od || !od.merge) return false;
-
-    // Coins always merge
-    if (obj.oclass === COIN_CLASS) return true;
-
-    if (!!obj.cursed !== !!otmp.cursed || !!obj.blessed !== !!otmp.blessed)
-        return false;
-
-    // Globs always merge (beyond bless/curse check)
-    if (obj.globby) return true;
-
-    if (!!obj.unpaid !== !!otmp.unpaid) return false;
-    if ((obj.spe ?? 0) !== (otmp.spe ?? 0)) return false;
-    if (!!obj.no_charge !== !!otmp.no_charge) return false;
-    if (!!obj.obroken !== !!otmp.obroken) return false;
-    if (!!obj.otrapped !== !!otmp.otrapped) return false;
-    if (!!obj.lamplit !== !!otmp.lamplit) return false;
-
-    if (obj.oclass === FOOD_CLASS) {
-        if ((obj.oeaten ?? 0) !== (otmp.oeaten ?? 0)) return false;
-        if (!!obj.orotten !== !!otmp.orotten) return false;
-    }
-
-    if (!!obj.dknown !== !!otmp.dknown) return false;
-    if (!!obj.bknown !== !!otmp.bknown) return false;
-    if ((obj.oeroded ?? 0) !== (otmp.oeroded ?? 0)) return false;
-    if ((obj.oeroded2 ?? 0) !== (otmp.oeroded2 ?? 0)) return false;
-    if (!!obj.greased !== !!otmp.greased) return false;
-
-    if (erosion_matters(obj)) {
-        if (!!obj.oerodeproof !== !!otmp.oerodeproof) return false;
-        if (!!obj.rknown !== !!otmp.rknown) return false;
-    }
-
-    if (obj.otyp === CORPSE || obj.otyp === EGG || obj.otyp === TIN) {
-        if ((obj.corpsenm ?? -1) !== (otmp.corpsenm ?? -1)) return false;
-    }
-
-    // Hatching eggs don't merge
-    if (obj.otyp === EGG && (obj.timed || otmp.timed)) return false;
-
-    // Burning oil never merges
-    if (obj.otyp === POT_OIL && obj.lamplit) return false;
-
-    // Names must match
-    const oname1 = obj.oname || '';
-    const oname2 = otmp.oname || '';
-    if (oname1 !== oname2) {
-        // Corpses must have matching names (both or neither)
-        if (obj.otyp === CORPSE) return false;
-        // One named, one not: allow merge if only one is named
-        if (oname1 && oname2) return false;
-    }
-
-    // Artifacts must match
-    if ((obj.oartifact || 0) !== (otmp.oartifact || 0)) return false;
-
-    if (!!obj.known !== !!otmp.known) return false;
-    if (!!obj.opoisoned !== !!otmp.opoisoned) return false;
-
-    return true;
-}
+// C ref: invent.c mergable() — canonical C location is invent.c, but in JS
+// this function lives in mkobj.js to break a circular dependency:
+//   stackobj.js → invent.js → monutil.js → stackobj.js
+// stackobj.js needs mergable() and imports mkobj.js, so mergable() lives there.
+// invent.js re-imports mergable from mkobj.js (see line ~19 import).
+// IMPORTANT: Do NOT re-add a mergable() implementation here.
+// See mkobj.js for the implementation and stackobj.js for the full explanation.
+export { mergable };  // re-export from mkobj.js import above
 
 
 // ============================================================

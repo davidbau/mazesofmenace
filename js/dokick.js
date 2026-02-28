@@ -41,7 +41,7 @@ import {
     xname, doname, splitobj, mksobj,
 } from './mkobj.js';
 import { Doname2, Tobjnam, otense, killer_xname, corpse_xname } from './objnam.js';
-import { placeFloorObject } from './floor_objects.js';
+import { placeFloorObject, stackobj } from './stackobj.js';
 import {
     thick_skinned, nolimbs, slithy, nohands, haseyes, attacktype,
     likes_gold, is_mercenary, is_flyer, is_floater, is_giant,
@@ -81,7 +81,7 @@ import { flooreffects } from './do.js';
 import { hurtle } from './dothrow.js';
 import { thitmonst, hero_breaks, breaks, breaktest } from './dothrow.js';
 import { scatter } from './explode.js';
-import { stackobj, sobj_at, delobj } from './invent.js';
+import { sobj_at, delobj } from './invent.js';
 import { snuff_candle } from './apply.js';
 import { bhit } from './zap.js';
 import { find_trap } from './detect.js';

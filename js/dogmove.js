@@ -873,6 +873,8 @@ export async function dog_move(mon, map, player, display, fov, after = false, ga
     const dogGoalStepLabel = monmoveStepLabel(map);
     const traceDogGoal = dogGoalTraceEnabled
         && (dogGoalTraceStep === dogGoalStepLabel || dogGoalTraceStep === '*');
+    // C ref: dog_diag_events_enabled() checks WEBHACK_DIAG_EVENTS env var
+    const dogDiagEvents = !!(env?.WEBHACK_DIAG_EVENTS && env.WEBHACK_DIAG_EVENTS !== '0');
 
     // C ref: dogmove.c:1005-1006 — hunger check (before dog_invent)
     if (edogRaw && dog_hunger(mon, edogRaw, turnCount, map, display, player, fov))
@@ -936,6 +938,9 @@ export async function dog_move(mon, map, player, display, fov, after = false, ga
                 `range=[${minX}..${maxX}]x[${minY}..${maxY}]`,
                 `objects=${map.objects.length}`);
         }
+        // C ref: dog_goal_start event (inside else block, after range computed)
+        if (dogDiagEvents)
+            pushRngLogEntry(`^dog_goal_start[M${mon.m_id}@${omx},${omy} apport=${edog.apport} minvent=${dogHasMinvent ? 1 : 0} ims=${inMastersSight ? 1 : 0} range=[${minX}..${maxX}]x[${minY}..${maxY}]]`);
         // C ref: dog_goal iterates fobj (ALL objects on level)
         // C's fobj is LIFO (place_object prepends), so iterate in reverse to match
         // C's fobj excludes buried objects (those are on buriedobjlist, a separate list)
@@ -960,32 +965,55 @@ export async function dog_move(mon, map, player, display, fov, after = false, ga
 
             const otyp = dogfood(mon, obj, turnCount);
             // C ref: dogmove.c:526 — skip inferior goals
-            if (otyp > gtyp || otyp === UNDEF) continue;
+            if (otyp > gtyp || otyp === UNDEF) {
+                if (dogDiagEvents)
+                    pushRngLogEntry(`^dog_goal_obj[M${mon.m_id} oid=${obj.o_id}@${ox},${oy} food=${otyp} skip=inf]`);
+                continue;
+            }
 
             // C ref: dogmove.c:529-531 — skip cursed POSITIONS unless starving
             // C uses cursed_object_at(nx, ny) which checks ALL objects at position
             if (cursed_object_at(map, ox, oy)
-                && !(edog.mhpmax_penalty && otyp < MANFOOD)) continue;
+                && !(edog.mhpmax_penalty && otyp < MANFOOD)) {
+                if (dogDiagEvents)
+                    pushRngLogEntry(`^dog_goal_obj[M${mon.m_id} oid=${obj.o_id}@${ox},${oy} food=${otyp} skip=cur]`);
+                continue;
+            }
 
             // C ref: dogmove.c:533-535 — skip unreachable goals
             if (!could_reach_item(map, mon, ox, oy)
-                || !can_reach_location(map, mon, omx, omy, ox, oy))
+                || !can_reach_location(map, mon, omx, omy, ox, oy)) {
+                if (dogDiagEvents)
+                    pushRngLogEntry(`^dog_goal_obj[M${mon.m_id} oid=${obj.o_id}@${ox},${oy} food=${otyp} skip=rch]`);
                 continue;
+            }
 
             if (otyp < MANFOOD) {
                 // Good food — direct goal
                 // C ref: dogmove.c:536-542
                 if (otyp < gtyp || dist2(ox, oy, omx, omy) < dist2(gx, gy, omx, omy)) {
+                    if (dogDiagEvents)
+                        pushRngLogEntry(`^dog_goal_obj[M${mon.m_id} oid=${obj.o_id}@${ox},${oy} food=${otyp} sel=1]`);
                     gx = ox; gy = oy; gtyp = otyp;
+                } else {
+                    if (dogDiagEvents)
+                        pushRngLogEntry(`^dog_goal_obj[M${mon.m_id} oid=${obj.o_id}@${ox},${oy} food=${otyp} sel=0]`);
                 }
             } else if (gtyp === UNDEF && inMastersSight
                     && !dogHasMinvent
                     && (!dogLit || playerLit)
-                    && (otyp === MANFOOD || m_cansee(mon, map, ox, oy))
-                    && edog.apport > rn2(8)
-                    && can_carry(mon, obj) > 0) {
+                    && (otyp === MANFOOD || m_cansee(mon, map, ox, oy))) {
                 // C ref: dogmove.c:543-552 — APPORT/MANFOOD with apport+carry check
-                gx = ox; gy = oy; gtyp = APPORT;
+                // aproll extracted from condition so we can log it (mirrors C restructuring)
+                const aproll = rn2(8);
+                const carryRes = (edog.apport > aproll) ? can_carry(mon, obj) : 0;
+                if (dogDiagEvents)
+                    pushRngLogEntry(`^dog_goal_obj[M${mon.m_id} oid=${obj.o_id}@${ox},${oy} food=${otyp} apport=${edog.apport} rn2_8=${aproll} carry=${carryRes} sel=${(edog.apport > aproll && carryRes > 0) ? 1 : 0}]`);
+                if (edog.apport > aproll && carryRes > 0) {
+                    gx = ox; gy = oy; gtyp = APPORT;
+                }
+            } else if (dogDiagEvents) {
+                pushRngLogEntry(`^dog_goal_obj[M${mon.m_id} oid=${obj.o_id}@${ox},${oy} food=${otyp} skip=apc]`);
             }
         }
     }
@@ -1105,6 +1133,10 @@ export async function dog_move(mon, map, player, display, fov, after = false, ga
     } else if (edog) {
         edog.ogoal.x = 0;
     }
+
+    // C ref: dog_goal_end event — emitted after goal/appr are fully determined
+    if (dogDiagEvents)
+        pushRngLogEntry(`^dog_goal_end[M${mon.m_id} goal=${gx},${gy} gtyp=${gtyp} appr=${appr}]`);
 
     // ========================================================================
     // Position evaluation loop — uses mfndpos for C-faithful position collection

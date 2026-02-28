@@ -20,7 +20,7 @@ import {
 import { rn1, rn2, rnd, getRngCallCount } from './rng.js';
 import { makeRoom } from './map.js';
 import { mksobj, mkobj, mkcorpstat } from './mkobj.js';
-import { placeFloorObject } from './floor_objects.js';
+import { placeFloorObject } from './stackobj.js';
 import { GOLD_PIECE, BELL, CORPSE, SCR_TELEPORTATION } from './objects.js';
 import { S_HUMAN, S_MIMIC } from './monsters.js';
 import { mkclass, makemon } from './makemon.js';

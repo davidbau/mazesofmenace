@@ -55,7 +55,7 @@ import { nonliving, is_undead, is_demon, is_rider,
          x_monnam, resists_fire, resists_cold, resists_elec,
          resists_poison, resists_acid, resists_disint } from './mondata.js';
 import { mondead } from './monutil.js';
-import { placeFloorObject } from './floor_objects.js';
+import { placeFloorObject } from './stackobj.js';
 import { zap_dig as zap_dig_core } from './dig.js';
 import { pline } from './pline.js';
 import { mon_nam, Monnam } from './do_name.js';

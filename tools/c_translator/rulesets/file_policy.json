@@ -218,7 +218,7 @@
       "reason": "C-mapped gameplay module; eligible for rule-driven translation."
     },
     {
-      "path": "js/floor_objects.js",
+      "path": "js/stackobj.js",
       "policy": "manual_only",
       "reason": "Runtime/platform/infrastructure boundary; keep manual control."
     },

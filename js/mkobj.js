@@ -3,7 +3,6 @@
 // C ref: mkobj.c — object creation, class initialization, containers
 
 import { rn2, rnd, rn1, rne, rnz, d, getRngCallCount, pushRngLogEntry } from './rng.js';
-import { placeFloorObject } from './floor_objects.js';
 import { isObjectNameKnown } from './discovery.js';
 import {
     objectData, bases, oclass_prob_totals, mkobjprobs, NUM_OBJECTS,
@@ -20,7 +19,7 @@ import {
     LARGE_BOX, CHEST, ICE_BOX, CORPSE, STATUE, FIGURINE, EGG,
     GRAY_DRAGON_SCALES, YELLOW_DRAGON_SCALES, LENSES,
     ELVEN_SHIELD, ORCISH_SHIELD, SHIELD_OF_REFLECTION,
-    WORM_TOOTH, CRYSKNIFE, UNICORN_HORN, POT_WATER,
+    WORM_TOOTH, CRYSKNIFE, UNICORN_HORN, POT_WATER, TIN, POT_OIL,
     SPE_BOOK_OF_THE_DEAD, SPE_NOVEL, SPE_BLANK_PAPER,
     ARM_SHIELD, ARM_GLOVES, ARM_BOOTS,
     CLASS_SYMBOLS,
@@ -47,6 +46,91 @@ import { lays_eggs } from './mondata.js';
 // FUMBLE_BOOTS, LEVITATION_BOOTS, HELM_OF_OPPOSITE_ALIGNMENT, GAUNTLETS_OF_FUMBLING,
 // RIN_TELEPORTATION, RIN_POLYMORPH, RIN_AGGRAVATE_MONSTER, RIN_HUNGER,
 // GOLD_PIECE, SPE_BLANK_PAPER, POT_OIL, POT_WATER
+
+
+// C ref: mkobj.c place_object() — place object on floor at (x,y)
+export function place_object(obj, x, y, map) {
+    if (!obj || !map?.objects) return obj;
+    obj.ox = x;
+    obj.oy = y;
+    pushRngLogEntry(`^place[${obj.otyp},${obj.ox},${obj.oy}]`);
+    map.objects.push(obj);
+    return obj;
+}
+
+// C ref: invent.c mergable() — check if two objects can merge.
+// Moved here from invent.js to break the invent.js ↔ stackobj.js ↔ mkobj.js
+// circular dependency (stackobj.js needs mergable but imports mkobj.js;
+// invent.js imports monutil.js which imports stackobj.js → cycle).
+// IMPORTANT: Do NOT add a mergable() implementation to invent.js.
+//            See stackobj.js for a full explanation of the dependency issue.
+export function mergable(otmp, obj) {
+    if (obj === otmp) return false;
+    if (obj.otyp !== otmp.otyp) return false;
+    if (obj.nomerge || otmp.nomerge) return false;
+    const od = objectData[obj.otyp];
+    if (!od || !od.merge) return false;
+
+    // Coins always merge
+    if (obj.oclass === COIN_CLASS) return true;
+
+    if (!!obj.cursed !== !!otmp.cursed || !!obj.blessed !== !!otmp.blessed)
+        return false;
+
+    // Globs always merge (beyond bless/curse check)
+    if (obj.globby) return true;
+
+    if (!!obj.unpaid !== !!otmp.unpaid) return false;
+    if ((obj.spe ?? 0) !== (otmp.spe ?? 0)) return false;
+    if (!!obj.no_charge !== !!otmp.no_charge) return false;
+    if (!!obj.obroken !== !!otmp.obroken) return false;
+    if (!!obj.otrapped !== !!otmp.otrapped) return false;
+    if (!!obj.lamplit !== !!otmp.lamplit) return false;
+
+    if (obj.oclass === FOOD_CLASS) {
+        if ((obj.oeaten ?? 0) !== (otmp.oeaten ?? 0)) return false;
+        if (!!obj.orotten !== !!otmp.orotten) return false;
+    }
+
+    if (!!obj.dknown !== !!otmp.dknown) return false;
+    if (!!obj.bknown !== !!otmp.bknown) return false;
+    if ((obj.oeroded ?? 0) !== (otmp.oeroded ?? 0)) return false;
+    if ((obj.oeroded2 ?? 0) !== (otmp.oeroded2 ?? 0)) return false;
+    if (!!obj.greased !== !!otmp.greased) return false;
+
+    if (erosion_matters(obj)) {
+        if (!!obj.oerodeproof !== !!otmp.oerodeproof) return false;
+        if (!!obj.rknown !== !!otmp.rknown) return false;
+    }
+
+    if (obj.otyp === CORPSE || obj.otyp === EGG || obj.otyp === TIN) {
+        if ((obj.corpsenm ?? -1) !== (otmp.corpsenm ?? -1)) return false;
+    }
+
+    // Hatching eggs don't merge
+    if (obj.otyp === EGG && (obj.timed || otmp.timed)) return false;
+
+    // Burning oil never merges
+    if (obj.otyp === POT_OIL && obj.lamplit) return false;
+
+    // Names must match
+    const oname1 = obj.oname || '';
+    const oname2 = otmp.oname || '';
+    if (oname1 !== oname2) {
+        // Corpses must have matching names (both or neither)
+        if (obj.otyp === CORPSE) return false;
+        // One named, one not: allow merge if only one is named
+        if (oname1 && oname2) return false;
+    }
+
+    // Artifacts must match
+    if ((obj.oartifact || 0) !== (otmp.oartifact || 0)) return false;
+
+    if (!!obj.known !== !!otmp.known) return false;
+    if (!!obj.opoisoned !== !!otmp.opoisoned) return false;
+
+    return true;
+}
 
 // Module-level depth for level_difficulty() during mklev
 let _levelDepth = 1;
@@ -904,7 +988,7 @@ export function mkcorpstat(objtype, ptr_mndx, init, x = 0, y = 0, map = null) {
     if (x && y && map) {
         otmp.ox = x;
         otmp.oy = y;
-        placeFloorObject(map, otmp);
+        place_object(otmp, otmp.ox, otmp.oy, map);
     }
     if (ptr_mndx >= 0) {
         const old_corpsenm = otmp.corpsenm;
