@@ -33,6 +33,11 @@ import { mondead, newsym } from './monutil.js';
 // Terrain predicates (cf. dbridge.c:38-128)
 // These take (x, y, map) — map is the GameMap object.
 // ============================================================================
+function mapLoc(map, x, y) {
+    if (!map) return null;
+    if (typeof map.at === 'function') return map.at(x, y);
+    return map.locations?.[x]?.[y] || null;
+}
 
 // cf. dbridge.c:38 — is_waterwall(x, y)
 // Autotranslated from dbridge.c:37
@@ -81,7 +86,7 @@ export function is_ice(x, y, map) {
 // We check map.flags.is_juiblex_level if set.
 export function is_moat(x, y, map) {
     if (!isok(x, y)) return false;
-    const loc = map.at(x, y);
+    const loc = mapLoc(map, x, y);
     if (!loc) return false;
     const ltyp = loc.typ;
     if (map.flags && map.flags.is_juiblex_level) return false;

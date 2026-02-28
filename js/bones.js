@@ -160,19 +160,31 @@ export function give_to_nearby_mon(map, otmp, x, y) {
 // C ref: bones.c:134
 // Autotranslated from bones.c:773
 export function set_ghostly_objlist(objchain) {
+    const markGhostly = (obj) => {
+        if (!obj) return;
+        // Preserve both field names used across porting stages.
+        obj.ghostly = true;
+        obj.ghost = true;
+    };
     // Runtime supports both C-style linked object chains and JS arrays.
     if (Array.isArray(objchain)) {
         for (const obj of objchain) {
             if (!obj) continue;
-            obj.ghostly = true;
+            markGhostly(obj);
             if (obj.contents && obj.contents.length > 0) {
                 set_ghostly_objlist(obj.contents);
+            }
+            if (obj.cobj) {
+                set_ghostly_objlist(obj.cobj);
             }
         }
         return;
     }
     while (objchain) {
-        objchain.ghostly = true;
+        markGhostly(objchain);
+        if (objchain.cobj) {
+            set_ghostly_objlist(objchain.cobj);
+        }
         objchain = objchain.nobj;
     }
 }
