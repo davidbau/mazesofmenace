@@ -14,7 +14,7 @@
  */
 
 import { GameMap, FILL_NORMAL } from './map.js';
-import { rn2, rnd, rn1, getRngCallCount, advanceRngRaw, pushRngLogEntry } from './rng.js';
+import { rn2, rnd, rn1, getRngCallCount, pushRngLogEntry } from './rng.js';
 import { mksobj, mkobj, mkcorpstat, set_corpsenm, setLevelDepth, weight } from './mkobj.js';
 import { create_room, makecorridors, create_corridor, init_rect, rnd_rect, get_rect, split_rects, check_room, add_doors_to_room, link_doors_rooms, update_rect_pool_for_room, bound_digging, mineralize as dungeonMineralize, fill_ordinary_room, fill_special_room, isMtInitialized, setMtInitialized, wallification as dungeonWallification, wallify_region as dungeonWallifyRegion, fix_wall_spines, set_wall_state, mktrap, deltrap, enexto, sp_create_door, floodFillAndRegister, repair_irregular_room_boundaries, resolveBranchPlacementForLevel, induced_align, DUNGEON_ALIGN_BY_DNUM, enterMklevContext, leaveMklevContext } from './dungeon.js';
 import {
@@ -1361,16 +1361,9 @@ export function getLevelCheckpoints() {
  * @param {boolean} opts.walled - Add walls (default: false)
  */
 // C ref: sp_lev.c lvlfill_solid()
-export function lvlfill_solid(map, init = levelState.init, finalizeCtx = levelState.finalizeContext || {}) {
+export function lvlfill_solid(map, init = levelState.init) {
     levelState.mazeMaxX = (COLNO - 1) & ~1;
     levelState.mazeMaxY = (ROWNO - 1) & ~1;
-    const specialName = (typeof finalizeCtx.specialName === 'string')
-        ? finalizeCtx.specialName.toLowerCase() : '';
-    const tutLevelInitEnv = (typeof process !== 'undefined' && process.env) ? process.env : null;
-    const tutLevelInitRawShim = (!tutLevelInitEnv || tutLevelInitEnv.WEBHACK_TUT_SHIM_LEVEL_INIT !== '0');
-    if (specialName.startsWith('tut-') && init.lit < 0 && tutLevelInitRawShim) {
-        advanceRngRaw(1);
-    }
     const lit = init.lit < 0 ? rn2(2) : init.lit;
     const fillChar = init.filling;
     for (let x = 2; x <= levelState.mazeMaxX; x++) {
@@ -1499,7 +1492,7 @@ export function level_init(opts = {}) {
     levelState.traps = [];
 
     if (style === 'solidfill') {
-        lvlfill_solid(levelState.map, levelState.init, ctx);
+        lvlfill_solid(levelState.map, levelState.init);
     } else if (style === 'mazegrid') {
         lvlfill_maze_grid(levelState.map, levelState.init, levelState.flags);
     } else if (style === 'maze') {
@@ -6877,20 +6870,76 @@ export const nh = {
 
 /**
  * Stub player object for level generation
- * C ref: you.h struct you
+ * C ref: you.h struct you, nhlua.c nhlua_u_get()
  *
  * During level generation, there is no actual player yet.
  * This stub provides default values so that level generators
  * (especially tutorial levels) can reference player properties
  * without causing errors.
  *
- * In a full game, this would be replaced by the actual player object.
+ * Call setSplevPlayerContext(player) before generating a special level
+ * to populate these fields from the actual player object.
  */
 export const u = {
-    role: null,  // Player role (e.g., "Knight", "Wizard", etc.)
-    race: null,  // Player race
-    alignment: null,  // Player alignment
+    role: null,       // Player role name (e.g., "Knight", "Wizard") — C: gu.urole.name.m
+    race: null,       // Player race name
+    alignment: null,  // Player alignment value
+    ulevel: 1,        // Player experience level — C: u.ulevel
+    uhp: 0,           // Current hit points — C: u.uhp
+    uhpmax: 0,        // Max hit points — C: u.uhpmax
+    uen: 0,           // Current power (energy) — C: u.uen
+    uenmax: 0,        // Max power — C: u.uenmax
+    uluck: 0,         // Luck — C: u.uluck
+    uhunger: 900,     // Hunger state — C: u.uhunger
+    invocation_level: false, // True if on invocation level — C: Invocation_lev(&u.uz)
 };
+
+/**
+ * Set the sp_lev u object fields from a player object.
+ * C ref: nhlua.c nhlua_u_get() — Lua u.* reads directly from C u struct.
+ * Call this before generating a special level with a real player context.
+ */
+export function setSplevPlayerContext(player) {
+    if (!player) return;
+    if (player.roleName != null) u.role = player.roleName;
+    else if (player.role != null) u.role = player.role;
+    if (player.race != null) u.race = player.race;
+    if (player.alignment != null) u.alignment = player.alignment;
+    // ulevel: C ref: u.ulevel
+    const ulevel = player.ulevel ?? player.level;
+    if (ulevel != null) u.ulevel = ulevel;
+    // hp: C ref: u.uhp, u.uhpmax — JS Player uses .hp/.hpmax with .uhp/.uhpmax as getters
+    const uhp = player.uhp ?? player.hp;
+    const uhpmax = player.uhpmax ?? player.hpmax;
+    if (uhp != null) u.uhp = uhp;
+    if (uhpmax != null) u.uhpmax = uhpmax;
+    // energy: C ref: u.uen, u.uenmax — JS Player uses .pw/.pwmax (some code uses .uen/.uenmax directly)
+    const uen = player.uen ?? player.pw;
+    const uenmax = player.uenmax ?? player.pwmax;
+    if (uen != null) u.uen = uen;
+    if (uenmax != null) u.uenmax = uenmax;
+    if (player.uluck != null) u.uluck = player.uluck;
+    if (player.uhunger != null) u.uhunger = player.uhunger;
+    // invocation_level is set separately (requires dungeon context)
+}
+
+/**
+ * Clear the sp_lev u object back to defaults.
+ * Call this after special level generation completes.
+ */
+export function clearSplevPlayerContext() {
+    u.role = null;
+    u.race = null;
+    u.alignment = null;
+    u.ulevel = 1;
+    u.uhp = 0;
+    u.uhpmax = 0;
+    u.uen = 0;
+    u.uenmax = 0;
+    u.uluck = 0;
+    u.uhunger = 900;
+    u.invocation_level = false;
+}
 
 /**
  * Selection API - create rectangular selections

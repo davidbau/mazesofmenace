@@ -15,6 +15,7 @@ import { Player, roles, races, validRacesForRole, validAlignsForRoleRace,
 import { GameMap } from './map.js';
 import { initLevelGeneration, makelevel, setGameSeed, isBranchLevelToDnum } from './dungeon.js';
 import { TUTORIAL } from './special_levels.js';
+import { setSplevPlayerContext, clearSplevPlayerContext } from './sp_lev.js';
 import { setMakemonPlayerContext } from './makemon.js';
 import { FOOD_CLASS } from './objects.js';
 import { setObjectMoves } from './mkobj.js';
@@ -236,7 +237,9 @@ export async function enterTutorial(game, opts = {}) {
     (game.u || game.player).inventory = (game.u || game.player).inventory.filter((obj) => obj.oclass !== FOOD_CLASS);
 
     setMakemonPlayerContext((game.u || game.player));
+    setSplevPlayerContext((game.u || game.player));
     game.lev = makelevel(1, TUTORIAL, 1, { dungeonAlignOverride: A_NONE });
+    clearSplevPlayerContext();
     game.levels[1] = (game.lev || game.map);
     (game.u || game.player).dungeonLevel = 1;
     (game.u || game.player).inTutorial = true;

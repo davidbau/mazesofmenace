@@ -141,7 +141,7 @@ export function generate() {
     des.engraving({ coord: [ 15,11 ], type: "engrave", text: "There are four traps next to you! Search for them.", degrade: false });
     let locs = [ [14,11], [14,12], [15,12], [16,12], [16,11] ];
     shuffle(locs);
-    for (let i = 1; i <= 4; i++) {
+    for (let i = 0; i < 4; i++) {
        des.trap({ type: percent(50) && "sleep gas" || "board",
                   coord: locs[i], victim: false });
     }

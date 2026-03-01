@@ -197,8 +197,8 @@ export function obj_to_any(obj) {
 }
 
 // C ref: hack.c maybe_smudge_engr()
-export function maybe_smudge_engr(map, oldX, oldY, newX, newY) {
-    maybeSmudgeEngraving(map, oldX, oldY, newX, newY);
+export function maybe_smudge_engr(map, oldX, oldY, newX, newY, player) {
+    maybeSmudgeEngraving(map, oldX, oldY, newX, newY, player);
 }
 
 // C ref: hack.c could_move_onto_boulder()
@@ -348,7 +348,7 @@ export function domove_swap_with_pet(mon, nx, ny, dir, player, map, display, gam
     player.y = ny;
     player.moved = true;
     game.lastMoveDir = dir;
-    maybe_smudge_engr(map, oldPlayerX, oldPlayerY, player.x, player.y);
+    maybe_smudge_engr(map, oldPlayerX, oldPlayerY, player.x, player.y, player);
     player.displacedPetThisTurn = true;
     maybeHandleShopEntryMessage(game, oldPlayerX, oldPlayerY);
     display.putstr_message(`You swap places with ${y_monnam(mon)}.`);
@@ -690,7 +690,7 @@ export async function domove_core(dir, player, map, display, game) {
     player.moved = true;
     ctx.move = 1;
     game.lastMoveDir = moveDir;
-    maybe_smudge_engr(map, oldX, oldY, player.x, player.y);
+    maybe_smudge_engr(map, oldX, oldY, player.x, player.y, player);
 
     // Clear force-fight prefix after successful movement.
     clear_forcefight_prefix(game, ctx);

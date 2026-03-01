@@ -677,7 +677,9 @@ export function feel_engraving(map, ep) {
 // C ref: hack.c:3001-3012 maybe_smudge_engr()
 // On successful movement, attempt to smudge engravings at origin/destination.
 // C: checks can_reach_floor(TRUE), then wipes at old pos and new pos if engravings exist.
-export function maybeSmudgeEngraving(map, x1, y1, x2, y2) {
+export function maybeSmudgeEngraving(map, x1, y1, x2, y2, player) {
+    // C ref: if (can_reach_floor(TRUE)) { ... }
+    if (!can_reach_floor(player, map)) return;
     // C ref: if ((ep = engr_at(x1,y1)) && ep->engr_type != HEADSTONE)
     //            wipe_engr_at(x1, y1, rnd(5), FALSE);
     const ep1 = engr_at(map, x1, y1);
