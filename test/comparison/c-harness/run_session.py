@@ -1902,6 +1902,11 @@ def run_session(seed, output_json, move_str, raw_moves=False, character=None, wi
                 'rng': rng_entries,
                 'screen': screen_compressed,
             }
+            if step_num in key_delay_overrides:
+                # Optional per-step capture metadata (session v3).
+                step['capture'] = {
+                    'key_delay_s': step_delay,
+                }
 
             # Capture typGrid snapshots only in wizard-mode, where #dumpmap exists.
             if wizard_mode:

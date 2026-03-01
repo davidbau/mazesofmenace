@@ -294,6 +294,10 @@ Timing-window triage:
 ```json
 { "regen": { "key_delays_s": { "106": 0.25 } } }
 ```
+- Or annotate the step directly (preferred for persistent per-step intent):
+```json
+{ "steps": [ ..., { "key": "h", "capture": { "key_delay_s": 0.25 } } ] }
+```
 - Then run:
 ```bash
 python3 test/comparison/c-harness/rerecord.py \
