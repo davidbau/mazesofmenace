@@ -565,15 +565,15 @@
   "keylog_sessions": {
     "sessions": [
       {
-        "seed": 8,
+        "seed": 7,
         "label": "tutorial_manual",
-        "keylog": "test/comparison/keylogs/seed8_tutorial_manual.jsonl",
-        "character": "valkyrie",
+        "keylog": "test/comparison/keylogs/seed7_tutorial_manual_wizard.jsonl",
+        "character": "wizard",
         "symset": "DECgraphics",
         "screenCapture": "both",
-        "startupMode": "auto",
+        "startupMode": "from-keylog",
         "tutorial": "on",
-        "dropLeadingSpaces": 2
+        "dropLeadingSpaces": 0
       }
     ]
   },
